@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -56,7 +57,7 @@ func TestHpatchCheckpointRevisionAndExpiry(t *testing.T) {
 		t.Fatal("expired checkpoint accepted")
 	}
 	history, err := transform.translate("expired-resume", "resume "+state.Handle, nil)
-	if err != nil || history.translationError == "" || history.carrierPayload != "" {
+	if err != nil || history.translationError == "" || history.carrierPayload != "text("+strconv.Quote(history.translationError)+");" {
 		t.Fatalf("expired handle emitted a carrier: %+v, %v", history, err)
 	}
 
@@ -90,12 +91,12 @@ func TestHpatchResumeThreadAndWorkspaceIsolation(t *testing.T) {
 	}
 	other, _ := mixedTestTransform(t)
 	history, err := other.translate("other-thread", "resume "+state.Handle, nil)
-	if err != nil || history.translationError == "" || history.carrierPayload != "" {
+	if err != nil || history.translationError == "" || history.carrierPayload != "text("+strconv.Quote(history.translationError)+");" {
 		t.Fatalf("other thread resumed work: %+v, %v", history, err)
 	}
 	transform.directory = t.TempDir()
 	history, err = transform.translate("other-workspace", "resume "+state.Handle, nil)
-	if err != nil || history.translationError == "" || history.carrierPayload != "" {
+	if err != nil || history.translationError == "" || history.carrierPayload != "text("+strconv.Quote(history.translationError)+");" {
 		t.Fatalf("other workspace resumed work: %+v, %v", history, err)
 	}
 }

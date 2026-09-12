@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -550,7 +551,7 @@ func TestHpatchMixedRecoveryDoesNotInferSuccess(t *testing.T) {
 		if err == nil || strings.Contains(err.Error(), "call succeeded") || strings.Contains(err.Error(), "send a complete script") {
 			t.Fatalf("unsafe mixed recovery diagnostic: %v", err)
 		}
-		if history.carrierPayload == "" {
+		if history.translationError != "" {
 			if !strings.Contains(err.Error(), "no segment ran") || strings.Contains(err.Error(), "resume HANDLE") {
 				t.Fatalf("preflight rejection advertised unavailable continuation: %v", err)
 			}
@@ -644,7 +645,7 @@ func TestHpatchResumeRejectsUnavailableHandles(t *testing.T) {
 		"resume M../../outside",
 	} {
 		history, err := transform.translate(fmt.Sprintf("invalid-resume-%d", index), input, nil)
-		if err != nil || history.translationError == "" || history.carrierPayload != "" {
+		if err != nil || history.translationError == "" || history.carrierPayload != "text("+strconv.Quote(history.translationError)+");" {
 			t.Fatalf("invalid handle emitted execution: %+v, %v", history, err)
 		}
 	}
@@ -735,7 +736,7 @@ func TestHpatchRepairPreflight(t *testing.T) {
 	}
 	for index, suffix := range []string{"", "\nshell true", "\nnew x\ntype \"x\"\nshell true", "\nnew x\ntype", "\nin @shell/test\ntype \"x\" \"y\""} {
 		history, err := transform.translate(fmt.Sprintf("bad-repair-%d", index), "resume "+state.Handle+" repair"+suffix, nil)
-		if err != nil || history.translationError == "" || history.carrierPayload != "" {
+		if err != nil || history.translationError == "" || history.carrierPayload != "text("+strconv.Quote(history.translationError)+");" {
 			t.Fatalf("invalid repair emitted execution: %+v, %v", history, err)
 		}
 	}

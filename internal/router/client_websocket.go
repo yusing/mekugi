@@ -208,6 +208,10 @@ func (entry *providerWebSocket) readLoop(ctx context.Context) {
 		if err == nil && kind != websocket.MessageText {
 			err = errors.New("provider websocket sent a non-text message")
 		}
+		var event struct {
+			Type string `json:"type"`
+		}
+		_ = json.Unmarshal(payload, &event)
 		entry.pool.mu.Lock()
 		// An idle read may span acquisition of a new lease. Active reads retain
 		// their original identity even when cancellation removes the connection.
@@ -229,10 +233,6 @@ func (entry *providerWebSocket) readLoop(ctx context.Context) {
 			entry.pool.mu.Unlock()
 			return
 		}
-		var event struct {
-			Type string `json:"type"`
-		}
-		_ = json.Unmarshal(payload, &event)
 		switch event.Type {
 		case "response.completed", "response.failed", "response.incomplete", "error":
 			lease.terminal = true
@@ -611,9 +611,9 @@ func (body *webSocketResponseBody) Read(destination []byte) (int, error) {
 			}
 			body.items[*event.OutputIndex] = event.Item
 		}
+		var terminal map[string]json.RawMessage
 		switch event.Type {
 		case "response.completed", "response.failed", "response.incomplete":
-			var terminal map[string]json.RawMessage
 			if json.Unmarshal(event.Response, &terminal) != nil || terminal == nil {
 				body.readErr = errors.New("invalid websocket terminal response")
 				return 0, body.readErr
@@ -645,15 +645,13 @@ func (body *webSocketResponseBody) Read(destination []byte) (int, error) {
 				return 0, body.readErr
 			}
 			if len(body.items) > 0 {
-				var fields map[string]json.RawMessage
-				_ = json.Unmarshal(event.Response, &fields)
 				var output []json.RawMessage
-				if json.Unmarshal(fields["output"], &output) != nil || len(output) == 0 {
+				if json.Unmarshal(terminal["output"], &output) != nil || len(output) == 0 {
 					for _, index := range slices.Sorted(maps.Keys(body.items)) {
 						output = append(output, body.items[index])
 					}
-					fields["output"], _ = json.Marshal(output)
-					event.Response, _ = json.Marshal(fields)
+					terminal["output"], _ = json.Marshal(output)
+					event.Response, _ = json.Marshal(terminal)
 					if len(event.Response) > upstreamJSONBufferBytes {
 						body.readErr = errors.New("upstream JSON response exceeds the router buffer budget")
 						return 0, body.readErr

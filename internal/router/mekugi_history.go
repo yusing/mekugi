@@ -329,7 +329,6 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 		}
 		filtered = append(filtered, item)
 	}
-	request.cachedInput -= removedCached
 	items = filtered
 	validatedCarriers := make(map[string]bool)
 	for index, item := range items {
@@ -420,15 +419,20 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 		}
 		changed = true
 	}
+	var encoded json.RawMessage
 	if changed {
-		encoded, err := marshalProtocolJSON(items)
+		var err error
+		encoded, err = marshalProtocolJSON(items)
 		if err != nil {
 			return nil, fmt.Errorf("encode replayed Responses input: %w", err)
 		}
-		request.setInput(encoded)
 	}
 	if err := p.replayStore.confirmChanges(ctx, workspace, visible); err != nil {
 		return nil, err
+	}
+	request.cachedInput -= removedCached
+	if changed {
+		request.setInput(encoded)
 	}
 	return visible, nil
 }
@@ -461,6 +465,11 @@ func (t *mekugiResponseTransform) recordLocal(callID string, history *mekugiHist
 			false,
 			nil,
 		)
+	} else if history.carrierKind == "" && history.pluginID == "" {
+		// Pin the delivered bytes before retention. carrierInput still renders
+		// older records that predate explicit Code Mode carrier storage.
+		history.carrierPayload = history.carrierInput()
+		history.carrierKind = codeModeCarrierCustom
 	}
 	t.localSequence++
 	history.sequence = t.localSequence

@@ -794,9 +794,8 @@ func (w *webSocketOutput) Write(data []byte) (int, error) {
 		if end < 0 {
 			return len(data), nil
 		}
-		event := bytes.Clone(raw[:end])
+		payload := ssePayload(strings.SplitAfter(string(raw[:end]), "\n"))
 		w.buffer.Next(end + 2)
-		payload := ssePayload(strings.SplitAfter(string(event), "\n"))
 		if len(payload) == 0 {
 			continue
 		}

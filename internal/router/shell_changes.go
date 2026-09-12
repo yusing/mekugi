@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/internal/hpatchsyntax"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"mvdan.cc/sh/v3/interp"
 )
@@ -104,11 +105,17 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 }
 
 func trackedStatus(history mekugiHistory, confirmed bool) string {
+	if history.translationError == "" && history.toolName == mekugiToolName {
+		// Carrier kind identifies transport, not whether this retained script
+		// hands off a mixed execution plan. Use the same framing owner as translation.
+		_, mixed, _ := hpatchsyntax.SplitShell(history.script)
+		if mixed || strings.HasPrefix(strings.TrimSpace(history.script), "resume ") {
+			return "execution plan (see segment attempts)"
+		}
+	}
 	switch {
 	case history.translationError != "":
 		return "rejected"
-	case history.carrierKind == codeModeCarrierCustom && history.toolName == mekugiToolName:
-		return "execution plan (see segment attempts)"
 	case history.alreadySatisfied:
 		return "no-op"
 	case history.applied || confirmed:
