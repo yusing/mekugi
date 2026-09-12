@@ -19,7 +19,7 @@ type proxyRegistryFixture struct {
 	err       error
 }
 
-var proxyTestFixture, pluginProxyTestFixture proxyRegistryFixture
+var proxyTestFixture, realProxyTestFixture, pluginProxyTestFixture proxyRegistryFixture
 
 // Ordinary proxy tests borrow the real, immutable built-in catalog and its
 // stateless shell translator. Each proxy still owns its session state and shell
@@ -27,10 +27,10 @@ var proxyTestFixture, pluginProxyTestFixture proxyRegistryFixture
 // build and close their own registries instead.
 func sharedProxyTestRegistry(t *testing.T) *toolRegistry {
 	t.Helper()
-	return proxyTestFixture.get(t, "")
+	return proxyTestFixture.get(t, "", testMekugiToolDescription)
 }
 
-func (fixture *proxyRegistryFixture) get(t *testing.T, pluginSource string) *toolRegistry {
+func (fixture *proxyRegistryFixture) get(t *testing.T, pluginSource, toolDescription string) *toolRegistry {
 	t.Helper()
 	fixture.once.Do(func() {
 		fixture.directory, fixture.err = os.MkdirTemp("", "mekugi-proxy-tests-")
@@ -48,7 +48,7 @@ func (fixture *proxyRegistryFixture) get(t *testing.T, pluginSource string) *too
 				return
 			}
 		}
-		fixture.registry, fixture.err = buildToolRegistry(t.Context(), dataDirectory, testMekugiToolDescription, false)
+		fixture.registry, fixture.err = buildToolRegistry(t.Context(), dataDirectory, toolDescription, false)
 	})
 	if fixture.err != nil {
 		t.Fatal(fixture.err)
@@ -77,7 +77,7 @@ func TestMain(m *testing.M) {
 	}
 	code := m.Run()
 	var err error
-	for _, fixture := range []*proxyRegistryFixture{&proxyTestFixture, &pluginProxyTestFixture} {
+	for _, fixture := range []*proxyRegistryFixture{&proxyTestFixture, &realProxyTestFixture, &pluginProxyTestFixture} {
 		err = errors.Join(err, fixture.registry.Close())
 		if fixture.directory != "" {
 			err = errors.Join(err, os.RemoveAll(fixture.directory))

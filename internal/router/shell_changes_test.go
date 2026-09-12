@@ -41,7 +41,7 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 	}
 	history := mekugiHistory{
 		changeID: id, correlationID: "edited", applied: true,
-		reviewFiles: []mekugi.ReviewFile{{AfterPath: "file.txt", Diff: "add \"\" -> \"file.txt\"\n--- /dev/null\n+++ \"file.txt\"\n@@ -0,0 +1,40 @@\n" + strings.Repeat("+line π changed\n", 40)}},
+		reviewFiles: []mekugi.ReviewFile{{AfterPath: "file.txt", Diff: "add \"\" -> \"file.txt\"\n--- /dev/null\n+++ \"file.txt\"\n@@ -0,0 +1,12 @@\n" + strings.Repeat("+line π changed\n", 12)}},
 	}
 	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"edited": history}); err != nil {
 		t.Fatal(err)
@@ -75,6 +75,9 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 				}
 				all.WriteString(stdout)
 				if status == 0 {
+					if page < 2 {
+						t.Fatal("fixture must exercise initial, intermediate, and final pages")
+					}
 					if stderr != "" || all.String() != want {
 						t.Fatalf("pages differ: got %q stderr %q; want %q", all.String(), stderr, want)
 					}
@@ -93,7 +96,7 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 	}
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
 		"cd child\nhchanges read --workspace .. --summary "+id, nil)
-	if status != 0 || stderr != "" || !strings.Contains(stdout, `add "file.txt" +40 -0`) || strings.Contains(stdout, "+line") {
+	if status != 0 || stderr != "" || !strings.Contains(stdout, `add "file.txt" +12 -0`) || strings.Contains(stdout, "+line") {
 		t.Fatalf("summary from subdirectory: %q, %q, %d", stdout, stderr, status)
 	}
 	for _, command := range []string{
@@ -102,7 +105,7 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 		"hchanges read " + id + " --path ./file.txt --summary " + id,
 	} {
 		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, command, nil)
-		if status != 0 || stderr != "" || stdout != id+" applied\nadd \"file.txt\" +40 -0\n" {
+		if status != 0 || stderr != "" || stdout != id+" applied\nadd \"file.txt\" +12 -0\n" {
 			t.Fatalf("mixed flags: %q: %q, %q, %d", command, stdout, stderr, status)
 		}
 	}

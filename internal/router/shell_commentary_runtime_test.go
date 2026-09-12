@@ -173,7 +173,7 @@ func TestPrepareShellCommentaryRefreshAndCleanup(t *testing.T) {
 }
 
 func TestShellWorkerDiscoversThreadJournal(t *testing.T) {
-	registry, _ := newToolPluginTestRegistry(t)
+	registry := pluginProxyTestFixture.get(t, testToolPluginDeclaration, testMekugiToolDescription)
 	proxy, _ := newShellStorageTestProxy(t)
 	proxy.registry = registry
 	proxy.journals = newJournalStore()

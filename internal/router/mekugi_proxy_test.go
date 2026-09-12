@@ -158,10 +158,14 @@ func newManagedMekugiProxy(t *testing.T, translator mekugiTranslator) *mekugiPro
 	if translator == nil {
 		return nil
 	}
-	if translator.ToolDescription() != testMekugiToolDescription {
+	switch translator.ToolDescription() {
+	case testMekugiToolDescription:
+		return newProxyWithSharedTestRegistry(t, translator, sharedProxyTestRegistry(t))
+	case mekugi.ToolDescription():
+		return newProxyWithSharedTestRegistry(t, translator, realProxyTestFixture.get(t, "", mekugi.ToolDescription()))
+	default:
 		return newManagedMekugiProxyWithDataDirectory(t, translator, t.TempDir())
 	}
-	return newProxyWithSharedTestRegistry(t, translator, sharedProxyTestRegistry(t))
 }
 
 func newManagedMekugiProxyWithDataDirectory(t *testing.T, translator mekugiTranslator, dataDirectory string) *mekugiProxy {
@@ -2250,7 +2254,7 @@ func TestShellExecCarriersForwardNativeResultWithoutPolling(t *testing.T) {
 		t.Fatalf("shell template carrier did not forward one native result: %s", carrierInput)
 	}
 
-	registry, _ := newToolPluginTestRegistry(t)
+	registry := pluginProxyTestFixture.get(t, testToolPluginDeclaration, testMekugiToolDescription)
 	plugin, ok := registry.contribution("plugin_tool")
 	if !ok {
 		t.Fatal("configured contribution is unavailable")

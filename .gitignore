@@ -1,4 +1,5 @@
 internal/router/toolplugin/dist/tools.js
 node_modules/
 __pycache__/
-benchmarks/results
+benchmarks/results/*
+!benchmarks/results/go.mod

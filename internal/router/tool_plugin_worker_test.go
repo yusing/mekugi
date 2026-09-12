@@ -43,7 +43,7 @@ func newToolPluginTestRegistry(t *testing.T) (*toolRegistry, string) {
 // snapshot creation themselves are covered by the startup and pinning tests.
 func copiedToolPluginTestRegistry(t *testing.T) *toolRegistry {
 	t.Helper()
-	source := pluginProxyTestFixture.get(t, testToolPluginDeclaration)
+	source := pluginProxyTestFixture.get(t, testToolPluginDeclaration, testMekugiToolDescription)
 	snapshot := filepath.Join(t.TempDir(), filepath.Base(source.SnapshotDir))
 	if err := os.CopyFS(snapshot, os.DirFS(source.SnapshotDir)); err != nil {
 		t.Fatal(err)

@@ -84,7 +84,7 @@ func newNativeToolPluginTestTransform(t *testing.T) (*mekugiResponseTransform, *
 
 func newToolPluginTestProxy(t *testing.T) *mekugiProxy {
 	t.Helper()
-	return newProxyWithSharedTestRegistry(t, testTranslator(t, new(int)), pluginProxyTestFixture.get(t, testToolPluginDeclaration))
+	return newProxyWithSharedTestRegistry(t, testTranslator(t, new(int)), pluginProxyTestFixture.get(t, testToolPluginDeclaration, testMekugiToolDescription))
 }
 
 func prepareToolPluginTestRequest(t *testing.T, proxy *mekugiProxy, request *parsedResponsesRequest, sessionID, threadID string) *mekugiResponseTransform {
