@@ -173,19 +173,46 @@ func (capture *hrunCapture) text() string {
 		if capture.pending.Len() > 0 || (capture.pendingBytes != nil && capture.pendingBytes.size > 0) {
 			capture.finishLine()
 		}
-		value := strings.Join(capture.rows[capture.rowStart:], "") + strings.Join(capture.rows[:capture.rowStart], "")
-		// Bound the tokenizer request after line selection. The same byte
-		// reserve as token-only capture cannot exclude an admissible token.
-		if limit := len(capture.buffer); limit > utf8.UTFMax && len(value) > limit {
-			capture.omitted = true
-			if capture.tail {
-				value = value[len(value)-limit:]
-			} else {
-				value = value[:limit]
+		// Apply the token byte reserve before joining retained rows, so the
+		// tokenizer window does not allocate the entire line selection.
+		if len(capture.buffer) > utf8.UTFMax {
+			window := hrunCapture{buffer: capture.buffer, tail: capture.tail}
+			spans := [][]string{capture.rows[capture.rowStart:], capture.rows[:capture.rowStart]}
+			total := 0
+			for _, rows := range spans {
+				for _, row := range rows {
+					total += len(row)
+				}
 			}
-			value = trimHRunBoundary(value, capture.tail)
+			window.omitted = total > len(window.buffer)
+			skip := 0
+			if capture.tail {
+				skip = max(0, total-len(window.buffer))
+			}
+			for _, rows := range spans {
+				for _, row := range rows {
+					if skip >= len(row) {
+						skip -= len(row)
+						continue
+					}
+					row = row[skip:]
+					skip = 0
+					// Copy directly into the existing byte capture rather than
+					// allocating a byte conversion for each retained row.
+					window.size += copy(window.buffer[window.size:], row)
+					if window.size == len(window.buffer) {
+						break
+					}
+				}
+				if window.size == len(window.buffer) {
+					break
+				}
+			}
+			value := window.text()
+			capture.omitted = capture.omitted || window.omitted
+			return value
 		}
-
+		value := strings.Join(capture.rows[capture.rowStart:], "") + strings.Join(capture.rows[:capture.rowStart], "")
 		return strings.ToValidUTF8(value, "\uFFFD")
 	}
 

@@ -220,7 +220,7 @@ func executeShellTool(
 		interp.Params(arguments[1:len(arguments)-1]...),
 		interp.StdIO(stdin, &capture.stdout, &capture.stderr),
 		interp.ExecHandler(middleware(func(ctx context.Context, arguments []string) error {
-			return executeExternalShellCommand(ctx, arguments, terminalShell)
+			return runExternalShellCommand(ctx, arguments, terminalShell, interp.HandlerCtx(ctx))
 		})),
 		interp.CallHandler(shellCommentaryCallHandler(commentary)),
 	)
@@ -271,11 +271,6 @@ func trimIncompleteUTF8Tail(value string) (string, bool) {
 		return "", false
 	}
 	return string(encoded[:start]), true
-}
-
-// executeExternalShellCommand runs an external command from within the mvdan/sh interpreter.
-func executeExternalShellCommand(ctx context.Context, arguments []string, terminalShell bool) error {
-	return runExternalShellCommand(ctx, arguments, terminalShell, interp.HandlerCtx(ctx))
 }
 
 func runExternalShellCommand(ctx context.Context, arguments []string, terminalShell bool, handler interp.HandlerContext) error {

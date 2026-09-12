@@ -152,7 +152,12 @@ func (t *mekugiResponseTransform) translateMixedResume(callID, input string, ups
 
 func (t *mekugiResponseTransform) mixedCarrier(state hpatchResumeState, action string, replacement *hpatchResumeSegment) string {
 	config := map[string]any{
-		"state": state, "action": action, "replacement": replacement,
+		"state": map[string]any{
+			"change_id": state.ChangeID, "expires_at": state.ExpiresAt,
+			"handle": state.Handle, "progress": state.Progress,
+			"revision": state.Revision, "segments": state.Segments,
+		},
+		"action": action, "replacement": replacement,
 	}
 	return "const mixedConfig = " + string(mustMarshalJSON(config)) + ";\n" + hpatchResumeRuntime
 }
