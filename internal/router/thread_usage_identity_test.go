@@ -61,10 +61,10 @@ func TestThreadUsageIgnoresMalformedAuxiliaryIdentity(t *testing.T) {
 }
 func TestThreadUsageConflictDoesNotResumeWithPartialTotals(t *testing.T) {
 	totals := newThreadUsage()
-	totals.observation("transport", "", "gpt-5.5").observe(tokenCounts{InputTokens: 10})
-	totals.observation("other", "", "gpt-5.5").observe(tokenCounts{InputTokens: 20})
-	totals.observation("transport", "other", "gpt-5.5").observe(tokenCounts{InputTokens: 30})
-	totals.observation("transport", "transport", "gpt-5.5").observe(tokenCounts{InputTokens: 40})
+	totals.observation("transport", "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 10})
+	totals.observation("other", "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 20})
+	totals.observation("transport", "other", "gpt-5.5", "").observe(tokenCounts{InputTokens: 30})
+	totals.observation("transport", "transport", "gpt-5.5", "").observe(tokenCounts{InputTokens: 40})
 	if _, valid := totals.snapshot("transport"); valid {
 		t.Fatal("conflicting identity later reported a partial lifetime total")
 	}

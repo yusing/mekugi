@@ -9,65 +9,83 @@ import (
 )
 
 func TestJournalRouterToolContinuesWithoutClientDispatch(t *testing.T) {
-	for _, stream := range []bool{false, true} {
-		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
-			workspace := t.TempDir()
-			headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})
-			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
-			call := map[string]any{"type": "function_call", "id": "item-journal", "call_id": "journal-call", "name": "journal", "arguments": `{"op":"add","text":"Verified the journal path"}`, "status": "completed"}
-			first := mustTestJSON(t, map[string]any{"id": "response-journal", "status": "completed", "output": []any{call}})
-			second := mustTestJSON(t, map[string]any{
-				"id": "response-answer", "status": "completed",
-				"output": []any{journalFinishCall(`{"op":"finish"}`)},
-				"usage":  map[string]any{"input_tokens": 20, "output_tokens": 5, "input_tokens_details": map[string]any{"cached_tokens": 12}, "output_tokens_details": map[string]any{"reasoning_tokens": 3}},
-			})
-			response1 := serverHTTPResponse(string(first))
-			response2 := serverHTTPResponse(string(second))
-			if stream {
-				response1 = serverHTTPResponse(finalAnswerTestWire([][]byte{
-					mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": call}),
-					mustTestJSON(t, map[string]any{"type": "response.completed", "response": json.RawMessage(first)}),
-				}))
-				var object struct {
-					Output []json.RawMessage `json:"output"`
+	for _, usage := range []struct {
+		name       string
+		raw        json.RawMessage
+		wantTokens bool
+	}{
+		{"missing", nil, false},
+		{"null", json.RawMessage(`null`), false},
+		{"malformed", json.RawMessage(`{"input_tokens":"invalid"}`), false},
+		{"complete", json.RawMessage(`{"input_tokens":20,"output_tokens":5,"input_tokens_details":{"cached_tokens":12},"output_tokens_details":{"reasoning_tokens":3}}`), true},
+	} {
+		for _, stream := range []bool{false, true} {
+			t.Run(usage.name+"/"+map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
+				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				workspace := t.TempDir()
+				headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})
+				request := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
+				call := map[string]any{"type": "function_call", "id": "item-journal", "call_id": "journal-call", "name": "journal", "arguments": `{"op":"add","text":"Verified the journal path"}`, "status": "completed"}
+				firstFields := map[string]any{"id": "response-journal", "status": "completed", "output": []any{call}}
+				if usage.raw != nil {
+					firstFields["usage"] = usage.raw
 				}
-				if err := json.Unmarshal(second, &object); err != nil {
+				first := mustTestJSON(t, firstFields)
+				second := mustTestJSON(t, map[string]any{
+					"id": "response-answer", "status": "completed",
+					"output": []any{journalFinishCall(`{"op":"finish"}`)},
+					"usage":  map[string]any{"input_tokens": 20, "output_tokens": 5, "input_tokens_details": map[string]any{"cached_tokens": 12}, "output_tokens_details": map[string]any{"reasoning_tokens": 3}},
+				})
+				response1 := serverHTTPResponse(string(first))
+				response2 := serverHTTPResponse(string(second))
+				if stream {
+					response1 = serverHTTPResponse(finalAnswerTestWire([][]byte{
+						mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": call}),
+						mustTestJSON(t, map[string]any{"type": "response.completed", "response": json.RawMessage(first)}),
+					}))
+					var object struct {
+						Output []json.RawMessage `json:"output"`
+					}
+					if err := json.Unmarshal(second, &object); err != nil {
+						t.Fatal(err)
+					}
+					response2 = serverHTTPResponse(finalAnswerTestWire([][]byte{
+						mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": object.Output[0]}),
+						mustTestJSON(t, map[string]any{"type": "response.completed", "response": json.RawMessage(second)}),
+					}))
+					response1.Header.Set("Content-Type", "text/event-stream")
+					response2.Header.Set("Content-Type", "text/event-stream")
+				}
+				provider := &serverFakeProvider{results: []serverForwardResult{{response: response1}, {response: response2}}}
+				var output bytes.Buffer
+				issues := NewCriticalErrors()
+				if err := executeRequest(t.Context(), t.Context(), request, headers, "session", provider, &output, issues, proxy, nil, nil); err != nil {
 					t.Fatal(err)
 				}
-				response2 = serverHTTPResponse(finalAnswerTestWire([][]byte{
-					mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": object.Output[0]}),
-					mustTestJSON(t, map[string]any{"type": "response.completed", "response": json.RawMessage(second)}),
-				}))
-				response1.Header.Set("Content-Type", "text/event-stream")
-				response2.Header.Set("Content-Type", "text/event-stream")
-			}
-			provider := &serverFakeProvider{results: []serverForwardResult{{response: response1}, {response: response2}}}
-			var output bytes.Buffer
-			issues := NewCriticalErrors()
-			if err := executeRequest(t.Context(), t.Context(), request, headers, "session", provider, &output, issues, proxy, nil, nil); err != nil {
-				t.Fatal(err)
-			}
-			if len(issues.entries) != 0 {
-				t.Fatalf("successful continuation recorded failure notices: %+v", issues.entries)
-			}
-			if len(provider.forwarded) != 2 {
-				t.Fatalf("provider requests: %d", len(provider.forwarded))
-			}
-			if !bytes.Contains(provider.forwarded[1], []byte("function_call_output")) || !bytes.Contains(provider.forwarded[1], []byte("j1")) {
-				t.Fatal("journal result missing from model continuation")
-			}
-			if strings.Contains(output.String(), `"phase":"final_answer"`) {
-				t.Fatalf("finish produced a separate final-answer message: %s", output.String())
-			}
-			if !strings.Contains(output.String(), "Verified the journal path") || !strings.Contains(output.String(), "Tokens:") {
-				t.Fatalf("missing terminal record: %s", output.String())
-			}
-			items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
-			if err != nil || len(items) != 1 || !items[0].Reported {
-				t.Fatalf("delivery acknowledgement: %+v %v", items, err)
-			}
-		})
+				if len(issues.entries) != 0 {
+					t.Fatalf("successful continuation recorded failure notices: %+v", issues.entries)
+				}
+				if len(provider.forwarded) != 2 {
+					t.Fatalf("provider requests: %d", len(provider.forwarded))
+				}
+				if !bytes.Contains(provider.forwarded[1], []byte("function_call_output")) || !bytes.Contains(provider.forwarded[1], []byte("j1")) {
+					t.Fatal("journal result missing from model continuation")
+				}
+				if strings.Contains(output.String(), `"phase":"final_answer"`) {
+					t.Fatalf("finish produced a separate final-answer message: %s", output.String())
+				}
+				if !strings.Contains(output.String(), "Verified the journal path") {
+					t.Fatalf("missing terminal record: %s", output.String())
+				}
+				if got := strings.Contains(output.String(), "Tokens:"); got != usage.wantTokens {
+					t.Fatalf("token report present = %v, want %v: %s", got, usage.wantTokens, output.String())
+				}
+				items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
+				if err != nil || len(items) != 1 || !items[0].Reported {
+					t.Fatalf("delivery acknowledgement: %+v %v", items, err)
+				}
+			})
+		}
 	}
 }
 

@@ -100,6 +100,9 @@ present; they MUST NOT be labeled as exact provider input or billed generated to
 The HPATCH comparison MUST pair the
 actual provider-emitted HPATCH call with the actual delivered native carrier by tool-call identity;
 it MUST NOT synthesize an `apply_patch`, `exec_command`, shell command, or stock result.
+Apply carriers MUST be recognized by their router-owned leading marker, including when a
+change-ID error-reporting wrapper surrounds the host call. HPATCH success here describes
+successful translation and carrier delivery, not proof that the host applied the patch.
 
 A benchmark report MUST read these calculations from the snapshot. It MAY independently reconcile
 the snapshot against sanitized records and measured result usage, but MUST NOT replace the

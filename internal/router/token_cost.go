@@ -40,18 +40,51 @@ var tokenReferencePrices = map[string]tokenPrice{
 	"gpt-5.4-nano":    {0.2, 0.02, 1.25, 0, 0, 0},
 }
 
-func estimateTokenCost(model string, counts tokenCounts) tokenCost {
+// Fast and priority are aliases. These are model-specific rates, not a blanket
+// multiplier: GPT-5.5 has a different premium and no published long-context rate.
+// Source (2026-09-12): https://developers.openai.com/api/docs/pricing#text-tokens
+var tokenFastReferencePrices = map[string]tokenPrice{
+	"gpt-6-astra":   {20, 2, 100, 40, 4, 150},
+	"gpt-5.6-sol":   {8, 0.8, 40, 16, 1.6, 60},
+	"gpt-5.6-terra": {4, 0.4, 24, 8, 0.8, 36},
+	"gpt-5.6-luna":  {0.4, 0.04, 2.4, 0.8, 0.08, 3.6},
+	"gpt-5.5":       {12.5, 1.25, 75, 0, 0, 0},
+	"gpt-5.4":       {5, 0.5, 30, 0, 0, 0},
+	"gpt-5.4-mini":  {1.5, 0.15, 9, 0, 0, 0},
+}
+
+func estimateTokenCost(model, serviceTier string, counts tokenCounts) tokenCost {
 	model = strings.TrimPrefix(model, "openai/")
 	price, ok := tokenReferencePrices[model]
-	if !ok || counts.Inconsistent || counts.UncachedInputTokens > counts.InputTokens || counts.ReasoningTokens > counts.OutputTokens {
+	switch serviceTier {
+	case "", "default":
+	case "priority", "fast":
+		price, ok = tokenFastReferencePrices[model]
+		if counts.InputTokens > 272_000 && price.longInput == 0 && tokenReferencePrices[model].longInput != 0 {
+			return tokenCost{}
+		}
+	default:
+		return tokenCost{}
+	}
+	if !ok || counts.Incomplete || counts.Inconsistent || counts.UncachedInputTokens > counts.InputTokens || counts.ReasoningTokens > counts.OutputTokens || counts.CacheWriteTokens > counts.UncachedInputTokens {
 		return tokenCost{}
 	}
 	// Select the tier per response, never from cumulative thread input.
-	if counts.InputTokens >= 272_000 && price.longInput != 0 {
+	if counts.InputTokens > 272_000 && price.longInput != 0 {
 		price.input, price.cachedInput, price.output = price.longInput, price.longCachedInput, price.longOutput
 	}
+	var cacheWritePremium float64
+	if counts.CacheWriteTokens != 0 {
+		switch model {
+		case "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna":
+			// Writes are part of uncached input, charged at 1.25x its rate.
+			cacheWritePremium = float64(counts.CacheWriteTokens) * price.input * .25 / 1_000_000
+		default:
+			return tokenCost{}
+		}
+	}
 	return tokenCost{
-		uncachedInput: float64(counts.UncachedInputTokens) * price.input / 1_000_000,
+		uncachedInput: float64(counts.UncachedInputTokens)*price.input/1_000_000 + cacheWritePremium,
 		cachedInput:   float64(counts.InputTokens-counts.UncachedInputTokens) * price.cachedInput / 1_000_000,
 		output:        float64(counts.OutputTokens) * price.output / 1_000_000,
 		known:         true,
@@ -90,9 +123,12 @@ func formatTokenUsageReport(report tokenUsageReport) string {
 		}
 		fmt.Fprintf(&text, "| %s | %s | %s |\n", row.label, row.tokens, amount)
 	}
-	text.WriteString("\nThis thread; cached input and reasoning are included, not added. Reference API prices, not subscription charges.")
+	text.WriteString("\nThis thread since router start; cached input and reasoning are included, not added. Reference API prices, not subscription charges.")
+	if report.CacheWriteTokens != 0 {
+		fmt.Fprintf(&text, " Uncached input includes %s cache-write tokens, priced at the cache-write rate.", formatUsageTokens(report.CacheWriteTokens))
+	}
 	if !report.cost.known {
-		text.WriteString(" Cost unavailable: unknown pricing or inconsistent usage.")
+		text.WriteString(" Cost unavailable: unknown model/service-tier pricing or inconsistent usage.")
 	}
 	return text.String()
 }

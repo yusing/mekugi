@@ -162,6 +162,10 @@ type webSocketHistory struct {
 	input    []json.RawMessage
 	output   []json.RawMessage
 	settings map[string]json.RawMessage
+	// Automatic steering successors execute the already-sent model contract,
+	// even if the preceding terminal completed the Mentor schedule.
+	providerModel     string
+	providerReasoning json.RawMessage
 	// Fingerprint only instruction-bearing input actually sent upstream. Native
 	// history cannot establish whether its later projection matches that cache.
 	instructionDigest [sha256.Size]byte
@@ -840,16 +844,19 @@ func (w *webSocketOutput) message(payload []byte) error {
 			return errors.New("provider terminal response has no id")
 		}
 		if len(event.Response.Output) != 0 {
-			// The terminal snapshot replaces streamed items, not duplicates them.
+			// Terminal snapshots can omit completed streamed calls, especially
+			// when an empty provider output gains router commentary. Reconcile
+			// matching items without discarding the host's completed history.
+			output := mergeWebSocketOutput(e.history.output, event.Response.Output)
 			retained := s.retainedBytes
 			for _, item := range e.history.output {
 				s.retainedBytes -= len(item)
 			}
-			if err := s.retain(event.Response.Output); err != nil {
+			if err := s.retain(output); err != nil {
 				s.retainedBytes = retained
 				return err
 			}
-			e.history.output = event.Response.Output
+			e.history.output = output
 		}
 		s.histories[event.Response.ID] = e.history
 		s.lastID = event.Response.ID
@@ -863,4 +870,33 @@ func (w *webSocketOutput) message(payload []byte) error {
 		e.clientObservation.Message(payload)
 	}
 	return nil
+}
+
+// Keep delivered order while accepting final metadata for matching identities.
+// Items without an ID can only be deduplicated by their exact retained encoding.
+func mergeWebSocketOutput(streamed, terminal []json.RawMessage) []json.RawMessage {
+	output := slices.Clone(streamed)
+	positions := make(map[string]int, len(streamed)+len(terminal))
+	key := func(raw json.RawMessage) string {
+		var item struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(raw, &item) == nil && item.ID != "" {
+			return "id:" + item.ID
+		}
+		return "raw:" + string(raw)
+	}
+	for index, item := range streamed {
+		positions[key(item)] = index
+	}
+	for _, item := range terminal {
+		identity := key(item)
+		if index, exists := positions[identity]; exists {
+			output[index] = item
+		} else {
+			positions[identity] = len(output)
+			output = append(output, item)
+		}
+	}
+	return output
 }

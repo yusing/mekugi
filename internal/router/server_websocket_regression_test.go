@@ -48,8 +48,9 @@ func TestResponsesWebSocketTerminalOutputBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.CloseNow()
-	streamed := json.RawMessage(`{"type":"message","text":"streamed"}`)
-	replacement := json.RawMessage(`{"type":"message","text":"terminal-only data"}`)
+	streamed := json.RawMessage(`{"type":"message","id":"item","text":"streamed"}`)
+	replacement := json.RawMessage(`{"type":"message","id":"item","text":"final metadata"}`)
+	commentary := json.RawMessage(`{"type":"message","id":"commentary","text":"progress"}`)
 	for _, tc := range []struct {
 		name      string
 		output    []json.RawMessage
@@ -58,7 +59,10 @@ func TestResponsesWebSocketTerminalOutputBudget(t *testing.T) {
 		wantError bool
 	}{
 		{"same output at budget", []json.RawMessage{streamed}, []json.RawMessage{streamed}, 0, false},
-		{"terminal-only addition", []json.RawMessage{replacement}, []json.RawMessage{replacement}, len(replacement) - len(streamed), false},
+		{"matching item updates metadata", []json.RawMessage{replacement}, []json.RawMessage{replacement}, len(replacement) - len(streamed), false},
+		{"terminal-only addition preserves streamed", []json.RawMessage{commentary}, []json.RawMessage{streamed, commentary}, len(commentary), false},
+		{"partial snapshot updates and preserves", []json.RawMessage{commentary, replacement}, []json.RawMessage{replacement, commentary}, len(commentary) + len(replacement) - len(streamed), false},
+		{"addition exceeds budget", []json.RawMessage{commentary}, []json.RawMessage{streamed}, 0, true},
 		{"empty preserves streamed", nil, []json.RawMessage{streamed}, 0, false},
 		{"replacement exceeds budget", []json.RawMessage{replacement}, []json.RawMessage{streamed}, 0, true},
 	} {
@@ -75,8 +79,11 @@ func TestResponsesWebSocketTerminalOutputBudget(t *testing.T) {
 				t.Fatalf("retained output = %s", mustMarshalJSON(history.output))
 			}
 			wantBytes := initial
-			if !tc.wantError && len(tc.output) != 0 {
-				wantBytes += len(tc.output[0]) - len(streamed)
+			if !tc.wantError {
+				wantBytes -= len(streamed)
+				for _, item := range tc.want {
+					wantBytes += len(item)
+				}
 			}
 			if s.retainedBytes != wantBytes {
 				t.Fatalf("retained bytes = %d, want %d", s.retainedBytes, wantBytes)

@@ -16,7 +16,7 @@ func TestThreadUsageConcurrentObservationsAndDuplicateTerminals(t *testing.T) {
 		workers.Go(func() {
 			thread := fmt.Sprint(i)
 			for range 100 {
-				observation := totals.observation(thread, "", "gpt-5.5")
+				observation := totals.observation(thread, "", "gpt-5.5", "")
 				var duplicates sync.WaitGroup
 				for range 3 {
 					duplicates.Go(func() {
@@ -38,32 +38,32 @@ func TestThreadUsageConcurrentObservationsAndDuplicateTerminals(t *testing.T) {
 func TestThreadUsageCapacityOverflowAndShutdownFailAuxiliary(t *testing.T) {
 	totals := newThreadUsage()
 	for i := range maxCommentaryRoutes {
-		totals.observation(fmt.Sprint(i), "", "gpt-5.5").observe(tokenCounts{InputTokens: 1})
+		totals.observation(fmt.Sprint(i), "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 1})
 	}
-	totals.observation("excess", "", "gpt-5.5").observe(tokenCounts{InputTokens: 100})
+	totals.observation("excess", "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 100})
 	if _, valid := totals.snapshot("excess"); valid {
 		t.Fatal("capacity admitted a new identity")
 	}
-	totals.observation("0", "", "gpt-5.5").observe(tokenCounts{InputTokens: 2})
+	totals.observation("0", "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 2})
 	if got, valid := totals.snapshot("0"); !valid || got.InputTokens != 3 {
 		t.Fatal("capacity lost or stopped an existing total", got, valid)
 	}
-	totals.observation("1", "", "gpt-5.5").observe(tokenCounts{InputTokens: ^uint64(0)})
+	totals.observation("1", "", "gpt-5.5", "").observe(tokenCounts{InputTokens: ^uint64(0)})
 	if _, valid := totals.snapshot("1"); valid || totals.threads["1"].counts.InputTokens != 1 {
 		t.Fatal("overflow published or replaced the retained total")
 	}
-	totals.observation("1", "", "gpt-5.5").observe(tokenCounts{InputTokens: 1})
+	totals.observation("1", "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 1})
 	if _, valid := totals.snapshot("1"); valid {
 		t.Fatal("overflowed thread resumed with an incomplete total")
 	}
 	totals.close()
-	totals.observation("0", "", "gpt-5.5").observe(tokenCounts{InputTokens: 1})
+	totals.observation("0", "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 1})
 	if _, valid := totals.snapshot("0"); valid || len(totals.threads) != 0 {
 		t.Fatal("closed accumulator retained or admitted usage")
 	}
 	for _, thread := range []string{"", strings.Repeat("x", maxCommentaryPublicationBytes+1)} {
 		fresh := newThreadUsage()
-		fresh.observation(thread, "", "gpt-5.5").observe(tokenCounts{InputTokens: 1})
+		fresh.observation(thread, "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 1})
 		if len(fresh.threads) != 0 {
 			t.Fatal("unbounded identity admitted")
 		}

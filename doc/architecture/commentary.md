@@ -75,14 +75,24 @@ message or assistant output are eligible for receipt projection; full-history re
 turn earlier, previously undisplayed replies into fresh activity. Deterministic router IDs suppress repeated
 local commentary on replay.
 
-`thread_usage.go` owns cumulative provider-authoritative token and cost totals by stable thread,
-separately for root and children. Routing remaps and compaction do not reset them; repeated terminal
-observations count once. Totals are bounded and non-evicting until router shutdown. Ancestry and
-author labels do not determine attribution. `token_cost.go` owns built-in reference prices,
-per-response estimates, and the compact Markdown token/cost table. Each observation retains its
-request model and is priced using that response's input tier before accumulation. Unknown prices
-or inconsistent raw usage make cumulative costs unavailable without suppressing token counts.
-Pricing does not fetch catalogs or change capture-owned metrics.
+`thread_usage.go` owns bounded, non-evicting cumulative provider-authoritative token and cost
+totals by stable thread until router shutdown, separately for root and children. Routing remaps
+and compaction do not reset them; repeated terminal observations within a request count once.
+Ancestry and author labels do not determine attribution. `token_cost.go` owns built-in reference
+prices, per-response estimates, and the compact Markdown token/cost table.
+
+Each observation retains its effective provider-request model and requested service tier.
+The shared terminal parse supplies the provider's resolved tier when present, and cost is
+calculated before accumulation using the response's service tier, input size, and optional
+cache-write count. WebSocket histories retain the effective model and reasoning sent for each
+response so automatic steering successors do not adopt a Mentor model switch that was never
+sent upstream. Unknown prices or inconsistent raw usage categories make cumulative costs
+unavailable without suppressing token counts. Missing or malformed usage instead leaves an
+irrecoverable gap in that thread's router-lifetime totals and suppresses its reports.
+The server finishes each forwarded inference observation, distinguishing definite HTTP rejection
+and non-generating prewarm from missing evidence after possible inference. The shared parse
+preserves completeness and inconsistency separately from normalized counts. Pricing does not
+read rollouts, fetch catalogs, or change capture-owned metric calculations.
 
 The terminal transformer places eligible usage after any main journal flush and before the child
 saved-summary. Child usage remains live activity; child journals flush only at main completion.
@@ -91,10 +101,15 @@ Their usage-message IDs are source identities; they remain distinct notices with
 bounded root delivery and exact replay removal. Child costs never enter root usage totals.
 
 `final_answer_stream.go` buffers provider final events only for token-usage ordering, releasing
-them unchanged at the terminal, on failure, or when its buffer fills. Journal completion uses
+them unchanged at the terminal, on failure, or when its buffer fills. Completed streamed items
+determine eligibility independently of the terminal output snapshot. Journal completion uses
 an explicit finish call and never filters provider messages. Failed and incomplete responses
-do not terminal-flush or emit tokens. Token notices do not participate in model-origin output
-accounting; provider usage remains authoritative. They remain
+do not terminal-flush or emit tokens. The transport drains buffered events on EOF or failure,
+including through composed transforms. The 64 MiB response buffer limit disables auxiliary usage
+and releases output rather than rejecting a large answer. JSON and SSE share the same
+Codex-compatible text-answer eligibility check. Buffered releases use named SSE frames and one
+data field per payload line, including failure drains. Token notices do not participate in
+model-origin output accounting; provider usage remains authoritative. They remain
 present in transport byte and token totals. `internal/commentaryid` owns the reserved operation/runtime and subagent/usage
 message ID namespaces shared by rendering, replay, and capture classification; message text and
 phase do not establish generated provenance.

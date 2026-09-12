@@ -257,6 +257,9 @@ provider messages have a 64 MiB budget. A session conservatively charges retaine
 request settings, native input, and finalized output against a cumulative
 64 MiB history budget. Exceeding a budget fails the session rather than dropping
 history needed for translation.
+Terminal output reconciles with completed streamed items by item ID, updating matching
+metadata and retaining delivered order. A partial or commentary-only terminal snapshot
+must not discard completed calls needed by a later full-history continuation.
 
 `--timeout` covers each response's preparation, connection setup, write, and
 first non-control, non-ancillary event. Steering acknowledgements do not satisfy

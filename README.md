@@ -47,8 +47,11 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
     accumulated for that agent's thread during the router's lifetime, including across compaction.
     Input, cached input, uncached input, output, and reasoning are shown separately.
     Costs use built-in reference list API prices, not subscription rates, and show
-    `n/a` if any response's model has no known price. Model changes and long-context
-    rates are handled per response. Intermediate tool calls do not produce notices.
+    `n/a` if any response's model or service tier has no known price. Model changes,
+    priority/Fast service tiers, cache writes, and long-context rates are handled per response.
+    Provider-reported tiers take precedence, including downgrades to standard processing.
+    Missing usage suppresses later thread tables rather than showing a partial total as complete.
+    Intermediate tool calls do not produce notices.
   - Subagent token tables also appear in the main conversation with the agent's path,
     separately from the main agent's totals. As with other child activity, delivery
     waits for the next main-agent response boundary when the conversation is idle.

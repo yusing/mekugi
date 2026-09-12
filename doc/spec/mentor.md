@@ -42,10 +42,16 @@ input budget is reached. The handoff completes after that result-consuming respo
 assistant messages, or when the latest request reports at least 50,000 input tokens. A request's
 input count already includes its inherited conversation history, so counts from separate requests
 are never summed. The completed request may overshoot the token limit.
-The next request from that thread uses the model and reasoning supplied by Codex without a compatibility
+The next explicit request from that thread uses the model and reasoning supplied by Codex without a compatibility
 rewrite. Thread schedules are retained for the router lifetime so a completed schedule is never
 silently forgotten and restarted. State and progress logs retain counts and identifiers only, not
 prompt or response content. The capturer attributes each request to the model actually sent upstream.
+
+An automatic WebSocket steering successor does not send a new provider request. It retains its
+parent's effective provider model and reasoning, even when the parent terminal completes Mentor's
+schedule. Translation and completion-cost accounting use that retained contract, not a model
+switch that was never sent. Successor usage and completed output still contribute to an active
+Mentor schedule. The eventual explicit request applies the completed schedule normally.
 
 When a schedule completes, the router queues user-only commentary announcing the handoff.
 The next eligible response for that thread delivers it through the existing bounded runtime

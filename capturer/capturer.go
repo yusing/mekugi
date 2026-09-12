@@ -32,7 +32,9 @@ const maxRetainedExchangeDetails = 4096
 
 const maxObservedResponseBytes = 8 << 20
 
-const mekugiApplyCarrierPrefix = "// mekugi-proxy: apply translated patch\nawait tools.apply_patch("
+// The router-owned marker identifies the carrier independently of wrappers
+// around the host call, such as change-ID failure reporting.
+const mekugiApplyCarrierPrefix = "// mekugi-proxy: apply translated patch\n"
 
 const (
 	mekugiNativeApplyCarrierPrefix      = "# mekugi-proxy: apply translated patch\n"

@@ -710,7 +710,10 @@ func TestClassifyToolInputRetainsOnlyStableDiagnosticCodes(t *testing.T) {
 		wantKind   string
 		wantReason string
 	}{
-		{name: "apply carrier", input: mekugiApplyCarrierPrefix + `"*** Begin Patch\\n*** End Patch");\ntext("done");`, wantKind: "apply_patch"},
+		{name: "apply carrier", input: mekugiApplyCarrierPrefix + `await tools.apply_patch("*** Begin Patch\\n*** End Patch");\ntext("done");`, wantKind: "apply_patch"},
+		{name: "change ID apply carrier", input: mekugiApplyCarrierPrefix + "try {\n" + `await tools.apply_patch("patch");` + "\n} catch (error) { text(\"change c1\"); throw error; }\ntext(\"done\");", wantKind: "apply_patch"},
+		{name: "unmarked apply call", input: `await tools.apply_patch("patch");`, wantKind: "other"},
+		{name: "quoted apply marker", input: "text(" + strconv.Quote(mekugiApplyCarrierPrefix) + ");", wantKind: "other"},
 		{name: "exec command carrier", input: `const result = await tools.exec_command({"cmd":"true"});\ntext(result.output);`, wantKind: "exec_command"},
 		{name: "router diagnostic", input: `text("type: command 2, reason row-stale: private detail\n");`, wantKind: "mekugi_diagnostic", wantReason: "row-stale"},
 		{name: "apply substring in diagnostic", input: `text("type: command 2, reason file-path: missing tools.apply_patch(example)\n");`, wantKind: "mekugi_diagnostic", wantReason: "file-path"},
