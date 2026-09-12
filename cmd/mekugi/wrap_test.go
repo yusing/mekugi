@@ -84,6 +84,13 @@ func TestWrappedCodexProcess(t *testing.T) {
 		return
 	}
 	if slices.Contains(os.Args, "debug") && slices.Contains(os.Args, "models") {
+		if os.Getenv("MEKUGI_TEST_CATALOG_DELAY") == "1" {
+			if err := os.WriteFile(os.Getenv("MEKUGI_TEST_ADDRESS")+".preparing", nil, 0o600); err != nil {
+				os.Exit(99)
+			}
+			fmt.Fprintln(os.Stderr, "private bootstrap diagnostic")
+			time.Sleep(time.Minute)
+		}
 		fmt.Fprintln(os.Stdout, testNativeModelCatalog)
 		os.Exit(0)
 	}
@@ -237,7 +244,7 @@ func TestWrapTerminalInterruptAndTermination(t *testing.T) {
 		t.Fatal("Codex output was not inherited")
 	}
 	announcement := "mekugi dashboard: " + strings.TrimSuffix(baseURL, "/v1") + "/\n"
-	if !strings.HasPrefix(logs.String(), announcement) || strings.Count(logs.String(), "mekugi dashboard: ") != 1 {
+	if !strings.Contains(logs.String(), announcement+"codex stderr\n") || strings.Count(logs.String(), "mekugi dashboard: ") != 1 {
 		t.Fatalf("dashboard announcement must precede Codex output exactly once: %q", logs.String())
 	}
 	if entries, err := os.ReadDir(logDirectory); err != nil || len(entries) != 0 {
@@ -452,5 +459,99 @@ func TestCodexArgsJournalPlanOverridePreservesPassthrough(t *testing.T) {
 		if disabled != journal {
 			t.Fatalf("plan override for journal=%v: %q", journal, args)
 		}
+	}
+}
+
+func TestWrapStartupInterrupt(t *testing.T) {
+	directory := t.TempDir()
+	temporary := t.TempDir()
+	runtimeDirectory := t.TempDir()
+	addressFile := filepath.Join(directory, "address")
+	t.Setenv("TMPDIR", temporary)
+	t.Setenv("CODEX_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("MEKUGI_RUNTIME_DIR", runtimeDirectory)
+	t.Setenv("MEKUGI_TEST_ROUTER", "1")
+	t.Setenv("MEKUGI_TEST_CODEX", "1")
+	t.Setenv("MEKUGI_TEST_CATALOG_DELAY", "1")
+	t.Setenv("MEKUGI_TEST_ADDRESS", addressFile)
+	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stub := "#!/bin/sh\nexec " + strconv.Quote(os.Args[0]) + " -test.run=^TestWrappedCodexProcess$ -- \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(directory, "codex"), []byte(stub), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestWrappedRouterProcess$")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	var stdout, logs bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &logs
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	for {
+		if _, err := os.Stat(addressFile + ".preparing"); err == nil {
+			break
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("wrapper exited before preparation: %v", err)
+		case <-ctx.Done():
+			t.Fatal("startup timed out")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	// Signal only the wrapper: the bootstrap subprocess must be canceled by its owner.
+	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err == nil || ctx.Err() != nil {
+		t.Fatalf("startup interrupt did not stop promptly: %v, %v", err, ctx.Err())
+	}
+	if stdout.Len() != 0 || !strings.Contains(logs.String(), "preparing Grok model catalog") ||
+		!strings.Contains(logs.String(), "context canceled") ||
+		strings.Contains(logs.String(), "private bootstrap diagnostic") ||
+		strings.Contains(logs.String(), "configuration") ||
+		strings.Contains(logs.String(), "mekugi dashboard:") {
+		t.Fatalf("unexpected startup output: stdout=%q stderr=%q", stdout.String(), logs.String())
+	}
+	if _, err := os.Stat(addressFile); !os.IsNotExist(err) {
+		t.Fatalf("interactive Codex launched after cancellation: %v", err)
+	}
+	for _, path := range []string{temporary, runtimeDirectory} {
+		if entries, err := os.ReadDir(path); err != nil || len(entries) != 0 {
+			t.Fatalf("startup cancellation leaked resources: %v, %v", entries, err)
+		}
+	}
+}
+
+func TestStartupInterruptHandoffJoinsConsumedSignal(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	interrupts := make(chan os.Signal)
+	stop := watchStartupInterrupts(ctx, cancel, interrupts)
+	// The rendezvous proves the startup receiver consumed this signal, but does
+	// not assume it has run cancel yet. Handoff must join that pending work.
+	interrupts <- os.Interrupt
+	stop()
+	if ctx.Err() != context.Canceled {
+		t.Fatal("handoff lost a consumed startup interrupt")
+	}
+	stop()
+}
+
+func TestStartupInterruptHandoffLeavesChildSignalAlone(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	interrupts := make(chan os.Signal, 1)
+	stop := watchStartupInterrupts(ctx, cancel, interrupts)
+	stop()
+	interrupts <- os.Interrupt
+	if ctx.Err() != nil {
+		t.Fatal("startup receiver canceled after handoff")
 	}
 }

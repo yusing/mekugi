@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -23,11 +24,6 @@ func runWrap(routerArgs, args []string) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()
-	// Codex shares the foreground process group and handles terminal Ctrl-C itself.
-	// Catch it here without canceling the router or delivering a second interrupt.
-	interrupts := make(chan os.Signal, 1)
-	signal.Notify(interrupts, os.Interrupt)
-	defer signal.Stop(interrupts)
 	code, err := wrapCodex(ctx, routerArgs, args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "mekugi:", err)
@@ -51,6 +47,13 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	}()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	// Before handoff Ctrl-C cancels startup. Once started, Codex receives the
+	// foreground group's interrupt itself; never forward it or stop its router.
+	interrupts := make(chan os.Signal, 1)
+	signal.Notify(interrupts, os.Interrupt)
+	defer signal.Stop(interrupts)
+	stopStartupInterrupts := watchStartupInterrupts(ctx, cancel, interrupts)
+	defer stopStartupInterrupts()
 	ready := make(chan router.Session, 1)
 	routerDone := make(chan error, 1)
 	var debugPaths []string
@@ -101,7 +104,17 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = 5 * time.Second
-	if err := cmd.Start(); err != nil {
+	stopStartupInterrupts()
+	select {
+	case <-interrupts:
+		cancel()
+	default:
+	}
+	err = ctx.Err()
+	if err == nil {
+		err = cmd.Start()
+	}
+	if err != nil {
 		cancel()
 		return 1, errors.Join(fmt.Errorf("launch codex: %w", err), <-routerDone)
 	}
@@ -129,6 +142,26 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		return 1, err
 	}
 	return 0, nil
+}
+
+// Joining the startup receiver before launch ensures an interrupt it has already
+// consumed cannot be mistaken for an active-child interrupt during handoff.
+func watchStartupInterrupts(ctx context.Context, cancel context.CancelFunc, interrupts <-chan os.Signal) func() {
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		select {
+		case <-ctx.Done():
+		case <-done:
+		case <-interrupts:
+			cancel()
+		}
+	}()
+	return sync.OnceFunc(func() {
+		close(done)
+		<-stopped
+	})
 }
 
 func codexArgs(baseURL string, args []string, journal bool) []string {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/router"
+	"golang.org/x/term"
 )
 
 // prepareGrokCatalog leaves authentication and configuration loading to Codex.
@@ -24,6 +25,14 @@ func prepareGrokCatalog(ctx context.Context, executable, baseURL string, args []
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
+	stopProgress := startCatalogProgress(ctx, os.Stderr, term.IsTerminal(int(os.Stderr.Fd())))
+	defer func() {
+		if stopProgress() != nil {
+			// Progress is auxiliary. A failed display must not replace the catalog
+			// result or cancel startup; this content-free notice is best-effort too.
+			fmt.Fprintln(os.Stderr, "mekugi: catalog progress unavailable")
+		}
+	}()
 	cmd := exec.CommandContext(ctx, executable, codexArgs(baseURL, append([]string{"debug", "models"}, overrides...), false)...)
 	cmd.Dir = cwd
 	cmd.WaitDelay = 5 * time.Second
@@ -35,6 +44,9 @@ func prepareGrokCatalog(ctx context.Context, executable, baseURL string, args []
 		return "", "", fmt.Errorf("prepare Codex model catalog: %w", err)
 	}
 	if err := cmd.Start(); err != nil {
+		if ctx.Err() != nil {
+			return "", "", fmt.Errorf("prepare Codex model catalog: %w", ctx.Err())
+		}
 		return "", "", fmt.Errorf("start codex debug models: %w", err)
 	}
 	const maxCatalogBytes = 8 << 20
@@ -48,6 +60,9 @@ func prepareGrokCatalog(ctx context.Context, executable, baseURL string, args []
 	}
 	if len(body) > maxCatalogBytes {
 		return "", "", errors.New("Codex model catalog exceeds 8 MiB")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", "", fmt.Errorf("prepare Codex model catalog: %w", err)
 	}
 	if waitErr != nil {
 		return "", "", fmt.Errorf("codex debug models failed: %w; check that Codex supports this command and its catalog configuration is valid", waitErr)
@@ -70,6 +85,57 @@ func prepareGrokCatalog(ctx context.Context, executable, baseURL string, args []
 		return "", "", errors.Join(fmt.Errorf("write private model catalog: %w", err), os.RemoveAll(directory))
 	}
 	return directory, path, nil
+}
+
+// startCatalogProgress owns startup rendering until its returned stop function
+// joins the renderer and clears interactive output before terminal handoff.
+func startCatalogProgress(ctx context.Context, output io.Writer, interactive bool) func() error {
+	render := func(message string) error {
+		format := "%s\n"
+		if interactive {
+			// Keep ASCII status strictly narrower than the terminal so it cannot
+			// wrap or scroll, even at the bottom row. Unknown width hides status.
+			columns := 0
+			if file, ok := output.(*os.File); ok {
+				columns, _, _ = term.GetSize(int(file.Fd()))
+			}
+			message = message[:min(len(message), max(columns-1, 0))]
+			format = "\r\x1b[2K%s"
+		}
+		_, err := fmt.Fprintf(output, format, message)
+		return err
+	}
+	if err := render("mekugi: preparing Grok model catalog..."); err != nil {
+		return func() error { return err }
+	}
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	var progressErr error
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if progressErr = render("mekugi: still waiting for Codex model catalog (1m limit; Ctrl-C cancels)"); progressErr != nil {
+					return
+				}
+			}
+		}
+	}()
+	return func() error {
+		close(done)
+		<-stopped
+		if interactive && progressErr == nil {
+			progressErr = render("")
+		}
+		return progressErr
+	}
 }
 
 // Only configuration selectors belong to debug models, not the user's command,

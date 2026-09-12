@@ -23,7 +23,9 @@ Other invocations do not run the catalog command or pin model metadata.
 
 Codex inherits cwd, stdin, stdout, stderr, and the environment, augmented only
 with `MEKUGI_BASE_URL` and the private configured-plugin frontend directory at
-the front of PATH. Terminal Ctrl-C remains Codex-owned. SIGTERM to the wrapper
+the front of PATH. Before child launch, terminal Ctrl-C cancels startup and prevents
+launch, including signals already consumed by the startup receiver. After handoff,
+terminal Ctrl-C remains Codex-owned without double forwarding. SIGTERM to the wrapper
 terminates Codex and the router with bounded cleanup. Codex exit, launch failure,
 and cancellation clean up owned runtime resources. Ordinary exit status is
 preserved; signal exits use `128 + signal`. Unexpected router termination also

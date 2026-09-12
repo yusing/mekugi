@@ -216,7 +216,8 @@ mekugi --model-protocol native --mentor-handoff=false codex
 
 Each invocation starts a private router on a random loopback port and shuts it
 down when Codex exits. Multiple sessions can run independently. Codex handles
-terminal Ctrl-C, and its exit status is preserved.
+terminal Ctrl-C after launch, and its exit status is preserved. During startup,
+Ctrl-C cancels preparation without launching Codex.
 
 The wrapper uses the fixed Codex ChatGPT upstream and overrides provider
 selection for that invocation only. Standalone serving, fixed ports, custom
@@ -275,7 +276,10 @@ mekugi --grok codex
 Ask the main agent to spawn `grok:grok-4.6` in fresh context
 (`fork_turns="none"`). Codex still manages the child, tools, permissions, and
 follow-ups. At startup, Mekugi uses `codex debug models` to read your selected
-catalog, adds Grok, and pins a private copy for the session. This requires a Codex
+catalog, adds Grok, and pins a private copy for the session. Preparation reports
+progress on stderr, with a reminder every ten seconds and a one-minute limit;
+Ctrl-C cancels the wait. Interactive status clears before Codex starts, while
+redirected stderr retains complete progress lines. This requires a Codex
 version with `debug models` and `model_catalog_json` support. A custom catalog must
 contain a native v2 model whose instruction and tool metadata can be used for Grok.
 Other Codex sessions cannot replace this session's catalog. Model availability is

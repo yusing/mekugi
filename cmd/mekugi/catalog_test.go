@@ -1,16 +1,22 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
+
+	"github.com/creack/pty"
 )
 
 const testNativeModelCatalog = `{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2","shell_type":"unified_exec","apply_patch_tool_type":"freeform","model_messages":{"instructions_template":"native instructions"}}]}`
@@ -145,6 +151,9 @@ func TestPrepareGrokCatalogFailure(t *testing.T) {
 			if err == nil || directory != "" || path != "" || strings.Contains(err.Error(), "private bootstrap diagnostic") {
 				t.Fatalf("failure result = %q, %q, %v", directory, path, err)
 			}
+			if mode == "wait" && (!errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "configuration")) {
+				t.Fatalf("timeout misclassified: %v", err)
+			}
 			if entries, err := os.ReadDir(temp); err != nil || len(entries) != 0 {
 				t.Fatalf("failed catalog leaked files: %v, %v", entries, err)
 			}
@@ -222,5 +231,159 @@ func TestGrokCatalogRejectsIgnoreUserConfigBeforeBootstrap(t *testing.T) {
 	}
 	if _, _, err := catalogConfigArgs([]string{"exec", "--", "--ignore-user-config"}); err != nil {
 		t.Fatalf("treated prompt data as a configuration selector: %v", err)
+	}
+}
+
+func TestCatalogProgressOutput(t *testing.T) {
+	for _, interactive := range []bool{false, true} {
+		t.Run(strconv.FormatBool(interactive), func(t *testing.T) {
+			executable := catalogTestExecutable(t)
+			t.Setenv("MEKUGI_TEST_CATALOG_MODE", "wait")
+			var reader, writer *os.File
+			var err error
+			if interactive {
+				reader, writer, err = pty.Open()
+				if err == nil {
+					err = pty.Setsize(reader, &pty.Winsize{Rows: 24, Cols: 20})
+				}
+			} else {
+				reader, writer, err = os.Pipe()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reader.Close()
+			defer writer.Close()
+			original := os.Stderr
+			os.Stderr = writer
+			defer func() { os.Stderr = original }()
+			output := make(chan []byte, 1)
+			go func() {
+				body, _ := io.ReadAll(reader)
+				output <- body
+			}()
+			ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+			defer cancel()
+			_, _, err = prepareGrokCatalog(ctx, executable, "http://127.0.0.1:12345/v1", nil)
+			writer.Close()
+			body := string(<-output)
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("timeout result: %v", err)
+			}
+			if !interactive && !strings.Contains(body, "preparing Grok model catalog") {
+				t.Fatalf("missing preparation feedback: %q", body)
+			}
+			if interactive {
+				const prefix = "\r\x1b[2K"
+				// A PTY transports bytes, not rendered cells. Check the actual
+				// ASCII payload fits strictly within its configured 20 columns.
+				status := strings.TrimSuffix(strings.TrimPrefix(body, prefix), prefix)
+				if status != "mekugi: preparing G" || len(status) >= 20 || strings.ContainsAny(status, "\r\n\x1b") {
+					t.Fatalf("status can wrap on a narrow terminal: %q", body)
+				}
+				if !strings.HasSuffix(body, "\r\x1b[2K") {
+					t.Fatalf("interactive progress not cleared: %q", body)
+				}
+			} else if strings.Contains(body, "\x1b") || !strings.HasSuffix(body, "\n") {
+				t.Fatalf("redirected progress is not useful newline-delimited text: %q", body)
+			}
+		})
+	}
+}
+
+func TestCatalogSlowProgress(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		var output bytes.Buffer
+		stop := startCatalogProgress(ctx, &output, false)
+		synctest.Wait()
+		time.Sleep(10 * time.Second)
+		synctest.Wait()
+		if err := stop(); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(output.String(), "still waiting for Codex model catalog") {
+			t.Fatalf("missing slow-wait feedback: %q", output.String())
+		}
+		before := output.String()
+		time.Sleep(20 * time.Second)
+		if output.String() != before {
+			t.Fatal("progress continued after handoff")
+		}
+	})
+}
+
+func TestCatalogProgressUnknownTerminalWidth(t *testing.T) {
+	var output bytes.Buffer
+	stop := startCatalogProgress(t.Context(), &output, true)
+	if err := stop(); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "\r\x1b[2K\r\x1b[2K" {
+		t.Fatalf("unknown terminal width emitted possibly wrapping text: %q", output.String())
+	}
+}
+
+type failingCatalogProgressWriter struct {
+	writes int
+	failAt int
+}
+
+func (w *failingCatalogProgressWriter) Write(body []byte) (int, error) {
+	w.writes++
+	if w.writes == w.failAt {
+		return 0, errors.New("private rendering error")
+	}
+	return len(body), nil
+}
+
+func TestCatalogProgressFailureIsAuxiliary(t *testing.T) {
+	for _, phase := range []string{"initial", "tick", "clear"} {
+		t.Run(phase, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				writer := &failingCatalogProgressWriter{failAt: 2}
+				if phase == "initial" {
+					writer.failAt = 1
+				}
+				stop := startCatalogProgress(ctx, writer, true)
+				if phase == "tick" {
+					synctest.Wait()
+					time.Sleep(10 * time.Second)
+					synctest.Wait()
+				}
+				if err := stop(); err == nil {
+					t.Fatal("missing auxiliary rendering failure")
+				}
+				if ctx.Err() != nil {
+					t.Fatal("rendering failure canceled core context")
+				}
+				if writer.writes != writer.failAt {
+					t.Fatalf("rendering continued after failure: %d writes", writer.writes)
+				}
+			})
+		})
+	}
+}
+
+func TestPrepareCatalogSucceedsWithBrokenProgress(t *testing.T) {
+	executable := catalogTestExecutable(t)
+	stderr, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr.Close()
+	original := os.Stderr
+	os.Stderr = stderr
+	defer func() { os.Stderr = original }()
+	directory, path, err := prepareGrokCatalog(t.Context(), executable, "http://127.0.0.1:12345/v1", nil)
+	if err != nil {
+		t.Fatalf("auxiliary output failure replaced catalog result: %v", err)
+	}
+	defer os.RemoveAll(directory)
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("successful catalog was discarded: %v", err)
 	}
 }

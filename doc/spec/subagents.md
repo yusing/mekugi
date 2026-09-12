@@ -21,6 +21,11 @@ configuration modes. The default configuration and explicit
 another Codex process's shared cache. Thread switching, spawning, and follow-ups retain the same
 Grok tool metadata. Catalog command failure, invalid output, or private-file creation failure
 prevents the main Codex launch. Output is bounded to 8 MiB and catalog preparation to one minute.
+Preparation emits content-free stderr progress immediately and every ten seconds while waiting.
+Interactive status is width-bounded and cleared before terminal handoff; redirected output uses
+complete lines. Rendering failures stop progress only, never cancel preparation or replace its
+result. Cancellation and deadline errors take precedence over generic subprocess/configuration
+advice, and private bootstrap stderr is not exposed.
 The private directory is mode 0700, its file is mode 0600, and both are removed on exit or launch
 failure. User configuration and the shared cache are not rewritten by Mekugi; Codex retains its
 normal catalog-command behavior. `/v1/models` forwards the upstream catalog unchanged, without
