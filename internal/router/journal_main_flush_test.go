@@ -86,7 +86,7 @@ func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
 			if err != nil || len(messages) != 4 {
 				t.Fatalf("retry lost revisions: %v, %v", messages, err)
 			}
-			for i, want := range []string{"Main result", "Result /root/agent1", "Result /root/agent1/nested", "Result /root/agent2"} {
+			for i, want := range []string{"Result /root/agent1", "Result /root/agent1/nested", "Result /root/agent2", "Main result"} {
 				if !strings.Contains(commentaryMessageText(messages[i]), want) {
 					t.Fatalf("flush order: %s", mustMarshalJSON(messages))
 				}

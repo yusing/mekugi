@@ -154,7 +154,7 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 	}
 	if terminal {
 		t.journalNewCount, t.journalFlushedCount = 0, 0
-		for _, journal := range append([]threadJournal{journal}, descendants...) {
+		for _, journal := range append(descendants, journal) {
 			deliveryThread = journal.Thread
 			if deliveryThread == "" {
 				deliveryThread = t.shellThreadID
@@ -205,7 +205,7 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 		}
 	}
 	// Validate the whole tree before retaining any message IDs or delivery entries.
-	// A later oversized descendant must not leave an earlier partial flush behind.
+	// A later oversized journal must not leave an earlier partial flush behind.
 	if len(messages) != 0 {
 		if len(t.retainCommentary(messages...)) == 0 {
 			t.ReleaseDelivery()

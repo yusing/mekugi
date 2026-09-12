@@ -8,8 +8,8 @@ question, canonical author, router sequence creation/update values, `report_now`
 and `flushed` state. A thread has at most 256 items and 256 threads are retained. Combined
 question and text content is limited to 16 KiB per item. The per-response live progress budget
 is also 16 KiB. Terminal flushes have a separate bound sized for all 256 items, including labels
-and the author heading. Main completion flushes its journal first, then descendant journals in
-canonical agent-path order (stable thread ID breaks ties). Each journal has its own terminal capacity. Capacity exhaustion rejects new journal state, not unrelated calls. When initialization hits
+and the author heading. Main completion flushes descendant journals in canonical agent-path order (stable thread ID
+breaks ties), then its own journal. Each journal has its own terminal capacity. Capacity exhaustion rejects new journal state, not unrelated calls. When initialization hits
 capacity, ordinary provider answers remain visible and journal finish returns an error.
 
 An ordinary fork copies the source's latest journal at its first accepted normal Responses
@@ -58,7 +58,7 @@ Completion intent is response-local: replay, resume, and forks do not finish a n
 Finish is not exposed through runtime shell or Code Mode journal publication.
 
 On a successful explicit main finish with no client-dispatched calls, the router emits a deterministic
-main-first tree flush containing only unflushed revisions, including previously live-reported entries, skips it
+descendants-first tree flush containing only unflushed revisions, including previously live-reported entries, skips it
 when empty, then emits token metrics. Only successful terminal delivery marks a revision flushed;
 edits clear both current-revision delivery flags. `list` exposes both flags. Finish ends the
 turn without a follow-up provider request or a separately generated final answer. A child finishes without flushing and emits
@@ -133,7 +133,7 @@ provider events unchanged on overflow.
 5. Immediate notices are acknowledged after successful emission without consuming the terminal
    flush. A failed live or terminal delivery remains eligible for retry. Silent edits become
    flush-eligible again; deleting a previously shown ID with report_now emits a retraction.
-6. Successful explicit main finish calls show only unflushed revisions, main first then descendants,
+6. Successful explicit main finish calls show only unflushed revisions, descendants first then main,
    including live updates, then eligible token metrics. Child finish calls save without flushing and
    retain a nonempty saved-summary. Finish makes no final-answer continuation request.
    Provider messages remain unfiltered and do not trigger a flush; failures and interruptions do not terminal-flush.
