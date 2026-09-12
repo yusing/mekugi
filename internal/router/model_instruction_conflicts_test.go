@@ -430,3 +430,16 @@ func TestPreserveDefaultModeRequestUserInputWhenHostEnablesIt(t *testing.T) {
 		t.Fatalf("Default-enabled host guidance changed: %q", messages[0].Content)
 	}
 }
+
+func TestStockInstructionRewriteMatchesMultilineConflicts(t *testing.T) {
+	guidance := codexinstructions.InstructionsForModel("gpt-6-astra", false)
+	input := stockModelInstructionsForTest("", "") + "\nanswer briefly in commentary,\nthen resume the active task\n"
+	got, _, err := renderModelInstructions(input, false, guidance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "answer briefly in commentary,") ||
+		!strings.Contains(got, "answer briefly with a report_now journal item,\nthen resume the active task") {
+		t.Fatal("newline-spanning stock conflict was not rewritten")
+	}
+}

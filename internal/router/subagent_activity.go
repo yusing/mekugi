@@ -14,7 +14,7 @@ import (
 type subagentActivity struct {
 	mu      sync.Mutex
 	threads map[string]*activityThread
-	copies  map[string]string
+	copies  map[string]struct{}
 	events  []activityEvent
 	sources int
 	closed  bool
@@ -32,7 +32,7 @@ type activityEvent struct {
 }
 
 func newSubagentActivity() *subagentActivity {
-	return &subagentActivity{threads: make(map[string]*activityThread), copies: make(map[string]string)}
+	return &subagentActivity{threads: make(map[string]*activityThread), copies: make(map[string]struct{})}
 }
 
 func (a *subagentActivity) observe(thread, parent, name string, child bool) bool {
@@ -197,7 +197,7 @@ func (a *subagentActivity) drain(root string, started time.Time, budget int) []m
 			}
 		}
 		id := commentaryMessageID("root-copy\x00" + root + "\x00" + event.thread + "\x00" + event.source)
-		a.copies[id] = event.kind
+		a.copies[id] = struct{}{}
 		messages = append(messages, assistantCommentaryMessage(id, text))
 		budget -= len(text)
 	}

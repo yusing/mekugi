@@ -141,6 +141,9 @@ marker cannot establish zero commentary output.
 The journal feature records `mutation / accepted` for batched and runtime mutations,
 `tool / mutation / prepared` for dedicated router calls, `code_mode / lowering / prepared`
 for runtime wiring, and separate `report_now` and `terminal_flush` rendering events.
+Journal-only `code_mode / lowering` records one observation per carrier, not per expression:
+`prepared` means a publisher route was created; `unavailable` means it could not be created
+and lowering rejects. Neither outcome proves expression execution.
 Only successful store admission counts as an accepted mutation. Prepared rendering does not
 prove display. Existing `commentary` categories remain for automatic notice infrastructure:
 
@@ -149,10 +152,6 @@ prove display. Existing `commentary` categories remain for automatic notice infr
   message ID does not change its provenance. Consumers deduplicate by thread/message ID.
 - `source: router_activity`, `stage: render`, `outcome: prepared`: the router constructed
   a root activity copy. This is not authored in-tool commentary or proof of UI delivery.
-- `source: code_mode`, `stage: lowering`: a new carrier contains a recognized reserved
-  awaited journal call. `prepared` means a publisher route was created;
-  `unavailable` means no publisher route could be created; journal lowering rejects rather than silently discarding mutations. This records one
-  observation per carrier, not per expression, and does not prove expression execution.
 - `source: shell` or `code_mode`, `stage: publication`: an authenticated nonempty
   runtime submission reached the broker. Outcomes are `accepted`, `blank` (whitespace),
   `oversized` (rendered size), or `capacity`. Empty completion signals are excluded.

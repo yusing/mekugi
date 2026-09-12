@@ -34,6 +34,7 @@ func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
 			} {
 				child, _ := prepareActivityTest(t, proxy, node.thread, node.thread, node.parent, node.author, nil)
 				seed(node.thread, "Result "+node.author)
+				requestJournalFinish(t, child)
 				var wire []byte
 				if stream {
 					events, err := child.TransformSSE([]byte(`{"type":"response.completed","response":{"id":"child","status":"completed","output":[]}}`))
@@ -103,6 +104,7 @@ func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
 			if err != nil || len(messages) != 0 {
 				t.Fatalf("repeated tree flush: %s, %v", mustMarshalJSON(messages), err)
 			}
+			requestJournalFinish(t, root)
 			// Exercise the actual terminal projection after a child edit.
 			seed("a", "Later child revision")
 			var output []byte
@@ -225,5 +227,33 @@ func TestJournalMainFlushScopesCorruptRecords(t *testing.T) {
 				t.Fatalf("record error escaped its tree: %v", err)
 			}
 		})
+	}
+}
+
+func TestJournalOversizedTreeDoesNotRetainPartialDelivery(t *testing.T) {
+	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	root, _ := prepareActivityTest(t, proxy, "main", "root", "", "/root", nil)
+	child, _ := prepareActivityTest(t, proxy, "child", "child", "root", "/root/child", nil)
+	defer child.Close()
+	if _, err := proxy.journals.apply(t.Context(), nil, root.directory, "root", "", []journalMutation{{Op: "add", Text: new("Main result")}}); err != nil {
+		t.Fatal(err)
+	}
+	// Exercise the renderer's capacity guard after a valid earlier tree member.
+	key := journalKey(root.directory, "child")
+	journal := proxy.journals.memory[key]
+	journal.Items = []journalItem{{ID: "j1", Text: strings.Repeat("x", maxJournalFlushBytes), Updated: 1}}
+	proxy.journals.memory[key] = journal
+	before := len(proxy.memoryCommentary[root.historySessionID])
+	messages, err := root.prepareJournalDelivery(true)
+	if err == nil || len(messages) != 0 || len(root.journalDeliveries) != 0 ||
+		len(proxy.memoryCommentary[root.historySessionID]) != before || root.journalDeliveryRelease != nil {
+		t.Fatalf("partial delivery retained: messages=%d deliveries=%d err=%v", len(messages), len(root.journalDeliveries), err)
+	}
+	journal.Items[0].Text = "Child result"
+	proxy.journals.memory[key] = journal
+	messages, err = root.prepareJournalDelivery(true)
+	defer root.ReleaseDelivery()
+	if err != nil || len(messages) != 2 {
+		t.Fatalf("retry lost pending tree: messages=%d err=%v", len(messages), err)
 	}
 }

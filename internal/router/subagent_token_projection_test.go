@@ -30,12 +30,16 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 				if outcome == "commentary-only" {
 					answer["phase"] = "commentary"
 				}
+				item := answer
+				if outcome == "completed" {
+					item = journalFinishCall(`{"op":"finish"}`)
+				}
 				status := "completed"
 				if outcome == "failed" || outcome == "incomplete" {
 					status = outcome
 				}
 				response := map[string]any{
-					"id": "child-response", "status": status, "output": []any{answer},
+					"id": "child-response", "status": status, "output": []any{item},
 				}
 				if outcome != "missing-usage" {
 					response["usage"] = map[string]any{
@@ -50,7 +54,7 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 				for range 2 { // Repeated terminal observations must not duplicate root reports.
 					if stream {
 						itemEvent := mustTestJSON(t, map[string]any{
-							"type": "response.output_item.done", "output_index": 0, "item": answer,
+							"type": "response.output_item.done", "output_index": 0, "item": item,
 						})
 						if _, err := child.TransformSSE(itemEvent); err != nil {
 							t.Fatal(err)
@@ -89,6 +93,9 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 				child.Close()
 
 				root, _ = prepareActivityTest(t, proxy, "remapped-session", "root", "", "/root", nil)
+				if !stream && wantUsage {
+					requestJournalFinish(t, root)
+				}
 				rootResponse := []byte(`{"id":"root-response","status":"completed","output":[]}`)
 				var output []byte
 				if stream {

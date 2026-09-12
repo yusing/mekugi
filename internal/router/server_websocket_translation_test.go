@@ -16,7 +16,7 @@ func TestResponsesWebSocketIncrementalTranslationAndVisibleSources(t *testing.T)
 	proxy := newToolPluginTestProxy(t)
 	proxy.customizedInstructions = true
 	proxy.compactModelProtocol = true
-	proxy.activity.copies["router-only"] = "notice"
+	proxy.activity.copies["router-only"] = struct{}{}
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	headers := codexAuthHeaders()

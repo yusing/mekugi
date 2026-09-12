@@ -28,7 +28,7 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
   - Agents keep an addressable milestone journal instead of a Tasks list. They can add,
     revise, delete, or inspect entries, including a known parent's or child's journal.
   - `report_now` shows a labelled **Journal update** immediately, distinct from stock
-    commentary and reasoning summaries. At successful completion, **Journal flush** shows
+    commentary and reasoning summaries. On a successful journal finish, **Journal flush** shows
     every new or revised entry, including live updates. Only revisions already flushed are
     skipped. Journals replace the separate final-answer essay. Agents finish with a direct
     journal finish call, which completes the turn without an extra model request.

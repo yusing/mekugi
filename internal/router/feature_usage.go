@@ -59,8 +59,6 @@ func validFeatureUsage(feature, source, stage, outcome string) bool {
 		switch stage {
 		case "authored":
 			return (source == "tool_field" || source == "provider_message") && outcome == "observed"
-		case "lowering":
-			return source == "code_mode" && (outcome == "prepared" || outcome == "unavailable")
 		case "publication":
 			return (source == "shell" || source == "code_mode") &&
 				(outcome == "accepted" || outcome == "blank" || outcome == "oversized" || outcome == "capacity")

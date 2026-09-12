@@ -124,8 +124,8 @@ func TestChildCommentaryAttributionJSONAndSSE(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if !bytes.Contains(output, []byte("[`/root/alpha`] Deferred work.")) || strings.LastIndex(string(output), "Journal saved:") < strings.LastIndex(string(output), "Deferred work.") || strings.Contains(string(output), "Actual child answer.") {
-				t.Fatalf("deferred author/result: %s", output)
+			if !bytes.Contains(output, []byte("[`/root/alpha`] Deferred work.")) || strings.LastIndex(string(output), "Actual child answer.") < strings.LastIndex(string(output), "Deferred work.") || !strings.Contains(string(output), "Actual child answer.") {
+				t.Fatalf("missing deferred author/result ordering or provider answer: %s", output)
 			}
 			if events := proxy.drainCommentarySession(second.historySessionID, second.shellThreadID); len(events) != 0 {
 				t.Fatal("publication crossed child sessions")

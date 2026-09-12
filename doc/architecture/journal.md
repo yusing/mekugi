@@ -5,6 +5,9 @@
 `internal/router/journal.go` owns journal state, per-thread IDs, capacity, atomic mutation
 transactions, replay receipts, persistence, and delivery acknowledgements. The store uses the
 replay store's filesystem lock for cross-process serialization but never evicts executable replay.
+Acquisition of the in-process state lock is request-cancellable. Delivery, state, and replay
+locks are acquired in that order; each state transaction keeps its lock through persistence.
+Thread-capacity scans run only for new journal files, under the replay lock.
 
 `internal/router/commentary.go` retains the existing argument projection and exact replay
 provenance machinery, generalized so eligible function tools receive `journal` mutations.
@@ -27,9 +30,11 @@ filesystem delivery lock excludes concurrent mutations and deliveries across rou
 replay transactions remain independently lockable while the delivery lease is held. The existing
 commentary broker and child activity collector carry live user-only delivery and canonical child
 prefixes; terminal journal delivery reads the durable journals directly. A failed render releases the lease without marking an item reported.
+The complete tree is rendered and size-checked before retaining message IDs or delivery entries.
 
 `server.go` performs the terminal continuation and ordering; token arithmetic and capture metrics
-remain unchanged. Provider final-answer text is dropped only for an eligible successful terminal.
+remain unchanged. Only explicit journal finish selects a journal terminal, with no follow-up
+provider request. Provider final-answer messages are not filtered and never substitute for finish.
 Child terminals retain a router-owned saved-summary without flushing. Main terminal delivery snapshots
 its journal followed by descendant journals sorted by canonical path, under one delivery lease.
 Accepted parent identities persist with journals; conflicting or incomplete chains cannot join the

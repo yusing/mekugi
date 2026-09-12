@@ -125,7 +125,10 @@ func TestJournalNativeCodexSpawnE2E(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Journal update") || !strings.Contains(stdout.String(), "Journal flush ") {
 		t.Fatal("native consumer did not display distinct live updates and terminal flushes")
 	}
-	if len(issues.entries) != 0 {
-		t.Fatalf("fixture produced %d critical notices", len(issues.entries))
+	issues.mu.Lock()
+	noticeCount := len(issues.entries)
+	issues.mu.Unlock()
+	if noticeCount != 0 {
+		t.Fatalf("fixture produced %d critical notices", noticeCount)
 	}
 }

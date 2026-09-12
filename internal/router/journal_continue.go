@@ -13,8 +13,8 @@ import (
 // original router call is restored from durable replay on subsequent requests.
 type journalContinuationKey struct{}
 type journalContinuation struct {
-	depth         int
-	clientResults []map[string]json.RawMessage
+	depth        int
+	clientOutput []map[string]json.RawMessage
 }
 
 func nextJournalRequest(original map[string]json.RawMessage, transform *mekugiResponseTransform) (parsedResponsesRequest, error) {
@@ -36,9 +36,7 @@ func continueJournalContext(ctx context.Context, transform *mekugiResponseTransf
 		return nil, errors.New("journal tool continuation limit reached")
 	}
 	state.depth++
-	for _, result := range transform.journalResults {
-		state.clientResults = append(state.clientResults, journalClientResult(result))
-	}
+	state.clientOutput = append(state.clientOutput, transform.journalClientOutput...)
 	return context.WithValue(ctx, journalContinuationKey{}, state), nil
 }
 

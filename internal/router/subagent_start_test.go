@@ -56,7 +56,7 @@ func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
 				}
 				return result
 			}
-			if result := emit(child); bytes.Contains(result, []byte("Started.")) || !bytes.Contains(result, []byte("Journal saved: 0 pending, 0 already flushed")) || bytes.Contains(result, []byte("Substantive answer.")) {
+			if result := emit(child); bytes.Contains(result, []byte("Started.")) || bytes.Contains(result, []byte("Journal saved:")) || !bytes.Contains(result, []byte("Substantive answer.")) {
 				t.Fatalf("start notice changed the child's result: %s", result)
 			}
 			result := emit(root)

@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"strings"
 	"testing"
@@ -252,5 +253,185 @@ func TestJournalFinishReplayDoesNotFinishLaterCRUD(t *testing.T) {
 	items, err := newJournalStore().list(t.Context(), resumed.replayStore, workspace, "thread-1")
 	if err != nil || len(items) != 2 || !items[0].Flushed || items[1].Flushed {
 		t.Fatalf("replay changed journal delivery state: %+v, %v", items, err)
+	}
+}
+
+func TestJournalBatchedErrorsAreCorrectable(t *testing.T) {
+	for _, batch := range []string{
+		`{}`,
+		`[{"op":"edit","id":"j9","text":"missing"}]`,
+		`[{"op":"add","text":"must roll back"},{"op":"edit","id":"j9","text":"missing"}]`,
+	} {
+		t.Run(batch, func(t *testing.T) {
+			transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+			call := journalFinishCall(`{"op":"finish","journal":` + batch + `}`)
+			var item map[string]json.RawMessage
+			if err := json.Unmarshal(mustTestJSON(t, call), &item); err != nil {
+				t.Fatal(err)
+			}
+			result, err := transform.executeJournalCall(item)
+			if err != nil {
+				t.Fatalf("model mistake became a turn failure: %v", err)
+			}
+			var outcome struct {
+				OK    bool   `json:"ok"`
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal([]byte(jsonString(result, "output")), &outcome); err != nil || outcome.OK || outcome.Error == "" {
+				t.Fatalf("missing correctable result: %s, %v", mustMarshalJSON(result), err)
+			}
+			if transform.journalFinishRequested || transform.journalTerminalReady() {
+				t.Fatal("failed batch completed the turn")
+			}
+			items, err := proxy.journals.list(t.Context(), proxy.replayStore, transform.directory, transform.shellThreadID)
+			if err != nil || len(items) != 0 {
+				t.Fatalf("failed batch leaked mutations: %+v, %v", items, err)
+			}
+			item = maps.Clone(item)
+			item["call_id"] = mustTestJSON(t, "corrected")
+			item["arguments"] = mustTestJSON(t, `{"op":"finish","journal":[{"op":"add","text":"Corrected"}]}`)
+			if _, err := transform.executeJournalCall(item); err != nil || !transform.journalFinishRequested {
+				t.Fatalf("correction failed: %v", err)
+			}
+		})
+	}
+}
+
+func TestJournalFinishReportsUnavailableDelivery(t *testing.T) {
+	transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform.journalAvailable = false
+	var call map[string]json.RawMessage
+	if err := json.Unmarshal(mustTestJSON(t, journalFinishCall(`{"op":"finish"}`)), &call); err != nil {
+		t.Fatal(err)
+	}
+	result, err := transform.executeJournalCall(call)
+	if err != nil || !strings.Contains(jsonString(result, "output"), "journal terminal delivery unavailable") {
+		t.Fatalf("wrong finish error: %s, %v", mustMarshalJSON(result), err)
+	}
+}
+
+func requestJournalFinish(t *testing.T, transform *mekugiResponseTransform) {
+	t.Helper()
+	var call map[string]json.RawMessage
+	if err := json.Unmarshal(mustTestJSON(t, journalFinishCall(`{"op":"finish"}`)), &call); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := transform.executeJournalCall(call); err != nil || !transform.journalTerminalReady() {
+		t.Fatalf("journal finish rejected: %v", err)
+	}
+}
+
+func TestProviderAnswerDoesNotSubstituteForJournalFinish(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		for _, child := range []bool{false, true} {
+			t.Run(map[bool]string{false: "json", true: "sse"}[stream]+map[bool]string{false: "/main", true: "/child"}[child], func(t *testing.T) {
+				transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+				transform.subagentTurn = child
+				if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, transform.directory, transform.shellThreadID, "seed",
+					[]journalMutation{{Op: "add", Text: new("Pending report")}}); err != nil {
+					t.Fatal(err)
+				}
+				answer := map[string]any{"type": "message", "id": "unexpected-answer", "role": "assistant", "phase": "final_answer", "status": "completed",
+					"content": []any{map[string]any{"type": "output_text", "text": "Provider text stays intact."}}}
+				response := map[string]any{"id": "unexpected", "status": "completed", "output": []any{answer}}
+				var output []byte
+				if stream {
+					original := mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": answer})
+					first, err := transform.TransformSSE(original)
+					if err != nil {
+						t.Fatal(err)
+					}
+					last, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.completed", "response": response}))
+					if err != nil {
+						t.Fatal(err)
+					}
+					events := append(first, last...)
+					output = bytes.Join(events, nil)
+					if !bytes.Contains(output, original) {
+						t.Fatal("provider event was filtered or rewritten")
+					}
+					for _, event := range events {
+						transform.Delivered(event)
+					}
+				} else {
+					var err error
+					output, err = transform.TransformJSON(mustTestJSON(t, response))
+					if err != nil {
+						t.Fatal(err)
+					}
+					transform.Delivered(output)
+				}
+				transform.ReleaseDelivery()
+				if !bytes.Contains(output, mustTestJSON(t, answer)) || bytes.Contains(output, []byte("Journal flush")) ||
+					bytes.Contains(output, []byte("Journal saved:")) || transform.journalTerminalReady() {
+					t.Fatalf("provider answer became a journal finish: %s", output)
+				}
+				items, err := proxy.journals.list(t.Context(), proxy.replayStore, transform.directory, transform.shellThreadID)
+				if err != nil || len(items) != 1 || items[0].Flushed {
+					t.Fatalf("provider answer consumed pending report: %+v, %v", items, err)
+				}
+			})
+		}
+	}
+}
+
+func TestJournalContinuationPreservesProviderOutput(t *testing.T) {
+	for _, mode := range []string{"json", "sse-full", "sse-empty", "sse-absent", "sse-snapshot-only"} {
+		t.Run(mode, func(t *testing.T) {
+			stream := mode != "json"
+			snapshot := strings.TrimPrefix(mode, "sse-")
+			if !stream {
+				snapshot = "full"
+			}
+			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			call := map[string]any{"type": "function_call", "id": "list-item", "call_id": "list-call", "name": "journal", "arguments": `{"op":"list"}`, "status": "completed"}
+			message := map[string]any{
+				"type": "message", "id": "unexpected-message", "role": "assistant", "phase": "final_answer", "status": "completed",
+				"content": []any{map[string]any{"type": "output_text", "text": "Unexpected provider text must remain visible."}},
+			}
+			provider := &serverFakeProvider{results: []serverForwardResult{
+				{response: journalFinishResponse(t, stream, "completed", snapshot, call, message)},
+				{response: journalFinishResponse(t, stream, "completed", snapshot, journalFinishCall(`{"op":"finish"}`))},
+			}}
+			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
+			var output bytes.Buffer
+			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil}), "session", provider, &output, NewCriticalErrors(), proxy, nil, nil); err != nil {
+				t.Fatal(err)
+			}
+			if len(provider.forwarded) != 2 {
+				t.Fatalf("provider requests = %d, want 2", len(provider.forwarded))
+			}
+			count := 0
+			for _, item := range journalFinishClientOutput(t, stream, output.Bytes()) {
+				if jsonString(item, "id") == "unexpected-message" {
+					count++
+					if !bytes.Equal(mustMarshalJSON(item), mustMarshalJSON(message)) {
+						t.Fatalf("provider message changed: %s", mustMarshalJSON(item))
+					}
+				}
+			}
+			if count != 1 {
+				t.Fatalf("terminal retained %d provider messages, want 1: %s", count, output.Bytes())
+			}
+			if stream {
+				completed := 0
+				for line := range strings.SplitSeq(output.String(), "\n") {
+					data, ok := strings.CutPrefix(line, "data: ")
+					if !ok {
+						continue
+					}
+					var event struct {
+						Type string                     `json:"type"`
+						Item map[string]json.RawMessage `json:"item"`
+					}
+					if json.Unmarshal([]byte(data), &event) == nil && event.Type == "response.output_item.done" && jsonString(event.Item, "id") == "unexpected-message" {
+						completed++
+					}
+				}
+				if completed != 1 {
+					t.Fatalf("stream emitted %d completed provider messages, want 1", completed)
+				}
+			}
+		})
 	}
 }

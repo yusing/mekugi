@@ -19,7 +19,7 @@ func TestJournalRouterToolContinuesWithoutClientDispatch(t *testing.T) {
 			first := mustTestJSON(t, map[string]any{"id": "response-journal", "status": "completed", "output": []any{call}})
 			second := mustTestJSON(t, map[string]any{
 				"id": "response-answer", "status": "completed",
-				"output": []any{map[string]any{"type": "message", "id": "answer", "role": "assistant", "phase": "final_answer", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": "Provider essay must not appear"}}}},
+				"output": []any{journalFinishCall(`{"op":"finish"}`)},
 				"usage":  map[string]any{"input_tokens": 20, "output_tokens": 5, "input_tokens_details": map[string]any{"cached_tokens": 12}, "output_tokens_details": map[string]any{"reasoning_tokens": 3}},
 			})
 			response1 := serverHTTPResponse(string(first))
@@ -57,8 +57,8 @@ func TestJournalRouterToolContinuesWithoutClientDispatch(t *testing.T) {
 			if !bytes.Contains(provider.forwarded[1], []byte("function_call_output")) || !bytes.Contains(provider.forwarded[1], []byte("j1")) {
 				t.Fatal("journal result missing from model continuation")
 			}
-			if strings.Contains(output.String(), "Provider essay must not appear") {
-				t.Fatalf("provider final leaked: %s", output.String())
+			if strings.Contains(output.String(), `"phase":"final_answer"`) {
+				t.Fatalf("finish produced a separate final-answer message: %s", output.String())
 			}
 			if !strings.Contains(output.String(), "Verified the journal path") || !strings.Contains(output.String(), "Tokens:") {
 				t.Fatalf("missing terminal record: %s", output.String())
@@ -223,22 +223,6 @@ func TestJournalCatalogStripsPlansButKeepsHistory(t *testing.T) {
 	}
 }
 
-func TestJournalBufferOverflowCannotReleaseSuccessfulAnswer(t *testing.T) {
-	stream := finalAnswerStream{journal: true}
-	events := finalAnswerTestEvents(t, "final_answer")
-	if _, buffered := stream.observe(events[0]); !buffered {
-		t.Fatal("answer not buffered")
-	}
-	stream.bytes = upstreamJSONBufferBytes
-	visible, buffered := stream.observe(events[1])
-	if !buffered || len(visible) != 0 || stream.bufferErr == nil {
-		t.Fatal("overflow allowed a successful answer escape")
-	}
-	if released := stream.flush(); len(released) != 2 {
-		t.Fatal("failure drain lost buffered output")
-	}
-}
-
 func TestJournalNamedResultDiscoversDurableReplay(t *testing.T) {
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -349,7 +333,7 @@ func TestJournalCapacityDoesNotRejectUnrelatedRequest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(jsonString(result, "output"), errJournalThreadCapacity.Error()) || transform.journalTerminalReady() {
+			if !strings.Contains(jsonString(result, "output"), "journal terminal delivery unavailable") || transform.journalTerminalReady() {
 				t.Fatalf("finish succeeded without journal state: %s", mustTestJSON(t, result))
 			}
 			if !strings.Contains(output.String(), "Answer survives capacity") {
@@ -383,7 +367,7 @@ func TestJournalTerminalRetentionFailureDoesNotSucceedSilently(t *testing.T) {
 			if _, err := proxy.journals.apply(t.Context(), store, workspace, "thread-1", "add", []journalMutation{{Op: "add", Text: new("Must not be silently lost")}}); err != nil {
 				t.Fatal(err)
 			}
-			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"id":"answer","status":"completed","output":[]}`)}}}
+			provider := &serverFakeProvider{results: []serverForwardResult{{response: journalFinishResponse(t, false, "completed", "full", journalFinishCall(`{"op":"finish"}`))}}}
 			var output bytes.Buffer
 			if err := executeRequest(t.Context(), t.Context(), request, headers, "quota", provider, &output, nil, proxy, nil, nil); err == nil {
 				t.Fatal("terminal succeeded after required journal retention failed")
@@ -542,5 +526,36 @@ func TestJournalFlushNestsMultilineMarkdown(t *testing.T) {
 	want := "Journal flush `/root`\n- `j1`\n\n  Result\n  \n  - first\n    - nested\n  \n  1. ordered\n  2. next\n  \n  ```go\n  x := 1\n  ```\n  \n  Paragraph.\n\n- `j2`\n\n  Second item\n"
 	if err != nil || len(messages) != 1 || commentaryMessageText(messages[0]) != want {
 		t.Fatalf("flush: %s %v; want %q", mustTestJSON(t, messages), err, want)
+	}
+}
+
+func TestJournalFailedCompletedEnvelopeRetainsPendingRevisions(t *testing.T) {
+	transform, proxy, _, workspace := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, transform.shellThreadID, "seed",
+		[]journalMutation{{Op: "add", Text: new("Pending milestone")}}); err != nil {
+		t.Fatal(err)
+	}
+	answer := map[string]any{"type": "message", "id": "answer", "role": "assistant", "phase": "final_answer",
+		"content": []any{map[string]any{"type": "output_text", "text": "Interrupted output"}}}
+	if _, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": answer})); err != nil {
+		t.Fatal(err)
+	}
+	events, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
+		"type": "response.completed", "response": map[string]any{"id": "failed", "status": "failed", "output": []any{answer}},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := string(bytes.Join(events, nil))
+	if !strings.Contains(wire, "response.failed") || !strings.Contains(wire, "Interrupted output") || strings.Contains(wire, "Journal flush") {
+		t.Fatalf("failed terminal lost output or flushed the journal: %s", wire)
+	}
+	for _, event := range events {
+		transform.Delivered(event)
+	}
+	transform.ReleaseDelivery()
+	items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, transform.shellThreadID)
+	if err != nil || len(items) != 1 || items[0].Flushed || len(transform.journalDeliveries) != 0 {
+		t.Fatalf("failed terminal changed delivery state: %+v, %v", items, err)
 	}
 }

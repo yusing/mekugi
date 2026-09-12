@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -93,12 +92,27 @@ func (j threadJournal) clone() threadJournal {
 // processes too; journal files never count against or evict executable history.
 type journalStore struct {
 	deliveryGate chan struct{}
-	mu           sync.Mutex
+	stateGate    chan struct{}
 	memory       map[string]threadJournal
 }
 
 func newJournalStore() *journalStore {
-	return &journalStore{memory: make(map[string]threadJournal), deliveryGate: make(chan struct{}, 1)}
+	return &journalStore{memory: make(map[string]threadJournal), deliveryGate: make(chan struct{}, 1), stateGate: make(chan struct{}, 1)}
+}
+
+// Keep the complete state transaction serialized without trapping canceled callers
+// behind another request's replay-lock wait.
+func (s *journalStore) lockState(ctx context.Context) (func(), error) {
+	select {
+	case s.stateGate <- struct{}{}:
+		if err := ctx.Err(); err != nil {
+			<-s.stateGate
+			return nil, err
+		}
+		return func() { <-s.stateGate }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 // Serialize mutations with in-flight delivery. The transport holds this lease
@@ -197,20 +211,7 @@ func writeThreadJournal(store *mekugiReplayStore, journal threadJournal) error {
 	if len(data) > maxReplayRecordBytes {
 		return errors.New("journal record capacity reached")
 	}
-	entries, err := os.ReadDir(store.directory)
-	if err != nil {
-		return err
-	}
 	name := journalFilename(journal.Workspace, journal.Thread)
-	count := 0
-	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), "journal-") && strings.HasSuffix(entry.Name(), ".json") && entry.Name() != name {
-			count++
-		}
-	}
-	if count >= maxJournalThreads {
-		return errJournalThreadCapacity
-	}
 	file, err := os.CreateTemp(store.directory, "journal-pending-")
 	if err != nil {
 		return err
@@ -235,8 +236,11 @@ func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore
 	if strings.TrimSpace(thread) == "" {
 		return errors.New("journal requires a stable thread ID")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	release, err := s.lockState(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	run := func() error {
 		key := journalKey(workspace, thread)
 		current, exists := s.memory[key]
@@ -255,6 +259,21 @@ func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore
 			return errJournalThreadCapacity
 		}
 		if store != nil {
+			if !exists {
+				entries, err := os.ReadDir(store.directory)
+				if err != nil {
+					return err
+				}
+				count := 0
+				for _, entry := range entries {
+					if strings.HasPrefix(entry.Name(), "journal-") && strings.HasSuffix(entry.Name(), ".json") {
+						count++
+					}
+				}
+				if count >= maxJournalThreads {
+					return errJournalThreadCapacity
+				}
+			}
 			if err := writeThreadJournal(store, next); err != nil {
 				return err
 			}
@@ -506,8 +525,11 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 }
 
 func (s *journalStore) list(ctx context.Context, store *mekugiReplayStore, workspace, thread string) ([]journalItem, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	release, err := s.lockState(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	var items []journalItem
 	read := func() error {
 		j, exists := s.memory[journalKey(workspace, thread)]
@@ -528,7 +550,7 @@ func (s *journalStore) list(ctx context.Context, store *mekugiReplayStore, works
 		err := store.locked(ctx, read)
 		return items, err
 	}
-	err := read()
+	err = read()
 	return items, err
 }
 

@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -247,5 +248,67 @@ func TestJournalDeliverySerializesIndependentStores(t *testing.T) {
 	journal, _, err := readThreadJournal(replay, "", "root")
 	if err != nil || len(journal.Retractions) != 1 {
 		t.Fatalf("cross-store retraction lost: %+v %v", journal.Retractions, err)
+	}
+}
+
+func TestJournalStateWaitHonorsCancellation(t *testing.T) {
+	for _, operation := range []string{"transaction", "list", "delivery"} {
+		t.Run(operation, func(t *testing.T) {
+			transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+			release, err := proxy.journals.lockState(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer release()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			result := make(chan error, 1)
+			go func() {
+				switch operation {
+				case "transaction":
+					result <- proxy.journals.initialize(ctx, proxy.replayStore, transform.directory, "another", "/root", "")
+				case "list":
+					_, err := proxy.journals.list(ctx, proxy.replayStore, transform.directory, transform.shellThreadID)
+					result <- err
+				case "delivery":
+					transform.ctx = ctx
+					_, err := transform.prepareJournalDelivery(true)
+					result <- err
+				}
+			}()
+			cancel()
+			select {
+			case err := <-result:
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("canceled state wait = %v", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("canceled caller remained blocked on journal state")
+			}
+			if transform.journalDeliveryRelease != nil {
+				t.Fatal("canceled state wait retained the delivery lease")
+			}
+		})
+	}
+}
+
+func TestJournalDiskCapacityOnlyBlocksNewThreads(t *testing.T) {
+	replay, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := newJournalStore()
+	for index := range maxJournalThreads {
+		if err := writer.initialize(t.Context(), replay, "/workspace", fmt.Sprint(index), "/root", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A fresh store must see journals created by another router, without a cache.
+	reader := newJournalStore()
+	if err := reader.initialize(t.Context(), replay, "/workspace", "overflow", "/root", ""); !errors.Is(err, errJournalThreadCapacity) {
+		t.Fatalf("new journal at capacity = %v", err)
+	}
+	if _, err := reader.apply(t.Context(), replay, "/workspace", "0", "", []journalMutation{{Op: "add", Text: new("Updated at capacity")}}); err != nil {
+		t.Fatalf("existing journal update at capacity = %v", err)
 	}
 }

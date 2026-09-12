@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,10 +84,12 @@ func TestJournalFinishWebSocketDoesNotContinueOrFinishLaterTurn(t *testing.T) {
 				request["type"] = mustMarshalJSON("response.create")
 				request["instructions"] = mustMarshalJSON("Follow the task.")
 				socketWrite(t, ctx, conn, request)
-				readTerminal := func(want string) {
+				readTerminal := func(want string) []map[string]json.RawMessage {
+					var delivered []map[string]json.RawMessage
 					t.Helper()
 					for {
 						event := socketRead(t, ctx, conn)
+						delivered = append(delivered, event)
 						if jsonString(event, "type") == "error" {
 							t.Fatalf("router error: %s", mustMarshalJSON(event))
 						}
@@ -98,7 +101,7 @@ func TestJournalFinishWebSocketDoesNotContinueOrFinishLaterTurn(t *testing.T) {
 							if got := jsonString(response, "id"); got != want {
 								t.Fatalf("terminal = %q, want %q", got, want)
 							}
-							return
+							return delivered
 						}
 					}
 				}
@@ -110,7 +113,11 @@ func TestJournalFinishWebSocketDoesNotContinueOrFinishLaterTurn(t *testing.T) {
 					"type": "response.create", "previous_response_id": "finished",
 					"input": []any{map[string]any{"type": "message", "role": "user", "content": "List my journal."}},
 				})
-				readTerminal("later-terminal")
+				for _, event := range readTerminal("later-terminal") {
+					if wire := string(mustMarshalJSON(event)); strings.Contains(wire, "Journal flush") && strings.Contains(wire, "Done") {
+						t.Fatal("later turn repeated the completed journal flush")
+					}
+				}
 				if len(requests) != 3 {
 					t.Fatalf("later list did not continue normally: %d requests", len(requests))
 				}

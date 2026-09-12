@@ -90,11 +90,11 @@ After successful delivery, child usage reports enter the activity collector in t
 Their usage-message IDs are source identities; they remain distinct notices with attributed,
 bounded root delivery and exact replay removal. Child costs never enter root usage totals.
 
-`final_answer_stream.go` buffers provider final events until eligibility is known; successful
-journal terminals suppress provider final text. Failed and incomplete responses release buffered
-output without terminal flush or tokens. Journal mode fails on final-buffer exhaustion instead
-of leaking a provider final. JSON and SSE use the same text-answer eligibility. Token notices
-do not participate in model-origin output accounting; provider usage remains authoritative. They remain
+`final_answer_stream.go` buffers provider final events only for token-usage ordering, releasing
+them unchanged at the terminal, on failure, or when its buffer fills. Journal completion uses
+an explicit finish call and never filters provider messages. Failed and incomplete responses
+do not terminal-flush or emit tokens. Token notices do not participate in model-origin output
+accounting; provider usage remains authoritative. They remain
 present in transport byte and token totals. `internal/commentaryid` owns the reserved operation/runtime and subagent/usage
 message ID namespaces shared by rendering, replay, and capture classification; message text and
 phase do not establish generated provenance.

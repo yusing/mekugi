@@ -50,16 +50,18 @@ results arrive, rather than waiting or generating another final-answer turn. On 
 response with successful journal results and no client-dispatched calls, it completes and
 returns the terminal response without another provider request. Mixed client calls remain
 host-dispatched and prevent completion; journal operation error results continue for correction.
-Invalid or rejected batched mutations fail translation under the existing atomic field contract.
+Invalid or rejected mutations in a dedicated journal call return an `ok: false` tool result
+for correction and prevent its primary operation. Batched fields on host-dispatched tools
+still fail translation under the atomic field contract.
 Failed, incomplete, or interrupted responses never complete or flush via finish.
 Completion intent is response-local: replay, resume, and forks do not finish a new turn.
 Finish is not exposed through runtime shell or Code Mode journal publication.
 
-At a successful main terminal response with no client-dispatched calls, the router emits a deterministic
+On a successful explicit main finish with no client-dispatched calls, the router emits a deterministic
 main-first tree flush containing only unflushed revisions, including previously live-reported entries, skips it
 when empty, then emits token metrics. Only successful terminal delivery marks a revision flushed;
-edits clear both current-revision delivery flags. `list` exposes both flags. Provider
-final-answer text is omitted. A child completes without flushing and emits
+edits clear both current-revision delivery flags. `list` exposes both flags. Finish ends the
+turn without a follow-up provider request or a separately generated final answer. A child finishes without flushing and emits
 `Journal saved: N pending, M already flushed` so collaboration result selection is nonempty.
 Live updates remain immediate. Descendant revisions are read from durable journals at main completion,
 including after router restart, and acknowledged only when main delivers them. Failed main delivery
@@ -89,6 +91,9 @@ nested lists, paragraphs, and fenced code blocks.
 Code Mode reserves `await journal({op, id?, text?, answer?, report_now?})`, also accepting
 a mutation array. The parser preserves strings, comments, properties, and unrelated
 identifiers, and leaves unparseable source unchanged for the executor to diagnose.
+A single mutation returns its item ID; a mutation array returns the ordered item IDs.
+Nested calls can use an added item's returned ID in a subsequent edit. Publication failures
+throw rather than returning an execution envelope as a journal ID.
 
 Bash and POSIX reserve `journal add TEXT`, `journal edit ID TEXT`, and
 `journal delete ID`, optionally followed by `--report-now`. Shell commands record milestones;
@@ -105,13 +110,14 @@ completion or expiry. Closing an already handed-off response does not cancel its
 
 ### Delivery failures
 
-Required terminal journal messages must have retained replay provenance before a
-successful terminal can discard provider final text. If required retention fails,
+Required terminal journal messages must have retained replay provenance before an
+explicit finish can complete successfully. If required retention fails,
 the response fails instead of silently completing without the flush or child summary.
 Unacknowledged revisions remain available for a later flush.
 
-Final-answer buffering remains bounded. Exceeding the response-buffer limit fails the response
-and drains already-buffered provider output rather than leaking a successful provider final.
+A provider final message is not a journal finish. The router neither suppresses that text nor
+uses it to trigger a journal flush. Ordinary token-usage buffering remains bounded and releases
+provider events unchanged on overflow.
 
 ### Acceptance
 
@@ -127,10 +133,10 @@ and drains already-buffered provider output rather than leaking a successful pro
 5. Immediate notices are acknowledged after successful emission without consuming the terminal
    flush. A failed live or terminal delivery remains eligible for retry. Silent edits become
    flush-eligible again; deleting a previously shown ID with report_now emits a retraction.
-6. Successful eligible main terminals show only unflushed revisions, main first then descendants,
-   including live updates, then eligible token metrics. Child terminals save without flushing and
-   retain a nonempty saved-summary. They suppress provider
-   final text; failures and interruptions do not terminal-flush.
+6. Successful explicit main finish calls show only unflushed revisions, main first then descendants,
+   including live updates, then eligible token metrics. Child finish calls save without flushing and
+   retain a nonempty saved-summary. Finish makes no final-answer continuation request.
+   Provider messages remain unfiltered and do not trigger a flush; failures and interruptions do not terminal-flush.
 7. The native Codex spawn fixture proves that journal results survive client normalization
    and that the parent receives the child's synthetic summary after one child provider request
    containing finish and its last mutations, with no final-answer continuation.

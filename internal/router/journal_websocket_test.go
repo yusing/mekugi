@@ -1,6 +1,7 @@
 package router
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -12,7 +13,7 @@ import (
 
 func TestJournalWebSocketContinuationRetainsStreamedCall(t *testing.T) {
 	for _, protocol := range []string{"native", "ctp2"} {
-		for _, snapshot := range []string{"empty", "absent", "complete"} {
+		for _, snapshot := range []string{"empty", "absent", "complete", "snapshot-only"} {
 			t.Run(protocol+"/"+snapshot, func(t *testing.T) {
 				ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 				defer cancel()
@@ -68,12 +69,29 @@ func TestJournalWebSocketContinuationRetainsStreamedCall(t *testing.T) {
 								return
 							}
 						}
+						var message map[string]any
+						if i == 0 {
+							message = map[string]any{
+								"type": "message", "id": "provider-message", "role": "assistant", "phase": "final_answer", "status": "completed",
+								"content": []any{map[string]any{"type": "output_text", "text": "Preserve this unexpected provider message."}},
+							}
+							if snapshot != "snapshot-only" {
+								if err := providerSocketWrite(ctx, upstream, map[string]any{"type": "response.output_item.done", "output_index": 1, "item": message}); err != nil {
+									t.Error(err)
+									return
+								}
+							}
+						}
 						terminal := socketEvent("response.completed", id)
 						response := terminal["response"].(map[string]any)
 						if snapshot == "absent" {
 							delete(response, "output")
-						} else if snapshot == "complete" && item != nil {
-							response["output"] = []any{item}
+						} else if (snapshot == "complete" || snapshot == "snapshot-only") && item != nil {
+							items := []any{item}
+							if message != nil {
+								items = append(items, message)
+							}
+							response["output"] = items
 						}
 						if err := providerSocketWrite(ctx, upstream, terminal); err != nil {
 							t.Error(err)
@@ -91,6 +109,13 @@ func TestJournalWebSocketContinuationRetainsStreamedCall(t *testing.T) {
 						t.Fatalf("router error: %s", mustMarshalJSON(event))
 					}
 					if jsonString(event, "type") == "response.completed" {
+						var response map[string]json.RawMessage
+						if err := json.Unmarshal(event["response"], &response); err != nil {
+							t.Fatal(err)
+						}
+						if got := jsonString(response, "id"); got != "tool-response" {
+							t.Fatalf("first terminal = %q, want tool-response", got)
+						}
 						break
 					}
 				}
@@ -107,8 +132,14 @@ func TestJournalWebSocketContinuationRetainsStreamedCall(t *testing.T) {
 					if err := json.Unmarshal(next["input"], &input); err != nil {
 						t.Fatal(err)
 					}
-					calls, results := 0, 0
+					calls, results, messages := 0, 0, 0
 					for _, item := range input {
+						if jsonString(item, "id") == "provider-message" {
+							messages++
+							if !bytes.Contains(item["content"], []byte("Preserve this unexpected provider message.")) {
+								t.Fatalf("provider message changed in replay: %s", mustMarshalJSON(item))
+							}
+						}
 						if jsonString(item, "call_id") != "call-H" {
 							continue
 						}
@@ -121,6 +152,9 @@ func TestJournalWebSocketContinuationRetainsStreamedCall(t *testing.T) {
 						case "custom_tool_call_output":
 							results++
 						}
+					}
+					if messages != 1 {
+						t.Fatalf("replay retained %d provider messages, want 1: %s", messages, next["input"])
 					}
 					if calls != 1 || results != 1 {
 						t.Fatalf("replayed call/result counts = %d/%d, want 1/1", calls, results)

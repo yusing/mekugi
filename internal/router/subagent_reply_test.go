@@ -121,7 +121,7 @@ func TestReceivedReplyResumeProjectsOnlyCurrentInput(t *testing.T) {
 					}
 					if bytes.Contains(output, []byte("old-reply")) ||
 						!bytes.Contains(output, []byte("fresh-reply")) ||
-						bytes.Contains(output, []byte("Current answer")) {
+						!bytes.Contains(output, []byte("Current answer")) {
 						t.Fatalf("resumed reply projection: %s", output)
 					}
 				})

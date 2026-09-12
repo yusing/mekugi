@@ -61,6 +61,8 @@ func TestFeatureUsageAllowlistAndDisabledLogging(t *testing.T) {
 		{"commentary", "private text", "publication", "accepted"},
 		{"commentary", "shell", "private text", "accepted"},
 		{"commentary", "shell", "publication", "private text"},
+		{"commentary", "code_mode", "lowering", "prepared"},
+		{"commentary", "code_mode", "lowering", "unavailable"},
 		{"commentary", "tool_field", "publication", "accepted"},
 	} {
 		trace.record(categories[0], categories[1], categories[2], categories[3], "", "")

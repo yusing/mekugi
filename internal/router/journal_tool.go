@@ -72,7 +72,7 @@ func exposeJournalTool(fields map[string]json.RawMessage, catalog *responsesTool
 	catalog.appendTop([]*responsesToolDefinition{newResponsesToolDefinition(map[string]json.RawMessage{
 		"type":        mustMarshalJSON("function"),
 		"name":        mustMarshalJSON(journalToolName),
-		"description": mustMarshalJSON("Manage the calling thread's durable milestone journal. Mutations return router-assigned IDs."),
+		"description": mustMarshalJSON("Manage the calling thread's durable milestone journal. Mutations return router-assigned IDs. Finish ends the turn with its final journal entries, without another model request."),
 		"strict":      mustMarshalJSON(false),
 		"parameters": mustMarshalJSON(map[string]any{
 			"type": "object",
@@ -169,20 +169,19 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 	} else if args.Op == "finish" && (args.ID != "" || args.Text != nil || args.Answer != nil || args.Agent != "" || args.ReportNow) {
 		result = map[string]any{"ok": false, "error": "journal finish accepts only op and batched journal mutations"}
 	} else {
+		var err error
 		if len(args.Journal) != 0 {
-			mutations, err := decodeJournalMutations(args.Journal)
-			if err != nil {
-				return nil, err
-			}
-			batchedIDs, err = t.proxy.journals.apply(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, callID+":journal", bindJournalAnswers(mutations, t.journalQuestion))
-			if err != nil {
-				return nil, err
+			var mutations []journalMutation
+			mutations, err = decodeJournalMutations(args.Journal)
+			if err == nil {
+				batchedIDs, err = t.proxy.journals.apply(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, callID+":journal", bindJournalAnswers(mutations, t.journalQuestion))
 			}
 		}
-		var err error
-		if args.Op == "finish" {
-			if !t.finalAnswer.journal {
-				err = errJournalThreadCapacity
+		if err != nil {
+			// Batched model mistakes are correctable tool results, like primary mutations.
+		} else if args.Op == "finish" {
+			if !t.journalAvailable {
+				err = errors.New("journal terminal delivery unavailable")
 			} else {
 				result = map[string]any{"ok": true, "finish_requested": true}
 			}
@@ -245,12 +244,8 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 // Completion is invocation-local. Replaying a retained finish result must never
 // finish a later turn, and client-dispatched work still belongs to the host.
 func (t *mekugiResponseTransform) journalTerminalReady() bool {
-	// Keep router calls local at capacity, but never replace an answer without state.
-	if !t.finalAnswer.journal {
+	if !t.journalAvailable || !t.journalFinishRequested {
 		return false
-	}
-	if !t.journalFinishRequested {
-		return len(t.journalResults) == 0 && journalTerminalEligible(t.journalProviderOutput)
 	}
 	if t.journalClientCalls || len(t.journalPending) != 0 {
 		return false
@@ -407,6 +402,7 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 		}
 	case "response.completed":
 		var output []map[string]json.RawMessage
+		streamed := t.journalProviderOutput
 		var results [][]byte
 		if json.Unmarshal(event.Response["output"], &output) == nil && len(output) != 0 {
 			t.journalProviderOutput = output
@@ -434,18 +430,35 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 			}
 		}
 		t.journalTerminal = t.journalTerminalReady()
-		if t.journalTerminal {
-			t.finalAnswer.suppressed = t.finalAnswer.events
-			t.finalAnswer.events = nil
-			t.finalAnswer.bytes = 0
-		}
 		if len(t.journalResults) != 0 && !t.journalClientCalls && !t.journalTerminal {
 			if len(t.journalPending) != 0 {
 				return nil, true, errors.New("incomplete journal call at completion")
 			}
+			// The intermediate terminal is local, but its provider output is not.
+			// Complete snapshot-only items for streaming clients, then retain the
+			// normal client projection for the eventual terminal and replay.
+			for _, item := range t.journalProviderOutput {
+				if isJournalCall(item) || slices.ContainsFunc(streamed, func(prior map[string]json.RawMessage) bool {
+					if id := jsonString(item, "id"); id != "" {
+						return jsonString(prior, "id") == id
+					}
+					return string(mustMarshalJSON(prior)) == string(mustMarshalJSON(item))
+				}) {
+					continue
+				}
+				visible, err := t.transformNonJournalSSE(mustMarshalJSON(map[string]any{
+					"type": "response.output_item.done", "item": item,
+				}))
+				if err != nil {
+					return nil, true, err
+				}
+				results = append(results, visible...)
+			}
+			if _, _, err := t.transformResponse(mustMarshalJSON(event.Response), "completed"); err != nil {
+				return nil, true, err
+			}
 			t.journalContinue = true
-			t.finalAnswer.flush()
-			return results, true, t.commitHistory()
+			return append(t.finalAnswer.flush(), results...), true, nil
 		}
 		return results, false, nil
 	}

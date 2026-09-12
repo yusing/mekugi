@@ -64,7 +64,7 @@ after all required tool results have arrived. This ends the turn without another
 Subagents use the same operation to complete their assignment; sending a message to the parent
 does not complete it. Do not use a wait tool to finish, and do not write a final-channel answer.
 Use an available user-input tool for questions. If none is available, record the question with
-`report_now` in a finish call's mutation array when blocked. Final-channel text is suppressed, including questions.
+`report_now` in a finish call's mutation array when blocked. Complete through that call, without a separate final-channel message.
 Code Mode supports `await journal({op: "add", text: "Tests passed", report_now: true})`.
 Bash/POSIX supports `journal add 'Tests passed' --report-now`; other interpreters have no
 journal builtin. Successful runtime mutations produce no script output.

@@ -82,18 +82,15 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 					t.Fatalf("state=%v, error=%v", state, err)
 				}
 				events := finalAnswerTestPayloads(output.String())
-				wantEvents := 2
-				if child {
-					wantEvents++
-				}
+				wantEvents := len(answer) + 2
 				if len(events) != wantEvents {
 					t.Fatalf("events = %s", output.String())
 				}
 				if text := commentaryEventText(t, events[0]); !strings.HasPrefix(text, testTokenUsageTable) {
 					t.Fatalf("usage = %q", text)
 				}
-				if bytes.Contains(output.Bytes(), []byte("No files were changed.")) {
-					t.Fatal("provider final escaped journal suppression")
+				if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) {
+					t.Fatal("provider answer was filtered")
 				}
 
 				// Model Codex's event handling: every done assistant item updates
@@ -124,13 +121,8 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 						rendered = append(rendered, lastAgentMessage)
 					}
 				}
-				wantMessages := 1
-				counts, _ := transform.threadUsageCounts()
-				wantLast := formatTokenUsageReport(counts)
-				if child {
-					wantMessages++
-					wantLast = "Journal saved: 0 pending, 0 already flushed"
-				}
+				wantMessages := 2
+				wantLast := "No files were changed."
 				if !completed || len(rendered) != wantMessages || lastAgentMessage != wantLast {
 					t.Fatalf("Codex result = %q, rendered=%q, completed=%v", lastAgentMessage, rendered, completed)
 				}
@@ -200,12 +192,6 @@ func TestFinalAnswerStreamFlushesWithoutUsage(t *testing.T) {
 				t.Fatal(err)
 			}
 			events := finalAnswerTestPayloads(output.String())
-			if stop == "missing_usage" {
-				if len(events) != 1 || bytes.Contains(output.Bytes(), []byte("No files were changed.")) || bytes.Contains(output.Bytes(), []byte("Tokens:")) {
-					t.Fatalf("unexpected empty journal terminal: %s", output.String())
-				}
-				return
-			}
 			if len(events) < len(answer) || bytes.Contains(output.Bytes(), []byte("Tokens:")) {
 				t.Fatalf("lost answer or emitted usage: %s", output.String())
 			}
@@ -253,7 +239,8 @@ func TestTokenCommentaryAnswerCompatibility(t *testing.T) {
 					var output []byte
 					if stream {
 						item := mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": tc.item})
-						if _, err := transform.TransformSSE(item); err != nil {
+						initial, err := transform.TransformSSE(item)
+						if err != nil {
 							t.Fatal(err)
 						}
 						observeTestResponseUsage(t, transform, terminal, true)
@@ -261,7 +248,10 @@ func TestTokenCommentaryAnswerCompatibility(t *testing.T) {
 						if err != nil {
 							t.Fatal(err)
 						}
-						output = bytes.Join(events, nil)
+						output = bytes.Join(append(initial, events...), nil)
+						if !bytes.Contains(output, mustTestJSON(t, tc.item)) {
+							t.Fatal("streamed provider output was filtered")
+						}
 					} else {
 						var envelope struct {
 							Response map[string]json.RawMessage `json:"response"`
@@ -283,14 +273,7 @@ func TestTokenCommentaryAnswerCompatibility(t *testing.T) {
 						if err := json.Unmarshal(output, &visible); err != nil {
 							t.Fatal(err)
 						}
-						dropped := tc.want || tc.name == "empty" || tc.name == "empty_phase"
-						if dropped {
-							for _, item := range visible.Output {
-								if bytes.Equal(item, mustTestJSON(t, tc.item)) {
-									t.Fatal("provider final was not suppressed")
-								}
-							}
-						} else if len(visible.Output) == 0 || !bytes.Equal(visible.Output[len(visible.Output)-1], mustTestJSON(t, tc.item)) {
+						if len(visible.Output) == 0 || !bytes.Equal(visible.Output[len(visible.Output)-1], mustTestJSON(t, tc.item)) {
 							t.Fatalf("unsupported provider output changed: %s", output)
 						}
 					}
@@ -349,18 +332,12 @@ func TestFinalAnswerStreamExecuteRequest(t *testing.T) {
 				t.Fatal(err)
 			}
 			events := finalAnswerTestPayloads(output.String())
-			wantEvents := 2
-			if child {
-				wantEvents++
-			}
+			wantEvents := len(answer) + 2
 			if len(events) != wantEvents || !strings.HasPrefix(commentaryEventText(t, events[0]), "Tokens:") {
 				t.Fatalf("completion output = %s", output.String())
 			}
-			if bytes.Contains(output.Bytes(), []byte("No files were changed.")) {
-				t.Fatal("provider final escaped journal suppression")
-			}
-			if child && !bytes.Contains(events[len(events)-2], []byte(`"text":"Journal saved: 0 pending, 0 already flushed"`)) {
-				t.Fatal("child terminal summary missing")
+			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) || bytes.Contains(output.Bytes(), []byte("Journal saved:")) {
+				t.Fatal("provider answer was filtered or mistaken for journal finish")
 			}
 			counts, available := proxy.usage.snapshot("thread-1")
 			if !available || counts.tokenCounts != (tokenCounts{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3}) {

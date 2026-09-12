@@ -164,7 +164,7 @@ func TestInstructionsExposeJournalAuthoring(t *testing.T) {
 				"`{\"op\":\"finish\"}`",
 				"This ends the turn without another model request",
 				"Do not use a wait tool to finish",
-				"Final-channel text is suppressed, including questions",
+				"Complete through that call, without a separate final-channel message",
 				"`journal add 'Tests passed' --report-now`",
 				"`await journal({op: \"add\", text: \"Tests passed\", report_now: true})`",
 			} {

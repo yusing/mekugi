@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,7 +57,11 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 	t.journalDeliveryRelease = release
 	var descendants []threadJournal
 	var journal threadJournal
-	t.proxy.journals.mu.Lock()
+	releaseState, err := t.proxy.journals.lockState(t.ctx)
+	if err != nil {
+		t.ReleaseDelivery()
+		return nil, err
+	}
 	read := func() error {
 		var exists bool
 		if t.proxy.replayStore != nil {
@@ -90,7 +95,7 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 	} else {
 		err = read()
 	}
-	t.proxy.journals.mu.Unlock()
+	releaseState()
 	if err != nil {
 		t.ReleaseDelivery()
 		return nil, err
@@ -118,21 +123,12 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 		}
 	}
 	var messages []map[string]json.RawMessage
-	var retentionErr error
+	prepared := make(map[string]journalDelivery)
 	deliveryThread := t.shellThreadID
 	emit := func(text string, revisions map[string]uint64, source string) {
 		id := commentaryMessageID("journal\x00" + t.directory + "\x00" + deliveryThread + "\x00" + source)
 		message := assistantCommentaryMessage(id, text)
-		if len(t.retainCommentary(message)) == 0 {
-			if terminal {
-				retentionErr = errors.New("cannot retain journal terminal delivery")
-			}
-			return
-		}
-		if t.journalDeliveries == nil {
-			t.journalDeliveries = make(map[string]journalDelivery)
-		}
-		t.journalDeliveries[id] = journalDelivery{thread: deliveryThread, revisions: revisions, terminal: terminal}
+		prepared[id] = journalDelivery{thread: deliveryThread, revisions: revisions, terminal: terminal}
 		traceSource := "report_now"
 		if terminal {
 			traceSource = "terminal_flush"
@@ -208,9 +204,20 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 			t.journalLiveBytes += len(text)
 		}
 	}
-	if retentionErr != nil {
-		t.ReleaseDelivery()
-		return nil, retentionErr
+	// Validate the whole tree before retaining any message IDs or delivery entries.
+	// A later oversized descendant must not leave an earlier partial flush behind.
+	if len(messages) != 0 {
+		if len(t.retainCommentary(messages...)) == 0 {
+			t.ReleaseDelivery()
+			if terminal {
+				return nil, errors.New("cannot retain journal terminal delivery")
+			}
+			return nil, nil
+		}
+		if t.journalDeliveries == nil {
+			t.journalDeliveries = make(map[string]journalDelivery)
+		}
+		maps.Copy(t.journalDeliveries, prepared)
 	}
 	if len(messages) == 0 {
 		t.ReleaseDelivery()
@@ -222,8 +229,6 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 // delivery lease remains held until the whole batch is finished or abandoned.
 func (t *mekugiResponseTransform) Delivered(payload []byte) {
 	var envelope struct {
-		Type     string                       `json:"type"`
-		Status   string                       `json:"status"`
 		Item     map[string]json.RawMessage   `json:"item"`
 		Output   []map[string]json.RawMessage `json:"output"`
 		Response struct {
@@ -232,9 +237,6 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 	}
 	if json.Unmarshal(payload, &envelope) != nil {
 		return
-	}
-	if envelope.Type == "response.completed" || envelope.Status == "completed" {
-		t.finalAnswer.suppressed = nil
 	}
 	if len(t.journalDeliveries) == 0 && t.journalUsageID == "" {
 		return
@@ -299,31 +301,6 @@ func (chain responseTransformerChain) Delivered(payload []byte) {
 	confirmResponseDelivery(chain.second, payload)
 }
 
-func journalTerminalEligible(output []map[string]json.RawMessage) bool {
-	hasFinal, hasOtherMessage := false, false
-	for _, item := range output {
-		if blocksTokenUsage(item) {
-			return false
-		}
-		if !isFinalAnswerMessage(item) {
-			hasOtherMessage = hasOtherMessage || jsonString(item, "type") == "message"
-			continue
-		}
-		hasFinal = true
-		var content []map[string]json.RawMessage
-		if json.Unmarshal(item["content"], &content) != nil {
-			return false
-		}
-		for _, part := range content {
-			var text string
-			if jsonString(part, "type") != "output_text" || json.Unmarshal(part["text"], &text) != nil {
-				return false
-			}
-		}
-	}
-	return hasFinal || !hasOtherMessage
-}
-
 func (t *mekugiResponseTransform) journalTerminalMessages(response []byte) ([]map[string]json.RawMessage, error) {
 	var messages []map[string]json.RawMessage
 	counts, observed := t.threadUsageCounts()
@@ -359,11 +336,11 @@ func jsonResponseID(response []byte) string {
 	return identity.ID
 }
 
-func withoutProviderFinal(output []map[string]json.RawMessage, responseID string) []map[string]json.RawMessage {
+func withoutJournalUsage(output []map[string]json.RawMessage, responseID string) []map[string]json.RawMessage {
 	usageID := subagentCommentaryMessageID("usage\x00" + responseID)
 	result := make([]map[string]json.RawMessage, 0, len(output))
 	for _, item := range output {
-		if isFinalAnswerMessage(item) || jsonString(item, "id") == usageID {
+		if jsonString(item, "id") == usageID {
 			continue
 		}
 		result = append(result, item)
@@ -387,7 +364,7 @@ func (t *mekugiResponseTransform) decorateJournalJSON(payload []byte) ([]byte, e
 		return nil, err
 	}
 	if terminal {
-		output = withoutProviderFinal(output, jsonString(response, "id"))
+		output = withoutJournalUsage(output, jsonString(response, "id"))
 		output = append(output, messages...)
 		terminalMessages, err := t.journalTerminalMessages(payload)
 		if err != nil {
@@ -468,7 +445,7 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 			if err := decodeJournalOutput(event.Response["output"], &output); err != nil {
 				return nil, err
 			}
-			output = withoutProviderFinal(output, jsonString(event.Response, "id"))
+			output = withoutJournalUsage(output, jsonString(event.Response, "id"))
 			output = append(output, messages...)
 			output = append(output, terminalMessages...)
 			event.Response["output"] = mustMarshalJSON(output)

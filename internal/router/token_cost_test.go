@@ -204,8 +204,8 @@ func TestTokenCostReportIncludesCompactionAcrossTransports(t *testing.T) {
 						t.Fatalf("missing %q from %s", want, rendered)
 					}
 				}
-				if strings.Contains(output.String(), "No files were changed.") {
-					t.Fatal("provider final text leaked")
+				if !strings.Contains(output.String(), "No files were changed.") {
+					t.Fatal("provider final text was filtered")
 				}
 				if strings.Count(rendered, "| Category | Tokens | API USD |") != 1 {
 					t.Fatal("cost report duplicated", rendered)

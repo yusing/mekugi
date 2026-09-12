@@ -83,8 +83,21 @@ func (t *mekugiResponseTransform) lowerCodeModeCommentary(callID, input string) 
 			token,
 		})
 		commandExpression := strconv.Quote(command+" '") +
-			" + encodeURIComponent(JSON.stringify(" + argument + ")).replaceAll(\"'\", \"%27\") + \"'\""
-		replacements[index] = "await tools.exec_command({cmd: " + commandExpression + ", login: false})"
+			" + encodeURIComponent(JSON.stringify(mutation)).replaceAll(\"'\", \"%27\") + \"'\""
+		replacements[index] = `(await (async mutation => {
+let execution = await tools.exec_command({cmd: ` + commandExpression + `, login: false});
+let output = execution.output || "";
+while (execution.session_id != null) {
+  execution = await tools.write_stdin({session_id: execution.session_id, chars: "", yield_time_ms: 10000});
+  output += execution.output || "";
+}
+if (execution.exit_code !== 0) throw new Error("journal publication failed");
+const publication = JSON.parse(output);
+if (publication.ok !== true || !Array.isArray(publication.items) || publication.items.length !== (Array.isArray(mutation) ? mutation.length : 1) || publication.items.some(id => typeof id !== "string")) {
+  throw new Error("invalid journal publication result");
+}
+return Array.isArray(mutation) ? publication.items : publication.items[0];
+})(` + argument + `))`
 	}
 
 	result := input

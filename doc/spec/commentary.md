@@ -214,16 +214,15 @@ deduplicated by originating thread and usage-message identity. Root copies carry
 canonical path and retain that child's totals, without adding them to root usage. They follow
 the same bounded, deferred delivery and exact replay filtering as other child activity.
 
-For root and child streams, final-answer events are buffered until the terminal eligibility
-decision. A successful journal terminal emits unflushed journal revisions (including live-reported
-updates), then usage, then the
-child summary when applicable, and the terminal event. Provider final text is omitted.
-Unsupported answer content retains the existing passthrough behavior. Failed or incomplete
-responses release buffered output without terminal journal flush or usage notices.
+A successful explicit journal finish emits unflushed journal revisions (including live-reported
+updates), then usage, then the child saved-summary when applicable, and the terminal event.
+It does not request a separately generated provider final answer. Provider answer events remain
+unfiltered and cannot trigger journal completion. Failed or incomplete responses release buffered
+output without terminal journal flush or usage notices.
 The streaming transport preserves named SSE framing and one data field per payload line.
-The response buffer remains bounded at 64 MiB; journal mode fails rather than leaking a
-successful provider final when that bound is exceeded. Token arithmetic and provider usage
-objects remain unchanged. Usage is never a child terminal's substantive result.
+Ordinary token-usage buffering remains bounded at 64 MiB and releases provider output unchanged
+when that bound is exceeded. Token arithmetic and provider usage objects remain unchanged.
+Usage is never a child terminal's substantive result.
 
 Child operation and runtime commentary carries a ``[`/root/worker`] `` prefix from the request’s
 canonical `agent_name` when `subagent_kind` identifies a child. Root and older unnamed clients

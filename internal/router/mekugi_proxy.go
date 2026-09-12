@@ -268,10 +268,12 @@ type mekugiResponseTransform struct {
 	journalFlushedCount       int
 	journalDeliveryRelease    func()
 	journalQuestion           string // Request-local user text for answer-marked journal mutations.
+	journalAvailable          bool
 	journalActive             bool
 	journalPending            map[string]bool
 	journalCalls              map[string]map[string]json.RawMessage
 	journalResults            []map[string]json.RawMessage
+	journalClientOutput       []map[string]json.RawMessage
 	journalProviderOutput     []map[string]json.RawMessage
 	journalClientCalls        bool
 	journalTerminal           bool
@@ -554,7 +556,7 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 			transform.Close()
 			return nil, err
 		}
-		transform.finalAnswer.journal = true
+		transform.journalAvailable = true
 	}
 	transform.journalQuestion = journalQuestionFromInput(request.fields["input"])
 	transform.journalActive = true
@@ -1531,6 +1533,21 @@ func (t *mekugiResponseTransform) Finish(streamEvent bool) error {
 }
 
 func (t *mekugiResponseTransform) TransformSSE(payload []byte) ([][]byte, error) {
+	// Match the failed terminal projected to the host before journal interception
+	// can prepare a successful flush or continue a failed response.
+	var terminal struct {
+		Type     string `json:"type"`
+		Response struct {
+			Status string `json:"status"`
+		} `json:"response"`
+	}
+	if t.journalActive && json.Unmarshal(payload, &terminal) == nil && terminal.Type == "response.completed" && terminal.Response.Status == "failed" {
+		var err error
+		payload, err = replaceRawField(payload, "type", mustMarshalJSON("response.failed"))
+		if err != nil {
+			return nil, err
+		}
+	}
 	visible, err := t.transformSSE(payload)
 	if err == nil && t.journalActive {
 		visible, err = t.decorateJournalSSE(payload, visible)
@@ -1580,7 +1597,7 @@ func (t *mekugiResponseTransform) transformNonJournalSSE(payload []byte) ([][]by
 
 func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte, error) {
 	if visible, buffered := t.finalAnswer.observe(payload); buffered {
-		return visible, t.finalAnswer.bufferErr
+		return visible, nil
 	}
 	var envelope struct {
 		Type     string          `json:"type"`
@@ -2011,7 +2028,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 	if t.journalActive {
 		journalPrefix, _ = t.ctx.Value(journalContinuationKey{}).(journalContinuation)
 	}
-	if t.journalActive && terminalStatus != "" && (!interrupted || len(t.journalResults) != 0 || len(journalPrefix.clientResults) != 0) {
+	if t.journalActive && terminalStatus != "" && (!interrupted || len(t.journalResults) != 0 || len(journalPrefix.clientOutput) != 0) {
 		var output []map[string]json.RawMessage
 		if err := decodeJournalOutput(object["output"], &output); err != nil {
 			return nil, nil, errors.New("decode mekugi-enabled response output")
@@ -2092,16 +2109,19 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		if err != nil {
 			return nil, nil, err
 		}
+		if t.journalActive {
+			t.journalClientOutput = transformedOutput
+		}
 		object["output"] = encoded
 	}
 	if t.journalActive {
 		t.journalContinue = status == "completed" && len(t.journalResults) != 0 && !t.journalClientCalls && !t.journalTerminalReady()
-		if len(journalPrefix.clientResults) != 0 {
+		if len(journalPrefix.clientOutput) != 0 {
 			var output []map[string]json.RawMessage
 			if err := json.Unmarshal(object["output"], &output); err != nil {
 				return nil, nil, err
 			}
-			object["output"] = mustMarshalJSON(append(slices.Clone(journalPrefix.clientResults), output...))
+			object["output"] = mustMarshalJSON(append(slices.Clone(journalPrefix.clientOutput), output...))
 		}
 	}
 	t.restoreResponseContract(object)
