@@ -38,7 +38,10 @@ messages. Inference is request-local; concurrent threads and branches do not sha
 
 Mekugi mode also exposes `functions.journal` with one operation: `list`, `add`, `edit`, or
 `delete`, or `finish`. List is read-only and may address only a proven ancestor or descendant journal. Unknown
-or conflicted ancestry fails closed. Mutations return router-assigned IDs. The dedicated tool includes `journal_ids` for any batched field mutations, independently of its main operation result. Journal calls are
+or conflicted ancestry fails closed. Durable workspace identities, not the live activity
+collector, authorize relative access after a router restart with only the requesting
+thread observed. Authorization and returned items use the same locked snapshot.
+Mutations return router-assigned IDs. The dedicated tool includes `journal_ids` for any batched field mutations, independently of its main operation result. Journal calls are
 router state operations and do not invoke an executor. The dedicated schema exposes the optional
 batched `journal` field. Existing journal declarations anywhere in the tool catalog, including
 nested additional-tool namespaces, reject built-in tool exposure.

@@ -187,29 +187,29 @@ func TestJournalLiveReportRemainsEligibleForTerminalFlush(t *testing.T) {
 }
 
 func TestJournalKnownAncestryOnly(t *testing.T) {
-	activity := newSubagentActivity()
-	for _, node := range []struct {
-		thread, parent, path string
-		child                bool
-	}{
-		{"root", "", "/root", false},
-		{"a", "root", "/root/a", true},
-		{"b", "root", "/root/b", true},
-		{"nested", "a", "/root/a/nested", true},
-		{"other", "", "/root", false},
+	store := newJournalStore()
+	for _, node := range []struct{ thread, parent, path string }{
+		{"root", "", "/root"},
+		{"a", "root", "/root/a"},
+		{"b", "root", "/root/b"},
+		{"nested", "a", "/root/a/nested"},
+		{"other", "", "/root"},
 	} {
-		if !activity.observe(node.thread, node.parent, node.path, node.child) {
-			t.Fatal("identity rejected")
+		if err := store.initialize(t.Context(), nil, "", node.thread, node.path, ""); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.bindIdentity(t.Context(), nil, "", node.thread, node.parent, node.path, true); err != nil {
+			t.Fatal(err)
 		}
 	}
-	if got, err := activity.journalThread("a", "/root"); err != nil || got != "root" {
-		t.Fatalf("ancestor: %q %v", got, err)
+	if got, err := store.listAgent(t.Context(), nil, "", "a", "/root"); err != nil {
+		t.Fatalf("ancestor: %+v %v", got, err)
 	}
-	if got, err := activity.journalThread("root", "/root/a/nested"); err != nil || got != "nested" {
-		t.Fatalf("descendant: %q %v", got, err)
+	if got, err := store.listAgent(t.Context(), nil, "", "root", "/root/a/nested"); err != nil {
+		t.Fatalf("descendant: %+v %v", got, err)
 	}
 	for _, query := range []struct{ caller, path string }{{"a", "/root/b"}, {"other", "/root/a"}, {"missing", "/root"}} {
-		if _, err := activity.journalThread(query.caller, query.path); err == nil {
+		if _, err := store.listAgent(t.Context(), nil, "", query.caller, query.path); err == nil {
 			t.Fatalf("unproven access: %+v", query)
 		}
 	}

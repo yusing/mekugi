@@ -91,47 +91,6 @@ func exposeJournalTool(fields map[string]json.RawMessage, catalog *responsesTool
 	return catalog.encodeTop(fields)
 }
 
-// Names alone cannot establish a relationship, including two different roots
-// named /root. Only the collector's accepted, unambiguous ancestry is authority.
-func (a *subagentActivity) journalThread(caller, agent string) (string, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	root := a.rootLocked(caller)
-	if root == "" {
-		return "", errors.New("journal ancestry is unavailable")
-	}
-	ancestor := func(from, target string) bool {
-		for range len(a.threads) {
-			if from == target {
-				return true
-			}
-			node := a.threads[from]
-			if node == nil || node.conflicted || !node.child {
-				return false
-			}
-			from = node.parent
-		}
-		return false
-	}
-	target := ""
-	for thread, node := range a.threads {
-		if node.name != agent || a.rootLocked(thread) != root {
-			continue
-		}
-		if !ancestor(caller, thread) && !ancestor(thread, caller) {
-			continue
-		}
-		if target != "" {
-			return "", errors.New("journal agent path is ambiguous")
-		}
-		target = thread
-	}
-	if target == "" {
-		return "", errors.New("journal agent is not a proven ancestor or descendant")
-	}
-	return target, nil
-}
-
 func isJournalCall(item map[string]json.RawMessage) bool {
 	return jsonString(item, "type") == "function_call" && jsonString(item, "name") == journalToolName &&
 		(jsonString(item, "namespace") == "" || jsonString(item, "namespace") == "functions")
@@ -189,13 +148,13 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 			if args.ID != "" || args.Text != nil || args.Answer != nil || args.ReportNow {
 				err = errors.New("journal list accepts only agent and batched journal mutations")
 			}
-			thread := t.shellThreadID
-			if err == nil && args.Agent != "" {
-				thread, err = t.proxy.activity.journalThread(thread, args.Agent)
-			}
 			var items []journalItem
 			if err == nil {
-				items, err = t.proxy.journals.list(t.ctx, t.proxy.replayStore, t.directory, thread)
+				if args.Agent != "" {
+					items, err = t.proxy.journals.listAgent(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, args.Agent)
+				} else {
+					items, err = t.proxy.journals.list(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID)
+				}
 			}
 			listed := make([]journalListItem, 0, len(items))
 			for _, item := range items {

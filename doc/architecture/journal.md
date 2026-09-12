@@ -29,7 +29,9 @@ and descendant flush acknowledgements. A separate
 filesystem delivery lock excludes concurrent mutations and deliveries across router processes;
 replay transactions remain independently lockable while the delivery lease is held. The existing
 commentary broker and child activity collector carry live user-only delivery and canonical child
-prefixes; terminal journal delivery reads the durable journals directly. A failed render releases the lease without marking an item reported.
+prefixes; terminal delivery and named journal lookup share the durable workspace snapshot
+owner. Repeated initialization and unchanged identity binding read that locked state but
+skip redundant publication and synchronization. A failed render releases the lease without marking an item reported.
 The complete tree is rendered and size-checked before retaining message IDs or delivery entries.
 
 `server.go` performs the terminal continuation and ordering; token arithmetic and capture metrics

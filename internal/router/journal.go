@@ -30,6 +30,9 @@ const (
 	maxJournalReceipts   = 16384
 )
 
+// errJournalUnchanged skips publication after the locked durable read.
+var errJournalUnchanged = errors.New("journal unchanged")
+
 var errJournalThreadCapacity = errors.New("journal thread capacity reached")
 
 type journalMutation struct {
@@ -253,6 +256,10 @@ func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore
 		}
 		next := current.clone()
 		if err := mutate(&next, exists); err != nil {
+			if errors.Is(err, errJournalUnchanged) {
+				s.memory[key] = current
+				return nil
+			}
 			return err
 		}
 		if !exists && len(s.memory) >= maxJournalThreads {
@@ -292,7 +299,7 @@ func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore
 func (s *journalStore) initialize(ctx context.Context, store *mekugiReplayStore, workspace, thread, author, fork string) error {
 	return s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
 		if exists {
-			return nil
+			return errJournalUnchanged
 		}
 		*j = threadJournal{Version: 1, Workspace: workspace, Thread: thread, Author: author, Items: []journalItem{}, Receipts: make(map[string]journalReceipt)}
 		if fork == "" {
@@ -330,6 +337,9 @@ func (s *journalStore) bindIdentity(ctx context.Context, store *mekugiReplayStor
 		if !exists {
 			return errors.New("journal identity requires initialization")
 		}
+		if j.IdentityKnown && j.Parent == parent && (j.IdentityConflicted || valid && j.Author == author) {
+			return errJournalUnchanged
+		}
 		if !valid || j.IdentityKnown && (j.Parent != parent || j.Author != author) {
 			j.IdentityConflicted = true
 		}
@@ -339,9 +349,9 @@ func (s *journalStore) bindIdentity(ctx context.Context, store *mekugiReplayStor
 	})
 }
 
-// Called under the delivery lease, journal mutex, and replay lock. Only complete,
-// unambiguous parent chains in this workspace can join a main terminal flush.
-func (s *journalStore) descendants(store *mekugiReplayStore, workspace, root string) ([]threadJournal, error) {
+// Called under the journal mutex and replay lock. Delivery and list authorization
+// share the same workspace-scoped durable identity records.
+func (s *journalStore) workspaceJournals(store *mekugiReplayStore, workspace string) (map[string]threadJournal, map[string]error, error) {
 	recordErrors := make(map[string]error)
 	journals := make(map[string]threadJournal)
 	if store == nil {
@@ -353,7 +363,7 @@ func (s *journalStore) descendants(store *mekugiReplayStore, workspace, root str
 	} else {
 		entries, err := os.ReadDir(store.directory)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, entry := range entries {
 			if !strings.HasPrefix(entry.Name(), "journal-") || !strings.HasSuffix(entry.Name(), ".json") {
@@ -367,6 +377,16 @@ func (s *journalStore) descendants(store *mekugiReplayStore, workspace, root str
 			// Unidentifiable records cannot prove ancestry and must not
 			// block an unrelated workspace or tree.
 		}
+	}
+	return journals, recordErrors, nil
+}
+
+// Called under the delivery lease, journal mutex, and replay lock. Only complete,
+// unambiguous parent chains in this workspace can join a main terminal flush.
+func (s *journalStore) descendants(store *mekugiReplayStore, workspace, root string) ([]threadJournal, error) {
+	journals, recordErrors, err := s.workspaceJournals(store, workspace)
+	if err != nil {
+		return nil, err
 	}
 	var result []threadJournal
 	for thread, journal := range journals {
@@ -522,6 +542,76 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 		return nil
 	})
 	return ids, err
+}
+
+// listAgent resolves authorization and reads content in one locked snapshot.
+// Names alone never establish ancestry, even when separate roots share /root.
+func (s *journalStore) listAgent(ctx context.Context, store *mekugiReplayStore, workspace, caller, agent string) ([]journalItem, error) {
+	release, err := s.lockState(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	var items []journalItem
+	read := func() error {
+		journals, recordErrors, err := s.workspaceJournals(store, workspace)
+		if err != nil {
+			return err
+		}
+		chain := func(thread string) []string {
+			var path []string
+			for range len(journals) {
+				node, ok := journals[thread]
+				if !ok || !node.IdentityKnown || node.IdentityConflicted {
+					return nil
+				}
+				path = append(path, thread)
+				if node.Parent == "" {
+					return path
+				}
+				thread = node.Parent
+			}
+			return nil
+		}
+		callerPath := chain(caller)
+		if len(callerPath) == 0 {
+			return errors.New("journal ancestry is unavailable")
+		}
+		target := ""
+		var targetPath []string
+		for thread, node := range journals {
+			if node.Author != agent {
+				continue
+			}
+			path := chain(thread)
+			if len(path) == 0 || path[len(path)-1] != callerPath[len(callerPath)-1] ||
+				!slices.Contains(callerPath, thread) && !slices.Contains(path, caller) {
+				continue
+			}
+			if target != "" {
+				return errors.New("journal agent path is ambiguous")
+			}
+			target, targetPath = thread, path
+		}
+		if target == "" {
+			return errors.New("journal agent is not a proven ancestor or descendant")
+		}
+		for _, path := range [][]string{callerPath, targetPath} {
+			for _, thread := range path {
+				if err := recordErrors[thread]; err != nil {
+					return err
+				}
+			}
+		}
+		items = slices.Clone(journals[target].Items)
+		return nil
+	}
+	if store != nil {
+		err = store.locked(ctx, read)
+	} else {
+		err = read()
+	}
+	return items, err
 }
 
 func (s *journalStore) list(ctx context.Context, store *mekugiReplayStore, workspace, thread string) ([]journalItem, error) {
