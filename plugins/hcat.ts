@@ -273,7 +273,7 @@ async function readHashLines(spec: ReadSpec, options: ReaderOptions): Promise<Co
       }
     };
 
-    const decoder = new TextDecoder("utf-8", {fatal: true});
+    const decoder = new TextDecoder("utf-8", {fatal: true, ignoreBOM: true});
     const stream = handle.createReadStream({
       autoClose: false,
       highWaterMark: READ_BUFFER_BYTES,

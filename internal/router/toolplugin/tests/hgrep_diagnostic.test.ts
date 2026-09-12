@@ -1,8 +1,9 @@
 import {afterEach, expect, test} from "bun:test";
-import {mkdtemp, rm, writeFile} from "node:fs/promises";
+import {mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 
+import {formatVerifiedRow} from "mekugi:core/v1";
 import {createHGrepTool} from "../../../../plugins/hgrep.ts";
 
 const originalPath = process.env.PATH;
@@ -38,3 +39,39 @@ test.each([
   });
   expect(result).toEqual({stderr: `hgrep: ${expected}\n`, exitCode: 1, failureClass: "search_error"});
 });
+
+test("bounds incomplete JSON events, preserves admitted rows and reaps rg", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "hgrep-wire-bound-"));
+  directories.push(directory);
+  const executable = path.join(directory, "rg");
+  const source = path.join(directory, "source.txt");
+  await writeFile(source, "needle\n");
+  const event = JSON.stringify({type: "match", data: {
+    path: {text: source}, lines: {text: "needle\n"}, absolute_offset: 0,
+  }});
+  await writeFile(`${executable}.event`, `${event}\n`);
+  await writeFile(executable, `#!/usr/bin/python3
+import os, sys, time
+with open(__file__ + ".pid", "w") as pid:
+    pid.write(str(os.getpid()))
+with open(__file__ + ".event", "rb") as event:
+    sys.stdout.buffer.write(event.read())
+sys.stdout.buffer.flush()
+for _ in range(300):
+    sys.stdout.buffer.write(b"x" * 65536)
+    sys.stdout.buffer.flush()
+time.sleep(60)
+`, {mode: 0o700});
+  process.env.PATH = `${directory}${path.delimiter}${originalPath ?? ""}`;
+  const result = await createHGrepTool("test", "").execute(["needle", source], {
+    stdinFD: null, scriptReadFD: null, scriptWriteFD: null, outputBudgetBytes: 16 * 1024 * 1024,
+  });
+  expect(result).toEqual({
+    stdout: `${JSON.stringify(source)}:${formatVerifiedRow(1, "needle")}`,
+    stderr: "hgrep: output incomplete: rg JSON event exceeds the 16777216-byte wire bound\n",
+    exitCode: 1,
+    failureClass: "output_limit",
+  });
+  const pid = Number(await readFile(`${executable}.pid`, "utf8"));
+  expect(() => process.kill(pid, 0)).toThrow();
+}, 10_000);

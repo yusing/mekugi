@@ -1,7 +1,7 @@
 import {readFile, stat} from "node:fs/promises";
 import path from "node:path";
 
-import type {SyntaxNode, Tree} from "@lezer/common";
+import {Tree, type Parser, type SyntaxNode} from "@lezer/common";
 import {parser as goParser} from "@lezer/go";
 import {parser as javascriptParser} from "@lezer/javascript";
 import {parser as jsonParser} from "@lezer/json";
@@ -18,6 +18,7 @@ import {
 } from "mekugi:core/v1";
 import {
   byteLength,
+  decodeUTF8,
   createExecutorTool,
   errorText,
   stripOptionalFinalNewline,
@@ -138,20 +139,32 @@ const javascriptMethodNameNodes = new Set([
   "PropertyName",
 ]);
 
+// Parsers consume BOM-free text, but every syntax-node offset must still address
+// the original UTF-16 source. Shift only the root's child positions; descendants
+// already use positions relative to those children.
+function parseSource(parser: Parser, source: string): Tree {
+  if (!source.startsWith("\uFEFF")) {
+    return parser.parse(source);
+  }
+  const tree = parser.parse(source.slice(1));
+  return new Tree(tree.type, tree.children, tree.positions.map((position) => position + 1),
+    source.length, tree.propValues);
+}
+
 function codeTree(source: string, format: SourceFormat): Tree {
   if (format.language === "go") {
-    return goParser.parse(source);
+    return parseSource(goParser, source);
   }
   if (format.language === "typescript") {
-    return (format.jsx === true ? typescriptJSXParser : typescriptParser).parse(source);
+    return parseSource(format.jsx === true ? typescriptJSXParser : typescriptParser, source);
   }
   if (format.language === "javascript") {
-    return (format.jsx === true ? jsxParser : javascriptParser).parse(source);
+    return parseSource(format.jsx === true ? jsxParser : javascriptParser, source);
   }
   if (format.language === "python") {
-    return pythonParser.parse(source);
+    return parseSource(pythonParser, source);
   }
-  return jsonParser.parse(source);
+  return parseSource(jsonParser, source);
 }
 
 type InspectionData = {
@@ -411,7 +424,7 @@ export function goDeclarationRange(
   definitionEndByte: number,
 ): {line: number; line_end: number} | null {
   const lines = new LineMap(source);
-  const tree = goParser.parse(source);
+  const tree = parseSource(goParser, source);
   if (hasParseError(tree)) {
     return null;
   }
@@ -758,7 +771,7 @@ export function symbolOffsets(
   if (logicalLine === null) {
     return [];
   }
-  const tree = format.kind === "json" ? jsonParser.parse(source) : codeTree(source, format);
+  const tree = format.kind === "json" ? parseSource(jsonParser, source) : codeTree(source, format);
   const offsets: number[] = [];
   const visit = (node: SyntaxNode): void => {
     if (node.to <= logicalLine.from || node.from >= logicalLine.to) {
@@ -811,7 +824,7 @@ function markdownFrontmatter(
   if (logicalLines.at(-1) === "" && /(?:\r\n|\r|\n)$/u.test(source)) {
     logicalLines.pop();
   }
-  if (logicalLines[0] !== "---") {
+  if (logicalLines[0].replace(/^\uFEFF/u, "") !== "---") {
     return {endOffset: null, entries: [], parseComplete: true};
   }
   const closingLine = logicalLines.indexOf("---", 1);
@@ -1037,7 +1050,7 @@ function parseContent(
       };
     }
     if (format.kind === "markdown") {
-      const tree = markdownParser.parse(source);
+      const tree = parseSource(markdownParser, source);
       const outline = markdownOutline(source, lines, tree);
       return {
         parseComplete: !hasParseError(tree) && outline.parseComplete,
@@ -1045,7 +1058,7 @@ function parseContent(
         lineCount: lines.count,
       };
     }
-    const tree = jsonParser.parse(source);
+    const tree = parseSource(jsonParser, source);
     return {
       parseComplete: !hasParseError(tree),
       outline: hashOutline(lines, ordered(jsonOutline(source, lines, tree))),
@@ -1154,7 +1167,7 @@ async function inspect(input: string): Promise<InspectionData> {
   }
   let source: string;
   try {
-    source = new TextDecoder("utf-8", {fatal: true}).decode(bytes);
+    source = decodeUTF8(bytes, "source file");
   } catch {
     throw new InspectFailure("not_utf8", "supported file is not valid UTF-8");
   }

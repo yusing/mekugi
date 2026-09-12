@@ -121,7 +121,7 @@ export function errorText(error: unknown): string {
 
 export function decodeUTF8(value: Uint8Array, label: string): string {
   try {
-    return new TextDecoder("utf-8", {fatal: true}).decode(value);
+    return new TextDecoder("utf-8", {fatal: true, ignoreBOM: true}).decode(value);
   } catch {
     throw new Error(`${label} is not UTF-8`);
   }

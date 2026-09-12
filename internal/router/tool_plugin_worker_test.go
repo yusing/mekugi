@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi"
 )
 
 func newToolPluginTestRegistry(t *testing.T) (*toolRegistry, string) {
@@ -209,6 +211,49 @@ func TestBuiltinToolWorkersRunGeneratedTypeScriptImplementations(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestHGrepWorkerReferencesSelectRepeatedMixedNewlineRows(t *testing.T) {
+	registry := sharedProxyTestRegistry(t)
+	workspace := t.TempDir()
+	t.Chdir(workspace)
+	const baseline = "prefix\rskip\nsame\nsame\n"
+	if err := os.WriteFile("mixed.txt", []byte(baseline), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	handled, exitCode := RunToolPluginWorker(
+		t.Context(), registry.shellRuntime,
+		[]string{"bash", workerCommand("hgrep", []string{"-F", "same", "mixed.txt"})},
+		os.Stdin, &stdout, &stderr,
+	)
+	if !handled || exitCode != 0 || stderr.Len() != 0 {
+		t.Fatalf("worker handled %t, exit %d, stdout %q, stderr %q", handled, exitCode, stdout.String(), stderr.String())
+	}
+	rows := strings.Split(strings.TrimSuffix(stdout.String(), "\n"), "\n")
+	if len(rows) != 2 {
+		t.Fatalf("expected two matches, got %q", stdout.String())
+	}
+	for index, want := range []string{
+		"prefix\rskip\nselected\nsame\n",
+		"prefix\rskip\nsame\nselected\n",
+	} {
+		row, ok := strings.CutPrefix(rows[index], `"mixed.txt":`)
+		if !ok {
+			t.Fatalf("missing source path in %q", rows[index])
+		}
+		reference, _, ok := strings.Cut(row, " ")
+		if !ok {
+			t.Fatalf("missing row identity in %q", row)
+		}
+		got, err := mekugi.EditText(t.Context(), baseline, "type "+reference+` "selected"`)
+		if err != nil {
+			t.Fatalf("apply emitted reference %q: %v", reference, err)
+		}
+		if got != want {
+			t.Fatalf("reference %q selected the wrong repeated occurrence: got %q, want %q", reference, got, want)
+		}
 	}
 }
 

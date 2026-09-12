@@ -1,8 +1,12 @@
+import {open, type FileHandle} from "node:fs/promises";
+import {lineBounds, lineCount} from "mekugi:core/v1";
 import {spawn} from "node:child_process";
 
 import type {Tool} from "../internal/router/toolplugin/plugin.d.ts";
 import {
   decodeUTF8,
+  VERIFIED_ROW_MAX_TOKENS,
+  MAX_POSSIBLE_GPT5_TOKEN_BYTES,
   errorText,
   createExecutorTool,
   readerFailureClass,
@@ -14,6 +18,11 @@ import {
 } from "./common.ts";
 
 import type {ReaderOptions} from "./common.ts";
+
+// JSON escaping and submatch metadata have their own wire bound, independent
+// of the source-row/token limit.
+const MAX_EVENT_BYTES = 16 * 1024 * 1024;
+const MAX_SOURCE_BYTES = VERIFIED_ROW_MAX_TOKENS * MAX_POSSIBLE_GPT5_TOKEN_BYTES;
 
 const MAX_STDERR_BYTES = 64 * 1024;
 
@@ -141,7 +150,7 @@ type JSONEvent = {
   data?: {
     path?: JSONText;
     lines?: JSONText;
-    line_number?: number;
+    absolute_offset?: number;
   };
 };
 
@@ -405,16 +414,77 @@ function conciseDiagnostic(diagnostic: string): string {
   return diagnostic;
 }
 
+// Walk the actual bytes monotonically, rather than trusting rg's LF-only row
+// numbering. Retain only a read buffer and the current bounded event span.
+class SearchSource {
+  private offset = 0;
+  private row = 1;
+  private previousCR = false;
+  private readonly decoder = new TextDecoder("utf-8", {fatal: true, ignoreBOM: true});
+  private readonly buffer = Buffer.alloc(64 * 1024);
+
+  constructor(private readonly handle: FileHandle) {}
+
+  async advance(end: number, retain = false): Promise<Buffer> {
+    if (end < this.offset) {
+      throw new Error("rg returned out-of-order source offsets");
+    }
+    const chunks: Buffer[] = [];
+    while (this.offset < end) {
+      const {bytesRead} = await this.handle.read(this.buffer, 0, Math.min(this.buffer.length, end - this.offset), this.offset);
+      if (bytesRead === 0) {
+        if (end !== Infinity) {
+          throw new Error("rg source changed during search");
+        }
+        this.decoder.decode();
+        break;
+      }
+      const bytes = this.buffer.subarray(0, bytesRead);
+      try {
+        this.decoder.decode(bytes, {stream: true});
+      } catch {
+        throw new Error("search source is not UTF-8");
+      }
+      for (const byte of bytes) {
+        if (byte === 13 || (byte === 10 && !this.previousCR)) {
+          this.row += 1;
+        }
+        this.previousCR = byte === 13;
+      }
+      this.offset += bytesRead;
+      if (retain) {
+        chunks.push(Buffer.from(bytes));
+      }
+    }
+    return Buffer.concat(chunks);
+  }
+
+  async read(offset: number, expected: Buffer): Promise<number> {
+    await this.advance(offset);
+    const row = this.row;
+    const actual = await this.advance(offset + expected.length, true);
+    if (!actual.equals(expected)) {
+      throw new Error("rg result does not match source bytes");
+    }
+    return row;
+  }
+
+  async close(): Promise<void> {
+    await this.handle.close();
+  }
+}
+
 type ComparedOutput = {
   current: string;
   incomplete: boolean;
+  limitReason?: string;
 };
 
 /**
  * runRipgrep executes ripgrep with verified-row output and token-budget enforcement.
  */
 async function runRipgrep(argumentsValue: string[], options: ReaderOptions): Promise<ComparedOutput> {
-  const child = spawn("rg", ["--json", "--no-config", ...argumentsValue], {
+  const child = spawn("rg", ["--json", "--no-config", "--encoding", "none", ...argumentsValue], {
     stdio: ["ignore", "pipe", "pipe"],
   });
   const completion = new Promise<number | null>((resolve, reject) => {
@@ -427,36 +497,65 @@ async function runRipgrep(argumentsValue: string[], options: ReaderOptions): Pro
   let pending: Buffer[] = [];
   let pendingBytes = 0;
   const seen = new Set<string>();
-  const processEvent = (raw: Buffer): boolean => {
+  const sources = new Map<string, SearchSource>();
+  let limitReason: string | undefined;
+  const processEvent = async (raw: Buffer): Promise<boolean> => {
     let event: JSONEvent;
     try {
       event = JSON.parse(decodeUTF8(raw, "rg output"));
     } catch (error) {
       throw new Error(`decode rg output: ${errorText(error)}`);
     }
+    if (event.type === "end") {
+      const path = decodeJSONText(event.data?.path, "path");
+      const source = sources.get(path);
+      if (source) {
+        await source.advance(Infinity);
+        await source.close();
+        sources.delete(path);
+      }
+      return true;
+    }
     if (event.type !== "match" && event.type !== "context") {
       return true;
     }
     const path = decodeJSONText(event.data?.path, "path");
-    let line = decodeJSONText(event.data?.lines, "result");
-    if (line.endsWith("\n")) {
-      line = line.slice(0, -1);
+    const bytes = Buffer.from(decodeJSONText(event.data?.lines, "result"), "utf8");
+    if (bytes.length > MAX_SOURCE_BYTES) {
+      output.incomplete = true;
+      limitReason = `output incomplete: rg source event exceeds the ${MAX_SOURCE_BYTES}-byte inspection bound\n`;
+      return false;
     }
-    if (line.endsWith("\r")) {
-      line = line.slice(0, -1);
+    const offset = event.data?.absolute_offset;
+    if (!Number.isSafeInteger(offset) || offset < 0) {
+      throw new Error("rg returned an invalid source offset");
     }
-    const lineNumber = event.data?.line_number;
-    if (!Number.isSafeInteger(lineNumber) || lineNumber < 1
-        || line.includes("\n") || line.includes("\r")) {
-      throw new Error("rg returned a non-logical-line result");
+    let source = sources.get(path);
+    if (!source) {
+      const handle = await open(path);
+      if (!(await handle.stat()).isFile()) {
+        await handle.close();
+        throw new Error("search source is not a regular file");
+      }
+      source = new SearchSource(handle);
+      sources.set(path, source);
     }
-    const key = `${path}\u0000${lineNumber}`;
-    if (seen.has(key)) {
-      return true;
+    const firstRow = await source.read(offset, bytes);
+    const count = lineCount(bytes);
+    for (let index = 1; index <= count; index += 1) {
+      const bounds = lineBounds(bytes, index)!;
+      const lineNumber = firstRow + index - 1;
+      const key = `${path}\u0000${lineNumber}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      const content = decodeUTF8(bytes.subarray(bounds.byteStart, bounds.byteContentEnd), "rg result");
+      if (!output.append(formatReaderRow(lineNumber, content, options, path))) {
+        return false;
+      }
     }
-    seen.add(key);
-    const row = formatReaderRow(lineNumber, line, options, path);
-    return output.append(row);
+    return true;
   };
   const takePending = (): Buffer => {
     const raw = pending.length === 1 ? pending[0] : Buffer.concat(pending, pendingBytes);
@@ -475,19 +574,27 @@ async function runRipgrep(argumentsValue: string[], options: ReaderOptions): Pro
         const newline = chunk.indexOf(0x0a, offset);
         const end = newline < 0 ? chunk.length : newline + 1;
         const fragment = chunk.subarray(offset, end);
+        if (pendingBytes + fragment.length > MAX_EVENT_BYTES) {
+          output.incomplete = true;
+          limitReason = `output incomplete: rg JSON event exceeds the ${MAX_EVENT_BYTES}-byte wire bound\n`;
+          pending = [];
+          pendingBytes = 0;
+          child.kill("SIGKILL");
+          break outer;
+        }
         pending.push(fragment);
         pendingBytes += fragment.length;
         offset = end;
         if (newline < 0) {
           break;
         }
-        if (!processEvent(takePending())) {
+        if (!(await processEvent(takePending()))) {
           child.kill("SIGKILL");
           break outer;
         }
       }
     }
-    if (!output.incomplete && pendingBytes !== 0 && !processEvent(takePending())) {
+    if (!output.incomplete && pendingBytes !== 0 && !(await processEvent(takePending()))) {
       child.kill("SIGKILL");
     }
     exitCode = await completion;
@@ -497,10 +604,12 @@ async function runRipgrep(argumentsValue: string[], options: ReaderOptions): Pro
     await completion.catch(() => null);
     await stderrPromise.catch(() => "");
     throw error;
+  } finally {
+    await Promise.all([...sources.values()].map((source) => source.close()));
   }
 
   if (output.incomplete) {
-    return {current: output.current, incomplete: true};
+    return {current: output.current, incomplete: true, limitReason};
   }
   if (exitCode === 0 || exitCode === 1) {
     return {current: output.current, incomplete: false};
@@ -539,7 +648,7 @@ export function createHGrepTool(description: string, grammar: string): Tool<stri
       try {
         const result = await runRipgrep(normalized.arguments, options);
         const limitDiagnostic = result.incomplete
-          ? `hgrep: ${readerLimitDiagnostic(options)}`
+          ? `hgrep: ${result.limitReason ?? readerLimitDiagnostic(options)}`
           : "";
         const stderr = `${warning}${limitDiagnostic}`;
         return {

@@ -707,6 +707,43 @@ describe("hgrep built-in plugin", () => {
   });
 
 
+  test("maps repeated matches after bare CR to exact logical rows", async () => {
+    const directory = await temporaryDirectory("hgrep-logical-");
+    process.chdir(directory);
+    await writeFile("mixed.txt", "prefix\rskip\nsame\nsame\n");
+    const result = await createHGrepTool("test", "").execute(["-F", "same", "mixed.txt"], executionContext);
+    expect(result).toEqual({
+      stdout: `${JSON.stringify("mixed.txt")}:${formatVerifiedRow(3, "same")}`
+        + `${JSON.stringify("mixed.txt")}:${formatVerifiedRow(4, "same")}`,
+      stderr: "",
+      exitCode: 0,
+    });
+    const contextual = await createHGrepTool("test", "").execute(["-B1", "-F", "same", "mixed.txt"], executionContext);
+    expect(contextual.exitCode).toBe(0);
+    expect(contextual.stdout).toContain(`${JSON.stringify("mixed.txt")}:${formatVerifiedRow(2, "skip")}`);
+  });
+
+  test("preserves BOM source rows and rejects UTF-16 search identities", async () => {
+    const directory = await temporaryDirectory("reader-bom-");
+    process.chdir(directory);
+    const cat = createHCatTool("test", "");
+    const grep = createHGrepTool("test", "");
+    for (const source of ["\uFEFF", "\uFEFFneedle\nnext\n"]) {
+      await writeFile("bom.txt", source);
+      const result = await cat.execute(["bom.txt"], executionContext);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toStartWith(formatVerifiedRow(1, source.split("\n")[0]));
+      const searched = await grep.execute(["-F", source === "\uFEFF" ? "\uFEFF" : "needle", "bom.txt"], executionContext);
+      expect(searched.exitCode).toBe(0);
+      expect(searched.stdout).toBe(`${JSON.stringify("bom.txt")}:${formatVerifiedRow(1, source.split("\n")[0])}`);
+    }
+    await writeFile("utf16.txt", Buffer.from("\uFEFFneedle\n", "utf16le"));
+    const rejected = await grep.execute(["-F", "n", "utf16.txt"], executionContext);
+    expect(rejected.exitCode).toBe(1);
+    expect(rejected.stdout).toBeUndefined();
+    expect(rejected.stderr).toContain("not UTF-8");
+  });
+
   test("runs ripgrep and emits verified complete rows", async () => {
     const directory = await temporaryDirectory("hgrep-plugin-");
     process.chdir(directory);
@@ -775,6 +812,16 @@ describe("hgrep built-in plugin", () => {
     expect(limited.stdout).not.toContain("needle third");
   });
 
+  test("bounds source events separately from JSON wire bytes", async () => {
+    const directory = await temporaryDirectory("hgrep-source-bound-");
+    process.chdir(directory);
+    await writeFile("large.txt", `needle\nneedle ${"x".repeat(2_000_000)}\n`);
+    const result = await createHGrepTool("test", "").execute(["--preview-bytes", "32", "-F", "needle", "large.txt"], executionContext);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe("hgrep: output incomplete: rg source event exceeds the 1984000-byte inspection bound\n");
+    expect(JSON.parse(result.stdout!)).toMatchObject({row: `1:${hashLine("needle")}`, preview: "needle"});
+  });
+
   test("accepts GNU grep and ripgrep search options while rejecting incompatible modes", async () => {
     const directory = await temporaryDirectory("hgrep-plugin-");
     process.chdir(directory);
@@ -804,6 +851,59 @@ describe("hsymbol built-in plugin", () => {
     expect(description).toContain("ambiguous selectors");
     for (const persistent of ["rename", "audit", "before editing", "functions.hpatch"]) {
       expect(description).not.toContain(persistent);
+    }
+  });
+
+  test("keeps a BOM in Go resolver byte offsets and verified first rows", async () => {
+    const directory = await temporaryDirectory("hsymbol-bom-");
+    process.chdir(directory);
+    const source = "\uFEFFpackage p\nfunc Pick() {\n  println(1)\n}\n";
+    const target = path.join(directory, "sample.go");
+    await writeFile(target, source);
+    const fake = await installFakeGopls();
+    await fake.respond(`${target}:2:6-10\n`);
+    const result = await createHSymbolTool("test", "").execute(["refs", "sample.go", "2", "Pick"], executionContext);
+    expect(result).toMatchObject({exitCode: 0});
+    expect(await readFile(fake.callsPath, "utf8")).toContain(`:#${Buffer.byteLength(source.slice(0, source.indexOf("Pick")))}`);
+    await fake.respond(definitionJSON(target, source, source.indexOf("Pick"), "Pick"));
+    const definition = await createHSymbolTool("test", "").execute(["def", "sample.go", "2", "Pick"], executionContext);
+    expect(definition.exitCode).toBe(0);
+    expect(definition.stdout).toBe([2, 3, 4].map((line) =>
+      `${JSON.stringify("sample.go")}:${formatVerifiedRow(line, source.split("\n")[line - 1])}`).join(""));
+    const goInspection = await createInspectFileTool("test", "").execute(["sample.go"], executionContext);
+    expect(JSON.parse(goInspection.stdout!).data).toMatchObject({
+      parse_complete: true,
+      outline: [{kind: "function", name: "Pick", line: `2:${hashLine("func Pick() {")}`, line_end: `4:${hashLine("}")}`}],
+    });
+    await writeFile("sample.ts", "\uFEFFfunction pick() {}\n");
+    const inspected = await createInspectFileTool("test", "").execute(["sample.ts"], executionContext);
+    expect(inspected.exitCode).toBe(0);
+    expect(inspected.stdout).toContain(`1:${hashLine("\uFEFFfunction pick() {}")}`);
+  });
+
+  test("parses BOM Markdown frontmatter and JSON with original row identities", async () => {
+    const directory = await temporaryDirectory("inspect-bom-");
+    process.chdir(directory);
+    const tool = createInspectFileTool("test", "");
+    await writeFile("frontmatter.md", "\uFEFF---\ntitle: Example\n---\n# Heading\n");
+    const markdown = await tool.execute(["frontmatter.md"], executionContext);
+    expect(JSON.parse(markdown.stdout!).data).toMatchObject({
+      parse_complete: true,
+      outline: [
+        {kind: "frontmatter", name: "title", line: `2:${hashLine("title: Example")}`},
+        {kind: "heading", line: `4:${hashLine("# Heading")}`},
+      ],
+    });
+    for (const [file, source] of [
+      ["source.json", "\uFEFF{\"name\": \"value\"}\n"],
+      ["source.py", "\uFEFFdef pick():\n    return 1\n"],
+      ["source.md", "\uFEFF# Heading\n"],
+    ]) {
+      await writeFile(file, source);
+      const result = await tool.execute([file], executionContext);
+      const data = JSON.parse(result.stdout!).data;
+      expect(data.parse_complete).toBe(true);
+      expect(data.outline[0].line).toBe(`1:${hashLine(source.split("\n")[0])}`);
     }
   });
 
