@@ -6,6 +6,7 @@ pjdoc:
   status: draft
   revision: "52"
   files:
+    - journal.md
     - router.md
     - subagents.md
     - commentary.md
@@ -38,6 +39,7 @@ Each listed file owns one interface requirement and its acceptance cases. Relate
 
 ## Inventory
 
+- [`REQ-JOURNAL-001`](journal.md): durable per-thread milestone journals
 - [`REQ-ROUTER-001`](router.md): standalone and session-scoped Codex launch
 - [`REQ-SUBAGENTS-001`](subagents.md): Grok-backed native subagents
 - [`REQ-COMMENTARY-001`](commentary.md): user-only subagent activity details

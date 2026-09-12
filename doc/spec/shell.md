@@ -85,7 +85,7 @@ followed by the exact body as its final value. The resulting Codex exec carrier 
 `shell python3 <quoted-body>` on one physical command line; the model does not author that command
 or its quoting. For implicit default Bash without a command template, a body with at most one final line
 terminator remains direct when it parses as one non-background, non-negated simple call whose
-static command is neither a shell built-in, the reserved `commentary` command, nor a private
+static command is neither a shell built-in, the reserved `journal` command, nor a private
 contribution and whose statement contains no command or process substitution. The direct carrier
 removes that optional final line terminator and otherwise preserves the command text.
 
@@ -96,9 +96,9 @@ runtime plumbing, never through added command arguments or inline environment as
 The optional opaque AX correlation marker and worker environment under
 [REQ-AX-001](ax.md) are the debug-only exception; they carry no capability or route.
 Enabling commentary must not change whether an otherwise eligible command remains direct.
-Shell commentary is thread-scoped. The worker discovers its private publisher through the
+Journal authoring and reserved argv syntax follow [REQ-JOURNAL-001](journal.md). Shell commentary is thread-scoped. The worker discovers its private publisher through the
 inherited `CODEX_THREAD_ID` and current thread runtime, without changing the interpreter argv.
-Missing or unavailable commentary discovery must not prevent script execution.
+Unavailable journal discovery does not affect scripts without journal commands. An explicit journal command fails if it cannot record its mutation.
 
 After an optional interpreter shebang, a leading directive block can contain one `#!cmd=`
 assignment and one `#!params=` assignment in either order. All canonical directives use
@@ -291,7 +291,7 @@ directory. The PATH-installed helper follows that name. Active retained scripts 
 Private commentary descriptors are regular mode-0600 files beside the thread locators,
 outside retained script storage. Discovery rejects symlinks, non-regular files, and descriptors
 that do not match the worker selected by the current locator. Unexpected existing entries are
-not overwritten, and missing or invalid descriptors disable commentary only.
+not overwritten, and missing or invalid descriptors disable journal publication, not unrelated script execution.
 One shared pinned parent capability anchors this namespace. Launcher preparation creates no
 script storage and retains no per-thread directory handles. A retained-script directory is
 created exclusively for each active storage lifetime; an unexpected existing directory or

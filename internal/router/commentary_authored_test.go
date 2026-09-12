@@ -13,9 +13,9 @@ func TestOperationCommentaryRequiresAuthoredText(t *testing.T) {
 			text      string
 		}{
 			{"apply_patch", `{}`, ""},
-			{"wait", `{"commentary":" "}`, ""},
-			{"lookup", `{"commentary":"Using lookup."}`, "Using lookup."},
-			{"apply_patch", `{"commentary":"Applying the requested changes."}`, "Applying the requested changes."},
+			{"wait", `{"journal":[]}`, ""},
+			{"lookup", `{"journal":[{"op":"add","text":"Using lookup.","report_now":true}]}`, "Using lookup."},
+			{"apply_patch", `{"journal":[{"op":"add","text":"Applying the requested changes.","report_now":true}]}`, "Applying the requested changes."},
 		} {
 			t.Run(tc.name+tc.arguments+map[bool]string{false: "/json", true: "/sse"}[stream], func(t *testing.T) {
 				transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
@@ -64,7 +64,7 @@ func TestOperationCommentaryRequiresAuthoredText(t *testing.T) {
 				if len(output) != want {
 					t.Fatalf("output = %s", mustTestJSON(t, output))
 				}
-				if tc.text != "" && commentaryText(t, output[0]) != tc.text {
+				if tc.text != "" && commentaryText(t, output[0]) != "Journal update `/root` (`j1`)\n"+tc.text {
 					t.Fatalf("authored text lost: %s", mustTestJSON(t, output))
 				}
 				if jsonString(output[len(output)-1], "arguments") != "{}" {
@@ -91,7 +91,7 @@ func TestNoninstrumentedCommentaryToolsPassThrough(t *testing.T) {
 		name, tools, input, namespace, arguments string
 	}{
 		{"strict", `[{"type":"function","name":"lookup","strict":true,"parameters":{"type":"object"}}]`, `[]`, "", `null`},
-		{"owned", `[{"type":"function","name":"lookup","parameters":{"type":"object","properties":{"commentary":{"type":"boolean"}}}}]`, `[]`, "", ` { "commentary" : true } `},
+		{"owned", `[{"type":"function","name":"lookup","parameters":{"type":"object","properties":{"journal":{"type":"boolean"}}}}]`, `[]`, "", ` { "journal" : true } `},
 		{"provider", `[]`, `[{"type":"additional_tools","tools":[{"type":"namespace","name":"external","tools":[{"type":"function","name":"lookup","parameters":{"type":"array"}}]}]}]`, "external", `[1, 2]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

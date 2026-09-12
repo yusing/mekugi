@@ -28,7 +28,9 @@ wait "$second_check_pid" || checks_status=$?
 exit "$checks_status"
 ```
 
-Keep dependent work and mutations sequential. Commentary below defines progress delivery.
+Do not overlap dependent commands, edits, or jobs that share mutable state. This is shell-level
+concurrency, not permission to call tools in parallel contrary to their contracts.
+Journal below defines progress delivery.
 
 ## Edit planning
 

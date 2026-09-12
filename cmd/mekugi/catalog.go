@@ -24,7 +24,7 @@ func prepareGrokCatalog(ctx context.Context, executable, baseURL string, args []
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, executable, codexArgs(baseURL, append([]string{"debug", "models"}, overrides...))...)
+	cmd := exec.CommandContext(ctx, executable, codexArgs(baseURL, append([]string{"debug", "models"}, overrides...), false)...)
 	cmd.Dir = cwd
 	cmd.WaitDelay = 5 * time.Second
 	// Do not forward diagnostics from the bootstrap command into the TUI or

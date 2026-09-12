@@ -130,8 +130,10 @@ type mekugiProxy struct {
 	shellSessions          map[string]*shellSession
 	shellParent            *os.Root
 	shellLeases            sync.WaitGroup
+	memoryCommentary       map[string]map[string]struct{}
 	commentary             *commentaryBroker
 	commentaryEndpoint     string
+	journals               *journalStore
 	usage                  *threadUsage
 	activity               *subagentActivity
 
@@ -156,7 +158,7 @@ func newMekugiProxy(translator mekugiTranslator, registry *toolRegistry, customi
 	activity := newSubagentActivity()
 	broker := newCommentaryBroker()
 	broker.activity = activity
-	return &mekugiProxy{
+	proxy := &mekugiProxy{
 		translator:             translator,
 		registry:               registry,
 		customizedInstructions: customizedInstructions,
@@ -165,11 +167,20 @@ func newMekugiProxy(translator mekugiTranslator, registry *toolRegistry, customi
 		titles:                 titles,
 		shellSessions:          make(map[string]*shellSession),
 		commentary:             broker,
+		journals:               newJournalStore(),
 		usage:                  newThreadUsage(),
 		activity:               activity,
 		sessions:               make(map[string]*mekugiHistorySession),
 		activeSessions:         make(map[string]int),
 	}
+	broker.journalPublisher = func(ctx context.Context, session, thread, receipt string, mutations []journalMutation) ([]string, error) {
+		workspace, _, ok := strings.Cut(session, "\x00")
+		if !ok {
+			return nil, errors.New("journal workspace is unavailable")
+		}
+		return proxy.journals.apply(ctx, proxy.replayStore, workspace, thread, "runtime:"+receipt, mutations)
+	}
+	return proxy
 }
 
 func (p *mekugiProxy) Close() error {
@@ -249,6 +260,25 @@ type mekugiResponseTransform struct {
 	subagentResponses         []map[string]json.RawMessage
 	subagentTurn              bool
 	usageTracker              *threadUsageObservation
+	journalDeliveries         map[string]journalDelivery
+	journalUsageID            string
+	journalQuietFile          os.FileInfo
+	journalLiveBytes          int
+	journalNewCount           int
+	journalFlushedCount       int
+	journalDeliveryRelease    func()
+	journalQuestion           string // Request-local user text for answer-marked journal mutations.
+	journalAvailable          bool
+	journalActive             bool
+	journalPending            map[string]bool
+	journalCalls              map[string]map[string]json.RawMessage
+	journalResults            []map[string]json.RawMessage
+	journalClientOutput       []map[string]json.RawMessage
+	journalProviderOutput     []map[string]json.RawMessage
+	journalClientCalls        bool
+	journalTerminal           bool
+	journalContinue           bool
+	journalFinishRequested    bool
 	finalAnswer               finalAnswerStream
 	usageObserved             bool
 
@@ -266,6 +296,7 @@ func (t *mekugiResponseTransform) Close() {
 	if t == nil {
 		return
 	}
+	t.ReleaseDelivery()
 	t.releaseCommentarySubscriptions()
 	if t.sessionActive {
 		t.proxy.deactivateSession(t.historySessionID)
@@ -390,6 +421,9 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 	originalTools = bytes.Clone(originalTools)
 	originalToolChoice, originalToolChoicePresent := request.fields["tool_choice"]
 	originalToolChoice = bytes.Clone(originalToolChoice)
+	if err := stripStockPlanTools(request.fields, tools); err != nil {
+		return nil, err
+	}
 	carriers, err := buildCodeModeCarrierCatalog(tools, p.registry)
 	if err != nil {
 		return nil, incompatibleRequest("invalid_tool_catalog", err.Error()+". Check the Codex tool catalog.")
@@ -413,13 +447,15 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 	if !replaced {
 		return nil, incompatibleRequest("unsupported_tool_catalog", "This request exposes no supported editing and execution tools. Use a Codex session with apply_patch and exec_command, or the supported Code Mode exec tool.")
 	}
-	var commentaryTools commentaryToolCatalog
-	if p.commentaryEndpoint != "" {
-		commentaryTools, err = prepareCommentaryTools(request.fields, tools)
-		if err != nil {
-			return nil, err
-		}
+	if err := exposeJournalTool(request.fields, tools); err != nil {
+		return nil, err
 	}
+	var commentaryTools commentaryToolCatalog
+	commentaryTools, err = prepareCommentaryTools(request.fields, tools)
+	if err != nil {
+		return nil, err
+	}
+
 	if strings.TrimSpace(threadID) == "" {
 		return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
 	}
@@ -434,6 +470,10 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 	p.prepareShellCommentary(threadID, historySessionID, metadata.commentaryAuthor())
 	visible, err := p.reconcileVisibleInput(ctx, request, directory, historySessionID)
 	if err != nil {
+		p.deactivateSession(historySessionID)
+		return nil, err
+	}
+	if err := restoreJournalCalls(request, visible); err != nil {
 		p.deactivateSession(historySessionID)
 		return nil, err
 	}
@@ -498,6 +538,30 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 		codeModeToolName: codeModeToolName,
 		nativeTools:      nativeTools,
 	}
+	author := metadata.AgentName
+	if metadata.SubagentKind == "" {
+		author = "/root"
+	}
+	fork := metadata.ForkedFromThreadID
+	if metadata.SubagentKind != "" {
+		fork = ""
+	}
+	if err := p.journals.initialize(ctx, p.replayStore, directory, threadID, author, fork); err != nil {
+		if !errors.Is(err, errJournalThreadCapacity) {
+			transform.Close()
+			return nil, err
+		}
+	} else {
+		if err := p.journals.bindIdentity(ctx, p.replayStore, directory, threadID, metadata.ParentThreadID, author, activityThreadID != ""); err != nil {
+			transform.Close()
+			return nil, err
+		}
+		transform.journalAvailable = true
+	}
+	transform.journalQuestion = journalQuestionFromInput(request.fields["input"])
+	transform.journalActive = true
+	transform.journalPending = make(map[string]bool)
+	transform.journalCalls = make(map[string]map[string]json.RawMessage)
 	projectExecutionContinuations(request, tools, codeModeToolName, visible)
 	if transform.subagentTurn {
 		transform.prepareShellActivity(request.fields["input"])
@@ -1455,6 +1519,9 @@ func retainedEvaluated(emitted, evaluated string) string {
 
 func (t *mekugiResponseTransform) TransformJSON(payload []byte) ([]byte, error) {
 	transformed, _, err := t.transformResponse(payload, "")
+	if err == nil && t.journalActive {
+		transformed, err = t.decorateJournalJSON(transformed)
+	}
 	return transformed, criticalDiagnostic(err, "mekugi_json", "Mekugi response translation failed while processing a JSON response", true)
 }
 
@@ -1466,11 +1533,42 @@ func (t *mekugiResponseTransform) Finish(streamEvent bool) error {
 }
 
 func (t *mekugiResponseTransform) TransformSSE(payload []byte) ([][]byte, error) {
+	// Match the failed terminal projected to the host before journal interception
+	// can prepare a successful flush or continue a failed response.
+	var terminal struct {
+		Type     string `json:"type"`
+		Response struct {
+			Status string `json:"status"`
+		} `json:"response"`
+	}
+	if t.journalActive && json.Unmarshal(payload, &terminal) == nil && terminal.Type == "response.completed" && terminal.Response.Status == "failed" {
+		var err error
+		payload, err = replaceRawField(payload, "type", mustMarshalJSON("response.failed"))
+		if err != nil {
+			return nil, err
+		}
+	}
 	visible, err := t.transformSSE(payload)
+	if err == nil && t.journalActive {
+		visible, err = t.decorateJournalSSE(payload, visible)
+	}
 	return visible, criticalDiagnostic(err, "mekugi_sse", "Mekugi response translation failed while processing an upstream streaming event", true)
 }
 
 func (t *mekugiResponseTransform) transformSSE(payload []byte) ([][]byte, error) {
+	var prefix [][]byte
+	if t.journalActive {
+		events, handled, err := t.interceptJournalSSE(payload)
+		if handled || err != nil {
+			return events, err
+		}
+		prefix = events
+	}
+	visible, err := t.transformNonJournalSSE(payload)
+	return append(prefix, visible...), err
+}
+
+func (t *mekugiResponseTransform) transformNonJournalSSE(payload []byte) ([][]byte, error) {
 	if len(t.subagentDeferred) != 0 {
 		t.subagentDeferred = t.retainCommentary(t.subagentDeferred...)
 		if len(t.subagentDeferred) == 0 {
@@ -1926,10 +2024,36 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 	// JSON responses have no event envelope and retain body-status semantics.
 	status := cmp.Or(terminalStatus, jsonString(object, "status"))
 	interrupted := status == "failed" || status == "incomplete"
+	var journalPrefix journalContinuation
+	if t.journalActive {
+		journalPrefix, _ = t.ctx.Value(journalContinuationKey{}).(journalContinuation)
+	}
+	if t.journalActive && terminalStatus != "" && (!interrupted || len(t.journalResults) != 0 || len(journalPrefix.clientOutput) != 0) {
+		var output []map[string]json.RawMessage
+		if err := decodeJournalOutput(object["output"], &output); err != nil {
+			return nil, nil, errors.New("decode mekugi-enabled response output")
+		}
+		if len(output) == 0 {
+			// A provider may leave the terminal snapshot empty after streaming
+			// completed items. Rebuild it before adding journal results/notices:
+			// a journal-only snapshot would replace WebSocket history and orphan
+			// the next client tool result. Nonempty provider snapshots still own
+			// their exact output, and the ordinary projection below restores carriers.
+			object["output"] = mustMarshalJSON(t.journalProviderOutput)
+		}
+	}
 	if rawOutput, ok := object["output"]; ok {
 		var output []map[string]json.RawMessage
 		if err := json.Unmarshal(rawOutput, &output); err != nil {
 			return nil, nil, errors.New("decode mekugi-enabled response output")
+		}
+		if t.journalActive && terminalStatus == "" {
+			t.journalProviderOutput = output
+			for _, item := range output {
+				if !isJournalCall(item) && blocksTokenUsage(item) {
+					t.journalClientCalls = true
+				}
+			}
 		}
 		activityMessages := t.retainCommentary(t.drainActivity()...)
 		t.activityMessages = append(t.activityMessages, activityMessages...)
@@ -1945,6 +2069,18 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		}
 		t.subagentDeferred = nil
 		for _, fields := range output {
+			if t.journalActive && isJournalCall(fields) {
+				// A completed stream event can omit status. Its already-executed
+				// result must survive a later interruption without running a new call.
+				if !interrupted || jsonString(fields, "status") == "completed" || t.journalCalls[jsonString(fields, "call_id")] != nil {
+					result, err := t.executeJournalCall(fields)
+					if err != nil {
+						return nil, nil, err
+					}
+					transformedOutput = append(transformedOutput, journalClientResult(result))
+				}
+				continue
+			}
 			item := newResponsesItem(fields)
 			// An interrupted response can contain partial calls. Only complete items
 			// or calls whose complete input was already delivered may be projected.
@@ -1973,7 +2109,20 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		if err != nil {
 			return nil, nil, err
 		}
+		if t.journalActive {
+			t.journalClientOutput = transformedOutput
+		}
 		object["output"] = encoded
+	}
+	if t.journalActive {
+		t.journalContinue = status == "completed" && len(t.journalResults) != 0 && !t.journalClientCalls && !t.journalTerminalReady()
+		if len(journalPrefix.clientOutput) != 0 {
+			var output []map[string]json.RawMessage
+			if err := json.Unmarshal(object["output"], &output); err != nil {
+				return nil, nil, err
+			}
+			object["output"] = mustMarshalJSON(append(slices.Clone(journalPrefix.clientOutput), output...))
+		}
 	}
 	t.restoreResponseContract(object)
 	// Every translated carrier in a JSON body is about to become visible,
@@ -1982,7 +2131,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		return nil, nil, err
 	}
 	transformed, err := marshalProtocolJSON(object)
-	if err == nil && usageMessage != nil {
+	if err == nil && usageMessage != nil && !t.journalActive {
 		// Codex forwards only the child's final answer, not its preceding usage.
 		t.proxy.activity.collect(t.threadID, jsonString(usageMessage, "id"), "usage", formatTokenUsageReport(counts))
 	}

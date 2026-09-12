@@ -6,6 +6,7 @@ pjdoc:
   status: draft
   revision: "43"
   files:
+    - journal.md
     - subagents.md
     - commentary.md
     - mentor.md
@@ -27,6 +28,7 @@ Each listed file owns one ownership contract. Related facts are cited by stable 
 
 ## Inventory
 
+- [`CTR-JOURNAL-001`](journal.md): router-owned journal state and delivery
 - [`CTR-SUBAGENTS-001`](subagents.md): router-owned third-party provider bridge
 - [`CTR-COMMENTARY-001`](commentary.md): router-owned subagent commentary projection
 - [`CTR-MENTOR-001`](mentor.md): router-owned main and subagent model schedule

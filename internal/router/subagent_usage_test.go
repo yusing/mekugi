@@ -33,6 +33,9 @@ func TestSubagentObservedUsage(t *testing.T) {
 		t.Fatal("empty observed-usage corpus")
 	}
 	for _, tc := range document.Cases {
+		// Keep captured inputs unchanged on disk; exercise their equivalent
+		// journal authoring form after removal of the commentary builtin.
+		tc.Input = strings.ReplaceAll(tc.Input, "commentary '", "journal add '")
 		t.Run(tc.Name, func(t *testing.T) {
 			if document.Sources[tc.Source] == "" || tc.CallID == "" || tc.Selection == "" {
 				t.Fatal("missing observed-source provenance")

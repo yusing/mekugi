@@ -276,12 +276,12 @@ func renderStockModelInstructions(lines []instructionLine, first, last, rgInstru
 			line.number == rgInstruction.number || line.number == execInstruction.number {
 			continue
 		}
-		rendered.WriteString(rewriteStockToolConflicts(line.text))
+		rendered.WriteString(line.text)
 		if line.end > line.start+len(line.text) {
 			rendered.WriteByte('\n')
 		}
 	}
-	return rendered.String()
+	return rewriteStockToolConflicts(rendered.String())
 }
 
 func instructionLines(input string) []instructionLine {

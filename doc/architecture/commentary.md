@@ -2,49 +2,20 @@
 
 ## CTR-COMMENTARY-001 — Router-owned operation and subagent commentary projection
 
-The Responses router owns optional commentary schema projection for extensible ordinary function
-tools, authored commentary for eligible structured calls, removal of only its own argument, assistant
-message rendering, and exact replay restoration. Provider-owned and strict schemas remain exact, except for the separately owned opt-in
-[third-party collaboration projection](subagents.md).
-Collaboration calls remain outside operation commentary and pass through without generated
-request notices or commentary-specific buffering. The Mekugi durable replay store retains
-original call identity and exact router message provenance under `CTR-BOUNDARY-001`; JSON and
-SSE transformers share that owner. Request-local history views restore only visible calls.
+[CTR-JOURNAL-001](journal.md) owns progress authoring, journal state, replay restoration of
+router-owned journal calls, and terminal journal delivery. This contract retains automatic
+notice rendering, token arithmetic, exact message provenance, and observed subagent activity.
 
-The router also owns one bounded authenticated in-process publication broker. Code Mode lowering
-uses the JavaScript syntax owner when available and routes the evaluated expression through the
-existing shell worker carrier. The CGO-disabled detector only fails closed for the reserved awaited
-form. The Bash/POSIX evaluator intercepts the reserved command after ordinary expansion and turns
-it into a successful no-output command. Both runtime paths use opaque capabilities and the
-same broker; they do not own executor results, shell process status, or Codex session control.
-Code Mode retains per-call capabilities. Shell uses a shared thread capability discovered through
-private runtime data keyed by inherited `CODEX_THREAD_ID`, with no added command flags or inline
-environment assignments. The runtime owner binds discovery to the current worker and owns its
-private descriptor cleanup. Discovery and publication failures are silent and auxiliary.
-Shell publications retain thread identity, not an inferred original call ID. Deferred and terminal
-drains select the originating shell thread as well as the routing session, so a different thread
-sharing that session cannot consume its publications. Shell drains use the broker's atomic
-consume operation even during concurrent requests; the session-wide concurrency guard applies
-only to deferred Code Mode delivery, whose routes remain session-scoped. Shell worker
-completion cannot retire a shared thread route; idle expiry and router shutdown own that lifetime.
-Rendering admission for a claimed shell publication checks its retained ID against the response's
-stable thread, so a concurrent session remap cannot invalidate an already-drained publication.
-Live shell replay provenance follows stable thread identity rather than the current routing
-session and has a separate bounded budget. Before emitting router-authored commentary, the response
-boundary persists exact message provenance in the workspace replay store. Resume and forks strip
-only known IDs; message prefixes, phases, and text alone do not authorize removal. Persistence
-failure suppresses the auxiliary message, not substantive output. Commentary retention cannot reclaim tool-call history
-or prevent tool-call admission. Child terminals prepend ready runtime commentary inside the terminal
-response object without emitting standalone completed assistant items after the child's answer.
-The response transformer owns each Code Mode subscription until its carrier/history handoff boundary;
-thereafter publisher completion and broker expiry own its lifetime. Transform release cancels only
-unhanded subscriptions. Publications ready at every stream terminal status are drained before the
-terminal event. Deferred shell publications drain on the next originating-thread request without
-waiting for other active requests; deferred Code Mode publications require the next non-concurrent
-request for the retained session. Token and
-session drains share one completion-sensitive primitive: consume queued events once, retain active
-publishers, and retire completed Code Mode routes after delivery. Both drain boundaries expire stale routes
-and release their queued-event accounting. Limits and publication failures are auxiliary.
+The Responses router owns the shared bounded authenticated publication broker. Runtime
+publishers reuse private thread discovery through inherited `CODEX_THREAD_ID`; the shell
+runtime owns descriptor cleanup. Journal operations do not own executor results, shell process
+status, or Codex session control. Handed-off Code Mode capabilities survive transform release
+until completion or expiry, and finishing one shell worker does not cancel its shared thread route.
+
+Before emission the response boundary retains exact router-owned IDs in the workspace replay
+store. Resume and forks strip known IDs only. Auxiliary notice retention cannot reclaim executable
+history or prevent unrelated calls. Required journal terminal retention failures are errors,
+not silent suppression of the substantive result.
 
 Child operation and runtime commentary carries a `[/root/worker] ` prefix from the request’s
 canonical `agent_name` when `subagent_kind` identifies a child. Root and older unnamed clients
@@ -104,46 +75,41 @@ message or assistant output are eligible for receipt projection; full-history re
 turn earlier, previously undisplayed replies into fresh activity. Deterministic router IDs suppress repeated
 local commentary on replay.
 
-The terminal response transformer also owns one user-only commentary projection of the provider's
-input, cached-input, uncached-input, output, and reasoning usage when a completed root or subagent response
-contains a final assistant answer and no client-dispatched tool calls. `token_cost.go` owns the
-built-in reference prices, per-response estimates, and the compact Markdown token/cost table.
-Intermediate commentary and failed or
-incomplete responses do not trigger usage commentary. Final-answer phase identifies the answer;
-unphased assistant answers support older clients. Counts from the shared terminal-payload parse
-accumulate by stable originating thread, independently of routing-session and compaction lifetimes.
-Root and child totals remain separate, and repeated terminal observations within a request count once.
-After successful response transformation and usage-message provenance retention, the transformer
-also feeds each child usage report into the existing activity collector. Its usage-message ID
-is the source identity; reports remain distinct notices rather than coalesced operations.
-The collector owns attributed, bounded root delivery and replay removal. The child's final
-answer and native completion notification remain unchanged.
-`thread_usage.go` owns bounded, non-evicting token and cost totals until router shutdown;
-ancestry and author metadata do not own attribution. Each observation retains its effective
-provider-request model and requested service tier. The shared terminal parse supplies the
-provider's resolved tier when present, and cost is calculated before accumulation using the
-response's service tier, input size, and optional cache-write count. WebSocket histories retain
-the effective model and reasoning sent for each response so automatic steering successors do
-not adopt a Mentor model switch that was never sent upstream.
-Unknown prices or inconsistent raw usage categories make the cumulative cost unavailable
-without suppressing token counts. Missing or malformed usage instead leaves an irrecoverable
-gap in that thread's router-lifetime totals and suppresses its reports. The server finishes each
-forwarded inference observation, distinguishing definite HTTP rejection and non-generating prewarm
-from missing evidence after possible inference. The shared parse preserves completeness and
-inconsistency separately from normalized counts, leaving capture-owned counters unchanged.
-Pricing does not read rollouts, fetch a catalog, or change capture-owned metric calculations.
-The projection precedes the provider-authored final answer so it cannot replace a collaboration result. The
-streaming path buffers final-answer events in `final_answer_stream.go`, while tools and progress
-continue streaming. Completed streamed items determine eligibility independently of the terminal
-output snapshot. At successful completion, standalone usage precedes the unchanged buffered answer
-and terminal, because Codex selects the last completed assistant item as the child result.
-Missing usage and failed completion release the answer without a notice. The transport drains
-buffered events on EOF or failure, including through composed transforms. The 64 MiB response
-buffer limit disables auxiliary usage and releases output rather than rejecting a large answer.
-JSON and SSE share the same Codex-compatible text-answer eligibility check. The transport renders
-buffered releases with named SSE frames and one data field per payload line, including failure drains.
-The provider usage object remains authoritative; the streaming terminal output is not augmented
-with usage, and the projection does not participate in model-origin output accounting. It remains
+`thread_usage.go` owns bounded, non-evicting cumulative provider-authoritative token and cost
+totals by stable thread until router shutdown, separately for root and children. Routing remaps
+and compaction do not reset them; repeated terminal observations within a request count once.
+Ancestry and author labels do not determine attribution. `token_cost.go` owns built-in reference
+prices, per-response estimates, and the compact Markdown token/cost table.
+
+Each observation retains its effective provider-request model and requested service tier.
+The shared terminal parse supplies the provider's resolved tier when present, and cost is
+calculated before accumulation using the response's service tier, input size, and optional
+cache-write count. WebSocket histories retain the effective model and reasoning sent for each
+response so automatic steering successors do not adopt a Mentor model switch that was never
+sent upstream. Unknown prices or inconsistent raw usage categories make cumulative costs
+unavailable without suppressing token counts. Missing or malformed usage instead leaves an
+irrecoverable gap in that thread's router-lifetime totals and suppresses its reports.
+The server finishes each forwarded inference observation, distinguishing definite HTTP rejection
+and non-generating prewarm from missing evidence after possible inference. The shared parse
+preserves completeness and inconsistency separately from normalized counts. Pricing does not
+read rollouts, fetch catalogs, or change capture-owned metric calculations.
+
+The terminal transformer places eligible usage after any main journal flush and before the child
+saved-summary. Child usage remains live activity; child journals flush only at main completion.
+After successful delivery, child usage reports enter the activity collector in that order.
+Their usage-message IDs are source identities; they remain distinct notices with attributed,
+bounded root delivery and exact replay removal. Child costs never enter root usage totals.
+
+`final_answer_stream.go` buffers provider final events only for token-usage ordering, releasing
+them unchanged at the terminal, on failure, or when its buffer fills. Completed streamed items
+determine eligibility independently of the terminal output snapshot. Journal completion uses
+an explicit finish call and never filters provider messages. Failed and incomplete responses
+do not terminal-flush or emit tokens. The transport drains buffered events on EOF or failure,
+including through composed transforms. The 64 MiB response buffer limit disables auxiliary usage
+and releases output rather than rejecting a large answer. JSON and SSE share the same
+Codex-compatible text-answer eligibility check. Buffered releases use named SSE frames and one
+data field per payload line, including failure drains. Token notices do not participate in
+model-origin output accounting; provider usage remains authoritative. They remain
 present in transport byte and token totals. `internal/commentaryid` owns the reserved operation/runtime and subagent/usage
 message ID namespaces shared by rendering, replay, and capture classification; message text and
 phase do not establish generated provenance.

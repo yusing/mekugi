@@ -27,7 +27,7 @@ func TestInstructionsSelectModelWorkflowIndependentlyOfTransport(t *testing.T) {
 			if strings.Contains(got, "## CTP/2 transport") != compact {
 				t.Fatalf("model %q compact %v: wrong transport guidance", model, compact)
 			}
-			for _, heading := range []string{"## File editing\n", "## Commentary\n", "## Shell execution\n", "## Edit planning\n", "## Target reuse\n", "## Target acquisition\n"} {
+			for _, heading := range []string{"## File editing\n", "## Journal\n", "## Shell execution\n", "## Edit planning\n", "## Target reuse\n", "## Target acquisition\n"} {
 				if strings.Count(got, heading) != 1 {
 					t.Fatalf("model %q: workflow section %q must occur once", model, heading)
 				}
@@ -136,25 +136,40 @@ func TestNativeInstructionsOmitOnlyCTPRepresentation(t *testing.T) {
 	}
 }
 
-func TestInstructionsBindCommentaryToSupportedTools(t *testing.T) {
+func TestInstructionsExposeJournalAuthoring(t *testing.T) {
 	for _, test := range []struct {
 		name         string
 		instructions string
 	}{
 		{name: "CTP", instructions: InstructionsForModel("", true)},
 		{name: "native", instructions: InstructionsForModel("", false)},
+		{name: "astra CTP", instructions: InstructionsForModel("gpt-6-astra", true)},
+		{name: "astra native", instructions: InstructionsForModel("gpt-6-astra", false)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			for _, required := range []string{
-				"Attach progress to the tool call doing the work",
-				"When no supported mechanism is available, continue without commentary",
-				"`commentary 'text'`",
-				"`await commentary(\"text\")`",
-				"do not support the shell commentary command",
-				"messages are router-owned",
+				"Record meaningful milestones on a supported tool call",
+				"`functions.journal`",
+				"Each mutation array is atomic",
+				"Use one item per checkpoint or milestone",
+				"findings, results, validation, or blockers, not plans",
+				"Edit or delete superseded entries",
+				"The final flush is your final report",
+				"with claims supported by the work completed",
+				"set `answer: true`",
+				"do not repeat it in tool arguments",
+				"omit `answer` to preserve the attached question",
+				"Do not use `update_plan`, Tasks lists, or standalone `phase: \"commentary\"` messages",
+				"do not write a final-channel answer",
+				"`{\"op\":\"finish\"}`",
+				"This ends the turn without another model request",
+				"Do not use a wait tool to finish",
+				"Complete through that call, without a separate final-channel message",
+				"`journal add 'Tests passed' --report-now`",
+				"`await journal({op: \"add\", text: \"Tests passed\", report_now: true})`",
 			} {
 				if !strings.Contains(test.instructions, required) {
-					t.Errorf("instructions omit commentary rule %q", required)
+					t.Errorf("instructions omit journal rule %q", required)
 				}
 			}
 		})
@@ -295,7 +310,7 @@ func TestInstructionsConsolidateDeliveredContracts(t *testing.T) {
 		for _, compact := range []bool{false, true} {
 			got := InstructionsForModel(model, compact)
 			for _, required := range []string{
-				"## Commentary\n",
+				"## Journal\n",
 				"### Rejected-script recovery\n",
 				"Nonempty line and range `type` replacements preserve",
 				"`advisory`",

@@ -21,9 +21,9 @@ func TestPrepareCommentaryToolsPreservesOwnedSchemas(t *testing.T) {
 				"parameters": map[string]any{"type": "object", "properties": map[string]any{}},
 			},
 			map[string]any{
-				"type": "function", "name": "owned_commentary", "strict": false,
+				"type": "function", "name": "owned_journal", "strict": false,
 				"parameters": map[string]any{
-					"type": "object", "properties": map[string]any{"commentary": map[string]any{"type": "boolean"}},
+					"type": "object", "properties": map[string]any{"journal": map[string]any{"type": "boolean"}},
 				},
 			},
 		}),
@@ -92,7 +92,7 @@ func TestStructuredCommentaryTransformsJSONAndReplay(t *testing.T) {
 			qualifiedName: "functions.write_stdin",
 		},
 	}
-	originalArguments := `{"session_id":42,"chars":"y","commentary":"Confirming the prompt."}`
+	originalArguments := `{"session_id":42,"chars":"y","journal":[{"op":"add","text":"Confirming the prompt.","report_now":true}]}`
 	payload := mustTestJSON(t, map[string]any{
 		"status": "completed", "output": []any{map[string]any{
 			"type": "function_call", "id": "item-write", "call_id": "call-write",
@@ -155,13 +155,12 @@ func TestStructuredCommentaryRejectsNonStringValues(t *testing.T) {
 			qualifiedName: "functions.lookup",
 		},
 	}
-	for _, value := range []string{"null", "true", "42", `{}`, `[]`} {
+	for _, value := range []string{"null", "true", "42", `{}`, `[{"unknown":true}]`} {
 		item := map[string]json.RawMessage{
 			"type": mustMarshalJSON("function_call"), "namespace": mustMarshalJSON("functions"),
-			"name": mustMarshalJSON("lookup"), "arguments": mustMarshalJSON(`{"query":"x","commentary":` + value + `}`),
+			"name": mustMarshalJSON("lookup"), "arguments": mustMarshalJSON(`{"query":"x","journal":` + value + `}`),
 		}
-		if _, matched, err := extractStructuredCommentary(item, catalog); err == nil || matched ||
-			!bytes.Contains([]byte(err.Error()), []byte("functions.lookup commentary must be a string")) {
+		if _, matched, err := extractStructuredCommentary(item, catalog); err == nil || matched {
 			t.Fatalf("commentary %s matched = %v, error = %v", value, matched, err)
 		}
 	}
@@ -184,7 +183,7 @@ func TestStructuredCommentaryBuffersStreamingArguments(t *testing.T) {
 	if events, err := transform.TransformSSE(added); err != nil || len(events) != 0 {
 		t.Fatalf("added events = %q, error %v", events, err)
 	}
-	arguments := `{"cmd":"go test ./...","commentary":"Testing the project."}`
+	arguments := `{"cmd":"go test ./...","journal":[{"op":"add","text":"Testing the project.","report_now":true}]}`
 	argumentsDone := mustTestJSON(t, map[string]any{
 		"type": "response.function_call_arguments.done", "item_id": "item-exec", "output_index": 0,
 		"arguments": arguments,
@@ -230,7 +229,7 @@ func TestBufferedStructuredCommentaryOmitsNullCompletionMessage(t *testing.T) {
 	if events, err := transform.TransformSSE(added); err != nil || len(events) != 0 {
 		t.Fatalf("added events = %q, error %v", events, err)
 	}
-	arguments := `{"cmd":"go test ./...","commentary":"Testing the project."}`
+	arguments := `{"cmd":"go test ./...","journal":[{"op":"add","text":"Testing the project.","report_now":true}]}`
 	argumentsDone := mustTestJSON(t, map[string]any{
 		"type": "response.function_call_arguments.done", "item_id": "item-exec", "output_index": 0,
 		"arguments": arguments,

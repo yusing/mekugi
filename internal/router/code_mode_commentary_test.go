@@ -4,18 +4,22 @@ import (
 	"bytes"
 	"encoding/json"
 	"maps"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
+
+	"mvdan.cc/sh/v3/shell"
 )
 
 func TestCodeModeCommentaryLowersRuntimeExpressionAndPreservesOriginal(t *testing.T) {
 	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
-	proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
+	overrides := journalCodeModeRuntime(t, transform)
 	source := "for (let i = 1; i <= 2; i++) {\n" +
-		"  await commentary(`Running ${i}/2`);\n" +
+		"  await journal({op: 'add', text: `Running ${i}/2`});\n" +
 		"}\n" +
-		"text('await commentary(ignored)');"
+		"text('await journal(ignored)');"
 	item := map[string]json.RawMessage{
 		"type": mustMarshalJSON("custom_tool_call"), "name": mustMarshalJSON(transform.codeModeToolName),
 		"call_id": mustMarshalJSON("call-code"), "id": mustMarshalJSON("item-code"), "input": mustMarshalJSON(source),
@@ -26,13 +30,20 @@ func TestCodeModeCommentaryLowersRuntimeExpressionAndPreservesOriginal(t *testin
 		t.Fatalf("changed = %v, error %v", changed, err)
 	}
 	lowered := jsonString(item, "input")
-	for _, required := range []string{"await tools.exec_command", "encodeURIComponent(String(`Running ${i}/2`))", commentaryOnceArgument} {
+	for _, required := range []string{"await tools.exec_command", "encodeURIComponent(JSON.stringify(mutation))", "text: `Running ${i}/2`", commentaryOnceArgument} {
 		if !strings.Contains(lowered, required) {
 			t.Fatalf("lowered input missing %q: %s", required, lowered)
 		}
 	}
-	if strings.Count(lowered, commentaryOnceArgument) != 1 || !strings.Contains(lowered, "text('await commentary(ignored)')") {
+	if strings.Count(lowered, commentaryOnceArgument) != 1 || !strings.Contains(lowered, "text('await journal(ignored)')") {
 		t.Fatalf("lowered input = %s", lowered)
+	}
+	var result string
+	runShellCatJavaScript(t, proxy.registry.NodeExecutable, transform.directory,
+		strings.Replace(lowered, "text('await journal(ignored)');", `text(JSON.stringify("finished"));`, 1), &result, overrides)
+	items, err := proxy.journals.list(t.Context(), proxy.replayStore, transform.directory, transform.shellThreadID)
+	if err != nil || len(items) != 2 || items[0].Text != "Running 1/2" || items[1].Text != "Running 2/2" {
+		t.Fatalf("runtime journal = %+v, error = %v", items, err)
 	}
 	history := transform.local["call-code"]
 	if history.script != source || jsonString(history.upstreamItem, "input") != source || history.carrierPayload != lowered {
@@ -46,11 +57,11 @@ func TestCodeModeCommentaryLowersRuntimeExpressionAndPreservesOriginal(t *testin
 	}
 }
 
-func TestCodeModeCommentaryUsesOneRouteAndFallsBackToEvaluation(t *testing.T) {
+func TestCodeModeJournalUsesOneRouteAndRejectsExhaustion(t *testing.T) {
 	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
 	proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
 	lowered, changed, err := transform.lowerCodeModeCommentary(
-		"call-code", "await commentary('first');\nawait commentary('second');",
+		"call-code", "await journal({op: 'add', text: 'first'});\nawait journal({op: 'add', text: 'second'});",
 	)
 	if err != nil || !changed || strings.Count(lowered, commentaryOnceArgument) != 2 {
 		t.Fatalf("lowered = %q, changed = %v, error %v", lowered, changed, err)
@@ -67,29 +78,75 @@ func TestCodeModeCommentaryUsesOneRouteAndFallsBackToEvaluation(t *testing.T) {
 			t.Fatalf("route %d was rejected early", index)
 		}
 	}
-	lowered, changed, err = transform.lowerCodeModeCommentary("call-fallback", "await commentary(sideEffect());")
-	if err != nil || !changed || !strings.Contains(lowered, "await (void (sideEffect()))") ||
-		strings.Contains(lowered, commentaryOnceArgument) {
+	lowered, changed, err = transform.lowerCodeModeCommentary("call-fallback", "await journal(sideEffect());")
+	if err == nil || changed || lowered != "" {
 		t.Fatalf("fallback = %q, changed = %v, error %v", lowered, changed, err)
 	}
 }
 
-func TestCodeModeCommentarySupportsNestingAndAlwaysReturnsUndefined(t *testing.T) {
+func TestCodeModeJournalSupportsNestedExpressions(t *testing.T) {
 	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
-	proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
+	overrides := journalCodeModeRuntime(t, transform)
 	lowered, changed, err := transform.lowerCodeModeCommentary(
-		"call-nested", `await commentary(await commentary("inner"));`,
+		"call-nested", `await journal({op: "edit", id: await journal({op: "add", text: "inner"}), text: "outer"});`,
 	)
 	if err != nil || !changed || strings.Count(lowered, commentaryOnceArgument) != 2 ||
-		strings.Count(lowered, "await (void (await tools.exec_command") != 2 {
+		strings.Count(lowered, "await tools.exec_command") != 2 {
 		t.Fatalf("lowered = %q, changed = %v, error = %v", lowered, changed, err)
 	}
+	var result string
+	runShellCatJavaScript(t, proxy.registry.NodeExecutable, transform.directory,
+		`text(JSON.stringify(`+strings.TrimSuffix(lowered, ";")+`));`, &result, overrides)
+	items, err := proxy.journals.list(t.Context(), proxy.replayStore, transform.directory, transform.shellThreadID)
+	if err != nil || result != "j1" || len(items) != 1 || items[0].ID != result || items[0].Text != "outer" {
+		t.Fatalf("nested journal result=%q items=%+v error=%v", result, items, err)
+	}
+}
+
+// Execute the lowered command through the real worker and authenticated publisher;
+// only the Codex execution transport is replaced by a local HTTP fixture.
+func journalCodeModeRuntime(t *testing.T, transform *mekugiResponseTransform) string {
+	t.Helper()
+	proxy := transform.proxy
+	mux := http.NewServeMux()
+	mux.HandleFunc("/publish", proxy.commentary.serveHTTP)
+	mux.HandleFunc("/execute", func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Cmd string `json:"cmd"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+			http.Error(w, "invalid command", http.StatusBadRequest)
+			return
+		}
+		args, err := shell.Fields(request.Cmd, func(string) string { return "" })
+		if err != nil || len(args) == 0 || args[0] != "shell" {
+			t.Errorf("invalid journal worker command: %v", err)
+			http.Error(w, "invalid command", http.StatusBadRequest)
+			return
+		}
+		var stdout, stderr bytes.Buffer
+		handled, code := RunToolPluginWorker(r.Context(), proxy.registry.shellRuntime, args[1:], nil, &stdout, &stderr)
+		if !handled {
+			t.Error("journal worker command was not handled")
+			code = 1
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"output": stdout.String() + stderr.String(), "exit_code": code})
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	proxy.commentaryEndpoint = server.URL + "/publish"
+	return `tools.exec_command = async args => {
+const response = await fetch(` + strconv.Quote(server.URL+"/execute") + `, {method: "POST", body: JSON.stringify(args)});
+if (!response.ok) throw new Error("worker transport failed");
+return response.json();
+};`
 }
 
 func TestCodeModeCommentaryLowersAuthoritativeStreamingInput(t *testing.T) {
 	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
 	proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
-	source := `await commentary("Working");`
+	source := `await journal({op: "add", text: "Working"});`
 	added := mustTestJSON(t, map[string]any{
 		"type": "response.output_item.added", "item": map[string]any{
 			"type": "custom_tool_call", "id": "item-code", "call_id": "call-code",
@@ -218,7 +275,7 @@ func TestCodeModeWithoutExplicitCommentaryPreservesOutput(t *testing.T) {
 func TestCodeModeUnparseableInputPassesThrough(t *testing.T) {
 	for _, source := range []string{
 		`text("unterminated);`,
-		`await commentary("Working"); text(`,
+		`await journal("Working"); text(`,
 		`const value: number = 1; text(value);`,
 	} {
 		for _, streaming := range []bool{false, true} {
@@ -319,5 +376,45 @@ func TestCodeModeNativeExecStreamingRetainsOriginalInput(t *testing.T) {
 		if _, err := transform.TransformSSE(mustTestJSON(t, event)); err != nil {
 			t.Fatalf("completion rejected unchanged source: %v", err)
 		}
+	}
+}
+
+func TestCodeModeJournalArrayAndYieldedResult(t *testing.T) {
+	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
+	source := `text(JSON.stringify(await journal([{op:"add",text:"first"},{op:"add",text:"second"}])));`
+	lowered, _, err := transform.lowerCodeModeCommentary("yielded", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	runShellCatJavaScript(t, proxy.registry.NodeExecutable, transform.directory, lowered, &ids, `
+let calls = 0;
+tools.exec_command = async () => {
+  if (++calls !== 1) throw new Error("publication replayed");
+  return {session_id:42,output:'{"ok":true,'};
+};
+tools.write_stdin = async args => {
+  if (args.session_id !== 42 || args.chars !== "") throw new Error("wrong continuation");
+  return {exit_code:0,output:'"items":["j1","j2"]}'};
+};`)
+	if len(ids) != 2 || ids[0] != "j1" || ids[1] != "j2" {
+		t.Fatalf("array IDs = %v", ids)
+	}
+}
+
+func TestCodeModeJournalPublicationFailureThrows(t *testing.T) {
+	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
+	lowered, _, err := transform.lowerCodeModeCommentary("failed", `await journal({op:"add",text:"failed"});`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result string
+	runShellCatJavaScript(t, proxy.registry.NodeExecutable, transform.directory,
+		`let result="unexpected success"; try {`+lowered+`} catch (error) {result=error.message;} text(JSON.stringify(result));`, &result,
+		`tools.exec_command = async () => ({exit_code:1,output:"rejected"});`)
+	if result != "journal publication failed" {
+		t.Fatalf("publication error = %q", result)
 	}
 }

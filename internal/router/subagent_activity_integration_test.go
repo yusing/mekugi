@@ -77,11 +77,14 @@ func TestActualChildActivityProjectsWithoutChangingChildResult(t *testing.T) {
 			other, _ := prepareActivityTest(t, p, "other-session", "other-root", "", "/root", nil)
 			parent, _ := prepareActivityTest(t, p, "child-session", "child-thread", "root-thread", "/root/alpha", nil)
 			child, _ := prepareActivityTest(t, p, "nested-session", "nested-thread", "child-thread", "/root/alpha/nested", nil)
-			call := map[string]any{"type": "function_call", "id": "lookup", "call_id": "lookup", "name": "lookup", "arguments": `{"commentary":"Checking cancellation."}`}
+			call := map[string]any{"type": "function_call", "id": "lookup", "call_id": "lookup", "name": "lookup", "arguments": `{"journal":[{"op":"add","text":"Checking cancellation.","report_now":true}]}`}
 			childResponse := mustTestJSON(t, map[string]any{"status": "completed", "output": []any{call}})
-			if _, err := child.TransformJSON(childResponse); err != nil {
+			childOutput, err := child.TransformJSON(childResponse)
+			if err != nil {
 				t.Fatal(err)
 			}
+			child.Delivered(childOutput)
+			child.ReleaseDelivery()
 			rootResponse := mustTestJSON(t, map[string]any{"id": "root-response", "status": "completed", "output": []any{assistantCommentaryMessage("answer", "Substantive result.")}})
 			var projected []byte
 			if stream {
@@ -97,7 +100,7 @@ func TestActualChildActivityProjectsWithoutChangingChildResult(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if !bytes.Contains(projected, []byte("[`/root/alpha/nested`] Checking cancellation.")) || !bytes.Contains(projected, []byte("Substantive result.")) {
+			if !bytes.Contains(projected, mustTestJSON(t, "[`/root/alpha/nested`] Journal update `/root/alpha/nested` (`j1`)\nChecking cancellation.")) || !bytes.Contains(projected, []byte("Substantive result.")) {
 				t.Fatal(string(projected))
 			}
 			untouched, err := other.TransformJSON(rootResponse)

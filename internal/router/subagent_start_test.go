@@ -56,11 +56,11 @@ func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
 				}
 				return result
 			}
-			if result := emit(child); bytes.Contains(result, []byte("Started.")) || !bytes.Contains(result, []byte("Substantive answer.")) {
+			if result := emit(child); bytes.Contains(result, []byte("Started.")) || bytes.Contains(result, []byte("Journal saved:")) || !bytes.Contains(result, []byte("Substantive answer.")) {
 				t.Fatalf("start notice changed the child's result: %s", result)
 			}
 			result := emit(root)
-			for _, want := range []string{"[`/root/explorer`] Started.", "Model: `gpt-effective`", "Reasoning effort: `high`", "Substantive answer."} {
+			for _, want := range []string{"[`/root/explorer`] Started.", "Model: `gpt-effective`", "Reasoning effort: `high`"} {
 				if !bytes.Contains(result, []byte(want)) {
 					t.Fatalf("missing %q in %s", want, result)
 				}

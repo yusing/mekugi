@@ -94,7 +94,7 @@ func TestRefreshAndCustomAppendRemoveInheritedConflicts(t *testing.T) {
 		}
 		if !strings.HasPrefix(got, "custom prefix\n") || !strings.Contains(got, "custom suffix") || strings.Count(got, guidance) != 1 ||
 			strings.Contains(got, "in the `commentary` channel") || strings.Contains(got, "in the commentary channel") ||
-			strings.Contains(got, "at the end of both commentary and final") || !strings.Contains(got, "at the end of the final answer, after any permission question") {
+			strings.Contains(got, "at the end of both commentary and final") || !strings.Contains(got, "Record this explanation as a short journal item after any permission question") {
 			t.Fatalf("inherited/custom rewrite failed: marked=%v", marked)
 		}
 	}
@@ -164,7 +164,7 @@ Preserve unrelated validation policy.`
 						"Preserve unrelated validation policy.",
 						"functions.shell script",
 						"unless the user clearly asks you to stop",
-						"supported tool commentary when available",
+						"report_now journal item",
 					} {
 						if !strings.Contains(got, want) {
 							t.Errorf("missing %q", want)
@@ -178,6 +178,98 @@ Preserve unrelated validation policy.`
 						t.Fatalf("recorded prompt refresh is not idempotent: %v", err)
 					}
 				})
+			}
+		}
+	}
+}
+
+func TestChecklistInstructionsRewrittenAcrossModelLifecycles(t *testing.T) {
+	const checklist = "\n## Planning\nYou have access to an `update_plan` tool which tracks steps.\n\n### Examples\nKeep steps current.\n\n## `update_plan`\nA tool named `update_plan` is available to you. Update the checklist.\n\n## Plan tool\nWhen using the planning tool:\n- Skip using the planning tool for straightforward tasks (roughly the easiest 25%).\n- Do not make single-step plans.\n- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan.\n\n## Plan Mode vs update_plan tool\nSeparately, `update_plan` is a checklist/progress/TODOs tool; it does not enter or exit Plan Mode.\n\n# Tasks\nWhen `update_plan` is available, follow this section.\nKeep a checklist.\n\n## Work\nKeep working.\n- Use the plan tool to explain the work\n    - Keep steps current.\n- If you create a checklist or task list, update its statuses.\n\nProgress visibility:\nIf update_plan is available, use it for complex work.\n\n## Planning\nDiscuss architecture and inspect update_plan before editing.\n"
+	const preserved = "\n## Work\nKeep working.\n\n## Planning\nDiscuss architecture and inspect update_plan before editing.\n"
+	for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+		fixture := "testdata/gpt-5.6-instructions.txt"
+		if model == "gpt-6-astra" {
+			fixture = "testdata/gpt-6-astra-instructions.txt"
+		}
+		data, err := os.ReadFile(fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, compact := range []bool{false, true} {
+			guidance := codexinstructions.InstructionsForModel(model, compact)
+			for _, lifecycle := range []string{"stock", "marked", "custom"} {
+				base := string(data)
+				if lifecycle == "marked" {
+					base = codexinstructions.InstructionsForModel("other", !compact)
+				} else if lifecycle == "custom" {
+					base = "Custom authorization.\n"
+				}
+				for _, carrier := range []string{"instructions", "developer"} {
+					t.Run(fmt.Sprintf("%s/%t/%s/%s", model, compact, lifecycle, carrier), func(t *testing.T) {
+						request := parsedResponsesRequest{fields: map[string]json.RawMessage{"model": mustTestJSON(t, model)}}
+						if carrier == "instructions" {
+							request.fields[carrier] = mustTestJSON(t, base+checklist)
+						} else {
+							request.fields["input"] = mustTestJSON(t, []any{map[string]any{"type": "message", "role": "developer", "content": base + checklist}})
+						}
+						if err := rewriteReceivedModelInstructions(t.Context(), &request, lifecycle == "custom", guidance); err != nil {
+							t.Fatal(err)
+						}
+						var got string
+						if carrier == "instructions" {
+							if err := json.Unmarshal(request.fields[carrier], &got); err != nil {
+								t.Fatal(err)
+							}
+						} else {
+							var messages []struct{ Content string }
+							if err := json.Unmarshal(request.fields["input"], &messages); err != nil {
+								t.Fatal(err)
+							}
+							got = messages[0].Content
+						}
+						if !strings.Contains(got, preserved) || strings.Count(got, guidance) != 1 {
+							t.Fatal("lost unrelated planning or selected journal guidance")
+						}
+						for _, unwanted := range []string{"tracks steps", "Keep steps current", "Update the checklist", "## Plan tool", "# Tasks", "Progress visibility:"} {
+							if strings.Contains(got, unwanted) {
+								t.Errorf("retained checklist instruction %q", unwanted)
+							}
+						}
+						refreshed, _, err := renderModelInstructions(got, false, guidance)
+						if err != nil || refreshed != got {
+							t.Fatalf("refresh changed instructions: %v", err)
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
+func TestChecklistRewritePreservesCustomPolicyAndMarkers(t *testing.T) {
+	guidance := codexinstructions.InstructionsForModel("gpt-6-astra", false)
+	for _, prefix := range []string{
+		"## Plan tool\nNever deploy without explicit approval.\n",
+		"## Planning\nYou have access to an `update_plan` tool which tracks steps.\n\n",
+	} {
+		for _, marked := range []bool{false, true} {
+			input := prefix
+			if marked {
+				input += guidance
+			}
+			got, _, err := renderModelInstructions(input, true, guidance)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Count(got, guidance) != 1 {
+				t.Fatal("lost owned guidance")
+			}
+			if strings.Contains(prefix, "Never deploy") && !strings.Contains(got, prefix) {
+				t.Fatal("lost custom approval policy")
+			}
+			refreshed, _, err := renderModelInstructions(got, false, guidance)
+			if err != nil || refreshed != got {
+				t.Fatalf("refresh damaged marker boundary: %v", err)
 			}
 		}
 	}
@@ -336,5 +428,18 @@ func TestPreserveDefaultModeRequestUserInputWhenHostEnablesIt(t *testing.T) {
 	}
 	if messages[0].Content != defaultMode {
 		t.Fatalf("Default-enabled host guidance changed: %q", messages[0].Content)
+	}
+}
+
+func TestStockInstructionRewriteMatchesMultilineConflicts(t *testing.T) {
+	guidance := codexinstructions.InstructionsForModel("gpt-6-astra", false)
+	input := stockModelInstructionsForTest("", "") + "\nanswer briefly in commentary,\nthen resume the active task\n"
+	got, _, err := renderModelInstructions(input, false, guidance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "answer briefly in commentary,") ||
+		!strings.Contains(got, "answer briefly with a report_now journal item,\nthen resume the active task") {
+		t.Fatal("newline-spanning stock conflict was not rewritten")
 	}
 }

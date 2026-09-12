@@ -2,7 +2,9 @@ package router
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,80 +14,50 @@ import (
 	"time"
 )
 
-func TestCommentaryPublisherAuthenticatesAndDrainsLiveOrDeferred(t *testing.T) {
+func TestJournalPublisherAuthenticatesAndMutatesThreadStore(t *testing.T) {
 	broker := newCommentaryBroker()
 	t.Cleanup(broker.close)
+	store := newJournalStore()
+	if err := store.initialize(t.Context(), nil, "workspace", "thread", "/root", ""); err != nil {
+		t.Fatal(err)
+	}
+	broker.journalPublisher = func(ctx context.Context, _, thread, receipt string, mutations []journalMutation) ([]string, error) {
+		return store.apply(ctx, nil, "workspace", thread, receipt, mutations)
+	}
 	server := httptest.NewServer(http.HandlerFunc(broker.serveHTTP))
 	t.Cleanup(server.Close)
-
-	live := broker.subscribe("session", "call-live", "")
-	if live == "" {
-		t.Fatal("live subscription was rejected")
+	token := broker.subscribe("session", "call-live", "")
+	broker.bindActivity(token, "thread")
+	sink := &httpShellCommentarySink{endpoint: server.URL, token: token, client: server.Client()}
+	for _, mutation := range []string{
+		`{"op":"add","text":"Initial milestone"}`,
+		`{"op":"edit","id":"j1","text":"Verified milestone","report_now":true}`,
+	} {
+		if err := sink.Publish(t.Context(), mutation); err != nil {
+			t.Fatal(err)
+		}
 	}
-	sink := &httpShellCommentarySink{endpoint: server.URL, token: live, client: server.Client()}
-	if err := sink.Publish(t.Context(), "Running live work."); err != nil {
+	items, err := store.list(t.Context(), nil, "workspace", "thread")
+	if err != nil || len(items) != 1 || items[0].Text != "Verified milestone" || !items[0].ReportNow || items[0].Reported {
+		t.Fatalf("runtime mutations: %+v %v", items, err)
+	}
+	sink.token = "unknown-capability"
+	if err := sink.Publish(t.Context(), `{"op":"delete","id":"j1"}`); err == nil {
+		t.Fatal("unauthenticated journal publication succeeded")
+	}
+	sink.token = token
+	if err := sink.Publish(t.Context(), `{"op":"delete","id":"j1"}`); err != nil {
 		t.Fatal(err)
 	}
 	if err := sink.Complete(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	events := broker.drain(live)
-	if len(events) != 1 || events[0].callID != "call-live" || events[0].text != "Running live work." {
-		t.Fatalf("live events = %+v", events)
+	if err := sink.Publish(t.Context(), `{"op":"add","text":"After completion"}`); err == nil {
+		t.Fatal("completed capability accepted another mutation")
 	}
-	empty := broker.subscribe("session", "call-empty", "")
-	if empty == "" {
-		t.Fatal("empty subscription was rejected")
-	}
-	sink.token = empty
-	if err := sink.Complete(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	broker.mu.Lock()
-	_, emptyRetained := broker.routes[empty]
-	broker.mu.Unlock()
-	if emptyRetained {
-		t.Fatal("completed route without publications was retained")
-	}
-
-	deferred := broker.subscribe("session", "call-deferred", "")
-	if deferred == "" {
-		t.Fatal("deferred subscription was rejected")
-	}
-	sink.token = deferred
-	if err := sink.Publish(t.Context(), "Running deferred work."); err != nil {
-		t.Fatal(err)
-	}
-	events = broker.drainSession("session", "")
-	if len(events) != 1 || events[0].callID != "call-deferred" || events[0].text != "Running deferred work." {
-		t.Fatalf("deferred events = %+v", events)
-	}
-
-	if err := sink.Publish(t.Context(), "Still running deferred work."); err != nil {
-		t.Fatal(err)
-	}
-	if err := sink.Complete(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	next := broker.drainSession("session", "")
-	if len(next) != 1 || next[0].text != "Still running deferred work." || next[0].messageID == events[0].messageID {
-		t.Fatalf("later deferred events = %+v", next)
-	}
-	if len(broker.drainSession("session", "")) != 0 || broker.publish(deferred, "after completion", false) {
-		t.Fatal("completed route retained events or authorization")
-	}
-
-	request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response, err := server.Client().Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response.Body.Close()
-	if response.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated status = %d", response.StatusCode)
+	items, err = store.list(t.Context(), nil, "workspace", "thread")
+	if err != nil || len(items) != 0 {
+		t.Fatalf("runtime delete: %+v %v", items, err)
 	}
 }
 
@@ -143,24 +115,24 @@ func TestCommentaryDrainRetainsActiveCapacityUntilCompletionOrExpiry(t *testing.
 	}
 }
 
-func TestPublishCommentaryOnceIgnoresPublicationFailure(t *testing.T) {
+func TestPublishJournalOnceReportsPublicationFailure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		response.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	t.Cleanup(server.Close)
 
-	handled, err := publishCommentaryOnce(t.Context(), []string{
-		commentaryOnceArgument, server.URL, "token", "Running%20work.",
+	handled, err := publishCommentaryOnce(t.Context(), io.Discard, []string{
+		commentaryOnceArgument, server.URL, "token", `%7B%22op%22%3A%22add%22%2C%22text%22%3A%22Working%22%7D`,
 	})
-	if !handled || err != nil {
+	if !handled || err == nil {
 		t.Fatalf("handled = %v, error = %v", handled, err)
 	}
-	if handled, err := publishCommentaryOnce(t.Context(), []string{
+	if handled, err := publishCommentaryOnce(t.Context(), io.Discard, []string{
 		commentaryOnceArgument, server.URL, "token", "%zz",
 	}); !handled || err == nil {
 		t.Fatalf("invalid escape handled = %v, error = %v", handled, err)
 	}
-	if handled, err := publishCommentaryOnce(t.Context(), []string{"other"}); handled || err != nil {
+	if handled, err := publishCommentaryOnce(t.Context(), io.Discard, []string{"other"}); handled || err != nil {
 		t.Fatalf("unrelated invocation handled = %v, error = %v", handled, err)
 	}
 }
@@ -327,7 +299,7 @@ func TestShellCommentaryPreservesDirectCommands(t *testing.T) {
 func shellCommentaryTestItem() map[string]any {
 	return map[string]any{
 		"type": "custom_tool_call", "id": "item-runtime", "call_id": "call-runtime",
-		"name": "exec", "input": `await commentary("Working");`, "status": "completed",
+		"name": "exec", "input": `await journal({op: "add", text: "Working"});`, "status": "completed",
 	}
 }
 
@@ -425,7 +397,7 @@ func TestEarlyStreamReleasePreservesHandedOffPublishers(t *testing.T) {
 			}
 			input := "printf ok"
 			if name == "exec" {
-				input = `await commentary("Working");`
+				input = `await journal({op: "add", text: "Working"});`
 			}
 			events, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
 				"type": "response.custom_tool_call_input.done", "item_id": "item-runtime", "input": input,

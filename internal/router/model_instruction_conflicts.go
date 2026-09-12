@@ -8,29 +8,29 @@ import "strings"
 // do not retain conflicts from an earlier rewrite.
 var stockToolConflictReplacer = strings.NewReplacer(
 	"Put this explanation in a short, separate paragraph at the end of both commentary and final, after any permission question.",
-	"Put this explanation in a short, separate paragraph at the end of the final answer, after any permission question. Attach a progress copy only when a supported tool commentary mechanism is available.",
+	"Record this explanation as a short journal item after any permission question. Use report_now for an immediate progress notice.",
 	"Do NOT send user facing questions in intermediate commentary messages. Do NOT put a final response in the commentary channel. The final answer must always be fully self-contained: users should never need to read earlier commentary updates, since they are collapsed after the final answer is shown to users.",
-	"Keep user-facing questions out of progress notices. Deliver final responses in the final channel. The final answer must always be fully self-contained: users should never need to read earlier progress updates.",
+	"Use the user-input tools for questions when available. Record the terminal result in the journal; do not emit provider final-answer text.",
 	"Do NOT put a final response (e.g. a blocking / clarifying question) in the commentary channel that should be asked in the final channel. Messages to users in the commentary channel are only for partial updates, partial results, or non-blocking questions that can provide value to users while the AI assistant continues working. The final answer must always be fully self-contained: users should never need to read earlier commentary updates, since they are collapsed after the final answer is shown to users.",
-	"Deliver final responses and blocking questions in the final channel. Attach partial updates, partial results, or non-blocking questions to supported tool calls when available while continuing work. The final answer must always be fully self-contained: users should never need to read earlier progress updates.",
+	"Record final results and blocking questions in the journal. Set report_now for immediate notices, or use the user-input tools for questions. Do not emit provider final-answer text.",
 	"- You share updates in the `commentary` channel.",
-	"- You share updates through the supported tool commentary mechanism described below.",
+	"- Record milestones using journal mutations; set report_now for immediate progress.",
 	"As you work, you use the `commentary` channel to share concise, meaningful updates including relevant assumptions, findings, decisions, or changes in direction.",
-	"As you work, attach concise, meaningful updates to supported tool calls, including relevant assumptions, findings, decisions, or changes in direction.",
+	"Record meaningful findings, decisions, and changes of approach as journal items, batching mutations on supported calls.",
 	"As you work, you send messages to the `commentary` channel.",
-	"As you work, attach progress messages to supported tool calls.",
+	"As you work, batch journal mutations on supported tool calls.",
 	"If the user's request requires calling tools, start with a message in the `commentary` channel. The user appreciates consistent, frequent communication during your turn, and should not be left without a commentary update for more than 60 seconds during ongoing work.",
-	"Use the central Commentary rules for progress delivery; when no available tool supports commentary, continue silently.",
+	"Use the central Journal rules for progress delivery; call functions.journal when no ordinary call can carry the mutation.",
 	"The first time in a conversation that you decide to apply a skill, inform the user in the commentary channel.",
-	"The first time in a conversation that you decide to apply a skill, attach that notice to a supported tool call when available.",
+	"When applying a skill is a meaningful milestone, record it in the journal.",
 	"Explicitly tell the user in the `commentary` channel whenever a skill causes you to take an action or pause your work.",
-	"Attach skill-related progress notices to supported tool calls when available; report a blocking issue in the final answer if no such call is available.",
+	"Record skill-related milestones in the journal; use report_now for a blocking issue.",
 	"- First, tell the user in the commentary channel **why** you are using the skill.",
-	"- Attach why you are using the skill to a supported tool call when available.",
+	"- Record why you are using the skill when it is a meaningful journal milestone.",
 	"answer briefly in commentary,\nthen resume the active task",
-	"answer briefly through supported tool commentary when available,\nthen resume the active task",
+	"answer briefly with a report_now journal item,\nthen resume the active task",
 	"answer briefly in commentary, then resume the active task",
-	"answer briefly through supported tool commentary when available, then resume the active task",
+	"answer briefly with a report_now journal item, then resume the active task",
 	"- Batch independent searches and reads in one functions.exec using await Promise.allSettled([...]); inspect every result. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential. Avoid unnecessary output.",
 	"- Batch already-known searches and reads in one functions.shell script; inspect every result. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential. Avoid unnecessary output.",
 	"- Batch independent searches, reads, and other tool calls in one functions.exec using await Promise.allSettled([...]); keep each batch bounded to decision-relevant output by selecting needed ranges or fields first, and inspect every returned result. If output truncates, retrieve only the missing evidence rather than repeating an unchanged whole scan. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential. Avoid unnecessary output.",
@@ -42,7 +42,7 @@ var stockToolConflictReplacer = strings.NewReplacer(
 	"- When possible, prefer parallelization over sequential tool calls, as this will help with round-trip latency and let you get work done faster.",
 	"- Parallelize independent calls only when their tool contracts allow it. Run hpatch alone; sequence dependent operations, approvals, and mutations.",
 	"- Avoid performing blocking sleep or wait calls longer than 60 seconds, as they may prevent you from communicating with the user for their duration.",
-	"- Use completion notifications or interruptible waits; do not shorten waits solely to emit commentary.",
+	"- Use completion notifications or interruptible waits; do not shorten waits solely to record progress.",
 	"* Keep asking until you can clearly state: goal + success criteria, audience, in/out of scope, constraints, current state, and the key preferences/tradeoffs.",
 	"* Resolve enough intent to clearly state: goal + success criteria, audience, in/out of scope, constraints, current state, and the key preferences/tradeoffs.",
 	"* Once intent is stable, keep asking until the spec is decision complete: approach, interfaces (APIs/schemas/I/O), data flow, edge cases/failure modes, testing + acceptance criteria, rollout/monitoring, and any migrations/compat constraints.",
@@ -50,6 +50,7 @@ var stockToolConflictReplacer = strings.NewReplacer(
 	"You SHOULD ask many questions, but each question must:",
 	"Ask only the questions needed to make the plan decision complete. Each question must:",
 )
+
 var planOnlyDefaultModeConflictReplacer = strings.NewReplacer(
 	"Use the `request_user_input` tool only when it is listed in the available tools for this turn.",
 	"Do not call the `request_user_input` tool in Default mode, even if it is listed in the available tools for this turn.",
@@ -60,5 +61,53 @@ var planOnlyDefaultModeConflictReplacer = strings.NewReplacer(
 )
 
 func rewriteStockToolConflicts(input string) string {
-	return stockToolConflictReplacer.Replace(input)
+	return rewriteStockPlanInstructions(stockToolConflictReplacer.Replace(input))
+}
+
+// rewriteStockPlanInstructions removes checklist guidance independently of Codex's
+// launch-time filtering, which does not cover custom catalogs or direct routing.
+// Ordinary planning sections and our edit-planning workflow are not checklist APIs.
+// Source: codex-rs/core/src/context/update_plan_instructions.rs:4:62
+// without_update_plan_instructions in the read-only Codex source.
+func rewriteStockPlanInstructions(input string) string {
+	lines := strings.SplitAfter(input, "\n")
+	var rendered strings.Builder
+	for index := 0; index < len(lines); {
+		line := strings.TrimRight(lines[index], "\r\n")
+		switch line {
+		case "## Planning", "## Tasks", "# Tasks", "## `update_plan`", "## Plan tool", "## Plan Mode vs update_plan tool":
+			end := index + 1
+			for end < len(lines) && !strings.HasPrefix(lines[end], "# ") && !strings.HasPrefix(lines[end], "## ") &&
+				strings.TrimSpace(lines[end]) != mekugiInstructionsStartMarker && strings.TrimSpace(lines[end]) != mekugiInstructionsEndMarker {
+				end++
+			}
+			section := strings.Join(lines[index:end], "")
+			checklist := strings.Contains(section, "A tool named `update_plan` is available to you.") ||
+				strings.Contains(section, "When using the planning tool:\n- Skip using the planning tool for straightforward tasks (roughly the easiest 25%).\n- Do not make single-step plans.\n- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan.") ||
+				strings.Contains(section, "Separately, `update_plan` is a checklist/progress/TODOs tool; it does not enter or exit Plan Mode.") ||
+				strings.Contains(section, "You have access to an `update_plan` tool") ||
+				strings.Contains(section, "When `update_plan` is available, follow this section")
+			if checklist {
+				index = end
+				continue
+			}
+		}
+		if line == "Progress visibility:" && index+1 < len(lines) && strings.HasPrefix(lines[index+1], "If update_plan is available") {
+			index += 2
+			if index < len(lines) && strings.TrimSpace(lines[index]) == "" {
+				index++
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "- Use the plan tool ") || strings.HasPrefix(line, "- If you create a checklist or task list,") {
+			index++
+			for index < len(lines) && (strings.HasPrefix(lines[index], " ") || strings.HasPrefix(lines[index], "\t")) {
+				index++
+			}
+			continue
+		}
+		rendered.WriteString(lines[index])
+		index++
+	}
+	return rendered.String()
 }

@@ -545,7 +545,7 @@ func TestMekugiPrepareRequestExposesEditToolsAndShell(t *testing.T) {
 	if err := json.Unmarshal(request.fields["tools"], &topTools); err != nil {
 		t.Fatal(err)
 	}
-	if len(topTools) != 4 || jsonString(topTools[0], "name") != "lookup" || jsonString(topTools[1], "name") != mekugiToolName || jsonString(topTools[2], "name") != mekugiRecoveryToolName || jsonString(topTools[3], "name") != "shell" {
+	if len(topTools) != 5 || jsonString(topTools[4], "name") != journalToolName || jsonString(topTools[0], "name") != "lookup" || jsonString(topTools[1], "name") != mekugiToolName || jsonString(topTools[2], "name") != mekugiRecoveryToolName || jsonString(topTools[3], "name") != "shell" {
 		t.Fatalf("top-level tools = %#v", topTools)
 	}
 	if jsonString(topTools[1], "type") != "custom" {
@@ -1825,7 +1825,7 @@ func TestDirectBashExecCommand(t *testing.T) {
 		{name: "quoted hrun", arguments: []string{"bash", "'hrun' --max-tokens 100 -- echo done\n"}},
 		{name: "private", arguments: []string{"bash", "hcat file.txt\n"}},
 		{name: "builtin", arguments: []string{"bash", "printf ok\n"}},
-		{name: "commentary", arguments: []string{"bash", "commentary Running check\n"}},
+		{name: "journal", arguments: []string{"bash", "journal add 'Running check'\n"}},
 		{name: "dynamic command", arguments: []string{"bash", "$command ok\n"}},
 		{name: "command substitution", arguments: []string{"bash", "rtk \"$(hcat file.txt)\"\n"}},
 		{name: "process substitution", arguments: []string{"bash", "rtk <(hcat file.txt)\n"}},

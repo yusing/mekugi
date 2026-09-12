@@ -8,11 +8,11 @@ for request model `gpt-6-astra` or IDs beginning `gpt-6-astra-`, and from
 `editing-workflow-default.md` for every other or missing model ID. Selection happens on each
 eligible request, including model switches and inherited marked prompts, independently of
 native versus CTP/2 transport. Only the selected workflow is injected; shared tool syntax,
-atomicity, recovery, and commentary-routing rules are unchanged. Both workflow files cover file
+atomicity, recovery, and journal-routing rules are unchanged. Both workflow files cover file
 editing, shell submission, edit planning, target reuse, and target acquisition. Astra keeps
 concise execution guidance; the default workflow supplies the multiline-shell and
-background-job examples, progress usage guidance, and detailed range-endpoint checks.
-Commentary routing is defined once in the shared source.
+background-job examples, journal usage guidance, and detailed range-endpoint checks.
+Journal routing is defined once in the shared source.
 Model-specific phrasing does not alter the shared reference contracts. Guidance includes effective
 use of tool capabilities: batching related edits against immutable baselines, reusing verified
 targets, selecting suitable mutation forms, and leaving formatting to the engine. It does not
@@ -34,11 +34,21 @@ immediately after the heading and blank separator with central guidance, and rem
 exec-command line. The active Astra prompt may instead have no legacy exec-command line and one
 pinned transport-independent shell-safety line after the search line; that safety line is preserved.
 The search and execution anchors must be unique, and an old file-editing section must be absent.
-For stock, marked, and configured custom prompts, the router also rewrites pinned conflicting
-progress-channel, initial-update, skill-announcement, approval-rejection delivery, 60-second commentary/wait, Code Mode batching,
-unrestricted parallelization, Plan mode's repeated-question prompts, and Default mode's `request_user_input` prompts when that request's tool contract makes it Plan-only outside the owned section. Progress uses supported
-tool commentary, known reads and searches batch in a shell script, and parallelism respects tool
-contracts with hpatch running alone. Plan mode asks only the questions needed for a decision-complete plan, while Default mode does not call `request_user_input` when the request's tool description restricts it to Plan mode; Default-enabled host guidance is preserved. The rewrite applies to every developer-message instruction, including collaboration-mode instructions delivered separately from the main model instructions. Unrelated instructions, including authorization, validation,
+For stock, marked, and configured custom prompts, the router removes recognized checklist-tool
+sections and list items before refreshing guidance, independently of Codex's launch-time filtering.
+This includes stock Planning/Tasks sections identified by their `update_plan` introduction, explicit
+plan-tool sections, and checklist progress instructions. Ordinary planning, edit planning, and
+unrelated custom instructions remain intact. The router also rewrites pinned conflicting
+progress-channel, initial-update, skill-announcement, approval-rejection delivery, 60-second wait,
+Code Mode batching, unrestricted parallelization, Plan mode's repeated-question prompts, and
+Default mode's `request_user_input` prompts when that request's tool contract makes it Plan-only
+outside the owned section. Progress uses journal mutations. Known reads and searches batch in a
+shell script, and parallelism respects tool contracts with hpatch running alone.
+Plan mode asks only the questions needed for a decision-complete plan, while Default mode does
+not call `request_user_input` when the request's tool description restricts it to Plan mode;
+Default-enabled host guidance is preserved. The rewrite applies to every developer-message
+instruction, including collaboration-mode instructions delivered separately from the main model
+instructions. Unrelated instructions, including authorization, validation,
 and shell-safety rules, are preserved. These rewrites cover the GPT-6 Astra and shared GPT-5.6
 Sol/Terra/Luna templates and the active Codex prompt, including its “To reduce round trips”
 batching prefix and line-wrapped status-reply instruction. At startup,
@@ -104,10 +114,10 @@ The shared guidance must make these choices directly available in native and CTP
    potentially live sessions; neither failure nor an unknown outcome authorizes
    automatic replay.
 
-Shared commentary guidance includes the actual Bash/POSIX `commentary 'text'` command
-and Code Mode `await commentary("text")` form, alongside the optional field for eligible
-structured tools, and distinguishes these paths from other interpreters. The default
-workflow supplies usage examples; Astra points to the shared syntax without that tutorial.
+Shared journal guidance includes the actual Bash/POSIX `journal add 'text'` command
+and Code Mode `await journal({op: "add", text: "text"})` form, alongside the optional field for eligible
+structured tools, and distinguishes these paths from other interpreters. Both workflows receive the shared journal syntax. The default workflow supplies the longer
+shell-execution tutorial; Astra points to the shared reference.
 
 The shared source supplies complete call syntax because it is injected into other workspaces;
 it must not require the model to open this repository's specifications. Those specifications
@@ -135,6 +145,6 @@ Acceptance:
    It does not direct non-target or mixed failures to re-emit the complete script.
 7. A routed success can be followed by another hpatch call using an exact row from its report
    without an intervening hcat; a saved pre-edit row still rejects as stale.
-8. Both rendered model workflows include the shared commentary, framing, boundary, recovery,
+8. Both rendered model workflows include the shared journal, framing, boundary, recovery,
    continuation, lifetime, and reader contracts exactly once. Superseded requirements for
    verified-only semantic queries or full-script recovery are absent.

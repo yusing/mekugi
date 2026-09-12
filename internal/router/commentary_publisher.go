@@ -19,7 +19,7 @@ import (
 
 const (
 	commentaryPublisherPath       = "/internal/commentary"
-	commentaryOnceArgument        = "--commentary-once"
+	commentaryOnceArgument        = "--journal-once"
 	maxThreadCommentaryIDs        = 16384
 	maxCommentaryRoutes           = 256
 	maxCommentaryEvents           = 1024
@@ -39,15 +39,16 @@ type publishedCommentary struct {
 }
 
 type commentaryRoute struct {
-	originThread string
-	author       string
-	threadID     string
-	sessionID    string
-	callID       string
-	expires      time.Time
-	nextID       uint64
-	events       []publishedCommentary
-	complete     bool
+	journalQuestion string
+	originThread    string
+	author          string
+	threadID        string
+	sessionID       string
+	callID          string
+	expires         time.Time
+	nextID          uint64
+	events          []publishedCommentary
+	complete        bool
 }
 
 // Replay provenance has its own non-evicting budget. A thread can outlive its
@@ -61,14 +62,15 @@ type threadCommentaryProvenance struct {
 }
 
 type commentaryBroker struct {
-	debug         *debugOutput
-	activity      *subagentActivity
-	threads       map[string]*threadCommentaryProvenance
-	threadIDCount int
-	mu            sync.Mutex
-	routes        map[string]*commentaryRoute
-	eventCount    int
-	closed        bool
+	journalPublisher func(context.Context, string, string, string, []journalMutation) ([]string, error)
+	debug            *debugOutput
+	activity         *subagentActivity
+	threads          map[string]*threadCommentaryProvenance
+	threadIDCount    int
+	mu               sync.Mutex
+	routes           map[string]*commentaryRoute
+	eventCount       int
+	closed           bool
 }
 
 func newCommentaryBroker() *commentaryBroker {
@@ -283,10 +285,11 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		http.Error(writer, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	request.Body = http.MaxBytesReader(writer, request.Body, maxCommentaryPublicationBytes)
+	request.Body = http.MaxBytesReader(writer, request.Body, maxJournalFlushBytes*6)
 	var publication struct {
-		Text     string `json:"text,omitempty"`
-		Complete bool   `json:"complete,omitempty"`
+		Journal  json.RawMessage `json:"journal"`
+		ID       string          `json:"id"`
+		Complete bool            `json:"complete"`
 	}
 	decoder := json.NewDecoder(request.Body)
 	decoder.DisallowUnknownFields()
@@ -294,11 +297,51 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		http.Error(writer, "invalid commentary publication", http.StatusBadRequest)
 		return
 	}
-	if !b.publish(token, publication.Text, publication.Complete) {
+	if len(publication.Journal) == 0 && publication.Complete {
+		if !b.publish(token, "", true) {
+			http.Error(writer, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		writer.WriteHeader(http.StatusNoContent)
+		return
+	}
+	b.mu.Lock()
+	b.cleanupExpiredLocked(time.Now())
+	route := b.routes[token]
+	var session, thread, question, callID string
+	if route != nil {
+		question, callID = route.journalQuestion, route.callID
+		session, thread = route.sessionID, route.originThread
+		route.expires = time.Now().Add(commentaryRouteTTL)
+	}
+	b.mu.Unlock()
+	if route == nil {
 		http.Error(writer, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	writer.WriteHeader(http.StatusNoContent)
+	raw := bytes.TrimSpace(publication.Journal)
+	if len(raw) != 0 && raw[0] == '{' {
+		raw = append(append([]byte{'['}, raw...), ']')
+	}
+	mutations, err := decodeJournalMutations(raw)
+	if err != nil || publication.ID == "" || b.journalPublisher == nil {
+		http.Error(writer, "invalid journal publication", http.StatusBadRequest)
+		return
+	}
+	ids, err := b.journalPublisher(request.Context(), session, thread, publication.ID, bindJournalAnswers(mutations, question))
+	if err != nil {
+		http.Error(writer, "journal mutation rejected", http.StatusBadRequest)
+		return
+	}
+	source := "code_mode"
+	if callID == "" {
+		source = "shell"
+	}
+	trace := featureUsageTrace{debug: b.debug, threadID: thread}
+	trace.record("journal", source, "mutation", "accepted", callID, "")
+
+	writer.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(writer).Encode(map[string]any{"ok": true, "items": ids})
 }
 
 func commentaryPublisherURL(listenAddress string) (string, error) {
@@ -358,10 +401,11 @@ type shellCommentarySink interface {
 type httpShellCommentarySink struct {
 	endpoint string
 	token    string
+	result   []byte
 	client   *http.Client
 }
 
-func publishCommentaryOnce(ctx context.Context, arguments []string) (bool, error) {
+func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []string) (bool, error) {
 	if len(arguments) != 4 || arguments[0] != commentaryOnceArgument {
 		return false, nil
 	}
@@ -370,12 +414,15 @@ func publishCommentaryOnce(ctx context.Context, arguments []string) (bool, error
 		return true, err
 	}
 	sink := &httpShellCommentarySink{endpoint: arguments[1], token: arguments[2], client: commentaryHTTPClient}
-	_ = sink.Publish(ctx, text)
-	return true, nil
+	if err := sink.Publish(ctx, text); err != nil {
+		return true, err
+	}
+	_, err = writer.Write(sink.result)
+	return true, err
 }
 
 func (s *httpShellCommentarySink) Publish(ctx context.Context, text string) error {
-	return s.send(ctx, map[string]any{"text": text})
+	return s.send(ctx, map[string]any{"journal": json.RawMessage(text), "id": rand.Text()})
 }
 
 func (s *httpShellCommentarySink) Complete(ctx context.Context) error {
@@ -398,11 +445,23 @@ func (s *httpShellCommentarySink) send(ctx context.Context, publication map[stri
 		return err
 	}
 	defer response.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
-	if response.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("commentary publisher returned %s", response.Status)
+	s.result, err = io.ReadAll(io.LimitReader(response.Body, 16<<10))
+	if err != nil {
+		return err
+	}
+	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("journal publisher returned status %d", response.StatusCode)
 	}
 	return nil
+}
+
+// Only a call-scoped capability can pin the request's user message.
+func (b *commentaryBroker) bindJournalQuestion(token, question string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if route := b.routes[token]; route != nil && route.callID != "" {
+		route.journalQuestion = question
+	}
 }
 
 func (b *commentaryBroker) bindActivity(token, thread string) {

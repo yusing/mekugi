@@ -22,9 +22,9 @@ import (
 
 func TestCodexArgsPreservesArguments(t *testing.T) {
 	forwarded := []string{"exec", "-c", "model=\"example\"", "--", "a prompt with spaces"}
-	args := codexArgs("http://127.0.0.1:12345/v1", forwarded)
+	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true)
 	index := slices.Index(forwarded, "--")
-	if !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[index+6:], forwarded[index:]) {
+	if !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[index+8:], forwarded[index:]) {
 		t.Fatalf("forwarded arguments changed: %q", args)
 	}
 	var config struct {
@@ -39,7 +39,7 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 		} `toml:"model_providers"`
 	}
 	var settings []string
-	for i := index; i < index+6; i += 2 {
+	for i := index; i < index+8; i += 2 {
 		if args[i] != "-c" {
 			t.Fatalf("not a config override: %q", args)
 		}
@@ -56,7 +56,7 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 		t.Fatalf("provider = %+v", provider)
 	}
 	withoutDelimiter := []string{"exec", "-c", `model="example"`, "prompt"}
-	if got := codexArgs("http://127.0.0.1:12345/v1", withoutDelimiter); !slices.Equal(got[:len(withoutDelimiter)], withoutDelimiter) {
+	if got := codexArgs("http://127.0.0.1:12345/v1", withoutDelimiter, true); !slices.Equal(got[:len(withoutDelimiter)], withoutDelimiter) {
 		t.Fatalf("ordinary -c or prompt moved: %q", got)
 	}
 }
@@ -67,7 +67,7 @@ func TestCodexArgsEnforcesCollaborationModeInstructions(t *testing.T) {
 		{"-c", "include_collaboration_mode_instructions=true", "exec", "--config=include_collaboration_mode_instructions=true", "prompt"},
 		{"resume", "session", "-cinclude_collaboration_mode_instructions=true", "--", "prompt"},
 	} {
-		args := codexArgs("http://127.0.0.1:12345/v1", forwarded)
+		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true)
 		end := slices.Index(args, "--")
 		if end < 0 {
 			end = len(args)
@@ -441,5 +441,16 @@ func TestWrapDebugPassesAXJournalToCodex(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(filepath.Dir(string(path)), "ax.json")); err != nil {
 		t.Fatalf("automatic report missing: %v", err)
+	}
+}
+
+func TestCodexArgsJournalPlanOverridePreservesPassthrough(t *testing.T) {
+	for _, journal := range []bool{false, true} {
+		args := codexArgs("http://127.0.0.1:12345/v1", []string{"exec", "-c", "tools.update_plan.enabled=true", "--", "prompt"}, journal)
+		end := slices.Index(args, "--")
+		disabled := slices.Contains(args[:end], "tools.update_plan.enabled=false")
+		if disabled != journal {
+			t.Fatalf("plan override for journal=%v: %q", journal, args)
+		}
 	}
 }

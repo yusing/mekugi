@@ -13,7 +13,7 @@ import (
 	"github.com/yusing/mekugi/internal/commentaryid"
 )
 
-const commentaryArgumentName = "commentary"
+const commentaryArgumentName = "journal"
 
 type commentaryTool struct {
 	qualifiedName string
@@ -54,10 +54,7 @@ func prepareCommentaryTools(fields map[string]json.RawMessage, tools *responsesT
 					return fmt.Errorf("%s parameters properties must be an object", qualifiedName)
 				}
 				if _, owned := properties[commentaryArgumentName]; !owned {
-					properties[commentaryArgumentName] = mustMarshalJSON(map[string]string{
-						"type":        "string",
-						"description": "Optional concise progress commentary shown before this operation.",
-					})
+					properties[commentaryArgumentName] = journalMutationsSchema()
 					parameters["properties"] = mustMarshalJSON(properties)
 					tool.setRawField("parameters", mustMarshalJSON(parameters))
 					catalog[key] = commentaryTool{qualifiedName: qualifiedName}
@@ -127,11 +124,20 @@ func commentaryExcluded(namespace, name string) bool {
 	if namespace == "collaboration" || namespace != "" && slices.Contains([]string{"spawn_agent", "followup_task", "send_message", "wait_agent", "interrupt_agent"}, name) {
 		return true
 	}
+	base := strings.TrimPrefix(name, "functions.")
+	if slices.Contains([]string{
+		"request_user_input", "request_user_input_async", "send_user_message_async",
+		"thread_spawn", "thread_send_input", "thread_resume", "thread_wait", "thread_interrupt",
+		"spawn_agent", "followup_task", "send_message", "wait_agent", "interrupt_agent",
+	}, base) {
+		return true
+	}
 	qualified := qualifiedToolName(namespace, name)
 	return qualified == "functions.send_user_message_async" || qualified == "send_user_message_async"
 }
 
 type structuredCommentary struct {
+	mutations         []journalMutation
 	text              string
 	originalArguments string
 	arguments         string
@@ -152,16 +158,13 @@ func extractStructuredCommentary(item map[string]json.RawMessage, catalog commen
 	}
 	result := structuredCommentary{originalArguments: original, arguments: original}
 	if raw, present := arguments[commentaryArgumentName]; present {
-		var value *string
-		if err := json.Unmarshal(raw, &value); err != nil || value == nil {
-			return structuredCommentary{}, false, fmt.Errorf("%s commentary must be a string", tool.qualifiedName)
+		mutations, err := decodeJournalMutations(raw)
+		if err != nil {
+			return structuredCommentary{}, false, fmt.Errorf("%s: %w", tool.qualifiedName, err)
 		}
+		result.mutations = mutations
 		delete(arguments, commentaryArgumentName)
 		result.arguments = string(mustMarshalJSON(arguments))
-		if strings.TrimSpace(*value) != "" {
-			result.text = *value
-			return result, true, nil
-		}
 	}
 	return result, true, nil
 }
@@ -209,44 +212,31 @@ func (t *mekugiResponseTransform) transformStructuredCommentary(item map[string]
 	}
 	callID := jsonString(item, "call_id")
 	if callID == "" {
-		return nil, errors.New("upstream emitted commentary function call without a call ID")
+		return nil, errors.New("upstream emitted journal function call without a call ID")
 	}
-	messageID := commentaryMessageID(callID)
 	if retained, exists := t.local[callID]; exists {
 		if retained.script != extracted.originalArguments || retained.carrierPayload != extracted.arguments {
-			return nil, fmt.Errorf("commentary call %q changed arguments", callID)
+			return nil, fmt.Errorf("journal call %q changed arguments", callID)
 		}
 		item["arguments"] = mustMarshalJSON(extracted.arguments)
-		return t.operationCommentaryMessage(messageID, extracted.text), nil
+		return nil, nil
 	}
-	var messageIDs []string
-	if extracted.text != "" {
-		messageIDs = []string{messageID}
+	var ids []string
+	if len(extracted.mutations) != 0 {
+		ids, err = t.proxy.journals.apply(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, callID+":journal", bindJournalAnswers(extracted.mutations, t.journalQuestion))
+		if err != nil {
+			return nil, err
+		}
+		t.featureTrace.record("journal", "tool_field", "mutation", "accepted", callID, "")
 	}
-
-	original := maps.Clone(item)
 	t.recordLocal(callID, &mekugiHistory{
-		toolName:             qualifiedToolName(jsonString(item, "namespace"), jsonString(item, "name")),
-		script:               extracted.originalArguments,
-		carrierKind:          codeModeCarrierFunction,
-		carrierName:          jsonString(item, "name"),
-		carrierPayload:       extracted.arguments,
-		upstreamItem:         original,
-		commentaryMessageIDs: messageIDs,
+		toolName: qualifiedToolName(jsonString(item, "namespace"), jsonString(item, "name")),
+		script:   extracted.originalArguments, carrierKind: codeModeCarrierFunction,
+		carrierName: jsonString(item, "name"), carrierPayload: extracted.arguments,
+		upstreamItem: maps.Clone(item), journalIDs: ids,
 	})
 	item["arguments"] = mustMarshalJSON(extracted.arguments)
-	if extracted.text != "" {
-		t.featureTrace.record("commentary", "tool_field", "authored", "observed", callID, messageID)
-	}
-	message := t.operationCommentaryMessage(messageID, extracted.text)
-	if extracted.text != "" {
-		outcome := "suppressed"
-		if message != nil {
-			outcome = "prepared"
-		}
-		t.featureTrace.record("commentary", "tool_field", "render", outcome, callID, messageID)
-	}
-	return message, nil
+	return nil, nil
 }
 
 func (p *mekugiProxy) drainCommentarySession(sessionID, threadID string) []publishedCommentary {
@@ -306,6 +296,7 @@ func (p *mekugiProxy) commentaryMessageIDs(sessionID string) map[string]struct{}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	result := make(map[string]struct{})
+	maps.Copy(result, p.memoryCommentary[sessionID])
 	if p.commentary != nil {
 		maps.Copy(result, p.commentary.threadMessageIDs(sessionID))
 	}
@@ -456,6 +447,31 @@ func (t *mekugiResponseTransform) collectProviderCommentary(message map[string]j
 // A provider's use of a reserved-looking ID is not proof of router provenance.
 func (t *mekugiResponseTransform) retainCommentary(messages ...map[string]json.RawMessage) []map[string]json.RawMessage {
 	if t.proxy.replayStore == nil {
+		t.proxy.mu.Lock()
+		defer t.proxy.mu.Unlock()
+		if t.proxy.memoryCommentary == nil {
+			t.proxy.memoryCommentary = make(map[string]map[string]struct{})
+		}
+		retained := t.proxy.memoryCommentary[t.historySessionID]
+		newIDs := make(map[string]struct{})
+		for _, message := range messages {
+			id := jsonString(message, "id")
+			if _, exists := retained[id]; id != "" && !exists {
+				newIDs[id] = struct{}{}
+			}
+		}
+		count := 0
+		for _, ids := range t.proxy.memoryCommentary {
+			count += len(ids)
+		}
+		if count+len(newIDs) > maxThreadCommentaryIDs {
+			return nil
+		}
+		if retained == nil {
+			retained = make(map[string]struct{})
+			t.proxy.memoryCommentary[t.historySessionID] = retained
+		}
+		maps.Copy(retained, newIDs)
 		return messages
 	}
 	var ids []string

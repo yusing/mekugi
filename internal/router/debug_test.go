@@ -41,7 +41,7 @@ func TestDebugSessionArtifacts(t *testing.T) {
 		t.Fatal("missing lifecycle diagnostics")
 	}
 	if !bytes.Contains(log, []byte(`"feature_usage_schema":1`)) ||
-		!bytes.Contains(log, []byte(`"feature_usage_features":["commentary"]`)) {
+		!bytes.Contains(log, []byte(`"feature_usage_features":["journal","commentary"]`)) {
 		t.Fatal("missing feature-observation coverage marker")
 	}
 	metrics, _ := os.ReadFile(paths[2])

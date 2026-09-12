@@ -90,7 +90,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	}
 	// Announce once before Codex takes over the terminal, never during its UI.
 	fmt.Fprintf(os.Stderr, "mekugi dashboard: %s/\n", strings.TrimSuffix(session.BaseURL, "/v1"))
-	cmd := exec.CommandContext(ctx, executable, codexArgs(session.BaseURL, args)...)
+	cmd := exec.CommandContext(ctx, executable, codexArgs(session.BaseURL, args, session.JournalEnabled)...)
 	cmd.Env = append(os.Environ(), "MEKUGI_BASE_URL="+session.BaseURL)
 	if session.AXReadOutput != "" {
 		cmd.Env = append(cmd.Env, capturer.AXReadOutputEnvironment+"="+session.AXReadOutput)
@@ -131,12 +131,16 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	return 0, nil
 }
 
-func codexArgs(baseURL string, args []string) []string {
+func codexArgs(baseURL string, args []string, journal bool) []string {
 	// Keep overrides in the final command's config layer: Codex subcommands
 	// can replace pre-subcommand -c settings with their own. Never cross --.
 	index := slices.Index(args, "--")
 	if index < 0 {
 		index = len(args)
+	}
+	if journal {
+		args = slices.Insert(slices.Clone(args), index, "-c", "tools.update_plan.enabled=false")
+		index += 2
 	}
 	return slices.Insert(slices.Clone(args), index,
 		"-c", `model_provider="mekugi_wrap"`,

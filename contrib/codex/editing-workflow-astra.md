@@ -8,7 +8,7 @@ Tool coordination below covers native-interface tasks.
 Group ready reads and searches in one multiline script. Use shell `&` for slower independent work
 and wait for every job, preserving failures. Keep dependent work and mutations sequential.
 Reserve explicit batches for different interpreters, options, or isolated shell state.
-The shared Shell and Commentary references define execution and progress delivery.
+The shared Shell and Journal references define execution and progress delivery.
 
 ## Edit planning
 

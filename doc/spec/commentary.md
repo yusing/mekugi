@@ -2,73 +2,21 @@
 
 ## REQ-COMMENTARY-001 — User-only operation and subagent commentary
 
-In `mekugi` router mode, every non-strict function tool in the ordinary Responses `tools` catalog
-with an object parameter schema receives one optional string property named `commentary`. A
-nonblank authored value is shown as assistant commentary immediately before the call and is removed
-before execution. An omitted or blank value produces no operation commentary. Strict tools,
-provider-owned `additional_tools`, and tools that already own a `commentary` property keep their
-schemas and arguments unchanged and receive no generic operation commentary. The opt-in [third-party subagent bridge](subagents.md) separately projects
-collaboration schemas and restores native identities before commentary handling. Collaboration tools and tools whose
-purpose is user messaging receive no generic operation commentary.
+Agent-authored progress, runtime authoring, journal CRUD, and terminal response content
+are owned by [REQ-JOURNAL-001](journal.md). This requirement owns the remaining router
+notices: observed subagent activity, start notices, received envelopes, critical errors,
+and token metrics. `phase: "commentary"` is a router delivery mechanism, not an authoring API.
 
-The central model instructions direct the agent to attach progress only through a supported tool's
-commentary field or documented runtime mechanism. The agent does not originate standalone assistant
-messages with `phase: "commentary"`; those messages are router-owned.
+Router-owned messages have exact retained IDs and are stripped from later provider input.
+Generated-looking prefixes, phase, and text alone never prove provenance. Persistence and
+capacity failures suppress auxiliary notices without evicting executable replay or recovery
+records. Required journal terminal delivery follows the stricter journal failure contract.
 
-JSON and streaming responses preserve the same ordering. The streaming path buffers an eligible
-function call until its complete arguments can be validated and stripped. The router retains the
-provider's exact original call in durable replay history, removes only its generated
-message from later input, and restores the original call before provider replay. Malformed
-router-owned commentary fails before the tool call is exposed.
-
-Code Mode may publish runtime progress with `await commentary(value)`. The JavaScript parser
-replaces only the reserved awaited call while preserving ordinary strings, comments, and unrelated
-identifiers. If the commentary parser cannot parse a Code Mode program, it leaves the program
-unchanged for the executor to validate and report errors through the normal tool result. It never
-partially rewrites a recovered parse tree or rejects the response transport for a syntax error.
-Bash and POSIX shell programs may publish expanded text through the reserved
-`commentary` command; the command writes nothing and succeeds without changing surrounding shell
-control flow, redirections, output, or exit status. Other interpreters receive no runtime
-commentary handling, and shell calls without an authored command receive no default.
-
-Runtime publications use authenticated routes on the router's existing HTTP server.
-Code Mode routes retain per-call identity. Bash and POSIX shell commentary is thread-scoped,
-not attributed to an original tool-call ID. Workers discover private connection details using
-the inherited `CODEX_THREAD_ID` and its thread-bound runtime. The shell transformation MUST NOT
-add flags or inline environment assignments to carry those details. Concurrent shell workers
-in one thread share delivery without guessing which original call produced a publication;
-one worker finishing must not retire the other workers' publisher. Distinct threads sharing a
-routing session cannot consume each other's shell publications, either on request preparation
-or at a streaming terminal.
-Ready streaming publications precede completed, failed, and incomplete terminal responses.
-Deferred shell publications appear at the next request for their originating thread, even while
-other requests share the routing session. Request-start and terminal drains atomically consume
-each publication once, including when concurrent responses belong to the same thread.
-Deferred Code Mode publications still require a non-concurrent request for the same session.
-Once a carrier has been handed off, an interrupted
-provider response or early transform release does not cancel its publisher. Code Mode routes
-prepared for carriers that were never handed off are cancelled instead. Shell thread routes
-survive individual call and response lifetimes and expire when idle or at router shutdown.
-Draining ready publications consumes each message once without retiring a still-running publisher;
-subsequent publications remain deliverable through the same route. Code Mode completion retires
-its route after queued publications are drained. Expiry releases queued events and route capacity.
-Routes, events, request bodies, and retention time are bounded. Capacity, network, publication, and
-rendering failures remain auxiliary and do not replace the tool result.
-A shell publication already claimed by a response remains renderable after its thread changes
-routing sessions; rendering validates stable thread provenance, not the current session mapping.
-Shell commentary delivery follows stable thread identity across routing-session changes. Exact
-message provenance is durably recorded before emission so inherited commentary is also removed
-after restart or a fork within the same selected workspace. Persistence failure suppresses that
-auxiliary message without replacing a tool result. A generated-looking ID without retained
-provenance is not sufficient reason to remove a message.
-Its retention is independently bounded: exhausted commentary capacity suppresses new commentary,
-never evicts executable-call replay or recovery records or prevents later tool calls.
-The live broker retains shell provenance until shutdown, including across publication-route expiry,
-for at most 256 threads and 16,384 message IDs in total. Reaching either bound leaves existing
-replay provenance intact rather than reclaiming it for new commentary.
-At a subagent stream terminal, ready shell commentary appears before substantive output inside
-the terminal response object, not as a later standalone completed assistant item that could
-replace the subagent's final answer.
+The authenticated broker, canonical ancestry collector, and thread-bound publisher discovery
+remain shared infrastructure. Journal authoring reuses them; other interpreters and passthrough
+do not gain a journal surface. Native collaboration schemas and provider-owned tool schemas
+remain outside generic journal projection, except for the separately owned opt-in
+[third-party subagent bridge](subagents.md).
 
 Collaboration calls add no router-authored request notices. Codex owns the native spawn,
 follow-up, messaging, waiting, and interruption display; schemas, executed arguments, and
@@ -121,7 +69,7 @@ MCP function names in Codex's `mcp__<server>__<tool>` form and native calls with
 namespace `mcp__<server>` display `MCP` with the `server.tool` identity and full
 arguments. MCP resource listing, template listing, and reading, clock, context,
 goal, execution-wait, web, and image-generation helpers use descriptive operation
-labels with full arguments. `update_plan` retains its existing generic display.
+labels with full arguments. `update_plan` is absent from Mekugi-mode catalogs.
 Transparent Code Mode wrappers use the same display, including bound results,
 inline awaited calls, and `generatedImage(result)` for image generation.
 Static sequential calls and literal `Promise.all`/`Promise.allSettled` batches
@@ -205,8 +153,8 @@ The display describes an observed call, not successful execution or agent comple
 JSON output, completed SSE items, and terminal output share source-identity deduplication;
 partial calls are not projected. Native child call framing and replay stay unchanged.
 
-Actual child-authored commentary is forwarded to the root through the shared activity collector,
-alongside authored tool and runtime progress. Completed assistant messages with `phase: "commentary"`
+Journals own authored progress. If the provider nevertheless emits a completed child commentary
+message, the existing activity observer may forward it to the root; this is not an authoring API. Completed assistant messages with `phase: "commentary"`
 retain their original child content and identity. Root copies carry the originating agent's
 canonical path as inline code, are deduplicated by source identity, and remain user-only. Final answers are
 not reclassified as progress.
@@ -232,18 +180,17 @@ those messages from later provider-bound input while preserving the original col
 tool outputs, and inter-agent messages. A response already accompanied by its deterministic
 commentary is not projected again.
 
-A completed root-agent or subagent final answer with provider usage includes one commentary
-message before the provider-authored final answer. It uses a `Tokens:` heading and one compact
+A completed root or child response with eligible provider usage includes one token notice
+after any main journal flush and before the child saved-summary and terminal event. It uses a `Tokens:`
+heading and one compact
 Markdown table with `Category`, `Tokens`, and `API USD` columns. Rows use full labels:
 `Input`, `Cached input`, `Uncached input`, `Output`, `Reasoning`, and `Total`.
 Counts use decimal thousands separators. Costs use four decimal places for cached input,
 uncached input, output, and total; input and reasoning have `—` cost cells because they overlap
 other rows. The total token cell is `—`. One short footer explains thread scope, overlapping
 categories, and reference API rather than subscription pricing.
-Intermediate tool-call responses, commentary-only responses,
-and failed or incomplete responses do not report tokens. A final answer uses the `final_answer`
-phase, or an unphased assistant answer for older clients, without accompanying client-dispatched
-tool calls. Completed provider-executed tools may accompany the final answer.
+Intermediate client-tool responses and failed or incomplete responses do not report tokens.
+Eligibility and the child summary are defined by [REQ-JOURNAL-001](journal.md).
 JSON and streaming responses report the same cumulative provider-authoritative input, cached-input,
 output, and reasoning totals for the originating thread. Intermediate responses contribute to
 these totals without producing notices. Root and child threads remain separate; compaction and
@@ -289,18 +236,15 @@ deduplicated by originating thread and usage-message identity. Root copies carry
 canonical path and retain that child's totals, without adding them to root usage. They follow
 the same bounded, deferred delivery and exact replay filtering as other child activity.
 
-For root and subagent streams, final-answer item events are buffered until the terminal.
-A successful completion emits usage as `response.output_item.done`, then the unchanged buffered
-answer events, then the terminal event. Eligibility comes from streamed completed items, even
-when the terminal `response.output` is empty. JSON and streaming notices require a Codex-consumable
-text answer; unsupported content such as refusal parts passes through without a token notice.
-The terminal output snapshot is not augmented with usage. Tool calls and progress commentary continue streaming normally. Missing usage, failed or
-incomplete completion, and upstream interruption flush the buffered answer without a token notice.
-Buffered answer releases retain the event type as the SSE event name and prefix every physical
-payload line with `data:`, including when EOF or a transport/transform error triggers the release.
-Buffering is capped at 64 MiB per response; exceeding that budget flushes the answer and disables
-usage commentary for that response without rejecting provider output.
-Usage commentary cannot become the terminal substantive result.
+A successful explicit journal finish emits unflushed journal revisions (including live-reported
+updates), then usage, then the child saved-summary when applicable, and the terminal event.
+It does not request a separately generated provider final answer. Provider answer events remain
+unfiltered and cannot trigger journal completion. Failed or incomplete responses release buffered
+output without terminal journal flush or usage notices.
+The streaming transport preserves named SSE framing and one data field per payload line.
+Ordinary token-usage buffering remains bounded at 64 MiB and releases provider output unchanged
+when that bound is exceeded. Token arithmetic and provider usage objects remain unchanged.
+Usage is never a child terminal's substantive result.
 
 Child operation and runtime commentary carries a ``[`/root/worker`] `` prefix from the request’s
 canonical `agent_name` when `subagent_kind` identifies a child. Root and older unnamed clients
@@ -344,8 +288,9 @@ This guarantees attributed deferred inline updates, not continuous wait-time dis
 
 The collector retains at most 256 thread identities, 16,384 source identities,
 1,024 pending events, and 64 pending events per child. Pending events expire after
-one hour. Rendered root copies share a 16 KiB budget per response, after labels
-are added. Live root-copy IDs remain bound to stable root thread identity until
+one hour. Live root copies share a 16 KiB budget per response, after labels
+are added. Journal terminal copies use the separate capacity-sized budget in
+[REQ-JOURNAL-001](journal.md); a deferred live notice does not block a terminal copy. Live root-copy IDs remain bound to stable root thread identity until
 shutdown, across session remapping and event expiry; emitted message provenance also survives
 shutdown in the workspace-scoped replay store. Capacity exhaustion never
 evicts executable-call history or existing replay provenance. Root copies are
@@ -366,33 +311,15 @@ Acceptance:
    items and terminal output do not duplicate root copies.
 5. Router-authored messages are removed from every later provider request and are not repeated when
    the matching message is already present in Codex history.
-6. A completed root-agent or subagent final answer with provider usage reports input, cached input,
-   uncached input, output, and reasoning tokens exactly once before provider-authored final-answer
-   output, using full labels in one compact table combining tokens and estimated API costs.
+6. Eligible completed root and child responses report input, cached input, uncached input,
+   output, and reasoning totals after journal flush, using one token/API-cost table.
    Costs use per-response models and context tiers, do not double-charge cached input or reasoning,
    remain cumulative across compaction, and show `n/a` for a thread containing unpriced usage.
-   Intermediate tool calls and commentary,
-   failed responses, and incomplete responses remain silent. The terminal substantive result,
-   provider usage object, and captured metrics remain unchanged.
-7. Extensible ordinary function tools accept optional authored commentary, while strict,
-   provider-owned, pre-owned-commentary, collaboration, and user-messaging schemas remain exact.
-8. JSON and streaming calls show authored commentary before the executable item, remain silent
-   without it, execute without the router-owned argument, and restore the exact provider call during replay.
-9. Code Mode transforms nested reserved awaited forms inside-out without transforming occurrences
-   in strings, template text, comments, regular expressions, properties, or unrelated identifiers.
-10. Bash and POSIX shell commentary publishes expanded text without changing stdout, stderr,
-    control flow, or exit status; absent publisher capacity leaves the command a successful no-op.
-11. Ready and deferred runtime publications retain their routing identity: thread-scoped for shell,
-    per-call for Code Mode. They remain bounded, are removed exactly on replay, and cannot replace
-    a successful or failed tool result. Identical concurrent shell calls do not require guessed
-    call attribution; completion of one does not interrupt the others' commentary.
-12. Central model instructions keep agent-authored progress on supported tool calls and reserve
-    standalone assistant commentary messages for router output.
-
-Explicit in-tool use has debug-only [feature evidence](router.md#feature-usage-debug-evidence).
-Authored fields, Code Mode lowering, runtime acceptance, and response preparation are separate
-observations. Replay provenance, generated-looking IDs, automatic notices, and enabled runtime
-descriptors alone do not establish authored use.
+   Intermediate client calls, failures, and incomplete responses do not emit token notices.
+   Child tables remain live root activity, without adding child totals to root usage; child journals wait for main completion.
+7. Journal authoring, admission, replay, runtime publishing, and terminal acceptance belong to
+   [REQ-JOURNAL-001](journal.md). Automatic notices remain distinguishable from authored journal
+   mutations in [feature evidence](router.md#feature-usage-debug-evidence).
 
 ### Critical session errors
 

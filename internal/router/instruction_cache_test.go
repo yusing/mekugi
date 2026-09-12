@@ -36,6 +36,7 @@ func TestWebSocketPrewarmInstructionDelivery(t *testing.T) {
 					t.Error(err)
 					return
 				}
+				upstream.SetReadLimit(upstreamJSONBufferBytes)
 				defer upstream.CloseNow()
 				for index, id := range ids {
 					request, err := providerSocketRead(ctx, upstream)

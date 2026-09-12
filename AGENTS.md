@@ -128,13 +128,14 @@ back here. Docs must stand on their own interface and architecture references.
 | Versioned plugin shared-core adapter and private WASM bridge | `internal/router/toolplugin/core-v1.mjs`, `internal/router/toolplugin/core-v1.d.ts`, `internal/sharedwasm` |
 | Router lifecycle, launch flags, modes, and HTTP endpoints | `internal/router/server.go`, `internal/router/flags.go` |
 | Third-party native subagent projection, Grok authentication/translation, and model-catalog metadata | `internal/router/subagent_bridge.go`, `internal/router/grok_*.go` |
-| Operation/runtime commentary and root-visible child activity | `internal/router/commentary.go`, `internal/router/commentary_publisher.go`, `internal/router/subagent_activity.go`; detailed ownership in `doc/architecture/commentary.md` |
+| Automatic router notices and root-visible child activity | `internal/router/commentary.go`, `internal/router/commentary_publisher.go`, `internal/router/subagent_activity.go`; detailed ownership in `doc/architecture/commentary.md` |
 | Per-thread token/cost reports and final-answer stream ordering | `internal/router/thread_usage.go`, `internal/router/token_cost.go`, `internal/router/final_answer_stream.go` |
 | Mentor Handoff model schedule | `internal/router/mentor_handoff.go` |
 | CTP/2 provider representation | `internal/router/ctp2.go` |
 | Codex-facing WebSocket sessions, incremental history, and steering | `internal/router/server_websocket.go` |
 | Codex authentication and upstream Responses transport | `internal/router/client.go`, `internal/router/client_websocket.go` |
 | Tool replacement, host translation, and response restoration | `internal/router/mekugi_proxy.go` |
+| Journal state, router-owned CRUD, terminal delivery, and replay | `internal/router/journal.go`, `internal/router/journal_tool.go`, `internal/router/journal_delivery.go` |
 | Bash/POSIX execution and bounded external-command output | `internal/router/shell_runner.go`, `internal/router/shell_hrun.go` |
 | AX runtime evidence and offline measurements | `capturer/ax.go`; actual private-reader dispatch in `internal/router/shell_runner.go` |
 | Offline logical session inspection | `internal/router/session_inspect.go`, dispatched by `cmd/mekugi/main.go` |
@@ -157,6 +158,9 @@ back here. Docs must stand on their own interface and architecture references.
 | Capture metrics and AX evidence | `./capturer` |
 | Portable core or `mekugi:core/v1` adapter | `./internal/router/toolplugin`, then `./...` and `bun test ./internal/router/toolplugin/tests/core.test.ts` |
 | TypeScript plugin source | `go generate ./internal/router/toolplugin`, then `bun test ./internal/router/toolplugin/tests` |
+| Router or shell-helper process entry point | `./cmd/mekugi ./cmd/shell` |
+| Native journal child-result acceptance | `-tags journal_e2e ./internal/router -run '^TestJournalNativeCodexSpawnE2E$'` (installed Codex, local mock provider) |
+| Cross-package or broad contract | `./...` |
 | Router or shell-helper process entry point | `./cmd/mekugi ./cmd/shell` |
 | Cross-package or broad contract | `./...` |
 

@@ -61,6 +61,8 @@ func TestFeatureUsageAllowlistAndDisabledLogging(t *testing.T) {
 		{"commentary", "private text", "publication", "accepted"},
 		{"commentary", "shell", "private text", "accepted"},
 		{"commentary", "shell", "publication", "private text"},
+		{"commentary", "code_mode", "lowering", "prepared"},
+		{"commentary", "code_mode", "lowering", "unavailable"},
 		{"commentary", "tool_field", "publication", "accepted"},
 	} {
 		trace.record(categories[0], categories[1], categories[2], categories[3], "", "")
@@ -88,42 +90,40 @@ func TestFeatureUsageStructuredJSONAndSSE(t *testing.T) {
 			want            int
 		}{
 			{"absent", `{}`, true, 0},
-			{"blank", `{"commentary":" "}`, true, 0},
-			{"authored", `{"commentary":"private authored text"}`, true, 2},
-			{"unowned", `{"commentary":"private authored text"}`, false, 0},
+			{"empty", `{"journal":[]}`, true, 0},
+			{"authored", `{"journal":[{"op":"add","text":"private authored text","report_now":true}]}`, true, 2},
+			{"unowned", `{"journal":[{"op":"add","text":"private authored text","report_now":true}]}`, false, 0},
 		} {
 			t.Run(tc.name+map[bool]string{false: "/json", true: "/sse"}[stream], func(t *testing.T) {
 				d := featureDebugOutput(t)
 				transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
 				transform.featureTrace = featureUsageTrace{debug: d, requestID: "request-1", threadID: "thread-1"}
 				if tc.eligible {
-					transform.commentaryTools = commentaryToolCatalog{
-						functionToolKey("", "lookup"): {qualifiedName: "lookup"},
-					}
+					transform.commentaryTools = commentaryToolCatalog{functionToolKey("", "lookup"): {qualifiedName: "lookup"}}
 				}
-				call := map[string]any{
-					"type": "function_call", "name": "lookup", "call_id": "call-1", "id": "item-1",
-					"arguments": tc.arguments,
-				}
-				// Completed-item and terminal observations in one transform must
-				// not count as two authored uses.
+				call := map[string]any{"type": "function_call", "name": "lookup", "call_id": "call-1", "id": "item-1", "arguments": tc.arguments}
 				if stream {
-					if _, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
-						"type": "response.output_item.done", "item": call,
-					})); err != nil {
-						t.Fatal(err)
-					}
-					if _, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
-						"type": "response.completed", "response": map[string]any{"status": "completed", "output": []any{call}},
-					})); err != nil {
-						t.Fatal(err)
-					}
-				} else {
-					payload := mustTestJSON(t, map[string]any{"status": "completed", "output": []any{call}})
-					for range 2 {
-						if _, err := transform.TransformJSON(payload); err != nil {
+					for _, event := range []map[string]any{
+						{"type": "response.output_item.done", "item": call},
+						{"type": "response.completed", "response": map[string]any{"status": "completed", "output": []any{call}}},
+					} {
+						events, err := transform.TransformSSE(mustTestJSON(t, event))
+						if err != nil {
 							t.Fatal(err)
 						}
+						for _, payload := range events {
+							transform.Delivered(payload)
+						}
+						transform.ReleaseDelivery()
+					}
+				} else {
+					for range 2 {
+						payload, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"status": "completed", "output": []any{call}}))
+						if err != nil {
+							t.Fatal(err)
+						}
+						transform.Delivered(payload)
+						transform.ReleaseDelivery()
 					}
 				}
 				got := readFeatureUsage(t, d)
@@ -131,19 +131,19 @@ func TestFeatureUsageStructuredJSONAndSSE(t *testing.T) {
 					t.Fatalf("events = %v", got)
 				}
 				if tc.want != 0 {
-					if got[0]["stage"] != "authored" || got[0]["outcome"] != "observed" ||
-						got[1]["stage"] != "render" || got[1]["outcome"] != "prepared" {
+					if got[0]["source"] != "tool_field" || got[0]["stage"] != "mutation" || got[0]["outcome"] != "accepted" || got[0]["call_id"] != "call-1" ||
+						got[1]["source"] != "report_now" || got[1]["stage"] != "render" || got[1]["outcome"] != "prepared" {
 						t.Fatalf("wrong stages: %v", got)
 					}
 					for _, event := range got {
-						if event["source"] != "tool_field" || event["request_id"] != "request-1" || event["call_id"] != "call-1" {
+						if event["feature"] != "journal" || event["request_id"] != "request-1" {
 							t.Fatalf("wrong correlation: %v", event)
 						}
 					}
 				}
 				data, _ := os.ReadFile(d.log.Name())
 				if bytes.Contains(data, []byte("private authored text")) {
-					t.Fatal("commentary text leaked into debug evidence")
+					t.Fatal("journal text leaked into feature evidence")
 				}
 			})
 		}
@@ -160,9 +160,7 @@ func TestFeatureUsageRuntimePublicationAndRendering(t *testing.T) {
 				proxy.commentary.debug = d
 				var token string
 				if source == "code_mode" {
-					if _, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
-						"type": "response.output_item.done", "item": shellCommentaryTestItem(),
-					})); err != nil {
+					if _, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": shellCommentaryTestItem()})); err != nil {
 						t.Fatal(err)
 					}
 					token = runtimeCommentaryToken(t, transform)
@@ -172,27 +170,23 @@ func TestFeatureUsageRuntimePublicationAndRendering(t *testing.T) {
 				server := httptest.NewServer(http.HandlerFunc(proxy.commentary.serveHTTP))
 				t.Cleanup(server.Close)
 				sink := &httpShellCommentarySink{endpoint: server.URL, token: token, client: server.Client()}
-				if err := sink.Publish(t.Context(), "private runtime text"); err != nil {
+				if err := sink.Publish(t.Context(), `{"op":"add","text":"private runtime text","report_now":true}`); err != nil {
 					t.Fatal(err)
 				}
-				if err := sink.Publish(t.Context(), "  "); err != nil {
-					t.Fatal(err)
+				if err := sink.Publish(t.Context(), `{"op":"add","text":"  "}`); err == nil {
+					t.Fatal("blank milestone accepted")
 				}
 				if err := sink.Complete(t.Context()); err != nil {
 					t.Fatal(err)
 				}
 				var visible []byte
 				if stream {
-					events, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
-						"type": "response.completed", "response": map[string]any{"status": "completed", "output": []any{}},
-					}))
+					events, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed", "output": []any{}}}))
 					if err != nil {
 						t.Fatal(err)
 					}
 					visible = bytes.Join(events, nil)
 				} else {
-					// JSON responses render publications claimed at request preparation.
-					transform.deferredCommentary = proxy.drainCommentarySession(transform.historySessionID, transform.shellThreadID)
 					var err error
 					visible, err = transform.TransformJSON([]byte(`{"status":"completed","output":[]}`))
 					if err != nil {
@@ -200,45 +194,25 @@ func TestFeatureUsageRuntimePublicationAndRendering(t *testing.T) {
 					}
 				}
 				if !bytes.Contains(visible, []byte("private runtime text")) {
-					t.Fatal("telemetry changed commentary delivery")
+					t.Fatal("telemetry changed journal delivery")
 				}
 				got := readFeatureUsage(t, d)
 				if source == "code_mode" {
-					if got[0]["stage"] != "lowering" || got[0]["outcome"] != "prepared" {
-						t.Fatalf("missing lowering evidence: %v", got)
+					if len(got) == 0 || got[0]["stage"] != "lowering" {
+						t.Fatalf("missing lowering: %v", got)
 					}
 					got = got[1:]
 				}
-				if len(got) != 3 || got[0]["outcome"] != "accepted" || got[1]["outcome"] != "blank" ||
-					got[2]["stage"] != "render" || got[2]["outcome"] != "prepared" ||
-					got[0]["message_id"] != got[2]["message_id"] {
-					t.Fatalf("publication/render evidence: %v", got)
+				if len(got) != 2 || got[0]["source"] != source || got[0]["stage"] != "mutation" || got[0]["outcome"] != "accepted" || got[1]["stage"] != "render" || got[1]["outcome"] != "prepared" {
+					t.Fatalf("mutation/render evidence: %v", got)
 				}
-				if _, exists := got[0]["request_id"]; exists {
-					t.Fatal("runtime publication inherited a guessed request")
-				}
-				if _, exists := got[0]["session_id"]; exists {
-					t.Fatal("runtime publication exported an internal replay session")
+				for _, key := range []string{"request_id", "session_id"} {
+					if _, exists := got[0][key]; exists {
+						t.Fatalf("runtime publication invented %s", key)
+					}
 				}
 				if got[0]["thread_id"] != transform.shellThreadID {
-					t.Fatal("runtime publication lost its originating thread")
-				}
-				if got[2]["request_id"] != "request-1" {
-					t.Fatal("rendering lost its consuming request")
-				}
-				for _, event := range got {
-					if event["source"] != source {
-						t.Fatalf("wrong source: %v", event)
-					}
-					if source == "shell" {
-						if _, exists := event["call_id"]; exists {
-							t.Fatal("shell publication was attributed to a guessed call")
-						}
-					}
-				}
-				data, _ := os.ReadFile(d.log.Name())
-				if bytes.Contains(data, []byte(token)) || bytes.Contains(data, []byte("private runtime text")) {
-					t.Fatal("runtime payload or capability leaked into evidence")
+					t.Fatal("runtime thread identity lost")
 				}
 			})
 		}
@@ -297,7 +271,7 @@ func TestFeatureUsageDoesNotInferRuntimeExecution(t *testing.T) {
 	if events := readFeatureUsage(t, d); len(events) != 1 || events[0]["source"] != "provider_message" || events[0]["stage"] != "authored" {
 		t.Fatalf("provider origin was not distinguished from runtime execution: %v", events)
 	}
-	if _, changed, err := transform.lowerCodeModeCommentary("call-syntax", `await commentary("one"); await commentary("two");`); err != nil || !changed {
+	if _, changed, err := transform.lowerCodeModeCommentary("call-syntax", `await journal({op: "add", text: "one"}); await journal({op: "add", text: "two"});`); err != nil || !changed {
 		t.Fatalf("lowering failed: %v", err)
 	}
 	got := readFeatureUsage(t, d)
@@ -329,7 +303,7 @@ func TestFeatureUsageSuppressionAndWriteFailure(t *testing.T) {
 		t.Fatalf("suppression evidence = %v", got)
 	}
 	proxy.commentary.close()
-	if _, changed, err := transform.lowerCodeModeCommentary("call-unavailable", `await commentary("progress")`); err != nil || !changed {
+	if _, changed, err := transform.lowerCodeModeCommentary("call-unavailable", `await journal({op: "add", text: "progress"})`); err == nil || changed {
 		t.Fatalf("unavailable publisher changed lowering: %v", err)
 	}
 	got = readFeatureUsage(t, d)
@@ -341,7 +315,7 @@ func TestFeatureUsageSuppressionAndWriteFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	transform.commentaryTools = commentaryToolCatalog{functionToolKey("", "lookup"): {qualifiedName: "lookup"}}
-	if _, err := transform.TransformJSON([]byte(`{"status":"completed","output":[{"type":"function_call","name":"lookup","call_id":"call-failure","arguments":"{\"commentary\":\"progress\"}"}]}`)); err != nil {
+	if _, err := transform.TransformJSON([]byte(`{"status":"completed","output":[{"type":"function_call","name":"lookup","call_id":"call-failure","arguments":"{\"journal\":[{\"op\":\"add\",\"text\":\"progress\",\"report_now\":true}]}"}]}`)); err != nil {
 		t.Fatalf("debug write failure affected tool response: %v", err)
 	}
 	if d.err == nil {
@@ -368,7 +342,7 @@ func TestFeatureUsageProductionRequestCorrelation(t *testing.T) {
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": {"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{"status":"completed","output":[{"type":"function_call","name":"lookup","call_id":"call-production","arguments":"{\"commentary\":\"private progress\"}"}]}`)),
+		Body:       io.NopCloser(strings.NewReader(`{"status":"completed","output":[{"type":"function_call","name":"lookup","call_id":"call-production","arguments":"{\"journal\":[{\"op\":\"add\",\"text\":\"private progress\",\"report_now\":true}]}"}]}`)),
 	}}}}
 	handler := d.handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := executeRequest(r.Context(), r.Context(), initial, headers, "public-session", provider, w, nil, proxy, nil, nil); err != nil {

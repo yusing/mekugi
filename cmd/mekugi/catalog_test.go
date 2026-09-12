@@ -122,7 +122,7 @@ func TestPrepareGrokCatalog(t *testing.T) {
 	if err != nil || json.Unmarshal(data, &recorded) != nil {
 		t.Fatalf("read command record: %v", err)
 	}
-	want := codexArgs("http://127.0.0.1:12345/v1", []string{"debug", "models", "-c", `model_catalog_json="custom.json"`})
+	want := codexArgs("http://127.0.0.1:12345/v1", []string{"debug", "models", "-c", `model_catalog_json="custom.json"`}, false)
 	if !slices.Equal(recorded.Args, want) || recorded.Cwd != cwd {
 		t.Fatalf("debug models arguments = %v, cwd %q", recorded.Args, recorded.Cwd)
 	}

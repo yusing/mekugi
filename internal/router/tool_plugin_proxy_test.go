@@ -134,7 +134,7 @@ func TestToolPluginRequestJSONAndReplay(t *testing.T) {
 	if err := json.Unmarshal(request.fields["tools"], &tools); err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 5 || jsonString(tools[4], "name") != "plugin_tool" ||
+	if len(tools) != 6 || jsonString(tools[5], "name") != journalToolName || jsonString(tools[4], "name") != "plugin_tool" ||
 		jsonString(tools[4], "description") != "fixture plugin tool" {
 		t.Fatalf("installed tools = %#v", tools)
 	}

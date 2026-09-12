@@ -185,23 +185,40 @@ func TestTokenCostReportIncludesCompactionAcrossTransports(t *testing.T) {
 					}
 					continue
 				}
+				rendered := output.String()
+				if requestStream {
+					var notices []string
+					for _, payload := range finalAnswerTestPayloads(rendered) {
+						var event map[string]json.RawMessage
+						if err := json.Unmarshal(payload, &event); err != nil {
+							t.Fatal(err)
+						}
+						if jsonString(event, "type") == "response.output_item.done" {
+							notices = append(notices, string(payload))
+						}
+					}
+					rendered = strings.Join(notices, "\n")
+				}
 				wantCost := "$2.2400"
 				if tc.serviceTier != "" {
 					wantCost = "$4.4800"
 				}
 				if tc.invalid != "" {
 					wantCost = "n/a"
-					if strings.Count(output.String(), "| n/a |") != 4 || !strings.Contains(output.String(), "Cost unavailable:") {
-						t.Fatal("inconsistent provider usage was priced", output.String())
+					if strings.Count(rendered, "| n/a |") != 4 || !strings.Contains(rendered, "Cost unavailable:") {
+						t.Fatal("inconsistent provider usage was priced", rendered)
 					}
 				}
-				for _, want := range []string{"| Input | 400,000 |", "| Total | — | " + wantCost + " |", "No files were changed."} {
-					if !strings.Contains(output.String(), want) {
-						t.Fatalf("missing %q from %s", want, output.String())
+				for _, want := range []string{"| Input | 400,000 |", "| Total | — | " + wantCost + " |"} {
+					if !strings.Contains(rendered, want) {
+						t.Fatalf("missing %q from %s", want, rendered)
 					}
 				}
-				if strings.Count(output.String(), "| Category | Tokens | API USD |") != 1 {
-					t.Fatal("cost report duplicated", output.String())
+				if !strings.Contains(output.String(), "No files were changed.") {
+					t.Fatal("provider final text was filtered")
+				}
+				if strings.Count(rendered, "| Category | Tokens | API USD |") != 1 {
+					t.Fatal("cost report duplicated", rendered)
 				}
 			}
 		})

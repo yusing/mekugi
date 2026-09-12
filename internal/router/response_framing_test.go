@@ -39,6 +39,18 @@ func TestBufferedAnswerSSEFraming(t *testing.T) {
 				switch stop {
 				case "completed", "failed":
 					terminal := finalAnswerTestTerminal(t, stop, false)
+					if stop == "completed" {
+						var completed struct {
+							Item json.RawMessage `json:"item"`
+						}
+						if err := json.Unmarshal(answer[len(answer)-1], &completed); err != nil {
+							t.Fatal(err)
+						}
+						terminal = mustTestJSON(t, map[string]any{
+							"type":     "response.completed",
+							"response": map[string]any{"id": "response", "status": stop, "output": []json.RawMessage{completed.Item}},
+						})
+					}
 					wire.WriteString("event: response." + stop + ending + "data: " + string(terminal) + ending + ending)
 					expected = append(expected, terminal)
 				case "transform_error":

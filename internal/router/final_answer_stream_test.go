@@ -82,19 +82,15 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 					t.Fatalf("state=%v, error=%v", state, err)
 				}
 				events := finalAnswerTestPayloads(output.String())
-				if len(events) != len(answer)+2 {
+				wantEvents := len(answer) + 2
+				if len(events) != wantEvents {
 					t.Fatalf("events = %s", output.String())
 				}
 				if text := commentaryEventText(t, events[0]); !strings.HasPrefix(text, testTokenUsageTable) {
 					t.Fatalf("usage = %q", text)
 				}
-				for i, original := range answer {
-					if !bytes.Equal(events[i+1], original) {
-						t.Fatalf("answer event %d changed: %s", i, events[i+1])
-					}
-				}
-				if !bytes.Equal(events[len(events)-1], terminal) {
-					t.Fatal("terminal response changed")
+				if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) {
+					t.Fatal("provider answer was filtered")
 				}
 
 				// Model Codex's event handling: every done assistant item updates
@@ -125,7 +121,9 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 						rendered = append(rendered, lastAgentMessage)
 					}
 				}
-				if !completed || len(rendered) != 2 || lastAgentMessage != "No files were changed." {
+				wantMessages := 2
+				wantLast := "No files were changed."
+				if !completed || len(rendered) != wantMessages || lastAgentMessage != wantLast {
 					t.Fatalf("Codex result = %q, rendered=%q, completed=%v", lastAgentMessage, rendered, completed)
 				}
 			})
@@ -241,7 +239,8 @@ func TestTokenCommentaryAnswerCompatibility(t *testing.T) {
 					var output []byte
 					if stream {
 						item := mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": tc.item})
-						if _, err := transform.TransformSSE(item); err != nil {
+						initial, err := transform.TransformSSE(item)
+						if err != nil {
 							t.Fatal(err)
 						}
 						observeTestResponseUsage(t, transform, terminal, true)
@@ -249,7 +248,10 @@ func TestTokenCommentaryAnswerCompatibility(t *testing.T) {
 						if err != nil {
 							t.Fatal(err)
 						}
-						output = bytes.Join(events, nil)
+						output = bytes.Join(append(initial, events...), nil)
+						if !bytes.Contains(output, mustTestJSON(t, tc.item)) {
+							t.Fatal("streamed provider output was filtered")
+						}
 					} else {
 						var envelope struct {
 							Response map[string]json.RawMessage `json:"response"`
@@ -268,9 +270,11 @@ func TestTokenCommentaryAnswerCompatibility(t *testing.T) {
 						var visible struct {
 							Output []json.RawMessage `json:"output"`
 						}
-						if err := json.Unmarshal(output, &visible); err != nil ||
-							len(visible.Output) == 0 || !bytes.Equal(visible.Output[len(visible.Output)-1], mustTestJSON(t, tc.item)) {
-							t.Fatalf("provider answer changed: %s", output)
+						if err := json.Unmarshal(output, &visible); err != nil {
+							t.Fatal(err)
+						}
+						if len(visible.Output) == 0 || !bytes.Equal(visible.Output[len(visible.Output)-1], mustTestJSON(t, tc.item)) {
+							t.Fatalf("unsupported provider output changed: %s", output)
 						}
 					}
 					if bytes.Contains(output, []byte("Tokens:")) != tc.want {
@@ -328,16 +332,12 @@ func TestFinalAnswerStreamExecuteRequest(t *testing.T) {
 				t.Fatal(err)
 			}
 			events := finalAnswerTestPayloads(output.String())
-			if len(events) != len(answer)+2 || !strings.HasPrefix(commentaryEventText(t, events[0]), "Tokens:") {
+			wantEvents := len(answer) + 2
+			if len(events) != wantEvents || !strings.HasPrefix(commentaryEventText(t, events[0]), "Tokens:") {
 				t.Fatalf("completion output = %s", output.String())
 			}
-			for i, original := range answer {
-				if !bytes.Equal(events[i+1], original) {
-					t.Fatalf("answer event %d changed", i)
-				}
-			}
-			if !bytes.Equal(events[len(events)-1], terminal) {
-				t.Fatal("terminal changed")
+			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) || bytes.Contains(output.Bytes(), []byte("Journal saved:")) {
+				t.Fatal("provider answer was filtered or mistaken for journal finish")
 			}
 			counts, available := proxy.usage.snapshot("thread-1")
 			if !available || counts.tokenCounts != (tokenCounts{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3}) {

@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -52,7 +53,7 @@ func TestDiscoverShellCommentary(t *testing.T) {
 				t.Fatalf("sink availability = %v", sink != nil)
 			}
 			if sink != nil {
-				if err := sink.Publish(t.Context(), "hello"); err != nil {
+				if err := sink.Publish(t.Context(), `{"op":"add","text":"hello"}`); err != nil {
 					t.Fatal(err)
 				}
 				if err := sink.Complete(t.Context()); err != nil {
@@ -171,11 +172,20 @@ func TestPrepareShellCommentaryRefreshAndCleanup(t *testing.T) {
 	}
 }
 
-func TestShellWorkerDiscoversThreadCommentary(t *testing.T) {
+func TestShellWorkerDiscoversThreadJournal(t *testing.T) {
 	registry, _ := newToolPluginTestRegistry(t)
 	proxy, _ := newShellStorageTestProxy(t)
 	proxy.registry = registry
+	proxy.journals = newJournalStore()
+	if err := proxy.journals.initialize(t.Context(), nil, "", "worker-thread", "/root", ""); err != nil {
+		t.Fatal(err)
+	}
+
 	proxy.commentary = newCommentaryBroker()
+	proxy.commentary.journalPublisher = func(ctx context.Context, _, thread, receipt string, mutations []journalMutation) ([]string, error) {
+		return proxy.journals.apply(ctx, nil, "", thread, receipt, mutations)
+	}
+
 	server := httptest.NewServer(http.HandlerFunc(proxy.commentary.serveHTTP))
 	defer server.Close()
 	proxy.commentaryEndpoint = server.URL
@@ -183,18 +193,17 @@ func TestShellWorkerDiscoversThreadCommentary(t *testing.T) {
 		t.Fatal(err)
 	}
 	proxy.prepareShellCommentary("worker-thread", "worker-history", "")
-	token := proxy.commentary.subscribeThread("worker-history", "worker-thread", "")
 	t.Setenv(shellruntime.RuntimeDirectoryEnvironment, proxy.shellDirectory)
 	t.Setenv(shellruntime.ThreadIDEnvironment, "worker-thread")
 	for _, value := range []string{"expanded", "I’ll remove the generated collaboration-call notices and forward the subagents’ own progress to the main conversation instead."} {
 		var stdout, stderr bytes.Buffer
-		handled, code := RunToolPluginWorker(t.Context(), registry.shellRuntime, []string{"bash", "--", value, "commentary \"$1\"; sleep 0.01; commentary \"completed $1\"; printf stdout; printf stderr >&2; exit 7"}, os.Stdin, &stdout, &stderr)
+		handled, code := RunToolPluginWorker(t.Context(), registry.shellRuntime, []string{"bash", "--", value, "journal add \"$1\"; sleep 0.01; journal add \"completed $1\"; printf stdout; printf stderr >&2; exit 7"}, os.Stdin, &stdout, &stderr)
 		if !handled || code != 7 || stdout.String() != "stdout" || stderr.String() != "stderr" {
 			t.Fatalf("worker handled=%v code=%d stdout=%q stderr=%q", handled, code, stdout.String(), stderr.String())
 		}
-		events := proxy.commentary.drain(token)
-		if len(events) != 2 || events[0].text != value || events[1].text != "completed "+value {
-			t.Fatalf("events = %+v", events)
+		items, err := proxy.journals.list(t.Context(), nil, "", "worker-thread")
+		if err != nil || len(items) < 2 || items[len(items)-2].Text != value || items[len(items)-1].Text != "completed "+value {
+			t.Fatalf("journal = %+v, error = %v", items, err)
 		}
 	}
 }

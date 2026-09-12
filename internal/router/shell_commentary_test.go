@@ -32,8 +32,8 @@ func (s *recordingCommentarySink) Complete(context.Context) error {
 }
 
 func TestShellCommentaryPublishesExpandedTextWithoutChangingEvaluation(t *testing.T) {
-	source := "commentary() { echo hijacked; return 9; }\n" +
-		"for i in 1 2; do commentary Running $i/2; false; done\n" +
+	source := "journal() { echo hijacked; return 9; }\n" +
+		"for i in 1 2; do journal add \"Running $i/2\"; false; done\n" +
 		"echo continued\n"
 	program, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(source), "")
 	if err != nil {
@@ -52,13 +52,13 @@ func TestShellCommentaryPublishesExpandedTextWithoutChangingEvaluation(t *testin
 		t.Fatal(err)
 	}
 	if output.String() != "continued\n" || len(sink.texts) != 2 ||
-		sink.texts[0] != "Running 1/2" || sink.texts[1] != "Running 2/2" {
+		sink.texts[0] != `{"op":"add","text":"Running 1/2"}` || sink.texts[1] != `{"op":"add","text":"Running 2/2"}` {
 		t.Fatalf("output = %q, commentary = %q", output.String(), sink.texts)
 	}
 }
 
-func TestShellCommentaryRemainsANoopWithoutPublisherCapacity(t *testing.T) {
-	program, err := syntax.NewParser().Parse(strings.NewReader("commentary hidden\necho continued\n"), "")
+func TestShellJournalRejectsUnavailablePublisher(t *testing.T) {
+	program, err := syntax.NewParser().Parse(strings.NewReader("journal add hidden\necho continued\n"), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestShellCommentaryRemainsANoopWithoutPublisherCapacity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := runner.Run(t.Context(), program); err != nil || output.String() != "continued\n" {
+	if err := runner.Run(t.Context(), program); err == nil || output.Len() != 0 {
 		t.Fatalf("output = %q, error %v", output.String(), err)
 	}
 }

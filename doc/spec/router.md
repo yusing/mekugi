@@ -119,7 +119,7 @@ context cancellation is not asserted to be an explicit user abort.
 `router.jsonl` MUST support `event: "feature_usage"` with `schema_version: 1`, fixed
 `feature`, `source`, `stage`, and `outcome` categories, and a UTC timestamp. The
 `router_start` event MUST advertise `feature_usage_schema: 1` and
-`feature_usage_features: ["commentary"]`. Missing coverage markers in older logs mean
+`feature_usage_features: ["journal", "commentary"]`. Missing coverage markers in older logs mean
 unobserved, not zero use. An interrupted log or a debug write failure cannot establish
 complete coverage.
 
@@ -131,32 +131,27 @@ or error may enter these records. Category combinations MUST be allowlisted by t
 debug owner. Future features extend that allowlist and the advertised coverage, not
 the raw-data surface or capture metrics.
 
-Every request emits `feature_coverage` for commentary with `state` unavailable,
+Every request emits `feature_coverage` for journals with `state` unavailable,
 incomplete, or observed, plus fixed-category observation counts. Empty counts only
 establish zero observations when the relevant response inspection completed; they
 never establish that an unobserved worker did not attempt publication. Counts describe
 branch observations, not unique messages or independent uses. Older logs without this
 marker cannot establish zero commentary output.
 
-The first instrumented feature is `commentary`:
-
-- `source: tool_field`, `stage: authored`, `outcome: observed`: a new eligible call
-  contains a valid nonblank authored commentary field. Omitted, blank, invalid, and
-  non-router-owned fields do not count. Repeated completed-item/terminal observations
-  within one response transform MUST NOT produce new authored records. Normal
-  provider-bound input replay emits no usage records. If a provider re-emits a call in
-  a later response, it is another observation of that call, not proof of another use;
-  consumers deduplicate authored observations by thread and call ID.
+The journal feature records `mutation / accepted` for batched and runtime mutations,
+`tool / mutation / prepared` for dedicated router calls, `code_mode / lowering / prepared`
+for runtime wiring, and separate `report_now` and `terminal_flush` rendering events.
+Journal-only `code_mode / lowering` records one observation per carrier, not per expression:
+`prepared` means a publisher route was created; `unavailable` means it could not be created
+and lowering rejects. Neither outcome proves expression execution.
+Only successful store admission counts as an accepted mutation. Prepared rendering does not
+prove display. Existing `commentary` categories remain for automatic notice infrastructure:
 
 - `source: provider_message`, `stage: authored`, `outcome: observed`: a completed
   assistant commentary message was observed at the provider boundary. A generated-looking
   message ID does not change its provenance. Consumers deduplicate by thread/message ID.
 - `source: router_activity`, `stage: render`, `outcome: prepared`: the router constructed
   a root activity copy. This is not authored in-tool commentary or proof of UI delivery.
-- `source: code_mode`, `stage: lowering`: a new carrier contains a recognized reserved
-  awaited commentary call. `prepared` means a publisher route was created;
-  `unavailable` means lowering used the existing no-op fallback. This records one
-  observation per carrier, not per expression, and does not prove expression execution.
 - `source: shell` or `code_mode`, `stage: publication`: an authenticated nonempty
   runtime submission reached the broker. Outcomes are `accepted`, `blank` (whitespace),
   `oversized` (rendered size), or `capacity`. Empty completion signals are excluded.

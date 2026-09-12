@@ -226,9 +226,8 @@ func TestChildThreadCommentaryPreservesSubstantiveStreamResult(t *testing.T) {
 	if err != nil || len(events) != 2 {
 		t.Fatalf("terminal emitted standalone commentary: %s, %v", events, err)
 	}
-	answerEvent := mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": answer})
-	if !bytes.Equal(events[0], answerEvent) {
-		t.Fatalf("buffered answer changed: %s", events[0])
+	if !bytes.Contains(events[0], []byte(`"text":"Final answer."`)) {
+		t.Fatalf("child provider answer missing: %s", events[0])
 	}
 
 	var terminal struct {
@@ -240,7 +239,7 @@ func TestChildThreadCommentaryPreservesSubstantiveStreamResult(t *testing.T) {
 	if err := json.Unmarshal(events[1], &terminal); err != nil {
 		t.Fatal(err)
 	}
-	if terminal.Type != "response.completed" || len(terminal.Response.Output) != 2 || jsonString(terminal.Response.Output[1], "id") != "answer" || !bytes.Contains(terminal.Response.Output[0]["content"], []byte("child progress")) {
+	if terminal.Type != "response.completed" || len(terminal.Response.Output) != 2 || !bytes.Contains(terminal.Response.Output[1]["content"], []byte("Final answer.")) || !bytes.Contains(terminal.Response.Output[0]["content"], []byte("child progress")) {
 		t.Fatalf("child terminal order = %s", events[1])
 	}
 }

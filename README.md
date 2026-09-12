@@ -21,22 +21,29 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
 - **See subagent progress and replies inline.**
   - A start notice shows each subagent's observed model and reasoning effort once its
     first request reaches the router. Other lifecycle actions add no extra notices.
-  - Subagents' own commentary appears in the main conversation with their agent paths.
+  - Subagents' live journal notices appear immediately. Journals flush when main completes: subagents in agent-path order, then main.
   - Received messages and final answers identify both parties and show plaintext
     replies in full when they fit the display budget. Encrypted collaboration messages are not exposed.
 - **Follow work as it runs.**
-  - Supported tool calls can carry an authored description before execution; calls without one stay quiet.
-  - Scripts can publish progress such as “Running item 3/10” without mixing
-    updates into command output.
-  - Child commentary, tool, and script updates carry the agent's path when Codex supplies
-    its identity, so concurrent agents' updates are distinguishable.
+  - Agents keep an addressable milestone journal instead of a Tasks list. They can add,
+    revise, delete, or inspect entries, including a known parent's or child's journal.
+  - `report_now` shows a labelled **Journal update** immediately, distinct from stock
+    commentary and reasoning summaries. On a successful journal finish, **Journal flush** shows
+    every new or revised entry, including live updates. Only revisions already flushed are
+    skipped. Journals replace the separate final-answer essay. Agents finish with a direct
+    journal finish call, which completes the turn without an extra model request.
+  - Answer entries show the original question and a labelled answer. Multiline lists and
+    code blocks stay grouped with their journal entry.
+  - Scripts can record milestones without mixing them into command output. Child updates
+    carry the agent's path when Codex supplies its identity.
   - When Codex supplies parent-thread metadata, child activity also appears inline
     in the stock root TUI. Updates are offered at response-event boundaries;
     activity after a response closes waits for the next root response and is
     labelled as activity since the last update. This is not a continuous live
     feed during native waits, and requires no Codex panel or client patch.
 - **See token usage for the main agent and subagents.**
-  - Final answers with provider usage show one compact token and estimated API-cost table,
+  - Completed responses with provider usage show one compact token and estimated API-cost table
+    after the journal flush,
     accumulated for that agent's thread during the router's lifetime, including across compaction.
     Input, cached input, uncached input, output, and reasoning are shown separately.
     Costs use built-in reference list API prices, not subscription rates, and show
@@ -49,7 +56,7 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
     separately from the main agent's totals. As with other child activity, delivery
     waits for the next main-agent response boundary when the conversation is idle.
   - Router notices are removed from later model requests, so the display does
-    not add repeated context. See [inline commentary](doc/spec/commentary.md).
+    not add repeated context. See [journals](doc/spec/journal.md) and [router notices](doc/spec/commentary.md).
 - **Inspect a session in your browser.**
   - Each launch has its own dashboard with request metrics, provider token
     usage, compression measurements, and cache diagnostics.
@@ -387,10 +394,17 @@ Commands sharing an interpreter and execution options normally belong in one mul
 script, without a batch header. Independent background jobs can use shell `&` and `wait`;
 wait for every job and preserve failures. Short reads generally do not need background jobs.
 
-Bash and POSIX scripts can include `commentary 'Checked the inputs; processing the remaining items.'`
-to publish progress without mixing it into command output. Code Mode supports
-`await commentary("Checked the inputs; processing the remaining items.");`. Other interpreters
-do not support the shell commentary command.
+Bash and POSIX scripts can record milestones with
+`journal add 'Checked the inputs; processing the remaining items.' --report-now`.
+Code Mode supports `await journal({op: "add", text: "Checked the inputs", report_now: true});`.
+Omit `--report-now` or `report_now` to record silently for the terminal flush. Immediate
+updates also remain eligible for that flush. Other
+interpreters do not support the shell journal command. Use `functions.journal` to list,
+add, edit, or delete entries directly.
+
+Answer entries use `answer: true` in a structured journal call or Code Mode, with only the
+answer in `text`. Mekugi attaches the latest user message automatically. Edits preserve that
+question unless marked as a new answer or cleared with `answer: false`.
 
 When programs need separate interpreters, execution options, or isolated shell state,
 Code Mode can run an explicit sequential batch:
@@ -585,25 +599,22 @@ directory. After Codex exits, it prints absolute paths to stderr for:
   Missing, ambiguous, or incomplete rollout evidence is labeled rather than guessed.
   Existing defect assessments can be added later with `inspect-session --defects`.
 
-To check whether agents used in-tool commentary, query the printed router log path:
+To check journal use, query the printed router log path:
 
 ```sh
-jq -c 'select(.event == "feature_usage" and .feature == "commentary") |
+jq -c 'select(.event == "feature_usage" and .feature == "journal") |
   {timestamp, source, stage, outcome, thread_id, request_id, call_id, message_id}' /path/to/router.jsonl
 ```
 
-`tool_field / authored / observed` confirms a nonblank eligible commentary argument.
-`code_mode / lowering / prepared` confirms a recognized awaited call was wired to a
-publisher, not that it ran. `shell` or `code_mode / publication / accepted` confirms
-runtime progress reached the broker. Publication outcomes also distinguish blank text,
-oversized text, and capacity limits. `render / prepared` means a message was prepared
-for a response, not proof of client display. Automatic router notices are excluded.
-Shell commands that cannot reach a publisher remain unobserved.
+`tool_field / mutation / accepted` confirms an applied batched mutation.
+`code_mode / lowering / prepared` confirms that a reserved call was wired to a publisher,
+not that it ran. `shell` or `code_mode / mutation / accepted` confirms runtime acceptance.
+`report_now` and `terminal_flush` rendering are separate from authored mutations.
+Prepared rendering is not proof of client display.
 
-Count a single stage, not all events together. Deduplicate authored observations by
-thread and call ID, and rendering by `message_id`. Runtime publications have no original
-request or public session ID; shell publications also have no call ID. Join accepted
-publications to rendering by `message_id` for request/session correlation. The startup record
+Count a single stage rather than all events together. Deduplicate tool mutations by
+thread and call ID, and rendering by `message_id`. Runtime publications are thread-scoped;
+shell publications have no original call ID. The startup record
 advertises the feature schema and instrumented features. Older logs without that marker,
 interrupted logs, and logs with write failures cannot establish zero use. These events
 are debug-only; they do not appear in capture or metrics exports. See the

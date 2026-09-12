@@ -648,6 +648,7 @@ func consumeOptionalUTF8BOM(reader *bufio.Reader) error {
 }
 
 func writeSSEEvent(writer io.Writer, lines []string, separator string, transformer responseTransformer, observeUsage func(tokenCounts)) (responseTerminalState, error) {
+	defer releaseResponseDelivery(transformer)
 	if len(lines) == 0 {
 		if separator != "" {
 			if _, err := io.WriteString(writer, separator); err != nil {
@@ -713,6 +714,9 @@ func writeSSEEvent(writer io.Writer, lines []string, separator string, transform
 		if err := http.NewResponseController(responseWriter).Flush(); err != nil {
 			return terminalState, fmt.Errorf("%w: %w", errResponseWrite, err)
 		}
+	}
+	for _, payload := range visible {
+		confirmResponseDelivery(transformer, payload)
 	}
 	return terminalState, nil
 }

@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// Codex records even commentary as last_agent_message. Hold only answer events
-// so terminal usage can be emitted first, leaving the provider's answer last.
+// Hold provider answer events until token-usage ordering is known. Every buffered
+// provider event is released unchanged, including on failure or buffer exhaustion.
 type finalAnswerStream struct {
 	events      [][]byte
 	itemIDs     map[string]bool
@@ -36,7 +36,6 @@ func (s *finalAnswerStream) observe(payload []byte) ([][]byte, bool) {
 		return nil, false
 	}
 	if event.Type == "error" {
-
 		s.disabled = true
 		return append(s.flush(), payload), true
 	}

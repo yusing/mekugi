@@ -18,6 +18,7 @@ const codexTurnMetadataHeader = "x-codex-turn-metadata"
 type codexTurnMetadata struct {
 	activityIdentityInvalid bool
 	ThreadID                string                     `json:"thread_id"`
+	ForkedFromThreadID      string                     `json:"forked_from_thread_id"`
 	ParentThreadID          string                     `json:"parent_thread_id"`
 	AgentName               string                     `json:"agent_name"`
 	RequestKind             string                     `json:"request_kind"`

@@ -50,6 +50,7 @@ type replayHistory struct {
 	CarrierKind          codeModeCarrierKind
 	CarrierPayload       string
 	Report               string
+	JournalIDs           []string
 	OutputWarning        string
 	TranslationError     string
 	EvaluatorRejected    bool
@@ -79,6 +80,7 @@ func durableHistory(h mekugiHistory) replayHistory {
 		CarrierKind:          h.carrierKind,
 		CarrierPayload:       h.carrierPayload,
 		Report:               h.report,
+		JournalIDs:           h.journalIDs,
 		OutputWarning:        h.outputWarning,
 		TranslationError:     h.translationError,
 		EvaluatorRejected:    h.evaluatorRejected,
@@ -108,6 +110,7 @@ func (h replayHistory) history() mekugiHistory {
 		carrierKind:          h.CarrierKind,
 		carrierPayload:       h.CarrierPayload,
 		report:               h.Report,
+		journalIDs:           h.JournalIDs,
 		outputWarning:        h.OutputWarning,
 		translationError:     h.TranslationError,
 		evaluatorRejected:    h.EvaluatorRejected,
