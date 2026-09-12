@@ -81,6 +81,9 @@ func openDebugOutput(flags routerFlags) (*debugOutput, error) {
 		"event": "router_start", "feature_usage_schema": 1,
 		"feature_usage_features": []string{"journal", "commentary"},
 	})
+	if d.err != nil {
+		return nil, fmt.Errorf("initialize debug artifacts in %s: %w", directory, d.close())
+	}
 
 	return d, nil
 }

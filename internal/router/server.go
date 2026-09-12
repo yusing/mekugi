@@ -715,7 +715,10 @@ func executeRequest(
 	response, err := provider.forwardExecution(ctx, executionCtx, forwardBody, headers, cacheKey)
 	// Definite HTTP rejections did not admit inference. Transport failures and
 	// accepted requests may have consumed tokens even without a usable terminal.
-	_, rejectedUpgrade := errors.AsType[*webSocketStatusError](err)
+	rejection, rejectedUpgrade := errors.AsType[*webSocketStatusError](err)
+	if rejectedUpgrade {
+		finalization.upstreamStatusCode = rejection.status
+	}
 	if !rejectedUpgrade && (response == nil || response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices) {
 		defer usageTracker.finish()
 	}

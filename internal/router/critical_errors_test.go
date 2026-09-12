@@ -274,6 +274,9 @@ func TestForwardFailureDiagnostics(t *testing.T) {
 		err  error
 		code string
 	}{
+		{"handshake401", &webSocketStatusError{status: 401, body: []byte("private")}, "upstream_websocket_http_401"},
+		{"handshake403", &webSocketStatusError{status: 403, body: []byte("private")}, "upstream_websocket_http_403"},
+		{"handshake429", &webSocketStatusError{status: 429, body: []byte("private")}, "upstream_websocket_http_429"},
 		{"eof", fmt.Errorf("private URL: %w", io.EOF), "upstream_eof"},
 		{"unexpected eof", io.ErrUnexpectedEOF, "upstream_unexpected_eof"},
 		{"reset", &net.OpError{Op: "read", Err: syscall.ECONNRESET}, "upstream_connection_reset"},
@@ -323,8 +326,72 @@ func TestForwardFailureDiagnostics(t *testing.T) {
 				t.Fatalf("missing reference: %v", record)
 			}
 			notices := strings.Join(issues.Pending(), "\n")
+			if rejection, ok := errors.AsType[*webSocketStatusError](test.err); ok {
+				if record["upstream_status"] != float64(rejection.status) {
+					t.Fatalf("handshake status lost: %v", record)
+				}
+				guidance := "credentials"
+				if rejection.status == 429 {
+					guidance = "Wait before retrying"
+				}
+				if !strings.Contains(notices, guidance) {
+					t.Fatalf("missing handshake guidance: %s", notices)
+				}
+			}
 			if !strings.Contains(notices, reference) {
 				t.Fatalf("notice/reference mismatch: %s", notices)
+			}
+			if strings.Contains(string(data)+notices, "private") {
+				t.Fatal("diagnostic leaked external error text")
+			}
+		})
+	}
+}
+
+func TestCriticalSynthesizedDiagnosticCodes(t *testing.T) {
+	for _, test := range []struct {
+		body   string
+		output io.Writer
+		code   string
+	}{
+		{`{"status":"in_progress","output":[]}`, io.Discard, "missing_upstream_terminal:pending"},
+		{`{"status":"completed","output":[]}`, serverErrorWriter{err: errors.New("private write failure")}, "downstream_response_write"},
+		{`{"status":"failed","output":[]}`, io.Discard, "upstream_failed"},
+	} {
+		t.Run(test.code, func(t *testing.T) {
+			t.Setenv("TMPDIR", t.TempDir())
+			flags := newRouterFlags(io.Discard)
+			*flags.debug = true
+			debug, err := openDebugOutput(flags)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = debug.close() })
+			ctx := context.WithValue(t.Context(), debugContextKey{}, debug)
+			request, err := parseResponsesRequest(mustTestJSON(t, titleRequestFields()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			issues := NewCriticalErrors()
+			provider := &serverFakeProvider{results: []serverForwardResult{{response: &http.Response{
+				StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}},
+				Body: io.NopCloser(strings.NewReader(test.body)),
+			}}}}
+			_ = executeRequest(ctx, ctx, request, serverMetadataHeaders(t, "turn", nil), "diagnostic-session", provider, test.output, issues, nil, nil, nil)
+			data, err := os.ReadFile(debug.paths[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+			var record map[string]any
+			if err := json.Unmarshal([]byte(lines[len(lines)-1]), &record); err != nil {
+				t.Fatal(err)
+			}
+			notices := strings.Join(issues.Pending(), "\n")
+			reference, _ := record["diagnostic_reference"].(string)
+			if record["diagnostic_code"] != test.code || len(reference) != 12 || !strings.Contains(notices, reference) ||
+				len(issues.entries) != 1 || !strings.Contains(issues.entries[0].category, test.code) {
+				t.Fatalf("diagnostics disagree: %v, %s", record, notices)
 			}
 			if strings.Contains(string(data)+notices, "private") {
 				t.Fatal("diagnostic leaked external error text")

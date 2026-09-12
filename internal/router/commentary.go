@@ -396,19 +396,6 @@ func hasCommentaryAuthor(text, author string) bool {
 	return strings.HasPrefix(text, "["+commentaryCode(author)+"] ")
 }
 
-func (t *mekugiResponseTransform) operationCommentaryMessage(id, text string) map[string]json.RawMessage {
-	if text == "" {
-		return nil
-	}
-
-	t.proxy.activity.collect(t.threadID, id, "operation", text)
-	message := assistantCommentaryMessage(id, attributedCommentary(t.commentaryAuthor, text))
-	if len(t.retainCommentary(message)) == 0 {
-		return nil
-	}
-	return message
-}
-
 // Completed provider commentary is copied to the root without rewriting the
 // child's original message. Router-owned messages already have their own paths.
 func (t *mekugiResponseTransform) collectProviderCommentary(message map[string]json.RawMessage) {
