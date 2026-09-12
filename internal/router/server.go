@@ -809,6 +809,8 @@ func executeRequest(
 		defer cancel()
 		finalization.observation.outcome = requestOutcomeCompleted
 		finalization.failurePhase = ""
+		// Account for this completed response before preparing its successor.
+		recordHandoff(true)
 		// Record missing usage before the continuation can publish cumulative totals.
 		usageTracker.finish()
 		return executeRequest(start, nextCtx, next, headers, sessionID, provider, output, issues, mekugiCalls, compactTokens, mentor)
@@ -864,6 +866,8 @@ func executeRequest(
 		defer cancel()
 		finalization.observation.outcome = requestOutcomeCompleted
 		finalization.failurePhase = ""
+		// Account for this completed response before preparing its successor.
+		recordHandoff(true)
 		// Record missing usage before the continuation can publish cumulative totals.
 		usageTracker.finish()
 		return executeRequest(start, nextCtx, next, headers, sessionID, provider, output, issues, mekugiCalls, compactTokens, mentor)

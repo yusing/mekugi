@@ -595,3 +595,114 @@ func TestExecuteRequestMentorCommentaryDeliveredOnceAndStrippedOnReplay(t *testi
 		})
 	}
 }
+
+func TestExecuteRequestMentorJournalContinuationAccounting(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		for _, bound := range []string{"tokens", "messages", "tools"} {
+			t.Run(fmt.Sprintf("stream=%t/%s", stream, bound), func(t *testing.T) {
+				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				mentor := newMentorHandoff(true, true)
+				headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
+				threadID := codexThreadID(headers)
+				provider := &serverFakeProvider{}
+				count := 2
+				if bound == "tools" {
+					count = 5
+				}
+				for index := range count {
+					call := map[string]any{"type": "function_call", "id": fmt.Sprintf("item-%d", index), "call_id": fmt.Sprintf("call-%d", index), "name": "journal", "arguments": `{"op":"list"}`, "status": "completed"}
+					if index == count-1 {
+						call["arguments"] = `{"op":"finish"}`
+					}
+					items := []any{call}
+					if bound == "messages" && index == 0 {
+						for message := range 2 {
+							items = append(items, map[string]any{"type": "message", "id": fmt.Sprintf("message-%d", message), "role": "assistant", "phase": "commentary", "content": []any{map[string]any{"type": "output_text", "text": "Progress"}}})
+						}
+					}
+					tokens := uint64(100 + index)
+					if bound == "tokens" && index == 0 {
+						tokens = mentorInputTokenLimit
+					}
+					body := mustTestJSON(t, map[string]any{"id": fmt.Sprintf("response-%d", index), "status": "completed", "output": items, "usage": map[string]any{"input_tokens": tokens}})
+					response := serverHTTPResponse(string(body))
+					if stream {
+						var events [][]byte
+						for _, item := range items {
+							events = append(events, mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": item}))
+						}
+						events = append(events, mustTestJSON(t, map[string]any{"type": "response.completed", "response": json.RawMessage(body)}))
+						response = serverHTTPResponse(finalAnswerTestWire(events))
+						response.Header.Set("Content-Type", "text/event-stream")
+					}
+					provider.results = append(provider.results, serverForwardResult{response: response})
+				}
+				request := serverRequest(t, func(fields map[string]any) {
+					fields["model"] = "gpt-5.6-luna"
+					fields["stream"] = stream
+				})
+				if err := executeRequest(t.Context(), t.Context(), request, headers, "session", provider, io.Discard, nil, proxy, nil, mentor); err != nil {
+					t.Fatal(err)
+				}
+				if len(provider.forwarded) != count {
+					t.Fatalf("requests = %d, want %d", len(provider.forwarded), count)
+				}
+				for index, body := range provider.forwarded {
+					request, err := parseResponsesRequest(body)
+					if err != nil {
+						t.Fatal(err)
+					}
+					want := "gpt-6-astra"
+					if index == count-1 {
+						want = "gpt-5.6-luna"
+					}
+					if request.model() != want {
+						t.Errorf("request %d model = %q, want %q", index, request.model(), want)
+					}
+				}
+				state := mentor.sessions[threadID]
+				wantTools, wantMessages, wantUsage := uint64(1), uint64(0), mentorInputTokenLimit
+				if bound == "messages" {
+					wantMessages, wantUsage = 2, 100
+				}
+				if bound == "tools" {
+					wantTools, wantUsage = 4, 103
+				}
+				if !state.complete || state.awaitingToolResult || state.toolCalls != wantTools || state.messages != wantMessages || state.latestInputTokens != wantUsage {
+					t.Fatalf("final schedule = %+v; want complete, tools=%d messages=%d latest usage=%d", state, wantTools, wantMessages, wantUsage)
+				}
+			})
+		}
+	}
+}
+
+func TestExecuteRequestChildNonTurnsPreserveMentorSchedule(t *testing.T) {
+	for _, kind := range []string{"prewarm", "compaction", ""} {
+		for _, existing := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/existing=%t", kind, existing), func(t *testing.T) {
+				mentor := newMentorHandoff(true, true)
+				before := mentorSession{latestInputTokens: 123, toolCalls: 3, awaitingToolResult: true}
+				if existing {
+					mentor.sessions["child"] = before
+				}
+				headers := mentorTestHeaders(t, "child")
+				headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, codexTurnMetadata{RequestKind: kind, SubagentKind: threadSpawnSubagentKind})))
+				provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(string(mustTestJSON(t, map[string]any{
+					"status": "completed", "output": mentorTestItems(t, "message", "message"),
+					"usage": map[string]any{"input_tokens": mentorInputTokenLimit},
+				})))}}}
+				request := mentorTestRequest(t, "gpt-5.6-luna")
+				if err := executeRequest(t.Context(), t.Context(), request, headers, "session", provider, io.Discard, nil, nil, nil, mentor); err != nil {
+					t.Fatal(err)
+				}
+				forwarded, err := parseResponsesRequest(provider.forwarded[0])
+				if err != nil || forwarded.modelDescription() != "gpt-5.6-luna medium" {
+					t.Fatalf("non-turn model = %q, err=%v", forwarded.modelDescription(), err)
+				}
+				if state, exists := mentor.sessions["child"]; exists != existing || (existing && state != before) {
+					t.Fatalf("non-turn changed schedule: %+v, exists=%t", state, exists)
+				}
+			})
+		}
+	}
+}

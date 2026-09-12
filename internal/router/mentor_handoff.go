@@ -38,10 +38,9 @@ type mentorSession struct {
 }
 
 type mentorRequest struct {
-	owner          *mentorHandoff
-	threadID       string
-	requestedModel string
-	observation    mentorResponseObservation
+	owner       *mentorHandoff
+	threadID    string
+	observation mentorResponseObservation
 }
 
 type mentorProgress struct {
@@ -70,6 +69,9 @@ func (m *mentorHandoff) prepare(headers http.Header, metadata codexTurnMetadata,
 		}
 		if !metadataValid || metadata.SubagentKind != threadSpawnSubagentKind {
 			return nil, errors.New("mentor handoff requires canonical thread-spawn metadata")
+		}
+		if metadata.RequestKind != "turn" {
+			return nil, nil
 		}
 	} else {
 		if !m.mainEnabled {
@@ -127,7 +129,7 @@ func (m *mentorHandoff) prepare(headers http.Header, metadata codexTurnMetadata,
 		m.sessions[threadID] = state
 	}
 	m.mu.Unlock()
-	return &mentorRequest{owner: m, threadID: threadID, requestedModel: requestedModel}, nil
+	return &mentorRequest{owner: m, threadID: threadID}, nil
 }
 
 func mentorEligibleModel(model string) bool {
