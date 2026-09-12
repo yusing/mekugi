@@ -251,16 +251,38 @@ routing-session changes do not reset totals. Repeated terminal observations with
 count once. Totals remain in memory until router shutdown, with at most 256 tracked threads;
 capacity exhaustion preserves existing totals and suppresses new-thread reports. Arithmetic
 overflow suppresses reporting for the affected thread rather than showing a partial total.
+An accepted or transport-interrupted request without usable terminal usage leaves a permanent
+gap in that thread's router-lifetime totals. Missing or null input, cached-input, output, or
+reasoning counts likewise suppress current and later thread reports until router shutdown;
+they MUST NOT appear as known zeros or recover into apparently complete totals. Definite HTTP
+rejections, requests rejected before forwarding, and non-generating WebSocket prewarm do not
+create usage gaps. Failed and incomplete terminal responses with complete usage still contribute
+to later totals without producing their own notices.
 
-Cost estimates use the built-in session-usage reference list API prices, not subscription
+Cost estimates use built-in reference list API prices, not subscription
 rates or live billing quotes. No pricing fetch or terminal renderer is required: Codex renders
-the Markdown tables. Each response is priced using its request model and input size before
-accumulation, so model switches and the 272,000-input-token long-context tier do not reprice
-earlier responses. Cached input is subtracted from ordinary input; reasoning is included in
-output and MUST NOT be charged again. Unknown model pricing or inconsistent usage makes
+the Markdown tables. Each response is priced using its effective provider-request model, service
+tier, and input size before accumulation, so model switches and long-context rates do not reprice
+earlier responses. Long-context rates begin above 272,000 input tokens, not at that exact count.
+The terminal provider `service_tier` takes precedence over the request, including a downgrade
+from `priority` or `fast` to `default`. These two Fast aliases share model-specific reference
+rates; a blanket multiplier MUST NOT be applied to every model. When the response omits the tier,
+the explicitly requested tier supplies the reference estimate; omission at both boundaries uses
+the standard reference estimate. Unresolved `auto`, malformed or null tier evidence, and
+unsupported model/tier/context combinations have unavailable cost, not guessed standard pricing.
+Rates follow the [official pricing tables](https://developers.openai.com/api/docs/pricing) and
+[model pricing notes](https://developers.openai.com/api/docs/models/gpt-6-astra); reference estimates
+are not proof of the billed processing mode when the provider omits it.
+
+Cached input is subtracted from ordinary input; reasoning is included in output and MUST NOT be
+charged again. Optional `cache_write_tokens` are part of uncached input, not additional input
+tokens. For models with published cache-write rates, their premium is included in the uncached
+input cost cell, and the footer states the cache-write count. An omitted cache-write field is
+zero for older providers; explicit null, invalid, or contradictory evidence is not known zero.
+Unknown model/service-tier pricing or inconsistent usage makes
 all four billable cost cells `n/a`, without hiding token totals or presenting a partial
 cost as complete. The report explains its thread scope, overlapping token categories,
-reference-price source, and any unavailable estimate. Root reports do not sum child threads.
+reference-price source, router-lifetime boundary, and any unavailable estimate. Root reports do not sum child threads.
 This is auxiliary commentary accounting, not a change to capture-owned metrics exports.
 Eligible child reports also enter the existing root activity collector as distinct notices,
 deduplicated by originating thread and usage-message identity. Root copies carry the child's

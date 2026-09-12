@@ -1,6 +1,9 @@
 package router
 
-import "sync"
+import (
+	"cmp"
+	"sync"
+)
 
 // Thread totals are auxiliary, independent of routing sessions and replay history.
 // Existing identities are never evicted: an untracked thread must not later show a
@@ -18,11 +21,12 @@ type threadUsageTotal struct {
 }
 
 type threadUsageObservation struct {
-	once       sync.Once
-	totals     *threadUsage
-	conflicted bool
-	model      string
-	thread     string
+	once        sync.Once
+	totals      *threadUsage
+	conflicted  bool
+	model       string
+	serviceTier string
+	thread      string
 }
 
 func newThreadUsage() *threadUsage {
@@ -31,18 +35,26 @@ func newThreadUsage() *threadUsage {
 
 // Transport identity owns usage accounting, not auxiliary author or ancestry
 // metadata. A contradictory explicit thread ID makes lifetime totals incomplete.
-func (u *threadUsage) observation(thread, metadataThread, model string) *threadUsageObservation {
-	return &threadUsageObservation{totals: u, thread: thread, model: model, conflicted: metadataThread != "" && metadataThread != thread}
+func (u *threadUsage) observation(thread, metadataThread, model, serviceTier string) *threadUsageObservation {
+	return &threadUsageObservation{totals: u, thread: thread, model: model, serviceTier: serviceTier, conflicted: metadataThread != "" && metadataThread != thread}
 }
 
 func (o *threadUsageObservation) observe(counts tokenCounts) {
 	if o == nil {
 		return
 	}
-	o.once.Do(func() { o.totals.add(o.thread, o.model, counts, o.conflicted) })
+	o.once.Do(func() {
+		o.totals.add(o.thread, o.model, cmp.Or(counts.ServiceTier, o.serviceTier), counts, o.conflicted)
+	})
 }
 
-func (u *threadUsage) add(thread, model string, counts tokenCounts, conflicted bool) {
+// A forwarded request without terminal usage leaves a permanent accounting gap.
+// A later successful response must not revive an apparently complete total.
+func (o *threadUsageObservation) finish() {
+	o.observe(tokenCounts{Incomplete: true})
+}
+
+func (u *threadUsage) add(thread, model, serviceTier string, counts tokenCounts, conflicted bool) {
 	if u == nil || thread == "" || len(thread) > maxCommentaryPublicationBytes {
 		return
 	}
@@ -59,7 +71,7 @@ func (u *threadUsage) add(thread, model string, counts tokenCounts, conflicted b
 		total = &threadUsageTotal{complete: true, cost: tokenCost{known: true}}
 		u.threads[thread] = total
 	}
-	if conflicted {
+	if conflicted || counts.Incomplete {
 		total.complete = false
 	}
 	if !total.complete {
@@ -72,6 +84,7 @@ func (u *threadUsage) add(thread, model string, counts tokenCounts, conflicted b
 	}{
 		{&sum.InputTokens, counts.InputTokens},
 		{&sum.UncachedInputTokens, counts.UncachedInputTokens},
+		{&sum.CacheWriteTokens, counts.CacheWriteTokens},
 		{&sum.OutputTokens, counts.OutputTokens},
 		{&sum.ReasoningTokens, counts.ReasoningTokens},
 	} {
@@ -82,7 +95,7 @@ func (u *threadUsage) add(thread, model string, counts tokenCounts, conflicted b
 		*pair.dst += pair.add
 	}
 	sum.Inconsistent = sum.Inconsistent || counts.Inconsistent
-	total.cost.add(estimateTokenCost(model, counts))
+	total.cost.add(estimateTokenCost(model, serviceTier, counts))
 	total.counts = sum
 }
 

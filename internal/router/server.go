@@ -567,6 +567,22 @@ func executeRequest(
 	if err != nil {
 		return fmt.Errorf("prepare Mentor Handoff: %w", err)
 	}
+	if exchange, ok := provider.(*webSocketExchange); ok && exchange.history != nil {
+		if exchange.automatic {
+			parent := exchange.history.parent
+			if parent == nil || parent.providerModel == "" {
+				return errors.New("automatic WebSocket successor has no retained provider model")
+			}
+			parsedRequest.fields["model"] = mustMarshalJSON(parent.providerModel)
+			if len(parent.providerReasoning) == 0 {
+				delete(parsedRequest.fields, "reasoning")
+			} else {
+				parsedRequest.fields["reasoning"] = parent.providerReasoning
+			}
+		}
+		exchange.history.providerModel = parsedRequest.model()
+		exchange.history.providerReasoning = parsedRequest.fields["reasoning"]
+	}
 	var mekugiTransform *mekugiResponseTransform
 	handoffRecorded := false
 	recordHandoff := func(includeCompletedOutput bool) {
@@ -577,7 +593,7 @@ func executeRequest(
 		if progress.transitioned && mekugiTransform != nil {
 			broker := mekugiCalls.commentary
 			token := broker.subscribeThread(mekugiTransform.historySessionID, threadID, mekugiTransform.commentaryAuthor)
-			broker.publish(token, "Mentor handoff complete. Continuing with the configured model and reasoning.", false)
+			broker.publish(token, "Mentor handoff complete. The next model request will use the configured model and reasoning.", false)
 		}
 		handoffRecorded = true
 	}
@@ -684,7 +700,21 @@ func executeRequest(
 		debugWire = nil
 	}
 	debug.instructions(projectedBody, debugWire, headers, sessionID, debugID, parsedRequest.cachedInput)
+	var usageTracker *threadUsageObservation
+	if !prewarm {
+		if mekugiTransform != nil {
+			usageTracker = mekugiTransform.usageTracker
+		} else if mekugiCalls != nil && metadataValid {
+			usageTracker = mekugiCalls.usage.observation(threadID, metadata.ThreadID, parsedRequest.model(), usageServiceTier(parsedRequest.fields["service_tier"]))
+		}
+	}
 	response, err := provider.forwardExecution(ctx, executionCtx, forwardBody, headers, cacheKey)
+	// Definite HTTP rejections did not admit inference. Transport failures and
+	// accepted requests may have consumed tokens even without a usable terminal.
+	_, rejectedUpgrade := errors.AsType[*webSocketStatusError](err)
+	if !rejectedUpgrade && (response == nil || response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices) {
+		defer usageTracker.finish()
+	}
 	if err != nil {
 		err = withRequestStartCause(ctx, err)
 		return fmt.Errorf("execute request: %w", forwardCriticalDiagnostic(err))
@@ -724,19 +754,17 @@ func executeRequest(
 			return fmt.Errorf("record mekugi request overhead: %w", err)
 		}
 	}
-	var untransformedUsage *threadUsageObservation
-	if mekugiCalls != nil && metadataValid {
-		untransformedUsage = mekugiCalls.usage.observation(threadID, metadata.ThreadID, parsedRequest.model())
-	}
 	observeUsage := func(counts tokenCounts) {
 		finalization.observation.usageCounts = counts
 		finalization.observation.usageObserved = true
-		if mekugiTransform != nil {
-			mekugiTransform.observeResponseUsage(counts)
-		} else {
-			// Compaction has no mekugi response transform, but still consumes
-			// provider tokens belonging to the same stable thread.
-			untransformedUsage.observe(counts)
+		if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
+			if mekugiTransform != nil {
+				mekugiTransform.observeResponseUsage(counts)
+			} else {
+				// Compaction has no mekugi response transform, but still consumes
+				// provider tokens belonging to the same stable thread.
+				usageTracker.observe(counts)
+			}
 		}
 
 		capturer.ObserveProviderUsage(executionCtx, capturer.ProviderUsage{

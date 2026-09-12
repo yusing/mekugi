@@ -162,6 +162,10 @@ type webSocketHistory struct {
 	input    []json.RawMessage
 	output   []json.RawMessage
 	settings map[string]json.RawMessage
+	// Automatic steering successors execute the already-sent model contract,
+	// even if the preceding terminal completed the Mentor schedule.
+	providerModel     string
+	providerReasoning json.RawMessage
 	// Fingerprint only instruction-bearing input actually sent upstream. Native
 	// history cannot establish whether its later projection matches that cache.
 	instructionDigest [sha256.Size]byte

@@ -119,11 +119,18 @@ is the source identity; reports remain distinct notices rather than coalesced op
 The collector owns attributed, bounded root delivery and replay removal. The child's final
 answer and native completion notification remain unchanged.
 `thread_usage.go` owns bounded, non-evicting token and cost totals until router shutdown;
-ancestry and author metadata do not own attribution. Each observation retains its request model,
-and its cost is calculated before accumulation using that response's input tier.
+ancestry and author metadata do not own attribution. Each observation retains its effective
+provider-request model and requested service tier. The shared terminal parse supplies the
+provider's resolved tier when present, and cost is calculated before accumulation using the
+response's service tier, input size, and optional cache-write count. WebSocket histories retain
+the effective model and reasoning sent for each response so automatic steering successors do
+not adopt a Mentor model switch that was never sent upstream.
 Unknown prices or inconsistent raw usage categories make the cumulative cost unavailable
-without suppressing token counts. The shared usage parse preserves an inconsistency flag
-before normalizing counts, leaving capture-owned counters unchanged.
+without suppressing token counts. Missing or malformed usage instead leaves an irrecoverable
+gap in that thread's router-lifetime totals and suppresses its reports. The server finishes each
+forwarded inference observation, distinguishing definite HTTP rejection and non-generating prewarm
+from missing evidence after possible inference. The shared parse preserves completeness and
+inconsistency separately from normalized counts, leaving capture-owned counters unchanged.
 Pricing does not read rollouts, fetch a catalog, or change capture-owned metric calculations.
 The projection precedes the provider-authored final answer so it cannot replace a collaboration result. The
 streaming path buffers final-answer events in `final_answer_stream.go`, while tools and progress

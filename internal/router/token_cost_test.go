@@ -14,20 +14,20 @@ const testTokenUsageTable = "Tokens:\n\n| Category | Tokens | API USD |\n| --- |
 func TestTokenCostDisjointCategories(t *testing.T) {
 	counts := tokenCounts{InputTokens: 100_000, UncachedInputTokens: 40_000, OutputTokens: 30_000, ReasoningTokens: 20_000}
 	for _, model := range []string{"gpt-6-astra", "openai/gpt-6-astra"} {
-		cost := estimateTokenCost(model, counts)
+		cost := estimateTokenCost(model, "", counts)
 		if !cost.known || cost.uncachedInput != 0.4 || cost.cachedInput != 0.06 || cost.output != 1.5 {
 			t.Fatalf("%s: %+v", model, cost)
 		}
 	}
 	for _, model := range []string{"", "unknown", "grok:grok-4.6", "other/gpt-6-astra", "gpt-6-astra-unknown"} {
-		if estimateTokenCost(model, counts).known {
+		if estimateTokenCost(model, "", counts).known {
 			t.Fatalf("invented price for %q", model)
 		}
 	}
-	if estimateTokenCost("gpt-6-astra", tokenCounts{InputTokens: 1, UncachedInputTokens: 2}).known {
+	if estimateTokenCost("gpt-6-astra", "", tokenCounts{InputTokens: 1, UncachedInputTokens: 2}).known {
 		t.Fatal("priced inconsistent input")
 	}
-	if cost := estimateTokenCost("gpt-6-astra", tokenCounts{}); !cost.known || cost.output != 0 {
+	if cost := estimateTokenCost("gpt-6-astra", "", tokenCounts{}); !cost.known || cost.output != 0 {
 		t.Fatal("zero usage must have a known zero estimate", cost)
 	}
 }
@@ -39,11 +39,12 @@ func TestTokenCostContextTierBoundary(t *testing.T) {
 		wantInput, wantCached, wantOutput float64
 	}{
 		{"gpt-6-astra", 271_999, 1, 0.171999, 0.5},
-		{"gpt-6-astra", 272_000, 2, 0.344, 0.75},
+		{"gpt-6-astra", 272_000, 1, 0.172, 0.5},
+		{"gpt-6-astra", 272_001, 2, 0.344002, 0.75},
 		{"gpt-5.4-mini", 272_000, 0.075, 0.0129, 0.045},
 	} {
 		counts := tokenCounts{InputTokens: tc.input, UncachedInputTokens: 100_000, OutputTokens: 10_000}
-		cost := estimateTokenCost(tc.model, counts)
+		cost := estimateTokenCost(tc.model, "", counts)
 		if !cost.known || math.Abs(cost.uncachedInput-tc.wantInput) > 1e-10 ||
 			math.Abs(cost.cachedInput-tc.wantCached) > 1e-10 || math.Abs(cost.output-tc.wantOutput) > 1e-10 {
 			t.Fatalf("%s input=%d: %+v", tc.model, tc.input, cost)
@@ -54,11 +55,11 @@ func TestTokenCostContextTierBoundary(t *testing.T) {
 func TestThreadCostsKeepPerResponseModelsAndTiers(t *testing.T) {
 	totals := newThreadUsage()
 	counts := tokenCounts{InputTokens: 200_000, UncachedInputTokens: 100_000, OutputTokens: 10_000}
-	first := totals.observation("root", "", "gpt-6-astra")
+	first := totals.observation("root", "", "gpt-6-astra", "")
 	first.observe(counts)
 	first.observe(counts)
-	totals.observation("child", "", "gpt-6-astra").observe(counts)
-	totals.observation("root", "", "gpt-5.6-sol").observe(counts)
+	totals.observation("child", "", "gpt-6-astra", "").observe(counts)
+	totals.observation("root", "", "gpt-5.6-sol", "").observe(counts)
 	report, ok := totals.snapshot("root")
 	if !ok || report.InputTokens != 400_000 || !report.cost.known {
 		t.Fatal("lost cumulative usage or duplicate observation counted", report, ok)
@@ -67,8 +68,8 @@ func TestThreadCostsKeepPerResponseModelsAndTiers(t *testing.T) {
 		t.Fatal("repriced history, combined context tiers, or included child usage", got)
 	}
 	// Once a response is unpriced, later priced usage cannot restore completeness.
-	totals.observation("root", "", "unknown").observe(counts)
-	totals.observation("root", "", "gpt-6-astra").observe(counts)
+	totals.observation("root", "", "unknown", "").observe(counts)
+	totals.observation("root", "", "gpt-6-astra", "").observe(counts)
 	report, ok = totals.snapshot("root")
 	if !ok || report.InputTokens != 800_000 || report.cost.known {
 		t.Fatal("partial cost presented as complete or token counts lost", report, ok)
@@ -77,7 +78,7 @@ func TestThreadCostsKeepPerResponseModelsAndTiers(t *testing.T) {
 
 func TestTokenUsageReportTables(t *testing.T) {
 	counts := tokenCounts{InputTokens: 100_000, UncachedInputTokens: 40_000, OutputTokens: 30_000, ReasoningTokens: 20_000}
-	report := tokenUsageReport{tokenCounts: counts, cost: estimateTokenCost("gpt-6-astra", counts)}
+	report := tokenUsageReport{tokenCounts: counts, cost: estimateTokenCost("gpt-6-astra", "", counts)}
 	got := formatTokenUsageReport(report)
 	want := "Tokens:\n\n| Category | Tokens | API USD |\n| --- | ---: | ---: |\n" +
 		"| Input | 100,000 | — |\n| Cached input | 60,000 | $0.0600 |\n| Uncached input | 40,000 | $0.4000 |\n" +
@@ -103,16 +104,19 @@ func TestFormatUsageTokens(t *testing.T) {
 
 func TestTokenCostReportIncludesCompactionAcrossTransports(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		stream  bool
-		invalid string
+		name        string
+		stream      bool
+		invalid     string
+		serviceTier string
 	}{
-		{"json", false, ""},
-		{"sse", true, ""},
-		{"json-excess-cache", false, "cache"},
-		{"sse-excess-cache", true, "cache"},
-		{"json-excess-reasoning", false, "reasoning"},
-		{"sse-excess-reasoning", true, "reasoning"},
+		{"json", false, "", ""},
+		{"sse", true, "", ""},
+		{"json-priority", false, "", "priority"},
+		{"sse-fast", true, "", "fast"},
+		{"json-excess-cache", false, "cache", ""},
+		{"sse-excess-cache", true, "cache", ""},
+		{"json-excess-reasoning", false, "reasoning", ""},
+		{"sse-excess-reasoning", true, "reasoning", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
@@ -120,6 +124,9 @@ func TestTokenCostReportIncludesCompactionAcrossTransports(t *testing.T) {
 				requestStream := tc.stream || step == 0 // Compaction requires streaming.
 				request := serverRequest(t, func(fields map[string]any) {
 					fields["model"], fields["stream"] = model, requestStream
+					if tc.serviceTier != "" {
+						fields["service_tier"] = tc.serviceTier
+					}
 					if step == 0 {
 						delete(fields, "tools")
 						fields["input"] = []any{map[string]any{"role": "user", "content": "compact"}}
@@ -179,6 +186,9 @@ func TestTokenCostReportIncludesCompactionAcrossTransports(t *testing.T) {
 					continue
 				}
 				wantCost := "$2.2400"
+				if tc.serviceTier != "" {
+					wantCost = "$4.4800"
+				}
 				if tc.invalid != "" {
 					wantCost = "n/a"
 					if strings.Count(output.String(), "| n/a |") != 4 || !strings.Contains(output.String(), "Cost unavailable:") {
