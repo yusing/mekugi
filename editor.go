@@ -51,11 +51,7 @@ type indentationEdit struct {
 	path      string
 }
 
-type logicalLine struct {
-	start      int
-	contentEnd int
-	fullEnd    int
-}
+type logicalLine = verifiedrow.Line
 
 // resolveTarget resolves a target specification to baseline byte offsets.
 func (e *editor) resolveTarget(target targetSpec) ([]targetSpan, error) {
@@ -65,7 +61,7 @@ func (e *editor) resolveTarget(target targetSpec) ([]targetSpan, error) {
 		if err != nil {
 			return nil, err
 		}
-		return []targetSpan{{start: line.start, end: line.fullEnd, linewise: true}}, nil
+		return []targetSpan{{start: line.Start, end: line.End, linewise: true}}, nil
 	case targetRange:
 		start, err := e.resolveRow(target.start)
 		if err != nil {
@@ -75,14 +71,14 @@ func (e *editor) resolveTarget(target targetSpec) ([]targetSpan, error) {
 		if err != nil {
 			return nil, err
 		}
-		if start.start > end.start {
+		if start.Start > end.Start {
 			return nil, withReason(reasonTargetOrder, fmt.Errorf(
 				"resolved row range start %d exceeds end %d",
-				lineNumberAt(logicalLines(e.baseline), start.start),
-				lineNumberAt(logicalLines(e.baseline), end.start),
+				lineNumberAt(logicalLines(e.baseline), start.Start),
+				lineNumberAt(logicalLines(e.baseline), end.Start),
 			))
 		}
-		return []targetSpan{{start: start.start, end: end.fullEnd, linewise: true}}, nil
+		return []targetSpan{{start: start.Start, end: end.End, linewise: true}}, nil
 	case targetText, targetLiteral:
 		search := e.baseline
 		baseOffset := 0
@@ -103,8 +99,8 @@ func (e *editor) resolveTarget(target targetSpec) ([]targetSpan, error) {
 				}
 				return spans, nil
 			}
-			search = e.baseline[anchor.start:]
-			baseOffset = anchor.start
+			search = e.baseline[anchor.Start:]
+			baseOffset = anchor.Start
 		}
 		offsets := nonOverlappingLiteralOffsets(search, target.literal, target.count)
 		if len(offsets) != target.count {
@@ -159,7 +155,7 @@ func (e *editor) resolveRow(reference rowReference) (logicalLine, error) {
 			continue
 		}
 		start, end, ok := e.renderedBaselineLine(baselineLine)
-		if !ok || start != pendingLine.start || end != pendingLine.fullEnd {
+		if !ok || start != pendingLine.Start || end != pendingLine.End {
 			continue
 		}
 		match = baselineLine
@@ -175,17 +171,17 @@ func (e *editor) resolveRow(reference rowReference) (logicalLine, error) {
 func (e *editor) renderedBaselineLine(line logicalLine) (int, int, bool) {
 	for _, edit := range e.renderedEdits() {
 		if edit.start == edit.end {
-			if edit.start > line.start && edit.start < line.fullEnd {
+			if edit.start > line.Start && edit.start < line.End {
 				return 0, 0, false
 			}
 			continue
 		}
-		if edit.start < line.fullEnd && edit.end > line.start {
+		if edit.start < line.End && edit.end > line.Start {
 			return 0, 0, false
 		}
 	}
-	start := e.renderedBaselineBoundary(line.start, true)
-	end := e.renderedBaselineBoundary(line.fullEnd, false)
+	start := e.renderedBaselineBoundary(line.Start, true)
+	end := e.renderedBaselineBoundary(line.End, false)
 	return start, end, true
 }
 
@@ -339,8 +335,8 @@ func (e *editor) initialize(value string, origin editOrigin) {
 
 // recordEdits validates and records edits, checking for conflicts.
 func (e *editor) recordEdits(candidates []baselineEdit) error {
-	pending := slices.Clone(e.edits)
-	additions := make([]baselineEdit, 0, len(candidates))
+	pending := make([]baselineEdit, len(e.edits), len(e.edits)+len(candidates))
+	copy(pending, e.edits)
 	for _, candidate := range candidates {
 		if candidate.start == candidate.end && candidate.replacement == "" {
 			continue
@@ -363,12 +359,11 @@ func (e *editor) recordEdits(candidates []baselineEdit) error {
 		}
 		candidate.sequence = len(pending) + 1
 		pending = append(pending, candidate)
-		additions = append(additions, candidate)
 	}
-	e.edits = append(e.edits, additions...)
-	if len(additions) != 0 {
+	if len(pending) != len(e.edits) {
+		e.edits = pending
 		e.projected = nil
-		e.lastOrigin = additions[len(additions)-1].editOrigin
+		e.lastOrigin = pending[len(pending)-1].editOrigin
 	}
 	return nil
 }
@@ -409,7 +404,7 @@ func describeEditConflict(baseline string, first, second baselineEdit) (string, 
 func baselineLine(text string, offset int) int {
 	lines := logicalLines(text)
 	for index, line := range lines {
-		if offset < line.fullEnd {
+		if offset < line.End {
 			return index + 1
 		}
 	}
@@ -506,12 +501,7 @@ func findLiteralOffsets(text, literal string, advance, limit int) []int {
 
 // logicalLines splits text into logical lines using shared verified-row semantics.
 func logicalLines(text string) []logicalLine {
-	shared := verifiedrow.Lines(text)
-	lines := make([]logicalLine, len(shared))
-	for index, line := range shared {
-		lines[index] = logicalLine{start: line.Start, contentEnd: line.ContentEnd, fullEnd: line.End}
-	}
-	return lines
+	return verifiedrow.Lines(text)
 }
 
 // lineTerminatorSuffix returns the line terminator suffix of text.

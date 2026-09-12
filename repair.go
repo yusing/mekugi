@@ -118,8 +118,8 @@ func writeTextTargetRepair(report *strings.Builder, editor *editor, lines []logi
 		if err != nil {
 			return
 		}
-		anchorOffset = anchor.start
-		search = editor.baseline[anchor.start:]
+		anchorOffset = anchor.Start
+		search = editor.baseline[anchor.Start:]
 		location = fmt.Sprintf("at or after line %d", target.start.line)
 	}
 	offsets := nonOverlappingLiteralOffsets(search, target.literal, target.count)
@@ -223,7 +223,7 @@ func multilineValueRepair(command int, value string, line int) string {
 
 func lineNumberAt(lines []logicalLine, offset int) int {
 	for index, line := range lines {
-		if offset < line.fullEnd {
+		if offset < line.End {
 			return index + 1
 		}
 	}

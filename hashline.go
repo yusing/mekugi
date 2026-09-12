@@ -14,7 +14,7 @@ func hashLine(content string) string {
 
 // lineContent returns the logical-line content without its terminator.
 func lineContent(text string, line logicalLine) string {
-	return text[line.start:line.contentEnd]
+	return text[line.Start:line.ContentEnd]
 }
 
 // writeHashLine formats and writes one verified-row LINE:HASH reference line with display text.

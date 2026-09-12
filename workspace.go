@@ -47,8 +47,8 @@ type change struct {
 }
 
 type workspace struct {
-	paths         map[string]*fileState
-	blocked       map[string]bool
+	paths map[string]*fileState
+	// Vacated paths remain unavailable for both selection and destinations.
 	reserved      map[string]bool
 	files         []*fileState
 	active        *fileState
@@ -62,7 +62,6 @@ type workspace struct {
 func (p *program) evaluate(ctx context.Context, resolve pathResolver, load fileLoader, exists pathProbe) ([]change, string, []TargetAlias, error) {
 	w := &workspace{
 		paths:    make(map[string]*fileState),
-		blocked:  make(map[string]bool),
 		reserved: make(map[string]bool),
 		load:     load,
 		exists:   exists,
@@ -253,7 +252,7 @@ func (w *workspace) selectFile(path string) error {
 		w.active = file
 		return nil
 	}
-	if w.blocked[path] {
+	if w.reserved[path] {
 		return withReason(reasonFileMissing, fmt.Errorf("%s does not exist in the pending workspace", path))
 	}
 	loaded, err := w.load(path)
@@ -296,7 +295,6 @@ func (w *workspace) moveFile(path string, origin editOrigin) error {
 	}
 	oldPath := w.active.path
 	delete(w.paths, oldPath)
-	w.blocked[oldPath] = true
 	w.reserved[oldPath] = true
 	w.active.path = path
 	w.active.mutationOrigin = origin
@@ -322,11 +320,7 @@ func (w *workspace) removeFile() error {
 	}
 	removedPath := file.path
 	delete(w.paths, removedPath)
-	w.blocked[removedPath] = true
 	w.reserved[removedPath] = true
-	if !file.created {
-		w.blocked[file.originalPath] = true
-	}
 	file.deleted = true
 	retained := w.reportedEdits[:0]
 	for _, edit := range w.reportedEdits {
@@ -344,9 +338,6 @@ func (w *workspace) removeFile() error {
 func (w *workspace) pathOccupied(path string) (bool, error) {
 	if w.paths[path] != nil || w.reserved[path] {
 		return true, nil
-	}
-	if w.blocked[path] {
-		return false, nil
 	}
 	_, occupied, err := w.exists(path)
 	if err != nil {

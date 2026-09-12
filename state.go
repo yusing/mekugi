@@ -257,7 +257,7 @@ func (w *workspace) writeFileSummary(report *strings.Builder, changes []change) 
 func renderedLines(text string) []logicalLine {
 	lines := logicalLines(text)
 	if text == "" || endsWithLineTerminator(text) {
-		lines = append(lines, logicalLine{start: len(text), contentEnd: len(text), fullEnd: len(text)})
+		lines = append(lines, logicalLine{Start: len(text), ContentEnd: len(text), End: len(text)})
 	}
 	return lines
 }
@@ -265,15 +265,15 @@ func renderedLines(text string) []logicalLine {
 func renderedCoordinateAt(text string, lines []logicalLine, offset int) renderedCoordinate {
 	offset = min(max(offset, 0), len(text))
 	for index, line := range lines {
-		if offset <= line.contentEnd {
-			return renderedCoordinate{line: index + 1, column: utf8.RuneCountInString(text[line.start:offset]) + 1}
+		if offset <= line.ContentEnd {
+			return renderedCoordinate{line: index + 1, column: utf8.RuneCountInString(text[line.Start:offset]) + 1}
 		}
-		if offset < line.fullEnd {
-			return renderedCoordinate{line: index + 1, column: utf8.RuneCountInString(text[line.start:line.contentEnd]) + 1}
+		if offset < line.End {
+			return renderedCoordinate{line: index + 1, column: utf8.RuneCountInString(text[line.Start:line.ContentEnd]) + 1}
 		}
 	}
 	last := lines[len(lines)-1]
-	return renderedCoordinate{line: len(lines), column: utf8.RuneCountInString(text[last.start:last.contentEnd]) + 1}
+	return renderedCoordinate{line: len(lines), column: utf8.RuneCountInString(text[last.Start:last.ContentEnd]) + 1}
 }
 
 func previewText(text string) string {

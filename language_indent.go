@@ -99,7 +99,7 @@ func detectIndentationWrapperCandidate(baseline string, selected targetSpan, rep
 		return indentationCandidate{}, false
 	}
 	selectedLine := selectedLines[0]
-	original := baseline[selected.start+selectedLine.start : selected.start+selectedLine.contentEnd]
+	original := baseline[selected.start+selectedLine.Start : selected.start+selectedLine.ContentEnd]
 	originalIndent, preserved := splitIndent(original)
 	if preserved == "" || indentationCommentText(preserved) {
 		return indentationCandidate{}, false
@@ -109,8 +109,8 @@ func detectIndentationWrapperCandidate(baseline string, selected targetSpan, rep
 	if len(replacementLines) == 2 {
 		header := replacementLines[0]
 		child := replacementLines[1]
-		headerContent := replacement[header.start:header.contentEnd]
-		childContent := replacement[child.start:child.contentEnd]
+		headerContent := replacement[header.Start:header.ContentEnd]
+		childContent := replacement[child.Start:child.ContentEnd]
 		headerIndent, headerText := splitIndent(headerContent)
 		childIndent, childText := splitIndent(childContent)
 		if headerIndent != originalIndent ||
@@ -140,9 +140,9 @@ func detectIndentationWrapperCandidate(baseline string, selected targetSpan, rep
 	header := replacementLines[0]
 	child := replacementLines[1]
 	closeLine := replacementLines[2]
-	headerContent := replacement[header.start:header.contentEnd]
-	childContent := replacement[child.start:child.contentEnd]
-	closeContent := replacement[closeLine.start:closeLine.contentEnd]
+	headerContent := replacement[header.Start:header.ContentEnd]
+	childContent := replacement[child.Start:child.ContentEnd]
+	closeContent := replacement[closeLine.Start:closeLine.ContentEnd]
 	headerIndent, headerText := splitIndent(headerContent)
 	childIndent, childText := splitIndent(childContent)
 	closeIndent, closeText := splitIndent(closeContent)
@@ -305,7 +305,7 @@ func prepareWrapperReplacement(replacement string, candidate indentationWrapperC
 		return replacement, 0, 0, false, false
 	}
 	child := lines[candidate.childLine]
-	childContent := replacement[child.start:child.contentEnd]
+	childContent := replacement[child.Start:child.ContentEnd]
 	proposedIndent, preserved := splitIndent(childContent)
 	if preserved != candidate.preserved || strings.Count(childContent, candidate.preserved) != 1 {
 		return replacement, 0, 0, false, false
@@ -314,12 +314,12 @@ func prepareWrapperReplacement(replacement string, candidate indentationWrapperC
 	if proposedIndent == desiredIndent {
 		return replacement, 0, 0, false, true
 	}
-	corrected = replacement[:child.start] + desiredIndent + replacement[child.start+len(proposedIndent):]
+	corrected = replacement[:child.Start] + desiredIndent + replacement[child.Start+len(proposedIndent):]
 	correctedLines := logicalLines(corrected)
 	correctedChild := correctedLines[candidate.childLine]
 	return corrected,
-		correctedChild.start + len(desiredIndent),
-		correctedChild.contentEnd,
+		correctedChild.Start + len(desiredIndent),
+		correctedChild.ContentEnd,
 		true,
 		true
 }

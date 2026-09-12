@@ -59,7 +59,7 @@ func blankGeneratedLine(content string, line int) (string, bool) {
 	}
 	current := lines[line-1]
 	candidate := []byte(content)
-	for index := current.start; index < current.contentEnd; index++ {
+	for index := current.Start; index < current.ContentEnd; index++ {
 		candidate[index] = ' '
 	}
 	return string(candidate), true

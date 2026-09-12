@@ -51,7 +51,7 @@ func detectIndentationCorrection(baseline string, selected targetSpan, replaceme
 		return nil
 	}
 	selectedLine := selectedLines[0]
-	original := baseline[selected.start+selectedLine.start : selected.start+selectedLine.contentEnd]
+	original := baseline[selected.start+selectedLine.Start : selected.start+selectedLine.ContentEnd]
 	originalIndent, preserved := splitIndent(original)
 	if preserved == "" {
 		return nil
@@ -62,13 +62,13 @@ func detectIndentationCorrection(baseline string, selected targetSpan, replaceme
 		return nil
 	}
 	line := replacementLines[0]
-	content := replacement[line.start:line.contentEnd]
+	content := replacement[line.Start:line.ContentEnd]
 	proposedIndent, remainder := splitIndent(content)
 	if remainder != preserved || proposedIndent == originalIndent {
 		return nil
 	}
 
-	corrected := replacement[:line.start] + originalIndent + replacement[line.start+len(proposedIndent):]
+	corrected := replacement[:line.Start] + originalIndent + replacement[line.Start+len(proposedIndent):]
 	return &indentationCorrectionError{
 		proposedLine:     content,
 		proposedIndent:   proposedIndent,
@@ -272,10 +272,10 @@ func (file *fileState) renderContent(ctx context.Context) ([]*commandError, erro
 			))
 		}
 	}
-	if final != rendered {
+	if len(failures) == 0 {
 		file.editor.finalContent = new(final)
+		file.editor.finalOffsets = offsets
 	}
-	file.editor.finalOffsets = offsets
 	return failures, nil
 }
 
@@ -683,7 +683,7 @@ func physicalValueLines(value string) []logicalLine {
 		}
 		contentEnd := offset + len(line.Text)
 		fullEnd := contentEnd + len(line.Terminator)
-		lines = append(lines, logicalLine{start: offset, contentEnd: contentEnd, fullEnd: fullEnd})
+		lines = append(lines, logicalLine{Start: offset, ContentEnd: contentEnd, End: fullEnd})
 		offset = fullEnd
 	}
 	return lines
@@ -715,7 +715,7 @@ func generatedByteOffset(content string, line, column int) int {
 		return len(content)
 	}
 	current := lines[line-1]
-	return min(current.start+max(column-1, 0), current.contentEnd)
+	return min(current.Start+max(column-1, 0), current.ContentEnd)
 }
 
 // formatCommandError creates a command error for validation failures.
