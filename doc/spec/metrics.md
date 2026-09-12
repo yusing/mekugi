@@ -43,6 +43,8 @@ A durable record MUST contain only:
 - provider usage counters;
 - the measured `native_request` after history replay/tool projection and before CTP, on provider records;
 - decoded assistant `final_text` sizes, separate from complete output arrays;
+  this includes Chat assistant string content as well as Responses text parts, so
+  identical provider/client text has zero measured text savings;
 - bounded private request/routing fingerprints as specified below;
 - bounded, allowlisted provider-response evidence as specified below;
 - request tool names; and

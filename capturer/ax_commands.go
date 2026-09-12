@@ -3,6 +3,7 @@ package capturer
 import (
 	"errors"
 	"math"
+	"slices"
 	"time"
 )
 
@@ -33,7 +34,22 @@ type AXCommandAccumulator struct {
 	metrics AXCommandMetrics
 	indices map[string]int
 	active  int
-	lastEnd time.Time
+}
+
+// ObserveCompleted accepts execution endpoints persisted together by the producer.
+// Reuse a matching older start event rather than counting its embedded copy again.
+func (a *AXCommandAccumulator) ObserveCompleted(id, logicalCallID string, start, end time.Time, exitCode *int) error {
+	if !start.IsZero() {
+		index, exists := a.indices[id]
+		if exists && a.metrics.Commands[index].StartedAt != nil {
+			if !a.metrics.Commands[index].StartedAt.Equal(start) {
+				return errors.New("conflicting command start timestamp")
+			}
+		} else if err := a.Observe("item_started", id, logicalCallID, start, nil); err != nil {
+			return err
+		}
+	}
+	return a.Observe("item_completed", id, logicalCallID, end, exitCode)
 }
 
 func (a *AXCommandAccumulator) Observe(kind, id, logicalCallID string, at time.Time, exitCode *int) error {
@@ -67,11 +83,6 @@ func (a *AXCommandAccumulator) Observe(kind, id, logicalCallID string, at time.T
 		}
 		command.StartedAt = new(at)
 		a.metrics.Started++
-		if a.active == 0 && !a.lastEnd.IsZero() && !at.Before(a.lastEnd) {
-			gap := at.Sub(a.lastEnd).Milliseconds()
-			command.GapBeforeMS = new(gap)
-			a.metrics.GapMS = saturatedAXDuration(a.metrics.GapMS, gap)
-		}
 		a.active++
 		return nil
 	}
@@ -96,14 +107,6 @@ func (a *AXCommandAccumulator) Observe(kind, id, logicalCallID string, at time.T
 			a.metrics.DurationMS = saturatedAXDuration(a.metrics.DurationMS, elapsed)
 		}
 	}
-	// A backwards or unpaired timestamp cannot establish the start of an idle gap.
-	if command.DurationMS != nil {
-		if at.After(a.lastEnd) {
-			a.lastEnd = at
-		}
-	} else {
-		a.lastEnd = time.Time{}
-	}
 	return nil
 }
 
@@ -116,6 +119,8 @@ func saturatedAXDuration(total, delta int64) int64 {
 
 func (a *AXCommandAccumulator) Result() AXCommandMetrics {
 	result := a.metrics
+	result.Commands = slices.Clone(result.Commands)
+	result.GapMS = commandGaps(result.Commands)
 	result.State = "unavailable"
 	result.UnpairedEvents += uint64(a.active)
 	if result.Started > 0 || result.Completed > 0 || result.UnpairedEvents > 0 {
@@ -126,4 +131,50 @@ func (a *AXCommandAccumulator) Result() AXCommandMetrics {
 	}
 	result.Coverage = "recorded CommandExecution items only; missing starts have no duration; gaps include all intervening work, not inferred batch overhead"
 	return result
+}
+
+// Completion records arrive in completion order. Measure the union of execution
+// intervals only after all evidence is available, preserving report item order.
+func commandGaps(commands []AXCommandObservation) int64 {
+	order := make([]int, len(commands))
+	for i, command := range commands {
+		order[i] = i
+		if command.StartedAt != nil && command.CompletedAt != nil && command.DurationMS == nil {
+			// Reversed endpoints cannot bound the command's possible activity.
+			return 0
+		}
+	}
+	slices.SortStableFunc(order, func(i, j int) int {
+		a, b := commands[i].StartedAt, commands[j].StartedAt
+		if a == nil {
+			if b == nil {
+				return 0
+			}
+			return -1
+		}
+		if b == nil {
+			return 1
+		}
+		return a.Compare(*b)
+	})
+	var end time.Time
+	knownEnd := false
+	var total int64
+	for _, i := range order {
+		command := &commands[i]
+		if command.StartedAt != nil && knownEnd && !command.StartedAt.Before(end) {
+			gap := command.StartedAt.Sub(end).Milliseconds()
+			command.GapBeforeMS = new(gap)
+			total = saturatedAXDuration(total, gap)
+		}
+		if command.CompletedAt == nil {
+			// An incomplete start may cover every later apparent gap.
+			break
+		}
+		if end.IsZero() || !command.CompletedAt.Before(end) {
+			end = *command.CompletedAt
+			knownEnd = command.DurationMS != nil
+		}
+	}
+	return total
 }

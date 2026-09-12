@@ -111,7 +111,7 @@ func normalizedNumber(value string) string {
 	return sign + digits + "e" + power.String()
 }
 
-// Only assistant output_text participates in CTP output compression. Tool-call
+// Only assistant text participates in CTP output compression. Tool-call
 // translation, reasoning, and generated commentary are not compression savings.
 func measureOutputText(output []byte, codec tokenizer.Codec) (payloadMetrics, error) {
 	var rawItems []json.RawMessage
@@ -121,25 +121,40 @@ func measureOutputText(output []byte, codec tokenizer.Codec) (payloadMetrics, er
 	var result payloadMetrics
 	for _, raw := range rawItems {
 		var item struct {
-			Type    string `json:"type"`
-			Role    string `json:"role"`
-			Content []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			} `json:"content"`
+			Type    string          `json:"type"`
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
 		}
-		if json.Unmarshal(raw, &item) != nil || item.Type != "message" || item.Role != "assistant" {
+		if json.Unmarshal(raw, &item) != nil || item.Role != "assistant" {
 			continue
 		}
-		for _, part := range item.Content {
-			if part.Type != "output_text" {
+		var texts []string
+		if item.Type == "" {
+			var text string
+			if json.Unmarshal(item.Content, &text) != nil {
 				continue
 			}
-			n, err := codec.Count(part.Text)
+			texts = append(texts, text)
+		} else if item.Type == "message" {
+			var parts []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}
+			if json.Unmarshal(item.Content, &parts) != nil {
+				continue
+			}
+			for _, part := range parts {
+				if part.Type == "output_text" {
+					texts = append(texts, part.Text)
+				}
+			}
+		}
+		for _, text := range texts {
+			n, err := codec.Count(text)
 			if err != nil {
 				return payloadMetrics{}, err
 			}
-			result.Bytes += uint64(len(part.Text))
+			result.Bytes += uint64(len(text))
 			result.Tokens += uint64(n)
 		}
 	}

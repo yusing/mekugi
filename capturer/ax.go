@@ -17,6 +17,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 )
 
 // AXReadOutputEnvironment opts executor-side private readers into a local journal.
@@ -301,6 +302,9 @@ func ReadAXReadJournal(ctx context.Context, path string) (AXReadJournal, error) 
 	for scanner.Scan() {
 		if err := ctx.Err(); err != nil {
 			return invalid(err)
+		}
+		if !utf8.Valid(scanner.Bytes()) {
+			return invalid(errors.New("invalid UTF-8 in AX read event"))
 		}
 		var event axReadEvent
 		decoder := json.NewDecoder(bytes.NewReader(scanner.Bytes()))

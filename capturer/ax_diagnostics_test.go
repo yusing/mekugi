@@ -137,10 +137,10 @@ func TestAXCommandIntervalsGapsAndMissingEvidence(t *testing.T) {
 	observe("item_completed", "no-start", 600)
 	observe("item_started", "interrupted", 700)
 	got := accumulator.Result()
-	if got.Started != 4 || got.Completed != 4 || got.DurationMS != 300 || got.GapMS != 250 || got.UnpairedEvents != 2 {
+	if got.Started != 4 || got.Completed != 4 || got.DurationMS != 300 || got.GapMS != 0 || got.UnpairedEvents != 2 {
 		t.Fatalf("bad timing: %+v", got)
 	}
-	if got.Commands[1].GapBeforeMS == nil || *got.Commands[1].GapBeforeMS != 250 || got.Commands[2].GapBeforeMS != nil || got.Commands[3].DurationMS != nil || got.Commands[4].GapBeforeMS != nil {
+	if got.Commands[1].GapBeforeMS != nil || got.Commands[2].GapBeforeMS != nil || got.Commands[3].DurationMS != nil || got.Commands[4].GapBeforeMS != nil {
 		t.Fatalf("invented interval: %+v", got.Commands)
 	}
 	if got.Commands[0].LogicalCallID != "call-batch" {
@@ -148,5 +148,27 @@ func TestAXCommandIntervalsGapsAndMissingEvidence(t *testing.T) {
 	}
 	if empty := new(AXCommandAccumulator).Result(); empty.State != "unavailable" {
 		t.Fatal("missing events became measured zero")
+	}
+}
+
+func TestAXCommandGapsUseFinalEvidenceWithoutMutatingEarlierResults(t *testing.T) {
+	var accumulator AXCommandAccumulator
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	observe := func(id string, start, end time.Duration) {
+		t.Helper()
+		if err := accumulator.ObserveCompleted(id, "", base.Add(start), base.Add(end), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	observe("b", 20*time.Millisecond, 30*time.Millisecond)
+	observe("c", 40*time.Millisecond, 50*time.Millisecond)
+	earlier := accumulator.Result()
+	observe("a", 0, 100*time.Millisecond)
+	final := accumulator.Result()
+	repeated := accumulator.Result()
+	if earlier.GapMS != 10 || earlier.Commands[1].GapBeforeMS == nil || *earlier.Commands[1].GapBeforeMS != 10 ||
+		final.GapMS != 0 || final.Commands[1].GapBeforeMS != nil ||
+		repeated.GapMS != 0 || repeated.Commands[1].GapBeforeMS != nil {
+		t.Fatalf("arrival order or result alias changed gaps: earlier=%+v final=%+v repeated=%+v", earlier, final, repeated)
 	}
 }

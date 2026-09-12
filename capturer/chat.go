@@ -98,7 +98,7 @@ func observeChatResponse(payload []byte, contentType string, record *captureReco
 		ordered = append(ordered, *call)
 		encoded, _ := json.Marshal(call)
 		inputTokens, e1 := codec.Count(call.Function.Arguments)
-		itemTokens, e2 := codec.Count(string(encoded))
+		itemTokens, e2 := contentTokens(encoded, codec)
 		if e1 != nil || e2 != nil || inputTokens < 0 || itemTokens < 0 || call.ID == "" || call.Function.Name == "" {
 			continue
 		}

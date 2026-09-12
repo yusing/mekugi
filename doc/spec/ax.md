@@ -72,8 +72,8 @@ The capturer package owns the following offline calculations:
   to 256 failure details per thread with journal/call/shell identities and a dropped-detail
   count. Other-thread and anonymous start counts are explicit exclusions, not discarded
   noise. Validate the entire journal once before attribution; invalid input yields no
-  partial journal result. Reject malformed, duplicate,
-  unpaired, oversized, or arithmetically invalid evidence. No source-derived read estimate
+  partial journal result. Reject invalid UTF-8 before JSON decoding, as well as malformed,
+  duplicate, unpaired, oversized, or arithmetically invalid evidence. No source-derived read estimate
   substitutes for runtime evidence.
 - **Completion observations:** pair `task_started`/`task_complete` or
   `turn_started`/`turn_complete` by turn identity and matching event family using rollout timestamps.
@@ -82,12 +82,18 @@ The capturer package owns the following offline calculations:
   unpaired events. Missing events do not imply completion;
   these intervals include all activity between recorded start and completion.
 - **Command observations:** observe `item_started`/`item_completed` events whose item
-  type is `CommandExecution`. Retain item identity, optional literal carrier correlation,
-  timestamps, observed exit status, and paired duration. At most 10000 command identities
-  are accepted. Missing, duplicate, or backwards events remain unpaired; only a known
-  end followed by a non-overlapping start establishes a gap. Summed millisecond intervals
-  saturate at the signed 64-bit maximum. These gaps include all intervening activity,
-  not inferred router overhead. Commands and output are never retained in AX results.
+  type is `CommandExecution`. Persisted completion records may carry `started_at_ms`
+  and `completed_at_ms` as Unix epoch milliseconds; use those recorded endpoints rather
+  than the envelope's write time. Legacy paired events use envelope timestamps only
+  when neither embedded timing key is present. Null, missing, invalid, conflicting,
+  duplicate, or backwards endpoints do not establish a complete interval. Matching
+  start evidence is counted once. Retain item identity, optional literal carrier
+  correlation, observed exit status, and measured duration, accepting at most 10000
+  command identities. Derive gaps from the chronological union of observed activity,
+  not completion arrival order; incomplete activity suppresses uncertain gaps.
+  Summed millisecond intervals saturate at the signed 64-bit maximum. These gaps
+  include all intervening activity, not inferred router overhead. Commands and output
+  are never retained in AX results.
 - **Defect assessments:** accept a JSON array of unique known edit call IDs, explicit
   `defect`/`no_defect` verdicts, and real evidence-artifact paths. Relative paths resolve
   from the assessment file. Evidence must be nonempty, regular, and at most 1 MiB; record

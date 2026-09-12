@@ -296,9 +296,11 @@ func readSessionInspection(ctx context.Context, path string, observations *sessi
 		}
 		if envelope.Type == "event_msg" && observations != nil {
 			var event struct {
-				Type   string `json:"type"`
-				TurnID string `json:"turn_id"`
-				Item   *struct {
+				Type          string          `json:"type"`
+				TurnID        string          `json:"turn_id"`
+				StartedAtMS   json.RawMessage `json:"started_at_ms"`
+				CompletedAtMS json.RawMessage `json:"completed_at_ms"`
+				Item          *struct {
 					Type     string          `json:"type"`
 					ID       string          `json:"id"`
 					ExitCode *int            `json:"exit_code"`
@@ -310,7 +312,27 @@ func readSessionInspection(ctx context.Context, path string, observations *sessi
 			}
 			if (event.Type == "item_started" || event.Type == "item_completed") && event.Item != nil && event.Item.Type == "CommandExecution" {
 				at, _ := time.Parse(time.RFC3339Nano, envelope.Timestamp)
-				if err := observations.Commands.Observe(event.Type, event.Item.ID, inspectionAXCallID(event.Item.Command), at, event.Item.ExitCode); err != nil {
+				if event.Type == "item_started" && (event.StartedAtMS != nil || event.CompletedAtMS != nil) {
+					at, err = inspectionCommandTime(event.StartedAtMS)
+					if err != nil {
+						return nil, fmt.Errorf("session line %d: invalid start timestamp: %w", line, err)
+					}
+				}
+				callID := inspectionAXCallID(event.Item.Command)
+				var err error
+				if event.Type == "item_completed" && (event.StartedAtMS != nil || event.CompletedAtMS != nil) {
+					// Persisted completion times describe execution, unlike the envelope's
+					// recording time. A missing endpoint must not borrow that timestamp.
+					start, startErr := inspectionCommandTime(event.StartedAtMS)
+					end, endErr := inspectionCommandTime(event.CompletedAtMS)
+					if startErr != nil || endErr != nil {
+						return nil, fmt.Errorf("session line %d: invalid command timestamp: %w", line, errors.Join(startErr, endErr))
+					}
+					err = observations.Commands.ObserveCompleted(event.Item.ID, callID, start, end, event.Item.ExitCode)
+				} else {
+					err = observations.Commands.Observe(event.Type, event.Item.ID, callID, at, event.Item.ExitCode)
+				}
+				if err != nil {
 					return nil, err
 				}
 			}
@@ -492,4 +514,19 @@ func canonicalInspectionWorkspace(path string) (string, error) {
 		return "", errors.New("workspace is not a directory")
 	}
 	return resolved, nil
+}
+
+// An absent or explicitly null execution endpoint is unavailable, not record time.
+func inspectionCommandTime(raw json.RawMessage) (time.Time, error) {
+	if len(raw) == 0 {
+		return time.Time{}, nil
+	}
+	var ms *int64
+	if err := json.Unmarshal(raw, &ms); err != nil {
+		return time.Time{}, err
+	}
+	if ms == nil {
+		return time.Time{}, nil
+	}
+	return time.UnixMilli(*ms), nil
 }

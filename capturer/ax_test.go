@@ -385,3 +385,20 @@ func TestAXConcurrentNearCapacity(t *testing.T) {
 		t.Fatalf("concurrent writers exceeded limit: %v, %v", info, err)
 	}
 }
+
+func TestAXReadJournalRejectsCorruptUTF8IDs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "reads.jsonl")
+	start := `{"schema":"mekugi.ax.read.v1","id":"` + "\xff" + `","thread_id":"thread","tool":"hcat","phase":"start","at":"2026-09-11T00:00:00Z"}`
+	finish := `{"schema":"mekugi.ax.read.v1","id":"` + "\xfe" + `","thread_id":"thread","tool":"hcat","phase":"finish","at":"2026-09-11T00:00:01Z","duration_ns":100,"succeeded":true}`
+	if err := os.WriteFile(path, []byte(start+"\n"+finish+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := ReadAXReadJournal(t.Context(), path)
+	if err == nil || !strings.Contains(err.Error(), "UTF-8") || len(journal.Threads) != 0 {
+		t.Fatalf("corrupt IDs were admitted: %+v, %v", journal, err)
+	}
+	reads, err := ReadAXReads(t.Context(), path, "thread")
+	if err == nil || reads.Succeeded != 0 || reads.State != "unavailable" {
+		t.Fatalf("corrupt evidence became successful reads: %+v, %v", reads, err)
+	}
+}

@@ -88,3 +88,54 @@ func TestGeneratedCommentaryChangesTransportButNotOutputSavingsOrUsage(t *testin
 		t.Fatalf("transport/usage = %+v / %+v", snapshot.Transport, snapshot.Usage)
 	}
 }
+
+func TestGrokIdenticalTextHasNoOutputTextSavings(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream=%v", stream), func(t *testing.T) {
+			r, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			state := &requestState{captureID: "grok-text", sequence: 1}
+			text := "Identical Grok output with \"quotes\" and\nanother line."
+			encoded, _ := json.Marshal(text)
+			provider := `{"choices":[{"message":{"content":` + string(encoded) + `},"finish_reason":"stop"}]}`
+			client := `{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":` + string(encoded) + `}]}]}`
+			kind := "application/json"
+			if stream {
+				provider = "data: " + strings.Replace(provider, `"message"`, `"delta"`, 1) + "\n\ndata: [DONE]\n\n"
+				client = `data: {"type":"response.completed","response":` + client + "}\n\n"
+				kind = "text/event-stream"
+			}
+			for _, boundary := range []string{"provider", "codex"} {
+				body, request, attempt := provider, `{"model":"grok-4.6","messages":[]}`, uint64(1)
+				if boundary == "codex" {
+					body, request, attempt = client, `{"model":"grok-4.6","input":[]}`, 0
+				}
+				r.recordExchange(state, boundary, attempt, time.Now(), []byte(request), observedPayload{content: []byte(body), bytes: uint64(len(body))}, 200, kind, "", nil, providerResponseEvidence{})
+			}
+			report := r.snapshot()
+			if report.Protocol.OutputTextTokensSaved != 0 {
+				t.Fatalf("fabricated text savings: %+v", report.Protocol)
+			}
+			// Inspect the serialized report consumed by session tooling too.
+			data, err := json.Marshal(report)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var decoded metricsSnapshot
+			if err := json.Unmarshal(data, &decoded); err != nil {
+				t.Fatal(err)
+			}
+			want, _ := r.codec.Count(text)
+			if len(decoded.Exchanges) != 1 || len(decoded.Exchanges[0].ProviderAttempts) != 1 {
+				t.Fatalf("missing client/provider exchange: %s", data)
+			}
+			exchange := decoded.Exchanges[0]
+			expected := payloadMetrics{Bytes: uint64(len(text)), Tokens: uint64(want)}
+			if want == 0 || exchange.ClientFinalText != expected || exchange.ProviderAttempts[0].FinalText != expected {
+				t.Fatalf("client=%+v provider=%+v want=%+v", exchange.ClientFinalText, exchange.ProviderAttempts[0].FinalText, expected)
+			}
+		})
+	}
+}
