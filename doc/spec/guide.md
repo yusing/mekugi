@@ -34,11 +34,12 @@ immediately after the heading and blank separator with central guidance, and rem
 exec-command line. The active Astra prompt may instead have no legacy exec-command line and one
 pinned transport-independent shell-safety line after the search line; that safety line is preserved.
 The search and execution anchors must be unique, and an old file-editing section must be absent.
-For stock, marked, and configured custom prompts, the router removes recognized checklist-tool
-sections and list items before refreshing guidance, independently of Codex's launch-time filtering.
-This includes stock Planning/Tasks sections identified by their `update_plan` introduction, explicit
-plan-tool sections, and checklist progress instructions. Ordinary planning, edit planning, and
-unrelated custom instructions remain intact. The router also rewrites pinned conflicting
+For stock, marked, and configured custom prompts, the router removes complete pinned
+checklist-tool fragments before refreshing guidance, independently of Codex's launch-time
+filtering. A checklist introduction does not establish ownership of its surrounding section.
+Unknown wording, same-line suffixes, indented continuations, headings, fenced examples,
+and adjacent caller policy remain intact. Removed fragments retain their line boundaries so a later refresh
+cannot expose a new match. Ordinary planning and edit planning remain intact. The router also rewrites pinned conflicting
 progress-channel, initial-update, skill-announcement, approval-rejection delivery, 60-second wait,
 Code Mode batching, unrestricted parallelization, Plan mode's repeated-question prompts, and
 Default mode's `request_user_input` prompts when that request's tool contract makes it Plan-only
@@ -132,8 +133,11 @@ Acceptance:
    The workflow follows the request model, not the stock prompt shape or the proxy's first model.
    Switching models refreshes the existing marked section without retaining the other workflow.
 3. A marked prompt retains unrelated content before and after the owned section and refreshes
-   idempotently; a configured custom prompt without a recognized section retains unrelated content
-   before the append. Pinned conflicting tool and progress fragments are rewritten in both paths,
+   idempotently. Checklist removal preserves caller authorization and safety text even in
+   the same section or list as a tool instruction, including multipart developer content;
+   it matches complete pinned fragments rather than open-ended prefixes or section heuristics.
+   A configured custom prompt without a recognized section retains unrelated content before
+   the append. Pinned conflicting tool and progress fragments are rewritten in both paths,
    including fragments inherited from earlier rewrites. Fixtures cover all four cached model IDs,
    both instruction carriers, and both model protocols.
 4. Missing and null request instructions remain byte-equivalent. An unconfigured, unrecognized

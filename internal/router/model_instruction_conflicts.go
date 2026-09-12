@@ -64,50 +64,82 @@ func rewriteStockToolConflicts(input string) string {
 	return rewriteStockPlanInstructions(stockToolConflictReplacer.Replace(input))
 }
 
-// rewriteStockPlanInstructions removes checklist guidance independently of Codex's
-// launch-time filtering, which does not cover custom catalogs or direct routing.
-// Ordinary planning sections and our edit-planning workflow are not checklist APIs.
-// Source: codex-rs/core/src/context/update_plan_instructions.rs:4:62
-// without_update_plan_instructions in the read-only Codex source.
+// rewriteStockPlanInstructions removes only pinned checklist fragments. Codex's
+// section-removal helper is restricted to Codex-owned text; this boundary also
+// receives caller instructions, so nearby paragraphs and continuations are not ours.
+// Keep empty line boundaries so removing a fragment cannot expose a new match on
+// a later refresh.
 func rewriteStockPlanInstructions(input string) string {
 	lines := strings.SplitAfter(input, "\n")
 	var rendered strings.Builder
+	rendered.Grow(len(input))
+	planBlock := [...]string{
+		"When using the planning tool:",
+		"- Skip using the planning tool for straightforward tasks (roughly the easiest 25%).",
+		"- Do not make single-step plans.",
+		"- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan.",
+	}
+	var fence byte
+	var fenceWidth int
 	for index := 0; index < len(lines); {
 		line := strings.TrimRight(lines[index], "\r\n")
-		switch line {
-		case "## Planning", "## Tasks", "# Tasks", "## `update_plan`", "## Plan tool", "## Plan Mode vs update_plan tool":
-			end := index + 1
-			for end < len(lines) && !strings.HasPrefix(lines[end], "# ") && !strings.HasPrefix(lines[end], "## ") &&
-				strings.TrimSpace(lines[end]) != mekugiInstructionsStartMarker && strings.TrimSpace(lines[end]) != mekugiInstructionsEndMarker {
-				end++
+		marker := strings.TrimLeft(line, " ")
+		if len(line)-len(marker) <= 3 && len(marker) >= 3 && (marker[0] == '`' || marker[0] == '~') {
+			width := 1
+			for width < len(marker) && marker[width] == marker[0] {
+				width++
 			}
-			section := strings.Join(lines[index:end], "")
-			checklist := strings.Contains(section, "A tool named `update_plan` is available to you.") ||
-				strings.Contains(section, "When using the planning tool:\n- Skip using the planning tool for straightforward tasks (roughly the easiest 25%).\n- Do not make single-step plans.\n- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan.") ||
-				strings.Contains(section, "Separately, `update_plan` is a checklist/progress/TODOs tool; it does not enter or exit Plan Mode.") ||
-				strings.Contains(section, "You have access to an `update_plan` tool") ||
-				strings.Contains(section, "When `update_plan` is available, follow this section")
-			if checklist {
-				index = end
+			if width >= 3 {
+				if fence == 0 {
+					fence, fenceWidth = marker[0], width
+				} else if marker[0] == fence && width >= fenceWidth && strings.TrimSpace(marker[width:]) == "" {
+					fence = 0
+				}
+				rendered.WriteString(lines[index])
+				index++
 				continue
 			}
 		}
-		if line == "Progress visibility:" && index+1 < len(lines) && strings.HasPrefix(lines[index+1], "If update_plan is available") {
-			index += 2
-			if index < len(lines) && strings.TrimSpace(lines[index]) == "" {
-				index++
-			}
-			continue
-		}
-		if strings.HasPrefix(line, "- Use the plan tool ") || strings.HasPrefix(line, "- If you create a checklist or task list,") {
+		if fence != 0 {
+			rendered.WriteString(lines[index])
 			index++
-			for index < len(lines) && (strings.HasPrefix(lines[index], " ") || strings.HasPrefix(lines[index], "\t")) {
-				index++
-			}
 			continue
 		}
-		rendered.WriteString(lines[index])
-		index++
+		count := 0
+		if index+len(planBlock) <= len(lines) {
+			matches := true
+			for offset, expected := range planBlock {
+				if strings.TrimRight(lines[index+offset], "\r\n") != expected {
+					matches = false
+					break
+				}
+			}
+			if matches {
+				count = len(planBlock)
+			}
+		}
+		if count == 0 {
+			switch strings.TrimRight(lines[index], "\r\n") {
+			case "You have access to an `update_plan` tool which tracks steps.",
+				"A tool named `update_plan` is available to you. Update the checklist.",
+				"Separately, `update_plan` is a checklist/progress/TODOs tool; it does not enter or exit Plan Mode.",
+				"When `update_plan` is available, follow this section.",
+				"- Use the plan tool to explain the work",
+				"- If you create a checklist or task list, update its statuses.",
+				"If update_plan is available, use it for complex work.":
+				count = 1
+			}
+		}
+		if count == 0 {
+			rendered.WriteString(lines[index])
+			index++
+			continue
+		}
+		for _, line := range lines[index : index+count] {
+			content := strings.TrimRight(line, "\r\n")
+			rendered.WriteString(line[len(content):])
+		}
+		index += count
 	}
 	return rendered.String()
 }

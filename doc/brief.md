@@ -44,7 +44,8 @@ rewrites the custom `exec` tool either directly inside an `additional_tools` ite
 traffic or inside that item's `functions` namespace for CLI traffic. It removes that owner's
 `exec_command` section and introductory `tools.exec_command` example, derives the request-specific
 parameter shape, omits `cmd`, and appends only that sanitized shape to `shell`.
-Direct `functions.exec` and top-level exec carriers remain unsupported.
+The supported Code Mode and native carrier shapes are defined by
+[the plugin contract](spec/plugin.md); direct `functions.exec` entries remain unsupported.
 
 Yielded execution follows the result/continuation contract in [REQ-SHELL-001](spec/shell.md).
 
@@ -85,7 +86,9 @@ wall time must remain close to control.
 
 ## Public surface
 
-- Basic root Go API: `Apply` atomically updates an authorized workspace and returns an error.
+- Basic root Go API: `Apply` validates the complete script before ordered filesystem
+  updates and rollback attempts. It is not crash-atomic or reader-isolated; an
+  application error does not imply that no writes occurred.
 - Host APIs: `ApplyForHost`, `ApplyForHostRoot`, and `TranslateForHostAt` return
   `HostTranslation` for report, state, and diagnostics.
 - `mekugi --mode mekugi|passthrough codex`: expose model-visible hpatch and shell tools with

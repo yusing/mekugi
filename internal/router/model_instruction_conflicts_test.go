@@ -185,7 +185,7 @@ Preserve unrelated validation policy.`
 
 func TestChecklistInstructionsRewrittenAcrossModelLifecycles(t *testing.T) {
 	const checklist = "\n## Planning\nYou have access to an `update_plan` tool which tracks steps.\n\n### Examples\nKeep steps current.\n\n## `update_plan`\nA tool named `update_plan` is available to you. Update the checklist.\n\n## Plan tool\nWhen using the planning tool:\n- Skip using the planning tool for straightforward tasks (roughly the easiest 25%).\n- Do not make single-step plans.\n- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan.\n\n## Plan Mode vs update_plan tool\nSeparately, `update_plan` is a checklist/progress/TODOs tool; it does not enter or exit Plan Mode.\n\n# Tasks\nWhen `update_plan` is available, follow this section.\nKeep a checklist.\n\n## Work\nKeep working.\n- Use the plan tool to explain the work\n    - Keep steps current.\n- If you create a checklist or task list, update its statuses.\n\nProgress visibility:\nIf update_plan is available, use it for complex work.\n\n## Planning\nDiscuss architecture and inspect update_plan before editing.\n"
-	const preserved = "\n## Work\nKeep working.\n\n## Planning\nDiscuss architecture and inspect update_plan before editing.\n"
+	const preserved = "## Planning\nDiscuss architecture and inspect update_plan before editing.\n"
 	for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
 		fixture := "testdata/gpt-5.6-instructions.txt"
 		if model == "gpt-6-astra" {
@@ -230,7 +230,7 @@ func TestChecklistInstructionsRewrittenAcrossModelLifecycles(t *testing.T) {
 						if !strings.Contains(got, preserved) || strings.Count(got, guidance) != 1 {
 							t.Fatal("lost unrelated planning or selected journal guidance")
 						}
-						for _, unwanted := range []string{"tracks steps", "Keep steps current", "Update the checklist", "## Plan tool", "# Tasks", "Progress visibility:"} {
+						for _, unwanted := range []string{"tracks steps", "Update the checklist", "When using the planning tool:", "When `update_plan` is available, follow this section."} {
 							if strings.Contains(got, unwanted) {
 								t.Errorf("retained checklist instruction %q", unwanted)
 							}
@@ -441,5 +441,117 @@ func TestStockInstructionRewriteMatchesMultilineConflicts(t *testing.T) {
 	if strings.Contains(got, "answer briefly in commentary,") ||
 		!strings.Contains(got, "answer briefly with a report_now journal item,\nthen resume the active task") {
 		t.Fatal("newline-spanning stock conflict was not rewritten")
+	}
+}
+
+func TestChecklistRewritePreservesMixedCallerPolicy(t *testing.T) {
+	cases := []string{
+		"Quoted example:\n```text\nA tool named `update_plan` is available to you. Update the checklist.\n```\nNever deploy without approval.\n",
+		"Quoted example:\n   ~~~~text\nA tool named `update_plan` is available to you. Update the checklist.\n~~~\nIf update_plan is available, use it for complex work.\n   ~~~~\nNever deploy without approval.\n",
+		"## Planning\nYou have access to an `update_plan` tool which tracks steps.\nNever deploy without explicit approval.\n### Safety\nNever print credentials.\n",
+		"Progress visibility:\nIf update_plan is available, use it. Never deploy without approval.\n",
+		"- Use the plan tool to report progress.\n  Never deploy without approval.\n",
+		"- Use the plan tool to explain the work\n  Never deploy without approval.\n",
+		"## Tasks\nQuoted example: You have access to an `update_plan` tool which tracks steps.\nNever deploy without approval.\n",
+		"Progress visibility:\n- Use the plan tool to report progress.\nIf update_plan is available, use it for complex work.\nNever deploy without approval.\n",
+	}
+	for _, policy := range cases {
+		for _, newline := range []string{"\n", "\r\n"} {
+			policy := strings.ReplaceAll(policy, "\n", newline)
+			for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol"} {
+				for _, compact := range []bool{false, true} {
+					guidance := codexinstructions.InstructionsForModel(model, compact)
+					for _, lifecycle := range []string{"stock", "marked", "custom"} {
+						var prefix string
+						switch lifecycle {
+						case "stock":
+							prefix = stockModelInstructionsForTest("", "")
+						case "marked":
+							prefix = guidance
+						case "custom":
+							prefix = "Caller instructions.\n"
+						}
+						for _, carrier := range []string{"instructions", "developer", "developer-parts"} {
+							request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+								"model": mustTestJSON(t, model),
+							}}
+							source := prefix + policy
+							switch carrier {
+							case "instructions":
+								request.fields["instructions"] = mustTestJSON(t, source)
+							case "developer":
+								request.fields["input"] = mustTestJSON(t, []any{map[string]any{
+									"type": "message", "role": "developer", "content": source,
+								}})
+							case "developer-parts":
+								request.fields["input"] = mustTestJSON(t, []any{map[string]any{
+									"type": "message", "role": "developer", "content": []any{
+										map[string]string{"type": "input_text", "text": policy},
+										map[string]string{"type": "input_text", "text": source},
+									},
+								}})
+							}
+							if err := rewriteReceivedModelInstructions(t.Context(), &request, lifecycle == "custom", guidance); err != nil {
+								t.Fatalf("%s/%s: %v", lifecycle, carrier, err)
+							}
+							field := "input"
+							if carrier == "instructions" {
+								field = "instructions"
+							}
+							first := string(request.fields[field])
+							var texts []string
+							if carrier == "instructions" {
+								var text string
+								if err := json.Unmarshal(request.fields[field], &text); err != nil {
+									t.Fatal(err)
+								}
+								texts = append(texts, text)
+							} else {
+								var messages []struct{ Content json.RawMessage }
+								if err := json.Unmarshal(request.fields[field], &messages); err != nil {
+									t.Fatal(err)
+								}
+								if carrier == "developer" {
+									var text string
+									if err := json.Unmarshal(messages[0].Content, &text); err != nil {
+										t.Fatal(err)
+									}
+									texts = append(texts, text)
+								} else {
+									var parts []struct{ Text string }
+									if err := json.Unmarshal(messages[0].Content, &parts); err != nil {
+										t.Fatal(err)
+									}
+									for _, part := range parts {
+										texts = append(texts, part.Text)
+									}
+								}
+							}
+							for part, text := range texts {
+								if strings.HasPrefix(policy, "Quoted example:") && !strings.Contains(text, policy) {
+									t.Fatalf("%s/%s part %d lost literal example", lifecycle, carrier, part)
+								}
+								for _, line := range strings.Split(policy, newline) {
+									if strings.HasPrefix(strings.TrimSpace(line), "Never ") ||
+										strings.HasPrefix(line, "### ") ||
+										strings.Contains(line, "Never deploy") ||
+										strings.HasPrefix(line, "Quoted example:") {
+										if !strings.Contains(text, line) {
+											t.Fatalf("%s/%s part %d lost caller policy %q", lifecycle, carrier, part, line)
+										}
+									}
+								}
+							}
+							if err := rewriteReceivedModelInstructions(t.Context(), &request, false, guidance); err != nil {
+								t.Fatal(err)
+							}
+							if string(request.fields[field]) != first {
+								t.Fatalf("%s/%s rewrite is not idempotent", lifecycle, carrier)
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 }

@@ -201,8 +201,9 @@ is unavailable; use native session facilities for interactive input or terminati
 
 ## HPATCH/2
 
-Edit-only HPATCH/2 applies one complete target-bearing edit script atomically. Do not call this
-tool in parallel with other tools. Rejection before application changes nothing.
+Edit-only HPATCH/2 validates one complete target-bearing edit script atomically before host
+application, which may have partial effects on failure. Do not call this tool in parallel
+with other tools. Rejection before application changes nothing.
 
 Choose mixed scripts for dependent edit/command chains. Use the shell tool for command-only
 work and ordinary edit-only hpatch for edits alone; these avoid mixed-control overhead.
