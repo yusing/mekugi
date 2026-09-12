@@ -275,14 +275,14 @@ func grokContent(raw json.RawMessage) (any, error) {
 	if err := json.Unmarshal(raw, &parts); err != nil || parts == nil {
 		return nil, errors.New("unsupported Grok message content")
 	}
+	if len(parts) == 0 {
+		return "", nil
+	}
 	var content []any
-	var joined strings.Builder
-	images := false
 	for _, part := range parts {
 		switch jsonString(part, "type") {
 		case "input_text", "output_text", "text":
 			value := jsonString(part, "text")
-			joined.WriteString(value)
 			content = append(content, map[string]string{"type": "text", "text": value})
 		case "input_image":
 			imageURL := jsonString(part, "image_url")
@@ -293,16 +293,12 @@ func grokContent(raw json.RawMessage) (any, error) {
 			if detail := jsonString(part, "detail"); detail != "" {
 				image["detail"] = detail
 			}
-			images = true
 			content = append(content, map[string]any{"type": "image_url", "image_url": image})
 		case "encrypted_content":
 			return nil, errors.New("Grok cannot read encrypted agent messages; start a fresh thread with the Grok collaboration bridge enabled")
 		default:
 			return nil, fmt.Errorf("unsupported Grok content type %q", jsonString(part, "type"))
 		}
-	}
-	if !images {
-		return joined.String(), nil
 	}
 	return content, nil
 }

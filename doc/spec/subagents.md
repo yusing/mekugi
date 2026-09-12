@@ -58,6 +58,8 @@ never reach OpenAI. Credential-bearing requests do not follow redirects.
 
 The adapter preserves supported text/image messages, plaintext agent messages, custom/function tool
 calls and their identities/results, parallel calls, structured output, reasoning effort and usage.
+Multipart text retains separate content parts so independent CTP dictionaries and visible-output
+source identities do not merge. Empty text arrays retain empty-string content.
 Custom tool grammars remain explicit input instructions and are still validated by their existing
 router/executor owners. Provider-hosted OpenAI search is not offered on the Grok route; the model is
 informed of its absence. Other unsupported provider tools/content fail explicitly rather than being
@@ -70,6 +72,8 @@ Text and content-free progress stream while complete tool arguments are buffered
 Validated calls emit the Responses tool lifecycle in order: item added, input or arguments done,
 then item done, with stable item/call identities and output indexes. Function argument-completion
 events include the restored function name.
+The first terminal choice seals its content and calls. Later choice data or conflicting terminal
+reasons reject the stream; usage-only trailers and the final stream marker remain valid.
 Truncated streams and malformed/unknown tool calls never become successful executable results.
 JSON clients receive the equivalent terminal Responses object. Cancellation and stream inactivity
 limits propagate to the upstream HTTP request; request start and execution have distinct lifetimes.

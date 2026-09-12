@@ -21,6 +21,8 @@ boundary. Grok's adapter translates supported Responses content into Chat Comple
 ordinary Responses JSON/events to the existing transformation pipeline. It never executes model
 tools, forwards OpenAI credentials, decrypts opaque history, or substitutes a CLI agent runtime.
 Text and heartbeat progress remain auxiliary to complete, validated executable tool calls.
+Each streamed call owns one append-only argument buffer until terminal validation. The adapter
+preserves content-part boundaries and accepts no choice mutation after the first terminal reason.
 
 Grok authentication has its own HTTP client, fixed credential destinations and redirect policy.
 Refresh coordinates with the CLI using the same advisory lock and atomic credential replacement;

@@ -41,7 +41,10 @@ type grokChunk struct {
 	} `json:"usage"`
 	Error json.RawMessage `json:"error"`
 }
-type grokStreamCall struct{ id, name, arguments string }
+type grokStreamCall struct {
+	id              string
+	name, arguments strings.Builder
+}
 
 // readGrokStream produces ordinary Responses events. Tool arguments are held
 // until complete and validated, while text and content-free progress stream
@@ -96,6 +99,11 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 			if choice.Index != 0 {
 				return errors.New("Grok returned multiple completion choices")
 			}
+			// A terminal choice seals its data, including incomplete calls.
+			// Usage-only trailers have no choices and remain admissible.
+			if finish != "" {
+				return errors.New("Grok returned choice data after its terminal finish reason")
+			}
 			if choice.FinishReason != "" {
 				finish = choice.FinishReason
 			}
@@ -131,8 +139,8 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 					}
 					call.id = part.ID
 				}
-				call.name += part.Function.Name
-				call.arguments += part.Function.Arguments
+				call.name.WriteString(part.Function.Name)
+				call.arguments.WriteString(part.Function.Arguments)
 			}
 		}
 		if !textEmitted {
@@ -213,7 +221,7 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 		if call == nil {
 			return nil, errors.New("Grok returned noncontiguous tool-call indexes")
 		}
-		tool, ok := tr.tools[call.name]
+		tool, ok := tr.tools[call.name.String()]
 		if !ok {
 			return nil, errors.New("Grok returned an unavailable tool")
 		}
@@ -221,16 +229,17 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 			return nil, errors.New("Grok returned an invalid tool-call identity")
 		}
 		seen[call.id] = true
-		if !json.Valid([]byte(call.arguments)) {
+		arguments := call.arguments.String()
+		if !json.Valid([]byte(arguments)) {
 			return nil, errors.New("Grok returned invalid tool-call arguments")
 		}
-		item := map[string]any{"type": "function_call", "id": "fc_" + rand.Text(), "call_id": call.id, "name": tool.name, "arguments": call.arguments, "status": "completed"}
+		item := map[string]any{"type": "function_call", "id": "fc_" + rand.Text(), "call_id": call.id, "name": tool.name, "arguments": arguments, "status": "completed"}
 		if tool.namespace != "" {
 			item["namespace"] = tool.namespace
 		}
 		if tool.kind == "custom" {
 			var args map[string]json.RawMessage
-			if json.Unmarshal([]byte(call.arguments), &args) != nil || len(args) != 1 {
+			if json.Unmarshal([]byte(arguments), &args) != nil || len(args) != 1 {
 				return nil, errors.New("Grok custom tool requires exactly one input string")
 			}
 			var input *string

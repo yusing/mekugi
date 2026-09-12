@@ -81,7 +81,9 @@ no cross-request dictionary, adaptive codebook, training state, or provider-cach
 ### Request and response behavior
 
 Eligible request strings are non-carrier message text, tool descriptions, historical custom-tool
-inputs and outputs, and historical function arguments and outputs. Tool output uses visible-line
+inputs and outputs, and historical function arguments and outputs. Grok historical function
+arguments remain native JSON because the downstream Chat tool-call contract requires JSON;
+this exception does not disable encoding for eligible text. Tool output uses visible-line
 encoding with content-local fallback; other eligible strings use content-local encoding. The router
 does not rewrite binary or image content, reasoning items, identifiers, unknown fields, tool names
 or choices, grammar definitions, JSON schemas, or executor carriers that are not model-visible.

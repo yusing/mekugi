@@ -137,7 +137,7 @@ func (c *ctp2Codec) prepareRequest(request *parsedResponsesRequest, nativeBody [
 			if view.carrier == ctp2CarrierDeveloperMessage {
 				preserveDeveloper = func(value string) string { return value }
 			}
-			found, transformErr := transformCTP2Input(&view.input, encodeLocal, preserveDeveloper, visible)
+			found, transformErr := transformCTP2Input(&view.input, encodeLocal, preserveDeveloper, visible, request.model() == grokModel)
 			err = errors.Join(err, transformErr)
 			if preserveDeveloper != nil && !found {
 				return nil, nativeBody, nil
@@ -260,6 +260,7 @@ func transformCTP2Input(
 	input *responsesInput,
 	transformString, transformFirstDeveloper func(string) string,
 	visible *ctp2VisibleLineEncoder,
+	preserveNativeArguments bool,
 ) (bool, error) {
 	if input == nil || !input.array {
 		return false, nil
@@ -304,7 +305,8 @@ func transformCTP2Input(
 				item.setOutput(output)
 			}
 		case "function_call":
-			if item.Arguments != nil {
+			// Chat function arguments must remain JSON, not a CTP text envelope.
+			if item.Arguments != nil && !preserveNativeArguments {
 				item.setArguments(transformString(*item.Arguments))
 			}
 		}
