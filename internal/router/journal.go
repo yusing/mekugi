@@ -214,25 +214,7 @@ func writeThreadJournal(store *mekugiReplayStore, journal threadJournal) error {
 	if len(data) > maxReplayRecordBytes {
 		return errors.New("journal record capacity reached")
 	}
-	name := journalFilename(journal.Workspace, journal.Thread)
-	file, err := os.CreateTemp(store.directory, "journal-pending-")
-	if err != nil {
-		return err
-	}
-	defer func() { file.Close(); os.Remove(file.Name()) }()
-	if _, err = file.Write(data); err != nil {
-		return err
-	}
-	if err = file.Sync(); err != nil {
-		return err
-	}
-	if err = file.Close(); err != nil {
-		return err
-	}
-	if err = os.Rename(file.Name(), filepath.Join(store.directory, name)); err != nil {
-		return err
-	}
-	return syncReplayDirectory(store.directory)
+	return store.writeFile(journalFilename(journal.Workspace, journal.Thread), "journal-pending-", data)
 }
 
 func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore, workspace, thread string, mutate func(*threadJournal, bool) error) error {

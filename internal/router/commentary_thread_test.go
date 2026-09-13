@@ -165,7 +165,7 @@ func TestThreadCommentaryCannotReclaimToolHistoryCapacity(t *testing.T) {
 	script := strings.Repeat("x", maxMekugiHistorySessionBytes-256)
 	for i := range 4 {
 		session := fmt.Sprint(i)
-		if err := proxy.rememberBatch(session, map[string]mekugiHistory{"essential": {script: script}}); err != nil {
+		if err := proxy.rememberBatch(session, map[string]mekugiHistory{"essential": {Script: script}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -187,7 +187,7 @@ func TestThreadCommentaryCannotReclaimToolHistoryCapacity(t *testing.T) {
 			t.Fatal("commentary evicted essential history")
 		}
 	}
-	if err := proxy.rememberBatch("0", map[string]mekugiHistory{"later": {script: "ok"}}); err != nil {
+	if err := proxy.rememberBatch("0", map[string]mekugiHistory{"later": {Script: "ok"}}); err != nil {
 		t.Fatalf("later tool admission blocked: %v", err)
 	}
 	if _, exists := proxy.history("0", "essential"); !exists {

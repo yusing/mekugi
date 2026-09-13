@@ -21,9 +21,9 @@ func TestTrackedConfirmationRepairsInterruptedPublication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first := mekugiHistory{changeID: id, correlationID: "first", attempt: 1, sequence: 1, translationError: "rejected"}
-	middle := mekugiHistory{changeID: id, correlationID: "first", attempt: 2, sequence: 2, report: changeNotice(id) + "success\n"}
-	last := mekugiHistory{changeID: id, correlationID: "first", attempt: 3, sequence: 3, translationError: "blocked"}
+	first := mekugiHistory{ChangeID: id, CorrelationID: "first", Attempt: 1, sequence: 1, TranslationError: "rejected"}
+	middle := mekugiHistory{ChangeID: id, CorrelationID: "first", Attempt: 2, sequence: 2, Report: changeNotice(id) + "success\n"}
+	last := mekugiHistory{ChangeID: id, CorrelationID: "first", Attempt: 3, sequence: 3, TranslationError: "blocked"}
 	if err := store.put(t.Context(), "/w", map[string]mekugiHistory{"first": first, "last": last}); err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestTrackedConfirmationRejectsUnrepairablePublication(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			history := mekugiHistory{changeID: id, correlationID: "call", attempt: 1, confirmed: true}
+			history := mekugiHistory{ChangeID: id, CorrelationID: "call", Attempt: 1, confirmed: true}
 			record := replayRecord{Version: 1, Workspace: "/w", CallID: "call", History: durableHistory(history)}
 			switch failure {
 			case "wrong change":
@@ -86,7 +86,7 @@ func TestTrackedConfirmationRejectsUnrepairablePublication(t *testing.T) {
 			case "rejected":
 				record.History.TranslationError = "rejected"
 			case "index correlation":
-				history.correlationID = "other"
+				history.CorrelationID = "other"
 			}
 			if failure != "missing" {
 				if err := store.locked(t.Context(), func() error { return store.write(record) }); err != nil {
@@ -118,7 +118,7 @@ func TestTrackedReadUsesAnUnlockedSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	history := mekugiHistory{changeID: id, correlationID: "call", attempt: 1, report: "success\n"}
+	history := mekugiHistory{ChangeID: id, CorrelationID: "call", Attempt: 1, Report: "success\n"}
 	if err := store.put(t.Context(), "/w", map[string]mekugiHistory{"call": history}); err != nil {
 		t.Fatal(err)
 	}

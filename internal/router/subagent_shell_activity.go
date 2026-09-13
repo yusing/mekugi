@@ -160,11 +160,11 @@ func (t *mekugiResponseTransform) prepareShellActivity(input json.RawMessage) {
 				// Replay restores the public tool identity (for example shell),
 				// but its recorded carrier still owns the host's cell metadata.
 				switch {
-				case name == "exec" || known && history.translationError == "" && history.effectiveCarrierKind() == codeModeCarrierCustom:
+				case name == "exec" || known && history.TranslationError == "" && history.effectiveCarrierKind() == codeModeCarrierCustom:
 					operation := strings.Join(subagentToolActivityTexts(item, qualifiedName, &history, t.shellActivityDisplay), "\n\n")
-					if history.toolName == "shell" && history.pluginID == builtinToolsPluginID &&
-						!history.replayCarrier && jsonString(history.upstreamItem, "name") == t.codeModeToolName {
-						operation = toolActivityShell(history.script)
+					if history.ToolName == "shell" && history.PluginID == builtinToolsPluginID &&
+						!history.ReplayCarrier && jsonString(history.UpstreamItem, "name") == t.codeModeToolName {
+						operation = toolActivityShell(history.Script)
 					}
 					operation = strings.TrimPrefix(strings.TrimPrefix(operation, "Run\n"), "Run JavaScript\n")
 					operation = strings.TrimPrefix(strings.TrimPrefix(operation, "Still Running\n"), "Running stored script\n")
@@ -186,9 +186,9 @@ func (t *mekugiResponseTransform) prepareShellActivity(input json.RawMessage) {
 			}
 			name, args, script := toolActivityShellCall(item, qualifiedToolName(jsonString(item, "namespace"), jsonString(item, "name")), true)
 			if history, ok := t.visible[callID]; ok &&
-				history.toolName == "shell" && history.pluginID == builtinToolsPluginID &&
-				!history.replayCarrier && jsonString(history.upstreamItem, "name") == t.codeModeToolName {
-				name, script = "shell", history.script
+				history.ToolName == "shell" && history.PluginID == builtinToolsPluginID &&
+				!history.ReplayCarrier && jsonString(history.UpstreamItem, "name") == t.codeModeToolName {
+				name, script = "shell", history.Script
 			}
 			switch name {
 			case "shell", "shell_command", "exec_command":

@@ -47,22 +47,21 @@ func (r *parsedResponsesRequest) isExecutionFreeRequest() bool {
 			return false
 		}
 		seen := make(map[string]bool)
-		for _, node := range section.nodes {
-			if node == nil || node.definition == nil {
+		for _, tool := range section.tools {
+			if tool == nil || tool.fields == nil {
 				return false
 			}
-			tool := node.definition
 			if tool.Name == "" || seen[tool.Name] {
 				return false
 			}
 			seen[tool.Name] = true
 			if tool.Type == "namespace" {
-				if !namespaces || node.nested == nil || !node.nested.array || !acceptSection(node.nested, false) {
+				if !namespaces || tool.nested == nil || !tool.nested.array || !acceptSection(tool.nested, false) {
 					return false
 				}
 				continue
 			}
-			if node.nested != nil || (tool.Type != "function" && tool.Type != "custom") {
+			if tool.nested != nil || (tool.Type != "function" && tool.Type != "custom") {
 				return false
 			}
 			switch tool.Name {

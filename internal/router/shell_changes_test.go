@@ -31,8 +31,8 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	history := mekugiHistory{
-		changeID: id, correlationID: "edited", applied: true,
-		reviewFiles: []mekugi.ReviewFile{{AfterPath: "file.txt", Diff: "add \"\" -> \"file.txt\"\n--- /dev/null\n+++ \"file.txt\"\n@@ -0,0 +1,12 @@\n" + strings.Repeat("+line π changed\n", 12)}},
+		ChangeID: id, CorrelationID: "edited", Applied: true,
+		ReviewFiles: []mekugi.ReviewFile{{AfterPath: "file.txt", Diff: "add \"\" -> \"file.txt\"\n--- /dev/null\n+++ \"file.txt\"\n@@ -0,0 +1,12 @@\n" + strings.Repeat("+line π changed\n", 12)}},
 	}
 	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"edited": history}); err != nil {
 		t.Fatal(err)

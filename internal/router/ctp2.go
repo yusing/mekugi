@@ -504,17 +504,17 @@ func projectCTP2ToolSection(section *responsesToolSection, transform func(string
 		return sectionRawTools(section), nil
 	}
 	definitions := slices.Clone(section.rawTools)
-	for index, node := range section.nodes {
-		if node == nil {
+	for index, definition := range section.tools {
+		if definition == nil || definition.fields == nil {
 			continue
 		}
-		tool := maps.Clone(node.definition.fields)
+		tool := maps.Clone(definition.fields)
 		var description *string
-		if json.Unmarshal(node.definition.rawField("description"), &description) == nil && description != nil {
+		if json.Unmarshal(definition.rawField("description"), &description) == nil && description != nil {
 			tool["description"] = mustMarshalJSON(transform(*description))
 		}
-		if node.nested != nil {
-			nested, err := projectCTP2ToolSection(node.nested, transform)
+		if definition.nested != nil {
+			nested, err := projectCTP2ToolSection(definition.nested, transform)
 			if err != nil {
 				return nil, err
 			}

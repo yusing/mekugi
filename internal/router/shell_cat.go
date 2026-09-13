@@ -218,7 +218,7 @@ func (t *mekugiResponseTransform) shellCatCarrier(contribution toolContribution,
 	if kind == codeModeCarrierFunction {
 		for index, step := range steps {
 			if step.patch != "" {
-				commands[index] = "if " + step.guard + "; then\n" + mekugiNativeCommand(mekugiHistory{patch: step.patch}) + "\nelse\n" + commands[index] + "\nfi"
+				commands[index] = "if " + step.guard + "; then\n" + mekugiNativeCommand(mekugiHistory{Patch: step.patch}) + "\nelse\n" + commands[index] + "\nfi"
 			}
 		}
 		command := strings.Join(commands, "\n")

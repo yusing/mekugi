@@ -23,10 +23,10 @@ func TestCaptureHPatchCarrierOutcomes(t *testing.T) {
 			t.Cleanup(func() { _ = recorder.Close() })
 			var providerItems, deliveredItems []any
 			for i, history := range []mekugiHistory{
-				{translationError: "type: command 1, reason row-stale: private detail"},
-				{patch: "private patch", report: "private report", changeID: "c1"},
-				{patch: "private patch", report: "private report", changeID: "c2"},
-				{patch: "private patch", report: "private report"},
+				{TranslationError: "type: command 1, reason row-stale: private detail"},
+				{Patch: "private patch", Report: "private report", ChangeID: "c1"},
+				{Patch: "private patch", Report: "private report", ChangeID: "c2"},
+				{Patch: "private patch", Report: "private report"},
 			} {
 				name := "hpatch"
 				if i == 1 {

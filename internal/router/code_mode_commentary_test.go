@@ -47,7 +47,7 @@ func TestCodeModeCommentaryLowersRuntimeExpressionAndPreservesOriginal(t *testin
 		t.Fatalf("runtime journal = %+v, error = %v", items, err)
 	}
 	history := transform.local["call-code"]
-	if history.script != source || jsonString(history.upstreamItem, "input") != source || history.carrierPayload != lowered {
+	if history.Script != source || jsonString(history.UpstreamItem, "input") != source || history.CarrierPayload != lowered {
 		t.Fatalf("history = %+v", history)
 	}
 	repeated := maps.Clone(item)
@@ -190,8 +190,8 @@ func TestCodeModeCommentaryLowersAuthoritativeStreamingInput(t *testing.T) {
 		jsonString(completedItem.Item, "input") != completedInput.Input {
 		t.Fatalf("completed item = %q, input = %q", events[0], completedInput.Input)
 	}
-	if jsonString(transform.local["call-code"].upstreamItem, "status") != "completed" {
-		t.Fatalf("retained item = %s", mustMarshalJSON(transform.local["call-code"].upstreamItem))
+	if jsonString(transform.local["call-code"].UpstreamItem, "status") != "completed" {
+		t.Fatalf("retained item = %s", mustMarshalJSON(transform.local["call-code"].UpstreamItem))
 	}
 }
 
@@ -238,13 +238,13 @@ func TestCodeModeNativeWarningPreservesDurableStreamingInput(t *testing.T) {
 			if err != nil || !found {
 				t.Fatalf("restart lookup: found=%v, error=%v", found, err)
 			}
-			if history.script != source || jsonString(history.upstreamItem, "input") != source {
+			if history.Script != source || jsonString(history.UpstreamItem, "input") != source {
 				t.Fatal("durable replay did not preserve original provider input")
 			}
-			if jsonString(history.upstreamItem, "status") != "completed" {
+			if jsonString(history.UpstreamItem, "status") != "completed" {
 				t.Fatal("durable replay did not retain completion")
 			}
-			if !strings.Contains(history.carrierPayload, nativeExecCommandWarning) {
+			if !strings.Contains(history.CarrierPayload, nativeExecCommandWarning) {
 				t.Fatal("executor carrier lost the native-command warning")
 			}
 		})
@@ -324,7 +324,7 @@ func TestCodeModeUnparseableInputPassesThrough(t *testing.T) {
 					}
 				}
 				history := transform.local["call-invalid"]
-				if history.script != source || history.carrierPayload != source || jsonString(history.upstreamItem, "input") != source {
+				if history.Script != source || history.CarrierPayload != source || jsonString(history.UpstreamItem, "input") != source {
 					t.Fatal("replay did not retain the exact program")
 				}
 				if len(transform.commentarySubscriptions) != 0 {
@@ -362,10 +362,10 @@ func TestCodeModeNativeExecStreamingRetainsOriginalInput(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("lookup: found %v, error %v", found, err)
 	}
-	if jsonString(history.upstreamItem, "input") != source {
-		t.Fatalf("durable upstream input was rewritten: %s", history.upstreamItem["input"])
+	if jsonString(history.UpstreamItem, "input") != source {
+		t.Fatalf("durable upstream input was rewritten: %s", history.UpstreamItem["input"])
 	}
-	if history.carrierPayload == source {
+	if history.CarrierPayload == source {
 		t.Fatal("native-exec warning was not added to the carrier")
 	}
 	item["input"] = source

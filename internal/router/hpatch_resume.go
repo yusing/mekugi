@@ -77,10 +77,10 @@ func (t *mekugiResponseTransform) retainMixedScript(changeID, correlationID, sou
 }
 
 func (t *mekugiResponseTransform) translateMixedResume(callID, input string, upstream map[string]json.RawMessage) (mekugiHistory, error) {
-	history := mekugiHistory{toolName: mekugiToolName, script: input, root: t.directory,
-		carrierName: t.codeModeToolName, upstreamItem: maps.Clone(upstream)}
+	history := mekugiHistory{ToolName: mekugiToolName, Script: input, Root: t.directory,
+		CarrierName: t.codeModeToolName, UpstreamItem: maps.Clone(upstream)}
 	reject := func(err error) (mekugiHistory, error) {
-		history.translationError = changeNotice(history.changeID) + "hpatch resume: " + err.Error()
+		history.TranslationError = changeNotice(history.ChangeID) + "hpatch resume: " + err.Error()
 		t.recordLocal(callID, &history)
 		return history, nil
 	}
@@ -115,8 +115,8 @@ func (t *mekugiResponseTransform) translateMixedResume(callID, input string, ups
 		state.Handle != fields[1] || state.Root != t.directory || !time.Now().Before(state.ExpiresAt) {
 		return reject(errors.New("resume handle does not identify valid work in this workspace"))
 	}
-	history.changeID, history.correlationID = state.ChangeID, state.CorrelationID
-	history.attempt = 1
+	history.ChangeID, history.CorrelationID = state.ChangeID, state.CorrelationID
+	history.Attempt = 1
 	if action != "" && action != "retry" && action != "accept" && action != "repair" {
 		return reject(errors.New("resume action must be retry, accept, or repair"))
 	}
@@ -144,8 +144,8 @@ func (t *mekugiResponseTransform) translateMixedResume(callID, input string, ups
 	if action == "repair" && changed == nil {
 		return reject(errors.New("repair requires one workspace edit segment"))
 	}
-	history.carrierKind = codeModeCarrierCustom
-	history.carrierPayload = t.mixedCarrier(state, action, changed)
+	history.CarrierKind = codeModeCarrierCustom
+	history.CarrierPayload = t.mixedCarrier(state, action, changed)
 	t.recordLocal(callID, &history)
 	return history, nil
 }

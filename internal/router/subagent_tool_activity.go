@@ -41,8 +41,8 @@ func (t *mekugiResponseTransform) collectSubagentToolCall(item map[string]json.R
 	}
 	// Recovery changes execution, not the provider's retained call identity.
 	// Use the translated owner for presentation only after translation succeeded.
-	if history != nil && history.toolName == "shell" && history.pluginID == builtinToolsPluginID &&
-		!history.replayCarrier && jsonString(history.upstreamItem, "name") == t.codeModeToolName {
+	if history != nil && history.ToolName == "shell" && history.PluginID == builtinToolsPluginID &&
+		!history.ReplayCarrier && jsonString(history.UpstreamItem, "name") == t.codeModeToolName {
 		item = maps.Clone(item)
 		item["name"] = mustMarshalJSON("shell")
 		delete(item, "namespace")

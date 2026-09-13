@@ -7,11 +7,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/yusing/mekugi"
 )
 
 func TestMekugiReplayStoreRestartAndConflict(t *testing.T) {
@@ -20,7 +23,7 @@ func TestMekugiReplayStoreRestartAndConflict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := mekugiHistory{script: "original", carrierPayload: "delivered", carrierName: "exec", replayCarrier: true, confirmed: true, sequence: 9}
+	h := mekugiHistory{Script: "original", CarrierPayload: "delivered", CarrierName: "exec", ReplayCarrier: true, bytes: 123, confirmed: true, sequence: 9}
 	if err := s.put(t.Context(), "/workspace", map[string]mekugiHistory{"call": h}); err != nil {
 		t.Fatal(err)
 	}
@@ -29,13 +32,17 @@ func TestMekugiReplayStoreRestartAndConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, ok, err := s.lookup(t.Context(), "/workspace", "call")
-	if err != nil || !ok || got.script != h.script || got.confirmed || got.sequence != 0 {
+	if err != nil || !ok || got.Script != h.Script || got.bytes != 0 || got.confirmed || got.sequence != 0 {
 		t.Fatalf("lookup: %#v %v %v", got, ok, err)
 	}
 	if _, ok, err := s.lookup(t.Context(), "/other", "call"); err != nil || ok {
 		t.Fatalf("workspace leak: %v %v", ok, err)
 	}
-	h.carrierPayload = "changed"
+	h.bytes, h.confirmed, h.sequence = 456, false, 10
+	if err := s.put(t.Context(), "/workspace", map[string]mekugiHistory{"call": h}); err != nil {
+		t.Fatalf("request-local state created a durable conflict: %v", err)
+	}
+	h.CarrierPayload = "changed"
 	if err := s.put(t.Context(), "/workspace", map[string]mekugiHistory{"call": h}); err == nil {
 		t.Fatal("accepted conflicting carrier")
 	}
@@ -53,7 +60,7 @@ func TestMekugiReplayStoreConcurrencyAndCorruption(t *testing.T) {
 		wg.Go(func() {
 			other, err := openMekugiReplayStore(dir)
 			if err == nil {
-				err = other.put(t.Context(), "/w", map[string]mekugiHistory{"c": {script: "x"}})
+				err = other.put(t.Context(), "/w", map[string]mekugiHistory{"c": {Script: "x"}})
 			}
 			if err != nil {
 				t.Error(err)
@@ -81,7 +88,7 @@ func TestMekugiReplayStoreQuotaAndCommentary(t *testing.T) {
 		t.Fatalf("membership %v %v", ok, err)
 	}
 	s.maxBytes = 1
-	if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"c": {script: "x"}}); err == nil {
+	if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"c": {Script: "x"}}); err == nil {
 		t.Fatal("accepted quota overflow")
 	}
 	if _, ok, err := s.lookup(t.Context(), "/w", "c"); err != nil || ok {
@@ -94,13 +101,13 @@ func TestMekugiReplayStoreProgressiveCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := mekugiHistory{script: "x", upstreamItem: map[string]json.RawMessage{"status": json.RawMessage(`"in_progress"`), "input": json.RawMessage(`"x"`)}, commentaryMessageIDs: []string{"first"}}
+	h := mekugiHistory{Script: "x", UpstreamItem: map[string]json.RawMessage{"status": json.RawMessage(`"in_progress"`), "input": json.RawMessage(`"x"`)}, CommentaryMessageIDs: []string{"first"}}
 	if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"c": h}); err != nil {
 		t.Fatal(err)
 	}
-	h.upstreamItem["status"] = json.RawMessage(`"completed"`)
-	h.upstreamItem["id"] = json.RawMessage(`"item"`)
-	h.commentaryMessageIDs = []string{"second"}
+	h.UpstreamItem["status"] = json.RawMessage(`"completed"`)
+	h.UpstreamItem["id"] = json.RawMessage(`"item"`)
+	h.CommentaryMessageIDs = []string{"second"}
 	if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"c": h}); err != nil {
 		t.Fatal(err)
 	}
@@ -108,10 +115,10 @@ func TestMekugiReplayStoreProgressiveCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got.upstreamItem["status"]) != `"completed"` || len(got.commentaryMessageIDs) != 2 {
+	if string(got.UpstreamItem["status"]) != `"completed"` || len(got.CommentaryMessageIDs) != 2 {
 		t.Fatalf("incomplete merge: %#v", got)
 	}
-	h.upstreamItem["input"] = json.RawMessage(`"other"`)
+	h.UpstreamItem["input"] = json.RawMessage(`"other"`)
 	if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"c": h}); err == nil {
 		t.Fatal("accepted changed model input")
 	}
@@ -133,7 +140,7 @@ func TestMekugiReplayStoreRejectsSymlinks(t *testing.T) {
 	if err := os.Symlink(target+"/outside", dir+"/"+replayRecordName("/w", "c", false)); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"c": {script: "x"}}); err == nil {
+	if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"c": {Script: "x"}}); err == nil {
 		t.Fatal("accepted symlink record")
 	}
 }
@@ -144,10 +151,10 @@ func TestMekugiReplayStorePreservesProtocolEncoding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := mekugiHistory{upstreamItem: map[string]json.RawMessage{
+	h := mekugiHistory{UpstreamItem: map[string]json.RawMessage{
 		"input": json.RawMessage(`"<>& \u003c \\n \\u003e"`),
 	}}
-	before, err := marshalProtocolJSON(h.upstreamItem)
+	before, err := marshalProtocolJSON(h.UpstreamItem)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +169,7 @@ func TestMekugiReplayStorePreservesProtocolEncoding(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("lookup: %v %v", ok, err)
 	}
-	after, err := marshalProtocolJSON(got.upstreamItem)
+	after, err := marshalProtocolJSON(got.UpstreamItem)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +188,7 @@ func TestMekugiReplayStoreCancelledWrite(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err := s.put(ctx, "/w", map[string]mekugiHistory{"c": {script: "x"}}); !errors.Is(err, context.Canceled) {
+	if err := s.put(ctx, "/w", map[string]mekugiHistory{"c": {Script: "x"}}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled write: %v", err)
 	}
 	if _, ok, err := s.lookup(t.Context(), "/w", "c"); err != nil || ok {
@@ -211,7 +218,7 @@ func TestMekugiReplayStoreCommentaryCannotConsumeCallQuota(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	call := replayRecord{Version: 1, Workspace: "/w", CallID: "c", History: durableHistory(mekugiHistory{script: "x"})}
+	call := replayRecord{Version: 1, Workspace: "/w", CallID: "c", History: durableHistory(mekugiHistory{Script: "x"})}
 	encoded, err := marshalProtocolJSON(call)
 	if err != nil {
 		t.Fatal(err)
@@ -220,7 +227,7 @@ func TestMekugiReplayStoreCommentaryCannotConsumeCallQuota(t *testing.T) {
 	if err := s.putCommentary(t.Context(), "/w", []string{"commentary"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"c": {script: "x"}}); err != nil {
+	if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"c": {Script: "x"}}); err != nil {
 		t.Fatalf("commentary displaced replay: %v", err)
 	}
 	s.maxCommentaryBytes = 1
@@ -260,7 +267,7 @@ func TestMekugiReplayStoreStructuredFieldWhitespaceRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := mekugiHistory{upstreamItem: map[string]json.RawMessage{
+	h := mekugiHistory{UpstreamItem: map[string]json.RawMessage{
 		"extension": json.RawMessage(`{ "x": 1, "values": [ "<>&", "\u003c", 2 ] }`),
 	}}
 	if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"c": h}); err != nil {
@@ -277,18 +284,18 @@ func TestMekugiReplayStoreStructuredFieldWhitespaceRetry(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("lookup: %v %v", ok, err)
 	}
-	before, err := marshalProtocolJSON(h.upstreamItem)
+	before, err := marshalProtocolJSON(h.UpstreamItem)
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, err := marshalProtocolJSON(got.upstreamItem)
+	after, err := marshalProtocolJSON(got.UpstreamItem)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(before, after) {
 		t.Fatalf("provider encoding changed: %s -> %s", before, after)
 	}
-	h.upstreamItem["extension"] = json.RawMessage(`{"x":1,"values":["<>&","<",2]}`)
+	h.UpstreamItem["extension"] = json.RawMessage(`{"x":1,"values":["<>&","<",2]}`)
 	if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"c": h}); err == nil {
 		t.Fatal("accepted changed escape spelling")
 	}
@@ -300,7 +307,7 @@ func TestMekugiReplayStoreProviderMetadataCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := mekugiHistory{script: "echo test", upstreamItem: map[string]json.RawMessage{
+	h := mekugiHistory{Script: "echo test", UpstreamItem: map[string]json.RawMessage{
 		"id": json.RawMessage(`"item"`), "call_id": json.RawMessage(`"call"`),
 		"name": json.RawMessage(`"shell"`), "type": json.RawMessage(`"custom_tool_call"`),
 		"input": json.RawMessage(`"echo test"`), "status": json.RawMessage(`"in_progress"`),
@@ -310,8 +317,8 @@ func TestMekugiReplayStoreProviderMetadataCompletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	metadata := json.RawMessage(`{"phase":"finished","opaque":"\u003c"}`)
-	h.upstreamItem["internal_chat_message_metadata_passthrough"] = metadata
-	h.upstreamItem["status"] = json.RawMessage(`"completed"`)
+	h.UpstreamItem["internal_chat_message_metadata_passthrough"] = metadata
+	h.UpstreamItem["status"] = json.RawMessage(`"completed"`)
 	if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"call": h}); err != nil {
 		t.Fatalf("provider metadata completion: %v", err)
 	}
@@ -323,14 +330,14 @@ func TestMekugiReplayStoreProviderMetadataCompletion(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("restart lookup: %v, %v", found, err)
 	}
-	if !bytes.Equal(got.upstreamItem["internal_chat_message_metadata_passthrough"], metadata) {
+	if !bytes.Equal(got.UpstreamItem["internal_chat_message_metadata_passthrough"], metadata) {
 		t.Fatal("replay did not retain exact completed provider metadata")
 	}
 	for _, key := range []string{"id", "call_id", "name", "type", "input", "status"} {
 		t.Run(key, func(t *testing.T) {
-			original := h.upstreamItem[key]
-			h.upstreamItem[key] = json.RawMessage(`"changed"`)
-			defer func() { h.upstreamItem[key] = original }()
+			original := h.UpstreamItem[key]
+			h.UpstreamItem[key] = json.RawMessage(`"changed"`)
+			defer func() { h.UpstreamItem[key] = original }()
 			if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"call": h}); err == nil {
 				t.Fatalf("accepted changed %s", key)
 			}
@@ -369,5 +376,64 @@ func TestReplayReadLockIsSharedAndDoesNotCreate(t *testing.T) {
 	entries, err := os.ReadDir(missing.directory)
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("read changed an empty store: %v, %v", entries, err)
+	}
+}
+
+func TestReplayHistoryVersionOneWireCompatibility(t *testing.T) {
+	// Freeze the pre-simplification wire schema, independent of the current type.
+	const legacy = `{"Version":1,"Workspace":"/workspace","CallID":"call","Commentary":false,"History":{"ToolName":"hpatch","PluginID":"builtin","Script":"emitted","Root":"/workspace","Evaluated":"evaluated","ChangeID":"hp_1","ReviewFiles":[{"BeforePath":"old","AfterPath":"new","Diff":"diff"}],"Patch":"patch","Applied":true,"CarrierName":"exec","CarrierKind":"custom","CarrierPayload":"carrier","Report":"report","JournalIDs":["j1"],"OutputWarning":"warning","TranslationError":"rejected","EvaluatorRejected":true,"Rejections":[{"command":2,"source_line":3,"operation":"type","reason":"row-stale"}],"CorrelationID":"correlation","Attempt":2,"UpstreamItem":{"input":"<>& \\u003c","status":"completed"},"ReplayCarrier":true,"CommentaryMessageIDs":["notice"],"Unevaluated":true,"AlreadySatisfied":true,"Aliases":[{"Path":"new","Before":"1:abcd","After":"2:abcd"}]}}`
+	want := mekugiHistory{
+		ToolName: "hpatch", PluginID: "builtin", Script: "emitted", Root: "/workspace",
+		Evaluated: "evaluated", ChangeID: "hp_1",
+		ReviewFiles: []mekugi.ReviewFile{{BeforePath: "old", AfterPath: "new", Diff: "diff"}},
+		Patch:       "patch", Applied: true, CarrierName: "exec", CarrierKind: codeModeCarrierCustom,
+		CarrierPayload: "carrier", Report: "report", JournalIDs: []string{"j1"},
+		OutputWarning: "warning", TranslationError: "rejected", EvaluatorRejected: true,
+		Rejections:    []mekugi.HostRejection{{Command: 2, SourceLine: 3, Operation: "type", Reason: "row-stale"}},
+		CorrelationID: "correlation", Attempt: 2,
+		UpstreamItem: map[string]json.RawMessage{
+			"input": json.RawMessage(`"<>& \\u003c"`), "status": json.RawMessage(`"completed"`),
+		},
+		ReplayCarrier: true, CommentaryMessageIDs: []string{"notice"},
+		Unevaluated: true, AlreadySatisfied: true,
+		Aliases: []mekugi.TargetAlias{{Path: "new", Before: "1:abcd", After: "2:abcd"}},
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, replayRecordName("/workspace", "call", false))
+	if err := os.WriteFile(path, []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := openMekugiReplayStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, found, err := store.lookup(t.Context(), "/workspace", "call")
+	if err != nil || !found || !reflect.DeepEqual(got, want) {
+		t.Fatalf("legacy lookup = %#v, %v, %v; want %#v", got, found, err, want)
+	}
+
+	got.bytes, got.confirmed, got.sequence = 123, true, 42
+	persistent := durableHistory(got)
+	if !reflect.DeepEqual(persistent, want) || got.bytes != 123 || !got.confirmed || got.sequence != 42 {
+		t.Fatal("durable projection retained local state or mutated the request view")
+	}
+	record := replayRecord{Version: 1, Workspace: "/workspace", CallID: "call", History: persistent}
+	encoded, err := marshalProtocolJSON(record)
+	if err != nil || !sameJSONValue(encoded, []byte(legacy)) {
+		t.Fatalf("wire schema changed: %s, %v", encoded, err)
+	}
+	if err := store.locked(t.Context(), func() error { return store.write(record) }); err != nil {
+		t.Fatalf("local confirmation/order created a durable conflict: %v", err)
+	}
+	for _, field := range []string{"bytes", "confirmed", "sequence", "Bytes", "Confirmed", "Sequence", "FutureField"} {
+		t.Run(field, func(t *testing.T) {
+			corrupt := strings.Replace(legacy, `"ToolName":`, `"`+field+`":1,"ToolName":`, 1)
+			if err := os.WriteFile(path, []byte(corrupt), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := store.lookup(t.Context(), "/workspace", "call"); err == nil {
+				t.Fatal("accepted an unknown or request-local durable field")
+			}
+		})
 	}
 }

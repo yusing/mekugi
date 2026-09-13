@@ -57,7 +57,7 @@ func TestHpatchCheckpointRevisionAndExpiry(t *testing.T) {
 		t.Fatal("expired checkpoint accepted")
 	}
 	history, err := transform.translate("expired-resume", "resume "+state.Handle, nil)
-	if err != nil || history.translationError == "" || history.carrierPayload != "text("+strconv.Quote(history.translationError)+");" {
+	if err != nil || history.TranslationError == "" || history.CarrierPayload != "text("+strconv.Quote(history.TranslationError)+");" {
 		t.Fatalf("expired handle emitted a carrier: %+v, %v", history, err)
 	}
 
@@ -91,12 +91,12 @@ func TestHpatchResumeThreadAndWorkspaceIsolation(t *testing.T) {
 	}
 	other, _ := mixedTestTransform(t)
 	history, err := other.translate("other-thread", "resume "+state.Handle, nil)
-	if err != nil || history.translationError == "" || history.carrierPayload != "text("+strconv.Quote(history.translationError)+");" {
+	if err != nil || history.TranslationError == "" || history.CarrierPayload != "text("+strconv.Quote(history.TranslationError)+");" {
 		t.Fatalf("other thread resumed work: %+v, %v", history, err)
 	}
 	transform.directory = t.TempDir()
 	history, err = transform.translate("other-workspace", "resume "+state.Handle, nil)
-	if err != nil || history.translationError == "" || history.carrierPayload != "text("+strconv.Quote(history.translationError)+");" {
+	if err != nil || history.TranslationError == "" || history.CarrierPayload != "text("+strconv.Quote(history.TranslationError)+");" {
 		t.Fatalf("other workspace resumed work: %+v, %v", history, err)
 	}
 }
@@ -111,13 +111,13 @@ func TestHpatchResumePreservesReplacementSource(t *testing.T) {
 	}
 	for _, source := range []string{"printf done > file\\ ", "printf done  \n", "printf done\t"} {
 		history, err := transform.translateMixedResume("replacement-"+source, "\nresume "+state.Handle+" retry\nshell "+source, nil)
-		if err != nil || history.translationError != "" {
-			t.Fatalf("replacement rejected: %v, %s", err, history.translationError)
+		if err != nil || history.TranslationError != "" {
+			t.Fatalf("replacement rejected: %v, %s", err, history.TranslationError)
 		}
 		var config struct {
 			Replacement hpatchResumeSegment `json:"replacement"`
 		}
-		encoded, _, _ := strings.Cut(strings.TrimPrefix(history.carrierPayload, "const mixedConfig = "), ";\n")
+		encoded, _, _ := strings.Cut(strings.TrimPrefix(history.CarrierPayload, "const mixedConfig = "), ";\n")
 		if err := json.Unmarshal([]byte(encoded), &config); err != nil {
 			t.Fatal(err)
 		}

@@ -25,11 +25,11 @@ func (state hpatchResumeState) translateTracked(ctx context.Context, source stri
 	}
 	callID := state.Handle + "-" + hex.EncodeToString(nonce[:])
 	history := mekugiHistory{
-		toolName: mekugiToolName, script: source, root: state.Root,
-		changeID: state.ChangeID, correlationID: state.CorrelationID, attempt: 1,
-		patch: result.Patch, report: changeNotice(state.ChangeID) + result.Report,
-		translationError: result.Diagnostic, reviewFiles: files,
-		alreadySatisfied: result.Patch == "" && result.Diagnostic == "",
+		ToolName: mekugiToolName, Script: source, Root: state.Root,
+		ChangeID: state.ChangeID, CorrelationID: state.CorrelationID, Attempt: 1,
+		Patch: result.Patch, Report: changeNotice(state.ChangeID) + result.Report,
+		TranslationError: result.Diagnostic, ReviewFiles: files,
+		AlreadySatisfied: result.Patch == "" && result.Diagnostic == "",
 	}
 	if err := store.put(ctx, state.Root, map[string]mekugiHistory{callID: history}); err != nil {
 		return result, err
@@ -38,7 +38,7 @@ func (state hpatchResumeState) translateTracked(ctx context.Context, source stri
 	if result.Diagnostic != "" {
 		result.Diagnostic = changeNotice(state.ChangeID) + result.Diagnostic
 	} else {
-		result.Report = history.report
+		result.Report = history.Report
 	}
 	return result, nil
 }
@@ -55,7 +55,7 @@ func (state hpatchResumeState) confirmTracked(ctx context.Context, callID string
 	if err != nil {
 		return err
 	}
-	if !found || history.changeID != state.ChangeID || history.correlationID != state.CorrelationID || history.translationError != "" {
+	if !found || history.ChangeID != state.ChangeID || history.CorrelationID != state.CorrelationID || history.TranslationError != "" {
 		return errors.New("change confirmation has no successful evaluation")
 	}
 	history.confirmed = true

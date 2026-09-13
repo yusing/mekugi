@@ -46,15 +46,15 @@ func exposeJournalTool(fields map[string]json.RawMessage, catalog *responsesTool
 		if section.err != nil {
 			return section.err
 		}
-		for _, node := range section.nodes {
-			if node == nil {
+		for _, tool := range section.tools {
+			if tool == nil || tool.fields == nil {
 				continue
 			}
-			if node.definition.Name == journalToolName || node.definition.Name == "functions.journal" {
+			if tool.Name == journalToolName || tool.Name == "functions.journal" {
 				return errors.New("request already defines journal")
 			}
-			if node.nested != nil {
-				if err := check(node.nested); err != nil {
+			if tool.nested != nil {
+				if err := check(tool.nested); err != nil {
 					return err
 				}
 			}
@@ -185,9 +185,9 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 		"output":  mustMarshalJSON(string(mustMarshalJSON(result))),
 	}
 	t.recordLocal(callID, &mekugiHistory{
-		toolName: journalHistoryTool, script: jsonString(item, "arguments"),
-		carrierKind: codeModeCarrierFunction, carrierName: journalToolName,
-		carrierPayload: jsonString(item, "arguments"), upstreamItem: item,
+		ToolName: journalHistoryTool, Script: jsonString(item, "arguments"),
+		CarrierKind: codeModeCarrierFunction, CarrierName: journalToolName,
+		CarrierPayload: jsonString(item, "arguments"), UpstreamItem: item,
 	})
 	if err := t.commitLocalCall(callID); err != nil {
 		return nil, err
@@ -230,7 +230,7 @@ func restoreJournalCalls(request *parsedResponsesRequest, visible map[string]mek
 	seen := make(map[string]bool)
 	results := make(map[string]string)
 	for callID, history := range visible {
-		if history.toolName == journalHistoryTool {
+		if history.ToolName == journalHistoryTool {
 			results[journalClientResultID(callID)] = callID
 		}
 	}
@@ -245,12 +245,12 @@ func restoreJournalCalls(request *parsedResponsesRequest, visible map[string]mek
 			if callID == "" {
 				callID = results[jsonString(item, "id")]
 			}
-			if history, ok := visible[callID]; ok && history.toolName == journalHistoryTool {
-				if !isJournalCall(history.upstreamItem) {
+			if history, ok := visible[callID]; ok && history.ToolName == journalHistoryTool {
+				if !isJournalCall(history.UpstreamItem) {
 					return fmt.Errorf("invalid journal replay call %q", callID)
 				}
 				if !seen[callID] {
-					restored = append(restored, history.upstreamItem)
+					restored = append(restored, history.UpstreamItem)
 					seen[callID] = true
 				}
 				item = maps.Clone(item)

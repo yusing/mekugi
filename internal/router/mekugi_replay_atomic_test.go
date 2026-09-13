@@ -50,16 +50,16 @@ func TestCodeModeHpatchRetainsExactCarrier(t *testing.T) {
 			if err != nil || !found {
 				t.Fatalf("lookup: found=%v err=%v", found, err)
 			}
-			if (retained.translationError != "") != step.rejected {
-				t.Fatalf("unexpected translation: %s", retained.translationError)
+			if (retained.TranslationError != "") != step.rejected {
+				t.Fatalf("unexpected translation: %s", retained.TranslationError)
 			}
-			if retained.carrierKind != codeModeCarrierCustom || retained.carrierPayload == "" || retained.carrierPayload != *item.Input {
-				t.Fatalf("carrier not pinned: kind=%q payload=%q delivered=%q", retained.carrierKind, retained.carrierPayload, *item.Input)
+			if retained.CarrierKind != codeModeCarrierCustom || retained.CarrierPayload == "" || retained.CarrierPayload != *item.Input {
+				t.Fatalf("carrier not pinned: kind=%q payload=%q delivered=%q", retained.CarrierKind, retained.CarrierPayload, *item.Input)
 			}
 			// Legacy records must still render the same bytes after restart.
 			legacy := retained
-			legacy.carrierKind, legacy.carrierPayload = "", ""
-			if legacy.carrierInput() != retained.carrierPayload {
+			legacy.CarrierKind, legacy.CarrierPayload = "", ""
+			if legacy.carrierInput() != retained.CarrierPayload {
 				t.Fatal("legacy rendering changed")
 			}
 			request := &parsedResponsesRequest{fields: map[string]json.RawMessage{"input": mustMarshalJSON([]any{item.cloneFields()})}}
@@ -100,8 +100,8 @@ func TestReplayFailureLeavesParsedRequestUnchanged(t *testing.T) {
 			request, err := parseResponsesRequest(mustMarshalJSON(map[string]any{
 				"input": []any{
 					map[string]any{"type": "message", "id": "generated", "role": "assistant", "content": "notice"},
-					map[string]any{"type": "custom_tool_call_output", "call_id": "call", "output": history.report},
-					map[string]any{"type": "custom_tool_call", "call_id": "call", "name": history.carrierName, "input": payload},
+					map[string]any{"type": "custom_tool_call_output", "call_id": "call", "output": history.Report},
+					map[string]any{"type": "custom_tool_call", "call_id": "call", "name": history.CarrierName, "input": payload},
 				},
 			}))
 			if err != nil {
@@ -139,8 +139,8 @@ func TestTrackedStatusUsesRetainedScriptNotCarrierKind(t *testing.T) {
 		{"shell echo command\n", "execution plan (see segment attempts)"},
 		{"resume M00000000000000000000000000000000\n", "execution plan (see segment attempts)"},
 	} {
-		history := mekugiHistory{toolName: mekugiToolName, script: test.script, carrierKind: codeModeCarrierCustom}
-		history = durableHistory(history).history()
+		history := mekugiHistory{ToolName: mekugiToolName, Script: test.script, CarrierKind: codeModeCarrierCustom}
+		history = durableHistory(history)
 		if got := trackedStatus(history, false); got != test.want {
 			t.Errorf("script %q: got %q, want %q", test.script, got, test.want)
 		}

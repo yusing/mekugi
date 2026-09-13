@@ -211,8 +211,8 @@ func TestHpatchControlCarrierHasOneBareCommand(t *testing.T) {
 	transform, overrides := mixedTestTransform(t)
 	history, err := transform.translate("control-display",
 		"shell printf first\nnew out.txt\ntype \"data\\n\"\nshell printf last", nil)
-	if err != nil || history.translationError != "" {
-		t.Fatalf("translate: %v %s", err, history.translationError)
+	if err != nil || history.TranslationError != "" {
+		t.Fatalf("translate: %v %s", err, history.TranslationError)
 	}
 	carrier := history.carrierInput() + `
 if (displayedCommands.length !== 2 || !displayedCommands[0].includes('printf first') || !displayedCommands[1].includes('printf last')) throw new Error('original commands lost');
@@ -273,7 +273,7 @@ func TestHpatchControlCloseDuringChunkedReply(t *testing.T) {
 	}
 	// A discarded partial reply does not advance or destroy retained state.
 	history, err := transform.translate("after-chunk-close", "resume "+state.Handle, nil)
-	if err != nil || history.translationError != "" {
-		t.Fatalf("resume after partial reply: %v %s", err, history.translationError)
+	if err != nil || history.TranslationError != "" {
+		t.Fatalf("resume after partial reply: %v %s", err, history.TranslationError)
 	}
 }

@@ -125,7 +125,7 @@ func TestShellCatCarrierExecutionAndReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	carrier := map[string]json.RawMessage{
-		"type": mustMarshalJSON("custom_tool_call"), "name": mustMarshalJSON(history.carrierName),
+		"type": mustMarshalJSON("custom_tool_call"), "name": mustMarshalJSON(history.CarrierName),
 		"call_id": mustMarshalJSON("cat-write"), "input": mustMarshalJSON(history.carrierInput()),
 	}
 	output := map[string]json.RawMessage{"type": mustMarshalJSON("custom_tool_call_output"), "call_id": mustMarshalJSON("cat-write"), "output": mustMarshalJSON("original result")}
@@ -358,7 +358,7 @@ func TestShellCatStreamingKeepsOneReplayableCarrier(t *testing.T) {
 		t.Fatalf("stream = %v, error %v: %s", terminal, err, visible.String())
 	}
 	history, ok := proxy.history(transform.historySessionID, "cat-call")
-	if !ok || history.script != source || strings.Count(history.carrierInput(), "await tools.apply_patch(") != 1 {
+	if !ok || history.Script != source || strings.Count(history.carrierInput(), "await tools.apply_patch(") != 1 {
 		t.Fatalf("retained carrier = %#v", history)
 	}
 	if strings.Count(visible.String(), "event: response.output_item.added") != 1 || strings.Count(visible.String(), "event: response.output_item.done") != 1 {

@@ -55,7 +55,7 @@ func TestHpatchNativeFixture(t *testing.T) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"carrier": history.carrierPayload, "error": history.translationError,
+			"carrier": history.CarrierPayload, "error": history.TranslationError,
 		})
 	})
 	mux.HandleFunc("POST /close", func(w http.ResponseWriter, r *http.Request) {
@@ -84,8 +84,8 @@ func TestHpatchResumeCompletedNoopDoesNotRepeatShell(t *testing.T) {
 	t.Parallel()
 	transform, overrides := mixedTestTransform(t)
 	history, err := transform.translate("noop-resume", "in existing.txt\ntype \"same\" \"same\"\nshell printf x >> count", nil)
-	if err != nil || history.translationError != "" {
-		t.Fatalf("translate = %v, %s", err, history.translationError)
+	if err != nil || history.TranslationError != "" {
+		t.Fatalf("translate = %v, %s", err, history.TranslationError)
 	}
 	// Exercise the exact durable boundary after segment_completed but before
 	// between_segments, as if the original cell had been killed at that point.
@@ -94,10 +94,10 @@ func TestHpatchResumeCompletedNoopDoesNotRepeatShell(t *testing.T) {
 	}
 	start := len("const mixedConfig = ")
 	end := start
-	for end < len(history.carrierPayload) && history.carrierPayload[end] != '\n' {
+	for end < len(history.CarrierPayload) && history.CarrierPayload[end] != '\n' {
 		end++
 	}
-	if err := json.Unmarshal([]byte(history.carrierPayload[start:end-1]), &config); err != nil {
+	if err := json.Unmarshal([]byte(history.CarrierPayload[start:end-1]), &config); err != nil {
 		t.Fatal(err)
 	}
 	config.State.Progress["current"] = mustMarshalJSON(map[string]any{

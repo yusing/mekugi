@@ -18,18 +18,18 @@ func TestHpatchMixedChangesSurviveRepairAndRestart(t *testing.T) {
 	run := func(callID, source string) mixedScriptResult {
 		t.Helper()
 		history, err := transform.translate(callID, source, nil)
-		if err != nil || history.translationError != "" {
-			t.Fatalf("translate: %v, %s", err, history.translationError)
+		if err != nil || history.TranslationError != "" {
+			t.Fatalf("translate: %v, %s", err, history.TranslationError)
 		}
-		if history.changeID != "hp_a1" {
-			t.Fatalf("change ID: %q", history.changeID)
+		if history.ChangeID != "hp_a1" {
+			t.Fatalf("change ID: %q", history.ChangeID)
 		}
 		if err := store.put(t.Context(), transform.directory, map[string]mekugiHistory{callID: history}); err != nil {
 			t.Fatal(err)
 		}
 		var result mixedScriptResult
 		runShellCatJavaScript(t, transform.proxy.registry.NodeExecutable, transform.directory, history.carrierInput(), &result, overrides)
-		if result.ChangeID != history.changeID {
+		if result.ChangeID != history.ChangeID {
 			t.Fatalf("result identity: %q", result.ChangeID)
 		}
 		return result
@@ -43,11 +43,11 @@ func TestHpatchMixedChangesSurviveRepairAndRestart(t *testing.T) {
 		t.Fatalf("repair: %+v", last)
 	}
 	invalid, err := transform.translateRecovery("wrong-recovery", `type "first" "other"`, nil)
-	if err != nil || invalid.changeID != "hp_a1" || !invalid.unevaluated || !strings.Contains(invalid.translationError, "checkpoints") {
+	if err != nil || invalid.ChangeID != "hp_a1" || !invalid.Unevaluated || !strings.Contains(invalid.TranslationError, "checkpoints") {
 		t.Fatalf("invalid recovery: %+v, %v", invalid, err)
 	}
 	badResume, err := transform.translate("bad-resume", "resume "+first.ResumeHandle+" unknown", nil)
-	if err != nil || badResume.changeID != "hp_a1" || badResume.translationError == "" {
+	if err != nil || badResume.ChangeID != "hp_a1" || badResume.TranslationError == "" {
 		t.Fatalf("invalid resume: %+v, %v", badResume, err)
 	}
 	if err := store.put(t.Context(), transform.directory, map[string]mekugiHistory{"wrong-recovery": invalid, "bad-resume": badResume}); err != nil {

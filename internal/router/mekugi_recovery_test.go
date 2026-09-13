@@ -55,15 +55,6 @@ func TestMekugiRecoveryGuidanceOffersScriptEditsForNonTargetFailure(t *testing.T
 	}
 }
 
-func mustMekugiHistory(t *testing.T, proxy *mekugiProxy, callID string) mekugiHistory {
-	t.Helper()
-	history, ok := proxy.history("session", callID)
-	if !ok {
-		t.Fatalf("call %q is not retained", callID)
-	}
-	return history
-}
-
 func TestGenericRecoveryPreviewUsesBoundedScriptRows(t *testing.T) {
 	script := "\nnew file.go\r\ntype <<TEXT\r\n|package p\r\n|var =\r\nTEXT\r\n"
 	rejections := []mekugi.HostRejection{{Command: 2, SourceLine: 3, ValueLine: 2, Reason: "language-syntax"}}

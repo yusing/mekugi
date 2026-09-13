@@ -771,12 +771,11 @@ func findCodeModeApplyPatch(catalog *responsesToolCatalog, installedNames map[st
 				continue
 			}
 
-			node := group.tools.nodes[additionalToolIndex]
-			if node == nil || node.nested == nil || node.nested.err != nil {
+			if additionalTool.nested == nil || additionalTool.nested.err != nil {
 				continue
 			}
-			for toolIndex := range node.nested.tools {
-				if err := claim(group, node.nested, toolIndex, true); err != nil {
+			for toolIndex := range additionalTool.nested.tools {
+				if err := claim(group, additionalTool.nested, toolIndex, true); err != nil {
 					return nil, err
 				}
 			}
@@ -1067,11 +1066,11 @@ func jsonString(object map[string]json.RawMessage, name string) string {
 
 func (t *mekugiResponseTransform) translate(callID, input string, upstreamItem map[string]json.RawMessage) (mekugiHistory, error) {
 	if history, ok := t.local[callID]; ok {
-		if history.toolName != mekugiToolName || history.pluginID != "" || history.script != input {
+		if history.ToolName != mekugiToolName || history.PluginID != "" || history.Script != input {
 			return mekugiHistory{}, fmt.Errorf("mekugi call %q changed input", callID)
 		}
 		if len(upstreamItem) != 0 {
-			history.upstreamItem = maps.Clone(upstreamItem)
+			history.UpstreamItem = maps.Clone(upstreamItem)
 			t.local[callID] = history
 		}
 		return history, nil
@@ -1167,20 +1166,20 @@ func (t *mekugiResponseTransform) evaluateScript(
 			diagnostic += mekugiRecoveryGuidance(evaluated, translated.rejections, attemptMetadata.Correction)
 		}
 		history := mekugiHistory{
-			toolName: attemptMetadata.ToolName,
-			script:   input,
+			ToolName: attemptMetadata.ToolName,
+			Script:   input,
 
-			root:              t.directory,
-			evaluated:         retainedEvaluated(input, evaluated),
-			carrierName:       t.codeModeToolName,
-			translationError:  changeNotice(changeID) + diagnostic,
-			changeID:          changeID,
-			evaluatorRejected: evaluatorRejected,
-			rejections:        slices.Clone(translated.rejections),
+			Root:              t.directory,
+			Evaluated:         retainedEvaluated(input, evaluated),
+			CarrierName:       t.codeModeToolName,
+			TranslationError:  changeNotice(changeID) + diagnostic,
+			ChangeID:          changeID,
+			EvaluatorRejected: evaluatorRejected,
+			Rejections:        slices.Clone(translated.rejections),
 
-			upstreamItem:  maps.Clone(upstreamItem),
-			correlationID: attemptMetadata.CorrelationID,
-			attempt:       attemptMetadata.Attempt,
+			UpstreamItem:  maps.Clone(upstreamItem),
+			CorrelationID: attemptMetadata.CorrelationID,
+			Attempt:       attemptMetadata.Attempt,
 		}
 		t.recordLocal(callID, &history)
 		return history, nil
@@ -1192,23 +1191,23 @@ func (t *mekugiResponseTransform) evaluateScript(
 	patchText := string(patch)
 	alreadySatisfied := translated.change.AlreadySatisfied
 	history := mekugiHistory{
-		toolName: attemptMetadata.ToolName,
-		script:   input,
+		ToolName: attemptMetadata.ToolName,
+		Script:   input,
 
-		root:             t.directory,
-		evaluated:        retainedEvaluated(input, evaluated),
-		patch:            patchText,
-		applied:          applied,
-		alreadySatisfied: alreadySatisfied,
+		Root:             t.directory,
+		Evaluated:        retainedEvaluated(input, evaluated),
+		Patch:            patchText,
+		Applied:          applied,
+		AlreadySatisfied: alreadySatisfied,
 		confirmed:        applied,
-		aliases:          slices.Clone(translated.aliases),
-		carrierName:      t.codeModeToolName,
-		report:           changeNotice(changeID) + mekugiReport(translated.report, translated.diagnostic),
-		changeID:         changeID,
-		reviewFiles:      translated.reviewFiles,
-		upstreamItem:     maps.Clone(upstreamItem),
-		correlationID:    attemptMetadata.CorrelationID,
-		attempt:          attemptMetadata.Attempt,
+		Aliases:          slices.Clone(translated.aliases),
+		CarrierName:      t.codeModeToolName,
+		Report:           changeNotice(changeID) + mekugiReport(translated.report, translated.diagnostic),
+		ChangeID:         changeID,
+		ReviewFiles:      translated.reviewFiles,
+		UpstreamItem:     maps.Clone(upstreamItem),
+		CorrelationID:    attemptMetadata.CorrelationID,
+		Attempt:          attemptMetadata.Attempt,
 	}
 	t.recordLocal(callID, &history)
 	return history, nil
@@ -1232,11 +1231,11 @@ func (t *mekugiResponseTransform) translateTool(name, callID, input string, upst
 
 func (t *mekugiResponseTransform) translateReportIssue(callID, input string, upstreamItem map[string]json.RawMessage) (mekugiHistory, error) {
 	if history, ok := t.local[callID]; ok {
-		if history.toolName != reportIssueToolName || history.script != input {
+		if history.ToolName != reportIssueToolName || history.Script != input {
 			return mekugiHistory{}, fmt.Errorf("report_issue call %q changed input", callID)
 		}
 		if len(upstreamItem) != 0 {
-			history.upstreamItem = maps.Clone(upstreamItem)
+			history.UpstreamItem = maps.Clone(upstreamItem)
 			t.local[callID] = history
 		}
 		return history, nil
@@ -1257,12 +1256,12 @@ func (t *mekugiResponseTransform) translateReportIssue(callID, input string, ups
 		report = "Issue report was not delivered.\nmekugi: warning: " + strings.TrimSpace(err.Error()) + "\n"
 	}
 	history := mekugiHistory{
-		toolName:     reportIssueToolName,
-		script:       input,
-		carrierName:  t.codeModeToolName,
-		report:       report,
-		applied:      true,
-		upstreamItem: maps.Clone(upstreamItem),
+		ToolName:     reportIssueToolName,
+		Script:       input,
+		CarrierName:  t.codeModeToolName,
+		Report:       report,
+		Applied:      true,
+		UpstreamItem: maps.Clone(upstreamItem),
 	}
 	t.recordLocal(callID, &history)
 	return history, nil
@@ -1270,11 +1269,11 @@ func (t *mekugiResponseTransform) translateReportIssue(callID, input string, ups
 
 func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContribution, callID, input string, upstreamItem map[string]json.RawMessage) (mekugiHistory, error) {
 	if history, ok := t.local[callID]; ok {
-		if history.toolName != contribution.Name || history.pluginID != contribution.PluginID || history.script != input {
+		if history.ToolName != contribution.Name || history.PluginID != contribution.PluginID || history.Script != input {
 			return mekugiHistory{}, fmt.Errorf("%s call %q changed input", contribution.Name, callID)
 		}
 		if len(upstreamItem) != 0 {
-			history.upstreamItem = maps.Clone(upstreamItem)
+			history.UpstreamItem = maps.Clone(upstreamItem)
 			t.local[callID] = history
 		}
 		return history, nil
@@ -1484,17 +1483,17 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 	}
 
 	history := mekugiHistory{
-		toolName:         contribution.Name,
-		pluginID:         contribution.PluginID,
-		script:           input,
-		root:             t.directory,
-		carrierKind:      kind,
-		carrierName:      name,
-		carrierPayload:   payload,
-		translationError: diagnostic,
-		outputWarning:    outputWarning,
-		upstreamItem:     maps.Clone(upstreamItem),
-		replayCarrier:    recovered,
+		ToolName:         contribution.Name,
+		PluginID:         contribution.PluginID,
+		Script:           input,
+		Root:             t.directory,
+		CarrierKind:      kind,
+		CarrierName:      name,
+		CarrierPayload:   payload,
+		TranslationError: diagnostic,
+		OutputWarning:    outputWarning,
+		UpstreamItem:     maps.Clone(upstreamItem),
+		ReplayCarrier:    recovered,
 	}
 	t.recordLocal(callID, &history)
 	return history, nil
@@ -1744,7 +1743,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			return nil, err
 		}
 		kind := history.effectiveCarrierKind()
-		addedItem.renderCarrier(kind, history.carrierName, "")
+		addedItem.renderCarrier(kind, history.CarrierName, "")
 		itemPayload, err := marshalProtocolJSON(addedItem)
 		if err != nil {
 			return nil, err
@@ -2167,7 +2166,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		if contribution, ok := t.proxy.registry.contribution("shell"); ok &&
 			contribution.PluginID == builtinToolsPluginID && !t.nativeTools {
 			retained, exists := t.local[callID]
-			if exists && retained.toolName == "shell" || execShellRecovery(originalInput) {
+			if exists && retained.ToolName == "shell" || execShellRecovery(originalInput) {
 				if callID == "" {
 					return false, errors.New("Code Mode call has no call ID")
 				}
@@ -2175,18 +2174,18 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 				if err != nil {
 					return false, err
 				}
-				item.renderCarrier(history.effectiveCarrierKind(), history.carrierName, history.carrierInput())
+				item.renderCarrier(history.effectiveCarrierKind(), history.CarrierName, history.carrierInput())
 				return true, nil
 			}
 		}
-		if retained, exists := t.local[callID]; exists && retained.toolName == codeModeCommentaryHistoryTool {
-			if retained.script != originalInput {
+		if retained, exists := t.local[callID]; exists && retained.ToolName == codeModeCommentaryHistoryTool {
+			if retained.Script != originalInput {
 				return false, fmt.Errorf("Code Mode commentary call %q changed input", callID)
 			}
-			retained.upstreamItem = item.cloneFields()
+			retained.UpstreamItem = item.cloneFields()
 			t.local[callID] = retained
-			item.setInput(retained.carrierPayload)
-			return retained.carrierPayload != originalInput, nil
+			item.setInput(retained.CarrierPayload)
+			return retained.CarrierPayload != originalInput, nil
 		}
 		input, warningInput, changed, detected := nativeExecCommandInput(originalInput)
 		outputWarning := ""
@@ -2209,14 +2208,14 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		}
 		// Retain the provider input before applying warning or commentary rewrites.
 		history := mekugiHistory{
-			toolName: codeModeCommentaryHistoryTool,
-			script:   originalInput, carrierKind: codeModeCarrierCustom,
-			carrierName: name, carrierPayload: input, upstreamItem: item.cloneFields(),
-			outputWarning: outputWarning,
+			ToolName: codeModeCommentaryHistoryTool,
+			Script:   originalInput, CarrierKind: codeModeCarrierCustom,
+			CarrierName: name, CarrierPayload: input, UpstreamItem: item.cloneFields(),
+			OutputWarning: outputWarning,
 		}
 		if !commentaryChanged {
-			history.replayCarrier = true
-			history.commentaryMessageIDs = []string{commentaryMessageID(callID)}
+			history.ReplayCarrier = true
+			history.CommentaryMessageIDs = []string{commentaryMessageID(callID)}
 		}
 		t.recordLocal(callID, &history)
 		if changed {
@@ -2239,7 +2238,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 	if err != nil {
 		return false, err
 	}
-	item.renderCarrier(history.effectiveCarrierKind(), history.carrierName, history.carrierInput())
+	item.renderCarrier(history.effectiveCarrierKind(), history.CarrierName, history.carrierInput())
 	return true, nil
 }
 

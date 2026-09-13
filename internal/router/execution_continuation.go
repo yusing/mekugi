@@ -31,13 +31,12 @@ func executionTools(catalog *responsesToolCatalog, execName string) executionCon
 		if section == nil || section.err != nil {
 			return
 		}
-		for _, node := range section.nodes {
-			if node == nil || node.definition == nil {
+		for _, tool := range section.tools {
+			if tool == nil || tool.fields == nil {
 				continue
 			}
-			tool := node.definition
 			if tool.Type == "namespace" {
-				visit(node.nested, qualifiedToolName(namespace, tool.Name))
+				visit(tool.nested, qualifiedToolName(namespace, tool.Name))
 				continue
 			}
 			if namespace != "" && namespace != "functions" {
@@ -139,8 +138,8 @@ func executionResumeHandle(item map[string]json.RawMessage, history mekugiHistor
 	name := strings.TrimPrefix(jsonString(item, "name"), "functions.")
 	if name == strings.TrimPrefix(execName, "functions.") {
 		source := jsonString(item, "input")
-		if known && history.translationError == "" && history.toolName == codeModeCommentaryHistoryTool {
-			source = history.script
+		if known && history.TranslationError == "" && history.ToolName == codeModeCommentaryHistoryTool {
+			source = history.Script
 		}
 		nested, ok := toolActivityUnwrapExec(source, false)
 		if !ok {
@@ -295,12 +294,12 @@ func executionCallFor(item map[string]json.RawMessage, history mekugiHistory, kn
 	}
 	name := strings.TrimPrefix(jsonString(item, "name"), "functions.")
 	call := executionCall{resumeHandle: executionResumeHandle(item, history, known, execName)}
-	if known && history.translationError == "" {
+	if known && history.TranslationError == "" {
 		call.codeMode = history.effectiveCarrierKind() == codeModeCarrierCustom
 		call.native = history.effectiveCarrierKind() == codeModeCarrierFunction
-		call.nativePayload = history.pluginID == builtinToolsPluginID && history.toolName == "shell" && !history.replayCarrier
-		if call.codeMode && history.pluginID == "" && history.toolName == codeModeCommentaryHistoryTool {
-			if nested, ok := toolActivityUnwrapExec(history.script, true); ok {
+		call.nativePayload = history.PluginID == builtinToolsPluginID && history.ToolName == "shell" && !history.ReplayCarrier
+		if call.codeMode && history.PluginID == "" && history.ToolName == codeModeCommentaryHistoryTool {
+			if nested, ok := toolActivityUnwrapExec(history.Script, true); ok {
 				call.nativePayload = jsonString(nested, "name") == "exec_command" || jsonString(nested, "name") == "write_stdin"
 			}
 		}
@@ -360,7 +359,7 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 			delete(calls, callID)
 			if !known {
 				if history, found := visible[callID]; found {
-					call = executionCallFor(history.upstreamItem, history, true, execName)
+					call = executionCallFor(history.UpstreamItem, history, true, execName)
 					delete(pending, call.resumeHandle)
 					known = true
 				}

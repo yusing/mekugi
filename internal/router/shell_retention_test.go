@@ -336,7 +336,7 @@ func TestRetainedShellApplyHoldsLeaseThroughExpiry(t *testing.T) {
 		}
 	}
 	history, err := transform.translate("call-edit", "in @shell/script\ntype 1:ef86 \"printf fixed\"\n", nil)
-	if err != nil || !history.applied || history.translationError != "" {
+	if err != nil || !history.Applied || history.TranslationError != "" {
 		t.Fatalf("leased Apply = %+v, %v", history, err)
 	}
 	if _, err := os.Stat(filepath.Join(transform.shellDirectory, "script")); !errors.Is(err, os.ErrNotExist) {
@@ -492,7 +492,7 @@ func TestShellRerunPreservesOriginalHistoryAndRetainsResolvedBody(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if history.translationError != "" || history.script != input || !strings.Contains(history.carrierInput(), "retained") {
+	if history.TranslationError != "" || history.Script != input || !strings.Contains(history.carrierInput(), "retained") {
 		t.Fatalf("rerun history: %+v", history)
 	}
 	if got, err := os.ReadFile(filepath.Join(transform.shellDirectory, "rerun")); err != nil || string(got) != body {
@@ -500,7 +500,7 @@ func TestShellRerunPreservesOriginalHistoryAndRetainsResolvedBody(t *testing.T) 
 	}
 	for index, reference := range []string{"/etc/passwd", "@shell/../.runtime", "@shell/missing"} {
 		history, err := transform.translateTool("shell", fmt.Sprintf("rejected-%d", index), "#!script="+reference, nil)
-		if err != nil || history.translationError == "" {
+		if err != nil || history.TranslationError == "" {
 			t.Fatalf("reference %q did not produce a tool rejection: %+v, %v", reference, history, err)
 		}
 	}
@@ -520,7 +520,7 @@ func TestRetainedShellEditsCannotReachOutsideScripts(t *testing.T) {
 	}
 	for index, reference := range []string{"@shell/../.runtime", "@shell/.runtime", "@shell/linked", "@shell/" + outside} {
 		history, err := transform.translate(fmt.Sprintf("call-edit-%d", index), "in "+reference+"\ntype 1:ef86 \"changed\"\n", nil)
-		if err != nil || history.translationError == "" || history.applied {
+		if err != nil || history.TranslationError == "" || history.Applied {
 			t.Fatalf("accepted retained escape %q: %+v, %v", reference, history, err)
 		}
 	}
@@ -560,7 +560,7 @@ func TestShellRetentionLifetimeMetadata(t *testing.T) {
 	contribution, _ := proxy.registry.contribution("shell")
 	before := time.Now().Add(shellArtifactTTL)
 	history, err := transform.translateRegisteredTool(contribution, "lifetime", "#!python3\nprint('ok')\n", nil)
-	if err != nil || history.translationError != "" {
+	if err != nil || history.TranslationError != "" {
 		t.Fatalf("translate = %+v, %v", history, err)
 	}
 	after := time.Now().Add(shellArtifactTTL)
@@ -644,7 +644,7 @@ func TestShellRetentionLifecycle(t *testing.T) {
 func TestRetainedShellEditWithoutActiveStorageIsRejected(t *testing.T) {
 	transform, _, _, _ := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
 	history, err := transform.translate("call-missing", "in @shell/missing\ntype 1:ef86 \"fixed\"\n", nil)
-	if err != nil || !history.unevaluated || !strings.Contains(history.translationError, "retained shell storage is unavailable") {
+	if err != nil || !history.Unevaluated || !strings.Contains(history.TranslationError, "retained shell storage is unavailable") {
 		t.Fatalf("missing retained edit = %+v, %v", history, err)
 	}
 	if _, err := os.Stat(transform.shellDirectory); !errors.Is(err, os.ErrNotExist) {
@@ -677,7 +677,7 @@ func TestMekugiAppliesRetainedShellArtifactDirectly(t *testing.T) {
 	if content, err := os.ReadFile(path); err != nil || string(content) != "printf @shell/fixed\n" {
 		t.Fatalf("applied content = %q, %v", content, err)
 	}
-	if !history.applied || history.patch != "" || strings.Contains(history.carrierInput(), "apply_patch") || strings.Contains(history.carrierInput(), "exec_command") {
+	if !history.Applied || history.Patch != "" || strings.Contains(history.carrierInput(), "apply_patch") || strings.Contains(history.carrierInput(), "exec_command") {
 		t.Fatalf("retained edit used host patch carrier: %+v, %s", history, history.carrierInput())
 	}
 	got, err := os.ReadFile(outcomePath)
@@ -698,18 +698,18 @@ func TestMekugiRecoveryAppliesRetainedShellArtifactDirectly(t *testing.T) {
 	}
 	emitted := "in " + reference + "\ntype 1:aaaa \"printf fixed\"\n"
 	first, err := transform.translate("call-edit", emitted, nil)
-	if err != nil || !first.evaluatorRejected {
+	if err != nil || !first.EvaluatorRejected {
 		t.Fatalf("initial rejection = %+v, %v", first, err)
 	}
 	payload := recoveryCommands(emitted)[1].handle + " 1:ef86\n"
 	history, err := transform.translateRecovery("call-recovery", payload, nil)
-	if err != nil || history.translationError != "" {
+	if err != nil || history.TranslationError != "" {
 		t.Fatalf("recovery = %+v, %v", history, err)
 	}
-	if !history.applied || !history.confirmed || history.patch != "" || strings.Contains(history.carrierInput(), "apply_patch") || strings.Contains(history.carrierInput(), "exec_command") {
+	if !history.Applied || !history.confirmed || history.Patch != "" || strings.Contains(history.carrierInput(), "apply_patch") || strings.Contains(history.carrierInput(), "exec_command") {
 		t.Fatalf("retained recovery used host patch carrier: %+v", history)
 	}
-	if history.toolName != mekugiRecoveryToolName || history.script != payload || history.correlationID != first.correlationID || history.attempt != 2 || !strings.HasPrefix(history.evaluated, "in "+reference+"\n") {
+	if history.ToolName != mekugiRecoveryToolName || history.Script != payload || history.CorrelationID != first.CorrelationID || history.Attempt != 2 || !strings.HasPrefix(history.Evaluated, "in "+reference+"\n") {
 		t.Fatalf("recovery identity = %+v", history)
 	}
 	path := filepath.Join(transform.shellDirectory, "call-shell")
@@ -719,7 +719,7 @@ func TestMekugiRecoveryAppliesRetainedShellArtifactDirectly(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(transform.directory, "@shell")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("private recovery touched workspace: %v", err)
 	}
-	if replay, err := transform.translateRecovery("call-recovery", payload, nil); err != nil || replay.evaluated != history.evaluated || !replay.applied {
+	if replay, err := transform.translateRecovery("call-recovery", payload, nil); err != nil || replay.Evaluated != history.Evaluated || !replay.Applied {
 		t.Fatalf("recovery replay = %+v, %v", replay, err)
 	}
 }
@@ -756,7 +756,7 @@ func TestInterruptedTerminalWithoutStatusDoesNotApplyUnfinishedShellEdit(t *test
 				}
 			}
 			history, remembered := proxy.history(transform.historySessionID, "call-complete")
-			if !remembered || !history.applied || !history.confirmed {
+			if !remembered || !history.Applied || !history.confirmed {
 				t.Fatalf("completed replay = %+v, %v", history, remembered)
 			}
 			if _, remembered := proxy.history(transform.historySessionID, "call-unfinished"); remembered {
@@ -781,8 +781,8 @@ func TestMekugiTreatsShellArtifactLiteralAsContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 || history.applied {
-		t.Fatalf("translations = %d, applied = %v", calls, history.applied)
+	if calls != 1 || history.Applied {
+		t.Fatalf("translations = %d, applied = %v", calls, history.Applied)
 	}
 }
 

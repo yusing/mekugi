@@ -193,7 +193,7 @@ func TestOversizedRuntimeAuthorPreservesOperationResult(t *testing.T) {
 		t.Fatalf("operation changed: %s", output)
 	}
 	history := transform.local["call"]
-	if history.script != "await commentary('progress'); text('actual result');" {
+	if history.Script != "await commentary('progress'); text('actual result');" {
 		t.Fatal("original replay source changed")
 	}
 }

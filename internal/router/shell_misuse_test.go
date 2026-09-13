@@ -165,7 +165,7 @@ func TestShellMisuseRejectionDeliveryAndReplay(t *testing.T) {
 					t.Fatalf("rejection executes something other than the diagnostic: %s", got)
 				}
 				history, ok := proxy.history(transform.historySessionID, "call-shell")
-				if !ok || history.translationError != shellTypeScriptDiagnostic || history.replayCarrier {
+				if !ok || history.TranslationError != shellTypeScriptDiagnostic || history.ReplayCarrier {
 					t.Fatalf("rejection history: %+v", history)
 				}
 				replay, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"input": []any{carrier, map[string]any{"type": carrierOutputItemType(history.effectiveCarrierKind()), "call_id": "call-shell", "output": shellTypeScriptDiagnostic}}}))
@@ -198,7 +198,7 @@ func TestRetainedShellMisuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if history.translationError != shellTypeScriptDiagnostic {
-		t.Fatalf("retained misuse: %q", history.translationError)
+	if history.TranslationError != shellTypeScriptDiagnostic {
+		t.Fatalf("retained misuse: %q", history.TranslationError)
 	}
 }

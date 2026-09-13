@@ -83,21 +83,20 @@ func buildCodeModeCarrierCatalog(tools *responsesToolCatalog, registry *toolRegi
 			if err := group.tools.err; err != nil {
 				return nil, fmt.Errorf("decode additional tools for carrier catalog: %w", err)
 			}
-			for index, additionalTool := range group.tools.tools {
+			for _, additionalTool := range group.tools.tools {
 				if additionalTool.Type != "namespace" {
 					if err := add(additionalTool); err != nil {
 						return nil, err
 					}
 					continue
 				}
-				node := group.tools.nodes[index]
-				if node == nil || node.nested == nil {
+				if additionalTool.nested == nil {
 					return nil, errors.New("decode namespaced tools for carrier catalog: unexpected end of JSON input")
 				}
-				if err := node.nested.err; err != nil {
+				if err := additionalTool.nested.err; err != nil {
 					return nil, fmt.Errorf("decode namespaced tools for carrier catalog: %w", err)
 				}
-				for _, tool := range node.nested.tools {
+				for _, tool := range additionalTool.nested.tools {
 					if err := add(tool); err != nil {
 						return nil, err
 					}
@@ -172,19 +171,19 @@ func shellQuoteArgument(value string) string {
 // mekugiNativeCommand generates a native shell command for an mekugi history entry.
 func mekugiNativeCommand(history mekugiHistory) string {
 	switch {
-	case history.translationError != "":
-		return mekugiNativeDiagnosticMarker + strconv.Quote(history.translationError) +
-			"\nprintf %s " + shellQuoteArgument(history.translationError)
-	case history.applied || history.alreadySatisfied || history.patch == "":
-		return mekugiNativeReportMarker + "printf %s " + shellQuoteArgument(history.report)
+	case history.TranslationError != "":
+		return mekugiNativeDiagnosticMarker + strconv.Quote(history.TranslationError) +
+			"\nprintf %s " + shellQuoteArgument(history.TranslationError)
+	case history.Applied || history.AlreadySatisfied || history.Patch == "":
+		return mekugiNativeReportMarker + "printf %s " + shellQuoteArgument(history.Report)
 	default:
 		return mekugiNativeApplyMarker +
-			"mekugi_apply_output=$(printf %s " + shellQuoteArgument(history.patch) + " | apply_patch; " +
+			"mekugi_apply_output=$(printf %s " + shellQuoteArgument(history.Patch) + " | apply_patch; " +
 			"mekugi_status=$?; printf x; exit \"$mekugi_status\")\n" +
 			"mekugi_status=$?\n" +
 			"mekugi_apply_output=${mekugi_apply_output%x}\n" +
-			"if [ \"$mekugi_status\" -ne 0 ]; then printf %s " + shellQuoteArgument(changeNotice(history.changeID)) + " \"$mekugi_apply_output\"; exit \"$mekugi_status\"; fi\n" +
-			"printf %s " + shellQuoteArgument(history.report)
+			"if [ \"$mekugi_status\" -ne 0 ]; then printf %s " + shellQuoteArgument(changeNotice(history.ChangeID)) + " \"$mekugi_apply_output\"; exit \"$mekugi_status\"; fi\n" +
+			"printf %s " + shellQuoteArgument(history.Report)
 	}
 }
 
@@ -405,25 +404,25 @@ func insertExecCommandWarning(input, warning string) (string, string, bool, erro
 }
 
 func (h mekugiHistory) carrierInput() string {
-	if h.pluginID != "" || h.carrierKind != "" {
-		return h.carrierPayload
+	if h.PluginID != "" || h.CarrierKind != "" {
+		return h.CarrierPayload
 	}
-	if h.translationError != "" {
-		return "text(" + strconv.Quote(h.translationError) + ");"
+	if h.TranslationError != "" {
+		return "text(" + strconv.Quote(h.TranslationError) + ");"
 	}
-	if h.applied || h.alreadySatisfied {
-		return "text(" + strconv.Quote(h.report) + ");"
+	if h.Applied || h.AlreadySatisfied {
+		return "text(" + strconv.Quote(h.Report) + ");"
 	}
-	apply := "await tools.apply_patch(" + strconv.Quote(h.patch) + ");\n"
-	if h.changeID != "" {
-		apply = "try {\n" + apply + "} catch (error) { text(" + strconv.Quote(changeNotice(h.changeID)) + "); throw error; }\n"
+	apply := "await tools.apply_patch(" + strconv.Quote(h.Patch) + ");\n"
+	if h.ChangeID != "" {
+		apply = "try {\n" + apply + "} catch (error) { text(" + strconv.Quote(changeNotice(h.ChangeID)) + "); throw error; }\n"
 	}
-	return mekugiApplyExecMarker + apply + "text(" + strconv.Quote(h.report) + ");"
+	return mekugiApplyExecMarker + apply + "text(" + strconv.Quote(h.Report) + ");"
 }
 
 func (h mekugiHistory) effectiveCarrierKind() codeModeCarrierKind {
-	if h.carrierKind != "" {
-		return h.carrierKind
+	if h.CarrierKind != "" {
+		return h.CarrierKind
 	}
 	return codeModeCarrierCustom
 }

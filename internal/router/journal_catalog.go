@@ -31,15 +31,14 @@ func stripStockPlanTools(fields map[string]json.RawMessage, catalog *responsesTo
 			}
 			if tool.Type == "function" && isStockPlanTool(tool.Name) {
 				section.tools = slices.Delete(section.tools, index, index+1)
-				section.nodes = slices.Delete(section.nodes, index, index+1)
 				section.rawTools = slices.Delete(section.rawTools, index, index+1)
 				continue
 			}
-			if node := section.nodes[index]; node != nil && node.nested != nil {
-				if err := strip(node.nested); err != nil {
+			if tool.nested != nil {
+				if err := strip(tool.nested); err != nil {
 					return err
 				}
-				tool.setRawField("tools", mustMarshalJSON(node.nested.tools))
+				tool.setRawField("tools", mustMarshalJSON(tool.nested.tools))
 			}
 		}
 		return nil

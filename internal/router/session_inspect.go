@@ -413,46 +413,46 @@ func inspectSessionCall(call sessionInspectionCall, record replayRecord, found b
 				record.History.CarrierKind != codeModeCarrierFunction) {
 			return result, fmt.Errorf("call %q: invalid replay history identity", call.item.CallID)
 		}
-		history := record.History.history()
+		history := record.History
 		if call.hasCall {
 			kind := history.effectiveCarrierKind()
 			carrierMatches := call.item.Type == carrierItemType(kind) &&
-				call.item.Name == history.carrierName &&
-				call.item.Namespace == jsonString(history.upstreamItem, "namespace") &&
+				call.item.Name == history.CarrierName &&
+				call.item.Namespace == jsonString(history.UpstreamItem, "namespace") &&
 				sessionInspectionPayload(call.item) == history.carrierInput()
-			originalMatches := call.item.Type == jsonString(history.upstreamItem, "type") &&
-				call.item.Name == jsonString(history.upstreamItem, "name") &&
-				call.item.Namespace == jsonString(history.upstreamItem, "namespace") &&
-				sessionInspectionPayload(call.item) == jsonString(history.upstreamItem, carrierPayloadFieldForItem(call.item.Type))
+			originalMatches := call.item.Type == jsonString(history.UpstreamItem, "type") &&
+				call.item.Name == jsonString(history.UpstreamItem, "name") &&
+				call.item.Namespace == jsonString(history.UpstreamItem, "namespace") &&
+				sessionInspectionPayload(call.item) == jsonString(history.UpstreamItem, carrierPayloadFieldForItem(call.item.Type))
 			if !carrierMatches && !originalMatches {
 				return result, fmt.Errorf("call %q: replay payload does not match session", call.item.CallID)
 			}
 		}
-		result.Tool, result.Replay = history.toolName, "matched"
-		result.CorrelationID, result.Attempt = history.correlationID, history.attempt
-		result.Rejections = len(history.rejections)
-		values["script"], values["evaluated"] = history.script, history.evaluated
-		if values["evaluated"] == "" && !history.unevaluated {
-			values["evaluated"] = history.script
+		result.Tool, result.Replay = history.ToolName, "matched"
+		result.CorrelationID, result.Attempt = history.CorrelationID, history.Attempt
+		result.Rejections = len(history.Rejections)
+		values["script"], values["evaluated"] = history.Script, history.Evaluated
+		if values["evaluated"] == "" && !history.Unevaluated {
+			values["evaluated"] = history.Script
 		}
-		values["patch"], values["report"], values["diagnostic"] = history.patch, history.report, history.translationError
-		rejections, _ := json.Marshal(history.rejections)
+		values["patch"], values["report"], values["diagnostic"] = history.Patch, history.Report, history.TranslationError
+		rejections, _ := json.Marshal(history.Rejections)
 		values["rejections"] = string(rejections)
 		switch {
-		case history.translationError != "":
+		case history.TranslationError != "":
 			result.Outcome = "rejected"
-		case history.applied:
+		case history.Applied:
 			result.Outcome = "applied"
-		case history.alreadySatisfied:
+		case history.AlreadySatisfied:
 			result.Outcome = "already_satisfied"
-		case history.patch != "":
+		case history.Patch != "":
 			result.Outcome = "translated_unconfirmed"
 		default:
 			result.Outcome = "unconfirmed"
 		}
 		// Use the same exact report confirmation as request-visible replay.
 		// A translated patch alone is not evidence that the host applied it.
-		if history.translationError == "" && !history.applied && !history.alreadySatisfied && history.report != "" {
+		if history.TranslationError == "" && !history.Applied && !history.AlreadySatisfied && history.Report != "" {
 			for _, output := range call.outputs {
 				if output.Type == carrierOutputItemType(history.effectiveCarrierKind()) && history.confirmsReport(output.Output) {
 					result.Outcome = "confirmed"

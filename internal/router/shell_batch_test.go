@@ -32,7 +32,7 @@ func TestShellBatchExecutionAndReplay(t *testing.T) {
 	}
 	contribution, _ := proxy.registry.contribution("shell")
 	history, err := transform.translateRegisteredTool(contribution, "batch-call", source, upstream)
-	if err != nil || history.translationError != "" {
+	if err != nil || history.TranslationError != "" {
 		t.Fatalf("translate = %+v, %v", history, err)
 	}
 	if strings.Count(history.carrierInput(), "await tools.apply_patch(") != 1 {
@@ -64,7 +64,7 @@ func TestShellBatchExecutionAndReplay(t *testing.T) {
 		t.Fatalf("retained batch = %q, %v", resolved, err)
 	}
 	rerun, err := transform.translateRegisteredTool(contribution, "batch-rerun", "#!script="+result.ScriptRef, nil)
-	if err != nil || rerun.translationError != "" || !strings.Contains(rerun.carrierInput(), "const results = [];") {
+	if err != nil || rerun.TranslationError != "" || !strings.Contains(rerun.carrierInput(), "const results = [];") {
 		t.Fatalf("batch rerun = %+v, %v", rerun, err)
 	}
 
@@ -72,7 +72,7 @@ func TestShellBatchExecutionAndReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	carrier := map[string]json.RawMessage{
-		"type": mustMarshalJSON("custom_tool_call"), "name": mustMarshalJSON(history.carrierName),
+		"type": mustMarshalJSON("custom_tool_call"), "name": mustMarshalJSON(history.CarrierName),
 		"call_id": mustMarshalJSON("batch-call"), "input": mustMarshalJSON(history.carrierInput()),
 	}
 	output := map[string]json.RawMessage{"type": mustMarshalJSON("custom_tool_call_output"), "call_id": mustMarshalJSON("batch-call"), "output": mustMarshalJSON("batch results")}
@@ -107,7 +107,7 @@ func TestShellBatchStopPolicyExecutionAndRetention(t *testing.T) {
 		"\nprintf failed; exit 7\nNEXT\ntouch should-not-run"
 	contribution, _ := proxy.registry.contribution("shell")
 	history, err := transform.translateRegisteredTool(contribution, "batch-stop", source, nil)
-	if err != nil || history.translationError != "" {
+	if err != nil || history.TranslationError != "" {
 		t.Fatalf("translate: %+v, %v", history, err)
 	}
 	var result struct {
@@ -135,7 +135,7 @@ func TestShellBatchStopPolicyExecutionAndRetention(t *testing.T) {
 		t.Fatalf("retained policy lost: %q, %v", resolved, err)
 	}
 	rerun, err := transform.translateRegisteredTool(contribution, "batch-stop-rerun", "#!script="+result.ScriptRef, nil)
-	if err != nil || rerun.translationError != "" || !strings.Contains(rerun.carrierInput(), "break batch") {
+	if err != nil || rerun.TranslationError != "" || !strings.Contains(rerun.carrierInput(), "break batch") {
 		t.Fatalf("rerun lost stop policy: %+v, %v", rerun, err)
 	}
 }
@@ -147,7 +147,7 @@ func TestShellBatchStopWaitsForTerminalExit(t *testing.T) {
 	contribution, _ := proxy.registry.contribution("shell")
 	history, err := transform.translateRegisteredTool(contribution, "batch-stop-wait",
 		"#!batch-stop=NEXT\nsleep 100\nNEXT\necho later", nil)
-	if err != nil || history.translationError != "" {
+	if err != nil || history.TranslationError != "" {
 		t.Fatalf("translate: %+v, %v", history, err)
 	}
 	overrides := `
@@ -179,7 +179,7 @@ func TestShellBatchParamsAndContinuation(t *testing.T) {
 	source := "#!batch=NEXT\n#!params={\"workdir\":\"/tmp\",\"yield_time_ms\":1000,\"max_output_tokens\":123}\necho one\nNEXT\n" +
 		"#!python3\nprint(2)\nNEXT\n#!params={\"yield_time_ms\":2000}\necho three"
 	history, err := transform.translateRegisteredTool(contribution, "batch-params", source, nil)
-	if err != nil || history.translationError != "" {
+	if err != nil || history.TranslationError != "" {
 		t.Fatalf("translate = %+v, %v", history, err)
 	}
 	overrides := `
@@ -251,7 +251,7 @@ func TestShellBatchRejectsBeforeExecution(t *testing.T) {
 				transform.carriers = codeModeCarrierCatalog{"exec_command": codeModeCarrierFunction}
 			}
 			history, err := transform.translateRegisteredTool(contribution, "reject-"+strings.ReplaceAll(test.name, " ", "-"), test.source, nil)
-			if err != nil || !strings.Contains(history.translationError, test.diagnostic) {
+			if err != nil || !strings.Contains(history.TranslationError, test.diagnostic) {
 				t.Fatalf("rejection = %+v, %v", history, err)
 			}
 			if strings.Contains(history.carrierInput(), "await tools.exec_command(") ||
@@ -363,7 +363,7 @@ func TestShellBatchJSONAndStreamingKeepOneCarrier(t *testing.T) {
 			t.Fatalf("stream = %v, %v: %s", terminal, err, visible.String())
 		}
 		history, ok := proxy.history(transform.historySessionID, "batch-stream")
-		if !ok || history.script != source || !strings.Contains(history.carrierInput(), "const results = [];") {
+		if !ok || history.Script != source || !strings.Contains(history.carrierInput(), "const results = [];") {
 			t.Fatalf("history = %+v", history)
 		}
 		if strings.Count(visible.String(), "event: response.output_item.added") != 1 ||
@@ -397,7 +397,7 @@ func TestShellNativeSourceMarkersExecuteUnchanged(t *testing.T) {
 			transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 			transform.directory = directory
 			history, err := transform.translateRegisteredTool(contribution, "native-source-"+strings.ReplaceAll(test.name, " ", "-"), test.input, nil)
-			if err != nil || history.translationError != "" {
+			if err != nil || history.TranslationError != "" {
 				t.Fatalf("translation = %+v, %v", history, err)
 			}
 			var result struct {

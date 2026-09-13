@@ -343,7 +343,7 @@ func TestReadyRuntimeCommentaryPrecedesEveryStreamTerminal(t *testing.T) {
 				t.Fatalf("terminal events = %s, %v", events, err)
 			}
 			history, exists := proxy.history(transform.historySessionID, "call-runtime")
-			if !exists || len(history.commentaryMessageIDs) != 1 || proxy.historyBytes-beforeBytes != len(history.commentaryMessageIDs[0]) {
+			if !exists || len(history.CommentaryMessageIDs) != 1 || proxy.historyBytes-beforeBytes != len(history.CommentaryMessageIDs[0]) {
 				t.Fatalf("history = %+v, bytes before = %d, after = %d", history, beforeBytes, proxy.historyBytes)
 			}
 			transform.Close()
@@ -351,7 +351,7 @@ func TestReadyRuntimeCommentaryPrecedesEveryStreamTerminal(t *testing.T) {
 				t.Fatal("terminal response retired an active publisher")
 			}
 			deferred := proxy.drainCommentarySession(transform.historySessionID, transform.shellThreadID)
-			if len(deferred) != 1 || deferred[0].text != "Later work." || deferred[0].messageID == history.commentaryMessageIDs[0] {
+			if len(deferred) != 1 || deferred[0].text != "Later work." || deferred[0].messageID == history.CommentaryMessageIDs[0] {
 				t.Fatalf("deferred events = %+v", deferred)
 			}
 			if len(proxy.drainCommentarySession(transform.historySessionID, transform.shellThreadID)) != 0 {

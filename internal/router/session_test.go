@@ -23,16 +23,16 @@ func TestRoutingSessionIDKeepsRecoveryHistoryAcrossRequestIDs(t *testing.T) {
 	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
 	if err := proxy.rememberBatch(firstSession, map[string]mekugiHistory{
 		"call": {
-			toolName:          mekugiToolName,
-			script:            testMekugiScript,
-			translationError:  "rejected",
-			evaluatorRejected: true,
+			ToolName:          mekugiToolName,
+			Script:            testMekugiScript,
+			TranslationError:  "rejected",
+			EvaluatorRejected: true,
 		},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	history, err := proxy.recoverableHistory(secondSession)
-	if err != nil || history.script != testMekugiScript {
+	if err != nil || history.Script != testMekugiScript {
 		t.Fatalf("recovery history = %+v, error %v", history, err)
 	}
 }

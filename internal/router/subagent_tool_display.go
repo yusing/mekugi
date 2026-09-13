@@ -118,8 +118,8 @@ func subagentToolActivityTexts(item map[string]json.RawMessage, qualifiedName st
 		}
 		return toolActivityPatch(patch)
 	case "hpatch", "hpatch_recover":
-		if history != nil && history.translationError == "" && history.patch != "" {
-			return toolActivityPatch(history.patch)
+		if history != nil && history.TranslationError == "" && history.Patch != "" {
+			return toolActivityPatch(history.Patch)
 		}
 		return []string{toolActivityDetail("Edit", input)}
 	}

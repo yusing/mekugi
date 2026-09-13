@@ -79,15 +79,15 @@ func TestTrackedRecoveryReadAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	first, err := transform.translate("original", "in file.txt\ntype \"missing\" \"new\"\n", nil)
-	if err != nil || first.changeID != "hp_a1" || !strings.HasPrefix(first.translationError, "change hp_a1\n") {
+	if err != nil || first.ChangeID != "hp_a1" || !strings.HasPrefix(first.TranslationError, "change hp_a1\n") {
 		t.Fatalf("first = %+v, %v", first, err)
 	}
 	invalid, err := transform.translateRecovery("invalid", `type "not present" "old"`, nil)
-	if err != nil || invalid.changeID != first.changeID || !invalid.unevaluated {
+	if err != nil || invalid.ChangeID != first.ChangeID || !invalid.Unevaluated {
 		t.Fatalf("invalid = %+v, %v", invalid, err)
 	}
 	fixed, err := transform.translateRecovery("fixed", `type "missing" "old"`, nil)
-	if err != nil || fixed.changeID != first.changeID || !strings.HasPrefix(fixed.report, "change hp_a1\n") {
+	if err != nil || fixed.ChangeID != first.ChangeID || !strings.HasPrefix(fixed.Report, "change hp_a1\n") {
 		t.Fatalf("fixed = %+v, %v", fixed, err)
 	}
 	if err := transform.commitHistory(); err != nil {
@@ -97,7 +97,7 @@ func TestTrackedRecoveryReadAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	options := changeReadOptions{workspace: workspace, ids: []string{first.changeID}}
+	options := changeReadOptions{workspace: workspace, ids: []string{first.ChangeID}}
 	text, err := store.readChanges(t.Context(), options)
 	if err != nil || !strings.Contains(text, "attempts=3") || !strings.Contains(text, "application unconfirmed") ||
 		!strings.Contains(text, "-old\n+new\n") || strings.Contains(text, "missing") {
@@ -113,7 +113,7 @@ func TestTrackedRecoveryReadAfterRestart(t *testing.T) {
 	}
 	proxy.replayStore = store
 	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
-		"input": []any{map[string]any{"type": "custom_tool_call_output", "call_id": "fixed", "output": fixed.report}},
+		"input": []any{map[string]any{"type": "custom_tool_call_output", "call_id": "fixed", "output": fixed.Report}},
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -152,7 +152,7 @@ func TestTrackedChangesNoOpPendingAndMissing(t *testing.T) {
 	if err != nil || !strings.Contains(pending, "pending") {
 		t.Fatalf("pending = %q, %v", pending, err)
 	}
-	history := mekugiHistory{changeID: id, correlationID: "noop", alreadySatisfied: true}
+	history := mekugiHistory{ChangeID: id, CorrelationID: "noop", AlreadySatisfied: true}
 	if err := store.put(t.Context(), "/w", map[string]mekugiHistory{"noop": history}); err != nil {
 		t.Fatal(err)
 	}
@@ -200,8 +200,8 @@ func TestTrackedChangeCursorAndFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	history := mekugiHistory{
-		changeID: id, correlationID: "one", applied: true,
-		reviewFiles: []mekugi.ReviewFile{{BeforePath: "old", AfterPath: "new", Diff: "wanted\n"}, {AfterPath: "other", Diff: "unrelated\n"}},
+		ChangeID: id, CorrelationID: "one", Applied: true,
+		ReviewFiles: []mekugi.ReviewFile{{BeforePath: "old", AfterPath: "new", Diff: "wanted\n"}, {AfterPath: "other", Diff: "unrelated\n"}},
 	}
 	if err := store.put(t.Context(), "/w", map[string]mekugiHistory{"one": history}); err != nil {
 		t.Fatal(err)
@@ -231,7 +231,7 @@ func TestTrackedChangeReconciliationIsAtomic(t *testing.T) {
 	}
 	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
 		"input": []any{
-			map[string]any{"type": "custom_tool_call_output", "call_id": "one", "output": history.report},
+			map[string]any{"type": "custom_tool_call_output", "call_id": "one", "output": history.Report},
 			map[string]any{"type": "custom_tool_call", "call_id": "one", "name": "wrong-carrier", "input": "wrong"},
 		},
 	}))
@@ -241,7 +241,7 @@ func TestTrackedChangeReconciliationIsAtomic(t *testing.T) {
 	if _, err := proxy.reconcileVisibleInput(t.Context(), &request, workspace, "reader"); err == nil {
 		t.Fatal("accepted conflicting carrier")
 	}
-	text, err := store.readChanges(t.Context(), changeReadOptions{workspace: workspace, ids: []string{history.changeID}})
+	text, err := store.readChanges(t.Context(), changeReadOptions{workspace: workspace, ids: []string{history.ChangeID}})
 	if err != nil || !strings.Contains(text, "application unconfirmed") {
 		t.Fatalf("published partial confirmation: %q, %v", text, err)
 	}
@@ -270,19 +270,19 @@ func TestTrackedRecoveryNeverAllocatesAChain(t *testing.T) {
 	}
 	proxy.replayStore = store
 	orphan, err := transform.translateRecovery("orphan", `type "a" "b"`, nil)
-	if err != nil || orphan.changeID != "" || !orphan.unevaluated {
+	if err != nil || orphan.ChangeID != "" || !orphan.Unevaluated {
 		t.Fatalf("orphan = %+v, %v", orphan, err)
 	}
 	first, err := transform.translate("first", "new f.txt\ntype \"ok\\n\"\n", nil)
-	if err != nil || first.changeID != "hp_a1" {
+	if err != nil || first.ChangeID != "hp_a1" {
 		t.Fatalf("first = %+v, %v", first, err)
 	}
 	blocked, err := transform.translateRecovery("blocked", `type "ok" "new"`, nil)
-	if err != nil || blocked.changeID != first.changeID || !blocked.unevaluated {
+	if err != nil || blocked.ChangeID != first.ChangeID || !blocked.Unevaluated {
 		t.Fatalf("blocked = %+v, %v", blocked, err)
 	}
 	second, err := transform.translate("second", "new g.txt\ntype \"ok\\n\"\n", nil)
-	if err != nil || second.changeID != "hp_a2" {
+	if err != nil || second.ChangeID != "hp_a2" {
 		t.Fatalf("second = %+v, %v", second, err)
 	}
 }
@@ -302,7 +302,7 @@ func TestTrackedStreamsUseThreadsNotTransportSessions(t *testing.T) {
 	} {
 		transform.shellThreadID, transform.sessionID = test.thread, test.session
 		history, err := transform.translate(test.call, "", nil)
-		if err != nil || history.changeID != test.want {
+		if err != nil || history.ChangeID != test.want {
 			t.Fatalf("%+v: %+v, %v", test, history, err)
 		}
 	}
@@ -318,7 +318,7 @@ func TestTrackedHistoryIncludesSuccessfulDiagnostics(t *testing.T) {
 		t.Fatal(err)
 	}
 	const warning = "mekugi: warning: outcome hook failed"
-	history := mekugiHistory{changeID: id, correlationID: "one", report: changeNotice(id) + "in f.txt\n" + warning + "\n"}
+	history := mekugiHistory{ChangeID: id, CorrelationID: "one", Report: changeNotice(id) + "in f.txt\n" + warning + "\n"}
 	if err := store.put(t.Context(), "/w", map[string]mekugiHistory{"one": history}); err != nil {
 		t.Fatal(err)
 	}
@@ -385,9 +385,9 @@ func TestTrackedRetainedScriptScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	history := mekugiHistory{
-		changeID: id, correlationID: "one", applied: true,
-		script:      "in @shell/prepared\ntype \"old\" \"new\"\n",
-		reviewFiles: []mekugi.ReviewFile{{BeforePath: "prepared", AfterPath: "prepared", Diff: "-old\n+new\n"}},
+		ChangeID: id, CorrelationID: "one", Applied: true,
+		Script:      "in @shell/prepared\ntype \"old\" \"new\"\n",
+		ReviewFiles: []mekugi.ReviewFile{{BeforePath: "prepared", AfterPath: "prepared", Diff: "-old\n+new\n"}},
 	}
 	if err := store.put(t.Context(), "/w", map[string]mekugiHistory{"one": history}); err != nil {
 		t.Fatal(err)
@@ -403,7 +403,7 @@ func TestTrackedNativeFailureIncludesChangeID(t *testing.T) {
 	if err != nil {
 		t.Skipf("bash is unavailable: %v", err)
 	}
-	history := mekugiHistory{changeID: "hp_a1", patch: "a proposed patch\n", report: "change hp_a1\nsuccess report\n"}
+	history := mekugiHistory{ChangeID: "hp_a1", Patch: "a proposed patch\n", Report: "change hp_a1\nsuccess report\n"}
 	script := "apply_patch() { cat >/dev/null; printf 'executor failed\\n'; return 7; }\n" + mekugiNativeCommand(history)
 	output, err := exec.CommandContext(t.Context(), bash, "-c", script).CombinedOutput()
 	if err == nil || string(output) != "change hp_a1\nexecutor failed\n" {
@@ -432,10 +432,10 @@ func TestTrackedHostEnvelopeConfirmation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			history.changeID, history.correlationID = id, "host-edit"
-			history.carrierName = carrier
-			history.carrierKind = codeModeCarrierFunction
-			history.report = changeNotice(id) + strings.TrimPrefix(history.report, changeNotice("hp_a1"))
+			history.ChangeID, history.CorrelationID = id, "host-edit"
+			history.CarrierName = carrier
+			history.CarrierKind = codeModeCarrierFunction
+			history.Report = changeNotice(id) + strings.TrimPrefix(history.Report, changeNotice("hp_a1"))
 			if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"host-edit": history}); err != nil {
 				t.Fatal(err)
 			}
@@ -443,10 +443,10 @@ func TestTrackedHostEnvelopeConfirmation(t *testing.T) {
 			// input_text block, followed by the carrier's text(report).
 			output := []any{
 				map[string]any{"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
-				map[string]any{"type": "input_text", "text": history.report},
+				map[string]any{"type": "input_text", "text": history.Report},
 			}
 			if carrier == nativeExecCommandToolName {
-				output = []any{map[string]any{"type": "input_text", "text": "Chunk ID: abc\nWall time: 0.1000 seconds\nProcess exited with code 0\nOriginal token count: 42\nOutput:\n" + history.report}}
+				output = []any{map[string]any{"type": "input_text", "text": "Chunk ID: abc\nWall time: 0.1000 seconds\nProcess exited with code 0\nOriginal token count: 42\nOutput:\n" + history.Report}}
 			}
 			request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
 				"input": []any{map[string]any{
@@ -494,7 +494,7 @@ func TestExactHostReportEvidence(t *testing.T) {
 		{"empty", "exec", "", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			history := mekugiHistory{carrierName: test.carrier, report: report}
+			history := mekugiHistory{CarrierName: test.carrier, Report: report}
 			if got := history.confirmsReport(mustMarshalJSON(test.output)); got != test.want {
 				t.Fatalf("confirmation = %v; want %v", got, test.want)
 			}
@@ -519,11 +519,11 @@ func TestExactHostReportEvidence(t *testing.T) {
 		if test.extra {
 			blocks = append(blocks, map[string]any{"type": "input_text", "text": "extra"})
 		}
-		if got := (mekugiHistory{report: report, carrierName: "exec"}).confirmsReport(mustMarshalJSON(blocks)); got != test.want {
+		if got := (mekugiHistory{Report: report, CarrierName: "exec"}).confirmsReport(mustMarshalJSON(blocks)); got != test.want {
 			t.Errorf("multipart %+v: got %v", test, got)
 		}
 	}
-	history := mekugiHistory{report: report}
+	history := mekugiHistory{Report: report}
 	if history.confirmsReport(mustMarshalJSON([]any{
 		map[string]any{"type": "input_text", "text": report},
 		map[string]any{"type": "input_text", "text": "extra"},

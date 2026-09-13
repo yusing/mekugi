@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
-	"github.com/yusing/mekugi"
 )
 
 const maxReplayRecordBytes = 32 << 20
@@ -34,96 +33,13 @@ type replayRecord struct {
 	Workspace  string
 	CallID     string
 	Commentary bool
-	History    replayHistory
-}
-type replayHistory struct {
-	ToolName             string
-	PluginID             string
-	Script               string
-	Root                 string
-	Evaluated            string
-	ChangeID             string
-	ReviewFiles          []mekugi.ReviewFile
-	Patch                string
-	Applied              bool
-	CarrierName          string
-	CarrierKind          codeModeCarrierKind
-	CarrierPayload       string
-	Report               string
-	JournalIDs           []string
-	OutputWarning        string
-	TranslationError     string
-	EvaluatorRejected    bool
-	Rejections           []mekugi.HostRejection
-	CorrelationID        string
-	Attempt              int
-	UpstreamItem         map[string]json.RawMessage
-	ReplayCarrier        bool
-	CommentaryMessageIDs []string
-	Unevaluated          bool
-	AlreadySatisfied     bool
-	Aliases              []mekugi.TargetAlias
+	History    mekugiHistory
 }
 
-func durableHistory(h mekugiHistory) replayHistory {
-	return replayHistory{
-		ToolName:             h.toolName,
-		PluginID:             h.pluginID,
-		Script:               h.script,
-		Root:                 h.root,
-		Evaluated:            h.evaluated,
-		ChangeID:             h.changeID,
-		ReviewFiles:          h.reviewFiles,
-		Patch:                h.patch,
-		Applied:              h.applied,
-		CarrierName:          h.carrierName,
-		CarrierKind:          h.carrierKind,
-		CarrierPayload:       h.carrierPayload,
-		Report:               h.report,
-		JournalIDs:           h.journalIDs,
-		OutputWarning:        h.outputWarning,
-		TranslationError:     h.translationError,
-		EvaluatorRejected:    h.evaluatorRejected,
-		Rejections:           h.rejections,
-		CorrelationID:        h.correlationID,
-		Attempt:              h.attempt,
-		UpstreamItem:         h.upstreamItem,
-		ReplayCarrier:        h.replayCarrier,
-		CommentaryMessageIDs: h.commentaryMessageIDs,
-		Unevaluated:          h.unevaluated,
-		AlreadySatisfied:     h.alreadySatisfied,
-		Aliases:              h.aliases,
-	}
-}
-func (h replayHistory) history() mekugiHistory {
-	return mekugiHistory{
-		toolName:             h.ToolName,
-		pluginID:             h.PluginID,
-		script:               h.Script,
-		root:                 h.Root,
-		evaluated:            h.Evaluated,
-		changeID:             h.ChangeID,
-		reviewFiles:          h.ReviewFiles,
-		patch:                h.Patch,
-		applied:              h.Applied,
-		carrierName:          h.CarrierName,
-		carrierKind:          h.CarrierKind,
-		carrierPayload:       h.CarrierPayload,
-		report:               h.Report,
-		journalIDs:           h.JournalIDs,
-		outputWarning:        h.OutputWarning,
-		translationError:     h.TranslationError,
-		evaluatorRejected:    h.EvaluatorRejected,
-		rejections:           h.Rejections,
-		correlationID:        h.CorrelationID,
-		attempt:              h.Attempt,
-		upstreamItem:         h.UpstreamItem,
-		replayCarrier:        h.ReplayCarrier,
-		commentaryMessageIDs: h.CommentaryMessageIDs,
-		unevaluated:          h.Unevaluated,
-		alreadySatisfied:     h.AlreadySatisfied,
-		aliases:              h.Aliases,
-	}
+// Keep request-local state out of immutable replay comparisons as well as JSON.
+func durableHistory(h mekugiHistory) mekugiHistory {
+	h.bytes, h.confirmed, h.sequence = 0, false, 0
+	return h
 }
 
 func defaultMekugiReplayDirectory() (string, error) {
@@ -278,7 +194,7 @@ func (s *mekugiReplayStore) lookup(ctx context.Context, workspace, callID string
 	}
 	err = s.locked(ctx, func() error {
 		r, ok, e := s.read(workspace, callID, false)
-		h = r.History.history()
+		h = r.History
 		found = ok
 		return e
 	})
@@ -321,7 +237,7 @@ func (s *mekugiReplayStore) put(ctx context.Context, workspace string, histories
 // Upstream completion may add fields or finalize status after an SSE item is
 // already durable, including opaque provider passthrough metadata. It cannot
 // alter the original model payload or translation.
-func mergeReplayHistory(old, next replayHistory) (replayHistory, error) {
+func mergeReplayHistory(old, next mekugiHistory) (mekugiHistory, error) {
 	oldItem, nextItem := old.UpstreamItem, next.UpstreamItem
 	oldIDs, nextIDs := old.CommentaryMessageIDs, next.CommentaryMessageIDs
 	old.UpstreamItem = nil
@@ -421,7 +337,13 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 	if total > limit {
 		return errors.New("durable replay store quota reached; explicit cleanup required")
 	}
-	f, err := os.CreateTemp(s.directory, prefix+"pending-")
+	return s.writeFile(name, prefix+"pending-", data)
+}
+
+// writeFile publishes an already-validated record. Callers retain their lock,
+// schema, identity, and quota policies; all records share the durability sequence.
+func (s *mekugiReplayStore) writeFile(name, pattern string, data []byte) error {
+	f, err := os.CreateTemp(s.directory, pattern)
 	if err != nil {
 		return err
 	}

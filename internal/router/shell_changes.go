@@ -105,20 +105,20 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 }
 
 func trackedStatus(history mekugiHistory, confirmed bool) string {
-	if history.translationError == "" && history.toolName == mekugiToolName {
+	if history.TranslationError == "" && history.ToolName == mekugiToolName {
 		// Carrier kind identifies transport, not whether this retained script
 		// hands off a mixed execution plan. Use the same framing owner as translation.
-		_, mixed, _ := hpatchsyntax.SplitShell(history.script)
-		if mixed || strings.HasPrefix(strings.TrimSpace(history.script), "resume ") {
+		_, mixed, _ := hpatchsyntax.SplitShell(history.Script)
+		if mixed || strings.HasPrefix(strings.TrimSpace(history.Script), "resume ") {
 			return "execution plan (see segment attempts)"
 		}
 	}
 	switch {
-	case history.translationError != "":
+	case history.TranslationError != "":
 		return "rejected"
-	case history.alreadySatisfied:
+	case history.AlreadySatisfied:
 		return "no-op"
-	case history.applied || confirmed:
+	case history.Applied || confirmed:
 		return "applied"
 	default:
 		return "prepared (application unconfirmed)"
@@ -165,7 +165,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			if !found || record.History.ChangeID != id || record.History.CorrelationID != change.Correlation {
 				return "", fmt.Errorf("change %s has a missing or inconsistent attempt", id)
 			}
-			history := record.History.history()
+			history := record.History
 			if len(change.Calls) == 1 {
 				fmt.Fprintf(&output, "%s %s\n", id, trackedStatus(history, call.Confirmed))
 			} else {
@@ -176,20 +176,20 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				output.WriteString("scope: retained shell script, not workspace files\n")
 			}
 			if options.view == "history" {
-				fmt.Fprintf(&output, "%s input:\n%s\n", history.toolName, history.script)
-				if history.evaluated != "" {
-					fmt.Fprintf(&output, "evaluated script:\n%s\n", history.evaluated)
+				fmt.Fprintf(&output, "%s input:\n%s\n", history.ToolName, history.Script)
+				if history.Evaluated != "" {
+					fmt.Fprintf(&output, "evaluated script:\n%s\n", history.Evaluated)
 				}
-				if history.report != "" {
-					output.WriteString(strings.TrimPrefix(history.report, changeNotice(id)))
+				if history.Report != "" {
+					output.WriteString(strings.TrimPrefix(history.Report, changeNotice(id)))
 					output.WriteByte('\n')
 				}
-				if history.translationError != "" {
-					output.WriteString(strings.TrimPrefix(history.translationError, changeNotice(id)))
+				if history.TranslationError != "" {
+					output.WriteString(strings.TrimPrefix(history.TranslationError, changeNotice(id)))
 					output.WriteByte('\n')
 				}
 			}
-			for _, file := range history.reviewFiles {
+			for _, file := range history.ReviewFiles {
 				if options.path != "" && !changePathMatches(options, file.BeforePath, retained) && !changePathMatches(options, file.AfterPath, retained) {
 					continue
 				}

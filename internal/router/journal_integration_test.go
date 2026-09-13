@@ -254,7 +254,7 @@ func TestJournalNamedResultDiscoversDurableReplay(t *testing.T) {
 		"type": mustMarshalJSON("function_call"), "call_id": mustMarshalJSON(callID),
 		"name": mustMarshalJSON(journalToolName), "arguments": mustMarshalJSON(`{"op":"list"}`),
 	}
-	history := mekugiHistory{toolName: journalHistoryTool, upstreamItem: call, carrierName: journalToolName, carrierKind: codeModeCarrierFunction}
+	history := mekugiHistory{ToolName: journalHistoryTool, UpstreamItem: call, CarrierName: journalToolName, CarrierKind: codeModeCarrierFunction}
 	if err := proxy.replayStore.put(t.Context(), workspace, map[string]mekugiHistory{callID: history}); err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestJournalNamedResultDiscoversDurableReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if visible[callID].toolName != journalHistoryTool {
+	if visible[callID].ToolName != journalHistoryTool {
 		t.Fatal("named output did not recover durable call identity")
 	}
 	if err := restoreJournalCalls(&request, visible); err != nil {
@@ -296,7 +296,7 @@ func TestJournalNamedResultRestoresAndRebasesCachedInput(t *testing.T) {
 		fields["input"] = []any{map[string]any{"role": "user", "content": "work"}, result, ordinary}
 	})
 	request.cachedInput = 3
-	visible := map[string]mekugiHistory{"journal-call": {toolName: journalHistoryTool, upstreamItem: call}}
+	visible := map[string]mekugiHistory{"journal-call": {ToolName: journalHistoryTool, UpstreamItem: call}}
 	if err := restoreJournalCalls(&request, visible); err != nil {
 		t.Fatal(err)
 	}

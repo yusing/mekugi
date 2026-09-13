@@ -88,7 +88,7 @@ func prepareCommentaryTools(fields map[string]json.RawMessage, tools *responsesT
 		if err := group.tools.err; err != nil {
 			return nil, fmt.Errorf("decode additional tools for commentary: %w", err)
 		}
-		for index, tool := range group.tools.tools {
+		for _, tool := range group.tools.tools {
 			if tool.Type != "namespace" {
 				if err := instrument("", tool, false); err != nil {
 					return nil, err
@@ -96,14 +96,13 @@ func prepareCommentaryTools(fields map[string]json.RawMessage, tools *responsesT
 				continue
 			}
 			namespace := tool.Name
-			node := group.tools.nodes[index]
-			if node == nil || node.nested == nil {
+			if tool.nested == nil {
 				return nil, fmt.Errorf("decode %s tools for commentary: unexpected end of JSON input", namespace)
 			}
-			if err := node.nested.err; err != nil {
+			if err := tool.nested.err; err != nil {
 				return nil, fmt.Errorf("decode %s tools for commentary: %w", namespace, err)
 			}
-			for _, child := range node.nested.tools {
+			for _, child := range tool.nested.tools {
 				if err := instrument(namespace, child, false); err != nil {
 					return nil, err
 				}
@@ -215,7 +214,7 @@ func (t *mekugiResponseTransform) transformStructuredCommentary(item map[string]
 		return nil, errors.New("upstream emitted journal function call without a call ID")
 	}
 	if retained, exists := t.local[callID]; exists {
-		if retained.script != extracted.originalArguments || retained.carrierPayload != extracted.arguments {
+		if retained.Script != extracted.originalArguments || retained.CarrierPayload != extracted.arguments {
 			return nil, fmt.Errorf("journal call %q changed arguments", callID)
 		}
 		item["arguments"] = mustMarshalJSON(extracted.arguments)
@@ -230,10 +229,10 @@ func (t *mekugiResponseTransform) transformStructuredCommentary(item map[string]
 		t.featureTrace.record("journal", "tool_field", "mutation", "accepted", callID, "")
 	}
 	t.recordLocal(callID, &mekugiHistory{
-		toolName: qualifiedToolName(jsonString(item, "namespace"), jsonString(item, "name")),
-		script:   extracted.originalArguments, carrierKind: codeModeCarrierFunction,
-		carrierName: jsonString(item, "name"), carrierPayload: extracted.arguments,
-		upstreamItem: maps.Clone(item), journalIDs: ids,
+		ToolName: qualifiedToolName(jsonString(item, "namespace"), jsonString(item, "name")),
+		Script:   extracted.originalArguments, CarrierKind: codeModeCarrierFunction,
+		CarrierName: jsonString(item, "name"), CarrierPayload: extracted.arguments,
+		UpstreamItem: maps.Clone(item), JournalIDs: ids,
 	})
 	item["arguments"] = mustMarshalJSON(extracted.arguments)
 	return nil, nil
@@ -302,7 +301,7 @@ func (p *mekugiProxy) commentaryMessageIDs(sessionID string) map[string]struct{}
 	}
 	if session := p.sessions[sessionID]; session != nil {
 		for _, history := range session.calls {
-			for _, messageID := range history.commentaryMessageIDs {
+			for _, messageID := range history.CommentaryMessageIDs {
 				result[messageID] = struct{}{}
 			}
 		}
@@ -318,10 +317,10 @@ func (p *mekugiProxy) addCommentaryMessageID(sessionID, threadID, callID, messag
 	if !exists {
 		return false
 	}
-	if slices.Contains(history.commentaryMessageIDs, messageID) {
+	if slices.Contains(history.CommentaryMessageIDs, messageID) {
 		return true
 	}
-	history.commentaryMessageIDs = append(history.commentaryMessageIDs, messageID)
+	history.CommentaryMessageIDs = append(history.CommentaryMessageIDs, messageID)
 	return p.rememberBatch(sessionID, map[string]mekugiHistory{callID: history}) == nil
 }
 
@@ -352,8 +351,8 @@ func (t *mekugiResponseTransform) runtimeCommentaryMessage(publication published
 		return nil
 	}
 
-	if history, exists := t.local[publication.callID]; exists && !slices.Contains(history.commentaryMessageIDs, publication.messageID) {
-		history.commentaryMessageIDs = append(history.commentaryMessageIDs, publication.messageID)
+	if history, exists := t.local[publication.callID]; exists && !slices.Contains(history.CommentaryMessageIDs, publication.messageID) {
+		history.CommentaryMessageIDs = append(history.CommentaryMessageIDs, publication.messageID)
 		t.local[publication.callID] = history
 	}
 	message = assistantCommentaryMessage(publication.messageID, publication.text)

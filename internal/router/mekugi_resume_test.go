@@ -15,7 +15,7 @@ func TestReplayVisibleViewSurvivesRestartAndFork(t *testing.T) {
 	workspace := t.TempDir()
 	histories := map[string]mekugiHistory{}
 	for _, id := range []string{"a", "b"} {
-		histories[id] = mekugiHistory{toolName: mekugiToolName, root: workspace, script: "original-" + id, carrierName: "exec", carrierKind: codeModeCarrierCustom, carrierPayload: "translated-" + id, upstreamItem: map[string]json.RawMessage{"type": mustMarshalJSON("custom_tool_call"), "name": mustMarshalJSON(mekugiToolName), "call_id": mustMarshalJSON(id), "input": mustMarshalJSON("original-" + id)}}
+		histories[id] = mekugiHistory{ToolName: mekugiToolName, Root: workspace, Script: "original-" + id, CarrierName: "exec", CarrierKind: codeModeCarrierCustom, CarrierPayload: "translated-" + id, UpstreamItem: map[string]json.RawMessage{"type": mustMarshalJSON("custom_tool_call"), "name": mustMarshalJSON(mekugiToolName), "call_id": mustMarshalJSON(id), "input": mustMarshalJSON("original-" + id)}}
 	}
 	if err := store.put(t.Context(), workspace, histories); err != nil {
 		t.Fatal(err)
@@ -72,8 +72,8 @@ func TestReplayRecoveryAndAliasesAreRequestLocal(t *testing.T) {
 	workspace := t.TempDir()
 	alias := mekugi.TargetAlias{Path: "file", Before: "1:1111", After: "1:2222"}
 	histories := map[string]mekugiHistory{
-		"old": {toolName: mekugiToolName, root: workspace, script: "old", carrierName: "exec", carrierPayload: "old carrier", carrierKind: codeModeCarrierCustom, translationError: "rejected", evaluatorRejected: true, correlationID: "attempt", attempt: 1},
-		"new": {toolName: mekugiToolName, root: workspace, script: "new", carrierName: "exec", carrierPayload: "new carrier", carrierKind: codeModeCarrierCustom, report: "applied", aliases: []mekugi.TargetAlias{alias}},
+		"old": {ToolName: mekugiToolName, Root: workspace, Script: "old", CarrierName: "exec", CarrierPayload: "old carrier", CarrierKind: codeModeCarrierCustom, TranslationError: "rejected", EvaluatorRejected: true, CorrelationID: "attempt", Attempt: 1},
+		"new": {ToolName: mekugiToolName, Root: workspace, Script: "new", CarrierName: "exec", CarrierPayload: "new carrier", CarrierKind: codeModeCarrierCustom, Report: "applied", Aliases: []mekugi.TargetAlias{alias}},
 	}
 	if err := store.put(t.Context(), workspace, histories); err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func TestReplayRecoveryAndAliasesAreRequestLocal(t *testing.T) {
 	if _, err := parent.recoveryHistory(); err == nil {
 		t.Fatal("parent recovered older failure after success")
 	}
-	if recovered, err := fork.recoveryHistory(); err != nil || recovered.script != "old" {
+	if recovered, err := fork.recoveryHistory(); err != nil || recovered.Script != "old" {
 		t.Fatalf("fork recovery: %+v %v", recovered, err)
 	}
 	if _, err := empty.recoveryHistory(); err == nil {
@@ -128,7 +128,7 @@ func TestReplayNoWorkspaceForkAndLateValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	history := mekugiHistory{toolName: mekugiToolName, carrierName: "exec", carrierKind: codeModeCarrierCustom, carrierPayload: "carrier", report: "applied"}
+	history := mekugiHistory{ToolName: mekugiToolName, CarrierName: "exec", CarrierKind: codeModeCarrierCustom, CarrierPayload: "carrier", Report: "applied"}
 	if err := store.put(t.Context(), "", map[string]mekugiHistory{"call": history}); err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func TestReplayStoreFailureDoesNotExposeCompletedCarrier(t *testing.T) {
 		t.Fatal(err)
 	}
 	proxy.replayStore = store
-	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"call-H": {script: "conflict"}}); err != nil {
+	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"call-H": {Script: "conflict"}}); err != nil {
 		t.Fatal(err)
 	}
 	added := testMekugiItem()
@@ -265,7 +265,7 @@ func TestReplayConcurrentViewsWithReusedRoutingKey(t *testing.T) {
 	workspace := t.TempDir()
 	histories := map[string]mekugiHistory{}
 	for _, id := range []string{"parent", "fork"} {
-		histories[id] = mekugiHistory{toolName: mekugiToolName, script: id, carrierName: "exec", carrierKind: codeModeCarrierCustom, carrierPayload: id, translationError: "rejected", evaluatorRejected: true}
+		histories[id] = mekugiHistory{ToolName: mekugiToolName, Script: id, CarrierName: "exec", CarrierKind: codeModeCarrierCustom, CarrierPayload: id, TranslationError: "rejected", EvaluatorRejected: true}
 	}
 	if err := store.put(t.Context(), workspace, histories); err != nil {
 		t.Fatal(err)
@@ -282,7 +282,7 @@ func TestReplayConcurrentViewsWithReusedRoutingKey(t *testing.T) {
 			}
 			transform := &mekugiResponseTransform{visible: visible}
 			recovered, err := transform.recoveryHistory()
-			if err != nil || recovered.script != id || len(visible) != 1 {
+			if err != nil || recovered.Script != id || len(visible) != 1 {
 				t.Fatalf("cross-contaminated view: %+v %v", recovered, err)
 			}
 		})

@@ -77,8 +77,8 @@ func TestExecShellRecoveryBatchRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	history := transform.local["batch-recovery"]
-	if history.translationError != "" {
-		t.Fatal(history.translationError)
+	if history.TranslationError != "" {
+		t.Fatal(history.TranslationError)
 	}
 	payload, ok := strings.CutPrefix(history.carrierInput(), misuseWarningProjection(execShellRecoveryWarning))
 	if !ok {
@@ -105,8 +105,8 @@ func TestExecShellRecoveryPollCorrelation(t *testing.T) {
 		codeModeToolName: "exec",
 		visible: map[string]mekugiHistory{
 			"recovered": {
-				toolName: "shell", pluginID: builtinToolsPluginID, script: "#!params={}\nsleep 20",
-				upstreamItem: map[string]json.RawMessage{"name": mustMarshalJSON("exec")},
+				ToolName: "shell", PluginID: builtinToolsPluginID, Script: "#!params={}\nsleep 20",
+				UpstreamItem: map[string]json.RawMessage{"name": mustMarshalJSON("exec")},
 			},
 		},
 	}
@@ -207,7 +207,7 @@ func TestExecShellRecoveryDeliveryAndReplay(t *testing.T) {
 				t.Fatalf("lost warning or native result: %s", raw)
 			}
 			history, ok := proxy.history(transform.historySessionID, "call-recovery")
-			if !ok || history.toolName != "shell" || jsonString(history.upstreamItem, "name") != "exec" || history.replayCarrier {
+			if !ok || history.ToolName != "shell" || jsonString(history.UpstreamItem, "name") != "exec" || history.ReplayCarrier {
 				t.Fatalf("incorrect recovery history: %+v", history)
 			}
 			replay, err := parseResponsesRequest(mustMarshalJSON(map[string]any{"input": []any{
@@ -248,7 +248,7 @@ func TestExecShellRecoveryUsesShellValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	history := transform.local["invalid-params"]
-	if history.translationError == "" || strings.Contains(history.carrierInput(), "tools.exec_command") {
+	if history.TranslationError == "" || strings.Contains(history.carrierInput(), "tools.exec_command") {
 		t.Fatalf("invalid params escaped validation: %+v", history)
 	}
 }
@@ -299,9 +299,9 @@ func TestExecShellRecoveryDoesNotCorrelateReverseRecoveryOutput(t *testing.T) {
 		codeModeToolName: "exec",
 		visible: map[string]mekugiHistory{
 			"reverse": {
-				toolName: "shell", pluginID: builtinToolsPluginID, script: `text('{"session_id":42}')`,
-				replayCarrier: true,
-				upstreamItem:  map[string]json.RawMessage{"name": mustMarshalJSON("shell")},
+				ToolName: "shell", PluginID: builtinToolsPluginID, Script: `text('{"session_id":42}')`,
+				ReplayCarrier: true,
+				UpstreamItem:  map[string]json.RawMessage{"name": mustMarshalJSON("shell")},
 			},
 		},
 	}

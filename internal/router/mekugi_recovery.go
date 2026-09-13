@@ -153,7 +153,7 @@ func recoveryHistoryOf(histories iter.Seq[mekugiHistory]) (mekugiHistory, error)
 	var latest mekugiHistory
 	found := false
 	for history := range histories {
-		if history.unevaluated || (history.toolName != mekugiToolName && history.toolName != mekugiRecoveryToolName) {
+		if history.Unevaluated || (history.ToolName != mekugiToolName && history.ToolName != mekugiRecoveryToolName) {
 			continue
 		}
 		if !found || history.sequence > latest.sequence {
@@ -164,11 +164,11 @@ func recoveryHistoryOf(histories iter.Seq[mekugiHistory]) (mekugiHistory, error)
 	if !found {
 		return mekugiHistory{}, errors.New("no rejected HPATCH script to recover; send a complete script")
 	}
-	isResume := strings.HasPrefix(strings.TrimSpace(latest.script), "resume ")
-	if _, mixed, _ := hpatchsyntax.SplitShell(latest.script); mixed || isResume {
+	isResume := strings.HasPrefix(strings.TrimSpace(latest.Script), "resume ")
+	if _, mixed, _ := hpatchsyntax.SplitShell(latest.Script); mixed || isResume {
 		// Successful mixed translation records a carrier only after retention.
 		// Native preflight rejections can also have diagnostic carriers.
-		if latest.translationError == "" && latest.carrierPayload != "" {
+		if latest.TranslationError == "" && latest.CarrierPayload != "" {
 			return latest, errors.New("mixed HPATCH/shell work uses retained continuation, not edit-only recovery; inspect its checkpoints, current files, and known sessions, then use hpatch with resume HANDLE; successful preflight does not confirm execution; never resend the complete original script")
 		}
 		if !isResume {
@@ -176,10 +176,10 @@ func recoveryHistoryOf(histories iter.Seq[mekugiHistory]) (mekugiHistory, error)
 		}
 		return latest, errors.New("the resume request was rejected before execution; correct its diagnostic and inspect the original continuation handle, checkpoints, current files, and known sessions; do not resend the original mixed script or use edit-only recovery")
 	}
-	if latest.translationError == "" {
+	if latest.TranslationError == "" {
 		return latest, errors.New("the most recent mekugi call succeeded; recovery edits require a rejected script, so send a complete script")
 	}
-	if !latest.evaluatorRejected {
+	if !latest.EvaluatorRejected {
 		return latest, errors.New("the most recent mekugi call did not produce an evaluator rejection; send a complete script")
 	}
 	return latest, nil
@@ -188,8 +188,8 @@ func recoveryHistoryOf(histories iter.Seq[mekugiHistory]) (mekugiHistory, error)
 func latestRecoveryAttempt(histories iter.Seq[mekugiHistory], correlationID string) int {
 	latest := 0
 	for history := range histories {
-		if (history.toolName == mekugiToolName || history.toolName == mekugiRecoveryToolName) && history.correlationID == correlationID {
-			latest = max(latest, history.attempt)
+		if (history.ToolName == mekugiToolName || history.ToolName == mekugiRecoveryToolName) && history.CorrelationID == correlationID {
+			latest = max(latest, history.Attempt)
 		}
 	}
 	return latest
@@ -197,10 +197,10 @@ func latestRecoveryAttempt(histories iter.Seq[mekugiHistory], correlationID stri
 
 // recoveryBaseline is the complete rejected script a following recovery edits.
 func (h mekugiHistory) recoveryBaseline() string {
-	if h.evaluated != "" {
-		return h.evaluated
+	if h.Evaluated != "" {
+		return h.Evaluated
 	}
-	return h.script
+	return h.Script
 }
 
 func (t *mekugiResponseTransform) translateRecovery(
@@ -208,11 +208,11 @@ func (t *mekugiResponseTransform) translateRecovery(
 	upstreamItem map[string]json.RawMessage,
 ) (mekugiHistory, error) {
 	if history, ok := t.local[callID]; ok {
-		if history.toolName != mekugiRecoveryToolName || history.pluginID != "" || history.script != input {
+		if history.ToolName != mekugiRecoveryToolName || history.PluginID != "" || history.Script != input {
 			return mekugiHistory{}, fmt.Errorf("mekugi recovery call %q changed input", callID)
 		}
 		if len(upstreamItem) != 0 {
-			history.upstreamItem = maps.Clone(upstreamItem)
+			history.UpstreamItem = maps.Clone(upstreamItem)
 			t.local[callID] = history
 		}
 		return history, nil
@@ -232,14 +232,14 @@ func (t *mekugiResponseTransform) translateRecovery(
 		ToolName:       mekugiRecoveryToolName,
 		EmittedPayload: input,
 	}
-	if base.correlationID != "" {
-		attemptMetadata.CorrelationID = base.correlationID
-		attemptMetadata.Attempt = t.nextRecoveryAttempt(base.correlationID, base.attempt)
+	if base.CorrelationID != "" {
+		attemptMetadata.CorrelationID = base.CorrelationID
+		attemptMetadata.Attempt = t.nextRecoveryAttempt(base.CorrelationID, base.Attempt)
 	}
 	if baseErr != nil {
 		return t.rejectUnevaluated(mekugiRecoveryToolName, callID, input, baseErr, attemptMetadata, "", nil, upstreamItem)
 	}
-	if base.root != t.directory {
+	if base.Root != t.directory {
 		return t.rejectUnevaluated(
 			mekugiRecoveryToolName,
 			callID,
@@ -261,7 +261,7 @@ func (t *mekugiResponseTransform) translateRecovery(
 			err,
 			attemptMetadata,
 			baseline,
-			base.rejections,
+			base.Rejections,
 			upstreamItem,
 		)
 	}
@@ -293,17 +293,17 @@ func (t *mekugiResponseTransform) rejectUnevaluated(
 		}
 	}
 	history := mekugiHistory{
-		toolName: toolName,
-		script:   input,
+		ToolName: toolName,
+		Script:   input,
 
-		root:             t.directory,
-		changeID:         changeID,
-		carrierName:      t.codeModeToolName,
-		translationError: diagnostic,
-		correlationID:    attempt.CorrelationID,
-		attempt:          attempt.Attempt,
-		upstreamItem:     maps.Clone(upstreamItem),
-		unevaluated:      true,
+		Root:             t.directory,
+		ChangeID:         changeID,
+		CarrierName:      t.codeModeToolName,
+		TranslationError: diagnostic,
+		CorrelationID:    attempt.CorrelationID,
+		Attempt:          attempt.Attempt,
+		UpstreamItem:     maps.Clone(upstreamItem),
+		Unevaluated:      true,
 	}
 	t.recordLocal(callID, &history)
 	return history, nil
@@ -314,8 +314,8 @@ func (t *mekugiResponseTransform) rejectUnevaluated(
 // the response completes.
 func (t *mekugiResponseTransform) recoveryHistory() (mekugiHistory, error) {
 	for _, history := range t.local {
-		if !history.unevaluated &&
-			(history.toolName == mekugiToolName || history.toolName == mekugiRecoveryToolName) {
+		if !history.Unevaluated &&
+			(history.ToolName == mekugiToolName || history.ToolName == mekugiRecoveryToolName) {
 			return recoveryHistoryOf(maps.Values(t.local))
 		}
 	}

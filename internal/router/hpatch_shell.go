@@ -47,15 +47,15 @@ func translateHpatchSegment(ctx context.Context, directory, source string) (hpat
 
 func (t *mekugiResponseTransform) translateMixedScript(callID, input string, parts []hpatchsyntax.ScriptSegment, splitErr error, upstreamItem map[string]json.RawMessage) (mekugiHistory, error) {
 	history := mekugiHistory{
-		toolName: mekugiToolName, script: input, root: t.directory,
-		carrierName: t.codeModeToolName, upstreamItem: maps.Clone(upstreamItem),
+		ToolName: mekugiToolName, Script: input, Root: t.directory,
+		CarrierName: t.codeModeToolName, UpstreamItem: maps.Clone(upstreamItem),
 	}
 	changeID, err := t.proxy.replayStore.reserveChange(t.ctx, t.directory, t.shellThreadID, callID)
 	if err != nil {
 		return mekugiHistory{}, err
 	}
-	history.changeID = changeID
-	history.correlationID, history.attempt = callID, 1
+	history.ChangeID = changeID
+	history.CorrelationID, history.Attempt = callID, 1
 	var segments []hpatchResumeSegment
 	err = splitErr
 	if err == nil {
@@ -63,14 +63,14 @@ func (t *mekugiResponseTransform) translateMixedScript(callID, input string, par
 	}
 	if err == nil {
 		var state hpatchResumeState
-		state, err = t.retainMixedScript(history.changeID, callID, input, segments)
+		state, err = t.retainMixedScript(history.ChangeID, callID, input, segments)
 		if err == nil {
-			history.carrierKind = codeModeCarrierCustom
-			history.carrierPayload = t.mixedCarrier(state, "", nil)
+			history.CarrierKind = codeModeCarrierCustom
+			history.CarrierPayload = t.mixedCarrier(state, "", nil)
 		}
 	}
 	if err != nil {
-		history.translationError = changeNotice(changeID) + "hpatch: " + err.Error()
+		history.TranslationError = changeNotice(changeID) + "hpatch: " + err.Error()
 	}
 	t.recordLocal(callID, &history)
 	return history, nil

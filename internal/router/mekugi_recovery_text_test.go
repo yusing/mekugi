@@ -59,24 +59,24 @@ func TestTextRecoveryThroughRouterTranslationAndAncestry(t *testing.T) {
 	}
 	const base = "in file.txt\ntype \"missing\" \"new\"\nnew keep.txt\ntype \"kept\\n\"\n"
 	first, err := transform.translate("original", base, nil)
-	if err != nil || !first.evaluatorRejected || !strings.Contains(first.translationError, "Retained rejected-script rows:") {
+	if err != nil || !first.EvaluatorRejected || !strings.Contains(first.TranslationError, "Retained rejected-script rows:") {
 		t.Fatalf("initial rejection: %v, %+v", err, first)
 	}
 	partial, err := transform.translateRecovery("partial", `type "missing" "stillmissing"`, nil)
-	if err != nil || !partial.evaluatorRejected || !strings.Contains(partial.recoveryBaseline(), "stillmissing") || partial.attempt != 2 {
+	if err != nil || !partial.EvaluatorRejected || !strings.Contains(partial.recoveryBaseline(), "stillmissing") || partial.Attempt != 2 {
 		t.Fatalf("partial correction: %v, %+v", err, partial)
 	}
 	unchanged, err := transform.translateRecovery("unchanged", `type "stillmissing" "stillmissing"`, nil)
-	if err != nil || !unchanged.unevaluated || unchanged.attempt != 3 {
+	if err != nil || !unchanged.Unevaluated || unchanged.Attempt != 3 {
 		t.Fatalf("unchanged correction: %v, %+v", err, unchanged)
 	}
 	const payload = `type "stillmissing" "old"`
 	fixed, err := transform.translateRecovery("fixed", payload, nil)
-	if err != nil || fixed.translationError != "" || fixed.attempt != 4 || fixed.correlationID != "original" ||
-		fixed.toolName != mekugiRecoveryToolName || fixed.script != payload || !strings.Contains(fixed.evaluated, "new keep.txt") {
+	if err != nil || fixed.TranslationError != "" || fixed.Attempt != 4 || fixed.CorrelationID != "original" ||
+		fixed.ToolName != mekugiRecoveryToolName || fixed.Script != payload || !strings.Contains(fixed.Evaluated, "new keep.txt") {
 		t.Fatalf("fixed correction: %v, %+v", err, fixed)
 	}
-	tree, err := patchtest.Apply(map[string]string{"file.txt": "old\n"}, fixed.patch)
+	tree, err := patchtest.Apply(map[string]string{"file.txt": "old\n"}, fixed.Patch)
 	if err != nil || tree["file.txt"] != "new\n" || tree["keep.txt"] != "kept\n" {
 		t.Fatalf("host patch = %+v, %v", tree, err)
 	}
@@ -85,7 +85,7 @@ func TestTextRecoveryThroughRouterTranslationAndAncestry(t *testing.T) {
 		t.Fatalf("translation applied a workspace mutation: %q, %v", content, err)
 	}
 	outcomes, err := os.ReadFile(outcomePath)
-	wantOutcome := fmt.Sprintf("translated|succeeded|hpatch_recover|%d|%d\n", len(payload), len(fixed.evaluated))
+	wantOutcome := fmt.Sprintf("translated|succeeded|hpatch_recover|%d|%d\n", len(payload), len(fixed.Evaluated))
 	if err != nil || !strings.Contains(string(outcomes), wantOutcome) || strings.Count(string(outcomes), "\n") != 4 {
 		t.Fatalf("outcome identity/count = %q, %v; want final %q and four attempts", outcomes, err, wantOutcome)
 	}
@@ -102,16 +102,16 @@ func TestTextRecoveryThroughRouterTranslationAndAncestry(t *testing.T) {
 		t.Fatal(err)
 	}
 	replayed, ok, err := reopened.lookup(t.Context(), directory, "fixed")
-	if err != nil || !ok || replayed.script != payload || replayed.evaluated != fixed.evaluated ||
-		replayed.toolName != mekugiRecoveryToolName || replayed.correlationID != fixed.correlationID {
+	if err != nil || !ok || replayed.Script != payload || replayed.Evaluated != fixed.Evaluated ||
+		replayed.ToolName != mekugiRecoveryToolName || replayed.CorrelationID != fixed.CorrelationID {
 		t.Fatalf("replay lost original correction or rebuilt script: %v, found %v", err, ok)
 	}
 	rejected, ok, err := reopened.lookup(t.Context(), directory, "partial")
-	if err != nil || !ok || rejected.recoveryBaseline() != partial.recoveryBaseline() || !rejected.evaluatorRejected {
+	if err != nil || !ok || rejected.recoveryBaseline() != partial.recoveryBaseline() || !rejected.EvaluatorRejected {
 		t.Fatalf("replay lost partial correction baseline: %v, found %v", err, ok)
 	}
 	afterSuccess, err := transform.translateRecovery("too-late", `type "old" "missing"`, nil)
-	if err != nil || !afterSuccess.unevaluated || !strings.Contains(afterSuccess.translationError, "most recent mekugi call succeeded") {
+	if err != nil || !afterSuccess.Unevaluated || !strings.Contains(afterSuccess.TranslationError, "most recent mekugi call succeeded") {
 		t.Fatalf("recovered an older rejection after success: %v, %+v", err, afterSuccess)
 	}
 }
@@ -122,11 +122,11 @@ func TestTextRecoveryUsesPrivateRetainedShellDispatch(t *testing.T) {
 		t.Fatal("retain shell")
 	}
 	first, err := transform.translate("original", "in @shell/prepared\ntype \"missing\" \"new\"\n", nil)
-	if err != nil || !first.evaluatorRejected {
+	if err != nil || !first.EvaluatorRejected {
 		t.Fatalf("initial rejection: %v, %+v", err, first)
 	}
 	fixed, err := transform.translateRecovery("fixed", `type "missing" "old"`, nil)
-	if err != nil || !fixed.applied || fixed.translationError != "" {
+	if err != nil || !fixed.Applied || fixed.TranslationError != "" {
 		t.Fatalf("private recovery: %v, %+v", err, fixed)
 	}
 	body, err := proxy.resolveShellInput(transform.shellDirectory, "#!script=@shell/prepared")
@@ -139,8 +139,8 @@ func TestTextRecoveryCannotUseNonvisibleOrCrossWorktreeHistory(t *testing.T) {
 	for _, crossWorktree := range []bool{false, true} {
 		transform, proxy, _, directory := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
 		history := mekugiHistory{
-			toolName: mekugiToolName, script: "in f.txt\ntype \"bad\" \"value\"\n",
-			root: directory + "-other", sequence: 1, evaluatorRejected: true, translationError: "rejected",
+			ToolName: mekugiToolName, Script: "in f.txt\ntype \"bad\" \"value\"\n",
+			Root: directory + "-other", sequence: 1, EvaluatorRejected: true, TranslationError: "rejected",
 		}
 		if crossWorktree {
 			transform.visible["old"] = history
@@ -148,7 +148,7 @@ func TestTextRecoveryCannotUseNonvisibleOrCrossWorktreeHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 		result, err := transform.translateRecovery("new", `type "bad" "good"`, nil)
-		if err != nil || !result.unevaluated {
+		if err != nil || !result.Unevaluated {
 			t.Fatalf("used inaccessible history: %v, %+v", err, result)
 		}
 	}

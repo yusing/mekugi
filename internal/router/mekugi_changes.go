@@ -147,24 +147,7 @@ func (s *mekugiReplayStore) writeChangeIndex(index changeIndex) (err error) {
 	if total > s.maxBytes {
 		return errors.New("change index store quota reached; explicit cleanup required")
 	}
-	file, err := os.CreateTemp(s.directory, "changes-pending-")
-	if err != nil {
-		return err
-	}
-	defer func() { file.Close(); os.Remove(file.Name()) }()
-	if _, err := file.Write(data); err != nil {
-		return err
-	}
-	if err := file.Sync(); err != nil {
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(file.Name(), filepath.Join(s.directory, changeIndexName(index.Workspace))); err != nil {
-		return err
-	}
-	return syncReplayDirectory(s.directory)
+	return s.writeFile(changeIndexName(index.Workspace), "changes-pending-", data)
 }
 
 // reserveChange runs before evaluation, including private direct application.
@@ -238,7 +221,7 @@ func changeStreamName(index int) string {
 func (s *mekugiReplayStore) publishChanges(workspace string, histories map[string]mekugiHistory) error {
 	tracked := make([]string, 0, len(histories))
 	for id, history := range histories {
-		if history.changeID != "" {
+		if history.ChangeID != "" {
 			tracked = append(tracked, id)
 		}
 	}
@@ -255,13 +238,13 @@ func (s *mekugiReplayStore) publishChanges(workspace string, histories map[strin
 	changed := false
 	for _, callID := range tracked {
 		history := histories[callID]
-		change, exists := index.Changes[history.changeID]
-		if !exists || change.Correlation != history.correlationID {
+		change, exists := index.Changes[history.ChangeID]
+		if !exists || change.Correlation != history.CorrelationID {
 			return errors.New("change identity does not match replay record")
 		}
 		if !slices.ContainsFunc(change.Calls, func(call trackedCall) bool { return call.ID == callID }) {
-			change.Calls = append(change.Calls, trackedCall{ID: callID, Confirmed: history.applied})
-			index.Changes[history.changeID] = change
+			change.Calls = append(change.Calls, trackedCall{ID: callID, Confirmed: history.Applied})
+			index.Changes[history.ChangeID] = change
 			changed = true
 		}
 	}
@@ -279,7 +262,7 @@ func (s *mekugiReplayStore) confirmChanges(ctx context.Context, workspace string
 	}
 	var confirmed []string
 	for callID, history := range histories {
-		if history.changeID != "" && history.confirmed {
+		if history.ChangeID != "" && history.confirmed {
 			confirmed = append(confirmed, callID)
 		}
 	}
@@ -297,12 +280,12 @@ func (s *mekugiReplayStore) confirmChanges(ctx context.Context, workspace string
 		changed := false
 		for _, callID := range confirmed {
 			history := histories[callID]
-			change, exists := index.Changes[history.changeID]
-			if !exists || change.Correlation != history.correlationID {
+			change, exists := index.Changes[history.ChangeID]
+			if !exists || change.Correlation != history.CorrelationID {
 				return errors.New("confirmed change identity is missing or inconsistent")
 			}
 			if !slices.ContainsFunc(change.Calls, func(call trackedCall) bool { return call.ID == callID }) {
-				change, err = s.repairChangeCall(workspace, history.changeID, callID, change)
+				change, err = s.repairChangeCall(workspace, history.ChangeID, callID, change)
 				if err != nil {
 					return err
 				}
@@ -314,7 +297,7 @@ func (s *mekugiReplayStore) confirmChanges(ctx context.Context, workspace string
 					changed = true
 				}
 			}
-			index.Changes[history.changeID] = change
+			index.Changes[history.ChangeID] = change
 		}
 		if !changed {
 			return syncReplayDirectory(s.directory)

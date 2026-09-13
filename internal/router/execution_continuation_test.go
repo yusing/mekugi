@@ -42,7 +42,7 @@ func TestExecutionContinuationReplayedOutputOnly(t *testing.T) {
 		}),
 	}}
 	projectExecutionContinuations(&request, continuationTestCatalog(), "exec", map[string]mekugiHistory{
-		"a": {toolName: "shell", pluginID: builtinToolsPluginID},
+		"a": {ToolName: "shell", PluginID: builtinToolsPluginID},
 	})
 	if !strings.Contains(string(request.fields["input"]), "functions.wait") {
 		t.Fatalf("known output-only replay lost continuation: %s", request.fields["input"])
@@ -61,8 +61,8 @@ func TestExecutionContinuationWarningReplayIdempotent(t *testing.T) {
 	if !found {
 		t.Fatal("shell history not recorded")
 	}
-	history.outputWarning = "test output warning"
-	history.upstreamItem["call_id"] = mustMarshalJSON("warning-a")
+	history.OutputWarning = "test output warning"
+	history.UpstreamItem["call_id"] = mustMarshalJSON("warning-a")
 	if err := proxy.rememberBatch(transform.historySessionID, map[string]mekugiHistory{"warning-a": history}); err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +261,7 @@ func TestExecutionContinuationProjection(t *testing.T) {
 			name:     "outer cell owns continuation even with emitted native result",
 			call:     continuationTestCall("shell", "a", "sleep 100"),
 			output:   continuationTestOutput("a", yielded, native),
-			history:  map[string]mekugiHistory{"a": {toolName: "shell", pluginID: builtinToolsPluginID}},
+			history:  map[string]mekugiHistory{"a": {ToolName: "shell", PluginID: builtinToolsPluginID}},
 			wantTool: "functions.wait", wantInput: map[string]any{"cell_id": "cell-17"},
 			wantHandle: map[string]any{"cell_id": "cell-17"},
 		},
@@ -269,7 +269,7 @@ func TestExecutionContinuationProjection(t *testing.T) {
 			name:     "terminal cell exposes yielded native session",
 			call:     continuationTestCall("shell", "a", "sleep 100"),
 			output:   continuationTestOutput("a", header, native),
-			history:  map[string]mekugiHistory{"a": {toolName: "shell", pluginID: builtinToolsPluginID}},
+			history:  map[string]mekugiHistory{"a": {ToolName: "shell", PluginID: builtinToolsPluginID}},
 			wantTool: "functions.exec", wantInput: `text(await tools.write_stdin({"chars":"","session_id":42}));`,
 			wantHandle: map[string]any{"session_id": float64(42)},
 		},
@@ -286,7 +286,7 @@ func TestExecutionContinuationProjection(t *testing.T) {
 			output: continuationTestOutput("a", "Script failed\nWall time 0.1 seconds\nOutput:\n",
 				`{"results":[{"output":"one","exit_code":0},{"output":"partial","session_id":42}]}`,
 				"Script error:\nhost refused"),
-			history:  map[string]mekugiHistory{"a": {toolName: "shell", pluginID: builtinToolsPluginID}},
+			history:  map[string]mekugiHistory{"a": {ToolName: "shell", PluginID: builtinToolsPluginID}},
 			wantTool: "functions.exec", wantInput: `text(await tools.write_stdin({"chars":"","session_id":42}));`,
 			wantHandle: map[string]any{"session_id": float64(42)},
 		},
@@ -295,8 +295,8 @@ func TestExecutionContinuationProjection(t *testing.T) {
 			call:   continuationTestCall("exec", "a", `text(await tools.write_stdin({session_id:42}));`),
 			output: continuationTestOutput("a", header, native),
 			history: map[string]mekugiHistory{"a": {
-				toolName: codeModeCommentaryHistoryTool, pluginID: "configured",
-				script: `text(await tools.write_stdin({session_id:42}));`,
+				ToolName: codeModeCommentaryHistoryTool, PluginID: "configured",
+				Script: `text(await tools.write_stdin({session_id:42}));`,
 			}},
 		},
 		{
@@ -313,7 +313,7 @@ func TestExecutionContinuationProjection(t *testing.T) {
 			name:    "recovered JavaScript shell is not native metadata",
 			call:    continuationTestCall("shell", "a", `text({session_id:42,output:"fake"});`),
 			output:  continuationTestOutput("a", header, native),
-			history: map[string]mekugiHistory{"a": {toolName: "shell", pluginID: builtinToolsPluginID, replayCarrier: true}},
+			history: map[string]mekugiHistory{"a": {ToolName: "shell", PluginID: builtinToolsPluginID, ReplayCarrier: true}},
 		},
 		{
 			name:   "printed header does not override terminal host header",
@@ -324,7 +324,7 @@ func TestExecutionContinuationProjection(t *testing.T) {
 			name:    "terminated cell has no native continuation",
 			call:    continuationTestCall("shell", "a", "sleep 100"),
 			output:  continuationTestOutput("a", "Script terminated\nWall time 0.1 seconds\nOutput:\n", native),
-			history: map[string]mekugiHistory{"a": {toolName: "shell", pluginID: builtinToolsPluginID}},
+			history: map[string]mekugiHistory{"a": {ToolName: "shell", PluginID: builtinToolsPluginID}},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -388,7 +388,7 @@ func TestExecutionContinuationFollowsCellWithoutPollingInnerSession(t *testing.T
 		}),
 	}}
 	projectExecutionContinuations(&request, catalog, "exec", map[string]mekugiHistory{
-		"a": {toolName: "shell", pluginID: builtinToolsPluginID},
+		"a": {ToolName: "shell", PluginID: builtinToolsPluginID},
 	})
 	var items []map[string]json.RawMessage
 	_ = json.Unmarshal(request.fields["input"], &items)
@@ -450,7 +450,7 @@ func TestExecutionContinuationRetiresSuggestions(t *testing.T) {
 					}
 				}
 				original := continuationTestOutput("a", yielded, "unrelated warning")
-				history := map[string]mekugiHistory{"a": {toolName: "shell", pluginID: builtinToolsPluginID}}
+				history := map[string]mekugiHistory{"a": {ToolName: "shell", PluginID: builtinToolsPluginID}}
 				if kind != "cell" {
 					delete(history, "a")
 				}
@@ -525,7 +525,7 @@ func TestExecutionContinuationRetiresAcrossProjectionChanges(t *testing.T) {
 				resume := continuationTestCall("exec", "b", source)
 				history := map[string]mekugiHistory{}
 				if outputOnlyReplay {
-					history["b"] = mekugiHistory{upstreamItem: resume, script: source, toolName: codeModeCommentaryHistoryTool}
+					history["b"] = mekugiHistory{UpstreamItem: resume, Script: source, ToolName: codeModeCommentaryHistoryTool}
 				} else {
 					items = append(items, resume)
 				}

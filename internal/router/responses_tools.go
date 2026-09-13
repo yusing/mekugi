@@ -28,18 +28,13 @@ type responsesToolSection struct {
 	raw      json.RawMessage
 	rawTools []json.RawMessage
 	tools    []*responsesToolDefinition
-	nodes    []*responsesToolNode
 	err      error
-}
-
-type responsesToolNode struct {
-	definition *responsesToolDefinition
-	nested     *responsesToolSection
 }
 
 // responsesToolDefinition exposes the stable Responses tool fields while its
 // raw object remains authoritative for provider- and plugin-owned extensions.
 type responsesToolDefinition struct {
+	nested      *responsesToolSection
 	fields      map[string]json.RawMessage
 	Type        string
 	Name        string
@@ -61,13 +56,17 @@ func decodeResponsesToolDefinition(raw json.RawMessage) (*responsesToolDefinitio
 
 // newResponsesToolDefinition creates a responsesToolDefinition from decoded JSON fields.
 func newResponsesToolDefinition(fields map[string]json.RawMessage) *responsesToolDefinition {
-	return &responsesToolDefinition{
+	tool := &responsesToolDefinition{
 		fields:      fields,
 		Type:        jsonString(fields, "type"),
 		Name:        jsonString(fields, "name"),
 		Description: jsonString(fields, "description"),
 		Title:       jsonString(fields, "title"),
 	}
+	if nested, ok := fields["tools"]; ok {
+		tool.nested = decodeResponsesToolSection(nested, true)
+	}
+	return tool
 }
 
 func (tool *responsesToolDefinition) MarshalJSON() ([]byte, error) {
@@ -147,7 +146,6 @@ func decodeResponsesToolSection(raw json.RawMessage, present bool) *responsesToo
 		return section
 	}
 	section.tools = make([]*responsesToolDefinition, len(definitions))
-	section.nodes = make([]*responsesToolNode, len(definitions))
 	for index, definition := range definitions {
 		tool, err := decodeResponsesToolDefinition(definition)
 		if err != nil {
@@ -155,14 +153,6 @@ func decodeResponsesToolSection(raw json.RawMessage, present bool) *responsesToo
 			continue
 		}
 		section.tools[index] = tool
-		if tool.fields == nil {
-			continue
-		}
-		node := &responsesToolNode{definition: tool}
-		if nested, ok := tool.fields["tools"]; ok {
-			node.nested = decodeResponsesToolSection(nested, true)
-		}
-		section.nodes[index] = node
 	}
 	return section
 }
@@ -174,11 +164,6 @@ func (c *responsesToolCatalog) appendTop(tools []*responsesToolDefinition) {
 	c.top.tools = append(c.top.tools, tools...)
 	for _, tool := range tools {
 		c.top.rawTools = append(c.top.rawTools, mustMarshalJSON(tool))
-		node := &responsesToolNode{definition: tool}
-		if nested, ok := tool.fields["tools"]; ok {
-			node.nested = decodeResponsesToolSection(nested, true)
-		}
-		c.top.nodes = append(c.top.nodes, node)
 	}
 }
 
@@ -186,18 +171,6 @@ func (c *responsesToolCatalog) appendTop(tools []*responsesToolDefinition) {
 func (c *responsesToolCatalog) removeTop(index int) {
 	c.top.tools = append(c.top.tools[:index], c.top.tools[index+1:]...)
 	c.top.rawTools = append(c.top.rawTools[:index], c.top.rawTools[index+1:]...)
-	c.top.nodes = c.top.nodes[:0]
-	for _, tool := range c.top.tools {
-		if tool == nil || tool.fields == nil {
-			c.top.nodes = append(c.top.nodes, nil)
-			continue
-		}
-		node := &responsesToolNode{definition: tool}
-		if nested, ok := tool.fields["tools"]; ok {
-			node.nested = decodeResponsesToolSection(nested, true)
-		}
-		c.top.nodes = append(c.top.nodes, node)
-	}
 }
 
 // encodeTop encodes the top-level tools back into the request fields.
@@ -213,15 +186,15 @@ func (c *responsesToolCatalog) encodeTop(fields map[string]json.RawMessage) erro
 // encodeAdditional encodes additional tools back into the request fields.
 func (c *responsesToolCatalog) encodeAdditional(fields map[string]json.RawMessage, group *responsesAdditionalTools, section *responsesToolSection) error {
 	if section != group.tools {
-		for _, node := range group.tools.nodes {
-			if node == nil || node.nested != section {
+		for _, tool := range group.tools.tools {
+			if tool == nil || tool.nested != section {
 				continue
 			}
 			encoded, err := marshalProtocolJSON(section.tools)
 			if err != nil {
 				return err
 			}
-			node.definition.setRawField("tools", encoded)
+			tool.setRawField("tools", encoded)
 			break
 		}
 	}

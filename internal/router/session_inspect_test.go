@@ -101,7 +101,7 @@ func inspectionFixture(t *testing.T, directory, id string, history mekugiHistory
 	}
 	return map[string]any{
 		"type": carrierItemType(history.effectiveCarrierKind()), "call_id": id,
-		"name": history.carrierName, carrierPayloadField(history.effectiveCarrierKind()): history.carrierInput(),
+		"name": history.CarrierName, carrierPayloadField(history.effectiveCarrierKind()): history.carrierInput(),
 	}
 }
 
@@ -124,19 +124,19 @@ func inspectFixture(t *testing.T, root, session string, extra ...string) (sessio
 func TestSessionInspectionLogicalCallsAndConfirmation(t *testing.T) {
 	root := t.TempDir()
 	history := mekugiHistory{
-		toolName: "hpatch", root: root, script: "in file.txt\ntype \"old\" \"new\"\n",
-		patch: "*** Begin Patch\n*** End Patch\n", report: "applied report",
-		carrierName: "exec", carrierKind: codeModeCarrierFunction, carrierPayload: `{"code":"private carrier"}`,
-		correlationID: "chain", attempt: 1,
+		ToolName: "hpatch", Root: root, Script: "in file.txt\ntype \"old\" \"new\"\n",
+		Patch: "*** Begin Patch\n*** End Patch\n", Report: "applied report",
+		CarrierName: "exec", CarrierKind: codeModeCarrierFunction, CarrierPayload: `{"code":"private carrier"}`,
+		CorrelationID: "chain", Attempt: 1,
 	}
 	call := inspectionFixture(t, root, "call_edit", history)
 	rejected := mekugiHistory{
-		toolName: "hpatch_recover", root: root, script: `type "bad" "new"`,
-		evaluated:        "in file.txt\ntype \"missing\" \"new\"\n",
-		translationError: "target missing", evaluatorRejected: true, report: "rejected",
-		carrierName: "exec", carrierKind: codeModeCarrierCustom, carrierPayload: "diagnostic carrier",
-		correlationID: "chain", attempt: 2,
-		rejections: []mekugi.HostRejection{{Command: 2, Reason: "literal-missing"}},
+		ToolName: "hpatch_recover", Root: root, Script: `type "bad" "new"`,
+		Evaluated:        "in file.txt\ntype \"missing\" \"new\"\n",
+		TranslationError: "target missing", EvaluatorRejected: true, Report: "rejected",
+		CarrierName: "exec", CarrierKind: codeModeCarrierCustom, CarrierPayload: "diagnostic carrier",
+		CorrelationID: "chain", Attempt: 2,
+		Rejections: []mekugi.HostRejection{{Command: 2, Reason: "literal-missing"}},
 	}
 	recovery := inspectionFixture(t, root, "call_recovery", rejected)
 	session := writeInspectionSession(t, root, call,
@@ -151,9 +151,9 @@ func TestSessionInspectionLogicalCallsAndConfirmation(t *testing.T) {
 		t.Fatalf("code %d: %s, result %+v", code, diagnostic, result)
 	}
 	first, second := result.Calls[0], result.Calls[1]
-	if first.Tool != "hpatch" || first.Outcome != "confirmed" || first.Text["script"].Text != history.script ||
-		first.Text["patch"].Text != history.patch || second.Tool != "hpatch_recover" ||
-		second.Outcome != "rejected" || second.Text["evaluated"].Text != rejected.evaluated ||
+	if first.Tool != "hpatch" || first.Outcome != "confirmed" || first.Text["script"].Text != history.Script ||
+		first.Text["patch"].Text != history.Patch || second.Tool != "hpatch_recover" ||
+		second.Outcome != "rejected" || second.Text["evaluated"].Text != rejected.Evaluated ||
 		second.Rejections != 1 || !strings.Contains(second.Text["rejections"].Text, "literal-missing") {
 		t.Fatalf("logical projection = %+v", result)
 	}
@@ -211,9 +211,9 @@ func TestSessionInspectionOutcomeEvidence(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
-			h := mekugiHistory{toolName: "hpatch", root: root, script: "script", patch: "patch", report: "report",
-				carrierName: "exec", carrierKind: codeModeCarrierFunction, carrierPayload: "{}",
-				applied: test.applied, alreadySatisfied: test.satisfied}
+			h := mekugiHistory{ToolName: "hpatch", Root: root, Script: "script", Patch: "patch", Report: "report",
+				CarrierName: "exec", CarrierKind: codeModeCarrierFunction, CarrierPayload: "{}",
+				Applied: test.applied, AlreadySatisfied: test.satisfied}
 			call := inspectionFixture(t, root, "call", h)
 			items := []map[string]any{call}
 			if test.output != "" {
@@ -230,8 +230,8 @@ func TestSessionInspectionRejectsMismatchesAndCorruption(t *testing.T) {
 	for _, mode := range []string{"payload", "corrupt", "duplicate", "json", "utf8"} {
 		t.Run(mode, func(t *testing.T) {
 			root := t.TempDir()
-			h := mekugiHistory{toolName: "shell", root: root, script: "echo safe",
-				carrierName: "exec", carrierKind: codeModeCarrierFunction, carrierPayload: "{}"}
+			h := mekugiHistory{ToolName: "shell", Root: root, Script: "echo safe",
+				CarrierName: "exec", CarrierKind: codeModeCarrierFunction, CarrierPayload: "{}"}
 			call := inspectionFixture(t, root, "call", h)
 			items := []map[string]any{call}
 			if mode == "payload" {
@@ -259,9 +259,9 @@ func TestSessionInspectionRejectsMismatchesAndCorruption(t *testing.T) {
 
 func TestSessionInspectionOutputOnlyAndOriginalCalls(t *testing.T) {
 	root := t.TempDir()
-	h := mekugiHistory{toolName: "hpatch", root: root, script: "original", report: "report",
-		carrierName: "exec", carrierKind: codeModeCarrierFunction, carrierPayload: "{}",
-		upstreamItem: map[string]json.RawMessage{
+	h := mekugiHistory{ToolName: "hpatch", Root: root, Script: "original", Report: "report",
+		CarrierName: "exec", CarrierKind: codeModeCarrierFunction, CarrierPayload: "{}",
+		UpstreamItem: map[string]json.RawMessage{
 			"type": mustTestJSON(t, "custom_tool_call"), "name": mustTestJSON(t, "hpatch"), "input": mustTestJSON(t, "original"),
 		}}
 	inspectionFixture(t, root, "call", h)
@@ -287,9 +287,9 @@ func TestSessionInspectionNamespaceIdentity(t *testing.T) {
 	for _, kind := range []string{"original", "carrier", "duplicate", "native"} {
 		t.Run(kind, func(t *testing.T) {
 			root := t.TempDir()
-			h := mekugiHistory{toolName: "shell", root: root, script: "echo safe",
-				carrierName: "exec", carrierKind: codeModeCarrierFunction, carrierPayload: "{}",
-				upstreamItem: map[string]json.RawMessage{
+			h := mekugiHistory{ToolName: "shell", Root: root, Script: "echo safe",
+				CarrierName: "exec", CarrierKind: codeModeCarrierFunction, CarrierPayload: "{}",
+				UpstreamItem: map[string]json.RawMessage{
 					"type": mustTestJSON(t, "function_call"), "name": mustTestJSON(t, "shell"),
 					"namespace": mustTestJSON(t, "functions"), "arguments": mustTestJSON(t, "echo safe"),
 				}}
@@ -396,7 +396,7 @@ func TestSessionInspectionRejectsOutputOnlyInvalidHistory(t *testing.T) {
 		root := t.TempDir()
 		history := mekugiHistory{}
 		if kind != "" {
-			history = mekugiHistory{toolName: "shell", carrierName: "exec", carrierKind: kind}
+			history = mekugiHistory{ToolName: "shell", CarrierName: "exec", CarrierKind: kind}
 		}
 		inspectionFixture(t, root, "call", history)
 		session := writeInspectionSession(t, root, map[string]any{
@@ -410,10 +410,10 @@ func TestSessionInspectionRejectsOutputOnlyInvalidHistory(t *testing.T) {
 
 func TestSessionInspectionInfersWorkspacePerCall(t *testing.T) {
 	firstRoot, secondRoot := t.TempDir(), t.TempDir()
-	firstHistory := mekugiHistory{toolName: "shell", script: "first",
-		carrierName: "exec", carrierKind: codeModeCarrierFunction, carrierPayload: "{}"}
-	secondHistory := mekugiHistory{toolName: "shell", script: "second",
-		carrierName: "exec", carrierKind: codeModeCarrierFunction, carrierPayload: "{}"}
+	firstHistory := mekugiHistory{ToolName: "shell", Script: "first",
+		CarrierName: "exec", CarrierKind: codeModeCarrierFunction, CarrierPayload: "{}"}
+	secondHistory := mekugiHistory{ToolName: "shell", Script: "second",
+		CarrierName: "exec", CarrierKind: codeModeCarrierFunction, CarrierPayload: "{}"}
 	first := inspectionFixture(t, firstRoot, "first", firstHistory)
 	second := inspectionFixture(t, secondRoot, "second", secondHistory)
 	// One replay directory, with independently workspace-scoped records.
@@ -492,12 +492,12 @@ func TestSessionInspectionReadsProducedRecoveryRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	rejected, err := transform.translate("rejected", "in file.txt\ntype \"missing\" \"new\"\n", nil)
-	if err != nil || !rejected.evaluatorRejected {
+	if err != nil || !rejected.EvaluatorRejected {
 		t.Fatalf("translate rejection: %+v, %v", rejected, err)
 	}
 	const correction = `type "missing" "old"`
 	fixed, err := transform.translateRecovery("fixed", correction, nil)
-	if err != nil || fixed.translationError != "" || fixed.patch == "" {
+	if err != nil || fixed.TranslationError != "" || fixed.Patch == "" {
 		t.Fatalf("translate correction: %+v, %v", fixed, err)
 	}
 	store, err := openMekugiReplayStore(t.TempDir())
@@ -514,14 +514,14 @@ func TestSessionInspectionReadsProducedRecoveryRecords(t *testing.T) {
 	}{{"rejected", rejected}, {"fixed", fixed}} {
 		items = append(items, map[string]any{
 			"type": carrierItemType(entry.history.effectiveCarrierKind()), "call_id": entry.id,
-			"name": entry.history.carrierName, carrierPayloadField(entry.history.effectiveCarrierKind()): entry.history.carrierInput(),
+			"name": entry.history.CarrierName, carrierPayloadField(entry.history.effectiveCarrierKind()): entry.history.carrierInput(),
 		})
 	}
 	result, code, diagnostic := inspectFixture(t, root, writeInspectionSession(t, root, items...),
 		"--replay-dir", store.directory, "--field", "all")
 	if code != 0 || len(result.Calls) != 2 || result.Calls[0].Outcome != "rejected" ||
 		result.Calls[1].Outcome != "translated_unconfirmed" || result.Calls[1].Text["script"].Text != correction ||
-		result.Calls[1].Text["evaluated"].Text != fixed.evaluated || result.Calls[1].Text["patch"].Text != fixed.patch {
+		result.Calls[1].Text["evaluated"].Text != fixed.Evaluated || result.Calls[1].Text["patch"].Text != fixed.Patch {
 		t.Fatalf("produced record projection: %+v, code %d: %s", result, code, diagnostic)
 	}
 }

@@ -443,11 +443,11 @@ func TestSubagentEditDisplayUsesRetainedTranslation(t *testing.T) {
 			"call_id": mustMarshalJSON("call-edit"),
 			"input":   mustMarshalJSON("source edit"),
 		}
-		history := &mekugiHistory{toolName: name, script: "source edit", patch: patch}
+		history := &mekugiHistory{ToolName: name, Script: "source edit", Patch: patch}
 		if got := subagentToolActivityTextWithHistory(item, name, history); got != want {
 			t.Fatalf("%s translated display = %q, want %q", name, got, want)
 		}
-		history.translationError = "rejected"
+		history.TranslationError = "rejected"
 		if got := subagentToolActivityTextWithHistory(item, name, history); got != "Edit\n`source edit`" {
 			t.Fatalf("%s rejected display = %q", name, got)
 		}

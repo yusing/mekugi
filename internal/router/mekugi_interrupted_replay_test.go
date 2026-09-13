@@ -63,11 +63,11 @@ func TestMekugiDeliveredInputSurvivesIncompleteItem(t *testing.T) {
 			if err != nil || !found {
 				t.Fatalf("restart lookup: %v, %v", found, err)
 			}
-			if calls != 1 || after.script != before.script || after.carrierInput() != before.carrierInput() ||
-				jsonString(after.upstreamItem, "status") != "incomplete" {
+			if calls != 1 || after.Script != before.Script || after.carrierInput() != before.carrierInput() ||
+				jsonString(after.UpstreamItem, "status") != "incomplete" {
 				t.Fatalf("interruption changed execution or lost final status: evaluations=%d", calls)
 			}
-			after.upstreamItem["input"] = json.RawMessage(`"changed"`)
+			after.UpstreamItem["input"] = json.RawMessage(`"changed"`)
 			if err := reopened.put(t.Context(), transform.directory, map[string]mekugiHistory{"call-H": after}); err == nil {
 				t.Fatal("accepted changed input after interruption")
 			}

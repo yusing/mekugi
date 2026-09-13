@@ -174,8 +174,8 @@ func TestHpatchMixedExecutionAndReplay(t *testing.T) {
 		"call_id": mustMarshalJSON("mixed"), "input": mustMarshalJSON(source),
 	}
 	history, err := transform.translate("mixed", source, upstream)
-	if err != nil || history.translationError != "" {
-		t.Fatalf("translate = %v, %s", err, history.translationError)
+	if err != nil || history.TranslationError != "" {
+		t.Fatalf("translate = %v, %s", err, history.TranslationError)
 	}
 	if _, err := os.Stat(filepath.Join(transform.directory, "notes.txt")); !os.IsNotExist(err) {
 		t.Fatal("preflight performed an execution effect")
@@ -199,7 +199,7 @@ func TestHpatchMixedExecutionAndReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	request, err := parseResponsesRequest(mustMarshalJSON(map[string]any{"input": []any{
-		map[string]any{"type": "custom_tool_call", "name": history.carrierName, "call_id": "mixed", "input": history.carrierInput()},
+		map[string]any{"type": "custom_tool_call", "name": history.CarrierName, "call_id": "mixed", "input": history.carrierInput()},
 		map[string]any{"type": "custom_tool_call_output", "call_id": "mixed", "output": string(mustMarshalJSON(result))},
 	}}))
 	if err != nil {
@@ -224,8 +224,8 @@ func TestHpatchInlineExecution(t *testing.T) {
 		"shell printf '%s' 'inline'\n" +
 		"shell printf '%s' 'a\rb'"
 	history, err := transform.translate("inline", source, nil)
-	if err != nil || history.translationError != "" {
-		t.Fatalf("translate = %v, %s", err, history.translationError)
+	if err != nil || history.TranslationError != "" {
+		t.Fatalf("translate = %v, %s", err, history.TranslationError)
 	}
 	var result mixedScriptResult
 	runShellCatJavaScript(t, transform.proxy.registry.NodeExecutable, transform.directory, history.carrierInput(), &result, overrides)
@@ -240,8 +240,8 @@ func TestHpatchInlineStopsOnFailure(t *testing.T) {
 	t.Parallel()
 	transform, overrides := mixedTestTransform(t)
 	history, err := transform.translate("inline-failure", "shell printf failed; exit 7\nnew unstarted.txt\ntype \"no\"", nil)
-	if err != nil || history.translationError != "" {
-		t.Fatalf("translate = %v, %s", err, history.translationError)
+	if err != nil || history.TranslationError != "" {
+		t.Fatalf("translate = %v, %s", err, history.TranslationError)
 	}
 	var result mixedScriptResult
 	runShellCatJavaScript(t, transform.proxy.registry.NodeExecutable, transform.directory, history.carrierInput(), &result, overrides)
@@ -256,7 +256,7 @@ func TestHpatchInlineRejectsDoubleLessBeforeEffects(t *testing.T) {
 	for index, command := range []string{"echo '<<'", "cat <<<text", "<<SHELLx", "<<SHELL "} {
 		source := "shell touch never\nshell " + command + "\nnew never.txt\ntype \"data\""
 		history, err := transform.translate(fmt.Sprintf("inline-double-less-%d", index), source, nil)
-		if err != nil || !strings.Contains(history.translationError, "<< is not allowed") ||
+		if err != nil || !strings.Contains(history.TranslationError, "<< is not allowed") ||
 			strings.Contains(history.carrierInput(), "tools.") {
 			t.Fatalf("inline %q = %+v, %v", command, history, err)
 		}
@@ -266,7 +266,7 @@ func TestHpatchInlineRejectsDoubleLessBeforeEffects(t *testing.T) {
 func TestHpatchInlineCannotFallbackFromUnclosedBlock(t *testing.T) {
 	transform, _ := mixedTestTransform(t)
 	history, err := transform.translate("unclosed", "shell <<SHELL\nnew never.txt\ntype \"data\"", nil)
-	if err != nil || !strings.Contains(history.translationError, "unterminated shell frame") ||
+	if err != nil || !strings.Contains(history.TranslationError, "unterminated shell frame") ||
 		strings.Contains(history.carrierInput(), "tools.") {
 		t.Fatalf("unclosed frame = %+v, %v", history, err)
 	}
@@ -279,8 +279,8 @@ func TestHpatchMixedLargeSourceUsesStdin(t *testing.T) {
 	source := "shell <<SHELL\ntrue\nSHELL\nnew large.txt\ntype " +
 		string(mustMarshalJSON(content)) + "\nshell <<SHELL\nwc -c < large.txt\nSHELL"
 	history, err := transform.translate("large", source, nil)
-	if err != nil || history.translationError != "" || !strings.Contains(history.carrierInput(), "await translateSource(") {
-		t.Fatalf("translate = %v, %s", err, history.translationError)
+	if err != nil || history.TranslationError != "" || !strings.Contains(history.carrierInput(), "await translateSource(") {
+		t.Fatalf("translate = %v, %s", err, history.TranslationError)
 	}
 	overrides += `const ordinaryExec = tools.exec_command;
 tools.exec_command = async args => {
@@ -308,7 +308,7 @@ func TestHpatchMixedPreflight(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			transform, _ := mixedTestTransform(t)
 			history, err := transform.translate("rejected", source, nil)
-			if err != nil || history.translationError == "" || strings.Contains(history.carrierInput(), "tools.") {
+			if err != nil || history.TranslationError == "" || strings.Contains(history.carrierInput(), "tools.") {
 				t.Fatalf("preflight = %+v, %v", history, err)
 			}
 		})
@@ -317,7 +317,7 @@ func TestHpatchMixedPreflight(t *testing.T) {
 		transform, _ := mixedTestTransform(t)
 		transform.nativeTools = true
 		history, err := transform.translate("native", "shell <<SHELL\ntrue\nSHELL", nil)
-		if err != nil || !strings.Contains(history.translationError, "requires Code Mode") {
+		if err != nil || !strings.Contains(history.TranslationError, "requires Code Mode") {
 			t.Fatalf("native = %+v, %v", history, err)
 		}
 	})
@@ -335,8 +335,8 @@ func TestHpatchMixedStopsWithoutRollback(t *testing.T) {
 				"shell <<SHELL\ntrue\nSHELL\n" + middle +
 				"\nshell <<SHELL\ntouch unexpected\nSHELL"
 			history, err := transform.translate("failure", source, nil)
-			if err != nil || history.translationError != "" {
-				t.Fatalf("translate = %v, %s", err, history.translationError)
+			if err != nil || history.TranslationError != "" {
+				t.Fatalf("translate = %v, %s", err, history.TranslationError)
 			}
 			var result mixedScriptResult
 			runShellCatJavaScript(t, transform.proxy.registry.NodeExecutable, transform.directory, history.carrierInput(), &result, overrides)
@@ -357,8 +357,8 @@ func TestHpatchMixedWaitsForSessions(t *testing.T) {
 	t.Parallel()
 	transform, overrides := mixedTestTransform(t)
 	history, err := transform.translate("wait", "shell <<SHELL\nfirst\nSHELL\nshell <<SHELL\nsecond\nSHELL", nil)
-	if err != nil || history.translationError != "" {
-		t.Fatalf("translate = %v, %s", err, history.translationError)
+	if err != nil || history.TranslationError != "" {
+		t.Fatalf("translate = %v, %s", err, history.TranslationError)
 	}
 	overrides += `let calls = 0;
 let pending = true;
@@ -386,8 +386,8 @@ func TestHpatchMixedHostFailuresKeepPartialResults(t *testing.T) {
 			transform, overrides := mixedTestTransform(t)
 			source := "shell <<SHELL\nfirst\nSHELL\nnew file.txt\ntype \"ready\\n\"\nshell <<SHELL\nnever\nSHELL"
 			history, err := transform.translate("host-error", source, nil)
-			if err != nil || history.translationError != "" {
-				t.Fatalf("translate = %v, %s", err, history.translationError)
+			if err != nil || history.TranslationError != "" {
+				t.Fatalf("translate = %v, %s", err, history.TranslationError)
 			}
 			overrides += `let calls = 0;
 tools.exec_command = async () => {
@@ -450,8 +450,8 @@ func TestHpatchMixedCheckpoints(t *testing.T) {
 	t.Parallel()
 	transform, overrides := mixedTestTransform(t)
 	history, err := transform.translate("checkpoints", "shell true\nnew checkpoint.txt\ntype \"done\\n\"\nshell false", nil)
-	if err != nil || history.translationError != "" {
-		t.Fatalf("translate = %v, %s", err, history.translationError)
+	if err != nil || history.TranslationError != "" {
+		t.Fatalf("translate = %v, %s", err, history.TranslationError)
 	}
 	overrides += `
 const checkpoints = [];
@@ -497,10 +497,10 @@ func TestHpatchRejectedResumeRecoveryKeepsOriginalContinuation(t *testing.T) {
 			}
 			transform.nativeTools = native
 			history, err := transform.translate("rejected-resume", "resume "+state.Handle+" retry\nshell <<SHELL\ntrue", nil)
-			if err != nil || history.translationError == "" {
+			if err != nil || history.TranslationError == "" {
 				t.Fatalf("resume was not rejected: %v, %+v", err, history)
 			}
-			_, err = recoveryHistoryOf(slices.Values([]mekugiHistory{durableHistory(history).history()}))
+			_, err = recoveryHistoryOf(slices.Values([]mekugiHistory{durableHistory(history)}))
 			if err == nil || !strings.Contains(err.Error(), "original continuation handle") ||
 				strings.Contains(err.Error(), "no segment ran") || strings.Contains(err.Error(), "resume HANDLE") {
 				t.Fatalf("rejected resume lost original continuation: %v", err)
@@ -513,10 +513,10 @@ func TestHpatchNativePreflightRecoveryHasNoContinuation(t *testing.T) {
 	transform, _ := mixedTestTransform(t)
 	transform.nativeTools = true
 	history, err := transform.translate("native-preflight", "shell true", nil)
-	if err != nil || history.translationError == "" {
+	if err != nil || history.TranslationError == "" {
 		t.Fatalf("native preflight was not rejected: %v, %+v", err, history)
 	}
-	_, err = recoveryHistoryOf(slices.Values([]mekugiHistory{durableHistory(history).history()}))
+	_, err = recoveryHistoryOf(slices.Values([]mekugiHistory{durableHistory(history)}))
 	if err == nil || !strings.Contains(err.Error(), "no segment ran") || strings.Contains(err.Error(), "resume HANDLE") {
 		t.Fatalf("native rejection advertised continuation: %v", err)
 	}
@@ -527,8 +527,8 @@ func TestHpatchEmptyShellProgramsCompleteWithoutExecution(t *testing.T) {
 	transform, overrides := mixedTestTransform(t)
 	source := "new before.txt\ntype \"before\"\nshell  \nshell \t\nshell \t \nshell <<SHELL\nSHELL\nshell <<SHELL\n \nSHELL\nnew after.txt\ntype \"after\""
 	history, err := transform.translate("empty-shells", source, nil)
-	if err != nil || history.translationError != "" {
-		t.Fatalf("empty shells rejected submission: %v, %s", err, history.translationError)
+	if err != nil || history.TranslationError != "" {
+		t.Fatalf("empty shells rejected submission: %v, %s", err, history.TranslationError)
 	}
 	var result mixedScriptResult
 	runShellCatJavaScript(t, transform.proxy.registry.NodeExecutable, transform.directory, history.carrierInput(), &result, overrides)
@@ -562,14 +562,14 @@ func TestHpatchMixedRecoveryDoesNotInferSuccess(t *testing.T) {
 			t.Fatal(err)
 		}
 		older := mekugiHistory{
-			toolName: mekugiToolName, evaluatorRejected: true,
-			translationError: "older rejection", sequence: 0,
+			ToolName: mekugiToolName, EvaluatorRejected: true,
+			TranslationError: "older rejection", sequence: 0,
 		}
 		_, err = recoveryHistoryOf(slices.Values([]mekugiHistory{older, history}))
 		if err == nil || strings.Contains(err.Error(), "call succeeded") || strings.Contains(err.Error(), "send a complete script") {
 			t.Fatalf("unsafe mixed recovery diagnostic: %v", err)
 		}
-		if history.translationError != "" {
+		if history.TranslationError != "" {
 			if !strings.Contains(err.Error(), "no segment ran") || strings.Contains(err.Error(), "resume HANDLE") {
 				t.Fatalf("preflight rejection advertised unavailable continuation: %v", err)
 			}
@@ -585,8 +585,8 @@ func TestHpatchResumeRepairsOnlyFailedSegment(t *testing.T) {
 	source := "new kept.txt\ntype \"kept\\n\"\nshell printf x >> attempts; test -f repaired\n" +
 		"new suffix.txt\ntype \"pending\\n\"\nshell printf done"
 	history, err := transform.translate("resumable", source, nil)
-	if err != nil || history.translationError != "" {
-		t.Fatalf("translate = %v, %s", err, history.translationError)
+	if err != nil || history.TranslationError != "" {
+		t.Fatalf("translate = %v, %s", err, history.TranslationError)
 	}
 	var failed mixedScriptResult
 	runShellCatJavaScript(t, transform.proxy.registry.NodeExecutable, transform.directory, history.carrierInput(), &failed, overrides)
@@ -596,8 +596,8 @@ func TestHpatchResumeRepairsOnlyFailedSegment(t *testing.T) {
 	// A retry may repeat the failed shell's effects only after explicit inspection.
 	// The completed new-file segment must not run again.
 	resume, err := transform.translate("resume", "resume "+failed.ResumeHandle+" retry\nshell printf repaired", nil)
-	if err != nil || resume.translationError != "" {
-		t.Fatalf("resume = %v, %s", err, resume.translationError)
+	if err != nil || resume.TranslationError != "" {
+		t.Fatalf("resume = %v, %s", err, resume.TranslationError)
 	}
 	var completed mixedScriptResult
 	runShellCatJavaScript(t, transform.proxy.registry.NodeExecutable, transform.directory, resume.carrierInput(), &completed, overrides)
@@ -610,8 +610,8 @@ func TestHpatchResumeRepairsOnlyFailedSegment(t *testing.T) {
 		t.Fatalf("failed shell was replayed: %q, %v", attempts, err)
 	}
 	again, err := transform.translate("resume-completed", "resume "+failed.ResumeHandle, nil)
-	if err != nil || again.translationError != "" {
-		t.Fatalf("completed resume = %v, %s", err, again.translationError)
+	if err != nil || again.TranslationError != "" {
+		t.Fatalf("completed resume = %v, %s", err, again.TranslationError)
 	}
 	var repeated mixedScriptResult
 	runShellCatJavaScript(t, transform.proxy.registry.NodeExecutable, transform.directory, again.carrierInput(), &repeated, overrides)
@@ -627,8 +627,8 @@ func TestHpatchResumeFreshTargetValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	history, err := transform.translate("fresh", "shell false\nin target.txt\ntype \"old\" \"new\"", nil)
-	if err != nil || history.translationError != "" {
-		t.Fatalf("translate = %v, %s", err, history.translationError)
+	if err != nil || history.TranslationError != "" {
+		t.Fatalf("translate = %v, %s", err, history.TranslationError)
 	}
 	var failed mixedScriptResult
 	runShellCatJavaScript(t, transform.proxy.registry.NodeExecutable, transform.directory, history.carrierInput(), &failed, overrides)
@@ -636,8 +636,8 @@ func TestHpatchResumeFreshTargetValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	resume, err := transform.translate("fresh-resume", "resume "+failed.ResumeHandle+" retry\nshell true", nil)
-	if err != nil || resume.translationError != "" {
-		t.Fatalf("resume = %v, %s", err, resume.translationError)
+	if err != nil || resume.TranslationError != "" {
+		t.Fatalf("resume = %v, %s", err, resume.TranslationError)
 	}
 	var rejected mixedScriptResult
 	runShellCatJavaScript(t, transform.proxy.registry.NodeExecutable, transform.directory, resume.carrierInput(), &rejected, overrides)
@@ -645,8 +645,8 @@ func TestHpatchResumeFreshTargetValidation(t *testing.T) {
 		t.Fatalf("stale suffix was applied: %+v", rejected)
 	}
 	repair, err := transform.translate("fresh-repair", "resume "+failed.ResumeHandle+" retry\nin target.txt\ntype \"changed\" \"new\"", nil)
-	if err != nil || repair.translationError != "" {
-		t.Fatalf("repair = %v, %s", err, repair.translationError)
+	if err != nil || repair.TranslationError != "" {
+		t.Fatalf("repair = %v, %s", err, repair.TranslationError)
 	}
 	var completed mixedScriptResult
 	runShellCatJavaScript(t, transform.proxy.registry.NodeExecutable, transform.directory, repair.carrierInput(), &completed, overrides)
@@ -665,7 +665,7 @@ func TestHpatchResumeRejectsUnavailableHandles(t *testing.T) {
 		"resume M../../outside",
 	} {
 		history, err := transform.translate(fmt.Sprintf("invalid-resume-%d", index), input, nil)
-		if err != nil || history.translationError == "" || history.carrierPayload != "text("+strconv.Quote(history.translationError)+");" {
+		if err != nil || history.TranslationError == "" || history.CarrierPayload != "text("+strconv.Quote(history.TranslationError)+");" {
 			t.Fatalf("invalid handle emitted execution: %+v, %v", history, err)
 		}
 	}
@@ -680,8 +680,8 @@ func TestHpatchRepairAndResume(t *testing.T) {
 			run := func(call, source string) mixedScriptResult {
 				t.Helper()
 				history, err := transform.translate(call, source, nil)
-				if err != nil || history.translationError != "" {
-					t.Fatalf("translate: %v, %s", err, history.translationError)
+				if err != nil || history.TranslationError != "" {
+					t.Fatalf("translate: %v, %s", err, history.TranslationError)
 				}
 				var result mixedScriptResult
 				runShellCatJavaScript(t, transform.proxy.registry.NodeExecutable, transform.directory,
@@ -735,8 +735,8 @@ func TestHpatchRepairPreservesReplacement(t *testing.T) {
 	run := func(call, source string) mixedScriptResult {
 		t.Helper()
 		history, err := transform.translate(call, source, nil)
-		if err != nil || history.translationError != "" {
-			t.Fatalf("translate: %v, %s", err, history.translationError)
+		if err != nil || history.TranslationError != "" {
+			t.Fatalf("translate: %v, %s", err, history.TranslationError)
 		}
 		var result mixedScriptResult
 		runShellCatJavaScript(t, transform.proxy.registry.NodeExecutable, transform.directory,
@@ -759,7 +759,7 @@ func TestHpatchRepairPreflight(t *testing.T) {
 	}
 	for index, suffix := range []string{"", "\nshell true", "\nnew x\ntype \"x\"\nshell true", "\nnew x\ntype", "\nin @shell/test\ntype \"x\" \"y\""} {
 		history, err := transform.translate(fmt.Sprintf("bad-repair-%d", index), "resume "+state.Handle+" repair"+suffix, nil)
-		if err != nil || history.translationError == "" || history.carrierPayload != "text("+strconv.Quote(history.translationError)+");" {
+		if err != nil || history.TranslationError == "" || history.CarrierPayload != "text("+strconv.Quote(history.TranslationError)+");" {
 			t.Fatalf("invalid repair emitted execution: %+v, %v", history, err)
 		}
 	}

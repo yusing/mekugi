@@ -158,8 +158,8 @@ func TestToolPluginRequestJSONAndReplay(t *testing.T) {
 		t.Fatalf("visible plugin carrier = %#v", visible)
 	}
 	history, ok := proxy.history(transform.historySessionID, "call-P")
-	if !ok || history.pluginID != "proxy.test" || history.toolName != "plugin_tool" ||
-		history.carrierKind != codeModeCarrierCustom || history.carrierPayload != expectedPayload {
+	if !ok || history.PluginID != "proxy.test" || history.ToolName != "plugin_tool" ||
+		history.CarrierKind != codeModeCarrierCustom || history.CarrierPayload != expectedPayload {
 		t.Fatalf("plugin history = %+v, available %t", history, ok)
 	}
 
@@ -230,7 +230,7 @@ func TestToolPluginExecTemplateUsesCanonicalWorkerCommand(t *testing.T) {
 		t.Fatalf("visible template carrier = %#v", visible)
 	}
 	history, ok := proxy.history(transform.historySessionID, "call-P")
-	if !ok || history.carrierPayload != payload {
+	if !ok || history.CarrierPayload != payload {
 		t.Fatalf("template history = %+v, available %t", history, ok)
 	}
 }
@@ -325,7 +325,7 @@ func TestToolPluginNativeCustomCarrierJSONAndSSE(t *testing.T) {
 			t.Fatalf("native custom carrier = %#v", visible)
 		}
 		history, ok := proxy.history(transform.historySessionID, "call-P")
-		if !ok || history.carrierKind != codeModeCarrierCustom || history.carrierName != "custom_target" {
+		if !ok || history.CarrierKind != codeModeCarrierCustom || history.CarrierName != "custom_target" {
 			t.Fatalf("native custom history = %+v, available %t", history, ok)
 		}
 	})

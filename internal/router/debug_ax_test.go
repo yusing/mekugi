@@ -22,9 +22,9 @@ func prepareAXSessionFixture(t *testing.T) (session, journal, assessments string
 	if err != nil {
 		t.Fatal(err)
 	}
-	history := mekugiHistory{toolName: mekugiToolName, script: "in file.txt\ntype \"old\" \"new\"\n",
-		root: workspace, patch: "patch", report: "report", attempt: 2, correlationID: "chain",
-		carrierName: "exec", carrierKind: codeModeCarrierFunction, carrierPayload: "{}"}
+	history := mekugiHistory{ToolName: mekugiToolName, Script: "in file.txt\ntype \"old\" \"new\"\n",
+		Root: workspace, Patch: "patch", Report: "report", Attempt: 2, CorrelationID: "chain",
+		CarrierName: "exec", CarrierKind: codeModeCarrierFunction, CarrierPayload: "{}"}
 	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"edit": history}); err != nil {
 		t.Fatal(err)
 	}
