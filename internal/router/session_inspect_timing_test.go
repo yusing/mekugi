@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"testing"
@@ -41,9 +42,7 @@ func commandTimingEvent(kind, id string, fields map[string]any) map[string]any {
 			"status": "failed", "exit_code": 1,
 		},
 	}
-	for key, value := range fields {
-		event[key] = value
-	}
+	maps.Copy(event, fields)
 	return event
 }
 

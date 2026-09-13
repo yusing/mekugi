@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -110,9 +111,7 @@ func TestTokenUsageWebSocketHandshakeRecovery(t *testing.T) {
 			router := httptest.NewServer(endpoint)
 			defer router.Close()
 			headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
-			for key, values := range codexAuthHeaders() {
-				headers[key] = values
-			}
+			maps.Copy(headers, codexAuthHeaders())
 			headers.Set(sessionIDHeader, "reconnect-session")
 			request := serverRequest(t, func(fields map[string]any) {
 				fields["type"], fields["model"], fields["stream"], fields["service_tier"] = "response.create", "gpt-5.6-sol", true, "fast"
@@ -350,9 +349,7 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 	router := httptest.NewServer(endpoint)
 	defer router.Close()
 	headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
-	for k, v := range codexAuthHeaders() {
-		headers[k] = v
-	}
+	maps.Copy(headers, codexAuthHeaders())
 	headers.Set(sessionIDHeader, "handoff-socket")
 	conn, _, err := websocket.Dial(ctx, router.URL, &websocket.DialOptions{HTTPHeader: headers})
 	if err != nil {

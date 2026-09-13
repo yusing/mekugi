@@ -257,7 +257,7 @@ func TestDebugCommentaryCoverageAndRouterOrigin(t *testing.T) {
 		t.Fatal(err)
 	}
 	var states []string
-	for _, line := range bytes.Split(bytes.TrimSpace(data), []byte{'\n'}) {
+	for line := range bytes.SplitSeq(bytes.TrimSpace(data), []byte{'\n'}) {
 		var event map[string]json.RawMessage
 		if err := json.Unmarshal(line, &event); err != nil {
 			t.Fatal(err)
@@ -302,7 +302,7 @@ func TestDebugCanceledRequestHasCauseWithoutReplayDiagnostic(t *testing.T) {
 				want = "response_start_timeout"
 			}
 			found := false
-			for _, line := range bytes.Split(bytes.TrimSpace(data), []byte{'\n'}) {
+			for line := range bytes.SplitSeq(bytes.TrimSpace(data), []byte{'\n'}) {
 				var event map[string]json.RawMessage
 				if err := json.Unmarshal(line, &event); err != nil {
 					t.Fatal(err)

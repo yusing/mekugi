@@ -97,8 +97,8 @@ func TestWrappedCodexProcess(t *testing.T) {
 	if os.Getenv("MEKUGI_TEST_PINNED_CATALOG") == "1" {
 		var catalogPath string
 		for _, arg := range os.Args {
-			if strings.HasPrefix(arg, "model_catalog_json=") {
-				catalogPath, _ = strconv.Unquote(strings.TrimPrefix(arg, "model_catalog_json="))
+			if after, ok := strings.CutPrefix(arg, "model_catalog_json="); ok {
+				catalogPath, _ = strconv.Unquote(after)
 			}
 		}
 		body, err := os.ReadFile(catalogPath)

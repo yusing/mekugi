@@ -217,8 +217,8 @@ func nativeExecutionHeader(text string) (state, body string) {
 		return "", ""
 	}
 	line, rest, ok = strings.Cut(rest, "\n")
-	if strings.HasPrefix(line, "Original token count: ") {
-		if _, err := strconv.ParseUint(strings.TrimPrefix(line, "Original token count: "), 10, 64); err != nil {
+	if after, ok0 := strings.CutPrefix(line, "Original token count: "); ok0 {
+		if _, err := strconv.ParseUint(after, 10, 64); err != nil {
 			return "", ""
 		}
 		line, rest, ok = strings.Cut(rest, "\n")

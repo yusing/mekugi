@@ -24,8 +24,8 @@ func stripStockPlanTools(fields map[string]json.RawMessage, catalog *responsesTo
 		if section.err != nil {
 			return section.err
 		}
-		for index := len(section.tools) - 1; index >= 0; index-- {
-			tool := section.tools[index]
+		for index, tool := range slices.Backward(section.tools) {
+
 			if tool == nil {
 				continue
 			}

@@ -531,7 +531,7 @@ func TestChecklistRewritePreservesMixedCallerPolicy(t *testing.T) {
 								if strings.HasPrefix(policy, "Quoted example:") && !strings.Contains(text, policy) {
 									t.Fatalf("%s/%s part %d lost literal example", lifecycle, carrier, part)
 								}
-								for _, line := range strings.Split(policy, newline) {
+								for line := range strings.SplitSeq(policy, newline) {
 									if strings.HasPrefix(strings.TrimSpace(line), "Never ") ||
 										strings.HasPrefix(line, "### ") ||
 										strings.Contains(line, "Never deploy") ||

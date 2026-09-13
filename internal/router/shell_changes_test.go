@@ -63,7 +63,7 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 		t.Run(interpreter, func(t *testing.T) {
 			var all strings.Builder
 			cursor := ""
-			for page := 0; page < 100; page++ {
+			for page := range 100 {
 				command := "hchanges read --max-tokens 32 "
 				if cursor != "" {
 					command += "--cursor " + cursor + " "

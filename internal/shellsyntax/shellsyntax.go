@@ -71,8 +71,7 @@ func Parse(input string) (Parsed, error) {
 	headerOffset := physicalLine(input[:len(input)-len(body)]) - 1
 	commandTemplate, params, hasParams, paramsLine, body, err := parseDirectives(body)
 	if err != nil {
-		var located *HeaderError
-		if errors.As(err, &located) {
+		if located, ok := errors.AsType[*HeaderError](err); ok {
 			located.Line += headerOffset
 		}
 		return Parsed{}, err

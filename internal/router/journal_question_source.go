@@ -2,6 +2,7 @@ package router
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 )
 
@@ -16,8 +17,8 @@ func journalQuestionFromInput(raw json.RawMessage) string {
 	if input.text != nil {
 		return journalUserText(*input.text)
 	}
-	for index := len(input.items) - 1; index >= 0; index-- {
-		item, ok := decodeResponsesItem(input.items[index])
+	for _, v := range slices.Backward(input.items) {
+		item, ok := decodeResponsesItem(v)
 		if !ok || item.Role != "user" || item.Type != "" && item.Type != "message" {
 			continue
 		}
