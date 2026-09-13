@@ -93,7 +93,8 @@ wall time must remain close to control.
   `HostTranslation` for report, state, and diagnostics.
 - `mekugi --mode mekugi|passthrough codex`: expose model-visible hpatch and shell tools with
   private shell-internal hcat, hgrep, hsymbol, and inspect_file commands, or the unchanged
-  control path. `mekugi` mode defaults to CTP/2 and Mentor Handoff; passthrough stays native.
+  control path. `mekugi` mode defaults to native text and Mentor Handoff; CTP/2 is opt-in.
+  Passthrough stays native.
 - inspect_file outline spans are copyable `LINE:HASH` identities without source bodies.
 - `mekugi/plugins` beneath the platform user configuration directory: the configured tool-plugin
   discovery surface; the router has no plugin command-line flags.

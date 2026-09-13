@@ -25,7 +25,7 @@ import (
 const (
 	defaultListenAddress        = "127.0.0.1:0"
 	defaultRewriteMode          = "mekugi"
-	defaultModelProtocol        = "ctp2"
+	defaultModelProtocol        = "native"
 	defaultRequestTimeout       = 10 * time.Minute
 	defaultStreamIdleTimeout    = 4 * time.Minute
 	requestBodyReadTimeout      = 30 * time.Second

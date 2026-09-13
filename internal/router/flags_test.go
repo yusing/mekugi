@@ -1,6 +1,7 @@
 package router
 
 import (
+	"io"
 	"slices"
 	"testing"
 )
@@ -38,5 +39,27 @@ func TestSplitCommandRestrictionsAndDelimiter(t *testing.T) {
 	prefix, command, err := SplitCommand([]string{"--grok", "--", "codex"})
 	if err != nil || !slices.Equal(prefix, []string{"--grok", "--"}) || !slices.Equal(command, []string{"codex"}) {
 		t.Fatalf("delimiter = %q, %q, %v", prefix, command, err)
+	}
+}
+
+func TestModelProtocolFlags(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "default", want: "native"},
+		{name: "opt in", args: []string{"--model-protocol", "ctp2"}, want: "ctp2"},
+		{name: "explicit native", args: []string{"--model-protocol", "native"}, want: "native"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			flags := newRouterFlags(io.Discard)
+			if err := flags.Parse(tc.args); err != nil {
+				t.Fatal(err)
+			}
+			if got := *flags.modelProtocol; got != tc.want {
+				t.Fatalf("model protocol = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

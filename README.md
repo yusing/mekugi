@@ -128,11 +128,11 @@ and prerequisites.
   - Direct scripts avoid the JavaScript carrier, JSON argument object, and
     extra quoting layers needed to call the executor through Code Mode.
 - **Avoid sending repeated text in full.**
-  - [CTP/2](doc/spec/ctp.md), enabled by default, losslessly encodes eligible
+  - [CTP/2](doc/spec/ctp.md), disabled by default, losslessly encodes eligible
     model-visible text using local dictionaries and references to earlier
     visible tool output lines in the same request.
   - Tool names and newly generated tool payloads stay native.
-    Use `--model-protocol native` to disable CTP/2.
+    Use `--model-protocol ctp2` to enable CTP/2.
 
 ### Performance
 
@@ -243,7 +243,7 @@ request or accepted steering. Grok provider requests remain on HTTP.
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `--mode` | `mekugi` | Use `passthrough` to forward traffic without mekugi tools, plugins, CTP/2, or Mentor Handoff |
-| `--model-protocol` | `ctp2` | Use `native` to disable CTP/2 in mekugi mode |
+| `--model-protocol` | `native` | Use `ctp2` to enable CTP/2 in mekugi mode |
 | `--main-mentor-handoff` | `true` | Enable mentor handoff for eligible main sessions and ordinary forks |
 | `--mentor-handoff` | `true` | Use `false` to keep subagents on their configured models |
 | `--grok` | `false` | Enable Grok subagents in mekugi mode |
