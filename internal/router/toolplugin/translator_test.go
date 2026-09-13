@@ -15,6 +15,7 @@ import (
 )
 
 func TestWarmBuiltinTranslatorBurst(t *testing.T) {
+	t.Parallel()
 	snapshot, err := Load(t.Context(), "", filepath.Join(t.TempDir(), "snapshot"))
 	if err != nil {
 		t.Fatal(err)
@@ -44,12 +45,16 @@ func TestWarmBuiltinTranslatorBurst(t *testing.T) {
 	for i := range 32 {
 		calls.Go(func() {
 			script := fmt.Sprintf("printf 'call %d\\n'\necho second\necho third\necho fourth\n", i)
+			retained := i%2 == 0
+			if !retained {
+				script = fmt.Sprintf("printf 'call %d\\n'", i)
+			}
 			result, err := translator.Translate(t.Context(), index, script, "")
 			if err != nil {
 				t.Errorf("call %d: %v", i, err)
 				return
 			}
-			if result.Rejected || result.Carrier.Kind != "exec" || !slices.Equal(result.Arguments, []string{"bash", script}) {
+			if result.Rejected || result.Carrier.Kind != "exec" || result.Carrier.RetainInput == nil || *result.Carrier.RetainInput != retained || !slices.Equal(result.Arguments, []string{"bash", script}) {
 				t.Errorf("call %d: unexpected translation: %+v", i, result)
 			}
 		})
@@ -63,8 +68,21 @@ func TestWarmBuiltinTranslatorBurst(t *testing.T) {
 
 func newFixtureTranslator(t *testing.T) *Translator {
 	t.Helper()
-	snapshot, err := Load(t.Context(), "", filepath.Join(t.TempDir(), "snapshot"))
+	// This fixture imports no built-ins. Exercise the real translation host
+	// without rebuilding and validating an unused Node/WASM reader catalog.
+	root := t.TempDir()
+	node, err := resolveNodeRuntime(t.Context())
 	if err != nil {
+		t.Fatal(err)
+	}
+	host, err := runtimeFiles.ReadFile(hostFilename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, hostFilename), host, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, snapshotDirectory), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	module := `import {appendFileSync, writeFileSync} from "node:fs";
@@ -82,10 +100,10 @@ export default {apiVersion: "mekugi-tool-plugin/v1", tools: [{
   },
   execute() { throw new Error("executor must not run"); }
 }]};`
-	if err := os.WriteFile(filepath.Join(snapshot.Root, snapshotDirectory, "fixture.mjs"), []byte(module), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, snapshotDirectory, "fixture.mjs"), []byte(module), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	translator, err := NewTranslator(t.Context(), snapshot.NodeExecutable, snapshot.Root, "fixture.mjs")
+	translator, err := NewTranslator(t.Context(), node, root, "fixture.mjs")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,6 +112,7 @@ export default {apiVersion: "mekugi-tool-plugin/v1", tools: [{
 }
 
 func TestWarmTranslatorReusesImportsAndPreservesRejection(t *testing.T) {
+	t.Parallel()
 	translator := newFixtureTranslator(t)
 	for _, input := range []string{"first\nline", "reject", "last"} {
 		result, err := translator.Translate(t.Context(), 0, input, "/scripts/")
@@ -115,6 +134,7 @@ func TestWarmTranslatorReusesImportsAndPreservesRejection(t *testing.T) {
 }
 
 func TestWarmTranslatorFailureDoesNotRetryAndNextCallRecovers(t *testing.T) {
+	t.Parallel()
 	for _, input := range []string{"hang", "crash", "malformed", "overflow", "null"} {
 		t.Run(input, func(t *testing.T) {
 			translator := newFixtureTranslator(t)
@@ -151,6 +171,7 @@ func TestWarmTranslatorFailureDoesNotRetryAndNextCallRecovers(t *testing.T) {
 }
 
 func TestWarmTranslatorCloseCancelsActiveCallAndQueuedCallCanCancel(t *testing.T) {
+	t.Parallel()
 	translator := newFixtureTranslator(t)
 	// Reserve admission to deterministically test a cancelled queued call.
 	translator.gate <- struct{}{}
@@ -192,6 +213,7 @@ func TestWarmTranslatorCloseCancelsActiveCallAndQueuedCallCanCancel(t *testing.T
 }
 
 func TestWarmTranslatorStartupFailure(t *testing.T) {
+	t.Parallel()
 	translator := newFixtureTranslator(t)
 	translator.Close()
 	_, err := NewTranslator(t.Context(), translator.node, translator.root, "missing.mjs")
@@ -201,6 +223,7 @@ func TestWarmTranslatorStartupFailure(t *testing.T) {
 }
 
 func TestWarmTranslatorReplacesExitedIdleHost(t *testing.T) {
+	t.Parallel()
 	translator := newFixtureTranslator(t)
 	previous := translator.process
 	previous.cancel()

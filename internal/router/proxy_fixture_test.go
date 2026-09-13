@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/capturer"
-	"github.com/yusing/mekugi/internal/shellruntime"
 )
 
 type proxyRegistryFixture struct {
@@ -29,6 +29,17 @@ func sharedProxyTestRegistry(t *testing.T) *toolRegistry {
 	t.Helper()
 	return proxyTestFixture.get(t, "", testMekugiToolDescription)
 }
+func buildToolRegistryForTest(
+	t *testing.T,
+	ctx context.Context,
+	dataDirectory, toolDescription string,
+	diagnose bool,
+) (*toolRegistry, error) {
+	t.Helper()
+	directory := t.TempDir()
+	return buildToolRegistryAt(ctx, dataDirectory, toolDescription, diagnose,
+		filepath.Join(directory, "runtime"), filepath.Join(directory, "replay"))
+}
 
 func (fixture *proxyRegistryFixture) get(t *testing.T, pluginSource, toolDescription string) *toolRegistry {
 	t.Helper()
@@ -37,7 +48,6 @@ func (fixture *proxyRegistryFixture) get(t *testing.T, pluginSource, toolDescrip
 		if fixture.err != nil {
 			return
 		}
-		t.Setenv(shellruntime.RuntimeDirectoryEnvironment, fixture.directory)
 		dataDirectory := filepath.Join(fixture.directory, "data")
 		if pluginSource != "" {
 			pluginDirectory := filepath.Join(dataDirectory, "plugins")
@@ -48,20 +58,25 @@ func (fixture *proxyRegistryFixture) get(t *testing.T, pluginSource, toolDescrip
 				return
 			}
 		}
-		fixture.registry, fixture.err = buildToolRegistry(t.Context(), dataDirectory, toolDescription, false)
+		fixture.registry, fixture.err = buildToolRegistryAt(
+			t.Context(),
+			dataDirectory,
+			toolDescription,
+			false,
+			filepath.Join(fixture.directory, "runtime"),
+			filepath.Join(fixture.directory, "replay"),
+		)
 	})
 	if fixture.err != nil {
 		t.Fatal(fixture.err)
 	}
-	// Workers must not put thread artifacts into the shared fixture directory.
-	t.Setenv(shellruntime.RuntimeDirectoryEnvironment, t.TempDir())
 	return fixture.registry
 }
 
 func newProxyWithSharedTestRegistry(t *testing.T, translator mekugiTranslator, registry *toolRegistry) *mekugiProxy {
 	t.Helper()
 	proxy := newMekugiProxy(translator, registry, false, false)
-	proxy.shellDirectory = os.Getenv(shellruntime.RuntimeDirectoryEnvironment)
+	proxy.shellDirectory = t.TempDir()
 	t.Cleanup(func() {
 		if err := proxy.Close(); err != nil {
 			t.Error(err)
@@ -78,7 +93,9 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	var err error
 	for _, fixture := range []*proxyRegistryFixture{&proxyTestFixture, &realProxyTestFixture, &pluginProxyTestFixture} {
-		err = errors.Join(err, fixture.registry.Close())
+		if fixture.registry != nil {
+			err = errors.Join(err, fixture.registry.Close())
+		}
 		if fixture.directory != "" {
 			err = errors.Join(err, os.RemoveAll(fixture.directory))
 		}

@@ -26,7 +26,13 @@ func TestShellOverflowRetiresInheritedPipeDescendants(t *testing.T) {
 		descriptor bool
 	}{{"stdout", true, false}, {"stderr", true, false}, {"stdout", false, false}, {"stdout", true, true}} {
 		t.Run(mode.stream+"/input="+strconv.FormatBool(mode.input)+"/descriptor="+strconv.FormatBool(mode.descriptor), func(t *testing.T) {
+			t.Parallel()
 			directory := t.TempDir()
+			timerDurationPath := filepath.Join(directory, "drain-duration")
+			timerPreload := filepath.Join(directory, "timers.cjs")
+			if err := os.WriteFile(timerPreload, []byte(controlledHostTimersPreload), 0600); err != nil {
+				t.Fatal(err)
+			}
 			pidPath := filepath.Join(directory, "descendant.pid")
 			t.Cleanup(func() {
 				encoded, _ := os.ReadFile(pidPath)
@@ -89,8 +95,12 @@ print "x" x (256 * 1024);
 				inheritedInput = input
 				scriptFiles = []*os.File{scriptRead, scriptWrite}
 			}
+			nodeOptions := strings.TrimSpace(os.Getenv("NODE_OPTIONS") + " --require=" + strconv.Quote(timerPreload))
+			environment := append(os.Environ(), "NODE_OPTIONS="+nodeOptions,
+				"FIXTURE_HOST="+filepath.Join(snapshot.Root, hostFilename), "FIXTURE_CLEANUP_DURATION="+timerDurationPath,
+				"FIXTURE_ACCELERATE_CLEANUP=1")
 			err = invoke(ctx, snapshot.NodeExecutable, filepath.Join(snapshot.Root, hostFilename), "", directory,
-				os.Environ(), 4096, inheritedInput, scriptFiles, request, &response)
+				environment, 4096, inheritedInput, scriptFiles, request, &response)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -102,6 +112,9 @@ print "x" x (256 * 1024);
 			}
 			if len(response.Stdout)+len(response.Stderr) > 128 {
 				t.Fatal("overflow result exceeds budget")
+			}
+			if encoded, err := os.ReadFile(timerDurationPath); err != nil || string(encoded) != "1000" {
+				t.Fatalf("controlled shell drain duration = %q, %v; want %q", encoded, err, "1000")
 			}
 			encoded, err := os.ReadFile(pidPath)
 			if err != nil {
@@ -124,6 +137,7 @@ print "x" x (256 * 1024);
 }
 
 func TestShellSuccessfulBackgroundProcessIsNotRetired(t *testing.T) {
+	t.Parallel()
 	snapshot, err := Load(t.Context(), t.TempDir(), filepath.Join(t.TempDir(), "runtime"))
 	if err != nil {
 		t.Fatal(err)
@@ -171,6 +185,7 @@ process.stdout.write("ok");`
 }
 
 func TestShellDescriptorDeliveryPreservesProgramInput(t *testing.T) {
+	t.Parallel()
 	perl, err := exec.LookPath("perl")
 	if err != nil {
 		t.Skip("Perl is required for the streaming-descriptor regression")

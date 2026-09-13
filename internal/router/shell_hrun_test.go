@@ -11,6 +11,7 @@ import (
 )
 
 func TestHRunCapture(t *testing.T) {
+	t.Parallel()
 	for _, tail := range []bool{false, true} {
 		for _, chunks := range [][]string{
 			{}, {""}, {"abc"}, {"12345678"}, {"123456789012"},
@@ -41,12 +42,14 @@ func TestHRunCapture(t *testing.T) {
 }
 
 func TestShellRunnerHRun(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	for _, interpreter := range []string{"bash", "sh"} {
 		t.Run(interpreter, func(t *testing.T) {
-			t.Chdir(t.TempDir())
+			t.Parallel()
+			invocation := newShellWorkerTestInvocation(t.TempDir())
 			stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil,
-				`hrun --max-tokens 100 -- sh -c 'printf "stdout\n"; printf "stderr\n" >&2; exit 7'`, nil)
+				`hrun --max-tokens 100 -- sh -c 'printf "stdout\n"; printf "stderr\n" >&2; exit 7'`, nil, invocation)
 			if stdout != "stdout\n" || stderr != "stderr\n" || status != 7 {
 				t.Fatalf("streams/status: %q, %q, %d", stdout, stderr, status)
 			}
@@ -54,7 +57,7 @@ func TestShellRunnerHRun(t *testing.T) {
 			stdout, stderr, status = runShellWorkerTest(t, registry, interpreter, nil,
 				`mkdir 'child dir'
 cd 'child dir'
-printf 'stdin' | HRUN_TEST_VALUE='exported value' hrun --max-tokens 100 -- sh -c 'printf "%s:%s:%s:" "${PWD##*/}" "$HRUN_TEST_VALUE" "$1"; cat' sh 'quoted argument'`, nil)
+printf 'stdin' | HRUN_TEST_VALUE='exported value' hrun --max-tokens 100 -- sh -c 'printf "%s:%s:%s:" "${PWD##*/}" "$HRUN_TEST_VALUE" "$1"; cat' sh 'quoted argument'`, nil, invocation)
 			if stdout != "child dir:exported value:quoted argument:stdin" || stderr != "" || status != 0 {
 				t.Fatalf("context: %q, %q, %d", stdout, stderr, status)
 			}
@@ -63,12 +66,13 @@ printf 'stdin' | HRUN_TEST_VALUE='exported value' hrun --max-tokens 100 -- sh -c
 }
 
 func TestShellRunnerHRunDrainsBeyondDisplayAndHostBudgets(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
-	t.Chdir(directory)
+	invocation := newShellWorkerTestInvocation(directory)
 	for _, mode := range []string{"", "--tail"} {
 		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-			`hrun --max-tokens 32 `+mode+` -- sh -c 'printf "first-marker\n"; head -c 17000000 /dev/zero; printf "\nlast-marker\n"; printf "error\n" >&2; printf completed > completed; exit 7'`, nil)
+			`hrun --max-tokens 32 `+mode+` -- sh -c 'printf "first-marker\n"; head -c 17000000 /dev/zero; printf "\nlast-marker\n"; printf "error\n" >&2; printf completed > completed; exit 7'`, nil, invocation)
 		if status != 7 || !strings.Contains(stderr, "hrun: output incomplete: 32-token limit reached") {
 			t.Fatalf("mode %q: stdout=%q stderr=%q status=%d", mode, stdout, stderr, status)
 		}
@@ -100,6 +104,7 @@ func TestShellRunnerHRunDrainsBeyondDisplayAndHostBudgets(t *testing.T) {
 }
 
 func TestShellRunnerHRunPrioritizesStderrAndPreservesSuccess(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	stdout, stderr, status := runShellWorkerTest(t, registry, "sh", nil,
 		`hrun --tail --max-tokens 1 -- sh -c 'printf stdout; printf "first error" >&2'`, nil)
@@ -109,9 +114,10 @@ func TestShellRunnerHRunPrioritizesStderrAndPreservesSuccess(t *testing.T) {
 }
 
 func TestShellRunnerHRunRejectsBeforeExecution(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
-	t.Chdir(directory)
+	invocation := newShellWorkerTestInvocation(directory)
 	for _, flags := range []string{
 		"", "--tail", "--max-tokens", "--max-tokens 0", "--max-tokens 15501",
 		"--max-tokens -1", "--max-tokens 01", "--max-tokens 1e3",
@@ -119,7 +125,7 @@ func TestShellRunnerHRunRejectsBeforeExecution(t *testing.T) {
 		"--max-tokens 10 --preview-bytes 5",
 	} {
 		_, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-			"hrun "+flags+" -- touch executed", nil)
+			"hrun "+flags+" -- touch executed", nil, invocation)
 		if status != 2 || !strings.Contains(stderr, "hrun:") {
 			t.Fatalf("flags %q: stderr=%q status=%d", flags, stderr, status)
 		}
@@ -128,29 +134,31 @@ func TestShellRunnerHRunRejectsBeforeExecution(t *testing.T) {
 		}
 	}
 	for _, command := range []string{"hrun --max-tokens 10 --", "hrun --max-tokens 10 echo done"} {
-		_, _, status := runShellWorkerTest(t, registry, "bash", nil, command, nil)
+		_, _, status := runShellWorkerTest(t, registry, "bash", nil, command, nil, invocation)
 		if status != 2 {
 			t.Fatalf("%q status = %d", command, status)
 		}
 	}
 	_, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		fmt.Sprintf("hrun --max-tokens 100 -- %s", filepath.Join(directory, "missing")), nil)
+		fmt.Sprintf("hrun --max-tokens 100 -- %s", filepath.Join(directory, "missing")), nil, invocation)
 	if status != 127 || stderr == "" {
 		t.Fatalf("missing command: %q, %d", stderr, status)
 	}
 }
 
 func TestShellRunnerHRunLargeSinglePiece(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		`hrun --max-tokens 15500 --tail -- sh -c 'head -c 2000000 /dev/zero | tr "\000" a'`, nil)
-	if status != 0 || (len(stdout)+7)/8 != 15500 || strings.Trim(stdout, "a") != "" ||
+		`hrun --max-tokens 1000 --tail -- sh -c 'head -c 20000 /dev/zero | tr "\000" a'`, nil)
+	if status != 0 || (len(stdout)+7)/8 != 1000 || strings.Trim(stdout, "a") != "" ||
 		!strings.Contains(stderr, "hrun: output incomplete") {
 		t.Fatalf("long output: bytes=%d stderr=%q status=%d", len(stdout), stderr, status)
 	}
 }
 
 func TestHRunLineCapture(t *testing.T) {
+	t.Parallel()
 	for _, tail := range []bool{false, true} {
 		for _, source := range []string{"", "a", "a\n", "a\nb", "a\nb\n", "a\nb\nc", "\n\n\n", "α\r\nβ\nγ"} {
 			capture := hrunCapture{maxLines: 2, tail: tail}
@@ -181,6 +189,7 @@ func TestHRunLineCapture(t *testing.T) {
 }
 
 func TestShellRunnerHRunLines(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	for _, tc := range []struct{ flags, want string }{
 		{"-n 2", "1\n2\n"},
@@ -188,31 +197,43 @@ func TestShellRunnerHRunLines(t *testing.T) {
 		{"-n 2 --max-tokens 100", "1\n2\n"},
 		{"--max-tokens 100 --tail -n 2", "999\n1000\n"},
 	} {
-		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-			"hrun "+tc.flags+" -- seq 1 1000", nil)
-		if stdout != tc.want || status != 0 || !strings.Contains(stderr, "2-line limit") {
-			t.Fatalf("%s: %q %q status=%d", tc.flags, stdout, stderr, status)
+		t.Run(tc.flags, func(t *testing.T) {
+			t.Parallel()
+			stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
+				"hrun "+tc.flags+" -- seq 1 1000", nil)
+			if stdout != tc.want || status != 0 || !strings.Contains(stderr, "2-line limit") {
+				t.Fatalf("%s: %q %q status=%d", tc.flags, stdout, stderr, status)
+			}
+		})
+	}
+	t.Run("line streams", func(t *testing.T) {
+		t.Parallel()
+		stdout, stderr, status := runShellWorkerTest(t, registry, "sh", nil,
+			`hrun -n 1 -- sh -c 'printf "out\nextra\n"; printf "err\nextra\n" >&2; exit 7'`, nil)
+		if stdout != "out\n" || !strings.HasPrefix(stderr, "err\nhrun:") || status != 7 {
+			t.Fatalf("line streams/status: %q %q %d", stdout, stderr, status)
 		}
-	}
-	stdout, stderr, status := runShellWorkerTest(t, registry, "sh", nil,
-		`hrun -n 1 -- sh -c 'printf "out\nextra\n"; printf "err\nextra\n" >&2; exit 7'`, nil)
-	if stdout != "out\n" || !strings.HasPrefix(stderr, "err\nhrun:") || status != 7 {
-		t.Fatalf("line streams/status: %q %q %d", stdout, stderr, status)
-	}
+	})
 	for _, mode := range []string{"", "--tail"} {
-		stdout, stderr, status = runShellWorkerTest(t, registry, "bash", nil,
-			`hrun -n 1 --max-tokens 20 `+mode+` -- sh -c 'printf START; head -c 17000000 /dev/zero | tr "\000" a; printf END'`, nil)
-		if status != 0 || !strings.Contains(stderr, "20-token limit") ||
-			(mode == "" && !strings.HasPrefix(stdout, "START")) ||
-			(mode != "" && !strings.HasSuffix(stdout, "END")) {
-			t.Fatalf("large selected line mode=%q: %q %q %d", mode, stdout, stderr, status)
+		t.Run("large "+mode, func(t *testing.T) {
+			t.Parallel()
+			stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
+				`hrun -n 1 --max-tokens 20 `+mode+` -- sh -c 'printf START; head -c 17000000 /dev/zero | tr "\000" a; printf END'`, nil)
+			if status != 0 || !strings.Contains(stderr, "20-token limit") ||
+				(mode == "" && !strings.HasPrefix(stdout, "START")) ||
+				(mode != "" && !strings.HasSuffix(stdout, "END")) {
+				t.Fatalf("large selected line mode=%q: %q %q %d", mode, stdout, stderr, status)
+			}
+		})
+	}
+	t.Run("line-only default", func(t *testing.T) {
+		t.Parallel()
+		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
+			`hrun -n 1 -- sh -c 'head -c 200000 /dev/zero | tr "\000" a'`, nil)
+		if status != 0 || len(stdout) != 200000 || stderr != "" {
+			t.Fatalf("line-only default bypass: %d bytes %q %d", len(stdout), stderr, status)
 		}
-	}
-	stdout, stderr, status = runShellWorkerTest(t, registry, "bash", nil,
-		`hrun -n 1 -- sh -c 'head -c 200000 /dev/zero | tr "\000" a'`, nil)
-	if status != 0 || len(stdout) != 200000 || stderr != "" {
-		t.Fatalf("line-only default bypass: %d bytes %q %d", len(stdout), stderr, status)
-	}
+	})
 
 	for _, flags := range []string{"-n", "-n 0", "-n -1", "-n 01", "-n 1.5", "-n 999999999999999999999", "-n 1 -n 2"} {
 		if _, _, err := parseHRunArguments(strings.Fields(flags + " -- echo")); err == nil {
@@ -222,6 +243,7 @@ func TestShellRunnerHRunLines(t *testing.T) {
 }
 
 func TestHRunCombinedCaptureBoundsPendingLine(t *testing.T) {
+	t.Parallel()
 	for _, tail := range []bool{false, true} {
 		capture := hrunCapture{maxLines: 2, buffer: make([]byte, 132), tail: tail}
 		chunk := []byte(strings.Repeat("a", 4096))

@@ -46,6 +46,7 @@ func TestTrackedChangeIDsAndRanges(t *testing.T) {
 }
 
 func TestTrackedChangeConcurrentReservation(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	var workers sync.WaitGroup
 	for range 12 {
@@ -65,6 +66,7 @@ func TestTrackedChangeConcurrentReservation(t *testing.T) {
 }
 
 func TestTrackedRecoveryReadAfterRestart(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, workspace := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
 	storeDirectory := t.TempDir()
 	store, err := openMekugiReplayStore(storeDirectory)
@@ -213,6 +215,7 @@ func TestTrackedChangeCursorAndFilters(t *testing.T) {
 }
 
 func TestTrackedChangeReconciliationIsAtomic(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, workspace := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -259,6 +262,7 @@ func TestTrackedChangeQuota(t *testing.T) {
 }
 
 func TestTrackedRecoveryNeverAllocatesAChain(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, _ := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -284,6 +288,7 @@ func TestTrackedRecoveryNeverAllocatesAChain(t *testing.T) {
 }
 
 func TestTrackedStreamsUseThreadsNotTransportSessions(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, _ := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {

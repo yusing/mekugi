@@ -167,7 +167,16 @@ func runHpatchControl(ctx context.Context, stdin *os.File, stdout io.Writer) err
 	if err != nil {
 		return err
 	}
-	path, err := shellruntime.ScriptsPath(directory, os.Getenv(shellruntime.ThreadIDEnvironment))
+	return runHpatchControlAt(ctx, stdin, stdout, directory, os.Getenv(shellruntime.ThreadIDEnvironment))
+}
+
+func runHpatchControlAt(
+	ctx context.Context,
+	stdin *os.File,
+	stdout io.Writer,
+	directory, threadID string,
+) error {
+	path, err := shellruntime.ScriptsPath(directory, threadID)
 	if err != nil {
 		return err
 	}

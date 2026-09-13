@@ -797,7 +797,7 @@ func executeRequest(
 		}
 		stagedBody = staged.Bytes()
 	}
-	if !streamResponse && mekugiTransform != nil && mekugiTransform.journalContinue {
+	continueJournal := func() error {
 		next, err := nextJournalRequest(journalOriginal, mekugiTransform)
 		if err != nil {
 			return err
@@ -817,6 +817,9 @@ func executeRequest(
 		// Record missing usage before the continuation can publish cumulative totals.
 		usageTracker.finish()
 		return executeRequest(start, nextCtx, next, headers, sessionID, provider, output, issues, mekugiCalls, compactTokens, mentor)
+	}
+	if !streamResponse && mekugiTransform != nil && mekugiTransform.journalContinue {
+		return continueJournal()
 	}
 	if !streamResponse && response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices && !acceptsResponseEnd(finalization.upstreamTerminalState) {
 		finalization.failurePhase = requestFailureTerminalValidation
@@ -855,25 +858,7 @@ func executeRequest(
 		}
 	}
 	if streamResponse && mekugiTransform != nil && mekugiTransform.journalContinue {
-		next, err := nextJournalRequest(journalOriginal, mekugiTransform)
-		if err != nil {
-			return err
-		}
-		nextCtx, err := continueJournalContext(executionCtx, mekugiTransform)
-		if err != nil {
-			return err
-		}
-		mekugiTransform.Close()
-		resetJournalExchange(provider)
-		start, cancel := context.WithTimeout(nextCtx, journalStartWindow)
-		defer cancel()
-		finalization.observation.outcome = requestOutcomeCompleted
-		finalization.failurePhase = ""
-		// Account for this completed response before preparing its successor.
-		recordHandoff(true)
-		// Record missing usage before the continuation can publish cumulative totals.
-		usageTracker.finish()
-		return executeRequest(start, nextCtx, next, headers, sessionID, provider, output, issues, mekugiCalls, compactTokens, mentor)
+		return continueJournal()
 	}
 	if streamResponse && response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices && !acceptsResponseEnd(finalization.upstreamTerminalState) {
 		finalization.failurePhase = requestFailureTerminalValidation

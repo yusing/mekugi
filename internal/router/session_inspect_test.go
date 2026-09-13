@@ -32,6 +32,7 @@ func writeInspectionSession(t *testing.T, directory string, items ...map[string]
 }
 
 func TestSessionInspectionExactSizeWithoutFinalNewline(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	file, err := os.Create(path)
 	if err != nil {

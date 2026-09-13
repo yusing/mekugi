@@ -42,6 +42,7 @@ func TestMekugiReplayStoreRestartAndConflict(t *testing.T) {
 }
 
 func TestMekugiReplayStoreConcurrencyAndCorruption(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	s, err := openMekugiReplayStore(dir)
 	if err != nil {

@@ -1,6 +1,7 @@
 package router
 
 import (
+	"bytes"
 	"encoding/json"
 	"maps"
 )
@@ -118,7 +119,8 @@ func (item responsesItem) cloneFields() map[string]json.RawMessage {
 
 // decodeJSONString decodes a JSON string value from raw JSON.
 func decodeJSONString(raw json.RawMessage) (string, bool) {
-	if len(raw) == 0 {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || (trimmed[0] != '"' && trimmed[0] != 'n') {
 		return "", false
 	}
 	var value string

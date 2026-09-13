@@ -13,6 +13,7 @@ import (
 )
 
 func TestResponsesWebSocketHandoffPreservesStreamedCallWithActivity(t *testing.T) {
+	t.Parallel()
 	for _, compact := range []bool{false, true} {
 		t.Run(map[bool]string{false: "native", true: "ctp"}[compact], func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)

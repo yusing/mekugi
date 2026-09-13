@@ -230,7 +230,7 @@ func (registry *toolRegistry) directBashExecCommand(arguments []string) (string,
 			return false
 		}
 	})
-	commandName, err := expand.Literal(nil, call.Args[0])
+	commandName, err := expand.Literal(&expand.Config{}, call.Args[0])
 	if err != nil || !staticCommand || commandName == "" || commandName == commentaryArgumentName || commandName == "hrun" || commandName == "hchanges" || interp.IsBuiltin(commandName) {
 		return "", false
 	}

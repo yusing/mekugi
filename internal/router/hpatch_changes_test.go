@@ -8,6 +8,7 @@ import (
 )
 
 func TestHpatchMixedChangesSurviveRepairAndRestart(t *testing.T) {
+	t.Parallel()
 	transform, overrides := mixedTestTransform(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {

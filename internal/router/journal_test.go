@@ -215,6 +215,7 @@ func TestJournalDeletionWaitsForDelivery(t *testing.T) {
 }
 
 func TestJournalDeliverySerializesIndependentStores(t *testing.T) {
+	t.Parallel()
 	replay, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -293,13 +294,22 @@ func TestJournalStateWaitHonorsCancellation(t *testing.T) {
 }
 
 func TestJournalDiskCapacityOnlyBlocksNewThreads(t *testing.T) {
+	t.Parallel()
 	replay, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	writer := newJournalStore()
 	for index := range maxJournalThreads {
-		if err := writer.initialize(t.Context(), replay, "/workspace", fmt.Sprint(index), "/root", ""); err != nil {
+		thread := fmt.Sprint(index)
+		journal := threadJournal{
+			Version: 1, Workspace: "/workspace", Thread: thread, Author: "/root",
+			Items: []journalItem{}, Receipts: make(map[string]journalReceipt),
+		}
+		data, err := marshalProtocolJSON(journal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(replay.directory, journalFilename(journal.Workspace, thread)), data, 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}

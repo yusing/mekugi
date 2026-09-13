@@ -20,19 +20,34 @@ import (
 )
 
 func TestAXReaderFailureClassesPreserveOutputAndCallIdentity(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	root := t.TempDir()
 	missing := shellQuoteArgument(filepath.Join(root, "private-missing"))
-	script := "hgrep --max-tokens 16000 secret; hsymbol refs --workspace; hcat " + missing + "; hcat @shell/missing; inspect_file " + missing
-	t.Setenv(capturer.AXReadOutputEnvironment, "")
-	t.Setenv(shellruntime.ThreadIDEnvironment, "child-thread")
-	wantOut, wantErr, wantCode := runShellWorkerTest(t, registry, "bash", nil, script, nil)
+	script := "MEKUGI_AX_OUTPUT= hcat " + missing + " >before.out 2>before.err; before=$?; " +
+		"hcat " + missing + " >after.out 2>after.err; after=$?; " +
+		"printf '%s\n%s\n' \"$before\" \"$after\" >statuses; " +
+		"hgrep --max-tokens 16000 secret; hsymbol refs --workspace; hcat @shell/missing; inspect_file " + missing
 	journal := filepath.Join(root, "reads.jsonl")
-	t.Setenv(capturer.AXReadOutputEnvironment, journal)
-	t.Setenv(capturer.AXCallIDEnvironment, "call-batch")
-	out, stderr, code := runShellWorkerTest(t, registry, "bash", nil, script, nil)
-	if out != wantOut || stderr != wantErr || code != wantCode {
-		t.Fatalf("instrumentation changed command outcome: %d/%d %q/%q %q/%q", code, wantCode, out, wantOut, stderr, wantErr)
+	instrumented := newShellWorkerTestInvocation(root,
+		capturer.AXReadOutputEnvironment+"="+journal,
+		capturer.AXCallIDEnvironment+"=call-batch",
+		shellruntime.ThreadIDEnvironment+"=child-thread")
+	out, stderr, code := runShellWorkerTest(t, registry, "bash", nil, script, nil, instrumented)
+	beforeOut, beforeErr := os.ReadFile(filepath.Join(root, "before.out"))
+	afterOut, afterErr := os.ReadFile(filepath.Join(root, "after.out"))
+	beforeDiagnostic, beforeDiagnosticErr := os.ReadFile(filepath.Join(root, "before.err"))
+	afterDiagnostic, afterDiagnosticErr := os.ReadFile(filepath.Join(root, "after.err"))
+	statuses, statusesErr := os.ReadFile(filepath.Join(root, "statuses"))
+	if beforeErr != nil || afterErr != nil || beforeDiagnosticErr != nil || afterDiagnosticErr != nil ||
+		statusesErr != nil || string(statuses) != "1\n1\n" ||
+		!bytes.Equal(beforeOut, afterOut) || !bytes.Equal(beforeDiagnostic, afterDiagnostic) {
+		t.Fatalf("instrumentation changed hcat outcome: statuses %q, outputs %q/%q, diagnostics %q/%q, errors %v",
+			statuses, beforeOut, afterOut, beforeDiagnostic, afterDiagnostic,
+			errors.Join(beforeErr, afterErr, beforeDiagnosticErr, afterDiagnosticErr, statusesErr))
+	}
+	if code == 0 || !strings.Contains(out, `"code":"not_found"`) || stderr == "" {
+		t.Fatalf("failure-class batch outcome: %d %q %q", code, out, stderr)
 	}
 	reads, err := capturer.ReadAXReads(t.Context(), journal, "child-thread")
 	if err != nil || reads.Failed != 5 || reads.FailuresByClass["invalid_arguments"] != 2 || reads.FailuresByClass["not_found"] != 2 || reads.FailuresByClass["retained_file"] != 1 {
@@ -51,18 +66,19 @@ func TestAXReaderFailureClassesPreserveOutputAndCallIdentity(t *testing.T) {
 }
 
 func TestAXDebugWorkerPinsJournalAcrossChildEnvironment(t *testing.T) {
+	t.Parallel()
 	d := featureDebugOutput(t)
-	t.Setenv(shellruntime.RuntimeDirectoryEnvironment, t.TempDir())
 	ctx := context.WithValue(t.Context(), debugContextKey{}, d)
-	registry, err := buildToolRegistry(ctx, filepath.Join(t.TempDir(), "data"), testMekugiToolDescription, false)
+	registry, err := buildToolRegistryForTest(t, ctx, filepath.Join(t.TempDir(), "data"), testMekugiToolDescription, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = registry.Close() })
-	t.Setenv(capturer.AXReadOutputEnvironment, "")
+	invocationDirectory := t.TempDir()
 	for _, thread := range []string{"parent", "child"} {
-		t.Setenv(shellruntime.ThreadIDEnvironment, thread)
-		_, _, code := runShellWorkerTest(t, registry, "bash", nil, "hcat /private-missing", nil)
+		invocation := newShellWorkerTestInvocation(invocationDirectory,
+			capturer.AXReadOutputEnvironment+"=", shellruntime.ThreadIDEnvironment+"="+thread)
+		_, _, code := runShellWorkerTest(t, registry, "bash", nil, "hcat /private-missing", nil, invocation)
 		if code == 0 {
 			t.Fatal("missing read succeeded")
 		}
@@ -74,15 +90,25 @@ func TestAXDebugWorkerPinsJournalAcrossChildEnvironment(t *testing.T) {
 }
 
 func TestAXTestProcessDoesNotInheritLiveJournal(t *testing.T) {
-	const marker = "MEKUGI_TEST_AX_ISOLATION"
+	t.Parallel()
+	const (
+		marker      = "MEKUGI_TEST_AX_ISOLATION"
+		snapshotEnv = "MEKUGI_TEST_AX_SNAPSHOT"
+	)
 	if os.Getenv(marker) == "1" {
 		if os.Getenv(capturer.AXReadOutputEnvironment) != "" {
 			t.Fatal("test inherited live journal")
 		}
-		registry := sharedProxyTestRegistry(t)
-		_, _, _ = runShellWorkerTest(t, registry, "bash", nil, "hcat /private-missing", nil)
+		var stdout, stderr bytes.Buffer
+		handled, code := runAuthenticatedToolWorker(t.Context(), os.Getenv(snapshotEnv), "shell",
+			[]string{"bash", "hcat /private-missing"}, nil, &stdout, &stderr)
+		if !handled || code == 0 || !strings.Contains(stderr.String(), "ENOENT") {
+			t.Fatalf("isolated shell worker = handled %t, code %d, stdout %q, stderr %q",
+				handled, code, stdout.String(), stderr.String())
+		}
 		return
 	}
+	registry := sharedProxyTestRegistry(t)
 	path := filepath.Join(t.TempDir(), "live.jsonl")
 	if err := os.WriteFile(path, []byte("live session marker\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -92,7 +118,11 @@ func TestAXTestProcessDoesNotInheritLiveJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := exec.CommandContext(t.Context(), executable, "-test.run=^TestAXTestProcessDoesNotInheritLiveJournal$")
-	command.Env = append(os.Environ(), marker+"=1", capturer.AXReadOutputEnvironment+"="+path)
+	command.Env = append(os.Environ(),
+		marker+"=1",
+		snapshotEnv+"="+registry.SnapshotDir,
+		capturer.AXReadOutputEnvironment+"="+path,
+	)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("%v: %s", err, output)
 	}

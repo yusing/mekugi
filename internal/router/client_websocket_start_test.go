@@ -120,6 +120,7 @@ func TestProviderWebSocketAncillaryResponseStatus(t *testing.T) {
 }
 
 func TestProviderWebSocketAncillaryStartDeadline(t *testing.T) {
+	t.Parallel()
 	var messages atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, nil)

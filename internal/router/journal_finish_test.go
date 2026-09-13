@@ -68,6 +68,7 @@ func journalFinishClientOutput(t *testing.T, stream bool, wire []byte) []map[str
 }
 
 func TestJournalFinishEndsWithoutProviderContinuation(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"json", "sse-full", "sse-empty", "sse-absent", "sse-snapshot-only"} {
 		for _, batched := range []bool{false, true} {
 			name := mode + map[bool]string{false: "/existing", true: "/batched"}[batched]

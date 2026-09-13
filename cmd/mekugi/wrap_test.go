@@ -258,83 +258,102 @@ func TestWrapTerminalInterruptAndTermination(t *testing.T) {
 }
 
 func TestWrapCodexLifecycle(t *testing.T) {
-	for _, test := range []struct {
+	tests := []struct {
 		name, exit string
 		code       int
 		grok       bool
 	}{
 		{"success", "0", 0, false}, {"failure", "23", 23, false}, {"signal", "signal", 143, false}, {"termination", "wait", 143, false},
 		{"grok_success", "0", 0, true}, {"grok_failure", "23", 23, true}, {"grok_signal", "signal", 143, true}, {"grok_termination", "wait", 143, true},
-	} {
+	}
+	if selected := os.Getenv("MEKUGI_TEST_WRAP_LIFECYCLE"); selected != "" {
+		index, err := strconv.Atoi(selected)
+		if err != nil || index < 0 || index >= len(tests) {
+			t.Fatalf("invalid lifecycle selection %q", selected)
+		}
+		testWrapCodexLifecycle(t, tests[index].exit, tests[index].code, tests[index].grok)
+		return
+	}
+	for index, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			directory := t.TempDir()
-			t.Setenv("TMPDIR", t.TempDir())
-			runtimeDirectory := t.TempDir()
-			addressFile := filepath.Join(directory, "address")
-			t.Setenv("CODEX_HOME", t.TempDir())
-			t.Setenv("HOME", t.TempDir())
-			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-			t.Setenv("MEKUGI_RUNTIME_DIR", runtimeDirectory)
-			t.Setenv("MEKUGI_TEST_CODEX", "1")
-			t.Setenv("MEKUGI_TEST_EXIT", test.exit)
-			t.Setenv("MEKUGI_TEST_ADDRESS", addressFile)
-			t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
-			stub := "#!/bin/sh\nexec " + strconv.Quote(os.Args[0]) + " -test.run=^TestWrappedCodexProcess$ -- \"$@\"\n"
-			if err := os.WriteFile(filepath.Join(directory, "codex"), []byte(stub), 0o700); err != nil {
-				t.Fatal(err)
-			}
-			ctx, cancel := context.WithCancel(t.Context())
-			defer cancel()
-			if test.exit == "wait" {
-				go func() {
-					for {
-						if _, err := os.Stat(addressFile); err == nil {
-							cancel()
-							return
-						}
-						select {
-						case <-ctx.Done():
-							return
-						case <-time.After(10 * time.Millisecond):
-						}
-					}
-				}()
-			}
-			deadline := time.AfterFunc(20*time.Second, cancel)
-			defer deadline.Stop()
-			var routerArgs []string
-			if test.grok {
-				routerArgs = []string{"--grok"}
-				t.Setenv("MEKUGI_TEST_PINNED_CATALOG", "1")
-			}
-			code, err := wrapCodex(ctx, routerArgs, []string{"exec", "prompt with spaces"})
-			if err != nil || code != test.code {
-				t.Fatalf("wrap = %d, %v; want %d", code, err, test.code)
-			}
-			if test.grok {
-				path, err := os.ReadFile(addressFile + ".catalog")
-				if err != nil {
-					t.Fatal(err)
-				}
-				if _, err := os.Stat(filepath.Dir(string(path))); !os.IsNotExist(err) {
-					t.Fatalf("private catalog survived child exit: %v", err)
-				}
-			}
-			address, err := os.ReadFile(addressFile)
-			if err != nil {
-				t.Fatal(err)
-			}
-			host := strings.TrimSuffix(strings.TrimPrefix(string(address), "http://"), "/v1")
-			conn, err := net.DialTimeout("tcp", host, time.Second)
-			if err == nil {
-				conn.Close()
-				t.Error("listener survived Codex exit")
-			}
-			entries, err := os.ReadDir(runtimeDirectory)
-			if err != nil || len(entries) != 0 {
-				t.Errorf("runtime resources survived: %v, %v", entries, err)
+			t.Parallel()
+			command := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestWrapCodexLifecycle$")
+			command.Env = append(os.Environ(), "MEKUGI_TEST_WRAP_LIFECYCLE="+strconv.Itoa(index))
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("isolated lifecycle: %v\n%s", err, output)
 			}
 		})
+	}
+}
+
+func testWrapCodexLifecycle(t *testing.T, exit string, wantCode int, grok bool) {
+	t.Helper()
+	directory := t.TempDir()
+	t.Setenv("TMPDIR", t.TempDir())
+	runtimeDirectory := t.TempDir()
+	addressFile := filepath.Join(directory, "address")
+	t.Setenv("CODEX_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("MEKUGI_RUNTIME_DIR", runtimeDirectory)
+	t.Setenv("MEKUGI_TEST_CODEX", "1")
+	t.Setenv("MEKUGI_TEST_EXIT", exit)
+	t.Setenv("MEKUGI_TEST_ADDRESS", addressFile)
+	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stub := "#!/bin/sh\nexec " + strconv.Quote(os.Args[0]) + " -test.run=^TestWrappedCodexProcess$ -- \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(directory, "codex"), []byte(stub), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	if exit == "wait" {
+		go func() {
+			for {
+				if _, err := os.Stat(addressFile); err == nil {
+					cancel()
+					return
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(10 * time.Millisecond):
+				}
+			}
+		}()
+	}
+	deadline := time.AfterFunc(20*time.Second, cancel)
+	defer deadline.Stop()
+	var routerArgs []string
+	if grok {
+		routerArgs = []string{"--grok"}
+		t.Setenv("MEKUGI_TEST_PINNED_CATALOG", "1")
+	}
+	code, err := wrapCodex(ctx, routerArgs, []string{"exec", "prompt with spaces"})
+	if err != nil || code != wantCode {
+		t.Fatalf("wrap = %d, %v; want %d", code, err, wantCode)
+	}
+	if grok {
+		path, err := os.ReadFile(addressFile + ".catalog")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Dir(string(path))); !os.IsNotExist(err) {
+			t.Fatalf("private catalog survived child exit: %v", err)
+		}
+	}
+	address, err := os.ReadFile(addressFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := strings.TrimSuffix(strings.TrimPrefix(string(address), "http://"), "/v1")
+	conn, err := net.DialTimeout("tcp", host, time.Second)
+	if err == nil {
+		conn.Close()
+		t.Error("listener survived Codex exit")
+	}
+	entries, err := os.ReadDir(runtimeDirectory)
+	if err != nil || len(entries) != 0 {
+		t.Errorf("runtime resources survived: %v, %v", entries, err)
 	}
 }
 

@@ -116,6 +116,7 @@ func TestDebugCanceledStartupReportsArtifacts(t *testing.T) {
 }
 
 func TestDebugWebSocketInheritedInstructions(t *testing.T) {
+	t.Parallel()
 	flags := newRouterFlags(io.Discard)
 	*flags.debug = true
 	d, err := openDebugOutput(flags)

@@ -8,6 +8,7 @@ import (
 )
 
 func TestSubagentObservedUsage(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile("testdata/subagent_activity_usage.json")
 	if err != nil {
 		t.Fatal(err)

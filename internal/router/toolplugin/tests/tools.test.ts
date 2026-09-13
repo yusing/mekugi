@@ -195,6 +195,21 @@ describe("verified-row output", () => {
     }
   });
 
+  test("byte-bound admission preserves exact token and soft-limit behavior", () => {
+    const unicode = new VerifiedRowOutput(1);
+    expect(unicode.append("🙂")).toBe(true);
+    expect(unicode.append("x")).toBe(false);
+    expect(unicode.current).toBe("🙂");
+
+    const compressible = new VerifiedRowOutput();
+    const row = " x".repeat(8000);
+    expect(Buffer.byteLength(row)).toBeGreaterThan(15_000);
+    expect(countGPT5Tokens(row)).toBeLessThan(15_000);
+    expect(compressible.append(row)).toBe(true);
+    expect(compressible.append(" later\n")).toBe(true);
+    expect(compressible.incomplete).toBe(false);
+  });
+
   test("uses GPT-5 tokens with one bounded whole-row overshoot", () => {
     const exact = new VerifiedRowOutput();
     const atSoftLimit = contentWithFormattedTokenCount(15_000, (content) => `${content}\n`);
@@ -1530,7 +1545,8 @@ process.stdin.on("data", (chunk) => {
         executionContext,
       );
       expect(result).toMatchObject({exitCode: 0});
-      expect(result.stderr).toBeUndefined();
+      // The real server may log shutdown timing; backend stderr is preserved.
+      expect(result.stderr ?? "").not.toContain("hsymbol:");
     }
   }, 30_000);
 });

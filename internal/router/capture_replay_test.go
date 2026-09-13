@@ -27,6 +27,7 @@ func (p captureReplayProvider) forwardExecution(ctx, _ context.Context, body []b
 }
 
 func TestCaptureRequestBaselineAfterMekugiReplay(t *testing.T) {
+	t.Parallel()
 	const catWrite = "foo; cat > cache-replay.txt <<'EOF'\nliteral content\nEOF\nbar"
 	for _, fixture := range []struct{ name, input, protocol string }{
 		{"hpatch", testMekugiScript, "native"},

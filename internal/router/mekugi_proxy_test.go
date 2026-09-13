@@ -16,7 +16,6 @@ import (
 
 	"github.com/yusing/mekugi"
 	codexinstructions "github.com/yusing/mekugi/contrib/codex"
-	"github.com/yusing/mekugi/internal/shellruntime"
 )
 
 const (
@@ -173,8 +172,7 @@ func newManagedMekugiProxyWithDataDirectory(t *testing.T, translator mekugiTrans
 	if translator == nil {
 		return nil
 	}
-	t.Setenv(shellruntime.RuntimeDirectoryEnvironment, t.TempDir())
-	registry, err := buildToolRegistry(t.Context(), dataDirectory, translator.ToolDescription(), false)
+	registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, translator.ToolDescription(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -918,8 +916,9 @@ func TestMekugiRoutesOnlyModelVisibleRegistryTools(t *testing.T) {
 }
 
 func TestReportIssueRouting(t *testing.T) {
+	t.Parallel()
 	dataDirectory := t.TempDir()
-	registry, err := buildToolRegistry(t.Context(), dataDirectory, testMekugiToolDescription, true)
+	registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, testMekugiToolDescription, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2231,6 +2230,7 @@ func TestWorkerExecInputMergesValidatedParams(t *testing.T) {
 }
 
 func TestShellExecCarriersForwardNativeResultWithoutPolling(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
 	shell, ok := proxy.registry.contribution("shell")
 	if !ok {
@@ -2587,6 +2587,7 @@ func TestMekugiNonEvaluatorFailureDoesNotBecomeRecoveryBaseline(t *testing.T) {
 }
 
 func TestMekugiUnevaluatedRecoveryRunsOutcomeHookOnce(t *testing.T) {
+	t.Parallel()
 	dataDirectory := t.TempDir()
 	outcomePath := filepath.Join(t.TempDir(), "outcome.txt")
 	settings := fmt.Sprintf(
@@ -2598,7 +2599,7 @@ func TestMekugiUnevaluatedRecoveryRunsOutcomeHookOnce(t *testing.T) {
 	}
 	transform, _, _, _ := newMekugiTestTransformWithProxy(
 		t,
-		newManagedMekugiProxyWithDataDirectory(t, newInProcessMekugiTranslator(dataDirectory), dataDirectory),
+		newManagedMekugiProxy(t, newInProcessMekugiTranslator(dataDirectory)),
 	)
 	payload := "C1:ffff not-a-target"
 	history, err := transform.translateRecovery("call-recovery", payload, nil)

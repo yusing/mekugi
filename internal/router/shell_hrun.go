@@ -243,7 +243,7 @@ func trimHRunBoundary(value string, tail bool) string {
 	return value
 }
 
-func executeHRun(ctx context.Context, manifest toolWorkerManifest, runtimeRoot string, shellContribution *toolContribution, arguments []string, terminalShell bool) error {
+func executeHRun(ctx context.Context, manifest toolWorkerManifest, runtimeRoot string, arguments []string, terminalShell bool) error {
 	handler := interp.HandlerCtx(ctx)
 	options, command, err := parseHRunArguments(arguments)
 	if err != nil {
@@ -273,13 +273,11 @@ func executeHRun(ctx context.Context, manifest toolWorkerManifest, runtimeRoot s
 		mode = "tail"
 	}
 	selectedOut, selectedErr := outText, errText
-	if options.maxTokens > 0 {
-		// Keep exact token selection with the readers' bundled tokenizer, in an
-		// invocation the existing process-group owner can cancel during formatting.
-		formatted, err := toolplugin.Execute(ctx, manifest.NodeExecutable, runtimeRoot,
-			shellContribution.Module, shellContribution.ModuleIndex,
-			[]string{"--hrun-output", strconv.Itoa(options.maxTokens), mode, outText, errText},
-			nil, handler.Dir, shellEnvironment(handler.Env))
+	if options.maxTokens > 0 && len(outText)+len(errText) > options.maxTokens {
+		// A token always contains at least one source byte. Only invoke the exact
+		// tokenizer when the captured byte count cannot prove the output fits.
+		formatted, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, runtimeRoot,
+			[]string{strconv.Itoa(options.maxTokens), mode, outText, errText})
 		if err != nil {
 			return fmt.Errorf("hrun: select output: %w", err)
 		}

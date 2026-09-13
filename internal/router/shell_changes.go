@@ -248,7 +248,7 @@ func changeReadOffset(text, cursor string) (string, int, error) {
 	return digest, offset, nil
 }
 
-func executeHChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRoot string, shellContribution *toolContribution, arguments []string) error {
+func executeHChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRoot string, arguments []string) error {
 	handler := interp.HandlerCtx(ctx)
 	fail := func(err error) error {
 		_, _ = fmt.Fprintf(handler.Stderr, "hchanges: %v\n", err)
@@ -275,29 +275,32 @@ func executeHChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRo
 	if err != nil {
 		return fail(err)
 	}
-	// Bound tokenizer input using its maximum 128-byte token size, exactly as
-	// hrun does. Selection reuses the bundled GPT-5 tokenizer, not a second codec.
-	end := min(len(text), offset+options.maxTokens*128+utf8.UTFMax)
-	for end < len(text) && !utf8.RuneStart(text[end]) {
-		end--
+	remaining := text[offset:]
+	selected := remaining
+	if len(remaining) > options.maxTokens {
+		// A token always contains at least one source byte. Only invoke the exact
+		// tokenizer when the byte count cannot prove the remainder fits.
+		end := min(len(text), offset+options.maxTokens*128+utf8.UTFMax)
+		for end < len(text) && !utf8.RuneStart(text[end]) {
+			end--
+		}
+		formatted, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, runtimeRoot,
+			[]string{strconv.Itoa(options.maxTokens), "head", text[offset:end], ""})
+		if err != nil {
+			return fail(err)
+		}
+		if formatted.ExitCode != 0 || !strings.HasPrefix(remaining, formatted.Stdout) {
+			return fail(errors.New("change output selection failed"))
+		}
+		selected = formatted.Stdout
 	}
-	formatted, err := toolplugin.Execute(ctx, manifest.NodeExecutable, runtimeRoot,
-		shellContribution.Module, shellContribution.ModuleIndex,
-		[]string{"--hrun-output", strconv.Itoa(options.maxTokens), "head", text[offset:end], ""},
-		nil, handler.Dir, shellEnvironment(handler.Env))
-	if err != nil {
-		return fail(err)
-	}
-	if formatted.ExitCode != 0 || !strings.HasPrefix(text[offset:end], formatted.Stdout) {
-		return fail(errors.New("change output selection failed"))
-	}
-	if formatted.Stdout == "" && offset < len(text) {
+	if selected == "" && offset < len(text) {
 		return fail(errors.New("token budget cannot admit the next character; increase --max-tokens"))
 	}
-	if _, err := io.WriteString(handler.Stdout, formatted.Stdout); err != nil {
+	if _, err := io.WriteString(handler.Stdout, selected); err != nil {
 		return err
 	}
-	next := offset + len(formatted.Stdout)
+	next := offset + len(selected)
 	if next < len(text) {
 		_, _ = fmt.Fprintf(handler.Stderr, "hchanges: incomplete; repeat this read with --cursor %s:%d\n", digest, next)
 		return interp.ExitStatus(1)

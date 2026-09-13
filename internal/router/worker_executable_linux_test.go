@@ -27,6 +27,9 @@ func TestToolWorkerSurvivesExecutableReplacement(t *testing.T) {
 			if copyErr != nil || closeErr != nil {
 				t.Fatalf("copy: %v, %v", copyErr, closeErr)
 			}
+			// Finish writable executable setup before parallel subprocess tests
+			// can fork and briefly inherit its writer descriptor before exec.
+			t.Parallel()
 			command := exec.CommandContext(t.Context(), installed, "-test.run=^TestPinnedToolWorkerProcess$")
 			command.Env = append(os.Environ(), "MEKUGI_PIN_WORKER_TEST="+stage)
 			if output, err := command.CombinedOutput(); err != nil {

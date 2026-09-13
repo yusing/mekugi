@@ -350,6 +350,7 @@ func grokWriteTestAuth(t *testing.T, path string, expiry time.Time) {
 	}
 }
 func TestGrokOAuthRefreshSerializesAndPreservesStore(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "auth.json")
 	now := time.Now().UTC()
 	grokWriteTestAuth(t, path, now.Add(-time.Minute))

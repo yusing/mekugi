@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 )
 
 func TestHpatchTranslationRawStdin(t *testing.T) {
+	t.Parallel()
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -33,7 +35,9 @@ func TestHpatchTranslationRawStdin(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, executable, "-test.run=^TestHpatchMixedProcess$", "--")
-	command.Env = append(os.Environ(), "MEKUGI_HPATCH_WORKER_TEST=1")
+	command.Env = append(os.Environ(), "MEKUGI_HPATCH_WORKER_TEST=1",
+		"MEKUGI_RUNTIME_DIR="+filepath.Dir(transform.shellDirectory),
+		"CODEX_THREAD_ID="+strings.TrimPrefix(filepath.Base(transform.shellDirectory), "mekugi-scripts-"))
 	terminal, err := pty.Start(command)
 	if err != nil {
 		t.Fatal(err)
@@ -74,6 +78,7 @@ func TestHpatchTranslationRawStdin(t *testing.T) {
 }
 
 func TestHpatchTranslationCancelledRawStdin(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	executable, err := os.Executable()
@@ -85,7 +90,9 @@ func TestHpatchTranslationCancelledRawStdin(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := exec.CommandContext(ctx, executable, "-test.run=^TestHpatchMixedProcess$", "--")
-	command.Env = append(os.Environ(), "MEKUGI_HPATCH_WORKER_TEST=1", "MEKUGI_HPATCH_CANCEL_TRANSFER=1")
+	command.Env = append(os.Environ(), "MEKUGI_HPATCH_WORKER_TEST=1", "MEKUGI_HPATCH_CANCEL_TRANSFER=1",
+		"MEKUGI_RUNTIME_DIR="+filepath.Dir(transform.shellDirectory),
+		"CODEX_THREAD_ID="+strings.TrimPrefix(filepath.Base(transform.shellDirectory), "mekugi-scripts-"))
 	terminal, err := pty.Start(command)
 	if err != nil {
 		t.Fatal(err)

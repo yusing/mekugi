@@ -48,13 +48,14 @@ func (w *workspace) finalStateReport(changes []change) (string, []TargetAlias) {
 		}
 	}
 	activeReferences := false
+	var aliases []TargetAlias
 	if len(w.reportedEdits) != 0 {
-		activeReferences = w.writeFinalReferences(&report)
+		activeReferences, aliases = w.writeFinalReferences(&report)
 	}
 	if w.active != nil && !activeReferences {
 		w.writeFallbackPreview(&report)
 	}
-	return report.String(), w.targetAliases()
+	return report.String(), aliases
 }
 
 func (w *workspace) lastReportedEdit() *reportedEdit {
@@ -75,37 +76,6 @@ func (e *editor) reportedEdit(origin editOrigin, command instruction) *reportedE
 		return nil
 	}
 	return &reportedEdit{command: origin.command, operation: origin.operation, target: origin.targetSpec, spans: spans, advisory: e.boundaryAdvisory(origin, command)}
-}
-
-func (w *workspace) targetAliases() []TargetAlias {
-	documents := make(map[*fileState]renderedDocument)
-	extents := make(map[*fileState]map[int]renderedSpan)
-	var aliases []TargetAlias
-	for _, reported := range w.reportedEdits {
-		if reported.operation != "type" ||
-			(reported.target.kind != targetLine && reported.target.kind != targetRange) {
-			continue
-		}
-		document, ok := documents[reported.file]
-		if !ok {
-			content := reported.file.editor.content()
-			document = renderedDocument{content: content, lines: previewLines(content)}
-			documents[reported.file] = document
-			extents[reported.file] = reported.file.editor.renderedEditExtents()
-		}
-		extent, ok := extents[reported.file][reported.command]
-		if !ok || extent.start == extent.end {
-			continue
-		}
-		extent = reported.file.editor.finalOffsets.mapExtent(extent)
-		startOffset, endOffset := extent.start, extent.end
-		startLine := renderedCoordinateAt(document.content, document.lines, startOffset).line
-		endLine := renderedCoordinateAt(document.content, document.lines, max(startOffset, endOffset-1)).line
-		before := renderRowTarget(reported.target)
-		after := renderDocumentRange(document, startLine, endLine)
-		aliases = append(aliases, TargetAlias{Path: reported.file.path, Before: before, After: after})
-	}
-	return aliases
 }
 
 func renderRowTarget(target targetSpec) string {
@@ -154,10 +124,11 @@ func writeSpanLocations(report *strings.Builder, document renderedDocument, span
 	report.WriteByte('\n')
 }
 
-func (w *workspace) writeFinalReferences(report *strings.Builder) bool {
+func (w *workspace) writeFinalReferences(report *strings.Builder) (bool, []TargetAlias) {
 	documents := make(map[*fileState]renderedDocument)
 	extents := make(map[*fileState]map[int]renderedSpan)
 	activeReferences := false
+	var aliases []TargetAlias
 	for _, reported := range w.reportedEdits {
 		if reported.file == w.active {
 			activeReferences = true
@@ -173,11 +144,22 @@ func (w *workspace) writeFinalReferences(report *strings.Builder) bool {
 		if !ok {
 			panic("reported edit has no effective editor splice")
 		}
+		aliasEligible := reported.operation == "type" &&
+			(reported.target.kind == targetLine || reported.target.kind == targetRange) &&
+			extent.start != extent.end
 		extent = reported.file.editor.finalOffsets.mapExtent(extent)
 		startOffset, endOffset := extent.start, extent.end
 		startLine := renderedCoordinateAt(document.content, document.lines, startOffset).line
 		endLine := renderedCoordinateAt(document.content, document.lines, endOffset).line
 		firstLine, lastLine := min(startLine, endLine), max(startLine, endLine)
+		if aliasEligible {
+			aliasEndLine := renderedCoordinateAt(document.content, document.lines, max(startOffset, endOffset-1)).line
+			aliases = append(aliases, TargetAlias{
+				Path:   reported.file.path,
+				Before: renderRowTarget(reported.target),
+				After:  renderDocumentRange(document, startLine, aliasEndLine),
+			})
+		}
 
 		fmt.Fprintf(
 			report,
@@ -196,7 +178,7 @@ func (w *workspace) writeFinalReferences(report *strings.Builder) bool {
 			previous = index
 		}
 	}
-	return activeReferences
+	return activeReferences, aliases
 }
 
 func (e *editor) renderedEditExtents() map[int]renderedSpan {

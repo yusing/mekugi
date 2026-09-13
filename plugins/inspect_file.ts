@@ -1,13 +1,15 @@
 import {readFile, stat} from "node:fs/promises";
 import path from "node:path";
 
-import {Tree, type Parser, type SyntaxNode} from "@lezer/common";
-import {parser as goParser} from "@lezer/go";
-import {parser as javascriptParser} from "@lezer/javascript";
-import {parser as jsonParser} from "@lezer/json";
-import {parser as markdownParser} from "@lezer/markdown";
-import {parser as pythonParser} from "@lezer/python";
-import {isMap, isNode, isScalar, parseDocument} from "yaml";
+import type {Tree, Parser, SyntaxNode} from "@lezer/common";
+// Load parser tables only for a source kind that actually needs them. Ordinary
+// readers and shell translation share this bundle but do not parse source trees.
+const goParser = () => (require("@lezer/go") as typeof import("@lezer/go")).parser;
+const javascriptParser = (dialect = "") =>
+  (require("@lezer/javascript") as typeof import("@lezer/javascript")).parser.configure({dialect});
+const jsonParser = () => (require("@lezer/json") as typeof import("@lezer/json")).parser;
+const markdownParser = () => (require("@lezer/markdown") as typeof import("@lezer/markdown")).parser;
+const pythonParser = () => (require("@lezer/python") as typeof import("@lezer/python")).parser;
 
 import type {Tool} from "../internal/router/toolplugin/plugin.d.ts";
 import {
@@ -99,10 +101,6 @@ export type SourceFormat = {
   jsx?: true;
 };
 
-const jsxParser = javascriptParser.configure({dialect: "jsx"});
-const typescriptParser = javascriptParser.configure({dialect: "ts"});
-const typescriptJSXParser = javascriptParser.configure({dialect: "ts jsx"});
-
 const goIdentifierNodes = new Set(["DefName", "FieldName", "PackageName", "TypeName", "VariableName"]);
 const javascriptIdentifierNodes = new Set([
   "JSXIdentifier",
@@ -147,24 +145,25 @@ function parseSource(parser: Parser, source: string): Tree {
     return parser.parse(source);
   }
   const tree = parser.parse(source.slice(1));
+  const {Tree} = require("@lezer/common") as typeof import("@lezer/common");
   return new Tree(tree.type, tree.children, tree.positions.map((position) => position + 1),
     source.length, tree.propValues);
 }
 
 function codeTree(source: string, format: SourceFormat): Tree {
   if (format.language === "go") {
-    return parseSource(goParser, source);
+    return parseSource(goParser(), source);
   }
   if (format.language === "typescript") {
-    return parseSource(format.jsx === true ? typescriptJSXParser : typescriptParser, source);
+    return parseSource(javascriptParser(format.jsx === true ? "ts jsx" : "ts"), source);
   }
   if (format.language === "javascript") {
-    return parseSource(format.jsx === true ? jsxParser : javascriptParser, source);
+    return parseSource(javascriptParser(format.jsx === true ? "jsx" : ""), source);
   }
   if (format.language === "python") {
-    return parseSource(pythonParser, source);
+    return parseSource(pythonParser(), source);
   }
-  return parseSource(jsonParser, source);
+  return parseSource(jsonParser(), source);
 }
 
 type InspectionData = {
@@ -424,7 +423,7 @@ export function goDeclarationRange(
   definitionEndByte: number,
 ): {line: number; line_end: number} | null {
   const lines = new LineMap(source);
-  const tree = parseSource(goParser, source);
+  const tree = parseSource(goParser(), source);
   if (hasParseError(tree)) {
     return null;
   }
@@ -771,7 +770,7 @@ export function symbolOffsets(
   if (logicalLine === null) {
     return [];
   }
-  const tree = format.kind === "json" ? parseSource(jsonParser, source) : codeTree(source, format);
+  const tree = format.kind === "json" ? parseSource(jsonParser(), source) : codeTree(source, format);
   const offsets: number[] = [];
   const visit = (node: SyntaxNode): void => {
     if (node.to <= logicalLine.from || node.from >= logicalLine.to) {
@@ -834,6 +833,7 @@ function markdownFrontmatter(
 
   const contentStart = lines.starts[1] ?? source.length;
   const contentEnd = lines.starts[closingLine] ?? source.length;
+  const {parseDocument, isMap, isNode, isScalar} = require("yaml") as typeof import("yaml");
   const document = parseDocument(source.slice(contentStart, contentEnd));
   const entries: LocatedEntry[] = [];
   if (isMap(document.contents)) {
@@ -1050,7 +1050,7 @@ function parseContent(
       };
     }
     if (format.kind === "markdown") {
-      const tree = parseSource(markdownParser, source);
+      const tree = parseSource(markdownParser(), source);
       const outline = markdownOutline(source, lines, tree);
       return {
         parseComplete: !hasParseError(tree) && outline.parseComplete,
@@ -1058,7 +1058,7 @@ function parseContent(
         lineCount: lines.count,
       };
     }
-    const tree = parseSource(jsonParser, source);
+    const tree = parseSource(jsonParser(), source);
     return {
       parseComplete: !hasParseError(tree),
       outline: hashOutline(lines, ordered(jsonOutline(source, lines, tree))),

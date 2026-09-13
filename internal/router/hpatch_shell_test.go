@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -54,73 +56,61 @@ type mixedScriptResult struct {
 // A subprocess exercises runtime translation against the files left by earlier
 // shell programs. Patch application uses the repository's existing host harness.
 func TestHpatchMixedProcess(t *testing.T) {
-	if os.Getenv("MEKUGI_HPATCH_WORKER_TEST") != "1" {
+	if os.Getenv("MEKUGI_HPATCH_WORKER_TEST") != "1" || slices.Index(os.Args, "--") < 0 {
 		return
 	}
-	index := slices.Index(os.Args, "--")
-	if index < 0 {
-		return
+	ctx := t.Context()
+	if os.Getenv("MEKUGI_HPATCH_CANCEL_TRANSFER") == "1" {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 250*time.Millisecond)
+		defer cancel()
 	}
-	args := os.Args[index+1:]
-	var err error
-	if len(args) == 0 {
-		ctx := t.Context()
-		if os.Getenv("MEKUGI_HPATCH_CANCEL_TRANSFER") == "1" {
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, 250*time.Millisecond)
-			defer cancel()
-		}
-		err = runHpatchControl(ctx, os.Stdin, os.Stdout)
-	} else {
-		var patch []byte
-		patch, err = io.ReadAll(os.Stdin)
-		if err == nil {
-			initial := map[string]string{}
-			directory, cwdErr := os.Getwd()
-			err = cwdErr
-			if err == nil {
-				err = filepath.WalkDir(directory, func(path string, entry fs.DirEntry, walkErr error) error {
-					if walkErr != nil || entry.IsDir() {
-						return walkErr
-					}
-					content, readErr := os.ReadFile(path)
-					initial[path] = string(content)
-					return readErr
-				})
-			}
-			if err == nil {
-				var tree map[string]string
-				// Host paths may be absolute or relative to the request cwd.
-				patchLines := strings.Split(string(patch), "\n")
-				for index, line := range patchLines {
-					for _, prefix := range []string{"*** Add File: ", "*** Update File: ", "*** Delete File: ", "*** Move to: "} {
-						if path, ok := strings.CutPrefix(line, prefix); ok && !filepath.IsAbs(path) {
-							patchLines[index] = prefix + filepath.Join(directory, path)
-						}
-					}
-				}
-				patch = []byte(strings.Join(patchLines, "\n"))
-				tree, err = patchtest.Apply(initial, string(patch))
-				if err == nil {
-					for path, content := range tree {
-						if err = os.WriteFile(path, []byte(content), 0o600); err != nil {
-							break
-						}
-					}
-					for path := range initial {
-						if _, exists := tree[path]; !exists && err == nil {
-							err = os.Remove(path)
-						}
-					}
-				}
-			}
-		}
-	}
-	if err != nil {
+	if err := runHpatchControl(ctx, os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	os.Exit(0)
+}
+
+// Keep mock host patch application in the owning test process. Translation still
+// uses the real subprocess/control protocol; each patch uses the same host harness.
+func applyMixedTestPatch(directory, patch string) error {
+	initial := map[string]string{}
+	if err := filepath.WalkDir(directory, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() {
+			return walkErr
+		}
+		content, err := os.ReadFile(path)
+		initial[path] = string(content)
+		return err
+	}); err != nil {
+		return err
+	}
+	lines := strings.Split(patch, "\n")
+	for index, line := range lines {
+		for _, prefix := range []string{"*** Add File: ", "*** Update File: ", "*** Delete File: ", "*** Move to: "} {
+			if path, ok := strings.CutPrefix(line, prefix); ok && !filepath.IsAbs(path) {
+				lines[index] = prefix + filepath.Join(directory, path)
+			}
+		}
+	}
+	tree, err := patchtest.Apply(initial, strings.Join(lines, "\n"))
+	if err != nil {
+		return err
+	}
+	for path, content := range tree {
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			return err
+		}
+	}
+	for path := range initial {
+		if _, exists := tree[path]; !exists {
+			if err := os.Remove(path); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func mixedTestTransform(t *testing.T) (*mekugiResponseTransform, string) {
@@ -133,26 +123,46 @@ func mixedTestTransform(t *testing.T) (*mekugiResponseTransform, string) {
 		t.Fatal(err)
 	}
 	bin := t.TempDir()
-	wrapper := "#!/bin/sh\nexport MEKUGI_RUNTIME_DIR=" + shellQuoteArgument(filepath.Dir(transform.shellDirectory)) +
-		"\nexport CODEX_THREAD_ID=" + shellQuoteArgument(strings.TrimPrefix(filepath.Base(transform.shellDirectory), "mekugi-scripts-")) +
+	runtimeDirectory := filepath.Dir(transform.shellDirectory)
+	threadID := strings.TrimPrefix(filepath.Base(transform.shellDirectory), "mekugi-scripts-")
+	wrapper := "#!/bin/sh\nexport MEKUGI_RUNTIME_DIR=" + shellQuoteArgument(runtimeDirectory) +
+		"\nexport CODEX_THREAD_ID=" + shellQuoteArgument(threadID) +
 		"\nif [ \"$#\" = 0 ]; then\nexec " +
 		shellQuoteArgument(executable) + " -test.run='^TestHpatchMixedProcess$' --\nfi\ninterpreter=$1\nshift\nexec \"$interpreter\" -c \"$1\"\n"
-	t.Setenv("MEKUGI_RUNTIME_DIR", filepath.Dir(transform.shellDirectory))
-	t.Setenv("CODEX_THREAD_ID", strings.TrimPrefix(filepath.Base(transform.shellDirectory), "mekugi-scripts-"))
 	if err := os.WriteFile(filepath.Join(bin, "shell"), []byte(wrapper), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("MEKUGI_HPATCH_WORKER_TEST", "1")
-	overrides := `tools.apply_patch = async patch => {
-  const child = spawnSync(` + string(mustMarshalJSON(executable)) + `, ['-test.run=^TestHpatchMixedProcess$', '--', 'apply'], {input: patch, encoding: 'utf8'});
-  if (child.status !== 0) throw new Error(child.stderr);
-  return {};
-};`
+	host := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct{ Directory, Patch string }
+		err := json.NewDecoder(r.Body).Decode(&request)
+		if err == nil {
+			err = applyMixedTestPatch(request.Directory, request.Patch)
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}))
+	t.Cleanup(host.Close)
+	workerPath := bin + string(os.PathListSeparator) + os.Getenv("PATH")
+	overrides := `process.env.PATH = ` + string(mustMarshalJSON(workerPath)) + `;
+process.env.MEKUGI_HPATCH_WORKER_TEST = '1';
+process.env.MEKUGI_RUNTIME_DIR = ` + string(mustMarshalJSON(runtimeDirectory)) + `;
+process.env.CODEX_THREAD_ID = ` + string(mustMarshalJSON(threadID)) + `;
+tools.apply_patch = patch => new Promise((resolve, reject) => {
+  const request = require('node:http').request(` + string(mustMarshalJSON(host.URL)) + `, {method: 'POST'}, response => {
+    let diagnostic = '';
+    response.setEncoding('utf8');
+    response.on('data', chunk => { diagnostic += chunk; });
+    response.on('end', () => response.statusCode === 200 ? resolve({}) : reject(new Error(diagnostic)));
+  });
+  request.on('error', reject);
+  request.end(JSON.stringify({Directory: process.cwd(), Patch: patch}));
+});`
 	return transform, overrides
 }
 
 func TestHpatchMixedExecutionAndReplay(t *testing.T) {
+	t.Parallel()
 	transform, overrides := mixedTestTransform(t)
 	source := "shell <<SHELL\nprintf 'draft\\n' > notes.txt\nSHELL\n" +
 		"in notes.txt\ntype \"draft\" \"ready\"\n" +
@@ -205,6 +215,7 @@ func TestHpatchMixedExecutionAndReplay(t *testing.T) {
 }
 
 func TestHpatchInlineExecution(t *testing.T) {
+	t.Parallel()
 	transform, overrides := mixedTestTransform(t)
 	source := "shell printf 'draft\\n' > notes.txt\n" +
 		"in notes.txt\ntype \"draft\" \"ready\"\n" +
@@ -226,6 +237,7 @@ func TestHpatchInlineExecution(t *testing.T) {
 }
 
 func TestHpatchInlineStopsOnFailure(t *testing.T) {
+	t.Parallel()
 	transform, overrides := mixedTestTransform(t)
 	history, err := transform.translate("inline-failure", "shell printf failed; exit 7\nnew unstarted.txt\ntype \"no\"", nil)
 	if err != nil || history.translationError != "" {
@@ -261,6 +273,7 @@ func TestHpatchInlineCannotFallbackFromUnclosedBlock(t *testing.T) {
 }
 
 func TestHpatchMixedLargeSourceUsesStdin(t *testing.T) {
+	t.Parallel()
 	transform, overrides := mixedTestTransform(t)
 	content := strings.Repeat("x", 600000) + "世界\n"
 	source := "shell <<SHELL\ntrue\nSHELL\nnew large.txt\ntype " +
@@ -311,6 +324,7 @@ func TestHpatchMixedPreflight(t *testing.T) {
 }
 
 func TestHpatchMixedStopsWithoutRollback(t *testing.T) {
+	t.Parallel()
 	for name, middle := range map[string]string{
 		"nonzero_exit":  "shell <<SHELL\nprintf failed; exit 7\nSHELL",
 		"edit_rejected": "in missing\ntype \"draft\" \"ready\"",
@@ -340,12 +354,13 @@ func TestHpatchMixedStopsWithoutRollback(t *testing.T) {
 }
 
 func TestHpatchMixedWaitsForSessions(t *testing.T) {
-	transform, _ := mixedTestTransform(t)
+	t.Parallel()
+	transform, overrides := mixedTestTransform(t)
 	history, err := transform.translate("wait", "shell <<SHELL\nfirst\nSHELL\nshell <<SHELL\nsecond\nSHELL", nil)
 	if err != nil || history.translationError != "" {
 		t.Fatalf("translate = %v, %s", err, history.translationError)
 	}
-	overrides := `let calls = 0;
+	overrides += `let calls = 0;
 let pending = true;
 tools.exec_command = async () => {
   if (++calls === 1) return {session_id: 42, output: 'start'};
@@ -365,15 +380,16 @@ tools.write_stdin = async args => {
 }
 
 func TestHpatchMixedHostFailuresKeepPartialResults(t *testing.T) {
+	t.Parallel()
 	for _, stage := range []string{"patch", "continuation", "truncated"} {
 		t.Run(stage, func(t *testing.T) {
-			transform, _ := mixedTestTransform(t)
+			transform, overrides := mixedTestTransform(t)
 			source := "shell <<SHELL\nfirst\nSHELL\nnew file.txt\ntype \"ready\\n\"\nshell <<SHELL\nnever\nSHELL"
 			history, err := transform.translate("host-error", source, nil)
 			if err != nil || history.translationError != "" {
 				t.Fatalf("translate = %v, %s", err, history.translationError)
 			}
-			overrides := `let calls = 0;
+			overrides += `let calls = 0;
 tools.exec_command = async () => {
   calls++;
   if (calls === 1) return {exit_code: 0, output: 'completed'};
@@ -431,6 +447,7 @@ func TestHpatchTranslationWorkerDoesNotApply(t *testing.T) {
 }
 
 func TestHpatchMixedCheckpoints(t *testing.T) {
+	t.Parallel()
 	transform, overrides := mixedTestTransform(t)
 	history, err := transform.translate("checkpoints", "shell true\nnew checkpoint.txt\ntype \"done\\n\"\nshell false", nil)
 	if err != nil || history.translationError != "" {
@@ -506,6 +523,7 @@ func TestHpatchNativePreflightRecoveryHasNoContinuation(t *testing.T) {
 }
 
 func TestHpatchEmptyShellProgramsCompleteWithoutExecution(t *testing.T) {
+	t.Parallel()
 	transform, overrides := mixedTestTransform(t)
 	source := "new before.txt\ntype \"before\"\nshell  \nshell \t\nshell \t \nshell <<SHELL\nSHELL\nshell <<SHELL\n \nSHELL\nnew after.txt\ntype \"after\""
 	history, err := transform.translate("empty-shells", source, nil)
@@ -562,6 +580,7 @@ func TestHpatchMixedRecoveryDoesNotInferSuccess(t *testing.T) {
 }
 
 func TestHpatchResumeRepairsOnlyFailedSegment(t *testing.T) {
+	t.Parallel()
 	transform, overrides := mixedTestTransform(t)
 	source := "new kept.txt\ntype \"kept\\n\"\nshell printf x >> attempts; test -f repaired\n" +
 		"new suffix.txt\ntype \"pending\\n\"\nshell printf done"
@@ -602,6 +621,7 @@ func TestHpatchResumeRepairsOnlyFailedSegment(t *testing.T) {
 }
 
 func TestHpatchResumeFreshTargetValidation(t *testing.T) {
+	t.Parallel()
 	transform, overrides := mixedTestTransform(t)
 	if err := os.WriteFile(filepath.Join(transform.directory, "target.txt"), []byte("old\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -652,8 +672,10 @@ func TestHpatchResumeRejectsUnavailableHandles(t *testing.T) {
 }
 
 func TestHpatchRepairAndResume(t *testing.T) {
+	t.Parallel()
 	for _, rejectedRepair := range []bool{false, true} {
 		t.Run(fmt.Sprint(rejectedRepair), func(t *testing.T) {
+			t.Parallel()
 			transform, overrides := mixedTestTransform(t)
 			run := func(call, source string) mixedScriptResult {
 				t.Helper()
@@ -708,6 +730,7 @@ func TestHpatchRepairAndResume(t *testing.T) {
 }
 
 func TestHpatchRepairPreservesReplacement(t *testing.T) {
+	t.Parallel()
 	transform, overrides := mixedTestTransform(t)
 	run := func(call, source string) mixedScriptResult {
 		t.Helper()

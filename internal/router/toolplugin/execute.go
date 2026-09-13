@@ -72,3 +72,17 @@ func Execute(
 	)
 	return result.ExecutionOutput, err
 }
+
+// FormatOutput loads only the shared tokenizer, not executable tool declarations
+// or the WASM source-analysis core. It owns no workspace or inherited input.
+func FormatOutput(ctx context.Context, node, runtimeRoot string, arguments []string) (ExecutionOutput, error) {
+	request := struct {
+		Operation    string   `json:"operation"`
+		SnapshotRoot string   `json:"snapshotRoot"`
+		Arguments    []string `json:"arguments"`
+	}{"format-output", filepath.Join(runtimeRoot, snapshotDirectory), arguments}
+	var result ExecutionOutput
+	err := invoke(ctx, node, filepath.Join(runtimeRoot, hostFilename), request.SnapshotRoot,
+		"", nil, maxEncodedExecutionHostOutputBytes, nil, nil, request, &result)
+	return result, err
+}

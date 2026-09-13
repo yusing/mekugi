@@ -9,32 +9,23 @@ import (
 
 	"github.com/tiktoken-go/tokenizer"
 	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/shellruntime"
 )
 
 func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	t.Setenv(shellruntime.RuntimeDirectoryEnvironment, t.TempDir())
-	t.Setenv(shellruntime.ThreadIDEnvironment, "reviewer-thread")
-	registry, err := buildToolRegistry(t.Context(), t.TempDir(), testMekugiToolDescription, false)
+	t.Parallel()
+	registry := sharedProxyTestRegistry(t)
+	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := registry.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	directory, err := defaultMekugiReplayDirectory()
-	if err != nil {
-		t.Fatal(err)
-	}
+	directory := manifest.ReplayDirectory
 	store, err := openMekugiReplayStore(directory)
 	if err != nil {
 		t.Fatal(err)
 	}
 	workspace := t.TempDir()
-	t.Chdir(workspace)
+	invocation := newShellWorkerTestInvocation(workspace,
+		"XDG_STATE_HOME="+t.TempDir(), "MEKUGI_RUNTIME_DIR="+t.TempDir(), "CODEX_THREAD_ID=reviewer-thread")
 	id, err := store.reserveChange(t.Context(), workspace, "implementer-thread", "edited")
 	if err != nil {
 		t.Fatal(err)
@@ -47,7 +38,6 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Child environment changes cannot redirect the authenticated store.
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	if _, direct := registry.directBashExecCommand([]string{"bash", "hchanges read " + id}); direct {
 		t.Fatal("hchanges escaped the private runner")
 	}
@@ -61,6 +51,7 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 	}
 	for _, interpreter := range []string{"bash", "sh"} {
 		t.Run(interpreter, func(t *testing.T) {
+			t.Parallel()
 			var all strings.Builder
 			cursor := ""
 			for page := range 100 {
@@ -68,7 +59,7 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 				if cursor != "" {
 					command += "--cursor " + cursor + " "
 				}
-				stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, command+id, nil)
+				stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, command+id, nil, invocation)
 				count, err := codec.Count(stdout)
 				if err != nil || count > 32 {
 					t.Fatalf("page tokens = %d, %v", count, err)
@@ -95,7 +86,7 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		"cd child\nhchanges read --workspace .. --summary "+id, nil)
+		"cd child\nhchanges read --workspace .. --summary "+id, nil, invocation)
 	if status != 0 || stderr != "" || !strings.Contains(stdout, `add "file.txt" +12 -0`) || strings.Contains(stdout, "+line") {
 		t.Fatalf("summary from subdirectory: %q, %q, %d", stdout, stderr, status)
 	}
@@ -104,24 +95,24 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 		"hchanges read --summary " + id + " --path " + filepath.Join(workspace, "file.txt"),
 		"hchanges read " + id + " --path ./file.txt --summary " + id,
 	} {
-		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, command, nil)
+		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, command, nil, invocation)
 		if status != 0 || stderr != "" || stdout != id+" applied\nadd \"file.txt\" +12 -0\n" {
 			t.Fatalf("mixed flags: %q: %q, %q, %d", command, stdout, stderr, status)
 		}
 	}
 	stdout, stderr, status = runShellWorkerTest(t, registry, "bash", nil,
-		"hchanges read "+id+" --summary --path missing.txt", nil)
+		"hchanges read "+id+" --summary --path missing.txt", nil, invocation)
 	if status != 0 || stderr != "" || !strings.Contains(stdout, `no files match --path "missing.txt"`) {
 		t.Fatalf("unmatched path: %q, %q, %d", stdout, stderr, status)
 	}
 	stdout, stderr, status = runShellWorkerTest(t, registry, "sh", nil,
-		"hchanges read "+id+" --history --path file.txt --max-tokens 15500", nil)
+		"hchanges read "+id+" --history --path file.txt --max-tokens 15500", nil, invocation)
 	if status != 0 || stderr != "" || !strings.Contains(stdout, "input:") ||
 		strings.Count(stdout, "--- /dev/null") != 1 || strings.Contains(stdout, `add "" ->`) {
 		t.Fatalf("history: %q, %q, %d", stdout, stderr, status)
 	}
 	for _, arguments := range []string{"read hp_a99", "read hp_a1..hp_b2", "read --max-tokens 0 hp_a1", "read --history --summary hp_a1"} {
-		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, "hchanges "+arguments, nil)
+		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, "hchanges "+arguments, nil, invocation)
 		if status == 0 || stdout != "" || stderr == "" {
 			t.Fatalf("%q did not reject: %q, %q, %d", arguments, stdout, stderr, status)
 		}

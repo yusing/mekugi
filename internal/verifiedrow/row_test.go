@@ -1,6 +1,9 @@
 package verifiedrow
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestLines(t *testing.T) {
 	tests := []struct {
@@ -43,5 +46,41 @@ func TestHash(t *testing.T) {
 	}
 	if got := Hash16([]byte("hello")); got != 0x2cf2 {
 		t.Fatalf("Hash16(hello) = %#x, want 0x2cf2", got)
+	}
+}
+
+func TestParseReference(t *testing.T) {
+	for _, test := range []struct {
+		input string
+		want  Reference
+		err   error
+	}{
+		{"1:0000", Reference{1, "0000"}, nil},
+		{"18446744073709551615:abcd", Reference{18446744073709551615, "abcd"}, nil},
+		{"18446744073709551616:abcd", Reference{}, ErrLineOutOfRange},
+		{"999999999999999999999999999999x:abcd", Reference{}, ErrInvalidReference},
+		{"", Reference{}, ErrInvalidReference},
+		{":abcd", Reference{}, ErrInvalidReference},
+		{"0:abcd", Reference{}, ErrInvalidReference},
+		{"01:abcd", Reference{}, ErrInvalidReference},
+		{"+1:abcd", Reference{}, ErrInvalidReference},
+		{"-1:abcd", Reference{}, ErrInvalidReference},
+		{"1_0:abcd", Reference{}, ErrInvalidReference},
+		{"１:abcd", Reference{}, ErrInvalidReference},
+		{"1:ABCd", Reference{}, ErrInvalidReference},
+		{"1:abc", Reference{}, ErrInvalidReference},
+		{"1:abcde", Reference{}, ErrInvalidReference},
+		{"1:abcd:", Reference{}, ErrInvalidReference},
+		{"1:ab:d", Reference{}, ErrInvalidReference},
+		{"1:abcg", Reference{}, ErrInvalidReference},
+		{" 1:abcd", Reference{}, ErrInvalidReference},
+		{"1:abcd\n", Reference{}, ErrInvalidReference},
+		{"1:abcd\r", Reference{}, ErrInvalidReference},
+		{"1:abcd\x00", Reference{}, ErrInvalidReference},
+	} {
+		got, err := ParseReference(test.input)
+		if got != test.want || !errors.Is(err, test.err) {
+			t.Errorf("ParseReference(%q) = %+v, %v; want %+v, %v", test.input, got, err, test.want, test.err)
+		}
 	}
 }

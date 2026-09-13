@@ -81,6 +81,7 @@ func TestHpatchNativeFixture(t *testing.T) {
 }
 
 func TestHpatchResumeCompletedNoopDoesNotRepeatShell(t *testing.T) {
+	t.Parallel()
 	transform, overrides := mixedTestTransform(t)
 	history, err := transform.translate("noop-resume", "in existing.txt\ntype \"same\" \"same\"\nshell printf x >> count", nil)
 	if err != nil || history.translationError != "" {

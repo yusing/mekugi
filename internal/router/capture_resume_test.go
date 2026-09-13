@@ -10,6 +10,7 @@ import (
 // Compare the provider input with a live continuation, rather than comparing
 // cache diagnostics across processes: capture baselines themselves are ephemeral.
 func TestReplayContinuationMatchesLiveProviderInput(t *testing.T) {
+	t.Parallel()
 	for _, protocol := range []string{"native", "ctp2"} {
 		for _, carrier := range []string{"native", "code-mode"} {
 			for _, tool := range []string{"hpatch", "shell"} {

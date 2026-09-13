@@ -54,6 +54,7 @@ func TestDashboardRejectsUnrelatedPaths(t *testing.T) {
 }
 
 func TestDashboardPollingRunsSerially(t *testing.T) {
+	t.Parallel()
 	command := exec.CommandContext(t.Context(), "node", "--test", "dashboard.test.mjs")
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("dashboard polling: %v\n%s", err, output)

@@ -51,6 +51,7 @@ func TestTokenCostServiceTiers(t *testing.T) {
 }
 
 func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
+	t.Parallel()
 	for _, cacheWrites := range []uint64{0, 20_000} {
 		for _, stream := range []bool{false, true} {
 			for _, tc := range []struct{ requested, served, want string }{

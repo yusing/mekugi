@@ -643,3 +643,38 @@ func prepareCTP2TestRequest(t testing.TB, codec *ctp2Codec, request *parsedRespo
 	}
 	return codec.prepareRequest(request, native)
 }
+
+func TestDecodeJSONStringMatchesJSON(t *testing.T) {
+	for _, raw := range []string{
+		`""`, `"text"`, `"escaped\n\u1234"`, `null`, " \r\n\t\"text\"\t ",
+		`[]`, `[{"content":"text"}]`, `{}`, `123`, `true`, `false`,
+		``, ` `, `"unterminated`, `null false`, `"text" true`, "\x00\"text\"",
+		"\u00a0\"text\"", "\"\xff\"", `"a\uD800"`,
+	} {
+		t.Run(raw, func(t *testing.T) {
+			var want string
+			err := json.Unmarshal([]byte(raw), &want)
+			got, ok := decodeJSONString([]byte(raw))
+			if ok != (err == nil) || (ok && got != want) {
+				t.Fatalf("decode = %q, %v; JSON = %q, %v", got, ok, want, err)
+			}
+		})
+	}
+}
+
+func BenchmarkDecodeJSONStringMultipart(b *testing.B) {
+	raw := mustMarshalJSON([]any{map[string]string{
+		"type": "input_text", "text": strings.Repeat("provider-owned content\n", 1000),
+	}})
+	b.Run("unmarshal", func(b *testing.B) {
+		for b.Loop() {
+			var text string
+			_ = json.Unmarshal(raw, &text)
+		}
+	})
+	b.Run("dispatch", func(b *testing.B) {
+		for b.Loop() {
+			_, _ = decodeJSONString(raw)
+		}
+	})
+}

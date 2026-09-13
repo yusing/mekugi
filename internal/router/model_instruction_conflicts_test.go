@@ -445,6 +445,7 @@ func TestStockInstructionRewriteMatchesMultilineConflicts(t *testing.T) {
 }
 
 func TestChecklistRewritePreservesMixedCallerPolicy(t *testing.T) {
+	t.Parallel()
 	cases := []string{
 		"Quoted example:\n```text\nA tool named `update_plan` is available to you. Update the checklist.\n```\nNever deploy without approval.\n",
 		"Quoted example:\n   ~~~~text\nA tool named `update_plan` is available to you. Update the checklist.\n~~~\nIf update_plan is available, use it for complex work.\n   ~~~~\nNever deploy without approval.\n",
@@ -455,103 +456,110 @@ func TestChecklistRewritePreservesMixedCallerPolicy(t *testing.T) {
 		"## Tasks\nQuoted example: You have access to an `update_plan` tool which tracks steps.\nNever deploy without approval.\n",
 		"Progress visibility:\n- Use the plan tool to report progress.\nIf update_plan is available, use it for complex work.\nNever deploy without approval.\n",
 	}
-	for _, policy := range cases {
-		for _, newline := range []string{"\n", "\r\n"} {
-			policy := strings.ReplaceAll(policy, "\n", newline)
-			for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol"} {
-				for _, compact := range []bool{false, true} {
-					guidance := codexinstructions.InstructionsForModel(model, compact)
-					for _, lifecycle := range []string{"stock", "marked", "custom"} {
-						var prefix string
-						switch lifecycle {
-						case "stock":
-							prefix = stockModelInstructionsForTest("", "")
-						case "marked":
-							prefix = guidance
-						case "custom":
-							prefix = "Caller instructions.\n"
-						}
-						for _, carrier := range []string{"instructions", "developer", "developer-parts"} {
-							request := parsedResponsesRequest{fields: map[string]json.RawMessage{
-								"model": mustTestJSON(t, model),
-							}}
-							source := prefix + policy
-							switch carrier {
-							case "instructions":
-								request.fields["instructions"] = mustTestJSON(t, source)
-							case "developer":
-								request.fields["input"] = mustTestJSON(t, []any{map[string]any{
-									"type": "message", "role": "developer", "content": source,
-								}})
-							case "developer-parts":
-								request.fields["input"] = mustTestJSON(t, []any{map[string]any{
-									"type": "message", "role": "developer", "content": []any{
-										map[string]string{"type": "input_text", "text": policy},
-										map[string]string{"type": "input_text", "text": source},
-									},
-								}})
+	for index, policy := range cases {
+		t.Run(fmt.Sprint(index), func(t *testing.T) {
+			t.Parallel()
+			for _, newline := range []string{"\n", "\r\n"} {
+				policy := strings.ReplaceAll(policy, "\n", newline)
+				for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol"} {
+					for _, compact := range []bool{false, true} {
+						// Full model payload injection is covered by the model-family
+						// and lifecycle tests above. Keep this caller-policy matrix
+						// small while retaining the exact marker and transport paths.
+						guidance := fmt.Sprintf("%s\nSelected %s workflow, compact=%t.\n%s\n",
+							mekugiInstructionsStartMarker, model, compact, mekugiInstructionsEndMarker)
+						for _, lifecycle := range []string{"stock", "marked", "custom"} {
+							var prefix string
+							switch lifecycle {
+							case "stock":
+								prefix = stockModelInstructionsForTest("", "")
+							case "marked":
+								prefix = guidance
+							case "custom":
+								prefix = "Caller instructions.\n"
 							}
-							if err := rewriteReceivedModelInstructions(t.Context(), &request, lifecycle == "custom", guidance); err != nil {
-								t.Fatalf("%s/%s: %v", lifecycle, carrier, err)
-							}
-							field := "input"
-							if carrier == "instructions" {
-								field = "instructions"
-							}
-							first := string(request.fields[field])
-							var texts []string
-							if carrier == "instructions" {
-								var text string
-								if err := json.Unmarshal(request.fields[field], &text); err != nil {
-									t.Fatal(err)
+							for _, carrier := range []string{"instructions", "developer", "developer-parts"} {
+								request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+									"model": mustTestJSON(t, model),
+								}}
+								source := prefix + policy
+								switch carrier {
+								case "instructions":
+									request.fields["instructions"] = mustTestJSON(t, source)
+								case "developer":
+									request.fields["input"] = mustTestJSON(t, []any{map[string]any{
+										"type": "message", "role": "developer", "content": source,
+									}})
+								case "developer-parts":
+									request.fields["input"] = mustTestJSON(t, []any{map[string]any{
+										"type": "message", "role": "developer", "content": []any{
+											map[string]string{"type": "input_text", "text": policy},
+											map[string]string{"type": "input_text", "text": source},
+										},
+									}})
 								}
-								texts = append(texts, text)
-							} else {
-								var messages []struct{ Content json.RawMessage }
-								if err := json.Unmarshal(request.fields[field], &messages); err != nil {
-									t.Fatal(err)
+								if err := rewriteReceivedModelInstructions(t.Context(), &request, lifecycle == "custom", guidance); err != nil {
+									t.Fatalf("%s/%s: %v", lifecycle, carrier, err)
 								}
-								if carrier == "developer" {
+								field := "input"
+								if carrier == "instructions" {
+									field = "instructions"
+								}
+								first := string(request.fields[field])
+								var texts []string
+								if carrier == "instructions" {
 									var text string
-									if err := json.Unmarshal(messages[0].Content, &text); err != nil {
+									if err := json.Unmarshal(request.fields[field], &text); err != nil {
 										t.Fatal(err)
 									}
 									texts = append(texts, text)
 								} else {
-									var parts []struct{ Text string }
-									if err := json.Unmarshal(messages[0].Content, &parts); err != nil {
+									var messages []struct{ Content json.RawMessage }
+									if err := json.Unmarshal(request.fields[field], &messages); err != nil {
 										t.Fatal(err)
 									}
-									for _, part := range parts {
-										texts = append(texts, part.Text)
-									}
-								}
-							}
-							for part, text := range texts {
-								if strings.HasPrefix(policy, "Quoted example:") && !strings.Contains(text, policy) {
-									t.Fatalf("%s/%s part %d lost literal example", lifecycle, carrier, part)
-								}
-								for line := range strings.SplitSeq(policy, newline) {
-									if strings.HasPrefix(strings.TrimSpace(line), "Never ") ||
-										strings.HasPrefix(line, "### ") ||
-										strings.Contains(line, "Never deploy") ||
-										strings.HasPrefix(line, "Quoted example:") {
-										if !strings.Contains(text, line) {
-											t.Fatalf("%s/%s part %d lost caller policy %q", lifecycle, carrier, part, line)
+									if carrier == "developer" {
+										var text string
+										if err := json.Unmarshal(messages[0].Content, &text); err != nil {
+											t.Fatal(err)
+										}
+										texts = append(texts, text)
+									} else {
+										var parts []struct{ Text string }
+										if err := json.Unmarshal(messages[0].Content, &parts); err != nil {
+											t.Fatal(err)
+										}
+										for _, part := range parts {
+											texts = append(texts, part.Text)
 										}
 									}
 								}
-							}
-							if err := rewriteReceivedModelInstructions(t.Context(), &request, false, guidance); err != nil {
-								t.Fatal(err)
-							}
-							if string(request.fields[field]) != first {
-								t.Fatalf("%s/%s rewrite is not idempotent", lifecycle, carrier)
+								for part, text := range texts {
+									if strings.HasPrefix(policy, "Quoted example:") && !strings.Contains(text, policy) {
+										t.Fatalf("%s/%s part %d lost literal example", lifecycle, carrier, part)
+									}
+									for line := range strings.SplitSeq(policy, newline) {
+										if strings.HasPrefix(strings.TrimSpace(line), "Never ") ||
+											strings.HasPrefix(line, "### ") ||
+											strings.Contains(line, "Never deploy") ||
+											strings.HasPrefix(line, "Quoted example:") {
+											if !strings.Contains(text, line) {
+												t.Fatalf("%s/%s part %d lost caller policy %q", lifecycle, carrier, part, line)
+											}
+										}
+									}
+								}
+								if err := rewriteReceivedModelInstructions(t.Context(), &request, false, guidance); err != nil {
+									t.Fatal(err)
+								}
+								if string(request.fields[field]) != first {
+									t.Fatalf("%s/%s rewrite is not idempotent", lifecycle, carrier)
+								}
 							}
 						}
 					}
 				}
 			}
-		}
+		})
 	}
 }

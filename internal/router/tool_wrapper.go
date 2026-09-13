@@ -34,25 +34,6 @@ func verifyWorkerSymlink(link, executable, name string) (string, error) {
 	return link, nil
 }
 
-func ensureWorkerFrontendSymlink(wrapper, directory, name string) (string, error) {
-	link := filepath.Join(directory, name)
-	currentTarget, err := os.Readlink(link)
-	if errors.Is(err, os.ErrNotExist) {
-		if err := os.Symlink(wrapper, link); err != nil {
-			return "", fmt.Errorf("create %s worker frontend: %w", name, err)
-		}
-		return link, nil
-	}
-	if err != nil {
-		return "", fmt.Errorf("install %s worker frontend: %s already exists and is not a symlink", name, link)
-	}
-	if currentTarget == wrapper {
-		return link, nil
-	}
-
-	return "", fmt.Errorf("install %s worker frontend: %s points to %s, want %s", name, link, currentTarget, wrapper)
-}
-
 func removeWorkerFrontendSymlink(link, wrapper string) error {
 	target, err := os.Readlink(link)
 	if errors.Is(err, os.ErrNotExist) || err == nil && target != wrapper {

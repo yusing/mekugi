@@ -17,6 +17,7 @@ import (
 )
 
 func TestCaptureShellMisuseAndInstructionRewrite(t *testing.T) {
+	t.Parallel()
 	for _, recovery := range []bool{false, true} {
 		for _, native := range []bool{false, true} {
 			for _, streaming := range []bool{false, true} {

@@ -157,6 +157,7 @@ func TestTokenUsageRejectsIncompletePricing(t *testing.T) {
 }
 
 func TestTokenUsageGapSuppressesLaterReports(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		for _, gap := range []string{"missing", "null", "partial", "invalid", "interrupted", "transport-error", "http-rejection", "failed-with-usage", "incomplete-with-usage", "compaction"} {
 			t.Run(fmt.Sprintf("stream=%t/%s", stream, gap), func(t *testing.T) {

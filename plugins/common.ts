@@ -101,7 +101,11 @@ export class VerifiedRowOutput {
       return false;
     }
     const candidate = this.current + currentRow;
-    const tokens = countGPT5Tokens(candidate);
+    // A token has at least one source byte. Below the soft boundary the byte
+    // count proves both admission and that this window remains unsealed.
+    const tokens = byteLength(candidate) <= Math.min(this.maxTokens ?? VERIFIED_ROW_MAX_TOKENS, VERIFIED_ROW_SOFT_TOKENS)
+      ? byteLength(candidate)
+      : countGPT5Tokens(candidate);
     if (tokens > (this.maxTokens ?? VERIFIED_ROW_MAX_TOKENS)) {
       this.incomplete = true;
       return false;

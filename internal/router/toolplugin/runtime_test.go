@@ -10,6 +10,7 @@ import (
 
 // TestLoadBoundsPluginHostOutput verifies that plugin validation rejects excessive host output.
 func TestLoadBoundsPluginHostOutput(t *testing.T) {
+	t.Parallel()
 	pluginDirectory := t.TempDir()
 	declaration := `process.stdout.write("x".repeat(16 * 1024 * 1024 + 1));
 export default {
@@ -36,6 +37,7 @@ export default {
 
 // TestLoadProvidesSharedCoreToConfiguredPlugin verifies that plugins can import and use mekugi:core/v1.
 func TestLoadProvidesSharedCoreToConfiguredPlugin(t *testing.T) {
+	t.Parallel()
 	pluginDirectory := t.TempDir()
 	declaration := `import {hashLine, parseRowReference} from "mekugi:core/v1";
 const row = parseRowReference("12:abcd");
@@ -59,9 +61,19 @@ export default {
 		t.Fatal(err)
 	}
 
+	// Validate a supported shared-core consumer alongside an unsupported
+	// version in one real registry. A bad sibling must not hide valid tools.
+	if err := os.WriteFile(filepath.Join(pluginDirectory, "future.mjs"), []byte(`import "mekugi:core/v2";
+export default {apiVersion: "mekugi-tool-plugin/v1", id: "future.test", tools: []};
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	snapshot, err := Load(t.Context(), pluginDirectory, filepath.Join(t.TempDir(), "snapshot"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(snapshot.Diagnostics, "\n"), "mekugi plugin module is not supported: mekugi:core/v2") {
+		t.Fatalf("Load() diagnostics = %v", snapshot.Diagnostics)
 	}
 	for _, plugin := range snapshot.Plugins {
 		if plugin.ID != "shared-core.test" {
@@ -75,24 +87,6 @@ export default {
 	t.Fatal("configured shared-core plugin was not loaded")
 }
 
-// TestLoadRejectsUnknownSharedCoreVersion verifies that unknown mekugi:core versions are rejected with diagnostics.
-func TestLoadRejectsUnknownSharedCoreVersion(t *testing.T) {
-	pluginDirectory := t.TempDir()
-	declaration := `import "mekugi:core/v2";
-export default {apiVersion: "mekugi-tool-plugin/v1", id: "future.test", tools: []};
-`
-	if err := os.WriteFile(filepath.Join(pluginDirectory, "future.mjs"), []byte(declaration), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	snapshot, err := Load(t.Context(), pluginDirectory, filepath.Join(t.TempDir(), "snapshot"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(strings.Join(snapshot.Diagnostics, "\n"), "mekugi plugin module is not supported: mekugi:core/v2") {
-		t.Fatalf("Load() diagnostics = %v", snapshot.Diagnostics)
-	}
-}
-
 // TestExecutionHostOutputBoundCoversJSONExpansion verifies the host output buffer accommodates JSON encoding overhead.
 func TestExecutionHostOutputBoundCoversJSONExpansion(t *testing.T) {
 	const minimum = 6*ExecutionOutputBudgetBytes + 1024
@@ -103,6 +97,7 @@ func TestExecutionHostOutputBoundCoversJSONExpansion(t *testing.T) {
 
 // TestLoadTimesOutPluginValidation verifies that plugin validation enforces a timeout.
 func TestLoadTimesOutPluginValidation(t *testing.T) {
+	t.Parallel()
 	pluginDirectory := t.TempDir()
 	declaration := `await new Promise((resolve) => setTimeout(resolve, 60_000));
 export default {

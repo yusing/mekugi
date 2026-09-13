@@ -166,7 +166,13 @@ func runAuthenticatedToolWorker(
 
 	var execution toolplugin.ExecutionOutput
 	if contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell" {
-		execution, err = executeShellTool(ctx, manifest, runtimeRoot, contribution, args, stdin, discoverShellCommentary(filepath.Join(directory, name)))
+		workingDirectory, workingDirectoryErr := os.Getwd()
+		if workingDirectoryErr != nil {
+			err = fmt.Errorf("resolve shell working directory: %w", workingDirectoryErr)
+		} else {
+			execution, err = executeShellTool(ctx, manifest, runtimeRoot, contribution, args, stdin,
+				workingDirectory, os.Environ(), discoverShellCommentary(filepath.Join(directory, name)))
+		}
 	} else {
 		execution, err = toolplugin.Execute(
 			ctx,

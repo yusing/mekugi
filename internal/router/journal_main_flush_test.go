@@ -9,6 +9,7 @@ import (
 )
 
 func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
@@ -129,6 +130,7 @@ func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
 }
 
 func TestJournalMainFlushRejectsUnprovenTrees(t *testing.T) {
+	t.Parallel()
 	for _, durable := range []bool{false, true} {
 		for _, scenario := range []string{"conflict", "unknown-parent", "cycle", "workspace", "fork"} {
 			t.Run(map[bool]string{false: "memory/", true: "disk/"}[durable]+scenario, func(t *testing.T) {

@@ -106,56 +106,37 @@ func detectIndentationWrapperCandidate(baseline string, selected targetSpan, rep
 	}
 
 	replacementLines := logicalLines(replacement)
-	if len(replacementLines) == 2 {
-		header := replacementLines[0]
-		child := replacementLines[1]
-		headerContent := replacement[header.Start:header.ContentEnd]
-		childContent := replacement[child.Start:child.ContentEnd]
-		headerIndent, headerText := splitIndent(headerContent)
-		childIndent, childText := splitIndent(childContent)
-		if headerIndent != originalIndent ||
-			childText != preserved ||
-			strings.Count(childContent, preserved) != 1 ||
-			!pythonIfHeader(headerText) {
-			return indentationCandidate{}, false
-		}
-		return indentationCandidate{
-			kind: indentationCorrectionPythonWrapper,
-			wrapper: indentationWrapperCandidate{
-				childLine:     1,
-				wrapperIndent: originalIndent,
-				preserved:     preserved,
-			},
-			correction: &indentationCorrectionError{
-				proposedLine:     childContent,
-				proposedIndent:   childIndent,
-				correctionIndent: originalIndent,
-				correctedText:    replacement,
-			},
-		}, true
-	}
-	if len(replacementLines) != 3 {
+	if len(replacementLines) != 2 && len(replacementLines) != 3 {
 		return indentationCandidate{}, false
 	}
 	header := replacementLines[0]
 	child := replacementLines[1]
-	closeLine := replacementLines[2]
 	headerContent := replacement[header.Start:header.ContentEnd]
 	childContent := replacement[child.Start:child.ContentEnd]
-	closeContent := replacement[closeLine.Start:closeLine.ContentEnd]
 	headerIndent, headerText := splitIndent(headerContent)
 	childIndent, childText := splitIndent(childContent)
-	closeIndent, closeText := splitIndent(closeContent)
 	if headerIndent != originalIndent ||
-		closeIndent != originalIndent ||
-		closeText != "}" ||
 		childText != preserved ||
-		strings.Count(childContent, preserved) != 1 ||
-		!bracedIfHeader(headerText) {
+		strings.Count(childContent, preserved) != 1 {
 		return indentationCandidate{}, false
 	}
+
+	kind := indentationCorrectionPythonWrapper
+	if len(replacementLines) == 2 {
+		if !pythonIfHeader(headerText) {
+			return indentationCandidate{}, false
+		}
+	} else {
+		closeLine := replacementLines[2]
+		closeContent := replacement[closeLine.Start:closeLine.ContentEnd]
+		closeIndent, closeText := splitIndent(closeContent)
+		if closeIndent != originalIndent || closeText != "}" || !bracedIfHeader(headerText) {
+			return indentationCandidate{}, false
+		}
+		kind = indentationCorrectionBracedWrapper
+	}
 	return indentationCandidate{
-		kind: indentationCorrectionBracedWrapper,
+		kind: kind,
 		wrapper: indentationWrapperCandidate{
 			childLine:     1,
 			wrapperIndent: originalIndent,

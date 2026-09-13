@@ -10,30 +10,41 @@ import (
 )
 
 func TestJournalListDurableAncestry(t *testing.T) {
+	t.Parallel()
+	baseProxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	baseReplay, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseProxy.replayStore = baseReplay
+	baseRoot, _ := prepareActivityTest(t, baseProxy, "root", "root", "", "/root", nil)
+	workspace := baseRoot.directory
+	baseRoot.Close()
+	for _, node := range []struct{ thread, parent, author string }{
+		{"a", "root", "/root/a"},
+		{"b", "root", "/root/b"},
+		{"nested", "a", "/root/a/nested"},
+	} {
+		child, _ := prepareActivityTest(t, baseProxy, node.thread, node.thread, node.parent, node.author, nil)
+		child.Close()
+	}
+	for _, thread := range []string{"root", "a", "b", "nested"} {
+		if _, err := baseProxy.journals.apply(t.Context(), baseReplay, workspace, thread, "", []journalMutation{{Op: "add", Text: new("Result " + thread)}}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, scenario := range []string{"root restart", "child restart", "sibling", "ambiguous", "retained conflict", "ancestor conflict", "other workspace", "cycle", "missing parent"} {
 		t.Run(scenario, func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
-			replay, err := openMekugiReplayStore(t.TempDir())
+			replayDirectory := filepath.Join(t.TempDir(), "replay")
+			if err := os.CopyFS(replayDirectory, os.DirFS(baseReplay.directory)); err != nil {
+				t.Fatal(err)
+			}
+			replay, err := openMekugiReplayStore(replayDirectory)
 			if err != nil {
 				t.Fatal(err)
 			}
 			proxy.replayStore = replay
-			root, _ := prepareActivityTest(t, proxy, "root", "root", "", "/root", nil)
-			workspace := root.directory
-			root.Close()
-			for _, node := range []struct{ thread, parent, author string }{
-				{"a", "root", "/root/a"},
-				{"b", "root", "/root/b"},
-				{"nested", "a", "/root/a/nested"},
-			} {
-				child, _ := prepareActivityTest(t, proxy, node.thread, node.thread, node.parent, node.author, nil)
-				child.Close()
-			}
-			for _, thread := range []string{"root", "a", "b", "nested"} {
-				if _, err := proxy.journals.apply(t.Context(), replay, workspace, thread, "", []journalMutation{{Op: "add", Text: new("Result " + thread)}}); err != nil {
-					t.Fatal(err)
-				}
-			}
 			caller, parent, author, target, want := "root", "", "/root", "/root/a/nested", "Result nested"
 			switch scenario {
 			case "child restart":

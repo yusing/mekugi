@@ -224,8 +224,7 @@ func decodeCTP2RequestView(fields map[string]json.RawMessage, catalog *responses
 // decodeResponsesInput decodes a Responses input field into its structured form.
 func decodeResponsesInput(raw json.RawMessage) (responsesInput, error) {
 	input := responsesInput{raw: bytes.Clone(raw)}
-	var text string
-	if json.Unmarshal(raw, &text) == nil {
+	if text, ok := decodeJSONString(raw); ok {
 		input.text = new(text)
 		return input, nil
 	}
@@ -324,8 +323,7 @@ func transformCTP2DeveloperContent(
 	if transformCarrier == nil {
 		return raw, false, nil
 	}
-	var text string
-	if json.Unmarshal(raw, &text) == nil {
+	if text, ok := decodeJSONString(raw); ok {
 		return mustMarshalJSON(transformCarrier(text)), true, nil
 	}
 	parts, ok := decodeResponsesTextParts(raw)
@@ -389,8 +387,7 @@ func transformLastTextContent(raw json.RawMessage, transform func(string) string
 	if transform == nil {
 		return raw, false, nil
 	}
-	var text string
-	if json.Unmarshal(raw, &text) == nil {
+	if text, ok := decodeJSONString(raw); ok {
 		return mustMarshalJSON(transform(text)), true, nil
 	}
 	parts, ok := decodeResponsesTextParts(raw)
@@ -418,8 +415,7 @@ func transformCTP2Content(
 	transform func(string) string,
 	isTextPart func(string) bool,
 ) (json.RawMessage, bool, error) {
-	var text string
-	if json.Unmarshal(raw, &text) == nil {
+	if text, ok := decodeJSONString(raw); ok {
 		return mustMarshalJSON(transform(text)), true, nil
 	}
 	parts, ok := decodeResponsesTextParts(raw)
@@ -553,8 +549,7 @@ func transformCTP2VisibleLineOutput(
 		}
 		return encoded, nil
 	}
-	var text string
-	if json.Unmarshal(raw, &text) == nil {
+	if text, ok := decodeJSONString(raw); ok {
 		encoded, err := encode(callID, text)
 		if err != nil {
 			return nil, false, err

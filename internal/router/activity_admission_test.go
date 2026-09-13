@@ -20,6 +20,7 @@ func activityAdmissionRequest(t *testing.T, input []any) parsedResponsesRequest 
 }
 
 func TestFailedPreparationDoesNotChangeActivityIdentity(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
 	root, _ := prepareActivityTest(t, proxy, "root-session", "r", "", "/root", nil)
 	child, _ := prepareActivityTest(t, proxy, "child-session", "c", "r", "/root/child", nil)
@@ -44,6 +45,7 @@ func TestFailedPreparationDoesNotChangeActivityIdentity(t *testing.T) {
 }
 
 func TestRejectedIdentityCannotReuseShellActivityAncestry(t *testing.T) {
+	t.Parallel()
 	for _, identity := range []string{
 		`"thread_id":"different","parent_thread_id":"r","agent_name":"/root/child"`,
 		`"thread_id":"c","parent_thread_id":42,"agent_name":"/root/child"`,
@@ -86,6 +88,7 @@ func TestRejectedIdentityCannotReuseShellActivityAncestry(t *testing.T) {
 }
 
 func TestReplyRecipientRequiresCurrentValidIdentity(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, author, kind, recipient string
 		invalid, want                 bool

@@ -64,45 +64,35 @@ func invoke(
 		return fmt.Errorf("close inherited plugin runtime files: %w", closeErr)
 	}
 
+	// Drain before Wait so os/exec's context watcher remains responsible for
+	// descendants retaining these pipes after the host exits.
 	type capturedOutput struct {
-		data     []byte
-		overflow bool
-		err      error
+		data []byte
+		err  error
 	}
 	capture := func(reader io.Reader) <-chan capturedOutput {
-		result := make(chan capturedOutput, 1)
+		done := make(chan capturedOutput, 1)
 		go func() {
-			var output bytes.Buffer
-			_, readErr := io.CopyN(&output, reader, outputLimit+1)
-			switch {
-			case readErr == nil:
-				_, drainErr := io.Copy(io.Discard, reader)
-				result <- capturedOutput{
-					data:     bytes.Clone(output.Bytes()[:outputLimit]),
-					overflow: true,
-					err:      drainErr,
-				}
-			case errors.Is(readErr, io.EOF), errors.Is(readErr, io.ErrUnexpectedEOF):
-				result <- capturedOutput{data: output.Bytes()}
-			default:
-				result <- capturedOutput{data: output.Bytes(), err: readErr}
+			data, err := io.ReadAll(io.LimitReader(reader, outputLimit+1))
+			if err == nil {
+				_, err = io.Copy(io.Discard, reader)
 			}
+			done <- capturedOutput{data, err}
 		}()
-		return result
+		return done
 	}
 	stdoutResult := capture(stdoutPipe)
 	stderrResult := capture(stderrPipe)
-	stdout := <-stdoutResult
-	stderr := <-stderrResult
+	stdout, stderr := <-stdoutResult, <-stderrResult
 	runErr := command.Wait()
 
 	if contextErr := ctx.Err(); contextErr != nil {
 		return contextErr
 	}
-	if stdout.err != nil || stderr.err != nil {
-		return fmt.Errorf("read plugin runtime output: %w", errors.Join(stdout.err, stderr.err))
+	if err := errors.Join(stdout.err, stderr.err); err != nil {
+		return fmt.Errorf("read plugin runtime output: %w", err)
 	}
-	if stdout.overflow || stderr.overflow {
+	if int64(len(stdout.data)) > outputLimit || int64(len(stderr.data)) > outputLimit {
 		return fmt.Errorf("plugin runtime output exceeds %d bytes", outputLimit)
 	}
 	if runErr != nil {

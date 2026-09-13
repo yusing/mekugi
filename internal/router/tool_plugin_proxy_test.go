@@ -236,6 +236,7 @@ func TestToolPluginExecTemplateUsesCanonicalWorkerCommand(t *testing.T) {
 }
 
 func TestToolPluginGenericCarriers(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		input        string
@@ -307,6 +308,7 @@ func TestToolPluginGenericCarriers(t *testing.T) {
 }
 
 func TestToolPluginNativeCustomCarrierJSONAndSSE(t *testing.T) {
+	t.Parallel()
 	t.Run("JSON", func(t *testing.T) {
 		transform, proxy := newNativeToolPluginTestTransform(t)
 		response, err := transform.TransformJSON(mustTestJSON(t, map[string]any{
@@ -419,6 +421,7 @@ func TestToolPluginFunctionCarrierSSE(t *testing.T) {
 }
 
 func TestToolPluginFailuresStayOutsideMekugiRecovery(t *testing.T) {
+	t.Parallel()
 	t.Run("parser rejection is recoverable", func(t *testing.T) {
 		transform, proxy, _ := newToolPluginTestTransform(t)
 		response, err := transform.TransformJSON(mustTestJSON(t, map[string]any{

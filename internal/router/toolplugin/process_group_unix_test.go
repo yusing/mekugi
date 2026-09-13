@@ -76,3 +76,67 @@ setInterval(() => {}, 1000);
 	}
 	t.Fatalf("plugin child process %d survived cancellation", childPID)
 }
+
+func TestInvokeCancellationAfterHostExit(t *testing.T) {
+	t.Parallel()
+	node, err := resolveNodeRuntime(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := t.TempDir()
+	pidPath := filepath.Join(directory, "orphan.pid")
+	hostPath := filepath.Join(directory, "host.mjs")
+	// The child publishes readiness only after it is reparented. Both output
+	// descriptors remain inherited, so host exit alone cannot finish capture.
+	script := `import {spawn} from "node:child_process";
+const child = spawn(process.execPath, ["-e", ` + strconv.Quote(`
+const {writeFileSync} = require("node:fs");
+const timer = setInterval(() => {
+  if (process.ppid !== Number(process.argv[1])) {
+    writeFileSync(process.argv[2], String(process.pid));
+    clearInterval(timer);
+    setInterval(() => {}, 1000);
+  }
+}, 5);
+`) + `, String(process.pid), ` + strconv.Quote(pidPath) + `], {stdio: "inherit"});
+process.exit(0);
+`
+	if err := os.WriteFile(hostPath, []byte(script), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		var response map[string]any
+		result <- invoke(ctx, node, hostPath, "", "", nil, 1024, nil, nil, map[string]any{}, &response)
+	}()
+	var childPID int
+	t.Cleanup(func() {
+		if childPID != 0 {
+			_ = syscall.Kill(childPID, syscall.SIGKILL)
+		}
+	})
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if encoded, err := os.ReadFile(pidPath); err == nil {
+			childPID, _ = strconv.Atoi(string(encoded))
+			if childPID != 0 {
+				break
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if childPID == 0 {
+		t.Fatal("host did not exit and leave its output descriptors with the child")
+	}
+	cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("invoke cancellation = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("cancellation stopped owning the child when the host exited")
+	}
+}

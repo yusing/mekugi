@@ -82,6 +82,7 @@ func TestSplitShellCatWritesLeavesUnsupportedShellUnchanged(t *testing.T) {
 }
 
 func TestShellCatCarrierExecutionAndReplay(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	session := transform.historySessionID
@@ -92,7 +93,7 @@ func TestShellCatCarrierExecutionAndReplay(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bin, "shell"), []byte("#!/bin/sh\ninterpreter=$1\nshift\nexec \"$interpreter\" -c \"$1\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	workerPath := bin + string(os.PathListSeparator) + os.Getenv("PATH")
 	source := "printf before; mkdir nested; cat > nested/out <<'EOF'\n$HOME; literal\nEOF\nprintf after; cat > nested/out <<'EOF'\nreplacement\nEOF\n"
 	upstream := map[string]json.RawMessage{
 		"type": mustMarshalJSON("custom_tool_call"), "name": mustMarshalJSON("shell"),
@@ -112,7 +113,7 @@ func TestShellCatCarrierExecutionAndReplay(t *testing.T) {
 		ExitCode int    `json:"exit_code"`
 		Retained bool   `json:"retained"`
 	}
-	runShellCatJavaScript(t, proxy.registry.NodeExecutable, directory, history.carrierInput(), &result, "")
+	runShellCatJavaScript(t, proxy.registry.NodeExecutable, directory, history.carrierInput(), &result, "", "PATH="+workerPath)
 	if result.Output != "beforeafter" || result.ExitCode != 0 {
 		t.Fatalf("shell result = %+v", result)
 	}
@@ -144,7 +145,7 @@ func TestShellCatCarrierExecutionAndReplay(t *testing.T) {
 	}
 }
 
-func runShellCatJavaScript(t *testing.T, node, directory, carrier string, result any, overrides string) {
+func runShellCatJavaScript(t *testing.T, node, directory, carrier string, result any, overrides string, environment ...string) {
 	t.Helper()
 	program := `const {spawnSync} = require('node:child_process');
 const fs = require('node:fs');
@@ -214,6 +215,9 @@ tools.write_stdin = async args => {
 	}
 	command := exec.CommandContext(t.Context(), node, carrierPath)
 	command.Dir = directory
+	if len(environment) != 0 {
+		command.Env = append(os.Environ(), environment...)
+	}
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("execute carrier: %v\n%s", err, output)
@@ -257,6 +261,7 @@ tools.apply_patch = async () => {
 }
 
 func TestShellCatCarrierRuntimeFallbacks(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	directory := t.TempDir()
@@ -265,7 +270,7 @@ func TestShellCatCarrierRuntimeFallbacks(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bin, "shell"), []byte("#!/bin/sh\ninterpreter=$1\nshift\nexec \"$interpreter\" -c \"$1\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	workerPath := bin + string(os.PathListSeparator) + os.Getenv("PATH")
 	if err := os.Symlink("target", filepath.Join(directory, "link")); err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +285,9 @@ func TestShellCatCarrierRuntimeFallbacks(t *testing.T) {
 			var result struct {
 				ExitCode int `json:"exit_code"`
 			}
-			runShellCatJavaScript(t, proxy.registry.NodeExecutable, directory, carrier, &result, "tools.apply_patch = async () => { throw new Error('unsafe target reached patch tool'); };")
+			runShellCatJavaScript(t, proxy.registry.NodeExecutable, directory, carrier, &result,
+				"tools.apply_patch = async () => { throw new Error('unsafe target reached patch tool'); };",
+				"PATH="+workerPath)
 			if path == "link" {
 				content, err := os.ReadFile(filepath.Join(directory, "target"))
 				if err != nil || string(content) != "literal\n" || result.ExitCode != 0 {
@@ -360,6 +367,7 @@ func TestShellCatStreamingKeepsOneReplayableCarrier(t *testing.T) {
 }
 
 func TestShellCatCarrierPreservesOutputOnHostFailure(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	contribution, _ := proxy.registry.contribution("shell")

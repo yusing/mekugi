@@ -11,6 +11,7 @@ import (
 )
 
 func TestShellBatchExecutionAndReplay(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	directory := t.TempDir()
@@ -19,7 +20,7 @@ func TestShellBatchExecutionAndReplay(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bin, "shell"), []byte("#!/bin/sh\ninterpreter=$1\nshift\nexec \"$interpreter\" -c \"$1\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	workerPath := bin + string(os.PathListSeparator) + os.Getenv("PATH")
 	source := "#!batch=NEXT\n#!params=" + string(mustMarshalJSON(map[string]any{"workdir": directory})) +
 		"\nprintf before; exit 7\nNEXT\n#!python3\nfrom pathlib import Path\nPath('order').write_text('python')\nprint('middle')\nNEXT\n" +
 		"#!params=" + string(mustMarshalJSON(map[string]any{"workdir": directory, "yield_time_ms": 1000})) +
@@ -45,7 +46,7 @@ func TestShellBatchExecutionAndReplay(t *testing.T) {
 		Retained  bool   `json:"retained"`
 		ScriptRef string `json:"script_ref"`
 	}
-	runShellCatJavaScript(t, proxy.registry.NodeExecutable, directory, history.carrierInput(), &result, "")
+	runShellCatJavaScript(t, proxy.registry.NodeExecutable, directory, history.carrierInput(), &result, "", "PATH="+workerPath)
 	if len(result.Results) != 3 || result.Results[0].Output != "before" || result.Results[0].ExitCode != 7 ||
 		result.Results[1].Output != "middle\n" || result.Results[1].ExitCode != 0 ||
 		result.Results[2].Output != "python" || result.Results[2].ExitCode != 0 {
@@ -92,6 +93,7 @@ func TestShellBatchExecutionAndReplay(t *testing.T) {
 }
 
 func TestShellBatchStopPolicyExecutionAndRetention(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	directory := t.TempDir()
@@ -100,7 +102,7 @@ func TestShellBatchStopPolicyExecutionAndRetention(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bin, "shell"), []byte("#!/bin/sh\ninterpreter=$1\nshift\nexec \"$interpreter\" -c \"$1\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	workerPath := bin + string(os.PathListSeparator) + os.Getenv("PATH")
 	source := "#!batch-stop=NEXT\n#!params=" + string(mustMarshalJSON(map[string]any{"workdir": directory})) +
 		"\nprintf failed; exit 7\nNEXT\ntouch should-not-run"
 	contribution, _ := proxy.registry.contribution("shell")
@@ -119,7 +121,7 @@ func TestShellBatchStopPolicyExecutionAndRetention(t *testing.T) {
 			Reason     string `json:"stopped_reason"`
 		} `json:"batch"`
 	}
-	runShellCatJavaScript(t, proxy.registry.NodeExecutable, directory, history.carrierInput(), &result, "")
+	runShellCatJavaScript(t, proxy.registry.NodeExecutable, directory, history.carrierInput(), &result, "", "PATH="+workerPath)
 	if len(result.Results) != 1 || result.Results[0]["exit_code"] != float64(7) ||
 		result.Batch.Policy != "stop" || result.Batch.Total != 2 || result.Batch.Started != 1 ||
 		result.Batch.NotStarted != 1 || result.Batch.Reason != "nonzero_exit" {
@@ -139,6 +141,7 @@ func TestShellBatchStopPolicyExecutionAndRetention(t *testing.T) {
 }
 
 func TestShellBatchStopWaitsForTerminalExit(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	contribution, _ := proxy.registry.contribution("shell")
@@ -169,6 +172,7 @@ tools.write_stdin = async args => {
 }
 
 func TestShellBatchParamsAndContinuation(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	contribution, _ := proxy.registry.contribution("shell")
@@ -221,6 +225,7 @@ tools.write_stdin = async args => {
 }
 
 func TestShellBatchRejectsBeforeExecution(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
 	contribution, _ := proxy.registry.contribution("shell")
 	for _, test := range []struct {
@@ -257,6 +262,7 @@ func TestShellBatchRejectsBeforeExecution(t *testing.T) {
 	}
 }
 func TestShellBatchPreservesPartialResultsOnHostFailure(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	contribution, _ := proxy.registry.contribution("shell")

@@ -4,13 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"regexp"
 	"strconv"
+	"strings"
 )
 
 const HashLength = 4
-
-var referencePattern = regexp.MustCompile(`^([1-9][0-9]*):([0-9a-f]{4})$`)
 
 var (
 	ErrInvalidReference = errors.New("row must be LINE:HASH with a positive line and lowercase four-digit hash")
@@ -100,13 +98,14 @@ func lineAt(text string, start int) Line {
 // ParseReference parses the portable LINE:HASH framing without applying a
 // caller's line-resolution policy.
 func ParseReference(value string) (Reference, error) {
-	match := referencePattern.FindStringSubmatch(value)
-	if match == nil {
+	lineText, hash, ok := strings.Cut(value, ":")
+	if !ok || len(hash) != HashLength || lineText == "" || lineText[0] == '0' ||
+		strings.Trim(lineText, "0123456789") != "" || strings.Trim(hash, "0123456789abcdef") != "" {
 		return Reference{}, ErrInvalidReference
 	}
-	line, err := strconv.ParseUint(match[1], 10, 64)
+	line, err := strconv.ParseUint(lineText, 10, 64)
 	if err != nil {
 		return Reference{}, ErrLineOutOfRange
 	}
-	return Reference{Line: line, Hash: match[2]}, nil
+	return Reference{Line: line, Hash: hash}, nil
 }

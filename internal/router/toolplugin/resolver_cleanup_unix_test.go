@@ -28,6 +28,7 @@ func TestResolverCleanupRetiresInheritedPipeDescendants(t *testing.T) {
 		}
 		for _, outcome := range outcomes {
 			t.Run(kind+"/"+outcome, func(t *testing.T) {
+				t.Parallel()
 				directory, err := filepath.EvalSymlinks(t.TempDir())
 				if err != nil {
 					t.Fatal(err)
@@ -57,24 +58,30 @@ func TestResolverCleanupRetiresInheritedPipeDescendants(t *testing.T) {
 					t.Fatal(err)
 				}
 				budget := 5 * time.Second
+				cleanupDurationPath := filepath.Join(directory, "cleanup-duration")
+				timerPreload := filepath.Join(directory, "timers.cjs")
+				if err := os.WriteFile(timerPreload, []byte(controlledHostTimersPreload), 0600); err != nil {
+					t.Fatal(err)
+				}
 				var deadlineDurationPath, deadlineReadyPath, deadlineExpiredPath string
-				var deadlinePreload string
 				if outcome == "timeout" {
 					deadlineDurationPath = filepath.Join(directory, "deadline-duration")
 					deadlineReadyPath = filepath.Join(directory, "deadline-ready")
 					deadlineExpiredPath = filepath.Join(directory, "deadline-expired")
-					deadlinePreload = filepath.Join(directory, "deadline.cjs")
-					if err := os.WriteFile(deadlinePreload, []byte(resolverDeadlinePreload), 0600); err != nil {
-						t.Fatal(err)
-					}
 				}
 				ctx, cancel := context.WithTimeout(t.Context(), budget)
 				defer cancel()
+				nodeOptions := strings.TrimSpace(os.Getenv("NODE_OPTIONS") + " --require=" + strconv.Quote(timerPreload))
+				accelerateCleanup := ""
+				if kind == "gopls" {
+					accelerateCleanup = "1"
+				}
 				environment := append(os.Environ(), "PATH="+directory, "FIXTURE_KIND="+kind, "FIXTURE_OUTCOME="+outcome,
-					"FIXTURE_PID="+pidPath, "FIXTURE_SOURCE="+inputPath)
+					"FIXTURE_PID="+pidPath, "FIXTURE_SOURCE="+inputPath, "FIXTURE_HOST="+filepath.Join(snapshot.Root, hostFilename),
+					"FIXTURE_CLEANUP_DURATION="+cleanupDurationPath, "FIXTURE_ACCELERATE_CLEANUP="+accelerateCleanup,
+					"NODE_OPTIONS="+nodeOptions)
 				if outcome == "timeout" {
-					nodeOptions := strings.TrimSpace(os.Getenv("NODE_OPTIONS") + " --require=" + strconv.Quote(deadlinePreload))
-					environment = append(environment, "NODE_OPTIONS="+nodeOptions, "FIXTURE_DEADLINE_DURATION="+deadlineDurationPath,
+					environment = append(environment, "FIXTURE_DEADLINE_DURATION="+deadlineDurationPath,
 						"FIXTURE_DEADLINE_READY="+deadlineReadyPath, "FIXTURE_DEADLINE_EXPIRED="+deadlineExpiredPath)
 				}
 				started := time.Now()
@@ -98,6 +105,9 @@ func TestResolverCleanupRetiresInheritedPipeDescendants(t *testing.T) {
 					if outcome == "timeout" && !strings.Contains(result.Stderr, "deadline exceeded") {
 						t.Fatalf("timeout result = %+v", result)
 					}
+				}
+				if encoded, err := os.ReadFile(cleanupDurationPath); err != nil || string(encoded) != "1000" {
+					t.Fatalf("controlled resolver cleanup duration = %q, %v; want %q", encoded, err, "1000")
 				}
 				if outcome == "timeout" {
 					for path, want := range map[string]string{
@@ -186,15 +196,19 @@ if (process.env.FIXTURE_KIND === "gopls") {
 setInterval(() => {}, 1000);
 `
 
-// The timeout cases must exercise the shipped 30-second resolver deadline
-// without making the test suite sleep for it. The fake resolver releases this
-// one controlled timer only after it has received the semantic query. All
-// cleanup and protocol-drain timers retain their real durations.
-const resolverDeadlinePreload = `const {existsSync, writeFileSync} = require("node:fs");
+// The resolver cases exercise real subprocess and process-group cleanup without
+// sleeping for its full grace period. The preload records the shipped timer
+// durations and advances only those timers in the plugin host. The timeout timer
+// is released only after the semantic query starts.
+const controlledHostTimersPreload = `const {existsSync, readFileSync, writeFileSync} = require("node:fs");
 const realSetTimeout = globalThis.setTimeout;
 const realClearTimeout = globalThis.clearTimeout;
 const controlled = new Map();
 globalThis.setTimeout = function(callback, delay, ...args) {
+  if (delay === 1_000 && process.argv[1] === process.env.FIXTURE_HOST) {
+    writeFileSync(process.env.FIXTURE_CLEANUP_DURATION, String(delay));
+    return realSetTimeout(callback, process.env.FIXTURE_ACCELERATE_CLEANUP ? 1 : delay, ...args);
+  }
   if (delay !== 30_000 || !process.env.FIXTURE_DEADLINE_READY) {
     return realSetTimeout(callback, delay, ...args);
   }
@@ -204,7 +218,8 @@ globalThis.setTimeout = function(callback, delay, ...args) {
   controlled.set(token, state);
   const poll = () => {
     if (state.cancelled) return;
-    if (existsSync(process.env.FIXTURE_DEADLINE_READY)) {
+    if (existsSync(process.env.FIXTURE_DEADLINE_READY)
+        && readFileSync(process.env.FIXTURE_DEADLINE_READY, "utf8") === "ready") {
       writeFileSync(process.env.FIXTURE_DEADLINE_EXPIRED, "ready");
       callback(...args);
       return;

@@ -141,7 +141,7 @@ func shellCatLiteral(word *syntax.Word) (string, bool) {
 	if word == nil || !shellCatLiteralParts(word.Parts, false) {
 		return "", false
 	}
-	value, err := expand.Literal(nil, word)
+	value, err := expand.Literal(&expand.Config{}, word)
 	return value, err == nil
 }
 

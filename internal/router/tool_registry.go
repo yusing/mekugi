@@ -33,6 +33,19 @@ func buildToolRegistry(ctx context.Context, dataDirectory, mekugiDescription str
 	if err != nil {
 		return nil, fmt.Errorf("locate shell runtime directory: %w", err)
 	}
+	replayDirectory, err := defaultMekugiReplayDirectory()
+	if err != nil {
+		return nil, err
+	}
+	return buildToolRegistryAt(ctx, dataDirectory, mekugiDescription, diagnose, runtimeDirectory, replayDirectory)
+}
+
+func buildToolRegistryAt(
+	ctx context.Context,
+	dataDirectory, mekugiDescription string,
+	diagnose bool,
+	runtimeDirectory, replayDirectory string,
+) (*toolRegistry, error) {
 	if err := os.MkdirAll(runtimeDirectory, 0o700); err != nil {
 		return nil, fmt.Errorf("create shell runtime directory: %w", err)
 	}
@@ -62,10 +75,6 @@ func buildToolRegistry(ctx context.Context, dataDirectory, mekugiDescription str
 		filepath.Join(dataDirectory, "plugins"),
 		filepath.Join(snapshotDirectory, "runtime"),
 	)
-	if err != nil {
-		return fail(err)
-	}
-	replayDirectory, err := defaultMekugiReplayDirectory()
 	if err != nil {
 		return fail(err)
 	}
@@ -181,19 +190,7 @@ func buildToolRegistry(ctx context.Context, dataDirectory, mekugiDescription str
 	}
 	var shellRuntime string
 	for _, contribution := range contributions {
-		if contribution.Builtin {
-			continue
-		}
-		if contribution.PluginID == builtinToolsPluginID {
-			if contribution.Name != "shell" {
-				continue
-			}
-			worker, workerErr := ensureWorkerSymlinkInDirectory(executable, snapshotDirectory, contribution.Name)
-			if workerErr != nil {
-				validationErrors = append(validationErrors, workerErr)
-			} else {
-				shellRuntime = worker
-			}
+		if contribution.Builtin || (contribution.PluginID == builtinToolsPluginID && contribution.Name != "shell") {
 			continue
 		}
 		wrapper, wrapperErr := ensureWorkerSymlinkInDirectory(executable, snapshotDirectory, contribution.Name)
@@ -201,7 +198,11 @@ func buildToolRegistry(ctx context.Context, dataDirectory, mekugiDescription str
 			validationErrors = append(validationErrors, wrapperErr)
 			continue
 		}
-		wrappers[contribution.Name] = wrapper
+		if contribution.PluginID == builtinToolsPluginID {
+			shellRuntime = wrapper
+		} else {
+			wrappers[contribution.Name] = wrapper
+		}
 	}
 	if len(validationErrors) != 0 {
 		return fail(errors.Join(validationErrors...))
@@ -352,7 +353,7 @@ func (registry *toolRegistry) installFrontends() error {
 		if !ok {
 			continue
 		}
-		frontend, err := ensureWorkerFrontendSymlink(
+		frontend, err := ensureWorkerSymlinkInDirectory(
 			wrapper,
 			registry.frontendDirectory,
 			contribution.Name,
@@ -396,27 +397,16 @@ func (registry *toolRegistry) contribution(name string) (toolContribution, bool)
 	return contribution, ok
 }
 
-func (registry *toolRegistry) modelContributions() []toolContribution {
-	if registry == nil {
-		return nil
-	}
-	contributions := make([]toolContribution, 0, len(registry.ordered))
-	for _, contribution := range registry.ordered {
-		if contribution.ModelVisible {
-			contributions = append(contributions, contribution)
-		}
-	}
-	return contributions
-}
-
 // specifications returns the tool specifications for all model-visible contributions.
 func (registry *toolRegistry) specifications() ([]*responsesToolDefinition, error) {
 	if registry == nil {
 		return nil, errors.New("tool registry is unavailable")
 	}
-	contributions := registry.modelContributions()
-	specifications := make([]*responsesToolDefinition, 0, len(contributions))
-	for _, contribution := range contributions {
+	specifications := make([]*responsesToolDefinition, 0, len(registry.ordered))
+	for _, contribution := range registry.ordered {
+		if !contribution.ModelVisible {
+			continue
+		}
 		specification, err := decodeResponsesToolDefinition(contribution.Specification)
 		if err != nil {
 			return nil, fmt.Errorf("decode registered tool %s/%s: %w", contribution.PluginID, contribution.Name, err)

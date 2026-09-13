@@ -12,6 +12,7 @@ import (
 )
 
 func TestJournalWebSocketContinuationRetainsStreamedCall(t *testing.T) {
+	t.Parallel()
 	for _, protocol := range []string{"native", "ctp2"} {
 		for _, snapshot := range []string{"empty", "absent", "complete", "snapshot-only"} {
 			t.Run(protocol+"/"+snapshot, func(t *testing.T) {

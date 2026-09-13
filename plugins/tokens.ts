@@ -1,5 +1,9 @@
-import {encode, countTokens} from "gpt-tokenizer/model/gpt-5";
-import bpeRanks from "gpt-tokenizer/bpeRanks/o200k_base";
+// Bun bundles these synchronous imports lazily. Registry validation, translation,
+// argument failures, and line-only readers do not need the tokenizer tables.
+let model: typeof import("gpt-tokenizer/model/gpt-5") | undefined;
+let vocabulary: typeof import("gpt-tokenizer/bpeRanks/o200k_base").default | undefined;
+const tokenizer = () => model ??= require("gpt-tokenizer/model/gpt-5") as NonNullable<typeof model>;
+const tokenRanks = () => vocabulary ??= require("gpt-tokenizer/bpeRanks/o200k_base").default as NonNullable<typeof vocabulary>;
 import {O200K_TOKEN_SPLIT_REGEX} from "gpt-tokenizer/encodingParams/constants";
 
 // Source and command output treat tokenizer control spellings as ordinary text.
@@ -12,7 +16,7 @@ let cachedPieceBytes = 0;
 let byteRanks: Map<string, number> | undefined;
 
 export function tokenBytes(token: number): Buffer {
-  const value = bpeRanks[token];
+  const value = tokenRanks()[token];
   if (value === undefined) {
     throw new Error(`unknown GPT-5 token ${token}`);
   }
@@ -22,7 +26,7 @@ export function tokenBytes(token: number): Buffer {
 function ranksByBytes(): Map<string, number> {
   if (byteRanks === undefined) {
     byteRanks = new Map();
-    bpeRanks.forEach((_value, rank) => byteRanks!.set(tokenBytes(rank).toString("latin1"), rank));
+    tokenRanks().forEach((_value, rank) => byteRanks!.set(tokenBytes(rank).toString("latin1"), rank));
   }
   return byteRanks;
 }
@@ -144,14 +148,14 @@ function encodeLongPiece(piece: string): number[] {
 
 export function encodeGPT5(value: string): number[] {
   if (Buffer.byteLength(value, "utf8") <= LONG_PIECE_BYTES) {
-    return encode(value, sourceTokenOptions);
+    return tokenizer().encode(value, sourceTokenOptions);
   }
   const result: number[] = [];
   // Reuse the pinned model's exact pre-tokenization regex and vocabulary.
   for (const [piece] of value.matchAll(O200K_TOKEN_SPLIT_REGEX)) {
     const tokens = Buffer.byteLength(piece, "utf8") > LONG_PIECE_BYTES
       ? encodeLongPiece(piece)
-      : encode(piece, sourceTokenOptions);
+      : tokenizer().encode(piece, sourceTokenOptions);
     for (const token of tokens) {
       result.push(token);
     }
@@ -161,6 +165,6 @@ export function encodeGPT5(value: string): number[] {
 
 export function countGPT5Tokens(value: string): number {
   return Buffer.byteLength(value, "utf8") <= LONG_PIECE_BYTES
-    ? countTokens(value, sourceTokenOptions)
+    ? tokenizer().countTokens(value, sourceTokenOptions)
     : encodeGPT5(value).length;
 }

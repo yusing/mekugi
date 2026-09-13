@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func startHpatchControlTest(t *testing.T) (*json.Encoder, *json.Decoder, <-chan error) {
+func startHpatchControlTest(t *testing.T, transform *mekugiResponseTransform) (*json.Encoder, *json.Decoder, <-chan error) {
 	t.Helper()
 	input, send, err := os.Pipe()
 	if err != nil {
@@ -27,7 +27,8 @@ func startHpatchControlTest(t *testing.T) (*json.Encoder, *json.Decoder, <-chan 
 	done := make(chan error, 1)
 	go func() {
 		defer output.Close()
-		done <- runHpatchControl(ctx, input, output)
+		done <- runHpatchControlAt(ctx, input, output,
+			filepath.Dir(transform.shellDirectory), strings.TrimPrefix(filepath.Base(transform.shellDirectory), "mekugi-scripts-"))
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -81,6 +82,7 @@ func readHpatchControlReply(t *testing.T, encoder *json.Encoder, decoder *json.D
 }
 
 func TestHpatchControlThreadBindingAndIsolation(t *testing.T) {
+	t.Parallel()
 	transform, _ := mixedTestTransform(t)
 	first, err := transform.retainMixedScript("", "", "shell true", nil)
 	if err != nil {
@@ -91,8 +93,8 @@ func TestHpatchControlThreadBindingAndIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	one, repliesOne, doneOne := startHpatchControlTest(t)
-	two, repliesTwo, doneTwo := startHpatchControlTest(t)
+	one, repliesOne, doneOne := startHpatchControlTest(t, transform)
+	two, repliesTwo, doneTwo := startHpatchControlTest(t, transform)
 	controlTestRequest(t, one, repliesOne, hpatchControlRequest{Operation: "open", Handle: first.Handle})
 	controlTestRequest(t, two, repliesTwo, hpatchControlRequest{Operation: "open", Handle: second.Handle})
 	for _, channel := range []struct {
@@ -129,19 +131,20 @@ func TestHpatchControlThreadBindingAndIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Another thread cannot open either handle even when it knows the ID.
-	t.Setenv("CODEX_THREAD_ID", "unrelated-thread")
-	if err := runHpatchControl(t.Context(), nil, io.Discard); err == nil {
+	if err := runHpatchControlAt(t.Context(), nil, io.Discard,
+		filepath.Dir(transform.shellDirectory), "unrelated-thread"); err == nil {
 		t.Fatal("missing thread storage accepted")
 	}
 }
 
 func TestHpatchControlCheckpointAndStaleRevision(t *testing.T) {
+	t.Parallel()
 	transform, _ := mixedTestTransform(t)
 	state, err := transform.retainMixedScript("", "", "shell true", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	send, receive, done := startHpatchControlTest(t)
+	send, receive, done := startHpatchControlTest(t, transform)
 	controlTestRequest(t, send, receive, hpatchControlRequest{Operation: "open", Handle: state.Handle})
 	mutations := []hpatchControlMutation{{Path: []string{"index"}, Value: mustMarshalJSON(1)}}
 	reply := controlTestRequest(t, send, receive, hpatchControlRequest{Operation: "checkpoint", Mutations: mutations})
@@ -204,6 +207,7 @@ func TestHpatchControlMutationsCopyTranslationResult(t *testing.T) {
 }
 
 func TestHpatchControlCarrierHasOneBareCommand(t *testing.T) {
+	t.Parallel()
 	transform, overrides := mixedTestTransform(t)
 	history, err := transform.translate("control-display",
 		"shell printf first\nnew out.txt\ntype \"data\\n\"\nshell printf last", nil)
@@ -239,12 +243,13 @@ tools.write_stdin = async args => {
 }
 
 func TestHpatchControlCloseDuringChunkedReply(t *testing.T) {
+	t.Parallel()
 	transform, _ := mixedTestTransform(t)
 	state, err := transform.retainMixedScript("", "", "shell true", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	send, receive, done := startHpatchControlTest(t)
+	send, receive, done := startHpatchControlTest(t, transform)
 	controlTestRequest(t, send, receive, hpatchControlRequest{Operation: "open", Handle: state.Handle})
 	source := "new chunked.txt\ntype \"" + strings.Repeat("x", 100000) + "\""
 	if err := send.Encode(hpatchControlRequest{Operation: "translate", Source: source}); err != nil {

@@ -1,7 +1,6 @@
 package router
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,6 +11,18 @@ import (
 	"unicode/utf8"
 )
 
+type shellWorkerTestInvocation struct {
+	directory   string
+	environment []string
+}
+
+func newShellWorkerTestInvocation(directory string, environment ...string) shellWorkerTestInvocation {
+	return shellWorkerTestInvocation{
+		directory:   directory,
+		environment: append(os.Environ(), environment...),
+	}
+}
+
 func runShellWorkerTest(
 	t *testing.T,
 	registry *toolRegistry,
@@ -19,31 +30,55 @@ func runShellWorkerTest(
 	interpreterArguments []string,
 	script string,
 	stdin *os.File,
+	invocations ...shellWorkerTestInvocation,
 ) (stdout, stderr string, exitCode int) {
 	t.Helper()
-	var stdoutBuffer, stderrBuffer bytes.Buffer
-	workerArguments := []string{interpreter}
-	workerArguments = append(workerArguments, interpreterArguments...)
-	workerArguments = append(workerArguments, script)
-	handled, exitCode := RunToolPluginWorker(
-		t.Context(),
-		registry.shellRuntime,
-		workerArguments,
-		stdin,
-		&stdoutBuffer,
-		&stderrBuffer,
-	)
-	if !handled {
-		t.Fatal("direct shell worker was not handled")
+	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
+	if err != nil {
+		t.Fatal(err)
 	}
-	return stdoutBuffer.String(), stderrBuffer.String(), exitCode
+	shell, ok := registry.contribution("shell")
+	if !ok {
+		t.Fatal("shell contribution is unavailable")
+	}
+	arguments := []string{interpreter}
+	arguments = append(arguments, interpreterArguments...)
+	if len(invocations) > 1 {
+		t.Fatal("runShellWorkerTest accepts at most one invocation")
+	}
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	environment := os.Environ()
+	if len(invocations) == 1 {
+		workingDirectory = invocations[0].directory
+		environment = invocations[0].environment
+	}
+	arguments = append(arguments, script)
+	execution, err := executeShellTool(
+		t.Context(),
+		manifest,
+		registry.RuntimeRoot,
+		&shell,
+		arguments,
+		stdin,
+		workingDirectory,
+		environment,
+		discoverShellCommentary(registry.shellRuntime),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return execution.Stdout, execution.Stderr, execution.ExitCode
 }
 
 func TestShellRunnerJoinsIndependentBackgroundJobsAndPreservesFailure(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	for _, interpreter := range []string{"bash", "sh"} {
 		t.Run(interpreter, func(t *testing.T) {
-			t.Chdir(t.TempDir())
+			invocation := newShellWorkerTestInvocation(t.TempDir())
 			// Each job needs the other's marker, so sequential execution fails
 			// instead of passing a timing-only assertion. Polling is bounded.
 			script := `
@@ -78,7 +113,7 @@ wait "$second_check_pid" || checks_status=$?
 printf 'joined both\n'
 exit "$checks_status"
 `
-			stdout, stderr, exitCode := runShellWorkerTest(t, registry, interpreter, nil, script, nil)
+			stdout, stderr, exitCode := runShellWorkerTest(t, registry, interpreter, nil, script, nil, invocation)
 			if exitCode != 7 || stderr != "" {
 				t.Fatalf("exit %d, stdout %q, stderr %q", exitCode, stdout, stderr)
 			}
@@ -92,6 +127,7 @@ exit "$checks_status"
 }
 
 func TestShellRunnerUsesInterpreterBasenameForLanguageVariant(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 
 	for _, interpreter := range []string{"bash", "/usr/bin/bash"} {
@@ -153,6 +189,7 @@ func TestShellRunnerUsesInterpreterBasenameForLanguageVariant(t *testing.T) {
 }
 
 func TestShellRunnerEvaluatesPrivateToolsWithoutFrontends(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	for _, name := range []string{"hcat", "hgrep", "hsymbol", "inspect_file"} {
 		if wrapper, ok := registry.wrapper(name); ok {
@@ -168,25 +205,29 @@ func TestShellRunnerEvaluatesPrivateToolsWithoutFrontends(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(nested, "space name.txt"), []byte("alpha\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Chdir(workspace)
-	t.Setenv("PATH", "/usr/bin:/bin")
+	invocation := newShellWorkerTestInvocation(workspace, "PATH=/usr/bin:/bin")
 
 	for _, interpreter := range []string{"bash", "/bin/sh"} {
-		stdout, stderr, exitCode := runShellWorkerTest(
-			t,
-			registry,
-			interpreter,
-			nil,
-			"cd nested\nhcat 'space name.txt' 1:1 | { read -r row; printf 'row:%s\\n' \"$row\"; }\nhcat missing 2>/dev/null || printf recovered",
-			nil,
-		)
-		if exitCode != 0 || stdout != "row:1:8ed3 alpha\nrecovered" || stderr != "" {
-			t.Fatalf("%s: exit %d, stdout %q, stderr %q", interpreter, exitCode, stdout, stderr)
-		}
+		t.Run(interpreter, func(t *testing.T) {
+			t.Parallel()
+			stdout, stderr, exitCode := runShellWorkerTest(
+				t,
+				registry,
+				interpreter,
+				nil,
+				"cd nested\nhcat 'space name.txt' 1:1 | { read -r row; printf 'row:%s\\n' \"$row\"; }\nhcat missing 2>/dev/null || printf recovered",
+				nil,
+				invocation,
+			)
+			if exitCode != 0 || stdout != "row:1:8ed3 alpha\nrecovered" || stderr != "" {
+				t.Fatalf("%s: exit %d, stdout %q, stderr %q", interpreter, exitCode, stdout, stderr)
+			}
+		})
 	}
 }
 
 func TestShellRunnerQueriesCurrentSymbol(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	workspace := t.TempDir()
 	caller := t.TempDir()
@@ -199,14 +240,13 @@ func TestShellRunnerQueriesCurrentSymbol(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bin, "gopls"), []byte(resolver), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Chdir(caller)
+	invocation := newShellWorkerTestInvocation(caller, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	alias := filepath.Join(caller, "project")
 	if err := os.Symlink(workspace, alias); err != nil {
 		t.Fatal(err)
 	}
 	stdout, stderr, status := runShellWorkerTest(t, registry, "/bin/sh", nil,
-		fmt.Sprintf("hsymbol --workspace %q refs source.go 2 Pick", alias), nil)
+		fmt.Sprintf("hsymbol --workspace %q refs source.go 2 Pick", alias), nil, invocation)
 	if status != 0 || !strings.Contains(stdout, fmt.Sprintf("%q:2:", source)) ||
 		!strings.Contains(stdout, "func Pick() {}") || !strings.Contains(stderr, "(current snapshot)") {
 		t.Fatalf("semantic lookup: stdout=%q stderr=%q exit=%d", stdout, stderr, status)
@@ -214,15 +254,16 @@ func TestShellRunnerQueriesCurrentSymbol(t *testing.T) {
 }
 
 func TestShellRunnerInspectsOutsideFile(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	workspace := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "value.json")
 	if err := os.WriteFile(outside, []byte(`{"answer":{"nested":42},"other":false}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Chdir(workspace)
+	invocation := newShellWorkerTestInvocation(workspace)
 	stdout, stderr, status := runShellWorkerTest(t, registry, "/bin/sh", nil,
-		fmt.Sprintf("inspect_file %q", outside), nil)
+		fmt.Sprintf("inspect_file %q", outside), nil, invocation)
 	var result struct {
 		OK   bool `json:"ok"`
 		Data struct {
@@ -241,6 +282,7 @@ func TestShellRunnerInspectsOutsideFile(t *testing.T) {
 }
 
 func TestShellRunnerReadsRetainedHCatArtifact(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	runtimeDirectory := t.TempDir()
 	retainedDirectory := filepath.Join(runtimeDirectory, "mekugi-scripts-thread-id")
@@ -250,39 +292,36 @@ func TestShellRunnerReadsRetainedHCatArtifact(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(retainedDirectory, "call-id"), []byte("first\nretained\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MEKUGI_RUNTIME_DIR", runtimeDirectory)
-	t.Setenv("CODEX_THREAD_ID", "thread-id")
+	invocation := newShellWorkerTestInvocation(t.TempDir(),
+		"MEKUGI_RUNTIME_DIR="+runtimeDirectory, "CODEX_THREAD_ID=thread-id")
 
-	stdout, stderr, exitCode := runShellWorkerTest(
-		t,
-		registry,
-		"/bin/sh",
-		nil,
-		"hcat @shell/call-id 2:2",
-		nil,
-	)
-	preview, previewErr, previewExit := runShellWorkerTest(t, registry, "/bin/sh", nil,
-		"hcat --max-tokens 100 --preview-bytes 3 @shell/call-id 2:2", nil)
-	tail, tailErr, tailExit := runShellWorkerTest(t, registry, "/bin/sh", nil,
-		"hcat --tail --max-tokens 10 @shell/call-id", nil)
-	lineTail, lineTailErr, lineTailExit := runShellWorkerTest(t, registry, "/bin/sh", nil,
-		"hcat --tail -n 1 @shell/call-id", nil)
-	if lineTailExit != 1 || lineTail != "2:ca67 retained\n" || !strings.Contains(lineTailErr, "1-line limit") {
-		t.Fatalf("retained line tail: stdout=%q stderr=%q exit=%d", lineTail, lineTailErr, lineTailExit)
-	}
-
-	if tailExit != 1 || tail != "2:ca67 retained\n" || !strings.Contains(tailErr, "output incomplete") {
-		t.Fatalf("retained tail: stdout=%q stderr=%q exit=%d", tail, tailErr, tailExit)
-	}
-	if previewExit != 0 || previewErr != "" || preview != "{\"row\":\"2:ca67\",\"preview\":\"ret\",\"source_bytes\":8,\"omitted_bytes\":5}\n" {
-		t.Fatalf("retained preview: stdout=%q stderr=%q exit=%d", preview, previewErr, previewExit)
-	}
-	if exitCode != 0 || stdout != "2:ca67 retained\n" || stderr != "" {
-		t.Fatalf("exit %d, stdout %q, stderr %q", exitCode, stdout, stderr)
+	for _, test := range []struct {
+		name, script, stdout, stderrContains string
+		exitCode                             int
+	}{
+		{"row", "hcat @shell/call-id 2:2", "2:ca67 retained\n", "", 0},
+		{"preview", "hcat --max-tokens 100 --preview-bytes 3 @shell/call-id 2:2",
+			"{\"row\":\"2:ca67\",\"preview\":\"ret\",\"source_bytes\":8,\"omitted_bytes\":5}\n", "", 0},
+		{"tail", "hcat --tail --max-tokens 10 @shell/call-id",
+			"2:ca67 retained\n", "output incomplete", 1},
+		{"line tail", "hcat --tail -n 1 @shell/call-id",
+			"2:ca67 retained\n", "1-line limit", 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			stdout, stderr, exitCode := runShellWorkerTest(
+				t, registry, "/bin/sh", nil, test.script, nil, invocation)
+			if exitCode != test.exitCode || stdout != test.stdout ||
+				(test.stderrContains == "" && stderr != "") ||
+				(test.stderrContains != "" && !strings.Contains(stderr, test.stderrContains)) {
+				t.Fatalf("stdout=%q stderr=%q exit=%d", stdout, stderr, exitCode)
+			}
+		})
 	}
 }
 
 func TestShellRunnerConfinesRetainedHCatArtifact(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	runtimeDirectory := t.TempDir()
 	outsideDirectory := t.TempDir()
@@ -302,11 +341,10 @@ func TestShellRunnerConfinesRetainedHCatArtifact(t *testing.T) {
 	if err := os.MkdirAll(threadDirectory, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MEKUGI_RUNTIME_DIR", runtimeDirectory)
-	t.Setenv("CODEX_THREAD_ID", "thread-id")
+	invocation := newShellWorkerTestInvocation(outsideDirectory, "MEKUGI_RUNTIME_DIR="+runtimeDirectory, "CODEX_THREAD_ID=thread-id")
 	assertRejected := func(script string) {
 		t.Helper()
-		stdout, _, exitCode := runShellWorkerTest(t, registry, "/bin/sh", nil, script, nil)
+		stdout, _, exitCode := runShellWorkerTest(t, registry, "/bin/sh", nil, script, nil, invocation)
 		if exitCode == 0 || strings.Contains(stdout, sentinel) {
 			t.Fatalf("%q: exit %d, stdout %q", script, exitCode, stdout)
 		}
@@ -318,17 +356,17 @@ func TestShellRunnerConfinesRetainedHCatArtifact(t *testing.T) {
 	} {
 		assertRejected("hcat " + reference)
 	}
-	t.Setenv("MEKUGI_RUNTIME_DIR", "relative-runtime")
-	stdout, stderr, exitCode := runShellWorkerTest(t, registry, "/bin/sh", nil, "hcat @shell/call-id", nil)
+	invocation = newShellWorkerTestInvocation(outsideDirectory, "MEKUGI_RUNTIME_DIR=relative-runtime", "CODEX_THREAD_ID=thread-id")
+	stdout, stderr, exitCode := runShellWorkerTest(t, registry, "/bin/sh", nil, "hcat @shell/call-id", nil, invocation)
 	if exitCode == 0 || stdout != "" || !strings.Contains(stderr, "MEKUGI_RUNTIME_DIR must be an absolute path") {
 		t.Fatalf("relative runtime: exit %d, stdout %q, stderr %q", exitCode, stdout, stderr)
 	}
-	t.Setenv("MEKUGI_RUNTIME_DIR", runtimeDirectory)
+	invocation = newShellWorkerTestInvocation(outsideDirectory, "MEKUGI_RUNTIME_DIR="+runtimeDirectory, "CODEX_THREAD_ID=thread-id")
 
 	if err := os.Symlink(outsideDirectory, filepath.Join(runtimeDirectory, "mekugi-scripts-thread-link")); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("CODEX_THREAD_ID", "thread-link")
+	invocation = newShellWorkerTestInvocation(outsideDirectory, "MEKUGI_RUNTIME_DIR="+runtimeDirectory, "CODEX_THREAD_ID=thread-link")
 	assertRejected("hcat @shell/call-id")
 
 	artifactLinkDirectory := filepath.Join(runtimeDirectory, "mekugi-scripts-artifact-link")
@@ -338,11 +376,12 @@ func TestShellRunnerConfinesRetainedHCatArtifact(t *testing.T) {
 	if err := os.Symlink(filepath.Join(outsideDirectory, "call-id"), filepath.Join(artifactLinkDirectory, "call-id")); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("CODEX_THREAD_ID", "artifact-link")
+	invocation = newShellWorkerTestInvocation(outsideDirectory, "MEKUGI_RUNTIME_DIR="+runtimeDirectory, "CODEX_THREAD_ID=artifact-link")
 	assertRejected("hcat @shell/call-id")
 }
 
 func TestShellRunnerPreservesStdinAndExternalCommands(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	inputPath := filepath.Join(t.TempDir(), "stdin")
 	if err := os.WriteFile(inputPath, []byte("stream\n"), 0o600); err != nil {
@@ -368,6 +407,7 @@ func TestShellRunnerPreservesStdinAndExternalCommands(t *testing.T) {
 }
 
 func TestShellRunnerBoundsAndValidatesOutput(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
 	if err != nil {
@@ -378,6 +418,8 @@ func TestShellRunnerBoundsAndValidatesOutput(t *testing.T) {
 		t.Fatal("shell contribution is unavailable")
 	}
 	runtimeRoot := filepath.Join(registry.SnapshotDir, manifest.RuntimeRoot)
+
+	invocation := newShellWorkerTestInvocation(t.TempDir())
 
 	started := time.Now()
 	captureBudget := 16<<20 - len(shellOverflowDiagnostic) - 3
@@ -391,6 +433,8 @@ func TestShellRunnerBoundsAndValidatesOutput(t *testing.T) {
 			captureBudget-1,
 		)},
 		nil,
+		invocation.directory,
+		invocation.environment,
 		nil,
 	)
 	if err != nil {
@@ -414,6 +458,8 @@ func TestShellRunnerBoundsAndValidatesOutput(t *testing.T) {
 		&shell,
 		[]string{"bash", `python3 -c 'import os; os.write(1, b"\xff")'`},
 		nil,
+		invocation.directory,
+		invocation.environment,
 		nil,
 	)
 	if err != nil {

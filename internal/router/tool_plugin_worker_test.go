@@ -25,7 +25,7 @@ func newToolPluginTestRegistry(t *testing.T) (*toolRegistry, string) {
 	if err := os.WriteFile(liveModule, []byte(testToolPluginDeclaration), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	registry, err := buildToolRegistry(t.Context(), dataDirectory, testMekugiToolDescription, false)
+	registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, testMekugiToolDescription, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,8 +45,22 @@ func copiedToolPluginTestRegistry(t *testing.T) *toolRegistry {
 	t.Helper()
 	source := pluginProxyTestFixture.get(t, testToolPluginDeclaration, testMekugiToolDescription)
 	snapshot := filepath.Join(t.TempDir(), filepath.Base(source.SnapshotDir))
-	if err := os.CopyFS(snapshot, os.DirFS(source.SnapshotDir)); err != nil {
+	if err := os.CopyFS(filepath.Join(snapshot, "runtime"), os.DirFS(source.RuntimeRoot)); err != nil {
 		t.Fatal(err)
+	}
+	manifest, err := os.ReadFile(filepath.Join(source.SnapshotDir, toolPluginManifestFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(snapshot, toolPluginManifestFilename), manifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Only runtime files and the manifest are mutated. Wrappers borrow the
+	// parent's pinned executable instead of copying an unused test binary.
+	for _, name := range []string{"shell", "plugin_tool"} {
+		if _, err := ensureWorkerSymlinkInDirectory(filepath.Join(source.SnapshotDir, toolWorkerExecutableFilename), snapshot, name); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	registry := &toolRegistry{
@@ -148,14 +162,14 @@ func TestToolPluginWorkerResolvesBasenameFromPath(t *testing.T) {
 }
 
 func TestBuiltinToolWorkersRunGeneratedTypeScriptImplementations(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	workspace := t.TempDir()
-	t.Chdir(workspace)
 	workspace, err := filepath.EvalSymlinks(workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile("file.txt", []byte("alpha\nbeta\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(workspace, "file.txt"), []byte("alpha\nbeta\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	goSource := "package sample\n\nfunc Alpha() {}\n"
@@ -174,7 +188,8 @@ func TestBuiltinToolWorkersRunGeneratedTypeScriptImplementations(t *testing.T) {
 	if err := os.WriteFile(goplsPath, fmt.Appendf(nil, "#!/bin/sh\ncat <<'EOF'\n%sEOF\n", goplsOutput), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", workspace+string(os.PathListSeparator)+os.Getenv("PATH"))
+	invocation := newShellWorkerTestInvocation(workspace,
+		"PATH="+workspace+string(os.PathListSeparator)+os.Getenv("PATH"))
 	alphaHash := sha256.Sum256([]byte("func Alpha() {}"))
 
 	for _, test := range []struct {
@@ -188,26 +203,26 @@ func TestBuiltinToolWorkersRunGeneratedTypeScriptImplementations(t *testing.T) {
 		{name: "inspect_file", arguments: []string{"file.txt"}, wantOutput: "{\"ok\":true,\"data\":{\"path\":\"file.txt\",\"kind\":\"none\",\"language\":null,\"size_bytes\":11,\"line_count\":null,\"parse_complete\":true,\"outline\":[]},\"truncated\":false,\"truncation\":null}\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			if wrapper, ok := registry.wrapper(test.name); ok {
 				t.Fatalf("%s unexpectedly has wrapper %q", test.name, wrapper)
 			}
-			var stdout, stderr bytes.Buffer
-			handled, exitCode := RunToolPluginWorker(
-				t.Context(),
-				registry.shellRuntime,
-				[]string{"bash", workerCommand(test.name, test.arguments)},
+			stdout, stderr, exitCode := runShellWorkerTest(
+				t,
+				registry,
+				"bash",
+				nil,
+				workerCommand(test.name, test.arguments),
 				os.Stdin,
-				&stdout,
-				&stderr,
+				invocation,
 			)
-			if !handled || exitCode != 0 || stdout.String() != test.wantOutput || stderr.Len() != 0 {
+			if exitCode != 0 || stdout != test.wantOutput || stderr != "" {
 				t.Fatalf(
-					"%s worker handled %t, exit %d, stdout %q, stderr %q",
+					"%s worker exit %d, stdout %q, stderr %q",
 					test.name,
-					handled,
 					exitCode,
-					stdout.String(),
-					stderr.String(),
+					stdout,
+					stderr,
 				)
 			}
 		})
@@ -215,25 +230,29 @@ func TestBuiltinToolWorkersRunGeneratedTypeScriptImplementations(t *testing.T) {
 }
 
 func TestHGrepWorkerReferencesSelectRepeatedMixedNewlineRows(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	workspace := t.TempDir()
-	t.Chdir(workspace)
 	const baseline = "prefix\rskip\nsame\nsame\n"
-	if err := os.WriteFile("mixed.txt", []byte(baseline), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(workspace, "mixed.txt"), []byte(baseline), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	var stdout, stderr bytes.Buffer
-	handled, exitCode := RunToolPluginWorker(
-		t.Context(), registry.shellRuntime,
-		[]string{"bash", workerCommand("hgrep", []string{"-F", "same", "mixed.txt"})},
-		os.Stdin, &stdout, &stderr,
+	invocation := newShellWorkerTestInvocation(workspace)
+	stdout, stderr, exitCode := runShellWorkerTest(
+		t,
+		registry,
+		"bash",
+		nil,
+		workerCommand("hgrep", []string{"-F", "same", "mixed.txt"}),
+		os.Stdin,
+		invocation,
 	)
-	if !handled || exitCode != 0 || stderr.Len() != 0 {
-		t.Fatalf("worker handled %t, exit %d, stdout %q, stderr %q", handled, exitCode, stdout.String(), stderr.String())
+	if exitCode != 0 || stderr != "" {
+		t.Fatalf("worker exit %d, stdout %q, stderr %q", exitCode, stdout, stderr)
 	}
-	rows := strings.Split(strings.TrimSuffix(stdout.String(), "\n"), "\n")
+	rows := strings.Split(strings.TrimSuffix(stdout, "\n"), "\n")
 	if len(rows) != 2 {
-		t.Fatalf("expected two matches, got %q", stdout.String())
+		t.Fatalf("expected two matches, got %q", stdout)
 	}
 	for index, want := range []string{
 		"prefix\rskip\nselected\nsame\n",

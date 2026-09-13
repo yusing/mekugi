@@ -50,23 +50,17 @@ func prepareAXSessionFixture(t *testing.T) (session, journal, assessments string
 		t.Fatal(err)
 	}
 	journal = filepath.Join(t.TempDir(), "reads.jsonl")
-	rootRead, err := capturer.StartAXRead(journal, "root-thread", "hgrep")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := rootRead.Finish(true); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv(capturer.AXReadOutputEnvironment, journal)
-	t.Setenv("CODEX_THREAD_ID", "thread")
-	input := filepath.Join(workspace, "read.txt")
-	if err := os.WriteFile(input, []byte("source\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	_, stderr, code := runShellWorkerTest(t, sharedProxyTestRegistry(t), "bash", nil,
-		"hcat "+shellQuoteArgument(input), nil)
-	if code != 0 || stderr != "" {
-		t.Fatalf("real reader code %d: %s", code, stderr)
+	// These report-consumer fixtures use the owning capturer's complete events.
+	// Actual private-reader dispatch and instrumentation are covered by
+	// TestAXObservesExecutedPrivateReaders and the debug worker tests.
+	for _, read := range []struct{ thread, tool string }{{"root-thread", "hgrep"}, {"thread", "hcat"}} {
+		observation, err := capturer.StartAXRead(journal, read.thread, read.tool)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := observation.FinishResult(true, "", new(0)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	assessments = filepath.Join(directory, "assessments.json")
 	if err := os.WriteFile(filepath.Join(directory, "failure.txt"), []byte("TestExample failed\n"), 0600); err != nil {

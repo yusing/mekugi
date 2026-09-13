@@ -39,6 +39,8 @@ func executeShellTool(
 	shellContribution *toolContribution,
 	arguments []string,
 	stdin *os.File,
+	workingDirectory string,
+	environment []string,
 	commentary shellCommentarySink,
 ) (toolplugin.ExecutionOutput, error) {
 	if commentary != nil {
@@ -61,8 +63,8 @@ func executeShellTool(
 			shellContribution.ModuleIndex,
 			arguments,
 			stdin,
-			"",
-			nil,
+			workingDirectory,
+			environment,
 		)
 	}
 
@@ -101,10 +103,10 @@ func executeShellTool(
 			}()
 
 			if command[0] == "hchanges" {
-				return executeHChanges(handlerCtx, manifest, runtimeRoot, shellContribution, command[1:])
+				return executeHChanges(handlerCtx, manifest, runtimeRoot, command[1:])
 			}
 			if command[0] == "hrun" {
-				return executeHRun(handlerCtx, manifest, runtimeRoot, shellContribution, command[1:], terminalShell)
+				return executeHRun(handlerCtx, manifest, runtimeRoot, command[1:], terminalShell)
 			}
 			contribution, private := privateTools[command[0]]
 			if !private {
@@ -210,12 +212,8 @@ func executeShellTool(
 		}
 	}
 
-	workingDirectory, err := os.Getwd()
-	if err != nil {
-		return toolplugin.ExecutionOutput{}, fmt.Errorf("resolve shell working directory: %w", err)
-	}
 	runner, err := interp.New(
-		interp.Env(expand.ListEnviron(os.Environ()...)),
+		interp.Env(expand.ListEnviron(environment...)),
 		interp.Dir(workingDirectory),
 		interp.Params(arguments[1:len(arguments)-1]...),
 		interp.StdIO(stdin, &capture.stdout, &capture.stderr),

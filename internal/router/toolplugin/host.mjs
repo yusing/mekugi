@@ -818,6 +818,11 @@ async function main() {
       response = {plugins, errors};
       break;
     }
+    case "format-output": {
+      const {formatHRunOutput} = await import(pathToFileURL(path.join(snapshotRoot, "builtin/hrun.js")).href);
+      response = formatHRunOutput(validateArguments(request.arguments));
+      break;
+    }
     case "translate":
       response = await translateTool(request);
       break;

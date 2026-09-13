@@ -30,7 +30,7 @@ func TestWorkerFrontendSymlinkLifecycle(t *testing.T) {
 	if err := os.WriteFile(link, []byte("unrelated"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ensureWorkerFrontendSymlink(wrapper, directory, name); err == nil ||
+	if _, err := ensureWorkerSymlinkInDirectory(wrapper, directory, name); err == nil ||
 		!strings.Contains(err.Error(), "not a symlink") {
 		t.Fatalf("unrelated frontend error = %v", err)
 	}
@@ -40,7 +40,7 @@ func TestWorkerFrontendSymlinkLifecycle(t *testing.T) {
 	if err := os.Symlink(executable, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ensureWorkerFrontendSymlink(wrapper, directory, name); err == nil ||
+	if _, err := ensureWorkerSymlinkInDirectory(wrapper, directory, name); err == nil ||
 		!strings.Contains(err.Error(), "points to") {
 		t.Fatalf("direct executable frontend error = %v", err)
 	}
@@ -50,10 +50,13 @@ func TestWorkerFrontendSymlinkLifecycle(t *testing.T) {
 	if err := os.Remove(link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ensureWorkerFrontendSymlink(wrapper, directory, name); err != nil {
+	if _, err := ensureWorkerSymlinkInDirectory(wrapper, directory, name); err != nil {
 		t.Fatalf("create frontend: %v", err)
 	}
 
+	if got, err := ensureWorkerSymlinkInDirectory(wrapper, directory, name); err != nil || got != link {
+		t.Fatalf("reuse frontend = %q, %v", got, err)
+	}
 	otherWrapper := filepath.Join(t.TempDir(), name)
 	if err := removeWorkerFrontendSymlink(link, otherWrapper); err != nil {
 		t.Fatal(err)
@@ -98,7 +101,8 @@ func TestToolRegistryStartup(t *testing.T) {
 	}
 
 	t.Run("missing directory loads embedded built-ins", func(t *testing.T) {
-		registry, err := buildToolRegistry(t.Context(), t.TempDir(), testMekugiToolDescription, false)
+		t.Parallel()
+		registry, err := buildToolRegistryForTest(t, t.Context(), t.TempDir(), testMekugiToolDescription, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -131,16 +135,6 @@ func TestToolRegistryStartup(t *testing.T) {
 			specifications[2].Name != "shell" {
 			t.Fatalf("model-visible specifications = %#v", specifications)
 		}
-		second, err := buildToolRegistry(t.Context(), t.TempDir(), testMekugiToolDescription, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := second.installFrontends(); err != nil {
-			t.Fatalf("second built-in-only registry installed global state: %v", err)
-		}
-		if err := second.Close(); err != nil {
-			t.Fatal(err)
-		}
 		if err := registry.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -155,7 +149,8 @@ func TestToolRegistryStartup(t *testing.T) {
 	})
 
 	t.Run("diagnose mode adds router-native report issue", func(t *testing.T) {
-		registry, err := buildToolRegistry(t.Context(), t.TempDir(), testMekugiToolDescription, true)
+		t.Parallel()
+		registry, err := buildToolRegistryForTest(t, t.Context(), t.TempDir(), testMekugiToolDescription, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -193,6 +188,7 @@ func TestToolRegistryStartup(t *testing.T) {
 	})
 
 	t.Run("lexical declarations are pinned and wrapped", func(t *testing.T) {
+		t.Parallel()
 		dataDirectory := t.TempDir()
 		pluginDirectory := filepath.Join(dataDirectory, "plugins")
 		if err := os.Mkdir(pluginDirectory, 0o700); err != nil {
@@ -212,7 +208,7 @@ func TestToolRegistryStartup(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		registry, err := buildToolRegistry(t.Context(), dataDirectory, testMekugiToolDescription, false)
+		registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, testMekugiToolDescription, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -271,6 +267,7 @@ func TestToolRegistryStartup(t *testing.T) {
 	})
 
 	t.Run("declaration and ownership errors aggregate", func(t *testing.T) {
+		t.Parallel()
 		dataDirectory := t.TempDir()
 		pluginDirectory := filepath.Join(dataDirectory, "plugins")
 		if err := os.Mkdir(pluginDirectory, 0o700); err != nil {
@@ -281,7 +278,7 @@ func TestToolRegistryStartup(t *testing.T) {
 		writePlugin(t, pluginDirectory, "duplicate-b.mjs", declaration("duplicate.plugin", "other_tool", ""))
 		writePlugin(t, pluginDirectory, "shell.mjs", declaration("shell.plugin", "eval", ""))
 		writePlugin(t, pluginDirectory, "configured-shell.mjs", declaration("example.shell", "shell", ""))
-		registry, err := buildToolRegistry(t.Context(), dataDirectory, testMekugiToolDescription, false)
+		registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, testMekugiToolDescription, false)
 		if registry != nil || err == nil {
 			t.Fatalf("registry = %+v, error = %v", registry, err)
 		}
