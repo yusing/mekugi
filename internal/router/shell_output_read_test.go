@@ -36,8 +36,8 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 	if err != nil || record.Stdout != out || record.Stderr != diagnostic || record.ExitCode != 7 {
 		t.Fatalf("restart record: %#v, %v", record, err)
 	}
-	if _, direct := registry.directBashExecCommand([]string{"bash", "houtput " + id}); direct {
-		t.Fatal("houtput escaped the private runner")
+	if _, direct := registry.directBashExecCommand([]string{"bash", "hread " + id}); direct {
+		t.Fatal("hread escaped the private runner")
 	}
 	codec, err := tokenizer.ForModel(tokenizer.GPT5)
 	if err != nil {
@@ -47,16 +47,13 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 		for _, selection := range []string{"", "--stdout", "--stderr"} {
 			t.Run(interpreter+selection, func(t *testing.T) {
 				var gotOut, gotErr strings.Builder
-				cursor := ""
+				cursor := id
 				invocation := newShellWorkerTestInvocation(t.TempDir(),
 					"CODEX_THREAD_ID=resumed-fork", "XDG_STATE_HOME="+t.TempDir())
 				for page := range 100 {
-					command := "houtput " + id + " " + selection + " --max-tokens 96"
-					if cursor != "" {
-						command += " --cursor " + cursor
-					}
+					command := "hread " + cursor + " " + selection + " --max-tokens 48"
 					stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, command, nil, invocation)
-					if count, err := codec.Count(stdout); err != nil || count > 96 {
+					if count, err := codec.Count(stdout); err != nil || count > 48 {
 						t.Fatalf("page budget = %d, %v", count, err)
 					}
 					if page == 1 {
@@ -68,14 +65,14 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 					frame := stdout
 					if selection != "--stderr" {
 						var ok bool
-						frame, ok = strings.CutPrefix(frame, "--- stdout ---\n")
+						frame, ok = strings.CutPrefix(frame, "--- stdout [bytes] ---\n")
 						if !ok {
 							t.Fatalf("missing stdout frame: %q", stdout)
 						}
 						if selection == "--stdout" {
 							gotOut.WriteString(strings.TrimSuffix(frame, "\n"))
 						} else {
-							part, rest, found := strings.Cut(frame, "\n--- stderr ---\n")
+							part, rest, found := strings.Cut(frame, "\n--- stderr [bytes] ---\n")
 							if !found {
 								t.Fatalf("missing stderr frame: %q", stdout)
 							}
@@ -83,7 +80,7 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 							gotErr.WriteString(strings.TrimSuffix(rest, "\n"))
 						}
 					} else {
-						frame, _ = strings.CutPrefix(frame, "--- stderr ---\n")
+						frame, _ = strings.CutPrefix(frame, "--- stderr [bytes] ---\n")
 						gotErr.WriteString(strings.TrimSuffix(frame, "\n"))
 					}
 					if status == 0 {
@@ -98,7 +95,7 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 						}
 						return
 					}
-					const notice = "houtput: incomplete; repeat this read with --cursor "
+					const notice = "read: incomplete; next_call: hread "
 					if !strings.HasPrefix(stderr, notice) {
 						t.Fatalf("read failed: %q %q %d", stdout, stderr, status)
 					}
@@ -129,7 +126,7 @@ func TestShellOutputReadRejectsInvalidState(t *testing.T) {
 			t.Errorf("accepted %q", flags)
 		}
 	}
-	if _, err := store.readShellOutput(t.Context(), "ho_"+strings.Repeat("0", 32)); err == nil {
+	if _, err := store.readShellOutput(t.Context(), "r_"+strings.Repeat("A", 22)); err == nil {
 		t.Fatal("missing record accepted")
 	}
 	name := filepath.Join(store.directory, "output-"+id+".json")
@@ -145,10 +142,8 @@ func TestShellOutputReadRejectsInvalidState(t *testing.T) {
 	if _, err := store.putShellOutput(t.Context(), "\xff", "", 0); err == nil {
 		t.Fatal("invalid UTF-8 accepted")
 	}
-	text := "same"
-	digest, _, _ := readCursorOffset(text, "", id+":stdout:4:"+text)
-	if _, _, err := readCursorOffset(text, digest+":1", id+":stderr:0:"+text); err == nil {
-		t.Fatal("cursor crossed stream selection")
+	if _, err := store.putReadCursor(t.Context(), shellOutputRecord{Version: 1, ID: id}, [2]int{-1, 0}, ""); err == nil {
+		t.Fatal("negative cursor position accepted")
 	}
 }
 
@@ -188,7 +183,7 @@ func TestShellOutputStoreQuotaAndPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	execution, err := display.finish(toolplugin.ExecutionOutput{ExitCode: 7})
-	if err == nil || strings.Contains(execution.Stderr, "houtput") {
+	if err == nil || strings.Contains(execution.Stderr, "hread") {
 		t.Fatalf("quota failure exposed recovery receipt: %#v, %v", execution, err)
 	}
 	for _, budget := range []int{1, 64, 15500} {
@@ -221,13 +216,13 @@ func TestShellOutputPluginRemainderUsesManagedRecovery(t *testing.T) {
 	if err := os.Remove(name); err != nil {
 		t.Fatal(err)
 	}
-	start := strings.Index(stderr, "houtput ")
+	start := strings.Index(stderr, "hread ")
 	if start < 0 {
-		t.Fatalf("missing houtput receipt: %q", stderr)
+		t.Fatalf("missing hread receipt: %q", stderr)
 	}
 	command := strings.TrimSpace(stderr[start:]) + " --stdout"
 	rest, readErr, readStatus := runShellWorkerTest(t, registry, "sh", nil, command, nil, invocation)
-	if readStatus != 0 || readErr != "" || rest != "--- stdout ---\n"+omitted+"\n" {
+	if readStatus != 0 || readErr != "" || rest != "--- stdout [rows] ---\n"+omitted+"\n" {
 		t.Fatalf("managed reader failed: %q %q %d", rest, readErr, readStatus)
 	}
 	entries, err := os.ReadDir(directory)
@@ -264,9 +259,49 @@ func TestShellOutputReadRejectsMissingAndNullFields(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(store.directory, "output-"+id+".json"), []byte(data), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, "houtput "+id, nil)
+		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, "hread "+id, nil)
 		if status != 1 || stdout != "" || !strings.Contains(stderr, "missing required fields") {
 			t.Fatalf("corrupt evidence accepted: %q, %q %q %d", fields, stdout, stderr, status)
+		}
+	}
+}
+
+func TestReadCursorRejectsAlteredPosition(t *testing.T) {
+	t.Parallel()
+	registry := sharedProxyTestRegistry(t)
+	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := openMekugiReplayStore(manifest.ReplayDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := store.putShellOutput(t.Context(), "first\nsecond\nthird\n", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := store.readShellOutput(t.Context(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := store.putReadCursor(t.Context(), source, [2]int{6, 0}, "stdout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := filepath.Join(store.directory, "output-"+ref+".json")
+	data, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, position := range []string{`"position":[0,0]`, `"position":[13,0]`, `"unused_position":[6,0]`} {
+		altered := strings.Replace(string(data), `"position":[6,0]`, position, 1)
+		if err := os.WriteFile(name, []byte(altered), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, "hread "+ref, nil)
+		if status != 1 || stdout != "" || stderr == "" {
+			t.Fatalf("altered cursor accepted: %s: %q %q %d", position, stdout, stderr, status)
 		}
 	}
 }

@@ -120,6 +120,6 @@ func (display *shellOutputDisplay) finish(execution toolplugin.ExecutionOutput) 
 	if err != nil {
 		return toolplugin.ExecutionOutput{}, fmt.Errorf("retain shell output: %w", err)
 	}
-	execution.Stderr += fmt.Sprintf("\nshell: output truncated; read omitted remainder with houtput %s\n", id)
+	execution.Stderr += "\n" + readNextCall(id)
 	return execution, nil
 }

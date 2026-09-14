@@ -506,9 +506,10 @@ until execution is confirmed; the host's newline handling can still affect appli
 Reads default to 4,000 output tokens. Use `--max-tokens N` to change that limit,
 `-- PATH ...` to select recorded paths (absolute or relative to the selected workspace),
 or `--workspace DIR` when reading from a subdirectory. Flags work before or after IDs, but before `--`.
-A path with no matches is reported explicitly. Incomplete reads return a continuation cursor on stderr and a nonzero
-status. Repeat the same command with `--cursor VALUE` before `--` to continue. Missing records or
-a changed snapshot fail explicitly. Isolated executors need the router's replay directory
+A path with no matches is reported explicitly. Incomplete reads return an exact `hread REF`
+next call on stderr and nonzero status. That reference continues the original
+selection without repeating IDs or filters, rejecting a changed projection. A new `hchanges`
+invocation reads the current state. Isolated executors need the router's replay directory
 mounted at its original absolute path. See the [change record contract](doc/spec/changes.md).
 
 Semantic lookup can start with a known line number:
@@ -516,21 +517,22 @@ Semantic lookup can start with a known line number:
 must verify a prior read. `hsymbol --workspace /path/to/project refs source.go 42 MyFunction`
 selects a resolver root without changing shell state and returns absolute result
 paths. Semantic results stay confined to that root. When display limits omit
-references, the result supplies an `houtput ID` command. Its rows retain their
+references, the result supplies an `hread REF` command. Its rows retain their
 original verified identities. Skipped or unavailable locations still need resolution.
 
 Shell workers also bound combined stdout/stderr across a script. Shell, search, and
 semantic output use the same recovery interface:
 
 ```sh
-houtput ID                         # Only the omitted remainder, both streams labeled
-houtput ID --stdout                # Or --stderr
-houtput ID --max-tokens 2000
-houtput ID --cursor HASH:BYTE       # Continue the same selection with the returned cursor
+hread REF                       # Run the supplied next call
+hread REF --stdout              # Or --stderr on an initial reference
+hread REF --max-tokens 2000      # Change the page budget
 ```
 
-Reads default to 4,000 tokens. Like `hchanges`, incomplete reads return a cursor and
-nonzero status; repeating a read does not consume its contents. Only omitted bytes
+Reads default to 4,000 tokens. Incomplete reads return another exact `hread REF` call and
+nonzero status. The short opaque reference already binds the selection and position;
+repeating it does not consume its contents. Frames distinguish raw bytes, whole verified
+rows, and complete JSON entries. No public hash/offset cursor is needed. Only omitted bytes
 are saved in Mekugi's managed recovery store, not standalone temporary dumps.
 They survive router restart until explicit cleanup. Missing records fail explicitly,
 never rerun the command. Original execution status and pipeline/redirection data are

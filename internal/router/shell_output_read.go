@@ -2,21 +2,22 @@ package router
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"mvdan.cc/sh/v3/interp"
 )
 
-const outputReadUsage = "houtput ID [--stdout|--stderr] [--max-tokens N] [--cursor HASH:BYTE]"
+const outputReadUsage = "hread REF [--stdout|--stderr] [--max-tokens N]"
 
 type outputReadOptions struct {
 	id        string
 	stream    string
-	cursor    string
 	maxTokens int
 }
 
@@ -43,16 +44,12 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 				return options, errors.New("choose either --stdout or --stderr")
 			}
 			options.stream = strings.TrimPrefix(flag, "--")
-		case "--max-tokens", "--cursor":
-			if len(arguments) == 0 || arguments[0] == "" {
-				return options, fmt.Errorf("%s requires a value", flag)
+		case "--max-tokens":
+			if len(arguments) == 0 {
+				return options, errors.New("--max-tokens requires a value")
 			}
 			value := arguments[0]
 			arguments = arguments[1:]
-			if flag == "--cursor" {
-				options.cursor = value
-				continue
-			}
 			number, err := strconv.Atoi(value)
 			if err != nil || number < 1 || number > hrunMaxTokens || strconv.Itoa(number) != value {
 				return options, fmt.Errorf("--max-tokens requires an integer from 1 to %d", hrunMaxTokens)
@@ -68,10 +65,10 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 	return options, nil
 }
 
-func executeHOutput(ctx context.Context, manifest toolWorkerManifest, runtimeRoot string, arguments []string) error {
+func executeHRead(ctx context.Context, manifest toolWorkerManifest, runtimeRoot string, arguments []string) error {
 	handler := interp.HandlerCtx(ctx)
 	fail := func(err error) error {
-		_, _ = fmt.Fprintf(handler.Stderr, "houtput: %v\n", err)
+		_, _ = fmt.Fprintf(handler.Stderr, "hread: %v\n", err)
 		return interp.ExitStatus(1)
 	}
 	options, err := parseOutputRead(arguments)
@@ -82,52 +79,70 @@ func executeHOutput(ctx context.Context, manifest toolWorkerManifest, runtimeRoo
 	if err != nil {
 		return fail(err)
 	}
-	record, err := store.readShellOutput(ctx, options.id)
+	cursor, err := store.readShellOutput(ctx, options.id)
 	if err != nil {
 		return fail(err)
 	}
-	stdout, stderr := record.Stdout, record.Stderr
-	if options.stream == "stdout" {
-		stderr = ""
-	} else if options.stream == "stderr" {
-		stdout = ""
+	source := cursor
+	stream := options.stream
+	if cursor.Source != "" {
+		source, err = store.readShellOutput(ctx, cursor.Source)
+		if err != nil {
+			return fail(err)
+		}
+		if source.Source != "" || readRecordBinding(source) != cursor.Binding {
+			return fail(errors.New("read snapshot changed or is invalid"))
+		}
+		if stream != "" && stream != cursor.Stream {
+			return fail(errors.New("continuation already binds a stream; use the initial reference to change selection"))
+		}
+		stream = cursor.Stream
 	}
-	text := stdout + stderr
-	// Bind both the stream boundary and the requested selection, including when
-	// stdout and stderr happen to contain identical bytes.
-	binding := options.id + ":" + options.stream + ":" + strconv.Itoa(len(stdout)) + ":" + text
-	digest, offset, err := readCursorOffset(text, options.cursor, binding)
+	output, err := store.readSourceStreams(ctx, source)
 	if err != nil {
 		return fail(err)
 	}
-	// Reserve a conservative byte/token upper bound for the two stream frames.
-	const frameBudget = 64
-	if options.maxTokens <= frameBudget {
-		return fail(errors.New("token budget cannot admit stream frames; increase --max-tokens above 64"))
-	}
-	selected, err := selectReadPage(ctx, manifest, runtimeRoot, text[offset:], options.maxTokens-frameBudget)
+	request := struct {
+		Stdout     string `json:"stdout"`
+		Stderr     string `json:"stderr"`
+		StdoutKind string `json:"stdoutKind"`
+		StderrKind string `json:"stderrKind"`
+		Position   [2]int `json:"position"`
+		Stream     string `json:"stream"`
+	}{output.Stdout, output.Stderr, output.StdoutKind, output.StderrKind, cursor.Position, stream}
+	data, err := json.Marshal(request)
 	if err != nil {
 		return fail(err)
 	}
-	next := offset + len(selected)
-	var page strings.Builder
-	if options.stream != "stderr" {
-		page.WriteString("--- stdout ---\n")
-		start, end := min(offset, len(stdout)), min(next, len(stdout))
-		page.WriteString(stdout[start:end])
-		page.WriteByte('\n')
+	formatted, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, runtimeRoot,
+		[]string{strconv.Itoa(options.maxTokens), "read", string(data), ""})
+	if err != nil {
+		return fail(err)
 	}
-	if options.stream != "stdout" {
-		page.WriteString("--- stderr ---\n")
-		start, end := max(0, offset-len(stdout)), max(0, next-len(stdout))
-		page.WriteString(stderr[start:end])
-		page.WriteByte('\n')
+	var page struct {
+		Text     string `json:"text"`
+		Position [2]int `json:"position"`
+		Complete bool   `json:"complete"`
 	}
-	if _, err := io.WriteString(handler.Stdout, page.String()); err != nil {
+	if formatted.ExitCode != 0 {
+		return fail(fmt.Errorf("page selection failed: %s", strings.TrimSpace(formatted.Stderr)))
+	}
+	if json.Unmarshal([]byte(formatted.Stdout), &page) != nil {
+		return fail(errors.New("invalid read page"))
+	}
+	next := ""
+	if !page.Complete {
+		// Persist before exposing this page or suggesting the next operation.
+		next, err = store.putReadCursor(ctx, source, page.Position, stream)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	if _, err := io.WriteString(handler.Stdout, page.Text); err != nil {
 		return err
 	}
-	if next < len(text) {
-		_, _ = fmt.Fprintf(handler.Stderr, "houtput: incomplete; repeat this read with --cursor %s:%d\n", digest, next)
+	if next != "" {
+		_, _ = io.WriteString(handler.Stderr, readNextCall(next))
 		return interp.ExitStatus(1)
 	}
 	return nil

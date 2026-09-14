@@ -30,8 +30,10 @@ type (
 	}
 
 	OmittedOutput struct {
-		Stdout string `json:"stdout"`
-		Stderr string `json:"stderr"`
+		StdoutKind string `json:"stdoutKind,omitempty"`
+		StderrKind string `json:"stderrKind,omitempty"`
+		Stdout     string `json:"stdout"`
+		Stderr     string `json:"stderr"`
 	}
 
 	ExecutionOutput struct {

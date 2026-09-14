@@ -128,3 +128,40 @@ Acceptance:
     and retained descriptors. Missing limits and repeated `--tail` reject before reading.
     In token-limited mode, long and source-bound rows cannot cause unbounded storage or prevent retaining later
     rows; invalid UTF-8 anywhere in the file still fails.
+
+### Managed read continuation
+
+Shell output, searches, symbol references, and change reviews use one read continuation:
+`hread REF [--stdout|--stderr] [--max-tokens N]`. An incomplete result supplies the exact
+`read: incomplete; next_call: hread REF` command. There is no separate cursor flag or
+caller-composed hash/offset. References are `r_` plus 22 base64url characters, preserving
+128-bit capability entropy. Full snapshot fingerprints remain internal.
+
+An initial reference owns only omitted output or a descriptor of existing durable evidence,
+never an executable script. Change-review descriptors retain their selection and full
+fingerprint; they do not duplicate diffs and reject changed projections. A subsequent
+reference stores only the original reference, two stream positions, the stream selection,
+and the full original-record fingerprint. It does not duplicate output. Repeated reads
+produce identical pages and next references. A continuation inherits its selection; a
+different stream selection must start from the initial reference. Budgets may change.
+
+Both streams are labeled on every page, including their unit: raw `bytes`, complete
+verified `rows`, or complete `json` array entries. Framing is not source content, and raw
+byte fragments are not verified rows. A rows page never cuts a row; a JSON page is a valid
+array of complete entries. A unit that cannot fit fails explicitly without a nonadvancing
+reference. The budget includes frames, defaults to 4,000 GPT-5 tokens, and accepts 1–15,500.
+Actual frame size determines minimum usable budgets; there is no separate fixed cutoff.
+Page completion returns status 0, and an incomplete page returns status 1 with the next
+call on stderr. The original producer's exit status is preserved independently.
+
+The authenticated executor persists records through the existing managed replay-store
+locking and atomic write/fsync path before exposing references. There are no standalone
+temporary output dumps. Omitted data is bounded to 16 MiB, encoded records to the existing
+replay record limit, and all read records to a separate 256 MiB quota. Capacity or storage
+failures are explicit and never evict executable recovery state.
+
+A reference is portable through visible history across fork, side-thread, agent/model
+switch, and router restart, without depending on a live parent or routing-session ID.
+It remains valid until explicit managed-store cleanup. Missing, corrupt, altered, or
+out-of-range records fail rather than replay producers. These durable read references do
+not extend the lifetime of executable recovery handles or native sessions.

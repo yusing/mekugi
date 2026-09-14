@@ -29,7 +29,7 @@ Durable review evidence survives expiration of the temporary continuation handle
 The shell-private command is:
 
 ```text
-hchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [--cursor HASH:BYTE] [-- PATH ...]
+hchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...]
 ```
 
 Explicit change IDs or ranges are required. Flags may precede, follow, or be
@@ -101,19 +101,19 @@ Missing or mismatched durable evidence fails reconciliation without publishing a
 repair. Idempotent publication and confirmation retries synchronize the store directory
 before reporting success.
 
-Each read snapshots index membership and receipts under a shared, read-only lock. It
-releases that lock before reading immutable replay facts and rendering the projection,
-so large reads do not hold up writers during rendering. Later pages still verify their
-cursor against a newly selected snapshot; no hidden page cache changes the read contract.
+Each initial read snapshots index membership and receipts under a shared, read-only lock,
+then releases it before reading immutable replay facts and rendering the projection.
+Reads default to 4,000 GPT-5 stdout tokens; `--max-tokens` accepts 1–15,500.
 
-Reads default to 4,000 GPT-5 stdout tokens; `--max-tokens` accepts 1 through 15,500.
-The existing bundled tokenizer selects a UTF-8-safe prefix. An incomplete result returns
-nonzero and a stderr continuation cursor; repeat the same read with that cursor to obtain
-the next bytes without repeating the previous output. Cursor identity covers the complete
-selected projection, so a recovery or confirmation that changes that projection requires
-restarting the read. A page may end within a hunk or line, explicitly marked incomplete.
-The fixed continuation diagnostic is outside the stdout budget. A budget too small for
-one character fails without a nonadvancing cursor.
+When output is omitted, the executor persists a small selection descriptor using
+[managed read continuation](read.md#managed-read-continuation) and supplies the exact
+`hread REF` next call. The descriptor holds IDs, filters, the position, and the full
+projection fingerprint, not another copy of the diff. Later pages rebuild and validate
+the same selection without repeating arguments. Changed projections fail explicitly;
+a new `hchanges` invocation selects the current state.
+The read continuation is raw diff text and may end within a hunk or line; it is not
+verified source-row evidence. A budget too small for one character fails explicitly.
+Persistence is limited to incomplete reads and must complete before the page is exposed.
 
 Index files and replay records use private permissions, cross-process locking, synced
 atomic replacement, bounded capacity, and no automatic eviction. Each index is at most
@@ -134,7 +134,7 @@ Acceptance:
 5. Summary, history, and path selection keep their specified scope; default reads omit
    repeated scripts and full diagnostics.
 6. Token-bounded pages concatenate to the selected projection without byte loss or repetition.
-   Stale cursors, malformed ranges, unavailable records, and quota failures are explicit.
+   Corrupt read references, malformed ranges, unavailable records, and quota failures are explicit.
 7. Both shell interpreter modes execute the private reader; sole-command optimization never
    dispatches it through PATH. Model-visible tool schemas remain unchanged.
 

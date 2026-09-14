@@ -114,9 +114,10 @@ The host accepts only the documented reader-failure allowlist; arbitrary values 
 success/class combinations reject without reflecting their contents. This metadata
 supports opt-in AX evidence without changing command output or transport metrics.
 
-Executors may return `omittedOutput: {stdout, stderr}` containing only omitted suffixes,
-bounded to 16 MiB combined. The host validates the strings, and the authenticated executor
-persists them in the managed output recovery store before exposing an `houtput` receipt.
+Executors may return `omittedOutput: {stdout, stderr, stdoutKind?, stderrKind?}` containing
+only omitted suffixes, bounded to 16 MiB combined. Optional kinds are `rows` for complete
+verified rows and `json` for a JSON array of complete entries; absent kinds mean raw bytes. The host validates the strings, and the authenticated executor
+persists them in the managed output recovery store before exposing an `hread` receipt.
 This optional result field does not execute effects or change the original exit status;
 storage failure is explicit and never claims that recovery is available.
 

@@ -113,7 +113,7 @@ func TestToolRegistryStartup(t *testing.T) {
 		if err := registry.installFrontends(); err != nil {
 			t.Fatal(err)
 		}
-		for _, name := range []string{"hchanges", "houtput", "hcat", "hgrep", "hsymbol", "inspect_file", "shell"} {
+		for _, name := range []string{"hchanges", "hread", "hcat", "hgrep", "hsymbol", "inspect_file", "shell"} {
 			_, ok := registry.contribution(name)
 			if !ok {
 				t.Fatalf("built-in %q is unavailable", name)

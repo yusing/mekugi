@@ -13,7 +13,7 @@ import (
 
 func retainedShellTestOutput(t *testing.T, diagnostic string) (string, string) {
 	t.Helper()
-	match := regexp.MustCompile(`houtput (ho_[a-f0-9]{32})`).FindStringSubmatch(diagnostic)
+	match := regexp.MustCompile(`hread (r_[A-Za-z0-9_-]{22})`).FindStringSubmatch(diagnostic)
 	if len(match) != 2 {
 		t.Fatalf("missing output recovery receipt: %s", diagnostic)
 	}
@@ -48,7 +48,7 @@ func TestShellReadOutputBudgetRetainsWholeBatchAndExitStatus(t *testing.T) {
 			script := "#!params={\"max_output_tokens\":1600}\nhcat first\nhcat second\nprintf done > finished\nprintf 'command error\\n' >&2\nexit 7"
 			stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, script, nil,
 				newShellWorkerTestInvocation(directory))
-			if status != 7 || !strings.Contains(stderr, "houtput ") || !strings.HasSuffix(stdout, "\n") {
+			if status != 7 || !strings.Contains(stderr, "hread ") || !strings.HasSuffix(stdout, "\n") {
 				t.Fatalf("status=%d stdout=%q stderr=%q", status, stdout, stderr)
 			}
 			allStdout, allStderr := retainedShellTestOutput(t, stderr)

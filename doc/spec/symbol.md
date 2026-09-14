@@ -62,7 +62,7 @@ the selected resolver; other returned locations are omitted and counted by reaso
 References are deduplicated by canonical path and logical line. Empty `refs` is successful.
 A `def` without an editable workspace location is nonzero. Token-limited results retain all
 formatted rows up to 16 MiB and return only omitted rows to the host's managed output
-recovery store. The `houtput` receipt and pagination follow the shell output contract,
+recovery store. The `hread` receipt and pagination follow the shell output contract,
 without rerunning the resolver or writing temporary dumps, even after source changes or router shutdown. Retained hashes describe the query
 snapshot. Display truncation remains nonzero, and skipped locations still prevent claiming a
 complete definition or reference set. Location skip counts cover the complete resolver result.

@@ -43,7 +43,7 @@ export type ReaderFailureClass = "invalid_arguments" | "not_found" | "permission
 
 export type ExecutionResult = ExecutionOutput & {
   // Omitted suffixes for host-owned managed recovery, never a temporary-file path.
-  omittedOutput?: {stdout: string; stderr: string};
+  omittedOutput?: {stdout: string; stderr: string; stdoutKind?: "rows" | "json"; stderrKind?: "rows" | "json"};
   // Allowlisted diagnostic metadata, never command output or a raw error.
   failureClass?: ReaderFailureClass;
   // Private host cleanup metadata, never part of the executor-facing output.

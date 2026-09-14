@@ -327,7 +327,7 @@ func TestInstructionsConsolidateDeliveredContracts(t *testing.T) {
 			got := InstructionsForModel(model, compact)
 			for _, required := range []string{
 				"Shell workers budget combined display output automatically",
-				"When a result supplies `houtput ID`",
+				"For omitted output, run the exact `next_call: hread REF`",
 				"Read all returned reference rows before batching dependent edits",
 				"Report skipped or unavailable references",
 				"## Journal\n",
@@ -389,7 +389,7 @@ func TestInstructionsTeachCompactChangeHandoffs(t *testing.T) {
 			if strings.Contains(got, "hchanges read") || strings.Contains(got, "`--path PATH`") {
 				t.Errorf("model %q compact %v: obsolete change command syntax", model, compact)
 			}
-			for _, required := range []string{"edits with `hchanges hp_a1..hp_a3`", "recovery keeps that ID", "--history", "--cursor HASH:BYTE", "rather than Git diff", "not before an already-needed", "do not routinely pair"} {
+			for _, required := range []string{"edits with `hchanges hp_a1..hp_a3`", "recovery keeps that ID", "--history", "without repeating IDs or filters", "rather than Git diff", "not before an already-needed", "do not routinely pair"} {
 				if strings.Count(got, required) != 1 {
 					t.Errorf("model %q compact %v: expected one %q", model, compact, required)
 				}

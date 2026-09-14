@@ -725,12 +725,16 @@ async function executeTool(request) {
   const omitted = execution.omittedOutput;
   if (omitted !== undefined) {
     if (omitted === null || typeof omitted !== "object" || Array.isArray(omitted)
-        || Object.keys(omitted).some((key) => key !== "stdout" && key !== "stderr")
+        || Object.keys(omitted).some((key) => !["stdout", "stderr", "stdoutKind", "stderrKind"].includes(key))
+        || (omitted.stdoutKind !== undefined && !["rows", "json"].includes(omitted.stdoutKind))
+        || (omitted.stderrKind !== undefined && !["rows", "json"].includes(omitted.stderrKind))
         || typeof omitted.stdout !== "string" || typeof omitted.stderr !== "string"
         || byteLength(omitted.stdout) + byteLength(omitted.stderr) > 16 * 1024 * 1024) {
       throw new Error("executor omittedOutput must contain bounded stdout/stderr strings");
     }
-    current.omittedOutput = {stdout: omitted.stdout, stderr: omitted.stderr};
+    current.omittedOutput = {stdout: omitted.stdout, stderr: omitted.stderr,
+      ...(omitted.stdoutKind === undefined ? {} : {stdoutKind: omitted.stdoutKind}),
+      ...(omitted.stderrKind === undefined ? {} : {stderrKind: omitted.stderrKind})};
   }
   const currentBytes = byteLength(current.stdout) + byteLength(current.stderr);
   if (currentBytes > request.outputBudgetBytes) {

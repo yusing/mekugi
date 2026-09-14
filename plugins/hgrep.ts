@@ -668,7 +668,7 @@ export function createHGrepTool(description: string, grammar: string): Tool<stri
           stdout: result.current,
           stderr,
           exitCode: result.incomplete ? 1 : 0,
-          ...(result.omitted === undefined ? {} : {omittedOutput: {stdout: result.omitted, stderr: ""}}),
+          ...(result.omitted === undefined ? {} : {omittedOutput: {stdout: result.omitted, stderr: "", stdoutKind: "rows" as const}}),
           ...(result.incomplete ? {failureClass: "output_limit" as const} : {}),
         };
       } catch (error) {

@@ -400,10 +400,10 @@ workspace changes; do not routinely pair them with hchanges for the same capture
 
 Reads default to 4,000 tokens. Matching files appear once per evaluation.
 Workspace file paths accept recorded, workspace-relative, or absolute spellings.
-An incomplete read supplies `--cursor HASH:BYTE`; repeat the same selection with that
-cursor to continue. These are historical evaluated diffs, not current editable row
-references or a record of shell edits. Counts describe each evaluation, not a combined
-net change. Unconfirmed results are not proof of application.
+An incomplete read supplies an exact `next_call: hread REF`; run that command to continue
+the retained selection without repeating IDs or filters. These are historical evaluated
+diffs, not current editable row references or a record of shell edits. Counts describe each
+evaluation, not a combined net change. Unconfirmed results are not proof of application.
 
 ## Reading and inspection reference
 
@@ -411,13 +411,16 @@ For ordinary file reads, use `cat` or bounded `sed`. Prefer `hcat` when its veri
 identities are useful for an anticipated edit.
 
 Shell workers budget combined display output automatically. Use reader limits and source ranges
-to focus on needed context. When a result supplies `houtput ID`, run that command to read only
-the omitted remainder. Both stdout and stderr are labeled by default; use `--stdout` or
-`--stderr` to select one. Like `hchanges`, use `--max-tokens N` (default 4,000) and repeat the
-same selection with the returned `--cursor` when incomplete. Reads are repeatable,
-not consuming. Output stays in the managed recovery store across router restart until explicit
-cleanup; no standalone output dumps are created. Commands keep their original exit status;
-`script_ref` is separate and stores program source. Reading output never reruns the producer.
+to focus on needed context. For omitted output, run the exact `next_call: hread REF`.
+Both stdout and stderr are labeled by default; use `--stdout` or `--stderr` on an initial
+reference to select one. `--max-tokens N` defaults to 4,000. Later references already bind
+the selection and position, so no `--cursor` or repeated producer arguments are needed.
+Pages label raw bytes, complete verified rows, or JSON entries. Do not treat raw byte
+fragments or framing as verified source rows. If a complete unit cannot fit, increase
+the budget or use a source preview. Reads are repeatable, not consuming, and survive
+router restart in the managed recovery store until explicit cleanup. No standalone output
+dumps are created. Commands keep their original exit status; `script_ref` stores executable
+program source separately. Reading output never reruns the producer.
 
 Run one file per command as `hcat PATH [START:END]`. Quote paths with shell syntax and batch
 already-known reads as separate commands in one shell script. A bare path reads the complete
@@ -430,7 +433,7 @@ Run hgrep with ripgrep arguments and shell quoting, redirection, and pipelines. 
 `"PATH":LINE:HASH TEXT`; copy a current target directly and never reconstruct a row.
 Do not follow target-bearing hgrep output with hcat unless nonmatching context outside the
 requested bounds is needed. If hgrep reports an incomplete token-limited result, retain the
-emitted rows and read the omitted remainder using its `houtput ID` receipt and cursor. These are original verified rows; do not wrap them in new hcat identities.
+emitted rows and read the omitted remainder using its exact `next_call: hread REF`. These are original verified rows; do not wrap them in new hcat identities.
 Without a retained result, narrow only the unanswered search.
 
 Both readers accept leading `--max-tokens N` (1–15500) for a strict stdout token
@@ -456,7 +459,7 @@ unless non-declaration context is needed.
 
 For field removals and signature changes, use `hsymbol refs` or `gopls references` across affected
 packages, including tests. Read all returned reference rows before batching dependent edits.
-If output is retained, continue using its `houtput ID` receipt and cursor.
+If output is retained, continue using its exact `next_call: hread REF`.
 Saved hashes describe the query snapshot. Report skipped or unavailable references; filenames
 in a diff and incomplete results do not establish caller coverage.
 

@@ -14,14 +14,13 @@ import (
 	"mvdan.cc/sh/v3/interp"
 )
 
-const changesReadUsage = "hchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [--cursor HASH:BYTE] [-- PATH ...]"
+const changesReadUsage = "hchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...]"
 const maxChangeReadBytes = 64 << 20
 
 type changeReadOptions struct {
 	view      string
 	paths     []string
 	workspace string
-	cursor    string
 	maxTokens int
 	ids       []string
 }
@@ -56,7 +55,7 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 				return options, errors.New("choose either --summary or --history")
 			}
 			options.view = strings.TrimPrefix(flag, "--")
-		case "--workspace", "--max-tokens", "--cursor":
+		case "--workspace", "--max-tokens":
 			if len(arguments) == 0 {
 				return options, fmt.Errorf("%s requires a value", flag)
 			}
@@ -65,11 +64,6 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 			switch flag {
 			case "--workspace":
 				options.workspace = value
-			case "--cursor":
-				if value == "" {
-					return options, errors.New("--cursor requires a nonempty HASH:BYTE value")
-				}
-				options.cursor = value
 			case "--max-tokens":
 				number, err := strconv.Atoi(value)
 				if err != nil || number < 1 || number > hrunMaxTokens || strconv.Itoa(number) != value {
@@ -255,20 +249,22 @@ func executeHChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRo
 	if err != nil {
 		return fail(err)
 	}
-	digest, offset, err := readCursorOffset(text, options.cursor, text)
+	selected, err := selectReadPage(ctx, manifest, runtimeRoot, text, options.maxTokens)
 	if err != nil {
 		return fail(err)
 	}
-	selected, err := selectReadPage(ctx, manifest, runtimeRoot, text[offset:], options.maxTokens)
-	if err != nil {
-		return fail(err)
+	next := ""
+	if len(selected) < len(text) {
+		next, err = store.putChangeRead(ctx, options, text, len(selected))
+		if err != nil {
+			return fail(err)
+		}
 	}
 	if _, err := io.WriteString(handler.Stdout, selected); err != nil {
 		return err
 	}
-	next := offset + len(selected)
-	if next < len(text) {
-		_, _ = fmt.Fprintf(handler.Stderr, "hchanges: incomplete; repeat this read with --cursor %s:%d\n", digest, next)
+	if next != "" {
+		_, _ = io.WriteString(handler.Stderr, readNextCall(next))
 		return interp.ExitStatus(1)
 	}
 	return nil

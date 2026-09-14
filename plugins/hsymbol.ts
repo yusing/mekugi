@@ -625,7 +625,7 @@ async function executeQuery(query: Query, onResolverStart: () => void): Promise<
     stdout: output.current,
     ...(stderr === "" ? {} : {stderr}),
     exitCode: output.incomplete ? 1 : 0,
-    ...(output.incomplete ? {omittedOutput: {stdout: retainedRows.remainder(output.current), stderr: ""}} : {}),
+    ...(output.incomplete ? {omittedOutput: {stdout: retainedRows.remainder(output.current), stderr: "", stdoutKind: "rows" as const}} : {}),
     ...(output.incomplete ? {failureClass: "output_limit" as const} : {}),
   };
 }

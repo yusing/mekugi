@@ -1,3 +1,4 @@
+import {selectReadOutput} from "./read_output.ts";
 import type {ExecutionOutput} from "../internal/router/toolplugin/plugin.d.ts";
 import {countGPT5Tokens, encodeGPT5, tokenBytes} from "./tokens.ts";
 
@@ -54,8 +55,11 @@ export function formatHRunOutput(argv: string[]): ExecutionOutput {
   const [rawBudget, mode, stdout, stderr] = argv;
   const budget = Number(rawBudget);
   if (argv.length !== 4 || !/^[1-9][0-9]*$/u.test(rawBudget)
-      || budget > 15_500 || (mode !== "head" && mode !== "tail" && mode !== "shell")) {
+      || budget > 15_500 || (mode !== "head" && mode !== "tail" && mode !== "shell" && mode !== "read")) {
     throw new Error("invalid hrun output selection");
+  }
+  if (mode === "read") {
+    return {stdout: JSON.stringify(selectReadOutput(JSON.parse(stdout), budget)), exitCode: 0};
   }
   if (mode === "shell") {
     return {stdout: JSON.stringify(selectShellText(stdout, budget)), exitCode: 0};

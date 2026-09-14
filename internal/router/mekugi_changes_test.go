@@ -174,23 +174,6 @@ func TestTrackedChangesNoOpPendingAndMissing(t *testing.T) {
 }
 
 func TestTrackedChangeCursorAndFilters(t *testing.T) {
-	text := "hp_a1\nπ changed\n"
-	digest, offset, err := readCursorOffset(text, "", text)
-	if err != nil || offset != 0 {
-		t.Fatal(err)
-	}
-	cursor := digest + ":6"
-	if _, offset, err := readCursorOffset(text, cursor, text); err != nil || offset != 6 {
-		t.Fatalf("cursor = %d, %v", offset, err)
-	}
-	for _, invalid := range []string{digest + ":7", digest + ":999", digest + ":-1", "wrong:6"} {
-		if _, _, err := readCursorOffset(text, invalid, text); err == nil {
-			t.Errorf("accepted %q", invalid)
-		}
-	}
-	if _, _, err := readCursorOffset(text+"recovered", cursor, text+"recovered"); err == nil {
-		t.Fatal("accepted stale snapshot")
-	}
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -532,5 +515,50 @@ func TestExactHostReportEvidence(t *testing.T) {
 	}
 	if (mekugiHistory{}).confirmsReport(mustMarshalJSON("")) {
 		t.Fatal("empty report confirmed")
+	}
+}
+
+func TestChangeReadContinuationRetainsOnlyDescriptor(t *testing.T) {
+	t.Parallel()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := store.reserveChange(t.Context(), "/w", "a", "one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := mekugiHistory{
+		ChangeID: id, CorrelationID: "one", ToolName: mekugiToolName,
+		ReviewFiles: []mekugi.ReviewFile{{AfterPath: "file", Diff: strings.Repeat("+line\n", 100)}},
+	}
+	histories := map[string]mekugiHistory{"one": history}
+	if err := store.put(t.Context(), "/w", histories); err != nil {
+		t.Fatal(err)
+	}
+	options := changeReadOptions{workspace: "/w", ids: []string{id}}
+	text, err := store.readChanges(t.Context(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := store.putChangeRead(t.Context(), options, text, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := store.readShellOutput(t.Context(), ref)
+	if err != nil || record.Changes == nil || record.Stdout != "" || record.Stderr != "" {
+		t.Fatalf("not a descriptor-only read: %#v, %v", record, err)
+	}
+	output, err := store.readSourceStreams(t.Context(), record)
+	if err != nil || output.Stdout != text[6:] {
+		t.Fatalf("read remainder: %q, %v", output.Stdout, err)
+	}
+	history.confirmed = true
+	histories["one"] = history
+	if err := store.confirmChanges(t.Context(), "/w", histories); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.readSourceStreams(t.Context(), record); err == nil {
+		t.Fatal("changed projection accepted")
 	}
 }

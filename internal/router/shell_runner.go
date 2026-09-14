@@ -158,8 +158,8 @@ func executeShellProgram(
 				}
 			}()
 
-			if command[0] == "houtput" {
-				return executeHOutput(handlerCtx, manifest, runtimeRoot, command[1:])
+			if command[0] == "hread" {
+				return executeHRead(handlerCtx, manifest, runtimeRoot, command[1:])
 			}
 			if command[0] == "hchanges" {
 				return executeHChanges(handlerCtx, manifest, runtimeRoot, command[1:])

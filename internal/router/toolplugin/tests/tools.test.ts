@@ -882,7 +882,7 @@ describe("hgrep built-in plugin", () => {
     await rm("large.txt");
     expect(limited.omittedOutput).toEqual({stdout:
       `${prefix}${formatVerifiedRow(2, "needle second")}`
-      + `${prefix}${formatVerifiedRow(3, "needle third")}`, stderr: ""});
+      + `${prefix}${formatVerifiedRow(3, "needle third")}`, stderr: "", stdoutKind: "rows"});
     expect(limited.stdout).toContain(`needle ${first}`);
     expect(limited.stdout).not.toContain("needle second");
     expect(limited.stdout).not.toContain("needle third");
@@ -1438,7 +1438,7 @@ describe("hsymbol built-in plugin", () => {
       executionContext,
     );
     expect(result).toEqual({
-      omittedOutput: {stdout: `${prefix}${formatVerifiedRow(3, "third")}`, stderr: ""},
+      omittedOutput: {stdout: `${prefix}${formatVerifiedRow(3, "third")}`, stderr: "", stdoutKind: "rows"},
       stdout: `${prefix}${formatVerifiedRow(1, first)}${prefix}${formatVerifiedRow(2, "second")}`,
       stderr: expect.stringContaining("hsymbol: skipped 1 location outside workspace\n"
         + "hsymbol: output incomplete: 15,000-token limit reached\n"),
