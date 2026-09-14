@@ -83,7 +83,6 @@ func TestLiveDiffThemeGeometryAndFallback(t *testing.T) {
 				t.Fatal(err)
 			}
 			output := strings.Join(render.lines, "\n")
-			assertLiveDiffNoBackground(t, output)
 			if theme == liveDiffTerminalTheme {
 				baseline = ansi.Strip(output)
 			} else if ansi.Strip(output) != baseline {
@@ -194,6 +193,10 @@ func TestLiveDiffThemeContrast(t *testing.T) {
 		{liveDiffLightTheme, [3]float64{255, 255, 255}},
 		{liveDiffLightTheme, [3]float64{247, 247, 247}},
 		{liveDiffDarkTheme, [3]float64{17, 17, 17}},
+		{liveDiffLightTheme, [3]float64{230, 245, 233}},
+		{liveDiffLightTheme, [3]float64{255, 235, 233}},
+		{liveDiffDarkTheme, [3]float64{22, 42, 29}},
+		{liveDiffDarkTheme, [3]float64{49, 27, 31}},
 		{liveDiffDarkTheme, [3]float64{36, 41, 46}},
 	} {
 		foregrounds := []string{tc.theme.accent()}
@@ -221,6 +224,63 @@ func TestLiveDiffThemeContrast(t *testing.T) {
 			if ratio := (max(a, b) + .05) / (min(a, b) + .05); ratio < 4.5 {
 				t.Errorf("theme %d foreground %q on %v has contrast %.2f, want >= 4.5", tc.theme, foreground, tc.background, ratio)
 			}
+		}
+	}
+}
+
+func TestLiveDiffRowFills(t *testing.T) {
+	chunk := liveDiffHighlightChunk("edit", "file.go",
+		"@@ -9,3 +19,3 @@\n context\n-return \"old\"\n+return \"界\"\n tail\n", true)
+	chunk.status = ""
+	for _, theme := range []liveDiffTheme{liveDiffTerminalTheme, liveDiffLightTheme, liveDiffDarkTheme} {
+		for _, width := range []int{1, 2, 3, 8, 80} {
+			render, err := renderLiveDiff(t.Context(), theme, []liveDiffFile{{path: "file.go", chunks: []liveDiffChunk{chunk}}}, "", width, 0, chunk)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i, line := range render.lines {
+				if ansi.StringWidth(line) > width-1 {
+					t.Fatalf("overflow: %q", line)
+				}
+				sourceIndex := i - (len(render.lines) - 4)
+				if sourceIndex != 1 && sourceIndex != 2 {
+					assertLiveDiffNoBackground(t, line)
+					continue
+				}
+				kind := byte('-')
+				if sourceIndex == 2 {
+					kind = '+'
+				}
+				if width > 3 {
+					if !strings.Contains(line, theme.rowBackground(kind)) ||
+						ansi.StringWidth(line) != width-1 ||
+						!strings.HasSuffix(line, "\x1b[0m") {
+						t.Fatalf("missing full-width bounded fill: %q", line)
+					}
+					if strings.Contains(line, "\x1b[39m") {
+						t.Fatalf("token reset escaped row foreground: %q", line)
+					}
+				}
+			}
+			if width == 80 {
+				for i, prefix := range []string{"  19│ context", "  10│-return", "  20│+return", "  21│ tail"} {
+					if !strings.HasPrefix(ansi.Strip(render.lines[i+1]), prefix) {
+						t.Fatalf("wrong single-column coordinate: %q", render.lines[i+1])
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestLiveDiffPaletteVariety(t *testing.T) {
+	for _, theme := range []liveDiffTheme{liveDiffTerminalTheme, liveDiffLightTheme, liveDiffDarkTheme} {
+		colors := map[string]bool{}
+		for _, kind := range []chroma.TokenType{chroma.Keyword, chroma.NameFunction, chroma.KeywordType, chroma.LiteralString, chroma.LiteralNumber, chroma.NameOther} {
+			colors[theme.foreground(kind)] = true
+		}
+		if len(colors) < 6 {
+			t.Fatalf("theme %d collapsed syntax categories: %v", theme, colors)
 		}
 	}
 }

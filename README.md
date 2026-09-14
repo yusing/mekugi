@@ -566,8 +566,9 @@ reruns, and interpreter selection.
 ### Live diff pane
 
 In an interactive Herdr pane with `herdr` on `PATH`, `mekugi codex` opens a live
-diff pane to the right on the first turn, without changing focus. It follows the
-session's captured hpatch edits, including subagents, and closes with Codex.
+diff pane to the right on the first hpatch call, without changing focus. Read-only
+turns do not open a pane. It follows the session's captured hpatch edits, including
+subagents, and closes with Codex.
 Redirected input/output does not open a pane.
 
 The view combines edits across files, excluding Git and shell changes. Prepared
@@ -576,9 +577,11 @@ identify the latest update; reconnecting or unavailable means live updates are i
 
 Syntax colors include function calls, built-ins, and operators where the language
 lexer recognizes them. The viewer automatically selects a light or dark palette
-from the terminal's background reply, keeping your existing background. If the
+from the terminal's background reply, with green/red backgrounds for added/removed
+rows and one line-number column. Context keeps your existing background. If the
 terminal cannot report its background, it uses `COLORFGBG` when available, otherwise
-your terminal's own ANSI colors.
+the dark palette. Reverted or flushed files disappear; deleted files show only their
+heading and removal count.
 
 Use the on-screen keyboard controls:
 

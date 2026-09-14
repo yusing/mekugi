@@ -23,6 +23,7 @@ type autoLiveDiff struct {
 	events     *liveDiffBroker
 	enabled    atomic.Bool
 	mu         sync.Mutex
+	requested  bool
 	workspace  string
 	scope      liveDiffScope
 	scopeBytes int
@@ -75,9 +76,9 @@ func (a *autoLiveDiff) run(ctx context.Context, replay string) {
 			a.mu.Unlock()
 			return
 		}
-		workspace := a.workspace
+		workspace, requested := a.workspace, a.requested
 		a.mu.Unlock()
-		if workspace == "" || directory != "" {
+		if !requested || workspace == "" || directory != "" {
 			continue
 		}
 		data, err := json.Marshal(a.events.descriptor())
@@ -109,6 +110,25 @@ func (a *autoLiveDiff) enable() {
 		return
 	}
 	a.enabled.Store(true)
+}
+
+// Turn preparation collects scope without opening UI. Only an emitted hpatch
+// call in an observed thread requests the one-shot asynchronous launch.
+func (a *autoLiveDiff) requestLaunch(workspace, thread string) {
+	if a == nil || !a.enabled.Load() {
+		return
+	}
+	a.mu.Lock()
+	if !a.enabled.Load() || a.requested || !a.scope.Workspaces[workspace][thread] {
+		a.mu.Unlock()
+		return
+	}
+	a.requested = true
+	a.mu.Unlock()
+	select {
+	case a.changed <- struct{}{}:
+	default:
+	}
 }
 
 func (a *autoLiveDiff) observe(workspace, thread string, metadata codexTurnMetadata) {

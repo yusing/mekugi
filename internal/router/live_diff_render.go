@@ -55,11 +55,22 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 	if len(focusHunks) > 0 {
 		focusLine = focusHunks[len(focusHunks)-1].ChangedStart
 	}
+	fileCount := 0
+	for _, file := range files {
+		if len(file.chunks) > 0 {
+			fileCount++
+		}
+	}
+	fileNumber := 0
 	for i, file := range files {
 		render.starts[i] = len(render.lines)
 		if i == focusFile {
 			render.focusOffset, render.focusRow = len(render.lines), len(render.lines)
 		}
+		if len(file.chunks) == 0 {
+			continue
+		}
+		fileNumber++
 		action := ""
 		for _, chunk := range file.chunks {
 			added, removed := chunk.review.LineCounts()
@@ -69,7 +80,7 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 				action = liveDiffAction(chunk.review, workspace)
 			}
 		}
-		label := fmt.Sprintf("%d/%d  %s", i+1, len(files), liveDiffDisplayPath(workspace, file.path))
+		label := fmt.Sprintf("%d/%d  %s", fileNumber, fileCount, liveDiffDisplayPath(workspace, file.path))
 		if action != "" {
 			label += " · " + action
 		}
@@ -86,14 +97,9 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 				return liveDiffRender{}, err
 			}
 		}
-		if len(file.chunks) == 0 {
-			if err := appendLine("No unreviewed changes", file.highlighted); err != nil {
-				return liveDiffRender{}, err
-			}
-		}
-		// Keep coordinates aligned across a file without reserving four digits
-		// (or an entirely absent side) on every source row.
-		oldDigits, newDigits := 0, 0
+		// Keep one coordinate column aligned across the file. Deletions use
+		// old line numbers; additions and context use new line numbers.
+		digits := 0
 		fileHunks := make([][]mekugi.ReviewHunk, len(file.chunks))
 		for j, chunk := range file.chunks {
 			hunks, err := chunk.review.Hunks()
@@ -106,11 +112,11 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 				for _, row := range hunk.Rows {
 					if row.Kind != '+' {
 						oldEnd++
-						oldDigits = max(oldDigits, len(strconv.Itoa(oldEnd)))
+						digits = max(digits, len(strconv.Itoa(oldEnd)))
 					}
 					if row.Kind != '-' {
 						newEnd++
-						newDigits = max(newDigits, len(strconv.Itoa(newEnd)))
+						digits = max(digits, len(strconv.Itoa(newEnd)))
 					}
 				}
 			}
@@ -129,6 +135,10 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 						return liveDiffRender{}, err
 					}
 				}
+			}
+			// Keep deletion metadata and counts, but omit the removed file's source.
+			if review.BeforePath != "" && review.AfterPath == "" {
+				continue
 			}
 			for hunkIndex, hunk := range hunks {
 				hunkStart := len(render.lines)
@@ -155,27 +165,18 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 						render.focusOffset = max(hunkStart, render.focusRow-3)
 						bestDistance, bestKind = distance, row.Kind
 					}
-					left, right, text := "", "", ""
+					number, text := "", ""
 					if row.Kind != '+' {
-						left, text = strconv.Itoa(oldLine), before[oldIndex]
+						number, text = strconv.Itoa(oldLine), before[oldIndex]
 						oldLine++
 						oldIndex++
 					}
 					if row.Kind != '-' {
-						right, text = strconv.Itoa(newLine), after[newIndex]
+						number, text = strconv.Itoa(newLine), after[newIndex]
 						newLine++
 						newIndex++
 					}
-					coordinates := ""
-					if oldDigits > 0 {
-						coordinates = fmt.Sprintf("%*s", oldDigits, left)
-					}
-					if newDigits > 0 {
-						if oldDigits > 0 {
-							coordinates += " "
-						}
-						coordinates += fmt.Sprintf("%*s", newDigits, right)
-					}
+					coordinates := fmt.Sprintf("%*s", digits, number)
 					numbers := "\x1b[2m" + coordinates + "│\x1b[22m"
 					if width-3 < len(coordinates)+4 {
 						numbers = "" // Leave room for source in very narrow panes.
@@ -186,7 +187,17 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 					} else if row.Kind == '-' {
 						style = theme.foreground(chroma.GenericDeleted)
 					}
-					line := numbers + style + string(row.Kind) + "\x1b[39m" + text + "\x1b[0m"
+					base := theme.foreground(chroma.NameOther)
+					line := numbers + style + string(row.Kind) + "\x1b[39m" + text
+					if background := theme.rowBackground(row.Kind); background != "" {
+						// Token resets restore the row foreground, not an unknown
+						// terminal default that may be unreadable on this fill.
+						line = strings.ReplaceAll(line, "\x1b[39m", base)
+						line = ansi.Truncate(line, max(0, width-3), "")
+						line += strings.Repeat(" ", max(0, width-3-ansi.StringWidth(line)))
+						line = background + base + line
+					}
+					line += "\x1b[0m"
 					if err := appendLine(line, chunk.highlighted); err != nil {
 						return liveDiffRender{}, err
 					}

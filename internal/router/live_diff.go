@@ -377,9 +377,15 @@ func (v *liveDiffView) scrollTo(render liveDiffRender, offset int) {
 		if start > offset {
 			break
 		}
-		v.selected = i
+		end := len(render.lines)
+		if i+1 < len(render.starts) {
+			end = render.starts[i+1]
+		}
+		if end > start {
+			v.selected = i
+		}
 	}
-	v.scroll[v.files[v.selected].key()] = offset - render.starts[v.selected]
+	v.scroll[v.files[v.selected].key()] = max(0, offset-render.starts[v.selected])
 }
 
 type liveDiffOutput struct{ strings.Builder }
@@ -555,24 +561,36 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		if view.following {
 			offset = rendering.followOffset(rows)
 		}
+		// A flushed/reverted last file has an empty span at EOF. Normalize the
+		// actual viewport offset too, not only scrollTo's selection argument.
+		offset = max(0, min(offset, len(lines)-1))
 		view.scrollTo(rendering, offset)
 		var active liveDiffFile
-		if len(view.files) > 0 {
+		if len(lines) > 0 {
 			active = files[view.selected]
 		}
 		if dirty {
 			header := "Waiting for captured workspace edits..."
 			if len(view.files) > 0 {
+				header = "No unreviewed changes"
+			}
+			if len(lines) > 0 {
 				label := liveDiffDisplayPath(workspace, active.path)
 				end := len(lines)
 				if view.selected+1 < len(files) {
 					end = rendering.starts[view.selected+1]
 				}
 				start := rendering.starts[view.selected]
-				header = fmt.Sprintf("%d/%d  %s  | row %d/%d", view.selected+1, len(view.files), label, offset-start+1, end-start)
-				if len(active.chunks) == 0 {
-					header = fmt.Sprintf("%d/%d  %s  | No unreviewed changes", view.selected+1, len(view.files), label)
+				number, total := 0, 0
+				for i, file := range files {
+					if len(file.chunks) > 0 {
+						total++
+						if i <= view.selected {
+							number++
+						}
+					}
 				}
+				header = fmt.Sprintf("%d/%d  %s  | row %d/%d", number, total, label, offset-start+1, end-start)
 			}
 			if coverage != "" {
 				header = coverage
@@ -581,7 +599,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			writeRow := func(row int, text string) {
 				fmt.Fprintf(&screen, "\x1b[%d;1H\x1b[0m\x1b[2K%s\x1b[0m", row, ansi.Truncate(text, max(0, width-1), ""))
 			}
-			if len(files) > 0 {
+			if len(lines) > 0 {
 				header = liveDiffGutter(active.highlighted, theme) + liveDiffHeader(header, width-3, rendering.counts[view.selected], theme)
 			} else {
 				header = liveDiffGutter(false, theme) + liveDiffSafe(header, false)
@@ -713,12 +731,18 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			case 'f', 'F':
 				view.flush(key == 'F')
 			case 'n', '\t':
-				if len(view.files) > 0 {
+				for range len(view.files) {
 					view.selected = (view.selected + 1) % len(view.files)
+					if len(files[view.selected].chunks) > 0 {
+						break
+					}
 				}
 			case 'p':
-				if len(view.files) > 0 {
+				for range len(view.files) {
 					view.selected = (view.selected + len(view.files) - 1) % len(view.files)
+					if len(files[view.selected].chunks) > 0 {
+						break
+					}
 				}
 			case 'j':
 				view.scrollTo(rendering, offset+1)

@@ -151,7 +151,9 @@ Manual live viewing is unsupported; durable history remains available through `h
 Interactive `mekugi codex` inside Herdr arms one automatic pane launch per router
 process when stdin and stdout are terminals and `herdr` is available. The first
 successfully prepared non-subagent turn selects the canonical workspace, not wrapper
-cwd or parsed command arguments.
+cwd or parsed command arguments. Preparation and read-only turns do not open UI.
+The first complete hpatch call emitted for an observed thread triggers the launch,
+including a subagent's call or a rejected edit; replayed history alone does not.
 The pane opens to the caller's right without changing focus. Launch is asynchronous,
 silent, limited to five seconds, and canceled with the router. Failure neither blocks
 Codex nor triggers an automatic retry.
@@ -219,7 +221,9 @@ The footer identifies FOLLOW or PAUSED. Updates received while paused preserve t
 viewport and show `new changes available`; resuming or flushing all marked files clears
 the notice. New captures mark every affected file and touched net hunk with a cyan
 gutter. Receipt-only updates preserve those marks; another capture update or flush
-replaces them. A full revert may mark an empty file state, never a nonexistent hunk.
+replaces them. Fully reverted or flushed files disappear from the viewport and file navigation;
+retained captures remain available for later composition. When all files are hidden,
+the viewer shows a single empty-state message without a file header.
 Markers indicate recent hunks, not line- or word-level attribution.
 
 File headings and the sticky current-file header share an aligned gutter, bold titles,
@@ -227,29 +231,34 @@ green `+N` and red `-N` source-line counts, and a width-filling separator. Count
 the visible combined result plus prepared captures, exclude context and headers, and
 become zero when flushed. Navigation must not rescan diffs merely to update counts.
 File actions appear once per file or prepared capture, with both rename endpoints.
+Deleted files retain their action heading and removal count, but omit source diff rows.
 Heading blocks wrap without losing actions or paths; the sticky title stays on one row.
 
-Source uses unified old/new line numbers, explicit change markers, and no repeated hunk
-headings or applied-status banners. Number columns use only the required digits, omit
-absent sides, and disappear in very narrow panes; blank source rows keep their numbers.
+Source uses one line-number column: old coordinates for deletions and new coordinates
+for additions and context. Explicit change markers remain, without repeated hunk headings
+or applied-status banners. The column uses only the required digits and disappears in
+very narrow panes; blank source rows keep their numbers.
 Prepared status appears once per capture. Paths within the display workspace are relative;
 external paths stay absolute. Display formatting never changes captured paths or source.
 
 Resize must preserve safe Unicode clipping, leaving room for the gutter and final
 terminal column. Only text and terminal color/text styling (SGR) may reach the viewport.
-Source retains the normal terminal background, independent syntax colors, and
-missing-final-newline markers. Syntax palettes preserve the lexer's token categories,
+Added and removed source rows have green and red backgrounds through the available
+row width, independent syntax colors, explicit +/- markers, and missing-final-newline
+markers. Context and chrome retain the terminal background. Syntax palettes preserve
+the lexer's token categories,
 including functions, built-ins, operators, and language-specific names, rather than
 only keywords and literals. Color decoration does not infer semantic types from names.
 
-The viewer selects a foreground-only light or dark palette from an asynchronous
+The viewer selects a light or dark palette from an asynchronous
 terminal background query (OSC 11), without delaying the initial display or input.
 A valid later reply recolors existing content without changing navigation or review
 state. Until a valid reply arrives, a recognized `COLORFGBG` background is used;
-otherwise colors come from the terminal's own ANSI palette, with no assumed dark
-background. Replies are bounded, consumed separately from navigation, and never
+otherwise the viewer uses the dark syntax palette and paired dark change-row fills.
+Replies are bounded, consumed separately from navigation, and never
 interpreted as review commands. Syntax, change markers, and recency gutters use the
-same selected mode. Theme backgrounds and error fills never reach the viewport.
+same selected mode. Lexer theme backgrounds and error fills never reach the viewport;
+only the renderer owns change-row fills, which reset before the next row.
 Highlighting uses each hunk side independently; unknown languages, lexer failures, and
 oversized sides fall back to plain safe text. No external renderer or pager is required.
 Delta/Git styling, side-by-side layout, and word-level emphasis are unsupported.

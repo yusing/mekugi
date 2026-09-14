@@ -8,6 +8,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
 )
@@ -181,7 +182,6 @@ func TestLiveDiffRenderHighlights(t *testing.T) {
 			if strings.Contains(plain, "file.txt") && strings.Contains(line, "\x1b[1m") {
 				sawBold = true
 			}
-			assertLiveDiffNoBackground(t, line)
 		}
 		if !sawOld || !sawNew || !sawBold {
 			t.Fatalf("width %d: missing old/new/label: %t/%t/%t\n%s", width, sawOld, sawNew, sawBold, strings.Join(render.lines, "\n"))
@@ -271,8 +271,8 @@ func TestLiveDiffHeaders(t *testing.T) {
 				!strings.Contains(render.lines[0], "─") || ansi.StringWidth(render.lines[0]) != 89 {
 				t.Fatalf("file heading lacks bounded emphasis: %q", render.lines[0])
 			}
-			if !strings.Contains(render.lines[0], "\x1b[32m+"+strconv.Itoa(tc.added)+"\x1b[39m") ||
-				!strings.Contains(render.lines[0], "\x1b[31m-"+strconv.Itoa(tc.removed)+"\x1b[39m") {
+			if !strings.Contains(render.lines[0], liveDiffTerminalTheme.foreground(chroma.GenericInserted)+"+"+strconv.Itoa(tc.added)+"\x1b[39m") ||
+				!strings.Contains(render.lines[0], liveDiffTerminalTheme.foreground(chroma.GenericDeleted)+"-"+strconv.Itoa(tc.removed)+"\x1b[39m") {
 				t.Fatalf("missing green/red source-line counts: %q", render.lines[0])
 			}
 
@@ -413,7 +413,6 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 		if marked := strings.HasPrefix(plain, "▎ "); marked != (i == 312 || i == 337) {
 			t.Fatalf("source row %d has incorrect recency: %q", i, plain)
 		}
-		assertLiveDiffNoBackground(t, render.lines[i])
 	}
 }
 
@@ -452,7 +451,6 @@ func TestLiveDiffFollowLatestCombinedResult(t *testing.T) {
 				t.Fatalf("current capture lost its highlight: %q", line)
 			}
 		}
-		assertLiveDiffNoBackground(t, line)
 	}
 }
 
@@ -520,7 +518,6 @@ func TestLiveDiffBlankSourceRows(t *testing.T) {
 		if strings.TrimSpace(ansi.Strip(line)) == "" {
 			t.Fatalf("blank source row lacks inline numbers: %q", line)
 		}
-		assertLiveDiffNoBackground(t, line)
 	}
 }
 
@@ -577,7 +574,7 @@ func TestLiveDiffNarrowFileActions(t *testing.T) {
 				Diff: tc.name + " " + strconv.Quote(tc.before) + " -> " + strconv.Quote(tc.after) + "\n"}
 			file := liveDiffFile{path: path, highlighted: true, chunks: []liveDiffChunk{{review: review}}}
 			for _, width := range []int{40, 90} {
-				render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file, {path: "next.txt"}},
+				render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file, {path: "next.txt", chunks: []liveDiffChunk{{status: "prepared"}}}},
 					workspace, width, 0, file.chunks[0])
 				if err != nil {
 					t.Fatal(err)
@@ -602,7 +599,7 @@ func TestLiveDiffNarrowFileActions(t *testing.T) {
 						t.Fatalf("width %d: invalid wrapped heading: %q", width, line)
 					}
 				}
-				view := liveDiffView{files: []liveDiffFile{file, {path: "next.txt"}}, scroll: make(map[string]int)}
+				view := liveDiffView{files: []liveDiffFile{file, {path: "next.txt", chunks: []liveDiffChunk{{status: "prepared"}}}}, scroll: make(map[string]int)}
 				view.scrollTo(render, render.starts[1])
 				if view.selected != 1 || view.scroll["next.txt"] != 0 {
 					t.Fatal("wrapped heading broke navigation to the next file")

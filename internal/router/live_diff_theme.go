@@ -17,52 +17,57 @@ const (
 	liveDiffDarkTheme
 )
 
-// Keep the terminal's background. Chroma owns token inheritance and the paired
-// palettes; use only foregrounds, never its diff/error background fills.
+// Chroma owns token inheritance; row backgrounds are applied separately.
 func (theme liveDiffTheme) foreground(kind chroma.TokenType) string {
 	if kind == chroma.Error || kind.InCategory(chroma.Text) {
 		return ""
 	}
-	if theme != liveDiffTerminalTheme {
-		name := "github"
-		if theme == liveDiffDarkTheme {
-			name = "github-dark"
-		}
-		// The dark palette otherwise gives built-ins the ordinary name color.
-		if kind.InSubCategory(chroma.NameBuiltin) {
-			kind = chroma.NameFunction
-		}
-		color := styles.Get(name).Get(kind).Colour
-		if color.IsSet() {
-			return fmt.Sprintf("\x1b[38;2;%d;%d;%dm", color.Red(), color.Green(), color.Blue())
-		}
-		return ""
+	name := "github-dark"
+	if theme == liveDiffLightTheme {
+		name = "github"
 	}
-	// When the background is unknown, use the terminal's own palette rather
-	// than assuming dark mode or forcing a black/white source foreground.
+	color := styles.Get(name).Get(kind).Colour
+	// Distinguish common categories that GitHub otherwise renders blue or white.
 	switch {
-	case kind == chroma.GenericInserted:
-		return "\x1b[32m"
-	case kind == chroma.GenericDeleted:
-		return "\x1b[31m"
-	case kind == chroma.KeywordType,
-		kind.InSubCategory(chroma.NameFunction),
-		kind.InSubCategory(chroma.NameBuiltin),
-		kind == chroma.NameClass, kind == chroma.NameNamespace:
-		return "\x1b[34m"
-	case kind.InCategory(chroma.Keyword), kind.InCategory(chroma.Operator),
-		kind == chroma.NameTag, kind == chroma.NameAttribute, kind == chroma.NameProperty:
-		return "\x1b[36m"
 	case kind.InSubCategory(chroma.LiteralString):
-		return "\x1b[32m"
-	case kind.InSubCategory(chroma.LiteralNumber),
-		kind == chroma.NameConstant, kind == chroma.NameDecorator:
-		return "\x1b[35m"
-	case kind.InCategory(chroma.Comment):
-		return "\x1b[90m"
-	default:
+		color = chroma.MustParseColour("#a5d6a7")
+		if theme == liveDiffLightTheme {
+			color = chroma.MustParseColour("#0a6634")
+		}
+	case kind == chroma.KeywordType, kind == chroma.NameClass, kind == chroma.NameNamespace:
+		color = chroma.MustParseColour("#80cbc4")
+		if theme == liveDiffLightTheme {
+			color = chroma.MustParseColour("#006b70")
+		}
+	case kind.InSubCategory(chroma.NameBuiltin), kind.InSubCategory(chroma.LiteralNumber),
+		kind == chroma.NameConstant:
+		color = chroma.MustParseColour("#f2c078")
+		if theme == liveDiffLightTheme {
+			color = chroma.MustParseColour("#875000")
+		}
+	}
+	if color.IsSet() {
+		return fmt.Sprintf("\x1b[38;2;%d;%d;%dm", color.Red(), color.Green(), color.Blue())
+	}
+	return ""
+}
+
+// Changed rows use paired foregrounds and subtle fills, including before theme
+// detection completes. Context and chrome retain the terminal background.
+func (theme liveDiffTheme) rowBackground(kind byte) string {
+	if kind != '+' && kind != '-' {
 		return ""
 	}
+	if theme == liveDiffLightTheme {
+		if kind == '+' {
+			return "\x1b[48;2;230;245;233m"
+		}
+		return "\x1b[48;2;255;235;233m"
+	}
+	if kind == '+' {
+		return "\x1b[48;2;22;42;29m"
+	}
+	return "\x1b[48;2;49;27;31m"
 }
 
 func (theme liveDiffTheme) accent() string {

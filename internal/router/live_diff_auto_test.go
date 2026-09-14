@@ -70,6 +70,21 @@ func TestAutoLiveDiffSelectedWorkspaceBoundary(t *testing.T) {
 	if err := executeRequest(t.Context(), t.Context(), request, headers, "auto", provider, io.Discard, nil, proxy, nil, nil); err != nil {
 		t.Fatal(err)
 	}
+	auto.mu.Lock()
+	requested := auto.requested
+	auto.mu.Unlock()
+	if requested {
+		t.Fatal("read-only turn requested a pane")
+	}
+	request = serverRequest(t, nil)
+	provider = &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(string(mustTestJSON(t, map[string]any{
+		"id": "edit-response", "status": "completed", "output": []any{map[string]any{
+			"type": "custom_tool_call", "name": "hpatch", "call_id": "first-edit", "input": testMekugiScript,
+		}},
+	})))}}}
+	if err := executeRequest(t.Context(), t.Context(), request, headers, "auto", provider, io.Discard, nil, proxy, nil, nil); err != nil {
+		t.Fatal(err)
+	}
 	data := waitAutoLiveDiff(t, log, "\ndone\n")
 	if !strings.Contains(data, "\nsplit\n--current\n--direction\nright\n--cwd\n"+workspace+"\n--no-focus\n") ||
 		!strings.Contains(data, " live-diff --workspace "+shellQuoteArgument(workspace)) ||
@@ -81,18 +96,24 @@ func TestAutoLiveDiffSelectedWorkspaceBoundary(t *testing.T) {
 	}
 	var callers sync.WaitGroup
 	for range 20 {
-		callers.Go(func() { auto.observe(workspace, "thread-1", codexTurnMetadata{RequestKind: "turn"}) })
+		callers.Go(func() {
+			auto.observe(workspace, "thread-1", codexTurnMetadata{RequestKind: "turn"})
+			auto.requestLaunch(workspace, "thread-1")
+		})
 	}
 	callers.Wait()
 	stop()
 	dataBytes, _ := os.ReadFile(log)
+	if !strings.Contains(string(dataBytes), "\nclose\nnew\n") {
+		t.Fatal("router exit did not close its owned pane")
+	}
 	if strings.Count(string(dataBytes), "\nsplit\n") != 1 {
 		t.Fatal("subsequent turns created duplicate panes")
 	}
 }
 
 func TestAutoLiveDiffEligibility(t *testing.T) {
-	for _, name := range []string{"disabled", "outside", "missing_herdr", "empty", "child", "auxiliary"} {
+	for _, name := range []string{"disabled", "outside", "missing_herdr", "empty", "child", "auxiliary", "no_hpatch", "unknown_thread"} {
 		t.Run(name, func(t *testing.T) {
 			log := autoLiveDiffFixture(t)
 			a, stop := newAutoLiveDiff(t.Context(), t.TempDir())
@@ -117,8 +138,13 @@ func TestAutoLiveDiffEligibility(t *testing.T) {
 				a.enable()
 			}
 			a.observe(workspace, "thread-1", metadata)
+			if name == "unknown_thread" {
+				a.requestLaunch(workspace, "other")
+			} else if name != "no_hpatch" {
+				a.requestLaunch(workspace, "thread-1")
+			}
 			stop()
-			if a.workspace != "" {
+			if a.requested && a.workspace != "" {
 				t.Fatal("ineligible turn claimed launch")
 			}
 			if _, err := os.Stat(log); !os.IsNotExist(err) {
@@ -148,7 +174,9 @@ func TestAutoLiveDiffCancellationAndFailure(t *testing.T) {
 			if mode == "cancel_before" {
 				cancel()
 			}
-			a.observe(t.TempDir(), "thread-1", codexTurnMetadata{RequestKind: "turn"})
+			workspace := t.TempDir()
+			a.observe(workspace, "thread-1", codexTurnMetadata{RequestKind: "turn"})
+			a.requestLaunch(workspace, "thread-1")
 			if mode != "cancel_before" {
 				waitAutoLiveDiff(t, log, "started")
 			}
@@ -193,5 +221,26 @@ func TestAutoLiveDiffScopeCapacity(t *testing.T) {
 	a.observe("/tmp/after", "new", codexTurnMetadata{RequestKind: "turn"})
 	if a.scope.Workspaces != nil {
 		t.Fatal("disabled collection resumed")
+	}
+}
+
+func TestAutoLiveDiffChildHpatchWaitsForRootWorkspace(t *testing.T) {
+	log := autoLiveDiffFixture(t)
+	a, stop := newAutoLiveDiff(t.Context(), t.TempDir())
+	defer stop()
+	a.enable()
+	childWorkspace, rootWorkspace := t.TempDir(), t.TempDir()
+	a.observe(childWorkspace, "child", codexTurnMetadata{RequestKind: "turn", SubagentKind: "review"})
+	a.requestLaunch(childWorkspace, "child")
+	a.mu.Lock()
+	if !a.requested || a.workspace != "" {
+		a.mu.Unlock()
+		t.Fatal("child hpatch did not defer launch until root workspace selection")
+	}
+	a.mu.Unlock()
+	a.observe(rootWorkspace, "root", codexTurnMetadata{RequestKind: "turn"})
+	data := waitAutoLiveDiff(t, log, "\ndone\n")
+	if !strings.Contains(data, "\n--cwd\n"+rootWorkspace+"\n") {
+		t.Fatalf("child hpatch overrode root workspace: %s", data)
 	}
 }
