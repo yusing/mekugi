@@ -514,6 +514,7 @@ const (
 
 func copyUpstreamBodyTransformed(writer io.Writer, response *http.Response, streamResponse bool, transformer responseTransformer, hooks *responseHooks) (responseTerminalState, error) {
 	if streamResponse && hooks != nil && hooks.streamDiagnostics != nil {
+		hooks.streamDiagnostics.responseStarted(response)
 		if id := response.Header.Get("X-Request-Id"); safeFeatureIdentity(id) {
 			hooks.streamDiagnostics.ProviderRequestID = id
 		}
@@ -580,6 +581,9 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 			}
 		}
 	}()
+	if hooks != nil && hooks.streamDiagnostics != nil {
+		reader = diagnosticStreamReader{reader: reader, diagnostics: hooks.streamDiagnostics}
+	}
 	buffered := bufio.NewReader(reader)
 
 	if err := consumeOptionalUTF8BOM(buffered); err != nil {
@@ -610,6 +614,9 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 		if err != nil {
 			if hooks != nil {
 				hooks.streamDiagnostics.readEnded(err)
+			}
+			if hooks != nil && hooks.streamDiagnostics != nil {
+				hooks.streamDiagnostics.UnterminatedEvent = len(event) != 0
 			}
 			if errors.Is(err, io.EOF) {
 				eventTerminalState, writeErr := writeSSEEvent(writer, event, "", transformer, hooks)

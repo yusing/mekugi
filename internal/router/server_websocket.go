@@ -122,6 +122,21 @@ type webSocketMessage struct {
 	err  error
 }
 
+// A closed reader channel is not evidence of an upstream EOF. Cancellation can
+// win the reader's final send; preserve it rather than inventing a transport end.
+func webSocketMessageReadError(ctx context.Context, message webSocketMessage) error {
+	if message.err != nil {
+		return message.err
+	}
+	if len(message.body) != 0 {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return staticCriticalDiagnostic("websocket_reader_closed", "a WebSocket message reader stopped without delivering a terminal cause")
+}
+
 func readResponsesWebSocket(ctx context.Context, conn *websocket.Conn, disconnected context.CancelFunc) <-chan webSocketMessage {
 	messages := make(chan webSocketMessage, 1)
 	go func() {
@@ -140,6 +155,15 @@ func readResponsesWebSocket(ctx context.Context, conn *websocket.Conn, disconnec
 			}
 			if !readFailed && err != nil && disconnected != nil {
 				err = incompatibleRequest("invalid_websocket_request", err.Error())
+			}
+			// disconnected can cancel ctx before this error is published.
+			// Preserve the actual close/error whenever the bounded slot is free.
+			if err != nil {
+				select {
+				case messages <- webSocketMessage{body, err}:
+					return
+				default:
+				}
 			}
 			select {
 			case messages <- webSocketMessage{body, err}:
@@ -250,11 +274,8 @@ func (s *responsesWebSocket) run() error {
 		case <-s.ctx.Done():
 			return s.ctx.Err()
 		case message := <-s.clientMessages:
-			if message.err != nil {
-				return message.err
-			}
-			if len(message.body) == 0 {
-				return io.EOF
+			if err := webSocketMessageReadError(s.ctx, message); err != nil {
+				return err
 			}
 			var fields map[string]json.RawMessage
 			_ = json.Unmarshal(message.body, &fields)
@@ -266,11 +287,8 @@ func (s *responsesWebSocket) run() error {
 				return err
 			}
 		case message := <-s.providerMessages:
-			if message.err != nil {
-				return message.err
-			}
-			if len(message.body) == 0 {
-				return io.EOF
+			if err := webSocketMessageReadError(s.ctx, message); err != nil {
+				return err
 			}
 			var fields map[string]json.RawMessage
 			_ = json.Unmarshal(message.body, &fields)
@@ -641,21 +659,15 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 		case <-startCtx.Done():
 			return nil, startCtx.Err()
 		case message := <-s.clientMessages:
-			if message.err != nil {
-				return nil, message.err
-			}
-			if len(message.body) == 0 {
-				return nil, io.EOF
+			if err := webSocketMessageReadError(responseCtx, message); err != nil {
+				return nil, err
 			}
 			if err := s.control(message.body); err != nil {
 				return nil, err
 			}
 		case message := <-s.providerMessages:
-			if message.err != nil {
-				return nil, message.err
-			}
-			if len(message.body) == 0 {
-				return nil, io.EOF
+			if err := webSocketMessageReadError(responseCtx, message); err != nil {
+				return nil, err
 			}
 			var fields map[string]json.RawMessage
 			_ = json.Unmarshal(message.body, &fields)
@@ -705,24 +717,18 @@ func (e *webSocketExchange) Read(buffer []byte) (int, error) {
 		case <-idle:
 			return 0, errUpstreamStreamIdleTimeout
 		case message := <-s.clientMessages:
-			if message.err != nil {
-				e.streamDiagnostics.readEndedFrom(message.err, "downstream")
-				return 0, message.err
-			}
-			if len(message.body) == 0 {
-				e.streamDiagnostics.readEndedFrom(io.EOF, "downstream")
-				return 0, io.EOF
+			if err := webSocketMessageReadError(e.ctx, message); err != nil {
+				e.streamDiagnostics.readEndedFrom(err, "downstream")
+				return 0, err
 			}
 			if err := s.control(message.body); err != nil {
 				e.streamDiagnostics.readEndedFrom(err, "router_control")
 				return 0, err
 			}
 		case message := <-s.providerMessages:
-			if message.err != nil {
-				return 0, message.err
-			}
-			if len(message.body) == 0 {
-				return 0, io.EOF
+			if err := webSocketMessageReadError(e.ctx, message); err != nil {
+				e.streamDiagnostics.readEndedFrom(err, "upstream")
+				return 0, err
 			}
 			body = message.body
 		}

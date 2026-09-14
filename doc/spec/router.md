@@ -86,6 +86,20 @@ exporting addresses, URLs, WebSocket close reasons, or arbitrary error text. Deb
 separate from sanitized metrics/capture. Initialization failure prevents launch; subsequent
 debug write failures are surfaced on exit without changing request execution.
 
+Stream-end diagnostics identify the actual upstream transport separately from a synthetic
+HTTP status used by a WebSocket bridge. They retain bounded provider request/response IDs,
+event and decoded/adapted body-byte counts, last-byte/end timestamps, and whether an event
+was left without its final separator. Body-byte counts are not wire-byte measurements.
+For HTTP, framing distinguishes a completed length/chunked/HTTP-stream body from a
+connection-delimited end and from EOF after automatic decompression. WebSocket evidence
+distinguishes an actual read error/close from a stopped reader channel; cancellation is
+preserved rather than converted into a synthetic upstream EOF. A reader publishes its
+actual terminal error into an available bounded slot before cancellation can discard it;
+queued messages are not evicted and an abandoned consumer cannot block shutdown. The first observed
+termination origin is not overwritten by outer readers. Close reasons, response text,
+credentials, and arbitrary headers are never logged. These facts classify the observable
+end; an unreported provider-internal cause is not inferred.
+
 The AX report uses [REQ-AX-001](ax.md) calculations. At router shutdown it discovers
 local Codex rollout filenames for at most 256 observed thread identities under
 `$CODEX_HOME/sessions` and `archived_sessions`, or the default `~/.codex` location.

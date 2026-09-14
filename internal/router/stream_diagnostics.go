@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"slices"
 	"strings"
@@ -16,6 +17,17 @@ import (
 // streamDiagnostics retains bounded metadata only. It neither assembles tool
 // input nor participates in translation, retry, or transport ownership.
 type streamDiagnostics struct {
+	Transport          string    `json:"transport,omitempty"`
+	HTTPFraming        string    `json:"http_framing,omitempty"`
+	BodyDecoded        bool      `json:"body_decoded,omitempty"`
+	HTTPContentLength  *int64    `json:"http_content_length,omitzero"`
+	ProviderResponseID string    `json:"provider_response_id,omitempty"`
+	BodyBytes          uint64    `json:"body_bytes"`
+	Events             uint64    `json:"events"`
+	LastByteAt         time.Time `json:"last_byte_at,omitzero"`
+	ReadEndedAt        time.Time `json:"read_ended_at,omitzero"`
+	EndReason          string    `json:"end_reason,omitempty"`
+	UnterminatedEvent  bool      `json:"unterminated_event,omitempty"`
 	CopyStop           string    `json:"copy_stop,omitempty"`
 	LastEvent          string    `json:"last_event,omitempty"`
 	LastEventAt        time.Time `json:"last_event_at,omitzero"`
@@ -36,14 +48,70 @@ type streamCallDiagnostic struct {
 	InputDone  bool   `json:"input_done"`
 }
 
+func (d *streamDiagnostics) responseStarted(response *http.Response) {
+	if d == nil {
+		return
+	}
+	d.BodyDecoded = response.Uncompressed
+	switch response.ProtoMajor {
+	case 1:
+		d.Transport = "http1"
+	case 2:
+		d.Transport = "http2"
+	case 3:
+		d.Transport = "http3"
+	default:
+		switch response.Body.(type) {
+		case *webSocketResponseBody, *webSocketExchange:
+			d.Transport = "websocket"
+		case *grokResponseBody:
+			d.Transport = "chat_response_bridge"
+		default:
+			d.Transport = "unknown"
+		}
+		return
+	}
+	switch {
+	case slices.Contains(response.TransferEncoding, "chunked"):
+		d.HTTPFraming = "chunked"
+	case response.ContentLength >= 0:
+		d.HTTPFraming = "content_length"
+		d.HTTPContentLength = new(response.ContentLength)
+	case response.ProtoMajor >= 2:
+		d.HTTPFraming = "stream_end"
+	default:
+		d.HTTPFraming = "connection_close"
+	}
+}
+
+// Observe decoded/adapted body delivery, not wire bytes, without buffering content.
+type diagnosticStreamReader struct {
+	reader      io.Reader
+	diagnostics *streamDiagnostics
+}
+
+func (r diagnosticStreamReader) Read(buffer []byte) (int, error) {
+	n, err := r.reader.Read(buffer)
+	if n > 0 {
+		r.diagnostics.BodyBytes += uint64(n)
+		r.diagnostics.LastByteAt = time.Now().UTC()
+	}
+	r.diagnostics.readEnded(err)
+	return n, err
+}
+
 const maxStreamDiagnosticCalls = 32
 
 func (d *streamDiagnostics) observe(payload []byte) {
 	if d == nil {
 		return
 	}
+	d.Events++
 	d.LastEventAt = time.Now().UTC()
 	var event struct {
+		Response struct {
+			ID string `json:"id"`
+		} `json:"response"`
 		Type   responses.Kind `json:"type"`
 		ItemID string         `json:"item_id"`
 		Delta  string         `json:"delta"`
@@ -60,6 +128,9 @@ func (d *streamDiagnostics) observe(payload []byte) {
 			d.LastEvent = "done_marker"
 		}
 		return
+	}
+	if (event.Type == responses.Created || event.Type == responses.InProgress || event.Type.Terminal()) && safeFeatureIdentity(event.Response.ID) {
+		d.ProviderResponseID = event.Response.ID
 	}
 	switch event.Type {
 	case responses.Created, responses.Completed, responses.Failed, responses.Incomplete,
@@ -131,9 +202,10 @@ func (d *streamDiagnostics) observe(payload []byte) {
 }
 
 func (d *streamDiagnostics) readEnded(err error) {
-	if d == nil || err == nil {
+	if d == nil || err == nil || d.ReadTermination != "" {
 		return
 	}
+	d.ReadEndedAt = time.Now().UTC()
 	if d.ReadOrigin == "" {
 		d.ReadOrigin = "upstream"
 	}
@@ -151,7 +223,7 @@ func (d *streamDiagnostics) readEnded(err error) {
 }
 
 func (d *streamDiagnostics) readEndedFrom(err error, origin string) {
-	if d == nil {
+	if d == nil || d.ReadTermination != "" {
 		return
 	}
 	d.ReadOrigin = origin
@@ -173,6 +245,30 @@ func (d *streamDiagnostics) copyStopped(err error) {
 		d.CopyStop = "terminal_event"
 	default:
 		d.CopyStop = "eof_without_terminal"
+	}
+	d.classifyEnd()
+}
+
+func (d *streamDiagnostics) classifyEnd() {
+	d.EndReason = d.ReadTermination
+	if d.TerminalEvent != "" || d.ReadTermination != "upstream_eof" {
+		return
+	}
+	if d.BodyDecoded {
+		d.EndReason = "http_decoded_body_ended_without_terminal"
+		return
+	}
+	switch d.HTTPFraming {
+	case "content_length", "chunked", "stream_end":
+		d.EndReason = "http_body_complete_without_terminal"
+	case "connection_close":
+		d.EndReason = "http_connection_closed_without_terminal"
+	default:
+		if d.Transport == "websocket" {
+			d.EndReason = "websocket_eof_without_terminal"
+		} else {
+			d.EndReason = "stream_eof_without_terminal"
+		}
 	}
 }
 

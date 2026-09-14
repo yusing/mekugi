@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -26,10 +28,21 @@ func TestStreamDiagnosticsIncompleteHPATCH(t *testing.T) {
 	stream := `data: {"type":"response.output_item.added","output_index":0,"item":{"type":"custom_tool_call","id":"ctc_1","call_id":"call_1","name":"hpatch","status":"in_progress","input":""}}` + "\n\n" +
 		`data: {"type":"response.custom_tool_call_input.delta","item_id":"ctc_1","delta":` + string(mustMarshalJSON(input)) + "}\n\n"
 	var output bytes.Buffer
-	_, err := copyUpstreamBodyTransformed(&output, &http.Response{
-		Header: http.Header{"X-Request-Id": {"req_123"}},
-		Body:   io.NopCloser(strings.NewReader(stream)),
-	}, true, transform, hooks)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("X-Request-Id", "req_123")
+		_, _ = io.WriteString(w, stream)
+	}))
+	defer upstream.Close()
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, upstream.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := upstream.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = copyUpstreamBodyTransformed(&output, response, true, transform, hooks)
 	diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
 	if !ok || diagnostic.code != "stream_ended_incomplete_mekugi_call" {
 		t.Fatalf("expected existing incomplete guard, got %v", err)
@@ -43,6 +56,9 @@ func TestStreamDiagnosticsIncompleteHPATCH(t *testing.T) {
 	}
 	if d.ReadTermination != "upstream_eof" || d.CopyStop != "translation_error" || d.LastEvent != "response.custom_tool_call_input.delta" || d.LastEventAt.IsZero() || d.ProviderRequestID != "req_123" {
 		t.Fatalf("missing termination evidence: %+v", d)
+	}
+	if d.EndReason != "http_body_complete_without_terminal" {
+		t.Fatalf("partial-call rejection hid the HTTP end: %+v", d)
 	}
 	encoded, err := json.Marshal(d.snapshot())
 	if err != nil || bytes.Contains(encoded, []byte("secret")) {
@@ -279,4 +295,181 @@ func TestStreamDiagnosticsNativeMetadata(t *testing.T) {
 		return
 	}
 	t.Fatal("missing native request_complete")
+}
+
+func TestStreamDiagnosticsHTTPBodyEnd(t *testing.T) {
+	const stream = "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_smoke\",\"status\":\"in_progress\"}}\n\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"private response text\"}\n\n"
+	for _, mode := range []string{"fixed", "chunked", "truncated", "http2"} {
+		t.Run(mode, func(t *testing.T) {
+			upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.Header().Set("X-Request-Id", "req_smoke")
+				w.Header().Set("Authorization", "private credential")
+				switch mode {
+				case "fixed":
+					w.Header().Set("Content-Length", strconv.Itoa(len(stream)))
+				case "truncated":
+					w.Header().Set("Content-Length", strconv.Itoa(len(stream)+20))
+				case "chunked", "http2":
+					w.(http.Flusher).Flush()
+				}
+				_, _ = io.WriteString(w, stream)
+			}))
+			if mode == "http2" {
+				upstream.EnableHTTP2 = true
+				upstream.StartTLS()
+			} else {
+				upstream.Start()
+			}
+			defer upstream.Close()
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, upstream.URL, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := upstream.Client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			d := &streamDiagnostics{}
+			state, err := copyUpstreamBodyTransformed(io.Discard, response, true, nil, &responseHooks{streamDiagnostics: d})
+			if state != responseTerminalPending {
+				t.Fatalf("incomplete response accepted: %v", state)
+			}
+			if mode == "truncated" {
+				if !errors.Is(err, io.ErrUnexpectedEOF) || d.EndReason != "upstream_unexpected_eof" {
+					t.Fatalf("truncation lost: %+v, %v", d, err)
+				}
+			} else if err != nil || d.EndReason != "http_body_complete_without_terminal" {
+				t.Fatalf("normal body end misclassified: %+v, %v", d, err)
+			}
+			wantTransport, wantFraming := "http1", "content_length"
+			if mode == "chunked" {
+				wantFraming = "chunked"
+			} else if mode == "http2" {
+				wantTransport, wantFraming = "http2", "stream_end"
+			}
+			if d.Transport != wantTransport || d.HTTPFraming != wantFraming ||
+				d.BodyBytes != uint64(len(stream)) || d.Events != 2 ||
+				d.ProviderResponseID != "resp_smoke" || d.ProviderRequestID != "req_smoke" ||
+				d.LastByteAt.IsZero() || d.ReadEndedAt.Before(d.LastByteAt) {
+				t.Fatalf("missing end evidence: %+v", d)
+			}
+			if strings.Contains(string(mustMarshalJSON(d.snapshot())), "private") {
+				t.Fatal("diagnostic leaked response text or arbitrary headers")
+			}
+		})
+	}
+}
+
+func TestStreamDiagnosticsPreserveEndOrigin(t *testing.T) {
+	d := &streamDiagnostics{}
+	d.readEndedFrom(io.EOF, "downstream")
+	d.readEndedFrom(context.Canceled, "context")
+	d.readEnded(io.EOF)
+	d.copyStopped(nil)
+	if d.ReadOrigin != "downstream" || d.ReadTermination != "downstream_eof" || d.EndReason != "downstream_eof" {
+		t.Fatalf("first observed cause was overwritten: %+v", d)
+	}
+}
+
+func TestStreamDiagnosticsUnterminatedEventAndDecodedBody(t *testing.T) {
+	const stream = "data: {\"type\":\"response.in_progress\"}"
+	d := &streamDiagnostics{}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Content-Encoding", "gzip")
+		compressed := gzip.NewWriter(w)
+		_, _ = io.WriteString(compressed, stream)
+		_ = compressed.Close()
+	}))
+	defer upstream.Close()
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, upstream.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := upstream.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = copyUpstreamBodyTransformed(io.Discard, response, true, nil, &responseHooks{streamDiagnostics: d})
+	if err != nil || !d.UnterminatedEvent || d.EndReason != "http_decoded_body_ended_without_terminal" {
+		t.Fatalf("decoded EOF was presented as validated HTTP framing: %+v, %v", d, err)
+	}
+}
+
+func TestStreamDiagnosticsNativeReaderShutdown(t *testing.T) {
+	for _, canceled := range []bool{false, true} {
+		for _, origin := range []string{"upstream", "downstream"} {
+			t.Run(fmt.Sprintf("%s/canceled_%t", origin, canceled), func(t *testing.T) {
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				messages := make(chan webSocketMessage)
+				close(messages)
+				if canceled {
+					cancel()
+				}
+				d := &streamDiagnostics{}
+				session := &responsesWebSocket{ctx: ctx, provider: &providerClient{}}
+				if origin == "upstream" {
+					session.providerMessages = messages
+				} else {
+					session.clientMessages = messages
+				}
+				exchange := &webSocketExchange{ctx: ctx, session: session, streamDiagnostics: d}
+				_, err := copyUpstreamBodyTransformed(io.Discard, &http.Response{
+					Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: exchange,
+				}, true, nil, &responseHooks{streamDiagnostics: d})
+				if canceled {
+					if !errors.Is(err, context.Canceled) || d.ReadTermination == "upstream_eof" {
+						t.Fatalf("reader cancellation became EOF: %+v, %v", d, err)
+					}
+				} else {
+					diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
+					if !ok || diagnostic.code != "websocket_reader_closed" || d.ReadOrigin != origin {
+						t.Fatalf("reader closure lost its origin: %+v, %v", d, err)
+					}
+				}
+				if d.Transport != "websocket" || d.CopyStop != "read_error" {
+					t.Fatalf("synthetic HTTP bridge hid WebSocket failure: %+v", d)
+				}
+			})
+		}
+	}
+}
+
+func TestNativeReaderPreservesCloseErrorWhenDisconnectCancels(t *testing.T) {
+	for range 10 {
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			conn, err := websocket.Accept(w, r, nil)
+			if err != nil {
+				return
+			}
+			defer conn.CloseNow()
+			_ = conn.Close(websocket.StatusGoingAway, "private peer reason")
+		}))
+		conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(upstream.URL, "http"), nil)
+		if err != nil {
+			cancel()
+			upstream.Close()
+			t.Fatal(err)
+		}
+		disconnected := make(chan struct{})
+		messages := readResponsesWebSocket(ctx, conn, func() {
+			cancel()
+			close(disconnected)
+		})
+		select {
+		case <-disconnected:
+		case <-ctx.Done():
+		}
+		message, open := <-messages
+		conn.CloseNow()
+		upstream.Close()
+		if !open || websocket.CloseStatus(message.err) != websocket.StatusGoingAway {
+			t.Fatalf("actual close was replaced by a closed channel: open=%v err=%v", open, message.err)
+		}
+		cancel()
+	}
 }
