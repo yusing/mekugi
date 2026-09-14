@@ -110,9 +110,6 @@ func (a *autoLiveDiff) enable() {
 	if a == nil || os.Getenv("HERDR_ENV") != "1" {
 		return
 	}
-	if _, err := exec.LookPath("delta"); err != nil {
-		return
-	}
 	if _, err := exec.LookPath("herdr"); err != nil {
 		return
 	}

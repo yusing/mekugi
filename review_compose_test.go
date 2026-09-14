@@ -38,6 +38,18 @@ func TestReviewHunkGeometry(t *testing.T) {
 	}
 }
 
+func TestReviewHunkRowsPreserveSource(t *testing.T) {
+	file := composeCapture("context\r\nbefore", "context\r\nafter\n")
+	hunks, err := file.Hunks()
+	if err != nil || len(hunks) != 1 {
+		t.Fatalf("hunks: %#v %v", hunks, err)
+	}
+	want := []ReviewRow{{' ', "context\r\n"}, {'-', "before"}, {'+', "after\n"}}
+	if hunks[0].BeforeStart != 0 || !slices.Equal(hunks[0].Rows, want) {
+		t.Fatalf("source rows: %#v", hunks[0])
+	}
+}
+
 func TestReviewHunkGeometryAfterHiddenLineShifts(t *testing.T) {
 	file := ReviewFile{Diff: "--- x\n+++ x\n@@ -20 +21 @@\n-old\n+new\n"}
 	hunks, err := file.Hunks()

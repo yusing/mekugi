@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi"
 )
@@ -215,7 +216,7 @@ func TestLiveDiffFreshSnapshotComposesCrossStreamCaptures(t *testing.T) {
 }
 
 func TestLiveDiffSessionTerminalEmptyEditsAndExit(t *testing.T) {
-	liveDiffTestDelta(t)
+	t.Setenv("PATH", t.TempDir())
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -263,11 +264,11 @@ func TestLiveDiffSessionTerminalEmptyEditsAndExit(t *testing.T) {
 					t.Fatalf("viewer stopped waiting for %q: %s", want, text.String())
 				}
 				text.WriteString(chunk)
-				if strings.Contains(text.String(), want) {
+				if strings.Contains(ansi.Strip(text.String()), want) {
 					if strings.Contains(text.String(), "unrelated.go") {
 						t.Fatal("viewer displayed another session")
 					}
-					return text.String()
+					return ansi.Strip(text.String())
 				}
 			case <-ctx.Done():
 				t.Fatalf("waiting for %q: %s", want, text.String())

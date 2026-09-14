@@ -20,7 +20,6 @@ func autoLiveDiffFixture(t *testing.T) string {
 	log := filepath.Join(dir, "calls")
 	t.Setenv("MEKUGI_AUTO_DIFF_LOG", log)
 	for name, script := range map[string]string{
-		"delta": "#!/bin/sh\nexit 0\n",
 		"herdr": `#!/bin/sh
 printf '%s\n' "$@" >> "$MEKUGI_AUTO_DIFF_LOG"
 case "$2" in
@@ -93,7 +92,7 @@ func TestAutoLiveDiffSelectedWorkspaceBoundary(t *testing.T) {
 }
 
 func TestAutoLiveDiffEligibility(t *testing.T) {
-	for _, name := range []string{"disabled", "outside", "missing_delta", "missing_herdr", "empty", "child", "auxiliary"} {
+	for _, name := range []string{"disabled", "outside", "missing_herdr", "empty", "child", "auxiliary"} {
 		t.Run(name, func(t *testing.T) {
 			log := autoLiveDiffFixture(t)
 			a, stop := newAutoLiveDiff(t.Context(), t.TempDir())
@@ -102,7 +101,7 @@ func TestAutoLiveDiffEligibility(t *testing.T) {
 			switch name {
 			case "outside":
 				t.Setenv("HERDR_ENV", "")
-			case "missing_delta", "missing_herdr":
+			case "missing_herdr":
 				binary := strings.TrimPrefix(name, "missing_")
 				if err := os.Remove(filepath.Join(os.Getenv("PATH"), binary)); err != nil {
 					t.Fatal(err)

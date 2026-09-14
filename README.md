@@ -506,21 +506,24 @@ mounted at its original absolute path. See the [change record contract](doc/spec
 
 ### Live diff pane
 
-Interactive `mekugi codex` opens a sibling Herdr pane on the right when `herdr` and
-`delta` are available. It follows the session's captured hpatch edits, including subagents,
+Interactive `mekugi codex` opens a sibling Herdr pane on the right when `herdr`
+is available. It follows the session's captured hpatch edits, including subagents,
 and closes with Codex. Redirected input/output does not open a pane.
 
 For an independent workspace-wide viewer, run `mekugi live-diff --herdr`, or
 `mekugi live-diff` in an existing terminal. Use `--workspace DIR` and `--replay-dir DIR`
 to select another workspace or store. Workspace paths display relatively; external
-paths stay absolute. Delta supplies styling; Mekugi owns navigation.
+paths stay absolute. Rendering and navigation run inside Mekugi, with no external
+renderer or pager required.
 
 All captured files appear in one scrollable view, so short multi-file edits stay visible
 together. The latest changed hunk is followed by default; manual navigation pauses following.
 Bold file headings and separator lines identify each file, with green `+N` and red `-N`
-counts for the displayed additions and deletions. Delta's duplicate file and hunk headings
-are hidden; line numbers stay beside the source. File actions appear once in the file
-heading, not between hunks. Unconfirmed captures keep one label per capture.
+counts for the displayed additions and deletions. The unified view keeps old/new line
+numbers beside the source, with green `+` and red `-` markers and syntax highlighting.
+File actions appear once in the file heading, not between hunks. Unconfirmed captures keep one label per capture.
+This view does not use Delta/Git styling settings or offer side-by-side or word-level
+highlighting. Unknown languages and large hunks use plain source text with change markers.
 A cyan gutter marks recently touched hunks. Older diffs keep their normal styling.
 Marks persist until another update or a flush; startup history is not highlighted.
 While paused, the footer reports new changes

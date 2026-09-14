@@ -84,7 +84,6 @@ func TestWrapLiveDiffTerminalAndRedirected(t *testing.T) {
 			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 			for name, script := range map[string]string{
 				"codex": "#!/bin/sh\nexec '" + strings.ReplaceAll(os.Args[0], "'", "'\\''") + "' -test.run=^TestAutoWrapProcess$ -- codex \"$@\"\n",
-				"delta": "#!/bin/sh\nexit 0\n",
 				"herdr": `#!/bin/sh
 case "$2" in
 split) printf '%s\n' '{"result":{"pane":{"pane_id":"new"}}}' ;;

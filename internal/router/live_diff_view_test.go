@@ -26,40 +26,31 @@ func TestLiveDiffRenderAllFiles(t *testing.T) {
 			review: mekugi.ReviewFile{AfterPath: path, Diff: diff},
 		}}})
 	}
-	for _, sideBySide := range []bool{false, true} {
-		t.Run(strconv.FormatBool(sideBySide), func(t *testing.T) {
-			delta := liveDiffConfiguredDelta(t, "side-by-side = "+strconv.FormatBool(sideBySide))
-			for focusFile := range files {
-				render, err := renderLiveDiff(t.Context(), files, delta, workspace, 90, focusFile, files[focusFile].chunks[0])
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(render.starts) != 2 || render.starts[0] != 0 || render.starts[1] <= 0 {
-					t.Fatalf("missing file boundaries: %v", render.starts)
-				}
-				for i, name := range []string{"first", "second"} {
-					end := len(render.lines)
-					if i+1 < len(files) {
-						end = render.starts[i+1]
-					}
-					text := ansi.Strip(strings.Join(render.lines[render.starts[i]:end], "\n"))
-					if !strings.Contains(text, name+".txt") || !strings.Contains(text, name+" content") {
-						t.Fatalf("file %d not rendered in its own section: %q", i, text)
-					}
-					if i == focusFile && (render.focusOffset < render.starts[i] || render.focusOffset >= end) {
-						t.Fatalf("same line number in another file stole focus: %+v", render)
-					}
-				}
+	for focusFile := range files {
+		render, err := renderLiveDiff(t.Context(), files, workspace, 90, focusFile, files[focusFile].chunks[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(render.starts) != 2 || render.starts[0] != 0 || render.starts[1] <= 0 {
+			t.Fatalf("missing file boundaries: %v", render.starts)
+		}
+		for i, name := range []string{"first", "second"} {
+			end := len(render.lines)
+			if i+1 < len(files) {
+				end = render.starts[i+1]
 			}
-		})
+			text := ansi.Strip(strings.Join(render.lines[render.starts[i]:end], "\n"))
+			if !strings.Contains(text, name+".txt") || !strings.Contains(text, name+" content") {
+				t.Fatalf("file %d not rendered in its own section: %q", i, text)
+			}
+			if i == focusFile && (render.focusOffset < render.starts[i] || render.focusOffset >= end) {
+				t.Fatalf("same line number in another file stole focus: %+v", render)
+			}
+		}
 	}
 }
 
 func TestLiveDiffFollowEmptyLatestFile(t *testing.T) {
-	delta, err := exec.LookPath("delta")
-	if err != nil {
-		t.Skip("delta is not installed")
-	}
 	workspace := t.TempDir()
 	first := filepath.Join(workspace, "first.txt")
 	second := filepath.Join(workspace, "second.txt")
@@ -69,7 +60,7 @@ func TestLiveDiffFollowEmptyLatestFile(t *testing.T) {
 			review: mekugi.ReviewFile{AfterPath: first, Diff: diff}}}},
 		{path: second}, // The latest file was flushed or fully reverted.
 	}
-	render, err := renderLiveDiff(t.Context(), files, delta, workspace, 90, 1, liveDiffChunk{})
+	render, err := renderLiveDiff(t.Context(), files, workspace, 90, 1, liveDiffChunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,12 +99,10 @@ func TestLiveDiffScrollAcrossFiles(t *testing.T) {
 	}
 }
 
-// Reproduce the screenshot through the real delta and terminal consumer, with
+// Exercise the native renderer through the real terminal consumer, with
 // two created files in a single capture. Both must appear in the same frame.
 func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
-	if _, err := exec.LookPath("delta"); err != nil {
-		t.Skip("delta is not installed")
-	}
+	t.Setenv("PATH", t.TempDir())
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {

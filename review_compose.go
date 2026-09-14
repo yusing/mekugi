@@ -38,15 +38,26 @@ type reviewHunk struct {
 	diff                   string
 	before                 []string
 	edits                  []reviewEdit
+	rows                   []ReviewRow
 }
 
-// ReviewHunk is one validated captured hunk with zero-based current-source
-// coordinates. ChangedStart excludes leading context; deletions use their anchor.
-// Diff includes the file headers so renderers can handle hunks independently.
+// ReviewRow is a validated source row. Kind is ' ', '-', or '+' for context,
+// removal, or addition. Text retains source bytes, including its line terminator;
+// a missing final newline is represented by the absence of that terminator.
+type ReviewRow struct {
+	Kind byte
+	Text string
+}
+
+// ReviewHunk is one validated captured hunk with zero-based source coordinates.
+// ChangedStart excludes leading context; deletions use their anchor.
+// Diff includes file headers; Rows exposes the same content without diff framing.
 type ReviewHunk struct {
+	BeforeStart            int
 	AfterStart, AfterCount int
 	ChangedStart           int
 	Diff                   string
+	Rows                   []ReviewRow
 }
 
 // Hunks exposes captured geometry without reading files or duplicating the
@@ -63,8 +74,8 @@ func (file ReviewFile) Hunks() ([]ReviewHunk, error) {
 			changed += hunk.edits[0].start - hunk.start
 		}
 		result = append(result, ReviewHunk{
-			AfterStart: hunk.afterStart, AfterCount: hunk.afterCount,
-			ChangedStart: changed, Diff: hunk.diff,
+			BeforeStart: hunk.start, AfterStart: hunk.afterStart, AfterCount: hunk.afterCount,
+			ChangedStart: changed, Diff: hunk.diff, Rows: hunk.rows,
 		})
 	}
 	return result, nil
@@ -451,11 +462,7 @@ func parseReviewHunks(file ReviewFile, complete bool) ([]reviewHunk, error) {
 			return nil, errors.New("inconsistent captured hunk coordinates")
 		}
 		hunk := reviewHunk{start: oldStart, afterStart: newStart, afterCount: newCount}
-		type row struct {
-			kind byte
-			text string
-		}
-		var body []row
+		var body []ReviewRow
 		oldRows, newRows := 0, 0
 		for i < len(lines) && !strings.HasPrefix(lines[i], "@@ ") {
 			text := lines[i]
@@ -464,16 +471,16 @@ func parseReviewHunks(file ReviewFile, complete bool) ([]reviewHunk, error) {
 				break
 			}
 			if text == "\\ No newline at end of file\n" {
-				if len(body) == 0 || !strings.HasSuffix(body[len(body)-1].text, "\n") {
+				if len(body) == 0 || !strings.HasSuffix(body[len(body)-1].Text, "\n") {
 					return nil, errors.New("invalid captured newline marker")
 				}
-				body[len(body)-1].text = strings.TrimSuffix(body[len(body)-1].text, "\n")
+				body[len(body)-1].Text = strings.TrimSuffix(body[len(body)-1].Text, "\n")
 				continue
 			}
 			if len(text) == 0 || !strings.ContainsRune(" +-", rune(text[0])) {
 				return nil, errors.New("invalid captured hunk row")
 			}
-			body = append(body, row{kind: text[0], text: text[1:]})
+			body = append(body, ReviewRow{Kind: text[0], Text: text[1:]})
 			if text[0] != '+' {
 				oldRows++
 			}
@@ -491,10 +498,10 @@ func parseReviewHunks(file ReviewFile, complete bool) ([]reviewHunk, error) {
 		var edit *reviewEdit
 		position := oldStart
 		for _, row := range body {
-			if row.kind != '+' {
-				hunk.before = append(hunk.before, row.text)
+			if row.Kind != '+' {
+				hunk.before = append(hunk.before, row.Text)
 			}
-			if row.kind == ' ' {
+			if row.Kind == ' ' {
 				position++
 				edit = nil
 				continue
@@ -503,13 +510,14 @@ func parseReviewHunks(file ReviewFile, complete bool) ([]reviewHunk, error) {
 				hunk.edits = append(hunk.edits, reviewEdit{start: position})
 				edit = &hunk.edits[len(hunk.edits)-1]
 			}
-			if row.kind == '-' {
-				edit.before = append(edit.before, row.text)
+			if row.Kind == '-' {
+				edit.before = append(edit.before, row.Text)
 				position++
 			} else {
-				edit.after = append(edit.after, row.text)
+				edit.after = append(edit.after, row.Text)
 			}
 		}
+		hunk.rows = body
 		hunk.diff = header + strings.Join(lines[startLine:i], "")
 		hunks = append(hunks, hunk)
 		previousAfterEnd = newStart + newCount
