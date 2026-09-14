@@ -143,8 +143,11 @@ Acceptance:
 `mekugi live-diff [--workspace DIR] [--replay-dir DIR]` reads the durable change index
 and immutable review files without starting a router, writing the store, evaluating
 edits, or reconstructing changes from Git. Atomic index replacement provides a consistent
-membership/receipt snapshot. It refreshes once a second and keeps application status
-separate from translation success. Missing or inconsistent evidence fails explicitly.
+membership/receipt snapshot. Filesystem notifications trigger refreshes on publication,
+without a polling interval or debounce delay; terminal resize signals update the viewport
+independently. Watches cover parent directories so atomic replacement does not detach them.
+An independent viewer may start before its store exists. Watch failures and missing or
+inconsistent evidence fail explicitly. Application status stays separate from translation success.
 
 Interactive `mekugi codex` arms one automatic Herdr launch per router process when
 stdin/stdout are terminals and Herdr is available. The first
@@ -196,21 +199,24 @@ applied patches as a substitute for the result.
 
 The viewer renders all captured files in one continuous viewport, not only the selected
 file. Short multi-file edits remain visible together. It follows new edits by default,
-scrolling to the latest newly observed file's changed hunk, even near the top of the file.
+scrolling to the latest newly observed file's changed rows, even near the top of the file
+or deep inside a large composed hunk.
 Manual scrolling or file navigation pauses following and preserves each file's vertical
 offset, clamped when content becomes shorter. Scrolling crosses file boundaries; `n`/`p` jumps between
 files, and `g`/`G` goes to the start/end of the complete view. The header identifies the
 file at the top of the viewport, which is the current file for `f`. `r` resumes
 following, including edits received while paused. The footer shows FOLLOW or PAUSED.
 Navigation uses the keyboard controls shown there. Mekugi's file headings, including the
-current-file header, use bold text, green `+N` and red `-N` source-line counts, and a
-width-filling separator. File-heading blocks wrap when needed so their actions and
-rename endpoints are not truncated; the sticky current-file title stays on one row.
+current-file header, share an aligned recency gutter and use bold text, green `+N` and
+red `-N` source-line counts, and a width-filling separator. File-heading blocks wrap when
+needed so their actions and rename endpoints are not truncated; the sticky current-file title stays on one row.
 Counts describe the combined visible result, plus separately labeled prepared captures. They exclude
 headers/context and become zero when the file is fully flushed. Counts are cached with
-the rendered view rather than rescanning diffs on every navigation key. Source rows
-use a unified layout with old/new line numbers and explicit `+`/`-` change markers,
-not duplicate file or hunk headings. Blank source rows retain their inline numbers.
+the rendered view rather than rescanning diffs on every navigation key. Source rows use a
+unified layout with old/new line numbers and explicit `+`/`-` change markers, not duplicate
+file or hunk headings. Number columns use the digits needed for each file,
+without a fixed minimum width; an absent old or new side takes no column space. Blank source
+rows retain their inline numbers.
 Very narrow panes omit number columns to leave room for source. Combined applied diffs
 have no status banner. New/deleted files and both names of renamed files appear once
 in the file heading. Prepared captures retain their action and application status once

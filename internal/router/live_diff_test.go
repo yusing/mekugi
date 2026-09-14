@@ -336,14 +336,16 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	if _, err := terminal.Write([]byte("gnkjjj")); err != nil {
 		t.Fatal(err)
 	}
-	waitFor("second.go  | row 4/")
+	// Following starts near the added side of this 80-line replacement.
+	// File navigation restores that offset rather than resetting to its heading.
+	waitFor("second.go  | row 81/")
 	liveDiffTestChange(t, store, workspace, "three", "first.go", true)
 	liveDiffTestChange(t, store, workspace, "four", "third.go", true)
-	waitFor("2/3  second.go  | row 4/")
+	waitFor("2/3  second.go  | row 81/")
 	if err := pty.Setsize(terminal, &pty.Winsize{Rows: 25, Cols: 100}); err != nil {
 		t.Fatal(err)
 	}
-	waitFor("second.go  | row 4/")
+	waitFor("second.go  | row 81/")
 	if _, err := terminal.Write([]byte("r")); err != nil {
 		t.Fatal(err)
 	}

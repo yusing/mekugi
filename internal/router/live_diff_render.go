@@ -38,11 +38,7 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, workspace string,
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		gutter := "  "
-		if highlighted {
-			gutter = "\x1b[36m▎\x1b[0m "
-		}
-		line = ansi.Truncate(gutter+line, max(0, width-1), "")
+		line = ansi.Truncate(liveDiffGutter(highlighted)+line, max(0, width-1), "")
 		renderedBytes += len(line) + 1
 		if renderedBytes > maxChangeReadBytes {
 			return errors.New("live diff rendering exceeds 64 MiB; use hchanges with a narrower range")
@@ -54,6 +50,7 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, workspace string,
 	if err != nil {
 		return liveDiffRender{}, err
 	}
+	var bestKind byte
 	focusLine, bestDistance := 0, int(^uint(0)>>1)
 	if len(focusHunks) > 0 {
 		focusLine = focusHunks[len(focusHunks)-1].ChangedStart
@@ -61,7 +58,7 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, workspace string,
 	for i, file := range files {
 		render.starts[i] = len(render.lines)
 		if i == focusFile {
-			render.focusOffset = len(render.lines)
+			render.focusOffset, render.focusRow = len(render.lines), len(render.lines)
 		}
 		action := ""
 		for _, chunk := range file.chunks {
@@ -94,13 +91,35 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, workspace string,
 				return liveDiffRender{}, err
 			}
 		}
-		for _, chunk := range file.chunks {
+		// Keep coordinates aligned across a file without reserving four digits
+		// (or an entirely absent side) on every source row.
+		oldDigits, newDigits := 0, 0
+		fileHunks := make([][]mekugi.ReviewHunk, len(file.chunks))
+		for j, chunk := range file.chunks {
 			review := chunk.review
 			review.Diff = chunk.diff
 			hunks, err := review.Hunks()
 			if err != nil {
 				return liveDiffRender{}, err
 			}
+			fileHunks[j] = hunks
+			for _, hunk := range hunks {
+				oldEnd, newEnd := hunk.BeforeStart, hunk.AfterStart
+				for _, row := range hunk.Rows {
+					if row.Kind != '+' {
+						oldEnd++
+						oldDigits = max(oldDigits, len(strconv.Itoa(oldEnd)))
+					}
+					if row.Kind != '-' {
+						newEnd++
+						newDigits = max(newDigits, len(strconv.Itoa(newEnd)))
+					}
+				}
+			}
+		}
+		for j, chunk := range file.chunks {
+			review := chunk.review
+			hunks := fileHunks[j]
 			chunkStart := len(render.lines)
 			if chunk.status != "" {
 				label := chunk.status
@@ -118,22 +137,26 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, workspace string,
 				if hunkIndex == 0 {
 					hunkStart = chunkStart // Keep prepared status visible when following.
 				}
-				distance := max(hunk.AfterStart-focusLine, focusLine-(hunk.AfterStart+max(1, hunk.AfterCount)-1), 0)
-				if i == focusFile {
-					if focus.key != "" && chunk.key == focus.key {
-						render.focusOffset, bestDistance = hunkStart, -1
-					} else if bestDistance >= 0 && distance < bestDistance {
-						render.focusOffset, bestDistance = hunkStart, distance
-					}
+				if i == focusFile && focus.key != "" && chunk.key == focus.key {
+					render.focusOffset, render.focusRow, bestDistance = hunkStart, hunkStart, -1
 				}
 				before, after, err := liveDiffSyntax(ctx, review, hunk.Rows)
 				if err != nil {
 					return liveDiffRender{}, err
 				}
 				oldLine, newLine := hunk.BeforeStart+1, hunk.AfterStart+1
-				digits := max(4, len(strconv.Itoa(hunk.BeforeStart+len(before))), len(strconv.Itoa(hunk.AfterStart+len(after))))
 				oldIndex, newIndex := 0, 0
 				for _, row := range hunk.Rows {
+					// A composed hunk can span the entire new file or several
+					// adjacent updates. Follow the actual changed coordinate,
+					// not the start of that potentially very large hunk.
+					distance := max(newLine-1-focusLine, focusLine-(newLine-1))
+					if i == focusFile && bestDistance >= 0 && (distance < bestDistance ||
+						distance == bestDistance && row.Kind == '+' && bestKind != '+') {
+						render.focusRow = len(render.lines)
+						render.focusOffset = max(hunkStart, render.focusRow-3)
+						bestDistance, bestKind = distance, row.Kind
+					}
 					left, right, text := "", "", ""
 					if row.Kind != '+' {
 						left, text = strconv.Itoa(oldLine), before[oldIndex]
@@ -145,8 +168,18 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, workspace string,
 						newLine++
 						newIndex++
 					}
-					numbers := fmt.Sprintf("\x1b[2m%*s %*s│\x1b[22m", digits, left, digits, right)
-					if width-3 < 2*digits+5 {
+					coordinates := ""
+					if oldDigits > 0 {
+						coordinates = fmt.Sprintf("%*s", oldDigits, left)
+					}
+					if newDigits > 0 {
+						if oldDigits > 0 {
+							coordinates += " "
+						}
+						coordinates += fmt.Sprintf("%*s", newDigits, right)
+					}
+					numbers := "\x1b[2m" + coordinates + "│\x1b[22m"
+					if width-3 < len(coordinates)+4 {
 						numbers = "" // Leave room for source in very narrow panes.
 					}
 					style := ""

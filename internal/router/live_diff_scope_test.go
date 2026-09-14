@@ -288,6 +288,15 @@ func TestLiveDiffSessionTerminalEmptyEditsAndExit(t *testing.T) {
 	if !strings.Contains(text, "-original") {
 		t.Fatalf("flush lost original-to-latest integrity: %s", text)
 	}
+	// A scope update subscribes a second workspace without restarting the
+	// viewer, including captures published before that membership arrived.
+	second := t.TempDir()
+	childPath := filepath.Join(second, "child.txt")
+	liveDiffScopeCapture(t, store, second, "child", "child-first", childPath, "child-original", "child-created")
+	writeLiveDiffScope(t, scope, map[string]map[string]bool{workspace: {"current": true}, second: {"child": true}})
+	wait("+child-created")
+	liveDiffScopeCapture(t, store, second, "child", "child-next", childPath, "child-created", "child-updated")
+	wait("+child-updated")
 	if err := os.Remove(scope); err != nil {
 		t.Fatal(err)
 	}

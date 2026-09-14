@@ -224,7 +224,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFrame(func(frame string) bool {
-		return strings.HasPrefix(frame, "2/2") && strings.Contains(frame, "PAUSED") &&
+		return strings.HasPrefix(strings.TrimLeft(frame, " ▎"), "2/2") && strings.Contains(frame, "PAUSED") &&
 			strings.Contains(frame, "Temporary file two.") && !strings.Contains(frame, "Temporary file one.")
 	})
 	if err := os.WriteFile(filepath.Join(workspace, "first.txt"),
@@ -233,27 +233,27 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	}
 	publish("update-first", "in first.txt\ntype \"Status: updated 界 é\" \"Status: adjusted 界 é\"\n")
 	waitFrame(func(frame string) bool {
-		return strings.HasPrefix(frame, "2/2") && strings.Contains(frame, "PAUSED · new changes available") &&
+		return strings.HasPrefix(strings.TrimLeft(frame, " ▎"), "2/2") && strings.Contains(frame, "PAUSED · new changes available") &&
 			!strings.Contains(frame, "LATEST UPDATE")
 	})
 	if err := pty.Setsize(terminal, &pty.Winsize{Rows: 44, Cols: 90}); err != nil {
 		t.Fatal(err)
 	}
 	waitFrame(func(frame string) bool {
-		return strings.HasPrefix(frame, "2/2") && strings.Contains(frame, "PAUSED · new changes available")
+		return strings.HasPrefix(strings.TrimLeft(frame, " ▎"), "2/2") && strings.Contains(frame, "PAUSED · new changes available")
 	})
 	if _, err := terminal.Write([]byte("r")); err != nil {
 		t.Fatal(err)
 	}
 	waitFrame(func(frame string) bool {
-		return strings.HasPrefix(frame, "1/2") && strings.Contains(frame, "FOLLOW") &&
+		return strings.HasPrefix(strings.TrimLeft(frame, " ▎"), "1/2") && strings.Contains(frame, "FOLLOW") &&
 			strings.Contains(frame, "adjusted 界 é") && !strings.Contains(frame, "new changes available")
 	})
 	if _, err := terminal.Write([]byte("n")); err != nil {
 		t.Fatal(err)
 	}
 	waitFrame(func(frame string) bool {
-		return strings.HasPrefix(frame, "2/2") && strings.Contains(frame, "PAUSED") &&
+		return strings.HasPrefix(strings.TrimLeft(frame, " ▎"), "2/2") && strings.Contains(frame, "PAUSED") &&
 			!strings.Contains(frame, "new changes available")
 	})
 	if _, err := terminal.Write([]byte("pf")); err != nil {

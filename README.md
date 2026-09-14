@@ -517,10 +517,13 @@ paths stay absolute. Rendering and navigation run inside Mekugi, with no externa
 renderer or pager required.
 
 All captured files appear in one scrollable view, so short multi-file edits stay visible
-together. The latest changed hunk is followed by default; manual navigation pauses following.
+together. Published captures and receipts refresh the view without a polling delay.
+The latest changed rows are followed by default, including within large combined hunks;
+manual navigation pauses following.
 Bold file headings and separator lines identify each file, with green `+N` and red `-N`
-counts for the displayed additions and deletions. The unified view keeps old/new line
-numbers beside the source, with green `+` and red `-` markers and syntax highlighting.
+counts for the displayed additions and deletions. The unified view keeps compact old/new line
+numbers beside the source, omitting the absent side for new or deleted files, with green `+`
+and red `-` markers and syntax highlighting. Sticky and in-view file headings share the same gutter.
 File actions appear once in the file heading, not between hunks. Unconfirmed captures keep one label per capture.
 This view does not use Delta/Git styling settings or offer side-by-side or word-level
 highlighting. Unknown languages and large hunks use plain source text with change markers.

@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -26,13 +27,63 @@ func TestLiveDiffNativeRows(t *testing.T) {
 		rows = append(rows, ansi.Strip(line))
 	}
 	want := []string{
-		"     9    9│ context",
-		"    10     │-old",
-		"         10│+new",
-		"    11   11│ ",
+		"   9  9│ context",
+		"  10   │-old",
+		"     10│+new",
+		"  11 11│ ",
 	}
 	if !slices.Equal(rows, want) {
 		t.Fatalf("inline coordinates or blank source rows changed: %q", rows)
+	}
+}
+
+func TestLiveDiffCompactCoordinates(t *testing.T) {
+	for _, deleted := range []bool{false, true} {
+		path := "file.txt"
+		review := mekugi.ReviewFile{AfterPath: path,
+			Diff: "--- /dev/null\n+++ file.txt\n@@ -0,0 +1,20 @@\n" + strings.Repeat("+content\n", 20)}
+		if deleted {
+			review = mekugi.ReviewFile{BeforePath: path,
+				Diff: "--- file.txt\n+++ /dev/null\n@@ -1,20 +0,0 @@\n" + strings.Repeat("-content\n", 20)}
+		}
+		chunk := liveDiffChunk{diff: review.Diff, review: review}
+		render, err := renderLiveDiff(t.Context(), []liveDiffFile{{path: path, chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range render.lines[1:] {
+			marker := "+"
+			if deleted {
+				marker = "-"
+			}
+			want := fmt.Sprintf("  %2d│%scontent", i+1, marker)
+			if ansi.Strip(line) != want {
+				t.Fatalf("absent side or excessive number padding: got %q, want %q", ansi.Strip(line), want)
+			}
+		}
+	}
+}
+
+func TestLiveDiffFollowInsideCombinedHunk(t *testing.T) {
+	initial := liveDiffChunk{key: "create", applied: true,
+		review: mekugi.ReviewFile{AfterPath: "file.txt",
+			Diff: "--- /dev/null\n+++ file.txt\n@@ -0,0 +1,100 @@\n" + strings.Repeat("+content\n", 100)}}
+	recent := liveDiffHighlightChunk("edit", "file.txt", "@@ -90 +90 @@\n-content\n+LATEST90\n", true)
+	// Initial/resumed history has no recency split. The latest edit is deep
+	// inside one composed creation hunk, not at its beginning.
+	view := liveDiffView{following: true}
+	view.merge([]liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{initial, recent}}})
+	view.refreshVisible()
+	render, err := renderLiveDiff(t.Context(), []liveDiffFile{view.visible[view.files[0].key()]}, "", 90, 0, recent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rows := range []int{1, 2, 3, 7} {
+		offset := render.followOffset(rows)
+		viewport := ansi.Strip(strings.Join(render.lines[offset:min(len(render.lines), offset+rows)], "\n"))
+		if !strings.Contains(viewport, "LATEST90") {
+			t.Fatalf("%d rows: follow hides the target: offset=%d viewport=%q", rows, offset, viewport)
+		}
 	}
 }
 

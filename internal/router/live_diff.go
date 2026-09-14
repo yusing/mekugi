@@ -8,12 +8,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strconv"
 	"strings"
-	"time"
+	"syscall"
 	"unicode"
 	"unicode/utf8"
 
@@ -404,6 +405,13 @@ func liveDiffAction(file mekugi.ReviewFile, workspace string) string {
 	}
 }
 
+func liveDiffGutter(highlighted bool) string {
+	if highlighted {
+		return "\x1b[36m▎\x1b[0m "
+	}
+	return "  "
+}
+
 // Give each file a clear section boundary without painting over source colors.
 func liveDiffHeader(text string, width int, counts liveDiffCounts) string {
 	width = max(0, width)
@@ -424,7 +432,12 @@ type liveDiffRender struct {
 	lines       []string
 	starts      []int
 	counts      []liveDiffCounts
-	focusOffset int
+	focusOffset int // Preferred top, including nearby captured context.
+	focusRow    int // Row that must remain visible even in a short pane.
+}
+
+func (r liveDiffRender) followOffset(rows int) int {
+	return min(max(r.focusOffset, r.focusRow-rows+1), max(0, len(r.lines)-rows))
 }
 
 // Keep the viewport anchored to a file and its local row when preceding files grow.
@@ -548,8 +561,14 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		}
 	}()
 	defer func() { cancel(); input.Close(); <-done }()
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
+	updates, err := newLiveDiffWatcher(store.directory, workspace, sessionFile)
+	if err != nil {
+		return err
+	}
+	defer updates.Close()
+	resizes := make(chan os.Signal, 1)
+	signal.Notify(resizes, syscall.SIGWINCH)
+	defer signal.Stop(resizes)
 	view := liveDiffView{scroll: make(map[string]int), following: true}
 	var previous map[string]changeIndex
 	var rendering liveDiffRender
@@ -567,11 +586,19 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		}
 		width, height = max(1, width), max(3, height)
 		if refresh {
+			// Move ancestor watches before taking the next snapshot when a
+			// previously missing store directory has appeared.
+			if e := updates.sync(previous); e != nil {
+				return e
+			}
 			indexes, e := store.liveDiffIndexes(workspace, sessionFile)
 			if errors.Is(e, errLiveDiffSessionEnded) {
 				return nil
 			}
 			if e != nil {
+				return e
+			}
+			if e := updates.sync(indexes); e != nil {
 				return e
 			}
 			if !reflect.DeepEqual(indexes, previous) {
@@ -626,7 +653,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			offset = start + min(view.scroll[view.files[view.selected].key()], max(0, end-start-1))
 		}
 		if view.following {
-			offset = min(rendering.focusOffset, max(0, len(lines)-rows))
+			offset = rendering.followOffset(rows)
 		}
 		view.scrollTo(rendering, offset)
 		var active liveDiffFile
@@ -652,9 +679,9 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 				fmt.Fprintf(&screen, "\x1b[%d;1H\x1b[0m\x1b[2K%s\x1b[0m", row, ansi.Truncate(text, max(0, width-1), ""))
 			}
 			if len(files) > 0 {
-				header = liveDiffHeader(header, width-1, rendering.counts[view.selected])
+				header = liveDiffGutter(active.highlighted) + liveDiffHeader(header, width-3, rendering.counts[view.selected])
 			} else {
-				header = liveDiffSafe(header, false)
+				header = liveDiffGutter(false) + liveDiffSafe(header, false)
 			}
 			writeRow(1, header)
 			for row := range rows {
@@ -680,8 +707,18 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-ticker.C:
-			refresh = true
+		case event, open := <-updates.Events:
+			if !open {
+				return errors.New("live diff watcher closed")
+			}
+			refresh = updates.relevant(event)
+		case e, open := <-updates.Errors:
+			if !open {
+				return errors.New("live diff watcher closed")
+			}
+			return fmt.Errorf("watch live diff: %w", e)
+		case <-resizes:
+			dirty = true
 		case key, open := <-keys:
 			if !open {
 				return nil
