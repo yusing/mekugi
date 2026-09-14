@@ -9,7 +9,7 @@ import (
 // journalQuestionFromInput uses only the reconstructed request view. It must not
 // consult a thread-wide "last question" cache: steering and forks have distinct
 // visible histories, and a newer media-only message must not select an older one.
-func journalQuestionFromInput(raw json.RawMessage) string {
+func journalQuestionFromInput(raw json.RawMessage, recipient string) string {
 	input, err := decodeResponsesInput(raw)
 	if err != nil {
 		return ""
@@ -19,7 +19,13 @@ func journalQuestionFromInput(raw json.RawMessage) string {
 	}
 	for _, v := range slices.Backward(input.items) {
 		item, ok := decodeResponsesItem(v)
-		if !ok || item.Role != "user" || item.Type != "" && item.Type != "message" {
+		if !ok {
+			continue
+		}
+		if text, task := journalAssignmentText(item.fields, recipient); task {
+			return text
+		}
+		if item.Role != "user" || item.Type != "" && item.Type != "message" {
 			continue
 		}
 		if text, ok := decodeJSONString(item.Content); ok {
@@ -69,6 +75,42 @@ func journalQuestionFromInput(raw json.RawMessage) string {
 		}
 	}
 	return ""
+}
+
+// Source: codex-rs/protocol/src/protocol.rs InterAgentCommunication::to_model_input_item
+// and codex-rs/core/src/context/inter_agent_message.rs InterAgentMessage::body.
+// Only a native NEW_TASK addressed to this child is an assignment. Ordinary
+// messages and completion notifications must not replace the question source.
+func journalAssignmentText(item map[string]json.RawMessage, recipient string) (string, bool) {
+	if !strings.HasPrefix(recipient, "/root/") || strings.ContainsAny(recipient, "\r\n\x00") ||
+		jsonString(item, "type") != "agent_message" || jsonString(item, "recipient") != recipient {
+		return "", false
+	}
+	sender := jsonString(item, "author")
+	if sender != "/root" && !strings.HasPrefix(sender, "/root/") || strings.ContainsAny(sender, "\r\n\x00") {
+		return "", false
+	}
+	var parts []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(item["content"], &parts) != nil || len(parts) == 0 {
+		return "", false
+	}
+	header := "Message Type: NEW_TASK\nTask name: " + recipient + "\nSender: " + sender + "\nPayload:\n"
+	if !strings.HasPrefix(parts[0].Text, header) {
+		return "", false
+	}
+	var text []string
+	for _, part := range parts {
+		if part.Type != "input_text" {
+			// A newer opaque assignment is not permission to attach an older
+			// question or a plaintext routing header as the task being answered.
+			return "", true
+		}
+		text = append(text, part.Text)
+	}
+	return strings.TrimPrefix(strings.Join(text, "\n"), header), true
 }
 
 // Legacy request items lack content classifications. Match complete known host

@@ -407,8 +407,12 @@ interpreters do not support the shell journal command. Use `functions.journal` t
 add, edit, or delete entries directly.
 
 Answer entries use `answer: true` in a structured journal call or Code Mode, with only the
-answer in `text`. Mekugi attaches the latest user message automatically. Edits preserve that
-question unless marked as a new answer or cleared with `answer: false`.
+answer in `text`. Mekugi attaches the latest user message or plaintext native assignment to
+the child automatically. Encrypted assignments cannot be attached. Edits preserve that question
+unless marked as a new answer or cleared with `answer: false`.
+
+Child completion includes its journal result text without consuming the saved entries. Main
+completion still flushes pending child entries before its own journal.
 
 When programs need separate interpreters, execution options, or isolated shell state,
 Code Mode can run an explicit sequential batch:

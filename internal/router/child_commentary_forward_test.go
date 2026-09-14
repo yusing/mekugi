@@ -127,12 +127,12 @@ func TestChildProviderCommentaryForwardsWithoutChangingHistory(t *testing.T) {
 				if err != nil || len(events) != 2 {
 					t.Fatalf("child terminal changed: %s, %v", events, err)
 				}
-				if !bytes.Contains(events[0], []byte("Substantive child answer")) || bytes.Contains(bytes.Join(events, nil), []byte("Journal saved:")) {
+				if !bytes.Contains(events[0], []byte("Substantive child answer")) || bytes.Contains(bytes.Join(events, nil), []byte("Journal result")) {
 					t.Fatalf("child provider result changed: %s", events)
 				}
 			} else {
 				output, err := child.TransformJSON(payload)
-				if err != nil || bytes.Contains(output, []byte("Journal saved:")) || !bytes.Contains(output, []byte("Substantive child answer")) {
+				if err != nil || bytes.Contains(output, []byte("Journal result")) || !bytes.Contains(output, []byte("Substantive child answer")) {
 					t.Fatalf("child JSON changed: %s, %v", output, err)
 				}
 			}

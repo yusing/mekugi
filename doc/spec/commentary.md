@@ -181,7 +181,7 @@ tool outputs, and inter-agent messages. A response already accompanied by its de
 commentary is not projected again.
 
 A completed root or child response with eligible provider usage includes one token notice
-after any main journal flush and before the child saved-summary and terminal event. It uses a `Tokens:`
+after any main journal flush and before the child journal result and terminal event. It uses a `Tokens:`
 heading and one compact
 Markdown table with `Category`, `Tokens`, and `API USD` columns. Rows use full labels:
 `Input`, `Cached input`, `Uncached input`, `Output`, `Reasoning`, and `Total`.
@@ -237,7 +237,7 @@ canonical path and retain that child's totals, without adding them to root usage
 the same bounded, deferred delivery and exact replay filtering as other child activity.
 
 A successful explicit journal finish emits unflushed journal revisions (including live-reported
-updates), then usage, then the child saved-summary when applicable, and the terminal event.
+updates), then usage, then the child journal result when applicable, and the terminal event.
 It does not request a separately generated provider final answer. Provider answer events remain
 unfiltered and cannot trigger journal completion. Failed or incomplete responses release buffered
 output without terminal journal flush or usage notices.

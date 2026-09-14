@@ -86,8 +86,8 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 					t.Fatalf("child usage eligibility: %s", childOutput)
 				}
 				if wantUsage && (bytes.Contains(childOutput, []byte("Child result.")) ||
-					!bytes.Contains(childOutput, []byte("Journal saved:")) ||
-					bytes.Index(childOutput, []byte("Tokens:")) >= bytes.Index(childOutput, []byte("Journal saved:"))) {
+					!bytes.Contains(childOutput, []byte("Journal result")) ||
+					bytes.Index(childOutput, []byte("Tokens:")) >= bytes.Index(childOutput, []byte("Journal result"))) {
 					t.Fatalf("usage did not precede the synthetic child result: %s", childOutput)
 				}
 				child.Close()

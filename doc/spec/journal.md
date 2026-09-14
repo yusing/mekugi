@@ -28,9 +28,15 @@ and reasoning summaries without rewriting stock output. Deletes are silent unles
 an already-reported ID.
 
 An add/edit mutation may carry `answer: true`, with only the answer in `text`. The router
-attaches the latest actual user message from that request's visible history, not instruction
-or environment context. The agent does not repeat the message. Missing or oversized source
-content rejects the answer mutation rather than inventing or silently truncating a question.
+attaches the latest actual user message or native `NEW_TASK` assignment addressed to the
+requesting child from that request's visible history, not instruction or environment context.
+Assignments use their plaintext payload, not the routing header. The request's canonical child
+name must match both the native recipient and task header, and the header sender must match the
+native author. Ordinary inter-agent messages, completion notifications, and assignments to other
+agents are not answer sources. A later user message or eligible assignment replaces the earlier
+source. An encrypted assignment cannot supply a question and blocks fallback to an older source.
+The agent does not repeat the message. Missing or oversized source content rejects the answer
+mutation rather than inventing or silently truncating a question.
 Omitting `answer` on edit preserves the attached question; false clears it; true attaches the
 current source message. Delete, list, and finish reject a direct `answer` operand. The attached
 question is retained by list, durable replay, restart, and forks, independently of later user
@@ -68,7 +74,8 @@ turn without a follow-up provider request or a separately generated final answer
 `Journal result` with its own current journal items,
 including already-flushed items, as the native completion result. The result preserves item
 IDs, author, questions, and Markdown using the terminal item renderer and capacity bound.
-An empty journal returns `No journal entries.` under the result heading. Completion does not include journal delivery counts. Result delivery does not mark items
+An empty journal returns `No journal entries.` under the result heading. Completion does not
+include journal delivery counts. Result delivery does not mark items
 reported or flushed and does not include descendant journals. The parent receives the result
 text without a journal lookup or another child provider request.
 Live updates remain immediate. Descendant revisions are read from durable journals at main completion,

@@ -156,6 +156,7 @@ func TestInstructionsExposeJournalAuthoring(t *testing.T) {
 				"Edit or delete superseded entries",
 				"The final flush is your final report",
 				"with claims supported by the work completed",
+				"native child assignment",
 				"set `answer: true`",
 				"do not repeat it in tool arguments",
 				"omit `answer` to preserve the attached question",

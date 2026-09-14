@@ -463,7 +463,7 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 				if *mutation.Answer {
 					question = mutation.inferredQuestion
 					if strings.TrimSpace(question) == "" || !utf8.ValidString(question) {
-						return errors.New("journal answer requires a nonblank UTF-8 user question")
+						return errors.New("journal answer requires a nonblank UTF-8 user question or native assignment")
 					}
 				}
 			}

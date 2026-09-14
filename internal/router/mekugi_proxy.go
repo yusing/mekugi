@@ -560,7 +560,7 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 		}
 		transform.journalAvailable = true
 	}
-	transform.journalQuestion = journalQuestionFromInput(request.fields["input"])
+	transform.journalQuestion = journalQuestionFromInput(request.fields["input"], metadata.commentaryAuthor())
 	transform.journalActive = true
 	transform.journalPending = make(map[string]bool)
 	transform.journalCalls = make(map[string]map[string]json.RawMessage)

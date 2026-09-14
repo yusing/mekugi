@@ -37,10 +37,17 @@ The complete tree is rendered and size-checked before retaining message IDs or d
 `server.go` performs the terminal continuation and ordering; token arithmetic and capture metrics
 remain unchanged. Only explicit journal finish selects a journal terminal, with no follow-up
 provider request. Provider final-answer messages are not filtered and never substitute for finish.
-Child terminals retain a router-owned saved-summary without flushing. Main terminal delivery snapshots
+Child terminals retain a router-owned result containing their current journal text without
+acknowledging revisions or reporting delivery counts. Main terminal delivery snapshots
 its journal followed by descendant journals sorted by canonical path, under one delivery lease.
 Accepted parent identities persist with journals; conflicting or incomplete chains cannot join the
 flush. Acknowledgements target each original child journal, not an auxiliary activity copy. Replay strips router-owned message IDs.
+
+`journal_question_source.go` selects answer sources from the reconstructed request view.
+Actual user messages and plaintext native `NEW_TASK` payloads addressed to the current child
+are eligible in history order. Native sender and recipient fields must agree with the task
+header. Encrypted assignments block stale-source fallback; messages and completion notices
+do not become questions. No thread-wide source cache or decryption is introduced.
 
 `journal_catalog.go`, `wrap.go`, and model-instruction rewriting disable the stock Tasks surface
 only in Mekugi mode. Passthrough does not use the store, catalog rewrite, or journal tool.

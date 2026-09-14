@@ -35,7 +35,7 @@ func journalMutationsSchema() json.RawMessage {
 			"properties": map[string]any{
 				"op":         map[string]any{"type": "string", "enum": []string{"add", "edit", "delete"}},
 				"id":         map[string]any{"type": "string"},
-				"answer":     map[string]any{"type": "boolean", "description": "Mark text as an answer to the latest user message; edit preserves the association when omitted and clears it when false."},
+				"answer":     map[string]any{"type": "boolean", "description": "Mark text as an answer to the latest user message or native assignment to this child; edit preserves the association when omitted and clears it when false."},
 				"text":       map[string]any{"type": "string"},
 				"report_now": map[string]any{"type": "boolean"},
 			}, "required": []string{"op"},
@@ -83,7 +83,7 @@ func exposeJournalTool(fields map[string]json.RawMessage, catalog *responsesTool
 				"op":         map[string]any{"type": "string", "enum": []string{"list", "add", "edit", "delete", "finish"}},
 				"id":         map[string]any{"type": "string", "description": "Router-assigned item ID; required for edit and delete."},
 				"text":       map[string]any{"type": "string", "description": "Required nonblank milestone text for add and edit."},
-				"answer":     map[string]any{"type": "boolean", "description": "For add/edit, associate text with the inferred latest user message. Omit on edit to preserve; false clears it."},
+				"answer":     map[string]any{"type": "boolean", "description": "For add/edit, associate text with the latest user message or native assignment to this child. Omit on edit to preserve; false clears it."},
 				"journal":    journalMutationsSchema(),
 				"agent":      map[string]any{"type": "string", "description": "Canonical path of a proven ancestor or descendant, for list only. Defaults to the caller."},
 				"report_now": map[string]any{"type": "boolean"},

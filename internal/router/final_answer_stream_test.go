@@ -336,7 +336,7 @@ func TestFinalAnswerStreamExecuteRequest(t *testing.T) {
 			if len(events) != wantEvents || !strings.HasPrefix(commentaryEventText(t, events[0]), "Tokens:") {
 				t.Fatalf("completion output = %s", output.String())
 			}
-			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) || bytes.Contains(output.Bytes(), []byte("Journal saved:")) {
+			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) || bytes.Contains(output.Bytes(), []byte("Journal result")) {
 				t.Fatal("provider answer was filtered or mistaken for journal finish")
 			}
 			counts, available := proxy.usage.snapshot("thread-1")

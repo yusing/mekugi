@@ -30,7 +30,7 @@ func TestJournalQuestionFromVisibleInput(t *testing.T) {
 		{"no inherited source", []any{map[string]any{"role": "assistant", "content": "summary"}}, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := journalQuestionFromInput(mustTestJSON(t, test.input)); got != test.want {
+			if got := journalQuestionFromInput(mustTestJSON(t, test.input), ""); got != test.want {
 				t.Fatalf("got %q, want %q", got, test.want)
 			}
 		})
@@ -62,5 +62,92 @@ func TestJournalAnswerSourceIsRequestLocal(t *testing.T) {
 	items, err := proxy.journals.list(t.Context(), proxy.replayStore, "", "thread")
 	if err != nil || len(items) != 2 || items[0].Question != "Original question?" || items[1].Question != "Steered question?" {
 		t.Fatalf("question association: %+v %v", items, err)
+	}
+}
+
+func journalTestAssignment(recipient, kind, payload string) map[string]any {
+	return map[string]any{
+		"type": "agent_message", "author": "/root", "recipient": recipient,
+		"content": []any{map[string]any{"type": "input_text",
+			"text": "Message Type: " + kind + "\nTask name: " + recipient + "\nSender: /root\nPayload:\n" + payload}},
+	}
+}
+
+func TestJournalNativeAssignmentSource(t *testing.T) {
+	user := map[string]any{"role": "user", "content": "User question"}
+	task := journalTestAssignment("/root/child", "NEW_TASK", "Assignment\n\n- details")
+	encrypted := journalTestAssignment("/root/child", "NEW_TASK", "")
+	encrypted["content"] = append(encrypted["content"].([]any), map[string]any{"type": "encrypted_content", "encrypted_content": "opaque"})
+	multipart := journalTestAssignment("/root/child", "NEW_TASK", "First part")
+	multipart["content"] = append(multipart["content"].([]any), map[string]any{"type": "input_text", "text": "Second part"})
+	wrongSender := journalTestAssignment("/root/child", "NEW_TASK", "Wrong sender")
+	wrongSender["author"] = "/root/other"
+	wrongRecipient := journalTestAssignment("/root/other", "NEW_TASK", "Wrong recipient")
+	wrongRecipient["recipient"] = "/root/child"
+	quoted := map[string]any{"role": "assistant", "content": task["content"]}
+	for _, test := range []struct {
+		name      string
+		recipient string
+		input     []any
+		want      string
+	}{
+		{"fresh assignment", "/root/child", []any{task}, "Assignment\n\n- details"},
+		{"assignment supersedes inherited user", "/root/child", []any{user, task}, "Assignment\n\n- details"},
+		{"later user wins", "/root/child", []any{task, user}, "User question"},
+		{"followup wins", "/root/child", []any{task, journalTestAssignment("/root/child", "NEW_TASK", "Followup")}, "Followup"},
+		{"message does not override", "/root/child", []any{task, journalTestAssignment("/root/child", "MESSAGE", "Status")}, "Assignment\n\n- details"},
+		{"completion does not override", "/root/child", []any{task, journalTestAssignment("/root/child", "FINAL_ANSWER", "Done")}, "Assignment\n\n- details"},
+		{"other recipient", "/root/child", []any{user, journalTestAssignment("/root/other", "NEW_TASK", "Other")}, "User question"},
+		{"wrong sender header", "/root/child", []any{user, wrongSender}, "User question"},
+		{"wrong recipient header", "/root/child", []any{user, wrongRecipient}, "User question"},
+		{"unknown current identity", "", []any{task}, ""},
+		{"main does not use tasks", "/root", []any{user, journalTestAssignment("/root", "NEW_TASK", "Not a child")}, "User question"},
+		{"assistant quote is not native", "/root/child", []any{user, quoted}, "User question"},
+		{"encrypted blocks stale source", "/root/child", []any{user, task, encrypted}, ""},
+		{"empty blocks stale source", "/root/child", []any{task, journalTestAssignment("/root/child", "NEW_TASK", "")}, ""},
+		{"multipart plaintext", "/root/child", []any{multipart}, "First part\nSecond part"},
+		{"payload stays exact", "/root/child", []any{journalTestAssignment("/root/child", "NEW_TASK", "  ## My request for Codex:\nTask\n")}, "  ## My request for Codex:\nTask\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := journalQuestionFromInput(mustTestJSON(t, test.input), test.recipient); got != test.want {
+				t.Fatalf("got %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestJournalAssignmentAnswerAfterRestartAndFollowup(t *testing.T) {
+	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	var err error
+	proxy.replayStore, err = openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var history []any
+	for index, question := range []string{"Initial assignment", "Followup assignment"} {
+		history = append(history, journalTestAssignment("/root/child", "NEW_TASK", question))
+		child, _ := prepareActivityTest(t, proxy, question, "child", "root", "/root/child", history)
+		if child.journalQuestion != question {
+			t.Fatalf("request source = %q, want %q", child.journalQuestion, question)
+		}
+		result, err := child.executeJournalCall(map[string]json.RawMessage{
+			"type": mustTestJSON(t, "function_call"), "name": mustTestJSON(t, "journal"),
+			"call_id":   mustTestJSON(t, question),
+			"arguments": mustTestJSON(t, `{"op":"finish","journal":[{"op":"add","text":"Completed","answer":true}]}`),
+		})
+		if err != nil || !child.journalTerminalReady() {
+			t.Fatalf("assignment finish failed: %s, %v", mustTestJSON(t, result), err)
+		}
+		items, err := proxy.journals.list(t.Context(), proxy.replayStore, child.directory, "child")
+		if err != nil || len(items) != index+1 || items[index].Question != question || items[0].Question != "Initial assignment" {
+			t.Fatalf("assignment association lost: %+v, %v", items, err)
+		}
+		child.Close()
+		proxy.journals = newJournalStore()
+		proxy.activity = newSubagentActivity()
+		proxy.replayStore, err = openMekugiReplayStore(proxy.replayStore.directory)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }

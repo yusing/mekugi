@@ -52,8 +52,10 @@ user-visible notice.
 Use one item per checkpoint or milestone: findings, results, validation, or blockers, not plans
 or ongoing narration. Edit or delete superseded entries. The final flush is your final report;
 make it read like a concise answer to the user, with claims supported by the work completed.
-When an item answers the user's latest message, set `answer: true` and put only the answer
-in `text`. Mekugi attaches the original user message; do not repeat it in tool arguments.
+When an item answers the latest user message or your native child assignment, set `answer: true`
+and put only the answer in `text`. Mekugi attaches the source message or assignment;
+do not repeat it in tool arguments. Only plaintext native assignments can be attached; omit `answer` if the
+latest source is an encrypted assignment.
 Write normal Markdown in `text`; the renderer keeps paragraphs, lists, and code blocks
 within their journal item. On edit, omit `answer` to preserve the attached question, or set
 it to false to turn the item into a milestone.
