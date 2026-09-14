@@ -10,7 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+
 	"strings"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 const codexTurnMetadataHeader = "x-codex-turn-metadata"
@@ -21,7 +24,7 @@ type codexTurnMetadata struct {
 	ForkedFromThreadID      string                     `json:"forked_from_thread_id"`
 	ParentThreadID          string                     `json:"parent_thread_id"`
 	AgentName               string                     `json:"agent_name"`
-	RequestKind             string                     `json:"request_kind"`
+	RequestKind             responses.RequestKind      `json:"request_kind"`
 	TurnID                  string                     `json:"turn_id"`
 	SubagentKind            string                     `json:"subagent_kind"`
 	Directories             map[string]json.RawMessage `json:"workspaces"`

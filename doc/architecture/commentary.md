@@ -81,6 +81,17 @@ and compaction do not reset them; repeated terminal observations within a reques
 Ancestry and author labels do not determine attribution. `token_cost.go` owns built-in reference
 prices, per-response estimates, and the compact Markdown token/cost table.
 
+Provider observation uses synchronous, request-scoped typed hooks before payload rewriting.
+Mentor receives completed items and output snapshots through those hooks, not a pass-through
+transformer. Once-only request finalization carries accepted output, terminal state, and
+available usage separately; steering accepts output without establishing successful compaction.
+Automatic continuations finish their predecessor's observation before preparing the successor.
+The shared Responses protocol classifier owns wire names and request kinds, while each
+feature retains its policy and existing state owner. Hooks own no background work or replayed
+effects; transformations remain ordered and error-returning. Envelope validation before
+output callbacks retains the previous malformed-output rejection behavior; the callbacks
+themselves cannot return errors.
+
 Each observation retains its effective provider-request model and requested service tier.
 The shared terminal parse supplies the provider's resolved tier when present, and cost is
 calculated before accumulation using the response's service tier, input size, and optional

@@ -527,16 +527,16 @@ func (state responseTerminalState) String() string {
 	}
 }
 
-func copyUpstreamBodyTransformed(writer io.Writer, response *http.Response, streamResponse bool, transformer responseTransformer, observeUsage func(tokenCounts)) (responseTerminalState, error) {
+func copyUpstreamBodyTransformed(writer io.Writer, response *http.Response, streamResponse bool, transformer responseTransformer, hooks *responseHooks) (responseTerminalState, error) {
 	defer response.Body.Close()
 	var (
 		terminalState responseTerminalState
 		err           error
 	)
 	if streamResponse {
-		terminalState, err = copySSETransformed(writer, response.Body, transformer, observeUsage)
+		terminalState, err = copySSETransformed(writer, response.Body, transformer, hooks)
 	} else {
-		terminalState, err = copyJSONTransformed(writer, response.Body, transformer, observeUsage)
+		terminalState, err = copyJSONTransformed(writer, response.Body, transformer, hooks)
 	}
 	if err != nil {
 		return terminalState, fmt.Errorf("copy upstream response: %w", err)
@@ -544,7 +544,7 @@ func copyUpstreamBodyTransformed(writer io.Writer, response *http.Response, stre
 	return terminalState, nil
 }
 
-func copyJSONTransformed(writer io.Writer, reader io.Reader, transformer responseTransformer, observeUsage func(tokenCounts)) (responseTerminalState, error) {
+func copyJSONTransformed(writer io.Writer, reader io.Reader, transformer responseTransformer, hooks *responseHooks) (responseTerminalState, error) {
 	body, err := io.ReadAll(io.LimitReader(reader, upstreamJSONBufferBytes+1))
 	if err != nil {
 		return responseTerminalUnknown, err
@@ -552,7 +552,9 @@ func copyJSONTransformed(writer io.Writer, reader io.Reader, transformer respons
 	if len(body) > upstreamJSONBufferBytes {
 		return responseTerminalUnknown, fmt.Errorf("upstream JSON response exceeds the router buffer budget")
 	}
-	recordObservedUsage(body, false, observeUsage)
+	if err := hooks.observe(body, false); err != nil {
+		return responseTerminalUnknown, fmt.Errorf("%w: %w", errResponseTransform, err)
+	}
 	visible := body
 	if transformer != nil {
 		visible, err = transformer.TransformJSON(body)
@@ -570,7 +572,7 @@ func copyJSONTransformed(writer io.Writer, reader io.Reader, transformer respons
 	return terminalState, nil
 }
 
-func copySSETransformed(writer io.Writer, reader io.Reader, transformer responseTransformer, observeUsage func(tokenCounts)) (state responseTerminalState, resultErr error) {
+func copySSETransformed(writer io.Writer, reader io.Reader, transformer responseTransformer, hooks *responseHooks) (state responseTerminalState, resultErr error) {
 	defer func() {
 		if errors.Is(resultErr, errResponseWrite) {
 			return // The downstream is no longer writable.
@@ -596,7 +598,7 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 		line, err := buffered.ReadString('\n')
 		if len(line) > 0 {
 			if line == "\n" || line == "\r\n" {
-				eventTerminalState, writeErr := writeSSEEvent(writer, event, line, transformer, observeUsage)
+				eventTerminalState, writeErr := writeSSEEvent(writer, event, line, transformer, hooks)
 				terminalState = mergeResponseTerminalState(terminalState, eventTerminalState)
 				if writeErr != nil {
 					return terminalState, writeErr
@@ -611,7 +613,7 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				eventTerminalState, writeErr := writeSSEEvent(writer, event, "", transformer, observeUsage)
+				eventTerminalState, writeErr := writeSSEEvent(writer, event, "", transformer, hooks)
 				terminalState = mergeResponseTerminalState(terminalState, eventTerminalState)
 				if writeErr != nil {
 					return terminalState, writeErr
@@ -647,7 +649,7 @@ func consumeOptionalUTF8BOM(reader *bufio.Reader) error {
 	return nil
 }
 
-func writeSSEEvent(writer io.Writer, lines []string, separator string, transformer responseTransformer, observeUsage func(tokenCounts)) (responseTerminalState, error) {
+func writeSSEEvent(writer io.Writer, lines []string, separator string, transformer responseTransformer, hooks *responseHooks) (responseTerminalState, error) {
 	defer releaseResponseDelivery(transformer)
 	if len(lines) == 0 {
 		if separator != "" {
@@ -665,7 +667,9 @@ func writeSSEEvent(writer io.Writer, lines []string, separator string, transform
 	payload := ssePayload(lines)
 	terminalState := observeResponseTerminal(payload, true)
 
-	recordObservedUsage(payload, true, observeUsage)
+	if err := hooks.observe(payload, true); err != nil {
+		return terminalState, fmt.Errorf("%w: %w", errResponseTransform, err)
+	}
 	visible := [][]byte{payload}
 	if transformer != nil && len(payload) > 0 {
 		var err error
@@ -730,17 +734,6 @@ func ssePayload(lines []string) []byte {
 		}
 	}
 	return []byte(strings.Join(parts, "\n"))
-}
-
-func recordObservedUsage(payload []byte, streamEvent bool, observe func(tokenCounts)) {
-	if observe == nil {
-		return
-	}
-	counts, ok := usageFromResponsePayload(payload, streamEvent)
-	if !ok {
-		return
-	}
-	observe(counts)
 }
 
 // Synthesized frames need the same event name and data framing as live SSE,

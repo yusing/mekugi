@@ -347,7 +347,7 @@ func TestProviderWebSocketNonstreamReconstructsOutput(t *testing.T) {
 	var output bytes.Buffer
 	transform := &webSocketCountingTransform{}
 	usage := tokenCounts{}
-	state, err := copyUpstreamBodyTransformed(&output, response, false, transform, func(counts tokenCounts) { usage = counts })
+	state, err := copyUpstreamBodyTransformed(&output, response, false, transform, &responseHooks{onUsage: func(counts tokenCounts) { usage = counts }})
 	if err != nil {
 		t.Fatal(err)
 	}

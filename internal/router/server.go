@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 const (
@@ -514,6 +515,7 @@ func executeRequest(
 ) (requestErr error) {
 	journalOriginal := maps.Clone(parsedRequest.fields)
 	journalStartWindow := journalRequestWindow(ctx)
+	hooks := &responseHooks{}
 	finalization := requestFinalization{failurePhase: requestFailurePrepare}
 	debug, debugID := debugRequest(ctx)
 	started := time.Now()
@@ -528,6 +530,7 @@ func executeRequest(
 
 	defer func() {
 		requestErr = errors.Join(requestErr, finalization.finish(executionCtx, requestErr, output, issues))
+		hooks.finish(finalization.completion())
 		fields := map[string]any{
 			"event": "request_complete", "request_id": debugID,
 			"client_request_id": headers.Get("x-client-request-id"), "thread_id": codexThreadID(headers),
@@ -558,7 +561,7 @@ func executeRequest(
 	}
 	metadata, metadataValid := decodeCodexTurnMetadata(headers)
 	if metadataValid {
-		capturer.ObserveRequestKind(ctx, metadata.RequestKind)
+		capturer.ObserveRequestKind(ctx, string(metadata.RequestKind))
 	}
 	threadID := codexThreadID(headers)
 	if mekugiCalls != nil && metadataValid && !metadata.activityIdentityInvalid && (metadata.ThreadID == "" || metadata.ThreadID == threadID) {
@@ -588,28 +591,24 @@ func executeRequest(
 		exchange.history.providerReasoning = parsedRequest.fields["reasoning"]
 	}
 	var mekugiTransform *mekugiResponseTransform
-	handoffRecorded := false
-	recordHandoff := func(includeCompletedOutput, completed bool) {
-		if handoffRequest == nil || handoffRecorded {
+	if handoffRequest != nil {
+		hooks.output = &handoffRequest.observation
+	}
+	hooks.onFinished = func(result requestCompletion) {
+		if handoffRequest == nil {
 			return
 		}
-		progress := handoffRequest.record(finalization.observation.usageCounts.InputTokens, includeCompletedOutput, completed)
+		progress := handoffRequest.record(result)
 		if progress.transitioned && mekugiTransform != nil {
 			broker := mekugiCalls.commentary
 			token := broker.subscribeThread(mekugiTransform.historySessionID, threadID, mekugiTransform.commentaryAuthor)
 			broker.publish(token, "Mentor handoff complete.", false)
 		}
-		handoffRecorded = true
 	}
-	defer func() {
-		if finalization.observation.usageObserved {
-			recordHandoff(false, false)
-		}
-	}()
 	// Only the WebSocket provider guarantees non-generating warmup for every
 	// supported model. HTTP requests must retain ordinary preparation checks.
 	_, webSocketRequest := provider.(*webSocketExchange)
-	prewarm := webSocketRequest && metadataValid && metadata.RequestKind == "prewarm" && string(parsedRequest.fields["generate"]) == "false"
+	prewarm := webSocketRequest && metadataValid && metadata.RequestKind == responses.Prewarm && string(parsedRequest.fields["generate"]) == "false"
 	if prewarm {
 		// Prewarm retains native instructions, including no CTP decoding guide.
 		compactTokens = nil
@@ -743,9 +742,6 @@ func executeRequest(
 	}()
 	var responseTransform responseTransformer
 	if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
-		if handoffRequest != nil {
-			responseTransform = &handoffRequest.observation
-		}
 		if compactTransform != nil {
 			responseTransform = composeResponseTransformers(responseTransform, compactTransform)
 		}
@@ -766,7 +762,7 @@ func executeRequest(
 			return fmt.Errorf("record mekugi request overhead: %w", err)
 		}
 	}
-	observeUsage := func(counts tokenCounts) {
+	hooks.onUsage = func(counts tokenCounts) {
 		finalization.observation.usageCounts = counts
 		finalization.observation.usageObserved = true
 		if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
@@ -787,10 +783,13 @@ func executeRequest(
 		})
 	}
 
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		hooks.output = nil
+	}
 	var stagedBody []byte
 	if !streamResponse {
 		var staged bytes.Buffer
-		finalization.upstreamTerminalState, err = copyUpstreamBodyTransformed(&staged, response, false, responseTransform, observeUsage)
+		finalization.upstreamTerminalState, err = copyUpstreamBodyTransformed(&staged, response, false, responseTransform, hooks)
 		if err != nil {
 			finalization.classifyCopyError(err)
 			return fmt.Errorf("execute request: %w", err)
@@ -813,7 +812,7 @@ func executeRequest(
 		finalization.observation.outcome = requestOutcomeCompleted
 		finalization.failurePhase = ""
 		// Account for this completed response before preparing its successor.
-		recordHandoff(true, finalization.upstreamTerminalState == responseTerminalCompleted)
+		hooks.finish(finalization.completion())
 		// Record missing usage before the continuation can publish cumulative totals.
 		usageTracker.finish()
 		return executeRequest(start, nextCtx, next, headers, sessionID, provider, output, issues, mekugiCalls, compactTokens, mentor)
@@ -851,7 +850,7 @@ func executeRequest(
 		releaseResponseDelivery(responseTransform)
 	} else {
 		finalization.failurePhase = requestFailureInspectResponse
-		finalization.upstreamTerminalState, err = copyUpstreamBodyTransformed(output, response, streamResponse, responseTransform, observeUsage)
+		finalization.upstreamTerminalState, err = copyUpstreamBodyTransformed(output, response, streamResponse, responseTransform, hooks)
 		if err != nil {
 			finalization.classifyCopyError(err)
 			return fmt.Errorf("execute request: %w", err)
@@ -871,7 +870,7 @@ func executeRequest(
 		finalization.failurePhase = requestFailureTerminalValidation
 	case finalization.upstreamTerminalState == responseTerminalCompleted || finalization.upstreamTerminalState == responseTerminalSteered:
 		finalization.observation.outcome = requestOutcomeCompleted
-		recordHandoff(true, finalization.upstreamTerminalState == responseTerminalCompleted)
+		hooks.finish(finalization.completion())
 	case finalization.upstreamTerminalState == responseTerminalFailed:
 		finalization.observation.outcome = requestOutcomeFailed
 		finalization.failurePhase = requestFailureTerminalValidation

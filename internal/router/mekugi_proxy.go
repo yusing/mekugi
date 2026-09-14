@@ -23,6 +23,7 @@ import (
 	"github.com/yusing/mekugi/capturer"
 	codexinstructions "github.com/yusing/mekugi/contrib/codex"
 	"github.com/yusing/mekugi/internal/hpatchsyntax"
+	responseevents "github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 )
@@ -377,7 +378,7 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 	if p != nil {
 		request.filterInput(p.activity.stripInput)
 	}
-	if metadataValid && metadata.RequestKind == "compaction" {
+	if metadataValid && metadata.RequestKind == responseevents.Compaction {
 		if err := validateMekugiCompactionRequest(request, metadata); err != nil {
 			return nil, err
 		}
@@ -389,7 +390,7 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 	if strings.TrimSpace(sessionID) == "" {
 		return nil, errors.New("mekugi rewrite requires a valid session ID")
 	}
-	if !metadataValid || metadata.RequestKind != "turn" {
+	if !metadataValid || metadata.RequestKind != responseevents.Turn {
 		return nil, errors.New("mekugi rewrite requires valid turn metadata")
 	}
 	// Execution-free requests retain their native instructions, tools, and schema.
