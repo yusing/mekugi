@@ -228,8 +228,7 @@ func (v *liveDiffView) refreshVisible() {
 		} else {
 			for _, region := range composition.FilesWithHighlights() {
 				visible.chunks = append(visible.chunks, liveDiffChunk{
-					status: "Applied · original to latest", diff: region.UnifiedDiff(),
-					review: region.ReviewFile, highlighted: region.Highlighted,
+					diff: region.UnifiedDiff(), review: region.ReviewFile, highlighted: region.Highlighted,
 				})
 			}
 			visible.chunks = append(visible.chunks, pending...)
@@ -400,9 +399,39 @@ func liveDiffDisplayDiff(chunk liveDiffChunk, workspace string) string {
 	return header
 }
 
+func liveDiffAction(file mekugi.ReviewFile, workspace string) string {
+	switch {
+	case file.BeforePath == "" && file.AfterPath != "":
+		return "New file"
+	case file.AfterPath == "" && file.BeforePath != "":
+		return "Deleted file"
+	case file.BeforePath != file.AfterPath:
+		return "Rename: " + liveDiffDisplayPath(workspace, file.BeforePath) + " → " + liveDiffDisplayPath(workspace, file.AfterPath)
+	default:
+		return ""
+	}
+}
+
+// Give each file a clear section boundary without painting over source colors.
+func liveDiffHeader(text string, width int, counts liveDiffCounts) string {
+	width = max(0, width)
+	stats := fmt.Sprintf(" \x1b[32m+%d\x1b[39m \x1b[31m-%d\x1b[39m", counts.added, counts.removed)
+	text = ansi.Truncate(liveDiffSafe(text, false), max(0, width-ansi.StringWidth(stats)), "")
+	header := ansi.Truncate("\x1b[1m"+text+"\x1b[22m"+stats, width, "")
+	if remaining := width - ansi.StringWidth(header); remaining > 0 {
+		header += "\x1b[2m " + strings.Repeat("─", remaining-1) + "\x1b[22m"
+	}
+	return header
+}
+
+type liveDiffCounts struct {
+	added, removed int
+}
+
 type liveDiffRender struct {
 	lines       []string
 	starts      []int
+	counts      []liveDiffCounts
 	focusOffset int
 }
 
@@ -430,6 +459,7 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, delta string, wor
 	var targets []string
 	var highlights []bool
 	fileTargets := make([]int, len(files))
+	fileCounts := make([]liveDiffCounts, len(files))
 	addTarget := func(highlighted bool) int {
 		index := len(targets)
 		target := marker + strconv.Itoa(index)
@@ -445,6 +475,17 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, delta string, wor
 		focusLine = focusHunks[len(focusHunks)-1].ChangedStart
 	}
 	for i, file := range files {
+		action := ""
+		for _, chunk := range file.chunks {
+			added, removed := (mekugi.ReviewFile{Diff: chunk.diff}).LineCounts()
+			fileCounts[i].added += added
+			fileCounts[i].removed += removed
+			// Composed regions share one file action. Separate captures keep
+			// their own action alongside their application status below.
+			if action == "" && chunk.status == "" {
+				action = liveDiffAction(chunk.review, workspace)
+			}
+		}
 		fileTargets[i] = addTarget(file.highlighted)
 		if i == focusFile {
 			focusIndex = fileTargets[i]
@@ -453,16 +494,25 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, delta string, wor
 		if file.highlighted {
 			label += " · LATEST UPDATE"
 		}
+		if action != "" {
+			label += " · " + action
+		}
 		fmt.Fprintf(&raw, "%d/%d  %s\n", i+1, len(files), label)
 		if len(file.chunks) == 0 {
 			fmt.Fprintln(&raw, "No unreviewed changes")
 		}
 		for _, chunk := range file.chunks {
 			hunks, err := chunk.review.Hunks()
-			if err != nil || len(hunks) == 0 {
+			if err == nil && len(hunks) == 0 && chunk.review.Diff != "" && liveDiffAction(chunk.review, workspace) != "" {
+				// The file heading or capture caption already describes path-only changes.
+				if chunk.status == "" {
+					continue
+				}
+				hunks = []mekugi.ReviewHunk{{}}
+			} else if err != nil || len(hunks) == 0 {
 				hunks = []mekugi.ReviewHunk{{Diff: chunk.diff}}
 			}
-			for _, hunk := range hunks {
+			for hunkIndex, hunk := range hunks {
 				index := addTarget(chunk.highlighted)
 				distance := max(hunk.AfterStart-focusLine, focusLine-(hunk.AfterStart+max(1, hunk.AfterCount)-1), 0)
 				if i == focusFile {
@@ -475,11 +525,18 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, delta string, wor
 				}
 				part := chunk
 				part.diff = hunk.Diff
-				status := chunk.status
-				if chunk.highlighted {
-					status = "LATEST UPDATE · " + status
+				if hunkIndex == 0 && chunk.status != "" {
+					label := chunk.status
+					if action := liveDiffAction(chunk.review, workspace); action != "" {
+						label += " · " + action
+					}
+					fmt.Fprintln(&raw, label)
 				}
-				fmt.Fprintf(&raw, "%s\n%s\n", status, liveDiffDisplayDiff(part, workspace))
+				diff := liveDiffDisplayDiff(part, workspace)
+				raw.WriteString(diff)
+				if diff != "" && !strings.HasSuffix(diff, "\n") {
+					raw.WriteByte('\n')
+				}
 			}
 		}
 	}
@@ -488,6 +545,11 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, delta string, wor
 		renderCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(renderCtx, delta, "--paging=never", "--width="+strconv.Itoa(max(1, width-3)),
+			"--file-style=omit", "--file-decoration-style=none",
+			// Inline numbers are navigation, not optional source styling. Fixed
+			// formats also distinguish genuine blank source rows from padding.
+			"--hunk-header-style=omit", "--hunk-header-decoration-style=none", "--line-numbers",
+			"--line-numbers-left-format={nm:>4}⋮", "--line-numbers-right-format={np:>4}│",
 			"--minus-style=syntax normal", "--plus-style=syntax normal",
 			"--minus-emph-style=bold syntax normal", "--plus-emph-style=bold syntax normal",
 			"--minus-non-emph-style=minus-style", "--plus-non-emph-style=plus-style",
@@ -502,20 +564,26 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, delta string, wor
 		}
 		text = liveDiffSafe(output.String(), true)
 	}
-	render := liveDiffRender{starts: make([]int, len(files))}
+	render := liveDiffRender{starts: make([]int, len(files)), counts: fileCounts}
 	next, fileIndex := 0, 0
-	highlighted, heading := false, false
+	highlighted, fileHeading := false, false
 	renderedBytes := 0
 	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
+		// Delta leaves an empty separator for omitted hunk headings. Source
+		// blanks have inline numbers or styling; never trim or strip those rows.
+		if line == "" {
+			continue
+		}
 		if next < len(targets) && strings.TrimSpace(ansi.Strip(line)) == targets[next] {
-			if fileIndex < len(fileTargets) && next == fileTargets[fileIndex] {
+			fileHeading = fileIndex < len(fileTargets) && next == fileTargets[fileIndex]
+			if fileHeading {
 				render.starts[fileIndex] = len(render.lines)
 				fileIndex++
 			}
 			if next == focusIndex {
 				render.focusOffset = len(render.lines)
 			}
-			highlighted, heading = highlights[next], true
+			highlighted = highlights[next]
 			next++
 			continue
 		}
@@ -524,16 +592,27 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, delta string, wor
 		gutter := "  "
 		if highlighted {
 			gutter = "\x1b[36m▎\x1b[0m "
-			if heading {
-				line = "\x1b[1m" + line + "\x1b[22m"
+		}
+		lines := []string{line}
+		if fileHeading {
+			counts := fileCounts[fileIndex-1]
+			statsWidth := len(fmt.Sprintf(" +%d -%d", counts.added, counts.removed))
+			// Keep actions and both rename endpoints in one heading block.
+			// Unlike the sticky title, this block can wrap instead of losing metadata.
+			lines = strings.Split(ansi.Wrap(line, max(1, width-3-statsWidth), ""), "\n")
+			lines[0] = liveDiffHeader(lines[0], width-3, counts)
+			for i := 1; i < len(lines); i++ {
+				lines[i] = "\x1b[1m" + lines[i] + "\x1b[22m"
 			}
 		}
-		heading = false
-		renderedBytes += len(gutter) + len(line) + 1
-		if renderedBytes > maxChangeReadBytes {
-			return liveDiffRender{}, errors.New("live diff rendering exceeds 64 MiB; use hchanges with a narrower range")
+		fileHeading = false
+		for _, line := range lines {
+			renderedBytes += len(gutter) + len(line) + 1
+			if renderedBytes > maxChangeReadBytes {
+				return liveDiffRender{}, errors.New("live diff rendering exceeds 64 MiB; use hchanges with a narrower range")
+			}
+			render.lines = append(render.lines, gutter+line)
 		}
-		render.lines = append(render.lines, gutter+line)
 	}
 	if next != len(targets) {
 		return liveDiffRender{}, errors.New("delta omitted live diff hunk boundaries")
@@ -756,7 +835,12 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			writeRow := func(row int, text string) {
 				fmt.Fprintf(&screen, "\x1b[%d;1H\x1b[0m\x1b[2K%s\x1b[0m", row, ansi.Truncate(text, max(0, width-1), ""))
 			}
-			writeRow(1, liveDiffSafe(header, false))
+			if len(files) > 0 {
+				header = liveDiffHeader(header, width-1, rendering.counts[view.selected])
+			} else {
+				header = liveDiffSafe(header, false)
+			}
+			writeRow(1, header)
 			for row := range rows {
 				text := ""
 				if offset+row < len(lines) {

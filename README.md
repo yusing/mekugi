@@ -517,8 +517,12 @@ paths stay absolute. Delta supplies styling; Mekugi owns navigation.
 
 All captured files appear in one scrollable view, so short multi-file edits stay visible
 together. The latest changed hunk is followed by default; manual navigation pauses following.
-A cyan gutter and `LATEST UPDATE` label mark the files and hunks touched by newly observed
-captures. Older diffs keep their normal styling. Marks persist until another update or a
+Bold file headings and separator lines identify each file, with green `+N` and red `-N`
+counts for the displayed additions and deletions. Delta's duplicate file and hunk headings
+are hidden; line numbers stay beside the source. File actions appear once in the file
+heading, not between hunks. Unconfirmed or ambiguous captures keep one label per capture.
+A cyan gutter marks recently touched hunks, with one `LATEST UPDATE` label in the file
+heading. Older diffs keep their normal styling. Marks persist until another update or a
 flush; startup history is not labeled as new. While paused, the footer reports new changes
 without moving your view.
 On-screen controls let you resume following or flush reviewed changes without deleting

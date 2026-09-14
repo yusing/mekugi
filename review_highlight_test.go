@@ -102,3 +102,25 @@ func TestReviewCompositionHighlightRevertLeavesUnrelatedHunk(t *testing.T) {
 		t.Fatalf("revert highlighted an unrelated surviving hunk: %#v", files)
 	}
 }
+
+func TestReviewLineCounts(t *testing.T) {
+	for _, tc := range []struct {
+		diff           string
+		added, removed int
+	}{
+		{"--- old\n+++ new\n", 0, 0},
+		{"move \"old\" -> \"new\"\n", 0, 0},
+		{"--- old\n+++ new\n@@ -1,2 +1,3 @@\n same\r\n-old\r\n+new\r\n+extra\r\n", 2, 1},
+		{"--- old\n+++ new\n@@ -1 +1 @@\n-old\n\\ No newline at end of file\n+new\n\\ No newline at end of file\n", 1, 1},
+		{"--- old\n+++ new\n@@ -1 +1 @@\n---source\n+++source\n@@ -20 +20,2 @@\n-old\n+new\n+extra\n", 3, 2},
+	} {
+		added, removed := (ReviewFile{Diff: tc.diff}).LineCounts()
+		if added != tc.added || removed != tc.removed {
+			t.Fatalf("counts = +%d -%d, want +%d -%d for %q", added, removed, tc.added, tc.removed, tc.diff)
+		}
+	}
+	file := composeCapture("same\nold\n", "same\nnew\nextra\n")
+	if !strings.HasSuffix(file.Summary(), " +2 -1\n") {
+		t.Fatalf("structured counts changed summary output: %q", file.Summary())
+	}
+}

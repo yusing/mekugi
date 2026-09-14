@@ -260,7 +260,7 @@ func TestLiveDiffRealDelta(t *testing.T) {
 	delta := liveDiffConfiguredDelta(t, config.String())
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "x.go")
-	file := liveDiffFile{chunks: []liveDiffChunk{{
+	file := liveDiffFile{path: path, chunks: []liveDiffChunk{{
 		status: "hp_a1 applied",
 		diff:   "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1 +1 @@\n-old\n+new\n",
 		review: mekugi.ReviewFile{BeforePath: path, AfterPath: path},

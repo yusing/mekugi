@@ -28,6 +28,22 @@ func (file ReviewFile) UnifiedDiff() string {
 	return file.Diff
 }
 
+// LineCounts counts added and removed source rows in a captured review projection.
+// File headers, context, and missing-final-newline markers are not source changes.
+func (file ReviewFile) LineCounts() (added, removed int) {
+	inHunk := false
+	for line := range strings.SplitSeq(file.Diff, "\n") {
+		if strings.HasPrefix(line, "@@ ") {
+			inHunk = true
+		} else if inHunk && strings.HasPrefix(line, "+") {
+			added++
+		} else if inHunk && strings.HasPrefix(line, "-") {
+			removed++
+		}
+	}
+	return added, removed
+}
+
 // Summary describes one evaluated file change, not a net diff across calls.
 func (file ReviewFile) Summary() string {
 	action, path := "update", fmt.Sprintf("%q", file.AfterPath)
@@ -39,17 +55,7 @@ func (file ReviewFile) Summary() string {
 	case file.BeforePath != file.AfterPath:
 		action, path = "move", fmt.Sprintf("%q -> %q", file.BeforePath, file.AfterPath)
 	}
-	added, removed := 0, 0
-	inHunk := false
-	for line := range strings.SplitSeq(file.Diff, "\n") {
-		if strings.HasPrefix(line, "@@ ") {
-			inHunk = true
-		} else if inHunk && strings.HasPrefix(line, "+") {
-			added++
-		} else if inHunk && strings.HasPrefix(line, "-") {
-			removed++
-		}
-	}
+	added, removed := file.LineCounts()
 	return fmt.Sprintf("%s %s +%d -%d\n", action, path, added, removed)
 }
 

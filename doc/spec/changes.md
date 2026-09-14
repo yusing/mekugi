@@ -197,16 +197,33 @@ offset, clamped when content becomes shorter. Scrolling crosses file boundaries;
 files, and `g`/`G` goes to the start/end of the complete view. The header identifies the
 file at the top of the viewport, which is the current file for `f`. `r` resumes
 following, including edits received while paused. The footer shows FOLLOW or PAUSED.
-Navigation uses the keyboard controls shown there. Terminal resize clips colored Unicode text to the available columns. Only text and SGR styling
+Navigation uses the keyboard controls shown there. Mekugi's file headings, including the
+current-file header, use bold text, green `+N` and red `-N` source-line counts, and a
+width-filling separator. File-heading blocks wrap when needed so their actions and
+rename endpoints are not truncated; the sticky current-file title stays on one row.
+Counts describe the displayed projections: combined visible regions for composed files,
+or the separately labeled captures otherwise. They exclude
+headers/context and become zero when the file is fully flushed. Counts are cached with
+the rendered view rather than rescanning diffs on every navigation key. Delta's duplicate
+file and hunk headings are suppressed through invocation-local options. Line numbers appear
+beside source rows, not in separate headings. The viewer owns their inline formats,
+even when delta is configured with empty number formats. Omitted-heading padding is
+removed without trimming blank source rows or their styling. Normal combined applied
+diffs have no status banner. New/deleted files and both names of renamed files appear once in the file heading.
+Separate captures retain their own action and application status once per capture, not
+per hunk; uncomposed-capture warnings remain explicit. Path-only changes use the same
+heading or capture caption without a duplicate operation row.
+Terminal resize clips colored Unicode text to the available columns. Only text and SGR styling
 reach the live viewport. Delta's invocation-local added/removed-line styles use the
 terminal's normal background, with syntax-colored text and bold emphasis. Displayed
 header paths are relative only for files inside the selected workspace; paths outside
 it remain absolute. Source hunk text and durable paths are unchanged.
 
 The latest refresh containing new capture IDs marks every affected file and touched
-composed hunk with a cyan gutter and bold `LATEST UPDATE` heading, without recoloring
-source text or adding backgrounds. The marker denotes a recently touched hunk, not
-line- or word-level attribution. Multiple captures observed together form one display
+composed hunk with a cyan gutter, without recoloring source text or adding backgrounds.
+A bold `LATEST UPDATE` label appears once in the file heading, not between hunks.
+The marker denotes a recently touched hunk, not line- or word-level attribution.
+Multiple captures observed together form one display
 update; this does not establish execution order across streams. Initial history is a
 baseline, not a fresh update. Receipt-only refreshes preserve the current marks rather
 than creating a new update. Marks remain until another capture update or a flush.
@@ -243,8 +260,12 @@ Acceptance:
    visible together. Following scrolls to new edits; manual navigation pauses it, so
    other-file edits and application receipts do not steal selection or reset scrolling. `r` resumes following
    the latest observed edit, including after updates while paused.
-2. Delta renders with its normal styling configuration, regardless of Git pager
-   selection. Missing delta skips Herdr pane creation without affecting the agent.
+2. Delta preserves configured source styling regardless of Git pager selection, with
+   invocation-local overrides for normal source backgrounds, inline line numbers, and
+   suppressed file/hunk headings. Multiple regions in a newly created file show one
+   file-action label, no repeated hunk captions, and no extra heading padding. Blank
+   source rows, separate-capture identity, and rename endpoints remain visible.
+   Missing delta skips Herdr pane creation without affecting the agent.
 3. A real terminal process renders updates, handles resize, accepts navigation and quit,
    and exits without retaining terminal ownership.
 4. A fresh read-only store view sees durable edits and confirmation receipts; missing

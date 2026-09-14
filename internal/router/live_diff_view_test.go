@@ -214,6 +214,10 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 			t.Fatalf("multi-file capture omitted %q from the visible frame: %q", want, frame)
 		}
 	}
+	if strings.Contains(frame, "Applied · original to latest") || strings.Contains(frame, "Δ /dev/null") {
+		t.Fatalf("redundant diff headers remain: %q", frame)
+	}
+
 	if strings.Contains(frame, "LATEST UPDATE") || strings.Contains(frame, "▎") {
 		t.Fatal("startup history was marked as newly observed")
 	}
