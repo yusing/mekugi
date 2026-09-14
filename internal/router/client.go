@@ -513,6 +513,11 @@ const (
 )
 
 func copyUpstreamBodyTransformed(writer io.Writer, response *http.Response, streamResponse bool, transformer responseTransformer, hooks *responseHooks) (responseTerminalState, error) {
+	if streamResponse && hooks != nil && hooks.streamDiagnostics != nil {
+		if id := response.Header.Get("X-Request-Id"); safeFeatureIdentity(id) {
+			hooks.streamDiagnostics.ProviderRequestID = id
+		}
+	}
 	defer response.Body.Close()
 	var (
 		terminalState responseTerminalState
@@ -558,6 +563,9 @@ func copyJSONTransformed(writer io.Writer, reader io.Reader, transformer respons
 }
 
 func copySSETransformed(writer io.Writer, reader io.Reader, transformer responseTransformer, hooks *responseHooks) (state responseTerminalState, resultErr error) {
+	if hooks != nil {
+		defer func() { hooks.streamDiagnostics.copyStopped(resultErr) }()
+	}
 	defer func() {
 		if errors.Is(resultErr, errResponseWrite) {
 			return // The downstream is no longer writable.
@@ -575,6 +583,9 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 	buffered := bufio.NewReader(reader)
 
 	if err := consumeOptionalUTF8BOM(buffered); err != nil {
+		if hooks != nil {
+			hooks.streamDiagnostics.readEnded(err)
+		}
 		return responseTerminalUnknown, err
 	}
 	event := []string{}
@@ -597,6 +608,9 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 			}
 		}
 		if err != nil {
+			if hooks != nil {
+				hooks.streamDiagnostics.readEnded(err)
+			}
 			if errors.Is(err, io.EOF) {
 				eventTerminalState, writeErr := writeSSEEvent(writer, event, "", transformer, hooks)
 				terminalState = mergeResponseTerminalState(terminalState, eventTerminalState)

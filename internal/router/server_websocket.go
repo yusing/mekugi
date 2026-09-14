@@ -520,6 +520,7 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 }
 
 type webSocketExchange struct {
+	streamDiagnostics    *streamDiagnostics
 	session              *responsesWebSocket
 	ctx                  context.Context
 	automatic            bool
@@ -622,6 +623,11 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 	if e.automatic {
 		captured = nil
 	}
+	if e.streamDiagnostics != nil {
+		if id := responseHeaders.Get("X-Request-Id"); safeFeatureIdentity(id) {
+			e.streamDiagnostics.ProviderRequestID = id
+		}
+	}
 	e.observation = capturer.BeginWebSocketAttempt(responseCtx, captured, handshake, responseHeaders)
 	if !e.automatic {
 		if err := s.upstream.Write(startCtx, websocket.MessageText, payload); err != nil {
@@ -660,6 +666,7 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 				continue
 			}
 			if isResponseAncillaryEvent(jsonString(fields, "type")) {
+				e.streamDiagnostics.observe(message.body)
 				e.observation.Message(message.body)
 				e.clientObservation.Message(message.body)
 				if err := s.providerControl(message.body); err != nil {
@@ -693,17 +700,21 @@ func (e *webSocketExchange) Read(buffer []byte) (int, error) {
 	for len(body) == 0 {
 		select {
 		case <-e.ctx.Done():
+			e.streamDiagnostics.readEndedFrom(e.ctx.Err(), "context")
 			return 0, e.ctx.Err()
 		case <-idle:
 			return 0, errUpstreamStreamIdleTimeout
 		case message := <-s.clientMessages:
 			if message.err != nil {
+				e.streamDiagnostics.readEndedFrom(message.err, "downstream")
 				return 0, message.err
 			}
 			if len(message.body) == 0 {
+				e.streamDiagnostics.readEndedFrom(io.EOF, "downstream")
 				return 0, io.EOF
 			}
 			if err := s.control(message.body); err != nil {
+				e.streamDiagnostics.readEndedFrom(err, "router_control")
 				return 0, err
 			}
 		case message := <-s.providerMessages:
@@ -721,6 +732,7 @@ func (e *webSocketExchange) Read(buffer []byte) (int, error) {
 	_ = json.Unmarshal(body, &fields)
 	kind := jsonString(fields, "type")
 	if err := e.observeProviderHistory(body); err != nil {
+		e.streamDiagnostics.readEndedFrom(err, "router_history")
 		return 0, err
 	}
 	e.ended = responseevents.Kind(kind).EndsExchange()

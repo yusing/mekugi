@@ -119,6 +119,20 @@ timeout is also reported when concurrent downstream cancellation wins. Downstrea
 context cancellation is not asserted to be an explicit user abort.
 
 
+Streaming `request_complete` records also include `response_stream` metadata when
+stream copying was attempted: the copy-stop category, last allowlisted event type
+and timestamp when observed, an observed terminal event, classified reader termination
+with its observed origin (upstream, downstream, context, or router processing), a
+numeric WebSocket close code when available, and a safe provider request ID when
+supplied. Pending tool calls retain only safe item/call identities, received delta counts and UTF-8 byte counts,
+and whether input-done was observed. They do not retain arguments. Counts describe
+received deltas, not completed-input size or model usage. At most 32 pending calls
+are retained, with explicit truncation when identities or capacity prevent coverage.
+Unknown event types and transport errors receive fixed categories; raw event names,
+close reasons, error text, and headers are not exported. An EOF does not establish
+successful completion. These observations are request-local and debug-only and do
+not change translation, execution, cancellation, or retry behavior.
+
 ### Feature-usage debug evidence
 
 `router.jsonl` MUST support `event: "feature_usage"` with `schema_version: 1`, fixed

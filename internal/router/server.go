@@ -568,6 +568,12 @@ func executeRequest(
 	hooks := &responseHooks{}
 	finalization := requestFinalization{failurePhase: requestFailurePrepare}
 	debug, debugID := debugRequest(ctx)
+	if debug != nil {
+		hooks.streamDiagnostics = &streamDiagnostics{}
+	}
+	if exchange, ok := provider.(*webSocketExchange); ok {
+		exchange.streamDiagnostics = hooks.streamDiagnostics
+	}
 	started := time.Now()
 	trace := featureUsageTrace{debug: debug, requestID: debugID, threadID: codexThreadID(headers), sessionID: sessionID}
 	if debug != nil {
@@ -598,6 +604,9 @@ func executeRequest(
 			fields["idle_timeout_observed"] = true
 		}
 		trace.finish(commentaryObserved, requestErr == nil && finalization.upstreamStatusCode >= 200 && finalization.upstreamStatusCode < 300)
+		if hooks.streamDiagnostics != nil && hooks.streamDiagnostics.CopyStop != "" {
+			fields["response_stream"] = hooks.streamDiagnostics.snapshot()
+		}
 		if finalization.diagnosticReference != "" {
 			fields["diagnostic_reference"] = finalization.diagnosticReference
 			fields["diagnostic_code"] = finalization.diagnosticCode
