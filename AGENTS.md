@@ -34,11 +34,9 @@ The linked contracts own interface-specific details, exceptions, and acceptance 
 - **Session continuity:** Features must remain correct across `/fork`, `/side`, agent switching
   through `/subagents`, model switches, and `codex resume`, including a fresh router process.
   Restore inherited state and relationship authorization from visible history and durable
-  workspace records, not routing-session IDs, cache keys, or a live parent. Test relative
-  journal access after restarting with only the requesting thread; live ancestry is not
-  a substitute for retained identity and conflict checks. Preserve documented lifetimes:
-  replay does not revive
-  processes, continuation handles, or expired private scripts; Mentor schedules are router-lifetime.
+  workspace records, not routing-session IDs, cache keys, or a live parent. Preserve documented
+  lifetimes: replay does not revive processes, continuation handles, or expired private scripts;
+  Mentor schedules are router-lifetime.
   Evidence: [replay](doc/spec/plugin.md), [recovery](doc/spec/correct.md),
   [guidance switches](doc/spec/guide.md), [Mentor lifetime](doc/spec/mentor.md).
 - **State isolation:** Keep request views, stable thread identity, workspace replay, and process
@@ -51,8 +49,7 @@ The linked contracts own interface-specific details, exceptions, and acceptance 
   execute effects again or take over that lifecycle. Keep overrides invocation-local and leave
   user configuration and instructions untouched.
   Before Codex starts, the wrapper owns cancellation and startup feedback. Once Codex owns
-  the terminal, preserve its signal handling and stop startup rendering. Validate both sides
-  of that handoff, including redirected output and delayed initialization.
+  the terminal, preserve its signal handling and stop startup rendering.
   See [plugins](doc/spec/plugin.md), [subagents](doc/spec/subagents.md), and [launch](doc/spec/router.md).
 - **Filesystem authority:** Normal router translation uses the selected metadata directory,
   never router cwd, and does not impose the root library's confinement boundary. Without a
@@ -62,8 +59,7 @@ The linked contracts own interface-specific details, exceptions, and acceptance 
 - **Atomic edits and usable evidence:** Resolve targets against one immutable invocation baseline;
   parsing, validation, and evaluation failures publish no partial edit or success report.
   Readers, target checks, and reports share exact source-byte and logical-row semantics,
-  including BOM, CR, LF, and CRLF. Test emitted references through the edit consumer with
-  repeated source rows; formatter-only assertions cannot prove the intended row is selected.
+  including BOM, CR, LF, and CRLF.
   Reports describe completed, formatted state, not guessed coordinates. Translation is not
   proof of application, hashes are
   not writer locks, and multi-file commit is not crash-atomic. Preserve caller coordination and
@@ -90,16 +86,12 @@ The linked contracts own interface-specific details, exceptions, and acceptance 
 - **Evidence over apparent success:** Judge correctness by actual results, path scope, and required
   graders, not model prose, transcript labels, or reference-patch similarity. Provider usage owns
   model-consumption claims; local token estimates and transport expansion are different measures.
-  Missing, malformed, or incomplete evidence is not zero or success. Cover actual producer
-  shapes at the consuming boundary, including Chat versus Responses, multipart CTP, and
-  persisted rollout events. Synthetic start events cannot establish persisted timing coverage.
-  Recheck dated host observations after Codex upgrades before relying on them.
+  Missing, malformed, or incomplete evidence is not zero or success.
   See [benchmark](doc/spec/benchmark.md), [metrics](doc/spec/metrics.md), and [E2E evidence](doc/codex-router-e2e.md).
 
 Instruction rewriting must preserve caller-owned policy. Match complete pinned conflicts,
 not arbitrary sections, suffixes, or indented continuations inferred from a tool name.
-Check mixed authorization/tool text, fenced examples, and idempotence through stock,
-marked, custom, and each multipart developer text part. The model guidance owner is [guide](doc/spec/guide.md).
+The model guidance owner is [guide](doc/spec/guide.md).
 
 ## Build and installation constraints
 
@@ -111,15 +103,9 @@ agent authorization.
 The Makefile's default target is `install`, so do not run bare `make` either. It has no
 build or test targets; use Go and Bun directly.
 
-After implementing and validating a feature, always prepare a runnable temporary build
-outside the repository using `mktemp -d`. Include required helpers and a launcher, and
-provide the exact command to test it. Never install or overwrite existing binaries.
-
-Do not smoke-test the fixed `shell` helper by launching it without arguments. That opens
-an internal control channel, not script execution, and may dispatch to the active router
-rather than the temporary build. Validate shell execution by starting the temporary router
-and running a real script through `functions.shell` in that session. A version-only launch
-does not establish that script execution works.
+Before code checks, asset generation, or temporary builds, read [CONTEXT-TESTS.md](CONTEXT-TESTS.md).
+Before automated live Codex tests, read [CONTEXT-AUTOMATED-TESTS.md](CONTEXT-AUTOMATED-TESTS.md).
+These own their respective checks, evidence requirements, and test-cost guidance.
 
 ## Where to look
 
@@ -170,28 +156,3 @@ back here. Docs must stand on their own interface and architecture references.
 | Router process signals, wrapped Codex lifecycle, private model-catalog snapshot, and top-level exit behavior | `cmd/mekugi/main.go`, `cmd/mekugi/wrap.go`, `cmd/mekugi/catalog.go` |
 | Normative interface requirements | `doc/spec/index.md` and the listed requirement file |
 | Stable ownership contracts | `doc/architecture/index.md` and the listed contract file |
-
-## Focused checks
-
-| Changed owner | Focused check |
-| --- | --- |
-| Root engine | `.` |
-| Router behavior | `./internal/router` |
-| Capture metrics and AX evidence | `./capturer` |
-| Portable core or `mekugi:core/v1` adapter | `./internal/router/toolplugin`, then `./...` and `bun test ./internal/router/toolplugin/tests/core.test.ts` |
-| TypeScript plugin source | `go generate ./internal/router/toolplugin`, then `bun test ./internal/router/toolplugin/tests` |
-| Router or shell-helper process entry point | `./cmd/mekugi ./cmd/shell` |
-| Native journal child-result acceptance | `-tags journal_e2e ./internal/router -run '^TestJournalNativeCodexSpawnE2E$'` (installed Codex, local mock provider) |
-| Cross-package or broad contract | `./...` |
-
-Keep repeatable test costs visible. Reuse immutable registry fixtures while isolating mutable
-thread, workspace, and process state; startup and shutdown tests still need their own owners.
-Use controlled time for in-process lifetimes. Preserve real process-cleanup coverage and prove
-boundary coverage before shrinking large fixtures. Compare uncached test execution separately
-from build/cache overhead. Historical benchmark artifacts must stay outside root Go package
-discovery without deleting their evidence.
-
-Generation requires Bun and the dependencies declared in `plugins/package.json`. If those
-dependencies are missing, use `bun install --cwd plugins --frozen-lockfile`; do not use
-`make install` to prepare them. Generation rebuilds the embedded WASM core and JavaScript bundle
-through directives in `internal/router/toolplugin/runtime.go`; do not hand-edit generated assets.
