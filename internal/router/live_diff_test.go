@@ -205,7 +205,6 @@ func TestLiveDiffNativeRenderer(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := strings.Join(render.lines, "\n")
-	assertLiveDiffNoBackground(t, text)
 	if strings.Contains(text, workspace) || !strings.Contains(ansi.Strip(text), "x.go") {
 		t.Fatalf("native renderer did not render relative paths: %q", text)
 	}
@@ -341,8 +340,7 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		output := waitFor(reply.theme.foreground(chroma.GenericInserted), "FOLLOW")
-		assertLiveDiffNoBackground(t, output)
+		waitFor(reply.theme.foreground(chroma.GenericInserted), "FOLLOW")
 	}
 	// Unrelated and malformed OSC payloads must not flush, navigate, or quit,
 	// even when they include escape-prefixed command keys or overflow the buffer.

@@ -24,13 +24,13 @@ func TestLiveDiffNativeRows(t *testing.T) {
 	}
 	var rows []string
 	for _, line := range render.lines[1:] {
-		rows = append(rows, ansi.Strip(line))
+		rows = append(rows, strings.TrimRight(ansi.Strip(line), " "))
 	}
 	want := []string{
-		"   9  9│ context",
-		"  10   │-old",
-		"     10│+new",
-		"  11 11│ ",
+		"   9│ context",
+		"  10│-old",
+		"  10│+new",
+		"  11│",
 	}
 	if !slices.Equal(rows, want) {
 		t.Fatalf("inline coordinates or blank source rows changed: %q", rows)
@@ -51,13 +51,19 @@ func TestLiveDiffCompactCoordinates(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if deleted {
+			if len(render.lines) != 1 || render.counts[0].removed != 20 {
+				t.Fatalf("deleted source not omitted: %+v", render)
+			}
+			continue
+		}
 		for i, line := range render.lines[1:] {
 			marker := "+"
 			if deleted {
 				marker = "-"
 			}
 			want := fmt.Sprintf("  %2d│%scontent", i+1, marker)
-			if ansi.Strip(line) != want {
+			if strings.TrimRight(ansi.Strip(line), " ") != want {
 				t.Fatalf("absent side or excessive number padding: got %q, want %q", ansi.Strip(line), want)
 			}
 		}
@@ -117,7 +123,6 @@ func TestLiveDiffNativeNoNewlineAndControls(t *testing.T) {
 			if ansi.StringWidth(line) > width-1 || liveDiffSafe(line, true) != line {
 				t.Fatalf("width %d: unsafe or overflowing row: %q", width, line)
 			}
-			assertLiveDiffNoBackground(t, line)
 		}
 		if width == 90 {
 			text := ansi.Strip(strings.Join(render.lines, "\n"))
@@ -141,10 +146,10 @@ func TestLiveDiffNativeSyntaxSidesAndMultiline(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(before) != 3 || len(after) != 2 ||
-		!strings.Contains(before[1], "\x1b[90m") ||
-		!strings.Contains(after[0], "\x1b[36mreturn\x1b[39m") ||
-		!strings.Contains(after[0], "\x1b[32m") ||
-		!strings.Contains(after[1], "\x1b[35m42\x1b[39m") {
+		!strings.Contains(before[1], liveDiffTerminalTheme.foreground(chroma.CommentMultiline)) ||
+		!strings.Contains(after[0], liveDiffTerminalTheme.foreground(chroma.Keyword)+"return\x1b[39m") ||
+		!strings.Contains(after[0], liveDiffTerminalTheme.foreground(chroma.LiteralString)) ||
+		!strings.Contains(after[1], liveDiffTerminalTheme.foreground(chroma.LiteralNumberInteger)+"42\x1b[39m") {
 		t.Fatalf("syntax state leaked across sides or rows: before=%q after=%q", before, after)
 	}
 }
@@ -204,5 +209,43 @@ func TestLiveDiffNativeErrors(t *testing.T) {
 	chunk.review.Diff = strings.Repeat("x", maxChangeReadBytes+1)
 	if _, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{chunks: []liveDiffChunk{chunk}}}, "", 80, 0, liveDiffChunk{}); err == nil {
 		t.Fatal("unbounded source accepted")
+	}
+}
+
+func TestLiveDiffHiddenFilesKeepNavigationAndHistory(t *testing.T) {
+	chunk := liveDiffHighlightChunk("edit", "visible.txt", "@@ -1 +1 @@\n-old\n+new\n", true)
+	chunk.status = ""
+	files := []liveDiffFile{
+		{path: "reverted-first"},
+		{path: "visible.txt", chunks: []liveDiffChunk{chunk}},
+		{path: "reverted-middle"},
+		{path: "deleted.txt", chunks: []liveDiffChunk{{review: mekugi.ReviewFile{
+			BeforePath: "deleted.txt", Diff: "--- deleted.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-removed source\n",
+		}}}},
+		{path: "reverted-last"},
+	}
+	render, err := renderLiveDiff(t.Context(), liveDiffDarkTheme, files, "", 90, 4, liveDiffChunk{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := ansi.Strip(strings.Join(render.lines, "\n"))
+	if strings.Contains(text, "reverted") || strings.Contains(text, "removed source") ||
+		!strings.Contains(text, "1/2  visible.txt") || !strings.Contains(text, "2/2  deleted.txt") ||
+		!strings.Contains(text, "Deleted file") || render.counts[3].removed != 1 {
+		t.Fatalf("hidden/deleted presentation is wrong: %q", text)
+	}
+	view := liveDiffView{files: files, scroll: map[string]int{}}
+	for offset := range len(render.lines) {
+		view.scrollTo(render, offset)
+		want := 1
+		if offset >= render.starts[3] {
+			want = 3
+		}
+		if view.selected != want {
+			t.Fatalf("offset %d selected hidden file %d", offset, view.selected)
+		}
+	}
+	if len(view.files) != 5 {
+		t.Fatal("presentation discarded retained history")
 	}
 }

@@ -73,8 +73,8 @@ func TestLiveDiffFollowEmptyLatestFile(t *testing.T) {
 	}
 	offset := min(render.focusOffset, len(render.lines)-rows)
 	viewport := ansi.Strip(strings.Join(render.lines[offset:offset+rows], "\n"))
-	if !strings.Contains(viewport, "second.txt") || !strings.Contains(viewport, "No unreviewed changes") {
-		t.Fatalf("following hid the latest file's empty state: %q", viewport)
+	if strings.Contains(viewport, "second.txt") || strings.Contains(viewport, "No unreviewed changes") {
+		t.Fatalf("reverted file remained visible: %q", viewport)
 	}
 }
 
@@ -257,12 +257,12 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 		return strings.HasPrefix(strings.TrimLeft(frame, " ▎"), "2/2") && strings.Contains(frame, "PAUSED") &&
 			!strings.Contains(frame, "new changes available")
 	})
-	if _, err := terminal.Write([]byte("pf")); err != nil {
+	if _, err := terminal.Write([]byte("f")); err != nil {
 		t.Fatal(err)
 	}
 	waitFrame(func(frame string) bool {
-		return strings.Contains(frame, "No unreviewed changes") &&
-			!strings.Contains(frame, "Temporary file one.") && strings.Contains(frame, "Temporary file two.") &&
+		return !strings.Contains(frame, "second.txt") &&
+			strings.Contains(frame, "first.txt") && strings.Contains(frame, "adjusted 界 é") &&
 			!strings.Contains(frame, "LATEST UPDATE") && !strings.Contains(frame, "new changes available")
 	})
 	if _, err := terminal.Write([]byte("F")); err != nil {
