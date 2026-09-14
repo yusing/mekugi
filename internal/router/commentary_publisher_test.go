@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -61,6 +63,63 @@ func TestJournalPublisherAuthenticatesAndMutatesThreadStore(t *testing.T) {
 	}
 }
 
+func TestShellJournalRequesterSupportsListAnswersBatchAndFinish(t *testing.T) {
+	broker := newCommentaryBroker()
+	t.Cleanup(broker.close)
+	store := newJournalStore()
+	if err := store.initialize(t.Context(), nil, "workspace", "thread", "/root", ""); err != nil {
+		t.Fatal(err)
+	}
+	broker.journalPublisher = func(ctx context.Context, session, thread, receipt string, mutations []journalMutation) ([]string, error) {
+		workspace, _, ok := strings.Cut(session, "\x00")
+		if !ok {
+			return nil, errors.New("missing workspace")
+		}
+		return store.apply(ctx, nil, workspace, thread, receipt, mutations)
+	}
+	broker.journalLister = func(ctx context.Context, session, thread, agent string) ([]journalItem, error) {
+		workspace, _, ok := strings.Cut(session, "\x00")
+		if !ok {
+			return nil, errors.New("missing workspace")
+		}
+		if agent != "" {
+			return store.listAgent(ctx, nil, workspace, thread, agent)
+		}
+		return store.list(ctx, nil, workspace, thread)
+	}
+	server := httptest.NewServer(http.HandlerFunc(broker.serveHTTP))
+	t.Cleanup(server.Close)
+	token := broker.subscribe("workspace\x00session", "call-shell", "/root")
+	broker.bindActivity(token, "thread")
+	broker.bindJournalQuestion(token, "What changed?")
+	broker.routes[token].finishReceipt = shellJournalFinishReceipt("turn", "call-shell")
+	sink := &httpShellCommentarySink{endpoint: server.URL, token: token, client: server.Client()}
+
+	result, err := sink.RequestJournal(t.Context(), shellJournalCommand{
+		Op: "add", Mutation: &journalMutation{Op: "add", Text: new("Answer"), Answer: new(true)},
+	})
+	if err != nil || len(result.IDs) != 1 || result.IDs[0] != "j1" {
+		t.Fatalf("answer add = %+v, %v", result, err)
+	}
+	result, err = sink.RequestJournal(t.Context(), shellJournalCommand{
+		Op: "batch",
+		Batch: []journalMutation{
+			{Op: "add", Text: new("Second")},
+			{Op: "edit", ID: "j1", Text: new("Updated")},
+		},
+	})
+	if err != nil || len(result.IDs) != 2 {
+		t.Fatalf("batch = %+v, %v", result, err)
+	}
+	result, err = sink.RequestJournal(t.Context(), shellJournalCommand{Op: "list", Agent: ""})
+	if err != nil || len(result.Items) != 2 || result.Items[0].Question != "What changed?" || result.Items[0].Text != "Updated" {
+		t.Fatalf("list = %+v, %v", result, err)
+	}
+	result, err = sink.RequestJournal(t.Context(), shellJournalCommand{Op: "finish", Batch: []journalMutation{{Op: "add", Text: new("Final")}}})
+	if err != nil || !result.FinishRequested || len(result.IDs) != 1 || result.IDs[0] != "j3" {
+		t.Fatalf("finish = %+v, %v", result, err)
+	}
+}
 func TestCommentaryDrainRetainsActiveCapacityUntilCompletionOrExpiry(t *testing.T) {
 	for _, mode := range []string{"token", "session"} {
 		t.Run(mode, func(t *testing.T) {
@@ -224,12 +283,12 @@ func TestShellRouteKeepsCleanCommandWithoutDefaultCommentary(t *testing.T) {
 				Command string `json:"cmd"`
 			}
 			decodeExecCarrierArguments(t, carrier, &args)
-			want := "shell bash " + shellQuoteArgument(test.input)
+			want := "env " + shellJournalTokenEnvironment + "=" + shellQuoteArgument(transform.commentarySubscriptions[0].token) + " shell bash " + shellQuoteArgument(test.input)
 			if args.Command != want {
 				t.Fatalf("command = %q, want %q", args.Command, want)
 			}
 
-			if strings.Contains(carrier, "--commentary-") || strings.Contains(carrier, proxy.commentaryEndpoint) || len(transform.commentarySubscriptions) != 0 {
+			if strings.Contains(carrier, "--commentary-") || strings.Contains(carrier, proxy.commentaryEndpoint) || len(transform.commentarySubscriptions) != 1 {
 				t.Fatalf("shell carrier = %s", carrier)
 			}
 		})
@@ -438,5 +497,148 @@ func TestUnhandedRuntimeCommentaryRouteIsCancelled(t *testing.T) {
 	transform.Close()
 	if proxy.commentary.publish(token, "later", false) || len(proxy.drainCommentarySession(transform.historySessionID, transform.shellThreadID)) != 0 {
 		t.Fatal("unhanded route or its queued publication was retained")
+	}
+}
+
+func TestShellJournalPublisherValidatesBeforeMutation(t *testing.T) {
+	broker := newCommentaryBroker()
+	t.Cleanup(broker.close)
+	calls := 0
+	broker.journalPublisher = func(_ context.Context, _, _, _ string, _ []journalMutation) ([]string, error) {
+		calls++
+		return []string{"j1"}, nil
+	}
+	token := broker.subscribeThread("workspace\x00thread", "thread", "/root")
+	for _, body := range []string{
+		`{"op":"unknown","id":"receipt","journal":[{"op":"add","text":"must not apply"}]}`,
+		`{"op":"list","id":"receipt","journal":[{"op":"add","text":"must not apply"}]}`,
+		`{"op":"finish","id":"receipt","journal":[{"op":"add","text":"must not apply"}]}`,
+		`{"op":"finish","id":"receipt","text":"invalid","journal":[{"op":"add","text":"must not apply"}]}`,
+		`{"complete":true,"journal":[{"op":"add","text":"must not apply"}],"id":"receipt"}`,
+	} {
+		request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		request.Header.Set("Authorization", "Bearer "+token)
+		response := httptest.NewRecorder()
+		broker.serveHTTP(response, request)
+		if response.Code != http.StatusBadRequest || calls != 0 {
+			t.Fatalf("invalid request changed state: status=%d calls=%d", response.Code, calls)
+		}
+	}
+}
+
+func TestShellJournalConcurrentIDsAndPinnedQuestion(t *testing.T) {
+	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	var expectedMu sync.Mutex
+	expected := make(map[string]string)
+	publish := proxy.commentary.journalPublisher
+	proxy.commentary.journalPublisher = func(ctx context.Context, session, thread, receipt string, mutations []journalMutation) ([]string, error) {
+		ids, err := publish(ctx, session, thread, receipt, mutations)
+		if err == nil && len(mutations) == 1 && mutations[0].Op == "add" {
+			expectedMu.Lock()
+			expected[*mutations[0].Text] = ids[0]
+			expectedMu.Unlock()
+		}
+		return ids, err
+	}
+	server := httptest.NewServer(http.HandlerFunc(proxy.commentary.serveHTTP))
+	t.Cleanup(server.Close)
+	proxy.commentaryEndpoint = server.URL
+	transform.journalQuestion = "Original question"
+	transform.shellTurnID = "turn"
+	contribution, _ := proxy.registry.contribution("shell")
+	token := transform.subscribeShellJournal("shell-old", contribution)
+	sink := &httpShellCommentarySink{endpoint: server.URL, token: token, client: server.Client()}
+
+	// A new request and publisher may coexist with the old running invocation.
+	transform.journalQuestion = "Steered question"
+	proxy.prepareShellCommentary(transform.shellThreadID, transform.historySessionID, "")
+	transform.subscribeShellJournal("shell-new", contribution)
+	const count = 32
+	var wg sync.WaitGroup
+	for i := range count {
+		wg.Go(func() {
+			value := fmt.Sprintf("answer-%d", i)
+			added, err := sink.RequestJournal(t.Context(), shellJournalCommand{
+				Op: "add", Mutation: &journalMutation{Op: "add", Text: new(value), Answer: new(true)},
+			})
+			if err != nil || len(added.IDs) != 1 {
+				t.Errorf("add failed: %+v, %v", added, err)
+				return
+			}
+			expectedMu.Lock()
+			want := expected[value]
+			expectedMu.Unlock()
+			if added.IDs[0] != want {
+				t.Errorf("publication %q returned %q, want %q", value, added.IDs[0], want)
+			}
+			_, err = sink.RequestJournal(t.Context(), shellJournalCommand{
+				Op: "edit", Mutation: &journalMutation{Op: "edit", ID: added.IDs[0], Text: new(added.IDs[0] + ":" + value)},
+			})
+			if err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+	items, err := proxy.journals.list(t.Context(), proxy.replayStore, transform.directory, transform.shellThreadID)
+	if err != nil || len(items) != count {
+		t.Fatalf("items=%d, %v", len(items), err)
+	}
+	for _, item := range items {
+		if !strings.HasPrefix(item.Text, item.ID+":") || item.Question != "Original question" {
+			t.Fatalf("crossed publication identity or provenance: %+v", item)
+		}
+	}
+}
+
+func TestShellJournalListCompleteEncodedCapacity(t *testing.T) {
+	broker := newCommentaryBroker()
+	t.Cleanup(broker.close)
+	store := newJournalStore()
+	author := strings.Repeat("<", maxJournalItemBytes/2)
+	if err := store.initialize(t.Context(), nil, "workspace", "thread", author, ""); err != nil {
+		t.Fatal(err)
+	}
+	mutations := make([]journalMutation, maxJournalItems)
+	for i := range mutations {
+		mutations[i] = journalMutation{Op: "add", Text: new(strings.Repeat("\x01", maxJournalItemBytes))}
+	}
+	if _, err := store.apply(t.Context(), nil, "workspace", "thread", "seed", mutations); err != nil {
+		t.Fatal(err)
+	}
+	broker.journalLister = func(ctx context.Context, _, _, _ string) ([]journalItem, error) {
+		return store.list(ctx, nil, "workspace", "thread")
+	}
+	server := httptest.NewServer(http.HandlerFunc(broker.serveHTTP))
+	t.Cleanup(server.Close)
+	sink := &httpShellCommentarySink{
+		endpoint: server.URL, token: broker.subscribeThread("workspace\x00thread", "thread", author), client: server.Client(),
+	}
+	result, err := sink.RequestJournal(t.Context(), shellJournalCommand{Op: "list"})
+	if err != nil || len(result.Items) != maxJournalItems {
+		t.Fatalf("full list: count=%d, %v", len(result.Items), err)
+	}
+	for _, item := range result.Items {
+		if len(item.Text) != maxJournalItemBytes || item.Author != author {
+			t.Fatal("list content was truncated")
+		}
+	}
+}
+
+func TestShellJournalResponseOverflowIsExplicit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		chunk := bytes.Repeat([]byte("x"), 1<<20)
+		for remaining := maxJournalPublicationResponseBytes + 1; remaining > 0; {
+			size := min(remaining, len(chunk))
+			if _, err := w.Write(chunk[:size]); err != nil {
+				return
+			}
+			remaining -= size
+		}
+	}))
+	t.Cleanup(server.Close)
+	sink := &httpShellCommentarySink{endpoint: server.URL, token: "test", client: server.Client()}
+	if _, err := sink.RequestJournal(t.Context(), shellJournalCommand{Op: "list"}); err == nil || !strings.Contains(err.Error(), "response budget") {
+		t.Fatalf("overflow error = %v", err)
 	}
 }

@@ -165,6 +165,9 @@ func discoverShellCommentary(worker string) shellCommentarySink {
 	if err != nil || target != descriptor.Worker || target != worker {
 		return nil
 	}
+	if token := os.Getenv(shellJournalTokenEnvironment); token != "" {
+		descriptor.Token = token
+	}
 	return &threadShellCommentarySink{httpShellCommentarySink{endpoint: descriptor.Endpoint, token: descriptor.Token, client: commentaryHTTPClient}}
 }
 

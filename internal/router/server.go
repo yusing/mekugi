@@ -5,6 +5,7 @@ package router
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -499,6 +500,43 @@ func (f *requestFinalization) classifyCopyError(err error) {
 	}
 }
 
+type journalFinishResponseProvider struct {
+	stream bool
+}
+
+func (provider journalFinishResponseProvider) forwardExecution(context.Context, context.Context, []byte, http.Header, string) (*http.Response, error) {
+	id := "resp_mekugi_journal_" + rand.Text()
+	response := map[string]any{
+		"id": id, "object": "response", "status": "completed", "output": []any{},
+	}
+	if !provider.stream {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(bytes.NewReader(mustMarshalJSON(response))),
+		}, nil
+	}
+	created := mustMarshalJSON(map[string]any{
+		"type":     responses.Created,
+		"response": map[string]any{"id": id, "object": "response", "status": "in_progress", "output": []any{}},
+	})
+	completed := mustMarshalJSON(map[string]any{
+		"type": responses.Completed, "response": response,
+	})
+	body := append([]byte("data: "), created...)
+	body = append(body, '\n', '\n')
+	body = append(body, []byte("data: ")...)
+	body = append(body, completed...)
+	body = append(body, '\n', '\n')
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
+	}, nil
+}
+
 // executeRequest executes a parsed Responses request through the router pipeline.
 func executeRequest(
 	ctx context.Context,
@@ -649,6 +687,16 @@ func executeRequest(
 		commentaryObserved = true
 		defer mekugiTransform.Close()
 	}
+	syntheticJournalFinish := mekugiTransform != nil && mekugiTransform.shellFinishRequested
+	if syntheticJournalFinish {
+		// A shell finish is already the terminal operation for this request.
+		// Keep the normal response transformation and journal delivery, but do
+		// not ask the provider to generate a follow-up response.
+		handoffRequest = nil
+		hooks.output = nil
+		mekugiTransform.journalTerminal = true
+		compactTokens = nil
+	}
 
 	var bridge *subagentBridge
 	var compactTransform *ctp2ResponseTransform
@@ -658,7 +706,7 @@ func executeRequest(
 	}
 	client, _ := bridgeProvider.(*providerClient)
 	grokEnabled := client != nil && client.grok != nil
-	if mekugiTransform != nil || grokEnabled {
+	if !syntheticJournalFinish && (mekugiTransform != nil || grokEnabled) {
 		bridge, err = prepareSubagentBridge(&parsedRequest, grokEnabled)
 		if err != nil {
 			return fmt.Errorf("prepare collaboration bridge: %w", err)
@@ -676,25 +724,29 @@ func executeRequest(
 	if forwardBody == nil {
 		forwardBody = nativeBody
 	}
-	if exchange, ok := provider.(*webSocketExchange); ok {
-		started := time.Now()
-		if err := exchange.reconcileProviderHistory(&parsedRequest, forwardBody); err != nil {
-			return err
+	if !syntheticJournalFinish {
+		if exchange, ok := provider.(*webSocketExchange); ok {
+			started := time.Now()
+			if err := exchange.reconcileProviderHistory(&parsedRequest, forwardBody); err != nil {
+				return err
+			}
+			debug.event(map[string]any{
+				"event": "provider_history_reconciliation", "request_id": debugID,
+				"reason": exchange.reconciliationReason, "reused_input_items": parsedRequest.cachedInput,
+				"duration_us": time.Since(started).Microseconds(),
+			})
 		}
-		debug.event(map[string]any{
-			"event": "provider_history_reconciliation", "request_id": debugID,
-			"reason": exchange.reconciliationReason, "reused_input_items": parsedRequest.cachedInput,
-			"duration_us": time.Since(started).Microseconds(),
-		})
 	}
 	nativeWire, err := parsedRequest.incrementalBody(nativeBody)
 	if err != nil {
 		return err
 	}
-	if exchange, ok := provider.(*webSocketExchange); ok && exchange.automatic {
-		capturer.ObserveNativeRequest(ctx, nil)
-	} else {
-		capturer.ObserveNativeRequest(ctx, nativeWire)
+	if !syntheticJournalFinish {
+		if exchange, ok := provider.(*webSocketExchange); ok && exchange.automatic {
+			capturer.ObserveNativeRequest(ctx, nil)
+		} else {
+			capturer.ObserveNativeRequest(ctx, nativeWire)
+		}
 	}
 	projectedBody := forwardBody
 	finalization.failurePhase = requestFailureForward
@@ -712,14 +764,18 @@ func executeRequest(
 	}
 	debug.instructions(projectedBody, debugWire, headers, sessionID, debugID, parsedRequest.cachedInput)
 	var usageTracker *threadUsageObservation
-	if !prewarm {
+	if !prewarm && !syntheticJournalFinish {
 		if mekugiTransform != nil {
 			usageTracker = mekugiTransform.usageTracker
 		} else if mekugiCalls != nil && metadataValid {
 			usageTracker = mekugiCalls.usage.observation(threadID, metadata.ThreadID, parsedRequest.model(), usageServiceTier(parsedRequest.fields["service_tier"]))
 		}
 	}
-	response, err := provider.forwardExecution(ctx, executionCtx, forwardBody, headers, cacheKey)
+	forwardProvider := provider
+	if syntheticJournalFinish {
+		forwardProvider = journalFinishResponseProvider{stream: parsedRequest.streamResponse}
+	}
+	response, err := forwardProvider.forwardExecution(ctx, executionCtx, forwardBody, headers, cacheKey)
 	// Definite HTTP rejections did not admit inference. Transport failures and
 	// accepted requests may have consumed tokens even without a usable terminal.
 	rejection, rejectedUpgrade := errors.AsType[*webSocketStatusError](err)

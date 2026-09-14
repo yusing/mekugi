@@ -9,17 +9,32 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/shellruntime"
 )
+
+// The registry pins the test executable. This tagged fixture dispatches only
+// its own shell worker children through the real worker entry point.
+func init() {
+	if os.Getenv("MEKUGI_JOURNAL_E2E_WORKER") == "1" && filepath.Base(os.Args[0]) == "shell" {
+		if handled, code := RunToolPluginWorker(context.Background(), os.Args[0], os.Args[1:], os.Stdin, os.Stdout, os.Stderr); handled {
+			os.Exit(code)
+		}
+	}
+}
 
 // This fixture uses the installed Codex consumer and native collaboration, but
 // a deterministic local provider. No credentials or live model are involved.
 type journalCodexProvider struct {
+	shellFinish       bool
 	mu                sync.Mutex
 	turns             map[string]int
 	childResultSeen   bool
@@ -69,7 +84,26 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 			return nil, fmt.Errorf("native parent never received child journal summary")
 		}
 	}
-	response := map[string]any{"id": fmt.Sprintf("resp_%s_%d", thread, turn), "status": "completed", "output": []any{item}, "usage": map[string]any{"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}}
+	if p.shellFinish && item["name"] == "journal" {
+		var args struct {
+			Op      string          `json:"op"`
+			Journal json.RawMessage `json:"journal"`
+		}
+		if err := json.Unmarshal([]byte(item["arguments"].(string)), &args); err != nil {
+			return nil, err
+		}
+		if args.Op == "finish" {
+			script := "printf 'SHELL_JOURNAL_HOST_OK\\n'\njournal finish"
+			if len(args.Journal) != 0 {
+				script += " " + shellQuoteArgument(string(args.Journal))
+			}
+			item = map[string]any{
+				"type": "custom_tool_call", "id": item["id"], "call_id": item["call_id"],
+				"name": "shell", "namespace": "functions", "input": script, "status": "completed",
+			}
+		}
+	}
+	response := map[string]any{"id": fmt.Sprintf("resp_%s_%d", thread, turn), "status": "completed", "output": []any{item}, "usage": map[string]any{"input_tokens": 10, "input_tokens_details": map[string]any{"cached_tokens": 0}, "output_tokens": 5, "output_tokens_details": map[string]any{"reasoning_tokens": 0}, "total_tokens": 15}}
 	added := mustMarshalJSON(map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item})
 	done := mustMarshalJSON(map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item})
 	completed := mustMarshalJSON(map[string]any{"type": "response.completed", "response": response})
@@ -81,6 +115,14 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 }
 
 func TestJournalNativeCodexSpawnE2E(t *testing.T) {
+	runJournalNativeCodexSpawnE2E(t, false)
+}
+
+func TestShellJournalNativeCodexSpawnE2E(t *testing.T) {
+	runJournalNativeCodexSpawnE2E(t, true)
+}
+
+func runJournalNativeCodexSpawnE2E(t *testing.T, shellFinish bool) {
 	codex, err := exec.LookPath("codex")
 	if err != nil {
 		t.Fatal("native Codex is required for the journal acceptance gate")
@@ -88,7 +130,7 @@ func TestJournalNativeCodexSpawnE2E(t *testing.T) {
 	t.Setenv("CODEX_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	workspace := t.TempDir()
-	provider := &journalCodexProvider{turns: make(map[string]int)}
+	provider := &journalCodexProvider{turns: make(map[string]int), shellFinish: shellFinish}
 	proxy := newManagedMekugiProxy(t, newInProcessMekugiTranslator(t.TempDir()))
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -98,6 +140,25 @@ func TestJournalNativeCodexSpawnE2E(t *testing.T) {
 	issues := NewCriticalErrors()
 	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, issues, proxy, nil, nil))
 	defer server.Close()
+	if shellFinish {
+		proxy.commentaryEndpoint = server.URL + commentaryPublisherPath
+		// The same listener serves the authenticated runtime publisher.
+		server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == commentaryPublisherPath {
+				proxy.commentary.serveHTTP(w, r)
+				return
+			}
+			responsesHandler(t.Context(), time.Minute, provider, issues, proxy, nil, nil)(w, r)
+		})
+		helperDirectory := t.TempDir()
+		build := exec.CommandContext(t.Context(), "go", "build", "-o", filepath.Join(helperDirectory, "shell"), "../../cmd/shell")
+		if output, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build shell helper: %v\n%s", err, output)
+		}
+		t.Setenv("PATH", helperDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+		t.Setenv(shellruntime.RuntimeDirectoryEnvironment, proxy.shellDirectory)
+		t.Setenv("MEKUGI_JOURNAL_E2E_WORKER", "1")
+	}
 	config := `model_providers.journal_fixture={name="journal_fixture",base_url=` + strconv.Quote(server.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
@@ -106,7 +167,7 @@ func TestJournalNativeCodexSpawnE2E(t *testing.T) {
 		"-c", `features.multi_agent_v2={enabled=true,tool_namespace="collaboration"}`,
 		"-c", "tools.update_plan.enabled=false",
 		"-c", "include_collaboration_mode_instructions=false",
-		"--model", "gpt-6-astra", "--sandbox", "read-only", "--ask-for-approval", "never",
+		"--model", "gpt-6-astra", "--sandbox", "danger-full-access", "--ask-for-approval", "never",
 		"exec", "--ignore-user-config", "--skip-git-repo-check", "--json", "--color", "never",
 		"-C", workspace, "Exercise the native journal child fixture.")
 	var stdout, stderr bytes.Buffer
@@ -121,6 +182,9 @@ func TestJournalNativeCodexSpawnE2E(t *testing.T) {
 	}
 	if provider.childRequests != 1 {
 		t.Fatalf("child provider requests = %d, want exactly one", provider.childRequests)
+	}
+	if shellFinish && (!strings.Contains(stdout.String(), "SHELL_JOURNAL_HOST_OK") || !strings.Contains(stdout.String(), `"exit_code":0`)) {
+		t.Fatalf("native shell execution was not observed: %.8000s", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), "Journal update") || !strings.Contains(stdout.String(), "Journal flush ") {
 		t.Fatal("native consumer did not display distinct live updates and terminal flushes")

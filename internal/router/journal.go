@@ -27,7 +27,11 @@ const (
 	// space covers indentation of every content line, Q&A labels, item IDs,
 	// and the bounded canonical agent name.
 	maxJournalFlushBytes = maxJournalItems*(3*maxJournalItemBytes+128) + maxJournalItemBytes
-	maxJournalReceipts   = 16384
+	// Lists are a subset of the persisted record, encoded with the same escaping.
+	// Reserve a small allowance for the response envelope instead of estimating
+	// expanded item text or repeating a second author/content capacity model.
+	maxJournalPublicationResponseBytes = maxReplayRecordBytes + 1024
+	maxJournalReceipts                 = 16384
 )
 
 // errJournalUnchanged skips publication after the locked durable read.

@@ -329,7 +329,7 @@ func (t *mekugiResponseTransform) journalTerminalMessages(response []byte) ([]ma
 	for _, item := range t.journalProviderOutput {
 		substantive = substantive || isSubstantiveAnswer(item)
 	}
-	if usage := formatTokenUsageCommentary(response, counts, observed && t.usageObserved, "completed", substantive); usage != nil {
+	if usage := formatTokenUsageCommentary(response, counts, observed && (t.usageObserved || t.shellFinishRequested), "completed", substantive); usage != nil {
 		retained := t.retainCommentary(usage)
 		if len(retained) != 0 {
 			t.journalUsageID = jsonString(usage, "id")

@@ -40,6 +40,9 @@ type mekugiHistory struct {
 	CarrierKind    codeModeCarrierKind
 	CarrierPayload string
 
+	// Optional invocation provenance preserves the version-1 wire shape for older calls.
+	ShellJournalTurnID string `json:",omitempty"`
+
 	Report string
 	// Deferred diagnostics are projected onto the model-visible result, never
 	// evaluated in a program that owns the host's output-helper identifier.

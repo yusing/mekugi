@@ -20,7 +20,7 @@ var stockToolConflictReplacer = strings.NewReplacer(
 	"As you work, you send messages to the `commentary` channel.",
 	"As you work, batch journal mutations on supported tool calls.",
 	"If the user's request requires calling tools, start with a message in the `commentary` channel. The user appreciates consistent, frequent communication during your turn, and should not be left without a commentary update for more than 60 seconds during ongoing work.",
-	"Use the central Journal rules for progress delivery; call functions.journal when no ordinary call can carry the mutation.",
+	"Use the central Journal rules for progress delivery; batch mutations on the current ordinary tool call or shell command, and call functions.journal only for list, or for finishing when no current call can carry the operation.",
 	"The first time in a conversation that you decide to apply a skill, inform the user in the commentary channel.",
 	"When applying a skill is a meaningful milestone, record it in the journal.",
 	"Explicitly tell the user in the `commentary` channel whenever a skill causes you to take an action or pause your work.",

@@ -30,8 +30,9 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
   - `report_now` shows a labelled **Journal update** immediately, distinct from stock
     commentary and reasoning summaries. On a successful journal finish, **Journal flush** shows
     every new or revised entry, including live updates. Only revisions already flushed are
-    skipped. Journals replace the separate final-answer essay. Agents finish with a direct
-    journal finish call, which completes the turn without an extra model request.
+    skipped. Journals replace the separate final-answer essay. Agents finish with either a direct
+    journal finish call or a final Bash/POSIX `journal finish` command. Both complete the turn
+    without an extra model request.
   - Answer entries show the original question and a labelled answer. Multiline lists and
     code blocks stay grouped with their journal entry.
   - Scripts can record milestones without mixing them into command output. Child updates
@@ -401,18 +402,25 @@ wait for every job and preserve failures. Short reads generally do not need back
 
 Bash and POSIX scripts can record milestones with
 `journal add 'Checked the inputs; processing the remaining items.' --report-now`.
-Code Mode supports `await journal({op: "add", text: "Checked the inputs", report_now: true});`.
+The shell command also supports `journal list [AGENT]`, `journal edit ID TEXT`,
+`journal delete ID`, atomic `journal batch JSON_ARRAY`, and `journal finish [JSON_ARRAY]`.
+Use `--answer` or `--clear-answer` for answer associations and `--json` when a script needs
+assigned IDs or list results. Code Mode supports `await journal({op: "add", text: "Checked the inputs", report_now: true});`.
 Omit `--report-now` or `report_now` to record silently for the terminal flush. Immediate
-updates also remain eligible for that flush. Other
-interpreters do not support the shell journal command. Use `functions.journal` to list,
-add, edit, or delete entries directly.
+updates also remain eligible for that flush. Other interpreters do not support the journal
+builtin. Prefer carrying mutations on the current ordinary tool call; use `functions.journal`
+for listing, or for finishing when no current call or shell command can carry the operation.
+A final shell command can end with `journal finish [JSON_ARRAY]`; the router completes the
+enclosing turn after that call's successful terminal shell result without another provider request.
+Yielded calls still need their normal host continuation; failures, cancellation, or newer user
+input do not finish the turn.
 
-Answer entries use `answer: true` in a structured journal call or Code Mode, with only the
-answer in `text`. Mekugi attaches the latest user message or plaintext native assignment to
-the child automatically. New assignments use plaintext collaboration in Mekugi mode; the router
-can read their task text. Older encrypted assignments cannot be attached and need a new plaintext
-follow-up. Edits preserve that question
-unless marked as a new answer or cleared with `answer: false`.
+Answer entries use `answer: true` in a structured journal call, shell command, or Code Mode, with
+only the answer in `text`. Mekugi attaches the latest user message or plaintext native assignment
+to the child automatically. New assignments use plaintext collaboration in Mekugi mode; the
+router can read their task text. Older encrypted assignments cannot be attached and need a new
+plaintext follow-up. Edits preserve that question unless marked as a new answer or cleared with
+`answer: false`.
 
 Child completion includes its journal result text without consuming the saved entries. Main
 completion still flushes pending child entries before its own journal.

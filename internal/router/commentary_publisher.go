@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -40,6 +41,8 @@ type publishedCommentary struct {
 
 type commentaryRoute struct {
 	journalQuestion string
+	shellCall       bool
+	finishReceipt   string
 	originThread    string
 	author          string
 	threadID        string
@@ -63,6 +66,7 @@ type threadCommentaryProvenance struct {
 
 type commentaryBroker struct {
 	journalPublisher func(context.Context, string, string, string, []journalMutation) ([]string, error)
+	journalLister    func(context.Context, string, string, string) ([]journalItem, error)
 	debug            *debugOutput
 	activity         *subagentActivity
 	threads          map[string]*threadCommentaryProvenance
@@ -74,7 +78,10 @@ type commentaryBroker struct {
 }
 
 func newCommentaryBroker() *commentaryBroker {
-	return &commentaryBroker{routes: make(map[string]*commentaryRoute), threads: make(map[string]*threadCommentaryProvenance)}
+	return &commentaryBroker{
+		routes:  make(map[string]*commentaryRoute),
+		threads: make(map[string]*threadCommentaryProvenance),
+	}
 }
 
 func (b *commentaryBroker) subscribe(sessionID, callID, author string) string {
@@ -287,9 +294,12 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	}
 	request.Body = http.MaxBytesReader(writer, request.Body, maxJournalFlushBytes*6)
 	var publication struct {
-		Journal  json.RawMessage `json:"journal"`
-		ID       string          `json:"id"`
-		Complete bool            `json:"complete"`
+		Journal json.RawMessage `json:"journal"`
+		// ID is a publication receipt, never a journal operation operand.
+		ReceiptID string `json:"id"`
+		Complete  bool   `json:"complete"`
+		Op        string `json:"op"`
+		Agent     string `json:"agent"`
 	}
 	decoder := json.NewDecoder(request.Body)
 	decoder.DisallowUnknownFields()
@@ -297,7 +307,7 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		http.Error(writer, "invalid commentary publication", http.StatusBadRequest)
 		return
 	}
-	if len(publication.Journal) == 0 && publication.Complete {
+	if len(publication.Journal) == 0 && publication.Complete && publication.Op == "" && publication.ReceiptID == "" && publication.Agent == "" {
 		if !b.publish(token, "", true) {
 			http.Error(writer, "unauthorized", http.StatusUnauthorized)
 			return
@@ -308,9 +318,11 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	b.mu.Lock()
 	b.cleanupExpiredLocked(time.Now())
 	route := b.routes[token]
-	var session, thread, question, callID string
+	var session, thread, question, callID, finishReceipt string
+	var shellCall bool
 	if route != nil {
-		question, callID = route.journalQuestion, route.callID
+		shellCall = route.shellCall
+		question, callID, finishReceipt = route.journalQuestion, route.callID, route.finishReceipt
 		session, thread = route.sessionID, route.originThread
 		route.expires = time.Now().Add(commentaryRouteTTL)
 	}
@@ -319,27 +331,90 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		http.Error(writer, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+
+	// Validate the complete operation before publishing any mutations.
 	raw := bytes.TrimSpace(publication.Journal)
+	switch publication.Op {
+	case "", "batch":
+		if publication.Complete || publication.Agent != "" || len(raw) == 0 || publication.ReceiptID == "" {
+			http.Error(writer, "invalid journal publication", http.StatusBadRequest)
+			return
+		}
+	case "list":
+		if publication.Complete || publication.ReceiptID != "" || len(raw) != 0 {
+			http.Error(writer, "journal list accepts only agent", http.StatusBadRequest)
+			return
+		}
+		if b.journalLister == nil {
+			http.Error(writer, "journal lister unavailable", http.StatusBadRequest)
+			return
+		}
+	case "finish":
+		if publication.Complete || publication.Agent != "" || finishReceipt == "" {
+			http.Error(writer, "journal finish requires a turn-bound shell invocation", http.StatusBadRequest)
+			return
+		}
+		publication.ReceiptID = finishReceipt
+	default:
+		http.Error(writer, "unknown journal operation", http.StatusBadRequest)
+		return
+	}
 	if len(raw) != 0 && raw[0] == '{' {
 		raw = append(append([]byte{'['}, raw...), ']')
 	}
-	mutations, err := decodeJournalMutations(raw)
-	if err != nil || publication.ID == "" || b.journalPublisher == nil {
-		http.Error(writer, "invalid journal publication", http.StatusBadRequest)
-		return
+	var mutations []journalMutation
+	var err error
+	if len(raw) != 0 {
+		mutations, err = decodeJournalMutations(raw)
+		if err != nil {
+			http.Error(writer, "invalid journal publication", http.StatusBadRequest)
+			return
+		}
 	}
-	ids, err := b.journalPublisher(request.Context(), session, thread, publication.ID, bindJournalAnswers(mutations, question))
-	if err != nil {
-		http.Error(writer, "journal mutation rejected", http.StatusBadRequest)
-		return
+	ids := []string{}
+	if len(mutations) != 0 || publication.Op == "finish" {
+		if b.journalPublisher == nil {
+			http.Error(writer, "journal publisher unavailable", http.StatusBadRequest)
+			return
+		}
+		ids, err = b.journalPublisher(request.Context(), session, thread, publication.ReceiptID, bindJournalAnswers(mutations, question))
+		if err != nil {
+			http.Error(writer, "journal mutation rejected", http.StatusBadRequest)
+			return
+		}
+		source := "code_mode"
+		if callID == "" || shellCall {
+			source = "shell"
+		}
+		trace := featureUsageTrace{debug: b.debug, threadID: thread}
+		trace.record("journal", source, "mutation", "accepted", callID, "")
 	}
-	source := "code_mode"
-	if callID == "" {
-		source = "shell"
-	}
-	trace := featureUsageTrace{debug: b.debug, threadID: thread}
-	trace.record("journal", source, "mutation", "accepted", callID, "")
 
+	switch publication.Op {
+	case "list":
+		var items []journalItem
+		items, err = b.journalLister(request.Context(), session, thread, publication.Agent)
+		if err != nil {
+			http.Error(writer, "journal list rejected", http.StatusBadRequest)
+			return
+		}
+		listed := make([]journalListItem, 0, len(items))
+		for _, item := range items {
+			listed = append(listed, journalListItem{
+				ID: item.ID, Text: item.Text, Question: item.Question,
+				Author: item.Author, Reported: item.Reported, Flushed: item.Flushed,
+			})
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		encoder := json.NewEncoder(writer)
+		encoder.SetEscapeHTML(false) // Match the journal store's protocol encoding.
+		_ = encoder.Encode(map[string]any{"ok": true, "items": listed})
+		return
+	case "finish":
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(map[string]any{"ok": true, "finish_requested": true, "journal_ids": ids})
+		return
+	}
 	writer.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(writer).Encode(map[string]any{"ok": true, "items": ids})
 }
@@ -394,6 +469,7 @@ func (b *commentaryBroker) cancel(token string) {
 }
 
 type shellCommentarySink interface {
+	RequestJournal(context.Context, shellJournalCommand) (shellJournalResult, error)
 	Publish(context.Context, string) error
 	Complete(context.Context) error
 }
@@ -401,7 +477,6 @@ type shellCommentarySink interface {
 type httpShellCommentarySink struct {
 	endpoint string
 	token    string
-	result   []byte
 	client   *http.Client
 }
 
@@ -414,45 +489,108 @@ func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []st
 		return true, err
 	}
 	sink := &httpShellCommentarySink{endpoint: arguments[1], token: arguments[2], client: commentaryHTTPClient}
-	if err := sink.Publish(ctx, text); err != nil {
+	result, err := sink.send(ctx, map[string]any{"journal": json.RawMessage(text), "id": rand.Text()})
+	if err != nil {
 		return true, err
 	}
-	_, err = writer.Write(sink.result)
+	_, err = writer.Write(result)
 	return true, err
 }
 
 func (s *httpShellCommentarySink) Publish(ctx context.Context, text string) error {
-	return s.send(ctx, map[string]any{"journal": json.RawMessage(text), "id": rand.Text()})
+	_, err := s.send(ctx, map[string]any{"journal": json.RawMessage(text), "id": rand.Text()})
+	return err
+}
+
+func (s *httpShellCommentarySink) RequestJournal(ctx context.Context, command shellJournalCommand) (shellJournalResult, error) {
+	publication := make(map[string]any)
+	if command.Op != "list" && command.Op != "finish" {
+		publication["id"] = rand.Text()
+	}
+	switch command.Op {
+	case "list":
+		publication["op"] = "list"
+		if command.Agent != "" {
+			publication["agent"] = command.Agent
+		}
+	case "finish":
+		if len(command.Batch) != 0 {
+			publication["journal"] = command.Batch
+		}
+		publication["op"] = "finish"
+	case "batch":
+		publication["op"] = "batch"
+		publication["journal"] = command.Batch
+	case "add", "edit", "delete":
+		if command.Mutation == nil {
+			return shellJournalResult{}, errors.New("journal mutation is missing")
+		}
+		publication["journal"] = []journalMutation{*command.Mutation}
+	default:
+		return shellJournalResult{}, errors.New("unknown journal operation")
+	}
+	resultBytes, err := s.send(ctx, publication)
+	if err != nil {
+		return shellJournalResult{}, err
+	}
+	var response struct {
+		OK              bool            `json:"ok"`
+		Items           json.RawMessage `json:"items"`
+		JournalIDs      []string        `json:"journal_ids"`
+		FinishRequested bool            `json:"finish_requested"`
+	}
+	if err := json.Unmarshal(resultBytes, &response); err != nil || !response.OK {
+		return shellJournalResult{}, errors.New("journal publisher returned an invalid result")
+	}
+	result := shellJournalResult{FinishRequested: response.FinishRequested}
+	if command.Op == "list" {
+		if err := json.Unmarshal(response.Items, &result.Items); err != nil {
+			return shellJournalResult{}, errors.New("journal publisher returned invalid list items")
+		}
+		return result, nil
+	}
+	if len(response.Items) != 0 {
+		if err := json.Unmarshal(response.Items, &result.IDs); err != nil {
+			return shellJournalResult{}, errors.New("journal publisher returned invalid journal IDs")
+		}
+	} else {
+		result.IDs = response.JournalIDs
+	}
+	return result, nil
 }
 
 func (s *httpShellCommentarySink) Complete(ctx context.Context) error {
-	return s.send(ctx, map[string]any{"complete": true})
+	_, err := s.send(ctx, map[string]any{"complete": true})
+	return err
 }
 
-func (s *httpShellCommentarySink) send(ctx context.Context, publication map[string]any) error {
+func (s *httpShellCommentarySink) send(ctx context.Context, publication map[string]any) ([]byte, error) {
 	body, err := json.Marshal(publication)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.endpoint, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	request.Header.Set("Authorization", "Bearer "+s.token)
 	request.Header.Set("Content-Type", "application/json")
 	response, err := s.client.Do(request)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer response.Body.Close()
-	s.result, err = io.ReadAll(io.LimitReader(response.Body, 16<<10))
+	result, err := io.ReadAll(io.LimitReader(response.Body, maxJournalPublicationResponseBytes+1))
 	if err != nil {
-		return err
+		return nil, err
+	}
+	if len(result) > maxJournalPublicationResponseBytes {
+		return nil, errors.New("journal publisher result exceeds the response budget")
 	}
 	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("journal publisher returned status %d", response.StatusCode)
+		return nil, fmt.Errorf("journal publisher returned status %d", response.StatusCode)
 	}
-	return nil
+	return result, nil
 }
 
 // Only a call-scoped capability can pin the request's user message.

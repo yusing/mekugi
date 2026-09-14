@@ -115,10 +115,14 @@ The shared guidance must make these choices directly available in native and CTP
    potentially live sessions; neither failure nor an unknown outcome authorizes
    automatic replay.
 
-Shared journal guidance includes the actual Bash/POSIX `journal add 'text'` command
-and Code Mode `await journal({op: "add", text: "text"})` form, alongside the optional field for eligible
-structured tools, and distinguishes these paths from other interpreters. Both workflows receive the shared journal syntax. The default workflow supplies the longer
-shell-execution tutorial; Astra points to the shared reference.
+Shared journal guidance prefers mutations on a useful ordinary call whose schema carries
+`journal`, or the reserved `journal` command inside `functions.shell`, over a standalone
+`functions.journal` round trip. It includes Bash/POSIX `journal add 'text'`, the full shell `journal` CRUD/list/batch/finish
+syntax, and Code Mode `await journal({op: "add", text: "text"})`, alongside the optional field
+for eligible structured tools. `functions.journal` remains the fallback for listing or finishing
+when no current call or shell command can carry the operation. Both workflows receive the shared
+syntax. The default workflow supplies the longer shell-execution tutorial; Astra points to the
+shared reference.
 
 The shared source supplies complete call syntax because it is injected into other workspaces;
 it must not require the model to open this repository's specifications. Those specifications

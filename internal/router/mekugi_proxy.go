@@ -181,6 +181,16 @@ func newMekugiProxy(translator mekugiTranslator, registry *toolRegistry, customi
 		}
 		return proxy.journals.apply(ctx, proxy.replayStore, workspace, thread, "runtime:"+receipt, mutations)
 	}
+	broker.journalLister = func(ctx context.Context, session, thread, agent string) ([]journalItem, error) {
+		workspace, _, ok := strings.Cut(session, "\x00")
+		if !ok {
+			return nil, errors.New("journal workspace is unavailable")
+		}
+		if agent != "" {
+			return proxy.journals.listAgent(ctx, proxy.replayStore, workspace, thread, agent)
+		}
+		return proxy.journals.list(ctx, proxy.replayStore, workspace, thread)
+	}
 	return proxy
 }
 
@@ -230,6 +240,7 @@ type mekugiResponseTransform struct {
 	ctx                    context.Context
 	proxy                  *mekugiProxy
 	sessionID              string
+	shellTurnID            string
 	shellThreadID          string // Runtime identity remains available when activity attribution is invalid.
 	shellDirectory         string
 	model                  string
@@ -280,6 +291,7 @@ type mekugiResponseTransform struct {
 	journalClientCalls        bool
 	journalTerminal           bool
 	journalContinue           bool
+	shellFinishRequested      bool
 	journalFinishRequested    bool
 	finalAnswer               finalAnswerStream
 	usageObserved             bool
@@ -510,6 +522,7 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 		ctx:              ctx,
 		proxy:            p,
 		sessionID:        sessionID,
+		shellTurnID:      metadata.TurnID,
 		shellThreadID:    threadID,
 		shellDirectory:   shellDirectory,
 		model:            request.modelDescription(),
@@ -564,6 +577,14 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 	transform.journalActive = true
 	transform.journalPending = make(map[string]bool)
 	transform.journalCalls = make(map[string]map[string]json.RawMessage)
+	if transform.journalAvailable {
+		transform.shellFinishRequested, err = transform.shellJournalFinished(request.fields["input"])
+		if err != nil {
+			transform.Close()
+			return nil, err
+		}
+		transform.journalFinishRequested = transform.shellFinishRequested
+	}
 	projectExecutionContinuations(request, tools, codeModeToolName, visible)
 	if transform.subagentTurn {
 		transform.prepareShellActivity(request.fields["input"])
@@ -1284,6 +1305,7 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 	if t.featureTrace.debug != nil || os.Getenv(capturer.AXReadOutputEnvironment) != "" {
 		axCallID = callID
 	}
+	journalToken := t.subscribeShellJournal(callID, contribution)
 	pathPrefix := t.shellDirectory + string(os.PathSeparator)
 	recovered := !t.nativeTools && shellCodeModeRecovery(contribution, input)
 	var stopBatchOnNonzero bool
@@ -1298,7 +1320,7 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 			_, stopBatchOnNonzero, _ = shellsyntax.BatchHeader(effectiveInput)
 			programs, err = shellsyntax.Split(effectiveInput)
 			if err == nil && len(programs) > 1 {
-				batch, translation, err = t.prepareShellBatch(contribution, programs, pathPrefix, axCallID)
+				batch, translation, err = t.prepareShellBatch(contribution, programs, pathPrefix, axCallID, journalToken)
 			}
 		}
 		if err != nil {
@@ -1395,7 +1417,7 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 				break
 			}
 			arguments := translation.Arguments
-			if splitPayload, ok := t.shellCatCarrier(contribution, kind, arguments, translation.Carrier.Template, translation.Carrier.Params, resultMetadata, axCallID); ok {
+			if splitPayload, ok := t.shellCatCarrier(contribution, kind, arguments, translation.Carrier.Template, translation.Carrier.Params, resultMetadata, axCallID, journalToken); ok {
 				payload = splitPayload
 				splitShellCarrier = true
 				break
@@ -1408,7 +1430,7 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 				translation.Carrier.Template,
 				translation.Carrier.Params,
 				resultMetadata,
-				axCallID,
+				axCallID, journalToken,
 			)
 			if err != nil {
 				return mekugiHistory{}, fmt.Errorf("%s exec carrier: %w", contribution.Name, err)
@@ -1484,6 +1506,11 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 		payload = misuseWarningProjection(execShellRecoveryWarning) + payload
 	}
 
+	if journalToken != "" && !strings.Contains(payload, journalToken) {
+		t.proxy.commentary.cancel(journalToken)
+		t.commentarySubscriptions = slices.DeleteFunc(t.commentarySubscriptions, func(subscription commentarySubscription) bool { return subscription.token == journalToken })
+		journalToken = ""
+	}
 	history := mekugiHistory{
 		ToolName:         contribution.Name,
 		PluginID:         contribution.PluginID,
@@ -1496,6 +1523,9 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 		OutputWarning:    outputWarning,
 		UpstreamItem:     maps.Clone(upstreamItem),
 		ReplayCarrier:    recovered,
+	}
+	if journalToken != "" {
+		history.ShellJournalTurnID = t.shellTurnID
 	}
 	t.recordLocal(callID, &history)
 	return history, nil

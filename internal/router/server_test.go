@@ -1636,3 +1636,108 @@ func TestExecuteRequestUnsafeCacheKeyRetainsSessionAffinity(t *testing.T) {
 		}
 	}
 }
+func TestShellJournalFinishSuppressesProviderRequest(t *testing.T) {
+	workspace := t.TempDir()
+	call := map[string]any{"type": "custom_tool_call", "call_id": "shell-call", "id": "shell-item", "name": "exec", "input": "text({exit_code: 0, output: ''})"}
+	parsed := serverRequest(t, func(request map[string]any) {
+		input := request["input"].([]any)
+		request["input"] = append(input,
+			call,
+			map[string]any{"type": "custom_tool_call_output", "call_id": "shell-call", "output": "Script completed\nWall time 0.1 seconds\nOutput:\n{\"exit_code\":0,\"output\":\"\"}"},
+		)
+	})
+	provider := &serverFakeProvider{}
+	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	if err := proxy.journals.initialize(t.Context(), proxy.replayStore, workspace, "thread-1", "/root", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "seed", []journalMutation{{Op: "add", Text: new("Shell completed")}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "runtime:"+shellJournalFinishReceipt("turn-1", "shell-call"), nil); err != nil {
+		t.Fatal(err)
+	}
+	var upstreamItem map[string]json.RawMessage
+	if err := json.Unmarshal(mustMarshalJSON(call), &upstreamItem); err != nil {
+		t.Fatal(err)
+	}
+	upstreamItem["name"] = mustMarshalJSON("shell")
+	upstreamItem["input"] = mustMarshalJSON("journal finish")
+	history := mekugiHistory{
+		ToolName: "shell", PluginID: builtinToolsPluginID, ShellJournalTurnID: "turn-1",
+		Script: "journal finish", Root: workspace, CarrierName: "exec", CarrierKind: codeModeCarrierCustom,
+		CarrierPayload: "text({exit_code: 0, output: ''})", UpstreamItem: upstreamItem,
+	}
+	if err := proxy.rememberBatch(workspace+"\x00thread-1", map[string]mekugiHistory{"shell-call": history}); err != nil {
+		t.Fatal(err)
+	}
+	const usageModel = "gpt-5.6-sol" // Exercise the real Mentor preparation and completion hooks.
+	parsed.fields["model"] = mustMarshalJSON(usageModel)
+	seed := tokenCounts{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 5}
+	proxy.usage.observation("thread-1", "", usageModel, "").observe(seed)
+	before, complete := proxy.usage.snapshot("thread-1")
+	if !complete {
+		t.Fatal("seed usage is incomplete")
+	}
+	mentor := newMentorHandoff(true, false)
+	mentorBefore := mentorSession{latestInputTokens: 1000, toolCalls: 1, awaitingToolResult: true}
+	mentor.sessions["thread-1"] = mentorBefore
+	headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})
+	headers.Set(codexTurnMetadataHeader, string(mustMarshalJSON(codexTurnMetadata{RequestKind: "turn", TurnID: "turn-1", Directories: map[string]json.RawMessage{workspace: nil}})))
+	var output bytes.Buffer
+	err := executeRequest(
+		t.Context(),
+		t.Context(),
+		parsed,
+		headers,
+		"session",
+		provider,
+		&output,
+		NewCriticalErrors(),
+		proxy,
+		nil,
+		mentor,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(provider.forwarded) != 0 {
+		t.Fatalf("shell finish reached provider: %d request(s)", len(provider.forwarded))
+	}
+	after, complete := proxy.usage.snapshot("thread-1")
+	if !complete || after != before {
+		t.Fatalf("synthetic completion changed authoritative usage: before=%+v after=%+v complete=%v", before, after, complete)
+	}
+	if mentor.sessions["thread-1"] != mentorBefore {
+		t.Fatalf("synthetic completion changed Mentor progress: %+v", mentor.sessions["thread-1"])
+	}
+	var terminal struct {
+		Output []struct {
+			Content []struct{ Text string }
+		}
+	}
+	if err := json.Unmarshal(output.Bytes(), &terminal); err != nil {
+		t.Fatal(err)
+	}
+	reported := false
+	for _, item := range terminal.Output {
+		for _, part := range item.Content {
+			reported = reported || part.Text == formatTokenUsageReport(before)
+		}
+	}
+	if !reported {
+		t.Fatal("shell terminal omitted complete cumulative usage")
+	}
+	next := serverRequest(t, func(request map[string]any) { request["model"] = usageModel })
+	provider.results = []serverForwardResult{{response: serverHTTPResponse(`{"id":"real-next","status":"completed","output":[],"usage":{"input_tokens":3,"input_tokens_details":{"cached_tokens":0},"output_tokens":2,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":5}}`)}}
+	if err := executeRequest(t.Context(), t.Context(), next, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "next", provider, &bytes.Buffer{}, NewCriticalErrors(), proxy, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	after, complete = proxy.usage.snapshot("thread-1")
+	if !complete || after.InputTokens != 13 || after.OutputTokens != 7 || len(provider.forwarded) != 1 {
+		t.Fatalf("subsequent real response did not accumulate: %+v, complete=%v forwards=%d", after, complete, len(provider.forwarded))
+	}
+	if !strings.Contains(output.String(), "Journal flush") {
+		t.Fatalf("synthetic terminal omitted journal flush: %s", output.String())
+	}
+}

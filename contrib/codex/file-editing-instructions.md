@@ -46,33 +46,45 @@ text. Newly emitted tool names, tool inputs, and function arguments are literal 
 
 ## Journal
 
-Record meaningful milestones on a supported tool call with its `journal` array, or call
-`functions.journal`. Each mutation array is atomic and may set `report_now` for an immediate
-user-visible notice.
+Record meaningful milestones on a supported tool call with its `journal` array. Prefer a call
+already doing useful work over a standalone `functions.journal` round trip. Bash/POSIX can
+publish inline with the reserved `journal` command; Code Mode supports `await journal(...)`.
+Each mutation array is atomic and may set `report_now` for an immediate user-visible notice.
+
 Use one item per checkpoint or milestone: findings, results, validation, or blockers, not plans
 or ongoing narration. Edit or delete superseded entries. The final flush is your final report;
 make it read like a concise answer to the user, with claims supported by the work completed.
 When an item answers the latest user message or your native child assignment, set `answer: true`
-and put only the answer in `text`. Mekugi attaches the source message or assignment;
-do not repeat it in tool arguments. Only plaintext native assignments can be attached; omit `answer` if the
-latest source is an encrypted assignment.
-Write normal Markdown in `text`; the renderer keeps paragraphs, lists, and code blocks
-within their journal item. On edit, omit `answer` to preserve the attached question, or set
-it to false to turn the item into a milestone.
-Do not use `update_plan`, Tasks lists, or standalone `phase: "commentary"` messages.
-To finish your turn, call `functions.journal` directly with `{"op":"finish"}` and put any
-last milestone mutations in its `journal` array. Make it the only call in that response,
-after all required tool results have arrived. This ends the turn without another model request.
-Subagents use the same operation to complete their assignment; sending a message to the parent
-does not complete it. Do not use a wait tool to finish, and do not write a final-channel answer.
-Use an available user-input tool for questions. If none is available, record the question with
-`report_now` in a finish call's mutation array when blocked. Complete through that call, without a separate final-channel message.
+and put only the answer in `text`. Mekugi attaches the source message or assignment; do not repeat
+it in tool arguments. Only plaintext native assignments can be attached; omit `answer` if the
+latest source is an encrypted assignment. Write normal Markdown in `text`; the renderer keeps
+paragraphs, lists, and code blocks within their journal item. On edit, omit `answer` to preserve
+the attached question, or set it to false to turn it into a milestone.
+
+Do not use `update_plan`, Tasks lists, or standalone `phase: "commentary"` messages. Use
+`functions.journal` directly only when no ordinary call or shell command can carry the mutation,
+when listing journals, or when finishing without another supported call. To finish through a
+structured call, use `{"op":"finish"}` with any last mutations in its `journal` array; make it the
+only call after required tool results arrive. This ends the turn without another model request.
+A final shell command can instead end with `journal finish [JSON_ARRAY]`; the router consumes that
+intent only after that invocation's successful terminal host result and returns the terminal
+journal flush without a provider follow-up. If it yields, use its normal host continuation;
+failed or cancelled execution and newer user input do not finish the turn.
+Complete through the finishing operation, without a separate final-channel message. Subagents use
+the same operation to complete their assignment; sending a message to the parent does not complete
+it. Do not use a wait tool to finish, and do not write a final-channel answer. Use an available
+user-input tool for questions; if none is available, put the blocking question in a finish mutation
+with `report_now`.
+
 Code Mode supports `await journal({op: "add", text: "Tests passed", report_now: true})`.
-Bash/POSIX supports `journal add 'Tests passed' --report-now`; other interpreters have no
-journal builtin. Successful runtime mutations produce no script output.
-For answer items, use `functions.journal` or a structured mutation, including Code Mode
-`await journal({op: "add", answer: true, text: "Yes, both are supported."})`.
-The finish operation is direct-tool-only, not a shell or Code Mode journal operation.
+Bash/POSIX supports `journal list [AGENT]`, `journal add TEXT`, `journal edit ID TEXT`,
+`journal delete ID`, `journal batch JSON_ARRAY`, and `journal finish [JSON_ARRAY]`.
+Add/edit accept trailing `--answer` or `--clear-answer`; add/edit/delete accept `--report-now`.
+Use `--json` to return assigned IDs or the finish result; list always returns JSON.
+For example: `journal add 'Tests passed' --report-now` or
+`journal batch '[{"op":"add","text":"Tests passed"}]'`.
+Required operands remain exact argv values, even when they start with `--`.
+Other interpreters have no journal builtin. Successful non-JSON mutations write no script output.
 Do not wake solely to report progress.
 
 ## Tool coordination

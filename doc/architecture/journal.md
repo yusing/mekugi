@@ -43,6 +43,15 @@ its journal followed by descendant journals sorted by canonical path, under one 
 Accepted parent identities persist with journals; conflicting or incomplete chains cannot join the
 flush. Acknowledgements target each original child journal, not an auxiliary activity copy. Replay strips router-owned message IDs.
 
+`shell_journal_finish.go` binds translated shell invocations to call-scoped publisher capabilities
+and their immutable request question. The carrier transports only the private capability, while
+thread-bound discovery still locates the publisher. A finish uses the journal store's existing
+receipt transaction, atomically with any final mutations; no thread-wide completion marker is
+kept. Request preparation checks the originating call and turn against validated replay and the
+matching successful host terminal, following visible host continuation handles without executing
+them. Later input, unrelated calls, pending work, failure, and cancellation prevent completion.
+Receipts survive restart but are neither inherited by forks nor applicable to another turn.
+
 `journal_question_source.go` selects answer sources from the reconstructed request view.
 Actual user messages and plaintext native `NEW_TASK` payloads addressed to the current child
 are eligible in history order. Native sender and recipient fields must agree with the task

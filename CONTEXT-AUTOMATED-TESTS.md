@@ -48,6 +48,8 @@ through `functions.shell` in the new session. A version-only launch does not pro
   Historical encrypted-call replay, native send-message, model switching, and other transports
   need their own checks when affected.
 
-The native fixture lives in `internal/router/journal_codex_e2e_test.go`. Plaintext projection and
+The deterministic native fixtures live in `internal/router/journal_codex_e2e_test.go`.
+They cover direct finish and Bash/POSIX finish through the real shell helper, including parent
+and child terminal acceptance without a final-answer provider request. Plaintext projection and
 history tests live in `internal/router/subagent_bridge_test.go`; journal source and restart tests
 are in `internal/router/journal_question_source_test.go`.

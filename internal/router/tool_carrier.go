@@ -314,6 +314,10 @@ func (registry *toolRegistry) execCarrierCommand(
 			}
 		}
 	}
+	if builtinShell && len(callIDs) > 1 && callIDs[1] != "" && strings.HasPrefix(command, "shell ") &&
+		len(arguments) > 0 && (shellInterpreterName(arguments[0]) == "bash" || shellInterpreterName(arguments[0]) == "sh") {
+		command = "env " + shellJournalTokenEnvironment + "=" + shellQuoteArgument(callIDs[1]) + " " + command
+	}
 	callID := ""
 	if builtinShell && len(callIDs) != 0 && capturer.ValidAXIdentity(callIDs[0]) {
 		callID = callIDs[0]

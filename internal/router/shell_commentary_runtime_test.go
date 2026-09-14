@@ -207,3 +207,33 @@ func TestShellWorkerDiscoversThreadJournal(t *testing.T) {
 		}
 	}
 }
+
+func TestDiscoverShellJournalUsesInvocationToken(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(shellruntime.RuntimeDirectoryEnvironment, root)
+	t.Setenv(shellruntime.ThreadIDEnvironment, "thread")
+	t.Setenv(shellJournalTokenEnvironment, "invocation-token")
+	worker := filepath.Join(root, "worker")
+	path, _ := shellruntime.Path(root, "thread")
+	if err := os.Symlink(worker, path); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer invocation-token" {
+			t.Error("invocation fell back to the mutable thread route")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+	descriptor := shellCommentaryDescriptor{Endpoint: server.URL, Token: "thread-token", Worker: worker}
+	if err := os.WriteFile(path+".commentary", mustMarshalJSON(descriptor), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sink := discoverShellCommentary(worker)
+	if sink == nil {
+		t.Fatal("missing invocation sink")
+	}
+	if err := sink.Publish(t.Context(), `{"op":"add","text":"done"}`); err != nil {
+		t.Fatal(err)
+	}
+}

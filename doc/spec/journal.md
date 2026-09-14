@@ -64,7 +64,8 @@ for correction and prevent its primary operation. Batched fields on host-dispatc
 still fail translation under the atomic field contract.
 Failed, incomplete, or interrupted responses never complete or flush via finish.
 Completion intent is response-local: replay, resume, and forks do not finish a new turn.
-Finish is not exposed through runtime shell or Code Mode journal publication.
+Code Mode journal publication does not expose finish. The Bash/POSIX finish surface below
+binds intent to its originating invocation rather than a response-local direct-tool call.
 
 On a successful explicit main finish with no client-dispatched calls, the router emits a deterministic
 descendants-first tree flush containing only unflushed revisions, including previously live-reported entries, skips it
@@ -117,18 +118,34 @@ A single mutation returns its item ID; a mutation array returns the ordered item
 Nested calls can use an added item's returned ID in a subsequent edit. Publication failures
 throw rather than returning an execution envelope as a journal ID.
 
-Bash and POSIX reserve `journal add TEXT`, `journal edit ID TEXT`, and
-`journal delete ID`, optionally followed by `--report-now`. Shell commands record milestones;
-use the dedicated tool, a structured tool mutation, or Code Mode for answer items.
-Expanded operands remain individual argv values. A successful publication writes no script output. Invalid
-mutations and unavailable publishers return errors rather than silently losing records.
-There is no `commentary` alias. Other interpreters have no journal builtin.
+Bash and POSIX reserve `journal list [AGENT]`, `journal add TEXT`, `journal edit ID TEXT`,
+`journal delete ID`, `journal batch JSON_ARRAY`, and `journal finish [JSON_ARRAY]`. Mutation
+commands accept trailing `--answer`, `--clear-answer`, `--report-now`, and `--json` options.
+`list` returns the current journal as JSON; `--json` returns assigned IDs for mutations and the
+finish result. Batch mutations are applied atomically by the same durable store as
+`functions.journal`. Expanded operands remain individual argv values, and answer mutations use
+the current user or plaintext native assignment attached to the shell request. Invalid mutations
+and unavailable publishers return errors rather than silently losing records. Delete accepts
+`--report-now` to retract an already displayed item. Required operands may start with `--`;
+only arguments following those operands are parsed as flags. List responses cover the store's
+complete JSON-encoded capacity and reject oversized responses explicitly rather than truncating.
+
+`finish` applies its optional final batch and records completion intent atomically in a durable receipt bound to
+the originating host call and Codex turn. Only that call's successful terminal host result, or
+its proven host-continuation chain, can complete the turn without a provider follow-up request.
+Yielded, failed, cancelled, incomplete, or unassociated results do not complete it. Later user
+input or unrelated calls supersede the intent. Replay can recover the same turn's receipt after
+a router restart, but another turn or fork cannot consume it. Missing turn identity or call
+provenance fails closed; use direct `functions.journal` finish in that case. There is no `commentary` alias.
+Other interpreters have no journal builtin.
 
 Both forms reuse authenticated broker routes and private thread-bound discovery.
-Shell routes use inherited `CODEX_THREAD_ID`; do not add publisher flags or inline
-environment assignments to scripts. Concurrent workers share a thread route without
-guessing original call attribution. Code Mode retains its per-call capability until
-completion or expiry. Closing an already handed-off response does not cancel its publisher.
+Shell routes use inherited `CODEX_THREAD_ID`; agents do not add publisher flags or inline
+environment assignments to scripts. Translated Bash/POSIX invocations carry a private call-scoped
+capability with an immutable answer source. Background commands share that invocation's sink,
+not mutable thread-wide question state. Unattributed workers retain the thread route for ordinary
+mutations and lists, but cannot finish or infer an answer source. Code Mode retains its per-call
+capability until completion or expiry. Closing an already handed-off response does not cancel its publisher.
 
 ### Delivery failures
 
