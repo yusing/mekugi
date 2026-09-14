@@ -365,6 +365,51 @@ describe("hcat line limits", () => {
   });
 });
 
+describe("hcat unread ranges", () => {
+  test("resumes only omitted rows across logical terminators and bounded selections", async () => {
+    const directory = await temporaryDirectory("hcat-resume-");
+    const file = path.join(directory, "rows.txt");
+    const tool = createHCatTool("", "");
+    for (const ending of ["\n", "\r", "\r\n"]) {
+      await writeFile(file, ["one", "", "three", "four", "five"].join(ending));
+      const head = await tool.execute(["-n", "2", file, "2:9"], executionContext);
+      expect(head.stdout).toBe(formatVerifiedRow(2, "") + formatVerifiedRow(3, "three"));
+      expect(head.stderr).toContain("hcat: unread rows 4:5;");
+      expect(head.stderr).toContain("[out of range]");
+      const rest = await tool.execute([file, "4:5"], executionContext);
+      expect(rest).toEqual({
+        stdout: formatVerifiedRow(4, "four") + formatVerifiedRow(5, "five"),
+        exitCode: 0,
+      });
+      const limited = await tool.execute(["-n", "1", file, "2:3"], executionContext);
+      expect(limited.stderr).toContain("hcat: unread rows 3:3;");
+      const tail = await tool.execute(["--tail", "-n", "1", file], executionContext);
+      expect(tail.stderr).not.toContain("unread rows");
+    }
+  });
+
+  test("reports the first unadmitted row for strict token and preview budgets", async () => {
+    const directory = await temporaryDirectory("hcat-resume-token-");
+    const file = path.join(directory, "rows.txt");
+    const tool = createHCatTool("", "");
+    await writeFile(file, "first\nsecond\nthird\n");
+    const budget = countGPT5Tokens(formatVerifiedRow(1, "first"));
+    const first = await tool.execute(["--max-tokens", String(budget), file], executionContext);
+    expect(first.stdout).toBe(formatVerifiedRow(1, "first"));
+    expect(first.stderr).toContain("unread rows 2:3;");
+    for (const extra of [[], ["--preview-bytes", "1"]]) {
+      const none = await tool.execute(["--max-tokens", "1", ...extra, file], executionContext);
+      expect(none.stdout).toBe("");
+      expect(none.stderr).toContain("unread rows 1:3;");
+      expect(none.stderr).toContain("--preview-bytes");
+    }
+    await writeFile(file, "");
+    expect((await tool.execute(["-n", "1", file], executionContext)).stderr).toBeUndefined();
+    await writeFile(file, Buffer.from([0xff]));
+    expect((await tool.execute(["-n", "1", file], executionContext)).stderr).not.toContain("unread rows");
+  });
+});
+
 describe("hcat tail", () => {
   test("returns a whole-row suffix within the budget, including ranges and previews", async () => {
     const directory = await temporaryDirectory("hcat-tail-");
@@ -632,7 +677,8 @@ describe("hcat built-in plugin", () => {
     const result = await tool.execute(["large.txt"], executionContext);
     expect(result).toEqual({
       stdout: formatVerifiedRow(1, first) + formatVerifiedRow(2, "second"),
-      stderr: "hcat: output incomplete: 15,000-token limit reached\n",
+      stderr: "hcat: output incomplete: 15,000-token limit reached\n"
+        + "hcat: unread rows 3:3; request a smaller range\n",
       exitCode: 1,
       failureClass: "output_limit",
     });
@@ -647,7 +693,8 @@ describe("hcat built-in plugin", () => {
     const result = await tool.execute(["large.txt"], executionContext);
     expect(result).toEqual({
       stdout: "",
-      stderr: "hcat: output incomplete: 15,000-token limit reached\n",
+      stderr: "hcat: row 1 exceeds the 1984000-byte inspection bound; use a byte-window reader\n"
+        + "hcat: unread rows 1:1; request a smaller range\n",
       exitCode: 1,
       failureClass: "output_limit",
     });

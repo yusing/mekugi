@@ -156,6 +156,7 @@ type ComparedOutput = {
   incomplete: boolean;
   limitReason?: string;
   warning?: string;
+  unreadRange?: string;
 };
 
 
@@ -177,6 +178,7 @@ async function readHashLines(spec: ReadSpec, options: ReaderOptions): Promise<Co
     let pendingCR = false;
     let content = "";
     let limitReason: string | undefined;
+    let firstOmittedLine: number | undefined;
     let contentBytes = 0;
     const tail = options.tail ? new VerifiedRowTail(options.maxTokens, options.maxLines) : undefined;
     let oversizedRow = false;
@@ -203,9 +205,7 @@ async function readHashLines(spec: ReadSpec, options: ReaderOptions): Promise<Co
       if (!(options.maxLines !== undefined && options.maxTokens === undefined && options.previewBytes === undefined)
           && contentBytes > VERIFIED_ROW_MAX_TOKENS * MAX_POSSIBLE_GPT5_TOKEN_BYTES) {
         // Bound candidate storage even when only a preview will be emitted.
-        if (options.previewBytes !== undefined) {
-          limitReason = `row ${lineNumber} exceeds the ${VERIFIED_ROW_MAX_TOKENS * MAX_POSSIBLE_GPT5_TOKEN_BYTES}-byte inspection bound; use a byte-window reader\n`;
-        }
+        limitReason = `row ${lineNumber} exceeds the ${VERIFIED_ROW_MAX_TOKENS * MAX_POSSIBLE_GPT5_TOKEN_BYTES}-byte inspection bound; use a byte-window reader\n`;
         content = "";
         oversizedRow = true;
         if (tail) {
@@ -232,6 +232,9 @@ async function readHashLines(spec: ReadSpec, options: ReaderOptions): Promise<Co
             output.append(row);
           }
         }
+      }
+      if (!tail && selected() && output.incomplete) {
+        firstOmittedLine ??= lineNumber;
       }
       oversizedRow = false;
       content = "";
@@ -303,7 +306,10 @@ async function readHashLines(spec: ReadSpec, options: ReaderOptions): Promise<Co
     const warning = !wholeFile && missingStartLine <= spec.endLine
       ? `hcat: ${missingStartLine}-${spec.endLine}: [out of range]\n`
       : undefined;
-    return {...(tail?.finish() ?? {current: options.maxLines !== undefined && options.maxTokens === undefined ? lineOutput : output.current, incomplete: output.incomplete}), warning, limitReason};
+    const unreadRange = firstOmittedLine === undefined
+      ? undefined
+      : `${firstOmittedLine}:${wholeFile ? lineCount : Math.min(spec.endLine, lineCount)}`;
+    return {...(tail?.finish() ?? {current: options.maxLines !== undefined && options.maxTokens === undefined ? lineOutput : output.current, incomplete: output.incomplete}), warning, limitReason, unreadRange};
   } finally {
     await handle.close();
   }
@@ -390,7 +396,9 @@ export function createHCatTool(description: string, grammar: string): Tool<strin
         const limitDiagnostic = result.incomplete
           ? `hcat: ${result.limitReason ?? readerLimitDiagnostic(options)}`
           : "";
-        const stderr = `${result.warning ?? ""}${limitDiagnostic}`;
+        const recovery = result.unreadRange === undefined ? ""
+          : `hcat: unread rows ${result.unreadRange}; request a smaller range${result.current === "" && result.limitReason === undefined ? " or use --preview-bytes for a row that does not fit" : ""}\n`;
+        const stderr = `${result.warning ?? ""}${limitDiagnostic}${recovery}`;
         return {
           stdout: result.current,
           ...(stderr === "" ? {} : {stderr}),

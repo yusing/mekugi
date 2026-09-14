@@ -49,6 +49,14 @@ would exceed 15,500 tokens, is omitted together with every later row. Omission p
 admitted complete rows on stdout, writes an incomplete-result diagnostic to stderr, and returns
 nonzero. It never cuts a row.
 
+For a truncated prefix read, hcat also reports the inclusive unread row range,
+starting at the first row not emitted and ending at the requested end or EOF,
+whichever comes first. This range refers to the file just inspected, not a durable
+snapshot or a continuation handle. A subsequent bounded range read can recover the
+missing rows without repeating the prefix. If no complete row fits a token budget,
+the diagnostic suggests preview mode. Source-bound rows instead require a byte-window
+reader. Tail reads do not report a prefix-resumption range.
+
 Hcat and hgrep accept the same optional leading `--max-tokens N` and
 `--preview-bytes N` pairs, in either order, each at most once. Flags must precede
 the path or ripgrep arguments. Their values are positive decimal integers.
