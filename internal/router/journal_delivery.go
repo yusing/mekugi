@@ -7,7 +7,10 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+
 	"strings"
+
+	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 type journalDelivery struct {
@@ -403,10 +406,10 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 	if !t.journalTerminal {
 		if len(events) != 0 {
 			var event struct {
-				Type string `json:"type"`
+				Type responseevents.Kind `json:"type"`
 			}
 			_ = json.Unmarshal(events[0], &event)
-			if event.Type == "response.created" {
+			if event.Type == responseevents.Created {
 				return append(append(events[:1:1], notices...), events[1:]...), nil
 			}
 		}
@@ -429,18 +432,18 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 	var visible [][]byte
 	for _, payload := range events {
 		var event struct {
-			Type     string                     `json:"type"`
+			Type     responseevents.Kind        `json:"type"`
 			Item     map[string]json.RawMessage `json:"item"`
 			Response map[string]json.RawMessage `json:"response"`
 		}
 		if err := json.Unmarshal(payload, &event); err != nil {
 			return nil, err
 		}
-		if event.Type == "response.output_item.done" &&
+		if event.Type == responseevents.OutputItemDone &&
 			jsonString(event.Item, "id") == subagentCommentaryMessageID("usage\x00"+jsonResponseID(provider.Response)) {
 			continue
 		}
-		if event.Type == "response.completed" {
+		if event.Type == responseevents.Completed {
 			var output []map[string]json.RawMessage
 			if err := decodeJournalOutput(event.Response["output"], &output); err != nil {
 				return nil, err

@@ -114,7 +114,9 @@ bounded root delivery and exact replay removal. Child costs never enter root usa
 `final_answer_stream.go` buffers provider final events only for token-usage ordering, releasing
 them unchanged at the terminal, on failure, or when its buffer fills. Completed streamed items
 determine eligibility independently of the terminal output snapshot. Journal completion uses
-an explicit finish call and never filters provider messages. Failed and incomplete responses
+an explicit finish call and never filters provider messages. Journal interception and delivery
+consume shared event kinds but remain ordered, error-returning transformations: mutation,
+durable retention, and automatic continuation are not auxiliary notification hooks. Failed and incomplete responses
 do not terminal-flush or emit tokens. The transport drains buffered events on EOF or failure,
 including through composed transforms. The 64 MiB response buffer limit disables auxiliary usage
 and releases output rather than rejecting a large answer. JSON and SSE share the same
