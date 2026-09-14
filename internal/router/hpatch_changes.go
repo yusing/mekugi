@@ -19,6 +19,7 @@ func (state hpatchResumeState) translateTracked(ctx context.Context, source stri
 	if err != nil {
 		return result, err
 	}
+	store.liveDiff = state.liveDiff
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return result, err
@@ -51,6 +52,7 @@ func (state hpatchResumeState) confirmTracked(ctx context.Context, callID string
 	if err != nil {
 		return err
 	}
+	store.liveDiff = state.liveDiff
 	history, found, err := store.lookup(ctx, state.Root, callID)
 	if err != nil {
 		return err

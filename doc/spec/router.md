@@ -36,6 +36,9 @@ one `mekugi dashboard: http://127.0.0.1:PORT/` line to stderr. It does not write
 the announcement to stdout or repeat it during the active Codex UI. The URL and
 in-memory metrics belong to this invocation and expire on shutdown.
 
+Interactive Herdr launches may also open a router-owned
+[live diff pane](changes.md#live-terminal-view), under its session and lifecycle contract.
+
 Operational logging is absent unless `--debug` is enabled. Startup and cleanup failures are concise stderr
 errors outside the active Codex UI. Critical request failures use the user-only
 commentary contract. The launcher prints undelivered notices and repetition

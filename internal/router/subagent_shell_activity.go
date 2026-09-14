@@ -161,7 +161,7 @@ func (t *mekugiResponseTransform) prepareShellActivity(input json.RawMessage) {
 				// but its recorded carrier still owns the host's cell metadata.
 				switch {
 				case name == "exec" || known && history.TranslationError == "" && history.effectiveCarrierKind() == codeModeCarrierCustom:
-					operation := strings.Join(subagentToolActivityTexts(item, qualifiedName, &history, t.shellActivityDisplay), "\n\n")
+					operation := subagentToolPreview(item, qualifiedName, t.shellActivityDisplay)
 					if history.ToolName == "shell" && history.PluginID == builtinToolsPluginID &&
 						!history.ReplayCarrier && jsonString(history.UpstreamItem, "name") == t.codeModeToolName {
 						operation = toolActivityShell(history.Script)

@@ -136,6 +136,7 @@ type mekugiProxy struct {
 	commentaryEndpoint     string
 	journals               *journalStore
 	usage                  *threadUsage
+	autoLiveDiff           *autoLiveDiff
 	activity               *subagentActivity
 
 	mu              sync.RWMutex

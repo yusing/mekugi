@@ -14,18 +14,18 @@ import (
 )
 
 // Presentation only: never evaluate code, expand paths, or alter the observed call.
-func subagentToolActivityTexts(item map[string]json.RawMessage, qualifiedName string, history *mekugiHistory, shellDisplay func(map[string]json.RawMessage, string) (string, bool)) []string {
+func subagentToolPreview(item map[string]json.RawMessage, qualifiedName string, shellDisplay func(map[string]json.RawMessage, string) (string, bool)) string {
 	name := jsonString(item, "name")
 	// Agent messages already have a dedicated commentary render.
 	if name == "send_message" && commentaryExcluded(jsonString(item, "namespace"), name) {
-		return nil
+		return ""
 	}
 	if commentaryExcluded(jsonString(item, "namespace"), name) {
-		return []string{"Tool call: " + commentaryCode(qualifiedName)}
+		return "Tool call: " + commentaryCode(qualifiedName)
 	}
 	if shellDisplay != nil {
 		if display, ok := shellDisplay(item, qualifiedName); ok {
-			return []string{display}
+			return display
 		}
 	}
 	input := jsonString(item, "arguments")
@@ -34,34 +34,29 @@ func subagentToolActivityTexts(item map[string]json.RawMessage, qualifiedName st
 	}
 	shortName := strings.TrimPrefix(qualifiedName, "functions.")
 	if server, ok := strings.CutPrefix(jsonString(item, "namespace"), "mcp__"); ok && server != "" && name != "" {
-		return []string{toolActivityDetail("MCP "+commentaryCode(server+"."+name), input)}
+		return toolActivityDetail("MCP "+commentaryCode(server+"."+name), input)
 	}
 	if server, tool, ok := toolActivityMCPName(shortName); ok {
 		// Source: codex-rs/tui/src/history_cell/mcp.rs:727:748 format_mcp_invocation.
 		// Keep Codex's server.tool identity and arguments, without claiming success.
-		return []string{toolActivityDetail("MCP "+commentaryCode(server+"."+tool), input)}
+		return toolActivityDetail("MCP "+commentaryCode(server+"."+tool), input)
 	}
 	if shortName == "exec" {
 		if calls, ok := toolActivityUnwrapExecCalls(input, false); ok {
 			var displays []string
 			for _, nested := range calls {
-				displays = append(displays, subagentToolActivityTexts(nested, qualifiedToolName(jsonString(nested, "namespace"), jsonString(nested, "name")), nil, shellDisplay)...)
+				if display := subagentToolPreview(nested, qualifiedToolName(jsonString(nested, "namespace"), jsonString(nested, "name")), shellDisplay); display != "" {
+					displays = append(displays, display)
+				}
 			}
-			// Keep patch files independently renderable under their existing delivery budget.
-			hasPatch := slices.ContainsFunc(calls, func(call map[string]json.RawMessage) bool {
-				return jsonString(call, "name") == "apply_patch"
-			})
-			if len(calls) > 1 && !hasPatch {
-				return []string{strings.Join(displays, "\n\n")}
-			}
-			return displays
+			return strings.Join(displays, "\n\n")
 		}
 	}
 	var arguments map[string]json.RawMessage
 	_ = json.Unmarshal([]byte(input), &arguments)
 	// Cell waits use the operation-aware display below, not the generic helper label.
 	if label := toolActivityBuiltinLabel(shortName); label != "" && (shortName != "wait" || arguments["cell_id"] == nil) {
-		return []string{toolActivityDetail(label, input)}
+		return toolActivityDetail(label, input)
 	}
 	if kind := jsonString(item, "type"); kind == "local_shell_call" || kind == "shell_call" {
 		var action struct {
@@ -70,13 +65,13 @@ func subagentToolActivityTexts(item map[string]json.RawMessage, qualifiedName st
 		}
 		if json.Unmarshal(item["action"], &action) == nil {
 			if len(action.Commands) > 0 {
-				return []string{toolActivityShell(strings.Join(action.Commands, "\n"))}
+				return toolActivityShell(strings.Join(action.Commands, "\n"))
 			}
 			if len(action.Command) > 0 {
-				return []string{toolActivityShellArgv(action.Command)}
+				return toolActivityShellArgv(action.Command)
 			}
 		}
-		return []string{"Run"}
+		return "Run"
 	}
 	switch shortName {
 	case "shell", "shell_command", "exec_command":
@@ -88,40 +83,29 @@ func subagentToolActivityTexts(item map[string]json.RawMessage, qualifiedName st
 			}
 			var argv []string
 			if json.Unmarshal(arguments["command"], &argv) == nil {
-				return []string{toolActivityShellArgv(argv)}
+				return toolActivityShellArgv(argv)
 			}
 		}
-		return []string{toolActivityShell(script)}
+		return toolActivityShell(script)
 	case "exec":
-		return []string{toolActivityJavaScript(input)}
+		return toolActivityJavaScript(input)
 	case "wait":
 		if jsonString(arguments, "cell_id") != "" {
 			var terminate bool
 			_ = json.Unmarshal(arguments["terminate"], &terminate)
 			if terminate {
-				return []string{"Stop · operation unavailable"}
+				return "Stop · operation unavailable"
 			}
-			return []string{"Still Running · operation unavailable"}
+			return "Still Running · operation unavailable"
 		}
 	case "view_image":
-		return []string{toolActivityDetail("View image", jsonString(arguments, "path"))}
+		return toolActivityDetail("View image", jsonString(arguments, "path"))
 	case "write_stdin":
-		return []string{toolActivityWriteStdin(arguments)}
-	case "apply_patch":
-		patch := input
-		if arguments != nil {
-			if decoded := jsonString(arguments, "patch"); decoded != "" {
-				patch = decoded
-			} else if decoded := jsonString(arguments, "input"); decoded != "" {
-				patch = decoded
-			}
-		}
-		return toolActivityPatch(patch)
-	case "hpatch", "hpatch_recover":
-		if history != nil && history.TranslationError == "" && history.Patch != "" {
-			return toolActivityPatch(history.Patch)
-		}
-		return []string{toolActivityDetail("Edit", input)}
+		return toolActivityWriteStdin(arguments)
+	case "apply_patch", "hpatch", "hpatch_recover":
+		// Edit evidence belongs in host tool results and the live diff viewer,
+		// not a second generated commentary rendering.
+		return ""
 	}
 	switch jsonString(item, "type") {
 	case "web_search_call":
@@ -134,23 +118,23 @@ func subagentToolActivityTexts(item map[string]json.RawMessage, qualifiedName st
 			if query == "" && json.Unmarshal(action["queries"], &queries) == nil {
 				query = strings.Join(queries, "\n")
 			}
-			return []string{toolActivityDetail("Search web", query)}
+			return toolActivityDetail("Search web", query)
 		case "open_page":
-			return []string{toolActivityDetail("Open page", jsonString(action, "url"))}
+			return toolActivityDetail("Open page", jsonString(action, "url"))
 		case "find":
-			return []string{toolActivityDetail("Find in page", jsonString(action, "pattern"))}
+			return toolActivityDetail("Find in page", jsonString(action, "pattern"))
 		}
-		return []string{"Search web"}
+		return "Search web"
 	case "file_search_call":
 		var queries []string
 		_ = json.Unmarshal(item["queries"], &queries)
-		return []string{toolActivityDetail("Search files", strings.Join(queries, "\n"))}
+		return toolActivityDetail("Search files", strings.Join(queries, "\n"))
 	case "image_generation_call":
-		return []string{"Generate image"}
+		return "Generate image"
 	case "code_interpreter_call":
-		return []string{toolActivityDetail("Run code", jsonString(item, "code"))}
+		return toolActivityDetail("Run code", jsonString(item, "code"))
 	}
-	return []string{toolActivityDetail("Tool call: "+commentaryCode(qualifiedName), input)}
+	return toolActivityDetail("Tool call: "+commentaryCode(qualifiedName), input)
 }
 
 // Use one label table for native calls and normalized Code Mode identifiers.
@@ -220,57 +204,6 @@ func toolActivityJavaScript(input string) string {
 		return "Run JavaScript"
 	}
 	return "Run JavaScript\n" + toolActivityFenced("javascript", input)
-}
-
-func toolActivityDiff(label, patch string) string {
-	if strings.TrimSpace(patch) == "" {
-		return label
-	}
-	return label + "\n" + toolActivityFenced("diff", patch)
-}
-
-func toolActivityPatch(patch string) []string {
-	lines := strings.Split(strings.TrimSpace(strings.ReplaceAll(patch, "\r\n", "\n")), "\n")
-	if len(lines) < 2 || lines[0] != "*** Begin Patch" || lines[len(lines)-1] != "*** End Patch" {
-		return []string{toolActivityDiff("Edit", patch)}
-	}
-	var displays, body []string
-	label := ""
-	flush := func() {
-		if label != "" {
-			displays = append(displays, toolActivityDiff(label, strings.Join(body, "\n")))
-		}
-		body = nil
-	}
-	for _, line := range lines[1 : len(lines)-1] {
-		kind, path, _ := strings.Cut(line, ": ")
-		switch kind {
-		case "*** Add File", "*** Update File", "*** Delete File":
-			if path == "" {
-				return []string{toolActivityDiff("Edit", patch)}
-			}
-			flush()
-			operation := map[string]string{"*** Add File": "Write", "*** Update File": "Edit", "*** Delete File": "Delete"}[kind]
-			label = operation + " " + commentaryCode(path)
-		case "*** Move to":
-			if label == "" || path == "" {
-				return []string{toolActivityDiff("Edit", patch)}
-			}
-			label = "Move " + strings.TrimPrefix(label, "Edit ") + " → " + commentaryCode(path)
-		case "*** End of File":
-			// Patch metadata, not a line in the edited file.
-		default:
-			if label == "" {
-				return []string{toolActivityDiff("Edit", patch)}
-			}
-			body = append(body, line)
-		}
-	}
-	flush()
-	if len(displays) == 0 {
-		return []string{"Edit"}
-	}
-	return displays
 }
 
 func toolActivityWriteStdin(arguments map[string]json.RawMessage) string {

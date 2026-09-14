@@ -235,6 +235,7 @@ func (s *mekugiReplayStore) publishChanges(workspace string, histories map[strin
 	if err != nil {
 		return err
 	}
+	updates := make(map[string][]trackedCall)
 	changed := false
 	for _, callID := range tracked {
 		history := histories[callID]
@@ -244,6 +245,7 @@ func (s *mekugiReplayStore) publishChanges(workspace string, histories map[strin
 		}
 		if !slices.ContainsFunc(change.Calls, func(call trackedCall) bool { return call.ID == callID }) {
 			change.Calls = append(change.Calls, trackedCall{ID: callID, Confirmed: history.Applied})
+			updates[history.ChangeID] = append(updates[history.ChangeID], trackedCall{ID: callID, Confirmed: history.Applied})
 			index.Changes[history.ChangeID] = change
 			changed = true
 		}
@@ -251,7 +253,11 @@ func (s *mekugiReplayStore) publishChanges(workspace string, histories map[strin
 	if !changed {
 		return syncReplayDirectory(s.directory)
 	}
-	return s.writeChangeIndex(index)
+	if err := s.writeChangeIndex(index); err != nil {
+		return err
+	}
+	s.notifyLiveDiff(index, updates)
+	return nil
 }
 
 // Confirmation is published only after the entire incoming history validates.
@@ -277,6 +283,7 @@ func (s *mekugiReplayStore) confirmChanges(ctx context.Context, workspace string
 		if err != nil {
 			return err
 		}
+		updates := make(map[string][]trackedCall)
 		changed := false
 		for _, callID := range confirmed {
 			history := histories[callID]
@@ -293,6 +300,7 @@ func (s *mekugiReplayStore) confirmChanges(ctx context.Context, workspace string
 			}
 			for i := range change.Calls {
 				if change.Calls[i].ID == callID && !change.Calls[i].Confirmed {
+					updates[history.ChangeID] = append(updates[history.ChangeID], trackedCall{ID: callID, Confirmed: true})
 					change.Calls[i].Confirmed = true
 					changed = true
 				}
@@ -302,7 +310,11 @@ func (s *mekugiReplayStore) confirmChanges(ctx context.Context, workspace string
 		if !changed {
 			return syncReplayDirectory(s.directory)
 		}
-		return s.writeChangeIndex(index)
+		if err := s.writeChangeIndex(index); err != nil {
+			return err
+		}
+		s.notifyLiveDiff(index, updates)
+		return nil
 	})
 }
 

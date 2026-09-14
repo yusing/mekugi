@@ -42,6 +42,10 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
     activity after a response closes waits for the next root response and is
     labelled as activity since the last update. This is not a continuous live
     feed during native waits, and requires no Codex panel or client patch.
+- **Review edits as they happen.**
+  - In Herdr, the [live diff pane](#live-diff-pane) combines the main agent's and
+    subagents' hpatch edits, highlights recent changes, and lets you pause or flush
+    reviewed changes.
 - **See token usage for the main agent and subagents.**
   - Completed responses with provider usage show one compact token and estimated API-cost table
     after the journal flush,
@@ -545,6 +549,29 @@ one hour by default or on router shutdown; reads and edits do not renew them.
 Active operations can delay cleanup. Save source as an ordinary workspace file
 when it needs to survive the thread. See the [shell reference](doc/spec/shell.md) for retention, editing,
 reruns, and interpreter selection.
+
+### Live diff pane
+
+In an interactive Herdr pane with `herdr` on `PATH`, `mekugi codex` opens a live
+diff pane to the right on the first turn, without changing focus. It follows the
+session's captured hpatch edits, including subagents, and closes with Codex.
+Redirected input/output does not open a pane.
+
+The view combines edits across files, excluding Git and shell changes. Prepared
+edits remain labeled as unconfirmed until application is reported. Cyan markers
+identify the latest update; reconnecting or unavailable means live updates are interrupted.
+
+Use the on-screen keyboard controls:
+
+- `j`/`k` scroll and `n`/`p` switch files, pausing automatic following.
+- `r` resumes following new edits.
+- `f` flushes the current file; `F` flushes all files. This hides reviewed changes
+  without deleting captures. Later overlapping edits can bring them back.
+- `q` quits the viewer without ending Codex.
+
+Use `hchanges` for saved capture history; standalone live viewing is not supported.
+See [live view details](doc/spec/changes.md#live-terminal-view) for display behavior,
+composition limits, and lifecycle guarantees.
 
 ## Metrics
 

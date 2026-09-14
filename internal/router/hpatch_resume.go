@@ -30,8 +30,10 @@ type hpatchResumeSegment struct {
 }
 
 type hpatchResumeState struct {
-	ChangeID        string                     `json:"change_id,omitempty"`
-	CorrelationID   string                     `json:"correlation_id,omitempty"`
+	ChangeID        string             `json:"change_id,omitempty"`
+	CorrelationID   string             `json:"correlation_id,omitempty"`
+	LiveDiff        liveDiffConnection `json:"live_diff,omitzero"`
+	liveDiff        func([]liveDiffChange)
 	ReplayDirectory string                     `json:"replay_directory,omitempty"`
 	Handle          string                     `json:"handle"`
 	Root            string                     `json:"root"`
@@ -68,6 +70,9 @@ func (t *mekugiResponseTransform) retainMixedScript(changeID, correlationID, sou
 	}
 	if t.proxy.replayStore != nil {
 		state.ReplayDirectory = t.proxy.replayStore.directory
+	}
+	if t.proxy.autoLiveDiff != nil && t.proxy.autoLiveDiff.enabled.Load() && state.ChangeID != "" {
+		state.LiveDiff = t.proxy.autoLiveDiff.events.expectProducer(state.Root, t.shellThreadID, state.ChangeID, state.Handle)
 	}
 	name, _ := mixedArtifactName(state.Handle)
 	if _, _, ok := t.proxy.retainShell(t.shellDirectory, name, string(mustMarshalJSON(state))); !ok {
@@ -143,6 +148,9 @@ func (t *mekugiResponseTransform) translateMixedResume(callID, input string, ups
 	}
 	if action == "repair" && changed == nil {
 		return reject(errors.New("repair requires one workspace edit segment"))
+	}
+	if t.proxy.autoLiveDiff != nil && t.proxy.autoLiveDiff.enabled.Load() && state.ChangeID != "" {
+		t.proxy.autoLiveDiff.events.resumeProducer(state.Root, t.shellThreadID, state.ChangeID, state.Handle, state.LiveDiff)
 	}
 	history.CarrierKind = codeModeCarrierCustom
 	history.CarrierPayload = t.mixedCarrier(state, action, changed)

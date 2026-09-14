@@ -30,6 +30,9 @@ func run() int {
 	); handled {
 		return exitCode
 	}
+	if len(os.Args) > 1 && os.Args[1] == "live-diff" {
+		return router.RunLiveDiff(ctx, os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
+	}
 	if len(os.Args) > 1 && os.Args[1] == "inspect-session" {
 		return router.RunSessionInspection(ctx, os.Args[2:], os.Stdout, os.Stderr)
 	}
