@@ -96,22 +96,15 @@ The model guidance owner is [guide](doc/spec/guide.md).
 
 ## Build and installation constraints
 
-Never run `make install` or `make install-binaries`, including through another target or
-script. Do not bypass this rule with `go install` or by copying Mekugi binaries into an
-installation directory. Installation examples in `README.md` are user workflows, not
-agent authorization.
+Never run `make install`, `make install-binaries`, bare `make` or other commands that build the binary
+into installation path.
 
-The Makefile's default target is `install`, so do not run bare `make` either. It has no
-build or test targets; use Go and Bun directly.
-
-Before code checks, asset generation, or temporary builds, read [CONTEXT-TESTS.md](CONTEXT-TESTS.md).
-Before automated live Codex tests, read [CONTEXT-AUTOMATED-TESTS.md](CONTEXT-AUTOMATED-TESTS.md).
-These own their respective checks, evidence requirements, and test-cost guidance.
+For tests, asset generation, or temporary builds, read `CONTEXT-TESTS.md`.
+For automated live Codex tests, read `CONTEXT-AUTOMATED-TESTS.md`.
 
 ## Where to look
 
-- `README.md`: user guide for installation, deployment, and router/shell workflows.
-  Update it only when user actions, configuration, prerequisites, or observable workflows change.
+- `README.md`: user facing documentation.
 - `doc/spec/index.md`: interface requirements and acceptance criteria.
 - `doc/architecture/index.md`: boundary ownership contracts.
 - `contrib/codex/file-editing-instructions.md`, adjacent `editing-workflow-astra.md` and
