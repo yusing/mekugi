@@ -882,5 +882,5 @@ func executeRequest(
 }
 
 func acceptsResponseEnd(state responseTerminalState) bool {
-	return state == responseTerminalCompleted || state == responseTerminalFailed || state == responseTerminalSteered
+	return state.Terminal()
 }

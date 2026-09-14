@@ -53,7 +53,11 @@ still releases process-owned runtime resources. Replay performs no translation o
 does not revive shell processes, continuation handles, or expired private script capabilities.
 Background Responses requests reject before upstream forwarding because
 the router has no retrieval boundary for their eventual result. Malformed SSE state is
-sticky and cannot be overwritten by a later terminal event.
+sticky and cannot be overwritten by a later terminal event. `internal/responses` owns the
+shared event-kind and terminal-evidence classification. Transports retain their distinct
+exchange, steering, and delivery lifetimes: an error can end a WebSocket exchange without
+being a successful response, and a steering acknowledgement is not a response terminal.
+JSON body status and SSE event type retain their existing, different authority.
 
 `review.go` renders per-file review diffs from completed engine changes, separately from
 the bounded final-state projector and executor patch. Host finalization withholds those

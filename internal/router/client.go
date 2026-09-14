@@ -19,6 +19,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 const (
@@ -499,33 +501,16 @@ func isSSELine(line string) bool {
 	}
 }
 
-type responseTerminalState uint8
+type responseTerminalState = responses.TerminalState
 
 const (
-	responseTerminalUnknown responseTerminalState = iota
-	responseTerminalInvalid
-	responseTerminalPending
-	responseTerminalCompleted
-	responseTerminalSteered
-	responseTerminalFailed
+	responseTerminalUnknown   = responses.TerminalUnknown
+	responseTerminalInvalid   = responses.TerminalInvalid
+	responseTerminalPending   = responses.TerminalPending
+	responseTerminalCompleted = responses.TerminalCompleted
+	responseTerminalSteered   = responses.TerminalSteered
+	responseTerminalFailed    = responses.TerminalFailed
 )
-
-func (state responseTerminalState) String() string {
-	switch state {
-	case responseTerminalInvalid:
-		return "invalid"
-	case responseTerminalPending:
-		return "pending"
-	case responseTerminalCompleted:
-		return "completed"
-	case responseTerminalSteered:
-		return "steered"
-	case responseTerminalFailed:
-		return "failed"
-	default:
-		return "unknown"
-	}
-}
 
 func copyUpstreamBodyTransformed(writer io.Writer, response *http.Response, streamResponse bool, transformer responseTransformer, hooks *responseHooks) (responseTerminalState, error) {
 	defer response.Body.Close()
@@ -634,7 +619,7 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 }
 
 func isResponseTerminal(state responseTerminalState) bool {
-	return state == responseTerminalCompleted || state == responseTerminalFailed || state == responseTerminalSteered
+	return state.Terminal()
 }
 
 func consumeOptionalUTF8BOM(reader *bufio.Reader) error {
@@ -804,89 +789,16 @@ func encodeSSEEventPayload(lines []string, payload []byte) string {
 	return result.String()
 }
 
-// Source: codex-rs/codex-api/src/endpoint/responses_websocket.rs:749:777 and
-// codex-rs/codex-api/src/sse/responses.rs:524:535. These carry metadata rather
-// than response acceptance or a terminal state.
 func isResponseAncillaryEvent(kind string) bool {
-	switch kind {
-	case "codex.response.metadata", "codex.rate_limits", "responsesapi.websocket_timing":
-		return true
-	default:
-		return false
-	}
+	return responses.Kind(kind).Ancillary()
 }
 
 func observeResponseTerminal(body []byte, streamEvent bool) responseTerminalState {
-	if streamEvent {
-		payload := strings.TrimSpace(string(body))
-		if payload == "" || payload == "[DONE]" {
-			return responseTerminalUnknown
-		}
-	}
-	var envelope struct {
-		Type   string `json:"type"`
-		Status string `json:"status"`
-	}
-	if json.Unmarshal(body, &envelope) != nil {
-		if streamEvent {
-			return responseTerminalInvalid
-		}
-		return responseTerminalUnknown
-	}
-	status := envelope.Status
-	if streamEvent {
-		if isResponseAncillaryEvent(envelope.Type) {
-			return responseTerminalUnknown
-		}
-		if !strings.HasPrefix(envelope.Type, "response.") || envelope.Type == "response." {
-			return responseTerminalInvalid
-		}
-		status = strings.TrimPrefix(envelope.Type, "response.")
-	}
-	switch status {
-	case "completed":
-		return responseTerminalCompleted
-	case "incomplete":
-		var event struct {
-			Response struct {
-				Incomplete struct {
-					Reason string `json:"reason"`
-				} `json:"incomplete_details"`
-			} `json:"response"`
-		}
-		if streamEvent && json.Unmarshal(body, &event) == nil && event.Response.Incomplete.Reason == "steered" {
-			return responseTerminalSteered
-		}
-		return responseTerminalFailed
-	case "failed":
-		return responseTerminalFailed
-	case "queued", "in_progress":
-		return responseTerminalPending
-	default:
-		if streamEvent {
-			return responseTerminalPending
-		}
-		return responseTerminalUnknown
-	}
+	return responses.ObserveTerminal(body, streamEvent)
 }
 
 func mergeResponseTerminalState(current, observed responseTerminalState) responseTerminalState {
-	if current == responseTerminalInvalid || observed == responseTerminalInvalid {
-		return responseTerminalInvalid
-	}
-	if observed == responseTerminalUnknown {
-		return current
-	}
-	if current == responseTerminalFailed || observed == responseTerminalFailed {
-		return responseTerminalFailed
-	}
-	if current == responseTerminalSteered || observed == responseTerminalSteered {
-		return responseTerminalSteered
-	}
-	if current == responseTerminalCompleted || observed == responseTerminalCompleted {
-		return responseTerminalCompleted
-	}
-	return responseTerminalPending
+	return responses.MergeTerminal(current, observed)
 }
 
 func trimSSELineEnding(line string) (string, string) {

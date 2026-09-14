@@ -7,29 +7,29 @@ import "strings"
 type Kind string
 
 const (
-	Created                Kind = "response.created"
-	Completed              Kind = "response.completed"
-	Failed                 Kind = "response.failed"
-	Incomplete             Kind = "response.incomplete"
-	InProgress             Kind = "response.in_progress"
-	OutputItemAdded        Kind = "response.output_item.added"
-	OutputItemDone         Kind = "response.output_item.done"
-	FunctionArgumentsDelta Kind = "response.function_call_arguments.delta"
-	FunctionArgumentsDone  Kind = "response.function_call_arguments.done"
-	CustomInputDelta       Kind = "response.custom_tool_call_input.delta"
-	CustomInputDone        Kind = "response.custom_tool_call_input.done"
-	OutputTextDelta        Kind = "response.output_text.delta"
-	OutputTextDone         Kind = "response.output_text.done"
-	ContentPartAdded       Kind = "response.content_part.added"
-	ContentPartDone        Kind = "response.content_part.done"
-	Error                  Kind = "error"
-	Metadata               Kind = "codex.response.metadata"
-	RateLimits             Kind = "codex.rate_limits"
-	WebSocketTiming        Kind = "responsesapi.websocket_timing"
-	Create                 Kind = "response.create"
-	Steer                  Kind = "response.steer"
-	SteerAccepted          Kind = "response.steer.accepted"
-	SteerFailed            Kind = "response.steer.failed"
+	Created                = "response.created"
+	Completed              = "response.completed"
+	Failed                 = "response.failed"
+	Incomplete             = "response.incomplete"
+	InProgress             = "response.in_progress"
+	OutputItemAdded        = "response.output_item.added"
+	OutputItemDone         = "response.output_item.done"
+	FunctionArgumentsDelta = "response.function_call_arguments.delta"
+	FunctionArgumentsDone  = "response.function_call_arguments.done"
+	CustomInputDelta       = "response.custom_tool_call_input.delta"
+	CustomInputDone        = "response.custom_tool_call_input.done"
+	OutputTextDelta        = "response.output_text.delta"
+	OutputTextDone         = "response.output_text.done"
+	ContentPartAdded       = "response.content_part.added"
+	ContentPartDone        = "response.content_part.done"
+	Error                  = "error"
+	Metadata               = "codex.response.metadata"
+	RateLimits             = "codex.rate_limits"
+	WebSocketTiming        = "responsesapi.websocket_timing"
+	Create                 = "response.create"
+	Steer                  = "response.steer"
+	SteerAccepted          = "response.steer.accepted"
+	SteerFailed            = "response.steer.failed"
 )
 
 // Terminal reports a response terminal, not successful request or delivery.
@@ -39,7 +39,9 @@ func (k Kind) Terminal() bool {
 
 func (k Kind) EndsExchange() bool { return k.Terminal() || k == Error }
 func (k Kind) ItemEvent() bool    { return k == OutputItemAdded || k == OutputItemDone }
-func (k Kind) Ancillary() bool    { return k == Metadata || k == RateLimits || k == WebSocketTiming }
+
+// Source: codex-rs/codex-api/src/endpoint/responses_websocket.rs:749:777 and sse/responses.rs:524:535.
+func (k Kind) Ancillary() bool { return k == Metadata || k == RateLimits || k == WebSocketTiming }
 func (k Kind) ResponseEvent() bool {
 	return strings.HasPrefix(string(k), "response.") && k != "response."
 }
