@@ -8,7 +8,10 @@ import (
 	"io"
 	"maps"
 	"slices"
+
 	"strings"
+
+	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 const journalToolName = "journal"
@@ -303,7 +306,7 @@ func journalClientResult(result map[string]json.RawMessage) map[string]json.RawM
 }
 
 func journalResultEvent(result map[string]json.RawMessage) []byte {
-	return mustMarshalJSON(map[string]any{"type": "response.output_item.done", "item": journalClientResult(result)})
+	return mustMarshalJSON(map[string]any{"type": responseevents.OutputItemDone, "item": journalClientResult(result)})
 }
 
 func (t *mekugiResponseTransform) journalOutputItems() []map[string]json.RawMessage {
@@ -321,7 +324,7 @@ func (t *mekugiResponseTransform) ReleaseDelivery() {
 
 func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte, bool, error) {
 	var event struct {
-		Type     string                     `json:"type"`
+		Type     responseevents.Kind        `json:"type"`
 		ItemID   string                     `json:"item_id"`
 		Item     map[string]json.RawMessage `json:"item"`
 		Response map[string]json.RawMessage `json:"response"`
@@ -329,8 +332,8 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 	if json.Unmarshal(payload, &event) != nil {
 		return nil, false, nil
 	}
-	switch event.Type {
-	case "response.output_item.added":
+	switch {
+	case event.Type == responseevents.OutputItemAdded:
 		if isJournalCall(event.Item) {
 			id := jsonString(event.Item, "id")
 			if id == "" {
@@ -339,11 +342,11 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 			t.journalPending[id] = true
 			return nil, true, nil
 		}
-	case "response.function_call_arguments.delta", "response.function_call_arguments.done":
+	case event.Type.FunctionArguments():
 		if t.journalPending[event.ItemID] {
 			return [][]byte{[]byte(`{"type":"response.in_progress"}`)}, true, nil
 		}
-	case "response.output_item.done":
+	case event.Type == responseevents.OutputItemDone:
 		t.journalProviderOutput = append(t.journalProviderOutput, event.Item)
 		if isJournalCall(event.Item) {
 			delete(t.journalPending, jsonString(event.Item, "id"))
@@ -359,7 +362,7 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 		if blocksTokenUsage(event.Item) {
 			t.journalClientCalls = true
 		}
-	case "response.completed":
+	case event.Type == responseevents.Completed:
 		var output []map[string]json.RawMessage
 		streamed := t.journalProviderOutput
 		var results [][]byte
@@ -406,7 +409,7 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 					continue
 				}
 				visible, err := t.transformNonJournalSSE(mustMarshalJSON(map[string]any{
-					"type": "response.output_item.done", "item": item,
+					"type": responseevents.OutputItemDone, "item": item,
 				}))
 				if err != nil {
 					return nil, true, err

@@ -23,6 +23,7 @@ import (
 	"github.com/yusing/mekugi/capturer"
 	codexinstructions "github.com/yusing/mekugi/contrib/codex"
 	"github.com/yusing/mekugi/internal/hpatchsyntax"
+	responseevents "github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 )
@@ -377,7 +378,7 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 	if p != nil {
 		request.filterInput(p.activity.stripInput)
 	}
-	if metadataValid && metadata.RequestKind == "compaction" {
+	if metadataValid && metadata.RequestKind == responseevents.Compaction {
 		if err := validateMekugiCompactionRequest(request, metadata); err != nil {
 			return nil, err
 		}
@@ -389,7 +390,7 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 	if strings.TrimSpace(sessionID) == "" {
 		return nil, errors.New("mekugi rewrite requires a valid session ID")
 	}
-	if !metadataValid || metadata.RequestKind != "turn" {
+	if !metadataValid || metadata.RequestKind != responseevents.Turn {
 		return nil, errors.New("mekugi rewrite requires valid turn metadata")
 	}
 	// Execution-free requests retain their native instructions, tools, and schema.
@@ -1540,9 +1541,9 @@ func (t *mekugiResponseTransform) TransformSSE(payload []byte) ([][]byte, error)
 			Status string `json:"status"`
 		} `json:"response"`
 	}
-	if t.journalActive && json.Unmarshal(payload, &terminal) == nil && terminal.Type == "response.completed" && terminal.Response.Status == "failed" {
+	if t.journalActive && json.Unmarshal(payload, &terminal) == nil && terminal.Type == responseevents.Completed && terminal.Response.Status == "failed" {
 		var err error
-		payload, err = replaceRawField(payload, "type", mustMarshalJSON("response.failed"))
+		payload, err = replaceRawField(payload, "type", mustMarshalJSON(responseevents.Failed))
 		if err != nil {
 			return nil, err
 		}
@@ -1588,7 +1589,7 @@ func (t *mekugiResponseTransform) transformNonJournalSSE(payload []byte) ([][]by
 		Type string `json:"type"`
 	}
 	_ = json.Unmarshal(payload, &event)
-	if event.Type == "response.created" && len(visible) != 0 {
+	if event.Type == responseevents.Created && len(visible) != 0 {
 		return append(append(visible[:1:1], generated...), visible[1:]...), nil
 	}
 	return append(generated, visible...), nil
@@ -1599,13 +1600,13 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		return visible, nil
 	}
 	var envelope struct {
-		Type     string          `json:"type"`
-		ItemID   string          `json:"item_id"`
-		CallID   string          `json:"call_id"`
-		Name     string          `json:"name"`
-		Input    string          `json:"input"`
-		Item     json.RawMessage `json:"item"`
-		Response json.RawMessage `json:"response"`
+		Type     responseevents.Kind `json:"type"`
+		ItemID   string              `json:"item_id"`
+		CallID   string              `json:"call_id"`
+		Name     string              `json:"name"`
+		Input    string              `json:"input"`
+		Item     json.RawMessage     `json:"item"`
+		Response json.RawMessage     `json:"response"`
 	}
 	if err := json.Unmarshal(payload, &envelope); err != nil {
 		if len(t.pending) != 0 {
@@ -1613,8 +1614,8 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		}
 		return [][]byte{payload}, nil
 	}
-	switch envelope.Type {
-	case "response.created":
+	switch {
+	case envelope.Type == responseevents.Created:
 		visible := [][]byte{payload}
 		for _, message := range t.subagentDeferred {
 			visible = append(visible, assistantCommentaryDoneEvent(message))
@@ -1629,7 +1630,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		t.deferredCommentary = nil
 		return visible, nil
 
-	case "response.output_item.added":
+	case envelope.Type == responseevents.OutputItemAdded:
 		item, ok := decodeResponsesItem(envelope.Item)
 		if !ok {
 			return [][]byte{payload}, nil //nolint:nilerr // Unrelated output items pass through unchanged.
@@ -1676,7 +1677,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		t.pending[itemID] = mekugiPendingCall{callID: callID, toolName: name, added: bytes.Clone(payload)}
 		return nil, nil
 
-	case "response.custom_tool_call_input.delta":
+	case envelope.Type == responseevents.CustomInputDelta:
 		if pending, ok := t.pending[envelope.ItemID]; ok && !pending.structured {
 			// Translation needs the complete input, but Codex's SSE idle timer only
 			// observes dispatched events. Preserve liveness without exposing the
@@ -1685,7 +1686,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		}
 		return [][]byte{payload}, nil
 
-	case "response.function_call_arguments.delta":
+	case envelope.Type == responseevents.FunctionArgumentsDelta:
 		if pending, ok := t.pending[envelope.ItemID]; ok && pending.structured {
 			return [][]byte{[]byte(`{"type":"response.in_progress"}`)}, nil
 		}
@@ -1694,7 +1695,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		}
 		return [][]byte{payload}, nil
 
-	case "response.custom_tool_call_input.done":
+	case envelope.Type == responseevents.CustomInputDone:
 		pending, ok := t.pending[envelope.ItemID]
 		if !ok || pending.structured {
 			if addedFields, nativeExec := t.nativeExecCalls[envelope.ItemID]; nativeExec {
@@ -1761,7 +1762,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		}
 		return [][]byte{addedEvent, doneEvent}, nil
 
-	case "response.function_call_arguments.done":
+	case envelope.Type == responseevents.FunctionArgumentsDone:
 		pending, ok := t.pending[envelope.ItemID]
 		if !ok {
 			return [][]byte{payload}, nil
@@ -1776,7 +1777,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		t.pending[envelope.ItemID] = pending
 		return [][]byte{[]byte(`{"type":"response.in_progress"}`)}, nil
 
-	case "response.output_item.done":
+	case envelope.Type == responseevents.OutputItemDone:
 		item, ok := decodeResponsesItem(envelope.Item)
 		if !ok {
 			return [][]byte{payload}, nil //nolint:nilerr // Malformed unrelated output remains the upstream's responsibility.
@@ -1876,16 +1877,16 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		}
 		return [][]byte{event}, nil
 
-	case "response.completed", "response.failed", "response.incomplete":
+	case envelope.Type.Terminal():
 		clear(t.nativeExecCalls)
-		if envelope.Type == "response.completed" {
+		if envelope.Type == responseevents.Completed {
 			if len(t.pending) != 0 {
 				return nil, staticCriticalDiagnostic("terminal_incomplete_mekugi_call", "the upstream completed with an incomplete HPATCH call")
 			}
 		} else {
 			clear(t.pending)
 		}
-		transformed, usageMessage, err := t.transformResponse(envelope.Response, strings.TrimPrefix(envelope.Type, "response."))
+		transformed, usageMessage, err := t.transformResponse(envelope.Response, envelope.Type.Status())
 		if err != nil {
 			return nil, err
 		}
@@ -1896,8 +1897,8 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		var terminal struct {
 			Status string `json:"status"`
 		}
-		if envelope.Type == "response.completed" && json.Unmarshal(transformed, &terminal) == nil && terminal.Status == "failed" {
-			event, err = replaceRawField(event, "type", mustMarshalJSON("response.failed"))
+		if envelope.Type == responseevents.Completed && json.Unmarshal(transformed, &terminal) == nil && terminal.Status == "failed" {
+			event, err = replaceRawField(event, "type", mustMarshalJSON(responseevents.Failed))
 		}
 		if err != nil {
 			return nil, err
@@ -1963,13 +1964,13 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 	}
 }
 
-func unsupportedMekugiStreamEvent(eventType string) error {
+func unsupportedMekugiStreamEvent(eventType responseevents.Kind) error {
 	underlying := fmt.Errorf("unsupported mekugi-related stream event %q", eventType)
-	switch eventType {
-	case "response.function_call_arguments.delta", "response.function_call_arguments.done":
+	switch {
+	case eventType.FunctionArguments():
 		return criticalDiagnostic(
 			underlying,
-			"unsupported_mekugi_stream_event:"+eventType,
+			"unsupported_mekugi_stream_event:"+string(eventType),
 			fmt.Sprintf("the upstream emitted unsupported HPATCH-related streaming event %q", eventType),
 			false,
 		)

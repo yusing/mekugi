@@ -63,7 +63,7 @@ func TestBufferedAnswerSSEFraming(t *testing.T) {
 				}
 				var output bytes.Buffer
 				chain := composeResponseTransformers(transform, &criticalErrorTransform{})
-				_, err := copySSETransformed(&output, reader, chain, transform.observeResponseUsage)
+				_, err := copySSETransformed(&output, reader, chain, &responseHooks{onUsage: transform.observeResponseUsage})
 				switch stop {
 				case "read_error":
 					if !errors.Is(err, disconnected) {

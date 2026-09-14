@@ -11,6 +11,7 @@ import (
 
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/yusing/mekugi/internal/commentaryid"
+	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 const commentaryArgumentName = "journal"
@@ -199,7 +200,7 @@ func assistantCommentaryDoneEvent(message map[string]json.RawMessage) []byte {
 		Type string                     `json:"type"`
 		Item map[string]json.RawMessage `json:"item"`
 	}{
-		Type: "response.output_item.done",
+		Type: responseevents.OutputItemDone,
 		Item: message,
 	})
 }
@@ -398,9 +399,9 @@ func hasCommentaryAuthor(text, author string) bool {
 // Completed provider commentary is copied to the root without rewriting the
 // child's original message. Router-owned messages already have their own paths.
 func (t *mekugiResponseTransform) collectProviderCommentary(message map[string]json.RawMessage) {
-	if jsonString(message, "type") != "message" ||
-		jsonString(message, "role") != "assistant" || jsonString(message, "phase") != "commentary" ||
-		jsonString(message, "status") != "completed" {
+	facts := responseMessageFacts(message)
+	facts.Status = jsonString(message, "status")
+	if !facts.CompletedCommentary() {
 		return
 	}
 	id := jsonString(message, "id")

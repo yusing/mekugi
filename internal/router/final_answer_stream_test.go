@@ -77,7 +77,7 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 				terminal := finalAnswerTestTerminal(t, "completed", true)
 				var output bytes.Buffer
 				state, err := copySSETransformed(&output, strings.NewReader(finalAnswerTestWire(append(slices.Clone(answer), terminal))),
-					transform, transform.observeResponseUsage)
+					transform, &responseHooks{onUsage: transform.observeResponseUsage})
 				if err != nil || state != responseTerminalCompleted {
 					t.Fatalf("state=%v, error=%v", state, err)
 				}
@@ -183,7 +183,7 @@ func TestFinalAnswerStreamFlushesWithoutUsage(t *testing.T) {
 			var output bytes.Buffer
 			// Include a real downstream transform to exercise composed draining.
 			chain := composeResponseTransformers(transform, &criticalErrorTransform{})
-			_, err := copySSETransformed(&output, reader, chain, transform.observeResponseUsage)
+			_, err := copySSETransformed(&output, reader, chain, &responseHooks{onUsage: transform.observeResponseUsage})
 			if stop == "read_error" {
 				if !errors.Is(err, failure) {
 					t.Fatalf("lost upstream error: %v", err)

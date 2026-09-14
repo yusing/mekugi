@@ -229,3 +229,44 @@ func BenchmarkGrokFragmentedArguments(b *testing.B) {
 		})
 	}
 }
+
+func TestGrokFinishEvidence(t *testing.T) {
+	for _, test := range []struct{ reason, status, detail string }{
+		{"stop", "completed", ""},
+		{"length", "incomplete", "max_output_tokens"},
+		{"content_filter", "incomplete", "content_filter"},
+		{"", "", ""}, {"future", "", ""}, {"tool_calls", "", ""},
+	} {
+		t.Run(test.reason, func(t *testing.T) {
+			wire := grokTestSSE(map[string]any{"choices": []any{map[string]any{
+				"index": 0, "delta": map[string]any{"content": "answer"}, "finish_reason": test.reason,
+			}}})
+			var events []map[string]any
+			tr := &grokTranslation{}
+			result, err := tr.readGrokStream(strings.NewReader(wire), func(event map[string]any) error {
+				events = append(events, event)
+				return nil
+			})
+			if test.status == "" {
+				if err == nil {
+					t.Fatalf("accepted %q", test.reason)
+				}
+				for _, event := range events {
+					if event["type"] == "response.completed" || event["type"] == "response.incomplete" {
+						t.Fatal("invalid choice emitted terminal")
+					}
+				}
+				return
+			}
+			if err != nil || result["status"] != test.status || events[len(events)-1]["type"] != "response."+test.status {
+				t.Fatalf("result=%v err=%v", result, err)
+			}
+			if test.detail != "" {
+				details, ok := result["incomplete_details"].(map[string]string)
+				if !ok || details["reason"] != test.detail {
+					t.Fatal(result)
+				}
+			}
+		})
+	}
+}

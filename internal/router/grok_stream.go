@@ -8,7 +8,11 @@ import (
 	"fmt"
 	"io"
 	"maps"
+
 	"strings"
+
+	"github.com/yusing/mekugi/internal/chat"
+	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 type grokChunk struct {
@@ -26,7 +30,7 @@ type grokChunk struct {
 				} `json:"function"`
 			} `json:"tool_calls"`
 		} `json:"delta"`
-		FinishReason string `json:"finish_reason"`
+		FinishReason chat.FinishReason `json:"finish_reason"`
 	} `json:"choices"`
 	Usage *struct {
 		PromptTokens     int64 `json:"prompt_tokens"`
@@ -55,7 +59,7 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 	model := "grok-4.6"
 	text := strings.Builder{}
 	calls := map[int]*grokStreamCall{}
-	finish := ""
+	var finish chat.FinishReason
 	var usage any
 	output := []any{}
 	messageStarted := false
@@ -67,7 +71,7 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 		}
 		return r
 	}
-	if err := emit(map[string]any{"type": "response.created", "response": response("in_progress")}); err != nil {
+	if err := emit(map[string]any{"type": responseevents.Created, "response": response("in_progress")}); err != nil {
 		return nil, err
 	}
 	consume := func(data string) error {
@@ -111,16 +115,16 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 				if !messageStarted {
 					messageStarted = true
 					item := map[string]any{"type": "message", "id": messageID, "role": "assistant", "status": "in_progress", "phase": "final_answer", "content": []any{}}
-					if err := emit(map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item}); err != nil {
+					if err := emit(map[string]any{"type": responseevents.OutputItemAdded, "output_index": 0, "item": item}); err != nil {
 						return err
 					}
-					if err := emit(map[string]any{"type": "response.content_part.added", "item_id": messageID, "output_index": 0, "content_index": 0, "part": map[string]any{"type": "output_text", "text": "", "annotations": []any{}}}); err != nil {
+					if err := emit(map[string]any{"type": responseevents.ContentPartAdded, "item_id": messageID, "output_index": 0, "content_index": 0, "part": map[string]any{"type": "output_text", "text": "", "annotations": []any{}}}); err != nil {
 						return err
 					}
 				}
 				text.WriteString(value)
 				textEmitted = true
-				if err := emit(map[string]any{"type": "response.output_text.delta", "item_id": messageID, "output_index": 0, "content_index": 0, "delta": value}); err != nil {
+				if err := emit(map[string]any{"type": responseevents.OutputTextDelta, "item_id": messageID, "output_index": 0, "content_index": 0, "delta": value}); err != nil {
 					return err
 				}
 			}
@@ -144,7 +148,7 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 			}
 		}
 		if !textEmitted {
-			return emit(map[string]any{"type": "response.in_progress", "response": map[string]any{"id": id, "status": "in_progress"}})
+			return emit(map[string]any{"type": responseevents.InProgress, "response": map[string]any{"id": id, "status": "in_progress"}})
 		}
 		return nil
 	}
@@ -185,15 +189,14 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 	if !done {
 		return nil, errors.New("Grok stream ended without [DONE]")
 	}
-	switch finish {
-	case "stop", "tool_calls", "length", "content_filter":
-	default:
+	status := finish.ResponseStatus()
+	if status == "" {
 		return nil, errors.New("Grok stream has no supported terminal finish reason")
 	}
-	if finish == "tool_calls" && len(calls) == 0 {
+	if finish == chat.ToolCalls && len(calls) == 0 {
 		return nil, errors.New("Grok finished tool calls without a call")
 	}
-	if len(calls) > 0 && finish != "tool_calls" {
+	if len(calls) > 0 && finish != chat.ToolCalls {
 		return nil, errors.New("Grok tool arguments were not completed")
 	}
 	if messageStarted {
@@ -204,9 +207,9 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 		}
 		output = append(output, item)
 		for _, event := range []map[string]any{
-			{"type": "response.output_text.done", "item_id": messageID, "output_index": 0, "content_index": 0, "text": text.String()},
-			{"type": "response.content_part.done", "item_id": messageID, "output_index": 0, "content_index": 0, "part": part},
-			{"type": "response.output_item.done", "output_index": 0, "item": item},
+			{"type": responseevents.OutputTextDone, "item_id": messageID, "output_index": 0, "content_index": 0, "text": text.String()},
+			{"type": responseevents.ContentPartDone, "item_id": messageID, "output_index": 0, "content_index": 0, "part": part},
+			{"type": responseevents.OutputItemDone, "output_index": 0, "item": item},
 		} {
 			if err := emit(event); err != nil {
 				return nil, err
@@ -258,37 +261,29 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 		// Emit the complete Responses tool lifecycle only after every call has
 		// validated. Router transforms use input/arguments.done as the handoff
 		// boundary, even though Chat Completions buffers the whole call.
-		field, doneType := "arguments", "response.function_call_arguments.done"
-		if item["type"] == "custom_tool_call" {
-			field, doneType = "input", "response.custom_tool_call_input.done"
+		field, doneType := "arguments", responseevents.FunctionArgumentsDone
+		if item["type"] == responseevents.CustomToolCall {
+			field, doneType = "input", responseevents.CustomInputDone
 		}
 		added := maps.Clone(item)
 		added["status"] = "in_progress"
 		added[field] = ""
-		if err := emit(map[string]any{"type": "response.output_item.added", "output_index": index, "item": added}); err != nil {
+		if err := emit(map[string]any{"type": responseevents.OutputItemAdded, "output_index": index, "item": added}); err != nil {
 			return nil, err
 		}
 		doneEvent := map[string]any{"type": doneType, "output_index": index, "item_id": item["id"], "call_id": item["call_id"], field: item[field]}
-		if item["type"] == "function_call" {
+		if item["type"] == responseevents.FunctionCall {
 			doneEvent["name"] = item["name"]
 		}
 		if err := emit(doneEvent); err != nil {
 			return nil, err
 		}
-		if err := emit(map[string]any{"type": "response.output_item.done", "output_index": index, "item": item}); err != nil {
+		if err := emit(map[string]any{"type": responseevents.OutputItemDone, "output_index": index, "item": item}); err != nil {
 			return nil, err
 		}
 	}
-	status := "completed"
-	if finish == "length" || finish == "content_filter" {
-		status = "incomplete"
-	}
 	result := response(status)
-	if status == "incomplete" {
-		reason := "max_output_tokens"
-		if finish == "content_filter" {
-			reason = "content_filter"
-		}
+	if reason := finish.IncompleteReason(); reason != "" {
 		result["incomplete_details"] = map[string]string{"reason": reason}
 	}
 	if err := emit(map[string]any{"type": "response." + status, "response": result}); err != nil {

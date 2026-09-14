@@ -81,6 +81,17 @@ and compaction do not reset them; repeated terminal observations within a reques
 Ancestry and author labels do not determine attribution. `token_cost.go` owns built-in reference
 prices, per-response estimates, and the compact Markdown token/cost table.
 
+Provider observation uses synchronous, request-scoped typed hooks before payload rewriting.
+Mentor receives completed items and output snapshots through those hooks, not a pass-through
+transformer. Once-only request finalization carries accepted output, terminal state, and
+available usage separately; steering accepts output without establishing successful compaction.
+Automatic continuations finish their predecessor's observation before preparing the successor.
+The shared Responses protocol classifier owns wire names and request kinds, while each
+feature retains its policy and existing state owner. Hooks own no background work or replayed
+effects; transformations remain ordered and error-returning. Envelope validation before
+output callbacks retains the previous malformed-output rejection behavior; the callbacks
+themselves cannot return errors.
+
 Each observation retains its effective provider-request model and requested service tier.
 The shared terminal parse supplies the provider's resolved tier when present, and cost is
 calculated before accumulation using the response's service tier, input size, and optional
@@ -94,6 +105,13 @@ and non-generating prewarm from missing evidence after possible inference. The s
 preserves completeness and inconsistency separately from normalized counts. Pricing does not
 read rollouts, fetch catalogs, or change capture-owned metric calculations.
 
+Response-kind recognition is shared with capture; it does not replace capture's evidence
+policy. In particular, a captured canceled body is terminal evidence but not transport
+acceptance, and final-answer correlation accepts the response family prefix without
+declaring it a valid terminal. Shared message facts establish only answer candidacy or
+completed commentary; content eligibility, generated provenance, and delivery bounds remain
+with their existing consumers.
+
 The terminal transformer places eligible usage after any main journal flush and before the child
 saved-summary. Child usage remains live activity; child journals flush only at main completion.
 After successful delivery, child usage reports enter the activity collector in that order.
@@ -103,7 +121,9 @@ bounded root delivery and exact replay removal. Child costs never enter root usa
 `final_answer_stream.go` buffers provider final events only for token-usage ordering, releasing
 them unchanged at the terminal, on failure, or when its buffer fills. Completed streamed items
 determine eligibility independently of the terminal output snapshot. Journal completion uses
-an explicit finish call and never filters provider messages. Failed and incomplete responses
+an explicit finish call and never filters provider messages. Journal interception and delivery
+consume shared event kinds but remain ordered, error-returning transformations: mutation,
+durable retention, and automatic continuation are not auxiliary notification hooks. Failed and incomplete responses
 do not terminal-flush or emit tokens. The transport drains buffered events on EOF or failure,
 including through composed transforms. The 64 MiB response buffer limit disables auxiliary usage
 and releases output rather than rejecting a large answer. JSON and SSE share the same

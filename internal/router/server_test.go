@@ -19,6 +19,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/internal/responses"
+
 	"github.com/yusing/mekugi/internal/patchtest"
 )
 
@@ -83,7 +85,7 @@ func serverRequest(t *testing.T, mutate func(map[string]any)) parsedResponsesReq
 
 func serverMetadataHeaders(t *testing.T, requestKind string, workspaces map[string]json.RawMessage) http.Header {
 	t.Helper()
-	encoded, err := json.Marshal(codexTurnMetadata{RequestKind: requestKind, Directories: workspaces})
+	encoded, err := json.Marshal(codexTurnMetadata{RequestKind: responses.RequestKind(requestKind), Directories: workspaces})
 	if err != nil {
 		t.Fatal(err)
 	}

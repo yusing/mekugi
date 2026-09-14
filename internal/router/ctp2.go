@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/tiktoken-go/tokenizer"
+	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 const (
@@ -1343,23 +1344,23 @@ func (t *ctp2ResponseTransform) TransformSSE(payload []byte) (transformed [][]by
 	if err := json.Unmarshal(payload, &event); err != nil || event == nil {
 		return [][]byte{payload}, nil
 	}
-	typeName := jsonString(event, "type")
-	switch typeName {
-	case "response.output_item.added", "response.output_item.done":
+	kind := responseevents.Kind(jsonString(event, "type"))
+	switch {
+	case kind.ItemEvent():
 		if item, ok := decodeResponsesItem(event["item"]); ok {
 			if err := t.transformOutputItem(&item); err != nil {
 				return nil, err
 			}
 			event["item"] = mustMarshalJSON(item)
 		}
-	case "response.output_text.done":
+	case kind == responseevents.OutputTextDone:
 		compact := jsonString(event, "text")
 		decoded, err := decodeCTP2String(compact, t.sources, upstreamJSONBufferBytes)
 		if err != nil {
 			return nil, err
 		}
 		event["text"] = mustMarshalJSON(decoded)
-	case "response.content_part.added", "response.content_part.done":
+	case kind.ContentPart():
 		var part map[string]json.RawMessage
 		if json.Unmarshal(event["part"], &part) == nil && part != nil {
 			if err := t.transformTextPart(part); err != nil {

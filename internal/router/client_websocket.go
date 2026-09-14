@@ -20,6 +20,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/capturer"
+	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 var errProviderWebSocketResponse = errors.New("provider websocket error")
@@ -233,8 +234,7 @@ func (entry *providerWebSocket) readLoop(ctx context.Context) {
 			entry.pool.mu.Unlock()
 			return
 		}
-		switch event.Type {
-		case "response.completed", "response.failed", "response.incomplete", "error":
+		if responseevents.Kind(event.Type).EndsExchange() {
 			lease.terminal = true
 		}
 		// Admission is atomic with release/acquire. If the bounded queue is
@@ -463,7 +463,7 @@ func (c *providerClient) forwardWebSocket(startCtx, responseCtx context.Context,
 			return fail(errors.New("provider websocket sent invalid JSON"))
 		}
 		if !isResponseAncillaryEvent(event.Type) {
-			if event.Type == "error" {
+			if event.Type == responseevents.Error {
 				prefetched = nil
 			}
 			prefetched = append(prefetched, message)
@@ -485,7 +485,7 @@ func (c *providerClient) forwardWebSocket(startCtx, responseCtx context.Context,
 	result := &webSocketResponseBody{entry: entry, lease: lease, ctx: requestCtx, cancel: cancel, observation: observation, stream: stream, idleTimeout: c.streamIdleTimeout, prefetched: prefetched}
 	result.stopCancellation = context.AfterFunc(requestCtx, func() { entry.release(lease, false) })
 	status := http.StatusOK
-	if event.Type == "error" {
+	if event.Type == responseevents.Error {
 		status = event.Status
 		if status == 0 {
 			status = event.StatusCode
@@ -500,7 +500,7 @@ func (c *providerClient) forwardWebSocket(startCtx, responseCtx context.Context,
 	if visibleHeaders == nil {
 		visibleHeaders = make(http.Header)
 	}
-	if event.Type == "error" {
+	if event.Type == responseevents.Error {
 		for name, raw := range event.Headers {
 			value := string(raw)
 			var decoded string
@@ -594,7 +594,7 @@ func (body *webSocketResponseBody) Read(destination []byte) (int, error) {
 			body.readErr = err
 			return 0, err
 		}
-		if !body.stream && event.Type == "response.output_item.done" && event.OutputIndex != nil && *event.OutputIndex >= 0 {
+		if !body.stream && event.Type == responseevents.OutputItemDone && event.OutputIndex != nil && *event.OutputIndex >= 0 {
 			// Missing/null items cannot account for a map entry against the byte
 			// budget and are not finalized output items in the Responses protocol.
 			if len(event.Item) == 0 || bytes.Equal(bytes.TrimSpace(event.Item), []byte("null")) {
@@ -612,8 +612,8 @@ func (body *webSocketResponseBody) Read(destination []byte) (int, error) {
 			body.items[*event.OutputIndex] = event.Item
 		}
 		var terminal map[string]json.RawMessage
-		switch event.Type {
-		case "response.completed", "response.failed", "response.incomplete":
+		switch {
+		case responseevents.Kind(event.Type).Terminal():
 			if json.Unmarshal(event.Response, &terminal) != nil || terminal == nil {
 				body.readErr = errors.New("invalid websocket terminal response")
 				return 0, body.readErr
@@ -621,11 +621,11 @@ func (body *webSocketResponseBody) Read(destination []byte) (int, error) {
 			// Streaming completion belongs to the event, just as on upstream
 			// SSE. A nonstream client needs that state in its unwrapped JSON.
 			if !body.stream && jsonString(terminal, "status") == "" {
-				terminal["status"], _ = json.Marshal(strings.TrimPrefix(event.Type, "response."))
+				terminal["status"], _ = json.Marshal(responseevents.Kind(event.Type).Status())
 				event.Response, _ = json.Marshal(terminal)
 			}
 			body.terminal = true
-		case "error":
+		case event.Type == responseevents.Error:
 			body.terminal = true
 			body.readErr = errProviderWebSocketResponse
 		}
@@ -641,7 +641,7 @@ func (body *webSocketResponseBody) Read(destination []byte) (int, error) {
 		} else if body.errorResponse {
 			body.buffer.Write(payload)
 		} else if body.terminal {
-			if event.Type == "error" {
+			if event.Type == responseevents.Error {
 				return 0, body.readErr
 			}
 			if len(body.items) > 0 {

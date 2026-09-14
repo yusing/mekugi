@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func mentorTestHeaders(t *testing.T, threadID string) http.Header {
@@ -175,7 +177,7 @@ func TestMentorHandoffAstraMapping(t *testing.T) {
 				if err != nil || handoff == nil || request.modelDescription() != "gpt-6-astra "+test.want {
 					t.Fatalf("main=%t: request=%q handoff=%v err=%v", main, request.modelDescription(), handoff, err)
 				}
-				handoff.record(mentorInputTokenLimit, true, true)
+				handoff.record(requestCompletion{outcome: requestOutcomeCompleted, terminal: responseTerminalCompleted, usage: tokenCounts{InputTokens: mentorInputTokenLimit}, usageObserved: true})
 				request = mentorTestRequest(t, "gpt-5.6")
 				handoff, err = mentor.prepare(headers, metadata, valid, &request)
 				if err != nil || handoff != nil || request.modelDescription() != "gpt-5.6 medium" {
@@ -256,7 +258,7 @@ func TestMentorHandoffCompletesAtEachBound(t *testing.T) {
 					t.Fatalf("response %d was handed off early", index+1)
 				}
 				handoff.observation.observeItems(items)
-				progress := handoff.record(test.inputUsage[index], true, true)
+				progress := handoff.record(requestCompletion{outcome: requestOutcomeCompleted, terminal: responseTerminalCompleted, usage: tokenCounts{InputTokens: test.inputUsage[index]}, usageObserved: true})
 				if got, want := progress.complete, index == len(test.responses)-1; got != want {
 					t.Fatalf("response %d complete = %t, want %t", index+1, got, want)
 				}
@@ -294,7 +296,11 @@ func TestMentorHandoffWaitsForCompletedToolResultResponse(t *testing.T) {
 			t.Fatal("mentor handed off before a completed result-consuming response")
 		}
 		handoff.observation.observeItems(items)
-		return handoff.record(1_000, completed, completed)
+		result := requestCompletion{usage: tokenCounts{InputTokens: 1_000}, usageObserved: true}
+		if completed {
+			result.outcome, result.terminal = requestOutcomeCompleted, responseTerminalCompleted
+		}
+		return handoff.record(result)
 	}
 
 	if progress := record(mentorTestItems(t, "custom_tool_call", "custom_tool_call", "custom_tool_call"), true); !progress.awaitingToolResult || progress.complete {
@@ -316,18 +322,19 @@ func TestMentorResponseObservationDoesNotDoubleCountStreamingItems(t *testing.T)
 	})
 	done := mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": item})
 	var observation mentorResponseObservation
-	if _, err := observation.TransformSSE(done); err != nil {
+	hooks := &responseHooks{}
+	hooks.output = &observation
+	if err := hooks.observe(done, true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := observation.TransformSSE(completed); err != nil {
+	if err := hooks.observe(completed, true); err != nil {
 		t.Fatal(err)
 	}
 	if observation.toolCalls != 1 {
 		t.Fatalf("tool calls = %d, want 1", observation.toolCalls)
 	}
-	visible, err := observation.TransformSSE([]byte("[DONE]"))
-	if err != nil || len(visible) != 1 || string(visible[0]) != "[DONE]" {
-		t.Fatalf("DONE passthrough = %q, %v", visible, err)
+	if err := hooks.observe([]byte("[DONE]"), true); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -430,7 +437,7 @@ func TestExecuteRequestCompactionRestartsMentorHandoff(t *testing.T) {
 			headers: func(kind string) http.Header {
 				headers := mentorTestHeaders(t, "child")
 				headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, codexTurnMetadata{
-					RequestKind: kind, SubagentKind: threadSpawnSubagentKind,
+					RequestKind: responses.RequestKind(kind), SubagentKind: threadSpawnSubagentKind,
 				})))
 				return headers
 			},
@@ -835,7 +842,7 @@ func TestExecuteRequestChildNonTurnsHandleMentorSchedule(t *testing.T) {
 					mentor.sessions["child"] = before
 				}
 				headers := mentorTestHeaders(t, "child")
-				headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, codexTurnMetadata{RequestKind: kind, SubagentKind: threadSpawnSubagentKind})))
+				headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, codexTurnMetadata{RequestKind: responses.RequestKind(kind), SubagentKind: threadSpawnSubagentKind})))
 				provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(string(mustTestJSON(t, map[string]any{
 					"status": "completed", "output": mentorTestItems(t, "message", "message"),
 					"usage": map[string]any{"input_tokens": mentorInputTokenLimit},

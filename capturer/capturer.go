@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/tiktoken-go/tokenizer"
+	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 const schemaVersion = 6
@@ -162,9 +163,7 @@ type requestRouting struct {
 
 // ObserveRequestKind records only the router's validated, content-free request kind.
 func ObserveRequestKind(ctx context.Context, kind string) {
-	switch kind {
-	case "turn", "prewarm", "compaction":
-	default:
+	if !responseevents.RequestKind(kind).Known() {
 		return
 	}
 	state, ok := ctx.Value(captureKey{}).(*requestState)

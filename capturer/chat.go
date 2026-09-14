@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/tiktoken-go/tokenizer"
+	"github.com/yusing/mekugi/internal/chat"
 )
 
 type chatCaptureCall struct {
@@ -44,7 +45,7 @@ func observeChatResponse(payload []byte, contentType string, record *captureReco
 					Content   string            `json:"content"`
 					ToolCalls []chatCaptureCall `json:"tool_calls"`
 				} `json:"message"`
-				FinishReason string `json:"finish_reason"`
+				FinishReason chat.FinishReason `json:"finish_reason"`
 			} `json:"choices"`
 		}
 		if json.Unmarshal(data, &chunk) != nil {
@@ -69,13 +70,9 @@ func observeChatResponse(payload []byte, contentType string, record *captureReco
 			for i, part := range choice.Message.ToolCalls {
 				calls[i] = &part
 			}
-			switch choice.FinishReason {
-			case "stop", "tool_calls":
+			if status := choice.FinishReason.ResponseStatus(); status != "" {
 				finished = true
-				record.ResponseStatus = "completed"
-			case "length", "content_filter":
-				finished = true
-				record.ResponseStatus = "incomplete"
+				record.ResponseStatus = status
 			}
 		}
 	}

@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	responseevents "github.com/yusing/mekugi/internal/responses"
+
 	"github.com/coder/websocket"
 )
 
@@ -89,7 +91,7 @@ func TestCriticalErrorsKeepDistinctSafeCausesAndHideExternalPayloads(t *testing.
 	unsafeEvent := NewCriticalErrors()
 	unsafeEventName := "unquotedsecretpayload"
 	unsafeEvent.record(&requestFinalization{sessionID: "one", failurePhase: requestFailureTransform,
-		observation: requestObservation{outcome: requestOutcomeFailed}}, unsupportedMekugiStreamEvent(unsafeEventName))
+		observation: requestObservation{outcome: requestOutcomeFailed}}, unsupportedMekugiStreamEvent(responseevents.Kind(unsafeEventName)))
 	unsafeEventNotice := strings.Join(unsafeEvent.Pending(), "\n")
 	if strings.Contains(unsafeEventNotice, unsafeEventName) || !strings.Contains(unsafeEventNotice, "unsupported HPATCH-related streaming event") {
 		t.Fatalf("untrusted protocol value was exposed or hid its safe cause: %s", unsafeEventNotice)

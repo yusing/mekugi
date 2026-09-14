@@ -149,9 +149,7 @@ func tokenUsageCommentary(response []byte, counts tokenUsageReport, observed boo
 }
 
 func isFinalAnswerMessage(item map[string]json.RawMessage) bool {
-	phase := jsonString(item, "phase")
-	return jsonString(item, "type") == "message" && jsonString(item, "role") == "assistant" &&
-		(phase == "" || phase == "final_answer")
+	return responseMessageFacts(item).FinalAnswerCandidate()
 }
 
 // Source: codex-rs/protocol/src/models.rs ContentItem and MessagePhase.

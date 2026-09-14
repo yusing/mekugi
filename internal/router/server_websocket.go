@@ -18,6 +18,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/capturer"
+	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 // A downstream socket owns a dedicated provider socket. In particular it never
@@ -308,7 +309,7 @@ func (s *responsesWebSocket) run() error {
 			}
 			var fields map[string]json.RawMessage
 			_ = json.Unmarshal(message.body, &fields)
-			if jsonString(fields, "type") == "response.create" {
+			if jsonString(fields, "type") == responseevents.Create {
 				if err := s.execute(message.body, nil); err != nil {
 					return err
 				}
@@ -324,7 +325,7 @@ func (s *responsesWebSocket) run() error {
 			}
 			var fields map[string]json.RawMessage
 			_ = json.Unmarshal(message.body, &fields)
-			if jsonString(fields, "type") == "response.created" {
+			if jsonString(fields, "type") == responseevents.Created {
 				if err := s.execute(nil, message.body); err != nil {
 					return err
 				}
@@ -341,7 +342,7 @@ func (s *responsesWebSocket) control(body []byte) error {
 	}
 	var fields map[string]json.RawMessage
 	_ = json.Unmarshal(body, &fields)
-	if jsonString(fields, "type") == "response.create" {
+	if jsonString(fields, "type") == responseevents.Create {
 		if s.queuedCreate != nil {
 			return incompatibleRequest("invalid_websocket_request", "a Responses WebSocket continuation is already queued")
 		}
@@ -351,7 +352,7 @@ func (s *responsesWebSocket) control(body []byte) error {
 	if s.upstream == nil {
 		return incompatibleRequest("invalid_websocket_request", "send response.create before a WebSocket control message; Grok does not support steering")
 	}
-	if jsonString(fields, "type") == "response.steer" {
+	if jsonString(fields, "type") == responseevents.Steer {
 		input, err := webSocketInput(fields["input"])
 		if err != nil {
 			return err
@@ -386,12 +387,12 @@ func (s *responsesWebSocket) observeControl(body []byte) {
 	for index := range s.steers {
 		steer := &s.steers[index]
 		switch event.Type {
-		case "response.steer.accepted":
+		case responseevents.SteerAccepted:
 			if steer.id == "" && steer.parent == event.Steer.Parent {
 				steer.id = event.Steer.ID
 				return
 			}
-		case "response.steer.failed":
+		case responseevents.SteerFailed:
 			if event.Steer.ID != "" && steer.id == event.Steer.ID ||
 				event.Steer.ID == "" && steer.id == "" && steer.parent == event.Steer.Parent {
 				s.steers = append(s.steers[:index], s.steers[index+1:]...)
@@ -423,7 +424,7 @@ func isWebSocketSteering(body []byte) bool {
 		Type string `json:"type"`
 	}
 	_ = json.Unmarshal(body, &event)
-	return event.Type == "response.steer" || strings.HasPrefix(event.Type, "response.steer.")
+	return responseevents.Kind(event.Type).Steering()
 }
 
 func (s *responsesWebSocket) observeProvider(ctx context.Context, observation *capturer.WebSocketAttempt, body []byte) {
@@ -606,7 +607,7 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 			// Grok has no non-generating transport warmup. Preserve Codex's
 			// prewarm/history handshake without running and discarding inference.
 			response := map[string]any{"id": "resp_mekugi_warm_" + rand.Text(), "status": "completed", "output": []any{}}
-			payload := mustMarshalJSON(map[string]any{"type": "response.completed", "response": response})
+			payload := mustMarshalJSON(map[string]any{"type": responseevents.Completed, "response": response})
 			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}},
 				Body: io.NopCloser(bytes.NewReader(append(append([]byte("data: "), payload...), '\n', '\n')))}, nil
 		}
@@ -765,7 +766,7 @@ func (e *webSocketExchange) Read(buffer []byte) (int, error) {
 	var fields map[string]json.RawMessage
 	_ = json.Unmarshal(body, &fields)
 	kind := jsonString(fields, "type")
-	e.ended = kind == "response.completed" || kind == "response.incomplete" || kind == "response.failed" || kind == "error"
+	e.ended = responseevents.Kind(kind).EndsExchange()
 	e.buffer.WriteString("data: ")
 	for index, line := range bytes.Split(body, []byte("\n")) {
 		if index != 0 {
@@ -818,10 +819,10 @@ func (w *webSocketOutput) message(payload []byte) error {
 	if err := json.Unmarshal(payload, &event); err != nil {
 		return err
 	}
-	if event.Type == "error" {
+	if event.Type == responseevents.Error {
 		s.errorDelivered = true
 	}
-	if event.Type == "response.output_item.done" {
+	if event.Type == responseevents.OutputItemDone {
 		var item struct {
 			Item json.RawMessage `json:"item"`
 		}
@@ -832,13 +833,12 @@ func (w *webSocketOutput) message(payload []byte) error {
 			e.history.output = append(e.history.output, item.Item)
 		}
 	}
-	if event.Type == "response.created" {
+	if event.Type == responseevents.Created {
 		// Creation commits queued steering. Never replay accepted input after
 		// this point, even if delivery or the successor subsequently fails.
 		s.commitSteering(e.history, e.parentID)
 	}
-	switch event.Type {
-	case "response.completed", "response.incomplete", "response.failed":
+	if responseevents.Kind(event.Type).Terminal() {
 		if event.Response.ID == "" {
 			return errors.New("provider terminal response has no id")
 		}

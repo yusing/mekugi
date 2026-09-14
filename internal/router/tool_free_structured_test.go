@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/internal/responses"
+
 	"github.com/coder/websocket"
 )
 
@@ -266,7 +268,7 @@ func TestResponsesWebSocketToolFreeStructuredTurnAfterPrewarm(t *testing.T) {
 		_, _, _ = upstream.Read(ctx)
 	}), proxy, nil, headers)
 	metadata := func(kind string) map[string]string {
-		return map[string]string{codexTurnMetadataHeader: string(mustMarshalJSON(codexTurnMetadata{RequestKind: kind}))}
+		return map[string]string{codexTurnMetadataHeader: string(mustMarshalJSON(codexTurnMetadata{RequestKind: responses.RequestKind(kind)}))}
 	}
 	socketWrite(t, ctx, conn, map[string]any{
 		"type": "response.create", "model": "gpt-test", "generate": false,

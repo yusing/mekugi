@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
 	"sync"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 // Source: codex-rs/core/src/responses_metadata.rs:325:426. Codex emits both
@@ -64,7 +67,7 @@ func (m *mentorHandoff) prepare(headers http.Header, metadata codexTurnMetadata,
 	if m == nil {
 		return nil, nil
 	}
-	isCompaction := metadataValid && metadata.RequestKind == "compaction"
+	isCompaction := metadataValid && metadata.RequestKind == responses.Compaction
 	if !isCompaction && !mentorEligibleModel(request.model()) {
 		return nil, nil
 	}
@@ -76,7 +79,7 @@ func (m *mentorHandoff) prepare(headers http.Header, metadata codexTurnMetadata,
 		if !metadataValid || metadata.SubagentKind != threadSpawnSubagentKind {
 			return nil, errors.New("mentor handoff requires canonical thread-spawn metadata")
 		}
-		if metadata.RequestKind != "turn" && metadata.RequestKind != "compaction" {
+		if !metadata.RequestKind.Scheduled() {
 			return nil, nil
 		}
 	} else {
@@ -92,14 +95,14 @@ func (m *mentorHandoff) prepare(headers http.Header, metadata codexTurnMetadata,
 		if !metadataValid || metadata.SubagentKind != "" || threadID == "" {
 			return nil, nil
 		}
-		if metadata.RequestKind != "turn" && metadata.RequestKind != "compaction" {
+		if !metadata.RequestKind.Scheduled() {
 			return nil, nil
 		}
 	}
 	if threadID == "" {
 		return nil, errors.New("mentor handoff requires a Codex thread ID")
 	}
-	if metadata.RequestKind == "compaction" {
+	if metadata.RequestKind == responses.Compaction {
 		return &mentorRequest{owner: m, threadID: threadID, reset: true}, nil
 	}
 
@@ -157,11 +160,14 @@ func isThreadSpawnSubagent(headers http.Header) bool {
 	return len(values) == 1 && values[0] == threadSpawnSubagent
 }
 
-func (r *mentorRequest) record(requestInputTokens uint64, includeCompletedOutput, completed bool) mentorProgress {
+func (r *mentorRequest) record(result requestCompletion) mentorProgress {
+	if !result.acceptsOutput() && !result.usageObserved {
+		return mentorProgress{}
+	}
 	r.owner.mu.Lock()
 	defer r.owner.mu.Unlock()
 	if r.reset {
-		if completed {
+		if result.succeeded() {
 			delete(r.owner.sessions, r.threadID)
 		}
 		return mentorProgress{}
@@ -169,15 +175,15 @@ func (r *mentorRequest) record(requestInputTokens uint64, includeCompletedOutput
 	state := r.owner.sessions[r.threadID]
 	wasComplete := state.complete
 	wasAwaitingToolResult := state.awaitingToolResult
-	state.latestInputTokens = requestInputTokens
-	if includeCompletedOutput {
+	state.latestInputTokens = result.usage.InputTokens
+	if result.acceptsOutput() {
 		state.toolCalls += r.observation.toolCalls
 		state.messages += r.observation.messages
 	}
 	switch {
 	case state.latestInputTokens >= mentorInputTokenLimit || state.messages >= mentorMinMessages:
 		state.complete = true
-	case includeCompletedOutput && wasAwaitingToolResult:
+	case result.acceptsOutput() && wasAwaitingToolResult:
 		state.complete = true
 	case state.toolCalls >= mentorMinToolCalls:
 		state.awaitingToolResult = true
@@ -202,60 +208,30 @@ type mentorResponseObservation struct {
 	sawOutputItemDone bool
 }
 
-func (o *mentorResponseObservation) TransformJSON(payload []byte) ([]byte, error) {
-	var response struct {
-		Output []json.RawMessage `json:"output"`
-	}
-	if err := json.Unmarshal(payload, &response); err != nil {
-		return nil, err
-	}
-	o.observeItems(response.Output)
-	return payload, nil
+func (o *mentorResponseObservation) outputItemDone(item json.RawMessage) {
+	o.sawOutputItemDone = true
+	o.observeItems([]json.RawMessage{item})
 }
 
-func (o *mentorResponseObservation) TransformSSE(payload []byte) ([][]byte, error) {
-	if string(payload) == "[DONE]" {
-		return [][]byte{payload}, nil
+func (o *mentorResponseObservation) completedOutput(items []json.RawMessage) {
+	if !o.sawOutputItemDone {
+		o.observeItems(items)
 	}
-	var event struct {
-		Type     string          `json:"type"`
-		Item     json.RawMessage `json:"item"`
-		Response struct {
-			Output []json.RawMessage `json:"output"`
-		} `json:"response"`
-	}
-	if err := json.Unmarshal(payload, &event); err != nil {
-		return nil, err
-	}
-	switch event.Type {
-	case "response.output_item.done":
-		o.sawOutputItemDone = true
-		o.observeItems([]json.RawMessage{event.Item})
-	case "response.completed":
-		if !o.sawOutputItemDone {
-			o.observeItems(event.Response.Output)
-		}
-	}
-	return [][]byte{payload}, nil
-}
-
-func (*mentorResponseObservation) Finish(bool) error {
-	return nil
 }
 
 func (o *mentorResponseObservation) observeItems(items []json.RawMessage) {
 	for _, item := range items {
 		var output struct {
-			Type string `json:"type"`
-			Role string `json:"role"`
+			Type responses.ItemKind `json:"type"`
+			Role string             `json:"role"`
 		}
 		if json.Unmarshal(item, &output) != nil {
 			continue
 		}
-		switch output.Type {
-		case "custom_tool_call", "function_call":
+		switch {
+		case output.Type.ToolCall():
 			o.toolCalls++
-		case "message":
+		case output.Type == responses.Message:
 			if strings.TrimSpace(output.Role) == "" || output.Role == "assistant" {
 				o.messages++
 			}

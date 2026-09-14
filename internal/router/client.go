@@ -19,6 +19,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 const (
@@ -499,44 +501,27 @@ func isSSELine(line string) bool {
 	}
 }
 
-type responseTerminalState uint8
+type responseTerminalState = responses.TerminalState
 
 const (
-	responseTerminalUnknown responseTerminalState = iota
-	responseTerminalInvalid
-	responseTerminalPending
-	responseTerminalCompleted
-	responseTerminalSteered
-	responseTerminalFailed
+	responseTerminalUnknown   = responses.TerminalUnknown
+	responseTerminalInvalid   = responses.TerminalInvalid
+	responseTerminalPending   = responses.TerminalPending
+	responseTerminalCompleted = responses.TerminalCompleted
+	responseTerminalSteered   = responses.TerminalSteered
+	responseTerminalFailed    = responses.TerminalFailed
 )
 
-func (state responseTerminalState) String() string {
-	switch state {
-	case responseTerminalInvalid:
-		return "invalid"
-	case responseTerminalPending:
-		return "pending"
-	case responseTerminalCompleted:
-		return "completed"
-	case responseTerminalSteered:
-		return "steered"
-	case responseTerminalFailed:
-		return "failed"
-	default:
-		return "unknown"
-	}
-}
-
-func copyUpstreamBodyTransformed(writer io.Writer, response *http.Response, streamResponse bool, transformer responseTransformer, observeUsage func(tokenCounts)) (responseTerminalState, error) {
+func copyUpstreamBodyTransformed(writer io.Writer, response *http.Response, streamResponse bool, transformer responseTransformer, hooks *responseHooks) (responseTerminalState, error) {
 	defer response.Body.Close()
 	var (
 		terminalState responseTerminalState
 		err           error
 	)
 	if streamResponse {
-		terminalState, err = copySSETransformed(writer, response.Body, transformer, observeUsage)
+		terminalState, err = copySSETransformed(writer, response.Body, transformer, hooks)
 	} else {
-		terminalState, err = copyJSONTransformed(writer, response.Body, transformer, observeUsage)
+		terminalState, err = copyJSONTransformed(writer, response.Body, transformer, hooks)
 	}
 	if err != nil {
 		return terminalState, fmt.Errorf("copy upstream response: %w", err)
@@ -544,7 +529,7 @@ func copyUpstreamBodyTransformed(writer io.Writer, response *http.Response, stre
 	return terminalState, nil
 }
 
-func copyJSONTransformed(writer io.Writer, reader io.Reader, transformer responseTransformer, observeUsage func(tokenCounts)) (responseTerminalState, error) {
+func copyJSONTransformed(writer io.Writer, reader io.Reader, transformer responseTransformer, hooks *responseHooks) (responseTerminalState, error) {
 	body, err := io.ReadAll(io.LimitReader(reader, upstreamJSONBufferBytes+1))
 	if err != nil {
 		return responseTerminalUnknown, err
@@ -552,7 +537,9 @@ func copyJSONTransformed(writer io.Writer, reader io.Reader, transformer respons
 	if len(body) > upstreamJSONBufferBytes {
 		return responseTerminalUnknown, fmt.Errorf("upstream JSON response exceeds the router buffer budget")
 	}
-	recordObservedUsage(body, false, observeUsage)
+	if err := hooks.observe(body, false); err != nil {
+		return responseTerminalUnknown, fmt.Errorf("%w: %w", errResponseTransform, err)
+	}
 	visible := body
 	if transformer != nil {
 		visible, err = transformer.TransformJSON(body)
@@ -570,7 +557,7 @@ func copyJSONTransformed(writer io.Writer, reader io.Reader, transformer respons
 	return terminalState, nil
 }
 
-func copySSETransformed(writer io.Writer, reader io.Reader, transformer responseTransformer, observeUsage func(tokenCounts)) (state responseTerminalState, resultErr error) {
+func copySSETransformed(writer io.Writer, reader io.Reader, transformer responseTransformer, hooks *responseHooks) (state responseTerminalState, resultErr error) {
 	defer func() {
 		if errors.Is(resultErr, errResponseWrite) {
 			return // The downstream is no longer writable.
@@ -596,7 +583,7 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 		line, err := buffered.ReadString('\n')
 		if len(line) > 0 {
 			if line == "\n" || line == "\r\n" {
-				eventTerminalState, writeErr := writeSSEEvent(writer, event, line, transformer, observeUsage)
+				eventTerminalState, writeErr := writeSSEEvent(writer, event, line, transformer, hooks)
 				terminalState = mergeResponseTerminalState(terminalState, eventTerminalState)
 				if writeErr != nil {
 					return terminalState, writeErr
@@ -611,7 +598,7 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				eventTerminalState, writeErr := writeSSEEvent(writer, event, "", transformer, observeUsage)
+				eventTerminalState, writeErr := writeSSEEvent(writer, event, "", transformer, hooks)
 				terminalState = mergeResponseTerminalState(terminalState, eventTerminalState)
 				if writeErr != nil {
 					return terminalState, writeErr
@@ -632,7 +619,7 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 }
 
 func isResponseTerminal(state responseTerminalState) bool {
-	return state == responseTerminalCompleted || state == responseTerminalFailed || state == responseTerminalSteered
+	return state.Terminal()
 }
 
 func consumeOptionalUTF8BOM(reader *bufio.Reader) error {
@@ -647,7 +634,7 @@ func consumeOptionalUTF8BOM(reader *bufio.Reader) error {
 	return nil
 }
 
-func writeSSEEvent(writer io.Writer, lines []string, separator string, transformer responseTransformer, observeUsage func(tokenCounts)) (responseTerminalState, error) {
+func writeSSEEvent(writer io.Writer, lines []string, separator string, transformer responseTransformer, hooks *responseHooks) (responseTerminalState, error) {
 	defer releaseResponseDelivery(transformer)
 	if len(lines) == 0 {
 		if separator != "" {
@@ -665,7 +652,9 @@ func writeSSEEvent(writer io.Writer, lines []string, separator string, transform
 	payload := ssePayload(lines)
 	terminalState := observeResponseTerminal(payload, true)
 
-	recordObservedUsage(payload, true, observeUsage)
+	if err := hooks.observe(payload, true); err != nil {
+		return terminalState, fmt.Errorf("%w: %w", errResponseTransform, err)
+	}
 	visible := [][]byte{payload}
 	if transformer != nil && len(payload) > 0 {
 		var err error
@@ -730,17 +719,6 @@ func ssePayload(lines []string) []byte {
 		}
 	}
 	return []byte(strings.Join(parts, "\n"))
-}
-
-func recordObservedUsage(payload []byte, streamEvent bool, observe func(tokenCounts)) {
-	if observe == nil {
-		return
-	}
-	counts, ok := usageFromResponsePayload(payload, streamEvent)
-	if !ok {
-		return
-	}
-	observe(counts)
 }
 
 // Synthesized frames need the same event name and data framing as live SSE,
@@ -811,89 +789,16 @@ func encodeSSEEventPayload(lines []string, payload []byte) string {
 	return result.String()
 }
 
-// Source: codex-rs/codex-api/src/endpoint/responses_websocket.rs:749:777 and
-// codex-rs/codex-api/src/sse/responses.rs:524:535. These carry metadata rather
-// than response acceptance or a terminal state.
 func isResponseAncillaryEvent(kind string) bool {
-	switch kind {
-	case "codex.response.metadata", "codex.rate_limits", "responsesapi.websocket_timing":
-		return true
-	default:
-		return false
-	}
+	return responses.Kind(kind).Ancillary()
 }
 
 func observeResponseTerminal(body []byte, streamEvent bool) responseTerminalState {
-	if streamEvent {
-		payload := strings.TrimSpace(string(body))
-		if payload == "" || payload == "[DONE]" {
-			return responseTerminalUnknown
-		}
-	}
-	var envelope struct {
-		Type   string `json:"type"`
-		Status string `json:"status"`
-	}
-	if json.Unmarshal(body, &envelope) != nil {
-		if streamEvent {
-			return responseTerminalInvalid
-		}
-		return responseTerminalUnknown
-	}
-	status := envelope.Status
-	if streamEvent {
-		if isResponseAncillaryEvent(envelope.Type) {
-			return responseTerminalUnknown
-		}
-		if !strings.HasPrefix(envelope.Type, "response.") || envelope.Type == "response." {
-			return responseTerminalInvalid
-		}
-		status = strings.TrimPrefix(envelope.Type, "response.")
-	}
-	switch status {
-	case "completed":
-		return responseTerminalCompleted
-	case "incomplete":
-		var event struct {
-			Response struct {
-				Incomplete struct {
-					Reason string `json:"reason"`
-				} `json:"incomplete_details"`
-			} `json:"response"`
-		}
-		if streamEvent && json.Unmarshal(body, &event) == nil && event.Response.Incomplete.Reason == "steered" {
-			return responseTerminalSteered
-		}
-		return responseTerminalFailed
-	case "failed":
-		return responseTerminalFailed
-	case "queued", "in_progress":
-		return responseTerminalPending
-	default:
-		if streamEvent {
-			return responseTerminalPending
-		}
-		return responseTerminalUnknown
-	}
+	return responses.ObserveTerminal(body, streamEvent)
 }
 
 func mergeResponseTerminalState(current, observed responseTerminalState) responseTerminalState {
-	if current == responseTerminalInvalid || observed == responseTerminalInvalid {
-		return responseTerminalInvalid
-	}
-	if observed == responseTerminalUnknown {
-		return current
-	}
-	if current == responseTerminalFailed || observed == responseTerminalFailed {
-		return responseTerminalFailed
-	}
-	if current == responseTerminalSteered || observed == responseTerminalSteered {
-		return responseTerminalSteered
-	}
-	if current == responseTerminalCompleted || observed == responseTerminalCompleted {
-		return responseTerminalCompleted
-	}
-	return responseTerminalPending
+	return responses.MergeTerminal(current, observed)
 }
 
 func trimSSELineEnding(line string) (string, string) {

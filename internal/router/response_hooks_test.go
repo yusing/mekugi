@@ -1,0 +1,118 @@
+package router
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
+	"strings"
+	"testing"
+)
+
+func TestResponseHooksFinishOnce(t *testing.T) {
+	var results []requestCompletion
+	hooks := &responseHooks{onFinished: func(r requestCompletion) { results = append(results, r) }}
+	first := requestCompletion{outcome: requestOutcomeCompleted, terminal: responseTerminalSteered}
+	hooks.finish(first)
+	hooks.finish(requestCompletion{outcome: requestOutcomeCompleted, terminal: responseTerminalCompleted})
+	if len(results) != 1 || results[0] != first || results[0].succeeded() || !results[0].acceptsOutput() {
+		t.Fatalf("finish results = %#v", results)
+	}
+}
+
+func TestResponseHooksProviderObservationOrder(t *testing.T) {
+	var order []string
+	hooks := &responseHooks{
+		onUsage: func(tokenCounts) { order = append(order, "usage") },
+		output:  &hookOutputRecorder{order: &order},
+	}
+	for _, payload := range []string{
+		`{"type":"response.output_item.done","item":{"type":"function_call"}}`,
+		`{"type":"response.completed","response":{"output":[],"usage":{"input_tokens":2}}}`,
+		`[DONE]`,
+	} {
+		if err := hooks.observe([]byte(payload), true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := strings.Join(order, ","); got != "item,usage,snapshot" {
+		t.Fatal(got)
+	}
+}
+
+type hookOutputRecorder struct{ order *[]string }
+
+func (r *hookOutputRecorder) outputItemDone(json.RawMessage) { *r.order = append(*r.order, "item") }
+func (r *hookOutputRecorder) completedOutput([]json.RawMessage) {
+	*r.order = append(*r.order, "snapshot")
+}
+
+func TestResponseHooksPreserveMalformedOutputRejection(t *testing.T) {
+	for _, payload := range []string{` [DONE] `, `{"type":"response.completed","response":{"output":42}}`} {
+		hooks := &responseHooks{output: &mentorResponseObservation{}}
+		var output bytes.Buffer
+		_, err := copySSETransformed(&output, strings.NewReader("data: "+payload+"\n\n"), nil, hooks)
+		if !errors.Is(err, errResponseTransform) {
+			t.Fatalf("accepted malformed output %q: %v", payload, err)
+		}
+	}
+}
+
+func TestResponseHooksPreserveSSEHeartbeat(t *testing.T) {
+	const wire = ": ping\n\ndata: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\"}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[]}}\n\n"
+	var observation mentorResponseObservation
+	hooks := &responseHooks{}
+	hooks.output = &observation
+	var output bytes.Buffer
+	state, err := copySSETransformed(&output, strings.NewReader(wire), nil, hooks)
+	if err != nil || state != responseTerminalCompleted || output.String() != wire || observation.toolCalls != 1 {
+		t.Fatalf("state=%v error=%v output=%q observation=%+v", state, err, output.String(), observation)
+	}
+}
+
+func TestResponseHooksTerminalSnapshotOutput(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		event string
+		want  uint64
+	}{
+		{"completed", `"type":"response.completed"`, 1},
+		{"steered", `"type":"response.incomplete","reason":"steered"`, 1},
+		{"incomplete", `"type":"response.incomplete","reason":"max_output_tokens"`, 0},
+		{"failed", `"type":"response.failed","reason":"steered"`, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var fields struct {
+				Type   string `json:"type"`
+				Reason string `json:"reason"`
+			}
+			if err := json.Unmarshal([]byte("{"+tc.event+"}"), &fields); err != nil {
+				t.Fatal(err)
+			}
+			payload := `{"type":"` + fields.Type + `","response":{"incomplete_details":{"reason":"` + fields.Reason + `"},"output":[{"type":"message","role":"assistant"},{"type":"function_call"}]}}`
+			var observation mentorResponseObservation
+			hooks := &responseHooks{output: &observation}
+			wire := "data: " + payload + "\n\n"
+			var output bytes.Buffer
+			if _, err := copySSETransformed(&output, strings.NewReader(wire), nil, hooks); err != nil {
+				t.Fatal(err)
+			}
+			if output.String() != wire || observation.messages != tc.want || observation.toolCalls != tc.want {
+				t.Fatalf("output=%q observation=%+v, want %d messages and tool calls", output.String(), observation, tc.want)
+			}
+		})
+	}
+}
+
+func BenchmarkProviderObservation(b *testing.B) {
+	const wire = "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\"}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[],\"usage\":{\"input_tokens\":100,\"output_tokens\":10}}}\n\n"
+	b.ReportAllocs()
+	for b.Loop() {
+		var observation mentorResponseObservation
+		hooks := &responseHooks{onUsage: func(tokenCounts) {}}
+		hooks.output = &observation
+		if _, err := copySSETransformed(io.Discard, strings.NewReader(wire), nil, hooks); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
