@@ -115,6 +115,12 @@ After implementing and validating a feature, always prepare a runnable temporary
 outside the repository using `mktemp -d`. Include required helpers and a launcher, and
 provide the exact command to test it. Never install or overwrite existing binaries.
 
+Do not smoke-test the fixed `shell` helper by launching it without arguments. That opens
+an internal control channel, not script execution, and may dispatch to the active router
+rather than the temporary build. Validate shell execution by starting the temporary router
+and running a real script through `functions.shell` in that session. A version-only launch
+does not establish that script execution works.
+
 ## Where to look
 
 - `README.md`: user guide for installation, deployment, and router/shell workflows.
