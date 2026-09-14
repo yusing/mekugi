@@ -57,3 +57,11 @@ const (
 
 func (k RequestKind) Known() bool     { return k == Turn || k == Prewarm || k == Compaction }
 func (k RequestKind) Scheduled() bool { return k == Turn || k == Compaction }
+
+// FunctionArguments identifies protocol argument fragments. Recognition does not
+// authorize evaluation; consumers still require complete, validated calls.
+func (k Kind) FunctionArguments() bool {
+	return k == FunctionArgumentsDelta || k == FunctionArgumentsDone
+}
+
+func (k Kind) ContentPart() bool { return k == ContentPartAdded || k == ContentPartDone }
