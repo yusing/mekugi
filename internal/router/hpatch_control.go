@@ -223,6 +223,9 @@ func runHpatchControlAt(
 	// An abandoned startup expires promptly; a bound channel never outlives
 	// its retained handle, even when hard cancellation skips carrier cleanup.
 	if err := input.SetReadDeadline(time.Now().Add(time.Minute)); err != nil {
+		if errors.Is(err, os.ErrNoDeadline) {
+			return errors.New("unsupported stdin: shell without arguments requires a pipe or terminal for its internal control channel; use functions.shell to run scripts")
+		}
 		return err
 	}
 	if _, err := io.WriteString(stdout, hpatchTranslationReady); err != nil {

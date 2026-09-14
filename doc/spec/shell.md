@@ -123,6 +123,10 @@ the worker command as the complete outer command. After the first body line, dir
 
 When the worker carrier is selected, the executor starts the fixed helper once with the normalized
 interpreter fields and exact body.
+An argument-free helper invocation is a private control channel, not a way to pipe in a shell
+script. Unsupported stdin, such as a regular file or `/dev/null`, must produce a clear diagnostic
+pointing to `functions.shell` for script execution rather than a low-level deadline error.
+Pipe and terminal control-channel behavior is unchanged.
 The helper reads the current thread runtime path and replaces itself with the authenticated
 router worker, without a second Codex executor call. For Bash and sh basenames,
 the worker parses the body with `mvdan/sh` using

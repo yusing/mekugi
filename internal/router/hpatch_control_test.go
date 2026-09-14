@@ -277,3 +277,38 @@ func TestHpatchControlCloseDuringChunkedReply(t *testing.T) {
 		t.Fatalf("resume after partial reply: %v %s", err, history.TranslationError)
 	}
 }
+
+func TestHpatchControlUnsupportedStdinDiagnostic(t *testing.T) {
+	t.Parallel()
+	transform, _ := mixedTestTransform(t)
+	if _, err := transform.retainMixedScript("", "", "shell true", nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"null", "regular-file"} {
+		t.Run(name, func(t *testing.T) {
+			path := os.DevNull
+			if name == "regular-file" {
+				path = filepath.Join(t.TempDir(), "input")
+				if err := os.WriteFile(path, []byte("printf example\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			input, err := os.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer input.Close()
+			var output bytes.Buffer
+			err = runHpatchControlAt(t.Context(), input, &output,
+				filepath.Dir(transform.shellDirectory), strings.TrimPrefix(filepath.Base(transform.shellDirectory), "mekugi-scripts-"))
+			if err == nil || !strings.Contains(err.Error(), "unsupported stdin") ||
+				!strings.Contains(err.Error(), "use functions.shell to run scripts") ||
+				strings.Contains(err.Error(), "file type does not support deadline") {
+				t.Fatalf("unhelpful diagnostic: %v", err)
+			}
+			if output.Len() != 0 {
+				t.Fatalf("unsupported input announced readiness: %q", output.String())
+			}
+		})
+	}
+}
