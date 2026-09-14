@@ -22,7 +22,7 @@ func TestLiveDiffRenderAllFiles(t *testing.T) {
 		path := filepath.Join(workspace, name+".txt")
 		diff := "--- /dev/null\n+++ " + strconv.Quote(path) + "\n@@ -0,0 +1 @@\n+" + name + " content\n"
 		files = append(files, liveDiffFile{path: path, chunks: []liveDiffChunk{{
-			status: "Applied", diff: diff,
+			status: "Applied",
 			review: mekugi.ReviewFile{AfterPath: path, Diff: diff},
 		}}})
 	}
@@ -56,7 +56,7 @@ func TestLiveDiffFollowEmptyLatestFile(t *testing.T) {
 	second := filepath.Join(workspace, "second.txt")
 	diff := "--- /dev/null\n+++ " + strconv.Quote(first) + "\n@@ -0,0 +1,40 @@\n" + strings.Repeat("+first content\n", 40)
 	files := []liveDiffFile{
-		{path: first, chunks: []liveDiffChunk{{status: "Applied", diff: diff,
+		{path: first, chunks: []liveDiffChunk{{status: "Applied",
 			review: mekugi.ReviewFile{AfterPath: first, Diff: diff}}}},
 		{path: second}, // The latest file was flushed or fully reverted.
 	}

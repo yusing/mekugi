@@ -46,7 +46,7 @@ func TestLiveDiffCompactCoordinates(t *testing.T) {
 			review = mekugi.ReviewFile{BeforePath: path,
 				Diff: "--- file.txt\n+++ /dev/null\n@@ -1,20 +0,0 @@\n" + strings.Repeat("-content\n", 20)}
 		}
-		chunk := liveDiffChunk{diff: review.Diff, review: review}
+		chunk := liveDiffChunk{review: review}
 		render, err := renderLiveDiff(t.Context(), []liveDiffFile{{path: path, chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk)
 		if err != nil {
 			t.Fatal(err)
@@ -90,7 +90,7 @@ func TestLiveDiffFollowInsideCombinedHunk(t *testing.T) {
 func TestLiveDiffNativeFollowKeepsPreparedCaption(t *testing.T) {
 	diff := "--- /dev/null\n+++ file.txt\n@@ -0,0 +1,40 @@\n" + strings.Repeat("+content\n", 40)
 	chunk := liveDiffChunk{
-		key: "latest", status: "hp_a1 prepared (application unconfirmed)", diff: diff,
+		key: "latest", status: "hp_a1 prepared (application unconfirmed)",
 		review: mekugi.ReviewFile{AfterPath: "file.txt", Diff: diff},
 	}
 	render, err := renderLiveDiff(t.Context(), []liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk)
@@ -201,7 +201,7 @@ func TestLiveDiffNativeErrors(t *testing.T) {
 	if err == nil || len(render.lines) != 0 {
 		t.Fatalf("malformed capture returned a partial successful view: %+v %v", render, err)
 	}
-	chunk.diff = strings.Repeat("x", maxChangeReadBytes+1)
+	chunk.review.Diff = strings.Repeat("x", maxChangeReadBytes+1)
 	if _, err := renderLiveDiff(t.Context(), []liveDiffFile{{chunks: []liveDiffChunk{chunk}}}, "", 80, 0, liveDiffChunk{}); err == nil {
 		t.Fatal("unbounded source accepted")
 	}

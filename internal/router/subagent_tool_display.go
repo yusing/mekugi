@@ -14,18 +14,18 @@ import (
 )
 
 // Presentation only: never evaluate code, expand paths, or alter the observed call.
-func subagentToolActivityTexts(item map[string]json.RawMessage, qualifiedName string, shellDisplay func(map[string]json.RawMessage, string) (string, bool)) []string {
+func subagentToolPreview(item map[string]json.RawMessage, qualifiedName string, shellDisplay func(map[string]json.RawMessage, string) (string, bool)) string {
 	name := jsonString(item, "name")
 	// Agent messages already have a dedicated commentary render.
 	if name == "send_message" && commentaryExcluded(jsonString(item, "namespace"), name) {
-		return nil
+		return ""
 	}
 	if commentaryExcluded(jsonString(item, "namespace"), name) {
-		return []string{"Tool call: " + commentaryCode(qualifiedName)}
+		return "Tool call: " + commentaryCode(qualifiedName)
 	}
 	if shellDisplay != nil {
 		if display, ok := shellDisplay(item, qualifiedName); ok {
-			return []string{display}
+			return display
 		}
 	}
 	input := jsonString(item, "arguments")
@@ -34,30 +34,29 @@ func subagentToolActivityTexts(item map[string]json.RawMessage, qualifiedName st
 	}
 	shortName := strings.TrimPrefix(qualifiedName, "functions.")
 	if server, ok := strings.CutPrefix(jsonString(item, "namespace"), "mcp__"); ok && server != "" && name != "" {
-		return []string{toolActivityDetail("MCP "+commentaryCode(server+"."+name), input)}
+		return toolActivityDetail("MCP "+commentaryCode(server+"."+name), input)
 	}
 	if server, tool, ok := toolActivityMCPName(shortName); ok {
 		// Source: codex-rs/tui/src/history_cell/mcp.rs:727:748 format_mcp_invocation.
 		// Keep Codex's server.tool identity and arguments, without claiming success.
-		return []string{toolActivityDetail("MCP "+commentaryCode(server+"."+tool), input)}
+		return toolActivityDetail("MCP "+commentaryCode(server+"."+tool), input)
 	}
 	if shortName == "exec" {
 		if calls, ok := toolActivityUnwrapExecCalls(input, false); ok {
 			var displays []string
 			for _, nested := range calls {
-				displays = append(displays, subagentToolActivityTexts(nested, qualifiedToolName(jsonString(nested, "namespace"), jsonString(nested, "name")), shellDisplay)...)
+				if display := subagentToolPreview(nested, qualifiedToolName(jsonString(nested, "namespace"), jsonString(nested, "name")), shellDisplay); display != "" {
+					displays = append(displays, display)
+				}
 			}
-			if len(displays) == 0 {
-				return nil
-			}
-			return []string{strings.Join(displays, "\n\n")}
+			return strings.Join(displays, "\n\n")
 		}
 	}
 	var arguments map[string]json.RawMessage
 	_ = json.Unmarshal([]byte(input), &arguments)
 	// Cell waits use the operation-aware display below, not the generic helper label.
 	if label := toolActivityBuiltinLabel(shortName); label != "" && (shortName != "wait" || arguments["cell_id"] == nil) {
-		return []string{toolActivityDetail(label, input)}
+		return toolActivityDetail(label, input)
 	}
 	if kind := jsonString(item, "type"); kind == "local_shell_call" || kind == "shell_call" {
 		var action struct {
@@ -66,13 +65,13 @@ func subagentToolActivityTexts(item map[string]json.RawMessage, qualifiedName st
 		}
 		if json.Unmarshal(item["action"], &action) == nil {
 			if len(action.Commands) > 0 {
-				return []string{toolActivityShell(strings.Join(action.Commands, "\n"))}
+				return toolActivityShell(strings.Join(action.Commands, "\n"))
 			}
 			if len(action.Command) > 0 {
-				return []string{toolActivityShellArgv(action.Command)}
+				return toolActivityShellArgv(action.Command)
 			}
 		}
-		return []string{"Run"}
+		return "Run"
 	}
 	switch shortName {
 	case "shell", "shell_command", "exec_command":
@@ -84,29 +83,29 @@ func subagentToolActivityTexts(item map[string]json.RawMessage, qualifiedName st
 			}
 			var argv []string
 			if json.Unmarshal(arguments["command"], &argv) == nil {
-				return []string{toolActivityShellArgv(argv)}
+				return toolActivityShellArgv(argv)
 			}
 		}
-		return []string{toolActivityShell(script)}
+		return toolActivityShell(script)
 	case "exec":
-		return []string{toolActivityJavaScript(input)}
+		return toolActivityJavaScript(input)
 	case "wait":
 		if jsonString(arguments, "cell_id") != "" {
 			var terminate bool
 			_ = json.Unmarshal(arguments["terminate"], &terminate)
 			if terminate {
-				return []string{"Stop · operation unavailable"}
+				return "Stop · operation unavailable"
 			}
-			return []string{"Still Running · operation unavailable"}
+			return "Still Running · operation unavailable"
 		}
 	case "view_image":
-		return []string{toolActivityDetail("View image", jsonString(arguments, "path"))}
+		return toolActivityDetail("View image", jsonString(arguments, "path"))
 	case "write_stdin":
-		return []string{toolActivityWriteStdin(arguments)}
+		return toolActivityWriteStdin(arguments)
 	case "apply_patch", "hpatch", "hpatch_recover":
 		// Edit evidence belongs in host tool results and the live diff viewer,
 		// not a second generated commentary rendering.
-		return nil
+		return ""
 	}
 	switch jsonString(item, "type") {
 	case "web_search_call":
@@ -119,23 +118,23 @@ func subagentToolActivityTexts(item map[string]json.RawMessage, qualifiedName st
 			if query == "" && json.Unmarshal(action["queries"], &queries) == nil {
 				query = strings.Join(queries, "\n")
 			}
-			return []string{toolActivityDetail("Search web", query)}
+			return toolActivityDetail("Search web", query)
 		case "open_page":
-			return []string{toolActivityDetail("Open page", jsonString(action, "url"))}
+			return toolActivityDetail("Open page", jsonString(action, "url"))
 		case "find":
-			return []string{toolActivityDetail("Find in page", jsonString(action, "pattern"))}
+			return toolActivityDetail("Find in page", jsonString(action, "pattern"))
 		}
-		return []string{"Search web"}
+		return "Search web"
 	case "file_search_call":
 		var queries []string
 		_ = json.Unmarshal(item["queries"], &queries)
-		return []string{toolActivityDetail("Search files", strings.Join(queries, "\n"))}
+		return toolActivityDetail("Search files", strings.Join(queries, "\n"))
 	case "image_generation_call":
-		return []string{"Generate image"}
+		return "Generate image"
 	case "code_interpreter_call":
-		return []string{toolActivityDetail("Run code", jsonString(item, "code"))}
+		return toolActivityDetail("Run code", jsonString(item, "code"))
 	}
-	return []string{toolActivityDetail("Tool call: "+commentaryCode(qualifiedName), input)}
+	return toolActivityDetail("Tool call: "+commentaryCode(qualifiedName), input)
 }
 
 // Use one label table for native calls and normalized Code Mode identifiers.

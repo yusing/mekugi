@@ -9,7 +9,7 @@ import (
 
 // Most display tests compare one textual preview; delivery tests check message boundaries.
 func subagentToolActivityText(item map[string]json.RawMessage, name string) string {
-	return strings.Join(subagentToolActivityTexts(item, name, nil), "\n\n")
+	return subagentToolPreview(item, name, nil)
 }
 
 func TestSubagentToolDisplay(t *testing.T) {
@@ -551,9 +551,9 @@ func TestSubagentStaticMultiCallDisplays(t *testing.T) {
 func TestSubagentBatchSuppressesOnlyPatchCommentary(t *testing.T) {
 	source := `text(await tools.apply_patch("*** Begin Patch\n*** Add File: a\n+x\n*** Add File: b\n+y\n*** End Patch\n")); text(await tools.clock__curr_time({}));`
 	item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
-	displays := subagentToolActivityTexts(item, "exec", nil)
-	if len(displays) != 1 || displays[0] != "Read current time\n`{}`" {
-		t.Fatalf("patch file boundaries = %q", displays)
+	display := subagentToolPreview(item, "exec", nil)
+	if display != "Read current time\n`{}`" {
+		t.Fatalf("mixed batch preview = %q", display)
 	}
 }
 

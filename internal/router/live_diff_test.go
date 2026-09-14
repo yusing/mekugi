@@ -51,14 +51,13 @@ func TestLiveDiffRelativeDisplayKeepsSourceAndCapture(t *testing.T) {
 	diff := "--- " + strconv.Quote(before) + "\n+++ " + strconv.Quote(after) + "\n@@ -1 +1 @@\n-old\n+" + source + "\n"
 	chunk := liveDiffChunk{
 		review: mekugi.ReviewFile{BeforePath: before, AfterPath: after, Diff: diff},
-		diff:   diff,
 	}
 	render, err := renderLiveDiff(t.Context(), []liveDiffFile{{path: after, chunks: []liveDiffChunk{chunk}}}, workspace, 240, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := ansi.Strip(strings.Join(render.lines, "\n"))
-	if !strings.Contains(text, "Rename: old name.txt → sub/new.txt") || !strings.Contains(text, source) || chunk.diff != diff {
+	if !strings.Contains(text, "Rename: old name.txt → sub/new.txt") || !strings.Contains(text, source) || chunk.review.Diff != diff {
 		t.Fatalf("incorrect display or mutated capture: %q", text)
 	}
 }
@@ -125,13 +124,13 @@ func TestLiveDiffFollowUsesCaptureOrderNotFileGrouping(t *testing.T) {
 func TestLiveDiffMergePreservesFileAndPosition(t *testing.T) {
 	v := liveDiffView{scroll: map[string]int{"old": 40}}
 	v.merge([]liveDiffFile{
-		{path: "b", chunks: []liveDiffChunk{{key: "old", status: "prepared", diff: "old"}}},
+		{path: "b", chunks: []liveDiffChunk{{key: "old", status: "prepared"}}},
 		{path: "c"},
 	})
 	v.merge([]liveDiffFile{
 		{path: "c"},
 		{path: "a"},
-		{path: "b", chunks: []liveDiffChunk{{key: "new", diff: "new"}, {key: "old", status: "applied", diff: "old"}}},
+		{path: "b", chunks: []liveDiffChunk{{key: "new"}, {key: "old", status: "applied"}}},
 	})
 	if v.files[v.selected].path != "b" || v.scroll["old"] != 40 ||
 		v.files[0].chunks[0].key != "old" || v.files[0].chunks[0].status != "applied" ||
@@ -171,11 +170,7 @@ func TestLiveDiffStoreRestartAndMissingEvidence(t *testing.T) {
 	}
 	liveDiffTestChange(t, store, workspace, "one", "x.go", false)
 	reopened := &mekugiReplayStore{directory: store.directory}
-	index, err := reopened.readChangeIndex(workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	files, err := reopened.liveDiffSnapshotFiles(t.Context(), map[string]changeIndex{workspace: index})
+	files, err := reopened.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
 	if err != nil || len(files) != 1 || !strings.Contains(files[0].chunks[0].status, "unconfirmed") {
 		t.Fatalf("files: %#v, %v", files, err)
 	}
@@ -184,18 +179,14 @@ func TestLiveDiffStoreRestartAndMissingEvidence(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	index, err = reopened.readChangeIndex(workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	files, err = reopened.liveDiffSnapshotFiles(t.Context(), map[string]changeIndex{workspace: index})
+	files, err = reopened.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
 	if err != nil || files[0].chunks[0].status != "hp_a1 applied" {
 		t.Fatalf("receipt: %#v, %v", files, err)
 	}
 	if err := os.Rename(filepath.Join(store.directory, replayRecordName(workspace, "one", false)), filepath.Join(store.directory, "removed-record")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reopened.liveDiffSnapshotFiles(t.Context(), map[string]changeIndex{workspace: index}); err == nil {
+	if _, err := reopened.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}}); err == nil {
 		t.Fatal("missing evidence treated as an empty view")
 	}
 }
@@ -206,8 +197,7 @@ func TestLiveDiffNativeRenderer(t *testing.T) {
 	path := filepath.Join(workspace, "x.go")
 	file := liveDiffFile{path: path, chunks: []liveDiffChunk{{
 		status: "hp_a1 applied",
-		diff:   "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1 +1 @@\n-old\n+new\n",
-		review: mekugi.ReviewFile{BeforePath: path, AfterPath: path},
+		review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1 +1 @@\n-old\n+new\n"},
 	}}}
 	render, err := renderLiveDiff(t.Context(), []liveDiffFile{file}, workspace, 80, 0, liveDiffChunk{})
 	if err != nil {
@@ -230,8 +220,8 @@ func TestLiveDiffRenderFollowsLatestHunk(t *testing.T) {
 	top := header + "@@ -1 +1 @@\n-top\n+TOP\n"
 	bottom := header + "@@ -99 +100 @@\n-bottom\n+BOTTOM\n"
 	file := liveDiffFile{chunks: []liveDiffChunk{
-		{status: "Applied", diff: top, review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: top}},
-		{status: "Applied", diff: bottom, review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: bottom}},
+		{status: "Applied", review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: top}},
+		{status: "Applied", review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: bottom}},
 	}}
 	for i, diff := range []string{top, bottom} {
 		focus := liveDiffChunk{review: mekugi.ReviewFile{Diff: diff}}
@@ -395,11 +385,7 @@ func TestLiveDiffExcludesPrivateScripts(t *testing.T) {
 	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"private": h}); err != nil {
 		t.Fatal(err)
 	}
-	index, err := store.readChangeIndex(workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	files, err := store.liveDiffSnapshotFiles(t.Context(), map[string]changeIndex{workspace: index})
+	files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
 	if err != nil || len(files) != 1 || files[0].path != filepath.Join(workspace, "public.go") {
 		t.Fatalf("private scripts in live view: %#v %v", files, err)
 	}
@@ -422,7 +408,7 @@ esac
 	}
 	marker := filepath.Join(dir, "run-marker")
 	t.Setenv("MEKUGI_LIVE_DIFF_RUN_MARKER", marker)
-	err := splitLiveDiff(t.Context(), dir, dir, os.Stdout, &liveDiffPane{sessionFile: filepath.Join(dir, "connection.json")})
+	err := splitLiveDiff(t.Context(), dir, dir, &liveDiffPane{sessionFile: filepath.Join(dir, "connection.json")})
 	if err == nil || !strings.Contains(err.Error(), "no pane identity") {
 		t.Fatalf("missing identity accepted: %v", err)
 	}
@@ -522,11 +508,7 @@ func TestLiveDiffFlushComposesAndPreservesSelection(t *testing.T) {
 	view := liveDiffView{scroll: map[string]int{workspace + "\x00A/0": 4}}
 	refresh := func() string {
 		t.Helper()
-		index, err := store.readChangeIndex(workspace)
-		if err != nil {
-			t.Fatal(err)
-		}
-		files, err := store.liveDiffSnapshotFiles(t.Context(), map[string]changeIndex{workspace: index})
+		files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -534,7 +516,7 @@ func TestLiveDiffFlushComposesAndPreservesSelection(t *testing.T) {
 		view.refreshVisible()
 		var text strings.Builder
 		for _, chunk := range view.visible[workspace+"\x00A/0"].chunks {
-			text.WriteString(chunk.diff)
+			text.WriteString(chunk.review.UnifiedDiff())
 		}
 		return text.String()
 	}
@@ -565,11 +547,7 @@ func TestLiveDiffFlushAdjacentEditStaysHidden(t *testing.T) {
 	var view liveDiffView
 	refresh := func() {
 		t.Helper()
-		index, err := store.readChangeIndex(workspace)
-		if err != nil {
-			t.Fatal(err)
-		}
-		files, err := store.liveDiffSnapshotFiles(t.Context(), map[string]changeIndex{workspace: index})
+		files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -583,7 +561,7 @@ func TestLiveDiffFlushAdjacentEditStaysHidden(t *testing.T) {
 	refresh()
 	var text strings.Builder
 	for _, chunk := range view.visible[view.files[0].key()].chunks {
-		text.WriteString(chunk.diff)
+		text.WriteString(chunk.review.UnifiedDiff())
 	}
 	if got := text.String(); strings.Contains(got, "+B\n") || !strings.Contains(got, "+A\n") {
 		t.Fatalf("reviewed adjacent change revived: %q", got)
@@ -599,11 +577,7 @@ func TestLiveDiffFlushPendingReceiptAndAllFiles(t *testing.T) {
 	view := liveDiffView{scroll: make(map[string]int)}
 	refresh := func() {
 		t.Helper()
-		index, err := store.readChangeIndex(workspace)
-		if err != nil {
-			t.Fatal(err)
-		}
-		files, err := store.liveDiffSnapshotFiles(t.Context(), map[string]changeIndex{workspace: index})
+		files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -634,7 +608,7 @@ func TestLiveDiffFlushPendingReceiptAndAllFiles(t *testing.T) {
 	}
 	liveDiffFlushCapture(t, store, workspace, "B", "new\n", "fixed\n", true)
 	refresh()
-	if len(view.visible[workspace+"\x00A/0"].chunks) == 0 || !strings.Contains(view.visible[workspace+"\x00A/0"].chunks[0].diff, "-old\n+fixed\n") {
+	if len(view.visible[workspace+"\x00A/0"].chunks) == 0 || !strings.Contains(view.visible[workspace+"\x00A/0"].chunks[0].review.Diff, "-old\n+fixed\n") {
 		t.Fatalf("fix did not revive flushed pending baseline: %#v", view.visible[workspace+"\x00A/0"])
 	}
 }
@@ -747,11 +721,7 @@ func liveDiffIdentityCapture(t *testing.T, store *mekugiReplayStore, workspace, 
 
 func liveDiffRefreshTest(t *testing.T, store *mekugiReplayStore, workspace string, view *liveDiffView) {
 	t.Helper()
-	index, err := store.readChangeIndex(workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	files, err := store.liveDiffSnapshotFiles(t.Context(), map[string]changeIndex{workspace: index})
+	files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -762,7 +732,7 @@ func liveDiffRefreshTest(t *testing.T, store *mekugiReplayStore, workspace strin
 func liveDiffVisibleText(file liveDiffFile) string {
 	var text strings.Builder
 	for _, chunk := range file.chunks {
-		text.WriteString(chunk.status + "\n" + chunk.diff)
+		text.WriteString(chunk.status + "\n" + chunk.review.UnifiedDiff())
 	}
 	return text.String()
 }

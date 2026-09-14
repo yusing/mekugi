@@ -70,7 +70,7 @@ func TestLiveDiffCaptureOrderSurvivesReceiptsAndRestart(t *testing.T) {
 		}
 		file := v.visible[v.files[0].key()]
 		if len(file.chunks) != 1 || file.chunks[0].status != "" ||
-			!strings.Contains(file.chunks[0].diff, "-original\n+final\n") {
+			!strings.Contains(file.chunks[0].review.Diff, "-original\n+final\n") {
 			t.Fatalf("not the combined final result: %#v", file)
 		}
 		orders := make([]uint64, 0, 3)
@@ -88,7 +88,7 @@ func TestLiveDiffCaptureOrderSurvivesReceiptsAndRestart(t *testing.T) {
 		filepath.Join(workspace, "file.txt"), "final", "first")
 	liveDiffRefreshTest(t, store, workspace, &view)
 	result := view.visible[view.files[0].key()]
-	if len(result.chunks) != 1 || !strings.Contains(result.chunks[0].diff, "-original\n+first\n") ||
+	if len(result.chunks) != 1 || !strings.Contains(result.chunks[0].review.Diff, "-original\n+first\n") ||
 		!result.highlighted {
 		t.Fatalf("partial revert did not revive the original-to-latest result: %#v", result)
 	}

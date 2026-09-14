@@ -26,7 +26,7 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, workspace string,
 	for _, file := range files {
 		sourceBytes += len(file.path)
 		for _, chunk := range file.chunks {
-			sourceBytes += len(chunk.diff) + len(chunk.status) + len(chunk.review.BeforePath) + len(chunk.review.AfterPath)
+			sourceBytes += len(chunk.review.Diff) + len(chunk.status) + len(chunk.review.BeforePath) + len(chunk.review.AfterPath)
 		}
 	}
 	if sourceBytes > maxChangeReadBytes {
@@ -62,7 +62,7 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, workspace string,
 		}
 		action := ""
 		for _, chunk := range file.chunks {
-			added, removed := (mekugi.ReviewFile{Diff: chunk.diff}).LineCounts()
+			added, removed := chunk.review.LineCounts()
 			render.counts[i].added += added
 			render.counts[i].removed += removed
 			if action == "" && chunk.status == "" {
@@ -96,9 +96,7 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, workspace string,
 		oldDigits, newDigits := 0, 0
 		fileHunks := make([][]mekugi.ReviewHunk, len(file.chunks))
 		for j, chunk := range file.chunks {
-			review := chunk.review
-			review.Diff = chunk.diff
-			hunks, err := review.Hunks()
+			hunks, err := chunk.review.Hunks()
 			if err != nil {
 				return liveDiffRender{}, err
 			}

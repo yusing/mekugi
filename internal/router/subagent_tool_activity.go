@@ -47,8 +47,7 @@ func (t *mekugiResponseTransform) collectSubagentToolCall(item map[string]json.R
 		delete(item, "namespace")
 		name = "shell"
 	}
-	displays := subagentToolActivityTexts(item, name, t.shellActivityDisplay)
-	for _, text := range displays {
+	if text := subagentToolPreview(item, name, t.shellActivityDisplay); text != "" {
 		t.proxy.activity.collect(t.threadID, "tool-call\x00"+id, "tool", text)
 	}
 }

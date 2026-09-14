@@ -32,15 +32,6 @@ type reviewRegion struct {
 	highlighted             bool
 }
 
-type reviewHunk struct {
-	start                  int
-	afterStart, afterCount int
-	diff                   string
-	before                 []string
-	edits                  []reviewEdit
-	rows                   []ReviewRow
-}
-
 // ReviewRow is a validated source row. Kind is ' ', '-', or '+' for context,
 // removal, or addition. Text retains source bytes, including its line terminator;
 // a missing final newline is represented by the absence of that terminator.
@@ -51,34 +42,17 @@ type ReviewRow struct {
 
 // ReviewHunk is one validated captured hunk with zero-based source coordinates.
 // ChangedStart excludes leading context; deletions use their anchor.
-// Diff includes file headers; Rows exposes the same content without diff framing.
+// Rows exposes source content without diff framing.
 type ReviewHunk struct {
-	BeforeStart            int
-	AfterStart, AfterCount int
-	ChangedStart           int
-	Diff                   string
-	Rows                   []ReviewRow
+	BeforeStart, AfterStart int
+	ChangedStart            int
+	Rows                    []ReviewRow
 }
 
 // Hunks exposes captured geometry without reading files or duplicating the
 // engine's diff parser in viewers. Path-only changes return no hunks.
 func (file ReviewFile) Hunks() ([]ReviewHunk, error) {
-	parsed, err := parseReviewHunks(file, false)
-	if err != nil {
-		return nil, err
-	}
-	var result []ReviewHunk
-	for _, hunk := range parsed {
-		changed := hunk.afterStart
-		if len(hunk.edits) > 0 {
-			changed += hunk.edits[0].start - hunk.start
-		}
-		result = append(result, ReviewHunk{
-			BeforeStart: hunk.start, AfterStart: hunk.afterStart, AfterCount: hunk.afterCount,
-			ChangedStart: changed, Diff: hunk.diff, Rows: hunk.rows,
-		})
-	}
-	return result, nil
+	return parseReviewHunks(file, false)
 }
 
 type reviewEdit struct {
@@ -114,27 +88,45 @@ func (c *ReviewComposition) ApplyWithHighlight(file ReviewFile, reviewed, highli
 		return errors.New("captured file identity does not continue the composed chain")
 	}
 	// Validate and learn context before changing any coordinates.
+	var edits []reviewEdit
 	for _, hunk := range hunks {
-		for i, line := range hunk.before {
-			position := hunk.start + i
-			if known, ok := next.current[position]; ok && known != line {
-				return errors.New("captured source does not match the composed chain")
-			}
-			next.current[position] = line
-			if original, ok := next.originalPosition(position); ok {
-				if known, exists := next.original[original]; exists && known != line {
-					return errors.New("captured original context does not match the composed chain")
+		position := hunk.BeforeStart
+		var edit *reviewEdit
+		for _, row := range hunk.Rows {
+			if row.Kind != '+' {
+				if known, ok := next.current[position]; ok && known != row.Text {
+					return errors.New("captured source does not match the composed chain")
 				}
-				next.original[original] = line
+				next.current[position] = row.Text
+				if original, ok := next.originalPosition(position); ok {
+					if known, exists := next.original[original]; exists && known != row.Text {
+						return errors.New("captured original context does not match the composed chain")
+					}
+					next.original[original] = row.Text
+				}
+			}
+			if row.Kind == ' ' {
+				edit = nil
+			} else {
+				if edit == nil {
+					edits = append(edits, reviewEdit{start: position})
+					edit = &edits[len(edits)-1]
+				}
+				if row.Kind == '-' {
+					edit.before = append(edit.before, row.Text)
+				} else {
+					edit.after = append(edit.after, row.Text)
+				}
+			}
+			if row.Kind != '+' {
+				position++
 			}
 		}
 	}
 	// Descending source order keeps all input coordinates on one baseline.
-	for i := len(hunks) - 1; i >= 0; i-- {
-		for j := len(hunks[i].edits) - 1; j >= 0; j-- {
-			if err := next.applyEdit(hunks[i].edits[j], reviewed, highlighted); err != nil {
-				return err
-			}
+	for _, edit := range slices.Backward(edits) {
+		if err := next.applyEdit(edit, reviewed, highlighted); err != nil {
+			return err
 		}
 	}
 	next.normalize()
@@ -431,20 +423,15 @@ func (c *ReviewComposition) FilesWithHighlights() []ReviewHighlightedFile {
 
 // Parse the engine's review format, retaining exact source line endings. No
 // filesystem lookup, fuzzy application, or executor-patch semantics are involved.
-func parseReviewHunks(file ReviewFile, complete bool) ([]reviewHunk, error) {
+func parseReviewHunks(file ReviewFile, complete bool) ([]ReviewHunk, error) {
 	lines := strings.SplitAfter(file.UnifiedDiff(), "\n")
-	var hunks []reviewHunk
+	var hunks []ReviewHunk
 	previousEnd, previousAfterEnd, shift, rowCount := 0, 0, 0, 0
-	header := ""
 	for i := 0; i < len(lines); {
 		line := lines[i]
 		i++
 		if !strings.HasPrefix(line, "@@ ") {
 			continue
-		}
-		startLine := i - 1
-		if len(hunks) == 0 {
-			header = strings.Join(lines[:startLine], "")
 		}
 		fields := strings.Fields(line)
 		if len(fields) != 4 || fields[0] != "@@" || fields[3] != "@@" {
@@ -461,7 +448,6 @@ func parseReviewHunks(file ReviewFile, complete bool) ([]reviewHunk, error) {
 		if oldStart < previousEnd || newStart < previousAfterEnd || complete && newStart != oldStart+shift {
 			return nil, errors.New("inconsistent captured hunk coordinates")
 		}
-		hunk := reviewHunk{start: oldStart, afterStart: newStart, afterCount: newCount}
 		var body []ReviewRow
 		oldRows, newRows := 0, 0
 		for i < len(lines) && !strings.HasPrefix(lines[i], "@@ ") {
@@ -495,31 +481,13 @@ func parseReviewHunks(file ReviewFile, complete bool) ([]reviewHunk, error) {
 		if oldRows != oldCount || newRows != newCount {
 			return nil, errors.New("captured hunk counts do not match content")
 		}
-		var edit *reviewEdit
-		position := oldStart
-		for _, row := range body {
-			if row.Kind != '+' {
-				hunk.before = append(hunk.before, row.Text)
-			}
-			if row.Kind == ' ' {
-				position++
-				edit = nil
-				continue
-			}
-			if edit == nil {
-				hunk.edits = append(hunk.edits, reviewEdit{start: position})
-				edit = &hunk.edits[len(hunk.edits)-1]
-			}
-			if row.Kind == '-' {
-				edit.before = append(edit.before, row.Text)
-				position++
-			} else {
-				edit.after = append(edit.after, row.Text)
-			}
+		changed := newStart
+		if first := slices.IndexFunc(body, func(row ReviewRow) bool { return row.Kind != ' ' }); first >= 0 {
+			changed += first
 		}
-		hunk.rows = body
-		hunk.diff = header + strings.Join(lines[startLine:i], "")
-		hunks = append(hunks, hunk)
+		hunks = append(hunks, ReviewHunk{
+			BeforeStart: oldStart, AfterStart: newStart, ChangedStart: changed, Rows: body,
+		})
 		previousAfterEnd = newStart + newCount
 		previousEnd, shift = oldStart+oldCount, shift+newCount-oldCount
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -41,7 +42,6 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			}
 			if call.Confirmed && !old.confirmed {
 				old.confirmed = true
-				old.chunks = slices.Clone(old.chunks)
 				for i := range old.chunks {
 					chunk := &old.chunks[i]
 					if chunk.status == event.ID+" prepared (application unconfirmed)" {
@@ -63,11 +63,11 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			return fmt.Errorf("change %s has a missing or inconsistent attempt", event.ID)
 		}
 		history := record.History
+		status := trackedStatus(history, call.Confirmed)
 		attempt := liveDiffAttempt{change: event.ID, correlation: event.Change.Correlation, stream: event.Stream, confirmed: call.Confirmed}
 		// Private retained scripts are not workspace edits.
 		if !strings.HasPrefix(strings.TrimLeft(history.recoveryBaseline(), "\r\n"), "in "+shellArtifactPrefix) {
 			for n, file := range history.ReviewFiles {
-				diff := file.UnifiedDiff()
 				canonical := func(path string) string {
 					if path == "" {
 						return ""
@@ -78,14 +78,14 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 					return filepath.Clean(path)
 				}
 				file.BeforePath, file.AfterPath = canonical(file.BeforePath), canonical(file.AfterPath)
-				d.bytes += len(diff) + len(file.BeforePath) + len(file.AfterPath) + len(key)
+				d.bytes += len(file.Diff) + len(file.BeforePath) + len(file.AfterPath) + len(key)
 				if d.bytes > maxChangeReadBytes {
 					return errors.New("live diff exceeds 64 MiB; use hchanges with a narrower range")
 				}
 				attempt.chunks = append(attempt.chunks, liveDiffChunk{
 					key: key + "/" + strconv.Itoa(n), stream: event.Workspace + "\x00" + strconv.Itoa(event.Stream),
-					captureOrder: record.CaptureOrder, status: event.ID + " " + trackedStatus(history, call.Confirmed),
-					review: file, applied: trackedStatus(history, call.Confirmed) == "applied", diff: diff,
+					captureOrder: record.CaptureOrder, status: event.ID + " " + status,
+					review: file, applied: status == "applied",
 				})
 			}
 		}
@@ -95,7 +95,7 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 	return nil
 }
 
-func (d *liveDiffData) files() ([]liveDiffFile, error) {
+func (d *liveDiffData) files() []liveDiffFile {
 	var captures []liveDiffChunk
 	for _, key := range d.order {
 		captures = append(captures, d.attempts[key].chunks...)
@@ -114,13 +114,20 @@ func (s *mekugiReplayStore) liveDiffSnapshot(ctx context.Context, scope liveDiff
 // Scope additions reconcile index membership and receipts without reloading
 // immutable attempts. Transport gaps use a fresh snapshot instead.
 func (d *liveDiffData) reconcile(ctx context.Context, s *mekugiReplayStore, scope liveDiffScope) error {
-	indexes, err := s.liveDiffScopeIndexes(scope)
-	if err != nil {
-		return err
-	}
 	present := make(map[string]bool)
-	for _, index := range indexes {
+	for _, workspace := range slices.Sorted(maps.Keys(scope.Workspaces)) {
+		if !filepath.IsAbs(workspace) {
+			return errors.New("live diff workspace must be absolute")
+		}
+		index, err := s.readChangeIndex(workspace)
+		if err != nil {
+			return err
+		}
+		threads := scope.Workspaces[workspace]
 		for stream, info := range index.Streams {
+			if threads != nil && !threads[info.Thread] {
+				continue
+			}
 			for number := 1; number <= info.Next; number++ {
 				id := "hp_" + changeStreamName(stream) + strconv.Itoa(number)
 				for _, call := range index.Changes[id].Calls {

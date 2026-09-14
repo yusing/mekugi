@@ -16,6 +16,15 @@ import (
 	"github.com/yusing/mekugi"
 )
 
+// Exercise the same snapshot path used by the event-stream consumer.
+func (s *mekugiReplayStore) liveDiffSnapshotFiles(ctx context.Context, scope liveDiffScope) ([]liveDiffFile, error) {
+	data, err := s.liveDiffSnapshot(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	return data.files(), nil
+}
+
 func liveDiffScopeCapture(t *testing.T, store *mekugiReplayStore, workspace, thread, call, path, before, after string) {
 	t.Helper()
 	id, err := store.reserveChange(t.Context(), workspace, thread, call)
@@ -42,11 +51,7 @@ func TestLiveDiffSessionScopeStreamsAndWorkspaces(t *testing.T) {
 		t.Helper()
 		// A fresh reader has no in-memory ancestry or routing cache.
 		reader := &mekugiReplayStore{directory: store.directory}
-		indexes, err := reader.liveDiffScopeIndexes(liveDiffScope{Workspaces: workspaces})
-		if err != nil {
-			t.Fatal(err)
-		}
-		files, err := reader.liveDiffSnapshotFiles(t.Context(), indexes)
+		files, err := reader.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: workspaces})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -84,11 +89,7 @@ func TestLiveDiffSessionCrossWorkspaceOverlap(t *testing.T) {
 	view := liveDiffView{scroll: make(map[string]int)}
 	refresh := func() {
 		t.Helper()
-		indexes, err := store.liveDiffScopeIndexes(scope)
-		if err != nil {
-			t.Fatal(err)
-		}
-		files, err := store.liveDiffSnapshotFiles(t.Context(), indexes)
+		files, err := store.liveDiffSnapshotFiles(t.Context(), scope)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -104,7 +105,7 @@ func TestLiveDiffSessionCrossWorkspaceOverlap(t *testing.T) {
 	if len(view.files) != 1 || len(view.files[0].chunks) != 2 || view.files[0].key() != key || view.scroll[key] != 2 {
 		t.Fatal("workspace switch broke shared file identity, selection or call identity")
 	}
-	if chunks := view.visible[key].chunks; len(chunks) != 1 || !strings.Contains(chunks[0].diff, "-original\n+fixed\n") {
+	if chunks := view.visible[key].chunks; len(chunks) != 1 || !strings.Contains(chunks[0].review.Diff, "-original\n+fixed\n") {
 		t.Fatalf("cross-workspace edit lost its combined result: %#v", chunks)
 	}
 	liveDiffScopeCapture(t, store, second, "child", "revert", path, "fixed", "original")
@@ -157,11 +158,7 @@ func TestLiveDiffFreshSnapshotComposesCrossStreamCaptures(t *testing.T) {
 					}
 				}
 			}
-			index, err := store.readChangeIndex(workspace)
-			if err != nil {
-				t.Fatal(err)
-			}
-			files, err := store.liveDiffSnapshotFiles(t.Context(), map[string]changeIndex{workspace: index})
+			files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -172,7 +169,7 @@ func TestLiveDiffFreshSnapshotComposesCrossStreamCaptures(t *testing.T) {
 				if file.path == path {
 					chunks := view.visible[file.key()].chunks
 					if legacy {
-						if len(chunks) != 1 || !strings.Contains(chunks[0].status, "older captures have no shared order") || chunks[0].diff != "" {
+						if len(chunks) != 1 || !strings.Contains(chunks[0].status, "older captures have no shared order") || chunks[0].review.Diff != "" {
 							t.Fatalf("legacy captures guessed a result or rendered individual patches: %#v", chunks)
 						}
 						return

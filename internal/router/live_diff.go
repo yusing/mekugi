@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 	"syscall"
 	"unicode"
@@ -31,13 +30,13 @@ type liveDiffFile struct {
 	highlighted bool
 }
 type liveDiffChunk struct {
-	key, status, diff string
-	stream            string
-	captureOrder      uint64
-	snapshotOrder     int
-	review            mekugi.ReviewFile
-	applied           bool
-	highlighted       bool
+	key, status   string
+	stream        string
+	captureOrder  uint64
+	snapshotOrder int
+	review        mekugi.ReviewFile
+	applied       bool
+	highlighted   bool
 }
 type liveDiffView struct {
 	files        []liveDiffFile
@@ -71,9 +70,9 @@ func (v *liveDiffView) merge(files []liveDiffFile) {
 		selected = v.files[v.selected].key()
 	}
 	for i, file := range v.files {
-		oldFiles[file.key()], fileOrder[file.key()] = file, i
+		oldFiles[file.key()], fileOrder[file.key()] = file, i+1
 		for _, chunk := range file.chunks {
-			order[chunk.key] = len(order)
+			order[chunk.key] = len(order) + 1
 			if chunk.highlighted {
 				highlighted[chunk.key] = true
 			}
@@ -85,7 +84,7 @@ func (v *liveDiffView) merge(files []liveDiffFile) {
 	for i := range next {
 		file := &next[i]
 		for _, chunk := range file.chunks {
-			if _, known := order[chunk.key]; !known {
+			if order[chunk.key] == 0 {
 				newCaptures[chunk.key] = true
 				if chunk.snapshotOrder >= newestOrder && chunk.captureOrder >= latestCaptureOrder {
 					v.latest, newestOrder = chunk.key, chunk.snapshotOrder
@@ -94,36 +93,15 @@ func (v *liveDiffView) merge(files []liveDiffFile) {
 		}
 		file.chunks = slices.Clone(file.chunks)
 		slices.SortStableFunc(file.chunks, func(a, b liveDiffChunk) int {
-			x, xOK := order[a.key]
-			y, yOK := order[b.key]
-			if xOK && yOK {
-				return x - y
-			}
-			if xOK {
-				return -1
-			}
-			if yOK {
-				return 1
-			}
-			return 0
+			// Append new captures after the retained navigation order.
+			return cmp.Compare(cmp.Or(order[a.key], len(order)+1), cmp.Or(order[b.key], len(order)+1))
 		})
 		if len(file.chunks) > 0 {
 			file.id = file.chunks[0].key
 		}
 	}
 	slices.SortStableFunc(next, func(a, b liveDiffFile) int {
-		x, xOK := fileOrder[a.key()]
-		y, yOK := fileOrder[b.key()]
-		if xOK && yOK {
-			return x - y
-		}
-		if xOK {
-			return -1
-		}
-		if yOK {
-			return 1
-		}
-		return 0
+		return cmp.Compare(cmp.Or(fileOrder[a.key()], len(fileOrder)+1), cmp.Or(fileOrder[b.key()], len(fileOrder)+1))
 	})
 	// A refresh may observe several captures without proving their execution order.
 	// Initial history is a baseline; receipt-only refreshes retain the prior marks.
@@ -229,7 +207,7 @@ func (v *liveDiffView) refreshVisible() {
 		} else {
 			for _, region := range composition.FilesWithHighlights() {
 				visible.chunks = append(visible.chunks, liveDiffChunk{
-					diff: region.UnifiedDiff(), review: region.ReviewFile, highlighted: region.Highlighted,
+					review: region.ReviewFile, highlighted: region.Highlighted,
 				})
 			}
 		}
@@ -259,25 +237,7 @@ func (v *liveDiffView) flush(all bool) {
 	}
 }
 
-func (s *mekugiReplayStore) liveDiffFilesFromIndexes(ctx context.Context, indexes []changeIndex) ([]liveDiffFile, error) {
-	data := newLiveDiffData()
-	for _, index := range indexes {
-		for stream, info := range index.Streams {
-			for number := 1; number <= info.Next; number++ {
-				id := "hp_" + changeStreamName(stream) + strconv.Itoa(number)
-				if err := data.apply(ctx, s, liveDiffChange{
-					Workspace: index.Workspace, Thread: info.Thread, Stream: stream,
-					ID: id, Change: index.Changes[id],
-				}); err != nil {
-					return nil, err
-				}
-			}
-		}
-	}
-	return data.files()
-}
-
-func groupLiveDiffCaptures(captures []liveDiffChunk) ([]liveDiffFile, error) {
+func groupLiveDiffCaptures(captures []liveDiffChunk) []liveDiffFile {
 	// Merge streams before following moves or composing files. Agent letters,
 	// receipt arrival, and workspace iteration do not order captured edits.
 	slices.SortStableFunc(captures, func(a, b liveDiffChunk) int {
@@ -318,7 +278,7 @@ func groupLiveDiffCaptures(captures []liveDiffChunk) ([]liveDiffFile, error) {
 		}
 		files[i].chunks = append(files[i].chunks, chunk)
 	}
-	return files, nil
+	return files
 }
 
 // Only text and SGR colors may reach the viewport. In particular, captured
@@ -689,11 +649,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 					}
 				}
 			}
-			files, e := data.files()
-			if e != nil {
-				return e
-			}
-			view.merge(files)
+			view.merge(data.files())
 			view.refreshVisible()
 			dirty = true
 		case <-resizes:

@@ -83,6 +83,7 @@ func TestLiveDiffDirectPublicationAndCachedReceipt(t *testing.T) {
 	if err := data.apply(t.Context(), store, event); err != nil {
 		t.Fatal(err)
 	}
+	prepared := data.files()
 	// Receipts operate on the cached projection, not another disk read.
 	callID := event.Change.Calls[0].ID
 	if err := os.Remove(filepath.Join(store.directory, replayRecordName(workspace, callID, false))); err != nil {
@@ -92,17 +93,34 @@ func TestLiveDiffDirectPublicationAndCachedReceipt(t *testing.T) {
 	if err := data.apply(t.Context(), store, event); err != nil {
 		t.Fatal(err)
 	}
+	if prepared[0].chunks[0].applied || !strings.Contains(prepared[0].chunks[0].status, "unconfirmed") {
+		t.Fatal("receipt mutated the previous display snapshot")
+	}
 	// An older queued preparation cannot undo a receipt from the snapshot.
 	event.Change.Calls[0].Confirmed = false
 	if err := data.apply(t.Context(), store, event); err != nil {
 		t.Fatal(err)
 	}
-	files, err := data.files()
-	if err != nil || len(files) != 1 || !files[0].chunks[0].applied {
-		t.Fatalf("cached receipt regressed: %+v %v", files, err)
+	files := data.files()
+	if len(files) != 1 || !files[0].chunks[0].applied {
+		t.Fatalf("cached receipt regressed: %+v", files)
 	}
 	if _, err := store.liveDiffSnapshot(t.Context(), broker.scope); err == nil {
 		t.Fatal("reconnection hid missing durable evidence")
+	}
+}
+
+func TestLiveDiffScopeEventsRetainMembership(t *testing.T) {
+	broker := newLiveDiffBroker(t.Context())
+	scope := liveDiffScope{Workspaces: map[string]map[string]bool{"/work": {"root": true}}}
+	broker.setScope(scope)
+	sub := broker.subscribe()
+	initial := <-sub.events
+	scope.Workspaces["/work"]["child"] = true
+	broker.setScope(scope)
+	updated := <-sub.events
+	if initial.Scope.Workspaces["/work"]["child"] || !updated.Scope.Workspaces["/work"]["child"] {
+		t.Fatal("scope publication changed an already queued membership snapshot")
 	}
 }
 
@@ -371,11 +389,7 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	files, err := data.files()
-	if err != nil {
-		t.Fatal(err)
-	}
-	view.merge(files)
+	view.merge(data.files())
 	view.refreshVisible()
 	if view.files[view.selected].path != filepath.Join(workspace, "second.txt") {
 		t.Fatal("FOLLOW selected an older call from the durable batch")

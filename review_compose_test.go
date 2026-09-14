@@ -27,14 +27,9 @@ func TestReviewHunkGeometry(t *testing.T) {
 	if err != nil || len(hunks) != 2 {
 		t.Fatalf("hunks: %#v %v", hunks, err)
 	}
-	if hunks[0].AfterStart != 0 || hunks[0].AfterCount != 3 || hunks[0].ChangedStart != 1 ||
+	if hunks[0].AfterStart != 0 || len(hunks[0].Rows) != 3 || hunks[0].ChangedStart != 1 ||
 		hunks[1].AfterStart != 20 || hunks[1].ChangedStart != 20 {
 		t.Fatalf("wrong current-source geometry: %#v", hunks)
-	}
-	for _, hunk := range hunks {
-		if !strings.HasPrefix(hunk.Diff, "--- x\n+++ x\n@@ ") || strings.Count(hunk.Diff, "@@ -") != 1 {
-			t.Fatalf("hunk is not independently renderable: %q", hunk.Diff)
-		}
 	}
 }
 
@@ -55,6 +50,30 @@ func TestReviewHunkGeometryAfterHiddenLineShifts(t *testing.T) {
 	hunks, err := file.Hunks()
 	if err != nil || len(hunks) != 1 || hunks[0].ChangedStart != 20 {
 		t.Fatalf("partial composed geometry: %#v %v", hunks, err)
+	}
+}
+
+func TestReviewHunkValidation(t *testing.T) {
+	for _, diff := range []string{
+		"@@ -1 +1 @@ extra\n-a\n+b\n",
+		"@@ 1 +1 @@\n-a\n+b\n",
+		"@@ -0 +1 @@\n-a\n+b\n",
+		"@@ -1,1048577 +1 @@\n-a\n+b\n",
+		"@@ -1 +1 @@\n?invalid\n",
+		"@@ -1,2 +1 @@\n-a\n+b\n",
+		"@@ -1 +1 @@\n\\ No newline at end of file\n-a\n+b\n",
+		"@@ -1 +1 @@\n-a\n+b\n@@ -1 +1 @@\n-c\n+d\n",
+	} {
+		t.Run(diff, func(t *testing.T) {
+			if hunks, err := (ReviewFile{Diff: diff}).Hunks(); err == nil || hunks != nil {
+				t.Fatalf("invalid capture returned hunks: %+v, %v", hunks, err)
+			}
+		})
+	}
+	file := ReviewFile{BeforePath: "x", AfterPath: "x", Diff: "@@ -1 +2 @@\n-a\n+b\n"}
+	var composition ReviewComposition
+	if err := composition.Apply(file, false); err == nil {
+		t.Fatal("complete capture accepted an unexplained line shift")
 	}
 }
 

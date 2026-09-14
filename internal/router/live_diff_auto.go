@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -77,29 +76,27 @@ func (a *autoLiveDiff) run(ctx context.Context, replay string) {
 			return
 		}
 		workspace := a.workspace
-		data, err := json.Marshal(a.events.descriptor())
 		a.mu.Unlock()
-		if workspace == "" || err != nil {
+		if workspace == "" || directory != "" {
 			continue
 		}
-		first := directory == ""
-		if first {
-			directory, err = os.MkdirTemp("", "mekugi-live-diff-")
-			if err != nil {
-				return
-			}
-			pane.sessionFile = filepath.Join(directory, "session.json")
+		data, err := json.Marshal(a.events.descriptor())
+		if err != nil {
+			return
 		}
-		if first {
-			if err := os.WriteFile(pane.sessionFile, data, 0600); err != nil {
-				return
-			}
-			launch, stop := context.WithTimeout(ctx, 5*time.Second)
-			err = splitLiveDiff(launch, workspace, replay, io.Discard, &pane)
-			stop()
-			if err != nil {
-				return
-			}
+		directory, err = os.MkdirTemp("", "mekugi-live-diff-")
+		if err != nil {
+			return
+		}
+		pane.sessionFile = filepath.Join(directory, "session.json")
+		if err := os.WriteFile(pane.sessionFile, data, 0600); err != nil {
+			return
+		}
+		launch, stop := context.WithTimeout(ctx, 5*time.Second)
+		err = splitLiveDiff(launch, workspace, replay, &pane)
+		stop()
+		if err != nil {
+			return
 		}
 	}
 }

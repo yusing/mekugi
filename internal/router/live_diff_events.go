@@ -33,12 +33,11 @@ type liveDiffChange struct {
 }
 
 type liveDiffEvent struct {
-	Sequence uint64
-	Kind     string
-	Scope    *liveDiffScope   `json:",omitempty"`
-	Changes  []liveDiffChange `json:",omitempty"`
-	Status   string           `json:",omitempty"`
-	Resync   bool             `json:",omitzero"`
+	Kind    string
+	Scope   *liveDiffScope   `json:",omitempty"`
+	Changes []liveDiffChange `json:",omitempty"`
+	Status  string           `json:",omitempty"`
+	Resync  bool             `json:",omitzero"`
 }
 
 type liveDiffSubscriber struct {
@@ -59,7 +58,6 @@ type liveDiffBroker struct {
 	mu           sync.Mutex
 	connection   liveDiffConnection
 	scope        liveDiffScope
-	sequence     uint64
 	subs         map[*liveDiffSubscriber]bool
 	producers    map[string]*liveDiffProducerRoute
 	coverageLost bool
@@ -111,13 +109,11 @@ func (b *liveDiffBroker) statusLocked() string {
 }
 
 func (b *liveDiffBroker) scopeEventLocked() liveDiffEvent {
-	scope := cloneLiveDiffScope(b.scope)
+	scope := b.scope // setScope replaces, never mutates, the broker-owned maps.
 	return liveDiffEvent{Kind: "scope", Scope: &scope, Status: b.statusLocked()}
 }
 
 func (b *liveDiffBroker) emitLocked(event liveDiffEvent) {
-	b.sequence++
-	event.Sequence = b.sequence
 	for sub := range b.subs {
 		select {
 		case sub.events <- event:
@@ -158,7 +154,6 @@ func (b *liveDiffBroker) subscribe() *liveDiffSubscriber {
 	b.subs[sub] = true
 	event := b.scopeEventLocked()
 	event.Resync = true
-	event.Sequence = b.sequence
 	sub.events <- event
 	return sub
 }

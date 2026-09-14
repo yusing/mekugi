@@ -19,7 +19,7 @@ func liveDiffHighlightChunk(key, path, hunk string, applied bool) liveDiffChunk 
 		status = key + " applied"
 	}
 	return liveDiffChunk{
-		key: key, diff: diff, status: status, applied: applied,
+		key: key, status: status, applied: applied,
 		review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: diff},
 	}
 }
@@ -143,7 +143,7 @@ func TestLiveDiffHighlightCapturesAndFlushedReceipt(t *testing.T) {
 	v.merge(snapshot)
 	v.refreshVisible()
 	visible := v.visible[v.files[0].key()]
-	if len(visible.chunks) != 1 || !strings.Contains(visible.chunks[0].diff, "-b\n+B\n") || !visible.chunks[0].highlighted {
+	if len(visible.chunks) != 1 || !strings.Contains(visible.chunks[0].review.Diff, "-b\n+B\n") || !visible.chunks[0].highlighted {
 		t.Fatalf("new capture lost its highlight or revived unrelated flushed history: %#v", visible)
 	}
 }
@@ -249,7 +249,7 @@ func TestLiveDiffHeaders(t *testing.T) {
 				after = "/dev/null"
 			}
 			diff := "--- " + before + "\n+++ " + after + "\n" + tc.hunk
-			chunk := liveDiffChunk{diff: diff, review: mekugi.ReviewFile{
+			chunk := liveDiffChunk{review: mekugi.ReviewFile{
 				BeforePath: tc.before, AfterPath: tc.after, Diff: diff,
 			}}
 			file := liveDiffFile{path: path, chunks: []liveDiffChunk{chunk}}
@@ -322,7 +322,7 @@ func TestLiveDiffPreparedRenameKeepsDestination(t *testing.T) {
 	diff := "--- " + strconv.Quote(oldPath) + "\n+++ " + strconv.Quote(newPath) +
 		"\n@@ -1 +1 @@\n-before\n+after\n@@ -20 +20 @@\n-older\n+newer\n"
 	chunk := liveDiffChunk{
-		key: "rename", status: "hp_a1 prepared (application unconfirmed)", diff: diff,
+		key: "rename", status: "hp_a1 prepared (application unconfirmed)",
 		review: mekugi.ReviewFile{BeforePath: oldPath, AfterPath: newPath, Diff: diff},
 	}
 	v := liveDiffView{}
@@ -362,7 +362,6 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 	path := created.ReviewFiles[0].AfterPath
 	initial := liveDiffChunk{
 		key: "create", applied: true, review: created.ReviewFiles[0],
-		diff: created.ReviewFiles[0].UnifiedDiff(),
 	}
 	recent := liveDiffHighlightChunk("edit", path,
 		"@@ -312 +312 @@\n-line312\n+LATEST312\n@@ -337 +337 @@\n-line337\n+LATEST337\n", true)
@@ -539,7 +538,7 @@ func TestLiveDiffPathOnlyChangesStayCompact(t *testing.T) {
 			review := mekugi.ReviewFile{BeforePath: tc.before, AfterPath: tc.after,
 				Diff: tc.name + " " + strconv.Quote(tc.before) + " -> " + strconv.Quote(tc.after) + "\n"}
 			for _, status := range []string{"", "hp_a1 prepared (application unconfirmed)"} {
-				chunk := liveDiffChunk{key: "change", status: status, review: review, diff: review.Diff}
+				chunk := liveDiffChunk{key: "change", status: status, review: review}
 				render, err := renderLiveDiff(t.Context(), []liveDiffFile{{path: path, chunks: []liveDiffChunk{chunk}}},
 					workspace, 100, 0, chunk)
 				if err != nil {
@@ -576,7 +575,7 @@ func TestLiveDiffNarrowFileActions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			review := mekugi.ReviewFile{BeforePath: tc.before, AfterPath: tc.after,
 				Diff: tc.name + " " + strconv.Quote(tc.before) + " -> " + strconv.Quote(tc.after) + "\n"}
-			file := liveDiffFile{path: path, highlighted: true, chunks: []liveDiffChunk{{review: review, diff: review.Diff}}}
+			file := liveDiffFile{path: path, highlighted: true, chunks: []liveDiffChunk{{review: review}}}
 			for _, width := range []int{40, 90} {
 				render, err := renderLiveDiff(t.Context(), []liveDiffFile{file, {path: "next.txt"}},
 					workspace, width, 0, file.chunks[0])

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"time"
@@ -16,12 +15,12 @@ type liveDiffPane struct {
 	sessionFile string
 }
 
-func splitLiveDiff(ctx context.Context, workspace, replay string, stdout io.Writer, lifetime *liveDiffPane) error {
+func splitLiveDiff(ctx context.Context, workspace, replay string, lifetime *liveDiffPane) error {
 	if lifetime == nil || lifetime.sessionFile == "" {
 		return errors.New("live diff requires a router session")
 	}
 	if os.Getenv("HERDR_ENV") != "1" {
-		return errors.New("--herdr requires a Herdr-managed pane")
+		return errors.New("live diff requires a Herdr-managed pane")
 	}
 	run := func(args ...string) ([]byte, error) {
 		cmd := exec.CommandContext(ctx, "herdr", args...)
@@ -57,6 +56,5 @@ func splitLiveDiff(ctx context.Context, workspace, replay string, stdout io.Writ
 	if _, err := run("pane", "run", id, command); err != nil {
 		return fmt.Errorf("created pane %s but could not start viewer: %w", id, err)
 	}
-	_, err = fmt.Fprintf(stdout, "Live diff started in Herdr pane %s (focus unchanged).\n", id)
-	return err
+	return nil
 }

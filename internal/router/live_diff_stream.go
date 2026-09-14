@@ -62,7 +62,6 @@ func liveDiffStream(ctx context.Context, connection liveDiffConnection, output c
 			for scanner.Scan() {
 				var event liveDiffEvent
 				if json.Unmarshal(scanner.Bytes(), &event) != nil {
-					err = errors.New("invalid live diff event")
 					break
 				}
 				if event.Kind == "reset" {
@@ -75,9 +74,6 @@ func liveDiffStream(ctx context.Context, connection liveDiffConnection, output c
 					response.Body.Close()
 					return
 				}
-			}
-			if err == nil {
-				err = scanner.Err()
 			}
 			response.Body.Close()
 		}
