@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -31,35 +30,19 @@ func liveDiffScopeCapture(t *testing.T, store *mekugiReplayStore, workspace, thr
 	}
 }
 
-func writeLiveDiffScope(t *testing.T, path string, workspaces map[string]map[string]bool) {
-	t.Helper()
-	data, err := json.Marshal(liveDiffScope{Workspaces: workspaces})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path+".pending", data, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(path+".pending", path); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestLiveDiffSessionScopeStreamsAndWorkspaces(t *testing.T) {
 	workspace, second := t.TempDir(), t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	scope := filepath.Join(t.TempDir(), "session.json")
 	liveDiffScopeCapture(t, store, workspace, "unrelated", "old", filepath.Join(workspace, "old.go"), "a", "b")
 	workspaces := map[string]map[string]bool{workspace: {"current": true}}
-	writeLiveDiffScope(t, scope, workspaces)
 	read := func() []liveDiffFile {
 		t.Helper()
 		// A fresh reader has no in-memory ancestry or routing cache.
 		reader := &mekugiReplayStore{directory: store.directory}
-		indexes, err := reader.liveDiffIndexes(workspace, scope)
+		indexes, err := reader.liveDiffScopeIndexes(liveDiffScope{Workspaces: workspaces})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -79,19 +62,12 @@ func TestLiveDiffSessionScopeStreamsAndWorkspaces(t *testing.T) {
 	}
 	liveDiffScopeCapture(t, store, second, "child", "child-call", filepath.Join(second, "child.txt"), "old", "new")
 	workspaces[second] = map[string]bool{"child": true}
-	writeLiveDiffScope(t, scope, workspaces)
 	if files := read(); len(files) != 2 {
 		t.Fatalf("child/second workspace missing: %#v", files)
 	}
 	liveDiffScopeCapture(t, store, workspace, "unrelated", "other", filepath.Join(workspace, "other.go"), "a", "b")
 	if files := read(); len(files) != 2 {
 		t.Fatal("concurrent unrelated session leaked into view")
-	}
-	if err := os.Remove(scope); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.liveDiffIndexes(workspace, scope); !errors.Is(err, errLiveDiffSessionEnded) {
-		t.Fatalf("removed scope did not end session: %v", err)
 	}
 }
 
@@ -102,14 +78,13 @@ func TestLiveDiffSessionCrossWorkspaceOverlap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	scope := filepath.Join(t.TempDir(), "session.json")
-	writeLiveDiffScope(t, scope, map[string]map[string]bool{first: {"root": true}, second: {"child": true}})
+	scope := liveDiffScope{Workspaces: map[string]map[string]bool{first: {"root": true}, second: {"child": true}}}
 	path := filepath.Join(t.TempDir(), "notes.txt")
 	liveDiffScopeCapture(t, store, first, "root", "same-call-id", path, "original", "first")
 	view := liveDiffView{scroll: make(map[string]int)}
 	refresh := func() {
 		t.Helper()
-		indexes, err := store.liveDiffIndexes(first, scope)
+		indexes, err := store.liveDiffScopeIndexes(scope)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -223,14 +198,13 @@ func TestLiveDiffSessionTerminalEmptyEditsAndExit(t *testing.T) {
 		t.Fatal(err)
 	}
 	liveDiffScopeCapture(t, store, workspace, "other", "old", filepath.Join(workspace, "unrelated.go"), "old", "new")
-	scope := filepath.Join(t.TempDir(), "session.json")
-	writeLiveDiffScope(t, scope, map[string]map[string]bool{workspace: {"current": true}})
+	connection, broker, stopBroker := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"current": true}}})
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestLiveDiffTerminalProcess$")
 	cmd.Env = append(os.Environ(), "MEKUGI_LIVE_DIFF_TEST_CHILD=1",
 		"MEKUGI_LIVE_DIFF_WORKSPACE="+workspace, "MEKUGI_LIVE_DIFF_REPLAY="+store.directory,
-		"MEKUGI_LIVE_DIFF_SESSION="+scope)
+		"MEKUGI_LIVE_DIFF_SESSION="+connection)
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 25, Cols: 120})
 	if err != nil {
 		t.Fatal(err)
@@ -293,13 +267,11 @@ func TestLiveDiffSessionTerminalEmptyEditsAndExit(t *testing.T) {
 	second := t.TempDir()
 	childPath := filepath.Join(second, "child.txt")
 	liveDiffScopeCapture(t, store, second, "child", "child-first", childPath, "child-original", "child-created")
-	writeLiveDiffScope(t, scope, map[string]map[string]bool{workspace: {"current": true}, second: {"child": true}})
+	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"current": true}, second: {"child": true}}})
 	wait("+child-created")
 	liveDiffScopeCapture(t, store, second, "child", "child-next", childPath, "child-created", "child-updated")
 	wait("+child-updated")
-	if err := os.Remove(scope); err != nil {
-		t.Fatal(err)
-	}
+	stopBroker()
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	select {

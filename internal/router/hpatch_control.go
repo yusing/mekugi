@@ -233,6 +233,8 @@ func runHpatchControlAt(
 	}
 	scanner := bufio.NewScanner(input)
 	scanner.Buffer(make([]byte, 4096), maxHpatchCheckpointBytes+1)
+	var livePublisher *liveDiffProducer
+	defer func() { livePublisher.close() }()
 	var bound hpatchResumeState
 	var translation json.RawMessage
 	for scanner.Scan() {
@@ -267,6 +269,8 @@ func runHpatchControlAt(
 			if err := input.SetReadDeadline(bound.ExpiresAt); err != nil {
 				return err
 			}
+			livePublisher = startLiveDiffProducer(ctx, bound.LiveDiff)
+			bound.liveDiff = livePublisher.publish
 			response = map[string]any{"opened": true, "progress": bound.Progress}
 		} else {
 			if !time.Now().Before(bound.ExpiresAt) {

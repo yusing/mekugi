@@ -2,43 +2,18 @@ package router
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"maps"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 )
 
-var errLiveDiffSessionEnded = errors.New("live diff session ended")
-
 // Session scopes select durable thread streams, never timestamps or router cache IDs.
 // Old workspace history and other concurrent sessions are excluded before projection.
-func (s *mekugiReplayStore) liveDiffIndexes(workspace, sessionFile string) (map[string]changeIndex, error) {
-	workspaces := map[string]map[string]bool{workspace: nil}
-	if sessionFile != "" {
-		file, err := os.Open(sessionFile)
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, errLiveDiffSessionEnded
-		}
-		if err != nil {
-			return nil, err
-		}
-		data, err := io.ReadAll(io.LimitReader(file, maxLiveDiffScopeBytes+1))
-		file.Close()
-		if err != nil {
-			return nil, err
-		}
-		var scope liveDiffScope
-		if len(data) > maxLiveDiffScopeBytes || json.Unmarshal(data, &scope) != nil || scope.Workspaces == nil {
-			return nil, errors.New("invalid live diff session scope")
-		}
-		workspaces = scope.Workspaces
-	}
-	indexes := make(map[string]changeIndex, len(workspaces))
-	for path, threads := range workspaces {
+func (s *mekugiReplayStore) liveDiffScopeIndexes(scope liveDiffScope) (map[string]changeIndex, error) {
+	indexes := make(map[string]changeIndex, len(scope.Workspaces))
+	for path, threads := range scope.Workspaces {
 		if !filepath.IsAbs(path) {
 			return nil, errors.New("live diff workspace must be absolute")
 		}
@@ -46,7 +21,7 @@ func (s *mekugiReplayStore) liveDiffIndexes(workspace, sessionFile string) (map[
 		if err != nil {
 			return nil, err
 		}
-		if sessionFile != "" {
+		if threads != nil {
 			for stream, info := range index.Streams {
 				if threads[info.Thread] {
 					continue

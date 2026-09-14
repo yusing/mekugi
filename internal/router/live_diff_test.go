@@ -26,7 +26,7 @@ func TestLiveDiffRedirectedWithoutExternalRenderer(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer out.Close()
-	status := RunLiveDiff(t.Context(), []string{"--workspace", t.TempDir(), "--replay-dir", t.TempDir()}, out, out, out)
+	status := RunLiveDiff(t.Context(), []string{"--workspace", t.TempDir(), "--replay-dir", t.TempDir(), "--session-file", "connection.json"}, out, out, out)
 	data, err := os.ReadFile(out.Name())
 	if err != nil || status != 1 || !strings.Contains(string(data), "live view needs a terminal") {
 		t.Fatalf("redirected invocation: %d %q %v", status, data, err)
@@ -290,7 +290,7 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestLiveDiffTerminalProcess$")
 	cmd.Env = append(os.Environ(),
 		"MEKUGI_LIVE_DIFF_TEST_CHILD=1", "MEKUGI_LIVE_DIFF_WORKSPACE="+workspace,
-		"MEKUGI_LIVE_DIFF_REPLAY="+store.directory, "GIT_PAGER=cat")
+		"MEKUGI_LIVE_DIFF_REPLAY="+store.directory, "MEKUGI_LIVE_DIFF_SESSION="+liveDiffTestSession(t, store, workspace), "GIT_PAGER=cat")
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 20, Cols: 90})
 	if err != nil {
 		t.Fatal(err)
@@ -422,7 +422,7 @@ esac
 	}
 	marker := filepath.Join(dir, "run-marker")
 	t.Setenv("MEKUGI_LIVE_DIFF_RUN_MARKER", marker)
-	err := splitLiveDiff(t.Context(), dir, dir, os.Stdout, nil)
+	err := splitLiveDiff(t.Context(), dir, dir, os.Stdout, &liveDiffPane{sessionFile: filepath.Join(dir, "connection.json")})
 	if err == nil || !strings.Contains(err.Error(), "no pane identity") {
 		t.Fatalf("missing identity accepted: %v", err)
 	}
@@ -432,12 +432,14 @@ esac
 }
 
 func TestLiveDiffTerminalCancel(t *testing.T) {
+	workspace := t.TempDir()
+	store := &mekugiReplayStore{directory: t.TempDir()}
 	t.Setenv("PATH", t.TempDir())
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestLiveDiffTerminalProcess$")
 	cmd.Env = append(os.Environ(), "MEKUGI_LIVE_DIFF_TEST_CHILD=1",
-		"MEKUGI_LIVE_DIFF_WORKSPACE="+t.TempDir(), "MEKUGI_LIVE_DIFF_REPLAY="+t.TempDir(), "GIT_PAGER=cat")
+		"MEKUGI_LIVE_DIFF_WORKSPACE="+workspace, "MEKUGI_LIVE_DIFF_REPLAY="+store.directory, "MEKUGI_LIVE_DIFF_SESSION="+liveDiffTestSession(t, store, workspace))
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 20, Cols: 90})
 	if err != nil {
 		t.Fatal(err)
@@ -649,7 +651,7 @@ func TestLiveDiffFlushTerminal(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestLiveDiffTerminalProcess$")
 	cmd.Env = append(os.Environ(), "MEKUGI_LIVE_DIFF_TEST_CHILD=1",
-		"MEKUGI_LIVE_DIFF_WORKSPACE="+workspace, "MEKUGI_LIVE_DIFF_REPLAY="+store.directory)
+		"MEKUGI_LIVE_DIFF_WORKSPACE="+workspace, "MEKUGI_LIVE_DIFF_REPLAY="+store.directory, "MEKUGI_LIVE_DIFF_SESSION="+liveDiffTestSession(t, store, workspace))
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 20, Cols: 100})
 	if err != nil {
 		t.Fatal(err)

@@ -510,14 +510,18 @@ Interactive `mekugi codex` opens a sibling Herdr pane on the right when `herdr`
 is available. It follows the session's captured hpatch edits, including subagents,
 and closes with Codex. Redirected input/output does not open a pane.
 
-For an independent workspace-wide viewer, run `mekugi live-diff --herdr`, or
-`mekugi live-diff` in an existing terminal. Use `--workspace DIR` and `--replay-dir DIR`
-to select another workspace or store. Workspace paths display relatively; external
-paths stay absolute. Rendering and navigation run inside Mekugi, with no external
-renderer or pager required.
+The pane receives edit events directly from its router, including each edit segment
+of a mixed script. It does not watch files for changes. Manual live viewing is not
+supported; use `hchanges` for saved capture history.
+Workspace paths display relatively; external paths stay absolute. Rendering and
+navigation run inside Mekugi, with no external renderer or pager required.
 
 All captured files appear in one scrollable view, so short multi-file edits stay visible
-together. Published captures and receipts refresh the view without a polling delay.
+together. New captures and application receipts update the view as the router receives them.
+Ordinary host application is confirmed when Codex next returns its result to the router;
+mixed-script workers send confirmations after each applied segment. Prepared edits
+remain labeled as unconfirmed until then. If live coverage is interrupted, the pane
+shows reconnecting or unavailable rather than silently claiming to be current.
 The latest changed rows are followed by default, including within large combined hunks;
 manual navigation pauses following.
 Bold file headings and separator lines identify each file, with green `+N` and red `-N`

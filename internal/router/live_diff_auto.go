@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-// A private router watches only threads it has prepared, not every session that
-// ever edited the workspace. The scope file is auxiliary and expires with it.
+// A private router includes only threads it has prepared, not every session that
+// ever edited the workspace. Membership and connection capabilities expire with it.
 const maxLiveDiffScopeBytes = 1 << 20
 
 type liveDiffScope struct {
@@ -21,6 +21,7 @@ type liveDiffScope struct {
 }
 
 type autoLiveDiff struct {
+	events     *liveDiffBroker
 	enabled    atomic.Bool
 	mu         sync.Mutex
 	workspace  string
@@ -32,6 +33,7 @@ type autoLiveDiff struct {
 func newAutoLiveDiff(ctx context.Context, replay string) (*autoLiveDiff, func()) {
 	ctx, cancel := context.WithCancel(ctx)
 	a := &autoLiveDiff{
+		events:     newLiveDiffBroker(ctx),
 		scope:      liveDiffScope{Workspaces: make(map[string]map[string]bool)},
 		scopeBytes: len(`{"Workspaces":{}}`),
 		changed:    make(chan struct{}, 1),
@@ -48,7 +50,7 @@ func (a *autoLiveDiff) run(ctx context.Context, replay string) {
 	var directory string
 	var pane liveDiffPane
 	defer func() {
-		// Removing the scope also tells the viewer to exit if Herdr is unavailable.
+		// The event stream ends the viewer even if pane cleanup is unavailable.
 		if directory != "" {
 			_ = os.RemoveAll(directory)
 		}
@@ -75,7 +77,7 @@ func (a *autoLiveDiff) run(ctx context.Context, replay string) {
 			return
 		}
 		workspace := a.workspace
-		data, err := json.Marshal(a.scope)
+		data, err := json.Marshal(a.events.descriptor())
 		a.mu.Unlock()
 		if workspace == "" || err != nil {
 			continue
@@ -88,14 +90,10 @@ func (a *autoLiveDiff) run(ctx context.Context, replay string) {
 			}
 			pane.sessionFile = filepath.Join(directory, "session.json")
 		}
-		pending := filepath.Join(directory, "pending.json")
-		if err := os.WriteFile(pending, data, 0600); err != nil {
-			return
-		}
-		if err := os.Rename(pending, pane.sessionFile); err != nil {
-			return
-		}
 		if first {
+			if err := os.WriteFile(pane.sessionFile, data, 0600); err != nil {
+				return
+			}
 			launch, stop := context.WithTimeout(ctx, 5*time.Second)
 			err = splitLiveDiff(launch, workspace, replay, io.Discard, &pane)
 			stop()
@@ -157,6 +155,7 @@ func (a *autoLiveDiff) observe(workspace, thread string, metadata codexTurnMetad
 		a.mu.Unlock()
 		return
 	}
+	a.events.setScope(a.scope)
 	if rootSelected && a.enabled.Load() {
 		a.workspace = workspace
 	}

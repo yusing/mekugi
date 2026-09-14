@@ -169,7 +169,9 @@ func TestAutoLiveDiffCancellationAndFailure(t *testing.T) {
 }
 
 func TestAutoLiveDiffScopeCapacity(t *testing.T) {
+	// This fixture exercises scope accounting without launching a pane.
 	a := &autoLiveDiff{
+		events:     newLiveDiffBroker(t.Context()),
 		scope:      liveDiffScope{Workspaces: make(map[string]map[string]bool)},
 		scopeBytes: len(`{"Workspaces":{}}`),
 		changed:    make(chan struct{}, 1),

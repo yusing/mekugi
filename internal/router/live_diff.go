@@ -79,6 +79,7 @@ func (v *liveDiffView) merge(files []liveDiffFile) {
 			}
 		}
 	}
+	latestCaptureOrder := v.latestChunk().captureOrder
 	newestOrder := -1
 	next := slices.Clone(files)
 	for i := range next {
@@ -86,7 +87,7 @@ func (v *liveDiffView) merge(files []liveDiffFile) {
 		for _, chunk := range file.chunks {
 			if _, known := order[chunk.key]; !known {
 				newCaptures[chunk.key] = true
-				if chunk.snapshotOrder >= newestOrder {
+				if chunk.snapshotOrder >= newestOrder && chunk.captureOrder >= latestCaptureOrder {
 					v.latest, newestOrder = chunk.key, chunk.snapshotOrder
 				}
 			}
@@ -259,60 +260,24 @@ func (v *liveDiffView) flush(all bool) {
 }
 
 func (s *mekugiReplayStore) liveDiffFilesFromIndexes(ctx context.Context, indexes []changeIndex) ([]liveDiffFile, error) {
-	var captures []liveDiffChunk
-	total := 0
+	data := newLiveDiffData()
 	for _, index := range indexes {
-		prefix := index.Workspace + "\x00"
 		for stream, info := range index.Streams {
 			for number := 1; number <= info.Next; number++ {
 				id := "hp_" + changeStreamName(stream) + strconv.Itoa(number)
-				change := index.Changes[id]
-				for _, call := range change.Calls {
-					if err := ctx.Err(); err != nil {
-						return nil, err
-					}
-					record, found, err := s.read(index.Workspace, call.ID, false)
-					if err != nil {
-						return nil, err
-					}
-					if !found || record.History.ChangeID != id || record.History.CorrelationID != change.Correlation {
-						return nil, fmt.Errorf("change %s has a missing or inconsistent attempt", id)
-					}
-					history := record.History
-					// Private retained scripts are not workspace edits.
-					if strings.HasPrefix(strings.TrimLeft(history.recoveryBaseline(), "\r\n"), "in "+shellArtifactPrefix) {
-						continue
-					}
-					for n, file := range history.ReviewFiles {
-						diff := file.UnifiedDiff()
-						canonical := func(path string) string {
-							if path == "" {
-								return ""
-							}
-							if !filepath.IsAbs(path) {
-								path = filepath.Join(index.Workspace, path)
-							}
-							return filepath.Clean(path)
-						}
-						file.BeforePath, file.AfterPath = canonical(file.BeforePath), canonical(file.AfterPath)
-						total += len(diff)
-						if total > maxChangeReadBytes {
-							return nil, errors.New("live diff exceeds 64 MiB; use hchanges with a narrower range")
-						}
-						captures = append(captures, liveDiffChunk{
-							key:          prefix + call.ID + "/" + strconv.Itoa(n),
-							stream:       index.Workspace + "\x00" + strconv.Itoa(stream),
-							captureOrder: record.CaptureOrder,
-							status:       id + " " + trackedStatus(history, call.Confirmed),
-							review:       file,
-							applied:      trackedStatus(history, call.Confirmed) == "applied",
-							diff:         diff,
-						})
-					}
+				if err := data.apply(ctx, s, liveDiffChange{
+					Workspace: index.Workspace, Thread: info.Thread, Stream: stream,
+					ID: id, Change: index.Changes[id],
+				}); err != nil {
+					return nil, err
 				}
 			}
 		}
 	}
+	return data.files()
+}
+
+func groupLiveDiffCaptures(captures []liveDiffChunk) ([]liveDiffFile, error) {
 	// Merge streams before following moves or composing files. Agent letters,
 	// receipt arrival, and workspace iteration do not order captured edits.
 	slices.SortStableFunc(captures, func(a, b liveDiffChunk) int {
@@ -465,14 +430,13 @@ func (b *liveDiffOutput) Write(p []byte) (int, error) {
 	return b.Builder.Write(p)
 }
 
-// RunLiveDiff is a read-only standalone viewer. It does not start a router.
+// RunLiveDiff is the internal entry point for a router-owned terminal pane.
 func RunLiveDiff(ctx context.Context, args []string, stdin, stdout, stderr *os.File) int {
 	flags := flag.NewFlagSet("live-diff", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	workspace := flags.String("workspace", "", "workspace to watch (default current directory)")
+	workspace := flags.String("workspace", "", "workspace for displayed paths (default current directory)")
 	replay := flags.String("replay-dir", "", "replay directory (default platform state directory)")
-	sessionFile := flags.String("session-file", "", "private live session scope and lifetime file")
-	split := flags.Bool("herdr", false, "open a sibling Herdr pane without taking focus")
+	sessionFile := flags.String("session-file", "", "private router event connection")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -507,15 +471,12 @@ func RunLiveDiff(ctx context.Context, args []string, stdin, stdout, stderr *os.F
 	if err != nil {
 		return fail(err)
 	}
-	if *split {
-		if err := splitLiveDiff(ctx, *workspace, *replay, stdout, nil); err != nil {
-			return fail(err)
-		}
-		return 0
+	if *sessionFile == "" {
+		return fail(errors.New("live-diff is a router-owned pane; start an interactive mekugi codex session"))
 	}
 	store := &mekugiReplayStore{directory: *replay}
 	if !term.IsTerminal(int(stdin.Fd())) || !term.IsTerminal(int(stdout.Fd())) {
-		return fail(errors.New("live view needs a terminal; use --herdr"))
+		return fail(errors.New("live view needs a terminal"))
 	}
 	if err := runLiveDiffTerminal(ctx, store, *workspace, stdin, stdout, *sessionFile); err != nil {
 		return fail(err)
@@ -524,6 +485,13 @@ func RunLiveDiff(ctx context.Context, args []string, stdin, stdout, stderr *os.F
 }
 
 func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspace string, stdin, stdout *os.File, sessionFile string) (err error) {
+	connection, err := readLiveDiffConnection(sessionFile)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
 	old, err := term.MakeRaw(int(stdin.Fd()))
 	if err != nil {
 		return err
@@ -561,23 +529,24 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		}
 	}()
 	defer func() { cancel(); input.Close(); <-done }()
-	updates, err := newLiveDiffWatcher(store.directory, workspace, sessionFile)
-	if err != nil {
-		return err
-	}
-	defer updates.Close()
+	streamCtx, cancelStream := context.WithCancel(ctx)
+	events := make(chan liveDiffEvent, 32)
+	streamDone := make(chan struct{})
+	go func() { defer close(streamDone); liveDiffStream(streamCtx, connection, events) }()
+	defer func() { cancelStream(); <-streamDone }()
+	data := newLiveDiffData()
+	var scope liveDiffScope
+	coverage := "CONNECTING"
 	resizes := make(chan os.Signal, 1)
 	signal.Notify(resizes, syscall.SIGWINCH)
 	defer signal.Stop(resizes)
 	view := liveDiffView{scroll: make(map[string]int), following: true}
-	var previous map[string]changeIndex
 	var rendering liveDiffRender
 	var rendered []liveDiffFile
 	var renderedFocus liveDiffChunk
 	renderedFocusFile := -1
 	lastWidth, lastHeight := 0, 0
 	dirty := true
-	refresh := true
 	escape := ""
 	for {
 		width, height, e := term.GetSize(int(stdout.Fd()))
@@ -585,40 +554,6 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			return e
 		}
 		width, height = max(1, width), max(3, height)
-		if refresh {
-			// Move ancestor watches before taking the next snapshot when a
-			// previously missing store directory has appeared.
-			if e := updates.sync(previous); e != nil {
-				return e
-			}
-			indexes, e := store.liveDiffIndexes(workspace, sessionFile)
-			if errors.Is(e, errLiveDiffSessionEnded) {
-				return nil
-			}
-			if e != nil {
-				return e
-			}
-			if e := updates.sync(indexes); e != nil {
-				return e
-			}
-			if !reflect.DeepEqual(indexes, previous) {
-				for path, prior := range previous {
-					for id := range prior.Changes {
-						if _, exists := indexes[path].Changes[id]; !exists {
-							return errors.New("change records were removed; restart the live view")
-						}
-					}
-				}
-				files, e := store.liveDiffSnapshotFiles(ctx, indexes)
-				if e != nil {
-					return e
-				}
-				view.merge(files)
-				view.refreshVisible()
-				previous, dirty = indexes, true
-			}
-			refresh = false
-		}
 		files := make([]liveDiffFile, len(view.files))
 		focusFile := -1
 		for i, file := range view.files {
@@ -674,6 +609,9 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 					header = fmt.Sprintf("%d/%d  %s  | No unreviewed changes", view.selected+1, len(view.files), label)
 				}
 			}
+			if coverage != "" {
+				header = coverage
+			}
 			var screen strings.Builder
 			writeRow := func(row int, text string) {
 				fmt.Fprintf(&screen, "\x1b[%d;1H\x1b[0m\x1b[2K%s\x1b[0m", row, ansi.Truncate(text, max(0, width-1), ""))
@@ -698,6 +636,9 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 					mode += " · new changes available"
 				}
 			}
+			if coverage != "" {
+				mode, _, _ = strings.Cut(coverage, ":")
+			}
 			writeRow(height, mode+" · r resume · j/k scroll · n/p file · f/F flush · q quit")
 			if _, e := io.WriteString(stdout, screen.String()); e != nil {
 				return e
@@ -707,16 +648,54 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		select {
 		case <-ctx.Done():
 			return nil
-		case event, open := <-updates.Events:
+		case event, open := <-events:
 			if !open {
-				return errors.New("live diff watcher closed")
+				return nil
 			}
-			refresh = updates.relevant(event)
-		case e, open := <-updates.Errors:
-			if !open {
-				return errors.New("live diff watcher closed")
+			if e := validateLiveDiffEvent(event); e != nil {
+				return e
 			}
-			return fmt.Errorf("watch live diff: %w", e)
+			switch event.Kind {
+			case "end":
+				return nil
+			case "heartbeat":
+				continue
+			case "coverage":
+				coverage, dirty = event.Status, true
+				continue
+			case "scope":
+				if event.Resync {
+					next, e := store.liveDiffSnapshot(ctx, *event.Scope)
+					if e != nil {
+						return e
+					}
+					for key := range data.attempts {
+						if _, exists := next.attempts[key]; !exists {
+							return errors.New("change records were removed; restart the live view")
+						}
+					}
+					data = next
+				} else if e := data.reconcile(ctx, store, *event.Scope); e != nil {
+					return e
+				}
+				scope, coverage = *event.Scope, event.Status
+			case "change":
+				for _, change := range event.Changes {
+					if !scope.Workspaces[change.Workspace][change.Thread] {
+						continue
+					}
+					if e := data.apply(ctx, store, change); e != nil {
+						return e
+					}
+				}
+			}
+			files, e := data.files()
+			if e != nil {
+				return e
+			}
+			view.merge(files)
+			view.refreshVisible()
+			dirty = true
 		case <-resizes:
 			dirty = true
 		case key, open := <-keys:

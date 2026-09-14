@@ -140,14 +140,11 @@ Acceptance:
 
 ## Live terminal view
 
-`mekugi live-diff [--workspace DIR] [--replay-dir DIR]` reads the durable change index
-and immutable review files without starting a router, writing the store, evaluating
-edits, or reconstructing changes from Git. Atomic index replacement provides a consistent
-membership/receipt snapshot. Filesystem notifications trigger refreshes on publication,
-without a polling interval or debounce delay; terminal resize signals update the viewport
-independently. Watches cover parent directories so atomic replacement does not detach them.
-An independent viewer may start before its store exists. Watch failures and missing or
-inconsistent evidence fail explicitly. Application status stays separate from translation success.
+The automatic pane receives authenticated edit events from its owning router, without
+watching replay files, polling the filesystem, starting another router, writing the
+store, evaluating edits, or reconstructing changes from Git. Manual live viewing is
+not supported. Durable capture history remains available through `hchanges`.
+Application status stays separate from translation success.
 
 Interactive `mekugi codex` arms one automatic Herdr launch per router process when
 stdin/stdout are terminals and Herdr is available. The first
@@ -162,14 +159,33 @@ subagents and later thread/workspace switches, not unrelated sessions sharing
 the workspace. A new thread starts empty, while a resumed thread retains its own
 captured history. Absolute edit operands outside the selected workspace are included.
 
-The router publishes a private, atomic scope file containing workspace/thread
-membership and passes it to the viewer with `--session-file`. It is auxiliary
-display state, bounded to 1 MiB. Exhaustion disables the view rather than publishing
-a partial scope or retaining more memberships. It is not replay authority: durable indexes and records still supply
-the content and application receipts. Removing the file ends the viewer. On
-Codex exit or router cancellation, the router removes its scope and closes only
-the pane it created, with bounded cleanup. A manually launched viewer without a
-session file remains workspace-wide and independent of Codex's lifetime.
+The router passes a private connection capability to its pane with the internal
+`--session-file` argument. That file is written once, not used to deliver updates.
+Workspace/thread membership is in-memory, bounded to 1 MiB, and sent on the event
+stream. Exhaustion disables the view rather than publishing partial membership.
+On Codex exit or router cancellation, the router ends the stream, removes its
+connection capability, and closes only the pane it created, with bounded cleanup.
+A fresh router has a fresh private endpoint; viewers never discover or switch routers.
+
+One durable publication remains one display update, including multi-call responses.
+Captures and receipts are announced only after their durable publication succeeds.
+Each new immutable attempt is loaded once into a bounded projection cache; receipts
+update that cache without rereading capture files. Scope additions reconcile durable
+membership and load newly included attempts. The viewer subscribes before its initial
+snapshot, merging buffered events idempotently, so snapshot races cannot lose updates.
+Reconnects and interrupted worker publication require a fresh durable snapshot before
+the pane can claim live coverage. Navigation, flush acknowledgements, and recency state
+survive reconciliation. Missing or inconsistent evidence fails explicitly.
+
+Mixed-script workers receive a private publisher route before carrier exposure and
+send each segment's capture and receipt without waiting for the script to finish.
+Ordinary host application receipts arrive when Codex next returns results to the router.
+Shell-only filesystem edits remain excluded. Event delivery never blocks edits or
+assumes execution or continuation authority. Subscriber and worker queues are bounded;
+overflow invalidates coverage instead of silently dropping updates. A missing worker
+connection is shown as waiting; a disconnect or failed publication is unavailable.
+Worker coverage that cannot be tracked within capacity stays unavailable for that
+router session. A clean, fully drained worker close does not trigger a history rescan.
 
 The view groups workspace review projections by file identity, following captured moves
 and excluding retained shell scripts. The engine composes applied captures into one
@@ -252,12 +268,11 @@ languages, lexer failures, and hunk sides larger than 256 KiB retain plain safe 
 This unified view does not offer side-by-side layout or word-level emphasis.
 It requires terminal input/output.
 
-`--herdr` creates a sibling pane to the right of the caller in the selected workspace
-without changing focus and starts the same executable there. It never switches to a
-bottom pane based on geometry.
-It requires a Herdr-managed caller and uses returned pane identities, not focused-pane
-defaults. Closing the viewer restores terminal state but does not close the pane or
-affect the agent/router. An unsuccessful launch identifies the newly created pane.
+Automatic launch creates a sibling pane to the right of the caller in the selected
+workspace without changing focus and starts the same executable there. It never
+switches to a bottom pane based on geometry. It requires a Herdr-managed caller and
+uses returned pane identities, not focused-pane defaults. Closing the viewer restores
+terminal state but does not close the pane or affect the agent/router.
 
 The viewer bounds source and rendered diff output independently to 64 MiB and fails on
 explicit removal of previously observed change IDs; restarting selects the remaining

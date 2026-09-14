@@ -137,8 +137,9 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestLiveDiffTerminalProcess$")
+	connection := liveDiffTestSession(t, store, workspace)
 	cmd.Env = append(os.Environ(), "MEKUGI_LIVE_DIFF_TEST_CHILD=1",
-		"MEKUGI_LIVE_DIFF_WORKSPACE="+workspace, "MEKUGI_LIVE_DIFF_REPLAY="+store.directory)
+		"MEKUGI_LIVE_DIFF_WORKSPACE="+workspace, "MEKUGI_LIVE_DIFF_REPLAY="+store.directory, "MEKUGI_LIVE_DIFF_SESSION="+connection)
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 44, Cols: 100})
 	if err != nil {
 		t.Fatal(err)

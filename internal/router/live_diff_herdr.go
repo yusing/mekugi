@@ -17,6 +17,9 @@ type liveDiffPane struct {
 }
 
 func splitLiveDiff(ctx context.Context, workspace, replay string, stdout io.Writer, lifetime *liveDiffPane) error {
+	if lifetime == nil || lifetime.sessionFile == "" {
+		return errors.New("live diff requires a router session")
+	}
 	if os.Getenv("HERDR_ENV") != "1" {
 		return errors.New("--herdr requires a Herdr-managed pane")
 	}
@@ -49,10 +52,8 @@ func splitLiveDiff(ctx context.Context, workspace, replay string, stdout io.Writ
 	}
 	id := pane.Result.Pane.PaneID
 	command := shellQuoteArgument(executable) + " live-diff --workspace " + shellQuoteArgument(workspace) + " --replay-dir " + shellQuoteArgument(replay)
-	if lifetime != nil {
-		lifetime.id = id
-		command = "exec " + command + " --session-file " + shellQuoteArgument(lifetime.sessionFile)
-	}
+	lifetime.id = id
+	command = "exec " + command + " --session-file " + shellQuoteArgument(lifetime.sessionFile)
 	if _, err := run("pane", "run", id, command); err != nil {
 		return fmt.Errorf("created pane %s but could not start viewer: %w", id, err)
 	}

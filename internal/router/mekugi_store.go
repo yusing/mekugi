@@ -27,6 +27,7 @@ const maxReplayRecordBytes = 32 << 20
 type mekugiReplayStore struct {
 	directory          string
 	maxBytes           int64
+	liveDiff           func([]liveDiffChange)
 	maxCommentaryBytes int64
 }
 type replayRecord struct {
