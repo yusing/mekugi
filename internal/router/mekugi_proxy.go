@@ -1240,6 +1240,7 @@ func (t *mekugiResponseTransform) evaluateScript(
 func (t *mekugiResponseTransform) translateTool(name, callID, input string, upstreamItem map[string]json.RawMessage) (mekugiHistory, error) {
 	switch name {
 	case mekugiToolName:
+		t.proxy.autoLiveDiff.requestLaunch(t.directory, t.threadID)
 		return t.translate(callID, input, upstreamItem)
 	case mekugiRecoveryToolName:
 		return t.translateRecovery(callID, input, upstreamItem)

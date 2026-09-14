@@ -151,7 +151,9 @@ Manual live viewing is unsupported; durable history remains available through `h
 Interactive `mekugi codex` inside Herdr arms one automatic pane launch per router
 process when stdin and stdout are terminals and `herdr` is available. The first
 successfully prepared non-subagent turn selects the canonical workspace, not wrapper
-cwd or parsed command arguments.
+cwd or parsed command arguments. Preparation and read-only turns do not open UI.
+The first complete hpatch call emitted for an observed thread triggers the launch,
+including a subagent's call or a rejected edit; replayed history alone does not.
 The pane opens to the caller's right without changing focus. Launch is asynchronous,
 silent, limited to five seconds, and canceled with the router. Failure neither blocks
 Codex nor triggers an automatic retry.

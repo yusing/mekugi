@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"golang.org/x/term"
 )
 
 func TestAutoWrapProcess(t *testing.T) {
@@ -53,21 +52,9 @@ func TestAutoWrapProcess(t *testing.T) {
 	if !bytes.Contains(data, []byte("Authorization")) {
 		t.Fatalf("request did not reach forwarding: %s", data)
 	}
-	if term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
-		deadline := time.Now().Add(10 * time.Second)
-		for {
-			if _, err := os.Stat(os.Getenv("MEKUGI_AUTO_WRAP_MARKER")); err == nil {
-				break
-			}
-			if time.Now().After(deadline) {
-				t.Fatal("interactive wrapper did not launch live diff")
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-	}
 }
 
-func TestWrapLiveDiffTerminalAndRedirected(t *testing.T) {
+func TestWrapLiveDiffWaitsForHpatchTerminalAndRedirected(t *testing.T) {
 	for _, terminal := range []bool{true, false} {
 		t.Run(strconv.FormatBool(terminal), func(t *testing.T) {
 			dir := t.TempDir()
@@ -117,24 +104,11 @@ esac
 			if err != nil {
 				t.Fatalf("wrapper: %v\n%s", err, output)
 			}
-			data, markerErr := os.ReadFile(marker)
-			if terminal {
-				if markerErr != nil || !strings.Contains(string(data), "live-diff --workspace "+workspace+" --replay-dir ") {
-					t.Fatalf("wrong viewer launch: %q %v", data, markerErr)
-				}
-				closed, err := os.ReadFile(marker + ".closed")
-				if err != nil || string(closed) != "new\n" {
-					t.Fatalf("Codex exit did not close its viewer pane: %q %v", closed, err)
-				}
-				_, scope, found := strings.Cut(string(data), " --session-file ")
-				if !found {
-					t.Fatal("viewer missing session scope")
-				}
-				if _, err := os.Stat(strings.TrimSpace(scope)); !os.IsNotExist(err) {
-					t.Fatal("Codex exit retained viewer scope")
-				}
-			} else if !os.IsNotExist(markerErr) {
-				t.Fatal("redirected wrapper launched a pane")
+			if _, err := os.Stat(marker); !os.IsNotExist(err) {
+				t.Fatal("wrapper launched live diff without an hpatch call")
+			}
+			if _, err := os.Stat(marker + ".closed"); !os.IsNotExist(err) {
+				t.Fatal("wrapper closed a pane it never needed")
 			}
 			if bytes.Contains(output, []byte("Live diff started")) {
 				t.Fatal("automatic launch wrote into Codex's terminal")
