@@ -409,16 +409,25 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 }
 
 func TestLiveDiffDelayedCaptureDoesNotFollowBackwards(t *testing.T) {
-	older := liveDiffChunk{key: "older", captureOrder: 1, snapshotOrder: 1}
-	newer := liveDiffChunk{key: "newer", captureOrder: 2, snapshotOrder: 2}
+	path := "same.txt"
+	older := liveDiffHighlightChunk("older", path, "@@ -20 +20 @@\n-old\n+OLDER20\n", true)
+	older.captureOrder, older.snapshotOrder = 1, 1
+	newer := liveDiffHighlightChunk("newer", path, "@@ -90 +90 @@\n-old\n+NEWER90\n", true)
+	newer.captureOrder, newer.snapshotOrder = 2, 2
 	view := liveDiffView{following: true}
-	view.merge([]liveDiffFile{{path: "newer.txt", chunks: []liveDiffChunk{newer}}})
-	view.merge([]liveDiffFile{
-		{path: "older.txt", chunks: []liveDiffChunk{older}},
-		{path: "newer.txt", chunks: []liveDiffChunk{newer}},
-	})
-	if view.latest != "newer" || view.files[view.selected].path != "newer.txt" {
+	view.merge([]liveDiffFile{{path: path, chunks: []liveDiffChunk{newer}}})
+	view.merge([]liveDiffFile{{path: path, chunks: []liveDiffChunk{older, newer}}})
+	if view.latest != "newer" || view.files[view.selected].path != path {
 		t.Fatal("late publication of an older capture moved FOLLOW backwards")
+	}
+	view.refreshVisible()
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme,
+		[]liveDiffFile{view.visible[view.files[0].key()]}, "", 90, 0, view.latestChunk())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if focused := render.lines[render.focusRow]; !strings.Contains(focused, "NEWER90") {
+		t.Fatalf("late older highlight stole rendered focus: row=%d %q", render.focusRow, focused)
 	}
 }
 

@@ -358,12 +358,17 @@ type liveDiffRender struct {
 	lines       []string
 	starts      []int
 	counts      []liveDiffCounts
-	focusOffset int // Preferred top, including nearby captured context.
-	focusRow    int // Row that must remain visible even in a short pane.
+	focusOffset int // Hunk/context anchor retained while locating the target.
+	focusRow    int // Latest changed row to center when viewport boundaries allow it.
 }
 
 func (r liveDiffRender) followOffset(rows int) int {
-	return min(max(r.focusOffset, r.focusRow-rows+1), max(0, len(r.lines)-rows))
+	if rows <= 0 || len(r.lines) == 0 {
+		return 0
+	}
+	// Let preceding file or hunk context remain visible: the target, rather
+	// than its file heading, owns the center of a continuous viewport.
+	return max(0, min(r.focusRow-rows/2, len(r.lines)-1))
 }
 
 // Keep the viewport anchored to a file and its local row when preceding files grow.

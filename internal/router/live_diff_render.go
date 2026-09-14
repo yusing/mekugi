@@ -121,6 +121,7 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 				}
 			}
 		}
+		preferHighlighted := i == focusFile && focus.highlighted
 		for j, chunk := range file.chunks {
 			review := chunk.review
 			hunks := fileHunks[j]
@@ -159,8 +160,10 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 					// adjacent updates. Follow the actual changed coordinate,
 					// not the start of that potentially very large hunk.
 					distance := max(newLine-1-focusLine, focusLine-(newLine-1))
-					if i == focusFile && bestDistance >= 0 && (distance < bestDistance ||
-						distance == bestDistance && row.Kind == '+' && bestKind != '+') {
+					if i == focusFile && bestDistance >= 0 &&
+						(!preferHighlighted || chunk.highlighted) &&
+						(distance < bestDistance ||
+							distance == bestDistance && row.Kind == '+' && bestKind != '+') {
 						render.focusRow = len(render.lines)
 						render.focusOffset = max(hunkStart, render.focusRow-3)
 						bestDistance, bestKind = distance, row.Kind

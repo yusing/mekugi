@@ -211,8 +211,10 @@ recency are viewer-local; restart treats retained history as a baseline, not a n
 ### Navigation and display
 
 All files share one continuous viewport. Following is enabled initially and targets
-the latest changed rows, including those deep inside a combined hunk. Manual scrolling
-or file navigation pauses following and preserves file-relative offsets, clamped when
+the latest changed rows, including those deep inside a combined hunk. It prefers the
+latest update's marked region when composed coordinates are ambiguous and centers the
+target row when file and viewport boundaries allow it. Manual scrolling or file navigation
+pauses following and preserves file-relative offsets, clamped when
 content shrinks. `n`/`p` navigate files, `g`/`G` the complete view, and `r` resumes following,
 including changes received while paused. The file at the top of the viewport is current
 for `f`.

@@ -93,6 +93,48 @@ func TestLiveDiffFollowInsideCombinedHunk(t *testing.T) {
 	}
 }
 
+func TestLiveDiffFollowCentersLatestRow(t *testing.T) {
+	initial := liveDiffChunk{key: "create", applied: true,
+		review: mekugi.ReviewFile{AfterPath: "file.txt",
+			Diff: "--- /dev/null\n+++ file.txt\n@@ -0,0 +1,100 @@\n" + strings.Repeat("+content\n", 100)}}
+	recent := liveDiffHighlightChunk("edit", "file.txt", "@@ -50 +50 @@\n-content\n+LATEST50\n", true)
+	view := liveDiffView{following: true}
+	view.merge([]liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{initial}}})
+	view.merge([]liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{initial, recent}}})
+	view.refreshVisible()
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme,
+		[]liveDiffFile{view.visible[view.files[0].key()]}, "", 90, 0, recent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const rows = 18
+	offset := render.followOffset(rows)
+	if position := render.focusRow - offset; position != rows/2 {
+		t.Fatalf("latest row position = %d, want centered position %d", position, rows/2)
+	}
+}
+
+func TestLiveDiffFollowPrefersLatestHighlightedRegion(t *testing.T) {
+	path := "file.txt"
+	older := liveDiffHighlightChunk("", path, "@@ -90 +90 @@\n-old\n+OLDER90\n", true)
+	older.highlighted = false
+	latest := liveDiffHighlightChunk("", path, "@@ -20 +20 @@\n-old\n+LATEST20\n", true)
+	latest.highlighted = true
+	// The raw capture coordinate can become ambiguous after composition. The
+	// recency mark remains authoritative for which visible region to follow.
+	focus := liveDiffHighlightChunk("latest", path, "@@ -90 +90 @@\n-old\n+raw latest\n", true)
+	focus.highlighted = true
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme,
+		[]liveDiffFile{{path: path, chunks: []liveDiffChunk{older, latest}}}, "", 90, 0, focus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	focused := ansi.Strip(render.lines[render.focusRow])
+	if !strings.Contains(focused, "LATEST20") {
+		t.Fatalf("follow lost the latest highlighted region: row=%d %q", render.focusRow, focused)
+	}
+}
+
 func TestLiveDiffNativeFollowKeepsPreparedCaption(t *testing.T) {
 	diff := "--- /dev/null\n+++ file.txt\n@@ -0,0 +1,40 @@\n" + strings.Repeat("+content\n", 40)
 	chunk := liveDiffChunk{
