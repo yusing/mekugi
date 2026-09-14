@@ -48,6 +48,14 @@ func executeShellTool(
 		return executeShellProgram(ctx, manifest, runtimeRoot, shellContribution, arguments, stdin,
 			workingDirectory, environment, commentary, streamStdout, streamStderr)
 	}
+	invocation, source, err := parseShellInvocation(arguments[len(arguments)-1])
+	if err != nil {
+		return toolplugin.ExecutionOutput{}, err
+	}
+	arguments = slices.Clone(arguments)
+	arguments[len(arguments)-1] = source
+	ctx = context.WithValue(ctx, shellInvocationContextKey{}, invocation)
+	commentary = invocation.commentary(commentary)
 	parsed, err := shellsyntax.Parse(arguments[len(arguments)-1])
 	if err != nil {
 		return toolplugin.ExecutionOutput{}, err
@@ -165,10 +173,8 @@ func executeShellProgram(
 			if journal == "" {
 				journal = handler.Env.Get(capturer.AXReadOutputEnvironment).String()
 			}
-			callID := handler.Env.Get(capturer.AXCallIDEnvironment).String()
-			if !capturer.ValidAXIdentity(callID) {
-				callID = ""
-			}
+			invocation, _ := handlerCtx.Value(shellInvocationContextKey{}).(shellInvocation)
+			callID := invocation.CallID
 			observation, observationErr := capturer.StartAXReadWithContext(journal,
 				handler.Env.Get(shellruntime.ThreadIDEnvironment).String(), contribution.Name,
 				capturer.AXReadContext{CallID: callID, ShellID: shellID})

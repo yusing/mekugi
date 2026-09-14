@@ -64,21 +64,25 @@ func TestDebugAXDiscoveryMatchesMetadataNotThreadSuffix(t *testing.T) {
 	}
 }
 
-func TestAXCarrierTemplatesPreserveWorkerEnvironment(t *testing.T) {
+func TestAXCarrierTemplatesPreserveInvocationMetadata(t *testing.T) {
 	root := t.TempDir()
 	idFile := filepath.Join(root, "identity")
-	worker := "#!/bin/sh\n[ \"$#\" -eq 2 ] && [ \"$1\" = bash ] || exit 91\nprintf '%s' \"$MEKUGI_AX_CALL_ID\" > \"$AX_TEST_ID_FILE\"\nexec /bin/bash -c \"$2\"\n"
+	worker := "#!/bin/sh\n[ \"$#\" -eq 2 ] && [ \"$1\" = bash ] || exit 91\nprintf '%s' \"$2\" > \"$AX_TEST_ID_FILE\"\nexec /bin/bash -c \"$2\"\n"
 	if err := os.WriteFile(filepath.Join(root, "shell"), []byte(worker), 0700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", root+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("AX_TEST_ID_FILE", idFile)
-	t.Setenv(capturer.AXCallIDEnvironment, "")
 	registry := &toolRegistry{}
 	contribution := toolContribution{PluginID: builtinToolsPluginID, Name: "shell"}
 	script := "cat; printf result; exit 7"
 	for _, tc := range []struct{ template, output string }{
 		{"command {.}", "result"},
+		{"command -- {.}", "result"},
+		{"command env -u UNUSED {.}", "result"},
+		{"env UNUSED=value env -u UNUSED {.}", "result"},
+		{"env -u UNUSED {.}", "result"},
+		{"env --unset=UNUSED {.}", "result"},
 		{"env {.}", "result"},
 		{"printf input | {.} | cat", "inputresult"},
 		{":; {.}", "result"},
@@ -94,7 +98,8 @@ func TestAXCarrierTemplatesPreserveWorkerEnvironment(t *testing.T) {
 				t.Fatalf("template changed execution: %q -> %s (%v)", command, output, err)
 			}
 			id, err := os.ReadFile(idFile)
-			if err != nil || string(id) != "call-review" {
+			invocation, body, parseErr := parseShellInvocation(string(id))
+			if err != nil || parseErr != nil || invocation.CallID != "call-review" || body != script {
 				t.Fatalf("worker lost identity: %q (%v)", id, err)
 			}
 			if got := inspectionAXCallID(mustMarshalJSON(command)); got != "call-review" {
@@ -112,8 +117,12 @@ func TestAXCommandInspectionRequiresCarrierProvenance(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		wantID := "call-review"
+		if strings.HasPrefix(script, "curl") {
+			wantID = "" // Direct commands have no private-reader invocation to tag.
+		}
 		for _, encoded := range []json.RawMessage{mustMarshalJSON(command), mustMarshalJSON([]string{"/bin/bash", "-lc", command})} {
-			if got := inspectionAXCallID(encoded); got != "call-review" {
+			if got := inspectionAXCallID(encoded); got != wantID {
 				t.Fatalf("generated carrier lost identity: %q -> %q", command, got)
 			}
 		}

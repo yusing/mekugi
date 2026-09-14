@@ -283,7 +283,7 @@ func TestShellRouteKeepsCleanCommandWithoutDefaultCommentary(t *testing.T) {
 				Command string `json:"cmd"`
 			}
 			decodeExecCarrierArguments(t, carrier, &args)
-			want := "env " + shellJournalTokenEnvironment + "=" + shellQuoteArgument(transform.commentarySubscriptions[0].token) + " shell bash " + shellQuoteArgument(test.input)
+			want := "shell bash " + shellQuoteArgument((shellInvocation{JournalToken: transform.commentarySubscriptions[0].token}).source(test.input))
 			if args.Command != want {
 				t.Fatalf("command = %q, want %q", args.Command, want)
 			}

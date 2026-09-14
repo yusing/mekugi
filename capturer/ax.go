@@ -23,9 +23,6 @@ import (
 // AXReadOutputEnvironment opts executor-side private readers into a local journal.
 const AXReadOutputEnvironment = "MEKUGI_AX_OUTPUT"
 
-// AXCallIDEnvironment joins an executor observation to its logical tool call.
-const AXCallIDEnvironment = "MEKUGI_AX_CALL_ID"
-
 const maxAXEvidenceBytes = 64 << 20
 
 // AXReadContext contains identities only, never command text or paths.

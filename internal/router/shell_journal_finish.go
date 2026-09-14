@@ -7,8 +7,6 @@ import (
 	"strings"
 )
 
-const shellJournalTokenEnvironment = "MEKUGI_JOURNAL_TOKEN"
-
 func shellJournalFinishReceipt(turn, call string) string {
 	return fmt.Sprintf("shell-finish:%x", sha256.Sum256([]byte(turn+"\x00"+call)))
 }

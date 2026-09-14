@@ -150,7 +150,9 @@ Other interpreters have no journal builtin.
 Both forms reuse authenticated broker routes and private thread-bound discovery.
 Shell routes use inherited `CODEX_THREAD_ID`; agents do not add publisher flags or inline
 environment assignments to scripts. Translated Bash/POSIX invocations carry a private call-scoped
-capability with an immutable answer source. Background commands share that invocation's sink,
+capability with an immutable answer source in private framing inside the existing quoted source
+argument. The worker strips this framing before parsing headers, binds the capability to its
+own sink, and never exports it to the program environment. Background commands share that invocation's sink,
 not mutable thread-wide question state. Unattributed workers retain the thread route for ordinary
 mutations and lists, but cannot finish or infer an answer source. Code Mode retains its per-call
 capability until completion or expiry. Closing an already handed-off response does not cancel its publisher.

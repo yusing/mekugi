@@ -22,14 +22,16 @@ code. The host validates private reader classification metadata; dispatch separa
 classifies retained-file, execution, output-write, cancellation, and deadline failures.
 Unclassified failures use `unknown`; v1 failures are never reclassified from prose.
 
-With AX enabled, generated shell carriers may carry the opaque logical call identity
-in `MEKUGI_AX_CALL_ID`, not a capability, path, script, or publication route.
-Instrumented carriers start with `# mekugi:ax:call_id=ID` on its own line. Offline
-command correlation requires this explicit router marker; a bare environment
-assignment, even before `shell`, is not sufficient evidence. Direct external commands
-and templated workers share the marker. It is local correlation, not authentication.
-In a command template, `env MEKUGI_AX_CALL_ID=ID` prefixes the substituted worker,
-not the whole template, so wrappers and pipelines preserve the worker's identity.
+With AX enabled, generated shell workers carry the opaque logical call identity in private
+framing inside their existing quoted source argument. The worker removes it before execution
+and keeps attribution in invocation-local state, not an environment variable. Templates and
+pipelines preserve that argument. No outer AX comment or environment prefix is emitted.
+Offline correlation reads literal worker framing through recognized `command` and `env`
+wrappers. Other wrapper forms remain unattributed rather than guessed. Retained historical
+outer AX markers remain readable. Neither a bare environment assignment nor an arbitrary command establishes identity.
+Direct external commands remain unchanged and have no private-reader invocation identity;
+their native timing remains available without an inferred logical-call join. These joins are
+local correlation evidence, not authentication.
 Normal uninstrumented carriers remain unchanged. Journal events include safe `call_id` when
 available and a worker-local random `shell_id`. Start and finish must agree on schema,
 thread, reader, and all correlation fields. A call ID is not inferred from an arbitrary

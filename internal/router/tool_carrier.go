@@ -326,6 +326,7 @@ func (registry *toolRegistry) execCarrierCommand(
 		workerArguments = slices.Clone(arguments)
 		workerArguments[len(workerArguments)-1] = source
 	}
+	directSelected := false
 	command := workerCommand(contribution.Name, workerArguments)
 	if builtinShell && template == "" && outputTokens == 0 {
 		// Preserve direct calls without adding worker flags or environment.
@@ -334,33 +335,30 @@ func (registry *toolRegistry) execCarrierCommand(
 			directArguments := slices.Clone(arguments)
 			directArguments[len(directArguments)-1] = parsed.Body
 			if direct, ok := registry.directBashExecCommand(directArguments); ok {
+				directSelected = true
 				command = direct
 			}
 		}
 	}
-	if builtinShell && len(callIDs) > 1 && callIDs[1] != "" && strings.HasPrefix(command, "shell ") &&
-		len(arguments) > 0 && (shellInterpreterName(arguments[0]) == "bash" || shellInterpreterName(arguments[0]) == "sh") {
-		command = "env " + shellJournalTokenEnvironment + "=" + shellQuoteArgument(callIDs[1]) + " " + command
-	}
 	callID := ""
 	if builtinShell && len(callIDs) != 0 && capturer.ValidAXIdentity(callIDs[0]) {
 		callID = callIDs[0]
-		command = capturer.AXCallIDEnvironment + "=" + shellQuoteArgument(callID) + " " + command
-		if template != "" {
-			// A template may put the worker after "command", "env", or a
-			// pipeline. Keep the assignment on the worker, but make the
-			// substituted fragment an executable rather than an assignment.
-			command = "env " + command
+	}
+	if builtinShell && !directSelected && len(workerArguments) >= 2 {
+		invocation := shellInvocation{CallID: callID}
+		if len(callIDs) > 1 && (shellInterpreterName(arguments[0]) == "bash" || shellInterpreterName(arguments[0]) == "sh") {
+			invocation.JournalToken = callIDs[1]
 		}
+		workerArguments = slices.Clone(workerArguments)
+		last := len(workerArguments) - 1
+		workerArguments[last] = invocation.source(workerArguments[last])
+		command = workerCommand(contribution.Name, workerArguments)
 	}
 	if template != "" {
 		if strings.Count(template, "{.}") != 1 {
 			return "", errors.New("exec command template must contain exactly one {.} placeholder")
 		}
 		command = strings.Replace(template, "{.}", command, 1)
-	}
-	if callID != "" {
-		command = axCarrierCallIDPrefix + callID + "\n" + command
 	}
 	return command, nil
 }

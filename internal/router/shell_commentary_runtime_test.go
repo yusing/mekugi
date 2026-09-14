@@ -212,7 +212,6 @@ func TestDiscoverShellJournalUsesInvocationToken(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv(shellruntime.RuntimeDirectoryEnvironment, root)
 	t.Setenv(shellruntime.ThreadIDEnvironment, "thread")
-	t.Setenv(shellJournalTokenEnvironment, "invocation-token")
 	worker := filepath.Join(root, "worker")
 	path, _ := shellruntime.Path(root, "thread")
 	if err := os.Symlink(worker, path); err != nil {
@@ -229,7 +228,7 @@ func TestDiscoverShellJournalUsesInvocationToken(t *testing.T) {
 	if err := os.WriteFile(path+".commentary", mustMarshalJSON(descriptor), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	sink := discoverShellCommentary(worker)
+	sink := (shellInvocation{JournalToken: "invocation-token"}).commentary(discoverShellCommentary(worker))
 	if sink == nil {
 		t.Fatal("missing invocation sink")
 	}

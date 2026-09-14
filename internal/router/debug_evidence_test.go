@@ -31,9 +31,8 @@ func TestAXReaderFailureClassesPreserveOutputAndCallIdentity(t *testing.T) {
 	journal := filepath.Join(root, "reads.jsonl")
 	instrumented := newShellWorkerTestInvocation(root,
 		capturer.AXReadOutputEnvironment+"="+journal,
-		capturer.AXCallIDEnvironment+"=call-batch",
 		shellruntime.ThreadIDEnvironment+"=child-thread")
-	out, stderr, code := runShellWorkerTest(t, registry, "bash", nil, script, nil, instrumented)
+	out, stderr, code := runShellWorkerTest(t, registry, "bash", nil, (shellInvocation{CallID: "call-batch"}).source(script), nil, instrumented)
 	beforeOut, beforeErr := os.ReadFile(filepath.Join(root, "before.out"))
 	afterOut, afterErr := os.ReadFile(filepath.Join(root, "after.out"))
 	beforeDiagnostic, beforeDiagnosticErr := os.ReadFile(filepath.Join(root, "before.err"))

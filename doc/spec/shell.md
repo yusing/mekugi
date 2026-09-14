@@ -88,8 +88,9 @@ The `shell` transformation MUST NOT add flags to the rendered command. Only inte
 arguments supplied by the input's selector may appear as interpreter flags. Router-owned
 metadata, including commentary connection details and credentials, must travel through private
 runtime plumbing, never through added command arguments or inline environment assignments.
-The optional opaque AX correlation marker and worker environment under
-[REQ-AX-001](ax.md) are the debug-only exception; they carry no capability or route.
+Call-scoped journal credentials and AX identity travel as private framing inside the existing
+quoted source argument. The worker removes that framing before parsing headers or executing
+any body bytes. Translated commands add neither environment prefixes nor outer AX comments.
 Enabling commentary must not change whether an otherwise eligible command remains direct.
 Journal authoring and reserved argv syntax follow [REQ-JOURNAL-001](journal.md). Shell commentary is thread-scoped. The worker discovers its private publisher through the
 inherited `CODEX_THREAD_ID` and current thread runtime, without changing the interpreter argv.
