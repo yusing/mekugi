@@ -82,3 +82,29 @@ func TestChatCaptureDecodedToolItemTokens(t *testing.T) {
 		}
 	}
 }
+
+func TestChatCaptureFinishEvidence(t *testing.T) {
+	codec, err := tokenizer.Get(tokenizer.O200kBase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct{ reason, status string }{
+		{"stop", "completed"}, {"tool_calls", "completed"},
+		{"length", "incomplete"}, {"content_filter", "incomplete"},
+		{"", ""}, {"future", ""},
+	} {
+		for _, stream := range []bool{false, true} {
+			payload := `{"choices":[{"message":{"content":"answer"},"finish_reason":"` + test.reason + `"}]}`
+			contentType := "application/json"
+			if stream {
+				payload = "data: " + strings.Replace(payload, `"message":`, `"delta":`, 1) + "\n\ndata: [DONE]\n\n"
+				contentType = "text/event-stream"
+			}
+			var record captureRecord
+			output := observeChatResponse([]byte(payload), contentType, &record, codec)
+			if record.ResponseStatus != test.status || (len(output) != 0) != (test.status != "") {
+				t.Fatalf("reason=%q stream=%v status=%q output=%s", test.reason, stream, record.ResponseStatus, output)
+			}
+		}
+	}
+}

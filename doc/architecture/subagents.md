@@ -34,3 +34,10 @@ The `capturer` package remains the sole metrics owner. Its provider transport ob
 Chat Completions, counts real wire bytes, reconstructs terminal assistant output and records actual
 function-call shapes. The router maps provider usage into its existing terminal observation seam;
 neither the adapter nor the bridge maintains parallel metrics or durable conversation content.
+
+Chat finish-reason recognition is owned by `internal/chat` and shared by the Grok adapter
+and capture. Recognized status is evidence, not executable-call validation: the adapter
+still seals choice data, requires stream termination, and validates every parallel call
+before emitting executable items. Capture observes actual Chat traffic rather than the
+synthesized Responses stream. Responses event names and families come from
+`internal/responses`; neither shared protocol package owns agent or transport lifecycle.
