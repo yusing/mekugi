@@ -63,6 +63,89 @@ func TestSubagentBridgeProjectsAndRestoresPlaintext(t *testing.T) {
 		}
 	}
 }
+func TestSubagentBridgeRewritesRecordedDispatchInstruction(t *testing.T) {
+	// Recorded in the 2026-09-14 instruction dump, independently of the production matcher.
+	const prior = "Note that collaboration tools cannot be called from inside `functions.exec`. Call `spawn_agent`, `send_message`, `followup_task`, `wait_agent`, `interrupt_agent`, and `list_agents` only as direct tool calls using the recipient shown in their tool definitions, such as `to=functions.collaboration.spawn_agent`, since they are intentionally absent from the `functions.exec` `tools.*` namespace. Available tools in `functions.exec` are explicitly described with a `tools` namespace in the developer message."
+	const target = "to=mekugi_collaboration.spawn_agent"
+	for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+		t.Run(model, func(t *testing.T) {
+			for _, additional := range []bool{false, true} {
+				for _, grok := range []bool{false, true} {
+					for _, available := range []bool{false, true} {
+						request := bridgeTestRequest(t, additional)
+						request.fields["model"] = mustTestJSON(t, model)
+						if !available {
+							request.fields["tools"] = mustTestJSON(t, []any{})
+							request.fields["input"] = mustTestJSON(t, []any{})
+						}
+						request.fields["instructions"] = mustTestJSON(t, prior)
+						var input []any
+						if err := json.Unmarshal(request.fields["input"], &input); err != nil {
+							t.Fatal(err)
+						}
+						offset := len(input)
+						input = append(input,
+							map[string]any{"type": "message", "role": "developer", "content": prior},
+							map[string]any{"type": "message", "role": "developer", "content": []any{
+								map[string]any{"type": "input_text", "text": "Keep caller policy.\r\n" + prior + "\r\n"},
+								map[string]any{"type": "encrypted_content", "encrypted_content": "opaque"},
+								map[string]any{"type": "input_text", "text": "~~~\n"},
+								map[string]any{"type": "input_text", "text": prior + "\n"},
+								map[string]any{"type": "input_text", "text": "~~~\n" + prior + "\n"},
+								map[string]any{"type": "input_text", "text": "```\n" + prior + "\n```"},
+							}},
+							map[string]any{"type": "message", "role": "user", "content": prior},
+						)
+						request.setInput(mustTestJSON(t, input))
+						bridge, err := prepareSubagentBridge(&request, grok)
+						if err != nil || (bridge != nil) != available {
+							t.Fatalf("prepare bridge: available=%v err=%v", available, err)
+						}
+						want := prior
+						if available {
+							want = strings.Replace(prior, "to=functions.collaboration.spawn_agent", target, 1)
+						}
+						if !strings.HasPrefix(jsonString(request.fields, "instructions"), want) {
+							t.Fatal("top-level dispatch instruction was not projected")
+						}
+						var got []map[string]json.RawMessage
+						if err := json.Unmarshal(request.fields["input"], &got); err != nil {
+							t.Fatal(err)
+						}
+						if jsonString(got[offset], "content") != want {
+							t.Fatal("developer scalar dispatch instruction was not projected")
+						}
+						var parts []map[string]json.RawMessage
+						if err := json.Unmarshal(got[offset+1]["content"], &parts); err != nil {
+							t.Fatal(err)
+						}
+						if jsonString(parts[0], "text") != "Keep caller policy.\r\n"+want+"\r\n" ||
+							jsonString(parts[1], "encrypted_content") != "opaque" ||
+							jsonString(parts[2], "text") != "~~~\n" ||
+							jsonString(parts[3], "text") != prior+"\n" ||
+							jsonString(parts[4], "text") != "~~~\n"+want+"\n" ||
+							jsonString(parts[5], "text") != "```\n"+prior+"\n```" ||
+							jsonString(got[offset+2], "content") != prior {
+							t.Fatal("multipart projection changed unrelated content or line endings")
+						}
+					}
+				}
+			}
+		})
+	}
+	for _, input := range []string{prior, prior + "\n", prior + "\r\n"} {
+		want := strings.Replace(input, "to=functions.collaboration.spawn_agent", target, 1)
+		if got := rewriteSubagentDispatchInstruction(input, new(instructionFence)); got != want || rewriteSubagentDispatchInstruction(got, new(instructionFence)) != got {
+			t.Fatal("dispatch rewrite is not exact and idempotent")
+		}
+	}
+	for _, input := range []string{prior + " Caller suffix.", "  " + prior, "~~~\n" + prior + "\n~~~"} {
+		if got := rewriteSubagentDispatchInstruction(input, new(instructionFence)); got != input {
+			t.Fatal("dispatch rewrite changed unrecognized caller content")
+		}
+	}
+}
+
 func TestGrokCatalogPreservesNativeMetadata(t *testing.T) {
 	catalog := []byte(`{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2","use_responses_lite":true,"model_messages":{"instructions_template":"native instructions"},"unknown_future_field":42}],"extra":"keep"}`)
 	result, err := GrokModelCatalog(catalog)

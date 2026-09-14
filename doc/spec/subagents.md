@@ -43,7 +43,10 @@ schema has no OpenAI encryption annotation. Response calls are restored to the o
 `encrypted_function_args` marker required by Codex for plaintext delivery. Replay consistently maps
 bridge-produced native calls back to their provider-visible identities. Historical calls with
 nonempty encryption markers retain their native namespace and encryption metadata. Both ordinary and additional-tool catalogs
-are covered. The reserved OpenAI collaboration schema is not modified in place, because the provider
+are covered. When this namespace is exposed, the complete pinned native dispatch instruction in
+top-level and developer-message text uses the same namespace, including multipart content.
+Caller wording, fenced examples, and user messages remain unchanged.
+The reserved OpenAI collaboration schema is not modified in place, because the provider
 rejects that operation. User-visible agent lifecycle remains native.
 
 Plaintext projection makes new assignment payloads readable to the router, allowing journal

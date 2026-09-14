@@ -36,6 +36,31 @@ type instructionLine struct {
 	text   string
 }
 
+// instructionFence keeps pinned instruction rewrites out of fenced examples.
+type instructionFence struct {
+	marker byte
+	width  int
+}
+
+func (f *instructionFence) consume(line string) bool {
+	marker := strings.TrimLeft(line, " ")
+	if len(line)-len(marker) <= 3 && len(marker) >= 3 && (marker[0] == '`' || marker[0] == '~') {
+		width := 1
+		for width < len(marker) && marker[width] == marker[0] {
+			width++
+		}
+		if width >= 3 {
+			if f.marker == 0 {
+				f.marker, f.width = marker[0], width
+			} else if marker[0] == f.marker && width >= f.width && strings.TrimSpace(marker[width:]) == "" {
+				f.marker = 0
+			}
+			return true
+		}
+	}
+	return f.marker != 0
+}
+
 func codexModelInstructionFileConfigured() (bool, error) {
 	codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME"))
 	if codexHome == "" {
