@@ -2,170 +2,32 @@
 
 ## CTR-METRICS-001 — Capture-owned metrics
 
-The opt-in debug artifact bundle is router-owned in `internal/router/debug.go`, not part
-of sanitized capture. It reuses capturer exports for capture and metrics, records a selected
-instruction snapshot after rewriting alongside the prepared wire instruction subset, and logs
-lifecycle/request outcomes without raw errors. `internal/router/feature_usage.go` owns
-the versioned, allowlisted operational feature-event envelope and safe correlation IDs.
-Feature owners report actual branch observations into that debug-only envelope, not
-capture callbacks or synthetic metrics. The commentary transformer observes authored
-fields, Code Mode lowering, and response preparation; its broker observes authenticated
-runtime publication with route identity. The broker never calls back into the proxy,
-and debug output never calls into a feature owner while holding its write lock.
-Local projection is not proof of delivery;
-cached-prefix reuse/replacement and request-less automatic successors are explicit in the dump.
-`cmd/mekugi/wrap.go` prints its paths only after the child and router exit.
+The in-process capturer is the sole owner of request correlation, transport measurement,
+provider usage, cache attribution, representation differences, tool-shape accounting,
+delivery accounting, capture health, durable sanitized records, and metrics snapshots.
+HTTP and WebSocket observers share request-scoped correlation without sending private
+headers or changing byte streams, retries, cancellation, or response ownership.
 
-The root `capturer` subpackage is the sole owner of request correlation, payload measurement,
-provider-usage metrics, cache attribution, representation differences, transported-tool accounting, Mekugi
-delivery accounting, capture health, durable capture records, and the structured metrics snapshot.
-The router's terminal-payload seam parses provider usage once and passes the resulting counts to
-the capturer, Mentor Handoff, and user-only usage commentary.
+Raw bodies exist only while a boundary is measured. Durable capture retains bounded sizes,
+token estimates, status, timing, provider usage, tool identities, and allowlisted outcomes,
+but not credentials, prompts, instructions, arguments, command output, response text,
+patches, or reports. Missing, truncated, evicted, malformed, or old evidence is marked
+unavailable or incomplete, never inferred as zero or success. Provider usage remains
+authoritative over local token estimates.
 
-The router also supplies its validated request kind as request-scoped observation data.
-Capture retains only the allowlisted `turn`, `prewarm`, or `compaction` value, shared
-across both boundaries and the exchange snapshot; it does not reparse raw metadata.
-This identifies non-turn traffic for schedule validation without changing usage accounting.
+Production feature owners supply only validated observation facts at existing seams. They
+do not keep synthetic baselines, metric callbacks, parallel histories, or dashboard-owned
+calculations. CTP provides native and encoded boundaries; terminal parsing provides usage;
+private reader execution provides opt-in AX events. Capturer calculations are reused by the
+dashboard, offline aggregation, and benchmark validation.
 
-The capturer is in-process. `mekugi` wraps its `POST /v1/responses` handler and
-provider `http.RoundTripper` for HTTP Responses and Chat Completions. For
-`GET /v1/responses`, that wrapper supplies a context-private factory for
-Codex-facing WebSocket exchanges, without counting the upgrade as an inference
-request. It observes client and provider WebSocket JSON-message exchanges at
-their transport boundaries; it does not start a second HTTP server, open another
-listener, or require another process. `GET /api/metrics` serves the capturer snapshot from the same
-router listener as Responses and models traffic. The embedded `GET /` dashboard is a presentation
-view of that snapshot on the same listener and owns no metric state or calculation.
+Debug artifacts are a separate router-owned, explicitly requested surface. They may combine
+sanitized capture exports with instruction snapshots, lifecycle outcomes, and feature events,
+but cannot affect runtime success. Failure to initialize a requested artifact fails startup;
+later observation failures remain auxiliary. AX journals and private replay corpora also
+remain outside sanitized transport capture.
 
-The client and provider transport observers share a request-scoped, process-private correlation value through
-Go context. No correlation header crosses either HTTP boundary. Provider retries receive consecutive
-attempt numbers under the same logical request. The capturer exposes only its immutable local capture ID and request sequence through
-`RequestCorrelation`; debug reuses that identity without creating metric callbacks or
-wire headers. The wrappers preserve request bytes, response bytes,
-stream flushing, cancellation, status, headers, and response-body ownership.
-
-Raw request and response bodies exist only while one boundary is being measured. Durable schema-6
-JSONL records contain complete transport lengths, GPT-5 token estimates, one separately measured
-terminal Responses `output` array (or reconstructed Chat Completions assistant-message array), statuses, duration, request identity fields
-needed for benchmark reconciliation, the passed provider usage, tool names, tool-call identities, and sanitized
-HPATCH outcome kinds and allowlisted diagnostic reason codes parsed from the router-owned envelope.
-They never retain credentials, prompts, instructions, tool arguments, command output, response text,
-translated patches, or reports. Each response boundary retains at most 8 MiB for parsing while
-forwarding and byte-counting the complete stream; overflow becomes explicit incomplete health.
-
-The snapshot derives:
-
-- logical requests, provider attempts, completion and failure counts;
-- provider input, cached input, uncached input, output, and reasoning usage;
-- overall provider cache rate, plus cold/new input and immediately preceding logical-request eligible-prefix cache attribution from
-  the final provider attempt by nonempty thread, ordered when requests enter the handler and
-  invalidated when that final attempt has no usage;
-- complete client and provider transport bytes and GPT-5 token estimates, plus terminal `output`
-  arrays measured once independently of SSE event count and echoed response metadata; streaming
-  boundaries rebuild empty, missing, null, or generated-commentary-only terminal arrays from
-  finalized output items in protocol index order. The capturer excludes only client message items
-  in the router-owned namespaces supplied by `internal/commentaryid`; provider and passthrough
-  items remain exact. This operates on observed bytes without metric callbacks from the router.
-  All generated commentary remains part of complete transport measurement;
-- signed post-replay-native-versus-final-provider CTP request savings, assistant-text CTP savings,
-  and separately labeled complete-output delivery expansion;
-- provider-emitted and client-delivered tool shapes;
-- correlated HPATCH calls, corrections, successful and rejected deliveries, unmatched calls,
-  diagnostic codes, and signed Mekugi-versus-delivered-carrier input expansion (not stock-model savings);
-- a bounded recent window of per-exchange provider attempts and usage, with complete cumulative
-  process totals and explicit dropped-detail health; and
-- capture, completeness, boundary, sequence, write, and skipped-request health.
-
-Router, edit-engine, CTP, registry, and plugin production code implement behavior only. They do not
-maintain hypothetical stock baselines, synthetic stock commands or results, gain counters, metric callbacks,
-persistence slots, session metric histories, dashboard-owned calculations, or metric-only
-classifier events. The opt-in actual-reader observation seam below is the explicit
-exception for runtime AX evidence, not a transport metric callback.
-The router passes usage and the actual post-replay, post-Mekugi, pre-CTP request as request-scoped
-observation data without receiving metric callbacks. The capturer measures the latter immediately
-and retains only sizes and keyed fingerprints. Native-only forwarding supplies its inference request before WebSocket transport framing as the baseline.
-Mentor and commentary remain operational consumers, not metrics sources.
-
-Capture failure is auxiliary after startup: it cannot alter an edit, command, translated response,
-or provider result. Failure to initialize an explicitly requested capture output prevents startup,
-because silently omitting requested evidence would make a benchmark invalid.
-
-Local token estimates count decoded JSON keys and scalar values, not outer JSON framing or escaping. Literal escapes inside content still count. Transport bytes remain exact, and provider usage remains authoritative. Metrics v4/schema-6 evidence is required for this counting contract.
-
-Cache diagnosis also belongs to the capturer. It fingerprints the existing client/native/provider
-seams, never adds router callbacks or retains a second raw history. A recorder-private ephemeral
-HMAC key makes fingerprints useful for within-run comparison without exposing public prompt
-hashes. Snapshot-local comparisons use each request’s recorded immediate arrival predecessor, break at
-pending, failed, or evicted predecessors,
-and retain the existing 4096-exchange window. Each stage retains at most 128 input-item fingerprints;
-partial evidence is unavailable rather than a claim of stability. Benchmark and dashboard code
-present these diagnoses; the benchmark independently reconciles them with sanitized observations.
-
-The same capture wrappers privately fingerprint the incoming and outgoing `x-codex-turn-state`
-headers. The snapshot compares their forwarding separately from session-key stability, without
-owning turn state or changing routing. Missing old evidence is unavailable, not an absent header.
-
-Provider-response evidence also belongs to the capturer. Its existing transport observes only
-allowlisted request-ID/model response headers, and its response parser observes envelope model
-and terminal cached-token field presence. The router usage callback and normalized counters are
-unchanged. Evidence travels with each attempt, without another callback or retained raw response;
-snapshot clones isolate its explicit count. Reports distinguish unknown telemetry from explicit
-zero and keep provider request IDs out of public summaries.
-
-`capturer/ax.go` owns opt-in runtime-reader journal serialization and offline AX
-calculations under `REQ-AX-001`. The shell dispatch boundary supplies actual private-reader
-start/finish observations and allowlisted failure classification. The authenticated
-worker manifest pins opt-in debug output; carrier-only opaque call IDs and worker-local
-shell IDs join executed reads without retaining scripts or changing uninstrumented
-carriers. The journal parser validates all threads once before attribution and exposes
-excluded/anonymous evidence. The same owner aggregates recorded CommandExecution item
-intervals, never reconstructed execution counts or presumed causes of gaps. This explicit execution-observation seam is separate from
-transport measurement and adds no synthetic stock counters. It records no source content.
-`internal/router/debug_ax.go` owns automatic discovery of known-thread rollout paths
-and debug report orchestration, labeling journal-only identities separately and reusing
-the inspector and capturer rather than another
-calculation path. `cmd/mekugi/wrap.go` passes the selected debug journal environment to
-the executor; debug shutdown retains the report and prints its artifact path.
-The offline session inspector supplies original replay payloads transiently for byte
-comparison, paired rollout events for timing, and explicit assessment/evidence paths.
-Capturer owns their aggregation and preserves the distinction between observations,
-missing coverage, and defect judgments. These separate local artifacts do not enter
-sanitized transport capture, live snapshots, or benchmark transport calculations.
-
-The capturer also owns final snapshot serialization and offline benchmark session
-aggregation. Both reuse the live snapshot and exchange calculations. The benchmark
-CLI owns artifact paths and orchestration, not another metric implementation.
-
-WebSocket transport observation lives in `capturer/websocket.go`, alongside the
-HTTP observer, not in router metrics callbacks. The router supplies the actual
-sent message and received message bytes at the transport seam, and closes that
-attempt after terminal usage observation. The capturer owns bounded raw-payload
-observation, JSON-message parsing, exact payload lengths, transport labeling,
-cache-fingerprint normalization, and sanitized persistence. Router-generated
-SSE and reconstructed nonstream JSON belong only to the HTTP Codex boundary.
-The dedicated Codex WebSocket path measures restored JSON messages, not its
-internal SSE adaptation. Each explicit create or automatic successor receives
-its own correlation context; automatic successors have no request payload.
-Application-level controls use immediate, sanitized boundary-and-direction
-records and separate transport measures. The capturer owns their measurement
-and offline aggregation; the router supplies actual wire payloads without
-computing metrics or retaining a second control history for capture.
-
-`internal/router/server_websocket.go` owns each downstream session and its
-dedicated provider connection, incremental native history, instruction-prefix fingerprints,
-full-context replacement when inherited instruction projection changes, steering lifecycle,
-and adaptation through the shared request/response pipeline.
-`internal/router/client_websocket.go` owns the HTTP-client connection pool's
-leases, credential/routing partitioning, message framing, HTTP fallback
-decisions, response-body ownership, and cleanup. That pool retains no
-conversation or capture history.
-A lease's response body owns its attempt until Close, even after the socket has
-received a terminal event. Capturer state never decides whether to reuse a
-connection or whether a provider request may be retried.
-
-The connection receiver observes each successful message read before queueing
-it for that lease. Queued messages and blocked delivery reservations remain
-part of that attempt's evidence. Abort closes the connection and joins its
-receiver before capture finalization; successful handoff follows the terminal
-receive boundary. Neither delivery backpressure nor early downstream close
-can discard bytes that the receiver has already observed.
+WebSocket capture observes actual sent and received messages at transport ownership
+boundaries. The session and connection owners retain incremental history, steering,
+fallback, leases, and cleanup. Capturer state never determines connection reuse, provider
+retry, response completion, or delivery.

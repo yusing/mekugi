@@ -37,22 +37,16 @@ including TypeScript 7's `tsc --lsp` capability. Hsymbol never installs dependen
 searches for a different workspace, weakens result confinement, or substitutes text
 search. Go and LSP processes both run in the selected workspace.
 
-Each invocation starts exactly one semantic query at the selected token. Go uses one
-`gopls definition -json` or `gopls references -d` query at a UTF-8 byte offset. JavaScript,
-TypeScript, and JSON start `tsc --lsp --stdio`; Python starts `pyright-langserver --stdio`. The LSP
-client initializes the canonical workspace, opens the verified source snapshot, negotiates UTF-16
-positions, sends one `textDocument/definition` or `textDocument/references` request, and reaps the
-server after the response. Both resolver paths release their 30-second query deadline on success,
-failure, and spawn failure; completed queries must not keep the private host alive until deadline
-expiry. Process exit is distinct from inherited-pipe EOF. Both resolver paths bound final pipe
-drain and LSP shutdown to one second, including failures and deadlines, so descendants cannot
-hold a completed query open. LSP separately allows one second after process exit for buffered
-protocol messages to reach dispatch; early pipe EOF does not shorten that grace period. A semantic
-reply dispatched within the query and drain deadlines remains valid. The existing Unix invocation owner retires remaining resolver
-descendants before returning the result. Completed semantic results retain their stdout and exit
-status when auxiliary cleanup is forced. References request `includeDeclaration: true`. There is no text-search
-fallback. A missing resolver, invalid arguments, stale rows, invalid selectors, malformed protocol
-result, or failed semantic query returns concise stderr and nonzero status without useful stdout.
+Each invocation performs one semantic query with the required resolver for the
+selected language and workspace. Resolver dependencies are never installed
+automatically, and text search is never substituted for a semantic result. The query
+deadline is 30 seconds. Final pipe drain and protocol shutdown are bounded to one
+second; protocol replies receive a separate one-second dispatch grace after process
+exit. A reply completed within those bounds remains valid, and forced cleanup does
+not change completed stdout or exit status. Reference queries include declarations.
+Missing dependencies, invalid input, stale rows, changed source, malformed protocol
+results, timeouts, and failed queries return concise stderr and nonzero status without
+useful stdout.
 
 Successful stdout contains first-seen complete verified rows:
 
@@ -95,10 +89,9 @@ Acceptance:
 5. Relative and absolute in-workspace paths work. Lexical escapes, escaping symlinks, stale rows,
    missing resolvers, malformed protocol results, and uneditable definitions fail without useful
    stdout.
-6. Router startup validates hsymbol inside the immutable built-in snapshot without adding a
-   model-visible tool or executable frontend. Passthrough mode loads no private command, and
-   shell history containing hsymbol is not recovery
-   ancestry.
+6. Private routing, replay, passthrough isolation, and recovery exclusion follow
+   [REQ-READ-001](read.md); hsymbol adds no model-visible tool or executable
+   frontend.
 
 7. Plain-line queries need no pre-acquired hash but retain exact language-token
    selection, ambiguity checks, and post-query source-change rejection. Hash-qualified

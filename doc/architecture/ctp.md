@@ -2,35 +2,17 @@
 
 ## CTR-CTP-001 — Router-owned compact provider representation
 
-One CTP/2 owner in `internal/router` sits after Mekugi request projection and before provider
-forwarding. It receives ordinary parsed Responses fields, preserves the existing top-level or
-developer-message instruction carrier, transforms each eligible string independently, and returns
-one response transformer with the request's visible prior-output sources. It does not parse
-HPATCH/2, change the tool registry, own provider usage, retain cross-request history, define model
-instructions, or define another executor carrier. Persistent CTP/2 interpretation and emission
-guidance belongs to `contrib/codex/file-editing-instructions.md`.
+One request-scoped router component owns CTP/2 encoding after ordinary Mekugi projection
+and decoding before ordinary response restoration. It preserves the selected native
+instruction carrier, transforms only the strings allowed by `REQ-CTP-001`, and discards
+its dictionaries and visible-output sources on every terminal path.
 
-Content-local dictionaries hide discovery and profitability behind one string interface. Tool
-outputs use a deeper visible-line path that can reference exact line ranges from preceding visible
-tool outputs and falls back to that content-local interface. Both paths compare the complete decoded
-string content before selecting compact output. Each request rebuilds sources in input order,
-so appending history preserves earlier bytes and compaction or branching removes unavailable state.
+Each eligible string is evaluated independently. Prior-output references use only content
+visible in that request, so appending history preserves existing sources while compaction
+or branching removes unavailable ancestry. Tool identity and newly emitted executable
+payloads remain native.
 
-On responses, the CTP/2 transformer runs before the existing Mekugi transformer. It restores
-content-local dictionaries and visible-line references only in assistant text for complete JSON
-output and SSE terminal text. Tool names, inputs, and arguments remain native for ordinary registry
-routing, translation, history, recovery, and carrier rendering. The transport owns the minimal
-response-transformer composition needed to preserve that order and discard request-local sources on
-every terminal path.
-
-The CTP/2 owner selects the smaller representation as behavior but emits no metric callbacks or
-histories. The transport capturer observes the post-Mekugi native client request, the actual CTP/2
-provider request, the provider response, and the restored client response. It owns exact observed
-payload savings and provider usage without retaining dictionary values, locators, or text.
-
-CTP/2 operates inside native Responses envelopes and may rewrite only the representation identified
-by `REQ-CTP-001`; that requirement retains the provider-owned fields and native fallback contract.
-The existing validated compaction bypass precedes this seam, so requests without active CTP/2
-guidance remain native in both directions.
-
-`parsedResponsesRequest` retains the received envelope and original fields. Its wire renderer substitutes only changed fields without re-marshaling the entire request. Protocol encoders disable HTML escaping; CTP profitability counts decoded strings.
+CTP/2 owns no tool registry, edit semantics, cross-request history, provider usage, or
+metrics. The transport capturer observes the native and encoded boundaries and measures
+actual differences without receiving dictionaries or text. Wire rendering substitutes
+only changed fields instead of reserializing unrelated request content.

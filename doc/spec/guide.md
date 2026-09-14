@@ -2,29 +2,23 @@
 
 ## REQ-GUIDE-001 — Agent guidance
 
-`contrib/codex/file-editing-instructions.md` owns shared CTP/2 representation rules and durable
-tool contracts. Its editing-workflow slot is rendered from adjacent `editing-workflow-astra.md`
-for request model `gpt-6-astra` or IDs beginning `gpt-6-astra-`, and from
-`editing-workflow-default.md` for every other or missing model ID. Selection happens on each
-eligible request, including model switches and inherited marked prompts, independently of
-native versus CTP/2 transport. Only the selected workflow is injected; shared tool syntax,
-atomicity, recovery, and journal-routing rules are unchanged. Both workflow files cover file
-editing, shell submission, edit planning, target reuse, and target acquisition. Astra keeps
-concise execution guidance; the default workflow supplies the multiline-shell and
-background-job examples, journal usage guidance, and detailed range-endpoint checks.
-Journal routing is defined once in the shared source.
+One shared guidance source owns durable tool and CTP/2 representation rules and
+contains one model-specific workflow slot. Astra requests select the concise Astra
+workflow; every other or missing model selects the default workflow. Selection occurs
+for each eligible request, including model switches and inherited marked prompts,
+independently of native versus CTP/2 transport. Model selection changes workflow
+wording and examples, not shared syntax, atomicity, recovery, or journal routing.
 Model-specific phrasing does not alter the shared reference contracts. Guidance includes effective
 use of tool capabilities: batching related edits against immutable baselines, reusing verified
 targets, selecting suitable mutation forms, and leaving formatting to the engine. It does not
 prescribe general task autonomy, approval checkpoints, prose length, validation scope, or a ban
 on inspecting changed files. Those policies remain with the host and task instructions.
-Each requirement file listed from `doc/spec/index.md` owns one normative engine or router contract. Model-visible tool descriptions contain only concise
-call-local contracts and request-specific schemas. Submission, batching, and continuation
-instructions stay in the shared guidance rather than being repeated in tool descriptions.
-The router does not use private tool
-descriptions as prompt text. Native model protocol injects the central source without its leading
-CTP/2 section and stops after the ordinary guidance rewrite; CTP/2 injects the complete source and
-then transforms only eligible model-visible strings under `REQ-CTP-001`.
+Each file in the [interface contract index](index.md) owns one normative engine or
+router contract. Model-visible tool descriptions contain only concise call-local
+behavior and request-specific schemas; submission, batching, and continuation guidance
+stay in the shared guidance rather than being repeated in descriptions. Private command
+descriptions are never used as prompt text. Native transport omits CTP/2 guidance;
+CTP/2 includes it and transforms only the eligible strings defined by `REQ-CTP-001`.
 
 For each eligible turn carrying a non-null Responses `instructions` string, the router refreshes
 one current marked mekugi section or replaces the pinned stock Codex file-editing section and its
@@ -59,8 +53,9 @@ without recognized stock or marked guidance receives the central guidance by app
 the request fails before upstream forwarding as an unsupported upstream instruction change.
 Missing and null `instructions` values remain unchanged. This request-local behavior covers
 session start, post-compaction, subagent start, and subagent post-compaction instruction delivery;
-an inherited side conversation refreshes the marked section already in its prompt. Neither
-`make install`, `make uninstall`, nor the router creates, changes, or removes an instruction file.
+an inherited side conversation refreshes the marked section already in its prompt.
+Neither installation workflows nor the router create, change, or remove instruction
+files.
 
 The capture evidence in `REQ-METRICS-001` records the actual instruction carrier, matched rewrite
 strategy, selected model workflow, and whether a custom instruction file was configured. Prompt
@@ -142,8 +137,8 @@ Acceptance:
    it matches complete pinned fragments rather than open-ended prefixes or section heuristics.
    A configured custom prompt without a recognized section retains unrelated content before
    the append. Pinned conflicting tool and progress fragments are rewritten in both paths,
-   including fragments inherited from earlier rewrites. Fixtures cover all four cached model IDs,
-   both instruction carriers, and both model protocols.
+including fragments inherited from earlier rewrites. Compatibility covers all four
+cached model IDs, both instruction carriers, and both model protocols.
 4. Missing and null request instructions remain byte-equivalent. An unconfigured, unrecognized
    non-null instruction string fails before forwarding. CTP/2 never creates or encodes its selected
    instruction carrier, and `ctp1` fails before router startup.

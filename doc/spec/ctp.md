@@ -6,7 +6,6 @@ Compact Token Protocol version 2 is opt-in with `--model-protocol ctp2` in `meku
 The default, `--model-protocol native`, keeps request and response strings uncompressed. The removed
 `ctp1` value and every other unknown model protocol fail before the router listens. Passthrough mode
 uses native and rejects an explicit `ctp2` value.
-`ctp2` value.
 
 CTP/2 is a reversible representation between the ordinary Mekugi request projection and the model
 provider. It is not another Responses protocol or an edit-engine feature. Responses objects, roles,
@@ -15,10 +14,11 @@ usage, conversation selection, and compaction remain provider-owned and native. 
 eligible model-visible request strings and assistant text. Newly emitted tool names, tool inputs,
 and function arguments remain native.
 
-`contrib/codex/file-editing-instructions.md` owns the model-visible interpretation and emission
-rules. The router selects an existing instruction carrier: a nonempty string-valued top-level
-`instructions` field, otherwise the first textual developer message in `input`. That carrier stays
-native. Without one, the request stays native and no response decoder is installed.
+The [agent-guidance contract](guide.md) owns model-visible interpretation and
+emission rules. The router selects an existing instruction carrier: a nonempty
+string-valued top-level `instructions` field, otherwise the first textual developer
+message in `input`. That carrier stays native. Without one, the request stays native
+and no response decoder is installed.
 
 ### Content-local representation
 

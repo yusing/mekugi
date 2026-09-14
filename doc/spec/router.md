@@ -177,10 +177,10 @@ by message ID. Automatic usage reports, subagent activity copies, critical notic
 standalone provider commentary MUST NOT be classified as explicit in-tool usage.
 
 Evidence is opt-in through `--debug`, remains in the existing operational log, and
-shares its serialized writes and shutdown error reporting. It MUST NOT add a capture
-callback, metric counter, new listener, or execution dependency. Tests MUST cover JSON
-and SSE, runtime publication, repeated observations, excluded content, suppression,
-and auxiliary write failure.
+shares its serialized writes and shutdown error reporting. It adds no capture
+callback, metric counter, listener, or execution dependency. JSON, SSE, runtime
+publication, repeated observation, excluded content, suppression, and auxiliary
+write failure must preserve those boundaries.
 
 Acceptance:
 

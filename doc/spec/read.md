@@ -2,17 +2,12 @@
 
 ## REQ-READ-001 — Shell-routed verified-row reader
 
-In mekugi router mode, the model receives `hpatch` and `shell` as standalone custom tools.
-All persistent hcat, hgrep, hsymbol, inspect_file, shell-execution, and HPATCH workflow guidance comes
-from `contrib/codex/file-editing-instructions.md` and its selected adjacent editing-workflow file
-under `REQ-GUIDE-001`. The router injects a model- and protocol-specific projection
-of that source into the top-level Responses `instructions` value in memory and never changes an
-instruction file. Native model protocol omits the leading CTP/2 section and stops after the ordinary
-guidance and tool rewrite. CTP/2 injects the complete source, preserves the selected top-level or
-first textual developer-message carrier, and transforms eligible strings under `REQ-CTP-001`.
-Hcat, hgrep, hsymbol, and inspect_file remain private executor contributions inside the
-authenticated shell worker; their custom-tool specifications are not sent to the model, direct
-model calls to their names are not routed, and no executable frontend is installed for them.
+In Mekugi mode, the model receives `hpatch` and `shell` as standalone custom
+tools. The [agent-guidance contract](guide.md) owns persistent workflow guidance.
+Hcat, hgrep, hsymbol, and inspect_file are private commands available only inside
+the shell execution boundary: their specifications are not sent as model-visible
+tools, direct model calls to their names are not routed, and no executable frontend
+is installed for them.
 
 The private `hcat` command accepts exactly one file:
 
@@ -27,15 +22,10 @@ past EOF returns through the final line. One `hcat` invocation never accepts a s
 newline-delimited batch. The model batches related reads as separate hcat commands in one
 shell script.
 
-The shell carrier invokes the fixed `shell` helper from the executor's trusted `PATH`. The
-router stores the current authenticated shell worker at
-`$MEKUGI_RUNTIME_DIR/mekugi-runtime-$CODEX_THREAD_ID`; the helper reads that path and replaces
-itself with the worker. The worker's `mvdan/sh` Bash and POSIX evaluators intercept the exact command
-names `hcat`, `hgrep`, `hsymbol`, and `inspect_file` after ordinary shell expansion, then call the matching
-immutable snapshot implementation directly. These private names are not filesystem entries and
-do not use `PATH`. A deployment that isolates router and executor filesystems must expose the
-thread runtime path, router executable, and authenticated snapshot at the same
-absolute paths, separately from the user workspace.
+The shell boundary resolves the authenticated private commands for the current
+thread. These names are not filesystem entries and do not depend on `PATH`.
+Deployments with separate router and executor filesystems must make the authenticated
+runtime available at the same absolute location on both sides.
 
 Hcat runs in the shell carrier's actual working directory. Relative and absolute paths keep
 their ordinary process meaning. Codex, not the router or hcat, owns sandbox and filesystem

@@ -34,8 +34,8 @@ Normal uninstrumented carriers remain unchanged. Journal events include safe `ca
 available and a worker-local random `shell_id`. Start and finish must agree on schema,
 thread, reader, and all correlation fields. A call ID is not inferred from an arbitrary
 shell command or shared thread. Child workers use their own runtime thread identity;
-missing identities remain unattributed. Repository router tests clear inherited AX
-output at process startup and explicitly opt in only to test-owned journals.
+missing identities remain unattributed. Uninstrumented executions remain outside
+the journal rather than inheriting another request's identity.
 Loops count each actual invocation. Skipped branches and literal source examples count
 none. Reader failures, including invalid arguments or retained-file acquisition, remain
 failed invocation attempts. These counts are not physical filesystem-open counts.
@@ -112,14 +112,15 @@ benchmark calculations, or dashboard ownership. AX journals and assessment artif
 separate explicit inputs, not unsanitized content added to transport metrics.
 
 Acceptance:
-1. Real worker tests distinguish executed reads, repeated loop iterations, skipped code,
-   literal examples, and failures while retaining command output and exit behavior.
-2. Missing instrumentation, interrupted readers, other-thread events, concurrent writers,
+1. Executed reads, loop iterations, skipped branches, literal examples, and failures
+   retain their distinct counts without changing command output or exit behavior.
+2. Missing instrumentation, interruptions, other-thread events, concurrent writers,
    malformed evidence, and observation-write failures cannot create false success.
-3. Original/recovery payloads produce reproducible byte/retry measurements; repeated lines
-   are multiplicity-bounded and actual rebuilt edits are not counted as re-emitted.
+3. Original and recovery payloads produce reproducible byte and retry measurements;
+   repeated lines are multiplicity-bounded and rebuilt edits are not counted as
+   re-emitted.
 4. Completion timing comes from paired recorded events, not wall-clock guessing.
 5. Every defect verdict references a bounded real artifact with a checked fingerprint;
    missing, duplicate, unknown-call, and invalid-verdict assessments fail.
-6. The installed CLI exercises runtime journal and defect reporting end to end without
-   requiring a workspace argument or changing inspected state.
+6. End-to-end runtime journal and defect reporting requires no workspace argument and
+   does not change inspected state.

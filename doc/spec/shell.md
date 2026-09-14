@@ -2,12 +2,10 @@
 
 ## REQ-SHELL-001 — Installable free-form script tool
 
-The first working path in `doc/brief.md` § Outcome supplies the built-in declaration at
-`plugins/shell.mjs`. The generated plugin bundle contributes an unconstrained custom tool named
-`shell`, limits its UTF-8 input to the executor argv limit, and translates successful input
-through the canonical exec carrier from `REQ-PLUGIN-001`. The repository `make install` target
-regenerates that bundle and installs `mekugi` plus the fixed `shell` helper. It changes no Codex configuration,
-instruction file, or configured shell declaration.
+Mekugi mode exposes one mandatory, unconstrained custom tool named `shell`.
+It accepts a bounded UTF-8 program and translates successful input through the
+canonical executor carrier from `REQ-PLUGIN-001`. Configured plugins cannot replace
+the built-in tool.
 
 A single-program input keeps every source line after its leading header block unchanged,
 including selector-like and directive-like lines in strings, comments, and heredocs.
@@ -66,16 +64,13 @@ Eligible cat-write projection applies independently within each program.
 
 The following interpreter and directive rules apply separately to each program.
 
-The tool treats the first logical line as a shebang when that line, after trimming only its
-leading and trailing ASCII spaces and tabs, starts with `#!`. It removes `#!`, trims the
-remaining selector, and separates the selector at ASCII spaces or tabs. A bare executable name
-is valid. A direct executable path remains unchanged. A leading `env` or `/usr/bin/env` and an
-optional following `-S` are removed. A selector whose case-insensitive basename is `bash` or
-`bash.exe` selects `mvdan/sh` Bash evaluation; `sh` or `sh.exe` selects its POSIX evaluation.
-This basename rule also applies to direct paths such as `/usr/bin/bash` and `/bin/sh`. Every
-other bare selector resolves through the inherited `PATH`.
-An empty selector, an `env` selector without an executable, a NUL byte, or too many or oversized
-argv values rejects before execution. Without a shebang, the selected interpreter is `bash`.
+The first logical line is a shebang when its trimmed form starts with `#!`.
+Its remaining whitespace-separated fields select the interpreter and arguments.
+A leading `env` or `/usr/bin/env`, with optional `-S`, is normalized away.
+Selectors whose basename is Bash or sh use the corresponding bundled shell
+semantics; every other bare selector resolves through inherited `PATH`.
+Empty, NUL-containing, or oversized selectors reject. Without a shebang, Bash
+is selected.
 
 When a shebang is present, the script body is every input byte after the complete first-line
 terminator. The tool removes only the shebang line and its terminator. It preserves all leading
@@ -121,25 +116,18 @@ shebang, the nested worker selects `bash`. Without an interpreter shebang or com
 Bash command remains direct, including when exec parameters are supplied; every other body uses
 the worker command as the complete outer command. After the first body line, directive-like lines remain ordinary body data. Only the explicitly chosen batch separator is reserved within an opted-in batch.
 
-When the worker carrier is selected, the executor starts the fixed helper once with the normalized
-interpreter fields and exact body.
-An argument-free helper invocation is a private control channel, not a way to pipe in a shell
-script. Unsupported stdin, such as a regular file or `/dev/null`, must produce a clear diagnostic
-pointing to `functions.shell` for script execution rather than a low-level deadline error.
-Pipe and terminal control-channel behavior is unchanged.
-The helper reads the current thread runtime path and replaces itself with the authenticated
-router worker, without a second Codex executor call. For Bash and sh basenames,
-the worker parses the body with `mvdan/sh` using
-`LangBash` or `LangPOSIX`, applies supported middle fields as shell options or parameters, and
-executes the syntax in-process. Its exec handler receives expanded argv, invokes hcat, hgrep,
-hsymbol, and inspect_file directly from the authenticated snapshot, handles shell-owned
-`hrun`, and delegates every other external command to the inherited environment.
-Private command stdout, stderr, status, redirections, pipelines, cwd, exported environment, and cancellation remain part of the same
-shell evaluation; no private command launches another router worker. Each non-terminal fallback
-external command owns a cancellable process group so its descendants cannot retain shell streams
-past cancellation or the output limit. Every external command in a PTY-backed shell remains in
-the worker's foreground process group and uses a bounded inherited-pipe wait on cancellation,
-preserving terminal input for direct commands and piped stages that read `/dev/tty`.
+The worker carrier starts the fixed helper once with the normalized interpreter
+fields and exact body. An argument-free helper invocation is a private control
+channel, not a script-input interface; unsupported stdin returns an actionable
+diagnostic.
+
+Bash and POSIX programs execute with their selected semantics inside the authenticated
+worker. Private read, search, symbol, inspection, and bounded-command operations share
+that execution's cwd, environment, redirections, pipelines, output, status, and
+cancellation. Other commands and interpreters use the inherited executor environment.
+Cancellation and output limits apply to descendant processes through a bounded
+foreground-process and inherited-pipe shutdown, without starting another router
+worker or preventing direct commands and pipelines from using terminal input.
 
 The shell-owned command `hrun [-n N] [--max-tokens N] [--tail] -- COMMAND [ARG...]`
 executes one external command with selected displayed output. At least one limit is required.

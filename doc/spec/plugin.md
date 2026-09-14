@@ -104,31 +104,24 @@ The configured-plugin worker keeps the frontend standard input separate from the
 host's JSON control stream. The host exposes that input only as a dedicated inherited descriptor during
 executor calls.
 
-Built-in shell and its private hcat, hgrep, hsymbol, and inspect_file commands are the exception
-to that frontend path. The PATH-installed `shell` name is a fixed shared locator, not a snapshot
-wrapper or plugin implementation. For each eligible thread, the router writes one direct
-`mekugi-runtime-$CODEX_THREAD_ID` link directly below the runtime directory to the current private
-`shell` wrapper in the
-authenticated snapshot. The locator reads that link and replaces itself with its target.
-Bash
-and POSIX evaluation dispatch private commands from the resolved worker after shell expansion, so none of the four
-private names creates a snapshot wrapper, stable frontend, or `PATH` dependency.
+Built-in shell and its private hcat, hgrep, hsymbol, and inspect_file commands use a shared authenticated executor boundary.
+The shared `shell` name locates the authenticated executor for the current thread.
+Private commands execute only inside that boundary and do not create standalone
+frontends or additional `PATH` dependencies.
 
+Executors may attach a private `failureClass` only with a nonzero exit status.
+The host accepts only the documented reader-failure allowlist; arbitrary values and
+success/class combinations reject without reflecting their contents. This metadata
+supports opt-in AX evidence without changing command output or transport metrics.
 
-Executors may attach a private `failureClass` only with a nonzero exit status. The
-host accepts only the `ReaderFailureClass` allowlist in `plugin.d.ts`; arbitrary strings,
-objects, nulls, and success/class combinations are rejected without reflecting their
-contents. The shell dispatch boundary consumes this metadata for opt-in AX evidence;
-it does not print it, change command output, or expose it as a transport metric.
-
-An executor returns its current stdout, stderr, and exit status once. The worker returns that result
-to Codex and never performs a second observation-only execution or returns a benchmark baseline.
-An executor may attach `terminationReason: "output_limit"` only to a nonzero result after bounded
-output capture and stream cleanup. Semantic resolvers attach `terminationReason: "resolver_cleanup"`
-after a backend invocation, including successful results, to retire their invocation-owned descendants
-without changing the semantic result. The host validates this optional cleanup metadata; the Go
-invocation owner retires the requested process group on Unix before returning the result. The metadata is private to the plugin/host boundary and is not part of Codex-facing output.
-Absent metadata preserves ordinary successful background-process and cancellation behavior.
+An executor returns its current stdout, stderr, and exit status once. Observation
+never starts a second execution or substitutes a benchmark baseline.
+An executor may attach `terminationReason: "output_limit"` only to a nonzero result
+after bounded output capture and stream cleanup. Semantic resolvers may request
+invocation-owned descendant cleanup without changing a completed semantic result.
+The host validates this private metadata and retires the requested process group on
+supported platforms before returning. Absent metadata preserves ordinary successful
+background-process and cancellation behavior.
 
 Without exec parameters, the carrier supplies no working-directory or environment override.
 With exec parameters, the router forwards the JSON values without replacing the request-specific

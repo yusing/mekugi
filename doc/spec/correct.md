@@ -2,10 +2,10 @@
 
 ## REQ-CORRECT-001 — Rejected-script recovery
 
-The router exposes a separate model-visible `functions.hpatch_recover` custom tool with an
-independent embedded Lark grammar. Edit-only rejected-script recovery is unavailable from root public APIs, root
-`tool_grammar.lark`, and ordinary `functions.hpatch`. Recovery interpretation is
-selected only by the dedicated tool, never by inspecting ordinary hpatch payloads.
+The router exposes a separate model-visible `functions.hpatch_recover` tool with
+dedicated syntax. Edit-only recovery is unavailable from public root APIs and
+ordinary `functions.hpatch`; it is selected only by the dedicated tool, never by
+inspecting an ordinary hpatch payload.
 
 Each rejected-script command has a `C<number>:<hash>` handle with a full 64-digit
 lowercase SHA-256 binding to its complete attributable command frame and the entire

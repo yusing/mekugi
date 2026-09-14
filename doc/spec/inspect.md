@@ -9,15 +9,13 @@ paths and symlinks are allowed; the target must be a host-readable regular file.
 Codex owns filesystem permissions. Thread-private `@shell` references are read
 through hcat rather than treated as workspace files by this command.
 
-Extension matching is exact and case-sensitive. Code formats are `.go`, `.py`, `.pyi`, and every stable
-TypeScript 7 source extension: `.ts`, `.tsx`, `.d.ts`, `.mts`, `.d.mts`, `.cts`, `.d.cts`, `.js`,
-`.jsx`, `.mjs`, and `.cjs`. `.md` and `.json` remain structural formats. These formats use pinned
-parsers; TypeScript and JSX select the corresponding JavaScript parser dialects, while Markdown
-uses Lezer for headings and YAML for a closed initial frontmatter block. Every other extension returns
-`kind: "none"`, the reported regular-file byte size, `line_count: null`, `parse_complete: true`,
-and an empty outline without reading or decoding content. Supported files must be strict UTF-8.
-Their logical line count matches `REQ-READ-001`, including CRLF, lone CR, empty files, and final
-terminators.
+Extension matching is exact and case-sensitive. Supported formats are `.go`, `.py`,
+`.pyi`, `.ts`, `.tsx`, `.d.ts`, `.mts`, `.d.mts`, `.cts`, `.d.cts`, `.js`,
+`.jsx`, `.mjs`, `.cjs`, `.md`, and `.json`. Every other extension returns
+`kind: "none"`, regular-file byte size, `line_count: null`,
+`parse_complete: true`, and an empty outline without reading or decoding content.
+Supported files must be strict UTF-8, and their logical line count follows
+`REQ-READ-001`.
 
 Success is one LF-terminated JSON document with `ok`, `data`, `truncated`, and `truncation`.
 `data` contains the normalized requested path, kind, language, exact inspected byte size, logical
@@ -64,10 +62,9 @@ Acceptance:
    `/`, preserves duplicate pointers, and never returns scalar values.
 3. Unsupported files are checked as regular without content reads, UTF-8 validation,
    line counting, content detection, or command-level truncation.
-4. Router startup validates `inspect_file` inside the immutable built-in snapshot without an
-   executable frontend and exposes or routes only mekugi, shell, and configured model-visible
-   contributions. Eligible request instructions use the central guidance while unrelated
-   content remains unchanged; CTP/2 follows `REQ-CTP-001`.
+4. Private routing, model visibility, replay, and passthrough isolation follow
+   [REQ-READ-001](read.md). Instruction and CTP behavior remain owned by
+   `REQ-GUIDE-001` and `REQ-CTP-001`.
 
 5. Absolute, parent-relative, and symlink paths outside the current directory work
    when host permissions allow; non-regular files still fail.

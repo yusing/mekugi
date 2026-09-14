@@ -114,20 +114,15 @@ as zero.
 
 Acceptance:
 
-1. A test with one wrapped router listener and a retrying provider observes one logical request,
-   consecutive provider attempts, one client record, provider usage, and correlated provider and
-   delivered tool calls without retaining private payload text.
-2. A streaming test receives the first flushed event before the handler completes.
-3. JSON, multiline SSE, and gzip Responses payloads produce the same sanitized observations;
-   SSE framing MUST handle LF, CRLF, CR, and an initial BOM consistently across response
-   observation and token measurement; framing normalization MUST preserve data-field contents.
-   finalized SSE output items MUST produce the same ordered array when the terminal envelope omits
-   them, and any number of nonterminal SSE events contributes exactly one terminal output array to
-   protocol output savings. JSON and SSE exclude router-generated usage, operation, runtime, and
-   subagent commentary while retaining genuine model commentary, even with identical text.
-   The real router/capturer integration MUST prove a telemetry-only terminal array does not hide
-   finalized model messages or tool calls, and synthetic commentary changes neither output savings
-   nor provider usage.
+1. One logical request with provider retries produces consecutive attempts, one
+   client record, provider usage, and correlated provider and delivered tool calls
+   without retaining private payload text.
+2. Streaming delivers the first flushed event before handler completion.
+3. JSON, multiline SSE, gzip, LF, CRLF, CR, and BOM inputs produce equivalent
+   sanitized observations without changing data-field contents. Reconstructed
+   terminal output preserves finalized item order and counts once. Generated router
+   commentary is excluded from model output while genuine model commentary is kept,
+   even with identical text.
 4. Snapshot totals reconcile their exchanges and provider attempts, and benchmark validation rejects
    changed aggregate usage or nonzero capture-health errors.
 5. Passthrough, Mekugi with native protocol, CTP/2, and Mentor Handoff use the same capture owner and endpoint;

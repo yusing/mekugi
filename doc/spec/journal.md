@@ -185,9 +185,9 @@ provider events unchanged on overflow.
    retain a nonempty completion result containing their current journal text. Finish makes no
    final-answer continuation request.
    Provider messages remain unfiltered and do not trigger a flush; failures and interruptions do not terminal-flush.
-7. The native Codex spawn fixture proves that journal results survive client normalization
-   and that the parent receives the child's journal text in the native completion result after one
-   child provider request containing finish and its last mutations, with no final-answer continuation.
+7. Native client normalization preserves journal results and returns the child's
+   current journal text after one finishing child request, without a final-answer
+   continuation.
 8. Debug evidence separates applied mutations, runtime wiring, live rendering, and
    terminal flushing without recording journal bodies or private publication credentials.
 9. Multiline Markdown stays within its terminal journal item. Answer items display the

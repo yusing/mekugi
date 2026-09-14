@@ -4,7 +4,7 @@ pjdoc:
   kind: spec
   scope: root
   status: draft
-  revision: "52"
+  revision: "54"
   files:
     - journal.md
     - router.md
@@ -33,9 +33,12 @@ pjdoc:
     - benchmark.md
     - ctp.md
 ---
-# mekugi specification
+# Mekugi interface contracts
 
-Each listed file owns one interface requirement and its acceptance cases. Related facts are cited by stable ID or linked; they are not copied.
+Each listed file owns one observable interface contract and its acceptance cases.
+Product intent and journeys belong to the separate repository product specification;
+architecture files own component boundaries. Related facts are cited by stable ID or
+linked, not copied.
 
 ## Inventory
 
@@ -65,5 +68,3 @@ Each listed file owns one interface requirement and its acceptance cases. Relate
 - [`REQ-COMPARE-001`](comparison.md): token comparison scenarios
 - [`REQ-BENCH-001`](benchmark.md): historical-commit correctness and paired model evaluation
 - [`REQ-CTP-001`](ctp.md): lossless token-positive model-visible data-plane encoding
-
-All listed requirements are must-haves for this increment.

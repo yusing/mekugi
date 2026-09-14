@@ -45,12 +45,14 @@ contain calls that are no longer visible after compaction. It does not revive pr
 references, or permissions, and does not expose private records over HTTP or metrics.
 
 Acceptance:
-1. Real command dispatch returns original HPATCH and recovery payloads, evaluated scripts,
+1. Dispatch returns original HPATCH and recovery payloads, evaluated scripts,
    structured rejections, patches, reports, and matching executor confirmation.
-2. Workspace inference, turn-level workspace changes, optional overrides, missing metadata,
-   corrupt/mismatched records, output-only calls, and workspace isolation are tested.
-3. Native/function and custom carriers work without decoding carrier source.
-4. Text selection, UTF-8 bounds, pagination, duplicate handling, and invalid input are tested.
+2. Workspace inference, turn-level workspace changes, overrides, missing metadata,
+   corrupt or mismatched records, output-only calls, and workspace isolation preserve
+   the documented result and failure behavior.
+3. Native, function, and custom carriers work without decoding carrier source.
+4. Text selection, UTF-8 bounds, pagination, duplicates, and invalid input follow
+   the documented schema.
 5. Inspection leaves session, replay records, and directory permissions unchanged.
 
 `--ax`, `--read-log`, and `--defects` add whole-rollout AX reporting under

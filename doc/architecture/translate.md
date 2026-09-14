@@ -2,13 +2,13 @@
 
 ## CTR-TRANSLATE-001 — Patch rendering
 
-One translation renderer owns all OpenAI `apply_patch` syntax. It receives the engine's ordered net change set and emits one envelope containing the required `Add File`, `Update File`, `Move to`, and `Delete File` actions. It finishes the complete string before returning so evaluation or rendering failures cannot expose a partial patch.
+One translation renderer owns the complete executor patch representation. It receives
+an ordered completed change set, renders every file action and required verification
+context, and returns only a complete unambiguous carrier. Rendering never mutates the
+workspace or changes the engine's evaluated content.
 
-The public `RenderFileWritePatch` adapter also uses this renderer for literal shell heredoc
-writes. It renders one unconditional `Add File` action, which the host can use to overwrite an
-existing file without a sampled baseline. It accepts only paths and empty or LF-terminated UTF-8
-content representable byte-exactly by the host format. This rendering-only API performs no
-filesystem reads, source validation, formatting, hooks, or application. The router owns shell
-eligibility, execution ordering, and runtime target guards; Codex owns authorization and writes.
-
-For root-scoped engine translation, every emitted path is relative to the workspace root, independent of cwd. The router's normal host adapter uses `TranslateForHostAt`; it evaluates against an optional canonical metadata directory without confinement, rejects relative operands when no directory is selected, never falls back to router cwd, and preserves cleaned host path identities for Codex's carrier. The renderer owns the minimal nonempty verification hunk required by OpenAI `apply_patch` when a move has no content change, and the renderer-only LF normalization required by the line-oriented output format. For changed content it expands context until every bare hunk's old-side sequence is unique, failing instead of emitting an ambiguous patch. The engine's evaluated contents remain unchanged.
+Root-scoped library translation emits root-relative identities. Normal router
+translation instead uses the optional metadata directory defined by
+`CTR-BOUNDARY-001`, without adding confinement or falling back to router cwd. The
+renderer also serves the restricted literal-file-write adapter; eligibility and
+execution stay with the caller, and authorization and application stay with Codex.

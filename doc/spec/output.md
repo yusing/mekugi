@@ -19,30 +19,18 @@ All apply and host entry points reject a nil context with `context is nil`, befo
 or finalization; host variants return a zero result without running hooks or publishing output.
 `ApplyForHost`, `ApplyForHostRoot`, and `TranslateForHostAt` return `HostTranslation`, which carries
 the rendered report, final state, diagnostics, patch summary, target aliases, and per-file
-review diffs under `REQ-CHANGES-001`. Before
-finalization, every changed file whose final path ends in `.go`
-is parsed and formatted with Go's standard-library `go/format`; parse failures are collected
-from every changed Go file before the complete transaction rejects. Source correspondence
-preserves authored byte coordinates while mapping to formatter-normalized literal spellings,
-rewritten comments, and sorted or deduplicated imports. These valid formatter transformations
-do not reject an otherwise valid transaction. A removed duplicate import maps to its surviving
-equivalent import; rewritten gaps map between surviving lexical anchors. For at most 32
-content-mutating commands in one invalid Go file, the evaluator replays command-group subsets
-against the immutable baseline to select a one-minimal syntax-failing set, then attributes
-each useful parser failure to the retained edit nearest its generated parser position. Larger
-groups or an invalid baseline use nearest-edit attribution without subset replay. Supported
-changed `.py`, `.js`, and `.ts` files are syntax-checked with Tree-sitter and contribute all
-discovered failures to the same validation result. Parser
-cascades are collapsed when blanking an earlier repair line removes a later parser failure.
-Failures are deduplicated by originating command and physical multiline value row, or by the
-command's script row when no physical value row exists. Each retained location includes at
-most two generated lines before and after the failing line; neighboring lines are capped at
-64 runes and the failing line at 200. Supported baseline-aware indentation corrections are
-applied before validation; unsupported extensions remain byte-exact or reject under
-indentation policy. Finalization performs no generic whitespace cleanup: authored trailing
-spaces, spaces before tabs, interior blank lines, and blank lines at EOF are preserved unless
-changed by the language-aware formatting or indentation corrections above. This applies to
-new files, replacements, insertions, and deletions through both apply and translation.
+review diffs under `REQ-CHANGES-001`.
+Before finalization, every changed Go file is parsed and canonically formatted;
+valid formatter transformations do not reject the transaction. Parse failures from
+all changed Go files are collected and attributed to the nearest relevant edit.
+Supported Python, JavaScript, and TypeScript files receive syntax validation and
+the same bounded diagnostic shape. Supported baseline-aware indentation corrections
+run before validation; unsupported formats remain byte-exact or reject under the
+documented indentation policy. Finalization performs no generic whitespace cleanup:
+authored trailing spaces, spaces before tabs, interior blank lines, and blank lines
+at EOF are preserved unless changed by the language-aware formatting or indentation
+corrections above. This applies to new files, replacements, insertions, and deletions
+through both apply and translation.
 An unchanged apply change set performs no filesystem operation and succeeds. An unchanged basic
 translation returns an empty patch. A host variant additionally reports the already-satisfied
 final state in `HostTranslation`.
@@ -235,10 +223,8 @@ collapse blank lines at EOF. Its line-ending-preservation mode retains those bla
 lines and existing line endings. New files and updated final lines receive a final
 terminator; an explicitly unterminated result is not byte-representable through
 this format. Direct root application remains byte-exact outside the documented
-language-aware finalization. Native executor parity tests cover the preservation
-mode separately from direct engine application and the portable host test harness.
-Set `MEKUGI_TEST_APPLY_PATCH` to the installed host executable when running
-`go test . -run TestHostNewlineParity`; the native subtests otherwise skip.
+language-aware finalization. Compatibility with the native executor's
+line-ending-preservation mode is required separately from direct engine application.
 
 Basic `Apply` returns errors for failures. Host variants place generic diagnostics
 and structured failure data in `HostTranslation`; rendered generic diagnostics use the `mekugi:`

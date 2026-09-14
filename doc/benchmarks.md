@@ -256,7 +256,7 @@ Streamed output is rebuilt from finalized items when the terminal array is empty
 or contains only generated commentary. Genuine model commentary is retained, including text
 that resembles token telemetry. Payload estimates are not billed output-token counts.
 
-Local token estimates count decoded JSON keys and scalar values, not outer JSON framing or escaping. Literal escapes inside content still count. Transport bytes remain exact, and provider usage remains authoritative. Metrics v4/schema-6 evidence is required for this counting contract.
+Interpret local token estimates according to the [capture metrics contract](spec/metrics.md). Provider usage remains authoritative.
 
 Replay restores provider-native calls before CTP measurement. Input savings compare that actual projected request with its encoded request. Output compression measures assistant text only; whole-output and carrier differences are delivery expansion, not stock-model savings.
 

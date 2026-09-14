@@ -2,65 +2,26 @@
 
 ## CTR-CORE-001 — Virtual workspace and immutable-baseline edit planning
 
-One engine owns parsed command evaluation, logical path resolution, first-touch order,
-one immutable invocation baseline per touched existing file, target resolution, ordered
-baseline-coordinate splice registration, atomic edit-conflict validation, new-file
-initialization state, and original-to-final net file actions for `REQ-SCRIPT-001`,
-`REQ-FILE-001`, `REQ-SELECT-001`, and `REQ-EDIT-001`. Apply and translation callers consume the same completed result; neither path reimplements command semantics. HPATCH/2 reduces
-this existing owner rather than adding an editor, AST layer, or parallel patch engine.
+The edit engine is the sole owner of command evaluation, logical file lifecycle,
+immutable invocation baselines, target resolution, conflict detection, ordered
+splices, language-aware finalization, and completed net changes. Apply and
+translation consume the same completed result; neither path reimplements the
+semantics defined by `REQ-SCRIPT-001`, `REQ-FILE-001`, `REQ-SELECT-001`, or
+`REQ-EDIT-001`.
 
-The workspace owner retains each touched file's invocation-original identity and content,
-current logical path, pending lifecycle action, and ordered pending splices. Returning to
-a file reuses those values. Each splice owns any detected indentation candidate. Finalization
-resolves those candidates against the file's final path, orders the effective splices once,
-and performs indentation correction, Go formatting or Tree-sitter syntax validation as one
-original-to-final render. It retains the final content and its language-formatting offset map
-for reporting. No command materializes an intermediate baseline,
-and all targets continue to resolve against the invocation-original content.
+Each touched file retains its original identity and content, current logical path,
+pending lifecycle action, and accepted splices. Finalization renders those splices
+once, applies supported indentation and language processing, and records the mapping
+needed for result projection. No intermediate edit becomes another baseline or target
+source within the invocation.
 
-`editor_projection.go` owns the ordered splice projection for each immutable edit snapshot.
-Each projected splice retains its baseline edit and one half-open, pre-format rendered byte
-span, including collapsed deletion spans. Content rendering, reporting, indentation probes,
-and syntax attribution consume that projection rather than independently
-accumulating rendered offsets. The editor caches its current snapshot and invalidates it on
-initialization, accepted edits, and actual indentation corrections. Hypothetical indentation
-and syntax-subset snapshots use the same projector without replacing the editor's snapshot.
-Consumers retain their distinct aggregation, distance, deletion, and endpoint policies.
+Verified-row identity is shared by readers, target validation, repair context, and
+successful state projection. The engine owns target selection and the restricted
+pending-coordinate fallback; the shared row component owns only source-byte and
+logical-row identity. Syntax adapters report diagnostics through one reducer without
+acquiring filesystem, transaction, or output ownership.
 
-`syntax_cascade.go` owns the common diagnostic cascade reducer. Go and Tree-sitter adapters
-normalize diagnostics to generated line numbers and reparse callbacks; the reducer returns
-original diagnostic indices, caches remaining failure lines once per candidate repair line,
-and searches earlier repair locations in order. Each trial blanks only that repair line in
-the original candidate source, preserving byte positions and terminators. Same-line diagnostics
-keep their distinct columns and payloads. Go retains each incoming diagnostic's occurrence
-accounting; Tree-sitter retains the selected repair diagnostic's complete node identity.
-
-One shared pure verified-row owner computes and renders `LINE:HASH` identity for routed
-reads under `REQ-READ-001`, target validation, repair context, and final-state previews.
-Target resolution checks the specified one-based line and, when that check fails,
-permits unique hash relocation within the same immutable baseline under `REQ-SELECT-001`.
-The editor owns the pending-coordinate fallback: it may identify only an unchanged
-baseline line, never content introduced or modified by pending edits. Anchored literal
-resolution may ignore a failed row only when complete-baseline literal multiplicity
-matches the requested count exactly. Line, inclusive range, and literal targets all
-resolve to immutable-baseline spans. Resolution performs no mutation and retains no
-active target state.
-
-The evaluator permits targetless `type` only as the next nonblank command after `new` and
-closes that opportunity when any other command begins. The edit planner maps target-bearing
-`type` and destination-bearing `add` directly over resolved spans; an empty `type` value is a
-deletion, while `add` inserts before a line or text destination or appends at `EOF`. It registers every splice generated by one command atomically, rejects overlapping destructive
-interiors and insertions strictly inside them, permits boundary insertions, and orders
-same-boundary insertions by script command order. Later targets continue to resolve
-against the unchanged invocation baseline. Content introduced by a pending edit is not
-target input; a dependent edit crosses the external success boundary and uses an exact
-current report row when present or a focused later hcat when absent.
-
-The engine obtains original files only through the workspace boundary, never writes files
-or process output, and retains original identity across moves. It checks cancellation
-before command evaluation and final rendering. Failure or cancellation returns no
-completed changes or final state. A completed result contains ordered net changes,
-final active logical path, last effective mutation
-metadata, effective per-command editor splices with authored command provenance, rendered
-final content already owned by each editor, and language-formatting offset maps needed for
-bounded state reporting.
+The engine receives original files through an authorized workspace boundary and
+performs no external writes or process output. Cancellation or failure returns no
+completed change set. Successful completion returns the ordered net changes and
+projection metadata needed by the state, translation, review, and application owners.

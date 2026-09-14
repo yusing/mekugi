@@ -193,20 +193,20 @@ Acceptance:
 
 1. Compose runs each arm as a session-scoped `mekugi codex` container, with no
    persistent router or capturer service; every attempt retains both capture exports.
-2. Report fixtures prove provider usage, signed arm deltas, cache values, protocol savings, Mekugi
-   delivery, and zero capture-health errors, and reject altered aggregate usage, incomplete
-   evidence, absent baseline evidence, wrong router mode or protocol, wrong provider models, and
-   failed required CTP compression.
+2. Reports include provider usage, signed arm deltas, cache values, protocol savings,
+   Mekugi delivery, and capture health, and reject altered totals, incomplete or
+   absent baseline evidence, wrong modes, protocols, or provider models, and failed
+   required CTP compression.
 3. Paired, CTP/2, Mentor Handoff, `mekugi-only`, control-only, and diagnostic scheduling reuse the same capture
    owner and report schema.
 4. A failed attempt or infrastructure check retains available artifacts, stops task-owned Compose
    resources, and returns nonzero.
-5. Commentary coverage fixtures accept every configured operation and collaboration profile while
-   rejecting missing messages, missing successful command markers, missing completed item types,
-   malformed events, and unsupported modes.
-6. Local replay tests prove sample ordering is independent of recorded token counts, frozen bytes
-   and identities round-trip, missing or altered samples reject, and freezing never overwrites an
-   existing destination. Synthetic fixtures validate these mechanics, not compression efficiency.
+5. Commentary coverage accepts every configured operation and collaboration profile
+   while rejecting missing messages, missing successful-command markers, missing
+   completed item types, malformed events, and unsupported modes.
+6. Local replay preserves token-independent sample ordering, frozen bytes and
+   identities, rejects missing or altered samples, and never overwrites an existing
+   destination. Synthetic evidence validates mechanics, not compression efficiency.
 
 CTP input acceptance uses the captured post-replay native request, never incoming client history. CTP output acceptance uses assistant output_text savings, never tool-carrier delivery expansion. Paired provider usage is the only actual model-consumption comparison.
 

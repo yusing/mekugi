@@ -404,14 +404,3 @@ Additional acceptance:
     replace only the failed segment; ordinary edit-only recovery directs mixed
     work to retained continuation without a false success claim or fallback to
     an older rejected script.
-
-Native-host acceptance uses the opt-in `TestHpatchNativeFixture` bridge in
-`internal/router/hpatch_native_test.go`: set `MEKUGI_HPATCH_NATIVE_FIXTURE` to a
-session-created temporary directory and run that test with a timeout covering
-the inspection. Its `fixture.json` supplies the `nativeFixture` object for
-`internal/router/hpatch_native_driver.js`, evaluated in a real Code Mode cell.
-The driver contains repeatable scenario sources and lifecycle markers. Terminate
-the outer cell at the requested marker, rather than substituting a JavaScript
-exception; inspect actual files and sessions before resuming. Close the bridge
-with `POST /close` after resolving native work. Ordinary Go tests exercise the
-same carrier against the local host fixture but do not replace these host checks.

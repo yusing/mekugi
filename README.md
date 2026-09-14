@@ -827,8 +827,9 @@ filesystem changes. Inspect the outcome before retrying; see the
 
 ## Documentation
 
-- [Interface specifications](doc/spec/index.md)
-- [Architecture and ownership](doc/architecture/index.md)
+- [Product specification](doc/product.md)
+- [Interface contracts](doc/spec/index.md)
+- [Architecture ownership](doc/architecture/index.md)
 - [Benchmark methodology](doc/benchmarks.md)
 - [Codex end-to-end checks](doc/codex-router-e2e.md)
 

@@ -4,7 +4,7 @@ pjdoc:
   kind: architecture
   scope: root
   status: draft
-  revision: "43"
+  revision: "45"
   files:
     - journal.md
     - subagents.md
@@ -22,9 +22,12 @@ pjdoc:
     - compare.md
     - bench.md
 ---
-# mekugi architecture contract
+# Mekugi architecture ownership
 
-Each listed file owns one ownership contract. Related facts are cited by stable ID or linked; they are not copied.
+Each listed file owns one stable component boundary. Observable behavior belongs to
+the [interface contracts](../spec/index.md); product intent and journeys remain outside
+this governed architecture set. Architecture documents name responsibilities and
+collaborators without restating implementation.
 
 ## Inventory
 
@@ -37,7 +40,7 @@ Each listed file owns one ownership contract. Related facts are cited by stable 
 - [`CTR-CORE-001`](core.md): virtual workspace and immutable-baseline edit planning
 - [`CTR-CORRECT-001`](correct.md): router-only rejected-script recovery
 - [`CTR-STATE-001`](state.md): bounded final-state projection
-- [`CTR-BOUNDARY-001`](boundary.md): filesystem and output boundary
+- [`CTR-BOUNDARY-001`](boundary.md): filesystem, history, and output authority
 - [`CTR-PLUGIN-001`](plugin.md): tool registry and executor carrier boundary
 - [`CTR-METRICS-001`](metrics.md): capture-owned transport metrics
 - [`CTR-TRANSLATE-001`](translate.md): patch rendering
