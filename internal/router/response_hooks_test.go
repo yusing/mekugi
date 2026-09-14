@@ -70,6 +70,40 @@ func TestResponseHooksPreserveSSEHeartbeat(t *testing.T) {
 	}
 }
 
+func TestResponseHooksTerminalSnapshotOutput(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		event string
+		want  uint64
+	}{
+		{"completed", `"type":"response.completed"`, 1},
+		{"steered", `"type":"response.incomplete","reason":"steered"`, 1},
+		{"incomplete", `"type":"response.incomplete","reason":"max_output_tokens"`, 0},
+		{"failed", `"type":"response.failed","reason":"steered"`, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var fields struct {
+				Type   string `json:"type"`
+				Reason string `json:"reason"`
+			}
+			if err := json.Unmarshal([]byte("{"+tc.event+"}"), &fields); err != nil {
+				t.Fatal(err)
+			}
+			payload := `{"type":"` + fields.Type + `","response":{"incomplete_details":{"reason":"` + fields.Reason + `"},"output":[{"type":"message","role":"assistant"},{"type":"function_call"}]}}`
+			var observation mentorResponseObservation
+			hooks := &responseHooks{output: &observation}
+			wire := "data: " + payload + "\n\n"
+			var output bytes.Buffer
+			if _, err := copySSETransformed(&output, strings.NewReader(wire), nil, hooks); err != nil {
+				t.Fatal(err)
+			}
+			if output.String() != wire || observation.messages != tc.want || observation.toolCalls != tc.want {
+				t.Fatalf("output=%q observation=%+v, want %d messages and tool calls", output.String(), observation, tc.want)
+			}
+		})
+	}
+}
+
 func BenchmarkProviderObservation(b *testing.B) {
 	const wire = "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\"}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[],\"usage\":{\"input_tokens\":100,\"output_tokens\":10}}}\n\n"
 	b.ReportAllocs()
