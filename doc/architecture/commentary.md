@@ -105,6 +105,13 @@ and non-generating prewarm from missing evidence after possible inference. The s
 preserves completeness and inconsistency separately from normalized counts. Pricing does not
 read rollouts, fetch catalogs, or change capture-owned metric calculations.
 
+Response-kind recognition is shared with capture; it does not replace capture's evidence
+policy. In particular, a captured canceled body is terminal evidence but not transport
+acceptance, and final-answer correlation accepts the response family prefix without
+declaring it a valid terminal. Shared message facts establish only answer candidacy or
+completed commentary; content eligibility, generated provenance, and delivery bounds remain
+with their existing consumers.
+
 The terminal transformer places eligible usage after any main journal flush and before the child
 saved-summary. Child usage remains live activity; child journals flush only at main completion.
 After successful delivery, child usage reports enter the activity collector in that order.

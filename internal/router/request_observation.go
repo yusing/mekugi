@@ -2,6 +2,8 @@ package router
 
 import (
 	"encoding/json"
+
+	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 // tokenCounts carries one provider-authoritative terminal usage observation to
@@ -63,10 +65,10 @@ type requestObservation struct {
 
 func usageFromResponsePayload(body []byte, streamEvent bool) (tokenCounts, bool) {
 	var envelope struct {
-		Type        string          `json:"type"`
-		Response    json.RawMessage `json:"response"`
-		Usage       json.RawMessage `json:"usage"`
-		ServiceTier json.RawMessage `json:"service_tier"`
+		Type        responseevents.Kind `json:"type"`
+		Response    json.RawMessage     `json:"response"`
+		Usage       json.RawMessage     `json:"usage"`
+		ServiceTier json.RawMessage     `json:"service_tier"`
 	}
 	if json.Unmarshal(body, &envelope) != nil {
 		return tokenCounts{}, false
@@ -74,9 +76,7 @@ func usageFromResponsePayload(body []byte, streamEvent bool) (tokenCounts, bool)
 	raw := envelope.Usage
 	tier := envelope.ServiceTier
 	if streamEvent {
-		switch envelope.Type {
-		case "response.completed", "response.failed", "response.incomplete":
-		default:
+		if !envelope.Type.Terminal() {
 			return tokenCounts{}, false
 		}
 		var terminal struct {

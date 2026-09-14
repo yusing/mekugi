@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 )
@@ -66,5 +67,18 @@ func TestResponseHooksPreserveSSEHeartbeat(t *testing.T) {
 	state, err := copySSETransformed(&output, strings.NewReader(wire), nil, hooks)
 	if err != nil || state != responseTerminalCompleted || output.String() != wire || observation.toolCalls != 1 {
 		t.Fatalf("state=%v error=%v output=%q observation=%+v", state, err, output.String(), observation)
+	}
+}
+
+func BenchmarkProviderObservation(b *testing.B) {
+	const wire = "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\"}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[],\"usage\":{\"input_tokens\":100,\"output_tokens\":10}}}\n\n"
+	b.ReportAllocs()
+	for b.Loop() {
+		var observation mentorResponseObservation
+		hooks := &responseHooks{onUsage: func(tokenCounts) {}}
+		hooks.output = &observation
+		if _, err := copySSETransformed(io.Discard, strings.NewReader(wire), nil, hooks); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

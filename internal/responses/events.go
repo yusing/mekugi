@@ -42,8 +42,12 @@ func (k Kind) ItemEvent() bool    { return k == OutputItemAdded || k == OutputIt
 
 // Source: codex-rs/codex-api/src/endpoint/responses_websocket.rs:749:777 and sse/responses.rs:524:535.
 func (k Kind) Ancillary() bool { return k == Metadata || k == RateLimits || k == WebSocketTiming }
+
+// ResponseFamily is the permissive correlation prefix, including a bare
+// response. prefix. It does not establish a valid response event or terminal.
+func (k Kind) ResponseFamily() bool { return strings.HasPrefix(string(k), "response.") }
 func (k Kind) ResponseEvent() bool {
-	return strings.HasPrefix(string(k), "response.") && k != "response."
+	return k.ResponseFamily() && k != "response."
 }
 func (k Kind) Steering() bool { return k == Steer || strings.HasPrefix(string(k), string(Steer)+".") }
 

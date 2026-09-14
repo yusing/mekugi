@@ -3,7 +3,8 @@ package router
 import (
 	"bytes"
 	"encoding/json"
-	"strings"
+
+	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 // Hold provider answer events until token-usage ordering is known. Every buffered
@@ -20,7 +21,7 @@ type finalAnswerStream struct {
 
 func (s *finalAnswerStream) observe(payload []byte) ([][]byte, bool) {
 	var event struct {
-		Type        string                     `json:"type"`
+		Type        responseevents.Kind        `json:"type"`
 		ItemID      string                     `json:"item_id"`
 		OutputIndex *int                       `json:"output_index"`
 		Item        map[string]json.RawMessage `json:"item"`
@@ -35,12 +36,12 @@ func (s *finalAnswerStream) observe(payload []byte) ([][]byte, bool) {
 	if json.Unmarshal(payload, &event) != nil {
 		return nil, false
 	}
-	if event.Type == "error" {
+	if event.Type == responseevents.Error {
 		s.disabled = true
 		return append(s.flush(), payload), true
 	}
-	itemEvent := event.Type == "response.output_item.added" || event.Type == "response.output_item.done"
-	if event.Type == "response.output_item.done" {
+	itemEvent := event.Type.ItemEvent()
+	if event.Type == responseevents.OutputItemDone {
 		s.substantive = s.substantive || isSubstantiveAnswer(event.Item)
 		s.blocked = s.blocked || blocksTokenUsage(event.Item)
 	}
@@ -59,7 +60,7 @@ func (s *finalAnswerStream) observe(payload []byte) ([][]byte, bool) {
 				s.indexes[*event.OutputIndex] = true
 			}
 		}
-	} else if strings.HasPrefix(event.Type, "response.") {
+	} else if event.Type.ResponseFamily() {
 		if event.ItemID != "" {
 			answer = s.itemIDs[event.ItemID]
 		} else if event.OutputIndex != nil {

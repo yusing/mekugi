@@ -222,16 +222,16 @@ func (o *mentorResponseObservation) completedOutput(items []json.RawMessage) {
 func (o *mentorResponseObservation) observeItems(items []json.RawMessage) {
 	for _, item := range items {
 		var output struct {
-			Type string `json:"type"`
-			Role string `json:"role"`
+			Type responses.ItemKind `json:"type"`
+			Role string             `json:"role"`
 		}
 		if json.Unmarshal(item, &output) != nil {
 			continue
 		}
-		switch output.Type {
-		case "custom_tool_call", "function_call":
+		switch {
+		case output.Type.ToolCall():
 			o.toolCalls++
-		case "message":
+		case output.Type == responses.Message:
 			if strings.TrimSpace(output.Role) == "" || output.Role == "assistant" {
 				o.messages++
 			}

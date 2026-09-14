@@ -7,7 +7,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"maps"
+
 	"slices"
+
+	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 const maxFingerprintItems = 128
@@ -92,7 +95,7 @@ func (r *Recorder) requestFingerprint(body []byte) *requestFingerprint {
 	// These fields describe delivery/routing, not cacheable inference input.
 	// Normalize the established HTTP and WebSocket representations alike.
 	delete(fields, "stream")
-	if fields["type"] == "response.create" {
+	if fields["type"] == responseevents.Create {
 		delete(fields, "type")
 	}
 	if metadata, ok := fields["client_metadata"].(map[string]any); ok {

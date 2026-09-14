@@ -3,7 +3,10 @@ package router
 import (
 	"bytes"
 	"encoding/json"
+
 	"maps"
+
+	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 // responsesItem keeps the complete provider object while exposing the stable
@@ -128,4 +131,12 @@ func decodeJSONString(raw json.RawMessage) (string, bool) {
 		return "", false
 	}
 	return value, true
+}
+
+func responseMessageFacts(fields map[string]json.RawMessage) responseevents.MessageFacts {
+	return responseevents.MessageFacts{
+		Kind:  responseevents.ItemKind(jsonString(fields, "type")),
+		Role:  jsonString(fields, "role"),
+		Phase: jsonString(fields, "phase"),
+	}
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/tiktoken-go/tokenizer"
 	"github.com/yusing/mekugi/internal/commentaryid"
+	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 var errDecodedPayloadTooLarge = errors.New("decoded response exceeds capture observation limit")
@@ -86,11 +87,11 @@ func observeResponse(payload []byte, contentType string, record *captureRecord, 
 
 func completedResponseOutputItem(payload []byte) (int, json.RawMessage, bool) {
 	var event struct {
-		Type        string          `json:"type"`
-		OutputIndex *int            `json:"output_index"`
-		Item        json.RawMessage `json:"item"`
+		Type        responseevents.Kind `json:"type"`
+		OutputIndex *int                `json:"output_index"`
+		Item        json.RawMessage     `json:"item"`
 	}
-	if json.Unmarshal(payload, &event) != nil || event.Type != "response.output_item.done" ||
+	if json.Unmarshal(payload, &event) != nil || event.Type != responseevents.OutputItemDone ||
 		event.OutputIndex == nil || *event.OutputIndex < 0 || len(event.Item) == 0 {
 		return 0, nil, false
 	}
@@ -117,7 +118,7 @@ func observeResponseJSON(payload []byte, record *captureRecord, codec tokenizer.
 		return nil, false
 	}
 	var event struct {
-		Type     string                     `json:"type"`
+		Type     responseevents.Kind        `json:"type"`
 		Item     json.RawMessage            `json:"item"`
 		Response json.RawMessage            `json:"response"`
 		Headers  map[string]json.RawMessage `json:"headers"`
@@ -128,7 +129,7 @@ func observeResponseJSON(payload []byte, record *captureRecord, codec tokenizer.
 		}
 		return nil, false
 	}
-	if event.Type == "error" || event.Type == "codex.response.metadata" {
+	if event.Type == responseevents.Error || event.Type == responseevents.Metadata {
 		if record.Boundary == "provider" && record.ProviderResponse != nil {
 			for name, raw := range event.Headers {
 				var value string
@@ -143,8 +144,8 @@ func observeResponseJSON(payload []byte, record *captureRecord, codec tokenizer.
 				}
 			}
 		}
-		if event.Type == "error" {
-			record.ResponseStatus = "error"
+		if event.Type == responseevents.Error {
+			record.ResponseStatus = responseevents.Error
 			return nil, true
 		}
 		return nil, false
@@ -154,10 +155,10 @@ func observeResponseJSON(payload []byte, record *captureRecord, codec tokenizer.
 	}
 	if len(event.Response) != 0 {
 		_, output, valid := observeResponseEnvelope(event.Response, record, codec)
-		switch event.Type {
-		case "response.completed", "response.failed", "response.incomplete":
+		switch {
+		case event.Type.Terminal():
 			if valid {
-				record.ResponseStatus = strings.TrimPrefix(event.Type, "response.")
+				record.ResponseStatus = event.Type.Status()
 				record.observeProviderEvidence(event.Response)
 			} else if record.ProviderResponse != nil {
 				record.ProviderResponse.CachedTokensState = "unavailable"
@@ -169,8 +170,8 @@ func observeResponseJSON(payload []byte, record *captureRecord, codec tokenizer.
 		}
 	}
 	status, output, _ := observeResponseEnvelope(payload, record, codec)
-	switch status {
-	case "completed", "failed", "incomplete", "cancelled":
+	switch {
+	case responseevents.TerminalStatus(status):
 		record.observeProviderEvidence(payload)
 		return output, true
 	default:
@@ -234,7 +235,7 @@ func observeOutputItem(payload []byte, record *captureRecord, codec tokenizer.Co
 		Input     string `json:"input"`
 		Arguments string `json:"arguments"`
 	}
-	if json.Unmarshal(payload, &item) != nil || (item.Type != "custom_tool_call" && item.Type != "function_call") {
+	if json.Unmarshal(payload, &item) != nil || !responseevents.ItemKind(item.Type).ToolCall() {
 		return
 	}
 	callID := cmp.Or(item.CallID, item.ID)

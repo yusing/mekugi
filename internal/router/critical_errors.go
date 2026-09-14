@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/coder/websocket"
+	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 // CriticalErrors retains only bounded, actionable session notices, never raw
@@ -374,8 +375,9 @@ func (t *criticalErrorTransform) TransformSSE(body []byte) ([][]byte, error) {
 	if json.Unmarshal(body, &object) != nil {
 		return [][]byte{body}, nil
 	}
-	switch jsonString(object, "type") {
-	case "response.created":
+	kind := responseevents.Kind(jsonString(object, "type"))
+	switch {
+	case kind == responseevents.Created:
 		// A child's last standalone assistant item must remain its substantive result.
 		if !t.subagent {
 			result := [][]byte{body}
@@ -385,7 +387,7 @@ func (t *criticalErrorTransform) TransformSSE(body []byte) ([][]byte, error) {
 			t.emitted = true
 			return result, nil
 		}
-	case "response.completed", "response.failed", "response.incomplete":
+	case kind.Terminal():
 		response, err := t.TransformJSON(object["response"])
 		if err != nil {
 			return nil, err
