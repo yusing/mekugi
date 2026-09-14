@@ -1,0 +1,8 @@
+{
+  "schema_revision": 3,
+  "skills": {
+    "herdr": {
+      "enabled": true
+    }
+  }
+}
