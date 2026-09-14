@@ -140,167 +140,118 @@ Acceptance:
 
 ## Live terminal view
 
-The automatic pane receives authenticated edit events from its owning router, without
-watching replay files, polling the filesystem, starting another router, writing the
-store, evaluating edits, or reconstructing changes from Git. Manual live viewing is
-not supported. Durable capture history remains available through `hchanges`.
-Application status stays separate from translation success.
+The live pane is a read-only view of this session's captured hpatch edits. It does
+not include Git changes, shell-only edits, or retained shell scripts. Updates arrive
+as authenticated events from the owning router, never through filesystem watching or
+polling. The viewer does not write the store, evaluate edits, or start another router.
+Manual live viewing is unsupported; durable history remains available through `hchanges`.
 
-Interactive `mekugi codex` arms one automatic Herdr launch per router process when
-stdin/stdout are terminals and Herdr is available. The first
-successfully prepared ordinary non-subagent turn supplies the canonical workspace;
-wrapper cwd and argument parsing do not select it. Launch is asynchronous, bounded
-to five seconds, canceled with the router, and emits no terminal output. Failure
-does not affect Codex execution and is not retried automatically. A fresh router
-can open a new pane; unrelated existing viewers are neither replaced nor closed.
-The automatic pane is session-scoped: only durable thread streams observed on
-successfully prepared turns in this private router are included. This includes
-subagents and later thread/workspace switches, not unrelated sessions sharing
-the workspace. A new thread starts empty, while a resumed thread retains its own
-captured history. Absolute edit operands outside the selected workspace are included.
+### Session and lifetime
 
-The router passes a private connection capability to its pane with the internal
-`--session-file` argument. That file is written once, not used to deliver updates.
-Workspace/thread membership is in-memory, bounded to 1 MiB, and sent on the event
-stream. Exhaustion disables the view rather than publishing partial membership.
-On Codex exit or router cancellation, the router ends the stream, removes its
-connection capability, and closes only the pane it created, with bounded cleanup.
-A fresh router has a fresh private endpoint; viewers never discover or switch routers.
+Interactive `mekugi codex` inside Herdr arms one automatic pane launch per router
+process when stdin and stdout are terminals and `herdr` is available. The first
+successfully prepared non-subagent turn selects the canonical workspace, not wrapper
+cwd or parsed command arguments.
+The pane opens to the caller's right without changing focus. Launch is asynchronous,
+silent, limited to five seconds, and canceled with the router. Failure neither blocks
+Codex nor triggers an automatic retry.
 
-One durable publication remains one display update, including multi-call responses.
-Captures and receipts are announced only after their durable publication succeeds.
-Each new immutable attempt is loaded once into a bounded projection cache; receipts
-update that cache without rereading capture files. Scope additions reconcile durable
-membership and load newly included attempts. The viewer subscribes before its initial
-snapshot, merging buffered events idempotently, so snapshot races cannot lose updates.
-Reconnects and interrupted worker publication require a fresh durable snapshot before
-the pane can claim live coverage. Navigation, flush acknowledgements, and recency state
-survive reconciliation. Missing or inconsistent evidence fails explicitly.
+Scope includes only durable thread streams observed on successfully prepared turns
+in that router, including subagents and later thread/workspace switches. A new thread
+starts empty; a resumed thread retains its captured history. External absolute edit
+paths are included, but unrelated sessions sharing a workspace are not.
 
-Mixed-script workers receive a private publisher route before carrier exposure and
-send each segment's capture and receipt without waiting for the script to finish.
-Ordinary host application receipts arrive when Codex next returns results to the router.
-Shell-only filesystem edits remain excluded. Event delivery never blocks edits or
-assumes execution or continuation authority. Subscriber and worker queues are bounded;
-overflow invalidates coverage instead of silently dropping updates. A missing worker
-connection is shown as waiting; a disconnect or failed publication is unavailable.
-Worker coverage that cannot be tracked within capacity stays unavailable for that
-router session. A clean, fully drained worker close does not trigger a history rescan.
+The connection is private to the owning router. Viewers never discover or switch
+routers. Router exit revokes the connection and closes only its own pane, with bounded
+cleanup. A fresh router may open a new pane without replacing existing viewers.
+Quitting the viewer restores terminal state without closing the pane or affecting Codex.
 
-The view groups workspace review projections by file identity, following captured moves
-and excluding retained shell scripts. The engine composes applied captures into one
-original-to-latest result per file. The viewer follows and highlights the latest changed
-hunks in that result, not each intermediate patch. It never reads current workspace
-files or invents missing source context. Prepared attempts remain separately labeled
-until their application is confirmed.
+### Update integrity
 
-New captures receive a store-wide sequence before publication. It survives router
-restarts and is unchanged by replay, metadata updates, or application receipts. The
-viewer merges thread/workspace streams by this sequence before following moves and
-composing files; different agent identities do not prevent composition. Sequence gaps
-are allowed. Older records without a sequence keep their stream-local order; mixed-stream
-legacy history reports that its shared order is unavailable instead of guessing a result.
-The sequence orders captured evaluations for display; it does not control host execution.
+Captures and application receipts become visible only after durable publication.
+One publication is one display update, including multi-call responses. Mixed scripts
+publish each edit segment without waiting for the whole script; ordinary host receipts
+arrive when Codex next returns results to the router. Translation alone never confirms
+application. Delivery must not block edits or assume execution or continuation authority.
 
-`f` flushes the current file and `F` flushes all files: the viewer acknowledges existing
-capture IDs but never deletes or rewrites durable records. A subsequent edit overlapping
-a reviewed changed region revives its original-to-latest hunk; a full revert removes it.
-Unrelated reviewed regions stay hidden, including when intervening insertions/deletions
-shift their line numbers. A late receipt alone does not revive a flushed attempt.
-Acknowledgements are local to this viewer process.
+Initial snapshots and concurrent events must reconcile without lost or duplicate
+updates. Scope additions include newly eligible durable history. Reconnects and
+interrupted worker publication require a fresh durable snapshot before claiming live
+coverage, while preserving navigation, acknowledgements, and recency state.
+Within a snapshot, immutable attempts are loaded once. Receipt updates and clean worker
+shutdown must not trigger capture-history rereads.
 
-Each composed file is bounded to 1,048,576 captured source rows. Missing source,
-inconsistent context, or capacity failure is reported rather than displaying individual
-applied patches as a substitute for the result.
+A missing publisher is shown as waiting; a disconnect or failed publication is
+unavailable. Queue overflow invalidates coverage rather than silently dropping updates.
+Publisher coverage that cannot be tracked within capacity remains unavailable for the
+router session. Missing, inconsistent, or removed evidence fails explicitly, never as
+an empty successful view. Restarting the viewer selects the remaining store.
 
-The viewer renders all captured files in one continuous viewport, not only the selected
-file. Short multi-file edits remain visible together. It follows new edits by default,
-scrolling to the latest newly observed file's changed rows, even near the top of the file
-or deep inside a large composed hunk.
-Manual scrolling or file navigation pauses following and preserves each file's vertical
-offset, clamped when content becomes shorter. Scrolling crosses file boundaries; `n`/`p` jumps between
-files, and `g`/`G` goes to the start/end of the complete view. The header identifies the
-file at the top of the viewport, which is the current file for `f`. `r` resumes
-following, including edits received while paused. The footer shows FOLLOW or PAUSED.
-Navigation uses the keyboard controls shown there. Mekugi's file headings, including the
-current-file header, share an aligned recency gutter and use bold text, green `+N` and
-red `-N` source-line counts, and a width-filling separator. File-heading blocks wrap when
-needed so their actions and rename endpoints are not truncated; the sticky current-file title stays on one row.
-Counts describe the combined visible result, plus separately labeled prepared captures. They exclude
-headers/context and become zero when the file is fully flushed. Counts are cached with
-the rendered view rather than rescanning diffs on every navigation key. Source rows use a
-unified layout with old/new line numbers and explicit `+`/`-` change markers, not duplicate
-file or hunk headings. Number columns use the digits needed for each file,
-without a fixed minimum width; an absent old or new side takes no column space. Blank source
-rows retain their inline numbers.
-Very narrow panes omit number columns to leave room for source. Combined applied diffs
-have no status banner. New/deleted files and both names of renamed files appear once
-in the file heading. Prepared captures retain their action and application status once
-per capture, not per hunk. Path-only changes use the same heading or capture caption
-without a duplicate operation row.
-Terminal resize clips colored Unicode text to the available columns. Only text and SGR styling
-reach the live viewport. Source uses the terminal's normal background, with syntax
-colors independent of the recency gutter. Missing-final-newline markers remain explicit.
-Displayed header paths are relative only for files inside the selected workspace; paths outside
-it remain absolute. Source hunk text and durable paths are unchanged.
+### Composition and review
 
-The latest refresh containing new capture IDs marks every affected file and touched
-composed hunk with a cyan gutter, without recoloring source text or adding backgrounds.
-The marker denotes a recently touched hunk, not line- or word-level attribution.
-Multiple captures observed together form one display
-update; this does not establish execution order across streams. Initial history is a
-baseline, not a fresh update. Receipt-only refreshes preserve the current marks rather
-than creating a new update. Marks remain until another capture update or a flush.
-Prepared captures retain their explicit unconfirmed application status.
-A full revert can mark the file's empty state but never invents a surviving changed hunk.
+Applied captures form one original-to-latest result per file, following captured moves
+across threads and workspaces. Composition uses durable capture order, unchanged by
+restart, replay, metadata updates, or receipt arrival. Order gaps are allowed; this
+display order does not control host execution. Legacy records retain stream-local
+order, but mixed-stream legacy history reports unavailable shared order rather than
+guessing a combined result.
 
-Manual navigation preserves the viewport when new captures arrive and adds a
-`new changes available` footer notice. Resuming follow or flushing all marked files
-clears that notice. Recency and acknowledgement state are viewer-local; restarting
-does not replay old captures as new updates. Rendering reserves the gutter and final
-terminal column. Decoration remains within the rendered-output bound.
+Composition uses captured source only. Missing context, inconsistent source, or capacity
+failure is reported instead of inventing context or substituting individual applied
+patches. Prepared captures remain separately labeled until application is confirmed.
 
-The viewer renders in process from validated engine hunk rows, recording display
-positions directly. It requires no external renderer and ignores Delta/Git styling
-and pager settings. Syntax highlighting uses captured source only, separately for
-each side of a hunk; unavailable source context is never reconstructed. Unknown
-languages, lexer failures, and hunk sides larger than 256 KiB retain plain safe text.
-This unified view does not offer side-by-side layout or word-level emphasis.
-It requires terminal input/output.
+`f` acknowledges the current file and `F` all files, without deleting or rewriting
+captures. A later overlapping edit revives the original-to-latest region; a full revert
+removes it. Unrelated reviewed regions remain hidden through line shifts and repeated-line
+alignment. A late receipt alone cannot revive a flushed attempt. Acknowledgements and
+recency are viewer-local; restart treats retained history as a baseline, not a new update.
 
-Automatic launch creates a sibling pane to the right of the caller in the selected
-workspace without changing focus and starts the same executable there. It never
-switches to a bottom pane based on geometry. It requires a Herdr-managed caller and
-uses returned pane identities, not focused-pane defaults. Closing the viewer restores
-terminal state but does not close the pane or affect the agent/router.
+### Navigation and display
 
-The viewer bounds source and rendered diff output independently to 64 MiB and fails on
-explicit removal of previously observed change IDs; restarting selects the remaining
-store. Its view state is process-local, while captured edits survive router restarts.
+All files share one continuous viewport. Following is enabled initially and targets
+the latest changed rows, including those deep inside a combined hunk. Manual scrolling
+or file navigation pauses following and preserves file-relative offsets, clamped when
+content shrinks. `n`/`p` navigate files, `g`/`G` the complete view, and `r` resumes following,
+including changes received while paused. The file at the top of the viewport is current
+for `f`.
 
-Acceptance:
-1. A multi-file capture displays every file in the continuous view, with short diffs
-   visible together. Following scrolls to new edits; manual navigation pauses it, so
-   other-file edits and application receipts do not steal selection or reset scrolling. `r` resumes following
-   the latest observed edit, including after updates while paused.
-2. Native rendering works without Delta or a pager, retaining syntax colors, normal
-   source backgrounds, and inline line numbers. Multiple regions in a newly created
-   file show one file-action label, no repeated hunk captions, and no extra heading
-   padding. Blank source rows, prepared-capture identity, and rename endpoints remain
-   visible. Herdr auto-launch does not require Delta.
-3. A real terminal process renders updates, handles resize, accepts navigation and quit,
-   and exits without retaining terminal ownership.
-4. A fresh read-only store view sees durable edits and confirmation receipts; missing
-   records do not appear as an empty successful view.
-5. Flush hides reviewed hunks without deleting captures; an overlapping fix shows
-   original-to-latest content, a full revert disappears, and unrelated reviewed
-   regions remain hidden through line shifts and repeated-line alignment.
-6. Late confirmation of a flushed prepared attempt does not revive it by itself.
-   Cross-thread/workspace edits compose in captured sequence, including after restart
-   and out-of-order confirmation. Source gaps report a composition failure, not raw patches.
-7. Latest-update markers cover all newly observed files and touched net hunks, including
-   overlapping edits, deletions, moves, line shifts, and repeated-line reverts. Older
-   unrelated hunks keep their normal styling. Receipt-only updates and initial history
-   do not create new recency, and flushing removes the corresponding markers.
-8. The unified layout retains syntax colors and normal backgrounds beside the gutter. Unicode clipping, resize, pause/resume, and real-terminal cleanup
-   remain correct with highlighted updates.
+The footer identifies FOLLOW or PAUSED. Updates received while paused preserve the
+viewport and show `new changes available`; resuming or flushing all marked files clears
+the notice. New captures mark every affected file and touched net hunk with a cyan
+gutter. Receipt-only updates preserve those marks; another capture update or flush
+replaces them. A full revert may mark an empty file state, never a nonexistent hunk.
+Markers indicate recent hunks, not line- or word-level attribution.
+
+File headings and the sticky current-file header share an aligned gutter, bold titles,
+green `+N` and red `-N` source-line counts, and a width-filling separator. Counts describe
+the visible combined result plus prepared captures, exclude context and headers, and
+become zero when flushed. Navigation must not rescan diffs merely to update counts.
+File actions appear once per file or prepared capture, with both rename endpoints.
+Heading blocks wrap without losing actions or paths; the sticky title stays on one row.
+
+Source uses unified old/new line numbers, explicit change markers, and no repeated hunk
+headings or applied-status banners. Number columns use only the required digits, omit
+absent sides, and disappear in very narrow panes; blank source rows keep their numbers.
+Prepared status appears once per capture. Paths within the display workspace are relative;
+external paths stay absolute. Display formatting never changes captured paths or source.
+
+Resize must preserve safe Unicode clipping, leaving room for the gutter and final
+terminal column. Only text and terminal color/text styling (SGR) may reach the viewport.
+Source retains the normal terminal background, independent syntax colors, and
+missing-final-newline markers.
+Highlighting uses each hunk side independently; unknown languages, lexer failures, and
+oversized sides fall back to plain safe text. No external renderer or pager is required.
+Delta/Git styling, side-by-side layout, and word-level emphasis are unsupported.
+
+### Resource limits
+
+| Resource | Limit | On exhaustion |
+| --- | --- | --- |
+| Session workspace/thread membership | 1 MiB | Disable the view rather than publish partial scope |
+| Captured source rows per composed file | 1,048,576 | Report composition failure |
+| Source and rendered output | 64 MiB each | Fail explicitly |
+| Syntax-highlighting input per hunk side | 256 KiB | Display plain safe text |
+
+Acceptance must cover real-terminal updates, resize, navigation, and cleanup; concurrent
+snapshot/publication and reconnect races; resumed and cross-thread histories; prepared
+moves and delayed receipts; and flush/revert behavior with shifted or repeated lines.

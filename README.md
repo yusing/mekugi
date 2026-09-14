@@ -42,6 +42,10 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
     activity after a response closes waits for the next root response and is
     labelled as activity since the last update. This is not a continuous live
     feed during native waits, and requires no Codex panel or client patch.
+- **Review edits as they happen.**
+  - In Herdr, the [live diff pane](#live-diff-pane) combines the main agent's and
+    subagents' hpatch edits, highlights recent changes, and lets you pause or flush
+    reviewed changes.
 - **See token usage for the main agent and subagents.**
   - Completed responses with provider usage show one compact token and estimated API-cost table
     after the journal flush,
@@ -504,44 +508,6 @@ status. Repeat the same command with `--cursor VALUE` before `--` to continue. M
 a changed snapshot fail explicitly. Isolated executors need the router's replay directory
 mounted at its original absolute path. See the [change record contract](doc/spec/changes.md).
 
-### Live diff pane
-
-Interactive `mekugi codex` opens a sibling Herdr pane on the right when `herdr`
-is available. It follows the session's captured hpatch edits, including subagents,
-and closes with Codex. Redirected input/output does not open a pane.
-
-The pane receives edit events directly from its router, including each edit segment
-of a mixed script. It does not watch files for changes. Manual live viewing is not
-supported; use `hchanges` for saved capture history.
-Workspace paths display relatively; external paths stay absolute. Rendering and
-navigation run inside Mekugi, with no external renderer or pager required.
-
-All captured files appear in one scrollable view, so short multi-file edits stay visible
-together. New captures and application receipts update the view as the router receives them.
-Ordinary host application is confirmed when Codex next returns its result to the router;
-mixed-script workers send confirmations after each applied segment. Prepared edits
-remain labeled as unconfirmed until then. If live coverage is interrupted, the pane
-shows reconnecting or unavailable rather than silently claiming to be current.
-The latest changed rows are followed by default, including within large combined hunks;
-manual navigation pauses following.
-Bold file headings and separator lines identify each file, with green `+N` and red `-N`
-counts for the displayed additions and deletions. The unified view keeps compact old/new line
-numbers beside the source, omitting the absent side for new or deleted files, with green `+`
-and red `-` markers and syntax highlighting. Sticky and in-view file headings share the same gutter.
-File actions appear once in the file heading, not between hunks. Unconfirmed captures keep one label per capture.
-This view does not use Delta/Git styling settings or offer side-by-side or word-level
-highlighting. Unknown languages and large hunks use plain source text with change markers.
-A cyan gutter marks recently touched hunks. Older diffs keep their normal styling.
-Marks persist until another update or a flush; startup history is not highlighted.
-While paused, the footer reports new changes
-without moving your view.
-On-screen controls let you resume following or flush reviewed changes without deleting
-captures. Overlapping edits revive flushed changes; a full revert removes the net diff.
-The viewer shows the combined result of captured edits, not each intermediate patch
-or Git/shell changes. Edits from different agents are combined in captured sequence.
-See the [live view contract](doc/spec/changes.md#live-terminal-view) for controls,
-composition limits, and lifecycle details.
-
 Semantic lookup can start with a known line number:
 `hsymbol def source.go 42 MyFunction`. Use `LINE:HASH` instead when the query
 must verify a prior read. `hsymbol --workspace /path/to/project refs source.go 42 MyFunction`
@@ -583,6 +549,29 @@ one hour by default or on router shutdown; reads and edits do not renew them.
 Active operations can delay cleanup. Save source as an ordinary workspace file
 when it needs to survive the thread. See the [shell reference](doc/spec/shell.md) for retention, editing,
 reruns, and interpreter selection.
+
+### Live diff pane
+
+In an interactive Herdr pane with `herdr` on `PATH`, `mekugi codex` opens a live
+diff pane to the right on the first turn, without changing focus. It follows the
+session's captured hpatch edits, including subagents, and closes with Codex.
+Redirected input/output does not open a pane.
+
+The view combines edits across files, excluding Git and shell changes. Prepared
+edits remain labeled as unconfirmed until application is reported. Cyan markers
+identify the latest update; reconnecting or unavailable means live updates are interrupted.
+
+Use the on-screen keyboard controls:
+
+- `j`/`k` scroll and `n`/`p` switch files, pausing automatic following.
+- `r` resumes following new edits.
+- `f` flushes the current file; `F` flushes all files. This hides reviewed changes
+  without deleting captures. Later overlapping edits can bring them back.
+- `q` quits the viewer without ending Codex.
+
+Use `hchanges` for saved capture history; standalone live viewing is not supported.
+See [live view details](doc/spec/changes.md#live-terminal-view) for display behavior,
+composition limits, and lifecycle guarantees.
 
 ## Metrics
 
