@@ -204,10 +204,18 @@ func TestNonAstraExecutionGuidanceKeepsAstraFocused(t *testing.T) {
 	}
 }
 
-func TestInstructionsDoNotPreferSequentialBatchesForIndependentCommands(t *testing.T) {
+func TestInstructionsBatchReadyWorkWithoutHpatchIsolation(t *testing.T) {
 	for _, model := range []string{"gpt-5.6-sol", "gpt-6-astra"} {
 		for _, compact := range []bool{false, true} {
 			got := InstructionsForModel(model, compact)
+			if !strings.Contains(got, "Batch ready work. Keep dependent operations sequential.") {
+				t.Fatalf("model %q compact %v omits concise batching guidance", model, compact)
+			}
+			for _, obsolete := range []string{"Run hpatch alone", "run hpatch alone", "Do not call hpatch in parallel", "Do not call this tool in parallel"} {
+				if strings.Contains(got, obsolete) {
+					t.Fatalf("model %q compact %v retains hpatch isolation: %q", model, compact, obsolete)
+				}
+			}
 			if strings.Contains(got, "prefer one batch for ready, independent") {
 				t.Fatalf("model %q compact %v steers independent commands into separate sequential executions", model, compact)
 			}

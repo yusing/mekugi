@@ -52,6 +52,9 @@ func TestRewriteModelFamilyToolConflicts(t *testing.T) {
 					if strings.Count(got, guidance) != 1 {
 						t.Fatal("selected guidance must occur once")
 					}
+					if !strings.Contains(got, "Batch ready work. Keep dependent operations sequential.") || strings.Contains(got, "Run hpatch alone") {
+						t.Fatal("forwarded prompt must batch ready work without hpatch isolation")
+					}
 					outside := strings.Replace(got, guidance, "", 1)
 					for _, conflict := range []string{
 						"`apply_patch`", "`rg`", "exec_command", "functions.exec",
@@ -96,6 +99,38 @@ func TestRefreshAndCustomAppendRemoveInheritedConflicts(t *testing.T) {
 			strings.Contains(got, "in the `commentary` channel") || strings.Contains(got, "in the commentary channel") ||
 			strings.Contains(got, "at the end of both commentary and final") || !strings.Contains(got, "Record this explanation as a short journal item after any permission question") {
 			t.Fatalf("inherited/custom rewrite failed: marked=%v", marked)
+		}
+	}
+}
+
+func TestRefreshInheritedHpatchIsolation(t *testing.T) {
+	const prior = "- Parallelize independent calls only when their tool contracts allow it. Run hpatch alone; sequence dependent operations, approvals, and mutations."
+	const replacement = "- Batch ready work. Keep dependent operations sequential."
+	guidance := codexinstructions.InstructionsForModel("gpt-6-astra", false)
+	for _, marked := range []bool{false, true} {
+		for _, ending := range []string{"", "\n", "\r\n"} {
+			input := "Preserve caller policy.\n" + prior + ending
+			if marked {
+				input = guidance + "\n" + input
+			}
+			got, _, err := renderModelInstructions(input, !marked, guidance)
+			if err != nil || strings.Contains(got, prior) || !strings.Contains(got, "Preserve caller policy.\n"+replacement+ending) {
+				t.Fatalf("marked=%v ending=%q: inherited isolation survived: %v", marked, ending, err)
+			}
+			again, _, err := renderModelInstructions(got, !marked, guidance)
+			if err != nil || again != got {
+				t.Fatalf("marked=%v ending=%q: refresh is not idempotent: %v", marked, ending, err)
+			}
+		}
+	}
+	for _, input := range []string{
+		prior + " Preserve this suffix.",
+		"  " + prior,
+		"```\n" + prior + "\n```",
+		"~~~text\n" + prior + "\n~~~",
+	} {
+		if got := rewriteStockToolConflicts(input); got != input {
+			t.Fatalf("rewrote an unrecognized caller instruction: %q", got)
 		}
 	}
 }

@@ -38,7 +38,8 @@ progress-channel, initial-update, skill-announcement, approval-rejection deliver
 Code Mode batching, unrestricted parallelization, Plan mode's repeated-question prompts, and
 Default mode's `request_user_input` prompts when that request's tool contract makes it Plan-only
 outside the owned section. Progress uses journal mutations. Known reads and searches batch in a
-shell script, and parallelism respects tool contracts with hpatch running alone.
+shell script. Ready work batches while dependent operations remain sequential; hpatch has no
+blanket isolation rule.
 Plan mode asks only the questions needed for a decision-complete plan, while Default mode does
 not call `request_user_input` when the request's tool description restricts it to Plan mode;
 Default-enabled host guidance is preserved. The rewrite applies to every developer-message

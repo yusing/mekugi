@@ -6,6 +6,8 @@ import "strings"
 // the active Codex prompt. Keep unrelated policy and tool-independent safety
 // guidance intact. Apply outside our marked section too, so inherited prompts
 // do not retain conflicts from an earlier rewrite.
+const toolBatchingInstruction = "- Batch ready work. Keep dependent operations sequential."
+
 var stockToolConflictReplacer = strings.NewReplacer(
 	"Put this explanation in a short, separate paragraph at the end of both commentary and final, after any permission question.",
 	"Record this explanation as a short journal item after any permission question. Use report_now for an immediate progress notice.",
@@ -38,9 +40,9 @@ var stockToolConflictReplacer = strings.NewReplacer(
 	"- To reduce round trips, batch independent searches, reads, and other tool calls in one functions.exec using await Promise.allSettled([...]); keep each batch bounded to decision-relevant output by selecting needed ranges or fields first, and inspect every returned result. If output truncates, retrieve only the missing evidence rather than repeating an unchanged whole scan. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential. Avoid unnecessary output.",
 	"- Batch already-known searches and reads in one functions.shell script; bound output to needed ranges or fields and inspect every result. If output truncates, retrieve only missing evidence. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential.",
 	"- When calling `functions.exec`, parallelize independent tool calls by awaiting Promises. Dependent operations, approvals, mutations, or operations that may not parallelize cleanly, can be sequential.",
-	"- Parallelize independent calls only when their tool contracts allow it. Run hpatch alone; sequence dependent operations, approvals, and mutations.",
+	toolBatchingInstruction,
 	"- When possible, prefer parallelization over sequential tool calls, as this will help with round-trip latency and let you get work done faster.",
-	"- Parallelize independent calls only when their tool contracts allow it. Run hpatch alone; sequence dependent operations, approvals, and mutations.",
+	toolBatchingInstruction,
 	"- Avoid performing blocking sleep or wait calls longer than 60 seconds, as they may prevent you from communicating with the user for their duration.",
 	"- Use completion notifications or interruptible waits; do not shorten waits solely to record progress.",
 	"* Keep asking until you can clearly state: goal + success criteria, audience, in/out of scope, constraints, current state, and the key preferences/tradeoffs.",
@@ -61,15 +63,16 @@ var planOnlyDefaultModeConflictReplacer = strings.NewReplacer(
 )
 
 func rewriteStockToolConflicts(input string) string {
-	return rewriteStockPlanInstructions(stockToolConflictReplacer.Replace(input))
+	return rewriteStockLineInstructions(stockToolConflictReplacer.Replace(input))
 }
 
-// rewriteStockPlanInstructions removes only pinned checklist fragments. Codex's
+// rewriteStockLineInstructions rewrites pinned checklist and inherited tool guidance. Codex's
 // section-removal helper is restricted to Codex-owned text; this boundary also
 // receives caller instructions, so nearby paragraphs and continuations are not ours.
 // Keep empty line boundaries so removing a fragment cannot expose a new match on
 // a later refresh.
-func rewriteStockPlanInstructions(input string) string {
+func rewriteStockLineInstructions(input string) string {
+	const priorParallelInstruction = "- Parallelize independent calls only when their tool contracts allow it. Run hpatch alone; sequence dependent operations, approvals, and mutations."
 	lines := strings.SplitAfter(input, "\n")
 	var rendered strings.Builder
 	rendered.Grow(len(input))
@@ -102,6 +105,11 @@ func rewriteStockPlanInstructions(input string) string {
 		}
 		if fence != 0 {
 			rendered.WriteString(lines[index])
+			index++
+			continue
+		}
+		if line == priorParallelInstruction {
+			rendered.WriteString(strings.Replace(lines[index], line, toolBatchingInstruction, 1))
 			index++
 			continue
 		}
