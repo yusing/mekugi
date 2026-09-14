@@ -32,17 +32,6 @@ async function temporaryDirectory(prefix: string): Promise<string> {
   return directory;
 }
 
-function retainedResultPath(stderr: string): string {
-  const match = /retained at ("(?:\\.|[^"\\])*")/u.exec(stderr);
-  if (match === null) {
-    throw new Error("missing retained output path");
-  }
-  const resultPath: string = JSON.parse(match[1]);
-  expect(path.basename(path.dirname(resultPath))).toStartWith("mko-");
-  temporaryDirectories.push(path.dirname(resultPath));
-  return resultPath;
-}
-
 type FakeGopls = {
   callsPath: string;
   respond(stdout: string, stderr?: string, exitCode?: number): Promise<void>;
@@ -890,13 +879,10 @@ describe("hgrep built-in plugin", () => {
     const limited = await tool.execute(["-F", "needle", "large.txt"], executionContext);
     expect(limited.exitCode).toBe(1);
     expect(limited.stderr).toStartWith("hgrep: output incomplete: 15,000-token limit reached\n");
-    const snapshot = retainedResultPath(limited.stderr ?? "");
     await rm("large.txt");
-    expect(await readFile(snapshot, "utf8")).toBe(
-      `${prefix}${formatVerifiedRow(1, `needle ${first}`)}`
-      + `${prefix}${formatVerifiedRow(2, "needle second")}`
-      + `${prefix}${formatVerifiedRow(3, "needle third")}`,
-    );
+    expect(limited.omittedOutput).toEqual({stdout:
+      `${prefix}${formatVerifiedRow(2, "needle second")}`
+      + `${prefix}${formatVerifiedRow(3, "needle third")}`, stderr: ""});
     expect(limited.stdout).toContain(`needle ${first}`);
     expect(limited.stdout).not.toContain("needle second");
     expect(limited.stdout).not.toContain("needle third");
@@ -1452,6 +1438,7 @@ describe("hsymbol built-in plugin", () => {
       executionContext,
     );
     expect(result).toEqual({
+      omittedOutput: {stdout: `${prefix}${formatVerifiedRow(3, "third")}`, stderr: ""},
       stdout: `${prefix}${formatVerifiedRow(1, first)}${prefix}${formatVerifiedRow(2, "second")}`,
       stderr: expect.stringContaining("hsymbol: skipped 1 location outside workspace\n"
         + "hsymbol: output incomplete: 15,000-token limit reached\n"),
@@ -1475,10 +1462,9 @@ describe("hsymbol built-in plugin", () => {
     );
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("unread result rows start at 1");
-    const snapshot = retainedResultPath(result.stderr ?? "");
+    expect(result.stderr).toContain("output incomplete");
     await rm("uses.go");
-    expect(await readFile(snapshot, "utf8")).toBe(
+    expect(result.omittedOutput?.stdout).toBe(
       `"uses.go":${formatVerifiedRow(1, huge)}"uses.go":${formatVerifiedRow(2, "func Other() { Target() }")}`,
     );
     expect((await readFile(fake.callsPath, "utf8")).trim().split("\n")).toHaveLength(1);

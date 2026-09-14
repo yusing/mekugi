@@ -152,16 +152,31 @@ verified rows at a display boundary. Small writes may use escaped byte length as
 token bound. Ready output continues streaming until this display budget is spent. Redirections
 and pipelines are not display streams and keep their original bytes.
 
-Display exhaustion does not stop execution or change command status. The worker retains its
-captured stdout and stderr and reports a compact `output: DIRECTORY` receipt. That directory
-contains `stdout`, `stderr`, and `metadata.json`, whose per-stream `unread_byte` fields are
-zero-based byte offsets and whose `exit_code` preserves the command result. Each snapshot is bounded to 16 MiB. Existing interpreter byte limits,
-invalid UTF-8, cancellation, and execution failures still apply; saving output cannot turn an
-incomplete producer into a complete result. Snapshot-write failures fail explicitly rather than
-claim recovery is available. Snapshot files are ordinary executor-owned temporary files, with
-private directory/file permissions, distinct from executable `@shell/` references. They survive
-router shutdown until explicitly removed and are readable through normal host filesystem
-permissions, including in a fork with the path visible in history.
+Display exhaustion does not stop execution or change command status. The worker retains only
+the omitted stdout and stderr suffixes in the existing managed replay store and reports
+`shell: output truncated; read omitted remainder with houtput ID`. No standalone temporary
+output directories or metadata files are created. The immutable record includes the original
+exit code. Omitted data is limited to 16 MiB, encoded records to the replay record limit, and
+output records to a separate 256 MiB quota. Capacity exhaustion and write failures fail
+explicitly; output retention never evicts executable recovery state.
+
+`houtput ID [--stdout|--stderr] [--max-tokens N] [--cursor HASH:BYTE]` reads that omitted
+remainder, not already displayed output. It defaults to both streams, with a labeled frame
+for each stream on every page; these frames do not imply chronological interleaving.
+The default budget is 4,000 tokens, with the same 1–15,500 range as `hchanges`.
+Budgets too small for the frames fail explicitly. Partial reads return status 1 and the
+same `--cursor HASH:BYTE` continuation convention as `hchanges`; complete reads return 0,
+independently of the original command's exit code. A cursor binds the immutable record and
+stream selection. Repeat the same selection when continuing; switching streams starts a
+separate read and never consumes the other stream. Repeating a read is non-consuming.
+
+Records survive router restart until explicit managed-store cleanup. The random output ID
+is a read capability: a fork, side thread, switched agent/model, or resumed session with
+that ID in visible history can read it through the same configured store, without a live
+parent or routing-session identity. Missing records and invalid cursors fail explicitly,
+never rerun commands. Store location comes from the authenticated worker manifest, not cwd
+or child environment. Existing producer byte limits, invalid UTF-8, cancellation, and
+execution failures still apply; retaining output cannot make an incomplete producer complete.
 The receipt itself needs display space: a caller budget smaller than the receipt and host
 framing can still truncate it. Execution is not rejected or assigned a larger host budget
 to hide this limitation.

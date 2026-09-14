@@ -189,6 +189,10 @@ func runAuthenticatedToolWorker(
 	if err != nil {
 		return fail(fmt.Errorf("execute tool plugin: %w", err))
 	}
+	execution, err = retainExecutionOutput(ctx, manifest, execution)
+	if err != nil {
+		return fail(fmt.Errorf("retain plugin output: %w", err))
+	}
 	if _, err := io.WriteString(stdout, execution.Stdout); err != nil {
 		return fail(fmt.Errorf("write plugin stdout: %w", err))
 	}

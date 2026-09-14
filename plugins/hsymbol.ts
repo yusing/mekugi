@@ -619,15 +619,13 @@ async function executeQuery(query: Query, onResolverStart: () => void): Promise<
     };
   }
   if (output.incomplete) {
-    const retainedPath = retainedRows.save();
-    const unreadLine = output.current.split("\n").length;
     stderr += `hsymbol: ${VERIFIED_ROW_LIMIT_DIAGNOSTIC}`;
-    stderr += `hsymbol: complete emitted rows retained at ${JSON.stringify(retainedPath)}; unread result rows start at ${unreadLine}. Read bounded ranges with sed; do not rerun the resolver. Skipped locations above remain unresolved. Files remain until removed.\n`;
   }
   return {
     stdout: output.current,
     ...(stderr === "" ? {} : {stderr}),
     exitCode: output.incomplete ? 1 : 0,
+    ...(output.incomplete ? {omittedOutput: {stdout: retainedRows.remainder(output.current), stderr: ""}} : {}),
     ...(output.incomplete ? {failureClass: "output_limit" as const} : {}),
   };
 }

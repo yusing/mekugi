@@ -29,11 +29,17 @@ type (
 		Carrier    Carrier  `json:"carrier"`
 	}
 
+	OmittedOutput struct {
+		Stdout string `json:"stdout"`
+		Stderr string `json:"stderr"`
+	}
+
 	ExecutionOutput struct {
-		FailureClass string `json:"failureClass,omitempty"`
-		Stdout       string `json:"stdout"`
-		Stderr       string `json:"stderr"`
-		ExitCode     int    `json:"exitCode"`
+		OmittedOutput *OmittedOutput `json:"omittedOutput,omitempty"`
+		FailureClass  string         `json:"failureClass,omitempty"`
+		Stdout        string         `json:"stdout"`
+		Stderr        string         `json:"stderr"`
+		ExitCode      int            `json:"exitCode"`
 	}
 
 	Snapshot struct {

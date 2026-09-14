@@ -9,7 +9,7 @@ import (
 
 // JSON can encode each byte as a six-byte Unicode escape. The additional
 // allowance covers the execution envelope.
-const maxEncodedExecutionHostOutputBytes = 6*ExecutionOutputBudgetBytes + 1<<20
+const maxEncodedExecutionHostOutputBytes = 6*(ExecutionOutputBudgetBytes+16<<20) + 1<<20
 
 // executionResponse carries private host cleanup metadata separately from the
 // output returned to the executor caller.

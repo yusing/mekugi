@@ -42,6 +42,9 @@ func runShellWorkerTest(
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := openMekugiReplayStore(manifest.ReplayDirectory); err != nil {
+		t.Fatal(err)
+	}
 	shell, ok := registry.contribution("shell")
 	if !ok {
 		t.Fatal("shell contribution is unavailable")

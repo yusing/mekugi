@@ -42,6 +42,8 @@ export type ReaderFailureClass = "invalid_arguments" | "not_found" | "permission
   "dependency_unavailable" | "no_editable_location" | "output_limit";
 
 export type ExecutionResult = ExecutionOutput & {
+  // Omitted suffixes for host-owned managed recovery, never a temporary-file path.
+  omittedOutput?: {stdout: string; stderr: string};
   // Allowlisted diagnostic metadata, never command output or a raw error.
   failureClass?: ReaderFailureClass;
   // Private host cleanup metadata, never part of the executor-facing output.

@@ -79,6 +79,7 @@ func buildToolRegistryAt(
 		return fail(err)
 	}
 	contributions := []toolContribution{
+		{PluginID: "builtin.mekugi", Name: "houtput", Builtin: true},
 		{PluginID: "builtin.mekugi", Name: "hchanges", Builtin: true},
 		{
 			PluginID:      "builtin.mekugi",

@@ -61,9 +61,9 @@ point at same-named files in the caller's directory. Each result file is canonic
 the selected resolver; other returned locations are omitted and counted by reason on stderr.
 References are deduplicated by canonical path and logical line. Empty `refs` is successful.
 A `def` without an editable workspace location is nonzero. Token-limited results retain all
-formatted rows in an executor-owned temporary file, up to 16 MiB. The diagnostic supplies its
-path and first unread result row; bounded raw reads recover the suffix without rerunning the
-resolver, even after source changes or router shutdown. Retained hashes describe the query
+formatted rows up to 16 MiB and return only omitted rows to the host's managed output
+recovery store. The `houtput` receipt and pagination follow the shell output contract,
+without rerunning the resolver or writing temporary dumps, even after source changes or router shutdown. Retained hashes describe the query
 snapshot. Display truncation remains nonzero, and skipped locations still prevent claiming a
 complete definition or reference set. Location skip counts cover the complete resolver result.
 Exceeding the retention bound or failing to save the snapshot returns an explicit failure,

@@ -158,6 +158,9 @@ func executeShellProgram(
 				}
 			}()
 
+			if command[0] == "houtput" {
+				return executeHOutput(handlerCtx, manifest, runtimeRoot, command[1:])
+			}
 			if command[0] == "hchanges" {
 				return executeHChanges(handlerCtx, manifest, runtimeRoot, command[1:])
 			}
@@ -244,6 +247,9 @@ func executeShellProgram(
 				handler.Dir,
 				shellEnvironment(handler.Env),
 			)
+			if executeErr == nil {
+				execution, executeErr = retainExecutionOutput(handlerCtx, manifest, execution)
+			}
 			if executeErr != nil {
 				failureClass = "execution_error"
 				_, _ = fmt.Fprintf(handler.Stderr, "%s: %v\n", command[0], executeErr)

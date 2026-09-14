@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -10,10 +9,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/yusing/mekugi/internal/hpatchsyntax"
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"mvdan.cc/sh/v3/interp"
 )
 
@@ -235,22 +232,6 @@ func changePathMatches(options changeReadOptions, recorded string, retained bool
 	return false
 }
 
-// The cursor binds a byte offset to the complete selected projection. A recovery
-// or new application receipt invalidates it rather than mixing two snapshots.
-func changeReadOffset(text, cursor string) (string, int, error) {
-	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(text)))
-	if cursor == "" {
-		return digest, 0, nil
-	}
-	hash, number, ok := strings.Cut(cursor, ":")
-	offset, err := strconv.Atoi(number)
-	if !ok || hash != digest || err != nil || offset < 0 || offset >= len(text) ||
-		strconv.Itoa(offset) != number || !utf8.RuneStart(text[offset]) {
-		return "", 0, errors.New("invalid or stale change cursor; restart this read")
-	}
-	return digest, offset, nil
-}
-
 func executeHChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRoot string, arguments []string) error {
 	handler := interp.HandlerCtx(ctx)
 	fail := func(err error) error {
@@ -274,31 +255,13 @@ func executeHChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRo
 	if err != nil {
 		return fail(err)
 	}
-	digest, offset, err := changeReadOffset(text, options.cursor)
+	digest, offset, err := readCursorOffset(text, options.cursor, text)
 	if err != nil {
 		return fail(err)
 	}
-	remaining := text[offset:]
-	selected := remaining
-	if len(remaining) > options.maxTokens {
-		// A token always contains at least one source byte. Only invoke the exact
-		// tokenizer when the byte count cannot prove the remainder fits.
-		end := min(len(text), offset+options.maxTokens*128+utf8.UTFMax)
-		for end < len(text) && !utf8.RuneStart(text[end]) {
-			end--
-		}
-		formatted, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, runtimeRoot,
-			[]string{strconv.Itoa(options.maxTokens), "head", text[offset:end], ""})
-		if err != nil {
-			return fail(err)
-		}
-		if formatted.ExitCode != 0 || !strings.HasPrefix(remaining, formatted.Stdout) {
-			return fail(errors.New("change output selection failed"))
-		}
-		selected = formatted.Stdout
-	}
-	if selected == "" && offset < len(text) {
-		return fail(errors.New("token budget cannot admit the next character; increase --max-tokens"))
+	selected, err := selectReadPage(ctx, manifest, runtimeRoot, text[offset:], options.maxTokens)
+	if err != nil {
+		return fail(err)
 	}
 	if _, err := io.WriteString(handler.Stdout, selected); err != nil {
 		return err

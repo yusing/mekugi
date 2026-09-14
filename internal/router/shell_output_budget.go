@@ -30,7 +30,7 @@ type shellDisplayStream struct {
 	owner       *shellOutputDisplay
 	destination io.Writer
 	raw         bytes.Buffer
-	shown       bytes.Buffer
+	shownBytes  int
 }
 
 func newShellOutputDisplay(ctx context.Context, manifest toolWorkerManifest, runtime string, tokens int, stdout, stderr io.Writer) *shellOutputDisplay {
@@ -82,7 +82,7 @@ func (stream *shellDisplayStream) Write(value []byte) (int, error) {
 	} else {
 		display.remaining -= tokens
 	}
-	_, _ = stream.shown.WriteString(text)
+	stream.shownBytes += len(text)
 	if stream.destination != nil {
 		n, err := io.WriteString(stream.destination, text)
 		if err == nil && n != len(text) {
@@ -104,24 +104,22 @@ func (display *shellOutputDisplay) finish(execution toolplugin.ExecutionOutput) 
 	execution.Stdout, execution.Stderr = "", ""
 	for index, target := range []*string{&execution.Stdout, &execution.Stderr} {
 		if display.streams[index].destination == nil {
-			*target = display.streams[index].shown.String()
+			*target = display.streams[index].raw.String()[:display.streams[index].shownBytes]
 		}
 	}
 	if !display.omitted {
 		return execution, nil
 	}
-	retained, err := toolplugin.FormatOutput(display.ctx, display.manifest.NodeExecutable, display.runtime,
-		[]string{"0", "retain", display.streams[0].raw.String(), display.streams[1].raw.String(),
-			strconv.Itoa(display.streams[0].shown.Len()), strconv.Itoa(display.streams[1].shown.Len()), strconv.Itoa(execution.ExitCode)})
+	store, err := shellOutputStore(display.manifest)
 	if err != nil {
 		return toolplugin.ExecutionOutput{}, fmt.Errorf("retain shell output: %w", err)
 	}
-	var paths struct {
-		Directory string `json:"directory"`
+	id, err := store.putShellOutput(display.ctx,
+		display.streams[0].raw.String()[display.streams[0].shownBytes:],
+		display.streams[1].raw.String()[display.streams[1].shownBytes:], execution.ExitCode)
+	if err != nil {
+		return toolplugin.ExecutionOutput{}, fmt.Errorf("retain shell output: %w", err)
 	}
-	if retained.ExitCode != 0 || json.Unmarshal([]byte(retained.Stdout), &paths) != nil || paths.Directory == "" {
-		return toolplugin.ExecutionOutput{}, errors.New("invalid retained shell output")
-	}
-	execution.Stderr += fmt.Sprintf("\noutput: %s\n", paths.Directory)
+	execution.Stderr += fmt.Sprintf("\nshell: output truncated; read omitted remainder with houtput %s\n", id)
 	return execution, nil
 }

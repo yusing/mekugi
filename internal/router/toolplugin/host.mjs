@@ -701,7 +701,7 @@ async function executeTool(request) {
     outputBudgetBytes: request.outputBudgetBytes,
   });
   const execution = await tool.execute(argumentsValue, context);
-  const current = normalizeExecutionOutput(execution, ["stdout", "stderr", "exitCode", "terminationReason", "failureClass"]);
+  const current = normalizeExecutionOutput(execution, ["stdout", "stderr", "exitCode", "terminationReason", "failureClass", "omittedOutput"]);
   if (current === null) {
     throw new Error("executor must return stdout/stderr strings and an exitCode from 0 through 255");
   }
@@ -721,6 +721,16 @@ async function executeTool(request) {
       throw new Error("executor terminationReason must be output_limit with nonzero exitCode or resolver_cleanup");
     }
     current.terminationReason = terminationReason;
+  }
+  const omitted = execution.omittedOutput;
+  if (omitted !== undefined) {
+    if (omitted === null || typeof omitted !== "object" || Array.isArray(omitted)
+        || Object.keys(omitted).some((key) => key !== "stdout" && key !== "stderr")
+        || typeof omitted.stdout !== "string" || typeof omitted.stderr !== "string"
+        || byteLength(omitted.stdout) + byteLength(omitted.stderr) > 16 * 1024 * 1024) {
+      throw new Error("executor omittedOutput must contain bounded stdout/stderr strings");
+    }
+    current.omittedOutput = {stdout: omitted.stdout, stderr: omitted.stderr};
   }
   const currentBytes = byteLength(current.stdout) + byteLength(current.stderr);
   if (currentBytes > request.outputBudgetBytes) {

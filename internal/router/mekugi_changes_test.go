@@ -175,20 +175,20 @@ func TestTrackedChangesNoOpPendingAndMissing(t *testing.T) {
 
 func TestTrackedChangeCursorAndFilters(t *testing.T) {
 	text := "hp_a1\nπ changed\n"
-	digest, offset, err := changeReadOffset(text, "")
+	digest, offset, err := readCursorOffset(text, "", text)
 	if err != nil || offset != 0 {
 		t.Fatal(err)
 	}
 	cursor := digest + ":6"
-	if _, offset, err := changeReadOffset(text, cursor); err != nil || offset != 6 {
+	if _, offset, err := readCursorOffset(text, cursor, text); err != nil || offset != 6 {
 		t.Fatalf("cursor = %d, %v", offset, err)
 	}
 	for _, invalid := range []string{digest + ":7", digest + ":999", digest + ":-1", "wrong:6"} {
-		if _, _, err := changeReadOffset(text, invalid); err == nil {
+		if _, _, err := readCursorOffset(text, invalid, text); err == nil {
 			t.Errorf("accepted %q", invalid)
 		}
 	}
-	if _, _, err := changeReadOffset(text+"recovered", cursor); err == nil {
+	if _, _, err := readCursorOffset(text+"recovered", cursor, text+"recovered"); err == nil {
 		t.Fatal("accepted stale snapshot")
 	}
 	store, err := openMekugiReplayStore(t.TempDir())

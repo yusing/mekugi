@@ -234,7 +234,7 @@ func TestShellRunnerHRunLines(t *testing.T) {
 			t.Fatalf("line-only default: %d bytes %q %d", len(stdout), stderr, status)
 		}
 		retainedStdout, retainedStderr := retainedShellTestOutput(t, stderr)
-		if len(retainedStdout) != 200000 || retainedStderr != "" {
+		if len(stdout)+len(retainedStdout) != 200000 || retainedStderr != "" {
 			t.Fatalf("outer display budget lost line-only output: %d bytes %q", len(retainedStdout), retainedStderr)
 		}
 	})

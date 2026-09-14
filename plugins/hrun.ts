@@ -1,4 +1,3 @@
-import {retainOutput} from "./retained_output.ts";
 import type {ExecutionOutput} from "../internal/router/toolplugin/plugin.d.ts";
 import {countGPT5Tokens, encodeGPT5, tokenBytes} from "./tokens.ts";
 
@@ -53,13 +52,6 @@ function selectShellText(value: string, budget: number): {text: string; tokens: 
 // Private shell-executor formatting operation. It never starts a command.
 export function formatHRunOutput(argv: string[]): ExecutionOutput {
   const [rawBudget, mode, stdout, stderr] = argv;
-  if (argv.length === 7 && mode === "retain" && rawBudget === "0") {
-    const exitCode = Number(argv[6]);
-    if (!Number.isSafeInteger(exitCode) || exitCode < 0 || exitCode > 255) {
-      throw new Error("invalid retained output status");
-    }
-    return {stdout: JSON.stringify(retainOutput(stdout, stderr, [Number(argv[4]), Number(argv[5])], exitCode)), exitCode: 0};
-  }
   const budget = Number(rawBudget);
   if (argv.length !== 4 || !/^[1-9][0-9]*$/u.test(rawBudget)
       || budget > 15_500 || (mode !== "head" && mode !== "tail" && mode !== "shell")) {

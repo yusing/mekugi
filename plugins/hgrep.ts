@@ -478,6 +478,7 @@ class SearchSource {
 type ComparedOutput = {
   current: string;
   incomplete: boolean;
+  omitted?: string;
   limitReason?: string;
 };
 
@@ -621,10 +622,8 @@ async function runRipgrep(argumentsValue: string[], options: ReaderOptions): Pro
   }
   if (exitCode === 0 || exitCode === 1) {
     if (output.incomplete) {
-      const retainedPath = retainedRows.save();
-      const unreadLine = output.current.split("\n").length;
-      const notice = `hgrep: complete emitted rows retained at ${JSON.stringify(retainedPath)}; unread result rows start at ${unreadLine}. Read bounded ranges with sed; do not rerun rg. Files remain until removed.\n`;
-      return {current: output.current, incomplete: true, limitReason: readerLimitDiagnostic(options) + notice};
+      return {current: output.current, incomplete: true, limitReason: readerLimitDiagnostic(options),
+        omitted: retainedRows.remainder(output.current)};
     }
     return {current: output.current, incomplete: false};
   }
@@ -669,6 +668,7 @@ export function createHGrepTool(description: string, grammar: string): Tool<stri
           stdout: result.current,
           stderr,
           exitCode: result.incomplete ? 1 : 0,
+          ...(result.omitted === undefined ? {} : {omittedOutput: {stdout: result.omitted, stderr: ""}}),
           ...(result.incomplete ? {failureClass: "output_limit" as const} : {}),
         };
       } catch (error) {

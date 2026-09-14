@@ -29,9 +29,9 @@ Ripgrep's no-match exit status is a successful empty result. Execution, filesyst
 cancellation, invalid-pattern, and missing-executable failures return concise nonzero
 diagnostics. Output contains only complete rows and uses the shared verified-row token admission
 rule in `REQ-READ-001`. Display-budget exhaustion does not stop the search: hgrep retains
-the complete formatted result, up to 16 MiB, and reports its path and first unread result row.
-The retained file contains original verified rows and may be read in bounded ranges without
-rerunning ripgrep. Source/event/retention bounds still terminate and reap ripgrep and must
+the formatted result up to 16 MiB and returns only omitted rows to the host's managed
+output recovery store. The `houtput` receipt and pagination follow the shell output contract;
+reads preserve original verified-row identities without rerunning ripgrep or writing temporary dumps. Source/event/retention bounds still terminate and reap ripgrep and must
 not describe the retained prefix as complete. A later search failure remains a failure even
 after display output was limited.
 

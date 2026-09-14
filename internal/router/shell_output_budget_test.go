@@ -1,7 +1,6 @@
 package router
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,49 +13,24 @@ import (
 
 func retainedShellTestOutput(t *testing.T, diagnostic string) (string, string) {
 	t.Helper()
-	match := regexp.MustCompile(`output: (.+)`).FindStringSubmatch(diagnostic)
+	match := regexp.MustCompile(`houtput (ho_[a-f0-9]{32})`).FindStringSubmatch(diagnostic)
 	if len(match) != 2 {
-		t.Fatalf("missing retained output: %s", diagnostic)
+		t.Fatalf("missing output recovery receipt: %s", diagnostic)
 	}
-	contents := make([]string, 2)
-	for index, file := range []string{"stdout", "stderr"} {
-		name := filepath.Join(match[1], file)
-		if !strings.HasPrefix(filepath.Base(filepath.Dir(name)), "mko-") {
-			t.Fatalf("unexpected output directory: %s", name)
-		}
-		data, err := os.ReadFile(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		contents[index] = string(data)
-		t.Cleanup(func() {
-			_ = os.Remove(name)
-			_ = os.Remove(filepath.Join(filepath.Dir(name), "metadata.json"))
-			_ = os.Remove(filepath.Dir(name))
-		})
-	}
-	metadata, err := os.ReadFile(filepath.Join(match[1], "metadata.json"))
+	registry := sharedProxyTestRegistry(t)
+	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var offsets struct {
-		Stdout struct {
-			Unread int `json:"unread_byte"`
-		} `json:"stdout"`
-		Stderr struct {
-			Unread int `json:"unread_byte"`
-		} `json:"stderr"`
-		ExitCode int `json:"exit_code"`
-	}
-	if err := json.Unmarshal(metadata, &offsets); err != nil {
+	store, err := shellOutputStore(manifest)
+	if err != nil {
 		t.Fatal(err)
 	}
-	for index, offset := range []int{offsets.Stdout.Unread, offsets.Stderr.Unread} {
-		if offset < 0 || offset > len(contents[index]) {
-			t.Fatalf("invalid unread offset %d for %d bytes", offset, len(contents[index]))
-		}
+	record, err := store.readShellOutput(t.Context(), match[1])
+	if err != nil {
+		t.Fatal(err)
 	}
-	return contents[0], contents[1]
+	return record.Stdout, record.Stderr
 }
 
 func TestShellReadOutputBudgetRetainsWholeBatchAndExitStatus(t *testing.T) {
@@ -74,18 +48,18 @@ func TestShellReadOutputBudgetRetainsWholeBatchAndExitStatus(t *testing.T) {
 			script := "#!params={\"max_output_tokens\":1600}\nhcat first\nhcat second\nprintf done > finished\nprintf 'command error\\n' >&2\nexit 7"
 			stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, script, nil,
 				newShellWorkerTestInvocation(directory))
-			if status != 7 || !strings.Contains(stderr, "output:") || !strings.HasSuffix(stdout, "\n") {
+			if status != 7 || !strings.Contains(stderr, "houtput ") || !strings.HasSuffix(stdout, "\n") {
 				t.Fatalf("status=%d stdout=%q stderr=%q", status, stdout, stderr)
 			}
 			allStdout, allStderr := retainedShellTestOutput(t, stderr)
-			if strings.Count(allStdout, "alpha row") != 400 || strings.Count(allStdout, "beta row") != 400 ||
+			if strings.Count(stdout+allStdout, "alpha row") != 400 || strings.Count(stdout+allStdout, "beta row") != 400 ||
 				allStderr != "command error\n" {
 				t.Fatalf("retained output lost command data: %d bytes, %q", len(allStdout), allStderr)
 			}
 			if _, err := os.Stat(filepath.Join(directory, "finished")); err != nil {
 				t.Fatalf("display budget stopped the producer: %v", err)
 			}
-			if len(stdout) >= len(allStdout) {
+			if allStdout == "" {
 				t.Fatal("batch output was not bounded")
 			}
 		})

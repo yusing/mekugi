@@ -516,16 +516,26 @@ Semantic lookup can start with a known line number:
 must verify a prior read. `hsymbol --workspace /path/to/project refs source.go 42 MyFunction`
 selects a resolver root without changing shell state and returns absolute result
 paths. Semantic results stay confined to that root. When display limits omit
-references, the result reports a saved file and the first unread result row.
-Continue with bounded `sed` ranges on that file; its rows already contain their
+references, the result supplies an `houtput ID` command. Its rows retain their
 original verified identities. Skipped or unavailable locations still need resolution.
 
-Shell workers also bound combined stdout/stderr across a script. An `output: DIRECTORY`
-receipt points to saved `stdout`, `stderr`, and `metadata.json` with unread byte offsets.
-Read those files to recover overflow without rerunning commands. These private temporary
-files survive router shutdown until removed. Execution status and pipeline/redirection
-data are unchanged. Direct external calls and command templates use the host's output
-behavior; see the [shell contract](doc/spec/shell.md) for bounds and exceptions.
+Shell workers also bound combined stdout/stderr across a script. Shell, search, and
+semantic output use the same recovery interface:
+
+```sh
+houtput ID                         # Only the omitted remainder, both streams labeled
+houtput ID --stdout                # Or --stderr
+houtput ID --max-tokens 2000
+houtput ID --cursor HASH:BYTE       # Continue the same selection with the returned cursor
+```
+
+Reads default to 4,000 tokens. Like `hchanges`, incomplete reads return a cursor and
+nonzero status; repeating a read does not consume its contents. Only omitted bytes
+are saved in Mekugi's managed recovery store, not standalone temporary dumps.
+They survive router restart until explicit cleanup. Missing records fail explicitly,
+never rerun the command. Original execution status and pipeline/redirection data are
+unchanged. Direct external calls and command templates use the host's output behavior;
+see the [shell contract](doc/spec/shell.md) for storage bounds and exceptions.
 
 Structural inspection accepts one ordinary relative or absolute path.
 `inspect_file source.go` returns an outline whose verified spans can be used as

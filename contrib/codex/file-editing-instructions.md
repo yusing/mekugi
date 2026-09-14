@@ -411,10 +411,13 @@ For ordinary file reads, use `cat` or bounded `sed`. Prefer `hcat` when its veri
 identities are useful for an anticipated edit.
 
 Shell workers budget combined display output automatically. Use reader limits and source ranges
-to focus on needed context. When a result gives an output directory, read its `metadata.json`
-for the stdout/stderr files and unread byte offsets, then continue with bounded reads.
-Commands still finish with their original exit status. Saved output survives router shutdown
-until removed; `script_ref` is separate and stores program source.
+to focus on needed context. When a result supplies `houtput ID`, run that command to read only
+the omitted remainder. Both stdout and stderr are labeled by default; use `--stdout` or
+`--stderr` to select one. Like `hchanges`, use `--max-tokens N` (default 4,000) and repeat the
+same selection with the returned `--cursor` when incomplete. Reads are repeatable,
+not consuming. Output stays in the managed recovery store across router restart until explicit
+cleanup; no standalone output dumps are created. Commands keep their original exit status;
+`script_ref` is separate and stores program source. Reading output never reruns the producer.
 
 Run one file per command as `hcat PATH [START:END]`. Quote paths with shell syntax and batch
 already-known reads as separate commands in one shell script. A bare path reads the complete
@@ -427,8 +430,7 @@ Run hgrep with ripgrep arguments and shell quoting, redirection, and pipelines. 
 `"PATH":LINE:HASH TEXT`; copy a current target directly and never reconstruct a row.
 Do not follow target-bearing hgrep output with hcat unless nonmatching context outside the
 requested bounds is needed. If hgrep reports an incomplete token-limited result, retain the
-emitted rows and continue any retained result with bounded `sed` ranges, starting at its reported
-unread result row. These are original verified rows; do not wrap them in new hcat identities.
+emitted rows and read the omitted remainder using its `houtput ID` receipt and cursor. These are original verified rows; do not wrap them in new hcat identities.
 Without a retained result, narrow only the unanswered search.
 
 Both readers accept leading `--max-tokens N` (1–15500) for a strict stdout token
@@ -454,7 +456,7 @@ unless non-declaration context is needed.
 
 For field removals and signature changes, use `hsymbol refs` or `gopls references` across affected
 packages, including tests. Read all returned reference rows before batching dependent edits.
-If output is retained, continue with bounded `sed` ranges from the reported unread result row.
+If output is retained, continue using its `houtput ID` receipt and cursor.
 Saved hashes describe the query snapshot. Report skipped or unavailable references; filenames
 in a diff and incomplete results do not establish caller coverage.
 
