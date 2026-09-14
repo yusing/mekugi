@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -112,7 +113,7 @@ func TestJournalAnswerRoutingAndRendering(t *testing.T) {
 		transform.ReleaseDelivery()
 		want := "Journal update `/root` (`j1`)\n" + body
 		if terminal {
-			want = "Journal flush `/root`\n- `j1`\n\n  " + strings.ReplaceAll(body, "\n", "\n  ") + "\n"
+			want = "Journal flush `/root`\n\n**Question:**\n\nWhich?\n\n- A\n- B\n\n**Answer:**\n\n- `j1`\n\n  Result\n  \n  - first\n  \n  Paragraph.\n"
 		}
 		if err != nil || len(messages) != 1 || commentaryMessageText(messages[0]) != want {
 			t.Fatalf("terminal=%v: %s %v", terminal, mustMarshalJSON(messages), err)
@@ -193,7 +194,7 @@ func TestJournalFlushNestsCarriageReturnLines(t *testing.T) {
 			}
 			messages, err := transform.prepareJournalDelivery(true)
 			transform.ReleaseDelivery()
-			want := "Journal flush `/root`\n- `j1`\n\n  **Question:**\n  \n  Question?\n  \n  - choice\n  \n  **Answer:**\n  \n  First\n  \n  # Heading\n"
+			want := "Journal flush `/root`\n\n**Question:**\n\nQuestion?\n\n- choice\n\n**Answer:**\n\n- `j1`\n\n  First\n  \n  # Heading\n"
 			if err != nil || len(messages) != 1 || commentaryMessageText(messages[0]) != want {
 				t.Fatalf("flush: %s %v", mustMarshalJSON(messages), err)
 			}
@@ -202,5 +203,120 @@ func TestJournalFlushNestsCarriageReturnLines(t *testing.T) {
 				t.Fatalf("rendering changed durable content: %+v %v", items, err)
 			}
 		})
+	}
+}
+
+func TestJournalTerminalSharedQuestions(t *testing.T) {
+	for _, child := range []bool{false, true} {
+		for _, flushed := range []bool{false, true} {
+			name := map[bool]string{false: "main", true: "child"}[child] + "/" + map[bool]string{false: "pending", true: "first-flushed"}[flushed]
+			t.Run(name, func(t *testing.T) {
+				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
+				defer transform.Close()
+				transform.subagentTurn = child
+				for _, entry := range []struct{ text, question string }{
+					{"First finding", "Shared assignment?\r\n\r\n- detail"},
+					{"Second finding", "Different question?"},
+					{"Plain milestone", ""},
+					{"Fourth finding\r\n\r\n- nested\r\n\r\n```go\r\nok()\r\n```", "Shared assignment?\r\n\r\n- detail"},
+					{"Fifth finding", "Shared assignment?\r\n\r\n- detail"},
+					{"Sixth finding", "Different question?"},
+				} {
+					mutation := journalMutation{Op: "add", Text: new(entry.text)}
+					if entry.question != "" {
+						mutation.Answer = new(true)
+					}
+					if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "",
+						bindJournalAnswers([]journalMutation{mutation}, entry.question)); err != nil {
+						t.Fatal(err)
+					}
+				}
+				before, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if flushed {
+					if err := proxy.journals.acknowledge(t.Context(), proxy.replayStore, workspace, "thread-1",
+						map[string]uint64{"j1": before[0].Updated}, true); err != nil {
+						t.Fatal(err)
+					}
+					before, err = proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				// An abandoned delivery must not consume the question or any of its answers.
+				for range 2 {
+					messages, err := transform.prepareJournalDelivery(true)
+					transform.ReleaseDelivery()
+					if err != nil {
+						t.Fatal(err)
+					}
+					var body string
+					if child {
+						body = transform.journalChildResult
+						if len(messages) != 0 {
+							t.Fatalf("child unexpectedly flushed: %v", messages)
+						}
+					} else {
+						if len(messages) != 1 {
+							t.Fatalf("main flush count: %d", len(messages))
+						}
+						body = commentaryMessageText(messages[0])
+					}
+					for _, question := range []string{"Shared assignment?", "Different question?"} {
+						if strings.Count(body, question) != 1 {
+							t.Fatalf("question %q must appear once: %s", question, body)
+						}
+					}
+					wantGroups := [][]string{{"j1", "j4", "j5"}, {"j2", "j6"}, {"j3"}}
+					if flushed && !child {
+						wantGroups = [][]string{{"j2", "j6"}, {"j3"}, {"j4", "j5"}}
+						if strings.Contains(body, "`j1`") {
+							t.Fatalf("omitted item rendered: %s", body)
+						}
+					}
+					blocks := strings.Split(body, "\n---\n")
+					if len(blocks) != len(wantGroups) {
+						t.Fatalf("question groups are not separate blocks: %s", body)
+					}
+					for index, ids := range wantGroups {
+						block := blocks[index]
+						last := -1
+						for _, id := range ids {
+							position := strings.Index(block, "\n- `"+id+"`\n")
+							if position <= last {
+								t.Fatalf("answers for one question are not together in order: %s", block)
+							}
+							last = position
+						}
+						if strings.Count(block, "\n- `j") != len(ids) {
+							t.Fatalf("unrelated answer or milestone in question block: %s", block)
+						}
+						question := map[string]string{"j1": "Shared assignment?", "j2": "Different question?", "j4": "Shared assignment?"}[ids[0]]
+						if question == "" {
+							if strings.Contains(block, "**Question:**") || strings.Contains(block, "**Answers:**") {
+								t.Fatalf("plain milestone became a question block: %s", block)
+							}
+						} else if !strings.Contains(block, "**Question:**\n\n"+question) ||
+							strings.Count(block, "**Answers:**") != 1 {
+							t.Fatalf("answers grouped under the wrong question: %s", block)
+						}
+					}
+					if strings.Contains(body, "question in `") {
+						t.Fatalf("answers contain item cross-references: %s", body)
+					}
+					if !strings.Contains(body, "\n- `j3`\n\n  Plain milestone\n") ||
+						!strings.Contains(body, "Fourth finding\n  \n  - nested\n  \n  ```go\n  ok()\n  ```") {
+						t.Fatalf("plain milestone or answer Markdown changed: %s", body)
+					}
+				}
+				after, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
+				if err != nil || !reflect.DeepEqual(before, after) {
+					t.Fatalf("rendering changed stored items: before=%+v after=%+v err=%v", before, after, err)
+				}
+			})
+		}
 	}
 }

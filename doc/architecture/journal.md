@@ -33,6 +33,10 @@ prefixes; terminal delivery and named journal lookup share the durable workspace
 owner. Repeated initialization and unchanged identity binding read that locked state but
 skip redundant publication and synchronization. A failed render releases the lease without marking an item reported.
 The complete tree is rendered and size-checked before retaining message IDs or delivery entries.
+The shared terminal renderer groups the selected items by their exact question within each
+journal message. It renders each question once followed by all its answers, preserving group
+first-occurrence order and answer order within each group. Plain milestones stay separate.
+Grouping does not change stored content, delivery state, or standalone live notices.
 
 `server.go` performs the terminal continuation and ordering; token arithmetic and capture metrics
 remain unchanged. Only explicit journal finish selects a journal terminal, with no follow-up

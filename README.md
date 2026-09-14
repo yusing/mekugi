@@ -33,8 +33,8 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
     skipped. Journals replace the separate final-answer essay. Agents finish with either a direct
     journal finish call or a final Bash/POSIX `journal finish` command. Both complete the turn
     without an extra model request.
-  - Answer entries show the original question and a labelled answer. Multiline lists and
-    code blocks stay grouped with their journal entry.
+  - At completion, each shared question appears once with all its answers grouped beneath it.
+    Multiline lists and code blocks stay grouped with their answer.
   - Scripts can record milestones without mixing them into command output. Child updates
     carry the agent's path when Codex supplies its identity.
   - When Codex supplies parent-thread metadata, child activity also appears inline

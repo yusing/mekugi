@@ -22,7 +22,11 @@ func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
 			workspace := root.directory
 			seed := func(thread, text string) {
 				t.Helper()
-				if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, thread, "", []journalMutation{{Op: "add", Text: new(text)}}); err != nil {
+				mutations := bindJournalAnswers([]journalMutation{
+					{Op: "add", Text: new(text), Answer: new(true)},
+					{Op: "add", Text: new("More " + text), Answer: new(true)},
+				}, "Shared assignment?")
+				if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, thread, "", mutations); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -59,7 +63,7 @@ func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
 					t.Fatalf("premature or missing child completion: %s", wire)
 				}
 				items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, node.thread)
-				if err != nil || len(items) != 1 || items[0].Flushed {
+				if err != nil || len(items) != 2 || items[0].Flushed || items[1].Flushed {
 					t.Fatalf("child consumed its journal: %+v, %v", items, err)
 				}
 			}
@@ -91,12 +95,18 @@ func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
 				if !strings.Contains(commentaryMessageText(messages[i]), want) {
 					t.Fatalf("flush order: %s", mustMarshalJSON(messages))
 				}
+				body := commentaryMessageText(messages[i])
+				if strings.Count(body, "Shared assignment?") != 1 ||
+					strings.Count(body, "**Answers:**") != 1 ||
+					!strings.Contains(body, "\n- `j2`\n\n  More "+want) {
+					t.Fatalf("question context crossed author journals after restart: %s", body)
+				}
 				root.Delivered(assistantCommentaryDoneEvent(messages[i]))
 			}
 			root.ReleaseDelivery()
 			for _, thread := range []string{"root", "a", "b", "nested"} {
 				items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, thread)
-				if err != nil || len(items) != 1 || !items[0].Flushed {
+				if err != nil || len(items) != 2 || !items[0].Flushed || !items[1].Flushed {
 					t.Fatalf("main did not acknowledge %s: %+v, %v", thread, items, err)
 				}
 			}
@@ -122,6 +132,13 @@ func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
 				}
 			}
 			root.ReleaseDelivery()
+			if !bytes.Contains(output, []byte("Shared assignment?")) ||
+				!bytes.Contains(output, []byte("**Answers:**")) ||
+				!bytes.Contains(output, []byte("`j3`")) ||
+				!bytes.Contains(output, []byte("`j4`")) ||
+				bytes.Contains(output, []byte("`j1`")) {
+				t.Fatalf("later delivery did not group only its own answers: %s", output)
+			}
 			if !bytes.Contains(output, []byte("Later child revision")) || bytes.Contains(output, []byte("Unrelated result")) {
 				t.Fatalf("terminal projection: %s", output)
 			}

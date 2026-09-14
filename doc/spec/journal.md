@@ -106,10 +106,18 @@ are rewritten to journal guidance. Passthrough retains the stock tool and prompt
 Journals record checkpoints and milestones, not plans or ongoing narration. Agent guidance
 asks for a concise final report of findings, results, validation, or blockers, with superseded
 entries reconciled. Agents mark answer items with `answer: true` and put only the answer in
-`text`; the router supplies the original question. Live notices and terminal flushes label these as **Question** and **Answer**.
-The router preserves authored Markdown rather than summarizing it. Each terminal item keeps its
-ID separate from its body and indents all body lines under that item, including blank lines,
-nested lists, paragraphs, and fenced code blocks.
+`text`; the router supplies the original question. Live notices label these as **Question** and
+**Answer**; terminal blocks use **Answer** or **Answers**, according to the number of answers.
+The router preserves authored Markdown rather than summarizing it. Within each terminal journal
+message, all items with an identical question form one block: the question appears once, followed
+by all its answers together. Groups follow the first rendered occurrence of their question;
+answers retain their journal order within each group. Plain milestones remain separate entries
+at their first-occurrence positions, visibly separated from question blocks. Each author journal
+and each delivery groups only its own rendered items, after filtering already-flushed revisions
+where applicable.
+Stored questions remain attached to every answer, and standalone live updates remain self-contained.
+Each answer keeps its ID separate from its body and indents all body lines under that item,
+including blank lines, nested lists, paragraphs, and fenced code blocks.
 
 Code Mode reserves `await journal({op, id?, text?, answer?, report_now?})`, also accepting
 a mutation array. The parser preserves strings, comments, properties, and unrelated
@@ -183,5 +191,9 @@ provider events unchanged on overflow.
 8. Debug evidence separates applied mutations, runtime wiring, live rendering, and
    terminal flushing without recording journal bodies or private publication credentials.
 9. Multiline Markdown stays within its terminal journal item. Answer items display the
-   original question and a labelled answer in live and terminal delivery; question edits,
-   clearing, list, replay, restart, and forks preserve the specified state semantics.
+   original question and a labelled answer in live delivery. Terminal delivery displays each
+   identical question once per author journal, followed by all its answers in one block. Different
+   questions and plain milestones remain separate; groups follow first occurrence and answers
+   keep their relative order and full Markdown. Filtering flushed revisions, retry, child
+   completion, and restart group only items included in that message. Question edits, clearing,
+   list, replay, restart, and forks preserve the specified state semantics.

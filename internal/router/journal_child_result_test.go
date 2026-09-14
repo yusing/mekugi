@@ -23,14 +23,17 @@ func TestJournalChildCompletionResult(t *testing.T) {
 					}
 				}
 				if state != "empty" {
-					apply(journalMutation{Op: "add", Text: new("First\r\n\r- detail\n\n```go\nok()\n```"), Answer: new(true)})
+					apply(
+						journalMutation{Op: "add", Text: new("First\r\n\r- detail\n\n```go\nok()\n```"), Answer: new(true)},
+						journalMutation{Op: "add", Text: new("Second finding"), Answer: new(true)},
+					)
 					if state == "reported" || state == "flushed" || state == "edited" {
 						items, err := proxy.journals.list(t.Context(), proxy.replayStore, child.directory, "child")
 						if err != nil {
 							t.Fatal(err)
 						}
 						if err := proxy.journals.acknowledge(t.Context(), proxy.replayStore, child.directory, "child",
-							map[string]uint64{"j1": items[0].Updated}, state != "reported"); err != nil {
+							map[string]uint64{"j1": items[0].Updated, "j2": items[1].Updated}, state != "reported"); err != nil {
 							t.Fatal(err)
 						}
 					}
@@ -38,7 +41,7 @@ func TestJournalChildCompletionResult(t *testing.T) {
 						apply(journalMutation{Op: "edit", ID: "j1", Text: new("Revised result")})
 					}
 					if state == "deleted" {
-						apply(journalMutation{Op: "delete", ID: "j1"})
+						apply(journalMutation{Op: "delete", ID: "j1"}, journalMutation{Op: "delete", ID: "j2"})
 					}
 				}
 				nested, _ := prepareActivityTest(t, proxy, "nested", "nested", "child", "/root/child/nested", nil)
@@ -103,10 +106,16 @@ func TestJournalChildCompletionResult(t *testing.T) {
 						t.Fatalf("empty journal result: %q", result)
 					}
 				} else {
-					for _, want := range []string{"`/root/child`", "`j1`", "**Question:**", "Which result?", "**Answer:**"} {
+					for _, want := range []string{"`/root/child`", "`j1`", "**Question:**", "Which result?", "**Answers:**"} {
 						if !strings.Contains(result, want) {
 							t.Fatalf("result missing %q: %q", want, result)
 						}
+					}
+					if strings.Count(result, "Which result?") != 1 ||
+						strings.Count(result, "**Answers:**") != 1 ||
+						!strings.Contains(result, "\n- `j2`\n\n  Second finding\n") ||
+						strings.Contains(result, "question in `") {
+						t.Fatalf("shared assignment and answers are not one block: %s", result)
 					}
 					if state == "edited" {
 						if !strings.Contains(result, "Revised result") || strings.Contains(result, "First") {

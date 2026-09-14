@@ -67,14 +67,17 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 		if turn != 1 {
 			return nil, fmt.Errorf("child finish triggered an extra provider request")
 		}
-		item = call("journal", map[string]any{"op": "finish", "journal": []any{map[string]any{"op": "add", "text": "Native child milestone", "answer": true}}})
+		item = call("journal", map[string]any{"op": "finish", "journal": []any{
+			map[string]any{"op": "add", "text": "Native child milestone", "answer": true},
+			map[string]any{"op": "add", "text": "Native child second finding", "answer": true},
+		}})
 	} else {
 		switch {
 		case turn == 1:
 			item = call("journal", map[string]any{"op": "add", "text": "Native root milestone", "report_now": true})
 		case turn == 2:
 			item = call("spawn_agent", map[string]any{"message": "Record your milestone and finish.", "task_name": "journal_child", "fork_turns": "none"})
-		case strings.Contains(input, "Journal result") && strings.Contains(input, "Native child milestone") && strings.Contains(input, "**Question:**") && strings.Contains(input, "Record your milestone and finish."):
+		case strings.Contains(input, "Journal result") && strings.Contains(input, "Native child milestone") && strings.Contains(input, "Native child second finding") && strings.Contains(input, "**Question:**") && strings.Contains(input, "**Answers:**") && strings.Contains(input, "Record your milestone and finish."):
 			p.childResultSeen = true
 			p.journalResultSeen = strings.Contains(input, "function_call_output") && strings.Contains(input, `\"id\":\"j1\"`)
 			item = call("journal", map[string]any{"op": "finish"})
@@ -179,6 +182,36 @@ func runJournalNativeCodexSpawnE2E(t *testing.T, shellFinish bool) {
 	defer provider.mu.Unlock()
 	if !provider.childResultSeen || !provider.journalResultSeen {
 		t.Fatalf("native consumer lost journal result or child summary: child=%v journal=%v\nstdout: %.8000s\nstderr: %.8000s", provider.childResultSeen, provider.journalResultSeen, stdout.String(), stderr.String())
+	}
+	groupedResult := false
+	for line := range strings.SplitSeq(stdout.String(), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var event struct {
+			Type string `json:"type"`
+			Item struct {
+				Text string `json:"text"`
+			} `json:"item"`
+		}
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			t.Fatalf("invalid native JSON output: %v", err)
+		}
+		if event.Type != "item.completed" {
+			continue
+		}
+		text := event.Item.Text
+		if strings.Contains(text, "Journal result") && strings.Contains(text, "Native child milestone") {
+			if strings.Count(text, "Record your milestone and finish.") != 1 ||
+				strings.Count(text, "**Answers:**") != 1 ||
+				!strings.Contains(text, "Native child second finding") {
+				t.Fatalf("native consumer did not receive one grouped question and answers: %s", text)
+			}
+			groupedResult = true
+		}
+	}
+	if !groupedResult {
+		t.Fatalf("native consumer did not display the grouped child result: %.8000s", stdout.String())
 	}
 	if provider.childRequests != 1 {
 		t.Fatalf("child provider requests = %d, want exactly one", provider.childRequests)

@@ -26,12 +26,43 @@ func journalItemText(item journalItem) string {
 	return "**Question:**\n\n" + item.Question + "\n\n**Answer:**\n\n" + item.Text
 }
 
-func writeJournalItem(text *strings.Builder, item journalItem) {
-	// Normalize only the rendering copy so every Markdown line stays in its item.
-	body := strings.ReplaceAll(journalItemText(item), "\r\n", "\n")
-	body = strings.ReplaceAll(body, "\r", "\n")
-	text.WriteString("\n- " + commentaryCode(item.ID) + "\n\n  " + strings.ReplaceAll(body, "\n", "\n  "))
-	text.WriteByte('\n')
+func indentJournalText(text, indent string) string {
+	// Normalize only the rendering copy, leaving stored questions and answers intact.
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	return indent + strings.ReplaceAll(text, "\n", "\n"+indent)
+}
+
+func writeJournalItems(text *strings.Builder, items []journalItem) {
+	questions := make(map[string]int)
+	var groups [][]journalItem
+	for _, item := range items {
+		index, seen := questions[item.Question]
+		if item.Question == "" || !seen {
+			index = len(groups)
+			groups = append(groups, nil)
+			if item.Question != "" {
+				questions[item.Question] = index
+			}
+		}
+		groups[index] = append(groups[index], item)
+	}
+	for index, group := range groups {
+		question := group[0].Question
+		if index > 0 && (question != "" || groups[index-1][0].Question != "") {
+			text.WriteString("\n---\n")
+		}
+		if question != "" {
+			label := "**Answer:**"
+			if len(group) > 1 {
+				label = "**Answers:**"
+			}
+			text.WriteString("\n\n**Question:**\n\n" + indentJournalText(question, "") + "\n\n" + label + "\n")
+		}
+		for _, item := range group {
+			text.WriteString("\n- " + commentaryCode(item.ID) + "\n\n" + indentJournalText(item.Text, "  ") + "\n")
+		}
+	}
 }
 
 func journalUpdateText(author, id, text string) string {
@@ -128,9 +159,7 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 		if len(journal.Items) == 0 {
 			text.WriteString("\nNo journal entries.")
 		}
-		for _, item := range journal.Items {
-			writeJournalItem(&text, item)
-		}
+		writeJournalItems(&text, journal.Items)
 		if text.Len() > maxJournalFlushBytes {
 			t.ReleaseDelivery()
 			return nil, errors.New("child journal result exceeds terminal capacity")
@@ -193,15 +222,17 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 				text.WriteString(" " + commentaryCode(journal.Author))
 			}
 			revisions := make(map[string]uint64)
+			var items []journalItem
 			flushed := 0
 			for _, item := range journal.Items {
 				if item.Flushed {
 					flushed++
 					continue
 				}
-				writeJournalItem(&text, item)
+				items = append(items, item)
 				revisions[item.ID] = item.Updated
 			}
+			writeJournalItems(&text, items)
 			t.journalNewCount += len(revisions)
 			t.journalFlushedCount += flushed
 			if len(revisions) != 0 {
