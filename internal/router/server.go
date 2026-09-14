@@ -589,21 +589,21 @@ func executeRequest(
 	}
 	var mekugiTransform *mekugiResponseTransform
 	handoffRecorded := false
-	recordHandoff := func(includeCompletedOutput bool) {
+	recordHandoff := func(includeCompletedOutput, completed bool) {
 		if handoffRequest == nil || handoffRecorded {
 			return
 		}
-		progress := handoffRequest.record(finalization.observation.usageCounts.InputTokens, includeCompletedOutput)
+		progress := handoffRequest.record(finalization.observation.usageCounts.InputTokens, includeCompletedOutput, completed)
 		if progress.transitioned && mekugiTransform != nil {
 			broker := mekugiCalls.commentary
 			token := broker.subscribeThread(mekugiTransform.historySessionID, threadID, mekugiTransform.commentaryAuthor)
-			broker.publish(token, "Mentor handoff complete. The next model request will use the configured model and reasoning.", false)
+			broker.publish(token, "Mentor handoff complete.", false)
 		}
 		handoffRecorded = true
 	}
 	defer func() {
 		if finalization.observation.usageObserved {
-			recordHandoff(false)
+			recordHandoff(false, false)
 		}
 	}()
 	// Only the WebSocket provider guarantees non-generating warmup for every
@@ -813,7 +813,7 @@ func executeRequest(
 		finalization.observation.outcome = requestOutcomeCompleted
 		finalization.failurePhase = ""
 		// Account for this completed response before preparing its successor.
-		recordHandoff(true)
+		recordHandoff(true, finalization.upstreamTerminalState == responseTerminalCompleted)
 		// Record missing usage before the continuation can publish cumulative totals.
 		usageTracker.finish()
 		return executeRequest(start, nextCtx, next, headers, sessionID, provider, output, issues, mekugiCalls, compactTokens, mentor)
@@ -871,7 +871,7 @@ func executeRequest(
 		finalization.failurePhase = requestFailureTerminalValidation
 	case finalization.upstreamTerminalState == responseTerminalCompleted || finalization.upstreamTerminalState == responseTerminalSteered:
 		finalization.observation.outcome = requestOutcomeCompleted
-		recordHandoff(true)
+		recordHandoff(true, finalization.upstreamTerminalState == responseTerminalCompleted)
 	case finalization.upstreamTerminalState == responseTerminalFailed:
 		finalization.observation.outcome = requestOutcomeFailed
 		finalization.failurePhase = requestFailureTerminalValidation

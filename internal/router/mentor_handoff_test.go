@@ -175,7 +175,7 @@ func TestMentorHandoffAstraMapping(t *testing.T) {
 				if err != nil || handoff == nil || request.modelDescription() != "gpt-6-astra "+test.want {
 					t.Fatalf("main=%t: request=%q handoff=%v err=%v", main, request.modelDescription(), handoff, err)
 				}
-				handoff.record(mentorInputTokenLimit, true)
+				handoff.record(mentorInputTokenLimit, true, true)
 				request = mentorTestRequest(t, "gpt-5.6")
 				handoff, err = mentor.prepare(headers, metadata, valid, &request)
 				if err != nil || handoff != nil || request.modelDescription() != "gpt-5.6 medium" {
@@ -195,7 +195,7 @@ func TestMentorHandoffMainBoundary(t *testing.T) {
 		{"main terra", "gpt-5.6-terra", `{"request_kind":"turn"}`, "", true},
 		{"main astra unchanged", "gpt-6-astra", `{"request_kind":"turn"}`, "", false},
 		{"main prewarm", "gpt-5.6-luna", `{"request_kind":"prewarm"}`, "", false},
-		{"main compaction", "gpt-5.6-luna", `{"request_kind":"compaction"}`, "", false},
+		{"main compaction", "gpt-5.6-luna", `{"request_kind":"compaction"}`, "", true},
 		{"missing request kind", "gpt-5.6-luna", `{}`, "", false},
 		{"missing metadata", "gpt-5.6-luna", "", "", false},
 		{"invalid metadata", "gpt-5.6-luna", "{", "", false},
@@ -218,7 +218,7 @@ func TestMentorHandoffMainBoundary(t *testing.T) {
 				t.Fatalf("handoff=%v err=%v, want active=%t", handoff, err, test.want)
 			}
 			want := test.model + " medium"
-			if test.want {
+			if test.want && !handoff.reset {
 				want = mentorLeaderModel + " " + mentorLeaderEffort
 				if test.model == "gpt-5.6-luna" {
 					want = "gpt-6-astra medium"
@@ -256,7 +256,7 @@ func TestMentorHandoffCompletesAtEachBound(t *testing.T) {
 					t.Fatalf("response %d was handed off early", index+1)
 				}
 				handoff.observation.observeItems(items)
-				progress := handoff.record(test.inputUsage[index], true)
+				progress := handoff.record(test.inputUsage[index], true, true)
 				if got, want := progress.complete, index == len(test.responses)-1; got != want {
 					t.Fatalf("response %d complete = %t, want %t", index+1, got, want)
 				}
@@ -294,7 +294,7 @@ func TestMentorHandoffWaitsForCompletedToolResultResponse(t *testing.T) {
 			t.Fatal("mentor handed off before a completed result-consuming response")
 		}
 		handoff.observation.observeItems(items)
-		return handoff.record(1_000, completed)
+		return handoff.record(1_000, completed, completed)
 	}
 
 	if progress := record(mentorTestItems(t, "custom_tool_call", "custom_tool_call", "custom_tool_call"), true); !progress.awaitingToolResult || progress.complete {
@@ -407,6 +407,155 @@ func TestExecuteRequestMainNonTurnsDoNotConsumeMentorBudget(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestExecuteRequestCompactionRestartsMentorHandoff(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		headers       func(string) http.Header
+		wantNextModel string
+	}{
+		{
+			name: "main",
+			headers: func(kind string) http.Header {
+				headers := serverMetadataHeaders(t, kind, nil)
+				headers.Set(threadIDHeader, "main")
+				return headers
+			},
+			wantNextModel: "gpt-6-astra medium",
+		},
+		{
+			name: "subagent",
+			headers: func(kind string) http.Header {
+				headers := mentorTestHeaders(t, "child")
+				headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, codexTurnMetadata{
+					RequestKind: kind, SubagentKind: threadSpawnSubagentKind,
+				})))
+				return headers
+			},
+			wantNextModel: "gpt-5.6-sol high",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			provider := &serverFakeProvider{}
+			for range 2 {
+				provider.results = append(provider.results, serverForwardResult{
+					response: serverHTTPResponse(string(mustTestJSON(t, map[string]any{
+						"status": "completed",
+						"output": mentorTestItems(t, "custom_tool_call"),
+						"usage":  map[string]any{"input_tokens": 1_000},
+					}))),
+				})
+			}
+			mentor := newMentorHandoff(true, true)
+			threadID := codexThreadID(tc.headers("turn"))
+			mentor.sessions[threadID] = mentorSession{complete: true, messages: mentorMinMessages}
+
+			for _, kind := range []string{"compaction", "turn"} {
+				model := "gpt-5.6-luna"
+				if kind == "compaction" {
+					model = "gpt-6-astra"
+				}
+				request := mentorTestRequest(t, model)
+				if err := executeRequest(t.Context(), t.Context(), request, tc.headers(kind), threadID,
+					provider, io.Discard, nil, nil, nil, mentor); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			for index, want := range []string{"gpt-6-astra medium", tc.wantNextModel} {
+				request, err := parseResponsesRequest(provider.forwarded[index])
+				if err != nil || request.modelDescription() != want {
+					t.Fatalf("request %d = %q, err=%v, want %q", index, request.modelDescription(), err, want)
+				}
+			}
+			if state := mentor.sessions[threadID]; state.complete || state.toolCalls != 1 {
+				t.Fatalf("restarted schedule = %+v, want one active tool call", state)
+			}
+		})
+	}
+}
+
+func TestExecuteRequestFailedCompactionPreservesCompletedHandoff(t *testing.T) {
+	provider := &serverFakeProvider{results: []serverForwardResult{
+		{response: serverHTTPResponse(string(mustTestJSON(t, map[string]any{
+			"status": "failed",
+			"usage":  map[string]any{"input_tokens": mentorInputTokenLimit},
+		})))},
+		{response: serverHTTPResponse(string(mustTestJSON(t, map[string]any{
+			"status": "completed",
+			"output": mentorTestItems(t, "message"),
+			"usage":  map[string]any{"input_tokens": 1_000},
+		})))},
+	}}
+	mentor := newMentorHandoff(true, false)
+	mentor.sessions["main"] = mentorSession{complete: true, messages: mentorMinMessages}
+	for _, kind := range []string{"compaction", "turn"} {
+		headers := serverMetadataHeaders(t, kind, nil)
+		headers.Set(threadIDHeader, "main")
+		request := mentorTestRequest(t, "gpt-5.6-luna")
+		if err := executeRequest(t.Context(), t.Context(), request, headers, "main",
+			provider, io.Discard, nil, nil, nil, mentor); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for index, body := range provider.forwarded {
+		request, err := parseResponsesRequest(body)
+		if err != nil || request.modelDescription() != "gpt-5.6-luna medium" {
+			t.Fatalf("request %d = %q, err=%v, want configured model", index, request.modelDescription(), err)
+		}
+	}
+	if state := mentor.sessions["main"]; !state.complete || state.messages != mentorMinMessages {
+		t.Fatalf("failed compaction changed schedule: %+v", state)
+	}
+}
+
+func TestExecuteRequestSteeredCompactionPreservesCompletedHandoff(t *testing.T) {
+	incomplete := mustTestJSON(t, map[string]any{
+		"type": "response.incomplete",
+		"response": map[string]any{
+			"status":             "incomplete",
+			"incomplete_details": map[string]any{"reason": "steered"},
+			"usage":              map[string]any{"input_tokens": 1_000},
+		},
+	})
+	streamed := serverHTTPResponse(finalAnswerTestWire([][]byte{incomplete}))
+	streamed.Header.Set("Content-Type", "text/event-stream")
+	provider := &serverFakeProvider{results: []serverForwardResult{
+		{response: streamed},
+		{response: serverHTTPResponse(string(mustTestJSON(t, map[string]any{
+			"status": "completed",
+			"output": mentorTestItems(t, "message"),
+			"usage":  map[string]any{"input_tokens": 1_000},
+		})))},
+	}}
+	mentor := newMentorHandoff(true, false)
+	mentor.sessions["main"] = mentorSession{complete: true, messages: mentorMinMessages}
+
+	headers := serverMetadataHeaders(t, "compaction", nil)
+	headers.Set(threadIDHeader, "main")
+	compaction := serverRequest(t, func(fields map[string]any) {
+		fields["model"] = "gpt-6-astra"
+		fields["stream"] = true
+	})
+	if err := executeRequest(t.Context(), t.Context(), compaction, headers, "main",
+		provider, io.Discard, nil, nil, nil, mentor); err != nil {
+		t.Fatal(err)
+	}
+
+	headers = serverMetadataHeaders(t, "turn", nil)
+	headers.Set(threadIDHeader, "main")
+	if err := executeRequest(t.Context(), t.Context(), mentorTestRequest(t, "gpt-5.6-luna"), headers, "main",
+		provider, io.Discard, nil, nil, nil, mentor); err != nil {
+		t.Fatal(err)
+	}
+	request, err := parseResponsesRequest(provider.forwarded[1])
+	if err != nil || request.modelDescription() != "gpt-5.6-luna medium" {
+		t.Fatalf("post-steering request = %q, err=%v, want configured model", request.modelDescription(), err)
+	}
+	if state := mentor.sessions["main"]; !state.complete || state.messages != mentorMinMessages {
+		t.Fatalf("steered compaction changed schedule: %+v", state)
 	}
 }
 
@@ -676,7 +825,7 @@ func TestExecuteRequestMentorJournalContinuationAccounting(t *testing.T) {
 	}
 }
 
-func TestExecuteRequestChildNonTurnsPreserveMentorSchedule(t *testing.T) {
+func TestExecuteRequestChildNonTurnsHandleMentorSchedule(t *testing.T) {
 	for _, kind := range []string{"prewarm", "compaction", ""} {
 		for _, existing := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/existing=%t", kind, existing), func(t *testing.T) {
@@ -699,7 +848,12 @@ func TestExecuteRequestChildNonTurnsPreserveMentorSchedule(t *testing.T) {
 				if err != nil || forwarded.modelDescription() != "gpt-5.6-luna medium" {
 					t.Fatalf("non-turn model = %q, err=%v", forwarded.modelDescription(), err)
 				}
-				if state, exists := mentor.sessions["child"]; exists != existing || (existing && state != before) {
+				state, exists := mentor.sessions["child"]
+				if kind == "compaction" {
+					if exists {
+						t.Fatalf("successful compaction did not reset schedule: %+v", state)
+					}
+				} else if exists != existing || (existing && state != before) {
 					t.Fatalf("non-turn changed schedule: %+v, exists=%t", state, exists)
 				}
 			})

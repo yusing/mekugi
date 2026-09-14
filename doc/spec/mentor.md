@@ -13,8 +13,11 @@ carrying exactly one `x-openai-subagent: collab_spawn` header and valid Codex tu
 The router forwards the subagent header unchanged. It does not infer a subagent from lineage
 or instructions. Requests outside these boundaries remain unchanged.
 
-Main prewarm and compaction requests remain unchanged and do not start or consume the
-main handoff schedule.
+Main prewarm requests remain unchanged and do not start or consume the main handoff schedule.
+A successfully completed compaction request remains unchanged itself, then resets that thread's
+schedule so its next eligible turn starts with Mentor again. Failed, canceled, and incomplete
+compaction requests preserve the existing schedule. The same reset applies to canonical
+thread-spawn subagent compaction requests.
 
 For an eligible main request configured with `gpt-5.6-luna`, the mentor is
 `gpt-6-astra` with `medium` reasoning, regardless of the configured effort.
@@ -44,8 +47,9 @@ input count already includes its inherited conversation history, so counts from 
 are never summed. The completed request may overshoot the token limit.
 The next explicit request from that thread uses the model and reasoning supplied by Codex without a compatibility
 rewrite. Thread schedules are retained for the router lifetime so a completed schedule is never
-silently forgotten and restarted. State and progress logs retain counts and identifiers only, not
-prompt or response content. The capturer attributes each request to the model actually sent upstream.
+silently forgotten and restarted except after a successfully completed compaction for that thread.
+State and progress logs retain counts and identifiers only, not prompt or response content. The
+capturer attributes each request to the model actually sent upstream.
 
 An automatic WebSocket steering successor does not send a new provider request. It retains its
 parent's effective provider model and reasoning, even when the parent terminal completes Mentor's

@@ -40,6 +40,7 @@ type mentorSession struct {
 type mentorRequest struct {
 	owner       *mentorHandoff
 	threadID    string
+	reset       bool
 	observation mentorResponseObservation
 }
 
@@ -60,9 +61,14 @@ func newMentorHandoff(mainEnabled, subagentEnabled bool) *mentorHandoff {
 }
 
 func (m *mentorHandoff) prepare(headers http.Header, metadata codexTurnMetadata, metadataValid bool, request *parsedResponsesRequest) (*mentorRequest, error) {
-	if m == nil || !mentorEligibleModel(request.model()) {
+	if m == nil {
 		return nil, nil
 	}
+	isCompaction := metadataValid && metadata.RequestKind == "compaction"
+	if !isCompaction && !mentorEligibleModel(request.model()) {
+		return nil, nil
+	}
+	threadID := codexThreadID(headers)
 	if isThreadSpawnSubagent(headers) {
 		if !m.subagentEnabled {
 			return nil, nil
@@ -70,7 +76,7 @@ func (m *mentorHandoff) prepare(headers http.Header, metadata codexTurnMetadata,
 		if !metadataValid || metadata.SubagentKind != threadSpawnSubagentKind {
 			return nil, errors.New("mentor handoff requires canonical thread-spawn metadata")
 		}
-		if metadata.RequestKind != "turn" {
+		if metadata.RequestKind != "turn" && metadata.RequestKind != "compaction" {
 			return nil, nil
 		}
 	} else {
@@ -83,13 +89,18 @@ func (m *mentorHandoff) prepare(headers http.Header, metadata codexTurnMetadata,
 				return nil, nil
 			}
 		}
-		if !metadataValid || metadata.SubagentKind != "" || metadata.RequestKind != "turn" || codexThreadID(headers) == "" {
+		if !metadataValid || metadata.SubagentKind != "" || threadID == "" {
+			return nil, nil
+		}
+		if metadata.RequestKind != "turn" && metadata.RequestKind != "compaction" {
 			return nil, nil
 		}
 	}
-	threadID := codexThreadID(headers)
 	if threadID == "" {
 		return nil, errors.New("mentor handoff requires a Codex thread ID")
+	}
+	if metadata.RequestKind == "compaction" {
+		return &mentorRequest{owner: m, threadID: threadID, reset: true}, nil
 	}
 
 	m.mu.Lock()
@@ -146,9 +157,15 @@ func isThreadSpawnSubagent(headers http.Header) bool {
 	return len(values) == 1 && values[0] == threadSpawnSubagent
 }
 
-func (r *mentorRequest) record(requestInputTokens uint64, includeCompletedOutput bool) mentorProgress {
+func (r *mentorRequest) record(requestInputTokens uint64, includeCompletedOutput, completed bool) mentorProgress {
 	r.owner.mu.Lock()
 	defer r.owner.mu.Unlock()
+	if r.reset {
+		if completed {
+			delete(r.owner.sessions, r.threadID)
+		}
+		return mentorProgress{}
+	}
 	state := r.owner.sessions[r.threadID]
 	wasComplete := state.complete
 	wasAwaitingToolResult := state.awaitingToolResult
