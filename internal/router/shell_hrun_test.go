@@ -230,8 +230,12 @@ func TestShellRunnerHRunLines(t *testing.T) {
 		t.Parallel()
 		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
 			`hrun -n 1 -- sh -c 'head -c 200000 /dev/zero | tr "\000" a'`, nil)
-		if status != 0 || len(stdout) != 200000 || stderr != "" {
-			t.Fatalf("line-only default bypass: %d bytes %q %d", len(stdout), stderr, status)
+		if status != 0 {
+			t.Fatalf("line-only default: %d bytes %q %d", len(stdout), stderr, status)
+		}
+		retainedStdout, retainedStderr := retainedShellTestOutput(t, stderr)
+		if len(retainedStdout) != 200000 || retainedStderr != "" {
+			t.Fatalf("outer display budget lost line-only output: %d bytes %q", len(retainedStdout), retainedStderr)
 		}
 	})
 

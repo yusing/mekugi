@@ -44,6 +44,51 @@ func executeShellTool(
 	commentary shellCommentarySink,
 	streamStdout, streamStderr io.Writer,
 ) (toolplugin.ExecutionOutput, error) {
+	if len(arguments) < 2 {
+		return executeShellProgram(ctx, manifest, runtimeRoot, shellContribution, arguments, stdin,
+			workingDirectory, environment, commentary, streamStdout, streamStderr)
+	}
+	parsed, err := shellsyntax.Parse(arguments[len(arguments)-1])
+	if err != nil {
+		return toolplugin.ExecutionOutput{}, err
+	}
+	programArguments := arguments
+	interpreter := shellInterpreterName(arguments[0])
+	if interpreter == "bash" || interpreter == "sh" {
+		programArguments = slices.Clone(arguments)
+		programArguments[len(programArguments)-1] = parsed.Body
+	}
+	if parsed.CommandTemplate != "" {
+		// The template may pipe or redirect worker output. Those bytes are
+		// program data, not necessarily the host's final display.
+		return executeShellProgram(ctx, manifest, runtimeRoot, shellContribution, programArguments, stdin,
+			workingDirectory, environment, commentary, streamStdout, streamStderr)
+	}
+	tokens := 10000
+	if value, ok := parsed.Params["max_output_tokens"].(float64); ok && value >= 1 && value <= 1<<30 && value == float64(int(value)) {
+		tokens = int(value)
+	}
+	display := newShellOutputDisplay(ctx, manifest, runtimeRoot, tokens, streamStdout, streamStderr)
+	execution, err := executeShellProgram(ctx, manifest, runtimeRoot, shellContribution, programArguments, stdin,
+		workingDirectory, environment, commentary, &display.streams[0], &display.streams[1])
+	if err != nil {
+		return execution, err
+	}
+	return display.finish(execution)
+}
+
+func executeShellProgram(
+	ctx context.Context,
+	manifest toolWorkerManifest,
+	runtimeRoot string,
+	shellContribution *toolContribution,
+	arguments []string,
+	stdin *os.File,
+	workingDirectory string,
+	environment []string,
+	commentary shellCommentarySink,
+	streamStdout, streamStderr io.Writer,
+) (toolplugin.ExecutionOutput, error) {
 	if commentary != nil {
 		defer func() {
 			completionContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)

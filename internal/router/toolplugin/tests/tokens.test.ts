@@ -64,3 +64,16 @@ test("private hrun formatting prioritizes stderr and rejects malformed requests"
     expect(() => formatHRunOutput(argv)).toThrow("invalid hrun output selection");
   }
 });
+
+test("shell selection budgets nested JSON framing and preserves complete row prefixes", () => {
+  const value = '"path\\\\name":1:abcd "\t🙂 café 中文"\r\n'.repeat(5000);
+  for (const budget of [1, 20, 123, 256, 1600, 8976]) {
+    const result = formatHRunOutput([String(budget), "shell", value, ""]);
+    const selected = JSON.parse(result.stdout!);
+    expect(value.startsWith(selected.text)).toBe(true);
+    expect(selected.text === "" || selected.text.endsWith("\n")).toBe(true);
+    const framed = selected.text === "" ? 0 : countGPT5Tokens(JSON.stringify(JSON.stringify(selected.text)));
+    expect(selected.tokens).toBe(framed);
+    expect(framed).toBeLessThanOrEqual(budget);
+  }
+});

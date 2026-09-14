@@ -1,3 +1,4 @@
+import {RetainedRows} from "./retained_output.ts";
 import {resolverProcess, withResolverDeadline} from "./resolver.ts";
 import {spawn} from "node:child_process";
 import {readFile, realpath, stat} from "node:fs/promises";
@@ -543,6 +544,7 @@ async function executeQuery(query: Query, onResolverStart: () => void): Promise<
     throw new HSymbolFailure("input changed during query");
   }
   const output = new VerifiedRowOutput();
+  const retainedRows = new RetainedRows();
   const skipped = new Map<SourceFailureReason, number>();
   const skip = (reason: SourceFailureReason): void => {
     skipped.set(reason, (skipped.get(reason) ?? 0) + 1);
@@ -584,8 +586,11 @@ async function executeQuery(query: Query, onResolverStart: () => void): Promise<
           continue;
         }
         seen.add(key);
-        if (!output.incomplete && !output.append(row)) {
-          break;
+        if (!retainedRows.append(row)) {
+          return {stderr: "hsymbol: complete reference output exceeds the 16 MiB retention bound\n", exitCode: 1, failureClass: "output_limit"};
+        }
+        if (!output.incomplete) {
+          output.append(row);
         }
       }
     } catch (error) {
@@ -614,7 +619,10 @@ async function executeQuery(query: Query, onResolverStart: () => void): Promise<
     };
   }
   if (output.incomplete) {
+    const retainedPath = retainedRows.save();
+    const unreadLine = output.current.split("\n").length;
     stderr += `hsymbol: ${VERIFIED_ROW_LIMIT_DIAGNOSTIC}`;
+    stderr += `hsymbol: complete emitted rows retained at ${JSON.stringify(retainedPath)}; unread result rows start at ${unreadLine}. Read bounded ranges with sed; do not rerun the resolver. Skipped locations above remain unresolved. Files remain until removed.\n`;
   }
   return {
     stdout: output.current,

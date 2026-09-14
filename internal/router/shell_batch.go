@@ -31,11 +31,11 @@ func (t *mekugiResponseTransform) prepareShellBatch(contribution toolContributio
 			return nil, toolplugin.Translation{}, fmt.Errorf("shell program %d: expected an exec carrier", index+1)
 		}
 		var program strings.Builder
-		steps, commands, catWrites := t.shellCatPlan(contribution, translation.Arguments, translation.Carrier.Template, translation.Carrier.Params, callIDs...)
+		steps, commands, catWrites := t.shellCatPlan(contribution, translation.Arguments, translation.Carrier.Template, translation.Carrier.Params, max(1, 8000/len(sources)), callIDs...)
 		if catWrites {
 			writeShellCatSequence(&program, steps, commands, translation.Carrier.Params)
 		} else {
-			command, err := t.proxy.registry.execCarrierCommand(contribution, source, translation.Arguments, translation.Carrier.Template, callIDs...)
+			command, err := t.proxy.registry.execCarrierCommand(contribution, source, translation.Arguments, translation.Carrier.Template, max(1, 8000/len(sources)), callIDs...)
 			if err != nil {
 				return nil, toolplugin.Translation{}, fmt.Errorf("shell program %d: %w", index+1, err)
 			}

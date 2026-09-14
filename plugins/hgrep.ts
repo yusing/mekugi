@@ -1,3 +1,4 @@
+import {RetainedRows} from "./retained_output.ts";
 import {open, type FileHandle} from "node:fs/promises";
 import {lineBounds, lineCount} from "mekugi:core/v1";
 import {spawn} from "node:child_process";
@@ -494,6 +495,7 @@ async function runRipgrep(argumentsValue: string[], options: ReaderOptions): Pro
   const stderrPromise = collectStderr(child.stderr);
 
   const output = new VerifiedRowOutput(options.maxTokens);
+  const retainedRows = new RetainedRows();
   let pending: Buffer[] = [];
   let pendingBytes = 0;
   const seen = new Set<string>();
@@ -551,8 +553,14 @@ async function runRipgrep(argumentsValue: string[], options: ReaderOptions): Pro
       }
       seen.add(key);
       const content = decodeUTF8(bytes.subarray(bounds.byteStart, bounds.byteContentEnd), "rg result");
-      if (!output.append(formatReaderRow(lineNumber, content, options, path))) {
+      const row = formatReaderRow(lineNumber, content, options, path);
+      if (!retainedRows.append(row)) {
+        output.incomplete = true;
+        limitReason = "output incomplete: result exceeds the 16 MiB retention bound\n";
         return false;
+      }
+      if (!output.incomplete) {
+        output.append(row);
       }
     }
     return true;
@@ -594,7 +602,7 @@ async function runRipgrep(argumentsValue: string[], options: ReaderOptions): Pro
         }
       }
     }
-    if (!output.incomplete && pendingBytes !== 0 && !(await processEvent(takePending()))) {
+    if (limitReason === undefined && pendingBytes !== 0 && !(await processEvent(takePending()))) {
       child.kill("SIGKILL");
     }
     exitCode = await completion;
@@ -608,10 +616,16 @@ async function runRipgrep(argumentsValue: string[], options: ReaderOptions): Pro
     await Promise.all([...sources.values()].map((source) => source.close()));
   }
 
-  if (output.incomplete) {
+  if (limitReason !== undefined) {
     return {current: output.current, incomplete: true, limitReason};
   }
   if (exitCode === 0 || exitCode === 1) {
+    if (output.incomplete) {
+      const retainedPath = retainedRows.save();
+      const unreadLine = output.current.split("\n").length;
+      const notice = `hgrep: complete emitted rows retained at ${JSON.stringify(retainedPath)}; unread result rows start at ${unreadLine}. Read bounded ranges with sed; do not rerun rg. Files remain until removed.\n`;
+      return {current: output.current, incomplete: true, limitReason: readerLimitDiagnostic(options) + notice};
+    }
     return {current: output.current, incomplete: false};
   }
   const diagnostic = conciseDiagnostic(stderr.trim());

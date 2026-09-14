@@ -117,7 +117,8 @@ Bash command remains direct, including when exec parameters are supplied; every 
 the worker command as the complete outer command. After the first body line, directive-like lines remain ordinary body data. Only the explicitly chosen batch separator is reserved within an opted-in batch.
 
 The worker carrier starts the fixed helper once with the normalized interpreter
-fields and exact body. An argument-free helper invocation is a private control
+fields and quoted source, including its existing header. The worker uses the shared header
+parser to recover the exact body before passing it to the selected interpreter. An argument-free helper invocation is a private control
 channel, not a script-input interface; unsupported stdin returns an actionable
 diagnostic.
 
@@ -136,6 +137,36 @@ meaning; only output reaching the worker's outer streams is forwarded. Codex sti
 owns yield timing, delivery, continuation, and cancellation. A later failure cannot
 retract an already delivered prefix; malformed UTF-8 and overflow still fail explicitly.
 Other interpreter plugins remain completion-buffered.
+
+Workers read the display budget from the existing script header, defaulting to 10,000 tokens.
+The quoted program carries that header as data; no budget flags or environment variables are
+added to the translated command. The shared parser removes headers before execution, preserving
+the exact authored body. One balance covers both outer streams and every command in that
+worker. Selection uses the shared tokenizer, accounts for nested JSON escaping, reserves up to
+1,024 tokens, bounded by the available allowance, for diagnostics and native framing, and does not cut
+verified rows at a display boundary. Small writes may use escaped byte length as a conservative
+token bound. Ready output continues streaming until this display budget is spent. Redirections
+and pipelines are not display streams and keep their original bytes.
+
+Display exhaustion does not stop execution or change command status. The worker retains its
+captured stdout and stderr and reports a compact `output: DIRECTORY` receipt. That directory
+contains `stdout`, `stderr`, and `metadata.json`, whose per-stream `unread_byte` fields are
+zero-based byte offsets and whose `exit_code` preserves the command result. Each snapshot is bounded to 16 MiB. Existing interpreter byte limits,
+invalid UTF-8, cancellation, and execution failures still apply; saving output cannot turn an
+incomplete producer into a complete result. Snapshot-write failures fail explicitly rather than
+claim recovery is available. Snapshot files are ordinary executor-owned temporary files, with
+private directory/file permissions, distinct from executable `@shell/` references. They survive
+router shutdown until explicitly removed and are readable through normal host filesystem
+permissions, including in a fork with the path visible in history.
+The receipt itself needs display space: a caller budget smaller than the receipt and host
+framing can still truncate it. Execution is not rejected or assigned a larger host budget
+to hide this limitation.
+
+Explicit batches divide an 8,000-token allowance across their programs, also respecting smaller
+per-program budgets. Split cat-write carriers divide their allowance among steps and
+fall back to one worker when a split would leave too little display space. Native request parameters remain unchanged. Direct single external-command
+carriers and command-template workers keep Codex's output behavior. Template pipes and
+redirections must receive complete worker output. The router does not run or replay them to retain output.
 
 The shell-owned command `hrun [-n N] [--max-tokens N] [--tail] -- COMMAND [ARG...]`
 executes one external command with selected displayed output. At least one limit is required.

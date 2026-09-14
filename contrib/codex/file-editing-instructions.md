@@ -88,7 +88,8 @@ Do not wake solely to report progress.
 
 Use `functions.shell` for routine commands and task-required native interfaces directly.
 Tool defaults do not override the interface under test.
-Batch ready work. Keep dependent operations sequential. Keep output bounded.
+Batch ready work. Keep dependent operations sequential. The Reading and inspection reference
+below explains budgeting combined output, not just each command.
 
 ## Shell reference
 
@@ -409,18 +410,26 @@ net change. Unconfirmed results are not proof of application.
 For ordinary file reads, use `cat` or bounded `sed`. Prefer `hcat` when its verified row
 identities are useful for an anticipated edit.
 
+Shell workers budget combined display output automatically. Use reader limits and source ranges
+to focus on needed context. When a result gives an output directory, read its `metadata.json`
+for the stdout/stderr files and unread byte offsets, then continue with bounded reads.
+Commands still finish with their original exit status. Saved output survives router shutdown
+until removed; `script_ref` is separate and stores program source.
+
 Run one file per command as `hcat PATH [START:END]`. Quote paths with shell syntax and batch
 already-known reads as separate commands in one shell script. A bare path reads the complete
 file. A start line of `0` begins at line 1 without emitting line 0. An end past EOF warns after
 returning available rows; a start past EOF fails. Copy a current `LINE:HASH` directly into an
-HPATCH/2 target. If hcat reports an incomplete token-limited result, retain the emitted rows and
-request a smaller range for the missing context.
+HPATCH/2 target. When hcat reports an unread range, retain the emitted rows and read only that
+range in smaller pieces without repeating the prefix.
 
 Run hgrep with ripgrep arguments and shell quoting, redirection, and pipelines. Its output is
 `"PATH":LINE:HASH TEXT`; copy a current target directly and never reconstruct a row.
 Do not follow target-bearing hgrep output with hcat unless nonmatching context outside the
 requested bounds is needed. If hgrep reports an incomplete token-limited result, retain the
-emitted rows and narrow the patterns, paths, context, or file selection.
+emitted rows and continue any retained result with bounded `sed` ranges, starting at its reported
+unread result row. These are original verified rows; do not wrap them in new hcat identities.
+Without a retained result, narrow only the unanswered search.
 
 Both readers accept leading `--max-tokens N` (1–15500) for a strict stdout token
 ceiling and `--preview-bytes N` (1–65536) for long-line inspection.
@@ -441,8 +450,13 @@ A leading `--workspace ROOT` chooses resolver scope and relative input paths;
 its result paths are absolute. Other results are workspace-relative. `N` counts exact
 language tokens on the selected line and may be omitted only when one exists. Copy emitted `"PATH":LINE:HASH TEXT` rows directly
 into HPATCH/2 targets. Do not follow a complete hsymbol definition with hcat of the same span
-unless non-declaration context is needed. Never treat an incomplete token-limited hsymbol result
-as a complete definition or reference set.
+unless non-declaration context is needed.
+
+For field removals and signature changes, use `hsymbol refs` or `gopls references` across affected
+packages, including tests. Read all returned reference rows before batching dependent edits.
+If output is retained, continue with bounded `sed` ranges from the reported unread result row.
+Saved hashes describe the query snapshot. Report skipped or unavailable references; filenames
+in a diff and incomplete results do not establish caller coverage.
 
 Use `inspect_file PATH` for bounded metadata and a structural outline. Each outline entry's
 `line` and `line_end` are copyable `LINE:HASH` identities for that inclusive span. Copy a

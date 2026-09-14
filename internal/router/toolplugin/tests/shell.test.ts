@@ -63,7 +63,7 @@ describe("installable shell plugin", () => {
       resolvePath: (value: string) => value,
     })).toThrow();
   });
-  test("normalizes shebangs and preserves the exact body", async () => {
+  test("normalizes interpreter argv and carries the authored source without extra flags", async () => {
     expect(tool.specification).toMatchObject({
       type: "custom",
       name: "shell",
@@ -76,16 +76,17 @@ describe("installable shell plugin", () => {
       `#!/usr/bin/env python3\n${body}`,
     ]) {
       const parsed = await tool.parse(input);
-      expect(await tool.argv(parsed)).toEqual(["python3", body]);
+      expect(await tool.argv(parsed)).toEqual(["python3", input]);
+      expect(parsed.body).toBe(body);
     }
 
     const splitSelector = await tool.parse("#!/usr/bin/env -S python3 -u\r\nprint('ok')\r\n");
-    expect(await tool.argv(splitSelector)).toEqual(["python3", "-u", "print('ok')\r\n"]);
+    expect(await tool.argv(splitSelector)).toEqual(["python3", "-u", "#!/usr/bin/env -S python3 -u\r\nprint('ok')\r\n"]);
 
     const directPath = await tool.parse("#!/opt/python/bin/python3\nprint('ok')");
     expect(await tool.argv(directPath)).toEqual([
       "/opt/python/bin/python3",
-      "print('ok')",
+      "#!/opt/python/bin/python3\nprint('ok')",
     ]);
 
     const withoutShebang = " \nprintf 'ok'\n ";
@@ -121,17 +122,17 @@ describe("installable shell plugin", () => {
     );
 
     const bash = await tool.parse(`#!cmd=${template}\nprint('bash')`);
-    expect(await tool.argv(bash)).toEqual(["bash", "print('bash')"]);
+    expect(await tool.argv(bash)).toEqual(["bash", `#!cmd=${template}\nprint('bash')`]);
     expect(await tool.translate(bash, {exec})).toEqual({kind: "exec", template});
 
     const python = await tool.parse(`#!python3\r\n#!cmd=${template}\r\nprint('python')\r\n`);
-    expect(await tool.argv(python)).toEqual(["python3", "print('python')\r\n"]);
+    expect(await tool.argv(python)).toEqual(["python3", `#!python3\r\n#!cmd=${template}\r\nprint('python')\r\n`]);
     expect(await tool.translate(python, {exec})).toEqual({kind: "exec", template});
 
     const laterDirective = await tool.parse(`#!python3\nprint('python')\n#!cmd=${template}`);
     expect(await tool.argv(laterDirective)).toEqual([
       "python3",
-      `print('python')\n#!cmd=${template}`,
+      `#!python3\nprint('python')\n#!cmd=${template}`,
     ]);
     expect(await tool.translate(laterDirective, {exec})).toEqual({kind: "exec"});
   });
@@ -150,7 +151,7 @@ describe("installable shell plugin", () => {
       `#!python3\n#!cmd=${template}\n#!params=${JSON.stringify(params)}\nprint('ok')`,
     ]) {
       const parsed = await tool.parse(input);
-      expect(await tool.argv(parsed)).toEqual(["python3", "print('ok')"]);
+      expect(await tool.argv(parsed)).toEqual(["python3", input]);
       expect(await tool.translate(parsed, {exec})).toEqual({kind: "exec", template, params});
     }
 
@@ -172,7 +173,7 @@ describe("installable shell plugin", () => {
       `#!/usr/bin/env bash\n# !params ${JSON.stringify(params)}\nprintf ok`,
     ]) {
       const parsed = await tool.parse(input);
-      expect(await tool.argv(parsed)).toEqual(["bash", "printf ok"]);
+      expect(await tool.argv(parsed)).toEqual(["bash", input]);
       expect(await tool.translate(parsed, {exec})).toEqual({kind: "exec", params});
     }
   });

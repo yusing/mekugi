@@ -60,9 +60,14 @@ paths are canonical absolute paths so a different resolver root cannot make refe
 point at same-named files in the caller's directory. Each result file is canonical, in-workspace, regular, UTF-8, and owned by
 the selected resolver; other returned locations are omitted and counted by reason on stderr.
 References are deduplicated by canonical path and logical line. Empty `refs` is successful.
-A `def` without an editable workspace location is nonzero. An incomplete token-limited result is
-not resumable and does not establish a complete definition or reference set. Location skip counts
-still cover the complete resolver result. `def` emits every editable definition returned by the
+A `def` without an editable workspace location is nonzero. Token-limited results retain all
+formatted rows in an executor-owned temporary file, up to 16 MiB. The diagnostic supplies its
+path and first unread result row; bounded raw reads recover the suffix without rerunning the
+resolver, even after source changes or router shutdown. Retained hashes describe the query
+snapshot. Display truncation remains nonzero, and skipped locations still prevent claiming a
+complete definition or reference set. Location skip counts cover the complete resolver result.
+Exceeding the retention bound or failing to save the snapshot returns an explicit failure,
+never a claim of complete reference coverage. `def` emits every editable definition returned by the
 resolver in first-seen order and deduplicates canonical result rows.
 
 Definition expansion occurs only when the resolver's definition selection exactly matches the

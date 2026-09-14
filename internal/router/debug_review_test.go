@@ -84,7 +84,7 @@ func TestAXCarrierTemplatesPreserveWorkerEnvironment(t *testing.T) {
 		{":; {.}", "result"},
 	} {
 		t.Run(tc.template, func(t *testing.T) {
-			command, err := registry.execCarrierCommand(contribution, script, []string{"bash", script}, tc.template, "call-review")
+			command, err := registry.execCarrierCommand(contribution, script, []string{"bash", script}, tc.template, 0, "call-review")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -108,7 +108,7 @@ func TestAXCommandInspectionRequiresCarrierProvenance(t *testing.T) {
 	registry := &toolRegistry{}
 	contribution := toolContribution{PluginID: builtinToolsPluginID, Name: "shell"}
 	for _, script := range []string{"curl example.invalid", "printf builtin"} {
-		command, err := registry.execCarrierCommand(contribution, script, []string{"bash", script}, "", "call-review")
+		command, err := registry.execCarrierCommand(contribution, script, []string{"bash", script}, "", 0, "call-review")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -120,7 +120,7 @@ func TestAXCommandInspectionRequiresCarrierProvenance(t *testing.T) {
 		if strings.HasPrefix(script, "curl") && strings.Contains(command, "shell bash") {
 			t.Fatal("AX disabled direct execution")
 		}
-		ordinary, err := registry.execCarrierCommand(contribution, script, []string{"bash", script}, "")
+		ordinary, err := registry.execCarrierCommand(contribution, script, []string{"bash", script}, "", 0)
 		if err != nil || inspectionAXCallID(mustMarshalJSON(ordinary)) != "" {
 			t.Fatalf("uninstrumented carrier acquired identity: %q %v", ordinary, err)
 		}

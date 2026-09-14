@@ -86,8 +86,14 @@ The shared guidance must make these choices directly available in native and CTP
    from durable workspace files. A failed execution is not a rollback.
 2. **Acquisition:** reuse known literals, verified rows, and confirmed mappings first.
    Otherwise select fixed-string hgrep, bounded hcat, structural inspection, or semantic
-   lookup with a current line or verified row. Explain preview and
-   truncation limits before using partial source as an exact target.
+   lookup with a current line or verified row. Explain automatic worker display budgeting
+   and use reader controls to focus the requested context.
+   Continue cursors or captured output without replaying producers;
+   distinguish retained program source from output and reader omissions from outer
+   truncation. Explain preview and truncation limits before using partial source as an
+   exact target. Structural edits acquire semantic references across affected callers
+   and tests before grouping dependent edits; filename filters are not coverage evidence.
+   Incomplete or skipped references remain explicit until resolved.
    Reader contracts remain in [read.md](read.md), [grep.md](grep.md),
    [inspect.md](inspect.md), and [symbol.md](symbol.md).
 3. **Editing:** group ready related edits against immutable baselines; split dependent work
@@ -151,5 +157,8 @@ cached model IDs, both instruction carriers, and both model protocols.
 7. A routed success can be followed by another hpatch call using an exact row from its report
    without an intervening hcat; a saved pre-edit row still rejects as stale.
 8. Both rendered model workflows include the shared journal, framing, boundary, recovery,
-   continuation, lifetime, and reader contracts exactly once. Superseded requirements for
-   verified-only semantic queries or full-script recovery are absent.
+   continuation, lifetime, and reader contracts exactly once, including combined output
+   budgeting and complete semantic reference acquisition. Guidance uses existing limits
+   and supported continuation, explains the worker's aggregate display budget and retained
+   output files, and does not imply a universal reader cursor. Superseded requirements for verified-only semantic queries
+   or full-script recovery are absent.

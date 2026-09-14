@@ -1,3 +1,4 @@
+import {retainOutput} from "./retained_output.ts";
 import type {ExecutionOutput} from "../internal/router/toolplugin/plugin.d.ts";
 import {countGPT5Tokens, encodeGPT5, tokenBytes} from "./tokens.ts";
 
@@ -31,13 +32,41 @@ export function selectHRunText(value: string, budget: number, tail: boolean): {t
   return {text: "", tokens: 0};
 }
 
+function framedTokens(value: string): number {
+  return value === "" ? 0 : countGPT5Tokens(JSON.stringify(JSON.stringify(value)));
+}
+
+// Account for native-result JSON inside a Code Mode string. Never cut a reader
+// row when the display limit, rather than a producer boundary, chooses the end.
+function selectShellText(value: string, budget: number): {text: string; tokens: number} {
+  let text = selectHRunText(value, budget, false).text;
+  for (let tokens = framedTokens(text); tokens > budget; tokens = framedTokens(text)) {
+    const smaller = Math.max(0, Math.floor(countGPT5Tokens(text) * budget / tokens) - 1);
+    text = selectHRunText(text, smaller, false).text;
+  }
+  if (text.length < value.length) {
+    text = text.slice(0, text.lastIndexOf("\n") + 1);
+  }
+  return {text, tokens: framedTokens(text)};
+}
+
 // Private shell-executor formatting operation. It never starts a command.
 export function formatHRunOutput(argv: string[]): ExecutionOutput {
   const [rawBudget, mode, stdout, stderr] = argv;
+  if (argv.length === 7 && mode === "retain" && rawBudget === "0") {
+    const exitCode = Number(argv[6]);
+    if (!Number.isSafeInteger(exitCode) || exitCode < 0 || exitCode > 255) {
+      throw new Error("invalid retained output status");
+    }
+    return {stdout: JSON.stringify(retainOutput(stdout, stderr, [Number(argv[4]), Number(argv[5])], exitCode)), exitCode: 0};
+  }
   const budget = Number(rawBudget);
   if (argv.length !== 4 || !/^[1-9][0-9]*$/u.test(rawBudget)
-      || budget > 15_500 || (mode !== "head" && mode !== "tail")) {
+      || budget > 15_500 || (mode !== "head" && mode !== "tail" && mode !== "shell")) {
     throw new Error("invalid hrun output selection");
+  }
+  if (mode === "shell") {
+    return {stdout: JSON.stringify(selectShellText(stdout, budget)), exitCode: 0};
   }
   const error = selectHRunText(stderr, budget, mode === "tail");
   const output = selectHRunText(stdout, budget - error.tokens, mode === "tail");

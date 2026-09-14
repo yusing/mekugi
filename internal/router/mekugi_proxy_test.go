@@ -1803,7 +1803,7 @@ func TestShellJSONTranslatesBashCasesEndToEnd(t *testing.T) {
 			}
 			decodeExecCarrierArguments(t, carrierInput, &arguments)
 			want := test.wantCommand
-			if want == "" {
+			if want == "" || strings.HasPrefix(want, "shell ") {
 				want = workerCommand("shell", []string{"bash", test.input})
 			}
 			if arguments.Command != want {

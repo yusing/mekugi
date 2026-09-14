@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -264,7 +265,7 @@ func (registry *toolRegistry) execCarrierPayload(
 	resultMetadata map[string]json.RawMessage,
 	callIDs ...string,
 ) (string, error) {
-	command, err := registry.execCarrierCommand(contribution, sourceInput, arguments, template, callIDs...)
+	command, err := registry.execCarrierCommand(contribution, sourceInput, arguments, template, 0, callIDs...)
 	if err != nil {
 		return "", err
 	}
@@ -291,6 +292,7 @@ func (registry *toolRegistry) execCarrierCommand(
 	sourceInput string,
 	arguments []string,
 	template string,
+	outputTokens int,
 	callIDs ...string,
 ) (string, error) {
 	if registry == nil {
@@ -302,14 +304,36 @@ func (registry *toolRegistry) execCarrierCommand(
 			return "", fmt.Errorf("%s worker is unavailable", contribution.Name)
 		}
 	}
-	command := workerCommand(contribution.Name, arguments)
-	if builtinShell && template == "" {
-		// Parse only directives, not an authored interpreter selector. Exec
-		// parameters affect the outer carrier, not eligibility for a direct call.
+	workerArguments := arguments
+	if builtinShell && outputTokens > 0 && len(arguments) > 0 {
+		parsed, err := shellsyntax.Parse(sourceInput)
+		if err != nil {
+			return "", err
+		}
+		params := maps.Clone(parsed.Params)
+		if params == nil {
+			params = make(map[string]any)
+		}
+		if value, ok := params["max_output_tokens"].(float64); ok && value >= 1 && value < float64(outputTokens) {
+			outputTokens = int(value)
+		}
+		params["max_output_tokens"] = outputTokens
+		source := "#!params=" + string(mustMarshalJSON(params)) + "\n"
+		if parsed.CommandTemplate != "" {
+			source += "#!cmd=" + parsed.CommandTemplate + "\n"
+		}
+		source += parsed.Body
+		workerArguments = slices.Clone(arguments)
+		workerArguments[len(workerArguments)-1] = source
+	}
+	command := workerCommand(contribution.Name, workerArguments)
+	if builtinShell && template == "" && outputTokens == 0 {
+		// Preserve direct calls without adding worker flags or environment.
 		parsed, err := shellsyntax.Parse("#!bash\n" + sourceInput)
-		if err == nil && parsed.CommandTemplate == "" && len(arguments) > 0 &&
-			parsed.Body == arguments[len(arguments)-1] {
-			if direct, ok := registry.directBashExecCommand(arguments); ok {
+		if err == nil && parsed.CommandTemplate == "" && len(arguments) > 0 {
+			directArguments := slices.Clone(arguments)
+			directArguments[len(directArguments)-1] = parsed.Body
+			if direct, ok := registry.directBashExecCommand(directArguments); ok {
 				command = direct
 			}
 		}

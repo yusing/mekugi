@@ -1,4 +1,4 @@
-import {afterEach, describe, expect, spyOn, test} from "bun:test";
+import {afterEach, beforeEach, describe, expect, spyOn, test} from "bun:test";
 import {spawnSync} from "node:child_process";
 import {chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
@@ -20,6 +20,7 @@ import {
 import plugin from "../../../../plugins/tools.ts";
 
 const originalCWD = process.cwd();
+const originalTmpdir = process.env.TMPDIR;
 const originalPath = process.env.PATH;
 const pluginBin = path.resolve(import.meta.dir, "../../../../plugins/node_modules/.bin");
 const temporaryDirectories: string[] = [];
@@ -29,6 +30,17 @@ async function temporaryDirectory(prefix: string): Promise<string> {
   const directory = await mkdtemp(path.join(tmpdir(), prefix));
   temporaryDirectories.push(directory);
   return directory;
+}
+
+function retainedResultPath(stderr: string): string {
+  const match = /retained at ("(?:\\.|[^"\\])*")/u.exec(stderr);
+  if (match === null) {
+    throw new Error("missing retained output path");
+  }
+  const resultPath: string = JSON.parse(match[1]);
+  expect(path.basename(path.dirname(resultPath))).toStartWith("mko-");
+  temporaryDirectories.push(path.dirname(resultPath));
+  return resultPath;
 }
 
 type FakeGopls = {
@@ -172,7 +184,16 @@ function contentWithFormattedTokenCount(
   throw new Error(`cannot construct ${tokens}-token formatted row fixture`);
 }
 
+beforeEach(async () => {
+  process.env.TMPDIR = await temporaryDirectory("reader-retention-test-");
+});
+
 afterEach(async () => {
+  if (originalTmpdir === undefined) {
+    delete process.env.TMPDIR;
+  } else {
+    process.env.TMPDIR = originalTmpdir;
+  }
   process.chdir(originalCWD);
   if (originalPath === undefined) {
     delete process.env.PATH;
@@ -868,7 +889,14 @@ describe("hgrep built-in plugin", () => {
     await writeFile("large.txt", `needle ${first}\nneedle second\nneedle third\n`, "utf8");
     const limited = await tool.execute(["-F", "needle", "large.txt"], executionContext);
     expect(limited.exitCode).toBe(1);
-    expect(limited.stderr).toBe("hgrep: output incomplete: 15,000-token limit reached\n");
+    expect(limited.stderr).toStartWith("hgrep: output incomplete: 15,000-token limit reached\n");
+    const snapshot = retainedResultPath(limited.stderr ?? "");
+    await rm("large.txt");
+    expect(await readFile(snapshot, "utf8")).toBe(
+      `${prefix}${formatVerifiedRow(1, `needle ${first}`)}`
+      + `${prefix}${formatVerifiedRow(2, "needle second")}`
+      + `${prefix}${formatVerifiedRow(3, "needle third")}`,
+    );
     expect(limited.stdout).toContain(`needle ${first}`);
     expect(limited.stdout).not.toContain("needle second");
     expect(limited.stdout).not.toContain("needle third");
@@ -1060,6 +1088,23 @@ describe("hsymbol built-in plugin", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`${JSON.stringify(path.join(directory, "sample.ts"))}:${formatVerifiedRow(1, "export const target = 42;")}`);
     expect(result.stderr).toContain(`${JSON.stringify(path.join(directory, "sample.ts"))}:2:${hashLine("console.log(target);")} (current snapshot)`);
+  }, 30_000);
+
+  test.skipIf(Bun.which("gopls") === null)("Go field references include differently named internal and external tests", async () => {
+    const directory = await temporaryDirectory("hsymbol-go-callers-");
+    process.chdir(directory);
+    await writeFile("go.mod", "module example.com/callers\n\ngo 1.26\n");
+    await writeFile("state.go", "package callers\ntype State struct { Removed int }\n");
+    await writeFile("capture_order_test.go", "package callers\nfunc capture(s State) int { return s.Removed }\n");
+    await writeFile("consumer_test.go", 'package callers_test\nimport "example.com/callers"\nfunc use(s callers.State) int { return s.Removed }\n');
+    const result = await createHSymbolTool("description", "start: TEST").execute(
+      ["refs", "state.go", "2", "Removed"], executionContext,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr ?? "").not.toContain("skipped");
+    expect(result.stdout).toContain('"state.go":2:');
+    expect(result.stdout).toContain('"capture_order_test.go":2:');
+    expect(result.stdout).toContain('"consumer_test.go":3:');
   }, 30_000);
 
   test("validates the verified Go token selector before starting gopls", async () => {
@@ -1408,12 +1453,35 @@ describe("hsymbol built-in plugin", () => {
     );
     expect(result).toEqual({
       stdout: `${prefix}${formatVerifiedRow(1, first)}${prefix}${formatVerifiedRow(2, "second")}`,
-      stderr: "hsymbol: skipped 1 location outside workspace\n"
-        + "hsymbol: output incomplete: 15,000-token limit reached\n",
+      stderr: expect.stringContaining("hsymbol: skipped 1 location outside workspace\n"
+        + "hsymbol: output incomplete: 15,000-token limit reached\n"),
       exitCode: 1,
       failureClass: "output_limit",
       terminationReason: "resolver_cleanup",
     });
+  });
+
+  test("retained references survive source removal without another resolver call", async () => {
+    const directory = await temporaryDirectory("hsymbol-retained-");
+    process.chdir(directory);
+    const source = "package sample\nfunc Use() { Target() }\n";
+    await writeFile("input.go", source);
+    const huge = "var Target = 0 // " + "word ".repeat(16000);
+    await writeFile("uses.go", huge + "\nfunc Other() { Target() }\n");
+    const fake = await installFakeGopls();
+    await fake.respond(`${path.join(directory, "uses.go")}:1:5-11\n${path.join(directory, "uses.go")}:2:16-22\n`);
+    const result = await createHSymbolTool("description", "start: TEST").execute(
+      ["refs", "input.go", "2", "Target"], executionContext,
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("unread result rows start at 1");
+    const snapshot = retainedResultPath(result.stderr ?? "");
+    await rm("uses.go");
+    expect(await readFile(snapshot, "utf8")).toBe(
+      `"uses.go":${formatVerifiedRow(1, huge)}"uses.go":${formatVerifiedRow(2, "func Other() { Target() }")}`,
+    );
+    expect((await readFile(fake.callsPath, "utf8")).trim().split("\n")).toHaveLength(1);
   });
 
   test("resolves TypeScript 7 and Python definitions through their LSP servers", async () => {

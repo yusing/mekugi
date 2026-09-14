@@ -28,7 +28,12 @@ and line truncation cannot change it. Multiple matches on one path and line prod
 Ripgrep's no-match exit status is a successful empty result. Execution, filesystem, encoding,
 cancellation, invalid-pattern, and missing-executable failures return concise nonzero
 diagnostics. Output contains only complete rows and uses the shared verified-row token admission
-rule in `REQ-READ-001`. On the first omitted distinct result, hgrep terminates and reaps ripgrep.
+rule in `REQ-READ-001`. Display-budget exhaustion does not stop the search: hgrep retains
+the complete formatted result, up to 16 MiB, and reports its path and first unread result row.
+The retained file contains original verified rows and may be read in bounded ranges without
+rerunning ripgrep. Source/event/retention bounds still terminate and reap ripgrep and must
+not describe the retained prefix as complete. A later search failure remains a failure even
+after display output was limited.
 
 The leading reader options, strict caller token ceiling, and explicit JSON preview
 format are shared with `REQ-READ-001`. They are consumed before ripgrep argument
@@ -49,7 +54,9 @@ Acceptance:
 3. Requested before/after context emits complete verified rows beside matches. Repeated match
    or context events on one row emit that row once; no matches return successful empty stdout.
    Token admission occurs after this deduplication, and an incomplete result retains admitted
-   rows, writes its diagnostic to stderr, and returns nonzero.
+   rows, writes its diagnostic to stderr, and returns nonzero. A token-limited successful
+   search retains all result rows; deleting or changing source afterward does not prevent
+   reading its omitted suffix without another search.
 4. The model-visible shell call and output are replayed unchanged. No standalone hgrep call is
    exposed, routed, or admitted to mekugi recovery history.
 5. Router startup validates hgrep inside the immutable built-in snapshot without installing a

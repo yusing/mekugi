@@ -226,7 +226,8 @@ function executeScript(argv, context) {
   if (interpreter === "bash" || interpreter === "sh") {
     return {stderr: "shell: bash and sh require the router shell runner\n", exitCode: 1};
   }
-  return executeInterpreter(argv, context);
+  const parsed = parseShellHeader(argv.at(-1));
+  return executeInterpreter([...argv.slice(0, -1), parsed.body ?? ""], context);
 }
 
 export const shellTool = {
@@ -241,7 +242,7 @@ export const shellTool = {
   },
 
   argv(input) {
-    return [...input.interpreter, input.body];
+    return [...input.interpreter, input.source];
   },
 
   translate(input, api) {

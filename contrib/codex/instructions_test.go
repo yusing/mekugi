@@ -326,6 +326,10 @@ func TestInstructionsConsolidateDeliveredContracts(t *testing.T) {
 		for _, compact := range []bool{false, true} {
 			got := InstructionsForModel(model, compact)
 			for _, required := range []string{
+				"Shell workers budget combined display output automatically",
+				"read its `metadata.json`",
+				"Read all returned reference rows before batching dependent edits",
+				"Report skipped or unavailable references",
 				"## Journal\n",
 				"### Rejected-script recovery\n",
 				"Nonempty line and range `type` replacements preserve",

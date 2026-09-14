@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/shellsyntax"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
@@ -164,7 +165,7 @@ func shellCatLiteralParts(parts []syntax.WordPart, quoted bool) bool {
 	return true
 }
 
-func (t *mekugiResponseTransform) shellCatPlan(contribution toolContribution, arguments []string, template string, params map[string]json.RawMessage, callIDs ...string) ([]shellCatStep, []string, bool) {
+func (t *mekugiResponseTransform) shellCatPlan(contribution toolContribution, arguments []string, template string, params map[string]json.RawMessage, outputTokens int, callIDs ...string) ([]shellCatStep, []string, bool) {
 	if contribution.PluginID != builtinToolsPluginID || contribution.Name != "shell" || template != "" || len(arguments) != 2 {
 		return nil, nil, false
 	}
@@ -195,13 +196,28 @@ func (t *mekugiResponseTransform) shellCatPlan(contribution toolContribution, ar
 			return nil, nil, false
 		}
 	}
-	steps, ok := splitShellCatWrites(arguments[1], directory, variant)
+	parsed, err := shellsyntax.Parse(arguments[1])
+	if err != nil {
+		return nil, nil, false
+	}
+	steps, ok := splitShellCatWrites(parsed.Body, directory, variant)
 	if !ok {
+		return nil, nil, false
+	}
+	if outputTokens == 0 {
+		outputTokens = 8000
+	}
+	var requested int
+	if json.Unmarshal(params["max_output_tokens"], &requested) == nil && requested > 0 {
+		outputTokens = min(outputTokens, requested)
+	}
+	outputTokens /= max(1, len(steps))
+	if outputTokens < 256 {
 		return nil, nil, false
 	}
 	commands := make([]string, len(steps))
 	for index, step := range steps {
-		command, err := t.proxy.registry.execCarrierCommand(contribution, step.command, []string{arguments[0], step.command}, "", callIDs...)
+		command, err := t.proxy.registry.execCarrierCommand(contribution, step.command, []string{arguments[0], step.command}, "", outputTokens, callIDs...)
 		if err != nil {
 			return nil, nil, false
 		}
@@ -211,7 +227,7 @@ func (t *mekugiResponseTransform) shellCatPlan(contribution toolContribution, ar
 }
 
 func (t *mekugiResponseTransform) shellCatCarrier(contribution toolContribution, kind codeModeCarrierKind, arguments []string, template string, params, metadata map[string]json.RawMessage, callIDs ...string) (string, bool) {
-	steps, commands, ok := t.shellCatPlan(contribution, arguments, template, params, callIDs...)
+	steps, commands, ok := t.shellCatPlan(contribution, arguments, template, params, 0, callIDs...)
 	if !ok {
 		return "", false
 	}

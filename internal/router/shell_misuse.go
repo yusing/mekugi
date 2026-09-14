@@ -202,7 +202,11 @@ func shellTypeScriptMisuse(contribution toolContribution, arguments []string) bo
 		len(arguments) < 2 || shellInterpreterName(arguments[0]) != "bash" {
 		return false
 	}
-	body := arguments[len(arguments)-1]
+	parsed, err := shellsyntax.Parse(arguments[len(arguments)-1])
+	if err != nil {
+		return false
+	}
+	body := parsed.Body
 	if _, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(body), ""); err == nil {
 		return false
 	}

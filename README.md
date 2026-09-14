@@ -90,6 +90,9 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
   - `hcat --max-tokens N` and `hgrep --max-tokens N` set a strict output token
     ceiling. Add `--preview-bytes N` for bounded long-line previews.
     Omitted content is explicit; previews retain the complete row's verified identity.
+  - Shell workers share one display budget across commands and save overflow for
+    later reads. Token-limited `hgrep` and `hsymbol` results retain their verified rows,
+    so continuation does not repeat the search.
 - **Catch supported syntax problems before applying edits.**
   - Changed Go files are parsed and formatted automatically. Supported Python,
     JavaScript, and TypeScript files receive syntax checks and indentation correction.
@@ -512,7 +515,17 @@ Semantic lookup can start with a known line number:
 `hsymbol def source.go 42 MyFunction`. Use `LINE:HASH` instead when the query
 must verify a prior read. `hsymbol --workspace /path/to/project refs source.go 42 MyFunction`
 selects a resolver root without changing shell state and returns absolute result
-paths. Semantic results stay confined to that root.
+paths. Semantic results stay confined to that root. When display limits omit
+references, the result reports a saved file and the first unread result row.
+Continue with bounded `sed` ranges on that file; its rows already contain their
+original verified identities. Skipped or unavailable locations still need resolution.
+
+Shell workers also bound combined stdout/stderr across a script. An `output: DIRECTORY`
+receipt points to saved `stdout`, `stderr`, and `metadata.json` with unread byte offsets.
+Read those files to recover overflow without rerunning commands. These private temporary
+files survive router shutdown until removed. Execution status and pipeline/redirection
+data are unchanged. Direct external calls and command templates use the host's output
+behavior; see the [shell contract](doc/spec/shell.md) for bounds and exceptions.
 
 Structural inspection accepts one ordinary relative or absolute path.
 `inspect_file source.go` returns an outline whose verified spans can be used as

@@ -429,7 +429,7 @@ func TestShellRunnerBoundsAndValidatesOutput(t *testing.T) {
 
 	started := time.Now()
 	captureBudget := 16<<20 - len(shellOverflowDiagnostic) - 3
-	execution, err := executeShellTool(
+	execution, err := executeShellProgram(
 		t.Context(),
 		manifest,
 		runtimeRoot,
@@ -458,7 +458,7 @@ func TestShellRunnerBoundsAndValidatesOutput(t *testing.T) {
 		)
 	}
 
-	execution, err = executeShellTool(
+	execution, err = executeShellProgram(
 		t.Context(),
 		manifest,
 		runtimeRoot,
