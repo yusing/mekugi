@@ -1,3 +1,4 @@
+import {RetainedRows} from "./retained_output.ts";
 import {constants} from "node:fs";
 import {open} from "node:fs/promises";
 
@@ -16,6 +17,7 @@ import {
   MAX_POSSIBLE_GPT5_TOKEN_BYTES,
   stripOptionalFinalNewline,
   formatReaderRow,
+  readerArguments,
   readerOptions,
   readerLimitDiagnostic,
   VERIFIED_ROW_MAX_TOKENS,
@@ -156,7 +158,7 @@ type ComparedOutput = {
   incomplete: boolean;
   limitReason?: string;
   warning?: string;
-  unreadRange?: string;
+  omitted?: string;
 };
 
 
@@ -178,7 +180,8 @@ async function readHashLines(spec: ReadSpec, options: ReaderOptions): Promise<Co
     let pendingCR = false;
     let content = "";
     let limitReason: string | undefined;
-    let firstOmittedLine: number | undefined;
+    const retained = new RetainedRows();
+    let retentionUnavailable = false;
     let contentBytes = 0;
     const tail = options.tail ? new VerifiedRowTail(options.maxTokens, options.maxLines) : undefined;
     let oversizedRow = false;
@@ -193,19 +196,16 @@ async function readHashLines(spec: ReadSpec, options: ReaderOptions): Promise<Co
         return;
       }
       lineOpen = true;
-      if (!selected() || oversizedRow || (!tail && output.incomplete)) {
+      if (!selected() || oversizedRow || (retentionUnavailable && !tail && output.incomplete)) {
         return;
       }
-      if (!tail && options.maxLines !== undefined && selectedLines >= options.maxLines) {
-        output.incomplete = true;
-        return;
-      }
-
       contentBytes += byteLength(text);
-      if (!(options.maxLines !== undefined && options.maxTokens === undefined && options.previewBytes === undefined)
+      if (!(options.maxLines !== undefined && options.maxTokens === undefined && options.previewBytes === undefined
+          && (tail || selectedLines < options.maxLines))
           && contentBytes > VERIFIED_ROW_MAX_TOKENS * MAX_POSSIBLE_GPT5_TOKEN_BYTES) {
         // Bound candidate storage even when only a preview will be emitted.
         limitReason = `row ${lineNumber} exceeds the ${VERIFIED_ROW_MAX_TOKENS * MAX_POSSIBLE_GPT5_TOKEN_BYTES}-byte inspection bound; use a byte-window reader\n`;
+        retentionUnavailable = true;
         content = "";
         oversizedRow = true;
         if (tail) {
@@ -218,23 +218,24 @@ async function readHashLines(spec: ReadSpec, options: ReaderOptions): Promise<Co
       content += text;
     };
     const finishLine = (): void => {
-      if (selected() && !oversizedRow && (tail || !output.incomplete)) {
+      if (selected() && !oversizedRow && !(retentionUnavailable && !tail && output.incomplete)) {
         selectedLines += 1;
+        const row = formatReaderRow(lineNumber, content, options);
+        if (!retentionUnavailable && !retained.append(row)) {
+          retentionUnavailable = true;
+          limitReason = "result exceeds the 16 MiB recovery bound; narrow the source range\n";
+        }
         if (!tail && options.maxLines !== undefined && selectedLines > options.maxLines) {
           output.incomplete = true;
         } else {
-          const row = formatReaderRow(lineNumber, content, options);
           if (tail) {
             tail.append(row);
           } else if (options.maxLines !== undefined && options.maxTokens === undefined) {
             lineOutput += row;
-          } else {
+          } else if (!output.incomplete) {
             output.append(row);
           }
         }
-      }
-      if (!tail && selected() && output.incomplete) {
-        firstOmittedLine ??= lineNumber;
       }
       oversizedRow = false;
       content = "";
@@ -306,10 +307,11 @@ async function readHashLines(spec: ReadSpec, options: ReaderOptions): Promise<Co
     const warning = !wholeFile && missingStartLine <= spec.endLine
       ? `hcat: ${missingStartLine}-${spec.endLine}: [out of range]\n`
       : undefined;
-    const unreadRange = firstOmittedLine === undefined
-      ? undefined
-      : `${firstOmittedLine}:${wholeFile ? lineCount : Math.min(spec.endLine, lineCount)}`;
-    return {...(tail?.finish() ?? {current: options.maxLines !== undefined && options.maxTokens === undefined ? lineOutput : output.current, incomplete: output.incomplete}), warning, limitReason, unreadRange};
+    const result = tail?.finish() ?? {current: options.maxLines !== undefined && options.maxTokens === undefined ? lineOutput : output.current, incomplete: output.incomplete};
+    const omitted = result.incomplete && !retentionUnavailable
+      ? tail ? retained.prefixBefore(result.current) : retained.remainder(result.current)
+      : undefined;
+    return {...result, incomplete: result.incomplete, warning, limitReason, omitted};
   } finally {
     await handle.close();
   }
@@ -320,27 +322,13 @@ async function readHashLines(spec: ReadSpec, options: ReaderOptions): Promise<Co
  * hcatArguments converts parsed hcat input to the internal argv representation.
  */
 function hcatArguments(input: string): {argv: string[]; pathIndex: number} {
-  const prefix: string[] = [];
-  while (input.startsWith("--max-tokens ") || input.startsWith("--preview-bytes ")
-      || input.startsWith("--tail ") || input.startsWith("-n ")) {
-    if (input.startsWith("--tail ")) {
-      prefix.push("--tail");
-      input = input.slice("--tail ".length);
-      continue;
-    }
-    const match = input.match(/^(-n|--(?:max-tokens|preview-bytes)) ([^ ]+)(?: |$)/u);
-    if (match === null) {
-      throw new Error("reader option requires a value");
-    }
-    prefix.push(match[1], match[2]);
-    input = input.slice(match[0].length);
-  }
-  readerOptions(prefix, true);
-  const spec = parseReadSpec(stripOptionalFinalNewline(input));
-  if (spec.startLine === 0) {
-    return {argv: [...prefix, spec.path], pathIndex: prefix.length};
-  }
-  return {argv: [...prefix, spec.path, `${spec.startLine}:${spec.endLine}`], pathIndex: prefix.length};
+  const argv = readerArguments(input);
+  const parsed = readerOptions(argv, true);
+  const operands = parsed.rest;
+  const spec = parseReadSpec(hcatInput(operands));
+  const pathIndex = parsed.indices[0];
+  if (spec.startLine !== 0) argv[parsed.indices[1]] = `${spec.startLine}:${spec.endLine}`;
+  return {argv, pathIndex};
 }
 
 
@@ -396,13 +384,12 @@ export function createHCatTool(description: string, grammar: string): Tool<strin
         const limitDiagnostic = result.incomplete
           ? `hcat: ${result.limitReason ?? readerLimitDiagnostic(options)}`
           : "";
-        const recovery = result.unreadRange === undefined ? ""
-          : `hcat: unread rows ${result.unreadRange}; request a smaller range${result.current === "" && result.limitReason === undefined ? " or use --preview-bytes for a row that does not fit" : ""}\n`;
-        const stderr = `${result.warning ?? ""}${limitDiagnostic}${recovery}`;
+        const stderr = `${result.warning ?? ""}${limitDiagnostic}`;
         return {
           stdout: result.current,
           ...(stderr === "" ? {} : {stderr}),
           exitCode: result.incomplete ? 1 : 0,
+          ...(result.omitted === undefined ? {} : {omittedOutput: {stdout: result.omitted, stderr: "", stdoutKind: "rows" as const}}),
           ...(result.incomplete ? {failureClass: "output_limit" as const} : {}),
         };
       } catch (error) {

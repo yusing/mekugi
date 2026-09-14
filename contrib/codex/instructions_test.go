@@ -269,7 +269,7 @@ func TestInstructionsAcquireAndReuseVerifiedTargets(t *testing.T) {
 		"`hsymbol refs PATH LINE SYMBOL [N]`",
 		"`hsymbol def PATH LINE SYMBOL [N]`",
 		"`LINE:HASH` instead of `LINE` to enforce a prior read",
-		"A leading `--workspace ROOT` chooses resolver scope",
+		"`--workspace ROOT` chooses resolver scope",
 		"Read again only when those forms no longer identify the intended current span",
 		"Existing-file edits require a target.",
 		"Targetless `type VALUE` is valid only immediately after",

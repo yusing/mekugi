@@ -426,8 +426,8 @@ Run one file per command as `hcat PATH [START:END]`. Quote paths with shell synt
 already-known reads as separate commands in one shell script. A bare path reads the complete
 file. A start line of `0` begins at line 1 without emitting line 0. An end past EOF warns after
 returning available rows; a start past EOF fails. Copy a current `LINE:HASH` directly into an
-HPATCH/2 target. When hcat reports an unread range, retain the emitted rows and read only that
-range in smaller pieces without repeating the prefix.
+HPATCH/2 target. Recover omitted rows with its exact `next_call: hread REF`, without
+repeating the prefix or reopening the source.
 
 Run hgrep with ripgrep arguments and shell quoting, redirection, and pipelines. Its output is
 `"PATH":LINE:HASH TEXT`; copy a current target directly and never reconstruct a row.
@@ -436,8 +436,9 @@ requested bounds is needed. If hgrep reports an incomplete token-limited result,
 emitted rows and read the omitted remainder using its exact `next_call: hread REF`. These are original verified rows; do not wrap them in new hcat identities.
 Without a retained result, narrow only the unanswered search.
 
-Both readers accept leading `--max-tokens N` (1–15500) for a strict stdout token
-ceiling and `--preview-bytes N` (1–65536) for long-line inspection.
+Hcat, hgrep, hsymbol, and inspect_file accept `--max-tokens N` (1–15500, default 4000)
+for a strict stdout token ceiling. Options may surround operands and stop at `--`.
+Hcat and hgrep also accept `--preview-bytes N` (1–65536) for long-line inspection.
 Preview JSON includes a full-source row identity and an explicit UTF-8 prefix with
 omitted-byte counts. Retain the identity, but obtain missing content before using the
 preview as literal target text. Budget omissions still report incomplete results.
@@ -451,7 +452,7 @@ For Go, JavaScript, TypeScript, JSON, and Python, use
 `hsymbol def PATH LINE SYMBOL [N]` for definitions. Supply an already-known
 `LINE:HASH` instead of `LINE` to enforce a prior read; plain lines query the
 current snapshot without requiring a preliminary verified read.
-A leading `--workspace ROOT` chooses resolver scope and relative input paths;
+`--workspace ROOT` chooses resolver scope and relative input paths;
 its result paths are absolute. Other results are workspace-relative. `N` counts exact
 language tokens on the selected line and may be omitted only when one exists. Copy emitted `"PATH":LINE:HASH TEXT` rows directly
 into HPATCH/2 targets. Do not follow a complete hsymbol definition with hcat of the same span

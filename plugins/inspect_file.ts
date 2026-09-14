@@ -1,3 +1,4 @@
+import {MAX_RETAINED_BYTES} from "./retained_output.ts";
 import {readFile, stat} from "node:fs/promises";
 import path from "node:path";
 
@@ -11,7 +12,7 @@ const jsonParser = () => (require("@lezer/json") as typeof import("@lezer/json")
 const markdownParser = () => (require("@lezer/markdown") as typeof import("@lezer/markdown")).parser;
 const pythonParser = () => (require("@lezer/python") as typeof import("@lezer/python")).parser;
 
-import type {Tool} from "../internal/router/toolplugin/plugin.d.ts";
+import type {ExecutionResult, Tool} from "../internal/router/toolplugin/plugin.d.ts";
 import {
   classifySourcePath,
   decodeGoStringLiteral,
@@ -19,11 +20,14 @@ import {
   lineCount as sharedLineCount,
 } from "mekugi:core/v1";
 import {
+  readerArguments,
+  readerOptions,
+  READ_DEFAULT_TOKENS,
+  countGPT5Tokens,
   byteLength,
   decodeUTF8,
   createExecutorTool,
   errorText,
-  stripOptionalFinalNewline,
 } from "./common.ts";
 import {decodeJavaScriptStringLiteral} from "./javascript_string.ts";
 import {inspectFileShapeSchemaJSON} from "./inspect_file_schema.ts";
@@ -1073,20 +1077,18 @@ function failure(pathValue: string | null, code: ErrorCode, message: string): st
   return `${JSON.stringify({ok: false, path: pathValue, error: {code, message}})}\n`;
 }
 
-function success(data: InspectionData): string {
+function success(data: InspectionData, maxTokens: number): ExecutionResult {
   const complete = `${JSON.stringify({ok: true, data, truncated: false, truncation: null})}\n`;
-  if (byteLength(complete) <= OUTPUT_BYTES) {
-    return complete;
+  const fits = (text: string): boolean => byteLength(text) <= OUTPUT_BYTES && countGPT5Tokens(text) <= maxTokens;
+  if (fits(complete)) {
+    return {stdout: complete, exitCode: 0};
   }
-  if (data.outline.length === 0) {
-    throw new InspectFailure("output_limit", "minimum success result exceeds the output byte limit");
-  }
-
+  const reason = byteLength(complete) > OUTPUT_BYTES ? "output_bytes" : "output_tokens";
   const render = (count: number): string => `${JSON.stringify({
     ok: true,
     data: {...data, outline: data.outline.slice(0, count)},
     truncated: true,
-    truncation: {reason: "output_bytes", after_entries: count},
+    truncation: {reason, after_entries: count},
   })}\n`;
 
   let low = 0;
@@ -1094,7 +1096,7 @@ function success(data: InspectionData): string {
   let selected = -1;
   while (low <= high) {
     const middle = Math.floor((low + high) / 2);
-    if (byteLength(render(middle)) <= OUTPUT_BYTES) {
+    if (fits(render(middle))) {
       selected = middle;
       low = middle + 1;
     } else {
@@ -1102,9 +1104,16 @@ function success(data: InspectionData): string {
     }
   }
   if (selected < 0) {
-    throw new InspectFailure("output_limit", "minimum success result exceeds the output byte limit");
+    throw new InspectFailure("output_limit", "minimum success result exceeds the output budget; increase --max-tokens or shorten the path");
   }
-  return render(selected);
+  const stdout = render(selected);
+  const omitted = JSON.stringify(data.outline.slice(selected));
+  if (byteLength(omitted) > MAX_RETAINED_BYTES) {
+    return {stdout, exitCode: 1, failureClass: "output_limit",
+      stderr: "inspect_file: recovery unavailable: omitted outline exceeds the 16 MiB recovery bound; use bounded hcat reads\n"};
+  }
+  return {stdout, exitCode: 1, failureClass: "output_limit",
+    omittedOutput: {stdout: omitted, stderr: "", stdoutKind: "json"}};
 }
 
 function normalizeInputPath(input: string): string {
@@ -1183,23 +1192,7 @@ async function inspect(input: string): Promise<InspectionData> {
   };
 }
 
-function inspectFileInput(input: string): string[] {
-  const value = stripOptionalFinalNewline(input);
-  if (value === "") {
-    return [];
-  }
-  if (value.startsWith("\"")) {
-    try {
-      const parsed = JSON.parse(value);
-      return typeof parsed === "string" ? [parsed] : [];
-    } catch {
-      return [];
-    }
-  }
-  return [value];
-}
-
-export const inspectFileDescription = `Inspect one host-readable regular file and return bounded JSON metadata and a structural outline. Outline line and line_end are copyable LINE:HASH identities, not source text.
+export const inspectFileDescription = `Inspect one host-readable regular file and return bounded JSON metadata and a structural outline. --max-tokens N sets the shared strict 1–15500 ceiling (default 4000). Recover omitted entries with hread. Outline line and line_end are copyable LINE:HASH identities, not source text.
 
 Result shape schema:
 ${inspectFileShapeSchemaJSON}`;
@@ -1209,20 +1202,22 @@ export function createInspectFileTool(description: string, grammar: string): Too
     name: "inspect_file",
     description,
     grammar,
-    argv: inspectFileInput,
+    argv: readerArguments,
     async execute(argv) {
       let suppliedPath: string | null = null;
       try {
+        const parsed = readerOptions(argv);
+        if (parsed.options.previewBytes !== undefined) throw new InspectFailure("usage", "inspect_file does not accept source preview flags");
+        argv = parsed.rest;
         if (argv.length !== 1) {
           throw new InspectFailure("usage", "inspect_file expects PATH");
         }
         suppliedPath = argv[0];
-        const stdout = success(await inspect(suppliedPath));
-        return {stdout, exitCode: 0};
+        return success(await inspect(suppliedPath), parsed.options.maxTokens ?? READ_DEFAULT_TOKENS);
       } catch (error) {
         const cause = error instanceof InspectFailure
           ? error
-          : new InspectFailure("read", `cannot inspect file: ${errorText(error)}`);
+          : new InspectFailure(suppliedPath === null ? "usage" : "read", `cannot inspect file: ${errorText(error)}`);
         return {stdout: failure(suppliedPath, cause.code, cause.message), exitCode: 1,
           failureClass: cause.code === "usage" ? "invalid_arguments" : cause.code === "not_found" ? "not_found"
             : cause.code === "output_limit" ? "output_limit" : "reader_error"};

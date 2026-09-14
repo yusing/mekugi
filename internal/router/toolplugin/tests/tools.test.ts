@@ -205,13 +205,13 @@ describe("verified-row output", () => {
     }
   });
 
-  test("byte-bound admission preserves exact token and soft-limit behavior", () => {
+  test("byte-bound admission preserves exact token limits", () => {
     const unicode = new VerifiedRowOutput(1);
     expect(unicode.append("🙂")).toBe(true);
     expect(unicode.append("x")).toBe(false);
     expect(unicode.current).toBe("🙂");
 
-    const compressible = new VerifiedRowOutput();
+    const compressible = new VerifiedRowOutput(15_000);
     const row = " x".repeat(8000);
     expect(Buffer.byteLength(row)).toBeGreaterThan(15_000);
     expect(countGPT5Tokens(row)).toBeLessThan(15_000);
@@ -220,8 +220,8 @@ describe("verified-row output", () => {
     expect(compressible.incomplete).toBe(false);
   });
 
-  test("uses GPT-5 tokens with one bounded whole-row overshoot", () => {
-    const exact = new VerifiedRowOutput();
+  test("uses strict GPT-5 limits with complete rows", () => {
+    const exact = new VerifiedRowOutput(15_500);
     const atSoftLimit = contentWithFormattedTokenCount(15_000, (content) => `${content}\n`);
     expect(exact.append(atSoftLimit)).toBe(true);
     expect(exact.incomplete).toBe(false);
@@ -238,7 +238,7 @@ describe("verified-row output", () => {
     expect(exact.incomplete).toBe(true);
     expect(exact.current).toBe(atSoftLimit + overshootRow);
 
-    const tooLarge = new VerifiedRowOutput();
+    const tooLarge = new VerifiedRowOutput(15_500);
     const aboveMaximum = contentWithFormattedTokenCount(15_501, (content) => `${content}\n`);
     expect(tooLarge.append(`${aboveMaximum}\n`)).toBe(false);
     expect(tooLarge.current).toBe("");
@@ -365,7 +365,8 @@ describe("hcat line limits", () => {
     await writeFile(file, `first\n${"x".repeat(2_000_000)}`);
     const smallHead = await tool.execute(["-n", "1", file], executionContext);
     expect(smallHead.stdout).toBe(formatVerifiedRow(1, "first"));
-    expect(smallHead.stderr).toContain("1-line limit");
+    expect(smallHead.stderr).toContain("row 2 exceeds");
+    expect(smallHead.omittedOutput).toBeUndefined();
     // Skipping unselected rows must not skip whole-source UTF-8 validation.
     await writeFile(file, Buffer.concat([Buffer.from("first\n"), Buffer.from([0xff])]));
     expect((await tool.execute(["-n", "1", file], executionContext)).stderr).toContain("not UTF-8");
@@ -375,7 +376,7 @@ describe("hcat line limits", () => {
   });
 });
 
-describe("hcat unread ranges", () => {
+describe("hcat omitted rows", () => {
   test("resumes only omitted rows across logical terminators and bounded selections", async () => {
     const directory = await temporaryDirectory("hcat-resume-");
     const file = path.join(directory, "rows.txt");
@@ -384,7 +385,7 @@ describe("hcat unread ranges", () => {
       await writeFile(file, ["one", "", "three", "four", "five"].join(ending));
       const head = await tool.execute(["-n", "2", file, "2:9"], executionContext);
       expect(head.stdout).toBe(formatVerifiedRow(2, "") + formatVerifiedRow(3, "three"));
-      expect(head.stderr).toContain("hcat: unread rows 4:5;");
+      expect(head.omittedOutput?.stdout).toBe(formatVerifiedRow(4, "four") + formatVerifiedRow(5, "five"));
       expect(head.stderr).toContain("[out of range]");
       const rest = await tool.execute([file, "4:5"], executionContext);
       expect(rest).toEqual({
@@ -392,9 +393,9 @@ describe("hcat unread ranges", () => {
         exitCode: 0,
       });
       const limited = await tool.execute(["-n", "1", file, "2:3"], executionContext);
-      expect(limited.stderr).toContain("hcat: unread rows 3:3;");
+      expect(limited.omittedOutput?.stdout).toBe(formatVerifiedRow(3, "three"));
       const tail = await tool.execute(["--tail", "-n", "1", file], executionContext);
-      expect(tail.stderr).not.toContain("unread rows");
+      expect(tail.omittedOutput?.stdout).toBe(["one", "", "three", "four"].map((row, i) => formatVerifiedRow(i + 1, row)).join(""));
     }
   });
 
@@ -406,17 +407,68 @@ describe("hcat unread ranges", () => {
     const budget = countGPT5Tokens(formatVerifiedRow(1, "first"));
     const first = await tool.execute(["--max-tokens", String(budget), file], executionContext);
     expect(first.stdout).toBe(formatVerifiedRow(1, "first"));
-    expect(first.stderr).toContain("unread rows 2:3;");
+    expect(first.omittedOutput?.stdout).toBe(formatVerifiedRow(2, "second") + formatVerifiedRow(3, "third"));
     for (const extra of [[], ["--preview-bytes", "1"]]) {
       const none = await tool.execute(["--max-tokens", "1", ...extra, file], executionContext);
       expect(none.stdout).toBe("");
-      expect(none.stderr).toContain("unread rows 1:3;");
-      expect(none.stderr).toContain("--preview-bytes");
+      expect(none.omittedOutput?.stdout.split("\n").filter(Boolean)).toHaveLength(3);
+      expect(none.omittedOutput?.stdoutKind).toBe("rows");
     }
     await writeFile(file, "");
     expect((await tool.execute(["-n", "1", file], executionContext)).stderr).toBeUndefined();
     await writeFile(file, Buffer.from([0xff]));
     expect((await tool.execute(["-n", "1", file], executionContext)).stderr).not.toContain("unread rows");
+  });
+});
+
+describe("shared reader controls", () => {
+  test("accepts budgets around operands and preserves option-valued search patterns", async () => {
+    const directory = await temporaryDirectory("reader-options-");
+    const file = path.join(directory, "sample.go");
+    await writeFile(file, "package p\nfunc First() {}\nfunc Second() {}\n");
+    for (const tool of [createHCatTool("", ""), createInspectFileTool("", "")]) {
+      const before = await tool.execute(["--max-tokens", "200", file], executionContext);
+      const after = await tool.execute([file, "--max-tokens", "200"], executionContext);
+      expect(await tool.execute([file, "--max-tokens", "200", "--"], executionContext)).toEqual(before);
+      expect(after).toEqual(before);
+      for (const input of [`--max-tokens 200 ${JSON.stringify(file)}`, `${JSON.stringify(file)} --max-tokens 200`]) {
+        const argv = await tool.parse(input, {resolvePath: value => value});
+        expect(await tool.execute(argv, executionContext)).toEqual(before);
+      }
+    }
+    await writeFile(file, "--max-tokens\nordinary\n");
+    const grep = createHGrepTool("", "");
+    for (const args of [
+      ["-F", "-e", "--max-tokens", file, "--max-tokens", "200"],
+      ["--max-tokens", "200", "-F", "--regexp", "--max-tokens", file],
+      ["--max-tokens", "200", "-F", "--", "--max-tokens", file],
+    ]) {
+      const result = await grep.execute(args, executionContext);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain(formatVerifiedRow(1, "--max-tokens"));
+    }
+  });
+
+  test("bounds omitted rows even when selected line-only rows bypass tokenization", async () => {
+    const directory = await temporaryDirectory("reader-omitted-bound-");
+    const file = path.join(directory, "rows.txt");
+    await writeFile(file, `first\n${"x".repeat(4 * 1024 * 1024)}\nlast\n`);
+    const result = await createHCatTool("", "").execute([file, "-n", "1"], executionContext);
+    expect(result.stdout).toBe(formatVerifiedRow(1, "first"));
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("row 2 exceeds");
+    expect(result.omittedOutput).toBeUndefined();
+  });
+
+  test("tail output remains usable when retained rows exceed capacity", async () => {
+    const directory = await temporaryDirectory("reader-capacity-");
+    const file = path.join(directory, "rows.txt");
+    await writeFile(file, `${("x".repeat(20_000) + "\n").repeat(850)}last\n`);
+    const result = await createHCatTool("", "").execute([file, "-n", "1", "--tail"], executionContext);
+    expect(result.stdout).toBe(formatVerifiedRow(851, "last"));
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("recovery bound");
+    expect(result.omittedOutput).toBeUndefined();
   });
 });
 
@@ -581,7 +633,7 @@ describe("hcat built-in plugin", () => {
       "2:9",
     ]);
     expect(() => parse("first.txt\nsecond.txt 2:9")).toThrow(
-      "invalid bare hcat path",
+      "invalid bare reader argument",
     );
   });
 
@@ -680,15 +732,15 @@ describe("hcat built-in plugin", () => {
   test("retains whole admitted rows and fails when later rows exceed the token limit", async () => {
     const directory = await temporaryDirectory("hcat-limit-");
     process.chdir(directory);
-    const first = contentWithFormattedTokenCount(15_000, (content) => formatVerifiedRow(1, content));
+    const first = contentWithFormattedTokenCount(4_000, (content) => formatVerifiedRow(1, content));
     await writeFile("large.txt", `${first}\nsecond\nthird\n`, "utf8");
 
     const tool = createHCatTool("description", "start: TEST");
     const result = await tool.execute(["large.txt"], executionContext);
     expect(result).toEqual({
-      stdout: formatVerifiedRow(1, first) + formatVerifiedRow(2, "second"),
-      stderr: "hcat: output incomplete: 15,000-token limit reached\n"
-        + "hcat: unread rows 3:3; request a smaller range\n",
+      stdout: formatVerifiedRow(1, first),
+      stderr: "hcat: output incomplete: 4000-token limit reached\n",
+      omittedOutput: {stdout: formatVerifiedRow(2, "second") + formatVerifiedRow(3, "third"), stderr: "", stdoutKind: "rows"},
       exitCode: 1,
       failureClass: "output_limit",
     });
@@ -703,8 +755,7 @@ describe("hcat built-in plugin", () => {
     const result = await tool.execute(["large.txt"], executionContext);
     expect(result).toEqual({
       stdout: "",
-      stderr: "hcat: row 1 exceeds the 1984000-byte inspection bound; use a byte-window reader\n"
-        + "hcat: unread rows 1:1; request a smaller range\n",
+      stderr: "hcat: row 1 exceeds the 1984000-byte inspection bound; use a byte-window reader\n",
       exitCode: 1,
       failureClass: "output_limit",
     });
@@ -878,12 +929,13 @@ describe("hgrep built-in plugin", () => {
     await writeFile("large.txt", `needle ${first}\nneedle second\nneedle third\n`, "utf8");
     const limited = await tool.execute(["-F", "needle", "large.txt"], executionContext);
     expect(limited.exitCode).toBe(1);
-    expect(limited.stderr).toStartWith("hgrep: output incomplete: 15,000-token limit reached\n");
+    expect(limited.stderr).toStartWith("hgrep: output incomplete: 4000-token limit reached\n");
     await rm("large.txt");
     expect(limited.omittedOutput).toEqual({stdout:
-      `${prefix}${formatVerifiedRow(2, "needle second")}`
+      `${prefix}${formatVerifiedRow(1, `needle ${first}`)}`
+      + `${prefix}${formatVerifiedRow(2, "needle second")}`
       + `${prefix}${formatVerifiedRow(3, "needle third")}`, stderr: "", stdoutKind: "rows"});
-    expect(limited.stdout).toContain(`needle ${first}`);
+    expect(limited.stdout).toBe("");
     expect(limited.stdout).not.toContain("needle second");
     expect(limited.stdout).not.toContain("needle third");
   });
@@ -922,7 +974,7 @@ describe("hgrep built-in plugin", () => {
 describe("hsymbol built-in plugin", () => {
   test("keeps its private contract behavioral", () => {
     const description = plugin.tools[2].specification.description.replace(/\s+/g, " ");
-    expect(description).toContain("hsymbol [--workspace ROOT] (def|refs) PATH (LINE|LINE:HASH) SYMBOL [N]");
+    expect(description).toContain("hsymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH (LINE|LINE:HASH) SYMBOL [N]");
     expect(description).toContain('"PATH":LINE:HASH TEXT');
     expect(description).toContain("ambiguous selectors");
     for (const persistent of ["rename", "audit", "before editing", "functions.hpatch"]) {
@@ -1438,10 +1490,10 @@ describe("hsymbol built-in plugin", () => {
       executionContext,
     );
     expect(result).toEqual({
-      omittedOutput: {stdout: `${prefix}${formatVerifiedRow(3, "third")}`, stderr: "", stdoutKind: "rows"},
-      stdout: `${prefix}${formatVerifiedRow(1, first)}${prefix}${formatVerifiedRow(2, "second")}`,
+      omittedOutput: {stdout: `${prefix}${formatVerifiedRow(1, first)}${prefix}${formatVerifiedRow(2, "second")}${prefix}${formatVerifiedRow(3, "third")}`, stderr: "", stdoutKind: "rows"},
+      stdout: "",
       stderr: expect.stringContaining("hsymbol: skipped 1 location outside workspace\n"
-        + "hsymbol: output incomplete: 15,000-token limit reached\n"),
+        + "hsymbol: output incomplete: 4000-token limit reached\n"),
       exitCode: 1,
       failureClass: "output_limit",
       terminationReason: "resolver_cleanup",
@@ -1943,6 +1995,7 @@ describe("inspect_file command contract", () => {
   test("accepts only a path operand", async () => {
     const tool = createInspectFileTool("test", "");
     for (const args of [
+      ["--max-tokens", "0", "sample.go"],
       ["--source", "Pick", "sample.go"],
       ["--source-bytes", "100", "sample.go"],
     ]) {

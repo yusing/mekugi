@@ -1,6 +1,8 @@
 package router
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -303,5 +305,134 @@ func TestReadCursorRejectsAlteredPosition(t *testing.T) {
 		if status != 1 || stdout != "" || stderr == "" {
 			t.Fatalf("altered cursor accepted: %s: %q %q %d", position, stdout, stderr, status)
 		}
+	}
+}
+
+func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
+	t.Parallel()
+	registry := sharedProxyTestRegistry(t)
+	for _, command := range []string{"hcat", "inspect_file"} {
+		t.Run(command, func(t *testing.T) {
+			directory := t.TempDir()
+			source := filepath.Join(directory, "sample.go")
+			var content strings.Builder
+			content.WriteString("package p\n")
+			for i := range 100 {
+				fmt.Fprintf(&content, "func Item%d() {}\n", i)
+			}
+			if err := os.WriteFile(source, []byte(content.String()), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			invocation := newShellWorkerTestInvocation(directory)
+			full, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
+				command+" "+source+" --max-tokens 15500", nil, invocation)
+			if status != 0 || diagnostic != "" {
+				t.Fatalf("full read: %d %q", status, diagnostic)
+			}
+			first, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
+				command+" "+source+" --max-tokens 256", nil, invocation)
+			if status == 0 || first == "" {
+				t.Fatalf("expected partial output: %d %q %q", status, first, diagnostic)
+			}
+			reference := func(diagnostic string) string {
+				t.Helper()
+				_, ref, found := strings.Cut(diagnostic, "read: incomplete; next_call: hread ")
+				if !found {
+					t.Fatalf("missing continuation: %q", diagnostic)
+				}
+				return strings.TrimSpace(ref)
+			}
+			ref := reference(diagnostic)
+			if err := os.Remove(source); err != nil {
+				t.Fatal(err)
+			}
+			// A stream-only read must not consume the other stream or reopen the source.
+			empty, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil,
+				"hread "+ref+" --stderr", nil, invocation)
+			if status != 0 || empty != "--- stderr [bytes] ---\n\n" || diagnostic != "" {
+				t.Fatalf("stderr selection: %d %q %q", status, empty, diagnostic)
+			}
+			rows := first
+			var entries []json.RawMessage
+			if command == "inspect_file" {
+				var initial struct {
+					Data struct{ Outline []json.RawMessage }
+				}
+				if err := json.Unmarshal([]byte(first), &initial); err != nil {
+					t.Fatal(err)
+				}
+				entries = initial.Data.Outline
+			}
+			complete := false
+			for range 100 {
+				page, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil,
+					"hread "+ref+" --max-tokens 256", nil, invocation)
+				kind := "rows"
+				if command == "inspect_file" {
+					kind = "json"
+				}
+				payload, found := strings.CutPrefix(page, "--- stdout ["+kind+"] ---\n")
+				if !found {
+					t.Fatalf("missing typed frame: %q", page)
+				}
+				payload, found = strings.CutSuffix(payload, "\n--- stderr [bytes] ---\n\n")
+				if !found {
+					t.Fatalf("missing stderr frame: %q", page)
+				}
+				if command == "hcat" {
+					if !strings.HasSuffix(payload, "\n") {
+						t.Fatal("partial verified row")
+					}
+					rows += payload
+				} else {
+					var next []json.RawMessage
+					if err := json.Unmarshal([]byte(payload), &next); err != nil {
+						t.Fatal(err)
+					}
+					entries = append(entries, next...)
+				}
+				if status == 0 {
+					complete = true
+					break
+				}
+				ref = reference(diagnostic)
+			}
+			if !complete {
+				t.Fatal("read did not complete")
+			}
+			if command == "hcat" {
+				if rows != full {
+					t.Fatal("recovery lost or duplicated source rows")
+				}
+			} else {
+				var expected struct {
+					Data struct{ Outline []json.RawMessage }
+				}
+				if err := json.Unmarshal([]byte(full), &expected); err != nil {
+					t.Fatal(err)
+				}
+				actualJSON, _ := json.Marshal(entries)
+				expectedJSON, _ := json.Marshal(expected.Data.Outline)
+				if string(actualJSON) != string(expectedJSON) {
+					t.Fatal("recovery lost, changed, or duplicated outline entries")
+				}
+			}
+		})
+	}
+}
+
+func TestOutlineRecoveryCapacityPreservesCurrentOutput(t *testing.T) {
+	t.Parallel()
+	registry := sharedProxyTestRegistry(t)
+	directory := t.TempDir()
+	source := filepath.Join(directory, "large.md")
+	if err := os.WriteFile(source, []byte(strings.Repeat("# "+strings.Repeat("x", 70_000)+"\n", 250)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
+		"inspect_file "+source+" --max-tokens 256", nil, newShellWorkerTestInvocation(directory))
+	if status != 1 || !json.Valid([]byte(stdout)) || !strings.Contains(stdout, `"truncated":true`) ||
+		!strings.Contains(stderr, "recovery unavailable") || strings.Contains(stderr, "next_call") {
+		t.Fatalf("capacity discarded valid output or advertised recovery: %d %q %q", status, stdout, stderr)
 	}
 }

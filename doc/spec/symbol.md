@@ -5,11 +5,14 @@
 The private `hsymbol` command is available only through the model-visible shell tool:
 
 ```text
-hsymbol [--workspace ROOT] def PATH (LINE|LINE:HASH) SYMBOL [N]
-hsymbol [--workspace ROOT] refs PATH (LINE|LINE:HASH) SYMBOL [N]
+hsymbol [--max-tokens N] [--workspace ROOT] def PATH (LINE|LINE:HASH) SYMBOL [N]
+hsymbol [--max-tokens N] [--workspace ROOT] refs PATH (LINE|LINE:HASH) SYMBOL [N]
 ```
 
-The canonical workspace defaults to `realpath(process.cwd())`. An optional leading
+Output uses the shared [reader token ceiling and read continuation](read.md).
+Reader options and `--workspace ROOT` may surround the query operands.
+
+The canonical workspace defaults to `realpath(process.cwd())`. An optional
 `--workspace ROOT` selects another existing canonical directory for resolver scope
 and relative input paths without changing the caller's working directory. `PATH` may be relative or absolute, but
 its canonical target must remain within that workspace and be a regular UTF-8 supported source

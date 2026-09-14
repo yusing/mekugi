@@ -206,6 +206,9 @@ func executeShellProgram(
 			options:
 				for pathIndex < len(arguments) {
 					switch arguments[pathIndex] {
+					case "--":
+						pathIndex++
+						break options
 					case "--tail":
 						pathIndex++
 					case "--max-tokens", "--preview-bytes", "-n":

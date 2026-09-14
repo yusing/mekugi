@@ -2,7 +2,7 @@
 
 ## REQ-INSPECT-001 — Shell-routed structural file inspection
 
-The private `inspect_file PATH` command is
+The private `inspect_file [--max-tokens N] PATH` command is
 available only through the model-visible shell tool. It accepts one shell-separated
 path, relative to the process working directory or absolute, like hcat. Parent
 paths and symlinks are allowed; the target must be a host-readable regular file.
@@ -37,12 +37,18 @@ the complete line for every entry. Those identities are
 copyable HPATCH row or `ROW..ROW` range targets. Results contain no raw
 excerpts, bodies, fields, comments, frontmatter values, JSON scalar values, or row `TEXT`.
 
-The complete successful stdout, including its final LF, is at most 65,536 UTF-8 bytes. When
-necessary, the worker retains the longest complete outline prefix and returns
-`truncation: {"reason":"output_bytes","after_entries":N}`. Lezer parser recovery or YAML
+The complete successful stdout, including its final LF, is at most 65,536 UTF-8 bytes and
+uses the shared [reader token ceiling](read.md). Options may precede or follow the path.
+When necessary, the worker emits a complete outline prefix, exits nonzero, and returns
+`truncation: {"reason":"output_bytes"|"output_tokens","after_entries":N}`.
+Omitted complete entries are available as JSON arrays through the shared `hread` interface,
+without repeating the prefix or reopening the source. Lezer parser recovery or YAML
 frontmatter diagnostics set `parse_complete: false` independently of output truncation. There is
 no input-size or entry-count limit. If an empty-outline success envelope cannot fit, the command
 fails with `output_limit`.
+
+If omitted entries exceed the shared recovery capacity, the current JSON remains available;
+stderr explains that recovery is unavailable and no reference is exposed.
 
 Command failures write one closed LF-terminated JSON envelope to stdout, leave stderr empty, and
 exit nonzero. Stable codes are `usage`, `not_found`, `not_regular`, `not_utf8`,

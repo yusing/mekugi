@@ -11,7 +11,7 @@ export const inspectFileShapeSchema = {
       outline: "outline_entry[]",
     },
     truncated: "boolean",
-    truncation: "null | {reason: output_bytes, after_entries: integer}",
+    truncation: "null | {reason: output_bytes | output_tokens, after_entries: integer}",
   },
   failure: {
     ok: false,

@@ -42,29 +42,21 @@ over that exact content, including leading spaces and tabs. A trailing file term
 not create an additional empty line. Missing, inaccessible, non-regular, non-UTF-8,
 reversed-range, and start-past-EOF reads return concise stderr and nonzero status.
 
-Verified-row commands count exact formatted current stdout with the GPT-5 tokenizer. They admit
-rows through 15,000 tokens. One next complete row may raise the result to at most 15,500 tokens;
-admitting that row seals the result. EOF at that point is complete. A later row, or any row that
-would exceed 15,500 tokens, is omitted together with every later row. Omission preserves already
-admitted complete rows on stdout, writes an incomplete-result diagnostic to stderr, and returns
-nonzero. It never cuts a row.
+Readers share `--max-tokens N`: a strict GPT-5 stdout ceiling from 1 through 15,500,
+defaulting to 4,000. Options may surround operands, stop at `--`, and cannot repeat.
+Ripgrep option values remain values even when their spelling matches a reader flag.
+Missing or invalid budgets reject before reading source content or starting a resolver.
+Outer host budgets remain independent.
 
-For a truncated prefix read, hcat also reports the inclusive unread row range,
-starting at the first row not emitted and ending at the requested end or EOF,
-whichever comes first. This range refers to the file just inspected, not a durable
-snapshot or a continuation handle. A subsequent bounded range read can recover the
-missing rows without repeating the prefix. If no complete row fits a token budget,
-the diagnostic suggests preview mode. Source-bound rows instead require a byte-window
-reader. Tail reads do not report a prefix-resumption range.
+Verified-row commands admit only complete rows. The first row that does not fit and all
+later rows are omitted; truncation preserves admitted stdout and returns nonzero.
+Hcat retains omitted rows through the shared `hread` interface below, including omitted
+prefixes from tail selection. Recovery reads the captured snapshot without reopening the
+source. If a row exceeds the inspection bound or recovery exceeds its 16 MiB capacity,
+the result reports that recovery is unavailable and suggests narrowing the source range.
+Valid selected output remains usable, including tail rows after a source-bound row.
 
-Hcat and hgrep accept the same optional leading `--max-tokens N` and
-`--preview-bytes N` pairs, in either order, each at most once. Flags must precede
-the path or ripgrep arguments. Their values are positive decimal integers.
-`--max-tokens` accepts 1 through 15,500 and sets a strict GPT-5 stdout token ceiling:
-there is no whole-row overshoot in this mode. Without it, the default admission
-rule above is unchanged. Missing, repeated, or out-of-range values reject before
-reading source content or starting ripgrep. Outer host output budgets remain independent; callers
-can choose a reader ceiling that fits the enclosing result budget.
+Hcat and hgrep additionally accept `--preview-bytes N`, at most once.
 
 `--preview-bytes` accepts 1 through 65,536 and changes each stdout row to a JSON
 record with `row` (the complete source's verified `LINE:HASH`), `preview` (a UTF-8
@@ -81,7 +73,7 @@ Exact token counting must remain practical for long unbroken words and whitespac
 the bounded candidate size. The pinned model's token identities and splitting rules
 remain unchanged; large pieces must not require quadratic repeated merge scans.
 
-Hcat additionally accepts leading `-n N` and `--tail`, each at most once. Line counts
+Hcat additionally accepts `-n N` and `--tail`, each at most once. Line counts
 are canonical positive safe integers. `-n` selects first/last N complete logical source
 lines within the requested range, before any explicit token ceiling. Without a token
 ceiling, line mode bypasses tokenization and the default token admission rule; selected
@@ -123,7 +115,7 @@ Acceptance:
    and byte omission counts for long rows. Default exact output is unchanged.
 9. Invalid and duplicate options reject before source content is read. Retained
    path resolution can precede option validation. Quoted paths, line ranges,
-   and thread-private retained reads work with either leading option order.
+   and thread-private retained reads work with options before or after operands.
 10. Tail selection works with either option order, quoted paths, ranges, previews,
     and retained descriptors. Missing limits and repeated `--tail` reject before reading.
     In token-limited mode, long and source-bound rows cannot cause unbounded storage or prevent retaining later

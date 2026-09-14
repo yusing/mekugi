@@ -18,12 +18,14 @@ import {
   byteLength,
   collect,
   createExecutorTool,
+  readerArguments,
+  readerOptions,
+  READ_DEFAULT_TOKENS,
   readerFailureClass,
   decodeUTF8,
   errorText,
   isOutsideWorkspace,
   stripOptionalFinalNewline,
-  VERIFIED_ROW_LIMIT_DIAGNOSTIC,
   VerifiedRowOutput,
 } from "./common.ts";
 import {
@@ -41,6 +43,7 @@ type QueryMode = "def" | "refs";
 type Resolver = "gopls" | "typescript" | "python";
 
 type Query = {
+  maxTokens: number;
   workspace?: string;
   mode: QueryMode;
   path: string;
@@ -132,13 +135,18 @@ function validGoIdentifier(value: string): boolean {
  */
 function parseQuery(argv: string[]): Query {
   let workspace: string | undefined;
-  if (argv[0] === "--workspace") {
-    workspace = argv[1];
+  const terminator = argv.indexOf("--");
+  const workspaceIndex = argv.findIndex((arg, i) => arg === "--workspace" && (terminator < 0 || i < terminator));
+  if (workspaceIndex >= 0) {
+    workspace = argv[workspaceIndex + 1];
     if (workspace === undefined || workspace === "" || workspace.includes("\0")) {
       throw new HSymbolFailure("--workspace requires a usable directory");
     }
-    argv = argv.slice(2);
+    argv = [...argv.slice(0, workspaceIndex), ...argv.slice(workspaceIndex + 2)];
   }
+  const parsed = readerOptions(argv);
+  if (parsed.options.previewBytes !== undefined) throw new HSymbolFailure("use hcat --preview-bytes for source previews");
+  argv = parsed.rest;
   if (argv.length !== 4 && argv.length !== 5) {
     throw new HSymbolFailure("usage: hsymbol [--workspace ROOT] (def|refs) PATH (LINE|LINE:HASH) SYMBOL [N]");
   }
@@ -161,6 +169,7 @@ function parseQuery(argv: string[]): Query {
     throw new HSymbolFailure("row must be a positive LINE or LINE:HASH with a lowercase four-digit hash");
   }
   return {
+    maxTokens: parsed.options.maxTokens ?? READ_DEFAULT_TOKENS,
     mode,
     workspace,
     path: inputPath,
@@ -543,7 +552,7 @@ async function executeQuery(query: Query, onResolverStart: () => void): Promise<
   if (currentInput.source !== inputFile.source) {
     throw new HSymbolFailure("input changed during query");
   }
-  const output = new VerifiedRowOutput();
+  const output = new VerifiedRowOutput(query.maxTokens);
   const retainedRows = new RetainedRows();
   const skipped = new Map<SourceFailureReason, number>();
   const skip = (reason: SourceFailureReason): void => {
@@ -619,7 +628,7 @@ async function executeQuery(query: Query, onResolverStart: () => void): Promise<
     };
   }
   if (output.incomplete) {
-    stderr += `hsymbol: ${VERIFIED_ROW_LIMIT_DIAGNOSTIC}`;
+    stderr += `hsymbol: output incomplete: ${query.maxTokens}-token limit reached\n`;
   }
   return {
     stdout: output.current,
@@ -630,72 +639,13 @@ async function executeQuery(query: Query, onResolverStart: () => void): Promise<
   };
 }
 
-function parseQuotedToken(input: string): {token: string; trailing: string} {
-  let escaped = false;
-  for (let index = 1; index < input.length; index += 1) {
-    const character = input[index];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (character === "\\") {
-      escaped = true;
-      continue;
-    }
-    if (character !== "\"") {
-      continue;
-    }
-    const encoded = input.slice(0, index + 1);
-    let token;
-    try {
-      token = JSON.parse(encoded);
-    } catch (error) {
-      throw new Error(`invalid quoted token: ${errorText(error)}`);
-    }
-    if (typeof token !== "string") {
-      throw new Error("invalid quoted token");
-    }
-    return {token, trailing: input.slice(index + 1)};
-  }
-  throw new Error("invalid quoted token: unterminated quoted string");
-}
-
-function parseHSymbolArguments(input: string): string[] {
-  const value = stripOptionalFinalNewline(input).trim();
-  if (value === "") {
-    return [];
-  }
-  const argv: string[] = [];
-  let remaining = value;
-  while (remaining !== "") {
-    remaining = remaining.replace(/^[ \t]+/u, "");
-    if (remaining === "") {
-      break;
-    }
-    if (remaining.startsWith("\"")) {
-      const {token, trailing} = parseQuotedToken(remaining);
-      argv.push(token);
-      remaining = trailing;
-    } else {
-      const separator = remaining.search(/[ \t]/u);
-      if (separator < 0) {
-        argv.push(remaining);
-        break;
-      }
-      argv.push(remaining.slice(0, separator));
-      remaining = remaining.slice(separator);
-    }
-  }
-  return argv;
-}
-
 export function createHSymbolTool(description: string, grammar: string): Tool<string[]> {
   return createExecutorTool({
     name: "hsymbol",
     description,
     grammar,
     argv(input) {
-      return parseHSymbolArguments(input);
+      return readerArguments(input);
     },
     async execute(argv) {
       let query: ReturnType<typeof parseQuery>;

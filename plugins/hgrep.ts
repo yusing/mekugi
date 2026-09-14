@@ -649,7 +649,17 @@ export function createHGrepTool(description: string, grammar: string): Tool<stri
       let options: ReaderOptions;
       let normalized: NormalizedArguments;
       try {
-        const parsed = readerOptions(argv);
+        const parsed = readerOptions(argv, false, arg => {
+          if (arg.startsWith("--")) {
+            const name = arg.slice(2);
+            return longOptionsWithValue.has(name) || warnedLongOptions.get(name) === true;
+          }
+          if (!arg.startsWith("-")) return false;
+          for (let i = 1; i < arg.length; i++) {
+            if (shortOptionsWithValue.has(arg[i]) || warnedShortOptions.get(arg[i]) === true) return i === arg.length - 1;
+          }
+          return false;
+        }, true); // Ripgrep must receive its own option terminator.
         options = parsed.options;
         normalized = normalizeArguments(parsed.rest);
       } catch (error) {

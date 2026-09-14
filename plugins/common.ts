@@ -1,12 +1,11 @@
-import {formatVerifiedRow, hashLine} from "mekugi:core/v1";
+import {decodeQuotedOperand, formatVerifiedRow, hashLine} from "mekugi:core/v1";
 import path from "node:path";
 import {countGPT5Tokens} from "./tokens.ts";
 export {countGPT5Tokens, MAX_POSSIBLE_GPT5_TOKEN_BYTES} from "./tokens.ts";
 import type {ExecutionContext, ExecutionResult, ReaderFailureClass, Tool, TranslationContext} from "../internal/router/toolplugin/plugin.d.ts";
 
-const VERIFIED_ROW_SOFT_TOKENS = 15_000;
+export const READ_DEFAULT_TOKENS = 4_000;
 export const VERIFIED_ROW_MAX_TOKENS = 15_500;
-export const VERIFIED_ROW_LIMIT_DIAGNOSTIC = "output incomplete: 15,000-token limit reached\n";
 
 export function byteLength(value: string): number {
   return Buffer.byteLength(value, "utf8");
@@ -17,14 +16,54 @@ export function isOutsideWorkspace(root: string, target: string): boolean {
   return relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
 }
 
+// Private translation inputs use JSON-quoted operands; executed shell commands
+// already arrive as argv and never pass through this parser.
+export function readerArguments(input: string): string[] {
+  let remaining = stripOptionalFinalNewline(input);
+  const result: string[] = [];
+  while (remaining !== "") {
+    remaining = remaining.replace(/^[ \t]+/u, "");
+    if (remaining === "") break;
+    if (remaining.startsWith("\"")) {
+      const decoded = decodeQuotedOperand(remaining);
+      result.push(decoded.value.startsWith("-") ? `./${decoded.value}` : decoded.value);
+      if (decoded.rest !== "" && !/^[ \t]/u.test(decoded.rest)) throw new Error("expected an argument separator");
+      remaining = decoded.rest;
+    } else {
+      const match = remaining.match(/^[^ \t]+/u)!;
+      if (/[\r\n"]/u.test(match[0])) throw new Error("invalid bare reader argument");
+      result.push(match[0]);
+      remaining = remaining.slice(match[0].length);
+    }
+  }
+  return result;
+}
+
 export type ReaderOptions = {maxTokens?: number; previewBytes?: number; tail?: boolean; maxLines?: number};
 
-export function readerOptions(argv: string[], allowTail = false): {options: ReaderOptions; rest: string[]; offset: number} {
+export function readerOptions(argv: string[], allowTail = false, takesValue: (arg: string) => boolean = () => false, preserveTerminator = false): {options: ReaderOptions; rest: string[]; indices: number[]} {
   const options: ReaderOptions = {};
+  const rest: string[] = [];
+  const indices: number[] = [];
   let offset = 0;
-  while (argv[offset] === "--max-tokens" || argv[offset] === "--preview-bytes"
-      || (allowTail && (argv[offset] === "--tail" || argv[offset] === "-n"))) {
+  while (offset < argv.length) {
     const name = argv[offset];
+    if (name === "--") {
+      if (!preserveTerminator) offset++;
+      rest.push(...argv.slice(offset));
+      indices.push(...argv.slice(offset).map((_, i) => offset + i));
+      break;
+    }
+    if (name !== "--max-tokens" && name !== "--preview-bytes"
+        && !(allowTail && (name === "--tail" || name === "-n"))) {
+      rest.push(name);
+      indices.push(offset++);
+      if (takesValue(name) && offset < argv.length) {
+        rest.push(argv[offset]);
+        indices.push(offset++);
+      }
+      continue;
+    }
     if (name === "--tail") {
       if (options.tail) {
         throw new Error("--tail cannot repeat");
@@ -47,16 +86,15 @@ export function readerOptions(argv: string[], allowTail = false): {options: Read
   if (options.tail && options.maxTokens === undefined && options.maxLines === undefined) {
     throw new Error("--tail requires -n or --max-tokens");
   }
-  return {options, rest: argv.slice(offset), offset};
+  if (options.maxTokens === undefined && options.maxLines === undefined) options.maxTokens = READ_DEFAULT_TOKENS;
+  return {options, rest, indices};
 }
 
 export function readerLimitDiagnostic(options: ReaderOptions): string {
   if (options.maxLines !== undefined) {
     return `output incomplete: ${options.maxLines}-line limit${options.maxTokens === undefined ? "" : ` or ${options.maxTokens}-token limit`} reached\n`;
   }
-  return options.maxTokens === undefined
-    ? VERIFIED_ROW_LIMIT_DIAGNOSTIC
-    : `output incomplete: ${options.maxTokens}-token limit reached\n`;
+  return `output incomplete: ${options.maxTokens ?? READ_DEFAULT_TOKENS}-token limit reached\n`;
 }
 
 export function utf8SourcePrefix(content: string, maxBytes: number): {text: string; source_bytes: number; omitted_bytes: number} {
@@ -91,27 +129,20 @@ export function formatReaderRow(line: number, content: string, options: ReaderOp
 export class VerifiedRowOutput {
   current = "";
   incomplete = false;
-  #sealed = false;
-
-  constructor(private readonly maxTokens?: number) {}
+  constructor(private readonly maxTokens = READ_DEFAULT_TOKENS) {}
 
   append(currentRow: string): boolean {
-    if (this.#sealed) {
-      this.incomplete = true;
-      return false;
-    }
+    if (this.incomplete) return false;
     const candidate = this.current + currentRow;
-    // A token has at least one source byte. Below the soft boundary the byte
-    // count proves both admission and that this window remains unsealed.
-    const tokens = byteLength(candidate) <= Math.min(this.maxTokens ?? VERIFIED_ROW_MAX_TOKENS, VERIFIED_ROW_SOFT_TOKENS)
+    // Each token needs at least one byte, so small candidates need no tokenization.
+    const tokens = byteLength(candidate) <= this.maxTokens
       ? byteLength(candidate)
       : countGPT5Tokens(candidate);
-    if (tokens > (this.maxTokens ?? VERIFIED_ROW_MAX_TOKENS)) {
+    if (tokens > this.maxTokens) {
       this.incomplete = true;
       return false;
     }
     this.current = candidate;
-    this.#sealed = this.maxTokens === undefined && tokens > VERIFIED_ROW_SOFT_TOKENS;
     return true;
   }
 }
