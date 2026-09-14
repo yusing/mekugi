@@ -89,8 +89,11 @@ arguments supplied by the input's selector may appear as interpreter flags. Rout
 metadata, including commentary connection details and credentials, must travel through private
 runtime plumbing, never through added command arguments or inline environment assignments.
 Call-scoped journal credentials and AX identity travel as private framing inside the existing
-quoted source argument. The worker removes that framing before parsing headers or executing
-any body bytes. Translated commands add neither environment prefixes nor outer AX comments.
+quoted source argument, after the script body so host command previews show the actual program
+first. Historical leading framing remains readable for retained carriers and escapes scripts
+that themselves start with its reserved marker. The worker removes that framing before parsing
+headers or executing any body bytes. Translated commands add neither environment prefixes nor
+outer AX comments.
 Enabling commentary must not change whether an otherwise eligible command remains direct.
 Journal authoring and reserved argv syntax follow [REQ-JOURNAL-001](journal.md). Shell commentary is thread-scoped. The worker discovers its private publisher through the
 inherited `CODEX_THREAD_ID` and current thread runtime, without changing the interpreter argv.

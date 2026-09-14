@@ -8,7 +8,7 @@ import (
 	"github.com/yusing/mekugi/capturer"
 )
 
-// Invocation metadata is private framing inside the existing source argument.
+// Invocation metadata trails the body so host command previews show the program first.
 // It is removed before header parsing and never enters the program environment.
 const shellInvocationPrefix = "# mekugi:invocation="
 
@@ -20,19 +20,32 @@ type shellInvocation struct {
 type shellInvocationContextKey struct{}
 
 func (invocation shellInvocation) source(body string) string {
-	if invocation == (shellInvocation{}) && !strings.HasPrefix(body, shellInvocationPrefix) {
+	if invocation == (shellInvocation{}) && !strings.HasPrefix(body, shellInvocationPrefix) &&
+		!strings.Contains(body, "\n"+shellInvocationPrefix) {
 		return body
 	}
-	return shellInvocationPrefix + string(mustMarshalJSON(invocation)) + "\n" + body
+	if strings.HasPrefix(body, shellInvocationPrefix) {
+		// Escape authored leading markers with the legacy envelope so retained
+		// leading frames can always take precedence over their arbitrary body.
+		return shellInvocationPrefix + string(mustMarshalJSON(invocation)) + "\n" + body
+	}
+	return body + "\n" + shellInvocationPrefix + string(mustMarshalJSON(invocation))
 }
 
 func parseShellInvocation(source string) (shellInvocation, string, error) {
 	var invocation shellInvocation
-	metadata, marked := strings.CutPrefix(source, shellInvocationPrefix)
-	if !marked {
+	var header, body string
+	newline := true
+	if metadata, marked := strings.CutPrefix(source, shellInvocationPrefix); marked {
+		// Retained host carriers may still contain the historical leading frame.
+		header, body, newline = strings.Cut(metadata, "\n")
+	} else if index := strings.LastIndex(source, "\n"+shellInvocationPrefix); index >= 0 &&
+		!strings.Contains(source[index+1:], "\n") {
+		body = source[:index]
+		header = source[index+1+len(shellInvocationPrefix):]
+	} else {
 		return invocation, source, nil
 	}
-	header, body, newline := strings.Cut(metadata, "\n")
 	if !newline || json.Unmarshal([]byte(header), &invocation) != nil ||
 		(invocation.CallID != "" && !capturer.ValidAXIdentity(invocation.CallID)) {
 		return shellInvocation{}, "", errors.New("shell: invalid invocation metadata")

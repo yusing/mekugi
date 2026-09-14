@@ -9,6 +9,11 @@ func TestShellInvocationSourceFidelity(t *testing.T) {
 	t.Parallel()
 	invocation := shellInvocation{CallID: "call-test", JournalToken: "private-token"}
 	for _, body := range []string{
+		"",
+		"printf ok\n",
+		"printf ok\r",
+		"cat <<'EOF'\nbody\nEOF",
+		"printf ok\n# mekugi:invocation={authored trailing comment}",
 		"printf 'a\\nb'",
 		"#!params={\"max_output_tokens\":100}\r\n\nprintf ok\r\n",
 		"#!cmd=printf data | {.}\ncat",
@@ -140,5 +145,36 @@ func TestShellInvocationInspectionCommandPathOption(t *testing.T) {
 	source := shellQuoteArgument((shellInvocation{CallID: "call-one"}).source(":"))
 	if got := inspectionAXCallID(mustMarshalJSON("command -p shell bash " + source)); got != "call-one" {
 		t.Fatalf("command -p lost invocation identity: %q", got)
+	}
+}
+
+func TestShellInvocationCommandPreviewStartsWithProgram(t *testing.T) {
+	t.Parallel()
+	registry := &toolRegistry{}
+	contribution := toolContribution{PluginID: builtinToolsPluginID, Name: "shell"}
+	body := "printf first\nprintf second"
+	command, err := registry.execCarrierCommand(contribution, body, []string{"bash", body}, "", 0, "call-test", "private-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(command, "shell bash $'printf first\\nprintf second\\n") {
+		t.Fatalf("metadata obscures program preview: %q", command)
+	}
+	if got := inspectionAXCallID(mustMarshalJSON(command)); got != "call-test" {
+		t.Fatalf("trailing metadata lost attribution: %q", got)
+	}
+}
+
+func TestShellInvocationLegacySource(t *testing.T) {
+	t.Parallel()
+	want := shellInvocation{CallID: "call-old", JournalToken: "old-token"}
+	body := "#!python3\nprint('ok')\n# mekugi:invocation={\"call_id\":\"authored-comment\"}"
+	source := shellInvocationPrefix + string(mustMarshalJSON(want)) + "\n" + body
+	got, recovered, err := parseShellInvocation(source)
+	if err != nil || got != want || recovered != body {
+		t.Fatalf("legacy carrier changed: %+v %q %v", got, recovered, err)
+	}
+	if got := inspectionAXCallID(mustMarshalJSON("shell python3 " + shellQuoteArgument(source))); got != want.CallID {
+		t.Fatalf("legacy attribution changed: %q", got)
 	}
 }
