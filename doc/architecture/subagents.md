@@ -10,7 +10,9 @@ The HTTP models endpoint forwards native catalog responses without augmentation.
 protocol/authentication adaptation. Codex remains the only owner of agent
 creation, delivery, tool execution, sandbox/approval enforcement and lifecycle state.
 
-The collaboration bridge runs after ordinary Mekugi request preparation and before CTP serialization.
+The collaboration bridge runs for ordinary Mekugi requests, independently of Grok enablement,
+after request preparation and before CTP serialization. Grok-only catalog hints remain gated by
+Grok enablement; ordinary passthrough, prewarm, and auxiliary turns are unchanged.
 Response restoration reverses that order: CTP, collaboration identity restoration, then ordinary
 Mekugi handling and subagent commentary. The bridge uses request-local tool identities and the
 existing Codex history, not a second agent registry or transcript store. Only the private bridge

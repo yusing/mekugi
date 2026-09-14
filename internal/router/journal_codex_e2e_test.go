@@ -45,7 +45,7 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 	child := metadata.SubagentKind != ""
 	var item map[string]any
 	call := func(name string, args any) map[string]any {
-		return map[string]any{"type": "function_call", "id": fmt.Sprintf("fc_%s_%d", thread, turn), "call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": name, "namespace": map[bool]string{true: "functions", false: "collaboration"}[name == "journal"], "arguments": string(mustMarshalJSON(args)), "status": "completed"}
+		return map[string]any{"type": "function_call", "id": fmt.Sprintf("fc_%s_%d", thread, turn), "call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": name, "namespace": map[bool]string{true: "functions", false: subagentBridgeNamespace}[name == "journal"], "arguments": string(mustMarshalJSON(args)), "status": "completed"}
 	}
 	if child {
 		p.childRequests++
@@ -59,8 +59,6 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 			item = call("journal", map[string]any{"op": "add", "text": "Native root milestone", "report_now": true})
 		case turn == 2:
 			item = call("spawn_agent", map[string]any{"message": "Record your milestone and finish.", "task_name": "journal_child", "fork_turns": "none"})
-			// Match the native plaintext marker produced by the collaboration bridge.
-			item["encrypted_function_args"] = []string{}
 		case strings.Contains(input, "Journal result") && strings.Contains(input, "Native child milestone") && strings.Contains(input, "**Question:**") && strings.Contains(input, "Record your milestone and finish."):
 			p.childResultSeen = true
 			p.journalResultSeen = strings.Contains(input, "function_call_output") && strings.Contains(input, `\"id\":\"j1\"`)

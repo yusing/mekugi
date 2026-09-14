@@ -329,7 +329,7 @@ func TestToolProjectionAcrossClients(t *testing.T) {
 							fields["input"] = append([]any{map[string]any{"type": "additional_tools", "tools": []any{
 								map[string]any{"type": "namespace", "name": "functions", "tools": tools},
 								map[string]any{"type": "namespace", "name": "clock", "tools": []any{map[string]any{"type": "function", "name": "sleep"}}},
-								map[string]any{"type": "namespace", "name": "mekugi_collaboration", "tools": []any{map[string]any{"type": "function", "name": "spawn_agent"}}},
+								map[string]any{"type": "namespace", "name": "collaboration", "tools": []any{map[string]any{"type": "function", "name": "spawn_agent"}}},
 							}}}, fields["input"].([]any)...)
 						}
 						request, err := parseResponsesRequest(mustTestJSON(t, fields))

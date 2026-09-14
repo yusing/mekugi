@@ -656,10 +656,12 @@ func executeRequest(
 	if exchange, ok := provider.(*webSocketExchange); ok {
 		bridgeProvider = exchange.session.provider
 	}
-	if client, ok := bridgeProvider.(*providerClient); ok && client.grok != nil {
-		bridge, err = prepareSubagentBridge(&parsedRequest)
+	client, _ := bridgeProvider.(*providerClient)
+	grokEnabled := client != nil && client.grok != nil
+	if mekugiTransform != nil || grokEnabled {
+		bridge, err = prepareSubagentBridge(&parsedRequest, grokEnabled)
 		if err != nil {
-			return fmt.Errorf("prepare Grok collaboration bridge: %w", err)
+			return fmt.Errorf("prepare collaboration bridge: %w", err)
 		}
 	}
 	nativeBody, err := parsedRequest.wireBody(parsedRequest.fields)

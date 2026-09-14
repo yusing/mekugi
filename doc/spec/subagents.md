@@ -3,7 +3,7 @@
 ## REQ-SUBAGENTS-001 — Grok-backed native subagents
 
 `--grok` enables `grok:grok-4.6` in `mekugi` mode. Passthrough mode rejects the flag.
-Without it, the existing model catalog, collaboration schemas and OpenAI routing remain unchanged;
+Without it, the existing model catalog and OpenAI routing remain unchanged;
 a `grok:` request fails locally rather than sending it to the OpenAI provider.
 
 The wrapper adds a Grok model to Codex's selected catalog, retaining the catalog's
@@ -36,15 +36,22 @@ Only a native child request with one `x-openai-subagent: collab_spawn` header, a
 waiting, interruption, follow-up, tool execution, permissions and sandboxing. The router never
 creates a substitute agent process or executes a tool itself.
 
-When enabled, the provider-visible collaboration namespace is `mekugi_collaboration`. Its message
+In ordinary Mekugi turns, the provider-visible collaboration namespace is
+`mekugi_collaboration`, independently of whether Grok is enabled. Its message
 schema has no OpenAI encryption annotation. Response calls are restored to the original native
 `collaboration` namespace; spawn, send-message and follow-up calls carry the explicitly empty
 `encrypted_function_args` marker required by Codex for plaintext delivery. Replay consistently maps
-native calls back to their provider-visible identities. Both ordinary and additional-tool catalogs
+bridge-produced native calls back to their provider-visible identities. Historical calls with
+nonempty encryption markers retain their native namespace and encryption metadata. Both ordinary and additional-tool catalogs
 are covered. The reserved OpenAI collaboration schema is not modified in place, because the provider
 rejects that operation. User-visible agent lifecycle remains native.
 
-The projected spawn catalog places Grok's fresh-context and reasoning requirements beside
+Plaintext projection makes new assignment payloads readable to the router, allowing journal
+answer association. It does not decrypt existing encrypted agent messages; a new plaintext
+follow-up is required to attach those tasks. Ordinary passthrough, prewarm, and auxiliary turns
+without Grok remain unchanged.
+
+When Grok is enabled, the projected spawn catalog places Grok's fresh-context and reasoning requirements beside
 existing `model`, `fork_turns`, and `reasoning_effort` arguments, retaining their native
 descriptions. It does not add absent arguments, change defaults or validation constraints,
 or relax role restrictions. The caller still explicitly selects fresh context and supplies

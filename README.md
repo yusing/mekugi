@@ -265,7 +265,8 @@ plugin grammar validation. Capture remains available.
 
 ### Grok subagents
 
-Opting in enables Grok requests and plaintext collaboration messages. Authenticate
+Opting in enables Grok requests. Ordinary Mekugi sessions already use plaintext collaboration
+messages, allowing journal answers to attach native assignments. Authenticate
 with `grok login --oauth`, or supply `XAI_API_KEY` in the router's environment.
 An API key takes precedence. Codex credentials are never forwarded to Grok.
 
@@ -408,7 +409,9 @@ add, edit, or delete entries directly.
 
 Answer entries use `answer: true` in a structured journal call or Code Mode, with only the
 answer in `text`. Mekugi attaches the latest user message or plaintext native assignment to
-the child automatically. Encrypted assignments cannot be attached. Edits preserve that question
+the child automatically. New assignments use plaintext collaboration in Mekugi mode; the router
+can read their task text. Older encrypted assignments cannot be attached and need a new plaintext
+follow-up. Edits preserve that question
 unless marked as a new answer or cleared with `answer: false`.
 
 Child completion includes its journal result text without consuming the saved entries. Main

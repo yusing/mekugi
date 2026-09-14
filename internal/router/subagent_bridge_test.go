@@ -28,7 +28,7 @@ func bridgeTestRequest(t *testing.T, additional bool) parsedResponsesRequest {
 func TestSubagentBridgeProjectsAndRestoresPlaintext(t *testing.T) {
 	for _, additional := range []bool{false, true} {
 		request := bridgeTestRequest(t, additional)
-		bridge, err := prepareSubagentBridge(&request)
+		bridge, err := prepareSubagentBridge(&request, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -95,7 +95,7 @@ func TestSubagentBridgePreservesScalarOpenAIInput(t *testing.T) {
 		if !withTools {
 			delete(request.fields, "tools")
 		}
-		_, err := prepareSubagentBridge(&request)
+		_, err := prepareSubagentBridge(&request, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -192,7 +192,7 @@ func TestSubagentBridgeSpawnArgumentGuidancePreservesNativeContract(t *testing.T
 				request.fields["tools"] = mustMarshalJSON([]any{})
 				request.fields["input"] = mustMarshalJSON([]any{map[string]any{"type": "additional_tools", "tools": []any{ns}}})
 			}
-			bridge, err := prepareSubagentBridge(&request)
+			bridge, err := prepareSubagentBridge(&request, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -274,11 +274,112 @@ func TestSubagentBridgeSpawnArgumentGuidancePreservesNativeContract(t *testing.T
 
 func TestSubagentBridgeDoesNotAddAbsentSpawnArguments(t *testing.T) {
 	request := bridgeTestRequest(t, false)
-	if _, err := prepareSubagentBridge(&request); err != nil {
+	if _, err := prepareSubagentBridge(&request, true); err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Contains(request.fields["tools"], []byte(`"fork_turns":`)) ||
 		bytes.Contains(request.fields["tools"], []byte(`"reasoning_effort":`)) {
 		t.Fatalf("projection added absent arguments: %s", request.fields["tools"])
+	}
+}
+
+func TestSubagentBridgeWithoutGrok(t *testing.T) {
+	for _, additional := range []bool{false, true} {
+		request := bridgeTestRequest(t, additional)
+		bridge, err := prepareSubagentBridge(&request, false)
+		if err != nil || bridge == nil {
+			t.Fatalf("prepare ordinary bridge: %v", err)
+		}
+		wire := mustMarshalJSON(request.fields)
+		if !bytes.Contains(wire, []byte(subagentBridgeNamespace)) || bytes.Contains(wire, []byte("grok:")) ||
+			bytes.Contains(wire, []byte(`"encrypted":true`)) {
+			t.Fatalf("ordinary projection exposes wrong contract: %s", wire)
+		}
+		if !strings.Contains(jsonString(request.fields, "instructions"), "message arguments are plaintext") {
+			t.Fatal("missing plaintext guidance")
+		}
+	}
+}
+
+func TestOrdinaryCollaborationBridgeAtServerBoundary(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("mekugi=%t/stream=%t", enabled, stream), func(t *testing.T) {
+				var proxy *mekugiProxy
+				if enabled {
+					proxy = newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				}
+				base := bridgeTestRequest(t, false)
+				request := serverRequest(t, func(fields map[string]any) {
+					fields["tools"] = json.RawMessage(base.fields["tools"])
+					fields["stream"] = stream
+				})
+				namespace := "collaboration"
+				if enabled {
+					namespace = subagentBridgeNamespace
+				}
+				const arguments = `{"message":"Boundary assignment","fork_turns":"none"}`
+				call := map[string]any{"type": "function_call", "namespace": namespace, "name": "spawn_agent",
+					"id": "spawn-item", "call_id": "spawn-call", "arguments": arguments, "status": "completed"}
+				terminal := mustTestJSON(t, map[string]any{"id": "boundary", "status": "completed", "output": []any{call}})
+				response := serverHTTPResponse(string(terminal))
+				if stream {
+					response = serverHTTPResponse(finalAnswerTestWire([][]byte{
+						mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": call}),
+						mustTestJSON(t, map[string]any{"type": "response.completed", "response": json.RawMessage(terminal)}),
+					}))
+					response.Header.Set("Content-Type", "text/event-stream")
+				}
+				provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
+				headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
+				var output bytes.Buffer
+				if err := executeRequest(t.Context(), t.Context(), request, headers, "bridge-session",
+					provider, &output, NewCriticalErrors(), proxy, nil, nil); err != nil {
+					t.Fatal(err)
+				}
+				if len(provider.forwarded) != 1 {
+					t.Fatalf("unexpected provider continuations: %d", len(provider.forwarded))
+				}
+				forwarded := provider.forwarded[0]
+				if bytes.Contains(forwarded, []byte(subagentBridgeNamespace)) != enabled ||
+					bytes.Contains(forwarded, []byte("grok:")) {
+					t.Fatalf("incorrect provider catalog: %s", forwarded)
+				}
+				if !bytes.Contains(output.Bytes(), []byte(`"namespace":"collaboration"`)) ||
+					bytes.Contains(output.Bytes(), []byte(subagentBridgeNamespace)) ||
+					bytes.Contains(output.Bytes(), []byte(`"encrypted_function_args":[]`)) != enabled ||
+					!bytes.Contains(output.Bytes(), mustTestJSON(t, arguments)) {
+					t.Fatalf("incorrect native output: %s", output.Bytes())
+				}
+			})
+		}
+	}
+}
+
+func TestSubagentBridgePreservesEncryptedHistory(t *testing.T) {
+	request := bridgeTestRequest(t, false)
+	encrypted := map[string]any{"type": "function_call", "namespace": "collaboration", "name": "spawn_agent",
+		"arguments": `{"message":"opaque"}`, "call_id": "old", "encrypted_function_args": []string{"message"}}
+	plain := map[string]any{"type": "function_call", "namespace": "collaboration", "name": "spawn_agent",
+		"arguments": `{"message":"plaintext"}`, "call_id": "new", "encrypted_function_args": []string{}}
+	message := journalTestAssignment("/root/child", "NEW_TASK", "")
+	message["content"] = append(message["content"].([]any), map[string]any{"type": "encrypted_content", "encrypted_content": "opaque"})
+	request.fields["input"] = mustTestJSON(t, []any{encrypted, message, plain})
+	if _, err := prepareSubagentBridge(&request, false); err != nil {
+		t.Fatal(err)
+	}
+	var input []map[string]json.RawMessage
+	if err := json.Unmarshal(request.fields["input"], &input); err != nil {
+		t.Fatal(err)
+	}
+	if !sameJSONValue(mustMarshalJSON(input[0]), mustMarshalJSON(encrypted)) ||
+		!sameJSONValue(mustMarshalJSON(input[1]), mustMarshalJSON(message)) {
+		t.Fatal("old encrypted call or assignment changed")
+	}
+	if jsonString(input[2], "namespace") != subagentBridgeNamespace ||
+		jsonString(input[2], "call_id") != "new" ||
+		jsonString(input[2], "arguments") != plain["arguments"] ||
+		len(input[2]["encrypted_function_args"]) != 0 {
+		t.Fatalf("plaintext replay not projected exactly: %s", mustMarshalJSON(input[2]))
 	}
 }

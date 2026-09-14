@@ -17,7 +17,7 @@ type subagentBridge struct {
 	names map[string]bool
 }
 
-func prepareSubagentBridge(request *parsedResponsesRequest) (*subagentBridge, error) {
+func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled bool) (*subagentBridge, error) {
 	bridge := &subagentBridge{names: make(map[string]bool)}
 	var projectTools func(json.RawMessage) (json.RawMessage, error)
 	projectTools = func(raw json.RawMessage) (json.RawMessage, error) {
@@ -31,7 +31,7 @@ func prepareSubagentBridge(request *parsedResponsesRequest) (*subagentBridge, er
 			}
 			switch jsonString(tool, "name") {
 			case subagentBridgeNamespace:
-				return nil, errors.New("tool namespace mekugi_collaboration is reserved by the Grok bridge")
+				return nil, errors.New("tool namespace mekugi_collaboration is reserved by the collaboration bridge")
 			case "collaboration":
 				var functions []map[string]json.RawMessage
 				if err := json.Unmarshal(tool["tools"], &functions); err != nil {
@@ -39,7 +39,7 @@ func prepareSubagentBridge(request *parsedResponsesRequest) (*subagentBridge, er
 				}
 				for _, fn := range functions {
 					bridge.names[jsonString(fn, "name")] = true
-					if jsonString(fn, "name") == "spawn_agent" {
+					if grokEnabled && jsonString(fn, "name") == "spawn_agent" {
 						fn["description"] = mustMarshalJSON(jsonString(fn, "description") + "\nAdditional model override: grok:grok-4.6, with reasoning low/medium/high/xhigh and fork_turns=none.")
 					}
 					// Remove only the provider's message encryption annotation, not arbitrary
@@ -61,7 +61,7 @@ func prepareSubagentBridge(request *parsedResponsesRequest) (*subagentBridge, er
 							delete(message, "encrypted")
 							properties["message"] = mustMarshalJSON(message)
 						}
-						if jsonString(fn, "name") == "spawn_agent" {
+						if grokEnabled && jsonString(fn, "name") == "spawn_agent" {
 							for name, note := range map[string]string{
 								"model":            "Grok override: grok:grok-4.6 requires fork_turns=\"none\".",
 								"fork_turns":       "For grok:grok-4.6, explicitly use \"none\" and include the complete task in message.",
@@ -126,6 +126,17 @@ func prepareSubagentBridge(request *parsedResponsesRequest) (*subagentBridge, er
 				item["tools"] = projected
 			case "function_call":
 				if jsonString(item, "namespace") == "collaboration" {
+					if raw, present := item["encrypted_function_args"]; present {
+						var encrypted []string
+						if err := json.Unmarshal(raw, &encrypted); err != nil {
+							return nil, fmt.Errorf("decode collaboration encryption marker: %w", err)
+						}
+						if len(encrypted) != 0 {
+							// Old native calls retain their encryption metadata and
+							// identity. They were not produced by this plaintext bridge.
+							continue
+						}
+					}
 					item["namespace"] = mustMarshalJSON(subagentBridgeNamespace)
 					delete(item, "encrypted_function_args")
 				}
@@ -138,7 +149,10 @@ func prepareSubagentBridge(request *parsedResponsesRequest) (*subagentBridge, er
 		return nil, nil
 	}
 	instructions := jsonString(request.fields, "instructions")
-	instructions += "\nUse mekugi_collaboration for native agent operations. Its message arguments are plaintext; Codex owns agent execution, permissions and lifecycle. For grok:grok-4.6 start a fresh context (fork_turns=none); encrypted OpenAI history cannot be sent to Grok."
+	instructions += "\nUse mekugi_collaboration for native agent operations. Its message arguments are plaintext; Codex owns agent execution, permissions and lifecycle."
+	if grokEnabled {
+		instructions += " For grok:grok-4.6 start a fresh context (fork_turns=none); encrypted OpenAI history cannot be sent to Grok."
+	}
 	request.fields["instructions"] = mustMarshalJSON(instructions)
 	if raw, ok := request.fields["tool_choice"]; ok {
 		var choice map[string]json.RawMessage
