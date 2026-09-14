@@ -24,8 +24,6 @@ func autoLiveDiffFixture(t *testing.T) string {
 		"herdr": `#!/bin/sh
 printf '%s\n' "$@" >> "$MEKUGI_AUTO_DIFF_LOG"
 case "$2" in
-layout) printf '%s\n' '{"result":{"layout":{"panes":[{"pane_id":"caller","rect":{"width":200,"height":50}}]}}}' ;;
-current) printf '%s\n' '{"result":{"pane":{"pane_id":"caller"}}}' ;;
 split) printf '%s\n' '{"result":{"pane":{"pane_id":"new"}}}' ;;
 run) printf '%s\n' done >> "$MEKUGI_AUTO_DIFF_LOG" ;;
 esac
@@ -74,10 +72,13 @@ func TestAutoLiveDiffSelectedWorkspaceBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := waitAutoLiveDiff(t, log, "\ndone\n")
-	if !strings.Contains(data, "\n--cwd\n"+workspace+"\n--no-focus\n") ||
+	if !strings.Contains(data, "\nsplit\n--current\n--direction\nright\n--cwd\n"+workspace+"\n--no-focus\n") ||
 		!strings.Contains(data, " live-diff --workspace "+shellQuoteArgument(workspace)) ||
 		!strings.Contains(data, "\nrun\nnew\n") {
 		t.Fatalf("incorrect selected workspace or launch: %s", data)
+	}
+	if strings.Contains(data, "\nlayout\n") || strings.Contains(data, "\ncurrent\n") {
+		t.Fatal("launch queried geometry instead of directly splitting the caller to the right")
 	}
 	var callers sync.WaitGroup
 	for range 20 {

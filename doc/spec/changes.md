@@ -189,16 +189,36 @@ net diff; a new attempt conservatively revives the file's captured history. Capt
 spanning workspace/thread streams always remain uncomposed because their records do not
 establish durable execution order. Refresh order is not execution evidence.
 
-The viewer follows new edits by default, selecting the latest newly observed file and
-scrolling to its latest changed hunk, even near the top of the file. Manual scrolling
-or file navigation pauses following and preserves each file's vertical offset, clamped
-when content becomes shorter. `r` resumes
+The viewer renders all captured files in one continuous viewport, not only the selected
+file. Short multi-file edits remain visible together. It follows new edits by default,
+scrolling to the latest newly observed file's changed hunk, even near the top of the file.
+Manual scrolling or file navigation pauses following and preserves each file's vertical
+offset, clamped when content becomes shorter. Scrolling crosses file boundaries; `n`/`p` jumps between
+files, and `g`/`G` goes to the start/end of the complete view. The header identifies the
+file at the top of the viewport, which is the current file for `f`. `r` resumes
 following, including edits received while paused. The footer shows FOLLOW or PAUSED.
 Navigation uses the keyboard controls shown there. Terminal resize clips colored Unicode text to the available columns. Only text and SGR styling
 reach the live viewport. Delta's invocation-local added/removed-line styles use the
 terminal's normal background, with syntax-colored text and bold emphasis. Displayed
 header paths are relative only for files inside the selected workspace; paths outside
 it remain absolute. Source hunk text and durable paths are unchanged.
+
+The latest refresh containing new capture IDs marks every affected file and touched
+composed hunk with a cyan gutter and bold `LATEST UPDATE` heading, without recoloring
+source text or adding backgrounds. The marker denotes a recently touched hunk, not
+line- or word-level attribution. Multiple captures observed together form one display
+update; this does not establish execution order across streams. Initial history is a
+baseline, not a fresh update. Receipt-only refreshes preserve the current marks rather
+than creating a new update. Marks remain until another capture update or a flush.
+Prepared and uncomposed captures retain their explicit application/ordering labels.
+A full revert can mark the file's empty state but never invents a surviving changed hunk.
+
+Manual navigation preserves the viewport when new captures arrive and adds a
+`new changes available` footer notice. Resuming follow or flushing all marked files
+clears that notice. Recency and acknowledgement state are viewer-local; restarting
+does not replay old captures as new updates. Delta runs once per render at the content
+width after reserving the gutter and final terminal column. Decoration remains within
+the rendered-output bound.
 
 The viewer always invokes `delta` from `PATH`, with normal delta/Git styling
 configuration, nested paging disabled, and viewport width supplied by Mekugi.
@@ -207,8 +227,9 @@ It requires terminal input/output. When delta is unavailable, `--herdr` reports
 a skipped view and returns successfully without creating a pane; direct invocation
 reports the missing dependency.
 
-`--herdr` creates a sibling pane in the selected workspace without changing focus,
-chooses right/down from the caller's geometry, and starts the same executable there.
+`--herdr` creates a sibling pane to the right of the caller in the selected workspace
+without changing focus and starts the same executable there. It never switches to a
+bottom pane based on geometry.
 It requires a Herdr-managed caller and uses returned pane identities, not focused-pane
 defaults. Closing the viewer restores terminal state but does not close the pane or
 affect the agent/router. An unsuccessful launch identifies the newly created pane.
@@ -218,8 +239,9 @@ explicit removal of previously observed change IDs; restarting selects the remai
 store. Its view state is process-local, while captured edits survive router restarts.
 
 Acceptance:
-1. Following selects new edits; manual navigation pauses it, so other-file edits and
-   application receipts do not steal selection or reset scrolling. `r` resumes following
+1. A multi-file capture displays every file in the continuous view, with short diffs
+   visible together. Following scrolls to new edits; manual navigation pauses it, so
+   other-file edits and application receipts do not steal selection or reset scrolling. `r` resumes following
    the latest observed edit, including after updates while paused.
 2. Delta renders with its normal styling configuration, regardless of Git pager
    selection. Missing delta skips Herdr pane creation without affecting the agent.
@@ -232,3 +254,10 @@ Acceptance:
    regions remain hidden through line shifts and repeated-line alignment.
 6. Late confirmation of a flushed prepared attempt does not revive it by itself.
    Discontinuous source chains are explicitly uncomposed rather than guessed.
+7. Latest-update markers cover all newly observed files and touched net hunks, including
+   overlapping edits, deletions, moves, line shifts, and repeated-line reverts. Older
+   unrelated hunks keep their normal styling. Receipt-only updates and initial history
+   do not create new recency, and flushing removes the corresponding markers.
+8. Unified and side-by-side delta layouts retain syntax colors and normal backgrounds
+   beside the gutter. Unicode clipping, resize, pause/resume, and real-terminal cleanup
+   remain correct with highlighted updates.

@@ -29,28 +29,6 @@ func splitLiveDiff(ctx context.Context, workspace, replay string, stdout io.Writ
 		}
 		return out, nil
 	}
-	out, err := run("pane", "layout", "--current")
-	if err != nil {
-		return err
-	}
-	var layout struct {
-		Result struct {
-			Layout struct {
-				Panes []struct {
-					PaneID string `json:"pane_id"`
-					Rect   struct{ Width, Height int }
-				}
-			}
-		}
-	}
-	if err := json.Unmarshal(out, &layout); err != nil {
-		return err
-	}
-	// Query the caller, never the UI-focused pane.
-	current, err := run("pane", "current", "--current")
-	if err != nil {
-		return err
-	}
 	var pane struct {
 		Result struct {
 			Pane struct {
@@ -58,30 +36,14 @@ func splitLiveDiff(ctx context.Context, workspace, replay string, stdout io.Writ
 			}
 		}
 	}
-	if err := json.Unmarshal(current, &pane); err != nil || pane.Result.Pane.PaneID == "" {
-		return errors.New("Herdr did not return the caller pane identity")
-	}
-	direction := ""
-	for _, p := range layout.Result.Layout.Panes {
-		if p.PaneID == pane.Result.Pane.PaneID {
-			direction = "down"
-			if p.Rect.Width >= p.Rect.Height*3 {
-				direction = "right"
-			}
-		}
-	}
-	if direction == "" {
-		return errors.New("caller pane is absent from Herdr layout")
-	}
 	executable, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	out, err = run("pane", "split", "--current", "--direction", direction, "--cwd", workspace, "--no-focus")
+	out, err := run("pane", "split", "--current", "--direction", "right", "--cwd", workspace, "--no-focus")
 	if err != nil {
 		return err
 	}
-	pane.Result.Pane.PaneID = ""
 	if err := json.Unmarshal(out, &pane); err != nil || pane.Result.Pane.PaneID == "" {
 		return errors.New("Herdr split returned no pane identity")
 	}

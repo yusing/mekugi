@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
@@ -23,9 +25,10 @@ import (
 
 // Live views read immutable review projections, never workspace files or carriers.
 type liveDiffFile struct {
-	id     string
-	path   string
-	chunks []liveDiffChunk
+	id          string
+	path        string
+	chunks      []liveDiffChunk
+	highlighted bool
 }
 type liveDiffChunk struct {
 	key, status, diff string
@@ -33,15 +36,18 @@ type liveDiffChunk struct {
 	snapshotOrder     int
 	review            mekugi.ReviewFile
 	applied           bool
+	highlighted       bool
 }
 type liveDiffView struct {
-	files     []liveDiffFile
-	selected  int
-	scroll    map[string]int
-	reviewed  map[string]bool
-	visible   map[string]liveDiffFile
-	following bool
-	latest    string
+	files        []liveDiffFile
+	selected     int
+	scroll       map[string]int
+	reviewed     map[string]bool
+	visible      map[string]liveDiffFile
+	following    bool
+	latest       string
+	initialized  bool
+	unseenUpdate bool
 }
 
 func (file liveDiffFile) key() string {
@@ -55,6 +61,8 @@ func (v *liveDiffView) merge(files []liveDiffFile) {
 	// The snapshot owns membership; retained capture order owns navigation.
 	// In particular, confirmation can repartition a prepared move's groups.
 	order := make(map[string]int)
+	highlighted := make(map[string]bool)
+	newCaptures := make(map[string]bool)
 	oldFiles := make(map[string]liveDiffFile)
 	fileOrder := make(map[string]int)
 	selected := ""
@@ -65,6 +73,9 @@ func (v *liveDiffView) merge(files []liveDiffFile) {
 		oldFiles[file.key()], fileOrder[file.key()] = file, i
 		for _, chunk := range file.chunks {
 			order[chunk.key] = len(order)
+			if chunk.highlighted {
+				highlighted[chunk.key] = true
+			}
 		}
 	}
 	newestOrder := -1
@@ -72,8 +83,11 @@ func (v *liveDiffView) merge(files []liveDiffFile) {
 	for i := range next {
 		file := &next[i]
 		for _, chunk := range file.chunks {
-			if _, known := order[chunk.key]; !known && chunk.snapshotOrder >= newestOrder {
-				v.latest, newestOrder = chunk.key, chunk.snapshotOrder
+			if _, known := order[chunk.key]; !known {
+				newCaptures[chunk.key] = true
+				if chunk.snapshotOrder >= newestOrder {
+					v.latest, newestOrder = chunk.key, chunk.snapshotOrder
+				}
 			}
 		}
 		file.chunks = slices.Clone(file.chunks)
@@ -109,8 +123,19 @@ func (v *liveDiffView) merge(files []liveDiffFile) {
 		}
 		return 0
 	})
+	// A refresh may observe several captures without proving their execution order.
+	// Initial history is a baseline; receipt-only refreshes retain the prior marks.
+	if v.initialized && len(newCaptures) > 0 {
+		highlighted = newCaptures
+		v.unseenUpdate = !v.following
+	}
+	v.initialized = true
 	cache := make(map[string]liveDiffFile)
-	for i, file := range next {
+	for i := range next {
+		file := &next[i]
+		for j := range file.chunks {
+			file.chunks[j].highlighted = highlighted[file.chunks[j].key]
+		}
 		if old, ok := oldFiles[file.key()]; ok && old.path == file.path && slices.Equal(old.chunks, file.chunks) {
 			if visible, ok := v.visible[file.key()]; ok {
 				cache[file.key()] = visible
@@ -134,6 +159,7 @@ func (v *liveDiffView) merge(files []liveDiffFile) {
 // Capture ordering here drives navigation only, never composition correctness.
 func (v *liveDiffView) followLatest() {
 	v.following = true
+	v.unseenUpdate = false
 	for i, file := range v.files {
 		if slices.ContainsFunc(file.chunks, func(chunk liveDiffChunk) bool { return chunk.key == v.latest }) {
 			v.selected = i
@@ -171,6 +197,7 @@ func (v *liveDiffView) refreshVisible() {
 		unreviewed := false
 		for _, chunk := range file.chunks {
 			reviewed := v.reviewed[chunk.key]
+			visible.highlighted = visible.highlighted || chunk.highlighted && !reviewed
 			unreviewed = unreviewed || !reviewed
 			if !chunk.applied {
 				if !reviewed {
@@ -185,7 +212,7 @@ func (v *liveDiffView) refreshVisible() {
 			}
 			stream = chunk.stream
 			if failure == nil {
-				failure = composition.Apply(chunk.review, reviewed)
+				failure = composition.ApplyWithHighlight(chunk.review, reviewed, chunk.highlighted)
 			}
 		}
 		if failure != nil {
@@ -193,11 +220,17 @@ func (v *liveDiffView) refreshVisible() {
 			// diff. Preserve all contributing evidence rather than guessing.
 			if unreviewed {
 				visible.chunks = append(visible.chunks, liveDiffChunk{status: "Uncomposed captures: " + failure.Error()})
-				visible.chunks = append(visible.chunks, file.chunks...)
+				for _, chunk := range file.chunks {
+					chunk.highlighted = chunk.highlighted && !v.reviewed[chunk.key]
+					visible.chunks = append(visible.chunks, chunk)
+				}
 			}
 		} else {
-			for _, region := range composition.Files() {
-				visible.chunks = append(visible.chunks, liveDiffChunk{status: "Applied · original to latest", diff: region.UnifiedDiff(), review: region})
+			for _, region := range composition.FilesWithHighlights() {
+				visible.chunks = append(visible.chunks, liveDiffChunk{
+					status: "Applied · original to latest", diff: region.UnifiedDiff(),
+					review: region.ReviewFile, highlighted: region.Highlighted,
+				})
 			}
 			visible.chunks = append(visible.chunks, pending...)
 		}
@@ -219,6 +252,11 @@ func (v *liveDiffView) flush(all bool) {
 		}
 	}
 	v.refreshVisible()
+	if v.unseenUpdate {
+		v.unseenUpdate = slices.ContainsFunc(v.files, func(file liveDiffFile) bool {
+			return v.visible[file.key()].highlighted
+		})
+	}
 }
 
 func (s *mekugiReplayStore) liveDiffFilesFromIndexes(ctx context.Context, indexes []changeIndex) ([]liveDiffFile, error) {
@@ -328,6 +366,9 @@ func liveDiffSafe(text string, colors bool) string {
 		} else if colors && strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") &&
 			strings.Trim(seq[2:len(seq)-1], "0123456789;:") == "" {
 			out.WriteString(seq)
+		} else if r, _ := utf8.DecodeRuneInString(seq); unicode.IsMark(r) || r == '\u200c' || r == '\u200d' {
+			// Zero-width marks and joiners are source text, not terminal controls.
+			out.WriteString(seq)
 		}
 	}
 	return out.String()
@@ -359,44 +400,94 @@ func liveDiffDisplayDiff(chunk liveDiffChunk, workspace string) string {
 	return header
 }
 
-func renderLiveDiff(ctx context.Context, file liveDiffFile, delta string, workspace string, width int, focus liveDiffChunk) ([]string, int, error) {
-	// Unique renderer-only boundaries keep one delta process per file while
-	// mapping source hunks to terminal rows under user-configured delta styling.
+type liveDiffRender struct {
+	lines       []string
+	starts      []int
+	focusOffset int
+}
+
+// Keep the viewport anchored to a file and its local row when preceding files grow.
+func (v *liveDiffView) scrollTo(render liveDiffRender, offset int) {
+	if len(v.files) == 0 {
+		return
+	}
+	offset = max(0, min(offset, len(render.lines)-1))
+	v.selected = 0
+	for i, start := range render.starts {
+		if start > offset {
+			break
+		}
+		v.selected = i
+	}
+	v.scroll[v.files[v.selected].key()] = offset - render.starts[v.selected]
+}
+
+func renderLiveDiff(ctx context.Context, files []liveDiffFile, delta string, workspace string, width, focusFile int, focus liveDiffChunk) (liveDiffRender, error) {
+	// One delta invocation renders the whole view. Private boundaries map each
+	// file and source hunk to terminal rows under user-configured delta styling.
 	marker := "mekugi-live-diff-" + rand.Text() + "-"
 	var raw strings.Builder
 	var targets []string
+	var highlights []bool
+	fileTargets := make([]int, len(files))
+	addTarget := func(highlighted bool) int {
+		index := len(targets)
+		target := marker + strconv.Itoa(index)
+		targets = append(targets, target)
+		highlights = append(highlights, highlighted)
+		fmt.Fprintln(&raw, target)
+		return index
+	}
 	focusIndex, bestDistance := 0, int(^uint(0)>>1)
 	focusHunks, _ := focus.review.Hunks()
 	focusLine := 0
 	if len(focusHunks) > 0 {
 		focusLine = focusHunks[len(focusHunks)-1].ChangedStart
 	}
-	for _, chunk := range file.chunks {
-		hunks, err := chunk.review.Hunks()
-		if err != nil || len(hunks) == 0 {
-			hunks = []mekugi.ReviewHunk{{Diff: chunk.diff}}
+	for i, file := range files {
+		fileTargets[i] = addTarget(file.highlighted)
+		if i == focusFile {
+			focusIndex = fileTargets[i]
 		}
-		for _, hunk := range hunks {
-			index := len(targets)
-			target := marker + strconv.Itoa(index)
-			targets = append(targets, target)
-			distance := max(hunk.AfterStart-focusLine, focusLine-(hunk.AfterStart+max(1, hunk.AfterCount)-1), 0)
-			if focus.key != "" && chunk.key == focus.key {
-				// Uncomposed/prepared captures retain exact capture identity.
-				focusIndex, bestDistance = index, -1
-			} else if bestDistance >= 0 && distance < bestDistance {
-				focusIndex, bestDistance = index, distance
+		label := liveDiffDisplayPath(workspace, file.path)
+		if file.highlighted {
+			label += " · LATEST UPDATE"
+		}
+		fmt.Fprintf(&raw, "%d/%d  %s\n", i+1, len(files), label)
+		if len(file.chunks) == 0 {
+			fmt.Fprintln(&raw, "No unreviewed changes")
+		}
+		for _, chunk := range file.chunks {
+			hunks, err := chunk.review.Hunks()
+			if err != nil || len(hunks) == 0 {
+				hunks = []mekugi.ReviewHunk{{Diff: chunk.diff}}
 			}
-			part := chunk
-			part.diff = hunk.Diff
-			fmt.Fprintf(&raw, "%s\n%s\n%s\n", target, chunk.status, liveDiffDisplayDiff(part, workspace))
+			for _, hunk := range hunks {
+				index := addTarget(chunk.highlighted)
+				distance := max(hunk.AfterStart-focusLine, focusLine-(hunk.AfterStart+max(1, hunk.AfterCount)-1), 0)
+				if i == focusFile {
+					if focus.key != "" && chunk.key == focus.key {
+						// Uncomposed/prepared captures retain exact capture identity.
+						focusIndex, bestDistance = index, -1
+					} else if bestDistance >= 0 && distance < bestDistance {
+						focusIndex, bestDistance = index, distance
+					}
+				}
+				part := chunk
+				part.diff = hunk.Diff
+				status := chunk.status
+				if chunk.highlighted {
+					status = "LATEST UPDATE · " + status
+				}
+				fmt.Fprintf(&raw, "%s\n%s\n", status, liveDiffDisplayDiff(part, workspace))
+			}
 		}
 	}
 	text := liveDiffSafe(raw.String(), false)
 	if raw.Len() != 0 {
 		renderCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(renderCtx, delta, "--paging=never", "--width="+strconv.Itoa(max(1, width)),
+		cmd := exec.CommandContext(renderCtx, delta, "--paging=never", "--width="+strconv.Itoa(max(1, width-3)),
 			"--minus-style=syntax normal", "--plus-style=syntax normal",
 			"--minus-emph-style=bold syntax normal", "--plus-emph-style=bold syntax normal",
 			"--minus-non-emph-style=minus-style", "--plus-non-emph-style=plus-style",
@@ -407,26 +498,47 @@ func renderLiveDiff(ctx context.Context, file liveDiffFile, delta string, worksp
 		cmd.Stdout, cmd.Stderr = output, diagnostic
 		if err := cmd.Run(); err != nil {
 			message := ansi.Truncate(liveDiffSafe(diagnostic.String(), false), 1000, "...")
-			return nil, 0, fmt.Errorf("delta rendering failed: %w: %s", err, message)
+			return liveDiffRender{}, fmt.Errorf("delta rendering failed: %w: %s", err, message)
 		}
 		text = liveDiffSafe(output.String(), true)
 	}
-	var lines []string
-	focusOffset, next := 0, 0
+	render := liveDiffRender{starts: make([]int, len(files))}
+	next, fileIndex := 0, 0
+	highlighted, heading := false, false
+	renderedBytes := 0
 	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
 		if next < len(targets) && strings.TrimSpace(ansi.Strip(line)) == targets[next] {
-			if next == focusIndex {
-				focusOffset = len(lines)
+			if fileIndex < len(fileTargets) && next == fileTargets[fileIndex] {
+				render.starts[fileIndex] = len(render.lines)
+				fileIndex++
 			}
+			if next == focusIndex {
+				render.focusOffset = len(render.lines)
+			}
+			highlighted, heading = highlights[next], true
 			next++
 			continue
 		}
-		lines = append(lines, line)
+		// Own only the two-column gutter and heading emphasis, leaving delta's
+		// syntax colors intact. Reserve the final terminal column against wrapping.
+		gutter := "  "
+		if highlighted {
+			gutter = "\x1b[36m▎\x1b[0m "
+			if heading {
+				line = "\x1b[1m" + line + "\x1b[22m"
+			}
+		}
+		heading = false
+		renderedBytes += len(gutter) + len(line) + 1
+		if renderedBytes > maxChangeReadBytes {
+			return liveDiffRender{}, errors.New("live diff rendering exceeds 64 MiB; use hchanges with a narrower range")
+		}
+		render.lines = append(render.lines, gutter+line)
 	}
 	if next != len(targets) {
-		return nil, 0, errors.New("delta omitted live diff hunk boundaries")
+		return liveDiffRender{}, errors.New("delta omitted live diff hunk boundaries")
 	}
-	return lines, focusOffset, nil
+	return render, nil
 }
 
 type liveDiffOutput struct{ strings.Builder }
@@ -545,10 +657,10 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 	defer ticker.Stop()
 	view := liveDiffView{scroll: make(map[string]int), following: true}
 	var previous map[string]changeIndex
-	var lines []string
-	var rendered liveDiffFile
+	var rendering liveDiffRender
+	var rendered []liveDiffFile
 	var renderedFocus liveDiffChunk
-	focusOffset := 0
+	renderedFocusFile := -1
 	lastWidth, lastHeight := 0, 0
 	dirty := true
 	refresh := true
@@ -585,39 +697,57 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			}
 			refresh = false
 		}
-		var active liveDiffFile
-		if len(view.files) > 0 {
-			active = view.visible[view.files[view.selected].key()]
+		files := make([]liveDiffFile, len(view.files))
+		focusFile := -1
+		for i, file := range view.files {
+			files[i] = view.visible[file.key()]
+			if slices.ContainsFunc(file.chunks, func(c liveDiffChunk) bool { return c.key == view.latest }) {
+				focusFile = i
+			}
 		}
-		focus := renderedFocus
-		if view.following {
-			focus = view.latestChunk()
-			focus.snapshotOrder = 0 // Snapshot numbering does not change a capture's geometry.
-		}
-		if !reflect.DeepEqual(rendered, active) || renderedFocus != focus || width != lastWidth {
-			lines, focusOffset, e = renderLiveDiff(ctx, active, delta, workspace, width, focus)
-			renderedFocus = focus
+		focus := view.latestChunk()
+		focus.snapshotOrder = 0 // Snapshot numbering does not change a capture's geometry.
+		if !reflect.DeepEqual(rendered, files) || renderedFocus != focus || renderedFocusFile != focusFile || width != lastWidth {
+			rendering, e = renderLiveDiff(ctx, files, delta, workspace, width, focusFile, focus)
 			if e != nil {
 				return e
 			}
-			rendered = liveDiffFile{id: active.id, path: active.path, chunks: slices.Clone(active.chunks)}
+			rendered, renderedFocus, renderedFocusFile = files, focus, focusFile
 			dirty = true
 		}
 		if height != lastHeight {
 			dirty = true
 		}
 		lastWidth, lastHeight = width, height
+		lines := rendering.lines
 		rows := height - 2
-		if view.following {
-			view.scroll[active.key()] = min(focusOffset, max(0, len(lines)-rows))
+		offset := 0
+		if len(view.files) > 0 {
+			start := rendering.starts[view.selected]
+			end := len(lines)
+			if view.selected+1 < len(view.files) {
+				end = rendering.starts[view.selected+1]
+			}
+			offset = start + min(view.scroll[view.files[view.selected].key()], max(0, end-start-1))
 		}
-		offset := min(view.scroll[active.key()], max(0, len(lines)-1))
-		view.scroll[active.key()] = offset
+		if view.following {
+			offset = min(rendering.focusOffset, max(0, len(lines)-rows))
+		}
+		view.scrollTo(rendering, offset)
+		var active liveDiffFile
+		if len(view.files) > 0 {
+			active = files[view.selected]
+		}
 		if dirty {
 			header := "Waiting for captured workspace edits..."
 			if len(view.files) > 0 {
 				label := liveDiffDisplayPath(workspace, active.path)
-				header = fmt.Sprintf("%d/%d  %s  | row %d/%d", view.selected+1, len(view.files), label, offset+1, len(lines))
+				end := len(lines)
+				if view.selected+1 < len(files) {
+					end = rendering.starts[view.selected+1]
+				}
+				start := rendering.starts[view.selected]
+				header = fmt.Sprintf("%d/%d  %s  | row %d/%d", view.selected+1, len(view.files), label, offset-start+1, end-start)
 				if len(active.chunks) == 0 {
 					header = fmt.Sprintf("%d/%d  %s  | No unreviewed changes", view.selected+1, len(view.files), label)
 				}
@@ -637,6 +767,9 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			mode := "FOLLOW"
 			if !view.following {
 				mode = "PAUSED"
+				if view.unseenUpdate {
+					mode += " · new changes available"
+				}
 			}
 			writeRow(height, mode+" · r resume · j/k scroll · n/p file · f/F flush · q quit")
 			if _, e := io.WriteString(stdout, screen.String()); e != nil {
@@ -697,17 +830,17 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 					view.selected = (view.selected + len(view.files) - 1) % len(view.files)
 				}
 			case 'j':
-				view.scroll[active.key()] = min(offset+1, max(0, len(lines)-1))
+				view.scrollTo(rendering, offset+1)
 			case 'k':
-				view.scroll[active.key()] = max(0, offset-1)
+				view.scrollTo(rendering, offset-1)
 			case ' ':
-				view.scroll[active.key()] = min(offset+rows, max(0, len(lines)-1))
+				view.scrollTo(rendering, offset+rows)
 			case 'b':
-				view.scroll[active.key()] = max(0, offset-rows)
+				view.scrollTo(rendering, offset-rows)
 			case 'g':
-				view.scroll[active.key()] = 0
+				view.scrollTo(rendering, 0)
 			case 'G':
-				view.scroll[active.key()] = max(0, len(lines)-rows)
+				view.scrollTo(rendering, max(0, len(lines)-rows))
 			}
 			dirty = true
 		}

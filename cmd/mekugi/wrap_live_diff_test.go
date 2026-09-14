@@ -87,8 +87,6 @@ func TestWrapLiveDiffTerminalAndRedirected(t *testing.T) {
 				"delta": "#!/bin/sh\nexit 0\n",
 				"herdr": `#!/bin/sh
 case "$2" in
-layout) printf '%s\n' '{"result":{"layout":{"panes":[{"pane_id":"caller","rect":{"width":200,"height":50}}]}}}' ;;
-current) printf '%s\n' '{"result":{"pane":{"pane_id":"caller"}}}' ;;
 split) printf '%s\n' '{"result":{"pane":{"pane_id":"new"}}}' ;;
 close) printf '%s\n' "$3" > "$MEKUGI_AUTO_WRAP_MARKER.closed" ;;
 run) printf '%s\n' "$@" > "$MEKUGI_AUTO_WRAP_MARKER" ;;

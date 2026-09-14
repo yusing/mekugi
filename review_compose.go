@@ -20,6 +20,7 @@ type ReviewComposition struct {
 	started               bool
 	beforePath, afterPath string
 	pathReviewed          bool
+	pathHighlighted       bool
 	regions               []reviewRegion
 	original, current     map[int]string
 }
@@ -28,6 +29,7 @@ type reviewRegion struct {
 	beforeStart, afterStart int
 	before, after           []string
 	reviewed                bool
+	highlighted             bool
 }
 
 type reviewHunk struct {
@@ -77,6 +79,14 @@ type reviewEdit struct {
 // reviewed is true when the user already flushed this attempt while it was
 // awaiting confirmation; a late receipt alone must not revive reviewed content.
 func (c *ReviewComposition) Apply(file ReviewFile, reviewed bool) error {
+	return c.ApplyWithHighlight(file, reviewed, false)
+}
+
+// ApplyWithHighlight also marks touched net regions for auxiliary display.
+// Highlights follow source regions through composition, not rendered line numbers.
+// Reviewed captures cannot introduce highlights; a full revert removes them.
+func (c *ReviewComposition) ApplyWithHighlight(file ReviewFile, reviewed, highlighted bool) error {
+	highlighted = highlighted && !reviewed
 	hunks, err := parseReviewHunks(file, true)
 	if err != nil {
 		return err
@@ -111,7 +121,7 @@ func (c *ReviewComposition) Apply(file ReviewFile, reviewed bool) error {
 	// Descending source order keeps all input coordinates on one baseline.
 	for i := len(hunks) - 1; i >= 0; i-- {
 		for j := len(hunks[i].edits) - 1; j >= 0; j-- {
-			if err := next.applyEdit(hunks[i].edits[j], reviewed); err != nil {
+			if err := next.applyEdit(hunks[i].edits[j], reviewed, highlighted); err != nil {
 				return err
 			}
 		}
@@ -122,6 +132,7 @@ func (c *ReviewComposition) Apply(file ReviewFile, reviewed bool) error {
 	}
 	if file.BeforePath != file.AfterPath {
 		next.pathReviewed = reviewed
+		next.pathHighlighted = highlighted
 	}
 	next.afterPath = file.AfterPath
 	*c = next
@@ -156,7 +167,7 @@ func reviewOverlaps(start, end int, region reviewRegion) bool {
 	return start < b && a < end
 }
 
-func (c *ReviewComposition) applyEdit(edit reviewEdit, reviewed bool) error {
+func (c *ReviewComposition) applyEdit(edit reviewEdit, reviewed, highlighted bool) error {
 	start, end := edit.start, edit.start+len(edit.before)
 	first, last := -1, -1
 	for i, region := range c.regions {
@@ -243,9 +254,10 @@ func (c *ReviewComposition) applyEdit(edit reviewEdit, reviewed bool) error {
 		if first >= 0 {
 			for _, region := range c.regions[first : last+1] {
 				visible = visible || !region.reviewed
+				highlighted = highlighted || region.highlighted
 			}
 		}
-		regions = append(regions, reviewRegion{beforeStart: originalStart, afterStart: left, before: original, after: after, reviewed: !visible})
+		regions = append(regions, reviewRegion{beforeStart: originalStart, afterStart: left, before: original, after: after, reviewed: !visible, highlighted: highlighted})
 	}
 	slices.SortFunc(regions, func(a, b reviewRegion) int {
 		if a.afterStart != b.afterStart {
@@ -320,6 +332,7 @@ func (c *ReviewComposition) normalize() {
 						len(region.before) > 0 && len(prior.before) > 0 &&
 							reviewOverlaps(region.beforeStart, region.beforeStart+len(region.before), oldSpan)) {
 						region.reviewed = false
+						region.highlighted = region.highlighted || prior.highlighted
 					}
 				}
 				normalized = append(normalized, region)
@@ -340,14 +353,33 @@ func (c *ReviewComposition) normalize() {
 func (c *ReviewComposition) Flush() {
 	for i := range c.regions {
 		c.regions[i].reviewed = true
+		c.regions[i].highlighted = false
 	}
 	c.pathReviewed = true
+	c.pathHighlighted = false
 }
 
 // Files returns only unreviewed original-to-latest regions. Matching captured
 // context is included when available; unknown source is never synthesized.
 func (c *ReviewComposition) Files() []ReviewFile {
 	var files []ReviewFile
+	for _, file := range c.FilesWithHighlights() {
+		files = append(files, file.ReviewFile)
+	}
+	return files
+}
+
+// ReviewHighlightedFile pairs a composed projection with process-local display
+// metadata. Highlights are not part of immutable captured ReviewFile records.
+type ReviewHighlightedFile struct {
+	ReviewFile
+	Highlighted bool
+}
+
+// FilesWithHighlights returns the same visible regions as Files, with highlights
+// introduced by ApplyWithHighlight. Path-only changes mark their header projection.
+func (c *ReviewComposition) FilesWithHighlights() []ReviewHighlightedFile {
+	var files []ReviewHighlightedFile
 	for _, region := range c.regions {
 		if region.reviewed {
 			continue
@@ -372,10 +404,16 @@ func (c *ReviewComposition) Files() []ReviewFile {
 			}
 			a, b = append(a, left), append(b, right)
 		}
-		files = append(files, renderReviewFile(ReviewFile{BeforePath: c.beforePath, AfterPath: c.afterPath}, a, b, oldStart, newStart))
+		files = append(files, ReviewHighlightedFile{
+			ReviewFile:  renderReviewFile(ReviewFile{BeforePath: c.beforePath, AfterPath: c.afterPath}, a, b, oldStart, newStart),
+			Highlighted: region.highlighted,
+		})
 	}
 	if len(files) == 0 && c.started && c.beforePath != c.afterPath && !c.pathReviewed {
-		files = append(files, renderReviewFile(ReviewFile{BeforePath: c.beforePath, AfterPath: c.afterPath}, nil, nil, 0, 0))
+		files = append(files, ReviewHighlightedFile{
+			ReviewFile:  renderReviewFile(ReviewFile{BeforePath: c.beforePath, AfterPath: c.afterPath}, nil, nil, 0, 0),
+			Highlighted: c.pathHighlighted,
+		})
 	}
 	return files
 }

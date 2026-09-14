@@ -43,6 +43,28 @@ func liveDiffTestDelta(t *testing.T) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
+// Delta does not honor Git's GIT_CONFIG_COUNT overrides. A private config and
+// launcher exercise the requested styles without changing the user's config.
+func liveDiffConfiguredDelta(t *testing.T, config string) string {
+	t.Helper()
+	t.Setenv("DELTA_FEATURES", "")
+	delta, err := exec.LookPath("delta")
+	if err != nil {
+		t.Skip("delta is not installed")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gitconfig")
+	if err := os.WriteFile(path, []byte("[delta]\n"+config), 0600); err != nil {
+		t.Fatal(err)
+	}
+	launcher := filepath.Join(dir, "delta")
+	script := "#!/bin/sh\nexec " + shellQuoteArgument(delta) + " --config " + shellQuoteArgument(path) + " \"$@\"\n"
+	if err := os.WriteFile(launcher, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	return launcher
+}
+
 func TestLiveDiffDeltaAndSafeText(t *testing.T) {
 	got := liveDiffSafe("\x1b]52;c;clipboard\a\x1b[2J\x1b[31mred\x1b[0m\t界\r\n", true)
 	if got != "\x1b[31mred\x1b[0m    界\n" {
@@ -230,16 +252,12 @@ func TestLiveDiffStoreRestartAndMissingEvidence(t *testing.T) {
 }
 
 func TestLiveDiffRealDelta(t *testing.T) {
-	delta, err := exec.LookPath("delta")
-	if err != nil {
-		t.Skip("delta is not installed")
-	}
 	styles := []string{"minus-style", "plus-style", "minus-emph-style", "plus-emph-style", "minus-non-emph-style", "plus-non-emph-style"}
-	t.Setenv("GIT_CONFIG_COUNT", strconv.Itoa(len(styles)))
-	for i, style := range styles {
-		t.Setenv("GIT_CONFIG_KEY_"+strconv.Itoa(i), "delta."+style)
-		t.Setenv("GIT_CONFIG_VALUE_"+strconv.Itoa(i), "syntax '#444444'")
+	var config strings.Builder
+	for _, style := range styles {
+		fmt.Fprintf(&config, "%s = %s\n", style, strconv.Quote("syntax '#444444'"))
 	}
+	delta := liveDiffConfiguredDelta(t, config.String())
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "x.go")
 	file := liveDiffFile{chunks: []liveDiffChunk{{
@@ -247,11 +265,11 @@ func TestLiveDiffRealDelta(t *testing.T) {
 		diff:   "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1 +1 @@\n-old\n+new\n",
 		review: mekugi.ReviewFile{BeforePath: path, AfterPath: path},
 	}}}
-	lines, _, err := renderLiveDiff(t.Context(), file, delta, workspace, 80, liveDiffChunk{})
+	render, err := renderLiveDiff(t.Context(), []liveDiffFile{file}, delta, workspace, 80, 0, liveDiffChunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := strings.Join(lines, "\n")
+	text := strings.Join(render.lines, "\n")
 	assertLiveDiffNoBackground(t, text)
 	if strings.Contains(text, workspace) || !strings.Contains(ansi.Strip(text), "x.go") {
 		t.Fatalf("delta did not render relative paths: %q", text)
@@ -262,10 +280,6 @@ func TestLiveDiffRealDelta(t *testing.T) {
 }
 
 func TestLiveDiffRenderFollowsLatestHunk(t *testing.T) {
-	delta, err := exec.LookPath("delta")
-	if err != nil {
-		t.Skip("delta is not installed")
-	}
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.txt")
 	header := "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n"
@@ -277,23 +291,21 @@ func TestLiveDiffRenderFollowsLatestHunk(t *testing.T) {
 	}}
 	for _, sideBySide := range []bool{false, true} {
 		t.Run(strconv.FormatBool(sideBySide), func(t *testing.T) {
-			t.Setenv("GIT_CONFIG_COUNT", "1")
-			t.Setenv("GIT_CONFIG_KEY_0", "delta.side-by-side")
-			t.Setenv("GIT_CONFIG_VALUE_0", strconv.FormatBool(sideBySide))
+			delta := liveDiffConfiguredDelta(t, "side-by-side = "+strconv.FormatBool(sideBySide))
 			for i, diff := range []string{top, bottom} {
 				focus := liveDiffChunk{review: mekugi.ReviewFile{Diff: diff}}
-				lines, offset, err := renderLiveDiff(t.Context(), file, delta, workspace, 80, focus)
+				render, err := renderLiveDiff(t.Context(), []liveDiffFile{file}, delta, workspace, 80, 0, focus)
 				if err != nil {
 					t.Fatal(err)
 				}
-				text := ansi.Strip(strings.Join(lines[offset:], "\n"))
+				text := ansi.Strip(strings.Join(render.lines[render.focusOffset:], "\n"))
 				if !strings.Contains(text, []string{"TOP", "BOTTOM"}[i]) {
-					t.Fatalf("focus missed changed hunk: offset=%d %q", offset, text)
+					t.Fatalf("focus missed changed hunk: offset=%d %q", render.focusOffset, text)
 				}
 				if i == 1 && strings.Contains(text, "TOP") {
 					t.Fatalf("bottom hunk focused the top: %q", text)
 				}
-				if strings.Contains(strings.Join(lines, "\n"), "mekugi-live-diff-") {
+				if strings.Contains(strings.Join(render.lines, "\n"), "mekugi-live-diff-") {
 					t.Fatal("renderer markers leaked into viewport")
 				}
 			}
@@ -392,7 +404,7 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 		}
 	}
 	waitFor("FOLLOW")
-	if _, err := terminal.Write([]byte("gjjj")); err != nil {
+	if _, err := terminal.Write([]byte("gnkjjj")); err != nil {
 		t.Fatal(err)
 	}
 	waitFor("second.go  | row 4/")
@@ -404,8 +416,8 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	liveDiffTestChange(t, store, workspace, "four", "third.go", true)
 	waitFor("2/3  second.go  | row 4/")
 	afterCalls, err := os.ReadFile(countFile)
-	if err != nil || string(afterCalls) != string(beforeCalls) {
-		t.Fatalf("paused unrelated update rerendered delta: before=%q after=%q err=%v", beforeCalls, afterCalls, err)
+	if err != nil || len(afterCalls) != len(beforeCalls)+1 {
+		t.Fatalf("all-file update did not render once: before=%q after=%q err=%v", beforeCalls, afterCalls, err)
 	}
 	if err := pty.Setsize(terminal, &pty.Winsize{Rows: 25, Cols: 100}); err != nil {
 		t.Fatal(err)
@@ -478,8 +490,6 @@ func TestLiveDiffHerdrMissingSplitIdentity(t *testing.T) {
 	probe := filepath.Join(dir, "herdr")
 	script := `#!/bin/sh
 case "$2" in
-layout) printf '%s\n' '{"result":{"layout":{"panes":[{"pane_id":"caller","rect":{"width":200,"height":50}}]}}}' ;;
-current) printf '%s\n' '{"result":{"pane":{"pane_id":"caller"}}}' ;;
 split) printf '%s\n' '{"result":{"pane":{}}}' ;;
 run) echo 'must not run in caller' > "$MEKUGI_LIVE_DIFF_RUN_MARKER"; exit 1 ;;
 esac

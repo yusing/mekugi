@@ -506,8 +506,8 @@ mounted at its original absolute path. See the [change record contract](doc/spec
 
 ### Live diff pane
 
-Interactive `mekugi codex` opens a sibling Herdr pane when `herdr` and `delta` are
-available. It follows the session's captured hpatch edits, including subagents,
+Interactive `mekugi codex` opens a sibling Herdr pane on the right when `herdr` and
+`delta` are available. It follows the session's captured hpatch edits, including subagents,
 and closes with Codex. Redirected input/output does not open a pane.
 
 For an independent workspace-wide viewer, run `mekugi live-diff --herdr`, or
@@ -515,7 +515,12 @@ For an independent workspace-wide viewer, run `mekugi live-diff --herdr`, or
 to select another workspace or store. Workspace paths display relatively; external
 paths stay absolute. Delta supplies styling; Mekugi owns navigation.
 
-The latest changed hunk is followed by default; manual navigation pauses following.
+All captured files appear in one scrollable view, so short multi-file edits stay visible
+together. The latest changed hunk is followed by default; manual navigation pauses following.
+A cyan gutter and `LATEST UPDATE` label mark the files and hunks touched by newly observed
+captures. Older diffs keep their normal styling. Marks persist until another update or a
+flush; startup history is not labeled as new. While paused, the footer reports new changes
+without moving your view.
 On-screen controls let you resume following or flush reviewed changes without deleting
 captures. Overlapping edits revive flushed changes.
 The viewer shows captured edits, not Git or shell changes. Unconfirmed and ambiguous
