@@ -2763,7 +2763,7 @@ func TestMekugiFailedRecoveryPreservesEvaluatedBaseline(t *testing.T) {
 	if _, err := transform.translate("call-1", base, nil); err != nil {
 		t.Fatal(err)
 	}
-	staleHandle := "C2:" + strings.Repeat("f", 64)
+	staleHandle := "C2:" + strings.Repeat("A", 43)
 	failed, err := transform.translateRecovery("call-2", staleHandle+" 2:bbbb\n", nil)
 	if err != nil {
 		t.Fatal(err)

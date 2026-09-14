@@ -374,7 +374,7 @@ unrelated prepared edits. Choose one payload form:
 Target-only example:
 
 ```text
-C3:bcde0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab "return oldResult, nil"
+C3:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8 "return oldResult, nil"
 ```
 
 Copy every current handle exactly and supply a different target for each in one payload.

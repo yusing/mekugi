@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	_ "embed"
-	"encoding/hex"
+	"encoding/base64"
 	"fmt"
 	"strconv"
 	"strings"
@@ -254,7 +254,10 @@ func resolveRecoveryCommand(
 		return nil, fmt.Errorf("invalid command handle %q", handle)
 	}
 	indexText, hash, ok := strings.Cut(handle[1:], ":")
-	if !ok || len(hash) != sha256.Size*2 || !recoveryLowerHex(hash) || !recoveryPositiveDecimal(indexText) {
+	if !ok || len(hash) != base64.RawURLEncoding.EncodedLen(sha256.Size) || !recoveryPositiveDecimal(indexText) {
+		return nil, fmt.Errorf("invalid command handle %q", handle)
+	}
+	if decoded, err := base64.RawURLEncoding.Strict().DecodeString(hash); err != nil || len(decoded) != sha256.Size {
 		return nil, fmt.Errorf("invalid command handle %q", handle)
 	}
 	index, err := strconv.Atoi(indexText)
@@ -347,15 +350,6 @@ func recoveryPositiveDecimal(value string) bool {
 	return true
 }
 
-func recoveryLowerHex(value string) bool {
-	for _, character := range value {
-		if !((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f')) {
-			return false
-		}
-	}
-	return true
-}
-
 func recoveryToken(value string) (string, string) {
 	value = strings.TrimLeft(value, " \t")
 	for index, character := range value {
@@ -368,7 +362,7 @@ func recoveryToken(value string) (string, string) {
 
 func recoveryHash(value string) string {
 	sum := sha256.Sum256([]byte(value))
-	return hex.EncodeToString(sum[:])
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 func recoveryTerminatorSuffix(value string) string {

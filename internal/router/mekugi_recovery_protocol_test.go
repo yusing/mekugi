@@ -1,7 +1,9 @@
 package router
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"testing"
@@ -48,7 +50,9 @@ func TestRecoveryCommandsRejectTruncatedDigestCollision(t *testing.T) {
 	// These different baselines collide under the former four-hex-digit binding.
 	old := recoveryCommands("in file255.txt\ntype 1:ffff \"new\"\n")
 	fresh := recoveryCommands("in file397.txt\ntype 1:ffff \"new\"\n")
-	if old[1].handle[:7] != fresh[1].handle[:7] {
+	oldDigest, oldErr := base64.RawURLEncoding.DecodeString(strings.SplitN(old[1].handle, ":", 2)[1])
+	freshDigest, freshErr := base64.RawURLEncoding.DecodeString(strings.SplitN(fresh[1].handle, ":", 2)[1])
+	if oldErr != nil || freshErr != nil || !bytes.Equal(oldDigest[:2], freshDigest[:2]) {
 		t.Fatal("fixture no longer exercises a short-digest collision")
 	}
 	if _, err := resolveRecoveryCommand(fresh, old[1].handle); err == nil {
@@ -56,6 +60,28 @@ func TestRecoveryCommandsRejectTruncatedDigestCollision(t *testing.T) {
 	}
 	if _, err := resolveRecoveryCommand(fresh, fresh[1].handle); err != nil {
 		t.Fatalf("current handle rejected: %v", err)
+	}
+}
+
+func TestRecoveryHandlesUseCanonicalFullDigestEncoding(t *testing.T) {
+	commands := recoveryCommands("in file.go\ntype 1:ffff \"new\"\n")
+	handle := commands[1].handle
+	if len(handle) != len("C2:")+43 {
+		t.Fatalf("handle length = %d: %s", len(handle), handle)
+	}
+	for _, invalid := range []string{
+		"C2:" + strings.Repeat("a", 64),
+		"C2:" + strings.Repeat("A", 42),
+		"C2:" + strings.Repeat("A", 42) + "B", // Nonzero unused bits.
+		"C2:" + strings.Repeat("+", 43),
+		handle + "=",
+	} {
+		if _, err := resolveRecoveryCommand(commands, invalid); err == nil || !strings.Contains(err.Error(), "invalid command handle") {
+			t.Fatalf("noncanonical handle %q: %v", invalid, err)
+		}
+	}
+	if _, err := resolveRecoveryCommand(commands, handle); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -269,7 +295,7 @@ func TestRecoveryGrammarContainsHandleAndOrdinaryTarget(t *testing.T) {
 	for _, want := range []string{
 		`start: _blank_line* (corrections | mutations) _blank_line*`,
 		`recovery: HANDLE SP target`,
-		`HANDLE: /C[1-9][0-9]*:[0-9a-f]{64}/`,
+		`HANDLE: /C[1-9][0-9]*:[A-Za-z0-9_-]{43}/`,
 	} {
 		if !strings.Contains(mekugiRecoveryGrammar, want) {
 			t.Fatalf("recovery grammar does not contain %q", want)

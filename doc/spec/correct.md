@@ -7,9 +7,10 @@ dedicated syntax. Edit-only recovery is unavailable from public root APIs and
 ordinary `functions.hpatch`; it is selected only by the dedicated tool, never by
 inspecting an ordinary hpatch payload.
 
-Each rejected-script command has a `C<number>:<hash>` handle with a full 64-digit
-lowercase SHA-256 binding to its complete attributable command frame and the entire
-retained baseline. Changing a preceding
+Each rejected-script command has a `C<number>:<hash>` handle with a full SHA-256
+binding encoded as 43 unpadded base64url characters. It binds the complete attributable
+command frame and the entire retained baseline. This changes only the encoding, not
+binding strength, storage, lifetime, or recovery actions. Changing a preceding
 path or another command invalidates old handles even if a mutation's bytes survive. The target-only shortcut has one form per line:
 `C<number>:<hash> TARGET`. `TARGET` uses
 the ordinary HPATCH/2 row, range, anchored-literal, or unanchored-literal target syntax and must

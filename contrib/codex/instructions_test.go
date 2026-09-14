@@ -276,7 +276,7 @@ func TestInstructionsAcquireAndReuseVerifiedTargets(t *testing.T) {
 		"unchanged saved rows remain valid even when edits shifted their line numbers",
 		"Copy complete `LINE:HASH` endpoints from the intended span",
 		`type "return oldResult, nil" "return newResult, nil"`,
-		`C3:bcde0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab "return oldResult, nil"`,
+		`C3:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8 "return oldResult, nil"`,
 		"exact known target text spans logical lines or includes a trailing LF",
 	} {
 		if !strings.Contains(InstructionsForModel("", true), required) {
