@@ -27,7 +27,7 @@ func TestLiveDiffRenderAllFiles(t *testing.T) {
 		}}})
 	}
 	for focusFile := range files {
-		render, err := renderLiveDiff(t.Context(), files, workspace, 90, focusFile, files[focusFile].chunks[0])
+		render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, files, workspace, 90, focusFile, files[focusFile].chunks[0])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,7 +60,7 @@ func TestLiveDiffFollowEmptyLatestFile(t *testing.T) {
 			review: mekugi.ReviewFile{AfterPath: first, Diff: diff}}}},
 		{path: second}, // The latest file was flushed or fully reverted.
 	}
-	render, err := renderLiveDiff(t.Context(), files, workspace, 90, 1, liveDiffChunk{})
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, files, workspace, 90, 1, liveDiffChunk{})
 	if err != nil {
 		t.Fatal(err)
 	}

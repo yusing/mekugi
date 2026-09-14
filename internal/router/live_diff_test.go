@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi"
@@ -52,7 +53,7 @@ func TestLiveDiffRelativeDisplayKeepsSourceAndCapture(t *testing.T) {
 	chunk := liveDiffChunk{
 		review: mekugi.ReviewFile{BeforePath: before, AfterPath: after, Diff: diff},
 	}
-	render, err := renderLiveDiff(t.Context(), []liveDiffFile{{path: after, chunks: []liveDiffChunk{chunk}}}, workspace, 240, 0, chunk)
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: after, chunks: []liveDiffChunk{chunk}}}, workspace, 240, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +200,7 @@ func TestLiveDiffNativeRenderer(t *testing.T) {
 		status: "hp_a1 applied",
 		review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1 +1 @@\n-old\n+new\n"},
 	}}}
-	render, err := renderLiveDiff(t.Context(), []liveDiffFile{file}, workspace, 80, 0, liveDiffChunk{})
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 80, 0, liveDiffChunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +226,7 @@ func TestLiveDiffRenderFollowsLatestHunk(t *testing.T) {
 	}}
 	for i, diff := range []string{top, bottom} {
 		focus := liveDiffChunk{review: mekugi.ReviewFile{Diff: diff}}
-		render, err := renderLiveDiff(t.Context(), []liveDiffFile{file}, workspace, 80, 0, focus)
+		render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 80, 0, focus)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -267,6 +268,7 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 		defer stop()
 		os.Exit(RunLiveDiff(ctx, []string{"--workspace", os.Getenv("MEKUGI_LIVE_DIFF_WORKSPACE"), "--replay-dir", os.Getenv("MEKUGI_LIVE_DIFF_REPLAY"), "--session-file", os.Getenv("MEKUGI_LIVE_DIFF_SESSION")}, os.Stdin, os.Stdout, os.Stderr))
 	}
+	t.Setenv("COLORFGBG", "")
 	t.Setenv("PATH", t.TempDir())
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
@@ -304,14 +306,14 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 			}
 		}
 	}()
-	waitFor := func(want string) string {
+	waitFor := func(want ...string) string {
 		t.Helper()
 		var output strings.Builder
 		for {
 			select {
 			case text, open := <-chunks:
 				output.WriteString(text)
-				if strings.Contains(output.String(), want) {
+				if !slices.ContainsFunc(want, func(part string) bool { return !strings.Contains(output.String(), part) }) {
 					return output.String()
 				}
 				if !open {
@@ -322,7 +324,32 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 			}
 		}
 	}
-	waitFor("FOLLOW")
+	initial := waitFor("FOLLOW")
+	if !strings.Contains(initial, "\x1b]11;?\x1b\\") {
+		t.Fatalf("viewer did not query the terminal background: %q", initial)
+	}
+	for _, reply := range []struct {
+		text  string
+		theme liveDiffTheme
+	}{
+		{"\x1b]11;rgb:ffff/ffff/ffff\x1b\\", liveDiffLightTheme},
+		{"\x1b]11;rgb:1111/1111/1111\a", liveDiffDarkTheme},
+	} {
+		// Exercise a reply fragmented at every byte, including ESC + ST.
+		for _, key := range []byte(reply.text) {
+			if _, err := terminal.Write([]byte{key}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		output := waitFor(reply.theme.foreground(chroma.GenericInserted), "FOLLOW")
+		assertLiveDiffNoBackground(t, output)
+	}
+	// Unrelated and malformed OSC payloads must not flush, navigate, or quit,
+	// even when they include escape-prefixed command keys or overflow the buffer.
+	if _, err := terminal.Write([]byte("\x1b]0;qFnp\a\x1b]11;rgb:ff/ff/\x1bF\a\x1b]11;rgb:ff/ff/\x1bq\a" +
+		"\x1b]0;" + strings.Repeat("F", 1024) + "\x1b\\")); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := terminal.Write([]byte("gnkjjj")); err != nil {
 		t.Fatal(err)
 	}
@@ -418,6 +445,15 @@ esac
 }
 
 func TestLiveDiffTerminalCancel(t *testing.T) {
+	testLiveDiffTerminalCancel(t, "")
+}
+
+func TestLiveDiffTerminalInterruptDuringOSC(t *testing.T) {
+	testLiveDiffTerminalCancel(t, "\x1b]11;rgb:ff/"+strings.Repeat("F", 1024)+"\x03")
+}
+
+func testLiveDiffTerminalCancel(t *testing.T, keys string) {
+	t.Helper()
 	workspace := t.TempDir()
 	store := &mekugiReplayStore{directory: t.TempDir()}
 	t.Setenv("PATH", t.TempDir())
@@ -455,7 +491,11 @@ func TestLiveDiffTerminalCancel(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("viewer did not start")
 	}
-	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+	if keys != "" {
+		if _, err := terminal.Write([]byte(keys)); err != nil {
+			t.Fatal(err)
+		}
+	} else if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		t.Fatal(err)
 	}
 	exit := make(chan error, 1)

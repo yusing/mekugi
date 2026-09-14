@@ -18,7 +18,7 @@ func TestLiveDiffNativeRows(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "file.txt",
 		"@@ -9,3 +9,3 @@\n context\n-old\n+new\n \n", true)
 	chunk.status = ""
-	render, err := renderLiveDiff(t.Context(), []liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{chunk}}}, "", 80, 0, chunk)
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{chunk}}}, "", 80, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestLiveDiffCompactCoordinates(t *testing.T) {
 				Diff: "--- file.txt\n+++ /dev/null\n@@ -1,20 +0,0 @@\n" + strings.Repeat("-content\n", 20)}
 		}
 		chunk := liveDiffChunk{review: review}
-		render, err := renderLiveDiff(t.Context(), []liveDiffFile{{path: path, chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk)
+		render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: path, chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -74,7 +74,7 @@ func TestLiveDiffFollowInsideCombinedHunk(t *testing.T) {
 	view := liveDiffView{following: true}
 	view.merge([]liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{initial, recent}}})
 	view.refreshVisible()
-	render, err := renderLiveDiff(t.Context(), []liveDiffFile{view.visible[view.files[0].key()]}, "", 90, 0, recent)
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{view.visible[view.files[0].key()]}, "", 90, 0, recent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestLiveDiffNativeFollowKeepsPreparedCaption(t *testing.T) {
 		key: "latest", status: "hp_a1 prepared (application unconfirmed)",
 		review: mekugi.ReviewFile{AfterPath: "file.txt", Diff: diff},
 	}
-	render, err := renderLiveDiff(t.Context(), []liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk)
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestLiveDiffNativeNoNewlineAndControls(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "unknown.extension",
 		"@@ -1 +1 @@\n-before\n\\ No newline at end of file\n+after\x1b]52;c;secret\a\x1b[2J\x1b[31m\t界 é 👩‍💻\n\\ No newline at end of file\n", true)
 	for _, width := range []int{1, 2, 3, 12, 36, 90} {
-		render, err := renderLiveDiff(t.Context(), []liveDiffFile{{path: "unknown.extension", chunks: []liveDiffChunk{chunk}}}, "", width, 0, chunk)
+		render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: "unknown.extension", chunks: []liveDiffChunk{chunk}}}, "", width, 0, chunk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -131,7 +131,7 @@ func TestLiveDiffNativeNoNewlineAndControls(t *testing.T) {
 
 func TestLiveDiffNativeSyntaxSidesAndMultiline(t *testing.T) {
 	review := mekugi.ReviewFile{BeforePath: "file.go", AfterPath: "file.go"}
-	before, after, err := liveDiffSyntax(t.Context(), review, []mekugi.ReviewRow{
+	before, after, err := liveDiffSyntax(t.Context(), liveDiffTerminalTheme, review, []mekugi.ReviewRow{
 		{Kind: '-', Text: "/* removed comment\n"},
 		{Kind: '-', Text: "still removed */\n"},
 		{Kind: '+', Text: "return \"new\"\n"},
@@ -152,7 +152,7 @@ func TestLiveDiffNativeSyntaxSidesAndMultiline(t *testing.T) {
 func TestLiveDiffNativeSyntaxFallback(t *testing.T) {
 	for _, source := range []string{"plain source\n\n", strings.Repeat("x", maxLiveDiffSyntaxBytes+1) + "\n"} {
 		for _, path := range []string{"unknown.extension", "file.go"} {
-			lines, err := liveDiffColorSource(t.Context(), path, source)
+			lines, err := liveDiffColorSource(t.Context(), liveDiffTerminalTheme, path, source)
 			if err != nil || ansi.Strip(strings.Join(lines, "\n"))+"\n" != source {
 				t.Fatalf("fallback lost source for %s: err=%v", path, err)
 			}
@@ -170,7 +170,7 @@ func TestLiveDiffNativeLexerPanicFallsBack(t *testing.T) {
 		})}}}
 	}))
 	const source = "complete source\n"
-	lines, err := liveDiffColorSource(t.Context(), "broken.fixture", source)
+	lines, err := liveDiffColorSource(t.Context(), liveDiffTerminalTheme, "broken.fixture", source)
 	if err != nil || strings.Join(lines, "\n")+"\n" != source {
 		t.Fatalf("lexer failure changed source: %q %v", lines, err)
 	}
@@ -179,7 +179,7 @@ func TestLiveDiffNativeLexerPanicFallsBack(t *testing.T) {
 func TestLiveDiffNativePartialSourceCorpus(t *testing.T) {
 	for _, path := range []string{"file.go", "file.py", "file.js", "file.ts", "file.json", "file.yaml", "file.rb", "file.rs", "file.html", "file.raku", "file.sh"} {
 		for _, source := range []string{"/* unterminated\n", "\"unfinished\n", "'''unfinished\n", "`unfinished\n", "<!--unfinished\n", "q:to/END/;\ntext\n", "{{[(\n", "\n\n"} {
-			lines, err := liveDiffColorSource(t.Context(), path, source)
+			lines, err := liveDiffColorSource(t.Context(), liveDiffTerminalTheme, path, source)
 			if err != nil || ansi.Strip(strings.Join(lines, "\n"))+"\n" != source {
 				t.Fatalf("%s: partial source changed: %q %v", path, lines, err)
 			}
@@ -190,19 +190,19 @@ func TestLiveDiffNativePartialSourceCorpus(t *testing.T) {
 func TestLiveDiffNativeErrors(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := renderLiveDiff(ctx, nil, "", 80, 0, liveDiffChunk{}); !errors.Is(err, context.Canceled) {
+	if _, err := renderLiveDiff(ctx, liveDiffTerminalTheme, nil, "", 80, 0, liveDiffChunk{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation: %v", err)
 	}
-	if _, err := liveDiffColorSource(ctx, "file.go", "var x = 1\n"); !errors.Is(err, context.Canceled) {
+	if _, err := liveDiffColorSource(ctx, liveDiffTerminalTheme, "file.go", "var x = 1\n"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("syntax cancellation: %v", err)
 	}
 	chunk := liveDiffHighlightChunk("edit", "file.go", "@@ -1 +1 @@\n+missing removal\n", true)
-	render, err := renderLiveDiff(t.Context(), []liveDiffFile{{path: "file.go", chunks: []liveDiffChunk{chunk}}}, "", 80, 0, liveDiffChunk{})
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: "file.go", chunks: []liveDiffChunk{chunk}}}, "", 80, 0, liveDiffChunk{})
 	if err == nil || len(render.lines) != 0 {
 		t.Fatalf("malformed capture returned a partial successful view: %+v %v", render, err)
 	}
 	chunk.review.Diff = strings.Repeat("x", maxChangeReadBytes+1)
-	if _, err := renderLiveDiff(t.Context(), []liveDiffFile{{chunks: []liveDiffChunk{chunk}}}, "", 80, 0, liveDiffChunk{}); err == nil {
+	if _, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{chunks: []liveDiffChunk{chunk}}}, "", 80, 0, liveDiffChunk{}); err == nil {
 		t.Fatal("unbounded source accepted")
 	}
 }
