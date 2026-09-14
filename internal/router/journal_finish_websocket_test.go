@@ -14,11 +14,20 @@ import (
 func TestJournalFinishWebSocketDoesNotContinueOrFinishLaterTurn(t *testing.T) {
 	t.Parallel()
 	for _, protocol := range []string{"native", "ctp2"} {
-		for _, snapshot := range []string{"empty", "absent", "complete", "snapshot-only"} {
+		for _, snapshot := range []string{"empty", "absent", "complete", "snapshot-only", "missing-workspace"} {
 			t.Run(protocol+"/"+snapshot, func(t *testing.T) {
+				omitWorkspace := snapshot == "missing-workspace"
+				if omitWorkspace {
+					snapshot = "complete"
+				}
 				ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 				defer cancel()
 				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				var storeErr error
+				proxy.replayStore, storeErr = openMekugiReplayStore(t.TempDir())
+				if storeErr != nil {
+					t.Fatal(storeErr)
+				}
 				proxy.customizedInstructions = true
 				proxy.compactModelProtocol = protocol == "ctp2"
 				var codec *ctp2Codec
@@ -50,6 +59,32 @@ func TestJournalFinishWebSocketDoesNotContinueOrFinishLaterTurn(t *testing.T) {
 							return
 						}
 						requests <- request
+						if i == 1 {
+							if jsonString(request, "previous_response_id") != "" {
+								t.Error("next turn retained the unanswered provider call")
+							}
+							var input []map[string]json.RawMessage
+							if err := json.Unmarshal(request["input"], &input); err != nil {
+								t.Error(err)
+								return
+							}
+							resultSeen := false
+							for _, item := range input {
+								if omitWorkspace {
+									if journalResultCallID(item) == "finished-call" && jsonString(item, "name") == journalToolName {
+										resultSeen = true
+									}
+									if isJournalCall(item) && jsonString(item, "call_id") == "finished-call" {
+										t.Error("replay borrowed a call from an unselected workspace")
+									}
+								} else if jsonString(item, "type") == "function_call_output" && jsonString(item, "call_id") == "finished-call" {
+									resultSeen = true
+								}
+							}
+							if !resultSeen {
+								t.Errorf("next turn omitted finish result: %s", request["input"])
+							}
+						}
 						if err := providerSocketWrite(ctx, upstream, socketEvent("response.created", id)); err != nil {
 							t.Error(err)
 							return
@@ -110,10 +145,16 @@ func TestJournalFinishWebSocketDoesNotContinueOrFinishLaterTurn(t *testing.T) {
 				if len(requests) != 1 {
 					t.Fatalf("finish made %d requests, want 1", len(requests))
 				}
-				socketWrite(t, ctx, conn, map[string]any{
+				next := map[string]any{
 					"type": "response.create", "previous_response_id": "finished",
 					"input": []any{map[string]any{"type": "message", "role": "user", "content": "List my journal."}},
-				})
+				}
+				if omitWorkspace {
+					// Codex enriches each new turn's workspace metadata asynchronously.
+					// The current envelope can override a populated handshake with no workspace.
+					next["client_metadata"] = map[string]string{codexTurnMetadataHeader: `{"request_kind":"turn"}`}
+				}
+				socketWrite(t, ctx, conn, next)
 				for _, event := range readTerminal("later-terminal") {
 					if wire := string(mustMarshalJSON(event)); strings.Contains(wire, "Journal flush") && strings.Contains(wire, "Done") {
 						t.Fatal("later turn repeated the completed journal flush")

@@ -76,6 +76,11 @@ Before adding journal results or notices to a streaming terminal with an absent 
 output snapshot, the router MUST preserve completed streamed items in the projected snapshot.
 Internal journal continuations MUST preserve client-dispatched calls and their paired
 results in subsequent WebSocket history, under both native and CTP/2 protocols.
+Visible named journal results MUST also invalidate the provider's cached input prefix when
+the current workspace has no matching replay record, including a new turn whose workspace
+metadata has not arrived yet. Replay sends those standalone results unchanged without
+`previous_response_id`; it does not borrow records or filesystem authority from another
+workspace. Matching records still restore the exact original call and paired result.
 
 Mekugi mode forces `tools.update_plan.enabled=false` and removes `update_plan` declarations from
 the request catalog, including nested additional-tool namespaces. Stock Planning/Tasks conflicts

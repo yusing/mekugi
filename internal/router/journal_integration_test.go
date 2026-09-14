@@ -315,6 +315,41 @@ func TestJournalNamedResultRestoresAndRebasesCachedInput(t *testing.T) {
 	}
 }
 
+func TestJournalNamedResultWithoutRecordRebasesUnchanged(t *testing.T) {
+	for _, cached := range []int{0, 1} {
+		t.Run(fmt.Sprint(cached), func(t *testing.T) {
+			result := journalClientResult(map[string]json.RawMessage{
+				"type": mustMarshalJSON("function_call_output"), "call_id": mustMarshalJSON("journal-call"),
+				"output": mustMarshalJSON(`{"ok":true,"finish_requested":true}`),
+			})
+			request := serverRequest(t, func(fields map[string]any) {
+				fields["previous_response_id"] = "finished"
+				fields["input"] = []any{result, map[string]any{"role": "user", "content": "Next task"}}
+			})
+			before := string(request.fields["input"])
+			request.cachedInput = cached
+			// No live or durable workspace record is available in this request.
+			if err := restoreJournalCalls(&request, nil); err != nil {
+				t.Fatal(err)
+			}
+			if string(request.fields["input"]) != before || request.cachedInput != 0 || !request.rebaseInput {
+				t.Fatal("standalone journal replay changed input or retained the provider cache")
+			}
+			wire, err := request.incrementalBody(mustMarshalJSON(request.fields))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(wire, &fields); err != nil {
+				t.Fatal(err)
+			}
+			if _, exists := fields["previous_response_id"]; exists || string(fields["input"]) != before {
+				t.Fatalf("provider did not receive standalone history: %s", wire)
+			}
+		})
+	}
+}
+
 func TestJournalCapacityDoesNotRejectUnrelatedRequest(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprint(stream), func(t *testing.T) {

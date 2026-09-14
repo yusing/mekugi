@@ -239,7 +239,14 @@ func restoreJournalCalls(request *parsedResponsesRequest, visible map[string]mek
 	}
 	var restored []map[string]json.RawMessage
 	changed := false
+	rebase := false
 	for _, item := range input {
+		// A named local result was never submitted to the provider. Even when
+		// this request has no matching workspace record, its cached parent can
+		// still contain the intercepted call. Replay the visible standalone
+		// result without that parent, rather than borrowing another workspace
+		// or leaving the provider's call unanswered.
+		rebase = rebase || journalResultCallID(item) != ""
 		callID := jsonString(item, "call_id")
 		if jsonString(item, "type") == "function_call" {
 			seen[callID] = true
@@ -268,6 +275,8 @@ func restoreJournalCalls(request *parsedResponsesRequest, visible map[string]mek
 	}
 	if changed {
 		request.setInput(mustMarshalJSON(restored))
+	}
+	if changed || rebase {
 		// Client and provider prefixes differ after restoring router-owned calls.
 		request.cachedInput = 0
 		request.rebaseInput = true
