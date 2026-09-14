@@ -364,7 +364,7 @@ func TestProviderAnswerDoesNotSubstituteForJournalFinish(t *testing.T) {
 				}
 				transform.ReleaseDelivery()
 				if !bytes.Contains(output, mustTestJSON(t, answer)) || bytes.Contains(output, []byte("Journal flush")) ||
-					bytes.Contains(output, []byte("Journal saved:")) || transform.journalTerminalReady() {
+					bytes.Contains(output, []byte("Journal result")) || transform.journalTerminalReady() {
 					t.Fatalf("provider answer became a journal finish: %s", output)
 				}
 				items, err := proxy.journals.list(t.Context(), proxy.replayStore, transform.directory, transform.shellThreadID)

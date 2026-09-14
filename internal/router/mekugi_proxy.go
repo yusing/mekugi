@@ -266,6 +266,7 @@ type mekugiResponseTransform struct {
 	journalQuietFile          os.FileInfo
 	journalLiveBytes          int
 	journalNewCount           int
+	journalChildResult        string
 	journalFlushedCount       int
 	journalDeliveryRelease    func()
 	journalQuestion           string // Request-local user text for answer-marked journal mutations.

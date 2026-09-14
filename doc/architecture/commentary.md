@@ -113,7 +113,8 @@ completed commentary; content eligibility, generated provenance, and delivery bo
 with their existing consumers.
 
 The terminal transformer places eligible usage after any main journal flush and before the child
-saved-summary. Child usage remains live activity; child journals flush only at main completion.
+completion result containing its current journal text without acknowledging revisions. Child usage
+remains live activity; child journals flush only at main completion.
 After successful delivery, child usage reports enter the activity collector in that order.
 Their usage-message IDs are source identities; they remain distinct notices with attributed,
 bounded root delivery and exact replay removal. Child costs never enter root usage totals.

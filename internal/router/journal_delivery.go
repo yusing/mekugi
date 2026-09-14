@@ -26,6 +26,14 @@ func journalItemText(item journalItem) string {
 	return "**Question:**\n\n" + item.Question + "\n\n**Answer:**\n\n" + item.Text
 }
 
+func writeJournalItem(text *strings.Builder, item journalItem) {
+	// Normalize only the rendering copy so every Markdown line stays in its item.
+	body := strings.ReplaceAll(journalItemText(item), "\r\n", "\n")
+	body = strings.ReplaceAll(body, "\r", "\n")
+	text.WriteString("\n- " + commentaryCode(item.ID) + "\n\n  " + strings.ReplaceAll(body, "\n", "\n  "))
+	text.WriteByte('\n')
+}
+
 func journalUpdateText(author, id, text string) string {
 	heading := "Journal update"
 	if author != "" {
@@ -112,6 +120,22 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 				t.journalNewCount++
 			}
 		}
+		var text strings.Builder
+		text.WriteString("Journal result")
+		if journal.Author != "" {
+			text.WriteString(" " + commentaryCode(journal.Author))
+		}
+		if len(journal.Items) == 0 {
+			text.WriteString("\nNo journal entries.")
+		}
+		for _, item := range journal.Items {
+			writeJournalItem(&text, item)
+		}
+		if text.Len() > maxJournalFlushBytes {
+			t.ReleaseDelivery()
+			return nil, errors.New("child journal result exceeds terminal capacity")
+		}
+		t.journalChildResult = text.String()
 	}
 	for _, item := range journal.Items {
 		if item.ReportNow && !item.Reported && len(journalUpdateText(journal.Author, item.ID, journalItemText(item))) <= maxCommentaryPublicationBytes-t.journalLiveBytes {
@@ -175,13 +199,7 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 					flushed++
 					continue
 				}
-				// Markdown treats CRLF and bare CR as line breaks too. Normalize only
-				// the rendering copy so every logical line remains inside this item.
-				body := strings.ReplaceAll(journalItemText(item), "\r\n", "\n")
-				body = strings.ReplaceAll(body, "\r", "\n")
-				text.WriteString("\n- " + commentaryCode(item.ID) + "\n\n  " + strings.ReplaceAll(body, "\n", "\n  "))
-
-				text.WriteByte('\n')
+				writeJournalItem(&text, item)
 				revisions[item.ID] = item.Updated
 			}
 			t.journalNewCount += len(revisions)
@@ -320,7 +338,7 @@ func (t *mekugiResponseTransform) journalTerminalMessages(response []byte) ([]ma
 	}
 	if t.subagentTurn {
 		id := commentaryMessageID("journal-summary\x00" + jsonResponseID(response))
-		message := assistantCommentaryMessage(id, fmt.Sprintf("Journal saved: %d pending, %d already flushed", t.journalNewCount, t.journalFlushedCount))
+		message := assistantCommentaryMessage(id, t.journalChildResult)
 		message["phase"] = mustMarshalJSON("final_answer")
 		retained := t.retainCommentary(message)
 		if len(retained) == 0 {

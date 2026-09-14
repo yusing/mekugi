@@ -65,7 +65,12 @@ descendants-first tree flush containing only unflushed revisions, including prev
 when empty, then emits token metrics. Only successful terminal delivery marks a revision flushed;
 edits clear both current-revision delivery flags. `list` exposes both flags. Finish ends the
 turn without a follow-up provider request or a separately generated final answer. A child finishes without flushing and emits
-`Journal saved: N pending, M already flushed` so collaboration result selection is nonempty.
+`Journal result` with its own current journal items,
+including already-flushed items, as the native completion result. The result preserves item
+IDs, author, questions, and Markdown using the terminal item renderer and capacity bound.
+An empty journal returns `No journal entries.` under the result heading. Completion does not include journal delivery counts. Result delivery does not mark items
+reported or flushed and does not include descendant journals. The parent receives the result
+text without a journal lookup or another child provider request.
 Live updates remain immediate. Descendant revisions are read from durable journals at main completion,
 including after router restart, and acknowledged only when main delivers them. Failed main delivery
 leaves unacknowledged revisions pending. Only proven, unambiguous ancestry in the selected workspace
@@ -145,11 +150,12 @@ provider events unchanged on overflow.
    flush-eligible again; deleting a previously shown ID with report_now emits a retraction.
 6. Successful explicit main finish calls show only unflushed revisions, descendants first then main,
    including live updates, then eligible token metrics. Child finish calls save without flushing and
-   retain a nonempty saved-summary. Finish makes no final-answer continuation request.
+   retain a nonempty completion result containing their current journal text. Finish makes no
+   final-answer continuation request.
    Provider messages remain unfiltered and do not trigger a flush; failures and interruptions do not terminal-flush.
 7. The native Codex spawn fixture proves that journal results survive client normalization
-   and that the parent receives the child's synthetic summary after one child provider request
-   containing finish and its last mutations, with no final-answer continuation.
+   and that the parent receives the child's journal text in the native completion result after one
+   child provider request containing finish and its last mutations, with no final-answer continuation.
 8. Debug evidence separates applied mutations, runtime wiring, live rendering, and
    terminal flushing without recording journal bodies or private publication credentials.
 9. Multiline Markdown stays within its terminal journal item. Answer items display the

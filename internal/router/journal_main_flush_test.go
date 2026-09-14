@@ -55,7 +55,7 @@ func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
 				}
 				child.ReleaseDelivery()
 				child.Close()
-				if bytes.Contains(wire, []byte("Journal flush")) || !bytes.Contains(wire, []byte("Journal saved: 1 pending")) {
+				if bytes.Contains(wire, []byte("Journal flush")) || !bytes.Contains(wire, []byte("Journal result")) || !bytes.Contains(wire, []byte("Result "+node.author)) {
 					t.Fatalf("premature or missing child completion: %s", wire)
 				}
 				items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, node.thread)
