@@ -203,6 +203,7 @@ func (d *debugOutput) instructions(body, wire []byte, headers http.Header, sessi
 		"thread_id":         codexThreadID(headers), "session_id": sessionID,
 		"scope": "projected_responses_request", "cached_input_items": cachedInput,
 		"wire_request_present": len(wire) != 0, "wire_input_items": len(wireInput),
+		"projected_input_bytes": len(fields["input"]), "wire_input_bytes": len(wireFields["input"]),
 		"wire_developer_messages": wireDevelopers, "wire_additional_tools": wireAdditional,
 		"wire_previous_response_id": wireFields["previous_response_id"],
 		"cache_rebased":             len(wire) != 0 && jsonString(fields, "previous_response_id") != "" && jsonString(wireFields, "previous_response_id") == "",

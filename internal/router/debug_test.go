@@ -168,6 +168,8 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 				WireDevelopers []json.RawMessage `json:"wire_developer_messages"`
 				WireAdditional []json.RawMessage `json:"wire_additional_tools"`
 				WireParent     string            `json:"wire_previous_response_id"`
+				ProjectedBytes int               `json:"projected_input_bytes"`
+				WireBytes      int               `json:"wire_input_bytes"`
 			}
 			if err := json.Unmarshal(lines[len(lines)-1], &record); err != nil {
 				t.Error(err)
@@ -175,6 +177,9 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 			}
 			if !sameJSONValue(record.Instructions, request["instructions"]) || len(record.Developers) == 0 || !sameJSONValue(mustMarshalJSON(record.Developers), mustMarshalJSON(firstDevelopers)) {
 				t.Errorf("dump lost exact final or inherited instructions: top-level equal=%v, dump developer count=%d, wire count=%d", sameJSONValue(record.Instructions, request["instructions"]), len(record.Developers), len(firstDevelopers))
+			}
+			if record.WireBytes != len(request["input"]) || record.ProjectedBytes < record.WireBytes || (id == "second" && record.ProjectedBytes == record.WireBytes) {
+				t.Errorf("incorrect projected/wire byte evidence: %d/%d", record.ProjectedBytes, record.WireBytes)
 			}
 			if id == "second" && record.Cached == 0 {
 				t.Error("dump lost cached-prefix provenance")

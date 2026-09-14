@@ -99,8 +99,8 @@ func TestWebSocketPrewarmInstructionDelivery(t *testing.T) {
 func TestInstructionCacheAutomaticSuccessorCannotSilentlyDropChanges(t *testing.T) {
 	exchange := &webSocketExchange{automatic: true, history: &webSocketHistory{}}
 	request := &parsedResponsesRequest{cachedInput: 1}
-	err := exchange.prepareInstructionCache(request, []byte(`{"input":[{"role":"developer","content":"changed"}]}`))
-	if err == nil || !strings.Contains(err.Error(), "cached instructions") {
+	err := exchange.reconcileProviderHistory(request, []byte(`{"input":[{"role":"developer","content":"changed"}]}`))
+	if err == nil || !strings.Contains(err.Error(), "cached provider history") {
 		t.Fatalf("automatic successor silently accepted a different prefix: %v", err)
 	}
 }

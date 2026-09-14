@@ -234,16 +234,27 @@ process-execution catalogs do not qualify. Requests advertising native or nested
 process-execution tools retain the existing Mekugi admission and rewriting checks.
 
 Request preparation and response restoration retain HPATCH tools, replay,
-CTP/2, and native carrier behavior. Incremental input must retain enough
-connection-local native history to resolve those transformations while sending
-only new transformed input upstream when inherited instruction-bearing items still match
-the provider's retained prefix. The transport fingerprints projected developer/system messages
-and `additional_tools` actually sent upstream. If their later projection changes, an explicit
-continuation sends the full projected history without `previous_response_id`; it does not
-discard rewritten instructions or declarations. This includes prewarm-to-turn and model-workflow
-transitions. Unchanged continuations retain incremental delivery. Accepted steering is not
-resent against the same parent. An automatic successor cannot silently adopt a changed
-instruction prefix: it fails rather than pretending an unsent rewrite took effect.
+CTP/2, and native carrier behavior. Connection-local native history supplies ordinary
+projection and durable replay. Separately, the transport fingerprints the complete
+provider input plus raw completed output, reconciling streamed items with terminal
+snapshots before any client-facing transformation. Only a successful or steered
+provider terminal confirms that fingerprint. These fixed-size fingerprints are not
+filesystem authority and are not restored as live connection state after restart.
+
+After all projections, one reconciler compares the desired provider input with that
+confirmed prefix. A matching prefix sends only the remaining items, including any
+missing router-owned result followed by new user input. Changed or shortened prefixes,
+or unavailable confirmation, cause explicit continuations to send full projected
+history without `previous_response_id`. This includes instruction changes,
+prewarm-to-turn and model-workflow transitions. No reconciliation reruns tools.
+Accepted steering is not resent against the same parent. An automatic successor
+fails if its prepared history differs from what has already been admitted; it cannot
+pretend an unsent rewrite or additional result took effect.
+Debug logs record `provider_history_reconciliation` with a fixed reason, reused item
+count, and reconciliation duration. Instruction dumps include `projected_input_bytes`
+and `wire_input_bytes`. These measure serialized input, not provider cache hits or billed
+tokens; provider-reported usage and existing request timing remain the evidence for
+cache effectiveness and latency. HTTP and Grok remain stateless full-history paths.
 Automatic successors inherit the parent
 request's translation context; explicit continuations use their own settings.
 Neither a dropped connection nor a failed send silently replays requests or

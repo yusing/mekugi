@@ -80,7 +80,9 @@ Visible named journal results MUST also invalidate the provider's cached input p
 the current workspace has no matching replay record, including a new turn whose workspace
 metadata has not arrived yet. Replay sends those standalone results unchanged without
 `previous_response_id`; it does not borrow records or filesystem authority from another
-workspace. Matching records still restore the exact original call and paired result.
+workspace. Matching records still restore the exact original call and paired result. A confirmed
+provider prefix ending with that call allows the WebSocket reconciler to send only
+the missing result and new input; restoration alone does not establish cache validity.
 
 Mekugi mode forces `tools.update_plan.enabled=false` and removes `update_plan` declarations from
 the request catalog, including nested additional-tool namespaces. Stock Planning/Tasks conflicts

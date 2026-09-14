@@ -675,9 +675,15 @@ func executeRequest(
 		forwardBody = nativeBody
 	}
 	if exchange, ok := provider.(*webSocketExchange); ok {
-		if err := exchange.prepareInstructionCache(&parsedRequest, forwardBody); err != nil {
+		started := time.Now()
+		if err := exchange.reconcileProviderHistory(&parsedRequest, forwardBody); err != nil {
 			return err
 		}
+		debug.event(map[string]any{
+			"event": "provider_history_reconciliation", "request_id": debugID,
+			"reason": exchange.reconciliationReason, "reused_input_items": parsedRequest.cachedInput,
+			"duration_us": time.Since(started).Microseconds(),
+		})
 	}
 	nativeWire, err := parsedRequest.incrementalBody(nativeBody)
 	if err != nil {

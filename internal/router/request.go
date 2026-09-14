@@ -18,7 +18,8 @@ type parsedResponsesRequest struct {
 	originalFields map[string]json.RawMessage
 	fields         map[string]json.RawMessage
 	streamResponse bool
-	// cachedInput is the number of native input items already held by this WebSocket's provider.
+	// cachedInput tracks the native boundary during preparation. The provider
+	// reconciler replaces it with the confirmed projected prefix before sending.
 	cachedInput int
 	rebaseInput bool
 	toolCatalog *responsesToolCatalog

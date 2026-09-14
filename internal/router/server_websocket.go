@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -156,8 +155,8 @@ func readResponsesWebSocket(ctx context.Context, conn *websocket.Conn, disconnec
 }
 
 // Histories share their immutable ancestors rather than retaining quadratic
-// copies of a growing conversation. Only native client-visible items are kept;
-// model-visible calls and CTP sources are rebuilt by the ordinary preparation.
+// copies of a growing conversation. Native client-visible items are kept for
+// preparation; a separate bounded fingerprint records confirmed provider history.
 type webSocketHistory struct {
 	parent   *webSocketHistory
 	input    []json.RawMessage
@@ -167,57 +166,7 @@ type webSocketHistory struct {
 	// even if the preceding terminal completed the Mentor schedule.
 	providerModel     string
 	providerReasoning json.RawMessage
-	// Fingerprint only instruction-bearing input actually sent upstream. Native
-	// history cannot establish whether its later projection matches that cache.
-	instructionDigest [sha256.Size]byte
-}
-
-func instructionInputDigest(input []json.RawMessage, digest [sha256.Size]byte) ([sha256.Size]byte, error) {
-	for _, raw := range input {
-		var item map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &item); err != nil {
-			return digest, err
-		}
-		role := jsonString(item, "role")
-		if role != "developer" && role != "system" && jsonString(item, "type") != "additional_tools" {
-			continue
-		}
-		// Normalize object order and whitespace without rounding JSON numbers.
-		decoder := json.NewDecoder(bytes.NewReader(raw))
-		decoder.UseNumber()
-		var value any
-		if err := decoder.Decode(&value); err != nil {
-			return digest, err
-		}
-		digest = sha256.Sum256(append(digest[:], mustMarshalJSON(value)...))
-	}
-	return digest, nil
-}
-
-func (e *webSocketExchange) prepareInstructionCache(request *parsedResponsesRequest, body []byte) error {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(body, &fields); err != nil {
-		return err
-	}
-	input, err := webSocketInput(fields["input"])
-	if err != nil || request.cachedInput > len(input) {
-		return errors.New("invalid WebSocket instruction cache boundary")
-	}
-	prefix, err := instructionInputDigest(input[:request.cachedInput], [sha256.Size]byte{})
-	if err != nil {
-		return err
-	}
-	if request.cachedInput != 0 && !isGrokModel(request.model()) && prefix != e.cachedInstructionDigest {
-		if e.automatic {
-			return errors.New("automatic WebSocket successor changed cached instructions")
-		}
-		// A cached prefix is immutable upstream. Send a new full-context request
-		// instead of silently dropping edits to the inherited instructions/tools.
-		request.cachedInput = 0
-		request.rebaseInput = true
-	}
-	e.history.instructionDigest, err = instructionInputDigest(input, [sha256.Size]byte{})
-	return err
+	providerHistory   providerHistory
 }
 
 func (h *webSocketHistory) items() []json.RawMessage {
@@ -552,13 +501,7 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 	}
 	history := &webSocketHistory{parent: parent, input: input, settings: settings}
 	exchange := &webSocketExchange{session: s, automatic: automatic, first: firstEvent, history: history, parentID: parentID}
-	if parent != nil {
-		exchange.cachedInstructionDigest = parent.instructionDigest
-	}
-	exchange.cachedInstructionDigest, err = instructionInputDigest(steering, exchange.cachedInstructionDigest)
-	if err != nil {
-		return err
-	}
+	exchange.steering = steering
 	captureCtx, clientObservation := capturer.BeginResponsesWebSocket(s.ctx, headers, command)
 	exchange.clientObservation = clientObservation
 	startCtx, executionCtx, cancel := requestContexts(captureCtx, s.ctx, s.timeout)
@@ -577,23 +520,34 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 }
 
 type webSocketExchange struct {
-	session                 *responsesWebSocket
-	ctx                     context.Context
-	automatic               bool
-	first                   []byte
-	history                 *webSocketHistory
-	parentID                string
-	clientObservation       *capturer.ResponsesWebSocket
-	observation             *capturer.WebSocketAttempt
-	buffer                  bytes.Buffer
-	ended                   bool
-	cachedInstructionDigest [sha256.Size]byte
+	session              *responsesWebSocket
+	ctx                  context.Context
+	automatic            bool
+	first                []byte
+	history              *webSocketHistory
+	parentID             string
+	clientObservation    *capturer.ResponsesWebSocket
+	observation          *capturer.WebSocketAttempt
+	buffer               bytes.Buffer
+	ended                bool
+	steering             []json.RawMessage
+	providerInput        providerHistory
+	providerBase         providerHistory
+	providerSuffix       []json.RawMessage
+	providerUsesParent   bool
+	providerOutput       []json.RawMessage
+	reconciliationReason string
 }
 
 func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Context, body []byte, headers http.Header, cacheKey string) (*http.Response, error) {
 	s := e.session
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(body, &fields); err != nil {
+		return nil, err
+	}
+	// Retain the actual submitted projection, not the native history. A later
+	// terminal event is required before it can authorize incremental reuse.
+	if err := e.beginProviderHistory(fields); err != nil {
 		return nil, err
 	}
 	previous := fields["previous_response_id"]
@@ -766,6 +720,9 @@ func (e *webSocketExchange) Read(buffer []byte) (int, error) {
 	var fields map[string]json.RawMessage
 	_ = json.Unmarshal(body, &fields)
 	kind := jsonString(fields, "type")
+	if err := e.observeProviderHistory(body); err != nil {
+		return 0, err
+	}
 	e.ended = responseevents.Kind(kind).EndsExchange()
 	e.buffer.WriteString("data: ")
 	for index, line := range bytes.Split(body, []byte("\n")) {

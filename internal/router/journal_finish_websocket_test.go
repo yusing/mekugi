@@ -60,13 +60,20 @@ func TestJournalFinishWebSocketDoesNotContinueOrFinishLaterTurn(t *testing.T) {
 						}
 						requests <- request
 						if i == 1 {
-							if jsonString(request, "previous_response_id") != "" {
-								t.Error("next turn retained the unanswered provider call")
+							wantParent := "finished"
+							if omitWorkspace {
+								wantParent = ""
+							}
+							if jsonString(request, "previous_response_id") != wantParent {
+								t.Errorf("next turn parent = %q, want %q", jsonString(request, "previous_response_id"), wantParent)
 							}
 							var input []map[string]json.RawMessage
 							if err := json.Unmarshal(request["input"], &input); err != nil {
 								t.Error(err)
 								return
+							}
+							if !omitWorkspace && (len(input) != 2 || jsonString(input[0], "call_id") != "finished-call" || jsonString(input[1], "role") != "user") {
+								t.Errorf("expected only missing journal result followed by user input: %s", request["input"])
 							}
 							resultSeen := false
 							for _, item := range input {

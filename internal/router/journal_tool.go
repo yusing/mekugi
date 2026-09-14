@@ -277,7 +277,9 @@ func restoreJournalCalls(request *parsedResponsesRequest, visible map[string]mek
 		request.setInput(mustMarshalJSON(restored))
 	}
 	if changed || rebase {
-		// Client and provider prefixes differ after restoring router-owned calls.
+		// The native boundary no longer describes provider history. This is the
+		// safe fallback for callers without confirmed transport evidence; the
+		// WebSocket reconciler independently compares the finished projection.
 		request.cachedInput = 0
 		request.rebaseInput = true
 	}
