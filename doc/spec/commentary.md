@@ -73,8 +73,7 @@ labels with full arguments. `update_plan` is absent from Mekugi-mode catalogs.
 Transparent Code Mode wrappers use the same display, including bound results,
 inline awaited calls, and `generatedImage(result)` for image generation.
 Static sequential calls and literal `Promise.all`/`Promise.allSettled` batches
-display every operation in source order, grouped unless the batch contains patches;
-patch files retain independently identified messages. Batches do not
+display nonsuppressed operations in source order as one grouped preview. Batches do not
 establish shell-session result metadata. Dynamic arguments, control flow, runtime
 name shadowing, unknown tools, or unrelated executable statements retain the
 complete JavaScript preview, never a partially simplified subset. Rendering never
@@ -97,19 +96,14 @@ full skill/reference operand. Optional read ranges remain visible for both forms
 Simple listing, search, and structural inspection commands use `List`, `Search`, and `Inspect`
 labels, retaining search flags and operands. Search and listing previews preserve shell wildcard
 patterns verbatim without expanding them; substitutions still retain the original `Run` source. Native web/file search, image viewing/generation,
-code execution, input sending, and editing calls use descriptive operation labels.
+code execution, and input sending use descriptive operation labels.
 Hcat and inspect_file previews validate literal option bounds, duplicates, and operand
 placement before classification; invalid forms retain their source-level `Run` display.
-A native `apply_patch` call unwraps its string or structured patch argument for display.
-A successfully translated `hpatch` or `hpatch_recover` call uses the already-retained translated
-patch for display. Framed patches show one commentary per file with an inline-code path and an operation
-heading: `Write` for additions, `Edit` for updates, `Delete` for removals, and `Move`
-for renames. Each nonempty body follows in a `diff` fence. Patch begin/end markers, file headers,
-and end-of-file metadata are omitted; moves retain both source and destination paths in the
-heading. Literal added, removed, and context lines remain intact. Unrecognized patch framing
-retains the original source-level diff display. Display never executes or retranslates an edit.
-Rejected, unavailable, and already-satisfied translations retain a truthful source-level
-fallback rather than claiming a patch was applied.
+Editing calls (`apply_patch`, `hpatch`, and `hpatch_recover`) do not generate operation
+commentary, including translated, rejected, and unavailable edits. Transparent Code Mode
+wrappers suppress only these edit previews and preserve other operations in the same cell.
+Host tool calls/results and captured review evidence remain unchanged; the live diff viewer
+owns the separate edit display.
 Valid explicit shell batches classify each program independently, in order, using
 that program's interpreter and directives. Batch headers and separator lines are
 transport framing, not displayed commands. Malformed batches retain the complete
@@ -131,14 +125,10 @@ redirections retain their source. Heredoc scripts retain a whole-source preview,
 standalone commentary commands, so bodies and delimiters are not lost at statement boundaries.
 Runtime progress delivery is unchanged. Dynamic commands are never labelled as simpler operations.
 Multiline source previews preserve line breaks and indentation in fenced code blocks, including
-language-tagged fences and literal backticks. Transformed displays retain every operation and its
+language-tagged fences and literal backticks. Transformed displays retain every nonsuppressed operation and its
 full detail without preview truncation. Unknown tools retain their qualified name and full input.
 Collaboration and user-messaging arguments remain opaque: only their tool identity is displayed.
 Calls without textual input show only the operation or tool name.
-Different files in one patch have independently identified commentary messages, in patch order,
-and are never grouped into one message. Their identities include the source call and file-section
-index, so repeated completed-call observations do not duplicate files, including repeated paths.
-Each file independently follows the existing delivery budget, deferral, and replay rules.
 Single-item root copies retain the inline agent prefix without an `In` heading or bullet wrapper.
 Consecutive matching actions from the same child collapse into one action heading, retaining
 every operand and source block in order. A single resulting action uses the inline agent prefix,

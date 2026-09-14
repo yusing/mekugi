@@ -2,7 +2,6 @@ package router
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -116,15 +115,8 @@ func TestSubagentTranslatedEditActivityJSONAndSSE(t *testing.T) {
 			if err := json.Unmarshal(visible, &response); err != nil {
 				t.Fatal(err)
 			}
-			found := false
-			for _, item := range response.Output {
-				text := strings.ReplaceAll(commentaryText(t, item), "\n  ", "\n")
-				if strings.Contains(text, "Write `created.txt`\n```diff\n+payload\n```") {
-					found = true
-				}
-			}
-			if !found {
-				t.Fatalf("translated edit activity missing: %s", visible)
+			if len(response.Output) != 1 || !strings.Contains(commentaryText(t, response.Output[0]), "Started.") {
+				t.Fatalf("edit generated commentary beyond the start notice: %s", visible)
 			}
 			if calls != 1 {
 				t.Fatalf("root delivery retranslated the edit: %d translations", calls)
@@ -133,77 +125,37 @@ func TestSubagentTranslatedEditActivityJSONAndSSE(t *testing.T) {
 	}
 }
 
-func TestSubagentPatchFilesHaveSeparateCommentaries(t *testing.T) {
-	patch := "*** Begin Patch\n*** Add File: new.txt\n+new\n" +
-		"*** Update File: existing.txt\n@@\n-old\n+updated\n" +
-		"*** Delete File: gone.txt\n" +
-		"*** Update File: before.txt\n*** Move to: after.txt\n@@\n text\n*** End Patch\n"
-	want := []string{
-		"Write `new.txt`\n```diff\n+new\n```",
-		"Edit `existing.txt`\n```diff\n@@\n-old\n+updated\n```",
-		"Delete `gone.txt`",
-		"Move `before.txt` → `after.txt`\n```diff\n@@\n text\n```",
-	}
-	for _, name := range []string{"apply_patch", "exec", "hpatch"} {
+func TestSubagentPatchCommentarySuppressedJSONAndSSE(t *testing.T) {
+	patch := "*** Begin Patch\n*** Add File: a\n+x\n*** Update File: b\n@@\n-old\n+new\n*** End Patch\n"
+	for _, name := range []string{"apply_patch", "exec"} {
 		for _, stream := range []bool{false, true} {
 			t.Run(name+map[bool]string{false: "/json", true: "/sse"}[stream], func(t *testing.T) {
-				translations := 0
-				proxy := newManagedMekugiProxy(t, mekugiTranslatorFunc(func(context.Context, string, string) ([]byte, error) {
-					translations++
-					return []byte(patch), nil
-				}))
+				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
 				root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
 				child, _ := prepareActivityTest(t, proxy, "child", "c", "r", "/root/worker", nil)
-				child.directory = t.TempDir()
 				input := patch
 				if name == "exec" {
 					input = "await tools.apply_patch(" + string(mustTestJSON(t, patch)) + ")"
-				} else if name == "hpatch" {
-					input = testMekugiScript
 				}
-				call := map[string]any{"type": "custom_tool_call", "name": name, "id": "multi", "call_id": "multi", "input": input}
+				call := map[string]any{"type": "custom_tool_call", "name": name, "id": "edit", "call_id": "edit", "input": input}
 				payload := mustTestJSON(t, map[string]any{"status": "completed", "output": []any{call}})
 				if stream {
-					if _, err := child.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": call})); err != nil {
-						t.Fatal(err)
+					event := mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": call})
+					events, err := child.TransformSSE(event)
+					if err != nil || len(events) != 1 || !bytes.Equal(events[0], event) {
+						t.Fatalf("edit execution changed: %s, %v", events, err)
 					}
-					if _, err := child.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.completed", "response": json.RawMessage(payload)})); err != nil {
-						t.Fatal(err)
-					}
-				} else if _, err := child.TransformJSON(payload); err != nil {
-					t.Fatal(err)
+				} else if output, err := child.TransformJSON(payload); err != nil || !bytes.Equal(output, payload) {
+					t.Fatalf("edit execution changed: %s, %v", output, err)
 				}
 				visible, err := root.TransformJSON([]byte(`{"status":"completed","output":[]}`))
 				if err != nil {
 					t.Fatal(err)
 				}
 				var response struct{ Output []map[string]json.RawMessage }
-				if err := json.Unmarshal(visible, &response); err != nil || len(response.Output) != len(want)+1 {
-					t.Fatalf("want start notice plus four separate file messages: %s, %v", visible, err)
-				}
-				ids := make(map[string]bool)
-				var replayInput []any
-				for index, message := range response.Output[1:] {
-					got := commentaryText(t, message)
-					expected := "[`/root/worker`] " + want[index]
-					if got != expected {
-						t.Fatalf("file %d: got %q, want %q", index, got, expected)
-					}
-					id := jsonString(message, "id")
-					if id == "" || ids[id] {
-						t.Fatalf("missing or duplicate file message ID: %q", id)
-					}
-					ids[id] = true
-					replayInput = append(replayInput, message)
-				}
-				_, replay := prepareActivityTest(t, proxy, "replay", "c", "r", "/root/worker", replayInput)
-				for id := range ids {
-					if bytes.Contains(replay.fields["input"], mustTestJSON(t, id)) {
-						t.Fatalf("file commentary leaked into replay: %s", replay.fields["input"])
-					}
-				}
-				if name == "hpatch" && translations != 1 || name != "hpatch" && translations != 0 {
-					t.Fatalf("unexpected translation count: %d", translations)
+				if err := json.Unmarshal(visible, &response); err != nil || len(response.Output) != 1 ||
+					!strings.Contains(commentaryText(t, response.Output[0]), "Started.") {
+					t.Fatalf("edit generated commentary: %s, %v", visible, err)
 				}
 			})
 		}

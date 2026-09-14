@@ -15,6 +15,7 @@ import (
 
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/router"
+	"golang.org/x/term"
 )
 
 func runWrap(routerArgs, args []string) int {
@@ -90,6 +91,9 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			index = len(args)
 		}
 		args = slices.Insert(slices.Clone(args), index, "-c", fmt.Sprintf("model_catalog_json=%q", catalogPath))
+	}
+	if session.EnableLiveDiff != nil && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
+		session.EnableLiveDiff()
 	}
 	// Announce once before Codex takes over the terminal, never during its UI.
 	fmt.Fprintf(os.Stderr, "mekugi dashboard: %s/\n", strings.TrimSuffix(session.BaseURL, "/v1"))

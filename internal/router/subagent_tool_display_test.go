@@ -9,11 +9,7 @@ import (
 
 // Most display tests compare one textual preview; delivery tests check message boundaries.
 func subagentToolActivityText(item map[string]json.RawMessage, name string) string {
-	return subagentToolActivityTextWithHistory(item, name, nil)
-}
-
-func subagentToolActivityTextWithHistory(item map[string]json.RawMessage, name string, history *mekugiHistory) string {
-	return strings.Join(subagentToolActivityTexts(item, name, history, nil), "\n\n")
+	return strings.Join(subagentToolActivityTexts(item, name, nil), "\n\n")
 }
 
 func TestSubagentToolDisplay(t *testing.T) {
@@ -69,7 +65,7 @@ func TestSubagentToolDisplay(t *testing.T) {
 		{"exec", `await tools.write_stdin({session_id: 9007199254740993, chars: ""})`, "Still Running · command unavailable"},
 		{"exec", `await tools.write_stdin({session_id: -9007199254740993, chars: ""})`, "Still Running · command unavailable"},
 		{"exec", `await tools.exec_command({cmd: 'cat a', login: false})`, "Read `a`"},
-		{"exec", `await tools.apply_patch("*** Begin Patch\n*** Add File: a\n+x\n*** End Patch\n")`, "Write `a`\n```diff\n+x\n```"},
+		{"exec", `await tools.apply_patch("*** Begin Patch\n*** Add File: a\n+x\n*** End Patch\n")`, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name+"/"+tt.input, func(t *testing.T) {
@@ -434,72 +430,34 @@ func TestClassifiedToolActivityShowsEveryOperation(t *testing.T) {
 	}
 }
 
-func TestSubagentEditDisplayUsesRetainedTranslation(t *testing.T) {
-	patch := "*** Begin Patch\n*** Update File: a\n@@\n-old\n+new\n*** End Patch\n"
-	want := "Edit `a`\n```diff\n@@\n-old\n+new\n```"
-	for _, name := range []string{"hpatch", "hpatch_recover"} {
-		item := map[string]json.RawMessage{
-			"name":    mustMarshalJSON(name),
-			"call_id": mustMarshalJSON("call-edit"),
-			"input":   mustMarshalJSON("source edit"),
-		}
-		history := &mekugiHistory{ToolName: name, Script: "source edit", Patch: patch}
-		if got := subagentToolActivityTextWithHistory(item, name, history); got != want {
-			t.Fatalf("%s translated display = %q, want %q", name, got, want)
-		}
-		history.TranslationError = "rejected"
-		if got := subagentToolActivityTextWithHistory(item, name, history); got != "Edit\n`source edit`" {
-			t.Fatalf("%s rejected display = %q", name, got)
-		}
-	}
-
-	for _, item := range []map[string]json.RawMessage{
-		{"name": mustMarshalJSON("apply_patch"), "input": mustMarshalJSON(patch)},
-		{"name": mustMarshalJSON("apply_patch"), "arguments": mustMarshalJSON(`{"patch":` + string(mustMarshalJSON(patch)) + `}`)},
-	} {
-		if got := subagentToolActivityText(item, "apply_patch"); got != want {
-			t.Fatalf("native apply_patch display = %q, want %q", got, want)
+func TestSubagentEditDisplaySuppressed(t *testing.T) {
+	for _, name := range []string{"apply_patch", "hpatch", "hpatch_recover"} {
+		for _, input := range []string{
+			"*** Begin Patch\n*** Update File: a\n@@\n-old\n+new\n*** End Patch\n",
+			"incomplete edit",
+			"",
+		} {
+			item := map[string]json.RawMessage{
+				"name": mustMarshalJSON(name), "input": mustMarshalJSON(input),
+			}
+			if got := subagentToolActivityText(item, name); got != "" {
+				t.Fatalf("%s generated edit commentary: %q", name, got)
+			}
+			item["arguments"] = mustMarshalJSON(`{"patch":` + string(mustMarshalJSON(input)) + `}`)
+			delete(item, "input")
+			if got := subagentToolActivityText(item, "functions."+name); got != "" {
+				t.Fatalf("structured %s generated edit commentary: %q", name, got)
+			}
 		}
 	}
 }
 
 func TestToolActivityNestedLanguageFencePreservesBlankLinesAndBackticks(t *testing.T) {
-	display := toolActivityDiff("Edit", "+before\n+``` literal\n\n+`after`")
-	if !strings.HasPrefix(display, "Edit\n````diff\n") {
-		t.Fatalf("diff fence did not avoid literal backticks: %q", display)
-	}
+	display := "Run\n" + toolActivityFenced("bash", "+before\n+``` literal\n\n+`after`")
 	nested := toolActivityNested(display)
-	want := "- Edit\n  ````diff\n  +before\n  +``` literal\n  \n  +`after`\n  ````"
+	want := "- Run\n  ````bash\n  +before\n  +``` literal\n  \n  +`after`\n  ````"
 	if nested != want {
 		t.Fatalf("nested language fence = %q, want %q", nested, want)
-	}
-}
-
-func TestSubagentEditDisplayFileSections(t *testing.T) {
-	patch := "*** Begin Patch\n*** Add File: a b.txt\n+*** Begin Patch\n+```\n+\n" +
-		"*** Update File: old.txt\n*** Move to: new.txt\n@@\n-old\n+new\n*** End of File\n" +
-		"*** Delete File: obsolete.txt\n*** End Patch\n"
-	want := "Write `a b.txt`\n````diff\n+*** Begin Patch\n+```\n+\n````\n\n" +
-		"Move `old.txt` → `new.txt`\n```diff\n@@\n-old\n+new\n```\n\nDelete `obsolete.txt`"
-	for _, source := range []string{patch, strings.ReplaceAll(patch, "\n", "\r\n")} {
-		item := map[string]json.RawMessage{"name": mustMarshalJSON("apply_patch"), "input": mustMarshalJSON(source)}
-		if got := subagentToolActivityText(item, "apply_patch"); got != want {
-			t.Fatalf("got %q, want %q", got, want)
-		}
-	}
-}
-
-func TestSubagentEditDisplayUnrecognizedPatch(t *testing.T) {
-	for _, patch := range []string{
-		"*** Begin Patch\n*** Update File: a\n+incomplete",
-		"*** Begin Patch\n*** Update File: \n+missing path\n*** End Patch",
-		"*** Begin Patch\nno file header\n*** End Patch",
-	} {
-		item := map[string]json.RawMessage{"name": mustMarshalJSON("apply_patch"), "input": mustMarshalJSON(patch)}
-		want := "Edit\n```diff\n" + patch + "\n```"
-		if got := subagentToolActivityText(item, "apply_patch"); got != want {
-			t.Fatalf("got %q, want %q", got, want)
-		}
 	}
 }
 
@@ -590,11 +548,11 @@ func TestSubagentStaticMultiCallDisplays(t *testing.T) {
 	}
 }
 
-func TestSubagentBatchPatchFilesStaySeparate(t *testing.T) {
+func TestSubagentBatchSuppressesOnlyPatchCommentary(t *testing.T) {
 	source := `text(await tools.apply_patch("*** Begin Patch\n*** Add File: a\n+x\n*** Add File: b\n+y\n*** End Patch\n")); text(await tools.clock__curr_time({}));`
 	item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
-	displays := subagentToolActivityTexts(item, "exec", nil, nil)
-	if len(displays) != 3 || displays[0] != "Write `a`\n```diff\n+x\n```" || displays[1] != "Write `b`\n```diff\n+y\n```" || displays[2] != "Read current time\n`{}`" {
+	displays := subagentToolActivityTexts(item, "exec", nil)
+	if len(displays) != 1 || displays[0] != "Read current time\n`{}`" {
 		t.Fatalf("patch file boundaries = %q", displays)
 	}
 }

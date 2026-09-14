@@ -58,43 +58,54 @@ func reviewFiles(changes []change) []ReviewFile {
 	for _, change := range changes {
 		file := ReviewFile{BeforePath: change.originalPath, AfterPath: change.path}
 		before, after := change.original, change.content
-		action := "update"
 		switch change.kind {
 		case changeAdd:
-			action, file.BeforePath, before = "add", "", ""
+			file.BeforePath, before = "", ""
 		case changeDelete:
-			action, file.AfterPath, after = "delete", "", ""
-		default:
-			if file.BeforePath != file.AfterPath {
-				action = "move"
-			}
+			file.AfterPath, after = "", ""
 		}
-		var diff strings.Builder
-		fmt.Fprintf(&diff, "%s %q -> %q\n", action, file.BeforePath, file.AfterPath)
-		a, b := reviewLines(before), reviewLines(after)
-		groups := difflib.NewMatcher(a, b).GetGroupedOpCodes(3)
-		if len(groups) != 0 {
-			fmt.Fprintf(&diff, "--- %s\n+++ %s\n", reviewPath(file.BeforePath), reviewPath(file.AfterPath))
-		}
-		for _, group := range groups {
-			first, last := group[0], group[len(group)-1]
-			fmt.Fprintf(&diff, "@@ -%s +%s @@\n", reviewRange(first.I1, last.I2), reviewRange(first.J1, last.J2))
-			for _, op := range group {
-				if op.Tag == 'e' {
-					writeReviewLines(&diff, ' ', a[op.I1:op.I2])
-				}
-				if op.Tag == 'r' || op.Tag == 'd' {
-					writeReviewLines(&diff, '-', a[op.I1:op.I2])
-				}
-				if op.Tag == 'r' || op.Tag == 'i' {
-					writeReviewLines(&diff, '+', b[op.J1:op.J2])
-				}
-			}
-		}
-		file.Diff = diff.String()
-		files = append(files, file)
+		files = append(files, renderReviewFile(file, reviewLines(before), reviewLines(after), 0, 0))
 	}
 	return files
+}
+
+// renderReviewFile also renders sparse composed regions, without pretending that
+// uncaptured source outside a region is known.
+func renderReviewFile(file ReviewFile, a, b []string, beforeOffset, afterOffset int) ReviewFile {
+	action := "update"
+	switch {
+	case file.BeforePath == "":
+		action = "add"
+	case file.AfterPath == "":
+		action = "delete"
+	case file.BeforePath != file.AfterPath:
+		action = "move"
+	}
+	var diff strings.Builder
+	fmt.Fprintf(&diff, "%s %q -> %q\n", action, file.BeforePath, file.AfterPath)
+	groups := difflib.NewMatcher(a, b).GetGroupedOpCodes(3)
+	if len(groups) != 0 {
+		fmt.Fprintf(&diff, "--- %s\n+++ %s\n", reviewPath(file.BeforePath), reviewPath(file.AfterPath))
+	}
+	for _, group := range groups {
+		first, last := group[0], group[len(group)-1]
+		fmt.Fprintf(&diff, "@@ -%s +%s @@\n",
+			reviewRange(beforeOffset+first.I1, beforeOffset+last.I2),
+			reviewRange(afterOffset+first.J1, afterOffset+last.J2))
+		for _, op := range group {
+			if op.Tag == 'e' {
+				writeReviewLines(&diff, ' ', a[op.I1:op.I2])
+			}
+			if op.Tag == 'r' || op.Tag == 'd' {
+				writeReviewLines(&diff, '-', a[op.I1:op.I2])
+			}
+			if op.Tag == 'r' || op.Tag == 'i' {
+				writeReviewLines(&diff, '+', b[op.J1:op.J2])
+			}
+		}
+	}
+	file.Diff = diff.String()
+	return file
 }
 
 func reviewPath(path string) string {

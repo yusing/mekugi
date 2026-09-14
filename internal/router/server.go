@@ -40,10 +40,12 @@ var errUpstreamResponseWithoutTerminal = errors.New("upstream Responses response
 
 // Session is available only after initialization and listener binding succeed.
 type Session struct {
-	BaseURL           string
-	JournalEnabled    bool
-	GrokEnabled       bool
-	AXReadOutput      string
+	BaseURL        string
+	JournalEnabled bool
+	GrokEnabled    bool
+	AXReadOutput   string
+	// EnableLiveDiff arms a best-effort pane on the first selected turn workspace.
+	EnableLiveDiff    func()
 	FrontendDirectory string
 }
 
@@ -231,6 +233,9 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		}
 		mekugiCalls = newMekugiProxy(translator, registry, customizedInstructions, compactTokens != nil, titles)
 		mekugiCalls.commentary.debug = debug
+		var stopLiveDiff func()
+		mekugiCalls.autoLiveDiff, stopLiveDiff = newAutoLiveDiff(ctx, replayDirectory)
+		defer stopLiveDiff()
 		mekugiCalls.replayStore = replayStore
 		defer func() {
 			runErr = errors.Join(runErr, mekugiCalls.Close())
@@ -277,6 +282,9 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}()
 	if ready != nil && ctx.Err() == nil {
 		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: *flags.grokEnabled, JournalEnabled: *flags.mode == "mekugi"}
+		if mekugiCalls != nil {
+			session.EnableLiveDiff = mekugiCalls.autoLiveDiff.enable
+		}
 		if debug != nil {
 			session.AXReadOutput = debug.paths[4]
 		}
@@ -681,6 +689,9 @@ func executeRequest(
 			// later ordinary turn, so keep it queued instead of emitting it.
 			notices.suppress()
 		}
+	}
+	if mekugiTransform != nil && metadataValid {
+		mekugiCalls.autoLiveDiff.observe(mekugiTransform.directory, mekugiTransform.threadID, metadata)
 	}
 	if mekugiTransform != nil {
 		mekugiTransform.featureTrace = trace

@@ -14,7 +14,7 @@ import (
 )
 
 // Presentation only: never evaluate code, expand paths, or alter the observed call.
-func subagentToolActivityTexts(item map[string]json.RawMessage, qualifiedName string, history *mekugiHistory, shellDisplay func(map[string]json.RawMessage, string) (string, bool)) []string {
+func subagentToolActivityTexts(item map[string]json.RawMessage, qualifiedName string, shellDisplay func(map[string]json.RawMessage, string) (string, bool)) []string {
 	name := jsonString(item, "name")
 	// Agent messages already have a dedicated commentary render.
 	if name == "send_message" && commentaryExcluded(jsonString(item, "namespace"), name) {
@@ -45,16 +45,12 @@ func subagentToolActivityTexts(item map[string]json.RawMessage, qualifiedName st
 		if calls, ok := toolActivityUnwrapExecCalls(input, false); ok {
 			var displays []string
 			for _, nested := range calls {
-				displays = append(displays, subagentToolActivityTexts(nested, qualifiedToolName(jsonString(nested, "namespace"), jsonString(nested, "name")), nil, shellDisplay)...)
+				displays = append(displays, subagentToolActivityTexts(nested, qualifiedToolName(jsonString(nested, "namespace"), jsonString(nested, "name")), shellDisplay)...)
 			}
-			// Keep patch files independently renderable under their existing delivery budget.
-			hasPatch := slices.ContainsFunc(calls, func(call map[string]json.RawMessage) bool {
-				return jsonString(call, "name") == "apply_patch"
-			})
-			if len(calls) > 1 && !hasPatch {
-				return []string{strings.Join(displays, "\n\n")}
+			if len(displays) == 0 {
+				return nil
 			}
-			return displays
+			return []string{strings.Join(displays, "\n\n")}
 		}
 	}
 	var arguments map[string]json.RawMessage
@@ -107,21 +103,10 @@ func subagentToolActivityTexts(item map[string]json.RawMessage, qualifiedName st
 		return []string{toolActivityDetail("View image", jsonString(arguments, "path"))}
 	case "write_stdin":
 		return []string{toolActivityWriteStdin(arguments)}
-	case "apply_patch":
-		patch := input
-		if arguments != nil {
-			if decoded := jsonString(arguments, "patch"); decoded != "" {
-				patch = decoded
-			} else if decoded := jsonString(arguments, "input"); decoded != "" {
-				patch = decoded
-			}
-		}
-		return toolActivityPatch(patch)
-	case "hpatch", "hpatch_recover":
-		if history != nil && history.TranslationError == "" && history.Patch != "" {
-			return toolActivityPatch(history.Patch)
-		}
-		return []string{toolActivityDetail("Edit", input)}
+	case "apply_patch", "hpatch", "hpatch_recover":
+		// Edit evidence belongs in host tool results and the live diff viewer,
+		// not a second generated commentary rendering.
+		return nil
 	}
 	switch jsonString(item, "type") {
 	case "web_search_call":
@@ -220,57 +205,6 @@ func toolActivityJavaScript(input string) string {
 		return "Run JavaScript"
 	}
 	return "Run JavaScript\n" + toolActivityFenced("javascript", input)
-}
-
-func toolActivityDiff(label, patch string) string {
-	if strings.TrimSpace(patch) == "" {
-		return label
-	}
-	return label + "\n" + toolActivityFenced("diff", patch)
-}
-
-func toolActivityPatch(patch string) []string {
-	lines := strings.Split(strings.TrimSpace(strings.ReplaceAll(patch, "\r\n", "\n")), "\n")
-	if len(lines) < 2 || lines[0] != "*** Begin Patch" || lines[len(lines)-1] != "*** End Patch" {
-		return []string{toolActivityDiff("Edit", patch)}
-	}
-	var displays, body []string
-	label := ""
-	flush := func() {
-		if label != "" {
-			displays = append(displays, toolActivityDiff(label, strings.Join(body, "\n")))
-		}
-		body = nil
-	}
-	for _, line := range lines[1 : len(lines)-1] {
-		kind, path, _ := strings.Cut(line, ": ")
-		switch kind {
-		case "*** Add File", "*** Update File", "*** Delete File":
-			if path == "" {
-				return []string{toolActivityDiff("Edit", patch)}
-			}
-			flush()
-			operation := map[string]string{"*** Add File": "Write", "*** Update File": "Edit", "*** Delete File": "Delete"}[kind]
-			label = operation + " " + commentaryCode(path)
-		case "*** Move to":
-			if label == "" || path == "" {
-				return []string{toolActivityDiff("Edit", patch)}
-			}
-			label = "Move " + strings.TrimPrefix(label, "Edit ") + " → " + commentaryCode(path)
-		case "*** End of File":
-			// Patch metadata, not a line in the edited file.
-		default:
-			if label == "" {
-				return []string{toolActivityDiff("Edit", patch)}
-			}
-			body = append(body, line)
-		}
-	}
-	flush()
-	if len(displays) == 0 {
-		return []string{"Edit"}
-	}
-	return displays
 }
 
 func toolActivityWriteStdin(arguments map[string]json.RawMessage) string {

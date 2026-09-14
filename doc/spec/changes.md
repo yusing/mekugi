@@ -137,3 +137,98 @@ Acceptance:
    Stale cursors, malformed ranges, unavailable records, and quota failures are explicit.
 7. Both shell interpreter modes execute the private reader; sole-command optimization never
    dispatches it through PATH. Model-visible tool schemas remain unchanged.
+
+## Live terminal view
+
+`mekugi live-diff [--workspace DIR] [--replay-dir DIR]` reads the durable change index
+and immutable review files without starting a router, writing the store, evaluating
+edits, or reconstructing changes from Git. Atomic index replacement provides a consistent
+membership/receipt snapshot. It refreshes once a second and keeps application status
+separate from translation success. Missing or inconsistent evidence fails explicitly.
+
+Interactive `mekugi codex` arms one automatic Herdr launch per router process when
+stdin/stdout are terminals and both Herdr and delta are available. The first
+successfully prepared ordinary non-subagent turn supplies the canonical workspace;
+wrapper cwd and argument parsing do not select it. Launch is asynchronous, bounded
+to five seconds, canceled with the router, and emits no terminal output. Failure
+does not affect Codex execution and is not retried automatically. A fresh router
+can open a new pane; unrelated existing viewers are neither replaced nor closed.
+The automatic pane is session-scoped: only durable thread streams observed on
+successfully prepared turns in this private router are included. This includes
+subagents and later thread/workspace switches, not unrelated sessions sharing
+the workspace. A new thread starts empty, while a resumed thread retains its own
+captured history. Absolute edit operands outside the selected workspace are included.
+
+The router publishes a private, atomic scope file containing workspace/thread
+membership and passes it to the viewer with `--session-file`. It is auxiliary
+display state, bounded to 1 MiB. Exhaustion disables the view rather than publishing
+a partial scope or retaining more memberships. It is not replay authority: durable indexes and records still supply
+the content and application receipts. Removing the file ends the viewer. On
+Codex exit or router cancellation, the router removes its scope and closes only
+the pane it created, with bounded cleanup. A manually launched viewer without a
+session file remains workspace-wide and independent of Codex's lifetime.
+
+The view groups workspace review projections by file identity, following captured moves
+and excluding retained shell scripts. The engine's review composition consumes applied
+captures in observed order, retains sparse original/current source regions, and renders
+original-to-latest hunks through the same review renderer. It never reads current files
+or invents missing context. Prepared attempts remain separately labeled and cannot alter
+the applied baseline. A late receipt alone does not revive a flushed attempt.
+
+`f` flushes the current file and `F` flushes all files: the viewer acknowledges existing
+capture IDs but never deletes or rewrites durable records. A subsequent edit overlapping
+a reviewed changed region revives its original-to-latest hunk; a full revert removes it.
+Unrelated reviewed regions stay hidden, including when intervening insertions/deletions
+shift their line numbers. Composition preserves exact line endings and newline markers.
+Acknowledgements are local to this viewer process.
+
+Each composed file is bounded to 1,048,576 captured source rows. Unknown source, identity
+gaps, inconsistent context, or capacity failure stops composition for that chain. The
+viewer then labels and displays the original attempts rather than claiming a verified
+net diff; a new attempt conservatively revives the file's captured history. Captures
+spanning workspace/thread streams always remain uncomposed because their records do not
+establish durable execution order. Refresh order is not execution evidence.
+
+The viewer follows new edits by default, selecting the latest newly observed file and
+scrolling to its latest changed hunk, even near the top of the file. Manual scrolling
+or file navigation pauses following and preserves each file's vertical offset, clamped
+when content becomes shorter. `r` resumes
+following, including edits received while paused. The footer shows FOLLOW or PAUSED.
+Navigation uses the keyboard controls shown there. Terminal resize clips colored Unicode text to the available columns. Only text and SGR styling
+reach the live viewport. Delta's invocation-local added/removed-line styles use the
+terminal's normal background, with syntax-colored text and bold emphasis. Displayed
+header paths are relative only for files inside the selected workspace; paths outside
+it remain absolute. Source hunk text and durable paths are unchanged.
+
+The viewer always invokes `delta` from `PATH`, with normal delta/Git styling
+configuration, nested paging disabled, and viewport width supplied by Mekugi.
+It does not select a renderer through `GIT_PAGER`, `PAGER`, or Git pager settings.
+It requires terminal input/output. When delta is unavailable, `--herdr` reports
+a skipped view and returns successfully without creating a pane; direct invocation
+reports the missing dependency.
+
+`--herdr` creates a sibling pane in the selected workspace without changing focus,
+chooses right/down from the caller's geometry, and starts the same executable there.
+It requires a Herdr-managed caller and uses returned pane identities, not focused-pane
+defaults. Closing the viewer restores terminal state but does not close the pane or
+affect the agent/router. An unsuccessful launch identifies the newly created pane.
+
+The viewer bounds source and rendered diff output independently to 64 MiB and fails on
+explicit removal of previously observed change IDs; restarting selects the remaining
+store. Its view state is process-local, while captured edits survive router restarts.
+
+Acceptance:
+1. Following selects new edits; manual navigation pauses it, so other-file edits and
+   application receipts do not steal selection or reset scrolling. `r` resumes following
+   the latest observed edit, including after updates while paused.
+2. Delta renders with its normal styling configuration, regardless of Git pager
+   selection. Missing delta skips Herdr pane creation without affecting the agent.
+3. A real terminal process renders updates, handles resize, accepts navigation and quit,
+   and exits without retaining terminal ownership.
+4. A fresh read-only store view sees durable edits and confirmation receipts; missing
+   records do not appear as an empty successful view.
+5. Flush hides reviewed hunks without deleting captures; an overlapping fix shows
+   original-to-latest content, a full revert disappears, and unrelated reviewed
+   regions remain hidden through line shifts and repeated-line alignment.
+6. Late confirmation of a flushed prepared attempt does not revive it by itself.
+   Discontinuous source chains are explicitly uncomposed rather than guessed.
