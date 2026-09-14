@@ -42,6 +42,7 @@ func executeShellTool(
 	workingDirectory string,
 	environment []string,
 	commentary shellCommentarySink,
+	streamStdout, streamStderr io.Writer,
 ) (toolplugin.ExecutionOutput, error) {
 	if commentary != nil {
 		defer func() {
@@ -91,6 +92,8 @@ func executeShellTool(
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	capture := newShellOutputCapture(cancel)
+	capture.stdout.destination = streamStdout
+	capture.stderr.destination = streamStderr
 	terminalShell := stdin != nil && term.IsTerminal(int(stdin.Fd()))
 	middleware := func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 		return func(handlerCtx context.Context, command []string) (runErr error) {
@@ -226,10 +229,13 @@ func executeShellTool(
 		return toolplugin.ExecutionOutput{Stderr: fmt.Sprintf("shell: %v\n", err), ExitCode: 1}, nil
 	}
 	runErr := runner.Run(runCtx, program)
+	stdout, stderr, overflow, writeErr := capture.result()
 	if ctx.Err() != nil {
 		return toolplugin.ExecutionOutput{}, ctx.Err()
 	}
-	stdout, stderr, overflow := capture.result()
+	if writeErr != nil {
+		return toolplugin.ExecutionOutput{}, writeErr
+	}
 	if overflow {
 		var stdoutValid, stderrValid bool
 		stdout, stdoutValid = trimIncompleteUTF8Tail(stdout)
@@ -339,12 +345,17 @@ type shellOutputCapture struct {
 	remaining int
 	overflow  bool
 	cancel    context.CancelFunc
+	writeErr  error
+	closed    bool
 }
 
 // shellOutputWriter is one output stream for the shell output capture.
 type shellOutputWriter struct {
-	capture *shellOutputCapture
-	buffer  bytes.Buffer
+	capture     *shellOutputCapture
+	buffer      bytes.Buffer
+	destination io.Writer
+	forwarded   int
+	invalid     bool
 }
 
 // newShellOutputCapture creates a bounded output capture for shell execution.
@@ -366,12 +377,36 @@ func (writer *shellOutputWriter) Write(value []byte) (int, error) {
 	capture := writer.capture
 	capture.mu.Lock()
 	defer capture.mu.Unlock()
-	if capture.overflow {
+	if capture.closed || capture.overflow {
 		return written, nil
 	}
 	accepted := min(len(value), capture.remaining)
 	_, _ = writer.buffer.Write(value[:accepted])
 	capture.remaining -= accepted
+	if writer.destination != nil && !writer.invalid && capture.writeErr == nil {
+		pending := writer.buffer.Bytes()[writer.forwarded:]
+		end := 0
+		for end < len(pending) && utf8.FullRune(pending[end:]) {
+			r, size := utf8.DecodeRune(pending[end:])
+			if r == utf8.RuneError && size == 1 {
+				writer.invalid = true
+				break
+			}
+			end += size
+		}
+		if end > 0 {
+			n, err := writer.destination.Write(pending[:end])
+			writer.forwarded += n
+			if err == nil && n != end {
+				err = io.ErrShortWrite
+			}
+			if err != nil {
+				capture.writeErr = fmt.Errorf("write shell output: %w", err)
+				capture.cancel()
+				return written, capture.writeErr
+			}
+		}
+	}
 	if accepted != len(value) {
 		capture.overflow = true
 		capture.cancel()
@@ -379,9 +414,10 @@ func (writer *shellOutputWriter) Write(value []byte) (int, error) {
 	return written, nil
 }
 
-// result returns the captured stdout, stderr, and overflow status.
-func (capture *shellOutputCapture) result() (stdout, stderr string, overflow bool) {
+// result closes forwarding and snapshots unforwarded output and failures.
+func (capture *shellOutputCapture) result() (stdout, stderr string, overflow bool, writeErr error) {
 	capture.mu.Lock()
 	defer capture.mu.Unlock()
-	return capture.stdout.buffer.String(), capture.stderr.buffer.String(), capture.overflow
+	capture.closed = true
+	return capture.stdout.buffer.String()[capture.stdout.forwarded:], capture.stderr.buffer.String()[capture.stderr.forwarded:], capture.overflow, capture.writeErr
 }

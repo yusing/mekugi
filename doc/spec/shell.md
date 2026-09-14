@@ -129,6 +129,14 @@ Cancellation and output limits apply to descendant processes through a bounded
 foreground-process and inherited-pipe shutdown, without starting another router
 worker or preventing direct commands and pipelines from using terminal input.
 
+Bash/POSIX workers forward bounded, valid UTF-8 stdout and stderr to Codex as it
+becomes available, including completed reads before later commands finish. Forwarded
+bytes are not repeated at completion. Redirections and pipelines keep their shell
+meaning; only output reaching the worker's outer streams is forwarded. Codex still
+owns yield timing, delivery, continuation, and cancellation. A later failure cannot
+retract an already delivered prefix; malformed UTF-8 and overflow still fail explicitly.
+Other interpreter plugins remain completion-buffered.
+
 The shell-owned command `hrun [-n N] [--max-tokens N] [--tail] -- COMMAND [ARG...]`
 executes one external command with selected displayed output. At least one limit is required.
 Token budgets are canonical positive decimal integers from 1 through 15,500; line counts

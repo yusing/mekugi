@@ -1,8 +1,13 @@
 package router
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,6 +71,7 @@ func runShellWorkerTest(
 		workingDirectory,
 		environment,
 		discoverShellCommentary(registry.shellRuntime),
+		nil, nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -436,6 +442,7 @@ func TestShellRunnerBoundsAndValidatesOutput(t *testing.T) {
 		invocation.directory,
 		invocation.environment,
 		nil,
+		nil, nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -461,6 +468,7 @@ func TestShellRunnerBoundsAndValidatesOutput(t *testing.T) {
 		invocation.directory,
 		invocation.environment,
 		nil,
+		nil, nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -474,4 +482,144 @@ func TestShellRunnerBoundsAndValidatesOutput(t *testing.T) {
 			execution.Stderr,
 		)
 	}
+}
+
+func TestShellWorkerStreamsReadBeforeLaterCommand(t *testing.T) {
+	registry := sharedProxyTestRegistry(t)
+	wrapper := registry.shellRuntime
+	for _, interpreter := range []string{"bash", "sh"} {
+		t.Run(interpreter, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "read.txt")
+			if err := os.WriteFile(file, []byte("early read\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			input, release, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer input.Close()
+			defer release.Close()
+			reader, writer := io.Pipe()
+			defer reader.Close()
+			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+			defer cancel()
+			var stderr bytes.Buffer
+			done := make(chan int, 1)
+			go func() {
+				handled, status := RunToolPluginWorker(ctx, wrapper, []string{interpreter,
+					fmt.Sprintf("hcat %q\nread release\nprintf 'later\\n'\nprintf 'failure\\n' >&2\nexit 7", file)},
+					input, writer, &stderr)
+				if !handled {
+					status = -1
+				}
+				writer.Close()
+				done <- status
+			}()
+			// The later command cannot finish until the caller sees the read.
+			buffered := bufio.NewReader(reader)
+			first, err := buffered.ReadString('\n')
+			if err != nil || !strings.Contains(first, "early read") {
+				t.Fatalf("early output = %q, %v", first, err)
+			}
+			if _, err := release.WriteString("continue\n"); err != nil {
+				t.Fatal(err)
+			}
+			rest, err := io.ReadAll(buffered)
+			status := <-done
+			if err != nil || status != 7 || string(rest) != "later\n" || stderr.String() != "failure\n" {
+				t.Fatalf("completion: %q, %q, %d, %v", rest, stderr.String(), status, err)
+			}
+		})
+	}
+}
+
+func TestShellOutputStreamingBoundaries(t *testing.T) {
+	var output bytes.Buffer
+	canceled := false
+	capture := newShellOutputCapture(func() { canceled = true })
+	capture.stdout.destination = &output
+	for _, part := range []string{"first", "\xf0\x9f", "\x98\x80", "\xffbad"} {
+		if _, err := capture.stdout.Write([]byte(part)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stdout, _, overflow, _ := capture.result()
+	if output.String() != "first😀" || stdout != "\xffbad" || overflow || canceled {
+		t.Fatalf("stream = %q, remaining = %q, overflow %t, canceled %t", output.String(), stdout, overflow, canceled)
+	}
+
+	// Background writes after the terminal snapshot must not escape into a
+	// completed host result, even when they arrive concurrently.
+	before := output.String()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = capture.stdout.Write([]byte("late"))
+	}()
+	<-done
+	if output.String() != before {
+		t.Fatal("output forwarded after terminal snapshot")
+	}
+	capture = newShellOutputCapture(func() { canceled = true })
+	capture.stdout.destination = &output
+	capture.remaining = 3
+	_, _ = capture.stdout.Write([]byte("abcd"))
+	stdout, _, overflow, _ = capture.result()
+	if stdout != "" || !overflow || !canceled || !strings.HasSuffix(output.String(), "abc") {
+		t.Fatal("streaming bypassed the output budget")
+	}
+
+	canceled = false
+	capture = newShellOutputCapture(func() { canceled = true })
+	capture.stdout.destination = shellFailingOutputWriter{}
+	_, err := capture.stdout.Write([]byte("read"))
+	if !errors.Is(err, io.ErrClosedPipe) || !canceled || !errors.Is(capture.writeErr, io.ErrClosedPipe) {
+		t.Fatalf("write failure = %v, canceled %t", err, canceled)
+	}
+}
+
+type shellFailingOutputWriter struct{}
+
+func (shellFailingOutputWriter) Write([]byte) (int, error) {
+	return 0, io.ErrClosedPipe
+}
+
+func TestShellOutputFinalizationWaitsForActiveWrite(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	capture := newShellOutputCapture(func() {})
+	capture.stderr.destination = shellBlockedOutputWriter{entered, release}
+	written := make(chan error, 1)
+	go func() {
+		_, err := capture.stderr.Write([]byte("failure"))
+		written <- err
+	}()
+	<-entered
+	finalized := make(chan error, 1)
+	go func() {
+		_, _, _, err := capture.result()
+		finalized <- err
+	}()
+	close(release)
+	if err := <-written; !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatalf("write error = %v", err)
+	}
+	if err := <-finalized; !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatalf("terminal error = %v", err)
+	}
+	// A post-close write must not call the destination again (it would panic
+	// closing entered twice), or change the captured terminal error.
+	if n, err := capture.stderr.Write([]byte("late")); n != 4 || err != nil {
+		t.Fatalf("post-close write = %d, %v", n, err)
+	}
+}
+
+type shellBlockedOutputWriter struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (writer shellBlockedOutputWriter) Write([]byte) (int, error) {
+	close(writer.entered)
+	<-writer.release
+	return 0, io.ErrClosedPipe
 }
