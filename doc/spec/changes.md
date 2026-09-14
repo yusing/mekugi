@@ -29,13 +29,17 @@ Durable review evidence survives expiration of the temporary continuation handle
 The shell-private command is:
 
 ```text
-hchanges read ID[..ID] ... [--summary|--history] [--path PATH] [--workspace DIR] [--max-tokens N] [--cursor HASH:BYTE]
+hchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [--cursor HASH:BYTE] [-- PATH ...]
 ```
 
-Flags may precede, follow, or be interleaved with IDs. Duplicate flags reject.
+Explicit change IDs or ranges are required. Flags may precede, follow, or be
+interleaved with IDs before `--`; duplicate flags reject. Every argument after `--`
+is a literal path, including names that look like flags or change IDs. Omitting
+`--`, or supplying it with no paths, selects all files in the requested changes.
+There is no `read` subcommand or `--path` option.
 
 It has no standalone model-visible tool schema or installed executable. It runs inside
-the Bash/POSIX shell worker, including when it is the sole shell command. `read` performs
+the Bash/POSIX shell worker, including when it is the sole shell command. It performs
 no evaluation or workspace mutation. The authenticated worker manifest pins the router's
 durable store directory, rather than accepting a child environment override.
 
@@ -61,11 +65,13 @@ Rejected attempts do not carry proposed changes as applied diffs.
 per evaluated file. An unchanged path appears once per entry. Repeated evaluations remain
 separate, not a synthetic net diff or a current workspace status.
 `--history` additionally returns original inputs, recovery amendments, rebuilt scripts
-when different, and full diagnostics. `--path` matches either recorded before or after
+when different, and full diagnostics. Each path after `--` matches either recorded before or after
 path, accepting equivalent lexical absolute and workspace-relative spellings for workspace
 files. It does not consult current filesystem contents or resolve file symlinks. Retained
 shell-script paths match exactly. Filtering affects diff/file entries, not attempt history.
-A selection with no matching files explicitly says so.
+Multiple paths select the union of matching files in recorded order.
+A file matching multiple filters is emitted once per evaluation, not once per filter.
+A selection with no matching files explicitly lists the requested filters.
 
 Review diffs are captured by the engine from immutable original content and final
 formatted content before external effects. They include additions, deleted contents,

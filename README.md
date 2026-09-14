@@ -347,7 +347,7 @@ The result shows completed, failed, and unstarted segments. Execution stops on
 failure without rolling back earlier effects. Checkpoints preserve progress and
 known native session handles even when a Code Mode cell is terminated.
 The result's `change_id` groups workspace edit diffs and resumed repairs for
-`hchanges read ID`. Shell effects are not included in those diffs.
+`hchanges ID`. Shell effects are not included in those diffs.
 
 Mixed execution opens one argument-free `shell` control channel. Actual shell commands
 keep their normal display; private checkpoint and translation data travel through stdin,
@@ -476,9 +476,9 @@ Hpatch keeps durable review records in the router's replay store. An agent can h
 `hp_a1..hp_a3`, then another agent can retrieve just those edits:
 
 ```sh
-hchanges read hp_a1..hp_a3
-hchanges read hp_a1..hp_a3 --summary
-hchanges read hp_a2 --history
+hchanges hp_a1..hp_a3
+hchanges hp_a1..hp_a3 --summary
+hchanges hp_a2 --history
 ```
 
 Ranges are inclusive and stay within one agent's stream. Recovery keeps the original ID.
@@ -497,10 +497,10 @@ a record of shell edits or other workspace changes. Prepared diffs are marked un
 until execution is confirmed; the host's newline handling can still affect applied bytes.
 
 Reads default to 4,000 output tokens. Use `--max-tokens N` to change that limit,
-`--path PATH` to select a recorded path (absolute or relative to the selected workspace),
-or `--workspace DIR` when reading from a subdirectory. Flags work before or after IDs.
+`-- PATH ...` to select recorded paths (absolute or relative to the selected workspace),
+or `--workspace DIR` when reading from a subdirectory. Flags work before or after IDs, but before `--`.
 A path with no matches is reported explicitly. Incomplete reads return a continuation cursor on stderr and a nonzero
-status. Repeat the same command with `--cursor VALUE` to continue. Missing records or
+status. Repeat the same command with `--cursor VALUE` before `--` to continue. Missing records or
 a changed snapshot fail explicitly. Isolated executors need the router's replay directory
 mounted at its original absolute path. See the [change record contract](doc/spec/changes.md).
 

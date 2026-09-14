@@ -438,15 +438,14 @@ Invalid corrections leave the workspace and retained baseline unchanged.
 ## Change handoffs
 
 Hpatch results include `change hp_a1`; recovery keeps that ID. Review captured hpatch
-edits with `hchanges read hp_a1..hp_a3`, rather than Git diff. Hand off IDs or inclusive
+edits with `hchanges hp_a1..hp_a3`, rather than Git diff. Hand off IDs or inclusive
 same-agent ranges instead of copying diffs. Use `--summary` only when you need an
 operation/path and added/removed line-count overview, not before an already-needed
 diff read; use `--history` to diagnose the full recovery chain.
 Git status and Git diff remain useful for untracked, shell-generated, or unrelated
 workspace changes; do not routinely pair them with hchanges for the same captured edits.
 
-Reads default to 4,000 tokens. Flags may appear before or after IDs.
-Optional `--max-tokens N`, `--path PATH`, and `--workspace DIR` narrow a read.
+Reads default to 4,000 tokens. Matching files appear once per evaluation.
 Workspace file paths accept recorded, workspace-relative, or absolute spellings.
 An incomplete read supplies `--cursor HASH:BYTE`; repeat the same selection with that
 cursor to continue. These are historical evaluated diffs, not current editable row

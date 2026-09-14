@@ -17,12 +17,12 @@ import (
 	"mvdan.cc/sh/v3/interp"
 )
 
-const changesReadUsage = "hchanges read ID[..ID] ... [--summary|--history] [--path PATH] [--workspace DIR] [--max-tokens N] [--cursor HASH:BYTE] (flags may appear anywhere)"
+const changesReadUsage = "hchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [--cursor HASH:BYTE] [-- PATH ...]"
 const maxChangeReadBytes = 64 << 20
 
 type changeReadOptions struct {
 	view      string
-	path      string
+	paths     []string
 	workspace string
 	cursor    string
 	maxTokens int
@@ -31,15 +31,20 @@ type changeReadOptions struct {
 
 func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) {
 	options := changeReadOptions{workspace: cwd, maxTokens: 4000}
-	if len(arguments) == 0 || arguments[0] != "read" {
-		return options, errors.New(changesReadUsage)
-	}
-	arguments = arguments[1:]
 	seen := make(map[string]bool)
 	var refs []string
 	for len(arguments) > 0 {
 		flag := arguments[0]
 		arguments = arguments[1:]
+		if flag == "--" {
+			for _, path := range arguments {
+				if path == "" {
+					return options, errors.New("paths after -- must be nonempty")
+				}
+			}
+			options.paths = append(options.paths, arguments...)
+			break
+		}
 		if !strings.HasPrefix(flag, "--") {
 			refs = append(refs, flag)
 			continue
@@ -54,18 +59,13 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 				return options, errors.New("choose either --summary or --history")
 			}
 			options.view = strings.TrimPrefix(flag, "--")
-		case "--path", "--workspace", "--max-tokens", "--cursor":
+		case "--workspace", "--max-tokens", "--cursor":
 			if len(arguments) == 0 {
 				return options, fmt.Errorf("%s requires a value", flag)
 			}
 			value := arguments[0]
 			arguments = arguments[1:]
 			switch flag {
-			case "--path":
-				if value == "" {
-					return options, errors.New("--path requires a nonempty recorded path")
-				}
-				options.path = value
 			case "--workspace":
 				options.workspace = value
 			case "--cursor":
@@ -85,7 +85,7 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		}
 	}
 	if len(refs) == 0 {
-		return options, errors.New(changesReadUsage)
+		return options, fmt.Errorf("explicit change IDs or ranges are required; %s", changesReadUsage)
 	}
 	var err error
 	options.ids, err = expandChangeRefs(refs)
@@ -190,7 +190,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				}
 			}
 			for _, file := range history.ReviewFiles {
-				if options.path != "" && !changePathMatches(options, file.BeforePath, retained) && !changePathMatches(options, file.AfterPath, retained) {
+				if len(options.paths) > 0 && !changePathMatches(options, file.BeforePath, retained) && !changePathMatches(options, file.AfterPath, retained) {
 					continue
 				}
 				matched = true
@@ -201,12 +201,16 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				}
 			}
 			if output.Len() > maxChangeReadBytes {
-				return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or --path")
+				return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or paths after --")
 			}
 		}
 	}
-	if options.path != "" && !matched {
-		fmt.Fprintf(&output, "no files match --path %q\n", options.path)
+	if len(options.paths) > 0 && !matched {
+		output.WriteString("no files match paths after --:")
+		for _, path := range options.paths {
+			fmt.Fprintf(&output, " %q", path)
+		}
+		output.WriteByte('\n')
 	}
 	return output.String(), nil
 }
@@ -217,19 +221,18 @@ func changePathMatches(options changeReadOptions, recorded string, retained bool
 	if recorded == "" {
 		return false
 	}
-	if options.path == recorded {
-		return true
-	}
-	if retained || options.workspace == "" {
-		return false
-	}
 	resolve := func(path string) string {
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(options.workspace, path)
 		}
 		return filepath.Clean(path)
 	}
-	return resolve(options.path) == resolve(recorded)
+	for _, path := range options.paths {
+		if path == recorded || (!retained && options.workspace != "" && resolve(path) == resolve(recorded)) {
+			return true
+		}
+	}
+	return false
 }
 
 // The cursor binds a byte offset to the complete selected projection. A recovery

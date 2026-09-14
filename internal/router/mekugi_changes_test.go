@@ -207,7 +207,7 @@ func TestTrackedChangeCursorAndFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"old", "new"} {
-		got, err := store.readChanges(t.Context(), changeReadOptions{workspace: "/w", ids: []string{id}, path: path})
+		got, err := store.readChanges(t.Context(), changeReadOptions{workspace: "/w", ids: []string{id}, paths: []string{path}})
 		if err != nil || !strings.Contains(got, "wanted") || strings.Contains(got, "unrelated") {
 			t.Fatalf("path %s: %q, %v", path, got, err)
 		}
