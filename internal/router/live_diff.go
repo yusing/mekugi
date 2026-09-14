@@ -1,6 +1,7 @@
 package router
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"errors"
@@ -33,6 +34,7 @@ type liveDiffFile struct {
 type liveDiffChunk struct {
 	key, status, diff string
 	stream            string
+	captureOrder      uint64
 	snapshotOrder     int
 	review            mekugi.ReviewFile
 	applied           bool
@@ -156,7 +158,7 @@ func (v *liveDiffView) merge(files []liveDiffFile) {
 }
 
 // Follow the latest newly observed capture, including edits received while paused.
-// Capture ordering here drives navigation only, never composition correctness.
+// Capture ordering here drives navigation, not a claim about execution order.
 func (v *liveDiffView) followLatest() {
 	v.following = true
 	v.unseenUpdate = false
@@ -179,8 +181,8 @@ func (v *liveDiffView) latestChunk() liveDiffChunk {
 	return liveDiffChunk{}
 }
 
-// Rebuild from immutable captures and acknowledgement IDs. This also handles a
-// late application receipt without applying the same capture a second time.
+// Rebuild the combined result from captures and acknowledgement IDs. A late
+// receipt cannot revive flushed changes; a later overlapping edit can.
 func (v *liveDiffView) refreshVisible() {
 	if v.visible == nil {
 		v.visible = make(map[string]liveDiffFile, len(v.files))
@@ -193,9 +195,14 @@ func (v *liveDiffView) refreshVisible() {
 		var composition mekugi.ReviewComposition
 		var pending []liveDiffChunk
 		var failure error
-		stream := ""
 		unreviewed := false
-		for _, chunk := range file.chunks {
+		legacy, mixed := false, false
+		stream := ""
+		chunks := slices.Clone(file.chunks)
+		slices.SortStableFunc(chunks, func(a, b liveDiffChunk) int {
+			return cmp.Compare(a.captureOrder, b.captureOrder)
+		})
+		for _, chunk := range chunks {
 			reviewed := v.reviewed[chunk.key]
 			visible.highlighted = visible.highlighted || chunk.highlighted && !reviewed
 			unreviewed = unreviewed || !reviewed
@@ -205,25 +212,19 @@ func (v *liveDiffView) refreshVisible() {
 				}
 				continue
 			}
-			// Stream-local IDs establish order only within one workspace stream.
-			// Seeing captures in different refreshes is not execution-order evidence.
-			if stream != "" && stream != chunk.stream {
-				failure = errors.New("captures span streams without durable execution order")
-			}
+			legacy = legacy || chunk.captureOrder == 0
+			mixed = mixed || stream != "" && stream != chunk.stream
 			stream = chunk.stream
 			if failure == nil {
 				failure = composition.ApplyWithHighlight(chunk.review, reviewed, chunk.highlighted)
 			}
 		}
+		if legacy && mixed {
+			failure = errors.New("older captures have no shared order")
+		}
 		if failure != nil {
-			// A gap or cross-agent ordering ambiguity cannot establish a net
-			// diff. Preserve all contributing evidence rather than guessing.
 			if unreviewed {
-				visible.chunks = append(visible.chunks, liveDiffChunk{status: "Uncomposed captures: " + failure.Error()})
-				for _, chunk := range file.chunks {
-					chunk.highlighted = chunk.highlighted && !v.reviewed[chunk.key]
-					visible.chunks = append(visible.chunks, chunk)
-				}
+				visible.chunks = append(visible.chunks, liveDiffChunk{status: "Unable to combine changes: " + failure.Error()})
 			}
 		} else {
 			for _, region := range composition.FilesWithHighlights() {
@@ -231,8 +232,8 @@ func (v *liveDiffView) refreshVisible() {
 					diff: region.UnifiedDiff(), review: region.ReviewFile, highlighted: region.Highlighted,
 				})
 			}
-			visible.chunks = append(visible.chunks, pending...)
 		}
+		visible.chunks = append(visible.chunks, pending...)
 		v.visible[file.key()] = visible
 	}
 }
@@ -259,9 +260,8 @@ func (v *liveDiffView) flush(all bool) {
 }
 
 func (s *mekugiReplayStore) liveDiffFilesFromIndexes(ctx context.Context, indexes []changeIndex) ([]liveDiffFile, error) {
-	var files []liveDiffFile
-	current, deleted := make(map[string]int), make(map[string]int)
-	total, snapshotOrder := 0, 0
+	var captures []liveDiffChunk
+	total := 0
 	for _, index := range indexes {
 		prefix := index.Workspace + "\x00"
 		for stream, info := range index.Streams {
@@ -296,53 +296,63 @@ func (s *mekugiReplayStore) liveDiffFilesFromIndexes(ctx context.Context, indexe
 							return filepath.Clean(path)
 						}
 						file.BeforePath, file.AfterPath = canonical(file.BeforePath), canonical(file.AfterPath)
-						path := file.BeforePath
-						if path == "" {
-							path = file.AfterPath
-						}
 						total += len(diff)
 						if total > maxChangeReadBytes {
 							return nil, errors.New("live diff exceeds 64 MiB; use hchanges with a narrower range")
 						}
-						i, exists := current[path]
-						if file.BeforePath == "" {
-							if prior, found := deleted[path]; found {
-								i, exists = prior, true
-							}
-						}
-						if !exists {
-							i = len(files)
-							files = append(files, liveDiffFile{path: path})
-							current[path] = i
-						}
-						applied := trackedStatus(history, call.Confirmed) == "applied"
-						if applied && file.BeforePath != file.AfterPath {
-							delete(current, file.BeforePath)
-							if file.AfterPath == "" {
-								deleted[file.BeforePath] = i
-							} else {
-								current[file.AfterPath] = i
-								delete(deleted, file.AfterPath)
-								files[i].path = file.AfterPath
-							}
-						}
-						if len(files[i].chunks) == 0 {
-							files[i].id = prefix + call.ID + "/" + strconv.Itoa(n)
-						}
-						snapshotOrder++
-						files[i].chunks = append(files[i].chunks, liveDiffChunk{
-							key:           prefix + call.ID + "/" + strconv.Itoa(n),
-							snapshotOrder: snapshotOrder,
-							stream:        index.Workspace + "\x00" + strconv.Itoa(stream),
-							status:        id + " " + trackedStatus(history, call.Confirmed),
-							review:        file,
-							applied:       applied,
-							diff:          diff,
+						captures = append(captures, liveDiffChunk{
+							key:          prefix + call.ID + "/" + strconv.Itoa(n),
+							stream:       index.Workspace + "\x00" + strconv.Itoa(stream),
+							captureOrder: record.CaptureOrder,
+							status:       id + " " + trackedStatus(history, call.Confirmed),
+							review:       file,
+							applied:      trackedStatus(history, call.Confirmed) == "applied",
+							diff:         diff,
 						})
 					}
 				}
 			}
 		}
+	}
+	// Merge streams before following moves or composing files. Agent letters,
+	// receipt arrival, and workspace iteration do not order captured edits.
+	slices.SortStableFunc(captures, func(a, b liveDiffChunk) int {
+		return cmp.Compare(a.captureOrder, b.captureOrder)
+	})
+	var files []liveDiffFile
+	current, deleted := make(map[string]int), make(map[string]int)
+	for n, chunk := range captures {
+		chunk.snapshotOrder = n + 1
+		file := chunk.review
+		path := file.BeforePath
+		if path == "" {
+			path = file.AfterPath
+		}
+		i, exists := current[path]
+		if file.BeforePath == "" {
+			if prior, found := deleted[path]; found {
+				i, exists = prior, true
+			}
+		}
+		if !exists {
+			i = len(files)
+			files = append(files, liveDiffFile{path: path})
+			current[path] = i
+		}
+		if chunk.applied && file.BeforePath != file.AfterPath {
+			delete(current, file.BeforePath)
+			if file.AfterPath == "" {
+				deleted[file.BeforePath] = i
+			} else {
+				current[file.AfterPath] = i
+				delete(deleted, file.AfterPath)
+				files[i].path = file.AfterPath
+			}
+		}
+		if len(files[i].chunks) == 0 {
+			files[i].id = chunk.key
+		}
+		files[i].chunks = append(files[i].chunks, chunk)
 	}
 	return files, nil
 }
@@ -480,7 +490,7 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, delta string, wor
 			added, removed := (mekugi.ReviewFile{Diff: chunk.diff}).LineCounts()
 			fileCounts[i].added += added
 			fileCounts[i].removed += removed
-			// Composed regions share one file action. Separate captures keep
+			// Composed regions share one file action. Prepared captures keep
 			// their own action alongside their application status below.
 			if action == "" && chunk.status == "" {
 				action = liveDiffAction(chunk.review, workspace)
@@ -491,9 +501,6 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, delta string, wor
 			focusIndex = fileTargets[i]
 		}
 		label := liveDiffDisplayPath(workspace, file.path)
-		if file.highlighted {
-			label += " · LATEST UPDATE"
-		}
 		if action != "" {
 			label += " · " + action
 		}
@@ -517,7 +524,7 @@ func renderLiveDiff(ctx context.Context, files []liveDiffFile, delta string, wor
 				distance := max(hunk.AfterStart-focusLine, focusLine-(hunk.AfterStart+max(1, hunk.AfterCount)-1), 0)
 				if i == focusFile {
 					if focus.key != "" && chunk.key == focus.key {
-						// Uncomposed/prepared captures retain exact capture identity.
+						// Follow this capture, not an older edit at the same line.
 						focusIndex, bestDistance = index, -1
 					} else if bestDistance >= 0 && distance < bestDistance {
 						focusIndex, bestDistance = index, distance

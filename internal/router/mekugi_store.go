@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -29,11 +30,12 @@ type mekugiReplayStore struct {
 	maxCommentaryBytes int64
 }
 type replayRecord struct {
-	Version    int
-	Workspace  string
-	CallID     string
-	Commentary bool
-	History    mekugiHistory
+	Version      int
+	Workspace    string
+	CallID       string
+	Commentary   bool
+	CaptureOrder uint64 `json:",omitzero"`
+	History      mekugiHistory
 }
 
 // Keep request-local state out of immutable replay comparisons as well as JSON.
@@ -225,8 +227,10 @@ func (s *mekugiReplayStore) put(ctx context.Context, workspace string, histories
 		return nil
 	}
 	return s.locked(ctx, func() error {
-		for id, h := range histories {
-			if err := s.write(replayRecord{Version: 1, Workspace: workspace, CallID: id, History: durableHistory(h)}); err != nil {
+		for _, id := range slices.SortedFunc(maps.Keys(histories), func(a, b string) int {
+			return cmp.Or(cmp.Compare(histories[a].sequence, histories[b].sequence), strings.Compare(a, b))
+		}) {
+			if err := s.write(replayRecord{Version: 1, Workspace: workspace, CallID: id, History: durableHistory(histories[id])}); err != nil {
 				return err
 			}
 		}
@@ -293,6 +297,7 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 		return err
 	}
 	if exists {
+		r.CaptureOrder = previous.CaptureOrder
 		r.History, err = mergeReplayHistory(previous.History, r.History)
 		if err != nil {
 			return err
@@ -301,6 +306,12 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 			// A prior rename may have succeeded while its directory sync failed.
 			// Even an identical retry must establish durability before success.
 			return syncReplayDirectory(s.directory)
+		}
+	}
+	if !exists && !r.Commentary && r.History.ChangeID != "" && len(r.History.ReviewFiles) > 0 {
+		r.CaptureOrder, err = s.nextCaptureOrder()
+		if err != nil {
+			return err
 		}
 	}
 	data, err := marshalProtocolJSON(r)

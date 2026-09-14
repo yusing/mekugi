@@ -224,11 +224,13 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	publish("update-both",
 		"in first.txt\ntype \"Status: created\" \"Status: updated 界 é\"\n"+
 			"in second.txt\ntype \"Status: created\" \"Status: updated\"\n")
-	waitFrame(func(frame string) bool {
-		return strings.Contains(frame, "first.txt · LATEST UPDATE") &&
-			strings.Contains(frame, "second.txt · LATEST UPDATE") &&
+	frame = waitFrame(func(frame string) bool {
+		return strings.Contains(frame, "first.txt") && strings.Contains(frame, "second.txt") &&
 			strings.Contains(frame, "▎") && strings.Contains(frame, "updated 界 é")
 	})
+	if strings.Contains(frame, "LATEST UPDATE") {
+		t.Fatal("update label is still displayed")
+	}
 	if _, err := terminal.Write([]byte("n")); err != nil {
 		t.Fatal(err)
 	}

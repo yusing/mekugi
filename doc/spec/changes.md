@@ -169,25 +169,30 @@ the pane it created, with bounded cleanup. A manually launched viewer without a
 session file remains workspace-wide and independent of Codex's lifetime.
 
 The view groups workspace review projections by file identity, following captured moves
-and excluding retained shell scripts. The engine's review composition consumes applied
-captures in observed order, retains sparse original/current source regions, and renders
-original-to-latest hunks through the same review renderer. It never reads current files
-or invents missing context. Prepared attempts remain separately labeled and cannot alter
-the applied baseline. A late receipt alone does not revive a flushed attempt.
+and excluding retained shell scripts. The engine composes applied captures into one
+original-to-latest result per file. The viewer follows and highlights the latest changed
+hunks in that result, not each intermediate patch. It never reads current workspace
+files or invents missing source context. Prepared attempts remain separately labeled
+until their application is confirmed.
+
+New captures receive a store-wide sequence before publication. It survives router
+restarts and is unchanged by replay, metadata updates, or application receipts. The
+viewer merges thread/workspace streams by this sequence before following moves and
+composing files; different agent identities do not prevent composition. Sequence gaps
+are allowed. Older records without a sequence keep their stream-local order; mixed-stream
+legacy history reports that its shared order is unavailable instead of guessing a result.
+The sequence orders captured evaluations for display; it does not control host execution.
 
 `f` flushes the current file and `F` flushes all files: the viewer acknowledges existing
 capture IDs but never deletes or rewrites durable records. A subsequent edit overlapping
 a reviewed changed region revives its original-to-latest hunk; a full revert removes it.
 Unrelated reviewed regions stay hidden, including when intervening insertions/deletions
-shift their line numbers. Composition preserves exact line endings and newline markers.
+shift their line numbers. A late receipt alone does not revive a flushed attempt.
 Acknowledgements are local to this viewer process.
 
-Each composed file is bounded to 1,048,576 captured source rows. Unknown source, identity
-gaps, inconsistent context, or capacity failure stops composition for that chain. The
-viewer then labels and displays the original attempts rather than claiming a verified
-net diff; a new attempt conservatively revives the file's captured history. Captures
-spanning workspace/thread streams always remain uncomposed because their records do not
-establish durable execution order. Refresh order is not execution evidence.
+Each composed file is bounded to 1,048,576 captured source rows. Missing source,
+inconsistent context, or capacity failure is reported rather than displaying individual
+applied patches as a substitute for the result.
 
 The viewer renders all captured files in one continuous viewport, not only the selected
 file. Short multi-file edits remain visible together. It follows new edits by default,
@@ -201,18 +206,17 @@ Navigation uses the keyboard controls shown there. Mekugi's file headings, inclu
 current-file header, use bold text, green `+N` and red `-N` source-line counts, and a
 width-filling separator. File-heading blocks wrap when needed so their actions and
 rename endpoints are not truncated; the sticky current-file title stays on one row.
-Counts describe the displayed projections: combined visible regions for composed files,
-or the separately labeled captures otherwise. They exclude
+Counts describe the combined visible result, plus separately labeled prepared captures. They exclude
 headers/context and become zero when the file is fully flushed. Counts are cached with
 the rendered view rather than rescanning diffs on every navigation key. Delta's duplicate
 file and hunk headings are suppressed through invocation-local options. Line numbers appear
 beside source rows, not in separate headings. The viewer owns their inline formats,
 even when delta is configured with empty number formats. Omitted-heading padding is
-removed without trimming blank source rows or their styling. Normal combined applied
-diffs have no status banner. New/deleted files and both names of renamed files appear once in the file heading.
-Separate captures retain their own action and application status once per capture, not
-per hunk; uncomposed-capture warnings remain explicit. Path-only changes use the same
-heading or capture caption without a duplicate operation row.
+removed without trimming blank source rows or their styling. Combined applied diffs
+have no status banner. New/deleted files and both names of renamed files appear once
+in the file heading. Prepared captures retain their action and application status once
+per capture, not per hunk. Path-only changes use the same heading or capture caption
+without a duplicate operation row.
 Terminal resize clips colored Unicode text to the available columns. Only text and SGR styling
 reach the live viewport. Delta's invocation-local added/removed-line styles use the
 terminal's normal background, with syntax-colored text and bold emphasis. Displayed
@@ -221,13 +225,12 @@ it remain absolute. Source hunk text and durable paths are unchanged.
 
 The latest refresh containing new capture IDs marks every affected file and touched
 composed hunk with a cyan gutter, without recoloring source text or adding backgrounds.
-A bold `LATEST UPDATE` label appears once in the file heading, not between hunks.
 The marker denotes a recently touched hunk, not line- or word-level attribution.
 Multiple captures observed together form one display
 update; this does not establish execution order across streams. Initial history is a
 baseline, not a fresh update. Receipt-only refreshes preserve the current marks rather
 than creating a new update. Marks remain until another capture update or a flush.
-Prepared and uncomposed captures retain their explicit application/ordering labels.
+Prepared captures retain their explicit unconfirmed application status.
 A full revert can mark the file's empty state but never invents a surviving changed hunk.
 
 Manual navigation preserves the viewport when new captures arrive and adds a
@@ -264,7 +267,7 @@ Acceptance:
    invocation-local overrides for normal source backgrounds, inline line numbers, and
    suppressed file/hunk headings. Multiple regions in a newly created file show one
    file-action label, no repeated hunk captions, and no extra heading padding. Blank
-   source rows, separate-capture identity, and rename endpoints remain visible.
+   source rows, prepared-capture identity, and rename endpoints remain visible.
    Missing delta skips Herdr pane creation without affecting the agent.
 3. A real terminal process renders updates, handles resize, accepts navigation and quit,
    and exits without retaining terminal ownership.
@@ -274,7 +277,8 @@ Acceptance:
    original-to-latest content, a full revert disappears, and unrelated reviewed
    regions remain hidden through line shifts and repeated-line alignment.
 6. Late confirmation of a flushed prepared attempt does not revive it by itself.
-   Discontinuous source chains are explicitly uncomposed rather than guessed.
+   Cross-thread/workspace edits compose in captured sequence, including after restart
+   and out-of-order confirmation. Source gaps report a composition failure, not raw patches.
 7. Latest-update markers cover all newly observed files and touched net hunks, including
    overlapping edits, deletions, moves, line shifts, and repeated-line reverts. Older
    unrelated hunks keep their normal styling. Receipt-only updates and initial history

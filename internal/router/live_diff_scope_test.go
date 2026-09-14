@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -95,7 +96,7 @@ func TestLiveDiffSessionScopeStreamsAndWorkspaces(t *testing.T) {
 
 func TestLiveDiffSessionCrossWorkspaceOverlap(t *testing.T) {
 	root := t.TempDir()
-	first, second := filepath.Join(root, "a"), filepath.Join(root, "b")
+	first, second := filepath.Join(root, "z"), filepath.Join(root, "a")
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -127,64 +128,90 @@ func TestLiveDiffSessionCrossWorkspaceOverlap(t *testing.T) {
 	if len(view.files) != 1 || len(view.files[0].chunks) != 2 || view.files[0].key() != key || view.scroll[key] != 2 {
 		t.Fatal("workspace switch broke shared file identity, selection or call identity")
 	}
-	if chunks := view.visible[key].chunks; len(chunks) != 3 || !strings.Contains(chunks[0].status, "without durable execution order") {
-		t.Fatalf("cross-workspace captures were composed without execution order: %#v", chunks)
+	if chunks := view.visible[key].chunks; len(chunks) != 1 || !strings.Contains(chunks[0].diff, "-original\n+fixed\n") {
+		t.Fatalf("cross-workspace edit lost its combined result: %#v", chunks)
 	}
 	liveDiffScopeCapture(t, store, second, "child", "revert", path, "fixed", "original")
 	refresh()
-	if chunks := view.visible[key].chunks; len(chunks) != 4 || !strings.HasPrefix(chunks[0].status, "Uncomposed") {
-		t.Fatal("ambiguous revert was treated as a verified net diff")
+	if chunks := view.visible[key].chunks; len(chunks) != 0 {
+		t.Fatal("cross-workspace full revert retained a net diff")
 	}
 	view.flush(true)
 	if len(view.visible[key].chunks) != 0 {
-		t.Fatal("flush retained uncomposed captures")
+		t.Fatal("flush retained reviewed captures")
 	}
 }
 
-func TestLiveDiffFreshSnapshotRejectsCrossStreamOrder(t *testing.T) {
-	workspace := t.TempDir()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Allocate A before B, but publish B's target edit before A's target edit.
-	liveDiffScopeCapture(t, store, workspace, "A", "unrelated", filepath.Join(workspace, "other"), "old", "new")
-	path := filepath.Join(workspace, "target")
-	for _, capture := range []struct{ thread, call, diff string }{
-		{"B", "insert", "--- target\n+++ target\n@@ -0,0 +1 @@\n+prefix\n"},
-		{"A", "replace", "--- target\n+++ target\n@@ -21 +21 @@\n-old\n+new\n"},
-	} {
-		id, err := store.reserveChange(t.Context(), workspace, capture.thread, capture.call)
-		if err != nil {
-			t.Fatal(err)
-		}
-		history := mekugiHistory{ChangeID: id, CorrelationID: capture.call, Applied: true,
-			ReviewFiles: []mekugi.ReviewFile{{BeforePath: path, AfterPath: path, Diff: capture.diff}}}
-		if err := store.put(t.Context(), workspace, map[string]mekugiHistory{capture.call: history}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	index, err := store.readChangeIndex(workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	files, err := store.liveDiffSnapshotFiles(t.Context(), map[string]changeIndex{workspace: index})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var view liveDiffView
-	view.merge(files)
-	view.refreshVisible()
-	for _, file := range view.files {
-		if file.path == path {
-			chunks := view.visible[file.key()].chunks
-			if len(chunks) != 3 || !strings.Contains(chunks[0].status, "without durable execution order") {
-				t.Fatalf("unordered sparse edits were composed: %#v", chunks)
+func TestLiveDiffFreshSnapshotComposesCrossStreamCaptures(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		t.Run(fmt.Sprintf("legacy=%t", legacy), func(t *testing.T) {
+			workspace := t.TempDir()
+			store, err := openMekugiReplayStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
 			}
-			return
-		}
+			// Allocate A before B, but publish B's target edit before A's target edit.
+			liveDiffScopeCapture(t, store, workspace, "A", "unrelated", filepath.Join(workspace, "other"), "old", "new")
+			path := filepath.Join(workspace, "target")
+			for _, capture := range []struct{ thread, call, diff string }{
+				{"B", "insert", "--- target\n+++ target\n@@ -0,0 +1 @@\n+prefix\n"},
+				{"A", "replace", "--- target\n+++ target\n@@ -21 +21 @@\n-old\n+new\n"},
+			} {
+				id, err := store.reserveChange(t.Context(), workspace, capture.thread, capture.call)
+				if err != nil {
+					t.Fatal(err)
+				}
+				history := mekugiHistory{ChangeID: id, CorrelationID: capture.call, Applied: true,
+					ReviewFiles: []mekugi.ReviewFile{{BeforePath: path, AfterPath: path, Diff: capture.diff}}}
+				if err := store.put(t.Context(), workspace, map[string]mekugiHistory{capture.call: history}); err != nil {
+					t.Fatal(err)
+				}
+				if legacy {
+					record, found, err := store.read(workspace, capture.call, false)
+					if err != nil || !found {
+						t.Fatalf("read capture: found=%t err=%v", found, err)
+					}
+					record.CaptureOrder = 0
+					data, err := json.Marshal(record)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(store.directory, replayRecordName(workspace, capture.call, false)), data, 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			index, err := store.readChangeIndex(workspace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			files, err := store.liveDiffSnapshotFiles(t.Context(), map[string]changeIndex{workspace: index})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var view liveDiffView
+			view.merge(files)
+			view.refreshVisible()
+			for _, file := range view.files {
+				if file.path == path {
+					chunks := view.visible[file.key()].chunks
+					if legacy {
+						if len(chunks) != 1 || !strings.Contains(chunks[0].status, "older captures have no shared order") || chunks[0].diff != "" {
+							t.Fatalf("legacy captures guessed a result or rendered individual patches: %#v", chunks)
+						}
+						return
+					}
+					text := liveDiffVisibleText(view.visible[file.key()])
+					if len(chunks) != 2 || chunks[0].status != "" || chunks[1].status != "" ||
+						!strings.Contains(text, "+prefix\n") || !strings.Contains(text, "@@ -20,1 +21,1 @@\n-old\n+new\n") {
+						t.Fatalf("cross-stream result used stream order instead of capture order: %s", text)
+					}
+					return
+				}
+			}
+			t.Fatal("target missing from snapshot")
+		})
 	}
-	t.Fatal("target missing from snapshot")
 }
 
 func TestLiveDiffSessionTerminalEmptyEditsAndExit(t *testing.T) {

@@ -19,7 +19,7 @@ func liveDiffHighlightChunk(key, path, hunk string, applied bool) liveDiffChunk 
 		status = key + " applied"
 	}
 	return liveDiffChunk{
-		key: key, stream: "one", diff: diff, status: status, applied: applied,
+		key: key, diff: diff, status: status, applied: applied,
 		review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: diff},
 	}
 }
@@ -64,7 +64,7 @@ func TestLiveDiffHighlightBatchAndReceipts(t *testing.T) {
 	}
 	visible = v.visible[v.files[0].key()]
 	if len(visible.chunks) != 2 || visible.chunks[0].highlighted || !visible.chunks[1].highlighted {
-		t.Fatalf("composition lost exact recent-region attribution: %#v", visible)
+		t.Fatalf("receipt changed the highlighted capture: %#v", visible)
 	}
 	third := liveDiffHighlightChunk("third", "c", "@@ -1 +1 @@\n-d\n+D\n", true)
 	snapshot = append(snapshot, liveDiffFile{path: "c", chunks: []liveDiffChunk{third}})
@@ -124,7 +124,7 @@ func TestLiveDiffHighlightEmptyStartAndRevert(t *testing.T) {
 	}
 }
 
-func TestLiveDiffHighlightUncomposedAndFlushedReceipt(t *testing.T) {
+func TestLiveDiffHighlightCapturesAndFlushedReceipt(t *testing.T) {
 	first := liveDiffHighlightChunk("first", "a", "@@ -1 +1 @@\n-a\n+A\n", false)
 	v := liveDiffView{}
 	v.merge(nil)
@@ -139,14 +139,12 @@ func TestLiveDiffHighlightUncomposedAndFlushedReceipt(t *testing.T) {
 		t.Fatal("late confirmation revived a flushed capture")
 	}
 	other := liveDiffHighlightChunk("other", "a", "@@ -20 +20 @@\n-b\n+B\n", true)
-	other.stream = "another thread"
 	snapshot[0].chunks = append(snapshot[0].chunks, other)
 	v.merge(snapshot)
 	v.refreshVisible()
 	visible := v.visible[v.files[0].key()]
-	if len(visible.chunks) != 3 || !strings.HasPrefix(visible.chunks[0].status, "Uncomposed") ||
-		visible.chunks[1].highlighted || !visible.chunks[2].highlighted {
-		t.Fatalf("ambiguous captures lost their identity or highlighted reviewed history: %#v", visible)
+	if len(visible.chunks) != 1 || !strings.Contains(visible.chunks[0].diff, "-b\n+B\n") || !visible.chunks[0].highlighted {
+		t.Fatalf("new capture lost its highlight or revived unrelated flushed history: %#v", visible)
 	}
 }
 
@@ -386,15 +384,14 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 	}
 	path := created.ReviewFiles[0].AfterPath
 	initial := liveDiffChunk{
-		key: "create", stream: "one", applied: true, review: created.ReviewFiles[0],
+		key: "create", applied: true, review: created.ReviewFiles[0],
 		diff: created.ReviewFiles[0].UnifiedDiff(),
 	}
 	recent := liveDiffHighlightChunk("edit", path,
 		"@@ -312 +312 @@\n-line312\n+LATEST312\n@@ -337 +337 @@\n-line337\n+LATEST337\n", true)
 	v := liveDiffView{}
 	snapshot := []liveDiffFile{{path: path, chunks: []liveDiffChunk{initial}}}
-	// Appends create distinct regions while preserving the file's original
-	// /dev/null identity, as in a file grown across multiple captured edits.
+	// Appends preserve the original /dev/null identity while growing the file.
 	start := 311
 	for _, end := range []int{312, 336, 337, 340} {
 		hunk := fmt.Sprintf("@@ -%d,0 +%d,%d @@\n+%s\n", start, start+1, end-start, strings.Join(rows[start:end], "\n+"))
@@ -424,7 +421,7 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 				t.Fatal(err)
 			}
 			text := ansi.Strip(strings.Join(render.lines, "\n"))
-			for _, label := range []string{"New file", "LATEST UPDATE", "review_highlight_test.txt"} {
+			for _, label := range []string{"New file", "review_highlight_test.txt"} {
 				if strings.Count(text, label) != 1 || !strings.Contains(ansi.Strip(render.lines[0]), label) {
 					t.Fatalf("file label is missing from its header or repeats between hunks: %q\n%s", label, text)
 				}
@@ -450,6 +447,50 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 	}
 }
 
+func TestLiveDiffFollowLatestCombinedResult(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "file.txt")
+	old := liveDiffHighlightChunk("hp_a1", path, "@@ -20 +20 @@\n-before\n+FIRST20\n", true)
+	recent := liveDiffHighlightChunk("hp_b1", path,
+		"@@ -20 +20 @@\n-FIRST20\n+LATEST20\n@@ -337 +337 @@\n-before\n+LATEST337\n", true)
+	v := liveDiffView{following: true}
+	v.merge([]liveDiffFile{{path: path, chunks: []liveDiffChunk{old}}})
+	v.merge([]liveDiffFile{{path: path, chunks: []liveDiffChunk{old, recent}}})
+	v.refreshVisible()
+	file := v.visible[v.files[0].key()]
+	text := liveDiffVisibleText(file)
+	if len(file.chunks) != 2 || strings.Contains(text, "FIRST20") ||
+		!strings.Contains(text, "+LATEST20") || !strings.Contains(text, "+LATEST337") {
+		t.Fatalf("result contains intermediate patches instead of final changes: %s", text)
+	}
+	for _, sideBySide := range []bool{false, true} {
+		t.Run(strconv.FormatBool(sideBySide), func(t *testing.T) {
+			delta := liveDiffConfiguredDelta(t, "side-by-side = "+strconv.FormatBool(sideBySide))
+			render, err := renderLiveDiff(t.Context(), []liveDiffFile{file}, delta, workspace, 100, 0, v.latestChunk())
+			if err != nil {
+				t.Fatal(err)
+			}
+			focused := ansi.Strip(strings.Join(render.lines[render.focusOffset:], "\n"))
+			if !strings.Contains(focused, "LATEST337") || strings.Contains(focused, "LATEST20") {
+				t.Fatalf("follow selected an older capture or hunk: %q", focused)
+			}
+			text := ansi.Strip(strings.Join(render.lines, "\n"))
+			if strings.Contains(text, "LATEST UPDATE") || render.counts[0] != (liveDiffCounts{2, 2}) {
+				t.Fatalf("unexpected update label or incorrect counts: counts=%v\n%s", render.counts, text)
+			}
+			for _, line := range render.lines {
+				plain := ansi.Strip(line)
+				if strings.Contains(plain, "LATEST20") || strings.Contains(plain, "LATEST337") {
+					if !strings.HasPrefix(plain, "▎ ") {
+						t.Fatalf("current capture lost its highlight: %q", line)
+					}
+				}
+				assertLiveDiffNoBackground(t, line)
+			}
+		})
+	}
+}
+
 func TestLiveDiffCaptureLabelsOnce(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.txt")
@@ -458,8 +499,7 @@ func TestLiveDiffCaptureLabelsOnce(t *testing.T) {
 			first := liveDiffHighlightChunk("hp_a1", path,
 				"@@ -1 +1 @@\n-old1\n+first1\n@@ -20 +20 @@\n-old20\n+first20\n", applied)
 			second := liveDiffHighlightChunk("hp_a2", path,
-				"@@ -1 +1 @@\n-old1\n+second1\n@@ -20 +20 @@\n-old20\n+second20\n", applied)
-			second.stream = "another thread"
+				"@@ -1 +1 @@\n-first1\n+second1\n@@ -20 +20 @@\n-first20\n+second20\n", applied)
 			v := liveDiffView{}
 			v.merge(nil)
 			v.merge([]liveDiffFile{{path: path, chunks: []liveDiffChunk{first, second}}})
@@ -473,15 +513,24 @@ func TestLiveDiffCaptureLabelsOnce(t *testing.T) {
 						t.Fatal(err)
 					}
 					text := ansi.Strip(strings.Join(render.lines, "\n"))
-					for _, label := range []string{first.status, second.status, "LATEST UPDATE"} {
+					var labels []string
+					if !applied {
+						labels = append(labels, first.status, second.status)
+					}
+					for _, label := range labels {
 						if strings.Count(text, label) != 1 {
 							t.Fatalf("capture identity or recency label missing or repeated: %q\n%s", label, text)
 						}
 					}
-					if strings.Contains(text, "Uncomposed captures:") != applied {
-						t.Fatalf("lost the application/ordering distinction:\n%s", text)
+					if strings.Contains(text, "Unable to combine") ||
+						applied && (strings.Contains(text, first.status) || strings.Contains(text, "first1")) {
+						t.Fatalf("combined result exposed intermediate patches:\n%s", text)
 					}
-					for _, content := range []string{"first1", "first20", "second1", "second20"} {
+					contents := []string{"second1", "second20"}
+					if !applied {
+						contents = append(contents, "first1", "first20")
+					}
+					for _, content := range contents {
 						if !strings.Contains(text, content) {
 							t.Fatalf("capture content missing: %q\n%s", content, text)
 						}
@@ -593,7 +642,7 @@ func TestLiveDiffNarrowFileActions(t *testing.T) {
 						}
 						lines := render.lines[:render.starts[1]]
 						text := ansi.Strip(strings.Join(lines, "\n"))
-						for _, label := range []string{tc.action, "LATEST UPDATE", "+0", "-0"} {
+						for _, label := range []string{tc.action, "+0", "-0"} {
 							if strings.Count(text, label) != 1 {
 								t.Fatalf("width %d: heading dropped or repeated %q:\n%s", width, label, text)
 							}

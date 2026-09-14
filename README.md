@@ -520,15 +520,15 @@ together. The latest changed hunk is followed by default; manual navigation paus
 Bold file headings and separator lines identify each file, with green `+N` and red `-N`
 counts for the displayed additions and deletions. Delta's duplicate file and hunk headings
 are hidden; line numbers stay beside the source. File actions appear once in the file
-heading, not between hunks. Unconfirmed or ambiguous captures keep one label per capture.
-A cyan gutter marks recently touched hunks, with one `LATEST UPDATE` label in the file
-heading. Older diffs keep their normal styling. Marks persist until another update or a
-flush; startup history is not labeled as new. While paused, the footer reports new changes
+heading, not between hunks. Unconfirmed captures keep one label per capture.
+A cyan gutter marks recently touched hunks. Older diffs keep their normal styling.
+Marks persist until another update or a flush; startup history is not highlighted.
+While paused, the footer reports new changes
 without moving your view.
 On-screen controls let you resume following or flush reviewed changes without deleting
-captures. Overlapping edits revive flushed changes.
-The viewer shows captured edits, not Git or shell changes. Unconfirmed and ambiguous
-capture chains stay separately labeled rather than claiming a verified net diff.
+captures. Overlapping edits revive flushed changes; a full revert removes the net diff.
+The viewer shows the combined result of captured edits, not each intermediate patch
+or Git/shell changes. Edits from different agents are combined in captured sequence.
 See the [live view contract](doc/spec/changes.md#live-terminal-view) for controls,
 composition limits, and lifecycle details.
 
