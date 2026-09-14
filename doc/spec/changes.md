@@ -238,7 +238,18 @@ external paths stay absolute. Display formatting never changes captured paths or
 Resize must preserve safe Unicode clipping, leaving room for the gutter and final
 terminal column. Only text and terminal color/text styling (SGR) may reach the viewport.
 Source retains the normal terminal background, independent syntax colors, and
-missing-final-newline markers.
+missing-final-newline markers. Syntax palettes preserve the lexer's token categories,
+including functions, built-ins, operators, and language-specific names, rather than
+only keywords and literals. Color decoration does not infer semantic types from names.
+
+The viewer selects a foreground-only light or dark palette from an asynchronous
+terminal background query (OSC 11), without delaying the initial display or input.
+A valid later reply recolors existing content without changing navigation or review
+state. Until a valid reply arrives, a recognized `COLORFGBG` background is used;
+otherwise colors come from the terminal's own ANSI palette, with no assumed dark
+background. Replies are bounded, consumed separately from navigation, and never
+interpreted as review commands. Syntax, change markers, and recency gutters use the
+same selected mode. Theme backgrounds and error fills never reach the viewport.
 Highlighting uses each hunk side independently; unknown languages, lexer failures, and
 oversized sides fall back to plain safe text. No external renderer or pager is required.
 Delta/Git styling, side-by-side layout, and word-level emphasis are unsupported.

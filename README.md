@@ -561,6 +561,12 @@ The view combines edits across files, excluding Git and shell changes. Prepared
 edits remain labeled as unconfirmed until application is reported. Cyan markers
 identify the latest update; reconnecting or unavailable means live updates are interrupted.
 
+Syntax colors include function calls, built-ins, and operators where the language
+lexer recognizes them. The viewer automatically selects a light or dark palette
+from the terminal's background reply, keeping your existing background. If the
+terminal cannot report its background, it uses `COLORFGBG` when available, otherwise
+your terminal's own ANSI colors.
+
 Use the on-screen keyboard controls:
 
 - `j`/`k` scroll and `n`/`p` switch files, pausing automatic following.

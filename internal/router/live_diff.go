@@ -17,6 +17,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
 	"golang.org/x/term"
@@ -330,17 +331,17 @@ func liveDiffAction(file mekugi.ReviewFile, workspace string) string {
 	}
 }
 
-func liveDiffGutter(highlighted bool) string {
+func liveDiffGutter(highlighted bool, theme liveDiffTheme) string {
 	if highlighted {
-		return "\x1b[36m▎\x1b[0m "
+		return theme.accent() + "▎\x1b[0m "
 	}
 	return "  "
 }
 
 // Give each file a clear section boundary without painting over source colors.
-func liveDiffHeader(text string, width int, counts liveDiffCounts) string {
+func liveDiffHeader(text string, width int, counts liveDiffCounts, theme liveDiffTheme) string {
 	width = max(0, width)
-	stats := fmt.Sprintf(" \x1b[32m+%d\x1b[39m \x1b[31m-%d\x1b[39m", counts.added, counts.removed)
+	stats := fmt.Sprintf(" %s+%d\x1b[39m %s-%d\x1b[39m", theme.foreground(chroma.GenericInserted), counts.added, theme.foreground(chroma.GenericDeleted), counts.removed)
 	text = ansi.Truncate(liveDiffSafe(text, false), max(0, width-ansi.StringWidth(stats)), "")
 	header := ansi.Truncate("\x1b[1m"+text+"\x1b[22m"+stats, width, "")
 	if remaining := width - ansi.StringWidth(header); remaining > 0 {
@@ -457,7 +458,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		return err
 	}
 	defer func() { err = errors.Join(err, term.Restore(int(stdin.Fd()), old)) }()
-	if _, err := io.WriteString(stdout, "\x1b[?1049h\x1b[?25l"); err != nil {
+	if _, err := io.WriteString(stdout, "\x1b[?1049h\x1b[?25l\x1b]11;?\x1b\\"); err != nil {
 		return err
 	}
 	defer func() { _, e := io.WriteString(stdout, "\x1b[0m\x1b[?25h\x1b[?1049l"); err = errors.Join(err, e) }()
@@ -507,6 +508,9 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 	renderedFocusFile := -1
 	lastWidth, lastHeight := 0, 0
 	dirty := true
+	theme := liveDiffEnvironmentTheme(os.Getenv("COLORFGBG"))
+	renderedTheme := theme
+	var osc liveDiffOSC
 	escape := ""
 	for {
 		width, height, e := term.GetSize(int(stdout.Fd()))
@@ -524,11 +528,12 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		}
 		focus := view.latestChunk()
 		focus.snapshotOrder = 0 // Snapshot numbering does not change a capture's geometry.
-		if !reflect.DeepEqual(rendered, files) || renderedFocus != focus || renderedFocusFile != focusFile || width != lastWidth {
-			rendering, e = renderLiveDiff(ctx, files, workspace, width, focusFile, focus)
+		if !reflect.DeepEqual(rendered, files) || renderedFocus != focus || renderedFocusFile != focusFile || width != lastWidth || theme != renderedTheme {
+			rendering, e = renderLiveDiff(ctx, theme, files, workspace, width, focusFile, focus)
 			if e != nil {
 				return e
 			}
+			renderedTheme = theme
 			rendered, renderedFocus, renderedFocusFile = files, focus, focusFile
 			dirty = true
 		}
@@ -577,9 +582,9 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 				fmt.Fprintf(&screen, "\x1b[%d;1H\x1b[0m\x1b[2K%s\x1b[0m", row, ansi.Truncate(text, max(0, width-1), ""))
 			}
 			if len(files) > 0 {
-				header = liveDiffGutter(active.highlighted) + liveDiffHeader(header, width-3, rendering.counts[view.selected])
+				header = liveDiffGutter(active.highlighted, theme) + liveDiffHeader(header, width-3, rendering.counts[view.selected], theme)
 			} else {
-				header = liveDiffGutter(false) + liveDiffSafe(header, false)
+				header = liveDiffGutter(false, theme) + liveDiffSafe(header, false)
 			}
 			writeRow(1, header)
 			for row := range rows {
@@ -658,6 +663,20 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			if !open {
 				return nil
 			}
+			// Raw mode must leave cancellation usable even during a malformed
+			// terminal reply. All other OSC bytes stay separate from commands.
+			if key == 3 {
+				return nil
+			}
+			if osc.active || escape == "\x1b" && key == ']' {
+				escape = ""
+				if reply, complete := osc.consume(key); complete {
+					if detected, ok := liveDiffBackgroundTheme(reply); ok {
+						theme = detected
+					}
+				}
+				continue
+			}
 			// Decode common terminal keys incrementally, including fragmented reads.
 			if key == 27 {
 				escape = "\x1b"
@@ -687,7 +706,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 				view.following = false
 			}
 			switch key {
-			case 'q', 3:
+			case 'q':
 				return nil
 			case 'r':
 				view.followLatest()
