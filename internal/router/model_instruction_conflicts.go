@@ -34,11 +34,11 @@ var stockToolConflictReplacer = strings.NewReplacer(
 	"answer briefly in commentary, then resume the active task",
 	"answer briefly with a report_now journal item, then resume the active task",
 	"- Batch independent searches and reads in one functions.exec using await Promise.allSettled([...]); inspect every result. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential. Avoid unnecessary output.",
-	"- Batch already-known searches and reads in one functions.shell script; inspect every result. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential. Avoid unnecessary output.",
+	"- Batch already-known searches and reads in one functions.shell script; inspect every result. Keep dependent operations sequential. Avoid unnecessary output.",
 	"- Batch independent searches, reads, and other tool calls in one functions.exec using await Promise.allSettled([...]); keep each batch bounded to decision-relevant output by selecting needed ranges or fields first, and inspect every returned result. If output truncates, retrieve only the missing evidence rather than repeating an unchanged whole scan. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential. Avoid unnecessary output.",
-	"- Batch already-known searches and reads in one functions.shell script; bound output to needed ranges or fields and inspect every result. If output truncates, retrieve only missing evidence. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential.",
+	"- Batch already-known searches and reads in one functions.shell script; bound output to needed ranges or fields and inspect every result. If output truncates, retrieve only missing evidence. Keep dependent operations sequential.",
 	"- To reduce round trips, batch independent searches, reads, and other tool calls in one functions.exec using await Promise.allSettled([...]); keep each batch bounded to decision-relevant output by selecting needed ranges or fields first, and inspect every returned result. If output truncates, retrieve only the missing evidence rather than repeating an unchanged whole scan. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential. Avoid unnecessary output.",
-	"- Batch already-known searches and reads in one functions.shell script; bound output to needed ranges or fields and inspect every result. If output truncates, retrieve only missing evidence. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential.",
+	"- Batch already-known searches and reads in one functions.shell script; bound output to needed ranges or fields and inspect every result. If output truncates, retrieve only missing evidence. Keep dependent operations sequential.",
 	"- When calling `functions.exec`, parallelize independent tool calls by awaiting Promises. Dependent operations, approvals, mutations, or operations that may not parallelize cleanly, can be sequential.",
 	toolBatchingInstruction,
 	"- When possible, prefer parallelization over sequential tool calls, as this will help with round-trip latency and let you get work done faster.",
@@ -82,34 +82,22 @@ func rewriteStockLineInstructions(input string) string {
 		"- Do not make single-step plans.",
 		"- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan.",
 	}
-	var fence byte
-	var fenceWidth int
+	var fence instructionFence
 	for index := 0; index < len(lines); {
 		line := strings.TrimRight(lines[index], "\r\n")
-		marker := strings.TrimLeft(line, " ")
-		if len(line)-len(marker) <= 3 && len(marker) >= 3 && (marker[0] == '`' || marker[0] == '~') {
-			width := 1
-			for width < len(marker) && marker[width] == marker[0] {
-				width++
-			}
-			if width >= 3 {
-				if fence == 0 {
-					fence, fenceWidth = marker[0], width
-				} else if marker[0] == fence && width >= fenceWidth && strings.TrimSpace(marker[width:]) == "" {
-					fence = 0
-				}
-				rendered.WriteString(lines[index])
-				index++
-				continue
-			}
-		}
-		if fence != 0 {
+		if fence.consume(line) {
 			rendered.WriteString(lines[index])
 			index++
 			continue
 		}
-		if line == priorParallelInstruction {
+		switch line {
+		case priorParallelInstruction:
 			rendered.WriteString(strings.Replace(lines[index], line, toolBatchingInstruction, 1))
+			index++
+			continue
+		case "- Batch already-known searches and reads in one functions.shell script; inspect every result. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential. Avoid unnecessary output.",
+			"- Batch already-known searches and reads in one functions.shell script; bound output to needed ranges or fields and inspect every result. If output truncates, retrieve only missing evidence. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential.":
+			rendered.WriteString(strings.Replace(lines[index], "Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential.", "Keep dependent operations sequential.", 1))
 			index++
 			continue
 		}

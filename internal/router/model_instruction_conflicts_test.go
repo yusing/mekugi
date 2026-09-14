@@ -52,7 +52,7 @@ func TestRewriteModelFamilyToolConflicts(t *testing.T) {
 					if strings.Count(got, guidance) != 1 {
 						t.Fatal("selected guidance must occur once")
 					}
-					if !strings.Contains(got, "Batch ready work. Keep dependent operations sequential.") || strings.Contains(got, "Run hpatch alone") {
+					if !strings.Contains(got, "Batch ready work. Keep dependent operations sequential.") || strings.Contains(got, "Run hpatch alone") || strings.Contains(got, "Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential.") {
 						t.Fatal("forwarded prompt must batch ready work without hpatch isolation")
 					}
 					outside := strings.Replace(got, guidance, "", 1)
@@ -131,6 +131,26 @@ func TestRefreshInheritedHpatchIsolation(t *testing.T) {
 	} {
 		if got := rewriteStockToolConflicts(input); got != input {
 			t.Fatalf("rewrote an unrecognized caller instruction: %q", got)
+		}
+	}
+}
+
+func TestRefreshInheritedBatchingInstructions(t *testing.T) {
+	for _, prior := range []string{
+		"- Batch already-known searches and reads in one functions.shell script; inspect every result. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential. Avoid unnecessary output.",
+		"- Batch already-known searches and reads in one functions.shell script; bound output to needed ranges or fields and inspect every result. If output truncates, retrieve only missing evidence. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential.",
+	} {
+		for _, ending := range []string{"", "\n", "\r\n"} {
+			input := "Preserve caller policy.\n" + prior + ending
+			want := strings.Replace(input, "Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential.", "Keep dependent operations sequential.", 1)
+			if got := rewriteStockToolConflicts(input); got != want || rewriteStockToolConflicts(got) != got {
+				t.Fatalf("inherited batching rewrite: got %q, want %q", got, want)
+			}
+		}
+		for _, input := range []string{prior + " Caller suffix.", "  " + prior, "```\n" + prior + "\n```", "~~~\n" + prior + "\n~~~"} {
+			if got := rewriteStockToolConflicts(input); got != input {
+				t.Fatalf("changed caller content: %q", got)
+			}
 		}
 	}
 }
