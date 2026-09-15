@@ -109,7 +109,10 @@ func (t *mekugiResponseTransform) shellJournalFinished(raw json.RawMessage) (boo
 			}
 		}
 	}
-	if !finished || candidate == "" || lastResult != active || len(calls) != 0 || len(live) != 0 {
+	// Only the finishing invocation needs a proven terminal continuation chain.
+	// Unrelated sessions may have been awaited inside opaque Code Mode programs;
+	// their stale handles are not outstanding client-dispatched tool calls.
+	if !finished || candidate == "" || lastResult != active || len(calls) != 0 {
 		return false, nil
 	}
 	found := false

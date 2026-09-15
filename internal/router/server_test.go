@@ -1642,6 +1642,10 @@ func TestShellJournalFinishSuppressesProviderRequest(t *testing.T) {
 	parsed := serverRequest(t, func(request map[string]any) {
 		input := request["input"].([]any)
 		request["input"] = append(input,
+			map[string]any{"type": "function_call", "call_id": "old-shell", "name": "exec_command", "arguments": `{"cmd":"work"}`},
+			map[string]any{"type": "function_call_output", "call_id": "old-shell", "output": "Wall time: 0.1 seconds\nProcess running with session ID 7\nOutput:\n"},
+			map[string]any{"type": "custom_tool_call", "call_id": "opaque-poll", "name": "exec", "input": `text(await tools.write_stdin({session_id:7,chars:""})); text("extra output");`},
+			map[string]any{"type": "custom_tool_call_output", "call_id": "opaque-poll", "output": "Script completed\nWall time 0.1 seconds\nOutput:\n{\"exit_code\":0,\"output\":\"\"}\nextra output"},
 			call,
 			map[string]any{"type": "custom_tool_call_output", "call_id": "shell-call", "output": "Script completed\nWall time 0.1 seconds\nOutput:\n{\"exit_code\":0,\"output\":\"\"}"},
 		)
@@ -1724,6 +1728,9 @@ func TestShellJournalFinishSuppressesProviderRequest(t *testing.T) {
 		for _, part := range item.Content {
 			reported = reported || part.Text == formatTokenUsageReport(before)
 		}
+	}
+	if !strings.Contains(output.String(), "Shell completed") || !strings.Contains(output.String(), "Journal flush") {
+		t.Fatal("shell terminal omitted the journal flush")
 	}
 	if !reported {
 		t.Fatal("shell terminal omitted complete cumulative usage")

@@ -44,6 +44,20 @@ func TestShellJournalFinishRequiresMatchingTerminalHostResult(t *testing.T) {
 		{"native resumed", false, "turn", []map[string]json.RawMessage{shell, output("shell", nativeYield), call("poll", "write_stdin", `{"session_id":7,"chars":""}`), output("poll", nativeDone)}, true},
 		{"wrong session", false, "turn", []map[string]json.RawMessage{shell, output("shell", nativeYield), call("poll", "write_stdin", `{"session_id":8,"chars":""}`), output("poll", nativeDone)}, false},
 		{"code terminal", true, "turn", []map[string]json.RawMessage{shell, output("shell", codeDone)}, true},
+		// A prior opaque Code Mode call can await several native sessions. Its
+		// internals are not continuation proof, but must not block a later finish.
+		{"prior opaque session polling", true, "turn", []map[string]json.RawMessage{
+			shell, output("shell", sessionYield),
+			call("opaque-poll", "exec", ""),
+			output("opaque-poll", "Script completed\nWall time 0.1 seconds\nOutput:\n"),
+			user, call("last-shell", "shell", ""), output("last-shell", codeDone),
+		}, true},
+		{"unrelated yielded session before finish", true, "turn", []map[string]json.RawMessage{
+			shell, output("shell", sessionYield),
+			call("opaque-poll", "exec", ""),
+			output("opaque-poll", "Script completed\nWall time 0.1 seconds\nOutput:\n"),
+			call("last-shell", "shell", ""), output("last-shell", codeDone),
+		}, true},
 		{"code yielded", true, "turn", []map[string]json.RawMessage{shell, output("shell", codeYield)}, false},
 		{"code terminated", true, "turn", []map[string]json.RawMessage{shell, output("shell", "Script terminated\nWall time 0.1 seconds\nOutput:\n{\"exit_code\":0}")}, false},
 		{"code resumed", true, "turn", []map[string]json.RawMessage{shell, output("shell", codeYield), call("wait", "wait", `{"cell_id":"C1"}`), output("wait", codeDone)}, true},
@@ -59,6 +73,9 @@ func TestShellJournalFinishRequiresMatchingTerminalHostResult(t *testing.T) {
 			if _, err := store.apply(t.Context(), nil, "workspace", "thread", "runtime:"+shellJournalFinishReceipt("turn", "shell"), nil); err != nil {
 				t.Fatal(err)
 			}
+			if _, err := store.apply(t.Context(), nil, "workspace", "thread", "runtime:"+shellJournalFinishReceipt("turn", "last-shell"), nil); err != nil {
+				t.Fatal(err)
+			}
 			kind := codeModeCarrierFunction
 			if test.code {
 				kind = codeModeCarrierCustom
@@ -66,7 +83,10 @@ func TestShellJournalFinishRequiresMatchingTerminalHostResult(t *testing.T) {
 			transform := &mekugiResponseTransform{
 				ctx: t.Context(), proxy: &mekugiProxy{journals: store, commentary: newCommentaryBroker()},
 				directory: "workspace", shellThreadID: "thread", shellTurnID: test.turn, codeModeToolName: "exec",
-				visible: map[string]mekugiHistory{"shell": {ToolName: "shell", PluginID: builtinToolsPluginID, ShellJournalTurnID: "turn", CarrierKind: kind}},
+				visible: map[string]mekugiHistory{
+					"shell":      {ToolName: "shell", PluginID: builtinToolsPluginID, ShellJournalTurnID: "turn", CarrierKind: kind},
+					"last-shell": {ToolName: "shell", PluginID: builtinToolsPluginID, ShellJournalTurnID: "turn", CarrierKind: kind},
+				},
 			}
 			got, err := transform.shellJournalFinished(mustMarshalJSON(test.input))
 			if err != nil || got != test.want {

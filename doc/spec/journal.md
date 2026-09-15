@@ -146,6 +146,8 @@ complete JSON-encoded capacity and reject oversized responses explicitly rather 
 `finish` applies its optional final batch and records completion intent atomically in a durable receipt bound to
 the originating host call and Codex turn. Only that call's successful terminal host result, or
 its proven host-continuation chain, can complete the turn without a provider follow-up request.
+Unrelated historical session handles are not completion prerequisites: an opaque Code Mode
+program may already have awaited them without exposing a separately provable continuation chain.
 Yielded, failed, cancelled, incomplete, or unassociated results do not complete it. Later user
 input or unrelated calls supersede the intent. Replay can recover the same turn's receipt after
 a router restart, but another turn or fork cannot consume it. Missing turn identity or call
