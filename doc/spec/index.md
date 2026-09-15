@@ -4,7 +4,7 @@ pjdoc:
   kind: spec
   scope: root
   status: draft
-  revision: "54"
+  revision: "55"
   files:
     - journal.md
     - router.md

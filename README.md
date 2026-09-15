@@ -52,7 +52,7 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
     accumulated for that agent's thread during the router's lifetime, including across compaction.
     Input, cached input, uncached input, output, and reasoning are shown separately.
     Costs use built-in reference list API prices, not subscription rates, and show
-    `n/a` if any response's model or service tier has no known price. Model changes,
+    `n/a` if any response's model or service tier has no known price. OpenAI models and `grok:grok-4.6` have built-in list prices. Model changes,
     priority/Fast service tiers, cache writes, and long-context rates are handled per response.
     Provider-reported tiers take precedence, including downgrades to standard processing.
     Missing usage suppresses later thread tables rather than showing a partial total as complete.

@@ -26,8 +26,10 @@ type tokenPrice struct {
 }
 
 // Source: session-usage/scripts/session_usage.py:625:655 select_tier and cost_for_request.
-// Rates mirror FALLBACK_USD_PER_MILLION in the same script. These are reference
-// list API prices in USD per million tokens, not subscription charges or live billing quotes.
+// OpenAI rates mirror FALLBACK_USD_PER_MILLION in the same script. Grok 4.6 rates
+// follow the xAI list prices and OpenRouter x-ai/grok-4.6 catalog (2026-09-15).
+// These are reference list API prices in USD per million tokens, not subscription
+// charges or live billing quotes. Mekugi does not fetch prices at runtime.
 var tokenReferencePrices = map[string]tokenPrice{
 	"gpt-6-astra":     {10, 1, 50, 20, 2, 75},
 	"gpt-6-astra-pro": {10, 1, 50, 20, 2, 75},
@@ -38,6 +40,7 @@ var tokenReferencePrices = map[string]tokenPrice{
 	"gpt-5.4":         {2.5, 0.25, 15, 5, 0.5, 22.5},
 	"gpt-5.4-mini":    {0.75, 0.075, 4.5, 0, 0, 0},
 	"gpt-5.4-nano":    {0.2, 0.02, 1.25, 0, 0, 0},
+	"grok-4.6":        {2, 0.5, 6, 4, 1, 12},
 }
 
 // Fast and priority are aliases. These are model-specific rates, not a blanket
@@ -53,14 +56,32 @@ var tokenFastReferencePrices = map[string]tokenPrice{
 	"gpt-5.4-mini":  {1.5, 0.15, 9, 0, 0, 0},
 }
 
-func estimateTokenCost(model, serviceTier string, counts tokenCounts) tokenCost {
+func tokenCostModel(model string) string {
+	model = strings.ToLower(strings.TrimSpace(model))
 	model = strings.TrimPrefix(model, "openai/")
+	return strings.TrimPrefix(model, "grok:")
+}
+
+func tokenLongContextApplies(model string, price tokenPrice, input uint64) bool {
+	if price.longInput == 0 {
+		return false
+	}
+	after := uint64(272_000)
+	if model == "grok-4.6" {
+		after = 199_999
+	}
+	return input > after
+}
+
+func estimateTokenCost(model, serviceTier string, counts tokenCounts) tokenCost {
+	model = tokenCostModel(model)
 	price, ok := tokenReferencePrices[model]
+	standard := price
 	switch serviceTier {
 	case "", "default":
 	case "priority", "fast":
 		price, ok = tokenFastReferencePrices[model]
-		if counts.InputTokens > 272_000 && price.longInput == 0 && tokenReferencePrices[model].longInput != 0 {
+		if tokenLongContextApplies(model, standard, counts.InputTokens) && price.longInput == 0 {
 			return tokenCost{}
 		}
 	default:
@@ -70,7 +91,7 @@ func estimateTokenCost(model, serviceTier string, counts tokenCounts) tokenCost 
 		return tokenCost{}
 	}
 	// Select the tier per response, never from cumulative thread input.
-	if counts.InputTokens > 272_000 && price.longInput != 0 {
+	if tokenLongContextApplies(model, price, counts.InputTokens) {
 		price.input, price.cachedInput, price.output = price.longInput, price.longCachedInput, price.longOutput
 	}
 	var cacheWritePremium float64

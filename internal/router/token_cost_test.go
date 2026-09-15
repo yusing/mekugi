@@ -19,9 +19,15 @@ func TestTokenCostDisjointCategories(t *testing.T) {
 			t.Fatalf("%s: %+v", model, cost)
 		}
 	}
-	for _, model := range []string{"", "unknown", "grok:grok-4.6", "other/gpt-6-astra", "gpt-6-astra-unknown"} {
+	for _, model := range []string{"", "unknown", "grok:unknown", "other/gpt-6-astra", "gpt-6-astra-unknown", "x-ai/grok-4.6"} {
 		if estimateTokenCost(model, "", counts).known {
 			t.Fatalf("invented price for %q", model)
+		}
+	}
+	for _, model := range []string{"grok:grok-4.6", "grok-4.6", "GROK:GROK-4.6"} {
+		cost := estimateTokenCost(model, "", counts)
+		if !cost.known || cost.uncachedInput != 0.08 || cost.cachedInput != 0.03 || cost.output != 0.18 {
+			t.Fatalf("%s: %+v", model, cost)
 		}
 	}
 	if estimateTokenCost("gpt-6-astra", "", tokenCounts{InputTokens: 1, UncachedInputTokens: 2}).known {
@@ -48,6 +54,29 @@ func TestTokenCostContextTierBoundary(t *testing.T) {
 		if !cost.known || math.Abs(cost.uncachedInput-tc.wantInput) > 1e-10 ||
 			math.Abs(cost.cachedInput-tc.wantCached) > 1e-10 || math.Abs(cost.output-tc.wantOutput) > 1e-10 {
 			t.Fatalf("%s input=%d: %+v", tc.model, tc.input, cost)
+		}
+	}
+}
+
+func TestTokenCostGrokContextTierAndUnsupportedCombinations(t *testing.T) {
+	for _, tc := range []struct {
+		model, tier                       string
+		input                             uint64
+		writes                            uint64
+		wantInput, wantCached, wantOutput float64
+		known                             bool
+	}{
+		{"grok:grok-4.6", "", 199_999, 0, 0.2, 0.0499995, 0.06, true},
+		{"grok-4.6", "default", 200_000, 0, 0.4, 0.1, 0.12, true},
+		{"grok:grok-4.6", "", 200_001, 0, 0.4, 0.100001, 0.12, true},
+		{"grok:grok-4.6", "fast", 100_000, 0, 0, 0, 0, false},
+		{"grok:grok-4.6", "priority", 200_000, 0, 0, 0, 0, false},
+		{"grok:grok-4.6", "", 100_000, 1, 0, 0, 0, false},
+	} {
+		counts := tokenCounts{InputTokens: tc.input, UncachedInputTokens: 100_000, CacheWriteTokens: tc.writes, OutputTokens: 10_000, ReasoningTokens: 5_000}
+		got := estimateTokenCost(tc.model, tc.tier, counts)
+		if got.known != tc.known || math.Abs(got.uncachedInput-tc.wantInput) > 1e-10 || math.Abs(got.cachedInput-tc.wantCached) > 1e-10 || math.Abs(got.output-tc.wantOutput) > 1e-10 {
+			t.Fatalf("%s/%s/%d: %+v", tc.model, tc.tier, tc.input, got)
 		}
 	}
 }

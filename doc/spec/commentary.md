@@ -199,15 +199,18 @@ Cost estimates use built-in reference list API prices, not subscription
 rates or live billing quotes. No pricing fetch or terminal renderer is required: Codex renders
 the Markdown tables. Each response is priced using its effective provider-request model, service
 tier, and input size before accumulation, so model switches and long-context rates do not reprice
-earlier responses. Long-context rates begin above 272,000 input tokens, not at that exact count.
+earlier responses. OpenAI long-context rates begin above 272,000 input tokens, not at that exact count. Grok 4.6 long-context rates begin at 200,000 input tokens.
 The terminal provider `service_tier` takes precedence over the request, including a downgrade
 from `priority` or `fast` to `default`. These two Fast aliases share model-specific reference
 rates; a blanket multiplier MUST NOT be applied to every model. When the response omits the tier,
 the explicitly requested tier supplies the reference estimate; omission at both boundaries uses
 the standard reference estimate. Unresolved `auto`, malformed or null tier evidence, and
 unsupported model/tier/context combinations have unavailable cost, not guessed standard pricing.
-Rates follow the [official pricing tables](https://developers.openai.com/api/docs/pricing) and
-[model pricing notes](https://developers.openai.com/api/docs/models/gpt-6-astra); reference estimates
+Rates follow the [official pricing tables](https://developers.openai.com/api/docs/pricing),
+[model pricing notes](https://developers.openai.com/api/docs/models/gpt-6-astra), and the
+[xAI Grok 4.6 list prices](https://docs.x.ai/docs/models); `grok:grok-4.6` and `grok-4.6`
+share that Grok table. Grok has no Fast or priority reference rates, and unpublished
+cache-write rates remain unavailable rather than inferred. Reference estimates
 are not proof of the billed processing mode when the provider omits it.
 
 Cached input is subtracted from ordinary input; reasoning is included in output and MUST NOT be
