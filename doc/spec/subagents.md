@@ -31,8 +31,8 @@ failure. User configuration and the shared cache are not rewritten by Mekugi; Co
 normal catalog-command behavior. `/v1/models` forwards the upstream catalog unchanged, without
 Grok injection or a synthetic ETag.
 
-Only a native child request with one `x-openai-subagent: collab_spawn` header, a thread ID and valid
-`subagent_kind: thread_spawn` metadata may use the Grok route. Codex owns spawning, listing, messaging,
+Both main-agent and native child requests may use the Grok route. Child-specific headers and
+metadata are not required for routing. Codex owns spawning, listing, messaging,
 waiting, interruption, follow-up, tool execution, permissions and sandboxing. The router never
 creates a substitute agent process or executes a tool itself.
 

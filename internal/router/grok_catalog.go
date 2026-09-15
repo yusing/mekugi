@@ -41,7 +41,7 @@ func GrokModelCatalog(body []byte) ([]byte, error) {
 	}
 	model := maps.Clone(template)
 	for key, value := range map[string]any{
-		"slug": grokModel, "display_name": grokModel, "description": "Grok 4.6 native subagent through Mekugi. Start with fork_turns=none.",
+		"slug": grokModel, "display_name": grokModel, "description": "Grok 4.6 through Mekugi for main agents and native subagents.",
 		"context_window": 500000, "max_context_window": 500000,
 		"visibility": "list", "supported_in_api": true, "priority": 100, "default_reasoning_level": "high",
 		"supported_reasoning_levels": []map[string]string{{"effort": "low", "description": "Low reasoning"}, {"effort": "medium", "description": "Medium reasoning"}, {"effort": "high", "description": "High reasoning"}, {"effort": "xhigh", "description": "Extra-high reasoning"}},

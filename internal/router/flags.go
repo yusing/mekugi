@@ -38,7 +38,7 @@ func newRouterFlags(stderr io.Writer) routerFlags {
 		modelProtocol:            flags.String("model-protocol", defaultModelProtocol, "model protocol: native or ctp2"),
 		mainMentorHandoffEnabled: flags.Bool("main-mentor-handoff", true, "start eligible main threads with a mentor model"),
 		mentorHandoffEnabled:     flags.Bool("mentor-handoff", true, "start eligible spawned subagents with a mentor model"),
-		grokEnabled:              flags.Bool("grok", false, "enable native Grok subagents and plaintext collaboration projection"),
+		grokEnabled:              flags.Bool("grok", false, "enable Grok models and plaintext collaboration projection"),
 		grokAuthFile:             flags.String("grok-auth-file", "", "Grok OAuth credential file (default ~/.grok/auth.json)"),
 		metricsOutput:            flags.String("metrics-output", "", "optional final metrics JSON path"),
 		captureOutput:            flags.String("capture-output", "", "optional sanitized capture JSONL path"),

@@ -162,6 +162,9 @@ func TestGrokCatalogPreservesNativeMetadata(t *testing.T) {
 	if len(parsed.Models) != 2 || parsed.Extra != "keep" || jsonString(parsed.Models[0], "slug") != "gpt-5.6-sol" || jsonString(parsed.Models[1], "slug") != grokModel || string(parsed.Models[1]["unknown_future_field"]) != "42" {
 		t.Fatalf("catalog=%s", result)
 	}
+	if jsonString(parsed.Models[1], "visibility") != "list" || string(parsed.Models[1]["supported_in_api"]) != "true" {
+		t.Fatal("Grok is not available in the main-agent model picker")
+	}
 	if string(parsed.Models[1]["use_responses_lite"]) != "false" {
 		t.Fatal("inherited OpenAI lite transport")
 	}

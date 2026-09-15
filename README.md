@@ -254,7 +254,7 @@ request or accepted steering. Grok provider requests remain on HTTP.
 | `--model-protocol` | `native` | Use `ctp2` to enable CTP/2 in mekugi mode |
 | `--main-mentor-handoff` | `true` | Enable mentor handoff for eligible main sessions and ordinary forks |
 | `--mentor-handoff` | `true` | Use `false` to keep subagents on their configured models |
-| `--grok` | `false` | Enable Grok subagents in mekugi mode |
+| `--grok` | `false` | Enable Grok models in mekugi mode |
 | `--grok-auth-file` | `~/.grok/auth.json` | Select a Grok OAuth credential store |
 | `--timeout` | `10m` | Wait for the upstream response to start |
 | `--stream-idle-timeout` | `4m` | Limit gaps between provider messages during an active response, or HTTP response bytes |
@@ -281,6 +281,11 @@ An API key takes precedence. Codex credentials are never forwarded to Grok.
 ```sh
 mekugi --grok codex
 ```
+
+Grok is available in the model picker when `--grok` is enabled. To start directly
+with Grok as the main agent, use `mekugi --grok codex -m grok:grok-4.6`.
+Switching an existing OpenAI conversation still requires history that Grok can read;
+encrypted OpenAI history remains unsupported.
 
 Ask the main agent to spawn `grok:grok-4.6` in fresh context
 (`fork_turns="none"`). Codex still manages the child, tools, permissions, and

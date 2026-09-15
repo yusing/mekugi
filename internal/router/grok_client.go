@@ -22,10 +22,6 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 	if _, _, err := requiredCodexAuthHeaders(headers); err != nil {
 		return nil, err
 	}
-	metadata, valid := decodeCodexTurnMetadata(headers)
-	if !valid || metadata.SubagentKind != "thread_spawn" || len(headers.Values(openAISubagentHeader)) != 1 || headers.Get(openAISubagentHeader) != "collab_spawn" || codexThreadID(headers) == "" {
-		return nil, errors.New("Grok routing is available only to native spawned subagents")
-	}
 	tr, err := translateGrokRequest(body)
 	if err != nil {
 		return nil, err

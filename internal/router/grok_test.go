@@ -307,11 +307,21 @@ func TestGrokClientIsolationStreamingJSONAndCancellation(t *testing.T) {
 			}
 			headers := grokTestHeaders()
 			headers.Del(openAISubagentHeader)
-			if _, err := client.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, true), headers); err == nil {
-				t.Fatal("accepted root")
+			headers.Del(codexTurnMetadataHeader)
+			response, err = client.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, stream), headers)
+			if err != nil {
+				t.Fatal(err)
 			}
-			if calls.Load() != 1 {
-				t.Fatal("forwarded rejected request")
+			data, err = io.ReadAll(response.Body)
+			response.Body.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Contains(data, []byte("GROK_OK")) {
+				t.Fatalf("root body=%s", data)
+			}
+			if calls.Load() != 2 {
+				t.Fatal("root request was not forwarded")
 			}
 		})
 	}
