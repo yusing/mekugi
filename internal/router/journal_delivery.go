@@ -187,6 +187,7 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 		prepared[id] = journalDelivery{thread: deliveryThread, revisions: revisions, terminal: terminal}
 		traceSource := "report_now"
 		if terminal {
+			message["phase"] = mustMarshalJSON("final_answer")
 			traceSource = "terminal_flush"
 		}
 		t.featureTrace.record("journal", traceSource, "render", "prepared", "", id)

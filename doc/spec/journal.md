@@ -71,7 +71,10 @@ binds intent to its originating invocation rather than a response-local direct-t
 
 On a successful explicit main finish with no client-dispatched calls, the router emits a deterministic
 descendants-first tree flush containing only unflushed revisions, including previously live-reported entries, skips it
-when empty, then emits token metrics. Only successful terminal delivery marks a revision flushed;
+when empty, then emits token metrics. Terminal flushes and terminal retractions render as assistant
+`final_answer` messages, not commentary; live updates remain commentary. These terminal messages
+are user-visible only and retain the same exact-ID removal from later provider input.
+Only successful terminal delivery marks a revision flushed;
 edits clear both current-revision delivery flags. `list` exposes both flags. Finish ends the
 turn without a follow-up provider request or a separately generated final answer. A child finishes without flushing and emits
 `Journal result` with its own current journal items,

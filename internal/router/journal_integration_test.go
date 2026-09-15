@@ -71,8 +71,8 @@ func TestJournalRouterToolContinuesWithoutClientDispatch(t *testing.T) {
 				if !bytes.Contains(provider.forwarded[1], []byte("function_call_output")) || !bytes.Contains(provider.forwarded[1], []byte("j1")) {
 					t.Fatal("journal result missing from model continuation")
 				}
-				if strings.Contains(output.String(), `"phase":"final_answer"`) {
-					t.Fatalf("finish produced a separate final-answer message: %s", output.String())
+				if !strings.Contains(output.String(), `"phase":"final_answer"`) {
+					t.Fatalf("finish did not render its flush as a final-answer message: %s", output.String())
 				}
 				if !strings.Contains(output.String(), "Verified the journal path") {
 					t.Fatalf("missing terminal record: %s", output.String())
@@ -161,6 +161,13 @@ func TestJournalLiveReportRemainsEligibleForTerminalFlush(t *testing.T) {
 		if len(messages) != 1 || commentaryMessageText(messages[0]) != want {
 			t.Fatalf("journal display: %s; want %q", mustTestJSON(t, messages), want)
 		}
+		wantPhase := "commentary"
+		if terminal {
+			wantPhase = "final_answer"
+		}
+		if jsonString(messages[0], "type") != "message" || jsonString(messages[0], "phase") != wantPhase {
+			t.Fatalf("journal message phase: %s; want %s", mustTestJSON(t, messages), wantPhase)
+		}
 		if acknowledge {
 			transform.Delivered(assistantCommentaryDoneEvent(messages[0]))
 		}
@@ -184,6 +191,49 @@ func TestJournalLiveReportRemainsEligibleForTerminalFlush(t *testing.T) {
 	deliver(false, true, "")
 	deliver(true, true, "Journal flush `/root`\n- `j1`\n\n  Tests passed again\n")
 	checkState(true, true)
+}
+
+func TestJournalFinalMessageStaysUserOnlyAfterRestart(t *testing.T) {
+	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	var err error
+	proxy.replayStore, err = openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
+	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "add",
+		[]journalMutation{{Op: "add", Text: new("User-only result")}}); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := transform.prepareJournalDelivery(true)
+	transform.ReleaseDelivery()
+	if err != nil || len(messages) != 1 {
+		t.Fatalf("terminal messages: %v, %v", messages, err)
+	}
+	restarted := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	restarted.replayStore, err = openMekugiReplayStore(proxy.replayStore.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Identical provider text without retained provenance must survive.
+	provider := assistantCommentaryMessage("provider-answer", commentaryMessageText(messages[0]))
+	provider["phase"] = mustMarshalJSON("final_answer")
+	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+		"input": []any{messages[0], provider},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restarted.reconcileVisibleInput(t.Context(), &request, workspace, "resumed"); err != nil {
+		t.Fatal(err)
+	}
+	var input []map[string]json.RawMessage
+	if err := json.Unmarshal(request.fields["input"], &input); err != nil {
+		t.Fatal(err)
+	}
+	if len(input) != 1 || jsonString(input[0], "id") != "provider-answer" {
+		t.Fatalf("user-only flush leaked or provider message removed: %s", request.fields["input"])
+	}
 }
 
 func TestJournalKnownAncestryOnly(t *testing.T) {
