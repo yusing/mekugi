@@ -23,10 +23,12 @@ import (
 const maxReplayRecordBytes = 32 << 20
 
 // Durable records are immutable translation facts. Request-local confirmation and
-// ordering are intentionally absent. The store never evicts resumable history.
+// ordering are intentionally absent. Session retention removes only inactive, unshared records.
 type mekugiReplayStore struct {
 	directory          string
 	maxBytes           int64
+	session            storageSessionIdentity
+	storageNotice      func(string, string)
 	liveDiff           func([]liveDiffChange)
 	maxCommentaryBytes int64
 }
@@ -207,13 +209,18 @@ func (s *mekugiReplayStore) hasCommentary(ctx context.Context, workspace, id str
 	if s == nil {
 		return false, nil
 	}
-	err = s.locked(ctx, func() error { _, ok, e := s.read(workspace, id, true); found = ok; return e })
+	err = s.locked(ctx, func() error {
+		_, ok, e := s.read(workspace, id, true)
+		found = ok
+		return e
+	})
 	return
 }
 func (s *mekugiReplayStore) putCommentary(ctx context.Context, workspace string, ids []string) error {
 	if s == nil {
 		return nil
 	}
+	s = s.scoped(ctx)
 	return s.locked(ctx, func() error {
 		for _, id := range ids {
 			if err := s.write(replayRecord{Version: 1, Workspace: workspace, CallID: id, Commentary: true}); err != nil {
@@ -227,6 +234,7 @@ func (s *mekugiReplayStore) put(ctx context.Context, workspace string, histories
 	if s == nil {
 		return nil
 	}
+	s = s.scoped(ctx)
 	return s.locked(ctx, func() error {
 		for _, id := range slices.SortedFunc(maps.Keys(histories), func(a, b string) int {
 			return cmp.Or(cmp.Compare(histories[a].sequence, histories[b].sequence), strings.Compare(a, b))
@@ -320,36 +328,14 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 		return err
 	}
 	if len(data) > maxReplayRecordBytes {
-		return errors.New("durable replay record capacity reached")
+		return storageCapacityError("replay record", int64(len(data)), maxReplayRecordBytes, "Split the tool call or reduce its retained output before retrying.")
 	}
 	name := replayRecordName(r.Workspace, r.CallID, r.Commentary)
-	entries, err := os.ReadDir(s.directory)
-	if err != nil {
-		return err
-	}
-	total := int64(len(data))
-	prefix, limit := "call-", s.maxBytes
+	prefix := "call-"
 	if r.Commentary {
-		prefix, limit = "commentary-", s.maxCommentaryBytes
+		prefix = "commentary-"
 	}
-
-	for _, entry := range entries {
-		if entry.Name() == name || !strings.HasPrefix(entry.Name(), prefix) {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
-			return errors.New("unexpected non-regular replay store entry")
-		}
-		total += info.Size()
-	}
-	if total > limit {
-		return errors.New("durable replay store quota reached; explicit cleanup required")
-	}
-	return s.writeFile(name, prefix+"pending-", data)
+	return s.writeManagedFile(name, prefix+"pending-", data)
 }
 
 // writeFile publishes an already-validated record. Callers retain their lock,

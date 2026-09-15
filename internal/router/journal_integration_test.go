@@ -350,11 +350,11 @@ func TestJournalNamedResultWithoutRecordRebasesUnchanged(t *testing.T) {
 	}
 }
 
-func TestJournalCapacityDoesNotRejectUnrelatedRequest(t *testing.T) {
+func TestJournalRemainsAvailableAfterManyThreads(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprint(stream), func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
-			for i := range maxJournalThreads {
+			for i := range 257 {
 				if err := proxy.journals.initialize(t.Context(), nil, "workspace", fmt.Sprint(i), "/root", ""); err != nil {
 					t.Fatal(err)
 				}
@@ -386,8 +386,8 @@ func TestJournalCapacityDoesNotRejectUnrelatedRequest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(jsonString(result, "output"), "journal terminal delivery unavailable") || transform.journalTerminalReady() {
-				t.Fatalf("finish succeeded without journal state: %s", mustTestJSON(t, result))
+			if !strings.Contains(jsonString(result, "output"), `"ok":true`) || !transform.journalTerminalReady() {
+				t.Fatalf("finish failed after many threads: %s", mustTestJSON(t, result))
 			}
 			if !strings.Contains(output.String(), "Answer survives capacity") {
 				t.Fatalf("capacity discarded provider answer: %s", output.String())

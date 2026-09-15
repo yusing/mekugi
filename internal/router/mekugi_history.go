@@ -302,6 +302,11 @@ func (p *mekugiProxy) history(sessionID, callID string) (mekugiHistory, bool) {
 // never from a routing session's most recent turn. All changes stay local until
 // the entire input is valid, including output confirmations.
 func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsedResponsesRequest, workspace, sessionID string) (map[string]mekugiHistory, error) {
+	releaseSnapshot, err := p.replayStore.lockStorageSnapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer releaseSnapshot()
 	visible := make(map[string]mekugiHistory)
 	raw, ok := request.fields["input"]
 	if !ok {
@@ -434,6 +439,10 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 			return nil, fmt.Errorf("encode replayed Responses input: %w", err)
 		}
 	}
+	if err := p.replayStore.retainInput(ctx, workspace, raw, visible, releaseSnapshot); err != nil {
+		return nil, err
+	}
+	releaseSnapshot()
 	if err := p.replayStore.confirmChanges(ctx, workspace, visible); err != nil {
 		return nil, err
 	}

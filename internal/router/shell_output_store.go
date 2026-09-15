@@ -91,7 +91,7 @@ func shellOutputStore(manifest toolWorkerManifest) (*mekugiReplayStore, error) {
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, errors.New("read recovery storage is missing or invalid")
 	}
-	return &mekugiReplayStore{directory: manifest.ReplayDirectory}, nil
+	return &mekugiReplayStore{directory: manifest.ReplayDirectory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, storageNotice: func(_ string, message string) { _, _ = fmt.Fprintln(os.Stderr, message) }}, nil
 }
 
 func validShellOutputID(id string) bool {
@@ -145,9 +145,11 @@ func readCursorID(record shellOutputRecord) string {
 }
 
 func validateReadRecord(record shellOutputRecord) error {
+	if size := len(record.Stdout) + len(record.Stderr); size > maxShellOutputBytes {
+		return storageCapacityError("saved read output", int64(size), maxShellOutputBytes, "Narrow the command output or split the operation before retrying.")
+	}
 	if record.Version != 1 || !validShellOutputID(record.ID) ||
 		record.ExitCode < 0 || record.ExitCode > 255 ||
-		len(record.Stdout)+len(record.Stderr) > maxShellOutputBytes ||
 		!utf8.ValidString(record.Stdout) || !utf8.ValidString(record.Stderr) ||
 		!validReadKind(record.StdoutKind) || !validReadKind(record.StderrKind) {
 		return errors.New("invalid read recovery record")
@@ -189,6 +191,7 @@ func validateReadRecord(record shellOutputRecord) error {
 }
 
 func (s *mekugiReplayStore) putReadRecord(ctx context.Context, record shellOutputRecord) (string, error) {
+	s = s.scoped(ctx)
 	if err := validateReadRecord(record); err != nil {
 		return "", err
 	}
@@ -197,7 +200,7 @@ func (s *mekugiReplayStore) putReadRecord(ctx context.Context, record shellOutpu
 		return "", err
 	}
 	if len(data) > maxReplayRecordBytes {
-		return "", errors.New("encoded read record exceeds recovery record limit")
+		return "", storageCapacityError("encoded read record", int64(len(data)), maxReplayRecordBytes, "Narrow the command output or split the operation before retrying.")
 	}
 	name := "output-" + record.ID + ".json"
 	err = s.locked(ctx, func() error {
@@ -205,32 +208,14 @@ func (s *mekugiReplayStore) putReadRecord(ctx context.Context, record shellOutpu
 			if !bytes.Equal(previous, data) {
 				return errors.New("read reference conflicts with retained record")
 			}
+			if err := s.retainReadRecord(record); err != nil {
+				return err
+			}
 			return syncReplayDirectory(s.directory)
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-		entries, err := os.ReadDir(s.directory)
-		if err != nil {
-			return err
-		}
-		total := int64(len(data))
-		for _, entry := range entries {
-			if !strings.HasPrefix(entry.Name(), "output-") {
-				continue
-			}
-			info, err := entry.Info()
-			if err != nil {
-				return err
-			}
-			if !info.Mode().IsRegular() {
-				return errors.New("invalid read recovery store entry")
-			}
-			total += info.Size()
-		}
-		if total > maxShellOutputStoreBytes {
-			return errors.New("read recovery quota reached; explicit cleanup required")
-		}
-		return s.writeFile(name, "output-pending-", data)
+		return s.writeManagedFile(name, "output-pending-", data)
 	})
 	if err != nil {
 		return "", err
@@ -266,9 +251,13 @@ func (s *mekugiReplayStore) readShellOutput(ctx context.Context, id string) (she
 	if !validShellOutputID(id) {
 		return record, errors.New("invalid read reference")
 	}
-	err := s.readLocked(ctx, func() error {
+	s = s.scoped(ctx)
+	err := s.locked(ctx, func() error {
 		name := filepath.Join(s.directory, "output-"+id+".json")
 		data, err := readManagedOutputFile(name)
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("read reference %s is unavailable; session data may have been cleaned after 14 days of inactivity or storage pressure", id)
+		}
 		if err != nil {
 			return err
 		}
@@ -293,7 +282,10 @@ func (s *mekugiReplayStore) readShellOutput(ctx context.Context, id string) (she
 		if record.ID != id {
 			return errors.New("read recovery identity mismatch")
 		}
-		return validateReadRecord(record)
+		if err := validateReadRecord(record); err != nil {
+			return err
+		}
+		return s.retainReadRecord(record)
 	})
 	return record, err
 }

@@ -150,10 +150,11 @@ The authenticated executor persists records through the existing managed replay-
 locking and atomic write/fsync path before exposing references. There are no standalone
 temporary output dumps. Omitted data is bounded to 16 MiB, encoded records to the existing
 replay record limit, and all read records to a separate 256 MiB quota. Capacity or storage
-failures are explicit and never evict executable recovery state.
+failures are explicit. Storage pressure uses the session-retention policy in [REQ-ROUTER-001](router.md),
+never arbitrary record eviction. Active readers pin complete change-review and source dependencies.
 
 A reference is portable through visible history across fork, side-thread, agent/model
 switch, and router restart, without depending on a live parent or routing-session ID.
-It remains valid until explicit managed-store cleanup. Missing, corrupt, altered, or
+It remains valid while its session data is retained under that policy. Missing, corrupt, altered, or
 out-of-range records fail rather than replay producers. These durable read references do
 not extend the lifetime of executable recovery handles or native sessions.

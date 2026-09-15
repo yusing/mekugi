@@ -91,7 +91,7 @@ while (execution.session_id != null) {
   execution = await tools.write_stdin({session_id: execution.session_id, chars: "", yield_time_ms: 10000});
   output += execution.output || "";
 }
-if (execution.exit_code !== 0) throw new Error("journal publication failed");
+if (execution.exit_code !== 0) throw new Error("journal publication failed" + (output.trim() ? ": " + output.trim().slice(0, 16384) : ""));
 const publication = JSON.parse(output);
 if (publication.ok !== true || !Array.isArray(publication.items) || publication.items.length !== (Array.isArray(mutation) ? mutation.length : 1) || publication.items.some(id => typeof id !== "string")) {
   throw new Error("invalid journal publication result");

@@ -167,7 +167,7 @@ func TestRuntimeCommentaryRenderedByteBudget(t *testing.T) {
 	b.publish(token, prefix+fits, true) // Already attributed text fits exactly.
 	b.publish(token, fits+"x", true)
 	events = b.drain(token)
-	if len(events) != 1 || events[0].text != prefix+fits || b.threadIDCount != 1 {
+	if len(events) != 1 || events[0].text != prefix+fits {
 		t.Fatal("prefix or provenance budget changed")
 	}
 	if !b.hasThreadMessageID("thread", events[0].messageID) {

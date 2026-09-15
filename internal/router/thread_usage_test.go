@@ -35,14 +35,14 @@ func TestThreadUsageConcurrentObservationsAndDuplicateTerminals(t *testing.T) {
 		}
 	}
 }
-func TestThreadUsageCapacityOverflowAndShutdownFailAuxiliary(t *testing.T) {
+func TestThreadUsageHasNoLifetimeThreadLimitAndHandlesOverflow(t *testing.T) {
 	totals := newThreadUsage()
 	for i := range maxCommentaryRoutes {
 		totals.observation(fmt.Sprint(i), "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 1})
 	}
 	totals.observation("excess", "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 100})
-	if _, valid := totals.snapshot("excess"); valid {
-		t.Fatal("capacity admitted a new identity")
+	if got, valid := totals.snapshot("excess"); !valid || got.InputTokens != 100 {
+		t.Fatal("lifetime thread count disabled usage reporting")
 	}
 	totals.observation("0", "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 2})
 	if got, valid := totals.snapshot("0"); !valid || got.InputTokens != 3 {

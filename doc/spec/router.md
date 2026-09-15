@@ -49,10 +49,35 @@ their original model-visible tools. This is correctness state, not an operationa
 It lives at `$XDG_STATE_HOME/mekugi/replay`, or `~/.local/state/mekugi/replay` when that variable is
 unset, and survives wrapper shutdown. A relative `XDG_STATE_HOME` is invalid. Passthrough mode
 does not open this store. Initialization failure prevents Codex launch. The store admits at most
-1 GiB of call replay data and 32 MiB per call record; reaching a limit rejects new records rather
-than discarding resumable history. Exact commentary provenance has an independent 16 MiB budget;
-failure to retain it suppresses new commentary instead of consuming call-record capacity.
-Cleanup is explicit, never inferred from one thread's truncation.
+1 GiB of managed data, including session ownership catalogs, journals, read outputs, and change
+indexes, with 32 MiB per encoded record. Exact commentary provenance has an independent
+16 MiB budget; failure to retain it suppresses new commentary with a diagnostic instead of
+consuming the managed-data allowance.
+
+Automatic retention removes Mekugi-owned data after 14 days without activity and reclaims the
+least recently active inactive sessions when a byte budget would be exceeded. Requests check
+space before exposing retained facts; age sweeps run at most hourly during request preparation.
+The policy never deletes Codex transcripts, workspace files, exported metrics, or explicit debug
+bundles. It never infers expiry from request truncation or compaction.
+
+Durable catalogs bind file dependencies to stable thread IDs across workspaces, routing remaps,
+forks, and restarts. Visible inherited calls, commentary provenance, and read-reference dependencies
+gain another owner. A shared record survives removal of another owner. Snapshot validation and
+ownership publication cannot race cleanup. Journal receipts and change streams provide legacy
+ownership where available; recent records with no trustworthy owner remain protected, while
+unattributed records older than 14 days use last-write time for cleanup.
+
+Cross-process leases protect active turns, host handoffs, and workers, including yielded calls.
+A successfully delivered journal terminal releases an idle turn's lease; router shutdown also
+releases its leases. Cleanup never stops a host process or changes its continuation lifetime.
+If no inactive data can be reclaimed, publication fails with required bytes, the limiting budget,
+and an actionable explanation rather than a generic initialization error. Catalog growth counts
+toward the budget too. Cleanup reports removals through user-only notices, or worker stderr;
+failed cleanup reports an error and does not claim complete reclamation.
+
+Change-index retirement preserves stream high-water counters so old IDs are never reused.
+Partially retired change histories explicitly identify removed attempts. Missing recovery references
+explain session expiry or storage pressure and never replay an operation.
 `--capture-output PATH` appends records; `--metrics-output PATH` overwrites a final
 snapshot from the same capturer. The destinations must be distinct.
 

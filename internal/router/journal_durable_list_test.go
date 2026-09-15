@@ -161,9 +161,9 @@ func TestJournalPreparationSkipsUnchangedWrites(t *testing.T) {
 	if after := stat(); !os.SameFile(changed, after) {
 		t.Fatal("refresh rewrote durable journal")
 	}
-	items, err := reader.list(t.Context(), nil, workspace, thread)
+	items, err := reader.list(t.Context(), replay, workspace, thread)
 	if err != nil || len(items) != 1 || items[0].Text != "Committed elsewhere" {
-		t.Fatalf("no-op preparation failed to refresh locked durable state: %+v %v", items, err)
+		t.Fatalf("no-op preparation failed to preserve locked durable state: %+v %v", items, err)
 	}
 	if err := reader.bindIdentity(t.Context(), replay, workspace, thread, "", "/root/changed", true); err != nil {
 		t.Fatal(err)

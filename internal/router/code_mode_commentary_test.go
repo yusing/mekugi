@@ -419,7 +419,7 @@ func TestCodeModeJournalPublicationFailureThrows(t *testing.T) {
 	runShellCatJavaScript(t, proxy.registry.NodeExecutable, transform.directory,
 		`let result="unexpected success"; try {`+lowered+`} catch (error) {result=error.message;} text(JSON.stringify(result));`, &result,
 		`tools.exec_command = async () => ({exit_code:1,output:"rejected"});`)
-	if result != "journal publication failed" {
+	if result != "journal publication failed: rejected" {
 		t.Fatalf("publication error = %q", result)
 	}
 }

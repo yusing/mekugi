@@ -418,7 +418,9 @@ the selection and position, so no `--cursor` or repeated producer arguments are 
 Pages label raw bytes, complete verified rows, or JSON entries. Do not treat raw byte
 fragments or framing as verified source rows. If a complete unit cannot fit, increase
 the budget or use a source preview. Reads are repeatable, not consuming, and survive
-router restart in the managed recovery store until explicit cleanup. No standalone output
+router restart while their session data is retained. Mekugi cleans inactive session data after
+14 days and reclaims the oldest inactive sessions under storage pressure; active work and shared
+references stay protected. Missing references fail explicitly. No standalone output
 dumps are created. Commands keep their original exit status; `script_ref` stores executable
 program source separately. Reading output never reruns the producer.
 

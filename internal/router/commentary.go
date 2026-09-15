@@ -447,13 +447,6 @@ func (t *mekugiResponseTransform) retainCommentary(messages ...map[string]json.R
 				newIDs[id] = struct{}{}
 			}
 		}
-		count := 0
-		for _, ids := range t.proxy.memoryCommentary {
-			count += len(ids)
-		}
-		if count+len(newIDs) > maxThreadCommentaryIDs {
-			return nil
-		}
 		if retained == nil {
 			retained = make(map[string]struct{})
 			t.proxy.memoryCommentary[t.historySessionID] = retained
@@ -467,8 +460,11 @@ func (t *mekugiResponseTransform) retainCommentary(messages ...map[string]json.R
 			ids = append(ids, id)
 		}
 	}
-	if len(ids) != 0 && t.proxy.replayStore.putCommentary(t.ctx, t.directory, ids) != nil {
-		return nil
+	if len(ids) != 0 {
+		if err := t.proxy.replayStore.putCommentary(t.ctx, t.directory, ids); err != nil {
+			t.proxy.notice(t.sessionID, "commentary_storage", "Mekugi could not retain progress-message provenance. New auxiliary progress messages were suppressed; tool execution and provider answers are unchanged. Check session storage space and permissions.")
+			return nil
+		}
 	}
 	return messages
 }

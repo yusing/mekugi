@@ -20,7 +20,6 @@ import (
 )
 
 const (
-	maxJournalThreads   = 256
 	maxJournalItems     = 256
 	maxJournalItemBytes = 16 << 10
 	// Terminal delivery is independent of the live progress budget. The extra
@@ -31,13 +30,10 @@ const (
 	// Reserve a small allowance for the response envelope instead of estimating
 	// expanded item text or repeating a second author/content capacity model.
 	maxJournalPublicationResponseBytes = maxReplayRecordBytes + 1024
-	maxJournalReceipts                 = 16384
 )
 
 // errJournalUnchanged skips publication after the locked durable read.
 var errJournalUnchanged = errors.New("journal unchanged")
-
-var errJournalThreadCapacity = errors.New("journal thread capacity reached")
 
 type journalMutation struct {
 	Op               string  `json:"op"`
@@ -96,7 +92,7 @@ func (j threadJournal) clone() threadJournal {
 
 // journalStore owns mutable journal state, separately from immutable tool replay.
 // The replay store's filesystem lock serializes journal transactions across router
-// processes too; journal files never count against or evict executable history.
+// processes too. Journal files share the managed session storage budget.
 type journalStore struct {
 	deliveryGate chan struct{}
 	stateGate    chan struct{}
@@ -202,7 +198,7 @@ func readJournalRecord(path string) (threadJournal, bool, error) {
 		journal.Version != 1 || journal.Thread == "" || filepath.Base(path) != journalFilename(journal.Workspace, journal.Thread) {
 		return threadJournal{}, false, errors.New("corrupt journal record")
 	}
-	if len(journal.Items) > maxJournalItems || journal.Receipts == nil || len(journal.Receipts) > maxJournalReceipts {
+	if len(journal.Items) > maxJournalItems || journal.Receipts == nil {
 		// A fully decoded, filename-verified identity can establish whose
 		// content failed validation, without trusting partially decoded JSON.
 		return journal, true, errors.New("corrupt journal contents")
@@ -216,15 +212,16 @@ func writeThreadJournal(store *mekugiReplayStore, journal threadJournal) error {
 		return err
 	}
 	if len(data) > maxReplayRecordBytes {
-		return errors.New("journal record capacity reached")
+		return storageCapacityError("journal record", int64(len(data)), maxReplayRecordBytes, "Delete obsolete journal items or continue in a new chat.")
 	}
-	return store.writeFile(journalFilename(journal.Workspace, journal.Thread), "journal-pending-", data)
+	return store.writeManagedFile(journalFilename(journal.Workspace, journal.Thread), "journal-pending-", data)
 }
 
 func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore, workspace, thread string, mutate func(*threadJournal, bool) error) error {
 	if strings.TrimSpace(thread) == "" {
 		return errors.New("journal requires a stable thread ID")
 	}
+	store = store.scoped(ctx)
 	release, err := s.lockState(ctx)
 	if err != nil {
 		return err
@@ -240,38 +237,29 @@ func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore
 				return err
 			}
 		}
+		if store != nil && exists {
+			if err := store.retainJournalDependencies(current); err != nil {
+				return err
+			}
+		}
 		next := current.clone()
 		if err := mutate(&next, exists); err != nil {
 			if errors.Is(err, errJournalUnchanged) {
-				s.memory[key] = current
+				if store == nil {
+					s.memory[key] = current
+				}
 				return nil
 			}
 			return err
 		}
-		if !exists && len(s.memory) >= maxJournalThreads {
-			return errJournalThreadCapacity
-		}
 		if store != nil {
-			if !exists {
-				entries, err := os.ReadDir(store.directory)
-				if err != nil {
-					return err
-				}
-				count := 0
-				for _, entry := range entries {
-					if strings.HasPrefix(entry.Name(), "journal-") && strings.HasSuffix(entry.Name(), ".json") {
-						count++
-					}
-				}
-				if count >= maxJournalThreads {
-					return errJournalThreadCapacity
-				}
-			}
 			if err := writeThreadJournal(store, next); err != nil {
 				return err
 			}
 		}
-		s.memory[key] = next
+		if store == nil {
+			s.memory[key] = next
+		}
 		return nil
 	}
 	if store != nil {
@@ -283,6 +271,7 @@ func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore
 // Initialize ordinary forks exactly once from the source's latest committed
 // journal. Subagent starts do not import their parent's journal.
 func (s *journalStore) initialize(ctx context.Context, store *mekugiReplayStore, workspace, thread, author, fork string) error {
+	store = store.scoped(ctx)
 	return s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
 		if exists {
 			return errJournalUnchanged
@@ -304,6 +293,9 @@ func (s *journalStore) initialize(ctx context.Context, store *mekugiReplayStore,
 		}
 		if !ok {
 			return nil
+		}
+		if err := store.retainJournalDependencies(source); err != nil {
+			return err
 		}
 		j.Items = slices.Clone(source.Items)
 		j.Sequence, j.NextID = source.Sequence, source.NextID
@@ -444,7 +436,7 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 	var ids []string
 	err = s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
 		if !exists {
-			return errors.New("journal is not initialized")
+			return fmt.Errorf("journal state is missing for thread %q in workspace %q; initialization did not complete or session data was cleaned up; retry the request to initialize it", thread, workspace)
 		}
 		if receipt, ok := j.Receipts[receiptID]; receiptID != "" && ok {
 			if receipt.Digest != digest {
@@ -452,9 +444,6 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 			}
 			ids = slices.Clone(receipt.IDs)
 			return nil
-		}
-		if receiptID != "" && len(j.Receipts) >= maxJournalReceipts {
-			return errors.New("journal receipt capacity reached")
 		}
 		for _, mutation := range mutations {
 			question := ""
@@ -478,7 +467,7 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 					return errors.New("journal text must be nonblank UTF-8; text and question together must be at most 16 KiB")
 				}
 				if mutation.Op == "add" && (mutation.ID != "" || len(j.Items) >= maxJournalItems) {
-					return errors.New("journal add requires no ID and available item capacity")
+					return fmt.Errorf("journal add requires no ID and at most %d items; delete obsolete items before adding more", maxJournalItems)
 				}
 				if mutation.Op == "edit" && index < 0 {
 					return errors.New("journal item not found")
@@ -514,7 +503,7 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 			case "delete":
 				if mutation.ReportNow && j.Items[index].EverReported {
 					if len(j.Retractions) >= maxJournalItems {
-						return errors.New("journal retraction capacity reached")
+						return fmt.Errorf("journal retraction queue limit is %d; deliver pending journal updates before requesting more visible deletions", maxJournalItems)
 					}
 					j.Retractions = append(j.Retractions, journalRetraction{ID: mutation.ID, Sequence: j.Sequence})
 				}
@@ -617,7 +606,7 @@ func (s *journalStore) list(ctx context.Context, store *mekugiReplayStore, works
 			}
 		}
 		if !exists {
-			return errors.New("journal is not initialized")
+			return fmt.Errorf("journal state is missing for thread %q in workspace %q; initialization did not complete or session data was cleaned up; retry the request to initialize it", thread, workspace)
 		}
 		items = slices.Clone(j.Items)
 		return nil
@@ -635,7 +624,7 @@ func (s *journalStore) list(ctx context.Context, store *mekugiReplayStore, works
 func (s *journalStore) acknowledge(ctx context.Context, store *mekugiReplayStore, workspace, thread string, revisions map[string]uint64, terminal bool) error {
 	return s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
 		if !exists {
-			return errors.New("journal is not initialized")
+			return fmt.Errorf("journal state is missing for thread %q in workspace %q; initialization did not complete or session data was cleaned up; retry the request to initialize it", thread, workspace)
 		}
 		for index := range j.Items {
 			if revision, ok := revisions[j.Items[index].ID]; ok {

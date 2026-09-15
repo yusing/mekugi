@@ -534,7 +534,7 @@ nonzero status. The short opaque reference already binds the selection and posit
 repeating it does not consume its contents. Frames distinguish raw bytes, whole verified
 rows, and complete JSON entries. No public hash/offset cursor is needed. Only omitted bytes
 are saved in Mekugi's managed recovery store, not standalone temporary dumps.
-They survive router restart until explicit cleanup. Missing records fail explicitly,
+They survive router restart until [automatic session cleanup](#replay-storage). Missing records fail explicitly,
 never rerun the command. Original execution status and pipeline/redirection data are
 unchanged. Direct external calls and command templates use the host's output behavior;
 see the [shell contract](doc/spec/shell.md) for storage bounds and exceptions.
@@ -754,13 +754,31 @@ recovery. Replay does not rerun old commands or restore live shell processes,
 continuation handles, or expired private scripts. History recorded by older
 versions without durable replay records cannot be reconstructed reliably.
 
-The store limits call records to 1 GiB in total and 32 MiB per record. Commentary
-identities have a separate 16 MiB allowance. It rejects new call records when full
-instead of silently discarding resumable history. To reset
-storage, stop all Mekugi wrappers and move the replay directory aside. Conversations
-whose records you remove lose replay restoration; keep the moved directory if you
-may need to restore it later. Do not remove records just because one fork no longer
-shows those calls: a parent or sibling conversation may still need them.
+Mekugi automatically removes its session data after **14 days without activity**.
+When storage fills, it removes the **least recently active inactive sessions** until
+the new data fits. Running turns and workers are protected, including yielded work.
+Shared records stay while another retained conversation still references them.
+Cleanup runs during requests, with age sweeps at most once an hour.
+
+**Your original Codex chats and workspace files are never deleted.** Cleanup removes
+Mekugi's journals, replay mappings, and saved read results. Their old recovery and
+review references may stop working; Mekugi reports cleanup and explains unavailable
+references instead of rerunning the original operation. Explicit debug bundles and
+exported metrics are not part of this managed session store.
+
+The managed-data budget is 1 GiB, including ownership catalogs, journals, change
+indexes, and saved outputs. Read results also have a 256 MiB budget; commentary
+provenance has a separate 16 MiB allowance. Individual records remain bounded to
+32 MiB. If all remaining data is protected, the error states the required bytes,
+the limit, and what to do next. Journaling and token reports have no lifetime
+thread-count ceiling.
+
+Older records without reliable session ownership are adopted when their chat
+uses them. Unattributed legacy records use their last-write age; recent ones are
+protected rather than guessed to belong to an inactive chat.
+
+To reset storage manually, stop all Mekugi wrappers and move the replay directory
+aside. Keep that copy if you may need its restoration data later.
 
 ### Inspect a session
 

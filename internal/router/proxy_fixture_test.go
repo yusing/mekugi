@@ -37,6 +37,9 @@ func buildToolRegistryForTest(
 ) (*toolRegistry, error) {
 	t.Helper()
 	directory := t.TempDir()
+	if _, err := openMekugiReplayStore(filepath.Join(directory, "replay")); err != nil {
+		return nil, err
+	}
 	return buildToolRegistryAt(ctx, dataDirectory, toolDescription, diagnose,
 		filepath.Join(directory, "runtime"), filepath.Join(directory, "replay"))
 }
@@ -57,6 +60,9 @@ func (fixture *proxyRegistryFixture) get(t *testing.T, pluginSource, toolDescrip
 			if fixture.err = os.WriteFile(filepath.Join(pluginDirectory, "proxy.mjs"), []byte(pluginSource), 0o600); fixture.err != nil {
 				return
 			}
+		}
+		if _, fixture.err = openMekugiReplayStore(filepath.Join(fixture.directory, "replay")); fixture.err != nil {
+			return
 		}
 		fixture.registry, fixture.err = buildToolRegistryAt(
 			t.Context(),

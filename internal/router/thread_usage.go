@@ -65,9 +65,6 @@ func (u *threadUsage) add(thread, model, serviceTier string, counts tokenCounts,
 	}
 	total := u.threads[thread]
 	if total == nil {
-		if len(u.threads) >= maxCommentaryRoutes {
-			return
-		}
 		total = &threadUsageTotal{complete: true, cost: tokenCost{known: true}}
 		u.threads[thread] = total
 	}

@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -158,7 +159,7 @@ func TestSiblingReceiptAndOpaqueCallsKeepExactEnvelope(t *testing.T) {
 	}
 }
 
-func TestActivityCapacityDoesNotRejectToolsAndOpaqueReceipt(t *testing.T) {
+func TestActivityHasNoLifetimeSourceLimitAndPreservesTools(t *testing.T) {
 	p := newManagedMekugiProxy(t, testTranslator(t, new(int)))
 	p.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
 	root, _ := prepareActivityTest(t, p, "root", "r", "", "/root", nil)
@@ -171,16 +172,18 @@ func TestActivityCapacityDoesNotRejectToolsAndOpaqueReceipt(t *testing.T) {
 	if err != nil || !bytes.Contains(visible, []byte("Message received.")) || bytes.Contains(visible, []byte("opaque-secret")) {
 		t.Fatal(string(visible), err)
 	}
-	p.activity.mu.Lock()
-	p.activity.sources = maxThreadCommentaryIDs
-	p.activity.mu.Unlock()
+	for i := range 16385 {
+		p.activity.collect("b", fmt.Sprint("prior-", i), "operation", "Prior work")
+		p.activity.drain("r", root.activityStarted, maxCommentaryPublicationBytes)
+	}
 	call := map[string]any{"type": "function_call", "name": "lookup", "call_id": "capacity-call", "arguments": `{"commentary":"Useful work"}`}
 	visible, err = child.TransformJSON(mustTestJSON(t, map[string]any{"status": "completed", "output": []any{call}}))
 	if err != nil || !bytes.Contains(visible, []byte(`"call_id":"capacity-call"`)) {
 		t.Fatal(string(visible), err)
 	}
-	if len(p.activity.drain("r", root.activityStarted, maxCommentaryPublicationBytes)) != 0 {
-		t.Fatal("capacity did not suppress projection")
+	p.activity.collect("b", "after-prior-work", "operation", "Useful work")
+	if len(p.activity.drain("r", root.activityStarted, maxCommentaryPublicationBytes)) == 0 {
+		t.Fatal("lifetime event count disabled activity projection")
 	}
 }
 

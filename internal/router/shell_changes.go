@@ -117,18 +117,24 @@ func trackedStatus(history mekugiHistory, confirmed bool) string {
 }
 
 func (s *mekugiReplayStore) readChanges(ctx context.Context, options changeReadOptions) (string, error) {
-	var index changeIndex
-	err := s.readLocked(ctx, func() error {
-		var err error
-		index, err = s.readChangeIndex(options.workspace)
+	s = s.scoped(ctx)
+	var output string
+	err := s.locked(ctx, func() error {
+		index, err := s.readChangeIndex(options.workspace)
+		if err != nil {
+			return err
+		}
+		names, err := s.changeDependencyNames(options.workspace, options.ids)
+		if err != nil {
+			return err
+		}
+		if err := s.retainFiles(names...); err != nil {
+			return err
+		}
+		output, err = s.renderChanges(ctx, options, index)
 		return err
 	})
-	if err != nil {
-		return "", err
-	}
-	// Membership and receipts are fixed in this snapshot. Replay translation
-	// facts are immutable, so record reads and rendering need no store lock.
-	return s.renderChanges(ctx, options, index)
+	return output, err
 }
 
 func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeReadOptions, index changeIndex) (string, error) {
@@ -140,7 +146,10 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		}
 		change, exists := index.Changes[id]
 		if !exists {
-			return "", fmt.Errorf("change %s is missing in workspace %q; check --workspace or explicit store cleanup", id, options.workspace)
+			return "", fmt.Errorf("change %s is missing in workspace %q; check --workspace; session data may have expired after 14 days of inactivity or been removed under storage pressure", id, options.workspace)
+		}
+		if change.RetiredCalls != 0 {
+			fmt.Fprintf(&output, "%s history incomplete: %d older attempts were removed by session cleanup\n", id, change.RetiredCalls)
 		}
 		if len(change.Calls) > 1 {
 			fmt.Fprintf(&output, "%s attempts=%d\n", id, len(change.Calls))

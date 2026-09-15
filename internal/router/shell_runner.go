@@ -184,7 +184,7 @@ func executeShellProgram(
 			failureClass := ""
 			var exitCode *int
 			if observationErr != nil {
-				_, _ = io.WriteString(handler.Stderr, "shell: AX read evidence unavailable\n")
+				_, _ = fmt.Fprintf(handler.Stderr, "shell: AX read evidence unavailable: %v\n", observationErr)
 			}
 			defer func() {
 				if errors.Is(handlerCtx.Err(), context.DeadlineExceeded) && runErr != nil {
@@ -193,7 +193,7 @@ func executeShellProgram(
 					failureClass = "canceled"
 				}
 				if err := observation.FinishResult(runErr == nil, failureClass, exitCode); err != nil {
-					_, _ = io.WriteString(handler.Stderr, "shell: AX read evidence incomplete\n")
+					_, _ = fmt.Fprintf(handler.Stderr, "shell: AX read evidence incomplete: %v\n", err)
 				}
 			}()
 			arguments := command[1:]

@@ -293,13 +293,13 @@ func TestJournalStateWaitHonorsCancellation(t *testing.T) {
 	}
 }
 
-func TestJournalDiskCapacityOnlyBlocksNewThreads(t *testing.T) {
+func TestJournalDiskHasNoLifetimeThreadLimit(t *testing.T) {
 	t.Parallel()
 	replay, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	for index := range maxJournalThreads {
+	for index := range 257 {
 		thread := fmt.Sprint(index)
 		journal := threadJournal{
 			Version: 1, Workspace: "/workspace", Thread: thread, Author: "/root",
@@ -315,7 +315,7 @@ func TestJournalDiskCapacityOnlyBlocksNewThreads(t *testing.T) {
 	}
 	// A fresh store must see journals created by another router, without a cache.
 	reader := newJournalStore()
-	if err := reader.initialize(t.Context(), replay, "/workspace", "overflow", "/root", ""); !errors.Is(err, errJournalThreadCapacity) {
+	if err := reader.initialize(t.Context(), replay, "/workspace", "overflow", "/root", ""); err != nil {
 		t.Fatalf("new journal at capacity = %v", err)
 	}
 	if _, err := reader.apply(t.Context(), replay, "/workspace", "0", "", []journalMutation{{Op: "add", Text: new("Updated at capacity")}}); err != nil {

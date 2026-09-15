@@ -119,7 +119,7 @@ func TestReplayFailureLeavesParsedRequestUnchanged(t *testing.T) {
 			}
 			want := "changed translated payload"
 			if failure == "confirmation" {
-				want = "change index store quota"
+				want = "limit is 1 bytes"
 			}
 			if !strings.Contains(err.Error(), want) {
 				t.Fatalf("expected %s failure, got %v", failure, err)

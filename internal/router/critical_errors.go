@@ -206,6 +206,31 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 		id: noticeID, count: 1})
 }
 
+// Auxiliary degradation and automatic cleanup are user-visible without turning
+// successful work into a failed request. Messages here are producer-owned text,
+// not arbitrary request data. Empty session denotes a router-wide notice.
+func (c *CriticalErrors) addNotice(session, category, message string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, notice := range c.entries {
+		if notice.session == session && notice.category == category {
+			notice.count++
+			return
+		}
+	}
+	if len(c.entries) >= 256 {
+		c.overflow++
+		return
+	}
+	c.entries = append(c.entries, &criticalNotice{
+		session: session, category: category, message: message,
+		id: commentaryMessageID("notice:" + session + ":" + category), count: 1,
+	})
+}
+
 func requestFailureDescription(phase requestFailurePhase) string {
 	switch phase {
 	case requestFailurePrepare:
@@ -271,7 +296,7 @@ func (c *CriticalErrors) stripInput(request *parsedResponsesRequest, session str
 			return false
 		}
 		for _, n := range c.entries {
-			if n.session == session && n.id == jsonString(item, "id") {
+			if (n.session == session || n.session == "") && n.id == jsonString(item, "id") {
 				return true
 			}
 		}
@@ -300,7 +325,7 @@ func (c *CriticalErrors) transform(session string, subagent bool) *criticalError
 	t := &criticalErrorTransform{owner: c, subagent: subagent}
 	for _, n := range c.entries {
 		// Repeats after the first visible notice are summarized only at shutdown.
-		if n.session != session || n.delivered != 0 || n.inFlight {
+		if n.session != session && (n.session != "" || subagent) || n.delivered != 0 || n.inFlight {
 			continue
 		}
 		n.inFlight = true

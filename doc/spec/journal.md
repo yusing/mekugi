@@ -5,12 +5,14 @@
 Mekugi mode owns one durable milestone journal per stable thread. Passthrough is unchanged.
 Items have router-assigned IDs (`j1`, `j2`, ...), nonblank UTF-8 text, an optional original
 question, canonical author, router sequence creation/update values, `report_now`, `reported`,
-and `flushed` state. A thread has at most 256 items and 256 threads are retained. Combined
+and `flushed` state. A thread has at most 256 items; there is no lifetime thread-count or mutation-receipt-count ceiling. Combined
 question and text content is limited to 16 KiB per item. The per-response live progress budget
 is also 16 KiB. Terminal flushes have a separate bound sized for all 256 items, including labels
 and the author heading. Main completion flushes descendant journals in canonical agent-path order (stable thread ID
-breaks ties), then its own journal. Each journal has its own terminal capacity. Capacity exhaustion rejects new journal state, not unrelated calls. When initialization hits
-capacity, ordinary provider answers remain visible and journal finish returns an error.
+breaks ties), then its own journal. Each journal has its own terminal capacity. Record-size failures identify the limiting byte budget. Initialization errors retain their cause and
+reject preparation rather than exposing an uninitialized journal. Journals follow the automatic
+session-retention policy in [REQ-ROUTER-001](router.md); active turns and shared inherited records
+remain protected.
 
 An ordinary fork copies the source's latest journal at its first accepted normal Responses
 request in the selected workspace, then evolves independently. It does not reconstruct the
@@ -133,7 +135,10 @@ commands accept trailing `--answer`, `--clear-answer`, `--report-now`, and `--js
 finish result. Batch mutations are applied atomically by the same durable store as
 `functions.journal`. Expanded operands remain individual argv values, and answer mutations use
 the current user or plaintext native assignment attached to the shell request. Invalid mutations
-and unavailable publishers return errors rather than silently losing records. Delete accepts
+and unavailable publishers return errors rather than silently losing records. The authenticated
+HTTP publisher preserves the underlying mutation/list error, and both shell and Code Mode
+include that reason rather than reporting only a failed HTTP status or generic publication failure.
+Delete accepts
 `--report-now` to retract an already displayed item. Required operands may start with `--`;
 only arguments following those operands are parsed as flags. List responses cover the store's
 complete JSON-encoded capacity and reject oversized responses explicitly rather than truncating.

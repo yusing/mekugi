@@ -4,8 +4,9 @@
 
 The journal store owns per-thread entries, IDs, revisions, capacity, atomic mutation
 transactions, relationship binding, persistence, replay receipts, and delivery
-acknowledgements. It shares durable workspace coordination with replay without evicting
-executable history. Journal state is durable; a request's completion intent is not.
+acknowledgements. It shares durable workspace coordination and session retention with replay.
+Journal mutations do not impose a lifetime thread-count limit. Journal state is durable while
+its session is retained; a request's completion intent is not.
 
 The router intercepts the journal tool and returns its result through the current response
 flow rather than a host executor. A valid direct finish can select terminal journal delivery

@@ -142,6 +142,10 @@ type mekugiProxy struct {
 	mu              sync.RWMutex
 	replayStore     *mekugiReplayStore
 	sessions        map[string]*mekugiHistorySession
+	noticeSink      func(string, string, string)
+	storageTurns    map[string]uint64
+	storageSequence uint64
+	storageLeases   map[string]func()
 	activeSessions  map[string]int
 	historyBytes    int
 	sessionSequence uint64
@@ -175,6 +179,8 @@ func newMekugiProxy(translator mekugiTranslator, registry *toolRegistry, customi
 		sessions:               make(map[string]*mekugiHistorySession),
 		activeSessions:         make(map[string]int),
 	}
+	broker.notice = func(category, message string) { proxy.notice("", category, message) }
+	activity.notice = broker.notice
 	broker.journalPublisher = func(ctx context.Context, session, thread, receipt string, mutations []journalMutation) ([]string, error) {
 		workspace, _, ok := strings.Cut(session, "\x00")
 		if !ok {
@@ -193,6 +199,12 @@ func newMekugiProxy(translator mekugiTranslator, registry *toolRegistry, customi
 		return proxy.journals.list(ctx, proxy.replayStore, workspace, thread)
 	}
 	return proxy
+}
+
+func (p *mekugiProxy) notice(session, category, message string) {
+	if p != nil && p.noticeSink != nil {
+		p.noticeSink(session, category, message)
+	}
 }
 
 func (p *mekugiProxy) Close() error {
@@ -216,6 +228,10 @@ func (p *mekugiProxy) Close() error {
 		cleanupErr = errors.Join(cleanupErr, p.shellParent.Close())
 		p.shellParent = nil
 	}
+	for _, release := range p.storageLeases {
+		release()
+	}
+	clear(p.storageLeases)
 	clear(p.sessions)
 	clear(p.activeSessions)
 	p.historyBytes = 0
@@ -304,6 +320,7 @@ type mekugiResponseTransform struct {
 	// recovery resolves against the newest rejection rather than an arbitrary
 	// map entry. Retained order is reassigned when the turn commits.
 	localSequence    uint64
+	storageIdle      bool
 	historyCommitted bool
 }
 
@@ -315,6 +332,9 @@ func (t *mekugiResponseTransform) Close() {
 	t.releaseCommentarySubscriptions()
 	if t.sessionActive {
 		t.proxy.deactivateSession(t.historySessionID)
+		if t.storageIdle {
+			t.proxy.releaseIdleStorageSession(t.ctx, t.shellThreadID)
+		}
 		t.sessionActive = false
 	}
 }
@@ -482,6 +502,11 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 	if err := p.activateSession(historySessionID); err != nil {
 		return nil, err
 	}
+	ctx, err = p.beginStorageSession(ctx, threadID, sessionID)
+	if err != nil {
+		p.deactivateSession(historySessionID)
+		return nil, storageIOError(err)
+	}
 	p.prepareShellCommentary(threadID, historySessionID, metadata.commentaryAuthor())
 	visible, err := p.reconcileVisibleInput(ctx, request, directory, historySessionID)
 	if err != nil {
@@ -563,17 +588,14 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 		fork = ""
 	}
 	if err := p.journals.initialize(ctx, p.replayStore, directory, threadID, author, fork); err != nil {
-		if !errors.Is(err, errJournalThreadCapacity) {
-			transform.Close()
-			return nil, err
-		}
-	} else {
-		if err := p.journals.bindIdentity(ctx, p.replayStore, directory, threadID, metadata.ParentThreadID, author, activityThreadID != ""); err != nil {
-			transform.Close()
-			return nil, err
-		}
-		transform.journalAvailable = true
+		transform.Close()
+		return nil, fmt.Errorf("initialize journal: %w", err)
 	}
+	if err := p.journals.bindIdentity(ctx, p.replayStore, directory, threadID, metadata.ParentThreadID, author, activityThreadID != ""); err != nil {
+		transform.Close()
+		return nil, err
+	}
+	transform.journalAvailable = true
 	transform.journalQuestion = journalQuestionFromInput(request.fields["input"], metadata.commentaryAuthor())
 	transform.journalActive = true
 	transform.journalPending = make(map[string]bool)
@@ -585,6 +607,10 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 			return nil, err
 		}
 		transform.journalFinishRequested = transform.shellFinishRequested
+	}
+	if err := p.replayStore.cleanupSessions(ctx); err != nil {
+		transform.Close()
+		return nil, err
 	}
 	projectExecutionContinuations(request, tools, codeModeToolName, visible)
 	if transform.subagentTurn {

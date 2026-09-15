@@ -149,6 +149,19 @@ func runAuthenticatedToolWorker(
 	if err := validateToolContribution(*contribution); err != nil {
 		return fail(err)
 	}
+	if manifest.ReplayDirectory != "" {
+		store, err := shellOutputStore(manifest)
+		if err != nil {
+			return fail(err)
+		}
+		store.storageNotice = func(_ string, message string) { _, _ = fmt.Fprintln(stderr, message) }
+		var release func()
+		ctx, release, err = store.beginSession(ctx, os.Getenv("CODEX_THREAD_ID"), "")
+		if err != nil {
+			return fail(err)
+		}
+		defer release()
+	}
 	if contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell" {
 		if len(args) == 0 {
 			if err := runHpatchControl(ctx, stdin, stdout); err != nil {

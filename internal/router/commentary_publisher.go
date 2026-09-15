@@ -21,7 +21,6 @@ import (
 const (
 	commentaryPublisherPath       = "/internal/commentary"
 	commentaryOnceArgument        = "--journal-once"
-	maxThreadCommentaryIDs        = 16384
 	maxCommentaryRoutes           = 256
 	maxCommentaryEvents           = 1024
 	maxCommentaryEventsPerRoute   = 64
@@ -54,10 +53,10 @@ type commentaryRoute struct {
 	complete        bool
 }
 
-// Replay provenance has its own non-evicting budget. A thread can outlive its
-// route and change history sessions without losing user-only message identity.
+// Replay provenance outlives publisher routes. A thread can change history
+// sessions without losing user-only message identity or hitting a lifetime ID cap.
 // Its author is immutable: later requests cannot relabel an existing publisher.
-// Exhaustion suppresses new commentary, never essential tool replay history.
+// Concurrent-route and live-queue exhaustion is reported without blocking tools.
 type threadCommentaryProvenance struct {
 	author    string
 	sessionID string
@@ -67,10 +66,10 @@ type threadCommentaryProvenance struct {
 type commentaryBroker struct {
 	journalPublisher func(context.Context, string, string, string, []journalMutation) ([]string, error)
 	journalLister    func(context.Context, string, string, string) ([]journalItem, error)
+	notice           func(string, string)
 	debug            *debugOutput
 	activity         *subagentActivity
 	threads          map[string]*threadCommentaryProvenance
-	threadIDCount    int
 	mu               sync.Mutex
 	routes           map[string]*commentaryRoute
 	eventCount       int
@@ -84,6 +83,12 @@ func newCommentaryBroker() *commentaryBroker {
 	}
 }
 
+func (b *commentaryBroker) capacityNotice() {
+	if b.notice != nil {
+		b.notice("journal_publisher_capacity", "Mekugi could not allocate a journal publisher: all 256 concurrent publisher routes are occupied. Existing work is unchanged. Finish outstanding calls, then retry; direct functions.journal remains available.")
+	}
+}
+
 func (b *commentaryBroker) subscribe(sessionID, callID, author string) string {
 	if len(author) > maxCommentaryPublicationBytes || len(commentaryCode(author))+3 > maxCommentaryPublicationBytes {
 		return ""
@@ -92,6 +97,9 @@ func (b *commentaryBroker) subscribe(sessionID, callID, author string) string {
 	defer b.mu.Unlock()
 	b.cleanupExpiredLocked(time.Now())
 	if b.closed || len(b.routes) >= maxCommentaryRoutes {
+		if !b.closed {
+			b.capacityNotice()
+		}
 		return ""
 	}
 	random := make([]byte, 32)
@@ -123,9 +131,6 @@ func (b *commentaryBroker) subscribeThread(sessionID, threadID, author string) s
 	}
 	provenance := b.threads[threadID]
 	if provenance == nil {
-		if len(b.threads) >= maxCommentaryRoutes {
-			return ""
-		}
 		provenance = &threadCommentaryProvenance{author: author, ids: make(map[string]struct{})}
 		b.threads[threadID] = provenance
 	}
@@ -138,6 +143,7 @@ func (b *commentaryBroker) subscribeThread(sessionID, threadID, author string) s
 		}
 	}
 	if len(b.routes) >= maxCommentaryRoutes {
+		b.capacityNotice()
 		return ""
 	}
 	random := make([]byte, 32)
@@ -162,7 +168,7 @@ func (b *commentaryBroker) publish(token, text string, complete bool) bool {
 	withinRouteCapacity := route.nextID < maxCommentaryEventsPerRoute
 	if route.threadID != "" {
 		complete = false // Concurrent shell workers share this route; no worker owns its lifetime.
-		withinRouteCapacity = len(route.events) < maxCommentaryEventsPerRoute && b.threadIDCount < maxThreadCommentaryIDs
+		withinRouteCapacity = len(route.events) < maxCommentaryEventsPerRoute
 	}
 	// Check rendered bytes before attribution allocates or provenance is retained.
 	// Oversized auxiliary text still reaches completion handling below.
@@ -179,6 +185,9 @@ func (b *commentaryBroker) publish(token, text string, complete bool) bool {
 	case !withinRouteCapacity || b.eventCount >= maxCommentaryEvents:
 		outcome = "capacity"
 	}
+	if (outcome == "capacity" || outcome == "oversized") && b.notice != nil {
+		b.notice("progress_capacity", "Mekugi omitted auxiliary progress updates because its queue or message-size limit was reached (1,024 queued updates, 64 per publisher, 16 KiB per update). Tool execution and answers are unchanged; newer updates resume when the queue drains.")
+	}
 	messageID := ""
 	if outcome == "accepted" {
 		route.nextID++
@@ -190,7 +199,6 @@ func (b *commentaryBroker) publish(token, text string, complete bool) bool {
 		messageID = event.messageID
 		if route.threadID != "" {
 			b.threads[route.threadID].ids[event.messageID] = struct{}{}
-			b.threadIDCount++
 		}
 		b.activity.collect(route.originThread, event.messageID, "operation", event.text)
 		route.events = append(route.events, event)
@@ -281,7 +289,6 @@ func (b *commentaryBroker) close() {
 	b.closed = true
 	clear(b.routes)
 	clear(b.threads)
-	b.threadIDCount = 0
 	b.eventCount = 0
 	b.mu.Unlock()
 }
@@ -379,7 +386,7 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		}
 		ids, err = b.journalPublisher(request.Context(), session, thread, publication.ReceiptID, bindJournalAnswers(mutations, question))
 		if err != nil {
-			http.Error(writer, "journal mutation rejected", http.StatusBadRequest)
+			http.Error(writer, "journal mutation rejected: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 		source := "code_mode"
@@ -395,7 +402,7 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		var items []journalItem
 		items, err = b.journalLister(request.Context(), session, thread, publication.Agent)
 		if err != nil {
-			http.Error(writer, "journal list rejected", http.StatusBadRequest)
+			http.Error(writer, "journal list rejected: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 		listed := make([]journalListItem, 0, len(items))
@@ -454,6 +461,17 @@ func (b *commentaryBroker) drainLocked(token string) []publishedCommentary {
 		delete(b.routes, token)
 	}
 	return events
+}
+
+func (b *commentaryBroker) retireThread(thread string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for token, route := range b.routes {
+		if route.threadID == thread || route.originThread == thread {
+			b.eventCount -= len(route.events)
+			delete(b.routes, token)
+		}
+	}
 }
 
 func (b *commentaryBroker) cancel(token string) {
@@ -585,10 +603,14 @@ func (s *httpShellCommentarySink) send(ctx context.Context, publication map[stri
 		return nil, err
 	}
 	if len(result) > maxJournalPublicationResponseBytes {
-		return nil, errors.New("journal publisher result exceeds the response budget")
+		return nil, fmt.Errorf("journal publisher result exceeds the %d-byte response limit; shorten journal items before retrying", maxJournalPublicationResponseBytes)
 	}
 	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusNoContent {
-		return nil, fmt.Errorf("journal publisher returned status %d", response.StatusCode)
+		detail := strings.TrimSpace(string(result))
+		if len(detail) > maxCommentaryPublicationBytes {
+			detail = detail[:maxCommentaryPublicationBytes] + " (error detail truncated)"
+		}
+		return nil, fmt.Errorf("journal publisher returned HTTP %d: %s", response.StatusCode, detail)
 	}
 	return result, nil
 }

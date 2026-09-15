@@ -9,8 +9,9 @@ and token metrics. `phase: "commentary"` is a router delivery mechanism, not an 
 
 Router-owned messages have exact retained IDs and are stripped from later provider input.
 Generated-looking prefixes, phase, and text alone never prove provenance. Persistence and
-capacity failures suppress auxiliary notices without evicting executable replay or recovery
-records. Required journal terminal delivery follows the stricter journal failure contract.
+capacity failures suppress auxiliary notices with a user-visible explanation, without affecting
+execution or provider answers. Durable storage follows the session-retention policy in
+[REQ-ROUTER-001](router.md); bounded live queues do not evict replay or recovery records. Required journal terminal delivery follows the stricter journal failure contract.
 
 The authenticated broker, canonical ancestry collector, and thread-bound publisher discovery
 remain shared infrastructure. Journal authoring reuses them; other interpreters and passthrough
@@ -184,8 +185,7 @@ JSON and streaming responses report the same cumulative provider-authoritative i
 output, and reasoning totals for the originating thread. Intermediate responses contribute to
 these totals without producing notices. Root and child threads remain separate; compaction and
 routing-session changes do not reset totals. Repeated terminal observations within one request
-count once. Totals remain in memory until router shutdown, with at most 256 tracked threads;
-capacity exhaustion preserves existing totals and suppresses new-thread reports. Arithmetic
+count once. Totals remain in memory until router shutdown without a lifetime thread-count ceiling. Arithmetic
 overflow suppresses reporting for the affected thread rather than showing a partial total.
 An accepted or transport-interrupted request without usable terminal usage leaves a permanent
 gap in that thread's router-lifetime totals. Missing or null input, cached-input, output, or
@@ -275,13 +275,14 @@ turn is created. During an idle stream there may be no event boundary to deliver
 through; once a response closes, updates wait for the next eligible root response.
 This guarantees attributed deferred inline updates, not continuous wait-time display.
 
-The collector retains at most 256 thread identities, 16,384 source identities,
-1,024 pending events, and 64 pending events per child. Pending events expire after
-one hour. Live root copies share a 16 KiB budget per response, after labels
+The collector retains thread and source identities until shutdown without lifetime count ceilings.
+It bounds live queues to 1,024 pending events and 64 pending events per child. Queue exhaustion
+reports a user-visible notice; it does not disable later updates once the queue drains.
+Pending events expire after one hour. Live root copies share a 16 KiB budget per response, after labels
 are added. Journal terminal copies use the separate capacity-sized budget in
 [REQ-JOURNAL-001](journal.md); a deferred live notice does not block a terminal copy. Live root-copy IDs remain bound to stable root thread identity until
 shutdown, across session remapping and event expiry; emitted message provenance also survives
-shutdown in the workspace-scoped replay store. Capacity exhaustion never
+shutdown in the workspace-scoped replay store. Live queue capacity never
 evicts executable-call history or existing replay provenance. Root copies are
 removed by exact retained ID from every replay, including a first child request
 with inherited root history, without removing original child messages or tool results.

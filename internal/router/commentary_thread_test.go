@@ -195,20 +195,20 @@ func TestThreadCommentaryCannotReclaimToolHistoryCapacity(t *testing.T) {
 	}
 }
 
-func TestThreadCommentaryProvenanceCapacitySuppressesOnlyCommentary(t *testing.T) {
+func TestThreadCommentaryHasNoLifetimeProvenanceLimit(t *testing.T) {
 	b := newCommentaryBroker()
 	token := b.subscribeThread("session", "thread", "")
-	for range maxThreadCommentaryIDs {
+	for range 16384 {
 		b.publish(token, "bounded", false)
 		if len(b.drain(token)) != 1 {
 			t.Fatal("provenance capacity rejected early")
 		}
 	}
 	b.publish(token, "overflow", false)
-	if len(b.drain(token)) != 0 || b.threadIDCount != maxThreadCommentaryIDs {
-		t.Fatal("provenance capacity unbounded")
+	if len(b.drain(token)) != 1 {
+		t.Fatal("lifetime provenance count disabled commentary")
 	}
-	if len(b.threadMessageIDs("session")) != maxThreadCommentaryIDs {
+	if len(b.threadMessageIDs("session")) != 16385 {
 		t.Fatal("capacity exhaustion discarded replay provenance")
 	}
 }

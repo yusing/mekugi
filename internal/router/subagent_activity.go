@@ -9,14 +9,14 @@ import (
 )
 
 // Presentation state is independent of executable-call recovery. Identities and
-// delivered IDs are never evicted to admit new traffic: exhaustion drops only
-// auxiliary updates, without making old commentary eligible for provider replay.
+// delivered IDs remain available until shutdown. Bounded live queues drop only
+// auxiliary updates with a notice, without disabling later updates or exposing old commentary.
 type subagentActivity struct {
+	notice  func(string, string)
 	mu      sync.Mutex
 	threads map[string]*activityThread
 	copies  map[string]struct{}
 	events  []activityEvent
-	sources int
 	closed  bool
 }
 
@@ -56,9 +56,6 @@ func (a *subagentActivity) observe(thread, parent, name string, child bool) bool
 		}
 		return !old.conflicted
 	}
-	if len(a.threads) >= maxCommentaryRoutes {
-		return false
-	}
 	a.threads[thread] = &activityThread{parent: parent, name: name, child: child, seen: make(map[string]struct{})}
 	return true
 }
@@ -92,7 +89,7 @@ func (a *subagentActivity) invalidate(thread string) {
 	}
 	if node := a.threads[thread]; node != nil {
 		node.conflicted = true
-	} else if len(a.threads) < maxCommentaryRoutes {
+	} else {
 		// An initially ambiguous capability must not acquire ancestry later.
 		a.threads[thread] = &activityThread{conflicted: true}
 	}
@@ -105,7 +102,7 @@ func (a *subagentActivity) collect(thread, source, kind, text string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	node := a.threads[thread]
-	if a.closed || node == nil || !node.child || node.conflicted || a.sources >= maxThreadCommentaryIDs {
+	if a.closed || node == nil || !node.child || node.conflicted {
 		return
 	}
 	source = commentaryMessageID(source)
@@ -132,10 +129,12 @@ func (a *subagentActivity) collect(thread, source, kind, text string) {
 		}
 	}
 	if len(a.events) >= maxCommentaryEvents || count >= maxCommentaryEventsPerRoute {
+		if a.notice != nil {
+			a.notice("activity_capacity", "Mekugi omitted child-activity updates because its queue is full (1,024 total, 64 per child). Child execution and results are unchanged; updates resume when the queue drains.")
+		}
 		return
 	}
 	node.seen[source] = struct{}{}
-	a.sources++
 	a.events = append(a.events, activityEvent{thread: thread, source: source, kind: kind, text: text, observed: now})
 }
 
@@ -256,5 +255,4 @@ func (a *subagentActivity) close() {
 	clear(a.threads)
 	clear(a.copies)
 	a.events = nil
-	a.sources = 0
 }

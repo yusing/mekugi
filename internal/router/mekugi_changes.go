@@ -26,13 +26,15 @@ type changeIndex struct {
 }
 
 type changeStream struct {
-	Thread string
-	Next   int
+	Thread  string
+	Next    int
+	Retired int `json:",omitzero"`
 }
 
 type trackedChange struct {
-	Correlation string
-	Calls       []trackedCall
+	Correlation  string
+	Calls        []trackedCall
+	RetiredCalls int `json:",omitzero"`
 }
 
 type trackedCall struct {
@@ -86,19 +88,20 @@ func (s *mekugiReplayStore) readChangeIndex(workspace string) (changeIndex, erro
 func validateChangeIndex(index changeIndex) error {
 	streams := make(map[string]int, len(index.Streams))
 	threads := make(map[string]bool, len(index.Streams))
+	counts := make(map[string]int, len(index.Streams))
 	for position, stream := range index.Streams {
-		if stream.Next < 1 || threads[stream.Thread] {
+		if stream.Next < 1 || stream.Retired < 0 || stream.Retired > stream.Next || threads[stream.Thread] {
 			return errors.New("invalid change stream counter or duplicate thread")
 		}
 		threads[stream.Thread] = true
 		streams[changeStreamName(position)] = stream.Next
+		counts[changeStreamName(position)] = stream.Retired
 	}
-	counts := make(map[string]int, len(streams))
 	correlations := make(map[string]bool, len(index.Changes))
 	calls := make(map[string]bool)
 	for id, change := range index.Changes {
 		stream, number, err := parseChangeID(id)
-		if err != nil || number > streams[stream] || change.Correlation == "" || correlations[change.Correlation] {
+		if err != nil || number > streams[stream] || change.Correlation == "" || correlations[change.Correlation] || change.RetiredCalls < 0 {
 			return errors.New("invalid change identity or stream membership")
 		}
 		counts[stream]++
@@ -119,35 +122,29 @@ func validateChangeIndex(index changeIndex) error {
 }
 
 func (s *mekugiReplayStore) writeChangeIndex(index changeIndex) (err error) {
+	if err := s.retainFiles(changeIndexName(index.Workspace)); err != nil {
+		return err
+	}
+	if err := s.reconcileRetiredChanges(&index); err != nil {
+		return err
+	}
 	data, err := marshalProtocolJSON(index)
 	if err != nil {
 		return err
 	}
-	if len(data) > maxReplayRecordBytes {
-		return errors.New("change index capacity reached; explicit cleanup required")
+	if err := s.maintainStorage(changeIndexName(index.Workspace), int64(len(data)), false, &index); err != nil {
+		return err
 	}
-	entries, err := os.ReadDir(s.directory)
+	// Quota cleanup may have retired older changes while this snapshot was
+	// prepared. Keep stream counters, but do not restore deleted attempts.
+	if err := s.reconcileRetiredChanges(&index); err != nil {
+		return err
+	}
+	data, err = marshalProtocolJSON(index)
 	if err != nil {
 		return err
 	}
-	total := int64(len(data))
-	for _, entry := range entries {
-		if !strings.HasPrefix(entry.Name(), "changes-") || entry.Name() == changeIndexName(index.Workspace) {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
-			return errors.New("invalid change index store entry")
-		}
-		total += info.Size()
-	}
-	if total > s.maxBytes {
-		return errors.New("change index store quota reached; explicit cleanup required")
-	}
-	return s.writeFile(changeIndexName(index.Workspace), "changes-pending-", data)
+	return storageIOError(s.writeFile(changeIndexName(index.Workspace), "changes-pending-", data))
 }
 
 // reserveChange runs before evaluation, including private direct application.
@@ -156,6 +153,7 @@ func (s *mekugiReplayStore) reserveChange(ctx context.Context, workspace, thread
 	if s == nil || correlation == "" {
 		return "", nil
 	}
+	s = s.scoped(ctx)
 	err = s.locked(ctx, func() error {
 		index, err := s.readChangeIndex(workspace)
 		if err != nil {
@@ -266,6 +264,7 @@ func (s *mekugiReplayStore) confirmChanges(ctx context.Context, workspace string
 	if s == nil {
 		return nil
 	}
+	s = s.scoped(ctx)
 	var confirmed []string
 	for callID, history := range histories {
 		if history.ChangeID != "" && history.confirmed {

@@ -43,7 +43,7 @@ The linked contracts own interface-specific details, exceptions, and acceptance 
 - **State isolation:** Keep request views, stable thread identity, workspace replay, and process
   resources distinct. Concurrent requests and branches must not borrow another thread's state.
   Truncation or compaction removes invisible ancestry from that request, not durable records
-  needed by other branches. Cleanup is explicit and limited to owned resources.
+  needed by other branches. Cleanup follows the documented session-retention policy and is limited to owned resources.
   See [history ownership](doc/architecture/boundary.md) and [commentary identity](doc/architecture/commentary.md).
 - **Host authority:** Codex owns tool execution, permissions, sandboxing, native agent lifecycle,
   and yielded-session continuation. Router translation, replay, observation, and display must not
@@ -74,8 +74,9 @@ The linked contracts own interface-specific details, exceptions, and acceptance 
   See [plugin boundary](doc/architecture/plugin.md) and [plugin requirements](doc/spec/plugin.md).
 - **Durability before exposure:** Persist completed call mappings before exposing executable
   carriers, including calls completed before their enclosing stream terminates. Never evaluate
-  unfinished arguments. Storage failure blocks carrier exposure; capacity limits must not evict
-  resumable correctness state. Replay validates retained facts without retranslating.
+  unfinished arguments. Storage failure blocks carrier exposure. Session retention may reclaim
+  inactive data under [the router policy](doc/spec/router.md), but must preserve running work and
+  shared dependencies. Replay validates retained facts without retranslating.
   See [replay requirements](doc/spec/plugin.md) and [store ownership](doc/architecture/boundary.md).
 - **Auxiliary means non-invasive:** Commentary, capture, and diagnostics must not replace tool
   results, alter execution, or replay effects. Bound their resources independently of correctness

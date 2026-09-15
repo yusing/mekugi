@@ -281,6 +281,8 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 // delivery lease remains held until the whole batch is finished or abandoned.
 func (t *mekugiResponseTransform) Delivered(payload []byte) {
 	var envelope struct {
+		Type     string                       `json:"type"`
+		Status   string                       `json:"status"`
 		Item     map[string]json.RawMessage   `json:"item"`
 		Output   []map[string]json.RawMessage `json:"output"`
 		Response struct {
@@ -289,6 +291,9 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 	}
 	if json.Unmarshal(payload, &envelope) != nil {
 		return
+	}
+	if t.journalTerminalReady() && (envelope.Type == "response.completed" || envelope.Status == "completed") {
+		t.storageIdle = true
 	}
 	if len(t.journalDeliveries) == 0 && t.journalUsageID == "" {
 		return
