@@ -1655,9 +1655,6 @@ func (t *mekugiResponseTransform) transformNonJournalSSE(payload []byte) ([][]by
 }
 
 func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte, error) {
-	if visible, buffered := t.finalAnswer.observe(payload); buffered {
-		return visible, nil
-	}
 	var envelope struct {
 		Type     responseevents.Kind `json:"type"`
 		ItemID   string              `json:"item_id"`
@@ -1668,10 +1665,22 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		Response json.RawMessage     `json:"response"`
 	}
 	if err := json.Unmarshal(payload, &envelope); err != nil {
+		if visible, buffered := t.finalAnswer.observe(payload); buffered {
+			return visible, nil
+		}
 		if len(t.pending) != 0 {
 			return nil, staticCriticalDiagnostic("malformed_pending_mekugi_event", "the upstream sent a malformed event while an HPATCH call was pending")
 		}
 		return [][]byte{payload}, nil
+	}
+	if envelope.Type == responseevents.OutputItemDone {
+		var item map[string]json.RawMessage
+		if json.Unmarshal(envelope.Item, &item) == nil {
+			t.collectProviderCommentary(item)
+		}
+	}
+	if visible, buffered := t.finalAnswer.observe(payload); buffered {
+		return visible, nil
 	}
 	switch {
 	case envelope.Type == responseevents.Created:
@@ -1841,7 +1850,6 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if !ok {
 			return [][]byte{payload}, nil //nolint:nilerr // Malformed unrelated output remains the upstream's responsibility.
 		}
-		t.collectProviderCommentary(item.fields)
 		activityFields := maps.Clone(item.fields)
 		if _, delivered := t.local[item.CallID]; item.Status == "incomplete" && !delivered {
 			// Item completion can report interrupted generation, not complete input.

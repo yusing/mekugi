@@ -47,7 +47,10 @@ func (s *finalAnswerStream) observe(payload []byte) ([][]byte, bool) {
 	}
 	answer := false
 	if itemEvent {
-		answer = isFinalAnswerMessage(event.Item)
+		// Completion can refine an initially unknown/final phase to commentary.
+		// Keep that item's lifecycle together rather than releasing done before
+		// its buffered added/text events.
+		answer = isFinalAnswerMessage(event.Item) || s.itemIDs[jsonString(event.Item, "id")]
 		if answer {
 			if s.itemIDs == nil {
 				s.itemIDs = make(map[string]bool)

@@ -213,7 +213,7 @@ func (b *subagentBridge) restoreItem(raw json.RawMessage) (json.RawMessage, erro
 	case "spawn_agent", "send_message", "followup_task":
 		item["encrypted_function_args"] = json.RawMessage(`[]`)
 	}
-	return json.Marshal(item)
+	return marshalProtocolJSON(item)
 }
 
 func (b *subagentBridge) TransformJSON(payload []byte) ([]byte, error) {
@@ -235,7 +235,7 @@ func (b *subagentBridge) TransformJSON(payload []byte) ([]byte, error) {
 		}
 		response["output"] = mustMarshalJSON(output)
 	}
-	return json.Marshal(response)
+	return marshalProtocolJSON(response)
 }
 func (b *subagentBridge) TransformSSE(payload []byte) ([][]byte, error) {
 	var event map[string]json.RawMessage
