@@ -110,6 +110,7 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 	}
 	reader, writer := io.Pipe()
 	stopCancel := context.AfterFunc(ctx, func() { writer.CloseWithError(ctx.Err()) })
+	var streamErr error
 	finished := make(chan struct{})
 	go func() {
 		defer close(finished)
@@ -117,9 +118,13 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 			_, err := fmt.Fprintf(writer, "event: %s\ndata: %s\n\n", event["type"], mustMarshalJSON(event))
 			return err
 		})
+		streamErr = err
 		writer.CloseWithError(err)
 	}()
-	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: &grokResponseBody{Reader: reader, close: func() error {
+	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: &grokResponseBody{Reader: reader, terminalError: func() error {
+		<-finished
+		return streamErr
+	}, close: func() error {
 		stopCancel()
 		reader.Close()
 		cancel()
@@ -131,7 +136,8 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 
 type grokResponseBody struct {
 	io.Reader
-	close func() error
+	close         func() error
+	terminalError func() error
 }
 
 func (b *grokResponseBody) Close() error { return b.close() }

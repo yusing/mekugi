@@ -90,7 +90,12 @@ events include the restored function name.
 The first terminal choice seals its content and calls. Later choice data or conflicting terminal
 reasons reject the stream; usage-only trailers and the final stream marker remain valid.
 Truncated streams and malformed/unknown tool calls never become successful executable results.
-JSON clients receive the equivalent terminal Responses object. Cancellation and stream inactivity
+For streaming clients, validation and provider-read failures emit a failed Responses terminal with a stable,
+content-free diagnostic code and a router-owned explanation, while retaining the underlying
+failure for request accounting. Provider error bodies never enter that explanation. Consumer
+write failures do not attempt another terminal write.
+JSON clients receive the equivalent successful terminal Responses object; producer failures
+return a request error instead. Cancellation and stream inactivity
 limits propagate to the upstream HTTP request; request start and execution have distinct lifetimes.
 Metrics measure the actual Chat Completions transport and provider usage, not estimated usage from
 synthesized Responses events. Chat completion and reasoning counts are combined into Responses

@@ -53,7 +53,14 @@ type grokStreamCall struct {
 // readGrokStream produces ordinary Responses events. Tool arguments are held
 // until complete and validated, while text and content-free progress stream
 // immediately. EOF without [DONE] is never a successful completion.
-func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string]any) error) (map[string]any, error) {
+func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string]any) error) (result map[string]any, streamErr error) {
+	writeFailed := false
+	write := emit
+	emit = func(event map[string]any) error {
+		err := write(event)
+		writeFailed = writeFailed || err != nil
+		return err
+	}
 	id := "resp_" + rand.Text()
 	messageID := "msg_" + rand.Text()
 	model := "grok-4.6"
@@ -74,6 +81,20 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 	if err := emit(map[string]any{"type": responseevents.Created, "response": response("in_progress")}); err != nil {
 		return nil, err
 	}
+	// Report producer failures as protocol failures, not an unexplained EOF.
+	// Only producer-owned summaries may cross this boundary; emit/write errors
+	// remain transport errors and must not trigger another write.
+	defer func() {
+		diagnostic, ok := errors.AsType[*criticalDiagnosticError](streamErr)
+		if !ok || writeFailed {
+			return
+		}
+		failed := response("failed")
+		failed["error"] = map[string]string{"code": diagnostic.code, "message": diagnostic.summary}
+		if err := emit(map[string]any{"type": responseevents.Failed, "response": failed}); err != nil {
+			streamErr = errors.Join(streamErr, err)
+		}
+	}()
 	consume := func(data string) error {
 		if data == "[DONE]" {
 			done = true
@@ -81,10 +102,10 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 		}
 		var chunk grokChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			return errors.New("invalid JSON in Grok response stream")
+			return staticCriticalDiagnostic("grok_stream_invalid_json", "invalid JSON in Grok response stream")
 		}
 		if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
-			return errors.New("Grok reported a streaming error")
+			return staticCriticalDiagnostic("grok_stream_provider_error", "Grok reported a streaming error")
 		}
 		if chunk.Model != "" {
 			model = chunk.Model
@@ -101,12 +122,12 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 		textEmitted := false
 		for _, choice := range chunk.Choices {
 			if choice.Index != 0 {
-				return errors.New("Grok returned multiple completion choices")
+				return staticCriticalDiagnostic("grok_stream_multiple_choices", "Grok returned multiple completion choices")
 			}
 			// A terminal choice seals its data, including incomplete calls.
 			// Usage-only trailers have no choices and remain admissible.
 			if finish != "" {
-				return errors.New("Grok returned choice data after its terminal finish reason")
+				return staticCriticalDiagnostic("grok_stream_data_after_terminal", "Grok returned choice data after its terminal finish reason")
 			}
 			if choice.FinishReason != "" {
 				finish = choice.FinishReason
@@ -130,7 +151,7 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 			}
 			for _, part := range choice.Delta.ToolCalls {
 				if part.Index < 0 || part.Index > 1023 {
-					return errors.New("Grok tool-call index exceeds the response budget")
+					return staticCriticalDiagnostic("grok_stream_call_budget", "Grok tool-call index exceeds the response budget")
 				}
 				call := calls[part.Index]
 				if call == nil {
@@ -139,7 +160,7 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 				}
 				if part.ID != "" {
 					if call.id != "" && call.id != part.ID {
-						return errors.New("Grok changed a tool-call identity")
+						return staticCriticalDiagnostic("grok_stream_call_identity_changed", "Grok changed a tool-call identity")
 					}
 					call.id = part.ID
 				}
@@ -160,7 +181,7 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 		line := scanner.Text()
 		budget += len(line)
 		if budget > upstreamJSONBufferBytes {
-			return nil, errors.New("Grok response exceeds the router buffer budget")
+			return nil, staticCriticalDiagnostic("grok_stream_buffer_budget", "Grok response exceeds the router buffer budget")
 		}
 		if line == "" {
 			if len(data) > 0 {
@@ -179,7 +200,7 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read Grok stream: %w", err)
+		return nil, fmt.Errorf("read Grok stream: %w", forwardCriticalDiagnostic(err))
 	}
 	if !done && len(data) > 0 {
 		if err := consume(strings.Join(data, "\n")); err != nil {
@@ -187,17 +208,17 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 		}
 	}
 	if !done {
-		return nil, errors.New("Grok stream ended without [DONE]")
+		return nil, staticCriticalDiagnostic("grok_stream_missing_done", "Grok stream ended without [DONE]")
 	}
 	status := finish.ResponseStatus()
 	if status == "" {
-		return nil, errors.New("Grok stream has no supported terminal finish reason")
+		return nil, staticCriticalDiagnostic("grok_stream_finish_reason", "Grok stream has no supported terminal finish reason")
 	}
 	if finish == chat.ToolCalls && len(calls) == 0 {
-		return nil, errors.New("Grok finished tool calls without a call")
+		return nil, staticCriticalDiagnostic("grok_stream_missing_calls", "Grok finished tool calls without a call")
 	}
 	if len(calls) > 0 && finish != chat.ToolCalls {
-		return nil, errors.New("Grok tool arguments were not completed")
+		return nil, staticCriticalDiagnostic("grok_stream_incomplete_calls", "Grok tool arguments were not completed")
 	}
 	if messageStarted {
 		part := map[string]any{"type": "output_text", "text": text.String(), "annotations": []any{}}
@@ -222,19 +243,19 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 	for index := 0; index < len(calls); index++ {
 		call := calls[index]
 		if call == nil {
-			return nil, errors.New("Grok returned noncontiguous tool-call indexes")
+			return nil, staticCriticalDiagnostic("grok_stream_call_indexes", "Grok returned noncontiguous tool-call indexes")
 		}
 		tool, ok := tr.tools[call.name.String()]
 		if !ok {
-			return nil, errors.New("Grok returned an unavailable tool")
+			return nil, staticCriticalDiagnostic("grok_stream_unavailable_tool", "Grok returned an unavailable tool")
 		}
 		if call.id == "" || seen[call.id] {
-			return nil, errors.New("Grok returned an invalid tool-call identity")
+			return nil, staticCriticalDiagnostic("grok_stream_call_identity", "Grok returned an invalid tool-call identity")
 		}
 		seen[call.id] = true
 		arguments := call.arguments.String()
 		if !json.Valid([]byte(arguments)) {
-			return nil, errors.New("Grok returned invalid tool-call arguments")
+			return nil, staticCriticalDiagnostic("grok_stream_call_arguments", "Grok returned invalid tool-call arguments")
 		}
 		item := map[string]any{"type": "function_call", "id": "fc_" + rand.Text(), "call_id": call.id, "name": tool.name, "arguments": arguments, "status": "completed"}
 		if tool.namespace != "" {
@@ -243,11 +264,11 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 		if tool.kind == "custom" {
 			var args map[string]json.RawMessage
 			if json.Unmarshal([]byte(arguments), &args) != nil || len(args) != 1 {
-				return nil, errors.New("Grok custom tool requires exactly one input string")
+				return nil, staticCriticalDiagnostic("grok_stream_custom_input_shape", "Grok custom tool requires exactly one input string")
 			}
 			var input *string
 			if json.Unmarshal(args["input"], &input) != nil || input == nil {
-				return nil, errors.New("Grok custom tool input is not a string")
+				return nil, staticCriticalDiagnostic("grok_stream_custom_input_type", "Grok custom tool input is not a string")
 			}
 			delete(item, "arguments")
 			item["type"] = "custom_tool_call"
@@ -282,7 +303,7 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 			return nil, err
 		}
 	}
-	result := response(status)
+	result = response(status)
 	if reason := finish.IncompleteReason(); reason != "" {
 		result["incomplete_details"] = map[string]string{"reason": reason}
 	}
