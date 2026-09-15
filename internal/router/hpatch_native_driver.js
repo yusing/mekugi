@@ -45,13 +45,14 @@ async function nativeMixedRun(source, options = {}) {
   const fixture = nativeFixture;
   const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
   const response = await tools.exec_command({
-    cmd: "curl -fsS --max-time 5 --data-binary " + quote(source) + " " + quote(fixture.url + "/translate"),
+    cmd: "curl -fsS --max-time 5 --data-binary " + quote(source) + " " + quote(fixture.url + '/translate' + (options.tool === 'shell' ? '?tool=shell' : '')),
     max_output_tokens: 30000
   });
   const generated = JSON.parse(response.output);
   if (generated.error) return {rejected: generated.error};
   const host = tools;
   let summary;
+  const outputTexts = [];
   const checkpoints = [];
   let notificationCount = 0;
   const phase = options.pausePhase;
@@ -95,7 +96,7 @@ async function nativeMixedRun(source, options = {}) {
         if (!paused && phase && args.chars?.startsWith('{"operation":"checkpoint"') &&
             persisted?.phase === phase && persisted?.segment === segment) {
           paused = true;
-          notify({native_test_paused: persisted});
+          notify({native_test_paused: persisted, call_id: generated.call_id});
           await new Promise(resolve => setTimeout(resolve, 120000));
         }
         return result;
@@ -121,9 +122,12 @@ async function nativeMixedRun(source, options = {}) {
     }, value => {
       notificationCount++;
       throw new Error('Production carrier emitted an unexpected notification: ' + JSON.stringify(value));
-    }, value => { summary = JSON.parse(value); });
+    }, value => {
+      outputTexts.push(String(value));
+      try { summary = JSON.parse(value); } catch {}
+    });
   } catch (caught) {
     error = String(caught);
   }
-  return {summary, checkpoints, notificationCount, error};
+  return {summary, outputTexts, checkpoints, notificationCount, callID: generated.call_id, error};
 }

@@ -124,6 +124,11 @@ func (t executionContinuationTools) forSession(id int64) executionContinuation {
 	return result
 }
 
+type mixedOutputProjection struct {
+	recovery func(hpatchRecovery) hpatchRecovery
+	success  func(string, json.RawMessage, hpatchRecovery) (json.RawMessage, bool)
+}
+
 type executionCall struct {
 	codeMode      bool
 	native        bool
@@ -131,6 +136,7 @@ type executionCall struct {
 	cellID        string
 	resumeHandle  string
 	mixed         *hpatchRecovery
+	mixedCallID   string
 }
 
 func executionResumeHandle(item map[string]json.RawMessage, history mekugiHistory, known bool, execName string) string {
@@ -340,7 +346,7 @@ func executionCallFor(item map[string]json.RawMessage, history mekugiHistory, kn
 
 // Project only after replay validation has established the original calls.
 // Cell provenance is request-local transcript evidence, not a session registry.
-func projectExecutionContinuations(recoverMixed func(hpatchRecovery) hpatchRecovery, request *parsedResponsesRequest, catalog *responsesToolCatalog, execName string, visible map[string]mekugiHistory) {
+func projectExecutionContinuations(mixed *mixedOutputProjection, request *parsedResponsesRequest, catalog *responsesToolCatalog, execName string, visible map[string]mekugiHistory) {
 	var items []map[string]json.RawMessage
 	if json.Unmarshal(request.fields["input"], &items) != nil {
 		return
@@ -377,9 +383,21 @@ func projectExecutionContinuations(recoverMixed func(hpatchRecovery) hpatchRecov
 			}
 			if call.cellID != "" {
 				origin := cells[call.cellID]
-				call.nativePayload, call.mixed = origin.nativePayload, origin.mixed
+				call.nativePayload, call.mixed, call.mixedCallID = origin.nativePayload, origin.mixed, origin.mixedCallID
+			}
+			if call.mixed != nil && call.mixedCallID == "" {
+				call.mixedCallID = callID
 			}
 			texts := executionOutputTexts(item["output"])
+			mixedComplete := false
+			if call.mixed != nil && mixed != nil && mixed.success != nil {
+				var output json.RawMessage
+				output, mixedComplete = mixed.success(call.mixedCallID, item["output"], *call.mixed)
+				if mixedComplete && !sameJSONValue(output, item["output"]) {
+					item["output"] = output
+					changed = true
+				}
+			}
 
 			if len(texts) == 0 {
 				continue
@@ -419,7 +437,7 @@ func projectExecutionContinuations(recoverMixed func(hpatchRecovery) hpatchRecov
 					notice = &value
 				}
 			}
-			if call.mixed != nil && !hasHpatchFinalResult(texts, call.mixed.Handle) {
+			if call.mixed != nil && !mixedComplete && !hasHpatchFinalResult(texts, call.mixed.Handle) {
 				if notice == nil {
 					notice = &executionContinuation{
 						Handle: map[string]any{"hpatch": call.mixed.Handle},
@@ -441,8 +459,8 @@ func projectExecutionContinuations(recoverMixed func(hpatchRecovery) hpatchRecov
 		item := items[index]
 		latest, outstanding := pending[executionHandleKey(notice)]
 		outstanding = outstanding && latest == index
-		if outstanding && notice.Recovery != nil && recoverMixed != nil {
-			recovery := recoverMixed(*notice.Recovery)
+		if outstanding && notice.Recovery != nil && mixed != nil && mixed.recovery != nil {
+			recovery := mixed.recovery(*notice.Recovery)
 			notice.Recovery = &recovery
 		}
 		text := string(mustMarshalJSON(map[string]any{"continuation": notice}))

@@ -125,7 +125,7 @@ func TestHpatchRecoveryProjection(t *testing.T) {
 					UpstreamItem: continuationTestCall("exec", "wrapper", `text(await tools.wait({cell_id:"cell-17"}));`),
 				},
 			}
-			projectExecutionContinuations(read, &request, continuationTestCatalog(), "exec", visible)
+			projectExecutionContinuations(&mixedOutputProjection{recovery: read}, &request, continuationTestCatalog(), "exec", visible)
 			projected := string(request.fields["input"])
 			if count := strings.Count(projected, `hpatch_recovery`); count != test.want || reads != test.want {
 				t.Fatalf("recovery count=%d reads=%d want=%d: %s", count, reads, test.want, projected)
@@ -140,7 +140,7 @@ func TestHpatchRecoveryProjection(t *testing.T) {
 			if test.wantWait && !strings.Contains(projected, "functions.wait") {
 				t.Fatalf("lost outer cell continuation: %s", projected)
 			}
-			projectExecutionContinuations(read, &request, continuationTestCatalog(), "exec", visible)
+			projectExecutionContinuations(&mixedOutputProjection{recovery: read}, &request, continuationTestCatalog(), "exec", visible)
 			if string(request.fields["input"]) != projected {
 				t.Fatalf("non-idempotent recovery:\n%s\n%s", projected, request.fields["input"])
 			}
@@ -272,7 +272,7 @@ func TestHpatchRecoveryReplayAfterRestart(t *testing.T) {
 			// A new router/thread must not borrow the original private runtime.
 			other, _ := mixedTestTransform(t)
 			other.directory = transform.directory
-			projectExecutionContinuations(other.readHpatchRecovery, &request, continuationTestCatalog(), "exec", visible)
+			projectExecutionContinuations(&mixedOutputProjection{recovery: other.readHpatchRecovery}, &request, continuationTestCatalog(), "exec", visible)
 			output := string(request.fields["input"])
 			if !strings.Contains(output, hpatchRecoveryFor(history).Handle) ||
 				!strings.Contains(output, "unavailable") || strings.Contains(output, "completed_segments") {

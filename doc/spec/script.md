@@ -236,14 +236,16 @@ The carrier persists checkpoints privately without emitting lifecycle notificati
 into model context. Persist segment start before its first host operation, entry into
 host patch application before submitting the patch, and completion only after confirmed
 success for that segment. Persist each returned native session handle before awaiting
-its continuation. Normal completion returns only the ordered result and sequence summary,
-with no extra checkpoint messages.
+its continuation. The host retains the ordered result and sequence summary. For a fully
+successful call, the model-facing view contains only the edit reports and native shell
+results, in order, with no checkpoint messages, repeated segment metadata, resume handle,
+expiry, or sequence wrapper.
 
 When an actual host result yields or lacks a complete mixed-script summary, the router
 projects compact recovery information onto that result using validated call provenance
 and the private retained state. Wait results inherit mixed-script provenance only from
 visible originating calls and host cell IDs. Projection never executes or resumes work.
-It preserves the host output and continuation choice; an outer cell still owns its waits.
+It preserves the execution evidence and continuation choice; an outer cell still owns its waits.
 
 Recovery identifies the handle and expiry, one-based segment, original physical line,
 kind, phase, last confirmed status, completed prefix, and known native sessions.
@@ -251,6 +253,13 @@ Only the outstanding result receives this annotation; a complete summary needs n
 Keep recovery separate from command output so truncation does not hide it. An unavailable,
 expired, or invalid retained record is reported as unavailable, never reconstructed as
 successful work or treated as proof that a process stopped.
+
+Before exposing the compact success view, the router persists a digest of that exact
+view, bound to the originating mixed call's durable replay record. This is output
+provenance, not another execution or permission to resume. Replayed compact output must
+match its receipt; missing, altered, failed, or incomplete results are never inferred to
+be successful. Receipt storage failure leaves the full host result unchanged. Receipts
+follow the call record's retention policy, not the private continuation's lifetime.
 
 On ordinary completion or a catchable failure, retain ordered segment results.
 Completed edits include their reports; shell results preserve terminal native
@@ -401,7 +410,11 @@ Additional acceptance:
    of process termination. Test interruption around host patch submission too;
    a missing completion checkpoint must not turn uncertain effects into a safe
    automatic retry.
-10. Successful mixed calls emit zero lifecycle notifications. Verbose or truncated
+10. Successful mixed calls emit zero lifecycle notifications and no model-visible
+    success wrapper. Their edit report and native shell payloads match separate calls;
+    replay, output-only history, and waits preserve the compact view without markers.
+    Failures, reconciliation, and missing confirmation retain full recovery evidence.
+    Verbose or truncated
     output does not hide recovery information: an incomplete result receives a compact
     annotation from retained state, including known session handles. Complete summaries
     receive no additional annotation. A final summary is required for ordinary completion

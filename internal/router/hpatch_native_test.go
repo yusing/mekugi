@@ -23,6 +23,12 @@ func TestHpatchNativeFixture(t *testing.T) {
 		t.Skip("set MEKUGI_HPATCH_NATIVE_FIXTURE to a session-created temporary directory")
 	}
 	transform, _ := mixedTestTransform(t)
+	transform.proxy.translator = newInProcessMekugiTranslator(t.TempDir())
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	transform.proxy.replayStore = store
 	if err := os.WriteFile(filepath.Join(transform.directory, "native-blocker"), []byte("regular file, not a directory\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -59,9 +65,24 @@ func TestHpatchNativeFixture(t *testing.T) {
 			return
 		}
 		count++
-		history, err := transform.translate(fmt.Sprintf("native-%d", count), string(body), nil)
+		callID := fmt.Sprintf("native-%d", count)
+		var history mekugiHistory
+		if r.URL.Query().Get("tool") == "shell" {
+			contribution, ok := transform.proxy.registry.contribution("shell")
+			if !ok {
+				http.Error(w, "shell unavailable", http.StatusBadRequest)
+				return
+			}
+			history, err = transform.translateRegisteredTool(contribution, callID, string(body), nil)
+		} else {
+			history, err = transform.translate(callID, string(body), nil)
+		}
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := store.put(t.Context(), transform.directory, map[string]mekugiHistory{callID: history}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		handle := ""
@@ -70,7 +91,7 @@ func TestHpatchNativeFixture(t *testing.T) {
 			recoveries[handle] = *recovery
 		}
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"carrier": history.CarrierPayload, "error": history.TranslationError, "handle": handle,
+			"carrier": history.CarrierPayload, "error": history.TranslationError, "handle": handle, "call_id": callID,
 		})
 	})
 	// Test observation reads acknowledged durable state, never production notify().
@@ -83,6 +104,30 @@ func TestHpatchNativeFixture(t *testing.T) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(transform.readHpatchRecovery(recovery))
+	})
+	mux.HandleFunc("POST /project", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		var input struct {
+			CallID string          `json:"call_id"`
+			Output json.RawMessage `json:"output"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, maxReplayRecordBytes)).Decode(&input); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		request := parsedResponsesRequest{fields: map[string]json.RawMessage{"input": mustMarshalJSON([]any{
+			map[string]any{"type": "custom_tool_call_output", "call_id": input.CallID, "output": input.Output},
+		})}}
+		visible, err := transform.proxy.reconcileVisibleInput(t.Context(), &request, transform.directory, transform.historySessionID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		projectExecutionContinuations(&mixedOutputProjection{recovery: transform.readHpatchRecovery, success: transform.projectHpatchSuccess},
+			&request, continuationTestCatalog(), "exec", visible)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(request.fields["input"])
 	})
 	mux.HandleFunc("POST /close", func(w http.ResponseWriter, r *http.Request) {
 		once.Do(func() { close(done) })

@@ -34,6 +34,13 @@ previews, and becomes visible only after required durable facts exist. Offline s
 inspection reads and validates those facts without opening writable recovery state or
 inferring execution from carrier source.
 
+Mixed-script success compaction uses an optional `HpatchSuccessDigest` on the existing
+call replay record: a lowercase SHA-256 digest of the canonical JSON model-facing output.
+It is separate from immutable translation facts, preserved by later record updates, and
+cannot be replaced by a conflicting digest. The record must be durable before compact
+output is exposed; only an exact receipt match recognizes compact replay. No additional
+visible marker, private continuation lifetime, or live parent is required.
+
 Application stages the complete engine result and performs ordered external operations with
 rollback attempts. Translation renders the complete carrier without mutation. Neither an
 authorized root nor a rendered patch serializes outside writers, supplies a cross-file

@@ -62,7 +62,7 @@ func TestInstructionsTeachMixedScriptBoundaries(t *testing.T) {
 				"`resume HANDLE repair`",
 				"`resume HANDLE accept`",
 				"one hour from creation",
-				"partial or unknown effects",
+				"uncertain effects; missing confirmation does not mean rollback",
 				"Do not replay a mixed script",
 				"each edit segment with `in` or `new`",
 				"Native-only clients use separate hpatch and shell calls",
