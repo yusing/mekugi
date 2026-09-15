@@ -243,6 +243,18 @@ very narrow panes; blank source rows keep their numbers.
 Prepared status appears once per capture. Paths within the display workspace are relative;
 external paths stay absolute. Display formatting never changes captured paths or source.
 
+Source lines wrap by default, preserving whitespace, syntax colors, and change-row
+backgrounds. Continuations retain the gutter and change marker with a blank coordinate.
+`h`/`l` and Left/Right pan source horizontally, pausing following and unlocking wrapping
+while the horizontal offset is nonzero. Returning to the left edge (`x=0`) relocks
+wrapping without resuming following. Coordinates and chrome remain fixed. Switching
+wrap mode preserves the logical row at saved viewport positions.
+The viewer enables SGR mouse reporting while active and explicitly disables its
+mouse reporting modes on exit, including in terminals without private mode save/restore. Horizontal wheel reports use the same pan/unlock/relock behavior; vertical
+wheel reports scroll rows. Wheel modifiers are accepted. Clicks, releases, motion,
+and malformed reports do not trigger navigation or review commands. Fragmented
+reports are decoded incrementally with bounded storage.
+
 Resize must preserve safe Unicode clipping, leaving room for the gutter and final
 terminal column. Only text and terminal color/text styling (SGR) may reach the viewport.
 Added and removed source rows have green and red backgrounds through the available

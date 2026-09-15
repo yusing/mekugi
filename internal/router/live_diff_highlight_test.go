@@ -157,7 +157,7 @@ func TestLiveDiffRenderHighlights(t *testing.T) {
 	recent.highlighted = true
 	file := liveDiffFile{path: path, highlighted: true, chunks: []liveDiffChunk{old, recent}}
 	for _, width := range []int{36, 90} {
-		render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, width, 0, recent)
+		render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, width, 0, recent, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -207,7 +207,7 @@ func TestLiveDiffHighlightPreservesSyntaxColors(t *testing.T) {
 		t.Helper()
 		chunk.highlighted = highlighted
 		file := liveDiffFile{path: path, chunks: []liveDiffChunk{chunk}}
-		render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 90, 0, chunk)
+		render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 90, 0, chunk, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -253,7 +253,7 @@ func TestLiveDiffHeaders(t *testing.T) {
 				BeforePath: tc.before, AfterPath: tc.after, Diff: diff,
 			}}
 			file := liveDiffFile{path: path, chunks: []liveDiffChunk{chunk}}
-			render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 90, 0, chunk)
+			render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 90, 0, chunk, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -305,7 +305,7 @@ func TestLiveDiffHeaderCountsUseVisibleComposition(t *testing.T) {
 	v.refreshVisible()
 	for _, want := range []liveDiffCounts{{2, 1}, {0, 0}} {
 		file := v.visible[v.files[0].key()]
-		render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 90, 0, second)
+		render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 90, 0, second, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -328,7 +328,7 @@ func TestLiveDiffPreparedRenameKeepsDestination(t *testing.T) {
 	v := liveDiffView{}
 	v.merge([]liveDiffFile{{path: oldPath, chunks: []liveDiffChunk{chunk}}})
 	v.refreshVisible()
-	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{v.visible[v.files[0].key()]}, workspace, 90, 0, chunk)
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{v.visible[v.files[0].key()]}, workspace, 90, 0, chunk, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +388,7 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 			t.Fatalf("fixture is not a composed new file: %#v", chunk)
 		}
 	}
-	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 100, 0, recent)
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 100, 0, recent, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -432,7 +432,7 @@ func TestLiveDiffFollowLatestCombinedResult(t *testing.T) {
 		!strings.Contains(text, "+LATEST20") || !strings.Contains(text, "+LATEST337") {
 		t.Fatalf("result contains intermediate patches instead of final changes: %s", text)
 	}
-	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 100, 0, v.latestChunk())
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 100, 0, v.latestChunk(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -468,7 +468,7 @@ func TestLiveDiffCaptureLabelsOnce(t *testing.T) {
 			v.merge([]liveDiffFile{{path: path, chunks: []liveDiffChunk{first, second}}})
 			v.refreshVisible()
 			file := v.visible[v.files[0].key()]
-			render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 90, 0, second)
+			render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 90, 0, second, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -504,8 +504,8 @@ func TestLiveDiffBlankSourceRows(t *testing.T) {
 	path := filepath.Join(workspace, "file.txt")
 	chunk := liveDiffHighlightChunk("edit", path, "@@ -1,4 +1,4 @@\n \n-old\n+new\n-\n+\n tail\n", true)
 	chunk.status = ""
-	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: path, chunks: []liveDiffChunk{chunk}}},
-		workspace, 90, 0, chunk)
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: path, chunks: []liveDiffChunk{chunk}}}, workspace, 90, 0, chunk, 0)
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -536,8 +536,8 @@ func TestLiveDiffPathOnlyChangesStayCompact(t *testing.T) {
 				Diff: tc.name + " " + strconv.Quote(tc.before) + " -> " + strconv.Quote(tc.after) + "\n"}
 			for _, status := range []string{"", "hp_a1 prepared (application unconfirmed)"} {
 				chunk := liveDiffChunk{key: "change", status: status, review: review}
-				render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: path, chunks: []liveDiffChunk{chunk}}},
-					workspace, 100, 0, chunk)
+				render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: path, chunks: []liveDiffChunk{chunk}}}, workspace, 100, 0, chunk, 0)
+
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -574,8 +574,8 @@ func TestLiveDiffNarrowFileActions(t *testing.T) {
 				Diff: tc.name + " " + strconv.Quote(tc.before) + " -> " + strconv.Quote(tc.after) + "\n"}
 			file := liveDiffFile{path: path, highlighted: true, chunks: []liveDiffChunk{{review: review}}}
 			for _, width := range []int{40, 90} {
-				render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file, {path: "next.txt", chunks: []liveDiffChunk{{status: "prepared"}}}},
-					workspace, width, 0, file.chunks[0])
+				render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file, {path: "next.txt", chunks: []liveDiffChunk{{status: "prepared"}}}}, workspace, width, 0, file.chunks[0], 0)
+
 				if err != nil {
 					t.Fatal(err)
 				}

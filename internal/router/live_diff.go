@@ -45,6 +45,7 @@ type liveDiffView struct {
 	scroll       map[string]int
 	reviewed     map[string]bool
 	visible      map[string]liveDiffFile
+	horizontal   int
 	following    bool
 	latest       string
 	initialized  bool
@@ -355,11 +356,13 @@ type liveDiffCounts struct {
 }
 
 type liveDiffRender struct {
-	lines       []string
-	starts      []int
-	counts      []liveDiffCounts
-	focusOffset int // Hunk/context anchor retained while locating the target.
-	focusRow    int // Latest changed row to center when viewport boundaries allow it.
+	lines         []string
+	starts        []int
+	rowStarts     []int // First display row of each logical row, including chrome.
+	maxHorizontal int
+	counts        []liveDiffCounts
+	focusOffset   int // Hunk/context anchor retained while locating the target.
+	focusRow      int // Latest changed row to center when viewport boundaries allow it.
 }
 
 func (r liveDiffRender) followOffset(rows int) int {
@@ -391,6 +394,23 @@ func (v *liveDiffView) scrollTo(render liveDiffRender, offset int) {
 		}
 	}
 	v.scroll[v.files[v.selected].key()] = max(0, offset-render.starts[v.selected])
+}
+
+// Reflow saved positions when wrapping changes, keeping the same logical row.
+func (v *liveDiffView) reflow(before, after liveDiffRender) {
+	for i, file := range v.files {
+		if i >= len(before.starts) || len(before.rowStarts) == 0 {
+			continue
+		}
+		offset := before.starts[i] + v.scroll[file.key()]
+		row, exact := slices.BinarySearch(before.rowStarts, offset)
+		if !exact {
+			row--
+		}
+		if row >= 0 && row < len(after.rowStarts) {
+			v.scroll[file.key()] = max(0, after.rowStarts[row]-after.starts[i])
+		}
+	}
 }
 
 type liveDiffOutput struct{ strings.Builder }
@@ -469,10 +489,13 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		return err
 	}
 	defer func() { err = errors.Join(err, term.Restore(int(stdin.Fd()), old)) }()
-	if _, err := io.WriteString(stdout, "\x1b[?1049h\x1b[?25l\x1b]11;?\x1b\\"); err != nil {
+	if _, err := io.WriteString(stdout, "\x1b[?1049h\x1b[?25l\x1b[?1000;1006h\x1b]11;?\x1b\\"); err != nil {
 		return err
 	}
-	defer func() { _, e := io.WriteString(stdout, "\x1b[0m\x1b[?25h\x1b[?1049l"); err = errors.Join(err, e) }()
+	defer func() {
+		_, e := io.WriteString(stdout, "\x1b[?1000;1006l\x1b[0m\x1b[?25h\x1b[?1049l")
+		err = errors.Join(err, e)
+	}()
 	// A private descriptor makes cancellation interrupt Read without closing the
 	// caller's stdin. The goroutine is joined before restoring terminal state.
 	input, err := os.Open(stdin.Name())
@@ -517,10 +540,11 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 	var rendered []liveDiffFile
 	var renderedFocus liveDiffChunk
 	renderedFocusFile := -1
-	lastWidth, lastHeight := 0, 0
+	lastWidth, lastHeight, lastHorizontal := 0, 0, 0
 	dirty := true
 	theme := liveDiffEnvironmentTheme(os.Getenv("COLORFGBG"))
 	renderedTheme := theme
+	var mouse liveDiffMouse
 	var osc liveDiffOSC
 	escape := ""
 	for {
@@ -539,10 +563,14 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		}
 		focus := view.latestChunk()
 		focus.snapshotOrder = 0 // Snapshot numbering does not change a capture's geometry.
-		if !reflect.DeepEqual(rendered, files) || renderedFocus != focus || renderedFocusFile != focusFile || width != lastWidth || theme != renderedTheme {
-			rendering, e = renderLiveDiff(ctx, theme, files, workspace, width, focusFile, focus)
+		if !reflect.DeepEqual(rendered, files) || renderedFocus != focus || renderedFocusFile != focusFile || width != lastWidth || view.horizontal != lastHorizontal || theme != renderedTheme {
+			previous := rendering
+			rendering, e = renderLiveDiff(ctx, theme, files, workspace, width, focusFile, focus, view.horizontal)
 			if e != nil {
 				return e
+			}
+			if (view.horizontal != lastHorizontal || width != lastWidth) && reflect.DeepEqual(rendered, files) {
+				view.reflow(previous, rendering)
 			}
 			renderedTheme = theme
 			rendered, renderedFocus, renderedFocusFile = files, focus, focusFile
@@ -551,7 +579,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		if height != lastHeight {
 			dirty = true
 		}
-		lastWidth, lastHeight = width, height
+		lastWidth, lastHeight, lastHorizontal = width, height, view.horizontal
 		lines := rendering.lines
 		rows := height - 2
 		offset := 0
@@ -627,7 +655,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			if coverage != "" {
 				mode, _, _ = strings.Cut(coverage, ":")
 			}
-			writeRow(height, mode+" · r resume · j/k scroll · n/p file · f/F flush · q quit")
+			writeRow(height, mode+" · r resume · j/k ↕ h/l ↔ · n/p file · f/F flush · q quit")
 			if _, e := io.WriteString(stdout, screen.String()); e != nil {
 				return e
 			}
@@ -702,8 +730,16 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			}
 			// Decode common terminal keys incrementally, including fragmented reads.
 			if key == 27 {
+				mouse = liveDiffMouse{}
 				escape = "\x1b"
 				continue
+			}
+			if mouse.active || escape == "\x1b[" && key == '<' {
+				escape = ""
+				key = mouse.consume(key)
+				if key == 0 {
+					continue
+				}
 			}
 			if escape != "" {
 				escape += string(key)
@@ -715,9 +751,9 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 				case "\x1b[B", "\x1bOB":
 					key = 'j'
 				case "\x1b[C", "\x1bOC":
-					key = 'n'
+					key = 'l'
 				case "\x1b[D", "\x1bOD":
-					key = 'p'
+					key = 'h'
 				case "\x1b[5~":
 					key = 'b'
 				case "\x1b[6~":
@@ -725,7 +761,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 				}
 				escape = ""
 			}
-			if strings.ContainsRune("np\tjk bgG", rune(key)) {
+			if strings.ContainsRune("np\tjkhl bgG", rune(key)) {
 				view.following = false
 			}
 			switch key {
@@ -749,6 +785,10 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 						break
 					}
 				}
+			case 'h':
+				view.horizontal = max(0, view.horizontal-4)
+			case 'l':
+				view.horizontal = min(view.horizontal+4, max(view.horizontal, rendering.maxHorizontal))
 			case 'j':
 				view.scrollTo(rendering, offset+1)
 			case 'k':

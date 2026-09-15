@@ -2,6 +2,7 @@ package router
 
 import (
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -78,7 +79,7 @@ func TestLiveDiffThemeGeometryAndFallback(t *testing.T) {
 	for _, width := range []int{1, 13, 90} {
 		var baseline string
 		for _, theme := range []liveDiffTheme{liveDiffTerminalTheme, liveDiffLightTheme, liveDiffDarkTheme} {
-			render, err := renderLiveDiff(t.Context(), theme, []liveDiffFile{file}, "", width, 0, chunk)
+			render, err := renderLiveDiff(t.Context(), theme, []liveDiffFile{file}, "", width, 0, chunk, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -234,7 +235,7 @@ func TestLiveDiffRowFills(t *testing.T) {
 	chunk.status = ""
 	for _, theme := range []liveDiffTheme{liveDiffTerminalTheme, liveDiffLightTheme, liveDiffDarkTheme} {
 		for _, width := range []int{1, 2, 3, 8, 80} {
-			render, err := renderLiveDiff(t.Context(), theme, []liveDiffFile{{path: "file.go", chunks: []liveDiffChunk{chunk}}}, "", width, 0, chunk)
+			render, err := renderLiveDiff(t.Context(), theme, []liveDiffFile{{path: "file.go", chunks: []liveDiffChunk{chunk}}}, "", width, 0, chunk, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -242,7 +243,11 @@ func TestLiveDiffRowFills(t *testing.T) {
 				if ansi.StringWidth(line) > width-1 {
 					t.Fatalf("overflow: %q", line)
 				}
-				sourceIndex := i - (len(render.lines) - 4)
+				logical, exact := slices.BinarySearch(render.rowStarts, i)
+				if !exact {
+					logical--
+				}
+				sourceIndex := logical - (len(render.rowStarts) - 4)
 				if sourceIndex != 1 && sourceIndex != 2 {
 					assertLiveDiffNoBackground(t, line)
 					continue

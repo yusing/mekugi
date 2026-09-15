@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -27,7 +28,7 @@ func TestLiveDiffRenderAllFiles(t *testing.T) {
 		}}})
 	}
 	for focusFile := range files {
-		render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, files, workspace, 90, focusFile, files[focusFile].chunks[0])
+		render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, files, workspace, 90, focusFile, files[focusFile].chunks[0], 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,7 +61,7 @@ func TestLiveDiffFollowEmptyLatestFile(t *testing.T) {
 			review: mekugi.ReviewFile{AfterPath: first, Diff: diff}}}},
 		{path: second}, // The latest file was flushed or fully reverted.
 	}
-	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, files, workspace, 90, 1, liveDiffChunk{})
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, files, workspace, 90, 1, liveDiffChunk{}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,11 +124,12 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	longSuffix := strings.Repeat("x", 160)
 	publish("create-both",
-		"new first.txt\ntype \"Temporary file one.\\nStatus: created\\n\"\n"+
+		"new first.txt\ntype \"Temporary file one."+longSuffix+"\\nStatus: created\\n\"\n"+
 			"new second.txt\ntype \"Temporary file two.\\nStatus: created\\n\"\n")
 	for name, content := range map[string]string{
-		"first.txt":  "Temporary file one.\nStatus: created\n",
+		"first.txt":  "Temporary file one." + longSuffix + "\nStatus: created\n",
 		"second.txt": "Temporary file two.\nStatus: created\n",
 	} {
 		if err := os.WriteFile(filepath.Join(workspace, name), []byte(content), 0600); err != nil {
@@ -167,12 +169,16 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 			}
 		}
 	}()
+	mouseEnabled := false
 	waitFrame := func(check func(string) bool) string {
 		t.Helper()
 		var pending, lastFrame string
 		for {
 			select {
 			case chunk, open := <-chunks:
+				if strings.Contains(pending+chunk, "\x1b[?1000;1006h") {
+					mouseEnabled = true
+				}
 				pending += chunk
 				for {
 					end := strings.Index(pending, "q quit\x1b[0m")
@@ -199,6 +205,9 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 		}
 	}
 	frame := waitFrame(func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
+	if !mouseEnabled {
+		t.Fatal("viewer did not enable SGR mouse reporting")
+	}
 	for _, want := range []string{"first.txt", "second.txt", "Temporary file one.", "Temporary file two."} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("multi-file capture omitted %q from the visible frame: %q", want, frame)
@@ -207,6 +216,68 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	if strings.Contains(frame, "Applied · original to latest") || strings.Contains(frame, "Δ /dev/null") {
 		t.Fatalf("redundant diff headers remain: %q", frame)
 	}
+
+	// Horizontal arrows pan source rather than switching files, and returning
+	// to x=0 restores wrapping without resuming automatic following.
+	if _, err := terminal.Write([]byte("\x1b[C")); err != nil {
+		t.Fatal(err)
+	}
+	waitFrame(func(frame string) bool {
+		return strings.Contains(frame, "PAUSED") && strings.Contains(frame, "orary file one.") &&
+			!strings.Contains(frame, "Temporary file one.")
+	})
+	if _, err := terminal.Write([]byte("\x1b[D")); err != nil {
+		t.Fatal(err)
+	}
+	waitFrame(func(frame string) bool {
+		return strings.Contains(frame, "PAUSED") && strings.Contains(frame, "Temporary file one.")
+	})
+	if _, err := terminal.Write([]byte("\x1b[<67;fFqr;5M\x1b[<67;10;5m")); err != nil {
+		t.Fatal(err)
+	}
+	// Fragmented SGR horizontal wheel reports share keyboard pan/relock.
+	for _, report := range []string{"\x1b[<67;10;5M", "\x1b[<66;10;5M"} {
+		for _, key := range []byte(report) {
+			if _, err := terminal.Write([]byte{key}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		panning := strings.Contains(report, "<67;")
+		waitFrame(func(frame string) bool {
+			return strings.Contains(frame, "PAUSED") &&
+				strings.Contains(frame, "Temporary file one.") != panning
+		})
+	}
+
+	// Pause below the wrapped source row, then narrow it enough to add a
+	// continuation. The anchored status row must remain at the viewport top.
+	if _, err := terminal.Write([]byte("g" + strings.Repeat("\x1b[<65;10;5M", 3))); err != nil {
+		t.Fatal(err)
+	}
+	atStatus := func(frame string) bool {
+		return strings.Contains(frame, "PAUSED") && strings.Contains(frame, "Status: created") &&
+			!strings.Contains(frame, strings.Repeat("x", 8))
+	}
+	waitFrame(atStatus)
+	if err := pty.Setsize(terminal, &pty.Winsize{Rows: 44, Cols: 90}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Process.Signal(syscall.SIGWINCH); err != nil {
+		t.Fatal(err)
+	}
+	waitFrame(atStatus)
+	if err := pty.Setsize(terminal, &pty.Winsize{Rows: 44, Cols: 100}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Process.Signal(syscall.SIGWINCH); err != nil {
+		t.Fatal(err)
+	}
+	waitFrame(atStatus)
+
+	if _, err := terminal.Write([]byte("r")); err != nil {
+		t.Fatal(err)
+	}
+	waitFrame(func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
 
 	if strings.Contains(frame, "LATEST UPDATE") || strings.Contains(frame, "▎") {
 		t.Fatal("startup history was marked as newly observed")
@@ -229,7 +300,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 			strings.Contains(frame, "Temporary file two.") && !strings.Contains(frame, "Temporary file one.")
 	})
 	if err := os.WriteFile(filepath.Join(workspace, "first.txt"),
-		[]byte("Temporary file one.\nStatus: updated 界 é\n"), 0600); err != nil {
+		[]byte("Temporary file one."+longSuffix+"\nStatus: updated 界 é\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	publish("update-first", "in first.txt\ntype \"Status: updated 界 é\" \"Status: adjusted 界 é\"\n")
@@ -281,5 +352,12 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("viewer failed to quit")
+	}
+	var tail strings.Builder
+	for chunk := range chunks {
+		tail.WriteString(chunk)
+	}
+	if !strings.Contains(tail.String(), "\x1b[?1000;1006l") {
+		t.Fatal("viewer did not disable mouse reporting on exit")
 	}
 }

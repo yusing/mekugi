@@ -53,7 +53,7 @@ func TestLiveDiffRelativeDisplayKeepsSourceAndCapture(t *testing.T) {
 	chunk := liveDiffChunk{
 		review: mekugi.ReviewFile{BeforePath: before, AfterPath: after, Diff: diff},
 	}
-	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: after, chunks: []liveDiffChunk{chunk}}}, workspace, 240, 0, chunk)
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: after, chunks: []liveDiffChunk{chunk}}}, workspace, 240, 0, chunk, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestLiveDiffNativeRenderer(t *testing.T) {
 		status: "hp_a1 applied",
 		review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1 +1 @@\n-old\n+new\n"},
 	}}}
-	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 80, 0, liveDiffChunk{})
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 80, 0, liveDiffChunk{}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestLiveDiffRenderFollowsLatestHunk(t *testing.T) {
 	}}
 	for i, diff := range []string{top, bottom} {
 		focus := liveDiffChunk{review: mekugi.ReviewFile{Diff: diff}}
-		render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 80, 0, focus)
+		render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 80, 0, focus, 0)
 		if err != nil {
 			t.Fatal(err)
 		}

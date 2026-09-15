@@ -16,7 +16,7 @@ import (
 
 // Rendering consumes the engine's validated rows. File and hunk offsets are
 // recorded as rows are emitted, never recovered from a subprocess's output.
-func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFile, workspace string, width, focusFile int, focus liveDiffChunk) (liveDiffRender, error) {
+func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFile, workspace string, width, focusFile int, focus liveDiffChunk, horizontal int) (liveDiffRender, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
@@ -34,7 +34,7 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 	}
 	render := liveDiffRender{starts: make([]int, len(files)), counts: make([]liveDiffCounts, len(files))}
 	renderedBytes := 0
-	appendLine := func(line string, highlighted bool) error {
+	appendLine := func(line string, highlighted, continuation bool) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -42,6 +42,9 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 		renderedBytes += len(line) + 1
 		if renderedBytes > maxChangeReadBytes {
 			return errors.New("live diff rendering exceeds 64 MiB; use hchanges with a narrower range")
+		}
+		if !continuation {
+			render.rowStarts = append(render.rowStarts, len(render.lines))
 		}
 		render.lines = append(render.lines, line)
 		return nil
@@ -93,7 +96,7 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 			} else {
 				heading = "\x1b[1m" + heading + "\x1b[22m"
 			}
-			if err := appendLine(heading, file.highlighted); err != nil {
+			if err := appendLine(heading, file.highlighted, j > 0); err != nil {
 				return liveDiffRender{}, err
 			}
 		}
@@ -131,10 +134,12 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 				if action := liveDiffAction(review, workspace); action != "" {
 					label += " · " + action
 				}
+				continuation := false
 				for line := range strings.SplitSeq(ansi.Wrap(liveDiffSafe(label, false), max(1, width-3), ""), "\n") {
-					if err := appendLine(line, chunk.highlighted); err != nil {
+					if err := appendLine(line, chunk.highlighted, continuation); err != nil {
 						return liveDiffRender{}, err
 					}
+					continuation = true
 				}
 			}
 			// Keep deletion metadata and counts, but omit the removed file's source.
@@ -191,21 +196,47 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 						style = theme.foreground(chroma.GenericDeleted)
 					}
 					base := theme.foreground(chroma.NameOther)
-					line := numbers + style + string(row.Kind) + "\x1b[39m" + text
-					if background := theme.rowBackground(row.Kind); background != "" {
-						// Token resets restore the row foreground, not an unknown
-						// terminal default that may be unreadable on this fill.
-						line = strings.ReplaceAll(line, "\x1b[39m", base)
-						line = ansi.Truncate(line, max(0, width-3), "")
-						line += strings.Repeat(" ", max(0, width-3-ansi.StringWidth(line)))
-						line = background + base + line
+					// Wrap only source text; keep coordinates, change markers, and
+					// recency gutters fixed while panning through an unlocked row.
+					sourceWidth := max(1, width-4-ansi.StringWidth(numbers))
+					render.maxHorizontal = max(render.maxHorizontal, ansi.StringWidth(text)-sourceWidth)
+					fragments := text
+					if horizontal == 0 {
+						fragments = ansi.Hardwrap(text, sourceWidth, true)
+					} else {
+						fragments = ansi.Cut(text, horizontal, horizontal+sourceWidth)
 					}
-					line += "\x1b[0m"
-					if err := appendLine(line, chunk.highlighted); err != nil {
-						return liveDiffRender{}, err
+					carry := ""
+					continuation := false
+					for fragment := range strings.SplitSeq(fragments, "\n") {
+						fragment = carry + fragment
+						// Syntax emits only foreground SGR. Restore its last color
+						// on continuations, which may be the first visible row.
+						if start := strings.LastIndex(fragment, "\x1b["); start >= 0 {
+							if end := strings.IndexByte(fragment[start:], 'm'); end >= 0 {
+								carry = fragment[start : start+end+1]
+							}
+						}
+						prefix := numbers
+						if continuation && numbers != "" {
+							prefix = "\x1b[2m" + strings.Repeat(" ", digits) + "│\x1b[22m"
+						}
+						line := prefix + style + string(row.Kind) + "\x1b[39m" + fragment
+						if background := theme.rowBackground(row.Kind); background != "" {
+							// Token resets restore a readable foreground on the fill.
+							line = strings.ReplaceAll(line, "\x1b[39m", base)
+							line = ansi.Truncate(line, max(0, width-3), "")
+							line += strings.Repeat(" ", max(0, width-3-ansi.StringWidth(line)))
+							line = background + base + line
+						}
+						line += "\x1b[0m"
+						if err := appendLine(line, chunk.highlighted, continuation); err != nil {
+							return liveDiffRender{}, err
+						}
+						continuation = true
 					}
 					if !strings.HasSuffix(row.Text, "\n") {
-						if err := appendLine("\x1b[2m\\ No newline at end of file\x1b[22m", chunk.highlighted); err != nil {
+						if err := appendLine("\x1b[2m\\ No newline at end of file\x1b[22m", chunk.highlighted, false); err != nil {
 							return liveDiffRender{}, err
 						}
 					}

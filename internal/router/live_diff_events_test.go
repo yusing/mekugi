@@ -421,8 +421,8 @@ func TestLiveDiffDelayedCaptureDoesNotFollowBackwards(t *testing.T) {
 		t.Fatal("late publication of an older capture moved FOLLOW backwards")
 	}
 	view.refreshVisible()
-	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme,
-		[]liveDiffFile{view.visible[view.files[0].key()]}, "", 90, 0, view.latestChunk())
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, []liveDiffFile{view.visible[view.files[0].key()]}, "", 90, 0, view.latestChunk(), 0)
+
 	if err != nil {
 		t.Fatal(err)
 	}
