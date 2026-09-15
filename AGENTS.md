@@ -16,8 +16,8 @@ ends in themselves. Preserve Codex as the execution authority as required below.
 
 ## Feedback from active sessions
 
-Agents working in an active Mekugi session may proactively record agent-experience (AX)
-issues, wasted roundtrips (forced by limitations, or mistake made) and
+In an active Mekugi session, you may proactively record agent-experience (AX)
+issues, wasted roundtrips or tokens (forced by limitations, or mistake made) and
 improvement feedback encountered while using it, in FIXME.md, even when unrelated to the current task.
 
 Keep feedback brief and grounded in observed behavior: describe the operation, expected versus actual
