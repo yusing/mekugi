@@ -612,7 +612,7 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 		transform.Close()
 		return nil, err
 	}
-	projectExecutionContinuations(request, tools, codeModeToolName, visible)
+	projectExecutionContinuations(transform.readHpatchRecovery, request, tools, codeModeToolName, visible)
 	if transform.subagentTurn {
 		transform.prepareShellActivity(request.fields["input"])
 	}

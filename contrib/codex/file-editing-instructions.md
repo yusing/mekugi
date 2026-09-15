@@ -335,9 +335,8 @@ and retain completed edit reports and shell output. Report rows describe that se
 completion, not changes a later shell command might make.
 
 Do not replay a mixed script or resend its suffix; use the retained handle after a failure.
-Checkpoints preserve the handle, segment, phase, completed count, and known native session
-even after hard Code Mode termination. A validation rejection applied nothing; an interrupted
-host patch may have partial or unknown effects, and a failed shell may have changed state.
+A validation rejection applies nothing. After interruption, inspect the returned recovery
+information and uncertain effects; missing confirmation does not mean rollback.
 
 After the previous Code Mode cell ends, choose:
 - `resume HANDLE`: continue pending work, awaiting any known session rather than restarting it.

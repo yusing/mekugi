@@ -232,17 +232,25 @@ application must not claim the edit segment left the workspace unchanged.
 
 #### Progress and cancellation
 
-The carrier must publish compact, model-visible checkpoints during execution,
-not only from a final `finally` block. Publish a segment-start checkpoint before
-its first host operation, mark entry into host patch application before submitting
-the patch, and publish completion only after confirmed success for that segment. Publish
-each returned native session handle before awaiting its continuation.
+The carrier persists checkpoints privately without emitting lifecycle notifications
+into model context. Persist segment start before its first host operation, entry into
+host patch application before submitting the patch, and completion only after confirmed
+success for that segment. Persist each returned native session handle before awaiting
+its continuation. Normal completion returns only the ordered result and sequence summary,
+with no extra checkpoint messages.
 
-Checkpoints identify the one-based segment, original physical line, kind, phase,
-and last confirmed status. They must let the agent distinguish translation from
-application, recognize the completed prefix, and locate known live sessions after
-an interruption. Keep this compact state available separately from verbose
-command output so log truncation does not erase the information needed to resume.
+When an actual host result yields or lacks a complete mixed-script summary, the router
+projects compact recovery information onto that result using validated call provenance
+and the private retained state. Wait results inherit mixed-script provenance only from
+visible originating calls and host cell IDs. Projection never executes or resumes work.
+It preserves the host output and continuation choice; an outer cell still owns its waits.
+
+Recovery identifies the handle and expiry, one-based segment, original physical line,
+kind, phase, last confirmed status, completed prefix, and known native sessions.
+Only the outstanding result receives this annotation; a complete summary needs none.
+Keep recovery separate from command output so truncation does not hide it. An unavailable,
+expired, or invalid retained record is reported as unavailable, never reconstructed as
+successful work or treated as proof that a process stopped.
 
 On ordinary completion or a catchable failure, retain ordered segment results.
 Completed edits include their reports; shell results preserve terminal native
@@ -252,10 +260,10 @@ the completed prefix and current partial output, including any outstanding
 native session, before propagating.
 
 Hard Code Mode termination may skip JavaScript cleanup and the final summary.
-Previously published checkpoints must remain available through the host's output
-mechanism. A start or application checkpoint without subsequent confirmation means
-the operation is unresolved; absence of a final summary is not evidence of success,
-rollback, or process termination.
+The router recovers the last persisted checkpoint when projecting the host's termination
+or incomplete-result output, even if JavaScript cleanup did not run. A start or application
+checkpoint without subsequent confirmation means the operation is unresolved; absence of
+a final summary is not evidence of success, rollback, or process termination.
 
 Cancelling a continuation wait is not proof that its underlying process stopped.
 Cancellation remains host-owned: use supported host cancellation mechanisms, and
@@ -342,7 +350,7 @@ bound channels expire with their retained handle.
 Checkpoint persistence is independent of Code Mode cleanup. A checkpoint is saved
 before each native operation and after its result, including known session handles.
 A hard interruption during checkpoint publication can leave the operation unresolved;
-published notifications supplement the retained record, never prove rollback.
+recovery annotations describe retained facts, never prove rollback.
 Revision checks stop stale carriers before further operations, but are not a
 substitute for resolving live work before resuming. Private retained state has a
 32 MiB limit; storage failure stops subsequent execution without undoing effects.
@@ -387,16 +395,18 @@ Additional acceptance:
    unknown application outcome. Exercise this through the native host boundary,
    not only a mocked validation rejection.
 9. Hard termination of a real Code Mode cell after a completed segment preserves
-   published progress even when `finally` does not run. Test termination while
+   privately persisted progress even when `finally` does not run. Test termination while
    awaiting an already-yielded shell session: its known handle remains available,
    later segments do not start, and stopping the wait is never reported as proof
    of process termination. Test interruption around host patch submission too;
    a missing completion checkpoint must not turn uncertain effects into a safe
    automatic retry.
-10. Verbose output exceeding the outer result budget does not hide compact
-    completion checkpoints or known session handles. A final summary is required
-    for ordinary completion and catchable failures, but not fabricated after hard
-    termination.
+10. Successful mixed calls emit zero lifecycle notifications. Verbose or truncated
+    output does not hide recovery information: an incomplete result receives a compact
+    annotation from retained state, including known session handles. Complete summaries
+    receive no additional annotation. A final summary is required for ordinary completion
+    and catchable failures, but not fabricated after hard termination. Repeated yields,
+    waits, resume calls, output-only replay, and unavailable storage preserve this boundary.
 11. A shell failure between edit segments can be repaired and resumed by handle,
     without resending the unchanged suffix or replaying completed effects. Files
     changed between failure and resume receive fresh target validation.

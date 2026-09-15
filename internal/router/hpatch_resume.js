@@ -22,17 +22,6 @@ const revalidate = {};
 let refreshTranslation = !!current && current.kind === 'edit' &&
   !progress.operations.some(operation => operation.method === 'apply_patch');
 
-function announce(phase) {
-  try {
-    notify({hpatch_checkpoint: {
-      resume: `resume ${state.handle}`, expires_at: state.expires_at, segment: current?.segment,
-      line: current?.line, kind: current?.kind, phase,
-      status: current?.status, session_id: current?.session_id, control_session_id: controlSession,
-      ...(current?.repair ? {repair: true} : {}),
-      completed_segments: progress.results.length + (current?.status === 'completed' ? 1 : 0)
-    }});
-  } catch {}
-}
 let controlSession = null;
 const controlBudget = 100000;
 async function closeControl(session) {
@@ -88,7 +77,6 @@ async function startControl() {
     cmd: 'shell', login: false, tty: true, yield_time_ms: 1000, max_output_tokens: 1000
   });
   controlSession = result.session_id ?? null;
-  announce('control_started');
   let received = result.output || '';
   while (result.session_id != null && 'HPATCH-READY\n'.startsWith(received) && received !== 'HPATCH-READY\n') {
     result = await nativeTools.write_stdin({session_id: controlSession,
@@ -140,7 +128,6 @@ async function checkpoint(phase, copies = []) {
   if (current) current.phase = phase;
   progress.current = current;
   progress.control_session_id = controlSession;
-  announce(phase);
   const nextProgress = JSON.parse(JSON.stringify(progress));
   const mutations = checkpointMutations(checkpointedProgress, nextProgress);
   for (const copy of copies) {
@@ -356,20 +343,21 @@ try {
     current.output = current.kind === 'shell' ? output : '';
     current.diagnostic = String(error);
   }
-  announce('unresolved');
   if (!storageFailed) await checkpoint('unresolved');
   throw error;
 } finally {
+  let cleanupDiagnostic;
   if (controlSession != null) {
     try {
       await closeControl(controlSession);
       controlSession = null;
-    } catch {
-      announce('control_cleanup_unresolved');
+    } catch (error) {
+      cleanupDiagnostic = String(error);
     }
   }
   const results = current ? [...progress.results, current] : progress.results;
-  text(JSON.stringify({change_id: state.change_id, results, resume_handle: state.handle, expires_at: state.expires_at, sequence: {
+  text(JSON.stringify({change_id: state.change_id, results, resume_handle: state.handle, expires_at: state.expires_at,
+    ...(cleanupDiagnostic ? {control_session_id: controlSession, cleanup_diagnostic: cleanupDiagnostic} : {}), sequence: {
     segment_count: segments.length, started_segments: results.length,
     not_started_segments: segments.length - results.length, stopped_reason: stoppedReason
   }}));

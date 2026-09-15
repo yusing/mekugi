@@ -454,8 +454,8 @@ func TestHpatchMixedCheckpoints(t *testing.T) {
 		t.Fatalf("translate = %v, %s", err, history.TranslationError)
 	}
 	overrides += `
-const checkpoints = [];
-globalThis.notify = value => { checkpoints.push(value.hpatch_checkpoint); };
+const notifications = [];
+globalThis.notify = value => { notifications.push(value); };
 const originalExec = tools.exec_command;
 let yielded = false;
 tools.exec_command = async args => {
@@ -467,9 +467,22 @@ tools.write_stdin = async args => {
   return {exit_code: 0, output: 'finished'};
 };
 `
-	// Checkpoint inspection runs inside the same host fixture but is independent
-	// of the final result's output budget.
-	carrier := history.carrierInput() + `
+	// Observe acknowledged durable state, not model-visible notifications.
+	path := filepath.Join(transform.shellDirectory, "mixed-"+hpatchRecoveryFor(history).Handle)
+	carrier := `
+const checkpoints = [];
+const checkpointWrite = tools.write_stdin;
+tools.write_stdin = async args => {
+  const result = await checkpointWrite(args);
+  if (args.chars?.startsWith('{"operation":"checkpoint"')) {
+    const saved = JSON.parse(fs.readFileSync(` + string(mustMarshalJSON(path)) + `, 'utf8')).progress;
+    checkpoints.push({...saved.current, completed_segments: saved.results.length +
+      (saved.current?.status === 'completed' ? 1 : 0)});
+  }
+  return result;
+};
+` + history.carrierInput() + `
+if (notifications.length !== 0) throw new Error('checkpoint notification overhead');
 if (!checkpoints.some(c => c.phase === 'session_available' && c.session_id === 42)) throw new Error('session handle not published');
 if (!checkpoints.some(c => c.phase === 'awaiting_session' && c.session_id === 42)) throw new Error('wait lost its handle');
 const applying = checkpoints.findIndex(c => c.segment === 2 && c.phase === 'applying');

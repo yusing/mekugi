@@ -14,6 +14,7 @@ type executionNextCall struct {
 }
 
 type executionContinuation struct {
+	Recovery *hpatchRecovery    `json:"hpatch_recovery,omitempty"`
 	Handle   map[string]any     `json:"handle"`
 	NextCall *executionNextCall `json:"next_call"`
 	Reason   string             `json:"reason,omitempty"`
@@ -129,6 +130,7 @@ type executionCall struct {
 	nativePayload bool
 	cellID        string
 	resumeHandle  string
+	mixed         *hpatchRecovery
 }
 
 func executionResumeHandle(item map[string]json.RawMessage, history mekugiHistory, known bool, execName string) string {
@@ -294,6 +296,15 @@ func executionCallFor(item map[string]json.RawMessage, history mekugiHistory, kn
 	}
 	name := strings.TrimPrefix(jsonString(item, "name"), "functions.")
 	call := executionCall{resumeHandle: executionResumeHandle(item, history, known, execName)}
+	if strings.HasPrefix(call.resumeHandle, "cell:") {
+		call.cellID = strings.TrimPrefix(call.resumeHandle, "cell:")
+	}
+	if known {
+		call.mixed = hpatchRecoveryFor(history)
+		if call.mixed != nil {
+			call.resumeHandle = "hpatch:" + call.mixed.Handle
+		}
+	}
 	if known && history.TranslationError == "" {
 		call.codeMode = history.effectiveCarrierKind() == codeModeCarrierCustom
 		call.native = history.effectiveCarrierKind() == codeModeCarrierFunction
@@ -329,14 +340,14 @@ func executionCallFor(item map[string]json.RawMessage, history mekugiHistory, kn
 
 // Project only after replay validation has established the original calls.
 // Cell provenance is request-local transcript evidence, not a session registry.
-func projectExecutionContinuations(request *parsedResponsesRequest, catalog *responsesToolCatalog, execName string, visible map[string]mekugiHistory) {
+func projectExecutionContinuations(recoverMixed func(hpatchRecovery) hpatchRecovery, request *parsedResponsesRequest, catalog *responsesToolCatalog, execName string, visible map[string]mekugiHistory) {
 	var items []map[string]json.RawMessage
 	if json.Unmarshal(request.fields["input"], &items) != nil {
 		return
 	}
 	tools := executionTools(catalog, execName)
 	calls := make(map[string]executionCall)
-	cells := make(map[string]bool)
+	cells := make(map[string]executionCall)
 	notices := make(map[int]executionContinuation)
 	pending := make(map[string]int)
 	changed := false
@@ -350,9 +361,6 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 			history, known := visible[callID]
 			call := executionCallFor(item, history, known, execName)
 			delete(pending, call.resumeHandle)
-			if call.cellID != "" {
-				call.nativePayload = cells[call.cellID]
-			}
 			calls[callID] = call
 		case "custom_tool_call_output", "function_call_output":
 			call, known := calls[callID]
@@ -367,6 +375,10 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 			if !known {
 				continue
 			}
+			if call.cellID != "" {
+				origin := cells[call.cellID]
+				call.nativePayload, call.mixed = origin.nativePayload, origin.mixed
+			}
 			texts := executionOutputTexts(item["output"])
 
 			if len(texts) == 0 {
@@ -376,7 +388,7 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 			if call.codeMode {
 				status, cell, body := codeModeExecutionHeader(texts[0])
 				if status == "running" && (call.cellID == "" || call.cellID == cell) {
-					cells[cell] = call.nativePayload
+					cells[cell] = call
 					value := tools.forCell(cell)
 					notice = &value
 				} else if status != "" && status != "running" {
@@ -407,6 +419,15 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 					notice = &value
 				}
 			}
+			if call.mixed != nil && !hasHpatchFinalResult(texts, call.mixed.Handle) {
+				if notice == nil {
+					notice = &executionContinuation{
+						Handle: map[string]any{"hpatch": call.mixed.Handle},
+						Reason: "No complete mixed-script result was returned. Resolve the previous cell and potentially live sessions before using the resume handle; missing confirmation does not mean rollback.",
+					}
+				}
+				notice.Recovery = call.mixed
+			}
 			if notice == nil {
 				continue
 			}
@@ -418,9 +439,13 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 	// is pending. Only a later yield can advertise that handle again.
 	for index, notice := range notices {
 		item := items[index]
-		text := string(mustMarshalJSON(map[string]any{"continuation": notice}))
 		latest, outstanding := pending[executionHandleKey(notice)]
 		outstanding = outstanding && latest == index
+		if outstanding && notice.Recovery != nil && recoverMixed != nil {
+			recovery := recoverMixed(*notice.Recovery)
+			notice.Recovery = &recovery
+		}
+		text := string(mustMarshalJSON(map[string]any{"continuation": notice}))
 		annotation := mustMarshalJSON(map[string]string{"type": "input_text", "text": text})
 		// Re-prepared requests can contain annotations from an older catalog.
 		// Retire those too, while preserving host output and unrelated warnings.
@@ -470,6 +495,9 @@ func executionAnnotationMatches(part json.RawMessage, notice executionContinuati
 }
 
 func executionHandleKey(notice executionContinuation) string {
+	if handle, ok := notice.Handle["hpatch"].(string); ok {
+		return "hpatch:" + handle
+	}
 	if cell, ok := notice.Handle["cell_id"].(string); ok {
 		return "cell:" + cell
 	}

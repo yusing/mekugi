@@ -219,8 +219,11 @@ if (displayedCommands.length !== 2 || !displayedCommands[0].includes('printf fir
 if (controlFrames.some(frame => frame.includes('"progress":'))) throw new Error('full checkpoint leaked into terminal interaction');
 if (controlFrames.some(frame => frame.length > 2048)) throw new Error('oversized checkpoint terminal interaction');
 if (nextControlSession !== 900001 || controlSessions.size !== 0) throw new Error('control channel not opened once and closed');
+if (notifications.length !== 0) throw new Error('normal completion emitted checkpoint notifications');
 `
 	overrides += `
+const notifications = [];
+globalThis.notify = value => notifications.push(value);
 const displayedCommands = [];
 const controlFrames = [];
 const displayExec = tools.exec_command;

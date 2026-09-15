@@ -7,8 +7,8 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -26,8 +26,17 @@ func TestHpatchNativeFixture(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(transform.directory, "native-blocker"), []byte("regular file, not a directory\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	wrapper, err := exec.LookPath("shell")
+	executable, err := os.Executable()
 	if err != nil {
+		t.Fatal(err)
+	}
+	wrapper := filepath.Join(directory, "fixture-shell")
+	threadID := strings.TrimPrefix(filepath.Base(transform.shellDirectory), "mekugi-scripts-")
+	wrapperSource := "#!/bin/sh\nexport MEKUGI_HPATCH_WORKER_TEST=1\nexport MEKUGI_RUNTIME_DIR=" +
+		shellQuoteArgument(filepath.Dir(transform.shellDirectory)) + "\nexport CODEX_THREAD_ID=" +
+		shellQuoteArgument(threadID) + "\nif [ \"$#\" = 0 ]; then\nexec " +
+		shellQuoteArgument(executable) + " -test.run='^TestHpatchMixedProcess$' --\nfi\ninterpreter=$1\nshift\nexec \"$interpreter\" -c \"$1\"\n"
+	if err := os.WriteFile(wrapper, []byte(wrapperSource), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -39,6 +48,7 @@ func TestHpatchNativeFixture(t *testing.T) {
 	var once sync.Once
 	var mu sync.Mutex
 	count := 0
+	recoveries := make(map[string]hpatchRecovery)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /translate", func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -54,9 +64,25 @@ func TestHpatchNativeFixture(t *testing.T) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		handle := ""
+		if recovery := hpatchRecoveryFor(history); recovery != nil {
+			handle = recovery.Handle
+			recoveries[handle] = *recovery
+		}
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"carrier": history.CarrierPayload, "error": history.TranslationError,
+			"carrier": history.CarrierPayload, "error": history.TranslationError, "handle": handle,
 		})
+	})
+	// Test observation reads acknowledged durable state, never production notify().
+	mux.HandleFunc("GET /progress", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		recovery, ok := recoveries[r.URL.Query().Get("handle")]
+		if !ok {
+			http.Error(w, "unknown fixture handle", http.StatusNotFound)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(transform.readHpatchRecovery(recovery))
 	})
 	mux.HandleFunc("POST /close", func(w http.ResponseWriter, r *http.Request) {
 		once.Do(func() { close(done) })

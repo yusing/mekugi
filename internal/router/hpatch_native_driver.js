@@ -53,6 +53,7 @@ async function nativeMixedRun(source, options = {}) {
   const host = tools;
   let summary;
   const checkpoints = [];
+  let notificationCount = 0;
   const phase = options.pausePhase;
   const segment = options.pauseSegment;
   let paused = false;
@@ -79,12 +80,22 @@ async function nativeMixedRun(source, options = {}) {
           notify({native_test_wait_started: checkpoint});
         }
         const result = await pending;
-        // Pause after the checkpoint RPC has returned, not merely after its
-        // notification, so hard termination exercises a persisted boundary.
-        if (!paused && args.chars?.startsWith('{"operation":"checkpoint"') &&
-            checkpoint?.phase === phase && checkpoint?.segment === segment) {
+        if (args.chars?.startsWith('{"operation":"checkpoint"')) {
+          const observed = await host.exec_command({
+            cmd: "curl -fsS --max-time 5 " + quote(fixture.url + "/progress?handle=" + generated.handle),
+            max_output_tokens: 2000
+          });
+          const saved = JSON.parse(observed.output);
+          checkpoints.push({...saved.current, completed_segments: saved.completed_segments,
+            resume: "resume " + saved.resume_handle, control_session_id: saved.control_session_id});
+        }
+        const persisted = checkpoints.at(-1);
+        // Pause after the checkpoint RPC has returned and its saved state was
+        // observed, so hard termination exercises a persisted boundary.
+        if (!paused && phase && args.chars?.startsWith('{"operation":"checkpoint"') &&
+            persisted?.phase === phase && persisted?.segment === segment) {
           paused = true;
-          notify({native_test_paused: checkpoint});
+          notify({native_test_paused: persisted});
           await new Promise(resolve => setTimeout(resolve, 120000));
         }
         return result;
@@ -102,17 +113,17 @@ async function nativeMixedRun(source, options = {}) {
         }
         const result = await host.apply_patch(patch);
         if (options.pauseAfterApplication) {
-          notify({native_test_application_returned: true});
+          notify({native_test_application_returned: true, resume: 'resume ' + generated.handle});
           await new Promise(resolve => setTimeout(resolve, 120000));
         }
         return result;
       }
     }, value => {
-      checkpoints.push(value.hpatch_checkpoint);
-      notify(value);
+      notificationCount++;
+      throw new Error('Production carrier emitted an unexpected notification: ' + JSON.stringify(value));
     }, value => { summary = JSON.parse(value); });
   } catch (caught) {
     error = String(caught);
   }
-  return {summary, checkpoints, error};
+  return {summary, checkpoints, notificationCount, error};
 }
