@@ -62,6 +62,9 @@ func criticalDiagnostic(err error, code, summary string, distinct bool) error {
 // Classify wrapped transport errors without copying addresses, close reasons,
 // URLs, headers, or arbitrary error text into notices or debug records.
 func forwardCriticalDiagnostic(err error) error {
+	if _, ok := errors.AsType[*requestCompatibilityError](err); ok {
+		return err
+	}
 	code, summary := "upstream_transport_unknown", "the upstream transport failed without a recognized error type"
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):

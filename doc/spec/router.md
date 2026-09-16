@@ -106,7 +106,8 @@ Grok records precede Chat Completions conversion. No ordinary user messages,
 tool call bodies, or authentication headers are exported. Router diagnostics record lifecycle
 and parsed-request outcome/phase/status, plus a safe diagnostic code and the notice's diagnostic
 reference for failures. They also record versioned, allowlisted feature observations as specified
-below, without retaining feature payloads. Forwarding failures classify known wrapped transport errors without
+below, without retaining feature payloads. Known provider error codes are retained through a fixed allowlist; unknown codes,
+messages, and error payloads are not exported. Forwarding failures classify known wrapped transport errors without
 exporting addresses, URLs, WebSocket close reasons, or arbitrary error text. Debug files remain
 separate from sanitized metrics/capture. Initialization failure prevents launch; subsequent
 debug write failures are surfaced on exit without changing request execution.
@@ -367,7 +368,8 @@ never inherits another request's turn metadata or response headers.
 
 Known ancillary events `codex.response.metadata`, `codex.rate_limits`, and
 `responsesapi.websocket_timing` remain forwarded and captured but are neutral
-to terminal-state validation. Unknown non-Responses event kinds remain invalid.
+to terminal-state validation. An explicit provider `error` event ends the exchange
+as failed, not as a missing or invalid terminal. Unknown non-Responses event kinds remain invalid.
 Responses terminal event types own completion even if the embedded response
 omits status; nonstream JSON supplies the missing status from that event type.
 

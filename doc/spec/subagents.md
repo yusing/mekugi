@@ -82,6 +82,8 @@ silently approximated. A non-null `max_output_tokens` fails before inference: Ch
 limits exclude reasoning and cannot enforce the Responses total output budget. Encrypted agent messages, encrypted reasoning, opaque provider file IDs and
 provider-only history items cannot be translated. Fresh-context spawning (`fork_turns=none`) avoids
 inherited OpenAI encrypted history; unsupported history must fail without a provider request.
+Encrypted-history rejections are local compatibility errors (HTTP/WebSocket status 400),
+not retryable transport failures, and direct the caller to a fresh context.
 
 Provider wire names use stable aliases where needed for namespaces or provider-reserved names.
 In particular, Codex's `wait` tool must not be sent under the bare name `wait`: the Grok proxy

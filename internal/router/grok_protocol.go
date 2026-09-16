@@ -220,7 +220,7 @@ func translateGrokRequest(body []byte) (*grokTranslation, error) {
 			messages = append(messages, map[string]any{"role": "tool", "tool_call_id": jsonString(item, "call_id"), "content": content})
 		case "reasoning":
 			if encrypted := jsonString(item, "encrypted_content"); encrypted != "" {
-				return nil, errors.New("Grok cannot read encrypted OpenAI reasoning; spawn with fork_turns=none")
+				return nil, incompatibleRequest("grok_encrypted_history", "Grok cannot read encrypted OpenAI reasoning; start a fresh Grok thread or spawn with fork_turns=none.")
 			}
 			// Unencrypted reasoning summaries are explanatory metadata, not messages.
 		default:
@@ -329,7 +329,7 @@ func grokContent(raw json.RawMessage) (any, error) {
 			}
 			content = append(content, map[string]any{"type": "image_url", "image_url": image})
 		case "encrypted_content":
-			return nil, errors.New("Grok cannot read encrypted agent messages; start a fresh thread with the Grok collaboration bridge enabled")
+			return nil, incompatibleRequest("grok_encrypted_history", "Grok cannot read encrypted agent messages; start a fresh thread with the Grok collaboration bridge enabled.")
 		default:
 			return nil, fmt.Errorf("unsupported Grok content type %q", jsonString(part, "type"))
 		}

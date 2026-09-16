@@ -53,8 +53,8 @@ func ObserveTerminal(body []byte, stream bool) TerminalState {
 		}
 	}
 	var envelope struct {
-		Type   Kind   `json:"type"`
-		Status string `json:"status"`
+		Type   Kind            `json:"type"`
+		Status json.RawMessage `json:"status"`
 	}
 	if json.Unmarshal(body, &envelope) != nil {
 		if stream {
@@ -62,8 +62,16 @@ func ObserveTerminal(body []byte, stream bool) TerminalState {
 		}
 		return TerminalUnknown
 	}
-	status := envelope.Status
+	var status string
+	if !stream {
+		_ = json.Unmarshal(envelope.Status, &status)
+	}
 	if stream {
+		// A provider error ends the exchange unsuccessfully, even when its
+		// HTTP-style status is numeric rather than a Responses status string.
+		if envelope.Type == Error {
+			return TerminalFailed
+		}
 		if envelope.Type.Ancillary() {
 			return TerminalUnknown
 		}

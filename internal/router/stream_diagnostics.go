@@ -21,6 +21,7 @@ type streamDiagnostics struct {
 	HTTPFraming        string    `json:"http_framing,omitempty"`
 	BodyDecoded        bool      `json:"body_decoded,omitempty"`
 	HTTPContentLength  *int64    `json:"http_content_length,omitzero"`
+	ProviderErrorCode  string    `json:"provider_error_code,omitempty"`
 	ProviderResponseID string    `json:"provider_response_id,omitempty"`
 	BodyBytes          uint64    `json:"body_bytes"`
 	Events             uint64    `json:"events"`
@@ -145,6 +146,33 @@ func (d *streamDiagnostics) observe(payload []byte) {
 	}
 	if event.Type.EndsExchange() {
 		d.TerminalEvent = d.LastEvent
+	}
+	if event.Type == responses.Error || event.Type == responses.Failed {
+		var failure struct {
+			Code  string `json:"code"`
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+			Response struct {
+				Error struct {
+					Code string `json:"code"`
+				} `json:"error"`
+			} `json:"response"`
+		}
+		if json.Unmarshal(payload, &failure) == nil {
+			code := cmp.Or(failure.Error.Code, failure.Response.Error.Code, failure.Code)
+			// Only known protocol codes are safe; arbitrary strings can echo
+			// request content even when they look like identifiers.
+			switch code {
+			case "rate_limit_exceeded", "insufficient_quota", "invalid_api_key",
+				"invalid_request_error", "context_length_exceeded", "server_error",
+				"internal_server_error", "model_not_found", "invalid_encrypted_content",
+				"previous_response_not_found":
+				d.ProviderErrorCode = code
+			default:
+				d.ProviderErrorCode = "other"
+			}
+		}
 	}
 	if event.Type == responses.Metadata || event.Type == responses.Error {
 		var metadata struct {
