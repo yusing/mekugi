@@ -1,6 +1,6 @@
-# Third-party native subagents
+# Third-party native-agent routing
 
-## REQ-SUBAGENTS-001 — Grok-backed native subagents
+## REQ-SUBAGENTS-001 — Grok-backed native-agent routing
 
 `--grok` enables `grok:grok-4.6` in `mekugi` mode. Passthrough mode rejects the flag.
 Without it, the existing model catalog and OpenAI routing remain unchanged;

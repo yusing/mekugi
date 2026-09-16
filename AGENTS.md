@@ -137,7 +137,7 @@ back here. Docs must stand on their own interface and architecture references.
 | Portable verified-row, source-capability, Go-lexical, and shell-header semantics | `internal/verifiedrow`, `internal/sourcekind`, `internal/golex`, `internal/shellsyntax` |
 | Versioned plugin shared-core adapter and private WASM bridge | `internal/router/toolplugin/core-v1.mjs`, `internal/router/toolplugin/core-v1.d.ts`, `internal/sharedwasm` |
 | Router lifecycle, launch flags, modes, and HTTP endpoints | `internal/router/server.go`, `internal/router/flags.go` |
-| Third-party native subagent projection, Grok authentication/translation, and model-catalog metadata | `internal/router/subagent_bridge.go`, `internal/router/grok_*.go` |
+| Third-party native-agent projection, Grok authentication/translation, and model-catalog metadata | `internal/router/subagent_bridge.go`, `internal/router/grok_*.go` |
 | Automatic router notices and root-visible child activity | `internal/router/commentary.go`, `internal/router/commentary_publisher.go`, `internal/router/subagent_activity.go`; detailed ownership in `doc/architecture/commentary.md` |
 | Per-thread token/cost reports and final-answer stream ordering | `internal/router/thread_usage.go`, `internal/router/token_cost.go`, `internal/router/final_answer_stream.go` |
 | Mentor Handoff model schedule | `internal/router/mentor_handoff.go` |

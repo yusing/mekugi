@@ -65,7 +65,7 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
 - **Inspect a session in your browser.**
   - Each launch has its own dashboard with request metrics, provider token
     usage, compression measurements, and cache diagnostics.
-- **Use [Grok native subagents](#grok-subagents) alongside OpenAI models.**
+- **Use [Grok models](#grok-models) alongside OpenAI models.**
   - Opt in with `--grok` and separate Grok authentication.
 
 ### AX
@@ -271,7 +271,7 @@ mekugi --mode passthrough codex
 Passthrough does not load the plugin registry, so it does not require Node.js or
 plugin grammar validation. Capture remains available.
 
-### Grok subagents
+### Grok models
 
 Opting in enables Grok requests. Ordinary Mekugi sessions already use plaintext collaboration
 messages, allowing journal answers to attach native assignments. Authenticate
@@ -306,7 +306,7 @@ honor those configuration modes. Use the default configuration or an explicit
 OpenAI-hosted search and inherited encrypted OpenAI history are not supported
 on this route. Explicit `max_output_tokens` limits are rejected because this
 route cannot enforce a total budget including reasoning. See the
-[Grok subagent requirements](doc/spec/subagents.md) for supported inputs and
+[Grok model requirements](doc/spec/subagents.md) for supported inputs and
 credential handling.
 
 ## How editing and execution work

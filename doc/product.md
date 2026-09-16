@@ -84,7 +84,7 @@ Mekugi includes:
 - durable replay, journals, session inspection, commentary, diagnostics, and
   provider-authoritative usage reporting;
 - optional compact provider representation, model handoff, and authenticated third-party
-  subagent routing; and
+  model routing; and
 - reproducible historical-workspace benchmarks with correctness gates and content-safe
   metrics.
 

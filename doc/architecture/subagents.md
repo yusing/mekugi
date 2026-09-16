@@ -1,6 +1,6 @@
 # Router-owned third-party provider bridge
 
-## CTR-SUBAGENTS-001 — Third-party native subagent routing
+## CTR-SUBAGENTS-001 — Third-party native-agent routing
 
 The launcher owns the invocation-local model catalog snapshot. The router owns provider
 selection, plaintext collaboration projection, and third-party protocol and authentication
