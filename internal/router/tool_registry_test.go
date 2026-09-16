@@ -107,13 +107,13 @@ func TestToolRegistryStartup(t *testing.T) {
 			t.Fatal(err)
 		}
 		snapshot := registry.SnapshotDir
-		if registry.NodeExecutable == "" || len(registry.ordered) != 9 {
+		if registry.NodeExecutable == "" || len(registry.ordered) != 10 {
 			t.Fatalf("registry = %+v", registry)
 		}
 		if err := registry.installFrontends(); err != nil {
 			t.Fatal(err)
 		}
-		for _, name := range []string{"hchanges", "hread", "hcat", "hgrep", "hsymbol", "inspect_file", "shell"} {
+		for _, name := range []string{"hhelp", "hchanges", "hread", "hcat", "hgrep", "hsymbol", "inspect_file", "shell"} {
 			_, ok := registry.contribution(name)
 			if !ok {
 				t.Fatalf("built-in %q is unavailable", name)
@@ -213,9 +213,9 @@ func TestToolRegistryStartup(t *testing.T) {
 			t.Fatal(err)
 		}
 		snapshot := registry.SnapshotDir
-		if len(registry.ordered) != 11 ||
-			registry.ordered[9].PluginID != "alpha.plugin" ||
-			registry.ordered[10].PluginID != "zeta.plugin" {
+		if len(registry.ordered) != 12 ||
+			registry.ordered[10].PluginID != "alpha.plugin" ||
+			registry.ordered[11].PluginID != "zeta.plugin" {
 			t.Fatalf("registration order = %+v", registry.ordered)
 		}
 		for _, name := range []string{"alpha_tool", "zeta_tool"} {
@@ -258,7 +258,7 @@ func TestToolRegistryStartup(t *testing.T) {
 			t.Fatal(err)
 		}
 		registryID, authenticated := toolRegistryIDFromDirectory(snapshot)
-		if !authenticated || manifest.RegistryID != registryID || len(manifest.Tools) != 11 {
+		if !authenticated || manifest.RegistryID != registryID || len(manifest.Tools) != 12 {
 			t.Fatalf("manifest = %+v, snapshot registry ID %q, authenticated %t", manifest, registryID, authenticated)
 		}
 		if err := registry.Close(); err != nil {
@@ -278,6 +278,7 @@ func TestToolRegistryStartup(t *testing.T) {
 		writePlugin(t, pluginDirectory, "duplicate-b.mjs", declaration("duplicate.plugin", "other_tool", ""))
 		writePlugin(t, pluginDirectory, "shell.mjs", declaration("shell.plugin", "eval", ""))
 		writePlugin(t, pluginDirectory, "configured-shell.mjs", declaration("example.shell", "shell", ""))
+		writePlugin(t, pluginDirectory, "configured-help.mjs", declaration("example.help", "hhelp", ""))
 		registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, testMekugiToolDescription, false)
 		if registry != nil || err == nil {
 			t.Fatalf("registry = %+v, error = %v", registry, err)
@@ -289,6 +290,7 @@ func TestToolRegistryStartup(t *testing.T) {
 			`tool name "hpatch"`,
 			"collides with a shell keyword or built-in",
 			`tool name "shell" is owned by both builtin.shell and example.shell`,
+			`tool name "hhelp" is owned by both builtin.mekugi and example.help`,
 		} {
 			if !strings.Contains(diagnostic, fragment) {
 				t.Fatalf("startup diagnostic lacks %q:\n%s", fragment, diagnostic)

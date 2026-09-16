@@ -46,150 +46,74 @@ text. Newly emitted tool names, tool inputs, and function arguments are literal 
 
 ## Journal
 
-Record meaningful milestones on a supported tool call with its `journal` array. Prefer a call
-already doing useful work over a standalone `functions.journal` round trip. Bash/POSIX can
-publish inline with the reserved `journal` command; Code Mode supports `await journal(...)`.
-Each mutation array is atomic and may set `report_now` for an immediate user-visible notice.
+Record meaningful milestones with a supported call's `journal` array, preferably on a call
+already doing useful work. Bash/POSIX supports `journal add 'Tests passed' --report-now`;
+Code Mode supports `await journal({op: "add", text: "Tests passed", report_now: true})`.
+Each mutation array is atomic. `report_now` requests an immediate user-visible notice.
 
 The final flush is your final report: concise, current, evidence-backed findings, results,
 validation, or blockers. One item per distinct point; no plans, narration, or superseded progress.
 Descendant journals are delivered automatically. Do not repeat or summarize other agents' journals.
-When an item answers the latest user message or your native child assignment, set `answer: true`
-and put only the answer in `text`; do not repeat the source message or assignment, which Mekugi
-attaches. Only plaintext native assignments can be attached; omit `answer` for encrypted assignments.
-Write normal Markdown in `text`. On edit, omit `answer` to preserve the attached question,
-or set it to false to turn it into a milestone.
+For an answer to the latest user message or native child assignment, set `answer: true` and put
+only the answer in `text`. Mekugi attaches the source question; do not repeat it.
+Use normal Markdown. Omit `answer` for encrypted assignments.
 
-Do not use `update_plan`, Tasks lists, or standalone `phase: "commentary"` messages. Use
-`functions.journal` directly only when no ordinary call or shell command can carry the mutation,
-when listing journals, or when finishing without another supported call. To finish through a
-structured call, use `{"op":"finish"}` with any last mutations in its `journal` array; make it the
-only call after required tool results arrive. This ends the turn without another model request.
-A final shell command can instead end with `journal finish [JSON_ARRAY]`; the router consumes that
-intent only after that invocation's successful terminal host result and returns the terminal
-journal flush without a provider follow-up. If it yields, use its normal host continuation;
-failed or cancelled execution and newer user input do not finish the turn.
-Complete through the finishing operation, including for subagent assignments; a message to the
+Do not use `update_plan`, Tasks lists, or standalone `phase: "commentary"` messages.
+Use `functions.journal` directly only for listing or when no useful call can carry a mutation.
+To finish, make `{"op":"finish"}` with any last mutations in its `journal` array the only call
+after required tool results arrive. This ends the turn without another model request.
+Alternatively, end the final shell command with `journal finish [JSON_ARRAY]`. Finishing waits
+for that invocation's successful terminal host result; if it yields, use its normal continuation.
+Failed or cancelled execution and newer user input do not finish the turn.
+Complete through the finishing operation, including for subagent assignments; messaging the
 parent does not complete them. Do not use a wait tool to finish or write a final-channel answer.
-Use an available user-input tool for questions; if none is available, put the blocking question in a finish mutation
-with `report_now`.
+Use an available user-input tool for questions; otherwise finish with a blocking question and
+`report_now`. Do not wake solely to report progress.
 
-Example: `await journal({op: "add", text: "Tests passed", report_now: true})`.
-Bash/POSIX supports `journal list [AGENT]`, `journal add TEXT`, `journal edit ID TEXT`,
-`journal delete ID`, `journal batch JSON_ARRAY`, and `journal finish [JSON_ARRAY]`.
-Add/edit accept trailing `--answer` or `--clear-answer`; add/edit/delete accept `--report-now`.
-Use `--json` to return assigned IDs or the finish result; list always returns JSON.
-Example: `journal add 'Tests passed' --report-now`.
-Required operands remain exact argv values, even when they start with `--`.
-Other interpreters have no journal builtin. Successful non-JSON mutations write no script output.
-Do not wake solely to report progress.
+Common shell forms: `journal add TEXT`, `journal edit ID TEXT`, `journal finish [JSON_ARRAY]`.
+Add/edit accept `--answer` and `--report-now`. For listing, deletion, batches, IDs, or changing
+answer attachments, use `hhelp journal`.
 
 ## Tool coordination
 
 Use `functions.shell` for routine commands and task-required native interfaces directly.
 Tool defaults do not override the interface under test.
-Batch ready work. Keep dependent operations sequential. The Reading and inspection reference
-below explains budgeting combined output, not just each command.
+Batch ready work. Keep dependent operations sequential.
+
+`hhelp TOPIC` reads bundled help inside Bash/POSIX shell, without workspace files or prior
+session state. Topics: `shell`, `read`, `journal`, `recovery`, `changes`; bare `hhelp` lists them.
+Use it only for options the task needs, not before ordinary work. Detailed recovery syntax also
+arrives with actionable failures.
 
 ## Shell reference
 
-Submit free-form programs to `functions.shell`. Choose each interpreter before writing its body:
+Submit free-form programs directly to `functions.shell`:
+- Bash: commands without a shebang.
+- Another interpreter: first line `#!COMMAND [ARGS...]`, then its body. Examples: `#!python3`,
+  `#!uv run python`, `#!node --experimental-strip-types`. Use a direct command/path, not `/usr/bin/env`.
 
-- Bash: write commands directly, without a shebang.
-- Another interpreter: put `#!COMMAND [ARGS...]` on the first line, then write that interpreter's
-  program directly below it. Use a direct command or path rather than `/usr/bin/env`.
-  Examples: `#!python3`, `#!uv run python`, `#!node --experimental-strip-types`.
+For a single-interpreter program, put flags in its selector and submit the body directly,
+not inside a quoted interpreter command or shell heredoc wrapper. There is no closing submission
+delimiter. Shell heredocs may still supply command data within compound Bash/POSIX programs.
 
-Submit the body directly, without a quoted interpreter command or
-a shell heredoc such as `python3 - <<'PY'`. There is no closing delimiter. Put flags in the selector.
-Selectors named `bash` or ending in `/bash` use the embedded Bash evaluator;
-`sh` or a path ending in `/sh` selects its POSIX evaluator.
+An optional `#!params=<JSON object>` line after the selector supplies the execution fields in
+that request's tool description. The body supplies `cmd`; omit it. If setting `login`, use `false`.
+Omit `workdir` for the current workspace; an override must be an existing, fully expanded absolute path.
+Explicit sequential batches, stdin templates, and retained-source editing: `hhelp shell`.
 
-Shell redirections and heredocs may supply command data. HPATCH's `<<PATCH` frames edit values,
-not shell submissions.
+Hrun bounds noisy external-command output for display:
+`hrun [-n N] [--max-tokens N] [--tail] -- COMMAND [ARG...]`.
+Supply a line or token limit; `--tail` keeps the ending. Hrun preserves the command's exit status
+and waits for completion. Run quiet commands or commands needing complete output directly.
 
-### Execution options and program input
-
-The input order is: optional interpreter selector, optional directive lines, then program source.
-Without a selector, the body is Bash. Put directives together before the body; `#!cmd=` and
-`#!params=` may appear in either order, at most once each per program.
-
-- `#!params=<JSON object>` supplies the request-specific execution fields listed in the tool
-  description. The body supplies `cmd`, so omit that field; if setting `login`, use `false`.
-  Omit `workdir` to use the current workspace. A necessary override must be a fully expanded
-  existing absolute path, never a reference or placeholder.
-- `#!cmd=` accepts exactly one `{.}` placeholder, which expands to the script runner invocation.
-  Use it to connect a producer to the program's standard input, independently of its source body.
-
-Example: pipe data into a Python body:
-
-```python
-#!python3
-#!cmd=curl -fsS https://example.com/data.json | {.}
-
-import json
-import sys
-print(len(json.load(sys.stdin)))
-```
-
-### Batching
-
-Explicit batches require Code Mode and run sequentially, with separate shell state per program.
-Results arrive together after completion.
-
-Start a batch with `#!batch=SEPARATOR`, choosing a nonempty separator line absent
-from every program's source and without surrounding whitespace. Put that exact line
-between programs, with no leading or closing separator. At least two programs need
-nonempty bodies. Each program has its own optional interpreter and directive block;
-a params-only header selects Bash.
-
-```text
-#!batch=NEXT_PROGRAM
-#!params={"yield_time_ms":1000}
-echo hello
-NEXT_PROGRAM
-#!python3
-print("hello")
-```
-
-Omitted params inherit the previous complete object; an explicit object replaces it, and `{}`
-clears it. Interpreters and command templates never inherit. Each program starts a separate
-execution, so shell variables and `cd` changes do not carry over. Only the chosen separator
-line is reserved; without a batch header, selector-like body lines stay native source.
-
-`#!batch=SEPARATOR` continues after nonzero exits; `#!batch-stop=SEPARATOR` leaves later programs unstarted
-after a nonzero terminal exit. Host errors stop either mode and preserve completed results
-and partial output. Use separate shell calls for interactive programs.
-Native-only clients reject batches; submit separate calls there.
-
-### Bounded command output
-
-Hrun bounds noisy external-command output for display. Use
-`hrun [-n N] [--max-tokens N] [--tail] -- COMMAND [ARG...]` when that output needs a limit;
-run commands directly when output is quiet or must remain complete, including output saved to a file.
-Supply at least one limit; token limits are 1–15500, shared stderr-first.
-`-n` selects complete lines before token limiting; alone it skips tokenization.
-`--tail` keeps the ending. Hrun preserves the command's exit status and waits for
-completion; infinite producers require cancellation. Use an explicit shell for compound commands.
-
-### Results, continuation, and retry
-
-A runtime failure may leave earlier statements' effects in place. Inspect affected state before
-retrying; a failed call does not imply rollback.
-
-Retained scripts are thread-private and expire at the reported deadline or earlier on
-router shutdown. Reads and edits do not renew them. Save durable source in workspace files.
-
-A retained result includes `retained: true` and a `script_ref`. Read the source with
-`hcat @shell/<reference>`, edit it with hpatch, or rerun its current content with a shell call
-containing only `#!script=@shell/<reference>`. A HPATCH script using an `@shell/` path must use
-only `@shell/` paths; never mix retained scripts and workspace files in one HPATCH script.
-
-When you need a pending execution's result, resume its latest outstanding handle using the
-`continuation` notice's `next_call`. Prefer host completion notifications when available.
-A running outer Code Mode cell owns continuation; use its `wait`, not its inner session.
-Resubmitting shell source starts a new execution. A null `next_call` means the host capability
-is unavailable; use native session facilities for interactive input or termination.
+A runtime failure may leave earlier effects in place. Inspect affected state before retrying;
+a failed call does not imply rollback. Retained scripts are thread-private and expire at their
+reported deadline or router shutdown; they are not durable workspace files.
+When a pending result is needed, follow the `continuation` notice's `next_call` using the latest
+handle. Prefer host completion notifications. A running outer Code Mode cell owns continuation:
+use its `wait`, not its inner session. Resubmitting source starts a new execution.
+A null `next_call` means that host capability is unavailable; use native session facilities for
+interactive input or termination.
 
 ## HPATCH/2
 
@@ -198,43 +122,35 @@ hpatch for edits alone.
 
 ### Files and targets
 
+| Operation | Meaning |
+| --- | --- |
+| `in PATH` | Select an existing file. |
+| `new PATH` | Select a pending empty file. |
+| `mv PATH` | Move the active file, preserving its baseline and edits. |
+| `rm` | Delete the active file and clear selection. |
+| `type TARGET VALUE` | Replace; an empty value deletes the target. |
+| `add DESTINATION VALUE` | Insert before a row/text target; `add EOF` appends. |
+
+Repeat `in PATH` when switching existing files. Parents for `new` or `mv` must exist.
+Relative paths use the selected base directory; without one they reject.
+Existing-file edits require a target. Targetless `type VALUE` is valid only immediately after
+`new`, at most once per new file: `type "package internal\n"`.
+
 ```text
-in PATH
-new PATH
-mv PATH
-rm
-type TARGET VALUE
-add DESTINATION VALUE
+LINE:HASH                       complete logical line
+LINE:HASH..LINE:HASH             inclusive complete-line range
+LINE:HASH "TEXT" [N]             first N exact matches from that row through EOF
+"TEXT" [N]                       first N exact matches in the immutable baseline
 ```
 
-`in` selects an existing file. `new` selects a pending empty file. `mv` moves the active
-file and preserves its baseline and pending edits. `rm` deletes the active file and clears
-the selection. Repeat `in PATH` when switching existing files.
-
-Targets:
-
-```text
-LINE:HASH                         complete logical line
-LINE:HASH..LINE:HASH              inclusive complete-line range
-LINE:HASH "TEXT" [N]              first N exact matches from that row through EOF
-"TEXT" [N]                        first N exact matches in the immutable baseline
-```
-
-`type` replaces. An empty target-bearing `type` value deletes every target span, including
-terminators owned by line and range targets. `add` inserts before a line or text destination;
-`add EOF` appends. Ranges are not add destinations. A text target defaults to one match; every
-requested non-overlapping match must exist or the script rejects.
-When exact known target text spans logical lines or includes a trailing LF, encode that LF as
-`\n` (or an equivalent `\u000A`) inside the quoted anchored or unanchored target. Keep the target
-on one physical command line. Literal tab is accepted; carriage returns and other controls are
-not.
-For `N > 1`, verify the literal occurrence count in the baseline using existing evidence or
-hgrep. Use separate verified row anchors when position matters.
+Ranges are not add destinations. Text targets default to one non-overlapping match; all requested
+matches must exist. For `N > 1`, verify the baseline's literal occurrence count using existing
+evidence or hgrep; use separate row anchors when position matters. Keep targets on one physical
+command line: encode embedded LF as `\n` or `\u000A`. Literal tab is accepted; other controls are not.
 
 ### Values and newline ownership
 
-Use inline JSON-compatible strings for short or single-line values. Include `\n` when an
-insertion must form a complete new line:
+Use inline JSON-compatible strings for short values:
 
 ```text
 in parser.go
@@ -242,250 +158,133 @@ add 37:8c2f "// parseCommand parses one physical script line.\n"
 type "return oldResult, nil" "return newResult, nil"
 ```
 
-For multiline or escape-heavy values, choose the final-newline behavior explicitly:
-`<<PATCH` keeps every body terminator; `<<PATCH-` removes exactly the final body terminator.
-Both close with `PATCH` and preserve all other body bytes, including spaces and earlier blank lines.
-
-For protocol examples or other payloads containing delimiter or opener lines, use
-`<<TEXT` (keep final terminator) or `<<TEXT-` (remove one final terminator).
-Prefix every payload line with one `|`, including blank lines; close with unprefixed
-`TEXT`. Only the first bar is removed. Literal `PATCH`, `TEXT`, and nested examples
-are safe payloads without quote or backslash escaping:
+For multiline or escape-heavy values, `<<PATCH` keeps every body terminator;
+`<<PATCH-` removes exactly the final body terminator. Both close with unindented `PATCH`.
+For literal delimiter/opener lines, use `<<TEXT` (keep final terminator) or `<<TEXT-` (remove one).
+Prefix every payload line, including blank lines, with `|`; close with unprefixed `TEXT`.
+Only the first bar is removed:
 
 ```text
 type "old example" <<TEXT-
 |type <<PATCH
 |replacement
 |PATCH
-|type <<TEXT-
-||text
-|TEXT
 TEXT
 ```
 
-Use row/range targets with `<<PATCH` for whole-line replacements. Use `<<PATCH-` or an
-inline value without a final newline to preserve a literal target's following newline or suffix.
+Literal targets own only their matched bytes; deleting text alone leaves the line terminator.
+Use row/range targets to replace or delete whole lines, or include the terminator in a literal.
+Nonempty line and range `type` replacements preserve the target's final LF, CRLF, or CR when the
+value omits a terminator. Explicit terminators are authoritative. `add` inserts byte-exact values
+without synthesizing newlines: count separators already at the destination.
+Use `<<PATCH-` or an inline value without final LF to preserve a literal target's following suffix.
+A chomped body containing only one empty line decodes to empty and deletes a row target.
+Other authored whitespace is preserved except for supported formatting/indentation correction.
 
-Literal targets own only their matched bytes. To delete a whole line, use a row target or
-include its terminator in the literal target; deleting text alone leaves the line terminator.
-For insertions, count separators already at the destination and include only the missing ones.
-Nonempty line and range `type` replacements preserve the target's final LF, CRLF, or CR
-when the value omits a terminator. Explicit terminators are authoritative.
-`add` inserts byte-exact values and does not synthesize newlines.
-A chomped body with only one empty line decodes to empty,
-so replacing a row with it deletes the row rather than making it blank.
-Authored spaces and blank lines are preserved except for language-aware formatting and
-indentation correction.
-
-Compact `advisory` lines name the command and nonzero authored whitespace effects before
-neighboring edits or formatting; routine newline preservation is omitted. They are not errors.
+An unindented raw body line starting `type ` or `add ` and ending with a heredoc marker is a
+reserved nested opener when the marker is its sole operand or follows a space. Use `<<TEXT`
+for literal HPATCH examples. Compact `advisory` lines describe authored whitespace effects, not errors.
 Report rows inherit the latest `in PATH` or `file PATH` display header; `file` is not an edit command.
-
-An unindented heredoc body line beginning with `type ` or `add ` and ending with either
-heredoc marker is reserved as a nested opener when the marker is its sole operand or follows
-a space. Use a line-framed text block for literal HPATCH examples.
 
 ### Baselines and validation
 
-Existing-file edits require a target. Targetless `type VALUE` is valid only immediately after
-`new`; create a file with at most one such initializer:
+Each existing file has one immutable baseline per invocation; pending edits do not shift targets.
+Introduced content is targetable only in a later call. After success, unchanged saved rows remain
+valid even when edits shifted their line numbers: an exact hash relocates only when it identifies
+one row. Routed replacement mappings become available after confirmed application.
+Overlapping replacements/deletions and insertions strictly inside them reject. Boundary insertions
+are valid; insertions at the same boundary render in script order.
 
-```text
-new internal/target.go
-type "package internal\n"
-```
-
-Every existing file has one immutable baseline for the complete invocation. Pending edits
-do not shift later targets. Preserve required indentation prefixes in indentation-sensitive
-languages such as Python.
-
-Introduced content is targetable only in a later call. After success,
-unchanged saved rows remain valid even when edits shifted their line numbers: mekugi
-relocates an exact hash only when it identifies one row. For a routed whole-line or range
-replacement, the router resolves that exact pre-edit target after the executor confirms
-application.
-
-Overlapping replacements or deletions and insertions strictly inside them reject. Boundary
-insertions are valid. Multiple insertions at the same boundary render in script order.
-
-Changed Go files are parsed and gofmt-formatted before success; do not run gofmt again for
-hpatch edits. Python, JavaScript, and TypeScript receive supported syntax checks and targeted
-indentation correction, not full formatting; other languages have no automatic formatter.
-Formatter reports map pre-format rows to final hashes, show complete changed blocks, and give
-line shifts for unchanged rows. Reuse these references instead of rereading formatted or shifted
-source. Relative paths use the selected base directory when available; without one, relative
-paths reject; parents for `new` or `mv` must exist.
+Changed Go files are parsed and gofmt-formatted before success; do not run gofmt again for hpatch
+edits. Python, JavaScript, and TypeScript receive supported syntax checks and targeted indentation
+correction, not full formatting. Preserve required indentation in indentation-sensitive languages.
+Other languages have no automatic formatter. Reports provide final hashes, changed blocks, and
+line shifts; reuse them for target acquisition instead of rereading solely because formatting moved rows.
 
 ### Shell-in-script
 
-With Code Mode available, use `shell go test ./...` for one physical command line.
-Everything after `shell ` is raw source through that physical line's end; no HPATCH escaping. `<<` is not allowed
-anywhere in a single-line command, even inside quotes. Use a block for such source or for
-multiline programs. A trailing backslash does not include the next HPATCH line.
+With Code Mode available, `shell COMMAND` runs one physical command line. Its body is raw source;
+`<<` is forbidden even inside quotes, and a trailing backslash does not continue the line.
+For multiline source or `<<`, use exact `shell <<SHELL` and unindented closing `SHELL` lines.
+Missing closure rejects before effects; shell text in edit values remains data.
 
-Put multiline source between an exact `shell <<SHELL` header and an unindented closing `SHELL`
-line. The opener never falls back to single-line execution; a missing close rejects before effects.
-Only that exact closing line is reserved in the body. Outside shell commands, HPATCH grammar
-still applies; shell text inside edit values is data.
+Shell commands may precede, follow, or separate edits. Begin each edit segment with `in` or `new`;
+selection and pending edits do not cross shell boundaries. Each shell segment accepts one program
+with the Shell reference's selectors/options and independent state. Native-only clients use separate
+hpatch and shell calls. Mixed scripts edit workspace files, not `@shell/` sources; interactive programs
+and explicit shell batches use separate shell calls.
 
-Shell commands may precede, follow, or separate edits. Each contiguous edit segment is validated
-against its starting files. Begin each edit segment with `in` or `new`; file selection and pending
-edits do not cross shell boundaries. Each shell command accepts one program using the Shell
-reference's selectors and directives, with independent state and params.
+All edit syntax and shell headers are checked before execution. Each edit segment then validates
+against its starting files and is translated for Codex authorization/application. A stale target,
+nonzero shell exit, refusal, or cancellation stops the remainder. Completed effects are not rolled
+back; reports describe each segment's completion, not later shell changes.
+A preflight rejection applies nothing and has no continuation handle; fix the source and resubmit.
+After execution starts, missing confirmation does not mean rollback.
+Do not replay a mixed script or resend its suffix; resolve the previous Code Mode cell and inspect
+uncertain effects/live work before using its retained handle:
+- `resume HANDLE`: continue pending work, awaiting known sessions rather than restarting them.
+- `resume HANDLE retry`: retry the current segment after reconciliation; optionally supply one
+  replacement segment of the same kind on the next line, with its own selection or shell command.
+- `resume HANDLE repair`: supply one workspace edit segment, then retry the failed segment and suffix.
+- `resume HANDLE accept`: continue after externally establishing the intended state and resolving
+  native work. This records reconciliation, not application success.
 
-All edit syntax and shell headers are checked before execution. After preceding commands finish,
-each edit is translated for Codex authorization and application. A stale
-target, nonzero shell exit, host refusal, or cancellation stops the remainder. Completed
-edits and shell effects are not rolled back. Results identify started and unstarted segments
-and retain completed edit reports and shell output. Report rows describe that segment's
-completion, not changes a later shell command might make.
-
-Do not replay a mixed script or resend its suffix; use the retained handle after a failure.
-A validation rejection applies nothing. After interruption, inspect the returned recovery
-information and uncertain effects; missing confirmation does not mean rollback.
-
-After the previous Code Mode cell ends, choose:
-- `resume HANDLE`: continue pending work, awaiting any known session rather than restarting it.
-- `resume HANDLE retry`: retry only the current segment after resolving live work and inspecting
-  uncertain effects. Optionally put one replacement segment of the same kind on the next line,
-  with its own file selection or `shell` command.
-- `resume HANDLE repair`: supply one workspace edit segment after the header to fix the cause,
-  retry the failed segment, and continue its suffix in one call. Apply the same live-work and
-  uncertain-effect checks as retry. The repair is retained under the same handle if it fails.
-- `resume HANDLE accept`: continue after establishing the segment's intended state externally
-  and resolving its native work. This records reconciliation, not application success.
-
-Successful recovery automatically runs the retained suffix in the same carrier; no separate
-resume call is needed. Remaining edit targets are revalidated. Cancellation of a wait alone
-does not establish that its underlying process stopped.
-
-Handles use temporary thread-scoped storage: one hour from creation, no renewal, ending
-earlier on router shutdown. Invalid or unavailable handles execute nothing.
-`hpatch_recover` remains for ordinary rejected edit-only scripts and directs mixed work to
-this continuation interface. Use separate shell calls for interactive programs or explicit
-shell batches. Mixed scripts edit workspace files, not `@shell/` sources.
-Native-only clients use separate hpatch and shell calls.
+Successful recovery automatically runs the retained suffix and revalidates targets. A failed repair
+stays under the same handle. Cancelling a wait does not establish that its process stopped.
+Handles are thread-scoped, expire one hour after creation without renewal, and end on router shutdown.
+Invalid/unavailable handles execute nothing.
 
 ### Rejected-script recovery
 
-Use `functions.hpatch_recover` to repair the latest retained rejected script, preserving
-unrelated prepared edits. Choose one payload form:
-
-- For a wholly row-stale rejection, supply every listed current `HANDLE` handle followed by
-  its corrected ordinary HPATCH/2 target.
-- For a parsed command's target or value, use `HANDLE target TARGET` or `HANDLE value VALUE`.
-  Values accept quoted strings and normal heredoc/text framing. Use each handle once per
-  payload; unrelated fields and commands stay unchanged. This avoids editing script delimiters.
-- For framing, paths, conflicting commands, or other script corrections, use ordinary
-  target-bearing `type`/`add` mutations against retained-script text.
-  Generated-source line numbers in diagnostics are not editable recovery targets.
-
-Target-only example:
-
-```text
-maple "return oldResult, nil"
-```
-
-Copy every current handle exactly and supply a different target for each in one payload.
-
-Script-text mutations edit the retained rejected script, not workspace files. Use the diagnostic's
-verified script rows or exact known literals; omit `in`, `new`, `mv`, and `rm`.
-For example, `type "bad value" "fixed value"` changes that exact retained text.
-Use ordinary value framing and keep the two payload forms separate.
-
-Both forms preserve untargeted text and reevaluate the complete script atomically.
-A re-rejection becomes the next baseline: use its script rows and refreshed command handles.
-Invalid corrections leave the workspace and retained baseline unchanged.
+Use `functions.hpatch_recover` for the latest rejected edit-only script, preserving unrelated prepared
+edits. The diagnostic supplies current command handles or verified rejected-script rows and the
+applicable correction syntax. Script-text mutations target the retained script, not workspace files.
+Corrections reevaluate the complete script atomically; a re-rejection supplies the next baseline and
+refreshed handles. Invalid corrections leave the workspace and retained baseline unchanged.
+For payload variants use `hhelp recovery`; mixed-script failures use the continuation interface above.
 
 ## Change handoffs
 
 Hpatch results include `change amber1`; recovery keeps that ID. Review captured hpatch
-edits with `hchanges amber1..amber3`, rather than Git diff. Hand off IDs or inclusive
-same-agent ranges instead of copying diffs. Use `--summary` only when you need an
-aligned diffstat with paths, change bars, and totals, not before an already-needed
-diff read; use `--history` to diagnose the full recovery chain.
-Git status and Git diff remain useful for untracked, shell-generated, or unrelated
-workspace changes; do not routinely pair them with hchanges for the same captured edits.
-
-Reads default to 4,000 tokens. Matching files appear once per evaluation.
-Workspace file paths accept recorded, workspace-relative, or absolute spellings.
-An incomplete read supplies an exact `next_call: hread REF`; run that command to continue
-the retained selection without repeating IDs or filters. These are historical evaluated
-diffs, not current editable row references or a record of shell edits. Counts describe each
-evaluation, not a combined net change. Unconfirmed results are not proof of application.
+edits with `hchanges amber1..amber3`, rather than Git diff. Hand off IDs or same-agent inclusive
+ranges, not copied diffs. Git remains useful for untracked, shell-generated, or unrelated changes;
+do not routinely pair it with hchanges for the same captured edits.
+Reads default to 4,000 tokens; continue with the exact `next_call: hread REF`, without repeating IDs
+or filters. Historical evaluated diffs are not editable current rows or proof of application.
+Use `hhelp changes` for summaries, recovery history, or filters.
 
 ## Reading and inspection reference
 
-For ordinary file reads, use `cat` or bounded `sed`. Prefer `hcat` when its verified row
-identities are useful for an anticipated edit.
+For ordinary reads, use `cat` or bounded `sed`; prefer `hcat` when verified rows help an anticipated edit.
+Budget combined reads and searches before execution: select needed ranges or fields, not broad dumps.
+Shell workers budget combined display output automatically. For omitted output, run the exact
+`next_call: hread REF`. Reading output never reruns the producer; `script_ref` stores program source,
+not output. Commands preserve their exit status. Outer host truncation may still hide a receipt.
 
-Budget combined reads and searches before execution: select needed ranges or fields instead
-of relying on pagination after broad dumps. Use reader limits to focus on needed context.
-Shell workers budget combined display output automatically.
-For omitted output, run the exact `next_call: hread REF`.
-Empty streams are omitted. Stdout-only pages are unframed; stderr and mixed pages use
-`[stream unit]` / `[/stream]` frames. Use `--stdout` or `--stderr` on an initial reference
-to select one. `--max-tokens N` defaults to 4,000. Later references already bind the
-selection and position, so no `--cursor` or repeated producer arguments are needed.
-Pages contain raw bytes, complete verified rows, or JSON entries. Do not treat raw byte
-fragments or framing as verified source rows. If a complete unit cannot fit, increase
-the budget or use a source preview. Reads are repeatable, not consuming, and survive
-router restart while their session data is retained. Mekugi cleans inactive session data after
-14 days and reclaims the oldest inactive sessions under storage pressure; active work and shared
-references stay protected. Missing references fail explicitly. No standalone output
-dumps are created. Commands keep their original exit status; `script_ref` stores executable
-program source separately. Reading output never reruns the producer.
+Private readers below run inside Bash/POSIX shell. They accept `--max-tokens N` (1–15500, default 4000).
+Copy emitted `LINE:HASH` identities directly; do not reconstruct hashes or rewrap retained rows.
+Incomplete searches do not establish coverage. Preserve emitted results and continue their `hread`
+reference; without one, narrow only the unanswered search.
 
-For several known files, use `hcat --batch [--max-tokens N] PATH [START:END] -- PATH [START:END] ...`
-inside shell, with `--batch` first. It divides one display budget across up to 16 hcat
-reads and puts a per-file shown/omitted range manifest first. Follow that file's `next_call` to read its retained
-omissions, rather than rereading overlapping source ranges. Increase the budget or select
-fewer paths if the manifest cannot fit; outer host output limits still apply.
+- `hcat PATH [START:END]`: complete file or inclusive row range. Quote paths with shell syntax.
+  `hcat [-n N] [--tail]` selects first/last complete rows; tail requires a line or token limit.
+- `hcat --batch [--max-tokens N] PATH [START:END] -- PATH [START:END] ...`: up to 16 files sharing
+  one budget, with `--batch` first. Follow each file's omission receipt instead of rereading prefixes.
+- `hgrep`: supported ripgrep arguments; use `-F` and repeated `-e` for known literals.
+  Output is `"PATH":LINE:HASH TEXT`; read further only for missing context, not new target identities.
+- `hsymbol refs PATH LINE SYMBOL [N]` or `hsymbol def PATH LINE SYMBOL [N]`: Go, JavaScript,
+  TypeScript, JSON, and Python semantic lookup. A plain line queries the current snapshot;
+  `LINE:HASH` instead of `LINE` enforces prior evidence. Optional `N` selects the exact language-token
+  occurrence; omit it only when unique. Results are target-bearing rows.
+- `inspect_file PATH`: bounded metadata and structure. `line` and `line_end` are inclusive
+  `LINE:HASH` endpoints; copy one row or `line..line_end`. Read source only when the outline lacks
+  text needed for the next decision.
 
-For one file, use `hcat PATH [START:END]`. Quote paths with shell syntax. A bare path
-reads the complete file. A start line of `0` begins at line 1 without emitting line 0. An end past EOF warns after
-returning available rows; a start past EOF fails. Copy a current `LINE:HASH` directly into an
-HPATCH/2 target. Recover omitted rows with its exact `next_call: hread REF`, without
-repeating the prefix or reopening the source.
+For field removals and signature changes, establish semantic references across affected packages,
+including tests, before batching dependent edits. Read returned reference rows and resolve incomplete
+results. Report skipped or unavailable references; changed filenames alone are not caller coverage.
 
-Run hgrep with ripgrep arguments and shell quoting, redirection, and pipelines. Its output is
-`"PATH":LINE:HASH TEXT`; copy a current target directly and never reconstruct a row.
-Do not follow target-bearing hgrep output with hcat unless nonmatching context outside the
-requested bounds is needed. If hgrep reports an incomplete token-limited result, retain the
-emitted rows and read the omitted remainder using its exact `next_call: hread REF`. These are original verified rows; do not wrap them in new hcat identities.
-Without a retained result, narrow only the unanswered search.
-
-Hcat, hgrep, hsymbol, and inspect_file accept `--max-tokens N` (1–15500, default 4000)
-for a strict stdout token ceiling. Options may surround operands and stop at `--`.
-Hcat and hgrep also accept `--preview-bytes N` (1–65536) for long-line inspection.
-Preview JSON includes a full-source row identity and an explicit UTF-8 prefix with
-omitted-byte counts. Retain the identity, but obtain missing content before using the
-preview as literal target text. Budget omissions still report incomplete results.
-
-`hcat [-n N] [--tail]` selects first/last complete rows; `-n` alone skips tokenization.
-Tail requires a line or token limit. Omitted rows are incomplete; use native selection,
-not `| tail`, to retrieve an ending that a budgeted reader would otherwise omit.
-
-For Go, JavaScript, TypeScript, JSON, and Python, use
-`hsymbol refs PATH LINE SYMBOL [N]` for semantic references or
-`hsymbol def PATH LINE SYMBOL [N]` for definitions. Supply an already-known
-`LINE:HASH` instead of `LINE` to enforce a prior read; plain lines query the
-current snapshot without requiring a preliminary verified read.
-`--workspace ROOT` chooses resolver scope and relative input paths;
-its result paths are absolute. Other results are workspace-relative. `N` counts exact
-language tokens on the selected line and may be omitted only when one exists. Copy emitted `"PATH":LINE:HASH TEXT` rows directly
-into HPATCH/2 targets. Do not follow a complete hsymbol definition with hcat of the same span
-unless non-declaration context is needed.
-
-For field removals and signature changes, use `hsymbol refs` or `gopls references` across affected
-packages, including tests. Read all returned reference rows before batching dependent edits.
-If output is retained, continue using its exact `next_call: hread REF`.
-Saved hashes describe the query snapshot. Report skipped or unavailable references; filenames
-in a diff and incomplete results do not establish caller coverage.
-
-Use `inspect_file PATH` for bounded metadata and a structural outline. Each outline entry's
-`line` and `line_end` are copyable `LINE:HASH` identities for that inclusive span. Copy a
-single-line span as a row target and a multi-line span as `line..line_end` with no spaces.
-Paths are absolute or working-directory-relative, like hcat. Use bounded hcat when the
-outline does not provide source text needed for the next decision.
+Use `hhelp read` for stream framing/selection, long-line previews, range edge cases, semantic workspace
+scope, and retention details. Preview text is incomplete: obtain missing bytes before using it as a
+literal target; its full-row identity remains usable.
 <!-- mekugi-model-instructions:end -->

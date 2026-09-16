@@ -29,7 +29,7 @@ implementation are part of the validated declaration. Standard JSON-schema funct
 runtime TypeScript transpilation, and arbitrary undocumented specification fields are not
 supported by this increment.
 Configured executor-backed names must also differ from shell keywords and built-ins,
-including the shell-owned `hrun` command. This rule
+including the shell-owned `hrun` and `hhelp` commands. This rule
 ensures that their basename carrier selects an executable frontend instead of shell-owned
 behavior.
 
