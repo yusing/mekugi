@@ -77,7 +77,7 @@ func TestJournalRouterToolContinuesWithoutClientDispatch(t *testing.T) {
 				if !strings.Contains(output.String(), "Verified the journal path") {
 					t.Fatalf("missing terminal record: %s", output.String())
 				}
-				if got := strings.Contains(output.String(), "Tokens:"); got != usage.wantTokens {
+				if got := strings.Contains(output.String(), "Tokens for this session"); got != usage.wantTokens {
 					t.Fatalf("token report present = %v, want %v: %s", got, usage.wantTokens, output.String())
 				}
 				items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
@@ -173,7 +173,7 @@ func TestJournalLiveReportRemainsEligibleForTerminalFlush(t *testing.T) {
 		}
 	}
 	live := "Journal update `/root` (`j1`)\nTests passed"
-	flush := "Journal flush `/root`\n- `j1`\n\n  Tests passed\n"
+	flush := "Journal flush `/root` (`j1`)\n\nTests passed"
 	deliver(false, false, live)
 	checkState(false, false)
 	deliver(false, true, live)
@@ -189,7 +189,7 @@ func TestJournalLiveReportRemainsEligibleForTerminalFlush(t *testing.T) {
 	}
 	checkState(false, false)
 	deliver(false, true, "")
-	deliver(true, true, "Journal flush `/root`\n- `j1`\n\n  Tests passed again\n")
+	deliver(true, true, "Journal flush `/root` (`j1`)\n\nTests passed again")
 	checkState(true, true)
 }
 
@@ -632,6 +632,25 @@ func TestJournalFlushNestsMultilineMarkdown(t *testing.T) {
 	}
 }
 
+func TestSingleJournalFlushPreservesMarkdownBlockBoundaries(t *testing.T) {
+	for _, body := range []string{"    indented code", "2. ordered item"} {
+		t.Run(body, func(t *testing.T) {
+			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
+			if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "", []journalMutation{
+				{Op: "add", Text: new(body)},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			messages, err := transform.prepareJournalDelivery(true)
+			defer transform.ReleaseDelivery()
+			want := "Journal flush `/root` (`j1`)\n\n" + body
+			if err != nil || len(messages) != 1 || commentaryMessageText(messages[0]) != want {
+				t.Fatalf("flush: %s %v; want %q", mustTestJSON(t, messages), err, want)
+			}
+		})
+	}
+}
 func TestJournalFailedCompletedEnvelopeRetainsPendingRevisions(t *testing.T) {
 	transform, proxy, _, workspace := newMekugiTestTransform(t, testTranslator(t, new(int)))
 	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, transform.shellThreadID, "seed",

@@ -171,14 +171,13 @@ tool outputs, and inter-agent messages. A response already accompanied by its de
 commentary is not projected again.
 
 A completed root or child response with eligible provider usage includes one token notice
-after any main journal flush and before the child journal result and terminal event. It uses a `Tokens:`
-heading and one compact
-Markdown table with `Category`, `Tokens`, and `API USD` columns. Rows use full labels:
-`Input`, `Cached input`, `Uncached input`, `Output`, `Reasoning`, and `Total`.
-Counts use decimal thousands separators. Costs use four decimal places for cached input,
-uncached input, output, and total; input and reasoning have `—` cost cells because they overlap
-other rows. The total token cell is `—`. One short footer explains thread scope, overlapping
-categories, and reference API rather than subscription pricing.
+after any main journal flush and before the child journal result and terminal event. It uses a
+`Tokens for this session` heading and one compact Markdown table with `Category`, `Tokens`, and
+`API USD` columns. Rows use full labels: `Input`, `Cached input`, `Uncached input`, `Output`,
+`Reasoning`, and `Total`. Counts use decimal thousands separators. Costs use four decimal places
+for cached input, uncached input, output, and total; input and reasoning have `—` cost cells
+because they overlap other rows. The total token cell is `—`. The standard report has no footer;
+cache-write pricing and unavailable costs add their applicable diagnostic note.
 Intermediate client-tool responses and failed or incomplete responses do not report tokens.
 Eligibility and the child summary are defined by [REQ-JOURNAL-001](journal.md).
 JSON and streaming responses report the same cumulative provider-authoritative input, cached-input,

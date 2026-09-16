@@ -154,7 +154,7 @@ func TestFinalAnswerStreamKeepsProgressAndToolsLive(t *testing.T) {
 	terminal := finalAnswerTestTerminal(t, "completed", true)
 	observeTestResponseUsage(t, transform, terminal, true)
 	visible, err := transform.TransformSSE(terminal)
-	if err != nil || len(visible) != len(answer)+1 || bytes.Contains(bytes.Join(visible, nil), []byte("Tokens:")) {
+	if err != nil || len(visible) != len(answer)+1 || bytes.Contains(bytes.Join(visible, nil), []byte("Tokens for this session")) {
 		t.Fatalf("client dispatch produced usage or lost answer: %q, %v", visible, err)
 	}
 }
@@ -192,7 +192,7 @@ func TestFinalAnswerStreamFlushesWithoutUsage(t *testing.T) {
 				t.Fatal(err)
 			}
 			events := finalAnswerTestPayloads(output.String())
-			if len(events) < len(answer) || bytes.Contains(output.Bytes(), []byte("Tokens:")) {
+			if len(events) < len(answer) || bytes.Contains(output.Bytes(), []byte("Tokens for this session")) {
 				t.Fatalf("lost answer or emitted usage: %s", output.String())
 			}
 			for i, original := range answer {
@@ -277,7 +277,7 @@ func TestTokenCommentaryAnswerCompatibility(t *testing.T) {
 							t.Fatalf("unsupported provider output changed: %s", output)
 						}
 					}
-					if bytes.Contains(output, []byte("Tokens:")) != tc.want {
+					if bytes.Contains(output, []byte("Tokens for this session")) != tc.want {
 						t.Fatalf("usage eligibility: %s", output)
 					}
 				})
@@ -333,7 +333,7 @@ func TestFinalAnswerStreamExecuteRequest(t *testing.T) {
 			}
 			events := finalAnswerTestPayloads(output.String())
 			wantEvents := len(answer) + 2
-			if len(events) != wantEvents || !strings.HasPrefix(commentaryEventText(t, events[0]), "Tokens:") {
+			if len(events) != wantEvents || !strings.HasPrefix(commentaryEventText(t, events[0]), "Tokens for this session") {
 				t.Fatalf("completion output = %s", output.String())
 			}
 			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) || bytes.Contains(output.Bytes(), []byte("Journal result")) {

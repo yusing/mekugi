@@ -33,6 +33,10 @@ func indentJournalText(text, indent string) string {
 	return indent + strings.ReplaceAll(text, "\n", "\n"+indent)
 }
 
+func writeSingleJournalItem(text *strings.Builder, item journalItem) {
+	text.WriteString(" (" + commentaryCode(item.ID) + ")\n\n" + indentJournalText(journalItemText(item), ""))
+}
+
 func writeJournalItems(text *strings.Builder, items []journalItem) {
 	questions := make(map[string]int)
 	var groups [][]journalItem
@@ -233,7 +237,11 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 				items = append(items, item)
 				revisions[item.ID] = item.Updated
 			}
-			writeJournalItems(&text, items)
+			if len(items) == 1 {
+				writeSingleJournalItem(&text, items[0])
+			} else {
+				writeJournalItems(&text, items)
+			}
 			t.journalNewCount += len(revisions)
 			t.journalFlushedCount += flushed
 			if len(revisions) != 0 {

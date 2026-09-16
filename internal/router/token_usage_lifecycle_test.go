@@ -232,7 +232,7 @@ func TestTokenUsageGapSuppressesLaterReports(t *testing.T) {
 					}
 					if step == 2 {
 						wantReport := gap == "http-rejection" || gap == "failed-with-usage" || gap == "incomplete-with-usage"
-						if strings.Contains(out.String(), "Tokens:") != wantReport {
+						if strings.Contains(out.String(), "Tokens for this session") != wantReport {
 							t.Fatalf("unexpected final report: %s", out.String())
 						}
 						got, valid := proxy.usage.snapshot("thread-1")

@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const testTokenUsageTable = "Tokens:\n\n| Category | Tokens | API USD |\n| --- | ---: | ---: |\n" +
+const testTokenUsageTable = "Tokens for this session\n\n| Category | Tokens | API USD |\n| --- | ---: | ---: |\n" +
 	"| Input | 20 | — |\n| Cached input | 12 | n/a |\n| Uncached input | 8 | n/a |\n| Output | 5 | n/a |\n| Reasoning | 3 | — |\n| Total | — | n/a |\n"
 
 func TestTokenCostDisjointCategories(t *testing.T) {
@@ -109,10 +109,10 @@ func TestTokenUsageReportTables(t *testing.T) {
 	counts := tokenCounts{InputTokens: 100_000, UncachedInputTokens: 40_000, OutputTokens: 30_000, ReasoningTokens: 20_000}
 	report := tokenUsageReport{tokenCounts: counts, cost: estimateTokenCost("gpt-6-astra", "", counts)}
 	got := formatTokenUsageReport(report)
-	want := "Tokens:\n\n| Category | Tokens | API USD |\n| --- | ---: | ---: |\n" +
+	want := "Tokens for this session\n\n| Category | Tokens | API USD |\n| --- | ---: | ---: |\n" +
 		"| Input | 100,000 | — |\n| Cached input | 60,000 | $0.0600 |\n| Uncached input | 40,000 | $0.4000 |\n" +
 		"| Output | 30,000 | $1.5000 |\n| Reasoning | 20,000 | — |\n| Total | — | $1.9600 |\n"
-	if !strings.HasPrefix(got, want) || !strings.Contains(got, "not subscription charges") || strings.Count(got, "\n") != 11 {
+	if got != want {
 		t.Fatalf("report:\n%s", got)
 	}
 	report.cost.known = false

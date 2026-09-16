@@ -82,12 +82,12 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 					}
 				}
 				wantUsage := outcome == "completed"
-				if bytes.Contains(childOutput, []byte("Tokens:")) != wantUsage {
+				if bytes.Contains(childOutput, []byte("Tokens for this session")) != wantUsage {
 					t.Fatalf("child usage eligibility: %s", childOutput)
 				}
 				if wantUsage && (bytes.Contains(childOutput, []byte("Child result.")) ||
 					!bytes.Contains(childOutput, []byte("Journal result")) ||
-					bytes.Index(childOutput, []byte("Tokens:")) >= bytes.Index(childOutput, []byte("Journal result"))) {
+					bytes.Index(childOutput, []byte("Tokens for this session")) >= bytes.Index(childOutput, []byte("Journal result"))) {
 					t.Fatalf("usage did not precede the synthetic child result: %s", childOutput)
 				}
 				child.Close()
@@ -111,7 +111,7 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				if got := bytes.Count(output, []byte("Tokens:")); got != map[bool]int{false: 0, true: 1}[wantUsage] {
+				if got := bytes.Count(output, []byte("Tokens for this session")); got != map[bool]int{false: 0, true: 1}[wantUsage] {
 					t.Fatalf("root usage report count = %d: %s", got, output)
 				}
 				if bytes.Contains(childOutput, []byte("Journal flush")) {
@@ -136,14 +136,14 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 					}
 					replay = append(replay, answer)
 					_, request := prepareActivityTest(t, proxy, "replay-session", "root", "", "/root", replay)
-					if bytes.Contains(request.fields["input"], []byte("Tokens:")) || !bytes.Contains(request.fields["input"], []byte("Child result.")) {
+					if bytes.Contains(request.fields["input"], []byte("Tokens for this session")) || !bytes.Contains(request.fields["input"], []byte("Child result.")) {
 						t.Fatalf("replay filtering changed substantive output: %s", request.fields["input"])
 					}
 				}
 				next, _ := prepareActivityTest(t, proxy, "next-session", "root", "", "/root", nil)
 				for _, target := range []*mekugiResponseTransform{other, next} {
 					visible, err := target.TransformJSON(rootResponse)
-					if err != nil || bytes.Contains(visible, []byte("Tokens:")) {
+					if err != nil || bytes.Contains(visible, []byte("Tokens for this session")) {
 						t.Fatalf("report repeated or reached another root: %s, %v", visible, err)
 					}
 				}

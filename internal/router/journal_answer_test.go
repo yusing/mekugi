@@ -113,7 +113,7 @@ func TestJournalAnswerRoutingAndRendering(t *testing.T) {
 		transform.ReleaseDelivery()
 		want := "Journal update `/root` (`j1`)\n" + body
 		if terminal {
-			want = "Journal flush `/root`\n\n**Question:**\n\nWhich?\n\n- A\n- B\n\n**Answer:**\n\n- `j1`\n\n  Result\n  \n  - first\n  \n  Paragraph.\n"
+			want = "Journal flush `/root` (`j1`)\n\n" + body
 		}
 		if err != nil || len(messages) != 1 || commentaryMessageText(messages[0]) != want {
 			t.Fatalf("terminal=%v: %s %v", terminal, mustMarshalJSON(messages), err)
@@ -194,7 +194,7 @@ func TestJournalFlushNestsCarriageReturnLines(t *testing.T) {
 			}
 			messages, err := transform.prepareJournalDelivery(true)
 			transform.ReleaseDelivery()
-			want := "Journal flush `/root`\n\n**Question:**\n\nQuestion?\n\n- choice\n\n**Answer:**\n\n- `j1`\n\n  First\n  \n  # Heading\n"
+			want := "Journal flush `/root` (`j1`)\n\n**Question:**\n\nQuestion?\n\n- choice\n\n**Answer:**\n\nFirst\n\n# Heading"
 			if err != nil || len(messages) != 1 || commentaryMessageText(messages[0]) != want {
 				t.Fatalf("flush: %s %v", mustMarshalJSON(messages), err)
 			}

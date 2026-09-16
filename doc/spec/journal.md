@@ -25,9 +25,10 @@ in order atomically, then removed from executed arguments while the original cal
 through replay. `report_now` emits a router-owned user-only **Journal update** labelled with
 the item ID and author when known. Successful delivery marks that revision reported, not flushed.
 It MUST remain eligible for a terminal **Journal flush**, whose heading identifies its known author
-and whose entries identify their IDs. These labels distinguish journals from stock commentary
-and reasoning summaries without rewriting stock output. Deletes are silent unless retracting
-an already-reported ID.
+and whose entries identify their IDs. A flush containing one item puts its ID in the heading and
+renders its text directly, without list indentation; multi-item flushes retain the entry list.
+These labels distinguish journals from stock commentary and reasoning summaries without rewriting
+stock output. Deletes are silent unless retracting an already-reported ID.
 
 An add/edit mutation may carry `answer: true`, with only the answer in `text`. The router
 attaches the latest actual user message or native `NEW_TASK` assignment addressed to the

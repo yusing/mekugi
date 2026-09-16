@@ -121,7 +121,7 @@ func (cost *tokenCost) add(next tokenCost) {
 
 func formatTokenUsageReport(report tokenUsageReport) string {
 	var text strings.Builder
-	text.WriteString("Tokens:\n\n| Category | Tokens | API USD |\n| --- | ---: | ---: |\n")
+	text.WriteString("Tokens for this session\n\n| Category | Tokens | API USD |\n| --- | ---: | ---: |\n")
 	for _, row := range []struct {
 		label  string
 		tokens string
@@ -144,12 +144,11 @@ func formatTokenUsageReport(report tokenUsageReport) string {
 		}
 		fmt.Fprintf(&text, "| %s | %s | %s |\n", row.label, row.tokens, amount)
 	}
-	text.WriteString("\nThis thread since router start; cached input and reasoning are included, not added. Reference API prices, not subscription charges.")
 	if report.CacheWriteTokens != 0 {
-		fmt.Fprintf(&text, " Uncached input includes %s cache-write tokens, priced at the cache-write rate.", formatUsageTokens(report.CacheWriteTokens))
+		fmt.Fprintf(&text, "\nUncached input includes %s cache-write tokens, priced at the cache-write rate.", formatUsageTokens(report.CacheWriteTokens))
 	}
 	if !report.cost.known {
-		text.WriteString(" Cost unavailable: unknown model/service-tier pricing or inconsistent usage.")
+		text.WriteString("\nCost unavailable: unknown model/service-tier pricing or inconsistent usage.")
 	}
 	return text.String()
 }
