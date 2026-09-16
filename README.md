@@ -102,9 +102,9 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
 - **Correct a rejected edit without starting over.**
   - `functions.hpatch_recover` repairs the retained rejected script while
     preserving unrelated prepared changes.
-  - Stale-target shortcuts replace only the rejected targets. Ordinary script-text
-    edits can repair values, paths, framing, or conflicting commands before the
-    complete script is reevaluated.
+  - Command-scoped corrections replace a rejected target or value without editing
+    script delimiters. Ordinary script-text edits can repair paths, framing, or
+    conflicting commands before the complete script is reevaluated.
 - **Execute programs directly.**
   - `functions.shell` accepts Bash or a selected interpreter's native source,
     without a JavaScript wrapper or nested command-string quoting.

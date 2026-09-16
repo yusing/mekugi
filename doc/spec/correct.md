@@ -20,6 +20,16 @@ or file context. Target parsing and script rebuilding preserve the public target
 exact decoded bytes, including escaped LF, and enforce the same empty, CR, and control
 exclusions.
 
+Command-scoped corrections also accept `C<number>:<hash> target TARGET` and
+`C<number>:<hash> value VALUE`. Target form is equivalent to the original shortcut.
+Value form replaces only the decoded value of a parsed `type` or `add` command,
+including initializers and EOF insertions. It accepts the public quoted, heredoc,
+and line-framed text value syntax; rendering owns delimiters and escaping. It preserves
+the operation, target, file context, and every unrelated command. An equivalent decoded
+value rejects. A payload may mix target and value corrections for different commands,
+but each handle appears at most once. All corrections use one baseline and the ordinary
+atomic rebuild and reevaluation path.
+
 Alternatively, one recovery payload contains ordinary target-bearing `type`/`add`
 mutations against the retained rejected-script text. These use the public row,
 range, anchored/unanchored literal, EOF insertion, quoted-value, raw-heredoc, and
@@ -71,9 +81,11 @@ no execution and changes no workspace or retained continuation state.
 When every structured rejection is `row-stale`, the routed diagnostic lists only the rejected
 target-bearing commands and their current `C...` handles. Recovery guidance directs the model to
 submit one `C... TARGET` line per listed command in one atomic payload. Every non-target or mixed
-failure instead offers ordinary script-text edits and at most 12 bounded verified
+failure offers command-scoped target/value handles for parsed mutation commands, plus
+ordinary script-text edits and at most 12 bounded verified
 script-row previews around rejected command headers and value locations. Previews
-explicitly distinguish script rows from workspace rows; exact known literals can
+explicitly distinguish script rows from workspace rows; generated-source coordinates
+are diagnostic only, not recovery targets; exact known literals can
 address other retained text without re-emitting the complete script. A handle from
 an older baseline is stale. A re-rejection explicitly states that no workspace file
 changed and corrections survive only in the new rejected-script baseline. Earlier

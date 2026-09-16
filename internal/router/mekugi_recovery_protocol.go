@@ -41,6 +41,7 @@ type recoveryOperation struct {
 	sequence int
 	command  *recoveryCommandReference
 	target   string
+	value    *string
 }
 
 type recoveryEdit struct {
@@ -195,6 +196,10 @@ func recoverScriptDetailed(ctx context.Context, rejectedScript, payload string) 
 func formatRecoveryDelta(operations []recoveryOperation) string {
 	var delta strings.Builder
 	for _, operation := range operations {
+		if operation.value != nil {
+			fmt.Fprintf(&delta, "%s: replaced command value (%d bytes)\n", operation.command.handle, len(*operation.value))
+			continue
+		}
 		fmt.Fprintf(
 			&delta,
 			"%s: %s -> %s\n",
@@ -212,27 +217,53 @@ func parseRecoveryPayload(
 ) ([]recoveryOperation, error) {
 	lines := hpatchsyntax.SplitPhysicalLines(payload)
 	operations := make([]recoveryOperation, 0)
-	for index, line := range lines {
+	for index := 0; index < len(lines); {
+		lineNumber := index + 1
+		line := lines[index]
+		index++
 		if strings.TrimSpace(line.Text) == "" {
 			continue
 		}
-		handle, target, ok := strings.Cut(line.Text, " ")
-		if !ok || handle == "" || target == "" || strings.HasPrefix(target, " ") ||
-			target != strings.TrimRight(target, " \t") {
-			return nil, recoveryError(index+1, "expected one command handle and one target")
+		handle, operand, ok := strings.Cut(line.Text, " ")
+		if !ok || handle == "" || operand == "" || strings.HasPrefix(operand, " ") ||
+			operand != strings.TrimRight(operand, " \t") {
+			return nil, recoveryError(lineNumber, "expected a command handle and a target or value correction")
 		}
 		command, err := resolveRecoveryCommand(commands, handle)
 		if err != nil {
-			return nil, recoveryError(index+1, err.Error())
+			return nil, recoveryError(lineNumber, err.Error())
 		}
+		if valueSource, isValue := strings.CutPrefix(operand, "value "); isValue {
+			if !command.parts.parsed {
+				return nil, recoveryError(lineNumber, "value correction requires a parsed type or add command")
+			}
+			header := "type " + valueSource
+			frame, err := hpatchsyntax.FrameCommand(lines, lineNumber-1, header)
+			if err != nil {
+				return nil, recoveryError(lineNumber, err.Error())
+			}
+			parts := recoveryCommandPartsOf(header, frame)
+			if !parts.parsed || parts.target != "" {
+				return nil, recoveryError(lineNumber, "expected one quoted or heredoc value")
+			}
+			if parts.value == command.parts.value {
+				return nil, recoveryError(lineNumber, "replacement value must differ from the rejected value")
+			}
+			index = frame.Next
+			operations = append(operations, recoveryOperation{
+				sequence: len(operations) + 1, command: command, value: new(parts.value),
+			})
+			continue
+		}
+		target := strings.TrimPrefix(operand, "target ")
 		replacementTarget, trailing, targetErr := mekugi.ParseTargetIdentity(target, false)
 		if !command.parts.parsed || command.parts.target == "" || command.parts.target == "EOF" ||
 			targetErr != nil || strings.TrimSpace(trailing) != "" || target == "EOF" ||
 			!hpatchsyntax.ValidOperandSpacing(target) {
-			return nil, recoveryError(index+1, "command must be target-bearing and the replacement target must be valid")
+			return nil, recoveryError(lineNumber, "command must be target-bearing and the replacement target must be valid")
 		}
 		if replacementTarget == command.parts.identity {
-			return nil, recoveryError(index+1, "replacement target must differ from the rejected target")
+			return nil, recoveryError(lineNumber, "replacement target must differ from the rejected target")
 		}
 		operations = append(operations, recoveryOperation{
 			sequence: len(operations) + 1,
@@ -241,7 +272,7 @@ func parseRecoveryPayload(
 		})
 	}
 	if len(operations) == 0 {
-		return nil, recoveryError(1, "recovery payload must contain at least one target correction")
+		return nil, recoveryError(1, "recovery payload must contain at least one correction")
 	}
 	return operations, nil
 }
@@ -290,10 +321,19 @@ func planRecoveryEdits(script string, operations []recoveryOperation) ([]recover
 		if err != nil {
 			return nil, recoveryError(operation.sequence, err.Error())
 		}
-		replacement := renderRecoveryMutation(operation.command, operation.target)
+		var replacement string
+		if operation.value != nil {
+			header := operation.command.parts.operation
+			if target := operation.command.parts.target; target != "" {
+				header += " " + target
+			}
+			replacement = header + " " + string(mustMarshalJSON(*operation.value)) + recoveryTerminatorSuffix(operation.command.source)
+		} else {
+			replacement = renderRecoveryMutation(operation.command, operation.target)
+		}
 		edits = append(edits, recoveryEdit{
 			sequence: operation.sequence,
-			script:   "type " + commandTarget + " " + strconv.Quote(replacement),
+			script:   "type " + commandTarget + " " + string(mustMarshalJSON(replacement)),
 		})
 	}
 	return edits, nil
@@ -308,7 +348,7 @@ func renderRecoveryMutation(command *recoveryCommandReference, target string) st
 		// physical bytes, including mixed terminators and an empty body.
 		return header + " " + marker + command.source[len(originalHeader):]
 	}
-	return header + " " + strconv.Quote(command.parts.value) + recoveryTerminatorSuffix(command.source)
+	return header + " " + string(mustMarshalJSON(command.parts.value)) + recoveryTerminatorSuffix(command.source)
 }
 
 func recoveryPhysicalTarget(script string, logicalRows [][]int, start, end int) (string, error) {

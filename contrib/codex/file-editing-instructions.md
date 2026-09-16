@@ -367,8 +367,12 @@ unrelated prepared edits. Choose one payload form:
 
 - For a wholly row-stale rejection, supply every listed current `C...` handle followed by
   its corrected ordinary HPATCH/2 target.
-- For values, framing, paths, conflicting commands, or mixed corrections, use ordinary
+- For a parsed command's target or value, use `C... target TARGET` or `C... value VALUE`.
+  Values accept quoted strings and normal heredoc/text framing. Use each handle once per
+  payload; unrelated fields and commands stay unchanged. This avoids editing script delimiters.
+- For framing, paths, conflicting commands, or other script corrections, use ordinary
   target-bearing `type`/`add` mutations against retained-script text.
+  Generated-source line numbers in diagnostics are not editable recovery targets.
 
 Target-only example:
 

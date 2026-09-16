@@ -340,7 +340,7 @@ func TestInstructionsConsolidateDeliveredContracts(t *testing.T) {
 				"`--preview-bytes N`",
 				"`inspect_file PATH` for bounded metadata",
 				"plain lines query the\ncurrent snapshot",
-				"For values, framing, paths, conflicting commands, or mixed corrections",
+				"For a parsed command's target or value",
 				"not workspace files",
 				"keep the two payload forms separate",
 				"reevaluate the complete script atomically",

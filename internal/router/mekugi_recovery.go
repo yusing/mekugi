@@ -38,6 +38,24 @@ func genericRecoveryGuidance(script string, rejections []mekugi.HostRejection, r
 	lines := hpatchsyntax.SplitPhysicalLines(script)
 	logicalRows := mekugiLogicalRowsByPhysicalLine(script, lines)
 	commands := recoveryCommands(script)
+	offered := make(map[int]bool)
+	for _, rejection := range rejections {
+		if rejection.Command < 1 || rejection.Command > len(commands) || offered[rejection.Command] {
+			continue
+		}
+		command := commands[rejection.Command-1]
+		if !command.parts.parsed {
+			continue
+		}
+		offered[rejection.Command] = true
+		fmt.Fprintf(&output, "Command correction: %s value VALUE replaces only this command's value (quoted, <<PATCH, or <<TEXT).\n", command.handle)
+		if command.parts.target != "" && command.parts.target != "EOF" {
+			fmt.Fprintf(&output, "Command correction: %s target TARGET replaces only its workspace target.\n", command.handle)
+		}
+	}
+	if len(offered) != 0 {
+		output.WriteString("Use each handle once; command corrections may share a payload but cannot mix with script-text mutations. Generated-source line numbers are diagnostic only, never recovery targets.\n\n")
+	}
 	const rowLimit = 12
 	rows := make([]int, 0, rowLimit)
 	seen := make(map[int]bool)

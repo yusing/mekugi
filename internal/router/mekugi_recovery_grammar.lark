@@ -4,6 +4,8 @@ corrections: recovery (_separator recovery)*
 mutations: mutation (_separator mutation)*
 
 recovery: HANDLE SP target
+        | HANDLE SP "target" SP target
+        | HANDLE SP "value" SP value
 
 mutation: "type" SP target SP value
         | "add" SP add_destination SP value
