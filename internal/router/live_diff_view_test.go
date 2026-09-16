@@ -28,7 +28,7 @@ func TestLiveDiffRenderAllFiles(t *testing.T) {
 		}}})
 	}
 	for focusFile := range files {
-		render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, files, workspace, 90, focusFile, files[focusFile].chunks[0], 0)
+		render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, files, workspace, 90, focusFile, files[focusFile].chunks[0])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,7 +61,7 @@ func TestLiveDiffFollowEmptyLatestFile(t *testing.T) {
 			review: mekugi.ReviewFile{AfterPath: first, Diff: diff}}}},
 		{path: second}, // The latest file was flushed or fully reverted.
 	}
-	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme, files, workspace, 90, 1, liveDiffChunk{}, 0)
+	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, files, workspace, 90, 1, liveDiffChunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,50 +224,22 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 		t.Fatalf("redundant diff headers remain: %q", frame)
 	}
 
-	// Horizontal arrows pan source rather than switching files, and returning
-	// to x=0 restores wrapping without resuming automatic following.
-	if _, err := terminal.Write([]byte("\x1b[C")); err != nil {
-		t.Fatal(err)
-	}
-	waitFrame(func(frame string) bool {
-		return strings.Contains(frame, "PAUSED") && strings.Contains(frame, "orary file one.") &&
-			!strings.Contains(frame, "Temporary file one.")
-	})
-	// Further movement must use fresh source slices without rebuilding geometry.
-	for _, step := range []struct{ key, suffix string }{
-		{"\x1b[C", "y file one."},
-		{"\x1b[C", "le one."},
-		{"\x1b[D", "y file one."},
-		{"\x1b[D", "orary file one."},
+	// Horizontal keys and fragmented wheel reports leave following and source
+	// unchanged. An ignored printable key asks for a frame after each sequence.
+	for _, report := range []string{
+		"\x1b[C", "\x1b[D", "\x1bOC", "\x1bOD", "h", "l",
+		"\x1b[<67;10;5M", "\x1b[<66;10;5M",
+		"\x1b[<67;fFqr;5M\x1b[<67;10;5m",
 	} {
-		if _, err := terminal.Write([]byte(step.key)); err != nil {
-			t.Fatal(err)
-		}
-		waitFrame(func(frame string) bool {
-			return strings.Contains(frame, "PAUSED") && strings.Contains(frame, "│+"+step.suffix)
-		})
-	}
-	if _, err := terminal.Write([]byte("\x1b[D")); err != nil {
-		t.Fatal(err)
-	}
-	waitFrame(func(frame string) bool {
-		return strings.Contains(frame, "PAUSED") && strings.Contains(frame, "Temporary file one.")
-	})
-	if _, err := terminal.Write([]byte("\x1b[<67;fFqr;5M\x1b[<67;10;5m")); err != nil {
-		t.Fatal(err)
-	}
-	// Fragmented SGR horizontal wheel reports share keyboard pan/relock.
-	for _, report := range []string{"\x1b[<67;10;5M", "\x1b[<66;10;5M"} {
-		for _, key := range []byte(report) {
+		for _, key := range []byte(report + "z") {
 			if _, err := terminal.Write([]byte{key}); err != nil {
 				t.Fatal(err)
 			}
 		}
-		panning := strings.Contains(report, "<67;")
-		waitFrame(func(frame string) bool {
-			return strings.Contains(frame, "PAUSED") &&
-				strings.Contains(frame, "Temporary file one.") != panning
-		})
+		frame := waitFrame(func(frame string) bool { return strings.Contains(frame, "q quit") })
+		if !strings.Contains(frame, "FOLLOW") || !strings.Contains(frame, "Temporary file one.") {
+			t.Fatalf("horizontal input %q changed the view: %q", report, frame)
+		}
 	}
 
 	// Pause below the wrapped source row, then narrow it enough to add a

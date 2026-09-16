@@ -150,7 +150,7 @@ func BenchmarkLiveDiffStreamingRender(b *testing.B) {
 		files := []liveDiffFile{{path: "/workspace/stream.go", chunks: []liveDiffChunk{chunk}}}
 		b.ReportAllocs()
 		for b.Loop() {
-			if _, err := renderLiveDiff(b.Context(), liveDiffDarkTheme, files, "/workspace", 120, 0, chunk, 0); err != nil {
+			if _, err := new(liveDiffRenderer).render(b.Context(), liveDiffDarkTheme, files, "/workspace", 120, 0, chunk); err != nil {
 				b.Fatal(err)
 			}
 		}

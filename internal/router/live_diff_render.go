@@ -15,9 +15,57 @@ import (
 	"github.com/yusing/mekugi"
 )
 
+// Syntax is independent of wrapping, coordinates, and recency marks. Keep a
+// bounded cache in each viewer, never shared across sessions or themes.
+type liveDiffRenderer struct {
+	syntax      map[liveDiffSyntaxKey][]string
+	syntaxBytes int
+}
+
+type liveDiffSyntaxKey struct {
+	theme        liveDiffTheme
+	path, source string
+}
+
+const maxLiveDiffSyntaxCacheBytes = 8 << 20
+const maxLiveDiffSyntaxCacheEntries = 128
+
+func (r *liveDiffRenderer) colorSource(ctx context.Context, theme liveDiffTheme, path, source string) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	key := liveDiffSyntaxKey{theme, path, source}
+	if lines, ok := r.syntax[key]; ok {
+		return lines, nil
+	}
+	lines, err := liveDiffColorSource(ctx, theme, path, source)
+	if err != nil || source == "" {
+		return lines, err
+	}
+	// Count string headers as well as content: many blank lines still retain
+	// a sizeable slice even though the strings themselves have no bytes.
+	size := len(path) + len(source) + len(lines)*2*(strconv.IntSize/8)
+	for _, line := range lines {
+		size += len(line)
+	}
+	if size > maxLiveDiffSyntaxCacheBytes {
+		return lines, nil
+	}
+	if r.syntaxBytes+size > maxLiveDiffSyntaxCacheBytes || len(r.syntax) >= maxLiveDiffSyntaxCacheEntries {
+		clear(r.syntax)
+		r.syntaxBytes = 0
+	}
+	if r.syntax == nil {
+		r.syntax = make(map[liveDiffSyntaxKey][]string)
+	}
+	r.syntax[key] = lines
+	r.syntaxBytes += size
+	return lines, nil
+}
+
 // Rendering consumes the engine's validated rows. File and hunk offsets are
 // recorded as rows are emitted, never recovered from a subprocess's output.
-func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFile, workspace string, width, focusFile int, focus liveDiffChunk, horizontal int) (liveDiffRender, error) {
+func (r *liveDiffRenderer) render(ctx context.Context, theme liveDiffTheme, files []liveDiffFile, workspace string, width, focusFile int, focus liveDiffChunk) (liveDiffRender, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
@@ -33,10 +81,7 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 	if sourceBytes > maxChangeReadBytes {
 		return liveDiffRender{}, errors.New("live diff source exceeds 64 MiB; use hchanges with a narrower range")
 	}
-	render := liveDiffRender{starts: make([]int, len(files)), counts: make([]liveDiffCounts, len(files)), width: width, theme: theme}
-	if horizontal > 0 {
-		render.panRows = make(map[int]liveDiffPanRow)
-	}
+	render := liveDiffRender{starts: make([]int, len(files)), counts: make([]liveDiffCounts, len(files))}
 	renderedBytes := 0
 	appendLine := func(line string, highlighted, continuation bool) error {
 		if err := ctx.Err(); err != nil {
@@ -128,6 +173,15 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 				}
 			}
 		}
+		numberWidth := digits + 1
+		if width-3 < digits+4 {
+			numberWidth = 0 // Leave room for source in very narrow panes.
+		}
+		sourceWidth := max(1, width-4-numberWidth)
+		continuationNumbers := ""
+		if numberWidth > 0 {
+			continuationNumbers = "\x1b[2m" + strings.Repeat(" ", digits) + "│\x1b[22m"
+		}
 		preferFocusKey := focus.key != "" && slices.ContainsFunc(file.chunks, func(chunk liveDiffChunk) bool { return chunk.key == focus.key })
 		preferHighlighted := i == focusFile && focus.highlighted
 		for j, chunk := range file.chunks {
@@ -156,7 +210,7 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 				if hunkIndex == 0 {
 					hunkStart = chunkStart // Keep prepared status visible when following.
 				}
-				before, after, err := liveDiffSyntax(ctx, theme, review, hunk.Rows)
+				before, after, err := r.colorHunk(ctx, theme, review, hunk.Rows)
 				if err != nil {
 					return liveDiffRender{}, err
 				}
@@ -187,24 +241,12 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 						newLine++
 						newIndex++
 					}
-					coordinates := fmt.Sprintf("%*s", digits, number)
-					numbers := "\x1b[2m" + coordinates + "│\x1b[22m"
-					if width-3 < len(coordinates)+4 {
-						numbers = "" // Leave room for source in very narrow panes.
+					numbers := ""
+					if numberWidth > 0 {
+						numbers = "\x1b[2m" + strings.Repeat(" ", max(0, digits-len(number))) + number + "│\x1b[22m"
 					}
-					// Wrap only source text; keep coordinates, change markers, and
-					// recency gutters fixed while panning through an unlocked row.
-					sourceWidth := max(1, width-4-ansi.StringWidth(numbers))
-					render.maxHorizontal = max(render.maxHorizontal, ansi.StringWidth(text)-sourceWidth)
-					fragments := text
-					if horizontal == 0 {
-						fragments = ansi.Hardwrap(text, sourceWidth, true)
-					} else {
-						render.panRows[len(render.lines)] = liveDiffPanRow{text: text, numbers: numbers, kind: row.Kind, highlighted: chunk.highlighted}
-						// Retained source participates in the same bounded render budget.
-						renderedBytes += len(text) + len(numbers)
-						fragments = ansi.Cut(text, horizontal, horizontal+sourceWidth)
-					}
+					// Wrap source independently of the fixed coordinate column.
+					fragments := ansi.Hardwrap(text, sourceWidth, true)
 					carry := ""
 					continuation := false
 					for fragment := range strings.SplitSeq(fragments, "\n") {
@@ -218,7 +260,7 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 						}
 						prefix := numbers
 						if continuation && numbers != "" {
-							prefix = "\x1b[2m" + strings.Repeat(" ", digits) + "│\x1b[22m"
+							prefix = continuationNumbers
 						}
 						line := liveDiffSourceLine(theme, width, prefix, fragment, row.Kind)
 						if err := appendLine(line, chunk.highlighted, continuation); err != nil {
@@ -236,25 +278,6 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 		}
 	}
 	return render, nil
-}
-
-type liveDiffPanRow struct {
-	text, numbers string
-	kind          byte
-	highlighted   bool
-}
-
-// Once wrapping is unlocked, horizontal movement changes only visible source
-// slices, not syntax, row geometry, file counts, or follow anchors.
-func (r liveDiffRender) lineAt(index, horizontal int) string {
-	row, ok := r.panRows[index]
-	if !ok {
-		return r.lines[index]
-	}
-	sourceWidth := max(1, r.width-4-ansi.StringWidth(row.numbers))
-	fragment := ansi.Cut(row.text, horizontal, horizontal+sourceWidth)
-	line := liveDiffSourceLine(r.theme, r.width, row.numbers, fragment, row.kind)
-	return ansi.Truncate(liveDiffGutter(row.highlighted, r.theme)+line, max(0, r.width-1), "")
 }
 
 func liveDiffSourceLine(theme liveDiffTheme, width int, numbers, fragment string, kind byte) string {
@@ -278,7 +301,7 @@ func liveDiffSourceLine(theme liveDiffTheme, width int, numbers, fragment string
 
 // Tokenise the two sides separately so deleted text cannot change the syntax
 // state of additions. Never read the workspace to fill uncaptured source gaps.
-func liveDiffSyntax(ctx context.Context, theme liveDiffTheme, review mekugi.ReviewFile, rows []mekugi.ReviewRow) ([]string, []string, error) {
+func (r *liveDiffRenderer) colorHunk(ctx context.Context, theme liveDiffTheme, review mekugi.ReviewFile, rows []mekugi.ReviewRow) ([]string, []string, error) {
 	var before, after liveDiffOutput
 	for _, row := range rows {
 		if err := ctx.Err(); err != nil {
@@ -286,21 +309,21 @@ func liveDiffSyntax(ctx context.Context, theme liveDiffTheme, review mekugi.Revi
 		}
 		text := liveDiffSafe(strings.TrimSuffix(row.Text, "\n"), false) + "\n"
 		if row.Kind != '+' {
-			if _, err := fmt.Fprint(&before, text); err != nil {
+			if _, err := before.WriteString(text); err != nil {
 				return nil, nil, err
 			}
 		}
 		if row.Kind != '-' {
-			if _, err := fmt.Fprint(&after, text); err != nil {
+			if _, err := after.WriteString(text); err != nil {
 				return nil, nil, err
 			}
 		}
 	}
-	old, err := liveDiffColorSource(ctx, theme, review.BeforePath, before.String())
+	old, err := r.colorSource(ctx, theme, review.BeforePath, before.String())
 	if err != nil {
 		return nil, nil, err
 	}
-	next, err := liveDiffColorSource(ctx, theme, review.AfterPath, after.String())
+	next, err := r.colorSource(ctx, theme, review.AfterPath, after.String())
 	return old, next, err
 }
 
@@ -347,7 +370,7 @@ func liveDiffColorSource(ctx context.Context, theme liveDiffTheme, path, source 
 		parts := strings.Split(token.Value, "\n")
 		for i, part := range parts {
 			if i > 0 {
-				if _, err := fmt.Fprint(&output, "\n"); err != nil {
+				if _, err := output.WriteString("\n"); err != nil {
 					return nil, err
 				}
 			}
@@ -355,7 +378,7 @@ func liveDiffColorSource(ctx context.Context, theme liveDiffTheme, path, source 
 				if style != "" {
 					part = style + part + "\x1b[39m"
 				}
-				if _, err := fmt.Fprint(&output, part); err != nil {
+				if _, err := output.WriteString(part); err != nil {
 					return nil, err
 				}
 			}

@@ -49,10 +49,6 @@ func (m *liveDiffMouse) consume(key byte) (action byte, row int) {
 		return 'k', values[2]
 	case 65:
 		return 'j', values[2]
-	case 66:
-		return 'h', values[2]
-	case 67:
-		return 'l', values[2]
 	}
 	return 0, 0
 }

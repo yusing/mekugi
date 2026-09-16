@@ -15,7 +15,7 @@ const liveDiffPreviewFrameDelay = 33 * time.Millisecond
 const liveDiffPreviewHideDelay = 300 * time.Millisecond
 
 // Streaming has its own viewport and lifecycle. It never changes the captured
-// diff's selection, scroll, acknowledgements, horizontal offset, or follow mode.
+// diff's selection, scroll, acknowledgements, or follow mode.
 // Updates replace snapshots; only a displayed frame parses and lays out rows.
 type liveDiffPreviewPane struct {
 	active   map[string]liveDiffPreview

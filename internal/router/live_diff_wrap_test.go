@@ -1,8 +1,6 @@
 package router
 
 import (
-	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -10,13 +8,13 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func TestLiveDiffWrapAndPan(t *testing.T) {
+func TestLiveDiffWrapAndResize(t *testing.T) {
 	source := strings.Repeat("ab 界é  ", 12)
 	chunk := liveDiffHighlightChunk("edit", "file.txt",
 		"@@ -1,2 +1,2 @@\n "+source+"\n-old\n+new\n", true)
 	chunk.status = ""
 	files := []liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{chunk}}}
-	wrapped, err := renderLiveDiff(t.Context(), liveDiffDarkTheme, files, "", 22, 0, chunk, 0)
+	wrapped, err := new(liveDiffRenderer).render(t.Context(), liveDiffDarkTheme, files, "", 22, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,25 +33,18 @@ func TestLiveDiffWrapAndPan(t *testing.T) {
 	if restored.String() != source {
 		t.Fatalf("wrapped source changed: %q, want %q", restored.String(), source)
 	}
-	panned, err := renderLiveDiff(t.Context(), liveDiffDarkTheme, files, "", 22, 0, chunk, 4)
+	wide, err := new(liveDiffRenderer).render(t.Context(), liveDiffDarkTheme, files, "", 200, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if panned.rowStarts[2]-panned.rowStarts[1] != 1 {
-		t.Fatal("panning did not unlock wrapping")
-	}
-	want := ansi.Strip(ansi.Cut(source, 4, 20))
-	if got := ansi.Strip(panned.lines[panned.rowStarts[1]]); !strings.HasSuffix(got, want) {
-		t.Fatalf("horizontal source slice = %q, want suffix %q", got, want)
-	}
 	view := liveDiffView{files: files, scroll: map[string]int{"file.txt": wrapped.rowStarts[1] + 2}}
-	view.reflow(wrapped, panned)
-	if view.scroll["file.txt"] != panned.rowStarts[1] {
-		t.Fatal("unlock lost the logical source row")
+	view.reflow(wrapped, wide)
+	if view.scroll["file.txt"] != wide.rowStarts[1] {
+		t.Fatal("widening lost the logical source row")
 	}
-	view.reflow(panned, wrapped)
+	view.reflow(wide, wrapped)
 	if view.scroll["file.txt"] != wrapped.rowStarts[1] {
-		t.Fatal("relock lost the logical source row")
+		t.Fatal("narrowing lost the logical source row")
 	}
 }
 
@@ -62,8 +53,8 @@ func TestLiveDiffWrappedSyntaxAndFocus(t *testing.T) {
 		"@@ -0,0 +1 @@\n+\""+strings.Repeat("abcdefgh", 15)+"\"\n", true)
 	chunk.status = ""
 	chunk.highlighted = true
-	render, err := renderLiveDiff(t.Context(), liveDiffDarkTheme,
-		[]liveDiffFile{{path: "file.go", chunks: []liveDiffChunk{chunk}}}, "", 30, 0, chunk, 0)
+	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffDarkTheme,
+		[]liveDiffFile{{path: "file.go", chunks: []liveDiffChunk{chunk}}}, "", 30, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,11 +79,11 @@ func TestLiveDiffResizeReflowsSavedFiles(t *testing.T) {
 		chunk.status = strings.Repeat("prepared status ", 8)
 		files = append(files, liveDiffFile{path: path, chunks: []liveDiffChunk{chunk}})
 	}
-	wide, err := renderLiveDiff(t.Context(), liveDiffDarkTheme, files, "", 90, 0, liveDiffChunk{}, 0)
+	wide, err := new(liveDiffRenderer).render(t.Context(), liveDiffDarkTheme, files, "", 90, 0, liveDiffChunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	narrow, err := renderLiveDiff(t.Context(), liveDiffDarkTheme, files, "", 22, 0, liveDiffChunk{}, 4)
+	narrow, err := new(liveDiffRenderer).render(t.Context(), liveDiffDarkTheme, files, "", 22, 0, liveDiffChunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,73 +106,7 @@ func TestLiveDiffResizeReflowsSavedFiles(t *testing.T) {
 			end = narrow.starts[i+1]
 		}
 		if got := view.scroll[file.key()] + narrow.starts[i]; got != end-1 {
-			t.Fatalf("file %d resize/unlock moved anchor to %d, want %d", i, got, end-1)
+			t.Fatalf("file %d resize moved anchor to %d, want %d", i, got, end-1)
 		}
-	}
-}
-
-func TestLiveDiffCachedPanMatchesRender(t *testing.T) {
-	source := strings.Repeat("ab 界é \t", 15)
-	chunk := liveDiffHighlightChunk("edit", "file.go",
-		"@@ -1,3 +1,3 @@\n // "+source+"\n-old := \""+source+"\"\n+next := \""+source+"\"\n tail\n\\ No newline at end of file\n", true)
-	chunk.highlighted = true
-	files := []liveDiffFile{{path: "file.go", highlighted: true, chunks: []liveDiffChunk{chunk}}}
-	for _, theme := range []liveDiffTheme{liveDiffTerminalTheme, liveDiffDarkTheme, liveDiffLightTheme} {
-		for _, width := range []int{1, 7, 22, 80} {
-			t.Run(fmt.Sprintf("%v/%d", theme, width), func(t *testing.T) {
-				cached, err := renderLiveDiff(t.Context(), theme, files, "", width, 0, chunk, 4)
-				if err != nil {
-					t.Fatal(err)
-				}
-				for _, horizontal := range []int{8, 12, 5, 1, 300, 4} {
-					full, err := renderLiveDiff(t.Context(), theme, files, "", width, 0, chunk, horizontal)
-					if err != nil {
-						t.Fatal(err)
-					}
-					if !reflect.DeepEqual(cached.rowStarts, full.rowStarts) ||
-						!reflect.DeepEqual(cached.starts, full.starts) ||
-						!reflect.DeepEqual(cached.counts, full.counts) ||
-						cached.focusRow != full.focusRow || cached.focusOffset != full.focusOffset {
-						t.Fatal("horizontal movement changed cached geometry")
-					}
-					for i, want := range full.lines {
-						if got := cached.lineAt(i, horizontal); got != want {
-							t.Fatalf("offset %d row %d: got %q, want %q", horizontal, i, got, want)
-						}
-					}
-				}
-			})
-		}
-	}
-}
-
-// Compare the previous whole-diff work per key with the viewport-only pan path.
-// Preparation is deliberately outside the viewport timing.
-func BenchmarkLiveDiffHorizontalPan(b *testing.B) {
-	for _, rows := range []int{100, 1000} {
-		chunk := liveDiffHighlightChunk("edit", "file.go",
-			fmt.Sprintf("@@ -0,0 +1,%d @@\n", rows)+
-				strings.Repeat("+var value = \""+strings.Repeat("abcdefgh ", 15)+"\"\n", rows), true)
-		files := []liveDiffFile{{path: "file.go", chunks: []liveDiffChunk{chunk}}}
-		b.Run(fmt.Sprintf("%d/full", rows), func(b *testing.B) {
-			b.ReportAllocs()
-			for b.Loop() {
-				if _, err := renderLiveDiff(b.Context(), liveDiffDarkTheme, files, "", 100, 0, chunk, 8); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
-		b.Run(fmt.Sprintf("%d/viewport", rows), func(b *testing.B) {
-			render, err := renderLiveDiff(b.Context(), liveDiffDarkTheme, files, "", 100, 0, chunk, 4)
-			if err != nil {
-				b.Fatal(err)
-			}
-			b.ReportAllocs()
-			for b.Loop() {
-				for i := range min(40, len(render.lines)) {
-					_ = render.lineAt(i, 8)
-				}
-			}
-		})
 	}
 }

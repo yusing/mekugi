@@ -189,7 +189,7 @@ it does not reserve a baseline or promise that the complete call will succeed.
 Previews remain separately labeled, never composed into applied history or treated as
 receipts. They occupy a dedicated, non-scrollable region below captured diffs. While
 visible, the body has a fixed 3:7 captured-diff-to-preview height split; the preview
-heading is inside its allocation. Keyboard navigation, horizontal movement, flushing,
+heading is inside its allocation. Keyboard navigation, flushing,
 and wheel input in the captured-diff region affect only captured diffs. Wheel input
 in the preview region is ignored. Streaming always follows the newest changed source
 row and its final wrapped fragment, independently of captured-diff follow/pause state.
@@ -283,8 +283,8 @@ File headings and the sticky current-file header share an aligned gutter, bold t
 green `+N` and red `-N` source-line counts, and a width-filling separator. Counts describe
 the visible combined result plus prepared captures, exclude context and headers, and
 become zero when flushed. Navigation must not rescan diffs merely to update counts.
-While wrapping is unlocked, horizontal navigation must reuse prepared syntax and row
-geometry, slicing only the visible source rows instead of rebuilding the full diff.
+Syntax decoration is reused for identical captured source, path, and theme within a
+viewer. Cache storage is bounded; eviction changes performance, not display or follow state.
 File actions appear once per file or prepared capture, with both rename endpoints.
 Deleted files retain their action heading and removal count, but omit source diff rows.
 Heading blocks wrap without losing actions or paths; the sticky title stays on one row.
@@ -296,15 +296,12 @@ very narrow panes; blank source rows keep their numbers.
 Prepared status appears once per capture. Paths within the display workspace are relative;
 external paths stay absolute. Display formatting never changes captured paths or source.
 
-Source lines wrap by default, preserving whitespace, syntax colors, and change-row
+Source lines always wrap to the pane width, preserving whitespace, syntax colors, and change-row
 backgrounds. Continuations retain the gutter and change marker with a blank coordinate.
-`h`/`l` and Left/Right pan source horizontally, pausing following and unlocking wrapping
-while the horizontal offset is nonzero. Returning to the left edge (`x=0`) relocks
-wrapping without resuming following. Coordinates and chrome remain fixed. Switching
-wrap mode preserves the logical row at saved viewport positions.
+`h`/`l`, Left/Right, and horizontal wheel reports are ignored without pausing
+following. Resizing preserves the logical row at saved viewport positions.
 The viewer enables SGR mouse reporting while active and explicitly disables its
-mouse reporting modes on exit, including in terminals without private mode save/restore. Horizontal wheel reports use the same pan/unlock/relock behavior; vertical
-wheel reports scroll rows. Wheel modifiers are accepted. Clicks, releases, motion,
+mouse reporting modes on exit, including in terminals without private mode save/restore. Vertical wheel reports scroll rows. Wheel modifiers are accepted. Clicks, releases, motion,
 and malformed reports do not trigger navigation or review commands. Fragmented
 reports are decoded incrementally with bounded storage.
 

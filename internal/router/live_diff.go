@@ -46,7 +46,6 @@ type liveDiffView struct {
 	scroll       map[string]int
 	reviewed     map[string]bool
 	visible      map[string]liveDiffFile
-	horizontal   int
 	following    bool
 	latest       string
 	initialized  bool
@@ -357,16 +356,12 @@ type liveDiffCounts struct {
 }
 
 type liveDiffRender struct {
-	panRows       map[int]liveDiffPanRow // Unwrapped source retained for viewport-only panning.
-	width         int
-	theme         liveDiffTheme
-	lines         []string
-	starts        []int
-	rowStarts     []int // First display row of each logical row, including chrome.
-	maxHorizontal int
-	counts        []liveDiffCounts
-	focusOffset   int // Hunk/context anchor retained while locating the target.
-	focusRow      int // Latest changed row to center in the viewport.
+	lines       []string
+	starts      []int
+	rowStarts   []int // First display row of each logical row, including chrome.
+	counts      []liveDiffCounts
+	focusOffset int // Hunk/context anchor retained while locating the target.
+	focusRow    int // Latest changed row to center in the viewport.
 }
 
 func (r liveDiffRender) followOffset(rows int) int {
@@ -418,6 +413,15 @@ func (v *liveDiffView) reflow(before, after liveDiffRender) {
 }
 
 type liveDiffOutput struct{ strings.Builder }
+
+// WriteString avoids fmt's per-token interface and byte-slice overhead while
+// retaining the same bound as writes through io.Writer.
+func (b *liveDiffOutput) WriteString(s string) (int, error) {
+	if b.Len()+len(s) > maxChangeReadBytes {
+		return 0, errors.New("rendered diff exceeds 64 MiB")
+	}
+	return b.Builder.WriteString(s)
+}
 
 func (b *liveDiffOutput) Write(p []byte) (int, error) {
 	if b.Len()+len(p) > maxChangeReadBytes {
@@ -560,11 +564,12 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 	signal.Notify(resizes, syscall.SIGWINCH)
 	defer signal.Stop(resizes)
 	view := liveDiffView{scroll: make(map[string]int), following: true}
+	var renderer liveDiffRenderer
 	var rendering liveDiffRender
 	var rendered []liveDiffFile
 	var renderedFocus liveDiffChunk
 	renderedFocusFile := -1
-	lastWidth, lastHeight, lastHorizontal := 0, 0, 0
+	lastWidth, lastHeight := 0, 0
 	dirty := true
 	theme := liveDiffEnvironmentTheme(os.Getenv("COLORFGBG"))
 	renderedTheme := theme
@@ -587,13 +592,14 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		}
 		focus := view.latestChunk()
 		focus.snapshotOrder = 0 // Snapshot numbering does not change a capture's geometry.
-		if !reflect.DeepEqual(rendered, files) || renderedFocus != focus || renderedFocusFile != focusFile || width != lastWidth || (view.horizontal == 0) != (lastHorizontal == 0) || theme != renderedTheme {
+		sameFiles := reflect.DeepEqual(rendered, files)
+		if !sameFiles || renderedFocus != focus || renderedFocusFile != focusFile || width != lastWidth || theme != renderedTheme {
 			previous := rendering
-			rendering, e = renderLiveDiff(ctx, theme, files, workspace, width, focusFile, focus, view.horizontal)
+			rendering, e = renderer.render(ctx, theme, files, workspace, width, focusFile, focus)
 			if e != nil {
 				return e
 			}
-			if (view.horizontal != lastHorizontal || width != lastWidth) && reflect.DeepEqual(rendered, files) {
+			if width != lastWidth && sameFiles {
 				view.reflow(previous, rendering)
 			}
 			renderedTheme = theme
@@ -603,7 +609,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		if height != lastHeight {
 			dirty = true
 		}
-		lastWidth, lastHeight, lastHorizontal = width, height, view.horizontal
+		lastWidth, lastHeight = width, height
 		lines := rendering.lines
 		rows, previewRows := liveDiffRegionRows(height-2, previewPane.current.ID != "")
 		offset := 0
@@ -665,7 +671,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			for row := range rows {
 				text := ""
 				if index := offset + row; index < len(lines) {
-					text = rendering.lineAt(index, view.horizontal)
+					text = lines[index]
 				}
 				writeRow(row+2, text)
 			}
@@ -690,7 +696,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			if coverage != "" && !strings.HasPrefix(coverage, "SIMULATION:") {
 				mode, _, _ = strings.Cut(coverage, ":")
 			}
-			writeRow(height, mode+" · r resume · j/k ↕ h/l ↔ · n/p file · f/F flush · q quit")
+			writeRow(height, mode+" · r resume · j/k ↕ · n/p file · f/F flush · q quit")
 			if _, e := io.WriteString(stdout, screen.String()); e != nil {
 				return e
 			}
@@ -829,10 +835,9 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 					key = 'k'
 				case "\x1b[B", "\x1bOB":
 					key = 'j'
-				case "\x1b[C", "\x1bOC":
-					key = 'l'
-				case "\x1b[D", "\x1bOD":
-					key = 'h'
+				case "\x1b[C", "\x1bOC", "\x1b[D", "\x1bOD":
+					escape = ""
+					continue
 				case "\x1b[5~":
 					key = 'b'
 				case "\x1b[6~":
@@ -840,7 +845,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 				}
 				escape = ""
 			}
-			if strings.ContainsRune("np\tjkhl bgG", rune(key)) {
+			if strings.ContainsRune("np\tjk bgG", rune(key)) {
 				view.following = false
 			}
 			switch key {
@@ -864,10 +869,6 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 						break
 					}
 				}
-			case 'h':
-				view.horizontal = max(0, view.horizontal-4)
-			case 'l':
-				view.horizontal = min(view.horizontal+4, max(view.horizontal, rendering.maxHorizontal))
 			case 'j':
 				view.scrollTo(rendering, offset+1)
 			case 'k':

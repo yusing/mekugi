@@ -627,10 +627,8 @@ they are removed on exit.
 Use the on-screen keyboard controls:
 
 - `j`/`k` scroll and `n`/`p` switch files, pausing automatic following.
-- Lines wrap by default. `h`/`l` or Left/Right pan horizontally and pause following.
-  Panning right unlocks wrapping; returning to the left edge (`x=0`) restores it.
-  Mouse wheels and trackpads also scroll when the terminal sends SGR mouse events;
-  horizontal gestures pan, and vertical gestures scroll rows.
+- Lines stay wrapped to the pane width. Mouse wheels and trackpads scroll vertically
+  when the terminal sends SGR mouse events; horizontal gestures are ignored.
 - `r` resumes following new edits.
 - `f` flushes the current file; `F` flushes all files. This hides reviewed changes
   without deleting captures. Later overlapping edits can bring them back.

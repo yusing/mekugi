@@ -79,7 +79,7 @@ func TestLiveDiffThemeGeometryAndFallback(t *testing.T) {
 	for _, width := range []int{1, 13, 90} {
 		var baseline string
 		for _, theme := range []liveDiffTheme{liveDiffTerminalTheme, liveDiffLightTheme, liveDiffDarkTheme} {
-			render, err := renderLiveDiff(t.Context(), theme, []liveDiffFile{file}, "", width, 0, chunk, 0)
+			render, err := new(liveDiffRenderer).render(t.Context(), theme, []liveDiffFile{file}, "", width, 0, chunk)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -235,7 +235,7 @@ func TestLiveDiffRowFills(t *testing.T) {
 	chunk.status = ""
 	for _, theme := range []liveDiffTheme{liveDiffTerminalTheme, liveDiffLightTheme, liveDiffDarkTheme} {
 		for _, width := range []int{1, 2, 3, 8, 80} {
-			render, err := renderLiveDiff(t.Context(), theme, []liveDiffFile{{path: "file.go", chunks: []liveDiffChunk{chunk}}}, "", width, 0, chunk, 0)
+			render, err := new(liveDiffRenderer).render(t.Context(), theme, []liveDiffFile{{path: "file.go", chunks: []liveDiffChunk{chunk}}}, "", width, 0, chunk)
 			if err != nil {
 				t.Fatal(err)
 			}
