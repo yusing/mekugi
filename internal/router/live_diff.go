@@ -550,6 +550,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 	go func() { defer close(streamDone); liveDiffStream(streamCtx, connection, events) }()
 	defer func() { cancelStream(); <-streamDone }()
 	data := newLiveDiffData()
+	previewRows := 0
 	var previewPane liveDiffPreviewPane
 	previewFrame := time.NewTimer(time.Hour)
 	previewFrame.Stop()
@@ -570,7 +571,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 	var renderedFocus liveDiffChunk
 	renderedFocusFile := -1
 	lastWidth, lastHeight := 0, 0
-	dirty := true
+	dirty, followDirty := true, true
 	theme := liveDiffEnvironmentTheme(os.Getenv("COLORFGBG"))
 	renderedTheme := theme
 	var mouse liveDiffMouse
@@ -604,14 +605,21 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			}
 			renderedTheme = theme
 			rendered, renderedFocus, renderedFocusFile = files, focus, focusFile
-			dirty = true
+			dirty, followDirty = true, true
 		}
 		if height != lastHeight {
-			dirty = true
+			dirty, followDirty = true, true
 		}
 		lastWidth, lastHeight = width, height
 		lines := rendering.lines
-		rows, previewRows := liveDiffRegionRows(height-2, previewPane.current.ID != "")
+		if dirty {
+			_, limit := liveDiffRegionRows(height-2, previewPane.current.ID != "")
+			previewRows, e = previewPane.height(width, limit)
+			if e != nil {
+				return e
+			}
+		}
+		rows := height - 2 - previewRows
 		offset := 0
 		if len(view.files) > 0 {
 			start := rendering.starts[view.selected]
@@ -622,8 +630,16 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			offset = start + min(view.scroll[view.files[view.selected].key()], max(0, end-start-1))
 		}
 		if view.following {
-			offset = rendering.followOffset(rows)
+			if followDirty {
+				offset = rendering.followOffset(rows)
+			} else {
+				// Preview-only layout changes do not recenter captured content.
+				// Move only enough to keep its followed tip out of the preview.
+				offset = min(offset, rendering.focusRow)
+				offset = max(offset, rendering.focusRow-rows+1)
+			}
 		}
+		followDirty = false
 		// A flushed/reverted last file has an empty span at EOF. Normalize the
 		// actual viewport offset too, not only scrollTo's selection argument.
 		offset = max(0, min(offset, len(lines)-1))
@@ -853,6 +869,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 				return nil
 			case 'r':
 				view.followLatest()
+				followDirty = true
 			case 'f', 'F':
 				view.flush(key == 'F')
 			case 'n', '\t':

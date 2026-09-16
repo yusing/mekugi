@@ -8,12 +8,14 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/hpatchsyntax"
 	"golang.org/x/term"
 )
 
@@ -95,113 +97,230 @@ func playLiveDiffSimulation(ctx context.Context, broker *liveDiffBroker, store *
 		broker.emitLocked(liveDiffEvent{Kind: "coverage", Status: "SIMULATION: " + text})
 		broker.mu.Unlock()
 	}
+	root, err := os.OpenRoot(workspace)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	// The fixture module is usable with go test, but never reads caller config.
+	if err := root.WriteFile("go.mod", []byte("module example.com/live-diff-demo\n\ngo 1.27\n"), 0600); err != nil {
+		return err
+	}
 	sequence := 0
-	// Files are controlled fixture names. Publish applied evidence only after
-	// the actual isolated file write succeeds.
-	apply := func(name, content string) error {
-		path := filepath.Join(workspace, name)
-		before, err := os.ReadFile(path)
-		script := "new " + name + "\ntype " + strconv.Quote(content)
-		if err == nil {
-			script = "in " + name + "\ntype " + strconv.Quote(string(before)) + " " + strconv.Quote(content)
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		files, err := mekugi.PreviewForHostAt(ctx, workspace, script)
+	apply := func(script string) error {
+		segments, _, err := hpatchsyntax.SplitShell(script)
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-			return err
+		for _, segment := range segments {
+			if !segment.Shell {
+				if err := mekugi.ValidateScriptSyntax(segment.Source); err != nil {
+					return err
+				}
+			}
 		}
-		sequence++
-		call := fmt.Sprintf("simulation-%d", sequence)
-		id, err := store.reserveChange(ctx, workspace, "simulation", call)
-		if err != nil {
-			return err
+		for _, segment := range segments {
+			if segment.Shell {
+				// Only fixed demonstration programs reach this path. They run
+				// in the disposable fixture, never during preview projection.
+				command := exec.CommandContext(ctx, "sh", "-c", segment.Source)
+				command.Dir = workspace
+				if output, err := command.CombinedOutput(); err != nil {
+					return fmt.Errorf("simulation shell: %w: %s", err, output)
+				}
+				continue
+			}
+			result, err := mekugi.ApplyForHostRoot(ctx, root, segment.Source, "")
+			if err != nil {
+				return err
+			}
+			for i := range result.ReviewFiles {
+				file := &result.ReviewFiles[i]
+				if file.BeforePath != "" {
+					file.BeforePath = filepath.Join(workspace, file.BeforePath)
+				}
+				if file.AfterPath != "" {
+					file.AfterPath = filepath.Join(workspace, file.AfterPath)
+				}
+			}
+			sequence++
+			call := fmt.Sprintf("simulation-%d", sequence)
+			id, err := store.reserveChange(ctx, workspace, "simulation", call)
+			if err != nil {
+				return err
+			}
+			if err := store.put(ctx, workspace, map[string]mekugiHistory{call: {
+				Script: segment.Source, ChangeID: id, CorrelationID: call,
+				Applied: true, ReviewFiles: result.ReviewFiles,
+			}}); err != nil {
+				return err
+			}
 		}
-		return store.put(ctx, workspace, map[string]mekugiHistory{call: {
-			Script: script, ChangeID: id, CorrelationID: call, Applied: true, ReviewFiles: files,
-		}})
-	}
-	if err := apply("streaming.txt", "anchor\n"); err != nil {
-		return err
-	}
-	var captured strings.Builder
-	for row := 1; row <= 120; row++ {
-		fmt.Fprintf(&captured, "captured line %03d: scroll here while the independent preview streams\n", row)
-	}
-	if err := apply("captured.txt", captured.String()); err != nil {
-		return err
+		return nil
 	}
 	for cycle := 1; ; cycle++ {
-		if err := pause(2 * time.Second); err != nil {
-			return err
-		}
-		status(fmt.Sprintf("cycle %d · j/k scroll diff · r follow · resize terminal · q quit", cycle))
-		worker := startLiveDiffPreview(ctx, broker, workspace, "simulation")
-		worker.appendDelta("in streaming.txt\ntype \"anchor\\n\" <<PATCH\n")
-		var content strings.Builder
-		for row := 1; row <= 100; row++ {
-			line := fmt.Sprintf("streamed line %03d: watch the newest row stay in view\n", row)
-			if row == 60 {
-				line = "wrapped line: " + strings.Repeat("long source ", 25) + "TIP\n"
-			}
-			content.WriteString(line)
-			// Two fragments per row exercise unfinished values, not frame fixtures.
-			middle := len(line) / 2
-			worker.appendDelta(line[:middle])
-			if err := pause(45 * time.Millisecond); err != nil {
-				worker.stop()
-				<-worker.done
-				return err
-			}
-			worker.appendDelta(line[middle:])
-			if err := pause(45 * time.Millisecond); err != nil {
-				worker.stop()
-				<-worker.done
+		// Repeat the same flows against a clean set of known fixture files while
+		// retaining the session's actual capture history and current navigation.
+		for _, name := range []string{"handler.go", "routes.go", "handler_test.go", "audit.go", "lifecycle.go", "notes.txt"} {
+			if _, err := root.Stat(name); err == nil {
+				if err := apply("in " + name + "\nrm\n"); err != nil {
+					return err
+				}
+			} else if !errors.Is(err, os.ErrNotExist) {
 				return err
 			}
 		}
-		status("burst · superseded preview frames are skipped")
-		for row := 101; row <= 300; row++ {
-			line := fmt.Sprintf("burst line %03d\n", row)
-			content.WriteString(line)
-			worker.appendDelta(line)
+		if err := apply("new handler.go\ntype " + strconv.Quote(liveDiffSimulationHandler)); err != nil {
+			return err
 		}
 		if err := pause(time.Second); err != nil {
-			worker.stop()
-			<-worker.done
 			return err
 		}
-		worker.stop()
-		<-worker.done
-		if err := apply("streaming.txt", content.String()); err != nil {
-			return err
+		steps := liveDiffSimulationSteps()
+		for index, step := range steps {
+			status(fmt.Sprintf("%d/%d · %s · cycle %d", index+1, len(steps), step.name, cycle))
+			worker := startLiveDiffPreview(ctx, broker, workspace, "simulation")
+			var script strings.Builder
+			streamErr := func() error {
+				defer func() { worker.stop(); <-worker.done }()
+				for _, fragment := range step.fragments {
+					script.WriteString(fragment)
+					worker.appendDelta(fragment)
+					if err := pause(step.delay); err != nil {
+						return err
+					}
+				}
+				// Even --speed 20 leaves the asynchronous worker time to publish.
+				return pause(max(750*time.Millisecond, time.Duration(speed*float64(3*liveDiffPreviewFrameDelay))))
+			}()
+			if streamErr != nil {
+				return streamErr
+			}
+			if !step.interrupt {
+				err := apply(script.String())
+				if step.reject {
+					if err == nil {
+						return errors.New("simulation rejection unexpectedly applied")
+					}
+					if ctx.Err() != nil {
+						return ctx.Err()
+					}
+					status("rejected as expected · incomplete edit did not change files")
+				} else if err != nil {
+					return fmt.Errorf("%s: %w", step.name, err)
+				}
+			}
+			if err := pause(time.Second); err != nil {
+				return err
+			}
 		}
-		status("completed · preview hides after 300 ms; diff regains its height")
-		if err := pause(2 * time.Second); err != nil {
-			return err
-		}
-		if err := apply("streaming.txt", "anchor\n"); err != nil {
-			return err
-		}
-		status("interruption · this next preview will not be applied")
-		worker = startLiveDiffPreview(ctx, broker, workspace, "simulation")
-		worker.appendDelta("in streaming.txt\ntype \"anchor\\n\" \"interrupted preview")
-		if err := pause(time.Second); err != nil {
-			worker.stop()
-			<-worker.done
-			return err
-		}
-		worker.stop()
-		<-worker.done
-		status("finished · rerun the same command to replay, or use --repeat · q quit")
+		status("finished · Go creation, edits, shell, rename/delete, rejection, interruption · q quit")
 		if !repeat {
 			return nil
 		}
 		if err := pause(2 * time.Second); err != nil {
 			return err
 		}
+	}
+}
+
+type liveDiffSimulationStep struct {
+	name      string
+	fragments []string
+	delay     time.Duration
+	reject    bool
+	interrupt bool
+}
+
+const liveDiffSimulationHandler = `package demo
+
+import (
+	"fmt"
+	"net/http"
+)
+
+type Route struct {
+	Path    string
+	Status  int
+	Message string
+}
+
+// Handler serves requests.
+func Handler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	for _, route := range routes {
+		if r.URL.Path == route.Path {
+			w.WriteHeader(route.Status)
+			fmt.Fprintln(w, route.Message)
+			return
+		}
+	}
+	http.NotFound(w, r)
+}
+`
+
+func liveDiffSimulationSteps() []liveDiffSimulationStep {
+	var source strings.Builder
+	source.WriteString("package demo\n\nimport \"net/http\"\n\nvar routes = []Route{\n")
+	for row := 1; row <= 180; row++ {
+		message := fmt.Sprintf("resource %03d is ready", row)
+		if row == 60 {
+			message = strings.Repeat("Unicode 界 é and quoted \"message\"; ", 12) + "WRAPPED_TIP"
+		}
+		fmt.Fprintf(&source, "\t{Path: \"/api/%03d\", Status: http.StatusOK, Message: %s},\n", row, strconv.Quote(message))
+	}
+	source.WriteString("}\n\nfunc RouteCount() int {\n\treturn len(routes)\n} // ROUTES_READY\n")
+	fragments := []string{"new routes.go\ntype <<PATCH\n"}
+	lines := strings.SplitAfter(source.String(), "\n")
+	for _, line := range lines[:100] {
+		middle := len(line) / 2
+		fragments = append(fragments, line[:middle], line[middle:])
+	}
+	fragments = append(fragments, strings.Join(lines[100:], ""), "PAT", "CH\n")
+	testSource := `package demo
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestHandler(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/v2/001", nil)
+	response := httptest.NewRecorder()
+	Handler(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+}
+`
+	return []liveDiffSimulationStep{
+		{name: "Go creation · syntax, Unicode wrapping, burst, centered final row", fragments: fragments, delay: 40 * time.Millisecond},
+		{name: "partial target · keep the last useful preview", delay: 500 * time.Millisecond,
+			fragments: []string{"in handler.go\ntype \"// Handler serves requests.\" \"// Handler serves demo requests.\"\n",
+				"type \"http.MethodG", "et\" \"http.MethodPost\"\n"}},
+		{name: "multi-file and distant hunks · follow the last changed file", delay: 250 * time.Millisecond,
+			fragments: []string{"in routes.go\ntype \"\\\"/api/001\\\"\" \"\\\"/v2/001\\\"\"\n",
+				"type \"\\\"/api/180\\\"\" \"\\\"/v2/180\\\"\"\nnew handler_test.go\ntype <<TEXT\n",
+				"|" + strings.ReplaceAll(strings.TrimSuffix(testSource, "\n"), "\n", "\n|") + "\nTE", "XT\n"}},
+		{name: "shell-in-hpatch · streamed script, then actual segment captures", delay: 350 * time.Millisecond,
+			fragments: []string{"new audit.go\ntype \"package demo\\n\\nconst phase = \\\"prepared\\\"\\n\"\n",
+				"shell printf '%s\\n' 'checked fixture' > shell.log\n",
+				"in audit.go\ntype \"prepared\" \"completed\"\n",
+				"shell <<SHELL\ntest -f audit.go\nprintf '%s\\n' 'SHELL_TIP' >> shell.log\n", "SHELL\n"}},
+		{name: "append and rename · preserve file identity", delay: 300 * time.Millisecond,
+			fragments: []string{"in audit.go\nadd EOF <<PATCH\n\nfunc AuditReady() bool {\n\treturn phase == \"completed\"\n}\nPATCH\n",
+				"mv lifecycle.go\n"}},
+		{name: "deletion and missing final newline", delay: 300 * time.Millisecond,
+			fragments: []string{"in lifecycle.go\nrm\nnew notes.txt\ntype \"Unicode 界 é without final newline\""}},
+		{name: "rejection · keep applied state intact", delay: 500 * time.Millisecond, reject: true,
+			fragments: []string{"in handler.go\ntype \"demo requests\" \"rejected requests\"\n",
+				"type \"target that does not exist\" \"rejected\"\n"}},
+		{name: "interruption · preview only, no application", delay: 500 * time.Millisecond, interrupt: true,
+			fragments: []string{"in handler.go\nadd EOF <<PATCH\n\nfunc InterruptedPreview() string {\n",
+				"\treturn \"INTERRUPTED_TIP"}},
 	}
 }

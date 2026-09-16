@@ -590,9 +590,10 @@ Redirected input/output does not open a pane.
 
 The view combines edits across files, excluding Git and shell changes. Streaming
 previews are provisional, not validated or applied. They appear in a separate,
-non-scrollable region: 30% of the body remains for captured diffs and 70% shows the
-stream. It centers the newest changed row independently of diff scrolling, then
-hides 300 ms after completion or interruption and restores the full diff height.
+non-scrollable region sized to its content, capped at 70% of the body. The stream
+keeps its newest row visible independently of diff scrolling, then hides 300 ms
+after completion or interruption. Preview growth and dismissal preserve the captured
+viewport, moving it only when needed to keep the followed change visible.
 Complete edits enter the captured diff. Prepared
 edits remain labeled as unconfirmed until application is reported. Cyan markers
 identify the latest update; reconnecting or unavailable means live updates are interrupted.
@@ -621,11 +622,14 @@ mekugi live-diff --simulate
 mekugi live-diff --simulate --speed 2 --repeat
 ```
 
-The simulation streams partial edits, grows beyond the viewport, sends a burst,
-completes an edit, and interrupts another. Try scrolling the captured diff, toggling
-follow, and resizing the terminal. `q` exits. Rerun to replay the same scenario;
-`--repeat` loops it automatically. Only disposable temporary files are changed and
-they are removed on exit.
+The simulation builds a small Go HTTP handler and test module. It covers a long
+new file, syntax colors, Unicode and wrapped strings, burst updates, incomplete
+targets, multi-file and distant-hunk edits, mixed shell/edit segments, append,
+rename/delete, missing final newlines, rejection, and interruption. Edits are applied
+to the disposable fixture through the engine; fixed shell steps run only there.
+Try scrolling the captured diff, toggling follow, and resizing the terminal. `q`
+exits. Rerun to replay the same scenarios; `--repeat` loops them automatically.
+Only disposable temporary files are changed, and they are removed on exit.
 
 Use the on-screen keyboard controls:
 

@@ -158,11 +158,12 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 		if liveDiffFrameRow(frame, 1) != header || liveDiffFrameRow(frame, 2) != top {
 			t.Fatal("streaming moved the paused captured-diff viewport")
 		}
-		// 20 body rows split into 6 captured rows and 14 preview rows.
-		if !strings.Contains(liveDiffFrameRow(frame, 8), "STREAMING PREVIEW") {
-			t.Fatalf("preview is not in its fixed 70%% region: %q", frame)
+		// Short previews fit their content; long previews cap at 70%.
+		previewTop := 22 - min(14, rows+1)
+		if !strings.Contains(liveDiffFrameRow(frame, previewTop), "STREAMING PREVIEW") {
+			t.Fatalf("preview does not use content-aware height: %q", frame)
 		}
-		for row := 2; row < 8; row++ {
+		for row := 2; row < previewTop; row++ {
 			if strings.Contains(liveDiffFrameRow(frame, row), "stream_") {
 				t.Fatal("preview rows leaked into captured diff")
 			}
@@ -201,7 +202,7 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 		return strings.Contains(frame, "\x1b[12;1H") && strings.Contains(frame, "stream_1200")
 	})
 	if !strings.Contains(liveDiffFrameRow(frame, 5), "STREAMING PREVIEW") {
-		t.Fatal("resize broke the fixed 3:7 layout")
+		t.Fatal("resize broke the preview height cap")
 	}
 	// A burst must collapse to its newest frame rather than animate its backlog.
 	for rows := 1201; rows <= 1400; rows++ {
@@ -214,9 +215,14 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 		t.Fatal("completion lost the last rendered stream")
 	}
 	restored := ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
-	if !strings.Contains(liveDiffFrameRow(restored, 5), "│") {
-		t.Fatalf("preview did not release its height to captured diff: %q", restored)
+	if liveDiffFrameRow(restored, 2) != liveDiffFrameRow(completed, 2) {
+		t.Fatalf("preview dismissal shifted captured content: %q", restored)
 	}
+	// Scroll back from EOF to verify all reclaimed rows are usable.
+	ui.write(t, "b")
+	ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "PAUSED") && strings.Contains(liveDiffFrameRow(frame, 10), "│")
+	})
 	// A new stream interrupted by router coverage loss clears the region.
 	publish("two", 20)
 	waitTip(20)
@@ -236,13 +242,24 @@ func TestLiveDiffSimulationTerminalReplay(t *testing.T) {
 		directory := t.TempDir()
 		ui := startLiveDiffTerminal(t, "", "", "", 22, "MEKUGI_LIVE_DIFF_SIMULATION_TEST=1", "TMPDIR="+directory)
 		ui.frame(t, func(frame string) bool {
-			return strings.Contains(frame, "STREAMING PREVIEW") && strings.Contains(frame, "streamed line")
+			return strings.Contains(frame, "STREAMING PREVIEW") && strings.Contains(ansi.Strip(frame), "/api/")
 		})
 		ui.write(t, "g")
 		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
-		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "burst line 300") })
-		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING COMPLETE") })
-		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "interrupted preview") })
+		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "ROUTES_READY") })
+		ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "demo requests") })
+		// Exercise real code, not just synthetic repeated rows, at a narrow size.
+		if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 22, Cols: 60}); err != nil {
+			t.Fatal(err)
+		}
+		ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "response.Code") })
+		ui.frame(t, func(frame string) bool {
+			return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "SHELL_TIP")
+		})
+		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "lifecycle.go") })
+		ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "without final newline") })
+		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "rejected as expected") })
+		ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "INTERRUPTED_TIP") })
 		final := ui.frame(t, func(frame string) bool {
 			return strings.Contains(frame, "SIMULATION: finished") && !strings.Contains(frame, "STREAMING")
 		})
@@ -342,13 +359,49 @@ func TestLiveDiffTerminalCentersFinalRowAfterPreview(t *testing.T) {
 	}
 	broker.publishPreview(liveDiffPreview{ID: preview.ID}, true)
 	frame = ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
-	if !strings.Contains(liveDiffFrameRow(frame, 12), "FINAL_CHANGED_ROW") {
-		t.Fatalf("restored viewport did not center final change: %q", frame)
+	if !strings.Contains(liveDiffFrameRow(frame, 5), "FINAL_CHANGED_ROW") {
+		t.Fatalf("preview dismissal moved the captured diff: %q", frame)
 	}
 	ui.height = 12
 	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 12, Cols: 60}); err != nil {
 		t.Fatal(err)
 	}
 	frame = ui.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 7), "FINAL_CHANGED_ROW") })
+	ui.quit(t)
+}
+
+func TestLiveDiffTerminalPreviewFillsBottomWithoutRecentring(t *testing.T) {
+	workspace := t.TempDir()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
+	})
+	liveDiffTestChange(t, store, workspace, "capture", "handler.go", true)
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 58)
+	initial := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
+	top := liveDiffFrameRow(initial, 2)
+	for _, size := range []int{1, 10, 1000} {
+		preview := previewViewFixture("sizing", size)
+		preview.Workspace = workspace
+		broker.publishPreview(preview, false)
+		frame := ui.frame(t, func(frame string) bool {
+			return strings.Contains(ansi.Strip(frame), fmt.Sprintf("stream_%04d", size))
+		})
+		if !strings.Contains(liveDiffFrameRow(frame, 57), fmt.Sprintf("stream_%04d", size)) {
+			t.Fatalf("preview left unused rows below its streaming tip: %q", frame)
+		}
+		if size < 1000 && liveDiffFrameRow(frame, 2) != top {
+			t.Fatalf("short preview shifted the captured viewport: %q", frame)
+		}
+		top = liveDiffFrameRow(frame, 2)
+	}
+	broker.publishPreview(liveDiffPreview{ID: "sizing"}, true)
+	restored := ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
+	if liveDiffFrameRow(restored, 2) != top {
+		t.Fatal("preview dismissal recentered unchanged captured content")
+	}
 	ui.quit(t)
 }

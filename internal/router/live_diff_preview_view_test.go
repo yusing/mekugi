@@ -193,7 +193,7 @@ func TestLiveDiffPreviewFollowReservesSpaceBeforeWrappedContext(t *testing.T) {
 	}
 }
 
-func TestLiveDiffPreviewSyntaxAndCenteredTip(t *testing.T) {
+func TestLiveDiffPreviewSyntaxAndVisibleTip(t *testing.T) {
 	preview := previewViewFixture("colored", 50)
 	preview.Files[0].Diff = strings.Replace(preview.Files[0].Diff, "+stream_0050", "+return \"STREAM_TIP\"", 1)
 	var pane liveDiffPreviewPane
@@ -203,11 +203,11 @@ func TestLiveDiffPreviewSyntaxAndCenteredTip(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		center := lines[1+(12-1)/2]
+		center := lines[len(lines)-1]
 		if !strings.Contains(ansi.Strip(center), "STREAM_TIP") ||
 			!strings.Contains(center, theme.foreground(chroma.Keyword)+"return") ||
 			!strings.Contains(center, theme.foreground(chroma.LiteralString)) {
-			t.Fatalf("tip not centered and colored: %q", center)
+			t.Fatalf("tip not visible and colored: %q", center)
 		}
 		if strings.Contains(lines[0], "validated") || strings.Contains(lines[0], "applied") {
 			t.Fatal("preview title contains redundant disclaimer")
@@ -227,5 +227,25 @@ func TestLiveDiffPreviewRawScript(t *testing.T) {
 	}
 	if strings.Contains(text, "stream.sh") || strings.Contains(text, "PREVIEW UNAVAILABLE") {
 		t.Fatalf("raw script pretends to be a projected file: %q", text)
+	}
+}
+
+func TestLiveDiffPreviewHeightFitsAndFillsContent(t *testing.T) {
+	var pane liveDiffPreviewPane
+	for _, rows := range []int{1, 3, 10, 1000} {
+		pane.update(previewViewFixture("sizing", rows), time.Time{})
+		height, err := pane.height(100, 20)
+		if err != nil || height != min(20, rows+1) {
+			t.Fatalf("rows=%d height=%d err=%v", rows, height, err)
+		}
+		lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 100, height)
+		if err != nil || len(lines) != height ||
+			!strings.Contains(ansi.Strip(lines[len(lines)-1]), fmt.Sprintf("stream_%04d", rows)) {
+			t.Fatalf("rows=%d left empty preview rows or lost its tip: %q, %v", rows, lines, err)
+		}
+	}
+	pane = liveDiffPreviewPane{}
+	if height, err := pane.height(100, 20); height != 0 || err != nil {
+		t.Fatal("hidden preview retained space")
 	}
 }

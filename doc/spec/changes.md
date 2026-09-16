@@ -188,15 +188,20 @@ it does not reserve a baseline or promise that the complete call will succeed.
 
 Previews remain separately labeled, never composed into applied history or treated as
 receipts. They occupy a dedicated, non-scrollable region below captured diffs. While
-visible, the body has a fixed 3:7 captured-diff-to-preview height split; the preview
-heading is inside its allocation. Keyboard navigation, flushing,
+visible, the preview uses only the height its content needs, capped at 70% of the
+body and leaving at least one captured row. Its heading counts toward that height. Keyboard navigation, flushing,
 and wheel input in the captured-diff region affect only captured diffs. Wheel input
-in the preview region is ignored. Streaming centers the newest changed source
-row's final wrapped fragment, independently of captured-diff follow/pause state.
+in the preview region is ignored. Streaming keeps the newest changed source
+row's final wrapped fragment visible, independently of captured-diff follow/pause state.
+It fills available preview rows through that tip rather than leaving centering padding
+below it.
 
 Completion, rejection, interruption, or transform closure ends the live preview. The
 last frame remains for 300 ms, then the region disappears and captured diffs regain
-full height without resetting their scroll position. A new stream cancels pending
+full height without resetting their scroll position. Preview-only height changes
+preserve the captured viewport even while following, moving it only enough to keep
+the followed change visible. New captures, explicit resume, and terminal resize
+recenter the captured change. A new stream cancels pending
 removal; completion of one stream cannot hide another. Tiny terminals may omit the
 preview when both regions cannot fit. Reconnect clears transient display state and
 restores only currently active router-local previews after the durable

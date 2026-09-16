@@ -67,14 +67,46 @@ func (p *liveDiffPreviewPane) expire(now time.Time) bool {
 	return false
 }
 
-// Split the body, excluding the captured-diff header and the common footer.
-// The preview's divider/title is part of its fixed 70% allocation.
+// Cap preview height at 70% of the body, keeping at least one captured row.
+// Short previews use less space; the divider/title counts toward their height.
 func liveDiffRegionRows(body int, streaming bool) (diff, preview int) {
 	if !streaming || body < 2 {
 		return body, 0
 	}
 	diff = max(1, body*3/10)
 	return diff, body - diff
+}
+
+// Measure only until the display cap. This runs at paint time, not for each
+// incoming delta, and uses the same source-column geometry as rendering.
+func (p *liveDiffPreviewPane) height(width, limit int) (int, error) {
+	if limit <= 0 || p.current.ID == "" {
+		return 0, nil
+	}
+	if err := p.prepare(); err != nil {
+		return 0, err
+	}
+	_, sourceWidth := p.columns(width)
+	height := 1
+	for _, row := range p.source {
+		if height >= limit {
+			return limit, nil
+		}
+		text := liveDiffSafe(strings.TrimSuffix(row.text, "\n"), false)
+		height += strings.Count(ansi.Hardwrap(text, sourceWidth, true), "\n") + 1
+	}
+	return min(height, limit), nil
+}
+
+func (p *liveDiffPreviewPane) columns(width int) (digits, sourceWidth int) {
+	if len(p.source) > 0 {
+		digits = len(strconv.Itoa(p.source[len(p.source)-1].number))
+	}
+	numberWidth := digits + 1
+	if width-3 < digits+4 {
+		numberWidth = 0
+	}
+	return digits, max(1, width-4-numberWidth)
 }
 
 func liveDiffPreviewRows(review mekugi.ReviewFile) ([]liveDiffPreviewRow, error) {
@@ -194,23 +226,18 @@ func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, them
 	if rows == 0 || len(p.source) == 0 {
 		return lines, nil
 	}
-	digits := len(strconv.Itoa(p.source[len(p.source)-1].number))
-	numberWidth := digits + 1
-	if width-3 < digits+4 {
-		numberWidth = 0
-	}
-	sourceWidth := max(1, width-4-numberWidth)
+	digits, sourceWidth := p.columns(width)
 	fragmentsAt := func(i int) int {
 		text := liveDiffSafe(strings.TrimSuffix(p.source[i].text, "\n"), false)
 		return strings.Count(ansi.Hardwrap(text, sourceWidth, true), "\n") + 1
 	}
-	// Reserve the center for the tip's last wrapped fragment before admitting
-	// trailing context. Near the beginning, show available context without padding.
+	// Keep the tip's last wrapped fragment visible before admitting trailing
+	// context. Fill the region with source rather than empty centering padding.
 	start, skip, count := p.focus, 0, 0
-	for i := p.focus; i >= 0 && count < rows/2+1; i-- {
+	for i := p.focus; i >= 0 && count < rows; i-- {
 		n := fragmentsAt(i)
 		start = i
-		skip = max(0, n-(rows/2+1-count))
+		skip = max(0, n-(rows-count))
 		count += n - skip
 	}
 	end := p.focus + 1
@@ -249,7 +276,7 @@ func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, them
 			continue
 		}
 		numbers := ""
-		if numberWidth > 0 {
+		if width-3 >= digits+4 {
 			numbers = fmt.Sprintf("\x1b[2m%*d│\x1b[22m", digits, row.number)
 		}
 		carry := ""
