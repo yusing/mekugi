@@ -15,7 +15,7 @@ model usage.
 Run [context_smoke.py](contrib/codex/context_smoke.py) from the repository root:
 
 ```sh
-python3 contrib/codex/context_smoke.py --sandbox danger-full-access
+python3 contrib/codex/context_smoke.py --dangerously-bypass-approvals-and-sandbox
 ```
 
 The script builds a temporary router and helper outside the repository, uses installed Codex
@@ -24,9 +24,8 @@ It checks real shell output, a plaintext child assignment, and a follow-up to th
 after restarting the router and resuming the exact session.
 
 Requirements: Go, Python 3, installed Codex, `mktemp`, and GNU `timeout`.
-Always pass `--sandbox danger-full-access` for automated live Codex tests, including manual
-follow-up and resume commands. This avoids the host's `bwrap` network-namespace initialization
-failure. Pass the flag explicitly; the script's default remains `read-only`.
+`--dangerously-bypass-approvals-and-sandbox` avoids the host's
+`bwrap` network-namespace initialization failure.
 `--help` displays options without starting builds or model calls.
 
 Do not smoke-test the fixed `shell` helper without arguments. That opens an internal control
