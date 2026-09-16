@@ -1,6 +1,8 @@
 package router
 
 import (
+	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -115,5 +117,71 @@ func TestLiveDiffResizeReflowsSavedFiles(t *testing.T) {
 		if got := view.scroll[file.key()] + narrow.starts[i]; got != end-1 {
 			t.Fatalf("file %d resize/unlock moved anchor to %d, want %d", i, got, end-1)
 		}
+	}
+}
+
+func TestLiveDiffCachedPanMatchesRender(t *testing.T) {
+	source := strings.Repeat("ab 界é \t", 15)
+	chunk := liveDiffHighlightChunk("edit", "file.go",
+		"@@ -1,3 +1,3 @@\n // "+source+"\n-old := \""+source+"\"\n+next := \""+source+"\"\n tail\n\\ No newline at end of file\n", true)
+	chunk.highlighted = true
+	files := []liveDiffFile{{path: "file.go", highlighted: true, chunks: []liveDiffChunk{chunk}}}
+	for _, theme := range []liveDiffTheme{liveDiffTerminalTheme, liveDiffDarkTheme, liveDiffLightTheme} {
+		for _, width := range []int{1, 7, 22, 80} {
+			t.Run(fmt.Sprintf("%v/%d", theme, width), func(t *testing.T) {
+				cached, err := renderLiveDiff(t.Context(), theme, files, "", width, 0, chunk, 4)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, horizontal := range []int{8, 12, 5, 1, 300, 4} {
+					full, err := renderLiveDiff(t.Context(), theme, files, "", width, 0, chunk, horizontal)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !reflect.DeepEqual(cached.rowStarts, full.rowStarts) ||
+						!reflect.DeepEqual(cached.starts, full.starts) ||
+						!reflect.DeepEqual(cached.counts, full.counts) ||
+						cached.focusRow != full.focusRow || cached.focusOffset != full.focusOffset {
+						t.Fatal("horizontal movement changed cached geometry")
+					}
+					for i, want := range full.lines {
+						if got := cached.lineAt(i, horizontal); got != want {
+							t.Fatalf("offset %d row %d: got %q, want %q", horizontal, i, got, want)
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
+// Compare the previous whole-diff work per key with the viewport-only pan path.
+// Preparation is deliberately outside the viewport timing.
+func BenchmarkLiveDiffHorizontalPan(b *testing.B) {
+	for _, rows := range []int{100, 1000} {
+		chunk := liveDiffHighlightChunk("edit", "file.go",
+			fmt.Sprintf("@@ -0,0 +1,%d @@\n", rows)+
+				strings.Repeat("+var value = \""+strings.Repeat("abcdefgh ", 15)+"\"\n", rows), true)
+		files := []liveDiffFile{{path: "file.go", chunks: []liveDiffChunk{chunk}}}
+		b.Run(fmt.Sprintf("%d/full", rows), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := renderLiveDiff(b.Context(), liveDiffDarkTheme, files, "", 100, 0, chunk, 8); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+		b.Run(fmt.Sprintf("%d/viewport", rows), func(b *testing.B) {
+			render, err := renderLiveDiff(b.Context(), liveDiffDarkTheme, files, "", 100, 0, chunk, 4)
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			for b.Loop() {
+				for i := range min(40, len(render.lines)) {
+					_ = render.lineAt(i, 8)
+				}
+			}
+		})
 	}
 }

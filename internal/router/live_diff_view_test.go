@@ -169,6 +169,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 			}
 		}
 	}()
+	centerLine := ""
 	mouseEnabled := false
 	waitFrame := func(check func(string) bool) string {
 		t.Helper()
@@ -189,6 +190,9 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 					frame := pending[:end]
 					pending = pending[end:]
 					if start := strings.LastIndex(frame, "\x1b[1;1H"); start >= 0 {
+						_, centerLine, _ = strings.Cut(frame[start:], "\x1b[23;1H\x1b[0m\x1b[2K")
+						centerLine, _, _ = strings.Cut(centerLine, "\x1b[24;1H")
+						centerLine = ansi.Strip(centerLine)
 						frame = ansi.Strip(frame[start:])
 						lastFrame = frame
 						if check(frame) {
@@ -213,6 +217,9 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 			t.Fatalf("multi-file capture omitted %q from the visible frame: %q", want, frame)
 		}
 	}
+	if !strings.Contains(centerLine, "+Temporary file two.") {
+		t.Fatalf("short diff's latest change is not centered: %q", centerLine)
+	}
 	if strings.Contains(frame, "Applied · original to latest") || strings.Contains(frame, "Δ /dev/null") {
 		t.Fatalf("redundant diff headers remain: %q", frame)
 	}
@@ -226,6 +233,20 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 		return strings.Contains(frame, "PAUSED") && strings.Contains(frame, "orary file one.") &&
 			!strings.Contains(frame, "Temporary file one.")
 	})
+	// Further movement must use fresh source slices without rebuilding geometry.
+	for _, step := range []struct{ key, suffix string }{
+		{"\x1b[C", "y file one."},
+		{"\x1b[C", "le one."},
+		{"\x1b[D", "y file one."},
+		{"\x1b[D", "orary file one."},
+	} {
+		if _, err := terminal.Write([]byte(step.key)); err != nil {
+			t.Fatal(err)
+		}
+		waitFrame(func(frame string) bool {
+			return strings.Contains(frame, "PAUSED") && strings.Contains(frame, "│+"+step.suffix)
+		})
+	}
 	if _, err := terminal.Write([]byte("\x1b[D")); err != nil {
 		t.Fatal(err)
 	}

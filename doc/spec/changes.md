@@ -213,8 +213,8 @@ recency are viewer-local; restart treats retained history as a baseline, not a n
 All files share one continuous viewport. Following is enabled initially and targets
 the latest changed rows, including those deep inside a combined hunk. It prefers the
 latest update's marked region when composed coordinates are ambiguous and centers the
-target row when file and viewport boundaries allow it. Manual scrolling or file navigation
-pauses following and preserves file-relative offsets, clamped when
+target row vertically, using blank space above short diffs when needed. Manual scrolling
+or file navigation pauses following and preserves file-relative offsets, clamped when
 content shrinks. `n`/`p` navigate files, `g`/`G` the complete view, and `r` resumes following,
 including changes received while paused. The file at the top of the viewport is current
 for `f`.
@@ -232,6 +232,8 @@ File headings and the sticky current-file header share an aligned gutter, bold t
 green `+N` and red `-N` source-line counts, and a width-filling separator. Counts describe
 the visible combined result plus prepared captures, exclude context and headers, and
 become zero when flushed. Navigation must not rescan diffs merely to update counts.
+While wrapping is unlocked, horizontal navigation must reuse prepared syntax and row
+geometry, slicing only the visible source rows instead of rebuilding the full diff.
 File actions appear once per file or prepared capture, with both rename endpoints.
 Deleted files retain their action heading and removal count, but omit source diff rows.
 Heading blocks wrap without losing actions or paths; the sticky title stays on one row.

@@ -129,6 +129,9 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 			fmt.Sprintf("@@ -%d +%d @@\n-original\n+%s\n", edit.line, edit.line, marker), true)
 		publish(fmt.Sprintf("update%d", i), []mekugi.ReviewFile{chunk.review}, true)
 		frame := waitFrame("+" + marker)
+		if got := rowText(frame, 5); !strings.Contains(got, "+"+marker) {
+			t.Fatalf("latest change is not centered: %q", got)
+		}
 		if !strings.Contains(frame, "FOLLOW") || strings.Contains(frame, "Unable to combine") {
 			t.Fatalf("update %d lost follow or composition: %q", i, frame)
 		}
@@ -169,6 +172,9 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 	frame = waitFrame("+PREPARED19")
 	if !strings.Contains(ansi.Strip(frame), "application unconfirmed") {
 		t.Fatalf("following hid the prepared caption: %q", frame)
+	}
+	if got := rowText(frame, 5); !strings.Contains(got, "+PREPARED19") {
+		t.Fatalf("prepared change is not centered: %q", got)
 	}
 	history.confirmed = true
 	if err := store.confirmChanges(t.Context(), workspace, map[string]mekugiHistory{"pending": history}); err != nil {

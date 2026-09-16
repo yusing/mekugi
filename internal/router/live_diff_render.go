@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -32,7 +33,10 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 	if sourceBytes > maxChangeReadBytes {
 		return liveDiffRender{}, errors.New("live diff source exceeds 64 MiB; use hchanges with a narrower range")
 	}
-	render := liveDiffRender{starts: make([]int, len(files)), counts: make([]liveDiffCounts, len(files))}
+	render := liveDiffRender{starts: make([]int, len(files)), counts: make([]liveDiffCounts, len(files)), width: width, theme: theme}
+	if horizontal > 0 {
+		render.panRows = make(map[int]liveDiffPanRow)
+	}
 	renderedBytes := 0
 	appendLine := func(line string, highlighted, continuation bool) error {
 		if err := ctx.Err(); err != nil {
@@ -124,6 +128,7 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 				}
 			}
 		}
+		preferFocusKey := focus.key != "" && slices.ContainsFunc(file.chunks, func(chunk liveDiffChunk) bool { return chunk.key == focus.key })
 		preferHighlighted := i == focusFile && focus.highlighted
 		for j, chunk := range file.chunks {
 			review := chunk.review
@@ -151,9 +156,6 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 				if hunkIndex == 0 {
 					hunkStart = chunkStart // Keep prepared status visible when following.
 				}
-				if i == focusFile && focus.key != "" && chunk.key == focus.key {
-					render.focusOffset, render.focusRow, bestDistance = hunkStart, hunkStart, -1
-				}
 				before, after, err := liveDiffSyntax(ctx, theme, review, hunk.Rows)
 				if err != nil {
 					return liveDiffRender{}, err
@@ -165,8 +167,9 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 					// adjacent updates. Follow the actual changed coordinate,
 					// not the start of that potentially very large hunk.
 					distance := max(newLine-1-focusLine, focusLine-(newLine-1))
-					if i == focusFile && bestDistance >= 0 &&
-						(!preferHighlighted || chunk.highlighted) &&
+					if i == focusFile &&
+						(!preferFocusKey || chunk.key == focus.key) &&
+						(preferFocusKey || !preferHighlighted || chunk.highlighted) &&
 						(distance < bestDistance ||
 							distance == bestDistance && row.Kind == '+' && bestKind != '+') {
 						render.focusRow = len(render.lines)
@@ -189,13 +192,6 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 					if width-3 < len(coordinates)+4 {
 						numbers = "" // Leave room for source in very narrow panes.
 					}
-					style := ""
-					if row.Kind == '+' {
-						style = theme.foreground(chroma.GenericInserted)
-					} else if row.Kind == '-' {
-						style = theme.foreground(chroma.GenericDeleted)
-					}
-					base := theme.foreground(chroma.NameOther)
 					// Wrap only source text; keep coordinates, change markers, and
 					// recency gutters fixed while panning through an unlocked row.
 					sourceWidth := max(1, width-4-ansi.StringWidth(numbers))
@@ -204,6 +200,9 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 					if horizontal == 0 {
 						fragments = ansi.Hardwrap(text, sourceWidth, true)
 					} else {
+						render.panRows[len(render.lines)] = liveDiffPanRow{text: text, numbers: numbers, kind: row.Kind, highlighted: chunk.highlighted}
+						// Retained source participates in the same bounded render budget.
+						renderedBytes += len(text) + len(numbers)
 						fragments = ansi.Cut(text, horizontal, horizontal+sourceWidth)
 					}
 					carry := ""
@@ -221,15 +220,7 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 						if continuation && numbers != "" {
 							prefix = "\x1b[2m" + strings.Repeat(" ", digits) + "│\x1b[22m"
 						}
-						line := prefix + style + string(row.Kind) + "\x1b[39m" + fragment
-						if background := theme.rowBackground(row.Kind); background != "" {
-							// Token resets restore a readable foreground on the fill.
-							line = strings.ReplaceAll(line, "\x1b[39m", base)
-							line = ansi.Truncate(line, max(0, width-3), "")
-							line += strings.Repeat(" ", max(0, width-3-ansi.StringWidth(line)))
-							line = background + base + line
-						}
-						line += "\x1b[0m"
+						line := liveDiffSourceLine(theme, width, prefix, fragment, row.Kind)
 						if err := appendLine(line, chunk.highlighted, continuation); err != nil {
 							return liveDiffRender{}, err
 						}
@@ -245,6 +236,44 @@ func renderLiveDiff(ctx context.Context, theme liveDiffTheme, files []liveDiffFi
 		}
 	}
 	return render, nil
+}
+
+type liveDiffPanRow struct {
+	text, numbers string
+	kind          byte
+	highlighted   bool
+}
+
+// Once wrapping is unlocked, horizontal movement changes only visible source
+// slices, not syntax, row geometry, file counts, or follow anchors.
+func (r liveDiffRender) lineAt(index, horizontal int) string {
+	row, ok := r.panRows[index]
+	if !ok {
+		return r.lines[index]
+	}
+	sourceWidth := max(1, r.width-4-ansi.StringWidth(row.numbers))
+	fragment := ansi.Cut(row.text, horizontal, horizontal+sourceWidth)
+	line := liveDiffSourceLine(r.theme, r.width, row.numbers, fragment, row.kind)
+	return ansi.Truncate(liveDiffGutter(row.highlighted, r.theme)+line, max(0, r.width-1), "")
+}
+
+func liveDiffSourceLine(theme liveDiffTheme, width int, numbers, fragment string, kind byte) string {
+	style := ""
+	if kind == '+' {
+		style = theme.foreground(chroma.GenericInserted)
+	} else if kind == '-' {
+		style = theme.foreground(chroma.GenericDeleted)
+	}
+	line := numbers + style + string(kind) + "\x1b[39m" + fragment
+	if background := theme.rowBackground(kind); background != "" {
+		// Token resets restore a readable foreground on the fill.
+		base := theme.foreground(chroma.NameOther)
+		line = strings.ReplaceAll(line, "\x1b[39m", base)
+		line = ansi.Truncate(line, max(0, width-3), "")
+		line += strings.Repeat(" ", max(0, width-3-ansi.StringWidth(line)))
+		line = background + base + line
+	}
+	return line + "\x1b[0m"
 }
 
 // Tokenise the two sides separately so deleted text cannot change the syntax

@@ -356,13 +356,16 @@ type liveDiffCounts struct {
 }
 
 type liveDiffRender struct {
+	panRows       map[int]liveDiffPanRow // Unwrapped source retained for viewport-only panning.
+	width         int
+	theme         liveDiffTheme
 	lines         []string
 	starts        []int
 	rowStarts     []int // First display row of each logical row, including chrome.
 	maxHorizontal int
 	counts        []liveDiffCounts
 	focusOffset   int // Hunk/context anchor retained while locating the target.
-	focusRow      int // Latest changed row to center when viewport boundaries allow it.
+	focusRow      int // Latest changed row to center in the viewport.
 }
 
 func (r liveDiffRender) followOffset(rows int) int {
@@ -563,7 +566,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		}
 		focus := view.latestChunk()
 		focus.snapshotOrder = 0 // Snapshot numbering does not change a capture's geometry.
-		if !reflect.DeepEqual(rendered, files) || renderedFocus != focus || renderedFocusFile != focusFile || width != lastWidth || view.horizontal != lastHorizontal || theme != renderedTheme {
+		if !reflect.DeepEqual(rendered, files) || renderedFocus != focus || renderedFocusFile != focusFile || width != lastWidth || (view.horizontal == 0) != (lastHorizontal == 0) || theme != renderedTheme {
 			previous := rendering
 			rendering, e = renderLiveDiff(ctx, theme, files, workspace, width, focusFile, focus, view.horizontal)
 			if e != nil {
@@ -591,8 +594,13 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			}
 			offset = start + min(view.scroll[view.files[view.selected].key()], max(0, end-start-1))
 		}
+		leadingRows := 0
 		if view.following {
 			offset = rendering.followOffset(rows)
+			if len(lines) > 0 {
+				// Blank space above short diffs keeps the target centered too.
+				leadingRows = max(0, rows/2-(rendering.focusRow-offset))
+			}
 		}
 		// A flushed/reverted last file has an empty span at EOF. Normalize the
 		// actual viewport offset too, not only scrollTo's selection argument.
@@ -640,8 +648,8 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			writeRow(1, header)
 			for row := range rows {
 				text := ""
-				if offset+row < len(lines) {
-					text = lines[offset+row]
+				if index := offset + row - leadingRows; index >= 0 && index < len(lines) {
+					text = rendering.lineAt(index, view.horizontal)
 				}
 				writeRow(row+2, text)
 			}
