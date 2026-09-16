@@ -109,8 +109,34 @@ func TestLiveDiffFollowCentersLatestRow(t *testing.T) {
 	}
 	const rows = 18
 	offset := render.followOffset(rows)
+	center := ansi.Strip(render.lines[offset+rows/2])
+	if !strings.Contains(center, "▎") || !strings.Contains(center, "+LATEST50") {
+		t.Fatalf("center is not the latest highlighted change: %q", center)
+	}
+	for _, index := range []int{offset, offset + rows - 1} {
+		if text := ansi.Strip(render.lines[index]); !strings.Contains(text, "content") {
+			t.Fatalf("available surrounding context is missing at row %d: %q", index, text)
+		}
+	}
 	if position := render.focusRow - offset; position != rows/2 {
 		t.Fatalf("latest row position = %d, want centered position %d", position, rows/2)
+	}
+}
+
+func TestLiveDiffFollowShortViewStartsAtAvailableContext(t *testing.T) {
+	chunk := liveDiffHighlightChunk("edit", "file.txt",
+		"@@ -1,3 +1,3 @@\n before\n-old\n+LATEST\n after\n", true)
+	chunk.highlighted = true
+	render, err := renderLiveDiff(t.Context(), liveDiffTerminalTheme,
+		[]liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if offset := render.followOffset(40); offset != 0 {
+		t.Fatalf("short view offset = %d, want available context from the top", offset)
+	}
+	if got := ansi.Strip(render.lines[render.focusRow]); !strings.Contains(got, "+LATEST") {
+		t.Fatalf("focus is not the highlighted change: %q", got)
 	}
 }
 

@@ -615,13 +615,8 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			}
 			offset = start + min(view.scroll[view.files[view.selected].key()], max(0, end-start-1))
 		}
-		leadingRows := 0
 		if view.following {
 			offset = rendering.followOffset(rows)
-			if len(lines) > 0 {
-				// Blank space above short diffs keeps the target centered too.
-				leadingRows = max(0, rows/2-(rendering.focusRow-offset))
-			}
 		}
 		// A flushed/reverted last file has an empty span at EOF. Normalize the
 		// actual viewport offset too, not only scrollTo's selection argument.
@@ -669,7 +664,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			writeRow(1, header)
 			for row := range rows {
 				text := ""
-				if index := offset + row - leadingRows; index >= 0 && index < len(lines) {
+				if index := offset + row; index < len(lines) {
 					text = rendering.lineAt(index, view.horizontal)
 				}
 				writeRow(row+2, text)

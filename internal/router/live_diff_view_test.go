@@ -169,7 +169,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 			}
 		}
 	}()
-	centerLine := ""
+	topLine := ""
 	mouseEnabled := false
 	waitFrame := func(check func(string) bool) string {
 		t.Helper()
@@ -190,9 +190,9 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 					frame := pending[:end]
 					pending = pending[end:]
 					if start := strings.LastIndex(frame, "\x1b[1;1H"); start >= 0 {
-						_, centerLine, _ = strings.Cut(frame[start:], "\x1b[23;1H\x1b[0m\x1b[2K")
-						centerLine, _, _ = strings.Cut(centerLine, "\x1b[24;1H")
-						centerLine = ansi.Strip(centerLine)
+						_, topLine, _ = strings.Cut(frame[start:], "\x1b[2;1H\x1b[0m\x1b[2K")
+						topLine, _, _ = strings.Cut(topLine, "\x1b[3;1H")
+						topLine = ansi.Strip(topLine)
 						frame = ansi.Strip(frame[start:])
 						lastFrame = frame
 						if check(frame) {
@@ -217,8 +217,8 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 			t.Fatalf("multi-file capture omitted %q from the visible frame: %q", want, frame)
 		}
 	}
-	if !strings.Contains(centerLine, "+Temporary file two.") {
-		t.Fatalf("short diff's latest change is not centered: %q", centerLine)
+	if !strings.Contains(topLine, "first.txt") {
+		t.Fatalf("short diff should start with available context, not top padding: %q", topLine)
 	}
 	if strings.Contains(frame, "Applied · original to latest") || strings.Contains(frame, "Δ /dev/null") {
 		t.Fatalf("redundant diff headers remain: %q", frame)
