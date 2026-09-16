@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strconv"
@@ -25,6 +26,7 @@ type liveDiffPreviewPane struct {
 	rendered liveDiffPreview
 	file     int
 	focus    int
+	renderer liveDiffRenderer
 	source   []liveDiffPreviewRow
 }
 
@@ -122,7 +124,7 @@ func liveDiffPreviewFocus(before, after []liveDiffPreviewRow) int {
 
 func (p *liveDiffPreviewPane) prepare() error {
 	current := p.current
-	if p.rendered.ID == current.ID && slices.Equal(p.rendered.Files, current.Files) {
+	if p.rendered.ID == current.ID && p.rendered.Input == current.Input && slices.Equal(p.rendered.Files, current.Files) {
 		return nil
 	}
 	file := min(p.file, max(0, len(current.Files)-1))
@@ -133,6 +135,11 @@ func (p *liveDiffPreviewPane) prepare() error {
 	}
 	var source []liveDiffPreviewRow
 	var err error
+	if current.Input != "" {
+		for i, line := range strings.Split(strings.TrimSuffix(current.Input, "\n"), "\n") {
+			source = append(source, liveDiffPreviewRow{i + 1, ' ', line + "\n"})
+		}
+	}
 	if len(current.Files) > 0 {
 		source, err = liveDiffPreviewRows(current.Files[file])
 		if err != nil {
@@ -144,20 +151,29 @@ func (p *liveDiffPreviewPane) prepare() error {
 		before = nil
 	}
 	p.focus = liveDiffPreviewFocus(before, source)
+	if current.Input != "" {
+		p.focus = max(0, len(source)-1)
+	}
 	p.file, p.source, p.rendered = file, source, current
 	return nil
 }
 
-// Render only the fixed visible region. Full-hunk syntax lexing and captured
-// history composition are intentionally absent from this high-frequency path.
-func (p *liveDiffPreviewPane) render(workspace string, theme liveDiffTheme, width, height int) ([]string, error) {
+// Render and color only a bounded source window around the streaming tip.
+// Captured history composition stays out of this high-frequency path.
+func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, theme liveDiffTheme, width, height int) ([]string, error) {
 	if height <= 0 || p.current.ID == "" {
 		return nil, nil
 	}
 	if err := p.prepare(); err != nil {
 		return nil, err
 	}
-	title := "STREAMING PREVIEW · not validated or applied"
+	title := "STREAMING PREVIEW"
+	if p.current.Input != "" {
+		title = "STREAMING SCRIPT"
+		if p.current.Truncated {
+			title += " · tail"
+		}
+	}
 	if !p.hideAt.IsZero() {
 		title = "STREAMING COMPLETE"
 	}
@@ -179,37 +195,84 @@ func (p *liveDiffPreviewPane) render(workspace string, theme liveDiffTheme, widt
 		return lines, nil
 	}
 	digits := len(strconv.Itoa(p.source[len(p.source)-1].number))
-	// Keep the growing row visible, including its final wrapped fragment.
-	// End at the focus itself: wrapped trailing context must never consume
-	// the region before the changed row gets any space.
-	end := min(len(p.source), p.focus+1)
-	var visible [][]string
-	count := 0
-	for i := end - 1; i >= 0 && count < rows; i-- {
+	numberWidth := digits + 1
+	if width-3 < digits+4 {
+		numberWidth = 0
+	}
+	sourceWidth := max(1, width-4-numberWidth)
+	fragmentsAt := func(i int) int {
+		text := liveDiffSafe(strings.TrimSuffix(p.source[i].text, "\n"), false)
+		return strings.Count(ansi.Hardwrap(text, sourceWidth, true), "\n") + 1
+	}
+	// Reserve the center for the tip's last wrapped fragment before admitting
+	// trailing context. Near the beginning, show available context without padding.
+	start, skip, count := p.focus, 0, 0
+	for i := p.focus; i >= 0 && count < rows/2+1; i-- {
+		n := fragmentsAt(i)
+		start = i
+		skip = max(0, n-(rows/2+1-count))
+		count += n - skip
+	}
+	end := p.focus + 1
+	for end < len(p.source) && count < rows {
+		count += fragmentsAt(end)
+		end++
+	}
+	// A little leading context improves multiline token state without lexing
+	// a growing whole file on every frame.
+	colorStart := max(0, start-32)
+	source := make([]mekugi.ReviewRow, 0, end-colorStart)
+	for _, row := range p.source[colorStart:end] {
+		source = append(source, mekugi.ReviewRow{Kind: row.kind, Text: row.text})
+	}
+	review := mekugi.ReviewFile{BeforePath: "stream.sh", AfterPath: "stream.sh"}
+	if len(p.current.Files) > 0 {
+		review = p.current.Files[p.file]
+	}
+	before, after, err := p.renderer.colorHunk(ctx, theme, review, source)
+	if err != nil {
+		return nil, err
+	}
+	oldIndex, newIndex := 0, 0
+	for i := colorStart; i < end && len(lines) <= rows; i++ {
 		row := p.source[i]
-		numbers := fmt.Sprintf("\x1b[2m%*d│\x1b[22m", digits, row.number)
-		if width-3 < digits+4 {
-			numbers = ""
+		text := ""
+		if row.kind != '+' {
+			text = before[oldIndex]
+			oldIndex++
 		}
-		sourceWidth := max(1, width-4-ansi.StringWidth(numbers))
-		text := liveDiffSafe(strings.TrimSuffix(row.text, "\n"), false)
-		fragments := strings.Split(ansi.Hardwrap(text, sourceWidth, true), "\n")
-		// Only retain visible fragments of a long source row.
-		start := max(0, len(fragments)-(rows-count))
-		var rendered []string
-		for n := start; n < len(fragments); n++ {
+		if row.kind != '-' {
+			text = after[newIndex]
+			newIndex++
+		}
+		if i < start {
+			continue
+		}
+		numbers := ""
+		if numberWidth > 0 {
+			numbers = fmt.Sprintf("\x1b[2m%*d│\x1b[22m", digits, row.number)
+		}
+		carry := ""
+		for n, fragment := range strings.Split(ansi.Hardwrap(text, sourceWidth, true), "\n") {
+			fragment = carry + fragment
+			if at := strings.LastIndex(fragment, "\x1b["); at >= 0 {
+				if end := strings.IndexByte(fragment[at:], 'm'); end >= 0 {
+					carry = fragment[at : at+end+1]
+				}
+			}
+			if i == start && n < skip {
+				continue
+			}
+			if len(lines) > rows {
+				break
+			}
 			prefix := numbers
 			if n > 0 && numbers != "" {
 				prefix = "\x1b[2m" + strings.Repeat(" ", digits) + "│\x1b[22m"
 			}
-			line := liveDiffGutter(i == p.focus, theme) + liveDiffSourceLine(theme, width, prefix, fragments[n], row.kind)
-			rendered = append(rendered, ansi.Truncate(line, max(0, width-1), ""))
+			line := liveDiffGutter(i == p.focus, theme) + liveDiffSourceLine(theme, width, prefix, fragment, row.kind)
+			lines = append(lines, ansi.Truncate(line, max(0, width-1), ""))
 		}
-		count += len(rendered)
-		visible = append(visible, rendered)
-	}
-	for i := len(visible) - 1; i >= 0; i-- {
-		lines = append(lines, visible[i]...)
 	}
 	return lines, nil
 }

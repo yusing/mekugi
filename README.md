@@ -591,19 +591,22 @@ Redirected input/output does not open a pane.
 The view combines edits across files, excluding Git and shell changes. Streaming
 previews are provisional, not validated or applied. They appear in a separate,
 non-scrollable region: 30% of the body remains for captured diffs and 70% shows the
-stream. It follows the newest streamed row independently of diff scrolling, then
+stream. It centers the newest changed row independently of diff scrolling, then
 hides 300 ms after completion or interruption and restores the full diff height.
 Complete edits enter the captured diff. Prepared
 edits remain labeled as unconfirmed until application is reported. Cyan markers
 identify the latest update; reconnecting or unavailable means live updates are interrupted.
 
-Streaming uses change colors without syntax lexing and skips superseded frames to
-stay responsive. Scrolling and flush controls affect only the captured diff.
+Streaming highlights syntax around the visible rows and skips superseded frames to
+stay responsive. Incomplete targets keep the last useful preview instead of flashing
+an error. Scrolling and flush controls affect only the captured diff.
 
-Previewing stops at shell or recovery boundaries and skips private retained scripts.
-Large previews show an unavailable message; normal edit execution is unaffected.
+At shell or recovery boundaries, the preview shows the streamed script rather than
+guessing its effects on files. Long scripts show their tail. Private retained files
+are not read for previews. Display limits never block normal edit execution.
 
-Captured-diff syntax colors include function calls, built-ins, and operators where
+Captured diffs also center the final changed row, including the end of a long new
+file or wrapped replacement. Syntax colors include function calls, built-ins, and operators where
 the language lexer recognizes them. The viewer automatically selects a light or dark palette
 from the terminal's background reply, with green/red backgrounds for added/removed
 rows and one line-number column. Context keeps your existing background. If the

@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi"
 )
 
 // The UI harness consumes complete terminal frames, not publication callbacks.
@@ -252,4 +255,100 @@ func TestLiveDiffSimulationTerminalReplay(t *testing.T) {
 			t.Fatalf("simulation left temporary state: %v %v", entries, err)
 		}
 	}
+}
+
+func TestLiveDiffTerminalPreviewKeepsUsefulFrameAndStreamsMixedInput(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "file.go"), []byte("package old\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
+	})
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22, "COLORFGBG=15;0")
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
+	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
+	t.Cleanup(worker.stop)
+	worker.appendDelta("in file.go\ntype \"old\" \"main\"\n")
+	frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "+package main") })
+	if !strings.Contains(frame, liveDiffDarkTheme.foreground(chroma.KeywordNamespace)+"package") {
+		t.Fatalf("terminal preview lacks Go syntax color: %q", frame)
+	}
+	if strings.Contains(frame, "validated or applied") {
+		t.Fatal("redundant disclaimer still rendered")
+	}
+	// The unfinished target cannot resolve. The old worker erased the good
+	// preview and emitted PREVIEW UNAVAILABLE at this point.
+	worker.appendDelta("type \"pack")
+	time.Sleep(150 * time.Millisecond)
+	ui.write(t, "z")
+	frame = ui.frame(t, func(frame string) bool {
+		return strings.Contains(ansi.Strip(frame), "+package main") || strings.Contains(frame, "UNAVAILABLE")
+	})
+	if strings.Contains(frame, "UNAVAILABLE") {
+		t.Fatalf("unfinished target erased useful source: %q", frame)
+	}
+	worker.appendDelta("age\" \"package\"\nshell <<SHELL\nprintf 'SHELL_TIP")
+	ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "SHELL_TIP")
+	})
+	worker.appendDelta("'\nSHELL\nnew after.go\ntype <<PATCH\npackage after\n")
+	ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "package after")
+	})
+	if _, err := os.Stat(filepath.Join(workspace, "after.go")); !os.IsNotExist(err) {
+		t.Fatal("streamed shell suffix was executed")
+	}
+	worker.stop()
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING COMPLETE") })
+	ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
+	ui.quit(t)
+}
+
+func TestLiveDiffTerminalCentersFinalRowAfterPreview(t *testing.T) {
+	workspace := t.TempDir()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
+	})
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
+	preview := previewViewFixture("creation", 100)
+	preview.Workspace = workspace
+	broker.publishPreview(preview, false)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING PREVIEW") })
+	id, err := store.reserveChange(t.Context(), workspace, "thread", "create")
+	if err != nil {
+		t.Fatal(err)
+	}
+	diff := "@@ -0,0 +1,100 @@\n" + strings.Repeat("+earlier\n", 99) + "+FINAL_CHANGED_ROW\n"
+	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"create": {
+		ChangeID: id, CorrelationID: "create", Applied: true,
+		ReviewFiles: []mekugi.ReviewFile{{AfterPath: filepath.Join(workspace, "new.go"), Diff: diff}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	frame := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FINAL_CHANGED_ROW") })
+	// Six captured rows while preview is visible: the tip belongs at row 5.
+	if !strings.Contains(liveDiffFrameRow(frame, 5), "FINAL_CHANGED_ROW") {
+		t.Fatalf("split viewport did not center final change: %q", frame)
+	}
+	broker.publishPreview(liveDiffPreview{ID: preview.ID}, true)
+	frame = ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
+	if !strings.Contains(liveDiffFrameRow(frame, 12), "FINAL_CHANGED_ROW") {
+		t.Fatalf("restored viewport did not center final change: %q", frame)
+	}
+	ui.height = 12
+	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 12, Cols: 60}); err != nil {
+		t.Fatal(err)
+	}
+	frame = ui.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 7), "FINAL_CHANGED_ROW") })
+	ui.quit(t)
 }

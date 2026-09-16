@@ -191,8 +191,8 @@ receipts. They occupy a dedicated, non-scrollable region below captured diffs. W
 visible, the body has a fixed 3:7 captured-diff-to-preview height split; the preview
 heading is inside its allocation. Keyboard navigation, flushing,
 and wheel input in the captured-diff region affect only captured diffs. Wheel input
-in the preview region is ignored. Streaming always follows the newest changed source
-row and its final wrapped fragment, independently of captured-diff follow/pause state.
+in the preview region is ignored. Streaming centers the newest changed source
+row's final wrapped fragment, independently of captured-diff follow/pause state.
 
 Completion, rejection, interruption, or transform closure ends the live preview. The
 last frame remains for 300 ms, then the region disappears and captured diffs regain
@@ -208,15 +208,21 @@ completion cancels in-flight projection output. The viewer consumes queued
 snapshots before painting and limits preview paints to a 33 ms frame cadence, keeping
 only the latest snapshot rather than playing back intermediate frames. Preview updates
 do not recompose or syntax-render captured history. Preview rendering lays out only
-visible source rows, with change colors but without full-source syntax lexing.
+visible source rows and a bounded leading context window for best-effort syntax
+highlighting. Unchanged source windows reuse syntax decoration. The heading identifies
+streaming without repeating validation disclaimers. Incomplete targets and transient
+projection failures retain the last useful preview rather than replacing it with an
+unavailable frame; the completed call owns rejection diagnostics.
 Scope expansions precede their authorized previews even when snapshot updates are
 coalesced separately from durable events.
 
 Input and total source/result are bounded to 256 KiB per preview, target expansion
 to 1,024 mutations, and retained display payloads to 48 KiB each across at most 16
-active previews. Capacity or target failures do not block complete edits. Projection stops at shell or recovery
-boundaries and excludes private retained scripts; it does not guess the state after
-a shell command.
+active previews. Capacity or target failures do not block complete edits. File projection
+stops at shell or recovery boundaries; the remaining streamed input is shown separately
+as script source, with a labeled tail when clipped. It never guesses post-shell file
+state or reads private retained scripts. Oversized file projections retain the last
+useful frame when one exists.
 
 ### Update integrity
 
@@ -261,9 +267,9 @@ recency are viewer-local; restart treats retained history as a baseline, not a n
 ### Navigation and display
 
 All files share one continuous viewport. Following is enabled initially and targets
-the latest changed rows, including those deep inside a combined hunk. It prefers the
+the final changed row, including those deep inside a combined hunk or long new file. It prefers the
 latest update's marked region when composed coordinates are ambiguous and centers the
-target row vertically so available context appears above and below it. At the start
+target row's final wrapped fragment vertically so available context appears above and below it. At the start
 of the view, show available rows from the top instead of inserting blank padding.
 Manual scrolling or file navigation pauses following and preserves file-relative
 offsets, clamped when content shrinks. `n`/`p` navigate files, `g`/`G` the complete view,

@@ -700,3 +700,17 @@ func TestLiveDiffExpandedScopeBeforePreviewOnDelayedTransport(t *testing.T) {
 		t.Fatal("preview was not delivered")
 	}
 }
+
+func TestLiveDiffPreviewScriptPayloadBound(t *testing.T) {
+	broker := newLiveDiffBroker(t.Context())
+	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{"/workspace": {"thread": true}}})
+	broker.publishPreview(liveDiffPreview{ID: "large-script", Workspace: "/workspace", Thread: "thread",
+		Input: strings.Repeat("界\n", 50000) + "TAIL"}, false)
+	broker.mu.Lock()
+	preview := broker.previews["large-script"]
+	broker.mu.Unlock()
+	if !preview.Truncated || len(mustMarshalJSON(preview)) > 48<<10 ||
+		!strings.HasSuffix(preview.Input, "TAIL") || strings.Contains(preview.Status, "UNAVAILABLE") {
+		t.Fatalf("script tail was not retained within the display bound: bytes=%d", len(mustMarshalJSON(preview)))
+	}
+}

@@ -675,7 +675,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 				}
 				writeRow(row+2, text)
 			}
-			previewLines, err := previewPane.render(workspace, theme, width, previewRows)
+			previewLines, err := previewPane.render(ctx, workspace, theme, width, previewRows)
 			if err != nil {
 				return err
 			}

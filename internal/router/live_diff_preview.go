@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/yusing/mekugi"
 )
@@ -16,6 +17,8 @@ type liveDiffPreview struct {
 	Workspace string
 	Thread    string
 	Files     []mekugi.ReviewFile
+	Input     string // Unprojected script after a shell/recovery boundary.
+	Truncated bool
 	Status    string
 }
 
@@ -126,21 +129,24 @@ func (w *liveDiffPreviewWorker) run() {
 		input := w.input.String()
 		w.mu.Unlock()
 		ctx, cancel := context.WithTimeout(w.ctx, time.Second)
-		files, err := mekugi.PreviewForHostAt(ctx, w.preview.Workspace, input)
+		projection, err := mekugi.PreviewScriptForHostAt(ctx, w.preview.Workspace, input)
 		cancel()
 		w.mu.Lock()
 		// One projection is in flight, with only the latest input sampled next.
 		// New deltas must not starve visible progress; completion cancels output.
-		if !w.closed && w.ctx.Err() == nil {
+		if !w.closed && w.ctx.Err() == nil && err == nil && (len(projection.Files) > 0 || projection.PendingInput != "") {
 			preview := w.preview
-			preview.Files = files
-			preview.Status = "STREAMING PREVIEW · not validated or applied"
-			if err != nil {
+			preview.Files, preview.Input = projection.Files, projection.PendingInput
+			preview.Status = "STREAMING PREVIEW"
+			if preview.Input != "" {
+				// Shell effects have not happened. Show the actual streamed input,
+				// not a guessed post-shell diff or a frozen earlier edit.
 				preview.Files = nil
-				preview.Status = "PREVIEW UNAVAILABLE: " + err.Error()
 			}
 			w.broker.publishPreview(preview, false)
 		}
+		// A partial target or command may not resolve yet. Leave the last useful
+		// snapshot visible; the completed tool call owns rejection diagnostics.
 		w.mu.Unlock()
 	}
 }
@@ -163,7 +169,20 @@ func (b *liveDiffBroker) publishPreview(preview liveDiffPreview, remove bool) {
 		return
 	}
 	// Bound retained preview payloads independently of durable edit evidence.
+	for preview.Input != "" && len(mustMarshalJSON(preview)) > 48<<10 {
+		preview.Input = preview.Input[len(preview.Input)/2:]
+		for len(preview.Input) > 0 && !utf8.RuneStart(preview.Input[0]) {
+			preview.Input = preview.Input[1:]
+		}
+		preview.Truncated = true
+	}
+	if preview.Truncated {
+		preview.Input = strings.Clone(preview.Input)
+	}
 	if len(mustMarshalJSON(preview)) > 48<<10 {
+		if _, exists := b.previews[preview.ID]; exists {
+			return // Keep the last useful frame instead of flickering to an error.
+		}
 		preview.Files = nil
 		preview.Status = "PREVIEW UNAVAILABLE: diff exceeds 48 KiB"
 	}

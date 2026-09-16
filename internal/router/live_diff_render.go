@@ -102,10 +102,20 @@ func (r *liveDiffRenderer) render(ctx context.Context, theme liveDiffTheme, file
 	if err != nil {
 		return liveDiffRender{}, err
 	}
-	var bestKind byte
+	var bestKind, focusKind byte
 	focusLine, bestDistance := 0, int(^uint(0)>>1)
-	if len(focusHunks) > 0 {
-		focusLine = focusHunks[len(focusHunks)-1].ChangedStart
+	// Follow the final changed row, not the first row of a large replacement
+	// or creation. Context after the change must not move the anchor.
+	for _, hunk := range focusHunks {
+		line := hunk.AfterStart
+		for _, row := range hunk.Rows {
+			if row.Kind != ' ' {
+				focusLine, focusKind = line, row.Kind
+			}
+			if row.Kind != '-' {
+				line++
+			}
+		}
 	}
 	fileCount := 0
 	for _, file := range files {
@@ -221,13 +231,12 @@ func (r *liveDiffRenderer) render(ctx context.Context, theme liveDiffTheme, file
 					// adjacent updates. Follow the actual changed coordinate,
 					// not the start of that potentially very large hunk.
 					distance := max(newLine-1-focusLine, focusLine-(newLine-1))
-					if i == focusFile &&
+					isFocus := i == focusFile &&
 						(!preferFocusKey || chunk.key == focus.key) &&
 						(preferFocusKey || !preferHighlighted || chunk.highlighted) &&
 						(distance < bestDistance ||
-							distance == bestDistance && row.Kind == '+' && bestKind != '+') {
-						render.focusRow = len(render.lines)
-						render.focusOffset = max(hunkStart, render.focusRow-3)
+							distance == bestDistance && row.Kind == focusKind && (bestKind != focusKind || focusKind == '-'))
+					if isFocus {
 						bestDistance, bestKind = distance, row.Kind
 					}
 					number, text := "", ""
@@ -267,6 +276,10 @@ func (r *liveDiffRenderer) render(ctx context.Context, theme liveDiffTheme, file
 							return liveDiffRender{}, err
 						}
 						continuation = true
+					}
+					if isFocus {
+						render.focusRow = len(render.lines) - 1
+						render.focusOffset = max(hunkStart, render.focusRow-3)
 					}
 					if !strings.HasSuffix(row.Text, "\n") {
 						if err := appendLine("\x1b[2m\\ No newline at end of file\x1b[22m", chunk.highlighted, false); err != nil {

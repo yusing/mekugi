@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
 )
@@ -26,7 +27,7 @@ func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 	var pane liveDiffPreviewPane
 	for _, size := range []int{2, 30, 300, 2000} {
 		pane.update(previewViewFixture("one", size), now)
-		lines, err := pane.render("/workspace", liveDiffDarkTheme, 70, 12)
+		lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 70, 12)
 		if err != nil || len(lines) > 12 || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), fmt.Sprintf("+stream_%04d", size)) {
 			t.Fatalf("stream tip %d escaped region: %v %q", size, err, lines)
 		}
@@ -38,7 +39,7 @@ func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 	if pane.expire(now.Add(liveDiffPreviewHideDelay - time.Nanosecond)) {
 		t.Fatal("preview hid before its hold delay")
 	}
-	lines, err := pane.render("/workspace", liveDiffDarkTheme, 70, 12)
+	lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 70, 12)
 	if err != nil || !strings.Contains(lines[0], "STREAMING COMPLETE") {
 		t.Fatalf("missing completion hold: %v %q", err, lines)
 	}
@@ -62,13 +63,13 @@ func TestLiveDiffPreviewPaneLatestOnlyAndIndependent(t *testing.T) {
 	if pane.source != nil || pane.rendered.ID != "" {
 		t.Fatal("queued snapshots performed rendering")
 	}
-	lines, err := pane.render("/workspace", liveDiffLightTheme, 80, 10)
+	lines, err := pane.render(t.Context(), "/workspace", liveDiffLightTheme, 80, 10)
 	if err != nil || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "+stream_0500") {
 		t.Fatalf("rendered stale queued snapshot: %v %q", err, lines)
 	}
 	source := pane.source
 	// Repaints (including captured-diff navigation) do not parse source again.
-	_, err = pane.render("/workspace", liveDiffLightTheme, 80, 10)
+	_, err = pane.render(t.Context(), "/workspace", liveDiffLightTheme, 80, 10)
 	if err != nil || &source[0] != &pane.source[0] {
 		t.Fatal("unchanged preview rebuilt its source")
 	}
@@ -97,7 +98,7 @@ func TestLiveDiffPreviewLayoutAndWrapping(t *testing.T) {
 	preview.Files[0].Diff = "--- /dev/null\n+++ stream.go\n@@ -0,0 +1 @@\n+" + strings.Repeat("界", 100) + "TIP\n"
 	pane.update(preview, time.Time{})
 	for _, width := range []int{4, 10, 40, 120} {
-		lines, err := pane.render("/workspace", liveDiffDarkTheme, width, 8)
+		lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, width, 8)
 		if err != nil || len(lines) > 8 {
 			t.Fatalf("render at width %d: %v", width, err)
 		}
@@ -121,9 +122,9 @@ func TestLiveDiffPreviewFocusIgnoresTrailingContext(t *testing.T) {
 	// A repeated snapshot must not move focus, because prepare reuses it.
 	var pane liveDiffPreviewPane
 	pane.update(previewViewFixture("one", 30), time.Time{})
-	first, _ := pane.render("/workspace", liveDiffDarkTheme, 80, 8)
+	first, _ := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 80, 8)
 	pane.update(previewViewFixture("one", 30), time.Time{})
-	second, _ := pane.render("/workspace", liveDiffDarkTheme, 80, 8)
+	second, _ := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 80, 8)
 	if !slices.Equal(first, second) {
 		t.Fatal("identical snapshot moved the viewport")
 	}
@@ -132,12 +133,18 @@ func TestLiveDiffPreviewFocusIgnoresTrailingContext(t *testing.T) {
 func BenchmarkLiveDiffPreviewPaneFrame(b *testing.B) {
 	preview := previewViewFixture("one", 2000)
 	var pane liveDiffPreviewPane
+	base := preview.Files[0]
+	sequence := 0
 	b.ReportAllocs()
 	for b.Loop() {
-		// Changing snapshots exercise parsing too, rather than only cache hits.
-		pane.rendered = liveDiffPreview{}
-		pane.update(preview, time.Time{})
-		if _, err := pane.render("/workspace", liveDiffDarkTheme, 120, 28); err != nil {
+		// Change the actual source so syntax work cannot hide behind cache hits.
+		sequence++
+		next := preview
+		file := base
+		file.Diff = strings.Replace(base.Diff, "stream_2000", fmt.Sprintf("stream_tip_%d", sequence), 1)
+		next.Files = []mekugi.ReviewFile{file}
+		pane.update(next, time.Time{})
+		if _, err := pane.render(b.Context(), "/workspace", liveDiffDarkTheme, 120, 28); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -161,7 +168,7 @@ func BenchmarkLiveDiffStreamingRender(b *testing.B) {
 		for b.Loop() {
 			pane.rendered = liveDiffPreview{}
 			pane.update(preview, time.Time{})
-			if _, err := pane.render("/workspace", liveDiffDarkTheme, 120, 28); err != nil {
+			if _, err := pane.render(b.Context(), "/workspace", liveDiffDarkTheme, 120, 28); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -179,9 +186,46 @@ func TestLiveDiffPreviewFollowReservesSpaceBeforeWrappedContext(t *testing.T) {
 	var pane liveDiffPreviewPane
 	pane.update(preview, time.Time{})
 	for _, width := range []int{100, 40, 20} {
-		lines, err := pane.render("/workspace", liveDiffDarkTheme, width, 8)
+		lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, width, 8)
 		if err != nil || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "STREAM_TIP") {
 			t.Fatalf("wrapped context hid the focus at width %d: %v %q", width, err, lines)
 		}
+	}
+}
+
+func TestLiveDiffPreviewSyntaxAndCenteredTip(t *testing.T) {
+	preview := previewViewFixture("colored", 50)
+	preview.Files[0].Diff = strings.Replace(preview.Files[0].Diff, "+stream_0050", "+return \"STREAM_TIP\"", 1)
+	var pane liveDiffPreviewPane
+	pane.update(preview, time.Time{})
+	for _, theme := range []liveDiffTheme{liveDiffDarkTheme, liveDiffLightTheme} {
+		lines, err := pane.render(t.Context(), "/workspace", theme, 70, 12)
+		if err != nil {
+			t.Fatal(err)
+		}
+		center := lines[1+(12-1)/2]
+		if !strings.Contains(ansi.Strip(center), "STREAM_TIP") ||
+			!strings.Contains(center, theme.foreground(chroma.Keyword)+"return") ||
+			!strings.Contains(center, theme.foreground(chroma.LiteralString)) {
+			t.Fatalf("tip not centered and colored: %q", center)
+		}
+		if strings.Contains(lines[0], "validated") || strings.Contains(lines[0], "applied") {
+			t.Fatal("preview title contains redundant disclaimer")
+		}
+	}
+}
+
+func TestLiveDiffPreviewRawScript(t *testing.T) {
+	var pane liveDiffPreviewPane
+	preview := liveDiffPreview{ID: "mixed", Workspace: "/workspace", Thread: "thread",
+		Input: "shell printf 'before'\nnew after.go\ntype <<PATCH\npackage main\n"}
+	pane.update(preview, time.Time{})
+	lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 70, 12)
+	text := ansi.Strip(strings.Join(lines, "\n"))
+	if err != nil || !strings.Contains(text, "STREAMING SCRIPT") || !strings.Contains(text, "package main") {
+		t.Fatalf("missing mixed-script tail: %q, %v", text, err)
+	}
+	if strings.Contains(text, "stream.sh") || strings.Contains(text, "PREVIEW UNAVAILABLE") {
+		t.Fatalf("raw script pretends to be a projected file: %q", text)
 	}
 }

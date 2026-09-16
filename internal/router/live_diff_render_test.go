@@ -161,7 +161,7 @@ func TestLiveDiffFollowPrefersLatestHighlightedRegion(t *testing.T) {
 	}
 }
 
-func TestLiveDiffNativeFollowKeepsPreparedCaption(t *testing.T) {
+func TestLiveDiffNativeFollowCentersPreparedTip(t *testing.T) {
 	diff := "--- /dev/null\n+++ file.txt\n@@ -0,0 +1,40 @@\n" + strings.Repeat("+content\n", 40)
 	chunk := liveDiffChunk{
 		key: "latest", status: "hp_a1 prepared (application unconfirmed)",
@@ -172,10 +172,15 @@ func TestLiveDiffNativeFollowKeepsPreparedCaption(t *testing.T) {
 		t.Fatal(err)
 	}
 	const rows = 18
-	offset := min(render.focusOffset, max(0, len(render.lines)-rows))
-	viewport := ansi.Strip(strings.Join(render.lines[offset:offset+rows], "\n"))
-	if !strings.Contains(viewport, chunk.status) || !strings.Contains(viewport, "New file") || !strings.Contains(viewport, "+content") {
-		t.Fatalf("following hid application uncertainty: %q", viewport)
+	offset := render.followOffset(rows)
+	if render.focusRow-offset != rows/2 || render.focusRow != len(render.lines)-1 {
+		t.Fatal("prepared new file did not center its final source row")
+	}
+	// Status remains available in the captured document, but must not pin
+	// follow to the top of a long creation.
+	document := ansi.Strip(strings.Join(render.lines, "\n"))
+	if !strings.Contains(document, chunk.status) || !strings.Contains(document, "New file") {
+		t.Fatal("prepared metadata disappeared")
 	}
 }
 
@@ -315,5 +320,27 @@ func TestLiveDiffHiddenFilesKeepNavigationAndHistory(t *testing.T) {
 	}
 	if len(view.files) != 5 {
 		t.Fatal("presentation discarded retained history")
+	}
+}
+
+func TestLiveDiffFollowFinalChangedRowAndFragment(t *testing.T) {
+	for _, diff := range []string{
+		"@@ -0,0 +1,40 @@\n" + strings.Repeat("+earlier\n", 39) + "+" + strings.Repeat("long ", 30) + "FINAL_TIP\n",
+		"@@ -1,2 +1,40 @@\n-old\n" + strings.Repeat("+earlier\n", 38) + "+FINAL_TIP\n context\n",
+		"@@ -1,40 +1 @@\n" + strings.Repeat("-earlier\n", 38) + "-FINAL_TIP\n context\n",
+	} {
+		chunk := liveDiffHighlightChunk("latest", "file.txt", diff, true)
+		for _, width := range []int{40, 90} {
+			render, err := new(liveDiffRenderer).render(t.Context(), liveDiffDarkTheme,
+				[]liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{chunk}}}, "", width, 0, chunk)
+			if err != nil {
+				t.Fatal(err)
+			}
+			offset := render.followOffset(18)
+			center := ansi.Strip(render.lines[offset+9])
+			if !strings.Contains(center, "FINAL_TIP") {
+				t.Fatalf("width %d centered the wrong changed row: %q", width, center)
+			}
+		}
 	}
 }

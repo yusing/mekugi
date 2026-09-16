@@ -94,3 +94,30 @@ func TestStreamingPreviewBoundsExpandedTargetWork(t *testing.T) {
 		}
 	}
 }
+
+func TestStreamingPreviewMixedInput(t *testing.T) {
+	directory := t.TempDir()
+	prefix := "new before.txt\ntype \"before\\n\"\n"
+	for _, tail := range []string{
+		"shell",
+		"shell printf live",
+		"shell <<SHELL\nprintf 'streaming",
+		"shell <<SHELL\nprintf live\nSHELL\nnew after.txt\ntype \"after",
+		"resume M0123456789abcdef0123456789abcdef\n",
+	} {
+		preview, err := PreviewScriptForHostAt(t.Context(), directory, prefix+tail)
+		if err != nil || preview.PendingInput != tail || len(preview.Files) != 1 ||
+			preview.Files[0].AfterPath != filepath.Join(directory, "before.txt") {
+			t.Fatalf("mixed preview: %+v, %v", preview, err)
+		}
+	}
+	// Apparent shell commands inside edit payloads remain file content.
+	preview, err := PreviewScriptForHostAt(t.Context(), directory, "new body.txt\ntype <<PATCH\nshell touch forbidden\n")
+	if err != nil || preview.PendingInput != "" || len(preview.Files) != 1 {
+		t.Fatalf("payload became script: %+v, %v", preview, err)
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil || len(entries) != 0 {
+		t.Fatal("mixed preview executed effects")
+	}
+}

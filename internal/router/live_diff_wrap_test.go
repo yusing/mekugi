@@ -58,8 +58,8 @@ func TestLiveDiffWrappedSyntaxAndFocus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if render.focusRow != render.rowStarts[1] {
-		t.Fatalf("focus did not land on source: %+v", render)
+	if render.focusRow != len(render.lines)-1 {
+		t.Fatalf("focus did not land on the final wrapped fragment: %+v", render)
 	}
 	color := liveDiffDarkTheme.foreground(chroma.LiteralStringDouble)
 	for _, line := range render.lines[render.rowStarts[1]:] {
