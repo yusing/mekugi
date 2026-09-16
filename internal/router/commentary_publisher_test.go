@@ -638,7 +638,7 @@ func TestShellJournalResponseOverflowIsExplicit(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	sink := &httpShellCommentarySink{endpoint: server.URL, token: "test", client: server.Client()}
-	if _, err := sink.RequestJournal(t.Context(), shellJournalCommand{Op: "list"}); err == nil || !strings.Contains(err.Error(), "response budget") {
+	if _, err := sink.RequestJournal(t.Context(), shellJournalCommand{Op: "list"}); err == nil || !strings.Contains(err.Error(), "response limit") {
 		t.Fatalf("overflow error = %v", err)
 	}
 }
