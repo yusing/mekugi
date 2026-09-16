@@ -66,9 +66,6 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 					command = "hread " + cursor + " --stdout --max-tokens 32"
 				}
 				stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, command, nil, invocation)
-				if cursor != "" {
-					stdout = strings.TrimSuffix(strings.TrimPrefix(stdout, "--- stdout [bytes] ---\n"), "\n")
-				}
 				count, err := codec.Count(stdout)
 				if err != nil || count > 32 {
 					t.Fatalf("page tokens = %d, %v", count, err)

@@ -421,10 +421,11 @@ Budget combined reads and searches before execution: select needed ranges or fie
 of relying on pagination after broad dumps. Use reader limits to focus on needed context.
 Shell workers budget combined display output automatically.
 For omitted output, run the exact `next_call: hread REF`.
-Both stdout and stderr are labeled by default; use `--stdout` or `--stderr` on an initial
-reference to select one. `--max-tokens N` defaults to 4,000. Later references already bind
-the selection and position, so no `--cursor` or repeated producer arguments are needed.
-Pages label raw bytes, complete verified rows, or JSON entries. Do not treat raw byte
+Empty streams are omitted. Stdout-only pages are unframed; stderr and mixed pages use
+`[stream unit]` / `[/stream]` frames. Use `--stdout` or `--stderr` on an initial reference
+to select one. `--max-tokens N` defaults to 4,000. Later references already bind the
+selection and position, so no `--cursor` or repeated producer arguments are needed.
+Pages contain raw bytes, complete verified rows, or JSON entries. Do not treat raw byte
 fragments or framing as verified source rows. If a complete unit cannot fit, increase
 the budget or use a source preview. Reads are repeatable, not consuming, and survive
 router restart while their session data is retained. Mekugi cleans inactive session data after

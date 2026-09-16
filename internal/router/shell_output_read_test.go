@@ -65,25 +65,22 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 						}
 					}
 					frame := stdout
-					if selection != "--stderr" {
-						var ok bool
-						frame, ok = strings.CutPrefix(frame, "--- stdout [bytes] ---\n")
-						if !ok {
-							t.Fatalf("missing stdout frame: %q", stdout)
+					if strings.HasPrefix(frame, "[stdout bytes]\n") {
+						part, rest, found := strings.Cut(strings.TrimPrefix(frame, "[stdout bytes]\n"), "\n[/stdout]\n")
+						if !found {
+							t.Fatalf("missing stdout end frame: %q", stdout)
 						}
-						if selection == "--stdout" {
-							gotOut.WriteString(strings.TrimSuffix(frame, "\n"))
-						} else {
-							part, rest, found := strings.Cut(frame, "\n--- stderr [bytes] ---\n")
-							if !found {
-								t.Fatalf("missing stderr frame: %q", stdout)
-							}
-							gotOut.WriteString(part)
-							gotErr.WriteString(strings.TrimSuffix(rest, "\n"))
+						gotOut.WriteString(part)
+						frame = rest
+					}
+					if strings.HasPrefix(frame, "[stderr bytes]\n") {
+						part, found := strings.CutSuffix(strings.TrimPrefix(frame, "[stderr bytes]\n"), "\n[/stderr]\n")
+						if !found {
+							t.Fatalf("missing stderr end frame: %q", stdout)
 						}
+						gotErr.WriteString(part)
 					} else {
-						frame, _ = strings.CutPrefix(frame, "--- stderr [bytes] ---\n")
-						gotErr.WriteString(strings.TrimSuffix(frame, "\n"))
+						gotOut.WriteString(frame)
 					}
 					if status == 0 {
 						wantOut, wantErr := out, diagnostic
@@ -224,7 +221,7 @@ func TestShellOutputPluginRemainderUsesManagedRecovery(t *testing.T) {
 	}
 	command := strings.TrimSpace(stderr[start:]) + " --stdout"
 	rest, readErr, readStatus := runShellWorkerTest(t, registry, "sh", nil, command, nil, invocation)
-	if readStatus != 0 || readErr != "" || rest != "--- stdout [rows] ---\n"+omitted+"\n" {
+	if readStatus != 0 || readErr != "" || rest != omitted {
 		t.Fatalf("managed reader failed: %q %q %d", rest, readErr, readStatus)
 	}
 	entries, err := os.ReadDir(directory)
@@ -349,7 +346,7 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 			// A stream-only read must not consume the other stream or reopen the source.
 			empty, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil,
 				"hread "+ref+" --stderr", nil, invocation)
-			if status != 0 || empty != "--- stderr [bytes] ---\n\n" || diagnostic != "" {
+			if status != 0 || empty != "" || diagnostic != "" {
 				t.Fatalf("stderr selection: %d %q %q", status, empty, diagnostic)
 			}
 			rows := first
@@ -367,18 +364,7 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 			for range 100 {
 				page, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil,
 					"hread "+ref+" --max-tokens 256", nil, invocation)
-				kind := "rows"
-				if command == "inspect_file" {
-					kind = "json"
-				}
-				payload, found := strings.CutPrefix(page, "--- stdout ["+kind+"] ---\n")
-				if !found {
-					t.Fatalf("missing typed frame: %q", page)
-				}
-				payload, found = strings.CutSuffix(payload, "\n--- stderr [bytes] ---\n\n")
-				if !found {
-					t.Fatalf("missing stderr frame: %q", page)
-				}
+				payload := page
 				if command == "hcat" {
 					if !strings.HasSuffix(payload, "\n") {
 						t.Fatal("partial verified row")

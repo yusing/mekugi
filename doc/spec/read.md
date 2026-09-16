@@ -144,8 +144,11 @@ session, reading the source may allocate a new next handle; the expired handle i
 not reassigned or revived. A continuation inherits its selection; a
 different stream selection must start from the initial reference. Budgets may change.
 
-Both streams are labeled on every page, including their unit: raw `bytes`, complete
-verified `rows`, or complete `json` array entries. Framing is not source content, and raw
+Empty streams have no frame. A page containing only stdout is unframed. Stderr is always
+framed, and a page containing both streams frames both. Frames open with `[stdout bytes]`
+or `[stderr bytes]` and close with `[/stdout]` or `[/stderr]` on their own lines.
+The unit is `bytes`, `rows`, or `json`; one separator newline before the closing frame
+is not payload. Framing is not source content, and raw
 byte fragments are not verified rows. A rows page never cuts a row; a JSON page is a valid
 array of complete entries. A unit that cannot fit fails explicitly without a nonadvancing
 reference. The budget includes frames, defaults to 4,000 GPT-5 tokens, and accepts 1–15,500.

@@ -48,14 +48,20 @@ export function selectReadOutput(request: ReadPageRequest, budget: number): Read
   const entries = values.map((value, index): string[] | null => kinds[index] === "json" ? jsonArrayEntries(value) : null);
   const included = (index: number): boolean => request.stream === "" || request.stream === ["stdout", "stderr"][index];
   const size = (index: number): number => entries[index]?.length ?? Buffer.byteLength(values[index]);
-  const frame = (): string => pages.map((page, index) => included(index)
-    ? `--- ${["stdout", "stderr"][index]} [${kinds[index] || "bytes"}] ---\n${page}\n` : "").join("");
+  const frame = (): string => {
+    if (!pages[1]) return pages[0];
+    return pages.map((page, index) => {
+      if (!page) return "";
+      const name = ["stdout", "stderr"][index];
+      return `[${name} ${kinds[index] || "bytes"}]\n${page}\n[/${name}]\n`;
+    }).join("");
+  };
   const fits = (): boolean => countGPT5Tokens(frame()) <= budget;
   for (let index = 0; index < 2; index++) {
     const offset = position[index];
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > size(index)) throw new Error("invalid read position");
     if (!included(index)) continue;
-    if (entries[index] !== null) pages[index] = "[]";
+    if (entries[index]?.length === 0) pages[index] = "[]";
   }
   if (!fits()) throw new Error("token budget cannot admit the stream frames; increase --max-tokens");
   let advanced = false;
@@ -77,7 +83,7 @@ export function selectReadOutput(request: ReadPageRequest, budget: number): Read
         if (fits()) low = middle;
         else high = middle - 1;
       }
-      pages[index] = "[" + array.slice(offset, offset + low).join(",") + "]";
+      pages[index] = low > 0 ? "[" + array.slice(offset, offset + low).join(",") + "]" : "";
       position[index] += low;
     } else {
       const bytes = Buffer.from(values[index]);
