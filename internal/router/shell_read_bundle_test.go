@@ -36,7 +36,7 @@ func TestReadBundleRetainsPerFileOmissions(t *testing.T) {
 	if status != 1 || stderr != "" || !strings.Contains(stdout, `path="first" shown=1:`) || !strings.Contains(stdout, `path="second" shown=1:`) {
 		t.Fatalf("status=%d out=%s err=%s", status, stdout, stderr)
 	}
-	refs := regexp.MustCompile(`next_call="(hread r_[A-Za-z0-9_-]{22})"`).FindAllStringSubmatch(stdout, -1)
+	refs := regexp.MustCompile(`next_call="(hread [a-z]+[0-9]*)"`).FindAllStringSubmatch(stdout, -1)
 	if len(refs) != 2 {
 		t.Fatalf("missing per-file receipts: %s", stdout)
 	}
@@ -136,7 +136,7 @@ func TestReadBundleFitsOuterDisplay(t *testing.T) {
 		if status != 1 || strings.Contains(diagnostic, "hread ") {
 			t.Fatalf("status=%d out=%s err=%s", status, out, diagnostic)
 		}
-		receipts := regexp.MustCompile(`shown=(1:\d+).*next_call="(hread r_[A-Za-z0-9_-]{22})"`).FindAllStringSubmatch(out, -1)
+		receipts := regexp.MustCompile(`shown=(1:\d+).*next_call="(hread [a-z]+[0-9]*)"`).FindAllStringSubmatch(out, -1)
 		bodies := strings.Split(out, "--- file ")
 		if len(receipts) != 2 || len(bodies) != 3 {
 			t.Fatalf("missing previews or receipts: %s", out)
@@ -165,7 +165,7 @@ func TestReadBundleFitsOuterDisplay(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			saved = append(saved, regexp.MustCompile(`r_[A-Za-z0-9_-]{22}`).ReplaceAllString(string(data), "REFERENCE"))
+			saved = append(saved, regexp.MustCompile(`hread [a-z]+[0-9]*`).ReplaceAllString(string(data), "hread REFERENCE"))
 		}
 		if saved[0] != saved[1] {
 			t.Fatalf("%s changed redirected bytes with display budget", route)

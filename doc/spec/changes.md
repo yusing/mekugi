@@ -2,13 +2,16 @@
 
 ## REQ-CHANGES-001 — Shared change records and review reads
 
-Routed hpatch results prepend one compact `change hp_a1` line. A new complete hpatch
+Routed hpatch results prepend one compact `change amber1` line. A new complete hpatch
 evaluation reserves a workspace-scoped ID before evaluation. Each originating agent
-thread has an alphabetic stream and increasing decimal sequence, such as `hp_a1`,
-`hp_a2`, and `hp_b1`. Recovery attempts reuse the original correlation's ID, including
+thread has a word-named stream and increasing decimal sequence, such as `amber1`,
+`amber2`, and `apple1`. Recovery attempts reuse the original correlation's ID, including
 invalid recovery amendments. An invalid recovery after a completed call stays under that call's ID. A recovery
 with no visible hpatch ancestry or no tracked chain in the current workspace allocates no new ID. Transport failures before evaluation or delivery need not expose a result ID.
 
+Word-based change indexes use a separate storage namespace. Earlier indexes remain
+owned storage for accounting and reclamation only; they are not migrated or read as current changes.
+Only the word-based ID format is accepted; earlier `hp_` IDs are unsupported.
 IDs and stream allocation persist across router restarts. The original hpatch, all
 recovery inputs and diagnostics, and any successful evaluated review diff are available
 through the one ID. Published attempts are never removed or overwritten; replay does not duplicate attempts.
@@ -49,7 +52,7 @@ directory selects the router's no-directory state. IDs resolve only within the s
 workspace, never through conversation history or a Git diff. Isolated executor deployments
 must expose the router's replay directory at the same absolute path.
 
-References accept individual IDs or inclusive ranges such as `hp_a1..hp_a4`. Range endpoints
+References accept individual IDs or inclusive ranges such as `amber1..amber4`. Range endpoints
 must be ordered within one stream, so concurrent edits from another agent are excluded.
 Duplicate IDs are emitted once in first-requested order. One read accepts at most 256
 distinct IDs; an individual range cannot exceed that bound. Missing, invalid, corrupt,

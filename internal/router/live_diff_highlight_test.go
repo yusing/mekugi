@@ -322,7 +322,7 @@ func TestLiveDiffPreparedRenameKeepsDestination(t *testing.T) {
 	diff := "--- " + strconv.Quote(oldPath) + "\n+++ " + strconv.Quote(newPath) +
 		"\n@@ -1 +1 @@\n-before\n+after\n@@ -20 +20 @@\n-older\n+newer\n"
 	chunk := liveDiffChunk{
-		key: "rename", status: "hp_a1 prepared (application unconfirmed)",
+		key: "rename", status: "amber1 prepared (application unconfirmed)",
 		review: mekugi.ReviewFile{BeforePath: oldPath, AfterPath: newPath, Diff: diff},
 	}
 	v := liveDiffView{}
@@ -338,7 +338,7 @@ func TestLiveDiffPreparedRenameKeepsDestination(t *testing.T) {
 			t.Fatalf("prepared rename lost %q:\n%s", want, text)
 		}
 	}
-	for _, label := range []string{"Rename: old.go → new.go", "hp_a1 prepared (application unconfirmed)"} {
+	for _, label := range []string{"Rename: old.go → new.go", "amber1 prepared (application unconfirmed)"} {
 		if strings.Count(text, label) != 1 {
 			t.Fatalf("capture label repeated between hunks: %q\n%s", label, text)
 		}
@@ -419,8 +419,8 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 func TestLiveDiffFollowLatestCombinedResult(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.txt")
-	old := liveDiffHighlightChunk("hp_a1", path, "@@ -20 +20 @@\n-before\n+FIRST20\n", true)
-	recent := liveDiffHighlightChunk("hp_b1", path,
+	old := liveDiffHighlightChunk("amber1", path, "@@ -20 +20 @@\n-before\n+FIRST20\n", true)
+	recent := liveDiffHighlightChunk("apple1", path,
 		"@@ -20 +20 @@\n-FIRST20\n+LATEST20\n@@ -337 +337 @@\n-before\n+LATEST337\n", true)
 	v := liveDiffView{following: true}
 	v.merge([]liveDiffFile{{path: path, chunks: []liveDiffChunk{old}}})
@@ -459,9 +459,9 @@ func TestLiveDiffCaptureLabelsOnce(t *testing.T) {
 	path := filepath.Join(workspace, "file.txt")
 	for _, applied := range []bool{false, true} {
 		t.Run(strconv.FormatBool(applied), func(t *testing.T) {
-			first := liveDiffHighlightChunk("hp_a1", path,
+			first := liveDiffHighlightChunk("amber1", path,
 				"@@ -1 +1 @@\n-old1\n+first1\n@@ -20 +20 @@\n-old20\n+first20\n", applied)
-			second := liveDiffHighlightChunk("hp_a2", path,
+			second := liveDiffHighlightChunk("amber2", path,
 				"@@ -1 +1 @@\n-first1\n+second1\n@@ -20 +20 @@\n-first20\n+second20\n", applied)
 			v := liveDiffView{}
 			v.merge(nil)
@@ -534,7 +534,7 @@ func TestLiveDiffPathOnlyChangesStayCompact(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			review := mekugi.ReviewFile{BeforePath: tc.before, AfterPath: tc.after,
 				Diff: tc.name + " " + strconv.Quote(tc.before) + " -> " + strconv.Quote(tc.after) + "\n"}
-			for _, status := range []string{"", "hp_a1 prepared (application unconfirmed)"} {
+			for _, status := range []string{"", "amber1 prepared (application unconfirmed)"} {
 				chunk := liveDiffChunk{key: "change", status: status, review: review}
 				render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: path, chunks: []liveDiffChunk{chunk}}}, workspace, 100, 0, chunk)
 

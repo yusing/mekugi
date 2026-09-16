@@ -33,7 +33,7 @@ func TestRecoverScriptEditsPreparedText(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// A large unrelated prepared value is retained rather than re-emitted.
 			prepared := unrelated + "new large.txt\ntype " + strconv.Quote(strings.Repeat("retained ", 10000)) + "\n"
-			got, err := recoverScriptDetailed(t.Context(), prepared+test.broken, test.correction)
+			got, err := recoverScriptDetailed(t.Context(), prepared+test.broken, test.correction, testRecoveryHandles(prepared+test.broken))
 			if err != nil || got.script != prepared+test.fixed || got.delta == "" {
 				t.Fatalf("recovery error %v; changed unrelated content or failed correction", err)
 			}
@@ -166,7 +166,7 @@ func TestRecoverScriptTextRejectsInvalidOrUnchangedEdits(t *testing.T) {
 		"type \"bad\" \"good\"\nrm",
 		"type \"bad\" \"good\"\nin other.txt",
 	} {
-		got, err := recoverScriptDetailed(t.Context(), baseline, payload)
+		got, err := recoverScriptDetailed(t.Context(), baseline, payload, testRecoveryHandles(baseline))
 		if err == nil || got.script != "" {
 			t.Fatalf("accepted invalid correction %q: %v", payload, err)
 		}
@@ -176,21 +176,24 @@ func TestRecoverScriptTextRejectsInvalidOrUnchangedEdits(t *testing.T) {
 func TestRecoverScriptTextBoundsExpansion(t *testing.T) {
 	baseline := "new f.txt\ntype \"xx\"\n"
 	payload := `type "x" 2 ` + strconv.Quote(strings.Repeat("v", maxMekugiScriptBytes/2+1))
-	got, err := recoverScriptDetailed(t.Context(), baseline, payload)
+	got, err := recoverScriptDetailed(t.Context(), baseline, payload, testRecoveryHandles(baseline))
 	if err == nil || got.script != "" || !strings.Contains(err.Error(), "exceeds") {
 		t.Fatalf("expanded recovery accepted: %d bytes, %v", len(got.script), err)
 	}
 }
 
 func TestTextCorrectionInvalidatesUnchangedCommandHandles(t *testing.T) {
-	const baseline = "in old.txt\ntype 1:aaaa \"value\"\n"
-	old := recoveryCommands(baseline)[1].handle
-	changed, err := recoverScriptDetailed(t.Context(), baseline, `type "old.txt" "new.txt"`)
-	if err != nil {
-		t.Fatal(err)
+	transform, _, _, _ := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
+	first, err := transform.translate("original", "in old.txt\ntype 1:aaaa \"value\"\n", nil)
+	if err != nil || !first.EvaluatorRejected {
+		t.Fatalf("initial rejection: %+v, %v", first, err)
 	}
-	result, err := recoverScriptDetailed(t.Context(), changed.script, old+" 2:bbbb")
-	if err == nil || result.script != "" || !strings.Contains(err.Error(), "stale") {
-		t.Fatalf("old handle crossed changed file context: %v, %+v", err, result)
+	changed, err := transform.translateRecovery("changed", `type "old.txt" "new.txt"`, nil)
+	if err != nil || !changed.EvaluatorRejected {
+		t.Fatalf("changed rejection: %+v, %v", changed, err)
+	}
+	result, err := transform.translateRecovery("stale", first.RecoveryHandles[1]+" 2:bbbb", nil)
+	if err != nil || !result.Unevaluated || !strings.Contains(result.TranslationError, "stale") {
+		t.Fatalf("old handle crossed changed file context: %+v, %v", result, err)
 	}
 }

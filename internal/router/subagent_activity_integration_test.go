@@ -101,7 +101,7 @@ func TestActualChildActivityProjectsWithoutChangingChildResult(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if !bytes.Contains(projected, mustTestJSON(t, "[`/root/alpha/nested`] Journal update `/root/alpha/nested` (`j1`)\nChecking cancellation.")) || !bytes.Contains(projected, []byte("Substantive result.")) {
+			if !bytes.Contains(projected, mustTestJSON(t, "[`/root/alpha/nested`] Journal update `/root/alpha/nested` (`amber`)\nChecking cancellation.")) || !bytes.Contains(projected, []byte("Substantive result.")) {
 				t.Fatal(string(projected))
 			}
 			untouched, err := other.TransformJSON(rootResponse)

@@ -164,7 +164,7 @@ func TestShellOutputStoreQuotaAndPermissions(t *testing.T) {
 		t.Fatalf("record permissions: %v, %v", info, err)
 	}
 	// A sparse fixture exercises the separate quota without large allocations.
-	file, err := os.Create(filepath.Join(store.directory, "output-r_AAAAAAAAAAAAAAAAAAAAAA.json"))
+	file, err := os.Create(filepath.Join(store.directory, "output-maple.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

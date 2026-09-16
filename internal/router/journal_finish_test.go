@@ -125,7 +125,7 @@ func TestJournalFinishEndsWithoutProviderContinuation(t *testing.T) {
 						if err := json.Unmarshal([]byte(jsonString(item, "output")), &result); err != nil || !result.OK || !result.FinishRequested {
 							t.Fatalf("finish result: %s, %v", mustTestJSON(t, item), err)
 						}
-						if batched && (len(result.JournalIDs) != 1 || result.JournalIDs[0] != "j1") {
+						if batched && (len(result.JournalIDs) != 1 || result.JournalIDs[0] != "amber") {
 							t.Fatalf("missing assigned mutation ID: %+v", result)
 						}
 						found = true
@@ -148,7 +148,7 @@ func TestJournalFinishDoesNotHidePendingCallsOrFlushFailures(t *testing.T) {
 				arguments := `{"op":"finish"}`
 				invalid := strings.HasPrefix(scenario, "invalid-")
 				if invalid {
-					arguments = map[string]string{"invalid-id": `{"op":"finish","id":"j1"}`, "invalid-text": `{"op":"finish","text":"not allowed"}`, "invalid-agent": `{"op":"finish","agent":"/root"}`, "invalid-report-now": `{"op":"finish","report_now":true}`}[scenario]
+					arguments = map[string]string{"invalid-id": `{"op":"finish","id":"amber"}`, "invalid-text": `{"op":"finish","text":"not allowed"}`, "invalid-agent": `{"op":"finish","agent":"/root"}`, "invalid-report-now": `{"op":"finish","report_now":true}`}[scenario]
 				}
 				// Seed through a separate router-owned call in the same response.
 				seed := map[string]any{"type": "function_call", "id": "seed-item", "call_id": "seed-call", "name": "journal", "arguments": `{"op":"add","text":"Unflushed milestone"}`, "status": "completed"}
@@ -260,8 +260,8 @@ func TestJournalFinishReplayDoesNotFinishLaterCRUD(t *testing.T) {
 func TestJournalBatchedErrorsAreCorrectable(t *testing.T) {
 	for _, batch := range []string{
 		`{}`,
-		`[{"op":"edit","id":"j9","text":"missing"}]`,
-		`[{"op":"add","text":"must roll back"},{"op":"edit","id":"j9","text":"missing"}]`,
+		`[{"op":"edit","id":"bloom","text":"missing"}]`,
+		`[{"op":"add","text":"must roll back"},{"op":"edit","id":"bloom","text":"missing"}]`,
 	} {
 		t.Run(batch, func(t *testing.T) {
 			transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))

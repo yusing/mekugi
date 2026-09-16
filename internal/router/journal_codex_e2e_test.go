@@ -79,7 +79,7 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 			item = call("spawn_agent", map[string]any{"message": "Record your milestone and finish.", "task_name": "journal_child", "fork_turns": "none"})
 		case strings.Contains(input, "Journal result") && strings.Contains(input, "Native child milestone") && strings.Contains(input, "Native child second finding") && strings.Contains(input, "**Question:**") && strings.Contains(input, "**Answers:**") && strings.Contains(input, "Record your milestone and finish."):
 			p.childResultSeen = true
-			p.journalResultSeen = strings.Contains(input, "function_call_output") && strings.Contains(input, `\"id\":\"j1\"`)
+			p.journalResultSeen = strings.Contains(input, "function_call_output") && strings.Contains(input, `\"id\":\"amber\"`)
 			item = call("journal", map[string]any{"op": "finish"})
 		case turn < 8:
 			item = call("wait_agent", map[string]any{"timeout_ms": 10000})

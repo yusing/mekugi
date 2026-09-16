@@ -126,15 +126,22 @@ Acceptance:
 Shell output, searches, symbol references, and change reviews use one read continuation:
 `hread REF [--stdout|--stderr] [--max-tokens N]`. An incomplete result supplies the exact
 `read: incomplete; next_call: hread REF` command. There is no separate cursor flag or
-caller-composed hash/offset. References are `r_` plus 22 base64url characters, preserving
-128-bit capability entropy. Full snapshot fingerprints remain internal.
+caller-composed hash/offset. References use short lowercase word handles, such as
+`maple`, with a decimal suffix when needed. The same visible format is used for change,
+recovery, continuation, and journal handles. Handles are feature-scoped locators, not
+integrity hashes or secrets; full snapshot fingerprints remain internal. Earlier `r_`
+references are unsupported. Their stored files remain accounted for and protected by
+existing session ownership until normal retention cleanup reclaims them.
 
 An initial reference owns only omitted output or a descriptor of existing durable evidence,
 never an executable script. Change-review descriptors retain their selection and full
 fingerprint; they do not duplicate diffs and reject changed projections. A subsequent
 reference stores only the original reference, two stream positions, the stream selection,
 and the full original-record fingerprint. It does not duplicate output. Repeated reads
-produce identical pages and next references. A continuation inherits its selection; a
+produce identical pages and reuse next references while those continuations remain
+retained. If a continuation is reclaimed but its source is still retained by another
+session, reading the source may allocate a new next handle; the expired handle is
+not reassigned or revived. A continuation inherits its selection; a
 different stream selection must start from the initial reference. Budgets may change.
 
 Both streams are labeled on every page, including their unit: raw `bytes`, complete

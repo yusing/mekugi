@@ -49,8 +49,11 @@ func changeNotice(id string) string {
 	return "change " + id + "\n"
 }
 
+// The word-based IDs use a separate namespace; older indexes remain cleanup-only.
+const changeIndexPrefix = "changes-v2-"
+
 func changeIndexName(workspace string) string {
-	return fmt.Sprintf("changes-%x.json", sha256.Sum256([]byte(workspace)))
+	return fmt.Sprintf("%s%x.json", changeIndexPrefix, sha256.Sum256([]byte(workspace)))
 }
 
 func (s *mekugiReplayStore) readChangeIndex(workspace string) (changeIndex, error) {
@@ -171,7 +174,7 @@ func (s *mekugiReplayStore) reserveChange(ctx context.Context, workspace, thread
 			index.Streams = append(index.Streams, changeStream{Thread: thread})
 		}
 		index.Streams[stream].Next++
-		id = "hp_" + changeStreamName(stream) + strconv.Itoa(index.Streams[stream].Next)
+		id = changeHandle(changeStreamName(stream), index.Streams[stream].Next)
 		if _, exists := index.Changes[id]; exists {
 			return errors.New("change stream would overwrite an existing ID")
 		}
@@ -267,7 +270,9 @@ func (s *mekugiReplayStore) confirmChanges(ctx context.Context, workspace string
 	s = s.scoped(ctx)
 	var confirmed []string
 	for callID, history := range histories {
-		if history.ChangeID != "" && history.confirmed {
+		// Old replay facts remain visible, but unsupported IDs have no entry
+		// in the current review index. Do not revive them during confirmation.
+		if _, _, err := parseChangeID(history.ChangeID); err == nil && history.confirmed {
 			confirmed = append(confirmed, callID)
 		}
 	}
@@ -348,23 +353,35 @@ func (s *mekugiReplayStore) repairChangeCall(workspace, changeID, callID string,
 	return change, nil
 }
 
+func changeHandle(stream string, number int) string {
+	var name strings.Builder
+	for _, letter := range stream {
+		name.WriteString(handleWords[letter-'a'])
+	}
+	name.WriteString(strconv.Itoa(number))
+	return name.String()
+}
+
 func parseChangeID(id string) (stream string, number int, err error) {
-	tail, ok := strings.CutPrefix(id, "hp_")
-	if !ok {
+	tail := id
+	for {
+		matched := false
+		for index, word := range handleWords[:26] {
+			if rest, found := strings.CutPrefix(tail, word); found {
+				stream += string(rune('a' + index))
+				tail, matched = rest, true
+				break
+			}
+		}
+		if !matched {
+			break
+		}
+	}
+	number, err = strconv.Atoi(tail)
+	if stream == "" || err != nil || number < 1 || strconv.Itoa(number) != tail {
 		return "", 0, fmt.Errorf("invalid change ID %q", id)
 	}
-	n := 0
-	for n < len(tail) && tail[n] >= 'a' && tail[n] <= 'z' {
-		n++
-	}
-	if n == 0 || n == len(tail) {
-		return "", 0, fmt.Errorf("invalid change ID %q", id)
-	}
-	number, err = strconv.Atoi(tail[n:])
-	if err != nil || number < 1 || strconv.Itoa(number) != tail[n:] {
-		return "", 0, fmt.Errorf("invalid change ID %q", id)
-	}
-	return tail[:n], number, nil
+	return stream, number, nil
 }
 
 func expandChangeRefs(refs []string) ([]string, error) {
@@ -392,7 +409,7 @@ func expandChangeRefs(refs []string) ([]string, error) {
 			return nil, fmt.Errorf("read at most %d changes at once", maxReadChanges)
 		}
 		for offset := 0; offset <= last-first; offset++ {
-			id := "hp_" + stream + strconv.Itoa(first+offset)
+			id := changeHandle(stream, first+offset)
 			if !seen[id] {
 				seen[id] = true
 				ids = append(ids, id)

@@ -33,7 +33,7 @@ func TestJournalPublisherAuthenticatesAndMutatesThreadStore(t *testing.T) {
 	sink := &httpShellCommentarySink{endpoint: server.URL, token: token, client: server.Client()}
 	for _, mutation := range []string{
 		`{"op":"add","text":"Initial milestone"}`,
-		`{"op":"edit","id":"j1","text":"Verified milestone","report_now":true}`,
+		`{"op":"edit","id":"amber","text":"Verified milestone","report_now":true}`,
 	} {
 		if err := sink.Publish(t.Context(), mutation); err != nil {
 			t.Fatal(err)
@@ -44,11 +44,11 @@ func TestJournalPublisherAuthenticatesAndMutatesThreadStore(t *testing.T) {
 		t.Fatalf("runtime mutations: %+v %v", items, err)
 	}
 	sink.token = "unknown-capability"
-	if err := sink.Publish(t.Context(), `{"op":"delete","id":"j1"}`); err == nil {
+	if err := sink.Publish(t.Context(), `{"op":"delete","id":"amber"}`); err == nil {
 		t.Fatal("unauthenticated journal publication succeeded")
 	}
 	sink.token = token
-	if err := sink.Publish(t.Context(), `{"op":"delete","id":"j1"}`); err != nil {
+	if err := sink.Publish(t.Context(), `{"op":"delete","id":"amber"}`); err != nil {
 		t.Fatal(err)
 	}
 	if err := sink.Complete(t.Context()); err != nil {
@@ -98,14 +98,14 @@ func TestShellJournalRequesterSupportsListAnswersBatchAndFinish(t *testing.T) {
 	result, err := sink.RequestJournal(t.Context(), shellJournalCommand{
 		Op: "add", Mutation: &journalMutation{Op: "add", Text: new("Answer"), Answer: new(true)},
 	})
-	if err != nil || len(result.IDs) != 1 || result.IDs[0] != "j1" {
+	if err != nil || len(result.IDs) != 1 || result.IDs[0] != "amber" {
 		t.Fatalf("answer add = %+v, %v", result, err)
 	}
 	result, err = sink.RequestJournal(t.Context(), shellJournalCommand{
 		Op: "batch",
 		Batch: []journalMutation{
 			{Op: "add", Text: new("Second")},
-			{Op: "edit", ID: "j1", Text: new("Updated")},
+			{Op: "edit", ID: "amber", Text: new("Updated")},
 		},
 	})
 	if err != nil || len(result.IDs) != 2 {
@@ -116,7 +116,7 @@ func TestShellJournalRequesterSupportsListAnswersBatchAndFinish(t *testing.T) {
 		t.Fatalf("list = %+v, %v", result, err)
 	}
 	result, err = sink.RequestJournal(t.Context(), shellJournalCommand{Op: "finish", Batch: []journalMutation{{Op: "add", Text: new("Final")}}})
-	if err != nil || !result.FinishRequested || len(result.IDs) != 1 || result.IDs[0] != "j3" {
+	if err != nil || !result.FinishRequested || len(result.IDs) != 1 || result.IDs[0] != "arch" {
 		t.Fatalf("finish = %+v, %v", result, err)
 	}
 }
@@ -506,7 +506,7 @@ func TestShellJournalPublisherValidatesBeforeMutation(t *testing.T) {
 	calls := 0
 	broker.journalPublisher = func(_ context.Context, _, _, _ string, _ []journalMutation) ([]string, error) {
 		calls++
-		return []string{"j1"}, nil
+		return []string{"amber"}, nil
 	}
 	token := broker.subscribeThread("workspace\x00thread", "thread", "/root")
 	for _, body := range []string{

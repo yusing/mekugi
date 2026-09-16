@@ -418,13 +418,16 @@ programs**, not as standalone utilities in your terminal:
 | `hsymbol` | Look up definitions and references | `gopls` for Go; TypeScript 7 as `tsc` for JS, TS, and JSON; `pyright-langserver` for Python |
 | `inspect_file` | Inspect a structural outline | None |
 
+Agent-facing references use short word handles such as `maple` or `amber1`.
+Copy the emitted handle; existing references keep their original lifetime and scope.
+
 Hpatch keeps durable review records in the router's replay store. An agent can hand off
-`hp_a1..hp_a3`, then another agent can retrieve just those edits:
+`amber1..amber3`, then another agent can retrieve just those edits:
 
 ```sh
-hchanges hp_a1..hp_a3
-hchanges hp_a1..hp_a3 --summary
-hchanges hp_a2 --history
+hchanges amber1..amber3
+hchanges amber1..amber3 --summary
+hchanges amber2 --history
 ```
 
 Ranges are inclusive and stay within one agent's stream. Recovery keeps the original ID.
@@ -434,7 +437,7 @@ added/removed line counts. Counts describe each edit separately, not the net cha
 across several edits. A normal update looks like:
 
 ```text
-hp_a1 applied
+amber1 applied
 update "src/parser.go" +8 -3
 ```
 

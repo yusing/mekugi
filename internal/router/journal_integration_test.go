@@ -68,7 +68,7 @@ func TestJournalRouterToolContinuesWithoutClientDispatch(t *testing.T) {
 				if len(provider.forwarded) != 2 {
 					t.Fatalf("provider requests: %d", len(provider.forwarded))
 				}
-				if !bytes.Contains(provider.forwarded[1], []byte("function_call_output")) || !bytes.Contains(provider.forwarded[1], []byte("j1")) {
+				if !bytes.Contains(provider.forwarded[1], []byte("function_call_output")) || !bytes.Contains(provider.forwarded[1], []byte("amber")) {
 					t.Fatal("journal result missing from model continuation")
 				}
 				if !strings.Contains(output.String(), `"phase":"final_answer"`) {
@@ -172,8 +172,8 @@ func TestJournalLiveReportRemainsEligibleForTerminalFlush(t *testing.T) {
 			transform.Delivered(assistantCommentaryDoneEvent(messages[0]))
 		}
 	}
-	live := "Journal update `/root` (`j1`)\nTests passed"
-	flush := "Journal flush `/root` (`j1`)\n\nTests passed"
+	live := "Journal update `/root` (`amber`)\nTests passed"
+	flush := "Journal flush `/root` (`amber`)\n\nTests passed"
 	deliver(false, false, live)
 	checkState(false, false)
 	deliver(false, true, live)
@@ -184,12 +184,12 @@ func TestJournalLiveReportRemainsEligibleForTerminalFlush(t *testing.T) {
 	deliver(true, true, flush)
 	checkState(true, true)
 	deliver(true, true, "")
-	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "edit", []journalMutation{{Op: "edit", ID: "j1", Text: new("Tests passed again")}}); err != nil {
+	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "edit", []journalMutation{{Op: "edit", ID: "amber", Text: new("Tests passed again")}}); err != nil {
 		t.Fatal(err)
 	}
 	checkState(false, false)
 	deliver(false, true, "")
-	deliver(true, true, "Journal flush `/root` (`j1`)\n\nTests passed again")
+	deliver(true, true, "Journal flush `/root` (`amber`)\n\nTests passed again")
 	checkState(true, true)
 }
 
@@ -497,7 +497,7 @@ func TestJournalToolReturnsBatchedIDs(t *testing.T) {
 		args string
 		want string
 	}{
-		{"add", `{"op":"add","text":"Main milestone","journal":[{"op":"add","text":"Batched milestone"}]}`, `{"ok":true,"id":"j2","journal_ids":["j1"]}`},
+		{"add", `{"op":"add","text":"Main milestone","journal":[{"op":"add","text":"Batched milestone"}]}`, `{"ok":true,"id":"apple","journal_ids":["amber"]}`},
 		{"list", `{"op":"list","journal":[{"op":"add","text":"Before listing"}]}`, ""},
 	} {
 		item := map[string]json.RawMessage{
@@ -522,7 +522,7 @@ func TestJournalToolReturnsBatchedIDs(t *testing.T) {
 			}
 		} else {
 			var items []journalListItem
-			if err := json.Unmarshal(got["items"], &items); err != nil || len(items) != 3 || string(got["journal_ids"]) != `["j3"]` {
+			if err := json.Unmarshal(got["items"], &items); err != nil || len(items) != 3 || string(got["journal_ids"]) != `["arch"]` {
 				t.Fatalf("list result = %s, error = %v", result["output"], err)
 			}
 		}
@@ -551,7 +551,7 @@ func TestJournalLiveSnapshotCacheRefreshesOnMutationAndTerminal(t *testing.T) {
 		t.Fatalf("quiet snapshot not cached: %d %v", len(messages), err)
 	}
 	other := newJournalStore()
-	if _, err := other.apply(t.Context(), replay, workspace, "thread-1", "", []journalMutation{{Op: "edit", ID: "j1", Text: new("Show revised milestone"), ReportNow: true}}); err != nil {
+	if _, err := other.apply(t.Context(), replay, workspace, "thread-1", "", []journalMutation{{Op: "edit", ID: "amber", Text: new("Show revised milestone"), ReportNow: true}}); err != nil {
 		t.Fatal(err)
 	}
 	messages, err = transform.prepareJournalDelivery(false)
@@ -626,7 +626,7 @@ func TestJournalFlushNestsMultilineMarkdown(t *testing.T) {
 	}
 	messages, err := transform.prepareJournalDelivery(true)
 	defer transform.ReleaseDelivery()
-	want := "Journal flush `/root`\n- `j1`\n\n  Result\n  \n  - first\n    - nested\n  \n  1. ordered\n  2. next\n  \n  ```go\n  x := 1\n  ```\n  \n  Paragraph.\n\n- `j2`\n\n  Second item\n"
+	want := "Journal flush `/root`\n- `amber`\n\n  Result\n  \n  - first\n    - nested\n  \n  1. ordered\n  2. next\n  \n  ```go\n  x := 1\n  ```\n  \n  Paragraph.\n\n- `apple`\n\n  Second item\n"
 	if err != nil || len(messages) != 1 || commentaryMessageText(messages[0]) != want {
 		t.Fatalf("flush: %s %v; want %q", mustTestJSON(t, messages), err, want)
 	}
@@ -644,7 +644,7 @@ func TestSingleJournalFlushPreservesMarkdownBlockBoundaries(t *testing.T) {
 			}
 			messages, err := transform.prepareJournalDelivery(true)
 			defer transform.ReleaseDelivery()
-			want := "Journal flush `/root` (`j1`)\n\n" + body
+			want := "Journal flush `/root` (`amber`)\n\n" + body
 			if err != nil || len(messages) != 1 || commentaryMessageText(messages[0]) != want {
 				t.Fatalf("flush: %s %v; want %q", mustTestJSON(t, messages), err, want)
 			}

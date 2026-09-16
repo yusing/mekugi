@@ -45,23 +45,20 @@ type hpatchResumeState struct {
 }
 
 func mixedArtifactName(handle string) (string, error) {
-	if len(handle) != 33 || handle[0] != 'M' {
-		return "", errors.New("invalid mixed-script resume handle")
-	}
-	if _, err := hex.DecodeString(handle[1:]); err != nil || strings.ToLower(handle[1:]) != handle[1:] {
+	if _, ok := parseShortHandle(handle); !ok {
 		return "", errors.New("invalid mixed-script resume handle")
 	}
 	return "mixed-" + handle, nil
 }
 
 func (t *mekugiResponseTransform) retainMixedScript(changeID, correlationID, source string, segments []hpatchResumeSegment) (hpatchResumeState, error) {
-	var nonce [16]byte
-	if _, err := rand.Read(nonce[:]); err != nil {
+	handles, err := t.proxy.allocateHandles(t.ctx, 1)
+	if err != nil {
 		return hpatchResumeState{}, err
 	}
 	state := hpatchResumeState{
 		ChangeID: changeID, CorrelationID: correlationID,
-		Handle: "M" + hex.EncodeToString(nonce[:]), Root: t.directory, ExpiresAt: time.Now().Add(shellArtifactTTL),
+		Handle: handles[0], Root: t.directory, ExpiresAt: time.Now().Add(shellArtifactTTL),
 		Source: source, Segments: segments,
 		Progress: map[string]json.RawMessage{
 			"index": mustMarshalJSON(0), "results": mustMarshalJSON([]any{}),

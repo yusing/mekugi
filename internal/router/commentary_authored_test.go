@@ -64,7 +64,7 @@ func TestOperationCommentaryRequiresAuthoredText(t *testing.T) {
 				if len(output) != want {
 					t.Fatalf("output = %s", mustTestJSON(t, output))
 				}
-				if tc.text != "" && commentaryText(t, output[0]) != "Journal update `/root` (`j1`)\n"+tc.text {
+				if tc.text != "" && commentaryText(t, output[0]) != "Journal update `/root` (`amber`)\n"+tc.text {
 					t.Fatalf("authored text lost: %s", mustTestJSON(t, output))
 				}
 				if jsonString(output[len(output)-1], "arguments") != "{}" {

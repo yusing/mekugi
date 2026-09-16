@@ -129,13 +129,14 @@ func (d *liveDiffData) reconcile(ctx context.Context, s *mekugiReplayStore, scop
 				continue
 			}
 			for number := 1; number <= info.Next; number++ {
-				id := "hp_" + changeStreamName(stream) + strconv.Itoa(number)
-				for _, call := range index.Changes[id].Calls {
+				id := changeHandle(changeStreamName(stream), number)
+				change := index.Changes[id]
+				for _, call := range change.Calls {
 					present[index.Workspace+"\x00"+call.ID] = true
 				}
 				if err := d.apply(ctx, s, liveDiffChange{
 					Workspace: index.Workspace, Thread: info.Thread, Stream: stream,
-					ID: id, Change: index.Changes[id],
+					ID: id, Change: change,
 				}); err != nil {
 					return err
 				}

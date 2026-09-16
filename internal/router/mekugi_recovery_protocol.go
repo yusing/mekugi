@@ -49,11 +49,13 @@ type recoveryEdit struct {
 	script   string
 }
 
-func recoveryCommands(script string) []recoveryCommandReference {
-	// Bind handles to the entire immutable script as well as their frame.
-	// Text corrections can change a preceding path without changing a
-	// mutation's bytes; a handle from that older context must not retarget it.
-	scope := sha256.Sum256([]byte(script))
+// Keep the full integrity binding private. Length framing separates the script
+// from the ordered handle mapping, including when source text contains controls.
+func recoveryHandlesBinding(script string, handles []string) string {
+	return recoveryHash(strconv.Itoa(len(script)) + ":" + script + strings.Join(handles, ","))
+}
+
+func recoveryCommands(script string, handles []string) []recoveryCommandReference {
 	lines := hpatchsyntax.SplitPhysicalLines(script)
 	offsets := make([]int, len(lines)+1)
 	for index, line := range lines {
@@ -70,8 +72,12 @@ func recoveryCommands(script string) []recoveryCommandReference {
 		frame, _ := hpatchsyntax.FrameCommand(lines, header, line)
 		index = max(frame.Next, index)
 		source := script[offsets[header]:offsets[index]]
+		var handle string
+		if len(commands) < len(handles) {
+			handle = handles[len(commands)]
+		}
 		commands = append(commands, recoveryCommandReference{
-			handle: fmt.Sprintf("C%d:%s", len(commands)+1, recoveryHash(string(scope[:])+source)),
+			handle: handle,
 			index:  len(commands) + 1,
 			header: header,
 			end:    index,
@@ -151,7 +157,7 @@ type recoveredScript struct {
 	delta  string
 }
 
-func recoverScriptDetailed(ctx context.Context, rejectedScript, payload string) (recoveredScript, error) {
+func recoverScriptDetailed(ctx context.Context, rejectedScript, payload string, handles []string) (recoveredScript, error) {
 	if ctx == nil {
 		return recoveredScript{}, fmt.Errorf("context is nil")
 	}
@@ -172,7 +178,17 @@ func recoverScriptDetailed(ctx context.Context, rejectedScript, payload string) 
 		}
 		return recoveredScript{script: rebuilt, delta: "Updated retained-script text with ordinary HPATCH mutations."}, nil
 	}
-	commands := recoveryCommands(rejectedScript)
+	commands := recoveryCommands(rejectedScript, handles)
+	if len(handles) != len(commands) {
+		return recoveredScript{}, fmt.Errorf("invalid retained command handles")
+	}
+	seen := make(map[string]bool, len(commands))
+	for _, command := range commands {
+		if _, ok := parseShortHandle(command.handle); !ok || seen[command.handle] {
+			return recoveredScript{}, fmt.Errorf("invalid retained command handles")
+		}
+		seen[command.handle] = true
+	}
 	operations, err := parseRecoveryPayload(commands, payload)
 	if err != nil {
 		return recoveredScript{}, err
@@ -277,29 +293,16 @@ func parseRecoveryPayload(
 	return operations, nil
 }
 
-func resolveRecoveryCommand(
-	commands []recoveryCommandReference,
-	handle string,
-) (*recoveryCommandReference, error) {
-	if len(handle) < 7 || handle[0] != 'C' {
+func resolveRecoveryCommand(commands []recoveryCommandReference, handle string) (*recoveryCommandReference, error) {
+	if _, ok := parseShortHandle(handle); !ok {
 		return nil, fmt.Errorf("invalid command handle %q", handle)
 	}
-	indexText, hash, ok := strings.Cut(handle[1:], ":")
-	if !ok || len(hash) != base64.RawURLEncoding.EncodedLen(sha256.Size) || !recoveryPositiveDecimal(indexText) {
-		return nil, fmt.Errorf("invalid command handle %q", handle)
+	for index := range commands {
+		if commands[index].handle == handle {
+			return &commands[index], nil
+		}
 	}
-	if decoded, err := base64.RawURLEncoding.Strict().DecodeString(hash); err != nil || len(decoded) != sha256.Size {
-		return nil, fmt.Errorf("invalid command handle %q", handle)
-	}
-	index, err := strconv.Atoi(indexText)
-	if err != nil || index > len(commands) {
-		return nil, fmt.Errorf("command handle %q is stale or unavailable", handle)
-	}
-	command := &commands[index-1]
-	if command.handle != handle {
-		return nil, fmt.Errorf("command handle %q is stale; latest handle is %s", handle, command.handle)
-	}
-	return command, nil
+	return nil, fmt.Errorf("command handle %q is stale or unavailable", handle)
 }
 
 func planRecoveryEdits(script string, operations []recoveryOperation) ([]recoveryEdit, error) {
@@ -376,18 +379,6 @@ func recoveryLogicalHandle(script string, row int) string {
 	reference := mekugi.TextReferences(script, row)
 	handle, _ := recoveryToken(reference)
 	return handle
-}
-
-func recoveryPositiveDecimal(value string) bool {
-	if value == "" || value[0] < '1' || value[0] > '9' {
-		return false
-	}
-	for _, character := range value[1:] {
-		if character < '0' || character > '9' {
-			return false
-		}
-	}
-	return true
 }
 
 func recoveryToken(value string) (string, string) {

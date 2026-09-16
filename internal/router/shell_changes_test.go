@@ -36,7 +36,7 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 			{AfterPath: "file.txt", Diff: "add \"\" -> \"file.txt\"\n--- /dev/null\n+++ \"file.txt\"\n@@ -0,0 +1,12 @@\n" + strings.Repeat("+line π changed\n", 12)},
 			{BeforePath: "old name.txt", AfterPath: "new name.txt", Diff: "move \"old name.txt\" -> \"new name.txt\"\n"},
 			{AfterPath: "--summary", Diff: "add \"\" -> \"--summary\"\n"},
-			{AfterPath: "hp_b2", Diff: "add \"\" -> \"hp_b2\"\n"},
+			{AfterPath: "apple2", Diff: "add \"\" -> \"apple2\"\n"},
 			{AfterPath: "excluded.txt", Diff: "add \"\" -> \"excluded.txt\"\n"},
 		},
 	}
@@ -147,11 +147,11 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 		t.Fatalf("history: %q, %q, %d", stdout, stderr, status)
 	}
 	stdout, stderr, status = runShellWorkerTest(t, registry, "bash", nil,
-		"hchanges "+id+" -- --summary hp_b2", nil, invocation)
-	if status != 0 || stderr != "" || stdout != id+" applied\nadd \"\" -> \"--summary\"\nadd \"\" -> \"hp_b2\"\n" {
+		"hchanges "+id+" -- --summary apple2", nil, invocation)
+	if status != 0 || stderr != "" || stdout != id+" applied\nadd \"\" -> \"--summary\"\nadd \"\" -> \"apple2\"\n" {
 		t.Fatalf("literal flag and ID paths: %q, %q, %d", stdout, stderr, status)
 	}
-	for _, arguments := range []string{"", "-- file.txt", "--summary -- file.txt", "read " + id, id + " --path file.txt", "hp_a99", "hp_a1..hp_b2", "--max-tokens 0 hp_a1", "--history --summary hp_a1"} {
+	for _, arguments := range []string{"", "-- file.txt", "--summary -- file.txt", "read " + id, id + " --path file.txt", "amber99", "amber1..apple2", "--max-tokens 0 amber1", "--history --summary amber1"} {
 		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, "hchanges "+arguments, nil, invocation)
 		if status == 0 || stdout != "" || stderr == "" {
 			t.Fatalf("%q did not reject: %q, %q, %d", arguments, stdout, stderr, status)
@@ -162,32 +162,32 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 func TestParseChangeRead(t *testing.T) {
 	workspace := t.TempDir()
 	for _, arguments := range [][]string{
-		{"hp_a1", "--summary", "--", "first", "--history", "hp_b2", "first"},
-		{"--summary", "hp_a1", "--", "first", "--history", "hp_b2", "first"},
+		{"amber1", "--summary", "--", "first", "--history", "apple2", "first"},
+		{"--summary", "amber1", "--", "first", "--history", "apple2", "first"},
 	} {
 		options, err := parseChangeRead(arguments, workspace)
-		if err != nil || strings.Join(options.paths, ",") != "first,--history,hp_b2,first" ||
-			strings.Join(options.ids, ",") != "hp_a1" || options.view != "summary" {
+		if err != nil || strings.Join(options.paths, ",") != "first,--history,apple2,first" ||
+			strings.Join(options.ids, ",") != "amber1" || options.view != "summary" {
 			t.Fatalf("paths after --: %+v, %v", options, err)
 		}
 	}
-	for _, arguments := range [][]string{{"hp_a1"}, {"hp_a1", "--"}} {
+	for _, arguments := range [][]string{{"amber1"}, {"amber1", "--"}} {
 		options, err := parseChangeRead(arguments, workspace)
-		if err != nil || len(options.paths) != 0 || strings.Join(options.ids, ",") != "hp_a1" {
+		if err != nil || len(options.paths) != 0 || strings.Join(options.ids, ",") != "amber1" {
 			t.Fatalf("unfiltered read: %+v, %v", options, err)
 		}
 	}
-	options, err := parseChangeRead([]string{"hp_a1..hp_a2", "--summary", "hp_b1", "--", "file"}, workspace)
-	if err != nil || strings.Join(options.ids, ",") != "hp_a1,hp_a2,hp_b1" {
+	options, err := parseChangeRead([]string{"amber1..amber2", "--summary", "apple1", "--", "file"}, workspace)
+	if err != nil || strings.Join(options.ids, ",") != "amber1,amber2,apple1" {
 		t.Fatalf("range and flags: %+v, %v", options, err)
 	}
 	for _, arguments := range [][]string{
-		{}, {"--"}, {"--", "hp_a1"}, {"--summary"}, {"--summary", "--", "file"},
-		{"read", "hp_a1"}, {"hp_a1", "--path", "file"}, {"hp_a1", "--", ""},
-		{"--summary", "--summary", "hp_a1"}, {"--max-tokens", "01", "hp_a1"},
-		{"--max-tokens", strconv.Itoa(hrunMaxTokens + 1), "hp_a1"},
-		{"--workspace", workspace, "--workspace", workspace, "hp_a1"},
-		{"--cursor"}, {"--cursor", "", "hp_a1"}, {"--unknown", "hp_a1"},
+		{}, {"--"}, {"--", "amber1"}, {"--summary"}, {"--summary", "--", "file"},
+		{"read", "amber1"}, {"amber1", "--path", "file"}, {"amber1", "--", ""},
+		{"--summary", "--summary", "amber1"}, {"--max-tokens", "01", "amber1"},
+		{"--max-tokens", strconv.Itoa(hrunMaxTokens + 1), "amber1"},
+		{"--workspace", workspace, "--workspace", workspace, "amber1"},
+		{"--cursor"}, {"--cursor", "", "amber1"}, {"--unknown", "amber1"},
 	} {
 		if _, err := parseChangeRead(arguments, workspace); err == nil {
 			t.Fatalf("accepted %q", arguments)
@@ -221,7 +221,7 @@ func TestChangePathSpellings(t *testing.T) {
 	if changePathMatches(changeReadOptions{paths: []string{"./file.txt", "/file.txt"}}, "file.txt", false) {
 		t.Fatal("no-directory selection must not invent a path base")
 	}
-	options, err := parseChangeRead([]string{"hp_a1", "--workspace", ""}, workspace)
+	options, err := parseChangeRead([]string{"amber1", "--workspace", ""}, workspace)
 	if err != nil || options.workspace != "" {
 		t.Fatalf("no-directory selection: %+v, %v", options, err)
 	}

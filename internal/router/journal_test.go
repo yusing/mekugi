@@ -19,25 +19,25 @@ func TestJournalAtomicMutationsAndReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	ids, err := store.apply(ctx, nil, "/workspace", "root", "call", []journalMutation{{Op: "add", Text: new("Checked the request boundary")}})
-	if err != nil || len(ids) != 1 || ids[0] != "j1" {
+	if err != nil || len(ids) != 1 || ids[0] != "amber" {
 		t.Fatalf("add: %v %v", ids, err)
 	}
 	replayed, err := store.apply(ctx, nil, "/workspace", "root", "call", []journalMutation{{Op: "add", Text: new("Checked the request boundary")}})
-	if err != nil || len(replayed) != 1 || replayed[0] != "j1" {
+	if err != nil || len(replayed) != 1 || replayed[0] != "amber" {
 		t.Fatalf("replay: %v %v", replayed, err)
 	}
 	if _, err := store.apply(ctx, nil, "/workspace", "root", "call", []journalMutation{{Op: "add", Text: new("Changed")}}); err == nil {
 		t.Fatal("accepted changed call")
 	}
-	if _, err := store.apply(ctx, nil, "/workspace", "root", "bad", []journalMutation{{Op: "edit", ID: "j1", Text: new("Must roll back")}, {Op: "delete", ID: "j99"}}); err == nil {
+	if _, err := store.apply(ctx, nil, "/workspace", "root", "bad", []journalMutation{{Op: "edit", ID: "amber", Text: new("Must roll back")}, {Op: "delete", ID: "lime1"}}); err == nil {
 		t.Fatal("accepted invalid batch")
 	}
 	items, err := store.list(ctx, nil, "/workspace", "root")
 	if err != nil || len(items) != 1 || items[0].Text != "Checked the request boundary" {
 		t.Fatalf("atomicity: %+v %v", items, err)
 	}
-	ids, err = store.apply(ctx, nil, "/workspace", "root", "next", []journalMutation{{Op: "delete", ID: "j1"}, {Op: "add", Text: new("Verified")}})
-	if err != nil || ids[1] != "j2" {
+	ids, err = store.apply(ctx, nil, "/workspace", "root", "next", []journalMutation{{Op: "delete", ID: "amber"}, {Op: "add", Text: new("Verified")}})
+	if err != nil || ids[1] != "apple" {
 		t.Fatalf("stable IDs: %v %v", ids, err)
 	}
 }
@@ -56,13 +56,13 @@ func TestJournalRestartAndIndependentLatestFork(t *testing.T) {
 		t.Fatal(err)
 	}
 	store = newJournalStore()
-	if _, err := store.apply(ctx, replay, "/workspace", "root", "b", []journalMutation{{Op: "edit", ID: "j1", Text: new("Latest")}}); err != nil {
+	if _, err := store.apply(ctx, replay, "/workspace", "root", "b", []journalMutation{{Op: "edit", ID: "amber", Text: new("Latest")}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.initialize(ctx, replay, "/workspace", "fork", "/root", "root"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.apply(ctx, replay, "/workspace", "root", "c", []journalMutation{{Op: "edit", ID: "j1", Text: new("After fork")}}); err != nil {
+	if _, err := store.apply(ctx, replay, "/workspace", "root", "c", []journalMutation{{Op: "edit", ID: "amber", Text: new("After fork")}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.initialize(ctx, replay, "/workspace", "fork", "/root", "root"); err != nil {
@@ -119,9 +119,9 @@ func TestJournalMutationValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, mutation := range []journalMutation{
-		{Op: "add"}, {Op: "add", Text: new(" \n")}, {Op: "add", ID: "j1", Text: new("body")},
+		{Op: "add"}, {Op: "add", Text: new(" \n")}, {Op: "add", ID: "amber", Text: new("body")},
 		{Op: "add", Text: new(strings.Repeat("x", maxJournalItemBytes+1))},
-		{Op: "edit", ID: "j1", Text: new("missing")}, {Op: "delete", ID: "j1"}, {Op: "unknown"},
+		{Op: "edit", ID: "amber", Text: new("missing")}, {Op: "delete", ID: "amber"}, {Op: "unknown"},
 	} {
 		if _, err := store.apply(t.Context(), nil, "", "root", "", []journalMutation{mutation}); err == nil {
 			t.Errorf("accepted %+v", mutation)
@@ -139,24 +139,24 @@ func TestJournalAcknowledgesOnlyRenderedRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	before, _ := store.list(ctx, nil, "", "root")
-	if _, err := store.apply(ctx, nil, "", "root", "", []journalMutation{{Op: "edit", ID: "j1", Text: new("After")}}); err != nil {
+	if _, err := store.apply(ctx, nil, "", "root", "", []journalMutation{{Op: "edit", ID: "amber", Text: new("After")}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.acknowledge(ctx, nil, "", "root", map[string]uint64{"j1": before[0].Updated}, true); err != nil {
+	if err := store.acknowledge(ctx, nil, "", "root", map[string]uint64{"amber": before[0].Updated}, true); err != nil {
 		t.Fatal(err)
 	}
 	after, _ := store.list(ctx, nil, "", "root")
 	if after[0].Reported || after[0].Flushed || !after[0].EverReported {
 		t.Fatalf("revision acknowledgement: %+v", after[0])
 	}
-	if _, err := store.apply(ctx, nil, "", "root", "", []journalMutation{{Op: "delete", ID: "j1", ReportNow: true}}); err != nil {
+	if _, err := store.apply(ctx, nil, "", "root", "", []journalMutation{{Op: "delete", ID: "amber", ReportNow: true}}); err != nil {
 		t.Fatal(err)
 	}
 	j := store.memory[journalKey("", "root")]
 	if len(j.Retractions) != 1 || len(j.Items) != 0 {
 		t.Fatalf("retraction: %+v", j)
 	}
-	if err := store.acknowledge(ctx, nil, "", "root", map[string]uint64{"j1": j.Retractions[0].Sequence}, false); err != nil {
+	if err := store.acknowledge(ctx, nil, "", "root", map[string]uint64{"amber": j.Retractions[0].Sequence}, false); err != nil {
 		t.Fatal(err)
 	}
 	if len(store.memory[journalKey("", "root")].Retractions) != 0 {
@@ -199,14 +199,14 @@ func TestJournalDeletionWaitsForDelivery(t *testing.T) {
 	// depending on scheduling or a sleep.
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := store.apply(cancelled, nil, "", "root", "", []journalMutation{{Op: "delete", ID: "j1", ReportNow: true}}); err == nil {
+	if _, err := store.apply(cancelled, nil, "", "root", "", []journalMutation{{Op: "delete", ID: "amber", ReportNow: true}}); err == nil {
 		t.Fatal("delete overtook delivery")
 	}
-	if err := store.acknowledge(ctx, nil, "", "root", map[string]uint64{"j1": 1}, false); err != nil {
+	if err := store.acknowledge(ctx, nil, "", "root", map[string]uint64{"amber": 1}, false); err != nil {
 		t.Fatal(err)
 	}
 	release()
-	if _, err := store.apply(ctx, nil, "", "root", "", []journalMutation{{Op: "delete", ID: "j1", ReportNow: true}}); err != nil {
+	if _, err := store.apply(ctx, nil, "", "root", "", []journalMutation{{Op: "delete", ID: "amber", ReportNow: true}}); err != nil {
 		t.Fatal(err)
 	}
 	if len(store.memory[journalKey("", "root")].Retractions) != 1 {
@@ -234,16 +234,16 @@ func TestJournalDeliverySerializesIndependentStores(t *testing.T) {
 	}
 	waiting, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
 	defer cancel()
-	if _, err := second.apply(waiting, replay, "", "root", "", []journalMutation{{Op: "delete", ID: "j1", ReportNow: true}}); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := second.apply(waiting, replay, "", "root", "", []journalMutation{{Op: "delete", ID: "amber", ReportNow: true}}); !errors.Is(err, context.DeadlineExceeded) {
 		release()
 		t.Fatalf("independent store did not wait for delivery: %v", err)
 	}
-	if err := first.acknowledge(ctx, replay, "", "root", map[string]uint64{"j1": 1}, false); err != nil {
+	if err := first.acknowledge(ctx, replay, "", "root", map[string]uint64{"amber": 1}, false); err != nil {
 		release()
 		t.Fatal(err)
 	}
 	release()
-	if _, err := second.apply(ctx, replay, "", "root", "", []journalMutation{{Op: "delete", ID: "j1", ReportNow: true}}); err != nil {
+	if _, err := second.apply(ctx, replay, "", "root", "", []journalMutation{{Op: "delete", ID: "amber", ReportNow: true}}); err != nil {
 		t.Fatal(err)
 	}
 	journal, _, err := readThreadJournal(replay, "", "root")

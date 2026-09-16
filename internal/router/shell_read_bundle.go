@@ -2,8 +2,6 @@ package router
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -119,13 +117,13 @@ func executeReadBundle(ctx context.Context, manifest toolWorkerManifest, runtime
 			remainder.Stderr += execution.OmittedOutput.Stderr
 			omitted = bundleRowSpan(remainder.Stdout)
 		}
-		var random [16]byte
-		if _, err := rand.Read(random[:]); err != nil {
+		handles, err := store.allocateHandles(ctx, 1)
+		if err != nil {
 			return fail(err)
 		}
 		entries = append(entries, readBundleEntry{
 			path: spec.path, shown: execution.Stdout, omitted: omitted, state: state,
-			record: shellOutputRecord{Version: 1, ID: "r_" + base64.RawURLEncoding.EncodeToString(random[:]),
+			record: shellOutputRecord{Version: 1, ID: handles[0],
 				Stdout: remainder.Stdout, Stderr: remainder.Stderr, StdoutKind: remainder.StdoutKind,
 				StderrKind: remainder.StderrKind, ExitCode: execution.ExitCode},
 		})

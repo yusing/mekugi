@@ -149,14 +149,18 @@ func (s *mekugiReplayStore) readRetainedSession(name string) (retainedSession, e
 	return session, nil
 }
 
+// Legacy output names are recognized only for ownership, accounting, and cleanup.
+// They are not accepted by hread or adopted from request-visible references.
+var legacyRetainedOutputID = regexp.MustCompile(`^r_[A-Za-z0-9_-]{21}[AQgw]$`)
+
 func retainedDataName(name string) bool {
 	if filepath.Base(name) != name || !strings.HasSuffix(name, ".json") {
 		return false
 	}
 	if id, ok := strings.CutPrefix(strings.TrimSuffix(name, ".json"), "output-"); ok {
-		return validShellOutputID(id)
+		return validShellOutputID(id) || legacyRetainedOutputID.MatchString(id)
 	}
-	for _, prefix := range []string{"call-", "commentary-", "journal-", "changes-"} {
+	for _, prefix := range []string{"call-", "commentary-", "journal-", changeIndexPrefix, "changes-", "cursor-"} {
 		if hash, ok := strings.CutPrefix(strings.TrimSuffix(name, ".json"), prefix); ok {
 			if len(hash) != 64 {
 				return false
@@ -240,7 +244,7 @@ func (s *mekugiReplayStore) retainFiles(names ...string) error {
 	return nil
 }
 
-var retainedReadReference = regexp.MustCompile(`\br_[A-Za-z0-9_-]{22}\b`)
+var retainedReadReference = regexp.MustCompile(`(?:\b|\\[nr])hread(?:[ \t]|\\t)+([a-z]+[0-9]*)\b`)
 
 // Retain the complete visible history in one locked catalog update. A fork
 // shares immutable records with its source; removing either chat keeps facts
@@ -278,7 +282,11 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 				}
 			}
 		}
-		for _, id := range retainedReadReference.FindAllString(string(raw), -1) {
+		for _, match := range retainedReadReference.FindAllStringSubmatch(string(raw), -1) {
+			id := match[1]
+			if !validShellOutputID(id) {
+				continue
+			}
 			data, err := readManagedOutputFile(filepath.Join(s.directory, "output-"+id+".json"))
 			if errors.Is(err, os.ErrNotExist) {
 				continue
@@ -331,6 +339,9 @@ func (s *mekugiReplayStore) readDependencyNames(record shellOutputRecord) ([]str
 			return nil, errors.New("cyclic read recovery reference")
 		}
 		seen[record.ID] = true
+		if record.CursorDigest != "" {
+			names = append(names, "cursor-"+record.CursorDigest+".json")
+		}
 		names = append(names, "output-"+record.ID+".json")
 		if record.Changes != nil {
 			dependencies, err := s.changeDependencyNames(record.Changes.Workspace, record.Changes.IDs)
@@ -484,7 +495,7 @@ func (s *mekugiReplayStore) storageSnapshot() (storageSnapshot, error) {
 	// Keep them as legacy records, ordered by last write, never infer an owner
 	// from a filename or borrow another workspace's session.
 	for name := range snapshot.files {
-		if snapshot.owners[name] == 0 && retainedDataName(name) && !strings.HasPrefix(name, "changes-") {
+		if snapshot.owners[name] == 0 && retainedDataName(name) && !strings.HasPrefix(name, changeIndexPrefix) {
 			snapshot.sessions = append(snapshot.sessions, storageCandidate{
 				used: times[name], files: map[string]bool{name: true}, legacy: true,
 			})
@@ -518,7 +529,7 @@ func (s *mekugiReplayStore) pruneStoredChanges(deleted map[string]bool, thread s
 		return err
 	}
 	for _, entry := range entries {
-		if !retainedDataName(entry.Name()) || !strings.HasPrefix(entry.Name(), "changes-") {
+		if !retainedDataName(entry.Name()) || !strings.HasPrefix(entry.Name(), changeIndexPrefix) {
 			continue
 		}
 		data, err := readManagedOutputFile(filepath.Join(s.directory, entry.Name()))
@@ -746,7 +757,7 @@ func (s *mekugiReplayStore) maintainStorage(replacement string, size int64, expi
 			}
 			for file := range candidate.files {
 				// Shared inherited facts survive until their last owner expires.
-				if snapshot.owners[file] > 1 || file == replacement || strings.HasPrefix(file, "changes-") {
+				if snapshot.owners[file] > 1 || file == replacement || strings.HasPrefix(file, changeIndexPrefix) {
 					continue
 				}
 				if err := os.Remove(filepath.Join(s.directory, file)); err != nil && !errors.Is(err, os.ErrNotExist) {

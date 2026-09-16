@@ -206,7 +206,7 @@ func TestLiveDiffWorkerCoverageLifecycle(t *testing.T) {
 	_, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{"/work": {"thread": true}}})
 	sub := broker.subscribe()
 	<-sub.events
-	connection := broker.expectProducer("/work", "thread", "hp_a1", "Mfixture")
+	connection := broker.expectProducer("/work", "thread", "amber1", "Mfixture")
 	producer := startLiveDiffProducer(t.Context(), connection)
 	waitLiveDiffEvent(t, sub, func(e liveDiffEvent) bool { return e.Kind == "coverage" && e.Status == "" })
 	producer.close()
@@ -220,7 +220,7 @@ func TestLiveDiffWorkerCoverageLifecycle(t *testing.T) {
 	if count != 0 {
 		t.Fatal("completed workers did not release publisher capacity")
 	}
-	broker.resumeProducer("/work", "thread", "hp_a1", "Mfixture", connection)
+	broker.resumeProducer("/work", "thread", "amber1", "Mfixture", connection)
 	producer = startLiveDiffProducer(t.Context(), connection)
 	defer producer.close()
 	waitLiveDiffEvent(t, sub, func(e liveDiffEvent) bool { return e.Kind == "coverage" && e.Status == "" })
@@ -231,7 +231,7 @@ func TestLiveDiffWorkerCoverageLifecycle(t *testing.T) {
 	if !event.Resync || !strings.Contains(event.Status, "UNAVAILABLE") {
 		t.Fatalf("worker disconnect was hidden: %+v", event)
 	}
-	broker.resumeProducer("/work", "thread", "hp_a1", "Mfixture", connection)
+	broker.resumeProducer("/work", "thread", "amber1", "Mfixture", connection)
 	producer = startLiveDiffProducer(t.Context(), connection)
 	defer producer.close()
 	event = waitLiveDiffEvent(t, sub, func(e liveDiffEvent) bool { return e.Kind == "scope" })
@@ -244,15 +244,15 @@ func TestLiveDiffCapacityGapSurvivesScopeAndResume(t *testing.T) {
 	broker := newLiveDiffBroker(t.Context())
 	broker.setEndpoint("http://127.0.0.1:1234" + liveDiffEventsPath)
 	for i := range 256 {
-		broker.expectProducer("/work", "thread", "hp_a1", fmt.Sprint(i))
+		broker.expectProducer("/work", "thread", "amber1", fmt.Sprint(i))
 	}
-	refused := broker.expectProducer("/work", "thread", "hp_a1", "refused")
+	refused := broker.expectProducer("/work", "thread", "amber1", "refused")
 	if refused != (liveDiffConnection{}) {
 		t.Fatal("capacity was not enforced")
 	}
 	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{"/work": {"thread": true}}})
 	clear(broker.producers) // Simulate later capacity becoming available.
-	broker.resumeProducer("/work", "thread", "hp_a1", "refused", refused)
+	broker.resumeProducer("/work", "thread", "amber1", "refused", refused)
 	if len(broker.producers) != 0 {
 		t.Fatal("resume allocated a descriptor the refused worker cannot read")
 	}
@@ -284,7 +284,7 @@ func TestLiveDiffScopeReconciliationUsesCachedAttempts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	index.Changes["hp_a1"] = trackedChange{Correlation: "one"}
+	index.Changes["amber1"] = trackedChange{Correlation: "one"}
 	if err := store.writeChangeIndex(index); err != nil {
 		t.Fatal(err)
 	}
@@ -438,7 +438,7 @@ func TestLiveDiffIdleProducerStopsWithRouter(t *testing.T) {
 	}
 	_, broker, stop := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{}})
 	sub := broker.subscribe()
-	connection := broker.expectProducer("/work", "thread", "hp_a1", "Mfixture")
+	connection := broker.expectProducer("/work", "thread", "amber1", "Mfixture")
 	producer := startLiveDiffProducer(t.Context(), connection)
 	defer producer.close()
 	waitLiveDiffEvent(t, sub, func(e liveDiffEvent) bool { return e.Kind == "coverage" && e.Status == "" })
@@ -595,7 +595,7 @@ func TestLiveDiffPreviewMailboxCoalescesWithoutDelayingReceipts(t *testing.T) {
 	for i := 1; i <= 200; i++ {
 		broker.publishPreview(previewViewFixture("one", i), false)
 	}
-	broker.publish([]liveDiffChange{{Workspace: "/workspace", Thread: "thread", ID: "hp_a1"}})
+	broker.publish([]liveDiffChange{{Workspace: "/workspace", Thread: "thread", ID: "amber1"}})
 	if event := <-sub.events; event.Kind != "change" {
 		t.Fatal("preview burst delayed durable publication")
 	}

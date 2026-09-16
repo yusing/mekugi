@@ -176,12 +176,12 @@ func TestLiveDiffStoreRestartAndMissingEvidence(t *testing.T) {
 		t.Fatalf("files: %#v, %v", files, err)
 	}
 	if err := store.confirmChanges(t.Context(), workspace, map[string]mekugiHistory{
-		"one": {ChangeID: "hp_a1", CorrelationID: "one", confirmed: true},
+		"one": {ChangeID: "amber1", CorrelationID: "one", confirmed: true},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	files, err = reopened.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
-	if err != nil || files[0].chunks[0].status != "hp_a1 applied" {
+	if err != nil || files[0].chunks[0].status != "amber1 applied" {
 		t.Fatalf("receipt: %#v, %v", files, err)
 	}
 	if err := os.Rename(filepath.Join(store.directory, replayRecordName(workspace, "one", false)), filepath.Join(store.directory, "removed-record")); err != nil {
@@ -197,7 +197,7 @@ func TestLiveDiffNativeRenderer(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "x.go")
 	file := liveDiffFile{path: path, chunks: []liveDiffChunk{{
-		status: "hp_a1 applied",
+		status: "amber1 applied",
 		review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1 +1 @@\n-old\n+new\n"},
 	}}}
 	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 80, 0, liveDiffChunk{})
@@ -639,7 +639,7 @@ func TestLiveDiffFlushPendingReceiptAndAllFiles(t *testing.T) {
 		}
 	}
 	if err := store.confirmChanges(t.Context(), workspace, map[string]mekugiHistory{
-		"A": {ChangeID: "hp_a1", CorrelationID: "A", confirmed: true},
+		"A": {ChangeID: "amber1", CorrelationID: "A", confirmed: true},
 	}); err != nil {
 		t.Fatal(err)
 	}

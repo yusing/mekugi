@@ -3,7 +3,7 @@ start: _blank_line* script _blank_line*
 script: resume_command | command (_separator command)*
 
 resume_command: "resume" SP RESUME_HANDLE (SP RESUME_ACTION)? (_separator command (_separator command)*)?
-RESUME_HANDLE: /M[0-9a-f]{32}/
+RESUME_HANDLE: /[a-z]+[0-9]*/
 RESUME_ACTION: "retry" | "accept" | "repair"
 
 ?command: path_command

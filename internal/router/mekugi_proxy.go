@@ -122,6 +122,7 @@ func mekugiTranslationResultOf(translated mekugi.HostTranslation) mekugiTranslat
 }
 
 type mekugiProxy struct {
+	nextHandle             uint64
 	translator             mekugiTranslator
 	registry               *toolRegistry
 	customizedInstructions bool
@@ -1189,7 +1190,7 @@ func (t *mekugiResponseTransform) evaluateScript(
 	if retainedApply {
 		root, release, openErr := t.proxy.shellRoot(t.shellDirectory)
 		if errors.Is(openErr, errRetainedShellUnavailable) {
-			return t.rejectUnevaluated(attemptMetadata.ToolName, callID, input, openErr, attemptMetadata, "", nil, upstreamItem)
+			return t.rejectUnevaluated(attemptMetadata.ToolName, callID, input, openErr, attemptMetadata, "", nil, upstreamItem, nil)
 		}
 		if openErr != nil {
 			return mekugiHistory{}, fmt.Errorf("open retained shell directory: %w", openErr)
@@ -1216,8 +1217,17 @@ func (t *mekugiResponseTransform) evaluateScript(
 		if diagnostic == "" {
 			diagnostic = err.Error()
 		}
+		var recoveryHandles []string
 		if evaluatorRejected {
-			diagnostic += mekugiRecoveryGuidance(evaluated, translated.rejections, attemptMetadata.Correction)
+			commands := recoveryCommands(evaluated, nil)
+			if len(commands) != 0 {
+				var allocationErr error
+				recoveryHandles, allocationErr = t.proxy.allocateHandles(t.ctx, len(commands))
+				if allocationErr != nil {
+					return mekugiHistory{}, allocationErr
+				}
+			}
+			diagnostic += mekugiRecoveryGuidance(evaluated, translated.rejections, attemptMetadata.Correction, recoveryHandles)
 		}
 		history := mekugiHistory{
 			ToolName: attemptMetadata.ToolName,
@@ -1229,6 +1239,8 @@ func (t *mekugiResponseTransform) evaluateScript(
 			TranslationError:  changeNotice(changeID) + diagnostic,
 			ChangeID:          changeID,
 			EvaluatorRejected: evaluatorRejected,
+			RecoveryBinding:   recoveryHandlesBinding(evaluated, recoveryHandles),
+			RecoveryHandles:   recoveryHandles,
 			Rejections:        slices.Clone(translated.rejections),
 
 			UpstreamItem:  maps.Clone(upstreamItem),

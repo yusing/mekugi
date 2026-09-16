@@ -13,8 +13,10 @@ func TestMekugiRecoveryRejectsDifferentWorktree(t *testing.T) {
 		ToolName: mekugiToolName, Script: testMekugiScript, Root: workspace + "-other", CarrierName: "exec",
 		TranslationError: "rejected", sequence: 1,
 		EvaluatorRejected: true,
+		RecoveryHandles:   testRecoveryHandles(testMekugiScript),
+		RecoveryBinding:   recoveryHandlesBinding(testMekugiScript, testRecoveryHandles(testMekugiScript)),
 	}}
-	history, err := transform.translateRecovery("call-new", recoveryCommands(testMekugiScript)[0].handle+" 1:aaaa", nil)
+	history, err := transform.translateRecovery("call-new", recoveryCommands(testMekugiScript, testRecoveryHandles(testMekugiScript))[0].handle+" 1:aaaa", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

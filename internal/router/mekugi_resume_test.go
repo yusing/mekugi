@@ -3,7 +3,10 @@ package router
 import (
 	"encoding/json"
 	"github.com/yusing/mekugi"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -72,7 +75,7 @@ func TestReplayRecoveryAndAliasesAreRequestLocal(t *testing.T) {
 	workspace := t.TempDir()
 	alias := mekugi.TargetAlias{Path: "file", Before: "1:1111", After: "1:2222"}
 	histories := map[string]mekugiHistory{
-		"old": {ToolName: mekugiToolName, Root: workspace, Script: "old", CarrierName: "exec", CarrierPayload: "old carrier", CarrierKind: codeModeCarrierCustom, TranslationError: "rejected", EvaluatorRejected: true, CorrelationID: "attempt", Attempt: 1},
+		"old": {ToolName: mekugiToolName, Root: workspace, Script: "old", CarrierName: "exec", CarrierPayload: "old carrier", CarrierKind: codeModeCarrierCustom, TranslationError: "rejected", EvaluatorRejected: true, RecoveryHandles: testRecoveryHandles("old"), RecoveryBinding: recoveryHandlesBinding("old", testRecoveryHandles("old")), CorrelationID: "attempt", Attempt: 1},
 		"new": {ToolName: mekugiToolName, Root: workspace, Script: "new", CarrierName: "exec", CarrierPayload: "new carrier", CarrierKind: codeModeCarrierCustom, Report: "applied", Aliases: []mekugi.TargetAlias{alias}},
 	}
 	if err := store.put(t.Context(), workspace, histories); err != nil {
@@ -265,7 +268,7 @@ func TestReplayConcurrentViewsWithReusedRoutingKey(t *testing.T) {
 	workspace := t.TempDir()
 	histories := map[string]mekugiHistory{}
 	for _, id := range []string{"parent", "fork"} {
-		histories[id] = mekugiHistory{ToolName: mekugiToolName, Script: id, CarrierName: "exec", CarrierKind: codeModeCarrierCustom, CarrierPayload: id, TranslationError: "rejected", EvaluatorRejected: true}
+		histories[id] = mekugiHistory{ToolName: mekugiToolName, Script: id, CarrierName: "exec", CarrierKind: codeModeCarrierCustom, CarrierPayload: id, TranslationError: "rejected", EvaluatorRejected: true, RecoveryHandles: testRecoveryHandles(id), RecoveryBinding: recoveryHandlesBinding(id, testRecoveryHandles(id))}
 	}
 	if err := store.put(t.Context(), workspace, histories); err != nil {
 		t.Fatal(err)
@@ -378,5 +381,50 @@ func TestReplayReceivedReplyDoesNotRepeatAfterReconciliation(t *testing.T) {
 		if len(result.Output) != 0 {
 			t.Fatalf("restart=%v repeated response commentary: %s", restart, output)
 		}
+	}
+}
+
+func TestReplayConfirmationSkipsUnsupportedChangeIDs(t *testing.T) {
+	for _, id := range []string{"hp_a1", "amber1"} {
+		t.Run(id, func(t *testing.T) {
+			store, err := openMekugiReplayStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			workspace := t.TempDir()
+			history := mekugiHistory{
+				ToolName: mekugiToolName, Root: workspace, Script: "new f.txt\ntype \"done\"\n",
+				ChangeID: id, CorrelationID: "old-call",
+				CarrierName: "exec", CarrierKind: codeModeCarrierCustom, CarrierPayload: "old carrier",
+				Report: "change " + id + "\nfiles add=1 update=0 move=0 delete=0\n",
+			}
+			// Seed a durable record directly, as written before the index-format change.
+			record := replayRecord{Version: 1, Workspace: workspace, CallID: "old-call", History: history}
+			if err := os.WriteFile(filepath.Join(store.directory, replayRecordName(workspace, "old-call", false)), mustMarshalJSON(record), 0600); err != nil {
+				t.Fatal(err)
+			}
+			ctx, _ := retentionTestSession(t, store, "resumed", 0)
+			proxy := &mekugiProxy{replayStore: store}
+			request := &parsedResponsesRequest{fields: map[string]json.RawMessage{
+				"input": mustMarshalJSON([]any{
+					map[string]any{"type": "custom_tool_call", "name": "exec", "call_id": "old-call", "input": history.CarrierPayload},
+					map[string]any{"type": "custom_tool_call_output", "call_id": "old-call", "output": history.Report},
+				}),
+			}}
+			visible, err := proxy.reconcileVisibleInput(ctx, request, workspace, "resumed")
+			if id == "amber1" {
+				if err == nil || !strings.Contains(err.Error(), "confirmed change identity") {
+					t.Fatalf("current-format inconsistency was ignored: %v", err)
+				}
+				return
+			}
+			if err != nil || !visible["old-call"].confirmed {
+				t.Fatalf("old confirmation blocked replay: %+v, %v", visible, err)
+			}
+			index, err := store.readChangeIndex(workspace)
+			if err != nil || len(index.Changes) != 0 {
+				t.Fatalf("old change revived in current index: %+v, %v", index, err)
+			}
+		})
 	}
 }

@@ -276,7 +276,7 @@ func TestInstructionsAcquireAndReuseVerifiedTargets(t *testing.T) {
 		"unchanged saved rows remain valid even when edits shifted their line numbers",
 		"Copy complete `LINE:HASH` endpoints from the intended span",
 		`type "return oldResult, nil" "return newResult, nil"`,
-		`C3:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8 "return oldResult, nil"`,
+		`maple "return oldResult, nil"`,
 		"exact known target text spans logical lines or includes a trailing LF",
 	} {
 		if !strings.Contains(InstructionsForModel("", true), required) {
@@ -308,14 +308,14 @@ func TestInstructionsStayWithinMekugiAndPrivateTools(t *testing.T) {
 
 func TestRecoveryGuidanceRendersDynamicReferences(t *testing.T) {
 	const references = "Rejected target commands:\n"
-	const want = "\nRepair only the stale targets in the retained rejected script. Each line is a current `C...` command handle followed directly by one different ordinary HPATCH/2 target. Submit every listed correction in one atomic payload. Other commands and fields are preserved. A re-rejection changes no workspace file and makes every earlier handle stale. For other corrections, use ordinary type/add mutations through functions.hpatch_recover against retained-script text.\n\n" + references
+	const want = "\nRepair only the stale targets in the retained rejected script. Each line is a current `HANDLE` command handle followed directly by one different ordinary HPATCH/2 target. Submit every listed correction in one atomic payload. Other commands and fields are preserved. A re-rejection changes no workspace file and makes every earlier handle stale. For other corrections, use ordinary type/add mutations through functions.hpatch_recover against retained-script text.\n\n" + references
 	if got := RecoveryGuidance(references); got != want {
 		t.Fatalf("RecoveryGuidance() = %q, want %q", got, want)
 	}
 }
 
 func TestRecoveryGuidanceWithoutReferences(t *testing.T) {
-	const want = "\nRepair only the stale targets in the retained rejected script. Each line is a current `C...` command handle followed directly by one different ordinary HPATCH/2 target. Submit every listed correction in one atomic payload. Other commands and fields are preserved. A re-rejection changes no workspace file and makes every earlier handle stale. For other corrections, use ordinary type/add mutations through functions.hpatch_recover against retained-script text.\n\n"
+	const want = "\nRepair only the stale targets in the retained rejected script. Each line is a current `HANDLE` command handle followed directly by one different ordinary HPATCH/2 target. Submit every listed correction in one atomic payload. Other commands and fields are preserved. A re-rejection changes no workspace file and makes every earlier handle stale. For other corrections, use ordinary type/add mutations through functions.hpatch_recover against retained-script text.\n\n"
 	if got := RecoveryGuidance(""); got != want {
 		t.Fatalf("RecoveryGuidance() = %q, want %q", got, want)
 	}
@@ -389,7 +389,7 @@ func TestInstructionsTeachCompactChangeHandoffs(t *testing.T) {
 			if strings.Contains(got, "hchanges read") || strings.Contains(got, "`--path PATH`") {
 				t.Errorf("model %q compact %v: obsolete change command syntax", model, compact)
 			}
-			for _, required := range []string{"edits with `hchanges hp_a1..hp_a3`", "recovery keeps that ID", "--history", "without repeating IDs or filters", "rather than Git diff", "not before an already-needed", "do not routinely pair"} {
+			for _, required := range []string{"edits with `hchanges amber1..amber3`", "recovery keeps that ID", "--history", "without repeating IDs or filters", "rather than Git diff", "not before an already-needed", "do not routinely pair"} {
 				if strings.Count(got, required) != 1 {
 					t.Errorf("model %q compact %v: expected one %q", model, compact, required)
 				}

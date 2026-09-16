@@ -3,9 +3,7 @@ package router
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,18 +22,19 @@ const maxShellOutputStoreBytes = 256 << 20
 // Initial references own immutable omitted data. Later references contain only
 // a source reference and positions, never another copy of the output.
 type shellOutputRecord struct {
-	Changes    *changeReadSnapshot `json:"changes,omitempty"`
-	Version    int                 `json:"version"`
-	ID         string              `json:"id"`
-	Stdout     string              `json:"stdout"`
-	Stderr     string              `json:"stderr"`
-	ExitCode   int                 `json:"exit_code"`
-	StdoutKind string              `json:"stdout_kind,omitempty"`
-	StderrKind string              `json:"stderr_kind,omitempty"`
-	Source     string              `json:"source,omitempty"`
-	Position   [2]int              `json:"position,omitempty"`
-	Stream     string              `json:"stream,omitempty"`
-	Binding    string              `json:"binding,omitempty"`
+	Changes      *changeReadSnapshot `json:"changes,omitempty"`
+	Version      int                 `json:"version"`
+	ID           string              `json:"id"`
+	Stdout       string              `json:"stdout"`
+	Stderr       string              `json:"stderr"`
+	ExitCode     int                 `json:"exit_code"`
+	StdoutKind   string              `json:"stdout_kind,omitempty"`
+	StderrKind   string              `json:"stderr_kind,omitempty"`
+	Source       string              `json:"source,omitempty"`
+	Position     [2]int              `json:"position,omitempty"`
+	Stream       string              `json:"stream,omitempty"`
+	CursorDigest string              `json:"cursor_digest,omitempty"`
+	Binding      string              `json:"binding,omitempty"`
 }
 
 type changeReadSnapshot struct {
@@ -48,12 +47,12 @@ type changeReadSnapshot struct {
 }
 
 func (s *mekugiReplayStore) putChangeRead(ctx context.Context, options changeReadOptions, text string, offset int) (string, error) {
-	var random [16]byte
-	if _, err := rand.Read(random[:]); err != nil {
+	handles, err := s.allocateHandles(ctx, 1)
+	if err != nil {
 		return "", err
 	}
 	return s.putReadRecord(ctx, shellOutputRecord{
-		Version: 1, ID: "r_" + base64.RawURLEncoding.EncodeToString(random[:]),
+		Version: 1, ID: handles[0],
 		Changes: &changeReadSnapshot{
 			Workspace: options.workspace, IDs: options.ids, Paths: options.paths, View: options.view,
 			Offset: offset, Digest: fmt.Sprintf("%x", sha256.Sum256([]byte(text))),
@@ -95,9 +94,8 @@ func shellOutputStore(manifest toolWorkerManifest) (*mekugiReplayStore, error) {
 }
 
 func validShellOutputID(id string) bool {
-	value, ok := strings.CutPrefix(id, "r_")
-	decoded, err := base64.RawURLEncoding.DecodeString(value)
-	return ok && err == nil && len(decoded) == 16 && base64.RawURLEncoding.EncodeToString(decoded) == value
+	_, ok := parseShortHandle(id)
+	return ok
 }
 
 func readRecordBinding(record shellOutputRecord) string {
@@ -114,12 +112,12 @@ func (s *mekugiReplayStore) putShellOutput(ctx context.Context, stdout, stderr s
 }
 
 func (s *mekugiReplayStore) putTypedOutput(ctx context.Context, output toolplugin.OmittedOutput, exitCode int) (string, error) {
-	var random [16]byte
-	if _, err := rand.Read(random[:]); err != nil {
+	handles, err := s.allocateHandles(ctx, 1)
+	if err != nil {
 		return "", err
 	}
 	record := shellOutputRecord{
-		Version: 1, ID: "r_" + base64.RawURLEncoding.EncodeToString(random[:]),
+		Version: 1, ID: handles[0],
 		Stdout: output.Stdout, Stderr: output.Stderr, ExitCode: exitCode,
 		StdoutKind: output.StdoutKind, StderrKind: output.StderrKind,
 	}
@@ -131,17 +129,40 @@ func (s *mekugiReplayStore) putReadCursor(ctx context.Context, source shellOutpu
 		Version: 1, Source: source.ID, Position: position, Stream: stream,
 		Binding: readRecordBinding(source),
 	}
-	// Deterministic references make repeated reads return the same next call.
-	// The random source ID supplies the capability's entropy.
-	record.ID = readCursorID(record)
+	record.CursorDigest = readCursorDigest(record)
+	s = s.scoped(ctx)
+	name := "cursor-" + record.CursorDigest + ".json"
+	err := s.locked(ctx, func() error {
+		data, err := readManagedOutputFile(filepath.Join(s.directory, name))
+		if err == nil {
+			if err := json.Unmarshal(data, &record.ID); err != nil {
+				return err
+			}
+			if _, ok := parseShortHandle(record.ID); !ok {
+				return errors.New("invalid read cursor handle")
+			}
+			return s.retainFiles(name)
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		handles, err := s.allocateHandlesLocked(1)
+		if err != nil {
+			return err
+		}
+		record.ID = handles[0]
+		return s.writeManagedFile(name, "cursor-pending-", mustMarshalJSON(record.ID))
+	})
+	if err != nil {
+		return "", err
+	}
 	return s.putReadRecord(ctx, record)
 }
 
-func readCursorID(record shellOutputRecord) string {
-	record.ID = ""
+func readCursorDigest(record shellOutputRecord) string {
+	record.ID, record.CursorDigest = "", ""
 	data, _ := json.Marshal(record)
-	digest := sha256.Sum256(data)
-	return "r_" + base64.RawURLEncoding.EncodeToString(digest[:16])
+	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
 func validateReadRecord(record shellOutputRecord) error {
@@ -169,10 +190,10 @@ func validateReadRecord(record shellOutputRecord) error {
 	if record.Source != "" {
 		if !validShellOutputID(record.Source) || record.Source == record.ID ||
 			record.Stdout != "" || record.Stderr != "" || record.StdoutKind != "" || record.StderrKind != "" ||
-			record.Position[0] < 0 || record.Position[1] < 0 || len(record.Binding) != 64 || record.ID != readCursorID(record) {
+			record.Position[0] < 0 || record.Position[1] < 0 || len(record.Binding) != 64 || record.CursorDigest != readCursorDigest(record) {
 			return errors.New("invalid read continuation record")
 		}
-	} else if record.Position != [2]int{} || record.Stream != "" || record.Binding != "" {
+	} else if record.Position != [2]int{} || record.Stream != "" || record.Binding != "" || record.CursorDigest != "" {
 		return errors.New("invalid initial read reference")
 	}
 	for index, text := range []string{record.Stdout, record.Stderr} {

@@ -489,7 +489,7 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 			switch mutation.Op {
 			case "add":
 				j.NextID++
-				item := journalItem{ID: fmt.Sprintf("j%d", j.NextID), Text: *mutation.Text, Question: question, Author: j.Author, Created: j.Sequence, Updated: j.Sequence, ReportNow: mutation.ReportNow}
+				item := journalItem{ID: shortHandle(j.NextID - 1), Text: *mutation.Text, Question: question, Author: j.Author, Created: j.Sequence, Updated: j.Sequence, ReportNow: mutation.ReportNow}
 				j.Items = append(j.Items, item)
 				ids = append(ids, item.ID)
 			case "edit":

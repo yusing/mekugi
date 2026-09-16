@@ -21,23 +21,24 @@ func mekugiRecoveryGuidance(
 	script string,
 	rejections []mekugi.HostRejection,
 	refreshed bool,
+	handles []string,
 ) string {
-	references, eligible := mekugiRecoveryReferences(script, rejections, refreshed)
+	references, eligible := mekugiRecoveryReferences(script, rejections, refreshed, handles)
 	if !eligible {
-		return genericRecoveryGuidance(script, rejections, refreshed)
+		return genericRecoveryGuidance(script, rejections, refreshed, handles)
 	}
 	return codexinstructions.RecoveryGuidance(references)
 }
 
-func genericRecoveryGuidance(script string, rejections []mekugi.HostRejection, refreshed bool) string {
+func genericRecoveryGuidance(script string, rejections []mekugi.HostRejection, refreshed bool, handles []string) string {
 	var output strings.Builder
 	if refreshed {
-		output.WriteString("\nThis re-rejection changed no workspace file. Corrections are retained only in the new rejected-script baseline; earlier script rows and C... handles may be stale.\n")
+		output.WriteString("\nThis re-rejection changed no workspace file. Corrections are retained only in the new rejected-script baseline; earlier script rows and command handles may be stale.\n")
 	}
 	output.WriteString("\nRepair retained-script text with ordinary type/add mutations through functions.hpatch_recover, without in/new/mv/rm commands. Targets below address the rejected script, not workspace files. Use exact known literals for other retained text. The router rebuilds and reevaluates the complete script atomically; do not repeat unrelated prepared edits.\n\nRetained rejected-script rows:\n")
 	lines := hpatchsyntax.SplitPhysicalLines(script)
 	logicalRows := mekugiLogicalRowsByPhysicalLine(script, lines)
-	commands := recoveryCommands(script)
+	commands := recoveryCommands(script, handles)
 	offered := make(map[int]bool)
 	for _, rejection := range rejections {
 		if rejection.Command < 1 || rejection.Command > len(commands) || offered[rejection.Command] {
@@ -97,8 +98,9 @@ func mekugiRecoveryReferences(
 	script string,
 	rejections []mekugi.HostRejection,
 	refreshed bool,
+	handles []string,
 ) (string, bool) {
-	commands := recoveryCommands(script)
+	commands := recoveryCommands(script, handles)
 	relevant := make(map[int]struct{})
 	for _, rejection := range rejections {
 		if rejection.Reason != "row-stale" || rejection.Command < 1 || rejection.Command > len(commands) {
@@ -116,7 +118,7 @@ func mekugiRecoveryReferences(
 
 	var output strings.Builder
 	if refreshed {
-		output.WriteString("This re-rejection changed no workspace file. Earlier C... handles are stale; use only the current handles below.\n\n")
+		output.WriteString("This re-rejection changed no workspace file. Earlier command handles are stale; use only the current handles below.\n\n")
 	}
 	output.WriteString("Rejected target commands:\n")
 	indices := make([]int, 0, len(relevant))
@@ -128,7 +130,7 @@ func mekugiRecoveryReferences(
 		command := commands[index-1]
 		fmt.Fprintf(&output, "    %s %s\n", command.handle, mekugiRecoveryCommandSummary(command))
 	}
-	output.WriteString("\nSend one line per listed command as C... CURRENT_TARGET. Put all corrections in one functions.hpatch_recover payload; the router preserves every operation and value and reevaluates the complete script.\n")
+	output.WriteString("\nSend one line per listed command as HANDLE CURRENT_TARGET. Put all corrections in one functions.hpatch_recover payload; the router preserves every operation and value and reevaluates the complete script.\n")
 	return output.String(), true
 }
 
@@ -200,6 +202,9 @@ func recoveryHistoryOf(histories iter.Seq[mekugiHistory]) (mekugiHistory, error)
 	if !latest.EvaluatorRejected {
 		return latest, errors.New("the most recent mekugi call did not produce an evaluator rejection; send a complete script")
 	}
+	if latest.RecoveryBinding != recoveryHandlesBinding(latest.recoveryBaseline(), latest.RecoveryHandles) {
+		return latest, errors.New("retained recovery handle binding does not match the rejected baseline")
+	}
 	return latest, nil
 }
 
@@ -255,7 +260,7 @@ func (t *mekugiResponseTransform) translateRecovery(
 		attemptMetadata.Attempt = t.nextRecoveryAttempt(base.CorrelationID, base.Attempt)
 	}
 	if baseErr != nil {
-		return t.rejectUnevaluated(mekugiRecoveryToolName, callID, input, baseErr, attemptMetadata, "", nil, upstreamItem)
+		return t.rejectUnevaluated(mekugiRecoveryToolName, callID, input, baseErr, attemptMetadata, "", nil, upstreamItem, nil)
 	}
 	if base.Root != t.directory {
 		return t.rejectUnevaluated(
@@ -267,10 +272,11 @@ func (t *mekugiResponseTransform) translateRecovery(
 			"",
 			nil,
 			upstreamItem,
+			nil,
 		)
 	}
 	baseline := base.recoveryBaseline()
-	recovered, err := recoverScriptDetailed(t.ctx, baseline, input)
+	recovered, err := recoverScriptDetailed(t.ctx, baseline, input, base.RecoveryHandles)
 	if err != nil {
 		return t.rejectUnevaluated(
 			mekugiRecoveryToolName,
@@ -281,6 +287,7 @@ func (t *mekugiResponseTransform) translateRecovery(
 			baseline,
 			base.Rejections,
 			upstreamItem,
+			base.RecoveryHandles,
 		)
 	}
 	attemptMetadata.EvaluatedScript = recovered.script
@@ -295,6 +302,7 @@ func (t *mekugiResponseTransform) rejectUnevaluated(
 	referenceScript string,
 	rejections []mekugi.HostRejection,
 	upstreamItem map[string]json.RawMessage,
+	handles []string,
 ) (mekugiHistory, error) {
 	changeID, err := t.changeIDForAttempt(attempt)
 	if err != nil {
@@ -302,7 +310,7 @@ func (t *mekugiResponseTransform) rejectUnevaluated(
 	}
 	diagnostic := changeNotice(changeID) + rejection.Error()
 	if referenceScript != "" {
-		diagnostic += mekugiRecoveryGuidance(referenceScript, rejections, false)
+		diagnostic += mekugiRecoveryGuidance(referenceScript, rejections, false, handles)
 	}
 	if reporter, ok := t.proxy.translator.(mekugiOutcomeReporter); ok {
 		attemptContext := mekugi.WithAttemptMetadata(t.ctx, attempt)

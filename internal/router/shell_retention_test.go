@@ -701,7 +701,7 @@ func TestMekugiRecoveryAppliesRetainedShellArtifactDirectly(t *testing.T) {
 	if err != nil || !first.EvaluatorRejected {
 		t.Fatalf("initial rejection = %+v, %v", first, err)
 	}
-	payload := recoveryCommands(emitted)[1].handle + " 1:ef86\n"
+	payload := recoveryCommands(emitted, first.RecoveryHandles)[1].handle + " 1:ef86\n"
 	history, err := transform.translateRecovery("call-recovery", payload, nil)
 	if err != nil || history.TranslationError != "" {
 		t.Fatalf("recovery = %+v, %v", history, err)

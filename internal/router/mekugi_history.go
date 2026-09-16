@@ -50,6 +50,8 @@ type mekugiHistory struct {
 	OutputWarning        string
 	TranslationError     string
 	EvaluatorRejected    bool
+	RecoveryBinding      string   `json:",omitempty"`
+	RecoveryHandles      []string `json:",omitempty"`
 	Rejections           []mekugi.HostRejection
 	CorrelationID        string
 	Attempt              int
@@ -146,9 +148,12 @@ func (p *mekugiProxy) rememberBatch(sessionID string, histories map[string]mekug
 			return fmt.Errorf("encode mekugi history item: %w", err)
 		}
 		history.bytes = len(sessionID) + len(callID) + len(history.ToolName) + len(history.PluginID) + len(history.Script) + len(history.Root) + len(history.Evaluated) + len(history.Patch) + len(history.CarrierKind) + len(history.CarrierName) + len(history.CarrierPayload) + len(history.Report) + len(history.OutputWarning) + len(history.TranslationError) + len(history.CorrelationID) + len(encodedItem)
-		history.bytes += len(history.ChangeID)
+		history.bytes += len(history.ChangeID) + len(history.RecoveryBinding)
 		for _, file := range history.ReviewFiles {
 			history.bytes += len(file.BeforePath) + len(file.AfterPath) + len(file.Diff)
+		}
+		for _, handle := range history.RecoveryHandles {
+			history.bytes += len(handle)
 		}
 		for _, rejection := range history.Rejections {
 			history.bytes += mekugiRejectionTextBytes(rejection)

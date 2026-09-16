@@ -33,15 +33,15 @@ func TestJournalChildCompletionResult(t *testing.T) {
 							t.Fatal(err)
 						}
 						if err := proxy.journals.acknowledge(t.Context(), proxy.replayStore, child.directory, "child",
-							map[string]uint64{"j1": items[0].Updated, "j2": items[1].Updated}, state != "reported"); err != nil {
+							map[string]uint64{"amber": items[0].Updated, "apple": items[1].Updated}, state != "reported"); err != nil {
 							t.Fatal(err)
 						}
 					}
 					if state == "edited" {
-						apply(journalMutation{Op: "edit", ID: "j1", Text: new("Revised result")})
+						apply(journalMutation{Op: "edit", ID: "amber", Text: new("Revised result")})
 					}
 					if state == "deleted" {
-						apply(journalMutation{Op: "delete", ID: "j1"}, journalMutation{Op: "delete", ID: "j2"})
+						apply(journalMutation{Op: "delete", ID: "amber"}, journalMutation{Op: "delete", ID: "apple"})
 					}
 				}
 				nested, _ := prepareActivityTest(t, proxy, "nested", "nested", "child", "/root/child/nested", nil)
@@ -106,14 +106,14 @@ func TestJournalChildCompletionResult(t *testing.T) {
 						t.Fatalf("empty journal result: %q", result)
 					}
 				} else {
-					for _, want := range []string{"`/root/child`", "`j1`", "**Question:**", "Which result?", "**Answers:**"} {
+					for _, want := range []string{"`/root/child`", "`amber`", "**Question:**", "Which result?", "**Answers:**"} {
 						if !strings.Contains(result, want) {
 							t.Fatalf("result missing %q: %q", want, result)
 						}
 					}
 					if strings.Count(result, "Which result?") != 1 ||
 						strings.Count(result, "**Answers:**") != 1 ||
-						!strings.Contains(result, "\n- `j2`\n\n  Second finding\n") ||
+						!strings.Contains(result, "\n- `apple`\n\n  Second finding\n") ||
 						strings.Contains(result, "question in `") {
 						t.Fatalf("shared assignment and answers are not one block: %s", result)
 					}
@@ -141,7 +141,7 @@ func TestJournalChildResultCapacity(t *testing.T) {
 	key := journalKey(child.directory, "child")
 	journal := proxy.journals.memory[key]
 	// Corrupt in-memory state exercises the renderer guard without changing valid limits.
-	journal.Items = []journalItem{{ID: "j1", Text: strings.Repeat("x", maxJournalFlushBytes), Updated: 1}}
+	journal.Items = []journalItem{{ID: "amber", Text: strings.Repeat("x", maxJournalFlushBytes), Updated: 1}}
 	proxy.journals.memory[key] = journal
 	requestJournalFinish(t, child)
 	if _, err := child.TransformJSON([]byte(`{"id":"oversized","status":"completed","output":[]}`)); err == nil ||

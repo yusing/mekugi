@@ -31,13 +31,13 @@ func TestJournalAnswerDurabilityReplayAndEditing(t *testing.T) {
 	if err := apply("root", "add", "Later?", mutation); err != nil {
 		t.Fatal(err)
 	}
-	if err := apply("root", "edit", "", journalMutation{Op: "edit", ID: "j1", Text: new("Revised")}); err != nil {
+	if err := apply("root", "edit", "", journalMutation{Op: "edit", ID: "amber", Text: new("Revised")}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.initialize(t.Context(), replay, "/workspace", "fork", "/root", "root"); err != nil {
 		t.Fatal(err)
 	}
-	if err := apply("root", "clear", "", journalMutation{Op: "edit", ID: "j1", Text: new("Plain"), Answer: new(false)}); err != nil {
+	if err := apply("root", "clear", "", journalMutation{Op: "edit", ID: "amber", Text: new("Plain"), Answer: new(false)}); err != nil {
 		t.Fatal(err)
 	}
 	for thread, want := range map[string]string{"root": "", "fork": "Original?"} {
@@ -51,10 +51,10 @@ func TestJournalAnswerDurabilityReplayAndEditing(t *testing.T) {
 			t.Fatalf("accepted invalid source of %d bytes", len(question))
 		}
 	}
-	if err := apply("fork", "", "", journalMutation{Op: "edit", ID: "j1", Text: new(strings.Repeat("a", maxJournalItemBytes))}); err == nil {
+	if err := apply("fork", "", "", journalMutation{Op: "edit", ID: "amber", Text: new(strings.Repeat("a", maxJournalItemBytes))}); err == nil {
 		t.Fatal("preserved question was omitted from item budget")
 	}
-	if err := apply("root", "", "Next?", journalMutation{Op: "edit", ID: "j1", Text: new("New answer"), Answer: new(true)}); err != nil {
+	if err := apply("root", "", "Next?", journalMutation{Op: "edit", ID: "amber", Text: new("New answer"), Answer: new(true)}); err != nil {
 		t.Fatal(err)
 	}
 	items, err := store.list(t.Context(), replay, "/workspace", "root")
@@ -62,7 +62,7 @@ func TestJournalAnswerDurabilityReplayAndEditing(t *testing.T) {
 		t.Fatalf("reassociation: %+v %v", items, err)
 	}
 	for _, answer := range []bool{true, false} {
-		if err := apply("root", "", "Question", journalMutation{Op: "delete", ID: "j1", Answer: new(answer)}); err == nil {
+		if err := apply("root", "", "Question", journalMutation{Op: "delete", ID: "amber", Answer: new(answer)}); err == nil {
 			t.Fatal("accepted answer on delete")
 		}
 	}
@@ -111,9 +111,9 @@ func TestJournalAnswerRoutingAndRendering(t *testing.T) {
 	for _, terminal := range []bool{false, true} {
 		messages, err := transform.prepareJournalDelivery(terminal)
 		transform.ReleaseDelivery()
-		want := "Journal update `/root` (`j1`)\n" + body
+		want := "Journal update `/root` (`amber`)\n" + body
 		if terminal {
-			want = "Journal flush `/root` (`j1`)\n\n" + body
+			want = "Journal flush `/root` (`amber`)\n\n" + body
 		}
 		if err != nil || len(messages) != 1 || commentaryMessageText(messages[0]) != want {
 			t.Fatalf("terminal=%v: %s %v", terminal, mustMarshalJSON(messages), err)
@@ -139,7 +139,7 @@ func TestCodeModeJournalPinsQuestionAtLowering(t *testing.T) {
 		if len(mutations) != 1 || mutations[0].inferredQuestion != "Original question?" || mutations[0].Answer == nil || !*mutations[0].Answer {
 			t.Fatalf("publication source: %+v", mutations)
 		}
-		return []string{"j1"}, nil
+		return []string{"amber"}, nil
 	}
 	request := httptest.NewRequest(http.MethodPost, commentaryPublisherPath, strings.NewReader(`{"journal":{"op":"add","text":"Answer","answer":true},"id":"publication"}`))
 	request.Header.Set("Authorization", "Bearer "+transform.commentarySubscriptions[0].token)
@@ -194,7 +194,7 @@ func TestJournalFlushNestsCarriageReturnLines(t *testing.T) {
 			}
 			messages, err := transform.prepareJournalDelivery(true)
 			transform.ReleaseDelivery()
-			want := "Journal flush `/root` (`j1`)\n\n**Question:**\n\nQuestion?\n\n- choice\n\n**Answer:**\n\nFirst\n\n# Heading"
+			want := "Journal flush `/root` (`amber`)\n\n**Question:**\n\nQuestion?\n\n- choice\n\n**Answer:**\n\nFirst\n\n# Heading"
 			if err != nil || len(messages) != 1 || commentaryMessageText(messages[0]) != want {
 				t.Fatalf("flush: %s %v", mustMarshalJSON(messages), err)
 			}
@@ -238,7 +238,7 @@ func TestJournalTerminalSharedQuestions(t *testing.T) {
 				}
 				if flushed {
 					if err := proxy.journals.acknowledge(t.Context(), proxy.replayStore, workspace, "thread-1",
-						map[string]uint64{"j1": before[0].Updated}, true); err != nil {
+						map[string]uint64{"amber": before[0].Updated}, true); err != nil {
 						t.Fatal(err)
 					}
 					before, err = proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
@@ -270,10 +270,10 @@ func TestJournalTerminalSharedQuestions(t *testing.T) {
 							t.Fatalf("question %q must appear once: %s", question, body)
 						}
 					}
-					wantGroups := [][]string{{"j1", "j4", "j5"}, {"j2", "j6"}, {"j3"}}
+					wantGroups := [][]string{{"amber", "ash", "atlas"}, {"apple", "beach"}, {"arch"}}
 					if flushed && !child {
-						wantGroups = [][]string{{"j2", "j6"}, {"j3"}, {"j4", "j5"}}
-						if strings.Contains(body, "`j1`") {
+						wantGroups = [][]string{{"apple", "beach"}, {"arch"}, {"ash", "atlas"}}
+						if strings.Contains(body, "`amber`") {
 							t.Fatalf("omitted item rendered: %s", body)
 						}
 					}
@@ -291,10 +291,10 @@ func TestJournalTerminalSharedQuestions(t *testing.T) {
 							}
 							last = position
 						}
-						if strings.Count(block, "\n- `j") != len(ids) {
+						if strings.Count(block, "\n- `") != len(ids) {
 							t.Fatalf("unrelated answer or milestone in question block: %s", block)
 						}
-						question := map[string]string{"j1": "Shared assignment?", "j2": "Different question?", "j4": "Shared assignment?"}[ids[0]]
+						question := map[string]string{"amber": "Shared assignment?", "apple": "Different question?", "ash": "Shared assignment?"}[ids[0]]
 						if question == "" {
 							if strings.Contains(block, "**Question:**") || strings.Contains(block, "**Answers:**") {
 								t.Fatalf("plain milestone became a question block: %s", block)
@@ -307,7 +307,7 @@ func TestJournalTerminalSharedQuestions(t *testing.T) {
 					if strings.Contains(body, "question in `") {
 						t.Fatalf("answers contain item cross-references: %s", body)
 					}
-					if !strings.Contains(body, "\n- `j3`\n\n  Plain milestone\n") ||
+					if !strings.Contains(body, "\n- `arch`\n\n  Plain milestone\n") ||
 						!strings.Contains(body, "Fourth finding\n  \n  - nested\n  \n  ```go\n  ok()\n  ```") {
 						t.Fatalf("plain milestone or answer Markdown changed: %s", body)
 					}

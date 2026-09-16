@@ -20,22 +20,22 @@ func TestTrackedChangeIDsAndRanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, test := range []struct{ workspace, session, call, want string }{
-		{"/w", "first", "one", "hp_a1"},
-		{"/w", "second", "two", "hp_b1"},
-		{"/w", "first", "three", "hp_a2"},
-		{"/w", "fork", "one", "hp_a1"},
-		{"/other", "first", "one", "hp_a1"},
+		{"/w", "first", "one", "amber1"},
+		{"/w", "second", "two", "apple1"},
+		{"/w", "first", "three", "amber2"},
+		{"/w", "fork", "one", "amber1"},
+		{"/other", "first", "one", "amber1"},
 	} {
 		got, err := store.reserveChange(t.Context(), test.workspace, test.session, test.call)
 		if err != nil || got != test.want {
 			t.Fatalf("%+v: %q, %v", test, got, err)
 		}
 	}
-	got, err := expandChangeRefs([]string{"hp_a1..hp_a3", "hp_a2", "hp_b1"})
-	if err != nil || !reflect.DeepEqual(got, []string{"hp_a1", "hp_a2", "hp_a3", "hp_b1"}) {
+	got, err := expandChangeRefs([]string{"amber1..amber3", "amber2", "apple1"})
+	if err != nil || !reflect.DeepEqual(got, []string{"amber1", "amber2", "amber3", "apple1"}) {
 		t.Fatalf("range = %q, %v", got, err)
 	}
-	for _, ref := range []string{"hp_a3..hp_a1", "hp_a1..hp_b3", "hp_a01", "hp_a0", "hp_a1..hp_a9999999999999999999999", "hp_a1..hp_a257", "../hp_a1"} {
+	for _, ref := range []string{"amber3..amber1", "amber1..apple3", "amber01", "amber0", "hp_a1", "amber1..amber9999999999999999999999", "amber1..amber257", "../amber1"} {
 		if _, err := expandChangeRefs([]string{ref}); err == nil {
 			t.Errorf("accepted %q", ref)
 		}
@@ -57,7 +57,7 @@ func TestTrackedChangeConcurrentReservation(t *testing.T) {
 				return
 			}
 			id, err := store.reserveChange(t.Context(), "/w", "agent", "call")
-			if err != nil || id != "hp_a1" {
+			if err != nil || id != "amber1" {
 				t.Errorf("id = %q, %v", id, err)
 			}
 		})
@@ -79,7 +79,7 @@ func TestTrackedRecoveryReadAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	first, err := transform.translate("original", "in file.txt\ntype \"missing\" \"new\"\n", nil)
-	if err != nil || first.ChangeID != "hp_a1" || !strings.HasPrefix(first.TranslationError, "change hp_a1\n") {
+	if err != nil || first.ChangeID != "amber1" || !strings.HasPrefix(first.TranslationError, "change amber1\n") {
 		t.Fatalf("first = %+v, %v", first, err)
 	}
 	invalid, err := transform.translateRecovery("invalid", `type "not present" "old"`, nil)
@@ -87,7 +87,7 @@ func TestTrackedRecoveryReadAfterRestart(t *testing.T) {
 		t.Fatalf("invalid = %+v, %v", invalid, err)
 	}
 	fixed, err := transform.translateRecovery("fixed", `type "missing" "old"`, nil)
-	if err != nil || fixed.ChangeID != first.ChangeID || !strings.HasPrefix(fixed.Report, "change hp_a1\n") {
+	if err != nil || fixed.ChangeID != first.ChangeID || !strings.HasPrefix(fixed.Report, "change amber1\n") {
 		t.Fatalf("fixed = %+v, %v", fixed, err)
 	}
 	if err := transform.commitHistory(); err != nil {
@@ -162,7 +162,7 @@ func TestTrackedChangesNoOpPendingAndMissing(t *testing.T) {
 		}
 	}
 	text, err := store.readChanges(t.Context(), options)
-	if err != nil || text != "hp_a1 no-op\n" {
+	if err != nil || text != "amber1 no-op\n" {
 		t.Fatalf("no-op = %q, %v", text, err)
 	}
 	if err := os.Remove(filepath.Join(store.directory, replayRecordName("/w", "noop", false))); err != nil {
@@ -257,7 +257,7 @@ func TestTrackedRecoveryNeverAllocatesAChain(t *testing.T) {
 		t.Fatalf("orphan = %+v, %v", orphan, err)
 	}
 	first, err := transform.translate("first", "new f.txt\ntype \"ok\\n\"\n", nil)
-	if err != nil || first.ChangeID != "hp_a1" {
+	if err != nil || first.ChangeID != "amber1" {
 		t.Fatalf("first = %+v, %v", first, err)
 	}
 	blocked, err := transform.translateRecovery("blocked", `type "ok" "new"`, nil)
@@ -265,7 +265,7 @@ func TestTrackedRecoveryNeverAllocatesAChain(t *testing.T) {
 		t.Fatalf("blocked = %+v, %v", blocked, err)
 	}
 	second, err := transform.translate("second", "new g.txt\ntype \"ok\\n\"\n", nil)
-	if err != nil || second.ChangeID != "hp_a2" {
+	if err != nil || second.ChangeID != "amber2" {
 		t.Fatalf("second = %+v, %v", second, err)
 	}
 }
@@ -279,9 +279,9 @@ func TestTrackedStreamsUseThreadsNotTransportSessions(t *testing.T) {
 	}
 	proxy.replayStore = store
 	for _, test := range []struct{ thread, session, call, want string }{
-		{"parent", "shared", "one", "hp_a1"},
-		{"child", "shared", "two", "hp_b1"},
-		{"parent", "changed", "three", "hp_a2"},
+		{"parent", "shared", "one", "amber1"},
+		{"child", "shared", "two", "apple1"},
+		{"parent", "changed", "three", "amber2"},
 	} {
 		transform.shellThreadID, transform.sessionID = test.thread, test.session
 		history, err := transform.translate(test.call, "", nil)
@@ -386,10 +386,10 @@ func TestTrackedNativeFailureIncludesChangeID(t *testing.T) {
 	if err != nil {
 		t.Skipf("bash is unavailable: %v", err)
 	}
-	history := mekugiHistory{ChangeID: "hp_a1", Patch: "a proposed patch\n", Report: "change hp_a1\nsuccess report\n"}
+	history := mekugiHistory{ChangeID: "amber1", Patch: "a proposed patch\n", Report: "change amber1\nsuccess report\n"}
 	script := "apply_patch() { cat >/dev/null; printf 'executor failed\\n'; return 7; }\n" + mekugiNativeCommand(history)
 	output, err := exec.CommandContext(t.Context(), bash, "-c", script).CombinedOutput()
-	if err == nil || string(output) != "change hp_a1\nexecutor failed\n" {
+	if err == nil || string(output) != "change amber1\nexecutor failed\n" {
 		t.Fatalf("failure output = %q, %v", output, err)
 	}
 }
@@ -418,7 +418,7 @@ func TestTrackedHostEnvelopeConfirmation(t *testing.T) {
 			history.ChangeID, history.CorrelationID = id, "host-edit"
 			history.CarrierName = carrier
 			history.CarrierKind = codeModeCarrierFunction
-			history.Report = changeNotice(id) + strings.TrimPrefix(history.Report, changeNotice("hp_a1"))
+			history.Report = changeNotice(id) + strings.TrimPrefix(history.Report, changeNotice("amber1"))
 			if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"host-edit": history}); err != nil {
 				t.Fatal(err)
 			}
@@ -457,7 +457,7 @@ func TestTrackedHostEnvelopeConfirmation(t *testing.T) {
 }
 
 func TestExactHostReportEvidence(t *testing.T) {
-	const report = "change hp_a1\nsuccess\n"
+	const report = "change amber1\nsuccess\n"
 	native := "Wall time: 0.1000 seconds\nProcess exited with code 0\nOutput:\n"
 	completed := "Script completed\nWall time 0.1 seconds\nOutput:\n"
 	for _, test := range []struct {

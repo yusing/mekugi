@@ -2519,6 +2519,8 @@ func TestNonMekugiHistoryIsExcludedFromRecovery(t *testing.T) {
 		"call-H": {
 			ToolName: mekugiToolName, Script: testMekugiScript,
 			TranslationError: "rejected", EvaluatorRejected: true, sequence: 1,
+			RecoveryHandles: testRecoveryHandles(testMekugiScript),
+			RecoveryBinding: recoveryHandlesBinding(testMekugiScript, testRecoveryHandles(testMekugiScript)),
 		},
 		"call-S": {
 			ToolName: "shell", Script: `hcat file.txt`,
@@ -2640,7 +2642,7 @@ func TestMekugiRecoveryRetainsCorrelationAndRebuildsBeforeTranslation(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload := recoveryCommands(base)[1].handle + " 2:bbbb\n"
+	payload := recoveryCommands(base, transform.local["call-1"].RecoveryHandles)[1].handle + " 2:bbbb\n"
 	second, err := transform.translateRecovery("call-2", payload, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -2671,7 +2673,7 @@ func TestMekugiRecoveryRerejectionExposesCurrentHandles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload := recoveryCommands(base)[1].handle + " 2:bbbb\n"
+	payload := recoveryCommands(base, transform.local["call-1"].RecoveryHandles)[1].handle + " 2:bbbb\n"
 	second, err := transform.translateRecovery("call-2", payload, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -2684,10 +2686,10 @@ func TestMekugiRecoveryRerejectionExposesCurrentHandles(t *testing.T) {
 		}
 	}
 	if !strings.Contains(second.TranslationError, "This re-rejection changed no workspace file") ||
-		!strings.Contains(second.TranslationError, "Earlier C... handles are stale") {
+		!strings.Contains(second.TranslationError, "Earlier command handles are stale") {
 		t.Fatalf("re-rejection lacks stale-handle guidance:\n%s", second.TranslationError)
 	}
-	if want := recoveryCommands(rebuilt)[1].handle; !strings.Contains(second.TranslationError, want) {
+	if want := recoveryCommands(rebuilt, second.RecoveryHandles)[1].handle; !strings.Contains(second.TranslationError, want) {
 		t.Fatalf("re-rejection lacks current command handle %q:\n%s", want, second.TranslationError)
 	}
 }
@@ -2724,7 +2726,7 @@ func TestMekugiRecoveryFixesAllEmittedTargetsAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstCommands := recoveryCommands(base)
+	firstCommands := recoveryCommands(base, transform.local["call-1"].RecoveryHandles)
 	for _, want := range []string{firstCommands[1].handle, firstCommands[3].handle} {
 		if !strings.Contains(first.TranslationError, want) {
 			t.Fatalf("guidance lacks command handle %q:\n%s", want, first.TranslationError)
@@ -2763,7 +2765,7 @@ func TestMekugiFailedRecoveryPreservesEvaluatedBaseline(t *testing.T) {
 	if _, err := transform.translate("call-1", base, nil); err != nil {
 		t.Fatal(err)
 	}
-	staleHandle := "C2:" + strings.Repeat("A", 43)
+	staleHandle := "maple"
 	failed, err := transform.translateRecovery("call-2", staleHandle+" 2:bbbb\n", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -2772,7 +2774,7 @@ func TestMekugiFailedRecoveryPreservesEvaluatedBaseline(t *testing.T) {
 		!strings.Contains(failed.TranslationError, `command handle "`+staleHandle+`" is stale`) || calls != 1 {
 		t.Fatalf("failed recovery = %+v, translations %d", failed, calls)
 	}
-	payload := recoveryCommands(base)[1].handle + " 2:bbbb\n"
+	payload := recoveryCommands(base, transform.local["call-1"].RecoveryHandles)[1].handle + " 2:bbbb\n"
 	recovered, err := transform.translateRecovery("call-3", payload, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -2802,7 +2804,7 @@ func TestMekugiUnchangedTargetRecoveryPreservesEvaluatedBaseline(t *testing.T) {
 	if _, err := transform.translate("call-1", base, nil); err != nil {
 		t.Fatal(err)
 	}
-	command := recoveryCommands(base)[1]
+	command := recoveryCommands(base, transform.local["call-1"].RecoveryHandles)[1]
 	failed, err := transform.translateRecovery("call-2", command.handle+" 1:aaaa..1:aaaa\n", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -2836,12 +2838,12 @@ func TestMekugiRecoveryUsesLatestRejectedRecoveryInSameResponse(t *testing.T) {
 	if _, err := transform.translate("call-1", base, nil); err != nil {
 		t.Fatal(err)
 	}
-	baseCommand := recoveryCommands(base)[1]
+	baseCommand := recoveryCommands(base, transform.local["call-1"].RecoveryHandles)[1]
 	first, err := transform.translateRecovery("call-2", baseCommand.handle+" 2:bbbb\n", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstCommand := recoveryCommands(firstRebuilt)[1]
+	firstCommand := recoveryCommands(firstRebuilt, first.RecoveryHandles)[1]
 	second, err := transform.translateRecovery("call-3", firstCommand.handle+" 3:cccc\n", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -2861,6 +2863,8 @@ func TestMekugiRetainedProxyRejectionAdvancesRecoveryAttempt(t *testing.T) {
 		"call-1": {
 			ToolName: mekugiToolName, Script: testMekugiScript, TranslationError: "rejected",
 			EvaluatorRejected: true, CorrelationID: "call-1", Attempt: 1, sequence: 1,
+			RecoveryHandles: testRecoveryHandles(testMekugiScript),
+			RecoveryBinding: recoveryHandlesBinding(testMekugiScript, testRecoveryHandles(testMekugiScript)),
 		},
 		"call-2": {
 			ToolName: mekugiToolName, Script: `type 2:ffff "bad"` + "\n",
@@ -3226,6 +3230,8 @@ func TestMekugiHistoryEvictsOldestCallsAndSessions(t *testing.T) {
 				Script:            callID,
 				TranslationError:  "rejected",
 				EvaluatorRejected: true,
+				RecoveryHandles:   testRecoveryHandles(callID),
+				RecoveryBinding:   recoveryHandlesBinding(callID, testRecoveryHandles(callID)),
 			},
 		})
 		if err != nil {

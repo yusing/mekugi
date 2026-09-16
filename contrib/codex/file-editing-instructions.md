@@ -369,9 +369,9 @@ Native-only clients use separate hpatch and shell calls.
 Use `functions.hpatch_recover` to repair the latest retained rejected script, preserving
 unrelated prepared edits. Choose one payload form:
 
-- For a wholly row-stale rejection, supply every listed current `C...` handle followed by
+- For a wholly row-stale rejection, supply every listed current `HANDLE` handle followed by
   its corrected ordinary HPATCH/2 target.
-- For a parsed command's target or value, use `C... target TARGET` or `C... value VALUE`.
+- For a parsed command's target or value, use `HANDLE target TARGET` or `HANDLE value VALUE`.
   Values accept quoted strings and normal heredoc/text framing. Use each handle once per
   payload; unrelated fields and commands stay unchanged. This avoids editing script delimiters.
 - For framing, paths, conflicting commands, or other script corrections, use ordinary
@@ -381,7 +381,7 @@ unrelated prepared edits. Choose one payload form:
 Target-only example:
 
 ```text
-C3:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8 "return oldResult, nil"
+maple "return oldResult, nil"
 ```
 
 Copy every current handle exactly and supply a different target for each in one payload.
@@ -397,8 +397,8 @@ Invalid corrections leave the workspace and retained baseline unchanged.
 
 ## Change handoffs
 
-Hpatch results include `change hp_a1`; recovery keeps that ID. Review captured hpatch
-edits with `hchanges hp_a1..hp_a3`, rather than Git diff. Hand off IDs or inclusive
+Hpatch results include `change amber1`; recovery keeps that ID. Review captured hpatch
+edits with `hchanges amber1..amber3`, rather than Git diff. Hand off IDs or inclusive
 same-agent ranges instead of copying diffs. Use `--summary` only when you need an
 operation/path and added/removed line-count overview, not before an already-needed
 diff read; use `--history` to diagnose the full recovery chain.

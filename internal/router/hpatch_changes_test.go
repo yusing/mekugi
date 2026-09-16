@@ -21,7 +21,7 @@ func TestHpatchMixedChangesSurviveRepairAndRestart(t *testing.T) {
 		if err != nil || history.TranslationError != "" {
 			t.Fatalf("translate: %v, %s", err, history.TranslationError)
 		}
-		if history.ChangeID != "hp_a1" {
+		if history.ChangeID != "amber1" {
 			t.Fatalf("change ID: %q", history.ChangeID)
 		}
 		if err := store.put(t.Context(), transform.directory, map[string]mekugiHistory{callID: history}); err != nil {
@@ -43,11 +43,11 @@ func TestHpatchMixedChangesSurviveRepairAndRestart(t *testing.T) {
 		t.Fatalf("repair: %+v", last)
 	}
 	invalid, err := transform.translateRecovery("wrong-recovery", `type "first" "other"`, nil)
-	if err != nil || invalid.ChangeID != "hp_a1" || !invalid.Unevaluated || !strings.Contains(invalid.TranslationError, "checkpoints") {
+	if err != nil || invalid.ChangeID != "amber1" || !invalid.Unevaluated || !strings.Contains(invalid.TranslationError, "checkpoints") {
 		t.Fatalf("invalid recovery: %+v, %v", invalid, err)
 	}
 	badResume, err := transform.translate("bad-resume", "resume "+first.ResumeHandle+" unknown", nil)
-	if err != nil || badResume.ChangeID != "hp_a1" || badResume.TranslationError == "" {
+	if err != nil || badResume.ChangeID != "amber1" || badResume.TranslationError == "" {
 		t.Fatalf("invalid resume: %+v, %v", badResume, err)
 	}
 	if err := store.put(t.Context(), transform.directory, map[string]mekugiHistory{"wrong-recovery": invalid, "bad-resume": badResume}); err != nil {
@@ -61,7 +61,7 @@ func TestHpatchMixedChangesSurviveRepairAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := reopened.readChanges(t.Context(), changeReadOptions{workspace: transform.directory, ids: []string{"hp_a1"}})
+	output, err := reopened.readChanges(t.Context(), changeReadOptions{workspace: transform.directory, ids: []string{"amber1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestHpatchMixedChangesSurviveRepairAndRestart(t *testing.T) {
 			t.Fatalf("missing %q: %s", expected, output)
 		}
 	}
-	historyOutput, err := reopened.readChanges(t.Context(), changeReadOptions{workspace: transform.directory, ids: []string{"hp_a1"}, view: "history"})
+	historyOutput, err := reopened.readChanges(t.Context(), changeReadOptions{workspace: transform.directory, ids: []string{"amber1"}, view: "history"})
 	if err != nil || !strings.Contains(historyOutput, `type "first" "other"`) || !strings.Contains(historyOutput, " unknown") {
 		t.Fatalf("history: %s, %v", historyOutput, err)
 	}

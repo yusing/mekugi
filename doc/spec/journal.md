@@ -3,7 +3,7 @@
 ## REQ-JOURNAL-001 — Per-thread milestone journals
 
 Mekugi mode owns one durable milestone journal per stable thread. Passthrough is unchanged.
-Items have router-assigned IDs (`j1`, `j2`, ...), nonblank UTF-8 text, an optional original
+Items have router-assigned IDs (`amber`, `apple`, ...), nonblank UTF-8 text, an optional original
 question, canonical author, router sequence creation/update values, `report_now`, `reported`,
 and `flushed` state. A thread has at most 256 items; there is no lifetime thread-count or mutation-receipt-count ceiling. Combined
 question and text content is limited to 16 KiB per item. The per-response live progress budget

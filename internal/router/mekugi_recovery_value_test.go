@@ -14,14 +14,14 @@ func TestRecoveryCommandValues(t *testing.T) {
 		"type 1:abcd <<PATCH\nbad\nPATCH\n",
 	} {
 		baseline := "in f.txt\n" + command + "new untouched.txt\ntype \"keep\"\n"
-		handle := recoveryCommands(baseline)[1].handle
+		handle := recoveryCommands(baseline, testRecoveryHandles(baseline))[1].handle
 		for _, value := range []string{`"good\n"`, "<<PATCH\ngood\nPATCH", "<<TEXT\n|good\nTEXT"} {
-			result, err := recoverScriptDetailed(t.Context(), baseline, handle+" value "+value)
+			result, err := recoverScriptDetailed(t.Context(), baseline, handle+" value "+value, testRecoveryHandles(baseline))
 			if err != nil {
 				t.Fatal(err)
 			}
-			parts := recoveryCommands(result.script)
-			if parts[1].parts.value != "good\n" || parts[1].parts.target != recoveryCommands(baseline)[1].parts.target ||
+			parts := recoveryCommands(result.script, testRecoveryHandles(result.script))
+			if parts[1].parts.value != "good\n" || parts[1].parts.target != recoveryCommands(baseline, testRecoveryHandles(baseline))[1].parts.target ||
 				!strings.HasSuffix(result.script, "new untouched.txt\ntype \"keep\"\n") {
 				t.Fatalf("unexpected reconstructed script: %q", result.script)
 			}
@@ -32,7 +32,7 @@ func TestRecoveryCommandValues(t *testing.T) {
 			handle + ` value "good" trailing`,
 			handle + " value <<TEXT\nmissing bar\nTEXT",
 		} {
-			if _, err := recoverScriptDetailed(t.Context(), baseline, payload); err == nil {
+			if _, err := recoverScriptDetailed(t.Context(), baseline, payload, testRecoveryHandles(baseline)); err == nil {
 				t.Fatalf("accepted invalid correction %q", payload)
 			}
 		}
@@ -46,7 +46,7 @@ func TestRecoveryCommandValueTranslation(t *testing.T) {
 	if err != nil || !first.EvaluatorRejected {
 		t.Fatalf("initial rejection: %v, %+v", err, first)
 	}
-	handle := recoveryCommands(base)[1].handle
+	handle := recoveryCommands(base, first.RecoveryHandles)[1].handle
 	if !strings.Contains(first.TranslationError, handle+" value VALUE") {
 		t.Fatal("missing command-scoped diagnostic")
 	}
@@ -59,21 +59,14 @@ func TestRecoveryCommandValueTranslation(t *testing.T) {
 	if err != nil || tree["sample.go"] != "package p\n\nvar X = 1\n" || tree["keep.txt"] != "kept\n" {
 		t.Fatalf("patch: %v, %#v", err, tree)
 	}
-	if _, err := recoverScriptDetailed(t.Context(), base, handle+` value "package p\nvar =\n"`); err == nil {
+	if _, err := recoverScriptDetailed(t.Context(), base, handle+` value "package p\nvar =\n"`, first.RecoveryHandles); err == nil {
 		t.Fatal("accepted unchanged decoded value")
-	}
-	changed, err := recoverScriptDetailed(t.Context(), base, handle+` value "package p\nvar Y = 2\n"`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := recoverScriptDetailed(t.Context(), changed.script, payload); err == nil {
-		t.Fatal("accepted stale handle")
 	}
 	// Target and value corrections share one atomic immutable baseline.
 	baseline := "in f.txt\ntype \"old\" \"bad\"\nadd EOF \"tail\"\n"
-	commands := recoveryCommands(baseline)
+	commands := recoveryCommands(baseline, testRecoveryHandles(baseline))
 	result, err := recoverScriptDetailed(t.Context(), baseline,
-		commands[1].handle+` target "new"`+"\n"+commands[2].handle+` value "end"`)
+		commands[1].handle+` target "new"`+"\n"+commands[2].handle+` value "end"`, testRecoveryHandles(baseline))
 	if err != nil || !strings.Contains(result.script, `type "new" "bad"`) || !strings.Contains(result.script, `add EOF "end"`) {
 		t.Fatalf("combined corrections: %v, %q", err, result.script)
 	}
@@ -88,7 +81,7 @@ func TestRecoveryCommandValueJSONEscapesReachConsumer(t *testing.T) {
 			if err != nil || !first.EvaluatorRejected {
 				t.Fatalf("reject: %v", err)
 			}
-			commands := recoveryCommands(base)
+			commands := recoveryCommands(base, first.RecoveryHandles)
 			fixed, err := transform.translateRecovery("control-fixed",
 				commands[1].handle+` value "package p\n"`+"\n"+commands[3].handle+" value "+encoded, nil)
 			if err != nil || fixed.TranslationError != "" {
@@ -98,7 +91,7 @@ func TestRecoveryCommandValueJSONEscapesReachConsumer(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			parts := recoveryCommands(fixed.Evaluated)
+			parts := recoveryCommands(fixed.Evaluated, testRecoveryHandles(fixed.Evaluated))
 			if parts[3].parts.value != want {
 				t.Fatalf("decoded bytes %q, want %q", parts[3].parts.value, want)
 			}

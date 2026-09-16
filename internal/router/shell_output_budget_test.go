@@ -13,7 +13,7 @@ import (
 
 func retainedShellTestOutput(t *testing.T, diagnostic string) (string, string) {
 	t.Helper()
-	match := regexp.MustCompile(`hread (r_[A-Za-z0-9_-]{22})`).FindStringSubmatch(diagnostic)
+	match := regexp.MustCompile(`hread ([a-z]+[0-9]*)`).FindStringSubmatch(diagnostic)
 	if len(match) != 2 {
 		t.Fatalf("missing output recovery receipt: %s", diagnostic)
 	}

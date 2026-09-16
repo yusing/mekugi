@@ -100,7 +100,7 @@ func TestCodeModeJournalSupportsNestedExpressions(t *testing.T) {
 	runShellCatJavaScript(t, proxy.registry.NodeExecutable, transform.directory,
 		`text(JSON.stringify(`+strings.TrimSuffix(lowered, ";")+`));`, &result, overrides)
 	items, err := proxy.journals.list(t.Context(), proxy.replayStore, transform.directory, transform.shellThreadID)
-	if err != nil || result != "j1" || len(items) != 1 || items[0].ID != result || items[0].Text != "outer" {
+	if err != nil || result != "amber" || len(items) != 1 || items[0].ID != result || items[0].Text != "outer" {
 		t.Fatalf("nested journal result=%q items=%+v error=%v", result, items, err)
 	}
 }
@@ -400,9 +400,9 @@ tools.exec_command = async () => {
 };
 tools.write_stdin = async args => {
   if (args.session_id !== 42 || args.chars !== "") throw new Error("wrong continuation");
-  return {exit_code:0,output:'"items":["j1","j2"]}'};
+  return {exit_code:0,output:'"items":["amber","apple"]}'};
 };`)
-	if len(ids) != 2 || ids[0] != "j1" || ids[1] != "j2" {
+	if len(ids) != 2 || ids[0] != "amber" || ids[1] != "apple" {
 		t.Fatalf("array IDs = %v", ids)
 	}
 }

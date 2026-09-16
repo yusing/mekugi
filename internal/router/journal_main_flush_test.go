@@ -98,7 +98,7 @@ func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
 				body := commentaryMessageText(messages[i])
 				if strings.Count(body, "Shared assignment?") != 1 ||
 					strings.Count(body, "**Answers:**") != 1 ||
-					!strings.Contains(body, "\n- `j2`\n\n  More "+want) {
+					!strings.Contains(body, "\n- `apple`\n\n  More "+want) {
 					t.Fatalf("question context crossed author journals after restart: %s", body)
 				}
 				root.Delivered(assistantCommentaryDoneEvent(messages[i]))
@@ -134,9 +134,9 @@ func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
 			root.ReleaseDelivery()
 			if !bytes.Contains(output, []byte("Shared assignment?")) ||
 				!bytes.Contains(output, []byte("**Answers:**")) ||
-				!bytes.Contains(output, []byte("`j3`")) ||
-				!bytes.Contains(output, []byte("`j4`")) ||
-				bytes.Contains(output, []byte("`j1`")) {
+				!bytes.Contains(output, []byte("`arch`")) ||
+				!bytes.Contains(output, []byte("`ash`")) ||
+				bytes.Contains(output, []byte("`amber`")) {
 				t.Fatalf("later delivery did not group only its own answers: %s", output)
 			}
 			if !bytes.Contains(output, []byte("Later child revision")) || bytes.Contains(output, []byte("Unrelated result")) {
@@ -260,7 +260,7 @@ func TestJournalOversizedTreeDoesNotRetainPartialDelivery(t *testing.T) {
 	// Exercise the renderer's capacity guard after a valid earlier tree member.
 	key := journalKey(root.directory, "child")
 	journal := proxy.journals.memory[key]
-	journal.Items = []journalItem{{ID: "j1", Text: strings.Repeat("x", maxJournalFlushBytes), Updated: 1}}
+	journal.Items = []journalItem{{ID: "amber", Text: strings.Repeat("x", maxJournalFlushBytes), Updated: 1}}
 	proxy.journals.memory[key] = journal
 	before := len(proxy.memoryCommentary[root.historySessionID])
 	messages, err := root.prepareJournalDelivery(true)

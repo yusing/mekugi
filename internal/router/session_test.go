@@ -27,6 +27,8 @@ func TestRoutingSessionIDKeepsRecoveryHistoryAcrossRequestIDs(t *testing.T) {
 			Script:            testMekugiScript,
 			TranslationError:  "rejected",
 			EvaluatorRejected: true,
+			RecoveryHandles:   testRecoveryHandles(testMekugiScript),
+			RecoveryBinding:   recoveryHandlesBinding(testMekugiScript, testRecoveryHandles(testMekugiScript)),
 		},
 	}); err != nil {
 		t.Fatal(err)

@@ -7,12 +7,15 @@ dedicated syntax. Edit-only recovery is unavailable from public root APIs and
 ordinary `functions.hpatch`; it is selected only by the dedicated tool, never by
 inspecting an ordinary hpatch payload.
 
-Each rejected-script command has a `C<number>:<hash>` handle with a full SHA-256
-binding encoded as 43 unpadded base64url characters. It binds the complete attributable
-command frame and the entire retained baseline. This changes only the encoding, not
-binding strength, storage, lifetime, or recovery actions. Changing a preceding
-path or another command invalidates old handles even if a mutation's bytes survive. The target-only shortcut has one form per line:
-`C<number>:<hash> TARGET`. `TARGET` uses
+Each rejected-script command has a short word handle, such as `maple`. Its command
+position is retained with the complete immutable rejected baseline before exposure.
+A private full SHA-256 fingerprint binds both the baseline and its ordered handle mapping;
+recovery rejects a mismatched retained binding.
+Changing a preceding path or another command invalidates old handles even if a
+mutation's bytes survive. Re-rejections allocate fresh handles; replay restores the
+original mapping rather than generating new identities. Older SHA-bound command
+handles and baselines without a retained handle binding are unsupported.
+The target-only shortcut has one form per line: `HANDLE TARGET`. `TARGET` uses
 the ordinary HPATCH/2 row, range, anchored-literal, or unanchored-literal target syntax and must
 denote a different target from the retained command. This shortcut
 has no operation keyword and changes no operation, value, framing, command order,
@@ -20,8 +23,8 @@ or file context. Target parsing and script rebuilding preserve the public target
 exact decoded bytes, including escaped LF, and enforce the same empty, CR, and control
 exclusions.
 
-Command-scoped corrections also accept `C<number>:<hash> target TARGET` and
-`C<number>:<hash> value VALUE`. Target form is equivalent to the original shortcut.
+Command-scoped corrections also accept `HANDLE target TARGET` and
+`HANDLE value VALUE`. Target form is equivalent to the original shortcut.
 Value form replaces only the decoded value of a parsed `type` or `add` command,
 including initializers and EOF insertions. It accepts the public quoted, heredoc,
 and line-framed text value syntax; rendering owns delimiters and escaping. It preserves
@@ -79,8 +82,8 @@ success from preflight or translation. This diagnostic performs
 no execution and changes no workspace or retained continuation state.
 
 When every structured rejection is `row-stale`, the routed diagnostic lists only the rejected
-target-bearing commands and their current `C...` handles. Recovery guidance directs the model to
-submit one `C... TARGET` line per listed command in one atomic payload. Every non-target or mixed
+target-bearing commands and their current `HANDLE` handles. Recovery guidance directs the model to
+submit one `HANDLE TARGET` line per listed command in one atomic payload. Every non-target or mixed
 failure offers command-scoped target/value handles for parsed mutation commands, plus
 ordinary script-text edits and at most 12 bounded verified
 script-row previews around rejected command headers and value locations. Previews
@@ -108,7 +111,7 @@ the outcome hook, not a second per-command error hook. Root error hooks remain s
 
 Acceptance:
 
-1. `functions.hpatch_recover` has a dedicated grammar and accepts either `C... TARGET`
+1. `functions.hpatch_recover` has a dedicated grammar and accepts either `HANDLE TARGET`
    shortcut lines or ordinary target-bearing script-text mutations, never a mixture.
 2. Every command handle resolves against one immutable latest evaluated rejected script, and a command appears at most once per payload.
 3. A successful rebuild is reevaluated as one complete ordinary HPATCH/2 script.

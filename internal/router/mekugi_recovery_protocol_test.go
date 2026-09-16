@@ -1,9 +1,7 @@
 package router
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"strings"
 	"testing"
@@ -12,7 +10,7 @@ import (
 )
 
 func recoverScriptForTest(ctx context.Context, rejectedScript, payload string) (string, error) {
-	recovered, err := recoverScriptDetailed(ctx, rejectedScript, payload)
+	recovered, err := recoverScriptDetailed(ctx, rejectedScript, payload, testRecoveryHandles(rejectedScript))
 	return recovered.script, err
 }
 
@@ -23,65 +21,44 @@ func TestMekugiRecoveryDescriptionIsNonInstructional(t *testing.T) {
 	}
 }
 
+func testRecoveryHandles(script string) []string {
+	handles := make([]string, len(recoveryCommands(script, nil)))
+	for index := range handles {
+		handles[index] = shortHandle(uint64(index))
+	}
+	return handles
+}
+
 func TestRecoveryCommandsBindCompleteFramesAndBaseline(t *testing.T) {
-	script := "in file.go\n" +
-		"type 1:ffff <<PATCH\n" +
-		"first\n" +
-		"second\n" +
-		"PATCH\n"
-	commands := recoveryCommands(script)
-	if len(commands) != 2 {
+	script := "in file.go\ntype 1:ffff <<PATCH\nfirst\nsecond\nPATCH\n"
+	handles := testRecoveryHandles(script)
+	commands := recoveryCommands(script, handles)
+	if len(commands) != 2 || commands[1].source != "type 1:ffff <<PATCH\nfirst\nsecond\nPATCH\n" {
 		t.Fatalf("commands = %+v", commands)
 	}
-	if again := recoveryCommands(script); again[1].handle != commands[1].handle {
-		t.Fatal("same baseline produced different handles")
-	}
+	binding := recoveryHandlesBinding(script, handles)
 	for _, changed := range []string{
 		strings.Replace(script, "second", "changed", 1),
 		strings.Replace(script, "file.go", "other.go", 1),
 	} {
-		if fresh := recoveryCommands(changed); fresh[1].handle == commands[1].handle {
-			t.Fatal("changed body or file context retained an old command handle")
+		if recoveryHandlesBinding(changed, handles) == binding {
+			t.Fatal("changed body or file context retained the old binding")
 		}
 	}
 }
 
-func TestRecoveryCommandsRejectTruncatedDigestCollision(t *testing.T) {
-	// These different baselines collide under the former four-hex-digit binding.
-	old := recoveryCommands("in file255.txt\ntype 1:ffff \"new\"\n")
-	fresh := recoveryCommands("in file397.txt\ntype 1:ffff \"new\"\n")
-	oldDigest, oldErr := base64.RawURLEncoding.DecodeString(strings.SplitN(old[1].handle, ":", 2)[1])
-	freshDigest, freshErr := base64.RawURLEncoding.DecodeString(strings.SplitN(fresh[1].handle, ":", 2)[1])
-	if oldErr != nil || freshErr != nil || !bytes.Equal(oldDigest[:2], freshDigest[:2]) {
-		t.Fatal("fixture no longer exercises a short-digest collision")
-	}
-	if _, err := resolveRecoveryCommand(fresh, old[1].handle); err == nil {
-		t.Fatal("accepted handle from a different baseline with a colliding prefix")
-	}
-	if _, err := resolveRecoveryCommand(fresh, fresh[1].handle); err != nil {
-		t.Fatalf("current handle rejected: %v", err)
-	}
-}
-
-func TestRecoveryHandlesUseCanonicalFullDigestEncoding(t *testing.T) {
-	commands := recoveryCommands("in file.go\ntype 1:ffff \"new\"\n")
-	handle := commands[1].handle
-	if len(handle) != len("C2:")+43 {
-		t.Fatalf("handle length = %d: %s", len(handle), handle)
-	}
-	for _, invalid := range []string{
-		"C2:" + strings.Repeat("a", 64),
-		"C2:" + strings.Repeat("A", 42),
-		"C2:" + strings.Repeat("A", 42) + "B", // Nonzero unused bits.
-		"C2:" + strings.Repeat("+", 43),
-		handle + "=",
-	} {
+func TestRecoveryHandlesRejectLegacyAndNoncanonicalEncoding(t *testing.T) {
+	commands := recoveryCommands("in file.go\ntype 1:ffff \"new\"\n", []string{"amber", "apple"})
+	for _, invalid := range []string{"C2:" + strings.Repeat("A", 43), "apple0", "apple01", "Apple", "apple="} {
 		if _, err := resolveRecoveryCommand(commands, invalid); err == nil || !strings.Contains(err.Error(), "invalid command handle") {
 			t.Fatalf("noncanonical handle %q: %v", invalid, err)
 		}
 	}
-	if _, err := resolveRecoveryCommand(commands, handle); err != nil {
+	if _, err := resolveRecoveryCommand(commands, "apple"); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := resolveRecoveryCommand(commands, "maple"); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("unavailable handle: %v", err)
 	}
 }
 
@@ -93,7 +70,7 @@ func TestRecoverScriptRetargetsBatchAndPreservesOtherFields(t *testing.T) {
 		"PATCH\n" +
 		"in second.go\n" +
 		`type "old text" "new text"` + "\n"
-	commands := recoveryCommands(script)
+	commands := recoveryCommands(script, testRecoveryHandles(script))
 	if !commands[1].parts.parsed || !commands[3].parts.parsed {
 		t.Fatalf("command parts = %+v and %+v", commands[1].parts, commands[3].parts)
 	}
@@ -101,7 +78,7 @@ func TestRecoverScriptRetargetsBatchAndPreservesOtherFields(t *testing.T) {
 		commands[1].handle + " 2:bbbb",
 		commands[3].handle + ` "current text" 2`,
 	}, "\n")
-	recovered, err := recoverScriptDetailed(t.Context(), script, payload)
+	recovered, err := recoverScriptDetailed(t.Context(), script, payload, testRecoveryHandles(script))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +106,7 @@ func TestRecoverScriptPreservesHeredocFraming(t *testing.T) {
 		for _, body := range []string{"", "\n", "first\r\nsecond \t\n", "first\n\n"} {
 			for _, finalTerminator := range []string{"", "\n", "\r\n"} {
 				script := "in file.txt\ntype 1:aaaa " + marker + "\r\n" + body + "PATCH" + finalTerminator
-				command := recoveryCommands(script)[1]
+				command := recoveryCommands(script, testRecoveryHandles(script))[1]
 				if !command.parts.parsed {
 					t.Fatalf("unparsed command: %+v", command)
 				}
@@ -146,7 +123,7 @@ func TestRecoverScriptPreservesHeredocFraming(t *testing.T) {
 func TestRecoverScriptPreservesTextFraming(t *testing.T) {
 	for _, marker := range []string{"<<TEXT", "<<TEXT-"} {
 		script := "in file.txt\ntype 1:aaaa " + marker + "\r\n|type <<PATCH\n|PATCH\r\n||body\n|TEXT\nTEXT\n"
-		commands := recoveryCommands(script)
+		commands := recoveryCommands(script, testRecoveryHandles(script))
 		if len(commands) != 2 || !commands[1].parts.parsed {
 			t.Fatalf("commands = %+v", commands)
 		}
@@ -165,7 +142,7 @@ func TestRecoverScriptRetargetsObservedBatchSize(t *testing.T) {
 		fmt.Fprintf(&script, "in file-%02d.txt\ntype %d:aaaa \"value-%02d\"\n", index, index, index)
 		fmt.Fprintf(&want, "in file-%02d.txt\ntype %d:%04x \"value-%02d\"\n", index, index+20, index, index)
 	}
-	commands := recoveryCommands(script.String())
+	commands := recoveryCommands(script.String(), testRecoveryHandles(script.String()))
 	corrections := make([]string, 0, 15)
 	for index := range 15 {
 		corrections = append(
@@ -184,7 +161,7 @@ func TestRecoverScriptRetargetsObservedBatchSize(t *testing.T) {
 
 func TestRecoverScriptRetargetsMultilineLiteral(t *testing.T) {
 	script := "in file.go\n" + `type 2:bbbb "old\ntext" "new text"` + "\n"
-	command := recoveryCommands(script)[1]
+	command := recoveryCommands(script, testRecoveryHandles(script))[1]
 	got, err := recoverScriptForTest(t.Context(), script, command.handle+` "current\u000Atext"`)
 	if err != nil {
 		t.Fatal(err)
@@ -197,7 +174,7 @@ func TestRecoverScriptRetargetsMultilineLiteral(t *testing.T) {
 
 func TestRecoverScriptRejectsNonTargetDuplicateStaleAndMalformedPayloads(t *testing.T) {
 	script := "in file.go\n" + `type 1:aaaa "bad"` + "\n"
-	commands := recoveryCommands(script)
+	commands := recoveryCommands(script, testRecoveryHandles(script))
 	handle := commands[1].handle
 	for _, payload := range []string{
 		commands[0].handle + " 2:bbbb",
@@ -222,7 +199,7 @@ func TestRecoverScriptRejectsNonTargetDuplicateStaleAndMalformedPayloads(t *test
 }
 
 func TestRecoveryCommandPartsPreserveEOFDestination(t *testing.T) {
-	command := recoveryCommands(`add EOF "value"`)[0]
+	command := recoveryCommands(`add EOF "value"`, testRecoveryHandles(`add EOF "value"`))[0]
 	if !command.parts.parsed || command.parts.target != "EOF" || command.parts.value != "value" {
 		t.Fatalf("command parts = %+v", command.parts)
 	}
@@ -256,7 +233,7 @@ func TestRecoverScriptRejectsSemanticallyUnchangedTarget(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			script := "in file.go\n" + test.command + "\n"
-			command := recoveryCommands(script)[1]
+			command := recoveryCommands(script, testRecoveryHandles(script))[1]
 			got, err := recoverScriptForTest(t.Context(), script, command.handle+" "+test.correction)
 			if err == nil || got != "" || !strings.Contains(err.Error(), "replacement target must differ") {
 				t.Fatalf("unchanged recovery = %q, %v", got, err)
@@ -267,7 +244,7 @@ func TestRecoverScriptRejectsSemanticallyUnchangedTarget(t *testing.T) {
 
 func TestRecoverScriptAllowsDifferentLiteralOccurrence(t *testing.T) {
 	script := "in file.go\n" + `type "old" "bad"` + "\n"
-	command := recoveryCommands(script)[1]
+	command := recoveryCommands(script, testRecoveryHandles(script))[1]
 	got, err := recoverScriptForTest(t.Context(), script, command.handle+` "old" 2`)
 	if err != nil {
 		t.Fatal(err)
@@ -280,7 +257,7 @@ func TestRecoverScriptAllowsDifferentLiteralOccurrence(t *testing.T) {
 
 func TestRecoverScriptHonorsContext(t *testing.T) {
 	script := "in file.go\n" + `type 1:aaaa "bad"` + "\n"
-	payload := recoveryCommands(script)[1].handle + " 2:bbbb"
+	payload := recoveryCommands(script, testRecoveryHandles(script))[1].handle + " 2:bbbb"
 	if got, err := recoverScriptForTest(nil, script, payload); err == nil || got != "" {
 		t.Fatalf("nil context = %q, %v", got, err)
 	}
@@ -295,7 +272,7 @@ func TestRecoveryGrammarContainsHandleAndOrdinaryTarget(t *testing.T) {
 	for _, want := range []string{
 		`start: _blank_line* (corrections | mutations) _blank_line*`,
 		`recovery: HANDLE SP target`,
-		`HANDLE: /C[1-9][0-9]*:[A-Za-z0-9_-]{43}/`,
+		`HANDLE: /[a-z]+[0-9]*/`,
 	} {
 		if !strings.Contains(mekugiRecoveryGrammar, want) {
 			t.Fatalf("recovery grammar does not contain %q", want)

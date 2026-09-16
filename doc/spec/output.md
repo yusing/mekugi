@@ -285,7 +285,7 @@ supplementary: it never changes the host outcome, mutation, or returned patch.
 When invalid generated source is localized to a multiline mutation, each distinct rejection
 identity includes the non-sensitive `value_line`. Transient root diagnostics describe every
 bounded value-row context rather than mutation addresses. Routed target-only recovery diagnostics
-add current hashed `C...` handles only when every rejection is `row-stale`; other failures expose
+add current short command handles only when every rejection is `row-stale`; other failures expose
 no recovery handle under `REQ-CORRECT-001`.
 
 The public host result separates lifecycle `Outcome`, requested `Change`, routed `Attempt`,

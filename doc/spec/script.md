@@ -285,8 +285,8 @@ overlapping work.
 
 #### Retained continuation
 
-A successfully preflighted mixed script receives a random `M` handle followed by
-32 lowercase hexadecimal digits. The original script, prepared segments, completed
+A successfully preflighted mixed script receives a short word handle, such as
+`maple`, with a decimal suffix when needed. The original script, prepared segments, completed
 results, current segment, native-operation journal, and resume position remain in
 the existing private thread storage. Retention lasts one hour from creation,
 ends on router shutdown, and is not renewed by reads or resumes. Handles are

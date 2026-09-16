@@ -78,7 +78,7 @@ func TestTrackedConfirmationRejectsUnrepairablePublication(t *testing.T) {
 			record := replayRecord{Version: 1, Workspace: "/w", CallID: "call", History: durableHistory(history)}
 			switch failure {
 			case "wrong change":
-				record.History.ChangeID = "hp_a2"
+				record.History.ChangeID = "amber2"
 			case "wrong correlation":
 				record.History.CorrelationID = "other"
 			case "invalid attempt":
@@ -145,7 +145,7 @@ func TestTrackedReadUsesAnUnlockedSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	current, err := store.readChanges(t.Context(), options)
-	if err != nil || !strings.Contains(current, "hp_a1 applied") {
+	if err != nil || !strings.Contains(current, "amber1 applied") {
 		t.Fatalf("current read = %q, %v", current, err)
 	}
 }

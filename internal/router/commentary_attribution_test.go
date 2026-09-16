@@ -37,10 +37,10 @@ func TestChildCommentaryAttributionJSONAndSSE(t *testing.T) {
 			legacy := prepare("legacy", "legacy", "", "thread_spawn")
 			for i, transform := range []*mekugiResponseTransform{first, second, root, legacy} {
 				want := []string{
-					"Journal update `/root/alpha` (`j1`)\nChecking.",
-					"Journal update `/root/beta` (`j1`)\n[`/root/beta`] Checking.",
-					"Journal update `/root` (`j1`)\nChecking.",
-					"Journal update (`j1`)\nChecking.",
+					"Journal update `/root/alpha` (`amber`)\nChecking.",
+					"Journal update `/root/beta` (`amber`)\n[`/root/beta`] Checking.",
+					"Journal update `/root` (`amber`)\nChecking.",
+					"Journal update (`amber`)\nChecking.",
 				}[i]
 				arguments := `{"journal":[{"op":"add","text":"Checking.","report_now":true}]}`
 				if i == 1 {
