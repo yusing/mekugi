@@ -1,6 +1,7 @@
 package router
 
 import (
+	"maps"
 	"strings"
 	"testing"
 )
@@ -23,9 +24,7 @@ func TestSessionInspectionRecognizesJournalResult(t *testing.T) {
 		func(m map[string]any) { m["namespace"] = "other" },
 	} {
 		other := map[string]any{}
-		for k, v := range item {
-			other[k] = v
-		}
+		maps.Copy(other, item)
 		mutate(other)
 		_, err := readSessionInspection(t.Context(), writeInspectionSession(t, t.TempDir(), other), nil)
 		if err == nil || !strings.Contains(err.Error(), "no call_id") {

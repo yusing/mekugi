@@ -110,10 +110,10 @@ func liveDiffBackgroundTheme(reply string) (liveDiffTheme, bool) {
 	if !ok {
 		return liveDiffTerminalTheme, false
 	}
-	if strings.HasSuffix(value, "\a") {
-		value = strings.TrimSuffix(value, "\a")
-	} else if strings.HasSuffix(value, "\x1b\\") {
-		value = strings.TrimSuffix(value, "\x1b\\")
+	if before, ok0 := strings.CutSuffix(value, "\a"); ok0 {
+		value = before
+	} else if before, ok0 := strings.CutSuffix(value, "\x1b\\"); ok0 {
+		value = before
 	} else {
 		return liveDiffTerminalTheme, false
 	}

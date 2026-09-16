@@ -270,8 +270,7 @@ func checkComposition(t *testing.T, c *ReviewComposition, base, current []string
 		}
 	}
 	result := slices.Clone(base)
-	for i := len(c.regions) - 1; i >= 0; i-- {
-		r := c.regions[i]
+	for _, r := range slices.Backward(c.regions) {
 		if r.beforeStart < 0 || r.beforeStart+len(r.before) > len(base) ||
 			!slices.Equal(base[r.beforeStart:r.beforeStart+len(r.before)], r.before) {
 			t.Fatalf("original region mismatch: %#v base=%q", r, base)

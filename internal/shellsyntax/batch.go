@@ -1,7 +1,7 @@
 package shellsyntax
 
 import (
-	"encoding/json"
+	json "encoding/json/v2"
 	"fmt"
 	"strings"
 )
@@ -68,7 +68,7 @@ func Split(input string) ([]string, error) {
 		if parsed.HasParams {
 			inherited = parsed.Params
 		} else if inherited != nil {
-			params, err := json.Marshal(inherited)
+			params, err := json.Marshal(&inherited, json.Deterministic(true))
 			if err != nil {
 				return nil, err
 			}

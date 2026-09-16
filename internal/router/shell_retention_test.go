@@ -310,7 +310,7 @@ func (translator expiryCheckingShellTranslator) Apply(ctx context.Context, root 
 }
 
 func TestRetainedShellApplyHoldsLeaseThroughExpiry(t *testing.T) {
-	translator := &expiryCheckingShellTranslator{inProcessMekugiTranslator: inProcessMekugiTranslator{dataDirectory: t.TempDir()}, t: t}
+	translator := &expiryCheckingShellTranslator{dataDirectory: t.TempDir(), t: t}
 	transform, proxy, _, _ := newMekugiTestTransform(t, translator)
 	if _, _, retained := proxy.retainShell(transform.shellDirectory, "script", "printf ok\n"); !retained {
 		t.Fatal("retention failed")

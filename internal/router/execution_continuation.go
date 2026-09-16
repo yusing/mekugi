@@ -302,8 +302,8 @@ func executionCallFor(item map[string]json.RawMessage, history mekugiHistory, kn
 	}
 	name := strings.TrimPrefix(jsonString(item, "name"), "functions.")
 	call := executionCall{resumeHandle: executionResumeHandle(item, history, known, execName)}
-	if strings.HasPrefix(call.resumeHandle, "cell:") {
-		call.cellID = strings.TrimPrefix(call.resumeHandle, "cell:")
+	if after, ok := strings.CutPrefix(call.resumeHandle, "cell:"); ok {
+		call.cellID = after
 	}
 	if known {
 		call.mixed = hpatchRecoveryFor(history)

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"slices"
 	"strings"
 )
 
@@ -100,7 +101,7 @@ func compactHpatchSuccess(raw json.RawMessage, handle string) json.RawMessage {
 	if found < 0 {
 		return nil
 	}
-	compact := append([]json.RawMessage{}, parts[:found]...)
+	compact := slices.Clone(parts[:found])
 	compact = append(compact, replacement...)
 	compact = append(compact, parts[found+1:]...)
 	return mustMarshalJSON(compact)

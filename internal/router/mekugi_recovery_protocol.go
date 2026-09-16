@@ -343,7 +343,7 @@ func renderRecoveryMutation(command *recoveryCommandReference, target string) st
 	header := command.parts.operation + " " + target
 	if command.parts.multiline {
 		originalHeader := hpatchsyntax.SplitPhysicalLines(command.source)[0].Text
-		marker := originalHeader[strings.LastIndex(originalHeader, " ")+1:]
+		_, marker, _ := strings.CutLast(originalHeader, " ")
 		// Retarget only the header. Preserve the value's framing mode and
 		// physical bytes, including mixed terminators and an empty body.
 		return header + " " + marker + command.source[len(originalHeader):]

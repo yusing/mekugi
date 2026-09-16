@@ -220,11 +220,10 @@ func toolRegistryIDFromDirectory(directory string) (string, bool) {
 	if !strings.HasPrefix(base, "mekugi-tools-") {
 		return "", false
 	}
-	separator := strings.LastIndexByte(base, '-')
-	if separator < 0 || separator == len(base)-1 {
+	_, registryID, found := strings.CutLast(base, "-")
+	if !found || registryID == "" {
 		return "", false
 	}
-	registryID := base[separator+1:]
 	decoded, err := hex.DecodeString(registryID)
 	return registryID, err == nil && len(decoded) == 32
 }

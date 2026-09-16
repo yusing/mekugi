@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -33,10 +34,8 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		flag := arguments[0]
 		arguments = arguments[1:]
 		if flag == "--" {
-			for _, path := range arguments {
-				if path == "" {
-					return options, errors.New("paths after -- must be nonempty")
-				}
+			if slices.Contains(arguments, "") {
+				return options, errors.New("paths after -- must be nonempty")
 			}
 			options.paths = append(options.paths, arguments...)
 			break

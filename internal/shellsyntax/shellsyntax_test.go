@@ -37,6 +37,11 @@ func TestParseFailures(t *testing.T) {
 	}
 }
 
+func TestParseRejectsDuplicateJSONParams(t *testing.T) {
+	if _, err := Parse("#!params={\"tty\":true,\"tty\":false}\necho duplicate"); err == nil {
+		t.Fatal("Parse accepted duplicate JSON parameter names")
+	}
+}
 func TestInterpreterIdentity(t *testing.T) {
 	for input, want := range map[string]string{
 		"/usr/bin/BASH":       "bash",

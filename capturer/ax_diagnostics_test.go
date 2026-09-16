@@ -83,7 +83,7 @@ func TestAXRejectsUnsafeDiagnosticAndMismatchedIdentity(t *testing.T) {
 		func(e *axReadEvent) { e.ExitCode = new(256) },
 		func(e *axReadEvent) { e.Schema = "mekugi.ax.read.v1" },
 	} {
-		start := axReadEvent{Schema: "mekugi.ax.read.v2", ID: "id", ThreadID: "thread", Tool: "hcat", Phase: "start", At: time.Now(), AXReadContext: AXReadContext{CallID: "call"}}
+		start := axReadEvent{Schema: "mekugi.ax.read.v2", ID: "id", ThreadID: "thread", Tool: "hcat", Phase: "start", At: time.Now(), CallID: "call"}
 		finish := start
 		finish.Phase, finish.Succeeded, finish.DurationNS, finish.FailureClass = "finish", new(false), new(int64(1)), "reader_error"
 		mutate(&finish)

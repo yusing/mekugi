@@ -1,6 +1,6 @@
 module github.com/yusing/mekugi
 
-go 1.26
+go 1.27
 
 require (
 	github.com/BurntSushi/toml v1.6.0
@@ -16,6 +16,7 @@ require (
 	github.com/tree-sitter/tree-sitter-javascript v0.25.0
 	github.com/tree-sitter/tree-sitter-python v0.25.0
 	github.com/tree-sitter/tree-sitter-typescript v0.23.2
+	golang.org/x/sys v0.47.0
 	golang.org/x/term v0.41.0
 	mvdan.cc/sh/v3 v3.13.1
 )
@@ -31,5 +32,4 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
-	golang.org/x/sys v0.47.0 // indirect
 )

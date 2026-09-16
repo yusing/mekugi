@@ -71,7 +71,7 @@ func TestCorpusUsageFromProductionCapture(t *testing.T) {
 					t.Fatal(err)
 				}
 				threads := map[string]bool{}
-				for _, line := range bytes.Split(data, []byte("\n")) {
+				for line := range bytes.SplitSeq(data, []byte("\n")) {
 					if len(line) == 0 {
 						continue
 					}

@@ -43,9 +43,8 @@ func TestTokenCommentaryRequiresCompletedSubstantiveAnswer(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			payload := mustTestJSON(t, map[string]any{"id": "response", "status": tc.status, "output": tc.output})
-			object, notice, err := responseWithTokenUsageCommentary(payload, tokenUsageReport{tokenCounts: tokenCounts{
-				InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3,
-			}}, true, tc.event)
+			object, notice, err := responseWithTokenUsageCommentary(payload, tokenUsageReport{
+				InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3}, true, tc.event)
 			if err != nil {
 				t.Fatal(err)
 			}

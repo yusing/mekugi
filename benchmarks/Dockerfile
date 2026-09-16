@@ -2,7 +2,7 @@
 
 FROM node:24-bookworm AS node-runtime
 
-FROM golang:1.26-bookworm AS builder
+FROM golang:1.27-bookworm AS builder
 
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -12,7 +12,7 @@ RUN go build -trimpath -o /out/mekugi ./cmd/mekugi
 RUN go build -trimpath -o /out/shell ./cmd/shell
 RUN go build -trimpath -o /out/mekugi-merge-captures ./benchmarks/cmd/merge-captures
 
-FROM golang:1.26-bookworm
+FROM golang:1.27-bookworm
 
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 

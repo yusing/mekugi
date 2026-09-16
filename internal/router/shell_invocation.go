@@ -39,10 +39,10 @@ func parseShellInvocation(source string) (shellInvocation, string, error) {
 	if metadata, marked := strings.CutPrefix(source, shellInvocationPrefix); marked {
 		// Retained host carriers may still contain the historical leading frame.
 		header, body, newline = strings.Cut(metadata, "\n")
-	} else if index := strings.LastIndex(source, "\n"+shellInvocationPrefix); index >= 0 &&
-		!strings.Contains(source[index+1:], "\n") {
-		body = source[:index]
-		header = source[index+1+len(shellInvocationPrefix):]
+	} else if before, after, found := strings.CutLast(source, "\n"+shellInvocationPrefix); found &&
+		!strings.Contains(after, "\n") {
+		body = before
+		header = after
 	} else {
 		return invocation, source, nil
 	}

@@ -12,15 +12,10 @@ import (
 // sessionTitleScanBuffer bounds one client session-index record.
 const sessionTitleScanBuffer = 1 << 20
 
-type cachedSessionTitle struct {
-	once  sync.Once
-	title string
-}
-
 type sessionTitleCache struct {
 	mu      sync.Mutex
 	path    string
-	entries map[string]*cachedSessionTitle
+	entries map[string]func() string
 }
 
 func newSessionTitleCache() *sessionTitleCache {
@@ -28,7 +23,7 @@ func newSessionTitleCache() *sessionTitleCache {
 }
 
 func newSessionTitleCacheAt(path string) *sessionTitleCache {
-	return &sessionTitleCache{path: path, entries: make(map[string]*cachedSessionTitle)}
+	return &sessionTitleCache{path: path, entries: make(map[string]func() string)}
 }
 
 func (c *sessionTitleCache) title(sessionID string) string {
@@ -38,14 +33,13 @@ func (c *sessionTitleCache) title(sessionID string) string {
 	c.mu.Lock()
 	entry := c.entries[sessionID]
 	if entry == nil {
-		entry = &cachedSessionTitle{}
+		entry = sync.OnceValue(func() string {
+			return scanSessionTitle(c.path, sessionID)
+		})
 		c.entries[sessionID] = entry
 	}
 	c.mu.Unlock()
-	entry.once.Do(func() {
-		entry.title = scanSessionTitle(c.path, sessionID)
-	})
-	return entry.title
+	return entry()
 }
 
 func codexSessionIndexPath() string {

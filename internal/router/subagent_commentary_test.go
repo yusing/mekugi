@@ -93,9 +93,8 @@ func TestTokenUsageCommentaryUsesSharedObservationWithoutReplacingTerminalMessag
 			"output_tokens_details": map[string]any{"reasoning_tokens": 3},
 		},
 	})
-	response, _, err := responseWithTokenUsageCommentary(payload, tokenUsageReport{tokenCounts: tokenCounts{
-		InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3,
-	}}, true, "")
+	response, _, err := responseWithTokenUsageCommentary(payload, tokenUsageReport{
+		InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3}, true, "")
 	if err != nil {
 		t.Fatal(err)
 	}

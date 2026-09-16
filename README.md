@@ -163,7 +163,7 @@ comparisons.
 
 ### Requirements
 
-- **Go 1.26+**, CGO enabled, and a C toolchain to build the binaries.
+- **Go 1.27+**, CGO enabled, and a C toolchain to build the binaries.
 - **Codex CLI**, signed in with `codex login` using ChatGPT authentication.
 - **Node.js 24+** available as `node`, and **ripgrep** available as `rg` on
   the router's `PATH` for mekugi mode.

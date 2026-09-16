@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -919,7 +920,7 @@ func executeRequest(
 	if writer, ok := output.(http.ResponseWriter); ok {
 		for name, values := range response.Header {
 			if http.CanonicalHeaderKey(name) != "Content-Length" {
-				writer.Header()[name] = append([]string(nil), values...)
+				writer.Header()[name] = slices.Clone(values)
 			}
 		}
 		writer.WriteHeader(response.StatusCode)

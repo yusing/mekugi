@@ -1,12 +1,12 @@
 package capturer
 
 import (
+	"cmp"
 	"encoding/json"
 	"io"
 	"maps"
 	"net/http"
 	"slices"
-	"sort"
 )
 
 type usageMetrics struct {
@@ -199,8 +199,8 @@ func newMetricsSnapshot(mode, modelProtocol string) metricsSnapshot {
 }
 
 func (r *Recorder) addExchange(front captureRecord, state *requestState, providers []captureRecord) {
-	sort.Slice(providers, func(i, j int) bool {
-		return providers[i].ProviderAttempt < providers[j].ProviderAttempt
+	slices.SortFunc(providers, func(first, second captureRecord) int {
+		return cmp.Compare(first.ProviderAttempt, second.ProviderAttempt)
 	})
 	if len(providers) == 0 && front.ResponseStatus == "completed" && (front.ProviderExpected == nil || *front.ProviderExpected) {
 		r.metrics.Capture.MissingProvider++

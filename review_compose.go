@@ -289,7 +289,7 @@ func (c *ReviewComposition) normalize() {
 				break
 			}
 			var context []string
-			for i := 0; i < gap; i++ {
+			for i := range gap {
 				oldLine, oldOK := c.original[oldEnd+i]
 				newLine, newOK := c.current[newEnd+i]
 				if !oldOK || !newOK || oldLine != newLine {

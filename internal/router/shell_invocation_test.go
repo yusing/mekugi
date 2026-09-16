@@ -1,6 +1,7 @@
 package router
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -47,9 +48,9 @@ func TestShellInvocationWorkerStripsMetadataAndDoesNotExportIt(t *testing.T) {
 		source := (shellInvocation{CallID: "call-private", JournalToken: "private-token"}).source(body)
 		invocation := newShellWorkerTestInvocation(t.TempDir())
 		// Do not borrow metadata from an enclosing test or active router session.
-		for index := len(invocation.environment) - 1; index >= 0; index-- {
-			if strings.HasPrefix(invocation.environment[index], "MEKUGI_JOURNAL_TOKEN=") ||
-				strings.HasPrefix(invocation.environment[index], "MEKUGI_AX_CALL_ID=") {
+		for index, v := range slices.Backward(invocation.environment) {
+			if strings.HasPrefix(v, "MEKUGI_JOURNAL_TOKEN=") ||
+				strings.HasPrefix(v, "MEKUGI_AX_CALL_ID=") {
 				invocation.environment = append(invocation.environment[:index], invocation.environment[index+1:]...)
 			}
 		}
