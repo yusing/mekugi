@@ -432,13 +432,14 @@ hchanges amber2 --history
 
 Ranges are inclusive and stay within one agent's stream. Recovery keeps the original ID.
 Default reads show outcomes and captured diffs, not repeated recovery scripts; `--history`
-includes the full chain. Use `--summary` when you only need operations, paths, and
-added/removed line counts. Counts describe each edit separately, not the net change
-across several edits. A normal update looks like:
+includes the full chain. Use `--summary` for a Git-style diffstat with paths, change
+bars, and file/insertion/deletion totals. Counts describe each edit separately, not
+the net change across several edits. A normal update looks like:
 
 ```text
 amber1 applied
-update "src/parser.go" +8 -3
+ src/parser.go | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
 ```
 
 These are hpatch's evaluated changes, including formatting, not

@@ -400,7 +400,7 @@ Invalid corrections leave the workspace and retained baseline unchanged.
 Hpatch results include `change amber1`; recovery keeps that ID. Review captured hpatch
 edits with `hchanges amber1..amber3`, rather than Git diff. Hand off IDs or inclusive
 same-agent ranges instead of copying diffs. Use `--summary` only when you need an
-operation/path and added/removed line-count overview, not before an already-needed
+aligned diffstat with paths, change bars, and totals, not before an already-needed
 diff read; use `--history` to diagnose the full recovery chain.
 Git status and Git diff remain useful for untracked, shell-generated, or unrelated
 workspace changes; do not routinely pair them with hchanges for the same captured edits.

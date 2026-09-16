@@ -2,8 +2,11 @@ package mekugi
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"unicode"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/pmezard/go-difflib/difflib"
 )
 
@@ -44,19 +47,76 @@ func (file ReviewFile) LineCounts() (added, removed int) {
 	return added, removed
 }
 
-// Summary describes one evaluated file change, not a net diff across calls.
-func (file ReviewFile) Summary() string {
-	action, path := "update", fmt.Sprintf("%q", file.AfterPath)
-	switch {
-	case file.BeforePath == "":
-		action = "add"
-	case file.AfterPath == "":
-		action, path = "delete", fmt.Sprintf("%q", file.BeforePath)
-	case file.BeforePath != file.AfterPath:
-		action, path = "move", fmt.Sprintf("%q -> %q", file.BeforePath, file.AfterPath)
+// ReviewStat renders a diffstat for one evaluation, not a net diff across calls.
+// Bars share a scale and are capped at 40 characters; totals remain exact.
+func ReviewStat(files []ReviewFile) string {
+	if len(files) == 0 {
+		return ""
 	}
-	added, removed := file.LineCounts()
-	return fmt.Sprintf("%s %s +%d -%d\n", action, path, added, removed)
+	type entry struct {
+		path           string
+		added, removed int
+	}
+	entries := make([]entry, 0, len(files))
+	pathWidth, largest, added, removed := 0, 0, 0, 0
+	displayPath := func(path string) string {
+		if strings.IndexFunc(path, unicode.IsControl) >= 0 {
+			return strconv.Quote(path)
+		}
+		return path
+	}
+	for _, file := range files {
+		path := displayPath(file.AfterPath)
+		switch {
+		case file.AfterPath == "":
+			path = displayPath(file.BeforePath)
+		case file.BeforePath != "" && file.BeforePath != file.AfterPath:
+			path = displayPath(file.BeforePath) + " => " + path
+		}
+		a, r := file.LineCounts()
+		entries = append(entries, entry{path, a, r})
+		pathWidth = max(pathWidth, ansi.StringWidth(path))
+		largest = max(largest, a+r)
+		added += a
+		removed += r
+	}
+	var output strings.Builder
+	countWidth := len(strconv.Itoa(largest))
+	for _, entry := range entries {
+		a, r := entry.added, entry.removed
+		if largest > 40 {
+			width := max(1, (a+r)*40/largest)
+			if a > 0 && r > 0 {
+				width = max(2, width)
+				a = max(1, min(width-1, a*width/(a+r)))
+				r = width - a
+			} else if a > 0 {
+				a = width
+			} else if r > 0 {
+				r = width
+			}
+		}
+		fmt.Fprintf(&output, " %s%s | %*d", entry.path, strings.Repeat(" ", pathWidth-ansi.StringWidth(entry.path)), countWidth, entry.added+entry.removed)
+		if a+r > 0 {
+			fmt.Fprintf(&output, " %s%s", strings.Repeat("+", a), strings.Repeat("-", r))
+		}
+		output.WriteByte('\n')
+	}
+	plural := func(count int) string {
+		if count == 1 {
+			return ""
+		}
+		return "s"
+	}
+	fmt.Fprintf(&output, " %d file%s changed", len(files), plural(len(files)))
+	if added > 0 {
+		fmt.Fprintf(&output, ", %d insertion%s(+)", added, plural(added))
+	}
+	if removed > 0 {
+		fmt.Fprintf(&output, ", %d deletion%s(-)", removed, plural(removed))
+	}
+	output.WriteByte('\n')
+	return output.String()
 }
 
 func reviewFiles(changes []change) []ReviewFile {

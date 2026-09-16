@@ -96,7 +96,7 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 	}
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
 		"cd child\nhchanges --workspace .. --summary "+id, nil, invocation)
-	if status != 0 || stderr != "" || !strings.Contains(stdout, `add "file.txt" +12 -0`) || strings.Contains(stdout, "+line") {
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "| 12 ++++++++++++") || strings.Contains(stdout, "+line") {
 		t.Fatalf("summary from subdirectory: %q, %q, %d", stdout, stderr, status)
 	}
 	for _, command := range []string{
@@ -105,7 +105,7 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 		"hchanges " + id + " --summary " + id + " -- ./file.txt",
 	} {
 		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, command, nil, invocation)
-		if status != 0 || stderr != "" || stdout != id+" applied\nadd \"file.txt\" +12 -0\n" {
+		if status != 0 || stderr != "" || stdout != id+" applied\n file.txt | 12 ++++++++++++\n 1 file changed, 12 insertions(+)\n" {
 			t.Fatalf("mixed flags: %q: %q, %q, %d", command, stdout, stderr, status)
 		}
 	}
@@ -122,10 +122,14 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 				" -- 'old name.txt' " + shellQuoteArgument(filepath.Join(workspace, "file.txt")) +
 				" ./file.txt 'new name.txt' absent.txt"
 			stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, command, nil, invocation)
+			move := `move "old name.txt"`
+			if view == "--summary" {
+				move = "old name.txt => new name.txt"
+			}
 			if status != 0 || stderr != "" || stdout != filtered ||
 				strings.Contains(stdout, "excluded.txt") || !strings.Contains(stdout, "file.txt") ||
-				strings.Index(stdout, "file.txt") > strings.Index(stdout, `move "old name.txt"`) ||
-				strings.Count(stdout, `move "old name.txt"`) != 1 {
+				strings.Index(stdout, "file.txt") > strings.Index(stdout, move) ||
+				strings.Count(stdout, move) != 1 {
 				t.Fatalf("union %s %s: %q, %q, %d", interpreter, view, stdout, stderr, status)
 			}
 		}

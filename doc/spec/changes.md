@@ -64,9 +64,13 @@ review diff, once, with three context lines per hunk. A single attempt uses one 
 line; multiple attempts retain their numbered outcomes. Unified diff headers replace the
 redundant operation header; empty-file changes and pure moves retain an operation header.
 Rejected attempts do not carry proposed changes as applied diffs.
-`--summary` omits diff bodies and lists operations, paths, and added/removed line counts
-per evaluated file. An unchanged path appears once per entry. Repeated evaluations remain
-separate, not a synthetic net diff or a current workspace status.
+`--summary` omits diff bodies and renders a Git-style diffstat per evaluation:
+aligned paths, changed-line counts, proportional `+`/`-` bars capped at 40 characters,
+and a footer with file, insertion, and deletion totals. Moves show both paths with `=>`;
+empty-file changes and pure moves remain visible with zero changed lines. Control
+characters in paths are quoted. Totals include only selected files. Attempt statuses
+remain visible, and repeated evaluations stay separate, not a synthetic net diff or
+a current workspace status.
 `--history` additionally returns original inputs, recovery amendments, rebuilt scripts
 when different, and full diagnostics. Each path after `--` matches either recorded before or after
 path, accepting equivalent lexical absolute and workspace-relative spellings for workspace

@@ -50,14 +50,14 @@ func TestReviewPresentation(t *testing.T) {
 		{kind: changeUpdate, originalPath: "old.txt", path: "renamed.txt", original: "same\n", content: "same\n"},
 	})
 	for i, want := range []string{
-		"update \"file.txt\" +1 -1\n",
-		"add \"new.txt\" +1 -0\n",
-		"delete \"gone.txt\" +0 -1\n",
-		"add \"empty.txt\" +0 -0\n",
-		"delete \"empty-old.txt\" +0 -0\n",
-		"move \"old.txt\" -> \"renamed.txt\" +0 -0\n",
+		" file.txt | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)\n",
+		" new.txt | 1 +\n 1 file changed, 1 insertion(+)\n",
+		" gone.txt | 1 -\n 1 file changed, 1 deletion(-)\n",
+		" empty.txt | 0\n 1 file changed\n",
+		" empty-old.txt | 0\n 1 file changed\n",
+		" old.txt => renamed.txt | 0\n 1 file changed\n",
 	} {
-		if got := files[i].Summary(); got != want {
+		if got := ReviewStat(files[i : i+1]); got != want {
 			t.Errorf("summary %d = %q; want %q", i, got, want)
 		}
 		diff := files[i].UnifiedDiff()
@@ -70,8 +70,41 @@ func TestReviewPresentation(t *testing.T) {
 		// Already compact records must render identically.
 		file := files[i]
 		file.Diff = diff
-		if file.UnifiedDiff() != diff || file.Summary() != want {
+		if file.UnifiedDiff() != diff || ReviewStat([]ReviewFile{file}) != want {
 			t.Errorf("presentation is not stable: %#v", file)
 		}
+	}
+}
+
+func TestReviewStatAlignmentAndScaling(t *testing.T) {
+	files := reviewFiles([]change{
+		{kind: changeAdd, path: "large.txt", content: strings.Repeat("new\n", 100)},
+		{kind: changeUpdate, originalPath: "small", path: "small", original: "old\n", content: "new\n"},
+		{kind: changeAdd, path: "empty"},
+	})
+	want := " large.txt | 100 " + strings.Repeat("+", 40) + "\n" +
+		" small     |   2 +-\n empty     |   0\n" +
+		" 3 files changed, 101 insertions(+), 1 deletion(-)\n"
+	if got := ReviewStat(files); got != want {
+		t.Fatalf("stat = %q; want %q", got, want)
+	}
+	if got := ReviewStat(nil); got != "" {
+		t.Fatalf("empty stat = %q", got)
+	}
+	file := ReviewFile{AfterPath: "bad\n\t\x1b.txt"}
+	if got := ReviewStat([]ReviewFile{file}); got != " \"bad\\n\\t\\x1b.txt\" | 0\n 1 file changed\n" {
+		t.Fatalf("unsafe path stat = %q", got)
+	}
+}
+
+func TestReviewStatUnicodeAlignment(t *testing.T) {
+	files := []ReviewFile{
+		{AfterPath: "界.txt"},
+		{AfterPath: "a.txt"},
+		{AfterPath: "e\u0301.txt"},
+	}
+	want := " 界.txt | 0\n a.txt  | 0\n e\u0301.txt  | 0\n 3 files changed\n"
+	if got := ReviewStat(files); got != want {
+		t.Fatalf("stat = %q; want %q", got, want)
 	}
 }

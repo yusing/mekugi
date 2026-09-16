@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/hpatchsyntax"
 	"mvdan.cc/sh/v3/interp"
 )
@@ -188,16 +189,20 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 					output.WriteByte('\n')
 				}
 			}
+			var summaryFiles []mekugi.ReviewFile
 			for _, file := range history.ReviewFiles {
 				if len(options.paths) > 0 && !changePathMatches(options, file.BeforePath, retained) && !changePathMatches(options, file.AfterPath, retained) {
 					continue
 				}
 				matched = true
 				if options.view == "summary" {
-					output.WriteString(file.Summary())
+					summaryFiles = append(summaryFiles, file)
 				} else {
 					output.WriteString(file.UnifiedDiff())
 				}
+			}
+			if options.view == "summary" {
+				output.WriteString(mekugi.ReviewStat(summaryFiles))
 			}
 			if output.Len() > maxChangeReadBytes {
 				return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or paths after --")
