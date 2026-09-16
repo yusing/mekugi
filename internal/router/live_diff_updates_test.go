@@ -173,8 +173,8 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 	if !strings.Contains(ansi.Strip(frame), "application unconfirmed") {
 		t.Fatalf("following hid the prepared caption: %q", frame)
 	}
-	if got := rowText(frame, 5); !strings.Contains(got, "+PREPARED19") {
-		t.Fatalf("prepared change is not centered: %q", got)
+	if got := rowText(frame, 8); !strings.Contains(got, "+PREPARED19") {
+		t.Fatalf("prepared change did not fill the bottom row: %q", got)
 	}
 	history.confirmed = true
 	if err := store.confirmChanges(t.Context(), workspace, map[string]mekugiHistory{"pending": history}); err != nil {

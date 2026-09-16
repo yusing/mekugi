@@ -277,6 +277,9 @@ the final changed row, including those deep inside a combined hunk or long new f
 latest update's marked region when composed coordinates are ambiguous and centers the
 target row's final wrapped fragment vertically so available context appears above and below it. At the start
 of the view, show available rows from the top instead of inserting blank padding.
+Near the end, clamp the viewport to the last full page so earlier diff content fills
+the pane instead of leaving empty rows below it. This applies after preview dismissal
+and resize as well as new captures; paused views retain their manual offsets.
 Manual scrolling or file navigation pauses following and preserves file-relative
 offsets, clamped when content shrinks. `n`/`p` navigate files, `g`/`G` the complete view,
 and `r` resumes following, including changes received while paused. The file at the

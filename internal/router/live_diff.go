@@ -369,8 +369,9 @@ func (r liveDiffRender) followOffset(rows int) int {
 		return 0
 	}
 	// Let preceding file or hunk context remain visible: the target, rather
-	// than its file heading, owns the center of a continuous viewport.
-	return max(0, min(r.focusRow-rows/2, len(r.lines)-1))
+	// than its file heading, owns the center of a continuous viewport. Near
+	// EOF, pull earlier content into view instead of leaving the bottom blank.
+	return max(0, min(r.focusRow-rows/2, len(r.lines)-rows))
 }
 
 // Keep the viewport anchored to a file and its local row when preceding files grow.
@@ -637,6 +638,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 				// Move only enough to keep its followed tip out of the preview.
 				offset = min(offset, rendering.focusRow)
 				offset = max(offset, rendering.focusRow-rows+1)
+				offset = min(offset, max(0, len(lines)-rows))
 			}
 		}
 		followDirty = false

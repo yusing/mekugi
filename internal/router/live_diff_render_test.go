@@ -173,8 +173,8 @@ func TestLiveDiffNativeFollowCentersPreparedTip(t *testing.T) {
 	}
 	const rows = 18
 	offset := render.followOffset(rows)
-	if render.focusRow-offset != rows/2 || render.focusRow != len(render.lines)-1 {
-		t.Fatal("prepared new file did not center its final source row")
+	if render.focusRow-offset != rows-1 || render.focusRow != len(render.lines)-1 {
+		t.Fatal("prepared new file did not fill the viewport through its final source row")
 	}
 	// Status remains available in the captured document, but must not pin
 	// follow to the top of a long creation.
@@ -337,9 +337,12 @@ func TestLiveDiffFollowFinalChangedRowAndFragment(t *testing.T) {
 				t.Fatal(err)
 			}
 			offset := render.followOffset(18)
-			center := ansi.Strip(render.lines[offset+9])
-			if !strings.Contains(center, "FINAL_TIP") {
-				t.Fatalf("width %d centered the wrong changed row: %q", width, center)
+			tip := ansi.Strip(render.lines[render.focusRow])
+			if !strings.Contains(tip, "FINAL_TIP") || render.focusRow < offset || render.focusRow >= offset+18 {
+				t.Fatalf("width %d lost the final changed row: %q", width, tip)
+			}
+			if offset+18 != len(render.lines) {
+				t.Fatalf("width %d left unused rows at EOF", width)
 			}
 		}
 	}

@@ -542,7 +542,8 @@ guessing its effects on files. Long scripts show their tail. Private retained fi
 are not read for previews. Display limits never block normal edit execution.
 
 Captured diffs also center the final changed row, including the end of a long new
-file or wrapped replacement. Syntax colors include function calls, built-ins, and operators where
+file or wrapped replacement. Near the end, earlier content fills the pane instead
+of leaving blank space below the diff. Syntax colors include function calls, built-ins, and operators where
 the language lexer recognizes them. The viewer automatically selects a light or dark palette
 from the terminal's background reply, with green/red backgrounds for added/removed
 rows and one line-number column. Context keeps your existing background. If the
