@@ -526,8 +526,9 @@ The view combines edits across files, excluding Git and shell changes. Streaming
 previews are provisional, not validated or applied. They appear in a separate,
 non-scrollable region sized to its content, capped at 70% of the body. The stream
 keeps its newest row visible independently of diff scrolling, then hides 300 ms
-after completion or interruption. Preview growth and dismissal preserve the captured
-viewport, moving it only when needed to keep the followed change visible.
+after completion or interruption. Preview growth preserves the captured viewport,
+moving it only when needed to keep the followed change visible. When the preview
+closes, following recenters the change in the full pane; paused views stay put.
 Complete edits enter the captured diff. Prepared
 edits remain labeled as unconfirmed until application is reported. Cyan markers
 identify the latest update; reconnecting or unavailable means live updates are interrupted.

@@ -513,7 +513,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		return err
 	}
 	defer func() {
-		_, e := io.WriteString(stdout, "\x1b[?1000;1006l\x1b[0m\x1b[?25h\x1b[?1049l")
+		_, e := io.WriteString(stdout, "\x1b[?2026l\x1b[?1000;1006l\x1b[0m\x1b[?25h\x1b[?1049l")
 		err = errors.Join(err, e)
 	}()
 	// A private descriptor makes cancellation interrupt Read without closing the
@@ -675,6 +675,9 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 				header = coverage
 			}
 			var screen strings.Builder
+			// Terminals may paint between reads even when a frame is one write.
+			// Synchronized output keeps row clearing and replacement together.
+			screen.WriteString("\x1b[?2026h")
 			writeRow := func(row int, text string) {
 				fmt.Fprintf(&screen, "\x1b[%d;1H\x1b[0m\x1b[2K%s\x1b[0m", row, ansi.Truncate(text, max(0, width-1), ""))
 			}
@@ -713,6 +716,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 				mode, _, _ = strings.Cut(coverage, ":")
 			}
 			writeRow(height, mode+" · r resume · j/k ↕ · n/p file · f/F flush · q quit")
+			screen.WriteString("\x1b[?2026l")
 			if _, e := io.WriteString(stdout, screen.String()); e != nil {
 				return e
 			}
@@ -726,7 +730,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		case now := <-previewHideC:
 			previewHideC = nil
 			if previewPane.expire(now) {
-				dirty = true
+				dirty, followDirty = true, true
 			}
 		case event, open := <-events:
 			if !open {

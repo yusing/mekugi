@@ -73,12 +73,16 @@ func (h *liveDiffTerminalHarness) frame(t *testing.T, check func(string) bool) s
 		footer := fmt.Sprintf("\x1b[%d;1H\x1b[0m\x1b[2K", h.height)
 		end := -1
 		if start := strings.Index(h.pending, footer); start >= 0 {
-			if stop := strings.Index(h.pending[start+len(footer):], "\x1b[0m"); stop >= 0 {
-				end = start + len(footer) + stop + len("\x1b[0m")
+			if stop := strings.Index(h.pending[start+len(footer):], "\x1b[?2026l"); stop >= 0 {
+				end = start + len(footer) + stop + len("\x1b[?2026l")
 			}
 		}
 		if end >= 0 {
 			frame := h.pending[:end]
+			if strings.Count(frame, "\x1b[?2026h") != 1 ||
+				strings.Index(frame, "\x1b[?2026h") > strings.Index(frame, "\x1b[1;1H") {
+				t.Fatalf("frame was not synchronized before row clearing: %q", frame)
+			}
 			h.pending = h.pending[end:]
 			last = frame
 			if check(frame) {
@@ -215,8 +219,8 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 		t.Fatal("completion lost the last rendered stream")
 	}
 	restored := ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
-	if liveDiffFrameRow(restored, 2) != liveDiffFrameRow(completed, 2) {
-		t.Fatalf("preview dismissal shifted captured content: %q", restored)
+	if !strings.Contains(liveDiffFrameRow(restored, 7), "80│+new") {
+		t.Fatalf("preview dismissal did not center the final captured row: %q", restored)
 	}
 	// Scroll back from EOF to verify all reclaimed rows are usable.
 	ui.write(t, "b")
@@ -359,8 +363,8 @@ func TestLiveDiffTerminalCentersFinalRowAfterPreview(t *testing.T) {
 	}
 	broker.publishPreview(liveDiffPreview{ID: preview.ID}, true)
 	frame = ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
-	if !strings.Contains(liveDiffFrameRow(frame, 5), "FINAL_CHANGED_ROW") {
-		t.Fatalf("preview dismissal moved the captured diff: %q", frame)
+	if !strings.Contains(liveDiffFrameRow(frame, 12), "FINAL_CHANGED_ROW") {
+		t.Fatalf("preview dismissal did not recenter the followed diff: %q", frame)
 	}
 	ui.height = 12
 	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 12, Cols: 60}); err != nil {
@@ -398,10 +402,46 @@ func TestLiveDiffTerminalPreviewFillsBottomWithoutRecentring(t *testing.T) {
 		}
 		top = liveDiffFrameRow(frame, 2)
 	}
+	// A paused viewport must not recenter when the preview releases its rows.
+	ui.write(t, "k")
+	paused := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
+	top = liveDiffFrameRow(paused, 2)
 	broker.publishPreview(liveDiffPreview{ID: "sizing"}, true)
 	restored := ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
 	if liveDiffFrameRow(restored, 2) != top {
 		t.Fatal("preview dismissal recentered unchanged captured content")
+	}
+	ui.quit(t)
+}
+
+func TestLiveDiffTerminalComposedContextIsNotDuplicated(t *testing.T) {
+	workspace := t.TempDir()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, _, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
+	})
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
+	id, err := store.reserveChange(t.Context(), workspace, "thread", "nearby")
+	if err != nil {
+		t.Fatal(err)
+	}
+	diff := "@@ -1,5 +1,5 @@\n-old first\n+new first\n See the editing guide\n and prerequisites.\n-old second\n+new second\n tail\n"
+	path := filepath.Join(workspace, "readme.md")
+	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"nearby": {
+		ChangeID: id, CorrelationID: "nearby", Applied: true,
+		ReviewFiles: []mekugi.ReviewFile{{BeforePath: path, AfterPath: path, Diff: diff}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "new second") })
+	for _, text := range []string{"See the editing guide", "and prerequisites."} {
+		if strings.Count(ansi.Strip(frame), text) != 1 {
+			t.Fatalf("duplicated composed context %q: %q", text, ansi.Strip(frame))
+		}
 	}
 	ui.quit(t)
 }

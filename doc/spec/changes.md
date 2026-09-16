@@ -198,10 +198,11 @@ below it.
 
 Completion, rejection, interruption, or transform closure ends the live preview. The
 last frame remains for 300 ms, then the region disappears and captured diffs regain
-full height without resetting their scroll position. Preview-only height changes
-preserve the captured viewport even while following, moving it only enough to keep
-the followed change visible. New captures, explicit resume, and terminal resize
-recenter the captured change. A new stream cancels pending
+full height. Dismissal recenters the captured change when following; paused views
+retain their scroll position. While streaming, preview-only height changes preserve
+the captured viewport even while following, moving it only enough to keep the followed
+change visible. New captures, explicit resume, and terminal resize also recenter the
+captured change. A new stream cancels pending
 removal; completion of one stream cannot hide another. Tiny terminals may omit the
 preview when both regions cannot fit. Reconnect clears transient display state and
 restores only currently active router-local previews after the durable
@@ -288,7 +289,8 @@ gutter. Receipt-only updates preserve those marks; another capture update or flu
 replaces them. Fully reverted or flushed files disappear from the viewport and file navigation;
 retained captures remain available for later composition. When all files are hidden,
 the viewer shows a single empty-state message without a file header.
-Markers indicate recent hunks, not line- or word-level attribution.
+Markers indicate recent hunks, not line- or word-level attribution. Neighboring composed
+regions share context without displaying any source coordinate twice.
 
 File headings and the sticky current-file header share an aligned gutter, bold titles,
 green `+N` and red `-N` source-line counts, and a width-filling separator. Counts describe
@@ -315,6 +317,9 @@ The viewer enables SGR mouse reporting while active and explicitly disables its
 mouse reporting modes on exit, including in terminals without private mode save/restore. Vertical wheel reports scroll rows. Wheel modifiers are accepted. Clicks, releases, motion,
 and malformed reports do not trigger navigation or review commands. Fragmented
 reports are decoded incrementally with bounded storage.
+
+Frames use synchronized terminal output so row clearing and replacement paint together
+on supporting terminals.
 
 Resize must preserve safe Unicode clipping, leaving room for the gutter and final
 terminal column. Only text and terminal color/text styling (SGR) may reach the viewport.

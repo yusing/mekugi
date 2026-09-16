@@ -346,3 +346,57 @@ func TestReviewCompositionRepeatedLinesLarge(t *testing.T) {
 		current = next
 	}
 }
+
+func TestReviewCompositionContextCoordinatesAppearOnce(t *testing.T) {
+	for gap := 0; gap <= 8; gap++ {
+		for _, replacement := range []string{"FIRST\n", "FIRST\nINSERTED\n", ""} {
+			t.Run(fmt.Sprintf("gap%d/%q", gap, replacement), func(t *testing.T) {
+				base := "head\nfirst\n" + strings.Repeat("same context\n", gap) + "second\ntail\n"
+				first := strings.Replace(base, "first\n", replacement, 1)
+				last := strings.Replace(first, "second\n", "SECOND\n", 1)
+				var c ReviewComposition
+				if err := c.Apply(composeCapture(base, first), false); err != nil {
+					t.Fatal(err)
+				}
+				if err := c.ApplyWithHighlight(composeCapture(first, last), false, true); err != nil {
+					t.Fatal(err)
+				}
+				oldSeen, newSeen := map[int]bool{}, map[int]bool{}
+				added, removed := 0, 0
+				for _, file := range c.FilesWithHighlights() {
+					hunks, err := file.Hunks()
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, hunk := range hunks {
+						old, next := hunk.BeforeStart, hunk.AfterStart
+						for _, row := range hunk.Rows {
+							if row.Kind != '+' {
+								if oldSeen[old] {
+									t.Fatalf("old coordinate %d displayed twice", old)
+								}
+								oldSeen[old] = true
+								old++
+							}
+							if row.Kind != '-' {
+								if newSeen[next] {
+									t.Fatalf("new coordinate %d displayed twice", next)
+								}
+								newSeen[next] = true
+								next++
+							}
+							if row.Kind == '+' {
+								added++
+							} else if row.Kind == '-' {
+								removed++
+							}
+						}
+					}
+				}
+				if added != strings.Count(replacement, "\n")+1 || removed != 2 {
+					t.Fatalf("changed source lost: +%d -%d", added, removed)
+				}
+			})
+		}
+	}
+}

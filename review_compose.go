@@ -383,7 +383,8 @@ type ReviewHighlightedFile struct {
 // introduced by ApplyWithHighlight. Path-only changes mark their header projection.
 func (c *ReviewComposition) FilesWithHighlights() []ReviewHighlightedFile {
 	var files []ReviewHighlightedFile
-	for _, region := range c.regions {
+	oldEnd, newEnd := 0, 0
+	for i, region := range c.regions {
 		if region.reviewed {
 			continue
 		}
@@ -392,7 +393,7 @@ func (c *ReviewComposition) FilesWithHighlights() []ReviewHighlightedFile {
 		for range 3 {
 			left, ok1 := c.original[oldStart-1]
 			right, ok2 := c.current[newStart-1]
-			if oldStart == 0 || newStart == 0 || !ok1 || !ok2 || left != right {
+			if oldStart <= oldEnd || newStart <= newEnd || !ok1 || !ok2 || left != right {
 				break
 			}
 			a, b = slices.Insert(a, 0, left), slices.Insert(b, 0, right)
@@ -400,6 +401,12 @@ func (c *ReviewComposition) FilesWithHighlights() []ReviewHighlightedFile {
 			newStart--
 		}
 		for range 3 {
+			// Context belongs to one displayed region only and must not cross
+			// a neighboring change, including one hidden by acknowledgement.
+			if i+1 < len(c.regions) && (oldStart+len(a) >= c.regions[i+1].beforeStart ||
+				newStart+len(b) >= c.regions[i+1].afterStart) {
+				break
+			}
 			left, ok1 := c.original[oldStart+len(a)]
 			right, ok2 := c.current[newStart+len(b)]
 			if !ok1 || !ok2 || left != right {
@@ -407,6 +414,7 @@ func (c *ReviewComposition) FilesWithHighlights() []ReviewHighlightedFile {
 			}
 			a, b = append(a, left), append(b, right)
 		}
+		oldEnd, newEnd = oldStart+len(a), newStart+len(b)
 		files = append(files, ReviewHighlightedFile{
 			ReviewFile:  renderReviewFile(ReviewFile{BeforePath: c.beforePath, AfterPath: c.afterPath}, a, b, oldStart, newStart),
 			Highlighted: region.highlighted,
