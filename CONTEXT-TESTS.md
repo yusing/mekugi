@@ -57,6 +57,6 @@ and [dated Codex observations](doc/codex-router-e2e.md) own the corresponding be
 
 ## Temporary builds
 
-After implementing and validating a feature, always prepare a runnable temporary build outside
+Non main branch: after implementing and validating a feature, always prepare a runnable temporary build outside
 the repository using `mktemp -d`. Include required helpers and a launcher, and provide the exact
 command to test it.
