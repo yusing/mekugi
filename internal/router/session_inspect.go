@@ -49,6 +49,9 @@ type sessionInspection struct {
 }
 
 type sessionAXInput struct {
+	Source     json.RawMessage
+	Cwd        string
+	Models     []string
 	ThreadID   string
 	Completion capturer.AXCompletionAccumulator
 	Commands   capturer.AXCommandAccumulator
@@ -66,16 +69,20 @@ type sessionAXReport struct {
 }
 
 type sessionInspectionItem struct {
-	Type      string          `json:"type"`
-	CallID    string          `json:"call_id"`
-	Name      string          `json:"name"`
-	Namespace string          `json:"namespace"`
-	Input     string          `json:"input"`
-	Arguments string          `json:"arguments"`
-	Output    json.RawMessage `json:"output"`
+	JournalResult bool            `json:"-"`
+	Type          string          `json:"type"`
+	CallID        string          `json:"call_id"`
+	Name          string          `json:"name"`
+	Namespace     string          `json:"namespace"`
+	Input         string          `json:"input"`
+	Arguments     string          `json:"arguments"`
+	Output        json.RawMessage `json:"output"`
 }
 
 type sessionInspectionCall struct {
+	line      int
+	timestamp string
+	model     string
 	item      sessionInspectionItem
 	workspace string
 	hasCall   bool
@@ -263,6 +270,7 @@ func readSessionInspection(ctx context.Context, path string, observations *sessi
 	calls := []sessionInspectionCall{}
 	indices := make(map[string]int)
 	workspace := ""
+	model := ""
 	for line := 1; scanner.Scan(); line++ {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -277,11 +285,23 @@ func readSessionInspection(ctx context.Context, path string, observations *sessi
 		}
 		if envelope.Type == "session_meta" || envelope.Type == "turn_context" {
 			var metadata struct {
-				ID  string `json:"id"`
-				Cwd string `json:"cwd"`
+				ID     string          `json:"id"`
+				Cwd    string          `json:"cwd"`
+				Model  string          `json:"model"`
+				Source json.RawMessage `json:"source"`
 			}
 			if json.Unmarshal(envelope.Payload, &metadata) != nil {
 				return nil, fmt.Errorf("session line %d: invalid workspace metadata", line)
+			}
+			if metadata.Model != "" {
+				model = metadata.Model
+				if observations != nil && !slices.Contains(observations.Models, model) {
+					observations.Models = append(observations.Models, model)
+				}
+			}
+			if observations != nil && envelope.Type == "session_meta" {
+				observations.Source = metadata.Source
+				observations.Cwd = metadata.Cwd
 			}
 			// id matches CODEX_THREAD_ID; session_id may instead name a fork's root thread.
 			if envelope.Type == "session_meta" && observations != nil && metadata.ID != "" {
@@ -354,6 +374,13 @@ func readSessionInspection(ctx context.Context, path string, observations *sessi
 		if !isCall && !isOutput {
 			continue
 		}
+		if item.CallID == "" && isOutput && item.Name == journalToolName && item.Namespace == "functions" {
+			var raw map[string]json.RawMessage
+			if json.Unmarshal(envelope.Payload, &raw) == nil {
+				item.CallID = journalResultCallID(raw)
+				item.JournalResult = item.CallID != ""
+			}
+		}
 		if item.CallID == "" {
 			return nil, fmt.Errorf("session line %d: tool item has no call_id", line)
 		}
@@ -364,7 +391,7 @@ func readSessionInspection(ctx context.Context, path string, observations *sessi
 			}
 			index = len(calls)
 			indices[item.CallID] = index
-			calls = append(calls, sessionInspectionCall{item: item, workspace: workspace})
+			calls = append(calls, sessionInspectionCall{item: item, workspace: workspace, line: line, timestamp: envelope.Timestamp, model: model})
 		}
 		call := &calls[index]
 		if isCall {
@@ -375,6 +402,7 @@ func readSessionInspection(ctx context.Context, path string, observations *sessi
 			}
 			if !call.hasCall {
 				call.workspace = workspace
+				call.line, call.timestamp, call.model = line, envelope.Timestamp, model
 			} else if call.workspace != workspace {
 				return nil, fmt.Errorf("session line %d: conflicting call workspace", line)
 			}
@@ -405,6 +433,13 @@ func inspectSessionCall(call sessionInspectionCall, record replayRecord, found b
 			values["output"] = text
 		} else {
 			values["output"] = string(output)
+		}
+	}
+	if found {
+		for _, output := range call.outputs {
+			if output.JournalResult && (record.History.ToolName != journalHistoryTool || !isJournalCall(record.History.UpstreamItem)) {
+				return result, fmt.Errorf("call %q: journal result does not match replay identity", call.item.CallID)
+			}
 		}
 	}
 	if found {

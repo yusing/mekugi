@@ -816,6 +816,22 @@ requires the matching executor report in the supplied rollout; `applied` records
 router-owned application. Inspection does not establish that a change was correct
 or restore a live session. See the [session inspection contract](doc/spec/session.md).
 
+### Find friction across recent sessions
+
+```sh
+mekugi inspect-sessions --exclude-model '*grok*' --class production
+mekugi inspect-sessions --sessions-dir /path/to/rollouts \
+  --since 2026-09-14T03:00:00Z --until 2026-09-16T03:00:00Z \
+  --model 'gpt-*' --limit 10
+```
+
+The read-only JSON report links recovery chains, empty polls, and possible
+truncation-driven rereads to original rollout lines and call IDs. It defaults to
+the last 48 hours. Production/probe classifications are metadata-based candidates;
+missing replay and unreadable sessions stay explicit. Reread candidates are not
+proof of waste. Add `--capture /path/to/capture.jsonl` to report provider usage
+separately, rather than estimating billed tokens from output bytes.
+
 ### Measure editing and reading effort
 
 Use `mekugi --debug codex` to enable **executed private-reader instrumentation** and

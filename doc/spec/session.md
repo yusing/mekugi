@@ -17,7 +17,11 @@ identities in first-observed order from `response_item` records, not by scanning
 stored calls. Repeated identical call identities coalesce; conflicting payloads or call workspaces fail.
 Replay lookup is workspace-and-call scoped. Matched carriers or original upstream
 calls must agree with the stored mapping; corrupt or incompatible records fail rather
-than guessing. Missing records expose native call identity and unavailable outcomes.
+than guessing. Missing records expose native call identity and unavailable outcomes. Canonical router
+journal result IDs are decoded through the journal provenance owner only for named
+`functions.journal` function outputs lacking a call ID. They participate under the
+original call ID without inventing execution or success. Matched replay must identify
+a journal call; malformed IDs and unrelated missing-call-ID outputs still reject.
 
 Each call exposes original tool identity, correlation/attempt when recorded, rejection
 count, outcome, and text byte counts. `--field` selects `script`, `evaluated`, `patch`,
@@ -57,3 +61,49 @@ Acceptance:
 
 `--ax`, `--read-log`, and `--defects` add whole-rollout AX reporting under
 [REQ-AX-001](ax.md); table selection and pagination do not narrow its evidence scope.
+
+### Corpus friction inspection
+
+`mekugi inspect-sessions` scans regular `.jsonl` files beneath `--sessions-dir`
+(default `$CODEX_HOME/sessions`, or `~/.codex/sessions`). It starts no router, executes
+no calls, and writes neither rollouts nor replay records. Discovery rejects more than
+10000 files; each rollout retains the single-session size and identity validation.
+Unreadable or malformed rollouts appear in `unavailable`, never as zero activity.
+Cancellation, discovery failure, or invalid capture evidence prevents a partial report.
+
+`--since` (inclusive) and `--until` (exclusive) accept RFC3339 timestamps and default
+to the last 48 hours. Calls use their recorded call timestamp and preceding model;
+missing timestamps are counted separately. `--model` is a glob applied to calls.
+`--exclude-model` excludes a whole rollout when any recorded model matches, so
+mixed-provider sessions can be excluded. `--class` selects `all`, `production`,
+`probe`, or `unknown`: these are metadata-based candidates, not ground truth.
+CLI and subagent sources outside the temporary directory are production candidates;
+exec sources or temporary working directories are probe candidates. Unrecognized
+source metadata is unknown. Exclusion counts identify the applied filters.
+
+The `mekugi.sessions.v1` JSON report contains per-rollout evidence, absolute paths,
+call IDs and original line numbers, with no source bodies. Counts are per rollout;
+fork-inherited calls are not summed into a global workload. Each session distinguishes
+matched from unavailable replay. Recovery chains use validated replay correlation
+IDs and report call/rejection counts and emitted/diagnostic bytes, not token savings.
+Empty-poll evidence requires an empty-input call and explicitly empty native output
+for the same session; transparent Code Mode projections are recognized, but printed
+lookalikes are not. This is offline analysis and does not change continuation behavior.
+Truncation/reread findings are explicitly static candidates: adjacent selected calls
+must have matched shell scripts, an hread omission receipt, the same workspace, and
+overlapping literal hcat path/range selections. They do not establish execution counts,
+unchanged files, unnecessary reads, or actual duplicate delivered bytes. Unsupported
+scripts/carriers are not decoded or executed to manufacture evidence.
+
+`--limit` bounds findings per session (default 25, 1–500); `omitted_findings` reports
+the remainder. Chains retain up to 16 source call references while `call_count` covers
+all selected members. `--replay-dir` overrides the read-only replay location.
+Optional `--capture` reads bounded sanitized provider capture JSONL through capturer.
+Usage remains separate, filtered by capture time/model and included thread IDs;
+it is not attributed to individual friction findings. Missing records and incomplete
+responses are explicit, duplicate provider attempts reject, and local payload bytes
+never substitute for provider-reported token counts.
+
+Capture completeness follows [REQ-METRICS-001](metrics.md). Legacy normalized
+counters count as incomplete with `unknown_completeness_records`, not observed
+zero-token responses.

@@ -867,10 +867,11 @@ func executeRequest(
 		}
 
 		capturer.ObserveProviderUsage(executionCtx, capturer.ProviderUsage{
-			InputTokens:     counts.InputTokens,
-			CachedTokens:    counts.InputTokens - counts.UncachedInputTokens,
-			OutputTokens:    counts.OutputTokens,
-			ReasoningTokens: counts.ReasoningTokens,
+			EvidenceComplete: new(!counts.Incomplete && !counts.Inconsistent),
+			InputTokens:      counts.InputTokens,
+			CachedTokens:     counts.InputTokens - counts.UncachedInputTokens,
+			OutputTokens:     counts.OutputTokens,
+			ReasoningTokens:  counts.ReasoningTokens,
 		})
 	}
 

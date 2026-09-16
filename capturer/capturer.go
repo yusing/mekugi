@@ -56,10 +56,12 @@ type Config struct {
 // ProviderUsage is the provider-authoritative token count parsed from one
 // terminal Responses payload.
 type ProviderUsage struct {
-	InputTokens     uint64 `json:"input_tokens"`
-	CachedTokens    uint64 `json:"cached_input_tokens"`
-	OutputTokens    uint64 `json:"output_tokens"`
-	ReasoningTokens uint64 `json:"reasoning_tokens"`
+	// Nil means legacy normalization did not retain field-completeness evidence.
+	EvidenceComplete *bool  `json:"evidence_complete,omitempty"`
+	InputTokens      uint64 `json:"input_tokens"`
+	CachedTokens     uint64 `json:"cached_input_tokens"`
+	OutputTokens     uint64 `json:"output_tokens"`
+	ReasoningTokens  uint64 `json:"reasoning_tokens"`
 }
 
 type payloadMetrics struct {

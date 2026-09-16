@@ -219,6 +219,14 @@ and MUST show per-attempt field state and explicit counts separately. Benchmark 
 MUST reconcile raw evidence with snapshots, reject unsafe shapes, and reject a present cached
 count that disagrees with normalized usage. All retries retain their own response evidence.
 
+Provider usage records may additionally carry `evidence_complete`: true only when
+the production usage parser observed all required token categories without inconsistent
+counts, false when fields were missing or inconsistent. Absence identifies legacy
+normalized counters with unknown completeness. This additive schema-6 field does not
+change existing normalized metric calculations. Offline corpus inspection excludes
+false/unknown completeness from observed totals rather than presenting missing fields
+as zero consumption.
+
 Explicit `--metrics-output PATH` writes the capturer's final metrics snapshot during
 session shutdown. It is independent of operational logging. Benchmark session
 aggregation belongs to this package: complete source snapshots must reconcile their
