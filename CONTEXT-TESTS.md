@@ -9,6 +9,7 @@ measure that separately from build/cache overhead.
 | --- | --- |
 | Root engine | `.` |
 | Router behavior | `./internal/router` |
+| Live diff UI or streaming behavior | `./internal/router -run 'Test.*LiveDiff'` plus the terminal acceptance cases below |
 | Capture metrics and AX evidence | `./capturer` |
 | Portable core or `mekugi:core/v1` adapter | `./internal/router/toolplugin`, then `./...` and `bun test ./internal/router/toolplugin/tests/core.test.ts` |
 | TypeScript plugin source | `go generate ./internal/router/toolplugin`, then `bun test ./internal/router/toolplugin/tests` |
@@ -35,6 +36,14 @@ Choose acceptance cases at the changed consumer:
   fork, side-thread, agent-switch, model-switch, and resume paths.
 - **Launcher handoff:** validate cancellation and rendering before and after Codex owns the
   terminal, including redirected output and delayed initialization.
+- **Live diff:** keep layout, viewport/follow state, and preview lifecycle independently
+  testable. For live diff changes, run the affected UI tests and real terminal (PTY)
+  acceptance tests, and inspect rendered frames, not only broker events or source.
+  Streaming changes must demonstrate visible updates before input completion, following
+  beyond the viewport, independent captured-diff scrolling, resize behavior, and delayed
+  preview removal with restored diff height. Cover interruption and burst updates without
+  replaying stale frames. Use controlled time for state tests and measure render/update
+  cost when changing performance. Missing terminal coverage must be reported explicitly.
 - **Verified edits:** feed emitted references through the edit consumer with repeated source
   rows. Formatter-only assertions cannot prove that the intended row was selected.
 - **Producer shapes:** cover Chat versus Responses, multipart CTP, and persisted rollout events

@@ -265,6 +265,9 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	if os.Getenv("MEKUGI_LIVE_DIFF_TEST_CHILD") == "1" {
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 		defer stop()
+		if os.Getenv("MEKUGI_LIVE_DIFF_SIMULATION_TEST") == "1" {
+			os.Exit(RunLiveDiff(ctx, []string{"--simulate", "--speed", "5"}, os.Stdin, os.Stdout, os.Stderr))
+		}
 		os.Exit(RunLiveDiff(ctx, []string{"--workspace", os.Getenv("MEKUGI_LIVE_DIFF_WORKSPACE"), "--replay-dir", os.Getenv("MEKUGI_LIVE_DIFF_REPLAY"), "--session-file", os.Getenv("MEKUGI_LIVE_DIFF_SESSION")}, os.Stdin, os.Stdout, os.Stderr))
 	}
 	t.Setenv("COLORFGBG", "")

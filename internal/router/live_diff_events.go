@@ -10,6 +10,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -37,12 +38,15 @@ type liveDiffEvent struct {
 	Scope   *liveDiffScope   `json:",omitempty"`
 	Changes []liveDiffChange `json:",omitempty"`
 	Status  string           `json:",omitempty"`
+	Preview *liveDiffPreview `json:",omitempty"`
 	Resync  bool             `json:",omitzero"`
 }
 
 type liveDiffSubscriber struct {
-	events chan liveDiffEvent
-	gap    chan struct{}
+	events       chan liveDiffEvent
+	gap          chan struct{}
+	previewReady chan struct{}
+	previews     []liveDiffPreview // Latest per ID, guarded by the broker mutex.
 }
 
 type liveDiffProducerRoute struct {
@@ -60,6 +64,7 @@ type liveDiffBroker struct {
 	scope        liveDiffScope
 	subs         map[*liveDiffSubscriber]bool
 	producers    map[string]*liveDiffProducerRoute
+	previews     map[string]liveDiffPreview
 	coverageLost bool
 }
 
@@ -124,6 +129,48 @@ func (b *liveDiffBroker) emitLocked(event liveDiffEvent) {
 	}
 }
 
+// Preview snapshots are replaceable display state, not durable publications.
+// Keep slow viewers from accumulating obsolete frames or starving edit receipts.
+func (b *liveDiffBroker) emitPreviewLocked(preview liveDiffPreview) {
+	for sub := range b.subs {
+		if i := slices.IndexFunc(sub.previews, func(old liveDiffPreview) bool { return old.ID == preview.ID }); i >= 0 {
+			sub.previews = slices.Delete(sub.previews, i, i+1)
+		}
+		if len(sub.previews) >= 32 {
+			close(sub.gap)
+			delete(b.subs, sub)
+			continue
+		}
+		sub.previews = append(sub.previews, preview)
+		select {
+		case sub.previewReady <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// Drain scope/receipt events and sample previews under the same publication
+// lock. A newly observed thread's preview cannot overtake its scope expansion.
+func (b *liveDiffBroker) takePreviews(sub *liveDiffSubscriber) []liveDiffEvent {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var events []liveDiffEvent
+drain:
+	for {
+		select {
+		case event := <-sub.events:
+			events = append(events, event)
+		default:
+			break drain
+		}
+	}
+	for _, preview := range sub.previews {
+		events = append(events, liveDiffEvent{Kind: "preview", Preview: &preview})
+	}
+	sub.previews = nil
+	return events
+}
+
 func (b *liveDiffBroker) setScope(scope liveDiffScope) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -148,13 +195,19 @@ func (b *liveDiffBroker) publish(changes []liveDiffChange) {
 func (b *liveDiffBroker) subscribe() *liveDiffSubscriber {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	sub := &liveDiffSubscriber{events: make(chan liveDiffEvent, 32), gap: make(chan struct{})}
+	sub := &liveDiffSubscriber{events: make(chan liveDiffEvent, 32), gap: make(chan struct{}), previewReady: make(chan struct{}, 1)}
 	// Register before exposing the initial scope. The client may take its
 	// durable snapshot while subsequent events accumulate in this queue.
 	b.subs[sub] = true
 	event := b.scopeEventLocked()
 	event.Resync = true
 	sub.events <- event
+	for _, preview := range b.previews {
+		sub.previews = append(sub.previews, preview)
+	}
+	if len(sub.previews) > 0 {
+		sub.previewReady <- struct{}{}
+	}
 	return sub
 }
 
@@ -185,6 +238,10 @@ func (b *liveDiffBroker) serveEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		return controller.Flush()
 	}
+	// The snapshot barrier must precede the separate preview mailbox.
+	if write(<-sub.events) != nil {
+		return
+	}
 	heartbeat := time.NewTicker(10 * time.Second)
 	defer heartbeat.Stop()
 	for {
@@ -197,6 +254,12 @@ func (b *liveDiffBroker) serveEvents(w http.ResponseWriter, r *http.Request) {
 		case <-sub.gap:
 			_ = write(liveDiffEvent{Kind: "reset"})
 			return
+		case <-sub.previewReady:
+			for _, event := range b.takePreviews(sub) {
+				if write(event) != nil {
+					return
+				}
+			}
 		case event := <-sub.events:
 			if write(event) != nil {
 				return

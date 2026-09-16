@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"syscall"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -431,6 +432,9 @@ func RunLiveDiff(ctx context.Context, args []string, stdin, stdout, stderr *os.F
 	flags.SetOutput(stderr)
 	workspace := flags.String("workspace", "", "workspace for displayed paths (default current directory)")
 	replay := flags.String("replay-dir", "", "replay directory (default platform state directory)")
+	simulate := flags.Bool("simulate", false, "replay an isolated streaming UI demonstration; no Codex or Herdr required")
+	speed := flags.Float64("speed", 1, "simulation playback speed (0.1 to 20)")
+	repeat := flags.Bool("repeat", false, "repeat the simulation until q")
 	sessionFile := flags.String("session-file", "", "private router event connection")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -444,6 +448,15 @@ func RunLiveDiff(ctx context.Context, args []string, stdin, stdout, stderr *os.F
 	}
 	if flags.NArg() != 0 {
 		return fail(errors.New("unexpected arguments"))
+	}
+	if *simulate {
+		if *workspace != "" || *replay != "" || *sessionFile != "" {
+			return fail(errors.New("simulation owns its temporary workspace, replay store, and connection"))
+		}
+		if err := runLiveDiffSimulation(ctx, stdin, stdout, *speed, *repeat); err != nil {
+			return fail(err)
+		}
+		return 0
 	}
 	var err error
 	if *workspace == "" {
@@ -533,6 +546,14 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 	go func() { defer close(streamDone); liveDiffStream(streamCtx, connection, events) }()
 	defer func() { cancelStream(); <-streamDone }()
 	data := newLiveDiffData()
+	var previewPane liveDiffPreviewPane
+	previewFrame := time.NewTimer(time.Hour)
+	previewFrame.Stop()
+	defer previewFrame.Stop()
+	previewHide := time.NewTimer(time.Hour)
+	previewHide.Stop()
+	defer previewHide.Stop()
+	var previewFrameC, previewHideC <-chan time.Time
 	var scope liveDiffScope
 	coverage := "CONNECTING"
 	resizes := make(chan os.Signal, 1)
@@ -584,7 +605,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		}
 		lastWidth, lastHeight, lastHorizontal = width, height, view.horizontal
 		lines := rendering.lines
-		rows := height - 2
+		rows, previewRows := liveDiffRegionRows(height-2, previewPane.current.ID != "")
 		offset := 0
 		if len(view.files) > 0 {
 			start := rendering.starts[view.selected]
@@ -653,6 +674,17 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 				}
 				writeRow(row+2, text)
 			}
+			previewLines, err := previewPane.render(workspace, theme, width, previewRows)
+			if err != nil {
+				return err
+			}
+			for row := range previewRows {
+				text := ""
+				if row < len(previewLines) {
+					text = previewLines[row]
+				}
+				writeRow(rows+2+row, text)
+			}
 			mode := "FOLLOW"
 			if !view.following {
 				mode = "PAUSED"
@@ -660,7 +692,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 					mode += " · new changes available"
 				}
 			}
-			if coverage != "" {
+			if coverage != "" && !strings.HasPrefix(coverage, "SIMULATION:") {
 				mode, _, _ = strings.Cut(coverage, ":")
 			}
 			writeRow(height, mode+" · r resume · j/k ↕ h/l ↔ · n/p file · f/F flush · q quit")
@@ -672,50 +704,93 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-previewFrameC:
+			previewFrameC, dirty = nil, true
+		case now := <-previewHideC:
+			previewHideC = nil
+			if previewPane.expire(now) {
+				dirty = true
+			}
 		case event, open := <-events:
 			if !open {
 				return nil
 			}
-			if e := validateLiveDiffEvent(event); e != nil {
-				return e
-			}
-			switch event.Kind {
-			case "end":
-				return nil
-			case "heartbeat":
-				continue
-			case "coverage":
-				coverage, dirty = event.Status, true
-				continue
-			case "scope":
-				if event.Resync {
-					next, e := store.liveDiffSnapshot(ctx, *event.Scope)
-					if e != nil {
-						return e
-					}
-					for key := range data.attempts {
-						if _, exists := next.attempts[key]; !exists {
-							return errors.New("change records were removed; restart the live view")
-						}
-					}
-					data = next
-				} else if e := data.reconcile(ctx, store, *event.Scope); e != nil {
+		drainEvents:
+			for drained := 0; ; drained++ {
+				if e := validateLiveDiffEvent(event); e != nil {
 					return e
 				}
-				scope, coverage = *event.Scope, event.Status
-			case "change":
-				for _, change := range event.Changes {
-					if !scope.Workspaces[change.Workspace][change.Thread] {
-						continue
+				switch event.Kind {
+				case "end":
+					return nil
+				case "heartbeat":
+				case "coverage":
+					coverage, dirty = event.Status, true
+					if strings.HasPrefix(coverage, "RECONNECTING:") {
+						previewPane = liveDiffPreviewPane{}
+						previewHide.Stop()
+						previewHideC = nil
 					}
-					if e := data.apply(ctx, store, change); e != nil {
+				case "preview":
+					if event.Preview.Workspace == "" || scope.Workspaces[event.Preview.Workspace][event.Preview.Thread] {
+						previewPane.update(*event.Preview, time.Now())
+						if previewFrameC == nil {
+							previewFrame.Reset(liveDiffPreviewFrameDelay)
+							previewFrameC = previewFrame.C
+						}
+						if previewPane.hideAt.IsZero() {
+							previewHide.Stop()
+							previewHideC = nil
+						} else {
+							previewHide.Reset(time.Until(previewPane.hideAt))
+							previewHideC = previewHide.C
+						}
+					}
+				case "scope":
+					if event.Resync {
+						next, e := store.liveDiffSnapshot(ctx, *event.Scope)
+						if e != nil {
+							return e
+						}
+						for key := range data.attempts {
+							if _, exists := next.attempts[key]; !exists {
+								return errors.New("change records were removed; restart the live view")
+							}
+						}
+						data = next
+					} else if e := data.reconcile(ctx, store, *event.Scope); e != nil {
 						return e
 					}
+					scope, coverage = *event.Scope, event.Status
+				case "change":
+					for _, change := range event.Changes {
+						if !scope.Workspaces[change.Workspace][change.Thread] {
+							continue
+						}
+						if e := data.apply(ctx, store, change); e != nil {
+							return e
+						}
+					}
+				}
+				if event.Kind == "scope" || event.Kind == "change" {
+					view.merge(data.files())
+					view.refreshVisible()
+					dirty = true
+				}
+				// Consume already queued snapshots before painting. Preview updates
+				// replace each other; durable events retain their original order.
+				if drained >= cap(events) {
+					break drainEvents
+				}
+				select {
+				case event, open = <-events:
+					if !open {
+						return nil
+					}
+				default:
+					break drainEvents
 				}
 			}
-			view.merge(data.files())
-			view.refreshVisible()
-			dirty = true
 		case <-resizes:
 			dirty = true
 		case key, open := <-keys:
@@ -744,8 +819,9 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 			}
 			if mouse.active || escape == "\x1b[" && key == '<' {
 				escape = ""
-				key = mouse.consume(key)
-				if key == 0 {
+				var mouseRow int
+				key, mouseRow = mouse.consume(key)
+				if key == 0 || previewRows > 0 && mouseRow >= rows+2 {
 					continue
 				}
 			}

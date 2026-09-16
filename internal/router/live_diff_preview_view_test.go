@@ -1,0 +1,187 @@
+package router
+
+import (
+	"fmt"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi"
+)
+
+func previewViewFixture(id string, rows int) liveDiffPreview {
+	var diff strings.Builder
+	fmt.Fprintf(&diff, "--- /dev/null\n+++ stream.go\n@@ -0,0 +1,%d @@\n", rows)
+	for i := 1; i <= rows; i++ {
+		fmt.Fprintf(&diff, "+stream_%04d\n", i)
+	}
+	return liveDiffPreview{ID: id, Workspace: "/workspace", Thread: "thread",
+		Files: []mekugi.ReviewFile{{AfterPath: "/workspace/stream.go", Diff: diff.String()}}}
+}
+
+func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
+	now := time.Unix(100, 0)
+	var pane liveDiffPreviewPane
+	for _, size := range []int{2, 30, 300, 2000} {
+		pane.update(previewViewFixture("one", size), now)
+		lines, err := pane.render("/workspace", liveDiffDarkTheme, 70, 12)
+		if err != nil || len(lines) > 12 || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), fmt.Sprintf("+stream_%04d", size)) {
+			t.Fatalf("stream tip %d escaped region: %v %q", size, err, lines)
+		}
+		if pane.focus != size-1 {
+			t.Fatalf("follow anchored to hunk start rather than tip: %d", pane.focus)
+		}
+	}
+	pane.update(liveDiffPreview{ID: "one"}, now)
+	if pane.expire(now.Add(liveDiffPreviewHideDelay - time.Nanosecond)) {
+		t.Fatal("preview hid before its hold delay")
+	}
+	lines, err := pane.render("/workspace", liveDiffDarkTheme, 70, 12)
+	if err != nil || !strings.Contains(lines[0], "STREAMING COMPLETE") {
+		t.Fatalf("missing completion hold: %v %q", err, lines)
+	}
+	// A new stream cancels a pending hide, even if the old timer fires.
+	pane.update(previewViewFixture("two", 10), now.Add(100*time.Millisecond))
+	if pane.expire(now.Add(liveDiffPreviewHideDelay)) {
+		t.Fatal("old completion timer hid a new stream")
+	}
+	pane.update(liveDiffPreview{ID: "two"}, now.Add(time.Second))
+	if !pane.expire(now.Add(time.Second+liveDiffPreviewHideDelay)) || pane.current.ID != "" {
+		t.Fatal("completed region did not release its height")
+	}
+}
+
+func TestLiveDiffPreviewPaneLatestOnlyAndIndependent(t *testing.T) {
+	var pane liveDiffPreviewPane
+	now := time.Unix(100, 0)
+	for i := 1; i <= 500; i++ {
+		pane.update(previewViewFixture("one", i), now)
+	}
+	if pane.source != nil || pane.rendered.ID != "" {
+		t.Fatal("queued snapshots performed rendering")
+	}
+	lines, err := pane.render("/workspace", liveDiffLightTheme, 80, 10)
+	if err != nil || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "+stream_0500") {
+		t.Fatalf("rendered stale queued snapshot: %v %q", err, lines)
+	}
+	source := pane.source
+	// Repaints (including captured-diff navigation) do not parse source again.
+	_, err = pane.render("/workspace", liveDiffLightTheme, 80, 10)
+	if err != nil || &source[0] != &pane.source[0] {
+		t.Fatal("unchanged preview rebuilt its source")
+	}
+	pane.update(previewViewFixture("two", 20), now)
+	pane.update(liveDiffPreview{ID: "two"}, now)
+	if pane.current.ID != "one" || !pane.hideAt.IsZero() {
+		t.Fatal("one completed stream hid another active stream")
+	}
+}
+
+func TestLiveDiffPreviewLayoutAndWrapping(t *testing.T) {
+	for _, body := range []int{1, 2, 3, 10, 20, 40, 100} {
+		diff, stream := liveDiffRegionRows(body, true)
+		if diff+stream != body || diff < 1 {
+			t.Fatalf("invalid region heights for %d: %d %d", body, diff, stream)
+		}
+		if body >= 10 && diff != body*3/10 {
+			t.Fatalf("not a fixed 3:7 split: %d %d", diff, stream)
+		}
+		if d, s := liveDiffRegionRows(body, false); d != body || s != 0 {
+			t.Fatal("hidden preview retained height")
+		}
+	}
+	var pane liveDiffPreviewPane
+	preview := previewViewFixture("one", 1)
+	preview.Files[0].Diff = "--- /dev/null\n+++ stream.go\n@@ -0,0 +1 @@\n+" + strings.Repeat("界", 100) + "TIP\n"
+	pane.update(preview, time.Time{})
+	for _, width := range []int{4, 10, 40, 120} {
+		lines, err := pane.render("/workspace", liveDiffDarkTheme, width, 8)
+		if err != nil || len(lines) > 8 {
+			t.Fatalf("render at width %d: %v", width, err)
+		}
+		for _, line := range lines {
+			if ansi.StringWidth(line) > width-1 {
+				t.Fatalf("line escaped width %d: %q", width, line)
+			}
+		}
+		if width >= 10 && !strings.Contains(ansi.Strip(strings.Join(lines, "")), "TIP") {
+			t.Fatalf("wrapped stream tip lost at width %d: %q", width, lines)
+		}
+	}
+}
+
+func TestLiveDiffPreviewFocusIgnoresTrailingContext(t *testing.T) {
+	before := []liveDiffPreviewRow{{1, '-', "old\n"}, {1, '+', "fir\n"}, {2, ' ', "context\n"}}
+	after := []liveDiffPreviewRow{{1, '-', "old\n"}, {1, '+', "first\n"}, {2, '+', "second\n"}, {3, ' ', "context\n"}}
+	if focus := liveDiffPreviewFocus(before, after); focus != 2 {
+		t.Fatalf("focus=%d, want final streamed addition", focus)
+	}
+	// A repeated snapshot must not move focus, because prepare reuses it.
+	var pane liveDiffPreviewPane
+	pane.update(previewViewFixture("one", 30), time.Time{})
+	first, _ := pane.render("/workspace", liveDiffDarkTheme, 80, 8)
+	pane.update(previewViewFixture("one", 30), time.Time{})
+	second, _ := pane.render("/workspace", liveDiffDarkTheme, 80, 8)
+	if !slices.Equal(first, second) {
+		t.Fatal("identical snapshot moved the viewport")
+	}
+}
+
+func BenchmarkLiveDiffPreviewPaneFrame(b *testing.B) {
+	preview := previewViewFixture("one", 2000)
+	var pane liveDiffPreviewPane
+	b.ReportAllocs()
+	for b.Loop() {
+		// Changing snapshots exercise parsing too, rather than only cache hits.
+		pane.rendered = liveDiffPreview{}
+		pane.update(preview, time.Time{})
+		if _, err := pane.render("/workspace", liveDiffDarkTheme, 120, 28); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkLiveDiffStreamingRender(b *testing.B) {
+	preview := previewViewFixture("one", 2000)
+	b.Run("whole_diff_previous_path", func(b *testing.B) {
+		chunk := liveDiffChunk{key: "preview", status: "STREAMING PREVIEW", review: preview.Files[0]}
+		files := []liveDiffFile{{path: "/workspace/stream.go", chunks: []liveDiffChunk{chunk}}}
+		b.ReportAllocs()
+		for b.Loop() {
+			if _, err := renderLiveDiff(b.Context(), liveDiffDarkTheme, files, "/workspace", 120, 0, chunk, 0); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("dedicated_viewport", func(b *testing.B) {
+		var pane liveDiffPreviewPane
+		b.ReportAllocs()
+		for b.Loop() {
+			pane.rendered = liveDiffPreview{}
+			pane.update(preview, time.Time{})
+			if _, err := pane.render("/workspace", liveDiffDarkTheme, 120, 28); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
+
+func TestLiveDiffPreviewFollowReservesSpaceBeforeWrappedContext(t *testing.T) {
+	preview := liveDiffPreview{
+		ID: "wrapped-context", Workspace: "/workspace", Thread: "thread",
+		Files: []mekugi.ReviewFile{{
+			BeforePath: "/workspace/file.txt", AfterPath: "/workspace/file.txt",
+			Diff: "--- file.txt\n+++ file.txt\n@@ -1,2 +1,2 @@\n-old\n+STREAM_TIP\n " + strings.Repeat("x", 500) + "\n",
+		}},
+	}
+	var pane liveDiffPreviewPane
+	pane.update(preview, time.Time{})
+	for _, width := range []int{100, 40, 20} {
+		lines, err := pane.render("/workspace", liveDiffDarkTheme, width, 8)
+		if err != nil || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "STREAM_TIP") {
+			t.Fatalf("wrapped context hid the focus at width %d: %v %q", width, err, lines)
+		}
+	}
+}

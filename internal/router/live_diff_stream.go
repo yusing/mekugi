@@ -108,6 +108,10 @@ func validateLiveDiffEvent(event liveDiffEvent) error {
 		if len(event.Changes) == 0 {
 			return errors.New("missing live diff change")
 		}
+	case "preview":
+		if event.Preview == nil || event.Preview.ID == "" {
+			return errors.New("missing streaming preview")
+		}
 	case "coverage", "heartbeat", "end":
 	case "error":
 		return errors.New(event.Status)

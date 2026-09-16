@@ -140,11 +140,19 @@ Acceptance:
 
 ## Live terminal view
 
-The live pane is a read-only view of this session's captured hpatch edits. It does
+The live pane is a read-only view of this session's captured hpatch edits and transient
+streaming previews. It does
 not include Git changes, shell-only edits, or retained shell scripts. Updates arrive
 as authenticated events from the owning router, never through filesystem watching or
 polling. The viewer does not write the store, evaluate edits, or start another router.
-Manual live viewing is unsupported; durable history remains available through `hchanges`.
+Manual live viewing of existing sessions is unsupported; durable history remains
+available through `hchanges`. `mekugi live-diff --simulate` runs a deterministic,
+isolated demonstration of the same worker, authenticated event transport, captures,
+and terminal UI without Codex or Herdr. `--speed` controls playback from 0.1 to 20;
+`--repeat` loops the scenario until exit. Re-running the command replays from fresh
+state. Simulation rejects caller workspace, replay, and connection selectors, writes
+only owned temporary files, and removes them on exit. It covers progressive input,
+a wrapped line, a burst, completion, and interruption.
 
 ### Session and lifetime
 
@@ -152,8 +160,9 @@ Interactive `mekugi codex` inside Herdr arms one automatic pane launch per route
 process when stdin and stdout are terminals and `herdr` is available. The first
 successfully prepared non-subagent turn selects the canonical workspace, not wrapper
 cwd or parsed command arguments. Preparation and read-only turns do not open UI.
-The first complete hpatch call emitted for an observed thread triggers the launch,
-including a subagent's call or a rejected edit; replayed history alone does not.
+The first hpatch input fragment or complete call emitted for an observed thread
+triggers the launch, including a subagent's call or a rejected edit; replayed history
+alone does not.
 The pane opens to the caller's right without changing focus. Launch is asynchronous,
 silent, limited to five seconds, and canceled with the router. Failure neither blocks
 Codex nor triggers an automatic retry.
@@ -167,6 +176,47 @@ The connection is private to the owning router. Viewers never discover or switch
 routers. Router exit revokes the connection and closes only its own pane, with bounded
 cleanup. A fresh router may open a new pane without replacing existing viewers.
 Quitting the viewer restores terminal state without closing the pane or affecting Codex.
+
+### Streaming previews
+
+Incoming custom-tool input deltas, including WebSocket events, update a provisional
+file diff before input completion. Preview projection uses the shared parser, target
+resolver, and in-memory editor, never executable translation, formatting, language
+validation, hooks, shell execution, or durable publication. Partial quoted values and
+heredoc bodies update while still open. Displayed source is sampled for the preview;
+it does not reserve a baseline or promise that the complete call will succeed.
+
+Previews remain separately labeled, never composed into applied history or treated as
+receipts. They occupy a dedicated, non-scrollable region below captured diffs. While
+visible, the body has a fixed 3:7 captured-diff-to-preview height split; the preview
+heading is inside its allocation. Keyboard navigation, horizontal movement, flushing,
+and wheel input in the captured-diff region affect only captured diffs. Wheel input
+in the preview region is ignored. Streaming always follows the newest changed source
+row and its final wrapped fragment, independently of captured-diff follow/pause state.
+
+Completion, rejection, interruption, or transform closure ends the live preview. The
+last frame remains for 300 ms, then the region disappears and captured diffs regain
+full height without resetting their scroll position. A new stream cancels pending
+removal; completion of one stream cannot hide another. Tiny terminals may omit the
+preview when both regions cannot fit. Reconnect clears transient display state and
+restores only currently active router-local previews after the durable
+snapshot barrier. No preview survives router restart or history replay.
+
+Preview computation is asynchronous and coalesces bursts without waiting for input
+completion. Each worker samples the latest buffered input without queuing old work;
+completion cancels in-flight projection output. The viewer consumes queued
+snapshots before painting and limits preview paints to a 33 ms frame cadence, keeping
+only the latest snapshot rather than playing back intermediate frames. Preview updates
+do not recompose or syntax-render captured history. Preview rendering lays out only
+visible source rows, with change colors but without full-source syntax lexing.
+Scope expansions precede their authorized previews even when snapshot updates are
+coalesced separately from durable events.
+
+Input and total source/result are bounded to 256 KiB per preview, target expansion
+to 1,024 mutations, and retained display payloads to 48 KiB each across at most 16
+active previews. Capacity or target failures do not block complete edits. Projection stops at shell or recovery
+boundaries and excludes private retained scripts; it does not guess the state after
+a shell command.
 
 ### Update integrity
 

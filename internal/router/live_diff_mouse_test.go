@@ -26,8 +26,12 @@ func TestLiveDiffMouseReports(t *testing.T) {
 				if i == len(tc.report)-1 {
 					want = tc.want
 				}
-				if got := mouse.consume(key); got != want {
+				got, row := mouse.consume(key)
+				if got != want {
 					t.Fatalf("byte %d: got %q, want %q", i, got, want)
+				}
+				if got != 0 && row != 5 || got == 0 && row != 0 {
+					t.Fatalf("byte %d: unexpected mouse row %d", i, row)
 				}
 				if len(mouse.payload) > 48 {
 					t.Fatal("mouse storage exceeded bound")

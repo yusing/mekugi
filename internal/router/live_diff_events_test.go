@@ -517,3 +517,186 @@ func TestLiveDiffResumeReplacesConnectedControlWorker(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLiveDiffPreviewLifecycleAndReconnect(t *testing.T) {
+	for _, interrupted := range []bool{false, true} {
+		t.Run(fmt.Sprint(interrupted), func(t *testing.T) {
+			calls := 0
+			transform, proxy, _, workspace := newMekugiTestTransform(t, testTranslator(t, &calls))
+			broker := newLiveDiffBroker(t.Context())
+			broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true}}})
+			proxy.autoLiveDiff = &autoLiveDiff{events: broker, requested: true}
+			proxy.autoLiveDiff.enabled.Store(true)
+			sub := broker.subscribe()
+			item := testMekugiItem()
+			item["status"], item["input"] = "in_progress", ""
+			_, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.added", "item": item}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = transform.TransformSSE(mustTestJSON(t, map[string]any{
+				"type": "response.custom_tool_call_input.delta", "item_id": "item-H",
+				"delta": "new created.txt\ntype <<PATCH\npay",
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var preview liveDiffPreview
+			timer := time.NewTimer(5 * time.Second)
+			defer timer.Stop()
+			for preview.ID == "" {
+				select {
+				case <-sub.previewReady:
+					for _, update := range broker.takePreviews(sub) {
+						if update.Preview != nil {
+							preview = *update.Preview
+						}
+					}
+				case <-timer.C:
+					t.Fatal("preview did not arrive")
+				}
+			}
+			if calls != 0 || len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "+pay") {
+				t.Fatalf("preview=%+v translations=%d", preview, calls)
+			}
+			reconnected := broker.subscribe()
+			if event := <-reconnected.events; event.Kind != "scope" || !event.Resync {
+				t.Fatal("missing snapshot barrier")
+			}
+			if updates := broker.takePreviews(reconnected); len(updates) != 1 || updates[0].Preview == nil || updates[0].Preview.ID != preview.ID {
+				t.Fatal("active preview lost on reconnect")
+			}
+			if interrupted {
+				item["status"] = "incomplete"
+				if _, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": item})); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				transform.Close()
+			}
+			broker.mu.Lock()
+			remaining := len(broker.previews)
+			broker.mu.Unlock()
+			if remaining != 0 || calls != 0 {
+				t.Fatalf("interruption retained preview or translated input: remaining=%d calls=%d", remaining, calls)
+			}
+			if updates := broker.takePreviews(sub); len(updates) != 1 || updates[0].Preview == nil || updates[0].Preview.Workspace != "" {
+				t.Fatal("missing preview removal")
+			}
+		})
+	}
+}
+
+func TestLiveDiffPreviewMailboxCoalescesWithoutDelayingReceipts(t *testing.T) {
+	broker := newLiveDiffBroker(t.Context())
+	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{"/workspace": {"thread": true}}})
+	sub := broker.subscribe()
+	<-sub.events
+	for i := 1; i <= 200; i++ {
+		broker.publishPreview(previewViewFixture("one", i), false)
+	}
+	broker.publish([]liveDiffChange{{Workspace: "/workspace", Thread: "thread", ID: "hp_a1"}})
+	if event := <-sub.events; event.Kind != "change" {
+		t.Fatal("preview burst delayed durable publication")
+	}
+	select {
+	case <-sub.gap:
+		t.Fatal("replaceable preview frames overflowed the durable queue")
+	default:
+	}
+	updates := broker.takePreviews(sub)
+	if len(updates) != 1 || updates[0].Preview == nil || !strings.Contains(updates[0].Preview.Files[0].Diff, "stream_0200") {
+		t.Fatalf("mailbox did not retain only latest snapshot: %+v", updates)
+	}
+	broker.publishPreview(previewViewFixture("one", 201), false)
+	broker.publishPreview(liveDiffPreview{ID: "one"}, true)
+	updates = broker.takePreviews(sub)
+	if len(updates) != 1 || updates[0].Preview == nil || updates[0].Preview.Workspace != "" {
+		t.Fatal("completion did not supersede pending frames")
+	}
+}
+
+func TestLiveDiffPreviewMailboxPreservesExpandedScopeBarrier(t *testing.T) {
+	broker := newLiveDiffBroker(t.Context())
+	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{"/workspace": {"old": true}}})
+	sub := broker.subscribe()
+	<-sub.events // The HTTP writer has sent the initial scope and is paused.
+	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{"/workspace": {"old": true, "thread": true}}})
+	broker.publishPreview(previewViewFixture("new-thread", 20), false)
+	// Force the preview-ready branch rather than relying on select scheduling.
+	<-sub.previewReady
+	batch := broker.takePreviews(sub)
+	if len(batch) != 2 || batch[0].Kind != "scope" || batch[1].Preview == nil {
+		t.Fatalf("preview overtook its authorizing scope: %+v", batch)
+	}
+	if !batch[0].Scope.Workspaces[batch[1].Preview.Workspace][batch[1].Preview.Thread] {
+		t.Fatal("preview is outside the preceding scope")
+	}
+}
+
+type liveDiffPausedWriter struct {
+	http.ResponseWriter
+	ctx     context.Context
+	ready   chan struct{}
+	release chan struct{}
+	paused  bool
+}
+
+func (w *liveDiffPausedWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *liveDiffPausedWriter) Flush() {
+	w.ResponseWriter.(http.Flusher).Flush()
+	if !w.paused {
+		w.paused = true
+		close(w.ready)
+		select {
+		case <-w.release:
+		case <-w.ctx.Done():
+		}
+	}
+}
+
+func TestLiveDiffExpandedScopeBeforePreviewOnDelayedTransport(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	broker := newLiveDiffBroker(ctx)
+	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{"/workspace": {"old": true}}})
+	ready, release := make(chan struct{}), make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		broker.serveEvents(&liveDiffPausedWriter{ResponseWriter: w, ctx: ctx, ready: ready, release: release}, r)
+	}))
+	t.Cleanup(func() { cancel(); server.Close() })
+	broker.setEndpoint(server.URL + liveDiffEventsPath)
+	events := make(chan liveDiffEvent, 16)
+	go liveDiffStream(ctx, broker.descriptor(), events)
+	select {
+	case <-ready:
+	case <-ctx.Done():
+		t.Fatal("initial snapshot did not reach the writer")
+	}
+	if event := <-events; event.Kind != "scope" {
+		t.Fatal("missing initial scope")
+	}
+	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{"/workspace": {"old": true, "thread": true}}})
+	broker.publishPreview(previewViewFixture("new-thread", 20), false)
+	close(release)
+	var scope *liveDiffScope
+	for scope == nil {
+		select {
+		case event := <-events:
+			if event.Kind != "scope" {
+				t.Fatalf("preview overtook expanded scope: %+v", event)
+			}
+			scope = event.Scope
+		case <-ctx.Done():
+			t.Fatal("scope expansion was not delivered")
+		}
+	}
+	select {
+	case event := <-events:
+		if event.Preview == nil || !scope.Workspaces[event.Preview.Workspace][event.Preview.Thread] {
+			t.Fatalf("missing authorized preview after scope: %+v", event)
+		}
+	case <-ctx.Done():
+		t.Fatal("preview was not delivered")
+	}
+}

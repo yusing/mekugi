@@ -276,6 +276,7 @@ type mekugiResponseTransform struct {
 	originalToolChoice        json.RawMessage
 	originalToolChoicePresent bool
 	pending                   map[string]mekugiPendingCall
+	previews                  map[string]*liveDiffPreviewWorker
 	nativeExecCalls           map[string]map[string]json.RawMessage
 	local                     map[string]mekugiHistory
 	directory                 string
@@ -327,6 +328,9 @@ type mekugiResponseTransform struct {
 func (t *mekugiResponseTransform) Close() {
 	if t == nil {
 		return
+	}
+	for itemID := range t.previews {
+		t.endPreview(itemID)
 	}
 	t.ReleaseDelivery()
 	t.releaseCommentarySubscriptions()
@@ -1264,6 +1268,11 @@ func (t *mekugiResponseTransform) evaluateScript(
 }
 
 func (t *mekugiResponseTransform) translateTool(name, callID, input string, upstreamItem map[string]json.RawMessage) (mekugiHistory, error) {
+	for itemID := range t.previews {
+		if t.pending[itemID].callID == callID {
+			t.endPreview(itemID)
+		}
+	}
 	switch name {
 	case mekugiToolName:
 		t.proxy.autoLiveDiff.requestLaunch(t.directory, t.threadID)
@@ -1660,6 +1669,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		ItemID   string              `json:"item_id"`
 		CallID   string              `json:"call_id"`
 		Name     string              `json:"name"`
+		Delta    string              `json:"delta"`
 		Input    string              `json:"input"`
 		Item     json.RawMessage     `json:"item"`
 		Response json.RawMessage     `json:"response"`
@@ -1743,9 +1753,13 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			return nil, staticCriticalDiagnostic("reused_mekugi_item", "the upstream reused an HPATCH item identity")
 		}
 		t.pending[itemID] = mekugiPendingCall{callID: callID, toolName: name, added: bytes.Clone(payload)}
+		if item.Input != nil {
+			t.previewDelta(itemID, *item.Input)
+		}
 		return nil, nil
 
 	case envelope.Type == responseevents.CustomInputDelta:
+		t.previewDelta(envelope.ItemID, envelope.Delta)
 		if pending, ok := t.pending[envelope.ItemID]; ok && !pending.structured {
 			// Translation needs the complete input, but Codex's SSE idle timer only
 			// observes dispatched events. Preserve liveness without exposing the
@@ -1764,6 +1778,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.CustomInputDone:
+		t.endPreview(envelope.ItemID)
 		pending, ok := t.pending[envelope.ItemID]
 		if !ok || pending.structured {
 			if addedFields, nativeExec := t.nativeExecCalls[envelope.ItemID]; nativeExec {
@@ -1850,6 +1865,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if !ok {
 			return [][]byte{payload}, nil //nolint:nilerr // Malformed unrelated output remains the upstream's responsibility.
 		}
+		t.endPreview(item.ID)
 		activityFields := maps.Clone(item.fields)
 		if _, delivered := t.local[item.CallID]; item.Status == "incomplete" && !delivered {
 			// Item completion can report interrupted generation, not complete input.
