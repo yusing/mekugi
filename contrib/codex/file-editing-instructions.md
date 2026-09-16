@@ -427,9 +427,14 @@ references stay protected. Missing references fail explicitly. No standalone out
 dumps are created. Commands keep their original exit status; `script_ref` stores executable
 program source separately. Reading output never reruns the producer.
 
-Run one file per command as `hcat PATH [START:END]`. Quote paths with shell syntax and batch
-already-known reads as separate commands in one shell script. A bare path reads the complete
-file. A start line of `0` begins at line 1 without emitting line 0. An end past EOF warns after
+For several known files, use `hcat --batch [--max-tokens N] PATH [START:END] -- PATH [START:END] ...`
+inside shell, with `--batch` first. It divides one display budget across up to 16 hcat
+reads and puts a per-file shown/omitted range manifest first. Follow that file's `next_call` to read its retained
+omissions, rather than rereading overlapping source ranges. Increase the budget or select
+fewer paths if the manifest cannot fit; outer host output limits still apply.
+
+For one file, use `hcat PATH [START:END]`. Quote paths with shell syntax. A bare path
+reads the complete file. A start line of `0` begins at line 1 without emitting line 0. An end past EOF warns after
 returning available rows; a start past EOF fails. Copy a current `LINE:HASH` directly into an
 HPATCH/2 target. Recover omitted rows with its exact `next_call: hread REF`, without
 repeating the prefix or reopening the source.

@@ -158,6 +158,13 @@ func executeShellProgram(
 				}
 			}()
 
+			if command[0] == "hcat" && len(command) > 1 && command[1] == "--batch" {
+				contribution, ok := privateTools["hcat"]
+				if !ok {
+					return errors.New("hcat --batch requires the built-in hcat reader")
+				}
+				return executeReadBundle(handlerCtx, manifest, runtimeRoot, command[2:], contribution, shellID)
+			}
 			if command[0] == "hread" {
 				return executeHRead(handlerCtx, manifest, runtimeRoot, command[1:])
 			}

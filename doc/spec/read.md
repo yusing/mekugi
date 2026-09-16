@@ -158,3 +158,28 @@ switch, and router restart, without depending on a live parent or routing-sessio
 It remains valid while its session data is retained under that policy. Missing, corrupt, altered, or
 out-of-range records fail rather than replay producers. These durable read references do
 not extend the lifetime of executable recovery handles or native sessions.
+
+### Coordinated multi-file reads
+
+The shell-private `hcat --batch [--max-tokens N] PATH [START:END] -- PATH [START:END] ...`
+mode composes 1–16 hcat reads. The `--batch` selector must be the first argument;
+existing single-file calls and `hcat -- PATH [START:END]` remain unchanged. Its default
+total display budget is 4000, with the usual 1–15500 token option bounds. The bundle reserves conservative framing space based on
+quoted path lengths, then divides the remaining budget equally among readers. If
+framing cannot fit, it rejects before reading any file. Source parsing, permissions,
+logical rows, bounds, and verified identities remain owned by hcat; retained `@shell`
+operands keep their thread ownership. No new source-selection semantics are introduced.
+
+A manifest precedes all bodies and reports each input path, displayed and retained
+omitted inclusive line ranges (or `none`), completion state, and an optional `next_call`
+using hread. Bodies are labeled by manifest index. Diagnostics and omitted rows are
+persisted before exposing the manifest. Unrecoverable omissions say `unavailable`,
+never complete. Each actual hcat execution participates in AX read observation.
+Any failed or incomplete reader makes the bundle nonzero, but other files are still read.
+Cancellation and storage failure stop delivery with an error. Outer shell/host budgets
+remain independent and may retain/truncate the entire bundle output as usual.
+
+Acceptance: multiple files receive preview space under one total budget; omissions
+remain recoverable after source changes and router restart; invalid files and empty
+files have distinct manifest states; no executable basename or model-visible tool
+is installed. Pipelines and redirections retain ordinary shell behavior.
