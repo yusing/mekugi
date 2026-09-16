@@ -51,9 +51,9 @@ already doing useful work over a standalone `functions.journal` round trip. Bash
 publish inline with the reserved `journal` command; Code Mode supports `await journal(...)`.
 Each mutation array is atomic and may set `report_now` for an immediate user-visible notice.
 
-Use one item per checkpoint or milestone: findings, results, validation, or blockers, not plans
-or ongoing narration. Edit or delete superseded entries. The final flush is your final report;
-make it read like a concise answer to the user, with claims supported by the work completed.
+The final flush is your final report: concise, current, evidence-backed findings, results,
+validation, or blockers. One item per distinct point; no plans, narration, or superseded progress.
+Descendant journals are delivered automatically. Do not repeat or summarize other agents' journals.
 When an item answers the latest user message or your native child assignment, set `answer: true`
 and put only the answer in `text`; do not repeat the source message or assignment, which Mekugi
 attaches. Only plaintext native assignments can be attached; omit `answer` for encrypted assignments.

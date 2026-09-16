@@ -39,10 +39,16 @@ func TestReceivedReplyIsFullInChildAndRootCommentary(t *testing.T) {
 								t.Fatal(err)
 							}
 						}
-						if !bytes.Contains(output, []byte(body)) || bytes.Contains(output, []byte("[excerpt]")) {
-							t.Fatal("received reply was shortened")
+						notice := []byte("[`/root/a` -> `/root/b`] Message received:")
+						if messageType == "FINAL_ANSWER" {
+							notice = []byte("[`/root/a` -> `/root/b`] Completed.")
 						}
-						if bytes.LastIndex(output, []byte("Substantive answer.")) < bytes.LastIndex(output, []byte(body)) {
+						if !bytes.Contains(output, notice) ||
+							bytes.Contains(output, []byte(body)) != (messageType == "MESSAGE") ||
+							bytes.Contains(output, []byte("[excerpt]")) {
+							t.Fatal("receipt did not preserve the message/completion display contract")
+						}
+						if bytes.LastIndex(output, []byte("Substantive answer.")) < bytes.LastIndex(output, notice) {
 							t.Fatal("commentary replaced the substantive answer")
 						}
 					}
@@ -66,7 +72,7 @@ func TestReceivedReplyOverBudgetIsOmittedWithoutChangingInput(t *testing.T) {
 	if !bytes.Equal(fields["input"], original) {
 		t.Fatal("oversized reply changed model-visible input")
 	}
-	if len(messages) != 1 || commentaryText(t, messages[0]) != "[`/root/b` <- `/root/a`] Reply received:\nComplete small reply." {
+	if len(messages) != 1 || commentaryText(t, messages[0]) != "[`/root/a` -> `/root/b`] Message received:\nComplete small reply." {
 		t.Fatal("oversized reply was excerpted or consumed the next reply's budget")
 	}
 }
@@ -119,8 +125,11 @@ func TestReceivedReplyResumeProjectsOnlyCurrentInput(t *testing.T) {
 							t.Fatal(err)
 						}
 					}
-					if bytes.Contains(output, []byte("old-reply")) ||
-						!bytes.Contains(output, []byte("fresh-reply")) ||
+					freshID := subagentCommentaryMessageID("response\x00fresh-reply\x00/root/worker\x00fresh-reply")
+					oldID := subagentCommentaryMessageID("response\x00old-reply\x00/root/worker\x00old-reply")
+					if bytes.Contains(output, []byte(oldID)) || !bytes.Contains(output, []byte(freshID)) ||
+						bytes.Contains(output, []byte("fresh-reply")) || bytes.Contains(output, []byte("old-reply")) ||
+						!bytes.Contains(output, []byte("[`/root/worker` -> `/root`] Completed.")) ||
 						!bytes.Contains(output, []byte("Current answer")) {
 						t.Fatalf("resumed reply projection: %s", output)
 					}
@@ -175,7 +184,7 @@ func TestReceivedEncryptedReplyNativeContent(t *testing.T) {
 						}
 					}
 					wantReceipt := name == "native" || name == "single_encrypted"
-					notice := []byte("[`/root` <- `/root/worker`] Message received.")
+					notice := []byte("[`/root/worker` -> `/root`] Message received.")
 					if bytes.Contains(output, notice) != wantReceipt {
 						t.Fatalf("receipt=%v, output=%s", wantReceipt, output)
 					}

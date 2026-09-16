@@ -110,8 +110,12 @@ are rewritten to journal guidance. Passthrough retains the stock tool and prompt
 ### Runtime authoring
 
 Journals record checkpoints and milestones, not plans or ongoing narration. Agent guidance
-asks for a concise final report of findings, results, validation, or blockers, with superseded
-entries reconciled. Agents mark answer items with `answer: true` and put only the answer in
+asks for a concise final report containing only distinct, current findings, results,
+validation, or blockers, without overlapping progress or superseded summaries.
+Parents' own journals cover their results, integration decisions, and actions on findings,
+not repetitions or summaries of other agents' journals.
+The descendants-first terminal flush preserves each agent's original report.
+Agents mark answer items with `answer: true` and put only the answer in
 `text`; the router supplies the original question. Live notices label these as **Question** and
 **Answer**; terminal blocks use **Answer** or **Answers**, according to the number of answers.
 The router preserves authored Markdown rather than summarizing it. Within each terminal journal

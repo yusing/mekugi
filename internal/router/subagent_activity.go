@@ -109,7 +109,11 @@ func (a *subagentActivity) collect(thread, source, kind, text string) {
 	if _, exists := node.seen[source]; exists {
 		return
 	}
-	if kind == "operation" || !strings.HasPrefix(text, "["+commentaryCode(node.name)+" -> ") && !strings.HasPrefix(text, "["+commentaryCode(node.name)+" <- ") {
+	header, _, directed := strings.Cut(text, "] ")
+	directed = directed && strings.HasPrefix(header, "[") &&
+		(strings.HasPrefix(header, "["+commentaryCode(node.name)+" -> ") ||
+			strings.HasSuffix(header, " -> "+commentaryCode(node.name)))
+	if kind == "operation" || !directed {
 		text = attributedCommentary(node.name, text)
 	}
 	if len(text) > maxCommentaryPublicationBytes {

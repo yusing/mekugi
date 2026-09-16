@@ -57,7 +57,7 @@ func TestSubagentCommentaryJSONIsVisibleAndRemovedFromReplay(t *testing.T) {
 	if len(response.Output) != 4 {
 		t.Fatalf("output = %s", transformed)
 	}
-	if text := commentaryText(t, response.Output[0]); text != "[`/root` <- `/root/explorer`] Reply received:\n"+responseText {
+	if text := commentaryText(t, response.Output[0]); text != "[`/root/explorer` -> `/root`] Completed." {
 		t.Fatalf("response commentary = %q", text)
 	}
 	if jsonString(response.Output[1], "arguments") != spawnArguments ||
@@ -77,6 +77,34 @@ func TestSubagentCommentaryJSONIsVisibleAndRemovedFromReplay(t *testing.T) {
 		if strings.HasPrefix(jsonString(item, "id"), subagentCommentaryMessagePrefix) {
 			t.Fatalf("user-only commentary reached model input: %s", request.fields["input"])
 		}
+	}
+}
+
+func TestSubagentReceiptDirectionAndCompletionSummary(t *testing.T) {
+	for _, test := range []struct {
+		name, sender, recipient, kind, body, want string
+	}{
+		{"parent message", "/root", "/root/reviewer", "MESSAGE", "Please finish.", "[`/root` -> `/root/reviewer`] Message received:\nPlease finish."},
+		{"child message", "/root/reviewer", "/root", "MESSAGE", "Need input.", "[`/root/reviewer` -> `/root`] Message received:\nNeed input."},
+		{"sibling message", "/root/a", "/root/b", "MESSAGE", "Evidence.", "[`/root/a` -> `/root/b`] Message received:\nEvidence."},
+		{"completion", "/root/reviewer", "/root", "FINAL_ANSWER", "Journal result\nQuestion: internal assignment\nAnswer: findings", "[`/root/reviewer` -> `/root`] Completed."},
+		{"large completion", "/root/reviewer", "/root", "FINAL_ANSWER", strings.Repeat("findings ", maxCommentaryPublicationBytes), "[`/root/reviewer` -> `/root`] Completed."},
+		{"message lookalike", "/root/reviewer", "/root", "MESSAGE", "Journal result", "[`/root/reviewer` -> `/root`] Message received:\nJournal result"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input := mustTestJSON(t, []any{map[string]any{
+				"type": "agent_message", "id": "receipt", "author": test.sender, "recipient": test.recipient,
+				"content": []any{map[string]any{"type": "input_text", "text": "Message Type: " + test.kind + "\nTask name: " + test.recipient + "\nSender: " + test.sender + "\nPayload:\n" + test.body}},
+			}})
+			fields := map[string]json.RawMessage{"input": input}
+			messages := prepareSubagentInputCommentary(fields, test.recipient)
+			if len(messages) != 1 || commentaryText(t, messages[0]) != test.want {
+				t.Fatalf("receipt = %s", mustTestJSON(t, messages))
+			}
+			if !bytes.Equal(input, fields["input"]) {
+				t.Fatal("receipt projection changed the native envelope")
+			}
+		})
 	}
 }
 

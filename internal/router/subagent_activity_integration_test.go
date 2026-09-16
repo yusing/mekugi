@@ -154,8 +154,26 @@ func TestSiblingReceiptAndOpaqueCallsKeepExactEnvelope(t *testing.T) {
 		t.Fatal(string(output))
 	}
 	output, err = root.TransformJSON([]byte(`{"status":"completed","output":[]}`))
-	if err != nil || !bytes.Contains(output, []byte("`/root/beta` <- `/root/alpha`")) || bytes.Contains(output, []byte("Follow-up requested.")) || bytes.Contains(output, []byte("opaque-secret")) || bytes.Contains(output, []byte("] [")) {
+	if err != nil || !bytes.Contains(output, []byte("`/root/alpha` -> `/root/beta`")) || bytes.Contains(output, []byte("Follow-up requested.")) || bytes.Contains(output, []byte("opaque-secret")) || bytes.Contains(output, []byte("] [")) {
 		t.Fatal(string(output), err)
+	}
+}
+
+func TestParentMessageRootCopyKeepsSenderFirstDirection(t *testing.T) {
+	p := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	root, _ := prepareActivityTest(t, p, "root", "r", "", "/root", nil)
+	envelope := map[string]any{
+		"type": "agent_message", "id": "parent-message", "author": "/root", "recipient": "/root/reviewer",
+		"content": []any{map[string]any{"type": "input_text", "text": "Message Type: MESSAGE\nTask name: /root/reviewer\nSender: /root\nPayload:\nPlease finish."}},
+	}
+	child, _ := prepareActivityTest(t, p, "child", "reviewer", "r", "/root/reviewer", []any{envelope})
+	if _, err := child.TransformJSON([]byte(`{"status":"completed","output":[]}`)); err != nil {
+		t.Fatal(err)
+	}
+	output, err := root.TransformJSON([]byte(`{"status":"completed","output":[]}`))
+	if err != nil || !bytes.Contains(output, []byte("[`/root` -> `/root/reviewer`] Message received:")) ||
+		bytes.Contains(output, []byte("] [")) || bytes.Contains(output, []byte("Reply received")) {
+		t.Fatalf("root copy = %s, error = %v", output, err)
 	}
 }
 

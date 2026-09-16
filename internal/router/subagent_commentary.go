@@ -75,7 +75,7 @@ func prepareSubagentInputCommentary(fields map[string]json.RawMessage, recipient
 	var commentary []map[string]json.RawMessage
 	budget := maxCommentaryPublicationBytes
 	for _, item := range items[currentInput:] {
-		text, sender, ok := subagentResponse(item)
+		text, sender, final, ok := subagentResponse(item)
 		if !ok || jsonString(item, "recipient") != recipient {
 			continue
 		}
@@ -83,9 +83,12 @@ func prepareSubagentInputCommentary(fields map[string]json.RawMessage, recipient
 		if _, alreadyVisible := visible[id]; alreadyVisible {
 			continue
 		}
-		label := "[" + commentaryCode(recipient) + " <- " + commentaryCode(sender) + "] Message received."
-		if text != "" {
-			label = "[" + commentaryCode(recipient) + " <- " + commentaryCode(sender) + "] Reply received:\n" + text
+		direction := "[" + commentaryCode(sender) + " -> " + commentaryCode(recipient) + "] "
+		label := direction + "Message received."
+		if final {
+			label = direction + "Completed."
+		} else if text != "" {
+			label = direction + "Message received:\n" + text
 		}
 		if len(label) <= budget && len(commentary) < maxCommentaryEventsPerRoute {
 			budget -= len(label)
@@ -95,39 +98,39 @@ func prepareSubagentInputCommentary(fields map[string]json.RawMessage, recipient
 	return commentary
 }
 
-func subagentResponse(item map[string]json.RawMessage) (text, sender string, ok bool) {
+func subagentResponse(item map[string]json.RawMessage) (text, sender string, final, ok bool) {
 	if jsonString(item, "type") != "agent_message" {
-		return "", "", false
+		return "", "", false, false
 	}
 	sender = jsonString(item, "author")
 	if sender != "/root" && !strings.HasPrefix(sender, "/root/") || strings.ContainsAny(sender, "\r\n\x00") {
-		return "", "", false
+		return "", "", false, false
 	}
 	var content []map[string]json.RawMessage
 	if json.Unmarshal(item["content"], &content) != nil {
-		return "", "", false
+		return "", "", false, false
 	}
 	// Native Codex pairs the plaintext routing header with opaque ciphertext.
 	// Report receipt only; neither part is a plaintext reply payload.
 	if len(content) == 2 && jsonString(content[0], "type") == "input_text" &&
 		jsonString(content[1], "type") == "encrypted_content" {
-		return "", sender, true
+		return "", sender, false, true
 	}
 	if len(content) != 1 {
-		return "", "", false
+		return "", "", false, false
 	}
 	if jsonString(content[0], "type") == "encrypted_content" {
-		return "", sender, true
+		return "", sender, false, true
 	}
 	if jsonString(content[0], "type") != "input_text" {
-		return "", "", false
+		return "", "", false, false
 	}
 	body := jsonString(content[0], "text")
 	header, payload, found := strings.Cut(body, "\nPayload:\n")
 	if !found || (!strings.HasPrefix(header, "Message Type: MESSAGE\n") && !strings.HasPrefix(header, "Message Type: FINAL_ANSWER\n")) {
-		return "", "", false
+		return "", "", false, false
 	}
-	return payload, sender, true
+	return payload, sender, strings.HasPrefix(header, "Message Type: FINAL_ANSWER\n"), true
 }
 
 // tokenUsageCommentary reports usage only alongside a completed substantive answer.

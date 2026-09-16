@@ -150,12 +150,15 @@ canonical path as inline code, are deduplicated by source identity, and remain u
 not reclassified as progress.
 
 When a request receives an actual Codex inter-agent envelope addressed to its
-canonical agent name, commentary identifies both recipient and sender, each wrapped in inline code.
+canonical agent name, commentary shows `[sender -> recipient]`, with each name wrapped in inline code.
 The recipient is `/root` for non-child turns and the canonical child name for child turns.
 An absent or malformed child identity never matches an unaddressed envelope. Valid
-plaintext `MESSAGE` and `FINAL_ANSWER` payloads are shown in full as received replies,
-never as excerpts. Replies exceeding the auxiliary rendering budget are omitted
-from commentary without changing the original envelope. Encrypted envelopes show receipt
+plaintext `MESSAGE` payloads are shown in full under `Message received`, never as excerpts.
+A plaintext `FINAL_ANSWER` produces only a `Completed` notice, not a second copy of the
+result or its attached assignment. Native completion remains available to the parent;
+descendant journal content is delivered by the terminal journal flush.
+Messages exceeding the auxiliary rendering budget are omitted from commentary without
+changing the original envelope. Encrypted envelopes show receipt
 and direction only, including native Codex envelopes containing a plaintext routing
 header followed by an opaque encrypted-content part. Malformed items produce no projection. Original envelopes
 and substantive answers remain intact in model-visible history.
