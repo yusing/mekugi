@@ -19,7 +19,10 @@ type grokTranslation struct {
 }
 
 func grokToolName(namespace, name string) string {
-	if namespace == "" && len(name) > 0 && len(name) <= 64 && !strings.HasPrefix(name, "_mekugi_") {
+	// The Grok proxy can omit bare "wait" calls while ending with tool_calls.
+	// Keep Codex's identity, but use our existing
+	// stable alias on the provider wire (including history and tool choice).
+	if namespace == "" && name != "wait" && len(name) > 0 && len(name) <= 64 && !strings.HasPrefix(name, "_mekugi_") {
 		valid := true
 		for _, c := range name {
 			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-') {
@@ -33,6 +36,37 @@ func grokToolName(namespace, name string) string {
 	}
 	sum := sha256.Sum256([]byte(namespace + "\x00" + name))
 	return "_mekugi_" + hex.EncodeToString(sum[:16])
+}
+
+// Codex advertises Code Mode wait's integer fields as "number", but its native
+// handler decodes them as unsigned integers. Grok's proxy serializes "number"
+// values as floats (30000.0), which that handler rejects. Correct only this
+// known host shape on the provider wire; leave argument bytes untouched.
+func grokFunctionParameters(namespace, name string, parameters json.RawMessage) json.RawMessage {
+	if namespace != "" || name != "wait" {
+		return parameters
+	}
+	var schema map[string]json.RawMessage
+	if json.Unmarshal(parameters, &schema) != nil {
+		return parameters
+	}
+	var properties map[string]map[string]json.RawMessage
+	if json.Unmarshal(schema["properties"], &properties) != nil ||
+		jsonString(properties["cell_id"], "type") != "string" {
+		return parameters
+	}
+	changed := false
+	for _, field := range []string{"yield_time_ms", "max_tokens"} {
+		if jsonString(properties[field], "type") == "number" {
+			properties[field]["type"] = json.RawMessage(`"integer"`)
+			changed = true
+		}
+	}
+	if !changed {
+		return parameters
+	}
+	schema["properties"] = mustMarshalJSON(properties)
+	return mustMarshalJSON(schema)
 }
 
 // translateGrokRequest translates only representations with defined equivalents.
@@ -84,7 +118,7 @@ func translateGrokRequest(body []byte) (*grokTranslation, error) {
 					if len(parameters) == 0 {
 						parameters = json.RawMessage(`{"type":"object","properties":{}}`)
 					}
-					fn["parameters"] = parameters
+					fn["parameters"] = grokFunctionParameters(namespace, name, parameters)
 					if strict, ok := def["strict"]; ok {
 						fn["strict"] = strict
 					}

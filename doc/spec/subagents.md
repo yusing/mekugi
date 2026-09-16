@@ -83,6 +83,15 @@ limits exclude reasoning and cannot enforce the Responses total output budget. E
 provider-only history items cannot be translated. Fresh-context spawning (`fork_turns=none`) avoids
 inherited OpenAI encrypted history; unsupported history must fail without a provider request.
 
+Provider wire names use stable aliases where needed for namespaces or provider-reserved names.
+In particular, Codex's `wait` tool must not be sent under the bare name `wait`: the Grok proxy
+can finish with `tool_calls` while omitting that call. Catalog entries, explicit tool choice,
+and replayed calls use the same alias; Responses events retain Codex's original name and arguments.
+
+Code Mode `wait`'s `yield_time_ms` and `max_tokens` are advertised to Grok as integers,
+matching Codex's native handler. This prevents the provider from serializing them as
+floating-point values that Codex rejects; submitted argument bytes are not rewritten.
+
 Text and content-free progress stream while complete tool arguments are buffered and validated.
 Validated calls emit the Responses tool lifecycle in order: item added, input or arguments done,
 then item done, with stable item/call identities and output indexes. Function argument-completion
