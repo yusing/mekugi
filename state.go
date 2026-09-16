@@ -55,6 +55,7 @@ func (w *workspace) finalStateReport(changes []change) (string, []TargetAlias) {
 	if w.active != nil && !activeReferences {
 		w.writeFallbackPreview(&report)
 	}
+	w.writeFormattingReferences(&report)
 	return report.String(), aliases
 }
 

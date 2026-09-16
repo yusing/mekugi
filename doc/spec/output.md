@@ -76,6 +76,19 @@ refs COMMAND OP PATH
 LINE:HASH TEXT
 ```
 
+When Go formatting changes the rendered edits, each affected surviving file also has a
+`format PATH (pre-format -> final)` section. Its source coordinates refer to the edited
+content immediately before formatting, not the invocation baseline. A one-row replacement
+emits `OLD_LINE:OLD_HASH -> LINE:HASH`. Larger replacements and insertions emit
+`Formatted START-END` followed by every final `LINE:HASH TEXT` row in that block, without
+preview shortening, using the report's printable indentation/control escaping. Deletions emit
+`Formatted removed START-END before final line LINE`.
+Unchanged runs shifted by formatting emit `shift OLD_START-OLD_END -> START-END (hashes unchanged)`.
+Final row identities use the same logical-line and hash semantics as readers and targets.
+These are formatter effects only, not a second report of the authored edits; the usual
+post-format references remain authoritative. As with the rest of the report, translation
+alone does not establish application.
+
 The first line is `no active file` when `rm` leaves none. Otherwise it names the active
 final path. The `last` line is `last none` when no mutation changed final content;
 otherwise it names the last effective mutation operation, that file's surviving final
@@ -144,12 +157,13 @@ retains the existing fallback of up to three rows from the start of that file wi
 `refs` header, even when other surviving files have reference blocks.
 
 Every row has `REQ-READ-001` identity over the complete current final logical line.
-`TEXT` contains at most the first 64 Unicode code points of line content, without a line
-terminator or added ellipsis. Leading spaces are escaped as `\x20`, leading tabs as `\t`, and
+Outside the full formatter blocks above, `TEXT` contains at most the first 64 Unicode code
+points of line content, without a line terminator or added ellipsis. Leading spaces are escaped as `\x20`, leading tabs as `\t`, and
 all controls use their Go quoted form so indentation is visible and each row stays on one
 report line. The hash still covers the complete untruncated content.
-The projection is bounded by four rows per effective command, plus the three-row fallback;
-it does not retain another original or final content copy, routed-read history, a word
+Outside formatter sections, the projection is bounded by four rows per effective command,
+plus the three-row fallback; it does not retain another original or final content copy,
+routed-read history, a word
 diff, or translated patch text.
 
 A successful report's `LINE:HASH` rows are current references for their named final paths

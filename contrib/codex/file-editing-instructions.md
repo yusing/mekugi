@@ -305,10 +305,13 @@ application.
 Overlapping replacements or deletions and insertions strictly inside them reject. Boundary
 insertions are valid. Multiple insertions at the same boundary render in script order.
 
-Changed Go files are parsed and formatted before success. Supported Python, JavaScript, and
-TypeScript files are syntax-checked when Tree-sitter support is available; supported indentation
-corrections are automatic. Relative paths use the selected base directory when available; without
-one, relative paths reject; parents for `new` or `mv` must exist.
+Changed Go files are parsed and gofmt-formatted before success; do not run gofmt again for
+hpatch edits. Python, JavaScript, and TypeScript receive supported syntax checks and targeted
+indentation correction, not full formatting; other languages have no automatic formatter.
+Formatter reports map pre-format rows to final hashes, show complete changed blocks, and give
+line shifts for unchanged rows. Reuse these references instead of rereading formatted or shifted
+source. Relative paths use the selected base directory when available; without one, relative
+paths reject; parents for `new` or `mv` must exist.
 
 ### Shell-in-script
 
