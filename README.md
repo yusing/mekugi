@@ -15,149 +15,83 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
 
 ### UX
 
-- **Keep the familiar Codex workflow.**
-  - Each launch gets its own router, with no persistent service or changes to
-    your Codex configuration files.
-- **See subagent progress and replies inline.**
-  - A start notice shows each subagent's observed model and reasoning effort once its
-    first request reaches the router. Other lifecycle actions add no extra notices.
-  - Subagents' live journal notices appear immediately. Journals flush when main completes: subagents in agent-path order, then main.
-  - Received messages and final answers identify both parties and show plaintext
-    replies in full when they fit the display budget. Encrypted collaboration messages are not exposed.
-- **Follow work as it runs.**
-  - Agents keep an addressable milestone journal instead of a Tasks list. They can add,
-    revise, delete, or inspect entries, including a known parent's or child's journal.
-  - `report_now` shows a labelled **Journal update** immediately, distinct from stock
-    commentary and reasoning summaries. On a successful journal finish, **Journal flush** shows
-    every new or revised entry, including live updates. Only revisions already flushed are
-    skipped. Journals replace the separate final-answer essay. Agents finish with either a direct
-    journal finish call or a final Bash/POSIX `journal finish` command. Both complete the turn
-    without an extra model request.
-  - At completion, each shared question appears once with all its answers grouped beneath it.
-    Multiline lists and code blocks stay grouped with their answer.
-  - Scripts can record milestones without mixing them into command output. Child updates
-    carry the agent's path when Codex supplies its identity.
-  - When Codex supplies parent-thread metadata, child activity also appears inline
-    in the stock root TUI. Updates are offered at response-event boundaries;
-    activity after a response closes waits for the next root response and is
-    labelled as activity since the last update. This is not a continuous live
-    feed during native waits, and requires no Codex panel or client patch.
-- **Review edits as they happen.**
-  - In Herdr, the [live diff pane](#live-diff-pane) combines the main agent's and
-    subagents' hpatch edits, highlights recent changes, and lets you pause or flush
-    reviewed changes.
-- **See token usage for the main agent and subagents.**
-  - Completed responses with provider usage show one compact token and estimated API-cost table
-    after the journal flush,
-    accumulated for that agent's thread during the router's lifetime, including across compaction.
-    Input, cached input, uncached input, output, and reasoning are shown separately.
-    Costs use built-in reference list API prices, not subscription rates, and show
-    `n/a` if any response's model or service tier has no known price. OpenAI models and `grok:grok-4.6` have built-in list prices. Model changes,
-    priority/Fast service tiers, cache writes, and long-context rates are handled per response.
-    Provider-reported tiers take precedence, including downgrades to standard processing.
-    Missing usage suppresses later thread tables rather than showing a partial total as complete.
-    Intermediate tool calls do not produce notices.
-  - Subagent token tables also appear in the main conversation with the agent's path,
-    separately from the main agent's totals. As with other child activity, delivery
-    waits for the next main-agent response boundary when the conversation is idle.
-  - Router notices are removed from later model requests, so the display does
-    not add repeated context. See [journals](doc/spec/journal.md) and [router notices](doc/spec/commentary.md).
-- **Inspect a session in your browser.**
-  - Each launch has its own dashboard with request metrics, provider token
-    usage, compression measurements, and cache diagnostics.
-- **Use [Grok models](#grok-models) alongside OpenAI models.**
-  - Opt in with `--grok` and separate Grok authentication.
+- **Keep the familiar Codex workflow.** No persistent service or configuration
+  edits. Codex keeps control of permissions, execution, and patch review.
+- **See subagent activity inline.** Model notices, progress, messages, and replies
+  appear in the main conversation, with each agent identified. Some updates wait
+  for the next main-agent response; encrypted messages stay private.
+- **Follow milestones, not another task list.** Agents keep a revisable journal
+  that shows live updates and groups answers at completion.
+- **Review edits as they happen.** Herdr's [live diff pane](#live-diff-pane)
+  combines main-agent and subagent edits, with pause and flush controls.
+- **See usage and cost.** Completion tables show provider-reported tokens and
+  estimated API costs per agent, not subscription charges. Missing evidence is
+  not presented as a complete total.
+- **Inspect sessions in your browser.** A per-launch dashboard shows request
+  metrics, token usage, compression, and cache diagnostics.
+- **Use [Grok models](#grok-models) alongside OpenAI models.** Opt in with `--grok`
+  and separate authentication.
 
-### AX
+### AX (agent experience)
 
-- **Edit by reference, not repeated patch context.**
-  - `functions.hpatch` accepts verified `LINE:HASH` rows, inclusive ranges,
-    and exact literal text, including text the agent already knows.
-  - Related edits across files share one validation pass before Codex applies
-    the generated patch. Invalid targets or conflicting edits reject the edit transaction.
-  - Successful reports return current row references for follow-up edits.
-    Unchanged saved rows remain reusable after line shifts when their hash
-    identifies exactly one row.
-- **Hand off exact edits for review.**
-  - Hpatch results include a compact change ID. Recovery keeps that ID.
-  - Agents in the same workspace can read an ID or an agent-specific range, without
-    rereading the entire Git diff. Review output omits full recovery history by default.
-- **Read only what the edit needs.**
-  - Inside `functions.shell`, `hgrep` searches with verified rows, `hsymbol`
-    finds semantic definitions and references, and `hcat` reads exact source ranges.
-  - `inspect_file` returns a structural outline with editable spans without
-    exposing source bodies.
-  - `hcat --max-tokens N` and `hgrep --max-tokens N` set a strict output token
-    ceiling. Add `--preview-bytes N` for bounded long-line previews.
-    Omitted content is explicit; previews retain the complete row's verified identity.
-  - Shell workers share one display budget across commands and save overflow for
-    later reads. Token-limited `hgrep` and `hsymbol` results retain their verified rows,
-    so continuation does not repeat the search.
-- **Catch supported syntax problems before applying edits.**
-  - Changed Go files are parsed and formatted automatically. Supported Python,
-    JavaScript, and TypeScript files receive syntax checks and indentation correction.
-  - Rejections include localized repair context; successful reports expose
-    newline and blank-separator advisories without treating them as errors.
-    These checks do not replace tests.
-- **Correct a rejected edit without starting over.**
-  - `functions.hpatch_recover` repairs the retained rejected script while
-    preserving unrelated prepared changes.
-  - Command-scoped corrections replace a rejected target or value without editing
-    script delimiters. Ordinary script-text edits can repair paths, framing, or
-    conflicting commands before the complete script is reevaluated.
-- **Execute programs directly.**
-  - `functions.shell` accepts Bash or a selected interpreter's native source,
-    without a JavaScript wrapper or nested command-string quoting.
-  - Interpreter selectors, per-call execution options, and command templates
-    keep script source separate from standard-input data.
-- **Batch commands and resume running work.**
-  - With Code Mode available, one shell call can run separate noninteractive
-    programs sequentially, including different interpreters.
-  - Batches can continue after nonzero exits or stop before later programs start.
-    Results preserve each program's output and report started and unstarted counts.
-  - Recognized yielded results identify the next host continuation call, so the
-    agent can resume the existing process or Code Mode cell rather than restart it.
-- **Reuse executable source.**
-  - Eligible shell programs return thread-private `@shell/` references that the
-    agent can inspect, edit, and rerun without emitting the whole program again.
-  - Retention metadata states the expiry and temporary scope. Reads and edits do
-    not renew it; source that must survive belongs in a workspace file.
+- **Validate edits before application.** Related edits share one validation pass.
+  Go edits are parsed and formatted; supported Python, JavaScript, and TypeScript
+  edits get syntax checks and indentation correction. These checks do not replace tests.
+- **Repair rejected edits without starting over.** Correct the retained script
+  while preserving unrelated prepared changes.
+- **Resume running work.** Continue yielded processes through Codex's
+  continuation handles instead of restarting them.
+- **Recover omitted output.** Read captured overflow without rerunning the
+  command or search that produced it.
+
+### Round-trip saving
+
+- **Batch reads and commands.** Group related operations in one shell call.
+  With Code Mode, batch separate programs, including different interpreters.
+- **Run shell commands and patches in the same call.** With Code Mode,
+  [combine shell commands and hpatch edits](#edits-and-shell-in-one-call), so
+  preparation, editing, and validation do not need separate model turns.
+- **Skip redundant source lookups.** Edit text already in context, reuse unchanged
+  verified rows when uniquely identifiable, and use current references returned by
+  successful edit reports.
+- **Get repair context with the rejection.** Localized diagnostics can avoid a
+  separate inspection call before correcting an edit.
+- **Report progress within tool calls.** Record journal milestones alongside
+  the work instead of making separate progress calls.
+- **Finish without another model request.** A journal finish can deliver the
+  final report with the last successful command, without another model turn
+  just to write the response.
+
+### Token saving
+
+- **Omit repeated patch context.** Target verified rows, ranges, or exact text;
+  write the replacement once and let Mekugi generate the patch framing.
+- **Read less source.** Bounded searches, semantic references, and structural
+  outlines keep irrelevant source out of the model's context.
+- **Review only the relevant edits.** Compact change IDs scope review output
+  instead of requiring the entire Git diff.
+- **Write scripts without wrappers.** Direct scripts avoid wrapper code and
+  extra quoting.
+- **Reuse retained scripts.** Temporary script references let agents inspect,
+  edit, and rerun retained source without emitting it again.
+- **Compress repeated text.** Optional [CTP/2](doc/spec/ctp.md) losslessly encodes
+  eligible model-visible text using local dictionaries and references. Tool names
+  and new tool payloads stay native. Enable it with `--model-protocol ctp2`;
+  it is off by default.
 
 See [how editing and execution work](#how-editing-and-execution-work) for usage
 and prerequisites.
 
-### Token saving
+### Agent performance
 
-- **Write the new code once.**
-  - Replacing an 11-line function does not require reproducing all 11 old lines
-    as patch context. The model names the verified range and writes the new
-    function; the router generates the patch framing.
-- **Spend output on the program, not its wrapper.**
-  - Direct scripts avoid the JavaScript carrier, JSON argument object, and
-    extra quoting layers needed to call the executor through Code Mode.
-- **Avoid sending repeated text in full.**
-  - [CTP/2](doc/spec/ctp.md), disabled by default, losslessly encodes eligible
-    model-visible text using local dictionaries and references to earlier
-    visible tool output lines in the same request.
-  - Tool names and newly generated tool payloads stay native.
-    Use `--model-protocol ctp2` to enable CTP/2.
+- **Start with a mentor, then hand back.** [Mentor Handoff](doc/spec/mentor.md)
+  lets eligible threads begin on a stronger model before returning to their
+  configured model. It is enabled by default, with independent
+  [controls](#options) for main sessions and subagents.
 
-### Performance
-
-- **Start eligible threads with [Mentor Handoff](doc/spec/mentor.md).**
-  - Main sessions, ordinary forks, and subagent handoff are enabled by default.
-    Disable main handoff with `--main-mentor-handoff=false`.
-  - Main `gpt-5.6-luna` starts on `gpt-6-astra` with medium reasoning.
-    Subagent Luna and all `gpt-5.6-terra` threads retain `gpt-5.6-sol` with high reasoning.
-    `gpt-5.6` and `gpt-5.6-sol` start on `gpt-6-astra` with one lower reasoning level,
-    capped at xhigh.
-  - Enabled threads hand back to their configured model after the mentor's initial work.
-    Configured Astra stays on Astra. Disable subagent handoff with `--mentor-handoff=false`;
-    the main toggle is independent. The next response shows commentary when handoff completes.
-
-Token savings and model handoffs are not a promise of faster commands or better
-results on every task. See the [benchmark methodology](doc/benchmarks.md) for
-comparisons.
+Fewer model round trips, token savings, and model handoffs do not guarantee faster
+commands or better results on every task. See the [benchmark methodology](doc/benchmarks.md)
+for comparisons.
 
 ## Install
 
