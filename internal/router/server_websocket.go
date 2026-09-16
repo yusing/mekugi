@@ -526,7 +526,8 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 	defer cancel()
 	exchange.ctx = executionCtx
 	output := &webSocketOutput{exchange: exchange}
-	err = executeRequest(startCtx, executionCtx, parsed, headers, routingSessionID(headers, parsed), exchange, output, s.issues, s.proxy, s.codec, s.mentor)
+	executor := requestExecutor{provider: exchange, output: output, issues: s.issues, mekugiCalls: s.proxy, compactTokens: s.codec, mentor: s.mentor}
+	err = executor.execute(startCtx, executionCtx, parsed, headers, routingSessionID(headers, parsed))
 	if err != nil && executionCtx.Err() == nil && !s.errorDelivered {
 		if payload, writeErr := s.writeError(executionCtx, err); writeErr == nil {
 			clientObservation.Message(payload)

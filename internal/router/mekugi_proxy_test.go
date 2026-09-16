@@ -2549,11 +2549,13 @@ func TestNonMekugiHistoryIsExcludedFromRecovery(t *testing.T) {
 		sessionID:        "session",
 		historySessionID: "session",
 		visible:          map[string]mekugiHistory{"call-H": history},
-		local: map[string]mekugiHistory{
-			"call-local-shell": {
-				ToolName: "shell",
-				Script:   `hgrep alpha .`,
-				sequence: 1,
+		mekugiTranslationState: mekugiTranslationState{
+			local: map[string]mekugiHistory{
+				"call-local-shell": {
+					ToolName: "shell",
+					Script:   `hgrep alpha .`,
+					sequence: 1,
+				},
 			},
 		},
 	}

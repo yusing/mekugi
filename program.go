@@ -167,7 +167,6 @@ func parse(source string) (*program, error) {
 		}
 		commandIndex++
 		sourceLine := headerIndex + 1
-		attemptedTarget := recognizeAttemptedTarget(line)
 
 		frame, frameErr := hpatchsyntax.FrameCommand(lines, headerIndex, line)
 		index = frame.Next
@@ -175,6 +174,9 @@ func parse(source string) (*program, error) {
 		var err error
 		switch {
 		case frameErr != nil:
+			// Reuse the ordinary parser only to retain any target variant that was
+			// recognized before malformed framing stopped this command.
+			command, _ = parseInstruction(sourceLine, line)
 			err = scriptError(sourceLine, frameErr.Error())
 		case frame.Marker != "":
 			header := strings.TrimSuffix(line, " "+frame.Marker)
@@ -196,7 +198,7 @@ func parse(source string) (*program, error) {
 				operation = fields[0]
 			}
 			failures = append(failures, &commandError{
-				Target:    attemptedTarget,
+				Target:    command.target.variant(),
 				Reason:    reasonOf(err, reasonSyntax),
 				Command:   commandIndex,
 				Line:      sourceLine,
@@ -216,59 +218,6 @@ func parse(source string) (*program, error) {
 		return nil, &commandGroupError{commands: failures}
 	}
 	return program, nil
-}
-
-func recognizeAttemptedTarget(line string) targetVariant {
-	fields := strings.Fields(line)
-	if len(fields) == 0 {
-		return targetVariantNone
-	}
-	switch fields[0] {
-	case "in", "new", "mv", "rm":
-		return targetVariantNone
-	case "type", "add":
-		if len(fields) > 1 {
-			return recognizeTargetVariant(strings.TrimPrefix(line, fields[0]+" "))
-		}
-		return targetVariantNone
-	default:
-		return targetVariantNone
-	}
-}
-
-func recognizeTargetVariant(operands string) targetVariant {
-	trimmed := strings.TrimLeft(operands, " \t")
-	if strings.HasPrefix(trimmed, `"`) {
-		_, rest, err := hpatchsyntax.DecodeQuoted(trimmed)
-		if err != nil || strings.TrimSpace(rest) == "" {
-			return targetVariantNone
-		}
-		rest = strings.TrimSpace(rest)
-		if strings.HasPrefix(rest, `"`) || strings.HasPrefix(rest, "<<") {
-			return targetVariantTextSingle
-		}
-		return targetVariantTextMultiple
-	}
-	token, trailing := firstToken(operands)
-	if strings.Contains(token, "..") {
-		return targetVariantRange
-	}
-	if !rowPattern.MatchString(token) {
-		return targetVariantNone
-	}
-	trailing = strings.TrimSpace(trailing)
-	if !strings.HasPrefix(trailing, `"`) {
-		return targetVariantLine
-	}
-	_, rest, err := hpatchsyntax.DecodeQuoted(trailing)
-	if err != nil || strings.TrimSpace(rest) == "" {
-		return targetVariantLine
-	}
-	rest = strings.TrimSpace(rest)
-	if strings.HasPrefix(rest, `"`) || strings.HasPrefix(rest, "<<") {
-		return targetVariantTextSingle
-	}
-	return targetVariantTextMultiple
 }
 
 func parseInstruction(sourceLine int, line string) (instruction, error) {
@@ -301,50 +250,55 @@ func parseInstructionWithValue(sourceLine int, line, heredocValue string, heredo
 	if !ok || (operation != "type" && operation != "add") {
 		return instruction{}, scriptError(sourceLine, "heredoc is valid only for type or add")
 	}
+	command := instruction{line: sourceLine, operation: operation}
 	if operation == "type" && !heredoc && strings.HasPrefix(operands, `"`) {
 		value, trailing, err := hpatchsyntax.DecodeQuoted(operands)
 		if err != nil {
-			return instruction{}, scriptError(sourceLine, "invalid quoted string for type: "+err.Error())
+			return command, scriptError(sourceLine, "invalid quoted string for type: "+err.Error())
 		}
 		if onlyOperandWhitespace(trailing) {
-			return instruction{line: sourceLine, operation: operation, text: value, valueStart: len(line) - len(operands)}, nil
+			command.text = value
+			command.valueStart = len(line) - len(operands)
+			return command, nil
 		}
 	}
 	if heredoc && operation == "type" && strings.TrimSpace(operands) == "" {
-		return instruction{line: sourceLine, operation: operation, text: heredocValue}, nil
+		command.text = heredocValue
+		return command, nil
 	}
 
 	target, trailing, err := parseTarget(sourceLine, operands, !heredoc)
+	command.target = target
 	if err != nil {
-		return instruction{}, err
+		return command, err
 	}
 	if operation == "type" && target.kind == targetEOF {
-		return instruction{}, scriptError(sourceLine, "EOF is valid only as an add destination")
+		return command, scriptError(sourceLine, "EOF is valid only as an add destination")
 	}
 	if operation == "add" && target.kind == targetRange {
-		return instruction{}, scriptError(sourceLine, "add requires a line, text, or EOF destination")
+		return command, scriptError(sourceLine, "add requires a line, text, or EOF destination")
 	}
 	value := heredocValue
-	valueStart := 0
 	if heredoc {
 		if strings.TrimSpace(trailing) != "" {
-			return instruction{}, scriptError(sourceLine, "trailing text before heredoc value")
+			return command, scriptError(sourceLine, "trailing text before heredoc value")
 		}
 	} else {
 		trailing = strings.TrimLeft(trailing, " \t")
 		if trailing == "" {
-			return instruction{}, scriptError(sourceLine, operation+" requires a value")
+			return command, scriptError(sourceLine, operation+" requires a value")
 		}
-		valueStart = len(line) - len(trailing)
+		command.valueStart = len(line) - len(trailing)
 		value, trailing, err = hpatchsyntax.DecodeQuoted(trailing)
 		if err != nil {
-			return instruction{}, scriptError(sourceLine, "invalid quoted string for "+operation+": "+err.Error())
+			return command, scriptError(sourceLine, "invalid quoted string for "+operation+": "+err.Error())
 		}
 		if !onlyOperandWhitespace(trailing) {
-			return instruction{}, scriptError(sourceLine, "trailing text after "+operation+" value")
+			return command, scriptError(sourceLine, "trailing text after "+operation+" value")
 		}
 	}
-	return instruction{line: sourceLine, operation: operation, target: target, text: value, valueStart: valueStart}, nil
+	command.text = value
+	return command, nil
 }
 
 // parseTarget parses a target prefix. When finalValueFollows is false, a quoted
@@ -357,14 +311,19 @@ func parseTarget(sourceLine int, operands string, finalValueFollows bool) (targe
 		if err != nil {
 			return targetSpec{}, "", scriptError(sourceLine, "invalid quoted target literal: "+err.Error())
 		}
+		target := targetSpec{
+			kind: targetLiteral, literal: literal,
+			count: targetCountHint(rest, finalValueFollows),
+		}
 		if err := validateTargetLiteral(sourceLine, literal); err != nil {
-			return targetSpec{}, "", err
+			return target, "", err
 		}
 		count, trailing, err := parseTargetCount(sourceLine, rest, finalValueFollows)
+		target.count = count
 		if err != nil {
-			return targetSpec{}, "", err
+			return target, "", err
 		}
-		return targetSpec{kind: targetLiteral, literal: literal, count: count}, trailing, nil
+		return target, trailing, nil
 	}
 	token, trailing := firstToken(operands)
 	if token == "" {
@@ -374,43 +333,56 @@ func parseTarget(sourceLine int, operands string, finalValueFollows bool) (targe
 		return targetSpec{kind: targetEOF}, trailing, nil
 	}
 	if startText, endText, rangeTarget := strings.Cut(token, ".."); rangeTarget {
+		target := targetSpec{kind: targetRange}
 		if strings.Contains(endText, "..") {
-			return targetSpec{}, "", scriptError(sourceLine, "range target must contain exactly two rows")
+			return target, "", scriptError(sourceLine, "range target must contain exactly two rows")
 		}
 		start, err := parseRowReference(sourceLine, startText)
+		target.start = start
 		if err != nil {
-			return targetSpec{}, "", err
+			return target, "", err
 		}
 		end, err := parseRowReference(sourceLine, endText)
+		target.end = end
 		if err != nil {
-			return targetSpec{}, "", err
+			return target, "", err
 		}
-		return targetSpec{kind: targetRange, start: start, end: end}, trailing, nil
+		return target, trailing, nil
 	}
 
-	row, err := parseRowReference(sourceLine, token)
-	if err != nil {
-		return targetSpec{}, "", err
+	target := targetSpec{}
+	if rowPattern.MatchString(token) {
+		target.kind = targetLine
 	}
+	row, err := parseRowReference(sourceLine, token)
+	target.start = row
+	if err != nil {
+		return target, "", err
+	}
+	target.kind = targetLine
 	trimmed := strings.TrimLeft(trailing, " \t")
 	if !strings.HasPrefix(trimmed, `"`) {
-		return targetSpec{kind: targetLine, start: row}, trailing, nil
+		return target, trailing, nil
 	}
 	literal, rest, err := hpatchsyntax.DecodeQuoted(trimmed)
 	if err != nil {
-		return targetSpec{}, "", scriptError(sourceLine, "invalid quoted target literal: "+err.Error())
+		return target, "", scriptError(sourceLine, "invalid quoted target literal: "+err.Error())
 	}
 	if finalValueFollows && strings.TrimSpace(rest) == "" {
-		return targetSpec{kind: targetLine, start: row}, trimmed, nil
+		return target, trimmed, nil
 	}
+	target.kind = targetText
+	target.literal = literal
+	target.count = targetCountHint(rest, finalValueFollows)
 	if err := validateTargetLiteral(sourceLine, literal); err != nil {
-		return targetSpec{}, "", err
+		return target, "", err
 	}
 	count, rest, err := parseTargetCount(sourceLine, rest, finalValueFollows)
+	target.count = count
 	if err != nil {
-		return targetSpec{}, "", err
+		return target, "", err
 	}
-	return targetSpec{kind: targetText, start: row, literal: literal, count: count}, rest, nil
+	return target, rest, nil
 }
 
 func validateTargetLiteral(sourceLine int, literal string) error {
@@ -428,18 +400,26 @@ func validateTargetLiteral(sourceLine int, literal string) error {
 	return nil
 }
 
-func parseTargetCount(sourceLine int, rest string, finalValueFollows bool) (int, string, error) {
+func targetCountHint(rest string, finalValueFollows bool) int {
 	rest = strings.TrimLeft(rest, " \t")
 	if rest == "" || finalValueFollows && strings.HasPrefix(rest, `"`) {
+		return 1
+	}
+	return 2
+}
+
+func parseTargetCount(sourceLine int, rest string, finalValueFollows bool) (int, string, error) {
+	rest = strings.TrimLeft(rest, " \t")
+	if targetCountHint(rest, finalValueFollows) == 1 {
 		return 1, rest, nil
 	}
 	countText, trailing := firstToken(rest)
 	if !positiveDecimalPattern.MatchString(countText) {
-		return 0, "", scriptFailure(sourceLine, reasonInvalidCount, "invalid target count")
+		return 2, "", scriptFailure(sourceLine, reasonInvalidCount, "invalid target count")
 	}
 	count, err := strconv.Atoi(countText)
 	if err != nil {
-		return 0, "", scriptFailure(sourceLine, reasonInvalidCount, "target count is out of range")
+		return 2, "", scriptFailure(sourceLine, reasonInvalidCount, "target count is out of range")
 	}
 	return count, trailing, nil
 }
