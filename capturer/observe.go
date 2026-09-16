@@ -317,7 +317,8 @@ func classifyToolInput(name, input string) (string, string) {
 	if err != nil {
 		return "other", ""
 	}
-	if strings.HasPrefix(text, "in ") && strings.Contains(text, "\nlast ") && strings.Contains(text, "\nfiles ") {
+	report := withoutChangeNotice(text)
+	if strings.HasPrefix(report, "in ") && strings.Contains(report, "\nlast ") && strings.Contains(report, "\nfiles ") {
 		return "mekugi_report", ""
 	}
 	if code := mekugiDiagnosticCode(text); code != "" {
@@ -326,7 +327,18 @@ func classifyToolInput(name, input string) (string, string) {
 	return "other", ""
 }
 
+// A change notice precedes both reports and rejection diagnostics. It is not
+// outcome evidence on its own; the remaining envelope must still be recognized.
+func withoutChangeNotice(text string) string {
+	line, rest, newline := strings.Cut(text, "\n")
+	if id, notice := strings.CutPrefix(line, "change "); newline && notice && id != "" && !strings.ContainsAny(id, " \t\r") {
+		return rest
+	}
+	return text
+}
+
 func mekugiDiagnosticCode(text string) string {
+	text = withoutChangeNotice(text)
 	if strings.HasPrefix(text, "shell: [shell-typescript-misuse] ") {
 		return "shell-typescript-misuse"
 	}

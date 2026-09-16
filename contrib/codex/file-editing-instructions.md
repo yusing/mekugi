@@ -417,8 +417,10 @@ evaluation, not a combined net change. Unconfirmed results are not proof of appl
 For ordinary file reads, use `cat` or bounded `sed`. Prefer `hcat` when its verified row
 identities are useful for an anticipated edit.
 
-Shell workers budget combined display output automatically. Use reader limits and source ranges
-to focus on needed context. For omitted output, run the exact `next_call: hread REF`.
+Budget combined reads and searches before execution: select needed ranges or fields instead
+of relying on pagination after broad dumps. Use reader limits to focus on needed context.
+Shell workers budget combined display output automatically.
+For omitted output, run the exact `next_call: hread REF`.
 Both stdout and stderr are labeled by default; use `--stdout` or `--stderr` on an initial
 reference to select one. `--max-tokens N` defaults to 4,000. Later references already bind
 the selection and position, so no `--cursor` or repeated producer arguments are needed.

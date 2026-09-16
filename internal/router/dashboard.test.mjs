@@ -74,3 +74,27 @@ for (const failure of ['network', 'HTTP', 'JSON']) {
     assert.equal(app.timers.length, 1);
   });
 }
+
+test('render unknown carriers separately from rejection and host confirmation', () => {
+  const app = dashboard();
+  // Restore the shipped renderer, keeping the existing scheduler test harness.
+  runInContext(script.slice(script.indexOf('function render(data){'), script.indexOf('const tabs=')), app.context);
+  runInContext(`
+    renderedRows = {};
+    rows = (id, entries) => { renderedRows[id] = entries; };
+    tableRows = () => {};
+    renderDetails = () => {};
+    sample = {
+      schema: 'mekugi.capture.metrics.v4', requests: {}, usage: {}, cache: {},
+      transport: {}, semantic: {}, protocol: {}, capture: {}, exchanges: [],
+      mekugi: { calls: 21, successful: 0, rejected: 2, unclassified: 19, unmatched: 0 }
+    };
+    render(sample);
+  `, app.context);
+  const metric = label => runInContext(`renderedRows.mekugi.find(([label]) => label === ${JSON.stringify(label)})[1]`, app.context);
+  assert.equal(metric('Rejected'), '2');
+  assert.equal(metric('Unclassified'), '19');
+  assert.equal(metric('Translated'), '0');
+  runInContext('delete sample.mekugi.unclassified; render(sample)', app.context);
+  assert.equal(metric('Unclassified'), 'unavailable');
+});

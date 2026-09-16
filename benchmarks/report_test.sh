@@ -37,6 +37,31 @@ write_capture "$fixture/captures/mekugi.jsonl" mekugi-id thread-mekugi 80 50 12 
 write_metrics "$fixture/control-metrics.json" thread-control 100 40 20 5 passthrough
 write_metrics "$fixture/mekugi-metrics.json" thread-mekugi 80 50 12 3 mekugi
 
+# A matched carrier without outcome evidence is not a rejected edit.
+for carrier_kind in other '' exec_command; do
+    jq -c --arg kind "$carrier_kind" \
+        'if .boundary == "codex" then .tool_calls[0].kind = $kind else . end' \
+        "$fixture/captures/mekugi.jsonl" >"$fixture/unknown-carrier.jsonl"
+    jq --arg kind "$carrier_kind" \
+        '.exchanges[0].delivered_tools[0].kind = $kind | .mekugi.successful = 0 | .mekugi.unclassified = 1' \
+        "$fixture/mekugi-metrics.json" >"$fixture/unknown-carrier-metrics.json"
+    python3 "$benchmark_root/analyze_capture.py" "$fixture/unknown-carrier-metrics.json" \
+        "$fixture/unknown-carrier.jsonl" "$fixture/results.jsonl" mekugi >/dev/null
+    jq '.mekugi.rejected = 1 | .mekugi.unclassified = 0' \
+        "$fixture/unknown-carrier-metrics.json" >"$fixture/false-rejection.json"
+    if python3 "$benchmark_root/analyze_capture.py" "$fixture/false-rejection.json" \
+        "$fixture/unknown-carrier.jsonl" "$fixture/results.jsonl" mekugi >/dev/null 2>&1; then
+        echo "unknown carrier was accepted as a rejection" >&2
+        exit 1
+    fi
+    jq 'del(.mekugi.unclassified)' "$fixture/unknown-carrier-metrics.json" >"$fixture/missing-outcome.json"
+    if python3 "$benchmark_root/analyze_capture.py" "$fixture/missing-outcome.json" \
+        "$fixture/unknown-carrier.jsonl" "$fixture/results.jsonl" mekugi >/dev/null 2>&1; then
+        echo "unknown carrier was accepted without its counter" >&2
+        exit 1
+    fi
+done
+
 kind_capture="$fixture/request-kind.jsonl"
 kind_metrics="$fixture/request-kind-metrics.json"
 jq -c '.request_kind = "compaction"' "$fixture/captures/mekugi.jsonl" >"$kind_capture"

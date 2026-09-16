@@ -83,7 +83,7 @@ capturer, not by the router, engine, plugin, benchmark report, or dashboard. The
    or a hypothetical stock-model saving. Separate `output_text_tokens_saved` MUST compare only
    decoded assistant `output_text` strings, excluding tool calls and reasoning;
 6. provider-emitted and client-delivered tool aggregates;
-7. HPATCH call, correction, success, rejection, unmatched, diagnostic, provider-input,
+7. HPATCH call, correction, success, rejection, unclassified, unmatched, diagnostic, provider-input,
    delivered-carrier-input, and signed delivered-carrier input expansion, not stock-model savings;
 8. a bounded recent window of per-logical-request exchanges containing every provider attempt and
    its usage, while cumulative totals remain process-lifetime totals; and
@@ -105,6 +105,16 @@ it MUST NOT synthesize an `apply_patch`, `exec_command`, shell command, or stock
 Apply carriers MUST be recognized by their router-owned leading marker, including when a
 change-ID error-reporting wrapper surrounds the host call. HPATCH success here describes
 successful translation and carrier delivery, not proof that the host applied the patch.
+Only recognized router diagnostic carriers count as `rejected`. A leading router change notice
+MUST NOT hide a report or an allowlisted diagnostic; the notice alone is not outcome evidence.
+Matched carriers of unknown kind count separately as `unclassified`, never as success or
+rejection; missing carriers remain
+`unmatched`. These delivery categories do not replace AX's receipt-based confirmed/unconfirmed
+outcomes. The dashboard MUST label translation separately from host application and expose
+unclassified counts, showing unavailable when an older snapshot lacks the field.
+The additive `unclassified` field does not invalidate older v4 snapshots whose retained carrier
+kinds reconcile with zero unclassified calls. Older snapshots that counted unknown carriers as
+rejected MUST fail reconciliation rather than be accepted as current rejection evidence.
 
 A benchmark report MUST read these calculations from the snapshot. It MAY independently reconcile
 the snapshot against sanitized records and measured result usage, but MUST NOT replace the

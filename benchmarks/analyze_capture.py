@@ -456,6 +456,7 @@ def validate_calculations(metrics: dict[str, Any], exchanges: list[dict[str, Any
         "corrections": 0,
         "successful": 0,
         "rejected": 0,
+        "unclassified": 0,
         "unmatched": 0,
         "provider_input_tokens": 0,
         "delivered_input_tokens": 0,
@@ -535,11 +536,13 @@ def validate_calculations(metrics: dict[str, Any], exchanges: list[dict[str, Any
                 mekugi["delivered_input_tokens"] += carrier.get("input_tokens", 0)
                 if carrier.get("kind") in {"apply_patch", "mekugi_report"}:
                     mekugi["successful"] += 1
-                else:
+                elif carrier.get("kind") == "mekugi_diagnostic":
                     mekugi["rejected"] += 1
                     reason = carrier.get("diagnostic")
                     if isinstance(reason, str) and reason:
                         diagnostics[reason] += 1
+                else:
+                    mekugi["unclassified"] += 1
 
         published_exchange_usage = exchange.get("usage")
         if exchange_usage_attempts:
@@ -601,6 +604,8 @@ def validate_calculations(metrics: dict[str, Any], exchanges: list[dict[str, Any
     published_mekugi = metrics.get("mekugi")
     if not isinstance(published_mekugi, dict):
         raise ValueError("metrics are missing HPATCH calculations")
+    # Older v4 snapshots without unknown carriers can still reconcile exactly.
+    published_mekugi = {"unclassified": 0, **published_mekugi}
     if {key: published_mekugi.get(key) for key in mekugi} != mekugi or published_mekugi.get(
         "diagnostics", {}
     ) != dict(diagnostics):

@@ -34,8 +34,9 @@ Journal below defines progress delivery.
 ## Edit planning
 
 Group ready, related edits into one atomic hpatch script, including changes across files.
-Split when later work depends on missing information or validation; keep unrelated large values
-separate. Use targeted replacements or insertions and let formatters own surrounding formatting.
+Split only when missing information or a validation result must determine the next edit;
+keep unrelated large values separate. Use targeted replacements or insertions and let formatters
+own surrounding formatting.
 
 ## Target reuse
 

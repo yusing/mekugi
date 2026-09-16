@@ -208,8 +208,14 @@ func TestInstructionsBatchReadyWorkWithoutHpatchIsolation(t *testing.T) {
 	for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
 		for _, compact := range []bool{false, true} {
 			got := InstructionsForModel(model, compact)
-			if !strings.Contains(got, "Batch ready work. Keep dependent operations sequential.") {
-				t.Fatalf("model %q compact %v omits concise batching guidance", model, compact)
+			for _, required := range []string{
+				"Batch ready work. Keep dependent operations sequential.",
+				"or a validation result must determine the next edit",
+				"Budget combined reads and searches before execution",
+			} {
+				if !strings.Contains(got, required) {
+					t.Fatalf("model %q compact %v omits batching guidance %q", model, compact, required)
+				}
 			}
 			for _, obsolete := range []string{"Run hpatch alone", "run hpatch alone", "Do not call hpatch in parallel", "Do not call this tool in parallel", "Keep dependent work and mutations sequential", "Do not overlap dependent commands, edits"} {
 				if strings.Contains(got, obsolete) {

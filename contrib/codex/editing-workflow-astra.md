@@ -12,9 +12,9 @@ The shared Shell and Journal references define execution and progress delivery.
 
 ## Edit planning
 
-Group ready, related edits into one atomic hpatch script. Split dependent work at missing
-information or validation; keep unrelated large values separate. Use targeted replacements
-or insertions and let formatters own surrounding formatting.
+Group ready, related edits into one atomic hpatch script. Split only when missing information
+or a validation result must determine the next edit; keep unrelated large values separate.
+Use targeted replacements or insertions and let formatters own surrounding formatting.
 
 ## Target reuse
 

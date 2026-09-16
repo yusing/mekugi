@@ -84,6 +84,7 @@ type mekugiMetrics struct {
 	Corrections                 uint64            `json:"corrections"`
 	Successful                  uint64            `json:"successful"`
 	Rejected                    uint64            `json:"rejected"`
+	Unclassified                uint64            `json:"unclassified"`
 	Unmatched                   uint64            `json:"unmatched"`
 	ProviderInputTokens         uint64            `json:"provider_input_tokens"`
 	DeliveredInputTokens        uint64            `json:"delivered_input_tokens"`
@@ -455,11 +456,13 @@ func addMekugi(total *mekugiMetrics, provider, delivered []toolCallMetrics) {
 		switch carrier.Kind {
 		case "apply_patch", "mekugi_report":
 			total.Successful++
-		default:
+		case "mekugi_diagnostic":
 			total.Rejected++
 			if carrier.Diagnostic != "" {
 				total.Diagnostics[carrier.Diagnostic]++
 			}
+		default:
+			total.Unclassified++
 		}
 	}
 	total.CarrierInputTokensExpansion = signedDifference(total.DeliveredInputTokens, total.ProviderInputTokens)
