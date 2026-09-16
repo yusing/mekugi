@@ -12,7 +12,7 @@ The shared Shell and Journal references define execution and progress delivery.
 
 ## Edit planning
 
-Group ready, related edits into one atomic hpatch script. Split only when missing information
+Group ready, related edits into one hpatch invocation. Split only when missing information
 or a validation result must determine the next edit; keep unrelated large values separate.
 Use targeted replacements or insertions and let formatters own surrounding formatting.
 
@@ -20,7 +20,7 @@ Use targeted replacements or insertions and let formatters own surrounding forma
 
 Use known current literals, verified rows, or confirmed mappings; anchor repeated text when
 position matters. Newly authored text is available as a literal on the next call.
-Read again only when those forms no longer identify the intended span.
+Reuse current target evidence instead of rereading solely to reacquire targets.
 
 ## Target acquisition
 

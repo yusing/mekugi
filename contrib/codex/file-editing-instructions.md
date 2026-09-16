@@ -164,8 +164,10 @@ Native-only clients reject batches; submit separate calls there.
 
 ### Bounded command output
 
-Use `hrun [-n N] [--max-tokens N] [--tail] -- COMMAND [ARG...]` for external
-commands. Supply at least one limit; token limits are 1–15500, shared stderr-first.
+Hrun bounds noisy external-command output for display. Use
+`hrun [-n N] [--max-tokens N] [--tail] -- COMMAND [ARG...]` when that output needs a limit;
+run commands directly when output is quiet or must remain complete, including output saved to a file.
+Supply at least one limit; token limits are 1–15500, shared stderr-first.
 `-n` selects complete lines before token limiting; alone it skips tokenization.
 `--tail` keeps the ending. Hrun preserves the command's exit status and waits for
 completion; infinite producers require cancellation. Use an explicit shell for compound commands.
