@@ -16,9 +16,9 @@ func TestMekugi2FinalStateReport(t *testing.T) {
 	}
 	for _, fragment := range []string{
 		"in file.txt\n",
-		"last type file.txt 1 ranges 2:1-3:1\n",
+		"last type 1 ranges 2:1-3:1\n",
 		"files add=0 update=1 move=0 delete=0\n",
-		"refs 2 type file.txt\n",
+		"refs 2 type\n",
 		"1:" + hashLine("alpha") + " alpha\n",
 		"2:" + hashLine("B") + " B\n",
 		"3:" + hashLine("gamma") + " gamma\n",
@@ -143,7 +143,7 @@ func TestMekugi2FormattedReferencesTrackEditedContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, report %q", err, result.Report)
 	}
-	if !strings.Contains(result.Report, "refs 2 type file.go\n") {
+	if !strings.Contains(result.Report, "refs 2 type\n") {
 		t.Fatalf("formatted references %q lack command header", result.Report)
 	}
 	want := "12:" + hashLine("var target = 2") + " var target = 2\n"
@@ -164,7 +164,7 @@ func TestMekugi2FinalStateReportIsBounded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, report %q", err, result.Report)
 	}
-	if !strings.Contains(result.Report, "last type file.txt 4 ranges ") || !strings.Contains(result.Report, " +1 more\n") {
+	if !strings.Contains(result.Report, "last type 4 ranges ") || !strings.Contains(result.Report, " +1 more\n") {
 		t.Fatalf("report = %q", result.Report)
 	}
 }
@@ -177,10 +177,10 @@ func TestMekugi2InsertionReportNamesTargetRange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, report %q", err, result.Report)
 	}
-	if !strings.Contains(result.Report, "last add file.txt 1 ranges 2:1-3:1\n") {
+	if !strings.Contains(result.Report, "last add 1 ranges 2:1-3:1\n") {
 		t.Fatalf("report = %q", result.Report)
 	}
-	if !strings.Contains(result.Report, "refs 2 add file.txt\n") {
+	if !strings.Contains(result.Report, "refs 2 add\n") {
 		t.Fatalf("report = %q", result.Report)
 	}
 }
@@ -220,9 +220,9 @@ func TestMekugi2MovedMutationReportUsesFinalPath(t *testing.T) {
 	}
 	for _, want := range []string{
 		"in new.txt\n",
-		"last type new.txt 1 ranges 1:1-2:1\n",
+		"last type 1 ranges 1:1-2:1\n",
 		"files add=0 update=1 move=1 delete=0\n",
-		"refs 2 type new.txt\n",
+		"refs 2 type\n",
 		"1:" + hashLine("beta") + " beta\n",
 	} {
 		if !strings.Contains(result.Report, want) {
@@ -284,9 +284,9 @@ func TestMekugi2FinalReferencesCoverCommandsFilesAndContinuation(t *testing.T) {
 		t.Fatalf("ApplyForHost() error = %v, report %q", err, result.Report)
 	}
 
-	firstHeader := "refs 2 type first.txt\n"
-	secondHeader := "refs 3 type first.txt\n"
-	thirdHeader := "refs 5 add second.txt\n"
+	firstHeader := "file first.txt\nrefs 2 type\n"
+	secondHeader := "refs 3 type\n"
+	thirdHeader := "file second.txt\nrefs 5 add\n"
 	firstIndex := strings.Index(result.Report, firstHeader)
 	secondIndex := strings.Index(result.Report, secondHeader)
 	thirdIndex := strings.Index(result.Report, thirdHeader)
@@ -326,7 +326,7 @@ func TestMekugi2FinalReferencesProjectCollapsedDeletion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, report %q", err, result.Report)
 	}
-	want := "refs 2 type file.txt\n" +
+	want := "refs 2 type\n" +
 		"1:" + hashLine("alpha") + " alpha\n" +
 		"2:" + hashLine("gamma") + " gamma\n"
 	if !strings.Contains(result.Report, want) {
@@ -342,7 +342,7 @@ func TestMekugi2FinalReferencesAreBoundedAndDeduplicated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, report %q", err, result.Report)
 	}
-	want := "refs 2 type file.txt\n" +
+	want := "refs 2 type\n" +
 		"1:" + hashLine("zero") + " zero\n" +
 		"2:" + hashLine("y") + " y\n" +
 		"5:" + hashLine("y") + " y\n" +
@@ -362,9 +362,9 @@ func TestMekugi2FinalReferencesPreserveUneditedActiveEmptyFile(t *testing.T) {
 	}
 	for _, want := range []string{
 		"in empty.txt\n",
-		"refs 2 type edited.txt\n",
+		"file edited.txt\nrefs 2 type\n",
 		"1:" + hashLine("new") + " new\n",
-		"1:" + hashLine("") + " \n",
+		"file empty.txt\n1:" + hashLine("") + " \n",
 	} {
 		if !strings.Contains(result.Report, want) {
 			t.Fatalf("report %q lacks %q", result.Report, want)
@@ -375,5 +375,62 @@ func TestMekugi2FinalReferencesPreserveUneditedActiveEmptyFile(t *testing.T) {
 func TestPreviewTextMakesLeadingWhitespaceVisible(t *testing.T) {
 	if got, want := previewText("  \tindented value"), `\x20\x20\tindented value`; got != want {
 		t.Fatalf("previewText() = %q, want %q", got, want)
+	}
+}
+
+func TestCompactReportDoesNotRepeatSingleFilePath(t *testing.T) {
+	root := t.TempDir()
+	path := root + "/probe.go"
+	source := "package p\n\nvar a=1\n\nfunc f(){\nprintln(1);println(2)\n}\n"
+	writeTestFile(t, root, "probe.go", source, 0o644)
+	result, err := TranslateForHostAt(t.Context(), root, "in "+path+"\ntype \"package p\" \"package q\"", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(result.Report, path) != 1 {
+		t.Fatalf("single-file path repeated: %s", result.Report)
+	}
+	for _, want := range []string{"in " + path + "\n", "last type 1 ranges ", "refs 2 type\n", "format (pre-format -> final)\n", "Formatted "} {
+		if !strings.Contains(result.Report, want) {
+			t.Fatalf("report lacks %q: %s", want, result.Report)
+		}
+	}
+	if strings.Contains(result.Report, "advisory ") {
+		t.Fatalf("ordinary edit emitted advisory: %s", result.Report)
+	}
+}
+
+func TestCompactReportScopesMultipleFormatterSections(t *testing.T) {
+	for _, noActive := range []bool{false, true} {
+		t.Run(map[bool]string{false: "empty active", true: "no active"}[noActive], func(t *testing.T) {
+			root := t.TempDir()
+			writeTestFile(t, root, "a.go", "package a\nvar x=1\n", 0o644)
+			writeTestFile(t, root, "b.go", "package b\nvar y=2\n", 0o644)
+			script := "in a.go\ntype \"package a\" \"package aa\"\nmv moved.go\n" +
+				"in b.go\ntype \"package b\" \"package bb\"\nnew empty.txt\n"
+			if noActive {
+				script += "rm\n"
+			}
+			result, err := applyForHostAtTest(t, root, script, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			initial := "in empty.txt\n"
+			if noActive {
+				initial = "no active file\n"
+			} else if !strings.Contains(result.Report, "file empty.txt\n"+row(1, "")+" \n") {
+				t.Fatalf("fallback path not restored: %s", result.Report)
+			}
+			if !strings.HasPrefix(result.Report, initial) {
+				t.Fatalf("active state lost: %s", result.Report)
+			}
+			for path, content := range map[string]string{"moved.go": "var x = 1", "b.go": "var y = 2"} {
+				want := "file " + path + "\nformat (pre-format -> final)\nFormatted 2-3\n" +
+					row(2, "") + " \n" + row(3, content) + " " + content + "\n"
+				if !strings.Contains(result.Report, want) {
+					t.Fatalf("formatter context lacks %q: %s", want, result.Report)
+				}
+			}
+		})
 	}
 }

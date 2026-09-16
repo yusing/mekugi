@@ -21,7 +21,7 @@ func TestFormattingReferences(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var report strings.Builder
-			writeFormattingReferences(&report, "f.go", tc.before, tc.after)
+			writeFormattingReferences(&report, tc.before, tc.after)
 			for _, want := range tc.want {
 				if !strings.Contains(report.String(), want) {
 					t.Fatalf("report %q lacks %q", report.String(), want)
@@ -47,13 +47,13 @@ func TestFormattingReferencesApplyAndReuse(t *testing.T) {
 		t.Fatalf("translation and apply reports differ:\n%s\n%s", translated.Report, result.Report)
 	}
 	final := readTestFile(t, root, "f.go")
-	if !strings.Contains(result.Report, "format f.go (pre-format -> final)") {
+	if !strings.Contains(result.Report, "format (pre-format -> final)") {
 		t.Fatal(result.Report)
 	}
 	// Feed every emitted block row and mapping destination through the edit
 	// consumer, including rows outside the authored edit.
 	count := 0
-	for _, line := range strings.Split(result.Report[strings.Index(result.Report, "format f.go"):], "\n") {
+	for _, line := range strings.Split(result.Report[strings.Index(result.Report, "format"):], "\n") {
 		target := line
 		if _, right, ok := strings.Cut(line, " -> "); ok {
 			target = right
@@ -83,7 +83,7 @@ func TestFormattingReferencesAbsentWithoutFormatting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(result.Report, "format f.go") {
+	if strings.Contains(result.Report, "format") {
 		t.Fatal(result.Report)
 	}
 }
@@ -99,7 +99,7 @@ func TestFormattingBlockEscapesControls(t *testing.T) {
 	if strings.ContainsRune(result.Report, '\x1b') {
 		t.Fatalf("terminal escape survived in report: %q", result.Report)
 	}
-	start := strings.Index(result.Report, "format f.go")
+	start := strings.Index(result.Report, "format")
 	if start < 0 {
 		t.Fatal(result.Report)
 	}

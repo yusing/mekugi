@@ -297,7 +297,7 @@ func TestWrapperCorrectionFinalReferencesUseCorrectedContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, report %q", err, result.Report)
 	}
-	if !strings.Contains(result.Report, "refs 2 type file.py\n") ||
+	if !strings.Contains(result.Report, "refs 2 type\n") ||
 		!strings.Contains(result.Report, "3:"+hashLine("        if ready:")+` \x20\x20\x20\x20\x20\x20\x20\x20if ready:`+"\n") {
 		t.Fatalf("report = %q", result.Report)
 	}

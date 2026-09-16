@@ -9,18 +9,19 @@ import (
 
 // writeFormattingReferences reports only formatter effects, relative to the
 // rendered edits, rather than repeating the author's patch.
-func (w *workspace) writeFormattingReferences(report *strings.Builder) {
+func (w *workspace) writeFormattingReferences(report *strings.Builder, currentPath *string) {
 	for _, file := range w.files {
 		if file.deleted || file.editor.finalOffsets == nil {
 			continue
 		}
 		before := file.editor.contentWithProjection(file.editor.renderedEdits())
 		after := file.editor.content()
-		writeFormattingReferences(report, file.path, before, after)
+		writeReportFile(report, file.path, currentPath)
+		writeFormattingReferences(report, before, after)
 	}
 }
 
-func writeFormattingReferences(report *strings.Builder, path, before, after string) {
+func writeFormattingReferences(report *strings.Builder, before, after string) {
 	if before == after {
 		return
 	}
@@ -33,7 +34,7 @@ func writeFormattingReferences(report *strings.Builder, path, before, after stri
 		return result
 	}
 	a, b := rows(before), rows(after)
-	fmt.Fprintf(report, "format %s (pre-format -> final)\n", escapeReportControls(path))
+	report.WriteString("format (pre-format -> final)\n")
 	for _, op := range difflib.NewMatcher(a, b).GetOpCodes() {
 		switch {
 		case op.Tag == 'e':

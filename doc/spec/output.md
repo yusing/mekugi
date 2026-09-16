@@ -69,16 +69,17 @@ restored carrier. Basic `Apply` does not return the report. Its line forms are:
 
 ```text
 in PATH
-last OP PATH COUNT ranges RANGE[, RANGE[, RANGE]] [ +N more]
+last OP [PATH] COUNT ranges RANGE[, RANGE[, RANGE]] [ +N more]
 files add=A update=U move=M delete=D
-advisory COMMAND OP PATH: baseline-boundary owned=ENDING value=ENDING ...
-refs COMMAND OP PATH
+advisory COMMAND: EFFECT=COUNT ...
+file PATH
+refs COMMAND OP
 LINE:HASH TEXT
 ```
 
 When Go formatting changes the rendered edits, each affected surviving file also has a
-`format PATH (pre-format -> final)` section. Its source coordinates refer to the edited
-content immediately before formatting, not the invocation baseline. A one-row replacement
+`format (pre-format -> final)` section under that file's display context. Its source
+coordinates refer to the edited content immediately before formatting, not the invocation baseline. A one-row replacement
 emits `OLD_LINE:OLD_HASH -> LINE:HASH`. Larger replacements and insertions emit
 `Formatted START-END` followed by every final `LINE:HASH TEXT` row in that block, without
 preview shortening, using the report's printable indentation/control escaping. Deletions emit
@@ -92,8 +93,8 @@ alone does not establish application.
 The first line is `no active file` when `rm` leaves none. Otherwise it names the active
 final path. The `last` line is `last none` when no mutation changed final content;
 otherwise it names the last effective mutation operation, that file's surviving final
-path, the number of affected target spans, and at most three verified immutable-baseline
-ranges. Extra ranges are summarized by `+N more`. `RANGE` is a half-open
+path only when different from the initial active file, the number of affected target spans,
+and at most three verified immutable-baseline ranges. Extra ranges are summarized by `+N more`. `RANGE` is a half-open
 `START_LINE:START_COLUMN-END_LINE:END_COLUMN` pair in one-based Unicode coordinates; a
 complete-line range includes its final terminator when present. The `files` line counts
 net original-to-final actions.
@@ -102,7 +103,7 @@ Host reports may insert one bounded advisory line per effective command between
 the `files` summary and reference blocks:
 
 ```text
-advisory COMMAND OP PATH: baseline-boundary owned=LF value=empty mode=<<PATCH- deletes=1 removes-ending=1
+advisory COMMAND: deletes=1 removes-ending=1
 ```
 
 These lines describe each command's authored splice against the immutable baseline,
@@ -111,14 +112,11 @@ inspection aids, not errors or claims about user intent, and never change bytes,
 validation, aliases, or application. Failed or cancelled host results publish no
 success report and therefore no boundary advisories.
 
-`owned` names the removed target's final terminator (`LF`, `CRLF`, `CR`, or `none`);
-insertions own no target bytes. `value` names the decoded value's final terminator,
-or `none` for nonempty unterminated text and `empty` for a deletion value. Multiline
-values also show their exact `mode`. An empty initializer is not a deletion.
+The command number links each advisory to its `refs` block; paths and operations are
+not repeated. Routine newline preservation and heredoc metadata are omitted.
+An empty initializer is not a deletion.
 
 Nonzero counts summarize effective spans in that command:
-- `preserves-ending`: a nonempty whole-row/range value inherits its owned final
-  terminator;
 - `deletes`: an empty replacement removes target bytes;
 - `removes-ending`: a replacement removes the target's final terminator without
   preserving or supplying one;
@@ -128,17 +126,20 @@ Nonzero counts summarize effective spans in that command:
   a leading terminator.
 
 A split CRLF is one terminator, not a blank line. Counts do not infer that an
-existing separator is accidental. Inline edits with none of these observations
-emit no advisory; effective multiline edits always expose their ownership and
-value ending. No-op mutations emit none. Counts aggregate multiple matches into
-one line, and advisory paths follow pending moves with the same escaping as the
-rest of the report.
+existing separator is accidental. Edits with none of these effects emit no advisory,
+including multiline edits and ordinary whole-row newline preservation. No-op mutations emit none. Counts
+aggregate multiple matches into one line.
+
+The initial `in PATH` establishes the reference display context as well as naming the
+active final file. A `file PATH` header appears only when references, a fallback preview,
+or formatter output switch to another final path. It changes display context, not the
+invocation's active file. Paths are escaped as before; row identities and aliases are unchanged.
 
 One `refs` block follows for every effective content-mutating command on every surviving
-edited file. `COMMAND` is the command's positive one-based nonblank script index, `OP` is
-its authored mutation operation, and `PATH` is the file's final path after pending moves.
-Blocks retain authored command order. Each block contains at most four distinct current
-rows, ordered by final line number: the rows containing the first and last endpoints of
+edited file. `COMMAND` is the command's positive one-based nonblank script index and `OP`
+is its authored mutation operation. Blocks inherit the latest display path rather than
+repeating it, and retain authored command order. Each block contains at most four distinct
+current rows, ordered by final line number: the rows containing the first and last endpoints of
 the command's aggregate rendered edit extent, the immediately preceding surviving row,
 and the immediately following surviving row. Missing neighbors are omitted. Coincident
 endpoint or context rows are emitted once within that block. A row may appear in separate

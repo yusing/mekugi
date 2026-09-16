@@ -28,10 +28,12 @@ type reportedEdit struct {
 }
 
 func (w *workspace) finalStateReport(changes []change) (string, []TargetAlias) {
+	currentPath := ""
 	var report strings.Builder
 	if w.active == nil {
 		report.WriteString("no active file\n")
 	} else {
+		currentPath = w.active.path
 		fmt.Fprintf(&report, "in %s\n", escapeReportControls(w.active.path))
 	}
 
@@ -39,24 +41,34 @@ func (w *workspace) finalStateReport(changes []change) (string, []TargetAlias) {
 	if last == nil {
 		report.WriteString("last none\n")
 	} else {
-		last.writeSummary(&report)
+		last.writeSummary(&report, currentPath)
 	}
 	w.writeFileSummary(&report, changes)
 	for _, edit := range w.reportedEdits {
 		if edit.advisory != "" {
-			fmt.Fprintf(&report, "advisory %d %s %s: %s\n", edit.command, edit.operation, escapeReportControls(edit.file.path), edit.advisory)
+			fmt.Fprintf(&report, "advisory %d: %s\n", edit.command, edit.advisory)
 		}
 	}
 	activeReferences := false
 	var aliases []TargetAlias
 	if len(w.reportedEdits) != 0 {
-		activeReferences, aliases = w.writeFinalReferences(&report)
+		activeReferences, aliases = w.writeFinalReferences(&report, &currentPath)
 	}
 	if w.active != nil && !activeReferences {
+		writeReportFile(&report, w.active.path, &currentPath)
 		w.writeFallbackPreview(&report)
 	}
-	w.writeFormattingReferences(&report)
+	w.writeFormattingReferences(&report, &currentPath)
 	return report.String(), aliases
+}
+
+// writeReportFile changes display context only; the initial in line still owns
+// the invocation's active final file.
+func writeReportFile(report *strings.Builder, path string, currentPath *string) {
+	if *currentPath != path {
+		fmt.Fprintf(report, "file %s\n", escapeReportControls(path))
+		*currentPath = path
+	}
 }
 
 func (w *workspace) lastReportedEdit() *reportedEdit {
@@ -97,15 +109,13 @@ func renderDocumentRange(document renderedDocument, startLine, endLine int) stri
 	return fmt.Sprintf("%s..%d:%s", first, endLine, hashLine(lineContent(document.content, end)))
 }
 
-func (e *reportedEdit) writeSummary(report *strings.Builder) {
+func (e *reportedEdit) writeSummary(report *strings.Builder, currentPath string) {
 	document := renderedDocument{content: e.file.editor.baseline, lines: renderedLines(e.file.editor.baseline)}
-	fmt.Fprintf(
-		report,
-		"last %s %s %d ranges ",
-		e.operation,
-		escapeReportControls(e.file.path),
-		len(e.spans),
-	)
+	fmt.Fprintf(report, "last %s", e.operation)
+	if e.file.path != currentPath {
+		fmt.Fprintf(report, " %s", escapeReportControls(e.file.path))
+	}
+	fmt.Fprintf(report, " %d ranges ", len(e.spans))
 	writeSpanLocations(report, document, e.spans)
 }
 
@@ -125,7 +135,7 @@ func writeSpanLocations(report *strings.Builder, document renderedDocument, span
 	report.WriteByte('\n')
 }
 
-func (w *workspace) writeFinalReferences(report *strings.Builder) (bool, []TargetAlias) {
+func (w *workspace) writeFinalReferences(report *strings.Builder, currentPath *string) (bool, []TargetAlias) {
 	documents := make(map[*fileState]renderedDocument)
 	extents := make(map[*fileState]map[int]renderedSpan)
 	activeReferences := false
@@ -162,13 +172,8 @@ func (w *workspace) writeFinalReferences(report *strings.Builder) (bool, []Targe
 			})
 		}
 
-		fmt.Fprintf(
-			report,
-			"refs %d %s %s\n",
-			reported.command,
-			reported.operation,
-			escapeReportControls(reported.file.path),
-		)
+		writeReportFile(report, reported.file.path, currentPath)
+		fmt.Fprintf(report, "refs %d %s\n", reported.command, reported.operation)
 		indexes := []int{firstLine - 2, firstLine - 1, lastLine - 1, lastLine}
 		previous := -1
 		for _, index := range indexes {

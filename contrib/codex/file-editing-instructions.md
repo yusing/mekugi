@@ -275,8 +275,9 @@ so replacing a row with it deletes the row rather than making it blank.
 Authored spaces and blank lines are preserved except for language-aware formatting and
 indentation correction.
 
-Successful `advisory` lines describe authored whitespace boundaries before neighboring
-edits or formatting; they are not errors. Check those boundaries against your intent.
+Compact `advisory` lines name the command and nonzero authored whitespace effects before
+neighboring edits or formatting; routine newline preservation is omitted. They are not errors.
+Report rows inherit the latest `in PATH` or `file PATH` display header; `file` is not an edit command.
 
 An unindented heredoc body line beginning with `type ` or `add ` and ending with either
 heredoc marker is reserved as a nested opener when the marker is its sole operand or follows
