@@ -440,10 +440,19 @@ func newShellOutputCapture(cancel context.CancelFunc) *shellOutputCapture {
 
 // Write captures output bytes up to the remaining budget and cancels on overflow.
 func (writer *shellOutputWriter) Write(value []byte) (int, error) {
-	written := len(value)
 	capture := writer.capture
 	capture.mu.Lock()
 	defer capture.mu.Unlock()
+	var forward func([]byte) (int, error)
+	if writer.destination != nil {
+		forward = writer.destination.Write
+	}
+	return writer.writeLocked(value, forward)
+}
+
+func (writer *shellOutputWriter) writeLocked(value []byte, forward func([]byte) (int, error)) (int, error) {
+	written := len(value)
+	capture := writer.capture
 	if capture.closed || capture.overflow {
 		return written, nil
 	}
@@ -462,7 +471,7 @@ func (writer *shellOutputWriter) Write(value []byte) (int, error) {
 			end += size
 		}
 		if end > 0 {
-			n, err := writer.destination.Write(pending[:end])
+			n, err := forward(pending[:end])
 			writer.forwarded += n
 			if err == nil && n != end {
 				err = io.ErrShortWrite

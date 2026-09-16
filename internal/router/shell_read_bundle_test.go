@@ -120,3 +120,72 @@ func TestHcatBatchPreservesSingleFileMode(t *testing.T) {
 		t.Fatalf("%d %q %q", status, out, diagnostic)
 	}
 }
+
+func TestReadBundleFitsOuterDisplay(t *testing.T) {
+	registry := sharedProxyTestRegistry(t)
+	directory := t.TempDir()
+	for _, name := range []string{"first", "second"} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(strings.Repeat(name+" row \"escaped\" \t界\n", 200)), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, prefix := range []string{"", "printf 'preceding output\\n'; ", "printf 'preceding error\\n' >&2; "} {
+		out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
+			"#!params={\"max_output_tokens\":2000}\n"+prefix+"hcat --batch --max-tokens 2000 first -- second",
+			nil, newShellWorkerTestInvocation(directory))
+		if status != 1 || strings.Contains(diagnostic, "hread ") {
+			t.Fatalf("status=%d out=%s err=%s", status, out, diagnostic)
+		}
+		receipts := regexp.MustCompile(`shown=(1:\d+).*next_call="(hread r_[A-Za-z0-9_-]{22})"`).FindAllStringSubmatch(out, -1)
+		bodies := strings.Split(out, "--- file ")
+		if len(receipts) != 2 || len(bodies) != 3 {
+			t.Fatalf("missing previews or receipts: %s", out)
+		}
+		for i, receipt := range receipts {
+			if got := bundleRowSpan(bodies[i+1]); got != receipt[1] {
+				t.Fatalf("advertised %s but delivered %s: %s", receipt[1], got, out)
+			}
+			recovered, _, _ := runShellWorkerTest(t, registry, "bash", nil,
+				receipt[2]+" --max-tokens 10000", nil, newShellWorkerTestInvocation(directory))
+			if !strings.Contains(recovered, "200:") {
+				t.Fatalf("missing retained suffix: %s", recovered)
+			}
+		}
+	}
+	for _, route := range []string{"> saved", "| cat > saved"} {
+		var saved []string
+		for _, limit := range []string{"2000", "10000"} {
+			_, diagnostic, _ := runShellWorkerTest(t, registry, "bash", nil,
+				"#!params={\"max_output_tokens\":"+limit+"}\nhcat --batch --max-tokens 2000 first -- second "+route,
+				nil, newShellWorkerTestInvocation(directory))
+			if diagnostic != "" {
+				t.Fatal(diagnostic)
+			}
+			data, err := os.ReadFile(filepath.Join(directory, "saved"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			saved = append(saved, regexp.MustCompile(`r_[A-Za-z0-9_-]{22}`).ReplaceAllString(string(data), "REFERENCE"))
+		}
+		if saved[0] != saved[1] {
+			t.Fatalf("%s changed redirected bytes with display budget", route)
+		}
+	}
+}
+
+func TestReadBundleDisplayTrimmingPreservesSuccess(t *testing.T) {
+	registry := sharedProxyTestRegistry(t)
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "small"), []byte(strings.Repeat("small row\n", 50)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
+		"#!params={\"max_output_tokens\":1400}\nset -e; hcat --batch --max-tokens 4000 small && printf success > marker",
+		nil, newShellWorkerTestInvocation(directory))
+	if status != 0 || diagnostic != "" || !strings.Contains(out, "status=incomplete") {
+		t.Fatalf("status=%d out=%s err=%s", status, out, diagnostic)
+	}
+	if data, err := os.ReadFile(filepath.Join(directory, "marker")); err != nil || string(data) != "success" {
+		t.Fatalf("display budget changed shell control flow: %q %v", data, err)
+	}
+}

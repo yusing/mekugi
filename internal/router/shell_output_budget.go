@@ -46,6 +46,11 @@ func (stream *shellDisplayStream) Write(value []byte) (int, error) {
 	display := stream.owner
 	display.mu.Lock()
 	defer display.mu.Unlock()
+	return stream.writeLocked(value)
+}
+
+func (stream *shellDisplayStream) writeLocked(value []byte) (int, error) {
+	display := stream.owner
 	_, _ = stream.raw.Write(value)
 	text := string(value)
 	tokens := 0

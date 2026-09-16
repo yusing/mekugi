@@ -2,10 +2,14 @@ package router
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -89,9 +93,9 @@ func executeReadBundle(ctx context.Context, manifest toolWorkerManifest, runtime
 	if err != nil {
 		return fail(err)
 	}
-	var manifestText, bodies strings.Builder
+	var entries []readBundleEntry
 	incomplete := false
-	for i, spec := range specs {
+	for _, spec := range specs {
 		if err := ctx.Err(); err != nil {
 			return fail(err)
 		}
@@ -100,7 +104,7 @@ func executeReadBundle(ctx context.Context, manifest toolWorkerManifest, runtime
 			return fail(err)
 		}
 		state := "complete"
-		omitted, next := "none", ""
+		omitted := "none"
 		if execution.ExitCode != 0 {
 			incomplete = true
 			state = "failed"
@@ -115,30 +119,151 @@ func executeReadBundle(ctx context.Context, manifest toolWorkerManifest, runtime
 			remainder.Stderr += execution.OmittedOutput.Stderr
 			omitted = bundleRowSpan(remainder.Stdout)
 		}
-		if remainder.Stdout != "" || remainder.Stderr != "" {
-			id, err := store.putTypedOutput(ctx, remainder, execution.ExitCode)
+		var random [16]byte
+		if _, err := rand.Read(random[:]); err != nil {
+			return fail(err)
+		}
+		entries = append(entries, readBundleEntry{
+			path: spec.path, shown: execution.Stdout, omitted: omitted, state: state,
+			record: shellOutputRecord{Version: 1, ID: "r_" + base64.RawURLEncoding.EncodeToString(random[:]),
+				Stdout: remainder.Stdout, Stderr: remainder.Stderr, StdoutKind: remainder.StdoutKind,
+				StderrKind: remainder.StderrKind, ExitCode: execution.ExitCode},
+		})
+	}
+	// Only the exact outer capture is display output. Files, pipes and command
+	// substitutions retain the requested reader budget and their original bytes.
+	writer, direct := handler.Stdout.(*shellOutputWriter)
+	var stream *shellDisplayStream
+	if direct {
+		stream, _ = writer.destination.(*shellDisplayStream)
+	}
+	output := renderReadBundle(entries)
+	if stream != nil {
+		// Match the capture -> display lock order used by ordinary writes.
+		writer.capture.mu.Lock()
+		defer writer.capture.mu.Unlock()
+		stream.owner.mu.Lock()
+		defer stream.owner.mu.Unlock()
+		limit := min(budget, stream.owner.remaining)
+		fits := func(output string) (bool, error) {
+			selected, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, runtime,
+				[]string{strconv.Itoa(max(1, limit)), "shell", output, ""})
 			if err != nil {
-				return fail(err)
+				return false, err
 			}
-			next = "hread " + id
+			var selection struct {
+				Text string `json:"text"`
+			}
+			if selected.ExitCode != 0 || json.Unmarshal([]byte(selected.Stdout), &selection) != nil {
+				return false, errors.New("invalid bundle output selection")
+			}
+			return limit > 0 && selection.Text == output, nil
 		}
-		fmt.Fprintf(&manifestText, "%d path=%s shown=%s omitted=%s status=%s", i+1,
-			mustMarshalJSON(spec.path), bundleRowSpan(execution.Stdout), omitted, state)
-		if next != "" {
-			fmt.Fprintf(&manifestText, " next_call=%q", next)
+		ok, err := fits(output)
+		if err != nil {
+			return err
 		}
-		manifestText.WriteByte('\n')
-		if execution.Stdout != "" {
-			fmt.Fprintf(&bodies, "\n--- file %d ---\n%s", i+1, execution.Stdout)
+		if !ok {
+			best := trimReadBundle(entries, 0)
+			ok, err = fits(renderReadBundle(best))
+			if err != nil {
+				return err
+			}
+			// If even the manifest cannot fit, preserve normal outer retention
+			// rather than changing execution into a display-budget failure.
+			if ok {
+				upper := 0
+				for _, entry := range entries {
+					upper = max(upper, len(strings.SplitAfter(entry.shown, "\n")))
+				}
+				// Search a shared row ceiling without rereading sources or persisting
+				// discarded candidates. Every accepted candidate is measured in the
+				// same escaped-token representation as the outer shell display.
+				for lower := 0; lower+1 < upper; {
+					middle := lower + (upper-lower)/2
+					candidate := trimReadBundle(entries, middle)
+					ok, err = fits(renderReadBundle(candidate))
+					if err != nil {
+						return err
+					}
+					if ok {
+						lower, best = middle, candidate
+					} else {
+						upper = middle
+					}
+				}
+				entries = best
+				output = renderReadBundle(entries)
+			}
 		}
 	}
-	if _, err := io.WriteString(handler.Stdout, manifestText.String()+bodies.String()); err != nil {
+	for _, entry := range entries {
+		if entry.record.Stdout != "" || entry.record.Stderr != "" {
+			if _, err := store.putReadRecord(ctx, entry.record); err != nil {
+				return err
+			}
+		}
+	}
+	if stream != nil {
+		// Bypass only the two already-held mutexes, not capture or display limits.
+		if _, err := writer.writeLocked([]byte(output), stream.writeLocked); err != nil {
+			return err
+		}
+	} else if _, err := io.WriteString(handler.Stdout, output); err != nil {
 		return err
 	}
 	if incomplete {
 		return interp.ExitStatus(1)
 	}
 	return nil
+}
+
+type readBundleEntry struct {
+	path, shown, omitted, state string
+	record                      shellOutputRecord
+}
+
+func trimReadBundle(entries []readBundleEntry, rows int) []readBundleEntry {
+	result := slices.Clone(entries)
+	for i := range result {
+		entry := &result[i]
+		end := 0
+		for range rows {
+			next := strings.IndexByte(entry.shown[end:], '\n')
+			if next < 0 {
+				end = len(entry.shown)
+				break
+			}
+			end += next + 1
+		}
+		if end == len(entry.shown) {
+			continue
+		}
+		entry.record.Stdout = entry.shown[end:] + entry.record.Stdout
+		entry.record.StdoutKind = "rows"
+		entry.shown = entry.shown[:end]
+		entry.omitted = bundleRowSpan(entry.record.Stdout)
+		if entry.state == "complete" {
+			entry.state = "incomplete"
+		}
+	}
+	return result
+}
+
+func renderReadBundle(entries []readBundleEntry) string {
+	var manifest, bodies strings.Builder
+	for i, entry := range entries {
+		fmt.Fprintf(&manifest, "%d path=%s shown=%s omitted=%s status=%s", i+1,
+			mustMarshalJSON(entry.path), bundleRowSpan(entry.shown), entry.omitted, entry.state)
+		if entry.record.Stdout != "" || entry.record.Stderr != "" {
+			fmt.Fprintf(&manifest, " next_call=%q", "hread "+entry.record.ID)
+		}
+		manifest.WriteByte('\n')
+		if entry.shown != "" {
+			fmt.Fprintf(&bodies, "\n--- file %d ---\n%s", i+1, entry.shown)
+		}
+	}
+	return manifest.String() + bodies.String()
 }
 
 func bundleRowSpan(text string) string {
