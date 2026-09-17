@@ -9,6 +9,7 @@ import (
 // providerResponseEvidence contains only allowlisted provider telemetry, never
 // arbitrary headers, response text, credentials, or routing tokens.
 type providerResponseEvidence struct {
+	wireFormat        string
 	RequestID         string  `json:"request_id,omitempty"`
 	HeaderModel       string  `json:"header_model,omitempty"`
 	Model             string  `json:"model,omitempty"`

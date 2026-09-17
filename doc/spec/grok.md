@@ -1,60 +1,22 @@
-# Third-party native-agent routing
+# Grok provider route
 
-## REQ-SUBAGENTS-001 — Grok-backed native-agent routing
+## REQ-GROK-001 — Grok provider route
+
+Grok follows the shared [third-party native-agent routing contract](third_party.md).
 
 `--grok` enables `grok:grok-4.6` in `mekugi` mode. Passthrough mode rejects the flag.
 Without it, the existing model catalog and OpenAI routing remain unchanged;
 a `grok:` request fails locally rather than sending it to the OpenAI provider.
 
-The wrapper adds a Grok model to Codex's selected catalog, retaining the catalog's
-native v2 instruction and executor metadata. The entry advertises text/image input, the 500,000-token
-context window, and low/medium/high/xhigh reasoning (high by default). It does not inherit OpenAI's
-Responses Lite transport, hosted search, service tiers or upgrade schedule. Existing catalog entries
-remain unchanged. A catalog without a native v2 template fails explicitly. An existing cached
-Grok entry is rebuilt from that template rather than duplicated. With `--grok`, the wrapper runs
-`codex debug models` with the invocation's configuration and working-directory selectors,
-then writes a private session catalog and enforces its `model_catalog_json` path in the final
-invocation-only config layer. Named Codex profiles (`--profile`/`-p`) and `exec --ignore-user-config`
-are rejected with `--grok` before catalog loading because the catalog command cannot honor those
-configuration modes. The default configuration and explicit
-`-c model_catalog_json` remain supported. The catalog is fixed for the session and cannot be replaced by
-another Codex process's shared cache. Thread switching, spawning, and follow-ups retain the same
-Grok tool metadata. Catalog command failure, invalid output, or private-file creation failure
-prevents the main Codex launch. Output is bounded to 8 MiB and catalog preparation to one minute.
-Preparation emits content-free stderr progress immediately and every ten seconds while waiting.
-Interactive status is width-bounded and cleared before terminal handoff; redirected output uses
-complete lines. Rendering failures stop progress only, never cancel preparation or replace its
-result. Cancellation and deadline errors take precedence over generic subprocess/configuration
-advice, and private bootstrap stderr is not exposed.
-The private directory is mode 0700, its file is mode 0600, and both are removed on exit or launch
-failure. User configuration and the shared cache are not rewritten by Mekugi; Codex retains its
-normal catalog-command behavior. `/v1/models` forwards the upstream catalog unchanged, without
-Grok injection or a synthetic ETag.
+The wrapper adds a Grok model to Codex's selected catalog, retaining the catalog's native v2
+instruction and executor metadata. The entry advertises text/image input, the 500,000-token context
+window, and low/medium/high/xhigh reasoning (high by default). It does not inherit OpenAI's Responses
+Lite transport, hosted search, service tiers, or upgrade schedule. Existing catalog entries remain
+unchanged, and an existing cached Grok entry is rebuilt from the native template rather than
+duplicated.
 
-Both main-agent and native child requests may use the Grok route. Child-specific headers and
-metadata are not required for routing. Codex owns spawning, listing, messaging,
-waiting, interruption, follow-up, tool execution, permissions and sandboxing. The router never
-creates a substitute agent process or executes a tool itself.
-
-In ordinary Mekugi turns, the provider-visible collaboration namespace is
-`mekugi_collaboration`, independently of whether Grok is enabled. Its message
-schema has no OpenAI encryption annotation. Response calls are restored to the original native
-`collaboration` namespace; spawn, send-message and follow-up calls carry the explicitly empty
-`encrypted_function_args` marker required by Codex for plaintext delivery. Replay consistently maps
-bridge-produced native calls back to their provider-visible identities. Historical calls with
-nonempty encryption markers retain their native namespace and encryption metadata. Both ordinary and additional-tool catalogs
-are covered. When this namespace is exposed, the complete pinned native dispatch instruction in
-top-level and developer-message text uses the same namespace, including multipart content.
-Caller wording, fenced examples, and user messages remain unchanged.
-The reserved OpenAI collaboration schema is not modified in place, because the provider
-rejects that operation. User-visible agent lifecycle remains native.
-
-Plaintext projection makes new assignment payloads readable to the router, allowing journal
-answer association. It does not decrypt existing encrypted agent messages; a new plaintext
-follow-up is required to attach those tasks. Ordinary passthrough, prewarm, and auxiliary turns
-without Grok remain unchanged.
-
-When Grok is enabled, the projected spawn catalog places Grok's fresh-context and reasoning requirements beside
+When Grok is enabled, the projected spawn catalog places Grok's fresh-context and reasoning
+requirements beside
 existing `model`, `fork_turns`, and `reasoning_effort` arguments, retaining their native
 descriptions. It does not add absent arguments, change defaults or validation constraints,
 or relax role restrictions. The caller still explicitly selects fresh context and supplies
@@ -67,7 +29,7 @@ Grok OAuth store. This route supports the standard `https://auth.x.ai` Grok publ
 enterprise issuers. Grok owns interactive login; Mekugi refreshes expired/near-expiry OAuth tokens
 and retries one rejected access token. Refresh uses Grok's cross-process advisory lock, re-reads
 credentials under that lock, and atomically saves rotated credentials while preserving unrelated
-accounts and fields. No credentials, provider error bodies, or prompts enter diagnostics.
+accounts and fields. No credentials, provider error bodies, or prompts enter sanitized diagnostics.
 Codex credentials and internal account/thread headers are never forwarded to Grok, and Grok credentials
 never reach OpenAI. Credential-bearing requests do not follow redirects.
 

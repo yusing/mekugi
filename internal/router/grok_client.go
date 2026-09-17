@@ -14,6 +14,7 @@ import (
 
 type grokClient struct {
 	httpClient        *http.Client
+	openCode          *openCodeService
 	auth              *grokAuth
 	streamIdleTimeout time.Duration
 }
@@ -22,13 +23,43 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 	if _, _, err := requiredCodexAuthHeaders(headers); err != nil {
 		return nil, err
 	}
-	tr, err := translateGrokRequest(body)
+	service := g.openCode
+	if service != nil {
+		if service.catalog != nil {
+			// Refresh metadata only, never retry an inference request.
+			_ = service.catalog.refresh(startCtx, false)
+		}
+		pinned := service.pin()
+		service = &pinned
+	}
+	tr, err := translateChatRequest(body, service)
 	if err != nil {
 		return nil, err
 	}
-	credentials, err := g.auth.credentials(startCtx)
-	if err != nil {
-		return nil, err
+	label := "Grok"
+	var credentials grokCredentials
+	if g.openCode != nil {
+		label = g.openCode.label
+		credentials = grokCredentials{endpoint: g.openCode.endpoint, headers: http.Header{
+			"Authorization": {"Bearer " + g.openCode.apiKey}, "User-Agent": {"mekugi"},
+		}}
+		if session := openCodeSessionID(g.openCode.prefix, headers.Get(threadIDHeader)); session != "" {
+			credentials.headers.Set("x-opencode-session", session)
+		}
+		switch tr.format {
+		case "anthropic":
+			credentials.endpoint = strings.TrimSuffix(g.openCode.endpoint, "/chat/completions") + "/messages"
+			credentials.headers.Del("Authorization")
+			credentials.headers.Set("x-api-key", g.openCode.apiKey)
+			credentials.headers.Set("anthropic-version", "2023-06-01")
+		case "responses":
+			credentials.endpoint = strings.TrimSuffix(g.openCode.endpoint, "/chat/completions") + "/responses"
+		}
+	} else {
+		credentials, err = g.auth.credentials(startCtx)
+		if err != nil {
+			return nil, err
+		}
 	}
 	endpoint := credentials.endpoint
 	encoded, err := json.Marshal(tr.body)
@@ -41,7 +72,7 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 	if err != nil {
 		stopStart()
 		cancel()
-		return nil, errors.New("invalid Grok endpoint")
+		return nil, fmt.Errorf("invalid %s endpoint", label)
 	}
 	// Never forward Codex's Authorization, account ID, session ID, or internal
 	// headers. Each provider gets only credentials issued for its own endpoint.
@@ -52,9 +83,9 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 	if err != nil {
 		stopStart()
 		cancel()
-		return nil, fmt.Errorf("Grok request failed: %w", err)
+		return nil, fmt.Errorf("%s request failed: %w", label, forwardCriticalDiagnostic(err))
 	}
-	if response.StatusCode == http.StatusUnauthorized && g.auth.apiKey == "" {
+	if response.StatusCode == http.StatusUnauthorized && g.openCode == nil && g.auth.apiKey == "" {
 		response.Body.Close()
 		if _, err := g.auth.refresh(startCtx, strings.TrimPrefix(credentials.headers.Get("Authorization"), "Bearer ")); err != nil {
 			stopStart()
@@ -83,30 +114,47 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 			return nil, errors.New("Grok retry after authentication refresh failed")
 		}
 	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		defer stopStart()
+		defer cancel()
+		body := newStreamIdleReadCloser(ctx, response.Body, 5*time.Second)
+		defer body.Close()
+		// Bound the complete error read, including a provider that drips bytes.
+		timer := time.AfterFunc(5*time.Second, func() { _ = body.Close() })
+		defer timer.Stop()
+		detail, readErr := io.ReadAll(io.LimitReader(body, maxUpstreamErrorDetailBytes+1))
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if readErr != nil {
+			detail = []byte("provider error body could not be read")
+		} else if len(detail) > maxUpstreamErrorDetailBytes {
+			detail = []byte("provider error body exceeds the 8 KiB limit")
+		}
+		return nil, newProviderHTTPError(label, response.StatusCode, detail, credentials.headers, headers)
+	}
 	if !stopStart() {
 		response.Body.Close()
 		cancel()
 		return nil, startCtx.Err()
 	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		response.Body.Close()
-		cancel()
-		// Error bodies can echo inputs or credentials. Return only status and a
-		// bounded router-owned diagnostic, never raw provider authentication errors.
-		return nil, fmt.Errorf("Grok returned HTTP %d; check Grok access and authentication", response.StatusCode)
-	}
 	var upstream io.ReadCloser = &cancelOnCloseReadCloser{body: response.Body, cancel: cancel}
 	if g.streamIdleTimeout > 0 {
 		upstream = newStreamIdleReadCloser(ctx, upstream, g.streamIdleTimeout)
 	}
+	var price *openCodePrice
+	if service != nil && service.snapshot != nil {
+		model, _ := tr.body["model"].(string)
+		price = new(service.snapshot.Models[service.prefix][model].Cost)
+	}
 	if !tr.stream {
-		result, err := tr.readGrokStream(upstream, func(map[string]any) error { return nil })
+		result, err := tr.readProviderStream(upstream, func(map[string]any) error { return nil })
 		if err != nil {
 			upstream.Close()
 			return nil, err
 		}
 		data := mustMarshalJSON(result)
-		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: &grokResponseBody{Reader: bytes.NewReader(data), close: upstream.Close}}, nil
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: &grokResponseBody{Reader: bytes.NewReader(data), close: upstream.Close, openCodePrice: price}}, nil
 	}
 	reader, writer := io.Pipe()
 	stopCancel := context.AfterFunc(ctx, func() { writer.CloseWithError(ctx.Err()) })
@@ -114,14 +162,14 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 	finished := make(chan struct{})
 	go func() {
 		defer close(finished)
-		_, err := tr.readGrokStream(upstream, func(event map[string]any) error {
+		_, err := tr.readProviderStream(upstream, func(event map[string]any) error {
 			_, err := fmt.Fprintf(writer, "event: %s\ndata: %s\n\n", event["type"], mustMarshalJSON(event))
 			return err
 		})
 		streamErr = err
 		writer.CloseWithError(err)
 	}()
-	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: &grokResponseBody{Reader: reader, terminalError: func() error {
+	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: &grokResponseBody{Reader: reader, openCodePrice: price, terminalError: func() error {
 		<-finished
 		return streamErr
 	}, close: func() error {
@@ -137,6 +185,7 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 type grokResponseBody struct {
 	io.Reader
 	close         func() error
+	openCodePrice *openCodePrice
 	terminalError func() error
 }
 

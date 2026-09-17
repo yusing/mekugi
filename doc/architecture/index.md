@@ -4,10 +4,12 @@ pjdoc:
   kind: architecture
   scope: root
   status: draft
-  revision: "46"
+  revision: "47"
   files:
     - journal.md
-    - subagents.md
+    - third_party.md
+    - grok.md
+    - opencode.md
     - commentary.md
     - mentor.md
     - ctp.md
@@ -32,7 +34,9 @@ collaborators without restating implementation.
 ## Inventory
 
 - [`CTR-JOURNAL-001`](journal.md): router-owned journal state and delivery
-- [`CTR-SUBAGENTS-001`](subagents.md): router-owned third-party provider bridge
+- [`CTR-THIRD-PARTY-001`](third_party.md): router-owned third-party provider bridge
+- [`CTR-GROK-001`](grok.md): Grok bridge ownership
+- [`CTR-OPENCODE-001`](opencode.md): OpenCode bridge ownership
 - [`CTR-COMMENTARY-001`](commentary.md): router-owned subagent commentary projection
 - [`CTR-MENTOR-001`](mentor.md): router-owned main and subagent model schedule
 - [`CTR-CTP-001`](ctp.md): router-owned compact provider representation

@@ -17,7 +17,7 @@ The authenticated broker, canonical ancestry collector, and thread-bound publish
 remain shared infrastructure. Journal authoring reuses them; other interpreters and passthrough
 do not gain a journal surface. Native collaboration schemas and provider-owned tool schemas
 remain outside generic journal projection, except for the separately owned opt-in
-[third-party native-agent bridge](subagents.md).
+[third-party native-agent bridge](third_party.md).
 
 Collaboration calls add no router-authored request notices. Codex owns the native spawn,
 follow-up, messaging, waiting, and interruption display; schemas, executed arguments, and

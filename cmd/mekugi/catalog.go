@@ -19,6 +19,10 @@ import (
 // The launched session uses a private static catalog instead of rereading the
 // provider-neutral models cache that other Codex processes can replace.
 func prepareGrokCatalog(ctx context.Context, executable, baseURL string, args []string) (directory, path string, err error) {
+	return prepareProviderCatalog(ctx, executable, baseURL, args, true, router.OpenCodeConfig{})
+}
+
+func prepareProviderCatalog(ctx context.Context, executable, baseURL string, args []string, grok bool, openCode router.OpenCodeConfig) (directory, path string, err error) {
 	overrides, cwd, err := catalogConfigArgs(args)
 	if err != nil {
 		return "", "", err
@@ -67,9 +71,9 @@ func prepareGrokCatalog(ctx context.Context, executable, baseURL string, args []
 	if waitErr != nil {
 		return "", "", fmt.Errorf("codex debug models failed: %w; check that Codex supports this command and its catalog configuration is valid", waitErr)
 	}
-	body, err = router.GrokModelCatalog(body)
+	body, err = router.ProviderModelCatalog(body, grok, openCode)
 	if err != nil {
-		return "", "", fmt.Errorf("prepare Grok model catalog: %w", err)
+		return "", "", fmt.Errorf("prepare provider model catalog: %w", err)
 	}
 	directory, err = os.MkdirTemp("", "mekugi-models-")
 	if err != nil {
@@ -105,7 +109,7 @@ func startCatalogProgress(ctx context.Context, output io.Writer, interactive boo
 		_, err := fmt.Fprintf(output, format, message)
 		return err
 	}
-	if err := render("mekugi: preparing Grok model catalog..."); err != nil {
+	if err := render("mekugi: preparing Grok/OpenCode model catalog..."); err != nil {
 		return func() error { return err }
 	}
 	done := make(chan struct{})
@@ -148,10 +152,10 @@ func catalogConfigArgs(args []string) (overrides []string, cwd string, err error
 			break
 		}
 		if arg == "--profile" || strings.HasPrefix(arg, "--profile=") || strings.HasPrefix(arg, "-p") {
-			return nil, "", errors.New("--grok does not support --profile: codex debug models cannot load named profiles; use the default configuration or -c model_catalog_json instead")
+			return nil, "", errors.New("third-party model catalogs (--grok or OpenCode) do not support --profile: codex debug models cannot load named profiles; use the default configuration or -c model_catalog_json instead")
 		}
 		if arg == "--ignore-user-config" || strings.HasPrefix(arg, "--ignore-user-config=") {
-			return nil, "", errors.New("--grok does not support --ignore-user-config: codex debug models cannot exclude user configuration")
+			return nil, "", errors.New("third-party model catalogs (--grok or OpenCode) do not support --ignore-user-config: codex debug models cannot exclude user configuration")
 		}
 		var kind, value string
 		switch {

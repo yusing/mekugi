@@ -9,7 +9,7 @@ scripts, and inline subagent activity. Codex keeps the sandbox, permissions,
 command sessions, and patch diff UI. No fork, no config edits, no daemon.
 
 [Features](#features) · [Install](#install) · [Usage](#usage) ·
-[Metrics](#metrics) · [Configuration](#configuration-and-troubleshooting) · [Documentation](#documentation)
+[Metrics](#metrics) · [Settings](#mekugi-settings) · [Troubleshooting](#configuration-and-troubleshooting) · [Documentation](#documentation)
 
 ## Features
 
@@ -29,8 +29,9 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
   not presented as a complete total.
 - **Inspect sessions in your browser.** A per-launch dashboard shows request
   metrics, token usage, compression, and cache diagnostics.
-- **Use [Grok models](#grok-models) alongside OpenAI models.** Opt in with `--grok`
-  and separate authentication.
+- **Use other providers alongside OpenAI models.** Enable [Grok](#grok-models)
+  with `--grok`, or configure [OpenCode Go or Zen](#opencode-go-and-zen) with an
+  API key.
 
 ### AX (agent experience)
 
@@ -162,7 +163,8 @@ Ctrl-C cancels preparation without launching Codex.
 
 The wrapper uses the fixed Codex ChatGPT upstream and overrides provider
 selection for that invocation only. Standalone serving, fixed ports, custom
-providers, and provider-selection arguments such as `--oss` are not supported.
+provider endpoints, and provider-selection arguments such as `--oss` are not supported.
+The built-in Grok and OpenCode routes use their own authentication.
 It also forces `include_collaboration_mode_instructions=false` for the invocation,
 so Codex does not inject collaboration-mode instructions, even if enabled in your
 config or command-line overrides. No configuration files are changed.
@@ -177,7 +179,7 @@ does not add steering to an older Codex client.
 Networks must allow secure WebSocket connections to ChatGPT. Mekugi also accepts
 HTTP/SSE clients and can fall back to HTTP for those requests when ChatGPT
 explicitly rejects the WebSocket upgrade. It never silently replays a dropped
-request or accepted steering. Grok provider requests remain on HTTP.
+request or accepted steering. Grok and OpenCode provider requests remain on HTTP.
 
 ### Options
 
@@ -223,8 +225,22 @@ OpenAI history remains unsupported.
 `--grok` cannot be combined with Codex's named `--profile` option or
 `exec --ignore-user-config`. Use the default configuration or an explicit
 `-c model_catalog_json=...` instead. See the
-[Grok model requirements](doc/spec/subagents.md) for catalog, search, and
+[Grok model requirements](doc/spec/grok.md) for catalog, search, and
 token-limit behavior.
+
+### OpenCode Go and Zen
+
+Set an API key, or use [Mekugi settings](#mekugi-settings).
+
+```sh
+export OPENCODE_GO_API_KEY='your-key'
+mekugi codex -m opencode-go:glm-5.3
+```
+
+```sh
+export OPENCODE_ZEN_API_KEY='your-key'
+mekugi codex -m opencode-zen:kimi-k3
+```
 
 ## How editing and execution work
 
@@ -407,6 +423,30 @@ sanitized and can contain private information from your instructions. Existing
 `--capture-output` and `--metrics-output` paths take precedence. Resuming with
 `--debug` records future requests; it cannot recover an earlier request that was
 not dumped. See the [feature evidence contract](doc/spec/router.md#feature-usage-debug-evidence).
+
+## Mekugi settings
+
+Create `mekugi/config.toml` beneath your user configuration directory:
+`$XDG_CONFIG_HOME` or `~/.config` on Linux, `~/Library/Application Support` on macOS.
+
+```toml
+[providers.opencode_go]
+api_key = "your-go-key"
+
+[providers.opencode_zen]
+api_key = "your-zen-key"
+```
+
+Use either section or both. `OPENCODE_API_KEY` overrides both file keys;
+`OPENCODE_GO_API_KEY` and `OPENCODE_ZEN_API_KEY` override their respective service.
+An explicitly empty environment value disables that service. Settings are read
+at startup; Mekugi never rewrites this file or Codex's configuration.
+
+OpenCode models, API formats, reasoning controls and prices refresh online with
+an hourly cache. Supported reasoning efforts are selectable normally; no `none`
+override is required. The model picker updates on the next launch. See the
+[provider contract](doc/spec/opencode.md) for cache behavior,
+supported APIs and history limitations.
 
 ## Configuration and troubleshooting
 

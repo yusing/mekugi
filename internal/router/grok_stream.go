@@ -16,34 +16,42 @@ import (
 )
 
 type grokChunk struct {
-	Model   string `json:"model"`
-	Choices []struct {
-		Index int `json:"index"`
-		Delta struct {
-			Content   string `json:"content"`
-			ToolCalls []struct {
-				Index    int    `json:"index"`
-				ID       string `json:"id"`
-				Function struct {
-					Name      string `json:"name"`
-					Arguments string `json:"arguments"`
-				} `json:"function"`
-			} `json:"tool_calls"`
-		} `json:"delta"`
-		FinishReason chat.FinishReason `json:"finish_reason"`
-	} `json:"choices"`
-	Usage *struct {
-		PromptTokens     int64 `json:"prompt_tokens"`
-		CompletionTokens int64 `json:"completion_tokens"`
-		ReasoningTokens  int64 `json:"reasoning_tokens"`
-		PromptDetails    struct {
-			CachedTokens int64 `json:"cached_tokens"`
-		} `json:"prompt_tokens_details"`
-		CompletionDetails struct {
-			ReasoningTokens int64 `json:"reasoning_tokens"`
-		} `json:"completion_tokens_details"`
-	} `json:"usage"`
-	Error json.RawMessage `json:"error"`
+	RetainedReasoning json.RawMessage `json:"_mekugi_reasoning"`
+	Model             string          `json:"model"`
+	Choices           []grokChoice    `json:"choices"`
+	Usage             *grokUsage      `json:"usage"`
+	Error             json.RawMessage `json:"error"`
+}
+type grokChoice struct {
+	Index        int               `json:"index"`
+	Delta        grokDelta         `json:"delta"`
+	FinishReason chat.FinishReason `json:"finish_reason"`
+}
+type grokDelta struct {
+	Refusal          string          `json:"refusal"`
+	ReasoningContent string          `json:"reasoning_content"`
+	Content          string          `json:"content"`
+	ToolCalls        []grokCallDelta `json:"tool_calls"`
+}
+type grokCallDelta struct {
+	Index    int    `json:"index"`
+	ID       string `json:"id"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+type grokUsage struct {
+	PromptTokens     int64 `json:"prompt_tokens"`
+	CompletionTokens int64 `json:"completion_tokens"`
+	ReasoningTokens  int64 `json:"reasoning_tokens"`
+	PromptDetails    struct {
+		CacheWriteTokens int64 `json:"cache_write_tokens"`
+		CachedTokens     int64 `json:"cached_tokens"`
+	} `json:"prompt_tokens_details"`
+	CompletionDetails struct {
+		ReasoningTokens int64 `json:"reasoning_tokens"`
+	} `json:"completion_tokens_details"`
 }
 type grokStreamCall struct {
 	id              string
@@ -53,7 +61,22 @@ type grokStreamCall struct {
 // readGrokStream produces ordinary Responses events. Tool arguments are held
 // until complete and validated, while text and content-free progress stream
 // immediately. EOF without [DONE] is never a successful completion.
-func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string]any) error) (result map[string]any, streamErr error) {
+func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string]any) error) (map[string]any, error) {
+	return tr.consumeProviderStream(func(consume func(grokChunk) error) error {
+		return readGrokChunks(reader, consume)
+	}, emit)
+}
+
+// consumeProviderStream owns validation and Responses emission for every
+// provider. Sources return nil only after their protocol's terminal marker.
+func (tr *grokTranslation) consumeProviderStream(source func(func(grokChunk) error) error, emit func(map[string]any) error) (result map[string]any, streamErr error) {
+	if tr.openCode != nil {
+		defer func() {
+			if diagnostic, ok := errors.AsType[*criticalDiagnosticError](streamErr); ok {
+				streamErr = staticCriticalDiagnostic(strings.Replace(diagnostic.code, "grok_", "opencode_", 1), strings.ReplaceAll(diagnostic.summary, "Grok", "OpenCode"))
+			}
+		}()
+	}
 	writeFailed := false
 	write := emit
 	emit = func(event map[string]any) error {
@@ -64,13 +87,30 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 	id := "resp_" + rand.Text()
 	messageID := "msg_" + rand.Text()
 	model := "grok-4.6"
+	if tr.openCode != nil {
+		model, _ = tr.body["model"].(string)
+	}
+	var retainedReasoning []any
+	reasoning := strings.Builder{}
+	refusal := false
+	textPart := func(value string) map[string]any {
+		if refusal {
+			return map[string]any{"type": "refusal", "refusal": value}
+		}
+		return map[string]any{"type": "output_text", "text": value, "annotations": []any{}}
+	}
+	textEvent := func(suffix string) string {
+		if refusal {
+			return "response.refusal." + suffix
+		}
+		return "response.output_text." + suffix
+	}
 	text := strings.Builder{}
 	calls := map[int]*grokStreamCall{}
 	var finish chat.FinishReason
 	var usage any
 	output := []any{}
 	messageStarted := false
-	done := false
 	response := func(status string) map[string]any {
 		r := map[string]any{"id": id, "object": "response", "status": status, "model": model, "output": output}
 		if usage != nil {
@@ -90,22 +130,30 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 			return
 		}
 		failed := response("failed")
-		failed["error"] = map[string]string{"code": diagnostic.code, "message": diagnostic.summary}
+		code, summary := diagnostic.code, diagnostic.summary
+		if tr.openCode != nil {
+			code = strings.Replace(code, "grok_", "opencode_", 1)
+			summary = strings.ReplaceAll(summary, "Grok", "OpenCode")
+		}
+		failed["error"] = map[string]string{"code": code, "message": summary}
 		if err := emit(map[string]any{"type": responseevents.Failed, "response": failed}); err != nil {
 			streamErr = errors.Join(streamErr, err)
 		}
 	}()
-	consume := func(data string) error {
-		if data == "[DONE]" {
-			done = true
-			return nil
-		}
-		var chunk grokChunk
-		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			return staticCriticalDiagnostic("grok_stream_invalid_json", "invalid JSON in Grok response stream")
-		}
+	consume := func(chunk grokChunk) error {
 		if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
 			return staticCriticalDiagnostic("grok_stream_provider_error", "Grok reported a streaming error")
+		}
+		if tr.openCode != nil && tr.format != "chat" && len(chunk.RetainedReasoning) > 0 {
+			var item map[string]any
+			if json.Unmarshal(chunk.RetainedReasoning, &item) != nil {
+				return openCodeStreamError("Invalid retained OpenCode reasoning")
+			}
+			model, _ := tr.body["model"].(string)
+			retainedReasoning = append(retainedReasoning, map[string]any{
+				"type": "reasoning", "id": "rs_" + rand.Text(), "summary": []any{},
+				"encrypted_content": sealOpenCodeReasoning(tr.openCode, model, chunk.RetainedReasoning),
+			})
 		}
 		if chunk.Model != "" {
 			model = chunk.Model
@@ -116,8 +164,11 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 				u.CompletionDetails.ReasoningTokens = u.ReasoningTokens
 			}
 			// xAI Chat counts reasoning separately from completion tokens; Responses includes it in output.
-			outputTokens := u.CompletionTokens + u.CompletionDetails.ReasoningTokens
-			usage = map[string]any{"input_tokens": u.PromptTokens, "output_tokens": outputTokens, "total_tokens": u.PromptTokens + outputTokens, "input_tokens_details": map[string]any{"cached_tokens": u.PromptDetails.CachedTokens}, "output_tokens_details": map[string]any{"reasoning_tokens": u.CompletionDetails.ReasoningTokens}}
+			outputTokens := u.CompletionTokens
+			if tr.openCode == nil {
+				outputTokens += u.CompletionDetails.ReasoningTokens
+			}
+			usage = map[string]any{"input_tokens": u.PromptTokens, "output_tokens": outputTokens, "total_tokens": u.PromptTokens + outputTokens, "input_tokens_details": map[string]any{"cached_tokens": u.PromptDetails.CachedTokens, "cache_write_tokens": u.PromptDetails.CacheWriteTokens}, "output_tokens_details": map[string]any{"reasoning_tokens": u.CompletionDetails.ReasoningTokens}}
 		}
 		textEmitted := false
 		for _, choice := range chunk.Choices {
@@ -132,20 +183,33 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 			if choice.FinishReason != "" {
 				finish = choice.FinishReason
 			}
-			if value := choice.Delta.Content; value != "" {
+			if tr.openCode != nil {
+				reasoning.WriteString(choice.Delta.ReasoningContent)
+			}
+			value := choice.Delta.Content
+			if choice.Delta.Refusal != "" {
+				if value != "" || (messageStarted && !refusal) {
+					return openCodeStreamError("Mixed text and refusal output is unsupported")
+				}
+				refusal = true
+				value = choice.Delta.Refusal
+			} else if value != "" && refusal {
+				return openCodeStreamError("Text followed a refusal output")
+			}
+			if value != "" {
 				if !messageStarted {
 					messageStarted = true
 					item := map[string]any{"type": "message", "id": messageID, "role": "assistant", "status": "in_progress", "phase": "final_answer", "content": []any{}}
 					if err := emit(map[string]any{"type": responseevents.OutputItemAdded, "output_index": 0, "item": item}); err != nil {
 						return err
 					}
-					if err := emit(map[string]any{"type": responseevents.ContentPartAdded, "item_id": messageID, "output_index": 0, "content_index": 0, "part": map[string]any{"type": "output_text", "text": "", "annotations": []any{}}}); err != nil {
+					if err := emit(map[string]any{"type": responseevents.ContentPartAdded, "item_id": messageID, "output_index": 0, "content_index": 0, "part": textPart("")}); err != nil {
 						return err
 					}
 				}
 				text.WriteString(value)
 				textEmitted = true
-				if err := emit(map[string]any{"type": responseevents.OutputTextDelta, "item_id": messageID, "output_index": 0, "content_index": 0, "delta": value}); err != nil {
+				if err := emit(map[string]any{"type": textEvent("delta"), "item_id": messageID, "output_index": 0, "content_index": 0, "delta": value}); err != nil {
 					return err
 				}
 			}
@@ -173,42 +237,8 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 		}
 		return nil
 	}
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 64<<10), upstreamJSONBufferBytes)
-	var data []string
-	budget := 0
-	for scanner.Scan() {
-		line := scanner.Text()
-		budget += len(line)
-		if budget > upstreamJSONBufferBytes {
-			return nil, staticCriticalDiagnostic("grok_stream_buffer_budget", "Grok response exceeds the router buffer budget")
-		}
-		if line == "" {
-			if len(data) > 0 {
-				if err := consume(strings.Join(data, "\n")); err != nil {
-					return nil, err
-				}
-				data = nil
-			}
-			if done {
-				break
-			}
-			continue
-		}
-		if value, ok := strings.CutPrefix(line, "data:"); ok {
-			data = append(data, strings.TrimPrefix(value, " "))
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read Grok stream: %w", forwardCriticalDiagnostic(err))
-	}
-	if !done && len(data) > 0 {
-		if err := consume(strings.Join(data, "\n")); err != nil {
-			return nil, err
-		}
-	}
-	if !done {
-		return nil, staticCriticalDiagnostic("grok_stream_missing_done", "Grok stream ended without [DONE]")
+	if err := source(consume); err != nil {
+		return nil, err
 	}
 	status := finish.ResponseStatus()
 	if status == "" {
@@ -221,14 +251,18 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 		return nil, staticCriticalDiagnostic("grok_stream_incomplete_calls", "Grok tool arguments were not completed")
 	}
 	if messageStarted {
-		part := map[string]any{"type": "output_text", "text": text.String(), "annotations": []any{}}
+		part := textPart(text.String())
 		item := map[string]any{"type": "message", "id": messageID, "role": "assistant", "status": "completed", "phase": "final_answer", "content": []any{part}}
 		if len(calls) > 0 {
 			item["phase"] = "commentary"
 		}
 		output = append(output, item)
+		doneField := "text"
+		if refusal {
+			doneField = "refusal"
+		}
 		for _, event := range []map[string]any{
-			{"type": responseevents.OutputTextDone, "item_id": messageID, "output_index": 0, "content_index": 0, "text": text.String()},
+			{"type": textEvent("done"), "item_id": messageID, "output_index": 0, "content_index": 0, doneField: text.String()},
 			{"type": responseevents.ContentPartDone, "item_id": messageID, "output_index": 0, "content_index": 0, "part": part},
 			{"type": responseevents.OutputItemDone, "output_index": 0, "item": item},
 		} {
@@ -276,6 +310,27 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 		}
 		callItems = append(callItems, item)
 	}
+	if reasoning.Len() > 0 {
+		index := len(output)
+		item := map[string]any{"type": "reasoning", "id": "rs_" + rand.Text(), "summary": []any{
+			map[string]string{"type": "summary_text", "text": reasoning.String()},
+		}}
+		output = append(output, item)
+		for _, kind := range []string{responseevents.OutputItemAdded, responseevents.OutputItemDone} {
+			if err := emit(map[string]any{"type": kind, "output_index": index, "item": item}); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for _, item := range retainedReasoning {
+		index := len(output)
+		output = append(output, item)
+		for _, kind := range []string{responseevents.OutputItemAdded, responseevents.OutputItemDone} {
+			if err := emit(map[string]any{"type": kind, "output_index": index, "item": item}); err != nil {
+				return nil, err
+			}
+		}
+	}
 	for _, item := range callItems {
 		index := len(output)
 		output = append(output, item)
@@ -311,4 +366,57 @@ func (tr *grokTranslation) readGrokStream(reader io.Reader, emit func(map[string
 		return nil, err
 	}
 	return result, nil
+}
+
+func readGrokChunks(reader io.Reader, consume func(grokChunk) error) error {
+	done := false
+	decode := func(data string) error {
+		if data == "[DONE]" {
+			done = true
+			return nil
+		}
+		var chunk grokChunk
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			return staticCriticalDiagnostic("grok_stream_invalid_json", "invalid JSON in Grok response stream")
+		}
+		return consume(chunk)
+	}
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 64<<10), upstreamJSONBufferBytes)
+	var data []string
+	budget := 0
+	for scanner.Scan() {
+		line := scanner.Text()
+		budget += len(line)
+		if budget > upstreamJSONBufferBytes {
+			return staticCriticalDiagnostic("grok_stream_buffer_budget", "Grok response exceeds the router buffer budget")
+		}
+		if line == "" {
+			if len(data) > 0 {
+				if err := decode(strings.Join(data, "\n")); err != nil {
+					return err
+				}
+				data = nil
+			}
+			if done {
+				break
+			}
+			continue
+		}
+		if value, ok := strings.CutPrefix(line, "data:"); ok {
+			data = append(data, strings.TrimPrefix(value, " "))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("read Grok stream: %w", forwardCriticalDiagnostic(err))
+	}
+	if !done && len(data) > 0 {
+		if err := decode(strings.Join(data, "\n")); err != nil {
+			return err
+		}
+	}
+	if !done {
+		return staticCriticalDiagnostic("grok_stream_missing_done", "Grok stream ended without [DONE]")
+	}
+	return nil
 }

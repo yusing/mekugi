@@ -47,7 +47,7 @@ func (e *webSocketExchange) reconcileProviderHistory(request *parsedResponsesReq
 	request.cachedInput = 0
 	request.rebaseInput = false
 	e.reconciliationReason = "full_request"
-	if isGrokModel(request.model()) {
+	if isChatCompletionsModel(request.model()) {
 		e.reconciliationReason = "stateless_provider"
 		return nil
 	}

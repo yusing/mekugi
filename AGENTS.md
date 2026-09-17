@@ -58,7 +58,7 @@ The linked contracts own interface-specific details, exceptions, and acceptance 
   user configuration and instructions untouched.
   Before Codex starts, the wrapper owns cancellation and startup feedback. Once Codex owns
   the terminal, preserve its signal handling and stop startup rendering.
-  See [plugins](doc/spec/plugin.md), [subagents](doc/spec/subagents.md), and [launch](doc/spec/router.md).
+  See [plugins](doc/spec/plugin.md), [third-party providers](doc/spec/third_party.md), and [launch](doc/spec/router.md).
 - **Filesystem authority:** Normal router translation uses the selected metadata directory,
   never router cwd, and does not impose the root library's confinement boundary. Without a
   selected directory, relative operands reject. Do not add workspace selectors, rebasing, or
@@ -91,7 +91,7 @@ The linked contracts own interface-specific details, exceptions, and acceptance 
   and content out of sanitized metrics, and credentials separated by provider. Explicit diagnostic
   artifacts have their own documented content and startup-failure contracts.
   See [commentary](doc/spec/commentary.md), [metrics](doc/spec/metrics.md),
-  [debug artifacts](doc/spec/router.md), and [provider isolation](doc/spec/subagents.md).
+  [debug artifacts](doc/spec/router.md), and [provider isolation](doc/spec/third_party.md).
 - **Evidence over apparent success:** Judge correctness by actual results, path scope, and required
   graders, not model prose, transcript labels, or reference-patch similarity. Provider usage owns
   model-consumption claims; local token estimates and transport expansion are different measures.

@@ -167,7 +167,7 @@ func TestGrokCatalogRejectsNamedProfiles(t *testing.T) {
 		{"exec", "--profile=work", "prompt"}, {"-pwork"}, {"-p=work"}, {"-p"}, {"--profile"},
 	} {
 		_, _, err := catalogConfigArgs(args)
-		if err == nil || !strings.Contains(err.Error(), "--grok does not support --profile") {
+		if err == nil || !strings.Contains(err.Error(), "do not support --profile") {
 			t.Fatalf("accepted named profile %v: %v", args, err)
 		}
 	}
@@ -225,7 +225,7 @@ func TestGrokCatalogRejectsIgnoreUserConfigBeforeBootstrap(t *testing.T) {
 		{"exec", "--ignore-user-config=true", "prompt"},
 	} {
 		_, _, err := prepareGrokCatalog(t.Context(), executable, "http://127.0.0.1:12345/v1", args)
-		if err == nil || !strings.Contains(err.Error(), "--grok does not support --ignore-user-config") {
+		if err == nil || !strings.Contains(err.Error(), "do not support --ignore-user-config") {
 			t.Fatalf("did not reject configuration selector before bootstrap: %v", err)
 		}
 	}
@@ -270,7 +270,7 @@ func TestCatalogProgressOutput(t *testing.T) {
 			if !errors.Is(err, context.DeadlineExceeded) {
 				t.Fatalf("timeout result: %v", err)
 			}
-			if !interactive && !strings.Contains(body, "preparing Grok model catalog") {
+			if !interactive && !strings.Contains(body, "preparing Grok/OpenCode model catalog") {
 				t.Fatalf("missing preparation feedback: %q", body)
 			}
 			if interactive {
