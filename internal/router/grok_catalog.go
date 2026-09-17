@@ -67,14 +67,14 @@ func ProviderModelCatalog(body []byte, grok bool, openCode OpenCodeConfig) ([]by
 			slug := service.prefix + ":" + definition.id
 			for key, value := range map[string]any{
 				"slug": slug, "display_name": slug,
-				"description":    service.description(definition.id),
-				"context_window": definition.context, "max_context_window": definition.context,
-				"default_reasoning_level": nil, "supported_reasoning_levels": service.reasoningLevels(definition.id),
-				"input_modalities": definition.modalities,
+				"description":    definition.Description,
+				"context_window": definition.Context, "max_context_window": definition.Context,
+				"default_reasoning_level": nil, "supported_reasoning_levels": definition.reasoningLevels(),
+				"input_modalities": definition.Modalities,
 			} {
 				entry[key] = mustMarshalJSON(value)
 			}
-			if definition.context == 0 {
+			if definition.Context == 0 {
 				entry["context_window"] = json.RawMessage("null")
 				entry["max_context_window"] = json.RawMessage("null")
 			}

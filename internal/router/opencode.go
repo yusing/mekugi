@@ -38,9 +38,8 @@ func (c OpenCodeConfig) services() []openCodeService {
 }
 
 type openCodeModel struct {
-	id         string
-	context    int
-	modalities []string
+	id string
+	openCodeMetadata
 }
 
 // The gateway enforces each model's endpoint format; it does not translate
@@ -68,42 +67,24 @@ func (s openCodeService) models() []openCodeModel {
 	for _, id := range slices.Sorted(maps.Keys(snapshot.Models[s.prefix])) {
 		entry := snapshot.Models[s.prefix][id]
 		if entry.Format != "" {
-			models = append(models, openCodeModel{id: id, context: entry.Context, modalities: entry.Modalities})
+			models = append(models, openCodeModel{id: id, openCodeMetadata: entry})
 		}
 	}
 	return models
 }
 
-func (s openCodeService) model(id string) (openCodeModel, bool) {
-	if snapshot := s.pin().snapshot; snapshot != nil {
-		entry, ok := snapshot.Models[s.prefix][id]
-		return openCodeModel{id: id, context: entry.Context, modalities: entry.Modalities}, ok
-	}
-	for _, model := range s.models() {
-		if model.id == id {
-			return model, true
-		}
-	}
-	return openCodeModel{}, false
-}
-
-func (s openCodeService) description(id string) string {
-	if snapshot := s.pin().snapshot; snapshot != nil {
-		return snapshot.Models[s.prefix][id].Description
-	}
-	return ""
+func (s openCodeService) model(id string) (openCodeMetadata, bool) {
+	entry, ok := s.pin().snapshot.Models[s.prefix][id]
+	return entry, ok
 }
 
 func (s openCodeService) efforts(id string) []string {
-	if snapshot := s.pin().snapshot; snapshot != nil {
-		return snapshot.Models[s.prefix][id].Efforts
-	}
-	return nil
+	return s.pin().snapshot.Models[s.prefix][id].Efforts
 }
 
-func (s openCodeService) reasoningLevels(id string) []map[string]string {
+func (m openCodeMetadata) reasoningLevels() []map[string]string {
 	levels := []map[string]string{}
-	for _, effort := range s.efforts(id) {
+	for _, effort := range m.Efforts {
 		levels = append(levels, map[string]string{"effort": effort, "description": effort + " reasoning"})
 	}
 	return levels

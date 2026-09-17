@@ -351,7 +351,16 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 // writeFile publishes an already-validated record. Callers retain their lock,
 // schema, identity, and quota policies; all records share the durability sequence.
 func (s *mekugiReplayStore) writeFile(name, pattern string, data []byte) error {
-	f, err := os.CreateTemp(s.directory, pattern)
+	if err := writeAtomicFile(filepath.Join(s.directory, name), pattern, data, true); err != nil {
+		return err
+	}
+	return syncReplayDirectory(s.directory)
+}
+
+// writeAtomicFile publishes in the destination directory. Durability beyond
+// the file itself (directory sync), quotas, and locks remain caller-owned.
+func writeAtomicFile(path, pattern string, data []byte, syncFile bool) error {
+	f, err := os.CreateTemp(filepath.Dir(path), pattern)
 	if err != nil {
 		return err
 	}
@@ -359,16 +368,15 @@ func (s *mekugiReplayStore) writeFile(name, pattern string, data []byte) error {
 	if _, err = f.Write(data); err != nil {
 		return err
 	}
-	if err = f.Sync(); err != nil {
-		return err
+	if syncFile {
+		if err = f.Sync(); err != nil {
+			return err
+		}
 	}
 	if err = f.Close(); err != nil {
 		return err
 	}
-	if err = os.Rename(f.Name(), filepath.Join(s.directory, name)); err != nil {
-		return err
-	}
-	return syncReplayDirectory(s.directory)
+	return os.Rename(f.Name(), path)
 }
 
 func syncReplayDirectory(directory string) error {

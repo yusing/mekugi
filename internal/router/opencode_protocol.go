@@ -46,179 +46,117 @@ func restoreOpenCodeReasoning(service *openCodeService, model, value string) (ma
 	return nil, errors.New("invalid retained OpenCode reasoning type")
 }
 
-func (tr *grokTranslation) convertOpenCodeRequest() error {
-	anthropic := tr.format == "anthropic"
-	body := map[string]any{"model": tr.body["model"], "stream": true}
-	if anthropic {
-		// Messages requires a limit. This is a generation ceiling, not a claim
-		// about consumption; callers may provide a smaller total-output limit.
-		body["max_tokens"] = 32768
-		if limit, ok := tr.body["max_output_tokens"]; ok {
-			body["max_tokens"] = limit
-		}
-	} else {
-		body["store"] = false
-		body["include"] = []string{"reasoning.encrypted_content"}
-		if limit, ok := tr.body["max_output_tokens"]; ok {
-			body["max_output_tokens"] = limit
-		}
-	}
-	if effort, ok := tr.body["reasoning_effort"].(string); ok {
-		if anthropic {
-			body["output_config"] = map[string]string{"effort": effort}
-		} else {
-			body["reasoning"] = map[string]string{"effort": effort}
-		}
-	}
-	for _, key := range []string{"temperature", "top_p"} {
-		if value, ok := tr.body[key]; ok {
-			body[key] = value
-		}
-	}
-	var tools []any
-	for _, raw := range rangeTools(tr.body["tools"]) {
-		fn := raw["function"].(map[string]any)
-		tool := map[string]any{"name": fn["name"], "description": fn["description"]}
-		if anthropic {
-			tool["input_schema"] = fn["parameters"]
-		} else {
-			tool["type"] = "function"
-			tool["parameters"] = fn["parameters"]
-			if strict, ok := fn["strict"]; ok {
-				tool["strict"] = strict
+// providerMessage retains validated history independently of any endpoint's
+// request envelope. Only the final builder groups it into wire messages.
+type providerMessage struct {
+	role      string
+	content   any
+	callID    string
+	calls     []providerCall
+	retained  []any
+	reasoning string
+}
+
+type providerCall struct {
+	id, name, arguments string
+}
+
+func (tr *grokTranslation) writeProviderMessages(history []providerMessage) error {
+	messages := []map[string]any{}
+	var input, system []any
+	for _, message := range history {
+		role := message.role
+		if tr.format == "" || tr.format == "chat" {
+			wire := map[string]any{"role": role, "content": message.content}
+			if role == "tool" {
+				wire["tool_call_id"] = message.callID
 			}
-		}
-		tools = append(tools, tool)
-	}
-	if len(tools) > 0 {
-		body["tools"] = tools
-	}
-	if choice, ok := tr.body["tool_choice"]; ok {
-		switch choice := choice.(type) {
-		case string:
-			if anthropic {
-				kind := choice
-				if kind == "required" {
-					kind = "any"
+			for _, call := range message.calls {
+				calls, _ := wire["tool_calls"].([]any)
+				wire["tool_calls"] = append(calls, map[string]any{
+					"id": call.id, "type": "function",
+					"function": map[string]any{"name": call.name, "arguments": call.arguments},
+				})
+			}
+			if message.reasoning != "" {
+				wire["reasoning_content"] = message.reasoning
+			}
+			if parts, ok := message.content.([]any); ok {
+				kept := make([]any, 0, len(parts))
+				for _, part := range parts {
+					fields, ok := part.(map[string]any)
+					if ok && fields["type"] == "refusal" {
+						if role != "assistant" {
+							return errors.New("refusal history must belong to an assistant")
+						}
+						wire["refusal"] = fields["refusal"]
+					} else {
+						kept = append(kept, part)
+					}
 				}
-				body["tool_choice"] = map[string]any{"type": kind}
-			} else {
-				body["tool_choice"] = choice
+				wire["content"] = kept
+				if len(kept) == 0 {
+					wire["content"] = nil
+				}
 			}
-		case map[string]any:
-			name := choice["function"].(map[string]string)["name"]
-			if anthropic {
-				body["tool_choice"] = map[string]any{"type": "tool", "name": name}
-			} else {
-				body["tool_choice"] = map[string]any{"type": "function", "name": name}
-			}
+			messages = append(messages, wire)
+			continue
 		}
-	}
-	if parallel, ok := tr.body["parallel_tool_calls"]; ok {
-		if anthropic {
-			var enabled bool
-			if err := json.Unmarshal(mustMarshalJSON(parallel), &enabled); err != nil {
-				return errors.New("invalid OpenCode parallel tool setting")
-			}
-			choice, _ := body["tool_choice"].(map[string]any)
-			if choice == nil {
-				choice = map[string]any{"type": "auto"}
-			}
-			choice["disable_parallel_tool_use"] = !enabled
-			body["tool_choice"] = choice
-		} else {
-			body["parallel_tool_calls"] = parallel
-		}
-	}
-	if format, ok := tr.body["response_format"]; ok {
-		var settings map[string]any
-		if err := json.Unmarshal(mustMarshalJSON(format), &settings); err != nil {
-			return errors.New("invalid OpenCode output format")
-		}
-		if settings["type"] == "json_schema" {
-			schema := settings["json_schema"].(map[string]any)
-			if anthropic {
-				body["output_config"] = map[string]any{"format": map[string]any{"type": "json_schema", "schema": schema["schema"]}}
-			} else {
-				schema["type"] = "json_schema"
-				body["text"] = map[string]any{"format": schema}
-			}
-		} else if anthropic {
-			return errors.New("OpenCode Messages requires a JSON schema for structured output")
-		} else {
-			body["text"] = map[string]any{"format": settings}
-		}
-	}
-	var messages, system []any
-	for _, message := range tr.body["messages"].([]map[string]any) {
-		role := message["role"].(string)
-		content, err := openCodeContent(message["content"], tr.format, role)
+
+		content, err := openCodeContent(message.content, tr.format, role)
 		if err != nil {
 			return err
 		}
-		retained, _ := message["_opencode_reasoning"].([]any)
-		if reasoning, _ := message["reasoning_content"].(string); reasoning != "" {
+		if message.reasoning != "" {
 			return incompatibleRequest("opencode_encrypted_history", "Changing OpenCode API formats requires a fresh thread; unsigned reasoning cannot replace provider replay data.")
 		}
-		if anthropic {
+		if tr.format == "anthropic" {
 			if role == "system" {
 				system = append(system, content...)
 				continue
 			}
-			blocks := append(retained, content...)
+			blocks := append(message.retained, content...)
 			if role == "tool" {
 				role = "user"
-				blocks = []any{map[string]any{"type": "tool_result", "tool_use_id": message["tool_call_id"], "content": content}}
+				blocks = []any{map[string]any{"type": "tool_result", "tool_use_id": message.callID, "content": content}}
 			}
-			for _, call := range rangeTools(message["tool_calls"]) {
-				fn := call["function"].(map[string]any)
-				var input jsontext.Value = []byte(fn["arguments"].(string))
-				if input.Kind() != '{' {
+			for _, call := range message.calls {
+				arguments := jsontext.Value(call.arguments)
+				if arguments.Kind() != '{' {
 					return errors.New("OpenCode Messages tool arguments must be JSON objects")
 				}
-				blocks = append(blocks, map[string]any{"type": "tool_use", "id": call["id"], "name": fn["name"], "input": input})
+				blocks = append(blocks, map[string]any{"type": "tool_use", "id": call.id, "name": call.name, "input": arguments})
 			}
-			// Anthropic requires parallel tool results in one user message.
-			if len(messages) > 0 && messages[len(messages)-1].(map[string]any)["role"] == role {
-				last := messages[len(messages)-1].(map[string]any)
+			// Messages requires parallel tool results in one user message.
+			if len(messages) > 0 && messages[len(messages)-1]["role"] == role {
+				last := messages[len(messages)-1]
 				last["content"] = append(last["content"].([]any), blocks...)
 			} else {
 				messages = append(messages, map[string]any{"role": role, "content": blocks})
 			}
 		} else {
-			messages = append(messages, retained...)
+			input = append(input, message.retained...)
 			if role == "tool" {
-				messages = append(messages, map[string]any{"type": "function_call_output", "call_id": message["tool_call_id"], "output": content})
+				input = append(input, map[string]any{"type": "function_call_output", "call_id": message.callID, "output": content})
 				continue
 			}
 			if len(content) > 0 {
-				messages = append(messages, map[string]any{"type": "message", "role": role, "content": content})
+				input = append(input, map[string]any{"type": "message", "role": role, "content": content})
 			}
-			for _, call := range rangeTools(message["tool_calls"]) {
-				fn := call["function"].(map[string]any)
-				messages = append(messages, map[string]any{"type": "function_call", "call_id": call["id"], "name": fn["name"], "arguments": fn["arguments"]})
+			for _, call := range message.calls {
+				input = append(input, map[string]any{"type": "function_call", "call_id": call.id, "name": call.name, "arguments": call.arguments})
 			}
 		}
 	}
-	if anthropic {
-		body["messages"] = messages
-		if len(system) > 0 {
-			body["system"] = system
-		}
+	if tr.format == "responses" {
+		tr.body["input"] = input
 	} else {
-		body["input"] = messages
+		tr.body["messages"] = messages
+		if len(system) > 0 {
+			tr.body["system"] = system
+		}
 	}
-	tr.body = body
 	return nil
-}
-
-func rangeTools(value any) []map[string]any {
-	items, _ := value.([]any)
-	result := make([]map[string]any, 0, len(items))
-	for _, item := range items {
-		result = append(result, item.(map[string]any))
-	}
-	return result
 }
 
 func openCodeContent(value any, format, role string) ([]any, error) {

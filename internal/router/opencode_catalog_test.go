@@ -104,7 +104,7 @@ func TestOpenCodeOnlineCatalogRefresh(t *testing.T) {
 		t.Fatalf("fetches = %d", requests.Load())
 	}
 	model, ok := service.model("brand-new")
-	if !ok || model.context != 123456 || strings.Join(model.modalities, ",") != "text,image" || service.format("brand-new") != "chat" {
+	if !ok || model.Context != 123456 || strings.Join(model.Modalities, ",") != "text,image" || service.format("brand-new") != "chat" {
 		t.Fatalf("new metadata unavailable: %+v", model)
 	}
 	if _, ok := service.model("glm-5.3"); ok {
@@ -396,7 +396,7 @@ func TestOpenCodeMetadataReasoningEffort(t *testing.T) {
 				case "chat":
 					got = tr.body["reasoning_effort"]
 				case "anthropic":
-					if config, ok := tr.body["output_config"].(map[string]string); ok {
+					if config, ok := tr.body["output_config"].(map[string]any); ok {
 						got = config["effort"]
 					}
 				case "responses":

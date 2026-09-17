@@ -209,9 +209,10 @@ models and fresh-context requirements are included in the native spawn descripti
 Reasoning effort choices come from each model's online `reasoning_options` effort
 values. The native catalog exposes those choices without inventing a default.
 Supported explicit efforts pass unchanged as Chat `reasoning_effort`, Responses
-`reasoning.effort`, or Messages `output_config.effort`. An absent effort, or an
-inherited value the selected model does not support, leaves provider defaults alone;
-users never need to clear a Codex setting manually. `none` is forwarded only when
+`reasoning.effort`, or Messages `output_config.effort`. Reasoning effort and
+structured output may be requested together; neither setting replaces the other.
+An absent effort, or an inherited value the selected model does not support, leaves
+provider defaults alone; users never need to clear a Codex setting manually. `none` is forwarded only when
 the provider advertises it, not used as a universal sentinel. Toggle-only and
 token-budget-only controls are not presented as effort settings. Reasoning
 received as `delta.reasoning_content` is retained as plaintext Responses reasoning

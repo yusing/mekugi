@@ -332,7 +332,7 @@ func TestOpenCodeInheritedReasoningEffort(t *testing.T) {
 	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
 	model := ""
 	for _, candidate := range service.models() {
-		if len(service.efforts(candidate.id)) == 0 && service.format(candidate.id) == "chat" {
+		if len(candidate.Efforts) == 0 && candidate.Format == "chat" {
 			model = candidate.id
 			break
 		}

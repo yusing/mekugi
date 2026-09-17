@@ -341,17 +341,7 @@ func (c *openCodeCatalog) save(snapshot *openCodeSnapshot) error {
 	if err != nil {
 		return err
 	}
-	file, err := os.CreateTemp(filepath.Dir(c.path), ".opencode-models-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(file.Name())
-	_, writeErr := file.Write(data)
-	err = errors.Join(writeErr, file.Close())
-	if err != nil {
-		return err
-	}
-	return os.Rename(file.Name(), c.path)
+	return writeAtomicFile(c.path, ".opencode-models-*", data, false)
 }
 
 // Explicit context tiers supersede the legacy 200k field. Unknown tier types

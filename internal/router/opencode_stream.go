@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
-	"fmt"
 	"io"
+	"math"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/chat"
 )
 
 // Normalize endpoint-specific framing into the existing Chat stream validator.
@@ -15,33 +17,15 @@ func (tr *grokTranslation) readProviderStream(upstream io.ReadCloser, emit func(
 	if tr.openCode == nil || tr.format == "chat" {
 		return tr.readGrokStream(upstream, emit)
 	}
-	reader, writer := io.Pipe()
-	finished := make(chan struct{})
-	go func() {
-		defer close(finished)
-		send := func(chunk map[string]any) error {
-			_, err := fmt.Fprintf(writer, "data: %s\n\n", mustMarshalJSON(chunk))
-			return err
-		}
-		var err error
+	result, err := tr.consumeProviderStream(func(send func(grokChunk) error) error {
 		if tr.format == "anthropic" {
-			err = normalizeAnthropicStream(upstream, send)
-		} else {
-			err = normalizeResponsesStream(upstream, send)
+			return normalizeAnthropicStream(upstream, send)
 		}
-		if err == nil {
-			_, err = io.WriteString(writer, "data: [DONE]\n\n")
-		}
-		writer.CloseWithError(err)
-	}()
-	result, err := tr.readGrokStream(reader, emit)
-	reader.Close()
-	// Also release a normalizer blocked on provider input if validation or the
-	// downstream writer failed. Closing only the pipe cannot unblock that read.
+		return normalizeResponsesStream(upstream, send)
+	}, emit)
 	if err != nil {
 		upstream.Close()
 	}
-	<-finished
 	return result, err
 }
 
@@ -86,12 +70,39 @@ func readOpenCodeSSE(reader io.Reader, consume func([]byte) (bool, error)) error
 	return openCodeStreamError("OpenCode stream ended without its terminal event")
 }
 
-func openCodeDelta(delta map[string]any) map[string]any {
-	return map[string]any{"choices": []any{map[string]any{"index": 0, "delta": delta}}}
+func openCodeDelta(delta grokDelta) grokChunk {
+	return grokChunk{Choices: []grokChoice{{Delta: delta}}}
 }
 
-func openCodeFinish(reason string) map[string]any {
-	return map[string]any{"choices": []any{map[string]any{"index": 0, "finish_reason": reason}}}
+func openCodeText(text string, refusal bool) grokChunk {
+	if refusal {
+		return openCodeDelta(grokDelta{Refusal: text})
+	}
+	return openCodeDelta(grokDelta{Content: text})
+}
+
+func openCodeCall(index int, id, name, arguments string) grokChunk {
+	call := grokCallDelta{Index: index, ID: id}
+	call.Function.Name, call.Function.Arguments = name, arguments
+	return openCodeDelta(grokDelta{ToolCalls: []grokCallDelta{call}})
+}
+
+func openCodeFinish(reason string) grokChunk {
+	return grokChunk{Choices: []grokChoice{{FinishReason: chat.FinishReason(reason)}}}
+}
+
+// Keep the signed-count bounds previously enforced by decoding the synthetic
+// Chat wire payload. Provider usage can be unsigned; the shared consumer is not.
+func openCodeUsage(input, output, cached, written, reasoning uint64) (*grokUsage, error) {
+	for _, count := range []uint64{input, output, cached, written, reasoning} {
+		if count > math.MaxInt64 {
+			return nil, staticCriticalDiagnostic("grok_stream_invalid_json", "invalid JSON in Grok response stream")
+		}
+	}
+	usage := &grokUsage{PromptTokens: int64(input), CompletionTokens: int64(output)}
+	usage.PromptDetails.CachedTokens, usage.PromptDetails.CacheWriteTokens = int64(cached), int64(written)
+	usage.CompletionDetails.ReasoningTokens = int64(reasoning)
+	return usage, nil
 }
 
 type anthropicStreamBlock struct {
@@ -102,7 +113,7 @@ type anthropicStreamBlock struct {
 	arguments strings.Builder
 }
 
-func normalizeAnthropicStream(reader io.Reader, send func(map[string]any) error) error {
+func normalizeAnthropicStream(reader io.Reader, send func(grokChunk) error) error {
 	blocks := map[int]*anthropicStreamBlock{}
 	started := false
 	nextBlock, nextTool := 0, 0
@@ -155,7 +166,7 @@ func normalizeAnthropicStream(reader io.Reader, send func(map[string]any) error)
 			if err := mergeUsage(event.Message.Usage); err != nil {
 				return false, err
 			}
-			return false, send(map[string]any{"model": event.Message.Model})
+			return false, send(grokChunk{Model: event.Message.Model})
 		}
 		if !started || (finish != "" && event.Type != "message_stop") {
 			return false, openCodeStreamError("OpenCode Messages event outside an active message")
@@ -173,7 +184,7 @@ func normalizeAnthropicStream(reader io.Reader, send func(map[string]any) error)
 				text := textField(block.raw, "text")
 				block.text.WriteString(text)
 				if text != "" {
-					return false, send(openCodeDelta(map[string]any{"content": text}))
+					return false, send(openCodeDelta(grokDelta{Content: text}))
 				}
 			case "thinking":
 				block.text.WriteString(textField(block.raw, "thinking"))
@@ -192,7 +203,7 @@ func normalizeAnthropicStream(reader io.Reader, send func(map[string]any) error)
 			case kind == "text_delta" && block.kind == "text":
 				text := textField(event.Delta, "text")
 				block.text.WriteString(text)
-				return false, send(openCodeDelta(map[string]any{"content": text}))
+				return false, send(openCodeDelta(grokDelta{Content: text}))
 			case kind == "thinking_delta" && block.kind == "thinking":
 				block.text.WriteString(textField(event.Delta, "thinking"))
 			case kind == "signature_delta" && block.kind == "thinking":
@@ -216,16 +227,13 @@ func normalizeAnthropicStream(reader io.Reader, send func(map[string]any) error)
 						block.raw["signature"] = mustMarshalJSON(block.signature.String())
 					}
 				}
-				return false, send(map[string]any{"_mekugi_reasoning": block.raw})
+				return false, send(grokChunk{RetainedReasoning: mustMarshalJSON(block.raw)})
 			case "tool_use":
 				arguments := block.arguments.String()
 				if arguments == "" {
 					arguments = string(block.raw["input"])
 				}
-				chunk := openCodeDelta(map[string]any{"tool_calls": []any{map[string]any{
-					"index": nextTool, "id": textField(block.raw, "id"),
-					"function": map[string]any{"name": textField(block.raw, "name"), "arguments": arguments},
-				}}})
+				chunk := openCodeCall(nextTool, textField(block.raw, "id"), textField(block.raw, "name"), arguments)
 				nextTool++
 				return false, send(chunk)
 			}
@@ -265,10 +273,11 @@ func normalizeAnthropicStream(reader io.Reader, send func(map[string]any) error)
 				if ^uint64(0)-input < cached || ^uint64(0)-input-cached < written {
 					return false, openCodeStreamError("Invalid OpenCode token counts")
 				}
-				if err := send(map[string]any{"usage": map[string]any{
-					"prompt_tokens": input + cached + written, "completion_tokens": output,
-					"prompt_tokens_details": map[string]any{"cached_tokens": cached, "cache_write_tokens": written},
-				}}); err != nil {
+				counts, err := openCodeUsage(input+cached+written, output, cached, written, 0)
+				if err != nil {
+					return false, err
+				}
+				if err := send(grokChunk{Usage: counts}); err != nil {
 					return false, err
 				}
 			}
@@ -277,11 +286,11 @@ func normalizeAnthropicStream(reader io.Reader, send func(map[string]any) error)
 			return false, openCodeStreamError("Unsupported OpenCode Messages event")
 		}
 		// Non-text progress still reaches the shared stream reader.
-		return false, send(map[string]any{})
+		return false, send(grokChunk{})
 	})
 }
 
-func normalizeResponsesStream(reader io.Reader, send func(map[string]any) error) error {
+func normalizeResponsesStream(reader io.Reader, send func(grokChunk) error) error {
 	texts := map[int]string{}
 	refusals := map[int]bool{}
 	items := map[int]jsontext.Value{}
@@ -301,7 +310,7 @@ func normalizeResponsesStream(reader io.Reader, send func(map[string]any) error)
 		_ = json.Unmarshal(item["type"], &kind)
 		switch kind {
 		case "reasoning":
-			if err := send(map[string]any{"_mekugi_reasoning": item}); err != nil {
+			if err := send(grokChunk{RetainedReasoning: mustMarshalJSON(item)}); err != nil {
 				return err
 			}
 		case "function_call":
@@ -309,9 +318,7 @@ func normalizeResponsesStream(reader io.Reader, send func(map[string]any) error)
 			if json.Unmarshal(item["call_id"], &id) != nil || json.Unmarshal(item["name"], &name) != nil || json.Unmarshal(item["arguments"], &arguments) != nil {
 				return openCodeStreamError("Invalid OpenCode function call")
 			}
-			if err := send(openCodeDelta(map[string]any{"tool_calls": []any{map[string]any{
-				"index": nextTool, "id": id, "function": map[string]any{"name": name, "arguments": arguments},
-			}}})); err != nil {
+			if err := send(openCodeCall(nextTool, id, name, arguments)); err != nil {
 				return err
 			}
 			nextTool++
@@ -337,11 +344,7 @@ func normalizeResponsesStream(reader io.Reader, send func(map[string]any) error)
 				}
 			}
 			if texts[index] == "" {
-				key := "content"
-				if refusals[index] {
-					key = "refusal"
-				}
-				if err := send(openCodeDelta(map[string]any{key: completed.String()})); err != nil {
+				if err := send(openCodeText(completed.String(), refusals[index])); err != nil {
 					return err
 				}
 			} else if texts[index] != completed.String() {
@@ -382,18 +385,17 @@ func normalizeResponsesStream(reader io.Reader, send func(map[string]any) error)
 		}
 		switch event.Type {
 		case "response.created":
-			return false, send(map[string]any{"model": event.Response.Model})
+			return false, send(grokChunk{Model: event.Response.Model})
 		case "response.output_text.delta", "response.refusal.delta":
 			if _, completed := items[event.OutputIndex]; completed {
 				return false, openCodeStreamError("OpenCode text followed a completed item")
 			}
 			texts[event.OutputIndex] += event.Delta
-			key := "content"
-			if event.Type == "response.refusal.delta" {
+			refusal := event.Type == "response.refusal.delta"
+			if refusal {
 				refusals[event.OutputIndex] = true
-				key = "refusal"
 			}
-			return false, send(openCodeDelta(map[string]any{key: event.Delta}))
+			return false, send(openCodeText(event.Delta, refusal))
 		case "response.output_item.done":
 			return false, consumeItem(event.OutputIndex, event.Item)
 		case "response.failed", "error":
@@ -420,11 +422,11 @@ func normalizeResponsesStream(reader io.Reader, send func(map[string]any) error)
 			}
 			if event.Response.Usage != nil {
 				usage := event.Response.Usage
-				if err := send(map[string]any{"model": event.Response.Model, "usage": map[string]any{
-					"prompt_tokens": usage.Input, "completion_tokens": usage.Output,
-					"prompt_tokens_details":     map[string]any{"cached_tokens": usage.InputDetails.Cached},
-					"completion_tokens_details": map[string]any{"reasoning_tokens": usage.OutputDetails.Reasoning},
-				}}); err != nil {
+				counts, err := openCodeUsage(usage.Input, usage.Output, usage.InputDetails.Cached, 0, usage.OutputDetails.Reasoning)
+				if err != nil {
+					return false, err
+				}
+				if err := send(grokChunk{Model: event.Response.Model, Usage: counts}); err != nil {
 					return false, err
 				}
 			}
@@ -434,7 +436,7 @@ func normalizeResponsesStream(reader io.Reader, send func(map[string]any) error)
 			"response.function_call_arguments.done", "response.reasoning_summary_part.added",
 			"response.reasoning_summary_part.done", "response.reasoning_summary_text.delta",
 			"response.reasoning_summary_text.done", "response.reasoning_text.delta", "response.reasoning_text.done":
-			return false, send(map[string]any{})
+			return false, send(grokChunk{})
 		default:
 			return false, openCodeStreamError("Unsupported OpenCode Responses event")
 		}
