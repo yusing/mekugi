@@ -213,6 +213,12 @@ func (a *requestAttempt) prepare() error {
 		}
 	}
 
+	if a.executor.mekugiCalls != nil {
+		if err := stripRequestInstructionOmissions(&a.request); err != nil {
+			return err
+		}
+	}
+
 	// Only the WebSocket provider guarantees non-generating warmup for every
 	// supported model. HTTP requests retain ordinary preparation checks.
 	_, webSocketRequest := a.executor.provider.(*webSocketExchange)

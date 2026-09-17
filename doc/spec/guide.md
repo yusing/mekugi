@@ -20,6 +20,16 @@ stay in the shared guidance rather than being repeated in descriptions. Private 
 descriptions are never used as prompt text. Native transport omits CTP/2 guidance;
 CTP/2 includes it and transforms only the eligible strings defined by `REQ-CTP-001`.
 
+Before provider forwarding, the router strips blocks enclosed by the exact HTML comments
+`<!-- mekugi:omit -->` and `<!-- /mekugi:omit -->`, including both comments.
+This applies to top-level instructions, system and developer message text, and the
+`<INSTRUCTIONS>` body of Codex user-role instruction context (including AGENTS.md).
+Ordinary user messages, assistant history, tool results, and non-text parts remain intact.
+Each text part is processed independently, including fenced text; nested and multiple
+complete blocks are supported. Unmatched markers and bytes outside complete blocks are
+preserved. This request-local filtering also applies to prewarm and execution-free requests,
+before model-guidance rewriting or provider encoding, without changing instruction files.
+
 For each eligible turn carrying a non-null Responses `instructions` string, the router refreshes
 one current marked mekugi section or replaces the pinned stock Codex file-editing section and its
 displaced rg and exec-command lines. The GPT-6 Astra stock template has no file-editing section:

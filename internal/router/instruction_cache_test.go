@@ -27,6 +27,7 @@ func TestWebSocketPrewarmInstructionDelivery(t *testing.T) {
 			}
 			proxy.compactModelProtocol = compact
 			base := []any{testCodeModeAdditionalTools(testCodeModeDescription), map[string]string{"type": "message", "role": "developer", "content": "Follow the task."}}
+			incoming := []any{base[0], map[string]string{"type": "message", "role": "developer", "content": "Follow the task." + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd}}
 			ids := []string{"warm", "turn", "next", "astra", "astra-next"}
 			headers := codexAuthHeaders()
 			headers.Set(sessionIDHeader, "instruction-cache-session")
@@ -44,6 +45,9 @@ func TestWebSocketPrewarmInstructionDelivery(t *testing.T) {
 					if err != nil {
 						t.Error(err)
 						return
+					}
+					if bytes.Contains(request["input"], []byte("omitted-rtk-policy")) || bytes.Contains(request["input"], []byte("mekugi:omit")) {
+						t.Error("provider received omitted instructions")
 					}
 					var input []json.RawMessage
 					_ = json.Unmarshal(request["input"], &input)
@@ -81,7 +85,7 @@ func TestWebSocketPrewarmInstructionDelivery(t *testing.T) {
 				if index == 0 {
 					metadata.RequestKind = "prewarm"
 					request["generate"] = false
-					request["input"] = base
+					request["input"] = incoming
 				} else {
 					request["previous_response_id"] = ids[index-1]
 					request["input"] = []any{map[string]string{"role": "user", "content": id}}
