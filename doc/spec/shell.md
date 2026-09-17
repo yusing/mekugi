@@ -167,12 +167,6 @@ fall back to one worker when a split would leave too little display space. Nativ
 carriers and command-template workers keep Codex's output behavior. Template pipes and
 redirections must receive complete worker output. The router does not run or replay them to retain output.
 
-The shell-owned `hhelp [TOPIC]` reads the bundled guidance described in
-[agent guidance](guide.md). It accepts zero or one topic, uses the existing display/continuation
-path, and has no workspace or session-state dependency. Unknown topics and excess operands
-exit with status 2 and a concise stderr diagnostic, without stdout. Its name is reserved;
-it runs in the authenticated Bash/POSIX worker, not a standalone host command.
-
 ### Optional command routing
 
 The built-in RTK policy plugin transforms expanded command arguments, not shell source.

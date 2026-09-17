@@ -2,9 +2,8 @@
 
 ## REQ-GUIDE-001 — Agent guidance
 
-One shared guidance source and its adjacent bundled help topics own durable tool and
-CTP/2 representation rules. The persistent source contains one model-specific workflow slot.
-Astra requests select the concise Astra
+One shared guidance source owns durable tool and CTP/2 representation rules and
+contains one model-specific workflow slot. Astra requests select the concise Astra
 workflow; every other or missing model selects the default workflow. Selection occurs
 for each eligible request, including model switches and inherited marked prompts,
 independently of native versus CTP/2 transport. Model selection changes workflow
@@ -77,15 +76,11 @@ invalidates prior handles and advances the retained baseline; invalid correction
 leave it unchanged. Neither form requires re-emitting unrelated prepared edits.
 
 Both model variants point to shared references rather than repeat submission syntax.
-Persistent guidance makes common operations directly available in native and CTP modes;
-explicit pointers to `hhelp TOPIC` expose uncommon options without loading their manuals on
-every request. Help is optional for ordinary work, not a prerequisite tool call.
-Together, persistent guidance, bundled help, and actionable diagnostics cover these choices:
+The shared guidance must make these choices directly available in native and CTP modes:
 
 1. **Execution:** one multiline script for ready commands sharing execution options; shell
    background jobs with explicit waits and failure preservation for slower independent work;
-   explicit sequential batches only for separate execution contexts, with their syntax in
-   `hhelp shell`; and host-provided
+   explicit sequential batches only for separate execution contexts; and host-provided
    continuation actions under
    [REQ-SHELL-001](shell.md). Retained references include lifetime limits and remain distinct
    from durable workspace files. A failed execution is not a rollback.
@@ -99,8 +94,7 @@ Together, persistent guidance, bundled help, and actionable diagnostics cover th
    exact target. Structural edits acquire semantic references across affected callers
    and tests before grouping dependent edits; filename filters are not coverage evidence.
    Incomplete or skipped references remain explicit until resolved.
-   Detailed framing, previews, range edge cases, and semantic workspace selectors are available
-   through `hhelp read`. Reader contracts remain in [read.md](read.md), [grep.md](grep.md),
+   Reader contracts remain in [read.md](read.md), [grep.md](grep.md),
    [inspect.md](inspect.md), and [symbol.md](symbol.md).
 3. **Editing:** group ready related edits against immutable baselines; split dependent work
    only when validation or missing facts must determine the next edit. Prefer insertions and
@@ -114,9 +108,8 @@ Together, persistent guidance, bundled help, and actionable diagnostics cover th
    empty-value deletion, and advisory interpretation together in the shared HPATCH/2 reference.
    [REQ-SCRIPT-001](script.md), [REQ-EDIT-001](edit.md), and
    [REQ-OUTPUT-001](output.md) own the behavior.
-5. **Recovery:** for edit-only rejections, keep the current-baseline and atomic-reevaluation
-   rules persistent. Actionable rejection diagnostics supply the applicable payload syntax,
-   and `hhelp recovery` describes all forms using the rejected baseline rather than workspace rows. Follow
+5. **Recovery:** for edit-only rejections, choose a payload form in one shared section,
+   using the current rejected baseline rather than workspace rows. Follow
    [REQ-CORRECT-001](correct.md) for atomic reevaluation, ancestry, invalid corrections,
    and the redirect to retained continuation for mixed scripts. Mixed-script guidance
    teaches `resume HANDLE`, explicit reconciliation with `retry` or `accept`,
@@ -127,26 +120,20 @@ Together, persistent guidance, bundled help, and actionable diagnostics cover th
 
 Shared journal guidance prefers mutations on a useful ordinary call whose schema carries
 `journal`, or the reserved `journal` command inside `functions.shell`, over a standalone
-`functions.journal` round trip. It includes Bash/POSIX add/edit/finish syntax and Code Mode
-`await journal({op: "add", text: "text"})`, alongside the optional field
+`functions.journal` round trip. It includes Bash/POSIX `journal add 'text'`, the full shell `journal` CRUD/list/batch/finish
+syntax, and Code Mode `await journal({op: "add", text: "text"})`, alongside the optional field
 for eligible structured tools. `functions.journal` remains the fallback for listing or finishing
 when no current call or shell command can carry the operation. Both workflows receive the shared
-syntax. `hhelp journal` supplies list/delete/batch, ID reporting, and answer-attachment details.
-The default workflow supplies the longer shell-execution tutorial; Astra points to the
+syntax. The default workflow supplies the longer shell-execution tutorial; Astra points to the
 shared reference.
 
-The shared source and embedded help together supply complete call syntax in other workspaces;
-neither requires opening this repository's specifications. Those specifications own acceptance
-criteria, not additional prompt instructions. Help topics are bundled with the executable and
-have no workspace, thread-history, or live-parent dependency. They remain available after forks,
-compaction, model switches, and fresh router starts. They do not execute the operations they describe.
+The shared source supplies complete call syntax because it is injected into other workspaces;
+it must not require the model to open this repository's specifications. Those specifications
+own acceptance criteria, not additional prompt instructions.
 
 Acceptance:
 
-1. A model can choose and encode common HPATCH/2 edits, shell commands, reader calls, journal
-   finishing, output continuation, and mixed-script continuation from persistent guidance.
-   Uncommon syntax is discoverable through explicit bundled-help pointers, without an extra
-   call on the common path. No existing operation is removed by deferring its documentation.
+1. A model can choose and encode every HPATCH/2 operation from the persistent guidance.
 2. The forwarded prompt contains the selected central guidance exactly once and omits the pinned
    stock apply_patch, rg, and exec_command instructions. Native omits the CTP/2 section; CTP/2 retains
    it. Both the GPT-5 editing-section template and GPT-6 Astra work-rules template are supported.
@@ -169,15 +156,9 @@ cached model IDs, both instruction carriers, and both model protocols.
    It does not direct non-target or mixed failures to re-emit the complete script.
 7. A routed success can be followed by another hpatch call using an exact row from its report
    without an intervening hcat; a saved pre-edit row still rejects as stale.
-8. Both rendered model workflows include the shared common-path journal, framing, boundary,
-   recovery, continuation, lifetime, and reader guidance exactly once, including combined output
-   budgeting and complete semantic reference acquisition. Deferred details have one bundled topic
-   owner and a persistent discovery pointer. Guidance uses existing limits
+8. Both rendered model workflows include the shared journal, framing, boundary, recovery,
+   continuation, lifetime, and reader contracts exactly once, including combined output
+   budgeting and complete semantic reference acquisition. Guidance uses existing limits
    and supported continuation, explains the worker's aggregate display budget and retained
    output files, and does not imply a universal reader cursor. Superseded requirements for verified-only semantic queries
    or full-script recovery are absent.
-9. `hhelp` lists topics; `hhelp TOPIC` returns bounded Markdown through the authenticated
-   Bash/POSIX shell and its normal output handling. Unknown topics and excess operands fail
-   without help stdout or workspace effects. Configured tools cannot claim the reserved name,
-   and the single-command optimization cannot route it to a host executable. No new top-level
-   model tool or standalone frontend is exposed.

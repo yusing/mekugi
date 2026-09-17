@@ -5,28 +5,15 @@ Tool coordination below covers native-interface tasks.
 
 ## Shell execution
 
-For a Python-only call, submit the selector and body directly:
-
-```python
-#!python3
-print("ready")
-```
-
-Do not wrap that body in `python3 - <<'PY'`. A compound Bash/POSIX script may still
-feed a Python command through a heredoc.
-
-Group ready commands in one multiline script when they share an interpreter and options:
+Group ready reads and searches in one multiline script when they share an interpreter and options:
 
 ```bash
 hcat first.go 1:40
 hcat second.go 1:40
 ```
 
-Known dependencies belong in that script's execution order or conditions, not separate model calls.
-For example, generation followed by tests can share a script that stops if generation fails.
-Use a later call only when inspecting earlier output is necessary to choose the next command
-or its arguments. Interactive programs need separate calls; reserve explicit batches for different
-interpreters, options, or isolated shell state. `hhelp shell` defines their syntax.
+Use a later call when earlier output must determine it. Reserve explicit batches for different
+interpreters, options, or isolated shell state. The Shell reference defines their syntax.
 
 For slower independent commands, use shell `&` and wait for every job, preserving each failure:
 
@@ -46,7 +33,7 @@ Journal below defines progress delivery.
 
 ## Edit planning
 
-Group ready, related edits into one hpatch invocation, including changes across files.
+Group ready, related edits into one atomic hpatch script, including changes across files.
 Split only when missing information or a validation result must determine the next edit;
 keep unrelated large values separate. Use targeted replacements or insertions and let formatters
 own surrounding formatting.
@@ -55,7 +42,7 @@ own surrounding formatting.
 
 Use known current literals, verified rows, or confirmed mappings. Add a row anchor when repeated
 text makes position significant. Newly authored content is available as a literal on the next call.
-Reuse current target evidence instead of rereading solely to reacquire targets.
+Read again only when those forms no longer identify the intended current span.
 
 Copy complete `LINE:HASH` endpoints from the intended span; indentation is part of each hash.
 A stale-target correction must preserve the full intended span, not just change its endpoint hash.

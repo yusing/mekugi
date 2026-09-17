@@ -166,8 +166,14 @@ func executeShellProgram(
 				}
 				return executeReadBundle(handlerCtx, manifest, runtimeRoot, command[2:], contribution, shellID)
 			}
-			if handled, err := executeRouterShellCommand(handlerCtx, manifest, runtimeRoot, command, terminalShell); handled {
-				return err
+			if command[0] == "hread" {
+				return executeHRead(handlerCtx, manifest, runtimeRoot, command[1:])
+			}
+			if command[0] == "hchanges" {
+				return executeHChanges(handlerCtx, manifest, runtimeRoot, command[1:])
+			}
+			if command[0] == "hrun" {
+				return executeHRun(handlerCtx, manifest, runtimeRoot, command[1:], terminalShell)
 			}
 			contribution, private := privateTools[command[0]]
 			if !private {
