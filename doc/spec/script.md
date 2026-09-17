@@ -369,7 +369,7 @@ cross-invocation replacement aliases. [REQ-CORRECT-001](correct.md) routes attem
 to use edit-only recovery to this retained continuation interface.
 
 Result rows refer to the completion of their own edit segment and may be changed
-by a later segment. Retained `@shell/` edits remain a separate edit-only workflow.
+by a later segment.
 
 `ValidateScriptSyntax` validates engine syntax without filesystem access or
 evaluation. Library apply/translation entry points remain edit-only and reject

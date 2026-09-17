@@ -74,6 +74,49 @@ func TestCodeModeHpatchRetainsExactCarrier(t *testing.T) {
 	}
 }
 
+func TestLegacyShellSourceReplayAfterRestart(t *testing.T) {
+	directory, workspace := t.TempDir(), t.TempDir()
+	store, err := openMekugiReplayStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const source = "#!script=@shell/prior"
+	const carrier = `const result = await tools.exec_command({"cmd":"printf legacy"});
+text(JSON.stringify(Object.assign({}, result, {"retained":true,"script_ref":"@shell/prior"})));`
+	original := map[string]json.RawMessage{
+		"type": mustMarshalJSON("custom_tool_call"), "name": mustMarshalJSON("shell"),
+		"call_id": mustMarshalJSON("legacy"), "input": mustMarshalJSON(source),
+	}
+	history := mekugiHistory{
+		ToolName: "shell", PluginID: builtinToolsPluginID, Script: source, Root: workspace,
+		CarrierName: "exec", CarrierKind: codeModeCarrierCustom, CarrierPayload: carrier,
+		UpstreamItem: original,
+	}
+	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"legacy": history}); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := openMekugiReplayStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No live runtime, source storage, registry, or translator exists after restart.
+	restarted := &mekugiProxy{replayStore: reopened}
+	output := map[string]any{
+		"type": "custom_tool_call_output", "call_id": "legacy",
+		"output": `{"output":"legacy","exit_code":0,"retained":true,"script_ref":"@shell/prior"}`,
+	}
+	request := &parsedResponsesRequest{fields: map[string]json.RawMessage{"input": mustMarshalJSON([]any{
+		map[string]any{"type": "custom_tool_call", "name": "exec", "call_id": "legacy", "input": carrier},
+		output,
+	})}}
+	if _, err := restarted.reconcileVisibleInput(t.Context(), request, workspace, "fresh-fork"); err != nil {
+		t.Fatal(err)
+	}
+	if !sameJSONValue(request.fields["input"], mustMarshalJSON([]any{original, output})) {
+		t.Fatalf("legacy replay changed: %s", request.fields["input"])
+	}
+}
+
 func TestReplayFailureLeavesParsedRequestUnchanged(t *testing.T) {
 	transform, proxy, _, workspace := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
 	store, err := openMekugiReplayStore(t.TempDir())

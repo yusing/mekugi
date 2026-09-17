@@ -1,7 +1,6 @@
 package router
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -10,13 +9,13 @@ import (
 
 // Prepare every program before emitting a carrier, so an invalid later header
 // or interpreter cannot cause a valid prefix to execute.
-func (t *mekugiResponseTransform) prepareShellBatch(contribution toolContribution, sources []string, pathPrefix string, callIDs ...string) ([]string, toolplugin.Translation, error) {
+func (t *mekugiResponseTransform) prepareShellBatch(contribution toolContribution, sources []string, callIDs ...string) ([]string, toolplugin.Translation, error) {
 	if t.nativeTools {
 		return nil, toolplugin.Translation{}, fmt.Errorf("shell batches require Code Mode; submit separate shell calls with this client")
 	}
 	programs := make([]string, 0, len(sources))
 	for index, source := range sources {
-		translation, err := t.proxy.registry.builtinTranslator.Translate(t.ctx, contribution.ModuleIndex, source, pathPrefix)
+		translation, err := t.proxy.registry.builtinTranslator.Translate(t.ctx, contribution.ModuleIndex, source)
 		if err != nil {
 			return nil, toolplugin.Translation{}, fmt.Errorf("shell program %d: %w", index+1, err)
 		}
@@ -46,14 +45,13 @@ func (t *mekugiResponseTransform) prepareShellBatch(contribution toolContributio
 		}
 		programs = append(programs, program.String())
 	}
-	retain := true
-	return programs, toolplugin.Translation{Carrier: toolplugin.Carrier{Kind: "exec", RetainInput: &retain}}, nil
+	return programs, toolplugin.Translation{Carrier: toolplugin.Carrier{Kind: "exec"}}, nil
 }
 
 // Each result preserves one program's terminal native fields and ordered output,
 // including nonzero exits. Host errors propagate after publishing the completed
 // prefix and current partial output; no remaining program runs in that case.
-func renderShellBatch(programs []string, metadata map[string]json.RawMessage, stopOnNonzero bool) string {
+func renderShellBatch(programs []string, stopOnNonzero bool) string {
 	var program strings.Builder
 	program.WriteString(shellCatSequenceRuntime)
 	program.WriteString("const results = [];\nlet stopped_reason = null;\nbatch: try {\n")
@@ -69,8 +67,6 @@ func renderShellBatch(programs []string, metadata map[string]json.RawMessage, st
 	if stopOnNonzero {
 		policy = "stop"
 	}
-	fmt.Fprintf(&program, "} catch (error) { stopped_reason = 'host_error'; throw error; } finally {\ntext(JSON.stringify(Object.assign({results, batch: {on_nonzero_exit: %q, program_count: %d, started_programs: results.length, not_started_programs: %d - results.length, stopped_reason}}, ", policy, len(programs), len(programs))
-	program.Write(mustMarshalJSON(metadata))
-	program.WriteString(")));\n}\n")
+	fmt.Fprintf(&program, "} catch (error) { stopped_reason = 'host_error'; throw error; } finally {\ntext(JSON.stringify({results, batch: {on_nonzero_exit: %q, program_count: %d, started_programs: results.length, not_started_programs: %d - results.length, stopped_reason}}));\n}\n", policy, len(programs), len(programs))
 	return program.String()
 }

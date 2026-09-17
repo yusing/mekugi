@@ -7,20 +7,6 @@ import (
 	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
-// Only presentation reads these references. In particular, accepting a params
-// header here does not make that combination valid executable shell syntax.
-func toolActivityScriptReference(script string) string {
-	script = strings.TrimSpace(script)
-	if strings.HasPrefix(script, "#!params=") {
-		_, script, _ = strings.Cut(script, "\n")
-	}
-	parsed, err := shellsyntax.Parse(strings.TrimSpace(script))
-	if err == nil && parsed.HasScript {
-		return "#!script=" + parsed.ScriptPath
-	}
-	return ""
-}
-
 // Keep the excerpt to one line and 120 characters, including the ellipsis.
 func toolActivityCommandExcerpt(script string) string {
 	script, _ = toolActivityUnwrapShell(script, "bash")
@@ -31,7 +17,7 @@ func toolActivityCommandExcerpt(script string) string {
 			morePrograms = len(programs) > 1
 		}
 	}
-	if parsed, err := shellsyntax.Parse(script); err == nil && !parsed.HasScript {
+	if parsed, err := shellsyntax.Parse(script); err == nil {
 		script = parsed.Body
 	}
 	script = strings.TrimSpace(script)
@@ -82,19 +68,8 @@ func toolActivityShellCall(item map[string]json.RawMessage, name string, require
 	return name, args, script
 }
 
-func (t *mekugiResponseTransform) shellActivityExcerpt(script string) string {
-	if reference := toolActivityScriptReference(script); reference != "" {
-		resolved, err := t.proxy.resolveShellInput(t.shellDirectory, reference)
-		if err != nil {
-			return ""
-		}
-		script = resolved
-	}
-	return toolActivityCommandExcerpt(script)
-}
-
 func (t *mekugiResponseTransform) shellActivityDisplay(item map[string]json.RawMessage, name string) (string, bool) {
-	name, args, script := toolActivityShellCall(item, name, false)
+	name, args, _ := toolActivityShellCall(item, name, false)
 	label, excerpt := "", ""
 	switch name {
 	case "wait":
@@ -118,12 +93,6 @@ func (t *mekugiResponseTransform) shellActivityDisplay(item map[string]json.RawM
 		}
 		label = "Still Running"
 		excerpt = t.activityShellSessions[strings.TrimSpace(string(args["session_id"]))]
-	case "shell", "shell_command", "exec_command":
-		if toolActivityScriptReference(script) == "" {
-			return "", false
-		}
-		label = "Running stored script"
-		excerpt = t.shellActivityExcerpt(script)
 	default:
 		return "", false
 	}
@@ -192,7 +161,7 @@ func (t *mekugiResponseTransform) prepareShellActivity(input json.RawMessage) {
 			}
 			switch name {
 			case "shell", "shell_command", "exec_command":
-				calls[callID] = t.shellActivityExcerpt(script)
+				calls[callID] = toolActivityCommandExcerpt(script)
 			case "write_stdin":
 				calls[callID] = t.activityShellSessions[strings.TrimSpace(string(args["session_id"]))]
 			}

@@ -92,7 +92,7 @@ func (t *mekugiResponseTransform) prepareMixedSegments(parts []hpatchsyntax.Scri
 			segment.Kind = "shell"
 			// Empty shell programs complete without starting a host process.
 			if strings.TrimSpace(part.Source) != "" {
-				sources, translated, err := t.prepareShellBatch(contribution, []string{part.Source}, t.shellDirectory+"/")
+				sources, translated, err := t.prepareShellBatch(contribution, []string{part.Source})
 				if err != nil {
 					return nil, fmt.Errorf("shell segment %d (line %d): %w", index+1, part.Line, err)
 				}
@@ -103,7 +103,7 @@ func (t *mekugiResponseTransform) prepareMixedSegments(parts []hpatchsyntax.Scri
 			}
 			program.WriteString("Object.assign(current, last, {output});\nif (last.exit_code !== 0) { current.status = 'failed'; stoppedReason = 'nonzero_exit'; return; }\n")
 		} else {
-			if err := validateMixedEdit(part.Source); err != nil {
+			if err := mekugi.ValidateScriptSyntax(part.Source); err != nil {
 				return nil, fmt.Errorf("edit segment %d (line %d): %w", index+1, part.Line, err)
 			}
 		}
@@ -111,27 +111,4 @@ func (t *mekugiResponseTransform) prepareMixedSegments(parts []hpatchsyntax.Scri
 		segments = append(segments, segment)
 	}
 	return segments, nil
-}
-
-// Validate syntax for every segment before emitting any executable carrier;
-// filesystem-dependent validation belongs to the worker at that segment's turn.
-func validateMixedEdit(source string) error {
-	if err := mekugi.ValidateScriptSyntax(source); err != nil {
-		return err
-	}
-	lines := hpatchsyntax.SplitPhysicalLines(source)
-	for index := 0; index < len(lines); {
-		line := lines[index].Text
-		for _, operation := range []string{"in ", "new ", "mv "} {
-			if path, ok := strings.CutPrefix(line, operation); ok && (path == "@shell" || strings.HasPrefix(path, shellArtifactPrefix)) {
-				return fmt.Errorf("mixed scripts edit workspace files, not retained @shell sources")
-			}
-		}
-		frame, err := hpatchsyntax.FrameCommand(lines, index, line)
-		if err != nil {
-			return err
-		}
-		index = frame.Next
-	}
-	return nil
 }

@@ -300,10 +300,9 @@ tools.exec_command = async args => {
 
 func TestHpatchMixedPreflight(t *testing.T) {
 	for name, source := range map[string]string{
-		"edit syntax":     "shell <<SHELL\ntouch unexpected\nSHELL\nnew a\nbogus",
-		"shell header":    "new a\ntype \"ready\"\nshell <<SHELL\n#!params={\"cmd\":\"bad\"}\ntrue\nSHELL",
-		"retained source": "shell <<SHELL\ntrue\nSHELL\nin @shell/artifact\ntype \"a\" \"b\"",
-		"missing close":   "new a\ntype \"ready\"\nshell <<SHELL\ntrue",
+		"edit syntax":   "shell <<SHELL\ntouch unexpected\nSHELL\nnew a\nbogus",
+		"shell header":  "new a\ntype \"ready\"\nshell <<SHELL\n#!params={\"cmd\":\"bad\"}\ntrue\nSHELL",
+		"missing close": "new a\ntype \"ready\"\nshell <<SHELL\ntrue",
 	} {
 		t.Run(name, func(t *testing.T) {
 			transform, _ := mixedTestTransform(t)
@@ -770,7 +769,7 @@ func TestHpatchRepairPreflight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for index, suffix := range []string{"", "\nshell true", "\nnew x\ntype \"x\"\nshell true", "\nnew x\ntype", "\nin @shell/test\ntype \"x\" \"y\""} {
+	for index, suffix := range []string{"", "\nshell true", "\nnew x\ntype \"x\"\nshell true", "\nnew x\ntype"} {
 		history, err := transform.translate(fmt.Sprintf("bad-repair-%d", index), "resume "+state.Handle+" repair"+suffix, nil)
 		if err != nil || history.TranslationError == "" || history.CarrierPayload != "text("+strconv.Quote(history.TranslationError)+");" {
 			t.Fatalf("invalid repair emitted execution: %+v, %v", history, err)

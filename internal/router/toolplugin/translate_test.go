@@ -25,15 +25,15 @@ func TestTranslateBuiltinShellColdStartup(t *testing.T) {
 			if spec.Name != "shell" {
 				continue
 			}
-			// One cold process covers quoting, multiple commands, and retained
+			// One cold process covers quoting, multiple commands, and
 			// multiline source. Parser case matrices have their own tests.
 			script := "printf 'ok\\n'\nrg -n 'RangeStream|MaxRequestBytes' server/etcdserver/v3_server.go\nsed -n '1,160p' server/etcdserver/txn/range.go\necho first\necho second\necho third\necho fourth\n"
 			started := time.Now()
-			result, err := Translate(t.Context(), snapshot.NodeExecutable, snapshot.Root, plugin.Module, index, script, "")
+			result, err := Translate(t.Context(), snapshot.NodeExecutable, snapshot.Root, plugin.Module, index, script)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if result.Rejected || result.Carrier.Kind != "exec" || result.Carrier.RetainInput == nil || !*result.Carrier.RetainInput || !slices.Equal(result.Arguments, []string{"bash", script}) {
+			if result.Rejected || result.Carrier.Kind != "exec" || !slices.Equal(result.Arguments, []string{"bash", script}) {
 				t.Fatalf("unexpected shell translation: %+v", result)
 			}
 			t.Logf("cold translation completed in %s", time.Since(started))

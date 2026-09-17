@@ -69,7 +69,7 @@ func TestReadBundleEmptyFailureAndPipeline(t *testing.T) {
 	}
 }
 
-func TestReadBundleBudgetAndRetainedFileFailure(t *testing.T) {
+func TestReadBundleBudgetAndMissingFileFailure(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
 	if err := os.WriteFile(filepath.Join(directory, "a"), []byte(strings.Repeat("a row\n", 300)), 0600); err != nil {
@@ -81,8 +81,8 @@ func TestReadBundleBudgetAndRetainedFileFailure(t *testing.T) {
 		t.Fatalf("%d %q %q", status, out, diagnostic)
 	}
 	out, diagnostic, status = runShellWorkerTest(t, registry, "bash", nil,
-		"#!params={\"max_output_tokens\":15000}\nhcat --batch --max-tokens 2500 a -- @shell/missing -- a", nil, newShellWorkerTestInvocation(directory))
-	if status != 1 || diagnostic != "" || !strings.Contains(out, `path="@shell/missing" shown=none omitted=none status=failed`) ||
+		"#!params={\"max_output_tokens\":15000}\nhcat --batch --max-tokens 2500 a -- missing -- a", nil, newShellWorkerTestInvocation(directory))
+	if status != 1 || diagnostic != "" || !strings.Contains(out, `path="missing" shown=none omitted=none status=failed`) ||
 		!strings.Contains(out, "3 path=\"a\" shown=1:") {
 		t.Fatalf("%d %q %q", status, out, diagnostic)
 	}

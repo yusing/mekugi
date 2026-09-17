@@ -2,7 +2,7 @@ import {decodeQuotedOperand, formatVerifiedRow, hashLine} from "mekugi:core/v1";
 import path from "node:path";
 import {countGPT5Tokens} from "./tokens.ts";
 export {countGPT5Tokens, MAX_POSSIBLE_GPT5_TOKEN_BYTES} from "./tokens.ts";
-import type {ExecutionContext, ExecutionResult, ReaderFailureClass, Tool, TranslationContext} from "../internal/router/toolplugin/plugin.d.ts";
+import type {ExecutionContext, ExecutionResult, ReaderFailureClass, Tool} from "../internal/router/toolplugin/plugin.d.ts";
 
 export const READ_DEFAULT_TOKENS = 4_000;
 export const VERIFIED_ROW_MAX_TOKENS = 15_500;
@@ -176,7 +176,7 @@ type ExecutorToolOptions = {
   name: string;
   description: string;
   grammar: string;
-  argv(input: string, context: TranslationContext): string[] | Promise<string[]>;
+  argv(input: string): string[] | Promise<string[]>;
   execute(argv: string[], context: ExecutionContext): ExecutionResult | Promise<ExecutionResult>;
 };
 
@@ -188,8 +188,8 @@ export function createExecutorTool(options: ExecutorToolOptions): Tool<string[]>
       description: options.description,
       format: {type: "grammar", syntax: "regex", definition: options.grammar},
     },
-    parse(input, context) {
-      return options.argv(input, context);
+    parse(input) {
+      return options.argv(input);
     },
     argv(input) {
       return input;

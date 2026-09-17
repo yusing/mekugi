@@ -36,9 +36,6 @@ func toolActivityUnwrapShell(script, language string) (string, string) {
 
 func toolActivityShellLanguage(script, language string) string {
 	script, language = toolActivityUnwrapShell(script, language)
-	if toolActivityScriptReference(script) != "" {
-		return "Running stored script · command unavailable"
-	}
 	if _, _, batch := shellsyntax.BatchHeader(script); batch {
 		if programs, err := shellsyntax.Split(script); err == nil {
 			displays := make([]string, 0, len(programs))
@@ -51,7 +48,7 @@ func toolActivityShellLanguage(script, language string) string {
 		}
 	}
 	parsed, err := shellsyntax.Parse(script)
-	if err == nil && !parsed.HasScript && parsed.CommandTemplate == "" && len(parsed.Interpreter) == 1 &&
+	if err == nil && parsed.CommandTemplate == "" && len(parsed.Interpreter) == 1 &&
 		(parsed.Interpreter[0] == "bash" || parsed.Interpreter[0] == "sh") {
 		if summary, ok := toolActivityReads(parsed.Body); ok {
 			return summary

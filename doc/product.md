@@ -79,7 +79,7 @@ Mekugi includes:
   atomic multi-file editing;
 - edit validation, formatting-aware result projection, change review, and rejected-input
   recovery;
-- a free-form script interface with batching, retained source, and host-owned continuation;
+- a free-form script interface with batching and host-owned continuation;
 - router-local tool declarations translated to Codex-executed carriers;
 - durable replay, journals, session inspection, commentary, diagnostics, and
   provider-authoritative usage reporting;

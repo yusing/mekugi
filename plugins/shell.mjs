@@ -11,9 +11,6 @@ import {
  */
 function parseScript(input) {
   const parsed = parseShellHeader(input);
-  if (Object.hasOwn(parsed, "scriptPath")) {
-    throw new Error("retained shell references must be resolved by the router");
-  }
   if (parsed.params !== undefined) {
     if (Object.hasOwn(parsed.params, "cmd")) {
       throw new Error(`line ${parsed.paramsLine}: #!params must not contain cmd; the script body supplies it`);
@@ -29,18 +26,6 @@ function parseScript(input) {
     source: input,
     params: parsed.params,
   };
-}
-
-/**
- * retainInput determines whether the script source should be retained for translation.
- */
-function retainInput(input) {
-  const interpreter = interpreterIdentity(input.interpreter[0]);
-  if (interpreter !== "bash" && interpreter !== "sh") {
-    return true;
-  }
-  const normalized = input.source.replaceAll("\r\n", "\n");
-  return normalized.split(/\n|\r/u).length > 3;
 }
 
 /**
@@ -237,8 +222,8 @@ export const shellTool = {
     description: `Run free-form scripts with the exact body passed to the selected interpreter; standard input remains program data.`,
   },
 
-  parse(input, context) {
-    return parseScript(input, context);
+  parse(input) {
+    return parseScript(input);
   },
 
   argv(input) {
@@ -247,7 +232,7 @@ export const shellTool = {
 
   translate(input, api) {
     const template = input.commandTemplate === "" ? undefined : input.commandTemplate;
-    return api.exec(template, input.params, retainInput(input));
+    return api.exec(template, input.params);
   },
 
   execute(argv, context) {

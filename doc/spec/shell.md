@@ -34,7 +34,7 @@ Omitted params inherit the preceding complete object. A supplied object replaces
 including `{}` clearing inherited fields. Interpreters and command templates do not inherit.
 All programs are parsed and translated before any carrier is emitted; invalid later programs
 reject the entire batch without running its valid prefix. Batch programs require a nonempty
-body. A retained reference remains a sole `#!script=` call, and its resolved input may be a batch.
+body.
 
 Batches require Code Mode and are for noninteractive work. Agent guidance defaults to one
 multiline script for ready commands sharing an interpreter and execution options, not one
@@ -55,11 +55,10 @@ Every emitted batch envelope includes `batch` metadata: `on_nonzero_exit`
 and `stopped_reason` (`nonzero_exit`, `host_error`, or null). Counts describe programs,
 not native polling calls. A host-error result can include an unfinished last started
 program and its existing native handle. No unstarted program is fabricated as a
-completed result or automatically retried. Retained reruns preserve the authored
-policy, while an ordinary rerun still starts new execution.
+completed result or automatically retried. Resubmitting a batch starts new execution.
 
 Native-only clients reject batches with a Code Mode requirement diagnostic before execution.
-Batch retention selects the complete resolved batch, while replay restores the original call.
+Replay restores the original call without starting any program.
 Eligible cat-write projection applies independently within each program.
 
 The following interpreter and directive rules apply separately to each program.
@@ -306,45 +305,23 @@ For a split cat-write sequence, the enclosing Code Mode program waits for each c
 terminal result with the native `write_stdin` operation before starting the next step. The same
 Code Mode cell may yield while this work is pending. No session is restarted or retried. It
 concatenates command output in execution order and retains the last step's exit status and
-terminal result fields, plus the existing retention metadata. Native patch success contributes
+terminal result fields. Native patch success contributes
 empty output and status zero. No generated patch or intermediate guard result is published to
 the provider as a separate conversation item.
 
-Eligible shell calls return `retained: true` and a thread-scoped `script_ref` shaped
-`@shell/<artifact-id>`. `hcat` inspects that reference, mekugi edits it inside private
-script storage, and a sole `#!script=@shell/<artifact-id>` reruns its current content.
-References select regular UTF-8 script files, never arbitrary host paths or the runtime
-launcher. Thread and artifact IDs must be single nonempty filename components, excluding
-`.` and `..`, separators, and NUL; `.runtime` is reserved and cannot identify an artifact.
-Missing, cyclic, traversing, and symlink-escaping references reject without execution.
-Invalid retention IDs or existing artifact names yield `retained: false` without overwriting
-files or changing execution of an otherwise valid shell call.
-
-When retention succeeds, the same result includes `retention` metadata:
-`scope: "thread"`, `durable: false`, an RFC 3339 UTC `scheduled_expiry`,
-`ends_on_router_shutdown: true`, and `reads_or_edits_extend_lifetime: false`.
-The timestamp is the actual timer deadline set when the router retains the source,
-not a fresh lifetime beginning when execution finishes or output is delivered.
-Expiry may defer physical deletion for active router-side read/edit leases.
-A delayed result can therefore describe a reference whose scheduled expiry has
-already passed. Replaying a call preserves that deadline rather than renewing it.
-
-These are executable-source conveniences, not durable workspace artifacts.
-Saving source as an ordinary workspace file uses the normal file-editing workflow
-and is independent of thread cleanup. Durable replay may retain original call
-evidence, but that does not keep an expired `@shell/` reference executable. A new
-rerun can retain another artifact with its own deadline; reads and edits do not
-renew the old artifact. Failed or unrequested retention exposes no expiry metadata.
+Shell calls do not create editable source artifacts or add source-retention metadata to results.
+Use ordinary script files for reusable source. Durable replay preserves original calls and
+results without executing them again.
 
 Thread runtime locators are flat `mekugi-runtime-<thread-id>` symlinks below the runtime
-directory. The PATH-installed helper follows that name. Active retained scripts occupy sibling
+directory. The PATH-installed helper follows that name. Private mixed-script checkpoints occupy sibling
 `mekugi-scripts-<thread-id>` directories.
 Private commentary descriptors are regular mode-0600 files beside the thread locators,
-outside retained script storage. Discovery rejects symlinks, non-regular files, and descriptors
+outside checkpoint storage. Discovery rejects symlinks, non-regular files, and descriptors
 that do not match the worker selected by the current locator. Unexpected existing entries are
 not overwritten, and missing or invalid descriptors disable journal publication, not unrelated script execution.
 One shared pinned parent capability anchors this namespace. Launcher preparation creates no
-script storage and retains no per-thread directory handles. A retained-script directory is
+checkpoint storage and retains no per-thread directory handles. A checkpoint directory is
 created exclusively for each active storage lifetime; an unexpected existing directory or
 symlink rejects retention rather than becoming application or cleanup authority. If the
 initial capability open fails, preparation rolls back only the new empty directory entry;
@@ -352,16 +329,15 @@ nonempty or non-directory replacements are preserved, and a transient failure ca
 
 Artifacts expire after one hour. Live storage roots remain pinned while artifacts or router-side
 read/edit leases exist. Expiry waits for those operations before deleting their artifacts.
-Last expiry removes the owned script directory through its live capability and closes that
+Last expiry removes the owned checkpoint directory through its live capability and closes that
 capability. A later retention starts with another exclusive directory creation; an idle session
 never reopens a historical directory for editing or recursive cleanup. Reads, edits, expiry,
 and cleanup remain confined when a storage pathname is replaced by an escaping symlink.
-Launcher refresh remains independent of script-storage availability. Shutdown rejects new
+Launcher refresh remains independent of checkpoint-storage availability. Shutdown rejects new
 leases, waits for existing operations, cancels expiry callbacks, cleans active owned storage,
 removes only owned commentary descriptors, unlinks only flat locators still targeting this
 router's worker, and closes the shared parent.
-Replacement locator files or directories are never traversed or recursively removed. Reruns
-retain the resolved script body while conversation replay preserves the original reference call.
+Replacement locator files or directories are never traversed or recursively removed.
 
 Acceptance:
 
@@ -434,7 +410,7 @@ Acceptance:
     except for the established Code Mode recovery below.
     The result explains how to submit Code Mode helpers or choose an explicit script interpreter;
     rejected input is never automatically executed as Code Mode. Neither the script nor its
-    command template runs. Headers and retained-script resolution use the normal translator;
+    command template runs. Headers use the normal translator;
     configured plugins, other interpreters, and bodies invalid in both languages retain their
     existing behavior. JSON, SSE, native, and Code Mode carriers deliver the same diagnostic,
     and replay retains the original shell call and its rejection result.
@@ -445,7 +421,7 @@ Acceptance:
     determine recovery. Strings, comments, and property names are not runtime references.
     A runtime name bound or assigned anywhere in the program is conservatively excluded from
     recovery evidence; local lookalikes must not be treated as Code Mode globals.
-    Explicit interpreter selections, directives, and retained references never opt into recovery.
+    Explicit interpreter selections and directives never opt into recovery.
     Recovery preserves the exact program, adds `shell-code-mode-recovered` guidance followed
     by detected nested shell warnings, and replays the recovered Code Mode carrier. Guidance
     distinguishes shell commands, which belong directly in `functions.shell` without JavaScript
@@ -466,15 +442,15 @@ Acceptance:
     Headers include interpreter selectors, `#!params=`, and `#!cmd=`.
     Valid JavaScript, including hashbang programs, keeps Code Mode semantics. Bare commands,
     malformed headers, and calls without the built-in shell available are not recovered.
-    Shell validation, params, templates, batching, stored-source resolution, and host execution
+    Shell validation, params, templates, batching, and host execution
     permissions remain unchanged; rejected translations execute only their normal diagnostic.
     Successful translation adds `exec-shell-recovered` guidance and displays the selected
     interpreter rather than JavaScript. Replay restores the exact original `exec` call while
     retaining its translated carrier. Recovery never retries an already dispatched program.
-17. Retain, read, edit, and rerun preserve the script body and original model-visible call.
-    Unsafe thread IDs reject before runtime creation; unsafe artifact IDs cannot redirect
-    retention, reads, edits, expiry, or cleanup. A retained script cannot read or overwrite
-    the runtime launcher, another thread's scripts, or workspace files through a reference.
+17. Ordinary shell calls create no private executable-source artifacts and emit no
+    source-retention metadata, regardless of source length or interpreter. Unsafe thread IDs
+    reject before runtime creation. Private continuation-state IDs cannot redirect storage,
+    expiry, or cleanup to the runtime launcher, another thread, or workspace files.
 18. `foo; cat > out <<'EOF'` followed by a literal body, delimiter, and `bar` runs foo, the
     user-visible native patch, and bar in that order. Newline-only separators behave identically.
     Multiple writes to one file observe execution order, not a pre-execution filesystem snapshot.
@@ -495,7 +471,7 @@ Acceptance:
     supplied object. Bash programs separated by the chosen line require no `#!bash`. Per-program bodies
     preserve CR, LF, CRLF, whitespace, and absent final terminators.
     Without the batch header, Python multiline strings and shell heredocs containing literal
-    selector, params, script, or batch headers remain one byte-preserved program. In an
+    selector, params, or batch headers remain one byte-preserved program. In an
     explicit batch, a caller-chosen separator allows those same contents unchanged; partial
     matches and indented separator-like lines remain data. Empty separators, absent boundaries,
     and empty programs reject before execution.
@@ -504,8 +480,8 @@ Acceptance:
     output remain associated with their program. Host exceptions preserve the completed prefix
     and current partial output without running the suffix.
 23. Malformed or unsafe later headers, empty batch programs, and native-only batches reject
-    before any program executes. JSON and SSE carry one replayable call, and retained batch
-    reruns reapply splitting and params inheritance to the current retained source.
+    before any program executes. JSON and SSE carry one replayable call with the original
+    batch source, policy, and per-program results.
 
 24. A shell carrier whose native result yields session 42 receives a notice that resumes
     session 42, not a new execution. Direct clients get the direct function input; Code Mode-only
@@ -522,12 +498,11 @@ Acceptance:
 
 27. A stop-on-nonzero batch waits for the first program's terminal exit and leaves
     later programs unstarted; ordinary batches still continue. Both report policy
-    and exact started/unstarted counts, including host failures and retained reruns.
+    and exact started/unstarted counts, including host failures.
 
-28. Successful retention reports the original timer deadline and thread-private,
-    non-durable scope alongside the existing reference, without changing native
-    fields. Replay keeps the deadline; reads do not renew it; failed retention
-    supplies no fabricated expiry.
+28. Undocumented shell directives reject before execution. In particular, the removed
+    `#!script=` directive cannot execute a historical source reference. Historical call/result
+    replay remains byte-preserving and does not resolve or revive expired source.
 
 29. Hrun routes through the authenticated shell worker for Bash and POSIX scripts,
     including a single static call. It preserves argv, stdin, cwd, exported environment,

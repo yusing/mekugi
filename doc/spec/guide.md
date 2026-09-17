@@ -82,15 +82,14 @@ The shared guidance must make these choices directly available in native and CTP
    background jobs with explicit waits and failure preservation for slower independent work;
    explicit sequential batches only for separate execution contexts; and host-provided
    continuation actions under
-   [REQ-SHELL-001](shell.md). Retained references include lifetime limits and remain distinct
-   from durable workspace files. A failed execution is not a rollback.
+   [REQ-SHELL-001](shell.md). Reusable source belongs in ordinary script files.
+   A failed execution is not a rollback.
 2. **Acquisition:** reuse known literals, verified rows, and confirmed mappings first.
    Otherwise select fixed-string hgrep, bounded hcat, structural inspection, or semantic
    lookup with a current line or verified row. Explain automatic worker display budgeting
    and use reader controls to focus the requested context.
    Continue cursors or captured output without replaying producers;
-   distinguish retained program source from output and reader omissions from outer
-   truncation. Explain preview and truncation limits before using partial source as an
+   distinguish reader omissions from outer truncation. Explain preview and truncation limits before using partial source as an
    exact target. Structural edits acquire semantic references across affected callers
    and tests before grouping dependent edits; filename filters are not coverage evidence.
    Incomplete or skipped references remain explicit until resolved.

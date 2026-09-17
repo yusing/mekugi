@@ -9,7 +9,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/capturer"
@@ -73,37 +72,8 @@ func (t *mekugiResponseTransform) evaluateScript(
 	if err != nil {
 		return mekugiHistory{}, err
 	}
-	applied := false
-	var translated mekugiTranslationResult
-	retainedStart := len(evaluated) - len(strings.TrimLeft(evaluated, "\r\n"))
-	retainedScript := evaluated
-	retainedBody, retained := strings.CutPrefix(evaluated[retainedStart:], "in "+shellArtifactPrefix)
-	if retained {
-		retainedScript = evaluated[:retainedStart] + "in " + retainedBody
-	}
-	retainedApply := t.proxy.shellDirectory != "" && retained
-	if retainedApply {
-		attemptMetadata.EvaluatedScript = retainedScript
-	}
 	attemptContext := mekugi.WithAttemptMetadata(t.ctx, attemptMetadata)
-	if retainedApply {
-		root, release, openErr := t.proxy.shellRoot(t.shellDirectory)
-		if errors.Is(openErr, errRetainedShellUnavailable) {
-			return t.rejectUnevaluated(attemptMetadata.ToolName, callID, input, openErr, attemptMetadata, "", nil, upstreamItem, nil)
-		}
-		if openErr != nil {
-			return mekugiHistory{}, fmt.Errorf("open retained shell directory: %w", openErr)
-		}
-		defer release()
-		applier, ok := t.proxy.translator.(mekugiApplier)
-		if !ok {
-			return mekugiHistory{}, errors.New("mekugi translator cannot apply retained shell edits")
-		}
-		translated, err = applier.Apply(attemptContext, root, retainedScript)
-		applied = err == nil
-	} else {
-		translated, err = t.proxy.translator.Translate(attemptContext, t.directory, evaluated)
-	}
+	translated, err := t.proxy.translator.Translate(attemptContext, t.directory, evaluated)
 	if err != nil {
 		if contextErr := t.ctx.Err(); contextErr != nil {
 			return mekugiHistory{}, contextErr
@@ -162,9 +132,7 @@ func (t *mekugiResponseTransform) evaluateScript(
 		Root:             t.directory,
 		Evaluated:        retainedEvaluated(input, evaluated),
 		Patch:            patchText,
-		Applied:          applied,
 		AlreadySatisfied: alreadySatisfied,
-		confirmed:        applied,
 		Aliases:          slices.Clone(translated.aliases),
 		CarrierName:      t.codeModeToolName,
 		Report:           changeNotice(changeID) + mekugiReport(translated.report, translated.diagnostic),
@@ -254,22 +222,17 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 		axCallID = callID
 	}
 	journalToken := t.subscribeShellJournal(callID, contribution)
-	pathPrefix := t.shellDirectory + string(os.PathSeparator)
 	recovered := !t.nativeTools && shellCodeModeRecovery(contribution, input)
 	var stopBatchOnNonzero bool
 	var batch []string
 	var translation toolplugin.Translation
 	var err error
-	effectiveInput := input
 	if !recovered && contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell" {
-		effectiveInput, err = t.proxy.resolveShellInput(t.shellDirectory, input)
-		if err == nil {
-			var programs []string
-			_, stopBatchOnNonzero, _ = shellsyntax.BatchHeader(effectiveInput)
-			programs, err = shellsyntax.Split(effectiveInput)
-			if err == nil && len(programs) > 1 {
-				batch, translation, err = t.prepareShellBatch(contribution, programs, pathPrefix, axCallID, journalToken)
-			}
+		_, stopBatchOnNonzero, _ = shellsyntax.BatchHeader(input)
+		var programs []string
+		programs, err = shellsyntax.Split(input)
+		if err == nil && len(programs) > 1 {
+			batch, translation, err = t.prepareShellBatch(contribution, programs, axCallID, journalToken)
 		}
 		if err != nil {
 			translation = toolplugin.Translation{Rejected: true, Diagnostic: err.Error()}
@@ -277,7 +240,7 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 	}
 	if !recovered && !translation.Rejected && len(batch) == 0 {
 		if contribution.PluginID == builtinToolsPluginID {
-			translation, err = t.proxy.registry.builtinTranslator.Translate(t.ctx, contribution.ModuleIndex, effectiveInput, pathPrefix)
+			translation, err = t.proxy.registry.builtinTranslator.Translate(t.ctx, contribution.ModuleIndex, input)
 		} else {
 			translation, err = toolplugin.Translate(
 				t.ctx,
@@ -285,8 +248,7 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 				t.proxy.registry.RuntimeRoot,
 				contribution.Module,
 				contribution.ModuleIndex,
-				effectiveInput,
-				pathPrefix,
+				input,
 			)
 		}
 		if err != nil {
@@ -295,23 +257,6 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 	}
 	if !recovered && !translation.Rejected && len(batch) == 0 && shellTypeScriptMisuse(contribution, translation.Arguments) {
 		translation = toolplugin.Translation{Rejected: true, Diagnostic: shellTypeScriptDiagnostic}
-	}
-	var resultMetadata map[string]json.RawMessage
-	if translation.Carrier.RetainInput != nil {
-		resultMetadata = map[string]json.RawMessage{"retained": mustMarshalJSON(false)}
-		if *translation.Carrier.RetainInput {
-			reference, expiresAt, retained := t.proxy.retainShell(t.shellDirectory, callID, effectiveInput)
-			resultMetadata["retained"] = mustMarshalJSON(retained)
-			if retained {
-				resultMetadata["retention"] = mustMarshalJSON(map[string]any{
-					"scope": "thread", "durable": false,
-					"scheduled_expiry":               expiresAt.UTC().Format(time.RFC3339Nano),
-					"ends_on_router_shutdown":        true,
-					"reads_or_edits_extend_lifetime": false,
-				})
-				resultMetadata["script_ref"] = mustMarshalJSON(reference)
-			}
-		}
 	}
 
 	kind := codeModeCarrierCustom
@@ -348,7 +293,6 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 				kind,
 				execCommandArguments(command, nil),
 				false,
-				nil,
 			)
 		} else {
 			payload = "text(" + strconv.Quote(diagnostic) + ");"
@@ -360,12 +304,12 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 				return mekugiHistory{}, fmt.Errorf("%s exec carrier: %w", contribution.Name, err)
 			}
 			if len(batch) != 0 {
-				payload = renderShellBatch(batch, resultMetadata, stopBatchOnNonzero)
+				payload = renderShellBatch(batch, stopBatchOnNonzero)
 				splitShellCarrier = true
 				break
 			}
 			arguments := translation.Arguments
-			if splitPayload, ok := t.shellCatCarrier(contribution, kind, arguments, translation.Carrier.Template, translation.Carrier.Params, resultMetadata, axCallID, journalToken); ok {
+			if splitPayload, ok := t.shellCatCarrier(contribution, kind, arguments, translation.Carrier.Template, translation.Carrier.Params, axCallID, journalToken); ok {
 				payload = splitPayload
 				splitShellCarrier = true
 				break
@@ -377,7 +321,6 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 				arguments,
 				translation.Carrier.Template,
 				translation.Carrier.Params,
-				resultMetadata,
 				axCallID, journalToken,
 			)
 			if err != nil {

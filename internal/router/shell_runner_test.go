@@ -290,103 +290,26 @@ func TestShellRunnerInspectsOutsideFile(t *testing.T) {
 	}
 }
 
-func TestShellRunnerReadsRetainedHCatArtifact(t *testing.T) {
-	t.Parallel()
-	registry := sharedProxyTestRegistry(t)
-	runtimeDirectory := t.TempDir()
-	retainedDirectory := filepath.Join(runtimeDirectory, "mekugi-scripts-thread-id")
-	if err := os.MkdirAll(retainedDirectory, 0o700); err != nil {
+func TestShellRunnerReadsFormerShellPathsAsWorkspaceFiles(t *testing.T) {
+	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	directory := t.TempDir()
+	if err := os.Mkdir(filepath.Join(directory, "@shell"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(retainedDirectory, "call-id"), []byte("first\nretained\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, "@shell", "script"), []byte("workspace\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	invocation := newShellWorkerTestInvocation(t.TempDir(),
-		"MEKUGI_RUNTIME_DIR="+runtimeDirectory, "CODEX_THREAD_ID=thread-id")
-
-	for _, test := range []struct {
-		name, script, stdout, stderrContains string
-		exitCode                             int
-	}{
-		{"row", "hcat @shell/call-id 2:2", "2:ca67 retained\n", "", 0},
-		{"preview", "hcat --max-tokens 100 --preview-bytes 3 @shell/call-id 2:2",
-			"{\"row\":\"2:ca67\",\"preview\":\"ret\",\"source_bytes\":8,\"omitted_bytes\":5}\n", "", 0},
-		{"tail", "hcat --tail --max-tokens 10 @shell/call-id",
-			"2:ca67 retained\n", "output incomplete", 1},
-		{"line tail", "hcat --tail -n 1 @shell/call-id",
-			"2:ca67 retained\n", "1-line limit", 1},
+	for _, source := range []string{
+		"hcat @shell/script",
+		"hcat --batch @shell/script -- @shell/script",
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			stdout, stderr, exitCode := runShellWorkerTest(
-				t, registry, "/bin/sh", nil, test.script, nil, invocation)
-			if exitCode != test.exitCode || stdout != test.stdout ||
-				(test.stderrContains == "" && stderr != "") ||
-				(test.stderrContains != "" && !strings.Contains(stderr, test.stderrContains)) {
-				t.Fatalf("stdout=%q stderr=%q exit=%d", stdout, stderr, exitCode)
+		t.Run(source, func(t *testing.T) {
+			stdout, stderr, code := runShellWorkerTest(t, proxy.registry, "bash", nil, source, nil, newShellWorkerTestInvocation(directory))
+			if code != 0 || !strings.Contains(stdout, "workspace") {
+				t.Fatalf("workspace read = %q, %q, exit %d", stdout, stderr, code)
 			}
 		})
 	}
-}
-
-func TestShellRunnerConfinesRetainedHCatArtifact(t *testing.T) {
-	t.Parallel()
-	registry := sharedProxyTestRegistry(t)
-	runtimeDirectory := t.TempDir()
-	outsideDirectory := t.TempDir()
-	sentinel := "outside-retained-sentinel"
-	if err := os.Mkdir(filepath.Join(outsideDirectory, "scripts"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{
-		filepath.Join(outsideDirectory, "call-id"),
-		filepath.Join(outsideDirectory, "scripts", "call-id"),
-	} {
-		if err := os.WriteFile(name, []byte(sentinel+"\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	threadDirectory := filepath.Join(runtimeDirectory, "mekugi-scripts-thread-id")
-	if err := os.MkdirAll(threadDirectory, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	invocation := newShellWorkerTestInvocation(outsideDirectory, "MEKUGI_RUNTIME_DIR="+runtimeDirectory, "CODEX_THREAD_ID=thread-id")
-	assertRejected := func(script string) {
-		t.Helper()
-		stdout, _, exitCode := runShellWorkerTest(t, registry, "/bin/sh", nil, script, nil, invocation)
-		if exitCode == 0 || strings.Contains(stdout, sentinel) {
-			t.Fatalf("%q: exit %d, stdout %q", script, exitCode, stdout)
-		}
-	}
-	for _, reference := range []string{
-		"@shell/../mekugi-scripts-other/call-id",
-		"@shell//absolute",
-		"@shell/.runtime",
-	} {
-		assertRejected("hcat " + reference)
-	}
-	invocation = newShellWorkerTestInvocation(outsideDirectory, "MEKUGI_RUNTIME_DIR=relative-runtime", "CODEX_THREAD_ID=thread-id")
-	stdout, stderr, exitCode := runShellWorkerTest(t, registry, "/bin/sh", nil, "hcat @shell/call-id", nil, invocation)
-	if exitCode == 0 || stdout != "" || !strings.Contains(stderr, "MEKUGI_RUNTIME_DIR must be an absolute path") {
-		t.Fatalf("relative runtime: exit %d, stdout %q, stderr %q", exitCode, stdout, stderr)
-	}
-	invocation = newShellWorkerTestInvocation(outsideDirectory, "MEKUGI_RUNTIME_DIR="+runtimeDirectory, "CODEX_THREAD_ID=thread-id")
-
-	if err := os.Symlink(outsideDirectory, filepath.Join(runtimeDirectory, "mekugi-scripts-thread-link")); err != nil {
-		t.Fatal(err)
-	}
-	invocation = newShellWorkerTestInvocation(outsideDirectory, "MEKUGI_RUNTIME_DIR="+runtimeDirectory, "CODEX_THREAD_ID=thread-link")
-	assertRejected("hcat @shell/call-id")
-
-	artifactLinkDirectory := filepath.Join(runtimeDirectory, "mekugi-scripts-artifact-link")
-	if err := os.MkdirAll(artifactLinkDirectory, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(filepath.Join(outsideDirectory, "call-id"), filepath.Join(artifactLinkDirectory, "call-id")); err != nil {
-		t.Fatal(err)
-	}
-	invocation = newShellWorkerTestInvocation(outsideDirectory, "MEKUGI_RUNTIME_DIR="+runtimeDirectory, "CODEX_THREAD_ID=artifact-link")
-	assertRejected("hcat @shell/call-id")
 }
 
 func TestShellRunnerPreservesStdinAndExternalCommands(t *testing.T) {

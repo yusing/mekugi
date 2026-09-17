@@ -7,14 +7,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
-	"unicode/utf8"
 
 	"github.com/yusing/mekugi/internal/shellruntime"
-	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
 // A session acquires its script directory only by exclusive creation. Its live
@@ -31,7 +28,7 @@ type shellSession struct {
 	leases        int
 }
 
-var errRetainedShellUnavailable = errors.New("retained shell storage is unavailable")
+var errShellStateUnavailable = errors.New("shell continuation storage is unavailable")
 
 func (s *shellSession) createStorage() error {
 	if s.scripts != nil {
@@ -81,9 +78,7 @@ func (s *shellSession) retireIdle() {
 	for name, timer := range s.timers {
 		if timer == nil {
 			_ = s.scripts.Remove(name)
-			if _, err := mixedArtifactName(strings.TrimPrefix(name, "mixed-")); strings.HasPrefix(name, "mixed-") && err == nil {
-				_ = s.scripts.Remove(name + ".lock")
-			}
+			_ = s.scripts.Remove(name + ".lock")
 			delete(s.timers, name)
 		}
 	}
@@ -206,46 +201,13 @@ func openExistingShellDirectory(parent *os.Root, name string) (*os.Root, error) 
 	return root, nil
 }
 
-func openRetainedShellFile(directory, threadID, reference string) (*os.File, error) {
-	if !filepath.IsAbs(directory) {
-		return nil, fmt.Errorf("%s must be an absolute path", shellruntime.RuntimeDirectoryEnvironment)
-	}
-	scriptsPath, err := shellruntime.ScriptsPath(directory, threadID)
-	if err != nil {
-		return nil, err
-	}
-	parent, err := os.OpenRoot(directory)
-	if err != nil {
-		return nil, err
-	}
-	defer parent.Close()
-	scripts, err := openExistingShellDirectory(parent, filepath.Base(scriptsPath))
-	if err != nil {
-		return nil, err
-	}
-	defer scripts.Close()
-	name, err := shellArtifactName(reference)
-	if err != nil {
-		return nil, err
-	}
-	return openRegularShellFile(scripts, name)
-}
-
-func shellArtifactName(reference string) (string, error) {
-	name, ok := strings.CutPrefix(reference, shellArtifactPrefix)
-	if !ok || shellruntime.ValidateID(name) != nil || name == ".runtime" {
-		return "", errors.New("retained script requires @shell/<artifact-id>")
-	}
-	return name, nil
-}
-
 func openRegularShellFile(root *os.Root, name string) (*os.File, error) {
 	info, err := root.Lstat(name)
 	if err != nil {
 		return nil, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, errors.New("retained shell script is not a regular file")
+		return nil, errors.New("shell continuation state is not a regular file")
 	}
 	// A file replaced by a FIFO after Lstat must not block before Stat can reject
 	// the opened descriptor. Regular-file reads ignore O_NONBLOCK.
@@ -256,12 +218,12 @@ func openRegularShellFile(root *os.Root, name string) (*os.File, error) {
 	info, err = file.Stat()
 	if err != nil || !info.Mode().IsRegular() {
 		_ = file.Close()
-		return nil, errors.New("retained shell script is not a regular file")
+		return nil, errors.New("shell continuation state is not a regular file")
 	}
 	return file, nil
 }
 
-// shellRoot leases the private capability across the complete read or Apply.
+// shellRoot leases private continuation state while it is read or updated.
 // Expiry and shutdown cannot remove its files or close its roots until release.
 func (p *mekugiProxy) shellRoot(directory string) (*os.Root, func(), error) {
 	p.mu.Lock()
@@ -271,10 +233,10 @@ func (p *mekugiProxy) shellRoot(directory string) (*os.Root, func(), error) {
 	}
 	session, ok := p.shellSessions[directory]
 	if !ok {
-		return nil, nil, errRetainedShellUnavailable
+		return nil, nil, errShellStateUnavailable
 	}
 	if session.scripts == nil {
-		return nil, nil, errRetainedShellUnavailable
+		return nil, nil, errShellStateUnavailable
 	}
 	session.leases++
 	p.shellLeases.Add(1)
@@ -290,90 +252,41 @@ func (p *mekugiProxy) shellRoot(directory string) (*os.Root, func(), error) {
 	return session.scripts, release, nil
 }
 
-func (p *mekugiProxy) retainShell(directory, callID, script string) (string, time.Time, bool) {
-	if shellruntime.ValidateID(callID) != nil || callID == ".runtime" {
-		return "", time.Time{}, false
+// storeShellState retains private continuation state until its original deadline.
+func (p *mekugiProxy) storeShellState(directory, name, state string) bool {
+	if shellruntime.ValidateID(name) != nil || name == ".runtime" {
+		return false
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	session, ok := p.shellSessions[directory]
 	if p.closed || !ok {
-		return "", time.Time{}, false
+		return false
 	}
 	if err := session.createStorage(); err != nil {
-		return "", time.Time{}, false
+		return false
 	}
 	defer session.retireIdle()
-	if _, pendingExpiry := session.timers[callID]; pendingExpiry {
-		return "", time.Time{}, false
+	if _, pendingExpiry := session.timers[name]; pendingExpiry {
+		return false
 	}
-	// Exclusive creation rejects duplicate IDs and preexisting symlinks rather
-	// than overwriting an artifact or following a link supplied by another writer.
-	file, err := session.scripts.OpenFile(callID, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	// Exclusive creation rejects duplicates and preexisting symlinks.
+	file, err := session.scripts.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return "", time.Time{}, false
+		return false
 	}
-	_, writeErr := io.WriteString(file, script)
+	_, writeErr := io.WriteString(file, state)
 	if err = errors.Join(writeErr, file.Close()); err != nil {
-		_ = session.scripts.Remove(callID)
-		return "", time.Time{}, false
+		_ = session.scripts.Remove(name)
+		return false
 	}
-	expiresAt := time.Now().Add(shellArtifactTTL)
-	session.timers[callID] = time.AfterFunc(time.Until(expiresAt), func() {
+	session.timers[name] = time.AfterFunc(shellArtifactTTL, func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		if !p.closed {
-			session.timers[callID] = nil
+			session.timers[name] = nil
 			session.retireIdle()
 		}
 	})
-	return shellArtifactPrefix + callID, expiresAt, true
-}
-
-func (p *mekugiProxy) resolveShellInput(directory, input string) (string, error) {
-	seen := make(map[string]bool)
-	var root *os.Root
-	for {
-		// Batch framing belongs to Split after reference resolution, not to
-		// the single-program header parser. This also applies to retained batches.
-		if _, _, batch := shellsyntax.BatchHeader(input); batch {
-			return input, nil
-		}
-		parsed, err := shellsyntax.Parse(input)
-		if err != nil {
-			return "", err
-		}
-		if !parsed.HasScript {
-			return input, nil
-		}
-		name, err := shellArtifactName(parsed.ScriptPath)
-		if err != nil {
-			return "", err
-		}
-		if seen[name] {
-			return "", errors.New("retained shell reference cycle")
-		}
-		seen[name] = true
-		if root == nil {
-			var release func()
-			root, release, err = p.shellRoot(directory)
-			if err != nil {
-				return "", err
-			}
-			defer release()
-		}
-		file, err := openRegularShellFile(root, name)
-		if err != nil {
-			return "", fmt.Errorf("read retained shell script: %w", err)
-		}
-		content, readErr := io.ReadAll(file)
-		err = errors.Join(readErr, file.Close())
-		if err != nil {
-			return "", fmt.Errorf("read retained shell script: %w", err)
-		}
-		if !utf8.Valid(content) {
-			return "", errors.New("retained shell script is not UTF-8")
-		}
-		input = string(content)
-	}
+	return true
 }

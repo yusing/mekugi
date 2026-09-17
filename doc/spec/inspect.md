@@ -6,8 +6,7 @@ The private `inspect_file [--max-tokens N] PATH` command is
 available only through the model-visible shell tool. It accepts one shell-separated
 path, relative to the process working directory or absolute, like hcat. Parent
 paths and symlinks are allowed; the target must be a host-readable regular file.
-Codex owns filesystem permissions. Thread-private `@shell` references are read
-through hcat rather than treated as workspace files by this command.
+Codex owns filesystem permissions.
 
 Extension matching is exact and case-sensitive. Supported formats are `.go`, `.py`,
 `.pyi`, `.ts`, `.tsx`, `.d.ts`, `.mts`, `.d.mts`, `.cts`, `.d.cts`, `.js`,

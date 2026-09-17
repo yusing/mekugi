@@ -19,14 +19,9 @@ func TestSubagentShellExcerptsJSONAndSSE(t *testing.T) {
 				map[string]any{"type": "function_call_output", "call_id": "run", "output": "Chunk ID: abc\nWall time: 1 seconds\nProcess running with session ID 26369\nFinal output:\n"},
 			}
 			child, _ := prepareActivityTest(t, proxy, "child", "c", "r", "/root/worker", input)
-			if _, _, ok := proxy.retainShell(child.shellDirectory, "stored", command); !ok {
-				t.Fatal("retain source")
-			}
 			calls := []map[string]any{
 				{"type": "custom_tool_call", "id": "poll", "call_id": "poll", "name": "exec", "input": `text(await tools.write_stdin({session_id:26369,chars:""}));`},
-				{"type": "custom_tool_call", "id": "stored", "call_id": "stored", "name": "shell", "input": "#!script=@shell/stored"},
 				{"type": "custom_tool_call", "id": "batch-poll", "call_id": "batch-poll", "name": "exec", "input": `text(await tools.write_stdin({session_id:26369,chars:""})); text(await tools.clock__curr_time({}));`},
-				{"type": "custom_tool_call", "id": "batch-stored", "call_id": "batch-stored", "name": "exec", "input": `text(await tools.shell("#!script=@shell/stored")); text(await tools.list_mcp_resources({}));`},
 			}
 			payload := mustMarshalJSON(map[string]any{"status": "completed", "output": calls})
 			if stream {
@@ -55,7 +50,7 @@ func TestSubagentShellExcerptsJSONAndSSE(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			for _, want := range []string{"Still Running", "Running stored script", "go test ./internal/router…"} {
+			for _, want := range []string{"Still Running", "go test ./internal/router…"} {
 				if !bytes.Contains(output, []byte(want)) {
 					t.Fatalf("missing %q: %s", want, output)
 				}
@@ -109,7 +104,7 @@ func TestShellActivityDoesNotCorrelateProgramOutput(t *testing.T) {
 	}
 }
 
-func TestShellActivityExcerptBoundsAndReferences(t *testing.T) {
+func TestShellActivityExcerptBounds(t *testing.T) {
 	for _, source := range []string{strings.Repeat("界", 121), strings.Repeat("界", 120) + "\nmore"} {
 		excerpt := toolActivityCommandExcerpt(source)
 		if !utf8.ValidString(excerpt) || len([]rune(excerpt)) != 120 || !strings.HasSuffix(excerpt, "…") {
@@ -119,24 +114,12 @@ func TestShellActivityExcerptBoundsAndReferences(t *testing.T) {
 	if got := toolActivityCommandExcerpt("#!params={\"yield_time_ms\":30000}\nshell bash $'go test ./...\\nprintf done'"); got != "go test ./...…" {
 		t.Fatalf("excerpt: %q", got)
 	}
-	for _, source := range []string{"#!script=@shell/example", "#!params={\"yield_time_ms\":30000}\n#!script=@shell/example"} {
-		if got := toolActivityShell(source); got != "Running stored script · command unavailable" {
-			t.Fatalf("reference display: %q", got)
-		}
-	}
 }
 
 func TestShellBatchActivityExcerpt(t *testing.T) {
 	const source = "#!batch=NEXT\n#!params={}\nprintf one\nNEXT\n#!python3\nprint(2)"
 	if got := toolActivityCommandExcerpt(source); got != "printf one…" {
 		t.Fatalf("batch excerpt exposes framing instead of source: %q", got)
-	}
-	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
-	if _, _, ok := proxy.retainShell(transform.shellDirectory, "batch-excerpt", source); !ok {
-		t.Fatal("retain batch")
-	}
-	if got := transform.shellActivityExcerpt("#!script=@shell/batch-excerpt"); got != "printf one…" {
-		t.Fatalf("retained batch excerpt = %q", got)
 	}
 }
 

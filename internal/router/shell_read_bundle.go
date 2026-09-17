@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -312,24 +311,10 @@ func readBundleFile(ctx context.Context, manifest toolWorkerManifest, runtime st
 			_, _ = fmt.Fprintf(handler.Stderr, "shell: AX read evidence incomplete: %v\n", e)
 		}
 	}()
-	path := spec.path
-	var input *os.File
-	if strings.HasPrefix(path, shellArtifactPrefix) {
-		directory := handler.Env.Get(shellruntime.RuntimeDirectoryEnvironment).String()
-		if directory == "" {
-			directory = os.TempDir()
-		}
-		input, err = openRetainedShellFile(directory, handler.Env.Get(shellruntime.ThreadIDEnvironment).String(), path)
-		if err != nil {
-			return toolplugin.ExecutionOutput{Stderr: fmt.Sprintf("hcat: %v\n", err), ExitCode: 1, FailureClass: "retained_file"}, nil
-		}
-		defer input.Close()
-		path = "/dev/fd/3"
-	}
-	args := []string{"--max-tokens", strconv.Itoa(tokens), "--", path}
+	args := []string{"--max-tokens", strconv.Itoa(tokens), "--", spec.path}
 	if spec.span != "" {
 		args = append(args, spec.span)
 	}
 	return toolplugin.Execute(ctx, manifest.NodeExecutable, runtime, hcat.Module, hcat.ModuleIndex,
-		args, input, handler.Dir, shellEnvironment(handler.Env))
+		args, nil, handler.Dir, shellEnvironment(handler.Env))
 }

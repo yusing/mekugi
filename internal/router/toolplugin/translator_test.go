@@ -45,16 +45,15 @@ func TestWarmBuiltinTranslatorBurst(t *testing.T) {
 	for i := range 32 {
 		calls.Go(func() {
 			script := fmt.Sprintf("printf 'call %d\\n'\necho second\necho third\necho fourth\n", i)
-			retained := i%2 == 0
-			if !retained {
+			if i%2 != 0 {
 				script = fmt.Sprintf("printf 'call %d\\n'", i)
 			}
-			result, err := translator.Translate(t.Context(), index, script, "")
+			result, err := translator.Translate(t.Context(), index, script)
 			if err != nil {
 				t.Errorf("call %d: %v", i, err)
 				return
 			}
-			if result.Rejected || result.Carrier.Kind != "exec" || result.Carrier.RetainInput == nil || *result.Carrier.RetainInput != retained || !slices.Equal(result.Arguments, []string{"bash", script}) {
+			if result.Rejected || result.Carrier.Kind != "exec" || !slices.Equal(result.Arguments, []string{"bash", script}) {
 				t.Errorf("call %d: unexpected translation: %+v", i, result)
 			}
 		})
@@ -89,7 +88,7 @@ func newFixtureTranslator(t *testing.T) *Translator {
 appendFileSync(new URL("./imports", import.meta.url), "loaded\n");
 export default {apiVersion: "mekugi-tool-plugin/v1", tools: [{
   parse(input) { if (input === "reject") throw new Error("invalid input"); return input; },
-  argv(input, context) { return [input, context.resolvePath("@shell/script")]; },
+  argv(input) { return [input]; },
   translate(input, api) {
     if (input === "hang") { writeFileSync(new URL("./active", import.meta.url), "active"); while (true) {} }
     if (input === "crash") process.exit(7);
@@ -115,7 +114,7 @@ func TestWarmTranslatorReusesImportsAndPreservesRejection(t *testing.T) {
 	t.Parallel()
 	translator := newFixtureTranslator(t)
 	for _, input := range []string{"first\nline", "reject", "last"} {
-		result, err := translator.Translate(t.Context(), 0, input, "/scripts/")
+		result, err := translator.Translate(t.Context(), 0, input)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -123,7 +122,7 @@ func TestWarmTranslatorReusesImportsAndPreservesRejection(t *testing.T) {
 			if !result.Rejected || result.Diagnostic != "invalid input" {
 				t.Fatalf("rejection = %+v", result)
 			}
-		} else if !slices.Equal(result.Arguments, []string{input, "/scripts/script"}) {
+		} else if !slices.Equal(result.Arguments, []string{input}) {
 			t.Fatalf("arguments = %q", result.Arguments)
 		}
 	}
@@ -145,7 +144,7 @@ func TestWarmTranslatorFailureDoesNotRetryAndNextCallRecovers(t *testing.T) {
 				ctx, cancel = context.WithTimeout(ctx, 100*time.Millisecond)
 				defer cancel()
 			}
-			_, err := translator.Translate(ctx, 0, input, "")
+			_, err := translator.Translate(ctx, 0, input)
 			wantError := map[string]string{
 				"hang": "context deadline exceeded", "crash": "exit status 7",
 				"malformed": "translator returned a malformed carrier", "overflow": "token too long", "null": "incomplete result",
@@ -162,7 +161,7 @@ func TestWarmTranslatorFailureDoesNotRetryAndNextCallRecovers(t *testing.T) {
 			if err != nil || string(imports) != "loaded\n" {
 				t.Fatalf("failed call retried: imports=%q, err=%v", imports, err)
 			}
-			result, err := translator.Translate(t.Context(), 0, "next", "")
+			result, err := translator.Translate(t.Context(), 0, "next")
 			if err != nil || result.Rejected || result.Carrier.Kind != "exec" {
 				t.Fatalf("next call = %+v, %v", result, err)
 			}
@@ -177,14 +176,14 @@ func TestWarmTranslatorCloseCancelsActiveCallAndQueuedCallCanCancel(t *testing.T
 	translator.gate <- struct{}{}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := translator.Translate(ctx, 0, "queued", ""); !errors.Is(err, context.Canceled) {
+	if _, err := translator.Translate(ctx, 0, "queued"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("queued cancellation = %v", err)
 	}
 	<-translator.gate
 	started := time.Now()
 	result := make(chan error, 1)
 	go func() {
-		_, err := translator.Translate(t.Context(), 0, "hang", "")
+		_, err := translator.Translate(t.Context(), 0, "hang")
 		result <- err
 	}()
 	// Wait for the fixture to enter its non-yielding translator, not just for
@@ -207,7 +206,7 @@ func TestWarmTranslatorCloseCancelsActiveCallAndQueuedCallCanCancel(t *testing.T
 	if time.Since(started) >= pluginInvocationTimeout {
 		t.Fatal("close waited for the translation timeout")
 	}
-	if _, err := translator.Translate(t.Context(), 0, "after close", ""); !errors.Is(err, context.Canceled) {
+	if _, err := translator.Translate(t.Context(), 0, "after close"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("closed translation = %v", err)
 	}
 }
@@ -228,7 +227,7 @@ func TestWarmTranslatorReplacesExitedIdleHost(t *testing.T) {
 	previous := translator.process
 	previous.cancel()
 	<-previous.done
-	result, err := translator.Translate(t.Context(), 0, "next", "")
+	result, err := translator.Translate(t.Context(), 0, "next")
 	if err != nil || result.Carrier.Kind != "exec" || translator.process == previous {
 		t.Fatalf("idle replacement = %+v, %v", result, err)
 	}

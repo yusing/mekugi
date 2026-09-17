@@ -191,7 +191,7 @@ func registeredWorkerInput(t *testing.T, proxy *mekugiProxy, name string, argume
 	if !ok {
 		t.Fatalf("registered worker %q is unavailable", name)
 	}
-	input, err := proxy.registry.execCarrierPayload(codeModeCarrierCustom, contribution, "", arguments, "", nil, nil)
+	input, err := proxy.registry.execCarrierPayload(codeModeCarrierCustom, contribution, "", arguments, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -748,7 +748,6 @@ func TestMekugiNativeExecCommandAppliesPatchAndReturnsOnlyReport(t *testing.T) {
 		codeModeCarrierFunction,
 		execCommandArguments(mekugiNativeCommand(mekugiHistory{Patch: testTranslatedPatch, Report: testMekugiReport}), nil),
 		false,
-		nil,
 	)
 	if err := json.Unmarshal([]byte(nativeInput), &arguments); err != nil {
 		t.Fatal(err)
@@ -788,7 +787,6 @@ func TestMekugiNativeExecCommandPreservesFailureOutput(t *testing.T) {
 		codeModeCarrierFunction,
 		execCommandArguments(mekugiNativeCommand(mekugiHistory{Patch: testTranslatedPatch, Report: testMekugiReport}), nil),
 		false,
-		nil,
 	)
 	if err := json.Unmarshal([]byte(nativeInput), &arguments); err != nil {
 		t.Fatal(err)
@@ -877,7 +875,7 @@ func TestMekugiNativeToolsTranslateShellAndStreamingMekugi(t *testing.T) {
 		t.Fatal(err)
 	}
 	if arguments.Login == nil || *arguments.Login ||
-		!strings.Contains(arguments.Command, "shell bash") || !strings.Contains(arguments.Command, `"retained"`) {
+		arguments.Command != workerCommand("shell", []string{"bash", "printf ok\n"}) {
 		t.Fatalf("native shell arguments = %q", arguments.Command)
 	}
 
@@ -2034,7 +2032,7 @@ func TestShellInterpreterWrapperAddsWarning(t *testing.T) {
 	decodeExecCarrierArguments(t, carrierInput, &arguments)
 	wantCommand := workerCommand("shell", []string{"bash", input})
 	if arguments.Command != wantCommand || strings.Contains(arguments.Command, warningInput) ||
-		!strings.Contains(carrierInput, warningInput+codeModeMetadataProjection) {
+		!strings.Contains(carrierInput, warningInput+codeModeJSONProjection) {
 		t.Fatalf("warned shell carrier = %q, command %q, want original input %q", carrierInput, arguments.Command, input)
 	}
 }
@@ -2119,7 +2117,7 @@ func TestShellStacksDistinctMisuseWarnings(t *testing.T) {
 	}
 
 	direct := call(t, script)
-	if !strings.Contains(direct, wrapperInput+heredocInput+codeModeMetadataProjection) {
+	if !strings.Contains(direct, wrapperInput+heredocInput+codeModeJSONProjection) {
 		t.Fatalf("direct shell warnings did not stack in order: %q", direct)
 	}
 
@@ -2148,7 +2146,6 @@ func TestWorkerTemplateExecInputQuotesNestedShellCommand(t *testing.T) {
 		shellArguments,
 		"curl -fsSL URL | {.} | jq",
 		nil,
-		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2163,7 +2160,7 @@ func TestWorkerTemplateExecInputQuotesNestedShellCommand(t *testing.T) {
 	}
 
 	for _, template := range []string{"missing", "{.} then {.}"} {
-		if _, err := proxy.registry.execCarrierPayload(codeModeCarrierCustom, shell, "", []string{"bash", ""}, template, nil, nil); err == nil {
+		if _, err := proxy.registry.execCarrierPayload(codeModeCarrierCustom, shell, "", []string{"bash", ""}, template, nil); err == nil {
 			t.Fatalf("worker template %q did not reject", template)
 		}
 	}
@@ -2175,7 +2172,7 @@ func TestShellCarrierUsesFixedHelperForBuiltin(t *testing.T) {
 	if !ok {
 		t.Fatal("shell contribution is unavailable")
 	}
-	carrierInput, err := proxy.registry.execCarrierPayload(codeModeCarrierCustom, shell, "printf ok", []string{"bash", "printf ok"}, "", nil, nil)
+	carrierInput, err := proxy.registry.execCarrierPayload(codeModeCarrierCustom, shell, "printf ok", []string{"bash", "printf ok"}, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2200,7 +2197,7 @@ func TestWorkerExecInputMergesValidatedParams(t *testing.T) {
 		"workdir": mustMarshalJSON("/tmp/example"),
 		"tty":     mustMarshalJSON(true),
 		"login":   mustMarshalJSON(false),
-	}, nil)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2220,12 +2217,12 @@ func TestWorkerExecInputMergesValidatedParams(t *testing.T) {
 	}
 	if _, err := proxy.registry.execCarrierPayload(codeModeCarrierCustom, shell, "", []string{"bash", ""}, "", map[string]json.RawMessage{
 		"cmd": mustMarshalJSON("forbidden"),
-	}, nil); err == nil {
+	}); err == nil {
 		t.Fatal("exec params accepted cmd")
 	}
 	if _, err := proxy.registry.execCarrierPayload(codeModeCarrierCustom, shell, "", []string{"bash", ""}, "", map[string]json.RawMessage{
 		"login": mustMarshalJSON(true),
-	}, nil); err == nil {
+	}); err == nil {
 		t.Fatal("exec params accepted login true")
 	}
 }
@@ -2244,7 +2241,6 @@ func TestShellExecCarriersForwardNativeResultWithoutPolling(t *testing.T) {
 		[]string{"python3", "print('ok')"},
 		"before | {.} | after",
 		nil,
-		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -2260,7 +2256,7 @@ func TestShellExecCarriersForwardNativeResultWithoutPolling(t *testing.T) {
 	if !ok {
 		t.Fatal("configured contribution is unavailable")
 	}
-	plainInput, err := registry.execCarrierPayload(codeModeCarrierCustom, plugin, "", []string{"line.txt"}, "", nil, nil)
+	plainInput, err := registry.execCarrierPayload(codeModeCarrierCustom, plugin, "", []string{"line.txt"}, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -170,7 +170,6 @@ func TestShellOutputBudgetFitsFramedResults(t *testing.T) {
 			native := string(mustMarshalJSON(map[string]any{
 				"chunk_id": "012345", "wall_time_seconds": 1.23, "exit_code": status,
 				"original_token_count": 30000, "output": stdout + stderr,
-				"retained": true, "script_ref": "@shell/call_012345678901234567890123",
 			}))
 			for _, framed := range []string{native, string(mustMarshalJSON(native))} {
 				selected, err := toolplugin.FormatOutput(t.Context(), manifest.NodeExecutable,

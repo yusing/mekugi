@@ -43,8 +43,6 @@ func TestShellBatchExecutionAndReplay(t *testing.T) {
 			Output   string `json:"output"`
 			ExitCode int    `json:"exit_code"`
 		} `json:"results"`
-		Retained  bool   `json:"retained"`
-		ScriptRef string `json:"script_ref"`
 	}
 	runShellCatJavaScript(t, proxy.registry.NodeExecutable, directory, history.carrierInput(), &result, "", "PATH="+workerPath)
 	if len(result.Results) != 3 || result.Results[0].Output != "before" || result.Results[0].ExitCode != 7 ||
@@ -55,17 +53,6 @@ func TestShellBatchExecutionAndReplay(t *testing.T) {
 	content, err := os.ReadFile(filepath.Join(directory, "out"))
 	if err != nil || string(content) != "literal\n" {
 		t.Fatalf("written content = %q, %v", content, err)
-	}
-	if !result.Retained {
-		t.Fatal("batch not retained")
-	}
-	resolved, err := proxy.resolveShellInput(transform.shellDirectory, "#!script="+result.ScriptRef)
-	if err != nil || resolved != source {
-		t.Fatalf("retained batch = %q, %v", resolved, err)
-	}
-	rerun, err := transform.translateRegisteredTool(contribution, "batch-rerun", "#!script="+result.ScriptRef, nil)
-	if err != nil || rerun.TranslationError != "" || !strings.Contains(rerun.carrierInput(), "const results = [];") {
-		t.Fatalf("batch rerun = %+v, %v", rerun, err)
 	}
 
 	if err := proxy.rememberBatch(transform.historySessionID, transform.local); err != nil {
@@ -92,7 +79,7 @@ func TestShellBatchExecutionAndReplay(t *testing.T) {
 	}
 }
 
-func TestShellBatchStopPolicyExecutionAndRetention(t *testing.T) {
+func TestShellBatchStopPolicyExecution(t *testing.T) {
 	t.Parallel()
 	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
@@ -111,9 +98,8 @@ func TestShellBatchStopPolicyExecutionAndRetention(t *testing.T) {
 		t.Fatalf("translate: %+v, %v", history, err)
 	}
 	var result struct {
-		Results   []map[string]any `json:"results"`
-		ScriptRef string           `json:"script_ref"`
-		Batch     struct {
+		Results []map[string]any `json:"results"`
+		Batch   struct {
 			Policy     string `json:"on_nonzero_exit"`
 			Total      int    `json:"program_count"`
 			Started    int    `json:"started_programs"`
@@ -129,14 +115,6 @@ func TestShellBatchStopPolicyExecutionAndRetention(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(directory, "should-not-run")); !os.IsNotExist(err) {
 		t.Fatalf("later program executed: %v", err)
-	}
-	resolved, err := proxy.resolveShellInput(transform.shellDirectory, "#!script="+result.ScriptRef)
-	if err != nil || resolved != source {
-		t.Fatalf("retained policy lost: %q, %v", resolved, err)
-	}
-	rerun, err := transform.translateRegisteredTool(contribution, "batch-stop-rerun", "#!script="+result.ScriptRef, nil)
-	if err != nil || rerun.TranslationError != "" || !strings.Contains(rerun.carrierInput(), "break batch") {
-		t.Fatalf("rerun lost stop policy: %+v, %v", rerun, err)
 	}
 }
 
@@ -296,9 +274,8 @@ const tools = {
 	}
 	var result struct {
 		Emissions []struct {
-			Batch    map[string]any   `json:"batch"`
-			Results  []map[string]any `json:"results"`
-			Retained bool             `json:"retained"`
+			Batch   map[string]any   `json:"batch"`
+			Results []map[string]any `json:"results"`
 		} `json:"emissions"`
 		Calls int    `json:"calls"`
 		Error string `json:"error"`
@@ -307,7 +284,7 @@ const tools = {
 		t.Fatal(err)
 	}
 	if result.Calls != 2 || result.Error != "host refused" || len(result.Emissions) != 1 ||
-		!result.Emissions[0].Retained || len(result.Emissions[0].Results) != 2 ||
+		len(result.Emissions[0].Results) != 2 ||
 		result.Emissions[0].Results[0]["output"] != "one" ||
 		result.Emissions[0].Results[1]["output"] != "partial" ||
 		result.Emissions[0].Results[1]["session_id"] != float64(42) {

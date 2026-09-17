@@ -186,19 +186,3 @@ func TestShellMisuseRejectionDeliveryAndReplay(t *testing.T) {
 		}
 	}
 }
-
-func TestRetainedShellMisuse(t *testing.T) {
-	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
-	reference, _, retained := proxy.retainShell(transform.shellDirectory, "retained-source", `text("not Bash")`)
-	if !retained {
-		t.Fatal("could not retain fixture")
-	}
-	contribution, _ := proxy.registry.contribution("shell")
-	history, err := transform.translateRegisteredTool(contribution, "rerun", "#!script="+reference, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if history.TranslationError != shellTypeScriptDiagnostic {
-		t.Fatalf("retained misuse: %q", history.TranslationError)
-	}
-}

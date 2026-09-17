@@ -74,11 +74,6 @@ func TestSplit(t *testing.T) {
 			input: "#!batch=--another--\n#!python3\nexample = '''\nNEXT\n#!batch=NEXT\n#!python3\n#!params={}\n'''\n--another--\nprintf two",
 			want:  []string{"#!python3\nexample = '''\nNEXT\n#!batch=NEXT\n#!python3\n#!params={}\n'''\n", "printf two"},
 		},
-		{
-			name:  "retained reference",
-			input: "#!script=@shell/example",
-			want:  []string{"#!script=@shell/example"},
-		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := Split(test.input)
@@ -149,6 +144,7 @@ func TestSplitRejectsInvalidPrograms(t *testing.T) {
 		"#!batch=NEXT\necho one\nNEXT\nNEXT\necho three",
 		"#!batch=NEXT\necho one\nNEXT\n#!params={bad}\necho two",
 		"#!batch=NEXT\necho one\nNEXT\n#!python3\n",
+		"#!script=@shell/example",
 		"#!batch=NEXT\necho one\nNEXT\n#!script=@shell/example",
 		"#!params={}\n#!params={}\necho one",
 		"#!batch=NEXT\necho one\nNEXT\n#!\necho two",

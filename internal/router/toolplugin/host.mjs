@@ -593,7 +593,7 @@ function validateCarrier(carrier) {
   }
   if (carrier.kind === "exec") {
     const keys = Object.keys(carrier);
-    if (!keys.every((key) => ["kind", "template", "params", "retainInput"].includes(key))) {
+    if (!keys.every((key) => ["kind", "template", "params"].includes(key))) {
       throw new Error("translator returned a malformed carrier");
     }
     const normalized = {kind: "exec"};
@@ -606,12 +606,6 @@ function validateCarrier(carrier) {
     }
     if (carrier.params !== undefined) {
       normalized.params = validateExecParams(carrier.params);
-    }
-    if (carrier.retainInput !== undefined) {
-      if (typeof carrier.retainInput !== "boolean") {
-        throw new Error("translator returned a malformed carrier");
-      }
-      normalized.retainInput = carrier.retainInput;
     }
     return Object.freeze(normalized);
   }
@@ -626,21 +620,14 @@ function validateCarrier(carrier) {
 }
 
 async function translateTool(request) {
-  const context = Object.freeze({
-    resolvePath(path) {
-      return request.pathPrefix !== "" && typeof path === "string" && path.startsWith("@shell/")
-        ? request.pathPrefix + path.slice("@shell/".length)
-        : path;
-    },
-  });
   const tool = await loadTool(request.snapshotRoot, request.module, request.index);
   let parsed;
   try {
-    parsed = await tool.parse(request.input, context);
+    parsed = await tool.parse(request.input);
   } catch (error) {
     return {rejected: true, diagnostic: errorText(error), arguments: [], carrier: {kind: "", name: "", payload: ""}};
   }
-  const argumentsValue = validateArguments(await tool.argv(parsed, context));
+  const argumentsValue = validateArguments(await tool.argv(parsed));
   const api = Object.freeze({
     custom(name, input) {
       return Object.freeze({kind: "custom", name, payload: input});
@@ -648,7 +635,7 @@ async function translateTool(request) {
     function(name, argumentsJSON) {
       return Object.freeze({kind: "function", name, payload: argumentsJSON});
     },
-    exec(template, params, retainInput) {
+    exec(template, params) {
       const carrier = {kind: "exec"};
       if (template !== undefined) {
         carrier.template = template;
@@ -656,13 +643,10 @@ async function translateTool(request) {
       if (params !== undefined) {
         carrier.params = params;
       }
-      if (retainInput !== undefined) {
-        carrier.retainInput = retainInput;
-      }
       return Object.freeze(carrier);
     },
   });
-  const carrier = validateCarrier(await tool.translate(parsed, api, context));
+  const carrier = validateCarrier(await tool.translate(parsed, api));
   return {rejected: false, diagnostic: "", arguments: argumentsValue, carrier};
 }
 

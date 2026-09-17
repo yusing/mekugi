@@ -221,7 +221,6 @@ func TestToolPluginExecTemplateUsesCanonicalWorkerCommand(t *testing.T) {
 		[]string{"--fixed", "template"},
 		"before | {.} | after",
 		nil,
-		nil,
 	)
 	if err != nil {
 		t.Fatal(err)

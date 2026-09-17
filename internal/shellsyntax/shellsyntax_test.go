@@ -16,9 +16,8 @@ func TestParse(t *testing.T) {
 		t.Fatalf("Parse = %+v", parsed)
 	}
 
-	retained, err := Parse("#!script=@shell/call-id")
-	if err != nil || retained.ScriptPath != "@shell/call-id" {
-		t.Fatalf("retained Parse = %+v, %v", retained, err)
+	if _, err := Parse("#!script=@shell/call-id"); err == nil || !strings.Contains(err.Error(), "unsupported shell directive #!script") {
+		t.Fatalf("removed directive = %v", err)
 	}
 }
 
@@ -64,7 +63,7 @@ func TestHeaderErrorLocations(t *testing.T) {
 		{"#!python3\n#!cmd missing\nprint(1)", 2},
 		{"#!python3\r\n#!cmd={.}\r\n#!params={bad}\r\nprint(1)", 3},
 		{"#!params={}\r#!params={}\recho one", 2},
-		{"#!script=@shell/example\necho one", 2},
+		{"#!script=@shell/example\necho one", 1},
 		{"#!python3\nprint(1)\n\x00", 3},
 	} {
 		_, err := Parse(test.source)

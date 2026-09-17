@@ -58,9 +58,6 @@ func Split(input string) ([]string, error) {
 			return nil, fmt.Errorf("shell program %d: %w", index+1, err)
 		}
 		if len(programs) > 1 {
-			if parsed.HasScript {
-				return nil, fmt.Errorf("shell program %d: line 1: #!script must be the sole directive", index+1)
-			}
 			if strings.TrimSpace(parsed.Body) == "" {
 				return nil, fmt.Errorf("shell program %d: line 1: batch programs must have a body", index+1)
 			}

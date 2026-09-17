@@ -226,7 +226,7 @@ func (t *mekugiResponseTransform) shellCatPlan(contribution toolContribution, ar
 	return steps, commands, true
 }
 
-func (t *mekugiResponseTransform) shellCatCarrier(contribution toolContribution, kind codeModeCarrierKind, arguments []string, template string, params, metadata map[string]json.RawMessage, callIDs ...string) (string, bool) {
+func (t *mekugiResponseTransform) shellCatCarrier(contribution toolContribution, kind codeModeCarrierKind, arguments []string, template string, params map[string]json.RawMessage, callIDs ...string) (string, bool) {
 	steps, commands, ok := t.shellCatPlan(contribution, arguments, template, params, 0, callIDs...)
 	if !ok {
 		return "", false
@@ -238,9 +238,6 @@ func (t *mekugiResponseTransform) shellCatCarrier(contribution toolContribution,
 			}
 		}
 		command := strings.Join(commands, "\n")
-		if len(metadata) != 0 {
-			command += "\nmekugi_status=$?\nprintf '\\n%s\\n' " + shellQuoteArgument(string(mustMarshalJSON(metadata))) + "\nexit \"$mekugi_status\""
-		}
 		return string(mustMarshalJSON(execCommandArguments(command, params))), true
 	}
 	var program strings.Builder
@@ -249,9 +246,7 @@ func (t *mekugiResponseTransform) shellCatCarrier(contribution toolContribution,
 	writeShellCatSequence(&program, steps, commands, params)
 	// Keep prefix diagnostics even when a later tool refuses or fails. Finally
 	// does not catch the host error, advance the sequence, or retry a write.
-	program.WriteString("} finally {\ntext(JSON.stringify(Object.assign({}, last, {output}, ")
-	program.Write(mustMarshalJSON(metadata))
-	program.WriteString(")));\n}\n")
+	program.WriteString("} finally {\ntext(JSON.stringify(Object.assign({}, last, {output})));\n}\n")
 	return program.String(), true
 }
 

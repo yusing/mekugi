@@ -52,10 +52,8 @@ dispatch, replay, diagnostics, and reevaluation. Every command handle resolves a
 visible evaluated rejected script as one immutable baseline. Each handled command may appear at
 most once in a shortcut payload. Both forms rebuild through the root
 `EditTextBounded` primitive, then evaluate the complete resulting script normally.
-Ordinary and recovered scripts share target-aware
-evaluation: workspace targets translate to a host patch, while `@shell/` targets apply
-directly inside the current thread’s private retained-script storage. Recovery retains
-the reference in its rejected baseline and replay, never resolving it as a workspace path.
+Ordinary and recovered scripts share workspace translation: accepted edits produce a host
+patch, and Codex owns application.
 
 A malformed, stale, unchanged, conflicting, incomplete, cross-worktree, or otherwise invalid recovery
 changes neither workspace state nor retained rejected ancestry. Proxy-rejected attempts keep

@@ -358,12 +358,12 @@ export function createHCatTool(description: string, grammar: string): Tool<strin
     name: "hcat",
     description,
     grammar,
-    argv(input, context) {
+    argv(input) {
       const {argv, pathIndex} = hcatArguments(input);
       // Preserve the parsed boundary after flattening into executor argv.
       // Relative option-like names need a path spelling, not an option spelling.
-      const resolved = context.resolvePath(argv[pathIndex]);
-      argv[pathIndex] = resolved.startsWith("-") ? `./${resolved}` : resolved;
+      const path = argv[pathIndex];
+      argv[pathIndex] = path.startsWith("-") ? `./${path}` : path;
       return argv;
     },
     async execute(argv) {
@@ -377,9 +377,6 @@ export function createHCatTool(description: string, grammar: string): Tool<strin
         return {stderr: `hcat: ${conciseErrorText(error)}\n`, exitCode: 1, failureClass: "invalid_arguments"};
       }
       try {
-        if (spec.path.startsWith("@shell/")) {
-          throw new Error("unresolved @shell path");
-        }
         const result = await readHashLines(spec, options);
         const limitDiagnostic = result.incomplete
           ? `hcat: ${result.limitReason ?? readerLimitDiagnostic(options)}`

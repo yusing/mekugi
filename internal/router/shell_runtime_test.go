@@ -56,7 +56,7 @@ func TestShellRuntimeRejectsTraversalAndSymlinkDirectories(t *testing.T) {
 	if _, err := proxy.storeShellRuntime("symlink-scripts"); err != nil {
 		t.Fatalf("launcher depended on scripts: %v", err)
 	}
-	if _, _, retained := proxy.retainShell(directory, "call", "changed"); retained {
+	if proxy.storeShellState(directory, "call", "changed") {
 		t.Fatal("accepted symlink script storage")
 	}
 	if got, err := os.ReadFile(sentinel); err != nil || string(got) != "untouched" {

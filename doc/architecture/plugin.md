@@ -20,7 +20,7 @@ Unsupported or malformed translation fails routing rather than approximating a r
 
 Executable contributions use an authenticated immutable snapshot. Children verify registry
 identity and never rediscover live configuration, so file changes take effect only after a
-new launch. Process, wrapper, retained-script, and runtime-locator cleanup is limited to
+new launch. Process, wrapper, private-checkpoint, and runtime-locator cleanup is limited to
 resources created and leased by that router. Retention does not grant a new filesystem or
 process authority.
 

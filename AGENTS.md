@@ -43,7 +43,7 @@ The linked contracts own interface-specific details, exceptions, and acceptance 
   through `/subagents`, model switches, and `codex resume`, including a fresh router process.
   Restore inherited state and relationship authorization from visible history and durable
   workspace records, not routing-session IDs, cache keys, or a live parent. Preserve documented
-  lifetimes: replay does not revive processes, continuation handles, or expired private scripts;
+  lifetimes: replay does not revive processes, continuation handles, or expired private checkpoints;
   Mentor schedules are router-lifetime.
   Evidence: [replay](doc/spec/plugin.md), [recovery](doc/spec/correct.md),
   [guidance switches](doc/spec/guide.md), [Mentor lifetime](doc/spec/mentor.md).

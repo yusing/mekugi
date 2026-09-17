@@ -72,8 +72,6 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
   instead of requiring the entire Git diff.
 - **Write scripts without wrappers.** Direct scripts avoid wrapper code and
   extra quoting.
-- **Reuse retained scripts.** Temporary script references let agents inspect,
-  edit, and rerun retained source without emitting it again.
 - **Compress repeated text.** Optional [CTP/2](doc/spec/ctp.md) losslessly encodes
   eligible model-visible text using local dictionaries and references. Tool names
   and new tool payloads stay native. Enable it with `--model-protocol ctp2`;
@@ -350,9 +348,7 @@ hcat --tail -n 20 source.ts
 hrun --tail -n 20 -- go test ./internal/router
 ```
 
-Retained programs use thread-local `@shell/` references and expire after one
-hour by default, or when the router stops. Save source as an ordinary workspace
-file when it needs to survive the thread. See the
+Use an ordinary script file for source you need to edit or run repeatedly. See the
 [change record](doc/spec/changes.md), [reader](doc/spec/read.md), and
 [shell](doc/spec/shell.md) contracts for flags, bounds, and recovery.
 

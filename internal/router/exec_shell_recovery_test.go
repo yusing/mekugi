@@ -34,7 +34,7 @@ func TestExecShellRecoveryDetection(t *testing.T) {
 		{"unknown directive", "#!unknown=value\necho hello", false},
 		{"invalid template", "#!cmd=cat\necho hello", false},
 		{"empty selector", "#!\necho hello", false},
-		{"retained reference is valid JavaScript", "#!script=@shell/prior", false},
+		{"removed directive remains valid JavaScript hashbang", "#!script=@shell/prior", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := execShellRecovery(test.source); got != test.want {

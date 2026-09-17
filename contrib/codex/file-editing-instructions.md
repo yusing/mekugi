@@ -132,7 +132,7 @@ Variables and `cd` do not carry over. `#!batch=SEPARATOR` continues after nonzer
 completed results and partial output. Native-only clients reject batches. Use separate shell calls
 for interactive programs.
 
-### Output, retention, and continuation
+### Output and continuation
 
 Bound noisy external output with
 `hrun [-n N] [--max-tokens N] [--tail] -- COMMAND [ARG...]`; use direct execution for quiet or
@@ -142,11 +142,7 @@ complete output, including output redirected to a file. Supply a line or token l
 command; infinite producers require cancellation.
 
 A runtime failure may leave earlier effects. Inspect state before retrying; failure is not rollback.
-Retained scripts are thread-private and expire at the reported deadline or earlier on router shutdown.
-Reads and edits do not renew them. Save durable source in workspace files. Use
-`hcat @shell/REF` to read one, hpatch to edit it, or a shell call containing only
-`#!script=@shell/REF` to rerun it. An HPATCH script that selects `@shell/` paths may contain only
-those paths.
+Use ordinary script files for source that needs repeated editing or execution.
 
 For pending execution, follow the latest `continuation` notice's `next_call`; prefer host completion
 notifications. A running outer Code Mode cell owns continuation, so use its `wait`, not an inner
@@ -228,8 +224,8 @@ Shell text in edit values remains data.
 
 Shell commands may surround edit segments. Begin every edit segment with `in` or `new`; selection
 and pending edits do not cross shell boundaries. Each shell segment accepts one program with
-independent state. Native-only clients use separate hpatch and shell calls. Interactive programs,
-explicit shell batches, and `@shell/` source edits also remain separate.
+independent state. Native-only clients use separate hpatch and shell calls. Interactive programs
+and explicit shell batches also remain separate.
 
 All syntax and shell headers validate before execution. Each edit segment then validates against its
 starting files before Codex authorization/application. A stale target, nonzero shell exit, refusal,
@@ -286,8 +282,7 @@ Use ordinary `cat` or bounded `sed` unless verified rows help an anticipated edi
 reads and searches before execution. Shell workers budget combined display output automatically.
 For omitted output, run the
 exact `next_call: hread REF` without repeating producer arguments. Reading never reruns a producer;
-commands retain their exit status and `script_ref` denotes source, not output. Outer host truncation
-can still hide a receipt.
+commands retain their exit status. Outer host truncation can still hide a receipt.
 
 Private readers run in Bash/POSIX and accept `--max-tokens N` (1–15500, default 4000). Copy emitted
 rows directly; never reconstruct hashes. Incomplete results do not establish coverage.

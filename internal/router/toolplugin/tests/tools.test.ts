@@ -314,9 +314,8 @@ describe("reader budgets and previews", () => {
 
   test("parses hcat reader options before a quoted path", async () => {
     const tool = createHCatTool("test", "");
-    expect(await tool.parse('--preview-bytes 12 --max-tokens 100 "path with spaces" 0:2',
-      {resolvePath: (value: string) => `/root/${value}`})).toEqual([
-      "--preview-bytes", "12", "--max-tokens", "100", "/root/path with spaces", "1:2",
+    expect(await tool.parse('--preview-bytes 12 --max-tokens 100 "path with spaces" 0:2')).toEqual([
+      "--preview-bytes", "12", "--max-tokens", "100", "path with spaces", "1:2",
     ]);
   });
 });
@@ -340,8 +339,8 @@ describe("hcat line limits", () => {
     }
     const range = await tool.execute(["--tail", "-n", "1", file, "1:2"], executionContext);
     expect(range.stdout).toBe(formatVerifiedRow(2, "two"));
-    expect(await tool.parse('-n 2 --tail "rows.txt"', {resolvePath: value => `/root/${value}`})).toEqual(
-      ["-n", "2", "--tail", "/root/rows.txt"]);
+    expect(await tool.parse('-n 2 --tail "rows.txt"')).toEqual(
+      ["-n", "2", "--tail", "rows.txt"]);
     for (const flags of [["-n"], ["-n", "0"], ["-n", "01"], ["-n", "1", "-n", "2"], ["-n", "9007199254740992"]]) {
       expect((await tool.execute([...flags, file], executionContext)).failureClass).toBe("invalid_arguments");
     }
@@ -432,7 +431,7 @@ describe("shared reader controls", () => {
       expect(await tool.execute([file, "--max-tokens", "200", "--"], executionContext)).toEqual(before);
       expect(after).toEqual(before);
       for (const input of [`--max-tokens 200 ${JSON.stringify(file)}`, `${JSON.stringify(file)} --max-tokens 200`]) {
-        const argv = await tool.parse(input, {resolvePath: value => value});
+        const argv = await tool.parse(input);
         expect(await tool.execute(argv, executionContext)).toEqual(before);
       }
     }
@@ -492,9 +491,8 @@ describe("hcat tail", () => {
     const preview = await tool.execute(["--preview-bytes", "2", "--tail", "--max-tokens", "200", file, "4:4"], executionContext);
     expect(JSON.parse(preview.stdout!)).toMatchObject({row: `4:${hashLine("last")}`, preview: "la", omitted_bytes: 2});
     expect(preview.exitCode).toBe(0);
-    expect(await tool.parse('--tail --max-tokens 100 "rows with spaces.txt" 0:2',
-      {resolvePath: (value: string) => `/root/${value}`})).toEqual([
-      "--tail", "--max-tokens", "100", "/root/rows with spaces.txt", "1:2",
+    expect(await tool.parse('--tail --max-tokens 100 "rows with spaces.txt" 0:2')).toEqual([
+      "--tail", "--max-tokens", "100", "rows with spaces.txt", "1:2",
     ]);
   });
 
@@ -605,9 +603,7 @@ describe("hcat built-in plugin", () => {
         ["", "", formatVerifiedRow(1, "first") + formatVerifiedRow(2, "second")],
         ["-n 1 --tail ", " 2:2", formatVerifiedRow(2, "second")],
       ]) {
-        const argv = await tool.parse(`${prefix}${JSON.stringify(name)}${range}`, {
-          resolvePath: value => value,
-        });
+        const argv = await tool.parse(`${prefix}${JSON.stringify(name)}${range}`);
         expect(argv).toContain(`./${name}`);
         expect(await tool.execute(argv, executionContext)).toMatchObject({stdout: expected, exitCode: 0});
       }
@@ -616,8 +612,7 @@ describe("hcat built-in plugin", () => {
 
   test("parses one path and optional range into shell arguments", async () => {
     const tool = createHCatTool("description", "start: TEST");
-    const context = {resolvePath: (path: string) => path};
-    const parse = (input: string) => tool.parse(input, context);
+    const parse = (input: string) => tool.parse(input);
 
 
     expect(await parse("plugins/shell.mjs 164:300")).toEqual([
@@ -698,11 +693,7 @@ describe("hcat built-in plugin", () => {
       failureClass: "not_found",
     });
 
-    expect(await tool.execute(["@shell/call-id"], executionContext)).toEqual({
-      stderr: "hcat: unresolved @shell path\n",
-      exitCode: 1,
-      failureClass: "reader_error",
-    });
+    expect(await tool.execute(["@shell/call-id"], executionContext)).toEqual(missing);
   });
 
   test("rejects malformed ranges, non-regular files, and invalid UTF-8", async () => {

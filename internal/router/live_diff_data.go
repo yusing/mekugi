@@ -65,8 +65,8 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 		history := record.History
 		status := trackedStatus(history, call.Confirmed)
 		attempt := liveDiffAttempt{change: event.ID, correlation: event.Change.Correlation, stream: event.Stream, confirmed: call.Confirmed}
-		// Private retained scripts are not workspace edits.
-		if !strings.HasPrefix(strings.TrimLeft(history.recoveryBaseline(), "\r\n"), "in "+shellArtifactPrefix) {
+		// Historical private-script edits are not workspace edits.
+		if !history.Applied || !strings.HasPrefix(strings.TrimLeft(history.recoveryBaseline(), "\r\n"), "in @shell/") {
 			for n, file := range history.ReviewFiles {
 				canonical := func(path string) string {
 					if path == "" {

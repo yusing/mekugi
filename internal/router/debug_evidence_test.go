@@ -49,7 +49,7 @@ func TestAXReaderFailureClassesPreserveOutputAndCallIdentity(t *testing.T) {
 		t.Fatalf("failure-class batch outcome: %d %q %q", code, out, stderr)
 	}
 	reads, err := capturer.ReadAXReads(t.Context(), journal, "child-thread")
-	if err != nil || reads.Failed != 5 || reads.FailuresByClass["invalid_arguments"] != 2 || reads.FailuresByClass["not_found"] != 2 || reads.FailuresByClass["retained_file"] != 1 {
+	if err != nil || reads.Failed != 5 || reads.FailuresByClass["invalid_arguments"] != 2 || reads.FailuresByClass["not_found"] != 3 {
 		t.Fatalf("unexplained failures: %+v %v", reads, err)
 	}
 	shellID := reads.Failures[0].ShellID

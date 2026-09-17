@@ -72,7 +72,7 @@ func (t *mekugiResponseTransform) retainMixedScript(changeID, correlationID, sou
 		state.LiveDiff = t.proxy.autoLiveDiff.events.expectProducer(state.Root, t.shellThreadID, state.ChangeID, state.Handle)
 	}
 	name, _ := mixedArtifactName(state.Handle)
-	if _, _, ok := t.proxy.retainShell(t.shellDirectory, name, string(mustMarshalJSON(state))); !ok {
+	if !t.proxy.storeShellState(t.shellDirectory, name, string(mustMarshalJSON(state))) {
 		return hpatchResumeState{}, errors.New("mixed-script retention is unavailable; no segment ran")
 	}
 	return state, nil

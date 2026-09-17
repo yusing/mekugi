@@ -266,7 +266,6 @@ func (registry *toolRegistry) execCarrierPayload(
 	arguments []string,
 	template string,
 	params map[string]json.RawMessage,
-	resultMetadata map[string]json.RawMessage,
 	callIDs ...string,
 ) (string, error) {
 	command, err := registry.execCarrierCommand(contribution, sourceInput, arguments, template, 0, callIDs...)
@@ -279,15 +278,10 @@ func (registry *toolRegistry) execCarrierPayload(
 	if login, exists := params["login"]; exists && !bytes.Equal(bytes.TrimSpace(login), []byte("false")) {
 		return "", errors.New("exec params login must be false")
 	}
-	if kind == codeModeCarrierFunction && len(resultMetadata) != 0 {
-		metadata := string(mustMarshalJSON(resultMetadata))
-		command += "\nmekugi_status=$?\nprintf '\\n%s\\n' " + shellQuoteArgument(metadata) + "\nexit \"$mekugi_status\""
-	}
 	return renderExecCarrier(
 		kind,
 		execCommandArguments(command, params),
 		contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell",
-		resultMetadata,
 	), nil
 }
 
@@ -380,23 +374,19 @@ func execCommandArguments(command string, params map[string]json.RawMessage) map
 	return argumentsObject
 }
 
-// renderExecCarrier renders an exec carrier payload from arguments and metadata.
+// renderExecCarrier renders an exec carrier payload and its result projection.
 func renderExecCarrier(
 	kind codeModeCarrierKind,
 	arguments map[string]json.RawMessage,
 	forwardNativeResult bool,
-	resultMetadata map[string]json.RawMessage,
 ) string {
 	encodedArguments := string(mustMarshalJSON(arguments))
 	if kind == codeModeCarrierFunction {
 		return encodedArguments
 	}
 	resultOutput := "text(result.output);"
-	if forwardNativeResult || len(resultMetadata) != 0 {
+	if forwardNativeResult {
 		resultOutput = "text(JSON.stringify(result));"
-		if len(resultMetadata) != 0 {
-			resultOutput = "text(JSON.stringify(Object.assign({}, result, " + string(mustMarshalJSON(resultMetadata)) + ")));"
-		}
 	}
 	return "const result = await tools.exec_command(" + encodedArguments + ");\n" + resultOutput
 }
@@ -516,7 +506,7 @@ func shellInterpreterWrapperMisuses(contribution toolContribution, input string)
 		return nil
 	}
 	parsed, err := shellsyntax.Parse(input)
-	if err != nil || parsed.HasScript {
+	if err != nil {
 		return nil
 	}
 	variant := syntax.LangBash

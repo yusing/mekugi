@@ -232,7 +232,7 @@ func TestShellCatCarrierWaitsBeforeApplying(t *testing.T) {
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	transform.directory = t.TempDir()
 	contribution, _ := proxy.registry.contribution("shell")
-	carrier, ok := transform.shellCatCarrier(contribution, codeModeCarrierCustom, []string{"bash", "foo; cat >out <<'EOF'\nhello\nEOF\nbar"}, "", nil, nil)
+	carrier, ok := transform.shellCatCarrier(contribution, codeModeCarrierCustom, []string{"bash", "foo; cat >out <<'EOF'\nhello\nEOF\nbar"}, "", nil)
 	if !ok {
 		t.Fatal("no split")
 	}
@@ -278,7 +278,7 @@ func TestShellCatCarrierRuntimeFallbacks(t *testing.T) {
 	for _, path := range []string{"link", "missing/child"} {
 		t.Run(path, func(t *testing.T) {
 			source := "cat > " + path + " <<'EOF'\nliteral\nEOF\n"
-			carrier, ok := transform.shellCatCarrier(contribution, codeModeCarrierCustom, []string{"bash", source}, "", nil, nil)
+			carrier, ok := transform.shellCatCarrier(contribution, codeModeCarrierCustom, []string{"bash", source}, "", nil)
 			if !ok {
 				t.Fatal("missing carrier")
 			}
@@ -312,7 +312,7 @@ func TestShellCatNativeCarrierWithHostApplyPatch(t *testing.T) {
 	// Use the real host parser/application, including an overwrite and an empty file.
 	for _, content := range []string{"before\n", "after\n\n", ""} {
 		source := "cat > out <<'EOF'\n" + content + "EOF\n"
-		carrier, ok := transform.shellCatCarrier(contribution, codeModeCarrierFunction, []string{"bash", source}, "", nil, nil)
+		carrier, ok := transform.shellCatCarrier(contribution, codeModeCarrierFunction, []string{"bash", source}, "", nil)
 		if !ok {
 			t.Fatal("missing native carrier")
 		}
@@ -372,8 +372,7 @@ func TestShellCatCarrierPreservesOutputOnHostFailure(t *testing.T) {
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	contribution, _ := proxy.registry.contribution("shell")
 	carrier, ok := transform.shellCatCarrier(contribution, codeModeCarrierCustom,
-		[]string{"bash", "foo; cat > out <<'EOF'\nliteral\nEOF\nbar"}, "", nil,
-		map[string]json.RawMessage{"retained": mustMarshalJSON(true), "script_ref": mustMarshalJSON("@shell/kept")})
+		[]string{"bash", "foo; cat > out <<'EOF'\nliteral\nEOF\nbar"}, "", nil)
 	if !ok {
 		t.Fatal("no split")
 	}
@@ -408,8 +407,6 @@ const tools = {
 			var result struct {
 				Emissions []struct {
 					Output    string `json:"output"`
-					Retained  bool   `json:"retained"`
-					ScriptRef string `json:"script_ref"`
 					SessionID int    `json:"session_id"`
 				} `json:"emissions"`
 				Error string `json:"error"`
@@ -425,8 +422,8 @@ const tools = {
 			if result.Calls != wantCalls || result.Error != wantError || len(result.Emissions) != 1 {
 				t.Fatalf("failure result = %+v", result)
 			}
-			if result.Emissions[0].Output != "prefix diagnostics" || !result.Emissions[0].Retained || result.Emissions[0].ScriptRef != "@shell/kept" {
-				t.Fatalf("lost completed output or metadata: %+v", result)
+			if result.Emissions[0].Output != "prefix diagnostics" {
+				t.Fatalf("lost completed output: %+v", result)
 			}
 			if failure == "continuation" && result.Emissions[0].SessionID != 42 {
 				t.Fatalf("lost native continuation handle: %+v", result)

@@ -163,10 +163,6 @@ export function parseShellHeader(value) {
     delete parsed.params;
   }
   delete parsed.hasParams;
-  if (parsed.hasScript === true && parsed.scriptPath === undefined) {
-    parsed.scriptPath = "";
-  }
-  delete parsed.hasScript;
   return parsed;
 }
 

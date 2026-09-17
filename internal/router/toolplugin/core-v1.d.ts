@@ -27,7 +27,6 @@ declare module "mekugi:core/v1" {
     /** One-based source line of the params directive, when present. */
     paramsLine?: number;
     params?: Record<string, unknown>;
-    scriptPath?: string;
   };
 
   export function hashLine(value: SharedCoreInput): string;

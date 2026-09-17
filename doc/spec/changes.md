@@ -74,7 +74,7 @@ a current workspace status.
 `--history` additionally returns original inputs, recovery amendments, rebuilt scripts
 when different, and full diagnostics. Each path after `--` matches either recorded before or after
 path, accepting equivalent lexical absolute and workspace-relative spellings for workspace
-files. It does not consult current filesystem contents or resolve file symlinks. Retained
+files. It does not consult current filesystem contents or resolve file symlinks. Historical private
 shell-script paths match exactly. Filtering affects diff/file entries, not attempt history.
 Multiple paths select the union of matching files in recorded order.
 A file matching multiple filters is emitted once per evaluation, not once per filter.
@@ -86,14 +86,14 @@ moves, empty files, CR bytes, and explicit missing-final-newline markers. Later 
 edits cannot alter these diffs. They describe evaluated changes, not a second inspection
 of the executor's resulting bytes: the host line-ending behavior in `REQ-OUTPUT-001`
 still applies. Shell commands, external formatters, and unrelated workspace changes are
-not tracked. Edits to retained `@shell/` scripts are labeled separately from workspace
+not tracked. Historical edits to retained `@shell/` scripts are labeled separately from workspace
 files; their recorded paths are relative to that private script store. Reads do not
 combine several invocations into a synthetic net diff.
 
 An attempt is `rejected`, `no-op`, `prepared (application unconfirmed)`, or `applied`.
 A translated patch alone is never proof of application. Exact successful-report replay
-confirms application only after the entire incoming history validates; direct private
-application can confirm immediately. A report may be bare or in the matching host
+confirms application only after the entire incoming history validates. Historical records
+of direct private application preserve their original confirmation. A report may be bare or in the matching host
 carrier's completed output envelope: native execution requires exit code zero, and
 Code Mode requires `Script completed`. The body must equal the entire retained report.
 Code Mode may supply a separate metadata-only completed header followed by one report
@@ -234,7 +234,7 @@ to 1,024 mutations, and retained display payloads to 48 KiB each across at most 
 active previews. Capacity or target failures do not block complete edits. File projection
 stops at shell or recovery boundaries; the remaining streamed input is shown separately
 as script source, with a labeled tail when clipped. It never guesses post-shell file
-state or reads private retained scripts. Oversized file projections retain the last
+state or reads private continuation storage. Oversized file projections retain the last
 useful frame when one exists.
 
 ### Update integrity

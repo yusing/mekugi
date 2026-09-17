@@ -16,7 +16,6 @@ export type ExecCarrier = {
   kind: "exec";
   template?: string;
   params?: Record<string, unknown>;
-  retainInput?: boolean;
 };
 
 export type Carrier = CustomCarrier | FunctionCarrier | ExecCarrier;
@@ -27,7 +26,6 @@ export type TranslationAPI = {
   exec(
     template?: string,
     params?: Record<string, unknown>,
-	retainInput?: boolean,
   ): ExecCarrier;
 };
 
@@ -57,10 +55,6 @@ export type ExecutionContext = {
   outputBudgetBytes: number;
 };
 
-export type TranslationContext = {
-  resolvePath(path: string): string;
-};
-
 export type Tool<T> = {
   specification: {
     type: "custom";
@@ -72,9 +66,9 @@ export type Tool<T> = {
       definition: string;
     };
   };
-  parse(input: string, context: TranslationContext): T | Promise<T>;
-  argv(input: T, context: TranslationContext): string[] | Promise<string[]>;
-  translate(input: T, api: TranslationAPI, context: TranslationContext): Carrier | Promise<Carrier>;
+  parse(input: string): T | Promise<T>;
+  argv(input: T): string[] | Promise<string[]>;
+  translate(input: T, api: TranslationAPI): Carrier | Promise<Carrier>;
   execute(argv: string[], context: ExecutionContext): ExecutionResult | Promise<ExecutionResult>;
 };
 

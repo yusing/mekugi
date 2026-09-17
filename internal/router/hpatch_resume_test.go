@@ -62,7 +62,7 @@ func TestHpatchCheckpointRevisionAndExpiry(t *testing.T) {
 	}
 
 	// Keep the directory alive, so only per-artifact expiry can remove the lock.
-	if _, _, ok := transform.proxy.retainShell(transform.shellDirectory, "keep-alive", "true"); !ok {
+	if !transform.proxy.storeShellState(transform.shellDirectory, "keep-alive", "true") {
 		t.Fatal("retain other artifact")
 	}
 	transform.proxy.mu.Lock()

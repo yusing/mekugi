@@ -55,13 +55,11 @@ afterEach(async () => {
 });
 
 describe("installable shell plugin", () => {
-  test("rejects unresolved retained references without opening a host file", async () => {
+  test("rejects the removed script directive without opening a host file", async () => {
     const directory = await temporaryDirectory("mekugi-shell-reference-");
     const stored = path.join(directory, "outside-script");
     await writeFile(stored, "#!python3\nprint('outside')\n");
-    expect(() => tool.parse(`#!script=${stored}`, {
-      resolvePath: (value: string) => value,
-    })).toThrow();
+    expect(() => tool.parse(`#!script=${stored}`)).toThrow("unsupported shell directive #!script");
   });
   test("normalizes interpreter argv and carries the authored source without extra flags", async () => {
     expect(tool.specification).toMatchObject({
@@ -96,23 +94,18 @@ describe("installable shell plugin", () => {
     expect(await tool.translate(bash, {exec: () => ({kind: "exec"})})).toEqual({kind: "exec"});
   });
 
-  test("classifies retention and rejects unresolved retained references", async () => {
-    const context = {resolvePath: (value: string) => value};
-    const retention = async (input: string) => {
-      const parsed = await tool.parse(input, context);
-      const carrier = await tool.translate(parsed, {
-        exec: (_template, _params, retainInput) => ({kind: "exec", retainInput}),
-      });
-      return carrier.retainInput;
-    };
-
-    expect(await retention("one\ntwo\nthree")).toBe(false);
-    expect(await retention("one\ntwo\nthree\nfour")).toBe(true);
-    expect(await retention("#!sh\none\ntwo")).toBe(false);
-    expect(await retention("#!sh\none\ntwo\nthree")).toBe(true);
-    expect(await retention("#!python3\npass")).toBe(true);
-
-    expect(() => tool.parse("#!script=@shell/call-id", context)).toThrow("resolved by the router");
+  test("uses the same exec interface for every interpreter and source length", async () => {
+    for (const input of ["one\ntwo\nthree", "one\ntwo\nthree\nfour", "#!sh\none\ntwo", "#!python3\npass"]) {
+      const calls: unknown[][] = [];
+      const parsed = await tool.parse(input);
+      expect(await tool.translate(parsed, {
+        exec: (...args: unknown[]) => {
+          calls.push(args);
+          return {kind: "exec"};
+        },
+      })).toEqual({kind: "exec"});
+      expect(calls).toEqual([[undefined, undefined]]);
+    }
   });
 
   test("expands a command directive after an optional interpreter shebang", async () => {

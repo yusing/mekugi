@@ -10,7 +10,7 @@ import (
 
 const pluginInvocationTimeout = 5 * time.Second
 
-func Translate(ctx context.Context, node, runtimeRoot, module string, index int, input, pathPrefix string) (Translation, error) {
+func Translate(ctx context.Context, node, runtimeRoot, module string, index int, input string) (Translation, error) {
 	ctx, cancel := context.WithTimeout(ctx, pluginInvocationTimeout)
 	defer cancel()
 	request := struct {
@@ -19,14 +19,12 @@ func Translate(ctx context.Context, node, runtimeRoot, module string, index int,
 		Module       string `json:"module"`
 		Index        int    `json:"index"`
 		Input        string `json:"input"`
-		PathPrefix   string `json:"pathPrefix"`
 	}{
 		Operation:    "translate",
 		SnapshotRoot: filepath.Join(runtimeRoot, snapshotDirectory),
 		Module:       module,
 		Index:        index,
 		Input:        input,
-		PathPrefix:   pathPrefix,
 	}
 	var result Translation
 	err := invoke(

@@ -381,6 +381,36 @@ func TestTrackedRetainedScriptScope(t *testing.T) {
 	}
 }
 
+func TestTrackedFormerShellPathIsWorkspaceScope(t *testing.T) {
+	transform, proxy, _, workspace := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy.replayStore = store
+	if err := os.Mkdir(filepath.Join(workspace, "@shell"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "@shell", "script"), []byte("old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	history, err := transform.translate("workspace-shell-path", "in @shell/script\ntype \"old\" \"new\"", nil)
+	if err != nil || history.TranslationError != "" || history.Applied || history.Patch == "" {
+		t.Fatalf("workspace translation = %+v, %v", history, err)
+	}
+	if err := transform.commitLocalCall("workspace-shell-path"); err != nil {
+		t.Fatal(err)
+	}
+	text, err := proxy.replayStore.readChanges(t.Context(), changeReadOptions{workspace: workspace, ids: []string{history.ChangeID}})
+	if err != nil || strings.Contains(text, "scope: retained shell script") || !strings.Contains(text, "@shell/script") {
+		t.Fatalf("workspace scope = %q, %v", text, err)
+	}
+	files, err := proxy.replayStore.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
+	if err != nil || len(files) != 1 || files[0].path != filepath.Join(workspace, "@shell", "script") {
+		t.Fatalf("workspace live diff = %#v, %v", files, err)
+	}
+}
+
 func TestTrackedNativeFailureIncludesChangeID(t *testing.T) {
 	bash, err := exec.LookPath("bash")
 	if err != nil {

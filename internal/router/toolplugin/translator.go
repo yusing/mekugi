@@ -38,7 +38,7 @@ func NewTranslator(ctx context.Context, node, root, module string) (*Translator,
 	return t, nil
 }
 
-func (t *Translator) Translate(ctx context.Context, index int, input, pathPrefix string) (Translation, error) {
+func (t *Translator) Translate(ctx context.Context, index int, input string) (Translation, error) {
 	ctx, cancel := context.WithTimeout(ctx, pluginInvocationTimeout)
 	defer cancel()
 	select {
@@ -71,10 +71,9 @@ func (t *Translator) Translate(ctx context.Context, index int, input, pathPrefix
 		}
 	}
 	request := struct {
-		Index      int    `json:"index"`
-		Input      string `json:"input"`
-		PathPrefix string `json:"pathPrefix"`
-	}{index, input, pathPrefix}
+		Index int    `json:"index"`
+		Input string `json:"input"`
+	}{index, input}
 	var result *Translation
 	err := t.process.exchange(ctx, request, &result)
 	if err == nil && (result == nil || result.Arguments == nil || (!result.Rejected && result.Carrier.Kind == "")) {

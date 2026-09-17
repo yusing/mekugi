@@ -225,16 +225,11 @@ func TestInstructionsOwnCompleteShellWorkflow(t *testing.T) {
 		"not `/usr/bin/env`",
 		"accepts exactly one `{.}` runner placeholder",
 		"`#!params=<JSON object>`",
-		"`hcat @shell/REF`",
-		"only `#!script=@shell/REF`",
-		"may contain only those paths",
 		"use native session facilities for interactive input or termination",
 		"`#!batch-stop=SEPARATOR`",
 		"Omitted params inherit the previous complete object",
 		"Variables and `cd` do not carry over",
-		"expire at the reported deadline or earlier",
-		"Reads and edits do not renew them",
-		"Save durable source in workspace files",
+		"Use ordinary script files for source that needs repeated editing or execution",
 	} {
 		for _, model := range []string{"gpt-5.6-sol", "gpt-6-astra"} {
 			for _, compact := range []bool{false, true} {
@@ -244,6 +239,19 @@ func TestInstructionsOwnCompleteShellWorkflow(t *testing.T) {
 			}
 		}
 
+	}
+}
+
+func TestInstructionsDoNotAdvertiseRetainedShellSource(t *testing.T) {
+	for _, model := range []string{"gpt-5.6-sol", "gpt-6-astra"} {
+		for _, compact := range []bool{false, true} {
+			guidance := InstructionsForModel(model, compact)
+			for _, obsolete := range []string{"@shell/", "#!script=", "script_ref", "Retained scripts are thread-private"} {
+				if strings.Contains(guidance, obsolete) {
+					t.Errorf("model %q compact %v advertises removed source retention: %q", model, compact, obsolete)
+				}
+			}
+		}
 	}
 }
 
@@ -315,7 +323,6 @@ func TestInstructionsConsolidateDeliveredContracts(t *testing.T) {
 				"`advisory`",
 				"`<<TEXT` (keep final terminator)",
 				"`continuation` notice's `next_call`",
-				"Retained scripts are thread-private",
 				"`--preview-bytes N`",
 				"`inspect_file PATH` for bounded metadata",
 				"Plain lines query the current snapshot",

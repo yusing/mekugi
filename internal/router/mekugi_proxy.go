@@ -26,8 +26,6 @@ const (
 	maxMekugiPatchBytes  = 16 << 20
 
 	maxMekugiPendingCalls = 128
-
-	shellArtifactPrefix = "@shell/"
 )
 
 var (
@@ -49,10 +47,6 @@ type mekugiTranslationResult struct {
 type mekugiTranslator interface {
 	Translate(ctx context.Context, directory, script string) (mekugiTranslationResult, error)
 	ToolDescription() string
-}
-
-type mekugiApplier interface {
-	Apply(ctx context.Context, root *os.Root, script string) (mekugiTranslationResult, error)
 }
 
 type inProcessMekugiTranslator struct {
@@ -84,14 +78,6 @@ func (t inProcessMekugiTranslator) Translate(ctx context.Context, directory, scr
 		return mekugiTranslationResult{}, fmt.Errorf("%w: mekugi translation output exceeds its configured bound", errMekugiCapacity)
 	}
 	return mekugiTranslationResultOf(translated), err
-}
-
-func (t inProcessMekugiTranslator) Apply(ctx context.Context, root *os.Root, script string) (mekugiTranslationResult, error) {
-	applied, err := mekugi.ApplyForHostRoot(ctx, root, script, t.dataDirectory)
-	if contextErr := ctx.Err(); contextErr != nil {
-		return mekugiTranslationResult{}, contextErr
-	}
-	return mekugiTranslationResultOf(applied), err
 }
 
 func (t inProcessMekugiTranslator) ReportOutcome(ctx context.Context, stage, outcome string) error {

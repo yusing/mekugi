@@ -171,7 +171,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			} else {
 				fmt.Fprintf(&output, "attempt %d %s\n", position+1, trackedStatus(history, call.Confirmed))
 			}
-			retained := strings.HasPrefix(strings.TrimLeft(history.recoveryBaseline(), "\r\n"), "in "+shellArtifactPrefix)
+			retained := history.Applied && strings.HasPrefix(strings.TrimLeft(history.recoveryBaseline(), "\r\n"), "in @shell/")
 			if retained {
 				output.WriteString("scope: retained shell script, not workspace files\n")
 			}

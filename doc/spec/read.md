@@ -90,8 +90,7 @@ Hcat retains its bounded whole-row candidate storage in token-limited and previe
 row exceeding 1,984,000 UTF-8 bytes cannot be verified by this reader; it is omitted
 with a distinct source-bound diagnostic and nonzero status. Use a byte-window
 reader when such a file needs content inspection. Whole-file UTF-8 validation
-still runs even after stdout admission stops. Retained `@shell/` reads accept the
-same options through the existing thread-private descriptor path.
+still runs even after stdout admission stops.
 
 Acceptance:
 
@@ -177,8 +176,8 @@ existing single-file calls and `hcat -- PATH [START:END]` remain unchanged. Its 
 total display budget is 4000, with the usual 1–15500 token option bounds. The bundle reserves conservative framing space based on
 quoted path lengths, then divides the remaining budget equally among readers. If
 framing cannot fit, it rejects before reading any file. Source parsing, permissions,
-logical rows, bounds, and verified identities remain owned by hcat; retained `@shell`
-operands keep their thread ownership. No new source-selection semantics are introduced.
+logical rows, bounds, and verified identities remain owned by hcat.
+No new source-selection semantics are introduced.
 
 A manifest precedes all bodies and reports each input path, displayed and retained
 omitted inclusive line ranges (or `none`), completion state, and an optional `next_call`

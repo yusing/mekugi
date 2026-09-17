@@ -484,7 +484,6 @@ func (t *mekugiResponseTransform) recordLocal(callID string, history *mekugiHist
 			codeModeCarrierFunction,
 			execCommandArguments(mekugiNativeCommand(*history), nil),
 			false,
-			nil,
 		)
 	} else if history.CarrierKind == "" && history.PluginID == "" {
 		// Pin the delivered bytes before retention. carrierInput still renders

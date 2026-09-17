@@ -116,25 +116,6 @@ func TestTextRecoveryThroughRouterTranslationAndAncestry(t *testing.T) {
 	}
 }
 
-func TestTextRecoveryUsesPrivateRetainedShellDispatch(t *testing.T) {
-	transform, proxy, _, _ := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
-	if _, _, ok := proxy.retainShell(transform.shellDirectory, "prepared", "printf old\n"); !ok {
-		t.Fatal("retain shell")
-	}
-	first, err := transform.translate("original", "in @shell/prepared\ntype \"missing\" \"new\"\n", nil)
-	if err != nil || !first.EvaluatorRejected {
-		t.Fatalf("initial rejection: %v, %+v", err, first)
-	}
-	fixed, err := transform.translateRecovery("fixed", `type "missing" "old"`, nil)
-	if err != nil || !fixed.Applied || fixed.TranslationError != "" {
-		t.Fatalf("private recovery: %v, %+v", err, fixed)
-	}
-	body, err := proxy.resolveShellInput(transform.shellDirectory, "#!script=@shell/prepared")
-	if err != nil || body != "printf new\n" {
-		t.Fatalf("retained body = %q, %v", body, err)
-	}
-}
-
 func TestTextRecoveryCannotUseNonvisibleOrCrossWorktreeHistory(t *testing.T) {
 	for _, crossWorktree := range []bool{false, true} {
 		transform, proxy, _, directory := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))

@@ -16,8 +16,6 @@ type Parsed struct {
 	Params          map[string]any `json:"params"`
 	ParamsLine      int            `json:"paramsLine,omitempty"`
 	HasParams       bool           `json:"hasParams,omitzero"`
-	ScriptPath      string         `json:"scriptPath,omitempty"`
-	HasScript       bool           `json:"hasScript,omitzero"`
 }
 
 // HeaderError locates a rejected header in the submitted program. Line is
@@ -30,20 +28,10 @@ type HeaderError struct {
 func (e *HeaderError) Error() string { return fmt.Sprintf("line %d: %v", e.Line, e.Err) }
 func (e *HeaderError) Unwrap() error { return e.Err }
 
-// Parse reads the portable shell header. A retained-script path is returned to
-// the host without reading it; filesystem resolution remains host-owned.
+// Parse reads the portable interpreter selector and shell directives.
 func Parse(input string) (Parsed, error) {
 	if strings.ContainsRune(input, 0) {
 		return Parsed{}, &HeaderError{Line: physicalLine(input[:strings.IndexByte(input, 0)]), Err: errors.New("script must not contain a NUL byte")}
-	}
-
-	retainedLine, retainedBody := splitFirstLine(input)
-	retainedLine = trimField(retainedLine)
-	if path, ok := strings.CutPrefix(retainedLine, "#!script="); ok {
-		if retainedBody != "" {
-			return Parsed{}, &HeaderError{Line: 2, Err: errors.New("#!script must be the sole directive")}
-		}
-		return Parsed{ScriptPath: path, HasScript: true}, nil
 	}
 
 	interpreter := []string{"bash"}
