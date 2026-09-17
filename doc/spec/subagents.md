@@ -69,7 +69,7 @@ Grok OAuth store. This route supports the standard `https://auth.x.ai` Grok publ
 enterprise issuers. Grok owns interactive login; Mekugi refreshes expired/near-expiry OAuth tokens
 and retries one rejected access token. Refresh uses Grok's cross-process advisory lock, re-reads
 credentials under that lock, and atomically saves rotated credentials while preserving unrelated
-accounts and fields. No credentials, provider error bodies, or prompts enter diagnostics.
+accounts and fields. No credentials, provider error bodies, or prompts enter sanitized diagnostics.
 Codex credentials and internal account/thread headers are never forwarded to Grok, and Grok credentials
 never reach OpenAI. Credential-bearing requests do not follow redirects.
 
@@ -190,7 +190,14 @@ A provider-scoped hash of the stable thread ID is sent as `x-opencode-session`
 for routing/cache affinity. It survives router restart without sharing identities
 between services or threads; absent thread identity does not borrow another session.
 Other Codex account/session headers remain excluded. Redirects are not followed,
-there is no authentication retry, and provider error bodies are never exposed.
+there is no authentication retry. Rejected inference requests on the Grok and OpenCode
+routes preserve the provider's HTTP status and error details in HTTP/WebSocket errors
+and user-facing failure notices, rather than replacing them with authentication advice.
+Error reads are limited to 8 KiB and five seconds; unreadable or oversized bodies get an
+explicit explanation. JSON error messages retain their name, type, or code when present;
+other bodies use bounded text. Display text is limited to 2,048 characters, strips terminal
+controls, and redacts credentials used on the request. Sanitized diagnostics and metrics
+retain only the HTTP classification, never the provider's error text.
 The ordinary Codex authentication boundary still applies to incoming requests.
 
 Cost estimates use the request-selected online rates, including cache reads,

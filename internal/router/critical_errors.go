@@ -101,6 +101,10 @@ func forwardCriticalDiagnostic(err error) error {
 		code = fmt.Sprintf("upstream_websocket_http_%d", rejection.status)
 		summary = fmt.Sprintf("the upstream WebSocket handshake was rejected with HTTP %d", rejection.status)
 	}
+	if rejection, ok := errors.AsType[*providerHTTPError](err); ok {
+		code = fmt.Sprintf("upstream_provider_http_%d", rejection.status)
+		summary = fmt.Sprintf("the provider rejected the request with HTTP %d", rejection.status)
+	}
 	return criticalDiagnostic(err, code, summary, true)
 }
 
@@ -136,6 +140,8 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 	message := "Mekugi could not complete the request. Retry the turn; if it persists, restart the session."
 	if compatibility, ok := errors.AsType[*requestCompatibilityError](err); ok {
 		category, message = compatibility.code, compatibility.Error()
+	} else if rejection, ok := errors.AsType[*providerHTTPError](err); ok {
+		category, message = "provider_http_error:"+f.diagnosticReference, rejection.Error()
 	} else {
 		switch {
 		case f.upstreamStatusCode == 401 || f.upstreamStatusCode == 403:

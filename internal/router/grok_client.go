@@ -114,17 +114,29 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 			return nil, errors.New("Grok retry after authentication refresh failed")
 		}
 	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		defer stopStart()
+		defer cancel()
+		body := newStreamIdleReadCloser(ctx, response.Body, 5*time.Second)
+		defer body.Close()
+		// Bound the complete error read, including a provider that drips bytes.
+		timer := time.AfterFunc(5*time.Second, func() { _ = body.Close() })
+		defer timer.Stop()
+		detail, readErr := io.ReadAll(io.LimitReader(body, maxUpstreamErrorDetailBytes+1))
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if readErr != nil {
+			detail = []byte("provider error body could not be read")
+		} else if len(detail) > maxUpstreamErrorDetailBytes {
+			detail = []byte("provider error body exceeds the 8 KiB limit")
+		}
+		return nil, newProviderHTTPError(label, response.StatusCode, detail, credentials.headers, headers)
+	}
 	if !stopStart() {
 		response.Body.Close()
 		cancel()
 		return nil, startCtx.Err()
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		response.Body.Close()
-		cancel()
-		// Error bodies can echo inputs or credentials. Return only status and a
-		// bounded router-owned diagnostic, never raw provider authentication errors.
-		return nil, fmt.Errorf("%s returned HTTP %d; check provider access and authentication", label, response.StatusCode)
 	}
 	var upstream io.ReadCloser = &cancelOnCloseReadCloser{body: response.Body, cancel: cancel}
 	if g.streamIdleTimeout > 0 {

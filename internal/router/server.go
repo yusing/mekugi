@@ -459,6 +459,14 @@ func writeRequestError(writer *trackedResponseWriter, requestErr error) {
 		if _, ok := errors.AsType[*requestCompatibilityError](requestErr); ok {
 			status = http.StatusBadRequest
 		}
+		if rejection, ok := errors.AsType[*providerHTTPError](requestErr); ok {
+			writer.Header().Set("Content-Type", "application/json")
+			writer.WriteHeader(rejection.status)
+			_, _ = writer.Write(mustMarshalJSON(map[string]any{"error": map[string]string{
+				"type": "provider_error", "message": rejection.Error(),
+			}}))
+			return
+		}
 		http.Error(writer, requestErr.Error(), status)
 	}
 }

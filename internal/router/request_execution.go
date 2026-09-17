@@ -384,9 +384,13 @@ func (a *requestAttempt) forward() error {
 	if rejectedUpgrade {
 		a.finalization.upstreamStatusCode = rejection.status
 	}
+	providerRejection, rejectedProvider := errors.AsType[*providerHTTPError](err)
+	if rejectedProvider {
+		a.finalization.upstreamStatusCode = providerRejection.status
+	}
 	// Definite HTTP rejections did not admit inference. Transport failures and
 	// accepted requests may still have consumed tokens without a usable terminal.
-	if !rejectedUpgrade && (a.response == nil ||
+	if !rejectedUpgrade && !rejectedProvider && (a.response == nil ||
 		a.response.StatusCode >= http.StatusOK && a.response.StatusCode < http.StatusMultipleChoices) {
 		a.finishUsage = true
 	}

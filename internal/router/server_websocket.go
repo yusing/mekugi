@@ -103,6 +103,9 @@ func (s *responsesWebSocket) writeError(ctx context.Context, err error) ([]byte,
 	if _, ok := errors.AsType[*requestCompatibilityError](err); ok {
 		status = http.StatusBadRequest
 	}
+	if rejection, ok := errors.AsType[*providerHTTPError](err); ok {
+		status = rejection.status
+	}
 	fields := map[string]any{"type": "error", "status": status, "error": map[string]string{"type": "invalid_request_error", "message": err.Error()}}
 	if upstream, ok := errors.AsType[*webSocketStatusError](err); ok {
 		fields["status"] = upstream.status
