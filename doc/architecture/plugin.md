@@ -35,6 +35,13 @@ private to the authenticated executor. They share portable row and source semant
 retaining distinct selection owners. The router never fabricates their results, adds
 standalone frontends, or turns their shell history into edit-recovery ancestry.
 
+Optional shell command-routing policy is built-in plugin code, separate from model-visible
+tool declarations. The authenticated registry retains its candidate names and required
+executable. The plugin transforms expanded argv only; the shell executor checks current
+availability and display eligibility, then executes the resulting argv through its existing
+process owner. Output selection remains downstream, including `hrun`. Policy evaluation
+never executes, retries, or replays the target command.
+
 Mixed edit and shell input uses one sequential Codex-owned carrier. Edit segments are
 translated against the current filesystem immediately before Codex applies them; shell
 segments reuse ordinary execution and native continuation. Private checkpoints retain

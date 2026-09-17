@@ -66,6 +66,7 @@ func executeShellTool(
 		programArguments = slices.Clone(arguments)
 		programArguments[len(programArguments)-1] = parsed.Body
 	}
+	ctx = context.WithValue(ctx, shellCommandRoutingDisabledKey{}, parsed.CommandTemplate != "")
 	if parsed.CommandTemplate != "" {
 		// The template may pipe or redirect worker output. Those bytes are
 		// program data, not necessarily the host's final display.
@@ -282,7 +283,13 @@ func executeShellProgram(
 		interp.Params(arguments[1:len(arguments)-1]...),
 		interp.StdIO(stdin, &capture.stdout, &capture.stderr),
 		interp.ExecHandler(middleware(func(ctx context.Context, arguments []string) error {
-			return runExternalShellCommand(ctx, arguments, terminalShell, interp.HandlerCtx(ctx))
+			handler := interp.HandlerCtx(ctx)
+			// Pipes, redirections and substitutions consume program data, not
+			// display output. Private readers were already dispatched above.
+			if !terminalShell && handler.Stdout == &capture.stdout && handler.Stderr == &capture.stderr && (handler.Stdin == stdin || handler.Stdin == nil && stdin == nil) && !shellCommandRoutingDisabled(ctx) {
+				arguments = routeShellCommand(ctx, manifest, runtimeRoot, arguments, handler)
+			}
+			return runExternalShellCommand(ctx, arguments, terminalShell, handler)
 		})),
 		interp.CallHandler(shellCommentaryCallHandler(commentary)),
 	)

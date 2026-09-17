@@ -78,6 +78,10 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
   eligible model-visible text using local dictionaries and references. Tool names
   and new tool payloads stay native. Enable it with `--model-protocol ctp2`;
   it is off by default.
+|- **Summarize noisy command output.** If [RTK](https://github.com/rtk-ai/rtk) is on
+|  the executor's `PATH`, Mekugi routes recognized display commands through it so
+|  agents see compact summaries instead of full logs. Missing RTK leaves commands
+|  unchanged.
 
 See [how editing and execution work](#how-editing-and-execution-work) for usage
 and prerequisites.
@@ -405,6 +409,18 @@ preserving completed results and partial output. The `batch` summary reports the
 policy, started/unstarted counts, and stop reason. Native-only clients require
 separate calls. Use separate calls for interactive programs too, so their
 prompts and session handles remain available for input.
+
+### Command output summaries
+
+When [RTK](#token-saving) is available, recognized display commands include supported Git, Go, Cargo, JavaScript
+tooling, and search. With `hrun`, RTK summarizes first, then `hrun` applies its
+output limit.
+
+Private readers such as `hcat`, `hgrep`, and `inspect_file` stay unfiltered. So do
+pipelines, redirected output, command substitutions, explicit machine-readable
+formats, and unsupported command forms. Terminal-backed commands and native
+`find`/`diff` also stay raw. Use an explicit executable path when a supported
+command needs raw output.
 
 The following commands are available **inside the tool's Bash and POSIX
 programs**, not as standalone utilities in your terminal:

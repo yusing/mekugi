@@ -25,6 +25,7 @@ type (
 		NodeExecutable string
 		DiagnoseHooks  mekugi.DiagnoseHooks
 
+		commandRouting    *toolplugin.CommandRouting
 		builtinTranslator *toolplugin.Translator
 
 		frontendDirectory string
@@ -40,12 +41,13 @@ type (
 	}
 
 	toolWorkerManifest struct {
-		ReplayDirectory string             `json:"replay_directory,omitempty"`
-		AXReadOutput    string             `json:"ax_read_output,omitempty"`
-		Version         int                `json:"version"`
-		RegistryID      string             `json:"registry_id"`
-		NodeExecutable  string             `json:"node_executable,omitempty"`
-		RuntimeRoot     string             `json:"runtime_root"`
-		Tools           []toolContribution `json:"tools"`
+		ReplayDirectory string                     `json:"replay_directory,omitempty"`
+		AXReadOutput    string                     `json:"ax_read_output,omitempty"`
+		Version         int                        `json:"version"`
+		RegistryID      string                     `json:"registry_id"`
+		NodeExecutable  string                     `json:"node_executable,omitempty"`
+		RuntimeRoot     string                     `json:"runtime_root"`
+		CommandRouting  *toolplugin.CommandRouting `json:"command_routing,omitempty"`
+		Tools           []toolContribution         `json:"tools"`
 	}
 )

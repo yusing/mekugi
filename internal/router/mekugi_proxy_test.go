@@ -1821,6 +1821,7 @@ func TestDirectBashExecCommand(t *testing.T) {
 		want      string
 		ok        bool
 	}{
+		{name: "routing candidate", arguments: []string{"bash", "git status\n"}},
 		{name: "external", arguments: []string{"bash", "rtk ok\n"}, want: "rtk ok", ok: true},
 		{name: "quoted external", arguments: []string{"bash", "'rtk' ok\n"}, want: "'rtk' ok", ok: true},
 		{name: "external redirection", arguments: []string{"bash", "rtk ok >out\n"}, want: "rtk ok >out", ok: true},

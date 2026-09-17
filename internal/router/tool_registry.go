@@ -165,7 +165,12 @@ func buildToolRegistryAt(
 		return fail(errors.Join(validationErrors...))
 	}
 
+	routing, err := toolplugin.LoadCommandRouting(ctx, pluginSnapshot.NodeExecutable, filepath.Join(snapshotDirectory, "runtime"))
+	if err != nil {
+		return fail(fmt.Errorf("load shell command routing policy: %w", err))
+	}
 	manifest := toolWorkerManifest{
+		CommandRouting:  &routing,
 		ReplayDirectory: replayDirectory,
 		Version:         1,
 		NodeExecutable:  pluginSnapshot.NodeExecutable,
@@ -217,6 +222,7 @@ func buildToolRegistryAt(
 		return fail(err)
 	}
 	return &toolRegistry{
+		commandRouting:    &routing,
 		builtinTranslator: translator,
 		SnapshotDir:       snapshotDirectory,
 		RuntimeRoot:       runtimeRoot,

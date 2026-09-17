@@ -62,8 +62,8 @@ The optional exec command template contains exactly one `{.}`
 placeholder, which the router replaces with the complete quoted worker command. For configured
 tools this is their frontend command. For built-in shell it is normally the fixed
 `shell <interpreter> <program>` helper command; without a shebang, directive, or template, one
-physical line containing one static external Bash command instead remains the complete outer
-command. An optional JSON parameter object cannot contain `cmd`. The router supplies `cmd` from
+physical line containing one static external Bash command that is not an optional command-routing
+candidate instead remains the complete outer command. An optional JSON parameter object cannot contain `cmd`. The router supplies `cmd` from
 the selected command. If the parameter object contains `login`, its value must be exactly `false`.
 
 Requests may expose the Code Mode custom `exec` owner at the top level or in `additional_tools`, or native

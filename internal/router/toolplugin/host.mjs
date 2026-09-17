@@ -832,6 +832,16 @@ async function main() {
       response = {plugins, errors};
       break;
     }
+    case "command-routing": {
+      const {commandRouting} = await import(pathToFileURL(path.join(snapshotRoot, "builtin/rtk.js")).href);
+      response = commandRouting();
+      break;
+    }
+    case "rewrite-command": {
+      const {rewriteCommand} = await import(pathToFileURL(path.join(snapshotRoot, "builtin/rtk.js")).href);
+      response = rewriteCommand(validateArguments(request.arguments));
+      break;
+    }
     case "format-output": {
       const {formatHRunOutput} = await import(pathToFileURL(path.join(snapshotRoot, "builtin/hrun.js")).href);
       response = formatHRunOutput(validateArguments(request.arguments));

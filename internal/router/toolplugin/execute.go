@@ -86,3 +86,38 @@ func FormatOutput(ctx context.Context, node, runtimeRoot string, arguments []str
 		"", nil, maxEncodedExecutionHostOutputBytes, nil, nil, request, &result)
 	return result, err
 }
+
+type CommandRouting struct {
+	Executable string   `json:"executable"`
+	Commands   []string `json:"commands"`
+}
+
+func LoadCommandRouting(ctx context.Context, node, runtimeRoot string) (CommandRouting, error) {
+	ctx, cancel := context.WithTimeout(ctx, pluginInvocationTimeout)
+	defer cancel()
+	request := struct {
+		Operation    string `json:"operation"`
+		SnapshotRoot string `json:"snapshotRoot"`
+	}{"command-routing", filepath.Join(runtimeRoot, snapshotDirectory)}
+	var result CommandRouting
+	err := invoke(ctx, node, filepath.Join(runtimeRoot, hostFilename), request.SnapshotRoot,
+		"", nil, 128<<10, nil, nil, request, &result)
+	return result, err
+}
+
+// RewriteCommand maps argv without executing commands or interpreting shell source.
+func RewriteCommand(ctx context.Context, node, runtimeRoot, directory string, environment, arguments []string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, pluginInvocationTimeout)
+	defer cancel()
+	request := struct {
+		Operation    string   `json:"operation"`
+		SnapshotRoot string   `json:"snapshotRoot"`
+		Arguments    []string `json:"arguments"`
+	}{"rewrite-command", filepath.Join(runtimeRoot, snapshotDirectory), arguments}
+	var result struct {
+		Arguments []string `json:"arguments"`
+	}
+	err := invoke(ctx, node, filepath.Join(runtimeRoot, hostFilename), request.SnapshotRoot,
+		directory, environment, 128<<10, nil, nil, request, &result)
+	return result.Arguments, err
+}

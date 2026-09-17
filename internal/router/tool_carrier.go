@@ -235,6 +235,10 @@ func (registry *toolRegistry) directBashExecCommand(arguments []string) (string,
 		isRouterShellCommand(commandName) || interp.IsBuiltin(commandName) {
 		return "", false
 	}
+	if registry.commandRouting != nil && slices.Contains(registry.commandRouting.Commands, commandName) {
+		// Optional executor-side routing needs the worker's actual PATH and cwd.
+		return "", false
+	}
 	if contribution, exists := registry.contribution(commandName); exists &&
 		contribution.PluginID == builtinToolsPluginID && !contribution.ModelVisible {
 		return "", false

@@ -81,7 +81,7 @@ followed by the exact body as its final value. The resulting Codex exec carrier 
 or its quoting. For implicit default Bash without a command template, a body with at most one final line
 terminator remains direct when it parses as one non-background, non-negated simple call whose
 static command is neither a shell built-in, the reserved `journal` command, nor a private
-contribution and whose statement contains no command or process substitution. The direct carrier
+contribution or an optional command-routing candidate, and whose statement contains no command or process substitution. The direct carrier
 removes that optional final line terminator and otherwise preserves the command text.
 
 The `shell` transformation MUST NOT add flags to the rendered command. Only interpreter
@@ -172,6 +172,27 @@ The shell-owned `hhelp [TOPIC]` reads the bundled guidance described in
 path, and has no workspace or session-state dependency. Unknown topics and excess operands
 exit with status 2 and a concise stderr diagnostic, without stdout. Its name is reserved;
 it runs in the authenticated Bash/POSIX worker, not a standalone host command.
+
+### Optional command routing
+
+The built-in RTK policy plugin transforms expanded command arguments, not shell source.
+It does not execute commands. Its candidate names and mappings are snapshotted with the
+registry; no RTK command mappings belong in the Go runner. Candidate commands use the
+authenticated worker so routing observes the executor's current cwd and PATH. When `rtk`
+is not executable there, commands run unchanged.
+
+Only recognized command forms are routed. Unsupported subcommands, explicit executable
+paths, already-routed commands, private readers, and explicit machine-readable output
+remain unchanged. Automatic routing applies only to display output: commands whose
+input or output is redirected, piped, or captured by substitution remain raw. Command
+templates and non-Bash/POSIX interpreters are not automatically routed. An explicit
+`hrun` opts its inner external command into routing before output capture and selection.
+Terminal-backed commands and interactive Git staging bypass automatic routing. Native `find`,
+`diff`, `git add`, and `pnpm typecheck` also remain raw because their RTK
+counterparts change more than display output.
+RTK changes the displayed output; the existing command executor retains ownership of
+argv, environment, exit status, cancellation, and descendant cleanup. Rewrite failure
+falls back to the original argv before execution, never by retrying an executed command.
 
 The shell-owned command `hrun [-n N] [--max-tokens N] [--tail] -- COMMAND [ARG...]`
 executes one external command with selected displayed output. At least one limit is required.

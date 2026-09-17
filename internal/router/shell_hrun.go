@@ -252,6 +252,9 @@ func executeHRun(ctx context.Context, manifest toolWorkerManifest, runtimeRoot s
 		}
 		return interp.ExitStatus(2)
 	}
+	if !terminalShell && !shellCommandRoutingDisabled(ctx) {
+		command = routeShellCommand(ctx, manifest, runtimeRoot, command, handler)
+	}
 	// Source: plugins/tokens.ts MAX_POSSIBLE_GPT5_TOKEN_BYTES.
 	// No GPT-5 token spans more than 128 bytes. Keep a small UTF-8 boundary
 	// reserve, separately for each stream, before exact final token selection.
