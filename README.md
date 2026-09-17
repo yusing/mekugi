@@ -225,7 +225,7 @@ OpenAI history remains unsupported.
 `--grok` cannot be combined with Codex's named `--profile` option or
 `exec --ignore-user-config`. Use the default configuration or an explicit
 `-c model_catalog_json=...` instead. See the
-[Grok model requirements](doc/spec/subagents.md) for catalog, search, and
+[Grok model requirements](doc/spec/grok.md) for catalog, search, and
 token-limit behavior.
 
 ### OpenCode Go and Zen
@@ -445,7 +445,7 @@ at startup; Mekugi never rewrites this file or Codex's configuration.
 OpenCode models, API formats, reasoning controls and prices refresh online with
 an hourly cache. Supported reasoning efforts are selectable normally; no `none`
 override is required. The model picker updates on the next launch. See the
-[provider contract](doc/spec/subagents.md#opencode-go-and-zen) for cache behavior,
+[provider contract](doc/spec/opencode.md) for cache behavior,
 supported APIs and history limitations.
 
 ## Configuration and troubleshooting

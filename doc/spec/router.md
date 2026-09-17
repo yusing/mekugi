@@ -18,7 +18,7 @@ This disables Codex's collaboration-mode instruction injection without editing c
 
 With `--grok` or configured OpenCode providers, the wrapper pins the selected model catalog through Codex's
 `model_catalog_json` setting before launching the interactive or execution command.
-The session catalog and its cleanup follow [REQ-SUBAGENTS-001](subagents.md).
+The session catalog and its cleanup follow [REQ-THIRD-PARTY-001](third_party.md).
 Other invocations do not run the catalog command or pin model metadata.
 
 Codex inherits cwd, stdin, stdout, stderr, and the environment, augmented only
