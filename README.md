@@ -8,8 +8,8 @@ Mekugi pins compact agent tools onto stock Codex: hashline edits, direct
 scripts, and inline subagent activity. Codex keeps the sandbox, permissions,
 command sessions, and patch diff UI. No fork, no config edits, no daemon.
 
-[Install](#install) · [Features](#features) · [Usage](#usage) ·
-[Metrics](#metrics) · [Documentation](#documentation)
+[Features](#features) · [Install](#install) · [Usage](#usage) ·
+[Metrics](#metrics) · [Configuration](#configuration-and-troubleshooting) · [Documentation](#documentation)
 
 ## Features
 
@@ -78,13 +78,10 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
   eligible model-visible text using local dictionaries and references. Tool names
   and new tool payloads stay native. Enable it with `--model-protocol ctp2`;
   it is off by default.
-|- **Summarize noisy command output.** If [RTK](https://github.com/rtk-ai/rtk) is on
-|  the executor's `PATH`, Mekugi routes recognized display commands through it so
-|  agents see compact summaries instead of full logs. Missing RTK leaves commands
-|  unchanged.
-
-See [how editing and execution work](#how-editing-and-execution-work) for usage
-and prerequisites.
+- **Summarize noisy command output.** If [RTK](https://github.com/rtk-ai/rtk) is on
+  the executor's `PATH`, recognized display commands such as Git, Go, Cargo,
+  JavaScript tooling, and search return compact summaries instead of full logs.
+  Missing RTK leaves commands unchanged.
 
 ### Agent performance
 
@@ -211,55 +208,36 @@ plugin grammar validation. Capture remains available.
 
 ### Grok models
 
-Opting in enables Grok requests. Ordinary Mekugi sessions already use plaintext collaboration
-messages, allowing journal answers to attach native assignments. Authenticate
-with `grok login --oauth`, or supply `XAI_API_KEY` in the router's environment.
-An API key takes precedence. Codex credentials are never forwarded to Grok.
+Opting in enables Grok in the model picker. Authenticate with `grok login --oauth`,
+or supply `XAI_API_KEY` in the router's environment. An API key takes precedence.
+Codex credentials are never forwarded to Grok.
 
 ```sh
 mekugi --grok codex
+mekugi --grok codex -m grok:grok-4.6
 ```
 
-Grok is available in the model picker when `--grok` is enabled. To start directly
-with Grok as the main agent, use `mekugi --grok codex -m grok:grok-4.6`.
-Switching an existing OpenAI conversation still requires history that Grok can read;
-encrypted OpenAI history remains unsupported.
+Ask the main agent to spawn `grok:grok-4.6` in fresh context (`fork_turns="none"`).
+Codex still manages the child, tools, permissions, and follow-ups. Switching an
+existing OpenAI conversation still requires history that Grok can read; encrypted
+OpenAI history remains unsupported.
 
-Ask the main agent to spawn `grok:grok-4.6` in fresh context
-(`fork_turns="none"`). Codex still manages the child, tools, permissions, and
-follow-ups. At startup, Mekugi uses `codex debug models` to read your selected
-catalog, adds Grok, and pins a private copy for the session. Preparation reports
-progress on stderr, with a reminder every ten seconds and a one-minute limit;
-Ctrl-C cancels the wait. Interactive status clears before Codex starts, while
-redirected stderr retains complete progress lines. This requires a Codex
-version with `debug models` and `model_catalog_json` support. A custom catalog must
-contain a native v2 model whose instruction and tool metadata can be used for Grok.
-Other Codex sessions cannot replace this session's catalog. Model availability is
-fixed until restart; your configuration files are unchanged, and the private copy
-is removed when Mekugi exits. `--grok` cannot be combined with Codex's named
-`--profile` option or `exec --ignore-user-config` because `debug models` cannot
-honor those configuration modes. Use the default configuration or an explicit
-`-c model_catalog_json=...` instead.
-
-OpenAI-hosted search and inherited encrypted OpenAI history are not supported
-on this route. Explicit `max_output_tokens` limits are rejected because this
-route cannot enforce a total budget including reasoning. See the
-[Grok model requirements](doc/spec/subagents.md) for supported inputs and
-credential handling.
+`--grok` cannot be combined with Codex's named `--profile` option or
+`exec --ignore-user-config`. Use the default configuration or an explicit
+`-c model_catalog_json=...` instead. See the
+[Grok model requirements](doc/spec/subagents.md) for catalog, search, and
+token-limit behavior.
 
 ## How editing and execution work
 
+These are the agent tools Mekugi adds. Codex still authorizes every generated
+patch and shell execution.
+
 ### Hashline edits
 
-Instead of emitting old source lines, new source lines, and patch framing, the
-agent selects a verified `LINE:HASH` target and sends the new text once. Mekugi
-checks the script and generates the patch; Codex authorizes and applies it.
-Supported language checks run before application.
-
-Verification is not a workspace lock. A range checks its endpoint rows, not
-every line between them. Agents editing overlapping content must coordinate the
-complete read/edit/apply cycle and inspect current content after a handoff.
-
+The agent selects a verified `LINE:HASH` target and sends the new text once.
+Mekugi checks the script and generates the patch; Codex applies it. Supported
+language checks run before application. Verification is not a workspace lock.
 See the [editing guarantees](doc/spec/output.md) and
 [target selection rules](doc/spec/select.md).
 
@@ -275,46 +253,10 @@ type "draft" "ready"
 shell rg -n ready notes.txt
 ```
 
-Mixed scripts reduce model handoffs for dependent edit/command chains, but add host calls
-for checkpoints and translation. Use ordinary hpatch for edits alone and the shell tool
-for command-only work.
-
-Use `shell COMMAND` for a single physical line, without quoting or escaping it
-for HPATCH. Quotes, pipes, and redirects remain shell source, but `<<` is not
-allowed anywhere in a single-line command, even inside quotes. For multiline
-programs or any source containing `<<`, use `shell <<SHELL`, the program body,
-and a closing `SHELL` line. Empty or whitespace-only programs complete as no-ops
-without starting a process.
-That exact opener is reserved: an unclosed block rejects rather than falling
-back to single-line execution. Each shell form accepts one program with the
-usual interpreter selector and execution directives. Normal HPATCH syntax and
-target checks still apply outside shell commands.
-Each edit segment starts with its own file selection and reads a fresh baseline
-after preceding commands finish. Codex still authorizes every generated patch
-and shell execution.
-
-The result shows completed, failed, and unstarted segments. Execution stops on
-failure without rolling back earlier effects. Checkpoints preserve progress and
-known native session handles even when a Code Mode cell is terminated.
-The result's `change_id` groups workspace edit diffs and resumed repairs for
-`hchanges ID`. Shell effects are not included in those diffs.
-
-Mixed execution opens one argument-free `shell` control channel. Actual shell commands
-keep their normal display; private checkpoint and translation data travel through stdin,
-so the host may show control-channel input activity. No private flags or runtime paths
-are added to the displayed command.
-
-Continue with `hpatch` using `resume HANDLE`, without resending the original script.
-First resolve the previous cell and any potentially running work. After inspecting
-a failed or uncertain segment, use `resume HANDLE retry` to retry it, optionally
-followed by one replacement segment, or `resume HANDLE accept` after establishing
-its intended state externally. Completed work is not replayed, and remaining edit
-targets are checked against current files. Handles last one hour in the current
-thread and expire sooner if the router stops. Ordinary edit-only calls keep their
-existing atomicity and recovery behavior.
-
-To fix code and rerun the failed test without a separate resume call, submit one edit
-segment with `repair`:
+Use ordinary hpatch for edits alone and the shell tool for command-only work.
+Continue a yielded mixed script with `hpatch` using `resume HANDLE`, without
+resending the original script. To fix code and retry the failed segment in one
+call:
 
 ```text
 resume HANDLE repair
@@ -322,14 +264,11 @@ in app.go
 type "incorrect expression" "correct expression"
 ```
 
-After the repair succeeds, the carrier retries the failed segment and runs its retained
-suffix automatically. If the repair fails, the same handle retains it for correction.
-
 See the [mixed-script contract](doc/spec/script.md#shell-in-script).
 
 ### Direct scripts
 
-The agent can send a program directly to `functions.shell`, for example:
+The agent can send a program directly to `functions.shell`:
 
 ```python
 #!python3
@@ -338,45 +277,10 @@ print("hello")
 
 Bash is the default. Interactive and long-running programs still use Codex's
 native execution and session facilities. Eligible literal `cat` heredoc writes
-are converted to patches so they appear in the usual diff UI; other scripts
-remain ordinary shell execution.
+are converted to patches so they appear in the usual diff UI.
 
-Recognized yielded results include a `continuation` notice with the next host call.
-It distinguishes an outer Code Mode cell from a native process session and keeps
-the original output intact. Following that call resumes existing work rather than
-starting the script again.
-
-Commands sharing an interpreter and execution options normally belong in one multiline
-script, without a batch header. Independent background jobs can use shell `&` and `wait`;
-wait for every job and preserve failures. Short reads generally do not need background jobs.
-
-Bash and POSIX scripts can record milestones with
-`journal add 'Checked the inputs; processing the remaining items.' --report-now`.
-The shell command also supports `journal list [AGENT]`, `journal edit ID TEXT`,
-`journal delete ID`, atomic `journal batch JSON_ARRAY`, and `journal finish [JSON_ARRAY]`.
-Use `--answer` or `--clear-answer` for answer associations and `--json` when a script needs
-assigned IDs or list results. Code Mode supports `await journal({op: "add", text: "Checked the inputs", report_now: true});`.
-Omit `--report-now` or `report_now` to record silently for the terminal flush. Immediate
-updates also remain eligible for that flush. Other interpreters do not support the journal
-builtin. Prefer carrying mutations on the current ordinary tool call; use `functions.journal`
-for listing, or for finishing when no current call or shell command can carry the operation.
-A final shell command can end with `journal finish [JSON_ARRAY]`; the router completes the
-enclosing turn after that call's successful terminal shell result without another provider request.
-Yielded calls still need their normal host continuation; failures, cancellation, or newer user
-input do not finish the turn.
-
-Answer entries use `answer: true` in a structured journal call, shell command, or Code Mode, with
-only the answer in `text`. Mekugi attaches the latest user message or plaintext native assignment
-to the child automatically. New assignments use plaintext collaboration in Mekugi mode; the
-router can read their task text. Older encrypted assignments cannot be attached and need a new
-plaintext follow-up. Edits preserve that question unless marked as a new answer or cleared with
-`answer: false`.
-
-Child completion includes its journal result text without consuming the saved entries. Main
-completion still flushes pending child entries before its own journal.
-
-When programs need separate interpreters, execution options, or isolated shell state,
-Code Mode can run an explicit sequential batch:
+Commands that share an interpreter and execution options belong in one
+multiline script. Independent programs can use an explicit sequential batch:
 
 ```text
 #!batch=NEXT_PROGRAM
@@ -385,42 +289,23 @@ echo hello
 NEXT_PROGRAM
 #!python3
 print("hello")
-NEXT_PROGRAM
-#!params={"yield_time_ms":2000}
-echo goodbye
 ```
 
-Choose a separator line absent from the programs, then name it in the first-line
-`#!batch=` header. Exact matches separate two or more nonempty programs. Ordinary
-single-script calls need no batch header, and selector-like lines inside source
-strings or heredocs remain unchanged.
-
-A params-only program header selects Bash. Omitted params inherit the previous
-object; a supplied object replaces it, and `{}` clears it. Interpreters,
-command templates, and shell state do not carry over.
-
-Programs run sequentially, including waiting for long-running sessions, and
-continue after nonzero exits by default. Use `#!batch-stop=SEPARATOR` to leave
-later programs unstarted after a nonzero terminal exit, with the same params
-inheritance and all-program validation. The ordered `results` array contains each
-program's output and native result fields after the batch finishes; batches do not run in
-parallel. A host error stops the batch while
-preserving completed results and partial output. The `batch` summary reports the
-policy, started/unstarted counts, and stop reason. Native-only clients require
-separate calls. Use separate calls for interactive programs too, so their
-prompts and session handles remain available for input.
+Bash and POSIX scripts can record journal milestones on the current call, for
+example `journal add 'Checked the inputs.' --report-now`. A final
+`journal finish` can complete the turn without another model request. See the
+[shell contract](doc/spec/shell.md) and [journal contract](doc/spec/journal.md).
 
 ### Command output summaries
 
-When [RTK](#token-saving) is available, recognized display commands include supported Git, Go, Cargo, JavaScript
-tooling, and search. With `hrun`, RTK summarizes first, then `hrun` applies its
-output limit.
+When [RTK](#token-saving) is available, recognized display commands return
+compact summaries. With `hrun`, RTK summarizes first, then `hrun` applies its
+output limit. Private readers, pipelines, redirected output, command
+substitutions, machine-readable formats, terminal-backed commands, and native
+`find`/`diff` stay raw. Use an explicit executable path when a supported command
+needs raw output.
 
-Private readers such as `hcat`, `hgrep`, and `inspect_file` stay unfiltered. So do
-pipelines, redirected output, command substitutions, explicit machine-readable
-formats, and unsupported command forms. Terminal-backed commands and native
-`find`/`diff` also stay raw. Use an explicit executable path when a supported
-command needs raw output.
+### Shell helpers
 
 The following commands are available **inside the tool's Bash and POSIX
 programs**, not as standalone utilities in your terminal:
@@ -435,10 +320,11 @@ programs**, not as standalone utilities in your terminal:
 | `inspect_file` | Inspect a structural outline | None |
 
 Agent-facing references use short word handles such as `maple` or `amber1`.
-Copy the emitted handle; existing references keep their original lifetime and scope.
+Copy the emitted handle; existing references keep their original lifetime and
+scope.
 
-Hpatch keeps durable review records in the router's replay store. An agent can hand off
-`amber1..amber3`, then another agent can retrieve just those edits:
+Hpatch keeps durable review records in the router's replay store. An agent can
+hand off `amber1..amber3`, then another agent can retrieve just those edits:
 
 ```sh
 hchanges amber1..amber3
@@ -446,455 +332,137 @@ hchanges amber1..amber3 --summary
 hchanges amber2 --history
 ```
 
-Ranges are inclusive and stay within one agent's stream. Recovery keeps the original ID.
-Default reads show outcomes and captured diffs, not repeated recovery scripts; `--history`
-includes the full chain. Use `--summary` for a Git-style diffstat with paths, change
-bars, and file/insertion/deletion totals. Counts describe each edit separately, not
-the net change across several edits. A normal update looks like:
-
 ```text
 amber1 applied
  src/parser.go | 11 ++++++++---
  1 file changed, 8 insertions(+), 3 deletions(-)
 ```
 
-These are hpatch's evaluated changes, including formatting, not
-a record of shell edits or other workspace changes. Prepared diffs are marked unconfirmed
-until execution is confirmed; the host's newline handling can still affect applied bytes.
-
-Reads default to 4,000 output tokens. Use `--max-tokens N` to change that limit,
-`-- PATH ...` to select recorded paths (absolute or relative to the selected workspace),
-or `--workspace DIR` when reading from a subdirectory. Flags work before or after IDs, but before `--`.
-A path with no matches is reported explicitly. Incomplete reads return an exact `hread REF`
-next call on stderr and nonzero status. That reference continues the original
-selection without repeating IDs or filters, rejecting a changed projection. A new `hchanges`
-invocation reads the current state. Isolated executors need the router's replay directory
-mounted at its original absolute path. See the [change record contract](doc/spec/changes.md).
-
-Semantic lookup can start with a known line number:
-`hsymbol def source.go 42 MyFunction`. Use `LINE:HASH` instead when the query
-must verify a prior read. `hsymbol --workspace /path/to/project refs source.go 42 MyFunction`
-selects a resolver root without changing shell state and returns absolute result
-paths. Semantic results stay confined to that root. When display limits omit
-references, the result supplies an `hread REF` command. Its rows retain their
-original verified identities. Skipped or unavailable locations still need resolution.
-
-Shell workers also bound combined stdout/stderr across a script. Shell, search, and
-semantic output use the same recovery interface:
+These are hpatch's evaluated changes, including formatting, not a record of
+shell edits or other workspace changes. Incomplete reads return an exact
+`hread REF` next call. Typical follow-ups:
 
 ```sh
-hread REF                       # Run the supplied next call
-hread REF --stdout              # Or --stderr on an initial reference
-hread REF --max-tokens 2000      # Change the page budget
-```
-
-Reads default to 4,000 tokens. Incomplete reads return another exact `hread REF` call and
-nonzero status. The short opaque reference already binds the selection and position;
-repeating it does not consume its contents. Frames distinguish raw bytes, whole verified
-rows, and complete JSON entries. No public hash/offset cursor is needed. Only omitted bytes
-are saved in Mekugi's managed recovery store, not standalone temporary dumps.
-They survive router restart until [automatic session cleanup](#replay-storage). Missing records fail explicitly,
-never rerun the command. Original execution status and pipeline/redirection data are
-unchanged. Direct external calls and command templates use the host's output behavior;
-see the [shell contract](doc/spec/shell.md) for storage bounds and exceptions.
-
-Structural inspection accepts one ordinary relative or absolute path.
-`inspect_file source.go` returns an outline whose verified spans can be used as
-HPATCH targets.
-
-For long lines, both verified readers offer an explicit bounded preview:
-`hcat --max-tokens 2000 --preview-bytes 160 source.ts` or
-`hgrep --max-tokens 2000 --preview-bytes 160 -F needle source.ts`.
-Preview records include the complete row's verified identity, a UTF-8 prefix,
-and omitted-byte counts. Without preview mode, rows remain exact. A caller's
-token ceiling is strict; omitted records are reported as incomplete, not silently
-cut. See the [reader contract](doc/spec/read.md) for ranges and bounds.
-
-Use `hcat --tail -n 20 source.ts` to keep the final 20 complete rows.
-For external command output:
-
-```sh
+hread REF
+hsymbol def source.go 42 MyFunction
+inspect_file source.go
+hcat --tail -n 20 source.ts
 hrun --tail -n 20 -- go test ./internal/router
 ```
 
-Both commands accept `-n N` without tokenization; add `--max-tokens N` to limit
-selected lines by tokens afterward. Hrun applies the line count separately to stdout
-and stderr. An unterminated final line counts as a line. Hcat uses source logical lines.
-
-Hrun keeps the beginning unless `--tail` is supplied. It drains to completion, even
-with `-n`, so infinite producers still need cancellation. Tail waits for EOF. It
-preserves the command's exit status. When supplied, stdout and stderr share the token budget, with stderr
-taking priority; omissions are reported. See the [shell contract](doc/spec/shell.md)
-for details.
-
-Retained programs use thread-local `@shell/` references. Their result metadata
-reports the original scheduled expiry and non-durable scope. They expire after
-one hour by default or on router shutdown; reads and edits do not renew them.
-Active operations can delay cleanup. Save source as an ordinary workspace file
-when it needs to survive the thread. See the [shell reference](doc/spec/shell.md) for retention, editing,
-reruns, and interpreter selection.
+Retained programs use thread-local `@shell/` references and expire after one
+hour by default, or when the router stops. Save source as an ordinary workspace
+file when it needs to survive the thread. See the
+[change record](doc/spec/changes.md), [reader](doc/spec/read.md), and
+[shell](doc/spec/shell.md) contracts for flags, bounds, and recovery.
 
 ### Live diff pane
 
 In an interactive Herdr pane with `herdr` on `PATH`, `mekugi codex` opens a live
-diff pane to the right on the first hpatch call, without changing focus. Read-only
-turns do not open a pane. As hpatch input streams in, it previews the proposed file
-diff before the call finishes, including subagents, and closes with Codex.
-Redirected input/output does not open a pane.
+diff pane to the right on the first hpatch call, without changing focus.
+Read-only turns and redirected input/output do not open a pane. The view
+combines main-agent and subagent file edits, excluding Git and shell changes.
+Streaming previews are provisional until application is reported.
 
-The view combines edits across files, excluding Git and shell changes. Streaming
-previews are provisional, not validated or applied. They appear in a separate,
-non-scrollable region sized to its content, capped at 70% of the body. The stream
-keeps its newest row visible independently of diff scrolling, then hides 300 ms
-after completion or interruption. Preview growth preserves the captured viewport,
-moving it only when needed to keep the followed change visible. When the preview
-closes, following recenters the change in the full pane; paused views stay put.
-Complete edits enter the captured diff. Prepared
-edits remain labeled as unconfirmed until application is reported. Cyan markers
-identify the latest update; reconnecting or unavailable means live updates are interrupted.
-
-Streaming highlights syntax around the visible rows and skips superseded frames to
-stay responsive. Incomplete targets keep the last useful preview instead of flashing
-an error. Scrolling and flush controls affect only the captured diff.
-
-At shell or recovery boundaries, the preview shows the streamed script rather than
-guessing its effects on files. Long scripts show their tail. Private retained files
-are not read for previews. Display limits never block normal edit execution.
-
-Captured diffs also center the final changed row, including the end of a long new
-file or wrapped replacement. Near the end, earlier content fills the pane instead
-of leaving blank space below the diff. Syntax colors include function calls, built-ins, and operators where
-the language lexer recognizes them. The viewer automatically selects a light or dark palette
-from the terminal's background reply, with green/red backgrounds for added/removed
-rows and one line-number column. Context keeps your existing background. If the
-terminal cannot report its background, it uses `COLORFGBG` when available, otherwise
-the dark palette. Reverted or flushed files disappear; deleted files show only their
-heading and removal count.
-
-To try the same live-diff UI without Codex or Herdr, run a replayable simulation:
+To try the same UI without Codex or Herdr:
 
 ```sh
 mekugi live-diff --simulate
 mekugi live-diff --simulate --speed 2 --repeat
 ```
 
-The simulation builds a small Go HTTP handler and test module. It covers a long
-new file, syntax colors, Unicode and wrapped strings, burst updates, incomplete
-targets, multi-file and distant-hunk edits, mixed shell/edit segments, append,
-rename/delete, missing final newlines, rejection, and interruption. Edits are applied
-to the disposable fixture through the engine; fixed shell steps run only there.
-Try scrolling the captured diff, toggling follow, and resizing the terminal. `q`
-exits. Rerun to replay the same scenarios; `--repeat` loops them automatically.
-Only disposable temporary files are changed, and they are removed on exit.
-
-Use the on-screen keyboard controls:
+The simulation uses disposable temporary files and removes them on exit.
 
 - `j`/`k` scroll and `n`/`p` switch files, pausing automatic following.
-- Lines stay wrapped to the pane width. Mouse wheels and trackpads scroll vertically
-  when the terminal sends SGR mouse events; horizontal gestures are ignored.
 - `r` resumes following new edits.
-- `f` flushes the current file; `F` flushes all files. This hides reviewed changes
-  without deleting captures. Later overlapping edits can bring them back.
+- `f` flushes the current file; `F` flushes all files.
 - `q` quits the viewer without ending Codex.
 
-Use `hchanges` for saved capture history; standalone live viewing is not supported.
-See [live view details](doc/spec/changes.md#live-terminal-view) for display behavior,
-composition limits, and lifecycle guarantees.
+Use `hchanges` for saved capture history; standalone live viewing is not
+supported. See [live view details](doc/spec/changes.md#live-terminal-view).
 
 ## Metrics
 
 Open the dashboard URL printed at startup. It belongs to that session and stops
 working when Codex exits. For an SSH session, forward its assigned port first.
-
-Under **Exchanges → Provider attempts**, the **Transport** column shows
-**WebSocket** or **HTTP** for each provider attempt. A completed ChatGPT attempt
-using HTTP took the fallback path; Grok normally uses HTTP. This describes the
-provider connection, not the Codex-to-mekugi HTTP/SSE connection.
-
-From a command running inside wrapped Codex, fetch the same metrics as JSON:
+The dashboard's **Transport** column is the provider connection (WebSocket or
+HTTP), not the Codex-to-mekugi HTTP/SSE connection.
 
 ```sh
 curl -sS "${MEKUGI_BASE_URL%/v1}/api/metrics"
-```
-
-Metrics stay in memory unless you request an export. Capture appends JSONL;
-the final snapshot overwrites its destination. Use separate paths:
-
-```sh
 mekugi --capture-output capture.jsonl --metrics-output metrics.json codex
 ```
 
-Exports contain sanitized measurements, not raw prompts, scripts, patches, or
-credentials. Provider-reported usage is authoritative; local token estimates
-are not billing figures. Missing cache telemetry is not a confirmed cache miss.
-See the [metrics reference](doc/spec/metrics.md) for interpretation.
+Metrics stay in memory unless you request an export. Capture appends JSONL; the
+final snapshot overwrites its destination. Exports contain sanitized
+measurements, not raw prompts, scripts, patches, or credentials.
+Provider-reported usage is authoritative; local token estimates are not billing
+figures. See the [metrics reference](doc/spec/metrics.md).
 
-To investigate tool confusion, inspect the affected thread's rewrite decision and delivered
-calls in the JSON metrics:
-
-```sh
-curl -sS "${MEKUGI_BASE_URL%/v1}/api/metrics" |
-  jq '.exchanges[] | {thread_id, model, instruction_rewrite, delivered_tools}'
-```
-
-`instruction_rewrite` separates the matched prompt shape from the selected model wording and
-shows whether custom instructions were configured. A `shell-typescript-misuse` diagnostic means
-a Bash submission was rejected as valid TypeScript/JavaScript before execution, not silently
-rerouted. `shell-code-mode-recovered` instead identifies an established Code Mode call recovered
-with a warning to use `functions.exec` directly. In the other direction, `exec-shell-recovered`
-in a tool result means an interpreter script sent to `functions.exec` was routed through
-the normal shell pipeline before execution. Recovery requires an explicit, valid shell header
-and invalid JavaScript; valid JavaScript and ambiguous bare commands are left unchanged.
-Missing fields mean the evidence was not recorded. Export capture or metrics before
-shutdown if you need to investigate later; neither export contains raw prompts or scripts.
-
-To record the patched instructions for new requests, use:
+To record diagnostics and patched instructions for new requests:
 
 ```sh
 mekugi --debug codex
 ```
 
-Debug mode creates a private `mekugi-debug-*` directory in the system temporary
-directory. After Codex exits, it prints absolute paths to stderr for:
-
-- `router.jsonl`: router lifecycle, parsed-request outcomes, and feature-usage observations,
-  with safe failure codes and diagnostic references matching the notices in Codex,
-  without raw error text or feature payloads.
-
-- `capture.jsonl`: the same sanitized capture described above.
-- `metrics.json`: the final metrics snapshot.
-- `instructions.jsonl`: exact instruction text, developer messages, and tool declarations
-  after request rewriting, with thread and request identifiers.
-
-- `reads.jsonl`: actual private-reader start/finish evidence; `--debug` enables it
-  automatically. An explicit `MEKUGI_AX_OUTPUT` path takes precedence.
-- `ax.json`: an automatic AX report for observed threads, joining their local Codex
-  rollouts to replay and runtime read evidence. No workspace argument is needed.
-  Missing, ambiguous, or incomplete rollout evidence is labeled rather than guessed.
-  Existing defect assessments can be added later with `inspect-session --defects`.
-
-To check journal use, query the printed router log path:
-
-```sh
-jq -c 'select(.event == "feature_usage" and .feature == "journal") |
-  {timestamp, source, stage, outcome, thread_id, request_id, call_id, message_id}' /path/to/router.jsonl
-```
-
-`tool_field / mutation / accepted` confirms an applied batched mutation.
-`code_mode / lowering / prepared` confirms that a reserved call was wired to a publisher,
-not that it ran. `shell` or `code_mode / mutation / accepted` confirms runtime acceptance.
-`report_now` and `terminal_flush` rendering are separate from authored mutations.
-Prepared rendering is not proof of client display.
-
-Count a single stage rather than all events together. Deduplicate tool mutations by
-thread and call ID, and rendering by `message_id`. Runtime publications are thread-scoped;
-shell publications have no original call ID. The startup record
-advertises the feature schema and instrumented features. Older logs without that marker,
-interrupted logs, and logs with write failures cannot establish zero use. These events
-are debug-only; they do not appear in capture or metrics exports. See the
-[feature evidence contract](doc/spec/router.md#feature-usage-debug-evidence) for exact boundaries.
-
-The dump separates the local request projection (`scope: projected_responses_request`)
-from the prepared wire input. `developer_messages` and `additional_tools` include inherited
-instructions; `wire_developer_messages` and `wire_additional_tools` contain only the items
-being forwarded. `cached_input_items` counts the reused prefix. If inherited instructions
-or tool declarations changed, `cache_rebased` is true, the full projected history is sent,
-and `wire_previous_response_id` is null. `wire_request_present` is false for automatic
-successors, which have no outgoing request. These records describe preparation, not proof
-of provider acceptance. For Grok, they precede conversion to Chat Completions. Ordinary user
-messages, tool calls, and authentication headers are excluded. Instruction text is not
-sanitized and can contain private information supplied in your instructions.
-
-Artifacts survive wrapper exit, but the operating system may eventually clean temporary
-files. Copy them elsewhere if needed. Existing `--capture-output` and `--metrics-output`
-paths take precedence over the debug defaults and are included in the exit listing.
-Debug output failures are reported on exit without changing request execution.
-Resuming with `mekugi --debug codex resume SESSION_ID` records future requests; it cannot
-recover an earlier request that was not dumped.
+Debug mode writes a private `mekugi-debug-*` directory in the system temporary
+directory and prints its artifact paths on exit. Instruction dumps are not
+sanitized and can contain private information from your instructions. Existing
+`--capture-output` and `--metrics-output` paths take precedence. Resuming with
+`--debug` records future requests; it cannot recover an earlier request that was
+not dumped. See the [feature evidence contract](doc/spec/router.md#feature-usage-debug-evidence).
 
 ## Configuration and troubleshooting
 
 - **Custom instructions:** Mekugi supplies tool guidance in memory without
   editing your instruction file. If you use a custom prompt, configure it with
-  Codex's `model_instructions_file` setting. Restart Mekugi after adding or
-  removing that setting. See [guidance compatibility](doc/spec/guide.md).
+  Codex's `model_instructions_file` setting and restart Mekugi. See
+  [guidance compatibility](doc/spec/guide.md).
 - **Plugins:** put regular `.js` or `.mjs` modules in `mekugi/plugins` beneath
   your platform's user configuration directory. On Linux this is
   `$XDG_CONFIG_HOME/mekugi/plugins` or `~/.config/mekugi/plugins`; on macOS it is
-  `~/Library/Application Support/mekugi/plugins`. Plugins are loaded at startup;
-  changes require a new Mekugi launch. See the [plugin contract](doc/spec/plugin.md).
+  `~/Library/Application Support/mekugi/plugins`. See the
+  [plugin contract](doc/spec/plugin.md).
 - **Executor environment:** the router and executor must see the same workspace
   paths and shell runtime directory. `MEKUGI_RUNTIME_DIR` overrides the default
-  operating-system temporary directory; both must resolve it to the same
-  absolute path. This directory must permit executable files because it retains
-  the session's worker binary. The shared `shell` helper follows the session's
-  `mekugi-runtime-<thread>` locator.
+  temporary directory; both must resolve it to the same absolute path.
 - **Failures:** startup errors appear before Codex launches. Session failures
   appear as user-only commentary; undelivered notices appear on stderr after
-  Codex exits. Mekugi does not create operational log files unless `--debug` is enabled.
-- **Agent issue reports:** see [opt-in agent issue reports](doc/spec/diagnose.md).
+  Codex exits. Mekugi does not create operational log files unless `--debug` is
+  enabled. See [opt-in agent issue reports](doc/spec/diagnose.md).
 
 ### Replay storage
 
 Replay records live at `$XDG_STATE_HOME/mekugi/replay`, or
-`~/.local/state/mekugi/replay` when `XDG_STATE_HOME` is unset. An override must be
-absolute. The directory and records are private to your operating-system user.
-Multiple wrappers share this store, with workspace isolation; closing a wrapper
-does not delete it. Passthrough mode does not open it.
+`~/.local/state/mekugi/replay` when `XDG_STATE_HOME` is unset. Resuming or
+opening a side conversation needs no extra Mekugi flag. Replay does not rerun
+old commands or restore live processes.
 
-Resuming a conversation or opening a side conversation needs no extra Mekugi flag.
-Only inherited calls actually present in that conversation become available for
-recovery. Replay does not rerun old commands or restore live shell processes,
-continuation handles, or expired private scripts. History recorded by older
-versions without durable replay records cannot be reconstructed reliably.
-
-Mekugi automatically removes its session data after **14 days without activity**.
-When storage fills, it removes the **least recently active inactive sessions** until
-the new data fits. Running turns and workers are protected, including yielded work.
-Shared records stay while another retained conversation still references them.
-Cleanup runs during requests, with age sweeps at most once an hour.
-
-**Your original Codex chats and workspace files are never deleted.** Cleanup removes
-Mekugi's journals, replay mappings, and saved read results. Their old recovery and
-review references may stop working; Mekugi reports cleanup and explains unavailable
-references instead of rerunning the original operation. Explicit debug bundles and
-exported metrics are not part of this managed session store.
-
-The managed-data budget is 1 GiB, including ownership catalogs, journals, change
-indexes, and saved outputs. Read results also have a 256 MiB budget; commentary
-provenance has a separate 16 MiB allowance. Individual records remain bounded to
-32 MiB. If all remaining data is protected, the error states the required bytes,
-the limit, and what to do next. Journaling and token reports have no lifetime
-thread-count ceiling.
-
-Older records without reliable session ownership are adopted when their chat
-uses them. Unattributed legacy records use their last-write age; recent ones are
-protected rather than guessed to belong to an inactive chat.
-
-To reset storage manually, stop all Mekugi wrappers and move the replay directory
-aside. Keep that copy if you may need its restoration data later.
+Mekugi removes its session data after **14 days without activity**. When storage
+fills, it removes the least recently active inactive sessions until the new data
+fits. Running work is protected. **Your original Codex chats and workspace files
+are never deleted.** Cleanup can make old recovery and review references stop
+working. To reset storage, stop all Mekugi wrappers and move the replay
+directory aside.
 
 ### Inspect a session
 
-Inspect a local Codex rollout without decoding execution carriers or running old
-commands. This is read-only and starts no router. By default, JSON output contains
-logical tool names, call IDs, outcomes, text sizes, and pagination, not private text:
+Inspect a local Codex rollout without running old commands. This is read-only
+and starts no router:
 
 ```sh
 mekugi inspect-session --session /path/to/rollout.jsonl
-mekugi inspect-session --session /path/to/rollout.jsonl \
-  --call-id call_example --field script
-```
-
-Use `--field evaluated`, `patch`, `report`, `diagnostic`, `rejections`, or `output`
-to inspect that evidence, or `all` for every text field. These fields may contain
-private source and command output. `--text-bytes` bounds each UTF-8 prefix and
-`omitted_bytes` identifies missing text. `--offset` and `--limit` page through calls;
-`next_offset` identifies the next page. `--replay-dir` selects a moved replay store.
-
-Workspace identity is inferred from the rollout's session and turn metadata, including
-workspace changes. Use `--workspace` only to override missing or incorrect metadata.
-Missing workspace metadata or replay records remain
-explicitly unavailable rather than being reconstructed from carrier code.
-`translated_unconfirmed` means a patch was prepared, not applied. `confirmed`
-requires the matching executor report in the supplied rollout; `applied` records
-router-owned application. Inspection does not establish that a change was correct
-or restore a live session. See the [session inspection contract](doc/spec/session.md).
-
-### Find friction across recent sessions
-
-```sh
 mekugi inspect-sessions --exclude-model '*grok*' --class production
-mekugi inspect-sessions --sessions-dir /path/to/rollouts \
-  --since 2026-09-14T03:00:00Z --until 2026-09-16T03:00:00Z \
-  --model 'gpt-*' --limit 10
-```
-
-The read-only JSON report links recovery chains, empty polls, and possible
-truncation-driven rereads to original rollout lines and call IDs. It defaults to
-the last 48 hours. Production/probe classifications are metadata-based candidates;
-missing replay and unreadable sessions stay explicit. Reread candidates are not
-proof of waste. Add `--capture /path/to/capture.jsonl` to report provider usage
-separately, rather than estimating billed tokens from output bytes.
-
-### Measure editing and reading effort
-
-Use `mekugi --debug codex` to enable **executed private-reader instrumentation** and
-include an AX report in the debug bundle automatically. To record only reads without
-the other debug artifacts, set an absolute journal path before launching Codex. Its parent directory must already exist. The executor inherits the
-setting; an existing journal must be a regular file with mode `0600`:
-
-```sh
-MEKUGI_AX_OUTPUT=/path/to/private/reads.jsonl mekugi codex
-```
-
-The v2 journal records reader name, thread, start/finish, duration, success, an
-allowlisted failure class, and an exit status when observed. Opaque `call_id` and
-`shell_id` values join failures to a logical shell call and actual worker invocation;
-source paths, arguments, stderr, and output are never retained. Legacy v1 failures
-remain `unknown`, not retrospectively guessed. It counts actual `hcat`, `hgrep`, `hsymbol`, and
-`inspect_file` invocations, including loops and failures, not commands in skipped
-branches or quoted examples. It does not count external programs' file accesses.
-Evidence-write failures leave command behavior intact and produce an auxiliary
-stderr notice. A start without a finish is incomplete, not successful.
-
-Inspect the rollout and journal together:
-
-```sh
+MEKUGI_AX_OUTPUT=/path/to/private/reads.jsonl mekugi --debug codex
 mekugi inspect-session --session /path/to/rollout.jsonl --ax \
   --read-log /path/to/private/reads.jsonl
 ```
 
-AX measurements cover the entire supplied rollout, regardless of call filtering or
-pagination. They include matched edit retries, emitted bytes, exact line bytes repeated
-from the preceding edit payload, observed turn-completion intervals, and runtime reader
-counts for the rollout's thread. Missing journal/thread evidence is unavailable.
-Repeated bytes are not automatically wasted, and read counts do not say a read was unnecessary.
-
-Failed-read details include their journal IDs and classes such as `invalid_arguments`,
-`not_found`, `retained_file`, `dependency_unavailable`, and `output_limit`. Unknown
-reasons remain explicit. Detail samples are bounded to 256 failures per thread;
-class totals and `dropped_failure_details` expose any omitted detail. Other-thread
-and unattributed start counts are reported rather than silently filtered. The automatic
-report separates `journal_only_threads` and `unattributed_reads` from known router
-threads; an unmatched identity is not automatically classified as a child or a test.
-Debug workers retain the selected journal in their authenticated manifest, so a child
-losing the ambient output variable still records reads under its own `CODEX_THREAD_ID`.
-Mekugi's router test process clears inherited AX output; instrumentation tests opt in
-to their own temporary journal.
-
-`ax.commands` reports observed `CommandExecution` item identities, start/finish times,
-exit statuses, durations, and gaps before non-overlapping commands. A missing start has
-no invented duration or gap. Gaps include all intervening work, not proven batching
-overhead. Recognized diagnostic carriers also expose their original logical call ID.
-
-With `--debug`, `router.jsonl` adds a `tool_observation` mapping from request to call ID.
-Its request ID equals the capturer's `capture_id` when a capture context exists;
-`request_complete` also includes explicit `capture_id` and `request_sequence`. That
-joins read failures and rollout calls to transport outcomes and existing HPATCH evidence.
-Commentary events distinguish `provider_message`, `tool_field`, authenticated runtime
-publication, and `router_activity`. Per-request `feature_coverage` distinguishes an
-observed empty set from unavailable or incomplete observation; rendering is not proof
-that the UI received a message. Cancellation records identify router shutdown, response
-start timeout, upstream idle timeout, downstream context cancellation/deadline, or an
-unknown cause. A canceled downstream context alone does not prove a user pressed abort.
-
-
-Defects require explicit assessment, not inference from a rejection or successful
-application. Pass `--defects /path/to/assessments.json` with an array such as:
-
-```json
-[
-  {"call_id": "call_example", "verdict": "defect", "evidence": "failing-test.txt"},
-  {"call_id": "call_other", "verdict": "no_defect", "evidence": "review-result.txt"}
-]
-```
-
-Evidence paths resolve relative to the assessment file. Each must name a nonempty
-regular artifact no larger than 1 MiB. The result includes its SHA-256 fingerprint
-and the supplied verdict, separately from measured counters. Unassessed edits stay
-unassessed; neither a test failure nor a verdict alone proves that an edit caused
-a defect. See the [AX evidence contract](doc/spec/ax.md) for scope and limits.
+Default JSON contains logical tool names, call IDs, outcomes, and sizes, not
+private text. Requested `--field` values may contain source and command output.
+Reread candidates are not proof of waste. See the
+[session inspection](doc/spec/session.md) and [AX evidence](doc/spec/ax.md)
+contracts.
 
 ### Older installations
 
