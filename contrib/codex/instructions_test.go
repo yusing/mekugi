@@ -3,6 +3,8 @@ package codexinstructions
 import (
 	"strings"
 	"testing"
+
+	"github.com/tiktoken-go/tokenizer"
 )
 
 func TestMekugiToolDescriptionStaysNonInstructional(t *testing.T) {
@@ -49,23 +51,14 @@ func TestInstructionsSelectModelWorkflowIndependentlyOfTransport(t *testing.T) {
 func TestInstructionsTeachMixedScriptBoundaries(t *testing.T) {
 	for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol"} {
 		for _, compact := range []bool{false, true} {
-			got := InstructionsForModel(model, compact)
+			got := instructionWords(InstructionsForModel(model, compact))
 			for _, required := range []string{
-				"`shell go test ./...`",
-				"`<<` is not allowed",
-				"never falls back to single-line execution",
-				"exact `shell <<SHELL` header",
-				"Completed\nedits and shell effects are not rolled back",
-				"`resume HANDLE`",
-				"`resume HANDLE retry`",
-				"Successful recovery automatically runs the retained suffix in the same carrier",
-				"`resume HANDLE repair`",
-				"`resume HANDLE accept`",
-				"one hour from creation",
-				"uncertain effects; missing confirmation does not mean rollback",
-				"Do not replay a mixed script",
-				"each edit segment with `in` or `new`",
-				"Native-only clients use separate hpatch and shell calls",
+				"`shell go test ./...`", "`<<` is not allowed", "never falls back to single-line execution",
+				"exact `shell <<SHELL` header", "Completed edits and shell effects are not rolled back",
+				"`resume HANDLE`", "`resume HANDLE retry`", "`resume HANDLE repair`", "`resume HANDLE accept`",
+				"Successful recovery runs the retained suffix", "expire one hour after creation without renewal",
+				"uncertain effects; missing confirmation does not mean rollback", "Do not replay a mixed script",
+				"every edit segment with `in` or `new`", "Native-only clients use separate hpatch and shell calls",
 			} {
 				if !strings.Contains(got, required) {
 					t.Errorf("model %q compact %v omits %q", model, compact, required)
@@ -78,12 +71,10 @@ func TestInstructionsTeachMixedScriptBoundaries(t *testing.T) {
 func TestInstructionsTeachExplicitNewlineOwnership(t *testing.T) {
 	for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol"} {
 		for _, compact := range []bool{false, true} {
-			got := InstructionsForModel(model, compact)
+			got := instructionWords(InstructionsForModel(model, compact))
 			for _, required := range []string{
-				"`<<PATCH-` removes exactly the final body terminator",
-				"Literal targets own only their matched bytes",
-				"count separators already at the destination",
-				"deleting text alone leaves the line terminator",
+				"`<<PATCH-` removes exactly the final one", "Literal targets own only matched bytes",
+				"count separators already at the destination", "deleting text alone leaves its line terminator",
 			} {
 				if !strings.Contains(got, required) {
 					t.Errorf("model %q compact %v omits %q", model, compact, required)
@@ -147,36 +138,21 @@ func TestInstructionsExposeJournalAuthoring(t *testing.T) {
 		{name: "astra native", instructions: InstructionsForModel("gpt-6-astra", false)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			guidance := instructionWords(test.instructions)
 			for _, required := range []string{
-				"Record meaningful milestones on a supported tool call",
-				"`functions.journal`",
-				"Each mutation array is atomic",
-				"The final flush is your final report",
-				"concise, current, evidence-backed findings, results",
-				"One item per distinct point; no plans, narration, or superseded progress",
-				"Descendant journals are delivered automatically",
-				"Do not repeat or summarize other agents' journals",
-				"native child assignment",
-				"set `answer: true`",
-				"do not repeat",
-				"On edit, omit `answer` to preserve",
-				"Do not use `update_plan`, Tasks lists, or standalone `phase: \"commentary\"` messages",
-				"final-channel answer",
-				"`{\"op\":\"finish\"}`",
-				"This ends the turn without another model request",
-				"Do not use a wait tool to finish",
-				"Complete through the finishing operation",
-				"`journal list [AGENT]`",
-				"`journal edit ID TEXT`",
-				"`journal delete ID`",
-				"`journal batch JSON_ARRAY`",
-				"`journal finish [JSON_ARRAY]`",
-				"successful terminal host result",
-				"Required operands remain exact argv values",
-				"`journal add 'Tests passed' --report-now`",
-				"`await journal({op: \"add\", text: \"Tests passed\", report_now: true})`",
+				"Record meaningful milestones in a supported useful call's `journal` array", "`functions.journal`",
+				"Each mutation array is atomic", "The final flush is your final report",
+				"concise, current, evidence-backed findings, results", "one item per distinct point; no plans, narration, or superseded progress",
+				"Descendant journals are delivered automatically", "do not repeat or summarize other agents' journals",
+				"plaintext native assignment", "Set `answer: true`", "Mekugi attaches the source",
+				"on edit to preserve", "Do not use `update_plan`, Tasks lists", "final-channel answers",
+				"`{\"op\":\"finish\"}`", "only call after required results", "wait tools to finish",
+				"Complete this operation for subagent assignments", "journal list [AGENT]", "journal edit ID TEXT",
+				"journal delete ID", "journal batch JSON_ARRAY", "journal finish [JSON_ARRAY]",
+				"successful final shell invocation", "Required operands remain exact argv values",
+				"`journal add 'Tests passed' --report-now`", "`await journal({op: \"add\", text: \"Tests passed\", report_now: true})`",
 			} {
-				if !strings.Contains(test.instructions, required) {
+				if !strings.Contains(guidance, required) {
 					t.Errorf("instructions omit journal rule %q", required)
 				}
 			}
@@ -207,9 +183,9 @@ func TestNonAstraExecutionGuidanceKeepsAstraFocused(t *testing.T) {
 func TestInstructionsBatchReadyWorkWithoutHpatchIsolation(t *testing.T) {
 	for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
 		for _, compact := range []bool{false, true} {
-			got := InstructionsForModel(model, compact)
+			got := instructionWords(InstructionsForModel(model, compact))
 			for _, required := range []string{
-				"Batch ready work. Keep dependent operations sequential.",
+				"Batch ready work; keep dependent operations sequential.",
 				"or a validation result must determine the next edit",
 				"Budget combined reads and searches before execution",
 			} {
@@ -232,33 +208,33 @@ func TestInstructionsBatchReadyWorkWithoutHpatchIsolation(t *testing.T) {
 func TestInstructionsOwnCompleteShellWorkflow(t *testing.T) {
 	for _, required := range []string{
 		"Use separate shell calls for interactive programs",
-		"Explicit batches require Code Mode and run sequentially",
+		"Explicit Code Mode batches run programs sequentially",
 		"#!batch=NEXT_PROGRAM\n#!params={\"yield_time_ms\":1000}\necho hello\nNEXT_PROGRAM\n#!python3\nprint(\"hello\")",
 		"Tool defaults do not override the interface under test.",
 		"Tool coordination below covers native-interface tasks.",
 		"Submit free-form programs to `functions.shell`",
 		"Bash: write commands directly, without a shebang.",
-		"a shell heredoc such as `python3 - <<'PY'`",
+		"shell heredoc such as `python3 - <<'PY'`",
 		"There is no closing delimiter.",
 		"optional interpreter selector, optional directive lines, then program source",
-		"Omit `workdir` to use the current workspace.",
-		"rather than `/usr/bin/env`",
-		"accepts exactly one `{.}` placeholder",
+		"Omit `workdir` to use the current workspace",
+		"not `/usr/bin/env`",
+		"accepts exactly one `{.}` runner placeholder",
 		"`#!params=<JSON object>`",
-		"`hcat @shell/<reference>`",
-		"only `#!script=@shell/<reference>`",
-		"never mix retained scripts and workspace files",
+		"`hcat @shell/REF`",
+		"only `#!script=@shell/REF`",
+		"may contain only those paths",
 		"use native session facilities for interactive input or termination",
 		"`#!batch-stop=SEPARATOR`",
 		"Omitted params inherit the previous complete object",
-		"shell variables and `cd` changes do not carry over",
+		"Variables and `cd` do not carry over",
 		"expire at the reported deadline or earlier",
 		"Reads and edits do not renew them",
 		"Save durable source in workspace files",
 	} {
 		for _, model := range []string{"gpt-5.6-sol", "gpt-6-astra"} {
 			for _, compact := range []bool{false, true} {
-				if !strings.Contains(InstructionsForModel(model, compact), required) {
+				if !strings.Contains(instructionWords(InstructionsForModel(model, compact)), instructionWords(required)) {
 					t.Errorf("model %q compact %v: instructions omit shell workflow %q", model, compact, required)
 				}
 			}
@@ -268,24 +244,17 @@ func TestInstructionsOwnCompleteShellWorkflow(t *testing.T) {
 }
 
 func TestInstructionsAcquireAndReuseVerifiedTargets(t *testing.T) {
+	guidance := instructionWords(InstructionsForModel("", true))
 	for _, required := range []string{
-		"Acquire target-bearing context for existing-file edits.",
-		"use `-F` with repeated `-e` literals",
-		"Copy inspect_file `LINE:HASH` spans",
-		"`hsymbol refs PATH LINE SYMBOL [N]`",
-		"`hsymbol def PATH LINE SYMBOL [N]`",
-		"`LINE:HASH` instead of `LINE` to enforce a prior read",
-		"`--workspace ROOT` chooses resolver scope",
-		"Read again only when those forms no longer identify the intended current span",
-		"Existing-file edits require a target.",
-		"Targetless `type VALUE` is valid only immediately after",
-		"unchanged saved rows remain valid even when edits shifted their line numbers",
-		"Copy complete `LINE:HASH` endpoints from the intended span",
-		`type "return oldResult, nil" "return newResult, nil"`,
-		`maple "return oldResult, nil"`,
-		"exact known target text spans logical lines or includes a trailing LF",
+		"Acquire target-bearing context for existing-file edits", "use `-F` with repeated `-e` literals",
+		"Copy inspect_file `LINE:HASH` spans", "`hsymbol refs PATH LINE SYMBOL [N]`",
+		"`hsymbol def PATH LINE SYMBOL [N]`", "`LINE:HASH` instead of `LINE` to enforce a prior read",
+		"`--workspace ROOT` selects resolver scope", "Read again only when those forms no longer identify the intended current span",
+		"Existing-file edits require a target", "Targetless `type VALUE` is allowed only immediately after `new`",
+		"Unchanged saved rows remain valid after line shifts", "Copy complete `LINE:HASH` endpoints from the intended span",
+		`maple "return oldResult, nil"`, "Encode an embedded LF as `\\n` or `\\u000A`",
 	} {
-		if !strings.Contains(InstructionsForModel("", true), required) {
+		if !strings.Contains(guidance, required) {
 			t.Errorf("default instructions omit target acquisition rule %q", required)
 		}
 	}
@@ -330,14 +299,14 @@ func TestRecoveryGuidanceWithoutReferences(t *testing.T) {
 func TestInstructionsConsolidateDeliveredContracts(t *testing.T) {
 	for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol"} {
 		for _, compact := range []bool{false, true} {
-			got := InstructionsForModel(model, compact)
+			got := instructionWords(InstructionsForModel(model, compact))
 			for _, required := range []string{
 				"Shell workers budget combined display output automatically",
 				"For omitted output, run the exact `next_call: hread REF`",
-				"Read all returned reference rows before batching dependent edits",
+				"read all returned reference rows before batching dependent edits",
 				"Report skipped or unavailable references",
-				"## Journal\n",
-				"### Rejected-script recovery\n",
+				"## Journal",
+				"### Rejected-script recovery",
 				"Nonempty line and range `type` replacements preserve",
 				"`advisory`",
 				"`<<TEXT` (keep final terminator)",
@@ -345,13 +314,13 @@ func TestInstructionsConsolidateDeliveredContracts(t *testing.T) {
 				"Retained scripts are thread-private",
 				"`--preview-bytes N`",
 				"`inspect_file PATH` for bounded metadata",
-				"plain lines query the\ncurrent snapshot",
+				"Plain lines query the current snapshot",
 				"For a parsed command's target or value",
 				"not workspace files",
-				"keep the two payload forms separate",
+				"Keep the two payload forms separate",
 				"reevaluate the complete script atomically",
 				"use its script rows and refreshed command handles",
-				"Invalid corrections leave the workspace and retained baseline unchanged",
+				"Invalid corrections change neither workspace nor retained baseline",
 			} {
 				if strings.Count(got, required) != 1 {
 					t.Errorf("model %q compact %v: contract %q must occur once", model, compact, required)
@@ -391,15 +360,44 @@ func TestInstructionsTeachBoundedCommandOutputAndTailReads(t *testing.T) {
 func TestInstructionsTeachCompactChangeHandoffs(t *testing.T) {
 	for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol", "grok:grok-4.6"} {
 		for _, compact := range []bool{false, true} {
-			got := InstructionsForModel(model, compact)
+			got := instructionWords(InstructionsForModel(model, compact))
 			if strings.Contains(got, "hchanges read") || strings.Contains(got, "`--path PATH`") {
 				t.Errorf("model %q compact %v: obsolete change command syntax", model, compact)
 			}
-			for _, required := range []string{"edits with `hchanges amber1..amber3`", "recovery keeps that ID", "--history", "without repeating IDs or filters", "rather than Git diff", "not before an already-needed", "do not routinely pair"} {
+			for _, required := range []string{"edits with `hchanges amber1..amber3`", "recovery keeps that ID", "--history", "without repeating IDs or filters", "rather than Git diff", "skip it before an already-needed", "do not routinely pair"} {
 				if strings.Count(got, required) != 1 {
 					t.Errorf("model %q compact %v: expected one %q", model, compact, required)
 				}
 			}
 		}
 	}
+}
+
+func TestInstructionsStayWithinTokenBudget(t *testing.T) {
+	codec, err := tokenizer.ForModel(tokenizer.GPT5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		model   string
+		compact bool
+		max     int
+	}{
+		{model: "gpt-6-astra", max: 3900},
+		{model: "gpt-5.6-sol", max: 4050},
+		{model: "gpt-6-astra", compact: true, max: 4400},
+		{model: "gpt-5.6-sol", compact: true, max: 4550},
+	} {
+		got, err := codec.Count(InstructionsForModel(test.model, test.compact))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got > test.max {
+			t.Errorf("model %q compact %v: %d tokens exceeds budget %d", test.model, test.compact, got, test.max)
+		}
+	}
+}
+
+func instructionWords(text string) string {
+	return strings.Join(strings.Fields(text), " ")
 }

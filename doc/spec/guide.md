@@ -131,6 +131,16 @@ The shared source supplies complete call syntax because it is injected into othe
 it must not require the model to open this repository's specifications. Those specifications
 own acceptance criteria, not additional prompt instructions.
 
+The persistent reference uses compact syntax/decision tables and gives each invariant one owner.
+It keeps ambiguity-resolving examples but omits tutorials, duplicate lifecycle prose, and
+implementation detail that cannot change the model's next action. Actionable diagnostics may add
+failure-specific correction syntax, but ordinary and advanced operations remain discoverable
+without a preliminary help call.
+
+Rendered guidance is bounded with the pinned GPT-5 tokenizer: native Astra is at most 3,900 tokens,
+native default at most 4,050, CTP/2 Astra at most 4,400, and CTP/2 default at most 4,550.
+Tests enforce these ceilings together with the required semantics so prose cannot silently regrow.
+
 Acceptance:
 
 1. A model can choose and encode every HPATCH/2 operation from the persistent guidance.
@@ -162,3 +172,7 @@ cached model IDs, both instruction carriers, and both model protocols.
    and supported continuation, explains the worker's aggregate display budget and retained
    output files, and does not imply a universal reader cursor. Superseded requirements for verified-only semantic queries
    or full-script recovery are absent.
+
+9. Every rendered model/transport variant stays within its token ceiling while retaining the
+   persistent syntax and behavioral contracts above. Compression does not move required guidance
+   behind another tool call or duplicate it in call-local descriptions.
