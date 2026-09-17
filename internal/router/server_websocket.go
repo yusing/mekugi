@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"net/http"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/coder/websocket"
@@ -140,6 +142,22 @@ func webSocketMessageReadError(ctx context.Context, message webSocketMessage) er
 	return staticCriticalDiagnostic("websocket_reader_closed", "a WebSocket message reader stopped without delivering a terminal cause")
 }
 
+// A peer disconnect can reach the writer before the reader cancels the
+// session. Classify it by its transport cause, not goroutine scheduling.
+var errDownstreamDisconnected = errors.New("downstream disconnected")
+
+func downstreamWebSocketError(err error) error {
+	code := websocket.CloseStatus(err)
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		code == websocket.StatusNormalClosure || code == websocket.StatusGoingAway ||
+		code == websocket.StatusAbnormalClosure {
+		return errors.Join(errDownstreamDisconnected, err)
+	}
+	return err
+}
+
 func readResponsesWebSocket(ctx context.Context, conn *websocket.Conn, disconnected context.CancelFunc) <-chan webSocketMessage {
 	messages := make(chan webSocketMessage, 1)
 	go func() {
@@ -147,6 +165,7 @@ func readResponsesWebSocket(ctx context.Context, conn *websocket.Conn, disconnec
 		for {
 			kind, body, err := conn.Read(ctx)
 			if err != nil && disconnected != nil {
+				err = downstreamWebSocketError(err)
 				disconnected()
 			}
 			readFailed := err != nil
@@ -762,8 +781,9 @@ func (e *webSocketExchange) Close() error { return nil }
 // executeRequest retains the normal SSE transformer composition. This final
 // adapter changes framing only, after CTP decoding, tool restoration and replay.
 type webSocketOutput struct {
-	exchange *webSocketExchange
-	buffer   bytes.Buffer
+	exchange  *webSocketExchange
+	buffer    bytes.Buffer
+	committed bool
 }
 
 func (w *webSocketOutput) Write(data []byte) (int, error) {
@@ -840,8 +860,9 @@ func (w *webSocketOutput) message(payload []byte) error {
 		s.lastID = event.Response.ID
 	}
 	if err := s.downstream.Write(e.ctx, websocket.MessageText, payload); err != nil {
-		return err
+		return downstreamWebSocketError(err)
 	}
+	w.committed = true
 	if isWebSocketSteering(payload) {
 		capturer.ObserveResponsesWebSocketControl(e.ctx, capturer.ResponsesWebSocketControlCodex, capturer.ResponsesWebSocketControlResponse, payload)
 	} else {

@@ -505,7 +505,8 @@ func (f *requestFinalization) finish(
 		switch {
 		case errors.Is(requestErr, context.DeadlineExceeded):
 			f.observation.outcome = requestOutcomeTimedOut
-		case errors.Is(requestErr, context.Canceled) && errors.Is(ctx.Err(), context.Canceled):
+		case errors.Is(requestErr, errDownstreamDisconnected),
+			errors.Is(requestErr, context.Canceled) && errors.Is(ctx.Err(), context.Canceled):
 			if errors.Is(requestErr, errUpstreamStreamIdleTimeout) {
 				f.failurePhase = requestFailureInspectResponse
 			}
@@ -526,8 +527,14 @@ func (f *requestFinalization) finish(
 }
 
 func requestResponseStarted(output io.Writer) bool {
-	writer, ok := output.(*trackedResponseWriter)
-	return ok && writer.committed
+	switch writer := output.(type) {
+	case *trackedResponseWriter:
+		return writer.committed
+	case *webSocketOutput:
+		return writer.committed
+	default:
+		return false
+	}
 }
 
 func (f *requestFinalization) classifyCopyError(err error) {

@@ -593,7 +593,16 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 		for _, payload := range pending {
 			_, err := writeSSEEvent(writer, responseSSELines(payload, "\n"), "\n", nil, nil)
 			if err != nil {
-				resultErr = errors.Join(resultErr, err)
+				if hooks != nil {
+					hooks.streamDiagnostics.writeStopped(err)
+				}
+				if resultErr != nil {
+					// A cleanup write must not reclassify the primary failure
+					// as downstream cancellation.
+					resultErr = fmt.Errorf("%w; downstream drain failed: %v", resultErr, err)
+				} else {
+					resultErr = err
+				}
 				return
 			}
 		}

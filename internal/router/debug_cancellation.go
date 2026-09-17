@@ -21,6 +21,8 @@ func requestCancellationCause(execution context.Context, err error) string {
 		return "router_shutdown"
 	case errors.Is(err, context.DeadlineExceeded) && errors.Is(err, errResponseStartTimeout):
 		return "response_start_timeout"
+	case errors.Is(err, errDownstreamDisconnected):
+		return "downstream_disconnected"
 	case errors.Is(err, context.Canceled) && errors.Is(execution.Err(), context.Canceled):
 		return "downstream_context_canceled"
 	case errors.Is(err, context.DeadlineExceeded) && errors.Is(execution.Err(), context.DeadlineExceeded):

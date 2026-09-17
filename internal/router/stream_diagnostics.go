@@ -17,28 +17,30 @@ import (
 // streamDiagnostics retains bounded metadata only. It neither assembles tool
 // input nor participates in translation, retry, or transport ownership.
 type streamDiagnostics struct {
-	Transport          string    `json:"transport,omitempty"`
-	HTTPFraming        string    `json:"http_framing,omitempty"`
-	BodyDecoded        bool      `json:"body_decoded,omitempty"`
-	HTTPContentLength  *int64    `json:"http_content_length,omitzero"`
-	ProviderErrorCode  string    `json:"provider_error_code,omitempty"`
-	ProviderResponseID string    `json:"provider_response_id,omitempty"`
-	BodyBytes          uint64    `json:"body_bytes"`
-	Events             uint64    `json:"events"`
-	LastByteAt         time.Time `json:"last_byte_at,omitzero"`
-	ReadEndedAt        time.Time `json:"read_ended_at,omitzero"`
-	EndReason          string    `json:"end_reason,omitempty"`
-	UnterminatedEvent  bool      `json:"unterminated_event,omitempty"`
-	CopyStop           string    `json:"copy_stop,omitempty"`
-	LastEvent          string    `json:"last_event,omitempty"`
-	LastEventAt        time.Time `json:"last_event_at,omitzero"`
-	TerminalEvent      string    `json:"terminal_event,omitempty"`
-	ReadOrigin         string    `json:"read_origin,omitempty"`
-	ReadTermination    string    `json:"read_termination,omitempty"`
-	WebSocketCloseCode int       `json:"websocket_close_code,omitempty"`
-	ProviderRequestID  string    `json:"provider_request_id,omitempty"`
-	Truncated          bool      `json:"pending_calls_truncated,omitempty"`
-	pending            map[string]*streamCallDiagnostic
+	Transport               string    `json:"transport,omitempty"`
+	HTTPFraming             string    `json:"http_framing,omitempty"`
+	BodyDecoded             bool      `json:"body_decoded,omitempty"`
+	HTTPContentLength       *int64    `json:"http_content_length,omitzero"`
+	ProviderErrorCode       string    `json:"provider_error_code,omitempty"`
+	ProviderResponseID      string    `json:"provider_response_id,omitempty"`
+	BodyBytes               uint64    `json:"body_bytes"`
+	Events                  uint64    `json:"events"`
+	LastByteAt              time.Time `json:"last_byte_at,omitzero"`
+	ReadEndedAt             time.Time `json:"read_ended_at,omitzero"`
+	EndReason               string    `json:"end_reason,omitempty"`
+	UnterminatedEvent       bool      `json:"unterminated_event,omitempty"`
+	WriteTermination        string    `json:"write_termination,omitempty"`
+	WriteWebSocketCloseCode int       `json:"write_websocket_close_code,omitempty"`
+	CopyStop                string    `json:"copy_stop,omitempty"`
+	LastEvent               string    `json:"last_event,omitempty"`
+	LastEventAt             time.Time `json:"last_event_at,omitzero"`
+	TerminalEvent           string    `json:"terminal_event,omitempty"`
+	ReadOrigin              string    `json:"read_origin,omitempty"`
+	ReadTermination         string    `json:"read_termination,omitempty"`
+	WebSocketCloseCode      int       `json:"websocket_close_code,omitempty"`
+	ProviderRequestID       string    `json:"provider_request_id,omitempty"`
+	Truncated               bool      `json:"pending_calls_truncated,omitempty"`
+	pending                 map[string]*streamCallDiagnostic
 }
 
 type streamCallDiagnostic struct {
@@ -258,6 +260,17 @@ func (d *streamDiagnostics) readEndedFrom(err error, origin string) {
 	d.readEnded(err)
 }
 
+func (d *streamDiagnostics) writeStopped(err error) {
+	if d == nil {
+		return
+	}
+	diagnostic, _ := errors.AsType[*criticalDiagnosticError](forwardCriticalDiagnostic(err))
+	d.WriteTermination = "downstream_" + strings.TrimPrefix(diagnostic.code, "upstream_")
+	if code := websocket.CloseStatus(err); code != -1 {
+		d.WriteWebSocketCloseCode = int(code)
+	}
+}
+
 func (d *streamDiagnostics) copyStopped(err error) {
 	if d == nil {
 		return
@@ -265,6 +278,7 @@ func (d *streamDiagnostics) copyStopped(err error) {
 	switch {
 	case errors.Is(err, errResponseWrite):
 		d.CopyStop = "downstream_write_error"
+		d.writeStopped(err)
 	case errors.Is(err, errResponseTransform):
 		d.CopyStop = "translation_error"
 	case err != nil:

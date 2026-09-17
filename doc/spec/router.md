@@ -126,6 +126,12 @@ termination origin is not overwritten by outer readers. Close reasons, response 
 credentials, and arbitrary headers are never logged. These facts classify the observable
 end; an unreported provider-internal cause is not inferred.
 
+A recognized downstream WebSocket disconnect is cancellation even when the write
+fails before the reader cancels the session context. It does not queue a critical
+restart notice or replay the interrupted request. Other write failures remain failures.
+Stream diagnostics retain a sanitized write-termination category and, when available,
+a numeric write-side WebSocket close code, separately from read termination.
+
 The AX report uses [REQ-AX-001](ax.md) calculations. At router shutdown it discovers
 local Codex rollout filenames for at most 256 observed thread identities under
 `$CODEX_HOME/sessions` and `archived_sessions`, or the default `~/.codex` location.
@@ -152,7 +158,7 @@ and tool name at local translation, not execution. AX and existing HPATCH eviden
 through call identity; no correlation header is added to either transport boundary.
 Cancellation evidence is independent of replay diagnostic references. Allowlisted causes
 are `router_shutdown`, `response_start_timeout`, `upstream_idle_timeout`,
-`downstream_context_canceled`, `downstream_deadline_exceeded`, `cancellation_unknown`,
+`downstream_context_canceled`, `downstream_disconnected`, `downstream_deadline_exceeded`, `cancellation_unknown`,
 and `deadline_unknown`. The owned start-timeout cause travels with the forwarding
 failure; a later expired start timer is not evidence of that cause. An observed idle
 timeout is also reported when concurrent downstream cancellation wins. Downstream
