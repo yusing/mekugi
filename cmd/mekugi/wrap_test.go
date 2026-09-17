@@ -531,7 +531,7 @@ func TestWrapStartupInterrupt(t *testing.T) {
 	if err := <-done; err == nil || ctx.Err() != nil {
 		t.Fatalf("startup interrupt did not stop promptly: %v, %v", err, ctx.Err())
 	}
-	if stdout.Len() != 0 || !strings.Contains(logs.String(), "preparing Grok model catalog") ||
+	if stdout.Len() != 0 || !strings.Contains(logs.String(), "preparing Grok/OpenCode model catalog") ||
 		!strings.Contains(logs.String(), "context canceled") ||
 		strings.Contains(logs.String(), "private bootstrap diagnostic") ||
 		strings.Contains(logs.String(), "configuration") ||

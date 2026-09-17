@@ -16,7 +16,7 @@ The wrapper also enforces `include_collaboration_mode_instructions=false` in the
 final command's invocation-only config layer, after user overrides and before `--`.
 This disables Codex's collaboration-mode instruction injection without editing config files.
 
-With `--grok`, the wrapper pins the selected model catalog through Codex's
+With `--grok` or configured OpenCode providers, the wrapper pins the selected model catalog through Codex's
 `model_catalog_json` setting before launching the interactive or execution command.
 The session catalog and its cleanup follow [REQ-SUBAGENTS-001](subagents.md).
 Other invocations do not run the catalog command or pin model metadata.
@@ -258,7 +258,7 @@ The router accepts Responses WebSocket upgrades at `GET /v1/responses`. The
 wrapper advertises `supports_websockets=true` in its invocation-only provider
 override without modifying Codex configuration. HTTP `POST /v1/responses` remains
 available for streaming SSE and nonstream terminal JSON. Models discovery and
-Grok retain their HTTP provider transports.
+Grok and OpenCode retain their HTTP provider transports.
 
 The Codex-facing endpoint supports one unnamed response lane per connection.
 A non-null `stream_id` is rejected rather than mixing independently translated
@@ -311,7 +311,7 @@ Debug logs record `provider_history_reconciliation` with a fixed reason, reused 
 count, and reconciliation duration. Instruction dumps include `projected_input_bytes`
 and `wire_input_bytes`. These measure serialized input, not provider cache hits or billed
 tokens; provider-reported usage and existing request timing remain the evidence for
-cache effectiveness and latency. HTTP and Grok remain stateless full-history paths.
+cache effectiveness and latency. HTTP, Grok and OpenCode remain stateless full-history paths.
 Automatic successors inherit the parent
 request's translation context; explicit continuations use their own settings.
 Neither a dropped connection nor a failed send silently replays requests or

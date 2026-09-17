@@ -60,7 +60,7 @@ func (c *ctp2Codec) prepareRequest(request *parsedResponsesRequest, nativeBody [
 			if view.carrier == ctp2CarrierDeveloperMessage {
 				preserveDeveloper = func(value string) string { return value }
 			}
-			found, transformErr := transformCTP2Input(&view.input, encodeLocal, preserveDeveloper, visible, request.model() == grokModel)
+			found, transformErr := transformCTP2Input(&view.input, encodeLocal, preserveDeveloper, visible, isChatCompletionsModel(request.model()))
 			err = errors.Join(err, transformErr)
 			if preserveDeveloper != nil && !found {
 				return nil, nativeBody, nil

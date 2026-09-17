@@ -11,6 +11,11 @@ import (
 // It rebuilds any cached Grok entry from a native v2 template, preserving the
 // other models and Codex's evolving instruction and executor metadata.
 func GrokModelCatalog(body []byte) ([]byte, error) {
+	return ProviderModelCatalog(body, true, OpenCodeConfig{})
+}
+
+// ProviderModelCatalog adds only configured providers to the private catalog.
+func ProviderModelCatalog(body []byte, grok bool, openCode OpenCodeConfig) ([]byte, error) {
 	var catalog map[string]json.RawMessage
 	if json.Unmarshal(body, &catalog) != nil || catalog == nil {
 		return nil, errors.New("invalid Codex model catalog")
@@ -20,7 +25,7 @@ func GrokModelCatalog(body []byte) ([]byte, error) {
 		return nil, errors.New("Codex model catalog is missing models")
 	}
 	models = slices.DeleteFunc(models, func(model map[string]json.RawMessage) bool {
-		return jsonString(model, "slug") == grokModel
+		return jsonString(model, "slug") == grokModel || isOpenCodeModel(jsonString(model, "slug"))
 	})
 	var template map[string]json.RawMessage
 	for _, model := range models {
@@ -37,11 +42,11 @@ func GrokModelCatalog(body []byte) ([]byte, error) {
 		}
 	}
 	if template == nil {
-		return nil, errors.New("Grok requires a Codex catalog with native v2 subagent support")
+		return nil, errors.New("third-party models require a Codex catalog with native v2 subagent support")
 	}
 	model := maps.Clone(template)
 	for key, value := range map[string]any{
-		"slug": grokModel, "display_name": grokModel, "description": "Grok 4.6 through Mekugi for main agents and native subagents.",
+		"slug": grokModel, "display_name": grokModel, "description": "",
 		"context_window": 500000, "max_context_window": 500000,
 		"visibility": "list", "supported_in_api": true, "priority": 100, "default_reasoning_level": "high",
 		"supported_reasoning_levels": []map[string]string{{"effort": "low", "description": "Low reasoning"}, {"effort": "medium", "description": "Medium reasoning"}, {"effort": "high", "description": "High reasoning"}, {"effort": "xhigh", "description": "Extra-high reasoning"}},
@@ -53,7 +58,29 @@ func GrokModelCatalog(body []byte) ([]byte, error) {
 	}
 	// Do not inherit account-gated OpenAI scheduling or model-upgrade defaults.
 	delete(model, "multi_agent_reasoning_effort")
-	models = append(models, model)
+	if grok {
+		models = append(models, model)
+	}
+	for _, service := range openCode.services() {
+		for _, definition := range service.models() {
+			entry := maps.Clone(model)
+			slug := service.prefix + ":" + definition.id
+			for key, value := range map[string]any{
+				"slug": slug, "display_name": slug,
+				"description":    service.description(definition.id),
+				"context_window": definition.context, "max_context_window": definition.context,
+				"default_reasoning_level": nil, "supported_reasoning_levels": service.reasoningLevels(definition.id),
+				"input_modalities": definition.modalities,
+			} {
+				entry[key] = mustMarshalJSON(value)
+			}
+			if definition.context == 0 {
+				entry["context_window"] = json.RawMessage("null")
+				entry["max_context_window"] = json.RawMessage("null")
+			}
+			models = append(models, entry)
+		}
+	}
 	catalog["models"] = mustMarshalJSON(models)
 	return json.Marshal(catalog)
 }

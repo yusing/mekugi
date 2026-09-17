@@ -29,7 +29,8 @@ type tokenPrice struct {
 // OpenAI rates mirror FALLBACK_USD_PER_MILLION in the same script. Grok 4.6 rates
 // follow the xAI list prices and OpenRouter x-ai/grok-4.6 catalog (2026-09-15).
 // These are reference list API prices in USD per million tokens, not subscription
-// charges or live billing quotes. Mekugi does not fetch prices at runtime.
+// charges or live billing quotes. OpenCode rates are refreshed separately from
+// its online catalog; these OpenAI/xAI fallback rates are not used for OpenCode.
 var tokenReferencePrices = map[string]tokenPrice{
 	"gpt-6-astra":     {10, 1, 50, 20, 2, 75},
 	"gpt-6-astra-pro": {10, 1, 50, 20, 2, 75},

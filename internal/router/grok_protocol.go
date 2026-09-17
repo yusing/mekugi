@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -13,9 +14,11 @@ const grokModel = "grok:grok-4.6"
 
 type grokTool struct{ name, namespace, kind string }
 type grokTranslation struct {
-	body   map[string]any
-	tools  map[string]grokTool
-	stream bool
+	format   string
+	openCode *openCodeService
+	body     map[string]any
+	tools    map[string]grokTool
+	stream   bool
 }
 
 func grokToolName(namespace, name string) string {
@@ -73,17 +76,52 @@ func grokFunctionParameters(namespace, name string, parameters json.RawMessage) 
 // In particular it never treats encrypted_content as text or silently removes an
 // unsupported history item. The caller remains responsible for executing tools.
 func translateGrokRequest(body []byte) (*grokTranslation, error) {
+	return translateChatRequest(body, nil)
+}
+
+// translateChatRequest is the shared Responses-to-Chat adapter. OpenCode uses
+// the same tool identity, validation and replay semantics as the xAI route.
+func translateChatRequest(body []byte, service *openCodeService) (_ *grokTranslation, err error) {
+	if service != nil {
+		defer func() {
+			if err == nil {
+				return
+			}
+			if diagnostic, ok := errors.AsType[*requestCompatibilityError](err); ok {
+				code := strings.Replace(diagnostic.code, "grok_", "opencode_", 1)
+				err = incompatibleRequest(code, strings.ReplaceAll(diagnostic.message, "Grok", "OpenCode"))
+			} else {
+				err = incompatibleRequest("opencode_unsupported_request", strings.ReplaceAll(err.Error(), "Grok", "OpenCode"))
+			}
+		}()
+	}
 	request, err := parseResponsesRequest(body)
 	if err != nil {
 		return nil, err
 	}
-	if request.model() != grokModel {
-		return nil, errors.New("unsupported Grok model; use grok:grok-4.6")
+	model := "grok-4.6"
+	if service == nil {
+		if request.model() != grokModel {
+			return nil, errors.New("unsupported Grok model; use grok:grok-4.6")
+		}
+	} else {
+		var ok bool
+		model, ok = strings.CutPrefix(request.model(), service.prefix+":")
+		_, supported := service.model(model)
+		if !ok || !supported {
+			return nil, errors.New("unsupported OpenCode model")
+		}
 	}
 	if value := jsonString(request.fields, "previous_response_id"); value != "" {
 		return nil, errors.New("Grok requires explicit conversation history, not previous_response_id")
 	}
-	tr := &grokTranslation{body: map[string]any{"model": "grok-4.6", "stream": true, "stream_options": map[string]any{"include_usage": true}}, tools: make(map[string]grokTool), stream: request.streamResponse}
+	tr := &grokTranslation{openCode: service, body: map[string]any{"model": model, "stream": true, "stream_options": map[string]any{"include_usage": true}}, tools: make(map[string]grokTool), stream: request.streamResponse}
+	if service != nil {
+		if format := service.format(model); format != "chat" && format != "anthropic" && format != "responses" {
+			return nil, errors.New("OpenCode model API format is missing or unsupported in the online catalog")
+		}
+		tr.format = service.format(model)
+	}
 	var tools []any
 	var addTools func(json.RawMessage, string) error
 	addTools = func(raw json.RawMessage, namespace string) error {
@@ -219,12 +257,71 @@ func translateGrokRequest(body []byte) (*grokTranslation, error) {
 			}
 			messages = append(messages, map[string]any{"role": "tool", "tool_call_id": jsonString(item, "call_id"), "content": content})
 		case "reasoning":
+			if service != nil && tr.format != "chat" && jsonString(item, "encrypted_content") != "" {
+				restored, err := restoreOpenCodeReasoning(service, model, jsonString(item, "encrypted_content"))
+				if err != nil {
+					return nil, err
+				}
+				if len(messages) == 0 || messages[len(messages)-1]["role"] != "assistant" {
+					messages = append(messages, map[string]any{"role": "assistant", "content": nil})
+				}
+				last := messages[len(messages)-1]
+				retained, _ := last["_opencode_reasoning"].([]any)
+				last["_opencode_reasoning"] = append(retained, restored)
+				continue
+			}
 			if encrypted := jsonString(item, "encrypted_content"); encrypted != "" {
 				return nil, incompatibleRequest("grok_encrypted_history", "Grok cannot read encrypted OpenAI reasoning; start a fresh Grok thread or spawn with fork_turns=none.")
+			}
+			if service != nil {
+				var summary []struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				}
+				if err := json.Unmarshal(item["summary"], &summary); err != nil {
+					return nil, errors.New("invalid OpenCode reasoning history")
+				}
+				var reasoning strings.Builder
+				for _, part := range summary {
+					if part.Type != "summary_text" {
+						return nil, errors.New("unsupported OpenCode reasoning history")
+					}
+					reasoning.WriteString(part.Text)
+				}
+				if reasoning.Len() > 0 {
+					if len(messages) == 0 || messages[len(messages)-1]["role"] != "assistant" {
+						messages = append(messages, map[string]any{"role": "assistant", "content": nil})
+					}
+					messages[len(messages)-1]["reasoning_content"] = reasoning.String()
+				}
 			}
 			// Unencrypted reasoning summaries are explanatory metadata, not messages.
 		default:
 			return nil, fmt.Errorf("Grok cannot translate history item type %q", kind)
+		}
+	}
+	if service == nil || tr.format == "chat" {
+		for _, message := range messages {
+			parts, ok := message["content"].([]any)
+			if !ok {
+				continue
+			}
+			kept := make([]any, 0, len(parts))
+			for _, part := range parts {
+				fields, ok := part.(map[string]any)
+				if ok && fields["type"] == "refusal" {
+					if message["role"] != "assistant" {
+						return nil, errors.New("refusal history must belong to an assistant")
+					}
+					message["refusal"] = fields["refusal"]
+				} else {
+					kept = append(kept, part)
+				}
+			}
+			message["content"] = kept
+			if len(kept) == 0 {
+				message["content"] = nil
+			}
 		}
 	}
 	tr.body["messages"] = messages
@@ -257,18 +354,29 @@ func translateGrokRequest(body []byte) (*grokTranslation, error) {
 		if json.Unmarshal(raw, &reasoning) != nil {
 			return nil, errors.New("invalid Grok reasoning settings")
 		}
-		switch reasoning.Effort {
-		case "":
-		case "low", "medium", "high", "xhigh":
-			tr.body["reasoning_effort"] = reasoning.Effort
-		default:
-			return nil, errors.New("Grok supports reasoning effort low, medium, high or xhigh")
+		if service != nil {
+			// Codex may inherit an effort from another model. Forward only
+			// controls this model advertises; no manual clearing is needed.
+			if reasoning.Effort != "" && slices.Contains(service.efforts(model), reasoning.Effort) {
+				tr.body["reasoning_effort"] = reasoning.Effort
+			}
+		} else {
+			switch reasoning.Effort {
+			case "":
+			case "low", "medium", "high", "xhigh":
+				tr.body["reasoning_effort"] = reasoning.Effort
+			default:
+				return nil, errors.New("Grok supports reasoning effort low, medium, high or xhigh")
+			}
 		}
 	}
 	// Chat completion limits exclude reasoning, so they cannot enforce a
 	// Responses total output budget. Reject it before sending an inference.
 	if raw, ok := request.fields["max_output_tokens"]; ok && strings.TrimSpace(string(raw)) != "null" {
-		return nil, errors.New("Grok Chat Completions cannot enforce max_output_tokens including reasoning; omit this unsupported setting")
+		if service == nil || tr.format == "chat" {
+			return nil, errors.New("Grok Chat Completions cannot enforce max_output_tokens including reasoning; omit this unsupported setting")
+		}
+		tr.body["max_output_tokens"] = raw
 	}
 	for _, field := range []string{"temperature", "top_p"} {
 		if raw, ok := request.fields[field]; ok {
@@ -295,6 +403,11 @@ func translateGrokRequest(body []byte) (*grokTranslation, error) {
 			default:
 				return nil, errors.New("unsupported Grok structured output format")
 			}
+		}
+	}
+	if service != nil && tr.format != "chat" {
+		if err := tr.convertOpenCodeRequest(); err != nil {
+			return nil, err
 		}
 	}
 	return tr, nil
@@ -328,6 +441,8 @@ func grokContent(raw json.RawMessage) (any, error) {
 				image["detail"] = detail
 			}
 			content = append(content, map[string]any{"type": "image_url", "image_url": image})
+		case "refusal":
+			content = append(content, map[string]any{"type": "refusal", "refusal": jsonString(part, "refusal")})
 		case "encrypted_content":
 			return nil, incompatibleRequest("grok_encrypted_history", "Grok cannot read encrypted agent messages; start a fresh thread with the Grok collaboration bridge enabled.")
 		default:

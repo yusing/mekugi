@@ -131,11 +131,11 @@ func measureOutputText(output []byte, codec tokenizer.Codec) (payloadMetrics, er
 		var texts []string
 		if item.Type == "" {
 			var text string
-			if json.Unmarshal(item.Content, &text) != nil {
-				continue
+			if json.Unmarshal(item.Content, &text) == nil {
+				texts = append(texts, text)
 			}
-			texts = append(texts, text)
-		} else if item.Type == "message" {
+		}
+		if len(texts) == 0 && (item.Type == "message" || item.Type == "") {
 			var parts []struct {
 				Type string `json:"type"`
 				Text string `json:"text"`
@@ -144,7 +144,7 @@ func measureOutputText(output []byte, codec tokenizer.Codec) (payloadMetrics, er
 				continue
 			}
 			for _, part := range parts {
-				if part.Type == "output_text" {
+				if part.Type == "output_text" || (item.Type == "" && part.Type == "text") {
 					texts = append(texts, part.Text)
 				}
 			}

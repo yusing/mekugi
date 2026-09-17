@@ -285,8 +285,18 @@ func (a *requestAttempt) prepareWire() error {
 	}
 	client, _ := bridgeProvider.(*providerClient)
 	grokEnabled := client != nil && client.grok != nil
-	if !a.syntheticJournalFinish && (a.mekugiTransform != nil || grokEnabled) {
-		a.bridge, err = prepareSubagentBridge(&a.request, grokEnabled)
+	var openCodeModels []string
+	if client != nil {
+		for _, prefix := range []string{"opencode-go", "opencode-zen"} {
+			if client.opencode[prefix] != nil {
+				for _, model := range client.opencode[prefix].openCode.models() {
+					openCodeModels = append(openCodeModels, prefix+":"+model.id)
+				}
+			}
+		}
+	}
+	if !a.syntheticJournalFinish && (a.mekugiTransform != nil || grokEnabled || len(openCodeModels) > 0) {
+		a.bridge, err = prepareSubagentBridge(&a.request, grokEnabled, openCodeModels...)
 		if err != nil {
 			return fmt.Errorf("prepare collaboration bridge: %w", err)
 		}
@@ -383,6 +393,9 @@ func (a *requestAttempt) forward() error {
 	if err != nil {
 		err = withRequestStartCause(a.startCtx, err)
 		return fmt.Errorf("execute request: %w", forwardCriticalDiagnostic(err))
+	}
+	if body, ok := a.response.Body.(*grokResponseBody); ok && a.usageTracker != nil {
+		a.usageTracker.openCodePrice = body.openCodePrice
 	}
 	a.finalization.upstreamStatusCode = a.response.StatusCode
 	a.finalization.failurePhase = requestFailureInspectResponse

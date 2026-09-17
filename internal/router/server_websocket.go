@@ -317,7 +317,7 @@ func (s *responsesWebSocket) control(body []byte) error {
 		return nil
 	}
 	if s.upstream == nil {
-		return incompatibleRequest("invalid_websocket_request", "send response.create before a WebSocket control message; Grok does not support steering")
+		return incompatibleRequest("invalid_websocket_request", "send response.create before a WebSocket control message; Chat Completions providers do not support steering")
 	}
 	if jsonString(fields, "type") == responseevents.Steer {
 		input, err := webSocketInput(fields["input"])
@@ -576,9 +576,9 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 	if err != nil {
 		return nil, err
 	}
-	if isGrokModel(jsonString(fields, "model")) {
+	if isChatCompletionsModel(jsonString(fields, "model")) {
 		if string(fields["generate"]) == "false" {
-			// Grok has no non-generating transport warmup. Preserve Codex's
+			// Chat Completions has no non-generating transport warmup. Preserve Codex's
 			// prewarm/history handshake without running and discarding inference.
 			response := map[string]any{"id": "resp_mekugi_warm_" + rand.Text(), "status": "completed", "output": []any{}}
 			payload := mustMarshalJSON(map[string]any{"type": responseevents.Completed, "response": response})

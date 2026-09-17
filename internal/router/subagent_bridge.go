@@ -31,7 +31,11 @@ type subagentBridge struct {
 	names map[string]bool
 }
 
-func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled bool) (*subagentBridge, error) {
+func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled bool, openCode ...string) (*subagentBridge, error) {
+	openCodeNote := ""
+	if len(openCode) > 0 {
+		openCodeNote = " OpenCode model overrides: " + strings.Join(openCode, ", ") + ". Use fork_turns=\"none\" and a self-contained message; encrypted OpenAI history is unsupported. Omit reasoning_effort for provider defaults, or select an effort supported by the model catalog."
+	}
 	bridge := &subagentBridge{names: make(map[string]bool)}
 	var projectTools func(json.RawMessage) (json.RawMessage, error)
 	projectTools = func(raw json.RawMessage) (json.RawMessage, error) {
@@ -55,6 +59,9 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled bool) (*
 					bridge.names[jsonString(fn, "name")] = true
 					if grokEnabled && jsonString(fn, "name") == "spawn_agent" {
 						fn["description"] = mustMarshalJSON(jsonString(fn, "description") + "\nAdditional model override: grok:grok-4.6, with reasoning low/medium/high/xhigh and fork_turns=none.")
+					}
+					if openCodeNote != "" && jsonString(fn, "name") == "spawn_agent" {
+						fn["description"] = mustMarshalJSON(jsonString(fn, "description") + openCodeNote)
 					}
 					// Remove only the provider's message encryption annotation, not arbitrary
 					// schema keywords or strictness owned by the collaboration runtime.
@@ -181,7 +188,7 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled bool) (*
 		request.setInput(mustMarshalJSON(input))
 	}
 	instructions := rewriteSubagentDispatchInstruction(jsonString(request.fields, "instructions"), new(instructionFence))
-	instructions += "\nUse mekugi_collaboration for native agent operations. Its message arguments are plaintext; Codex owns agent execution, permissions and lifecycle."
+	instructions += "\nUse mekugi_collaboration for native agent operations. Its message arguments are plaintext; Codex owns agent execution, permissions and lifecycle." + openCodeNote
 	if grokEnabled {
 		instructions += " For grok:grok-4.6 start a fresh context (fork_turns=none); encrypted OpenAI history cannot be sent to Grok."
 	}

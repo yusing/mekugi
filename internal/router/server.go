@@ -41,6 +41,7 @@ type Session struct {
 	BaseURL        string
 	JournalEnabled bool
 	GrokEnabled    bool
+	OpenCode       OpenCodeConfig
 	AXReadOutput   string
 	// EnableLiveDiff arms a best-effort pane on the first selected turn workspace.
 	EnableLiveDiff    func()
@@ -98,6 +99,13 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}
 	if !*flags.grokEnabled && *flags.grokAuthFile != "" {
 		return errors.New("--grok-auth-file requires --grok")
+	}
+	openCode, err := loadOpenCodeConfig()
+	if err != nil {
+		return err
+	}
+	if openCode.Enabled() && *flags.mode != "mekugi" {
+		return errors.New("OpenCode providers require --mode mekugi")
 	}
 	if *flags.timeout <= 0 {
 		return errors.New("--timeout must be positive")
@@ -178,6 +186,19 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		client.Transport = capture.Transport(client.Transport)
 		provider.grok = &grokClient{httpClient: client, auth: auth, streamIdleTimeout: *flags.streamIdleTimeout}
+	}
+	if openCode.Enabled() {
+		openCode.catalog = newOpenCodeCatalog()
+		if err := openCode.catalog.refresh(ctx, false); err != nil {
+			log.Printf("OpenCode catalog: refresh/cache update unavailable; retaining last usable metadata")
+		}
+	}
+	provider.opencode = make(map[string]*grokClient)
+	for _, service := range openCode.services() {
+		client := withDialTimeout(nil)
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client.Transport = capture.Transport(client.Transport)
+		provider.opencode[service.prefix] = &grokClient{httpClient: client, openCode: &service, streamIdleTimeout: *flags.streamIdleTimeout}
 	}
 	var frontendDirectory string
 	var dataDirectory string
@@ -286,7 +307,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		serverError <- server.Serve(listener)
 	}()
 	if ready != nil && ctx.Err() == nil {
-		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: *flags.grokEnabled, JournalEnabled: *flags.mode == "mekugi"}
+		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: *flags.grokEnabled, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi"}
 		if mekugiCalls != nil {
 			session.EnableLiveDiff = mekugiCalls.autoLiveDiff.enable
 		}

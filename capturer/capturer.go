@@ -297,7 +297,7 @@ func (r *Recorder) Transport(next http.RoundTripper) http.RoundTripper {
 	}
 	return roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 		state, ok := request.Context().Value(captureKey{}).(*requestState)
-		if !ok || request.Method != http.MethodPost || !(strings.HasSuffix(request.URL.Path, "/responses") || strings.HasSuffix(request.URL.Path, "/chat/completions")) {
+		if !ok || request.Method != http.MethodPost || !(strings.HasSuffix(request.URL.Path, "/responses") || strings.HasSuffix(request.URL.Path, "/chat/completions") || strings.HasSuffix(request.URL.Path, "/messages")) {
 			return next.RoundTrip(request)
 		}
 		attempt := state.beginProviderAttempt()
@@ -316,6 +316,9 @@ func (r *Recorder) Transport(next http.RoundTripper) http.RoundTripper {
 		contentEncoding := response.Header.Get("Content-Encoding")
 		statusCode := response.StatusCode
 		evidence := providerHeaderEvidence(response.Header)
+		if strings.HasSuffix(request.URL.Path, "/messages") {
+			evidence.wireFormat = "anthropic"
+		}
 		response.Body = &observedResponseBody{
 			ReadCloser: response.Body,
 			finish: func(body observedPayload, readErr error) {
@@ -512,7 +515,9 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 				strings.Contains(lowerContentType, "json") || strings.Contains(lowerContentType, "text/event-stream") ||
 				capturedPayloadLooksLikeSSE(observedContent) {
 				var finalOutput []byte
-				if len(requestEnvelope.Messages) > 0 {
+				if evidence.wireFormat == "anthropic" {
+					finalOutput = observeAnthropicResponse(observedContent, &record, r.codec)
+				} else if len(requestEnvelope.Messages) > 0 {
 					finalOutput = observeChatResponse(observedContent, contentType, &record, r.codec)
 				} else {
 					finalOutput = observeResponse(observedContent, contentType, &record, r.codec)

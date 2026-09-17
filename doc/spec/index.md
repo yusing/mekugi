@@ -4,7 +4,7 @@ pjdoc:
   kind: spec
   scope: root
   status: draft
-  revision: "56"
+  revision: "57"
   files:
     - journal.md
     - router.md
@@ -44,7 +44,7 @@ linked, not copied.
 
 - [`REQ-JOURNAL-001`](journal.md): durable per-thread milestone journals
 - [`REQ-ROUTER-001`](router.md): standalone and session-scoped Codex launch
-- [`REQ-SUBAGENTS-001`](subagents.md): Grok-backed native-agent routing
+- [`REQ-SUBAGENTS-001`](subagents.md): third-party native-agent routing
 - [`REQ-COMMENTARY-001`](commentary.md): user-only subagent activity details
 - [`REQ-READ-001`](read.md): routed verified-row reading and bounded ranges
 - [`REQ-GREP-001`](grep.md): routed ripgrep search with directly editable verified rows

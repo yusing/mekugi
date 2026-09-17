@@ -131,6 +131,7 @@ func composeResponseTransformers(first, second responseTransformer) responseTran
 
 type providerClient struct {
 	websockets        *providerWebSockets
+	opencode          map[string]*grokClient
 	grok              *grokClient
 	httpClient        *http.Client
 	baseURL           string
@@ -189,6 +190,14 @@ func (c *providerClient) forwardExecution(startCtx, responseCtx context.Context,
 	}
 	if err := json.Unmarshal(body, &model); err != nil {
 		return nil, errors.New("invalid provider request")
+	}
+	if isOpenCodeModel(model.Model) {
+		prefix, _, _ := strings.Cut(model.Model, ":")
+		client := c.opencode[prefix]
+		if client == nil {
+			return nil, incompatibleRequest("opencode_not_configured", "OpenCode provider is not configured; set its API key in the environment or Mekugi config.toml")
+		}
+		return client.forwardExecution(startCtx, responseCtx, body, headers)
 	}
 	if isGrokModel(model.Model) {
 		if c.grok == nil {

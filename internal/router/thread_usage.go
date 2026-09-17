@@ -21,12 +21,13 @@ type threadUsageTotal struct {
 }
 
 type threadUsageObservation struct {
-	once        sync.Once
-	totals      *threadUsage
-	conflicted  bool
-	model       string
-	serviceTier string
-	thread      string
+	once          sync.Once
+	totals        *threadUsage
+	conflicted    bool
+	model         string
+	openCodePrice *openCodePrice
+	serviceTier   string
+	thread        string
 }
 
 func newThreadUsage() *threadUsage {
@@ -44,7 +45,7 @@ func (o *threadUsageObservation) observe(counts tokenCounts) {
 		return
 	}
 	o.once.Do(func() {
-		o.totals.add(o.thread, o.model, cmp.Or(counts.ServiceTier, o.serviceTier), counts, o.conflicted)
+		o.totals.add(o.thread, o.model, cmp.Or(counts.ServiceTier, o.serviceTier), counts, o.conflicted, o.openCodePrice)
 	})
 }
 
@@ -54,7 +55,7 @@ func (o *threadUsageObservation) finish() {
 	o.observe(tokenCounts{Incomplete: true})
 }
 
-func (u *threadUsage) add(thread, model, serviceTier string, counts tokenCounts, conflicted bool) {
+func (u *threadUsage) add(thread, model, serviceTier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
 	if u == nil || thread == "" || len(thread) > maxCommentaryPublicationBytes {
 		return
 	}
@@ -92,7 +93,14 @@ func (u *threadUsage) add(thread, model, serviceTier string, counts tokenCounts,
 		*pair.dst += pair.add
 	}
 	sum.Inconsistent = sum.Inconsistent || counts.Inconsistent
-	total.cost.add(estimateTokenCost(model, serviceTier, counts))
+	cost := estimateTokenCost(model, serviceTier, counts)
+	if isOpenCodeModel(model) {
+		cost = tokenCost{}
+		if price != nil {
+			cost = price.estimate(serviceTier, counts)
+		}
+	}
+	total.cost.add(cost)
 	total.counts = sum
 }
 

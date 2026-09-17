@@ -74,8 +74,8 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		return 1, err
 	case session = <-ready:
 	}
-	if session.GrokEnabled {
-		catalogDirectory, catalogPath, err := prepareGrokCatalog(ctx, executable, session.BaseURL, args)
+	if session.GrokEnabled || session.OpenCode.Enabled() {
+		catalogDirectory, catalogPath, err := prepareProviderCatalog(ctx, executable, session.BaseURL, args, session.GrokEnabled, session.OpenCode)
 		if err != nil {
 			cancel()
 			return 1, errors.Join(err, <-routerDone)
