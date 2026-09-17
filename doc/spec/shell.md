@@ -7,28 +7,26 @@ It accepts a bounded UTF-8 program and translates successful input through the
 canonical executor carrier from `REQ-PLUGIN-001`. Configured plugins cannot replace
 the built-in tool.
 
-A single-program input keeps every source line after its leading header block unchanged,
-including selector-like and directive-like lines in strings, comments, and heredocs.
+Each column-zero interpreter header after the first source line starts a new program,
+unless it is inside an incomplete shell construct such as a heredoc or quoted string.
+The first program may omit its interpreter and default to Bash; later Bash programs use
+`#!bash`. Headers remain part of their program, with every source byte preserved.
+No batch directive or separate delimiter is needed. `---` is ordinary program source.
 
-To submit a batch, start the input with `#!batch=SEPARATOR`. The caller chooses a nonempty
-separator line absent from every program's source, with no surrounding whitespace or NUL.
-Only exact whole-line matches of that separator divide programs. The batch header and
-separator lines, including their terminators, are removed; every other byte is preserved.
-At least two programs with nonempty bodies are required. Leading, trailing, or consecutive
-separators reject empty programs. Choosing another separator lets programs contain literal
-batch examples without rewriting their contents.
+Boundary recognition uses the same interpreter-versus-directive classification as header
+parsing: `#!params` and `#!cmd`, including malformed directive candidates, do not start
+programs. Bash, POSIX shell (including Dash and Ash), Korn shell, and Zsh parsing preserves interpreter-like lines inside
+heredocs, quoted strings, and other incomplete shell constructs. Indented headers remain
+body data. Every program in a batch must have a nonempty body;
+consecutive headers and a final header without a body reject before execution.
 
-Use `#!batch-stop=SEPARATOR` instead to stop before starting later programs when a
-program's terminal native result has a nonzero exit code. This is the only policy
-difference: separator matching, validation of all programs before execution,
-parameter inheritance/replacement, and sequential waiting remain the same.
-`#!batch=SEPARATOR` continues after nonzero exits. Both stop on host errors/refusals.
-The stop policy waits for a live native session's terminal exit; a yield is not
-failure and never triggers another execution.
+Batches continue after nonzero exits and stop on host errors/refusals. Each live native
+session reaches its terminal result before the next program starts; a yield is not failure
+and never triggers another execution.
 
 Each program has its own optional interpreter selector and leading directive block.
 A params-only header selects default Bash. Duplicate params within one block still reject.
-Interpreter selectors and params directives never act as batch boundaries themselves.
+Interpreter selectors start programs; params and command-template directives do not.
 
 Omitted params inherit the preceding complete object. A supplied object replaces that object,
 including `{}` clearing inherited fields. Interpreters and command templates do not inherit.
@@ -40,19 +38,20 @@ Batches require Code Mode and are for noninteractive work. Agent guidance defaul
 multiline script for ready commands sharing an interpreter and execution options, not one
 batch program per command. Slower independent commands may use shell background jobs and
 wait for every result when shared output and state permit concurrency. Explicit batches are
-reserved for separate interpreters, execution options, or isolated shell state; they remain
-sequential, with a combined result after completion. Interactive programs use separate calls
+reserved for separate interpreters, execution options, or isolated shell state, and preferred
+over separate calls for noninteractive programs. They remain sequential, with a combined
+result after completion. Interactive programs use separate calls
 so their prompts and native continuation handles remain available for input. The router prepares
 separate native exec arguments for each program
 before sending one ordered Code Mode carrier to Codex. Each native execution receives its own
 params and separate shell state. The carrier awaits terminal native results, using the existing
-continuation operation when needed, before starting the next program. Nonzero script exits stop later programs only with `#!batch-stop=`. The result contains an ordered `results` array, each element preserving
+continuation operation when needed, before starting the next program. Nonzero script exits do not stop later programs. The result contains an ordered `results` array, each element preserving
 one program's terminal native fields and concatenated output. A host error or refusal stops
 remaining execution and propagates after publishing completed results and current partial output,
 including any outstanding native continuation handle. No program is restarted or retried.
 Every emitted batch envelope includes `batch` metadata: `on_nonzero_exit`
-(`continue` or `stop`), `program_count`, `started_programs`, `not_started_programs`,
-and `stopped_reason` (`nonzero_exit`, `host_error`, or null). Counts describe programs,
+(`continue`), `program_count`, `started_programs`, `not_started_programs`,
+and `stopped_reason` (`host_error` or null). Counts describe programs,
 not native polling calls. A host-error result can include an unfinished last started
 program and its existing native handle. No unstarted program is fabricated as a
 completed result or automatically retried. Resubmitting a batch starts new execution.
@@ -481,17 +480,15 @@ Acceptance:
     assignments. Thread-scoped commentary discovery preserves script output and exit status,
     and completion of one worker leaves concurrent workers' commentary available.
 
-21. One `#!batch=NEXT` input containing three programs separated by exact `NEXT` lines,
-    with a params-prefixed Bash body, a Python selector and body with omitted
-    params, and another params-prefixed Bash body yields one Code Mode carrier with three ordered
-    executions. Python inherits the first params object; the third program uses only its newly
-    supplied object. Bash programs separated by the chosen line require no `#!bash`. Per-program bodies
-    preserve CR, LF, CRLF, whitespace, and absent final terminators.
-    Without the batch header, Python multiline strings and shell heredocs containing literal
-    selector, params, or batch headers remain one byte-preserved program. In an
-    explicit batch, a caller-chosen separator allows those same contents unchanged; partial
-    matches and indented separator-like lines remain data. Empty separators, absent boundaries,
-    and empty programs reject before execution.
+21. One input containing a params-prefixed Bash body, a `#!python3` program with omitted
+    params, and a `#!bash` program with new params yields one Code Mode carrier with three
+    ordered executions. Python inherits the first params object; the third program uses only
+    its newly supplied object. Per-program sources preserve CR, LF, CRLF, whitespace, and
+    absent final terminators. Interpreter-like lines inside shell heredocs and quoted strings
+    stay with their program. A subsequent interpreter header after the construct closes starts
+    the next program. Indented headers and directive lines remain data
+    outside the leading header block. `---` is not a boundary. Empty batch programs reject
+    before execution. An initial interpreter header alone does not create a batch.
 22. A yielded program reaches terminal state before the next starts. A nonzero exit remains
     visible in its result and does not prevent later programs. Complete native result fields and
     output remain associated with their program. Host exceptions preserve the completed prefix
@@ -513,9 +510,9 @@ Acceptance:
     headers, arbitrary JSON, output-only projections, unrelated namespaces, and missing
     provenance cannot select another session. Unavailable tools are reported without execution.
 
-27. A stop-on-nonzero batch waits for the first program's terminal exit and leaves
-    later programs unstarted; ordinary batches still continue. Both report policy
-    and exact started/unstarted counts, including host failures.
+27. A batch waits for each program's terminal exit and continues after nonzero exits.
+    Results report the continue policy and exact started/unstarted counts, including
+    host failures.
 
 28. Undocumented shell directives reject before execution. In particular, the removed
     `#!script=` directive cannot execute a historical source reference. Historical call/result

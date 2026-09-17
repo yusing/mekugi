@@ -36,8 +36,12 @@ func toolActivityUnwrapShell(script, language string) (string, string) {
 
 func toolActivityShellLanguage(script, language string) string {
 	script, language = toolActivityUnwrapShell(script, language)
-	if _, _, batch := shellsyntax.BatchHeader(script); batch {
-		if programs, err := shellsyntax.Split(script); err == nil {
+	if shellsyntax.IsBatch(script) {
+		programs, err := shellsyntax.Split(script)
+		if err != nil {
+			return "Run\n" + toolActivityFenced("", script)
+		}
+		if len(programs) > 1 {
 			displays := make([]string, 0, len(programs))
 			for _, program := range programs {
 				if display := toolActivityShellLanguage(program, language); display != "" {

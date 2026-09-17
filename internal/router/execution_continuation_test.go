@@ -282,7 +282,7 @@ func TestExecutionContinuationProjection(t *testing.T) {
 		},
 		{
 			name: "failed batch exposes unfinished last native session",
-			call: continuationTestCall("shell", "a", "#!batch=NEXT\nsleep 100\nNEXT\necho done"),
+			call: continuationTestCall("shell", "a", "sleep 100\n#!bash\necho done"),
 			output: continuationTestOutput("a", "Script failed\nWall time 0.1 seconds\nOutput:\n",
 				`{"results":[{"output":"one","exit_code":0},{"output":"partial","session_id":42}]}`,
 				"Script error:\nhost refused"),

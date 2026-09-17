@@ -98,7 +98,7 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 		if args.Op == "finish" {
 			script := "printf 'SHELL_JOURNAL_HOST_OK\\n'\njournal finish"
 			if child {
-				script = "#!batch=NEXT_PROGRAM\nprintf 'SHELL_JOURNAL_FIRST_OK\\n'\nNEXT_PROGRAM\n" + script
+				script = "printf 'SHELL_JOURNAL_FIRST_OK\\n'\n#!bash\n" + script
 			}
 			if len(args.Journal) != 0 {
 				script += " " + shellQuoteArgument(string(args.Journal))

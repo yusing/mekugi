@@ -104,10 +104,8 @@ Optional interpreter selector and optional directive lines starts first, then pr
 Explicit Code Mode batches run programs sequentially in separate shell state and return together:
 
 ```text
-#!batch=NEXT_PROGRAM
 #!params={"yield_time_ms":1000}
 echo hello
-NEXT_PROGRAM
 #!python3
 print("hello")
 ```
@@ -115,10 +113,11 @@ print("hello")
 Each program owns its selector and directives. Omitted params inherit the previous complete object;
 `{}` clears them, and templates/interpreters never inherit.
 
-Variables and `cd` do not carry over. `#!batch=SEPARATOR` continues after nonzero exits;
-`#!batch-stop=SEPARATOR` leaves later programs unstarted. Host errors stop both while preserving
-completed results and partial output. Native-only clients reject batches. Use separate shell calls
-for interactive programs.
+Each new column-zero `#!interpreter` line starts a program; use `#!bash` for another
+Bash program. Prefer these batches over separate shell calls for noninteractive programs.
+Batches continue after nonzero exits.
+Variables and `cd` do not carry over. Host errors stop the batch while preserving completed
+results and partial output. Use separate shell calls for interactive programs.
 
 ### Output and continuation
 

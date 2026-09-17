@@ -407,7 +407,7 @@ func TestShellDoesNotRetainSource(t *testing.T) {
 		"short":       "printf ok",
 		"multiline":   "printf one\nprintf two\nprintf three\nprintf four\n",
 		"interpreter": "#!python3\nprint('ok')\n",
-		"batch":       "#!batch=NEXT\nprintf one\nNEXT\nprintf two\n",
+		"batch":       "printf one\n#!bash\nprintf two\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))

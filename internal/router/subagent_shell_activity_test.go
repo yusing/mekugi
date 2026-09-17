@@ -117,7 +117,7 @@ func TestShellActivityExcerptBounds(t *testing.T) {
 }
 
 func TestShellBatchActivityExcerpt(t *testing.T) {
-	const source = "#!batch=NEXT\n#!params={}\nprintf one\nNEXT\n#!python3\nprint(2)"
+	const source = "#!params={}\nprintf one\n#!python3\nprint(2)"
 	if got := toolActivityCommandExcerpt(source); got != "printf one…" {
 		t.Fatalf("batch excerpt exposes framing instead of source: %q", got)
 	}

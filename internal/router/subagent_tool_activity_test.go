@@ -186,7 +186,7 @@ func TestCommentaryCodeEscapesBackticks(t *testing.T) {
 }
 
 func TestSubagentBatchToolActivityJSONAndSSE(t *testing.T) {
-	const source = "#!batch=SESSION\nsed -n '1,360p' file.go\nSESSION\nrg pattern file.go\nSESSION\ngit status --short\ngit log -1 --oneline"
+	const source = "sed -n '1,360p' file.go\n#!bash\nrg pattern file.go\n#!bash\ngit status --short\ngit log -1 --oneline"
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
@@ -222,7 +222,7 @@ func TestSubagentBatchToolActivityJSONAndSSE(t *testing.T) {
 					t.Fatalf("missing %q in %s", want, text)
 				}
 			}
-			if strings.Contains(text, "SESSION") || strings.Contains(text, "#!batch") {
+			if strings.Contains(text, "#!batch") {
 				t.Fatalf("transport framing leaked into activity: %s", text)
 			}
 		})

@@ -16,10 +16,10 @@ const shellCodeModeRecoveryWarning = "shell: [shell-code-mode-recovered] Recover
 const execShellRecoveryWarning = "exec: [exec-shell-recovered] Recovered an interpreter script submitted through functions.exec. Use functions.shell for shell directives and interpreter scripts."
 
 // A valid JavaScript program keeps Code Mode semantics, including its hashbang.
-// Only an explicit, parseable shell header opts invalid JavaScript into shell
+// Only a parseable shell header or batch opts invalid JavaScript into shell
 // translation. Bare commands and malformed headers are never guessed.
 func execShellRecovery(input string) bool {
-	if !strings.HasPrefix(input, "#!") {
+	if !strings.HasPrefix(input, "#!") && !shellsyntax.IsBatch(input) {
 		return false
 	}
 	parser := sitter.NewParser()
@@ -47,7 +47,7 @@ func shellCodeModeRecovery(contribution toolContribution, input string) bool {
 		return false
 	}
 	program := strings.TrimLeft(input, " \t\r\n")
-	if strings.HasPrefix(program, "#!") {
+	if strings.HasPrefix(program, "#!") || shellsyntax.IsBatch(program) {
 		return false
 	}
 	if _, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(program), ""); err == nil {

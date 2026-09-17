@@ -223,12 +223,10 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 	}
 	journalToken := t.subscribeShellJournal(callID, contribution)
 	recovered := !t.nativeTools && shellCodeModeRecovery(contribution, input)
-	var stopBatchOnNonzero bool
 	var batch []string
 	var translation toolplugin.Translation
 	var err error
 	if !recovered && contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell" {
-		_, stopBatchOnNonzero, _ = shellsyntax.BatchHeader(input)
 		var programs []string
 		programs, err = shellsyntax.Split(input)
 		if err == nil && len(programs) > 1 {
@@ -304,7 +302,7 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 				return mekugiHistory{}, fmt.Errorf("%s exec carrier: %w", contribution.Name, err)
 			}
 			if len(batch) != 0 {
-				payload = renderShellBatch(batch, stopBatchOnNonzero)
+				payload = renderShellBatch(batch)
 				splitShellCarrier = true
 				break
 			}

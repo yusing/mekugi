@@ -294,16 +294,18 @@ native execution and session facilities. Eligible literal `cat` heredoc writes
 are converted to patches so they appear in the usual diff UI.
 
 Commands that share an interpreter and execution options belong in one
-multiline script. Independent programs can use an explicit sequential batch:
+multiline script. Start each additional program with its interpreter header:
 
 ```text
-#!batch=NEXT_PROGRAM
 #!params={"yield_time_ms":1000}
 echo hello
-NEXT_PROGRAM
 #!python3
 print("hello")
 ```
+
+Use `#!bash` to start another Bash program. Batches continue after nonzero exits.
+Prefer these batches over separate shell calls for noninteractive programs.
+`#!params` and `#!cmd` stay with the current program.
 
 Bash and POSIX scripts can record journal milestones on the current call, for
 example `journal add 'Checked the inputs.' --report-now`. A final

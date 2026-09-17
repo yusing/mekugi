@@ -11,7 +11,7 @@ import (
 func toolActivityCommandExcerpt(script string) string {
 	script, _ = toolActivityUnwrapShell(script, "bash")
 	morePrograms := false
-	if _, _, batch := shellsyntax.BatchHeader(script); batch {
+	if shellsyntax.IsBatch(script) {
 		if programs, err := shellsyntax.Split(script); err == nil {
 			script = programs[0]
 			morePrograms = len(programs) > 1

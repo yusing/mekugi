@@ -209,11 +209,32 @@ func TestInstructionsBatchReadyWorkWithoutHpatchIsolation(t *testing.T) {
 	}
 }
 
+func TestInstructionsShellInterpreterBatches(t *testing.T) {
+	for _, model := range []string{"gpt-5.6-sol", "gpt-6-astra"} {
+		for _, compact := range []bool{false, true} {
+			got := InstructionsForModel(model, compact)
+			for _, required := range []string{
+				"echo hello\n#!python3\nprint(\"hello\")",
+				"Each new column-zero `#!interpreter` line starts a program",
+				"Prefer these batches over separate shell calls for noninteractive programs.",
+				"Batches continue after nonzero",
+			} {
+				if !strings.Contains(got, required) {
+					t.Errorf("model %q compact %v missing %q", model, compact, required)
+				}
+			}
+			if strings.Contains(got, "#!batch") {
+				t.Errorf("model %q compact %v retains old batch syntax", model, compact)
+			}
+		}
+	}
+}
+
 func TestInstructionsOwnCompleteShellWorkflow(t *testing.T) {
 	for _, required := range []string{
 		"Use separate shell calls for interactive programs",
 		"Explicit Code Mode batches run programs sequentially",
-		"#!batch=NEXT_PROGRAM\n#!params={\"yield_time_ms\":1000}\necho hello\nNEXT_PROGRAM\n#!python3\nprint(\"hello\")",
+		"#!params={\"yield_time_ms\":1000}\necho hello\n#!python3\nprint(\"hello\")",
 		"Tool defaults do not override the interface under test.",
 		"Tool coordination below covers native-interface tasks.",
 		"Submit free-form programs to `functions.shell`",
@@ -226,7 +247,7 @@ func TestInstructionsOwnCompleteShellWorkflow(t *testing.T) {
 		"accepts exactly one `{.}` runner placeholder",
 		"`#!params=<JSON object>`",
 		"use native session facilities for interactive input or termination",
-		"`#!batch-stop=SEPARATOR`",
+		"Each new column-zero `#!interpreter` line starts a program",
 		"Omitted params inherit the previous complete object",
 		"Variables and `cd` do not carry over",
 		"Use ordinary script files for source that needs repeated editing or execution",
