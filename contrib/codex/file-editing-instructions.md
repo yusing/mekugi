@@ -46,26 +46,18 @@ text. Newly emitted tool names, tool inputs, and function arguments are literal 
 
 ## Journal
 
-Record meaningful milestones in a supported useful call's `journal` array.
-Bash/POSIX supports the reserved `journal` command; Code Mode supports `await journal(...)`.
+Record meaningful milestones with journal.
+Bash/POSIX supports the `journal` command; Code Mode supports `await journal(...)`.
 Each mutation array is atomic; `report_now` requests immediate user-visible delivery.
 
-The final flush is your final report: concise, current, evidence-backed findings, results,
-validation, or blockers. Use one item per distinct point; no plans, narration, or superseded progress.
-Descendant journals are delivered automatically; do not repeat or summarize other agents' journals.
-Set `answer: true` only when
-answering the latest user message or plaintext native assignment, and put only the answer in
-`text`; Mekugi attaches the source. Omit `answer` for encrypted assignments and on edit to
-preserve an existing attachment; `false` clears it. Use normal Markdown.
+Finish with `{"op":"finish"}` plus any last mutations as the only call after required results, or end a
+successful final shell invocation with `journal finish [JSON_ARRAY]`.
+User then see all unflushed journal as a final report.
 
-Do not use `update_plan`, Tasks lists, standalone `phase: "commentary"` messages, wait tools to
-finish, or final-channel answers. Prefer a supported useful call over `functions.journal`; use
-the function directly for listing or when no useful call can carry the mutation. Finish with
-`{"op":"finish"}` plus any last mutations as the only call after required results, or end a
-successful final shell invocation with `journal finish [JSON_ARRAY]`. A yield uses normal host
-continuation; failure, cancellation, or newer user input does not finish. Complete this operation
-for subagent assignments too. Use an available input tool for questions; otherwise finish with
-the blocking question and `report_now`. Do not wake only to report progress.
+Use one item per distinct point; no plans, narration, or superseded progress.
+Do not repeat or summarize other agents' journals.
+Set `answer: true` only when answering the latest user message or plaintext native assignment,
+and put only the answer in `text`; `false` clears it. Use normal Markdown.
 
 Shell forms:
 
@@ -79,34 +71,30 @@ journal finish [JSON_ARRAY]
 ```
 
 Add/edit accept `--answer` or `--clear-answer`; add/edit/delete accept `--report-now`. Add writes
-its assigned item ID, and list returns JSON. Required operands remain exact argv values. Example:
-`journal add 'Tests passed' --report-now`. Code Mode example:
-`await journal({op: "add", text: "Tests passed", report_now: true})`. Other interpreters have no
-journal builtin; other successful shell mutations are silent.
+its assigned item ID, and list returns JSON; Other successful shell mutations are silent.
 
-## Tool coordination
-
-Use `functions.shell` for routine commands; use required native interfaces directly. Tool defaults do not
-override the interface under test. Batch ready work; keep dependent operations sequential.
+Examples:
+shell: `journal add 'Tests passed' --report-now`.
+Code Mode: `await journal({op: "add", text: "Tests passed", report_now: true})`.
 
 ## Shell reference
 
 Submit free-form programs to `functions.shell`:
 
-- Bash: write commands directly, without a shebang.
+- Bash (default): write commands directly, without a shebang.
 - Another interpreter starts with `#!COMMAND [ARGS...]`, then its body. Use a direct command or
   path, not `/usr/bin/env`; examples are `#!python3`, `#!uv run python`, and
   `#!node --experimental-strip-types`.
 
-Submit a single-interpreter body directly, not through a quoted command or shell heredoc such as
-`python3 - <<'PY'`. Flags belong in the selector. There is no closing delimiter. Compound
-Bash/POSIX programs may still use redirections and heredocs as program input. HPATCH `<<PATCH`
-frames edit values, not shell submissions.
+Submit a single-interpreter body directly, without closing delimited; avoid patterns like:
+- `python3 - <<'PY'`
+- `python3 -c '...'`
+
+Compound Bash/POSIX programs use `#!cmd`.
 
 ### Execution options and batches
 
-The input order is: optional interpreter selector, optional directive lines, then program source.
-Without a selector it is Bash. Put the directives together before the body; each may occur once:
+Optional interpreter selector and optional directive lines starts first, then program source.
 
 | Directive | Meaning |
 | --- | --- |
@@ -124,9 +112,9 @@ NEXT_PROGRAM
 print("hello")
 ```
 
-Choose a nonempty separator line absent from every body; do not add a leading or closing separator.
-At least two bodies must be nonempty. Each program owns its selector and directives. Omitted params
-inherit the previous complete object; `{}` clears them, and templates/interpreters never inherit.
+Each program owns its selector and directives. Omitted params inherit the previous complete object;
+`{}` clears them, and templates/interpreters never inherit.
+
 Variables and `cd` do not carry over. `#!batch=SEPARATOR` continues after nonzero exits;
 `#!batch-stop=SEPARATOR` leaves later programs unstarted. Host errors stop both while preserving
 completed results and partial output. Native-only clients reject batches. Use separate shell calls
