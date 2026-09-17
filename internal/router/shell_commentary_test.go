@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -29,7 +30,10 @@ func (s *recordingCommentarySink) RequestJournal(ctx context.Context, command sh
 	if command.Mutation == nil {
 		return shellJournalResult{}, errors.New("recorder expects a single mutation")
 	}
-	return shellJournalResult{}, s.Publish(ctx, string(mustMarshalJSON(*command.Mutation)))
+	if err := s.Publish(ctx, string(mustMarshalJSON(*command.Mutation))); err != nil {
+		return shellJournalResult{}, err
+	}
+	return shellJournalResult{IDs: []string{fmt.Sprintf("j%d", len(s.texts))}}, nil
 }
 
 func (s *recordingCommentarySink) Complete(context.Context) error {
@@ -59,7 +63,7 @@ func TestShellCommentaryPublishesExpandedTextWithoutChangingEvaluation(t *testin
 	if err := runner.Run(t.Context(), program); err != nil {
 		t.Fatal(err)
 	}
-	if output.String() != "continued\n" || len(sink.texts) != 2 ||
+	if output.String() != "j1\nj2\ncontinued\n" || len(sink.texts) != 2 ||
 		sink.texts[0] != `{"op":"add","text":"Running 1/2"}` || sink.texts[1] != `{"op":"add","text":"Running 2/2"}` {
 		t.Fatalf("output = %q, commentary = %q", output.String(), sink.texts)
 	}
@@ -90,9 +94,9 @@ func TestParseShellJournalCommandSupportsDedicatedOperations(t *testing.T) {
 	}{
 		{
 			name: "answer add",
-			argv: []string{"journal", "add", "Answer", "--answer", "--report-now", "--json"},
+			argv: []string{"journal", "add", "Answer", "--answer", "--report-now"},
 			want: shellJournalCommand{
-				Op: "add", JSON: true,
+				Op:       "add",
 				Mutation: &journalMutation{Op: "add", Text: new("Answer"), Answer: new(true), ReportNow: true},
 			},
 		},
@@ -103,9 +107,9 @@ func TestParseShellJournalCommandSupportsDedicatedOperations(t *testing.T) {
 		},
 		{
 			name: "batch",
-			argv: []string{"journal", "batch", `[{"op":"add","text":"one"},{"op":"add","text":"two"}]`, "--json"},
+			argv: []string{"journal", "batch", `[{"op":"add","text":"one"},{"op":"add","text":"two"}]`},
 			want: shellJournalCommand{
-				Op: "batch", JSON: true,
+				Op: "batch",
 				Batch: []journalMutation{
 					{Op: "add", Text: new("one")},
 					{Op: "add", Text: new("two")},
@@ -114,9 +118,9 @@ func TestParseShellJournalCommandSupportsDedicatedOperations(t *testing.T) {
 		},
 		{
 			name: "finish",
-			argv: []string{"journal", "finish", `[{"op":"add","text":"last"}]`, "--json"},
+			argv: []string{"journal", "finish", `[{"op":"add","text":"last"}]`},
 			want: shellJournalCommand{
-				Op: "finish", JSON: true,
+				Op:    "finish",
 				Batch: []journalMutation{{Op: "add", Text: new("last")}},
 			},
 		},
@@ -127,7 +131,7 @@ func TestParseShellJournalCommandSupportsDedicatedOperations(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.Op != test.want.Op || got.Agent != test.want.Agent || got.JSON != test.want.JSON ||
+			if got.Op != test.want.Op || got.Agent != test.want.Agent ||
 				len(got.Batch) != len(test.want.Batch) {
 				t.Fatalf("command = %+v, want %+v", got, test.want)
 			}
@@ -151,22 +155,44 @@ func TestParseShellJournalCommandSupportsDedicatedOperations(t *testing.T) {
 	}
 }
 
-func TestShellJournalResultCommandUsesShellOutput(t *testing.T) {
-	command, err := parseShellJournalCommand([]string{"journal", "add", "one", "--json"})
+func TestShellJournalAddWritesRawID(t *testing.T) {
+	sink := new(recordingCommentarySink)
+	result, err := shellCommentaryCallHandler(sink)(t.Context(), []string{"journal", "add", "one"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := shellJournalResultCommand(shellJournalResult{IDs: []string{"j1"}}, command.Op)
-	if len(result) != 4 || result[0] != "command" || result[1] != "printf" || result[2] != "%s\\n" ||
-		!strings.Contains(result[3], `"id":"j1"`) {
+	if len(result) != 4 || result[0] != "command" || result[1] != "printf" ||
+		result[2] != "%s\\n" || result[3] != "j1" {
 		t.Fatalf("result command = %#v", result)
+	}
+}
+func TestShellJournalAddIDSupportsCommandSubstitution(t *testing.T) {
+	program, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(
+		strings.NewReader("id=$(journal add one)\nprintf 'captured=%s\\n' \"$id\"\n"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := new(recordingCommentarySink)
+	var output bytes.Buffer
+	runner, err := interp.New(
+		interp.StdIO(nil, &output, &output),
+		interp.CallHandler(shellCommentaryCallHandler(sink)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.Run(t.Context(), program); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "captured=j1\n" {
+		t.Fatalf("output = %q", output.String())
 	}
 }
 
 func TestShellJournalExactOperandsAndDeletionRetraction(t *testing.T) {
 	for _, text := range []string{"--example", "--json", "--answer", "a\nb"} {
-		command, err := parseShellJournalCommand([]string{"journal", "add", text, "--json"})
-		if err != nil || command.Mutation == nil || *command.Mutation.Text != text || !command.JSON {
+		command, err := parseShellJournalCommand([]string{"journal", "add", text})
+		if err != nil || command.Mutation == nil || *command.Mutation.Text != text {
 			t.Fatalf("add %q: %+v, %v", text, command, err)
 		}
 		command, err = parseShellJournalCommand([]string{"journal", "edit", "j1", text, "--report-now"})
@@ -181,6 +207,7 @@ func TestShellJournalExactOperandsAndDeletionRetraction(t *testing.T) {
 	for _, argv := range [][]string{
 		{"journal", "delete", "j1", "--answer"},
 		{"journal", "add", "text", "--answer", "--clear-answer"},
+		{"journal", "add", "text", "--json"},
 		{"journal", "add", "text", "--unknown"},
 		{"journal", "list", "--report-now"},
 	} {

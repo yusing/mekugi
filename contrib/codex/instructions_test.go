@@ -149,12 +149,16 @@ func TestInstructionsExposeJournalAuthoring(t *testing.T) {
 				"`{\"op\":\"finish\"}`", "only call after required results", "wait tools to finish",
 				"Complete this operation for subagent assignments", "journal list [AGENT]", "journal edit ID TEXT",
 				"journal delete ID", "journal batch JSON_ARRAY", "journal finish [JSON_ARRAY]",
+				"Add writes its assigned item ID",
 				"successful final shell invocation", "Required operands remain exact argv values",
 				"`journal add 'Tests passed' --report-now`", "`await journal({op: \"add\", text: \"Tests passed\", report_now: true})`",
 			} {
 				if !strings.Contains(guidance, required) {
 					t.Errorf("instructions omit journal rule %q", required)
 				}
+			}
+			if strings.Contains(guidance, "--json") {
+				t.Error("instructions expose removed journal --json option")
 			}
 		})
 	}

@@ -13,7 +13,6 @@ type shellJournalCommand struct {
 	Mutation *journalMutation
 	Batch    []journalMutation
 	Agent    string
-	JSON     bool
 }
 
 type shellJournalResult struct {
@@ -38,32 +37,23 @@ func shellCommentaryCallHandler(sink shellCommentarySink) interp.CallHandlerFunc
 		if err != nil {
 			return nil, err
 		}
-		if command.JSON || command.Op == "list" {
-			return shellJournalResultCommand(result, command.Op), nil
+		switch command.Op {
+		case "add":
+			if len(result.IDs) != 1 {
+				return nil, errors.New("journal publisher did not return an add ID")
+			}
+			return []string{"command", "printf", "%s\\n", result.IDs[0]}, nil
+		case "list":
+			return shellJournalListCommand(result), nil
+		default:
+			// Other successful mutations intentionally produce no output.
+			return []string{"command", "true"}, nil
 		}
-		// `command true` bypasses any user-defined function named true while
-		// preserving the shell's normal redirection behavior for this command.
-		return []string{"command", "true"}, nil
 	}
 }
 
-func shellJournalResultCommand(result shellJournalResult, op string) []string {
-	payload := map[string]any{"ok": true}
-	switch op {
-	case "list":
-		payload["items"] = result.Items
-	case "finish":
-		payload["finish_requested"] = result.FinishRequested
-		if len(result.IDs) != 0 {
-			payload["journal_ids"] = result.IDs
-		}
-	default:
-		if len(result.IDs) == 1 {
-			payload["id"] = result.IDs[0]
-		} else {
-			payload["journal_ids"] = result.IDs
-		}
-	}
+func shellJournalListCommand(result shellJournalResult) []string {
+	payload := map[string]any{"ok": true, "items": result.Items}
 	return []string{"command", "printf", "%s\\n", string(mustMarshalJSON(payload))}
 }
 
@@ -103,8 +93,6 @@ func parseShellJournalCommand(arguments []string) (shellJournalCommand, error) {
 				return command, errors.New("journal accepts only one answer option")
 			}
 			answer = new(flag == "--answer")
-		case "--json":
-			command.JSON = true
 		default:
 			return command, errors.New("unknown journal option " + flag)
 		}
@@ -112,7 +100,7 @@ func parseShellJournalCommand(arguments []string) (shellJournalCommand, error) {
 	switch command.Op {
 	case "list":
 		if len(args) == 2 && args[1] == "" {
-			return command, errors.New("use journal list [AGENT] [--json]")
+			return command, errors.New("use journal list [AGENT]")
 		}
 		if len(args) == 2 {
 			command.Agent = args[1]
@@ -122,22 +110,22 @@ func parseShellJournalCommand(arguments []string) (shellJournalCommand, error) {
 		}
 	case "add":
 		if args[1] == "" {
-			return command, errors.New("use journal add TEXT [--answer|--clear-answer] [--report-now] [--json]")
+			return command, errors.New("use journal add TEXT [--answer|--clear-answer] [--report-now]")
 		}
 		command.Mutation = &journalMutation{Op: "add", Text: new(args[1]), Answer: answer, ReportNow: reportNow}
 	case "edit":
 		if args[1] == "" || args[2] == "" {
-			return command, errors.New("use journal edit ID TEXT [--answer|--clear-answer] [--report-now] [--json]")
+			return command, errors.New("use journal edit ID TEXT [--answer|--clear-answer] [--report-now]")
 		}
 		command.Mutation = &journalMutation{Op: "edit", ID: args[1], Text: new(args[2]), Answer: answer, ReportNow: reportNow}
 	case "delete":
 		if args[1] == "" || answer != nil {
-			return command, errors.New("use journal delete ID [--report-now] [--json]")
+			return command, errors.New("use journal delete ID [--report-now]")
 		}
 		command.Mutation = &journalMutation{Op: "delete", ID: args[1], ReportNow: reportNow}
 	case "batch":
 		if answer != nil || reportNow {
-			return command, errors.New("use journal batch JSON_ARRAY [--json]")
+			return command, errors.New("use journal batch JSON_ARRAY")
 		}
 		var err error
 		command.Batch, err = decodeJournalMutations([]byte(args[1]))
@@ -146,7 +134,7 @@ func parseShellJournalCommand(arguments []string) (shellJournalCommand, error) {
 		}
 	case "finish":
 		if answer != nil || reportNow {
-			return command, errors.New("use journal finish [JSON_ARRAY] [--json]")
+			return command, errors.New("use journal finish [JSON_ARRAY]")
 		}
 		if len(args) == 2 {
 			var err error

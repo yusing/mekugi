@@ -198,12 +198,15 @@ func TestShellWorkerDiscoversThreadJournal(t *testing.T) {
 	for _, value := range []string{"expanded", "I’ll remove the generated collaboration-call notices and forward the subagents’ own progress to the main conversation instead."} {
 		var stdout, stderr bytes.Buffer
 		handled, code := RunToolPluginWorker(t.Context(), registry.shellRuntime, []string{"bash", "--", value, "journal add \"$1\"; sleep 0.01; journal add \"completed $1\"; printf stdout; printf stderr >&2; exit 7"}, os.Stdin, &stdout, &stderr)
-		if !handled || code != 7 || stdout.String() != "stdout" || stderr.String() != "stderr" {
+		if !handled || code != 7 || stderr.String() != "stderr" {
 			t.Fatalf("worker handled=%v code=%d stdout=%q stderr=%q", handled, code, stdout.String(), stderr.String())
 		}
 		items, err := proxy.journals.list(t.Context(), nil, "", "worker-thread")
 		if err != nil || len(items) < 2 || items[len(items)-2].Text != value || items[len(items)-1].Text != "completed "+value {
 			t.Fatalf("journal = %+v, error = %v", items, err)
+		}
+		if want := items[len(items)-2].ID + "\n" + items[len(items)-1].ID + "\nstdout"; stdout.String() != want {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 		}
 	}
 }

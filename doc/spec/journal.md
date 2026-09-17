@@ -138,9 +138,9 @@ throw rather than returning an execution envelope as a journal ID.
 
 Bash and POSIX reserve `journal list [AGENT]`, `journal add TEXT`, `journal edit ID TEXT`,
 `journal delete ID`, `journal batch JSON_ARRAY`, and `journal finish [JSON_ARRAY]`. Mutation
-commands accept trailing `--answer`, `--clear-answer`, `--report-now`, and `--json` options.
-`list` returns the current journal as JSON; `--json` returns assigned IDs for mutations and the
-finish result. Batch mutations are applied atomically by the same durable store as
+commands accept trailing `--answer`, `--clear-answer`, and `--report-now` options where applicable.
+`add` writes its assigned item ID; `list` returns the current journal as JSON. Other successful
+mutations are silent. Batch mutations are applied atomically by the same durable store as
 `functions.journal`. Expanded operands remain individual argv values, and answer mutations use
 the current user or plaintext native assignment attached to the shell request. Invalid mutations
 and unavailable publishers return errors rather than silently losing records. The authenticated

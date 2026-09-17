@@ -78,11 +78,11 @@ journal batch JSON_ARRAY
 journal finish [JSON_ARRAY]
 ```
 
-Add/edit accept `--answer` or `--clear-answer`; add/edit/delete accept `--report-now`; `--json`
-returns mutation IDs or the finish result. List always returns JSON. Required operands remain exact
-argv values. Example: `journal add 'Tests passed' --report-now`. Code Mode example:
+Add/edit accept `--answer` or `--clear-answer`; add/edit/delete accept `--report-now`. Add writes
+its assigned item ID, and list returns JSON. Required operands remain exact argv values. Example:
+`journal add 'Tests passed' --report-now`. Code Mode example:
 `await journal({op: "add", text: "Tests passed", report_now: true})`. Other interpreters have no
-journal builtin; successful non-JSON mutations are silent.
+journal builtin; other successful shell mutations are silent.
 
 ## Tool coordination
 
