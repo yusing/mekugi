@@ -315,6 +315,8 @@ type mekugiResponseTransform struct {
 
 	mekugiTranslationState
 
+	waitPolicies waitPolicies
+
 	commentaryAuthor string
 	commentaryTools  commentaryToolCatalog
 
@@ -578,6 +580,7 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 		},
 		commentaryAuthor: metadata.commentaryAuthor(),
 		commentaryTools:  commentaryTools,
+		waitPolicies:     collectWaitPolicies(tools, codeModeToolName),
 		mekugiCommentaryState: mekugiCommentaryState{
 			subagentDeferred:   subagentDeferred,
 			subagentResponses:  subagentDeferred,

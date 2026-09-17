@@ -207,8 +207,19 @@ func assistantCommentaryDoneEvent(message map[string]json.RawMessage) []byte {
 
 func (t *mekugiResponseTransform) transformStructuredCommentary(item map[string]json.RawMessage) (map[string]json.RawMessage, error) {
 	extracted, matched, err := extractStructuredCommentary(item, t.commentaryTools)
-	if err != nil || !matched {
+	if err != nil {
 		return nil, err
+	}
+	policy, waits := t.waitPolicies.direct[functionToolKey(jsonString(item, "namespace"), jsonString(item, "name"))]
+	if !matched {
+		if !waits || jsonString(item, "type") != "function_call" {
+			return nil, nil
+		}
+		original := jsonString(item, "arguments")
+		extracted = structuredCommentary{originalArguments: original, arguments: original}
+	}
+	if waits {
+		extracted.arguments = policy.rewrite(jsonString(item, "name"), extracted.arguments)
 	}
 	callID := jsonString(item, "call_id")
 	if callID == "" {

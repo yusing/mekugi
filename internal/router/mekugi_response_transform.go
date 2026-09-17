@@ -149,7 +149,9 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		}
 		if item.Type == "function_call" {
 			key := functionToolKey(item.Namespace, name)
-			if _, instrumented := t.commentaryTools[key]; instrumented {
+			_, instrumented := t.commentaryTools[key]
+			_, waits := t.waitPolicies.direct[key]
+			if instrumented || waits {
 				itemID, callID := item.ID, item.CallID
 				if itemID == "" || callID == "" {
 					return nil, staticCriticalDiagnostic("malformed_commentary_call", "the upstream emitted a malformed commentary function call")
@@ -707,8 +709,9 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		if err != nil {
 			return false, err
 		}
-		changed = changed || commentaryChanged
-		if t.proxy.commentaryEndpoint == "" && outputWarning == "" {
+		input, waitsChanged := rewriteCodeModeWaits(input, t.waitPolicies.nested)
+		changed = changed || commentaryChanged || waitsChanged
+		if t.proxy.commentaryEndpoint == "" && outputWarning == "" && !waitsChanged {
 			if changed {
 				item.setInput(input)
 			}
@@ -724,7 +727,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 			CarrierName: name, CarrierPayload: input, UpstreamItem: item.cloneFields(),
 			OutputWarning: outputWarning,
 		}
-		if !commentaryChanged {
+		if !commentaryChanged && !waitsChanged {
 			history.ReplayCarrier = true
 			history.CommentaryMessageIDs = []string{commentaryMessageID(callID)}
 		}

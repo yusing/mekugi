@@ -23,6 +23,8 @@ type executionContinuation struct {
 type executionContinuationTools struct {
 	exec, cellWait, sessionWait string
 	nestedSessionWait           bool
+	cellWaitMS, sessionWaitMS   int
+	nestedSessionWaitMS         int
 }
 
 func executionTools(catalog *responsesToolCatalog, execName string) executionContinuationTools {
@@ -48,27 +50,35 @@ func executionTools(catalog *responsesToolCatalog, execName string) executionCon
 			if tool.Type == "custom" && name == strings.TrimPrefix(execName, "functions.") {
 				found.exec = path
 				found.nestedSessionWait = hasCodeModeSessionWait(tool.Description)
+				if section := codeModeSessionWaitSection(tool.Description); found.nestedSessionWait && strings.Contains(section, "yield_time_ms") {
+					found.nestedSessionWaitMS = minimumStatusWaitMS
+				}
 			}
 			if tool.Type != "function" {
 				continue
 			}
 			var schema struct {
 				Properties map[string]struct {
-					Type string `json:"type"`
+					Type    string          `json:"type"`
+					Maximum json.RawMessage `json:"maximum"`
 				} `json:"properties"`
 			}
 			if json.Unmarshal(tool.rawField("parameters"), &schema) != nil {
 				continue
 			}
+			timing := schema.Properties["yield_time_ms"]
+			waitMS := statusWaitFloor(timing.Type, timing.Maximum)
 			switch name {
 			case "wait":
 				if schema.Properties["cell_id"].Type == "string" {
 					found.cellWait = path
+					found.cellWaitMS = waitMS
 				}
 			case "write_stdin":
 				idType := schema.Properties["session_id"].Type
 				if (idType == "number" || idType == "integer") && schema.Properties["chars"].Type == "string" {
 					found.sessionWait = path
+					found.sessionWaitMS = waitMS
 				}
 			}
 		}
@@ -81,6 +91,12 @@ func executionTools(catalog *responsesToolCatalog, execName string) executionCon
 }
 
 func hasCodeModeSessionWait(description string) bool {
+	section := codeModeSessionWaitSection(description)
+	return strings.Contains(section, "declare const tools: { write_stdin(") &&
+		strings.Contains(section, "session_id") && strings.Contains(section, "chars")
+}
+
+func codeModeSessionWaitSection(description string) string {
 	for _, heading := range []string{"### `write_stdin`", "### write_stdin"} {
 		start := strings.Index(description, heading)
 		if start < 0 || start > 0 && description[start-1] != '\n' {
@@ -92,16 +108,19 @@ func hasCodeModeSessionWait(description string) bool {
 				section = section[:end]
 			}
 		}
-		return strings.Contains(section, "declare const tools: { write_stdin(") &&
-			strings.Contains(section, "session_id") && strings.Contains(section, "chars")
+		return section
 	}
-	return false
+	return ""
 }
 
 func (t executionContinuationTools) forCell(id string) executionContinuation {
 	result := executionContinuation{Handle: map[string]any{"cell_id": id}}
 	if t.cellWait != "" {
-		result.NextCall = &executionNextCall{Tool: t.cellWait, Input: map[string]any{"cell_id": id}}
+		args := map[string]any{"cell_id": id}
+		if t.cellWaitMS > 0 {
+			args["yield_time_ms"] = t.cellWaitMS
+		}
+		result.NextCall = &executionNextCall{Tool: t.cellWait, Input: args}
 	} else {
 		result.Reason = "The host wait tool is not exposed in this request. Do not restart the running call."
 	}
@@ -112,12 +131,21 @@ func (t executionContinuationTools) forSession(id int64) executionContinuation {
 	result := executionContinuation{Handle: map[string]any{"session_id": id}}
 	args := map[string]any{"session_id": id, "chars": ""}
 	if t.sessionWait != "" {
+		if t.sessionWaitMS > 0 {
+			args["yield_time_ms"] = t.sessionWaitMS
+		}
 		result.NextCall = &executionNextCall{Tool: t.sessionWait, Input: args}
 	} else if t.exec != "" && t.nestedSessionWait && id <= 1<<53-1 {
-		result.NextCall = &executionNextCall{
-			Tool:  t.exec,
-			Input: "text(await tools.write_stdin(" + string(mustMarshalJSON(args)) + "));",
+		if t.nestedSessionWaitMS > 0 {
+			args["yield_time_ms"] = t.nestedSessionWaitMS
 		}
+		source := "text(await tools.write_stdin(" + string(mustMarshalJSON(args)) + "));"
+		if t.nestedSessionWaitMS > 0 {
+			// Keep the enclosing cell from yielding at its shorter default while
+			// the native wait is still pending. The host clamps its own limit.
+			source = "// @exec: {\"yield_time_ms\":300000}\n" + source
+		}
+		result.NextCall = &executionNextCall{Tool: t.exec, Input: source}
 	} else {
 		result.Reason = "The host session continuation tool is not exposed in this request. Do not restart the running call."
 	}

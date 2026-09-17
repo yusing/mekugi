@@ -288,9 +288,26 @@ A running Code Mode cell always points to the host's `wait` tool, even if partia
 mentions a native session. Only after the cell ends may a verified native-result projection
 point to `write_stdin`. When that tool is nested-only, the next call supplies complete
 Code Mode source that invokes it once with the same session and empty `chars`. Empty chars
-polls; authored input remains a caller choice under the native tool's contract. Timing and
-output budgets use the host defaults unless the caller changes them. Native-only results
+polls; authored input remains a caller choice under the native tool's contract. Suggested continuation calls request `yield_time_ms: 300000` when the exposed tool supports
+that argument, capped at a positive schema maximum when supplied. The host still owns actual
+wait limits and early return; no sleep or router-owned polling loop is added. Tools without
+that argument retain host timing defaults. A nested continuation also requests 300000 ms for
+its enclosing Code Mode cell, subject to that host's limit. Output budgets retain host defaults. Native-only results
 point directly to their exposed `write_stdin` function.
+
+Model-emitted status-only native `wait`, empty-input `write_stdin`, and `wait_agent` calls
+with an exposed timing argument have missing or shorter timeouts raised to 300000 ms,
+capped at a lower positive schema maximum. Longer requests remain unchanged. Nonempty
+input, termination, and malformed timing values remain under native validation without
+timeout rewriting. This applies to JSON and streaming responses; complete original calls
+and rewritten carriers are retained before exposure so replay restores the model's input
+without executing or translating it again. Tool schemas and agent instructions are unchanged.
+
+Code Mode direct `tools.write_stdin(...)` and literal bracket-form calls receive the same
+timeout adjustment at execution, including dynamic argument objects. Quoted source and
+comments are not rewritten. Unparseable programs and programs that locally bind `tools`
+are left to the host rather than guessing tool identity. No router-owned wait loop or sleep
+is introduced.
 
 Recognition of new yielded handles uses host metadata before its output boundary. Native JSON inside Code Mode
 requires an established shell carrier or a transparent native-result projection; arbitrary
