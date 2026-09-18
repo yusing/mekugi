@@ -94,6 +94,10 @@ func (c *liveDiffTerminalController) run(
 			if c.previewPane.expire(now) {
 				c.dirty, c.followDirty = true, true
 			}
+			if next := c.previewPane.hideAt(); !next.IsZero() {
+				c.previewHide.Reset(time.Until(next))
+				c.previewHideC = c.previewHide.C
+			}
 		case event, open := <-events:
 			if !open {
 				return nil
@@ -164,10 +168,10 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	c.lastWidth, c.lastHeight = width, height
 	lines := c.rendering.lines
 	if c.dirty {
-		_, c.previewRows = liveDiffRegionRows(height-2, len(lines), c.previewPane.current.ID != "", c.previewPane.current.Shell)
+		_, c.previewRows = liveDiffRegionRows(height-2, len(lines), len(c.previewPane.order) > 0, c.previewPane.shellOnly())
 	}
 	rows := height - 2 - c.previewRows
-	if c.previewPane.current.Recovery {
+	if c.previewPane.recoveryOnly() {
 		rows = height - 2 // Overlay source without shrinking the captured viewport.
 	}
 	offset := 0
@@ -226,7 +230,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		}
 		header = fmt.Sprintf("%d/%d  %s  | row %d/%d", number, total, label, offset-start+1, end-start)
 	}
-	if len(lines) == 0 && c.previewPane.current.ID != "" {
+	if len(lines) == 0 && len(c.previewPane.order) > 0 {
 		header = "Live input"
 	}
 	if c.coverage != "" {
@@ -304,11 +308,11 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 				c.previewFrame.Reset(liveDiffPreviewFrameDelay)
 				c.previewFrameC = c.previewFrame.C
 			}
-			if c.previewPane.hideAt.IsZero() {
+			if c.previewPane.hideAt().IsZero() {
 				c.previewHide.Stop()
 				c.previewHideC = nil
 			} else {
-				c.previewHide.Reset(time.Until(c.previewPane.hideAt))
+				c.previewHide.Reset(time.Until(c.previewPane.hideAt()))
 				c.previewHideC = c.previewHide.C
 			}
 		}

@@ -31,8 +31,8 @@ func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 		if err != nil || len(lines) > 12 || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), fmt.Sprintf("+stream_%04d", size)) {
 			t.Fatalf("stream tip %d escaped region: %v %q", size, err, lines)
 		}
-		if pane.focus != size-1 {
-			t.Fatalf("follow anchored to hunk start rather than tip: %d", pane.focus)
+		if pane.views["one"].focus != size-1 {
+			t.Fatalf("follow anchored to hunk start rather than tip: %d", pane.views["one"].focus)
 		}
 	}
 	pane.update(liveDiffPreview{ID: "one"}, now)
@@ -49,7 +49,7 @@ func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 		t.Fatal("old completion timer hid a new stream")
 	}
 	pane.update(liveDiffPreview{ID: "two"}, now.Add(time.Second))
-	if !pane.expire(now.Add(time.Second+liveDiffPreviewHideDelay)) || pane.current.ID != "" {
+	if !pane.expire(now.Add(time.Second+liveDiffPreviewHideDelay)) || len(pane.order) != 0 {
 		t.Fatal("completed region did not release its height")
 	}
 }
@@ -60,22 +60,22 @@ func TestLiveDiffPreviewPaneLatestOnlyAndIndependent(t *testing.T) {
 	for i := 1; i <= 500; i++ {
 		pane.update(previewViewFixture("one", i), now)
 	}
-	if pane.source != nil || pane.rendered.ID != "" {
+	if pane.views["one"].source != nil || pane.views["one"].rendered.ID != "" {
 		t.Fatal("queued snapshots performed rendering")
 	}
 	lines, err := pane.render(t.Context(), "/workspace", liveDiffLightTheme, 80, 10)
 	if err != nil || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "+stream_0500") {
 		t.Fatalf("rendered stale queued snapshot: %v %q", err, lines)
 	}
-	source := pane.source
+	source := pane.views["one"].source
 	// Repaints (including captured-diff navigation) do not parse source again.
 	_, err = pane.render(t.Context(), "/workspace", liveDiffLightTheme, 80, 10)
-	if err != nil || &source[0] != &pane.source[0] {
+	if err != nil || &source[0] != &pane.views["one"].source[0] {
 		t.Fatal("unchanged preview rebuilt its source")
 	}
 	pane.update(previewViewFixture("two", 20), now)
 	pane.update(liveDiffPreview{ID: "two"}, now)
-	if pane.current.ID != "one" || !pane.hideAt.IsZero() {
+	if pane.views["one"] == nil || !pane.views["one"].hideAt.IsZero() {
 		t.Fatal("one completed stream hid another active stream")
 	}
 }
@@ -166,8 +166,8 @@ func BenchmarkLiveDiffStreamingRender(b *testing.B) {
 		var pane liveDiffPreviewPane
 		b.ReportAllocs()
 		for b.Loop() {
-			pane.rendered = liveDiffPreview{}
 			pane.update(preview, time.Time{})
+			pane.views["one"].rendered = liveDiffPreview{}
 			if _, err := pane.render(b.Context(), "/workspace", liveDiffDarkTheme, 120, 28); err != nil {
 				b.Fatal(err)
 			}
@@ -350,5 +350,113 @@ func BenchmarkLiveDiffScriptPreviewFrame(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+func TestLiveDiffConcurrentPreviewCards(t *testing.T) {
+	now := time.Unix(100, 0)
+	var pane liveDiffPreviewPane
+	first := previewViewFixture("first", 100)
+	first.Caller = "/root/editor"
+	second := previewViewFixture("second", 200)
+	second.Caller = "/root/reviewer"
+	second.Thread = "another-thread"
+	pane.update(first, now)
+	pane.update(second, now)
+	check := func(height int) string {
+		t.Helper()
+		lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 100, height)
+		if err != nil || len(lines) > height {
+			t.Fatalf("render: %v %q", err, lines)
+		}
+		return ansi.Strip(strings.Join(lines, "\n"))
+	}
+	frame := check(12)
+	for _, want := range []string{"/root/editor · first", "/root/reviewer · second", "stream_0100", "stream_0200"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("missing concurrent caller/source %q: %s", want, frame)
+		}
+	}
+	// Bursts cannot change call order or replace another call's source cache.
+	otherSource := pane.views["second"].source
+	for i := 101; i <= 150; i++ {
+		first = previewViewFixture("first", i)
+		first.Caller = "/root/editor"
+		pane.update(first, now)
+	}
+	frame = check(12)
+	if strings.Index(frame, "/root/editor") > strings.Index(frame, "/root/reviewer") ||
+		!strings.Contains(frame, "stream_0150") || !strings.Contains(frame, "stream_0200") ||
+		&otherSource[0] != &pane.views["second"].source[0] {
+		t.Fatalf("delta reordered or replaced a concurrent view: %s", frame)
+	}
+	// Same-thread calls still have separate identities and independent deadlines.
+	second.Thread, second.Caller = first.Thread, first.Caller
+	pane.update(second, now)
+	pane.update(liveDiffPreview{ID: "first"}, now)
+	frame = check(12)
+	if !strings.Contains(frame, "first · STREAMING COMPLETE") || !strings.Contains(frame, "second · STREAMING PREVIEW") {
+		t.Fatalf("completion replaced another call: %s", frame)
+	}
+	if pane.expire(now.Add(liveDiffPreviewHideDelay-time.Nanosecond)) ||
+		!pane.expire(now.Add(liveDiffPreviewHideDelay)) || len(pane.order) != 1 || pane.order[0] != "second" {
+		t.Fatal("completion deadline was not per-call")
+	}
+	third := previewViewFixture("third", 300)
+	pane.update(third, now)
+	if frame := check(3); !strings.Contains(frame, "+1 more calls") {
+		t.Fatalf("tiny pane silently hid a concurrent call: %s", frame)
+	}
+	if frame := check(12); !strings.Contains(frame, "stream_0200") || !strings.Contains(frame, "stream_0300") {
+		t.Fatalf("resize did not restore concurrent tips: %s", frame)
+	}
+}
+
+func TestLiveDiffConcurrentPreviewLayoutStable(t *testing.T) {
+	var pane liveDiffPreviewPane
+	shell := liveDiffPreview{ID: "shell", Workspace: "/workspace", Thread: "thread", Shell: true, Input: "echo shell"}
+	recovery := liveDiffPreview{ID: "recovery", Workspace: "/workspace", Thread: "thread", Recovery: true, Input: "maple value x"}
+	pane.update(shell, time.Time{})
+	if !pane.shellOnly() || pane.recoveryOnly() {
+		t.Fatal("standalone shell layout changed")
+	}
+	pane.update(recovery, time.Time{})
+	for range 10 {
+		pane.update(shell, time.Time{})
+		pane.update(recovery, time.Time{})
+		if pane.shellOnly() || pane.recoveryOnly() {
+			t.Fatal("mixed layout depends on latest delta")
+		}
+	}
+}
+
+func TestLiveDiffPreviewCallerSafeAndBounded(t *testing.T) {
+	var pane liveDiffPreviewPane
+	preview := previewViewFixture("caller", 1)
+	preview.Caller = "/root/\x1b[2J" + strings.Repeat("界", 80)
+	pane.update(preview, time.Time{})
+	for _, width := range []int{1, 8, 40, 80} {
+		lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, width, 5)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range lines {
+			if strings.Contains(line, "\x1b[2J") || ansi.StringWidth(line) > width-1 {
+				t.Fatalf("unsafe or unbounded caller: %q", line)
+			}
+		}
+	}
+}
+
+func BenchmarkLiveDiffConcurrentPreviewFrame(b *testing.B) {
+	var pane liveDiffPreviewPane
+	for i := range 16 {
+		pane.update(previewViewFixture(fmt.Sprint(i), 2000), time.Time{})
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := pane.render(b.Context(), "/workspace", liveDiffDarkTheme, 100, 28); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

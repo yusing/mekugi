@@ -370,6 +370,10 @@ func liveDiffColorSource(ctx context.Context, theme liveDiffTheme, path, source 
 	if err != nil {
 		return plain, nil
 	}
+	var commands map[int]string
+	if lexer.Config().Name == "Bash" {
+		commands = liveDiffShellCommands(source)
+	}
 	var output liveDiffOutput
 	remaining := source
 	for token := iterator(); token != chroma.EOF; token = iterator() {
@@ -378,6 +382,9 @@ func liveDiffColorSource(ctx context.Context, theme liveDiffTheme, path, source 
 		}
 		if !strings.HasPrefix(remaining, token.Value) {
 			return plain, nil
+		}
+		if token.Type.InCategory(chroma.Text) && token.Value != "" && commands[len(source)-len(remaining)] == token.Value {
+			token.Type = chroma.NameFunction
 		}
 		remaining = remaining[len(token.Value):]
 		style := theme.foreground(token.Type)

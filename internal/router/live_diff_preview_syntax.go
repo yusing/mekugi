@@ -94,7 +94,7 @@ func liveDiffSourceRows(input string, spans []liveDiffSourceSpan) []liveDiffSour
 	return rows
 }
 
-func (p *liveDiffPreviewPane) colorScript(ctx context.Context, theme liveDiffTheme, start, end int) ([]string, error) {
+func (p *liveDiffPreviewView) colorScript(ctx context.Context, theme liveDiffTheme, start, end int) ([]string, error) {
 	var lines []string
 	for at := start; at < end; {
 		span := p.paths[at]

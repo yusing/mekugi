@@ -472,6 +472,7 @@ func TestLiveDiffTerminalStandaloneShellStream(t *testing.T) {
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
 	liveDiffTestChange(t, store, workspace, transform.threadID, "captured.go", true)
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "captured.go") })
+	transform.commentaryAuthor, transform.subagentTurn = "/root/editor", true
 	// Exercise provider input routing, not a synthetic broker preview.
 	_, err = transform.TransformSSE(mustTestJSON(t, map[string]any{
 		"type": "response.output_item.added",
@@ -483,7 +484,7 @@ func TestLiveDiffTerminalStandaloneShellStream(t *testing.T) {
 	}
 
 	for _, rows := range []int{1, 100, 500} {
-		input := strings.Repeat("echo body\n", rows) + fmt.Sprintf("echo SHELL_TIP_%d\n", rows)
+		input := strings.Repeat("echo body\n", rows) + fmt.Sprintf("rg 'SHELL_TIP_%d' file.go | head -10\n", rows)
 		_, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
 			"type": "response.custom_tool_call_input.delta", "item_id": "shell-item", "delta": input,
 		}))
@@ -493,6 +494,14 @@ func TestLiveDiffTerminalStandaloneShellStream(t *testing.T) {
 		frame := ui.frame(t, func(frame string) bool {
 			return strings.Contains(ansi.Strip(frame), fmt.Sprintf("SHELL_TIP_%d", rows))
 		})
+		for _, command := range []string{"rg", "head"} {
+			if !strings.Contains(frame, liveDiffTerminalTheme.foreground(chroma.NameFunction)+command) {
+				t.Fatalf("shell command remains plain in terminal: %q", frame)
+			}
+		}
+		if !strings.Contains(liveDiffFrameRow(frame, 16), "/root/editor") {
+			t.Fatalf("provider stream lost caller attribution: %q", frame)
+		}
 		if !strings.Contains(liveDiffFrameRow(frame, 16), "STREAMING SCRIPT") {
 			t.Fatalf("shell preview did not use 7:3 layout: %q", frame)
 		}
@@ -624,4 +633,64 @@ func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
 			ui.quit(t)
 		})
 	}
+}
+
+func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
+	workspace := t.TempDir()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {"thread": true, "child": true}},
+	})
+	liveDiffTestChange(t, store, workspace, "capture", "captured.go", true)
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
+	ui.write(t, "g")
+	paused := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
+	top := liveDiffFrameRow(paused, 2)
+	first := previewViewFixture("first", 100)
+	first.Workspace, first.Caller = workspace, "/root"
+	second := previewViewFixture("second", 200)
+	second.Workspace, second.Thread, second.Caller = workspace, "child", "/root/editor"
+	broker.publishPreview(first, false)
+	broker.publishPreview(second, false)
+	frame := ui.frame(t, func(frame string) bool {
+		text := ansi.Strip(frame)
+		return strings.Contains(text, "stream_0100") && strings.Contains(text, "stream_0200")
+	})
+	if !strings.Contains(frame, "/root · first") || !strings.Contains(frame, "/root/editor · second") ||
+		liveDiffFrameRow(frame, 2) != top {
+		t.Fatalf("concurrent frame lost attribution or moved captured viewport: %q", frame)
+	}
+	for i := 101; i <= 150; i++ {
+		first = previewViewFixture("first", i)
+		first.Workspace, first.Caller = workspace, "/root"
+		broker.publishPreview(first, false)
+	}
+	frame = ui.frame(t, func(frame string) bool {
+		text := ansi.Strip(frame)
+		return strings.Contains(text, "stream_0150") && strings.Contains(text, "stream_0200")
+	})
+	if strings.Index(frame, "/root · first") > strings.Index(frame, "/root/editor · second") {
+		t.Fatal("concurrent delta reordered the cards")
+	}
+	broker.publishPreview(first, true)
+	ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "first · STREAMING COMPLETE") && strings.Contains(ansi.Strip(frame), "stream_0200")
+	})
+	ui.frame(t, func(frame string) bool {
+		return !strings.Contains(frame, "first ·") && strings.Contains(ansi.Strip(frame), "stream_0200")
+	})
+	ui.height = 12
+	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 12, Cols: 70}); err != nil {
+		t.Fatal(err)
+	}
+	ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "\x1b[12;1H") && strings.Contains(ansi.Strip(frame), "stream_0200")
+	})
+	broker.publishPreview(second, true)
+	ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
+	ui.quit(t)
 }

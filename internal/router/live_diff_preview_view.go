@@ -19,8 +19,12 @@ const liveDiffPreviewHideDelay = 1500 * time.Millisecond
 // diff's selection, scroll, acknowledgements, or follow mode.
 // Updates replace snapshots; only a displayed frame parses and lays out rows.
 type liveDiffPreviewPane struct {
-	active   map[string]liveDiffPreview
-	order    []string
+	views map[string]*liveDiffPreviewView
+	order []string
+}
+
+// Each call owns its source window, syntax cache, and completion deadline.
+type liveDiffPreviewView struct {
 	current  liveDiffPreview
 	hideAt   time.Time
 	rendered liveDiffPreview
@@ -38,38 +42,116 @@ type liveDiffPreviewRow struct {
 }
 
 func (p *liveDiffPreviewPane) update(preview liveDiffPreview, now time.Time) {
+	view := p.views[preview.ID]
 	if preview.Workspace == "" {
-		if _, exists := p.active[preview.ID]; !exists {
-			return
-		}
-		delete(p.active, preview.ID)
-		p.order = slices.DeleteFunc(p.order, func(id string) bool { return id == preview.ID })
-		if len(p.order) == 0 {
+		if view != nil && view.hideAt.IsZero() {
 			delay := liveDiffPreviewHideDelay
-			if p.current.Recovery {
+			if view.current.Recovery {
 				delay = 500 * time.Millisecond
 			}
-			p.hideAt = now.Add(delay)
-		} else if p.current.ID == preview.ID {
-			p.current = p.active[p.order[len(p.order)-1]]
+			view.hideAt = now.Add(delay)
 		}
 		return
 	}
-	if p.active == nil {
-		p.active = make(map[string]liveDiffPreview)
+	if view == nil {
+		// Completed cards must not crowd out a new live call or grow storage
+		// beyond the broker's active-preview limit.
+		p.order = slices.DeleteFunc(p.order, func(id string) bool {
+			if p.views[id].hideAt.IsZero() {
+				return false
+			}
+			delete(p.views, id)
+			return true
+		})
+		if len(p.order) >= 16 {
+			return
+		}
+		if p.views == nil {
+			p.views = make(map[string]*liveDiffPreviewView)
+		}
+		view = &liveDiffPreviewView{}
+		p.views[preview.ID] = view
+		p.order = append(p.order, preview.ID)
 	}
-	p.active[preview.ID] = preview
-	p.order = slices.DeleteFunc(p.order, func(id string) bool { return id == preview.ID })
-	p.order = append(p.order, preview.ID)
-	p.current, p.hideAt = preview, time.Time{}
+	view.current, view.hideAt = preview, time.Time{}
+}
+
+func (p *liveDiffPreviewPane) hideAt() time.Time {
+	var next time.Time
+	for _, view := range p.views {
+		if !view.hideAt.IsZero() && (next.IsZero() || view.hideAt.Before(next)) {
+			next = view.hideAt
+		}
+	}
+	return next
 }
 
 func (p *liveDiffPreviewPane) expire(now time.Time) bool {
-	if !p.hideAt.IsZero() && !now.Before(p.hideAt) {
-		*p = liveDiffPreviewPane{}
-		return true
+	before := len(p.order)
+	p.order = slices.DeleteFunc(p.order, func(id string) bool {
+		view := p.views[id]
+		if !view.hideAt.IsZero() && !now.Before(view.hideAt) {
+			delete(p.views, id)
+			return true
+		}
+		return false
+	})
+	return len(p.order) != before
+}
+
+// Mixed streams use the larger preview split. Delta arrival never changes layout.
+func (p *liveDiffPreviewPane) shellOnly() bool {
+	for _, view := range p.views {
+		if !view.current.Shell {
+			return false
+		}
 	}
-	return false
+	return len(p.order) > 0
+}
+
+func (p *liveDiffPreviewPane) recoveryOnly() bool {
+	for _, view := range p.views {
+		if !view.current.Recovery {
+			return false
+		}
+	}
+	return len(p.order) > 0
+}
+
+func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, theme liveDiffTheme, width, height int) ([]string, error) {
+	if height <= 0 || len(p.order) == 0 {
+		return nil, nil
+	}
+	// Give every visible call a heading and at least one source row. Reserve a
+	// summary when a tiny terminal cannot show all calls, rather than cycling
+	// callers on every delta. Expanding the terminal reveals the remaining calls.
+	count := len(p.order)
+	shown := count
+	summary := 0
+	if height < count*2 && count > 1 {
+		shown = max(0, (height-1)/2)
+		summary = 1
+	}
+	var lines []string
+	for i, id := range p.order[:shown] {
+		rows := (height - summary - len(lines)) / (shown - i)
+		part, err := p.views[id].render(ctx, workspace, theme, width, rows)
+		if err != nil {
+			return nil, err
+		}
+		lines = append(lines, part...)
+		// Stable card positions even when a call has little source so far.
+		if i+1 < shown || summary > 0 {
+			for range rows - len(part) {
+				lines = append(lines, "")
+			}
+		}
+	}
+	if summary > 0 {
+		label := fmt.Sprintf("STREAMING · +%d more calls · enlarge pane", count-shown)
+		lines = append(lines, ansi.Truncate(theme.accent()+label+"\x1b[0m", max(0, width-1), ""))
+	}
+	return lines, nil
 }
 
 // HPATCH uses a 3:7 captured-diff/preview split; standalone shell uses 7:3.
@@ -91,7 +173,7 @@ func liveDiffRegionRows(body, captured int, streaming, shell bool) (diff, previe
 	return diff, body - diff
 }
 
-func (p *liveDiffPreviewPane) columns(width int) (digits, sourceWidth int) {
+func (p *liveDiffPreviewView) columns(width int) (digits, sourceWidth int) {
 	if len(p.source) > 0 {
 		digits = len(strconv.Itoa(p.source[len(p.source)-1].number))
 	}
@@ -147,7 +229,7 @@ func liveDiffPreviewFocus(before, after []liveDiffPreviewRow) int {
 	return max(0, min(start, len(after)-1))
 }
 
-func (p *liveDiffPreviewPane) prepare() error {
+func (p *liveDiffPreviewView) prepare() error {
 	current := p.current
 	if p.rendered.ID == current.ID && p.rendered.Input == current.Input && slices.Equal(p.rendered.Syntax, current.Syntax) && slices.Equal(p.rendered.Files, current.Files) {
 		return nil
@@ -193,7 +275,7 @@ func (p *liveDiffPreviewPane) prepare() error {
 
 // Render and color only a bounded source window around the streaming tip.
 // Captured history composition stays out of this high-frequency path.
-func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, theme liveDiffTheme, width, height int) ([]string, error) {
+func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, theme liveDiffTheme, width, height int) ([]string, error) {
 	if height <= 0 || p.current.ID == "" {
 		return nil, nil
 	}
@@ -224,6 +306,17 @@ func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, them
 		}
 		title += " · " + liveDiffDisplayPath(workspace, path)
 	}
+	caller := p.current.Caller
+	if caller == "" {
+		caller = p.current.Thread
+	}
+	if caller == "" {
+		caller = "unknown caller"
+	}
+	// Put attribution first so narrow panes do not silently lose the caller.
+	caller = ansi.Truncate(liveDiffSafe(caller, false), max(1, min(28, width/3)), "…")
+	identity := caller + " · " + p.current.ID[:min(6, len(p.current.ID))]
+	title = identity + " · " + title
 	header := ansi.Truncate(theme.accent()+liveDiffSafe(title, false)+"\x1b[0m", max(0, width-1), "")
 	lines := []string{header}
 	rows := height - 1

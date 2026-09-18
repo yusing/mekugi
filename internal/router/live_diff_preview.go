@@ -17,6 +17,7 @@ import (
 type liveDiffPreview struct {
 	ID        string
 	Workspace string
+	Caller    string
 	Thread    string
 	Files     []mekugi.ReviewFile
 	Input     string               // Display-only source, never executed.
@@ -69,6 +70,12 @@ func (t *mekugiResponseTransform) previewDelta(itemID, delta string) {
 	if worker == nil {
 		auto.requestLaunch(t.directory, t.threadID)
 		worker = startLiveDiffPreview(t.ctx, auto.events, t.directory, t.threadID, pending.toolName)
+		worker.mu.Lock()
+		worker.preview.Caller = t.commentaryAuthor
+		if !t.subagentTurn {
+			worker.preview.Caller = "/root"
+		}
+		worker.mu.Unlock()
 		t.previews[itemID] = worker
 	}
 	worker.appendDelta(delta)

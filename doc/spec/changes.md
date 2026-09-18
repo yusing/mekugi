@@ -213,12 +213,24 @@ changed source row's final wrapped fragment visible, independently of captured-d
 follow/pause state, and fills available preview rows through that tip rather than
 leaving centering padding below it.
 
-Completion, rejection, interruption, or transform closure ends the live preview. The
-last frame remains for 1.5 seconds (0.5 seconds for recovery), then the region
-disappears and captured diffs regain full height. Dismissal recenters the captured change when following; paused views
-retain their scroll position. New captures, explicit resume, and terminal resize also
-recenter the captured change. A new stream cancels pending removal; completion of one
-stream cannot hide another. Tiny terminals may omit the preview when both regions
+Concurrent calls share the preview region as separate vertically stacked cards in
+first-seen order. Each heading identifies the caller (canonical agent name when
+available, otherwise thread identity) and a short call identifier, including parallel
+calls from the same thread. Caller text is terminal-safe and width-bounded. Updates
+replace only that call's snapshot, never another caller's card; each card follows its
+own latest source row. Mixed tool kinds use the larger HPATCH split, with recovery
+overlay behavior only when every displayed call is recovery. Tiny regions show a
+count of additional calls rather than switching callers on each delta; enlarging the
+pane reveals them. Provisional edits from different callers are not merged into a
+speculative combined file result.
+
+Completion, rejection, interruption, or transform closure ends that call's live preview.
+Its last frame remains for 1.5 seconds (0.5 seconds for recovery), then its card
+disappears. Captured diffs regain full height after the final card disappears.
+Dismissal recenters the captured change when following; paused views retain their
+scroll position. New captures, explicit resume, and terminal resize also recenter the
+captured change. A new call replaces completed cards, but never active cards;
+completion of one call cannot hide another. Tiny terminals may omit the preview when both regions
 cannot fit. Reconnect clears transient display state and
 restores only currently active router-local previews after the durable
 snapshot barrier. No preview survives router restart or history replay.
@@ -353,7 +365,10 @@ row width, independent syntax colors, explicit +/- markers, and missing-final-ne
 markers. Context and chrome retain the terminal background. Syntax palettes preserve
 the lexer's token categories,
 including functions, built-ins, operators, and language-specific names, rather than
-only keywords and literals. Color decoration does not infer semantic types from names.
+only keywords and literals. Color decoration does not infer semantic types from names. Bash command words use
+shell grammar to distinguish external commands from arguments and literal content;
+built-ins retain their own syntax category. Incomplete input keeps best-effort
+highlighting without executing or validating the script.
 
 The viewer selects a light or dark palette from an asynchronous
 terminal background query (OSC 11), without delaying the initial display or input.
