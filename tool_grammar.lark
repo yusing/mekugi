@@ -10,36 +10,27 @@ RESUME_ACTION: "retry" | "accept" | "repair"
         | "rm"
         | inline_mutation
         | heredoc_mutation
-        | text_mutation
-        | text_initializer
         | inline_initializer
         | shell_command
         | heredoc_initializer
 
-shell_command: "shell" SP (shell_block | SHELL_INLINE)
-// Separate SHELL from its suffix so closing CRLF wins longest-match lexing.
-shell_block: "<<SHELL" NL (SHELL_BODY_LINE | "SHELL" SHELL_SUFFIX NL)* "SHELL"
-SHELL_SUFFIX: /(?:[^\r\n][^\n]*|\r[^\n]+)/
-// Single-line source cannot contain <<, even in quotes. Use a block instead.
+shell_command: "shell" SP (heredoc | SHELL_INLINE)
+// Single-line source cannot contain <<, even in quotes. Use a heredoc instead.
 SHELL_INLINE: /(?:(?:[^<\n]|<[^<\n])+<?|<)/
-SHELL_BODY_LINE: /(?:SHEL(?:[^L\n][^\n]*)?|SHE(?:[^L\n][^\n]*)?|SH(?:[^E\n][^\n]*)?|S(?:[^H\n][^\n]*)?|[^S\n][^\n]*)?\n/
 
 path_command: PATH_OP SP PATH
 inline_mutation: "type" SP target SP QUOTED
                | "add" SP add_destination SP QUOTED
-heredoc_mutation: "type" SP target SP HEREDOC_MARKER NL _patch_body "PATCH"
-                | "add" SP add_destination SP HEREDOC_MARKER NL _patch_body "PATCH"
+heredoc_mutation: "type" SP target SP heredoc
+                | "add" SP add_destination SP heredoc
 inline_initializer: "type" SP QUOTED
-heredoc_initializer: "type" SP HEREDOC_MARKER NL _patch_body "PATCH"
+heredoc_initializer: "type" SP heredoc
 
-text_mutation: "type" SP target SP TEXT_MARKER NL TEXT_BODY_LINE* "TEXT"
-             | "add" SP add_destination SP TEXT_MARKER NL TEXT_BODY_LINE* "TEXT"
-text_initializer: "type" SP TEXT_MARKER NL TEXT_BODY_LINE* "TEXT"
-
-TEXT_MARKER: "<<TEXT" | "<<TEXT-"
-TEXT_BODY_LINE: /\|[^\r\n]*(?:\r\n|\n)/
-
-HEREDOC_MARKER: "<<PATCH" | "<<PATCH-"
+// The shared parser validates delimiter equality before effects.
+heredoc: HEREDOC_MARKER NL HEREDOC_BODY_LINE* HEREDOC_END
+HEREDOC_MARKER: /<<-?[ \t]*(?:[^\s'"\\<>|;&()]+|\\[^\r\n]|'[^'\r\n]*'|"(?:\\[^\r\n]|[^"\\\r\n])*")+[ \t]*/
+HEREDOC_BODY_LINE: /[^\n]*\n/
+HEREDOC_END: /[^\r\n]+/
 
 ?target: ROW
        | ROW ".." ROW
@@ -51,10 +42,8 @@ HEREDOC_MARKER: "<<PATCH" | "<<PATCH-"
                 | TARGET_QUOTED (SP POSINT)?
                 | "EOF"
 
-
 _separator: NL _blank_line*
 _blank_line: HSPACE? NL
-_patch_body: (PATCH_BODY_LINE | NL)*
 
 PATH_OP: "in" | "new" | "mv"
 ROW: /[1-9][0-9]*:[0-9a-f]{4}/
@@ -66,4 +55,3 @@ PATH: /[^\r\n]+/
 NL: /\r?\n/
 QUOTED: /"(?:\\(?:["\\\/bfnrt]|u[0-9A-Fa-f]{4})|[^\x00-\x1F"\\]|\t)*"/
 TARGET_QUOTED: /"(?:\\(?:["\\\/nt]|u(?:000[9Aa]|00[2-9A-Fa-f][0-9A-Fa-f]|0[1-9A-Fa-f][0-9A-Fa-f]{2}|[1-9A-Fa-f][0-9A-Fa-f]{3}))|[^\x00-\x1F"\\]|\t)+"/
-PATCH_BODY_LINE: /(?:(?:PATCH[^\r\n]+|PATC[^H\r\n][^\r\n]*|PAT[^C\r\n][^\r\n]*|PA[^T\r\n][^\r\n]*|P[^A\r\n][^\r\n]*|PATC|PAT|PA|P|[^Pat\r\n][^\r\n]*)|(?:t|t[^y\r\n][^\r\n]*|ty|ty[^p\r\n][^\r\n]*|typ|typ[^e\r\n][^\r\n]*|type|type[^ \r\n][^\r\n]*|a|a[^d\r\n][^\r\n]*|ad|ad[^d\r\n][^\r\n]*|add|add[^ \r\n][^\r\n]*)|(?:type|add) (?:[^\r\n]*[^H\-\r\n]|(?:[^\r\n]*[^H\r\n])?-|(?:[^\r\n]*[^C\r\n])?H-?|(?:[^\r\n]*[^T\r\n])?CH-?|(?:[^\r\n]*[^A\r\n])?TCH-?|(?:[^\r\n]*[^P\r\n])?ATCH-?|(?:[^\r\n]*[^<\r\n])?PATCH-?|(?:[^\r\n]*[^<\r\n])?<PATCH-?|[^\r\n]*[^ \r\n]<<PATCH-?)?)(?:\r\n|\n)/

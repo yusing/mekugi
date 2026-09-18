@@ -106,10 +106,24 @@ func TestSplitShellInlinePreservesCarriageReturns(t *testing.T) {
 }
 
 func TestSplitShellInlineRejectsDoubleLess(t *testing.T) {
-	for _, command := range []string{"<<", "<<OTHER", "<<SHEL", "<<SHELLx", "<<SHELL ", "echo <<SHELL", "echo '<<'", "cat <<<text", "echo $((1<<2))"} {
+	for _, command := range []string{"echo <<SHELL", "echo '<<'", "cat <<<text", "echo $((1<<2))"} {
 		_, mixed, err := SplitShell("shell " + command)
 		if !mixed || err == nil || !strings.Contains(err.Error(), "<< is not allowed") {
 			t.Errorf("inline %q: mixed=%v err=%v", command, mixed, err)
+		}
+	}
+}
+
+func TestSplitShellHeredocDelimiters(t *testing.T) {
+	for _, marker := range []string{"<<END", "<<'END'", "<<E'N'D", `<<\END`, "<<-END"} {
+		source := "shell " + marker + "\n\tprintf '%s' '$HOME'\nEND\nnew a\ntype \"ok\""
+		parts, mixed, err := SplitShell(source)
+		want := "\tprintf '%s' '$HOME'\n"
+		if marker == "<<-END" {
+			want = strings.TrimPrefix(want, "\t")
+		}
+		if err != nil || !mixed || len(parts) != 2 || parts[0].Source != want || parts[1].Line != 4 {
+			t.Fatalf("split = %+v, %v, %v", parts, mixed, err)
 		}
 	}
 }

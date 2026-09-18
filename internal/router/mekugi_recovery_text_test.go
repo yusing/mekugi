@@ -21,14 +21,14 @@ func TestRecoverScriptEditsPreparedText(t *testing.T) {
 		{"path", "in wrong.txt\n", `type "wrong.txt" "right.txt"`, "in right.txt\n"},
 		{"operation", "wrong command\n", `type "wrong command" "rm"`, "rm\n"},
 		{"value", "in f.txt\ntype \"old\" \"bad\"\n", `type "bad" "good"`, "in f.txt\ntype \"old\" \"good\"\n"},
-		{"framing", "new f.txt\ntype <<TEXT\nmissing bar\nTEXT\n", `type "missing bar" "|body"`, "new f.txt\ntype <<TEXT\n|body\nTEXT\n"},
+		{"framing", "new f.txt\ntype <<END\nbody\nWRONG\n", `type "WRONG" "END"`, "new f.txt\ntype <<END\nbody\nEND\n"},
 		{"missing close", "new f.txt\ntype <<TEXT\n|body\n", `add EOF "TEXT\n"`, "new f.txt\ntype <<TEXT\n|body\nTEXT\n"},
 		{"remove conflict", "in f.txt\ntype \"old\" \"new\"\ntype \"old\" \"again\"\n",
 			`type "type \"old\" \"again\"\n" ""`, "in f.txt\ntype \"old\" \"new\"\n"},
 		{"multiple fields", "in wrong.txt\ntype \"old\" \"bad\"\n",
 			"type \"wrong.txt\" \"right.txt\"\ntype \"bad\" \"good\"", "in right.txt\ntype \"old\" \"good\"\n"},
 		{"literal protocol value", "new f.txt\ntype \"bad\"\n",
-			"type \"type \\\"bad\\\"\" <<TEXT-\n|type <<PATCH\n|value\n|PATCH\nTEXT\n", "new f.txt\ntype <<PATCH\nvalue\nPATCH\n"},
+			"type \"type \\\"bad\\\"\\n\" <<'END'\ntype <<PATCH\nvalue\nPATCH\nEND\n", "new f.txt\ntype <<PATCH\nvalue\nPATCH\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			// A large unrelated prepared value is retained rather than re-emitted.

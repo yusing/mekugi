@@ -56,7 +56,7 @@ func TestMekugiRecoveryGuidanceOffersScriptEditsForNonTargetFailure(t *testing.T
 }
 
 func TestGenericRecoveryPreviewUsesBoundedScriptRows(t *testing.T) {
-	script := "\nnew file.go\r\ntype <<TEXT\r\n|package p\r\n|var =\r\nTEXT\r\n"
+	script := "\nnew file.go\r\ntype <<END\r\npackage p\r\nvar =\r\nEND\r\n"
 	rejections := []mekugi.HostRejection{{Command: 2, SourceLine: 3, ValueLine: 2, Reason: "language-syntax"}}
 	guidance := genericRecoveryGuidance(script, rejections, true, testRecoveryHandles(script))
 	if !strings.Contains(guidance, mekugi.TextReferences(script, 5)) ||

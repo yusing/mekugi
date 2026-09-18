@@ -53,8 +53,7 @@ func TestInstructionsTeachMixedScriptBoundaries(t *testing.T) {
 		for _, compact := range []bool{false, true} {
 			got := instructionWords(InstructionsForModel(model, compact))
 			for _, required := range []string{
-				"`shell go test ./...`", "`<<` is not allowed", "never falls back to single-line execution",
-				"exact `shell <<SHELL` header", "Completed edits and shell effects are not rolled back",
+				"`shell go test ./...`", "heredoc for multiline source or source containing `<<`", "Completed edits and shell effects are not rolled back",
 				"`resume HANDLE`", "`resume HANDLE retry`", "`resume HANDLE repair`", "`resume HANDLE accept`",
 				"Successful recovery runs the retained suffix", "expire one hour after creation without renewal",
 				"uncertain effects; missing confirmation does not mean rollback", "Do not replay a mixed script",
@@ -73,7 +72,7 @@ func TestInstructionsTeachExplicitNewlineOwnership(t *testing.T) {
 		for _, compact := range []bool{false, true} {
 			got := instructionWords(InstructionsForModel(model, compact))
 			for _, required := range []string{
-				"`<<PATCH-` removes exactly the final one", "Literal targets own only matched bytes",
+				"Values: JSON-compatible strings or heredoc.", "Literal targets own only matched bytes",
 				"count separators already at the destination", "deleting text alone leaves its line terminator",
 			} {
 				if !strings.Contains(got, required) {
@@ -342,7 +341,7 @@ func TestInstructionsConsolidateDeliveredContracts(t *testing.T) {
 				"### Rejected-script recovery",
 				"Nonempty line and range `type` replacements preserve",
 				"`advisory`",
-				"`<<TEXT` (keep final terminator)",
+				"Values: JSON-compatible strings or heredoc.",
 				"`continuation` notice's `next_call`",
 				"`--preview-bytes N`",
 				"`inspect_file PATH` for bounded metadata",

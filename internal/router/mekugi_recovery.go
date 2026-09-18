@@ -49,7 +49,7 @@ func genericRecoveryGuidance(script string, rejections []mekugi.HostRejection, r
 			continue
 		}
 		offered[rejection.Command] = true
-		fmt.Fprintf(&output, "Command correction: %s value VALUE replaces only this command's value (quoted, <<PATCH, or <<TEXT).\n", command.handle)
+		fmt.Fprintf(&output, "Command correction: %s value VALUE replaces only this command's value (quoted or heredoc).\n", command.handle)
 		if command.parts.target != "" && command.parts.target != "EOF" {
 			fmt.Fprintf(&output, "Command correction: %s target TARGET replaces only its workspace target.\n", command.handle)
 		}

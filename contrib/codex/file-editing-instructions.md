@@ -121,15 +121,8 @@ results and partial output. Use separate shell calls for interactive programs.
 
 ### Output and continuation
 
-Bound noisy external output with
-`hrun [-n N] [--max-tokens N] [--tail] -- COMMAND [ARG...]`; use direct execution for quiet or
-complete output, including output redirected to a file. Supply a line or token limit
-(1–15500 tokens). `-n` selects complete lines before token limiting and alone skips tokenization;
-`--tail` keeps the ending. Hrun waits, preserves the command's exit status, and accepts one external
-command; infinite producers require cancellation.
-
-A runtime failure may leave earlier effects. Inspect state before retrying; failure is not rollback.
-Use ordinary script files for source that needs repeated editing or execution.
+`hrun [-n N] [--max-tokens N] [--tail] -- COMMAND [ARG...]` bound noisy external output.
+`--tail` keeps the ending.
 
 For pending execution, follow the latest `continuation` notice's `next_call`; prefer host completion
 notifications. A running outer Code Mode cell owns continuation, so use its `wait`, not an inner
@@ -138,8 +131,7 @@ facilities for interactive input or termination.
 
 ## HPATCH/2
 
-Use mixed scripts for dependent edit/command chains, shell for commands alone, and edit-only hpatch
-for edits alone.
+It provides convenience for dependent edit/command chains by supporting mixed script.
 
 ### Files, targets, and values
 
@@ -154,34 +146,22 @@ for edits alone.
 
 Targets:
 
-```text
-LINE:HASH                       complete logical line
-LINE:HASH..LINE:HASH             inclusive complete-line range
-LINE:HASH "TEXT" [N]             first N exact matches from that row through EOF
-"TEXT" [N]                       first N exact matches in the immutable baseline
-```
+`LINE:HASH`: complete logical line
+`LINE:HASH..LINE:HASH`: inclusive complete-line range
+`LINE:HASH "TEXT" [N]`: first N exact matches from that row through EOF
+`"TEXT" [N]`: first N exact matches in the immutable baseline
 
-Ranges are not add destinations. Text targets default to one nonoverlapping match; every requested
-match must exist. For `N > 1`, verify the baseline count or use separate anchors. Encode an embedded
-LF as `\n` or `\u000A` and keep targets on one physical line. Literal tab is accepted; other control
-characters are not.
+Encode an embedded LF as `\n` or `\u000A` and keep targets on one physical line.
+Literal tab is accepted; other control characters are not.
 
-Use JSON-compatible strings for short values. For multiline or escape-heavy values, `<<PATCH`
-keeps all body terminators and `<<PATCH-` removes exactly the final one; both close with unindented
-`PATCH`. When payload text contains delimiter or opener lines, use `<<TEXT` (keep final terminator)
-or `<<TEXT-` (remove one), prefix every payload line (including blanks) with `|`, and close with
-unprefixed `TEXT`; only the first bar is removed.
+Values: JSON-compatible strings or heredoc.
 
 Literal targets own only matched bytes, so deleting text alone leaves its line terminator. Delete
 whole lines with row/range targets or include the terminator. `add` is byte-exact and synthesizes no newlines; count separators already at the destination.
 Nonempty line and range `type` replacements preserve the target's LF, CRLF, or CR when the value
-omits a terminator. Use a chomped value to preserve a
-literal target's following suffix. A chomped body containing one empty line is empty and deletes a
-row. Other authored whitespace is preserved except supported formatting and indentation correction.
+omits a terminator. Other authored whitespace is preserved except supported formatting and indentation correction.
 
-An unindented heredoc body line beginning with `type ` or `add ` and ending in a heredoc marker is
-a nested opener when the marker is its sole operand or follows a space; use `<<TEXT` for literal
-examples. Compact `advisory` lines report nonzero authored whitespace effects and are not errors.
+Compact `advisory` lines report nonzero authored whitespace effects and are not errors.
 Report rows inherit the latest `in PATH` or `file PATH` header; `file` is not an edit command.
 
 ### Baselines and validation
@@ -203,10 +183,8 @@ reuse them rather than rereading solely because formatting moved source.
 
 ### Shell-in-script
 
-With Code Mode available, use `shell go test ./...` for one physical raw-source line. `<<` is not
-allowed even in quotes, and a trailing backslash does not continue it. For multiline source or `<<`,
-use the exact `shell <<SHELL` header and an unindented closing `SHELL`; the opener never falls back
-to single-line execution, and missing closure rejects before effects.
+With Code Mode available, use `shell go test ./...` for one physical raw-source line, or a
+heredoc for multiline source or source containing `<<`.
 Shell text in edit values remains data.
 
 Shell commands may surround edit segments. Begin every edit segment with `in` or `new`; selection
@@ -242,7 +220,7 @@ Use `functions.hpatch_recover` for the latest rejected edit-only script, preserv
 - For a wholly row-stale rejection, submit every diagnostic `HANDLE TARGET`, for example
   `maple "return oldResult, nil"`.
 - For a parsed command's target or value, use `HANDLE target TARGET` or `HANDLE value VALUE`; values use normal
-  quoted/heredoc/text framing and each handle appears once.
+  quoted strings or heredoc and each handle appears once.
 - For framing, paths, conflicts, or other script changes, use target-bearing `type`/`add` mutations
   against retained-script text. Generated-source line numbers are not recovery targets.
 

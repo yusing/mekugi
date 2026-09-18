@@ -460,7 +460,7 @@ func TestMekugi2RejectsInvalidMutationForms(t *testing.T) {
 	for _, command := range []string{
 		"add " + row(1, "x") + ".." + row(1, "x") + ` "value"`,
 		`type EOF "value"`,
-		"type <<BODY\nx\nBODY",
+		"type <<BODY\nx\nWRONG",
 	} {
 		t.Run(strings.Fields(command)[0], func(t *testing.T) {
 			root := t.TempDir()
@@ -617,14 +617,14 @@ func TestMekugi2InvalidHeredocIsOneHeaderOwnedFailure(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "file.txt", "unchanged\n", 0o644)
 	script := "in file.txt\ntype " + row(1, "unchanged") + " <<BODY\n" +
-		"rm\nBODY\n"
+		"rm\nWRONG\n"
 	result, err := applyForHostAtTest(t, root, script, "")
 	if err == nil {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
 	if strings.Count(result.Diagnostic, ": command") != 1 ||
 		!strings.Contains(result.Diagnostic, "command 2") ||
-		!strings.Contains(result.Diagnostic, "requires an unquoted <<PATCH") {
+		!strings.Contains(result.Diagnostic, "unterminated heredoc") {
 		t.Fatalf("diagnostic = %q", result.Diagnostic)
 	}
 	if got := readTestFile(t, root, "file.txt"); got != "unchanged\n" {

@@ -48,68 +48,42 @@ physical newlines, CR in every representation, and every other C0 control are fo
 Matching is left-to-right and resumes after each complete match. The target contains the first
 `COUNT` non-overlapping matches and rejects if fewer exist.
 
-`VALUE` is a JSON-compatible quoted string, a raw heredoc headed by `<<PATCH` or
-`<<PATCH-`, or a line-framed text block headed by `<<TEXT` or `<<TEXT-`.
-Raw heredocs close with `PATCH`; text blocks close with `TEXT`.
+`VALUE` is a JSON-compatible quoted string or a heredoc.
 Inline strings decode JSON escapes and Unicode escapes and additionally accept literal
 horizontal tabs. Quotes, backslashes, line terminators, NUL, and other C0 controls remain
-escaped. A heredoc consists of its command header, following literal UTF-8 body, and an
-unindented closing line exactly equal to `PATCH`:
+escaped.
+
+A heredoc uses a caller-chosen delimiter, optionally single- or double-quoted:
 
 ```text
-type 12:a1b2..15:c3d4 <<PATCH
+type 12:a1b2..15:c3d4 <<'END'
 replacement
 text
-PATCH
+END
 ```
 
-No escape, interpolation, dedent, or delimiter substitution occurs. For `<<PATCH`, payload
-bytes begin after the header terminator and end before the closing delimiter. Every body
-line contributes its physical terminator. `<<PATCH-` removes exactly the final body line's
-terminator (LF or CRLF) from that same payload. An empty body remains empty; one empty body
-line also decodes to empty in this mode. Other bytes, including trailing spaces, interior
-terminators, and earlier blank lines, remain unchanged. Validation and the body-size limit
-apply to the original body before removing its final terminator.
+The closing line must equal the delimiter after quote removal. `<<-END` strips leading
+tabs from body and closing lines, as in shell heredocs; it does not remove the final newline.
+Spaces are not stripped. Delimiters are nonempty shell words parsed by `mvdan/sh`;
+quoted parts and backslash quoting may be combined. Quote spaces and shell metacharacters.
+Whitespace between `<<` (or `<<-`) and the delimiter is accepted.
 
-The mode is independent of the operation and target. Whole-line replacement still applies
-the terminator-preservation rule in `REQ-EDIT-001` after decoding the value. Literal targets
-own only their exact matched bytes; neither mode consumes adjacent baseline whitespace.
+Bodies are literal UTF-8: no interpolation or escape processing occurs, regardless of
+delimiter quoting. Every body line retains its physical LF/CRLF terminator. Bars and
+command-shaped lines are ordinary data. Choose a different delimiter when the body
+contains the closing line. There are no reserved PATCH/TEXT modes or newline-chomping
+suffixes. Use a quoted string when the value must omit its final newline.
 
-The header, body, and delimiter are one command attributed to the header. An exact `PATCH`
-payload line uses a line-framed text block instead. Unterminated or oversized heredocs fail
-as one bounded header-owned syntax error.
+The header, body, and delimiter form one command attributed to the header. Missing closes,
+invalid UTF-8, and bodies over 1 MiB reject the entire script before mutation. The limit
+applies to decoded bytes after optional tab stripping. Existing transport limits still apply.
+An unterminated frame owns the remaining input, so payload-shaped commands are not executed.
+The model-facing context-free grammar admits candidate closing lines; the shared parser
+checks that the closing delimiter matches the header before any effects.
 
-### Line-framed text blocks
-
-A text block requires one leading `|` on every physical payload line. Decoding removes
-exactly that first bar and preserves the rest, including existing leading bars, tabs,
-spaces, Unicode, and physical LF/CRLF terminators. An empty payload line is `|`.
-The unprefixed line `TEXT` closes the block. No payload content is reserved:
-`|PATCH`, `|TEXT`, and `|type <<TEXT` are ordinary data, as are examples of this
-representation itself.
-
-```text
-type "old example" <<TEXT-
-|type <<PATCH
-|replacement
-|PATCH
-|type <<TEXT-
-||text
-|TEXT
-TEXT
-```
-
-`<<TEXT` keeps every decoded body terminator; `<<TEXT-` removes exactly the final
-body terminator, with the same empty-body and target-ownership semantics as raw
-heredocs. UTF-8 validation and the 1 MiB body limit apply to decoded payload bytes
-before removing that terminator; transport bars do not count toward the body limit.
-Existing whole-script transport limits still apply.
-
-A body line missing its bar, other than the exact closing delimiter, fails at the
-header with the offending physical line number. The malformed frame owns the
-remaining input, preventing payload-shaped commands from being reinterpreted.
-Missing closes, invalid UTF-8, and oversized bodies reject the entire script
-before mutation, just as raw heredoc failures do.
+Whole-line replacement still applies the terminator-preservation rule in `REQ-EDIT-001`.
+Literal targets own only their exact matched bytes; heredocs do not consume adjacent
+baseline whitespace.
 
 The grammar is unambiguous by operand shape. For example:
 
@@ -142,11 +116,10 @@ Acceptance:
 3. Anchored and unanchored text targets accept JSON-escaped LF and exact multiline or
    trailing-LF matches while raw physical newlines, CR, empty literals, and other forbidden
    controls reject.
-4. JSON-compatible values, raw heredocs, and line-framed text blocks reproduce their
-   exact decoded payloads without parsing body lines as commands. Minus modes remove
-   exactly one final body terminator independently of target shape, preserving all
-   other bytes. Text blocks support literal closing delimiters, opener lines, and
-   examples of their own framing; a missing payload bar rejects atomically.
+4. JSON-compatible values and heredocs reproduce their decoded payloads without parsing
+   body lines as commands. Caller-chosen and quoted delimiters, tab-stripping heredocs,
+   literal bars, command-shaped payload, and LF/CRLF terminators work for every target shape.
+   A missing or mismatched closing delimiter rejects atomically.
 5. Invalid rows, ranges, counts, strings, heredocs, operands, and commands fail before
    filesystem mutation, patch output, or final-state reporting.
 6. File and mutation commands may be interleaved while all targets retain the immutable
@@ -166,17 +139,11 @@ inside quotes, comments, here-strings, or arithmetic. Use the block form for suc
 source and for programs spanning physical lines; ordinary single-`<` redirection
 remains allowed.
 
-The multiline form is `shell <<SHELL`, followed by a UTF-8 program body (which
-may be empty or whitespace-only) and a closing physical line exactly equal to
-`SHELL`. The exact opener is
-reserved exclusively for this form: missing closes reject before execution,
-never fall back to single-line shell source. Other single-line sources containing
-`<<`, including `echo <<SHELL` and `<<SHELLx`, reject before any execution.
-
-The frame preserves all body bytes, including LF/CRLF terminators. Only the exact,
-unindented closing line is reserved; near matches, quotes, HPATCH commands,
-`PATCH`, and `TEXT` are shell data. Both forms inside HPATCH values remain
-value data. Existing whole-input and 1 MiB body limits apply to both forms.
+The multiline form is `shell` followed by a heredoc, using the same delimiter and
+literal-body rules as edit values. The program may be empty or whitespace-only.
+Missing closes reject before execution, never falling back to single-line shell source.
+Both shell forms inside HPATCH values remain value data. Existing whole-input and
+1 MiB body limits apply to both forms.
 
 #### Segments and validation
 
@@ -380,7 +347,7 @@ Additional acceptance:
 1. Legacy edit-only grammar and engine behavior remain unchanged. Malformed later
    edit syntax or shell headers prevent even an otherwise valid prefix from running.
 2. Shell bodies containing HPATCH-looking source are byte-preserved; markers in
-   raw and line-framed edit values never become execution boundaries.
+   heredoc edit values never become execution boundaries.
 3. Shell-created or modified files become the actual baseline of the following
    edit segment. No patch is translated against a pre-shell snapshot.
 4. Edit rejection before application and shell nonzero exits leave completed

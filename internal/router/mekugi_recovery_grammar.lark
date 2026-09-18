@@ -11,18 +11,18 @@ mutation: "type" SP target SP value
         | "add" SP add_destination SP value
 
 ?value: QUOTED
-      | HEREDOC_MARKER NL _patch_body "PATCH"
-      | TEXT_MARKER NL TEXT_BODY_LINE* "TEXT"
+      | heredoc
 
 ?add_destination: ROW
                 | ROW SP TARGET_QUOTED (SP POSINT)?
                 | TARGET_QUOTED (SP POSINT)?
                 | "EOF"
 
-HEREDOC_MARKER: "<<PATCH" | "<<PATCH-"
-TEXT_MARKER: "<<TEXT" | "<<TEXT-"
-TEXT_BODY_LINE: /\|[^\r\n]*(?:\r\n|\n)/
-_patch_body: (PATCH_BODY_LINE | NL)*
+// The shared parser validates delimiter equality before effects.
+heredoc: HEREDOC_MARKER NL HEREDOC_BODY_LINE* HEREDOC_END
+HEREDOC_MARKER: /<<-?[ \t]*(?:[^\s'"\\<>|;&()]+|\\[^\r\n]|'[^'\r\n]*'|"(?:\\[^\r\n]|[^"\\\r\n])*")+[ \t]*/
+HEREDOC_BODY_LINE: /[^\n]*\n/
+HEREDOC_END: /[^\r\n]+/
 
 ?target: ROW
        | ROW ".." ROW
@@ -41,4 +41,3 @@ HSPACE: /[ \t]+/
 NL: /\r?\n/
 TARGET_QUOTED: /"(?:\\(?:["\\\/nt]|u(?:000[9Aa]|00[2-9A-Fa-f][0-9A-Fa-f]|0[1-9A-Fa-f][0-9A-Fa-f]{2}|[1-9A-Fa-f][0-9A-Fa-f]{3}))|[^\x00-\x1F"\\]|\t)+"/
 QUOTED: /"(?:\\(?:["\\\/bfnrt]|u[0-9A-Fa-f]{4})|[^\x00-\x1F"\\]|\t)*"/
-PATCH_BODY_LINE: /(?:(?:PATCH[^\r\n]+|PATC[^H\r\n][^\r\n]*|PAT[^C\r\n][^\r\n]*|PA[^T\r\n][^\r\n]*|P[^A\r\n][^\r\n]*|PATC|PAT|PA|P|[^Pat\r\n][^\r\n]*)|(?:t|t[^y\r\n][^\r\n]*|ty|ty[^p\r\n][^\r\n]*|typ|typ[^e\r\n][^\r\n]*|type|type[^ \r\n][^\r\n]*|a|a[^d\r\n][^\r\n]*|ad|ad[^d\r\n][^\r\n]*|add|add[^ \r\n][^\r\n]*)|(?:type|add) (?:[^\r\n]*[^H\-\r\n]|(?:[^\r\n]*[^H\r\n])?-|(?:[^\r\n]*[^C\r\n])?H-?|(?:[^\r\n]*[^T\r\n])?CH-?|(?:[^\r\n]*[^A\r\n])?TCH-?|(?:[^\r\n]*[^P\r\n])?ATCH-?|(?:[^\r\n]*[^<\r\n])?PATCH-?|(?:[^\r\n]*[^<\r\n])?<PATCH-?|[^\r\n]*[^ \r\n]<<PATCH-?)?)(?:\r\n|\n)/

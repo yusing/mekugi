@@ -112,11 +112,15 @@ func PreviewScriptForHostAt(ctx context.Context, directory, input string) (Scrip
 				break
 			}
 			if frameErr != nil {
-				delimiter := strings.TrimSuffix(strings.TrimPrefix(frame.Marker, "<<"), "-")
+				delimiter := frame.Delimiter
 				tail := input
 				last := lines[len(lines)-1].Text
 				// A delimiter split over deltas is framing, not source.
-				if last != "" && strings.HasPrefix(delimiter, last) {
+				delimiterPrefix := last
+				if frame.StripTabs {
+					delimiterPrefix = strings.TrimLeft(last, "\t")
+				}
+				if delimiterPrefix != "" && strings.HasPrefix(delimiter, delimiterPrefix) {
 					tail = strings.TrimSuffix(tail, last)
 				}
 				addedNewline := !strings.HasSuffix(tail, "\n")
@@ -125,7 +129,7 @@ func PreviewScriptForHostAt(ctx context.Context, directory, input string) (Scrip
 				}
 				projected := hpatchsyntax.SplitPhysicalLines(tail + delimiter + "\n")
 				frame, frameErr = hpatchsyntax.FrameCommand(projected, start, line)
-				if addedNewline && !strings.HasSuffix(frame.Marker, "-") {
+				if addedNewline {
 					frame.Body = strings.TrimSuffix(frame.Body, "\n")
 				}
 				index = len(lines)

@@ -242,7 +242,7 @@ func parseRecoveryPayload(
 		}
 		handle, operand, ok := strings.Cut(line.Text, " ")
 		if !ok || handle == "" || operand == "" || strings.HasPrefix(operand, " ") ||
-			operand != strings.TrimRight(operand, " \t") {
+			(operand != strings.TrimRight(operand, " \t") && !strings.HasPrefix(operand, "value <<")) {
 			return nil, recoveryError(lineNumber, "expected a command handle and a target or value correction")
 		}
 		command, err := resolveRecoveryCommand(commands, handle)

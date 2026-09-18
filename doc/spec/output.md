@@ -323,9 +323,9 @@ Acceptance:
 8. Stale rows, incomplete literal targets, and edit conflicts emit verified repair context;
    a missing row fails without guessing, and a failure with no active baseline emits its
    diagnostic alone.
-9. Invalid Go localized inside a raw heredoc or line-framed text value reports its
+9. Invalid Go localized inside a heredoc value reports its
    physical body row in bounded repair context and structured host rejection identity
-   without retaining body text. Transport bars do not become source content.
+   without retaining body text.
 10. One syntax-validation rejection includes every distinct actionable repair location from
     all changed files, groups visible diagnostics once per originating command and path,
     deduplicates parser cascades by repair row, and exposes enough current rejected-script rows

@@ -305,7 +305,7 @@ func TestHandler(t *testing.T) {
 		{name: "multi-file and distant hunks · follow the last changed file", delay: 250 * time.Millisecond,
 			fragments: []string{"in routes.go\ntype \"\\\"/api/001\\\"\" \"\\\"/v2/001\\\"\"\n",
 				"type \"\\\"/api/180\\\"\" \"\\\"/v2/180\\\"\"\nnew handler_test.go\ntype <<TEXT\n",
-				"|" + strings.ReplaceAll(strings.TrimSuffix(testSource, "\n"), "\n", "\n|") + "\nTE", "XT\n"}},
+				testSource + "TE", "XT\n"}},
 		{name: "shell-in-hpatch · streamed script, then actual segment captures", delay: 350 * time.Millisecond,
 			fragments: []string{"new audit.go\ntype \"package demo\\n\\nconst phase = \\\"prepared\\\"\\n\"\n",
 				"shell printf '%s\\n' 'checked fixture' > shell.log\n",

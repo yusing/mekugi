@@ -16,62 +16,62 @@ func TestExplicitHeredocNewlineBoundaries(t *testing.T) {
 	}{
 		{
 			name: "literal paragraph without extra blank", before: "old\n\nnext\n",
-			edit: "type \"old\" <<PATCH-\nfirst\nlast\nPATCH\n",
+			edit: "type \"old\" \"first\\nlast\"\n",
 			want: "first\nlast\n\nnext\n",
 		},
 		{
 			name: "ordinary heredoc stays byte exact", before: "old\n\nnext\n",
-			edit: "type \"old\" <<PATCH\nfirst\nlast\nPATCH\n",
+			edit: "type \"old\" <<END\nfirst\nlast\nEND\n",
 			want: "first\nlast\n\n\nnext\n",
 		},
 		{
 			name: "anchored mid-line", before: "before old after\n",
-			edit: "type " + row(1, "before old after") + " \"old\" <<PATCH-\nfirst\nlast\nPATCH\n",
+			edit: "type " + row(1, "before old after") + " \"old\" \"first\\nlast\"\n",
 			want: "before first\nlast after\n",
 		},
 		{
 			name: "multiple literals", before: "old old\n",
-			edit: "type \"old\" 2 <<PATCH-\nnew\nPATCH\n",
+			edit: "type \"old\" 2 \"new\"\n",
 			want: "new new\n",
 		},
 		{
 			name: "line still preserves owned terminator", before: "old\nnext\n",
-			edit: "type " + row(1, "old") + " <<PATCH-\nnew\nPATCH\n",
+			edit: "type " + row(1, "old") + " \"new\"\n",
 			want: "new\nnext\n",
 		},
 		{
 			name: "range preserves CRLF", before: "old\r\nlast\r\nnext\r\n",
-			edit: "type " + row(1, "old") + ".." + row(2, "last") + " <<PATCH-\nnew\nPATCH\n",
+			edit: "type " + row(1, "old") + ".." + row(2, "last") + " \"new\"\n",
 			want: "new\r\nnext\r\n",
 		},
 		{
 			name: "unterminated last row", before: "old",
-			edit: "type " + row(1, "old") + " <<PATCH-\nnew\nPATCH\n",
+			edit: "type " + row(1, "old") + " \"new\"\n",
 			want: "new",
 		},
 		{
-			name: "empty chomped value deletes row", before: "old\nnext\n",
-			edit: "type " + row(1, "old") + " <<PATCH-\n\nPATCH\n",
+			name: "empty quoted value deletes row", before: "old\nnext\n",
+			edit: "type " + row(1, "old") + " \"\"\n",
 			want: "next\n",
 		},
 		{
 			name: "inline insertion", before: "left right\n",
-			edit: "add \"right\" <<PATCH-\nmiddle \nPATCH\n",
+			edit: "add \"right\" \"middle \"\n",
 			want: "left middle right\n",
 		},
 		{
 			name: "insert before existing blank", before: "before\n\nnext\n",
-			edit: "add " + row(2, "") + " <<PATCH\ninserted\nPATCH\n",
+			edit: "add " + row(2, "") + " <<END\ninserted\nEND\n",
 			want: "before\ninserted\n\nnext\n",
 		},
 		{
 			name: "EOF without terminator", before: "before\n",
-			edit: "add EOF <<PATCH-\nafter\nPATCH\n",
+			edit: "add EOF \"after\"\n",
 			want: "before\nafter",
 		},
 		{
 			name: "explicit blank retained", before: "old\nnext\n",
-			edit: "type \"old\" <<PATCH-\nnew\n\nPATCH\n",
+			edit: "type \"old\" <<END\nnew\nEND\n",
 			want: "new\n\nnext\n",
 		},
 	} {
@@ -104,9 +104,9 @@ func TestExplicitHeredocNewlineBoundaries(t *testing.T) {
 		})
 	}
 }
-func TestChompedHeredocInitializer(t *testing.T) {
+func TestQuotedInitializerWithoutFinalNewline(t *testing.T) {
 	root := t.TempDir()
-	result, err := applyForHostAtTest(t, root, "new file.txt\ntype <<PATCH-\nvalue \t\nPATCH\n", "")
+	result, err := applyForHostAtTest(t, root, "new file.txt\ntype \"value \\t\"\n", "")
 	if err != nil {
 		t.Fatalf("apply: %v, %s", err, result.Diagnostic)
 	}

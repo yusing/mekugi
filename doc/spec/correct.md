@@ -26,8 +26,7 @@ exclusions.
 Command-scoped corrections also accept `HANDLE target TARGET` and
 `HANDLE value VALUE`. Target form is equivalent to the original shortcut.
 Value form replaces only the decoded value of a parsed `type` or `add` command,
-including initializers and EOF insertions. It accepts the public quoted, heredoc,
-and line-framed text value syntax; rendering owns delimiters and escaping. It preserves
+including initializers and EOF insertions. It accepts the public quoted-string and heredoc value syntax; rendering owns delimiters and escaping. It preserves
 the operation, target, file context, and every unrelated command. An equivalent decoded
 value rejects. A payload may mix target and value corrections for different commands,
 but each handle appears at most once. All corrections use one baseline and the ordinary
@@ -35,8 +34,7 @@ atomic rebuild and reevaluation path.
 
 Alternatively, one recovery payload contains ordinary target-bearing `type`/`add`
 mutations against the retained rejected-script text. These use the public row,
-range, anchored/unanchored literal, EOF insertion, quoted-value, raw-heredoc, and
-line-framed text syntax. File commands and targetless initializers are not allowed.
+range, anchored/unanchored literal, EOF insertion, quoted-value and heredoc syntax. File commands and targetless initializers are not allowed.
 The two payload forms cannot be mixed.
 
 Script-text mutations may repair operations, paths, values, framing, and command

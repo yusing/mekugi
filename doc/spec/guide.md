@@ -113,7 +113,7 @@ The shared guidance must make these choices directly available in native and CTP
    potentially partial host application, explains interruption checkpoints and
    unresolved sessions, and never treats cancellation as proof of rollback or
    process termination.
-4. **Values and boundaries:** keep raw and collision-safe line-framed syntax, newline ownership,
+4. **Values and boundaries:** keep quoted values and heredoc syntax, newline ownership,
    empty-value deletion, and advisory interpretation together in the shared HPATCH/2 reference.
    [REQ-SCRIPT-001](script.md), [REQ-EDIT-001](edit.md), and
    [REQ-OUTPUT-001](output.md) own the behavior.

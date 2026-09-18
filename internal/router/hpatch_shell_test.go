@@ -253,7 +253,7 @@ func TestHpatchInlineStopsOnFailure(t *testing.T) {
 
 func TestHpatchInlineRejectsDoubleLessBeforeEffects(t *testing.T) {
 	transform, _ := mixedTestTransform(t)
-	for index, command := range []string{"echo '<<'", "cat <<<text", "<<SHELLx", "<<SHELL "} {
+	for index, command := range []string{"echo '<<'", "cat <<<text"} {
 		source := "shell touch never\nshell " + command + "\nnew never.txt\ntype \"data\""
 		history, err := transform.translate(fmt.Sprintf("inline-double-less-%d", index), source, nil)
 		if err != nil || !strings.Contains(history.TranslationError, "<< is not allowed") ||
@@ -266,7 +266,7 @@ func TestHpatchInlineRejectsDoubleLessBeforeEffects(t *testing.T) {
 func TestHpatchInlineCannotFallbackFromUnclosedBlock(t *testing.T) {
 	transform, _ := mixedTestTransform(t)
 	history, err := transform.translate("unclosed", "shell <<SHELL\nnew never.txt\ntype \"data\"", nil)
-	if err != nil || !strings.Contains(history.TranslationError, "unterminated shell frame") ||
+	if err != nil || !strings.Contains(history.TranslationError, "unterminated heredoc") ||
 		strings.Contains(history.carrierInput(), "tools.") {
 		t.Fatalf("unclosed frame = %+v, %v", history, err)
 	}

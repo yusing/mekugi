@@ -11,11 +11,11 @@ import (
 func TestRecoveryCommandValues(t *testing.T) {
 	for _, command := range []string{
 		"type \"old\" \"bad\"\n", "add EOF \"bad\"\n", "type \"bad\"\n",
-		"type 1:abcd <<PATCH\nbad\nPATCH\n",
+		"type 1:abcd <<END\nbad\nEND\n",
 	} {
 		baseline := "in f.txt\n" + command + "new untouched.txt\ntype \"keep\"\n"
 		handle := recoveryCommands(baseline, testRecoveryHandles(baseline))[1].handle
-		for _, value := range []string{`"good\n"`, "<<PATCH\ngood\nPATCH", "<<TEXT\n|good\nTEXT"} {
+		for _, value := range []string{`"good\n"`, "<<END\ngood\nEND", "<<'END' \ngood\nEND", "<<-END\t\n\tgood\n\tEND"} {
 			result, err := recoverScriptDetailed(t.Context(), baseline, handle+" value "+value, testRecoveryHandles(baseline))
 			if err != nil {
 				t.Fatal(err)
@@ -30,7 +30,7 @@ func TestRecoveryCommandValues(t *testing.T) {
 			handle + ` value "bad"` + "\n" + handle + ` target "different"`,
 			handle + " value <<PATCH\nunterminated",
 			handle + ` value "good" trailing`,
-			handle + " value <<TEXT\nmissing bar\nTEXT",
+			handle + " value <<END\nbody\nWRONG",
 		} {
 			if _, err := recoverScriptDetailed(t.Context(), baseline, payload, testRecoveryHandles(baseline)); err == nil {
 				t.Fatalf("accepted invalid correction %q", payload)
@@ -50,7 +50,7 @@ func TestRecoveryCommandValueTranslation(t *testing.T) {
 	if !strings.Contains(first.TranslationError, handle+" value VALUE") {
 		t.Fatal("missing command-scoped diagnostic")
 	}
-	payload := handle + " value <<TEXT\n|package p\n|var X = 1\nTEXT"
+	payload := handle + " value <<END\npackage p\nvar X = 1\nEND"
 	fixed, err := transform.translateRecovery("corrected-value", payload, nil)
 	if err != nil || fixed.TranslationError != "" || fixed.Script != payload || fixed.CorrelationID != first.CorrelationID {
 		t.Fatalf("value translation: %v, %+v", err, fixed)

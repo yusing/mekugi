@@ -102,7 +102,7 @@ func TestRecoverScriptRetargetsBatchAndPreservesOtherFields(t *testing.T) {
 }
 
 func TestRecoverScriptPreservesHeredocFraming(t *testing.T) {
-	for _, marker := range []string{"<<PATCH", "<<PATCH-"} {
+	for _, marker := range []string{"<<PATCH", "<<'PATCH'", "<<-PATCH"} {
 		for _, body := range []string{"", "\n", "first\r\nsecond \t\n", "first\n\n"} {
 			for _, finalTerminator := range []string{"", "\n", "\r\n"} {
 				script := "in file.txt\ntype 1:aaaa " + marker + "\r\n" + body + "PATCH" + finalTerminator
@@ -121,7 +121,7 @@ func TestRecoverScriptPreservesHeredocFraming(t *testing.T) {
 }
 
 func TestRecoverScriptPreservesTextFraming(t *testing.T) {
-	for _, marker := range []string{"<<TEXT", "<<TEXT-"} {
+	for _, marker := range []string{"<<TEXT", "<<'TEXT'"} {
 		script := "in file.txt\ntype 1:aaaa " + marker + "\r\n|type <<PATCH\n|PATCH\r\n||body\n|TEXT\nTEXT\n"
 		commands := recoveryCommands(script, testRecoveryHandles(script))
 		if len(commands) != 2 || !commands[1].parts.parsed {
@@ -281,7 +281,7 @@ func TestRecoveryGrammarContainsHandleAndOrdinaryTarget(t *testing.T) {
 }
 
 func TestRecoveryGrammarMirrorsPublicMultilineTargetTerminal(t *testing.T) {
-	for _, name := range []string{"TARGET_QUOTED", "QUOTED", "HEREDOC_MARKER", "TEXT_MARKER", "TEXT_BODY_LINE", "PATCH_BODY_LINE"} {
+	for _, name := range []string{"TARGET_QUOTED", "QUOTED", "HEREDOC_MARKER", "HEREDOC_BODY_LINE", "HEREDOC_END"} {
 		public := grammarTerminalLine(t, mekugi.ToolGrammar(), name)
 		recovery := grammarTerminalLine(t, mekugiRecoveryGrammar, name)
 		if recovery != public {

@@ -9,9 +9,9 @@ func TestBoundaryAdvisoriesPreserveAuthoredBytes(t *testing.T) {
 	for _, test := range []struct {
 		name, before, edit, want, advisory string
 	}{
-		{"chomped empty row", "old\nnext\n", "type " + row(1, "old") + " <<PATCH-\n\nPATCH\n", "next\n",
+		{"empty heredoc row", "old\nnext\n", "type " + row(1, "old") + " <<END\nEND\n", "next\n",
 			"deletes=1 removes-ending=1"},
-		{"text chomped empty row", "old\nnext\n", "type " + row(1, "old") + " <<TEXT-\n|\nTEXT\n", "next\n",
+		{"quoted empty row", "old\nnext\n", "type " + row(1, "old") + " \"\"\n", "next\n",
 			"deletes=1 removes-ending=1"},
 		{"explicit deletion", "old\nnext\n", "type " + row(1, "old") + ` ""`, "next\n",
 			"deletes=1 removes-ending=1"},
@@ -21,13 +21,13 @@ func TestBoundaryAdvisoriesPreserveAuthoredBytes(t *testing.T) {
 			""},
 		{"CR preservation", "old\rnext\r", "type " + row(1, "old") + ` "new"`, "new\rnext\r",
 			""},
-		{"unterminated row", "old", "type " + row(1, "old") + " <<TEXT-\n|new\nTEXT\n", "new",
+		{"unterminated row", "old", "type " + row(1, "old") + " \"new\"\n", "new",
 			""},
 		{"literal newline removal", "old\nnext\n", `type "old\n" "new"`, "newnext\n",
 			"removes-ending=1"},
-		{"literal trailing newline", "old\nnext\n", "type \"old\" <<PATCH\nnew\nPATCH\n", "new\n\nnext\n",
+		{"literal trailing newline", "old\nnext\n", "type \"old\" <<END\nnew\nEND\n", "new\n\nnext\n",
 			"blank-after=1"},
-		{"anchored literal", "old\nnext\n", "type " + row(1, "old") + " \"old\" <<TEXT\n|new\nTEXT\n", "new\n\nnext\n",
+		{"anchored literal", "old\nnext\n", "type " + row(1, "old") + " \"old\" <<END\nnew\nEND\n", "new\n\nnext\n",
 			"blank-after=1"},
 		{"insert before blank separator", "before\n \t\nnext\n", "add " + row(2, " \t") + ` "new\n"`, "before\nnew\n \t\nnext\n",
 			"blank-after=1"},
@@ -115,7 +115,7 @@ func TestBoundaryAdvisoriesRemainBaselineEvidence(t *testing.T) {
 
 func TestEmptyMultilineInitializerIsNotReportedAsDeletion(t *testing.T) {
 	root := t.TempDir()
-	result, err := applyForHostAtTest(t, root, "new file.txt\ntype <<TEXT-\n|\nTEXT\n", "")
+	result, err := applyForHostAtTest(t, root, "new file.txt\ntype <<END\nEND\n", "")
 	if err != nil || readTestFile(t, root, "file.txt") != "" || strings.Contains(result.Report, "advisory ") {
 		t.Fatalf("empty initializer: %v, %+v", err, result)
 	}

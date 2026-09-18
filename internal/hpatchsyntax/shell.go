@@ -34,25 +34,20 @@ func SplitShell(source string) ([]ScriptSegment, bool, error) {
 			appendEdit(offset)
 			header := index
 			var body string
-			if line.Text == "shell <<SHELL" {
-				// The exact opener never falls back to single-line execution.
-				bodyStart := offset + len(line.Text) + len(line.Terminator)
-				offset = bodyStart
-				index++
-				for index < len(lines) && lines[index].Text != "SHELL" {
+			if strings.HasPrefix(line.Text, "shell <<") {
+				frame, err := FrameCommand(lines, index, line.Text)
+				if err != nil {
+					return nil, true, fmt.Errorf("line %d: %w", header+1, err)
+				}
+				body = frame.Body
+				for index < frame.Next {
 					offset += len(lines[index].Text) + len(lines[index].Terminator)
 					index++
 				}
-				if index == len(lines) {
-					return nil, true, fmt.Errorf("line %d: unterminated shell frame; expected closing SHELL", header+1)
-				}
-				body = source[bodyStart:offset]
-				offset += len(lines[index].Text) + len(lines[index].Terminator)
-				index++
 			} else {
 				body = strings.TrimPrefix(line.Text, "shell ")
 				if strings.Contains(body, "<<") {
-					return nil, true, fmt.Errorf("line %d: << is not allowed in a single-line shell command; use shell <<SHELL with a closing SHELL line", header+1)
+					return nil, true, fmt.Errorf("line %d: << is not allowed in a single-line shell command; use a heredoc", header+1)
 				}
 				if line.Text == "shell" {
 					body = ""

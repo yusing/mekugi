@@ -12,7 +12,8 @@ func TestStreamingPreviewPartialValues(t *testing.T) {
 		{"quote", "in file.txt\ntype \"old\" \"hel", "+hel"},
 		{"escape", "in file.txt\ntype \"old\" \"hello\\", "+hello"},
 		{"heredoc", "in file.txt\ntype \"old\" <<PATCH\nhello\nwor", "+wor"},
-		{"text", "in file.txt\ntype \"old\" <<TEXT\n|hello\n|wor", "+wor"},
+		{"quoted heredoc", "in file.txt\ntype \"old\" <<'END'\nhello\nwor", "+wor"},
+		{"tab stripped heredoc", "in file.txt\ntype \"old\" <<-END\n\thello\n\twor", "+wor"},
 		{"new", "new added.go\ntype <<PATCH\npackage main\nfunc incom", "+func incom"},
 		{"shell", "in file.txt\ntype \"old\" \"hello\"\nshell touch SHOULD_NOT_EXIST\nnew unseen\ntype \"x\"", "+hello"},
 	} {
@@ -40,7 +41,7 @@ func TestStreamingPreviewPartialValues(t *testing.T) {
 
 func TestStreamingPreviewEveryPrefix(t *testing.T) {
 	directory := t.TempDir()
-	script := "new file.txt\ntype <<TEXT\n|hello\n|world\nTEXT\n"
+	script := "new file.txt\ntype <<-'END'\n\thello\n\tworld\n\tEND\n"
 	for end := 0; end <= len(script); end++ {
 		_, err := PreviewForHostAt(t.Context(), directory, script[:end])
 		if err != nil {
