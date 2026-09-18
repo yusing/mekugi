@@ -179,7 +179,7 @@ func playLiveDiffSimulation(ctx context.Context, broker *liveDiffBroker, store *
 		steps := liveDiffSimulationSteps()
 		for index, step := range steps {
 			status(fmt.Sprintf("%d/%d · %s · cycle %d", index+1, len(steps), step.name, cycle))
-			worker := startLiveDiffPreview(ctx, broker, workspace, "simulation")
+			worker := startLiveDiffPreview(ctx, broker, workspace, "simulation", step.tool)
 			var script strings.Builder
 			streamErr := func() error {
 				defer func() { worker.stop(); <-worker.done }()
@@ -196,8 +196,12 @@ func playLiveDiffSimulation(ctx context.Context, broker *liveDiffBroker, store *
 			if streamErr != nil {
 				return streamErr
 			}
-			if !step.interrupt {
-				err := apply(script.String())
+			if !step.interrupt && step.tool != mekugiRecoveryToolName {
+				source := script.String()
+				if step.tool == "shell" {
+					source = "shell <<SIMULATION_SHELL\n" + source + "SIMULATION_SHELL\n"
+				}
+				err := apply(source)
 				if step.reject {
 					if err == nil {
 						return errors.New("simulation rejection unexpectedly applied")
@@ -226,6 +230,7 @@ func playLiveDiffSimulation(ctx context.Context, broker *liveDiffBroker, store *
 
 type liveDiffSimulationStep struct {
 	name      string
+	tool      string
 	fragments []string
 	delay     time.Duration
 	reject    bool
@@ -311,6 +316,9 @@ func TestHandler(t *testing.T) {
 				"shell printf '%s\\n' 'checked fixture' > shell.log\n",
 				"in audit.go\ntype \"prepared\" \"completed\"\n",
 				"shell <<SHELL\ntest -f audit.go\nprintf '%s\\n' 'SHELL_TIP' >> shell.log\n", "SHELL\n"}},
+		{name: "functions.shell · direct source, 7:3 layout", tool: "shell", delay: 350 * time.Millisecond,
+			fragments: []string{"printf '%s\\n' 'standalone shell' > standalone.log\n",
+				"test -f audit.go\n", "printf '%s\\n' 'FUNCTIONS_SHELL_TIP' >> standalone.log\n"}},
 		{name: "append and rename · preserve file identity", delay: 300 * time.Millisecond,
 			fragments: []string{"in audit.go\nadd EOF <<PATCH\n\nfunc AuditReady() bool {\n\treturn phase == \"completed\"\n}\nPATCH\n",
 				"mv lifecycle.go\n"}},
@@ -319,6 +327,8 @@ func TestHandler(t *testing.T) {
 		{name: "rejection · keep applied state intact", delay: 500 * time.Millisecond, reject: true,
 			fragments: []string{"in handler.go\ntype \"demo requests\" \"rejected requests\"\n",
 				"type \"target that does not exist\" \"rejected\"\n"}},
+		{name: "hpatch recovery · emitted correction overlay (display only)", tool: mekugiRecoveryToolName, delay: 350 * time.Millisecond,
+			fragments: []string{"maple target \"", "demo requests\"\n", "maple value <<FIX\n", "RECOVERY_TIP\n", "FIX\n"}},
 		{name: "interruption · preview only, no application", delay: 500 * time.Millisecond, interrupt: true,
 			fragments: []string{"in handler.go\nadd EOF <<PATCH\n\nfunc InterruptedPreview() string {\n",
 				"\treturn \"INTERRUPTED_TIP"}},

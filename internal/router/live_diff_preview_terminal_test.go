@@ -260,9 +260,21 @@ func TestLiveDiffSimulationTerminalReplay(t *testing.T) {
 		ui.frame(t, func(frame string) bool {
 			return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "SHELL_TIP")
 		})
+		shellFrame := ui.frame(t, func(frame string) bool {
+			return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "FUNCTIONS_SHELL_TIP")
+		})
+		if !strings.Contains(liveDiffFrameRow(shellFrame, 16), "STREAMING SCRIPT") {
+			t.Fatal("standalone shell simulation did not use the 7:3 split")
+		}
 		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "lifecycle.go") })
 		ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "without final newline") })
 		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "rejected as expected") })
+		recoveryFrame := ui.frame(t, func(frame string) bool {
+			return strings.Contains(frame, "STREAMING RECOVERY") && strings.Contains(ansi.Strip(frame), "RECOVERY_TIP")
+		})
+		if !strings.Contains(liveDiffFrameRow(recoveryFrame, 8), "STREAMING RECOVERY") {
+			t.Fatal("recovery simulation did not cover 70% of the body")
+		}
 		ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "INTERRUPTED_TIP") })
 		final := ui.frame(t, func(frame string) bool {
 			return strings.Contains(frame, "SIMULATION: finished") && !strings.Contains(frame, "STREAMING")
@@ -292,7 +304,7 @@ func TestLiveDiffTerminalPreviewKeepsUsefulFrameAndStreamsMixedInput(t *testing.
 	})
 	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22, "COLORFGBG=15;0")
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
-	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
+	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", mekugiToolName)
 	t.Cleanup(worker.stop)
 	worker.appendDelta("in file.go\ntype \"old\" \"main\"\n")
 	frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "+package main") })
@@ -440,6 +452,116 @@ func TestLiveDiffTerminalComposedContextIsNotDuplicated(t *testing.T) {
 		if strings.Count(ansi.Strip(frame), text) != 1 {
 			t.Fatalf("duplicated composed context %q: %q", text, ansi.Strip(frame))
 		}
+	}
+	ui.quit(t)
+}
+
+func TestLiveDiffTerminalStandaloneShellStream(t *testing.T) {
+	calls := 0
+	transform, proxy, _, workspace := newMekugiTestTransform(t, testTranslator(t, &calls))
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true}},
+	})
+	proxy.autoLiveDiff = &autoLiveDiff{events: broker, requested: true}
+	proxy.autoLiveDiff.enabled.Store(true)
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
+	// Exercise provider input routing, not a synthetic broker preview.
+	_, err = transform.TransformSSE(mustTestJSON(t, map[string]any{
+		"type": "response.output_item.added",
+		"item": map[string]any{"type": "custom_tool_call", "id": "shell-item", "call_id": "shell-call",
+			"name": "shell", "input": "", "status": "in_progress"},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, rows := range []int{1, 100, 500} {
+		input := strings.Repeat("echo body\n", rows) + fmt.Sprintf("echo SHELL_TIP_%d\n", rows)
+		_, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
+			"type": "response.custom_tool_call_input.delta", "item_id": "shell-item", "delta": input,
+		}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		frame := ui.frame(t, func(frame string) bool {
+			return strings.Contains(ansi.Strip(frame), fmt.Sprintf("SHELL_TIP_%d", rows))
+		})
+		if !strings.Contains(liveDiffFrameRow(frame, 16), "STREAMING SCRIPT") {
+			t.Fatalf("shell preview did not use 7:3 layout: %q", frame)
+		}
+	}
+	ui.height = 12
+	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 12, Cols: 60}); err != nil {
+		t.Fatal(err)
+	}
+	frame := ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "\x1b[12;1H") && strings.Contains(frame, "SHELL_TIP_500")
+	})
+	if !strings.Contains(liveDiffFrameRow(frame, 9), "STREAMING SCRIPT") {
+		t.Fatal("resized shell preview lost its 7:3 layout")
+	}
+	if calls != 0 {
+		t.Fatal("streaming shell invoked executable translation")
+	}
+
+	transform.Close()
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING COMPLETE") })
+	ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
+	ui.quit(t)
+}
+
+func TestLiveDiffTerminalRecoveryOverlay(t *testing.T) {
+	calls := 0
+	transform, proxy, _, workspace := newMekugiTestTransform(t, testTranslator(t, &calls))
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true}},
+	})
+	proxy.autoLiveDiff = &autoLiveDiff{events: broker, requested: true}
+	proxy.autoLiveDiff.enabled.Store(true)
+	liveDiffTestChange(t, store, workspace, transform.threadID, "captured.go", true)
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
+	ui.write(t, "g")
+	before := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
+	_, err = transform.TransformSSE(mustTestJSON(t, map[string]any{
+		"type": "response.output_item.added",
+		"item": map[string]any{"type": "custom_tool_call", "id": "recover-item", "call_id": "recover-call",
+			"name": mekugiRecoveryToolName, "input": "", "status": "in_progress"},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var frame string
+	for _, input := range []string{"maple value <<FIX\n", strings.Repeat("raw correction\n", 100) + "RECOVERY_TIP\n"} {
+		_, err = transform.TransformSSE(mustTestJSON(t, map[string]any{
+			"type": "response.custom_tool_call_input.delta", "item_id": "recover-item", "delta": input,
+		}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		frame = ui.frame(t, func(frame string) bool {
+			return strings.Contains(frame, "STREAMING RECOVERY") && (!strings.Contains(input, "RECOVERY_TIP") || strings.Contains(frame, "RECOVERY_TIP"))
+		})
+	}
+	if !strings.Contains(liveDiffFrameRow(frame, 8), "STREAMING RECOVERY") ||
+		liveDiffFrameRow(frame, 2) != liveDiffFrameRow(before, 2) {
+		t.Fatal("recovery overlay shifted the underlying captured viewport")
+	}
+	ui.write(t, "\x1b[<65;2;12M")
+	transform.Close()
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING COMPLETE") })
+	after := ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
+	if liveDiffFrameRow(after, 2) != liveDiffFrameRow(before, 2) || calls != 0 {
+		t.Fatal("recovery preview scrolled captured content or translated input")
 	}
 	ui.quit(t)
 }

@@ -13,7 +13,7 @@ import (
 )
 
 const liveDiffPreviewFrameDelay = 33 * time.Millisecond
-const liveDiffPreviewHideDelay = 300 * time.Millisecond
+const liveDiffPreviewHideDelay = 1500 * time.Millisecond
 
 // Streaming has its own viewport and lifecycle. It never changes the captured
 // diff's selection, scroll, acknowledgements, or follow mode.
@@ -44,7 +44,11 @@ func (p *liveDiffPreviewPane) update(preview liveDiffPreview, now time.Time) {
 		delete(p.active, preview.ID)
 		p.order = slices.DeleteFunc(p.order, func(id string) bool { return id == preview.ID })
 		if len(p.order) == 0 {
-			p.hideAt = now.Add(liveDiffPreviewHideDelay)
+			delay := liveDiffPreviewHideDelay
+			if p.current.Recovery {
+				delay = 500 * time.Millisecond
+			}
+			p.hideAt = now.Add(delay)
 		} else if p.current.ID == preview.ID {
 			p.current = p.active[p.order[len(p.order)-1]]
 		}
@@ -67,12 +71,16 @@ func (p *liveDiffPreviewPane) expire(now time.Time) bool {
 	return false
 }
 
-// Keep a fixed 3:7 captured-diff/preview split while streaming.
-func liveDiffRegionRows(body int, streaming bool) (diff, preview int) {
+// HPATCH uses a 3:7 captured-diff/preview split; standalone shell uses 7:3.
+func liveDiffRegionRows(body int, streaming, shell bool) (diff, preview int) {
 	if !streaming || body < 2 {
 		return body, 0
 	}
-	diff = max(1, body*3/10)
+	share := 3
+	if shell {
+		share = 7
+	}
+	diff = max(1, body*share/10)
 	return diff, body - diff
 }
 
@@ -180,9 +188,12 @@ func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, them
 	title := "STREAMING PREVIEW"
 	if p.current.Input != "" {
 		title = "STREAMING SCRIPT"
-		if p.current.Truncated {
-			title += " · tail"
-		}
+	}
+	if p.current.Recovery {
+		title = "STREAMING RECOVERY"
+	}
+	if p.current.Input != "" && p.current.Truncated {
+		title += " · tail"
 	}
 	if !p.hideAt.IsZero() {
 		title = "STREAMING COMPLETE"

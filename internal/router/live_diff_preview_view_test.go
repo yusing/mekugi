@@ -82,14 +82,14 @@ func TestLiveDiffPreviewPaneLatestOnlyAndIndependent(t *testing.T) {
 
 func TestLiveDiffPreviewLayoutAndWrapping(t *testing.T) {
 	for _, body := range []int{1, 2, 3, 10, 20, 40, 100} {
-		diff, stream := liveDiffRegionRows(body, true)
+		diff, stream := liveDiffRegionRows(body, true, false)
 		if diff+stream != body || diff < 1 {
 			t.Fatalf("invalid region heights for %d: %d %d", body, diff, stream)
 		}
 		if body >= 10 && diff != body*3/10 {
 			t.Fatalf("not a fixed 3:7 split: %d %d", diff, stream)
 		}
-		if d, s := liveDiffRegionRows(body, false); d != body || s != 0 {
+		if d, s := liveDiffRegionRows(body, false, false); d != body || s != 0 {
 			t.Fatal("hidden preview retained height")
 		}
 	}
@@ -227,5 +227,57 @@ func TestLiveDiffPreviewRawScript(t *testing.T) {
 	}
 	if strings.Contains(text, "stream.sh") || strings.Contains(text, "PREVIEW UNAVAILABLE") {
 		t.Fatalf("raw script pretends to be a projected file: %q", text)
+	}
+}
+
+func TestLiveDiffShellLayoutAndDelay(t *testing.T) {
+	if liveDiffPreviewHideDelay != 1500*time.Millisecond {
+		t.Fatal("preview hold must be 1.5 seconds")
+	}
+	for _, body := range []int{1, 2, 3, 10, 20, 100} {
+		diff, preview := liveDiffRegionRows(body, true, true)
+		if diff+preview != body || diff < 1 || (body >= 10 && diff != body*7/10) {
+			t.Fatalf("shell layout: body=%d diff=%d preview=%d", body, diff, preview)
+		}
+	}
+}
+
+func TestLiveDiffScriptSource(t *testing.T) {
+	for _, tc := range []struct{ input, want string }{
+		{"shell", ""},
+		{"shell echo hi", "echo hi"},
+		{"shell <<EO", ""},
+		{"shell <<EOF\nprintf hi\nEO", "printf hi\n"},
+		{"shell <<EOF\nprintf hi\nEOF\n", "printf hi\n"},
+		{"shell <<-'END'\n\tprintf hi\n\tEND\n", "printf hi\n"},
+		{"shell <<OUTER\ncat <<INNER\nhello\nINNER\nOUTER\n", "cat <<INNER\nhello\nINNER\n"},
+		{"shell echo hi\nnew a\ntype <<PATCH\nshell literal\nPATCH\nshell pwd", "echo hi\nnew a\ntype <<PATCH\nshell literal\nPATCH\npwd"},
+	} {
+		if got := liveDiffScriptSource(tc.input); got != tc.want {
+			t.Errorf("%q: got %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestLiveDiffRecoveryHold(t *testing.T) {
+	now := time.Unix(100, 0)
+	var pane liveDiffPreviewPane
+	pane.update(liveDiffPreview{ID: "recovery", Workspace: "/workspace", Recovery: true, Input: "maple target \"new\""}, now)
+	pane.update(liveDiffPreview{ID: "recovery"}, now)
+	if pane.expire(now.Add(500*time.Millisecond - time.Nanosecond)) {
+		t.Fatal("recovery disappeared before 0.5 seconds")
+	}
+	if !pane.expire(now.Add(500 * time.Millisecond)) {
+		t.Fatal("recovery did not close after 0.5 seconds")
+	}
+}
+
+func TestLiveDiffRecoveryTailLabel(t *testing.T) {
+	var pane liveDiffPreviewPane
+	pane.update(liveDiffPreview{ID: "recovery", Workspace: "/workspace", Recovery: true,
+		Input: "raw correction tail", Truncated: true}, time.Now())
+	lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 80, 14)
+	if err != nil || !strings.Contains(ansi.Strip(lines[0]), "STREAMING RECOVERY · tail") {
+		t.Fatalf("clipped recovery lost its label: %v %q", err, lines)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/hpatchsyntax"
 )
 
 // Preview state is router-lifetime only and never enters the replay store.
@@ -17,7 +18,9 @@ type liveDiffPreview struct {
 	Workspace string
 	Thread    string
 	Files     []mekugi.ReviewFile
-	Input     string // Unprojected script after a shell/recovery boundary.
+	Input     string // Display-only source, never executed.
+	Shell     bool   // Standalone shell calls use the smaller preview region.
+	Recovery  bool   // Recovery displays emitted source over the captured viewport.
 	Truncated bool
 	Status    string
 }
@@ -34,11 +37,11 @@ type liveDiffPreviewWorker struct {
 	closed  bool
 }
 
-func startLiveDiffPreview(ctx context.Context, broker *liveDiffBroker, workspace, thread string) *liveDiffPreviewWorker {
+func startLiveDiffPreview(ctx context.Context, broker *liveDiffBroker, workspace, thread, tool string) *liveDiffPreviewWorker {
 	ctx, cancel := context.WithCancel(ctx)
 	worker := &liveDiffPreviewWorker{
 		ctx: ctx, cancel: cancel, broker: broker,
-		preview: liveDiffPreview{ID: rand.Text(), Workspace: workspace, Thread: thread},
+		preview: liveDiffPreview{ID: rand.Text(), Workspace: workspace, Thread: thread, Shell: tool == "shell", Recovery: tool == mekugiRecoveryToolName},
 		wake:    make(chan struct{}, 1), done: make(chan struct{}),
 	}
 	go worker.run()
@@ -47,7 +50,7 @@ func startLiveDiffPreview(ctx context.Context, broker *liveDiffBroker, workspace
 
 func (t *mekugiResponseTransform) previewDelta(itemID, delta string) {
 	pending, ok := t.pending[itemID]
-	if !ok || pending.toolName != mekugiToolName || delta == "" {
+	if !ok || (pending.toolName != mekugiToolName && pending.toolName != "shell" && pending.toolName != mekugiRecoveryToolName) || delta == "" {
 		return
 	}
 	if _, complete := t.local[pending.callID]; complete {
@@ -63,7 +66,7 @@ func (t *mekugiResponseTransform) previewDelta(itemID, delta string) {
 	worker := t.previews[itemID]
 	if worker == nil {
 		auto.requestLaunch(t.directory, t.threadID)
-		worker = startLiveDiffPreview(t.ctx, auto.events, t.directory, t.threadID)
+		worker = startLiveDiffPreview(t.ctx, auto.events, t.directory, t.threadID, pending.toolName)
 		t.previews[itemID] = worker
 	}
 	worker.appendDelta(delta)
@@ -129,7 +132,15 @@ func (w *liveDiffPreviewWorker) run() {
 		input := w.input.String()
 		w.mu.Unlock()
 		ctx, cancel := context.WithTimeout(w.ctx, time.Second)
-		projection, err := mekugi.PreviewScriptForHostAt(ctx, w.preview.Workspace, input)
+		var projection mekugi.ScriptPreview
+		var err error
+		if w.preview.Shell || w.preview.Recovery {
+			projection.PendingInput = input
+		} else {
+			projection, err = mekugi.PreviewScriptForHostAt(ctx, w.preview.Workspace, input)
+			projection.PendingInput = liveDiffScriptSource(projection.PendingInput)
+		}
+
 		cancel()
 		w.mu.Lock()
 		// One projection is in flight, with only the latest input sampled next.
@@ -188,4 +199,50 @@ func (b *liveDiffBroker) publishPreview(preview liveDiffPreview, remove bool) {
 	}
 	b.previews[preview.ID] = preview
 	b.emitPreviewLocked(preview)
+}
+
+// Strip only HPATCH shell framing. Shared command framing keeps shell-looking
+// rows inside edit payloads or nested shell heredocs from becoming commands.
+func liveDiffScriptSource(input string) string {
+	lines := hpatchsyntax.SplitPhysicalLines(input)
+	var source strings.Builder
+	for index := 0; index < len(lines); {
+		line := lines[index]
+		frame, err := hpatchsyntax.FrameCommand(lines, index, line.Text)
+		if line.Text == "shell" || strings.HasPrefix(line.Text, "shell ") {
+			command := strings.TrimPrefix(line.Text, "shell")
+			command = strings.TrimPrefix(command, " ")
+			if strings.HasPrefix(command, "<<") {
+				if frame.Delimiter == "" || line.Terminator == "" {
+					break
+				}
+				if err == nil {
+					source.WriteString(frame.Body)
+				} else {
+					for i, body := range lines[index+1:] {
+						text := body.Text
+						if frame.StripTabs {
+							text = strings.TrimLeft(text, "\t")
+						}
+						// A delimiter arriving over several deltas is framing.
+						if index+1+i == len(lines)-1 && strings.HasPrefix(frame.Delimiter, text) {
+							break
+						}
+						source.WriteString(text)
+						source.WriteString(body.Terminator)
+					}
+				}
+			} else {
+				source.WriteString(command)
+				source.WriteString(line.Terminator)
+			}
+		} else {
+			for _, row := range lines[index:frame.Next] {
+				source.WriteString(row.Text)
+				source.WriteString(row.Terminator)
+			}
+		}
+		index = frame.Next
+	}
+	return source.String()
 }

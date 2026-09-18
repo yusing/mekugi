@@ -159,7 +159,8 @@ and terminal UI without Codex or Herdr. `--speed` controls playback from 0.1 to 
 `--repeat` loops the scenario until exit. Re-running the command replays from fresh
 state. Simulation rejects caller workspace, replay, and connection selectors, writes
 only owned temporary files, and removes them on exit. It covers progressive input,
-a wrapped line, a burst, completion, and interruption.
+a wrapped line, a burst, completion, and interruption, including standalone
+`functions.shell` streaming and a display-only recovery correction overlay.
 
 ### Session and lifetime
 
@@ -196,8 +197,12 @@ it does not reserve a baseline or promise that the complete call will succeed.
 
 Previews remain separately labeled, never composed into applied history or treated as
 receipts. They occupy a dedicated, non-scrollable region below captured diffs. While
-visible, the captured diff and preview keep a fixed 3:7 split of the body, leaving at
-least one captured row in tiny terminals. The preview heading counts toward its region.
+visible, the captured diff and HPATCH preview keep a fixed 3:7 split of the body.
+Standalone `functions.shell` input streams directly with the opposite 7:3 split.
+Both layouts leave at least one captured row in tiny terminals.
+`functions.hpatch_recover` instead shows the agent's raw emitted correction text in
+a bottom overlay covering 70% of the body, without shrinking the captured viewport
+or interpreting recovery handles. The preview heading counts toward its region.
 Keyboard navigation, flushing, and wheel input in the captured-diff region affect only
 captured diffs. Wheel input in the preview region is ignored. Streaming keeps the newest
 changed source row's final wrapped fragment visible, independently of captured-diff
@@ -205,8 +210,8 @@ follow/pause state, and fills available preview rows through that tip rather tha
 leaving centering padding below it.
 
 Completion, rejection, interruption, or transform closure ends the live preview. The
-last frame remains for 300 ms, then the region disappears and captured diffs regain
-full height. Dismissal recenters the captured change when following; paused views
+last frame remains for 1.5 seconds (0.5 seconds for recovery), then the region
+disappears and captured diffs regain full height. Dismissal recenters the captured change when following; paused views
 retain their scroll position. New captures, explicit resume, and terminal resize also
 recenter the captured change. A new stream cancels pending removal; completion of one
 stream cannot hide another. Tiny terminals may omit the preview when both regions
@@ -232,7 +237,9 @@ Input and total source/result are bounded to 256 KiB per preview, target expansi
 to 1,024 mutations, and retained display payloads to 48 KiB each across at most 16
 active previews. Capacity or target failures do not block complete edits. File projection
 stops at shell or recovery boundaries; the remaining streamed input is shown separately
-as script source, with a labeled tail when clipped. It never guesses post-shell file
+as script source, omitting HPATCH's `shell` prefix and outer heredoc markers,
+with a labeled tail when clipped. Shell program content, including nested heredocs,
+is preserved. It never guesses post-shell file
 state or reads private continuation storage. Oversized file projections retain the last
 useful frame when one exists.
 

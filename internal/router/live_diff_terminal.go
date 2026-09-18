@@ -164,9 +164,12 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	c.lastWidth, c.lastHeight = width, height
 	lines := c.rendering.lines
 	if c.dirty {
-		_, c.previewRows = liveDiffRegionRows(height-2, c.previewPane.current.ID != "")
+		_, c.previewRows = liveDiffRegionRows(height-2, c.previewPane.current.ID != "", c.previewPane.current.Shell)
 	}
 	rows := height - 2 - c.previewRows
+	if c.previewPane.current.Recovery {
+		rows = height - 2 // Overlay source without shrinking the captured viewport.
+	}
 	offset := 0
 	if len(c.view.files) > 0 {
 		start := c.rendering.starts[c.view.selected]
@@ -239,7 +242,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		header = liveDiffGutter(false, c.theme) + liveDiffSafe(header, false)
 	}
 	writeRow(1, header)
-	for row := range rows {
+	for row := range min(rows, height-2-c.previewRows) {
 		text := ""
 		if index := offset + row; index < len(lines) {
 			text = lines[index]
@@ -255,7 +258,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		if row < len(previewLines) {
 			text = previewLines[row]
 		}
-		writeRow(rows+2+row, text)
+		writeRow(height-c.previewRows+row, text)
 	}
 	mode := "FOLLOW"
 	if !c.view.following {
@@ -365,7 +368,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 		c.escape = ""
 		var mouseRow int
 		key, mouseRow = c.mouse.consume(key)
-		if key == 0 || c.previewRows > 0 && mouseRow >= c.rows+2 {
+		if key == 0 || c.previewRows > 0 && mouseRow >= c.lastHeight-c.previewRows {
 			return false
 		}
 	}

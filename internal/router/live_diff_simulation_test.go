@@ -49,7 +49,8 @@ func TestLiveDiffSimulationRealGoFlows(t *testing.T) {
 		}
 	}
 	if read("notes.txt") != "Unicode 界 é without final newline" ||
-		read("shell.log") != "checked fixture\nSHELL_TIP\n" {
+		read("shell.log") != "checked fixture\nSHELL_TIP\n" ||
+		read("standalone.log") != "standalone shell\nFUNCTIONS_SHELL_TIP\n" {
 		t.Fatal("missing-newline or shell flow did not execute the fixture accurately")
 	}
 	files, err := store.liveDiffSnapshotFiles(ctx, scope)
