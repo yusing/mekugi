@@ -96,11 +96,13 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 }
 
 func trackedStatus(history mekugiHistory, confirmed bool) string {
-	if history.TranslationError == "" && history.ToolName == mekugiToolName {
+	if history.TranslationError == "" &&
+		(history.ToolName == mekugiToolName || history.ToolName == mekugiRecoveryToolName) {
 		// Carrier kind identifies transport, not whether this retained script
 		// hands off a mixed execution plan. Use the same framing owner as translation.
-		_, mixed, _ := hpatchsyntax.SplitShell(history.Script)
-		if mixed || strings.HasPrefix(strings.TrimSpace(history.Script), "resume ") {
+		script := history.recoveryBaseline()
+		_, mixed, _ := hpatchsyntax.SplitShell(script)
+		if mixed || strings.HasPrefix(strings.TrimSpace(script), "resume ") {
 			return "execution plan (see segment attempts)"
 		}
 	}

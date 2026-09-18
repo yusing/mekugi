@@ -331,9 +331,11 @@ Revision checks stop stale carriers before further operations, but are not a
 substitute for resolving live work before resuming. Private retained state has a
 32 MiB limit; storage failure stops subsequent execution without undoing effects.
 
-Mixed scripts do not enter ordinary rejected-script recovery or publish
-cross-invocation replacement aliases. [REQ-CORRECT-001](correct.md) routes attempts
-to use edit-only recovery to this retained continuation interface.
+Successfully preflighted mixed scripts do not enter rejected-script recovery or
+publish cross-invocation replacement aliases. A preflight failure before carrier
+retention has no execution effects and may use script-text recovery under
+[REQ-CORRECT-001](correct.md); once corrected preflight succeeds, the retained
+continuation interface owns all remaining work.
 
 Result rows refer to the completion of their own edit segment and may be changed
 by a later segment.
@@ -391,6 +393,6 @@ Additional acceptance:
     without resending the unchanged suffix or replaying completed effects. Files
     changed between failure and resume receive fresh target validation.
 12. Invalid or unavailable resume handles execute nothing. Explicit retry can
-    replace only the failed segment; ordinary edit-only recovery directs mixed
-    work to retained continuation without a false success claim or fallback to
-    an older rejected script.
+    replace only the failed segment. After mixed preflight succeeds, rejected-script
+    recovery directs the work to retained continuation without a false success claim
+    or fallback to an older rejected script.

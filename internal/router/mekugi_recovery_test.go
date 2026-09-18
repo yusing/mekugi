@@ -74,3 +74,19 @@ func TestGenericRecoveryPreviewUsesBoundedScriptRows(t *testing.T) {
 		t.Fatalf("unbounded script preview: %s", bounded)
 	}
 }
+
+func TestMekugiRecoveryGuidanceIdentifiesInvalidFinalInput(t *testing.T) {
+	const script = "new file.go\ntype \"ready\"\nontail"
+	guidance := mekugiRecoveryGuidance(script, []mekugi.HostRejection{{
+		Command: 3, SourceLine: 3, Operation: "ontail", Reason: "script-syntax",
+	}}, false, testRecoveryHandles(script))
+	for _, want := range []string{
+		"Invalid final input at script line 3; no effects were applied.",
+		"Remove or correct it through functions.hpatch_recover.",
+		mekugi.TextReferences(script, 3),
+	} {
+		if !strings.Contains(guidance, want) {
+			t.Fatalf("final-input guidance omits %q:\n%s", want, guidance)
+		}
+	}
+}

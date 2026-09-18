@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/patchtest"
 )
 
@@ -521,16 +522,55 @@ func TestHpatchRejectedResumeRecoveryKeepsOriginalContinuation(t *testing.T) {
 	}
 }
 
-func TestHpatchNativePreflightRecoveryHasNoContinuation(t *testing.T) {
+func TestHpatchNativePreflightRecoveryIsRetained(t *testing.T) {
 	transform, _ := mixedTestTransform(t)
 	transform.nativeTools = true
 	history, err := transform.translate("native-preflight", "shell true", nil)
 	if err != nil || history.TranslationError == "" {
 		t.Fatalf("native preflight was not rejected: %v, %+v", err, history)
 	}
-	_, err = recoveryHistoryOf(slices.Values([]mekugiHistory{durableHistory(history)}))
-	if err == nil || !strings.Contains(err.Error(), "no segment ran") || strings.Contains(err.Error(), "resume HANDLE") {
-		t.Fatalf("native rejection advertised continuation: %v", err)
+	base, err := recoveryHistoryOf(slices.Values([]mekugiHistory{durableHistory(history)}))
+	if err != nil || base.recoveryBaseline() != history.Script ||
+		strings.Contains(history.TranslationError, "resume HANDLE") {
+		t.Fatalf("native preflight was not retained for text recovery: %v, %+v", err, history)
+	}
+}
+
+func TestHpatchMixedPreflightRecoveryExecutesCorrectedScriptOnce(t *testing.T) {
+	transform, overrides := mixedTestTransform(t)
+	const source = "shell printf x >> attempts\nnew result.txt\ntype \"done\\n\"\nontail"
+	rejected, err := transform.translate("mixed-preflight", source, nil)
+	if err != nil || rejected.TranslationError == "" || strings.Contains(rejected.carrierInput(), "tools.") ||
+		!strings.Contains(rejected.TranslationError, "Invalid final input at script line 4; no effects were applied.") ||
+		!strings.Contains(rejected.TranslationError, mekugi.TextReferences(source, 4)) {
+		t.Fatalf("preflight rejection = %v, %+v", err, rejected)
+	}
+	if _, err := os.Stat(filepath.Join(transform.directory, "attempts")); !os.IsNotExist(err) {
+		t.Fatal("rejected preflight executed its shell")
+	}
+
+	transform.visible = map[string]mekugiHistory{"mixed-preflight": durableHistory(rejected)}
+	clear(transform.local)
+
+	row := strings.Fields(mekugi.TextReferences(source, 4))[0]
+	recovered, err := transform.translateRecovery("mixed-recovery", "type "+row+` ""`, nil)
+	if err != nil || recovered.TranslationError != "" || recovered.CarrierPayload == "" ||
+		recovered.ToolName != mekugiRecoveryToolName || recovered.Attempt != 2 ||
+		hpatchRecoveryFor(recovered) == nil {
+		t.Fatalf("recovery = %v, %+v", err, recovered)
+	}
+	var result mixedScriptResult
+	runShellCatJavaScript(t, transform.proxy.registry.NodeExecutable, transform.directory, recovered.carrierInput(), &result, overrides)
+	if result.Sequence.Started != 2 || result.Sequence.Stopped != "" {
+		t.Fatalf("corrected sequence = %+v", result)
+	}
+	attempts, err := os.ReadFile(filepath.Join(transform.directory, "attempts"))
+	if err != nil || string(attempts) != "x" {
+		t.Fatalf("shell executions = %q, %v", attempts, err)
+	}
+	content, err := os.ReadFile(filepath.Join(transform.directory, "result.txt"))
+	if err != nil || string(content) != "done\n" {
+		t.Fatalf("corrected edit = %q, %v", content, err)
 	}
 }
 
@@ -560,7 +600,7 @@ func TestHpatchEmptyShellProgramsCompleteWithoutExecution(t *testing.T) {
 	}
 }
 
-func TestHpatchMixedRecoveryDoesNotInferSuccess(t *testing.T) {
+func TestHpatchMixedRecoverySelectsOnlyPreflightFailures(t *testing.T) {
 	for _, input := range []string{
 		"shell true\nnew result\ntype \"done\"",
 		"shell <<SHELL\ntrue",
@@ -577,16 +617,15 @@ func TestHpatchMixedRecoveryDoesNotInferSuccess(t *testing.T) {
 			ToolName: mekugiToolName, EvaluatorRejected: true,
 			TranslationError: "older rejection", sequence: 0,
 		}
-		_, err = recoveryHistoryOf(slices.Values([]mekugiHistory{older, history}))
-		if err == nil || strings.Contains(err.Error(), "call succeeded") || strings.Contains(err.Error(), "send a complete script") {
-			t.Fatalf("unsafe mixed recovery diagnostic: %v", err)
-		}
+		base, recoveryErr := recoveryHistoryOf(slices.Values([]mekugiHistory{older, history}))
 		if history.TranslationError != "" {
-			if !strings.Contains(err.Error(), "no segment ran") || strings.Contains(err.Error(), "resume HANDLE") {
-				t.Fatalf("preflight rejection advertised unavailable continuation: %v", err)
+			if recoveryErr != nil || base.recoveryBaseline() != history.recoveryBaseline() ||
+				strings.Contains(history.TranslationError, "resume HANDLE") {
+				t.Fatalf("preflight rejection was not selected safely: %v, %+v", recoveryErr, history)
 			}
-		} else if !strings.Contains(err.Error(), "checkpoints") || !strings.Contains(err.Error(), "resume HANDLE") {
-			t.Fatalf("retained work lost continuation guidance: %v", err)
+		} else if recoveryErr == nil || !strings.Contains(recoveryErr.Error(), "checkpoints") ||
+			!strings.Contains(recoveryErr.Error(), "resume HANDLE") {
+			t.Fatalf("retained work lost continuation guidance: %v", recoveryErr)
 		}
 	}
 }

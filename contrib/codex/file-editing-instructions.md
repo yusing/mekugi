@@ -215,8 +215,10 @@ invalid handles execute nothing.
 
 ### Rejected-script recovery
 
-Use `functions.hpatch_recover` for the latest rejected edit-only script, preserving unrelated text:
+Use `functions.hpatch_recover` for the latest rejected script, preserving unrelated text:
 
+- For a mixed script whose preflight failed before carrier retention, use only script-text
+  mutations; once preflight succeeds, use its retained continuation.
 - For a wholly row-stale rejection, submit every diagnostic `HANDLE TARGET`, for example
   `maple "return oldResult, nil"`.
 - For a parsed command's target or value, use `HANDLE target TARGET` or `HANDLE value VALUE`; values use normal

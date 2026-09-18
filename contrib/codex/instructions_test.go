@@ -58,6 +58,7 @@ func TestInstructionsTeachMixedScriptBoundaries(t *testing.T) {
 				"Successful recovery runs the retained suffix", "expire one hour after creation without renewal",
 				"uncertain effects; missing confirmation does not mean rollback", "Do not replay a mixed script",
 				"every edit segment with `in` or `new`", "Native-only clients use separate hpatch and shell calls",
+				"mixed script whose preflight failed before carrier retention",
 			} {
 				if !strings.Contains(got, required) {
 					t.Errorf("model %q compact %v omits %q", model, compact, required)

@@ -188,4 +188,12 @@ func TestTrackedStatusUsesRetainedScriptNotCarrierKind(t *testing.T) {
 			t.Errorf("script %q: got %q, want %q", test.script, got, test.want)
 		}
 	}
+	recovered := mekugiHistory{
+		ToolName:  mekugiRecoveryToolName,
+		Script:    `type "ontail\n" ""`,
+		Evaluated: "shell echo command\n",
+	}
+	if got := trackedStatus(durableHistory(recovered), false); got != "execution plan (see segment attempts)" {
+		t.Errorf("recovered mixed script: got %q", got)
+	}
 }

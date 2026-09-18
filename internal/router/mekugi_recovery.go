@@ -23,11 +23,24 @@ func mekugiRecoveryGuidance(
 	refreshed bool,
 	handles []string,
 ) string {
+	notice := invalidFinalInputNotice(script, rejections)
 	references, eligible := mekugiRecoveryReferences(script, rejections, refreshed, handles)
 	if !eligible {
-		return genericRecoveryGuidance(script, rejections, refreshed, handles)
+		return notice + genericRecoveryGuidance(script, rejections, refreshed, handles)
 	}
-	return codexinstructions.RecoveryGuidance(references)
+	return notice + codexinstructions.RecoveryGuidance(references)
+}
+
+func invalidFinalInputNotice(script string, rejections []mekugi.HostRejection) string {
+	if len(rejections) != 1 || rejections[0].Reason != "script-syntax" {
+		return ""
+	}
+	line := rejections[0].SourceLine
+	trimmed := strings.TrimRight(script, " \t\r\n")
+	if line < 1 || line != mekugi.TextLineCount(trimmed) {
+		return ""
+	}
+	return fmt.Sprintf("\nInvalid final input at script line %d; no effects were applied. Remove or correct it through functions.hpatch_recover.\n", line)
 }
 
 func genericRecoveryGuidance(script string, rejections []mekugi.HostRejection, refreshed bool, handles []string) string {
@@ -84,6 +97,14 @@ func genericRecoveryGuidance(script string, rejections []mekugi.HostRejection, r
 		} else {
 			addPhysical(command.header + 1)
 			addPhysical(command.end - 1)
+		}
+	}
+	if len(rows) == 0 {
+		for index := len(logicalRows) - 1; index >= 0; index-- {
+			addPhysical(index)
+			if len(rows) != 0 {
+				break
+			}
 		}
 	}
 	slices.Sort(rows)
@@ -166,9 +187,8 @@ type mekugiOutcomeReporter interface {
 	ReportOutcome(ctx context.Context, stage, outcome string) error
 }
 
-// recoveryHistoryOf picks the newest call that mekugi actually evaluated.
-// Proxy-rejected calls are skipped because they changed nothing. A successful
-// newest call blocks recovery of an older rejection.
+// recoveryHistoryOf picks the newest recoverable call. Mixed scripts are
+// eligible only when preflight failed before retaining an executable carrier.
 func recoveryHistoryOf(histories iter.Seq[mekugiHistory]) (mekugiHistory, error) {
 	var latest mekugiHistory
 	found := false
@@ -184,17 +204,23 @@ func recoveryHistoryOf(histories iter.Seq[mekugiHistory]) (mekugiHistory, error)
 	if !found {
 		return mekugiHistory{}, errors.New("no rejected HPATCH script to recover; send a complete script")
 	}
-	isResume := strings.HasPrefix(strings.TrimSpace(latest.Script), "resume ")
-	if _, mixed, _ := hpatchsyntax.SplitShell(latest.Script); mixed || isResume {
-		// Successful mixed translation records a carrier only after retention.
-		// Native preflight rejections can also have diagnostic carriers.
+	baseline := latest.recoveryBaseline()
+	isResume := strings.HasPrefix(strings.TrimSpace(baseline), "resume ")
+	if _, mixed, _ := hpatchsyntax.SplitShell(baseline); mixed || isResume {
+		// A carrier means preflight succeeded and execution may have started.
 		if latest.TranslationError == "" && latest.CarrierPayload != "" {
-			return latest, errors.New("mixed HPATCH/shell work uses retained continuation, not edit-only recovery; inspect its checkpoints, current files, and known sessions, then use hpatch with resume HANDLE; successful preflight does not confirm execution; never resend the complete original script")
+			return latest, errors.New("mixed HPATCH/shell work uses retained continuation, not rejected-script recovery; inspect its checkpoints, current files, and known sessions, then use hpatch with resume HANDLE; successful preflight does not confirm execution; never resend the complete original script")
+		}
+		if !isResume && latest.TranslationError != "" {
+			if latest.RecoveryBinding != recoveryHandlesBinding(baseline, nil) {
+				return latest, errors.New("retained recovery binding does not match the mixed preflight baseline")
+			}
+			return latest, nil
 		}
 		if !isResume {
-			return latest, errors.New("mixed HPATCH/shell preflight failed before a continuation handle was retained; no segment ran; correct the preflight error and submit the corrected script through hpatch, not hpatch_recover")
+			return latest, errors.New("mixed HPATCH/shell state is not recoverable; inspect its checkpoints, current files, and known sessions")
 		}
-		return latest, errors.New("the resume request was rejected before execution; correct its diagnostic and inspect the original continuation handle, checkpoints, current files, and known sessions; do not resend the original mixed script or use edit-only recovery")
+		return latest, errors.New("the resume request was rejected before execution; correct its diagnostic and inspect the original continuation handle, checkpoints, current files, and known sessions; do not resend the original mixed script or use rejected-script recovery")
 	}
 	if latest.TranslationError == "" {
 		return latest, errors.New("the most recent mekugi call succeeded; recovery edits require a rejected script, so send a complete script")
@@ -202,7 +228,7 @@ func recoveryHistoryOf(histories iter.Seq[mekugiHistory]) (mekugiHistory, error)
 	if !latest.EvaluatorRejected {
 		return latest, errors.New("the most recent mekugi call did not produce an evaluator rejection; send a complete script")
 	}
-	if latest.RecoveryBinding != recoveryHandlesBinding(latest.recoveryBaseline(), latest.RecoveryHandles) {
+	if latest.RecoveryBinding != recoveryHandlesBinding(baseline, latest.RecoveryHandles) {
 		return latest, errors.New("retained recovery handle binding does not match the rejected baseline")
 	}
 	return latest, nil
@@ -292,6 +318,9 @@ func (t *mekugiResponseTransform) translateRecovery(
 	}
 	attemptMetadata.EvaluatedScript = recovered.script
 	attemptMetadata.RecoveryDelta = recovered.delta
+	if parts, mixed, splitErr := hpatchsyntax.SplitShell(recovered.script); mixed {
+		return t.translateMixedAttempt(callID, input, recovered.script, parts, splitErr, attemptMetadata, upstreamItem)
+	}
 	return t.evaluateScript(callID, input, recovered.script, attemptMetadata, upstreamItem)
 }
 

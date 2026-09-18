@@ -29,7 +29,7 @@ type hpatchRecoverySegment struct {
 }
 
 func hpatchRecoveryFor(history mekugiHistory) *hpatchRecovery {
-	if history.ToolName != mekugiToolName || history.TranslationError != "" || history.ReplayCarrier {
+	if (history.ToolName != mekugiToolName && history.ToolName != mekugiRecoveryToolName) || history.TranslationError != "" || history.ReplayCarrier {
 		return nil
 	}
 	config, ok := strings.CutPrefix(history.CarrierPayload, "const mixedConfig = ")
