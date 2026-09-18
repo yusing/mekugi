@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,42 @@ import (
 
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
+
+func TestShellHpatchActivityPreviewSuppressesStandaloneEdits(t *testing.T) {
+	tests := []struct {
+		name, input string
+	}{
+		{"shell", "hpatch 'new result.txt\ntype \"argument\"'"},
+		{"shell", "hpatch <<'PATCH'\nnew result.txt\ntype \"heredoc\"\nPATCH\n"},
+		{"shell", `hpatch --recover maple 'maple value "fixed"'`},
+		{"shell", "hpatch --recover maple <<'PATCH'\nmaple value \"fixed\"\nPATCH\n"},
+		{"exec", `await tools.exec_command({cmd:"hpatch 'new result.txt\\ntype \\\"code mode\\\"'"})`},
+		{"exec", `text(await tools.exec_command({cmd:"hpatch <<'PATCH'\nnew result.txt\ntype \"static heredoc\"\nPATCH\n"}))`},
+	}
+	for _, test := range tests {
+		t.Run(test.name+"/"+test.input, func(t *testing.T) {
+			item := map[string]json.RawMessage{"name": mustMarshalJSON(test.name), "input": mustMarshalJSON(test.input)}
+			if got := subagentToolActivityText(item, test.name); got != "" {
+				t.Fatalf("standalone hpatch preview = %q", got)
+			}
+		})
+	}
+
+	for _, test := range []struct {
+		source, kept, omitted string
+	}{
+		{"printf before\nhpatch 'new result.txt'", "printf before", "new result.txt"},
+		{"hpatch <<'PATCH'\nnew result.txt\ntype \"hidden\"\nPATCH\ncat visible.txt", "Read `visible.txt`", "hidden"},
+		{"cat visible.txt\nhpatch <<'PATCH'\nnew result.txt\ntype \"hidden\"\nPATCH\n", "Read `visible.txt`", "hidden"},
+		{"cat <<'DATA'\nvisible body\nDATA\nhpatch <<'PATCH'\nnew result.txt\nPATCH\n", "visible body", "new result.txt"},
+		{"#!params={\"max_output_tokens\":100}\nprintf batch\n#!bash\nprintf second", "printf batch", ""},
+	} {
+		got := toolActivityShell(test.source)
+		if !strings.Contains(got, test.kept) || test.omitted != "" && strings.Contains(got, test.omitted) {
+			t.Fatalf("ordinary shell preview = %q, want kept %q and omitted %q", got, test.kept, test.omitted)
+		}
+	}
+}
 
 func TestShellHpatchSemantics(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
@@ -250,7 +287,9 @@ func TestShellHpatchPublishesCommittedEditReceipt(t *testing.T) {
 	_, events, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{directory: {thread: true}}})
 	sub := events.subscribe()
 	broker := newCommentaryBroker()
-	broker.editPublisher = store.publishEditReceipt
+	broker.editPublisher = func(ctx context.Context, workspace, thread, callID string) error {
+		return store.publishEditReceipt(ctx, workspace, thread, callID, nil)
+	}
 	server := httptest.NewServer(http.HandlerFunc(broker.serveHTTP))
 	defer server.Close()
 	token := broker.subscribeThread(directory+"\x00session", thread, "/root")
@@ -267,7 +306,7 @@ func TestShellHpatchPublishesCommittedEditReceipt(t *testing.T) {
 		t.Fatalf("%+v", event)
 	}
 	callID := event.Change.Calls[0].ID
-	if err := store.publishEditReceipt(t.Context(), directory, "other-thread", callID); err == nil {
+	if err := store.publishEditReceipt(t.Context(), directory, "other-thread", callID, nil); err == nil {
 		t.Fatal("another thread published edit evidence")
 	}
 	files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{directory: {thread: true}}})
@@ -305,7 +344,7 @@ func TestShellHpatchPublishesCommittedEditReceipt(t *testing.T) {
 	if err != nil || len(forkFiles) != 1 {
 		t.Fatalf("fork snapshot=%+v err=%v", forkFiles, err)
 	}
-	if err := store.publishEditReceipt(t.Context(), directory, thread, forkEvent.Change.Calls[0].ID); err == nil {
+	if err := store.publishEditReceipt(t.Context(), directory, thread, forkEvent.Change.Calls[0].ID, nil); err == nil {
 		t.Fatal("original thread impersonated the fork's recovery attempt")
 	}
 	// A broken auxiliary publisher cannot replace successful edit output.

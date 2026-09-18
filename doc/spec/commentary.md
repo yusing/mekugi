@@ -100,9 +100,15 @@ patterns verbatim without expanding them; substitutions still retain the origina
 code execution, and input sending use descriptive operation labels.
 Hcat and inspect_file previews validate literal option bounds, duplicates, and operand
 placement before classification; invalid forms retain their source-level `Run` display.
-Native `apply_patch` calls do not generate operation commentary. Shell-based `hpatch`
-commands use the shell operation display. Host results and captured evidence remain
-unchanged; the [live view](changes.md#live-terminal-view) owns the separate edit display.
+Native `apply_patch` calls do not generate operation commentary. Standalone shell-based
+`hpatch` calls omit the `Run` preview and patch body. After execution, authenticated
+committed receipts produce `Edit <path> +N -N` per file for child activity, using the
+captured formatted result's added and removed line counts. Rejected edits do not
+produce successful edit summaries; repeated receipts are deduplicated. `hpatch --recover`
+uses the same display: each successful repair reports its own committed file counts,
+not cumulative counts for earlier attempts, and recovery scripts remain hidden. Host results
+and captured evidence remain unchanged; the [live view](changes.md#live-terminal-view)
+owns the separate full edit display.
 Valid explicit shell batches classify each program independently, in order, using
 that program's interpreter and directives. Batch headers and separator lines are
 transport framing, not displayed commands. Malformed batches retain the complete

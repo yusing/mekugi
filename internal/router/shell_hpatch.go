@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/yusing/mekugi"
 	"mvdan.cc/sh/v3/interp"
@@ -193,7 +194,7 @@ func (s *mekugiReplayStore) rejectedEdit(ctx context.Context, workspace, id stri
 // publishEditReceipt reads committed evidence, never caller-supplied diffs.
 // The runtime capability must belong to the executing attempt, which may be a
 // fork continuing a change originated by another thread.
-func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, thread, callID string) error {
+func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, thread, callID string, activity *subagentActivity) error {
 	s = s.scoped(ctx)
 	return s.locked(ctx, func() error {
 		record, found, err := s.read(workspace, callID, false)
@@ -210,6 +211,18 @@ func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, t
 		id := record.History.ChangeID
 		for _, call := range index.Changes[id].Calls {
 			if call.ID == callID && call.Thread == thread {
+				if record.History.Applied && record.History.TranslationError == "" {
+					var summaries []string
+					for _, file := range record.History.ReviewFiles {
+						path := file.AfterPath
+						if path == "" {
+							path = file.BeforePath
+						}
+						added, removed := file.LineCounts()
+						summaries = append(summaries, fmt.Sprintf("Edit %s +%d -%d", commentaryCode(path), added, removed))
+					}
+					activity.collect(thread, "edit-receipt\x00"+workspace+"\x00"+callID, "tool", strings.Join(summaries, "\n\n"))
+				}
 				s.notifyLiveDiff(index, map[string][]trackedCall{id: {call}})
 				return nil
 			}

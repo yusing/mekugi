@@ -93,7 +93,7 @@ func newMekugiProxy(registry *toolRegistry, customizedInstructions, compactModel
 		if proxy.replayStore == nil {
 			return errors.New("edit storage unavailable")
 		}
-		return proxy.replayStore.publishEditReceipt(ctx, workspace, thread, callID)
+		return proxy.replayStore.publishEditReceipt(ctx, workspace, thread, callID, activity)
 	}
 	broker.notice = func(category, message string) { proxy.notice("", category, message) }
 	activity.notice = broker.notice

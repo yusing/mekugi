@@ -108,6 +108,11 @@ func toolActivityReads(script string) (string, bool) {
 	if err != nil || len(program.Stmts) == 0 {
 		return "", false
 	}
+	// Hpatch publishes its applied, formatted file counts through the runtime
+	// receipt. Do not expose its script as a command preview before execution.
+	if len(program.Stmts) == 1 && toolActivityHpatch(program.Stmts[0]) {
+		return "", true
+	}
 	// Heredoc bodies may occur after another statement on the same line,
 	// outside Stmt.End(). Preserve the whole source rather than slicing them.
 	hasHeredoc := false
@@ -118,6 +123,29 @@ func toolActivityReads(script string) (string, bool) {
 		return !hasHeredoc
 	})
 	if hasHeredoc {
+		// A statement's source range excludes its heredoc body. When an edit
+		// shares a script, print only the other statements rather than leaving
+		// the suppressed patch body behind in the whole-script fallback.
+		hasEdit := false
+		for _, statement := range program.Stmts {
+			hasEdit = hasEdit || toolActivityHpatch(statement)
+		}
+		if hasEdit {
+			var displays []string
+			for _, statement := range program.Stmts {
+				if toolActivityHpatch(statement) {
+					continue
+				}
+				var source strings.Builder
+				if err := syntax.NewPrinter().Print(&source, statement); err != nil {
+					return "", true
+				}
+				if display := toolActivityShellLanguage(source.String(), "bash"); display != "" {
+					displays = append(displays, display)
+				}
+			}
+			return strings.Join(displays, "\n\n"), true
+		}
 		var source strings.Builder
 		offset := 0
 		for _, statement := range program.Stmts {
@@ -166,10 +194,22 @@ func toolActivityReads(script string) (string, bool) {
 	return strings.Join(displays, "\n\n"), true
 }
 
+func toolActivityHpatch(statement *syntax.Stmt) bool {
+	call, ok := statement.Cmd.(*syntax.CallExpr)
+	if !ok || len(call.Args) == 0 {
+		return false
+	}
+	command, literal := shellCatLiteral(call.Args[0])
+	return literal && command == "hpatch"
+}
+
 // Recognize only transparent search bounds and executable lookups. Keep their
 // complete source, including redirections and guards, rather than implying that
 // a pipeline's stages are independent operations.
 func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool) {
+	if toolActivityHpatch(statement) {
+		return "", true
+	}
 	if statement.Background || statement.Negated || statement.Coprocess || statement.Disown {
 		return "", false
 	}

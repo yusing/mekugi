@@ -115,8 +115,9 @@ func TestSubagentTranslatedEditActivityJSONAndSSE(t *testing.T) {
 			if err := json.Unmarshal(visible, &response); err != nil {
 				t.Fatal(err)
 			}
-			if len(response.Output) != 2 || !strings.Contains(commentaryText(t, response.Output[0]), "Started.") || !strings.Contains(commentaryText(t, response.Output[1]), "hpatch") {
-				t.Fatalf("shell edit activity missing: %s", visible)
+			if len(response.Output) != 1 || !strings.Contains(commentaryText(t, response.Output[0]), "Started.") ||
+				bytes.Contains(visible, []byte("hpatch")) || bytes.Contains(visible, []byte("new result.txt")) {
+				t.Fatalf("standalone shell edit leaked into activity: %s", visible)
 			}
 			if calls != 0 {
 				t.Fatalf("root delivery retranslated the edit: %d translations", calls)
