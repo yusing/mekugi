@@ -72,7 +72,7 @@ func TestJournalAnswerDurabilityReplayAndEditing(t *testing.T) {
 }
 
 func TestJournalAnswerRoutingAndRendering(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	transform.journalQuestion = "Which?\n\n- A\n- B"
 	call := func(id, arguments string) map[string]json.RawMessage {
@@ -126,7 +126,7 @@ func TestJournalAnswerRoutingAndRendering(t *testing.T) {
 }
 
 func TestCodeModeJournalPinsQuestionAtLowering(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	proxy.commentaryEndpoint = "http://localhost/internal/commentary"
 	transform.journalQuestion = "Original question?"
@@ -159,7 +159,7 @@ func TestCodeModeJournalPinsQuestionAtLowering(t *testing.T) {
 }
 
 func TestStructuredJournalAnswerBindsQuestion(t *testing.T) {
-	transform, proxy, _, workspace := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	transform.journalQuestion = "Run checks?"
 	transform.commentaryTools = commentaryToolCatalog{
 		functionToolKey("functions", "exec_command"): {qualifiedName: "functions.exec_command"},
@@ -184,7 +184,7 @@ func TestStructuredJournalAnswerBindsQuestion(t *testing.T) {
 func TestJournalFlushNestsCarriageReturnLines(t *testing.T) {
 	for _, newline := range []string{"\r", "\r\n"} {
 		t.Run(strings.ReplaceAll(newline, "\r", "CR"), func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
 			question := "Question?" + newline + newline + "- choice"
 			body := "First" + newline + newline + "# Heading"
@@ -211,7 +211,7 @@ func TestJournalTerminalSharedQuestions(t *testing.T) {
 		for _, flushed := range []bool{false, true} {
 			name := map[bool]string{false: "main", true: "child"}[child] + "/" + map[bool]string{false: "pending", true: "first-flushed"}[flushed]
 			t.Run(name, func(t *testing.T) {
-				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				proxy := newManagedMekugiProxy(t)
 				transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
 				defer transform.Close()
 				transform.subagentTurn = child

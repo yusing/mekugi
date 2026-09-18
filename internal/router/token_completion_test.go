@@ -77,7 +77,7 @@ func TestTokenCommentaryRequiresCompletedSubstantiveAnswer(t *testing.T) {
 func TestTokenCommentaryRequiresCurrentUsageDespitePriorTotals(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			prior, _ := prepareActivityTest(t, proxy, "before", "thread", "", "/root", nil)
 			prior.observeResponseUsage(tokenCounts{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3})
 			prior.Close()

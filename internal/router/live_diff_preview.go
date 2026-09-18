@@ -3,14 +3,12 @@ package router
 import (
 	"context"
 	"crypto/rand"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/hpatchsyntax"
 )
 
 // Preview state is router-lifetime only and never enters the replay store.
@@ -22,8 +20,6 @@ type liveDiffPreview struct {
 	Files     []mekugi.ReviewFile
 	Input     string               // Display-only source, never executed.
 	Syntax    []liveDiffSourceSpan `json:",omitempty"`
-	Shell     bool                 // Standalone shell calls use the smaller preview region.
-	Recovery  bool                 // Recovery displays emitted source over the captured viewport.
 	Truncated bool
 	Status    string
 }
@@ -40,11 +36,11 @@ type liveDiffPreviewWorker struct {
 	closed  bool
 }
 
-func startLiveDiffPreview(ctx context.Context, broker *liveDiffBroker, workspace, thread, tool string) *liveDiffPreviewWorker {
+func startLiveDiffPreview(ctx context.Context, broker *liveDiffBroker, workspace, thread string) *liveDiffPreviewWorker {
 	ctx, cancel := context.WithCancel(ctx)
 	worker := &liveDiffPreviewWorker{
 		ctx: ctx, cancel: cancel, broker: broker,
-		preview: liveDiffPreview{ID: rand.Text(), Workspace: workspace, Thread: thread, Shell: tool == "shell", Recovery: tool == mekugiRecoveryToolName},
+		preview: liveDiffPreview{ID: rand.Text(), Workspace: workspace, Thread: thread},
 		wake:    make(chan struct{}, 1), done: make(chan struct{}),
 	}
 	go worker.run()
@@ -53,7 +49,7 @@ func startLiveDiffPreview(ctx context.Context, broker *liveDiffBroker, workspace
 
 func (t *mekugiResponseTransform) previewDelta(itemID, delta string) {
 	pending, ok := t.pending[itemID]
-	if !ok || (pending.toolName != mekugiToolName && pending.toolName != "shell" && pending.toolName != mekugiRecoveryToolName) || delta == "" {
+	if !ok || pending.toolName != "shell" || delta == "" {
 		return
 	}
 	if _, complete := t.local[pending.callID]; complete {
@@ -69,7 +65,7 @@ func (t *mekugiResponseTransform) previewDelta(itemID, delta string) {
 	worker := t.previews[itemID]
 	if worker == nil {
 		auto.requestLaunch(t.directory, t.threadID)
-		worker = startLiveDiffPreview(t.ctx, auto.events, t.directory, t.threadID, pending.toolName)
+		worker = startLiveDiffPreview(t.ctx, auto.events, t.directory, t.threadID)
 		worker.mu.Lock()
 		worker.preview.Caller = t.commentaryAuthor
 		if !t.subagentTurn {
@@ -139,36 +135,28 @@ func (w *liveDiffPreviewWorker) run() {
 		}
 		w.mu.Lock()
 		input := w.input.String()
+		preview := w.preview
 		w.mu.Unlock()
-		ctx, cancel := context.WithTimeout(w.ctx, time.Second)
-		var projection mekugi.ScriptPreview
-		var syntax []liveDiffSourceSpan
-		var err error
-		if w.preview.Shell || w.preview.Recovery {
-			projection.PendingInput = input
-			syntax = liveDiffScriptSyntax(input, w.preview.Recovery)
-		} else {
-			projection, err = mekugi.PreviewScriptForHostAt(ctx, w.preview.Workspace, input)
-			projection.PendingInput, syntax = liveDiffScriptSource(projection.PendingInput)
-		}
-
-		cancel()
-		w.mu.Lock()
-		// One projection is in flight, with only the latest input sampled next.
-		// New deltas must not starve visible progress; completion cancels output.
-		if !w.closed && w.ctx.Err() == nil && err == nil && (len(projection.Files) > 0 || projection.PendingInput != "") {
-			preview := w.preview
-			preview.Files, preview.Input, preview.Syntax = projection.Files, projection.PendingInput, syntax
-			preview.Status = "STREAMING PREVIEW"
-			if preview.Input != "" {
-				// Shell effects have not happened. Show the actual streamed input,
-				// not a guessed post-shell diff or a frozen earlier edit.
-				preview.Files = nil
+		preview.Input, preview.Syntax = input, liveDiffScriptSyntax(input)
+		preview.Status = "STREAMING SCRIPT"
+		if script, directory, ok := liveDiffShellEdit(input, preview.Workspace); ok {
+			ctx, cancel := context.WithTimeout(w.ctx, time.Second)
+			files, err := mekugi.PreviewForHostAt(ctx, directory, script)
+			cancel()
+			preview.Input, preview.Syntax = "", nil
+			if err == nil {
+				preview.Files = files
+				preview.Status = "STREAMING PREVIEW"
+			} else {
+				preview.Status = "PREVIEW UNAVAILABLE: edit cannot be projected"
 			}
+		}
+		w.mu.Lock()
+		// One preview is in flight, with only the latest input sampled next.
+		// New deltas must not starve visible progress; completion cancels output.
+		if !w.closed && w.ctx.Err() == nil && input != "" {
 			w.broker.publishPreview(preview, false)
 		}
-		// A partial target or command may not resolve yet. Leave the last useful
-		// snapshot visible; the completed tool call owns rejection diagnostics.
 		w.mu.Unlock()
 	}
 }
@@ -191,7 +179,7 @@ func (b *liveDiffBroker) publishPreview(preview liveDiffPreview, remove bool) {
 		return
 	}
 	if preview.Input != "" && len(preview.Syntax) == 0 {
-		preview.Syntax = liveDiffScriptSyntax(preview.Input, preview.Recovery)
+		preview.Syntax = liveDiffScriptSyntax(preview.Input)
 	}
 	// Bound retained preview payloads independently of durable edit evidence.
 	for preview.Input != "" && len(mustMarshalJSON(preview)) > 48<<10 {
@@ -207,81 +195,22 @@ func (b *liveDiffBroker) publishPreview(preview liveDiffPreview, remove bool) {
 		preview.Input = strings.Clone(preview.Input)
 	}
 	if len(mustMarshalJSON(preview)) > 48<<10 {
-		if _, exists := b.previews[preview.ID]; exists {
-			return // Keep the last useful frame instead of flickering to an error.
-		}
 		preview.Files = nil
-		preview.Status = "PREVIEW UNAVAILABLE: diff exceeds 48 KiB"
+		preview.Status = "PREVIEW UNAVAILABLE: source exceeds 48 KiB"
+	}
+	if strings.HasPrefix(preview.Status, "PREVIEW UNAVAILABLE:") && preview.Input == "" {
+		// Retain only a diff the broker actually displayed, not an oversized
+		// projection discarded before publication.
+		if previous := b.previews[preview.ID]; len(previous.Files) != 0 {
+			unavailable := preview.Status
+			preview.Files = previous.Files
+			preview.Status = "STREAMING PREVIEW: last valid diff; current edit unavailable"
+			if len(mustMarshalJSON(preview)) > 48<<10 {
+				preview.Files = nil
+				preview.Status = unavailable
+			}
+		}
 	}
 	b.previews[preview.ID] = preview
 	b.emitPreviewLocked(preview)
-}
-
-// Strip only HPATCH shell framing. Shared command framing keeps shell-looking
-// rows inside edit payloads or nested shell heredocs from becoming commands.
-func liveDiffScriptSource(input string) (string, []liveDiffSourceSpan) {
-	lines := hpatchsyntax.SplitPhysicalLines(input)
-	var source strings.Builder
-	var spans []liveDiffSourceSpan
-	path := "stream.hpatch"
-	for index := 0; index < len(lines); {
-		var segment strings.Builder
-		line := lines[index]
-		frame, err := hpatchsyntax.FrameCommand(lines, index, line.Text)
-		if line.Text == "shell" || strings.HasPrefix(line.Text, "shell ") {
-			command := strings.TrimPrefix(line.Text, "shell")
-			command = strings.TrimPrefix(command, " ")
-			if strings.HasPrefix(command, "<<") {
-				if frame.Delimiter == "" || line.Terminator == "" {
-					break
-				}
-				if err == nil {
-					segment.WriteString(frame.Body)
-				} else {
-					for i, body := range lines[index+1:] {
-						text := body.Text
-						if frame.StripTabs {
-							text = strings.TrimLeft(text, "\t")
-						}
-						// A delimiter arriving over several deltas is framing.
-						if index+1+i == len(lines)-1 && strings.HasPrefix(frame.Delimiter, text) {
-							break
-						}
-						segment.WriteString(text)
-						segment.WriteString(body.Terminator)
-					}
-				}
-			} else {
-				segment.WriteString(command)
-				segment.WriteString(line.Terminator)
-			}
-			for _, span := range liveDiffScriptSyntax(segment.String(), false) {
-				span.Offset += source.Len()
-				spans = append(spans, span)
-			}
-		} else {
-			spans = append(spans, liveDiffSourceSpan{source.Len(), "stream.hpatch"})
-			if strings.HasPrefix(line.Text, "in ") || strings.HasPrefix(line.Text, "new ") {
-				_, path, _ = strings.Cut(line.Text, " ")
-				path = filepath.Base(path)
-				if len(path) > 1024 {
-					path = "stream.txt"
-				}
-			}
-			if frame.Marker != "" && line.Terminator != "" {
-				spans = append(spans, liveDiffSourceSpan{source.Len() + len(line.Text) + len(line.Terminator), path})
-			}
-			for _, row := range lines[index:frame.Next] {
-				segment.WriteString(row.Text)
-				segment.WriteString(row.Terminator)
-			}
-			if frame.Marker != "" && err == nil {
-				closing := lines[frame.Next-1]
-				spans = append(spans, liveDiffSourceSpan{source.Len() + segment.Len() - len(closing.Text) - len(closing.Terminator), "stream.hpatch"})
-			}
-		}
-		source.WriteString(segment.String())
-		index = frame.Next
-	}
-	return source.String(), spans
 }

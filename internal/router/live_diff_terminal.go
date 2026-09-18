@@ -168,12 +168,9 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	c.lastWidth, c.lastHeight = width, height
 	lines := c.rendering.lines
 	if c.dirty {
-		_, c.previewRows = liveDiffRegionRows(height-2, len(lines), len(c.previewPane.order) > 0, c.previewPane.shellOnly())
+		_, c.previewRows = liveDiffRegionRows(height-2, len(lines), len(c.previewPane.order) > 0)
 	}
 	rows := height - 2 - c.previewRows
-	if c.previewPane.recoveryOnly() {
-		rows = height - 2 // Overlay source without shrinking the captured viewport.
-	}
 	offset := 0
 	if len(c.view.files) > 0 {
 		start := c.rendering.starts[c.view.selected]

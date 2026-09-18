@@ -1,12 +1,7 @@
 package router
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"iter"
-	"maps"
 	"slices"
 	"strings"
 
@@ -40,7 +35,7 @@ func invalidFinalInputNotice(script string, rejections []mekugi.HostRejection) s
 	if line < 1 || line != mekugi.TextLineCount(trimmed) {
 		return ""
 	}
-	return fmt.Sprintf("\nInvalid final input at script line %d; no effects were applied. Remove or correct it through functions.hpatch_recover.\n", line)
+	return fmt.Sprintf("\nInvalid final input at script line %d; no effects were applied. Remove or correct it through hpatch --recover HANDLE.\n", line)
 }
 
 func genericRecoveryGuidance(script string, rejections []mekugi.HostRejection, refreshed bool, handles []string) string {
@@ -48,7 +43,7 @@ func genericRecoveryGuidance(script string, rejections []mekugi.HostRejection, r
 	if refreshed {
 		output.WriteString("\nThis re-rejection changed no workspace file. Corrections are retained only in the new rejected-script baseline; earlier script rows and command handles may be stale.\n")
 	}
-	output.WriteString("\nRepair retained-script text with ordinary type/add mutations through functions.hpatch_recover, without in/new/mv/rm commands. Targets below address the rejected script, not workspace files. Use exact known literals for other retained text. The router rebuilds and reevaluates the complete script atomically; do not repeat unrelated prepared edits.\n\nRetained rejected-script rows:\n")
+	output.WriteString("\nRepair retained-script text with ordinary type/add mutations through hpatch --recover HANDLE, without in/new/mv/rm commands. Targets below address the rejected script, not workspace files. Use exact known literals for other retained text. The router rebuilds and reevaluates the complete script atomically; do not repeat unrelated prepared edits.\n\nRetained rejected-script rows:\n")
 	lines := hpatchsyntax.SplitPhysicalLines(script)
 	logicalRows := mekugiLogicalRowsByPhysicalLine(script, lines)
 	commands := recoveryCommands(script, handles)
@@ -151,7 +146,7 @@ func mekugiRecoveryReferences(
 		command := commands[index-1]
 		fmt.Fprintf(&output, "    %s %s\n", command.handle, mekugiRecoveryCommandSummary(command))
 	}
-	output.WriteString("\nSend one line per listed command as HANDLE CURRENT_TARGET. Put all corrections in one functions.hpatch_recover payload; the router preserves every operation and value and reevaluates the complete script.\n")
+	output.WriteString("\nSend one line per listed command as HANDLE CURRENT_TARGET. Put all corrections in one hpatch --recover HANDLE payload; the router preserves every operation and value and reevaluates the complete script.\n")
 	return output.String(), true
 }
 
@@ -183,202 +178,10 @@ func mekugiLogicalRowsByPhysicalLine(script string, lines []hpatchsyntax.Physica
 	return mapped
 }
 
-type mekugiOutcomeReporter interface {
-	ReportOutcome(ctx context.Context, stage, outcome string) error
-}
-
-// recoveryHistoryOf picks the newest recoverable call. Mixed scripts are
-// eligible only when preflight failed before retaining an executable carrier.
-func recoveryHistoryOf(histories iter.Seq[mekugiHistory]) (mekugiHistory, error) {
-	var latest mekugiHistory
-	found := false
-	for history := range histories {
-		if history.Unevaluated || (history.ToolName != mekugiToolName && history.ToolName != mekugiRecoveryToolName) {
-			continue
-		}
-		if !found || history.sequence > latest.sequence {
-			latest = history
-			found = true
-		}
-	}
-	if !found {
-		return mekugiHistory{}, errors.New("no rejected HPATCH script to recover; send a complete script")
-	}
-	baseline := latest.recoveryBaseline()
-	isResume := strings.HasPrefix(strings.TrimSpace(baseline), "resume ")
-	if _, mixed, _ := hpatchsyntax.SplitShell(baseline); mixed || isResume {
-		// A carrier means preflight succeeded and execution may have started.
-		if latest.TranslationError == "" && latest.CarrierPayload != "" {
-			return latest, errors.New("mixed HPATCH/shell work uses retained continuation, not rejected-script recovery; inspect its checkpoints, current files, and known sessions, then use hpatch with resume HANDLE; successful preflight does not confirm execution; never resend the complete original script")
-		}
-		if !isResume && latest.TranslationError != "" {
-			if latest.RecoveryBinding != recoveryHandlesBinding(baseline, nil) {
-				return latest, errors.New("retained recovery binding does not match the mixed preflight baseline")
-			}
-			return latest, nil
-		}
-		if !isResume {
-			return latest, errors.New("mixed HPATCH/shell state is not recoverable; inspect its checkpoints, current files, and known sessions")
-		}
-		return latest, errors.New("the resume request was rejected before execution; correct its diagnostic and inspect the original continuation handle, checkpoints, current files, and known sessions; do not resend the original mixed script or use rejected-script recovery")
-	}
-	if latest.TranslationError == "" {
-		return latest, errors.New("the most recent mekugi call succeeded; recovery edits require a rejected script, so send a complete script")
-	}
-	if !latest.EvaluatorRejected {
-		return latest, errors.New("the most recent mekugi call did not produce an evaluator rejection; send a complete script")
-	}
-	if latest.RecoveryBinding != recoveryHandlesBinding(baseline, latest.RecoveryHandles) {
-		return latest, errors.New("retained recovery handle binding does not match the rejected baseline")
-	}
-	return latest, nil
-}
-
-func latestRecoveryAttempt(histories iter.Seq[mekugiHistory], correlationID string) int {
-	latest := 0
-	for history := range histories {
-		if (history.ToolName == mekugiToolName || history.ToolName == mekugiRecoveryToolName) && history.CorrelationID == correlationID {
-			latest = max(latest, history.Attempt)
-		}
-	}
-	return latest
-}
-
 // recoveryBaseline is the complete rejected script a following recovery edits.
 func (h mekugiHistory) recoveryBaseline() string {
 	if h.Evaluated != "" {
 		return h.Evaluated
 	}
 	return h.Script
-}
-
-func (t *mekugiResponseTransform) translateRecovery(
-	callID, input string,
-	upstreamItem map[string]json.RawMessage,
-) (mekugiHistory, error) {
-	if history, ok := t.local[callID]; ok {
-		if history.ToolName != mekugiRecoveryToolName || history.PluginID != "" || history.Script != input {
-			return mekugiHistory{}, fmt.Errorf("mekugi recovery call %q changed input", callID)
-		}
-		if len(upstreamItem) != 0 {
-			history.UpstreamItem = maps.Clone(upstreamItem)
-			t.local[callID] = history
-		}
-		return history, nil
-	}
-	if len(input) > maxMekugiScriptBytes {
-		return mekugiHistory{}, fmt.Errorf("mekugi recovery call %q payload exceeds %d bytes", callID, maxMekugiScriptBytes)
-	}
-	base, baseErr := t.recoveryHistory()
-	attemptMetadata := mekugi.AttemptMetadata{
-		SessionID:      t.sessionID,
-		Title:          t.proxy.titles.title(t.sessionID),
-		CorrelationID:  callID,
-		CallID:         callID,
-		Attempt:        1,
-		Correction:     true,
-		Model:          t.model,
-		ToolName:       mekugiRecoveryToolName,
-		EmittedPayload: input,
-	}
-	if base.CorrelationID != "" {
-		attemptMetadata.CorrelationID = base.CorrelationID
-		attemptMetadata.Attempt = t.nextRecoveryAttempt(base.CorrelationID, base.Attempt)
-	}
-	if baseErr != nil {
-		return t.rejectUnevaluated(mekugiRecoveryToolName, callID, input, baseErr, attemptMetadata, "", nil, upstreamItem, nil)
-	}
-	if base.Root != t.directory {
-		return t.rejectUnevaluated(
-			mekugiRecoveryToolName,
-			callID,
-			input,
-			errors.New("the rejected script belongs to a different worktree; send a complete script"),
-			attemptMetadata,
-			"",
-			nil,
-			upstreamItem,
-			nil,
-		)
-	}
-	baseline := base.recoveryBaseline()
-	recovered, err := recoverScriptDetailed(t.ctx, baseline, input, base.RecoveryHandles)
-	if err != nil {
-		return t.rejectUnevaluated(
-			mekugiRecoveryToolName,
-			callID,
-			input,
-			err,
-			attemptMetadata,
-			baseline,
-			base.Rejections,
-			upstreamItem,
-			base.RecoveryHandles,
-		)
-	}
-	attemptMetadata.EvaluatedScript = recovered.script
-	attemptMetadata.RecoveryDelta = recovered.delta
-	if parts, mixed, splitErr := hpatchsyntax.SplitShell(recovered.script); mixed {
-		return t.translateMixedAttempt(callID, input, recovered.script, parts, splitErr, attemptMetadata, upstreamItem)
-	}
-	return t.evaluateScript(callID, input, recovered.script, attemptMetadata, upstreamItem)
-}
-
-func (t *mekugiResponseTransform) rejectUnevaluated(
-	toolName, callID, input string,
-	rejection error,
-	attempt mekugi.AttemptMetadata,
-	referenceScript string,
-	rejections []mekugi.HostRejection,
-	upstreamItem map[string]json.RawMessage,
-	handles []string,
-) (mekugiHistory, error) {
-	changeID, err := t.changeIDForAttempt(attempt)
-	if err != nil {
-		return mekugiHistory{}, err
-	}
-	diagnostic := changeNotice(changeID) + rejection.Error()
-	if referenceScript != "" {
-		diagnostic += mekugiRecoveryGuidance(referenceScript, rejections, false, handles)
-	}
-	if reporter, ok := t.proxy.translator.(mekugiOutcomeReporter); ok {
-		attemptContext := mekugi.WithAttemptMetadata(t.ctx, attempt)
-		if hookErr := reporter.ReportOutcome(attemptContext, "unevaluated", "rejected"); hookErr != nil {
-			diagnostic += "\nmekugi: warning: " + strings.TrimSpace(hookErr.Error()) + "\n"
-		}
-	}
-	history := mekugiHistory{
-		ToolName: toolName,
-		Script:   input,
-
-		Root:             t.directory,
-		ChangeID:         changeID,
-		CarrierName:      t.codeModeToolName,
-		TranslationError: diagnostic,
-		CorrelationID:    attempt.CorrelationID,
-		Attempt:          attempt.Attempt,
-		UpstreamItem:     maps.Clone(upstreamItem),
-		Unevaluated:      true,
-	}
-	t.recordLocal(callID, &history)
-	return history, nil
-}
-
-// recoveryHistory is the rejected call a recovery in this turn edits. A
-// rejection this turn is newer than retained history, which commits only after
-// the response completes.
-func (t *mekugiResponseTransform) recoveryHistory() (mekugiHistory, error) {
-	for _, history := range t.local {
-		if !history.Unevaluated &&
-			(history.ToolName == mekugiToolName || history.ToolName == mekugiRecoveryToolName) {
-			return recoveryHistoryOf(maps.Values(t.local))
-		}
-	}
-	return recoveryHistoryOf(maps.Values(t.visible))
-}
-
-func (t *mekugiResponseTransform) nextRecoveryAttempt(correlationID string, baseAttempt int) int {
-	latest := max(baseAttempt, latestRecoveryAttempt(maps.Values(t.visible), correlationID))
-	latest = max(latest, latestRecoveryAttempt(maps.Values(t.local), correlationID))
-	return max(latest+1, 2)
 }

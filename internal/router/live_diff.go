@@ -413,8 +413,7 @@ func (v *liveDiffView) reflow(before, after liveDiffRender) {
 
 type liveDiffOutput struct{ strings.Builder }
 
-// WriteString avoids fmt's per-token interface and byte-slice overhead while
-// retaining the same bound as writes through io.Writer.
+// WriteString bounds rendered output without per-token byte-slice allocation.
 func (b *liveDiffOutput) WriteString(s string) (int, error) {
 	if b.Len()+len(s) > maxChangeReadBytes {
 		return 0, errors.New("rendered diff exceeds 64 MiB")
@@ -422,6 +421,7 @@ func (b *liveDiffOutput) WriteString(s string) (int, error) {
 	return b.Builder.WriteString(s)
 }
 
+// Write preserves the output bound when the embedded builder is used as io.Writer.
 func (b *liveDiffOutput) Write(p []byte) (int, error) {
 	if b.Len()+len(p) > maxChangeReadBytes {
 		return 0, errors.New("rendered diff exceeds 64 MiB")

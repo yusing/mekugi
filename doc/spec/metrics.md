@@ -90,6 +90,11 @@ capturer, not by the router, engine, plugin, benchmark report, or dashboard. The
 9. capture health for record failures, incomplete records, missing provider records,
    provider-attempt gaps, durable-write errors, skipped requests, and dropped exchange detail.
 
+HPATCH carrier metrics describe explicit `hpatch`/`hpatch_recover` tool records in
+historical captures. Current standalone `hpatch` commands are emitted through `shell`
+and count in shell tool aggregates. Carrier counters do not measure the success or
+failure of those host-executed edits; retained edit receipts own that evidence.
+
 Provider usage is authoritative for model consumption. Local token estimates MUST count decoded
 JSON object keys and scalar values independently, excluding JSON punctuation, field ordering,
 whitespace, and string-escape spelling. Equivalent numeric spellings MUST normalize without losing

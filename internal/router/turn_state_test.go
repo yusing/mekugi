@@ -56,7 +56,7 @@ func TestTurnStateRoundTrip(t *testing.T) {
 				var proxy *mekugiProxy
 				var codec *ctp2Codec
 				if mode != "passthrough" {
-					proxy = newManagedMekugiProxy(t, testTranslator(t, new(int)))
+					proxy = newManagedMekugiProxy(t)
 				}
 				if mode == "ctp2" {
 					codec = mustCTP2Codec(t)

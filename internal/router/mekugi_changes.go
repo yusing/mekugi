@@ -12,8 +12,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-
-	"github.com/yusing/mekugi"
 )
 
 // The index contains identities and application receipts, not another copy of
@@ -38,6 +36,7 @@ type trackedChange struct {
 }
 
 type trackedCall struct {
+	Thread    string `json:",omitempty"` // Empty uses the originating change stream.
 	ID        string
 	Confirmed bool
 }
@@ -184,31 +183,6 @@ func (s *mekugiReplayStore) reserveChange(ctx context.Context, workspace, thread
 	return
 }
 
-func (t *mekugiResponseTransform) changeIDForAttempt(attempt mekugi.AttemptMetadata) (string, error) {
-	store := t.proxy.replayStore
-	if !attempt.Correction {
-		return store.reserveChange(t.ctx, t.directory, t.shellThreadID, attempt.CorrelationID)
-	}
-	if store == nil || attempt.CorrelationID == "" {
-		return "", nil
-	}
-	var id string
-	err := store.locked(t.ctx, func() error {
-		index, err := store.readChangeIndex(t.directory)
-		if err != nil {
-			return err
-		}
-		for candidate, change := range index.Changes {
-			if change.Correlation == attempt.CorrelationID {
-				id = candidate
-				break
-			}
-		}
-		return nil
-	})
-	return id, err
-}
-
 func changeStreamName(index int) string {
 	name := ""
 	for index++; index > 0; index = (index - 1) / 26 {
@@ -245,8 +219,8 @@ func (s *mekugiReplayStore) publishChanges(workspace string, histories map[strin
 			return errors.New("change identity does not match replay record")
 		}
 		if !slices.ContainsFunc(change.Calls, func(call trackedCall) bool { return call.ID == callID }) {
-			change.Calls = append(change.Calls, trackedCall{ID: callID, Confirmed: history.Applied})
-			updates[history.ChangeID] = append(updates[history.ChangeID], trackedCall{ID: callID, Confirmed: history.Applied})
+			change.Calls = append(change.Calls, trackedCall{ID: callID, Thread: history.ExecutingThread, Confirmed: history.Applied})
+			updates[history.ChangeID] = append(updates[history.ChangeID], trackedCall{ID: callID, Thread: history.ExecutingThread, Confirmed: history.Applied})
 			index.Changes[history.ChangeID] = change
 			changed = true
 		}
@@ -304,7 +278,7 @@ func (s *mekugiReplayStore) confirmChanges(ctx context.Context, workspace string
 			}
 			for i := range change.Calls {
 				if change.Calls[i].ID == callID && !change.Calls[i].Confirmed {
-					updates[history.ChangeID] = append(updates[history.ChangeID], trackedCall{ID: callID, Confirmed: true})
+					updates[history.ChangeID] = append(updates[history.ChangeID], trackedCall{ID: callID, Thread: history.ExecutingThread, Confirmed: true})
 					change.Calls[i].Confirmed = true
 					changed = true
 				}
@@ -349,7 +323,7 @@ func (s *mekugiReplayStore) repairChangeCall(workspace, changeID, callID string,
 			break
 		}
 	}
-	change.Calls = slices.Insert(change.Calls, position, trackedCall{ID: callID})
+	change.Calls = slices.Insert(change.Calls, position, trackedCall{ID: callID, Thread: record.History.ExecutingThread})
 	return change, nil
 }
 

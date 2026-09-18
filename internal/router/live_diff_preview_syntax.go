@@ -4,24 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/alecthomas/chroma/v2"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 )
-
-// Decoration only: incomplete corrections must remain visible, not be parsed
-// as executable recovery commands or resolved against private retained state.
-var liveDiffHPatchLexer = chroma.MustNewLexer(&chroma.Config{Name: "HPATCH preview"}, func() chroma.Rules {
-	return chroma.Rules{"root": {
-		{`"(?:\\.|[^"\\])*"?`, chroma.LiteralStringDouble, nil},
-		{`\b(?:target|value|type|add|in|new|mv|rm|resume|retry|accept|repair|shell)\b`, chroma.Keyword, nil},
-		{`\b[1-9][0-9]*:[0-9a-f]{4}\b`, chroma.LiteralNumber, nil},
-		{`<<-?[^\s]+`, chroma.LiteralStringDelimiter, nil},
-		{`(?m)^[a-z]+[0-9]*\b`, chroma.NameLabel, nil},
-		{`\.\.|EOF\b`, chroma.Operator, nil},
-		{`\s+`, chroma.Text, nil},
-		{`.`, chroma.Text, nil},
-	}}
-})
 
 // Display-only syntax boundaries survive transport clipping and never select
 // an interpreter for execution. Offsets are bytes in the displayed Input.
@@ -32,10 +16,7 @@ type liveDiffSourceSpan struct {
 
 // Keep language selection outside the bounded painting window, so scrolling
 // past a selector does not silently turn Python or JavaScript back into Bash.
-func liveDiffScriptSyntax(input string, recovery bool) []liveDiffSourceSpan {
-	if recovery {
-		return []liveDiffSourceSpan{{Path: "stream.hpatch"}}
-	}
+func liveDiffScriptSyntax(input string) []liveDiffSourceSpan {
 	var spans []liveDiffSourceSpan
 	offset := 0
 

@@ -59,7 +59,7 @@ func TestWaitPolicyCatalog(t *testing.T) {
 }
 
 func TestWaitPolicyJSONAndReplay(t *testing.T) {
-	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, proxy, _, _ := newMekugiTestTransform(t)
 	transform.waitPolicies.direct = map[string]waitPolicy{functionToolKey("functions", "wait"): {"yield_time_ms", 300000}}
 	original := `{"cell_id":"cell-1","yield_time_ms":1}`
 	item := map[string]any{"type": "function_call", "id": "item-wait", "call_id": "call-wait", "namespace": "functions", "name": "wait", "arguments": original}
@@ -87,7 +87,7 @@ func TestWaitPolicyJSONAndReplay(t *testing.T) {
 }
 
 func TestWaitPolicyStreamDurableBeforeTerminal(t *testing.T) {
-	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, proxy, _, _ := newMekugiTestTransform(t)
 	directory := t.TempDir()
 	store, err := openMekugiReplayStore(directory)
 	if err != nil {
@@ -179,7 +179,7 @@ if (values[0].yield_time_ms !== 1) throw new Error("mutated caller argument");
 }
 
 func TestWaitPolicyNestedPreparedRequestAndReplay(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	description := testCodeModeDescription + "\n### `write_stdin`\ndeclare const tools: { write_stdin(args: { session_id: number; chars?: string; yield_time_ms?: number }): Promise<unknown>; };\n"
 	workspace := t.TempDir()
 	request, err := parseResponsesRequest(mustMarshalJSON(map[string]any{

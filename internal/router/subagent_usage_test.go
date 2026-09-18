@@ -69,7 +69,7 @@ func TestSubagentObservedUsage(t *testing.T) {
 			}
 			for _, stream := range []bool{false, true} {
 				t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-					proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+					proxy := newManagedMekugiProxy(t)
 					root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
 					child, _ := prepareActivityTest(t, proxy, "child", "c", "r", "/root/usage", nil)
 					root.drainActivity() // The corpus asserts tool activity, not the start notice.

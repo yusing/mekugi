@@ -12,7 +12,7 @@ func TestReceivedReplyIsFullInChildAndRootCommentary(t *testing.T) {
 		t.Run(messageType, func(t *testing.T) {
 			for _, stream := range []bool{false, true} {
 				t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-					proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+					proxy := newManagedMekugiProxy(t)
 					root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
 					body := strings.Repeat("完整 evidence ", 100) + "FINAL DETAIL"
 					envelope := map[string]any{

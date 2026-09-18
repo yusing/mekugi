@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yusing/mekugi"
 	codexinstructions "github.com/yusing/mekugi/contrib/codex"
 	responseevents "github.com/yusing/mekugi/internal/responses"
 )
@@ -23,35 +22,9 @@ const (
 	applyPatchToolName = "apply_patch"
 
 	maxMekugiScriptBytes = 1 << 20
-	maxMekugiPatchBytes  = 16 << 20
 
 	maxMekugiPendingCalls = 128
 )
-
-var (
-	errMekugiCapacity = errors.New("mekugi proxy capacity exceeded")
-	shellArtifactTTL  = time.Hour
-)
-
-type mekugiTranslationResult struct {
-	reviewFiles []mekugi.ReviewFile
-	patch       []byte
-	report      string
-	diagnostic  string
-	rejections  []mekugi.HostRejection
-	failures    []mekugi.HostFailure
-	change      mekugi.HostChange
-	aliases     []mekugi.TargetAlias
-}
-
-type mekugiTranslator interface {
-	Translate(ctx context.Context, directory, script string) (mekugiTranslationResult, error)
-	ToolDescription() string
-}
-
-type inProcessMekugiTranslator struct {
-	dataDirectory string
-}
 
 func mekugiDataDirectory() (string, error) {
 	configDirectory, err := os.UserConfigDir()
@@ -61,45 +34,7 @@ func mekugiDataDirectory() (string, error) {
 	return filepath.Join(configDirectory, "mekugi"), nil
 }
 
-func newInProcessMekugiTranslator(dataDirectory string) mekugiTranslator {
-	return inProcessMekugiTranslator{dataDirectory: dataDirectory}
-}
-
-func (inProcessMekugiTranslator) ToolDescription() string {
-	return mekugi.ToolDescription()
-}
-
-func (t inProcessMekugiTranslator) Translate(ctx context.Context, directory, script string) (mekugiTranslationResult, error) {
-	translated, err := mekugi.TranslateForHostAt(ctx, directory, script, t.dataDirectory)
-	if contextErr := ctx.Err(); contextErr != nil {
-		return mekugiTranslationResult{}, contextErr
-	}
-	if len(translated.Patch) > maxMekugiPatchBytes {
-		return mekugiTranslationResult{}, fmt.Errorf("%w: mekugi translation output exceeds its configured bound", errMekugiCapacity)
-	}
-	return mekugiTranslationResultOf(translated), err
-}
-
-func (t inProcessMekugiTranslator) ReportOutcome(ctx context.Context, stage, outcome string) error {
-	return mekugi.ReportHostOutcome(ctx, t.dataDirectory, stage, outcome)
-}
-
-func mekugiTranslationResultOf(translated mekugi.HostTranslation) mekugiTranslationResult {
-	return mekugiTranslationResult{
-		reviewFiles: translated.ReviewFiles,
-		patch:       translated.Patch,
-		report:      translated.Report,
-		diagnostic:  translated.Diagnostic,
-		rejections:  slices.Clone(translated.Rejections),
-		failures:    slices.Clone(translated.Failures),
-		change:      translated.Change,
-		aliases:     slices.Clone(translated.TargetAliases),
-	}
-}
-
 type mekugiProxy struct {
-	nextHandle             uint64
-	translator             mekugiTranslator
 	registry               *toolRegistry
 	customizedInstructions bool
 	compactModelProtocol   bool
@@ -107,7 +42,6 @@ type mekugiProxy struct {
 	titles                 *sessionTitleCache
 	shellSessions          map[string]*shellSession
 	shellParent            *os.Root
-	shellLeases            sync.WaitGroup
 	memoryCommentary       map[string]map[string]struct{}
 	commentary             *commentaryBroker
 	commentaryEndpoint     string
@@ -129,8 +63,8 @@ type mekugiProxy struct {
 	closed          bool
 }
 
-func newMekugiProxy(translator mekugiTranslator, registry *toolRegistry, customizedInstructions, compactModelProtocol bool, titleCaches ...*sessionTitleCache) *mekugiProxy {
-	if translator == nil || registry == nil {
+func newMekugiProxy(registry *toolRegistry, customizedInstructions, compactModelProtocol bool, titleCaches ...*sessionTitleCache) *mekugiProxy {
+	if registry == nil {
 		return nil
 	}
 	titles := newSessionTitleCache()
@@ -142,7 +76,6 @@ func newMekugiProxy(translator mekugiTranslator, registry *toolRegistry, customi
 	broker := newCommentaryBroker()
 	broker.activity = activity
 	proxy := &mekugiProxy{
-		translator:             translator,
 		registry:               registry,
 		customizedInstructions: customizedInstructions,
 		compactModelProtocol:   compactModelProtocol,
@@ -155,6 +88,12 @@ func newMekugiProxy(translator mekugiTranslator, registry *toolRegistry, customi
 		activity:               activity,
 		sessions:               make(map[string]*mekugiHistorySession),
 		activeSessions:         make(map[string]int),
+	}
+	broker.editPublisher = func(ctx context.Context, workspace, thread, callID string) error {
+		if proxy.replayStore == nil {
+			return errors.New("edit storage unavailable")
+		}
+		return proxy.replayStore.publishEditReceipt(ctx, workspace, thread, callID)
 	}
 	broker.notice = func(category, message string) { proxy.notice("", category, message) }
 	activity.notice = broker.notice
@@ -190,11 +129,6 @@ func (p *mekugiProxy) Close() error {
 	}
 	p.mu.Lock()
 	p.closed = true
-	p.mu.Unlock()
-	// New leases are rejected after closed is set. Existing operations finish
-	// before shutdown removes retained files or closes their shared anchor.
-	p.shellLeases.Wait()
-	p.mu.Lock()
 	defer p.mu.Unlock()
 	var cleanupErr error
 	for _, session := range p.shellSessions {
@@ -627,7 +561,7 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 		transform.Close()
 		return nil, err
 	}
-	projectExecutionContinuations(&mixedOutputProjection{recovery: transform.readHpatchRecovery, success: transform.projectHpatchSuccess}, request, tools, codeModeToolName, visible)
+	projectExecutionContinuations(request, tools, codeModeToolName, visible)
 	if transform.subagentTurn {
 		transform.prepareShellActivity(request.fields["input"])
 	}

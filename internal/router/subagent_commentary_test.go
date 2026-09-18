@@ -2,7 +2,6 @@ package router
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -248,11 +247,7 @@ func newSubagentCommentaryTestTransformWithMetadata(
 	if err != nil {
 		t.Fatal(err)
 	}
-	translator := mekugiTranslatorFunc(func(context.Context, string, string) ([]byte, error) {
-		t.Fatal("unexpected mekugi translation")
-		return nil, nil
-	})
-	proxy := newManagedMekugiProxy(t, translator)
+	proxy := newManagedMekugiProxy(t)
 	proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
 	workspace := t.TempDir()
 	metadata.RequestKind = "turn"

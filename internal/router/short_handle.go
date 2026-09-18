@@ -101,25 +101,3 @@ func (s *mekugiReplayStore) allocateHandlesLocked(count int) ([]string, error) {
 	}
 	return handles, nil
 }
-
-// Proxies without replay storage have only process-local history. The same
-// lifetime applies to their handles; durable proxies always use the disk counter.
-func (p *mekugiProxy) allocateHandles(ctx context.Context, count int) ([]string, error) {
-	if p.replayStore != nil {
-		return p.replayStore.allocateHandles(ctx, count)
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if count < 1 || uint64(count) > ^uint64(0)-p.nextHandle {
-		return nil, errors.New("invalid handle allocation count")
-	}
-	handles := make([]string, count)
-	for index := range handles {
-		handles[index] = shortHandle(p.nextHandle)
-		p.nextHandle++
-	}
-	return handles, nil
-}

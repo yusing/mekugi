@@ -68,7 +68,7 @@ func TestAXDebugWorkerPinsJournalAcrossChildEnvironment(t *testing.T) {
 	t.Parallel()
 	d := featureDebugOutput(t)
 	ctx := context.WithValue(t.Context(), debugContextKey{}, d)
-	registry, err := buildToolRegistryForTest(t, ctx, filepath.Join(t.TempDir(), "data"), testMekugiToolDescription, false)
+	registry, err := buildToolRegistryForTest(t, ctx, filepath.Join(t.TempDir(), "data"), false)
 	if err != nil {
 		t.Fatal(err)
 	}

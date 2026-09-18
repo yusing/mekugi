@@ -163,9 +163,9 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 			t.Fatal("streaming moved the paused captured-diff viewport")
 		}
 		// The preview boundary remains fixed as streamed content grows.
-		const previewTop = 8
-		if !strings.Contains(liveDiffFrameRow(frame, previewTop), "STREAMING PREVIEW") {
-			t.Fatalf("preview moved from the fixed 3:7 split: %q", frame)
+		const previewTop = 16
+		if !strings.Contains(liveDiffFrameRow(frame, previewTop), "STREAMING SCRIPT") {
+			t.Fatalf("preview moved from the fixed 7:3 split: %q", frame)
 		}
 		for row := 2; row < previewTop; row++ {
 			if strings.Contains(liveDiffFrameRow(frame, row), "stream_") {
@@ -177,7 +177,7 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 		t.Fatalf("five streaming-to-visible-frame round trips lagged: %s", elapsed)
 	}
 	// The preview is unscrollable; wheel reports inside it must be ignored.
-	ui.write(t, "\x1b[<65;2;12M")
+	ui.write(t, "\x1b[<65;2;18M")
 	publish("one", 1001)
 	frame := waitTip(1001)
 	if liveDiffFrameRow(frame, 1) != header {
@@ -205,7 +205,7 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	frame = ui.frame(t, func(frame string) bool {
 		return strings.Contains(frame, "\x1b[12;1H") && strings.Contains(frame, "stream_1200")
 	})
-	if !strings.Contains(liveDiffFrameRow(frame, 5), "STREAMING PREVIEW") {
+	if !strings.Contains(liveDiffFrameRow(frame, 9), "STREAMING SCRIPT") {
 		t.Fatal("resize broke the preview height cap")
 	}
 	// A burst must collapse to its newest frame rather than animate its backlog.
@@ -266,21 +266,11 @@ func TestLiveDiffSimulationTerminalReplay(t *testing.T) {
 		if !strings.Contains(liveDiffFrameRow(shellFrame, 16), "STREAMING SCRIPT") {
 			t.Fatal("standalone shell simulation did not use the 7:3 split")
 		}
-		deletedFrame := ui.frame(t, func(frame string) bool {
-			return strings.Contains(frame, "STREAMING PREVIEW") &&
-				strings.Contains(ansi.Strip(frame), "# lifecycle.go deleted")
+		ui.frame(t, func(frame string) bool {
+			return strings.Contains(frame, "STREAMING PREVIEW") && strings.Contains(ansi.Strip(frame), "lifecycle.go")
 		})
-		if strings.Contains(ansi.Strip(deletedFrame), "AuditReady") {
-			t.Fatal("simulated deleted-file preview rendered removed source")
-		}
 		ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "without final newline") })
 		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "rejected as expected") })
-		recoveryFrame := ui.frame(t, func(frame string) bool {
-			return strings.Contains(frame, "STREAMING RECOVERY") && strings.Contains(ansi.Strip(frame), "RECOVERY_TIP")
-		})
-		if !strings.Contains(liveDiffFrameRow(recoveryFrame, 8), "STREAMING RECOVERY") {
-			t.Fatal("recovery simulation did not cover 70% of the body")
-		}
 		ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "INTERRUPTED_TIP") })
 		final := ui.frame(t, func(frame string) bool {
 			return strings.Contains(frame, "SIMULATION: finished") && !strings.Contains(frame, "STREAMING")
@@ -294,58 +284,6 @@ func TestLiveDiffSimulationTerminalReplay(t *testing.T) {
 			t.Fatalf("simulation left temporary state: %v %v", entries, err)
 		}
 	}
-}
-
-func TestLiveDiffTerminalPreviewKeepsUsefulFrameAndStreamsMixedInput(t *testing.T) {
-	workspace := t.TempDir()
-	if err := os.WriteFile(filepath.Join(workspace, "file.go"), []byte("package old\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
-		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
-	})
-	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22, "COLORFGBG=15;0")
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
-	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", mekugiToolName)
-	t.Cleanup(worker.stop)
-	worker.appendDelta("in file.go\ntype \"old\" \"main\"\n")
-	frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "+package main") })
-	if !strings.Contains(frame, liveDiffDarkTheme.foreground(chroma.KeywordNamespace)+"package") {
-		t.Fatalf("terminal preview lacks Go syntax color: %q", frame)
-	}
-	if strings.Contains(frame, "validated or applied") {
-		t.Fatal("redundant disclaimer still rendered")
-	}
-	// The unfinished target cannot resolve. The old worker erased the good
-	// preview and emitted PREVIEW UNAVAILABLE at this point.
-	worker.appendDelta("type \"pack")
-	time.Sleep(150 * time.Millisecond)
-	ui.write(t, "z")
-	frame = ui.frame(t, func(frame string) bool {
-		return strings.Contains(ansi.Strip(frame), "+package main") || strings.Contains(frame, "UNAVAILABLE")
-	})
-	if strings.Contains(frame, "UNAVAILABLE") {
-		t.Fatalf("unfinished target erased useful source: %q", frame)
-	}
-	worker.appendDelta("age\" \"package\"\nshell <<SHELL\nprintf 'SHELL_TIP")
-	ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "SHELL_TIP")
-	})
-	worker.appendDelta("'\nSHELL\nnew after.go\ntype <<PATCH\npackage after\n")
-	ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "package after")
-	})
-	if _, err := os.Stat(filepath.Join(workspace, "after.go")); !os.IsNotExist(err) {
-		t.Fatal("streamed shell suffix was executed")
-	}
-	worker.stop()
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING COMPLETE") })
-	ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
-	ui.quit(t)
 }
 
 func TestLiveDiffTerminalCentersFinalRowAfterPreview(t *testing.T) {
@@ -362,7 +300,7 @@ func TestLiveDiffTerminalCentersFinalRowAfterPreview(t *testing.T) {
 	preview := previewViewFixture("creation", 100)
 	preview.Workspace = workspace
 	broker.publishPreview(preview, false)
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING PREVIEW") })
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING SCRIPT") })
 	id, err := store.reserveChange(t.Context(), workspace, "thread", "create")
 	if err != nil {
 		t.Fatal(err)
@@ -375,8 +313,8 @@ func TestLiveDiffTerminalCentersFinalRowAfterPreview(t *testing.T) {
 		t.Fatal(err)
 	}
 	frame := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FINAL_CHANGED_ROW") })
-	// Six captured rows while preview is visible: the tip fills the last row.
-	if !strings.Contains(liveDiffFrameRow(frame, 7), "FINAL_CHANGED_ROW") {
+	// Fourteen captured rows while preview is visible: the tip fills the last row.
+	if !strings.Contains(liveDiffFrameRow(frame, 15), "FINAL_CHANGED_ROW") {
 		t.Fatalf("split viewport left unused rows below the final change: %q", frame)
 	}
 	broker.publishPreview(liveDiffPreview{ID: preview.ID}, true)
@@ -411,10 +349,10 @@ func TestLiveDiffTerminalPreviewKeepsFixedSplitWithoutRecentring(t *testing.T) {
 		frame := ui.frame(t, func(frame string) bool {
 			return strings.Contains(ansi.Strip(frame), fmt.Sprintf("stream_%04d", size))
 		})
-		if !strings.Contains(liveDiffFrameRow(frame, 18), "STREAMING PREVIEW") {
-			t.Fatalf("preview moved from the fixed 3:7 split: %q", frame)
+		if !strings.Contains(liveDiffFrameRow(frame, 41), "STREAMING SCRIPT") {
+			t.Fatalf("preview moved from the fixed 7:3 split: %q", frame)
 		}
-		if !strings.Contains(liveDiffFrameRow(frame, 17), "80│+new") {
+		if !strings.Contains(liveDiffFrameRow(frame, 40), "80│+new") {
 			t.Fatalf("fixed preview split lost the followed captured tip: %q", frame)
 		}
 	}
@@ -464,7 +402,7 @@ func TestLiveDiffTerminalComposedContextIsNotDuplicated(t *testing.T) {
 
 func TestLiveDiffTerminalStandaloneShellStream(t *testing.T) {
 	calls := 0
-	transform, proxy, _, workspace := newMekugiTestTransform(t, testTranslator(t, &calls))
+	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -532,59 +470,8 @@ func TestLiveDiffTerminalStandaloneShellStream(t *testing.T) {
 	ui.quit(t)
 }
 
-func TestLiveDiffTerminalRecoveryOverlay(t *testing.T) {
-	calls := 0
-	transform, proxy, _, workspace := newMekugiTestTransform(t, testTranslator(t, &calls))
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
-		Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true, "thread": true}},
-	})
-	proxy.autoLiveDiff = &autoLiveDiff{events: broker, requested: true}
-	proxy.autoLiveDiff.enabled.Store(true)
-	liveDiffTestChange(t, store, workspace, transform.threadID, "captured.go", true)
-	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
-	ui.write(t, "g")
-	before := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
-	_, err = transform.TransformSSE(mustTestJSON(t, map[string]any{
-		"type": "response.output_item.added",
-		"item": map[string]any{"type": "custom_tool_call", "id": "recover-item", "call_id": "recover-call",
-			"name": mekugiRecoveryToolName, "input": "", "status": "in_progress"},
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var frame string
-	for _, input := range []string{"maple value <<FIX\n", strings.Repeat("raw correction\n", 100) + "RECOVERY_TIP\n"} {
-		_, err = transform.TransformSSE(mustTestJSON(t, map[string]any{
-			"type": "response.custom_tool_call_input.delta", "item_id": "recover-item", "delta": input,
-		}))
-		if err != nil {
-			t.Fatal(err)
-		}
-		frame = ui.frame(t, func(frame string) bool {
-			return strings.Contains(frame, "STREAMING RECOVERY") && (!strings.Contains(input, "RECOVERY_TIP") || strings.Contains(frame, "RECOVERY_TIP"))
-		})
-	}
-	if !strings.Contains(liveDiffFrameRow(frame, 8), "STREAMING RECOVERY") ||
-		liveDiffFrameRow(frame, 2) != liveDiffFrameRow(before, 2) {
-		t.Fatal("recovery overlay shifted the underlying captured viewport")
-	}
-	ui.write(t, "\x1b[<65;2;12M")
-	transform.Close()
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING COMPLETE") })
-	after := ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
-	if liveDiffFrameRow(after, 2) != liveDiffFrameRow(before, 2) || calls != 0 {
-		t.Fatal("recovery preview scrolled captured content or translated input")
-	}
-	ui.quit(t)
-}
-
 func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
-	for _, tool := range []string{mekugiToolName, "shell", mekugiRecoveryToolName} {
+	for _, tool := range []string{"shell"} {
 		t.Run(tool, func(t *testing.T) {
 			workspace := t.TempDir()
 			store, err := openMekugiReplayStore(t.TempDir())
@@ -596,13 +483,12 @@ func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
 			})
 			ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22, "COLORFGBG=15;0")
 			ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
-			worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", tool)
+			worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
 			t.Cleanup(worker.stop)
 			input, tip, colored := "new stream.go\ntype <<PATCH\npackage main\n"+strings.Repeat("// context\n", 30)+"var tip = 42\n", "var tip", liveDiffDarkTheme.foreground(chroma.KeywordDeclaration)+"var"
 			if tool == "shell" {
 				input, tip, colored = "#!python3\n"+strings.Repeat("# context\n", 30)+"return 42\n", "return 42", liveDiffDarkTheme.foreground(chroma.Keyword)+"return"
-			} else if tool == mekugiRecoveryToolName {
-				input, tip, colored = strings.Repeat("maple target \"context\"\n", 30)+"maple value \"RECOVERY_TIP\"\n", "RECOVERY_TIP", liveDiffDarkTheme.foreground(chroma.Keyword)+"value"
+
 			}
 			worker.appendDelta(input)
 			frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), tip) })
@@ -697,6 +583,55 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 		return strings.Contains(frame, "\x1b[12;1H") && strings.Contains(ansi.Strip(frame), "stream_0200")
 	})
 	broker.publishPreview(second, true)
+	ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
+	ui.quit(t)
+}
+
+func TestLiveDiffTerminalShellHpatchDiff(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "file.txt")
+	if err := os.WriteFile(path, []byte("old\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
+	})
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
+	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
+	defer func() { worker.stop(); <-worker.done }()
+	// Exercise the shell decoder's no-space heredoc form as it appears in the
+	// provider stream, not only the direct decoder fixture.
+	worker.appendDelta("hpatch<<'EDIT'\nin file.txt\ntype \"old\" \"new")
+	frame := ui.frame(t, func(frame string) bool {
+		text := ansi.Strip(frame)
+		return strings.Contains(text, "STREAMING PREVIEW") && strings.Contains(text, "+new")
+	})
+	if strings.Contains(ansi.Strip(frame), "hpatch <<") || !strings.Contains(ansi.Strip(frame), "-old") {
+		t.Fatalf("expected a diff, not shell source: %q", frame)
+	}
+	worker.appendDelta("er")
+	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "+newer") })
+	content, err := os.ReadFile(path)
+	if err != nil || string(content) != "old\n" {
+		t.Fatalf("preview applied an edit: %q, %v", content, err)
+	}
+	worker.appendDelta("\"\nin file.txt\ntype \"target that does not exist\" \"rejected\"\nEDIT\n")
+	frame = ui.frame(t, func(frame string) bool {
+		text := ansi.Strip(frame)
+		return strings.Contains(text, "STREAMING PREVIEW: last valid diff; current edit unavailable") &&
+			strings.Contains(text, "+newer")
+	})
+	text := ansi.Strip(frame)
+	if strings.Contains(text, "hpatch<<") || !strings.Contains(text, "-old") || !strings.Contains(text, "+newer") {
+		t.Fatalf("rejected hpatch suffix replaced the last valid diff with shell source: %q", frame)
+	}
+	worker.stop()
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING COMPLETE") })
 	ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
 	ui.quit(t)
 }

@@ -21,7 +21,7 @@ func TestDownstreamEOFDoesNotBecomeIncompletePatchFailure(t *testing.T) {
 	for _, stop := range []string{"before_input_done", "after_input_done"} {
 		t.Run(stop, func(t *testing.T) {
 			calls := 0
-			transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, &calls))
+			transform, _, _, _ := newMekugiTestTransform(t)
 			added := testMekugiItem()
 			added["status"], added["input"] = "in_progress", ""
 			events := [][]byte{mustTestJSON(t, map[string]any{
@@ -29,7 +29,7 @@ func TestDownstreamEOFDoesNotBecomeIncompletePatchFailure(t *testing.T) {
 			})}
 			if stop == "after_input_done" {
 				events = append(events, mustTestJSON(t, map[string]any{
-					"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testMekugiScript,
+					"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testShellEditSource,
 				}))
 			}
 			disconnected := downstreamWebSocketError(io.EOF)
@@ -40,9 +40,6 @@ func TestDownstreamEOFDoesNotBecomeIncompletePatchFailure(t *testing.T) {
 				t.Fatalf("disconnect became translation failure: %v", err)
 			}
 			wantCalls := 0
-			if stop == "after_input_done" {
-				wantCalls = 1
-			}
 			if calls != wantCalls {
 				t.Fatalf("translation count = %d, want %d", calls, wantCalls)
 			}

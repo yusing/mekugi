@@ -130,7 +130,19 @@ facilities for interactive input or termination.
 
 ## HPATCH/2
 
-It provides convenience for dependent edit/command chains by supporting mixed script.
+Run `hpatch [SCRIPT]` through `functions.shell`; omit SCRIPT to read the edit from stdin.
+It must be a standalone shell command, not combined with other commands.
+
+```sh
+hpatch <<'EDIT'
+in notes.txt
+type "draft" "ready"
+EDIT
+```
+
+Arguments, stdin, quoting, heredoc expansion, command substitution, and redirection use
+normal shell semantics. Run dependent checks in subsequent shell calls.
+
 
 ### Files, targets, and values
 
@@ -180,44 +192,10 @@ checks and targeted indentation correction, not full formatting; preserve requir
 Other languages are not formatted. Reports contain final hashes, changed blocks, and line shifts;
 reuse them rather than rereading solely because formatting moved source.
 
-### Shell-in-script
-
-With Code Mode available, use `shell go test ./...` for one physical raw-source line, or a
-heredoc for multiline source or source containing `<<`.
-Shell text in edit values remains data.
-
-Shell commands may surround edit segments. Begin every edit segment with `in` or `new`; selection
-and pending edits do not cross shell boundaries. Each shell segment accepts one program with
-independent state. Native-only clients use separate hpatch and shell calls. Interactive programs
-and explicit shell batches also remain separate.
-
-All syntax and shell headers validate before execution. Each edit segment then validates against its
-starting files before Codex authorization/application. A stale target, nonzero shell exit, refusal,
-or cancellation stops the suffix. Completed
-edits and shell effects are not rolled back; reports describe completed segments, not later shell changes. A preflight rejection applies nothing.
-After execution starts, inspect uncertain effects; missing confirmation does not mean rollback.
-
-Do not replay a mixed script or resend its suffix. Resolve the previous Code Mode cell and inspect
-live work, files, and uncertain effects, then use its retained handle:
-
-- `resume HANDLE`: continue pending work.
-- `resume HANDLE retry`: retry the failed segment after reconciliation; an optional next segment of
-  the same kind replaces it.
-- `resume HANDLE repair`: apply one workspace edit segment, then retry the failed segment and suffix.
-- `resume HANDLE accept`: continue after externally establishing intended state and resolving native
-  work; this records reconciliation, not application success.
-
-Successful recovery runs the retained suffix and revalidates remaining targets. A failed repair
-stays under the same handle. Cancelling a wait does not prove its process stopped. Handles are
-thread-scoped, expire one hour after creation without renewal, and end at router shutdown;
-invalid handles execute nothing.
-
 ### Rejected-script recovery
 
-Use `functions.hpatch_recover` for the latest rejected script, preserving unrelated text:
+Use `hpatch --recover HANDLE [SCRIPT]` with the rejected edit's recovery handle; omit SCRIPT to read corrections from stdin:
 
-- For a mixed script whose preflight failed before carrier retention, use only script-text
-  mutations; once preflight succeeds, use its retained continuation.
 - For a wholly row-stale rejection, submit every diagnostic `HANDLE TARGET`, for example
   `maple "return oldResult, nil"`.
 - For a parsed command's target or value, use `HANDLE target TARGET` or `HANDLE value VALUE`; values use normal

@@ -8,7 +8,7 @@ import (
 )
 
 func TestGrokShellStreamDurableReplay(t *testing.T) {
-	transform, proxy, _, workspace := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

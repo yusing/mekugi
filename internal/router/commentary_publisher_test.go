@@ -199,7 +199,7 @@ func TestPublishJournalOnceReportsPublicationFailure(t *testing.T) {
 func TestConcurrentSessionDrainsOnlyOriginatingShellCommentary(t *testing.T) {
 	for _, terminal := range []bool{false, true} {
 		t.Run(map[bool]string{false: "request", true: "terminal"}[terminal], func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			const sessionID = "session"
 			for range 2 {
 				if err := proxy.activateSession(sessionID); err != nil {
@@ -261,7 +261,7 @@ func TestShellRouteKeepsCleanCommandWithoutDefaultCommentary(t *testing.T) {
 		{name: "commentary", input: "commentary Running check\nprintf ok"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+			transform, proxy, _, _ := newMekugiTestTransform(t)
 			proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
 			response, err := transform.TransformJSON(mustTestJSON(t, map[string]any{
 				"status": "completed", "output": []any{map[string]any{
@@ -305,10 +305,10 @@ func TestShellCommentaryPreservesDirectCommands(t *testing.T) {
 			var transform *mekugiResponseTransform
 			var proxy *mekugiProxy
 			if native {
-				proxy = newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				proxy = newManagedMekugiProxy(t)
 				transform, _ = newNativeMekugiTestTransformWithProxy(t, proxy)
 			} else {
-				transform, proxy, _, _ = newMekugiTestTransform(t, testTranslator(t, new(int)))
+				transform, proxy, _, _ = newMekugiTestTransform(t)
 			}
 			proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
 			const command = "mktemp -d -t mekugi-shell.XXXXXXXXXX"
@@ -364,7 +364,7 @@ func shellCommentaryTestItem() map[string]any {
 
 func newRuntimeCommentaryTransform(t *testing.T) (*mekugiResponseTransform, *mekugiProxy) {
 	t.Helper()
-	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, proxy, _, _ := newMekugiTestTransform(t)
 	proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
 	return transform, proxy
 }
@@ -484,7 +484,7 @@ func TestUnhandedRuntimeCommentaryRouteIsCancelled(t *testing.T) {
 	_, err := transform.TransformJSON(mustTestJSON(t, map[string]any{
 		"status": "completed", "output": []any{
 			shellCommentaryTestItem(),
-			map[string]any{"type": "custom_tool_call", "name": mekugiToolName, "input": testMekugiScript},
+			map[string]any{"type": "custom_tool_call", "name": "shell", "input": testShellEditSource},
 		},
 	}))
 	if err == nil {
@@ -527,7 +527,7 @@ func TestShellJournalPublisherValidatesBeforeMutation(t *testing.T) {
 }
 
 func TestShellJournalConcurrentIDsAndPinnedQuestion(t *testing.T) {
-	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, proxy, _, _ := newMekugiTestTransform(t)
 	var expectedMu sync.Mutex
 	expected := make(map[string]string)
 	publish := proxy.commentary.journalPublisher

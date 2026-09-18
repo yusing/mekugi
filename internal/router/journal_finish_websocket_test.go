@@ -22,7 +22,7 @@ func TestJournalFinishWebSocketDoesNotContinueOrFinishLaterTurn(t *testing.T) {
 				}
 				ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 				defer cancel()
-				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				proxy := newManagedMekugiProxy(t)
 				var storeErr error
 				proxy.replayStore, storeErr = openMekugiReplayStore(t.TempDir())
 				if storeErr != nil {

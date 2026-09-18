@@ -77,7 +77,7 @@ func TestCaptureShellMisuseAndInstructionRewrite(t *testing.T) {
 					}))
 					t.Cleanup(upstream.Close)
 					provider := captureReplayProvider{client: &http.Client{Transport: recorder.Transport(http.DefaultTransport)}, url: upstream.URL}
-					proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+					proxy := newManagedMekugiProxy(t)
 					proxy.customizedInstructions = true
 					headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 					handler := recorder.Handler(debug.handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

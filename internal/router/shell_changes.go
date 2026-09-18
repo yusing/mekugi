@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/hpatchsyntax"
 	"mvdan.cc/sh/v3/interp"
 )
 
@@ -96,16 +95,6 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 }
 
 func trackedStatus(history mekugiHistory, confirmed bool) string {
-	if history.TranslationError == "" &&
-		(history.ToolName == mekugiToolName || history.ToolName == mekugiRecoveryToolName) {
-		// Carrier kind identifies transport, not whether this retained script
-		// hands off a mixed execution plan. Use the same framing owner as translation.
-		script := history.recoveryBaseline()
-		_, mixed, _ := hpatchsyntax.SplitShell(script)
-		if mixed || strings.HasPrefix(strings.TrimSpace(script), "resume ") {
-			return "execution plan (see segment attempts)"
-		}
-	}
 	switch {
 	case history.TranslationError != "":
 		return "rejected"
@@ -173,10 +162,6 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			} else {
 				fmt.Fprintf(&output, "attempt %d %s\n", position+1, trackedStatus(history, call.Confirmed))
 			}
-			retained := history.Applied && strings.HasPrefix(strings.TrimLeft(history.recoveryBaseline(), "\r\n"), "in @shell/")
-			if retained {
-				output.WriteString("scope: retained shell script, not workspace files\n")
-			}
 			if options.view == "history" {
 				fmt.Fprintf(&output, "%s input:\n%s\n", history.ToolName, history.Script)
 				if history.Evaluated != "" {
@@ -193,7 +178,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			}
 			var summaryFiles []mekugi.ReviewFile
 			for _, file := range history.ReviewFiles {
-				if len(options.paths) > 0 && !changePathMatches(options, file.BeforePath, retained) && !changePathMatches(options, file.AfterPath, retained) {
+				if len(options.paths) > 0 && !changePathMatches(options, file.BeforePath) && !changePathMatches(options, file.AfterPath) {
 					continue
 				}
 				matched = true
@@ -223,7 +208,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 
 // Match lexical workspace-relative and absolute spellings without consulting
 // current files: historical paths may have been moved or deleted since capture.
-func changePathMatches(options changeReadOptions, recorded string, retained bool) bool {
+func changePathMatches(options changeReadOptions, recorded string) bool {
 	if recorded == "" {
 		return false
 	}
@@ -234,7 +219,7 @@ func changePathMatches(options changeReadOptions, recorded string, retained bool
 		return filepath.Clean(path)
 	}
 	for _, path := range options.paths {
-		if path == recorded || (!retained && options.workspace != "" && resolve(path) == resolve(recorded)) {
+		if path == recorded || (options.workspace != "" && resolve(path) == resolve(recorded)) {
 			return true
 		}
 	}

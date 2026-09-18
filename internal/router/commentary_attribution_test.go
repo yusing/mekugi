@@ -11,7 +11,7 @@ import (
 func TestChildCommentaryAttributionJSONAndSSE(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
 			workspace := t.TempDir()
 			prepare := func(session, thread, author, kind string) *mekugiResponseTransform {

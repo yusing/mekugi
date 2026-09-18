@@ -5,20 +5,11 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/yusing/mekugi"
 )
 
 func recoverScriptForTest(ctx context.Context, rejectedScript, payload string) (string, error) {
 	recovered, err := recoverScriptDetailed(ctx, rejectedScript, payload, testRecoveryHandles(rejectedScript))
 	return recovered.script, err
-}
-
-func TestMekugiRecoveryDescriptionIsNonInstructional(t *testing.T) {
-	const want = "Correction of the latest rejected HPATCH/2 script. Invalid correction leaves the retained script and workspace unchanged."
-	if mekugiRecoveryDescription != want {
-		t.Fatalf("mekugiRecoveryDescription = %q, want %q", mekugiRecoveryDescription, want)
-	}
 }
 
 func testRecoveryHandles(script string) []string {
@@ -266,38 +257,4 @@ func TestRecoverScriptHonorsContext(t *testing.T) {
 	if got, err := recoverScriptForTest(ctx, script, payload); err == nil || got != "" {
 		t.Fatalf("cancelled context = %q, %v", got, err)
 	}
-}
-
-func TestRecoveryGrammarContainsHandleAndOrdinaryTarget(t *testing.T) {
-	for _, want := range []string{
-		`start: _blank_line* (corrections | mutations) _blank_line*`,
-		`recovery: HANDLE SP target`,
-		`HANDLE: /[a-z]+[0-9]*/`,
-	} {
-		if !strings.Contains(mekugiRecoveryGrammar, want) {
-			t.Fatalf("recovery grammar does not contain %q", want)
-		}
-	}
-}
-
-func TestRecoveryGrammarMirrorsPublicMultilineTargetTerminal(t *testing.T) {
-	for _, name := range []string{"TARGET_QUOTED", "QUOTED", "HEREDOC_MARKER", "HEREDOC_CONTENT"} {
-		public := grammarTerminalLine(t, mekugi.ToolGrammar(), name)
-		recovery := grammarTerminalLine(t, mekugiRecoveryGrammar, name)
-		if recovery != public {
-			t.Fatalf("recovery %s = %q, public = %q", name, recovery, public)
-		}
-	}
-}
-
-func grammarTerminalLine(t *testing.T, grammar, name string) string {
-	t.Helper()
-	prefix := name + ": "
-	for line := range strings.SplitSeq(grammar, "\n") {
-		if strings.HasPrefix(line, prefix) {
-			return line
-		}
-	}
-	t.Fatalf("%s terminal not found", name)
-	return ""
 }

@@ -12,7 +12,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/yusing/mekugi/internal/hpatchsyntax"
 	"github.com/yusing/mekugi/internal/verifiedrow"
 )
 
@@ -25,14 +24,6 @@ import (
 type Workspace struct {
 	Root *os.Root
 	CWD  string
-}
-
-// ValidateScriptSyntax checks a complete edit script without reading files,
-// resolving targets, or evaluating commands. It does not accept routed shell
-// frames; hosts validate each edit segment separately.
-func ValidateScriptSyntax(script string) error {
-	_, err := parse(script)
-	return err
 }
 
 // EditText applies target-bearing HPATCH mutations to an in-memory immutable
@@ -175,187 +166,6 @@ type TargetAlias struct {
 	After  string
 }
 
-// TargetAliasRelation describes an emitted row target's coordinate relation to
-// a confirmed prior replacement target on the same path. It contains no row
-// hashes or target text.
-type TargetAliasRelation string
-
-const (
-	TargetAliasRelationNone      TargetAliasRelation = "none"
-	TargetAliasRelationExact     TargetAliasRelation = "exact"
-	TargetAliasRelationContains  TargetAliasRelation = "contains"
-	TargetAliasRelationContained TargetAliasRelation = "contained"
-	TargetAliasRelationOverlap   TargetAliasRelation = "overlap"
-)
-
-// TargetAliasDiagnostic is transient alias-rewrite evidence for one row-target
-// command. Rewritten is true only when the complete target, including hashes,
-// followed a confirmed alias. Relation compares inclusive row coordinates only.
-type TargetAliasDiagnostic struct {
-	Command   int
-	Rewritten bool
-	Relation  TargetAliasRelation
-}
-
-// RewriteTargetAliases updates exact line and range targets through successful
-// prior replacements. It preserves values and framing and performs no filesystem access.
-func RewriteTargetAliases(script string, aliases []TargetAlias) (string, error) {
-	rewritten, _, err := RewriteTargetAliasesWithCommands(script, aliases)
-	return rewritten, err
-}
-
-// RewriteTargetAliasesWithCommands also returns the 1-based command numbers
-// whose targets changed. The command numbers let hosts attribute evaluator
-// rejections without retaining target content.
-func RewriteTargetAliasesWithCommands(script string, aliases []TargetAlias) (string, []int, error) {
-	rewritten, diagnostics, err := RewriteTargetAliasesWithDiagnostics(script, aliases)
-	if err != nil {
-		return "", nil, err
-	}
-	commands := make([]int, 0, len(diagnostics))
-	for _, diagnostic := range diagnostics {
-		if diagnostic.Rewritten {
-			commands = append(commands, diagnostic.Command)
-		}
-	}
-	return rewritten, commands, nil
-}
-
-// RewriteTargetAliasesWithDiagnostics also returns privacy-safe, transient
-// coordinate relations for row-target commands. It does not retain paths,
-// targets, hashes, values, or other script content.
-func RewriteTargetAliasesWithDiagnostics(script string, aliases []TargetAlias) (string, []TargetAliasDiagnostic, error) {
-	if len(aliases) == 0 {
-		return script, nil, nil
-	}
-	program, err := parse(script)
-	if err != nil {
-		return "", nil, err
-	}
-	lines := hpatchsyntax.SplitPhysicalLines(script)
-	activePath := ""
-	var diagnostics []TargetAliasDiagnostic
-	for commandIndex, command := range program.instructions {
-		switch command.operation {
-		case "in", "new":
-			activePath = command.path
-		case "mv":
-			activePath = command.path
-		case "rm":
-			activePath = ""
-		case "type", "add":
-			if command.target.kind != targetLine && command.target.kind != targetRange {
-				continue
-			}
-			diagnostic := TargetAliasDiagnostic{
-				Command:  commandIndex + 1,
-				Relation: targetAliasRelation(activePath, command.target, aliases),
-			}
-			before := renderRowTarget(command.target)
-			after := before
-			for _, alias := range aliases {
-				if alias.Path == activePath && alias.Before == after {
-					after = alias.After
-				}
-			}
-			if after == before {
-				diagnostics = append(diagnostics, diagnostic)
-				continue
-			}
-			diagnostic.Rewritten = true
-			lineIndex := command.line - 1
-			if lineIndex < 0 || lineIndex >= len(lines) {
-				return "", nil, fmt.Errorf("command source line %d is outside script", command.line)
-			}
-			header := lines[lineIndex].Text
-			operationEnd := len(command.operation)
-			if len(header) <= operationEnd || header[operationEnd] != ' ' {
-				return "", nil, fmt.Errorf("command source line %d has unexpected framing", command.line)
-			}
-			operand := operationEnd + 1
-			if !strings.HasPrefix(header[operand:], before) {
-				return "", nil, fmt.Errorf("command source line %d target changed during parsing", command.line)
-			}
-			boundary := operand + len(before)
-			if boundary < len(header) && header[boundary] != ' ' && header[boundary] != '\t' {
-				return "", nil, fmt.Errorf("command source line %d target boundary is invalid", command.line)
-			}
-			lines[lineIndex].Text = header[:operand] + after + header[boundary:]
-			diagnostics = append(diagnostics, diagnostic)
-		}
-	}
-	var rewritten strings.Builder
-	for _, line := range lines {
-		rewritten.WriteString(line.Text)
-		rewritten.WriteString(line.Terminator)
-	}
-	if _, err := parse(rewritten.String()); err != nil {
-		return "", nil, fmt.Errorf("rewriting target aliases: %w", err)
-	}
-	return rewritten.String(), diagnostics, nil
-}
-
-// targetAliasRelation determines the relation between a target and prior aliases.
-func targetAliasRelation(path string, target targetSpec, aliases []TargetAlias) TargetAliasRelation {
-	relation := TargetAliasRelationNone
-	for _, alias := range aliases {
-		if alias.Path != path {
-			continue
-		}
-		prior, trailing, err := parseTarget(1, alias.Before, false)
-		if err != nil || strings.TrimSpace(trailing) != "" ||
-			(prior.kind != targetLine && prior.kind != targetRange) {
-			continue
-		}
-		candidate := rowSpanRelation(target, prior)
-		if targetAliasRelationRank(candidate) > targetAliasRelationRank(relation) {
-			relation = candidate
-		}
-	}
-	return relation
-}
-
-// rowSpanRelation computes the spatial relation between two row targets.
-func rowSpanRelation(target, prior targetSpec) TargetAliasRelation {
-	targetStart, targetEnd := target.start.line, target.start.line
-	if target.kind == targetRange {
-		targetEnd = target.end.line
-	}
-	priorStart, priorEnd := prior.start.line, prior.start.line
-	if prior.kind == targetRange {
-		priorEnd = prior.end.line
-	}
-	if targetEnd < targetStart || priorEnd < priorStart || targetEnd < priorStart || priorEnd < targetStart {
-		return TargetAliasRelationNone
-	}
-	switch {
-	case targetStart == priorStart && targetEnd == priorEnd:
-		return TargetAliasRelationExact
-	case targetStart >= priorStart && targetEnd <= priorEnd:
-		return TargetAliasRelationContained
-	case targetStart <= priorStart && targetEnd >= priorEnd:
-		return TargetAliasRelationContains
-	default:
-		return TargetAliasRelationOverlap
-	}
-}
-
-// targetAliasRelationRank returns the priority rank of an alias relation.
-func targetAliasRelationRank(relation TargetAliasRelation) int {
-	switch relation {
-	case TargetAliasRelationExact:
-		return 4
-	case TargetAliasRelationContained:
-		return 3
-	case TargetAliasRelationContains:
-		return 2
-	case TargetAliasRelationOverlap:
-		return 1
-	default:
-		return 0
-	}
-}
-
 // Apply evaluates the complete script before staging and applying its changes.
 // Callers must coordinate writers as described by Workspace. Application uses
 // ordered filesystem operations and rollback attempts, not a crash-atomic or
@@ -378,16 +188,16 @@ func Apply(ctx context.Context, workspace Workspace, script string) error {
 // command. It intentionally excludes source text, diagnostics, and repair
 // context so hosts can retain it as telemetry without retaining edit content.
 type HostRejection struct {
-	Command             int                 `json:"command"`
-	SourceLine          int                 `json:"source_line"`
-	Operation           string              `json:"operation"`
-	Target              string              `json:"target,omitempty"`
-	TargetAliasRelation TargetAliasRelation `json:"target_alias_relation,omitempty"`
-	Reason              string              `json:"reason"`
-	Path                string              `json:"path,omitempty"`
-	GeneratedLine       int                 `json:"generated_line,omitempty"`
-	GeneratedColumn     int                 `json:"generated_column,omitempty"`
-	ValueLine           int                 `json:"value_line,omitempty"`
+	Command             int    `json:"command"`
+	SourceLine          int    `json:"source_line"`
+	Operation           string `json:"operation"`
+	Target              string `json:"target,omitempty"`
+	TargetAliasRelation string `json:"target_alias_relation,omitempty"`
+	Reason              string `json:"reason"`
+	Path                string `json:"path,omitempty"`
+	GeneratedLine       int    `json:"generated_line,omitempty"`
+	GeneratedColumn     int    `json:"generated_column,omitempty"`
+	ValueLine           int    `json:"value_line,omitempty"`
 }
 
 // HostOutcome identifies the furthest lifecycle stage reached by one host request.
@@ -478,6 +288,27 @@ func ApplyForHost(ctx context.Context, workspace Workspace, script, dataDirector
 		failureStage = "evaluated"
 	} else if err = ctx.Err(); err == nil && len(changes) != 0 {
 		if err = commitChanges(changes, rootFileOperations{root: filesystem.root}); err != nil {
+			err = fmt.Errorf("changing %s: %w", describePaths(changes), err)
+			failureStage = "applied"
+		}
+	}
+	return finishHostChange(ctx, dataDirectory, script, result, failureStage, err, true)
+}
+
+// ApplyForHostAt evaluates and applies a script relative to directory using the
+// host process's filesystem authority. Like ApplyForHost, it evaluates the entire
+// edit before committing and returns diagnostics for partial application failures.
+func ApplyForHostAt(ctx context.Context, directory, script, dataDirectory string) (HostTranslation, error) {
+	if ctx == nil {
+		return HostTranslation{}, fmt.Errorf("context is nil")
+	}
+	changes, filesystem, report, aliases, err := evaluateScriptAt(ctx, directory, script)
+	result := hostTranslationResult(changes, report, aliases, err == nil)
+	failureStage := ""
+	if err != nil {
+		failureStage = "evaluated"
+	} else if err = ctx.Err(); err == nil && len(changes) != 0 {
+		if err = commitChanges(changes, hostFileOperations{filesystem: filesystem}); err != nil {
 			err = fmt.Errorf("changing %s: %w", describePaths(changes), err)
 			failureStage = "applied"
 		}

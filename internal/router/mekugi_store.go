@@ -33,13 +33,12 @@ type mekugiReplayStore struct {
 	maxCommentaryBytes int64
 }
 type replayRecord struct {
-	Version             int
-	Workspace           string
-	CallID              string
-	Commentary          bool
-	CaptureOrder        uint64 `json:",omitzero"`
-	HpatchSuccessDigest string `json:",omitempty"`
-	History             mekugiHistory
+	Version      int
+	Workspace    string
+	CallID       string
+	Commentary   bool
+	CaptureOrder uint64 `json:",omitzero"`
+	History      mekugiHistory
 }
 
 // Keep request-local state out of immutable replay comparisons as well as JSON.
@@ -189,9 +188,6 @@ func (s *mekugiReplayStore) read(workspace, callID string, commentary bool) (rep
 	if err := dec.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return r, false, errors.New("trailing replay record data")
 	}
-	if r.HpatchSuccessDigest != "" && !validHpatchSuccessDigest(r.HpatchSuccessDigest) {
-		return r, false, errors.New("invalid hpatch success receipt")
-	}
 	if r.Version != 1 || r.Workspace != workspace || r.CallID != callID || r.Commentary != commentary {
 		return r, false, errors.New("replay record identity/version mismatch")
 	}
@@ -311,12 +307,6 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 	}
 	if exists {
 		r.CaptureOrder = previous.CaptureOrder
-		if previous.HpatchSuccessDigest != "" {
-			if r.HpatchSuccessDigest != "" && r.HpatchSuccessDigest != previous.HpatchSuccessDigest {
-				return errors.New("conflicting hpatch success receipt")
-			}
-			r.HpatchSuccessDigest = previous.HpatchSuccessDigest
-		}
 		r.History, err = mergeReplayHistory(previous.History, r.History)
 		if err != nil {
 			return err

@@ -10,7 +10,7 @@
     "base": "Task-owned empty directory represented by the SHA-256 digest of an empty byte stream. It has no repository or history.",
     "qualification": "Only the empty base failure, intended hidden library grader discriminator, and runner-owned commentary evidence are qualified.",
     "language": "Go",
-    "task_type": "exhaustive router commentary coverage",
+    "task_type": "shell editing and journal publication coverage",
     "difficulty": "easy"
   },
   "runtime": {
@@ -23,37 +23,36 @@
     "profiles": {
       "operations": {
         "messages": [
-          {"kind": "exact", "value": "Applying the requested changes.", "minimum": 2},
-          {"kind": "exact", "value": "Using hpatch_recover.", "minimum": 1}
+          {"kind": "regex", "value": "coverage:bash", "minimum": 1},
+          {"kind": "regex", "value": "coverage:recovered", "minimum": 1},
+          {"kind": "regex", "value": "coverage:posix", "minimum": 1},
+          {"kind": "regex", "value": "coverage:code-mode", "minimum": 1}
         ],
         "commands": [
-          {"kind": "contains", "value": "commentary coverage:bash", "minimum": 1},
-          {"kind": "contains", "value": "commentary coverage:posix", "minimum": 1},
+          {"kind": "contains", "value": "hpatch ", "minimum": 2},
+          {"kind": "contains", "value": "hpatch --recover ", "minimum": 1},
+          {"kind": "contains", "value": "journal add coverage:bash", "minimum": 1},
+          {"kind": "contains", "value": "journal add coverage:posix", "minimum": 1},
           {"kind": "contains", "value": "coverage:exec-complete", "minimum": 1},
           {"kind": "regex", "value": "coverage(?:%3A|:)code-mode", "minimum": 1}
         ],
         "items": {
-          "command_execution": 4,
-          "file_change": 2
+          "command_execution": 7
         }
       },
       "reporting": {
         "messages": [
-          {"kind": "exact", "value": "Using report_issue.", "minimum": 1}
+          {"kind": "regex", "value": "coverage:reported", "minimum": 1}
         ]
       },
       "collaboration": {
-        "messages": [
-          {"kind": "regex", "value": "^Starting subagent\\.\\nRole: benchmark_worker\\nModel: gpt-5\\.6-sol\\nReasoning effort: high$", "minimum": 1},
-          {"kind": "regex", "value": "^Response from /root/implementation:\\nverification: exhaustive commentary coverage passed$", "minimum": 1}
-        ],
         "items": {
           "collab_tool_call": 1
         }
       },
       "terminal": {
         "messages": [
-          {"kind": "regex", "value": "^Tokens: i=[0-9]+, ci=[0-9]+, o=[0-9]+, r=[0-9]+$", "minimum": 1}
+          {"kind": "regex", "value": "Tokens for this session\\n\\n\\| Category \\| Tokens \\| API USD \\|", "minimum": 1}
         ]
       }
     },

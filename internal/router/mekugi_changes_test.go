@@ -65,79 +65,6 @@ func TestTrackedChangeConcurrentReservation(t *testing.T) {
 	workers.Wait()
 }
 
-func TestTrackedRecoveryReadAfterRestart(t *testing.T) {
-	t.Parallel()
-	transform, proxy, _, workspace := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
-	storeDirectory := t.TempDir()
-	store, err := openMekugiReplayStore(storeDirectory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	proxy.replayStore = store
-	file := filepath.Join(workspace, "file.txt")
-	if err := os.WriteFile(file, []byte("old\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	first, err := transform.translate("original", "in file.txt\ntype \"missing\" \"new\"\n", nil)
-	if err != nil || first.ChangeID != "amber1" || !strings.HasPrefix(first.TranslationError, "change amber1\n") {
-		t.Fatalf("first = %+v, %v", first, err)
-	}
-	invalid, err := transform.translateRecovery("invalid", `type "not present" "old"`, nil)
-	if err != nil || invalid.ChangeID != first.ChangeID || !invalid.Unevaluated {
-		t.Fatalf("invalid = %+v, %v", invalid, err)
-	}
-	fixed, err := transform.translateRecovery("fixed", `type "missing" "old"`, nil)
-	if err != nil || fixed.ChangeID != first.ChangeID || !strings.HasPrefix(fixed.Report, "change amber1\n") {
-		t.Fatalf("fixed = %+v, %v", fixed, err)
-	}
-	if err := transform.commitHistory(); err != nil {
-		t.Fatal(err)
-	}
-	store, err = openMekugiReplayStore(storeDirectory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	options := changeReadOptions{workspace: workspace, ids: []string{first.ChangeID}}
-	text, err := store.readChanges(t.Context(), options)
-	if err != nil || !strings.Contains(text, "attempts=3") || !strings.Contains(text, "application unconfirmed") ||
-		!strings.Contains(text, "-old\n+new\n") || strings.Contains(text, "missing") {
-		t.Fatalf("read = %q, %v", text, err)
-	}
-	// A later edit must not change captured review content.
-	if err := os.WriteFile(file, []byte("someone else's edit\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	again, err := store.readChanges(t.Context(), options)
-	if err != nil || again != text {
-		t.Fatalf("unstable read: %q, %v", again, err)
-	}
-	proxy.replayStore = store
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
-		"input": []any{map[string]any{"type": "custom_tool_call_output", "call_id": "fixed", "output": fixed.Report}},
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := proxy.reconcileVisibleInput(t.Context(), &request, workspace, "reader-agent"); err != nil {
-		t.Fatal(err)
-	}
-	confirmed, err := store.readChanges(t.Context(), options)
-	if err != nil || !strings.Contains(confirmed, "attempt 3 applied") {
-		t.Fatalf("confirmation: %q, %v", confirmed, err)
-	}
-	options.view = "history"
-	full, err := store.readChanges(t.Context(), options)
-	if err != nil || !strings.Contains(full, `type "missing" "new"`) ||
-		!strings.Contains(full, `type "not present" "old"`) || !strings.Contains(full, "evaluated script:") ||
-		strings.Count(full, "-old\n+new\n") != 1 {
-		t.Fatalf("history = %q, %v", full, err)
-	}
-	options.workspace = t.TempDir()
-	if _, err := store.readChanges(t.Context(), options); err == nil {
-		t.Fatal("read another workspace's change")
-	}
-}
-
 func TestTrackedChangesNoOpPendingAndMissing(t *testing.T) {
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -199,16 +126,18 @@ func TestTrackedChangeCursorAndFilters(t *testing.T) {
 
 func TestTrackedChangeReconciliationIsAtomic(t *testing.T) {
 	t.Parallel()
-	transform, proxy, _, workspace := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
+	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	proxy.replayStore = store
-	history, err := transform.translate("one", "new f.txt\ntype \"new\\n\"\n", nil)
+	id, err := store.reserveChange(t.Context(), workspace, transform.threadID, "one")
 	if err != nil {
 		t.Fatal(err)
 	}
+	history := mekugiHistory{ToolName: mekugiToolName, Script: testMekugiScript, Patch: testTranslatedPatch, Report: testMekugiReport, ChangeID: id, CorrelationID: "one", CarrierName: "exec"}
+	transform.recordLocal("one", &history)
 	if err := transform.commitHistory(); err != nil {
 		t.Fatal(err)
 	}
@@ -244,49 +173,20 @@ func TestTrackedChangeQuota(t *testing.T) {
 	}
 }
 
-func TestTrackedRecoveryNeverAllocatesAChain(t *testing.T) {
-	t.Parallel()
-	transform, proxy, _, _ := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	proxy.replayStore = store
-	orphan, err := transform.translateRecovery("orphan", `type "a" "b"`, nil)
-	if err != nil || orphan.ChangeID != "" || !orphan.Unevaluated {
-		t.Fatalf("orphan = %+v, %v", orphan, err)
-	}
-	first, err := transform.translate("first", "new f.txt\ntype \"ok\\n\"\n", nil)
-	if err != nil || first.ChangeID != "amber1" {
-		t.Fatalf("first = %+v, %v", first, err)
-	}
-	blocked, err := transform.translateRecovery("blocked", `type "ok" "new"`, nil)
-	if err != nil || blocked.ChangeID != first.ChangeID || !blocked.Unevaluated {
-		t.Fatalf("blocked = %+v, %v", blocked, err)
-	}
-	second, err := transform.translate("second", "new g.txt\ntype \"ok\\n\"\n", nil)
-	if err != nil || second.ChangeID != "amber2" {
-		t.Fatalf("second = %+v, %v", second, err)
-	}
-}
-
 func TestTrackedStreamsUseThreadsNotTransportSessions(t *testing.T) {
 	t.Parallel()
-	transform, proxy, _, _ := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxy.replayStore = store
 	for _, test := range []struct{ thread, session, call, want string }{
 		{"parent", "shared", "one", "amber1"},
 		{"child", "shared", "two", "apple1"},
 		{"parent", "changed", "three", "amber2"},
 	} {
-		transform.shellThreadID, transform.sessionID = test.thread, test.session
-		history, err := transform.translate(test.call, "", nil)
-		if err != nil || history.ChangeID != test.want {
-			t.Fatalf("%+v: %+v, %v", test, history, err)
+		id, err := store.reserveChange(t.Context(), "/w", test.thread, test.call)
+		if err != nil || id != test.want {
+			t.Fatalf("%+v: %s, %v", test, id, err)
 		}
 	}
 }
@@ -358,31 +258,8 @@ func TestTrackedChangeCorruptCounterCannotReplaceID(t *testing.T) {
 	}
 }
 
-func TestTrackedRetainedScriptScope(t *testing.T) {
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	id, err := store.reserveChange(t.Context(), "/w", "a", "one")
-	if err != nil {
-		t.Fatal(err)
-	}
-	history := mekugiHistory{
-		ChangeID: id, CorrelationID: "one", Applied: true,
-		Script:      "in @shell/prepared\ntype \"old\" \"new\"\n",
-		ReviewFiles: []mekugi.ReviewFile{{BeforePath: "prepared", AfterPath: "prepared", Diff: "-old\n+new\n"}},
-	}
-	if err := store.put(t.Context(), "/w", map[string]mekugiHistory{"one": history}); err != nil {
-		t.Fatal(err)
-	}
-	text, err := store.readChanges(t.Context(), changeReadOptions{workspace: "/w", ids: []string{id}})
-	if err != nil || !strings.Contains(text, "scope: retained shell script, not workspace files") {
-		t.Fatalf("scope = %q, %v", text, err)
-	}
-}
-
 func TestTrackedFormerShellPathIsWorkspaceScope(t *testing.T) {
-	transform, proxy, _, workspace := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
+	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -394,11 +271,16 @@ func TestTrackedFormerShellPathIsWorkspaceScope(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "@shell", "script"), []byte("old\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	history, err := transform.translate("workspace-shell-path", "in @shell/script\ntype \"old\" \"new\"", nil)
-	if err != nil || history.TranslationError != "" || history.Applied || history.Patch == "" {
-		t.Fatalf("workspace translation = %+v, %v", history, err)
+	result, err := mekugi.ApplyForHostAt(t.Context(), workspace, "in @shell/script\ntype \"old\" \"new\"", "")
+	if err != nil || !result.Change.Applied {
+		t.Fatalf("workspace application = %+v, %v", result, err)
 	}
-	if err := transform.commitLocalCall("workspace-shell-path"); err != nil {
+	id, err := store.reserveChange(t.Context(), workspace, transform.threadID, "workspace-shell-path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := mekugiHistory{ToolName: mekugiToolName, ChangeID: id, CorrelationID: "workspace-shell-path", Applied: true, ReviewFiles: result.ReviewFiles}
+	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"workspace-shell-path": history}); err != nil {
 		t.Fatal(err)
 	}
 	text, err := proxy.replayStore.readChanges(t.Context(), changeReadOptions{workspace: workspace, ids: []string{history.ChangeID}})
@@ -427,16 +309,13 @@ func TestTrackedNativeFailureIncludesChangeID(t *testing.T) {
 func TestTrackedHostEnvelopeConfirmation(t *testing.T) {
 	for _, carrier := range []string{nativeExecCommandToolName, "exec"} {
 		t.Run(carrier, func(t *testing.T) {
-			transform, proxy, _, workspace := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
+			transform, proxy, _, workspace := newMekugiTestTransform(t)
 			store, err := openMekugiReplayStore(t.TempDir())
 			if err != nil {
 				t.Fatal(err)
 			}
 			proxy.replayStore = store
-			history, err := transform.translate("edit", "new f.txt\ntype \"new\\n\"\n", nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			history := mekugiHistory{ToolName: mekugiToolName, Script: testMekugiScript, Patch: testTranslatedPatch, Report: testMekugiReport, CarrierName: "exec"}
 			if err := transform.commitHistory(); err != nil {
 				t.Fatal(err)
 			}

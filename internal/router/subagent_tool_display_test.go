@@ -431,7 +431,7 @@ func TestClassifiedToolActivityShowsEveryOperation(t *testing.T) {
 }
 
 func TestSubagentEditDisplaySuppressed(t *testing.T) {
-	for _, name := range []string{"apply_patch", "hpatch", "hpatch_recover"} {
+	for _, name := range []string{"apply_patch"} {
 		for _, input := range []string{
 			"*** Begin Patch\n*** Update File: a\n@@\n-old\n+new\n*** End Patch\n",
 			"incomplete edit",
@@ -636,7 +636,7 @@ func TestSubagentDiscoveryActivityJSONAndSSE(t *testing.T) {
 		"hgrep --max-tokens 2000 -F host /clone/config"
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
 			child, _ := prepareActivityTest(t, proxy, "child", "c", "r", "/root/host_test_evidence", nil)
 			for i, source := range []string{"journal add 'Progress only.'", script} {

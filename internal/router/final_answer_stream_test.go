@@ -311,7 +311,7 @@ func TestFinalAnswerStreamBudgetPreservesOutput(t *testing.T) {
 func TestFinalAnswerStreamExecuteRequest(t *testing.T) {
 	for _, child := range []bool{false, true} {
 		t.Run(map[bool]string{false: "root", true: "child"}[child], func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = true })
 			headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 			if child {

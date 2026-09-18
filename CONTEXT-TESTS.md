@@ -14,6 +14,7 @@ measure that separately from build/cache overhead.
 | Portable core or `mekugi:core/v1` adapter | `./internal/router/toolplugin`, then `./...` and `bun test ./internal/router/toolplugin/tests/core.test.ts` |
 | TypeScript plugin source | `go generate ./internal/router/toolplugin`, then `bun test ./internal/router/toolplugin/tests` |
 | Router or shell-helper process entry point | `./cmd/mekugi ./cmd/shell` |
+| Native shell edit acceptance | `-tags journal_e2e ./internal/router -run '^TestShellHpatchNativeCodexE2E$'` (installed Codex, local mock provider) |
 | Native journal child-result acceptance | `-tags journal_e2e ./internal/router -run '^Test(Shell)?JournalNativeCodexSpawnE2E$'` (installed Codex, local mock provider) |
 | Cross-package or broad contract | `./...` |
 
@@ -21,11 +22,6 @@ Generation requires Bun and the dependencies declared in `plugins/package.json`.
 dependencies are missing, use `bun install --cwd plugins --frozen-lockfile`. Generation rebuilds
 the embedded WASM core and JavaScript bundle through directives in
 `internal/router/toolplugin/runtime.go`; do not hand-edit generated assets.
-
-For changes to the model-facing HPATCH or recovery grammar, also run
-`uv run contrib/codex/check_tool_grammars.py`. It checks end-of-call reachability with
-LLGuidance's greedy lexer, including closing heredoc delimiters with trailing newlines.
-Go parser and terminal-regex tests alone do not cover constrained generation.
 
 ## Boundary coverage and test cost
 

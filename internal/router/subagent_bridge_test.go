@@ -393,7 +393,7 @@ func TestOrdinaryCollaborationBridgeAtServerBoundary(t *testing.T) {
 			t.Run(fmt.Sprintf("mekugi=%t/stream=%t", enabled, stream), func(t *testing.T) {
 				var proxy *mekugiProxy
 				if enabled {
-					proxy = newManagedMekugiProxy(t, testTranslator(t, new(int)))
+					proxy = newManagedMekugiProxy(t)
 				}
 				base := bridgeTestRequest(t, false)
 				request := serverRequest(t, func(fields map[string]any) {

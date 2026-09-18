@@ -20,7 +20,7 @@ Unsupported or malformed translation fails routing rather than approximating a r
 
 Executable contributions use an authenticated immutable snapshot. Children verify registry
 identity and never rediscover live configuration, so file changes take effect only after a
-new launch. Process, wrapper, private-checkpoint, and runtime-locator cleanup is limited to
+new launch. Process, wrapper, and runtime-locator cleanup is limited to
 resources created and leased by that router. Retention does not grant a new filesystem or
 process authority.
 
@@ -42,9 +42,8 @@ availability and display eligibility, then executes the resulting argv through i
 process owner. Output selection remains downstream, including `hrun`. Policy evaluation
 never executes, retries, or replays the target command.
 
-Mixed edit and shell input uses one sequential Codex-owned carrier. Edit segments are
-translated against the current filesystem immediately before Codex applies them; shell
-segments reuse ordinary execution and native continuation. Private checkpoints retain
-progress, revisions, and repair insertions without applying workspace effects. Resume,
-retry, repair, and acceptance continue only the retained plan and never report translation
-or checkpoint retention as successful execution.
+The standalone `hpatch` shell command receives expanded arguments or stdin in the
+existing executor. It calls the edit engine directly under Codex's shell execution
+authority. The router neither evaluates shell substitutions nor applies edits during
+translation. No mixed-script carrier, private control channel, or checkpoint runner
+is involved.

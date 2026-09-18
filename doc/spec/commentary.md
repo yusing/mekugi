@@ -100,10 +100,9 @@ patterns verbatim without expanding them; substitutions still retain the origina
 code execution, and input sending use descriptive operation labels.
 Hcat and inspect_file previews validate literal option bounds, duplicates, and operand
 placement before classification; invalid forms retain their source-level `Run` display.
-Editing calls (`apply_patch`, `hpatch`, and `hpatch_recover`) never generate operation
-commentary, regardless of outcome. Transparent Code Mode wrappers omit those previews
-while retaining other operations. Host results and captured evidence remain unchanged;
-the [live view](changes.md#live-terminal-view) owns the separate edit display.
+Native `apply_patch` calls do not generate operation commentary. Shell-based `hpatch`
+commands use the shell operation display. Host results and captured evidence remain
+unchanged; the [live view](changes.md#live-terminal-view) owns the separate edit display.
 Valid explicit shell batches classify each program independently, in order, using
 that program's interpreter and directives. Batch headers and separator lines are
 transport framing, not displayed commands. Malformed batches retain the complete

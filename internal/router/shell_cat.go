@@ -50,7 +50,7 @@ func splitShellCatWrites(body, directory string, variant syntax.LangVariant) ([]
 			return true
 		})
 		name, literal := shellCatLiteral(call.Args[0])
-		if !static || !literal || name == commentaryArgumentName {
+		if !static || !literal || name == commentaryArgumentName || name == "hpatch" {
 			return nil, false
 		}
 		if interp.IsBuiltin(name) {

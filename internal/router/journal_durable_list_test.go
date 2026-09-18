@@ -11,7 +11,7 @@ import (
 
 func TestJournalListDurableAncestry(t *testing.T) {
 	t.Parallel()
-	baseProxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	baseProxy := newManagedMekugiProxy(t)
 	baseReplay, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +35,7 @@ func TestJournalListDurableAncestry(t *testing.T) {
 	}
 	for _, scenario := range []string{"root restart", "child restart", "sibling", "ambiguous", "retained conflict", "ancestor conflict", "other workspace", "cycle", "missing parent"} {
 		t.Run(scenario, func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			replayDirectory := filepath.Join(t.TempDir(), "replay")
 			if err := os.CopyFS(replayDirectory, os.DirFS(baseReplay.directory)); err != nil {
 				t.Fatal(err)

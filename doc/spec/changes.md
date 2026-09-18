@@ -2,12 +2,11 @@
 
 ## REQ-CHANGES-001 — Shared change records and review reads
 
-Routed hpatch results prepend one compact `change amber1` line. A new complete hpatch
-evaluation reserves a workspace-scoped ID before evaluation. Each originating agent
-thread has a word-named stream and increasing decimal sequence, such as `amber1`,
-`amber2`, and `apple1`. Recovery attempts reuse the original correlation's ID, including
-invalid recovery amendments. An invalid recovery after a completed call stays under that call's ID. A recovery
-with no visible hpatch ancestry or no tracked chain in the current workspace allocates no new ID. Transport failures before evaluation or delivery need not expose a result ID.
+Shell `hpatch` results prepend one compact `change amber1` line. A complete edit
+reserves a workspace-scoped ID before evaluation. Each originating agent thread has
+a word-named stream and increasing decimal sequence, such as `amber1`, `amber2`,
+and `apple1`. Evaluated recovery attempts reuse the explicitly named rejection's
+correlation and change ID. Invalid corrections do not evaluate or allocate changes.
 
 Word-based change indexes use a separate storage namespace. Earlier indexes remain
 owned storage for accounting and reclamation only; they are not migrated or read as current changes.
@@ -19,15 +18,12 @@ A fork continuing an inherited recovery retains its original ID. Separate new ca
 in the fork use its own thread stream. Concurrent branches under one ID retain every
 outcome rather than overwriting an earlier successful diff.
 
-Mixed HPATCH/shell results expose the same identity as a structured `change_id`;
-edit reports and diagnostics retain the compact `change` line. The original plan,
-valid-handle continuation inputs, and every runtime edit evaluation share that ID.
-Plans are labeled `execution plan (see segment attempts)`, not applied changes.
-Each edit evaluation publishes immutable evidence before returning its patch, and
-the carrier confirms only after the host reports successful application. An interrupted
-or failed application remains unconfirmed; explicit `accept` does not invent a receipt.
-Repairs and retries retain each evaluation separately, without including shell effects.
-Durable review evidence survives expiration of the temporary continuation handle.
+The shell worker applies validated edits through the engine and retains immutable
+attempt evidence before returning its result. Application failure is not success.
+Live-diff notifications carry references to committed evidence through the existing
+authenticated runtime publication endpoint; publication failure never changes edit
+execution or replaces its result. Each attempt records its executing thread, which
+may differ from the original change stream when a fork performs recovery.
 
 The shell-private command is:
 
@@ -188,25 +184,23 @@ Quitting the viewer restores terminal state without closing the pane or affectin
 
 ### Streaming previews
 
-Incoming custom-tool input deltas, including WebSocket events, update a provisional
-file diff before input completion. Preview projection uses the shared parser, target
-resolver, and in-memory editor, never executable translation, formatting, language
-validation, hooks, shell execution, or durable publication. Partial quoted values and
-heredoc bodies update while still open. Displayed source is sampled for the preview;
-it does not reserve a baseline or promise that the complete call will succeed.
+Incoming shell input deltas, including WebSocket events, display before input completion.
+Literal standalone `hpatch` arguments and heredoc input show a provisional file diff through
+the engine's bounded in-memory preview, including unfinished edit values and heredocs.
+If a later edit fragment cannot be projected, keep the last valid diff and label it as
+such. If no valid diff exists yet, show an unavailable status, not the literal edit script.
+Shell headers select the preview directory and interpreter using the shared header parser.
+Dynamic expansions, input files, composed commands, command templates, and `hpatch --recover`
+remain script previews rather than guessed file changes.
+Previews never execute shell code, apply files, format source, run hooks, or publish durable
+changes. The actual post-expansion edit report and captured diff arrive after host execution.
 
-Previews remain separately labeled, never composed into applied history or treated as
-receipts. They occupy a dedicated, non-scrollable region below captured diffs. While
-visible, the captured diff and HPATCH preview keep a fixed 3:7 split of the body.
-Standalone `functions.shell` input streams directly with the opposite 7:3 split.
-When captured content exists, both layouts leave at least one captured row in tiny
-terminals. Unused captured rows are given to the stream. With no visible captured
-content, every preview, including recovery, uses the full body rather than retaining
-an empty split or overlay. New captures restore the shared layout; flushing all
-captures expands the stream again.
-`functions.hpatch_recover` instead shows the agent's raw emitted correction text in
-a bottom overlay covering 70% of the body, without shrinking the captured viewport
-or interpreting recovery handles. The preview heading counts toward its region.
+Previews remain separately labeled, never composed into applied history or treated
+as receipts. They occupy a dedicated, non-scrollable region below captured diffs
+with a 7:3 captured-diff/script split. At least one captured row remains in tiny
+terminals when captured content exists. Unused captured rows go to the stream;
+without visible captures the preview uses the full body. New captures restore the
+shared layout, and flushing all captures expands the stream again.
 Keyboard navigation, flushing, and wheel input in the captured-diff region affect only
 captured diffs. Wheel input in the preview region is ignored. Streaming keeps the newest
 changed source row's final wrapped fragment visible, independently of captured-diff
@@ -218,14 +212,13 @@ first-seen order. Each heading identifies the caller (canonical agent name when
 available, otherwise thread identity) and a short call identifier, including parallel
 calls from the same thread. Caller text is terminal-safe and width-bounded. Updates
 replace only that call's snapshot, never another caller's card; each card follows its
-own latest source row. Mixed tool kinds use the larger HPATCH split, with recovery
-overlay behavior only when every displayed call is recovery. Tiny regions show a
+own latest source row. Tiny regions show a
 count of additional calls rather than switching callers on each delta; enlarging the
 pane reveals them. Provisional edits from different callers are not merged into a
 speculative combined file result.
 
 Completion, rejection, interruption, or transform closure ends that call's live preview.
-Its last frame remains for 1.5 seconds (0.5 seconds for recovery), then its card
+Its last frame remains for 1.5 seconds, then its card
 disappears. Captured diffs regain full height after the final card disappears.
 Dismissal recenters the captured change when following; paused views retain their
 scroll position. New captures, explicit resume, and terminal resize also recenter the
@@ -237,29 +230,24 @@ snapshot barrier. No preview survives router restart or history replay.
 
 Preview computation is asynchronous and coalesces bursts without waiting for input
 completion. Each worker samples the latest buffered input without queuing old work;
-completion cancels in-flight projection output. The viewer consumes queued
+completion cancels in-flight preview output. The viewer consumes queued
 snapshots before painting and limits preview paints to a 33 ms frame cadence, keeping
 only the latest snapshot rather than playing back intermediate frames. Preview updates
-do not recompose or syntax-render captured history. Deleted-file previews omit removed
-source and show one `# filename deleted` marker. Preview rendering lays out only
+do not recompose or syntax-render captured history. Preview rendering lays out only
 visible source rows and a bounded leading context window for best-effort syntax
 highlighting. Unchanged source windows reuse syntax decoration. The heading identifies
-streaming without repeating validation disclaimers. Raw recovery text highlights
-HPATCH keywords, handles, row references, and quoted values. Shell source uses its
+streaming without repeating validation disclaimers. Shell source uses its
 selected interpreter, including batch switches outside shell constructs; scrolling
 past a selector or clipping a long input does not lose its language. Display-only
-syntax boundaries keep independent HPATCH shell blocks and later edit payloads in
-their own language contexts. Completion retains any clipped-tail label. Incomplete targets and transient
-projection failures retain the last useful preview rather than replacing it with an
-unavailable frame; the completed call owns rejection diagnostics.
+syntax boundaries retain interpreter changes across explicit shell batches.
+Completion retains any clipped-tail label. Incomplete shell input remains visible;
+the completed call owns rejection diagnostics.
 Scope expansions precede their authorized previews even when snapshot updates are
 coalesced separately from durable events.
 
 Input and total source/result are bounded to 256 KiB per preview, target expansion
 to 1,024 mutations, and retained display payloads to 48 KiB each across at most 16
-active previews. Capacity or target failures do not block complete edits. File projection
-stops at shell or recovery boundaries; the remaining streamed input is shown separately
-as script source, omitting HPATCH's `shell` prefix and outer heredoc markers,
+active previews. Capacity or target failures do not block complete edits. Inputs that cannot be decoded without execution or recovery state remain script source,
 with a labeled tail when clipped. Shell program content, including nested heredocs,
 is preserved. It never guesses post-shell file
 state or reads private continuation storage. Oversized file projections retain the last
@@ -268,23 +256,18 @@ useful frame when one exists.
 ### Update integrity
 
 Captures and application receipts become visible only after durable publication.
-One publication is one display update, including multi-call responses. Mixed scripts
-publish each edit segment without waiting for the whole script; ordinary host receipts
-arrive when Codex next returns results to the router. Translation alone never confirms
-application. Delivery must not block edits or assume execution or continuation authority.
+Each completed hpatch attempt publishes its retained edit receipt through the authenticated
+runtime publisher. Translation alone never confirms application. Delivery must not
+block edits or assume execution or continuation authority.
 
 Initial snapshots and concurrent events must reconcile without lost or duplicate
-updates. Scope additions include newly eligible durable history. Reconnects and
-interrupted worker publication require a fresh durable snapshot before claiming live
-coverage, while preserving navigation, acknowledgements, and recency state.
-Within a snapshot, immutable attempts are loaded once. Receipt updates and clean worker
-shutdown must not trigger capture-history rereads.
-
-A missing publisher is shown as waiting; a disconnect or failed publication is
-unavailable. Queue overflow invalidates coverage rather than silently dropping updates.
-Publisher coverage that cannot be tracked within capacity remains unavailable for the
-router session. Missing, inconsistent, or removed evidence fails explicitly, never as
-an empty successful view. Restarting the viewer selects the remaining store.
+updates. Scope additions include newly eligible durable history. Reconnects require
+a fresh durable snapshot while preserving navigation, acknowledgements, and recency.
+Within a snapshot, immutable attempts are loaded once. Receipt updates must not trigger
+capture-history rereads. A failed auxiliary publication does not change the edit result;
+the retained attempt remains available to the next snapshot. Subscriber queue overflow
+forces reconnection rather than silently dropping updates. Missing, inconsistent, or
+removed evidence fails explicitly, never as an empty successful view.
 
 ### Composition and review
 

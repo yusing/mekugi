@@ -520,7 +520,7 @@ func TestProviderWebSocketWrappedErrorPreservesStatusAndHeaders(t *testing.T) {
 func TestProviderWebSocketMekugiTranslationAndCapture(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(strconv.FormatBool(stream), func(t *testing.T) {
-			item := map[string]any{"type": "custom_tool_call", "id": "item-H", "call_id": "call-H", "name": mekugiToolName, "input": testMekugiScript, "status": "completed"}
+			item := map[string]any{"type": "custom_tool_call", "id": "item-H", "call_id": "call-H", "name": "shell", "input": testShellEditSource, "status": "completed"}
 			terminal := map[string]any{"id": "response", "status": "completed", "output": []any{item}, "usage": map[string]any{"input_tokens": 20, "output_tokens": 5}}
 			payloads := [][]byte{
 				mustTestJSON(t, map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item}),
@@ -556,7 +556,7 @@ func TestProviderWebSocketMekugiTranslationAndCapture(t *testing.T) {
 			client.enableWebSockets(t.Context())
 			defer client.websockets.close()
 			calls := 0
-			proxy := newManagedMekugiProxy(t, testTranslator(t, &calls))
+			proxy := newManagedMekugiProxy(t)
 			workspace := t.TempDir()
 			parsed := serverRequest(t, func(fields map[string]any) {
 				fields["stream"] = stream
@@ -570,11 +570,11 @@ func TestProviderWebSocketMekugiTranslationAndCapture(t *testing.T) {
 			handler := capture.Handler(responsesHandler(t.Context(), time.Minute, client, nil, proxy, mustCTP2Codec(t), nil))
 			output := httptest.NewRecorder()
 			handler.ServeHTTP(output, request)
-			if output.Code != 200 || calls != 1 || !strings.Contains(output.Body.String(), nativeExecCommandToolName) || strings.Contains(output.Body.String(), `"name":"hpatch"`) {
+			if output.Code != 200 || calls != 0 || !strings.Contains(output.Body.String(), nativeExecCommandToolName) || strings.Contains(output.Body.String(), `"name":"hpatch"`) {
 				t.Fatalf("translation changed: status=%d calls=%d body=%s", output.Code, calls, output.Body.String())
 			}
 			providerRequest := <-sent
-			if bytes.Contains(providerRequest, []byte(`"name":"apply_patch"`)) || !bytes.Contains(providerRequest, []byte(`"name":"hpatch"`)) {
+			if bytes.Contains(providerRequest, []byte(`"name":"apply_patch"`)) || !bytes.Contains(providerRequest, []byte(`"name":"shell"`)) {
 				t.Fatal("tool request projection bypassed on WS")
 			}
 			metrics := httptest.NewRecorder()

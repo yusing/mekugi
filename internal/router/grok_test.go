@@ -131,7 +131,7 @@ func TestGrokStreamingCustomCallsAndUsage(t *testing.T) {
 func TestGrokToolStreamThroughMekugi(t *testing.T) {
 	for _, name := range []string{"exec", "shell", "lookup"} {
 		t.Run(name, func(t *testing.T) {
-			transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+			transform, _, _, _ := newMekugiTestTransform(t)
 			kind := "custom"
 			arguments := `{"input":"text(1)"}`
 			if name == "shell" {

@@ -1,11 +1,9 @@
 package router
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 	"unicode/utf8"
 )
 
@@ -79,43 +77,5 @@ func BenchmarkHRunRowWindow(b *testing.B) {
 				}
 			})
 		}
-	}
-}
-
-func TestMixedCarrierProjectsOnlyRuntimeState(t *testing.T) {
-	state := hpatchResumeState{
-		ChangeID: "hp_test", CorrelationID: "private-correlation",
-		ReplayDirectory: "/private/replay", Root: "/private/root",
-		Source: "private original source", Handle: "Mhandle",
-		ExpiresAt: time.Unix(1234, 0).UTC(), Revision: 7,
-		Segments: []hpatchResumeSegment{{Kind: "shell", Source: "echo ok"}},
-		Progress: map[string]json.RawMessage{"index": json.RawMessage("1")},
-	}
-	var transform mekugiResponseTransform
-	carrier := transform.mixedCarrier(state, "retry", nil)
-	configJSON, _, ok := strings.Cut(strings.TrimPrefix(carrier, "const mixedConfig = "), ";\n")
-	if !ok {
-		t.Fatal("missing config")
-	}
-	var config struct {
-		State map[string]json.RawMessage `json:"state"`
-	}
-	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
-		t.Fatal(err)
-	}
-	if len(config.State) != 6 {
-		t.Fatalf("unexpected state fields: %s", configJSON)
-	}
-	for _, name := range []string{"change_id", "expires_at", "handle", "progress", "revision", "segments"} {
-		if _, ok := config.State[name]; !ok {
-			t.Fatalf("missing %s", name)
-		}
-	}
-	var retained hpatchResumeState
-	if err := json.Unmarshal(mustMarshalJSON(state), &retained); err != nil {
-		t.Fatal(err)
-	}
-	if retained.Source != state.Source || retained.Root != state.Root || retained.ReplayDirectory != state.ReplayDirectory || retained.CorrelationID != state.CorrelationID {
-		t.Fatal("durable state lost private recovery fields")
 	}
 }

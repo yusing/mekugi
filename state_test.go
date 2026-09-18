@@ -1,7 +1,6 @@
 package mekugi
 
 import (
-	"slices"
 	"strings"
 	"testing"
 )
@@ -48,85 +47,12 @@ func TestMekugi2FinalStateReportProvidesReusableReplacementTarget(t *testing.T) 
 		t.Fatalf("ApplyForHost() error = %v, report %q", err, result.Report)
 	}
 
-	rewritten, err := RewriteTargetAliases(
-		"in file.txt\ntype "+before+` "C"`,
-		[]TargetAlias{{Path: "file.txt", Before: before, After: after}},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := "in file.txt\ntype " + after + ` "C"`; rewritten != want {
-		t.Fatalf("rewritten script = %q, want %q", rewritten, want)
-	}
+	rewritten := "in file.txt\ntype " + after + ` "C"`
 	if result, err := applyForHostAtTest(t, root, rewritten, ""); err != nil {
 		t.Fatalf("rewritten ApplyForHost() error = %v, report %q", err, result.Report)
 	}
 	if content := readTestFile(t, root, "file.txt"); content != "alpha\nC\ngamma\n" {
 		t.Fatalf("rewritten content = %q", content)
-	}
-}
-
-func TestRewriteTargetAliasesIsPathScopedAndChainsConfirmedReplacements(t *testing.T) {
-	first := row(2, "beta")
-	second := row(3, "B")
-	third := row(4, "C")
-	aliases := []TargetAlias{
-		{Path: "file.txt", Before: first, After: second},
-		{Path: "file.txt", Before: second, After: third},
-	}
-	script := "in other.txt\ntype " + first + ` "other"` +
-		"\nin file.txt\ntype " + first + ` "matched"`
-	rewritten, commands, err := RewriteTargetAliasesWithCommands(script, aliases)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "in other.txt\ntype " + first + ` "other"` +
-		"\nin file.txt\ntype " + third + ` "matched"`
-	if rewritten != want {
-		t.Fatalf("rewritten script = %q, want %q", rewritten, want)
-	}
-	if len(commands) != 1 || commands[0] != 4 {
-		t.Fatalf("rewritten commands = %v, want [4]", commands)
-	}
-}
-
-func TestRewriteTargetAliasesClassifiesSamePathRowSpanRelationsWithoutHashes(t *testing.T) {
-	alias := TargetAlias{
-		Path:   "file.txt",
-		Before: "10:aaaa..20:bbbb",
-		After:  "30:cccc..40:dddd",
-	}
-	script := strings.Join([]string{
-		"in file.txt",
-		`type 10:1111..20:2222 "coordinate exact"`,
-		`type 10:aaaa..20:bbbb "rewritten exact"`,
-		`type 5:1111..25:2222 "contains"`,
-		`type 12:1111..18:2222 "contained"`,
-		`type 18:1111..25:2222 "overlap"`,
-		`type 21:1111..25:2222 "none"`,
-		"in other.txt",
-		`type 10:1111..20:2222 "other path"`,
-		`type "literal" "not a row span"`,
-	}, "\n")
-
-	rewritten, diagnostics, err := RewriteTargetAliasesWithDiagnostics(script, []TargetAlias{alias})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(rewritten, `type 30:cccc..40:dddd "rewritten exact"`) {
-		t.Fatalf("rewritten script = %q", rewritten)
-	}
-	want := []TargetAliasDiagnostic{
-		{Command: 2, Relation: TargetAliasRelationExact},
-		{Command: 3, Rewritten: true, Relation: TargetAliasRelationExact},
-		{Command: 4, Relation: TargetAliasRelationContains},
-		{Command: 5, Relation: TargetAliasRelationContained},
-		{Command: 6, Relation: TargetAliasRelationOverlap},
-		{Command: 7, Relation: TargetAliasRelationNone},
-		{Command: 9, Relation: TargetAliasRelationNone},
-	}
-	if !slices.Equal(diagnostics, want) {
-		t.Fatalf("alias diagnostics = %+v, want %+v", diagnostics, want)
 	}
 }
 

@@ -116,7 +116,7 @@ For automated live Codex tests, read `CONTEXT-AUTOMATED-TESTS.md`.
 - `doc/spec/index.md`: interface requirements and acceptance criteria.
 - `doc/architecture/index.md`: boundary ownership contracts.
 - `contrib/codex/file-editing-instructions.md`, adjacent `editing-workflow-astra.md` and
-  `editing-workflow-default.md`, and `tool_grammar.lark`: HPATCH syntax and Codex model guidance.
+  `editing-workflow-default.md`: HPATCH syntax and Codex model guidance.
   Read these only for changes or validation in that scope.
 - `~/projects/codex`: read-only Codex CLI clone. Cloning it if missing requires user permission.
 

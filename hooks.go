@@ -441,12 +441,6 @@ func writeHookFencedBlock(body *strings.Builder, label, language, value string) 
 	body.WriteByte('\n')
 }
 
-// ReportHostOutcome runs configured outcome hooks for a host-owned lifecycle result.
-// The attempt metadata in ctx supplies tool identity and emitted payload attribution.
-func ReportHostOutcome(ctx context.Context, dataDirectory, stage, outcome string) error {
-	return errors.Join(runOutcomeHooks(ctx, dataDirectory, stage, outcome, "", nil, errorHooksTimeout)...)
-}
-
 func markdownFence(value string) string {
 	longestRun := 0
 	for line := range strings.Lines(value) {

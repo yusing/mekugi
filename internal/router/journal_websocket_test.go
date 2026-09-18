@@ -19,7 +19,7 @@ func TestJournalWebSocketContinuationRetainsStreamedCall(t *testing.T) {
 				ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 				defer cancel()
 				translations := 0
-				proxy := newManagedMekugiProxy(t, testTranslator(t, &translations))
+				proxy := newManagedMekugiProxy(t)
 				proxy.customizedInstructions = true
 				proxy.compactModelProtocol = protocol == "ctp2"
 				var codec *ctp2Codec
@@ -147,7 +147,7 @@ func TestJournalWebSocketContinuationRetainsStreamedCall(t *testing.T) {
 						switch jsonString(item, "type") {
 						case "custom_tool_call":
 							calls++
-							if jsonString(item, "name") != mekugiToolName || jsonString(item, "input") != testMekugiScript {
+							if jsonString(item, "name") != "shell" || jsonString(item, "input") != testShellEditSource {
 								t.Error("replay did not restore the original model call")
 							}
 						case "custom_tool_call_output":
@@ -172,8 +172,8 @@ func TestJournalWebSocketContinuationRetainsStreamedCall(t *testing.T) {
 						break
 					}
 				}
-				if translations != 1 {
-					t.Fatalf("tool translated %d times, want 1", translations)
+				if translations != 0 {
+					t.Fatalf("edit evaluated %d times before execution, want 0", translations)
 				}
 			})
 		}

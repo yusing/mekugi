@@ -223,12 +223,11 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}
 	titles := newSessionTitleCache()
 	if *flags.mode == "mekugi" {
-		translator := newInProcessMekugiTranslator(dataDirectory)
 		customizedInstructions, err := codexModelInstructionFileConfigured()
 		if err != nil {
 			return fmt.Errorf("initialize model instruction rewriting: %w", err)
 		}
-		registry, err := buildToolRegistry(ctx, dataDirectory, translator.ToolDescription(), os.Getenv("MEKUGI_DIAGNOSE") == "1")
+		registry, err := buildToolRegistry(ctx, dataDirectory, os.Getenv("MEKUGI_DIAGNOSE") == "1")
 		if err != nil {
 			return fmt.Errorf("initialize tool registry: %w", err)
 		}
@@ -250,7 +249,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		if err != nil {
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
-		mekugiCalls = newMekugiProxy(translator, registry, customizedInstructions, compactTokens != nil, titles)
+		mekugiCalls = newMekugiProxy(registry, customizedInstructions, compactTokens != nil, titles)
 		mekugiCalls.noticeSink = issues.addNotice
 		replayStore.storageNotice = func(session, message string) { issues.addNotice(session, "storage_cleanup", message) }
 		mekugiCalls.commentary.debug = debug
@@ -285,7 +284,6 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))
 	if mekugiCalls != nil {
 		mux.HandleFunc("GET "+liveDiffEventsPath, mekugiCalls.autoLiveDiff.events.serveEvents)
-		mux.HandleFunc("POST "+liveDiffEventsPath+"/producer", mekugiCalls.autoLiveDiff.events.serveProducer)
 		mux.HandleFunc("POST "+commentaryPublisherPath, mekugiCalls.commentary.serveHTTP)
 	}
 	webSocketEndpoint := responsesWebSocketHandler(ctx, *flags.timeout, provider, issues, mekugiCalls, compactTokens, mentor)

@@ -84,7 +84,7 @@ func newNativeToolPluginTestTransform(t *testing.T) (*mekugiResponseTransform, *
 
 func newToolPluginTestProxy(t *testing.T) *mekugiProxy {
 	t.Helper()
-	return newProxyWithSharedTestRegistry(t, testTranslator(t, new(int)), pluginProxyTestFixture.get(t, testToolPluginDeclaration, testMekugiToolDescription))
+	return newProxyWithSharedTestRegistry(t, pluginProxyTestFixture.get(t, testToolPluginDeclaration))
 }
 
 func prepareToolPluginTestRequest(t *testing.T, proxy *mekugiProxy, request *parsedResponsesRequest, sessionID, threadID string) *mekugiResponseTransform {
@@ -134,8 +134,8 @@ func TestToolPluginRequestJSONAndReplay(t *testing.T) {
 	if err := json.Unmarshal(request.fields["tools"], &tools); err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 6 || jsonString(tools[5], "name") != journalToolName || jsonString(tools[4], "name") != "plugin_tool" ||
-		jsonString(tools[4], "description") != "fixture plugin tool" {
+	if len(tools) != 4 || jsonString(tools[3], "name") != journalToolName || jsonString(tools[2], "name") != "plugin_tool" ||
+		jsonString(tools[2], "description") != "fixture plugin tool" {
 		t.Fatalf("installed tools = %#v", tools)
 	}
 
@@ -435,9 +435,10 @@ func TestToolPluginFailuresStayOutsideMekugiRecovery(t *testing.T) {
 			!strings.Contains(jsonString(visible, "input"), "fixture input rejected") {
 			t.Fatalf("rejection carrier = %#v", visible)
 		}
-		if _, err := proxy.recoverableHistory(transform.historySessionID); err == nil ||
-			!strings.Contains(err.Error(), "no rejected HPATCH script") {
-			t.Fatalf("plugin entered recovery ancestry: %v", err)
+		for _, history := range proxy.sessions[transform.historySessionID].calls {
+			if history.EvaluatorRejected || len(history.RecoveryHandles) != 0 {
+				t.Fatal("plugin rejection acquired edit recovery handles")
+			}
 		}
 	})
 

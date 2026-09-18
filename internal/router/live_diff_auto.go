@@ -117,7 +117,7 @@ func (a *autoLiveDiff) enable() {
 	a.enabled.Store(true)
 }
 
-// Turn preparation collects scope without opening UI. Only an emitted hpatch
+// Turn preparation collects scope without opening UI. Only an emitted shell
 // call in an observed thread requests the one-shot asynchronous launch.
 func (a *autoLiveDiff) requestLaunch(workspace, thread string) {
 	if a == nil || !a.enabled.Load() {

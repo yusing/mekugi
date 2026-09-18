@@ -97,7 +97,7 @@ func TestShellMisuseRejectionDeliveryAndReplay(t *testing.T) {
 	for _, native := range []bool{false, true} {
 		for _, streaming := range []bool{false, true} {
 			t.Run("native="+strconv.FormatBool(native)+"/stream="+strconv.FormatBool(streaming), func(t *testing.T) {
-				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				proxy := newManagedMekugiProxy(t)
 				var transform *mekugiResponseTransform
 				if native {
 					transform, _ = newNativeMekugiTestTransformWithProxy(t, proxy)

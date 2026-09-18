@@ -20,7 +20,7 @@ import (
 func TestTokenUsageMentorAndManualSwitch(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprint(stream), func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			mentor := newMentorHandoff(true, true)
 			headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 			// First request exhausts Mentor input budget; second uses configured Sol;
@@ -71,7 +71,7 @@ func TestTokenUsageWebSocketHandshakeRecovery(t *testing.T) {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			proxy.usage.observation("thread-1", "", "gpt-5.6-sol", "default").observe(tokenCounts{InputTokens: 100, UncachedInputTokens: 60, OutputTokens: 10, ReasoningTokens: 5})
 			var handshakes atomic.Int32
 			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -161,7 +161,7 @@ func TestTokenUsageGapSuppressesLaterReports(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		for _, gap := range []string{"missing", "null", "partial", "invalid", "interrupted", "transport-error", "http-rejection", "failed-with-usage", "incomplete-with-usage", "compaction"} {
 			t.Run(fmt.Sprintf("stream=%t/%s", stream, gap), func(t *testing.T) {
-				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				proxy := newManagedMekugiProxy(t)
 				headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 				for step := range 3 {
 					req := serverRequest(t, func(f map[string]any) { f["model"] = "gpt-6-astra"; f["stream"] = stream })
@@ -274,7 +274,7 @@ func TestTokenUsageAutomaticSuccessorAtHandoff(t *testing.T) {
 func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requestedTier, servedTier string, mentorCost, configuredCost float64) {
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	mentor := newMentorHandoff(true, true)
 	usage := map[string]any{"input_tokens": 100000, "input_tokens_details": map[string]any{"cached_tokens": 40000}, "output_tokens": 10000, "output_tokens_details": map[string]any{"reasoning_tokens": 5000}}
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

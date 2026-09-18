@@ -13,7 +13,7 @@ func TestMekugiDeliveredInputSurvivesIncompleteItem(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			calls := 0
-			proxy := newManagedMekugiProxy(t, testTranslator(t, &calls))
+			proxy := newManagedMekugiProxy(t)
 			dir := t.TempDir()
 			store, err := openMekugiReplayStore(dir)
 			if err != nil {
@@ -34,7 +34,7 @@ func TestMekugiDeliveredInputSurvivesIncompleteItem(t *testing.T) {
 				t.Fatal(err)
 			}
 			if events, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
-				"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testMekugiScript,
+				"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testShellEditSource,
 			})); err != nil || len(events) != 2 {
 				t.Fatalf("complete input handoff: %s, %v", events, err)
 			}
@@ -63,7 +63,7 @@ func TestMekugiDeliveredInputSurvivesIncompleteItem(t *testing.T) {
 			if err != nil || !found {
 				t.Fatalf("restart lookup: %v, %v", found, err)
 			}
-			if calls != 1 || after.Script != before.Script || after.carrierInput() != before.carrierInput() ||
+			if calls != 0 || after.Script != before.Script || after.carrierInput() != before.carrierInput() ||
 				jsonString(after.UpstreamItem, "status") != "incomplete" {
 				t.Fatalf("interruption changed execution or lost final status: evaluations=%d", calls)
 			}

@@ -78,7 +78,7 @@ func TestJournalFinishEndsWithoutProviderContinuation(t *testing.T) {
 				if !stream {
 					snapshot = "full"
 				}
-				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				proxy := newManagedMekugiProxy(t)
 				proxy.journals = newJournalStore()
 				var err error
 				proxy.replayStore, err = openMekugiReplayStore(t.TempDir())
@@ -143,7 +143,7 @@ func TestJournalFinishDoesNotHidePendingCallsOrFlushFailures(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		for _, scenario := range []string{"mixed", "failed", "incomplete", "invalid-id", "invalid-text", "invalid-agent", "invalid-report-now"} {
 			t.Run(map[bool]string{false: "json/", true: "sse/"}[stream]+scenario, func(t *testing.T) {
-				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				proxy := newManagedMekugiProxy(t)
 				workspace := t.TempDir()
 				arguments := `{"op":"finish"}`
 				invalid := strings.HasPrefix(scenario, "invalid-")
@@ -207,7 +207,7 @@ func TestJournalFinishDoesNotHidePendingCallsOrFlushFailures(t *testing.T) {
 
 func TestJournalFinishReplayDoesNotFinishLaterCRUD(t *testing.T) {
 	workspace, storeDirectory := t.TempDir(), t.TempDir()
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	var err error
 	proxy.replayStore, err = openMekugiReplayStore(storeDirectory)
 	if err != nil {
@@ -220,7 +220,7 @@ func TestJournalFinishReplayDoesNotFinishLaterCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	history := journalFinishClientOutput(t, false, completed.Bytes())
-	resumed := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	resumed := newManagedMekugiProxy(t)
 	resumed.replayStore, err = openMekugiReplayStore(storeDirectory)
 	if err != nil {
 		t.Fatal(err)
@@ -264,7 +264,7 @@ func TestJournalBatchedErrorsAreCorrectable(t *testing.T) {
 		`[{"op":"add","text":"must roll back"},{"op":"edit","id":"bloom","text":"missing"}]`,
 	} {
 		t.Run(batch, func(t *testing.T) {
-			transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+			transform, proxy, _, _ := newMekugiTestTransform(t)
 			call := journalFinishCall(`{"op":"finish","journal":` + batch + `}`)
 			var item map[string]json.RawMessage
 			if err := json.Unmarshal(mustTestJSON(t, call), &item); err != nil {
@@ -299,7 +299,7 @@ func TestJournalBatchedErrorsAreCorrectable(t *testing.T) {
 }
 
 func TestJournalFinishReportsUnavailableDelivery(t *testing.T) {
-	transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, _, _, _ := newMekugiTestTransform(t)
 	transform.journalAvailable = false
 	var call map[string]json.RawMessage
 	if err := json.Unmarshal(mustTestJSON(t, journalFinishCall(`{"op":"finish"}`)), &call); err != nil {
@@ -326,7 +326,7 @@ func TestProviderAnswerDoesNotSubstituteForJournalFinish(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		for _, child := range []bool{false, true} {
 			t.Run(map[bool]string{false: "json", true: "sse"}[stream]+map[bool]string{false: "/main", true: "/child"}[child], func(t *testing.T) {
-				transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+				transform, proxy, _, _ := newMekugiTestTransform(t)
 				transform.subagentTurn = child
 				if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, transform.directory, transform.shellThreadID, "seed",
 					[]journalMutation{{Op: "add", Text: new("Pending report")}}); err != nil {
@@ -384,7 +384,7 @@ func TestJournalContinuationPreservesProviderOutput(t *testing.T) {
 			if !stream {
 				snapshot = "full"
 			}
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			call := map[string]any{"type": "function_call", "id": "list-item", "call_id": "list-call", "name": "journal", "arguments": `{"op":"list"}`, "status": "completed"}
 			message := map[string]any{
 				"type": "message", "id": "unexpected-message", "role": "assistant", "phase": "final_answer", "status": "completed",

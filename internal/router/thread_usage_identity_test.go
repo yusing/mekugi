@@ -11,7 +11,7 @@ func TestThreadUsageIgnoresMalformedAuxiliaryIdentity(t *testing.T) {
 		t.Run(requestKind, func(t *testing.T) {
 			for _, field := range []string{"agent_name", "parent_thread_id"} {
 				t.Run(field, func(t *testing.T) {
-					proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+					proxy := newManagedMekugiProxy(t)
 					request := serverRequest(t, nil)
 					headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 					if requestKind == "compaction" {

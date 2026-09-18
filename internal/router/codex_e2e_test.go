@@ -9,16 +9,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
 
-const codexE2EPrompt = `Use only functions.hpatch for every file edit. Shell commands are allowed only for read-only inspection and verification; never use a shell command or another editing tool to modify a file.
+const codexE2EPrompt = `Use functions.shell for all operations. For every file edit, run hpatch as a standalone shell command. Use other shell commands for inspection and verification.
 
 Work through these requests in order:
 
@@ -34,47 +32,18 @@ The replacement must have exactly one trailing newline and no blank line after t
 
 Do not merely describe the edits. Make them and verify the resulting files.`
 
-type recordingMekugiTranslator struct {
-	delegate mekugiTranslator
-
-	mu      sync.Mutex
-	scripts []string
-}
-
-func (t *recordingMekugiTranslator) ToolDescription() string {
-	return t.delegate.ToolDescription()
-}
-
-func (t *recordingMekugiTranslator) Translate(ctx context.Context, workspace string, script string) (mekugiTranslationResult, error) {
-	t.mu.Lock()
-	t.scripts = append(t.scripts, script)
-	t.mu.Unlock()
-	return t.delegate.Translate(ctx, workspace, script)
-}
-
-func (t *recordingMekugiTranslator) snapshot() []string {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return append([]string(nil), t.scripts...)
-}
-
 func TestCodexMekugiGrammarE2E(t *testing.T) {
 	codexPath := requireExecutable(t, "codex")
 	gitPath := requireExecutable(t, "git")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	dataDirectory, err := mekugiDataDirectory()
-	if err != nil {
-		t.Fatalf("create mekugi translator: %v", err)
-	}
-	recorder := &recordingMekugiTranslator{delegate: newInProcessMekugiTranslator(dataDirectory)}
 	var requestSequence atomic.Uint64
 	server := httptest.NewServer(responsesHandler(
 		t.Context(),
 		10*time.Minute,
 		newProviderClient(codexBaseURL, nil),
 		nil,
-		newManagedMekugiProxy(t, recorder),
+		newManagedMekugiProxy(t),
 		nil, nil,
 		&requestSequence,
 	))
@@ -124,20 +93,6 @@ func TestCodexMekugiGrammarE2E(t *testing.T) {
 	assertFileBytes(t, workspace, "anchor.go", "package sample\n\nfunc save(path string, b []byte) error {\n\t\treturn saveArtifactPayloadAtomically(path, b)\n}\n")
 	assertFileBytes(t, workspace, "partial.go", "package sample\n\nvar expression = prefix + newCall(firstArgument, finalArgument) + suffix\n")
 
-	scripts := strings.Join(recorder.snapshot(), "\n---CALL---\n")
-	for name, pattern := range map[string]string{
-		"whole-line target":       `(?s)in whole\.go.*?type [1-9][0-9]*:[0-9a-f]{4}\.\.[1-9][0-9]*:[0-9a-f]{4} <<PATCH`,
-		"content target":          `(?m)type [1-9][0-9]*:[0-9a-f]{4} "return saveArtifactPayload\(path, b\)" "return saveArtifactPayloadAtomically\(path, b\)"`,
-		"partial multiline edit":  `(?s)in partial\.go.*?type [1-9][0-9]*:[0-9a-f]{4}\.\.[1-9][0-9]*:[0-9a-f]{4}`,
-		"fixed heredoc delimiter": `(?m)^PATCH$`,
-	} {
-		if !regexp.MustCompile(pattern).MatchString(scripts) {
-			t.Errorf("%s not found in translated HPATCH scripts; pattern %q\nscripts:\n%s", name, pattern, scripts)
-		}
-	}
-	if strings.Contains(scripts, "\n\nPATCH") {
-		t.Errorf("translated HPATCH scripts contain an empty trailing heredoc line\nscripts:\n%s", scripts)
-	}
 }
 
 func requireExecutable(t *testing.T, name string) string {

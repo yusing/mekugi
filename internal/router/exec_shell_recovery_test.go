@@ -45,7 +45,7 @@ func TestExecShellRecoveryDetection(t *testing.T) {
 }
 
 func TestExecShellRecoveryMissingIdentity(t *testing.T) {
-	transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, _, _, _ := newMekugiTestTransform(t)
 	item := newResponsesItem(map[string]json.RawMessage{
 		"type": mustMarshalJSON("custom_tool_call"), "name": mustMarshalJSON("exec"),
 		"input": mustMarshalJSON("#!bash\nprintf '%s' hello"),
@@ -59,7 +59,7 @@ func TestExecShellRecoveryMissingIdentity(t *testing.T) {
 }
 
 func TestExecShellRecoveryBatchRuntime(t *testing.T) {
-	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, proxy, _, _ := newMekugiTestTransform(t)
 	directory, bin := t.TempDir(), t.TempDir()
 	if err := os.WriteFile(filepath.Join(bin, "shell"), []byte("#!/bin/sh\ninterpreter=$1\nshift\nexec \"$interpreter\" -c \"$1\"\n"), 0o700); err != nil {
 		t.Fatal(err)
@@ -122,7 +122,7 @@ func TestExecShellRecoveryPollCorrelation(t *testing.T) {
 func TestExecShellRecoveryDeliveryAndReplay(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
 			transform, _ := prepareActivityTest(t, proxy, "child", "c", "r", "/root/worker", nil)
 			source := "#!params={\"workdir\":\"/tmp\",\"yield_time_ms\":1000,\"max_output_tokens\":12000}\nprintf '%s' hello\n"
@@ -238,7 +238,7 @@ func TestExecShellRecoveryDeliveryAndReplay(t *testing.T) {
 }
 
 func TestExecShellRecoveryUsesShellValidation(t *testing.T) {
-	transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, _, _, _ := newMekugiTestTransform(t)
 	source := "#!params={\"cmd\":\"touch must-not-run\"}\nprintf '%s' hello\n"
 	item := newResponsesItem(map[string]json.RawMessage{
 		"type": mustMarshalJSON("custom_tool_call"), "name": mustMarshalJSON("exec"),
@@ -255,7 +255,7 @@ func TestExecShellRecoveryUsesShellValidation(t *testing.T) {
 
 func TestExecShellRecoveryPreservesCodeMode(t *testing.T) {
 	for _, source := range []string{"text('hello');", "#!node\ntext('hello');", "#!params={}\ntext('hello');", "echo hello", "const r = await tools.run("} {
-		transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+		transform, _, _, _ := newMekugiTestTransform(t)
 		item := newResponsesItem(map[string]json.RawMessage{
 			"type": mustMarshalJSON("custom_tool_call"), "name": mustMarshalJSON("exec"),
 			"call_id": mustMarshalJSON("unchanged"), "input": mustMarshalJSON(source),
@@ -271,7 +271,7 @@ func TestExecShellRecoveryPreservesCodeMode(t *testing.T) {
 
 func TestExecShellRecoveryRequiresBuiltinShell(t *testing.T) {
 	for _, configured := range []bool{false, true} {
-		transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+		transform, proxy, _, _ := newMekugiTestTransform(t)
 		proxy.registry = &toolRegistry{byName: maps.Clone(proxy.registry.byName)}
 		if configured {
 			contribution := proxy.registry.byName["shell"]

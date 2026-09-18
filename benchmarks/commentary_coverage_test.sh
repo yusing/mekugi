@@ -16,18 +16,19 @@ if python3 "$checker" validate "$manifest" paired >/dev/null 2>&1; then
 fi
 
 cat >"$fixture/operations.jsonl" <<'JSONL'
-{"type":"item.completed","item":{"type":"agent_message","text":"Applying the requested changes."}}
-{"type":"item.completed","item":{"type":"file_change"}}
-{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"commentary coverage:bash"}}
-{"type":"item.completed","item":{"type":"agent_message","text":"Applying the requested changes."}}
-{"type":"item.completed","item":{"type":"agent_message","text":"Using hpatch_recover."}}
-{"type":"item.completed","item":{"type":"file_change"}}
-{"type":"item.completed","item":{"type":"agent_message","text":"Using report_issue."}}
-{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"commentary coverage:posix"}}
+{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"hpatch 'new go.mod'"}}
+{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"journal add coverage:bash --report-now"}}
+{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":1,"command":"hpatch 'stale target'"}}
+{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"hpatch --recover amber 'maple target'"}}
+{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"journal add coverage:recovered --report-now"}}
+{"type":"item.completed","item":{"type":"agent_message","text":"coverage:bash\n\ncoverage:recovered"}}
+{"type":"item.completed","item":{"type":"agent_message","text":"coverage:reported"}}
+{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"journal add coverage:posix --report-now"}}
+{"type":"item.completed","item":{"type":"agent_message","text":"coverage:posix\n\ncoverage:code-mode"}}
 {"type":"item.completed","item":{"type":"agent_message","text":"Running the requested operation."}}
 {"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"printf coverage:exec-complete"}}
 {"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"publish coverage%3Acode-mode"}}
-{"type":"item.completed","item":{"type":"agent_message","text":"Tokens: i=120, ci=80, o=30, r=20"}}
+{"type":"item.completed","item":{"type":"agent_message","text":"Tokens for this session\n\n| Category | Tokens | API USD |\n| --- | ---: | ---: |\n| Input | 120 | — |\n| Cached input | 80 | n/a |\n| Uncached input | 40 | n/a |\n| Output | 30 | n/a |\n| Reasoning | 20 | — |\n| Total | — | n/a |\n"}}
 JSONL
 
 python3 "$checker" check "$manifest" mekugi-diagnostic mekugi \
@@ -35,7 +36,7 @@ python3 "$checker" check "$manifest" mekugi-diagnostic mekugi \
 jq -e '.passed == true and .profiles == ["operations", "reporting", "terminal"]' \
 	"$fixture/result.json" >/dev/null
 
-grep -v 'Using report_issue' "$fixture/operations.jsonl" >"$fixture/ctp.jsonl"
+grep -v 'coverage:reported' "$fixture/operations.jsonl" >"$fixture/ctp.jsonl"
 for arm in native ctp; do
 	python3 "$checker" check "$manifest" ctp-only "$arm" \
 		"$fixture/ctp.jsonl" >"$fixture/result.json"
@@ -48,8 +49,35 @@ if python3 "$checker" check "$manifest" mekugi-diagnostic mekugi \
 	printf 'commentary coverage accepted a missing report_issue message\n' >&2
 	exit 1
 fi
-jq -e '.passed == false and (.missing | index("message:exact:Using report_issue.") != null)' \
+jq -e '.passed == false and (.missing | index("message:regex:coverage:reported") != null)' \
 	"$fixture/missing.json" >/dev/null
+
+# Markers alone must not pass when shell recovery is missing or failed.
+for recovery_status in missing failed; do
+	jq -c --arg state "$recovery_status" '
+		if (.item.command // "" | contains("hpatch --recover ")) then
+			if $state == "missing" then empty else .item.exit_code = 1 end
+		else . end
+	' "$fixture/ctp.jsonl" >"$fixture/recovery-$recovery_status.jsonl"
+	if python3 "$checker" check "$manifest" ctp-only ctp \
+		"$fixture/recovery-$recovery_status.jsonl" >"$fixture/missing-recovery.json"; then
+		printf 'commentary coverage accepted %s shell recovery\n' "$recovery_status" >&2
+		exit 1
+	fi
+	jq -e '.passed == false and (.missing | index("command:contains:hpatch --recover ") != null)' \
+		"$fixture/missing-recovery.json" >/dev/null
+done
+
+# Successful commands alone do not establish journal delivery.
+jq -c 'select(.item.type != "agent_message" or (.item.text | contains("coverage:recovered") | not))' \
+	"$fixture/ctp.jsonl" >"$fixture/missing-journal.jsonl"
+if python3 "$checker" check "$manifest" ctp-only ctp \
+	"$fixture/missing-journal.jsonl" >"$fixture/missing-journal.json"; then
+	printf 'commentary coverage accepted missing recovery journal delivery\n' >&2
+	exit 1
+fi
+jq -e '.passed == false and (.missing | index("message:regex:coverage:recovered") != null)' \
+	"$fixture/missing-journal.json" >/dev/null
 
 grep -v 'coverage%3Acode-mode' "$fixture/ctp.jsonl" >"$fixture/failed-command.jsonl"
 printf '%s\n' '{"type":"item.completed","item":{"type":"command_execution","status":"failed","exit_code":1,"command":"publish coverage%3Acode-mode"}}' >>"$fixture/failed-command.jsonl"
@@ -62,10 +90,8 @@ jq -e '.passed == false and (.missing | index("command:regex:coverage(?:%3A|:)co
 	"$fixture/missing-command.json" >/dev/null
 
 cat >"$fixture/collaboration.jsonl" <<'JSONL'
-{"type":"item.completed","item":{"type":"agent_message","text":"Starting subagent.\nRole: benchmark_worker\nModel: gpt-5.6-sol\nReasoning effort: high"}}
 {"type":"item.completed","item":{"type":"collab_tool_call"}}
-{"type":"item.completed","item":{"type":"agent_message","text":"Response from /root/implementation:\nverification: exhaustive commentary coverage passed"}}
-{"type":"item.completed","item":{"type":"agent_message","text":"Tokens: i=120, ci=80, o=30, r=20"}}
+{"type":"item.completed","item":{"type":"agent_message","text":"Tokens for this session\n\n| Category | Tokens | API USD |\n| --- | ---: | ---: |\n| Input | 120 | — |\n| Cached input | 80 | n/a |\n| Uncached input | 40 | n/a |\n| Output | 30 | n/a |\n| Reasoning | 20 | — |\n| Total | — | n/a |\n"}}
 JSONL
 for arm in mekugi mekugi-mentor; do
 	python3 "$checker" check "$manifest" mentor-handoff "$arm" \

@@ -28,8 +28,8 @@ type liveDiffPreviewView struct {
 	current  liveDiffPreview
 	hideAt   time.Time
 	rendered liveDiffPreview
-	file     int
 	focus    int
+	file     int
 	renderer liveDiffRenderer
 	source   []liveDiffPreviewRow
 	paths    []liveDiffSourceSpan
@@ -45,11 +45,7 @@ func (p *liveDiffPreviewPane) update(preview liveDiffPreview, now time.Time) {
 	view := p.views[preview.ID]
 	if preview.Workspace == "" {
 		if view != nil && view.hideAt.IsZero() {
-			delay := liveDiffPreviewHideDelay
-			if view.current.Recovery {
-				delay = 500 * time.Millisecond
-			}
-			view.hideAt = now.Add(delay)
+			view.hideAt = now.Add(liveDiffPreviewHideDelay)
 		}
 		return
 	}
@@ -99,25 +95,6 @@ func (p *liveDiffPreviewPane) expire(now time.Time) bool {
 	return len(p.order) != before
 }
 
-// Mixed streams use the larger preview split. Delta arrival never changes layout.
-func (p *liveDiffPreviewPane) shellOnly() bool {
-	for _, view := range p.views {
-		if !view.current.Shell {
-			return false
-		}
-	}
-	return len(p.order) > 0
-}
-
-func (p *liveDiffPreviewPane) recoveryOnly() bool {
-	for _, view := range p.views {
-		if !view.current.Recovery {
-			return false
-		}
-	}
-	return len(p.order) > 0
-}
-
 func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, theme liveDiffTheme, width, height int) ([]string, error) {
 	if height <= 0 || len(p.order) == 0 {
 		return nil, nil
@@ -154,8 +131,8 @@ func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, them
 	return lines, nil
 }
 
-// HPATCH uses a 3:7 captured-diff/preview split; standalone shell uses 7:3.
-func liveDiffRegionRows(body, captured int, streaming, shell bool) (diff, preview int) {
+// Streaming source uses a 7:3 captured-diff/preview split.
+func liveDiffRegionRows(body, captured int, streaming bool) (diff, preview int) {
 	if !streaming {
 		return body, 0
 	}
@@ -165,11 +142,7 @@ func liveDiffRegionRows(body, captured int, streaming, shell bool) (diff, previe
 	if body < 2 {
 		return body, 0
 	}
-	share := 3
-	if shell {
-		share = 7
-	}
-	diff = min(captured, max(1, body*share/10))
+	diff = min(captured, max(1, body*7/10))
 	return diff, body - diff
 }
 
@@ -273,7 +246,7 @@ func (p *liveDiffPreviewView) prepare() error {
 	if current.Input != "" {
 		syntax := current.Syntax
 		if len(syntax) == 0 {
-			syntax = liveDiffScriptSyntax(current.Input, current.Recovery)
+			syntax = liveDiffScriptSyntax(current.Input)
 		}
 		p.paths = liveDiffSourceRows(current.Input, syntax)
 	}
@@ -289,12 +262,12 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	if err := p.prepare(); err != nil {
 		return nil, err
 	}
-	title := "STREAMING PREVIEW"
+	title := p.current.Status
+	if title == "" {
+		title = "STREAMING PREVIEW"
+	}
 	if p.current.Input != "" {
 		title = "STREAMING SCRIPT"
-	}
-	if p.current.Recovery {
-		title = "STREAMING RECOVERY"
 	}
 	if !p.hideAt.IsZero() {
 		title = "STREAMING COMPLETE"

@@ -327,29 +327,15 @@ Use ordinary script files for reusable source. Durable replay preserves original
 results without executing them again.
 
 Thread runtime locators are flat `mekugi-runtime-<thread-id>` symlinks below the runtime
-directory. The PATH-installed helper follows that name. Private mixed-script checkpoints occupy sibling
-`mekugi-scripts-<thread-id>` directories.
-Private commentary descriptors are regular mode-0600 files beside the thread locators,
-outside checkpoint storage. Discovery rejects symlinks, non-regular files, and descriptors
-that do not match the worker selected by the current locator. Unexpected existing entries are
+directory. The PATH-installed helper follows that name.
+Private commentary descriptors are regular mode-0600 files beside the thread locators.
+Discovery rejects symlinks, non-regular files, and descriptors that do not match the
+worker selected by the current locator. Unexpected existing entries are
 not overwritten, and missing or invalid descriptors disable journal publication, not unrelated script execution.
-One shared pinned parent capability anchors this namespace. Launcher preparation creates no
-checkpoint storage and retains no per-thread directory handles. A checkpoint directory is
-created exclusively for each active storage lifetime; an unexpected existing directory or
-symlink rejects retention rather than becoming application or cleanup authority. If the
-initial capability open fails, preparation rolls back only the new empty directory entry;
-nonempty or non-directory replacements are preserved, and a transient failure can be retried.
-
-Artifacts expire after one hour. Live storage roots remain pinned while artifacts or router-side
-read/edit leases exist. Expiry waits for those operations before deleting their artifacts.
-Last expiry removes the owned checkpoint directory through its live capability and closes that
-capability. A later retention starts with another exclusive directory creation; an idle session
-never reopens a historical directory for editing or recursive cleanup. Reads, edits, expiry,
-and cleanup remain confined when a storage pathname is replaced by an escaping symlink.
-Launcher refresh remains independent of checkpoint-storage availability. Shutdown rejects new
-leases, waits for existing operations, cancels expiry callbacks, cleans active owned storage,
-removes only owned commentary descriptors, unlinks only flat locators still targeting this
-router's worker, and closes the shared parent.
+One shared pinned parent capability anchors this namespace; there are no private
+mixed-script checkpoint directories or per-thread directory handles. Shutdown removes
+only owned commentary descriptors, unlinks flat locators still targeting this router's
+worker, and closes the shared parent.
 Replacement locator files or directories are never traversed or recursively removed.
 
 Acceptance:

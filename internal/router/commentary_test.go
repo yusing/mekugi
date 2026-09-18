@@ -85,7 +85,7 @@ func TestPrepareCommentaryToolsPreservesNullTopLevelTools(t *testing.T) {
 }
 
 func TestStructuredCommentaryTransformsJSONAndReplay(t *testing.T) {
-	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, proxy, _, _ := newMekugiTestTransform(t)
 	proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
 	transform.commentaryTools = commentaryToolCatalog{
 		functionToolKey("functions", "write_stdin"): {
@@ -167,7 +167,7 @@ func TestStructuredCommentaryRejectsNonStringValues(t *testing.T) {
 }
 
 func TestStructuredCommentaryBuffersStreamingArguments(t *testing.T) {
-	transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, _, _, _ := newMekugiTestTransform(t)
 	transform.commentaryTools = commentaryToolCatalog{
 		functionToolKey("functions", "exec_command"): {
 			qualifiedName: "functions.exec_command",
@@ -213,7 +213,7 @@ func TestStructuredCommentaryBuffersStreamingArguments(t *testing.T) {
 }
 
 func TestBufferedStructuredCommentaryOmitsNullCompletionMessage(t *testing.T) {
-	transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, _, _, _ := newMekugiTestTransform(t)
 	transform.commentaryTools = commentaryToolCatalog{
 		functionToolKey("functions", "exec_command"): {
 			qualifiedName: "functions.exec_command",

@@ -12,33 +12,17 @@ import (
 	"github.com/yusing/mekugi/internal/hpatchsyntax"
 )
 
-// PreviewForHostAt projects an unfinished edit into a disposable, in-memory
-// workspace. It never formats, validates source languages, executes shell,
-// invokes hooks, produces executable patches, or publishes edit evidence.
-// Paths and targets use the same owners as complete edits. A preview is not a
-// promise that the eventual call will be valid or have the same result.
+// PreviewForHostAt projects unfinished edit text into a disposable in-memory
+// workspace. It never formats, validates languages, runs hooks, or applies files.
+// Paths and targets use the complete edit's owners; this is not edit evidence.
 func PreviewForHostAt(ctx context.Context, directory, input string) ([]ReviewFile, error) {
-	preview, err := PreviewScriptForHostAt(ctx, directory, input)
-	return preview.Files, err
-}
-
-// ScriptPreview keeps projected file changes separate from input whose effects
-// depend on shell execution or retained recovery state.
-type ScriptPreview struct {
-	Files        []ReviewFile
-	PendingInput string
-}
-
-// PreviewScriptForHostAt projects the safe edit prefix and retains the remaining
-// script for display only. PendingInput is never interpreted as a file result.
-func PreviewScriptForHostAt(ctx context.Context, directory, input string) (ScriptPreview, error) {
 	const limit = 256 << 10
 	if len(input) > limit {
-		return ScriptPreview{}, fmt.Errorf("streaming preview exceeds %d bytes", limit)
+		return nil, fmt.Errorf("streaming preview exceeds %d bytes", limit)
 	}
 	filesystem, err := validateHostDirectory(ctx, directory)
 	if err != nil {
-		return ScriptPreview{}, err
+		return nil, err
 	}
 	remaining := limit
 	w := &workspace{
@@ -80,29 +64,17 @@ func PreviewScriptForHostAt(ctx context.Context, directory, input string) (Scrip
 			return info.Mode(), true, nil
 		},
 	}
-	var pendingInput string
 	mutations := 0
 	lines := hpatchsyntax.SplitPhysicalLines(input)
 	for index := 0; index < len(lines); {
 		if err := ctx.Err(); err != nil {
-			return ScriptPreview{}, err
+			return nil, err
 		}
 		start := index
 		line := lines[start].Text
 		if strings.TrimSpace(line) == "" {
 			index++
 			continue
-		}
-		// Shell and recovery change the baseline or depend on retained state.
-		// Do not guess across these boundaries.
-		if line == "shell" || strings.HasPrefix(line, "shell ") || strings.HasPrefix(line, "resume ") || strings.HasPrefix(line, "in @shell/") {
-			var tail strings.Builder
-			for _, line := range lines[start:] {
-				tail.WriteString(line.Text)
-				tail.WriteString(line.Terminator)
-			}
-			pendingInput = tail.String()
-			break
 		}
 		frame, frameErr := hpatchsyntax.FrameCommand(lines, start, line)
 		index = frame.Next
@@ -156,7 +128,7 @@ func PreviewScriptForHostAt(ctx context.Context, directory, input string) (Scrip
 		if command.path != "" {
 			command.path, err = filesystem.resolvePath(command.path)
 			if err != nil {
-				return ScriptPreview{}, err
+				return nil, err
 			}
 		}
 		// Target expansion enters the shared editor's conflict checks. Bound
@@ -164,22 +136,22 @@ func PreviewScriptForHostAt(ctx context.Context, directory, input string) (Scrip
 		if command.operation == "type" || command.operation == "add" {
 			cost := max(1, command.target.count)
 			if cost > 1024-mutations {
-				return ScriptPreview{}, errors.New("streaming preview exceeds 1,024 target mutations")
+				return nil, errors.New("streaming preview exceeds 1,024 target mutations")
 			}
 			mutations += cost
 		}
 		if err := w.execute(command, start+1); err != nil {
-			return ScriptPreview{}, err
+			return nil, err
 		}
 		total := 0
 		for _, file := range w.files {
 			if !file.editor.contentFits(limit) {
-				return ScriptPreview{}, errors.New("streaming preview result exceeds capacity")
+				return nil, errors.New("streaming preview result exceeds capacity")
 			}
 			total += len(file.editor.content())
 		}
 		if total > limit {
-			return ScriptPreview{}, errors.New("streaming preview result exceeds capacity")
+			return nil, errors.New("streaming preview result exceeds capacity")
 		}
 	}
 	files := reviewFiles(w.changes())
@@ -191,7 +163,7 @@ func PreviewScriptForHostAt(ctx context.Context, directory, input string) (Scrip
 			files[i].AfterPath = filesystem.hostPath(files[i].AfterPath)
 		}
 	}
-	return ScriptPreview{Files: files, PendingInput: pendingInput}, nil
+	return files, nil
 }
 
 // Complete only the final quoted value for display. Incomplete escapes and UTF-8

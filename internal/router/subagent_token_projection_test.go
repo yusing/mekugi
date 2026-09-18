@@ -10,7 +10,7 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		for _, outcome := range []string{"completed", "failed", "incomplete", "missing-usage", "commentary-only"} {
 			t.Run(map[bool]string{false: "json", true: "sse"}[stream]+"/"+outcome, func(t *testing.T) {
-				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				proxy := newManagedMekugiProxy(t)
 				root, _ := prepareActivityTest(t, proxy, "shared-session", "root", "", "/root", nil)
 				other, _ := prepareActivityTest(t, proxy, "other-session", "other-root", "", "/root", nil)
 				child, _ := prepareActivityTest(t, proxy, "shared-session", "child", "root", "/root/worker", nil)

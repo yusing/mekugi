@@ -9,7 +9,6 @@ import (
 
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
-	"github.com/openai/openai-go/v3/shared"
 )
 
 type codeModeApplyPatchOwner struct {
@@ -270,13 +269,6 @@ func (t *mekugiResponseTransform) routesTool(name string) bool {
 	}
 	contribution, ok := t.proxy.registry.contribution(name)
 	return ok && contribution.ModelVisible
-}
-
-func customGrammarTool(name, description, grammar string) map[string]json.RawMessage {
-	tool := responses.ToolParamOfCustom(name)
-	tool.OfCustom.Description = param.NewOpt(description)
-	tool.OfCustom.Format = shared.CustomToolInputFormatParamOfGrammar(grammar, "lark")
-	return mustToolDefinitionFields(tool)
 }
 
 func customFreeformTool(name, description string) map[string]json.RawMessage {

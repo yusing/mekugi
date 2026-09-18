@@ -25,7 +25,7 @@ func newToolPluginTestRegistry(t *testing.T) (*toolRegistry, string) {
 	if err := os.WriteFile(liveModule, []byte(testToolPluginDeclaration), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, testMekugiToolDescription, false)
+	registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func newToolPluginTestRegistry(t *testing.T) (*toolRegistry, string) {
 // snapshot creation themselves are covered by the startup and pinning tests.
 func copiedToolPluginTestRegistry(t *testing.T) *toolRegistry {
 	t.Helper()
-	source := pluginProxyTestFixture.get(t, testToolPluginDeclaration, testMekugiToolDescription)
+	source := pluginProxyTestFixture.get(t, testToolPluginDeclaration)
 	snapshot := filepath.Join(t.TempDir(), filepath.Base(source.SnapshotDir))
 	if err := os.CopyFS(filepath.Join(snapshot, "runtime"), os.DirFS(source.RuntimeRoot)); err != nil {
 		t.Fatal(err)

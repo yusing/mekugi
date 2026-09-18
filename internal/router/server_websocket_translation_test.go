@@ -141,7 +141,7 @@ func TestResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T) {
 	if err := os.WriteFile(path, []byte("old\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	proxy := newManagedMekugiProxy(t, newInProcessMekugiTranslator(t.TempDir()))
+	proxy := newManagedMekugiProxy(t)
 	proxy.customizedInstructions = true
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -172,7 +172,7 @@ func TestResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T) {
 			providerErrors <- err
 			return
 		}
-		item := map[string]any{"type": "custom_tool_call", "id": "preview-item", "call_id": "preview-call", "name": mekugiToolName, "input": "", "status": "in_progress"}
+		item := map[string]any{"type": "custom_tool_call", "id": "preview-item", "call_id": "preview-call", "name": "shell", "input": "", "status": "in_progress"}
 		write := func(value any) bool {
 			if err := providerSocketWrite(ctx, upstream, value); err != nil {
 				providerErrors <- err
@@ -184,7 +184,7 @@ func TestResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T) {
 			!write(map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item}) {
 			return
 		}
-		for _, delta := range []string{"in file.txt\ntype \"old\" \"hel", "lo"} {
+		for _, delta := range []string{"hpatch <<'PATCH'\nin file.txt\ntype \"old\" \"hel", "lo"} {
 			if !write(map[string]any{"type": "response.custom_tool_call_input.delta", "item_id": "preview-item", "delta": delta}) {
 				return
 			}
@@ -194,7 +194,7 @@ func TestResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T) {
 				return
 			}
 		}
-		input := "in file.txt\ntype \"old\" \"hello\"\n"
+		input := "hpatch <<'PATCH'\nin file.txt\ntype \"old\" \"hello\"\nPATCH\n"
 		if !write(map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "preview-item", "input": input}) {
 			return
 		}
@@ -244,16 +244,16 @@ func TestResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T) {
 		return liveDiffEvent{}
 	}
 	previewID := ""
-	for _, want := range []string{"+hel\n", "+hello\n"} {
+	for _, want := range []string{"hel", "hello"} {
 		for {
 			event := nextEvent()
 			if event.Kind == "change" {
 				t.Fatal("published durable change before complete input")
 			}
-			if event.Preview == nil || len(event.Preview.Files) == 0 {
+			if event.Preview == nil {
 				continue
 			}
-			if !strings.Contains(event.Preview.Files[0].Diff, want) {
+			if len(event.Preview.Files) != 1 || !strings.Contains(event.Preview.Files[0].Diff, "+"+want) || event.Preview.Input != "" {
 				continue
 			}
 			previewID = event.Preview.ID
@@ -270,11 +270,13 @@ func TestResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T) {
 		}
 		advance <- struct{}{}
 	}
-	removed, captured := false, false
-	for !removed || !captured {
+	removed := false
+	for !removed {
 		event := nextEvent()
 		removed = removed || event.Preview != nil && event.Preview.ID == previewID && event.Preview.Workspace == ""
-		captured = captured || event.Kind == "change"
+		if event.Kind == "change" {
+			t.Fatal("translation published an edit before host execution")
+		}
 	}
 	select {
 	case <-downstream:

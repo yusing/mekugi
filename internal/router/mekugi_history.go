@@ -25,8 +25,9 @@ type mekugiHistory struct {
 	ToolName string
 	PluginID string
 
-	Script string
-	Root   string
+	Script          string
+	Root            string
+	ExecutingThread string `json:",omitempty"`
 	// Evaluated is the script mekugi actually received when it differs from the
 	// model's payload, which happens when the payload was a recovery edit. Replay
 	// must restore what the model emitted, while a following recovery must target
@@ -148,7 +149,7 @@ func (p *mekugiProxy) rememberBatch(sessionID string, histories map[string]mekug
 			return fmt.Errorf("encode mekugi history item: %w", err)
 		}
 		history.bytes = len(sessionID) + len(callID) + len(history.ToolName) + len(history.PluginID) + len(history.Script) + len(history.Root) + len(history.Evaluated) + len(history.Patch) + len(history.CarrierKind) + len(history.CarrierName) + len(history.CarrierPayload) + len(history.Report) + len(history.OutputWarning) + len(history.TranslationError) + len(history.CorrelationID) + len(encodedItem)
-		history.bytes += len(history.ChangeID) + len(history.RecoveryBinding)
+		history.bytes += len(history.ChangeID) + len(history.RecoveryBinding) + len(history.ExecutingThread)
 		for _, file := range history.ReviewFiles {
 			history.bytes += len(file.BeforePath) + len(file.AfterPath) + len(file.Diff)
 		}
@@ -526,20 +527,4 @@ func (t *mekugiResponseTransform) commitLocalCall(callID string) error {
 	}
 	t.handOffCommentary(callID)
 	return nil
-}
-
-// targetAliases includes only visible ancestry and calls applied in this turn.
-func (t *mekugiResponseTransform) targetAliases() []mekugi.TargetAlias {
-	histories := slices.Collect(maps.Values(t.visible))
-	slices.SortFunc(histories, func(a, b mekugiHistory) int { return cmp.Compare(a.sequence, b.sequence) })
-	local := slices.Collect(maps.Values(t.local))
-	slices.SortFunc(local, func(a, b mekugiHistory) int { return cmp.Compare(a.sequence, b.sequence) })
-	histories = append(histories, local...)
-	var aliases []mekugi.TargetAlias
-	for _, history := range histories {
-		if history.Root == t.directory && (history.confirmed || history.Applied) {
-			aliases = append(aliases, history.Aliases...)
-		}
-	}
-	return aliases
 }

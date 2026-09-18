@@ -63,7 +63,7 @@ func TestLiveDiffShellCommandNames(t *testing.T) {
 func TestLiveDiffShellCommandsThroughPreview(t *testing.T) {
 	var pane liveDiffPreviewPane
 	input := "rg -n 'preview' internal/router | head -65\nsed -n '1,5p' file.go\n"
-	pane.update(liveDiffPreview{ID: "shell", Workspace: "/workspace", Shell: true, Input: input}, time.Time{})
+	pane.update(liveDiffPreview{ID: "shell", Workspace: "/workspace", Input: input}, time.Time{})
 	lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 100, 8)
 	if err != nil {
 		t.Fatal(err)
