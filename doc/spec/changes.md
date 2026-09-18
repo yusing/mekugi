@@ -195,23 +195,21 @@ it does not reserve a baseline or promise that the complete call will succeed.
 
 Previews remain separately labeled, never composed into applied history or treated as
 receipts. They occupy a dedicated, non-scrollable region below captured diffs. While
-visible, the preview uses only the height its content needs, capped at 70% of the
-body and leaving at least one captured row. Its heading counts toward that height. Keyboard navigation, flushing,
-and wheel input in the captured-diff region affect only captured diffs. Wheel input
-in the preview region is ignored. Streaming keeps the newest changed source
-row's final wrapped fragment visible, independently of captured-diff follow/pause state.
-It fills available preview rows through that tip rather than leaving centering padding
-below it.
+visible, the captured diff and preview keep a fixed 3:7 split of the body, leaving at
+least one captured row in tiny terminals. The preview heading counts toward its region.
+Keyboard navigation, flushing, and wheel input in the captured-diff region affect only
+captured diffs. Wheel input in the preview region is ignored. Streaming keeps the newest
+changed source row's final wrapped fragment visible, independently of captured-diff
+follow/pause state, and fills available preview rows through that tip rather than
+leaving centering padding below it.
 
 Completion, rejection, interruption, or transform closure ends the live preview. The
 last frame remains for 300 ms, then the region disappears and captured diffs regain
 full height. Dismissal recenters the captured change when following; paused views
-retain their scroll position. While streaming, preview-only height changes preserve
-the captured viewport even while following, moving it only enough to keep the followed
-change visible. New captures, explicit resume, and terminal resize also recenter the
-captured change. A new stream cancels pending
-removal; completion of one stream cannot hide another. Tiny terminals may omit the
-preview when both regions cannot fit. Reconnect clears transient display state and
+retain their scroll position. New captures, explicit resume, and terminal resize also
+recenter the captured change. A new stream cancels pending removal; completion of one
+stream cannot hide another. Tiny terminals may omit the preview when both regions
+cannot fit. Reconnect clears transient display state and
 restores only currently active router-local previews after the durable
 snapshot barrier. No preview survives router restart or history replay.
 

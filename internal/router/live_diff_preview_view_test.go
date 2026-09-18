@@ -229,23 +229,3 @@ func TestLiveDiffPreviewRawScript(t *testing.T) {
 		t.Fatalf("raw script pretends to be a projected file: %q", text)
 	}
 }
-
-func TestLiveDiffPreviewHeightFitsAndFillsContent(t *testing.T) {
-	var pane liveDiffPreviewPane
-	for _, rows := range []int{1, 3, 10, 1000} {
-		pane.update(previewViewFixture("sizing", rows), time.Time{})
-		height, err := pane.height(100, 20)
-		if err != nil || height != min(20, rows+1) {
-			t.Fatalf("rows=%d height=%d err=%v", rows, height, err)
-		}
-		lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 100, height)
-		if err != nil || len(lines) != height ||
-			!strings.Contains(ansi.Strip(lines[len(lines)-1]), fmt.Sprintf("stream_%04d", rows)) {
-			t.Fatalf("rows=%d left empty preview rows or lost its tip: %q, %v", rows, lines, err)
-		}
-	}
-	pane = liveDiffPreviewPane{}
-	if height, err := pane.height(100, 20); height != 0 || err != nil {
-		t.Fatal("hidden preview retained space")
-	}
-}

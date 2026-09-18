@@ -162,10 +162,10 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 		if liveDiffFrameRow(frame, 1) != header || liveDiffFrameRow(frame, 2) != top {
 			t.Fatal("streaming moved the paused captured-diff viewport")
 		}
-		// Short previews fit their content; long previews cap at 70%.
-		previewTop := 22 - min(14, rows+1)
+		// The preview boundary remains fixed as streamed content grows.
+		const previewTop = 8
 		if !strings.Contains(liveDiffFrameRow(frame, previewTop), "STREAMING PREVIEW") {
-			t.Fatalf("preview does not use content-aware height: %q", frame)
+			t.Fatalf("preview moved from the fixed 3:7 split: %q", frame)
 		}
 		for row := 2; row < previewTop; row++ {
 			if strings.Contains(liveDiffFrameRow(frame, row), "stream_") {
@@ -374,7 +374,7 @@ func TestLiveDiffTerminalCentersFinalRowAfterPreview(t *testing.T) {
 	ui.quit(t)
 }
 
-func TestLiveDiffTerminalPreviewFillsBottomWithoutRecentring(t *testing.T) {
+func TestLiveDiffTerminalPreviewKeepsFixedSplitWithoutRecentring(t *testing.T) {
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -393,12 +393,11 @@ func TestLiveDiffTerminalPreviewFillsBottomWithoutRecentring(t *testing.T) {
 		frame := ui.frame(t, func(frame string) bool {
 			return strings.Contains(ansi.Strip(frame), fmt.Sprintf("stream_%04d", size))
 		})
-		if !strings.Contains(liveDiffFrameRow(frame, 57), fmt.Sprintf("stream_%04d", size)) {
-			t.Fatalf("preview left unused rows below its streaming tip: %q", frame)
+		if !strings.Contains(liveDiffFrameRow(frame, 18), "STREAMING PREVIEW") {
+			t.Fatalf("preview moved from the fixed 3:7 split: %q", frame)
 		}
-		capturedBottom := 57 - min(40, size+1)
-		if !strings.Contains(liveDiffFrameRow(frame, capturedBottom), "80│+new") {
-			t.Fatalf("preview growth lost the followed captured tip: %q", frame)
+		if !strings.Contains(liveDiffFrameRow(frame, 17), "80│+new") {
+			t.Fatalf("fixed preview split lost the followed captured tip: %q", frame)
 		}
 	}
 	// A paused viewport must not recenter when the preview releases its rows.

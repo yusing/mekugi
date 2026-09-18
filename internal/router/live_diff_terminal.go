@@ -164,11 +164,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	c.lastWidth, c.lastHeight = width, height
 	lines := c.rendering.lines
 	if c.dirty {
-		_, limit := liveDiffRegionRows(height-2, c.previewPane.current.ID != "")
-		c.previewRows, err = c.previewPane.height(width, limit)
-		if err != nil {
-			return err
-		}
+		_, c.previewRows = liveDiffRegionRows(height-2, c.previewPane.current.ID != "")
 	}
 	rows := height - 2 - c.previewRows
 	offset := 0

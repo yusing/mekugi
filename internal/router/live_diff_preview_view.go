@@ -67,35 +67,13 @@ func (p *liveDiffPreviewPane) expire(now time.Time) bool {
 	return false
 }
 
-// Cap preview height at 70% of the body, keeping at least one captured row.
-// Short previews use less space; the divider/title counts toward their height.
+// Keep a fixed 3:7 captured-diff/preview split while streaming.
 func liveDiffRegionRows(body int, streaming bool) (diff, preview int) {
 	if !streaming || body < 2 {
 		return body, 0
 	}
 	diff = max(1, body*3/10)
 	return diff, body - diff
-}
-
-// Measure only until the display cap. This runs at paint time, not for each
-// incoming delta, and uses the same source-column geometry as rendering.
-func (p *liveDiffPreviewPane) height(width, limit int) (int, error) {
-	if limit <= 0 || p.current.ID == "" {
-		return 0, nil
-	}
-	if err := p.prepare(); err != nil {
-		return 0, err
-	}
-	_, sourceWidth := p.columns(width)
-	height := 1
-	for _, row := range p.source {
-		if height >= limit {
-			return limit, nil
-		}
-		text := liveDiffSafe(strings.TrimSuffix(row.text, "\n"), false)
-		height += strings.Count(ansi.Hardwrap(text, sourceWidth, true), "\n") + 1
-	}
-	return min(height, limit), nil
 }
 
 func (p *liveDiffPreviewPane) columns(width int) (digits, sourceWidth int) {
