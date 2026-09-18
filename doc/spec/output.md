@@ -177,14 +177,6 @@ The alias maps that exact target and final path to the final rendered replacemen
 language formatting. Deletions, insertions, text-occurrence targets, targetless initialization,
 and ineffective commands produce no alias. Root APIs retain no target or editing state between invocations.
 
-In routed mode, the router retains those aliases within the same session and workspace only after
-a replayed carrier output exactly confirms the successful report. Before translating a later
-script, it follows the aliases in retained call order. A failed, missing, or altered carrier
-output confirms nothing. For rejected parseable line and inclusive-range commands, the same
-rewrite boundary classifies only the emitted row-coordinate span relative to confirmed same-path
-alias targets as `none`, `exact`, `contains`, `contained`, or `overlap`; it does not change target
-rewriting or evaluation.
-
 For host variants, the complete report is rendered before commit or patch return. Apply host
 variants return it only after the external effect succeeds; router emission is auxiliary and
 cannot retroactively change or roll back a successful effect. Basic `Apply` discards the host-only

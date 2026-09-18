@@ -26,10 +26,6 @@ const (
 	maxMekugiPendingCalls = 128
 )
 
-var (
-	errMekugiCapacity = errors.New("mekugi proxy capacity exceeded")
-)
-
 func mekugiDataDirectory() (string, error) {
 	configDirectory, err := os.UserConfigDir()
 	if err != nil {

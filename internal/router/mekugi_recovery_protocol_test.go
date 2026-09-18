@@ -258,15 +258,3 @@ func TestRecoverScriptHonorsContext(t *testing.T) {
 		t.Fatalf("cancelled context = %q, %v", got, err)
 	}
 }
-
-func grammarTerminalLine(t *testing.T, grammar, name string) string {
-	t.Helper()
-	prefix := name + ": "
-	for line := range strings.SplitSeq(grammar, "\n") {
-		if strings.HasPrefix(line, prefix) {
-			return line
-		}
-	}
-	t.Fatalf("%s terminal not found", name)
-	return ""
-}

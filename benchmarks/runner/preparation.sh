@@ -8,7 +8,7 @@ prepare_instructions() {
 	diagnostic_instruction=$(cat <<'INSTRUCTION'
 ## Benchmark diagnostic reporting
 
-If any mekugi call is rejected or `hpatch_recover` is invoked, call `report_issue` exactly once after that recovery chain ends, then continue the task. Also report any distinct misleading or unnecessarily costly mekugi-related interaction once you have concrete evidence. State the intended action, the observed tool result or behavior, its impact, and the smallest useful improvement. Do not report project bugs, and do not speculate.
+If any hpatch edit is rejected or `hpatch --recover` is invoked, call `report_issue` exactly once after that recovery chain ends, then continue the task. Also report any distinct misleading or unnecessarily costly mekugi-related interaction once you have concrete evidence. State the intended action, the observed tool result or behavior, its impact, and the smallest useful improvement. Do not report project bugs, and do not speculate.
 INSTRUCTION
 	)
 	offline_instruction=$(cat <<'INSTRUCTION'

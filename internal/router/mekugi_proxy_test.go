@@ -134,21 +134,6 @@ func newManagedMekugiProxy(t *testing.T) *mekugiProxy {
 	return newProxyWithSharedTestRegistry(t, sharedProxyTestRegistry(t))
 }
 
-func newManagedMekugiProxyWithDataDirectory(t *testing.T, dataDirectory string) *mekugiProxy {
-	t.Helper()
-	registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	proxy := newMekugiProxy(registry, false, false)
-	t.Cleanup(func() {
-		if err := errors.Join(proxy.Close(), registry.Close()); err != nil {
-			t.Error(err)
-		}
-	})
-	return proxy
-}
-
 func registeredWorkerInput(t *testing.T, proxy *mekugiProxy, name string, arguments []string) string {
 	t.Helper()
 	contribution, ok := proxy.registry.contribution(name)
