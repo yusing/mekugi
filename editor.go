@@ -260,10 +260,17 @@ func resolveRow(baseline string, reference rowReference) (logicalLine, error) {
 }
 
 // applyMutation applies a type or add mutation to the baseline.
+// applyMutation applies a type, add, or append mutation to the immutable baseline.
 func (e *editor) applyMutation(operation string, target targetSpec, value string, origin editOrigin, command instruction, path string) error {
-	spans, err := e.resolveTarget(target)
-	if err != nil {
-		return err
+	var spans []targetSpan
+	var err error
+	if operation == "append" {
+		spans = []targetSpan{{start: len(e.baseline), end: len(e.baseline)}}
+	} else {
+		spans, err = e.resolveTarget(target)
+		if err != nil {
+			return err
+		}
 	}
 	edits := make([]baselineEdit, len(spans))
 	var candidate indentationCandidate
@@ -284,7 +291,7 @@ func (e *editor) applyMutation(operation string, target targetSpec, value string
 			if replacement != "" && span.linewise && lineTerminatorSuffix(replacement) == "" {
 				replacement += lineTerminatorSuffix(e.baseline[span.start:span.end])
 			}
-		case "add":
+		case "add", "append":
 			end = start
 		default:
 			panic("parsed instruction has no mutation executor: " + operation)

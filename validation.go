@@ -181,9 +181,6 @@ func (w *workspace) renderFinal(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if file.deleted {
-			continue
-		}
 		fileFailures, err := file.renderContent(ctx)
 		if err != nil {
 			return err
@@ -208,7 +205,7 @@ func (file *fileState) renderContent(ctx context.Context) ([]*commandError, erro
 	var offsets *formattedOffsetMap
 	var failures []*commandError
 	if filepath.Ext(file.path) == ".go" &&
-		(file.created || file.original != rendered || filepath.Ext(file.originalPath) != ".go") {
+		(file.original != rendered) {
 		formatted, err := format.Source([]byte(rendered))
 		if err != nil {
 			for _, failure := range discoverGoSyntaxFailures(ctx, rendered, err) {
@@ -248,7 +245,7 @@ func (file *fileState) renderContent(ctx context.Context) ([]*commandError, erro
 	}
 
 	language, name, supported := languageSyntaxForPath(file.path)
-	if supported && (file.created || file.originalPath != file.path || file.original != final) {
+	if supported && file.original != final {
 		syntaxFailures := collapseLanguageSyntaxCascades(ctx, final, language, findLanguageSyntaxFailures(final, language))
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -315,7 +312,7 @@ func (f *fileState) validationOrigin() editOrigin {
 	if f.editor.lastOrigin.command != 0 {
 		return f.editor.lastOrigin
 	}
-	return f.mutationOrigin
+	return editOrigin{}
 }
 
 type goSyntaxFailure struct {

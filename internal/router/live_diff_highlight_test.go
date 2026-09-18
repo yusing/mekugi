@@ -354,15 +354,17 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 	for _, i := range []int{0, 312, 335, 339} {
 		rows[i] = ""
 	}
-	created, err := mekugi.TranslateForHostAt(t.Context(), workspace,
-		"new review_highlight_test.txt\ntype "+strconv.Quote(strings.Join(rows[:311], "\n")+"\n")+"\n", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := created.ReviewFiles[0].AfterPath
+	// Retained creation captures still render, although current hpatch only edits existing files.
+	path := filepath.Join(workspace, "review_highlight_test.txt")
 	initial := liveDiffChunk{
-		key: "create", applied: true, review: created.ReviewFiles[0],
+		key: "create", applied: true,
+		review: mekugi.ReviewFile{
+			AfterPath: path,
+			Diff: "--- /dev/null\n+++ " + strconv.Quote(path) +
+				"\n@@ -0,0 +1,311 @@\n+" + strings.Join(rows[:311], "\n+") + "\n",
+		},
 	}
+
 	recent := liveDiffHighlightChunk("edit", path,
 		"@@ -312 +312 @@\n-line312\n+LATEST312\n@@ -337 +337 @@\n-line337\n+LATEST337\n", true)
 	v := liveDiffView{}

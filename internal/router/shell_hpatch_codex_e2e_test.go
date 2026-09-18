@@ -38,7 +38,7 @@ func (p *shellEditCodexProvider) forwardExecution(_, _ context.Context, body []b
 		item = map[string]any{
 			"type": "custom_tool_call", "id": "edit-item", "call_id": "edit-call",
 			"name": "shell", "namespace": "functions", "status": "completed",
-			"input": "hpatch <<PATCH\nnew native.txt\ntype \"$(printf 'native success')\"\nPATCH",
+			"input": "hpatch native.txt \"$(python3 generator.py)\"",
 		}
 	case 2:
 		var request struct {
@@ -84,6 +84,12 @@ func TestShellHpatchNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "native.txt"), []byte("old\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "generator.py"), []byte("print('type \"old\" \"native success\"')\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	provider := &shellEditCodexProvider{}
 	proxy := newManagedMekugiProxy(t)
 	proxy.replayStore, err = openMekugiReplayStore(t.TempDir())
@@ -114,7 +120,7 @@ func TestShellHpatchNativeCodexE2E(t *testing.T) {
 		t.Fatalf("Codex: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}
 	content, err := os.ReadFile(filepath.Join(workspace, "native.txt"))
-	if err != nil || string(content) != "native success" {
+	if err != nil || string(content) != "native success\n" {
 		t.Fatalf("actual edit %q: %v", content, err)
 	}
 	provider.mu.Lock()

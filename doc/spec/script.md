@@ -6,16 +6,14 @@ Outside a multiline value body, blank lines are ignored and every other physical
 one command:
 
 ```text
-in PATH
-new PATH
-mv PATH
-rm
 type TARGET VALUE
-add DESTINATION VALUE
-type VALUE
+add TARGET VALUE
+append VALUE
 ```
 
-The final form is new-file initialization and is valid only under `REQ-FILE-001`.
+Filenames are outer invocation arguments, never part of the edit script. Each script is bound
+to its invocation-supplied file. There is no active-file selection or file-management command.
+Create, move, and remove files through the outer shell.
 
 Targets are:
 
@@ -31,9 +29,9 @@ HASH  := exactly four lowercase hexadecimal digits
 COUNT := positive decimal integer; default 1
 ```
 
-An add destination is a single `ROW`, an anchored or unanchored text target, or the literal
-`EOF`. `add` does not accept a range. `EOF` is a destination sentinel rather than a target
-and contributes no target metric.
+An add target is a single `ROW` or an anchored or unanchored text target. `add` does not
+accept a range. `append` inserts once at the immutable baseline end, requires no target,
+and contributes no target metric. `EOF` is not a keyword.
 
 No whitespace is permitted inside `ROW..ROW`. A line target owns the complete logical
 line, including its terminator when one exists. A range owns all
@@ -94,12 +92,13 @@ add 37:8c2f "// parseCommand parses one physical script line.\n"
 type 12:a1b2 "needle" "replacement"
 type 12:a1b2 "needle" 3 "replacement"
 type "known current text" "replacement"
-add EOF <<PATCH
+append <<PATCH
 appended text
 PATCH
 ```
 
-Paths are nonempty and consume the remainder of their command line. Root-scoped library application
+Paths are nonempty invocation arguments, decoded by the shell, not the edit parser.
+Root-scoped library application
 through `Apply` or `ApplyForHost` resolves relative paths from cwd; absolute paths must remain beneath
 the canonical root, and lexical or symlink escapes fail. Host translation through
 `TranslateForHostAt` and `ApplyForHostAt` instead use an optional host directory without filesystem
@@ -111,7 +110,8 @@ commands are invalid.
 
 Acceptance:
 
-1. Every engine command is one of the six public edit commands.
+1. Every edit command is `type`, `add`, or `append`, without a filename.
+   The removed `in`, `new`, `mv`, `rm`, targetless `type`, and `add EOF` forms reject.
 2. Line, range, anchored text, and unanchored text targets parse without a separate selection command, and inline
    replacement values remain distinguishable from a text target's quoted literal.
 3. Anchored and unanchored text targets accept JSON-escaped LF and exact multiline or
@@ -123,14 +123,17 @@ Acceptance:
    A missing or mismatched closing delimiter rejects atomically.
 5. Invalid rows, ranges, counts, strings, heredocs, operands, and commands fail before
    filesystem mutation, patch output, or final-state reporting.
-6. File and mutation commands may be interleaved while all targets retain the immutable
-   baseline meaning defined by `REQ-SELECT-001`.
+6. One invocation may supply scripts for multiple paths while all targets retain the immutable
+   baseline meaning defined by `REQ-SELECT-001`; the entire multi-file invocation is atomic.
 7. For root-scoped evaluation with root `/workspace` and cwd `bin/worktree`, path `main.go` denotes `/workspace/bin/worktree/main.go` and translates as `bin/worktree/main.go`.
 
 ### Shell invocation
 
-The model sends edits through `functions.shell` as `hpatch [SCRIPT]`, or supplies
-the edit on stdin. The command must stand alone rather than being composed with
+The model sends edits through `functions.shell` as `hpatch PATH SCRIPT`, or uses
+`hpatch PATH` to supply the script on stdin. Multiple `PATH SCRIPT` pairs in one call
+form one atomic multi-file edit. Paths are ordinary shell arguments, so shell quoting
+handles spaces without adding filename syntax to HPATCH. `--` ends option parsing for
+literal flag-like paths. The command must stand alone rather than being composed with
 other shell commands. The existing shell owns argument expansion, quoting,
 heredoc expansion, substitutions, stdin, and redirection.
 
@@ -145,7 +148,8 @@ and attempts rollback on failure as specified in [REQ-OUTPUT-001](output.md).
 
 Acceptance:
 
-1. Argument and stdin invocation produce the same edit for the same decoded bytes.
+1. Argument and stdin invocation produce the same edit for the same path and decoded bytes.
+   Multiple path/script pairs validate together before any edit is applied.
 2. Unquoted shell heredocs expand substitutions normally; quoted heredocs preserve them.
 3. Input and output redirection use the shell's ordinary streams.
 4. Composed `hpatch` commands reject; a standalone command may use substitutions.

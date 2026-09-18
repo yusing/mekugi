@@ -11,7 +11,7 @@ import (
 // rendered edits, rather than repeating the author's patch.
 func (w *workspace) writeFormattingReferences(report *strings.Builder, currentPath *string) {
 	for _, file := range w.files {
-		if file.deleted || file.editor.finalOffsets == nil {
+		if file.editor.finalOffsets == nil {
 			continue
 		}
 		before := file.editor.contentWithProjection(file.editor.renderedEdits())

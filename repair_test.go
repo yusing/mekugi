@@ -9,7 +9,8 @@ func repairFor(t *testing.T, content, script string) string {
 	t.Helper()
 	root := t.TempDir()
 	writeTestFile(t, root, "file.txt", content, 0o644)
-	result, err := translateForHostAtTest(t, root, script, "")
+	edits := []FileEdit{{Path: "file.txt", Script: script}}
+	result, err := translateForHostAtTest(t, root, edits, "")
 	if err == nil {
 		t.Fatalf("script unexpectedly succeeded: %q", script)
 	}
@@ -20,7 +21,7 @@ func repairFor(t *testing.T, content, script string) string {
 func TestMekugi2RepairContextForIncompleteTextTarget(t *testing.T) {
 	content := "none\ntarget\nnone\n"
 	anchor := row(1, "none")
-	repair := repairFor(t, content, "in file.txt\ntype "+anchor+` "target" 2 "replacement"`)
+	repair := repairFor(t, content, "type "+anchor+` "target" 2 "replacement"`)
 	for _, want := range []string{
 		"found 1 of 2 requested matches at or after line 1",
 		"apply that prerequisite, reread, and submit a later invocation",
@@ -34,8 +35,7 @@ func TestMekugi2RepairContextForIncompleteTextTarget(t *testing.T) {
 }
 
 func TestMekugi2RepairContextForIncompleteUnanchoredTextTarget(t *testing.T) {
-	repair := repairFor(t, "none\ntarget\nnone\n", `in file.txt
-type "target" 2 "replacement"`)
+	repair := repairFor(t, "none\ntarget\nnone\n", `type "target" 2 "replacement"`)
 	for _, want := range []string{
 		"found 1 of 2 requested matches in immutable baseline",
 		"matching lines: 2",
@@ -47,7 +47,7 @@ type "target" 2 "replacement"`)
 }
 
 func TestMekugi2RepairContextForStaleRow(t *testing.T) {
-	repair := repairFor(t, "alpha\nbeta\n", "in file.txt\ntype 2:0000 \"B\"")
+	repair := repairFor(t, "alpha\nbeta\n", `type 2:0000 "B"`)
 	if !strings.Contains(repair, "2:"+hashLine("beta")+" beta") {
 		t.Fatalf("repair = %q", repair)
 	}
@@ -55,7 +55,7 @@ func TestMekugi2RepairContextForStaleRow(t *testing.T) {
 
 func TestMekugi2RepairContextForStaleRangeEnd(t *testing.T) {
 	content := "one\ntwo\nthree\nfour\nfive\nsix\nseven\n"
-	repair := repairFor(t, content, "in file.txt\ntype "+row(1, "one")+"..7:0000 \"\"")
+	repair := repairFor(t, content, "type "+row(1, "one")+"..7:0000 \"\"")
 	if !strings.Contains(repair, "7:"+hashLine("seven")+" seven") {
 		t.Fatalf("repair = %q", repair)
 	}
@@ -64,7 +64,7 @@ func TestMekugi2RepairContextForStaleRangeEnd(t *testing.T) {
 func TestMekugi2MissingRowDoesNotGuessRepairContext(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "file.txt", "alpha\n", 0o644)
-	result, err := translateForHostAtTest(t, root, "in file.txt\ntype 9:0000 \"B\"", "")
+	result, err := translateForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: `type 9:0000 "B"`}}, "")
 	if err == nil || !strings.Contains(result.Diagnostic, "row-missing") {
 		t.Fatalf("translateForHostForTest() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
@@ -75,11 +75,11 @@ func TestMekugi2MissingRowDoesNotGuessRepairContext(t *testing.T) {
 
 func TestMekugi2RepairContextForEditConflict(t *testing.T) {
 	content := "alpha\nbeta\n"
-	script := "in file.txt\ntype " + row(1, "alpha") + ` "A"` + "\ntype " + row(1, "alpha") + ` ""`
+	script := "type " + row(1, "alpha") + ` "A"` + "\ntype " + row(1, "alpha") + ` ""`
 	repair := repairFor(t, content, script)
 	for _, want := range []string{
 		"baseline content conflicts with an earlier mutation",
-		"command 2 (type) line 1",
+		"command 1 (type) line 1",
 		"1:" + hashLine("alpha") + " alpha",
 	} {
 		if !strings.Contains(repair, want) {
@@ -90,7 +90,7 @@ func TestMekugi2RepairContextForEditConflict(t *testing.T) {
 
 func TestMekugi2RepairContextForReversedRange(t *testing.T) {
 	content := "alpha\nbeta\n"
-	script := "in file.txt\ntype " + row(2, "beta") + ".." + row(1, "alpha") + ` ""`
+	script := "type " + row(2, "beta") + ".." + row(1, "alpha") + ` ""`
 	repair := repairFor(t, content, script)
 	if !strings.Contains(repair, "row range resolves to lines 2:1") ||
 		!strings.Contains(repair, "2:"+hashLine("beta")+" beta") {

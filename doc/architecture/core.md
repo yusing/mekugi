@@ -2,15 +2,14 @@
 
 ## CTR-CORE-001 — Virtual workspace and immutable-baseline edit planning
 
-The edit engine is the sole owner of command evaluation, logical file lifecycle,
+The edit engine is the sole owner of command evaluation, invocation-bound script paths,
 immutable invocation baselines, target resolution, conflict detection, ordered
 splices, language-aware finalization, and completed net changes. Apply and
 translation consume the same completed result; neither path reimplements the
 semantics defined by `REQ-SCRIPT-001`, `REQ-FILE-001`, `REQ-SELECT-001`, or
 `REQ-EDIT-001`.
 
-Each touched file retains its original identity and content, current logical path,
-pending lifecycle action, and accepted splices. Finalization renders those splices
+Each touched file retains its resolved path, immutable original content, and accepted splices. Finalization renders those splices
 once, applies supported indentation and language processing, and records the mapping
 needed for result projection. No intermediate edit becomes another baseline or target
 source within the invocation.

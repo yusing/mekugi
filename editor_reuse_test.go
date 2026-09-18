@@ -1,7 +1,6 @@
 package mekugi
 
 import (
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -101,34 +100,5 @@ func TestFinalizedEditorContent(t *testing.T) {
 				t.Fatal("formatting offset policy changed")
 			}
 		})
-	}
-}
-
-func TestWorkspaceTombstones(t *testing.T) {
-	for _, prefix := range []string{
-		"in original.txt\nmv intermediate.txt\nmv final.txt\nrm\n",
-		"new created.txt\nmv intermediate.txt\nmv final.txt\nrm\n",
-	} {
-		original := "original.txt"
-		if strings.HasPrefix(prefix, "new") {
-			original = "created.txt"
-		}
-		for _, path := range []string{original, "intermediate.txt", "final.txt"} {
-			for _, operation := range []string{"in", "new", "mv"} {
-				t.Run(fmt.Sprintf("%s/%s/%s", prefix[:2], path, operation), func(t *testing.T) {
-					dir := t.TempDir()
-					writeTestFile(t, dir, "original.txt", "original\n", 0o644)
-					script := prefix
-					if operation == "mv" {
-						script += "new other.txt\n"
-					}
-					script += operation + " " + path
-					_, err := translateForHostAtTest(t, dir, script, "")
-					if err == nil {
-						t.Fatal("tombstone was reused")
-					}
-				})
-			}
-		}
 	}
 }

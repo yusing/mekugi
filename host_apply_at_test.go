@@ -14,33 +14,39 @@ func TestApplyForHostAtDirectoryAuthorityAndExactBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"relative.txt", "../outside.txt", filepath.Join(parent, "absolute.txt")} {
-		result, err := ApplyForHostAt(t.Context(), base, "new "+name+"\ntype \"a\\r\\nb\"", "")
-		if err != nil || !result.Change.Applied {
-			t.Fatalf("%s: %+v %v", name, result, err)
-		}
 		target := name
 		if !filepath.IsAbs(target) {
 			target = filepath.Join(base, target)
+		}
+		if err := os.WriteFile(target, []byte("before"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		edits := []FileEdit{{Path: name, Script: `type "before" "a\r\nb"`}}
+		result, err := ApplyForHostAt(t.Context(), base, edits, "")
+		if err != nil || !result.Change.Applied {
+			t.Fatalf("%s: %+v %v", name, result, err)
 		}
 		data, err := os.ReadFile(target)
 		if err != nil || string(data) != "a\r\nb" {
 			t.Fatalf("%s: %q %v", target, data, err)
 		}
 	}
-	if _, err := ApplyForHostAt(t.Context(), "", "new relative.txt", ""); err == nil || !strings.Contains(err.Error(), "relative path requires") {
+	if _, err := ApplyForHostAt(t.Context(), "", []FileEdit{{Path: "relative.txt", Script: `type "before" "a"`}}, ""); err == nil || !strings.Contains(err.Error(), "relative path requires") {
 		t.Fatalf("missing base: %v", err)
 	}
 }
 
 func TestApplyForHostAtRejectsBeforeCommit(t *testing.T) {
 	base := t.TempDir()
-	if _, err := ApplyForHostAt(t.Context(), base, "new first.txt\ntype \"first\"\nin missing.txt\ntype \"old\" \"new\"", ""); err == nil {
+	writeTestFile(t, base, "first.txt", "first\n", 0o644)
+	missing := []FileEdit{{Path: "first.txt", Script: `type "first\n" "new\n"`}, {Path: "missing.txt", Script: `type "old" "new"`}}
+	if _, err := ApplyForHostAt(t.Context(), base, missing, ""); err == nil {
 		t.Fatal("invalid edit succeeded")
 	}
-	if _, err := os.Stat(filepath.Join(base, "first.txt")); !os.IsNotExist(err) {
-		t.Fatalf("partial edit: %v", err)
+	if got := readTestFile(t, base, "first.txt"); got != "first\n" {
+		t.Fatalf("partial edit: %q", got)
 	}
-	if _, err := ApplyForHostAt(nil, base, "", ""); err == nil {
+	if _, err := ApplyForHostAt(nil, base, []FileEdit{{Path: "first.txt", Script: ""}}, ""); err == nil {
 		t.Fatal("nil context accepted")
 	}
 }

@@ -318,7 +318,7 @@ func classifyToolInput(name, input string) (string, string) {
 		return "other", ""
 	}
 	report := withoutChangeNotice(text)
-	if strings.HasPrefix(report, "in ") && strings.Contains(report, "\nlast ") && strings.Contains(report, "\nfiles ") {
+	if (strings.HasPrefix(report, "file ") || strings.HasPrefix(report, "in ")) && strings.Contains(report, "\nlast ") && strings.Contains(report, "\nfiles ") {
 		return "mekugi_report", ""
 	}
 	if code := mekugiDiagnosticCode(text); code != "" {

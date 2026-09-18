@@ -2,7 +2,7 @@
 
 ## REQ-SELECT-001 — Verified immutable-baseline targets
 
-Every explicit target resolves against the active existing file's immutable invocation
+Every explicit target resolves against the script's invocation-bound file's immutable invocation
 baseline. A row first compares its four-digit hash with the exact content at its one-based
 logical-line hint. If they differ or the hint is out of bounds, mekugi scans the same immutable
 baseline and resolves the row only when exactly one line has that hash. No match is
@@ -35,8 +35,8 @@ a later invocation. Exact authored current text may be used as an unanchored lit
 without hcat; other introduced content requires fresh references.
 
 Independently detectable row-missing, row-stale, occurrence-missing, and target-order failures
-are collected across later commands whose active baselines can still be evaluated safely. The
-transaction remains atomic. Dependency-sensitive lifecycle, conflict, and language failures
+are collected across later commands whose file baselines can still be evaluated safely. The
+transaction remains atomic. Dependency-sensitive file, conflict, and language failures
 still stop at their authoritative boundary.
 
 Resolution produces one nonempty baseline span for a line or range and one or more
@@ -57,5 +57,4 @@ Acceptance:
 5. Independent targets retain their original meaning after pending edits; introduced or modified
    content cannot be addressed within the same invocation. A later invocation may target exact
    known current text without a row. A post-edit coordinate may identify one
-   unchanged baseline row shifted by earlier boundary insertions. A whole-file move preserves the
-   moved file's existing baseline under its new logical path.
+   unchanged baseline row shifted by earlier boundary insertions.

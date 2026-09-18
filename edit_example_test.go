@@ -7,9 +7,8 @@ import (
 func TestMekugi2ToolDescriptionExamplesExecute(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "parser.go", "package parser\n\nfunc parse() {}\n", 0o644)
-	script := "in parser.go\n" +
-		"add " + row(3, "func parse() {}") + ` "// parse converts one command.\n"`
-	result, err := applyForHostAtTest(t, root, script, "")
+	edits := []FileEdit{{Path: "parser.go", Script: "add " + row(3, "func parse() {}") + ` "// parse converts one command.\n"`}}
+	result, err := applyForHostAtTest(t, root, edits, "")
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}

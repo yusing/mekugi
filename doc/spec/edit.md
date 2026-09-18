@@ -4,8 +4,8 @@
 
 `type TARGET VALUE` replaces every target span with the decoded value. An empty target-bearing
 value deletes every target span, including a terminator owned by a complete-line or range
-target. `add DESTINATION VALUE` inserts the value immediately before every line or text
-destination span and preserves the destination. `add EOF VALUE` inserts once at the immutable
+target. `add TARGET VALUE` inserts the value immediately before every line or text
+destination span and preserves the destination. `append VALUE` inserts once at the immutable
 baseline EOF. A command with multiple text matches is atomic: resolution or conflict at any
 match records none of its mutations.
 
@@ -28,15 +28,15 @@ defined in `REQ-OUTPUT-001`.
 
 The engine orders registered immutable-baseline edits once and renders one final content
 value per file. It never reads pending mutated content while resolving a later target.
-Content movement requires emitting the destination content; `mv` moves whole files only.
+Content movement requires emitting the destination content. Whole-file movement belongs to the shell.
 
 Successful host reports expose advisory boundary evidence under `REQ-OUTPUT-001`,
 including empty-value deletion, inherited terminators, and adjacent blank
 separators. These observations never adjust whitespace or turn a valid edit into
 a rejection.
 
-`EditText` exposes the same target-bearing `type`/`add` subset over an in-memory
-immutable string, without filesystem access, language validation, formatting, or
+`EditText` exposes a pathless target-bearing `type TARGET VALUE` / `add TARGET VALUE`
+subset over an in-memory immutable string, without filesystem access, language validation, formatting, or
 indentation correction. `EditTextBounded` additionally requires a nonnegative byte
 limit and rejects an oversized baseline or planned result after any command,
 before concatenating expanded content. It returns no text on rejection. These

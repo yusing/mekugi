@@ -66,7 +66,7 @@ func TestExplicitHeredocNewlineBoundaries(t *testing.T) {
 		},
 		{
 			name: "EOF without terminator", before: "before\n",
-			edit: "add EOF \"after\"\n",
+			edit: `append "after"`,
 			want: "before\nafter",
 		},
 		{
@@ -78,8 +78,8 @@ func TestExplicitHeredocNewlineBoundaries(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
 			writeTestFile(t, root, "file.txt", test.before, 0o644)
-			script := "in file.txt\n" + test.edit
-			translation, err := translateForHostAtTest(t, root, script, "")
+			edits := []FileEdit{{Path: "file.txt", Script: test.edit}}
+			translation, err := translateForHostAtTest(t, root, edits, "")
 			if err != nil {
 				t.Fatalf("translate: %v, %s", err, translation.Diagnostic)
 			}
@@ -94,7 +94,7 @@ func TestExplicitHeredocNewlineBoundaries(t *testing.T) {
 			if err != nil || tree["file.txt"] != wantTranslated {
 				t.Fatalf("translated content = %q, error %v, want %q", tree["file.txt"], err, wantTranslated)
 			}
-			result, err := applyForHostAtTest(t, root, script, "")
+			result, err := applyForHostAtTest(t, root, edits, "")
 			if err != nil {
 				t.Fatalf("apply: %v, %s", err, result.Diagnostic)
 			}
@@ -106,7 +106,8 @@ func TestExplicitHeredocNewlineBoundaries(t *testing.T) {
 }
 func TestQuotedInitializerWithoutFinalNewline(t *testing.T) {
 	root := t.TempDir()
-	result, err := applyForHostAtTest(t, root, "new file.txt\ntype \"value \\t\"\n", "")
+	writeTestFile(t, root, "file.txt", "", 0o644)
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: `append "value \t"`}}, "")
 	if err != nil {
 		t.Fatalf("apply: %v, %s", err, result.Diagnostic)
 	}

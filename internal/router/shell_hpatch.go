@@ -7,6 +7,7 @@ import (
 
 	"github.com/yusing/mekugi"
 	"mvdan.cc/sh/v3/interp"
+	"strings"
 )
 
 // executeHpatch consumes shell-expanded argv and stdin, never shell source.
@@ -16,69 +17,86 @@ func executeHpatch(ctx context.Context, manifest toolWorkerManifest, arguments [
 		_, _ = fmt.Fprintf(handler.Stderr, "hpatch: %v\n", err)
 		return interp.ExitStatus(1)
 	}
+
 	var recoveryID string
 	if len(arguments) >= 2 && arguments[0] == "--recover" {
 		recoveryID = arguments[1]
 		arguments = arguments[2:]
 	}
-	if len(arguments) > 1 {
-		return fail(fmt.Errorf("usage: hpatch [--recover HANDLE] [SCRIPT]; omit SCRIPT to read stdin"))
-	}
-	var source string
-	if len(arguments) == 1 {
-		source = arguments[0]
-	} else if handler.Stdin != nil {
-		data, err := io.ReadAll(io.LimitReader(handler.Stdin, maxMekugiScriptBytes+1))
+
+	var (
+		edits   []mekugi.FileEdit
+		emitted string
+	)
+	thread := handler.Env.Get("CODEX_THREAD_ID").String()
+	var recoveryBase mekugiHistory
+	var scriptIndex int
+	if recoveryID != "" {
+		payload, parsedScriptIndex, err := parseHpatchRecoveryArguments(&handler, arguments)
 		if err != nil {
 			return fail(err)
 		}
-		source = string(data)
+		scriptIndex = parsedScriptIndex
+		store, err := shellOutputStore(manifest)
+		if err != nil {
+			return fail(err)
+		}
+		base, err := store.rejectedEdit(ctx, handler.Dir, recoveryID)
+		if err != nil {
+			return fail(err)
+		}
+		recovered, err := recoverBatchDetailed(ctx, base.Edits, payload, base.RecoveryHandles, scriptIndex)
+		if err != nil {
+			return fail(err)
+		}
+		edits = recovered.edits
+		emitted = payload
+		recoveryBase = base
+	} else {
+		var err error
+		edits, err = parseHpatchEdits(&handler, arguments)
+		if err != nil {
+			return fail(err)
+		}
+		if len(edits) == 1 {
+			emitted = edits[0].Script
+		} else {
+			emitted = hpatchHistoryScript(edits)
+		}
 	}
-	if len(source) > maxMekugiScriptBytes {
-		return fail(fmt.Errorf("script exceeds %d bytes", maxMekugiScriptBytes))
-	}
+
 	store, err := shellOutputStore(manifest)
 	if err != nil {
 		return fail(err)
 	}
-	thread := handler.Env.Get("CODEX_THREAD_ID").String()
 	handles, err := store.allocateHandles(ctx, 1)
 	if err != nil {
 		return fail(err)
 	}
 	recoveryHandle := handles[0]
 	callID := "hpatch-" + recoveryHandle
-	emitted := source
 
 	correlationID := callID
 	attempt := 1
 	if recoveryID != "" {
-		base, err := store.rejectedEdit(ctx, handler.Dir, recoveryID)
-		if err != nil {
-			return fail(err)
-		}
-		recovered, err := recoverScriptDetailed(ctx, base.recoveryBaseline(), source, base.RecoveryHandles)
-		if err != nil {
-			return fail(err)
-		}
-		source = recovered.script
-		correlationID = base.CorrelationID
-		attempt = base.Attempt + 1
+		correlationID = recoveryBase.CorrelationID
+		attempt = recoveryBase.Attempt + 1
 	}
 	changeID, err := store.reserveChange(ctx, handler.Dir, thread, correlationID)
-
 	if err != nil {
 		return fail(err)
 	}
+	evaluated := hpatchHistoryScript(edits)
 	attemptContext := mekugi.WithAttemptMetadata(ctx, mekugi.AttemptMetadata{
 		SessionID: thread, CallID: callID, CorrelationID: correlationID, Attempt: attempt,
 		Correction: recoveryID != "", ToolName: mekugiToolName,
-		EmittedPayload: emitted, EvaluatedScript: source,
+		EmittedPayload: emitted, EvaluatedScript: evaluated,
 	})
-	result, applyErr := mekugi.ApplyForHostAt(attemptContext, handler.Dir, source, manifest.HookDirectory)
+	result, applyErr := mekugi.ApplyForHostAt(attemptContext, handler.Dir, edits, manifest.HookDirectory)
 
 	history := mekugiHistory{
-		ToolName: mekugiToolName, Script: emitted, Evaluated: retainedEvaluated(emitted, source), Root: handler.Dir, ExecutingThread: thread,
+		ToolName: mekugiToolName, Script: emitted, Edits: cloneHpatchEdits(edits),
+		Evaluated: retainedEvaluated(emitted, evaluated), RecoveryScript: scriptIndex, Root: handler.Dir, ExecutingThread: thread,
 		ChangeID: changeID, CorrelationID: correlationID, Attempt: attempt,
 		Report:      changeNotice(changeID) + mekugiReport(result.Report, result.Diagnostic),
 		ReviewFiles: result.ReviewFiles, Applied: result.Change.Applied,
@@ -88,11 +106,12 @@ func executeHpatch(ctx context.Context, manifest toolWorkerManifest, arguments [
 		history.EvaluatorRejected = len(result.Rejections) != 0
 		history.Rejections = result.Rejections
 		if history.EvaluatorRejected {
-			history.RecoveryHandles, err = store.allocateHandles(ctx, len(recoveryCommands(source, nil)))
+			count := len(recoveryBatchCommands(edits, nil))
+			history.RecoveryHandles, err = store.allocateHandles(ctx, count)
 			if err != nil {
 				return fail(err)
 			}
-			history.RecoveryBinding = recoveryHandlesBinding(source, history.RecoveryHandles)
+			history.RecoveryBinding = recoveryBatchHandlesBinding(edits, history.RecoveryHandles)
 		}
 		history.TranslationError = result.Diagnostic
 		if history.TranslationError == "" {
@@ -100,7 +119,11 @@ func executeHpatch(ctx context.Context, manifest toolWorkerManifest, arguments [
 		}
 	}
 	if history.EvaluatorRejected {
-		history.TranslationError += mekugiRecoveryGuidance(source, result.Rejections, recoveryID != "", history.RecoveryHandles)
+		if len(edits) == 1 {
+			history.TranslationError += mekugiRecoveryGuidance(edits[0].Script, result.Rejections, recoveryID != "", history.RecoveryHandles)
+		} else {
+			history.TranslationError += mekugiRecoveryGuidanceBatch(edits, result.Rejections, recoveryID != "", history.RecoveryHandles)
+		}
 		history.TranslationError += "\nRecover this rejected edit with hpatch --recover " + recoveryHandle + ".\n"
 	}
 	if err := store.put(context.WithoutCancel(ctx), handler.Dir, map[string]mekugiHistory{callID: history}); err != nil {
@@ -118,6 +141,30 @@ func executeHpatch(ctx context.Context, manifest toolWorkerManifest, arguments [
 	return err
 }
 
+func hpatchHistoryScript(edits []mekugi.FileEdit) string {
+	if len(edits) == 0 {
+		return ""
+	}
+	if len(edits) == 1 {
+		return edits[0].Script
+	}
+	var batch strings.Builder
+	for _, edit := range edits {
+		fmt.Fprintf(&batch, "file %q:\n%s", edit.Path, edit.Script)
+		if !strings.HasSuffix(edit.Script, "\n") {
+			batch.WriteByte('\n')
+		}
+	}
+	return batch.String()
+}
+
+func cloneHpatchEdits(edits []mekugi.FileEdit) []mekugi.FileEdit {
+	if len(edits) == 0 {
+		return nil
+	}
+	return append([]mekugi.FileEdit(nil), edits...)
+}
+
 func (s *mekugiReplayStore) rejectedEdit(ctx context.Context, workspace, id string) (mekugiHistory, error) {
 	s = s.scoped(ctx)
 	var history mekugiHistory
@@ -130,8 +177,12 @@ func (s *mekugiReplayStore) rejectedEdit(ctx context.Context, workspace, id stri
 			return fmt.Errorf("change %s has no retained edit", id)
 		}
 		history = record.History
+		binding := recoveryHandlesBinding(history.recoveryBaseline(), history.RecoveryHandles)
+		if len(history.Edits) != 0 {
+			binding = recoveryBatchHandlesBinding(history.Edits, history.RecoveryHandles)
+		}
 		if history.TranslationError == "" || !history.EvaluatorRejected ||
-			history.RecoveryBinding != recoveryHandlesBinding(history.recoveryBaseline(), history.RecoveryHandles) {
+			history.RecoveryBinding != binding {
 			return fmt.Errorf("recovery %s has no recoverable rejected edit", id)
 		}
 		return nil

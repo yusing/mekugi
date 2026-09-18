@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/hpatchsyntax"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 	"mvdan.cc/sh/v3/expand"
@@ -13,10 +14,10 @@ import (
 
 // Decode only literal standalone edit input. No interpreter, expansion callbacks,
 // filesystem input redirections, or recovery state participate in previews.
-func liveDiffShellEdit(input, directory string) (string, string, bool) {
+func liveDiffShellEdit(input, directory string) ([]mekugi.FileEdit, string, bool) {
 	header, err := shellsyntax.Parse(input)
 	if err != nil || len(header.Interpreter) != 1 {
-		return "", "", false
+		return nil, "", false
 	}
 	variant := syntax.LangBash
 	switch shellInterpreterName(header.Interpreter[0]) {
@@ -24,12 +25,12 @@ func liveDiffShellEdit(input, directory string) (string, string, bool) {
 	case "sh":
 		variant = syntax.LangPOSIX
 	default:
-		return "", "", false
+		return nil, "", false
 	}
 	if value, exists := header.Params["workdir"]; exists {
 		workdir, ok := value.(string)
 		if !ok || !filepath.IsAbs(workdir) {
-			return "", "", false
+			return nil, "", false
 		}
 		directory = workdir
 	}
@@ -63,8 +64,8 @@ func liveDiffShellEdit(input, directory string) (string, string, bool) {
 			// Recover only a missing final quote, then validate normally.
 			recovered, _ := syntax.NewParser(syntax.Variant(variant), syntax.RecoverErrors(1)).Parse(strings.NewReader(body), "")
 			if recovered != nil && len(recovered.Stmts) == 1 {
-				if call, ok := recovered.Stmts[0].Cmd.(*syntax.CallExpr); ok && len(call.Args) == 2 {
-					parts := call.Args[1].Parts
+				if call, ok := recovered.Stmts[0].Cmd.(*syntax.CallExpr); ok && len(call.Args) >= 2 {
+					parts := call.Args[len(call.Args)-1].Parts
 					if len(parts) > 0 {
 						switch quote := parts[len(parts)-1].(type) {
 						case *syntax.SglQuoted:
@@ -82,31 +83,48 @@ func liveDiffShellEdit(input, directory string) (string, string, bool) {
 		}
 	}
 	if err != nil || program == nil || len(program.Stmts) != 1 {
-		return "", "", false
+		return nil, "", false
 	}
 	stmt := program.Stmts[0]
 	call, ok := stmt.Cmd.(*syntax.CallExpr)
 	if !ok || stmt.Background || stmt.Coprocess || stmt.Disown || stmt.Negated || len(call.Assigns) != 0 ||
 		len(call.Args) == 0 || call.Args[0].Lit() != "hpatch" {
-		return "", "", false
+		return nil, "", false
 	}
-	if len(call.Args) == 2 && len(stmt.Redirs) == 0 {
-		script, literal := shellCatLiteral(call.Args[1])
-		return script, directory, literal
+	if len(stmt.Redirs) == 0 {
+		if len(call.Args) < 3 || (len(call.Args)-1)%2 != 0 {
+			// hpatch PATH with shell stdin, and every command-substituted or
+			// otherwise non-literal script, are execution-dependent.
+			return nil, "", false
+		}
+		edits := make([]mekugi.FileEdit, 0, (len(call.Args)-1)/2)
+		for index := 1; index < len(call.Args); index += 2 {
+			path, pathLiteral := shellCatLiteral(call.Args[index])
+			script, scriptLiteral := shellCatLiteral(call.Args[index+1])
+			if !pathLiteral || path == "" || !scriptLiteral {
+				return nil, "", false
+			}
+			edits = append(edits, mekugi.FileEdit{Path: path, Script: script})
+		}
+		return edits, directory, true
 	}
-	if len(call.Args) != 1 || len(stmt.Redirs) != 1 {
-		return "", "", false
+	if len(call.Args) != 2 || len(stmt.Redirs) != 1 {
+		return nil, "", false
+	}
+	path, literal := shellCatLiteral(call.Args[1])
+	if !literal || path == "" {
+		return nil, "", false
 	}
 	redirect := stmt.Redirs[0]
 	if (redirect.Op != syntax.Hdoc && redirect.Op != syntax.DashHdoc) ||
 		(redirect.N != nil && redirect.N.Value != "0") || redirect.Hdoc == nil {
-		return "", "", false
+		return nil, "", false
 	}
 	var source strings.Builder
 	for _, part := range redirect.Hdoc.Parts {
 		literal, ok := part.(*syntax.Lit)
 		if !ok {
-			return "", "", false
+			return nil, "", false
 		}
 		source.WriteString(literal.Value)
 	}
@@ -126,7 +144,7 @@ func liveDiffShellEdit(input, directory string) (string, string, bool) {
 	if !quoted {
 		script, err = expand.Document(&expand.Config{}, redirect.Hdoc)
 		if err != nil {
-			return "", "", false
+			return nil, "", false
 		}
 	}
 	if redirect.Op == syntax.DashHdoc {
@@ -139,7 +157,7 @@ func liveDiffShellEdit(input, directory string) (string, string, bool) {
 	if partialLine {
 		script = strings.TrimSuffix(script, "\n")
 	}
-	return script, directory, true
+	return []mekugi.FileEdit{{Path: path, Script: script}}, directory, true
 }
 
 // Use the shell parser's error position, not a scan for shell-looking text in

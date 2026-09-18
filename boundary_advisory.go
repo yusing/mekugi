@@ -32,7 +32,7 @@ func (e *editor) boundaryAdvisory(origin editOrigin, command instruction) string
 		if blankBoundary(edit.replacement, right) {
 			blankAfter++
 		}
-		if command.operation == "add" && command.target.kind == targetEOF &&
+		if command.operation == "append" &&
 			left != "" && lineTerminatorSuffix(left) == "" &&
 			edit.replacement != "" && edit.replacement[0] != '\r' && edit.replacement[0] != '\n' {
 			joinedLeft++

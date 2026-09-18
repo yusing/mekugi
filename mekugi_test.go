@@ -19,27 +19,21 @@ func TestMekugi2NormalMultiFileWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeTestFile(t, root, "b.txt", "x x x\n", 0o640)
-	writeTestFile(t, root, "obsolete.txt", "remove me\n", 0o640)
-
-	script := strings.Join([]string{
-		"in a.txt",
-		"type " + row(1, "alpha old") + ` "old" "new"`,
-		"add " + row(2, "keep") + ` "// note\n"`,
-		"type " + row(3, "end") + ` ""`,
-		"in b.txt",
-		"type " + row(1, "x x x") + ` "x" 2 "y"`,
-		"new draft.txt",
-		`type "foo bar"`,
-		"mv final.txt",
-		"in obsolete.txt",
-		"rm",
-	}, "\n")
-
-	result, err := applyForHostAtTest(t, root, script, "")
+	writeTestFile(t, root, "final.txt", "", 0o640)
+	edits := []FileEdit{
+		{Path: "a.txt", Script: strings.Join([]string{
+			"type " + row(1, "alpha old") + ` "old" "new"`,
+			"add " + row(2, "keep") + ` "// note\n"`,
+			"type " + row(3, "end") + ` ""`,
+		}, "\n")},
+		{Path: "b.txt", Script: "type " + row(1, "x x x") + ` "x" 2 "y"`},
+		{Path: "final.txt", Script: `append "foo bar"`},
+	}
+	result, err := applyForHostAtTest(t, root, edits, "")
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
-	if !strings.Contains(result.Report, "files add=1 update=2 move=0 delete=1\n") {
+	if !strings.Contains(result.Report, "files add=0 update=3 move=0 delete=0\n") {
 		t.Fatalf("report = %q", result.Report)
 	}
 	want := map[string]string{
@@ -57,28 +51,22 @@ func TestMekugi2NormalMultiFileWorkflow(t *testing.T) {
 
 func TestMekugi2TranslateMatchesNormalMode(t *testing.T) {
 	initial := map[string]string{
-		"code.go":     "package sample\n\nvar value = old\n",
-		"obsolete.go": "package obsolete\n",
+		"code.go":  "package sample\n\nvar value = old\n",
+		"note.txt": "",
 	}
 	root := t.TempDir()
 	for path, content := range initial {
 		writeTestFile(t, root, path, content, 0o644)
 	}
-	script := strings.Join([]string{
-		"in code.go",
-		"type " + row(3, "var value = old") + ` "old" "current"`,
-		"mv current.go",
-		"new note.txt",
-		`type "hello world\n"`,
-		"in obsolete.go",
-		"rm",
-	}, "\n")
-
-	result, err := translateForHostAtTest(t, root, script, "")
+	edits := []FileEdit{
+		{Path: "code.go", Script: "type " + row(3, "var value = old") + ` "old" "current"`},
+		{Path: "note.txt", Script: `append "hello world\n"`},
+	}
+	result, err := translateForHostAtTest(t, root, edits, "")
 	if err != nil {
 		t.Fatalf("translateForHostForTest() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
-	if !strings.Contains(result.Report, "files add=1 update=1 move=1 delete=1\n") {
+	if !strings.Contains(result.Report, "files add=0 update=2 move=0 delete=0\n") {
 		t.Fatalf("report = %q", result.Report)
 	}
 	if got := readTree(t, root); !reflect.DeepEqual(got, initial) {
@@ -86,14 +74,14 @@ func TestMekugi2TranslateMatchesNormalMode(t *testing.T) {
 	}
 	translated, err := patchtest.Apply(initial, string(result.Patch))
 	if err != nil {
-		t.Fatalf("applying translated patch: %v\n%s", err, string(result.Patch))
+		t.Fatalf("applying translated patch: %v\n%s", err, result.Patch)
 	}
 	want := map[string]string{
-		"current.go": "package sample\n\nvar value = current\n",
-		"note.txt":   "hello world\n",
+		"code.go":  "package sample\n\nvar value = current\n",
+		"note.txt": "hello world\n",
 	}
 	if !reflect.DeepEqual(translated, want) {
-		t.Fatalf("translated tree = %#v, want %#v\n%s", translated, want, string(result.Patch))
+		t.Fatalf("translated tree = %#v, want %#v\n%s", translated, want, result.Patch)
 	}
 }
 
@@ -101,23 +89,23 @@ func TestMekugi2LineAndRangeTerminatorSemantics(t *testing.T) {
 	tests := []struct {
 		name, content, script, want string
 	}{
-		{"line preserves CRLF", "one\r\ntwo\r\n", "in file.txt\ntype " + row(1, "one") + ` "ONE"`, "ONE\r\ntwo\r\n"},
-		{"range preserves final CR", "one\rtwo\rthree", "in file.txt\ntype " + row(1, "one") + ".." + row(2, "two") + ` "both"`, "both\rthree"},
-		{"unterminated final replacement", "one\ntwo", "in file.txt\ntype " + row(2, "two") + ` "TWO"`, "one\nTWO"},
-		{"empty line removes LF", "one\ntwo\n", "in file.txt\ntype " + row(1, "one") + ` ""`, "two\n"},
-		{"empty line removes CRLF", "one\r\ntwo\r\n", "in file.txt\ntype " + row(1, "one") + ` ""`, "two\r\n"},
-		{"empty line removes standalone CR", "one\rtwo\r", "in file.txt\ntype " + row(1, "one") + ` ""`, "two\r"},
-		{"empty unterminated final line", "one\ntwo", "in file.txt\ntype " + row(2, "two") + ` ""`, "one\n"},
-		{"empty range removes final terminator", "one\ntwo\nthree\n", "in file.txt\ntype " + row(1, "one") + ".." + row(2, "two") + ` ""`, "three\n"},
-		{"empty heredoc removes line", "one\ntwo\n", "in file.txt\ntype " + row(1, "one") + " <<PATCH\nPATCH\n", "two\n"},
-		{"empty text replacement keeps terminator", "one\ntwo\n", "in file.txt\ntype " + row(1, "one") + ` "one" ""`, "\ntwo\n"},
-		{"explicit terminator creates blank line", "one\ntwo\n", "in file.txt\ntype " + row(1, "one") + ` "\n"`, "\ntwo\n"},
+		{"line preserves CRLF", "one\r\ntwo\r\n", "type " + row(1, "one") + ` "ONE"`, "ONE\r\ntwo\r\n"},
+		{"range preserves final CR", "one\rtwo\rthree", "type " + row(1, "one") + ".." + row(2, "two") + ` "both"`, "both\rthree"},
+		{"unterminated final replacement", "one\ntwo", "type " + row(2, "two") + ` "TWO"`, "one\nTWO"},
+		{"empty line removes LF", "one\ntwo\n", "type " + row(1, "one") + ` ""`, "two\n"},
+		{"empty line removes CRLF", "one\r\ntwo\r\n", "type " + row(1, "one") + ` ""`, "two\r\n"},
+		{"empty line removes standalone CR", "one\rtwo\r", "type " + row(1, "one") + ` ""`, "two\r"},
+		{"empty unterminated final line", "one\ntwo", "type " + row(2, "two") + ` ""`, "one\n"},
+		{"empty range removes final terminator", "one\ntwo\nthree\n", "type " + row(1, "one") + ".." + row(2, "two") + ` ""`, "three\n"},
+		{"empty heredoc removes line", "one\ntwo\n", "type " + row(1, "one") + " <<PATCH\nPATCH\n", "two\n"},
+		{"empty text replacement keeps terminator", "one\ntwo\n", "type " + row(1, "one") + ` "one" ""`, "\ntwo\n"},
+		{"explicit terminator creates blank line", "one\ntwo\n", "type " + row(1, "one") + ` "\n"`, "\ntwo\n"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
 			writeTestFile(t, root, "file.txt", test.content, 0o644)
-			result, err := applyForHostAtTest(t, root, test.script, "")
+			result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: test.script}}, "")
 			if err != nil {
 				t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 			}
@@ -128,9 +116,10 @@ func TestMekugi2LineAndRangeTerminatorSemantics(t *testing.T) {
 	}
 }
 
-func TestMekugi2EmptyInitializerRemainsEmptyFile(t *testing.T) {
+func TestMekugi2EmptyAppendRemainsEmptyFile(t *testing.T) {
 	root := t.TempDir()
-	result, err := applyForHostAtTest(t, root, "new empty.txt\ntype \"\"\n", "")
+	writeTestFile(t, root, "empty.txt", "", 0o644)
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "empty.txt", Script: `append ""`}}, "")
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
@@ -144,13 +133,12 @@ func TestMekugi2SameBoundaryInsertionsKeepScriptOrder(t *testing.T) {
 	writeTestFile(t, root, "file.txt", "target\n", 0o644)
 	target := row(1, "target")
 	script := strings.Join([]string{
-		"in file.txt",
 		`add ` + target + ` "first\n"`,
 		`add ` + target + ` "second\n"`,
-		`add EOF "after-one\n"`,
-		`add EOF "after-two\n"`,
+		`append "after-one\n"`,
+		`append "after-two\n"`,
 	}, "\n")
-	result, err := applyForHostAtTest(t, root, script, "")
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: script}}, "")
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
@@ -165,12 +153,11 @@ func TestMekugi2InsertionsAtReplacementBoundariesAreAllowed(t *testing.T) {
 	writeTestFile(t, root, "file.txt", "target\n", 0o644)
 	target := row(1, "target")
 	script := strings.Join([]string{
-		"in file.txt",
 		`type ` + target + ` "replacement"`,
 		`add ` + target + ` "before\n"`,
-		`add EOF "after\n"`,
+		`append "after\n"`,
 	}, "\n")
-	result, err := applyForHostAtTest(t, root, script, "")
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: script}}, "")
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
@@ -181,21 +168,21 @@ func TestMekugi2InsertionsAtReplacementBoundariesAreAllowed(t *testing.T) {
 
 func TestMekugi2RejectsInvalidTargetsAtomically(t *testing.T) {
 	tests := []struct{ name, script, reason string }{
-		{"stale", "in file.txt\ntype 2:0000 \"B\"", "row-stale"},
-		{"missing", "in file.txt\ntype 9:0000 \"B\"", "row-missing"},
-		{"incomplete", "in file.txt\ntype " + row(1, "alpha") + ` "alpha" 2 "A"`, "occurrence-missing"},
-		{"invalid count", "in file.txt\ntype " + row(1, "alpha") + ` "alpha" 0 "A"`, "invalid-count"},
-		{"reversed", "in file.txt\ntype " + row(2, "beta") + ".." + row(1, "alpha") + ` ""`, "target-order"},
-		{"overlap", "in file.txt\ntype " + row(1, "alpha") + ` "A"` + "\ntype " + row(1, "alpha") + ` ""`, "edit-conflict"},
-		{"insertion inside replacement", "in file.txt\ntype " + row(1, "alpha") + ` "A"` + "\nadd " + row(1, "alpha") + ` "ph" "x"`, "edit-conflict"},
-		{"introduced", "in file.txt\nadd " + row(2, "beta") + ` "new\n"` + "\ntype " + row(1, "alpha") + ` "new" "NEW"`, "occurrence-missing"},
+		{"stale", "type 2:0000 \"B\"", "row-stale"},
+		{"missing", "type 9:0000 \"B\"", "row-missing"},
+		{"incomplete", "type " + row(1, "alpha") + ` "alpha" 2 "A"`, "occurrence-missing"},
+		{"invalid count", "type " + row(1, "alpha") + ` "alpha" 0 "A"`, "invalid-count"},
+		{"reversed", "type " + row(2, "beta") + ".." + row(1, "alpha") + ` ""`, "target-order"},
+		{"overlap", "type " + row(1, "alpha") + ` "A"` + "\ntype " + row(1, "alpha") + ` ""`, "edit-conflict"},
+		{"insertion inside replacement", "type " + row(1, "alpha") + ` "A"` + "\nadd " + row(1, "alpha") + ` "ph" "x"`, "edit-conflict"},
+		{"introduced", "add " + row(2, "beta") + ` "new\n"` + "\ntype " + row(1, "alpha") + ` "new" "NEW"`, "occurrence-missing"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
 			writeTestFile(t, root, "file.txt", "alpha\nbeta\n", 0o644)
 			before := readTestFile(t, root, "file.txt")
-			result, err := applyForHostAtTest(t, root, test.script, "")
+			result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: test.script}}, "")
 			if err == nil || !strings.Contains(result.Diagnostic, test.reason) {
 				t.Fatalf("ApplyForHost() error = %v, diagnostic %q; want %q", err, result.Diagnostic, test.reason)
 			}
@@ -207,7 +194,7 @@ func TestMekugi2RejectsInvalidTargetsAtomically(t *testing.T) {
 }
 
 func TestMekugi2RangeVerificationChecksEndpointsNotInterior(t *testing.T) {
-	script := "in file.txt\ntype " + row(1, "first") + ".." + row(3, "last") + ` "replacement"`
+	script := "type " + row(1, "first") + ".." + row(3, "last") + ` "replacement"`
 	for _, mode := range []string{"apply", "translate"} {
 		for _, test := range []struct {
 			name, current string
@@ -223,9 +210,9 @@ func TestMekugi2RangeVerificationChecksEndpointsNotInterior(t *testing.T) {
 				var result HostTranslation
 				var err error
 				if mode == "apply" {
-					result, err = applyForHostAtTest(t, root, script, "")
+					result, err = applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: script}}, "")
 				} else {
-					result, err = TranslateForHostAt(t.Context(), root, script, "")
+					result, err = TranslateForHostAt(t.Context(), root, []FileEdit{{Path: "file.txt", Script: script}}, "")
 				}
 				if test.reject {
 					if err == nil || !strings.Contains(result.Diagnostic, "row-stale") || len(result.Patch) != 0 {
@@ -244,11 +231,11 @@ func TestMekugi2RangeVerificationChecksEndpointsNotInterior(t *testing.T) {
 					if got != test.current {
 						t.Fatal("translation changed the workspace")
 					}
-					tree, err := patchtest.Apply(map[string]string{"file.txt": got}, string(result.Patch))
+					tree, err := patchtest.Apply(map[string]string{filepath.Join(root, "file.txt"): got}, string(result.Patch))
 					if err != nil {
 						t.Fatal(err)
 					}
-					got = tree["file.txt"]
+					got = tree[filepath.Join(root, "file.txt")]
 				}
 				if got != "replacement\n" {
 					t.Fatalf("range result = %q", got)
@@ -272,17 +259,17 @@ func TestCallerCoordinatedEditsRefreshBaselineAfterHandoff(t *testing.T) {
 			// file to the next writer. Translation alone does not finish the cycle.
 			for _, replacement := range []string{"second", "third"} {
 				current := readTestFile(t, directory, "file.txt")
-				script := "in file.txt\ntype " + row(1, strings.TrimSuffix(current, "\n")) + " " + fmt.Sprintf("%q", replacement)
+				script := "type " + row(1, strings.TrimSuffix(current, "\n")) + " " + fmt.Sprintf("%q", replacement)
 				switch mode {
 				case "Apply":
-					err = Apply(t.Context(), Workspace{Root: root}, script)
+					err = Apply(t.Context(), Workspace{Root: root}, []FileEdit{{Path: "file.txt", Script: script}})
 				case "ApplyForHost":
-					_, err = ApplyForHost(t.Context(), Workspace{Root: root}, script, "")
+					_, err = ApplyForHost(t.Context(), Workspace{Root: root}, []FileEdit{{Path: "file.txt", Script: script}}, "")
 				case "ApplyForHostRoot":
-					_, err = ApplyForHostRoot(t.Context(), root, script, "")
+					_, err = ApplyForHostRoot(t.Context(), root, []FileEdit{{Path: "file.txt", Script: script}}, "")
 				case "TranslateForHostAt":
 					var result HostTranslation
-					result, err = TranslateForHostAt(t.Context(), directory, script, "")
+					result, err = TranslateForHostAt(t.Context(), directory, []FileEdit{{Path: "file.txt", Script: script}}, "")
 					if err != nil {
 						break
 					}
@@ -290,9 +277,9 @@ func TestCallerCoordinatedEditsRefreshBaselineAfterHandoff(t *testing.T) {
 						t.Fatal("translation changed the workspace")
 					}
 					var applied map[string]string
-					applied, err = patchtest.Apply(map[string]string{"file.txt": current}, string(result.Patch))
+					applied, err = patchtest.Apply(map[string]string{filepath.Join(directory, "file.txt"): current}, string(result.Patch))
 					if err == nil {
-						err = root.WriteFile("file.txt", []byte(applied["file.txt"]), 0o644)
+						err = root.WriteFile("file.txt", []byte(applied[filepath.Join(directory, "file.txt")]), 0o644)
 					}
 				}
 				if err != nil {
@@ -316,25 +303,25 @@ func TestMekugi2RelocatesUniqueRowsAfterPriorEdits(t *testing.T) {
 		{
 			name:    "line shifted down",
 			content: "inserted\nalpha\nbeta\n",
-			script:  "in file.txt\ntype " + row(1, "alpha") + ` "ALPHA"`,
+			script:  "type " + row(1, "alpha") + ` "ALPHA"`,
 			want:    "inserted\nALPHA\nbeta\n",
 		},
 		{
 			name:    "line shifted above prior eof",
 			content: "alpha\n",
-			script:  "in file.txt\ntype " + row(2, "alpha") + ` "ALPHA"`,
+			script:  "type " + row(2, "alpha") + ` "ALPHA"`,
 			want:    "ALPHA\n",
 		},
 		{
 			name:    "range endpoints shifted down",
 			content: "inserted\nalpha\nbeta\ngamma\n",
-			script:  "in file.txt\ntype " + row(1, "alpha") + ".." + row(2, "beta") + ` "AB"`,
+			script:  "type " + row(1, "alpha") + ".." + row(2, "beta") + ` "AB"`,
 			want:    "inserted\nAB\ngamma\n",
 		},
 		{
 			name:    "text anchor shifted down",
 			content: "inserted\nalpha old\nbeta\n",
-			script:  "in file.txt\ntype " + row(1, "alpha old") + ` "old" "new"`,
+			script:  "type " + row(1, "alpha old") + ` "old" "new"`,
 			want:    "inserted\nalpha new\nbeta\n",
 		},
 	}
@@ -342,7 +329,7 @@ func TestMekugi2RelocatesUniqueRowsAfterPriorEdits(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
 			writeTestFile(t, root, "file.txt", test.content, 0o644)
-			result, err := applyForHostAtTest(t, root, test.script, "")
+			result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: test.script}}, "")
 			if err != nil {
 				t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 			}
@@ -356,10 +343,9 @@ func TestMekugi2RelocatesUniqueRowsAfterPriorEdits(t *testing.T) {
 func TestMekugi2ResolvesPostEditCoordinateForUnchangedBaselineRow(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "file.txt", "alpha\n}\nbeta\n}\n", 0o644)
-	script := "in file.txt\n" +
-		"add " + row(1, "alpha") + ` "one\ntwo\n"` + "\n" +
+	script := "add " + row(1, "alpha") + ` "one\ntwo\n"` + "\n" +
 		"add " + row(6, "}") + ` "tail\n"`
-	result, err := applyForHostAtTest(t, root, script, "")
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: script}}, "")
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
@@ -372,10 +358,9 @@ func TestMekugi2ResolvesPostEditCoordinateForUnchangedBaselineRow(t *testing.T) 
 func TestMekugi2DoesNotResolvePostEditCoordinateForIntroducedRow(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "file.txt", "alpha\nbeta\n", 0o644)
-	script := "in file.txt\n" +
-		"add " + row(2, "beta") + ` "new\n"` + "\n" +
+	script := "add " + row(2, "beta") + ` "new\n"` + "\n" +
 		"type " + row(2, "new") + ` "NEW"`
-	result, err := applyForHostAtTest(t, root, script, "")
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: script}}, "")
 	if err == nil || !strings.Contains(result.Diagnostic, "row-stale") {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
@@ -388,8 +373,8 @@ func TestMekugi2RejectsAmbiguousRelocatedRow(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "file.txt", "other\nalpha\nalpha\n", 0o644)
 	before := readTestFile(t, root, "file.txt")
-	script := "in file.txt\ntype " + row(1, "alpha") + ` "ALPHA"`
-	result, err := applyForHostAtTest(t, root, script, "")
+	script := "type " + row(1, "alpha") + ` "ALPHA"`
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: script}}, "")
 	if err == nil || !strings.Contains(result.Diagnostic, "row-stale") || !strings.Contains(result.Diagnostic, "ambiguous across 2 rows") {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
@@ -401,9 +386,8 @@ func TestMekugi2RejectsAmbiguousRelocatedRow(t *testing.T) {
 func TestMekugi2IgnoresRedundantStaleLiteralAnchor(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "file.txt", "alpha\nunique target\nomega\n", 0o644)
-	script := `in file.txt
-type 1:ffff "unique target" "replacement"`
-	result, err := applyForHostAtTest(t, root, script, "")
+	script := `type 1:ffff "unique target" "replacement"`
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: script}}, "")
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
@@ -416,9 +400,8 @@ func TestMekugi2RejectsStaleLiteralAnchorWhenLiteralIsAmbiguous(t *testing.T) {
 	root := t.TempDir()
 	before := "target\nanchor\ntarget\n"
 	writeTestFile(t, root, "file.txt", before, 0o644)
-	script := `in file.txt
-type 2:ffff "target" "replacement"`
-	result, err := applyForHostAtTest(t, root, script, "")
+	script := `type 2:ffff "target" "replacement"`
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: script}}, "")
 	if err == nil {
 		t.Fatalf("ApplyForHost() unexpectedly succeeded, diagnostic %q", result.Diagnostic)
 	}
@@ -430,24 +413,17 @@ type 2:ffff "target" "replacement"`
 	}
 }
 
-func TestMekugi2NewFileInitializerIsImmediate(t *testing.T) {
-	tests := []struct{ name, script, wantMessage string }{
-		{"existing", "in existing.txt\ntype \"new\"", "bare type VALUE only initializes the immediately preceding new; editing an existing file requires a line, range, or text target"},
-		{"intervening", "new new.txt\nin existing.txt\nin new.txt\ntype \"new\"", ""},
-		{"second", "new new.txt\ntype \"one\"\ntype \"two\"", ""},
-		{"target new", "new new.txt\ntype \"one\\n\"\ntype " + row(1, "one") + ` "ONE"`, ""},
-		{"append new", "new new.txt\nadd EOF \"one\\n\"", ""},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+func TestMekugi2RejectsFileManagementAndInitializers(t *testing.T) {
+	for _, script := range []string{
+		"in existing.txt", "new new.txt", "mv moved.txt", "rm",
+		`type "initializer"`, `add EOF "one\n"`,
+	} {
+		t.Run(script, func(t *testing.T) {
 			root := t.TempDir()
 			writeTestFile(t, root, "existing.txt", "old\n", 0o644)
-			result, err := applyForHostAtTest(t, root, test.script, "")
-			if err == nil || !strings.Contains(result.Diagnostic, "initialization") {
+			result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "existing.txt", Script: script}}, "")
+			if err == nil || !strings.Contains(result.Diagnostic, "script-syntax") {
 				t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
-			}
-			if test.wantMessage != "" && !strings.Contains(result.Diagnostic, test.wantMessage) {
-				t.Fatalf("diagnostic = %q, want message %q", result.Diagnostic, test.wantMessage)
 			}
 			if got := readTree(t, root); !reflect.DeepEqual(got, map[string]string{"existing.txt": "old\n"}) {
 				t.Fatalf("rejection changed tree: %#v", got)
@@ -465,7 +441,7 @@ func TestMekugi2RejectsInvalidMutationForms(t *testing.T) {
 		t.Run(strings.Fields(command)[0], func(t *testing.T) {
 			root := t.TempDir()
 			writeTestFile(t, root, "file.txt", "x\n", 0o644)
-			result, err := applyForHostAtTest(t, root, "in file.txt\n"+command, "")
+			result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: command}}, "")
 			if err == nil || !strings.Contains(result.Diagnostic, "reason script-syntax") {
 				t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 			}
@@ -476,10 +452,9 @@ func TestMekugi2RejectsInvalidMutationForms(t *testing.T) {
 func TestMekugi2FixedHeredocAndInlineInsertion(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "file.txt", "target\n", 0o644)
-	script := "in file.txt\n" +
-		"add " + row(1, "target") + ` "// comment\n"` + "\n" +
-		"add EOF <<PATCH\nmultiline\nvalue\nPATCH\n"
-	result, err := applyForHostAtTest(t, root, script, "")
+	script := "add " + row(1, "target") + ` "// comment\n"` + "\n" +
+		"append <<PATCH\nmultiline\nvalue\nPATCH\n"
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: script}}, "")
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
@@ -492,9 +467,9 @@ func TestMekugi2FixedHeredocAndInlineInsertion(t *testing.T) {
 func TestMekugi2HeredocValueSupportsTextTarget(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "file.txt", "prefix needle suffix\n", 0o644)
-	script := "in file.txt\ntype " + row(1, "prefix needle suffix") + " \"needle\" <<PATCH\n" +
+	script := "type " + row(1, "prefix needle suffix") + " \"needle\" <<PATCH\n" +
 		"multiline\nvalue\nPATCH\n"
-	result, err := applyForHostAtTest(t, root, script, "")
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: script}}, "")
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
@@ -508,11 +483,10 @@ func TestMekugi2UnanchoredLiteralTargetsUseImmutableBaseline(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "file.txt", "alpha x\nbeta x\n", 0o644)
 	script := strings.Join([]string{
-		"in file.txt",
 		`type "alpha" "ALPHA"`,
 		`add "x" 2 "!"`,
 	}, "\n")
-	result, err := applyForHostAtTest(t, root, script, "")
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: script}}, "")
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
@@ -524,8 +498,8 @@ func TestMekugi2UnanchoredLiteralTargetsUseImmutableBaseline(t *testing.T) {
 func TestMekugi2UnanchoredLiteralHeredocAndMissingOccurrence(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "file.txt", "before needle after\n", 0o644)
-	script := "in file.txt\ntype \"needle\" <<PATCH\nmultiline\nvalue\nPATCH\n"
-	result, err := applyForHostAtTest(t, root, script, "")
+	script := "type \"needle\" <<PATCH\nmultiline\nvalue\nPATCH\n"
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: script}}, "")
 	if err != nil {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
@@ -535,7 +509,7 @@ func TestMekugi2UnanchoredLiteralHeredocAndMissingOccurrence(t *testing.T) {
 
 	writeTestFile(t, root, "missing.txt", "one x\n", 0o644)
 	before := readTestFile(t, root, "missing.txt")
-	result, err = applyForHostAtTest(t, root, "in missing.txt\ntype \"x\" 2 \"y\"", "")
+	result, err = applyForHostAtTest(t, root, []FileEdit{{Path: "missing.txt", Script: `type "x" 2 "y"`}}, "")
 	if err == nil || !strings.Contains(result.Diagnostic, "occurrence-missing") {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
@@ -545,64 +519,17 @@ func TestMekugi2UnanchoredLiteralHeredocAndMissingOccurrence(t *testing.T) {
 }
 
 func TestMekugi2QuotedDoubleLessRemainsInlineText(t *testing.T) {
-	tests := []struct {
-		name    string
-		path    string
-		initial string
-		script  func(string) string
-		want    string
-	}{
-		{
-			name: "initializer",
-			path: "file.txt",
-			script: func(string) string {
-				return `new file.txt` + "\n" + `type "a << b"`
-			},
-			want: "a << b",
-		},
-		{
-			name: "initializer after escaped quote",
-			path: "file.txt",
-			script: func(string) string {
-				return `new file.txt` + "\n" + `type "a \"<< b"`
-			},
-			want: `a "<< b`,
-		},
-		{
-			name:    "replacement value",
-			path:    "file.txt",
-			initial: "old\n",
-			script: func(string) string {
-				return "in file.txt\ntype " + row(1, "old") + ` "a << b"`
-			},
-			want: "a << b\n",
-		},
-		{
-			name:    "target literal",
-			path:    "file.txt",
-			initial: "a << b\n",
-			script: func(string) string {
-				return "in file.txt\ntype " + row(1, "a << b") + ` "a << b" "changed"`
-			},
-			want: "changed\n",
-		},
-		{
-			name:    "path",
-			path:    "a<<b.txt",
-			initial: "old\n",
-			script: func(string) string {
-				return "in a<<b.txt\ntype " + row(1, "old") + ` "changed"`
-			},
-			want: "changed\n",
-		},
-	}
-	for _, test := range tests {
+	for _, test := range []struct{ name, path, initial, script, want string }{
+		{"append", "file.txt", "", `append "a << b"`, "a << b"},
+		{"append after escaped quote", "file.txt", "", `append "a \"<< b"`, `a "<< b`},
+		{"replacement value", "file.txt", "old\n", "type " + row(1, "old") + ` "a << b"`, "a << b\n"},
+		{"target literal", "file.txt", "a << b\n", "type " + row(1, "a << b") + ` "a << b" "changed"`, "changed\n"},
+		{"path", "a<<b.txt", "old\n", "type " + row(1, "old") + ` "changed"`, "changed\n"},
+	} {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
-			if test.initial != "" {
-				writeTestFile(t, root, test.path, test.initial, 0o644)
-			}
-			result, err := applyForHostAtTest(t, root, test.script(test.path), "")
+			writeTestFile(t, root, test.path, test.initial, 0o644)
+			result, err := applyForHostAtTest(t, root, []FileEdit{{Path: test.path, Script: test.script}}, "")
 			if err != nil {
 				t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 			}
@@ -616,14 +543,14 @@ func TestMekugi2QuotedDoubleLessRemainsInlineText(t *testing.T) {
 func TestMekugi2InvalidHeredocIsOneHeaderOwnedFailure(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "file.txt", "unchanged\n", 0o644)
-	script := "in file.txt\ntype " + row(1, "unchanged") + " <<BODY\n" +
+	script := "type " + row(1, "unchanged") + " <<BODY\n" +
 		"rm\nWRONG\n"
-	result, err := applyForHostAtTest(t, root, script, "")
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: script}}, "")
 	if err == nil {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
 	if strings.Count(result.Diagnostic, ": command") != 1 ||
-		!strings.Contains(result.Diagnostic, "command 2") ||
+		!strings.Contains(result.Diagnostic, "command 1") ||
 		!strings.Contains(result.Diagnostic, "unterminated heredoc") {
 		t.Fatalf("diagnostic = %q", result.Diagnostic)
 	}
@@ -635,15 +562,15 @@ func TestMekugi2InvalidHeredocIsOneHeaderOwnedFailure(t *testing.T) {
 func TestMekugi2TargetLiteralRejectsC0ControlsExceptTab(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "file.txt", "a\tb\n", 0o644)
-	valid := "in file.txt\ntype " + row(1, "a\tb") + ` "a\tb" "ok"`
-	result, err := applyForHostAtTest(t, root, valid, "")
+	valid := "type " + row(1, "a\tb") + ` "a\tb" "ok"`
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: valid}}, "")
 	if err != nil {
 		t.Fatalf("tab target error = %v, diagnostic %q", err, result.Diagnostic)
 	}
 
 	writeTestFile(t, root, "file.txt", "a\x01b\n", 0o644)
-	invalid := "in file.txt\ntype " + row(1, "a\x01b") + ` "a\u0001b" "bad"`
-	result, err = applyForHostAtTest(t, root, invalid, "")
+	invalid := "type " + row(1, "a\x01b") + ` "a\u0001b" "bad"`
+	result, err = applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: invalid}}, "")
 	if err == nil || !strings.Contains(result.Diagnostic, "forbidden control character") {
 		t.Fatalf("control target error = %v, diagnostic %q", err, result.Diagnostic)
 	}
@@ -694,31 +621,31 @@ func TestMekugi2MultilineLiteralTargets(t *testing.T) {
 		{
 			name:    "unanchored replacement",
 			content: "before\nfirst\nsecond\nafter\n",
-			script:  `in file.txt` + "\n" + `type "first\nsecond" "replacement"`,
+			script:  `type "first\nsecond" "replacement"`,
 			want:    "before\nreplacement\nafter\n",
 		},
 		{
 			name:    "row anchored replacement",
 			content: "skip first\nfirst\nsecond\nafter\n",
-			script:  "in file.txt\ntype " + row(2, "first") + ` "first\nsecond" "replacement"`,
+			script:  "type " + row(2, "first") + ` "first\nsecond" "replacement"`,
 			want:    "skip first\nreplacement\nafter\n",
 		},
 		{
 			name:    "unicode escaped line feed",
 			content: "first\nsecond\n",
-			script:  `in file.txt` + "\n" + `type "first\u000Asecond" "replacement"`,
+			script:  `type "first\u000Asecond" "replacement"`,
 			want:    "replacement\n",
 		},
 		{
 			name:    "occurrence count",
 			content: "first\nsecond\nfirst\nsecond\n",
-			script:  `in file.txt` + "\n" + `type "first\nsecond" 2 "replacement"`,
+			script:  `type "first\nsecond" 2 "replacement"`,
 			want:    "replacement\nreplacement\n",
 		},
 		{
 			name:    "target includes trailing LF",
 			content: "first\nsecond\n",
-			script:  `in file.txt` + "\n" + `type "first\n" "FIRST\n"`,
+			script:  `type "first\n" "FIRST\n"`,
 			want:    "FIRST\nsecond\n",
 		},
 	}
@@ -726,7 +653,7 @@ func TestMekugi2MultilineLiteralTargets(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
 			writeTestFile(t, root, "file.txt", test.content, 0o644)
-			result, err := applyForHostAtTest(t, root, test.script, "")
+			result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: test.script}}, "")
 			if err != nil {
 				t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 			}
@@ -744,49 +671,49 @@ func TestMekugi2MultilineLiteralTargetRejectionsAreAtomic(t *testing.T) {
 		{
 			name:       "missing exact multiline text",
 			content:    "first\nchanged\n",
-			script:     `in file.txt` + "\n" + `type "first\nsecond" "replacement"`,
+			script:     `type "first\nsecond" "replacement"`,
 			diagnostic: "occurrence-missing",
 		},
 		{
 			name:       "missing trailing LF",
 			content:    "first",
-			script:     `in file.txt` + "\n" + `type "first\n" "replacement"`,
+			script:     `type "first\n" "replacement"`,
 			diagnostic: "occurrence-missing",
 		},
 		{
 			name:       "ambiguous stale anchor",
 			content:    "first\nsecond\nfirst\nsecond\n",
-			script:     `in file.txt` + "\n" + `type 1:ffff "first\nsecond" "replacement"`,
+			script:     `type 1:ffff "first\nsecond" "replacement"`,
 			diagnostic: "row-stale",
 		},
 		{
 			name:       "raw physical newline",
 			content:    "first\nsecond\n",
-			script:     "in file.txt\ntype \"first\nsecond\" \"replacement\"",
+			script:     "type \"first\nsecond\" \"replacement\"",
 			diagnostic: "script-syntax",
 		},
 		{
 			name:       "escaped carriage return",
 			content:    "first\rsecond\n",
-			script:     `in file.txt` + "\n" + `type "first\rsecond" "replacement"`,
+			script:     `type "first\rsecond" "replacement"`,
 			diagnostic: "forbidden carriage return",
 		},
 		{
 			name:       "unicode carriage return",
 			content:    "first\rsecond\n",
-			script:     `in file.txt` + "\n" + `type "first\u000Dsecond" "replacement"`,
+			script:     `type "first\u000Dsecond" "replacement"`,
 			diagnostic: "forbidden carriage return",
 		},
 		{
 			name:       "forbidden control",
 			content:    "first\x01second\n",
-			script:     `in file.txt` + "\n" + `type "first\u0001second" "replacement"`,
+			script:     `type "first\u0001second" "replacement"`,
 			diagnostic: "forbidden control character",
 		},
 		{
 			name:       "empty target",
 			content:    "first\n",
-			script:     `in file.txt` + "\n" + `type "" "replacement"`,
+			script:     `type "" "replacement"`,
 			diagnostic: "target literal must not be empty",
 		},
 	}
@@ -794,7 +721,7 @@ func TestMekugi2MultilineLiteralTargetRejectionsAreAtomic(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
 			writeTestFile(t, root, "file.txt", test.content, 0o644)
-			result, err := applyForHostAtTest(t, root, test.script, "")
+			result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: test.script}}, "")
 			if err == nil || !strings.Contains(result.Diagnostic, test.diagnostic) {
 				t.Fatalf("ApplyForHost() error = %v, diagnostic %q; want %q", err, result.Diagnostic, test.diagnostic)
 			}
@@ -809,24 +736,24 @@ func row(line int, content string) string {
 	return fmt.Sprintf("%d:%s", line, hashLine(content))
 }
 
-func applyForHostAtTest(t *testing.T, rootPath, script, dataDirectory string) (HostTranslation, error) {
+func applyForHostAtTest(t *testing.T, rootPath string, input []FileEdit, dataDirectory string) (HostTranslation, error) {
 	t.Helper()
 	root, err := os.OpenRoot(rootPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	return ApplyForHost(t.Context(), Workspace{Root: root}, script, dataDirectory)
+	return ApplyForHost(t.Context(), Workspace{Root: root}, input, dataDirectory)
 }
 
-func translateForHostAtTest(t *testing.T, rootPath, script, dataDirectory string) (HostTranslation, error) {
+func translateForHostAtTest(t *testing.T, rootPath string, input []FileEdit, dataDirectory string) (HostTranslation, error) {
 	t.Helper()
 	root, err := os.OpenRoot(rootPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	return translateForHostForTest(t.Context(), Workspace{Root: root}, script, dataDirectory)
+	return translateForHostForTest(t.Context(), Workspace{Root: root}, input, dataDirectory)
 }
 
 func writeTestFile(t *testing.T, root, path, content string, mode fs.FileMode) {

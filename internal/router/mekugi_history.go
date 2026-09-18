@@ -25,7 +25,11 @@ type mekugiHistory struct {
 	ToolName string
 	PluginID string
 
-	Script          string
+	Script string
+	// Edits preserves the explicit path and pathless script for every file in
+	// one atomic invocation. Script remains the legacy single-input projection.
+	Edits           []mekugi.FileEdit `json:",omitempty"`
+	RecoveryScript  int               `json:",omitempty"`
 	Root            string
 	ExecutingThread string `json:",omitempty"`
 	// Evaluated is the script mekugi actually received when it differs from the
@@ -149,6 +153,10 @@ func (p *mekugiProxy) rememberBatch(sessionID string, histories map[string]mekug
 			return fmt.Errorf("encode mekugi history item: %w", err)
 		}
 		history.bytes = len(sessionID) + len(callID) + len(history.ToolName) + len(history.PluginID) + len(history.Script) + len(history.Root) + len(history.Evaluated) + len(history.Patch) + len(history.CarrierKind) + len(history.CarrierName) + len(history.CarrierPayload) + len(history.Report) + len(history.OutputWarning) + len(history.TranslationError) + len(history.CorrelationID) + len(encodedItem)
+		history.bytes += history.RecoveryScript
+		for _, edit := range history.Edits {
+			history.bytes += len(edit.Path) + len(edit.Script)
+		}
 		history.bytes += len(history.ChangeID) + len(history.RecoveryBinding) + len(history.ExecutingThread)
 		for _, file := range history.ReviewFiles {
 			history.bytes += len(file.BeforePath) + len(file.AfterPath) + len(file.Diff)

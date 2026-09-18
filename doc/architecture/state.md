@@ -4,7 +4,7 @@
 
 The final-state projector consumes only a completed engine result. It owns the bounded
 summary and current verified references defined by `REQ-OUTPUT-001`, including command
-order, final-path identity, formatting-aware locations, deduplication, and the active-file
+order, final-path identity, formatting-aware locations, deduplication, and the last-command file's
 fallback. It never rereads the committed filesystem or reconstructs edit state.
 
 Language finalization supplies a source-offset map. The projector uses that shared map

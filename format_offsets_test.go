@@ -3,6 +3,7 @@ package mekugi
 import (
 	"go/format"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -26,13 +27,14 @@ func TestFormatterNormalizedLiterals(t *testing.T) {
 			root := t.TempDir()
 			source := "package p\nvar x = " + test.before + "\n"
 			want := "package p\n\nvar x = " + test.after + "\n"
-			script := "new number.go\ntype " + strconv.Quote(source) + "\n"
-			translated, err := TranslateForHostAt(t.Context(), root, script, "")
+			writeTestFile(t, root, "number.go", "", 0o644)
+			edits := []FileEdit{{Path: "number.go", Script: "append " + strconv.Quote(source)}}
+			translated, err := TranslateForHostAt(t.Context(), root, edits, "")
 			if err != nil {
 				t.Fatal(err)
 			}
-			files, err := patchtest.Apply(map[string]string{}, string(translated.Patch))
-			if err != nil || files["number.go"] != want {
+			files, err := patchtest.Apply(map[string]string{filepath.Join(root, "number.go"): ""}, string(translated.Patch))
+			if err != nil || files[filepath.Join(root, "number.go")] != want {
 				t.Fatalf("translated files = %v, error = %v, want %q", files, err, want)
 			}
 			capability, err := os.OpenRoot(root)
@@ -40,7 +42,7 @@ func TestFormatterNormalizedLiterals(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer capability.Close()
-			if err := Apply(t.Context(), Workspace{Root: capability}, script); err != nil {
+			if err := Apply(t.Context(), Workspace{Root: capability}, edits); err != nil {
 				t.Fatal(err)
 			}
 			if got := readTestFile(t, root, "number.go"); got != want {
@@ -52,8 +54,8 @@ func TestFormatterNormalizedLiterals(t *testing.T) {
 			before := "package p\n\nvar first = " + test.after + "\nvar target = 1\nvar last = " + test.after + "\n"
 			writeTestFile(t, root, "number.go", before, 0o644)
 			replacement := "var target = " + test.before
-			script = "in number.go\ntype " + row(4, "var target = 1") + " " + strconv.Quote(replacement)
-			translated, err = TranslateForHostAt(t.Context(), root, script, "")
+			edits = []FileEdit{{Path: "number.go", Script: "type " + row(4, "var target = 1") + " " + strconv.Quote(replacement)}}
+			translated, err = TranslateForHostAt(t.Context(), root, edits, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -110,16 +112,17 @@ func TestFormatterStructuralCorrespondence(t *testing.T) {
 				}
 			}
 			root := t.TempDir()
-			script := "new formatted.go\ntype " + strconv.Quote(test.source)
-			translated, err := TranslateForHostAt(t.Context(), root, script, "")
+			writeTestFile(t, root, "formatted.go", "", 0o644)
+			edits := []FileEdit{{Path: "formatted.go", Script: "append " + strconv.Quote(test.source)}}
+			translated, err := TranslateForHostAt(t.Context(), root, edits, "")
 			if err != nil {
 				t.Fatal(err)
 			}
-			files, err := patchtest.Apply(map[string]string{}, string(translated.Patch))
-			if err != nil || files["formatted.go"] != want {
+			files, err := patchtest.Apply(map[string]string{filepath.Join(root, "formatted.go"): ""}, string(translated.Patch))
+			if err != nil || files[filepath.Join(root, "formatted.go")] != want {
 				t.Fatalf("translated files = %v, error = %v, want %q", files, err, want)
 			}
-			applied, err := applyForHostAtTest(t, root, script, "")
+			applied, err := ApplyForHostAt(t.Context(), root, edits, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -131,8 +134,8 @@ func TestFormatterStructuralCorrespondence(t *testing.T) {
 			baseline := test.source[:end] + " " + test.source[end:]
 			writeTestFile(t, root, "formatted.go", baseline, 0o644)
 			oldRow := row(strings.Count(test.source[:start], "\n")+1, test.target+" ")
-			script = "in formatted.go\ntype " + oldRow + " " + strconv.Quote(test.target)
-			translated, err = TranslateForHostAt(t.Context(), root, script, "")
+			edits = []FileEdit{{Path: "formatted.go", Script: "type " + oldRow + " " + strconv.Quote(test.target)}}
+			translated, err = TranslateForHostAt(t.Context(), root, edits, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -166,8 +169,8 @@ func TestFormatterReorderedImportRangeAliases(t *testing.T) {
 			before.WriteString(")\n\nvar x = 1\n")
 			writeTestFile(t, root, "imports.go", before.String(), 0o644)
 			target := row(4, "\t"+strconv.Quote("old"+paths[0])) + ".." + row(3+len(paths), "\t"+strconv.Quote("old"+paths[len(paths)-1]))
-			script := "in imports.go\ntype " + target + " " + strconv.Quote(replacement.String())
-			translated, err := TranslateForHostAt(t.Context(), root, script, "")
+			edits := []FileEdit{{Path: "imports.go", Script: "type " + target + " " + strconv.Quote(replacement.String())}}
+			translated, err := TranslateForHostAt(t.Context(), root, edits, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -175,7 +178,7 @@ func TestFormatterReorderedImportRangeAliases(t *testing.T) {
 			if len(translated.TargetAliases) != 1 || translated.TargetAliases[0].After != want {
 				t.Fatalf("aliases = %+v, want %s", translated.TargetAliases, want)
 			}
-			applied, err := applyForHostAtTest(t, root, script, "")
+			applied, err := ApplyForHostAt(t.Context(), root, edits, "")
 			if err != nil || applied.Report != translated.Report {
 				t.Fatalf("apply error %v, apply report %q, translate report %q", err, applied.Report, translated.Report)
 			}
@@ -203,13 +206,14 @@ func TestFormatterImportDeclarationCommentBoundaries(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			script := "new imports.go\ntype " + strconv.Quote(source)
-			translated, err := TranslateForHostAt(t.Context(), root, script, "")
+			writeTestFile(t, root, "imports.go", "", 0o644)
+			edits := []FileEdit{{Path: "imports.go", Script: "append " + strconv.Quote(source)}}
+			translated, err := TranslateForHostAt(t.Context(), root, edits, "")
 			if err != nil {
 				t.Fatal(err)
 			}
-			files, err := patchtest.Apply(map[string]string{}, string(translated.Patch))
-			if err != nil || files["imports.go"] != string(formatted) {
+			files, err := patchtest.Apply(map[string]string{filepath.Join(root, "imports.go"): ""}, string(translated.Patch))
+			if err != nil || files[filepath.Join(root, "imports.go")] != string(formatted) {
 				t.Fatalf("translated files %v, error %v, want %q", files, err, formatted)
 			}
 			capability, err := os.OpenRoot(root)
@@ -217,7 +221,7 @@ func TestFormatterImportDeclarationCommentBoundaries(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer capability.Close()
-			if err := Apply(t.Context(), Workspace{Root: capability}, script); err != nil {
+			if err := Apply(t.Context(), Workspace{Root: capability}, edits); err != nil {
 				t.Fatal(err)
 			}
 			if got := readTestFile(t, root, "imports.go"); got != string(formatted) {

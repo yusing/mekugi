@@ -23,8 +23,8 @@ func TestCodeModeHpatchRetainsExactCarrier(t *testing.T) {
 		id, tool, script string
 		rejected         bool
 	}{
-		{"success", "shell", "hpatch " + shellQuoteArgument("in file.txt\ntype \"old\" \"new\"\n"), false},
-		{"rejected-at-execution", "shell", "hpatch " + shellQuoteArgument("in file.txt\ntype \"missing\" \"new\"\n"), false},
+		{"success", "shell", "hpatch file.txt " + shellQuoteArgument("type \"old\" \"new\"\n"), false},
+		{"rejected-at-execution", "shell", "hpatch file.txt " + shellQuoteArgument("type \"missing\" \"new\"\n"), false},
 	} {
 		t.Run(step.id, func(t *testing.T) {
 			original := map[string]json.RawMessage{

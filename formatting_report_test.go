@@ -35,11 +35,12 @@ func TestFormattingReferencesApplyAndReuse(t *testing.T) {
 	root := t.TempDir()
 	source := "package p\n\nfunc f(){println(1);println(2)}\n\nvar z=1\n"
 	writeTestFile(t, root, "f.go", source, 0o644)
-	translated, err := TranslateForHostAt(t.Context(), root, "in f.go\ntype \"package p\" \"package q\"", "")
+	edits := []FileEdit{{Path: "f.go", Script: `type "package p" "package q"`}}
+	translated, err := TranslateForHostAt(t.Context(), root, edits, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := applyForHostAtTest(t, root, "in f.go\ntype \"package p\" \"package q\"", "")
+	result, err := ApplyForHostAt(t.Context(), root, edits, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,8 +66,8 @@ func TestFormattingReferencesApplyAndReuse(t *testing.T) {
 		}
 		lines := logicalLines(final)
 		content := lineContent(final, lines[number-1])
-		script := fmt.Sprintf("in f.go\ntype %d:%s %q", number, hash, content)
-		if _, err := applyForHostAtTest(t, root, script, ""); err != nil {
+		edits := []FileEdit{{Path: "f.go", Script: fmt.Sprintf("type %d:%s %q", number, hash, content)}}
+		if _, err := applyForHostAtTest(t, root, edits, ""); err != nil {
 			t.Fatalf("reuse %q: %v", target, err)
 		}
 		count++
@@ -79,7 +80,7 @@ func TestFormattingReferencesApplyAndReuse(t *testing.T) {
 func TestFormattingReferencesAbsentWithoutFormatting(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "f.go", "package p\n", 0o644)
-	result, err := applyForHostAtTest(t, root, "in f.go\ntype \"package p\" \"package q\"", "")
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "f.go", Script: `type "package p" "package q"`}}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +93,7 @@ func TestFormattingBlockEscapesControls(t *testing.T) {
 	root := t.TempDir()
 	source := "package p\nfunc f(){\nprintln(`\x1b[31m`);println(2)\n}\n"
 	writeTestFile(t, root, "f.go", source, 0o644)
-	result, err := applyForHostAtTest(t, root, "in f.go\ntype \"package p\" \"package q\"", "")
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "f.go", Script: `type "package p" "package q"`}}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +114,7 @@ func TestFormattingShiftReferencesWithRepeatedRows(t *testing.T) {
 	root := t.TempDir()
 	source := "package p\nfunc f(){println(1);println(2)}\nfunc g() {\n\tprintln(1)\n}\n"
 	writeTestFile(t, root, "f.go", source, 0o644)
-	result, err := applyForHostAtTest(t, root, "in f.go\ntype \"package p\" \"package q\"", "")
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "f.go", Script: `type "package p" "package q"`}}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +131,7 @@ func TestFormattingShiftReferencesWithRepeatedRows(t *testing.T) {
 		for old := oldStart; old <= oldEnd; old++ {
 			content := lineContent(source, before[old-1])
 			target := row(start+old-oldStart, content)
-			if _, err := applyForHostAtTest(t, root, "in f.go\ntype "+target+" "+fmt.Sprintf("%q", content), ""); err != nil {
+			if _, err := applyForHostAtTest(t, root, []FileEdit{{Path: "f.go", Script: "type " + target + " " + fmt.Sprintf("%q", content)}}, ""); err != nil {
 				t.Fatalf("shifted target %s: %v", target, err)
 			}
 			foundRepeated = foundRepeated || content == "\tprintln(1)"

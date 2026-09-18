@@ -28,7 +28,7 @@ func TestMutationsPreserveAuthoredWhitespace(t *testing.T) {
 		},
 		{
 			name: "interior and EOF blank lines", path: "file.txt", before: "alpha\n",
-			script: "add EOF " + strconv.Quote("\nbeta\n \t\n\n"),
+			script: "append " + strconv.Quote("\nbeta\n \t\n\n"),
 			want:   "alpha\n\nbeta\n \t\n\n",
 		},
 		{
@@ -60,8 +60,8 @@ func TestMutationsPreserveAuthoredWhitespace(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
 			writeTestFile(t, root, test.path, test.before, 0o644)
-			script := "in " + test.path + "\n" + test.script
-			translation, err := translateForHostAtTest(t, root, script, "")
+			edits := []FileEdit{{Path: test.path, Script: test.script}}
+			translation, err := translateForHostAtTest(t, root, edits, "")
 			if err != nil {
 				t.Fatalf("translate: %v, %s", err, translation.Diagnostic)
 			}
@@ -73,7 +73,7 @@ func TestMutationsPreserveAuthoredWhitespace(t *testing.T) {
 			if err != nil || tree[test.path] != wantTranslated {
 				t.Fatalf("translated content = %q, error %v, want %q", tree[test.path], err, wantTranslated)
 			}
-			result, err := applyForHostAtTest(t, root, script, "")
+			result, err := applyForHostAtTest(t, root, edits, "")
 			if err != nil {
 				t.Fatalf("apply: %v, %s", err, result.Diagnostic)
 			}
@@ -88,7 +88,8 @@ func TestNewFilePreservesWhitespace(t *testing.T) {
 	for _, content := range []string{"line  \n\n \t\n", " \t", "\n\n", "binary\x00payload  \n"} {
 		t.Run(strconv.Quote(content), func(t *testing.T) {
 			root := t.TempDir()
-			result, err := applyForHostAtTest(t, root, "new file.txt\ntype "+strings.ReplaceAll(strconv.Quote(content), `\x00`, `\u0000`), "")
+			writeTestFile(t, root, "file.txt", "", 0o644)
+			result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: "append " + strings.ReplaceAll(strconv.Quote(content), `\x00`, `\u0000`)}}, "")
 			if err != nil {
 				t.Fatalf("apply: %v, %s", err, result.Diagnostic)
 			}
@@ -101,7 +102,7 @@ func TestNewFilePreservesWhitespace(t *testing.T) {
 func TestWhitespaceOnlyChangeHasFinalReferences(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "file.txt", "alpha\n", 0o644)
-	result, err := applyForHostAtTest(t, root, "in file.txt\ntype "+row(1, "alpha")+" "+strconv.Quote("alpha \t"), "")
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "file.txt", Script: "type " + row(1, "alpha") + " " + strconv.Quote("alpha \t")}}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

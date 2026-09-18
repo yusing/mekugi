@@ -260,7 +260,10 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		result, err := mekugi.ApplyForHostAt(t.Context(), workspace, "new "+name+".txt\ntype \"content\\n\"", "")
+		if err := os.WriteFile(filepath.Join(workspace, name+".txt"), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		result, err := mekugi.ApplyForHostAt(t.Context(), workspace, []mekugi.FileEdit{{Path: name + ".txt", Script: `append "content\n"`}}, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -328,6 +331,9 @@ func TestLiveDiffPreviewLifecycleAndReconnect(t *testing.T) {
 		t.Run(fmt.Sprint(interrupted), func(t *testing.T) {
 			calls := 0
 			transform, proxy, _, workspace := newMekugiTestTransform(t)
+			if err := os.WriteFile(filepath.Join(workspace, "created.txt"), nil, 0600); err != nil {
+				t.Fatal(err)
+			}
 			broker := newLiveDiffBroker(t.Context())
 			broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true}}})
 			proxy.autoLiveDiff = &autoLiveDiff{events: broker, requested: true}
@@ -341,7 +347,7 @@ func TestLiveDiffPreviewLifecycleAndReconnect(t *testing.T) {
 			}
 			_, err = transform.TransformSSE(mustTestJSON(t, map[string]any{
 				"type": "response.custom_tool_call_input.delta", "item_id": "item-H",
-				"delta": "new created.txt\ntype <<PATCH\npay",
+				"delta": "hpatch created.txt <<'EDIT'\nappend <<PATCH\npay",
 			}))
 			if err != nil {
 				t.Fatal(err)
@@ -361,7 +367,7 @@ func TestLiveDiffPreviewLifecycleAndReconnect(t *testing.T) {
 					t.Fatal("preview did not arrive")
 				}
 			}
-			if calls != 0 || !strings.Contains(preview.Input, "pay") {
+			if calls != 0 || len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "+pay") {
 				t.Fatalf("preview=%+v translations=%d", preview, calls)
 			}
 			reconnected := broker.subscribe()

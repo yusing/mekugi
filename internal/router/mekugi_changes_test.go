@@ -271,7 +271,7 @@ func TestTrackedFormerShellPathIsWorkspaceScope(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "@shell", "script"), []byte("old\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	result, err := mekugi.ApplyForHostAt(t.Context(), workspace, "in @shell/script\ntype \"old\" \"new\"", "")
+	result, err := mekugi.ApplyForHostAt(t.Context(), workspace, []mekugi.FileEdit{{Path: "@shell/script", Script: `type "old" "new"`}}, "")
 	if err != nil || !result.Change.Applied {
 		t.Fatalf("workspace application = %+v, %v", result, err)
 	}

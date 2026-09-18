@@ -17,7 +17,7 @@ func TestRecoverScriptEditsPreparedText(t *testing.T) {
 		{"operation", "wrong command\n", `type "wrong command" "rm"`, "rm\n"},
 		{"value", "in f.txt\ntype \"old\" \"bad\"\n", `type "bad" "good"`, "in f.txt\ntype \"old\" \"good\"\n"},
 		{"framing", "new f.txt\ntype <<END\nbody\nWRONG\n", `type "WRONG" "END"`, "new f.txt\ntype <<END\nbody\nEND\n"},
-		{"missing close", "new f.txt\ntype <<TEXT\n|body\n", `add EOF "TEXT\n"`, "new f.txt\ntype <<TEXT\n|body\nTEXT\n"},
+		{"missing close", "new f.txt\ntype <<TEXT\n|body\n", `add EOF "TEXT\n"`, "new f.txt\ntype <<TEXT\nbody\nTEXT\n"},
 		{"remove conflict", "in f.txt\ntype \"old\" \"new\"\ntype \"old\" \"again\"\n",
 			`type "type \"old\" \"again\"\n" ""`, "in f.txt\ntype \"old\" \"new\"\n"},
 		{"multiple fields", "in wrong.txt\ntype \"old\" \"bad\"\n",
@@ -28,7 +28,12 @@ func TestRecoverScriptEditsPreparedText(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// A large unrelated prepared value is retained rather than re-emitted.
 			prepared := unrelated + "new large.txt\ntype " + strconv.Quote(strings.Repeat("retained ", 10000)) + "\n"
-			got, err := recoverScriptDetailed(t.Context(), prepared+test.broken, test.correction, testRecoveryHandles(prepared+test.broken))
+			correction := test.correction
+			if test.name == "missing close" {
+				row := strings.Fields(mekugi.TextReferences(prepared+test.broken, mekugi.TextLineCount(prepared)+3))[0]
+				correction = "type " + row + " " + strconv.Quote("body\nTEXT\n")
+			}
+			got, err := recoverScriptDetailed(t.Context(), prepared+test.broken, correction, testRecoveryHandles(prepared+test.broken))
 			if err != nil || got.script != prepared+test.fixed || got.delta == "" {
 				t.Fatalf("recovery error %v; changed unrelated content or failed correction", err)
 			}

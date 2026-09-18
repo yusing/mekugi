@@ -92,7 +92,8 @@ func FrameCommand(lines []PhysicalLine, headerIndex int, command string) (Comman
 
 func isInlineQuotedCommand(command string) bool {
 	return strings.HasPrefix(command, "type ") ||
-		strings.HasPrefix(command, "add ")
+		strings.HasPrefix(command, "add ") ||
+		strings.HasPrefix(command, "append ")
 }
 
 func scanQuotedOperand(text string, quoteOpen bool) bool {
@@ -118,7 +119,7 @@ func scanQuotedOperand(text string, quoteOpen bool) bool {
 
 func heredocMarker(command string) (string, error) {
 	operation, _, _ := strings.Cut(command, " ")
-	if operation != "type" && operation != "add" && operation != "shell" {
+	if operation != "type" && operation != "add" && operation != "append" && operation != "shell" {
 		return "", nil
 	}
 	marker := unquotedDoubleLess(command)

@@ -130,30 +130,34 @@ facilities for interactive input or termination.
 
 ## HPATCH/2
 
-Run `hpatch [SCRIPT]` through `functions.shell`; omit SCRIPT to read the edit from stdin.
+Run `hpatch PATH [SCRIPT]` through `functions.shell`; omit SCRIPT to read the edit from stdin.
+For atomic multi-file edits, supply `hpatch PATH SCRIPT [PATH SCRIPT ...]`.
 It must be a standalone shell command, not combined with other commands.
 
 ```sh
-hpatch <<'EDIT'
-in notes.txt
+hpatch notes.txt <<'EDIT'
 type "draft" "ready"
 EDIT
 ```
 
 Arguments, stdin, quoting, heredoc expansion, command substitution, and redirection use
-normal shell semantics. Run dependent checks in subsequent shell calls.
+normal shell semantics. Apply generated scripts with `hpatch notes.txt "$(python3 generator.py)"` or
+`hpatch notes.txt < prepared.hpatch`. Generators emit script bytes, not target-file writes. These edits
+retain change IDs, hchanges history, and completed live diffs; dynamic input has no speculative
+preview. Run dependent checks in subsequent shell calls.
 
 
 ### Files, targets, and values
 
 | Operation | Meaning |
 | --- | --- |
-| `in PATH` | Select an existing file. Repeat when switching files. |
-| `new PATH` | Select a pending empty file. |
-| `mv PATH` | Move the active file with its baseline and edits. |
-| `rm` | Delete the active file and clear selection. |
-| `type TARGET VALUE` | Replace; an empty target-bearing value deletes the target. |
-| `add DESTINATION VALUE` | Insert before a row/text destination; `add EOF` appends. |
+| `type TARGET VALUE` | Replace; an empty value deletes the target. |
+| `add TARGET VALUE` | Insert before a row/text target. |
+| `append VALUE` | Insert at the immutable baseline end. |
+
+Filenames belong only in shell arguments; quote paths there as usual and use `--` before flag-like paths.
+Every target file must exist.
+There is no active-file state, filename syntax, file-management command, or `EOF` keyword.
 
 Targets:
 
@@ -173,19 +177,19 @@ Nonempty line and range `type` replacements preserve the target's LF, CRLF, or C
 omits a terminator. Other authored whitespace is preserved except supported formatting and indentation correction.
 
 Compact `advisory` lines report nonzero authored whitespace effects and are not errors.
-Report rows inherit the latest `in PATH` or `file PATH` header; `file` is not an edit command.
+Report rows inherit the latest `file PATH` header; `file` is not an edit command.
 
 ### Baselines and validation
 
-Existing-file edits require a target. Targetless `type VALUE` is allowed only immediately after
-`new`, once per file. Each existing file has one immutable invocation baseline, so pending edits do
-not shift later targets; introduced content is targetable only in a later call. Unchanged saved rows
+`type` and `add` require targets. `append` also works on an empty file created by the shell.
+Each file has one immutable invocation baseline, so pending edits do not shift later targets;
+introduced content is targetable only in a later call. Multi-file edits in one invocation are atomic. Unchanged saved rows
 remain valid after line shifts when one exact hash identifies them, and routed replacement reports
 provide confirmed mappings.
 
 Overlapping replacements/deletions and insertions strictly inside them reject. Boundary insertions
 are valid and same-boundary insertions render in script order. Relative paths require the selected
-base directory; parents for `new` and `mv` must exist.
+base directory. Shell creation, movement, and removal are outside the hpatch transaction.
 
 Changed Go files are parsed and gofmt-formatted. Python, JavaScript, and TypeScript receive syntax
 checks and targeted indentation correction, not full formatting; preserve required indentation.
@@ -194,17 +198,19 @@ reuse them rather than rereading solely because formatting moved source.
 
 ### Rejected-script recovery
 
-Use `hpatch --recover HANDLE [SCRIPT]` with the rejected edit's recovery handle; omit SCRIPT to read corrections from stdin:
+Use `hpatch --recover HANDLE [SCRIPT]` with the rejected edit's recovery handle; omit SCRIPT to read corrections from stdin.
+For a rejection with multiple scripts, use `--script N` to select the original 1-based path/script pair, even when paths repeat. Recovery reevaluates the whole batch:
 
 - For a wholly row-stale rejection, submit every diagnostic `HANDLE TARGET`, for example
   `maple "return oldResult, nil"`.
 - For a parsed command's target or value, use `HANDLE target TARGET` or `HANDLE value VALUE`; values use normal
   quoted strings or heredoc and each handle appears once.
-- For framing, paths, conflicts, or other script changes, use target-bearing `type`/`add` mutations
+- For framing, conflicts, or other script changes, use target-bearing `type`/`add` mutations
   against retained-script text. Generated-source line numbers are not recovery targets.
 
 Keep the two payload forms separate. Script-text mutations edit the retained rejected script, not
-workspace files. Script mutations omit `in`, `new`, `mv`, and `rm`. Both forms preserve untargeted
+workspace files. Correct an outer filename by issuing a new invocation, not by editing the script.
+Script mutations use pathless `type TARGET VALUE` / `add TARGET VALUE`, without `append`. Both forms preserve untargeted
 text and reevaluate the complete script atomically. A re-rejection becomes the new baseline; use its
 script rows and refreshed command handles. Invalid corrections change neither workspace nor retained
 baseline.

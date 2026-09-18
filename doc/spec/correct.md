@@ -3,12 +3,17 @@
 ## REQ-CORRECT-001 — Rejected-script recovery
 
 `hpatch --recover HANDLE [SCRIPT]` runs through the shell. Omitting SCRIPT reads
-corrections from stdin. The reported recovery handle identifies one immutable
+corrections from stdin. For a rejection with multiple scripts, `--script N` is required
+and selects the original 1-based path/script pair, including when paths repeat.
+The complete retained batch is reevaluated atomically with other scripts unchanged.
+Outer filenames are not part of the retained script and cannot be changed by script-text
+corrections. A wrong outer filename requires a corrected new invocation.
+The reported recovery handle identifies one immutable
 rejected edit in the execution directory, not a mutable "latest" rejection.
 Recovery uses the existing edit engine; it is not a separate model-facing tool.
 
 Each rejected command has a short word handle. A private fingerprint binds the
-complete baseline and ordered command mapping. Recovery rejects missing, expired,
+complete batch baseline and ordered command mapping. Recovery rejects missing, expired,
 cross-directory, or mismatched records. Durable records allow the same explicit
 baseline to be used after fork, agent switching, model switching, or router restart.
 Concurrent branches cannot change the baseline identified by an existing handle.
@@ -18,9 +23,9 @@ Corrections have two forms, which cannot be mixed:
 - Command corrections: `HANDLE TARGET`, `HANDLE target TARGET`, or
   `HANDLE value VALUE`. Each command handle appears at most once. A correction
   preserves the command's operation and every unrelated field.
-- Script-text corrections: ordinary target-bearing `type` and `add` mutations
-  against the retained script, not workspace files. File commands and targetless
-  initializers are not accepted.
+- Script-text corrections: pathless `type TARGET VALUE` and `add TARGET VALUE`
+  mutations against the retained script, not workspace files. Paths, `append`, and
+  file-management commands are not accepted in this in-memory correction form.
 
 Targets and values follow the edit grammar. The complete rebuilt script must be
 different, nonempty, and within the 1 MiB bound, including intermediate plans.

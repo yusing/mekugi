@@ -3,7 +3,6 @@ package mekugi
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -71,6 +70,7 @@ type instruction struct {
 }
 
 type program struct {
+	paths        []string
 	instructions []instruction
 }
 
@@ -154,9 +154,47 @@ func (e *commandError) Error() string {
 }
 
 func parse(source string) (*program, error) {
+	parsed, _, err := parseSource(source, "", 0)
+	return parsed, err
+}
+
+func parseFileEdits(edits []FileEdit) (*program, error) {
 	program := &program{}
 	var failures []*commandError
-	commandIndex := 0
+	commandOffset := 0
+	for _, edit := range edits {
+		if edit.Path == "" {
+			_, commandCount, _ := parseSource(edit.Script, edit.Path, commandOffset)
+			commandOffset += commandCount
+			failures = append(failures, &commandError{
+				Reason:    reasonPath,
+				Command:   commandOffset - commandCount + 1,
+				Line:      1,
+				Operation: "file",
+				Category:  "path",
+				Message:   "file edit path must not be empty",
+			})
+			continue
+		}
+		program.paths = append(program.paths, edit.Path)
+		parsed, commandCount, err := parseSource(edit.Script, edit.Path, commandOffset)
+		commandOffset += commandCount
+		if err != nil {
+			failures = append(failures, commandsOf(err)...)
+			continue
+		}
+		program.instructions = append(program.instructions, parsed.instructions...)
+	}
+	if len(failures) != 0 {
+		return nil, commandFailures(failures)
+	}
+	return program, nil
+}
+
+func parseSource(source, path string, commandOffset int) (*program, int, error) {
+	program := &program{}
+	var failures []*commandError
+	commandIndex := commandOffset
 	lines := hpatchsyntax.SplitPhysicalLines(source)
 	for index := 0; index < len(lines); {
 		headerIndex := index
@@ -180,11 +218,7 @@ func parse(source string) (*program, error) {
 			err = scriptError(sourceLine, frameErr.Error())
 		case frame.Marker != "":
 			header := strings.TrimSuffix(line, " "+frame.Marker)
-			if header == "type" {
-				command = instruction{line: sourceLine, operation: "type", text: frame.Body}
-			} else {
-				command, err = parseInstructionWithValue(sourceLine, header, frame.Body, true)
-			}
+			command, err = parseInstructionWithValue(sourceLine, header, frame.Body, true)
 		default:
 			command, err = parseInstruction(sourceLine, line)
 		}
@@ -203,6 +237,7 @@ func parse(source string) (*program, error) {
 				Command:   commandIndex,
 				Line:      sourceLine,
 				Operation: operation,
+				Path:      path,
 				Category:  "syntax",
 				Source:    line,
 				Message:   message,
@@ -210,35 +245,24 @@ func parse(source string) (*program, error) {
 			continue
 		}
 		command.source = line
+		command.path = path
 		command.delimiter = frame.Marker
 		command.lineTerminator = lines[headerIndex].Terminator
 		program.instructions = append(program.instructions, command)
 	}
 	if len(failures) != 0 {
-		return nil, &commandGroupError{commands: failures}
+		return nil, commandIndex - commandOffset, commandFailures(failures)
 	}
-	return program, nil
+	return program, commandIndex - commandOffset, nil
 }
 
 func parseInstruction(sourceLine int, line string) (instruction, error) {
-	for _, operation := range []string{"in", "new", "mv"} {
-		if path, ok := strings.CutPrefix(line, operation+" "); ok {
-			if path == "" {
-				return instruction{}, scriptError(sourceLine, "path must not be empty")
-			}
-			return instruction{line: sourceLine, operation: operation, path: filepath.Clean(path)}, nil
-		}
-	}
-	if line == "rm" {
-		return instruction{line: sourceLine, operation: line}, nil
-	}
-
 	operation, _, ok := strings.Cut(line, " ")
 	if !ok {
 		return instruction{}, scriptError(sourceLine, "unknown or malformed command")
 	}
 	switch operation {
-	case "type", "add":
+	case "type", "add", "append":
 		return parseInstructionWithValue(sourceLine, line, "", false)
 	default:
 		return instruction{}, scriptError(sourceLine, "unknown or malformed command")
@@ -247,36 +271,43 @@ func parseInstruction(sourceLine int, line string) (instruction, error) {
 
 func parseInstructionWithValue(sourceLine int, line, heredocValue string, heredoc bool) (instruction, error) {
 	operation, operands, ok := strings.Cut(line, " ")
-	if !ok || (operation != "type" && operation != "add") {
-		return instruction{}, scriptError(sourceLine, "heredoc is valid only for type or add")
+	if !ok && heredoc {
+		operation, operands, ok = line, "", true
+	}
+	if !ok || (operation != "type" && operation != "add" && operation != "append") {
+		return instruction{}, scriptError(sourceLine, "heredoc is valid only for type, add, or append")
 	}
 	command := instruction{line: sourceLine, operation: operation}
-	if operation == "type" && !heredoc && strings.HasPrefix(operands, `"`) {
-		value, trailing, err := hpatchsyntax.DecodeQuoted(operands)
-		if err != nil {
-			return command, scriptError(sourceLine, "invalid quoted string for type: "+err.Error())
-		}
-		if onlyOperandWhitespace(trailing) {
-			command.text = value
-			command.valueStart = len(line) - len(operands)
+	if operation == "append" {
+		if heredoc {
+			if strings.TrimSpace(operands) != "" {
+				return command, scriptError(sourceLine, "trailing text before heredoc value")
+			}
+			command.text = heredocValue
 			return command, nil
 		}
-	}
-	if heredoc && operation == "type" && strings.TrimSpace(operands) == "" {
-		command.text = heredocValue
+		trailing := strings.TrimLeft(operands, " \t")
+		if trailing == "" {
+			return command, scriptError(sourceLine, "append requires a value")
+		}
+		command.valueStart = len(line) - len(trailing)
+		value, trailing, err := hpatchsyntax.DecodeQuoted(trailing)
+		if err != nil {
+			return command, scriptError(sourceLine, "invalid quoted string for append: "+err.Error())
+		}
+		if !onlyOperandWhitespace(trailing) {
+			return command, scriptError(sourceLine, "trailing text after append value")
+		}
+		command.text = value
 		return command, nil
 	}
-
 	target, trailing, err := parseTarget(sourceLine, operands, !heredoc)
 	command.target = target
 	if err != nil {
 		return command, err
 	}
-	if operation == "type" && target.kind == targetEOF {
-		return command, scriptError(sourceLine, "EOF is valid only as an add destination")
-	}
 	if operation == "add" && target.kind == targetRange {
-		return command, scriptError(sourceLine, "add requires a line, text, or EOF destination")
+		return command, scriptError(sourceLine, "add requires a line or text destination")
 	}
 	value := heredocValue
 	if heredoc {
@@ -329,9 +360,6 @@ func parseTarget(sourceLine int, operands string, finalValueFollows bool) (targe
 	if token == "" {
 		return targetSpec{}, "", scriptError(sourceLine, "target must not be empty")
 	}
-	if token == "EOF" {
-		return targetSpec{kind: targetEOF}, trailing, nil
-	}
 	if startText, endText, rangeTarget := strings.Cut(token, ".."); rangeTarget {
 		target := targetSpec{kind: targetRange}
 		if strings.Contains(endText, "..") {
@@ -351,9 +379,6 @@ func parseTarget(sourceLine int, operands string, finalValueFollows bool) (targe
 	}
 
 	target := targetSpec{}
-	if rowPattern.MatchString(token) {
-		target.kind = targetLine
-	}
 	row, err := parseRowReference(sourceLine, token)
 	target.start = row
 	if err != nil {

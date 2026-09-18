@@ -33,7 +33,7 @@ func TestBoundaryAdvisoriesPreserveAuthoredBytes(t *testing.T) {
 			"blank-after=1"},
 		{"insert leading blank", "before\nnext\n", "add " + row(2, "next") + ` "\nnew\n"`, "before\n\nnew\nnext\n",
 			"blank-before=1"},
-		{"EOF joins unterminated line", "before", `add EOF "after"`, "beforeafter",
+		{"append joins unterminated line", "before", `append "after"`, "beforeafter",
 			"joins-left=1"},
 		{"multiple occurrences", "old\nold\n", `type "old" 2 "new\n"`, "new\n\nnew\n\n",
 			"blank-after=2"},
@@ -45,12 +45,12 @@ func TestBoundaryAdvisoriesPreserveAuthoredBytes(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
 			writeTestFile(t, root, "file.txt", test.before, 0o644)
-			script := "in file.txt\n" + test.edit
-			translated, err := translateForHostAtTest(t, root, script, "")
+			edits := []FileEdit{{Path: "file.txt", Script: test.edit}}
+			translated, err := translateForHostAtTest(t, root, edits, "")
 			if err != nil {
 				t.Fatalf("translate: %v, %s", err, translated.Diagnostic)
 			}
-			applied, err := applyForHostAtTest(t, root, script, "")
+			applied, err := applyForHostAtTest(t, root, edits, "")
 			if err != nil || readTestFile(t, root, "file.txt") != test.want {
 				t.Fatalf("apply: %v, %s; got %q, want %q", err, applied.Diagnostic, readTestFile(t, root, "file.txt"), test.want)
 			}
@@ -68,45 +68,34 @@ func TestBoundaryAdvisoriesPreserveAuthoredBytes(t *testing.T) {
 	}
 }
 
-func TestBoundaryAdvisoriesFollowSuccessAndFinalPaths(t *testing.T) {
-	root := t.TempDir()
-	writeTestFile(t, root, "file.txt", "old\n", 0o644)
-	script := "in file.txt\ntype " + row(1, "old") + " \"\"\nmv moved.txt\n"
-	result, err := translateForHostAtTest(t, root, script, "")
-	if err != nil || (!strings.Contains(result.Report, "in moved.txt\n") || !strings.Contains(result.Report, "advisory 2: deletes=1 removes-ending=1\n")) {
-		t.Fatalf("moved report: %v, %s", err, result.Report)
-	}
-	failed, err := translateForHostAtTest(t, root, script+"type \"missing\" \"value\"\n", "")
-	if err == nil || failed.Report != "" || len(failed.Patch) != 0 {
-		t.Fatalf("failure published success evidence: %v, %+v", err, failed)
-	}
-}
-
 func TestBoundaryAdvisoriesRemainBaselineEvidence(t *testing.T) {
 	for _, test := range []struct {
-		name, path, before, script, want string
+		name, path, before, script, want, advisory string
 	}{
 		{
 			name: "neighbor removes observed separator", path: "file.txt",
-			before: "old\nnext\n",
-			script: "in file.txt\ntype \"old\" \"new\\n\"\ntype \"\\n\" \"\"\n",
-			want:   "new\nnext\n",
+			before:   "old\nnext\n",
+			script:   "type \"old\" \"new\\n\"\ntype \"\\n\" \"\"\n",
+			want:     "new\nnext\n",
+			advisory: "advisory 2: deletes=1 removes-ending=1\n",
 		},
 		{
 			name: "formatter removes observed separator", path: "file.go",
-			before: "package p\n\nvar old=1\n",
-			script: "in file.go\ntype \"var old=1\" \"var newer=2\\n\"\n",
-			want:   "package p\n\nvar newer = 2\n",
+			before:   "package p\n\nvar old=1\n",
+			script:   "type \"var old=1\" \"var newer=2\\n\"\n",
+			want:     "package p\n\nvar newer = 2\n",
+			advisory: "advisory 1: blank-after=1\n",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
 			writeTestFile(t, root, test.path, test.before, 0o644)
-			result, err := applyForHostAtTest(t, root, test.script, "")
+			edits := []FileEdit{{Path: test.path, Script: test.script}}
+			result, err := applyForHostAtTest(t, root, edits, "")
 			if err != nil || readTestFile(t, root, test.path) != test.want {
 				t.Fatalf("apply: %v, %s; want %q", err, result.Diagnostic, test.want)
 			}
-			if !strings.Contains(result.Report, "advisory 2: blank-after=1\n") {
+			if !strings.Contains(result.Report, test.advisory) {
 				t.Fatalf("lost authored baseline observation: %s", result.Report)
 			}
 		})
@@ -115,7 +104,9 @@ func TestBoundaryAdvisoriesRemainBaselineEvidence(t *testing.T) {
 
 func TestEmptyMultilineInitializerIsNotReportedAsDeletion(t *testing.T) {
 	root := t.TempDir()
-	result, err := applyForHostAtTest(t, root, "new file.txt\ntype <<END\nEND\n", "")
+	writeTestFile(t, root, "file.txt", "", 0o644)
+	edits := []FileEdit{{Path: "file.txt", Script: "append <<END\nEND\n"}}
+	result, err := applyForHostAtTest(t, root, edits, "")
 	if err != nil || readTestFile(t, root, "file.txt") != "" || strings.Contains(result.Report, "advisory ") {
 		t.Fatalf("empty initializer: %v, %+v", err, result)
 	}

@@ -30,11 +30,9 @@ type reportedEdit struct {
 func (w *workspace) finalStateReport(changes []change) (string, []TargetAlias) {
 	currentPath := ""
 	var report strings.Builder
-	if w.active == nil {
-		report.WriteString("no active file\n")
-	} else {
-		currentPath = w.active.path
-		fmt.Fprintf(&report, "in %s\n", escapeReportControls(w.active.path))
+	if w.lastPath != "" {
+		currentPath = w.lastPath
+		fmt.Fprintf(&report, "file %s\n", escapeReportControls(w.lastPath))
 	}
 
 	last := w.lastReportedEdit()
@@ -49,21 +47,22 @@ func (w *workspace) finalStateReport(changes []change) (string, []TargetAlias) {
 			fmt.Fprintf(&report, "advisory %d: %s\n", edit.command, edit.advisory)
 		}
 	}
-	activeReferences := false
+	lastReferences := false
 	var aliases []TargetAlias
 	if len(w.reportedEdits) != 0 {
-		activeReferences, aliases = w.writeFinalReferences(&report, &currentPath)
+		lastReferences, aliases = w.writeFinalReferences(&report, &currentPath)
 	}
-	if w.active != nil && !activeReferences {
-		writeReportFile(&report, w.active.path, &currentPath)
-		w.writeFallbackPreview(&report)
+	if !lastReferences && w.lastPath != "" {
+		if file := w.paths[w.lastPath]; file != nil {
+			writeReportFile(&report, file.path, &currentPath)
+			w.writeFallbackPreview(file, &report)
+		}
 	}
 	w.writeFormattingReferences(&report, &currentPath)
 	return report.String(), aliases
 }
 
-// writeReportFile changes display context only; the initial in line still owns
-// the invocation's active final file.
+// writeReportFile changes display context without selecting an active file.
 func writeReportFile(report *strings.Builder, path string, currentPath *string) {
 	if *currentPath != path {
 		fmt.Fprintf(report, "file %s\n", escapeReportControls(path))
@@ -138,11 +137,11 @@ func writeSpanLocations(report *strings.Builder, document renderedDocument, span
 func (w *workspace) writeFinalReferences(report *strings.Builder, currentPath *string) (bool, []TargetAlias) {
 	documents := make(map[*fileState]renderedDocument)
 	extents := make(map[*fileState]map[int]renderedSpan)
-	activeReferences := false
+	lastReferences := false
 	var aliases []TargetAlias
 	for _, reported := range w.reportedEdits {
-		if reported.file == w.active {
-			activeReferences = true
+		if reported.file.path == w.lastPath {
+			lastReferences = true
 		}
 		document, ok := documents[reported.file]
 		if !ok {
@@ -184,7 +183,7 @@ func (w *workspace) writeFinalReferences(report *strings.Builder, currentPath *s
 			previous = index
 		}
 	}
-	return activeReferences, aliases
+	return lastReferences, aliases
 }
 
 func (e *editor) renderedEditExtents() map[int]renderedSpan {
@@ -201,8 +200,8 @@ func (e *editor) renderedEditExtents() map[int]renderedSpan {
 	return result
 }
 
-func (w *workspace) writeFallbackPreview(report *strings.Builder) {
-	content := w.active.editor.content()
+func (w *workspace) writeFallbackPreview(file *fileState, report *strings.Builder) {
+	content := file.editor.content()
 	document := renderedDocument{content: content, lines: previewLines(content)}
 	for index := range min(3, len(document.lines)) {
 		writePreviewLine(report, document, index)

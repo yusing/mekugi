@@ -43,7 +43,7 @@ func genericRecoveryGuidance(script string, rejections []mekugi.HostRejection, r
 	if refreshed {
 		output.WriteString("\nThis re-rejection changed no workspace file. Corrections are retained only in the new rejected-script baseline; earlier script rows and command handles may be stale.\n")
 	}
-	output.WriteString("\nRepair retained-script text with ordinary type/add mutations through hpatch --recover HANDLE, without in/new/mv/rm commands. Targets below address the rejected script, not workspace files. Use exact known literals for other retained text. The router rebuilds and reevaluates the complete script atomically; do not repeat unrelated prepared edits.\n\nRetained rejected-script rows:\n")
+	output.WriteString("\nRepair retained-script text with pathless type/add mutations through hpatch --recover HANDLE, without file paths, append, or file-management commands. Targets below address the rejected script, not workspace files. Use exact known literals for other retained text. The router rebuilds and reevaluates the complete script atomically; do not repeat unrelated prepared edits.\n\nRetained rejected-script rows:\n")
 	lines := hpatchsyntax.SplitPhysicalLines(script)
 	logicalRows := mekugiLogicalRowsByPhysicalLine(script, lines)
 	commands := recoveryCommands(script, handles)
@@ -153,6 +153,13 @@ func mekugiRecoveryReferences(
 // mekugiRecoveryCommandSummary creates a summary string for a recovery command reference.
 func mekugiRecoveryCommandSummary(command recoveryCommandReference) string {
 	summary := command.parts.operation
+	if command.path != "" {
+		if command.script > 0 {
+			summary += fmt.Sprintf(" script %d file %q", command.script, command.path)
+		} else {
+			summary += " " + command.path
+		}
+	}
 	if command.parts.target != "" {
 		summary += " " + command.parts.target
 	}

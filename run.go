@@ -2,7 +2,6 @@ package mekugi
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -157,6 +156,22 @@ func TextReferences(text string, rows ...int) string {
 	return output.String()
 }
 
+type FileEdit struct {
+	Path   string
+	Script string
+}
+
+func joinedFileEditScripts(edits []FileEdit) string {
+	var output strings.Builder
+	for index, edit := range edits {
+		if index != 0 {
+			output.WriteByte('\n')
+		}
+		output.WriteString(edit.Script)
+	}
+	return output.String()
+}
+
 // TargetAlias maps a target from one successful script to the rendered region
 // that replaced it. Hosts may retain aliases only after the translated patch
 // was applied successfully.
@@ -166,12 +181,11 @@ type TargetAlias struct {
 	After  string
 }
 
-// Apply evaluates the complete script before staging and applying its changes.
-// Callers must coordinate writers as described by Workspace. Application uses
-// ordered filesystem operations and rollback attempts, not a crash-atomic or
-// reader-isolated transaction. An application error does not imply no writes.
-func Apply(ctx context.Context, workspace Workspace, script string) error {
-	changes, filesystem, _, _, err := evaluateScript(ctx, workspace, script)
+// Apply evaluates the complete set of file edits before staging and applying
+// their changes. Each FileEdit names the existing file whose immutable baseline
+// its pathless script targets.
+func Apply(ctx context.Context, workspace Workspace, edits []FileEdit) error {
+	changes, filesystem, _, _, err := evaluateScript(ctx, workspace, edits)
 	if err != nil {
 		return err
 	}
@@ -254,16 +268,14 @@ func RenderFileWritePatch(path, content string) (string, error) {
 	return renderFileWritePatch(path, content)
 }
 
-// TranslateForHostAt evaluates a host script relative to directory without
-// imposing filesystem confinement. The host executor remains responsible for
-// authorizing and applying the translated patch. The caller coordinates writers
-// from the reads used to author the edit through translation and host application;
-// the returned patch and report do not reserve the evaluated filesystem state.
-func TranslateForHostAt(ctx context.Context, directory, script, dataDirectory string) (HostTranslation, error) {
+// TranslateForHostAt evaluates a set of file edits relative to directory
+// without imposing filesystem confinement. The host executor remains
+// responsible for authorizing and applying the translated patch.
+func TranslateForHostAt(ctx context.Context, directory string, edits []FileEdit, dataDirectory string) (HostTranslation, error) {
 	if ctx == nil {
 		return HostTranslation{}, fmt.Errorf("context is nil")
 	}
-	changes, _, report, aliases, err := evaluateScriptAt(ctx, directory, script)
+	changes, _, report, aliases, err := evaluateScriptAt(ctx, directory, edits)
 	result := hostTranslationResult(changes, report, aliases, err == nil)
 	failureStage := ""
 	if err != nil {
@@ -271,17 +283,16 @@ func TranslateForHostAt(ctx context.Context, directory, script, dataDirectory st
 	} else if err = translateHostResult(ctx, changes, &result); err != nil {
 		failureStage = "translated"
 	}
-	return finishHostChange(ctx, dataDirectory, script, result, failureStage, err, false)
+	return finishHostChange(ctx, dataDirectory, joinedFileEditScripts(edits), result, failureStage, err, false)
 }
 
-// ApplyForHost applies a script with the same caller-coordination and commit
-// guarantees as Apply, while returning host diagnostics. A late cancellation
-// can be returned after changes have been applied.
-func ApplyForHost(ctx context.Context, workspace Workspace, script, dataDirectory string) (HostTranslation, error) {
+// ApplyForHost applies a set of file edits with the same caller-coordination
+// and commit guarantees as Apply, while returning host diagnostics.
+func ApplyForHost(ctx context.Context, workspace Workspace, edits []FileEdit, dataDirectory string) (HostTranslation, error) {
 	if ctx == nil {
 		return HostTranslation{}, fmt.Errorf("context is nil")
 	}
-	changes, filesystem, report, aliases, err := evaluateScript(ctx, workspace, script)
+	changes, filesystem, report, aliases, err := evaluateScript(ctx, workspace, edits)
 	result := hostTranslationResult(changes, report, aliases, err == nil)
 	failureStage := ""
 	if err != nil {
@@ -292,17 +303,17 @@ func ApplyForHost(ctx context.Context, workspace Workspace, script, dataDirector
 			failureStage = "applied"
 		}
 	}
-	return finishHostChange(ctx, dataDirectory, script, result, failureStage, err, true)
+	return finishHostChange(ctx, dataDirectory, joinedFileEditScripts(edits), result, failureStage, err, true)
 }
 
-// ApplyForHostAt evaluates and applies a script relative to directory using the
-// host process's filesystem authority. Like ApplyForHost, it evaluates the entire
-// edit before committing and returns diagnostics for partial application failures.
-func ApplyForHostAt(ctx context.Context, directory, script, dataDirectory string) (HostTranslation, error) {
+// ApplyForHostAt evaluates and applies a set of file edits relative to
+// directory using the host process's filesystem authority. Like ApplyForHost,
+// it evaluates the entire edit set before committing.
+func ApplyForHostAt(ctx context.Context, directory string, edits []FileEdit, dataDirectory string) (HostTranslation, error) {
 	if ctx == nil {
 		return HostTranslation{}, fmt.Errorf("context is nil")
 	}
-	changes, filesystem, report, aliases, err := evaluateScriptAt(ctx, directory, script)
+	changes, filesystem, report, aliases, err := evaluateScriptAt(ctx, directory, edits)
 	result := hostTranslationResult(changes, report, aliases, err == nil)
 	failureStage := ""
 	if err != nil {
@@ -313,14 +324,12 @@ func ApplyForHostAt(ctx context.Context, directory, script, dataDirectory string
 			failureStage = "applied"
 		}
 	}
-	return finishHostChange(ctx, dataDirectory, script, result, failureStage, err, true)
+	return finishHostChange(ctx, dataDirectory, joinedFileEditScripts(edits), result, failureStage, err, true)
 }
 
-// ApplyForHostRoot evaluates and applies a script within root. It is intended
-// for hosts that own a confined private filesystem and coordinate its writers
-// under the same contract as ApplyForHost.
-func ApplyForHostRoot(ctx context.Context, root *os.Root, script, dataDirectory string) (HostTranslation, error) {
-	return ApplyForHost(ctx, Workspace{Root: root}, script, dataDirectory)
+// ApplyForHostRoot evaluates and applies a set of file edits within root.
+func ApplyForHostRoot(ctx context.Context, root *os.Root, edits []FileEdit, dataDirectory string) (HostTranslation, error) {
+	return ApplyForHost(ctx, Workspace{Root: root}, edits, dataDirectory)
 }
 
 // finishHostChange completes a host translation with outcome metadata and hooks.
@@ -414,46 +423,34 @@ type filesystemWorkspace struct {
 }
 
 // evaluateScript evaluates a script in the given workspace.
-func evaluateScript(ctx context.Context, workspace Workspace, script string) ([]change, filesystemWorkspace, string, []TargetAlias, error) {
+// evaluateScript evaluates a set of file edits in the given workspace.
+func evaluateScript(ctx context.Context, workspace Workspace, edits []FileEdit) ([]change, filesystemWorkspace, string, []TargetAlias, error) {
 	filesystem, err := validateWorkspace(ctx, workspace)
 	if err != nil {
 		return nil, filesystemWorkspace{}, "", nil, err
 	}
-	return evaluateScriptInFilesystem(ctx, filesystem, script)
+	return evaluateScriptInFilesystem(ctx, filesystem, edits)
 }
 
-// evaluateScriptAt evaluates a script in the given directory.
-func evaluateScriptAt(ctx context.Context, directory, script string) ([]change, filesystemWorkspace, string, []TargetAlias, error) {
+// evaluateScriptAt evaluates a set of file edits in the given directory.
+func evaluateScriptAt(ctx context.Context, directory string, edits []FileEdit) ([]change, filesystemWorkspace, string, []TargetAlias, error) {
 	filesystem, err := validateHostDirectory(ctx, directory)
 	if err != nil {
 		return nil, filesystemWorkspace{}, "", nil, err
 	}
-	return evaluateScriptInFilesystem(ctx, filesystem, script)
+	return evaluateScriptInFilesystem(ctx, filesystem, edits)
 }
 
-// evaluateScriptInFilesystem evaluates a script against a filesystem workspace.
-func evaluateScriptInFilesystem(ctx context.Context, filesystem filesystemWorkspace, script string) ([]change, filesystemWorkspace, string, []TargetAlias, error) {
-	program, err := parse(script)
+// evaluateScriptInFilesystem evaluates file edits against a filesystem workspace.
+func evaluateScriptInFilesystem(ctx context.Context, filesystem filesystemWorkspace, edits []FileEdit) ([]change, filesystemWorkspace, string, []TargetAlias, error) {
+	program, err := parseFileEdits(edits)
 	if err != nil {
 		return nil, filesystemWorkspace{}, "", nil, err
 	}
 	load := func(path string) (loadedFile, error) {
 		return filesystem.readFile(ctx, path)
 	}
-	exists := func(path string) (fs.FileMode, bool, error) {
-		if err := ctx.Err(); err != nil {
-			return 0, false, err
-		}
-		info, err := filesystem.stat(path)
-		if err == nil {
-			return info.Mode(), true, nil
-		}
-		if errors.Is(err, fs.ErrNotExist) {
-			return 0, false, nil
-		}
-		return 0, false, err
-	}
-	changes, report, aliases, err := program.evaluate(ctx, filesystem.resolvePath, load, exists)
+	changes, report, aliases, err := program.evaluate(ctx, filesystem.resolvePath, load)
 	if err != nil {
 		return nil, filesystemWorkspace{}, "", nil, err
 	}
@@ -519,10 +516,13 @@ func validateHostDirectory(ctx context.Context, directory string) (filesystemWor
 func (w filesystemWorkspace) resolvePath(path string) (string, error) {
 	if w.root == nil {
 		path = filepath.Clean(path)
-		if w.cwd == "" && !filepath.IsAbs(path) {
-			return "", fmt.Errorf("relative path requires a host directory")
+		if !filepath.IsAbs(path) {
+			if w.cwd == "" {
+				return "", fmt.Errorf("relative path requires a host directory")
+			}
+			path = filepath.Join(w.cwd, path)
 		}
-		return path, nil
+		return filepath.Clean(path), nil
 	}
 	if filepath.IsAbs(path) {
 		if !filepath.IsAbs(w.root.Name()) {

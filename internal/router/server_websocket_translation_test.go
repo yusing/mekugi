@@ -184,7 +184,7 @@ func TestResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T) {
 			!write(map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item}) {
 			return
 		}
-		for _, delta := range []string{"hpatch <<'PATCH'\nin file.txt\ntype \"old\" \"hel", "lo"} {
+		for _, delta := range []string{"hpatch file.txt <<'PATCH'\ntype \"old\" \"hel", "lo"} {
 			if !write(map[string]any{"type": "response.custom_tool_call_input.delta", "item_id": "preview-item", "delta": delta}) {
 				return
 			}
@@ -194,7 +194,7 @@ func TestResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T) {
 				return
 			}
 		}
-		input := "hpatch <<'PATCH'\nin file.txt\ntype \"old\" \"hello\"\nPATCH\n"
+		input := "hpatch file.txt <<'PATCH'\ntype \"old\" \"hello\"\nPATCH\n"
 		if !write(map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "preview-item", "input": input}) {
 			return
 		}

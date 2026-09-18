@@ -163,9 +163,28 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				fmt.Fprintf(&output, "attempt %d %s\n", position+1, trackedStatus(history, call.Confirmed))
 			}
 			if options.view == "history" {
-				fmt.Fprintf(&output, "%s input:\n%s\n", history.ToolName, history.Script)
-				if history.Evaluated != "" {
-					fmt.Fprintf(&output, "evaluated script:\n%s\n", history.Evaluated)
+				if history.RecoveryScript != 0 {
+					var path string
+					if history.RecoveryScript <= len(history.Edits) {
+						path = history.Edits[history.RecoveryScript-1].Path
+					}
+					fmt.Fprintf(&output, "recovery script %d file %q:\n", history.RecoveryScript, path)
+				}
+				input, evaluated := history.Script, history.Evaluated
+				if len(history.Edits) != 0 {
+					var scripts strings.Builder
+					for _, edit := range history.Edits {
+						fmt.Fprintf(&scripts, "file %q:\n%s\n", edit.Path, edit.Script)
+					}
+					if history.Attempt > 1 {
+						evaluated = scripts.String()
+					} else {
+						input, evaluated = scripts.String(), ""
+					}
+				}
+				fmt.Fprintf(&output, "%s input:\n%s\n", history.ToolName, input)
+				if evaluated != "" {
+					fmt.Fprintf(&output, "evaluated script:\n%s\n", evaluated)
 				}
 				if history.Report != "" {
 					output.WriteString(strings.TrimPrefix(history.Report, changeNotice(id)))

@@ -513,7 +513,7 @@ func liveDiffFlushCapture(t *testing.T, store *mekugiReplayStore, workspace, cal
 		t.Fatal(err)
 	}
 	result, err := mekugi.TranslateForHostAt(t.Context(), workspace,
-		"in file.txt\ntype "+strconv.Quote(before)+" "+strconv.Quote(after)+"\n", "")
+		[]mekugi.FileEdit{{Path: "file.txt", Script: "type " + strconv.Quote(before) + " " + strconv.Quote(after) + "\n"}}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

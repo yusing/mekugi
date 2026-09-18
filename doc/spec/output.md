@@ -28,8 +28,8 @@ run before validation; unsupported formats remain byte-exact or reject under the
 documented indentation policy. Finalization performs no generic whitespace cleanup:
 authored trailing spaces, spaces before tabs, interior blank lines, and blank lines
 at EOF are preserved unless changed by the language-aware formatting or indentation
-corrections above. This applies to new files, replacements, insertions, and deletions
-through both apply and translation.
+corrections above. This applies to replacements, insertions, appends, and content deletions through
+both apply and translation.
 An unchanged apply change set performs no filesystem operation and succeeds. An unchanged basic
 translation returns an empty patch. A host variant additionally reports the already-satisfied
 final state in `HostTranslation`.
@@ -39,27 +39,13 @@ Translation output contains file actions in deterministic first-touch order:
 ```text
 *** Begin Patch
 *** Update File: PATH
-*** Move to: NEW_PATH
 <unified diff hunks>
-*** Delete File: PATH
-*** Add File: PATH
-+<content>
 *** End Patch
 ```
 
-An `Add File` action emits one `+` row per actual logical source line. The host supplies
-that row's final LF; a terminating LF is not an extra empty row. Empty content emits
-no addition rows. Explicit blank lines, including at EOF, remain addition rows.
-Like the host format itself, a nonempty unterminated addition receives a final LF;
-direct engine application remains byte-exact.
-
-Each action includes only syntax relevant to that file: additions use `Add File`,
-deletions use `Delete File`, moves use `Update File` plus `Move to`, and content edits
-use `Update File` hunks. A moved and edited file combines its content hunks and move in
-one update action, with `Move to` immediately after `Update File`. Because OpenAI
-`apply_patch` rejects an empty update action, a move with unchanged contents includes
-a minimal verification hunk: one unchanged context line for a nonempty file, or an
-equal remove/add of the empty line representation for an empty file. Translation is fully rendered before it is returned.
+Engine edits produce `Update File` hunks only. File creation, movement, and removal
+belong to the outer shell, not the edit transaction. Translation is fully rendered
+before it is returned.
 
 After evaluation succeeds, host variants carry one fully rendered final-state report in
 `HostTranslation`. Apply host variants return it only after commit succeeds; translation host
@@ -67,7 +53,7 @@ variants return it with the complete patch. The shell `hpatch` command emits the
 application. Basic `Apply` does not return the report. Its line forms are:
 
 ```text
-in PATH
+file PATH
 last OP [PATH] COUNT ranges RANGE[, RANGE[, RANGE]] [ +N more]
 files add=A update=U move=M delete=D
 advisory COMMAND: EFFECT=COUNT ...
@@ -89,10 +75,10 @@ These are formatter effects only, not a second report of the authored edits; the
 post-format references remain authoritative. As with the rest of the report, translation
 alone does not establish application.
 
-The first line is `no active file` when `rm` leaves none. Otherwise it names the active
-final path. The `last` line is `last none` when no mutation changed final content;
-otherwise it names the last effective mutation operation, that file's surviving final
-path only when different from the initial active file, the number of affected target spans,
+The first line names the last command's file as display context, not active editing state.
+The `last` line is `last none` when no mutation changed final content;
+otherwise it names the last effective mutation operation, that file's path only when
+different from the initial display context, the number of affected target spans,
 and at most three verified immutable-baseline ranges. Extra ranges are summarized by `+N more`. `RANGE` is a half-open
 `START_LINE:START_COLUMN-END_LINE:END_COLUMN` pair in one-based Unicode coordinates; a
 complete-line range includes its final terminator when present. The `files` line counts
@@ -113,7 +99,7 @@ success report and therefore no boundary advisories.
 
 The command number links each advisory to its `refs` block; paths and operations are
 not repeated. Routine newline preservation and heredoc metadata are omitted.
-An empty initializer is not a deletion.
+An empty append is not a deletion.
 
 Nonzero counts summarize effective spans in that command:
 - `deletes`: an empty replacement removes target bytes;
@@ -129,10 +115,9 @@ existing separator is accidental. Edits with none of these effects emit no advis
 including multiline edits and ordinary whole-row newline preservation. No-op mutations emit none. Counts
 aggregate multiple matches into one line.
 
-The initial `in PATH` establishes the reference display context as well as naming the
-active final file. A `file PATH` header appears only when references, a fallback preview,
-or formatter output switch to another final path. It changes display context, not the
-invocation's active file. Paths are escaped as before; row identities and aliases are unchanged.
+The initial `file PATH` establishes the reference display context. Another `file PATH`
+header appears only when references, a fallback preview, or formatter output switch to
+another path. Display context does not select a file for editing. Paths are escaped as before; row identities and aliases are unchanged.
 
 One `refs` block follows for every effective content-mutating command on every surviving
 edited file. `COMMAND` is the command's positive one-based nonblank script index and `OP`
@@ -152,7 +137,7 @@ aliases use an exclusive end; report endpoint rows retain the surviving boundary
 A collapsed deletion endpoint maps to its surviving containing row; its available
 neighboring rows provide boundary anchors. Logical-line clamping does not invent a
 trailing empty row for a final terminator. An empty surviving file reports row `1` with
-the hash of empty content. When the active final file has no `refs` block, the report
+the hash of empty content. When the last command's file has no `refs` block, the report
 retains the existing fallback of up to three rows from the start of that file without a
 `refs` header, even when other surviving files have reference blocks.
 
@@ -174,7 +159,7 @@ ambiguous, the caller obtains it with a focused hcat. A row or range endpoint is
 or reconstructed. An in-process successful host result also carries one structured target alias
 for every effective nonempty `type` command whose authored target is a row or inclusive row range.
 The alias maps that exact target and final path to the final rendered replacement extent after
-language formatting. Deletions, insertions, text-occurrence targets, targetless initialization,
+language formatting. Deletions, insertions, text-occurrence targets, appends,
 and ineffective commands produce no alias. Root APIs retain no target or editing state between invocations.
 
 For host variants, the complete report is rendered before commit or patch return. Apply host

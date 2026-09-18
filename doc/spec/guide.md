@@ -107,9 +107,13 @@ The shared guidance must make these choices directly available in native and CTP
    [inspect.md](inspect.md), and [symbol.md](symbol.md).
 3. **Editing:** group ready related edits against immutable baselines; split dependent work
    only when validation or missing facts must determine the next edit. Prefer insertions and
-   targeted replacements, leaving language-aware formatting to the engine. Run
+   targeted replacements, leaving language-aware formatting to the engine. All existing-file
+   content edits, including bulk mechanical changes, go through hpatch. Python and other
+   generators may prepare scripts but do not write edit targets directly. File creation,
+   moves, and removal belong to the outer shell, outside the edit transaction. Run
    `hpatch` as a standalone shell command under [REQ-SCRIPT-001](script.md), with
-   ordinary argument, stdin, expansion, and redirection semantics. Guidance
+   paths supplied as shell arguments outside the scripts, ordinary stdin, expansion,
+   and redirection semantics, and atomic multi-file path/script pairs. Guidance
    distinguishes atomic validation from potentially partial application and never
    treats cancellation as proof of rollback or process termination.
 4. **Values and boundaries:** keep quoted values and heredoc syntax, newline ownership,

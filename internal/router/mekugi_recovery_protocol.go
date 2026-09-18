@@ -14,6 +14,8 @@ import (
 
 type recoveryCommandReference struct {
 	handle string
+	path   string
+	script int
 
 	index  int
 	header int
@@ -82,51 +84,49 @@ func recoveryCommands(script string, handles []string) []recoveryCommandReferenc
 	return commands
 }
 
-// recoveryCommandPartsOf parses a command header and frame into recovery command parts.
+// recoveryCommandPartsOf parses one pathless script command and frame.
 func recoveryCommandPartsOf(header string, frame hpatchsyntax.CommandFrame) recoveryCommandParts {
 	operation, operands := recoveryToken(header)
-	if operation != "type" && operation != "add" {
+	if operation != "type" && operation != "add" && operation != "append" {
 		return recoveryCommandParts{}
 	}
 	if frame.Marker != "" {
-		target := strings.TrimSpace(strings.TrimSuffix(operands, frame.Marker))
-		parts := recoveryCommandParts{
-			operation: operation,
-			target:    target,
-			value:     frame.Body,
-			multiline: true,
-		}
-		if operation == "type" && target == "" || operation == "add" && target == "EOF" {
-			parts.parsed = true
-			return parts
-		}
-		identity, trailing, err := mekugi.ParseTargetIdentity(target, false)
-		if err == nil && strings.TrimSpace(trailing) == "" {
-			parts.parsed = true
-			parts.identity = identity
-		}
-		return parts
-	}
-	if operation == "type" && strings.HasPrefix(strings.TrimSpace(operands), `"`) {
-		value, trailing, err := hpatchsyntax.DecodeQuoted(strings.TrimSpace(operands))
-		if err == nil && strings.TrimSpace(trailing) == "" {
-			return recoveryCommandParts{operation: operation, value: value, parsed: true}
-		}
-	}
-	if operation == "add" {
-		destination, trailing := recoveryToken(operands)
-		if destination == "EOF" {
-			value, rest, err := hpatchsyntax.DecodeQuoted(trailing)
-			if err == nil && strings.TrimSpace(rest) == "" {
-				return recoveryCommandParts{
-					operation: operation,
-					target:    destination,
-					value:     value,
-					parsed:    true,
-				}
+		operands = strings.TrimSpace(strings.TrimSuffix(operands, frame.Marker))
+		if operation == "append" {
+			if operands != "" {
+				return recoveryCommandParts{operation: operation}
 			}
+			return recoveryCommandParts{operation: operation, value: frame.Body, multiline: true, parsed: true}
+		}
+		if operation == "add" && operands == "EOF" {
+			return recoveryCommandParts{
+				operation: operation, target: "EOF", value: frame.Body,
+				multiline: true, parsed: true,
+			}
+		}
+		identity, trailing, err := mekugi.ParseTargetIdentity(operands, false)
+		if err != nil || strings.TrimSpace(trailing) != "" {
 			return recoveryCommandParts{operation: operation}
 		}
+		target := strings.TrimSpace(operands[:len(operands)-len(trailing)])
+		return recoveryCommandParts{
+			operation: operation, target: target, value: frame.Body,
+			multiline: true, parsed: true, identity: identity,
+		}
+	}
+	if operation == "append" {
+		value, trailing, err := hpatchsyntax.DecodeQuoted(strings.TrimSpace(operands))
+		if err != nil || strings.TrimSpace(trailing) != "" {
+			return recoveryCommandParts{operation: operation}
+		}
+		return recoveryCommandParts{operation: operation, value: value, parsed: true}
+	}
+	if operation == "add" && strings.HasPrefix(operands, "EOF ") {
+		value, rest, err := hpatchsyntax.DecodeQuoted(strings.TrimSpace(strings.TrimPrefix(operands, "EOF ")))
+		if err != nil || strings.TrimSpace(rest) != "" {
+			return recoveryCommandParts{operation: operation, target: "EOF"}
+		}
+		return recoveryCommandParts{operation: operation, target: "EOF", value: value, parsed: true}
 	}
 	identity, trailing, err := mekugi.ParseTargetIdentity(operands, true)
 	if err != nil {
@@ -135,15 +135,27 @@ func recoveryCommandPartsOf(header string, frame hpatchsyntax.CommandFrame) reco
 	target := strings.TrimSpace(operands[:len(operands)-len(trailing)])
 	value, rest, err := hpatchsyntax.DecodeQuoted(trailing)
 	if err != nil || strings.TrimSpace(rest) != "" {
-		return recoveryCommandParts{operation: operation}
+		return recoveryCommandParts{operation: operation, target: target}
 	}
 	return recoveryCommandParts{
-		operation: operation,
-		target:    target,
-		value:     value,
-		parsed:    true,
-		identity:  identity,
+		operation: operation, target: target, value: value, parsed: true, identity: identity,
 	}
+}
+
+// recoveryValueParts decodes a pathless recovery value correction.
+func recoveryValueParts(valueLine string, frame hpatchsyntax.CommandFrame) (string, bool) {
+	if frame.Marker != "" {
+		operands := strings.TrimSpace(strings.TrimSuffix(valueLine, frame.Marker))
+		if operands != "" {
+			return "", false
+		}
+		return frame.Body, true
+	}
+	value, trailing, err := hpatchsyntax.DecodeQuoted(strings.TrimSpace(valueLine))
+	if err != nil || strings.TrimSpace(trailing) != "" {
+		return "", false
+	}
+	return value, true
 }
 
 type recoveredScript struct {
@@ -245,30 +257,30 @@ func parseRecoveryPayload(
 		}
 		if valueSource, isValue := strings.CutPrefix(operand, "value "); isValue {
 			if !command.parts.parsed {
-				return nil, recoveryError(lineNumber, "value correction requires a parsed type or add command")
+				return nil, recoveryError(lineNumber, "value correction requires a parsed type, add, or append command")
 			}
 			header := "type " + valueSource
 			frame, err := hpatchsyntax.FrameCommand(lines, lineNumber-1, header)
 			if err != nil {
 				return nil, recoveryError(lineNumber, err.Error())
 			}
-			parts := recoveryCommandPartsOf(header, frame)
-			if !parts.parsed || parts.target != "" {
+			value, ok := recoveryValueParts(valueSource, frame)
+			if !ok {
 				return nil, recoveryError(lineNumber, "expected one quoted or heredoc value")
 			}
-			if parts.value == command.parts.value {
+			if value == command.parts.value {
 				return nil, recoveryError(lineNumber, "replacement value must differ from the rejected value")
 			}
 			index = frame.Next
 			operations = append(operations, recoveryOperation{
-				sequence: len(operations) + 1, command: command, value: new(parts.value),
+				sequence: len(operations) + 1, command: command, value: new(value),
 			})
 			continue
 		}
 		target := strings.TrimPrefix(operand, "target ")
 		replacementTarget, trailing, targetErr := mekugi.ParseTargetIdentity(target, false)
 		if !command.parts.parsed || command.parts.target == "" || command.parts.target == "EOF" ||
-			targetErr != nil || strings.TrimSpace(trailing) != "" || target == "EOF" ||
+			command.parts.operation == "append" || targetErr != nil || strings.TrimSpace(trailing) != "" || target == "EOF" ||
 			!hpatchsyntax.ValidOperandSpacing(target) {
 			return nil, recoveryError(lineNumber, "command must be target-bearing and the replacement target must be valid")
 		}

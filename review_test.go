@@ -1,6 +1,7 @@
 package mekugi
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -27,14 +28,16 @@ func TestReviewFiles(t *testing.T) {
 
 func TestHostReviewCapturesFormattedState(t *testing.T) {
 	root := t.TempDir()
-	result, err := TranslateForHostAt(t.Context(), root, "new sample.go\ntype \"package sample\\nvar X=1\\n\"\n", "")
+	writeTestFile(t, root, "sample.go", "", 0o644)
+	edits := []FileEdit{{Path: "sample.go", Script: "append " + strconv.Quote("package sample\nvar X=1\n")}}
+	result, err := TranslateForHostAt(t.Context(), root, edits, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(result.ReviewFiles) != 1 || !strings.Contains(result.ReviewFiles[0].Diff, "+var X = 1\n") {
 		t.Fatalf("review = %#v", result.ReviewFiles)
 	}
-	rejected, err := TranslateForHostAt(t.Context(), root, "new sample.go\ntype \"invalid go\"\n", "")
+	rejected, err := TranslateForHostAt(t.Context(), root, []FileEdit{{Path: "sample.go", Script: "append " + strconv.Quote("invalid go\n")}}, "")
 	if err == nil || len(rejected.ReviewFiles) != 0 {
 		t.Fatalf("rejected review = %#v, err = %v", rejected.ReviewFiles, err)
 	}

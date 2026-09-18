@@ -139,9 +139,9 @@ func (w *liveDiffPreviewWorker) run() {
 		w.mu.Unlock()
 		preview.Input, preview.Syntax = input, liveDiffScriptSyntax(input)
 		preview.Status = "STREAMING SCRIPT"
-		if script, directory, ok := liveDiffShellEdit(input, preview.Workspace); ok {
+		if edits, directory, ok := liveDiffShellEdit(input, preview.Workspace); ok {
 			ctx, cancel := context.WithTimeout(w.ctx, time.Second)
-			files, err := mekugi.PreviewForHostAt(ctx, directory, script)
+			files, err := mekugi.PreviewForHostAt(ctx, directory, edits)
 			cancel()
 			preview.Input, preview.Syntax = "", nil
 			if err == nil {

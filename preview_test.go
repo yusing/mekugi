@@ -9,13 +9,13 @@ import (
 
 func TestStreamingPreviewPartialValues(t *testing.T) {
 	for _, tc := range []struct{ name, input, want string }{
-		{"quote", "in file.txt\ntype \"old\" \"hel", "+hel"},
-		{"escape", "in file.txt\ntype \"old\" \"hello\\", "+hello"},
-		{"heredoc", "in file.txt\ntype \"old\" <<PATCH\nhello\nwor", "+wor"},
-		{"quoted heredoc", "in file.txt\ntype \"old\" <<'END'\nhello\nwor", "+wor"},
-		{"tab stripped heredoc", "in file.txt\ntype \"old\" <<-END\n\thello\n\twor", "+wor"},
-		{"new", "new added.go\ntype <<PATCH\npackage main\nfunc incom", "+func incom"},
-		{"shell", "in file.txt\ntype \"old\" \"hello\"\nshell touch SHOULD_NOT_EXIST\nnew unseen\ntype \"x\"", "+hello"},
+		{"quote", "type \"old\" \"hel", "+hel"},
+		{"escape", "type \"old\" \"hello\\", "+hello"},
+		{"heredoc", "type \"old\" <<PATCH\nhello\nwor", "+wor"},
+		{"quoted heredoc", "type \"old\" <<'END'\nhello\nwor", "+wor"},
+		{"tab stripped heredoc", "type \"old\" <<-END\n\thello\n\twor", "+wor"},
+		{"append", "append <<PATCH\npackage main\nfunc incom", "+func incom"},
+		{"payload", "type \"old\" \"hello\"", "+hello"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			directory := t.TempDir()
@@ -23,7 +23,7 @@ func TestStreamingPreviewPartialValues(t *testing.T) {
 			if err := os.WriteFile(path, []byte("old\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			files, err := PreviewForHostAt(t.Context(), directory, tc.input)
+			files, err := PreviewForHostAt(t.Context(), directory, []FileEdit{{Path: "file.txt", Script: tc.input}})
 			if err != nil || len(files) != 1 || !strings.Contains(files[0].Diff, tc.want) {
 				t.Fatalf("files=%+v err=%v, want %s", files, err, tc.want)
 			}
@@ -41,9 +41,12 @@ func TestStreamingPreviewPartialValues(t *testing.T) {
 
 func TestStreamingPreviewEveryPrefix(t *testing.T) {
 	directory := t.TempDir()
-	script := "new file.txt\ntype <<-'END'\n\thello\n\tworld\n\tEND\n"
+	if err := os.WriteFile(filepath.Join(directory, "file.txt"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	script := "append <<-'END'\n\thello\n\tworld\n\tEND\n"
 	for end := 0; end <= len(script); end++ {
-		_, err := PreviewForHostAt(t.Context(), directory, script[:end])
+		_, err := PreviewForHostAt(t.Context(), directory, []FileEdit{{Path: "file.txt", Script: script[:end]}})
 		if err != nil {
 			t.Fatalf("prefix %q: %v", script[:end], err)
 		}
@@ -52,12 +55,15 @@ func TestStreamingPreviewEveryPrefix(t *testing.T) {
 
 func TestStreamingPreviewDoesNotInterpretPayloadAsCommands(t *testing.T) {
 	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "file.txt"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, script := range []string{
-		"new file.txt\ntype <<TEXT\n|shell touch forbidden\n|new other\n|type \"x\"\n",
-		"new file.txt\ntype <<PATCH\nin other\nrm\n",
-		"new file.txt\ntype \"line\\nnew other\\nrm",
+		"append <<TEXT\n|shell touch forbidden\n|new other\n|type \"x\"\n",
+		"append <<PATCH\nin other\nrm\n",
+		"append \"line\\nnew other\\nrm\"",
 	} {
-		files, err := PreviewForHostAt(t.Context(), directory, script)
+		files, err := PreviewForHostAt(t.Context(), directory, []FileEdit{{Path: "file.txt", Script: script}})
 		if err != nil || len(files) != 1 || files[0].AfterPath != filepath.Join(directory, "file.txt") {
 			t.Fatalf("payload was interpreted: %+v, %v", files, err)
 		}
@@ -66,16 +72,16 @@ func TestStreamingPreviewDoesNotInterpretPayloadAsCommands(t *testing.T) {
 
 func TestStreamingPreviewBoundsAndDirectory(t *testing.T) {
 	directory := t.TempDir()
-	if _, err := PreviewForHostAt(t.Context(), "", "in file.txt\n"); err == nil {
+	if _, err := PreviewForHostAt(t.Context(), "", []FileEdit{{Path: "file.txt", Script: ""}}); err == nil {
 		t.Fatal("relative preview borrowed process cwd")
 	}
-	if _, err := PreviewForHostAt(t.Context(), directory, strings.Repeat(" ", 256<<10+1)); err == nil {
+	if _, err := PreviewForHostAt(t.Context(), directory, []FileEdit{{Path: "file.txt", Script: strings.Repeat(" ", 256<<10+1)}}); err == nil {
 		t.Fatal("oversized input accepted")
 	}
 	if err := os.WriteFile(filepath.Join(directory, "large.txt"), []byte(strings.Repeat("x", 256<<10+1)), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := PreviewForHostAt(t.Context(), directory, "in large.txt\n"); err == nil {
+	if _, err := PreviewForHostAt(t.Context(), directory, []FileEdit{{Path: "large.txt", Script: ""}}); err == nil {
 		t.Fatal("oversized source accepted")
 	}
 }
@@ -87,10 +93,10 @@ func TestStreamingPreviewBoundsExpandedTargetWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, input := range []string{
-		"in file.txt\ntype \"x\" 131072 \"y",
-		"in file.txt\ntype \"x\" 1024 \"y\"\nadd EOF \"z",
+		"type \"x\" 131072 \"y\"",
+		"type \"x\" 1024 \"y\"\nappend \"z\"",
 	} {
-		if _, err := PreviewForHostAt(t.Context(), directory, input); err == nil || !strings.Contains(err.Error(), "target mutations") {
+		if _, err := PreviewForHostAt(t.Context(), directory, []FileEdit{{Path: "file.txt", Script: input}}); err == nil || !strings.Contains(err.Error(), "target mutations") {
 			t.Fatalf("unbounded speculative target work: %v", err)
 		}
 	}

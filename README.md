@@ -258,8 +258,7 @@ See the [editing guarantees](doc/spec/output.md) and
 Send a standalone `hpatch` command through `functions.shell`:
 
 ```sh
-hpatch <<'EDIT'
-in notes.txt
+hpatch notes.txt <<'EDIT'
 type "draft" "ready"
 EDIT
 ```
@@ -268,8 +267,20 @@ The edit may instead be a shell argument or redirected input. Quoting, heredoc
 expansion, substitutions, and redirection work normally. Do not compose `hpatch`
 with other commands; run dependent checks in a subsequent shell call.
 
+Paths belong in the shell invocation, not inside the script. Scripts contain only
+`type TARGET VALUE`, `add TARGET VALUE`, or `append VALUE`. Quote paths using normal
+shell quoting, and use `--` before flag-like paths. Use `hpatch PATH SCRIPT [PATH SCRIPT ...]`
+to edit several files atomically, with one immutable baseline per file. Use shell commands to create,
+move, or remove files; those operations are outside the hpatch transaction.
+
+For bulk edits, Python or another program can generate the script without writing
+edit targets directly. Apply it with `hpatch notes.txt "$(python3 generator.py)"` or
+`hpatch notes.txt < prepared.hpatch`. Generated edits retain their change IDs, `hchanges`
+history, and completed live diffs. Dynamic input is not previewed before execution.
+
 Rejected edits report a recovery handle. Use `hpatch --recover HANDLE` with
-corrections as an argument or on stdin. See [recovery](doc/spec/correct.md).
+corrections as an argument or on stdin. For multiple scripts, `--script N` selects
+the original 1-based path/script pair to correct; the complete batch is reevaluated. See [recovery](doc/spec/correct.md).
 
 
 ### Direct scripts

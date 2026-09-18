@@ -63,7 +63,7 @@ linked, not copied.
 - [`REQ-SCRIPT-001`](script.md): HPATCH/2 grammar and target forms
 - [`REQ-CHANGES-001`](changes.md): shared hpatch change IDs, recovery chains, and bounded review reads
 - [`REQ-CORRECT-001`](correct.md): rejected-script recovery with ordinary verified-row edits
-- [`REQ-FILE-001`](file.md): file scope and lifecycle
+- [`REQ-FILE-001`](file.md): invocation-bound file baselines
 - [`REQ-SELECT-001`](select.md): immutable-baseline target resolution
 - [`REQ-EDIT-001`](edit.md): target-bearing mutation behavior
 - [`REQ-OUTPUT-001`](output.md): output, validation, and failure behavior

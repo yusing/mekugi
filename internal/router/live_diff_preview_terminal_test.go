@@ -267,7 +267,7 @@ func TestLiveDiffSimulationTerminalReplay(t *testing.T) {
 			t.Fatal("standalone shell simulation did not use the 7:3 split")
 		}
 		ui.frame(t, func(frame string) bool {
-			return strings.Contains(frame, "STREAMING PREVIEW") && strings.Contains(ansi.Strip(frame), "lifecycle.go")
+			return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "lifecycle.go")
 		})
 		ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "without final newline") })
 		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "rejected as expected") })
@@ -606,28 +606,28 @@ func TestLiveDiffTerminalShellHpatchDiff(t *testing.T) {
 	defer func() { worker.stop(); <-worker.done }()
 	// Exercise the shell decoder's no-space heredoc form as it appears in the
 	// provider stream, not only the direct decoder fixture.
-	worker.appendDelta("hpatch<<'EDIT'\nin file.txt\ntype \"old\" \"new")
+	worker.appendDelta("hpatch file.txt<<'EDIT'\ntype \"old\" \"new")
 	frame := ui.frame(t, func(frame string) bool {
 		text := ansi.Strip(frame)
 		return strings.Contains(text, "STREAMING PREVIEW") && strings.Contains(text, "+new")
 	})
-	if strings.Contains(ansi.Strip(frame), "hpatch <<") || !strings.Contains(ansi.Strip(frame), "-old") {
+	if strings.Contains(ansi.Strip(frame), "hpatch") || !strings.Contains(ansi.Strip(frame), "-old") {
 		t.Fatalf("expected a diff, not shell source: %q", frame)
 	}
-	worker.appendDelta("er")
+	worker.appendDelta("er\"")
 	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "+newer") })
 	content, err := os.ReadFile(path)
 	if err != nil || string(content) != "old\n" {
 		t.Fatalf("preview applied an edit: %q, %v", content, err)
 	}
-	worker.appendDelta("\"\nin file.txt\ntype \"target that does not exist\" \"rejected\"\nEDIT\n")
+	worker.appendDelta("\ntype \"target that does not exist\" \"rejected\"\nEDIT\n")
 	frame = ui.frame(t, func(frame string) bool {
 		text := ansi.Strip(frame)
 		return strings.Contains(text, "STREAMING PREVIEW: last valid diff; current edit unavailable") &&
 			strings.Contains(text, "+newer")
 	})
 	text := ansi.Strip(frame)
-	if strings.Contains(text, "hpatch<<") || !strings.Contains(text, "-old") || !strings.Contains(text, "+newer") {
+	if strings.Contains(text, "hpatch") || !strings.Contains(text, "-old") || !strings.Contains(text, "+newer") {
 		t.Fatalf("rejected hpatch suffix replaced the last valid diff with shell source: %q", frame)
 	}
 	worker.stop()

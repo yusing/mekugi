@@ -29,7 +29,7 @@ func TestLiveDiffCaptureOrderSurvivesReceiptsAndRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		result, err := mekugi.TranslateForHostAt(t.Context(), workspace,
-			"in file.txt\ntype "+strconv.Quote(edit.before)+" "+strconv.Quote(edit.after), "")
+			[]mekugi.FileEdit{{Path: "file.txt", Script: "type " + strconv.Quote(edit.before) + " " + strconv.Quote(edit.after)}}, "")
 		if err != nil {
 			t.Fatal(err)
 		}

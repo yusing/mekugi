@@ -20,6 +20,24 @@ func TestHeredocDelimitersAndLiteralBodies(t *testing.T) {
 	}
 }
 
+func TestAppendCommandFraming(t *testing.T) {
+	for _, source := range []string{
+		"append <<'END'\npayload\nEND\nappend \"tail\"",
+		"append <<-END\n\tpayload\n\tEND\nappend \"tail\"",
+	} {
+		lines := SplitPhysicalLines(source)
+		frame, err := FrameCommand(lines, 0, lines[0].Text)
+		if err != nil || frame.Body != "payload\n" || frame.Next != 3 {
+			t.Fatalf("append heredoc frame = %+v, error %v", frame, err)
+		}
+	}
+	lines := SplitPhysicalLines("append \"broken\nstill value\"\nappend \"tail\"")
+	frame, err := FrameCommand(lines, 0, lines[0].Text)
+	if err == nil || frame.Next != 2 {
+		t.Fatalf("append quoted frame = %+v, error %v", frame, err)
+	}
+}
+
 func TestHeredocBoundaries(t *testing.T) {
 	for _, tc := range []struct{ marker, body, want, failure string }{
 		{"<<END", "END\n", "", ""},

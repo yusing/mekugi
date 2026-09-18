@@ -24,8 +24,8 @@ func TestErrorHookReceivesFailureAndRepairContext(t *testing.T) {
 		"printf '%s' {{shellquote (format_markdown .)}} > " + shellQuote(bodyPath),
 	})
 
-	script := "in note.txt\ntype 1:" + hashLine("present words") + " \"missing\" \"replacement\"\n"
-	result, applyErr := applyForHostAtTest(t, root, script, dataDirectory)
+	edits := []FileEdit{{Path: "note.txt", Script: "type 1:" + hashLine("present words") + " \"missing\" \"replacement\"\n"}}
+	result, applyErr := applyForHostAtTest(t, root, edits, dataDirectory)
 	if applyErr == nil {
 		t.Fatal("ApplyForHost() unexpectedly succeeded")
 	}
@@ -34,8 +34,8 @@ func TestErrorHookReceivesFailureAndRepairContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, fragment := range []string{
-		"Command: 2 `type`",
-		"Source: note.txt:2",
+		"Command: 1 `type`",
+		"Source: note.txt:1",
 	} {
 		if !strings.Contains(string(body), fragment) {
 			t.Fatalf("hook body does not contain %q:\n%s", fragment, body)
@@ -101,13 +101,14 @@ func TestReportIssueReturnsDiagnoseHookFailure(t *testing.T) {
 
 func TestErrorHookReceivesMalformedCommand(t *testing.T) {
 	root := t.TempDir()
+	writeTestFile(t, root, "note.txt", "", 0o644)
 	dataDirectory := t.TempDir()
 	bodyPath := filepath.Join(t.TempDir(), "body.md")
 	writeSettingsForTest(t, dataDirectory, []string{
 		"printf '%s' {{shellquote .Body}} > " + shellQuote(bodyPath),
 	})
 
-	if _, err := applyForHostAtTest(t, root, "select the file\n", dataDirectory); err == nil {
+	if _, err := applyForHostAtTest(t, root, []FileEdit{{Path: "note.txt", Script: "select the file\n"}}, dataDirectory); err == nil {
 		t.Fatal("ApplyForHost() unexpectedly succeeded")
 	}
 	body, err := os.ReadFile(bodyPath)
@@ -124,14 +125,15 @@ func TestErrorHookReceivesMalformedCommand(t *testing.T) {
 
 func TestErrorHookFailureDoesNotReplaceDiagnostic(t *testing.T) {
 	root := t.TempDir()
+	writeTestFile(t, root, "note.txt", "", 0o644)
 	dataDirectory := t.TempDir()
 	writeSettingsForTest(t, dataDirectory, []string{"exit 7"})
 
-	result, err := applyForHostAtTest(t, root, "unknown-command\n", dataDirectory)
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "note.txt", Script: "unknown-command\n"}}, dataDirectory)
 	if err == nil {
 		t.Fatal("ApplyForHost() unexpectedly succeeded")
 	}
-	if !strings.HasPrefix(result.Diagnostic, "unknown-command: command 1, reason script-syntax: unknown or malformed command\n") {
+	if !strings.HasPrefix(result.Diagnostic, "unknown-command: command 1, path \"note.txt\", reason script-syntax: unknown or malformed command\n") {
 		t.Fatalf("original diagnostic was not preserved: %q", result.Diagnostic)
 	}
 	if !strings.Contains(result.Diagnostic, "mekugi: warning: running error hook 1: exit status 7\n") {
@@ -141,15 +143,16 @@ func TestErrorHookFailureDoesNotReplaceDiagnostic(t *testing.T) {
 
 func TestSettingsAreReadOnlyForEvaluationFailures(t *testing.T) {
 	root := t.TempDir()
+	writeTestFile(t, root, "note.txt", "", 0o644)
 	dataDirectory := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dataDirectory, settingsFilename), []byte("not JSON"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := applyForHostAtTest(t, root, "new note.txt\ntype \"ok\"\n", dataDirectory); err != nil {
+	if _, err := applyForHostAtTest(t, root, []FileEdit{{Path: "note.txt", Script: `append "ok"`}}, dataDirectory); err != nil {
 		t.Fatalf("successful ApplyForHost() error = %v", err)
 	}
-	result, err := applyForHostAtTest(t, root, "unknown-command\n", dataDirectory)
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "note.txt", Script: "unknown-command\n"}}, dataDirectory)
 	if err == nil || !strings.Contains(result.Diagnostic, "mekugi: warning: decoding settings:") {
 		t.Fatalf("failed ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
@@ -164,7 +167,7 @@ func TestEnvironmentalCommandFailureDoesNotRunErrorHook(t *testing.T) {
 	bodyPath := filepath.Join(t.TempDir(), "body.md")
 	writeSettingsForTest(t, dataDirectory, []string{"touch " + shellQuote(bodyPath)})
 
-	result, err := applyForHostAtTest(t, root, "in folder\n", dataDirectory)
+	result, err := applyForHostAtTest(t, root, []FileEdit{{Path: "folder", Script: ""}}, dataDirectory)
 	if err == nil || !strings.Contains(result.Diagnostic, "folder is not a regular file") {
 		t.Fatalf("ApplyForHost() error = %v, diagnostic %q", err, result.Diagnostic)
 	}
@@ -257,7 +260,9 @@ func TestOutcomeHookMarkdownUsesSafeFence(t *testing.T) {
 }
 
 func TestOutcomeHookFailureWarnsWithoutReplacingSuccess(t *testing.T) {
-	root, err := os.OpenRoot(t.TempDir())
+	rootPath := t.TempDir()
+	writeTestFile(t, rootPath, "note.txt", "", 0o644)
+	root, err := os.OpenRoot(rootPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +276,7 @@ func TestOutcomeHookFailureWarnsWithoutReplacingSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := WithAttemptMetadata(t.Context(), AttemptMetadata{SessionID: "session", CorrelationID: "chain", CallID: "call", Attempt: 1})
-	translated, err := translateForHostForTest(ctx, Workspace{Root: root}, "new note.txt\ntype \"ok\"\n", dataDirectory)
+	translated, err := translateForHostForTest(ctx, Workspace{Root: root}, []FileEdit{{Path: "note.txt", Script: `append "ok"`}}, dataDirectory)
 	if err != nil || len(translated.Patch) == 0 {
 		t.Fatalf("translation = %+v, error %v", translated, err)
 	}
@@ -292,7 +297,7 @@ func TestRejectedAttemptReportsSettingsFailureOnce(t *testing.T) {
 	}
 	ctx := WithAttemptMetadata(t.Context(), AttemptMetadata{SessionID: "session", CorrelationID: "chain", CallID: "call", Attempt: 1})
 
-	translated, err := translateForHostForTest(ctx, Workspace{Root: root}, "unknown-command\n", dataDirectory)
+	translated, err := translateForHostForTest(ctx, Workspace{Root: root}, []FileEdit{{Path: "note.txt", Script: "unknown-command\n"}}, dataDirectory)
 	if err == nil {
 		t.Fatalf("translateForHostForTest() translation = %+v, want rejection", translated)
 	}
@@ -303,6 +308,7 @@ func TestRejectedAttemptReportsSettingsFailureOnce(t *testing.T) {
 
 func TestErrorAndOutcomeHooksReceiveAttemptMetadata(t *testing.T) {
 	rootPath := t.TempDir()
+	writeTestFile(t, rootPath, "note.txt", "", 0o644)
 	root, err := os.OpenRoot(rootPath)
 	if err != nil {
 		t.Fatal(err)
@@ -344,7 +350,7 @@ func TestErrorAndOutcomeHooksReceiveAttemptMetadata(t *testing.T) {
 	failed, err := translateForHostForTest(
 		WithAttemptMetadata(t.Context(), rejectedMetadata),
 		Workspace{Root: root},
-		rejectedScript,
+		[]FileEdit{{Path: "note.txt", Script: rejectedScript}},
 		dataDirectory,
 	)
 	if err == nil || failed.Diagnostic == "" {
@@ -369,7 +375,7 @@ func TestErrorAndOutcomeHooksReceiveAttemptMetadata(t *testing.T) {
 		}
 	}
 
-	evaluatedScript := "new note.txt\ntype \"ok\"\n"
+	evaluatedScript := `append "ok"`
 	recoveryPayload := "C2:abcd 2:bbbb"
 	delta := "C2:abcd: 1:aaaa -> 2:bbbb"
 	recoveryMetadata := AttemptMetadata{
@@ -388,7 +394,7 @@ func TestErrorAndOutcomeHooksReceiveAttemptMetadata(t *testing.T) {
 	translated, err := translateForHostForTest(
 		WithAttemptMetadata(t.Context(), recoveryMetadata),
 		Workspace{Root: root},
-		evaluatedScript,
+		[]FileEdit{{Path: "note.txt", Script: evaluatedScript}},
 		dataDirectory,
 	)
 	if err != nil || translated.Diagnostic != "" {

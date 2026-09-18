@@ -46,13 +46,45 @@ func TestInstructionsTeachStandaloneShellEdits(t *testing.T) {
 		for _, compact := range []bool{false, true} {
 			got := instructionWords(InstructionsForModel(model, compact))
 			for _, required := range []string{
-				"`hpatch [SCRIPT]` through `functions.shell`",
+				"`hpatch PATH [SCRIPT]` through `functions.shell`",
 				"standalone shell command",
 				"normal shell semantics",
 				"`hpatch --recover HANDLE [SCRIPT]`",
 			} {
 				if !strings.Contains(got, required) {
 					t.Errorf("model %q compact %v omits %q", model, compact, required)
+				}
+			}
+		}
+	}
+}
+
+func TestInstructionsRequireTrackedPathBoundEdits(t *testing.T) {
+	for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol"} {
+		for _, compact := range []bool{false, true} {
+			got := instructionWords(InstructionsForModel(model, compact))
+			for _, required := range []string{
+				"all existing-file content edits, including bulk mechanical rewrites",
+				"must not write edit targets directly",
+				"`type TARGET VALUE`", "`add TARGET VALUE`", "`append VALUE`",
+				"`hpatch notes.txt \"$(python3 generator.py)\"`", "`hpatch notes.txt < prepared.hpatch`",
+				"Filenames belong only in shell arguments", "`hpatch PATH SCRIPT [PATH SCRIPT ...]`",
+				"hchanges history", "completed live diffs",
+				"Multi-file edits in one invocation are atomic",
+				"pathless `type TARGET VALUE` / `add TARGET VALUE`",
+				"`--script N`", "original 1-based path/script pair", "even when paths repeat",
+			} {
+				if !strings.Contains(got, required) {
+					t.Errorf("model %q compact %v omits %q", model, compact, required)
+				}
+			}
+			for _, obsolete := range []string{
+				"| `in PATH` |", "| `new PATH` |", "| `mv PATH` |", "| `rm` |",
+				"`add EOF` appends", "formatters for formatting or bulk mechanical rewrites",
+				"`--file PATH`", "`type PATH TARGET VALUE`", "`add PATH TARGET VALUE`", "`append PATH VALUE`",
+			} {
+				if strings.Contains(got, obsolete) {
+					t.Errorf("model %q compact %v retains %q", model, compact, obsolete)
 				}
 			}
 		}
@@ -274,7 +306,7 @@ func TestInstructionsAcquireAndReuseVerifiedTargets(t *testing.T) {
 		"Copy inspect_file `LINE:HASH` spans", "`hsymbol refs PATH LINE SYMBOL [N]`",
 		"`hsymbol def PATH LINE SYMBOL [N]`", "`LINE:HASH` instead of `LINE` to enforce a prior read",
 		"`--workspace ROOT` selects resolver scope", "Read again only when those forms no longer identify the intended current span",
-		"Existing-file edits require a target", "Targetless `type VALUE` is allowed only immediately after `new`",
+		"`type` and `add` require targets", "`append` also works on an empty file created by the shell",
 		"Unchanged saved rows remain valid after line shifts", "Copy complete `LINE:HASH` endpoints from the intended span",
 		`maple "return oldResult, nil"`, "Encode an embedded LF as `\\n` or `\\u000A`",
 	} {

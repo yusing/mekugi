@@ -14,10 +14,11 @@ const (
 )
 
 func (w *workspace) repairContext(command instruction, reason failureReason) string {
-	if w.active == nil || w.active.editor.baseline == "" || command.target.kind == targetNone {
+	file := w.paths[command.path]
+	if file == nil || file.editor.baseline == "" || command.target.kind == targetNone {
 		return ""
 	}
-	editor := &w.active.editor
+	editor := &file.editor
 	lines := logicalLines(editor.baseline)
 	if len(lines) == 0 {
 		return ""

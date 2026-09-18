@@ -423,7 +423,7 @@ func TestShellHCatAfterAppliedMekugiCarrierRemainsModelVisible(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mekugiScript := "in file.txt\ntype 2:f44e \"B\"\n"
+	mekugiScript := "type 2:f44e \"B\"\n"
 	shellInput := "hcat file.txt 1:3"
 	provider := &serverFakeProvider{
 		results: []serverForwardResult{
@@ -431,7 +431,7 @@ func TestShellHCatAfterAppliedMekugiCarrierRemainsModelVisible(t *testing.T) {
 				"status": "completed",
 				"output": []any{map[string]any{
 					"type": "custom_tool_call", "id": "item-H", "call_id": "call-H",
-					"name": "shell", "input": "hpatch " + shellQuoteArgument(mekugiScript), "status": "completed",
+					"name": "shell", "input": "hpatch file.txt " + shellQuoteArgument(mekugiScript), "status": "completed",
 				}},
 			})))},
 			{response: serverHTTPResponse(string(mustTestJSON(t, map[string]any{

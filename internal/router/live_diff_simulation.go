@@ -107,7 +107,11 @@ func playLiveDiffSimulation(ctx context.Context, broker *liveDiffBroker, store *
 	}
 	sequence := 0
 	apply := func(script string) error {
-		result, err := mekugi.ApplyForHostRoot(ctx, root, script, "")
+		edits, _, ok := liveDiffShellEdit(script, workspace)
+		if !ok {
+			return errors.New("invalid literal simulation edit")
+		}
+		result, err := mekugi.ApplyForHostRoot(ctx, root, edits, "")
 		if err != nil {
 			return err
 		}
@@ -127,7 +131,7 @@ func playLiveDiffSimulation(ctx context.Context, broker *liveDiffBroker, store *
 			return err
 		}
 		if err := store.put(ctx, workspace, map[string]mekugiHistory{call: {
-			Script: script, ChangeID: id, CorrelationID: call,
+			Script: script, Edits: edits, ChangeID: id, CorrelationID: call,
 			Applied: true, ReviewFiles: result.ReviewFiles,
 		}}); err != nil {
 			return err
@@ -138,15 +142,16 @@ func playLiveDiffSimulation(ctx context.Context, broker *liveDiffBroker, store *
 		// Repeat the same flows against a clean set of known fixture files while
 		// retaining the session's actual capture history and current navigation.
 		for _, name := range []string{"handler.go", "routes.go", "handler_test.go", "audit.go", "lifecycle.go", "notes.txt"} {
-			if _, err := root.Stat(name); err == nil {
-				if err := apply("in " + name + "\nrm\n"); err != nil {
-					return err
-				}
-			} else if !errors.Is(err, os.ErrNotExist) {
+			if err := root.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return err
 			}
+			if name != "lifecycle.go" {
+				if err := root.WriteFile(name, nil, 0600); err != nil {
+					return err
+				}
+			}
 		}
-		if err := apply("new handler.go\ntype " + strconv.Quote(liveDiffSimulationHandler)); err != nil {
+		if err := apply("hpatch handler.go " + shellQuoteArgument("append "+strconv.Quote(liveDiffSimulationHandler))); err != nil {
 			return err
 		}
 		if err := pause(time.Second); err != nil {
@@ -157,9 +162,6 @@ func playLiveDiffSimulation(ctx context.Context, broker *liveDiffBroker, store *
 			status(fmt.Sprintf("%d/%d · %s · cycle %d", index+1, len(steps), step.name, cycle))
 			worker := startLiveDiffPreview(ctx, broker, workspace, "simulation")
 			var script strings.Builder
-			if step.tool != "shell" {
-				worker.appendDelta("hpatch <<'EDIT'\n")
-			}
 			streamErr := func() error {
 				defer func() { worker.stop(); <-worker.done }()
 				for _, fragment := range step.fragments {
@@ -168,9 +170,6 @@ func playLiveDiffSimulation(ctx context.Context, broker *liveDiffBroker, store *
 					if err := pause(step.delay); err != nil {
 						return err
 					}
-				}
-				if step.tool != "shell" && !step.interrupt {
-					worker.appendDelta("\nEDIT\n")
 				}
 				// Even --speed 20 leaves the asynchronous worker time to publish.
 				return pause(max(750*time.Millisecond, time.Duration(speed*float64(3*liveDiffPreviewFrameDelay))))
@@ -219,6 +218,7 @@ func playLiveDiffSimulation(ctx context.Context, broker *liveDiffBroker, store *
 
 type liveDiffSimulationStep struct {
 	name      string
+	path      string
 	tool      string
 	fragments []string
 	delay     time.Duration
@@ -267,7 +267,7 @@ func liveDiffSimulationSteps() []liveDiffSimulationStep {
 		fmt.Fprintf(&source, "\t{Path: \"/api/%03d\", Status: http.StatusOK, Message: %s},\n", row, strconv.Quote(message))
 	}
 	source.WriteString("}\n\nfunc RouteCount() int {\n\treturn len(routes)\n} // ROUTES_READY\n")
-	fragments := []string{"new routes.go\ntype <<PATCH\n"}
+	fragments := []string{"append <<PATCH\n"}
 	lines := strings.SplitAfter(source.String(), "\n")
 	for _, line := range lines[:100] {
 		middle := len(line) / 2
@@ -291,17 +291,19 @@ func TestHandler(t *testing.T) {
 	}
 }
 `
-	return []liveDiffSimulationStep{
-		{name: "Go creation · syntax, Unicode wrapping, burst, centered final row", fragments: fragments, delay: 40 * time.Millisecond},
-		{name: "partial target · keep the last useful preview", delay: 500 * time.Millisecond,
-			fragments: []string{"in handler.go\ntype \"// Handler serves requests.\" \"// Handler serves demo requests.\"\n",
+	batch := "hpatch routes.go " + shellQuoteArgument(
+		`type "\"/api/001\"" "\"/v2/001\""`+"\n"+`type "\"/api/180\"" "\"/v2/180\""`) +
+		" handler_test.go " + shellQuoteArgument("append "+strconv.Quote(testSource)) + "\n"
+	steps := []liveDiffSimulationStep{
+		{name: "Go content · syntax, Unicode wrapping, burst, centered final row", path: "routes.go", fragments: fragments, delay: 40 * time.Millisecond},
+
+		{name: "partial target · keep the last useful preview", path: "handler.go", delay: 500 * time.Millisecond,
+			fragments: []string{"type \"// Handler serves requests.\" \"// Handler serves demo requests.\"\n",
 				"type \"http.MethodG", "et\" \"http.MethodPost\"\n"}},
 		{name: "multi-file and distant hunks · follow the last changed file", delay: 250 * time.Millisecond,
-			fragments: []string{"in routes.go\ntype \"\\\"/api/001\\\"\" \"\\\"/v2/001\\\"\"\n",
-				"type \"\\\"/api/180\\\"\" \"\\\"/v2/180\\\"\"\nnew handler_test.go\ntype <<TEXT\n",
-				testSource + "TE", "XT\n"}},
-		{name: "edit · streamed script, then actual capture", delay: 350 * time.Millisecond,
-			fragments: []string{"new audit.go\ntype \"package demo\\n\\nconst phase = \\\"completed\\\"\\n\"\n"}},
+			fragments: []string{batch[:len(batch)/2], batch[len(batch)/2:]}},
+		{name: "edit · streamed script, then actual capture", path: "audit.go", delay: 350 * time.Millisecond,
+			fragments: []string{"append \"package demo\\n\\nconst phase = \\\"completed\\\"\\n\"\n"}},
 		{name: "shell · ordinary execution after the edit", tool: "shell", delay: 350 * time.Millisecond,
 			fragments: []string{"printf '%s\\n' 'checked fixture' > shell.log\n",
 				"test -f audit.go\nprintf '%s\\n' 'SHELL_TIP' >> shell.log\n"}},
@@ -309,18 +311,31 @@ func TestHandler(t *testing.T) {
 		{name: "functions.shell · direct source, 7:3 layout", tool: "shell", delay: 350 * time.Millisecond,
 			fragments: []string{"printf '%s\\n' 'standalone shell' > standalone.log\n",
 				"test -f audit.go\n", "printf '%s\\n' 'FUNCTIONS_SHELL_TIP' >> standalone.log\n"}},
-		{name: "append and rename · preserve file identity", delay: 300 * time.Millisecond,
-			fragments: []string{"in audit.go\nadd EOF <<PATCH\n\nfunc AuditReady() bool {\n\treturn phase == \"completed\"\n}\nPATCH\n",
-				"mv lifecycle.go\n"}},
-		{name: "deletion · compact streamed marker", delay: 300 * time.Millisecond,
-			fragments: []string{"in lifecycle.go\nrm\n"}},
-		{name: "missing final newline", delay: 300 * time.Millisecond,
-			fragments: []string{"new notes.txt\ntype \"Unicode 界 é without final newline\""}},
-		{name: "rejection · keep applied state intact", delay: 500 * time.Millisecond, reject: true,
-			fragments: []string{"in handler.go\ntype \"demo requests\" \"rejected requests\"\n",
+		{name: "append · immutable file baseline", path: "audit.go", delay: 300 * time.Millisecond,
+			fragments: []string{"append <<PATCH\n\nfunc AuditReady() bool {\n\treturn phase == \"completed\"\n}\nPATCH\n"}},
+		{name: "move · shell file management", tool: "shell", delay: 300 * time.Millisecond,
+			fragments: []string{"mv audit.go lifecycle.go\n"}},
+		{name: "deletion · shell file management", tool: "shell", delay: 300 * time.Millisecond,
+			fragments: []string{"rm lifecycle.go\n"}},
+
+		{name: "missing final newline", path: "notes.txt", delay: 300 * time.Millisecond,
+			fragments: []string{"append \"Unicode 界 é without final newline\""}},
+		{name: "rejection · keep applied state intact", path: "handler.go", delay: 500 * time.Millisecond, reject: true,
+			fragments: []string{"type \"demo requests\" \"rejected requests\"\n",
 				"type \"target that does not exist\" \"rejected\"\n"}},
-		{name: "interruption · preview only, no application", delay: 500 * time.Millisecond, interrupt: true,
-			fragments: []string{"in handler.go\nadd EOF <<PATCH\n\nfunc InterruptedPreview() string {\n",
+		{name: "interruption · preview only, no application", path: "handler.go", delay: 500 * time.Millisecond, interrupt: true,
+			fragments: []string{"append <<PATCH\n\nfunc InterruptedPreview() string {\n",
 				"\treturn \"INTERRUPTED_TIP"}},
 	}
+	for i := range steps {
+		step := &steps[i]
+		if step.path == "" {
+			continue
+		}
+		step.fragments[0] = "hpatch " + shellQuoteArgument(step.path) + " <<'EDIT'\n" + step.fragments[0]
+		if !step.interrupt {
+			step.fragments[len(step.fragments)-1] += "\nEDIT\n"
+		}
+	}
+	return steps
 }

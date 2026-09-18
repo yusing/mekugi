@@ -7,10 +7,10 @@ import (
 
 func TestRecoveryCommandValues(t *testing.T) {
 	for _, command := range []string{
-		"type \"old\" \"bad\"\n", "add EOF \"bad\"\n", "type \"bad\"\n",
+		"type \"old\" \"bad\"\n", "add \"old\" \"bad\"\n", "append \"bad\"\n",
 		"type 1:abcd <<END\nbad\nEND\n",
 	} {
-		baseline := "in f.txt\n" + command + "new untouched.txt\ntype \"keep\"\n"
+		baseline := "append \"\"\n" + command + "append \"keep\"\n"
 		handle := recoveryCommands(baseline, testRecoveryHandles(baseline))[1].handle
 		for _, value := range []string{`"good\n"`, "<<END\ngood\nEND", "<<'END' \ngood\nEND", "<<-END\t\n\tgood\n\tEND"} {
 			result, err := recoverScriptDetailed(t.Context(), baseline, handle+" value "+value, testRecoveryHandles(baseline))
@@ -19,7 +19,7 @@ func TestRecoveryCommandValues(t *testing.T) {
 			}
 			parts := recoveryCommands(result.script, testRecoveryHandles(result.script))
 			if parts[1].parts.value != "good\n" || parts[1].parts.target != recoveryCommands(baseline, testRecoveryHandles(baseline))[1].parts.target ||
-				!strings.HasSuffix(result.script, "new untouched.txt\ntype \"keep\"\n") {
+				!strings.HasSuffix(result.script, "append \"keep\"\n") {
 				t.Fatalf("unexpected reconstructed script: %q", result.script)
 			}
 		}

@@ -1,6 +1,8 @@
 ## File editing
 
-Use `hpatch` through `functions.shell` for routine edits and formatters for formatting or bulk mechanical rewrites.
+Use `hpatch` through `functions.shell` for all existing-file content edits, including bulk mechanical rewrites.
+Python or other programs may generate hpatch scripts, but must not write edit targets directly.
+Use shell `mv` and `rm` for file management, and `cat > file` or `touch` only to create files.
 Tool coordination below covers native-interface tasks.
 
 ## Shell execution
@@ -33,10 +35,10 @@ Journal below defines progress delivery.
 
 ## Edit planning
 
-Group ready, related edits into one atomic hpatch script, including changes across files.
+Group ready, related edits into one atomic hpatch invocation, including changes across files.
 Split only when missing information or a validation result must determine the next edit;
-keep unrelated large values separate. Use targeted replacements or insertions and let formatters
-own surrounding formatting.
+keep unrelated large values separate. Use targeted replacements or insertions and let hpatch's language formatting
+handle surrounding formatting.
 
 ## Target reuse
 

@@ -40,30 +40,34 @@ func newLiveDiffWorkerTest(t *testing.T, workspace string) (*liveDiffBroker, *li
 }
 
 func TestLiveDiffShellEditLiteralInputs(t *testing.T) {
-	for _, tc := range []struct{ input, want string }{
-		{"\n# edit\nhpatch<<'EDIT' # literal input\nnew file.txt\ntype \"hel", "new file.txt\ntype \"hel"},
-		{"hpatch <<'EDIT'\nnew file.txt\ntype \"hel", "new file.txt\ntype \"hel"},
-		{"hpatch <<'EDIT'\nnew file.txt\ntype \"hello\"\nED", "new file.txt\ntype \"hello\"\n"},
-		{"hpatch <<'EDIT'\nnew file.txt\ntype \"hello\"\nEDIT\n", "new file.txt\ntype \"hello\"\n"},
-		{"hpatch <<-'EDIT'\n\tnew file.txt\n\ttype \"hel", "new file.txt\ntype \"hel"},
-		{"hpatch 'new file.txt\ntype \"hel", "new file.txt\ntype \"hel"},
-		{`hpatch $'new file.txt\ntype "hello"'`, "new file.txt\ntype \"hello\""},
-		{"hpatch \"new file.txt\ntype \\\"hel", "new file.txt\ntype \"hel"},
-		{"#!sh\nhpatch <<'EDIT'\nnew file.txt\ntype \"$literal", "new file.txt\ntype \"$literal"},
-		{"hpatch <<EDIT\nnew file.txt\ntype \"hello\"\n", "new file.txt\ntype \"hello\"\n"},
+	for _, tc := range []struct {
+		name, input, want string
+	}{
+		{"spaced heredoc", "hpatch file.txt <<'EDIT'\ntype \"old\" \"hello\"", "type \"old\" \"hello\""},
+		{"no-space heredoc", "hpatch file.txt<<'EDIT'\ntype \"old\" \"hello\"", "type \"old\" \"hello\""},
+		{"closed heredoc", "hpatch file.txt <<'EDIT'\ntype \"old\" \"hello\"\nEDIT\n", "type \"old\" \"hello\"\n"},
+		{"dash heredoc", "hpatch file.txt <<-'EDIT'\n\ttype \"old\" \"hello\"", "type \"old\" \"hello\""},
+		{"single quoted argument", `hpatch file.txt 'type "old" "hello"'`, `type "old" "hello"`},
+		{"ansi quoted argument", `hpatch file.txt $'type "old" "hello"'`, `type "old" "hello"`},
+		{"double quoted argument", "hpatch file.txt \"type \\\"old\\\" \\\"hello\\\"\"", `type "old" "hello"`},
+		{"unclosed script quote", `hpatch file.txt 'type "old" "hello`, `type "old" "hello`},
+		{"unquoted heredoc expansion", "hpatch file.txt <<EDIT\ntype \"old\" \"$literal\"", "type \"old\" \"\""},
 	} {
-		t.Run(tc.input, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			directory := t.TempDir()
-			got, base, ok := liveDiffShellEdit(tc.input, directory)
-			if !ok || got != tc.want || base != directory {
-				t.Fatalf("decode = %q, %q, %t; want %q", got, base, ok, tc.want)
+			if err := os.WriteFile(filepath.Join(directory, "file.txt"), []byte("old\n"), 0o600); err != nil {
+				t.Fatal(err)
 			}
-			files, err := mekugi.PreviewForHostAt(t.Context(), base, got)
+			edits, base, ok := liveDiffShellEdit(tc.input, directory)
+			if !ok || base != directory || len(edits) != 1 || edits[0].Path != "file.txt" || edits[0].Script != tc.want {
+				t.Fatalf("decode = %+v, %q, %t; want path/script %q", edits, base, ok, tc.want)
+			}
+			files, err := mekugi.PreviewForHostAt(t.Context(), base, edits)
 			if err != nil || len(files) != 1 || !strings.Contains(files[0].Diff, "+") {
 				t.Fatalf("preview = %+v, %v", files, err)
 			}
 			entries, err := os.ReadDir(directory)
-			if err != nil || len(entries) != 0 {
+			if err != nil || len(entries) != 1 || entries[0].Name() != "file.txt" {
 				t.Fatalf("preview modified workspace: %v, %v", entries, err)
 			}
 		})
@@ -82,7 +86,7 @@ func TestLiveDiffPreviewWorkerKeepsLastValidHpatchDiff(t *testing.T) {
 				t.Fatal(err)
 			}
 			broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
-			worker.appendDelta(tc.header + "in file.txt\ntype \"old\" \"new\"")
+			worker.appendDelta(strings.Replace(tc.header, "hpatch", "hpatch file.txt", 1) + "type \"old\" \"new\"")
 			good := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
 				return preview.Status == "STREAMING PREVIEW"
 			})
@@ -90,7 +94,7 @@ func TestLiveDiffPreviewWorkerKeepsLastValidHpatchDiff(t *testing.T) {
 				t.Fatalf("valid hpatch preview = %+v", good)
 			}
 
-			worker.appendDelta("\nin file.txt\ntype \"target that does not exist\" \"rejected\"\nEDIT\n")
+			worker.appendDelta("\ntype \"target that does not exist\" \"rejected\"\nEDIT\n")
 			invalid := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
 				return strings.Contains(preview.Status, "last valid diff")
 			})
@@ -109,7 +113,7 @@ func TestLiveDiffPreviewWorkerReportsUnavailableInvalidHpatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
-	worker.appendDelta("hpatch<<'EDIT'\nin file.txt\ntype \"target that does not exist\" \"rejected\"")
+	worker.appendDelta("hpatch file.txt<<'EDIT'\ntype \"target that does not exist\" \"rejected\"")
 	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
 		return preview.Status == "PREVIEW UNAVAILABLE: edit cannot be projected"
 	})
@@ -124,7 +128,7 @@ func TestLiveDiffPreviewWorkerClearsDiffForCompoundShell(t *testing.T) {
 		t.Fatal(err)
 	}
 	broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
-	worker.appendDelta("hpatch<<'EDIT'\nin file.txt\ntype \"old\" \"new\"\nEDIT\n")
+	worker.appendDelta("hpatch file.txt<<'EDIT'\ntype \"old\" \"new\"\nEDIT\n")
 	good := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
 		return preview.Status == "STREAMING PREVIEW"
 	})
@@ -144,7 +148,7 @@ func TestLiveDiffPreviewWorkerClearsDiffForCompoundShell(t *testing.T) {
 func TestLiveDiffPreviewBrokerRetainsDisplayedDiffAfterOversizedProjection(t *testing.T) {
 	workspace := t.TempDir()
 	broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
-	worker.appendDelta("hpatch<<'EDIT'\nnew small.txt\ntype \"small\"\n")
+	worker.appendDelta("hpatch file.txt<<'EDIT'\ntype \"old\" \"small\"\n")
 	small := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
 		return preview.Status == "STREAMING PREVIEW"
 	})
@@ -153,7 +157,7 @@ func TestLiveDiffPreviewBrokerRetainsDisplayedDiffAfterOversizedProjection(t *te
 	}
 
 	large := strings.Repeat("x", 60<<10)
-	worker.appendDelta("new large.txt\ntype <<PATCH\n" + large + "\nPATCH\n")
+	worker.appendDelta("append <<PATCH\n" + large + "\nPATCH\n")
 	oversized := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
 		return strings.Contains(preview.Status, "last valid diff")
 	})
@@ -163,7 +167,7 @@ func TestLiveDiffPreviewBrokerRetainsDisplayedDiffAfterOversizedProjection(t *te
 		t.Fatalf("oversized projection displaced the displayed diff = %+v", oversized)
 	}
 
-	worker.appendDelta("\nin small.txt\ntype \"target that does not exist\" \"rejected\"")
+	worker.appendDelta("\ntype \"target that does not exist\" \"rejected\"")
 	invalid := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
 		return strings.Contains(preview.Status, "last valid diff")
 	})
@@ -180,7 +184,7 @@ func TestLiveDiffPreviewWorkerInterruptedStepKeepsDiffMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
-	worker.appendDelta("hpatch<<'EDIT'\nin handler.go\nadd EOF <<PATCH\n\nfunc InterruptedPreview() string {\n")
+	worker.appendDelta("hpatch handler.go<<'EDIT'\nappend <<PATCH\n\nfunc InterruptedPreview() string {\n")
 	first := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
 		return preview.Status == "STREAMING PREVIEW"
 	})
@@ -200,19 +204,19 @@ func TestLiveDiffPreviewWorkerInterruptedStepKeepsDiffMode(t *testing.T) {
 func TestLiveDiffShellEditNoDynamicExecution(t *testing.T) {
 	for _, input := range []string{
 		"hpatch --recover amber 'maple target \"new\"'",
-		"hpatch \"$(touch forbidden)\"",
-		"hpatch <<EDIT\n$(touch forbidden)\n",
-		"hpatch <<EDIT\n$PAYLOAD\n",
-		"hpatch < source.patch",
-		"hpatch 'new file' > output",
-		"echo prefix; hpatch 'new file'",
-		"hpatch 'new file'; echo suffix",
-		"hpatch 'new file' &",
-		"! hpatch 'new file'",
-		"PAYLOAD=x hpatch 'new file'",
-		"#!python3\nhpatch 'new file'",
-		"#!cmd=cat input | {.}\nhpatch 'new file'",
-		"hpatch 'new file'\n#!python3\nprint('suffix')",
+		"hpatch forbidden.txt \"$(touch forbidden)\"",
+		"hpatch forbidden.txt <<EDIT\n$(touch forbidden)\n",
+		"hpatch forbidden.txt <<EDIT\n$PAYLOAD\n",
+		"hpatch forbidden.txt < source.patch",
+		"hpatch forbidden.txt 'type \"old\" \"new\"' > output",
+		"echo prefix; hpatch forbidden.txt 'type \"old\" \"new\"'",
+		"hpatch forbidden.txt 'type \"old\" \"new\"'; echo suffix",
+		"hpatch forbidden.txt 'type \"old\" \"new\"' &",
+		"! hpatch forbidden.txt 'type \"old\" \"new\"'",
+		"PAYLOAD=x hpatch forbidden.txt 'type \"old\" \"new\"'",
+		"#!python3\nhpatch forbidden.txt 'type \"old\" \"new\"'",
+		"#!cmd=cat input | {.}\nhpatch forbidden.txt 'type \"old\" \"new\"'",
+		"hpatch forbidden.txt 'type \"old\" \"new\"'\n#!python3\nprint('suffix')",
 	} {
 		if source, _, ok := liveDiffShellEdit(input, t.TempDir()); ok {
 			t.Errorf("projected execution-dependent input %q as %q", input, source)
@@ -222,11 +226,14 @@ func TestLiveDiffShellEditNoDynamicExecution(t *testing.T) {
 
 func TestLiveDiffShellEditWorkdir(t *testing.T) {
 	directory := t.TempDir()
-	source, base, ok := liveDiffShellEdit("#!params="+string(mustMarshalJSON(map[string]any{"workdir": directory}))+"\nhpatch 'new file.txt\ntype \"hello\"'", "")
-	if !ok || base != directory {
-		t.Fatalf("workdir = %q, %t", base, ok)
+	if err := os.WriteFile(filepath.Join(directory, "file.txt"), []byte("old\n"), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	files, err := mekugi.PreviewForHostAt(t.Context(), base, source)
+	edits, base, ok := liveDiffShellEdit("#!params="+string(mustMarshalJSON(map[string]any{"workdir": directory}))+"\nhpatch file.txt 'type \"old\" \"hello\"'", "")
+	if !ok || base != directory || len(edits) != 1 {
+		t.Fatalf("workdir = %+v, %q, %t", edits, base, ok)
+	}
+	files, err := mekugi.PreviewForHostAt(t.Context(), base, edits)
 	if err != nil || len(files) != 1 || files[0].AfterPath != filepath.Join(directory, "file.txt") {
 		t.Fatalf("files = %+v, %v", files, err)
 	}

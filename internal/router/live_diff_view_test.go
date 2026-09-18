@@ -101,7 +101,7 @@ func TestLiveDiffScrollAcrossFiles(t *testing.T) {
 }
 
 // Exercise the native renderer through the real terminal consumer, with
-// two created files in a single capture. Both must appear in the same frame.
+// two populated files in a single capture. Both must appear in the same frame.
 func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	workspace := t.TempDir()
@@ -109,9 +109,9 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	publish := func(call, script string) {
+	publish := func(call string, edits []mekugi.FileEdit) {
 		t.Helper()
-		result, err := mekugi.TranslateForHostAt(t.Context(), workspace, script, "")
+		result, err := mekugi.TranslateForHostAt(t.Context(), workspace, edits, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -125,9 +125,16 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 		}
 	}
 	longSuffix := strings.Repeat("x", 160)
-	publish("create-both",
-		"new first.txt\ntype \"Temporary file one."+longSuffix+"\\nStatus: created\\n\"\n"+
-			"new second.txt\ntype \"Temporary file two.\\nStatus: created\\n\"\n")
+	for _, name := range []string{"first.txt", "second.txt"} {
+		if err := os.WriteFile(filepath.Join(workspace, name), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	publish("populate-both", []mekugi.FileEdit{
+		{Path: "first.txt", Script: "append \"Temporary file one." + longSuffix + "\\nStatus: created\\n\""},
+		{Path: "second.txt", Script: `append "Temporary file two.\nStatus: created\n"`},
+	})
+
 	for name, content := range map[string]string{
 		"first.txt":  "Temporary file one." + longSuffix + "\nStatus: created\n",
 		"second.txt": "Temporary file two.\nStatus: created\n",
@@ -275,9 +282,11 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	if strings.Contains(frame, "LATEST UPDATE") || strings.Contains(frame, "▎") {
 		t.Fatal("startup history was marked as newly observed")
 	}
-	publish("update-both",
-		"in first.txt\ntype \"Status: created\" \"Status: updated 界 é\"\n"+
-			"in second.txt\ntype \"Status: created\" \"Status: updated\"\n")
+	publish("update-both", []mekugi.FileEdit{
+		{Path: "first.txt", Script: `type "Status: created" "Status: updated 界 é"`},
+		{Path: "second.txt", Script: `type "Status: created" "Status: updated"`},
+	})
+
 	frame = waitFrame(func(frame string) bool {
 		return strings.Contains(frame, "first.txt") && strings.Contains(frame, "second.txt") &&
 			strings.Contains(frame, "▎") && strings.Contains(frame, "updated 界 é")
@@ -296,7 +305,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 		[]byte("Temporary file one."+longSuffix+"\nStatus: updated 界 é\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	publish("update-first", "in first.txt\ntype \"Status: updated 界 é\" \"Status: adjusted 界 é\"\n")
+	publish("update-first", []mekugi.FileEdit{{Path: "first.txt", Script: `type "Status: updated 界 é" "Status: adjusted 界 é"`}})
 	waitFrame(func(frame string) bool {
 		return strings.HasPrefix(strings.TrimLeft(frame, " ▎"), "2/2") && strings.Contains(frame, "PAUSED · new changes available") &&
 			!strings.Contains(frame, "LATEST UPDATE")
