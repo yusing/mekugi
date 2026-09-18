@@ -41,7 +41,7 @@ func TestExecutionContinuationReplayedOutputOnly(t *testing.T) {
 			continuationTestOutput("a", "Script running with cell ID cell-17\nWall time 0.1 seconds\nOutput:\n"),
 		}),
 	}}
-	projectExecutionContinuations(nil, &request, continuationTestCatalog(), "exec", map[string]mekugiHistory{
+	projectExecutionContinuations(&request, continuationTestCatalog(), "exec", map[string]mekugiHistory{
 		"a": {ToolName: "shell", PluginID: builtinToolsPluginID},
 	})
 	if !strings.Contains(string(request.fields["input"]), "functions.wait") {
@@ -50,7 +50,7 @@ func TestExecutionContinuationReplayedOutputOnly(t *testing.T) {
 }
 
 func TestExecutionContinuationWarningReplayIdempotent(t *testing.T) {
-	transform, proxy, _, workspace := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	_, err := transform.TransformJSON(mustMarshalJSON(map[string]any{
 		"status": "completed", "output": []any{continuationTestCall("shell", "original-a", "sleep 100")},
 	}))
@@ -108,7 +108,7 @@ func TestExecutionContinuationWarningReplayIdempotent(t *testing.T) {
 }
 
 func TestExecutionContinuationThroughPreparedReplay(t *testing.T) {
-	transform, proxy, _, workspace := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	upstream := continuationTestCall("shell", "shell-a", "sleep 100")
 	response, err := transform.TransformJSON(mustMarshalJSON(map[string]any{
 		"status": "completed", "output": []any{upstream},
@@ -332,7 +332,7 @@ func TestExecutionContinuationProjection(t *testing.T) {
 			request := parsedResponsesRequest{fields: map[string]json.RawMessage{
 				"input": mustMarshalJSON([]any{test.call, test.output}),
 			}}
-			projectExecutionContinuations(nil, &request, catalog, "exec", test.history)
+			projectExecutionContinuations(&request, catalog, "exec", test.history)
 			var items []map[string]json.RawMessage
 			if err := json.Unmarshal(request.fields["input"], &items); err != nil {
 				t.Fatal(err)
@@ -365,7 +365,7 @@ func TestExecutionContinuationProjection(t *testing.T) {
 				t.Fatalf("wrong continuation: %+v", notice)
 			}
 			first := string(request.fields["input"])
-			projectExecutionContinuations(nil, &request, catalog, "exec", test.history)
+			projectExecutionContinuations(&request, catalog, "exec", test.history)
 			if string(request.fields["input"]) != first {
 				t.Fatal("projection is not idempotent")
 			}
@@ -387,7 +387,7 @@ func TestExecutionContinuationFollowsCellWithoutPollingInnerSession(t *testing.T
 				`{"output":"partial","session_id":42}`, "Script error:\nhost failure"),
 		}),
 	}}
-	projectExecutionContinuations(nil, &request, catalog, "exec", map[string]mekugiHistory{
+	projectExecutionContinuations(&request, catalog, "exec", map[string]mekugiHistory{
 		"a": {ToolName: "shell", PluginID: builtinToolsPluginID},
 	})
 	var items []map[string]json.RawMessage
@@ -457,7 +457,7 @@ func TestExecutionContinuationRetiresSuggestions(t *testing.T) {
 				request := parsedResponsesRequest{fields: map[string]json.RawMessage{
 					"input": mustMarshalJSON([]any{first, original}),
 				}}
-				projectExecutionContinuations(nil, &request, continuationTestCatalog(), "exec", history)
+				projectExecutionContinuations(&request, continuationTestCatalog(), "exec", history)
 				if !strings.Contains(string(request.fields["input"]), "continuation") {
 					t.Fatal("live execution lost its suggestion")
 				}
@@ -477,7 +477,7 @@ func TestExecutionContinuationRetiresSuggestions(t *testing.T) {
 					items = append(items, continuationTestOutput("b", output))
 				}
 				request.setInput(mustMarshalJSON(items))
-				projectExecutionContinuations(nil, &request, continuationTestCatalog(), "exec", history)
+				projectExecutionContinuations(&request, continuationTestCatalog(), "exec", history)
 				if err := json.Unmarshal(request.fields["input"], &items); err != nil {
 					t.Fatal(err)
 				}
@@ -492,7 +492,7 @@ func TestExecutionContinuationRetiresSuggestions(t *testing.T) {
 					t.Fatalf("got %d suggestions, want %d: %s", got, want, request.fields["input"])
 				}
 				previous := string(request.fields["input"])
-				projectExecutionContinuations(nil, &request, continuationTestCatalog(), "exec", history)
+				projectExecutionContinuations(&request, continuationTestCatalog(), "exec", history)
 				if string(request.fields["input"]) != previous {
 					t.Fatal("projection is not idempotent")
 				}
@@ -517,7 +517,7 @@ func TestExecutionContinuationRetiresAcrossProjectionChanges(t *testing.T) {
 						continuationTestOutput("other", "Script running with cell ID other-cell\nWall time 0.1 seconds\nOutput:\n"),
 					}),
 				}}
-				projectExecutionContinuations(nil, &request, continuationTestCatalog(), "exec", nil)
+				projectExecutionContinuations(&request, continuationTestCatalog(), "exec", nil)
 				var items []map[string]json.RawMessage
 				if err := json.Unmarshal(request.fields["input"], &items); err != nil {
 					t.Fatal(err)
@@ -533,7 +533,7 @@ func TestExecutionContinuationRetiresAcrossProjectionChanges(t *testing.T) {
 				request.setInput(mustMarshalJSON(items))
 				// The old nested next_call cannot be reconstructed from this catalog.
 				catalog := decodeResponsesToolCatalog(map[string]json.RawMessage{"tools": mustMarshalJSON([]any{})})
-				projectExecutionContinuations(nil, &request, catalog, "exec", history)
+				projectExecutionContinuations(&request, catalog, "exec", history)
 				if err := json.Unmarshal(request.fields["input"], &items); err != nil {
 					t.Fatal(err)
 				}
@@ -567,7 +567,7 @@ func TestNativeContinuationUsesAvailableDirectTool(t *testing.T) {
 			},
 		}),
 	}}
-	projectExecutionContinuations(nil, &request, catalog, "exec_command", nil)
+	projectExecutionContinuations(&request, catalog, "exec_command", nil)
 	var items []map[string]json.RawMessage
 	_ = json.Unmarshal(request.fields["input"], &items)
 	texts := executionOutputTexts(items[1]["output"])

@@ -5,7 +5,7 @@ import "testing"
 func TestMalformedShellAuthorDoesNotPersistAcrossTurns(t *testing.T) {
 	for _, author := range []string{"/root/a\nspoof", "/root/a\rspoof", "/root/a\x00spoof"} {
 		t.Run(author, func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
 			first, _ := prepareActivityTest(t, proxy, "first", "child", "parent", author, nil)
 			first.Close()

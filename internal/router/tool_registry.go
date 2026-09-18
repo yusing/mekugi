@@ -25,7 +25,7 @@ const (
 	reportIssueToolDescription = `Free-form Markdown issue report for an observed mekugi-related tool interaction.`
 )
 
-func buildToolRegistry(ctx context.Context, dataDirectory, mekugiDescription string, diagnose bool) (*toolRegistry, error) {
+func buildToolRegistry(ctx context.Context, dataDirectory string, diagnose bool) (*toolRegistry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -37,12 +37,12 @@ func buildToolRegistry(ctx context.Context, dataDirectory, mekugiDescription str
 	if err != nil {
 		return nil, err
 	}
-	return buildToolRegistryAt(ctx, dataDirectory, mekugiDescription, diagnose, runtimeDirectory, replayDirectory)
+	return buildToolRegistryAt(ctx, dataDirectory, diagnose, runtimeDirectory, replayDirectory)
 }
 
 func buildToolRegistryAt(
 	ctx context.Context,
-	dataDirectory, mekugiDescription string,
+	dataDirectory string,
 	diagnose bool,
 	runtimeDirectory, replayDirectory string,
 ) (*toolRegistry, error) {
@@ -81,20 +81,7 @@ func buildToolRegistryAt(
 	contributions := []toolContribution{
 		{PluginID: "builtin.mekugi", Name: "hread", Builtin: true},
 		{PluginID: "builtin.mekugi", Name: "hchanges", Builtin: true},
-		{
-			PluginID:      "builtin.mekugi",
-			Name:          mekugiToolName,
-			Specification: mustMarshalJSON(customGrammarTool(mekugiToolName, mekugiDescription, mekugi.ToolGrammar())),
-			Builtin:       true,
-			ModelVisible:  true,
-		},
-		{
-			PluginID:      "builtin.mekugi",
-			Name:          mekugiRecoveryToolName,
-			Specification: mustMarshalJSON(customGrammarTool(mekugiRecoveryToolName, mekugiRecoveryDescription, mekugiRecoveryGrammar)),
-			Builtin:       true,
-			ModelVisible:  true,
-		},
+		{PluginID: "builtin.mekugi", Name: mekugiToolName, Builtin: true},
 	}
 	if diagnose {
 		contributions = append(contributions, toolContribution{
@@ -171,6 +158,7 @@ func buildToolRegistryAt(
 	manifest := toolWorkerManifest{
 		CommandRouting:  &routing,
 		ReplayDirectory: replayDirectory,
+		HookDirectory:   dataDirectory,
 		Version:         1,
 		NodeExecutable:  pluginSnapshot.NodeExecutable,
 		RuntimeRoot:     "runtime",

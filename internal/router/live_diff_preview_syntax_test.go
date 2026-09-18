@@ -10,17 +10,15 @@ import (
 
 func TestLiveDiffProducerRetainsSyntaxBoundaries(t *testing.T) {
 	for _, tc := range []struct {
-		name, tool, input, token string
-		kind                     chroma.TokenType
-		clipped                  bool
+		name, input, token string
+		kind               chroma.TokenType
+		clipped            bool
 	}{
-		{"clipped_python", "shell", "#!python3\n" + strings.Repeat("# context\n", 7000) + "return True\n",
+		{"clipped_python", "#!python3\n" + strings.Repeat("# context\n", 7000) + "return True\n",
 			"return", chroma.Keyword, true},
-		{"independent_shell", mekugiToolName, "shell <<PY\n#!python3\nprint(42)\nPY\nshell printf 'hello'\n",
+		{"independent_shell", "printf 'hello'\n",
 			"printf", chroma.NameBuiltin, false},
-		{"post_shell_edit", mekugiToolName, "shell echo before\nnew after.go\ntype <<PATCH\npackage main\n",
-			"package", chroma.KeywordNamespace, false},
-		{"clipped_mixed", mekugiToolName, "shell <<PY\n#!python3\n" + strings.Repeat("# context\n", 7000) + "return True\n",
+		{"clipped_batch", "echo before\n#!python3\n" + strings.Repeat("# context\n", 7000) + "return True\n",
 			"return", chroma.Keyword, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -28,7 +26,7 @@ func TestLiveDiffProducerRetainsSyntaxBoundaries(t *testing.T) {
 			broker := newLiveDiffBroker(t.Context())
 			broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
 			sub := broker.subscribe()
-			worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", tc.tool)
+			worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
 			t.Cleanup(worker.stop)
 			worker.appendDelta(tc.input)
 			select {

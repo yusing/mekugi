@@ -55,7 +55,7 @@ func TestBatchedExecWarningDelivery(t *testing.T) {
 	for _, name := range []string{"exec", "shell"} {
 		for _, streaming := range []bool{false, true} {
 			t.Run(name+map[bool]string{false: "/json", true: "/sse"}[streaming], func(t *testing.T) {
-				transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+				transform, _, _, _ := newMekugiTestTransform(t)
 				item := map[string]any{"type": "custom_tool_call", "name": name, "call_id": "batch", "id": "batch-item", "input": source, "status": "completed"}
 				var carrier map[string]json.RawMessage
 				if streaming {
@@ -118,7 +118,7 @@ func TestExecWarningsPreserveLocalOutputBinding(t *testing.T) {
 	const source = `const globalThis = "local scope"; const text = "local data"; const r = await tools.exec_command({cmd:"one"}); console.log(r.output, text);`
 	for _, name := range []string{"exec", "shell"} {
 		t.Run(name, func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			storeDirectory := t.TempDir()
 			var err error
 			proxy.replayStore, err = openMekugiReplayStore(storeDirectory)
@@ -150,7 +150,7 @@ func TestExecWarningsPreserveLocalOutputBinding(t *testing.T) {
 			if err != nil || string(output) != "one local data\n" {
 				t.Fatalf("carrier changed execution: %v: %s", err, output)
 			}
-			resumed := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			resumed := newManagedMekugiProxy(t)
 			resumed.replayStore, err = openMekugiReplayStore(storeDirectory)
 			if err != nil {
 				t.Fatal(err)

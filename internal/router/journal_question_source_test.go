@@ -38,7 +38,7 @@ func TestJournalQuestionFromVisibleInput(t *testing.T) {
 }
 
 func TestJournalAnswerSourceIsRequestLocal(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	for _, question := range []string{"Original question?", "Steered question?"} {
 		request := serverRequest(t, func(fields map[string]any) {
 			fields["input"] = []any{testFlatCodeModeAdditionalTools(testCodeModeDescription), map[string]any{"role": "user", "content": question}}
@@ -117,7 +117,7 @@ func TestJournalNativeAssignmentSource(t *testing.T) {
 }
 
 func TestJournalAssignmentAnswerAfterRestartAndFollowup(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	var err error
 	proxy.replayStore, err = openMekugiReplayStore(t.TempDir())
 	if err != nil {

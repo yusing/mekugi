@@ -19,14 +19,10 @@ func TestCaptureRenderedHpatchOutcomes(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = recorder.Close() })
 
-	var transform mekugiResponseTransform
 	histories := []mekugiHistory{
 		{Patch: testTranslatedPatch, Report: changeNotice("amber1") + testMekugiReport, ChangeID: "amber1"},
 		{AlreadySatisfied: true, Report: changeNotice("amber2") + testMekugiReport, ChangeID: "amber2"},
 		{TranslationError: changeNotice("amber3") + "type: command 2, reason row-stale: private-sentinel\n"},
-		{CarrierKind: codeModeCarrierCustom, CarrierPayload: transform.mixedCarrier(hpatchResumeState{
-			ChangeID: "amber4", Handle: "birch", Segments: []hpatchResumeSegment{{Kind: "shell", Source: "true"}},
-		}, "", nil)},
 	}
 	var emitted, delivered []any
 	for i, history := range histories {
@@ -81,8 +77,8 @@ func TestCaptureRenderedHpatchOutcomes(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := snapshot.Mekugi
-	if got.Calls != 4 || got.Successful != 2 || got.Rejected != 1 ||
-		got.Unclassified != 1 || got.Unmatched != 0 || got.Diagnostics["row-stale"] != 1 {
+	if got.Calls != 3 || got.Successful != 2 || got.Rejected != 1 ||
+		got.Unclassified != 0 || got.Unmatched != 0 || got.Diagnostics["row-stale"] != 1 {
 		t.Fatalf("rendered carrier classification: %+v", got)
 	}
 	if bytes.Contains(metrics.Bytes(), []byte("private-sentinel")) {

@@ -71,7 +71,7 @@ func TestThreadUsageHasNoLifetimeThreadLimitAndHandlesOverflow(t *testing.T) {
 }
 
 func TestThreadUsageSurvivesRoundTripsAndSessionRemapping(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	first, _ := prepareActivityTest(t, proxy, "session-a", "root-thread", "", "/root", nil)
 	first.observeResponseUsage(tokenCounts{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
 	first.observeResponseUsage(tokenCounts{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
@@ -97,7 +97,7 @@ func TestThreadUsageSurvivesRoundTripsAndSessionRemapping(t *testing.T) {
 }
 
 func TestThreadUsageIncludesCompactionWithoutRewritingIt(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	first, _ := prepareActivityTest(t, proxy, "before", "root-thread", "", "/root", nil)
 	first.observeResponseUsage(tokenCounts{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
 	first.Close()

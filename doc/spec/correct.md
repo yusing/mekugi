@@ -2,138 +2,51 @@
 
 ## REQ-CORRECT-001 — Rejected-script recovery
 
-The router exposes a separate model-visible `functions.hpatch_recover` tool with
-dedicated syntax. Rejected-script recovery is unavailable from public root APIs and
-ordinary `functions.hpatch`; it is selected only by the dedicated tool, never by
-inspecting an ordinary hpatch payload.
+`hpatch --recover HANDLE [SCRIPT]` runs through the shell. Omitting SCRIPT reads
+corrections from stdin. The reported recovery handle identifies one immutable
+rejected edit in the execution directory, not a mutable "latest" rejection.
+Recovery uses the existing edit engine; it is not a separate model-facing tool.
 
-Each rejected-script command has a short word handle, such as `maple`. Its command
-position is retained with the complete immutable rejected baseline before exposure.
-A private full SHA-256 fingerprint binds both the baseline and its ordered handle mapping;
-recovery rejects a mismatched retained binding.
-Changing a preceding path or another command invalidates old handles even if a
-mutation's bytes survive. Re-rejections allocate fresh handles; replay restores the
-original mapping rather than generating new identities. Older SHA-bound command
-handles and baselines without a retained handle binding are unsupported.
-The target-only shortcut has one form per line: `HANDLE TARGET`. `TARGET` uses
-the ordinary HPATCH/2 row, range, anchored-literal, or unanchored-literal target syntax and must
-denote a different target from the retained command. This shortcut
-has no operation keyword and changes no operation, value, framing, command order,
-or file context. Target parsing and script rebuilding preserve the public target literal's
-exact decoded bytes, including escaped LF, and enforce the same empty, CR, and control
-exclusions.
+Each rejected command has a short word handle. A private fingerprint binds the
+complete baseline and ordered command mapping. Recovery rejects missing, expired,
+cross-directory, or mismatched records. Durable records allow the same explicit
+baseline to be used after fork, agent switching, model switching, or router restart.
+Concurrent branches cannot change the baseline identified by an existing handle.
 
-Command-scoped corrections also accept `HANDLE target TARGET` and
-`HANDLE value VALUE`. Target form is equivalent to the original shortcut.
-Value form replaces only the decoded value of a parsed `type` or `add` command,
-including initializers and EOF insertions. It accepts the public quoted-string and heredoc value syntax; rendering owns delimiters and escaping. It preserves
-the operation, target, file context, and every unrelated command. An equivalent decoded
-value rejects. A payload may mix target and value corrections for different commands,
-but each handle appears at most once. All corrections use one baseline and the ordinary
-atomic rebuild and reevaluation path.
+Corrections have two forms, which cannot be mixed:
 
-Alternatively, one recovery payload contains ordinary target-bearing `type`/`add`
-mutations against the retained rejected-script text. These use the public row,
-range, anchored/unanchored literal, EOF insertion, quoted-value and heredoc syntax. File commands and targetless initializers are not allowed.
-The two payload forms cannot be mixed.
+- Command corrections: `HANDLE TARGET`, `HANDLE target TARGET`, or
+  `HANDLE value VALUE`. Each command handle appears at most once. A correction
+  preserves the command's operation and every unrelated field.
+- Script-text corrections: ordinary target-bearing `type` and `add` mutations
+  against the retained script, not workspace files. File commands and targetless
+  initializers are not accepted.
 
-Script-text mutations may repair operations, paths, values, framing, and command
-order, or remove conflicting commands. Their targets address the retained script,
-not workspace files. Unrelated prepared text remains byte-identical. The complete
-rebuilt script must be nonempty and different from its retained baseline.
-The baseline and every planned command result are limited to 1 MiB, checked before
-rendering expanded content. A later shrinking edit does not excuse an oversized
-intermediate plan.
+Targets and values follow the edit grammar. The complete rebuilt script must be
+different, nonempty, and within the 1 MiB bound, including intermediate plans.
+`EditTextBounded` owns script-text rebuilding; the ordinary edit engine owns
+evaluation, formatting, and application.
 
-The router owns recovery grammar, parsing, handle resolution, ancestry, worktree isolation,
-dispatch, replay, diagnostics, and reevaluation. Every command handle resolves against the latest
-visible evaluated rejected script as one immutable baseline. Each handled command may appear at
-most once in a shortcut payload. Both forms rebuild through the root
-`EditTextBounded` primitive, then evaluate the complete resulting script normally.
-Ordinary and recovered scripts share workspace translation: accepted edits produce a host
-patch, and Codex owns application.
+An invalid correction changes neither the workspace nor the retained baseline.
+A rebuilt script that fails evaluation returns a new recovery handle and fresh
+command handles. Earlier immutable baselines remain unchanged. Successful recovery
+keeps the original change ID, so `hchanges --history` can display the attempts.
+Application failures are not evaluation rejections and do not offer automatic
+recovery.
 
-A malformed, stale, unchanged, conflicting, incomplete, cross-worktree, or otherwise invalid recovery
-changes neither workspace state nor retained rejected ancestry. Proxy-rejected attempts keep
-the last evaluated script as the next baseline. A re-rejected recovery becomes the next
-baseline, and replay restores the exact `functions.hpatch_recover` payload while retaining its
-rebuilt script for later recovery. Non-mekugi plugin and shell failures never enter this
-ancestry. Input truncation removes calls the conversation no longer shows from the request's
-recovery view, without deleting durable replay records needed by another branch. Resumed and
-forked threads inherit only ancestry actually visible in their input. Ordering and executor
-confirmation are request-local; concurrent requests cannot alter each other's recovery baseline
-or target aliases.
-
-Mixed HPATCH/shell invocations that successfully retain an executable carrier, and
-their resume calls under [REQ-SCRIPT-001](script.md#retained-continuation), are not
-rejected-script recovery baselines. `hpatch_recover` directs the agent to inspect
-their checkpoints, current files, and known sessions, then use `hpatch` with
-`resume HANDLE`. A mixed preflight failure before carrier retention has no possible
-execution effects and is retained for script-text correction. Recovery rebuilds the
-complete script and repeats preflight; successful preflight exposes one executable
-carrier, while another rejection advances the corrected baseline. Command-handle
-corrections are unavailable for this baseline. A rejected resume request directs the
-agent to correct its diagnostic and inspect the original continuation state, not
-resend the original mixed script. Recovery never falls back to an older rejected
-edit-only script or infers execution success from preflight or translation.
-
-When every structured rejection is `row-stale`, the routed diagnostic lists only the rejected
-target-bearing commands and their current `HANDLE` handles. Recovery guidance directs the model to
-submit one `HANDLE TARGET` line per listed command in one atomic payload. Every non-target or mixed
-failure offers command-scoped target/value handles for parsed mutation commands, plus
-ordinary script-text edits and at most 12 bounded verified
-script-row previews around rejected command headers and value locations. Previews
-explicitly distinguish script rows from workspace rows; generated-source coordinates
-are diagnostic only, not recovery targets; exact known literals can
-address other retained text without re-emitting the complete script. A handle from
-an older baseline is stale. A re-rejection explicitly states that no workspace file
-changed and corrections survive only in the new rejected-script baseline. Earlier
-command handles are invalid; script rows must verify against the new baseline. Correlation IDs remain stable and attempt
-numbers increase across evaluated and proxy-rejected calls. The transport capturer observes each
-provider-emitted `hpatch` or `hpatch_recover` call and its delivered carrier without changing
-recovery ancestry.
-
-Outcome hooks report one routed attempt once. Their structured event includes tool identity,
-chain and call identity, attempt number, correction marker, lifecycle stage, outcome, and
-emitted, evaluated, and translated-patch byte counts. `unevaluated/rejected` means the router
-rejected the request before engine evaluation. `evaluated/rejected` means engine evaluation
-failed without host mutation; `translated/succeeded` means a host patch was produced but does
-not claim Codex applied it; `applied/succeeded` means root-owned application completed, while
-`applied/failed` means root-owned commit or cleanup failed. Recovery hook Markdown treats the
-exact short recovery payload as model-emitted, renders its target delta or a
-script-text correction summary, and identifies the complete script as router-rebuilt.
-Routed evaluator rejection invokes
-the outcome hook, not a second per-command error hook. Root error hooks remain separate from routed outcome hooks.
+Diagnostics distinguish script rows from workspace rows. Wholly stale-row failures
+list their target-bearing command handles. Other evaluation failures include bounded
+script-row previews and parsed command handles. Generated-source coordinates remain
+diagnostics, not recovery targets.
 
 Acceptance:
 
-1. `functions.hpatch_recover` has a dedicated grammar and accepts either `HANDLE TARGET`
-   shortcut lines or ordinary target-bearing script-text mutations, never a mixture.
-2. Every command handle resolves against one immutable latest evaluated rejected script, and a command appears at most once per payload.
-3. A successful rebuild is reevaluated as one complete ordinary HPATCH/2 script.
-4. Re-rejection advances the baseline, emits refreshed target-command handles, and invalidates every prior handle; proxy rejection leaves the baseline unchanged.
-5. Recovery cannot use another request's nonvisible calls or cross selected worktrees, and
-   unrelated tools cannot become bases. Resumed and forked threads can recover a visible inherited
-   rejection without importing later parent calls. Rejected replay validation changes no ancestry
-   or executor confirmation.
-6. Replay restores `hpatch_recover` identity and the exact emitted short payload.
-7. Ordinary mutation-leading HPATCH scripts are never detected as recovery.
-8. Captured provider calls remain individual and correlate to their actual delivered carriers.
-9. One shortcut payload corrects multiple distinct command targets without changing
-   other fields. A script-text payload can repair several fields, bodies, framing,
-   or conflicting commands while preserving every untargeted byte.
-10. A target correction can retarget an anchored or unanchored mutation to exact multiline
-    text with escaped LF; rebuilding preserves the target bytes and public control exclusions.
-11. A target correction that denotes the retained target rejects before root reevaluation,
-    including an explicit default occurrence count, an equivalent quoted escape spelling, or a
-    range whose two endpoints are the retained single row; the retained baseline and handles remain usable.
-12. Script-text edits reject malformed, stale, conflicting, unchanged, empty-result,
-    or oversized corrections without advancing ancestry or evaluating workspace
-    edits. Accepted reconstructions use the same ordinary dispatch, replay,
-    re-rejection, and isolation rules as target-only corrections.
-13. After a successfully preflighted mixed script completes an edit and then fails a
-    shell or edit segment, `hpatch_recover` refuses with mixed-specific remaining-work
-    guidance. The same exclusion applies to interrupted and successful mixed calls.
-    A mixed preflight failure before carrier retention reports that no effects occurred,
-    retains bounded script-row evidence, accepts script-text correction, and executes a
-    successfully corrected script exactly once. A rejected resume remains excluded.
+1. Shell arguments, stdin, quoting, and redirection retain ordinary semantics.
+2. Command and script-text correction forms preserve all untargeted bytes.
+3. Invalid, unchanged, oversized, or conflicting corrections do not evaluate edits.
+4. Rebuilt edits validate atomically before applying through the same engine.
+5. Explicit immutable baselines remain isolated across concurrent requests and branches.
+6. A durable recovery handle works after router restart without a live parent.
+7. A missing, successful, mismatched, or cross-directory baseline rejects.
+8. Native shell failures never become edit-recovery baselines.
+9. Replay restores the original shell call without repeating execution.

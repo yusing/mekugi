@@ -10,7 +10,7 @@ import (
 func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			root, _ := prepareActivityTest(t, proxy, "root-session", "root", "", "/root", nil)
 			prepareChild := func(session, model, effort string) *mekugiResponseTransform {
 				t.Helper()

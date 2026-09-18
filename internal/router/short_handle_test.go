@@ -3,8 +3,6 @@ package router
 import (
 	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 	"sync"
 	"testing"
 
@@ -88,69 +86,12 @@ func TestShortHandleAllocationConcurrentRestart(t *testing.T) {
 	}
 }
 
-func TestShortRecoveryHandlesSurviveRestartAndRejectStale(t *testing.T) {
-	transform, proxy, _, workspace := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	proxy.replayStore = store
-	first, err := transform.translate("original", "new bad.go\ntype \"package p\\nvar =\\n\"\n", nil)
-	if err != nil || !first.EvaluatorRejected || len(first.RecoveryHandles) != 2 {
-		t.Fatalf("rejection: %+v, %v", first, err)
-	}
-	handle := first.RecoveryHandles[1]
-	if _, ok := parseShortHandle(handle); !ok || !strings.Contains(first.TranslationError, handle+" value VALUE") {
-		t.Fatalf("missing short handle: %s", first.TranslationError)
-	}
-	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"original": first}); err != nil {
-		t.Fatal(err)
-	}
-	reopened, err := openMekugiReplayStore(store.directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	retained, found, err := reopened.lookup(t.Context(), workspace, "original")
-	if err != nil || !found || !slices.Equal(first.RecoveryHandles, retained.RecoveryHandles) {
-		t.Fatalf("replay mapping changed: %+v, %v", retained, err)
-	}
-	fresh, freshProxy, _, _ := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
-	freshProxy.replayStore = reopened
-	fresh.directory = workspace
-	fresh.visible = map[string]mekugiHistory{"original": retained}
-	rejected, err := fresh.translateRecovery("again", handle+` value "package p\nvar ?\n"`, nil)
-	if err != nil || !rejected.EvaluatorRejected || slices.Equal(rejected.RecoveryHandles, first.RecoveryHandles) {
-		t.Fatalf("re-rejection did not refresh handles: %+v, %v", rejected, err)
-	}
-	stale, err := fresh.translateRecovery("stale", handle+` value "package p\n"`, nil)
-	if err != nil || !stale.Unevaluated || !strings.Contains(stale.TranslationError, "stale") {
-		t.Fatalf("old baseline accepted: %+v, %v", stale, err)
-	}
-	fixed, err := fresh.translateRecovery("fixed", rejected.RecoveryHandles[1]+` value "package p\n"`, nil)
-	if err != nil || fixed.TranslationError != "" || fixed.CorrelationID != first.CorrelationID {
-		t.Fatalf("restarted recovery: %+v, %v", fixed, err)
-	}
-}
-
 func TestShortHandlesRejectLegacyReferences(t *testing.T) {
 	if validShellOutputID("r_AAAAAAAAAAAAAAAAAAAAAA") {
 		t.Fatal("accepted legacy read reference")
 	}
 	if _, err := expandChangeRefs([]string{"hp_a1"}); err == nil {
 		t.Fatal("accepted legacy change reference")
-	}
-	if _, err := mixedArtifactName("M" + strings.Repeat("a", 32)); err == nil {
-		t.Fatal("accepted legacy resume handle")
-	}
-}
-
-func TestRecoveryRejectsUnboundLegacyBaseline(t *testing.T) {
-	history := mekugiHistory{
-		ToolName: mekugiToolName, Script: "in f.txt\ntype 1:aaaa \"new\"\n",
-		EvaluatorRejected: true, TranslationError: "rejected",
-	}
-	if _, err := recoveryHistoryOf(slices.Values([]mekugiHistory{history})); err == nil || !strings.Contains(err.Error(), "binding") {
-		t.Fatalf("accepted unbound legacy baseline: %v", err)
 	}
 }
 
@@ -178,53 +119,6 @@ func TestShortReadCursorSurvivesRestart(t *testing.T) {
 	again, err := reopened.putReadCursor(t.Context(), source, [2]int{1, 0}, "stdout")
 	if err != nil || cursor != again {
 		t.Fatalf("cursor changed after restart: %q != %q, %v", cursor, again, err)
-	}
-}
-
-func TestShortRecoveryRejectsChangedRetainedBinding(t *testing.T) {
-	for _, mutation := range []string{"path", "mapping"} {
-		t.Run(mutation, func(t *testing.T) {
-			store, err := openMekugiReplayStore(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			baseline := "in original.txt\ntype 1:aaaa \"value\"\n"
-			handles, err := store.allocateHandles(t.Context(), 2)
-			if err != nil {
-				t.Fatal(err)
-			}
-			history := mekugiHistory{
-				ToolName: "hpatch", Script: baseline, Root: "/w",
-				EvaluatorRejected: true, TranslationError: "rejected",
-				RecoveryHandles: handles, RecoveryBinding: recoveryHandlesBinding(baseline, handles),
-			}
-			if err := store.put(t.Context(), "/w", map[string]mekugiHistory{"original": history}); err != nil {
-				t.Fatal(err)
-			}
-			if mutation == "path" {
-				history.Evaluated = strings.Replace(baseline, "original.txt", "different.txt", 1)
-			} else {
-				history.RecoveryHandles = []string{handles[1], handles[0]}
-			}
-			path := filepath.Join(store.directory, replayRecordName("/w", "original", false))
-			if err := os.WriteFile(path, mustMarshalJSON(replayRecord{
-				Version: 1, Workspace: "/w", CallID: "original", History: history,
-			}), 0600); err != nil {
-				t.Fatal(err)
-			}
-			reopened, err := openMekugiReplayStore(store.directory)
-			if err != nil {
-				t.Fatal(err)
-			}
-			retained, found, err := reopened.lookup(t.Context(), "/w", "original")
-			if err != nil || !found {
-				t.Fatalf("read damaged fixture: %v, %v", found, err)
-			}
-			if _, err := recoveryHistoryOf(slices.Values([]mekugiHistory{retained})); err == nil ||
-				!strings.Contains(err.Error(), "binding") {
-				t.Fatalf("accepted altered retained %s: %v", mutation, err)
-			}
-		})
 	}
 }
 

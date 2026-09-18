@@ -57,7 +57,7 @@ func TestCaptureRequestBaselineAfterMekugiReplay(t *testing.T) {
 			}))
 			t.Cleanup(upstream.Close)
 			provider := captureReplayProvider{client: &http.Client{Transport: recorder.Transport(http.DefaultTransport)}, url: upstream.URL}
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			var codec *ctp2Codec
 			if protocol == "ctp2" {
 				codec = mustCTP2Codec(t)

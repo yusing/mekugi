@@ -1,7 +1,7 @@
 package router
 
 import (
-	"bufio"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -49,30 +49,22 @@ type liveDiffSubscriber struct {
 	previews     []liveDiffPreview // Latest per ID, guarded by the broker mutex.
 }
 
-type liveDiffProducerRoute struct {
-	workspace, thread, change, handle string
-	expires                           time.Time
-	pending, connected, unavailable   bool
-}
-
 // The router owns this hub. Enqueueing never waits for a renderer or performs
 // network I/O, including when called at the durable publication boundary.
 type liveDiffBroker struct {
-	ctx          context.Context
-	mu           sync.Mutex
-	connection   liveDiffConnection
-	scope        liveDiffScope
-	subs         map[*liveDiffSubscriber]bool
-	producers    map[string]*liveDiffProducerRoute
-	previews     map[string]liveDiffPreview
-	coverageLost bool
+	ctx        context.Context
+	mu         sync.Mutex
+	connection liveDiffConnection
+	scope      liveDiffScope
+	subs       map[*liveDiffSubscriber]bool
+	previews   map[string]liveDiffPreview
 }
 
 func newLiveDiffBroker(ctx context.Context) *liveDiffBroker {
 	return &liveDiffBroker{
 		ctx: ctx, connection: liveDiffConnection{Token: rand.Text()},
 		scope: liveDiffScope{Workspaces: make(map[string]map[string]bool)},
-		subs:  make(map[*liveDiffSubscriber]bool), producers: make(map[string]*liveDiffProducerRoute),
+		subs:  make(map[*liveDiffSubscriber]bool),
 	}
 }
 
@@ -96,26 +88,9 @@ func cloneLiveDiffScope(scope liveDiffScope) liveDiffScope {
 	return next
 }
 
-func (b *liveDiffBroker) statusLocked() string {
-	if b.coverageLost {
-		return "UNAVAILABLE: edit publisher coverage lost for this session"
-	}
-	pending := false
-	for _, route := range b.producers {
-		if route.unavailable {
-			return "UNAVAILABLE: edit publisher disconnected"
-		}
-		pending = pending || route.pending
-	}
-	if pending {
-		return "WAITING: edit publisher connecting"
-	}
-	return ""
-}
-
 func (b *liveDiffBroker) scopeEventLocked() liveDiffEvent {
 	scope := b.scope // setScope replaces, never mutates, the broker-owned maps.
-	return liveDiffEvent{Kind: "scope", Scope: &scope, Status: b.statusLocked()}
+	return liveDiffEvent{Kind: "scope", Scope: &scope}
 }
 
 func (b *liveDiffBroker) emitLocked(event liveDiffEvent) {
@@ -272,133 +247,6 @@ func (b *liveDiffBroker) serveEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Registration precedes carrier exposure. An absent worker is visible as a
-// coverage gap rather than letting the pane silently claim to be up to date.
-func (b *liveDiffBroker) expectProducer(workspace, thread, change, handle string) liveDiffConnection {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	for token, route := range b.producers {
-		if time.Now().After(route.expires) && !route.connected {
-			b.coverageLost = b.coverageLost || route.pending || route.unavailable
-			delete(b.producers, token)
-		}
-	}
-	if len(b.producers) >= 256 || b.connection.Endpoint == "" {
-		b.coverageLost = true
-		b.emitLocked(liveDiffEvent{Kind: "coverage", Status: b.statusLocked()})
-		return liveDiffConnection{}
-	}
-	connection := liveDiffConnection{Endpoint: b.connection.Endpoint + "/producer", Token: rand.Text()}
-	b.producers[connection.Token] = &liveDiffProducerRoute{
-		workspace: workspace, thread: thread, change: change, handle: handle,
-		expires: time.Now().Add(shellArtifactTTL), pending: true,
-	}
-	b.emitLocked(liveDiffEvent{Kind: "coverage", Status: b.statusLocked()})
-	return connection
-}
-
-// A resume reuses the descriptor already retained for the worker. Never allocate
-// a replacement that the consuming control channel would not know about.
-func (b *liveDiffBroker) resumeProducer(workspace, thread, change, handle string, connection liveDiffConnection) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	route := b.producers[connection.Token]
-	if route == nil && connection.Token != "" &&
-		connection.Endpoint == b.connection.Endpoint+"/producer" && len(b.producers) < 256 {
-		// Completed workers release capacity. A later native continuation
-		// registers the same retained capability, never a replacement token.
-		route = &liveDiffProducerRoute{
-			workspace: workspace, thread: thread, change: change, handle: handle,
-			expires: time.Now().Add(shellArtifactTTL),
-		}
-		b.producers[connection.Token] = route
-	}
-	if route == nil || route.handle != handle || time.Now().After(route.expires) {
-		b.coverageLost = true
-	} else {
-		route.pending = true // Reserve the replacement before the old worker closes.
-	}
-	b.emitLocked(liveDiffEvent{Kind: "coverage", Status: b.statusLocked()})
-}
-
-type liveDiffProducerMessage struct {
-	Changes []liveDiffChange `json:",omitempty"`
-	Done    bool             `json:",omitempty"`
-}
-
-func (b *liveDiffBroker) serveProducer(w http.ResponseWriter, r *http.Request) {
-	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	b.mu.Lock()
-	route := b.producers[token]
-	if route == nil || route.connected || time.Now().After(route.expires) {
-		b.mu.Unlock()
-		http.Error(w, "invalid live diff publisher", http.StatusUnauthorized)
-		return
-	}
-	reconcile := route.unavailable
-	route.pending, route.connected, route.unavailable = false, true, false
-	if reconcile {
-		event := b.scopeEventLocked()
-		event.Resync = true
-		b.emitLocked(event)
-	} else {
-		b.emitLocked(liveDiffEvent{Kind: "coverage", Status: b.statusLocked()})
-	}
-	b.mu.Unlock()
-	complete := false
-	defer func() {
-		b.mu.Lock()
-		route.connected, route.unavailable = false, !complete
-		if complete {
-			if !route.pending {
-				delete(b.producers, token)
-			}
-			// Done follows every queued publication. A clean close changes
-			// coverage only; it must not reread historical capture files.
-			b.emitLocked(liveDiffEvent{Kind: "coverage", Status: b.statusLocked()})
-		} else {
-			// A crash or failed drain can leave a durable, unannounced edit.
-			event := b.scopeEventLocked()
-			event.Resync = true
-			b.emitLocked(event)
-		}
-		b.mu.Unlock()
-	}()
-	// Stop only this auxiliary request when the router exits. An idle worker
-	// must not keep HTTP shutdown waiting for the retained handle's lifetime.
-	_ = http.NewResponseController(w).SetReadDeadline(time.Time{})
-	stop := context.AfterFunc(b.ctx, func() {
-		_ = http.NewResponseController(w).SetReadDeadline(time.Now())
-	})
-	defer stop()
-	scanner := bufio.NewScanner(r.Body)
-	scanner.Buffer(make([]byte, 4096), maxLiveDiffEventBytes)
-	for scanner.Scan() {
-		var message liveDiffProducerMessage
-		if json.Unmarshal(scanner.Bytes(), &message) != nil {
-			http.Error(w, "invalid live diff publication", http.StatusBadRequest)
-			return
-		}
-		if message.Done {
-			complete = true
-			return
-		}
-		for _, change := range message.Changes {
-			if change.Workspace != route.workspace || change.Thread != route.thread || change.ID != route.change {
-				http.Error(w, "live diff publication identity mismatch", http.StatusForbidden)
-				return
-			}
-			for _, call := range change.Change.Calls {
-				if !strings.HasPrefix(call.ID, route.handle+"-") {
-					http.Error(w, "live diff attempt belongs to another operation", http.StatusForbidden)
-					return
-				}
-			}
-		}
-		b.publish(message.Changes) // An empty batch is the connection handshake.
-	}
-}
-
 // notifyLiveDiff runs only after a successful atomic index publication. Events
 // carry one committed batch, not an instruction to rescan the whole store.
 func (s *mekugiReplayStore) notifyLiveDiff(index changeIndex, updates map[string][]trackedCall) {
@@ -413,10 +261,17 @@ func (s *mekugiReplayStore) notifyLiveDiff(index changeIndex, updates map[string
 		}
 		for stream, info := range index.Streams {
 			if changeStreamName(stream) == streamName {
-				changes = append(changes, liveDiffChange{
-					Workspace: index.Workspace, Thread: info.Thread, Stream: stream, ID: id,
-					Change: trackedChange{Correlation: index.Changes[id].Correlation, Calls: calls},
-				})
+				byThread := make(map[string][]trackedCall)
+				for _, call := range calls {
+					thread := cmp.Or(call.Thread, info.Thread)
+					byThread[thread] = append(byThread[thread], call)
+				}
+				for _, thread := range slices.Sorted(maps.Keys(byThread)) {
+					changes = append(changes, liveDiffChange{
+						Workspace: index.Workspace, Thread: thread, Stream: stream, ID: id,
+						Change: trackedChange{Correlation: index.Changes[id].Correlation, Calls: byThread[thread]},
+					})
+				}
 				break
 			}
 		}

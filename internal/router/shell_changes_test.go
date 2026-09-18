@@ -200,33 +200,27 @@ func TestChangePathSpellings(t *testing.T) {
 	workspace := t.TempDir()
 	for _, test := range []struct {
 		path, recorded string
-		retained, want bool
+		want           bool
 	}{
-		{"file.txt", filepath.Join(workspace, "file.txt"), false, true},
-		{filepath.Join(workspace, "file.txt"), "file.txt", false, true},
-		{"./file.txt", "file.txt", false, true},
-		{"other.txt", "file.txt", false, false},
-		{"file.txt", "", false, false},
-		{"./script", "script", true, false},
-		{"script", "script", true, true},
+		{"file.txt", filepath.Join(workspace, "file.txt"), true},
+		{filepath.Join(workspace, "file.txt"), "file.txt", true},
+		{"./file.txt", "file.txt", true},
+		{"other.txt", "file.txt", false},
+		{"file.txt", "", false},
 	} {
-		got := changePathMatches(changeReadOptions{workspace: workspace, paths: []string{test.path}}, test.recorded, test.retained)
+		got := changePathMatches(changeReadOptions{workspace: workspace, paths: []string{test.path}}, test.recorded)
 		if got != test.want {
 			t.Errorf("%+v: got %v", test, got)
 		}
 	}
-	if !changePathMatches(changeReadOptions{workspace: workspace, paths: []string{"other", "script"}}, "script", true) ||
-		changePathMatches(changeReadOptions{workspace: workspace, paths: []string{"./script", "/script"}}, "script", true) {
-		t.Fatal("repeated retained-script paths must keep exact matching")
-	}
-	if changePathMatches(changeReadOptions{paths: []string{"./file.txt", "/file.txt"}}, "file.txt", false) {
+	if changePathMatches(changeReadOptions{paths: []string{"./file.txt", "/file.txt"}}, "file.txt") {
 		t.Fatal("no-directory selection must not invent a path base")
 	}
 	options, err := parseChangeRead([]string{"amber1", "--workspace", ""}, workspace)
 	if err != nil || options.workspace != "" {
 		t.Fatalf("no-directory selection: %+v, %v", options, err)
 	}
-	if changePathMatches(options, "file.txt", false) {
+	if changePathMatches(options, "file.txt") {
 		t.Fatal("empty selection unexpectedly matched")
 	}
 }

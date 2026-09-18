@@ -163,12 +163,6 @@ func runAuthenticatedToolWorker(
 		defer release()
 	}
 	if contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell" {
-		if len(args) == 0 {
-			if err := runHpatchControl(ctx, stdin, stdout); err != nil {
-				return fail(err)
-			}
-			return true, 0
-		}
 		if handled, publishErr := publishCommentaryOnce(ctx, stdout, args); handled {
 			if publishErr != nil {
 				return fail(publishErr)

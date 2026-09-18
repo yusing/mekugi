@@ -41,6 +41,7 @@ type (
 	}
 
 	toolWorkerManifest struct {
+		HookDirectory   string                     `json:"hook_directory,omitempty"`
 		ReplayDirectory string                     `json:"replay_directory,omitempty"`
 		AXReadOutput    string                     `json:"ax_read_output,omitempty"`
 		Version         int                        `json:"version"`

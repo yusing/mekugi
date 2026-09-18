@@ -487,19 +487,13 @@ func TestSessionInspectionHistoricalWorkspace(t *testing.T) {
 }
 
 func TestSessionInspectionReadsProducedRecoveryRecords(t *testing.T) {
-	transform, _, _, root := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
+	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("old\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	rejected, err := transform.translate("rejected", "in file.txt\ntype \"missing\" \"new\"\n", nil)
-	if err != nil || !rejected.EvaluatorRejected {
-		t.Fatalf("translate rejection: %+v, %v", rejected, err)
-	}
+	rejected := mekugiHistory{ToolName: mekugiToolName, Script: "in file.txt\ntype \"missing\" \"new\"\n", EvaluatorRejected: true, TranslationError: "missing target", CarrierName: "exec"}
 	const correction = `type "missing" "old"`
-	fixed, err := transform.translateRecovery("fixed", correction, nil)
-	if err != nil || fixed.TranslationError != "" || fixed.Patch == "" {
-		t.Fatalf("translate correction: %+v, %v", fixed, err)
-	}
+	fixed := mekugiHistory{ToolName: mekugiToolName, Script: correction, Evaluated: "in file.txt\ntype \"old\" \"new\"\n", Patch: testTranslatedPatch, Report: testMekugiReport, CarrierName: "exec"}
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

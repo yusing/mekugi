@@ -11,7 +11,7 @@ import (
 func TestSubagentShellExcerptsJSONAndSSE(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
 			command := "go test ./internal/router\nprintf done"
 			input := []any{
@@ -161,7 +161,7 @@ func TestCellActivityCorrelation(t *testing.T) {
 }
 
 func TestCellActivityPreparedShellReplay(t *testing.T) {
-	transform, proxy, _, workspace := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	upstream := continuationTestCall("shell", "shell-cell", "sleep 100")
 	response, err := transform.TransformJSON(mustMarshalJSON(map[string]any{"status": "completed", "output": []any{upstream}}))
 	if err != nil {

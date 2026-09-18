@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/hpatchsyntax"
 	"golang.org/x/term"
 )
 
@@ -108,53 +107,30 @@ func playLiveDiffSimulation(ctx context.Context, broker *liveDiffBroker, store *
 	}
 	sequence := 0
 	apply := func(script string) error {
-		segments, _, err := hpatchsyntax.SplitShell(script)
+		result, err := mekugi.ApplyForHostRoot(ctx, root, script, "")
 		if err != nil {
 			return err
 		}
-		for _, segment := range segments {
-			if !segment.Shell {
-				if err := mekugi.ValidateScriptSyntax(segment.Source); err != nil {
-					return err
-				}
+		for i := range result.ReviewFiles {
+			file := &result.ReviewFiles[i]
+			if file.BeforePath != "" {
+				file.BeforePath = filepath.Join(workspace, file.BeforePath)
+			}
+			if file.AfterPath != "" {
+				file.AfterPath = filepath.Join(workspace, file.AfterPath)
 			}
 		}
-		for _, segment := range segments {
-			if segment.Shell {
-				// Only fixed demonstration programs reach this path. They run
-				// in the disposable fixture, never during preview projection.
-				command := exec.CommandContext(ctx, "sh", "-c", segment.Source)
-				command.Dir = workspace
-				if output, err := command.CombinedOutput(); err != nil {
-					return fmt.Errorf("simulation shell: %w: %s", err, output)
-				}
-				continue
-			}
-			result, err := mekugi.ApplyForHostRoot(ctx, root, segment.Source, "")
-			if err != nil {
-				return err
-			}
-			for i := range result.ReviewFiles {
-				file := &result.ReviewFiles[i]
-				if file.BeforePath != "" {
-					file.BeforePath = filepath.Join(workspace, file.BeforePath)
-				}
-				if file.AfterPath != "" {
-					file.AfterPath = filepath.Join(workspace, file.AfterPath)
-				}
-			}
-			sequence++
-			call := fmt.Sprintf("simulation-%d", sequence)
-			id, err := store.reserveChange(ctx, workspace, "simulation", call)
-			if err != nil {
-				return err
-			}
-			if err := store.put(ctx, workspace, map[string]mekugiHistory{call: {
-				Script: segment.Source, ChangeID: id, CorrelationID: call,
-				Applied: true, ReviewFiles: result.ReviewFiles,
-			}}); err != nil {
-				return err
-			}
+		sequence++
+		call := fmt.Sprintf("simulation-%d", sequence)
+		id, err := store.reserveChange(ctx, workspace, "simulation", call)
+		if err != nil {
+			return err
+		}
+		if err := store.put(ctx, workspace, map[string]mekugiHistory{call: {
+			Script: script, ChangeID: id, CorrelationID: call,
+			Applied: true, ReviewFiles: result.ReviewFiles,
+		}}); err != nil {
+			return err
 		}
 		return nil
 	}
@@ -179,8 +155,11 @@ func playLiveDiffSimulation(ctx context.Context, broker *liveDiffBroker, store *
 		steps := liveDiffSimulationSteps()
 		for index, step := range steps {
 			status(fmt.Sprintf("%d/%d · %s · cycle %d", index+1, len(steps), step.name, cycle))
-			worker := startLiveDiffPreview(ctx, broker, workspace, "simulation", step.tool)
+			worker := startLiveDiffPreview(ctx, broker, workspace, "simulation")
 			var script strings.Builder
+			if step.tool != "shell" {
+				worker.appendDelta("hpatch <<'EDIT'\n")
+			}
 			streamErr := func() error {
 				defer func() { worker.stop(); <-worker.done }()
 				for _, fragment := range step.fragments {
@@ -190,18 +169,28 @@ func playLiveDiffSimulation(ctx context.Context, broker *liveDiffBroker, store *
 						return err
 					}
 				}
+				if step.tool != "shell" && !step.interrupt {
+					worker.appendDelta("\nEDIT\n")
+				}
 				// Even --speed 20 leaves the asynchronous worker time to publish.
 				return pause(max(750*time.Millisecond, time.Duration(speed*float64(3*liveDiffPreviewFrameDelay))))
 			}()
 			if streamErr != nil {
 				return streamErr
 			}
-			if !step.interrupt && step.tool != mekugiRecoveryToolName {
+			if !step.interrupt {
 				source := script.String()
+				var err error
 				if step.tool == "shell" {
-					source = "shell <<SIMULATION_SHELL\n" + source + "SIMULATION_SHELL\n"
+					command := exec.CommandContext(ctx, "sh", "-c", source)
+					command.Dir = workspace
+					if output, runErr := command.CombinedOutput(); runErr != nil {
+						err = fmt.Errorf("simulation shell: %w: %s", runErr, output)
+					}
+				} else {
+					err = apply(source)
 				}
-				err := apply(source)
+
 				if step.reject {
 					if err == nil {
 						return errors.New("simulation rejection unexpectedly applied")
@@ -311,11 +300,12 @@ func TestHandler(t *testing.T) {
 			fragments: []string{"in routes.go\ntype \"\\\"/api/001\\\"\" \"\\\"/v2/001\\\"\"\n",
 				"type \"\\\"/api/180\\\"\" \"\\\"/v2/180\\\"\"\nnew handler_test.go\ntype <<TEXT\n",
 				testSource + "TE", "XT\n"}},
-		{name: "shell-in-hpatch · streamed script, then actual segment captures", delay: 350 * time.Millisecond,
-			fragments: []string{"new audit.go\ntype \"package demo\\n\\nconst phase = \\\"prepared\\\"\\n\"\n",
-				"shell printf '%s\\n' 'checked fixture' > shell.log\n",
-				"in audit.go\ntype \"prepared\" \"completed\"\n",
-				"shell <<SHELL\ntest -f audit.go\nprintf '%s\\n' 'SHELL_TIP' >> shell.log\n", "SHELL\n"}},
+		{name: "edit · streamed script, then actual capture", delay: 350 * time.Millisecond,
+			fragments: []string{"new audit.go\ntype \"package demo\\n\\nconst phase = \\\"completed\\\"\\n\"\n"}},
+		{name: "shell · ordinary execution after the edit", tool: "shell", delay: 350 * time.Millisecond,
+			fragments: []string{"printf '%s\\n' 'checked fixture' > shell.log\n",
+				"test -f audit.go\nprintf '%s\\n' 'SHELL_TIP' >> shell.log\n"}},
+
 		{name: "functions.shell · direct source, 7:3 layout", tool: "shell", delay: 350 * time.Millisecond,
 			fragments: []string{"printf '%s\\n' 'standalone shell' > standalone.log\n",
 				"test -f audit.go\n", "printf '%s\\n' 'FUNCTIONS_SHELL_TIP' >> standalone.log\n"}},
@@ -329,8 +319,6 @@ func TestHandler(t *testing.T) {
 		{name: "rejection · keep applied state intact", delay: 500 * time.Millisecond, reject: true,
 			fragments: []string{"in handler.go\ntype \"demo requests\" \"rejected requests\"\n",
 				"type \"target that does not exist\" \"rejected\"\n"}},
-		{name: "hpatch recovery · emitted correction overlay (display only)", tool: mekugiRecoveryToolName, delay: 350 * time.Millisecond,
-			fragments: []string{"maple target \"", "demo requests\"\n", "maple value <<FIX\n", "RECOVERY_TIP\n", "FIX\n"}},
 		{name: "interruption · preview only, no application", delay: 500 * time.Millisecond, interrupt: true,
 			fragments: []string{"in handler.go\nadd EOF <<PATCH\n\nfunc InterruptedPreview() string {\n",
 				"\treturn \"INTERRUPTED_TIP"}},

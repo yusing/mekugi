@@ -9,7 +9,7 @@ import (
 )
 
 func TestCodeModeHpatchRetainsExactCarrier(t *testing.T) {
-	transform, proxy, _, workspace := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
+	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	directory := t.TempDir()
 	store, err := openMekugiReplayStore(directory)
 	if err != nil {
@@ -23,9 +23,8 @@ func TestCodeModeHpatchRetainsExactCarrier(t *testing.T) {
 		id, tool, script string
 		rejected         bool
 	}{
-		{"success", mekugiToolName, "in file.txt\ntype \"old\" \"new\"\n", false},
-		{"rejected", mekugiToolName, "in file.txt\ntype \"missing\" \"new\"\n", true},
-		{"recovered", mekugiRecoveryToolName, `type "missing" "old"`, false},
+		{"success", "shell", "hpatch " + shellQuoteArgument("in file.txt\ntype \"old\" \"new\"\n"), false},
+		{"rejected-at-execution", "shell", "hpatch " + shellQuoteArgument("in file.txt\ntype \"missing\" \"new\"\n"), false},
 	} {
 		t.Run(step.id, func(t *testing.T) {
 			original := map[string]json.RawMessage{
@@ -55,12 +54,6 @@ func TestCodeModeHpatchRetainsExactCarrier(t *testing.T) {
 			}
 			if retained.CarrierKind != codeModeCarrierCustom || retained.CarrierPayload == "" || retained.CarrierPayload != *item.Input {
 				t.Fatalf("carrier not pinned: kind=%q payload=%q delivered=%q", retained.CarrierKind, retained.CarrierPayload, *item.Input)
-			}
-			// Legacy records must still render the same bytes after restart.
-			legacy := retained
-			legacy.CarrierKind, legacy.CarrierPayload = "", ""
-			if legacy.carrierInput() != retained.CarrierPayload {
-				t.Fatal("legacy rendering changed")
 			}
 			request := &parsedResponsesRequest{fields: map[string]json.RawMessage{"input": mustMarshalJSON([]any{item.cloneFields()})}}
 			restarted := &mekugiProxy{replayStore: reopened}
@@ -118,16 +111,18 @@ text(JSON.stringify(Object.assign({}, result, {"retained":true,"script_ref":"@sh
 }
 
 func TestReplayFailureLeavesParsedRequestUnchanged(t *testing.T) {
-	transform, proxy, _, workspace := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
+	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	proxy.replayStore = store
-	history, err := transform.translate("call", "new file.txt\ntype \"new\\n\"\n", nil)
+	id, err := store.reserveChange(t.Context(), workspace, transform.threadID, "call")
 	if err != nil {
 		t.Fatal(err)
 	}
+	history := mekugiHistory{ToolName: mekugiToolName, Script: testMekugiScript, Patch: testTranslatedPatch, Report: testMekugiReport, ChangeID: id, CorrelationID: "call", CarrierName: "exec"}
+	transform.recordLocal("call", &history)
 	if err := transform.commitLocalCall("call"); err != nil {
 		t.Fatal(err)
 	}
@@ -174,13 +169,13 @@ func TestReplayFailureLeavesParsedRequestUnchanged(t *testing.T) {
 	}
 }
 
-func TestTrackedStatusUsesRetainedScriptNotCarrierKind(t *testing.T) {
+func TestTrackedStatusDoesNotInferApplicationFromScript(t *testing.T) {
 	for _, test := range []struct {
 		script, want string
 	}{
 		{"new f\ntype \"shell echo not a command\"\n", "prepared (application unconfirmed)"},
-		{"shell echo command\n", "execution plan (see segment attempts)"},
-		{"resume M00000000000000000000000000000000\n", "execution plan (see segment attempts)"},
+		{"shell echo command\n", "prepared (application unconfirmed)"},
+		{"resume M00000000000000000000000000000000\n", "prepared (application unconfirmed)"},
 	} {
 		history := mekugiHistory{ToolName: mekugiToolName, Script: test.script, CarrierKind: codeModeCarrierCustom}
 		history = durableHistory(history)
@@ -193,7 +188,7 @@ func TestTrackedStatusUsesRetainedScriptNotCarrierKind(t *testing.T) {
 		Script:    `type "ontail\n" ""`,
 		Evaluated: "shell echo command\n",
 	}
-	if got := trackedStatus(durableHistory(recovered), false); got != "execution plan (see segment attempts)" {
+	if got := trackedStatus(durableHistory(recovered), false); got != "prepared (application unconfirmed)" {
 		t.Errorf("recovered mixed script: got %q", got)
 	}
 }

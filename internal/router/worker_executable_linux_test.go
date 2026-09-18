@@ -69,7 +69,7 @@ func TestPinnedToolWorkerProcess(t *testing.T) {
 		replace()
 	}
 	t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
-	registry, err := buildToolRegistry(t.Context(), t.TempDir(), testMekugiToolDescription, false)
+	registry, err := buildToolRegistry(t.Context(), t.TempDir(), false)
 	if err != nil {
 		t.Fatal(err)
 	}

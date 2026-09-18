@@ -360,9 +360,6 @@ func liveDiffColorSource(ctx context.Context, theme liveDiffTheme, path, source 
 		}
 	}()
 	lexer := lexers.Match(path)
-	if path == "stream.hpatch" {
-		lexer = liveDiffHPatchLexer
-	}
 	if lexer == nil || len(source) > maxLiveDiffSyntaxBytes {
 		return plain, nil
 	}

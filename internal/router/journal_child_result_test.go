@@ -12,7 +12,7 @@ func TestJournalChildCompletionResult(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		for _, state := range []string{"empty", "pending", "reported", "flushed", "edited", "deleted"} {
 			t.Run(map[bool]string{false: "json/", true: "sse/"}[stream]+state, func(t *testing.T) {
-				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				proxy := newManagedMekugiProxy(t)
 				child, _ := prepareActivityTest(t, proxy, "child", "child", "root", "/root/child", nil)
 				defer child.Close()
 				apply := func(mutations ...journalMutation) {
@@ -135,7 +135,7 @@ func TestJournalChildCompletionResult(t *testing.T) {
 }
 
 func TestJournalChildResultCapacity(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	child, _ := prepareActivityTest(t, proxy, "child", "child", "root", "/root/child", nil)
 	defer child.Close()
 	key := journalKey(child.directory, "child")
@@ -151,7 +151,7 @@ func TestJournalChildResultCapacity(t *testing.T) {
 }
 
 func TestJournalChildResultAfterRestart(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	var err error
 	proxy.replayStore, err = openMekugiReplayStore(t.TempDir())
 	if err != nil {

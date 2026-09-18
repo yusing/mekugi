@@ -137,7 +137,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T, shellFinish bool) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	workspace := t.TempDir()
 	provider := &journalCodexProvider{turns: make(map[string]int), shellFinish: shellFinish}
-	proxy := newManagedMekugiProxy(t, newInProcessMekugiTranslator(t.TempDir()))
+	proxy := newManagedMekugiProxy(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

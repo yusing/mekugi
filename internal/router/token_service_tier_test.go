@@ -71,7 +71,7 @@ func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
 				{"priority", `"unpriced"`, "n/a"},
 			} {
 				t.Run(fmt.Sprintf("writes=%d/stream=%t/%s/%s", cacheWrites, stream, tc.requested, tc.served), func(t *testing.T) {
-					proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+					proxy := newManagedMekugiProxy(t)
 					request := serverRequest(t, func(fields map[string]any) {
 						fields["model"], fields["stream"] = "gpt-5.6-sol", stream
 						if tc.requested != "" {

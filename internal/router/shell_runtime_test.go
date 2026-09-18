@@ -10,7 +10,7 @@ import (
 )
 
 func TestPreparedRequestStoresCurrentShellRuntime(t *testing.T) {
-	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, proxy, _, _ := newMekugiTestTransform(t)
 	runtimePath, err := shellruntime.Path(proxy.shellDirectory, "thread-1")
 	if err != nil {
 		t.Fatal(err)
@@ -55,9 +55,6 @@ func TestShellRuntimeRejectsTraversalAndSymlinkDirectories(t *testing.T) {
 	}
 	if _, err := proxy.storeShellRuntime("symlink-scripts"); err != nil {
 		t.Fatalf("launcher depended on scripts: %v", err)
-	}
-	if proxy.storeShellState(directory, "call", "changed") {
-		t.Fatal("accepted symlink script storage")
 	}
 	if got, err := os.ReadFile(sentinel); err != nil || string(got) != "untouched" {
 		t.Fatalf("outside launcher changed: %q, %v", got, err)

@@ -62,7 +62,7 @@ func TestCollaborationCallsPassThroughWithoutCommentary(t *testing.T) {
 }
 
 func TestChildProviderCommentaryAdmissionAndDistinctSources(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
 	child, _ := prepareActivityTest(t, proxy, "child", "c", "r", "/root/worker", nil)
 	orphan, _ := prepareActivityTest(t, proxy, "orphan", "o", "unknown", "/root/orphan", nil)
@@ -104,7 +104,7 @@ func TestChildProviderCommentaryAdmissionAndDistinctSources(t *testing.T) {
 func TestChildProviderCommentaryForwardsWithoutChangingHistory(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
 			other, _ := prepareActivityTest(t, proxy, "other", "other", "", "/root", nil)
 			_, _ = prepareActivityTest(t, proxy, "parent", "p", "r", "/root/worker", nil)

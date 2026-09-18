@@ -7,13 +7,6 @@ import (
 	"github.com/tiktoken-go/tokenizer"
 )
 
-func TestMekugiToolDescriptionStaysNonInstructional(t *testing.T) {
-	const want = "HPATCH/2 edits and mixed edit/command execution (Code Mode required for mixed scripts). Edit validation is atomic; failed host application may have partial effects."
-	if MekugiToolDescription != want {
-		t.Fatalf("MekugiToolDescription = %q, want %q", MekugiToolDescription, want)
-	}
-}
-
 func TestInstructionsSelectModelWorkflowIndependentlyOfTransport(t *testing.T) {
 	for _, model := range []string{"gpt-6-astra", "gpt-6-astra-2026-09-01", "gpt-5.6-sol", "gpt-6-astral", "other-astra", ""} {
 		for _, compact := range []bool{false, true} {
@@ -48,17 +41,15 @@ func TestInstructionsSelectModelWorkflowIndependentlyOfTransport(t *testing.T) {
 	}
 }
 
-func TestInstructionsTeachMixedScriptBoundaries(t *testing.T) {
+func TestInstructionsTeachStandaloneShellEdits(t *testing.T) {
 	for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol"} {
 		for _, compact := range []bool{false, true} {
 			got := instructionWords(InstructionsForModel(model, compact))
 			for _, required := range []string{
-				"`shell go test ./...`", "heredoc for multiline source or source containing `<<`", "Completed edits and shell effects are not rolled back",
-				"`resume HANDLE`", "`resume HANDLE retry`", "`resume HANDLE repair`", "`resume HANDLE accept`",
-				"Successful recovery runs the retained suffix", "expire one hour after creation without renewal",
-				"uncertain effects; missing confirmation does not mean rollback", "Do not replay a mixed script",
-				"every edit segment with `in` or `new`", "Native-only clients use separate hpatch and shell calls",
-				"mixed script whose preflight failed before carrier retention",
+				"`hpatch [SCRIPT]` through `functions.shell`",
+				"standalone shell command",
+				"normal shell semantics",
+				"`hpatch --recover HANDLE [SCRIPT]`",
 			} {
 				if !strings.Contains(got, required) {
 					t.Errorf("model %q compact %v omits %q", model, compact, required)
@@ -316,14 +307,14 @@ func TestInstructionsStayWithinMekugiAndPrivateTools(t *testing.T) {
 
 func TestRecoveryGuidanceRendersDynamicReferences(t *testing.T) {
 	const references = "Rejected target commands:\n"
-	const want = "\nRepair only the stale targets in the retained rejected script. Each line is a current `HANDLE` command handle followed directly by one different ordinary HPATCH/2 target. Submit every listed correction in one atomic payload. Other commands and fields are preserved. A re-rejection changes no workspace file and makes every earlier handle stale. For other corrections, use ordinary type/add mutations through functions.hpatch_recover against retained-script text.\n\n" + references
+	const want = "\nRepair only the stale targets in the retained rejected script. Each line is a current `HANDLE` command handle followed directly by one different ordinary HPATCH/2 target. Submit every listed correction in one atomic payload. Other commands and fields are preserved. A re-rejection changes no workspace file and makes every earlier handle stale. For other corrections, use ordinary type/add mutations through hpatch --recover HANDLE against retained-script text.\n\n" + references
 	if got := RecoveryGuidance(references); got != want {
 		t.Fatalf("RecoveryGuidance() = %q, want %q", got, want)
 	}
 }
 
 func TestRecoveryGuidanceWithoutReferences(t *testing.T) {
-	const want = "\nRepair only the stale targets in the retained rejected script. Each line is a current `HANDLE` command handle followed directly by one different ordinary HPATCH/2 target. Submit every listed correction in one atomic payload. Other commands and fields are preserved. A re-rejection changes no workspace file and makes every earlier handle stale. For other corrections, use ordinary type/add mutations through functions.hpatch_recover against retained-script text.\n\n"
+	const want = "\nRepair only the stale targets in the retained rejected script. Each line is a current `HANDLE` command handle followed directly by one different ordinary HPATCH/2 target. Submit every listed correction in one atomic payload. Other commands and fields are preserved. A re-rejection changes no workspace file and makes every earlier handle stale. For other corrections, use ordinary type/add mutations through hpatch --recover HANDLE against retained-script text.\n\n"
 	if got := RecoveryGuidance(""); got != want {
 		t.Fatalf("RecoveryGuidance() = %q, want %q", got, want)
 	}

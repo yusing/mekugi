@@ -148,7 +148,7 @@ func TestTokenCostReportIncludesCompactionAcrossTransports(t *testing.T) {
 		{"sse-excess-reasoning", true, "reasoning", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			for step, model := range []string{"gpt-6-astra", "gpt-5.6-sol"} {
 				requestStream := tc.stream || step == 0 // Compaction requires streaming.
 				request := serverRequest(t, func(fields map[string]any) {

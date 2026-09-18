@@ -291,7 +291,7 @@ func TestShellRunnerInspectsOutsideFile(t *testing.T) {
 }
 
 func TestShellRunnerReadsFormerShellPathsAsWorkspaceFiles(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	directory := t.TempDir()
 	if err := os.Mkdir(filepath.Join(directory, "@shell"), 0o700); err != nil {
 		t.Fatal(err)

@@ -160,7 +160,7 @@ func TestThreadCommentaryReplaySurvivesSessionRemapAndExpiry(t *testing.T) {
 }
 
 func TestThreadCommentaryCannotReclaimToolHistoryCapacity(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	// Four almost-full sessions exercise both the session and global budgets.
 	script := strings.Repeat("x", maxMekugiHistorySessionBytes-256)
 	for i := range 4 {
@@ -245,7 +245,7 @@ func TestChildThreadCommentaryPreservesSubstantiveStreamResult(t *testing.T) {
 }
 
 func TestThreadCommentaryDoesNotCrossSharedRoutingSession(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
 	workspace := t.TempDir()
 	prepare := func(thread string) *mekugiResponseTransform {

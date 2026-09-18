@@ -1,6 +1,6 @@
 ## File editing
 
-Use `functions.hpatch` for routine edits and formatters for formatting or bulk mechanical rewrites.
+Use `hpatch` through `functions.shell` for routine edits and formatters for formatting or bulk mechanical rewrites.
 Tool coordination below covers native-interface tasks.
 
 ## Shell execution

@@ -102,12 +102,12 @@ func TestToolRegistryStartup(t *testing.T) {
 
 	t.Run("missing directory loads embedded built-ins", func(t *testing.T) {
 		t.Parallel()
-		registry, err := buildToolRegistryForTest(t, t.Context(), t.TempDir(), testMekugiToolDescription, false)
+		registry, err := buildToolRegistryForTest(t, t.Context(), t.TempDir(), false)
 		if err != nil {
 			t.Fatal(err)
 		}
 		snapshot := registry.SnapshotDir
-		if registry.NodeExecutable == "" || len(registry.ordered) != 9 {
+		if registry.NodeExecutable == "" || len(registry.ordered) != 8 {
 			t.Fatalf("registry = %+v", registry)
 		}
 		if err := registry.installFrontends(); err != nil {
@@ -129,10 +129,7 @@ func TestToolRegistryStartup(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(specifications) != 3 ||
-			specifications[0].Name != "hpatch" ||
-			specifications[1].Name != "hpatch_recover" ||
-			specifications[2].Name != "shell" {
+		if len(specifications) != 1 || specifications[0].Name != "shell" {
 			t.Fatalf("model-visible specifications = %#v", specifications)
 		}
 		if err := registry.Close(); err != nil {
@@ -150,7 +147,7 @@ func TestToolRegistryStartup(t *testing.T) {
 
 	t.Run("diagnose mode adds router-native report issue", func(t *testing.T) {
 		t.Parallel()
-		registry, err := buildToolRegistryForTest(t, t.Context(), t.TempDir(), testMekugiToolDescription, true)
+		registry, err := buildToolRegistryForTest(t, t.Context(), t.TempDir(), true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -178,11 +175,7 @@ func TestToolRegistryStartup(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(specifications) != 4 ||
-			specifications[0].Name != mekugiToolName ||
-			specifications[1].Name != mekugiRecoveryToolName ||
-			specifications[2].Name != reportIssueToolName ||
-			specifications[3].Name != "shell" {
+		if len(specifications) != 2 || specifications[0].Name != reportIssueToolName || specifications[1].Name != "shell" {
 			t.Fatalf("model-visible specifications = %#v", specifications)
 		}
 	})
@@ -208,14 +201,14 @@ func TestToolRegistryStartup(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, testMekugiToolDescription, false)
+		registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, false)
 		if err != nil {
 			t.Fatal(err)
 		}
 		snapshot := registry.SnapshotDir
-		if len(registry.ordered) != 11 ||
-			registry.ordered[9].PluginID != "alpha.plugin" ||
-			registry.ordered[10].PluginID != "zeta.plugin" {
+		if len(registry.ordered) != 10 ||
+			registry.ordered[8].PluginID != "alpha.plugin" ||
+			registry.ordered[9].PluginID != "zeta.plugin" {
 			t.Fatalf("registration order = %+v", registry.ordered)
 		}
 		for _, name := range []string{"alpha_tool", "zeta_tool"} {
@@ -258,7 +251,7 @@ func TestToolRegistryStartup(t *testing.T) {
 			t.Fatal(err)
 		}
 		registryID, authenticated := toolRegistryIDFromDirectory(snapshot)
-		if !authenticated || manifest.RegistryID != registryID || len(manifest.Tools) != 11 {
+		if !authenticated || manifest.RegistryID != registryID || len(manifest.Tools) != 10 {
 			t.Fatalf("manifest = %+v, snapshot registry ID %q, authenticated %t", manifest, registryID, authenticated)
 		}
 		if err := registry.Close(); err != nil {
@@ -278,7 +271,7 @@ func TestToolRegistryStartup(t *testing.T) {
 		writePlugin(t, pluginDirectory, "duplicate-b.mjs", declaration("duplicate.plugin", "other_tool", ""))
 		writePlugin(t, pluginDirectory, "shell.mjs", declaration("shell.plugin", "eval", ""))
 		writePlugin(t, pluginDirectory, "configured-shell.mjs", declaration("example.shell", "shell", ""))
-		registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, testMekugiToolDescription, false)
+		registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, false)
 		if registry != nil || err == nil {
 			t.Fatalf("registry = %+v, error = %v", registry, err)
 		}

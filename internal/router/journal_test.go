@@ -255,7 +255,7 @@ func TestJournalDeliverySerializesIndependentStores(t *testing.T) {
 func TestJournalStateWaitHonorsCancellation(t *testing.T) {
 	for _, operation := range []string{"transaction", "list", "delivery"} {
 		t.Run(operation, func(t *testing.T) {
-			transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+			transform, proxy, _, _ := newMekugiTestTransform(t)
 			release, err := proxy.journals.lockState(t.Context())
 			if err != nil {
 				t.Fatal(err)

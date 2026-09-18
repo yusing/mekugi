@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi"
 )
 
 func liveDiffTestBroker(t *testing.T, store *mekugiReplayStore, scope liveDiffScope) (string, *liveDiffBroker, context.CancelFunc) {
@@ -20,7 +22,6 @@ func liveDiffTestBroker(t *testing.T, store *mekugiReplayStore, scope liveDiffSc
 	broker := newLiveDiffBroker(ctx)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+liveDiffEventsPath, broker.serveEvents)
-	mux.HandleFunc("POST "+liveDiffEventsPath+"/producer", broker.serveProducer)
 	server := httptest.NewServer(mux)
 	t.Cleanup(func() { cancel(); server.Close() })
 	broker.setEndpoint(server.URL + liveDiffEventsPath)
@@ -147,39 +148,6 @@ func TestLiveDiffSubscriberOverflowAndIsolation(t *testing.T) {
 	}
 }
 
-func TestLiveDiffMixedProducerPublishesEachReceipt(t *testing.T) {
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	workspace := t.TempDir()
-	_, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
-	changeID, err := store.reserveChange(t.Context(), workspace, "thread", "mixed")
-	if err != nil {
-		t.Fatal(err)
-	}
-	sub := broker.subscribe()
-	connection := broker.expectProducer(workspace, "thread", changeID, "Mfixture")
-	producer := startLiveDiffProducer(t.Context(), connection)
-	defer producer.close()
-	state := hpatchResumeState{
-		Root: workspace, ReplayDirectory: store.directory, ChangeID: changeID,
-		CorrelationID: "mixed", Handle: "Mfixture", liveDiff: producer.publish,
-	}
-	result, err := state.translateTracked(t.Context(), "new file.txt\ntype \"content\\n\"")
-	if err != nil {
-		t.Fatal(err)
-	}
-	prepared := waitLiveDiffChange(t, sub, false)
-	if prepared.ID != changeID || prepared.Change.Calls[0].ID != result.AttemptID {
-		t.Fatalf("wrong segment event: %+v", prepared)
-	}
-	if err := state.confirmTracked(t.Context(), result.AttemptID); err != nil {
-		t.Fatal(err)
-	}
-	waitLiveDiffChange(t, sub, true)
-}
-
 func waitLiveDiffEvent(t *testing.T, sub *liveDiffSubscriber, match func(liveDiffEvent) bool) liveDiffEvent {
 	t.Helper()
 	timer := time.NewTimer(5 * time.Second)
@@ -195,70 +163,6 @@ func waitLiveDiffEvent(t *testing.T, sub *liveDiffSubscriber, match func(liveDif
 		case <-timer.C:
 			t.Fatal("missing live diff event")
 		}
-	}
-}
-
-func TestLiveDiffWorkerCoverageLifecycle(t *testing.T) {
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{"/work": {"thread": true}}})
-	sub := broker.subscribe()
-	<-sub.events
-	connection := broker.expectProducer("/work", "thread", "amber1", "Mfixture")
-	producer := startLiveDiffProducer(t.Context(), connection)
-	waitLiveDiffEvent(t, sub, func(e liveDiffEvent) bool { return e.Kind == "coverage" && e.Status == "" })
-	producer.close()
-	event := waitLiveDiffEvent(t, sub, func(e liveDiffEvent) bool { return e.Kind == "scope" || e.Kind == "coverage" })
-	if event.Kind != "coverage" || event.Status != "" {
-		t.Fatalf("clean close caused a rescan or coverage loss: %+v", event)
-	}
-	broker.mu.Lock()
-	count := len(broker.producers)
-	broker.mu.Unlock()
-	if count != 0 {
-		t.Fatal("completed workers did not release publisher capacity")
-	}
-	broker.resumeProducer("/work", "thread", "amber1", "Mfixture", connection)
-	producer = startLiveDiffProducer(t.Context(), connection)
-	defer producer.close()
-	waitLiveDiffEvent(t, sub, func(e liveDiffEvent) bool { return e.Kind == "coverage" && e.Status == "" })
-	// An abrupt connection close must reconcile possible committed but
-	// unannounced records and retain UNAVAILABLE until coverage is restored.
-	producer.cancel()
-	event = waitLiveDiffEvent(t, sub, func(e liveDiffEvent) bool { return e.Kind == "scope" })
-	if !event.Resync || !strings.Contains(event.Status, "UNAVAILABLE") {
-		t.Fatalf("worker disconnect was hidden: %+v", event)
-	}
-	broker.resumeProducer("/work", "thread", "amber1", "Mfixture", connection)
-	producer = startLiveDiffProducer(t.Context(), connection)
-	defer producer.close()
-	event = waitLiveDiffEvent(t, sub, func(e liveDiffEvent) bool { return e.Kind == "scope" })
-	if !event.Resync || event.Status != "" {
-		t.Fatalf("restored worker did not reconcile before claiming coverage: %+v", event)
-	}
-}
-
-func TestLiveDiffCapacityGapSurvivesScopeAndResume(t *testing.T) {
-	broker := newLiveDiffBroker(t.Context())
-	broker.setEndpoint("http://127.0.0.1:1234" + liveDiffEventsPath)
-	for i := range 256 {
-		broker.expectProducer("/work", "thread", "amber1", fmt.Sprint(i))
-	}
-	refused := broker.expectProducer("/work", "thread", "amber1", "refused")
-	if refused != (liveDiffConnection{}) {
-		t.Fatal("capacity was not enforced")
-	}
-	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{"/work": {"thread": true}}})
-	clear(broker.producers) // Simulate later capacity becoming available.
-	broker.resumeProducer("/work", "thread", "amber1", "refused", refused)
-	if len(broker.producers) != 0 {
-		t.Fatal("resume allocated a descriptor the refused worker cannot read")
-	}
-	sub := broker.subscribe()
-	if event := <-sub.events; !strings.Contains(event.Status, "UNAVAILABLE") {
-		t.Fatalf("reconnect hid a refused publisher: %+v", event)
 	}
 }
 
@@ -290,21 +194,6 @@ func TestLiveDiffScopeReconciliationUsesCachedAttempts(t *testing.T) {
 	}
 	if err := data.reconcile(t.Context(), store, scope); err == nil {
 		t.Fatal("reconciliation hid removed membership")
-	}
-}
-
-func TestLiveDiffWorkerQueueOverflowDoesNotBlock(t *testing.T) {
-	canceled := make(chan struct{})
-	producer := &liveDiffProducer{
-		queue:  make(chan liveDiffProducerMessage, 1),
-		cancel: func() { close(canceled) },
-	}
-	producer.publish([]liveDiffChange{{}})
-	producer.publish([]liveDiffChange{{}})
-	select {
-	case <-canceled:
-	default:
-		t.Fatal("overflow did not invalidate the publisher connection")
 	}
 }
 
@@ -343,7 +232,7 @@ func TestLiveDiffStreamReconnectSnapshotBarrier(t *testing.T) {
 
 func TestLiveDiffPublisherRequiresCapability(t *testing.T) {
 	broker := newLiveDiffBroker(t.Context())
-	for _, handler := range []http.HandlerFunc{broker.serveEvents, broker.serveProducer} {
+	for _, handler := range []http.HandlerFunc{broker.serveEvents} {
 		response := httptest.NewRecorder()
 		handler(response, httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{}\n")))
 		data, _ := io.ReadAll(response.Result().Body)
@@ -354,7 +243,7 @@ func TestLiveDiffPublisherRequiresCapability(t *testing.T) {
 }
 
 func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
-	transform, proxy, _, workspace := newMekugiTestTransform(t, newInProcessMekugiTranslator(t.TempDir()))
+	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -365,16 +254,19 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 	})
 	sub := broker.subscribe()
 	<-sub.events
-	var output []map[string]any
+	histories := make(map[string]mekugiHistory)
 	for _, name := range []string{"first", "second"} {
-		output = append(output, map[string]any{
-			"type": "custom_tool_call", "id": "item-" + name, "call_id": name,
-			"name": mekugiToolName, "input": "new " + name + ".txt\ntype \"content\\n\"",
-		})
+		id, err := store.reserveChange(t.Context(), workspace, transform.shellThreadID, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err := mekugi.ApplyForHostAt(t.Context(), workspace, "new "+name+".txt\ntype \"content\\n\"", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		histories[name] = mekugiHistory{ToolName: mekugiToolName, ChangeID: id, CorrelationID: name, Applied: true, ReviewFiles: result.ReviewFiles}
 	}
-	if _, _, err := transform.transformResponse(mustMarshalJSON(map[string]any{
-		"id": "response", "status": "completed", "output": output,
-	}), ""); err != nil {
+	if err := store.put(t.Context(), workspace, histories); err != nil {
 		t.Fatal(err)
 	}
 	event := waitLiveDiffEvent(t, sub, func(e liveDiffEvent) bool { return e.Kind == "change" })
@@ -400,7 +292,7 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 		}
 	}
 	// Replay of that unchanged response does not create another display update.
-	if err := transform.commitHistory(); err != nil {
+	if err := store.put(t.Context(), workspace, histories); err != nil {
 		t.Fatal(err)
 	}
 	if len(sub.events) != 0 {
@@ -431,98 +323,11 @@ func TestLiveDiffDelayedCaptureDoesNotFollowBackwards(t *testing.T) {
 	}
 }
 
-func TestLiveDiffIdleProducerStopsWithRouter(t *testing.T) {
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, broker, stop := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{}})
-	sub := broker.subscribe()
-	connection := broker.expectProducer("/work", "thread", "amber1", "Mfixture")
-	producer := startLiveDiffProducer(t.Context(), connection)
-	defer producer.close()
-	waitLiveDiffEvent(t, sub, func(e liveDiffEvent) bool { return e.Kind == "coverage" && e.Status == "" })
-	stop()
-	select {
-	case <-producer.done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("idle publisher outlived router shutdown")
-	}
-}
-
-func TestLiveDiffResumeReplacesConnectedControlWorker(t *testing.T) {
-	transform, _ := mixedTestTransform(t)
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	transform.proxy.replayStore = store
-	_, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
-		Workspaces: map[string]map[string]bool{transform.directory: {transform.shellThreadID: true}},
-	})
-	transform.proxy.autoLiveDiff = &autoLiveDiff{events: broker}
-	transform.proxy.autoLiveDiff.enabled.Store(true)
-	id, err := store.reserveChange(t.Context(), transform.directory, transform.shellThreadID, "resume")
-	if err != nil {
-		t.Fatal(err)
-	}
-	state, err := transform.retainMixedScript(id, "resume", "shell true", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sub := broker.subscribe()
-	one, repliesOne, doneOne := startHpatchControlTest(t, transform)
-	controlTestRequest(t, one, repliesOne, hpatchControlRequest{Operation: "open", Handle: state.Handle})
-	waitLiveDiffEvent(t, sub, func(e liveDiffEvent) bool { return e.Kind == "coverage" && e.Status == "" })
-
-	// A hard-terminated carrier may leave the old native control session alive.
-	// Resume translation precedes startControl's close-old/open-new sequence.
-	history, err := transform.translateMixedResume("resume-call", "resume "+state.Handle, nil)
-	if err != nil || history.TranslationError != "" {
-		t.Fatalf("resume: %v %s", err, history.TranslationError)
-	}
-	if err := one.Encode(hpatchControlRequest{Operation: "close"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-doneOne; err != nil {
-		t.Fatal(err)
-	}
-	broker.mu.Lock()
-	status := broker.statusLocked()
-	broker.mu.Unlock()
-	if !strings.Contains(status, "WAITING") {
-		t.Fatalf("old worker close discarded its pending replacement: %q", status)
-	}
-	two, repliesTwo, doneTwo := startHpatchControlTest(t, transform)
-	controlTestRequest(t, two, repliesTwo, hpatchControlRequest{Operation: "open", Handle: state.Handle})
-	waitLiveDiffEvent(t, sub, func(e liveDiffEvent) bool { return e.Kind == "coverage" && e.Status == "" })
-	response := controlTestRequest(t, two, repliesTwo, hpatchControlRequest{
-		Operation: "translate", Source: "new resumed.txt\ntype \"resumed\\n\"",
-	})
-	event := waitLiveDiffChange(t, sub, false)
-	if event.ID != id {
-		t.Fatalf("replacement published another operation: %+v", event)
-	}
-	if err := applyMixedTestPatch(transform.directory, jsonString(response, "patch")); err != nil {
-		t.Fatal(err)
-	}
-	controlTestRequest(t, two, repliesTwo, hpatchControlRequest{
-		Operation: "confirm", AttemptID: jsonString(response, "attempt_id"),
-	})
-	waitLiveDiffChange(t, sub, true)
-	if err := two.Encode(hpatchControlRequest{Operation: "close"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-doneTwo; err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestLiveDiffPreviewLifecycleAndReconnect(t *testing.T) {
 	for _, interrupted := range []bool{false, true} {
 		t.Run(fmt.Sprint(interrupted), func(t *testing.T) {
 			calls := 0
-			transform, proxy, _, workspace := newMekugiTestTransform(t, testTranslator(t, &calls))
+			transform, proxy, _, workspace := newMekugiTestTransform(t)
 			broker := newLiveDiffBroker(t.Context())
 			broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true}}})
 			proxy.autoLiveDiff = &autoLiveDiff{events: broker, requested: true}
@@ -556,7 +361,7 @@ func TestLiveDiffPreviewLifecycleAndReconnect(t *testing.T) {
 					t.Fatal("preview did not arrive")
 				}
 			}
-			if calls != 0 || len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "+pay") {
+			if calls != 0 || !strings.Contains(preview.Input, "pay") {
 				t.Fatalf("preview=%+v translations=%d", preview, calls)
 			}
 			reconnected := broker.subscribe()
@@ -605,7 +410,7 @@ func TestLiveDiffPreviewMailboxCoalescesWithoutDelayingReceipts(t *testing.T) {
 	default:
 	}
 	updates := broker.takePreviews(sub)
-	if len(updates) != 1 || updates[0].Preview == nil || !strings.Contains(updates[0].Preview.Files[0].Diff, "stream_0200") {
+	if len(updates) != 1 || updates[0].Preview == nil || !strings.Contains(updates[0].Preview.Input, "stream_0200") {
 		t.Fatalf("mailbox did not retain only latest snapshot: %+v", updates)
 	}
 	broker.publishPreview(previewViewFixture("one", 201), false)

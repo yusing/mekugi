@@ -139,14 +139,13 @@ func TestCodexCacheAffinityE2E(t *testing.T) {
 	transport := &cacheAffinityE2ETransport{delegate: upstreamTransport}
 
 	httpClient := &http.Client{Transport: transport}
-	translator := newInProcessMekugiTranslator(t.TempDir())
 	var requestSequence atomic.Uint64
 	handler := responsesHandler(
 		t.Context(),
 		10*time.Minute,
 		newProviderClient(codexBaseURL, httpClient),
 		nil,
-		newManagedMekugiProxy(t, translator),
+		newManagedMekugiProxy(t),
 		nil, nil,
 		&requestSequence,
 	)

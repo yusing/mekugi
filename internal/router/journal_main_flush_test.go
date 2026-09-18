@@ -12,7 +12,7 @@ func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
 	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			var err error
 			proxy.replayStore, err = openMekugiReplayStore(t.TempDir())
 			if err != nil {
@@ -151,7 +151,7 @@ func TestJournalMainFlushRejectsUnprovenTrees(t *testing.T) {
 	for _, durable := range []bool{false, true} {
 		for _, scenario := range []string{"conflict", "unknown-parent", "cycle", "workspace", "fork"} {
 			t.Run(map[bool]string{false: "memory/", true: "disk/"}[durable]+scenario, func(t *testing.T) {
-				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				proxy := newManagedMekugiProxy(t)
 				if durable {
 					var err error
 					proxy.replayStore, err = openMekugiReplayStore(t.TempDir())
@@ -208,7 +208,7 @@ func TestJournalMainFlushRejectsUnprovenTrees(t *testing.T) {
 func TestJournalMainFlushScopesCorruptRecords(t *testing.T) {
 	for _, scenario := range []string{"malformed-unrelated", "invalid-unrelated", "invalid-descendant"} {
 		t.Run(scenario, func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			var err error
 			proxy.replayStore, err = openMekugiReplayStore(t.TempDir())
 			if err != nil {
@@ -250,7 +250,7 @@ func TestJournalMainFlushScopesCorruptRecords(t *testing.T) {
 }
 
 func TestJournalOversizedTreeDoesNotRetainPartialDelivery(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	root, _ := prepareActivityTest(t, proxy, "main", "root", "", "/root", nil)
 	child, _ := prepareActivityTest(t, proxy, "child", "child", "root", "/root/child", nil)
 	defer child.Close()

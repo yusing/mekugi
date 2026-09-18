@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"crypto/sha256"
-	_ "embed"
 	"encoding/base64"
 	"fmt"
 	"strconv"
@@ -12,11 +11,6 @@ import (
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/hpatchsyntax"
 )
-
-const mekugiRecoveryDescription = `Correction of the latest rejected HPATCH/2 script. Invalid correction leaves the retained script and workspace unchanged.`
-
-//go:embed mekugi_recovery_grammar.lark
-var mekugiRecoveryGrammar string
 
 type recoveryCommandReference struct {
 	handle string

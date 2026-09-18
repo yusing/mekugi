@@ -83,7 +83,7 @@ func TestSplitShellCatWritesLeavesUnsupportedShellUnchanged(t *testing.T) {
 
 func TestShellCatCarrierExecutionAndReplay(t *testing.T) {
 	t.Parallel()
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	session := transform.historySessionID
 	directory := t.TempDir()
@@ -228,7 +228,7 @@ tools.write_stdin = async args => {
 }
 
 func TestShellCatCarrierWaitsBeforeApplying(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	transform.directory = t.TempDir()
 	contribution, _ := proxy.registry.contribution("shell")
@@ -262,7 +262,7 @@ tools.apply_patch = async () => {
 
 func TestShellCatCarrierRuntimeFallbacks(t *testing.T) {
 	t.Parallel()
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	directory := t.TempDir()
 	transform.directory = directory
@@ -305,7 +305,7 @@ func TestShellCatNativeCarrierWithHostApplyPatch(t *testing.T) {
 	if err != nil {
 		t.Skip("host apply_patch executable is not installed")
 	}
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, _ := newNativeMekugiTestTransformWithProxy(t, proxy)
 	transform.directory = t.TempDir()
 	contribution, _ := proxy.registry.contribution("shell")
@@ -336,7 +336,7 @@ func TestShellCatNativeCarrierWithHostApplyPatch(t *testing.T) {
 }
 
 func TestShellCatStreamingKeepsOneReplayableCarrier(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	source := "foo; cat > out <<'EOF'\nliteral\nEOF\nbar"
 	item := map[string]any{"id": "cat-item", "call_id": "cat-call", "type": "custom_tool_call", "name": "shell", "input": source, "status": "completed"}
@@ -368,7 +368,7 @@ func TestShellCatStreamingKeepsOneReplayableCarrier(t *testing.T) {
 
 func TestShellCatCarrierPreservesOutputOnHostFailure(t *testing.T) {
 	t.Parallel()
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	contribution, _ := proxy.registry.contribution("shell")
 	carrier, ok := transform.shellCatCarrier(contribution, codeModeCarrierCustom,

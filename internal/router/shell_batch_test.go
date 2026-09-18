@@ -12,7 +12,7 @@ import (
 
 func TestShellBatchExecutionAndReplay(t *testing.T) {
 	t.Parallel()
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	directory := t.TempDir()
 	transform.directory = directory
@@ -81,7 +81,7 @@ func TestShellBatchExecutionAndReplay(t *testing.T) {
 
 func TestShellBatchContinuePolicyExecution(t *testing.T) {
 	t.Parallel()
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	directory := t.TempDir()
 	transform.directory = directory
@@ -120,7 +120,7 @@ func TestShellBatchContinuePolicyExecution(t *testing.T) {
 
 func TestShellBatchContinueWaitsForTerminalExit(t *testing.T) {
 	t.Parallel()
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	contribution, _ := proxy.registry.contribution("shell")
 	history, err := transform.translateRegisteredTool(contribution, "batch-continue-wait",
@@ -155,7 +155,7 @@ tools.write_stdin = async args => {
 
 func TestShellBatchParamsAndContinuation(t *testing.T) {
 	t.Parallel()
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	contribution, _ := proxy.registry.contribution("shell")
 	source := "#!params={\"workdir\":\"/tmp\",\"yield_time_ms\":1000,\"max_output_tokens\":123}\necho one\n" +
@@ -208,7 +208,7 @@ tools.write_stdin = async args => {
 
 func TestShellBatchRejectsBeforeExecution(t *testing.T) {
 	t.Parallel()
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	contribution, _ := proxy.registry.contribution("shell")
 	for _, test := range []struct {
 		name, source, diagnostic string
@@ -248,7 +248,7 @@ func TestShellBatchRejectsBeforeExecution(t *testing.T) {
 }
 func TestShellBatchPreservesPartialResultsOnHostFailure(t *testing.T) {
 	t.Parallel()
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	contribution, _ := proxy.registry.contribution("shell")
 	history, err := transform.translateRegisteredTool(contribution, "host-failure", "echo one\n#!bash\n#!params={}\necho two\n#!bash\n#!params={}\necho three", nil)
@@ -305,7 +305,7 @@ const tools = {
 }
 
 func TestShellBatchJSONAndStreamingKeepOneCarrier(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	source := "#!params={\"yield_time_ms\":1000}\necho one\n#!python3\nprint(2)"
 	item := map[string]any{"id": "batch-item", "call_id": "batch-stream", "type": "custom_tool_call", "name": "shell", "input": source, "status": "completed"}
 	for _, streaming := range []bool{false, true} {
@@ -358,7 +358,7 @@ func TestShellBatchJSONAndStreamingKeepOneCarrier(t *testing.T) {
 }
 
 func TestShellNativeSourceMarkersExecuteUnchanged(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	directory := t.TempDir()
 	bin := t.TempDir()
 	if err := os.WriteFile(filepath.Join(bin, "shell"), []byte("#!/bin/sh\ninterpreter=$1\nshift\nexec \"$interpreter\" -c \"$1\"\n"), 0o700); err != nil {

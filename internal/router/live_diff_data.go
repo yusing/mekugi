@@ -1,6 +1,7 @@
 package router
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -8,7 +9,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 )
 
 type liveDiffAttempt struct {
@@ -65,29 +65,26 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 		history := record.History
 		status := trackedStatus(history, call.Confirmed)
 		attempt := liveDiffAttempt{change: event.ID, correlation: event.Change.Correlation, stream: event.Stream, confirmed: call.Confirmed}
-		// Historical private-script edits are not workspace edits.
-		if !history.Applied || !strings.HasPrefix(strings.TrimLeft(history.recoveryBaseline(), "\r\n"), "in @shell/") {
-			for n, file := range history.ReviewFiles {
-				canonical := func(path string) string {
-					if path == "" {
-						return ""
-					}
-					if !filepath.IsAbs(path) {
-						path = filepath.Join(event.Workspace, path)
-					}
-					return filepath.Clean(path)
+		for n, file := range history.ReviewFiles {
+			canonical := func(path string) string {
+				if path == "" {
+					return ""
 				}
-				file.BeforePath, file.AfterPath = canonical(file.BeforePath), canonical(file.AfterPath)
-				d.bytes += len(file.Diff) + len(file.BeforePath) + len(file.AfterPath) + len(key)
-				if d.bytes > maxChangeReadBytes {
-					return errors.New("live diff exceeds 64 MiB; use hchanges with a narrower range")
+				if !filepath.IsAbs(path) {
+					path = filepath.Join(event.Workspace, path)
 				}
-				attempt.chunks = append(attempt.chunks, liveDiffChunk{
-					key: key + "/" + strconv.Itoa(n), stream: event.Workspace + "\x00" + strconv.Itoa(event.Stream),
-					captureOrder: record.CaptureOrder, status: event.ID + " " + status,
-					review: file, applied: status == "applied",
-				})
+				return filepath.Clean(path)
 			}
+			file.BeforePath, file.AfterPath = canonical(file.BeforePath), canonical(file.AfterPath)
+			d.bytes += len(file.Diff) + len(file.BeforePath) + len(file.AfterPath) + len(key)
+			if d.bytes > maxChangeReadBytes {
+				return errors.New("live diff exceeds 64 MiB; use hchanges with a narrower range")
+			}
+			attempt.chunks = append(attempt.chunks, liveDiffChunk{
+				key: key + "/" + strconv.Itoa(n), stream: event.Workspace + "\x00" + strconv.Itoa(event.Stream),
+				captureOrder: record.CaptureOrder, status: event.ID + " " + status,
+				review: file, applied: status == "applied",
+			})
 		}
 		d.attempts[key] = attempt
 		d.order = append(d.order, key)
@@ -125,12 +122,13 @@ func (d *liveDiffData) reconcile(ctx context.Context, s *mekugiReplayStore, scop
 		}
 		threads := scope.Workspaces[workspace]
 		for stream, info := range index.Streams {
-			if threads != nil && !threads[info.Thread] {
-				continue
-			}
 			for number := 1; number <= info.Next; number++ {
 				id := changeHandle(changeStreamName(stream), number)
 				change := index.Changes[id]
+				change.Calls = slices.Clone(change.Calls)
+				change.Calls = slices.DeleteFunc(change.Calls, func(call trackedCall) bool {
+					return threads != nil && !threads[cmp.Or(call.Thread, info.Thread)]
+				})
 				for _, call := range change.Calls {
 					present[index.Workspace+"\x00"+call.ID] = true
 				}

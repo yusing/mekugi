@@ -231,7 +231,7 @@ func (registry *toolRegistry) directBashExecCommand(arguments []string) (string,
 		}
 	})
 	commandName, err := expand.Literal(&expand.Config{}, call.Args[0])
-	if err != nil || !staticCommand || commandName == "" || commandName == commentaryArgumentName || commandName == "hrun" || commandName == "hchanges" || commandName == "hread" || interp.IsBuiltin(commandName) {
+	if err != nil || !staticCommand || commandName == "" || commandName == commentaryArgumentName || commandName == "hrun" || commandName == "hchanges" || commandName == "hpatch" || commandName == "hread" || interp.IsBuiltin(commandName) {
 		return "", false
 	}
 	if registry.commandRouting != nil && slices.Contains(registry.commandRouting.Commands, commandName) {

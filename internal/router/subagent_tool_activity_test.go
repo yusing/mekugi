@@ -10,7 +10,7 @@ import (
 func TestSubagentToolActivityJSONAndSSE(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
 			child, _ := prepareActivityTest(t, proxy, "child", "c", "r", "/root/worker", []any{
 				map[string]any{"type": "custom_tool_call", "call_id": "origin", "name": "exec", "input": `text(await tools.exec_command({cmd:"go test ./internal/router"}));`},
@@ -81,7 +81,7 @@ func TestSubagentTranslatedEditActivityJSONAndSSE(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
 			calls := 0
-			proxy := newManagedMekugiProxy(t, testTranslator(t, &calls))
+			proxy := newManagedMekugiProxy(t)
 			root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
 			child, _ := prepareActivityTest(t, proxy, "child", "c", "r", "/root/worker", nil)
 			call := testMekugiItem()
@@ -100,7 +100,7 @@ func TestSubagentTranslatedEditActivityJSONAndSSE(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if calls != 1 {
+			if calls != 0 {
 				t.Fatalf("display translated or executed the edit again: %d translations", calls)
 			}
 			if got := mustTestJSON(t, call); !bytes.Equal(got, original) {
@@ -115,10 +115,10 @@ func TestSubagentTranslatedEditActivityJSONAndSSE(t *testing.T) {
 			if err := json.Unmarshal(visible, &response); err != nil {
 				t.Fatal(err)
 			}
-			if len(response.Output) != 1 || !strings.Contains(commentaryText(t, response.Output[0]), "Started.") {
-				t.Fatalf("edit generated commentary beyond the start notice: %s", visible)
+			if len(response.Output) != 2 || !strings.Contains(commentaryText(t, response.Output[0]), "Started.") || !strings.Contains(commentaryText(t, response.Output[1]), "hpatch") {
+				t.Fatalf("shell edit activity missing: %s", visible)
 			}
-			if calls != 1 {
+			if calls != 0 {
 				t.Fatalf("root delivery retranslated the edit: %d translations", calls)
 			}
 		})
@@ -130,7 +130,7 @@ func TestSubagentPatchCommentarySuppressedJSONAndSSE(t *testing.T) {
 	for _, name := range []string{"apply_patch", "exec"} {
 		for _, stream := range []bool{false, true} {
 			t.Run(name+map[bool]string{false: "/json", true: "/sse"}[stream], func(t *testing.T) {
-				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				proxy := newManagedMekugiProxy(t)
 				root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
 				child, _ := prepareActivityTest(t, proxy, "child", "c", "r", "/root/worker", nil)
 				input := patch
@@ -163,7 +163,7 @@ func TestSubagentPatchCommentarySuppressedJSONAndSSE(t *testing.T) {
 }
 
 func TestSubagentToolActivityRejectsPartialCalls(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
 	child, _ := prepareActivityTest(t, proxy, "child", "c", "r", "/root/worker", nil)
 	for _, status := range []string{"in_progress", "incomplete"} {
@@ -189,7 +189,7 @@ func TestSubagentBatchToolActivityJSONAndSSE(t *testing.T) {
 	const source = "sed -n '1,360p' file.go\n#!bash\nrg pattern file.go\n#!bash\ngit status --short\ngit log -1 --oneline"
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
 			child, _ := prepareActivityTest(t, proxy, "child", "c", "r", "/root/worker", nil)
 			call := map[string]any{"type": "shell_call", "id": "batch", "status": "completed", "action": map[string]any{"commands": []string{source}}}

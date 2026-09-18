@@ -49,9 +49,8 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
 
 - **Batch reads and commands.** Group related operations in one shell call.
   With Code Mode, batch separate programs, including different interpreters.
-- **Run shell commands and patches in the same call.** With Code Mode,
-  [combine shell commands and hpatch edits](#edits-and-shell-in-one-call), so
-  preparation, editing, and validation do not need separate model turns.
+- **Use one shell interface for edits and commands.** Run standalone `hpatch`
+  commands for edits, then run dependent checks in subsequent shell calls.
 - **Skip redundant source lookups.** Edit text already in context, reuse unchanged
   verified rows when uniquely identifiable, and use current references returned by
   successful edit reports.
@@ -244,41 +243,34 @@ mekugi codex -m opencode-zen:kimi-k3
 
 ## How editing and execution work
 
-These are the agent tools Mekugi adds. Codex still authorizes every generated
-patch and shell execution.
+Mekugi exposes one shell interface for scripts and edits. Codex still authorizes execution.
 
 ### Hashline edits
 
 The agent selects a verified `LINE:HASH` target and sends the new text once.
-Mekugi checks the script and generates the patch; Codex applies it. Supported
-language checks run before application. Verification is not a workspace lock.
+The host-executed `hpatch` command checks and applies the complete edit through the
+edit engine. Supported language checks run before application. Verification is not a workspace lock.
 See the [editing guarantees](doc/spec/output.md) and
 [target selection rules](doc/spec/select.md).
 
-### Edits and shell in one call
+### Edits through the shell
 
-With Code Mode, `functions.hpatch` can interleave atomic edit segments and shell
-programs. Completed work stays applied if a later segment fails:
+Send a standalone `hpatch` command through `functions.shell`:
 
-```text
-shell test -f notes.txt
+```sh
+hpatch <<'EDIT'
 in notes.txt
 type "draft" "ready"
-shell rg -n ready notes.txt
+EDIT
 ```
 
-Use ordinary hpatch for edits alone and the shell tool for command-only work.
-Continue a yielded mixed script with `hpatch` using `resume HANDLE`, without
-resending the original script. To fix code and retry the failed segment in one
-call:
+The edit may instead be a shell argument or redirected input. Quoting, heredoc
+expansion, substitutions, and redirection work normally. Do not compose `hpatch`
+with other commands; run dependent checks in a subsequent shell call.
 
-```text
-resume HANDLE repair
-in app.go
-type "incorrect expression" "correct expression"
-```
+Rejected edits report a recovery handle. Use `hpatch --recover HANDLE` with
+corrections as an argument or on stdin. See [recovery](doc/spec/correct.md).
 
-See the [mixed-script contract](doc/spec/script.md#shell-in-script).
 
 ### Direct scripts
 

@@ -6,7 +6,7 @@ import (
 )
 
 func TestKnownReplayCarrierRejectsTamperedIdentity(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	history := mekugiHistory{CarrierName: "exec", Patch: "patch", Report: "report"}
 	if err := proxy.rememberBatch("session", map[string]mekugiHistory{"call-1": history}); err != nil {
 		t.Fatal(err)
@@ -37,7 +37,7 @@ func TestKnownReplayCarrierRejectsTamperedIdentity(t *testing.T) {
 }
 
 func TestKnownReplayOutputRemainsValid(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	if err := proxy.rememberBatch("session", map[string]mekugiHistory{"call-1": {CarrierName: "exec"}}); err != nil {
 		t.Fatal(err)
 	}

@@ -2,7 +2,6 @@ package router
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -12,139 +11,9 @@ import (
 
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/capturer"
-	"github.com/yusing/mekugi/internal/hpatchsyntax"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 )
-
-func (t *mekugiResponseTransform) translate(callID, input string, upstreamItem map[string]json.RawMessage) (mekugiHistory, error) {
-	if history, ok := t.local[callID]; ok {
-		if history.ToolName != mekugiToolName || history.PluginID != "" || history.Script != input {
-			return mekugiHistory{}, fmt.Errorf("mekugi call %q changed input", callID)
-		}
-		if len(upstreamItem) != 0 {
-			history.UpstreamItem = maps.Clone(upstreamItem)
-			t.local[callID] = history
-		}
-		return history, nil
-	}
-	if len(input) > maxMekugiScriptBytes {
-		return mekugiHistory{}, fmt.Errorf("mekugi call %q script exceeds %d bytes", callID, maxMekugiScriptBytes)
-	}
-
-	if strings.HasPrefix(strings.TrimSpace(input), "resume ") {
-		return t.translateMixedResume(callID, input, upstreamItem)
-	}
-
-	if parts, mixed, err := hpatchsyntax.SplitShell(input); mixed {
-		return t.translateMixedScript(callID, input, parts, err, upstreamItem)
-	}
-
-	evaluated, err := mekugi.RewriteTargetAliases(input, t.targetAliases())
-	if err != nil {
-		// Preserve evaluator-owned syntax diagnostics for malformed scripts.
-		evaluated = input
-	}
-	attemptMetadata := mekugi.AttemptMetadata{
-		SessionID:       t.sessionID,
-		Title:           t.proxy.titles.title(t.sessionID),
-		CorrelationID:   callID,
-		CallID:          callID,
-		Attempt:         1,
-		Correction:      false,
-		Model:           t.model,
-		ToolName:        mekugiToolName,
-		EmittedPayload:  input,
-		EvaluatedScript: evaluated,
-	}
-
-	return t.evaluateScript(callID, input, evaluated, attemptMetadata, upstreamItem)
-}
-
-// evaluateScript owns target dispatch and result projection for both ordinary and
-// rebuilt recovery scripts. Recovery policy never selects a different storage root.
-func (t *mekugiResponseTransform) evaluateScript(
-	callID, input, evaluated string,
-	attemptMetadata mekugi.AttemptMetadata,
-	upstreamItem map[string]json.RawMessage,
-) (mekugiHistory, error) {
-	changeID, err := t.changeIDForAttempt(attemptMetadata)
-	if err != nil {
-		return mekugiHistory{}, err
-	}
-	attemptContext := mekugi.WithAttemptMetadata(t.ctx, attemptMetadata)
-	translated, err := t.proxy.translator.Translate(attemptContext, t.directory, evaluated)
-	if err != nil {
-		if contextErr := t.ctx.Err(); contextErr != nil {
-			return mekugiHistory{}, contextErr
-		}
-		if errors.Is(err, errMekugiCapacity) {
-			return mekugiHistory{}, err
-		}
-		evaluatorRejected := len(translated.rejections) != 0
-		diagnostic := translated.diagnostic
-		if diagnostic == "" {
-			diagnostic = err.Error()
-		}
-		var recoveryHandles []string
-		if evaluatorRejected {
-			commands := recoveryCommands(evaluated, nil)
-			if len(commands) != 0 {
-				var allocationErr error
-				recoveryHandles, allocationErr = t.proxy.allocateHandles(t.ctx, len(commands))
-				if allocationErr != nil {
-					return mekugiHistory{}, allocationErr
-				}
-			}
-			diagnostic += mekugiRecoveryGuidance(evaluated, translated.rejections, attemptMetadata.Correction, recoveryHandles)
-		}
-		history := mekugiHistory{
-			ToolName: attemptMetadata.ToolName,
-			Script:   input,
-
-			Root:              t.directory,
-			Evaluated:         retainedEvaluated(input, evaluated),
-			CarrierName:       t.codeModeToolName,
-			TranslationError:  changeNotice(changeID) + diagnostic,
-			ChangeID:          changeID,
-			EvaluatorRejected: evaluatorRejected,
-			RecoveryBinding:   recoveryHandlesBinding(evaluated, recoveryHandles),
-			RecoveryHandles:   recoveryHandles,
-			Rejections:        slices.Clone(translated.rejections),
-
-			UpstreamItem:  maps.Clone(upstreamItem),
-			CorrelationID: attemptMetadata.CorrelationID,
-			Attempt:       attemptMetadata.Attempt,
-		}
-		t.recordLocal(callID, &history)
-		return history, nil
-	}
-	patch := translated.patch
-	if len(patch) > maxMekugiPatchBytes {
-		return mekugiHistory{}, fmt.Errorf("mekugi call %q translation exceeds %d bytes", callID, maxMekugiPatchBytes)
-	}
-	patchText := string(patch)
-	alreadySatisfied := translated.change.AlreadySatisfied
-	history := mekugiHistory{
-		ToolName: attemptMetadata.ToolName,
-		Script:   input,
-
-		Root:             t.directory,
-		Evaluated:        retainedEvaluated(input, evaluated),
-		Patch:            patchText,
-		AlreadySatisfied: alreadySatisfied,
-		Aliases:          slices.Clone(translated.aliases),
-		CarrierName:      t.codeModeToolName,
-		Report:           changeNotice(changeID) + mekugiReport(translated.report, translated.diagnostic),
-		ChangeID:         changeID,
-		ReviewFiles:      translated.reviewFiles,
-		UpstreamItem:     maps.Clone(upstreamItem),
-		CorrelationID:    attemptMetadata.CorrelationID,
-		Attempt:          attemptMetadata.Attempt,
-	}
-	t.recordLocal(callID, &history)
-	return history, nil
-}
 
 func (t *mekugiResponseTransform) translateTool(name, callID, input string, upstreamItem map[string]json.RawMessage) (mekugiHistory, error) {
 	for itemID := range t.previews {
@@ -153,11 +22,6 @@ func (t *mekugiResponseTransform) translateTool(name, callID, input string, upst
 		}
 	}
 	switch name {
-	case mekugiToolName:
-		t.proxy.autoLiveDiff.requestLaunch(t.directory, t.threadID)
-		return t.translate(callID, input, upstreamItem)
-	case mekugiRecoveryToolName:
-		return t.translateRecovery(callID, input, upstreamItem)
 	case reportIssueToolName:
 		return t.translateReportIssue(callID, input, upstreamItem)
 	}
@@ -222,6 +86,9 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 		axCallID = callID
 	}
 	journalToken := t.subscribeShellJournal(callID, contribution)
+	if contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell" {
+		t.proxy.autoLiveDiff.requestLaunch(t.directory, t.threadID)
+	}
 	recovered := !t.nativeTools && shellCodeModeRecovery(contribution, input)
 	var batch []string
 	var translation toolplugin.Translation

@@ -13,7 +13,9 @@ import (
 	"github.com/yusing/mekugi/capturer"
 )
 
-func TestCaptureHPatchCarrierOutcomes(t *testing.T) {
+// Historical capture records retain their original tool identities. Current edits
+// are shell calls; these fixtures do not claim runtime edit-outcome coverage.
+func TestCaptureHistoricalHPatchCarrierOutcomes(t *testing.T) {
 	for _, streaming := range []bool{false, true} {
 		t.Run("stream="+strconv.FormatBool(streaming), func(t *testing.T) {
 			recorder, err := capturer.New(capturer.Config{Mode: "mekugi", ModelProtocol: "native"})

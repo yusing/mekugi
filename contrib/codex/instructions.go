@@ -6,8 +6,6 @@ import (
 	"text/template"
 )
 
-const MekugiToolDescription = "HPATCH/2 edits and mixed edit/command execution (Code Mode required for mixed scripts). Edit validation is atomic; failed host application may have partial effects."
-
 //go:embed file-editing-instructions.md
 var instructionSource string
 

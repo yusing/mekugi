@@ -18,6 +18,24 @@ type fileOperations interface {
 	Remove(path string) error
 }
 
+type hostFileOperations struct{ filesystem filesystemWorkspace }
+
+func (o hostFileOperations) CreateTemp(directory, prefix string) (*os.File, string, error) {
+	file, err := os.CreateTemp(o.filesystem.hostPath(directory), prefix)
+	if err != nil {
+		return nil, "", err
+	}
+	return file, file.Name(), nil
+}
+
+func (o hostFileOperations) Rename(oldPath, newPath string) error {
+	return os.Rename(o.filesystem.hostPath(oldPath), o.filesystem.hostPath(newPath))
+}
+
+func (o hostFileOperations) Remove(path string) error {
+	return os.Remove(o.filesystem.hostPath(path))
+}
+
 type rootFileOperations struct {
 	root *os.Root
 }

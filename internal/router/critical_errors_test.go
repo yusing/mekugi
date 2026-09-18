@@ -213,7 +213,7 @@ func TestCriticalErrorsBoundedAndCancellationSilent(t *testing.T) {
 
 func TestPermanentRewriteFailureIsBadRequestAndQueued(t *testing.T) {
 	c := NewCriticalErrors()
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	provider := &serverFakeProvider{}
 	request := serverRequest(t, func(fields map[string]any) { fields["tool_choice"] = map[string]any{"type": "custom", "name": "exec"} })
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(request.originalBody)))
@@ -256,7 +256,7 @@ func TestInvalidNativeCatalogIsBadRequestBeforeForwarding(t *testing.T) {
 		{tool("custom", "apply_patch"), tool("function", "exec_command"), tool("function", "exec_command")},
 		{tool("custom", "apply_patch"), tool("function", "exec_command"), tool("custom", "hpatch")},
 	} {
-		proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+		proxy := newManagedMekugiProxy(t)
 		provider := &serverFakeProvider{}
 		parsed := serverRequest(t, func(fields map[string]any) { fields["input"] = []any{}; fields["tools"] = tools })
 		request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(parsed.originalBody)))

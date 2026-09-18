@@ -92,7 +92,7 @@ func TestExecuteAuxiliaryStructuredRequest(t *testing.T) {
 			}
 			response := `{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"{\"title\":\"Format Run previews\"}"}]}]}`
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(response)}}}
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			proxy.customizedInstructions = true
 			var output bytes.Buffer
 			err = executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "title-session", provider, &output, nil, proxy, codec, nil)
@@ -145,7 +145,7 @@ func TestAuxiliaryCodeModeDoesNotAdmitOtherTools(t *testing.T) {
 				t.Fatal(err)
 			}
 			provider := &serverFakeProvider{}
-			err = executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "title-session", provider, io.Discard, nil, newManagedMekugiProxy(t, testTranslator(t, new(int))), nil, nil)
+			err = executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "title-session", provider, io.Discard, nil, newManagedMekugiProxy(t), nil, nil)
 			if err == nil || len(provider.forwarded) != 0 {
 				t.Fatalf("unsupported catalog admitted: error=%v forwards=%d", err, len(provider.forwarded))
 			}
@@ -182,13 +182,13 @@ func TestStructuredRequestWithEditingToolsStillRewrites(t *testing.T) {
 					t.Fatal(err)
 				}
 				provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
-				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				proxy := newManagedMekugiProxy(t)
 				proxy.customizedInstructions = true
 				err = executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "session", provider, io.Discard, nil, proxy, nil, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if len(provider.forwarded) != 1 || !bytes.Contains(provider.forwarded[0], []byte(`"name":"hpatch"`)) {
+				if len(provider.forwarded) != 1 || !bytes.Contains(provider.forwarded[0], []byte(`"name":"shell"`)) {
 					t.Fatal("structured editing request bypassed HPATCH tool rewriting")
 				}
 			})
@@ -224,7 +224,7 @@ func TestToolFreeStructuredRequestDoesNotBypassAdmission(t *testing.T) {
 				t.Fatal(err)
 			}
 			provider := &serverFakeProvider{}
-			err = executeRequest(t.Context(), t.Context(), request, headers, "title-session", provider, io.Discard, nil, newManagedMekugiProxy(t, testTranslator(t, new(int))), nil, nil)
+			err = executeRequest(t.Context(), t.Context(), request, headers, "title-session", provider, io.Discard, nil, newManagedMekugiProxy(t), nil, nil)
 			if err == nil || len(provider.forwarded) != 0 {
 				t.Fatalf("invalid request admitted: error=%v forwards=%d", err, len(provider.forwarded))
 			}
@@ -238,7 +238,7 @@ func TestResponsesWebSocketToolFreeStructuredTurnAfterPrewarm(t *testing.T) {
 	headers := codexAuthHeaders()
 	headers.Set(sessionIDHeader, "title-session")
 	headers.Set(threadIDHeader, "title-thread")
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	conn := testResponsesSocket(t, ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstream, err := websocket.Accept(w, r, nil)
 		if err != nil {
@@ -337,7 +337,7 @@ func TestToolProjectionAcrossClients(t *testing.T) {
 							t.Fatal(err)
 						}
 						provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
-						proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+						proxy := newManagedMekugiProxy(t)
 						proxy.customizedInstructions = true
 						err = executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "session", provider, io.Discard, nil, proxy, nil, nil)
 						if err != nil {
@@ -347,7 +347,7 @@ func TestToolProjectionAcrossClients(t *testing.T) {
 							t.Fatal("request not forwarded")
 						}
 						if editing {
-							if !bytes.Contains(provider.forwarded[0], []byte(`"name":"hpatch"`)) {
+							if !bytes.Contains(provider.forwarded[0], []byte(`"name":"shell"`)) {
 								t.Fatal("editing request bypassed projection")
 							}
 						} else if !sameJSONValue(provider.forwarded[0], mustTestJSON(t, fields)) {

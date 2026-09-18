@@ -82,7 +82,7 @@ func TestMekugiRecoveryGuidanceIdentifiesInvalidFinalInput(t *testing.T) {
 	}}, false, testRecoveryHandles(script))
 	for _, want := range []string{
 		"Invalid final input at script line 3; no effects were applied.",
-		"Remove or correct it through functions.hpatch_recover.",
+		"Remove or correct it through hpatch --recover HANDLE.",
 		mekugi.TextReferences(script, 3),
 	} {
 		if !strings.Contains(guidance, want) {

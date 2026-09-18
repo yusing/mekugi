@@ -701,7 +701,7 @@ func TestMentorHandoffLunaMainMappingKeepsSubagentsUnchanged(t *testing.T) {
 func TestExecuteRequestMentorCommentaryDeliveredOnceAndStrippedOnReplay(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			mentor := newMentorHandoff(true, true)
 			workspace := t.TempDir()
 			headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})
@@ -756,7 +756,7 @@ func TestExecuteRequestMentorJournalContinuationAccounting(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		for _, bound := range []string{"tokens", "messages", "tools"} {
 			t.Run(fmt.Sprintf("stream=%t/%s", stream, bound), func(t *testing.T) {
-				proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				proxy := newManagedMekugiProxy(t)
 				mentor := newMentorHandoff(true, true)
 				headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 				threadID := codexThreadID(headers)

@@ -128,6 +128,26 @@ func executeShellProgram(
 		return toolplugin.ExecutionOutput{Stderr: fmt.Sprintf("shell: %v\n", err), ExitCode: 2}, nil
 	}
 
+	var standaloneEdit syntax.Pos
+	if len(program.Stmts) == 1 {
+		statement := program.Stmts[0]
+		if call, ok := statement.Cmd.(*syntax.CallExpr); ok && !statement.Background && !statement.Coprocess && !statement.Disown && !statement.Negated {
+			standaloneEdit = call.Pos()
+		}
+	}
+	var composedEdit bool
+	syntax.Walk(program, func(node syntax.Node) bool {
+		if call, ok := node.(*syntax.CallExpr); ok && len(call.Args) != 0 {
+			if name, literal := shellCatLiteral(call.Args[0]); literal && name == "hpatch" && call.Pos() != standaloneEdit {
+				composedEdit = true
+			}
+		}
+		return true
+	})
+	if composedEdit {
+		return toolplugin.ExecutionOutput{Stderr: "hpatch: must be a standalone shell command\n", ExitCode: 2}, nil
+	}
+
 	shellID := rand.Text()
 	privateTools := make(map[string]toolContribution)
 	for _, contribution := range manifest.Tools {
@@ -166,7 +186,13 @@ func executeShellProgram(
 					return executeReadBundle(handlerCtx, manifest, runtimeRoot, specs, budget, contribution, shellID)
 				}
 			}
-
+			if command[0] == "hpatch" {
+				if interp.HandlerCtx(handlerCtx).Pos != standaloneEdit {
+					_, _ = io.WriteString(interp.HandlerCtx(handlerCtx).Stderr, "hpatch: must be a standalone shell command\n")
+					return interp.ExitStatus(2)
+				}
+				return executeHpatch(handlerCtx, manifest, command[1:], commentary)
+			}
 			if command[0] == "hread" {
 				return executeHRead(handlerCtx, manifest, runtimeRoot, command[1:])
 			}

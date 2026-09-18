@@ -18,7 +18,7 @@ func TestOperationCommentaryRequiresAuthoredText(t *testing.T) {
 			{"apply_patch", `{"journal":[{"op":"add","text":"Applying the requested changes.","report_now":true}]}`, "Applying the requested changes."},
 		} {
 			t.Run(tc.name+tc.arguments+map[bool]string{false: "/json", true: "/sse"}[stream], func(t *testing.T) {
-				transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+				transform, proxy, _, _ := newMekugiTestTransform(t)
 				transform.commentaryTools = commentaryToolCatalog{
 					functionToolKey("external", tc.name): {qualifiedName: "external." + tc.name},
 				}
@@ -100,7 +100,7 @@ func TestNoninstrumentedCommentaryToolsPassThrough(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+			transform, _, _, _ := newMekugiTestTransform(t)
 			transform.commentaryTools = catalog
 			call := map[string]any{"type": "function_call", "id": "item", "call_id": "call", "name": "lookup", "namespace": tc.namespace, "arguments": tc.arguments}
 			for _, event := range []map[string]any{

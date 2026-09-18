@@ -95,7 +95,7 @@ func subagentToolPreview(item map[string]json.RawMessage, qualifiedName string, 
 		return toolActivityDetail("View image", jsonString(arguments, "path"))
 	case "write_stdin":
 		return toolActivityWriteStdin(arguments)
-	case "apply_patch", "hpatch", "hpatch_recover":
+	case "apply_patch":
 		// Edit evidence belongs in host tool results and the live diff viewer,
 		// not a second generated commentary rendering.
 		return ""

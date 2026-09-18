@@ -64,6 +64,7 @@ type threadCommentaryProvenance struct {
 }
 
 type commentaryBroker struct {
+	editPublisher    func(context.Context, string, string, string) error
 	journalPublisher func(context.Context, string, string, string, []journalMutation) ([]string, error)
 	journalLister    func(context.Context, string, string, string) ([]journalItem, error)
 	notice           func(string, string)
@@ -301,7 +302,9 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	}
 	request.Body = http.MaxBytesReader(writer, request.Body, maxJournalFlushBytes*6)
 	var publication struct {
-		Journal json.RawMessage `json:"journal"`
+		Journal   json.RawMessage `json:"journal"`
+		EditCall  string          `json:"edit_call"`
+		Workspace string          `json:"workspace"`
 		// ID is a publication receipt, never a journal operation operand.
 		ReceiptID string `json:"id"`
 		Complete  bool   `json:"complete"`
@@ -314,7 +317,7 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		http.Error(writer, "invalid commentary publication", http.StatusBadRequest)
 		return
 	}
-	if len(publication.Journal) == 0 && publication.Complete && publication.Op == "" && publication.ReceiptID == "" && publication.Agent == "" {
+	if len(publication.Journal) == 0 && publication.Complete && publication.Op == "" && publication.ReceiptID == "" && publication.Agent == "" && publication.EditCall == "" && publication.Workspace == "" {
 		if !b.publish(token, "", true) {
 			http.Error(writer, "unauthorized", http.StatusUnauthorized)
 			return
@@ -336,6 +339,21 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	b.mu.Unlock()
 	if route == nil {
 		http.Error(writer, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if publication.EditCall != "" || publication.Workspace != "" {
+		if publication.EditCall == "" || publication.Workspace == "" || publication.Op != "" ||
+			publication.Complete || publication.ReceiptID != "" || publication.Agent != "" ||
+			len(publication.Journal) != 0 || b.editPublisher == nil {
+			http.Error(writer, "invalid edit receipt", http.StatusBadRequest)
+			return
+		}
+		if err := b.editPublisher(request.Context(), publication.Workspace, thread, publication.EditCall); err != nil {
+			http.Error(writer, "unavailable edit receipt", http.StatusBadRequest)
+			return
+		}
+		writer.WriteHeader(http.StatusNoContent)
 		return
 	}
 
@@ -513,6 +531,11 @@ func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []st
 	}
 	_, err = writer.Write(result)
 	return true, err
+}
+
+func (s *httpShellCommentarySink) PublishEdit(ctx context.Context, workspace, callID string) error {
+	_, err := s.send(ctx, map[string]any{"edit_call": callID, "workspace": workspace})
+	return err
 }
 
 func (s *httpShellCommentarySink) Publish(ctx context.Context, text string) error {

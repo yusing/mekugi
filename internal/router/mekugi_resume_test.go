@@ -2,12 +2,13 @@ package router
 
 import (
 	"encoding/json"
-	"github.com/yusing/mekugi"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi"
 )
 
 func TestReplayVisibleViewSurvivesRestartAndFork(t *testing.T) {
@@ -98,16 +99,10 @@ func TestReplayRecoveryAndAliasesAreRequestLocal(t *testing.T) {
 	fork := view(output("old", "failed"))
 	failed := view(output("new", "failed"))
 	empty := view(map[string]any{"type": "message", "role": "user", "content": "edited"})
-	if _, err := parent.recoveryHistory(); err == nil {
-		t.Fatal("parent recovered older failure after success")
+	if len(parent.visible) != 2 || len(fork.visible) != 1 || len(empty.visible) != 0 {
+		t.Fatal("request views borrowed invisible calls")
 	}
-	if recovered, err := fork.recoveryHistory(); err != nil || recovered.Script != "old" {
-		t.Fatalf("fork recovery: %+v %v", recovered, err)
-	}
-	if _, err := empty.recoveryHistory(); err == nil {
-		t.Fatal("empty view recovered invisible call")
-	}
-	if len(parent.targetAliases()) != 1 || len(failed.targetAliases()) != 0 || len(fork.targetAliases()) != 0 {
+	if !parent.visible["new"].confirmed || failed.visible["new"].confirmed {
 		t.Fatal("confirmation leaked between views")
 	}
 	if err := store.putCommentary(t.Context(), workspace, []string{"msg_mekugi_commentary_known"}); err != nil {
@@ -174,7 +169,7 @@ func TestReplayCompletedSSEIsDurableBeforeTerminal(t *testing.T) {
 	for _, native := range []bool{false, true} {
 		t.Run(strconv.FormatBool(native), func(t *testing.T) {
 			calls := 0
-			transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, &calls))
+			transform, proxy, _, _ := newMekugiTestTransform(t)
 			if native {
 				transform, _ = newNativeMekugiTestTransformWithProxy(t, proxy)
 			}
@@ -194,7 +189,7 @@ func TestReplayCompletedSSEIsDurableBeforeTerminal(t *testing.T) {
 			if _, found, err := store.lookup(t.Context(), transform.directory, "call-H"); err != nil || found {
 				t.Fatalf("unfinished retained: %v %v", found, err)
 			}
-			emitted, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testMekugiScript}))
+			emitted, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testShellEditSource}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -231,7 +226,7 @@ func TestReplayCompletedSSEIsDurableBeforeTerminal(t *testing.T) {
 				t.Fatal(err)
 			}
 			item := replayed[0]
-			if jsonString(item, "type") != "custom_tool_call" || jsonString(item, "name") != mekugiToolName || jsonString(item, "id") != "item-H" || jsonString(item, "input") != testMekugiScript || string(item["extra"]) != "{\"kept\":true}" || len(item["arguments"]) != 0 || calls != 1 {
+			if jsonString(item, "type") != "custom_tool_call" || jsonString(item, "name") != "shell" || jsonString(item, "id") != "item-H" || jsonString(item, "input") != testShellEditSource || string(item["extra"]) != "{\"kept\":true}" || len(item["arguments"]) != 0 || calls != 0 {
 				t.Fatalf("restart replay lost original: %s, executions %d", request.fields["input"], calls)
 			}
 		})
@@ -239,7 +234,7 @@ func TestReplayCompletedSSEIsDurableBeforeTerminal(t *testing.T) {
 }
 
 func TestReplayStoreFailureDoesNotExposeCompletedCarrier(t *testing.T) {
-	transform, proxy, _, workspace := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -254,7 +249,7 @@ func TestReplayStoreFailureDoesNotExposeCompletedCarrier(t *testing.T) {
 	if _, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.added", "item": added})); err != nil {
 		t.Fatal(err)
 	}
-	visible, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testMekugiScript}))
+	visible, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testShellEditSource}))
 	if err == nil || len(visible) != 0 {
 		t.Fatalf("failed durability exposed carrier: %s %v", visible, err)
 	}
@@ -283,10 +278,8 @@ func TestReplayConcurrentViewsWithReusedRoutingKey(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			transform := &mekugiResponseTransform{visible: visible}
-			recovered, err := transform.recoveryHistory()
-			if err != nil || recovered.Script != id || len(visible) != 1 {
-				t.Fatalf("cross-contaminated view: %+v %v", recovered, err)
+			if visible[id].Script != id || len(visible) != 1 {
+				t.Fatalf("cross-contaminated view: %+v", visible)
 			}
 		})
 	}
@@ -294,7 +287,7 @@ func TestReplayConcurrentViewsWithReusedRoutingKey(t *testing.T) {
 
 func TestReplayJSONExcludesUnfinishedCalls(t *testing.T) {
 	calls := 0
-	transform, proxy, _, workspace := newMekugiTestTransform(t, testTranslator(t, &calls))
+	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -317,7 +310,7 @@ func TestReplayReceivedReplyDoesNotRepeatAfterReconciliation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	proxy.replayStore = store
 	envelope := map[string]any{"type": "agent_message", "id": "received-reply", "author": "/root/worker", "recipient": "/root", "content": []any{map[string]any{"type": "input_text", "text": "Message Type: MESSAGE\nTask name: /root\nSender: /root/worker\nPayload:\nresult"}}}
 	prepare := func(proxy *mekugiProxy, input []any, thread string) (*mekugiResponseTransform, *parsedResponsesRequest) {
@@ -354,7 +347,7 @@ func TestReplayReceivedReplyDoesNotRepeatAfterReconciliation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			proxy = newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy = newManagedMekugiProxy(t)
 			proxy.replayStore = reopened
 		}
 		next, request := prepare(proxy, []any{envelope, generated}, "continued-thread")

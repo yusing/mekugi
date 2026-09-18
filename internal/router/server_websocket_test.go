@@ -406,10 +406,8 @@ func TestResponsesWebSocketEndpointCloseWaitsAndRejectsNewAdmission(t *testing.T
 func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
-	proxy := newManagedMekugiProxy(t, mekugiTranslatorFunc(func(context.Context, string, string) ([]byte, error) {
-		t.Error("prewarm must not execute tools")
-		return nil, nil
-	}))
+	proxy := newManagedMekugiProxy(t)
+
 	headers := codexAuthHeaders()
 	headers.Set(sessionIDHeader, "prewarm-session")
 	headers.Set(threadIDHeader, "prewarm-thread")
@@ -533,7 +531,7 @@ func TestResponsesWebSocketLocalErrorStatus(t *testing.T) {
 			headers.Set(threadIDHeader, "error-thread")
 			var proxy *mekugiProxy
 			if test.metadata != "" {
-				proxy = newManagedMekugiProxy(t, testTranslator(t, new(int)))
+				proxy = newManagedMekugiProxy(t)
 				metadata := serverMetadataHeaders(t, test.metadata, map[string]json.RawMessage{t.TempDir(): nil})
 				headers.Set(codexTurnMetadataHeader, metadata.Get(codexTurnMetadataHeader))
 			}

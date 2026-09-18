@@ -21,11 +21,11 @@ import (
 
 func TestStreamDiagnosticsIncompleteHPATCH(t *testing.T) {
 	calls := 0
-	transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, &calls))
+	transform, _, _, _ := newMekugiTestTransform(t)
 	d := &streamDiagnostics{}
 	hooks := &responseHooks{streamDiagnostics: d}
 	input := "secret patch é"
-	stream := `data: {"type":"response.output_item.added","output_index":0,"item":{"type":"custom_tool_call","id":"ctc_1","call_id":"call_1","name":"hpatch","status":"in_progress","input":""}}` + "\n\n" +
+	stream := `data: {"type":"response.output_item.added","output_index":0,"item":{"type":"custom_tool_call","id":"ctc_1","call_id":"call_1","name":"shell","status":"in_progress","input":""}}` + "\n\n" +
 		`data: {"type":"response.custom_tool_call_input.delta","item_id":"ctc_1","delta":` + string(mustMarshalJSON(input)) + "}\n\n"
 	var output bytes.Buffer
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

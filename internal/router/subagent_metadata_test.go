@@ -29,7 +29,7 @@ func TestMalformedAgentAuthorIsAuxiliary(t *testing.T) {
 		if !valid || !metadata.activityIdentityInvalid || metadata.AgentName != "" || metadata.commentaryAuthor() != "" {
 			t.Fatal(metadata, valid)
 		}
-		proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+		proxy := newManagedMekugiProxy(t)
 		request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"model": "gpt-test", "input": []any{testCodeModeAdditionalTools(testCodeModeDescription)}}))
 		if err != nil {
 			t.Fatal(err)

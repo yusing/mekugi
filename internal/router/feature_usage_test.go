@@ -96,7 +96,7 @@ func TestFeatureUsageStructuredJSONAndSSE(t *testing.T) {
 		} {
 			t.Run(tc.name+map[bool]string{false: "/json", true: "/sse"}[stream], func(t *testing.T) {
 				d := featureDebugOutput(t)
-				transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+				transform, _, _, _ := newMekugiTestTransform(t)
 				transform.featureTrace = featureUsageTrace{debug: d, requestID: "request-1", threadID: "thread-1"}
 				if tc.eligible {
 					transform.commentaryTools = commentaryToolCatalog{functionToolKey("", "lookup"): {qualifiedName: "lookup"}}
@@ -330,7 +330,7 @@ func TestFeatureUsageProductionRequestCorrelation(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.dump = dump
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
 	headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 	initial := serverRequest(t, func(fields map[string]any) {

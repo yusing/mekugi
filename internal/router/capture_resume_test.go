@@ -18,7 +18,7 @@ func TestReplayContinuationMatchesLiveProviderInput(t *testing.T) {
 					workspace, storage := t.TempDir(), t.TempDir()
 					translations := 0
 					newProxy := func() *mekugiProxy {
-						proxy := newManagedMekugiProxy(t, testTranslator(t, &translations))
+						proxy := newManagedMekugiProxy(t)
 						var err error
 						proxy.replayStore, err = openMekugiReplayStore(storage)
 						if err != nil {

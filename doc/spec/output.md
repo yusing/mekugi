@@ -10,14 +10,13 @@ The host's `Add File` action performs the unconditional write even when the file
 Invalid paths or content return an error and no patch. This adapter is used by the shell carrier
 specified in `REQ-SHELL-001`; it does not alter engine translation semantics below.
 
-Routed mixed-script completion and partial effects are specified separately in
-`REQ-SCRIPT-001`; the engine guarantees below apply independently to each edit segment.
+The shell command applies one complete edit through the engine under host execution authority.
 
 Every engine evaluation entry point accepts one complete input and evaluates the entire script before an
 external filesystem commit or translated patch is returned. Basic `Apply` returns only an error.
 All apply and host entry points reject a nil context with `context is nil`, before evaluation
 or finalization; host variants return a zero result without running hooks or publishing output.
-`ApplyForHost`, `ApplyForHostRoot`, and `TranslateForHostAt` return `HostTranslation`, which carries
+`ApplyForHost`, `ApplyForHostRoot`, `ApplyForHostAt`, and `TranslateForHostAt` return `HostTranslation`, which carries
 the rendered report, final state, diagnostics, patch summary, target aliases, and per-file
 review diffs under `REQ-CHANGES-001`.
 Before finalization, every changed Go file is parsed and canonically formatted;
@@ -64,8 +63,8 @@ equal remove/add of the empty line representation for an empty file. Translation
 
 After evaluation succeeds, host variants carry one fully rendered final-state report in
 `HostTranslation`. Apply host variants return it only after commit succeeds; translation host
-variants return it with the complete patch; routed `functions.hpatch` emits it through the
-restored carrier. Basic `Apply` does not return the report. Its line forms are:
+variants return it with the complete patch. The shell `hpatch` command emits the report after
+application. Basic `Apply` does not return the report. Its line forms are:
 
 ```text
 in PATH
@@ -227,9 +226,7 @@ and interruption with an unknown outcome must not be collapsed into a blanket
 confirmation of application; only host-confirmed success permits a routed
 application success report. A validated no-op may report no changes without
 host application, but must not claim a patch was applied. These distinctions
-apply to edit-only calls and to each edit segment in a mixed script.
-Mixed-script checkpoints and retry behavior remain owned by
-[REQ-SCRIPT-001](script.md).
+apply independently to each edit invocation.
 
 OpenAI `apply_patch` is a logical-line format. Translation returns LF-only patch text
 and normalizes line endings only in its displayed before/after lines; it does not

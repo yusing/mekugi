@@ -143,7 +143,7 @@ func waitAutoLiveDiff(t *testing.T, log, marker string) string {
 }
 
 func TestAutoLiveDiffSelectedWorkspaceBoundary(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	log := autoLiveDiffFixture(t)
 	workspace := t.TempDir()
 	alias := filepath.Join(t.TempDir(), "selected")
@@ -169,7 +169,7 @@ func TestAutoLiveDiffSelectedWorkspaceBoundary(t *testing.T) {
 	request = serverRequest(t, nil)
 	provider = &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(string(mustTestJSON(t, map[string]any{
 		"id": "edit-response", "status": "completed", "output": []any{map[string]any{
-			"type": "custom_tool_call", "name": "hpatch", "call_id": "first-edit", "input": testMekugiScript,
+			"type": "custom_tool_call", "name": "shell", "call_id": "first-edit", "input": testShellEditSource,
 		}},
 	})))}}}
 	if err := executeRequest(t.Context(), t.Context(), request, headers, "auto", provider, io.Discard, nil, proxy, nil, nil); err != nil {

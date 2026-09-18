@@ -14,7 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi"
 	codexinstructions "github.com/yusing/mekugi/contrib/codex"
 )
 
@@ -24,7 +23,7 @@ const (
 	testMekugiReport    = "in created.txt\nlast type 1 ranges 1:1-1:1\nfiles add=1 update=0 move=0 delete=0\nrefs 2 type\n1:239f payload\n"
 )
 
-const testMekugiToolDescription = "fixture mekugi description\nwith exact trailing newline\n"
+var testShellEditSource = "hpatch " + shellQuoteArgument(testMekugiScript)
 
 const testCodeModeDescription = "Run JavaScript.\n- All nested tools are available on the global `tools` object, for example `await tools.exec_command(...)`. Tool names are exposed as normalized JavaScript identifiers.\n\n### `exec_command`\nRun a shell command.\n\nexec tool declaration:\n```ts\ndeclare const tools: { exec_command(args: { cmd: string; workdir?: string }): Promise<unknown>; };\n```\n\n### `apply_patch`\nThe default editor.\n\nexec tool declaration:\n```ts\ndeclare const tools: { apply_patch(input: string): Promise<unknown>; };\n```\n\n### `create_goal`\nCreate a goal."
 
@@ -114,7 +113,6 @@ func testFunctionsNamespaceTools(t *testing.T, fields map[string]json.RawMessage
 
 func testInstalledTools() []*responsesToolDefinition {
 	return []*responsesToolDefinition{
-		newResponsesToolDefinition(customGrammarTool(mekugiToolName, testMekugiToolDescription, mekugi.ToolGrammar())),
 		newResponsesToolDefinition(map[string]json.RawMessage{
 			"type":        mustMarshalJSON("custom"),
 			"name":        mustMarshalJSON("shell"),
@@ -131,52 +129,18 @@ func testNativeResponsesTools() []any {
 	}
 }
 
-type mekugiTranslatorFunc func(context.Context, string, string) ([]byte, error)
-
-func (f mekugiTranslatorFunc) Translate(ctx context.Context, workspace string, script string) (mekugiTranslationResult, error) {
-	patch, err := f(ctx, workspace, script)
-	return mekugiTranslationResult{patch: patch, report: testMekugiReport}, err
-}
-
-func (mekugiTranslatorFunc) ToolDescription() string {
-	return testMekugiToolDescription
-}
-
-type mekugiResultTranslatorFunc func(context.Context, string, string) (mekugiTranslationResult, error)
-
-func (f mekugiResultTranslatorFunc) Translate(ctx context.Context, workspace string, script string) (mekugiTranslationResult, error) {
-	return f(ctx, workspace, script)
-}
-
-func (mekugiResultTranslatorFunc) ToolDescription() string {
-	return testMekugiToolDescription
-}
-
-func newManagedMekugiProxy(t *testing.T, translator mekugiTranslator) *mekugiProxy {
+func newManagedMekugiProxy(t *testing.T) *mekugiProxy {
 	t.Helper()
-	if translator == nil {
-		return nil
-	}
-	switch translator.ToolDescription() {
-	case testMekugiToolDescription:
-		return newProxyWithSharedTestRegistry(t, translator, sharedProxyTestRegistry(t))
-	case mekugi.ToolDescription():
-		return newProxyWithSharedTestRegistry(t, translator, realProxyTestFixture.get(t, "", mekugi.ToolDescription()))
-	default:
-		return newManagedMekugiProxyWithDataDirectory(t, translator, t.TempDir())
-	}
+	return newProxyWithSharedTestRegistry(t, sharedProxyTestRegistry(t))
 }
 
-func newManagedMekugiProxyWithDataDirectory(t *testing.T, translator mekugiTranslator, dataDirectory string) *mekugiProxy {
+func newManagedMekugiProxyWithDataDirectory(t *testing.T, dataDirectory string) *mekugiProxy {
 	t.Helper()
-	if translator == nil {
-		return nil
-	}
-	registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, translator.ToolDescription(), false)
+	registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxy := newMekugiProxy(translator, registry, false, false)
+	proxy := newMekugiProxy(registry, false, false)
 	t.Cleanup(func() {
 		if err := errors.Join(proxy.Close(), registry.Close()); err != nil {
 			t.Error(err)
@@ -198,9 +162,9 @@ func registeredWorkerInput(t *testing.T, proxy *mekugiProxy, name string, argume
 	return input
 }
 
-func newMekugiTestTransform(t *testing.T, translator mekugiTranslator) (*mekugiResponseTransform, *mekugiProxy, *parsedResponsesRequest, string) {
+func newMekugiTestTransform(t *testing.T) (*mekugiResponseTransform, *mekugiProxy, *parsedResponsesRequest, string) {
 	t.Helper()
-	return newMekugiTestTransformWithProxy(t, newManagedMekugiProxy(t, translator))
+	return newMekugiTestTransformWithProxy(t, newManagedMekugiProxy(t))
 }
 
 func newMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (*mekugiResponseTransform, *mekugiProxy, *parsedResponsesRequest, string) {
@@ -261,18 +225,12 @@ func newNativeMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (*m
 	return transform, &request
 }
 
-func testTranslator(t *testing.T, calls *int) mekugiTranslator {
-	t.Helper()
-	return mekugiTranslatorFunc(func(_ context.Context, directory string, script string) ([]byte, error) {
-		*calls++
-		if directory == "" {
-			t.Fatal("translator received no base directory")
-		}
-		if script != testMekugiScript {
-			t.Fatalf("script = %q", script)
-		}
-		return []byte(testTranslatedPatch), nil
-	})
+const testRejectedShellSource = "#!params=invalid\ntrue"
+
+func testRejectedShellItem() map[string]any {
+	item := testMekugiItem()
+	item["input"] = testRejectedShellSource
+	return item
 }
 
 func testMekugiItem() map[string]any {
@@ -280,8 +238,8 @@ func testMekugiItem() map[string]any {
 		"type":    "custom_tool_call",
 		"id":      "item-H",
 		"call_id": "call-H",
-		"name":    mekugiToolName,
-		"input":   testMekugiScript,
+		"name":    "shell",
+		"input":   "hpatch " + shellQuoteArgument(testMekugiScript),
 		"status":  "completed",
 		"future":  map[string]any{"kept": true},
 	}
@@ -362,7 +320,7 @@ func TestMekugiPrepareRequestRewritesNamespacedExecWithShell(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 
 	metadata := codexTurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil}}
 	transform, err := proxy.prepareRequest(t.Context(), &request, "session-functions-exec", "thread-functions-exec", metadata, true)
@@ -424,7 +382,7 @@ func TestMekugiPrepareRequestSupportsAstraStockInstructions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	metadata := codexTurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{t.TempDir(): nil}}
 	transform, err := proxy.prepareRequest(t.Context(), &request, "astra-session", "astra-thread", metadata, true)
 	if err != nil {
@@ -450,7 +408,7 @@ func TestMekugiPrepareRequestSupportsAstraStockInstructions(t *testing.T) {
 func TestMekugiPrepareRequestRefreshesWorkflowOnModelSwitch(t *testing.T) {
 	for _, compact := range []bool{false, true} {
 		for _, developer := range []bool{false, true} {
-			proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+			proxy := newManagedMekugiProxy(t)
 			proxy.compactModelProtocol = compact
 			metadata := codexTurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{t.TempDir(): nil}}
 			instructions := "prefix\n" + codexinstructions.InstructionsForModel("", false) + "suffix\n"
@@ -506,7 +464,7 @@ func TestMekugiPrepareRequestUsesCustomizedModelInstructions(t *testing.T) {
 	metadata := codexTurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil}}
 
 	t.Run("configured file appends", func(t *testing.T) {
-		proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+		proxy := newManagedMekugiProxy(t)
 		proxy.customizedInstructions = true
 		request := newRequest(t)
 		transform, err := proxy.prepareRequest(t.Context(), &request, "custom-session", "custom-thread", metadata, true)
@@ -525,7 +483,7 @@ func TestMekugiPrepareRequestUsesCustomizedModelInstructions(t *testing.T) {
 	})
 
 	t.Run("unconfigured prompt fails before tool rewrite", func(t *testing.T) {
-		proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+		proxy := newManagedMekugiProxy(t)
 		request := newRequest(t)
 		originalInput := bytes.Clone(request.fields["input"])
 		if _, err := proxy.prepareRequest(t.Context(), &request, "stock-session", "stock-thread", metadata, true); err == nil ||
@@ -538,8 +496,8 @@ func TestMekugiPrepareRequestUsesCustomizedModelInstructions(t *testing.T) {
 	})
 }
 
-func TestMekugiPrepareRequestExposesEditToolsAndShell(t *testing.T) {
-	transform, _, request, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+func TestMekugiPrepareRequestExposesShellWithoutEditTools(t *testing.T) {
+	transform, _, request, _ := newMekugiTestTransform(t)
 	if !transform.originalToolsPresent || len(transform.originalTools) == 0 {
 		t.Fatal("original top-level tools were not retained")
 	}
@@ -547,28 +505,13 @@ func TestMekugiPrepareRequestExposesEditToolsAndShell(t *testing.T) {
 	if err := json.Unmarshal(request.fields["tools"], &topTools); err != nil {
 		t.Fatal(err)
 	}
-	if len(topTools) != 5 || jsonString(topTools[4], "name") != journalToolName || jsonString(topTools[0], "name") != "lookup" || jsonString(topTools[1], "name") != mekugiToolName || jsonString(topTools[2], "name") != mekugiRecoveryToolName || jsonString(topTools[3], "name") != "shell" {
+	if len(topTools) != 3 || jsonString(topTools[2], "name") != journalToolName || jsonString(topTools[0], "name") != "lookup" || jsonString(topTools[1], "name") != "shell" {
 		t.Fatalf("top-level tools = %#v", topTools)
 	}
 	if jsonString(topTools[1], "type") != "custom" {
 		t.Fatalf("standalone mekugi definition = %#v", topTools[1])
 	}
-	var format struct {
-		Type       string `json:"type"`
-		Syntax     string `json:"syntax"`
-		Definition string `json:"definition"`
-	}
-	if err := json.Unmarshal(topTools[1]["format"], &format); err != nil {
-		t.Fatal(err)
-	}
-	if format.Type != "grammar" || format.Syntax != "lark" || format.Definition != mekugi.ToolGrammar() {
-		t.Fatalf("standalone mekugi format = %#v", topTools[1])
-	}
-	exposed := jsonString(topTools[1], "description")
-	if exposed != testMekugiToolDescription {
-		t.Fatalf("standalone mekugi description = %q, want native tool help only", exposed)
-	}
-	if description := jsonString(topTools[3], "description"); !strings.HasPrefix(description, "Run free-form scripts") || !strings.Contains(description, "\n\n### `#!params`") ||
+	if description := jsonString(topTools[1], "description"); !strings.HasPrefix(description, "Run free-form scripts") || !strings.Contains(description, "\n\n### `#!params`") ||
 		strings.Contains(description, "#!cmd=") || strings.Contains(description, "@shell/") {
 		t.Fatalf("standalone shell description = %q", description)
 	}
@@ -625,7 +568,7 @@ func TestMekugiNativeToolsUseExecCommandCarrierAndRestoreOriginalContract(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, err := proxy.prepareRequest(
 		t.Context(),
 		&request,
@@ -645,7 +588,7 @@ func TestMekugiNativeToolsUseExecCommandCarrierAndRestoreOriginalContract(t *tes
 	if err := json.Unmarshal(request.fields["tools"], &rewrittenTools); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{nativeExecCommandToolName, "lookup", mekugiToolName, mekugiRecoveryToolName, "shell"} {
+	for _, name := range []string{nativeExecCommandToolName, "lookup", "shell"} {
 		if !slices.ContainsFunc(rewrittenTools, func(tool map[string]json.RawMessage) bool {
 			return jsonString(tool, "name") == name
 		}) {
@@ -688,9 +631,7 @@ func TestMekugiNativeToolsUseExecCommandCarrierAndRestoreOriginalContract(t *tes
 	if err := json.Unmarshal([]byte(jsonString(carrier, "arguments")), &arguments); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(arguments.Command, mekugiNativeApplyMarker) ||
-		!strings.Contains(arguments.Command, shellQuoteArgument(testTranslatedPatch)) ||
-		!strings.Contains(arguments.Command, shellQuoteArgument(testMekugiReport)) {
+	if !strings.Contains(arguments.Command, "hpatch") || strings.Contains(arguments.Command, "apply_patch") {
 		t.Fatalf("native exec_command arguments = %q", arguments.Command)
 	}
 
@@ -809,56 +750,8 @@ func TestMekugiNativeExecCommandPreservesFailureOutput(t *testing.T) {
 	}
 }
 
-func TestMekugiNativeDiagnosticAndAlreadySatisfiedUseReportCarriers(t *testing.T) {
-	tests := []struct {
-		name       string
-		translated mekugiTranslationResult
-		err        error
-		marker     string
-	}{
-		{
-			name:       "diagnostic",
-			translated: mekugiTranslationResult{diagnostic: "type: command 2, reason row-stale: current row\n"},
-			err:        errors.New("rejected"),
-			marker:     mekugiNativeDiagnosticMarker,
-		},
-		{
-			name: "already satisfied",
-			translated: mekugiTranslationResult{
-				report: "in file.txt\nlast none\n",
-				change: mekugi.HostChange{AlreadySatisfied: true},
-			},
-			marker: mekugiNativeReportMarker,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			translator := mekugiResultTranslatorFunc(func(context.Context, string, string) (mekugiTranslationResult, error) {
-				return test.translated, test.err
-			})
-			transform, _ := newNativeMekugiTestTransformWithProxy(t, newManagedMekugiProxy(t, translator))
-			history, err := transform.translate("call-H", testMekugiScript, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if history.effectiveCarrierKind() != codeModeCarrierFunction || history.CarrierName != nativeExecCommandToolName {
-				t.Fatalf("native result carrier = %+v", history)
-			}
-			var arguments struct {
-				Command string `json:"cmd"`
-			}
-			if err := json.Unmarshal([]byte(history.carrierInput()), &arguments); err != nil {
-				t.Fatal(err)
-			}
-			if !strings.HasPrefix(arguments.Command, test.marker) {
-				t.Fatalf("native result command = %q", arguments.Command)
-			}
-		})
-	}
-}
-
 func TestMekugiNativeToolsTranslateShellAndStreamingMekugi(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, _ := newNativeMekugiTestTransformWithProxy(t, proxy)
 	history, err := transform.translateTool("shell", "call-shell", "printf ok\n", nil)
 	if err != nil {
@@ -887,7 +780,7 @@ func TestMekugiNativeToolsTranslateShellAndStreamingMekugi(t *testing.T) {
 		t.Fatalf("native buffered added = %q, error %v", visible, err)
 	}
 	done := mustTestJSON(t, map[string]any{
-		"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testMekugiScript,
+		"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testShellEditSource,
 	})
 	visible, err := stream.TransformSSE(done)
 	if err != nil || len(visible) != 2 || !bytes.Contains(visible[0], []byte(`"type":"function_call"`)) ||
@@ -897,9 +790,9 @@ func TestMekugiNativeToolsTranslateShellAndStreamingMekugi(t *testing.T) {
 }
 
 func TestMekugiRoutesOnlyModelVisibleRegistryTools(t *testing.T) {
-	transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, _, _, _ := newMekugiTestTransform(t)
 	for name, want := range map[string]bool{
-		mekugiToolName: true,
+		mekugiToolName: false,
 		"shell":        true,
 		"hcat":         false,
 		"hgrep":        false,
@@ -916,7 +809,7 @@ func TestMekugiRoutesOnlyModelVisibleRegistryTools(t *testing.T) {
 func TestReportIssueRouting(t *testing.T) {
 	t.Parallel()
 	dataDirectory := t.TempDir()
-	registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, testMekugiToolDescription, true)
+	registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -941,7 +834,6 @@ func TestReportIssueRouting(t *testing.T) {
 			t.Fatal(err)
 		}
 		proxy := newMekugiProxy(
-			testTranslator(t, new(int)),
 			registry,
 			false,
 			false,
@@ -996,7 +888,7 @@ func TestReportIssueRouting(t *testing.T) {
 		); err != nil {
 			t.Fatal(err)
 		}
-		proxy := newMekugiProxy(testTranslator(t, new(int)), registry, false, false)
+		proxy := newMekugiProxy(registry, false, false)
 		t.Cleanup(func() {
 			if err := proxy.Close(); err != nil {
 				t.Error(err)
@@ -1019,7 +911,7 @@ func TestReportIssueRouting(t *testing.T) {
 			t.Fatal(err)
 		}
 		calls := 0
-		proxy := newMekugiProxy(testTranslator(t, &calls), registry, false, false)
+		proxy := newMekugiProxy(registry, false, false)
 		t.Cleanup(func() {
 			if err := proxy.Close(); err != nil {
 				t.Error(err)
@@ -1031,8 +923,8 @@ func TestReportIssueRouting(t *testing.T) {
 		if _, err := transform.translateTool(reportIssueToolName, "shared-call", input, nil); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := transform.translateTool(mekugiToolName, "shared-call", input, nil); err == nil ||
-			!strings.Contains(err.Error(), "mekugi call \"shared-call\" changed input") {
+		if _, err := transform.translateTool("shell", "shared-call", input, nil); err == nil ||
+			!strings.Contains(err.Error(), "shell call \"shared-call\" changed input") {
 			t.Fatalf("reused cross-tool call error = %v", err)
 		}
 		if calls != 0 {
@@ -1272,7 +1164,7 @@ func TestMekugiDirectAdditionalApplyPatchIsRejectedWithoutExecCarrier(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	t.Cleanup(func() {
 		if err := proxy.Close(); err != nil {
 			t.Error(err)
@@ -1326,7 +1218,7 @@ func TestMekugiAdditionalToolsReplacementRejectsDuplicateAndConflictingOwners(t 
 		{
 			name:  "existing mekugi collision",
 			input: []any{additional(execTool())},
-			tools: []any{map[string]any{"type": "custom", "name": mekugiToolName}},
+			tools: []any{map[string]any{"type": "custom", "name": "shell"}},
 		},
 		{
 			name:  "direct namespaced apply_patch collision",
@@ -1334,7 +1226,7 @@ func TestMekugiAdditionalToolsReplacementRejectsDuplicateAndConflictingOwners(t 
 		},
 		{
 			name:  "namespaced mekugi collision",
-			input: []any{additional(execTool(), map[string]any{"type": "custom", "name": mekugiToolName})},
+			input: []any{additional(execTool(), map[string]any{"type": "custom", "name": "shell"})},
 		},
 	}
 	for _, test := range tests {
@@ -1456,7 +1348,7 @@ func TestMekugiPrepareRequestLeavesIneligibleRequestUnchanged(t *testing.T) {
 	}
 	beforeInput := bytes.Clone(request.fields["input"])
 	beforeTools := bytes.Clone(request.fields["tools"])
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	metadata := codexTurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil}}
 	transform, err := proxy.prepareRequest(t.Context(), &request, "", "thread", metadata, true)
 	if err == nil || transform != nil || !strings.Contains(err.Error(), "valid session ID") || !bytes.Equal(beforeInput, request.fields["input"]) || !bytes.Equal(beforeTools, request.fields["tools"]) {
@@ -1465,7 +1357,7 @@ func TestMekugiPrepareRequestLeavesIneligibleRequestUnchanged(t *testing.T) {
 }
 
 func TestMekugiIneligibleContinuationDoesNotRestoreHistory(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	if err := proxy.rememberBatch("session", map[string]mekugiHistory{"call-H": {Script: testMekugiScript, Patch: testTranslatedPatch}}); err != nil {
 		t.Fatal(err)
 	}
@@ -1489,17 +1381,7 @@ func TestMekugiTranslationWithoutWorkspaceUsesNoBaseDirectory(t *testing.T) {
 	}
 
 	calls := 0
-	translator := mekugiTranslatorFunc(func(_ context.Context, directory, script string) ([]byte, error) {
-		calls++
-		if directory != "" {
-			t.Fatalf("directory = %q, want no base directory", directory)
-		}
-		if script != testMekugiScript {
-			t.Fatalf("script = %q", script)
-		}
-		return []byte(testTranslatedPatch), nil
-	})
-	proxy := newManagedMekugiProxy(t, translator)
+	proxy := newManagedMekugiProxy(t)
 	transform, err := proxy.prepareRequest(
 		t.Context(),
 		&request,
@@ -1519,27 +1401,27 @@ func TestMekugiTranslationWithoutWorkspaceUsesNoBaseDirectory(t *testing.T) {
 	})); err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 {
-		t.Fatalf("translations = %d, want 1", calls)
+	if calls != 0 {
+		t.Fatalf("translations = %d, want 0", calls)
 	}
 }
 
 func TestMekugiJSONWrapsPatchAndImmediateReportInCodeModeExec(t *testing.T) {
 	calls := 0
-	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, &calls))
+	transform, proxy, _, _ := newMekugiTestTransform(t)
 	originalItem := mustTestJSON(t, testMekugiItem())
 	payload := mustTestJSON(t, map[string]any{
 		"status":      "completed",
 		"output":      []any{json.RawMessage(originalItem), map[string]any{"type": "message", "future": true}},
-		"tools":       []any{map[string]any{"type": "custom", "name": mekugiToolName}},
-		"tool_choice": map[string]any{"type": "custom", "name": mekugiToolName},
+		"tools":       []any{map[string]any{"type": "custom", "name": "shell"}},
+		"tool_choice": map[string]any{"type": "custom", "name": "shell"},
 		"future":      map[string]any{"kept": true},
 	})
 	visible, err := transform.TransformJSON(payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 {
+	if calls != 0 {
 		t.Fatalf("translations = %d", calls)
 	}
 	var response struct {
@@ -1562,7 +1444,7 @@ func TestMekugiJSONWrapsPatchAndImmediateReportInCodeModeExec(t *testing.T) {
 	if err := json.Unmarshal(response.Output[0], &carrier); err != nil {
 		t.Fatal(err)
 	}
-	wantInput := (mekugiHistory{Patch: testTranslatedPatch, Report: testMekugiReport}).carrierInput()
+	wantInput := registeredWorkerInput(t, proxy, "shell", []string{"bash", testShellEditSource})
 	if carrier.CallID != "call-H" || carrier.Name != "exec" || carrier.Input != wantInput || string(carrier.Future) != `{"kept":true}` {
 		t.Fatalf("translated call = %s", response.Output[0])
 	}
@@ -1628,7 +1510,7 @@ func TestNativeExecCommandAddsShellWarning(t *testing.T) {
 		t.Fatalf("reinsert first warning: changed %t, error %v\n%s", duplicateChange, err, idempotent)
 	}
 
-	transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, _, _, _ := newMekugiTestTransform(t)
 	visible, err := transform.TransformJSON(mustTestJSON(t, map[string]any{
 		"status": "completed",
 		"output": []any{
@@ -1651,7 +1533,7 @@ func TestNativeExecCommandAddsShellWarning(t *testing.T) {
 		t.Fatalf("native exec response = %s", visible)
 	}
 
-	stream, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	stream, _, _, _ := newMekugiTestTransform(t)
 	added := mustTestJSON(t, map[string]any{
 		"type": "response.output_item.added",
 		"item": map[string]any{
@@ -1690,7 +1572,7 @@ func decodeExecCarrierArguments(t *testing.T, carrierInput string, destination a
 }
 
 func TestShellJSONTranslatesBashCasesEndToEnd(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 
 	tests := []struct {
@@ -1812,7 +1694,7 @@ func TestShellJSONTranslatesBashCasesEndToEnd(t *testing.T) {
 }
 
 func TestDirectBashExecCommand(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	for _, test := range []struct {
 		name      string
 		arguments []string
@@ -2005,7 +1887,7 @@ func TestShellInterpreterWrapperAddsWarning(t *testing.T) {
 		t.Fatal("interpreter command wrapper was not detected")
 	}
 	warningInput := misuseWarningProjection(shellInterpreterWrapperWarning(misuses[0]))
-	transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, _, _, _ := newMekugiTestTransform(t)
 	visible, err := transform.TransformJSON(mustTestJSON(t, map[string]any{
 		"status": "completed",
 		"output": []any{map[string]any{
@@ -2046,7 +1928,7 @@ func TestShellLiteralExamplesDoNotWarnThroughRouter(t *testing.T) {
 		"cat <<'EOF'\npython3 -c 'example'\nEOF",
 	} {
 		t.Run(input, func(t *testing.T) {
-			transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+			transform, _, _, _ := newMekugiTestTransform(t)
 			visible, err := transform.TransformJSON(mustTestJSON(t, map[string]any{
 				"status": "completed",
 				"output": []any{map[string]any{
@@ -2093,7 +1975,7 @@ func TestShellStacksDistinctMisuseWarnings(t *testing.T) {
 
 	call := func(t *testing.T, input string) string {
 		t.Helper()
-		transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+		transform, _, _, _ := newMekugiTestTransform(t)
 		visible, err := transform.TransformJSON(mustTestJSON(t, map[string]any{
 			"status": "completed",
 			"output": []any{map[string]any{
@@ -2133,7 +2015,7 @@ func TestShellStacksDistinctMisuseWarnings(t *testing.T) {
 }
 
 func TestWorkerTemplateExecInputQuotesNestedShellCommand(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	shell, ok := proxy.registry.contribution("shell")
 	if !ok {
 		t.Fatal("shell contribution is unavailable")
@@ -2167,7 +2049,7 @@ func TestWorkerTemplateExecInputQuotesNestedShellCommand(t *testing.T) {
 }
 
 func TestShellCarrierUsesFixedHelperForBuiltin(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	shell, ok := proxy.registry.contribution("shell")
 	if !ok {
 		t.Fatal("shell contribution is unavailable")
@@ -2187,7 +2069,7 @@ func TestShellCarrierUsesFixedHelperForBuiltin(t *testing.T) {
 }
 
 func TestWorkerExecInputMergesValidatedParams(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	shell, ok := proxy.registry.contribution("shell")
 	if !ok {
 		t.Fatal("shell contribution is unavailable")
@@ -2229,7 +2111,7 @@ func TestWorkerExecInputMergesValidatedParams(t *testing.T) {
 
 func TestShellExecCarriersForwardNativeResultWithoutPolling(t *testing.T) {
 	t.Parallel()
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	shell, ok := proxy.registry.contribution("shell")
 	if !ok {
 		t.Fatal("shell contribution is unavailable")
@@ -2251,7 +2133,7 @@ func TestShellExecCarriersForwardNativeResultWithoutPolling(t *testing.T) {
 		t.Fatalf("shell template carrier did not forward one native result: %s", carrierInput)
 	}
 
-	registry := pluginProxyTestFixture.get(t, testToolPluginDeclaration, testMekugiToolDescription)
+	registry := pluginProxyTestFixture.get(t, testToolPluginDeclaration)
 	plugin, ok := registry.contribution("plugin_tool")
 	if !ok {
 		t.Fatal("configured contribution is unavailable")
@@ -2266,7 +2148,7 @@ func TestShellExecCarriersForwardNativeResultWithoutPolling(t *testing.T) {
 }
 
 func TestMekugiHistoryDoesNotCrossWorkspacesSharingSessionIdentity(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	requestFor := func(t *testing.T, extraItems ...any) parsedResponsesRequest {
 		t.Helper()
 		items := []any{testCodeModeAdditionalTools(testCodeModeDescription)}
@@ -2331,21 +2213,14 @@ func TestMekugiHistoryDoesNotCrossWorkspacesSharingSessionIdentity(t *testing.T)
 	if name := jsonString(replayed[1], "name"); name != "exec" {
 		t.Fatalf("cross-workspace replay restored tool name %q", name)
 	}
-	if input := jsonString(replayed[1], "input"); input != (mekugiHistory{Patch: testTranslatedPatch, Report: testMekugiReport}).carrierInput() {
+	if input := jsonString(replayed[1], "input"); input != jsonString(response.Output[0], "input") {
 		t.Fatalf("cross-workspace replay restored input %q", input)
 	}
 
-	history, err := second.translateRecovery("call-recovery", "C1:ffff not-a-target", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(history.TranslationError, "no rejected HPATCH script to recover") {
-		t.Fatalf("cross-workspace recovery history = %+v", history)
-	}
 }
 
 func TestMekugiReplayPreservesImmediateApplyFailure(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	history := mekugiHistory{Script: testMekugiScript, Patch: testTranslatedPatch, CarrierName: "exec", Report: testMekugiReport}
 	if err := proxy.rememberBatch("session", map[string]mekugiHistory{"call-H": history}); err != nil {
 		t.Fatal(err)
@@ -2366,35 +2241,8 @@ func TestMekugiReplayPreservesImmediateApplyFailure(t *testing.T) {
 	}
 }
 
-func TestMekugiTranslationRewritesConfirmedTargetAlias(t *testing.T) {
-	var translatedScript string
-	translator := mekugiResultTranslatorFunc(func(_ context.Context, _ string, script string) (mekugiTranslationResult, error) {
-		translatedScript = script
-		return mekugiTranslationResult{patch: []byte(testTranslatedPatch), report: testMekugiReport}, nil
-	})
-	transform, _, _, _ := newMekugiTestTransform(t, translator)
-	alias := mekugi.TargetAlias{Path: "file.txt", Before: "2:1111", After: "3:2222"}
-	transform.visible = map[string]mekugiHistory{"call-first": {Root: transform.directory, Report: testMekugiReport, confirmed: true, Aliases: []mekugi.TargetAlias{alias}}}
-
-	emitted := "in file.txt\ntype 2:1111 \"replacement\""
-	if _, err := transform.translate("call-next", emitted, nil); err != nil {
-		t.Fatal(err)
-	}
-	if want := "in file.txt\ntype 3:2222 \"replacement\""; translatedScript != want {
-		t.Fatalf("translated script = %q, want %q", translatedScript, want)
-	}
-
-	malformed := "in file.txt\ntype 2:1111 \"unterminated"
-	if _, err := transform.translate("call-malformed", malformed, nil); err != nil {
-		t.Fatal(err)
-	}
-	if translatedScript != malformed {
-		t.Fatalf("malformed script = %q, want evaluator input %q", translatedScript, malformed)
-	}
-}
-
 func TestMekugiReplayRejectsChangedExecCarrierAndIgnoresUnrelatedCalls(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	history := mekugiHistory{Script: testMekugiScript, Patch: testTranslatedPatch, CarrierName: "exec", Report: testMekugiReport}
 	if err := proxy.rememberBatch("session", map[string]mekugiHistory{"call-H": history}); err != nil {
 		t.Fatal(err)
@@ -2431,27 +2279,9 @@ func TestMekugiExecInputQuotesPatchReportAndDiagnostic(t *testing.T) {
 	}
 }
 
-func TestMekugiAlreadySatisfiedUsesDiagnosticCarrier(t *testing.T) {
-	translator := mekugiResultTranslatorFunc(func(context.Context, string, string) (mekugiTranslationResult, error) {
-		return mekugiTranslationResult{
-			report: "in file.txt\nlast none\n",
-			change: mekugi.HostChange{AlreadySatisfied: true},
-		}, nil
-	})
-	transform, _, _, _ := newMekugiTestTransform(t, translator)
-	history, err := transform.translate("call-noop", "in file.txt\n", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !history.AlreadySatisfied || strings.Contains(history.carrierInput(), "apply_patch") ||
-		history.carrierInput() != "text("+strconv.Quote("in file.txt\nlast none\n")+");" {
-		t.Fatalf("already-satisfied history = %+v, carrier = %s", history, history.carrierInput())
-	}
-}
-
 func TestMekugiStreamingReplacesLifecycleWithoutChangingCallID(t *testing.T) {
 	calls := 0
-	transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, &calls))
+	transform, _, _, _ := newMekugiTestTransform(t)
 	item := testMekugiItem()
 	added := testMekugiItem()
 	added["status"] = "in_progress"
@@ -2465,8 +2295,8 @@ func TestMekugiStreamingReplacesLifecycleWithoutChangingCallID(t *testing.T) {
 	if err != nil || len(visible) != 1 || string(visible[0]) != `{"type":"response.in_progress"}` {
 		t.Fatalf("delta = %q, error %v", visible, err)
 	}
-	visible, err = transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testMekugiScript}))
-	if err != nil || len(visible) != 2 || !bytes.Contains(visible[0], []byte(`"name":"exec"`)) || !bytes.Contains(visible[0], []byte(`"call_id":"call-H"`)) || !bytes.Contains(visible[1], []byte(jsonQuoted((mekugiHistory{Patch: testTranslatedPatch, Report: testMekugiReport}).carrierInput()))) {
+	visible, err = transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testShellEditSource}))
+	if err != nil || len(visible) != 2 || !bytes.Contains(visible[0], []byte(`"name":"exec"`)) || !bytes.Contains(visible[0], []byte(`"call_id":"call-H"`)) || !bytes.Contains(visible[1], []byte(jsonQuoted(transform.local["call-H"].carrierInput()))) {
 		t.Fatalf("input.done = %q, error %v", visible, err)
 	}
 	visible, err = transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": item}))
@@ -2475,13 +2305,13 @@ func TestMekugiStreamingReplacesLifecycleWithoutChangingCallID(t *testing.T) {
 	}
 	completed := map[string]any{"status": "completed", "output": []any{item}}
 	visible, err = transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.completed", "response": completed}))
-	if err != nil || len(visible) != 1 || calls != 1 {
+	if err != nil || len(visible) != 1 || calls != 0 {
 		t.Fatalf("completed = %q, translations %d, error %v", visible, calls, err)
 	}
 }
 
 func TestMekugiBufferedDeltaKeepsDownstreamSSEActiveWithoutLeakingInput(t *testing.T) {
-	transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, _, _, _ := newMekugiTestTransform(t)
 	added := testMekugiItem()
 	added["status"] = "in_progress"
 	added["input"] = ""
@@ -2510,386 +2340,10 @@ func TestMekugiBufferedDeltaKeepsDownstreamSSEActiveWithoutLeakingInput(t *testi
 	}
 }
 
-func TestNonMekugiHistoryIsExcludedFromRecovery(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
-	err := proxy.rememberBatch("session", map[string]mekugiHistory{
-		"call-H": {
-			ToolName: mekugiToolName, Script: testMekugiScript,
-			TranslationError: "rejected", EvaluatorRejected: true, sequence: 1,
-			RecoveryHandles: testRecoveryHandles(testMekugiScript),
-			RecoveryBinding: recoveryHandlesBinding(testMekugiScript, testRecoveryHandles(testMekugiScript)),
-		},
-		"call-S": {
-			ToolName: "shell", Script: `hcat file.txt`,
-			Report: "8ed3: alpha\n", sequence: 2,
-		},
-		"call-S2": {
-			ToolName: "shell", Script: `hsymbol refs file.go 1:8ed3 Alpha`,
-			sequence: 3,
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	history, err := proxy.recoverableHistory("session")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if history.ToolName != mekugiToolName || history.Script != testMekugiScript {
-		t.Fatalf("recoverable history = %+v", history)
-	}
-
-	transform := &mekugiResponseTransform{
-		proxy:            proxy,
-		sessionID:        "session",
-		historySessionID: "session",
-		visible:          map[string]mekugiHistory{"call-H": history},
-		mekugiTranslationState: mekugiTranslationState{
-			local: map[string]mekugiHistory{
-				"call-local-shell": {
-					ToolName: "shell",
-					Script:   `hgrep alpha .`,
-					sequence: 1,
-				},
-			},
-		},
-	}
-	history, err = transform.recoveryHistory()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if history.ToolName != mekugiToolName || history.Script != testMekugiScript {
-		t.Fatalf("recovery after local read-only call = %+v", history)
-	}
-}
-
-func TestMekugiNonEvaluatorFailureDoesNotBecomeRecoveryBaseline(t *testing.T) {
-	calls := 0
-	transform, _, _, _ := newMekugiTestTransform(t, mekugiTranslatorFunc(func(context.Context, string, string) ([]byte, error) {
-		calls++
-		return nil, errors.New("translator failed")
-	}))
-	first, err := transform.translate("call-1", testMekugiScript, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.EvaluatorRejected || strings.Contains(first.TranslationError, "Use mekugi without `in`") {
-		t.Fatalf("non-evaluator failure exposed recovery guidance: %+v", first)
-	}
-	second, err := transform.translateRecovery("call-2", "C1:ffff not-a-target", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !second.Unevaluated ||
-		!strings.Contains(second.TranslationError, "did not produce an evaluator rejection") ||
-		calls != 1 {
-		t.Fatalf("recovery after non-evaluator failure = %+v, translator calls %d", second, calls)
-	}
-}
-
-func TestMekugiUnevaluatedRecoveryRunsOutcomeHookOnce(t *testing.T) {
-	t.Parallel()
-	dataDirectory := t.TempDir()
-	outcomePath := filepath.Join(t.TempDir(), "outcome.txt")
-	settings := fmt.Sprintf(
-		`{"hooks":{"outcome":["printf '%%s' {{shellquote .Stage}}'|'{{shellquote .Outcome}}'|'{{shellquote .ToolName}}'|'{{.EmittedBytes}}'|'{{.EvaluatedBytes}} > %s"]}}`,
-		shellQuoteArgument(outcomePath),
-	)
-	if err := os.WriteFile(filepath.Join(dataDirectory, "settings.json"), []byte(settings), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	transform, _, _, _ := newMekugiTestTransformWithProxy(
-		t,
-		newManagedMekugiProxy(t, newInProcessMekugiTranslator(dataDirectory)),
-	)
-	payload := "C1:ffff not-a-target"
-	history, err := transform.translateRecovery("call-recovery", payload, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !history.Unevaluated {
-		t.Fatalf("recovery history = %+v", history)
-	}
-	got, err := os.ReadFile(outcomePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := fmt.Sprintf("unevaluated|rejected|hpatch_recover|%d|0", len(payload))
-	if string(got) != want {
-		t.Fatalf("outcome hook = %q, want %q", got, want)
-	}
-}
-
-func TestMekugiRecoveryRetainsCorrelationAndRebuildsBeforeTranslation(t *testing.T) {
-	base := "in file.txt\ntype 1:aaaa \"payload\"\n"
-	want := "in file.txt\ntype 2:bbbb \"payload\"\n"
-	calls := 0
-	var evaluated string
-	translator := mekugiResultTranslatorFunc(func(_ context.Context, _ string, script string) (mekugiTranslationResult, error) {
-		calls++
-		if calls == 1 {
-			return mekugiTranslationResult{
-				diagnostic: "type: command 2, reason row-stale: rejected\n",
-				rejections: []mekugi.HostRejection{{Command: 2, SourceLine: 2, Operation: "type", Target: "line", Reason: "row-stale"}},
-			}, errors.New("rejected")
-		}
-		evaluated = script
-		return mekugiTranslationResult{patch: []byte(testTranslatedPatch)}, nil
-	})
-	transform, proxy, _, _ := newMekugiTestTransform(t, translator)
-	first, err := transform.translate("call-1", base, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	payload := recoveryCommands(base, transform.local["call-1"].RecoveryHandles)[1].handle + " 2:bbbb\n"
-	second, err := transform.translateRecovery("call-2", payload, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.CorrelationID != "call-1" || first.Attempt != 1 ||
-		second.TranslationError != "" || second.CorrelationID != "call-1" || second.Attempt != 2 {
-		t.Fatalf("recovery metadata: first=%+v second=%+v", first, second)
-	}
-	if calls != 2 || evaluated != want {
-		t.Fatalf("translations = %d, evaluated script = %q, want %q", calls, evaluated, want)
-	}
-	if _, ok := proxy.history(transform.historySessionID, "call-1"); ok {
-		t.Fatal("local history committed before response completion")
-	}
-}
-
-func TestMekugiRecoveryRerejectionExposesCurrentHandles(t *testing.T) {
-	base := "in file.txt\ntype 1:aaaa \"value\"\n"
-	rebuilt := "in file.txt\ntype 2:bbbb \"value\"\n"
-	translator := mekugiResultTranslatorFunc(func(_ context.Context, _ string, _ string) (mekugiTranslationResult, error) {
-		return mekugiTranslationResult{
-			diagnostic: "type: command 2, reason row-stale: rejected\n",
-			rejections: []mekugi.HostRejection{{Command: 2, SourceLine: 2, Operation: "type", Target: "line", Reason: "row-stale"}},
-		}, errors.New("rejected")
-	})
-	transform, _, _, _ := newMekugiTestTransform(t, translator)
-	first, err := transform.translate("call-1", base, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	payload := recoveryCommands(base, transform.local["call-1"].RecoveryHandles)[1].handle + " 2:bbbb\n"
-	second, err := transform.translateRecovery("call-2", payload, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, history := range []mekugiHistory{first, second} {
-		if strings.Count(history.TranslationError, "Rejected target commands:") != 1 ||
-			strings.Contains(history.TranslationError, "Use mekugi without `in`") ||
-			strings.Contains(history.TranslationError, "accept") {
-			t.Fatalf("recovery guidance = %q", history.TranslationError)
-		}
-	}
-	if !strings.Contains(second.TranslationError, "This re-rejection changed no workspace file") ||
-		!strings.Contains(second.TranslationError, "Earlier command handles are stale") {
-		t.Fatalf("re-rejection lacks stale-handle guidance:\n%s", second.TranslationError)
-	}
-	if want := recoveryCommands(rebuilt, second.RecoveryHandles)[1].handle; !strings.Contains(second.TranslationError, want) {
-		t.Fatalf("re-rejection lacks current command handle %q:\n%s", want, second.TranslationError)
-	}
-}
-
-func TestMekugiRecoveryFixesAllEmittedTargetsAtomically(t *testing.T) {
-	base := "in first.go\n" +
-		"type 1:aaaa \"first\"\n" +
-		"in second.go\n" +
-		"type 2:bbbb..4:cccc \"second\"\n"
-	want := "in first.go\n" +
-		"type 3:dddd \"first\"\n" +
-		"in second.go\n" +
-		"type 5:eeee..7:ffff \"second\"\n"
-	rejections := []mekugi.HostRejection{
-		{Command: 2, SourceLine: 2, Operation: "type", Target: "line", Reason: "row-stale"},
-		{Command: 4, SourceLine: 4, Operation: "type", Target: "range", Reason: "row-stale"},
-	}
-
-	calls := 0
-	var evaluated string
-	transform, _, _, _ := newMekugiTestTransform(t, mekugiResultTranslatorFunc(func(_ context.Context, _ string, script string) (mekugiTranslationResult, error) {
-		calls++
-		if calls == 1 {
-			return mekugiTranslationResult{
-				diagnostic: "type: command 2, reason row-stale: rejected\n" +
-					"type: command 4, reason row-stale: rejected\n",
-				rejections: rejections,
-			}, errors.New("rejected")
-		}
-		evaluated = script
-		return mekugiTranslationResult{patch: []byte(testTranslatedPatch)}, nil
-	}))
-	first, err := transform.translate("call-1", base, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	firstCommands := recoveryCommands(base, transform.local["call-1"].RecoveryHandles)
-	for _, want := range []string{firstCommands[1].handle, firstCommands[3].handle} {
-		if !strings.Contains(first.TranslationError, want) {
-			t.Fatalf("guidance lacks command handle %q:\n%s", want, first.TranslationError)
-		}
-	}
-
-	payload := strings.Join([]string{
-		firstCommands[1].handle + " 3:dddd",
-		firstCommands[3].handle + " 5:eeee..7:ffff",
-	}, "\n") + "\n"
-	result, err := transform.translateRecovery("call-2", payload, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.TranslationError != "" || calls != 2 || evaluated != want {
-		t.Fatalf("recovery = %+v, translations %d, evaluated %q, want %q", result, calls, evaluated, want)
-	}
-}
-
-func TestMekugiFailedRecoveryPreservesEvaluatedBaseline(t *testing.T) {
-	base := "in file.txt\ntype 1:aaaa \"value\"\n"
-	want := "in file.txt\ntype 2:bbbb \"value\"\n"
-	calls := 0
-	var evaluated string
-	transform, _, _, _ := newMekugiTestTransform(t, mekugiResultTranslatorFunc(func(_ context.Context, _ string, script string) (mekugiTranslationResult, error) {
-		calls++
-		if calls == 1 {
-			return mekugiTranslationResult{
-				diagnostic: "type: command 2, reason row-stale: rejected\n",
-				rejections: []mekugi.HostRejection{{Command: 2, SourceLine: 2, Operation: "type", Target: "line", Reason: "row-stale"}},
-			}, errors.New("rejected")
-		}
-		evaluated = script
-		return mekugiTranslationResult{patch: []byte(testTranslatedPatch)}, nil
-	}))
-	if _, err := transform.translate("call-1", base, nil); err != nil {
-		t.Fatal(err)
-	}
-	staleHandle := "maple"
-	failed, err := transform.translateRecovery("call-2", staleHandle+" 2:bbbb\n", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !failed.Unevaluated || failed.CorrelationID != "call-1" || failed.Attempt != 2 ||
-		!strings.Contains(failed.TranslationError, `command handle "`+staleHandle+`" is stale`) || calls != 1 {
-		t.Fatalf("failed recovery = %+v, translations %d", failed, calls)
-	}
-	payload := recoveryCommands(base, transform.local["call-1"].RecoveryHandles)[1].handle + " 2:bbbb\n"
-	recovered, err := transform.translateRecovery("call-3", payload, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if recovered.TranslationError != "" || recovered.CorrelationID != "call-1" ||
-		recovered.Attempt != 3 || calls != 2 || evaluated != want {
-		t.Fatalf("recovered = %+v, translations %d, evaluated %q", recovered, calls, evaluated)
-	}
-}
-
-func TestMekugiUnchangedTargetRecoveryPreservesEvaluatedBaseline(t *testing.T) {
-	base := "in file.txt\ntype 1:aaaa \"value\"\n"
-	want := "in file.txt\ntype 2:bbbb \"value\"\n"
-	calls := 0
-	var evaluated string
-	transform, _, _, _ := newMekugiTestTransform(t, mekugiResultTranslatorFunc(func(_ context.Context, _ string, script string) (mekugiTranslationResult, error) {
-		calls++
-		if calls == 1 {
-			return mekugiTranslationResult{
-				diagnostic: "type: command 2, reason row-stale: rejected\n",
-				rejections: []mekugi.HostRejection{{Command: 2, SourceLine: 2, Operation: "type", Target: "line", Reason: "row-stale"}},
-			}, errors.New("rejected")
-		}
-		evaluated = script
-		return mekugiTranslationResult{patch: []byte(testTranslatedPatch)}, nil
-	}))
-	if _, err := transform.translate("call-1", base, nil); err != nil {
-		t.Fatal(err)
-	}
-	command := recoveryCommands(base, transform.local["call-1"].RecoveryHandles)[1]
-	failed, err := transform.translateRecovery("call-2", command.handle+" 1:aaaa..1:aaaa\n", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !failed.Unevaluated || failed.CorrelationID != "call-1" || failed.Attempt != 2 ||
-		!strings.Contains(failed.TranslationError, "replacement target must differ") || calls != 1 {
-		t.Fatalf("unchanged recovery = %+v, translations %d", failed, calls)
-	}
-	recovered, err := transform.translateRecovery("call-3", command.handle+" 2:bbbb\n", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if recovered.TranslationError != "" || recovered.CorrelationID != "call-1" ||
-		recovered.Attempt != 3 || calls != 2 || evaluated != want {
-		t.Fatalf("recovered = %+v, translations %d, evaluated %q", recovered, calls, evaluated)
-	}
-}
-
-func TestMekugiRecoveryUsesLatestRejectedRecoveryInSameResponse(t *testing.T) {
-	base := "in file.txt\ntype 1:aaaa \"value\"\n"
-	firstRebuilt := "in file.txt\ntype 2:bbbb \"value\"\n"
-	secondRebuilt := "in file.txt\ntype 3:cccc \"value\"\n"
-	var evaluated []string
-	transform, _, _, _ := newMekugiTestTransform(t, mekugiResultTranslatorFunc(func(_ context.Context, _ string, script string) (mekugiTranslationResult, error) {
-		evaluated = append(evaluated, script)
-		return mekugiTranslationResult{
-			diagnostic: "type: command 2, reason row-stale: rejected\n",
-			rejections: []mekugi.HostRejection{{Command: 2, SourceLine: 2, Operation: "type", Target: "line", Reason: "row-stale"}},
-		}, errors.New("rejected")
-	}))
-	if _, err := transform.translate("call-1", base, nil); err != nil {
-		t.Fatal(err)
-	}
-	baseCommand := recoveryCommands(base, transform.local["call-1"].RecoveryHandles)[1]
-	first, err := transform.translateRecovery("call-2", baseCommand.handle+" 2:bbbb\n", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	firstCommand := recoveryCommands(firstRebuilt, first.RecoveryHandles)[1]
-	second, err := transform.translateRecovery("call-3", firstCommand.handle+" 3:cccc\n", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(evaluated) != 3 || evaluated[1] != firstRebuilt || evaluated[2] != secondRebuilt {
-		t.Fatalf("evaluated scripts = %q", evaluated)
-	}
-	if first.CorrelationID != "call-1" || second.CorrelationID != first.CorrelationID ||
-		first.Attempt != 2 || second.Attempt != 3 || !second.EvaluatorRejected {
-		t.Fatalf("recovery chain = %+v then %+v", first, second)
-	}
-}
-
-func TestMekugiRetainedProxyRejectionAdvancesRecoveryAttempt(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
-	if err := proxy.rememberBatch("session", map[string]mekugiHistory{
-		"call-1": {
-			ToolName: mekugiToolName, Script: testMekugiScript, TranslationError: "rejected",
-			EvaluatorRejected: true, CorrelationID: "call-1", Attempt: 1, sequence: 1,
-			RecoveryHandles: testRecoveryHandles(testMekugiScript),
-			RecoveryBinding: recoveryHandlesBinding(testMekugiScript, testRecoveryHandles(testMekugiScript)),
-		},
-		"call-2": {
-			ToolName: mekugiToolName, Script: `type 2:ffff "bad"` + "\n",
-			TranslationError: "stale", Unevaluated: true,
-			CorrelationID: "call-1", Attempt: 2, sequence: 2,
-		},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	base, err := proxy.recoverableHistory("session")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if base.Attempt != 1 {
-		t.Fatalf("recoverable base attempt = %d, want 1", base.Attempt)
-	}
-	if got := proxy.latestRecoveryAttempt("session", "call-1"); got != 2 {
-		t.Fatalf("latest retained chain attempt = %d, want 2", got)
-	}
-}
-
 func TestMekugiTranslationFailureReturnsImmediateDiagnosticExec(t *testing.T) {
-	transform, proxy, _, workspace := newMekugiTestTransform(t, mekugiTranslatorFunc(func(context.Context, string, string) ([]byte, error) {
-		return nil, errors.New("selector is not unique")
-	}))
-	originalItem := mustTestJSON(t, testMekugiItem())
+	transform, proxy, _, workspace := newMekugiTestTransform(t)
+
+	originalItem := mustTestJSON(t, testRejectedShellItem())
 	visible, err := transform.TransformJSON(mustTestJSON(t, map[string]any{
 		"status": "completed",
 		"output": []any{
@@ -2918,7 +2372,7 @@ func TestMekugiTranslationFailureReturnsImmediateDiagnosticExec(t *testing.T) {
 	if !remembered {
 		t.Fatal("translation rejection carrier was not remembered")
 	}
-	if jsonString(carrier, "name") != "exec" || jsonString(carrier, "input") != history.carrierInput() || jsonString(carrier, "call_id") != "call-H" || !strings.Contains(history.carrierInput(), "selector is not unique") {
+	if jsonString(carrier, "name") != "exec" || jsonString(carrier, "input") != history.carrierInput() || jsonString(carrier, "call_id") != "call-H" || !strings.Contains(history.carrierInput(), "params") {
 		t.Fatalf("diagnostic exec carrier = %s", visible)
 	}
 	if jsonString(response.Output[0], "future") != "preserved" || string(response.Future) != `{"kept":true}` || !bytes.Contains(response.Output[0]["metadata"], []byte(`"name":"apply_patch"`)) {
@@ -2947,30 +2401,29 @@ func TestMekugiTranslationFailureReturnsImmediateDiagnosticExec(t *testing.T) {
 	if err := json.Unmarshal(replay.fields["input"], &replayed); err != nil {
 		t.Fatal(err)
 	}
-	if len(replayed) != 4 || jsonString(replayed[1], "name") != mekugiToolName || jsonString(replayed[1], "input") != testMekugiScript || string(replayed[2]["future"]) != "true" || jsonString(replayed[2], "output") != history.TranslationError || jsonString(replayed[3], "output") != "keep" {
+	if len(replayed) != 4 || jsonString(replayed[1], "name") != "shell" || jsonString(replayed[1], "input") != testRejectedShellSource || string(replayed[2]["future"]) != "true" || jsonString(replayed[2], "output") != history.TranslationError || jsonString(replayed[3], "output") != "keep" {
 		t.Fatalf("restored mekugi rejection = %s", replay.fields["input"])
 	}
 }
 
 func TestMekugiStreamingTranslationFailureCompletesDiagnosticExecLifecycle(t *testing.T) {
-	transform, proxy, _, _ := newMekugiTestTransform(t, mekugiTranslatorFunc(func(context.Context, string, string) ([]byte, error) {
-		return nil, errors.New("parent directory does not exist")
-	}))
-	item := testMekugiItem()
-	added := testMekugiItem()
+	transform, proxy, _, _ := newMekugiTestTransform(t)
+
+	item := testRejectedShellItem()
+	added := testRejectedShellItem()
 	added["status"] = "in_progress"
 	added["input"] = ""
 	completed := map[string]any{
 		"status":      "completed",
 		"output":      []any{item},
 		"future":      map[string]any{"kept": true},
-		"tools":       []any{map[string]any{"type": "custom", "name": mekugiToolName}},
+		"tools":       []any{map[string]any{"type": "custom", "name": "shell"}},
 		"tool_choice": mekugiToolName,
 	}
 	body := "event: response.output_item.added\n" +
 		"data: " + string(mustTestJSON(t, map[string]any{"type": "response.output_item.added", "item": added})) + "\n\n" +
 		"event: response.custom_tool_call_input.done\n" +
-		"data: " + string(mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testMekugiScript})) + "\n\n" +
+		"data: " + string(mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testRejectedShellSource})) + "\n\n" +
 		"event: response.future\n" +
 		"data: " + string(mustTestJSON(t, map[string]any{"type": "response.future", "future": "future-preserved"})) + "\n\n" +
 		"event: response.output_item.done\n" +
@@ -2983,7 +2436,7 @@ func TestMekugiStreamingTranslationFailureCompletesDiagnosticExecLifecycle(t *te
 		t.Fatalf("translation rejection stream = terminal %v, error %v, output %q", terminal, err, output.String())
 	}
 	visible := output.String()
-	for _, required := range []string{"event: response.output_item.added", "event: response.custom_tool_call_input.done", "event: response.output_item.done", "event: response.completed", `"name":"exec"`, "text(\\\"parent directory does not exist", `"future":{"kept":true}`, `"future":"outer-preserved"`, "future-preserved", `"name":"lookup"`, `"tool_choice":"auto"`} {
+	for _, required := range []string{"event: response.output_item.added", "event: response.custom_tool_call_input.done", "event: response.output_item.done", "event: response.completed", `"name":"exec"`, "params", `"future":{"kept":true}`, `"future":"outer-preserved"`, "future-preserved", `"name":"lookup"`, `"tool_choice":"auto"`} {
 		if !strings.Contains(visible, required) {
 			t.Fatalf("translation carrier missing %q: %q", required, visible)
 		}
@@ -3004,7 +2457,7 @@ func TestMekugiTerminalProjectionRestoresCompletedCallsOnly(t *testing.T) {
 			for _, transport := range []string{"json", "sse", "sse-after-item", "sse-after-incomplete-item", "sse-no-status"} {
 				t.Run(fmt.Sprintf("native=%v/%s/%s", native, status, transport), func(t *testing.T) {
 					calls := 0
-					proxy := newManagedMekugiProxy(t, testTranslator(t, &calls))
+					proxy := newManagedMekugiProxy(t)
 					var transform *mekugiResponseTransform
 					if native {
 						transform, _ = newNativeMekugiTestTransformWithProxy(t, proxy)
@@ -3031,7 +2484,7 @@ func TestMekugiTerminalProjectionRestoresCompletedCallsOnly(t *testing.T) {
 					}
 					responseFields := map[string]any{
 						"status": status, "output": []any{completed, unfinished},
-						"tools":       []any{map[string]any{"type": "custom", "name": mekugiToolName}},
+						"tools":       []any{map[string]any{"type": "custom", "name": "shell"}},
 						"tool_choice": mekugiToolName, "future": map[string]any{"kept": true},
 					}
 					wireStatus := status
@@ -3071,10 +2524,10 @@ func TestMekugiTerminalProjectionRestoresCompletedCallsOnly(t *testing.T) {
 					if native {
 						payloadField = "arguments"
 					}
-					if calls != 1 || !remembered || jsonString(output[0], "name") != history.CarrierName || jsonString(output[0], payloadField) != history.carrierInput() {
+					if calls != 0 || !remembered || jsonString(output[0], "name") != history.CarrierName || jsonString(output[0], payloadField) != history.carrierInput() {
 						t.Fatalf("completed carrier: calls=%d remembered=%v output=%s", calls, remembered, visible)
 					}
-					if jsonString(output[1], "status") != unfinished["status"] || jsonString(output[1], "input") != testMekugiScript {
+					if jsonString(output[1], "status") != unfinished["status"] || jsonString(output[1], "input") != testShellEditSource {
 						t.Fatalf("unfinished call changed = %s", visible)
 					}
 					if _, remembered := proxy.history(transform.historySessionID, "call-unfinished"); remembered {
@@ -3093,7 +2546,7 @@ func TestMekugiOutputItemDoneRespectsIncompleteStatus(t *testing.T) {
 	for _, status := range []string{"", "completed", "incomplete"} {
 		t.Run(status, func(t *testing.T) {
 			calls := 0
-			transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, &calls))
+			transform, proxy, _, _ := newMekugiTestTransform(t)
 			item := testMekugiItem()
 			if status == "" {
 				delete(item, "status")
@@ -3104,12 +2557,8 @@ func TestMekugiOutputItemDoneRespectsIncompleteStatus(t *testing.T) {
 			if err != nil || len(events) != 1 {
 				t.Fatalf("item completion = %s, %v", events, err)
 			}
-			wantCalls := 1
-			if status == "incomplete" {
-				wantCalls = 0
-			}
 			_, remembered := proxy.history(transform.historySessionID, "call-H")
-			if calls != wantCalls || remembered != (wantCalls == 1) {
+			if calls != 0 || remembered != (status != "incomplete") {
 				t.Fatalf("calls = %d, remembered = %v", calls, remembered)
 			}
 		})
@@ -3117,19 +2566,18 @@ func TestMekugiOutputItemDoneRespectsIncompleteStatus(t *testing.T) {
 }
 
 func TestMekugiStreamingTranslationFailureRejectsMalformedTerminal(t *testing.T) {
-	transform, _, _, _ := newMekugiTestTransform(t, mekugiTranslatorFunc(func(context.Context, string, string) ([]byte, error) {
-		return nil, errors.New("selector is not unique")
-	}))
-	added := testMekugiItem()
+	transform, _, _, _ := newMekugiTestTransform(t)
+
+	added := testRejectedShellItem()
 	added["status"] = "in_progress"
 	added["input"] = ""
 	if visible, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.added", "item": added})); err != nil || visible != nil {
 		t.Fatalf("buffer mekugi call = %q, error %v", visible, err)
 	}
-	if visible, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testMekugiScript})); err != nil || len(visible) != 2 || !bytes.Contains(visible[1], []byte("selector is not unique")) {
+	if visible, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testRejectedShellSource})); err != nil || len(visible) != 2 || !bytes.Contains(visible[1], []byte("params")) {
 		t.Fatalf("release mekugi rejection carrier = %q, error %v", visible, err)
 	}
-	if visible, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": testMekugiItem()})); err != nil || len(visible) != 1 {
+	if visible, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": testRejectedShellItem()})); err != nil || len(visible) != 1 {
 		t.Fatalf("complete mekugi rejection carrier = %q, error %v", visible, err)
 	}
 	visible, err := transform.TransformSSE([]byte(`{"type":"response.completed","response":null}`))
@@ -3139,7 +2587,7 @@ func TestMekugiStreamingTranslationFailureRejectsMalformedTerminal(t *testing.T)
 }
 
 func TestMekugiMalformedCallStillFailsRequest(t *testing.T) {
-	transform, proxy, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+	transform, proxy, _, _ := newMekugiTestTransform(t)
 	item := testMekugiItem()
 	item["type"] = "message"
 	visible, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"status": "completed", "output": []any{item}}))
@@ -3152,9 +2600,8 @@ func TestMekugiMalformedCallStillFailsRequest(t *testing.T) {
 }
 
 func TestMekugiTranslationCancellationRemainsRequestCancellation(t *testing.T) {
-	transform, proxy, _, _ := newMekugiTestTransform(t, mekugiTranslatorFunc(func(ctx context.Context, _ string, _ string) ([]byte, error) {
-		return nil, ctx.Err()
-	}))
+	transform, proxy, _, _ := newMekugiTestTransform(t)
+
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	transform.ctx = ctx
@@ -3168,7 +2615,7 @@ func TestMekugiTranslationCancellationRemainsRequestCancellation(t *testing.T) {
 }
 
 func TestMekugiHistoryByteAccountingIncludesExistingCalls(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	if err := proxy.rememberBatch("session", map[string]mekugiHistory{
 		"call-1": {Script: "first"},
 	}); err != nil {
@@ -3191,7 +2638,7 @@ func TestMekugiHistoryByteAccountingIncludesExistingCalls(t *testing.T) {
 }
 
 func TestMekugiHistoryDoesNotEvictActiveSessions(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	t.Cleanup(func() {
 		if err := proxy.Close(); err != nil {
 			t.Error(err)
@@ -3220,7 +2667,7 @@ func TestMekugiHistoryDoesNotEvictActiveSessions(t *testing.T) {
 }
 
 func TestMekugiHistoryEvictsOldestCallsAndSessions(t *testing.T) {
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	for index := range maxSessionTurns + 1 {
 		callID := fmt.Sprintf("call-%03d", index)
 		err := proxy.rememberBatch("session", map[string]mekugiHistory{
@@ -3247,10 +2694,6 @@ func TestMekugiHistoryEvictsOldestCallsAndSessions(t *testing.T) {
 	if _, ok := session.calls[fmt.Sprintf("call-%03d", maxSessionTurns)]; !ok {
 		t.Fatal("newest call was not retained")
 	}
-	latest, err := proxy.recoverableHistory("session")
-	if err != nil || latest.Script != fmt.Sprintf("call-%03d", maxSessionTurns) {
-		t.Fatalf("latest history = %+v, error %v", latest, err)
-	}
 
 	for index := range maxSessionHistories {
 		sessionID := fmt.Sprintf("session-%03d", index)
@@ -3273,51 +2716,8 @@ func TestMekugiHistoryEvictsOldestCallsAndSessions(t *testing.T) {
 }
 
 func TestMekugiBoundsTranslationAndHistory(t *testing.T) {
-	t.Run("translation output capacity", func(t *testing.T) {
-		transform, proxy, _, _ := newMekugiTestTransform(t, mekugiTranslatorFunc(func(context.Context, string, string) ([]byte, error) {
-			return make([]byte, maxMekugiPatchBytes+1), nil
-		}))
-		payload := mustTestJSON(t, map[string]any{"status": "completed", "output": []any{testMekugiItem()}})
-		visible, err := transform.TransformJSON(payload)
-		if err == nil || visible != nil || !strings.Contains(err.Error(), "translation exceeds") {
-			t.Fatalf("oversized translation = visible %q, error %v", visible, err)
-		}
-		if _, remembered := proxy.history(transform.historySessionID, "call-H"); remembered {
-			t.Fatal("oversized translation created rejection history")
-		}
-	})
-
-	t.Run("script capacity", func(t *testing.T) {
-		transform, proxy, _, _ := newMekugiTestTransform(t, mekugiTranslatorFunc(func(context.Context, string, string) ([]byte, error) {
-			t.Fatal("translator called for oversized script")
-			return nil, nil
-		}))
-		item := testMekugiItem()
-		item["input"] = strings.Repeat("x", maxMekugiScriptBytes+1)
-		visible, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"status": "completed", "output": []any{item}}))
-		if err == nil || visible != nil || !strings.Contains(err.Error(), "script exceeds") {
-			t.Fatalf("oversized script = visible bytes %d, error %v", len(visible), err)
-		}
-		if _, remembered := proxy.history(transform.historySessionID, "call-H"); remembered {
-			t.Fatal("oversized script created rejection history")
-		}
-	})
-
-	t.Run("translator capacity", func(t *testing.T) {
-		transform, proxy, _, _ := newMekugiTestTransform(t, mekugiTranslatorFunc(func(context.Context, string, string) ([]byte, error) {
-			return nil, fmt.Errorf("%w: diagnostic overflow", errMekugiCapacity)
-		}))
-		visible, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"status": "completed", "output": []any{testMekugiItem()}}))
-		if !errors.Is(err, errMekugiCapacity) || visible != nil {
-			t.Fatalf("translator capacity = visible %q, error %v", visible, err)
-		}
-		if _, remembered := proxy.history(transform.historySessionID, "call-H"); remembered {
-			t.Fatal("translator capacity created rejection history")
-		}
-	})
-
 	t.Run("global history", func(t *testing.T) {
-		proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+		proxy := newManagedMekugiProxy(t)
 		proxy.historyBytes = maxMekugiHistoryGlobalBytes
 		if err := proxy.rememberBatch("session", map[string]mekugiHistory{"call": {Script: "x", Patch: "y"}}); err == nil {
 			t.Fatal("history exceeded global capacity")
@@ -3328,7 +2728,7 @@ func TestMekugiBoundsTranslationAndHistory(t *testing.T) {
 	})
 
 	t.Run("batch history is atomic", func(t *testing.T) {
-		proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+		proxy := newManagedMekugiProxy(t)
 		proxy.historyBytes = maxMekugiHistoryGlobalBytes - 1
 		err := proxy.rememberBatch("session", map[string]mekugiHistory{
 			"call-first":  {Script: "x", Patch: "y"},
@@ -3345,7 +2745,7 @@ func TestMekugiBoundsTranslationAndHistory(t *testing.T) {
 
 func TestMekugiBoundsPendingStreamCallsAndRejectsRelatedFutureEvents(t *testing.T) {
 	t.Run("duplicate item", func(t *testing.T) {
-		transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+		transform, _, _, _ := newMekugiTestTransform(t)
 		added := testMekugiItem()
 		added["status"] = "in_progress"
 		added["input"] = ""
@@ -3359,7 +2759,7 @@ func TestMekugiBoundsPendingStreamCallsAndRejectsRelatedFutureEvents(t *testing.
 	})
 
 	t.Run("pending count", func(t *testing.T) {
-		transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+		transform, _, _, _ := newMekugiTestTransform(t)
 		for index := range maxMekugiPendingCalls + 1 {
 			added := testMekugiItem()
 			added["status"] = "in_progress"
@@ -3380,7 +2780,7 @@ func TestMekugiBoundsPendingStreamCallsAndRejectsRelatedFutureEvents(t *testing.
 	})
 
 	t.Run("malformed pending event", func(t *testing.T) {
-		transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+		transform, _, _, _ := newMekugiTestTransform(t)
 		added := testMekugiItem()
 		added["status"] = "in_progress"
 		added["input"] = ""
@@ -3394,7 +2794,7 @@ func TestMekugiBoundsPendingStreamCallsAndRejectsRelatedFutureEvents(t *testing.
 	})
 
 	t.Run("malformed unrelated event", func(t *testing.T) {
-		transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+		transform, _, _, _ := newMekugiTestTransform(t)
 		malformed := []byte(`{"type":1,"future":"kept"}`)
 		visible, err := transform.TransformSSE(malformed)
 		if err != nil || len(visible) != 1 || !bytes.Equal(visible[0], malformed) {
@@ -3403,7 +2803,7 @@ func TestMekugiBoundsPendingStreamCallsAndRejectsRelatedFutureEvents(t *testing.
 	})
 
 	t.Run("incomplete terminal event", func(t *testing.T) {
-		transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+		transform, _, _, _ := newMekugiTestTransform(t)
 		added := testMekugiItem()
 		added["status"] = "in_progress"
 		added["input"] = ""
@@ -3417,7 +2817,7 @@ func TestMekugiBoundsPendingStreamCallsAndRejectsRelatedFutureEvents(t *testing.
 	})
 
 	t.Run("related future event", func(t *testing.T) {
-		transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+		transform, _, _, _ := newMekugiTestTransform(t)
 		added := testMekugiItem()
 		added["status"] = "in_progress"
 		added["input"] = ""
@@ -3431,83 +2831,13 @@ func TestMekugiBoundsPendingStreamCallsAndRejectsRelatedFutureEvents(t *testing.
 	})
 
 	t.Run("unrelated future event", func(t *testing.T) {
-		transform, _, _, _ := newMekugiTestTransform(t, testTranslator(t, new(int)))
+		transform, _, _, _ := newMekugiTestTransform(t)
 		future := mustTestJSON(t, map[string]any{"type": "response.future", "call_id": "other", "name": "other"})
 		visible, err := transform.TransformSSE(future)
 		if err != nil || len(visible) != 1 || !bytes.Equal(visible[0], future) {
 			t.Fatalf("unrelated future event = visible %q, error %v", visible, err)
 		}
 	})
-}
-
-func TestInProcessMekugiToolDescription(t *testing.T) {
-	translator := newInProcessMekugiTranslator(t.TempDir())
-	if got, want := translator.ToolDescription(), mekugi.ToolDescription(); got != want {
-		t.Fatalf("installed tool description differs from authoritative description:\n got %q\nwant %q", got, want)
-	}
-}
-
-func TestInProcessMekugiTranslatorUsesBaseDirectoryWithoutConfinement(t *testing.T) {
-	translator := newInProcessMekugiTranslator(t.TempDir())
-	parent := t.TempDir()
-	directory := filepath.Join(parent, "base")
-	if err := os.Mkdir(directory, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(directory, "existing.txt")
-	if err := os.WriteFile(path, []byte("first\nsecond\nthird\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	translated, err := translator.Translate(t.Context(), directory, "in existing.txt\nadd 2:1636 \"inserted\\n\"\ntype 3:b1e9 \"THIRD\"\n")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, required := range []string{"*** Update File: existing.txt", "+inserted", "+THIRD"} {
-		if !bytes.Contains(translated.patch, []byte(required)) {
-			t.Fatalf("translation does not contain %q: %s", required, translated.patch)
-		}
-	}
-	if !strings.HasPrefix(translated.report, "in existing.txt\n") {
-		t.Fatalf("translation report = %q", translated.report)
-	}
-	for _, required := range []string{
-		"refs 2 add\n",
-		"refs 3 type\n",
-		"2:e8dd inserted\n",
-		"4:1186 THIRD\n",
-	} {
-		if !strings.Contains(translated.report, required) {
-			t.Fatalf("translation report %q lacks %q", translated.report, required)
-		}
-	}
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(content) != "first\nsecond\nthird\n" {
-		t.Fatalf("translation mutated file to %q", content)
-	}
-
-	conflict := "in existing.txt\ntype 1:a793..2:1636 \"replacement\"\ntype 2:1636..3:b1e9 \"overlap\"\n"
-	if translated, err := translator.Translate(t.Context(), directory, conflict); err == nil || !strings.Contains(translated.diagnostic, "conflicts with edit") {
-		t.Fatalf("overlapping baseline translation error = %v", err)
-	}
-
-	outsidePath := filepath.Join(parent, "outside.txt")
-	if err := os.WriteFile(outsidePath, []byte("outside\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	for _, target := range []string{"../outside.txt", outsidePath} {
-		translated, err := translator.Translate(t.Context(), directory, "in "+target+"\ntype 1:3120 \"changed\"\n")
-		if err != nil {
-			t.Fatalf("translate %q: %v", target, err)
-		}
-		wantPath := filepath.Clean(target)
-		if !bytes.Contains(translated.patch, []byte("*** Update File: "+wantPath)) {
-			t.Fatalf("translation for %q does not contain cleaned target %q: %s", target, wantPath, translated.patch)
-		}
-	}
 }
 
 func mustTestJSON(t *testing.T, value any) []byte {
@@ -3532,7 +2862,7 @@ func TestMekugiReplacementSupportsTopLevelCodeModeForGrok(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxy := newManagedMekugiProxy(t, testTranslator(t, new(int)))
+	proxy := newManagedMekugiProxy(t)
 	transform, err := proxy.prepareRequest(t.Context(), &request, "grok-session", "grok-thread", codexTurnMetadata{RequestKind: "turn", SubagentKind: "thread_spawn", Directories: map[string]json.RawMessage{workspace: nil}}, true)
 	if err != nil {
 		t.Fatal(err)
@@ -3551,7 +2881,7 @@ func TestMekugiReplacementSupportsTopLevelCodeModeForGrok(t *testing.T) {
 			execDescription = jsonString(tool, "description")
 		}
 	}
-	if !names["hpatch"] || !names["shell"] || strings.Contains(execDescription, codeModeApplyPatchHeading) || strings.Contains(execDescription, "tools.exec_command") {
+	if names["hpatch"] || names["hpatch_recover"] || !names["shell"] || strings.Contains(execDescription, codeModeApplyPatchHeading) || strings.Contains(execDescription, "tools.exec_command") {
 		t.Fatal("Code Mode projection did not expose mekugi and shell")
 	}
 	if _, err := translateGrokRequest(mustTestJSON(t, request.fields)); err != nil {
@@ -3616,10 +2946,7 @@ func TestShellRecoversCodeModePrograms(t *testing.T) {
 			offset := inspectCodeModeRuntime(test.input).warningOffset
 			want := test.input[:offset] + warningInput + test.input[offset:]
 
-			translator := mekugiTranslatorFunc(func(context.Context, string, string) ([]byte, error) {
-				return []byte(testTranslatedPatch), nil
-			})
-			transform, proxy, _, _ := newMekugiTestTransform(t, translator)
+			transform, proxy, _, _ := newMekugiTestTransform(t)
 			visible, err := transform.TransformJSON(mustTestJSON(t, map[string]any{
 				"status": "completed",
 				"output": []any{map[string]any{

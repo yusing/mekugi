@@ -394,7 +394,7 @@ func TestLiveDiffOutputBound(t *testing.T) {
 	}
 }
 
-func TestLiveDiffExcludesPrivateScripts(t *testing.T) {
+func TestLiveDiffDoesNotInferPrivateScopeFromScriptText(t *testing.T) {
 	t.Setenv("GIT_PAGER", "cat")
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
@@ -414,8 +414,8 @@ func TestLiveDiffExcludesPrivateScripts(t *testing.T) {
 		t.Fatal(err)
 	}
 	files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
-	if err != nil || len(files) != 1 || files[0].path != filepath.Join(workspace, "public.go") {
-		t.Fatalf("private scripts in live view: %#v %v", files, err)
+	if err != nil || len(files) != 2 {
+		t.Fatalf("script spelling hid workspace evidence: %#v %v", files, err)
 	}
 }
 
