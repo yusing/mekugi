@@ -54,6 +54,32 @@ func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 	}
 }
 
+func TestLiveDiffPreviewDeletedFileUsesMarker(t *testing.T) {
+	var diff strings.Builder
+	diff.WriteString("--- /workspace/deleted.txt\n+++ /dev/null\n@@ -1,40 +0,0 @@\n")
+	for i := 1; i <= 40; i++ {
+		fmt.Fprintf(&diff, "-removed_%04d\n", i)
+	}
+	preview := liveDiffPreview{
+		ID: "deleted", Workspace: "/workspace", Thread: "thread",
+		Files: []mekugi.ReviewFile{{
+			BeforePath: "/workspace/deleted.txt",
+			Diff:       diff.String(),
+		}},
+	}
+	var pane liveDiffPreviewPane
+	pane.update(preview, time.Time{})
+
+	lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 80, 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := ansi.Strip(strings.Join(lines, "\n"))
+	if len(lines) != 2 || !strings.Contains(text, "# deleted.txt deleted") ||
+		strings.Contains(text, "removed_") || strings.Contains(text, "│") {
+		t.Fatalf("deleted preview did not stay compact: %q", text)
+	}
+}
 func TestLiveDiffPreviewPaneLatestOnlyAndIndependent(t *testing.T) {
 	var pane liveDiffPreviewPane
 	now := time.Unix(100, 0)

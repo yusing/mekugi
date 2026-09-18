@@ -266,7 +266,13 @@ func TestLiveDiffSimulationTerminalReplay(t *testing.T) {
 		if !strings.Contains(liveDiffFrameRow(shellFrame, 16), "STREAMING SCRIPT") {
 			t.Fatal("standalone shell simulation did not use the 7:3 split")
 		}
-		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "lifecycle.go") })
+		deletedFrame := ui.frame(t, func(frame string) bool {
+			return strings.Contains(frame, "STREAMING PREVIEW") &&
+				strings.Contains(ansi.Strip(frame), "# lifecycle.go deleted")
+		})
+		if strings.Contains(ansi.Strip(deletedFrame), "AuditReady") {
+			t.Fatal("simulated deleted-file preview rendered removed source")
+		}
 		ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "without final newline") })
 		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "rejected as expected") })
 		recoveryFrame := ui.frame(t, func(frame string) bool {

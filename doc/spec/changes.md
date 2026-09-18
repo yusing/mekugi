@@ -240,7 +240,8 @@ completion. Each worker samples the latest buffered input without queuing old wo
 completion cancels in-flight projection output. The viewer consumes queued
 snapshots before painting and limits preview paints to a 33 ms frame cadence, keeping
 only the latest snapshot rather than playing back intermediate frames. Preview updates
-do not recompose or syntax-render captured history. Preview rendering lays out only
+do not recompose or syntax-render captured history. Deleted-file previews omit removed
+source and show one `# filename deleted` marker. Preview rendering lays out only
 visible source rows and a bounded leading context window for best-effort syntax
 highlighting. Unchanged source windows reuse syntax decoration. The heading identifies
 streaming without repeating validation disclaimers. Raw recovery text highlights

@@ -174,17 +174,24 @@ func liveDiffRegionRows(body, captured int, streaming, shell bool) (diff, previe
 }
 
 func (p *liveDiffPreviewView) columns(width int) (digits, sourceWidth int) {
-	if len(p.source) > 0 {
+	if len(p.source) > 0 && p.source[len(p.source)-1].number > 0 {
 		digits = len(strconv.Itoa(p.source[len(p.source)-1].number))
 	}
-	numberWidth := digits + 1
+	numberWidth := 0
+	if digits > 0 {
+		numberWidth = digits + 1
+	}
 	if width-3 < digits+4 {
 		numberWidth = 0
 	}
 	return digits, max(1, width-4-numberWidth)
 }
 
-func liveDiffPreviewRows(review mekugi.ReviewFile) ([]liveDiffPreviewRow, error) {
+func liveDiffPreviewRows(review mekugi.ReviewFile, workspace string) ([]liveDiffPreviewRow, error) {
+	if review.BeforePath != "" && review.AfterPath == "" {
+		path := liveDiffDisplayPath(workspace, review.BeforePath)
+		return []liveDiffPreviewRow{{kind: ' ', text: "# " + path + " deleted\n"}}, nil
+	}
 	hunks, err := review.Hunks()
 	if err != nil {
 		return nil, err
@@ -248,7 +255,7 @@ func (p *liveDiffPreviewView) prepare() error {
 		}
 	}
 	if len(current.Files) > 0 {
-		source, err = liveDiffPreviewRows(current.Files[file])
+		source, err = liveDiffPreviewRows(current.Files[file], current.Workspace)
 		if err != nil {
 			return err
 		}
@@ -381,7 +388,7 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 			continue
 		}
 		numbers := ""
-		if width-3 >= digits+4 {
+		if digits > 0 && width-3 >= digits+4 {
 			numbers = fmt.Sprintf("\x1b[2m%*d│\x1b[22m", digits, row.number)
 		}
 		carry := ""
