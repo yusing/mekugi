@@ -330,7 +330,7 @@ programs**, not as standalone utilities in your terminal:
 | --- | --- | --- |
 | `hrun` | Bound an external command's output, optionally keeping its ending | The wrapped command |
 | `hchanges` | Read hpatch diffs and recovery history by ID or range | Access to the router's replay directory |
-| `hcat` | Read verified source rows; use `--batch` first for shared-budget multi-file previews and per-file recovery links | Replay-directory access for batch mode |
+| `hcat` | Read verified source rows: `hcat path1 1:200 path2 path3 200:300`; multiple files share a budget and provide per-file recovery links | Replay-directory access for multi-file reads |
 | `hgrep` | Search text with verified row references | `rg` |
 | `hsymbol` | Look up definitions and references | `gopls` for Go; TypeScript 7 as `tsc` for JS, TS, and JSON; `pyright-langserver` for Python |
 | `inspect_file` | Inspect a structural outline | None |

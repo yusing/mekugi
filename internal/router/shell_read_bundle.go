@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,7 +18,7 @@ import (
 	"mvdan.cc/sh/v3/interp"
 )
 
-const readBundleUsage = "hcat --batch [--max-tokens N] PATH [START:END] -- PATH [START:END] ..."
+const readBundleUsage = "hcat [--max-tokens N] PATH [START:END] [PATH [START:END] ...]"
 
 type readBundleSpec struct {
 	path string
@@ -26,55 +27,73 @@ type readBundleSpec struct {
 
 func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 	budget := 4000
-	if len(args) > 0 && args[0] == "--max-tokens" {
-		if len(args) < 2 {
-			return nil, 0, errors.New(readBundleUsage)
+	var operands []string
+	optionsEnded, tokenOption, singleFileOptions := false, false, false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if optionsEnded || !strings.HasPrefix(arg, "-") {
+			operands = append(operands, arg)
+			continue
 		}
-		n, err := strconv.Atoi(args[1])
-		if err != nil || n < 1 || n > hrunMaxTokens || strconv.Itoa(n) != args[1] {
-			return nil, 0, errors.New("--max-tokens must be an integer from 1 through 15500")
+		switch arg {
+		case "--":
+			optionsEnded = true
+		case "--max-tokens":
+			if tokenOption || i+1 == len(args) {
+				return nil, 0, errors.New("--max-tokens requires one value and cannot repeat")
+			}
+			i++
+			n, err := strconv.Atoi(args[i])
+			if err != nil || n < 1 || n > hrunMaxTokens || strconv.Itoa(n) != args[i] {
+				return nil, 0, errors.New("--max-tokens must be an integer from 1 through 15500")
+			}
+			budget, tokenOption = n, true
+		case "-n", "--preview-bytes":
+			singleFileOptions = true
+			if i+1 == len(args) {
+				return nil, 0, errors.New(arg + " requires a value")
+			}
+			i++
+		case "--tail":
+			singleFileOptions = true
+		case "--batch":
+			return nil, 0, errors.New("--batch is no longer needed; list paths and optional ranges directly")
+		default:
+			operands = append(operands, arg)
 		}
-		budget, args = n, args[2:]
 	}
 	var specs []readBundleSpec
-	for len(args) > 0 {
-		end := 0
-		for end < len(args) && args[end] != "--" {
-			end++
+	for _, operand := range operands {
+		if readBundleRange.MatchString(operand) && len(specs) > 0 {
+			if specs[len(specs)-1].span != "" {
+				return nil, 0, errors.New("only one range may follow each path; prefix range-like paths with ./")
+			}
+			specs[len(specs)-1].span = operand
+			continue
 		}
-		if end < 1 || end > 2 || args[0] == "" || len(specs) == 16 {
+		if operand == "" || len(specs) == 16 {
 			return nil, 0, errors.New(readBundleUsage + " (1–16 files)")
 		}
-		spec := readBundleSpec{path: args[0]}
-		if end == 2 {
-			spec.span = args[1]
-		}
-		specs = append(specs, spec)
-		if end == len(args) {
-			break
-		}
-		args = args[end+1:]
-		if len(args) == 0 {
-			return nil, 0, errors.New(readBundleUsage)
-		}
+		specs = append(specs, readBundleSpec{path: operand})
 	}
 	if len(specs) == 0 {
 		return nil, 0, errors.New(readBundleUsage)
 	}
+	if len(specs) > 1 && singleFileOptions {
+		return nil, 0, errors.New("-n, --tail and --preview-bytes require a single path")
+	}
 	return specs, budget, nil
 }
 
+var readBundleRange = regexp.MustCompile(`^[0-9]+:[0-9]+$`)
+
 // Bundle composition delegates source parsing, verified rows and row admission to
 // hcat. Only framing and allocation belong here; omitted rows use the hread store.
-func executeReadBundle(ctx context.Context, manifest toolWorkerManifest, runtime string, args []string, hcat toolContribution, shellID string) error {
+func executeReadBundle(ctx context.Context, manifest toolWorkerManifest, runtime string, specs []readBundleSpec, budget int, hcat toolContribution, shellID string) error {
 	handler := interp.HandlerCtx(ctx)
 	fail := func(err error) error {
-		_, _ = fmt.Fprintf(handler.Stderr, "hcat --batch: %v\n", err)
+		_, _ = fmt.Fprintf(handler.Stderr, "hcat: %v\n", err)
 		return interp.ExitStatus(1)
-	}
-	specs, budget, err := parseReadBundle(args)
-	if err != nil {
-		return fail(err)
 	}
 	reserve := 0
 	for _, spec := range specs {

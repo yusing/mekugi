@@ -301,7 +301,7 @@ func TestShellRunnerReadsFormerShellPathsAsWorkspaceFiles(t *testing.T) {
 	}
 	for _, source := range []string{
 		"hcat @shell/script",
-		"hcat --batch @shell/script -- @shell/script",
+		"hcat @shell/script @shell/script",
 	} {
 		t.Run(source, func(t *testing.T) {
 			stdout, stderr, code := runShellWorkerTest(t, proxy.registry, "bash", nil, source, nil, newShellWorkerTestInvocation(directory))

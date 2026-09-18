@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -11,14 +12,34 @@ import (
 )
 
 func TestReadBundleValidation(t *testing.T) {
-	for _, args := range [][]string{nil, {"--max-tokens", "0", "a"}, {"a", "--"}, {"a", "1:2", "extra"}} {
+	for _, args := range [][]string{nil, {"--max-tokens", "0", "a"}, {"--batch", "a"}, {"a", "1:2", "2:3"}, {"a", "", "b"}, {"a", "--max-tokens", "2000", "--max-tokens", "2000"}, {"-n", "1", "a", "b"}, {"--tail", "a", "b"}, {"--preview-bytes", "32", "a", "b"}, {"--max-tokens"}, {"-n"}, slices.Repeat([]string{"a"}, 17)} {
 		if _, _, err := parseReadBundle(args); err == nil {
 			t.Fatalf("accepted %q", args)
 		}
 	}
-	specs, budget, err := parseReadBundle([]string{"--max-tokens", "2000", "a b", "1:20", "--", "other"})
-	if err != nil || budget != 2000 || len(specs) != 2 || specs[0].path != "a b" || specs[0].span != "1:20" {
+	specs, budget, err := parseReadBundle([]string{"a b", "1:20", "--max-tokens", "2000", "other", "third", "200:300"})
+	if err != nil || budget != 2000 || len(specs) != 3 || specs[0].path != "a b" || specs[0].span != "1:20" || specs[1].span != "" || specs[2].span != "200:300" {
 		t.Fatalf("%+v %d %v", specs, budget, err)
+	}
+}
+
+func TestHcatMixedPathsAndRanges(t *testing.T) {
+	registry := sharedProxyTestRegistry(t)
+	directory := t.TempDir()
+	for _, name := range []string{"first", "second", "third", "200:300", "--tail"} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(name+" one\n"+name+" two\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, command := range []string{
+		"hcat first 1:1 second third 2:2",
+		"hcat first 1:1 ./200:300 -- --tail 2:2",
+	} {
+		out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil, command, nil, newShellWorkerTestInvocation(directory))
+		if status != 0 || diagnostic != "" || strings.Contains(out, "first two") ||
+			!strings.Contains(out, "shown=1:1") || !strings.Contains(out, "shown=1:2") || !strings.Contains(out, "shown=2:2") {
+			t.Fatalf("%s: %d %q %q", command, status, out, diagnostic)
+		}
 	}
 }
 
@@ -31,7 +52,7 @@ func TestReadBundleRetainsPerFileOmissions(t *testing.T) {
 		}
 	}
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		"#!params={\"max_output_tokens\":10000}\nhcat --batch --max-tokens 2000 first -- second", nil,
+		"#!params={\"max_output_tokens\":10000}\nhcat --max-tokens 2000 first second", nil,
 		newShellWorkerTestInvocation(directory))
 	if status != 1 || stderr != "" || !strings.Contains(stdout, `path="first" shown=1:`) || !strings.Contains(stdout, `path="second" shown=1:`) {
 		t.Fatalf("status=%d out=%s err=%s", status, stdout, stderr)
@@ -58,13 +79,13 @@ func TestReadBundleEmptyFailureAndPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout, _, status := runShellWorkerTest(t, registry, "sh", nil,
-		"hcat --batch empty -- missing", nil, newShellWorkerTestInvocation(directory))
+		"hcat empty missing", nil, newShellWorkerTestInvocation(directory))
 	if status != 1 || !strings.Contains(stdout, `path="empty" shown=none omitted=none status=complete`) || !strings.Contains(stdout, "status=failed") {
 		t.Fatalf("status=%d out=%s", status, stdout)
 	}
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		"hcat --batch empty | wc -l", nil, newShellWorkerTestInvocation(directory))
-	if status != 0 || strings.TrimSpace(stdout) != "1" || stderr != "" {
+		"hcat empty empty | wc -l", nil, newShellWorkerTestInvocation(directory))
+	if status != 0 || strings.TrimSpace(stdout) != "2" || stderr != "" {
 		t.Fatalf("%d %q %q", status, stdout, stderr)
 	}
 }
@@ -76,12 +97,12 @@ func TestReadBundleBudgetAndMissingFileFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
-		"#!params={\"max_output_tokens\":15000}\nhcat --batch --max-tokens 1037 a -- b", nil, newShellWorkerTestInvocation(directory))
+		"#!params={\"max_output_tokens\":15000}\nhcat --max-tokens 1037 a b", nil, newShellWorkerTestInvocation(directory))
 	if status != 1 || out != "" || !strings.Contains(diagnostic, "budget cannot fit") {
 		t.Fatalf("%d %q %q", status, out, diagnostic)
 	}
 	out, diagnostic, status = runShellWorkerTest(t, registry, "bash", nil,
-		"#!params={\"max_output_tokens\":15000}\nhcat --batch --max-tokens 2500 a -- missing -- a", nil, newShellWorkerTestInvocation(directory))
+		"#!params={\"max_output_tokens\":15000}\nhcat --max-tokens 2500 a missing a", nil, newShellWorkerTestInvocation(directory))
 	if status != 1 || diagnostic != "" || !strings.Contains(out, `path="missing" shown=none omitted=none status=failed`) ||
 		!strings.Contains(out, "3 path=\"a\" shown=1:") {
 		t.Fatalf("%d %q %q", status, out, diagnostic)
@@ -97,15 +118,15 @@ func TestReadBundleBudgetAndMissingFileFailure(t *testing.T) {
 	}
 }
 
-func TestHcatBatchPreservesSingleFileMode(t *testing.T) {
+func TestHcatMultiplePathsPreserveSingleFileMode(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
-	for _, name := range []string{"first", "--batch", "space name"} {
+	for _, name := range []string{"first", "--batch", "-source", "space name"} {
 		if err := os.WriteFile(filepath.Join(directory, name), []byte("first row\nsecond row\n"), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, command := range []string{"hcat first 2:2", "hcat -- --batch 2:2"} {
+	for _, command := range []string{"hcat first 2:2", "hcat -- --batch 2:2", "hcat -source 2:2"} {
 		out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
 			command, nil, newShellWorkerTestInvocation(directory))
 		if status != 0 || diagnostic != "" || !strings.Contains(out, "second row") ||
@@ -114,7 +135,7 @@ func TestHcatBatchPreservesSingleFileMode(t *testing.T) {
 		}
 	}
 	out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
-		"hcat --batch first 1:1 -- 'space name' 2:2", nil, newShellWorkerTestInvocation(directory))
+		"hcat first 1:1 'space name' 2:2", nil, newShellWorkerTestInvocation(directory))
 	if status != 0 || diagnostic != "" || !strings.Contains(out, `path="first" shown=1:1`) ||
 		!strings.Contains(out, `path="space name" shown=2:2`) {
 		t.Fatalf("%d %q %q", status, out, diagnostic)
@@ -131,7 +152,7 @@ func TestReadBundleFitsOuterDisplay(t *testing.T) {
 	}
 	for _, prefix := range []string{"", "printf 'preceding output\\n'; ", "printf 'preceding error\\n' >&2; "} {
 		out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
-			"#!params={\"max_output_tokens\":2000}\n"+prefix+"hcat --batch --max-tokens 2000 first -- second",
+			"#!params={\"max_output_tokens\":2000}\n"+prefix+"hcat --max-tokens 2000 first second",
 			nil, newShellWorkerTestInvocation(directory))
 		if status != 1 || strings.Contains(diagnostic, "hread ") {
 			t.Fatalf("status=%d out=%s err=%s", status, out, diagnostic)
@@ -156,7 +177,7 @@ func TestReadBundleFitsOuterDisplay(t *testing.T) {
 		var saved []string
 		for _, limit := range []string{"2000", "10000"} {
 			_, diagnostic, _ := runShellWorkerTest(t, registry, "bash", nil,
-				"#!params={\"max_output_tokens\":"+limit+"}\nhcat --batch --max-tokens 2000 first -- second "+route,
+				"#!params={\"max_output_tokens\":"+limit+"}\nhcat --max-tokens 2000 first second "+route,
 				nil, newShellWorkerTestInvocation(directory))
 			if diagnostic != "" {
 				t.Fatal(diagnostic)
@@ -180,7 +201,7 @@ func TestReadBundleDisplayTrimmingPreservesSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
-		"#!params={\"max_output_tokens\":1400}\nset -e; hcat --batch --max-tokens 4000 small && printf success > marker",
+		"#!params={\"max_output_tokens\":1400}\nset -e; hcat --max-tokens 4000 small small && printf success > marker",
 		nil, newShellWorkerTestInvocation(directory))
 	if status != 0 || diagnostic != "" || !strings.Contains(out, "status=incomplete") {
 		t.Fatalf("status=%d out=%s err=%s", status, out, diagnostic)

@@ -433,3 +433,22 @@ func TestInstructionsStayWithinTokenBudget(t *testing.T) {
 func instructionWords(text string) string {
 	return strings.Join(strings.Fields(text), " ")
 }
+
+func TestInstructionsTeachMultiFileHcat(t *testing.T) {
+	for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol"} {
+		for _, compact := range []bool{false, true} {
+			got := InstructionsForModel(model, compact)
+			for _, required := range []string{
+				"`hcat [--max-tokens N] PATH [START:END] [PATH [START:END] ...]`",
+				"ranges apply to the preceding path",
+			} {
+				if !strings.Contains(got, required) {
+					t.Errorf("model=%q compact=%t missing %q", model, compact, required)
+				}
+			}
+			if strings.Contains(got, "hcat --batch") {
+				t.Errorf("model=%q compact=%t teaches retired batch syntax", model, compact)
+			}
+		}
+	}
+}

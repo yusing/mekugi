@@ -9,18 +9,20 @@ the shell execution boundary: their specifications are not sent as model-visible
 tools, direct model calls to their names are not routed, and no executable frontend
 is installed for them.
 
-The private `hcat` command accepts exactly one file:
+The private `hcat` command accepts one or more files:
 
 ```text
-hcat [-n N] [--max-tokens N] [--preview-bytes N] [--tail] PATH [START:END]
+hcat [--max-tokens N] PATH [START:END] [PATH [START:END] ...]
 ```
 
 The shell owns quoting and argument separation. A path containing whitespace is therefore one
 ordinary quoted shell argument. `START:END`, when present, is an inclusive logical-line range
 whose positive one-based base-ten endpoints must be ordered. The start line must exist. An end
-past EOF returns through the final line. One `hcat` invocation never accepts a second path or a
-newline-delimited batch. The model batches related reads as separate hcat commands in one
-shell script.
+past EOF returns through the final line. Each range applies to the preceding path.
+For example, `hcat first.go 1:200 second.go third.go 200:300` selects three files.
+A numeric `START:END` argument after a path is a range; prefix a range-like filename
+with `./` to read it as a file. `--` ends option parsing, not a file selection.
+Single-file reads also accept `-n N`, `--preview-bytes N`, and `--tail` as described below.
 
 The shell boundary resolves the authenticated private commands for the current
 thread. These names are not filesystem entries and do not depend on `PATH`.
@@ -97,9 +99,9 @@ Acceptance:
 1. A whole-file or bounded read emits exact UTF-8 rows. Equal lines at different positions
    have distinct row references, and indentation changes the hash.
 2. `hcat PATH`, `hcat PATH START:END`, and a shell-quoted path containing whitespace work.
-   Extra path or range arguments fail instead of being interpreted as a batch.
-3. Several hcat commands in one shell call execute in authored shell order without an
-   hcat-owned batch format, buffer, header, or partial-success policy.
+   Additional paths select coordinated reads; a second range for the same path fails.
+3. Several hcat commands in one shell call execute in authored shell order.
+   One selected file keeps the unframed single-file output.
 4. Reading and whole-file UTF-8 validation use bounded streaming storage and observe
    cancellation. Token-limited output retains only admitted complete rows without a second read.
 5. Success and failure reach Codex through the model-visible shell carrier. Replay retains
@@ -170,10 +172,13 @@ not extend the lifetime of executable recovery handles or native sessions.
 
 ### Coordinated multi-file reads
 
-The shell-private `hcat --batch [--max-tokens N] PATH [START:END] -- PATH [START:END] ...`
-mode composes 1–16 hcat reads. The `--batch` selector must be the first argument;
-existing single-file calls and `hcat -- PATH [START:END]` remain unchanged. Its default
-total display budget is 4000, with the usual 1–15500 token option bounds. The bundle reserves conservative framing space based on
+The shell-private `hcat [--max-tokens N] PATH [START:END] [PATH [START:END] ...]`
+command automatically composes coordinated reads when 2–16 paths are selected.
+No `--batch` flag or inter-file separator is used. Single-file calls retain their
+existing output and options. Multi-file reads support only `--max-tokens`, which
+may surround operands before `--`; single-file-only options reject before reads.
+The default total display budget is 4000, with the usual 1–15500 token option bounds.
+The bundle reserves conservative framing space based on
 quoted path lengths, then divides the remaining budget equally among readers. If
 framing cannot fit, it rejects before reading any file. Source parsing, permissions,
 logical rows, bounds, and verified identities remain owned by hcat.
