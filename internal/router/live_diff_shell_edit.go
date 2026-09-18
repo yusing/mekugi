@@ -15,7 +15,7 @@ import (
 // filesystem input redirections, or recovery state participate in previews.
 func liveDiffShellEdit(input, directory string) (string, string, bool) {
 	header, err := shellsyntax.Parse(input)
-	if err != nil || header.CommandTemplate != "" || len(header.Interpreter) != 1 {
+	if err != nil || len(header.Interpreter) != 1 {
 		return "", "", false
 	}
 	variant := syntax.LangBash
