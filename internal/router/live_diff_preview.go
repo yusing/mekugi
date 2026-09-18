@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi"
 )
 
 // Preview state is router-lifetime only and never enters the replay store.
@@ -15,6 +17,7 @@ type liveDiffPreview struct {
 	Workspace string
 	Caller    string
 	Thread    string
+	Files     []mekugi.ReviewFile
 	Input     string               // Display-only source, never executed.
 	Syntax    []liveDiffSourceSpan `json:",omitempty"`
 	Truncated bool
@@ -80,6 +83,7 @@ func (worker *liveDiffPreviewWorker) appendDelta(delta string) {
 		if worker.input.Len()+len(delta) > 256<<10 {
 			worker.closed = true
 			worker.cancel()
+			worker.preview.Files = nil
 			worker.preview.Status = "PREVIEW UNAVAILABLE: input exceeds 256 KiB"
 			worker.broker.publishPreview(worker.preview, false)
 		} else {
@@ -131,15 +135,23 @@ func (w *liveDiffPreviewWorker) run() {
 		}
 		w.mu.Lock()
 		input := w.input.String()
+		preview := w.preview
 		w.mu.Unlock()
-		syntax := liveDiffScriptSyntax(input)
+		preview.Input, preview.Syntax = input, liveDiffScriptSyntax(input)
+		preview.Status = "STREAMING SCRIPT"
+		if script, directory, ok := liveDiffShellEdit(input, preview.Workspace); ok {
+			ctx, cancel := context.WithTimeout(w.ctx, time.Second)
+			files, err := mekugi.PreviewForHostAt(ctx, directory, script)
+			cancel()
+			if err == nil && len(files) != 0 {
+				preview.Files, preview.Input, preview.Syntax = files, "", nil
+				preview.Status = "STREAMING PREVIEW"
+			}
+		}
 		w.mu.Lock()
 		// One preview is in flight, with only the latest input sampled next.
 		// New deltas must not starve visible progress; completion cancels output.
 		if !w.closed && w.ctx.Err() == nil && input != "" {
-			preview := w.preview
-			preview.Input, preview.Syntax = input, syntax
-			preview.Status = "STREAMING SCRIPT"
 			w.broker.publishPreview(preview, false)
 		}
 		w.mu.Unlock()
@@ -183,6 +195,7 @@ func (b *liveDiffBroker) publishPreview(preview liveDiffPreview, remove bool) {
 		if _, exists := b.previews[preview.ID]; exists {
 			return // Keep the last useful frame instead of flickering to an error.
 		}
+		preview.Files = nil
 		preview.Status = "PREVIEW UNAVAILABLE: source exceeds 48 KiB"
 	}
 	b.previews[preview.ID] = preview

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi"
 )
 
 const liveDiffPreviewFrameDelay = 33 * time.Millisecond
@@ -28,6 +29,7 @@ type liveDiffPreviewView struct {
 	hideAt   time.Time
 	rendered liveDiffPreview
 	focus    int
+	file     int
 	renderer liveDiffRenderer
 	source   []liveDiffPreviewRow
 	paths    []liveDiffSourceSpan
@@ -35,6 +37,7 @@ type liveDiffPreviewView struct {
 
 type liveDiffPreviewRow struct {
 	number int
+	kind   byte
 	text   string
 }
 
@@ -157,19 +160,88 @@ func (p *liveDiffPreviewView) columns(width int) (digits, sourceWidth int) {
 	return digits, max(1, width-4-numberWidth)
 }
 
-func (p *liveDiffPreviewView) prepare() {
-	current := p.current
-	if p.rendered.ID == current.ID && p.rendered.Input == current.Input && slices.Equal(p.rendered.Syntax, current.Syntax) {
-		return
+func liveDiffPreviewRows(review mekugi.ReviewFile, workspace string) ([]liveDiffPreviewRow, error) {
+	if review.BeforePath != "" && review.AfterPath == "" {
+		path := liveDiffDisplayPath(workspace, review.BeforePath)
+		return []liveDiffPreviewRow{{kind: ' ', text: "# " + path + " deleted\n"}}, nil
 	}
-	p.source = nil
-	if current.Input != "" {
-		for i, line := range strings.Split(strings.TrimSuffix(current.Input, "\n"), "\n") {
-			p.source = append(p.source, liveDiffPreviewRow{i + 1, line + "\n"})
+	hunks, err := review.Hunks()
+	if err != nil {
+		return nil, err
+	}
+	var rows []liveDiffPreviewRow
+	for _, hunk := range hunks {
+		before, after := hunk.BeforeStart+1, hunk.AfterStart+1
+		for _, row := range hunk.Rows {
+			number := after
+			if row.Kind == '-' {
+				number = before
+			}
+			rows = append(rows, liveDiffPreviewRow{number, row.Kind, row.Text})
+			if row.Kind != '+' {
+				before++
+			}
+			if row.Kind != '-' {
+				after++
+			}
 		}
 	}
-	p.focus = max(0, len(p.source)-1)
-	p.rendered = current
+	return rows, nil
+}
+
+// Locate the new end of the changed range, not the hunk's start. Trailing
+// unchanged context must not steal focus from a growing multiline replacement.
+func liveDiffPreviewFocus(before, after []liveDiffPreviewRow) int {
+	start := 0
+	for start < len(before) && start < len(after) && before[start] == after[start] {
+		start++
+	}
+	end, oldEnd := len(after), len(before)
+	for end > start && oldEnd > start && after[end-1] == before[oldEnd-1] {
+		end--
+		oldEnd--
+	}
+	for i := end - 1; i >= start; i-- {
+		if after[i].kind == '+' || after[i].kind == '-' {
+			return i
+		}
+	}
+	return max(0, min(start, len(after)-1))
+}
+
+func (p *liveDiffPreviewView) prepare() error {
+	current := p.current
+	if p.rendered.ID == current.ID && p.rendered.Input == current.Input && slices.Equal(p.rendered.Syntax, current.Syntax) && slices.Equal(p.rendered.Files, current.Files) {
+		return nil
+	}
+	file := min(p.file, max(0, len(current.Files)-1))
+	for i, review := range current.Files {
+		if p.rendered.ID != current.ID || !slices.Contains(p.rendered.Files, review) {
+			file = i
+		}
+	}
+	var source []liveDiffPreviewRow
+	var err error
+	if current.Input != "" {
+		for i, line := range strings.Split(strings.TrimSuffix(current.Input, "\n"), "\n") {
+			source = append(source, liveDiffPreviewRow{i + 1, ' ', line + "\n"})
+		}
+	}
+	if len(current.Files) > 0 {
+		source, err = liveDiffPreviewRows(current.Files[file], current.Workspace)
+		if err != nil {
+			return err
+		}
+	}
+	before := p.source
+	if p.rendered.ID != current.ID || p.file != file {
+		before = nil
+	}
+	p.focus = liveDiffPreviewFocus(before, source)
+	if current.Input != "" {
+		p.focus = max(0, len(source)-1)
+	}
+	p.file, p.source, p.rendered = file, source, current
 	p.paths = nil
 	if current.Input != "" {
 		syntax := current.Syntax
@@ -178,6 +250,7 @@ func (p *liveDiffPreviewView) prepare() {
 		}
 		p.paths = liveDiffSourceRows(current.Input, syntax)
 	}
+	return nil
 }
 
 // Render and color only a bounded source window around the streaming tip.
@@ -186,8 +259,13 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	if height <= 0 || p.current.ID == "" {
 		return nil, nil
 	}
-	p.prepare()
-	title := "STREAMING SCRIPT"
+	if err := p.prepare(); err != nil {
+		return nil, err
+	}
+	title := "STREAMING PREVIEW"
+	if p.current.Input != "" {
+		title = "STREAMING SCRIPT"
+	}
 	if !p.hideAt.IsZero() {
 		title = "STREAMING COMPLETE"
 	}
@@ -196,6 +274,14 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	}
 	if strings.HasPrefix(p.current.Status, "PREVIEW UNAVAILABLE:") {
 		title = p.current.Status
+	}
+	if len(p.current.Files) > 0 {
+		file := p.current.Files[p.file]
+		path := file.AfterPath
+		if path == "" {
+			path = file.BeforePath
+		}
+		title += " · " + liveDiffDisplayPath(workspace, path)
 	}
 	caller := p.current.Caller
 	if caller == "" {
@@ -236,14 +322,38 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	// A little leading context improves multiline token state without lexing
 	// a growing whole file on every frame.
 	colorStart := max(0, start-32)
-	colored, err := p.colorScript(ctx, theme, colorStart, end)
+	source := make([]mekugi.ReviewRow, 0, end-colorStart)
+	for _, row := range p.source[colorStart:end] {
+		source = append(source, mekugi.ReviewRow{Kind: row.kind, Text: row.text})
+	}
+	review := mekugi.ReviewFile{BeforePath: "stream.sh", AfterPath: "stream.sh"}
+	if len(p.current.Files) > 0 {
+		review = p.current.Files[p.file]
+	}
+	var before, after []string
+	var err error
+	if p.current.Input != "" {
+		after, err = p.colorScript(ctx, theme, colorStart, end)
+		before = after
+	} else {
+		before, after, err = p.renderer.colorHunk(ctx, theme, review, source)
+	}
 
 	if err != nil {
 		return nil, err
 	}
+	oldIndex, newIndex := 0, 0
 	for i := colorStart; i < end && len(lines) <= rows; i++ {
 		row := p.source[i]
-		text := colored[i-colorStart]
+		text := ""
+		if row.kind != '+' {
+			text = before[oldIndex]
+			oldIndex++
+		}
+		if row.kind != '-' {
+			text = after[newIndex]
+			newIndex++
+		}
 		if i < start {
 			continue
 		}
@@ -269,7 +379,7 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 			if n > 0 && numbers != "" {
 				prefix = "\x1b[2m" + strings.Repeat(" ", digits) + "│\x1b[22m"
 			}
-			line := liveDiffGutter(i == p.focus, theme) + liveDiffSourceLine(theme, width, prefix, fragment, ' ')
+			line := liveDiffGutter(i == p.focus, theme) + liveDiffSourceLine(theme, width, prefix, fragment, row.kind)
 			lines = append(lines, ansi.Truncate(line, max(0, width-1), ""))
 		}
 	}

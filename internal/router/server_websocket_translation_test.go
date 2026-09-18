@@ -253,14 +253,14 @@ func TestResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T) {
 			if event.Preview == nil {
 				continue
 			}
-			if !strings.Contains(event.Preview.Input, want) {
+			if len(event.Preview.Files) != 1 || !strings.Contains(event.Preview.Files[0].Diff, "+"+want) || event.Preview.Input != "" {
 				continue
 			}
 			previewID = event.Preview.ID
 			var pane liveDiffPreviewPane
 			pane.update(*event.Preview, time.Now())
 			lines, err := pane.render(t.Context(), directory, liveDiffDarkTheme, 100, 10)
-			if err != nil || !strings.Contains(strings.Join(lines, "\n"), "STREAMING SCRIPT") {
+			if err != nil || !strings.Contains(strings.Join(lines, "\n"), "STREAMING PREVIEW") {
 				t.Fatalf("preview renderer: %v, %+v", err, lines)
 			}
 			if data, _ := os.ReadFile(path); string(data) != "old\n" {

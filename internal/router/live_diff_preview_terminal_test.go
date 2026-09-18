@@ -246,7 +246,7 @@ func TestLiveDiffSimulationTerminalReplay(t *testing.T) {
 		directory := t.TempDir()
 		ui := startLiveDiffTerminal(t, "", "", "", 22, "MEKUGI_LIVE_DIFF_SIMULATION_TEST=1", "TMPDIR="+directory)
 		ui.frame(t, func(frame string) bool {
-			return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "/api/")
+			return strings.Contains(frame, "STREAMING PREVIEW") && strings.Contains(ansi.Strip(frame), "/api/")
 		})
 		ui.write(t, "g")
 		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
@@ -267,7 +267,7 @@ func TestLiveDiffSimulationTerminalReplay(t *testing.T) {
 			t.Fatal("standalone shell simulation did not use the 7:3 split")
 		}
 		ui.frame(t, func(frame string) bool {
-			return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "in lifecycle.go")
+			return strings.Contains(frame, "STREAMING PREVIEW") && strings.Contains(ansi.Strip(frame), "lifecycle.go")
 		})
 		ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "without final newline") })
 		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "rejected as expected") })
@@ -583,6 +583,43 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 		return strings.Contains(frame, "\x1b[12;1H") && strings.Contains(ansi.Strip(frame), "stream_0200")
 	})
 	broker.publishPreview(second, true)
+	ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
+	ui.quit(t)
+}
+
+func TestLiveDiffTerminalShellHpatchDiff(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "file.txt")
+	if err := os.WriteFile(path, []byte("old\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
+	})
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
+	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
+	defer func() { worker.stop(); <-worker.done }()
+	worker.appendDelta("hpatch <<'EDIT'\nin file.txt\ntype \"old\" \"new")
+	frame := ui.frame(t, func(frame string) bool {
+		text := ansi.Strip(frame)
+		return strings.Contains(text, "STREAMING PREVIEW") && strings.Contains(text, "+new")
+	})
+	if strings.Contains(ansi.Strip(frame), "hpatch <<") || !strings.Contains(ansi.Strip(frame), "-old") {
+		t.Fatalf("expected a diff, not shell source: %q", frame)
+	}
+	worker.appendDelta("er")
+	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "+newer") })
+	content, err := os.ReadFile(path)
+	if err != nil || string(content) != "old\n" {
+		t.Fatalf("preview applied an edit: %q, %v", content, err)
+	}
+	worker.stop()
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING COMPLETE") })
 	ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
 	ui.quit(t)
 }

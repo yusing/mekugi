@@ -184,11 +184,14 @@ Quitting the viewer restores terminal state without closing the pane or affectin
 
 ### Streaming previews
 
-Incoming shell input deltas, including WebSocket events, display the emitted program
-before input completion. This includes `hpatch` and `hpatch --recover` invocations.
-Previews never expand shell text, evaluate edits, run hooks, or publish durable
-changes. The actual post-expansion edit report and captured diff arrive after host
-execution.
+Incoming shell input deltas, including WebSocket events, display before input completion.
+Literal standalone `hpatch` arguments and heredoc input show a provisional file diff through
+the engine's bounded in-memory preview, including unfinished edit values and heredocs.
+Shell headers select the preview directory and interpreter using the shared header parser.
+Dynamic expansions, input files, composed commands, command templates, and `hpatch --recover`
+remain script previews rather than guessed file changes.
+Previews never execute shell code, apply files, format source, run hooks, or publish durable
+changes. The actual post-expansion edit report and captured diff arrive after host execution.
 
 Previews remain separately labeled, never composed into applied history or treated
 as receipts. They occupy a dedicated, non-scrollable region below captured diffs
@@ -242,9 +245,7 @@ coalesced separately from durable events.
 
 Input and total source/result are bounded to 256 KiB per preview, target expansion
 to 1,024 mutations, and retained display payloads to 48 KiB each across at most 16
-active previews. Capacity or target failures do not block complete edits. File projection
-stops at shell or recovery boundaries; the remaining streamed input is shown separately
-as script source, omitting HPATCH's `shell` prefix and outer heredoc markers,
+active previews. Capacity or target failures do not block complete edits. Inputs that cannot be decoded without execution or recovery state remain script source,
 with a labeled tail when clipped. Shell program content, including nested heredocs,
 is preserved. It never guesses post-shell file
 state or reads private continuation storage. Oversized file projections retain the last
