@@ -90,7 +90,7 @@ Submit a single-interpreter body directly, without closing delimited; avoid patt
 - `python3 - <<'PY'`
 - `python3 -c '...'`
 
-Compound Bash/POSIX programs use `#!cmd`.
+Write compound Bash/POSIX programs directly, using ordinary shell pipelines and redirections.
 
 ### Execution options and batches
 
@@ -99,7 +99,6 @@ Optional interpreter selector and optional directive lines starts first, then pr
 | Directive | Meaning |
 | --- | --- |
 | `#!params=<JSON object>` | Request fields from the tool description. Omit `cmd`; `login`, if set, is `false`. Omit `workdir` to use the current workspace; overrides are existing absolute expanded paths. |
-| `#!cmd=TEMPLATE` | Connects a producer to program stdin and accepts exactly one `{.}` runner placeholder. |
 
 Explicit Code Mode batches run programs sequentially in separate shell state and return together:
 
@@ -111,7 +110,7 @@ print("hello")
 ```
 
 Each program owns its selector and directives. Omitted params inherit the previous complete object;
-`{}` clears them, and templates/interpreters never inherit.
+`{}` clears them, and interpreters never inherit.
 
 Each new column-zero `#!interpreter` line starts a program; use `#!bash` for another
 Bash program. Prefer these batches over separate shell calls for noninteractive programs.

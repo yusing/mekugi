@@ -66,13 +66,6 @@ func executeShellTool(
 		programArguments = slices.Clone(arguments)
 		programArguments[len(programArguments)-1] = parsed.Body
 	}
-	ctx = context.WithValue(ctx, shellCommandRoutingDisabledKey{}, parsed.CommandTemplate != "")
-	if parsed.CommandTemplate != "" {
-		// The template may pipe or redirect worker output. Those bytes are
-		// program data, not necessarily the host's final display.
-		return executeShellProgram(ctx, manifest, runtimeRoot, shellContribution, programArguments, stdin,
-			workingDirectory, environment, commentary, streamStdout, streamStderr)
-	}
 	tokens := 10000
 	if value, ok := parsed.Params["max_output_tokens"].(float64); ok && value >= 1 && value <= 1<<30 && value == float64(int(value)) {
 		tokens = int(value)
@@ -251,7 +244,7 @@ func executeShellProgram(
 			handler := interp.HandlerCtx(ctx)
 			// Pipes, redirections and substitutions consume program data, not
 			// display output. Private readers were already dispatched above.
-			if !terminalShell && handler.Stdout == &capture.stdout && handler.Stderr == &capture.stderr && (handler.Stdin == stdin || handler.Stdin == nil && stdin == nil) && !shellCommandRoutingDisabled(ctx) {
+			if !terminalShell && handler.Stdout == &capture.stdout && handler.Stderr == &capture.stderr && (handler.Stdin == stdin || handler.Stdin == nil && stdin == nil) {
 				arguments = routeShellCommand(ctx, manifest, runtimeRoot, arguments, handler)
 			}
 			return runExternalShellCommand(ctx, arguments, terminalShell, handler)

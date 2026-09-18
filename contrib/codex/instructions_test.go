@@ -244,7 +244,7 @@ func TestInstructionsOwnCompleteShellWorkflow(t *testing.T) {
 		"optional interpreter selector, optional directive lines, then program source",
 		"Omit `workdir` to use the current workspace",
 		"not `/usr/bin/env`",
-		"accepts exactly one `{.}` runner placeholder",
+		"Write compound Bash/POSIX programs directly, using ordinary shell pipelines and redirections.",
 		"`#!params=<JSON object>`",
 		"use native session facilities for interactive input or termination",
 		"Each new column-zero `#!interpreter` line starts a program",
@@ -267,7 +267,7 @@ func TestInstructionsDoNotAdvertiseRetainedShellSource(t *testing.T) {
 	for _, model := range []string{"gpt-5.6-sol", "gpt-6-astra"} {
 		for _, compact := range []bool{false, true} {
 			guidance := InstructionsForModel(model, compact)
-			for _, obsolete := range []string{"@shell/", "#!script=", "script_ref", "Retained scripts are thread-private"} {
+			for _, obsolete := range []string{"@shell/", "#!script=", "#!cmd", "runner placeholder", "script_ref", "Retained scripts are thread-private"} {
 				if strings.Contains(guidance, obsolete) {
 					t.Errorf("model %q compact %v advertises removed source retention: %q", model, compact, obsolete)
 				}

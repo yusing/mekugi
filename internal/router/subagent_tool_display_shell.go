@@ -52,7 +52,7 @@ func toolActivityShellLanguage(script, language string) string {
 		}
 	}
 	parsed, err := shellsyntax.Parse(script)
-	if err == nil && parsed.CommandTemplate == "" && len(parsed.Interpreter) == 1 &&
+	if err == nil && len(parsed.Interpreter) == 1 &&
 		(parsed.Interpreter[0] == "bash" || parsed.Interpreter[0] == "sh") {
 		if summary, ok := toolActivityReads(parsed.Body); ok {
 			return summary

@@ -104,8 +104,8 @@ func TestShellMisuseRejectionDeliveryAndReplay(t *testing.T) {
 				} else {
 					transform, _, _, _ = newMekugiTestTransformWithProxy(t, proxy)
 				}
-				// Neither a template nor a nested executor call may run during rejection.
-				input := "#!/bin/bash\n#!params={\"yield_time_ms\":1000}\n#!cmd=touch template-ran; {.}\nconst r = await tools.exec_command({cmd: 'touch script-ran'}); text(r);"
+				// A nested executor call may not run during rejection.
+				input := "#!/bin/bash\n#!params={\"yield_time_ms\":1000}\nconst r = await tools.exec_command({cmd: 'touch script-ran'}); text(r);"
 				item := map[string]any{"type": "custom_tool_call", "name": "shell", "id": "item-shell", "call_id": "call-shell", "input": input, "status": "completed"}
 				var carrier map[string]json.RawMessage
 				if streaming {
@@ -156,7 +156,7 @@ func TestShellMisuseRejectionDeliveryAndReplay(t *testing.T) {
 					if err != nil || string(output) != shellTypeScriptDiagnostic {
 						t.Fatalf("diagnostic delivery: %q, %v", output, err)
 					}
-					for _, name := range []string{"template-ran", "script-ran"} {
+					for _, name := range []string{"script-ran"} {
 						if _, err := os.Stat(filepath.Join(directory, name)); !os.IsNotExist(err) {
 							t.Fatalf("unexpected execution: %s", name)
 						}

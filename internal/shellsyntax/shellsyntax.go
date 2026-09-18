@@ -10,12 +10,11 @@ import (
 
 // Parsed is the portable shell header result.
 type Parsed struct {
-	Interpreter     []string       `json:"interpreter,omitempty"`
-	Body            string         `json:"body,omitempty"`
-	CommandTemplate string         `json:"commandTemplate,omitempty"`
-	Params          map[string]any `json:"params"`
-	ParamsLine      int            `json:"paramsLine,omitempty"`
-	HasParams       bool           `json:"hasParams,omitzero"`
+	Interpreter []string       `json:"interpreter,omitempty"`
+	Body        string         `json:"body,omitempty"`
+	Params      map[string]any `json:"params"`
+	ParamsLine  int            `json:"paramsLine,omitempty"`
+	HasParams   bool           `json:"hasParams,omitzero"`
 }
 
 // HeaderError locates a rejected header in the submitted program. Line is
@@ -57,7 +56,7 @@ func Parse(input string) (Parsed, error) {
 	}
 
 	headerOffset := physicalLine(input[:len(input)-len(body)]) - 1
-	commandTemplate, params, hasParams, paramsLine, body, err := parseDirectives(body)
+	params, hasParams, paramsLine, body, err := parseDirectives(body)
 	if err != nil {
 		if located, ok := errors.AsType[*HeaderError](err); ok {
 			located.Line += headerOffset
@@ -69,12 +68,11 @@ func Parse(input string) (Parsed, error) {
 		paramsLine += headerOffset
 	}
 	return Parsed{
-		Interpreter:     interpreter,
-		Body:            body,
-		CommandTemplate: commandTemplate,
-		Params:          params,
-		ParamsLine:      paramsLine,
-		HasParams:       hasParams,
+		Interpreter: interpreter,
+		Body:        body,
+		Params:      params,
+		ParamsLine:  paramsLine,
+		HasParams:   hasParams,
 	}, nil
 }
 
@@ -85,8 +83,8 @@ func InterpreterIdentity(interpreter string) string {
 	return base
 }
 
-// parseDirectives extracts #!cmd and #!params directives from shell script header lines.
-func parseDirectives(input string) (commandTemplate string, params map[string]any, hasParams bool, paramsLine int, body string, err error) {
+// parseDirectives extracts #!params directives from shell script header lines.
+func parseDirectives(input string) (params map[string]any, hasParams bool, paramsLine int, body string, err error) {
 	lineNumber := 1
 	defer func() {
 		if err != nil {
@@ -94,48 +92,34 @@ func parseDirectives(input string) (commandTemplate string, params map[string]an
 		}
 	}()
 	remaining := input
-	seen := make(map[string]struct{}, 2)
 	for remaining != "" {
 		line, rest := splitFirstLine(remaining)
 		trimmed := trimField(line)
 		key, value, ok := parseDirectiveLine(trimmed)
 		if !ok {
 			if malformedDirective(trimmed) || strings.HasPrefix(trimmed, "!") {
-				return "", nil, false, 0, "", errors.New("shell directive must use #!{key}={value}")
+				return nil, false, 0, "", errors.New("shell directive must use #!{key}={value}")
 			}
 			break
 		}
-		if key != "cmd" && key != "params" {
-			return "", nil, false, 0, "", fmt.Errorf("unsupported shell directive #!%s", key)
+		if key != "params" {
+			return nil, false, 0, "", fmt.Errorf("unsupported shell directive #!%s", key)
 		}
-		if _, duplicate := seen[key]; duplicate {
-			return "", nil, false, 0, "", fmt.Errorf("shell directive #!%s must not occur more than once", key)
+		if hasParams {
+			return nil, false, 0, "", errors.New("shell directive #!params must not occur more than once")
 		}
-		seen[key] = struct{}{}
-
-		switch key {
-		case "cmd":
-			if value == "" {
-				return "", nil, false, 0, "", errors.New("command template must not be empty")
-			}
-			if strings.Count(value, "{.}") != 1 {
-				return "", nil, false, 0, "", errors.New("command template must contain exactly one {.} placeholder")
-			}
-			commandTemplate = value
-		case "params":
-			if err := json.Unmarshal([]byte(value), &params); err != nil {
-				return "", nil, false, 0, "", fmt.Errorf("#!params must contain a JSON object: %w", err)
-			}
-			if params == nil {
-				return "", nil, false, 0, "", errors.New("#!params must contain a JSON object")
-			}
-			paramsLine = lineNumber
-			hasParams = true
+		if err := json.Unmarshal([]byte(value), &params); err != nil {
+			return nil, false, 0, "", fmt.Errorf("#!params must contain a JSON object: %w", err)
 		}
+		if params == nil {
+			return nil, false, 0, "", errors.New("#!params must contain a JSON object")
+		}
+		paramsLine = lineNumber
+		hasParams = true
 		remaining = rest
 		lineNumber++
 	}
-	return commandTemplate, params, hasParams, paramsLine, remaining, nil
+	return params, hasParams, paramsLine, remaining, nil
 }
 
 // parseDirectiveLine parses one shell directive line into its key and value components.
@@ -184,13 +168,8 @@ func isDirectiveCandidate(line string) bool {
 
 // malformedDirective reports whether line contains a recognized but malformed directive.
 func malformedDirective(line string) bool {
-	for _, name := range []string{"#!cmd", "#!params"} {
-		if rest, ok := strings.CutPrefix(line, name); ok &&
-			(rest == "" || rest[0] == ' ' || rest[0] == '\t') {
-			return true
-		}
-	}
-	return false
+	rest, ok := strings.CutPrefix(line, "#!params")
+	return ok && (rest == "" || rest[0] == ' ' || rest[0] == '\t')
 }
 
 func physicalLine(prefix string) int {

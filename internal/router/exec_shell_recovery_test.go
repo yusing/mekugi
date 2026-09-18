@@ -19,7 +19,7 @@ func TestExecShellRecoveryDetection(t *testing.T) {
 		{"params Bash", "#!params={\"yield_time_ms\":1000}\nprintf '%s' hello\n", true},
 		{"Bash selector", "#!/bin/bash\nprintf '%s' hello\n", true},
 		{"Python selector", "#!python3\nfrom pathlib import Path\nprint(Path.cwd())\n", true},
-		{"template", "#!cmd=printf input | {.}\ncat -\n", true},
+		{"removed directive", "#!cmd=printf input | {.}\ncat -\n", false},
 		{"bare batch", "exit 7\n#!bash\necho later\n", true},
 		{"batch", "#!params={}\necho first\n#!python3\nprint('second')\n", true},
 		{"valid JavaScript", "text(await tools.clock__curr_time({}));", false},
@@ -68,7 +68,7 @@ func TestExecShellRecoveryBatchRuntime(t *testing.T) {
 	source := "#!params=" + string(mustMarshalJSON(map[string]any{"workdir": directory})) +
 		"\nprintf before; exit 7\n#!python3\nfrom pathlib import Path\nPath('order').write_text('python')\nprint('middle')\n#!bash\n" +
 		"#!params=" + string(mustMarshalJSON(map[string]any{"workdir": directory, "yield_time_ms": 1000})) +
-		"\n#!cmd=printf template | {.}\nread value; printf '%s:' \"$value\"; cat order\n"
+		"\nprintf pipeline | { read value; printf '%s:' \"$value\"; cat order; }\n"
 	item := newResponsesItem(map[string]json.RawMessage{
 		"type": mustMarshalJSON("custom_tool_call"), "name": mustMarshalJSON("exec"),
 		"call_id": mustMarshalJSON("batch-recovery"), "input": mustMarshalJSON(source),
@@ -95,7 +95,7 @@ func TestExecShellRecoveryBatchRuntime(t *testing.T) {
 	runShellCatJavaScript(t, proxy.registry.NodeExecutable, directory, payload, &result, "")
 	if len(result.Results) != 3 || result.Results[0].Output != "before" || result.Results[0].ExitCode != 7 ||
 		result.Results[1].Output != "middle\n" || result.Results[1].ExitCode != 0 ||
-		result.Results[2].Output != "template:python" || result.Results[2].ExitCode != 0 {
+		result.Results[2].Output != "pipeline:python" || result.Results[2].ExitCode != 0 {
 		t.Fatalf("batch execution changed: %+v", result)
 	}
 }

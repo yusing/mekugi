@@ -7,12 +7,12 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	parsed, err := Parse("#!/usr/bin/env -S python3 -u\r\n#!params={\"tty\":true}\r\n#!cmd=wrap {.}\r\nprint('ok')\r\n")
+	parsed, err := Parse("#!/usr/bin/env -S python3 -u\r\n#!params={\"tty\":true}\r\nprint('ok')\r\n")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(parsed.Interpreter) != 2 || parsed.Interpreter[0] != "python3" || parsed.Interpreter[1] != "-u" ||
-		parsed.CommandTemplate != "wrap {.}" || !parsed.HasParams || parsed.ParamsLine != 2 || parsed.Body != "print('ok')\r\n" {
+		!parsed.HasParams || parsed.ParamsLine != 2 || parsed.Body != "print('ok')\r\n" {
 		t.Fatalf("Parse = %+v", parsed)
 	}
 
@@ -25,6 +25,8 @@ func TestParseFailures(t *testing.T) {
 	for _, input := range []string{
 		"#!\nbody",
 		"#!/usr/bin/env -S\nbody",
+		"#!cmd=producer | {.}\nbody",
+		"#!params={}\n#!cmd={.}\nbody",
 		"#!cmd=missing-placeholder\nbody",
 		"#!params=[]\nbody",
 		"#!unknown=value\nbody",
@@ -60,8 +62,8 @@ func TestHeaderErrorLocations(t *testing.T) {
 	}{
 		{"#!", 1},
 		{"#!/usr/bin/env", 1},
-		{"#!python3\n#!cmd missing\nprint(1)", 2},
-		{"#!python3\r\n#!cmd={.}\r\n#!params={bad}\r\nprint(1)", 3},
+		{"#!python3\n#!params=\nprint(1)", 2},
+		{"#!python3\r\n#!params={bad}\r\nprint(1)", 2},
 		{"#!params={}\r#!params={}\recho one", 2},
 		{"#!script=@shell/example\necho one", 1},
 		{"#!python3\nprint(1)\n\x00", 3},

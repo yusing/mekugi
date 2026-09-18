@@ -108,30 +108,16 @@ describe("installable shell plugin", () => {
     }
   });
 
-  test("expands a command directive after an optional interpreter shebang", async () => {
-    const template = "curl -fsSL URL | {.} | jq";
-    const exec = (commandTemplate?: string) => (
-      commandTemplate === undefined ? {kind: "exec"} : {kind: "exec", template: commandTemplate}
-    );
-
-    const bash = await tool.parse(`#!cmd=${template}\nprint('bash')`);
-    expect(await tool.argv(bash)).toEqual(["bash", `#!cmd=${template}\nprint('bash')`]);
-    expect(await tool.translate(bash, {exec})).toEqual({kind: "exec", template});
-
-    const python = await tool.parse(`#!python3\r\n#!cmd=${template}\r\nprint('python')\r\n`);
-    expect(await tool.argv(python)).toEqual(["python3", `#!python3\r\n#!cmd=${template}\r\nprint('python')\r\n`]);
-    expect(await tool.translate(python, {exec})).toEqual({kind: "exec", template});
-
-    const laterDirective = await tool.parse(`#!python3\nprint('python')\n#!cmd=${template}`);
-    expect(await tool.argv(laterDirective)).toEqual([
-      "python3",
-      `#!python3\nprint('python')\n#!cmd=${template}`,
-    ]);
-    expect(await tool.translate(laterDirective, {exec})).toEqual({kind: "exec"});
+  test("rejects removed command directives after an optional interpreter selector", () => {
+    for (const prefix of ["", "#!python3\n", "#!params={}\n", "#!python3\r\n#!params={}\r\n"]) {
+      expect(() => tool.parse(`${prefix}#!cmd=printf data | {.}\nprint('ok')`))
+        .toThrow("unsupported shell directive #!cmd");
+    }
+    const source = "#!python3\nprint('ok')\n#!cmd=ordinary body comment";
+    expect(tool.parse(source).body).toBe("print('ok')\n#!cmd=ordinary body comment");
   });
 
   test("passes leading JSON params through the exec carrier", async () => {
-    const template = "env EXAMPLE=value {.}";
     const params = {workdir: "/tmp/example", tty: true, "yield_time_ms": 30000, login: false};
     const exec = (commandTemplate?: string, commandParams?: Record<string, unknown>) => ({
       kind: "exec",
@@ -140,12 +126,12 @@ describe("installable shell plugin", () => {
     });
 
     for (const input of [
-      `#!python3\n#!params=${JSON.stringify(params)}\n#!cmd=${template}\nprint('ok')`,
-      `#!python3\n#!cmd=${template}\n#!params=${JSON.stringify(params)}\nprint('ok')`,
+      `#!python3\n#!params=${JSON.stringify(params)}\nprint('ok')`,
+      `#!python3\r\n#!params=${JSON.stringify(params)}\r\nprint('ok')`,
     ]) {
       const parsed = await tool.parse(input);
       expect(await tool.argv(parsed)).toEqual(["python3", input]);
-      expect(await tool.translate(parsed, {exec})).toEqual({kind: "exec", template, params});
+      expect(await tool.translate(parsed, {exec})).toEqual({kind: "exec", params});
     }
 
     const laterDirective = await tool.parse("printf 'body'\n#!params={\"tty\":true}");
@@ -180,7 +166,6 @@ describe("installable shell plugin", () => {
       "#!/usr/bin/env -u python3",
       "printf '\\0'\0",
       "#!cmd=",
-      "#!cmd {.}\nprintf ok",
       "#!cmd=printf ok",
       "#!cmd={.} && {.}",
       "#!params=",
@@ -200,8 +185,8 @@ describe("installable shell plugin", () => {
 
   test("locates params policy rejections in the authored header", () => {
     for (const params of ['{"login":true}', '{"cmd":"override"}']) {
-      expect(() => tool.parse(`#!python3\r\n#!cmd={.}\r\n#!params=${params}\r\nprint(1)`))
-        .toThrow("line 3: #!params");
+      expect(() => tool.parse(`#!python3\r\n#!params=${params}\r\nprint(1)`))
+        .toThrow("line 2: #!params");
     }
   });
 

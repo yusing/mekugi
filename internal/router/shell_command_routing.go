@@ -9,13 +9,6 @@ import (
 	"mvdan.cc/sh/v3/interp"
 )
 
-type shellCommandRoutingDisabledKey struct{}
-
-func shellCommandRoutingDisabled(ctx context.Context) bool {
-	disabled, _ := ctx.Value(shellCommandRoutingDisabledKey{}).(bool)
-	return disabled
-}
-
 // Availability uses the current command's PATH and cwd, including changes
 // inside the script. The snapshotted plugin owns candidates and argv mappings.
 func routeShellCommand(ctx context.Context, manifest toolWorkerManifest, runtimeRoot string, arguments []string, handler interp.HandlerContext) []string {

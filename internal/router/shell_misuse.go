@@ -9,7 +9,7 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-const shellTypeScriptDiagnostic = "shell: [shell-typescript-misuse] Rejected before execution: the Bash body is invalid Bash but valid TypeScript/JavaScript. Use functions.exec for Code Mode helpers such as tools, ALL_TOOLS, and text when available; call collaboration tools directly. For an ordinary script, select an explicit interpreter with a shebang such as #!node or #!bun. No script or command template was executed."
+const shellTypeScriptDiagnostic = "shell: [shell-typescript-misuse] Rejected before execution: the Bash body is invalid Bash but valid TypeScript/JavaScript. Use functions.exec for Code Mode helpers such as tools, ALL_TOOLS, and text when available; call collaboration tools directly. For an ordinary script, select an explicit interpreter with a shebang such as #!node or #!bun. No script was executed."
 
 const shellCodeModeRecoveryWarning = "shell: [shell-code-mode-recovered] Recovered Code Mode JavaScript submitted through functions.shell. Submit shell commands directly to functions.shell, without tools.exec_command or Promise wrappers. Use functions.exec only for other Code Mode helpers."
 

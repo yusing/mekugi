@@ -252,7 +252,7 @@ func executeHRun(ctx context.Context, manifest toolWorkerManifest, runtimeRoot s
 		}
 		return interp.ExitStatus(2)
 	}
-	if !terminalShell && !shellCommandRoutingDisabled(ctx) {
+	if !terminalShell {
 		command = routeShellCommand(ctx, manifest, runtimeRoot, command, handler)
 	}
 	// Source: plugins/tokens.ts MAX_POSSIBLE_GPT5_TOKEN_BYTES.

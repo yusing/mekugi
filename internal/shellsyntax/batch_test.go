@@ -20,8 +20,6 @@ func TestSplit(t *testing.T) {
 			[]string{"#!params={\"workdir\":\"/tmp\"}\necho one\n", "#!bash\n#!params={\"yield_time_ms\":2000}\necho two\n", "#!python3\n#!params={\"yield_time_ms\":2000}\nprint(3)"}},
 		{"clear params", "#!params={\"workdir\":\"/tmp\"}\necho one\n#!bash\n#!params={}\necho two\n#!python3\nprint(3)",
 			[]string{"#!params={\"workdir\":\"/tmp\"}\necho one\n", "#!bash\n#!params={}\necho two\n", "#!python3\n#!params={}\nprint(3)"}},
-		{"template not inherited", "#!cmd=producer | {.}\n#!params={}\ncat\n#!python3\r\nprint(2)\r\n",
-			[]string{"#!cmd=producer | {.}\n#!params={}\ncat\n", "#!python3\r\n#!params={}\nprint(2)\r\n"}},
 		{"bare CR", "#!params={}\recho one\r#!python3\rprint(2)",
 			[]string{"#!params={}\recho one\r", "#!python3\r#!params={}\nprint(2)"}},
 		{"same interpreter", "#!bash\necho one\n#!bash\necho two", []string{"#!bash\necho one\n", "#!bash\necho two"}},
@@ -41,7 +39,7 @@ func TestIsBatch(t *testing.T) {
 		if !IsBatch("echo one" + ending + "#!python3" + ending + "print(2)") {
 			t.Fatal("interpreter boundary not recognized")
 		}
-		for _, line := range []string{" #!python3", "\t#!bash", "#!params={}", "#!cmd=cat | {.}", "#!cmd missing", "#!unknown=value", "---"} {
+		for _, line := range []string{" #!python3", "\t#!bash", "#!params={}", "#!cmd=cat | {.}", "#!unknown=value", "---"} {
 			if IsBatch("echo one" + ending + line) {
 				t.Fatalf("%q became a boundary", line)
 			}
@@ -126,7 +124,7 @@ func TestSplitRejectsInvalidPrograms(t *testing.T) {
 }
 
 func TestSplitHeaderErrorLocation(t *testing.T) {
-	_, err := Split("echo first\n#!python3\n#!cmd missing\nprint(1)")
+	_, err := Split("echo first\n#!python3\n#!params=\nprint(1)")
 	if err == nil || !strings.Contains(err.Error(), "shell program 2: line 2:") {
 		t.Fatalf("batch header error = %v, want program 2, line 2", err)
 	}

@@ -38,7 +38,6 @@ func TestShellCommandRouting(t *testing.T) {
 			{"redirect", "git status > result; /bin/cat result", "raw:status\n", 0},
 			{"stderr redirect", "git status 2> errors", "raw:status\n", 0},
 			{"explicit path", filepath.Join(directory, "git") + " status", "raw:status\n", 0},
-			{"template", "#!cmd={.} | cat\ngit status", "raw:status\n", 0},
 		} {
 			t.Run(interpreter+"/"+test.name, func(t *testing.T) {
 				stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, test.script, nil, invocation)

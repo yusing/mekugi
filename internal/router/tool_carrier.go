@@ -317,9 +317,6 @@ func (registry *toolRegistry) execCarrierCommand(
 		}
 		params["max_output_tokens"] = outputTokens
 		source := "#!params=" + string(mustMarshalJSON(params)) + "\n"
-		if parsed.CommandTemplate != "" {
-			source += "#!cmd=" + parsed.CommandTemplate + "\n"
-		}
 		source += parsed.Body
 		workerArguments = slices.Clone(arguments)
 		workerArguments[len(workerArguments)-1] = source
@@ -329,7 +326,7 @@ func (registry *toolRegistry) execCarrierCommand(
 	if builtinShell && template == "" && outputTokens == 0 {
 		// Preserve direct calls without adding worker flags or environment.
 		parsed, err := shellsyntax.Parse("#!bash\n" + sourceInput)
-		if err == nil && parsed.CommandTemplate == "" && len(arguments) > 0 {
+		if err == nil && len(arguments) > 0 {
 			directArguments := slices.Clone(arguments)
 			directArguments[len(directArguments)-1] = parsed.Body
 			if direct, ok := registry.directBashExecCommand(directArguments); ok {

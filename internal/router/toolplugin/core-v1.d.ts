@@ -23,7 +23,6 @@ declare module "mekugi:core/v1" {
   export type ParsedShellHeader = {
     interpreter?: string[];
     body?: string;
-    commandTemplate?: string;
     /** One-based source line of the params directive, when present. */
     paramsLine?: number;
     params?: Record<string, unknown>;

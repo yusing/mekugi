@@ -305,7 +305,7 @@ print("hello")
 
 Use `#!bash` to start another Bash program. Batches continue after nonzero exits.
 Prefer these batches over separate shell calls for noninteractive programs.
-`#!params` and `#!cmd` stay with the current program.
+`#!params` stays with the current program.
 
 Bash and POSIX scripts can record journal milestones on the current call, for
 example `journal add 'Checked the inputs.' --report-now`. A final

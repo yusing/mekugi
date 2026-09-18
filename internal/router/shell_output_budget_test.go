@@ -102,15 +102,25 @@ func TestShellOutputBudgetPreservesExecutionWithSmallBudget(t *testing.T) {
 	}
 }
 
-func TestShellOutputBudgetPreservesTemplateData(t *testing.T) {
+func TestShellOutputBudgetPreservesPipelineData(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		"#!params={\"max_output_tokens\":256}\n#!cmd={.} | wc -l\nfor i in {1..2000}; do printf 'row\\n'; done",
+		"#!params={\"max_output_tokens\":256}\nfor i in {1..2000}; do printf 'row\\n'; done | wc -l",
 		nil, newShellWorkerTestInvocation(directory))
-	if status != 0 || stderr != "" || strings.Count(stdout, "\n") != 2000 {
-		t.Fatalf("template input truncated: status=%d rows=%d stderr=%q", status, strings.Count(stdout, "\n"), stderr)
+	if status != 0 {
+		t.Fatalf("pipeline failed: status=%d stderr=%q", status, stderr)
+	}
+	if stderr != "" {
+		retained, retainedStderr := retainedShellTestOutput(t, stderr)
+		stdout += retained
+		if retainedStderr != "" {
+			t.Fatalf("pipeline stderr=%q", retainedStderr)
+		}
+	}
+	if strings.TrimSpace(stdout) != "2000" {
+		t.Fatalf("pipeline input truncated: stdout=%q", stdout)
 	}
 }
 

@@ -14,7 +14,7 @@ The first program may omit its interpreter and default to Bash; later Bash progr
 No batch directive or separate delimiter is needed. `---` is ordinary program source.
 
 Boundary recognition uses the same interpreter-versus-directive classification as header
-parsing: `#!params` and `#!cmd`, including malformed directive candidates, do not start
+parsing: `#!params` and unsupported `#!key=value` directives do not start
 programs. Bash, POSIX shell (including Dash and Ash), Korn shell, and Zsh parsing preserves interpreter-like lines inside
 heredocs, quoted strings, and other incomplete shell constructs. Indented headers remain
 body data. Every program in a batch must have a nonempty body;
@@ -26,10 +26,10 @@ and never triggers another execution.
 
 Each program has its own optional interpreter selector and leading directive block.
 A params-only header selects default Bash. Duplicate params within one block still reject.
-Interpreter selectors start programs; params and command-template directives do not.
+Interpreter selectors start programs; params and unsupported directives do not.
 
 Omitted params inherit the preceding complete object. A supplied object replaces that object,
-including `{}` clearing inherited fields. Interpreters and command templates do not inherit.
+including `{}` clearing inherited fields. Interpreters do not inherit.
 All programs are parsed and translated before any carrier is emitted; invalid later programs
 reject the entire batch without running its valid prefix. Batch programs require a nonempty
 body.
@@ -76,7 +76,7 @@ and trailing body whitespace, including an absent or final line terminator. With
 the complete input is the body. The translated argv contains each normalized interpreter field
 followed by the exact body as its final value. The resulting Codex exec carrier therefore shows
 `shell python3 <quoted-body>` on one physical command line; the model does not author that command
-or its quoting. For implicit default Bash without a command template, a body with at most one final line
+or its quoting. For implicit default Bash, a body with at most one final line
 terminator remains direct when it parses as one non-background, non-negated simple call whose
 static command is neither a shell built-in, the reserved `journal` command, nor a private
 contribution or an optional command-routing candidate, and whose statement contains no command or process substitution. The direct carrier
@@ -97,10 +97,8 @@ Journal authoring and reserved argv syntax follow [REQ-JOURNAL-001](journal.md).
 inherited `CODEX_THREAD_ID` and current thread runtime, without changing the interpreter argv.
 Unavailable journal discovery does not affect scripts without journal commands. An explicit journal command fails if it cannot record its mutation.
 
-After an optional interpreter shebang, a leading directive block can contain one `#!cmd=`
-assignment and one `#!params=` assignment in either order. All canonical directives use
-`#!key=value`. The tool trims ASCII spaces and tabs around each complete directive line. The
-nonempty command value is a shell command template containing exactly one `{.}` placeholder.
+After an optional interpreter shebang, a leading directive block can contain one `#!params=`
+assignment. The tool trims ASCII spaces and tabs around each complete directive line.
 The params value is a JSON object that cannot contain `cmd` because the script body supplies
 `cmd`. A present `login` value must be exactly `false`. Within the leading directive block, the
 tool tolerates `# !params JSON` and `#!params JSON` as alternate spellings and applies the same
@@ -112,11 +110,10 @@ counts as one terminator. Batch rejection also identifies the one-based program 
 no valid prefix runs when a later header is invalid.
 
 The tool removes recognized directive lines and their complete line terminators from the body.
-The router replaces `{.}` with the canonical independently quoted shell-helper command and argv.
-The command template then runs through the normal exec carrier shell. Without an interpreter
-shebang, the nested worker selects `bash`. Without an interpreter shebang or command template, an eligible simple external
+Without an interpreter shebang, the worker selects `bash`. An eligible simple external
 Bash command remains direct, including when exec parameters are supplied; every other body uses
-the worker command as the complete outer command. After the first body line, directive-like lines remain ordinary body data. Only the explicitly chosen batch separator is reserved within an opted-in batch.
+the worker command as the complete outer command. Use ordinary shell pipelines and redirections
+for compound programs. After the first body line, directive-like lines remain ordinary body data.
 
 The worker carrier starts the fixed helper once with the normalized interpreter
 fields and quoted source, including its existing header. The worker uses the shared header
@@ -162,8 +159,8 @@ to hide this limitation.
 Explicit batches divide an 8,000-token allowance across their programs, also respecting smaller
 per-program budgets. Split cat-write carriers divide their allowance among steps and
 fall back to one worker when a split would leave too little display space. Native request parameters remain unchanged. Direct single external-command
-carriers and command-template workers keep Codex's output behavior. Template pipes and
-redirections must receive complete worker output. The router does not run or replay them to retain output.
+carriers keep Codex's output behavior. Shell pipelines and redirections receive complete
+program output before display retention.
 
 ### Optional command routing
 
@@ -176,8 +173,8 @@ is not executable there, commands run unchanged.
 Only recognized command forms are routed. Unsupported subcommands, explicit executable
 paths, already-routed commands, private readers, and explicit machine-readable output
 remain unchanged. Automatic routing applies only to display output: commands whose
-input or output is redirected, piped, or captured by substitution remain raw. Command
-templates and non-Bash/POSIX interpreters are not automatically routed. An explicit
+input or output is redirected, piped, or captured by substitution remain raw.
+Non-Bash/POSIX interpreters are not automatically routed. An explicit
 `hrun` opts its inner external command into routing before output capture and selection.
 Terminal-backed commands and interactive Git staging bypass automatic routing. Native `find`,
 `diff`, `git add`, and `pnpm typecheck` also remain raw because their RTK
@@ -262,7 +259,7 @@ The complete script stays on its existing execution path if it contains conditio
 background jobs, compound statements, shell-state mutations (`cd`, assignments, functions,
 options), or dynamic expansions. Append writes, file-copy forms, unquoted heredocs, and paths or
 contents not representable without byte changes remain shell commands. Interpreter arguments,
-command templates, PTYs, and exec parameters other than workdir, output budget, yield timing,
+PTYs and exec parameters other than workdir, output budget, yield timing,
 and false login/tty also keep the existing carrier. A known absolute workdir is required.
 
 The ordinary single-program shell carrier forwards the complete native `exec_command` result defined by the owning Code
@@ -365,14 +362,12 @@ Acceptance:
    path such as `#!/opt/python/bin/python3` remains unchanged.
 3. `#!/usr/bin/env -S python3 -u` runs `python3` with `-u` and the exact body as its anonymous
    script source.
-4. `#!cmd=curl -fsSL URL | {.} | jq` without an interpreter shebang expands `{.}` to the
-   independently quoted fixed helper selecting Bash. The curl response becomes Bash
-   standard input while the exact remaining body remains the script source.
-5. When `#!python3` precedes that command directive, `{.}` expands to the independently quoted
-   fixed helper selecting Python. The command-template input becomes Python standard input.
-6. A missing, empty, or repeated `{.}` placeholder rejects before execution. A command directive
-   in any later body line remains ordinary body text.
-7. Input without a shebang or command directive selects Bash semantics. One physical line
+4. Leading unsupported directives, including `#!cmd=`, reject before execution, with or without
+   an interpreter selector or params directive. Directive-like lines after the first body line
+   remain ordinary body data.
+5. Ordinary shell pipelines deliver producer output to consumer standard input.
+6. Output budgets affect display only, not data flowing through shell pipelines or redirections.
+7. Input without a shebang selects Bash semantics. One physical line
    containing the static external command `rtk shadowtree test . -run='^$'` and one optional final
    line terminator produces that direct native command without `shell bash`, with or without a
    params directive. Exec parameters remain on the outer carrier unchanged. Shell built-ins,
@@ -392,7 +387,7 @@ Acceptance:
 11. `make install` installs `mekugi` and the fixed `shell` helper without changing Codex
     configuration or instruction files. Startup and tool-snapshot changes do not rewrite that
     helper and create no hcat, hgrep, hsymbol, or inspect_file basename frontend.
-12. `#!params={"workdir":"/tmp","tty":true}` before or after `#!cmd=` produces an exec carrier
+12. `#!params={"workdir":"/tmp","tty":true}` produces an exec carrier
     containing those fields and the router-supplied `cmd`. Tolerated leading params variants
     produce the same carrier after normalization. An object containing `cmd` rejects, and a
     present `login` value must be `false`.
@@ -425,8 +420,7 @@ Acceptance:
     TypeScript (including JavaScript) is rejected with `shell-typescript-misuse` before execution,
     except for the established Code Mode recovery below.
     The result explains how to submit Code Mode helpers or choose an explicit script interpreter;
-    rejected input is never automatically executed as Code Mode. Neither the script nor its
-    command template runs. Headers use the normal translator;
+    rejected input is never automatically executed as Code Mode. The script does not run. Headers use the normal translator;
     configured plugins, other interpreters, and bodies invalid in both languages retain their
     existing behavior. JSON, SSE, native, and Code Mode carriers deliver the same diagnostic,
     and replay retains the original shell call and its rejection result.
@@ -455,10 +449,10 @@ Acceptance:
     requests and other misplaced JavaScript/TypeScript use the rejection behavior above.
     Conversely, a Code Mode `exec` call containing invalid JavaScript with a parseable,
     column-one shell header is recovered through the built-in shell pipeline before dispatch.
-    Headers include interpreter selectors, `#!params=`, and `#!cmd=`.
+    Headers include interpreter selectors and `#!params=`.
     Valid JavaScript, including hashbang programs, keeps Code Mode semantics. Bare commands,
     malformed headers, and calls without the built-in shell available are not recovered.
-    Shell validation, params, templates, batching, and host execution
+    Shell validation, params, batching, and host execution
     permissions remain unchanged; rejected translations execute only their normal diagnostic.
     Successful translation adds `exec-shell-recovered` guidance and displays the selected
     interpreter rather than JavaScript. Replay restores the exact original `exec` call while

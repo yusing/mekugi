@@ -17,7 +17,7 @@ func TestShellInvocationSourceFidelity(t *testing.T) {
 		"printf ok\n# mekugi:invocation={authored trailing comment}",
 		"printf 'a\\nb'",
 		"#!params={\"max_output_tokens\":100}\r\n\nprintf ok\r\n",
-		"#!cmd=printf data | {.}\ncat",
+		"printf data | cat",
 		"#!python3\nprint('ok')\n",
 		"# mekugi:invocation={\"call_id\":\"authored-comment\"}\nprintf ok",
 	} {

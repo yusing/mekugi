@@ -22,7 +22,6 @@ function parseScript(input) {
   return {
     interpreter: parsed.interpreter ?? ["bash"],
     body: parsed.body ?? "",
-    commandTemplate: parsed.commandTemplate ?? "",
     source: input,
     params: parsed.params,
   };
@@ -231,8 +230,7 @@ export const shellTool = {
   },
 
   translate(input, api) {
-    const template = input.commandTemplate === "" ? undefined : input.commandTemplate;
-    return api.exec(template, input.params);
+    return api.exec(undefined, input.params);
   },
 
   execute(argv, context) {
