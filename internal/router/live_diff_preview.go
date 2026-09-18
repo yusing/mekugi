@@ -114,6 +114,7 @@ func (worker *liveDiffPreviewWorker) stop() {
 
 func (w *liveDiffPreviewWorker) run() {
 	defer close(w.done)
+	editRecognized := false
 	for {
 		select {
 		case <-w.ctx.Done():
@@ -137,18 +138,22 @@ func (w *liveDiffPreviewWorker) run() {
 		input := w.input.String()
 		preview := w.preview
 		w.mu.Unlock()
-		preview.Input, preview.Syntax = input, liveDiffScriptSyntax(input)
-		preview.Status = "STREAMING SCRIPT"
-		if edits, directory, ok := liveDiffShellEdit(input, preview.Workspace); ok {
+		edits, directory, ok := liveDiffShellEdit(input, preview.Workspace)
+		editRecognized = editRecognized || ok
+		if editRecognized {
+			preview.Input, preview.Syntax, preview.Files = "", nil, nil
+			preview.Status = "PREVIEW UNAVAILABLE: edit cannot be projected"
+		} else {
+			preview.Input, preview.Syntax = input, liveDiffScriptSyntax(input)
+			preview.Status = "STREAMING SCRIPT"
+		}
+		if ok {
 			ctx, cancel := context.WithTimeout(w.ctx, time.Second)
 			files, err := mekugi.PreviewForHostAt(ctx, directory, edits)
 			cancel()
-			preview.Input, preview.Syntax = "", nil
 			if err == nil {
 				preview.Files = files
 				preview.Status = "STREAMING PREVIEW"
-			} else {
-				preview.Status = "PREVIEW UNAVAILABLE: edit cannot be projected"
 			}
 		}
 		w.mu.Lock()

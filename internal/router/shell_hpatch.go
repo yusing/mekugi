@@ -8,7 +8,6 @@ import (
 
 	"github.com/yusing/mekugi"
 	"mvdan.cc/sh/v3/interp"
-	"strings"
 )
 
 // executeHpatch consumes shell-expanded argv and stdin, never shell source.

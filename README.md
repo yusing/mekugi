@@ -382,7 +382,9 @@ live diff viewer executable directly on the first hpatch call, then places its p
 to the right without changing focus. It does not start an interactive shell first.
 Read-only turns and redirected input/output do not open a pane. The view
 combines main-agent and subagent file edits, excluding Git and shell changes.
-Streaming previews are provisional until application is reported.
+The pane starts in stream view and keeps the latest streamed input visible between
+calls. Streaming previews are provisional until application is reported. Press `v`
+to switch between full-pane stream and captured diff views.
 
 To try the same UI without Codex or Herdr:
 
@@ -393,9 +395,10 @@ mekugi live-diff --simulate --speed 2 --repeat
 
 The simulation uses disposable temporary files and removes them on exit.
 
-- `j`/`k` scroll and `n`/`p` switch files, pausing automatic following.
-- `r` resumes following new edits.
-- `f` flushes the current file; `F` flushes all files.
+- `v` switches between stream (the default) and diff views.
+- In diff view, `j`/`k` scroll and `n`/`p` switch files, pausing automatic following.
+- In diff view, `r` resumes following new edits.
+- In diff view, `f` flushes the current file; `F` flushes all files.
 - `q` quits the viewer without ending Codex.
 
 Use `hchanges` for saved capture history; standalone live viewing is not

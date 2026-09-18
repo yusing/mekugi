@@ -3,7 +3,6 @@ package router
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -63,7 +62,7 @@ func TestLiveDiffShellCommandNames(t *testing.T) {
 func TestLiveDiffShellCommandsThroughPreview(t *testing.T) {
 	var pane liveDiffPreviewPane
 	input := "rg -n 'preview' internal/router | head -65\nsed -n '1,5p' file.go\n"
-	pane.update(liveDiffPreview{ID: "shell", Workspace: "/workspace", Input: input}, time.Time{})
+	pane.update(liveDiffPreview{ID: "shell", Workspace: "/workspace", Input: input})
 	lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 100, 8)
 	if err != nil {
 		t.Fatal(err)

@@ -113,7 +113,10 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 		text, _, _ = strings.Cut(text, fmt.Sprintf("\x1b[%d;1H", row+1))
 		return ansi.Strip(text)
 	}
-	waitFrame("Waiting for captured")
+	waitFrame("STREAM · v diff")
+	if _, err := terminal.Write([]byte("v")); err != nil {
+		t.Fatal(err)
+	}
 	livePublisher := store.liveDiff
 	store, err = openMekugiReplayStore(directory)
 	if err != nil {

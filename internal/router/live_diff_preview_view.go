@@ -13,7 +13,6 @@ import (
 )
 
 const liveDiffPreviewFrameDelay = 33 * time.Millisecond
-const liveDiffPreviewHideDelay = 1500 * time.Millisecond
 
 // Streaming has its own viewport and lifecycle. It never changes the captured
 // diff's selection, scroll, acknowledgements, or follow mode.
@@ -23,10 +22,10 @@ type liveDiffPreviewPane struct {
 	order []string
 }
 
-// Each call owns its source window, syntax cache, and completion deadline.
+// Each call owns its source window, syntax cache, and completion state.
 type liveDiffPreviewView struct {
 	current  liveDiffPreview
-	hideAt   time.Time
+	complete bool
 	rendered liveDiffPreview
 	focus    int
 	file     int
@@ -41,11 +40,11 @@ type liveDiffPreviewRow struct {
 	text   string
 }
 
-func (p *liveDiffPreviewPane) update(preview liveDiffPreview, now time.Time) {
+func (p *liveDiffPreviewPane) update(preview liveDiffPreview) {
 	view := p.views[preview.ID]
 	if preview.Workspace == "" {
-		if view != nil && view.hideAt.IsZero() {
-			view.hideAt = now.Add(liveDiffPreviewHideDelay)
+		if view != nil {
+			view.complete = true
 		}
 		return
 	}
@@ -53,7 +52,7 @@ func (p *liveDiffPreviewPane) update(preview liveDiffPreview, now time.Time) {
 		// Completed cards must not crowd out a new live call or grow storage
 		// beyond the broker's active-preview limit.
 		p.order = slices.DeleteFunc(p.order, func(id string) bool {
-			if p.views[id].hideAt.IsZero() {
+			if !p.views[id].complete {
 				return false
 			}
 			delete(p.views, id)
@@ -69,30 +68,7 @@ func (p *liveDiffPreviewPane) update(preview liveDiffPreview, now time.Time) {
 		p.views[preview.ID] = view
 		p.order = append(p.order, preview.ID)
 	}
-	view.current, view.hideAt = preview, time.Time{}
-}
-
-func (p *liveDiffPreviewPane) hideAt() time.Time {
-	var next time.Time
-	for _, view := range p.views {
-		if !view.hideAt.IsZero() && (next.IsZero() || view.hideAt.Before(next)) {
-			next = view.hideAt
-		}
-	}
-	return next
-}
-
-func (p *liveDiffPreviewPane) expire(now time.Time) bool {
-	before := len(p.order)
-	p.order = slices.DeleteFunc(p.order, func(id string) bool {
-		view := p.views[id]
-		if !view.hideAt.IsZero() && !now.Before(view.hideAt) {
-			delete(p.views, id)
-			return true
-		}
-		return false
-	})
-	return len(p.order) != before
+	view.current, view.complete = preview, false
 }
 
 func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, theme liveDiffTheme, width, height int) ([]string, error) {
@@ -129,21 +105,6 @@ func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, them
 		lines = append(lines, ansi.Truncate(theme.accent()+label+"\x1b[0m", max(0, width-1), ""))
 	}
 	return lines, nil
-}
-
-// Streaming source uses a 7:3 captured-diff/preview split.
-func liveDiffRegionRows(body, captured int, streaming bool) (diff, preview int) {
-	if !streaming {
-		return body, 0
-	}
-	if captured == 0 {
-		return 0, body
-	}
-	if body < 2 {
-		return body, 0
-	}
-	diff = min(captured, max(1, body*7/10))
-	return diff, body - diff
 }
 
 func (p *liveDiffPreviewView) columns(width int) (digits, sourceWidth int) {
@@ -269,8 +230,11 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	if p.current.Input != "" {
 		title = "STREAMING SCRIPT"
 	}
-	if !p.hideAt.IsZero() {
+	if p.complete {
 		title = "STREAMING COMPLETE"
+		if qualification, ok := strings.CutPrefix(p.current.Status, "STREAMING PREVIEW: "); ok {
+			title += " · " + qualification
+		}
 	}
 	if p.current.Input != "" && p.current.Truncated {
 		title += " · tail"

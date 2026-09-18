@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -21,10 +20,9 @@ func previewViewFixture(id string, rows int) liveDiffPreview {
 }
 
 func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
-	now := time.Unix(100, 0)
 	var pane liveDiffPreviewPane
 	for _, size := range []int{2, 30, 300, 2000} {
-		pane.update(previewViewFixture("one", size), now)
+		pane.update(previewViewFixture("one", size))
 		lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 70, 12)
 		if err != nil || len(lines) > 12 || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), fmt.Sprintf("+stream_%04d", size)) {
 			t.Fatalf("stream tip %d escaped region: %v %q", size, err, lines)
@@ -33,30 +31,27 @@ func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 			t.Fatalf("follow anchored to hunk start rather than tip: %d", pane.views["one"].focus)
 		}
 	}
-	pane.update(liveDiffPreview{ID: "one"}, now)
-	if pane.expire(now.Add(liveDiffPreviewHideDelay - time.Nanosecond)) {
-		t.Fatal("preview hid before its hold delay")
-	}
+	pane.update(liveDiffPreview{ID: "one"})
 	lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 70, 12)
 	if err != nil || !strings.Contains(lines[0], "STREAMING COMPLETE") {
 		t.Fatalf("missing completion hold: %v %q", err, lines)
 	}
-	// A new stream cancels a pending hide, even if the old timer fires.
-	pane.update(previewViewFixture("two", 10), now.Add(100*time.Millisecond))
-	if pane.expire(now.Add(liveDiffPreviewHideDelay)) {
-		t.Fatal("old completion timer hid a new stream")
+	// Completed input stays visible until a new call replaces it.
+	pane.update(previewViewFixture("two", 10))
+	if len(pane.order) != 1 || pane.order[0] != "two" {
+		t.Fatal("new call did not replace completed input")
 	}
-	pane.update(liveDiffPreview{ID: "two"}, now.Add(time.Second))
-	if !pane.expire(now.Add(time.Second+liveDiffPreviewHideDelay)) || len(pane.order) != 0 {
-		t.Fatal("completed region did not release its height")
+	pane.update(liveDiffPreview{ID: "two"})
+	lines, err = pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 70, 12)
+	if err != nil || !strings.Contains(lines[0], "STREAMING COMPLETE") || !strings.Contains(strings.Join(lines, "\n"), "stream_0010") {
+		t.Fatalf("completed stream did not persist: %v %q", err, lines)
 	}
 }
 
 func TestLiveDiffPreviewPaneLatestOnlyAndIndependent(t *testing.T) {
 	var pane liveDiffPreviewPane
-	now := time.Unix(100, 0)
 	for i := 1; i <= 500; i++ {
-		pane.update(previewViewFixture("one", i), now)
+		pane.update(previewViewFixture("one", i))
 	}
 	if pane.views["one"].source != nil || pane.views["one"].rendered.ID != "" {
 		t.Fatal("queued snapshots performed rendering")
@@ -71,30 +66,18 @@ func TestLiveDiffPreviewPaneLatestOnlyAndIndependent(t *testing.T) {
 	if err != nil || &source[0] != &pane.views["one"].source[0] {
 		t.Fatal("unchanged preview rebuilt its source")
 	}
-	pane.update(previewViewFixture("two", 20), now)
-	pane.update(liveDiffPreview{ID: "two"}, now)
-	if pane.views["one"] == nil || !pane.views["one"].hideAt.IsZero() {
+	pane.update(previewViewFixture("two", 20))
+	pane.update(liveDiffPreview{ID: "two"})
+	if pane.views["one"] == nil || pane.views["one"].complete {
 		t.Fatal("one completed stream hid another active stream")
 	}
 }
 
 func TestLiveDiffPreviewLayoutAndWrapping(t *testing.T) {
-	for _, body := range []int{1, 2, 3, 10, 20, 40, 100} {
-		diff, stream := liveDiffRegionRows(body, 1000, true)
-		if diff+stream != body || diff < 1 {
-			t.Fatalf("invalid region heights for %d: %d %d", body, diff, stream)
-		}
-		if body >= 10 && diff != body*7/10 {
-			t.Fatalf("not a fixed 7:3 split: %d %d", diff, stream)
-		}
-		if d, s := liveDiffRegionRows(body, 1000, false); d != body || s != 0 {
-			t.Fatal("hidden preview retained height")
-		}
-	}
 	var pane liveDiffPreviewPane
 	preview := previewViewFixture("one", 1)
 	preview.Input = strings.Repeat("界", 100) + "TIP\n"
-	pane.update(preview, time.Time{})
+	pane.update(preview)
 	for _, width := range []int{4, 10, 40, 120} {
 		lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, width, 8)
 		if err != nil || len(lines) > 8 {
@@ -114,9 +97,9 @@ func TestLiveDiffPreviewLayoutAndWrapping(t *testing.T) {
 func TestLiveDiffPreviewRepeatedSnapshotKeepsFocus(t *testing.T) {
 	// A repeated snapshot must not move focus, because prepare reuses it.
 	var pane liveDiffPreviewPane
-	pane.update(previewViewFixture("one", 30), time.Time{})
+	pane.update(previewViewFixture("one", 30))
 	first, _ := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 80, 8)
-	pane.update(previewViewFixture("one", 30), time.Time{})
+	pane.update(previewViewFixture("one", 30))
 	second, _ := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 80, 8)
 	if !slices.Equal(first, second) {
 		t.Fatal("identical snapshot moved the viewport")
@@ -134,7 +117,7 @@ func BenchmarkLiveDiffPreviewPaneFrame(b *testing.B) {
 		sequence++
 		next := preview
 		next.Input = strings.Replace(base, "stream_2000", fmt.Sprintf("stream_tip_%d", sequence), 1)
-		pane.update(next, time.Time{})
+		pane.update(next)
 		if _, err := pane.render(b.Context(), "/workspace", liveDiffDarkTheme, 120, 28); err != nil {
 			b.Fatal(err)
 		}
@@ -145,7 +128,7 @@ func TestLiveDiffPreviewSyntaxAndVisibleTip(t *testing.T) {
 	preview := previewViewFixture("colored", 50)
 	preview.Input = "#!python3\n" + strings.Repeat("# context\n", 49) + "return \"STREAM_TIP\"\n"
 	var pane liveDiffPreviewPane
-	pane.update(preview, time.Time{})
+	pane.update(preview)
 	for _, theme := range []liveDiffTheme{liveDiffDarkTheme, liveDiffLightTheme} {
 		lines, err := pane.render(t.Context(), "/workspace", theme, 70, 12)
 		if err != nil {
@@ -167,7 +150,7 @@ func TestLiveDiffPreviewRawScript(t *testing.T) {
 	var pane liveDiffPreviewPane
 	preview := liveDiffPreview{ID: "mixed", Workspace: "/workspace", Thread: "thread",
 		Input: "shell printf 'before'\nnew after.go\ntype <<PATCH\npackage main\n"}
-	pane.update(preview, time.Time{})
+	pane.update(preview)
 	lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 70, 12)
 	text := ansi.Strip(strings.Join(lines, "\n"))
 	if err != nil || !strings.Contains(text, "STREAMING SCRIPT") || !strings.Contains(text, "package main") {
@@ -175,29 +158,6 @@ func TestLiveDiffPreviewRawScript(t *testing.T) {
 	}
 	if strings.Contains(text, "stream.sh") || strings.Contains(text, "PREVIEW UNAVAILABLE") {
 		t.Fatalf("raw script pretends to be a projected file: %q", text)
-	}
-}
-
-func TestLiveDiffShellLayoutAndDelay(t *testing.T) {
-	if liveDiffPreviewHideDelay != 1500*time.Millisecond {
-		t.Fatal("preview hold must be 1.5 seconds")
-	}
-	for _, body := range []int{1, 2, 3, 10, 20, 100} {
-		diff, preview := liveDiffRegionRows(body, 1000, true)
-		if diff+preview != body || diff < 1 || (body >= 10 && diff != body*7/10) {
-			t.Fatalf("shell layout: body=%d diff=%d preview=%d", body, diff, preview)
-		}
-	}
-}
-
-func TestLiveDiffPreviewEmptyAndSparseLayout(t *testing.T) {
-	for _, body := range []int{1, 2, 10, 20, 40} {
-		if diff, preview := liveDiffRegionRows(body, 0, true); diff != 0 || preview != body {
-			t.Fatalf("empty captured view wasted rows: body=%d diff=%d preview=%d", body, diff, preview)
-		}
-		if diff, preview := liveDiffRegionRows(body, 1, true); diff != 1 || preview != body-1 {
-			t.Fatalf("sparse captured view wasted rows: body=%d diff=%d preview=%d", body, diff, preview)
-		}
 	}
 }
 
@@ -215,7 +175,7 @@ func TestLiveDiffPreviewScriptSyntax(t *testing.T) {
 		} {
 			t.Run(fmt.Sprintf("%d/%s", theme, tc.name), func(t *testing.T) {
 				var pane liveDiffPreviewPane
-				pane.update(liveDiffPreview{ID: tc.name, Workspace: "/workspace", Input: tc.input}, time.Time{})
+				pane.update(liveDiffPreview{ID: tc.name, Workspace: "/workspace", Input: tc.input})
 				lines, err := pane.render(t.Context(), "/workspace", theme, 100, 20)
 				frame := strings.Join(lines, "\n")
 				if err != nil || !strings.Contains(frame, theme.foreground(tc.kind)+tc.token) {
@@ -247,7 +207,7 @@ func BenchmarkLiveDiffScriptPreviewFrame(b *testing.B) {
 			for b.Loop() {
 				sequence++
 				input := base + fmt.Sprintf("return \"tip_%d\"\n", sequence)
-				pane.update(liveDiffPreview{ID: "stream", Workspace: "/workspace", Input: input}, time.Time{})
+				pane.update(liveDiffPreview{ID: "stream", Workspace: "/workspace", Input: input})
 				if _, err := pane.render(b.Context(), "/workspace", liveDiffDarkTheme, 120, 28); err != nil {
 					b.Fatal(err)
 				}
@@ -257,15 +217,14 @@ func BenchmarkLiveDiffScriptPreviewFrame(b *testing.B) {
 }
 
 func TestLiveDiffConcurrentPreviewCards(t *testing.T) {
-	now := time.Unix(100, 0)
 	var pane liveDiffPreviewPane
 	first := previewViewFixture("first", 100)
 	first.Caller = "/root/editor"
 	second := previewViewFixture("second", 200)
 	second.Caller = "/root/reviewer"
 	second.Thread = "another-thread"
-	pane.update(first, now)
-	pane.update(second, now)
+	pane.update(first)
+	pane.update(second)
 	check := func(height int) string {
 		t.Helper()
 		lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 100, height)
@@ -285,7 +244,7 @@ func TestLiveDiffConcurrentPreviewCards(t *testing.T) {
 	for i := 101; i <= 150; i++ {
 		first = previewViewFixture("first", i)
 		first.Caller = "/root/editor"
-		pane.update(first, now)
+		pane.update(first)
 	}
 	frame = check(12)
 	if strings.Index(frame, "/root/editor") > strings.Index(frame, "/root/reviewer") ||
@@ -293,20 +252,19 @@ func TestLiveDiffConcurrentPreviewCards(t *testing.T) {
 		&otherSource[0] != &pane.views["second"].source[0] {
 		t.Fatalf("delta reordered or replaced a concurrent view: %s", frame)
 	}
-	// Same-thread calls still have separate identities and independent deadlines.
+	// Same-thread calls still have separate identities and completion states.
 	second.Thread, second.Caller = first.Thread, first.Caller
-	pane.update(second, now)
-	pane.update(liveDiffPreview{ID: "first"}, now)
+	pane.update(second)
+	pane.update(liveDiffPreview{ID: "first"})
 	frame = check(12)
 	if !strings.Contains(frame, "first · STREAMING COMPLETE") || !strings.Contains(frame, "second · STREAMING SCRIPT") {
 		t.Fatalf("completion replaced another call: %s", frame)
 	}
-	if pane.expire(now.Add(liveDiffPreviewHideDelay-time.Nanosecond)) ||
-		!pane.expire(now.Add(liveDiffPreviewHideDelay)) || len(pane.order) != 1 || pane.order[0] != "second" {
-		t.Fatal("completion deadline was not per-call")
+	if len(pane.order) != 2 || !pane.views["first"].complete || pane.views["second"].complete {
+		t.Fatal("completion did not retain each call independently")
 	}
 	third := previewViewFixture("third", 300)
-	pane.update(third, now)
+	pane.update(third)
 	if frame := check(3); !strings.Contains(frame, "+1 more calls") {
 		t.Fatalf("tiny pane silently hid a concurrent call: %s", frame)
 	}
@@ -319,7 +277,7 @@ func TestLiveDiffPreviewCallerSafeAndBounded(t *testing.T) {
 	var pane liveDiffPreviewPane
 	preview := previewViewFixture("caller", 1)
 	preview.Caller = "/root/\x1b[2J" + strings.Repeat("界", 80)
-	pane.update(preview, time.Time{})
+	pane.update(preview)
 	for _, width := range []int{1, 8, 40, 80} {
 		lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, width, 5)
 		if err != nil {
@@ -336,12 +294,31 @@ func TestLiveDiffPreviewCallerSafeAndBounded(t *testing.T) {
 func BenchmarkLiveDiffConcurrentPreviewFrame(b *testing.B) {
 	var pane liveDiffPreviewPane
 	for i := range 16 {
-		pane.update(previewViewFixture(fmt.Sprint(i), 2000), time.Time{})
+		pane.update(previewViewFixture(fmt.Sprint(i), 2000))
 	}
 	b.ReportAllocs()
 	for b.Loop() {
 		if _, err := pane.render(b.Context(), "/workspace", liveDiffDarkTheme, 100, 28); err != nil {
 			b.Fatal(err)
+		}
+	}
+}
+
+func TestLiveDiffCompletedPreviewKeepsLastValidWarning(t *testing.T) {
+	var pane liveDiffPreviewPane
+	pane.update(liveDiffPreview{
+		ID: "one", Workspace: "/workspace", Thread: "thread",
+		Status: "STREAMING PREVIEW: last valid diff; current edit unavailable",
+	})
+	pane.update(liveDiffPreview{ID: "one"})
+	lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 160, 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := ansi.Strip(lines[0])
+	for _, want := range []string{"STREAMING COMPLETE", "last valid diff; current edit unavailable"} {
+		if !strings.Contains(header, want) {
+			t.Fatalf("completed preview lost %q: %s", want, header)
 		}
 	}
 }

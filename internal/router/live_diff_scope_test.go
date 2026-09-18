@@ -246,7 +246,10 @@ func TestLiveDiffSessionTerminalEmptyEditsAndExit(t *testing.T) {
 			}
 		}
 	}
-	wait("Waiting for captured")
+	wait("STREAM · v diff")
+	if _, err := terminal.Write([]byte("v")); err != nil {
+		t.Fatal(err)
+	}
 	path := filepath.Join(t.TempDir(), "notes.txt")
 	liveDiffScopeCapture(t, store, workspace, "current", "edit", path, "original", "created")
 	wait("+created")

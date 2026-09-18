@@ -326,10 +326,14 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 			}
 		}
 	}
-	initial := waitFor("FOLLOW")
+	initial := waitFor("STREAM · v diff")
 	if !strings.Contains(initial, "\x1b]11;?\x1b\\") {
 		t.Fatalf("viewer did not query the terminal background: %q", initial)
 	}
+	if _, err := terminal.Write([]byte("v")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor("v stream")
 	for _, reply := range []struct {
 		text  string
 		theme liveDiffTheme
@@ -465,7 +469,7 @@ func testLiveDiffTerminalCancel(t *testing.T, keys string) {
 		for {
 			n, err := terminal.Read(buf[:])
 			text.Write(buf[:n])
-			if !notified && strings.Contains(text.String(), "Waiting for captured") {
+			if !notified && strings.Contains(text.String(), "STREAM · v diff") {
 				close(ready)
 				notified = true
 			}
@@ -695,6 +699,10 @@ func TestLiveDiffFlushTerminal(t *testing.T) {
 				t.Fatalf("waiting for %q: %q", want, out.String())
 			}
 		}
+	}
+	waitFor("STREAM · v diff")
+	if _, err := terminal.Write([]byte("v")); err != nil {
+		t.Fatal(err)
 	}
 	waitFor("+first edit")
 	if _, err := terminal.Write([]byte("f")); err != nil {

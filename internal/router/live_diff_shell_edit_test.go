@@ -121,7 +121,7 @@ func TestLiveDiffPreviewWorkerReportsUnavailableInvalidHpatch(t *testing.T) {
 	}
 }
 
-func TestLiveDiffPreviewWorkerClearsDiffForCompoundShell(t *testing.T) {
+func TestLiveDiffPreviewWorkerRetainsLastValidDiffForCompoundShell(t *testing.T) {
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "file.txt"), []byte("old\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -136,11 +136,10 @@ func TestLiveDiffPreviewWorkerClearsDiffForCompoundShell(t *testing.T) {
 	}
 
 	worker.appendDelta("; echo after")
-	shell := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return preview.Status == "STREAMING SCRIPT"
-	})
-	if len(shell.Files) != 0 || shell.Input == "" || !strings.Contains(shell.Input, "; echo after") || len(shell.Syntax) == 0 {
-		t.Fatalf("compound shell retained hpatch diff or lost source = %+v", shell)
+	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool { return true })
+	if preview.Status != "STREAMING PREVIEW: last valid diff; current edit unavailable" ||
+		len(preview.Files) != 1 || preview.Files[0].Diff != good.Files[0].Diff || preview.Input != "" || len(preview.Syntax) != 0 {
+		t.Fatalf("compound shell did not retain explicitly unavailable last diff = %+v", preview)
 	}
 }
 
@@ -244,5 +243,85 @@ func TestLiveDiffShellEditWorkdir(t *testing.T) {
 func TestLiveDiffShellEditRejectsUnknownExpansion(t *testing.T) {
 	if edits, _, ok := liveDiffShellEdit("hpatch file.txt <<EDIT\ntype \"old\" \"$literal\"", t.TempDir()); ok {
 		t.Fatalf("invented expansion: %+v", edits)
+	}
+}
+func TestLiveDiffPreviewWorkerSuccessiveShellFragments(t *testing.T) {
+	workspace := t.TempDir()
+	broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
+	input := ""
+	var initialDiff string
+	for i, fragment := range []string{"hpatch file.txt 'create \"hello\"'", " \\", "\n"} {
+		input += fragment
+		_, _, projectable := liveDiffShellEdit(input, workspace)
+		if projectable != (i != 1) {
+			t.Fatalf("fragment %d projectable = %t", i, projectable)
+		}
+		worker.appendDelta(fragment)
+		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(liveDiffPreview) bool { return true })
+		wantStatus := "STREAMING PREVIEW"
+		if i == 1 {
+			wantStatus = "STREAMING PREVIEW: last valid diff; current edit unavailable"
+		}
+		if preview.Status != wantStatus || preview.Input != "" || len(preview.Syntax) != 0 || len(preview.Files) != 1 {
+			t.Fatalf("fragment %d flashed raw source or lost file view: %+v", i, preview)
+		}
+		if i == 0 {
+			initialDiff = preview.Files[0].Diff
+		} else if preview.Files[0].Diff != initialDiff {
+			t.Fatalf("fragment %d changed displayed diff: %+v", i, preview)
+		}
+	}
+	worker.appendDelta(" # pending")
+	worker.stop()
+	<-worker.done
+	worker.appendDelta(" ignored after stop")
+	for _, event := range broker.takePreviews(sub) {
+		if event.Preview != nil && (event.Preview.Status != "" || event.Preview.Input != "" || len(event.Preview.Files) != 0) {
+			t.Fatalf("late preview after stop: %+v", event.Preview)
+		}
+	}
+	broker.mu.Lock()
+	defer broker.mu.Unlock()
+	if _, exists := broker.previews[worker.preview.ID]; exists {
+		t.Fatal("stopped preview retained")
+	}
+}
+
+func TestLiveDiffPreviewWorkerNeverRecognizedShellStaysScript(t *testing.T) {
+	for _, input := range []string{
+		"echo normal",
+		"hpatch --recover amber 'maple target \"new\"'",
+		"hpatch 'new file.txt'; echo suffix",
+	} {
+		t.Run(input, func(t *testing.T) {
+			broker, sub, worker := newLiveDiffWorkerTest(t, t.TempDir())
+			worker.appendDelta(input)
+			preview := waitLiveDiffWorkerPreview(t, broker, sub, func(liveDiffPreview) bool { return true })
+			if preview.Status != "STREAMING SCRIPT" || preview.Input != input || len(preview.Syntax) == 0 || len(preview.Files) != 0 {
+				t.Fatalf("ordinary shell left script mode: %+v", preview)
+			}
+		})
+	}
+}
+
+func TestLiveDiffPreviewWorkerProgressiveRecoveryStaysScript(t *testing.T) {
+	broker, sub, worker := newLiveDiffWorkerTest(t, t.TempDir())
+	for _, fragment := range []string{"hpatch ", "--re", "cover", " amber", " 'maple target \"new\"'"} {
+		worker.appendDelta(fragment)
+		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(liveDiffPreview) bool { return true })
+		if preview.Status != "STREAMING SCRIPT" || preview.Input == "" || len(preview.Syntax) == 0 || len(preview.Files) != 0 {
+			t.Fatalf("progressive recovery left script mode after %q: %+v", fragment, preview)
+		}
+	}
+}
+
+func TestLiveDiffPreviewWorkerRecognizesFailedProjection(t *testing.T) {
+	broker, sub, worker := newLiveDiffWorkerTest(t, t.TempDir())
+	for _, fragment := range []string{"hpatch missing.txt 'type \"old\" \"new\"'", "; echo suffix"} {
+		worker.appendDelta(fragment)
+		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(liveDiffPreview) bool { return true })
+		if preview.Status != "PREVIEW UNAVAILABLE: edit cannot be projected" || preview.Input != "" || len(preview.Syntax) != 0 || len(preview.Files) != 0 {
+			t.Fatalf("recognized edit returned to script mode: %+v", preview)
+		}
 	}
 }

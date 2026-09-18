@@ -215,7 +215,13 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 			}
 		}
 	}
-	frame := waitFrame(func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
+	waitFrame(func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
+	if _, err := terminal.Write([]byte("v")); err != nil {
+		t.Fatal(err)
+	}
+	frame := waitFrame(func(frame string) bool {
+		return strings.Contains(frame, "first.txt") && strings.Contains(frame, "v stream")
+	})
 	if !mouseEnabled {
 		t.Fatal("viewer did not enable SGR mouse reporting")
 	}
@@ -314,7 +320,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFrame(func(frame string) bool {
-		return strings.HasPrefix(strings.TrimLeft(frame, " ▎"), "2/2") && strings.Contains(frame, "PAUSED · new changes available")
+		return strings.Contains(frame, "PAUSED · new changes available")
 	})
 	if _, err := terminal.Write([]byte("r")); err != nil {
 		t.Fatal(err)

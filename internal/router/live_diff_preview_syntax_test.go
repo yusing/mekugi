@@ -51,7 +51,7 @@ func TestLiveDiffProducerRetainsSyntaxBoundaries(t *testing.T) {
 				t.Fatal("fixture did not clip the interpreter selector")
 			}
 			var pane liveDiffPreviewPane
-			pane.update(preview, time.Now())
+			pane.update(preview)
 			lines, err := pane.render(t.Context(), workspace, liveDiffDarkTheme, 100, 20)
 			if err != nil || !strings.Contains(strings.Join(lines, "\n"), liveDiffDarkTheme.foreground(tc.kind)+tc.token) {
 				t.Fatalf("producer lost syntax for %s: %v %q", tc.token, err, lines)

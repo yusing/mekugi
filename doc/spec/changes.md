@@ -221,27 +221,29 @@ Quitting the viewer restores terminal state without closing the pane or affectin
 Incoming shell input deltas, including WebSocket events, display before input completion.
 Literal standalone `hpatch` arguments and heredoc input show a provisional file diff through
 the engine's bounded in-memory preview, including unfinished edit values and heredocs.
-If a later edit fragment cannot be projected, keep the last valid diff and label it as
-such. If no valid diff exists yet, show an unavailable status, not the literal edit script.
+Once a call is recognized as an edit, its representation stays an edit preview for
+that call. If a later fragment cannot be decoded or projected, keep the last valid
+diff and label it as such rather than flashing back to the shell script. If no valid
+diff exists yet, show an unavailable status, not the literal edit script.
 Shell headers select the preview directory and interpreter using the shared header parser.
-Dynamic expansions, input files, composed commands, command templates, and `hpatch --recover`
-remain script previews rather than guessed file changes.
+Calls with dynamic expansions, input files, composed commands, command templates,
+or `hpatch --recover` remain script previews when no earlier prefix was recognized
+as an edit. A later incompatible fragment invalidates the current projection but
+never turns a retained provisional diff into a claim about the completed command.
 Previews never execute shell code, apply files, format source, run hooks, or publish durable
 changes. The actual post-expansion edit report and captured diff arrive after host execution.
 
 Previews remain separately labeled, never composed into applied history or treated
-as receipts. They occupy a dedicated, non-scrollable region below captured diffs
-with a 7:3 captured-diff/script split. At least one captured row remains in tiny
-terminals when captured content exists. Unused captured rows go to the stream;
-without visible captures the preview uses the full body. New captures restore the
-shared layout, and flushing all captures expands the stream again.
-Keyboard navigation, flushing, and wheel input in the captured-diff region affect only
-captured diffs. Wheel input in the preview region is ignored. Streaming keeps the newest
-changed source row's final wrapped fragment visible, independently of captured-diff
-follow/pause state, and fills available preview rows through that tip rather than
-leaving centering padding below it.
+as receipts. The pane defaults to a full-height stream view. `v` switches between
+stream and captured diff views; there is no split layout or automatic mode switch
+when calls finish or captures arrive. The footer identifies the selected view and
+the switch key. Stream mode ignores captured-diff navigation, flushing, and wheel
+input. Switching views preserves captured-diff navigation and follow/pause state.
+Streaming keeps the newest changed source row's final wrapped fragment visible,
+independently of captured-diff follow/pause state, and fills available rows through
+that tip rather than leaving centering padding below it.
 
-Concurrent calls share the preview region as separate vertically stacked cards in
+Concurrent calls share the stream view as separate vertically stacked cards in
 first-seen order. Each heading identifies the caller (canonical agent name when
 available, otherwise thread identity) and a short call identifier, including parallel
 calls from the same thread. Caller text is terminal-safe and width-bounded. Updates
@@ -251,16 +253,15 @@ count of additional calls rather than switching callers on each delta; enlarging
 pane reveals them. Provisional edits from different callers are not merged into a
 speculative combined file result.
 
-Completion, rejection, interruption, or transform closure ends that call's live preview.
-Its last frame remains for 1.5 seconds, then its card
-disappears. Captured diffs regain full height after the final card disappears.
-Dismissal recenters the captured change when following; paused views retain their
-scroll position. New captures, explicit resume, and terminal resize also recenter the
-captured change. A new call replaces completed cards, but never active cards;
-completion of one call cannot hide another. Tiny terminals may omit the preview when both regions
-cannot fit. Reconnect clears transient display state and
-restores only currently active router-local previews after the durable
-snapshot barrier. No preview survives router restart or history replay.
+Completion, rejection, interruption, or transform closure marks that call's preview
+complete without hiding its last frame on a timer. Stream view persists between
+calls until the owning session closes. A new call replaces completed cards, but
+never active cards; completion of one call cannot hide another. Retention stays
+bounded by the active-card limit rather than accumulating session history.
+New captures, explicit resume, and terminal resize recenter the captured change
+when following; paused views retain their scroll position. Reconnect clears
+transient display state and restores only currently active router-local previews
+after the durable snapshot barrier. No preview survives router restart or history replay.
 
 Preview computation is asynchronous and coalesces bursts without waiting for input
 completion. Each worker samples the latest buffered input without queuing old work;
@@ -324,14 +325,13 @@ recency are viewer-local; restart treats retained history as a baseline, not a n
 
 ### Navigation and display
 
-All files share one continuous viewport. Following is enabled initially and targets
+In diff mode, all files share one continuous viewport. Following is enabled initially and targets
 the final changed row, including those deep inside a combined hunk or long new file. It prefers the
 latest update's marked region when composed coordinates are ambiguous and centers the
 target row's final wrapped fragment vertically so available context appears above and below it. At the start
 of the view, show available rows from the top instead of inserting blank padding.
 Near the end, clamp the viewport to the last full page so earlier diff content fills
-the pane instead of leaving empty rows below it. This applies after preview dismissal
-and resize as well as new captures; paused views retain their manual offsets.
+the pane instead of leaving empty rows below it. This applies after resize as well as new captures; paused views retain their manual offsets.
 Manual scrolling or file navigation pauses following and preserves file-relative
 offsets, clamped when content shrinks. `n`/`p` navigate files, `g`/`G` the complete view,
 and `r` resumes following, including changes received while paused. The file at the

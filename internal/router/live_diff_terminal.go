@@ -26,12 +26,9 @@ type liveDiffTerminalController struct {
 	view        liveDiffView
 	previewPane liveDiffPreviewPane
 
-	previewFrame  *time.Timer
-	previewHide   *time.Timer
-	previewFrameC <-chan time.Time
-	previewHideC  <-chan time.Time
-	previewRows   int
-
+	previewFrame      *time.Timer
+	previewFrameC     <-chan time.Time
+	diffMode          bool
 	renderer          liveDiffRenderer
 	rendering         liveDiffRender
 	rendered          []liveDiffFile
@@ -56,14 +53,12 @@ type liveDiffTerminalController struct {
 func newLiveDiffTerminalController(store *mekugiReplayStore, workspace string, stdout *os.File) *liveDiffTerminalController {
 	previewFrame := time.NewTimer(time.Hour)
 	previewFrame.Stop()
-	previewHide := time.NewTimer(time.Hour)
-	previewHide.Stop()
 	theme := liveDiffEnvironmentTheme(os.Getenv("COLORFGBG"))
 	return &liveDiffTerminalController{
 		store: store, workspace: workspace, stdout: stdout,
 		data: newLiveDiffData(), coverage: "CONNECTING",
-		view:         liveDiffView{scroll: make(map[string]int), following: true},
-		previewFrame: previewFrame, previewHide: previewHide,
+		view:              liveDiffView{scroll: make(map[string]int), following: true},
+		previewFrame:      previewFrame,
 		renderedFocusFile: -1, dirty: true, followDirty: true,
 		theme: theme, renderedTheme: theme,
 	}
@@ -71,7 +66,6 @@ func newLiveDiffTerminalController(store *mekugiReplayStore, workspace string, s
 
 func (c *liveDiffTerminalController) close() {
 	c.previewFrame.Stop()
-	c.previewHide.Stop()
 }
 
 func (c *liveDiffTerminalController) run(
@@ -89,15 +83,6 @@ func (c *liveDiffTerminalController) run(
 			return nil
 		case <-c.previewFrameC:
 			c.previewFrameC, c.dirty = nil, true
-		case now := <-c.previewHideC:
-			c.previewHideC = nil
-			if c.previewPane.expire(now) {
-				c.dirty, c.followDirty = true, true
-			}
-			if next := c.previewPane.hideAt(); !next.IsZero() {
-				c.previewHide.Reset(time.Until(next))
-				c.previewHideC = c.previewHide.C
-			}
 		case event, open := <-events:
 			if !open {
 				return nil
@@ -167,10 +152,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	}
 	c.lastWidth, c.lastHeight = width, height
 	lines := c.rendering.lines
-	if c.dirty {
-		_, c.previewRows = liveDiffRegionRows(height-2, len(lines), len(c.previewPane.order) > 0)
-	}
-	rows := height - 2 - c.previewRows
+	rows := height - 2
 	offset := 0
 	if len(c.view.files) > 0 {
 		start := c.rendering.starts[c.view.selected]
@@ -180,16 +162,8 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		}
 		offset = start + min(c.view.scroll[c.view.files[c.view.selected].key()], max(0, end-start-1))
 	}
-	if c.view.following {
-		if c.followDirty {
-			offset = c.rendering.followOffset(rows)
-		} else {
-			// Preview-only layout changes do not recenter captured content.
-			// Move only enough to keep its followed tip out of the preview.
-			offset = min(offset, c.rendering.focusRow)
-			offset = max(offset, c.rendering.focusRow-rows+1)
-			offset = min(offset, max(0, len(lines)-rows))
-		}
+	if c.view.following && c.followDirty {
+		offset = c.rendering.followOffset(rows)
 	}
 	c.followDirty = false
 	// A flushed/reverted last file has an empty span at EOF. Normalize the
@@ -227,8 +201,11 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		}
 		header = fmt.Sprintf("%d/%d  %s  | row %d/%d", number, total, label, offset-start+1, end-start)
 	}
-	if len(lines) == 0 && len(c.previewPane.order) > 0 {
-		header = "Live input"
+	if !c.diffMode {
+		header = "Waiting for live input..."
+		if len(c.previewPane.order) > 0 {
+			header = "Live input"
+		}
 	}
 	if c.coverage != "" {
 		header = c.coverage
@@ -240,29 +217,33 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	writeRow := func(row int, text string) {
 		fmt.Fprintf(&screen, "\x1b[%d;1H\x1b[0m\x1b[2K%s\x1b[0m", row, ansi.Truncate(text, max(0, width-1), ""))
 	}
-	if len(lines) > 0 {
+	if c.diffMode && len(lines) > 0 {
 		header = liveDiffGutter(active.highlighted, c.theme) + liveDiffHeader(header, width-3, c.rendering.counts[c.view.selected], c.theme)
 	} else {
 		header = liveDiffGutter(false, c.theme) + liveDiffSafe(header, false)
 	}
 	writeRow(1, header)
-	for row := range min(rows, height-2-c.previewRows) {
-		text := ""
-		if index := offset + row; index < len(lines) {
-			text = lines[index]
+	if c.diffMode {
+		for row := range rows {
+			text := ""
+			if index := offset + row; index < len(lines) {
+				text = lines[index]
+			}
+			writeRow(row+2, text)
 		}
-		writeRow(row+2, text)
 	}
-	previewLines, err := c.previewPane.render(ctx, c.workspace, c.theme, width, c.previewRows)
-	if err != nil {
-		return err
-	}
-	for row := range c.previewRows {
-		text := ""
-		if row < len(previewLines) {
-			text = previewLines[row]
+	if !c.diffMode {
+		previewLines, err := c.previewPane.render(ctx, c.workspace, c.theme, width, rows)
+		if err != nil {
+			return err
 		}
-		writeRow(height-c.previewRows+row, text)
+		for row := range rows {
+			text := ""
+			if row < len(previewLines) {
+				text = previewLines[row]
+			}
+			writeRow(row+2, text)
+		}
 	}
 	mode := "FOLLOW"
 	if !c.view.following {
@@ -274,7 +255,11 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	if c.coverage != "" && !strings.HasPrefix(c.coverage, "SIMULATION:") {
 		mode, _, _ = strings.Cut(c.coverage, ":")
 	}
-	writeRow(height, mode+" · r resume · j/k ↕ · n/p file · f/F flush · q quit")
+	if c.diffMode {
+		writeRow(height, "DIFF · v stream · "+mode+" · r follow · j/k · n/p · f/F · q quit")
+	} else {
+		writeRow(height, "STREAM · v diff · q quit")
+	}
 	screen.WriteString("\x1b[?2026l")
 	if _, err := io.WriteString(c.stdout, screen.String()); err != nil {
 		return err
@@ -295,22 +280,13 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 		c.coverage, c.dirty = event.Status, true
 		if strings.HasPrefix(c.coverage, "RECONNECTING:") {
 			c.previewPane = liveDiffPreviewPane{}
-			c.previewHide.Stop()
-			c.previewHideC = nil
 		}
 	case "preview":
 		if event.Preview.Workspace == "" || c.scope.Workspaces[event.Preview.Workspace][event.Preview.Thread] {
-			c.previewPane.update(*event.Preview, time.Now())
+			c.previewPane.update(*event.Preview)
 			if c.previewFrameC == nil {
 				c.previewFrame.Reset(liveDiffPreviewFrameDelay)
 				c.previewFrameC = c.previewFrame.C
-			}
-			if c.previewPane.hideAt().IsZero() {
-				c.previewHide.Stop()
-				c.previewHideC = nil
-			} else {
-				c.previewHide.Reset(time.Until(c.previewPane.hideAt()))
-				c.previewHideC = c.previewHide.C
 			}
 		}
 	case "scope":
@@ -370,9 +346,8 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 	}
 	if c.mouse.active || c.escape == "\x1b[" && key == '<' {
 		c.escape = ""
-		var mouseRow int
-		key, mouseRow = c.mouse.consume(key)
-		if key == 0 || c.previewRows > 0 && mouseRow >= c.lastHeight-c.previewRows {
+		key, _ = c.mouse.consume(key)
+		if key == 0 || !c.diffMode {
 			return false
 		}
 	}
@@ -395,12 +370,19 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 		}
 		c.escape = ""
 	}
+	if key != 'q' && key != 'v' && !c.diffMode {
+		c.dirty = true
+		return false
+	}
 	if strings.ContainsRune("np\tjk bgG", rune(key)) {
 		c.view.following = false
 	}
 	switch key {
 	case 'q':
 		return true
+	case 'v':
+		c.diffMode = !c.diffMode
+		c.followDirty = c.diffMode && c.view.following
 	case 'r':
 		c.view.followLatest()
 		c.followDirty = true
