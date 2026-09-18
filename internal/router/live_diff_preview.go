@@ -143,9 +143,12 @@ func (w *liveDiffPreviewWorker) run() {
 			ctx, cancel := context.WithTimeout(w.ctx, time.Second)
 			files, err := mekugi.PreviewForHostAt(ctx, directory, script)
 			cancel()
-			if err == nil && len(files) != 0 {
-				preview.Files, preview.Input, preview.Syntax = files, "", nil
+			preview.Input, preview.Syntax = "", nil
+			if err == nil {
+				preview.Files = files
 				preview.Status = "STREAMING PREVIEW"
+			} else {
+				preview.Status = "PREVIEW UNAVAILABLE: edit cannot be projected"
 			}
 		}
 		w.mu.Lock()
@@ -192,11 +195,21 @@ func (b *liveDiffBroker) publishPreview(preview liveDiffPreview, remove bool) {
 		preview.Input = strings.Clone(preview.Input)
 	}
 	if len(mustMarshalJSON(preview)) > 48<<10 {
-		if _, exists := b.previews[preview.ID]; exists {
-			return // Keep the last useful frame instead of flickering to an error.
-		}
 		preview.Files = nil
 		preview.Status = "PREVIEW UNAVAILABLE: source exceeds 48 KiB"
+	}
+	if strings.HasPrefix(preview.Status, "PREVIEW UNAVAILABLE:") && preview.Input == "" {
+		// Retain only a diff the broker actually displayed, not an oversized
+		// projection discarded before publication.
+		if previous := b.previews[preview.ID]; len(previous.Files) != 0 {
+			unavailable := preview.Status
+			preview.Files = previous.Files
+			preview.Status = "STREAMING PREVIEW: last valid diff; current edit unavailable"
+			if len(mustMarshalJSON(preview)) > 48<<10 {
+				preview.Files = nil
+				preview.Status = unavailable
+			}
+		}
 	}
 	b.previews[preview.ID] = preview
 	b.emitPreviewLocked(preview)

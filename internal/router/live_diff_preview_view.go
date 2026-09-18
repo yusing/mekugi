@@ -262,7 +262,10 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	if err := p.prepare(); err != nil {
 		return nil, err
 	}
-	title := "STREAMING PREVIEW"
+	title := p.current.Status
+	if title == "" {
+		title = "STREAMING PREVIEW"
+	}
 	if p.current.Input != "" {
 		title = "STREAMING SCRIPT"
 	}

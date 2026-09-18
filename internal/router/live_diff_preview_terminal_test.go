@@ -604,7 +604,9 @@ func TestLiveDiffTerminalShellHpatchDiff(t *testing.T) {
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
 	defer func() { worker.stop(); <-worker.done }()
-	worker.appendDelta("hpatch <<'EDIT'\nin file.txt\ntype \"old\" \"new")
+	// Exercise the shell decoder's no-space heredoc form as it appears in the
+	// provider stream, not only the direct decoder fixture.
+	worker.appendDelta("hpatch<<'EDIT'\nin file.txt\ntype \"old\" \"new")
 	frame := ui.frame(t, func(frame string) bool {
 		text := ansi.Strip(frame)
 		return strings.Contains(text, "STREAMING PREVIEW") && strings.Contains(text, "+new")
@@ -617,6 +619,16 @@ func TestLiveDiffTerminalShellHpatchDiff(t *testing.T) {
 	content, err := os.ReadFile(path)
 	if err != nil || string(content) != "old\n" {
 		t.Fatalf("preview applied an edit: %q, %v", content, err)
+	}
+	worker.appendDelta("\"\nin file.txt\ntype \"target that does not exist\" \"rejected\"\nEDIT\n")
+	frame = ui.frame(t, func(frame string) bool {
+		text := ansi.Strip(frame)
+		return strings.Contains(text, "STREAMING PREVIEW: last valid diff; current edit unavailable") &&
+			strings.Contains(text, "+newer")
+	})
+	text := ansi.Strip(frame)
+	if strings.Contains(text, "hpatch<<") || !strings.Contains(text, "-old") || !strings.Contains(text, "+newer") {
+		t.Fatalf("rejected hpatch suffix replaced the last valid diff with shell source: %q", frame)
 	}
 	worker.stop()
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING COMPLETE") })

@@ -187,6 +187,8 @@ Quitting the viewer restores terminal state without closing the pane or affectin
 Incoming shell input deltas, including WebSocket events, display before input completion.
 Literal standalone `hpatch` arguments and heredoc input show a provisional file diff through
 the engine's bounded in-memory preview, including unfinished edit values and heredocs.
+If a later edit fragment cannot be projected, keep the last valid diff and label it as
+such. If no valid diff exists yet, show an unavailable status, not the literal edit script.
 Shell headers select the preview directory and interpreter using the shared header parser.
 Dynamic expansions, input files, composed commands, command templates, and `hpatch --recover`
 remain script previews rather than guessed file changes.
