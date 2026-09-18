@@ -90,6 +90,10 @@ func (a *autoLiveDiff) run(ctx context.Context, replay string) {
 		if err != nil {
 			return
 		}
+		pane.executable = filepath.Join(directory, "mekugi-live-diff")
+		if err := pinRunningExecutable(pane.executable); err != nil {
+			return
+		}
 		pane.sessionFile = filepath.Join(directory, "session.json")
 		if err := os.WriteFile(pane.sessionFile, data, 0600); err != nil {
 			return

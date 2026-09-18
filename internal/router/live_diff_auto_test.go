@@ -3,7 +3,9 @@ package router
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,23 +18,111 @@ func autoLiveDiffFixture(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("HERDR_ENV", "1")
+	t.Setenv("HERDR_PANE_ID", "caller")
+	t.Setenv("HERDR_TAB_ID", "tab")
+	t.Setenv("HERDR_WORKSPACE_ID", "workspace")
 	t.Setenv("PATH", dir)
 	log := filepath.Join(dir, "calls")
 	t.Setenv("MEKUGI_AUTO_DIFF_LOG", log)
-	for name, script := range map[string]string{
-		"herdr": `#!/bin/sh
-printf '%s\n' "$@" >> "$MEKUGI_AUTO_DIFF_LOG"
-case "$2" in
-split) printf '%s\n' '{"result":{"pane":{"pane_id":"new"}}}' ;;
-run) printf '%s\n' done >> "$MEKUGI_AUTO_DIFF_LOG" ;;
-esac
-`,
-	} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0700); err != nil {
-			t.Fatal(err)
+	socket := filepath.Join(dir, "herdr.sock")
+	t.Setenv("HERDR_SOCKET_PATH", socket)
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			connection, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			serveAutoLiveDiffAPI(connection, log)
 		}
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		<-done
+	})
+	script := `#!/bin/sh
+printf 'cli\n' >> "$MEKUGI_AUTO_DIFF_LOG"
+printf '%s\n' "$@" >> "$MEKUGI_AUTO_DIFF_LOG"
+`
+	if err := os.WriteFile(filepath.Join(dir, "herdr"), []byte(script), 0700); err != nil {
+		t.Fatal(err)
 	}
 	return log
+}
+
+func serveAutoLiveDiffAPI(connection net.Conn, log string) {
+	defer connection.Close()
+	var request struct {
+		ID     string          `json:"id"`
+		Method string          `json:"method"`
+		Params json.RawMessage `json:"params"`
+	}
+	if err := json.NewDecoder(connection).Decode(&request); err != nil {
+		return
+	}
+	data, _ := json.Marshal(request)
+	file, err := os.OpenFile(log, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
+	if err == nil {
+		_, _ = fmt.Fprintf(file, "api\n%s\n%s\n", request.Method, data)
+		_ = file.Close()
+	}
+	mode := os.Getenv("MEKUGI_AUTO_DIFF_API_MODE")
+	if mode != "" {
+		file, err := os.OpenFile(log, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
+		if err == nil {
+			_, _ = file.WriteString("started\n")
+			_ = file.Close()
+		}
+	}
+	if mode == "block" {
+		_, _ = io.Copy(io.Discard, connection)
+		return
+	}
+	if mode == "failure" {
+		_ = json.NewEncoder(connection).Encode(map[string]any{
+			"id": request.ID, "error": map[string]string{"code": "test_failure", "message": "failed"},
+		})
+		return
+	}
+	var result any
+	switch request.Method {
+	case "pane.current":
+		result = map[string]any{
+			"type": "pane_current",
+			"pane": map[string]string{"pane_id": "caller", "tab_id": "tab", "workspace_id": "workspace"},
+		}
+	case "layout.apply":
+		layout := map[string]string{"tab_id": "temporary", "focused_pane_id": "new"}
+		if mode == "missing_identity" {
+			layout["focused_pane_id"] = ""
+		}
+		result = map[string]any{"type": "layout_apply", "layout": layout}
+	case "pane.move":
+		result = map[string]any{
+			"type": "pane_move",
+			"move_result": map[string]any{
+				"changed": true, "closed_tab_id": "temporary", "focused_pane_id": "sibling",
+				"pane": map[string]string{"pane_id": "new", "tab_id": "tab", "workspace_id": "workspace"},
+			},
+		}
+	default:
+		_ = json.NewEncoder(connection).Encode(map[string]any{
+			"id": request.ID, "error": map[string]string{"code": "unknown_method", "message": request.Method},
+		})
+		return
+	}
+	_ = json.NewEncoder(connection).Encode(map[string]any{"id": request.ID, "result": result})
+	if request.Method == "pane.move" {
+		if file, err := os.OpenFile(log, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600); err == nil {
+			_, _ = file.WriteString("done\n")
+			_ = file.Close()
+		}
+	}
 }
 
 func waitAutoLiveDiff(t *testing.T, log, marker string) string {
@@ -85,14 +175,18 @@ func TestAutoLiveDiffSelectedWorkspaceBoundary(t *testing.T) {
 	if err := executeRequest(t.Context(), t.Context(), request, headers, "auto", provider, io.Discard, nil, proxy, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	data := waitAutoLiveDiff(t, log, "\ndone\n")
-	if !strings.Contains(data, "\nsplit\n--current\n--direction\nright\n--cwd\n"+workspace+"\n--no-focus\n") ||
-		!strings.Contains(data, " live-diff --workspace "+shellQuoteArgument(workspace)) ||
-		!strings.Contains(data, "\nrun\nnew\n") {
-		t.Fatalf("incorrect selected workspace or launch: %s", data)
+	data := waitAutoLiveDiff(t, log, "done\n")
+	if !strings.Contains(data, `"method":"pane.current"`) ||
+		!strings.Contains(data, `"method":"layout.apply"`) ||
+		!strings.Contains(data, `"method":"pane.move"`) ||
+		!strings.Contains(data, `"live-diff","--workspace","`+workspace+`","--replay-dir"`) ||
+		!strings.Contains(data, string(os.PathSeparator)+`mekugi-live-diff","live-diff"`) ||
+		!strings.Contains(data, `"split":"right"`) ||
+		!strings.Contains(data, `"target_pane_id":"caller"`) {
+		t.Fatalf("incorrect selected workspace or direct launch: %s", data)
 	}
-	if strings.Contains(data, "\nlayout\n") || strings.Contains(data, "\ncurrent\n") {
-		t.Fatal("launch queried geometry instead of directly splitting the caller to the right")
+	if strings.Contains(data, "\nsplit\n") || strings.Contains(data, "\nrun\n") {
+		t.Fatal("launch started an interactive shell instead of the viewer executable")
 	}
 	var callers sync.WaitGroup
 	for range 20 {
@@ -105,9 +199,9 @@ func TestAutoLiveDiffSelectedWorkspaceBoundary(t *testing.T) {
 	stop()
 	dataBytes, _ := os.ReadFile(log)
 	if !strings.Contains(string(dataBytes), "\nclose\nnew\n") {
-		t.Fatal("router exit did not close its owned pane")
+		t.Fatalf("router exit did not close its owned pane: %s", dataBytes)
 	}
-	if strings.Count(string(dataBytes), "\nsplit\n") != 1 {
+	if strings.Count(string(dataBytes), `"method":"layout.apply"`) != 1 {
 		t.Fatal("subsequent turns created duplicate panes")
 	}
 }
@@ -158,14 +252,10 @@ func TestAutoLiveDiffCancellationAndFailure(t *testing.T) {
 	for _, mode := range []string{"cancel_before", "cancel_running", "failure"} {
 		t.Run(mode, func(t *testing.T) {
 			log := autoLiveDiffFixture(t)
-			script := "#!/bin/sh\nprintf 'started\\n' >> \"$MEKUGI_AUTO_DIFF_LOG\"\n"
-			if mode == "failure" {
-				script += "exit 1\n"
-			} else {
-				script += "exec /bin/sleep 30\n"
-			}
-			if err := os.WriteFile(filepath.Join(os.Getenv("PATH"), "herdr"), []byte(script), 0700); err != nil {
-				t.Fatal(err)
+			if mode == "cancel_running" {
+				t.Setenv("MEKUGI_AUTO_DIFF_API_MODE", "block")
+			} else if mode == "failure" {
+				t.Setenv("MEKUGI_AUTO_DIFF_API_MODE", "failure")
 			}
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
@@ -178,7 +268,7 @@ func TestAutoLiveDiffCancellationAndFailure(t *testing.T) {
 			a.observe(workspace, "thread-1", codexTurnMetadata{RequestKind: "turn"})
 			a.requestLaunch(workspace, "thread-1")
 			if mode != "cancel_before" {
-				waitAutoLiveDiff(t, log, "started")
+				waitAutoLiveDiff(t, log, "started\n")
 			}
 			joined := make(chan struct{})
 			go func() { stop(); close(joined) }()
@@ -239,8 +329,8 @@ func TestAutoLiveDiffChildHpatchWaitsForRootWorkspace(t *testing.T) {
 	}
 	a.mu.Unlock()
 	a.observe(rootWorkspace, "root", codexTurnMetadata{RequestKind: "turn"})
-	data := waitAutoLiveDiff(t, log, "\ndone\n")
-	if !strings.Contains(data, "\n--cwd\n"+rootWorkspace+"\n") {
+	data := waitAutoLiveDiff(t, log, "done\n")
+	if !strings.Contains(data, `"cwd":"`+rootWorkspace+`"`) {
 		t.Fatalf("child hpatch overrode root workspace: %s", data)
 	}
 }

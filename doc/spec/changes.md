@@ -170,9 +170,10 @@ cwd or parsed command arguments. Preparation and read-only turns do not open UI.
 The first hpatch input fragment or complete call emitted for an observed thread
 triggers the launch, including a subagent's call or a rejected edit; replayed history
 alone does not.
-The pane opens to the caller's right without changing focus. Launch is asynchronous,
-silent, limited to five seconds, and canceled with the router. Failure neither blocks
-Codex nor triggers an automatic retry.
+Herdr starts the pinned viewer executable directly, without initializing an
+interactive shell, and moves its pane to the caller's right without changing focus.
+Launch is asynchronous, silent, limited to five seconds, and canceled with the router.
+Failure neither blocks Codex nor triggers an automatic retry.
 
 Scope includes only durable thread streams observed on successfully prepared turns
 in that router, including subagents and later thread/workspace switches. A new thread

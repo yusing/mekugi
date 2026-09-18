@@ -372,8 +372,9 @@ Use an ordinary script file for source you need to edit or run repeatedly. See t
 
 ### Live diff pane
 
-In an interactive Herdr pane with `herdr` on `PATH`, `mekugi codex` opens a live
-diff pane to the right on the first hpatch call, without changing focus.
+In an interactive Herdr pane with `herdr` on `PATH`, `mekugi codex` launches the
+live diff viewer executable directly on the first hpatch call, then places its pane
+to the right without changing focus. It does not start an interactive shell first.
 Read-only turns and redirected input/output do not open a pane. The view
 combines main-agent and subagent file edits, excluding Git and shell changes.
 Streaming previews are provisional until application is reported.

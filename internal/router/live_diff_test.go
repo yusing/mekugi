@@ -419,29 +419,17 @@ func TestLiveDiffExcludesPrivateScripts(t *testing.T) {
 	}
 }
 
-func TestLiveDiffHerdrMissingSplitIdentity(t *testing.T) {
+func TestLiveDiffHerdrMissingDirectPaneIdentity(t *testing.T) {
+	log := autoLiveDiffFixture(t)
+	t.Setenv("MEKUGI_AUTO_DIFF_API_MODE", "missing_identity")
 	dir := t.TempDir()
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("HERDR_ENV", "1")
-	t.Setenv("GIT_PAGER", "cat")
-	probe := filepath.Join(dir, "herdr")
-	script := `#!/bin/sh
-case "$2" in
-split) printf '%s\n' '{"result":{"pane":{}}}' ;;
-run) echo 'must not run in caller' > "$MEKUGI_LIVE_DIFF_RUN_MARKER"; exit 1 ;;
-esac
-`
-	if err := os.WriteFile(probe, []byte(script), 0700); err != nil {
-		t.Fatal(err)
-	}
-	marker := filepath.Join(dir, "run-marker")
-	t.Setenv("MEKUGI_LIVE_DIFF_RUN_MARKER", marker)
 	err := splitLiveDiff(t.Context(), dir, dir, &liveDiffPane{sessionFile: filepath.Join(dir, "connection.json")})
 	if err == nil || !strings.Contains(err.Error(), "no pane identity") {
 		t.Fatalf("missing identity accepted: %v", err)
 	}
-	if _, err := os.Stat(marker); !os.IsNotExist(err) {
-		t.Fatal("viewer command was sent to caller")
+	data := waitAutoLiveDiff(t, log, `"method":"layout.apply"`)
+	if strings.Contains(data, `"method":"pane.move"`) {
+		t.Fatal("viewer without an identity was moved into the caller's tab")
 	}
 }
 

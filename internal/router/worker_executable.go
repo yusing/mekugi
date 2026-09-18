@@ -10,14 +10,18 @@ import (
 
 const toolWorkerExecutableFilename = ".mekugi-worker"
 
-func pinRunningToolWorker(directory string) (err error) {
+func pinRunningToolWorker(directory string) error {
+	return pinRunningExecutable(filepath.Join(directory, toolWorkerExecutableFilename))
+}
+
+func pinRunningExecutable(target string) (err error) {
 	source, err := openRunningExecutable()
 	if err != nil {
-		return fmt.Errorf("open running tool worker: %w", err)
+		return fmt.Errorf("open running executable: %w", err)
 	}
 	defer func() { err = errors.Join(err, source.Close()) }()
 	location, _ := os.Executable()
-	return pinToolWorkerExecutable(source, location, filepath.Join(directory, toolWorkerExecutableFilename))
+	return pinToolWorkerExecutable(source, location, target)
 }
 
 // Pin the running inode, not a mutable installation pathname. A hard link avoids
