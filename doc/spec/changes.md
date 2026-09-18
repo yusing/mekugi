@@ -199,7 +199,11 @@ Previews remain separately labeled, never composed into applied history or treat
 receipts. They occupy a dedicated, non-scrollable region below captured diffs. While
 visible, the captured diff and HPATCH preview keep a fixed 3:7 split of the body.
 Standalone `functions.shell` input streams directly with the opposite 7:3 split.
-Both layouts leave at least one captured row in tiny terminals.
+When captured content exists, both layouts leave at least one captured row in tiny
+terminals. Unused captured rows are given to the stream. With no visible captured
+content, every preview, including recovery, uses the full body rather than retaining
+an empty split or overlay. New captures restore the shared layout; flushing all
+captures expands the stream again.
 `functions.hpatch_recover` instead shows the agent's raw emitted correction text in
 a bottom overlay covering 70% of the body, without shrinking the captured viewport
 or interpreting recovery handles. The preview heading counts toward its region.
@@ -227,7 +231,12 @@ only the latest snapshot rather than playing back intermediate frames. Preview u
 do not recompose or syntax-render captured history. Preview rendering lays out only
 visible source rows and a bounded leading context window for best-effort syntax
 highlighting. Unchanged source windows reuse syntax decoration. The heading identifies
-streaming without repeating validation disclaimers. Incomplete targets and transient
+streaming without repeating validation disclaimers. Raw recovery text highlights
+HPATCH keywords, handles, row references, and quoted values. Shell source uses its
+selected interpreter, including batch switches outside shell constructs; scrolling
+past a selector or clipping a long input does not lose its language. Display-only
+syntax boundaries keep independent HPATCH shell blocks and later edit payloads in
+their own language contexts. Completion retains any clipped-tail label. Incomplete targets and transient
 projection failures retain the last useful preview rather than replacing it with an
 unavailable frame; the completed call owns rejection diagnostics.
 Scope expansions precede their authorized previews even when snapshot updates are

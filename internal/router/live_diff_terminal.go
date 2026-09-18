@@ -164,7 +164,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	c.lastWidth, c.lastHeight = width, height
 	lines := c.rendering.lines
 	if c.dirty {
-		_, c.previewRows = liveDiffRegionRows(height-2, c.previewPane.current.ID != "", c.previewPane.current.Shell)
+		_, c.previewRows = liveDiffRegionRows(height-2, len(lines), c.previewPane.current.ID != "", c.previewPane.current.Shell)
 	}
 	rows := height - 2 - c.previewRows
 	if c.previewPane.current.Recovery {
@@ -225,6 +225,9 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 			}
 		}
 		header = fmt.Sprintf("%d/%d  %s  | row %d/%d", number, total, label, offset-start+1, end-start)
+	}
+	if len(lines) == 0 && c.previewPane.current.ID != "" {
+		header = "Live input"
 	}
 	if c.coverage != "" {
 		header = c.coverage

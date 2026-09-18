@@ -28,6 +28,7 @@ type liveDiffPreviewPane struct {
 	focus    int
 	renderer liveDiffRenderer
 	source   []liveDiffPreviewRow
+	paths    []liveDiffSourceSpan
 }
 
 type liveDiffPreviewRow struct {
@@ -72,15 +73,21 @@ func (p *liveDiffPreviewPane) expire(now time.Time) bool {
 }
 
 // HPATCH uses a 3:7 captured-diff/preview split; standalone shell uses 7:3.
-func liveDiffRegionRows(body int, streaming, shell bool) (diff, preview int) {
-	if !streaming || body < 2 {
+func liveDiffRegionRows(body, captured int, streaming, shell bool) (diff, preview int) {
+	if !streaming {
+		return body, 0
+	}
+	if captured == 0 {
+		return 0, body
+	}
+	if body < 2 {
 		return body, 0
 	}
 	share := 3
 	if shell {
 		share = 7
 	}
-	diff = max(1, body*share/10)
+	diff = min(captured, max(1, body*share/10))
 	return diff, body - diff
 }
 
@@ -142,7 +149,7 @@ func liveDiffPreviewFocus(before, after []liveDiffPreviewRow) int {
 
 func (p *liveDiffPreviewPane) prepare() error {
 	current := p.current
-	if p.rendered.ID == current.ID && p.rendered.Input == current.Input && slices.Equal(p.rendered.Files, current.Files) {
+	if p.rendered.ID == current.ID && p.rendered.Input == current.Input && slices.Equal(p.rendered.Syntax, current.Syntax) && slices.Equal(p.rendered.Files, current.Files) {
 		return nil
 	}
 	file := min(p.file, max(0, len(current.Files)-1))
@@ -173,6 +180,14 @@ func (p *liveDiffPreviewPane) prepare() error {
 		p.focus = max(0, len(source)-1)
 	}
 	p.file, p.source, p.rendered = file, source, current
+	p.paths = nil
+	if current.Input != "" {
+		syntax := current.Syntax
+		if len(syntax) == 0 {
+			syntax = liveDiffScriptSyntax(current.Input, current.Recovery)
+		}
+		p.paths = liveDiffSourceRows(current.Input, syntax)
+	}
 	return nil
 }
 
@@ -192,11 +207,11 @@ func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, them
 	if p.current.Recovery {
 		title = "STREAMING RECOVERY"
 	}
-	if p.current.Input != "" && p.current.Truncated {
-		title += " · tail"
-	}
 	if !p.hideAt.IsZero() {
 		title = "STREAMING COMPLETE"
+	}
+	if p.current.Input != "" && p.current.Truncated {
+		title += " · tail"
 	}
 	if strings.HasPrefix(p.current.Status, "PREVIEW UNAVAILABLE:") {
 		title = p.current.Status
@@ -245,7 +260,15 @@ func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, them
 	if len(p.current.Files) > 0 {
 		review = p.current.Files[p.file]
 	}
-	before, after, err := p.renderer.colorHunk(ctx, theme, review, source)
+	var before, after []string
+	var err error
+	if p.current.Input != "" {
+		after, err = p.colorScript(ctx, theme, colorStart, end)
+		before = after
+	} else {
+		before, after, err = p.renderer.colorHunk(ctx, theme, review, source)
+	}
+
 	if err != nil {
 		return nil, err
 	}

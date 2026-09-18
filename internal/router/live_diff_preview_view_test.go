@@ -82,14 +82,14 @@ func TestLiveDiffPreviewPaneLatestOnlyAndIndependent(t *testing.T) {
 
 func TestLiveDiffPreviewLayoutAndWrapping(t *testing.T) {
 	for _, body := range []int{1, 2, 3, 10, 20, 40, 100} {
-		diff, stream := liveDiffRegionRows(body, true, false)
+		diff, stream := liveDiffRegionRows(body, 1000, true, false)
 		if diff+stream != body || diff < 1 {
 			t.Fatalf("invalid region heights for %d: %d %d", body, diff, stream)
 		}
 		if body >= 10 && diff != body*3/10 {
 			t.Fatalf("not a fixed 3:7 split: %d %d", diff, stream)
 		}
-		if d, s := liveDiffRegionRows(body, false, false); d != body || s != 0 {
+		if d, s := liveDiffRegionRows(body, 1000, false, false); d != body || s != 0 {
 			t.Fatal("hidden preview retained height")
 		}
 	}
@@ -235,7 +235,7 @@ func TestLiveDiffShellLayoutAndDelay(t *testing.T) {
 		t.Fatal("preview hold must be 1.5 seconds")
 	}
 	for _, body := range []int{1, 2, 3, 10, 20, 100} {
-		diff, preview := liveDiffRegionRows(body, true, true)
+		diff, preview := liveDiffRegionRows(body, 1000, true, true)
 		if diff+preview != body || diff < 1 || (body >= 10 && diff != body*7/10) {
 			t.Fatalf("shell layout: body=%d diff=%d preview=%d", body, diff, preview)
 		}
@@ -253,7 +253,7 @@ func TestLiveDiffScriptSource(t *testing.T) {
 		{"shell <<OUTER\ncat <<INNER\nhello\nINNER\nOUTER\n", "cat <<INNER\nhello\nINNER\n"},
 		{"shell echo hi\nnew a\ntype <<PATCH\nshell literal\nPATCH\nshell pwd", "echo hi\nnew a\ntype <<PATCH\nshell literal\nPATCH\npwd"},
 	} {
-		if got := liveDiffScriptSource(tc.input); got != tc.want {
+		if got, _ := liveDiffScriptSource(tc.input); got != tc.want {
 			t.Errorf("%q: got %q, want %q", tc.input, got, tc.want)
 		}
 	}
@@ -279,5 +279,76 @@ func TestLiveDiffRecoveryTailLabel(t *testing.T) {
 	lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 80, 14)
 	if err != nil || !strings.Contains(ansi.Strip(lines[0]), "STREAMING RECOVERY · tail") {
 		t.Fatalf("clipped recovery lost its label: %v %q", err, lines)
+	}
+}
+
+func TestLiveDiffPreviewEmptyAndSparseLayout(t *testing.T) {
+	for _, shell := range []bool{false, true} {
+		for _, body := range []int{1, 2, 10, 20, 40} {
+			if diff, preview := liveDiffRegionRows(body, 0, true, shell); diff != 0 || preview != body {
+				t.Fatalf("empty captured view wasted rows: body=%d diff=%d preview=%d", body, diff, preview)
+			}
+			if diff, preview := liveDiffRegionRows(body, 1, true, shell); diff != 1 || preview != body-1 {
+				t.Fatalf("sparse captured view wasted rows: body=%d diff=%d preview=%d", body, diff, preview)
+			}
+		}
+	}
+}
+
+func TestLiveDiffPreviewScriptSyntax(t *testing.T) {
+	for _, theme := range []liveDiffTheme{liveDiffDarkTheme, liveDiffLightTheme} {
+		for _, tc := range []struct {
+			name, input, token string
+			kind               chroma.TokenType
+			recovery           bool
+		}{
+			{"bash", "if true; then\n  printf 'hello'\nfi\n", "if", chroma.Keyword, false},
+			{"python", "#!python3\n" + strings.Repeat("# context\n", 100) + "return 'PYTHON_TIP'\n", "return", chroma.Keyword, false},
+			{"uv_python", "#!uv run python\nreturn 'PYTHON_TIP'\n", "return", chroma.Keyword, false},
+			{"javascript", "#!node\nconst tip = 'JS_TIP';\n", "const", chroma.KeywordDeclaration, false},
+			{"batch", "echo first\n#!python3\nreturn 'BATCH_TIP'\n", "return", chroma.Keyword, false},
+			{"recovery", "maple target \"old\"\nmaple value \"RECOVERY_TIP", "target", chroma.Keyword, true},
+			{"recovery_row", "maple 12:abcd\n", "12:abcd", chroma.LiteralNumber, true},
+		} {
+			t.Run(fmt.Sprintf("%d/%s", theme, tc.name), func(t *testing.T) {
+				var pane liveDiffPreviewPane
+				pane.update(liveDiffPreview{ID: tc.name, Workspace: "/workspace", Input: tc.input, Recovery: tc.recovery}, time.Time{})
+				lines, err := pane.render(t.Context(), "/workspace", theme, 100, 20)
+				frame := strings.Join(lines, "\n")
+				if err != nil || !strings.Contains(frame, theme.foreground(tc.kind)+tc.token) {
+					t.Fatalf("missing %s syntax: %v %q", tc.name, err, frame)
+				}
+			})
+		}
+	}
+}
+
+func TestLiveDiffScriptLanguageBoundaries(t *testing.T) {
+	input := "cat <<EOF\n#!python3\nreturn not_python\nEOF\n#!python3\nreturn True\n"
+	paths := liveDiffSourceRows(input, liveDiffScriptSyntax(input, false))
+	if len(paths) != 6 || paths[2].Path != "stream.sh" || paths[5].Path != "stream.py" {
+		t.Fatalf("heredoc content changed language: %v", paths)
+	}
+}
+
+func BenchmarkLiveDiffScriptPreviewFrame(b *testing.B) {
+	for _, recovery := range []bool{false, true} {
+		b.Run(fmt.Sprintf("recovery=%t", recovery), func(b *testing.B) {
+			base := "#!python3\n" + strings.Repeat("# context\n", 2000)
+			if recovery {
+				base = strings.Repeat("maple target \"old\"\n", 2000)
+			}
+			var pane liveDiffPreviewPane
+			sequence := 0
+			b.ReportAllocs()
+			for b.Loop() {
+				sequence++
+				input := base + fmt.Sprintf("return \"tip_%d\"\n", sequence)
+				pane.update(liveDiffPreview{ID: "stream", Workspace: "/workspace", Input: input, Recovery: recovery}, time.Time{})
+				if _, err := pane.render(b.Context(), "/workspace", liveDiffDarkTheme, 120, 28); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }

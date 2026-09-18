@@ -78,7 +78,9 @@ func shellProtectedLines(source string) (spans [][2]uint, variant syntax.LangVar
 	return
 }
 
-func splitPrograms(input string) []string {
+// SplitSource returns authored program slices without validating headers or
+// expanding inherited directives. It is also suitable for unfinished display input.
+func SplitSource(input string) []string {
 	var programs []string
 	var protected [][2]uint
 	var variant syntax.LangVariant
@@ -124,14 +126,14 @@ func splitPrograms(input string) []string {
 
 // IsBatch recognizes interpreter boundaries outside incomplete shell constructs.
 func IsBatch(input string) bool {
-	return len(splitPrograms(input)) > 1
+	return len(SplitSource(input)) > 1
 }
 
 // Split starts programs at column-zero interpreter headers outside shell constructs.
 // Headers stay with their programs; all other source bytes remain unchanged.
 // Only an omitted params directive inherits the preceding complete object.
 func Split(input string) ([]string, error) {
-	programs := splitPrograms(input)
+	programs := SplitSource(input)
 
 	var inherited map[string]any
 	for index, source := range programs {

@@ -464,12 +464,14 @@ func TestLiveDiffTerminalStandaloneShellStream(t *testing.T) {
 		t.Fatal(err)
 	}
 	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
-		Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true}},
+		Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true, "thread": true}},
 	})
 	proxy.autoLiveDiff = &autoLiveDiff{events: broker, requested: true}
 	proxy.autoLiveDiff.enabled.Store(true)
 	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
+	liveDiffTestChange(t, store, workspace, transform.threadID, "captured.go", true)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "captured.go") })
 	// Exercise provider input routing, not a synthetic broker preview.
 	_, err = transform.TransformSSE(mustTestJSON(t, map[string]any{
 		"type": "response.output_item.added",
@@ -523,7 +525,7 @@ func TestLiveDiffTerminalRecoveryOverlay(t *testing.T) {
 		t.Fatal(err)
 	}
 	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
-		Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true}},
+		Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true, "thread": true}},
 	})
 	proxy.autoLiveDiff = &autoLiveDiff{events: broker, requested: true}
 	proxy.autoLiveDiff.enabled.Store(true)
@@ -564,4 +566,62 @@ func TestLiveDiffTerminalRecoveryOverlay(t *testing.T) {
 		t.Fatal("recovery preview scrolled captured content or translated input")
 	}
 	ui.quit(t)
+}
+
+func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
+	for _, tool := range []string{mekugiToolName, "shell", mekugiRecoveryToolName} {
+		t.Run(tool, func(t *testing.T) {
+			workspace := t.TempDir()
+			store, err := openMekugiReplayStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+				Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
+			})
+			ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22, "COLORFGBG=15;0")
+			ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
+			worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", tool)
+			t.Cleanup(worker.stop)
+			input, tip, colored := "new stream.go\ntype <<PATCH\npackage main\n"+strings.Repeat("// context\n", 30)+"var tip = 42\n", "var tip", liveDiffDarkTheme.foreground(chroma.KeywordDeclaration)+"var"
+			if tool == "shell" {
+				input, tip, colored = "#!python3\n"+strings.Repeat("# context\n", 30)+"return 42\n", "return 42", liveDiffDarkTheme.foreground(chroma.Keyword)+"return"
+			} else if tool == mekugiRecoveryToolName {
+				input, tip, colored = strings.Repeat("maple target \"context\"\n", 30)+"maple value \"RECOVERY_TIP\"\n", "RECOVERY_TIP", liveDiffDarkTheme.foreground(chroma.Keyword)+"value"
+			}
+			worker.appendDelta(input)
+			frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), tip) })
+			if !strings.Contains(liveDiffFrameRow(frame, 2), "STREAMING") ||
+				strings.Contains(frame, "Waiting for captured") || !strings.Contains(frame, colored) {
+				t.Fatalf("empty %s preview wasted space or lost syntax: %q", tool, frame)
+			}
+			// A full-height preview still follows after resizing and returns to
+			// the ordinary split/overlay when the first capture arrives.
+			ui.height = 12
+			if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 12, Cols: 70}); err != nil {
+				t.Fatal(err)
+			}
+			frame = ui.frame(t, func(frame string) bool {
+				return strings.Contains(frame, "\x1b[12;1H") && strings.Contains(ansi.Strip(frame), tip)
+			})
+			if !strings.Contains(liveDiffFrameRow(frame, 2), "STREAMING") {
+				t.Fatal("resize restored an empty split")
+			}
+			liveDiffTestChange(t, store, workspace, "thread", "captured.go", true)
+			frame = ui.frame(t, func(frame string) bool { return strings.Contains(frame, "captured.go") })
+			if strings.Contains(liveDiffFrameRow(frame, 2), "STREAMING") {
+				t.Fatal("capture did not regain a viewport")
+			}
+			// Flushing the captured view returns every body row to the stream.
+			ui.write(t, "F")
+			frame = ui.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 2), "STREAMING") })
+			if !strings.Contains(frame, colored) {
+				t.Fatal("flushing removed stream highlighting")
+			}
+			worker.stop()
+			ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING COMPLETE") })
+			ui.frame(t, func(frame string) bool { return !strings.Contains(frame, "STREAMING") })
+			ui.quit(t)
+		})
+	}
 }

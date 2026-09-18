@@ -188,3 +188,12 @@ func BenchmarkSplitBashPrograms(b *testing.B) {
 		})
 	}
 }
+
+func TestSplitSourcePreservesUnfinishedAuthoredPrograms(t *testing.T) {
+	input := "#!params={\"yield_time_ms\":1}\necho start\n#!python3\nprint('unfinished"
+	programs := SplitSource(input)
+	if len(programs) != 2 || strings.Join(programs, "") != input ||
+		strings.Contains(programs[1], "#!params") {
+		t.Fatalf("source splitting changed emitted bytes: %q", programs)
+	}
+}
