@@ -79,7 +79,10 @@ invalid UTF-8, and bodies over 1 MiB reject the entire script before mutation. T
 applies to decoded bytes after optional tab stripping. Existing transport limits still apply.
 An unterminated frame owns the remaining input, so payload-shaped commands are not executed.
 The model-facing context-free grammar admits candidate closing lines; the shared parser
-checks that the closing delimiter matches the header before any effects.
+checks that the closing delimiter matches the header before any effects. Complete heredocs
+must permit end-of-call with or without trailing line endings and blank lines. Body and
+candidate closing lines share one lexer terminal so greedy matching cannot consume a closing
+line's newline as a body token and force continued generation. The same rule applies to recovery.
 
 Whole-line replacement still applies the terminator-preservation rule in `REQ-EDIT-001`.
 Literal targets own only their exact matched bytes; heredocs do not consume adjacent

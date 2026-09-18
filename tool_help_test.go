@@ -57,7 +57,7 @@ func TestToolGrammarHeredocs(t *testing.T) {
 		`| "add" SP add_destination SP heredoc`,
 		`heredoc_initializer: "type" SP heredoc`,
 		`shell_command: "shell" SP (heredoc | SHELL_INLINE)`,
-		`heredoc: HEREDOC_MARKER NL HEREDOC_BODY_LINE* HEREDOC_END`,
+		`heredoc: HEREDOC_MARKER NL HEREDOC_CONTENT`,
 	} {
 		if !strings.Contains(toolGrammar, rule) {
 			t.Errorf("missing rule %q", rule)
@@ -74,13 +74,13 @@ func TestToolGrammarHeredocs(t *testing.T) {
 			t.Errorf("invalid delimiter accepted: %q", input)
 		}
 	}
-	body := grammarTerminalRegexp(t, "HEREDOC_BODY_LINE")
-	for _, input := range []string{"\n", "|\n", "type <<END\n", "PATCH\r\n", "TEXT\n", "$HOME\n", "one\rtwo\n"} {
+	body := grammarTerminalRegexp(t, "HEREDOC_CONTENT")
+	for _, input := range []string{"END", "END\n", "END\r\n", "END\n\n", "\nEND\n", "|\nEND\n", "type <<END\n", "PATCH\r\n", "TEXT\n", "$HOME\n", "one\rtwo\nEND\n"} {
 		if !body.MatchString(input) {
 			t.Errorf("literal body rejected: %q", input)
 		}
 	}
-	for _, obsolete := range []string{"TEXT_MARKER:", "PATCH_BODY_LINE:", "SHELL_BODY_LINE:"} {
+	for _, obsolete := range []string{"TEXT_MARKER:", "PATCH_BODY_LINE:", "SHELL_BODY_LINE:", "HEREDOC_BODY_LINE:", "HEREDOC_END:"} {
 		if strings.Contains(toolGrammar, obsolete) {
 			t.Errorf("obsolete framing remains: %s", obsolete)
 		}

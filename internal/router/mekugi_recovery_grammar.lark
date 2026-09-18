@@ -18,11 +18,12 @@ mutation: "type" SP target SP value
                 | TARGET_QUOTED (SP POSINT)?
                 | "EOF"
 
-// The shared parser validates delimiter equality before effects.
-heredoc: HEREDOC_MARKER NL HEREDOC_BODY_LINE* HEREDOC_END
+// Keep free-form body and candidate closing lines in one lexer terminal.
+// Separate body/end terminals greedily swallow a closing line with its newline,
+// forbidding end-of-call. The shared parser validates exact framing before effects.
+heredoc: HEREDOC_MARKER NL HEREDOC_CONTENT
 HEREDOC_MARKER: /<<-?[ \t]*(?:[^\s'"\\<>|;&()]+|\\[^\r\n]|'[^'\r\n]*'|"(?:\\[^\r\n]|[^"\\\r\n])*")+[ \t]*/
-HEREDOC_BODY_LINE: /[^\n]*\n/
-HEREDOC_END: /[^\r\n]+/
+HEREDOC_CONTENT: /(?:[^\n]*\n)*[^\r\n]+(?:\r?\n)*/
 
 ?target: ROW
        | ROW ".." ROW

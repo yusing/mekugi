@@ -22,6 +22,11 @@ dependencies are missing, use `bun install --cwd plugins --frozen-lockfile`. Gen
 the embedded WASM core and JavaScript bundle through directives in
 `internal/router/toolplugin/runtime.go`; do not hand-edit generated assets.
 
+For changes to the model-facing HPATCH or recovery grammar, also run
+`uv run contrib/codex/check_tool_grammars.py`. It checks end-of-call reachability with
+LLGuidance's greedy lexer, including closing heredoc delimiters with trailing newlines.
+Go parser and terminal-regex tests alone do not cover constrained generation.
+
 ## Boundary coverage and test cost
 
 Keep repeatable test costs visible. Reuse immutable registry fixtures while isolating mutable

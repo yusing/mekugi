@@ -482,7 +482,7 @@ func prepareUpstreamBody(response *http.Response, streamRequested bool) (bool, e
 			}
 		}
 		if err != nil {
-			if errors.Is(err, io.EOF) {
+			if errors.Is(err, io.EOF) && !errors.Is(err, errDownstreamDisconnected) {
 				return false, nil
 			}
 			return false, err
@@ -644,7 +644,10 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 			if hooks != nil && hooks.streamDiagnostics != nil {
 				hooks.streamDiagnostics.UnterminatedEvent = len(event) != 0
 			}
-			if errors.Is(err, io.EOF) {
+			// A downstream disconnect may wrap EOF, but it is not a clean end
+			// of the provider body. Preserve cancellation rather than replacing
+			// it with an incomplete-call translation error during Finish.
+			if errors.Is(err, io.EOF) && !errors.Is(err, errDownstreamDisconnected) {
 				eventTerminalState, writeErr := writeSSEEvent(writer, event, "", transformer, hooks)
 				terminalState = mergeResponseTerminalState(terminalState, eventTerminalState)
 				if writeErr != nil {

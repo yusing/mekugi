@@ -281,7 +281,7 @@ func TestRecoveryGrammarContainsHandleAndOrdinaryTarget(t *testing.T) {
 }
 
 func TestRecoveryGrammarMirrorsPublicMultilineTargetTerminal(t *testing.T) {
-	for _, name := range []string{"TARGET_QUOTED", "QUOTED", "HEREDOC_MARKER", "HEREDOC_BODY_LINE", "HEREDOC_END"} {
+	for _, name := range []string{"TARGET_QUOTED", "QUOTED", "HEREDOC_MARKER", "HEREDOC_CONTENT"} {
 		public := grammarTerminalLine(t, mekugi.ToolGrammar(), name)
 		recovery := grammarTerminalLine(t, mekugiRecoveryGrammar, name)
 		if recovery != public {

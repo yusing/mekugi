@@ -129,6 +129,8 @@ end; an unreported provider-internal cause is not inferred.
 A recognized downstream WebSocket disconnect is cancellation even when the write
 fails before the reader cancels the session context. It does not queue a critical
 restart notice or replay the interrupted request. Other write failures remain failures.
+An EOF wrapped by downstream cancellation remains cancellation during body sniffing and
+stream completion; unfinished tool input must not replace that cause with a translation failure.
 Stream diagnostics retain a sanitized write-termination category and, when available,
 a numeric write-side WebSocket close code, separately from read termination.
 
