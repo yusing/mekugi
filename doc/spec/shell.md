@@ -58,7 +58,6 @@ completed result or automatically retried. Resubmitting a batch starts new execu
 
 Native-only clients reject batches with a Code Mode requirement diagnostic before execution.
 Replay restores the original call without starting any program.
-Eligible cat-write projection applies independently within each program.
 
 The following interpreter and directive rules apply separately to each program.
 
@@ -157,8 +156,7 @@ framing can still truncate it. Execution is not rejected or assigned a larger ho
 to hide this limitation.
 
 Explicit batches divide an 8,000-token allowance across their programs, also respecting smaller
-per-program budgets. Split cat-write carriers divide their allowance among steps and
-fall back to one worker when a split would leave too little display space. Native request parameters remain unchanged. Direct single external-command
+per-program budgets. Native request parameters remain unchanged. Direct single external-command
 carriers keep Codex's output behavior. Shell pipelines and redirections receive complete
 program output before display retention.
 
@@ -236,31 +234,20 @@ With `#!params=`, Codex applies the accepted outer exec arguments before launchi
 The worker returns stdout, stderr, and exit status without copying the script body into either
 output stream.
 
-For the built-in Bash/sh tool, the router recognizes literal truncating writes of the form
-`cat > PATH <<'EOF'` (either redirection order, single/double-quoted delimiter, and `<<-` tab
-stripping). A simple sequence separated only by newlines or semicolons is lowered, in order,
-to shell commands and native `apply_patch` calls in one Code Mode carrier. Heredoc contents are
-parsed as data, never as statement separators. The native-tools carrier uses the executor's
-`apply_patch` executable, as mekugi does. The original shell call, not the generated sequence,
-is restored on provider replay; tool declarations, instructions, and the existing provider cache
-prefix do not change for this projection.
+Bash/POSIX file operations stay inside the host-executed shell worker. Regular-file
+output redirections, including `cat >` and `cat >>`, capture completed writes; `touch`
+creation, file/directory `mv`, and `rm` publish the same durable review records and
+live-diff receipts as hpatch. There is no separate cat-to-native-patch projection.
+Shell expansion, pipelines, conditionals, heredocs, and the current directory remain
+owned by the interpreter. Tracking notices go to the shell result's stderr, not into
+redirected files, pipeline data, or command substitutions.
 
-Only empty or LF-terminated literal UTF-8 bodies are projected. The patch performs an unconditional
-write, including overwriting an existing file, without reading an early baseline, formatting,
-or source validation. Each write is applied only after its preceding commands finish. An
-execution-time guard leaves missing parents, symlinks, and special-file targets to the original
-cat command instead of giving `Add File` permission to create parents or replace special targets.
-Ordinary command output remains ordered in the shell result; patch success and guard output do
-not enter it. Host patch errors/refusals stop the carrier rather than retrying the write as cat.
-Already captured ordinary output and retention metadata remain visible when a later tool fails;
-the host error propagates without executing the remaining statements.
-
-The complete script stays on its existing execution path if it contains conditionals, pipelines,
-background jobs, compound statements, shell-state mutations (`cd`, assignments, functions,
-options), or dynamic expansions. Append writes, file-copy forms, unquoted heredocs, and paths or
-contents not representable without byte changes remain shell commands. Interpreter arguments,
-PTYs and exec parameters other than workdir, output budget, yield timing,
-and false login/tty also keep the existing carrier. A known absolute workdir is required.
+Capture and destructive changes are one worker-owned operation: overwrite captures
+through the descriptor it truncates, preserving the inode; deletion captures the
+entry it removes; move captures an overwritten destination before its owned rename.
+No external rm/cat is invoked after a separate observer reads the old contents.
+This is operation capture, not isolation from unrelated writers or crash-atomic
+history publication. See [tracked changes](changes.md) for scope and limitations.
 
 The ordinary single-program shell carrier forwards the complete native `exec_command` result defined by the owning Code
 Mode contract rather than only its output field. A result containing the native continuation
@@ -313,14 +300,6 @@ router session registry. Known retained call history also supports output-only r
 Missing call provenance is not guessed. If the required continuation tool is absent from
 the current catalog, the notice has `next_call: null` and explains the missing capability
 instead of inventing a tool or restarting work. Repeated projection is idempotent.
-
-For a split cat-write sequence, the enclosing Code Mode program waits for each command's
-terminal result with the native `write_stdin` operation before starting the next step. The same
-Code Mode cell may yield while this work is pending. No session is restarted or retried. It
-concatenates command output in execution order and retains the last step's exit status and
-terminal result fields. Native patch success contributes
-empty output and status zero. No generated patch or intermediate guard result is published to
-the provider as a separate conversation item.
 
 Shell calls do not create editable source artifacts or add source-retention metadata to results.
 Use ordinary script files for reusable source. Durable replay preserves original calls and

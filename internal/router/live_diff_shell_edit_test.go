@@ -51,7 +51,6 @@ func TestLiveDiffShellEditLiteralInputs(t *testing.T) {
 		{"ansi quoted argument", `hpatch file.txt $'type "old" "hello"'`, `type "old" "hello"`},
 		{"double quoted argument", "hpatch file.txt \"type \\\"old\\\" \\\"hello\\\"\"", `type "old" "hello"`},
 		{"unclosed script quote", `hpatch file.txt 'type "old" "hello`, `type "old" "hello`},
-		{"unquoted heredoc expansion", "hpatch file.txt <<EDIT\ntype \"old\" \"$literal\"", "type \"old\" \"\""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			directory := t.TempDir()
@@ -147,6 +146,9 @@ func TestLiveDiffPreviewWorkerClearsDiffForCompoundShell(t *testing.T) {
 
 func TestLiveDiffPreviewBrokerRetainsDisplayedDiffAfterOversizedProjection(t *testing.T) {
 	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "file.txt"), []byte("old\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
 	worker.appendDelta("hpatch file.txt<<'EDIT'\ntype \"old\" \"small\"\n")
 	small := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
@@ -236,5 +238,11 @@ func TestLiveDiffShellEditWorkdir(t *testing.T) {
 	files, err := mekugi.PreviewForHostAt(t.Context(), base, edits)
 	if err != nil || len(files) != 1 || files[0].AfterPath != filepath.Join(directory, "file.txt") {
 		t.Fatalf("files = %+v, %v", files, err)
+	}
+}
+
+func TestLiveDiffShellEditRejectsUnknownExpansion(t *testing.T) {
+	if edits, _, ok := liveDiffShellEdit("hpatch file.txt <<EDIT\ntype \"old\" \"$literal\"", t.TempDir()); ok {
+		t.Fatalf("invented expansion: %+v", edits)
 	}
 }

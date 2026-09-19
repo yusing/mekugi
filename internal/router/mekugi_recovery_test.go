@@ -58,7 +58,7 @@ func TestMekugiRecoveryGuidanceOffersScriptEditsForNonTargetFailure(t *testing.T
 func TestGenericRecoveryPreviewUsesBoundedScriptRows(t *testing.T) {
 	script := "\nappend \"\"\r\nappend <<END\r\npackage p\r\nvar =\r\nEND\r\n"
 	rejections := []mekugi.HostRejection{{Command: 2, SourceLine: 3, ValueLine: 2, Reason: "language-syntax"}}
-	guidance := genericRecoveryGuidance(script, rejections, true, testRecoveryHandles(script))
+	guidance := genericRecoveryGuidance(script, rejections, true, testRecoveryHandles(script), 0)
 	if !strings.Contains(guidance, mekugi.TextReferences(script, 5)) ||
 		!strings.Contains(guidance, "Corrections are retained only in the new rejected-script baseline") {
 		t.Fatalf("missing script-row identity or baseline warning:\n%s", guidance)
@@ -69,7 +69,7 @@ func TestGenericRecoveryPreviewUsesBoundedScriptRows(t *testing.T) {
 		many.WriteString("unknown-command\n")
 		failures = append(failures, mekugi.HostRejection{Command: index + 1, SourceLine: index + 1, Reason: "script-syntax"})
 	}
-	bounded := genericRecoveryGuidance(many.String(), failures, false, testRecoveryHandles(many.String()))
+	bounded := genericRecoveryGuidance(many.String(), failures, false, testRecoveryHandles(many.String()), 0)
 	if !strings.Contains(bounded, "Preview limited to 12 script rows.") || strings.Contains(bounded, mekugi.TextReferences(many.String(), 13)) {
 		t.Fatalf("unbounded script preview: %s", bounded)
 	}

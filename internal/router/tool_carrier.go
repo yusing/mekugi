@@ -216,6 +216,12 @@ func (registry *toolRegistry) directBashExecCommand(arguments []string) (string,
 		statement.Background || statement.Coprocess || statement.Disown {
 		return "", false
 	}
+	for _, redirect := range statement.Redirs {
+		switch redirect.Op {
+		case syntax.RdrOut, syntax.AppOut, syntax.ClbOut, syntax.RdrAll, syntax.AppAll:
+			return "", false
+		}
+	}
 	staticCommand := true
 	syntax.Walk(call.Args[0], func(node syntax.Node) bool {
 		// Walk reports nil after visiting each node's children.
@@ -231,7 +237,7 @@ func (registry *toolRegistry) directBashExecCommand(arguments []string) (string,
 		}
 	})
 	commandName, err := expand.Literal(&expand.Config{}, call.Args[0])
-	if err != nil || !staticCommand || commandName == "" || commandName == commentaryArgumentName || commandName == "hrun" || commandName == "hchanges" || commandName == "hpatch" || commandName == "hread" || interp.IsBuiltin(commandName) {
+	if err != nil || !staticCommand || commandName == "" || commandName == commentaryArgumentName || commandName == "hrun" || commandName == "hchanges" || commandName == "hpatch" || commandName == "hread" || shellTrackedFileCommand(commandName) || interp.IsBuiltin(commandName) {
 		return "", false
 	}
 	if registry.commandRouting != nil && slices.Contains(registry.commandRouting.Commands, commandName) {

@@ -190,6 +190,23 @@ func (v *liveDiffView) refreshVisible() {
 				}
 				continue
 			}
+			if chunk.review.Incomplete != "" && failure == nil {
+				// Unknown bytes end this composition epoch. Keep known captures
+				// on either side separate rather than hiding all later edits.
+				for _, region := range composition.FilesWithHighlights() {
+					visible.chunks = append(visible.chunks, liveDiffChunk{
+						review: region.ReviewFile, highlighted: region.Highlighted,
+					})
+				}
+				composition = mekugi.ReviewComposition{}
+				if !reviewed {
+					visible.chunks = append(visible.chunks, liveDiffChunk{
+						status: "incomplete history: " + chunk.review.Incomplete,
+						review: chunk.review, highlighted: chunk.highlighted,
+					})
+				}
+				continue
+			}
 			legacy = legacy || chunk.captureOrder == 0
 			mixed = mixed || stream != "" && stream != chunk.stream
 			stream = chunk.stream
@@ -202,7 +219,7 @@ func (v *liveDiffView) refreshVisible() {
 		}
 		if failure != nil {
 			if unreviewed {
-				visible.chunks = append(visible.chunks, liveDiffChunk{status: "Unable to combine changes: " + failure.Error()})
+				visible.chunks = append(visible.chunks, liveDiffChunk{status: "Unable to combine changes: " + failure.Error(), review: mekugi.ReviewFile{Incomplete: failure.Error()}})
 			}
 		} else {
 			for _, region := range composition.FilesWithHighlights() {
@@ -341,6 +358,9 @@ func liveDiffGutter(highlighted bool, theme liveDiffTheme) string {
 func liveDiffHeader(text string, width int, counts liveDiffCounts, theme liveDiffTheme) string {
 	width = max(0, width)
 	stats := fmt.Sprintf(" %s+%d\x1b[39m %s-%d\x1b[39m", theme.foreground(chroma.GenericInserted), counts.added, theme.foreground(chroma.GenericDeleted), counts.removed)
+	if counts.added < 0 || counts.removed < 0 {
+		stats = " counts unavailable"
+	}
 	text = ansi.Truncate(liveDiffSafe(text, false), max(0, width-ansi.StringWidth(stats)), "")
 	header := ansi.Truncate("\x1b[1m"+text+"\x1b[22m"+stats, width, "")
 	if remaining := width - ansi.StringWidth(header); remaining > 0 {

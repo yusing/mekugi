@@ -30,19 +30,14 @@ func (t *mekugiResponseTransform) prepareShellBatch(contribution toolContributio
 			return nil, toolplugin.Translation{}, fmt.Errorf("shell program %d: expected an exec carrier", index+1)
 		}
 		var program strings.Builder
-		steps, commands, catWrites := t.shellCatPlan(contribution, translation.Arguments, translation.Carrier.Template, translation.Carrier.Params, max(1, 8000/len(sources)), callIDs...)
-		if catWrites {
-			writeShellCatSequence(&program, steps, commands, translation.Carrier.Params)
-		} else {
-			command, err := t.proxy.registry.execCarrierCommand(contribution, source, translation.Arguments, translation.Carrier.Template, max(1, 8000/len(sources)), callIDs...)
-			if err != nil {
-				return nil, toolplugin.Translation{}, fmt.Errorf("shell program %d: %w", index+1, err)
-			}
-			for _, misuse := range shellInterpreterWrapperMisuses(contribution, source) {
-				fmt.Fprintf(&program, "output += %s;\n", mustMarshalJSON(shellInterpreterWrapperWarning(misuse)+"\n"))
-			}
-			fmt.Fprintf(&program, "await run(%s);\n", mustMarshalJSON(execCommandArguments(command, translation.Carrier.Params)))
+		command, err := t.proxy.registry.execCarrierCommand(contribution, source, translation.Arguments, translation.Carrier.Template, max(1, 8000/len(sources)), callIDs...)
+		if err != nil {
+			return nil, toolplugin.Translation{}, fmt.Errorf("shell program %d: %w", index+1, err)
 		}
+		for _, misuse := range shellInterpreterWrapperMisuses(contribution, source) {
+			fmt.Fprintf(&program, "output += %s;\n", mustMarshalJSON(shellInterpreterWrapperWarning(misuse)+"\n"))
+		}
+		fmt.Fprintf(&program, "await run(%s);\n", mustMarshalJSON(execCommandArguments(command, translation.Carrier.Params)))
 		programs = append(programs, program.String())
 	}
 	return programs, toolplugin.Translation{Carrier: toolplugin.Carrier{Kind: "exec"}}, nil

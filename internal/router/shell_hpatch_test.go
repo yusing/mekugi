@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/internal/router/toolplugin"
-	"mvdan.cc/sh/v3/syntax"
 )
 
 func TestShellHpatchSemantics(t *testing.T) {
@@ -140,11 +139,6 @@ func TestShellHpatchRecoveryAndReview(t *testing.T) {
 
 func TestShellHpatchCatProjectionKeepsCompositionGuard(t *testing.T) {
 	source := "cat > marker <<'DATA'\ncontent\nDATA\nhpatch result.txt 'type \"old\" \"new\"' \n"
-	for _, variant := range []syntax.LangVariant{syntax.LangBash, syntax.LangPOSIX} {
-		if _, projected := splitShellCatWrites(source, t.TempDir(), variant); projected {
-			t.Fatal("cat projection bypassed standalone edit validation")
-		}
-	}
 	directory := t.TempDir()
 	_, stderr, code := runShellWorkerTest(t, sharedProxyTestRegistry(t), "bash", nil, source, nil, newShellWorkerTestInvocation(directory))
 	if code != 2 || !strings.Contains(stderr, "standalone") {

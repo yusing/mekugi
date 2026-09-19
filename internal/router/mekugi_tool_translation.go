@@ -174,11 +174,6 @@ func (t *mekugiResponseTransform) translateRegisteredTool(contribution toolContr
 				break
 			}
 			arguments := translation.Arguments
-			if splitPayload, ok := t.shellCatCarrier(contribution, kind, arguments, translation.Carrier.Template, translation.Carrier.Params, axCallID, journalToken); ok {
-				payload = splitPayload
-				splitShellCarrier = true
-				break
-			}
 			payload, err = t.proxy.registry.execCarrierPayload(
 				kind,
 				contribution,

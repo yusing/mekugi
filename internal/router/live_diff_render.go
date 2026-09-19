@@ -134,7 +134,9 @@ func (r *liveDiffRenderer) render(ctx context.Context, theme liveDiffTheme, file
 		}
 		fileNumber++
 		action := ""
+		incomplete := false
 		for _, chunk := range file.chunks {
+			incomplete = incomplete || chunk.review.Incomplete != ""
 			added, removed := chunk.review.LineCounts()
 			render.counts[i].added += added
 			render.counts[i].removed += removed
@@ -142,12 +144,18 @@ func (r *liveDiffRenderer) render(ctx context.Context, theme liveDiffTheme, file
 				action = liveDiffAction(chunk.review, workspace)
 			}
 		}
+		if incomplete {
+			render.counts[i] = liveDiffCounts{-1, -1}
+		}
 		label := fmt.Sprintf("%d/%d  %s", fileNumber, fileCount, liveDiffDisplayPath(workspace, file.path))
 		if action != "" {
 			label += " · " + action
 		}
 		counts := render.counts[i]
 		statsWidth := len(fmt.Sprintf(" +%d -%d", counts.added, counts.removed))
+		if incomplete {
+			statsWidth = len(" counts unavailable")
+		}
 		headings := strings.Split(ansi.Wrap(liveDiffSafe(label, false), max(1, width-3-statsWidth), ""), "\n")
 		for j, heading := range headings {
 			if j == 0 {

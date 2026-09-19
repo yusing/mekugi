@@ -53,7 +53,7 @@ func TestShellReadOutputBudgetRetainsWholeBatchAndExitStatus(t *testing.T) {
 			}
 			allStdout, allStderr := retainedShellTestOutput(t, stderr)
 			if strings.Count(stdout+allStdout, "alpha row") != 400 || strings.Count(stdout+allStdout, "beta row") != 400 ||
-				allStderr != "command error\n" {
+				withoutShellChangeNotices(allStderr) != "command error\n" {
 				t.Fatalf("retained output lost command data: %d bytes, %q", len(allStdout), allStderr)
 			}
 			if _, err := os.Stat(filepath.Join(directory, "finished")); err != nil {
@@ -75,7 +75,7 @@ func TestShellReadOutputBudgetDoesNotChangePipelinesOrRedirections(t *testing.T)
 	}
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
 		"#!params={\"max_output_tokens\":1200}\nhcat input > saved\nhcat input | wc -l\n", nil, newShellWorkerTestInvocation(directory))
-	if status != 0 || strings.TrimSpace(stdout) != "400" || stderr != "" {
+	if status != 0 || strings.TrimSpace(stdout) != "400" || withoutShellChangeNotices(stderr) != "" {
 		t.Fatalf("status=%d stdout=%q stderr=%q", status, stdout, stderr)
 	}
 	data, err := os.ReadFile(filepath.Join(directory, "saved"))
@@ -97,7 +97,7 @@ func TestShellOutputBudgetPreservesExecutionWithSmallBudget(t *testing.T) {
 		t.Fatalf("small budget changed execution: %v", err)
 	}
 	stdout, retainedStderr := retainedShellTestOutput(t, stderr)
-	if stdout != "visible" || retainedStderr != "" {
+	if stdout != "visible" || withoutShellChangeNotices(retainedStderr) != "" {
 		t.Fatalf("small budget lost output: %q %q", stdout, retainedStderr)
 	}
 }

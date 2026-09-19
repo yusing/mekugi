@@ -493,7 +493,7 @@ func TestShellHCatAfterAppliedMekugiCarrierRemainsModelVisible(t *testing.T) {
 		t.Fatalf("edit is not carried through ordinary shell execution: %s", carrierInput)
 	}
 	report, editStderr, editStatus := runShellWorkerTest(t, proxy.registry, "bash", nil,
-		"hpatch "+shellQuoteArgument(mekugiScript), nil, newShellWorkerTestInvocation(workspace))
+		"hpatch file.txt "+shellQuoteArgument(mekugiScript), nil, newShellWorkerTestInvocation(workspace))
 	if editStatus != 0 {
 		t.Fatalf("edit failed: %d %s %s", editStatus, report, editStderr)
 	}

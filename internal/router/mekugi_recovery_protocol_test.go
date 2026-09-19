@@ -161,7 +161,7 @@ func TestRecoverBatchSelectsOneFileAndPreservesOthers(t *testing.T) {
 func TestRecoverBatchMalformedScriptContextAndAggregateBound(t *testing.T) {
 	edits := []mekugi.FileEdit{
 		{Path: "first.go", Script: `type 1:aaaa "old"` + "\n"},
-		{Path: "second.go", Script: "type 1:bbbb \"bad\"\nBROKEN\n"},
+		{Path: "first.go", Script: "type 1:bbbb \"bad\"\nBROKEN\n"},
 	}
 	handles := make([]string, len(recoveryBatchCommands(edits, nil)))
 	for index := range handles {
@@ -170,7 +170,8 @@ func TestRecoverBatchMalformedScriptContextAndAggregateBound(t *testing.T) {
 	guidance := mekugiRecoveryGuidanceBatch(edits, []mekugi.HostRejection{{
 		Command: 3, SourceLine: 2, Reason: "script-syntax",
 	}}, false, handles)
-	if !strings.Contains(guidance, `File "second.go" retained-script context:`) ||
+	if !strings.Contains(guidance, `Script 2, file "first.go" retained-script context:`) ||
+		!strings.Contains(guidance, "through hpatch --recover HANDLE --script 2, without file paths") ||
 		!strings.Contains(guidance, mekugi.TextReferences(edits[1].Script, 2)) {
 		t.Fatalf("malformed second-file guidance = %s", guidance)
 	}

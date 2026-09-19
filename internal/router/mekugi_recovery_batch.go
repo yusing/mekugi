@@ -138,7 +138,7 @@ func mekugiRecoveryGuidanceBatch(
 		output.WriteString("\nUse each handle once. Send one pathless correction through hpatch --recover HANDLE --script N. Generated-source line numbers are diagnostic only, never recovery targets.\n\n")
 	}
 	offset := 0
-	for _, edit := range edits {
+	for index, edit := range edits {
 		localCommands := recoveryCommands(edit.Script, nil)
 		count := len(localCommands)
 		localRejections := make([]mekugi.HostRejection, 0)
@@ -159,8 +159,8 @@ func mekugiRecoveryGuidanceBatch(
 			if offset < len(handles) {
 				localHandles = handles[offset:min(offset+count, len(handles))]
 			}
-			fmt.Fprintf(&output, "\nFile %q retained-script context:\n", edit.Path)
-			output.WriteString(genericRecoveryGuidance(edit.Script, localRejections, refreshed, localHandles))
+			fmt.Fprintf(&output, "\nScript %d, file %q retained-script context:\n", index+1, edit.Path)
+			output.WriteString(genericRecoveryGuidance(edit.Script, localRejections, refreshed, localHandles, index+1))
 		}
 		offset += count
 	}

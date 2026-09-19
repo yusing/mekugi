@@ -35,8 +35,8 @@ func TestShellBatchExecutionAndReplay(t *testing.T) {
 	if err != nil || history.TranslationError != "" {
 		t.Fatalf("translate = %+v, %v", history, err)
 	}
-	if strings.Count(history.carrierInput(), "await tools.apply_patch(") != 1 {
-		t.Fatalf("lost cat projection: %s", history.carrierInput())
+	if strings.Contains(history.carrierInput(), "apply_patch") {
+		t.Fatalf("cat escaped tracked worker: %s", history.carrierInput())
 	}
 	var result struct {
 		Results []struct {

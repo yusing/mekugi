@@ -347,3 +347,41 @@ func TestLiveDiffFollowFinalChangedRowAndFragment(t *testing.T) {
 		}
 	}
 }
+
+func TestLiveDiffIncompleteHistory(t *testing.T) {
+	chunk := liveDiffChunk{key: "unreadable", applied: true,
+		review: mekugi.RenderIncompleteReviewFile("file", "file", "permission denied")}
+	view := liveDiffView{}
+	view.merge([]liveDiffFile{{path: "file", chunks: []liveDiffChunk{chunk}}})
+	view.refreshVisible()
+	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme,
+		[]liveDiffFile{view.visible[view.files[0].key()]}, "", 100, 0, chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := ansi.Strip(strings.Join(render.lines, "\n"))
+	if !strings.Contains(text, "counts unavailable") || !strings.Contains(text, "incomplete history") || strings.Contains(text, "+0 -0") {
+		t.Fatalf("incomplete rendering: %s", text)
+	}
+}
+
+func TestLiveDiffCompleteCaptureAfterIncompleteHistory(t *testing.T) {
+	for _, acknowledged := range []bool{false, true} {
+		incomplete := liveDiffChunk{key: "unreadable", applied: true, captureOrder: 1,
+			review: mekugi.RenderIncompleteReviewFile("file", "file", "permission denied")}
+		complete := liveDiffChunk{key: "readable", applied: true, captureOrder: 2,
+			review: mekugi.RenderReviewFile("file", "file", "before\n", "NEW KNOWN CONTENT\n")}
+		view := liveDiffView{reviewed: map[string]bool{"unreadable": acknowledged}}
+		view.merge([]liveDiffFile{{path: "file", chunks: []liveDiffChunk{incomplete, complete}}})
+		view.refreshVisible()
+		render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme,
+			[]liveDiffFile{view.visible[view.files[0].key()]}, "", 100, 0, complete)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := ansi.Strip(strings.Join(render.lines, "\n"))
+		if !strings.Contains(text, "NEW KNOWN CONTENT") || strings.Contains(text, "incomplete history") == acknowledged {
+			t.Fatalf("acknowledged=%t: %s", acknowledged, text)
+		}
+	}
+}

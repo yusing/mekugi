@@ -111,3 +111,20 @@ func TestReviewStatUnicodeAlignment(t *testing.T) {
 		t.Fatalf("stat = %q; want %q", got, want)
 	}
 }
+
+func TestIncompleteReview(t *testing.T) {
+	file := RenderIncompleteReviewFile("file", "file", "permission denied")
+	if add, remove := file.LineCounts(); add != -1 || remove != -1 {
+		t.Fatalf("invented counts: %d %d", add, remove)
+	}
+	if !strings.Contains(file.Diff, "incomplete history") || strings.Contains(file.Diff, "@@") {
+		t.Fatalf("invented content: %s", file.Diff)
+	}
+	if stat := ReviewStat([]ReviewFile{file}); !strings.Contains(stat, "unavailable") || strings.Contains(stat, "+0") {
+		t.Fatalf("stat: %s", stat)
+	}
+	var composition ReviewComposition
+	if err := composition.Apply(file, false); err == nil || len(composition.Files()) != 0 {
+		t.Fatalf("incomplete capture composed: %v", err)
+	}
+}

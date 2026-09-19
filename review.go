@@ -17,6 +17,8 @@ type ReviewFile struct {
 	BeforePath string
 	AfterPath  string
 	Diff       string
+	// Incomplete describes unavailable content; it is not an empty-file diff.
+	Incomplete string `json:",omitzero"`
 }
 
 // UnifiedDiff omits the redundant operation header when unified headers already
@@ -33,7 +35,11 @@ func (file ReviewFile) UnifiedDiff() string {
 
 // LineCounts counts added and removed source rows in a captured review projection.
 // File headers, context, and missing-final-newline markers are not source changes.
+// Incomplete captures return -1 for both counts.
 func (file ReviewFile) LineCounts() (added, removed int) {
+	if file.Incomplete != "" {
+		return -1, -1 // Unknown, not zero changed rows.
+	}
 	inHunk := false
 	for line := range strings.SplitSeq(file.Diff, "\n") {
 		if strings.HasPrefix(line, "@@ ") {
@@ -52,6 +58,22 @@ func (file ReviewFile) LineCounts() (added, removed int) {
 func ReviewStat(files []ReviewFile) string {
 	if len(files) == 0 {
 		return ""
+	}
+	var complete []ReviewFile
+	var unavailable strings.Builder
+	for _, file := range files {
+		if file.Incomplete == "" {
+			complete = append(complete, file)
+		} else {
+			path := file.AfterPath
+			if path == "" {
+				path = file.BeforePath
+			}
+			fmt.Fprintf(&unavailable, " %q | unavailable (incomplete history: %s)\n", path, file.Incomplete)
+		}
+	}
+	if unavailable.Len() != 0 {
+		return ReviewStat(complete) + unavailable.String()
 	}
 	type entry struct {
 		path           string
@@ -133,6 +155,22 @@ func reviewFiles(changes []change) []ReviewFile {
 		files = append(files, renderReviewFile(file, reviewLines(before), reviewLines(after), 0, 0))
 	}
 	return files
+}
+
+// RenderReviewFile captures an operation-owned before/after pair using the same
+// diff semantics as engine edits. An empty path denotes an absent side. Pure
+// moves may supply empty contents on both sides without reading the source.
+func RenderReviewFile(beforePath, afterPath, before, after string) ReviewFile {
+	return renderReviewFile(ReviewFile{BeforePath: beforePath, AfterPath: afterPath}, reviewLines(before), reviewLines(after), 0, 0)
+}
+
+// RenderIncompleteReviewFile retains an applied operation's identity without
+// inventing source rows when its contents could not be captured.
+func RenderIncompleteReviewFile(beforePath, afterPath, reason string) ReviewFile {
+	file := RenderReviewFile(beforePath, afterPath, "", "")
+	file.Incomplete = reason
+	file.Diff += "incomplete history: " + reason + "\n"
+	return file
 }
 
 // renderReviewFile also renders sparse composed regions, without pretending that

@@ -137,6 +137,11 @@ func executeShellProgram(
 	}
 	var composedEdit bool
 	syntax.Walk(program, func(node syntax.Node) bool {
+		// mvdan does not implement >|. It is an unconditional truncating
+		// redirection, which the worker owns just like >.
+		if redirect, ok := node.(*syntax.Redirect); ok && redirect.Op == syntax.ClbOut {
+			redirect.Op = syntax.RdrOut
+		}
 		if call, ok := node.(*syntax.CallExpr); ok && len(call.Args) != 0 {
 			if name, literal := shellCatLiteral(call.Args[0]); literal && name == "hpatch" && call.Pos() != standaloneEdit {
 				composedEdit = true
@@ -161,6 +166,7 @@ func executeShellProgram(
 	capture := newShellOutputCapture(cancel)
 	capture.stdout.destination = streamStdout
 	capture.stderr.destination = streamStderr
+	files := &shellFileTracker{manifest: manifest, sink: commentary, notices: &capture.stderr}
 	terminalShell := stdin != nil && term.IsTerminal(int(stdin.Fd()))
 	middleware := func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 		return func(handlerCtx context.Context, command []string) (runErr error) {
@@ -204,7 +210,7 @@ func executeShellProgram(
 			}
 			contribution, private := privateTools[command[0]]
 			if !private {
-				return next(handlerCtx, command)
+				return files.command(handlerCtx, command, next)
 			}
 			handler := interp.HandlerCtx(handlerCtx)
 			journal := manifest.AXReadOutput
@@ -283,12 +289,19 @@ func executeShellProgram(
 			}
 			return runExternalShellCommand(ctx, arguments, terminalShell, handler)
 		})),
+		interp.OpenHandler(files.openWrite),
 		interp.CallHandler(shellCommentaryCallHandler(commentary)),
 	)
 	if err != nil {
 		return toolplugin.ExecutionOutput{Stderr: fmt.Sprintf("shell: %v\n", err), ExitCode: 1}, nil
 	}
 	runErr := runner.Run(runCtx, program)
+	if evidenceErr := files.finish(); evidenceErr != nil {
+		fmt.Fprintln(&capture.stderr, evidenceErr)
+		if runErr == nil {
+			runErr = interp.ExitStatus(1)
+		}
+	}
 	stdout, stderr, overflow, writeErr := capture.result()
 	if ctx.Err() != nil {
 		return toolplugin.ExecutionOutput{}, ctx.Err()
@@ -350,6 +363,14 @@ func runExternalShellCommand(ctx context.Context, arguments []string, terminalSh
 	command.Stdin = handler.Stdin
 	command.Stdout = handler.Stdout
 	command.Stderr = handler.Stderr
+	// Keep real file descriptors for external commands (including cat self-copy
+	// detection); the owning wrapper captures through its descriptor on close.
+	if file, ok := handler.Stdout.(*shellFileWrite); ok {
+		command.Stdout = file.file
+	}
+	if file, ok := handler.Stderr.(*shellFileWrite); ok {
+		command.Stderr = file.file
+	}
 	if terminalShell {
 		// mvdan does not coordinate terminal foreground-group handoff across a
 		// pipeline, so every command in a PTY-backed shell must remain in the

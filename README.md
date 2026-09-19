@@ -293,8 +293,10 @@ print("hello")
 ```
 
 Bash is the default. Interactive and long-running programs still use Codex's
-native execution and session facilities. Eligible literal `cat` heredoc writes
-are converted to patches so they appear in the usual diff UI.
+native execution and session facilities. Shell file creation, redirection writes,
+moves, and removals appear in `hchanges` and the live diff alongside hpatch edits.
+See [tracked operations and limits](doc/spec/changes.md) for supported move/removal
+options and capture requirements.
 
 Commands that share an interpreter and execution options belong in one
 multiline script. Start each additional program with its interpreter header:

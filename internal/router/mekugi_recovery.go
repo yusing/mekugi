@@ -21,7 +21,7 @@ func mekugiRecoveryGuidance(
 	notice := invalidFinalInputNotice(script, rejections)
 	references, eligible := mekugiRecoveryReferences(script, rejections, refreshed, handles)
 	if !eligible {
-		return notice + genericRecoveryGuidance(script, rejections, refreshed, handles)
+		return notice + genericRecoveryGuidance(script, rejections, refreshed, handles, 0)
 	}
 	return notice + codexinstructions.RecoveryGuidance(references)
 }
@@ -38,12 +38,16 @@ func invalidFinalInputNotice(script string, rejections []mekugi.HostRejection) s
 	return fmt.Sprintf("\nInvalid final input at script line %d; no effects were applied. Remove or correct it through hpatch --recover HANDLE.\n", line)
 }
 
-func genericRecoveryGuidance(script string, rejections []mekugi.HostRejection, refreshed bool, handles []string) string {
+func genericRecoveryGuidance(script string, rejections []mekugi.HostRejection, refreshed bool, handles []string, scriptIndex int) string {
 	var output strings.Builder
 	if refreshed {
 		output.WriteString("\nThis re-rejection changed no workspace file. Corrections are retained only in the new rejected-script baseline; earlier script rows and command handles may be stale.\n")
 	}
-	output.WriteString("\nRepair retained-script text with pathless type/add mutations through hpatch --recover HANDLE, without file paths, append, or file-management commands. Targets below address the rejected script, not workspace files. Use exact known literals for other retained text. The router rebuilds and reevaluates the complete script atomically; do not repeat unrelated prepared edits.\n\nRetained rejected-script rows:\n")
+	command := "hpatch --recover HANDLE"
+	if scriptIndex > 0 {
+		command += fmt.Sprintf(" --script %d", scriptIndex)
+	}
+	output.WriteString("\nRepair retained-script text with pathless type/add mutations through " + command + ", without file paths, append, or file-management commands. Targets below address the rejected script, not workspace files. Use exact known literals for other retained text. The router rebuilds and reevaluates the complete script atomically; do not repeat unrelated prepared edits.\n\nRetained rejected-script rows:\n")
 	lines := hpatchsyntax.SplitPhysicalLines(script)
 	logicalRows := mekugiLogicalRowsByPhysicalLine(script, lines)
 	commands := recoveryCommands(script, handles)

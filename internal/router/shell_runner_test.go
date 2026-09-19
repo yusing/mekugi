@@ -123,7 +123,7 @@ printf 'joined both\n'
 exit "$checks_status"
 `
 			stdout, stderr, exitCode := runShellWorkerTest(t, registry, interpreter, nil, script, nil, invocation)
-			if exitCode != 7 || stderr != "" {
+			if exitCode != 7 || withoutShellChangeNotices(stderr) != "" {
 				t.Fatalf("exit %d, stdout %q, stderr %q", exitCode, stdout, stderr)
 			}
 			if !strings.HasSuffix(stdout, "joined both\n") ||

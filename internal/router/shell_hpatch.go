@@ -200,7 +200,7 @@ func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, t
 		if err != nil {
 			return err
 		}
-		if !found || record.History.ToolName != mekugiToolName || record.History.ExecutingThread != thread {
+		if !found || (record.History.ToolName != mekugiToolName && record.History.ToolName != "shell") || record.History.ExecutingThread != thread {
 			return fmt.Errorf("edit receipt not found")
 		}
 		index, err := s.readChangeIndex(workspace)

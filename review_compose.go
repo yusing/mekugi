@@ -71,6 +71,9 @@ func (c *ReviewComposition) Apply(file ReviewFile, reviewed bool) error {
 // Highlights follow source regions through composition, not rendered line numbers.
 // Reviewed captures cannot introduce highlights; a full revert removes them.
 func (c *ReviewComposition) ApplyWithHighlight(file ReviewFile, reviewed, highlighted bool) error {
+	if file.Incomplete != "" {
+		return fmt.Errorf("incomplete history: %s", file.Incomplete)
+	}
 	highlighted = highlighted && !reviewed
 	hunks, err := parseReviewHunks(file, true)
 	if err != nil {
