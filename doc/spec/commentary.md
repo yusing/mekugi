@@ -103,7 +103,9 @@ placement before classification; invalid forms retain their source-level `Run` d
 Native `apply_patch` calls do not generate operation commentary. Standalone shell-based
 `hpatch` calls omit the `Run` preview and patch body. After execution, authenticated
 committed receipts produce `Edit <path> +N -N` per file for child activity, using the
-captured formatted result's added and removed line counts. Rejected edits do not
+captured formatted result's added and removed line counts. Supported shell file-operation
+receipts use the same display; incomplete captures explicitly report incomplete history
+and unavailable line counts rather than numeric counts. Rejected edits do not
 produce successful edit summaries; repeated receipts are deduplicated. `hpatch --recover`
 uses the same display: each successful repair reports its own committed file counts,
 not cumulative counts for earlier attempts, and recovery scripts remain hidden. Host results

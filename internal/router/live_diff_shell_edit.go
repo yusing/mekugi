@@ -91,6 +91,13 @@ func liveDiffShellEdit(input, directory string) ([]mekugi.FileEdit, string, bool
 		len(call.Args) == 0 || call.Args[0].Lit() != "hpatch" {
 		return nil, "", false
 	}
+	// Recovery arguments are not path/script pairs, including partial flags.
+	if len(call.Args) > 1 {
+		argument, literal := shellCatLiteral(call.Args[1])
+		if literal && argument != "" && strings.HasPrefix("--recover", argument) {
+			return nil, "", false
+		}
+	}
 	if len(stmt.Redirs) == 0 {
 		if len(call.Args) < 3 || (len(call.Args)-1)%2 != 0 {
 			// hpatch PATH with shell stdin, and every command-substituted or

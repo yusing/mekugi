@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"mvdan.cc/sh/v3/interp"
@@ -32,7 +33,9 @@ func TestShellFileOperationsHistoryAndLiveDiff(t *testing.T) {
 	_, events, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{directory: {thread: true}}})
 	sub := events.subscribe()
 	broker := newCommentaryBroker()
-	broker.editPublisher = store.publishEditReceipt
+	broker.editPublisher = func(ctx context.Context, workspace, thread, callID string) error {
+		return store.publishEditReceipt(ctx, workspace, thread, callID, nil)
+	}
 	server := httptest.NewServer(http.HandlerFunc(broker.serveHTTP))
 	defer server.Close()
 	token := broker.subscribeThread(directory+"\x00session", thread, "/root")
@@ -366,9 +369,13 @@ func TestLiveDiffTerminalShellFileOperations(t *testing.T) {
 	directory, thread := t.TempDir(), "terminal-shell-files"
 	connection, _, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{directory: {thread: true}}})
 	ui := startLiveDiffTerminal(t, directory, store.directory, connection, 22)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM") })
+	ui.write(t, "v")
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
 	broker := newCommentaryBroker()
-	broker.editPublisher = store.publishEditReceipt
+	broker.editPublisher = func(ctx context.Context, workspace, thread, callID string) error {
+		return store.publishEditReceipt(ctx, workspace, thread, callID, nil)
+	}
 	server := httptest.NewServer(http.HandlerFunc(broker.serveHTTP))
 	defer server.Close()
 	sink := &httpShellCommentarySink{
@@ -604,7 +611,8 @@ func TestShellFileUnreadableHistory(t *testing.T) {
 			if err := os.Link(path, filepath.Join(directory, "hard")); err != nil {
 				t.Fatal(err)
 			}
-			_, stderr, code := runShellWorkerTest(t, registry, "bash", nil, test.command, nil, newShellWorkerTestInvocation(directory))
+			const child = "unreadable-child"
+			_, stderr, code := runShellWorkerTest(t, registry, "bash", nil, test.command, nil, newShellWorkerTestInvocation(directory, "CODEX_THREAD_ID="+child))
 			if code != 0 || !strings.Contains(stderr, "incomplete history") {
 				t.Fatalf("operation blocked or silent: %d %s", code, stderr)
 			}
@@ -644,6 +652,29 @@ func TestShellFileUnreadableHistory(t *testing.T) {
 				if code != 0 || !strings.Contains(stdout, "incomplete history") || strings.Contains(stdout, "@@") {
 					t.Fatalf("review %s: %d %s %s", option, code, stdout, stderr)
 				}
+			}
+			activity := newSubagentActivity()
+			activity.observe("unreadable-root", "", "/root", false)
+			activity.observe(child, "unreadable-root", "/root/worker", true)
+			index, err := store.readChangeIndex(directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, id := range ids {
+				for _, call := range index.Changes[id].Calls {
+					if err := store.publishEditReceipt(t.Context(), directory, child, call.ID, activity); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			messages := activity.drain("unreadable-root", time.Time{}, maxCommentaryPublicationBytes)
+			if len(messages) != 1 {
+				t.Fatalf("incomplete capture activity messages=%d", len(messages))
+			}
+			text := commentaryText(t, messages[0])
+			if !strings.Contains(text, "incomplete history; line counts unavailable") ||
+				strings.Contains(text, "+-1") || strings.Contains(text, "--1") {
+				t.Fatalf("incomplete capture activity=%q", text)
 			}
 			review, err := store.readChanges(t.Context(), changeReadOptions{workspace: directory, ids: ids})
 			if err != nil || !strings.Contains(review, "incomplete history") {

@@ -413,7 +413,9 @@ func TestShellHpatchGeneratedScriptHistoryAndLiveDiff(t *testing.T) {
 	})
 	sub := events.subscribe()
 	commentary := newCommentaryBroker()
-	commentary.editPublisher = store.publishEditReceipt
+	commentary.editPublisher = func(ctx context.Context, workspace, thread, callID string) error {
+		return store.publishEditReceipt(ctx, workspace, thread, callID, nil)
+	}
 	server := httptest.NewServer(http.HandlerFunc(commentary.serveHTTP))
 	defer server.Close()
 	token := commentary.subscribeThread(directory+"\x00generated", thread, "/root")

@@ -247,10 +247,13 @@ func TestLiveDiffShellEditRejectsUnknownExpansion(t *testing.T) {
 }
 func TestLiveDiffPreviewWorkerSuccessiveShellFragments(t *testing.T) {
 	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "file.txt"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
 	input := ""
 	var initialDiff string
-	for i, fragment := range []string{"hpatch file.txt 'create \"hello\"'", " \\", "\n"} {
+	for i, fragment := range []string{"hpatch file.txt 'append \"hello\"'", " \\", "\n"} {
 		input += fragment
 		_, _, projectable := liveDiffShellEdit(input, workspace)
 		if projectable != (i != 1) {

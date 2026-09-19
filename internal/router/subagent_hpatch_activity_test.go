@@ -47,10 +47,10 @@ func TestSubagentHpatchCommittedActivity(t *testing.T) {
 		client:   server.Client(),
 	}
 	shell, _ := registry.contribution("shell")
-	script := `hpatch 'in existing.txt
-type "old" "new"
-new added.txt
-type "first\nsecond\n"'`
+	if err := os.WriteFile(filepath.Join(directory, "added.txt"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	script := `hpatch existing.txt 'type "old" "new"' added.txt 'append "first\nsecond\n"'`
 	result, err := executeShellTool(t.Context(), manifest, registry.RuntimeRoot, &shell,
 		[]string{"bash", script}, nil, directory,
 		append(os.Environ(), "CODEX_THREAD_ID="+child), sink, nil, nil)
@@ -70,8 +70,8 @@ type "first\nsecond\n"'`
 		t.Fatalf("activity missing Edit label: %q", text)
 	}
 	for _, want := range []string{
-		commentaryCode("existing.txt") + " +1 -1",
-		commentaryCode("added.txt") + " +2 -0",
+		commentaryCode(existing) + " +1 -1",
+		commentaryCode(filepath.Join(directory, "added.txt")) + " +2 -0",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("activity %q missing %q", text, want)
@@ -95,8 +95,7 @@ type "first\nsecond\n"'`
 	}
 
 	rejected, err := executeShellTool(t.Context(), manifest, registry.RuntimeRoot, &shell,
-		[]string{"bash", `hpatch 'in existing.txt
-type "missing" "bad"'`}, nil, directory,
+		[]string{"bash", `hpatch existing.txt 'type "missing" "bad"'`}, nil, directory,
 		append(os.Environ(), "CODEX_THREAD_ID="+child), sink, nil, nil)
 	if err != nil || rejected.ExitCode == 0 {
 		t.Fatalf("rejected execution=%+v err=%v", rejected, err)
@@ -130,7 +129,7 @@ type "missing" "bad"'`}, nil, directory,
 		t.Fatalf("successful recovery messages=%d", len(recovered))
 	}
 	recoveryText := commentaryText(t, recovered[0])
-	if !strings.Contains(recoveryText, "Edit "+commentaryCode("existing.txt")+" +1 -1") ||
+	if !strings.Contains(recoveryText, "Edit "+commentaryCode(existing)+" +1 -1") ||
 		strings.Contains(recoveryText, "--recover") || strings.Contains(recoveryText, handle) {
 		t.Fatalf("successful recovery activity=%q", recoveryText)
 	}
