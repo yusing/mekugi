@@ -20,15 +20,17 @@ type liveDiffScope struct {
 }
 
 type autoLiveDiff struct {
-	notice     func(string, string)
-	events     *liveDiffBroker
-	enabled    atomic.Bool
-	mu         sync.Mutex
-	requested  bool
-	workspace  string
-	scope      liveDiffScope
-	scopeBytes int
-	changed    chan struct{}
+	notice       func(string, string)
+	events       *liveDiffBroker
+	enabled      atomic.Bool
+	mu           sync.Mutex
+	requested    bool
+	workspace    string
+	scope        liveDiffScope
+	scopeBytes   int
+	turn         liveDiffTurn
+	turnComplete bool
+	changed      chan struct{}
 }
 
 func newAutoLiveDiff(ctx context.Context, replay string) (*autoLiveDiff, func()) {

@@ -259,7 +259,13 @@ func (a *requestAttempt) prepare() error {
 		}
 	}
 	if a.mekugiTransform != nil && a.metadataValid {
-		a.executor.mekugiCalls.autoLiveDiff.observe(a.mekugiTransform.directory, a.mekugiTransform.threadID, a.metadata)
+		auto := a.executor.mekugiCalls.autoLiveDiff
+		auto.observe(a.mekugiTransform.directory, a.mekugiTransform.threadID, a.metadata)
+		_, continuingJournal := a.startCtx.Value(journalContinuationKey{}).(journalContinuation)
+		exchange, webSocket := a.executor.provider.(*webSocketExchange)
+		if !continuingJournal && (!webSocket || !exchange.automatic) {
+			auto.beginTurn(a.mekugiTransform.directory, a.mekugiTransform.threadID, a.metadata)
+		}
 	}
 	if a.mekugiTransform != nil {
 		a.mekugiTransform.featureTrace = a.trace

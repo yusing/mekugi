@@ -303,8 +303,9 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 	}
 	if t.journalTerminalReady() && (envelope.Type == "response.completed" || envelope.Status == "completed") {
 		t.storageIdle = true
+		t.finishLiveDiffTurn()
 	}
-	if len(t.journalDeliveries) == 0 && t.journalUsageID == "" {
+	if len(t.journalDeliveries) == 0 && t.journalUsageID == "" && t.liveDiffUsageID == "" {
 		return
 	}
 	items := append(envelope.Output, envelope.Response.Output...)
@@ -313,6 +314,10 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 	}
 	for _, item := range items {
 		id := jsonString(item, "id")
+		if id != "" && (id == t.journalUsageID || id == t.liveDiffUsageID) {
+			t.finishLiveDiffTurn()
+			t.liveDiffUsageID = ""
+		}
 		if id == t.journalUsageID {
 			t.proxy.activity.collect(t.threadID, id, "usage", commentaryMessageText(item))
 			t.journalUsageID = ""

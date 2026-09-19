@@ -34,12 +34,13 @@ type liveDiffChange struct {
 }
 
 type liveDiffEvent struct {
-	Kind    string
-	Scope   *liveDiffScope   `json:",omitempty"`
-	Changes []liveDiffChange `json:",omitempty"`
-	Status  string           `json:",omitempty"`
-	Preview *liveDiffPreview `json:",omitempty"`
-	Resync  bool             `json:",omitzero"`
+	Kind         string
+	Scope        *liveDiffScope   `json:",omitempty"`
+	Changes      []liveDiffChange `json:",omitempty"`
+	Status       string           `json:",omitempty"`
+	Preview      *liveDiffPreview `json:",omitempty"`
+	TurnRevision uint64           `json:",omitzero"`
+	Resync       bool             `json:",omitzero"`
 }
 
 type liveDiffSubscriber struct {
@@ -52,12 +53,14 @@ type liveDiffSubscriber struct {
 // The router owns this hub. Enqueueing never waits for a renderer or performs
 // network I/O, including when called at the durable publication boundary.
 type liveDiffBroker struct {
-	ctx        context.Context
-	mu         sync.Mutex
-	connection liveDiffConnection
-	scope      liveDiffScope
-	subs       map[*liveDiffSubscriber]bool
-	previews   map[string]liveDiffPreview
+	ctx          context.Context
+	mu           sync.Mutex
+	connection   liveDiffConnection
+	scope        liveDiffScope
+	subs         map[*liveDiffSubscriber]bool
+	turnRevision uint64
+	turnStatus   string
+	previews     map[string]liveDiffPreview
 }
 
 func newLiveDiffBroker(ctx context.Context) *liveDiffBroker {
@@ -167,6 +170,18 @@ func (b *liveDiffBroker) publish(changes []liveDiffChange) {
 	}
 }
 
+func (b *liveDiffBroker) publishTurn(active bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	status := "completed"
+	if active {
+		status = "active"
+	}
+	b.turnStatus = status
+	b.turnRevision++
+	b.emitLocked(liveDiffEvent{Kind: "turn", Status: status, TurnRevision: b.turnRevision})
+}
+
 func (b *liveDiffBroker) subscribe() *liveDiffSubscriber {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -177,6 +192,9 @@ func (b *liveDiffBroker) subscribe() *liveDiffSubscriber {
 	event := b.scopeEventLocked()
 	event.Resync = true
 	sub.events <- event
+	if b.turnStatus != "" {
+		sub.events <- liveDiffEvent{Kind: "turn", Status: b.turnStatus, TurnRevision: b.turnRevision}
+	}
 	for _, preview := range b.previews {
 		sub.previews = append(sub.previews, preview)
 	}
@@ -216,6 +234,14 @@ func (b *liveDiffBroker) serveEvents(w http.ResponseWriter, r *http.Request) {
 	// The snapshot barrier must precede the separate preview mailbox.
 	if write(<-sub.events) != nil {
 		return
+	}
+	// Restore retained turn state before replaceable preview snapshots.
+	select {
+	case event := <-sub.events:
+		if write(event) != nil {
+			return
+		}
+	default:
 	}
 	heartbeat := time.NewTicker(10 * time.Second)
 	defer heartbeat.Stop()

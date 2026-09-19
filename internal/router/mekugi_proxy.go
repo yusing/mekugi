@@ -196,6 +196,7 @@ type mekugiCommentaryState struct {
 
 type mekugiJournalState struct {
 	journalDeliveries      map[string]journalDelivery
+	liveDiffUsageID        string
 	journalUsageID         string
 	journalQuietFile       os.FileInfo
 	journalLiveBytes       int

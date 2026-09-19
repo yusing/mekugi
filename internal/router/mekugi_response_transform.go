@@ -531,6 +531,9 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		}
 		usageMessage = nil
 	}
+	if usageMessage != nil {
+		t.liveDiffUsageID = jsonString(usageMessage, "id")
+	}
 	t.subagentResponses = t.retainCommentary(t.subagentResponses...)
 	// SSE terminal events own completion even when the embedded status is absent.
 	// JSON responses have no event envelope and retain body-status semantics.

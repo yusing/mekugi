@@ -235,8 +235,12 @@ changes. The actual post-expansion edit report and captured diff arrive after ho
 
 Previews remain separately labeled, never composed into applied history or treated
 as receipts. The pane defaults to a full-height stream view. `v` switches between
-stream and captured diff views; there is no split layout or automatic mode switch
-when calls finish or captures arrive. The footer identifies the selected view and
+stream and captured diff views; there is no split layout. At the root turn's
+terminal token-metrics and journal-flush boundary, the pane automatically switches
+to diff. The next accepted user turn switches it back to stream. Individual tool
+calls, captures, and subagent completions do not switch views. Manual `v` choices
+last until the next turn transition; reconnecting does not replay an already seen
+transition over that choice. The footer identifies the selected view and
 the switch key. Stream mode ignores captured-diff navigation, flushing, and wheel
 input. Switching views preserves captured-diff navigation and follow/pause state.
 Streaming keeps the newest changed source row's final wrapped fragment visible,
@@ -255,7 +259,7 @@ speculative combined file result.
 
 Completion, rejection, interruption, or transform closure marks that call's preview
 complete without hiding its last frame on a timer. Stream view persists between
-calls until the owning session closes. A new call replaces completed cards, but
+calls until the root turn completes; the owning session's exit closes the viewer. A new call replaces completed cards, but
 never active cards; completion of one call cannot hide another. Retention stays
 bounded by the active-card limit rather than accumulating session history.
 New captures, explicit resume, and terminal resize recenter the captured change

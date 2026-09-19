@@ -383,8 +383,9 @@ to the right without changing focus. It does not start an interactive shell firs
 Read-only turns and redirected input/output do not open a pane. The view
 combines main-agent and subagent file edits, excluding Git and shell changes.
 The pane starts in stream view and keeps the latest streamed input visible between
-calls. Streaming previews are provisional until application is reported. Press `v`
-to switch between full-pane stream and captured diff views.
+calls. It switches to diff with the turn's token metrics and journal flush, then back
+to stream for your next prompt. Press `v` to switch views manually between those
+transitions. Streaming previews are provisional until application is reported.
 
 To try the same UI without Codex or Herdr:
 

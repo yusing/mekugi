@@ -28,6 +28,7 @@ type liveDiffTerminalController struct {
 
 	previewFrame      *time.Timer
 	previewFrameC     <-chan time.Time
+	turnRevision      uint64
 	diffMode          bool
 	renderer          liveDiffRenderer
 	rendering         liveDiffRender
@@ -276,6 +277,13 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 	case "end":
 		return true, nil
 	case "heartbeat":
+	case "turn":
+		if event.TurnRevision > c.turnRevision {
+			c.turnRevision = event.TurnRevision
+			c.diffMode = event.Status == "completed"
+			c.dirty = true
+			c.followDirty = c.diffMode && c.view.following
+		}
 	case "coverage":
 		c.coverage, c.dirty = event.Status, true
 		if strings.HasPrefix(c.coverage, "RECONNECTING:") {

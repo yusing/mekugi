@@ -112,6 +112,10 @@ func validateLiveDiffEvent(event liveDiffEvent) error {
 		if event.Preview == nil || event.Preview.ID == "" {
 			return errors.New("missing streaming preview")
 		}
+	case "turn":
+		if event.TurnRevision == 0 || event.Status != "active" && event.Status != "completed" {
+			return errors.New("invalid live diff turn status")
+		}
 	case "coverage", "heartbeat", "end":
 	case "error":
 		return errors.New(event.Status)

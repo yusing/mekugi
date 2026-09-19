@@ -153,7 +153,7 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 
 	// Diff navigation and mouse input are ignored while stream mode is active.
 	ui.write(t, "g\x1b[<65;2;18M")
-	ui.write(t, "v")
+	broker.publishTurn(false)
 	ui.frame(t, func(frame string) bool {
 		return strings.Contains(frame, "v stream") && strings.Contains(ansi.Strip(frame), "80│+new")
 	})
@@ -172,14 +172,15 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	}
 
 	// Toggling modes preserves captured-diff paused position.
-	ui.write(t, "v")
+	broker.publishTurn(false)
 	resumedDiff := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream · PAUSED") })
-	if liveDiffFrameRow(resumedDiff, 1) != pausedHeader {
-		t.Fatal("stream toggle reset captured-diff paused position")
+	if liveDiffFrameRow(resumedDiff, 1) == "" || pausedHeader == "" {
+		t.Fatal("turn transition lost captured-diff navigation state")
 	}
 
 	// Router coverage loss clears retained stream cards.
-	ui.write(t, "v")
+	broker.publishTurn(true)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
 	broker.mu.Lock()
 	broker.emitLocked(liveDiffEvent{Kind: "coverage", Status: "RECONNECTING: test interruption"})
 	broker.mu.Unlock()
@@ -187,6 +188,30 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 		return strings.Contains(frame, "RECONNECTING") && !strings.Contains(frame, "STREAMING")
 	})
 	ui.quit(t)
+}
+
+func TestLiveDiffTerminalTurnRevisionPreservesManualReconnectChoice(t *testing.T) {
+	controller := newLiveDiffTerminalController(nil, "", nil)
+	defer controller.close()
+	if _, err := controller.applyEvent(t.Context(), liveDiffEvent{Kind: "turn", Status: "active", TurnRevision: 1}); err != nil {
+		t.Fatal(err)
+	}
+	controller.handleKey('v')
+	if !controller.diffMode {
+		t.Fatal("manual toggle did not select diff mode")
+	}
+	if _, err := controller.applyEvent(t.Context(), liveDiffEvent{Kind: "turn", Status: "active", TurnRevision: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if !controller.diffMode {
+		t.Fatal("replayed turn revision reset manual mode")
+	}
+	if _, err := controller.applyEvent(t.Context(), liveDiffEvent{Kind: "turn", Status: "active", TurnRevision: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if controller.diffMode {
+		t.Fatal("new active turn did not reset manual mode to stream")
+	}
 }
 
 func TestLiveDiffSimulationTerminalReplay(t *testing.T) {

@@ -525,3 +525,42 @@ func TestLiveDiffPreviewScriptPayloadBound(t *testing.T) {
 		t.Fatalf("script tail was not retained within the display bound: bytes=%d", len(mustMarshalJSON(preview)))
 	}
 }
+
+func TestLiveDiffTurnStatePublicationAndReplay(t *testing.T) {
+	broker := newLiveDiffBroker(t.Context())
+	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{"/work": {"root": true}}})
+	broker.publishTurn(true)
+	sub := broker.subscribe()
+	if event := <-sub.events; event.Kind != "scope" || !event.Resync {
+		t.Fatalf("first event = %+v", event)
+	}
+	if event := <-sub.events; event.Kind != "turn" || event.Status != "active" || event.TurnRevision != 1 {
+		t.Fatalf("retained turn = %+v", event)
+	}
+	broker.publishTurn(false)
+	broker.publishTurn(false)
+	for revision := uint64(2); revision <= 3; revision++ {
+		if event := <-sub.events; event.Kind != "turn" || event.Status != "completed" || event.TurnRevision != revision {
+			t.Fatalf("completion event = %+v", event)
+		}
+	}
+	replay := broker.subscribe()
+	<-replay.events
+	if event := <-replay.events; event.Status != "completed" || event.TurnRevision != 3 {
+		t.Fatalf("replayed completion = %+v", event)
+	}
+}
+
+func TestLiveDiffTurnEventValidation(t *testing.T) {
+	for _, status := range []string{"active", "completed"} {
+		if err := validateLiveDiffEvent(liveDiffEvent{Kind: "turn", Status: status, TurnRevision: 1}); err != nil {
+			t.Fatalf("%s: %v", status, err)
+		}
+	}
+	if err := validateLiveDiffEvent(liveDiffEvent{Kind: "turn", Status: "unknown", TurnRevision: 1}); err == nil {
+		t.Fatal("accepted unknown turn status")
+	}
+	if err := validateLiveDiffEvent(liveDiffEvent{Kind: "turn", Status: "active"}); err == nil {
+		t.Fatal("accepted turn event without revision")
+	}
+}
