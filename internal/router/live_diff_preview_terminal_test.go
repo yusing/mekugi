@@ -129,6 +129,7 @@ func liveDiffFrameRow(frame string, row int) string {
 }
 
 func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -215,56 +216,61 @@ func TestLiveDiffTerminalTurnRevisionPreservesManualReconnectChoice(t *testing.T
 }
 
 func TestLiveDiffSimulationTerminalReplay(t *testing.T) {
+	t.Parallel()
 	// Two runs of the same user command exercise deterministic replay, isolated
 	// cleanup, actual delta projection, and the same terminal UI users receive.
-	for range 2 {
-		directory := t.TempDir()
-		ui := startLiveDiffTerminal(t, "", "", "", 22, "MEKUGI_LIVE_DIFF_SIMULATION_TEST=1", "TMPDIR="+directory)
-		ui.frame(t, func(frame string) bool {
-			return strings.Contains(frame, "STREAMING PREVIEW") && strings.Contains(ansi.Strip(frame), "/api/")
+	for run := range 2 {
+		t.Run(fmt.Sprint(run), func(t *testing.T) {
+			t.Parallel()
+			directory := t.TempDir()
+			ui := startLiveDiffTerminal(t, "", "", "", 22, "MEKUGI_LIVE_DIFF_SIMULATION_TEST=1", "TMPDIR="+directory)
+			ui.frame(t, func(frame string) bool {
+				return strings.Contains(frame, "STREAMING PREVIEW") && strings.Contains(ansi.Strip(frame), "/api/")
+			})
+			ui.write(t, "vg")
+			ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
+			ui.write(t, "v")
+			ui.frame(t, func(frame string) bool { return strings.Contains(frame, "ROUTES_READY") })
+			ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "demo requests") })
+			// Exercise real code, not just synthetic repeated rows, at a narrow size.
+			if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 22, Cols: 60}); err != nil {
+				t.Fatal(err)
+			}
+			ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "response.Code") })
+			ui.frame(t, func(frame string) bool {
+				return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "SHELL_TIP")
+			})
+			shellFrame := ui.frame(t, func(frame string) bool {
+				return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "FUNCTIONS_SHELL_TIP")
+			})
+			if !strings.Contains(ansi.Strip(shellFrame), "STREAMING SCRIPT") {
+				t.Fatal("standalone shell simulation lost its full-pane stream")
+			}
+			ui.frame(t, func(frame string) bool {
+				return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "lifecycle.go")
+			})
+			ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "without final newline") })
+			ui.frame(t, func(frame string) bool { return strings.Contains(frame, "rejected as expected") })
+			ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "INTERRUPTED_TIP") })
+			ui.frame(t, func(frame string) bool {
+				return strings.Contains(frame, "SIMULATION: finished") && strings.Contains(frame, "STREAMING COMPLETE")
+			})
+			ui.write(t, "v")
+			final := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
+			if !strings.Contains(final, "DIFF · v stream") {
+				t.Fatal("simulation altered captured-diff paused state")
+			}
+			ui.quit(t)
+			entries, err := os.ReadDir(directory)
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("simulation left temporary state: %v %v", entries, err)
+			}
 		})
-		ui.write(t, "vg")
-		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
-		ui.write(t, "v")
-		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "ROUTES_READY") })
-		ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "demo requests") })
-		// Exercise real code, not just synthetic repeated rows, at a narrow size.
-		if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 22, Cols: 60}); err != nil {
-			t.Fatal(err)
-		}
-		ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "response.Code") })
-		ui.frame(t, func(frame string) bool {
-			return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "SHELL_TIP")
-		})
-		shellFrame := ui.frame(t, func(frame string) bool {
-			return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "FUNCTIONS_SHELL_TIP")
-		})
-		if !strings.Contains(ansi.Strip(shellFrame), "STREAMING SCRIPT") {
-			t.Fatal("standalone shell simulation lost its full-pane stream")
-		}
-		ui.frame(t, func(frame string) bool {
-			return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "lifecycle.go")
-		})
-		ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "without final newline") })
-		ui.frame(t, func(frame string) bool { return strings.Contains(frame, "rejected as expected") })
-		ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "INTERRUPTED_TIP") })
-		ui.frame(t, func(frame string) bool {
-			return strings.Contains(frame, "SIMULATION: finished") && strings.Contains(frame, "STREAMING COMPLETE")
-		})
-		ui.write(t, "v")
-		final := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
-		if !strings.Contains(final, "DIFF · v stream") {
-			t.Fatal("simulation altered captured-diff paused state")
-		}
-		ui.quit(t)
-		entries, err := os.ReadDir(directory)
-		if err != nil || len(entries) != 0 {
-			t.Fatalf("simulation left temporary state: %v %v", entries, err)
-		}
 	}
 }
 
 func TestLiveDiffTerminalComposedContextIsNotDuplicated(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -298,6 +304,7 @@ func TestLiveDiffTerminalComposedContextIsNotDuplicated(t *testing.T) {
 }
 
 func TestLiveDiffTerminalStandaloneShellStream(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	store, err := openMekugiReplayStore(t.TempDir())
@@ -367,6 +374,7 @@ func TestLiveDiffTerminalStandaloneShellStream(t *testing.T) {
 }
 
 func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
+	t.Parallel()
 	for _, tool := range []string{"shell"} {
 		t.Run(tool, func(t *testing.T) {
 			workspace := t.TempDir()
@@ -417,6 +425,7 @@ func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
 }
 
 func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -479,6 +488,7 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 }
 
 func TestLiveDiffTerminalShellHpatchDiff(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.txt")
 	if err := os.WriteFile(path, []byte("old\n"), 0600); err != nil {

@@ -161,56 +161,72 @@ func executeReadBundle(ctx context.Context, manifest toolWorkerManifest, runtime
 		stream.owner.mu.Lock()
 		defer stream.owner.mu.Unlock()
 		limit := min(budget, stream.owner.remaining)
-		fits := func(output string) (bool, error) {
-			selected, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, runtime,
-				[]string{strconv.Itoa(max(1, limit)), "shell", output, ""})
+		fits := func(outputs ...string) ([]bool, error) {
+			arguments := make([][]string, len(outputs))
+			for i, output := range outputs {
+				arguments[i] = []string{strconv.Itoa(max(1, limit)), "shell", output, ""}
+			}
+			selected, err := toolplugin.FormatOutputBatch(ctx, manifest.NodeExecutable, runtime, arguments)
 			if err != nil {
-				return false, err
+				return nil, err
 			}
-			var selection struct {
-				Text string `json:"text"`
+			fits := make([]bool, len(outputs))
+			for i, result := range selected {
+				var selection struct {
+					Text *string `json:"text"`
+				}
+				if result.ExitCode != 0 || json.Unmarshal([]byte(result.Stdout), &selection) != nil || selection.Text == nil {
+					return nil, errors.New("invalid bundle output selection")
+				}
+				fits[i] = limit > 0 && *selection.Text == outputs[i]
 			}
-			if selected.ExitCode != 0 || json.Unmarshal([]byte(selected.Stdout), &selection) != nil {
-				return false, errors.New("invalid bundle output selection")
-			}
-			return limit > 0 && selection.Text == output, nil
+			return fits, nil
 		}
-		ok, err := fits(output)
+		ok, err := fits(output, renderReadBundle(trimReadBundle(entries, 0)))
 		if err != nil {
 			return err
 		}
-		if !ok {
-			best := trimReadBundle(entries, 0)
-			ok, err = fits(renderReadBundle(best))
-			if err != nil {
-				return err
+		// If even the manifest cannot fit, preserve normal outer retention
+		// rather than changing execution into a display-budget failure.
+		if !ok[0] && ok[1] {
+			lower, upper := 0, 0
+			for _, entry := range entries {
+				upper = max(upper, len(strings.SplitAfter(entry.shown, "\n")))
 			}
-			// If even the manifest cannot fit, preserve normal outer retention
-			// rather than changing execution into a display-budget failure.
-			if ok {
-				upper := 0
-				for _, entry := range entries {
-					upper = max(upper, len(strings.SplitAfter(entry.shown, "\n")))
+			// Evaluate two binary-search levels in one tokenizer host. At most
+			// three candidates are rendered, and only the original branch path
+			// is followed; unused speculative results cannot change the ceiling.
+			for lower+1 < upper {
+				middle := lower + (upper-lower)/2
+				ceilings := []int{middle}
+				if lower+1 < middle {
+					ceilings = append(ceilings, lower+(middle-lower)/2)
 				}
-				// Search a shared row ceiling without rereading sources or persisting
-				// discarded candidates. Every accepted candidate is measured in the
-				// same escaped-token representation as the outer shell display.
-				for lower := 0; lower+1 < upper; {
-					middle := lower + (upper-lower)/2
-					candidate := trimReadBundle(entries, middle)
-					ok, err = fits(renderReadBundle(candidate))
-					if err != nil {
-						return err
+				if middle+1 < upper {
+					ceilings = append(ceilings, middle+(upper-middle)/2)
+				}
+				outputs := make([]string, len(ceilings))
+				for i, ceiling := range ceilings {
+					outputs[i] = renderReadBundle(trimReadBundle(entries, ceiling))
+				}
+				ok, err = fits(outputs...)
+				if err != nil {
+					return err
+				}
+				for range 2 {
+					if lower+1 >= upper {
+						break
 					}
-					if ok {
-						lower, best = middle, candidate
+					middle = lower + (upper-lower)/2
+					if ok[slices.Index(ceilings, middle)] {
+						lower = middle
 					} else {
 						upper = middle
 					}
 				}
-				entries = best
-				output = renderReadBundle(entries)
 			}
+			entries = trimReadBundle(entries, lower)
+			output = renderReadBundle(entries)
 		}
 	}
 	for _, entry := range entries {

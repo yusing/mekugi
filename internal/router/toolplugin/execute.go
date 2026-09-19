@@ -73,6 +73,12 @@ func Execute(
 	return result.ExecutionOutput, err
 }
 
+// Formatting batches share one tokenizer startup, not executable plugin state.
+const maxFormatOutputBatchSize = 3
+
+// The whole batch shares the existing single-execution source and output bounds.
+const maxFormatOutputBatchBytes = ExecutionOutputBudgetBytes
+
 // FormatOutput loads only the shared tokenizer, not executable tool declarations
 // or the WASM source-analysis core. It owns no workspace or inherited input.
 func FormatOutput(ctx context.Context, node, runtimeRoot string, arguments []string) (ExecutionOutput, error) {
@@ -85,6 +91,51 @@ func FormatOutput(ctx context.Context, node, runtimeRoot string, arguments []str
 	err := invoke(ctx, node, filepath.Join(runtimeRoot, hostFilename), request.SnapshotRoot,
 		"", nil, maxEncodedExecutionHostOutputBytes, nil, nil, request, &result)
 	return result, err
+}
+
+// FormatOutputBatch formats up to three candidates in order in a single one-shot
+// host. Aggregate arguments and encoded responses retain single-call byte bounds.
+func FormatOutputBatch(ctx context.Context, node, runtimeRoot string, arguments [][]string) ([]ExecutionOutput, error) {
+	if len(arguments) == 0 || len(arguments) > maxFormatOutputBatchSize {
+		return nil, fmt.Errorf("formatting batch must contain 1 to %d candidates", maxFormatOutputBatchSize)
+	}
+	bytes := 0
+	for _, candidate := range arguments {
+		if len(candidate) != 4 {
+			return nil, fmt.Errorf("formatting candidate must contain four arguments")
+		}
+		for _, argument := range candidate {
+			if len(argument) > maxFormatOutputBatchBytes-bytes {
+				return nil, fmt.Errorf("formatting batch arguments exceed %d bytes", maxFormatOutputBatchBytes)
+			}
+			bytes += len(argument)
+		}
+	}
+	request := struct {
+		Operation    string     `json:"operation"`
+		SnapshotRoot string     `json:"snapshotRoot"`
+		Arguments    [][]string `json:"arguments"`
+	}{"format-output-batch", filepath.Join(runtimeRoot, snapshotDirectory), arguments}
+	var response []*struct {
+		Stdout   *string `json:"stdout"`
+		Stderr   string  `json:"stderr"`
+		ExitCode *int    `json:"exitCode"`
+	}
+	if err := invoke(ctx, node, filepath.Join(runtimeRoot, hostFilename), request.SnapshotRoot,
+		"", nil, maxEncodedExecutionHostOutputBytes, nil, nil, request, &response); err != nil {
+		return nil, err
+	}
+	if len(response) != len(arguments) {
+		return nil, fmt.Errorf("formatting batch returned %d results for %d candidates", len(response), len(arguments))
+	}
+	results := make([]ExecutionOutput, len(response))
+	for i, result := range response {
+		if result == nil || result.Stdout == nil || result.ExitCode == nil {
+			return nil, fmt.Errorf("formatting batch result %d is incomplete", i)
+		}
+		results[i] = ExecutionOutput{Stdout: *result.Stdout, Stderr: result.Stderr, ExitCode: *result.ExitCode}
+	}
+	return results, nil
 }
 
 type CommandRouting struct {

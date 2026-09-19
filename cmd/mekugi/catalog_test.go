@@ -61,7 +61,11 @@ func TestCatalogCommandProcess(t *testing.T) {
 	case "oversized":
 		fmt.Fprint(os.Stdout, strings.Repeat(" ", (8<<20)+1))
 	case "wait":
+		if err := os.WriteFile(os.Getenv("MEKUGI_TEST_CATALOG_READY"), nil, 0o600); err != nil {
+			os.Exit(3)
+		}
 		time.Sleep(time.Minute)
+
 	default:
 		if path := os.Getenv("MEKUGI_TEST_CATALOG_ARGS"); path != "" {
 			cwd, _ := os.Getwd()
@@ -87,6 +91,41 @@ func catalogTestExecutable(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// Cancel only once the actual bootstrap child has started waiting. The deadline
+// is failure headroom, not a delay paid by every successful test.
+func cancelWhenCatalogReady(t *testing.T) context.Context {
+	t.Helper()
+	ready := filepath.Join(t.TempDir(), "ready")
+	t.Setenv("MEKUGI_TEST_CATALOG_READY", ready)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	t.Cleanup(cancel)
+	go func() {
+		ticker := time.NewTicker(time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if _, err := os.Stat(ready); err == nil {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	return ctx
+}
+
+func TestPrepareGrokCatalogExpiredDeadline(t *testing.T) {
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	defer cancel()
+	directory, path, err := prepareGrokCatalog(ctx, "not-launched", "http://127.0.0.1:12345/v1", nil)
+	if !errors.Is(err, context.DeadlineExceeded) || directory != "" || path != "" || strings.Contains(err.Error(), "configuration") {
+		t.Fatalf("deadline result = %q, %q, %v", directory, path, err)
+	}
 }
 
 func TestPrepareGrokCatalog(t *testing.T) {
@@ -143,16 +182,14 @@ func TestPrepareGrokCatalogFailure(t *testing.T) {
 			t.Setenv("TMPDIR", temp)
 			ctx := t.Context()
 			if mode == "wait" {
-				var cancel context.CancelFunc
-				ctx, cancel = context.WithTimeout(ctx, 2*time.Second)
-				defer cancel()
+				ctx = cancelWhenCatalogReady(t)
 			}
 			directory, path, err := prepareGrokCatalog(ctx, executable, "http://127.0.0.1:12345/v1", nil)
 			if err == nil || directory != "" || path != "" || strings.Contains(err.Error(), "private bootstrap diagnostic") {
 				t.Fatalf("failure result = %q, %q, %v", directory, path, err)
 			}
-			if mode == "wait" && (!errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "configuration")) {
-				t.Fatalf("timeout misclassified: %v", err)
+			if mode == "wait" && (!errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "configuration")) {
+				t.Fatalf("cancellation misclassified: %v", err)
 			}
 			if entries, err := os.ReadDir(temp); err != nil || len(entries) != 0 {
 				t.Fatalf("failed catalog leaked files: %v, %v", entries, err)
@@ -262,13 +299,12 @@ func TestCatalogProgressOutput(t *testing.T) {
 				body, _ := io.ReadAll(reader)
 				output <- body
 			}()
-			ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
-			defer cancel()
+			ctx := cancelWhenCatalogReady(t)
 			_, _, err = prepareGrokCatalog(ctx, executable, "http://127.0.0.1:12345/v1", nil)
 			writer.Close()
 			body := string(<-output)
-			if !errors.Is(err, context.DeadlineExceeded) {
-				t.Fatalf("timeout result: %v", err)
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("cancellation result: %v", err)
 			}
 			if !interactive && !strings.Contains(body, "preparing Grok/OpenCode model catalog") {
 				t.Fatalf("missing preparation feedback: %q", body)

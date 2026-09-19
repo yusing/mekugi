@@ -12,6 +12,7 @@ import (
 )
 
 func TestLiveDiffSimulationRealGoFlows(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
 	workspace := t.TempDir()
@@ -83,6 +84,7 @@ func TestLiveDiffSimulationRealGoFlows(t *testing.T) {
 }
 
 func TestLiveDiffSimulationRepeatCancellation(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	workspace := t.TempDir()

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/patchtest"
 )
 
@@ -14,7 +15,7 @@ func TestRunMekugiAcceptsFinalStateReportAndPreservesUnrelatedFiles(t *testing.T
 			"target.txt":    "old\n",
 			"unrelated.txt": "keep\n",
 		},
-		script: "in target.txt\ntype 1:cba0 \"old\" \"new\"\n",
+		edits: []mekugi.FileEdit{{Path: "target.txt", Script: "type 1:cba0 \"old\" \"new\"\n"}},
 	}
 	got, err := runMekugi(scenario)
 	if err != nil {
@@ -27,11 +28,11 @@ func TestRunMekugiAcceptsFinalStateReportAndPreservesUnrelatedFiles(t *testing.T
 
 func TestRunMekugiRejectsMalformedAndFutureCommands(t *testing.T) {
 	for _, script := range []string{
-		"in target.txt\ntype 1:cba0\n",
+		"type 1:cba0\n",
 		"future-command\n",
 	} {
 		t.Run(strings.TrimSpace(script), func(t *testing.T) {
-			_, err := runMekugi(scenario{initial: map[string]string{"target.txt": "old\n"}, script: script})
+			_, err := runMekugi(scenario{initial: map[string]string{"target.txt": "old\n"}, edits: []mekugi.FileEdit{{Path: "target.txt", Script: script}}})
 			if err == nil || !strings.Contains(err.Error(), "applying HPATCH script") {
 				t.Fatalf("runMekugi() error = %v", err)
 			}

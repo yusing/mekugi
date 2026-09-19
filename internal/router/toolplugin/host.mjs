@@ -826,6 +826,24 @@ async function main() {
       response = rewriteCommand(validateArguments(request.arguments));
       break;
     }
+    case "format-output-batch": {
+      if (!Array.isArray(request.arguments) || request.arguments.length === 0 || request.arguments.length > 3) {
+        throw new Error("formatting batch must contain 1 to 3 candidates");
+      }
+      const candidates = request.arguments.map(validateArguments);
+      let bytes = 0;
+      for (const candidate of candidates) {
+        for (const argument of candidate) {
+          bytes += byteLength(argument);
+          if (bytes > 16 * 1024 * 1024) {
+            throw new Error("formatting batch arguments exceed 16777216 bytes");
+          }
+        }
+      }
+      const {formatHRunOutput} = await import(pathToFileURL(path.join(snapshotRoot, "builtin/hrun.js")).href);
+      response = candidates.map(formatHRunOutput);
+      break;
+    }
     case "format-output": {
       const {formatHRunOutput} = await import(pathToFileURL(path.join(snapshotRoot, "builtin/hrun.js")).href);
       response = formatHRunOutput(validateArguments(request.arguments));

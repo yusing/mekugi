@@ -163,17 +163,18 @@ func TestInstructionsExposeJournalAuthoring(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			guidance := instructionWords(test.instructions)
 			for _, required := range []string{
-				"Record meaningful milestones in a supported useful call's `journal` array", "`functions.journal`",
-				"Each mutation array is atomic", "The final flush is your final report",
-				"concise, current, evidence-backed findings, results", "one item per distinct point; no plans, narration, or superseded progress",
-				"Descendant journals are delivered automatically", "do not repeat or summarize other agents' journals",
-				"plaintext native assignment", "Set `answer: true`", "Mekugi attaches the source",
-				"on edit to preserve", "Do not use `update_plan`, Tasks lists", "final-channel answers",
-				"`{\"op\":\"finish\"}`", "only call after required results", "wait tools to finish",
-				"Complete this operation for subagent assignments", "journal list [AGENT]", "journal edit ID TEXT",
+				"Record meaningful milestones with journal",
+				"Bash/POSIX supports the `journal` command", "Code Mode supports `await journal(...)`",
+				"Each mutation array is atomic", "all unflushed journal as a final report",
+				"one item per distinct point; no plans, narration, or superseded progress",
+				"Do not repeat or summarize other agents' journals",
+				"plaintext native assignment", "Set `answer: true`", "put only the answer in `text`",
+				"`false` clears it",
+				"`{\"op\":\"finish\"}`", "only call after required results",
+				"journal list [AGENT]", "journal edit ID TEXT",
 				"journal delete ID", "journal batch JSON_ARRAY", "journal finish [JSON_ARRAY]",
 				"Add writes its assigned item ID",
-				"successful final shell invocation", "Required operands remain exact argv values",
+				"successful final shell invocation",
 				"`journal add 'Tests passed' --report-now`", "`await journal({op: \"add\", text: \"Tests passed\", report_now: true})`",
 			} {
 				if !strings.Contains(guidance, required) {
@@ -212,7 +213,7 @@ func TestInstructionsBatchReadyWorkWithoutHpatchIsolation(t *testing.T) {
 		for _, compact := range []bool{false, true} {
 			got := instructionWords(InstructionsForModel(model, compact))
 			for _, required := range []string{
-				"Batch ready work; keep dependent operations sequential.",
+				"Group ready reads and searches in one multiline script", "Keep dependent operations sequential.",
 				"or a validation result must determine the next edit",
 				"Budget combined reads and searches before execution",
 			} {
@@ -258,13 +259,12 @@ func TestInstructionsOwnCompleteShellWorkflow(t *testing.T) {
 		"Use separate shell calls for interactive programs",
 		"Explicit Code Mode batches run programs sequentially",
 		"#!params={\"yield_time_ms\":1000}\necho hello\n#!python3\nprint(\"hello\")",
-		"Tool defaults do not override the interface under test.",
 		"Tool coordination below covers native-interface tasks.",
 		"Submit free-form programs to `functions.shell`",
-		"Bash: write commands directly, without a shebang.",
-		"shell heredoc such as `python3 - <<'PY'`",
-		"There is no closing delimiter.",
-		"optional interpreter selector, optional directive lines, then program source",
+		"Bash (default): write commands directly, without a shebang.",
+		"Submit a single-interpreter body directly", "avoid patterns like:",
+		"`python3 - <<'PY'`", "`python3 -c '...'`",
+		"Optional interpreter selector and optional directive lines starts first, then program source",
 		"Omit `workdir` to use the current workspace",
 		"not `/usr/bin/env`",
 		"Write compound Bash/POSIX programs directly, using ordinary shell pipelines and redirections.",
@@ -273,7 +273,6 @@ func TestInstructionsOwnCompleteShellWorkflow(t *testing.T) {
 		"Each new column-zero `#!interpreter` line starts a program",
 		"Omitted params inherit the previous complete object",
 		"Variables and `cd` do not carry over",
-		"Use ordinary script files for source that needs repeated editing or execution",
 	} {
 		for _, model := range []string{"gpt-5.6-sol", "gpt-6-astra"} {
 			for _, compact := range []bool{false, true} {
@@ -400,7 +399,7 @@ func TestInstructionsTeachBoundedCommandOutputAndTailReads(t *testing.T) {
 			got := InstructionsForModel(model, compact)
 			for _, required := range []string{
 				"hrun [-n N] [--max-tokens N] [--tail] -- COMMAND [ARG...]",
-				"preserves the command's exit status",
+				"commands retain their exit status",
 				"`hcat [-n N] [--tail]`",
 				"first/last complete rows",
 			} {

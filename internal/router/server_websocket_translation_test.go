@@ -16,6 +16,7 @@ import (
 )
 
 func TestResponsesWebSocketIncrementalTranslationAndVisibleSources(t *testing.T) {
+	t.Parallel()
 	proxy := newToolPluginTestProxy(t)
 	proxy.customizedInstructions = true
 	proxy.compactModelProtocol = true
@@ -134,6 +135,7 @@ func TestResponsesWebSocketIncrementalTranslationAndVisibleSources(t *testing.T)
 // The provider cannot send the next fragment (or input.done) until the viewer
 // has received and rendered the preceding provisional diff.
 func TestResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	directory := t.TempDir()

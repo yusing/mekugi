@@ -24,7 +24,9 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, diagnostic := strings.Repeat("out π🙂\n", 60), strings.Repeat("err 引用\n", 40)
+	// Keep at least three pages per selected stream without repeatedly testing
+	// identical rows through dozens of fresh shell invocations.
+	out, diagnostic := strings.Repeat("out π🙂\n", 36), strings.Repeat("err 引用\n", 30)
 	id, err := store.putShellOutput(t.Context(), out, diagnostic, 7)
 	if err != nil {
 		t.Fatal(err)
@@ -316,7 +318,7 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 			source := filepath.Join(directory, "sample.go")
 			var content strings.Builder
 			content.WriteString("package p\n")
-			for i := range 100 {
+			for i := range 60 {
 				fmt.Fprintf(&content, "func Item%d() {}\n", i)
 			}
 			if err := os.WriteFile(source, []byte(content.String()), 0o600); err != nil {
@@ -363,7 +365,7 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 				entries = initial.Data.Outline
 			}
 			complete := false
-			for range 100 {
+			for pageIndex := range 100 {
 				page, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil,
 					"hread "+ref+" --max-tokens 256", nil, invocation)
 				payload := page
@@ -380,6 +382,9 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 					entries = append(entries, next...)
 				}
 				if status == 0 {
+					if pageIndex < 1 {
+						t.Fatal("fixture did not exercise continuation pagination")
+					}
 					complete = true
 					break
 				}

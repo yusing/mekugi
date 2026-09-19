@@ -2,7 +2,9 @@ package toolplugin
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -95,11 +97,33 @@ func TestExecutionHostOutputBoundCoversJSONExpansion(t *testing.T) {
 	}
 }
 
-// TestLoadTimesOutPluginValidation verifies that plugin validation enforces a timeout.
+// TestLoadTimesOutPluginValidation verifies the runtime's own deadline and
+// confirms Load waits for the live plugin host to terminate.
 func TestLoadTimesOutPluginValidation(t *testing.T) {
 	t.Parallel()
 	pluginDirectory := t.TempDir()
-	declaration := `await new Promise((resolve) => setTimeout(resolve, 60_000));
+	pidPath := filepath.Join(t.TempDir(), "validation.pid")
+	node, err := resolveNodeRuntime(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostExited := false
+	t.Cleanup(func() {
+		if hostExited {
+			return
+		}
+		if data, err := os.ReadFile(pidPath); err == nil {
+			if pid, err := strconv.Atoi(string(data)); err == nil {
+				if process, err := os.FindProcess(pid); err == nil {
+					_ = process.Kill()
+					_ = process.Release()
+				}
+			}
+		}
+	})
+	declaration := `import {writeFileSync} from "node:fs";
+writeFileSync(` + strconv.Quote(pidPath) + `, String(process.pid));
+await new Promise((resolve) => setTimeout(resolve, 60_000));
 export default {
   apiVersion: "mekugi-tool-plugin/v1",
   id: "timeout.test",
@@ -110,11 +134,26 @@ export default {
 		t.Fatal(err)
 	}
 	started := time.Now()
-	_, err := Load(t.Context(), pluginDirectory, filepath.Join(t.TempDir(), "snapshot"))
-	if err == nil || !strings.Contains(err.Error(), "plugin validation exceeded") {
+	_, err = Load(t.Context(), pluginDirectory, filepath.Join(t.TempDir(), "snapshot"))
+	if err == nil || !strings.Contains(err.Error(), "plugin validation exceeded "+pluginInvocationTimeout.String()) {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if elapsed := time.Since(started); elapsed > 8*time.Second {
-		t.Fatalf("plugin validation took %s", elapsed)
+	if elapsed := time.Since(started); elapsed < pluginInvocationTimeout || elapsed > 8*time.Second {
+		t.Fatalf("plugin validation took %s, want the runtime deadline %s with startup headroom", elapsed, pluginInvocationTimeout)
 	}
+	data, err := os.ReadFile(pidPath)
+	if err != nil {
+		t.Fatalf("plugin did not reach its hanging validation: %v", err)
+	}
+	pid, err := strconv.Atoi(string(data))
+	if err != nil || pid <= 0 {
+		t.Fatalf("invalid plugin host PID %q: %v", data, err)
+	}
+	// Node provides the same process-existence probe on supported platforms.
+	probe := `try { process.kill(Number(process.argv[1]), 0); process.exit(1); }
+catch (error) { if (error.code !== "ESRCH") throw error; }`
+	if output, err := exec.CommandContext(t.Context(), node, "-e", probe, strconv.Itoa(pid)).CombinedOutput(); err != nil {
+		t.Fatalf("validation host %d survived Load: %v: %s", pid, err, output)
+	}
+	hostExited = true
 }

@@ -291,6 +291,7 @@ func TestShellRunnerInspectsOutsideFile(t *testing.T) {
 }
 
 func TestShellRunnerReadsFormerShellPathsAsWorkspaceFiles(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t)
 	directory := t.TempDir()
 	if err := os.Mkdir(filepath.Join(directory, "@shell"), 0o700); err != nil {
@@ -411,6 +412,7 @@ func TestShellRunnerBoundsAndValidatesOutput(t *testing.T) {
 }
 
 func TestShellWorkerStreamsReadBeforeLaterCommand(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	wrapper := registry.shellRuntime
 	for _, interpreter := range []string{"bash", "sh"} {

@@ -9,6 +9,7 @@ import (
 )
 
 func TestLiveDiffProducerRetainsSyntaxBoundaries(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, input, token string
 		kind               chroma.TokenType

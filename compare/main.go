@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"fmt"
 	"io/fs"
 	"os"
@@ -16,7 +17,7 @@ import (
 type scenario struct {
 	name    string
 	initial map[string]string
-	script  string
+	edits   []mekugi.FileEdit
 	patch   string
 }
 
@@ -43,7 +44,11 @@ func main() {
 			fatalf("%s representations differ:\nmekugi: %#v\napply_patch: %#v", scenario.name, mekugiTree, patchTree)
 		}
 
-		mekugiTokens, err := codec.Count(scenario.script)
+		payload, err := json.Marshal(&scenario.edits)
+		if err != nil {
+			fatalf("encoding %s mekugi input: %v", scenario.name, err)
+		}
+		mekugiTokens, err := codec.Count(string(payload))
 		if err != nil {
 			fatalf("tokenizing %s mekugi input: %v", scenario.name, err)
 		}
@@ -67,13 +72,13 @@ func scenarios() []scenario {
 			initial: map[string]string{
 				"calc.go": "package calc\n\nfunc total(subtotal, tax int) int { return subtotal + tax + adjustmentForRegion(subtotal, tax) }\n",
 			},
-			script: "in calc.go\ntype 3:db22 \"subtotal + tax\" \"subtotal - discount + tax\"\n",
-			patch:  "*** Begin Patch\n*** Update File: calc.go\n@@\n-func total(subtotal, tax int) int { return subtotal + tax + adjustmentForRegion(subtotal, tax) }\n+func total(subtotal, tax int) int {\n+\treturn subtotal - discount + tax + adjustmentForRegion(subtotal, tax)\n+}\n*** End Patch\n",
+			edits: []mekugi.FileEdit{{Path: "calc.go", Script: "type 3:db22 \"subtotal + tax\" \"subtotal - discount + tax\"\n"}},
+			patch: "*** Begin Patch\n*** Update File: calc.go\n@@\n-func total(subtotal, tax int) int { return subtotal + tax + adjustmentForRegion(subtotal, tax) }\n+func total(subtotal, tax int) int {\n+\treturn subtotal - discount + tax + adjustmentForRegion(subtotal, tax)\n+}\n*** End Patch\n",
 		},
 		{
 			name:    "last occurrence delete",
 			initial: map[string]string{"logs.txt": "debug info debug\n"},
-			script:  "in logs.txt\ntype 1:22b6 \" debug\" \"\"\n",
+			edits:   []mekugi.FileEdit{{Path: "logs.txt", Script: "type 1:22b6 \" debug\" \"\"\n"}},
 			patch:   "*** Begin Patch\n*** Update File: logs.txt\n@@\n-debug info debug\n+debug info\n*** End Patch\n",
 		},
 		{
@@ -81,29 +86,32 @@ func scenarios() []scenario {
 			initial: map[string]string{
 				"service.go": "func run() {\n\tprepare()\n\texecute()\n}\n",
 			},
-			script: "in service.go\nadd 4:d10b \"\\tprepare()\\n\\texecute()\\n\"\n",
-			patch:  "*** Begin Patch\n*** Update File: service.go\n@@\n \tprepare()\n \texecute()\n+\tprepare()\n+\texecute()\n*** End Patch\n",
+			edits: []mekugi.FileEdit{{Path: "service.go", Script: "add 4:d10b \"\\tprepare()\\n\\texecute()\\n\"\n"}},
+			patch: "*** Begin Patch\n*** Update File: service.go\n@@\n \tprepare()\n \texecute()\n+\tprepare()\n+\texecute()\n*** End Patch\n",
 		},
 		{
 			name:    "stable baseline hashes",
 			initial: map[string]string{"config.txt": "name=old\nmode=slow\n"},
-			script:  "in config.txt\ntype 1:165f \"old\" \"new\\nextra=yes\"\ntype 2:763c \"slow\" \"fast\"\n",
+			edits:   []mekugi.FileEdit{{Path: "config.txt", Script: "type 1:165f \"old\" \"new\\nextra=yes\"\ntype 2:763c \"slow\" \"fast\"\n"}},
 			patch:   "*** Begin Patch\n*** Update File: config.txt\n@@\n-name=old\n-mode=slow\n+name=new\n+extra=yes\n+mode=fast\n*** End Patch\n",
 		},
 		{
-			name:    "new file typing",
-			initial: map[string]string{},
-			script:  "new note.txt\ntype \"foo bar\\n\"\n",
-			patch:   "*** Begin Patch\n*** Add File: note.txt\n+foo bar\n*** End Patch\n",
+			name:    "append to existing file",
+			initial: map[string]string{"note.txt": "intro\n"},
+			edits:   []mekugi.FileEdit{{Path: "note.txt", Script: "append \"foo bar\\n\"\n"}},
+			patch:   "*** Begin Patch\n*** Update File: note.txt\n@@\n intro\n+foo bar\n*** End Patch\n",
 		},
 		{
-			name: "edit move and delete",
+			name: "multi-file replacement",
 			initial: map[string]string{
 				"old.txt":      "hello old\n",
 				"obsolete.txt": "unused\n",
 			},
-			script: "in old.txt\ntype 1:53e5 \"old\" \"new\"\nmv moved.txt\nin obsolete.txt\nrm\n",
-			patch:  "*** Begin Patch\n*** Update File: old.txt\n*** Move to: moved.txt\n@@\n-hello old\n+hello new\n*** Delete File: obsolete.txt\n*** End Patch\n",
+			edits: []mekugi.FileEdit{
+				{Path: "old.txt", Script: "type 1:53e5 \"old\" \"new\"\n"},
+				{Path: "obsolete.txt", Script: "type \"unused\" \"used\"\n"},
+			},
+			patch: "*** Begin Patch\n*** Update File: old.txt\n@@\n-hello old\n+hello new\n*** Update File: obsolete.txt\n@@\n-unused\n+used\n*** End Patch\n",
 		},
 	}
 }
@@ -124,7 +132,7 @@ func runMekugi(scenario scenario) (map[string]string, error) {
 		return nil, err
 	}
 	defer workspaceRoot.Close()
-	if err := mekugi.Apply(context.TODO(), mekugi.Workspace{Root: workspaceRoot}, scenario.script); err != nil {
+	if err := mekugi.Apply(context.TODO(), mekugi.Workspace{Root: workspaceRoot}, scenario.edits); err != nil {
 		return nil, fmt.Errorf("applying HPATCH script: %w", err)
 	}
 	return readTree(root)

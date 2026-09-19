@@ -24,6 +24,7 @@ func TestReadBundleValidation(t *testing.T) {
 }
 
 func TestHcatMixedPathsAndRanges(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
 	for _, name := range []string{"first", "second", "third", "200:300", "--tail"} {
@@ -44,6 +45,7 @@ func TestHcatMixedPathsAndRanges(t *testing.T) {
 }
 
 func TestReadBundleRetainsPerFileOmissions(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
 	for _, name := range []string{"first", "second"} {
@@ -73,6 +75,7 @@ func TestReadBundleRetainsPerFileOmissions(t *testing.T) {
 }
 
 func TestReadBundleEmptyFailureAndPipeline(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
 	if err := os.WriteFile(filepath.Join(directory, "empty"), nil, 0600); err != nil {
@@ -91,6 +94,7 @@ func TestReadBundleEmptyFailureAndPipeline(t *testing.T) {
 }
 
 func TestReadBundleBudgetAndMissingFileFailure(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
 	if err := os.WriteFile(filepath.Join(directory, "a"), []byte(strings.Repeat("a row\n", 300)), 0600); err != nil {
@@ -119,6 +123,7 @@ func TestReadBundleBudgetAndMissingFileFailure(t *testing.T) {
 }
 
 func TestHcatMultiplePathsPreserveSingleFileMode(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
 	for _, name := range []string{"first", "--batch", "-source", "space name"} {
@@ -152,50 +157,59 @@ func TestReadBundleFitsOuterDisplay(t *testing.T) {
 		}
 	}
 	for _, prefix := range []string{"", "printf 'preceding output\\n'; ", "printf 'preceding error\\n' >&2; "} {
-		out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
-			"#!params={\"max_output_tokens\":2000}\n"+prefix+"hcat --max-tokens 2000 first second",
-			nil, newShellWorkerTestInvocation(directory))
-		if status != 1 || strings.Contains(diagnostic, "hread ") {
-			t.Fatalf("status=%d out=%s err=%s", status, out, diagnostic)
-		}
-		receipts := regexp.MustCompile(`shown=(1:\d+).*next_call="(hread [a-z]+[0-9]*)"`).FindAllStringSubmatch(out, -1)
-		bodies := strings.Split(out, "--- file ")
-		if len(receipts) != 2 || len(bodies) != 3 {
-			t.Fatalf("missing previews or receipts: %s", out)
-		}
-		for i, receipt := range receipts {
-			if got := bundleRowSpan(bodies[i+1]); got != receipt[1] {
-				t.Fatalf("advertised %s but delivered %s: %s", receipt[1], got, out)
+		t.Run("display/"+prefix, func(t *testing.T) {
+			t.Parallel()
+			out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
+				"#!params={\"max_output_tokens\":2000}\n"+prefix+"hcat --max-tokens 2000 first second",
+				nil, newShellWorkerTestInvocation(directory))
+			if status != 1 || strings.Contains(diagnostic, "hread ") {
+				t.Fatalf("status=%d out=%s err=%s", status, out, diagnostic)
 			}
-			recovered, _, _ := runShellWorkerTest(t, registry, "bash", nil,
-				receipt[2]+" --max-tokens 10000", nil, newShellWorkerTestInvocation(directory))
-			if !strings.Contains(recovered, "200:") {
-				t.Fatalf("missing retained suffix: %s", recovered)
+			receipts := regexp.MustCompile(`shown=(1:\d+).*next_call="(hread [a-z]+[0-9]*)"`).FindAllStringSubmatch(out, -1)
+			bodies := strings.Split(out, "--- file ")
+			if len(receipts) != 2 || len(bodies) != 3 {
+				t.Fatalf("missing previews or receipts: %s", out)
 			}
-		}
+			for i, receipt := range receipts {
+				if got := bundleRowSpan(bodies[i+1]); got != receipt[1] {
+					t.Fatalf("advertised %s but delivered %s: %s", receipt[1], got, out)
+				}
+				recovered, _, _ := runShellWorkerTest(t, registry, "bash", nil,
+					receipt[2]+" --max-tokens 10000", nil, newShellWorkerTestInvocation(directory))
+				if !strings.Contains(recovered, "200:") {
+					t.Fatalf("missing retained suffix: %s", recovered)
+				}
+			}
+		})
 	}
 	for _, route := range []string{"> saved", "| cat > saved"} {
-		var saved []string
-		for _, limit := range []string{"2000", "10000"} {
-			_, diagnostic, _ := runShellWorkerTest(t, registry, "bash", nil,
-				"#!params={\"max_output_tokens\":"+limit+"}\nhcat --max-tokens 2000 first second "+route,
-				nil, newShellWorkerTestInvocation(directory))
-			if diagnostic != "" {
-				t.Fatal(diagnostic)
+		t.Run("redirect/"+route, func(t *testing.T) {
+			t.Parallel()
+			savedPath := filepath.Join(t.TempDir(), "saved")
+			route = strings.ReplaceAll(route, "saved", shellQuoteArgument(savedPath))
+			var saved []string
+			for _, limit := range []string{"2000", "10000"} {
+				_, diagnostic, _ := runShellWorkerTest(t, registry, "bash", nil,
+					"#!params={\"max_output_tokens\":"+limit+"}\nhcat --max-tokens 2000 first second "+route,
+					nil, newShellWorkerTestInvocation(directory))
+				if withoutShellChangeNotices(diagnostic) != "" {
+					t.Fatal(diagnostic)
+				}
+				data, err := os.ReadFile(savedPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				saved = append(saved, regexp.MustCompile(`hread [a-z]+[0-9]*`).ReplaceAllString(string(data), "hread REFERENCE"))
 			}
-			data, err := os.ReadFile(filepath.Join(directory, "saved"))
-			if err != nil {
-				t.Fatal(err)
+			if saved[0] != saved[1] {
+				t.Fatalf("%s changed redirected bytes with display budget", route)
 			}
-			saved = append(saved, regexp.MustCompile(`hread [a-z]+[0-9]*`).ReplaceAllString(string(data), "hread REFERENCE"))
-		}
-		if saved[0] != saved[1] {
-			t.Fatalf("%s changed redirected bytes with display budget", route)
-		}
+		})
 	}
 }
 
 func TestReadBundleDisplayTrimmingPreservesSuccess(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
 	if err := os.WriteFile(filepath.Join(directory, "small"), []byte(strings.Repeat("small row\n", 50)), 0600); err != nil {
@@ -204,10 +218,31 @@ func TestReadBundleDisplayTrimmingPreservesSuccess(t *testing.T) {
 	out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
 		"#!params={\"max_output_tokens\":1400}\nset -e; hcat --max-tokens 4000 small small && printf success > marker",
 		nil, newShellWorkerTestInvocation(directory))
-	if status != 0 || diagnostic != "" || !strings.Contains(out, "status=incomplete") {
+	if status != 0 || !strings.Contains(out, "status=incomplete") {
 		t.Fatalf("status=%d out=%s err=%s", status, out, diagnostic)
+	}
+	if receipt := outerShellReadNotice.FindString(diagnostic); receipt != "" {
+		_, retainedDiagnostic := retainedShellTestOutput(t, receipt)
+		diagnostic = outerShellReadNotice.ReplaceAllString(diagnostic, "") + retainedDiagnostic
+	}
+	if withoutShellChangeNotices(diagnostic) != "" {
+		t.Fatalf("unexpected command diagnostic: %q", diagnostic)
 	}
 	if data, err := os.ReadFile(filepath.Join(directory, "marker")); err != nil || string(data) != "success" {
 		t.Fatalf("display budget changed shell control flow: %q %v", data, err)
+	}
+}
+
+var outerShellReadNotice = regexp.MustCompile(`\nread: incomplete; next_call: hread [a-z]+[0-9]*\n$`)
+
+func TestOuterShellReadNoticePreservesVisibleDiagnostics(t *testing.T) {
+	t.Parallel()
+	for _, visible := range []string{"", "unexpected visible diagnostic\n", "read: incomplete; next_call: hread not-a-reference\n"} {
+		shown := visible + "\nread: incomplete; next_call: hread amber\n"
+		retained := "unexpected retained diagnostic\n"
+		got := outerShellReadNotice.ReplaceAllString(shown, "") + retained
+		if got != visible+retained {
+			t.Fatalf("recovery discarded diagnostic bytes: got %q, want %q", got, visible+retained)
+		}
 	}
 }

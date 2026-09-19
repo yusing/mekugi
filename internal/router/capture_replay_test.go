@@ -97,8 +97,8 @@ func TestCaptureRequestBaselineAfterMekugiReplay(t *testing.T) {
 			if carrier == nil {
 				t.Fatal("missing delivered carrier")
 			}
-			if fixture.name == "shell" && !bytes.Contains(carrier, []byte("await tools.apply_patch(")) {
-				t.Fatalf("cat write was not projected: %s", carrier)
+			if fixture.name == "shell" && (!bytes.Contains(carrier, []byte("tools.exec_command(")) || bytes.Contains(carrier, []byte("tools.apply_patch("))) {
+				t.Fatalf("shell write did not retain its execution carrier: %s", carrier)
 			}
 			next := serverRequest(t, func(fields map[string]any) {
 				fields["instructions"] = stockModelInstructionsForTest("", "")

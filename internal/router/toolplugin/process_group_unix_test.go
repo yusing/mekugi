@@ -15,6 +15,7 @@ import (
 )
 
 func TestInvokeCancellationTerminatesPluginProcessGroup(t *testing.T) {
+	t.Parallel()
 	node, err := resolveNodeRuntime(t.Context())
 	if err != nil {
 		t.Fatal(err)

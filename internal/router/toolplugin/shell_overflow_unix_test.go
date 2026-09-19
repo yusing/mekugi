@@ -16,6 +16,7 @@ import (
 )
 
 func TestShellOverflowRetiresInheritedPipeDescendants(t *testing.T) {
+	t.Parallel()
 	snapshot, err := Load(t.Context(), t.TempDir(), filepath.Join(t.TempDir(), "runtime"))
 	if err != nil {
 		t.Fatal(err)
