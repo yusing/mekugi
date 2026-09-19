@@ -581,11 +581,12 @@ func (s *mekugiReplayStore) pruneStoredChanges(deleted map[string]bool, thread s
 	return nil
 }
 
-func (s *mekugiReplayStore) reconcileRetiredChanges(index *changeIndex) error {
+func (s *mekugiReplayStore) reconcileRetiredChanges(index *changeIndex) (bool, error) {
 	current, err := s.readChangeIndex(index.Workspace)
 	if err != nil {
-		return err
+		return false, err
 	}
+	changed := false
 	for position, stream := range current.Streams {
 		if position >= len(index.Streams) || stream.Retired <= index.Streams[position].Retired {
 			continue
@@ -599,6 +600,7 @@ func (s *mekugiReplayStore) reconcileRetiredChanges(index *changeIndex) error {
 			}
 		}
 		index.Streams[position].Retired = stream.Retired
+		changed = true
 	}
 	for id, change := range index.Changes {
 		if prior, exists := current.Changes[id]; exists && prior.RetiredCalls > change.RetiredCalls {
@@ -606,7 +608,7 @@ func (s *mekugiReplayStore) reconcileRetiredChanges(index *changeIndex) error {
 			for _, call := range change.Calls {
 				_, found, err := s.read(index.Workspace, call.ID, false)
 				if err != nil {
-					return err
+					return false, err
 				}
 				if found {
 					retained = append(retained, call)
@@ -614,9 +616,10 @@ func (s *mekugiReplayStore) reconcileRetiredChanges(index *changeIndex) error {
 			}
 			change.Calls, change.RetiredCalls = retained, prior.RetiredCalls
 			index.Changes[id] = change
+			changed = true
 		}
 	}
-	return nil
+	return changed, nil
 }
 
 func (s *mekugiReplayStore) storageNeeds(files map[string]int64, replacement string, size int64) (int64, int64) {
@@ -673,7 +676,7 @@ func (s *mekugiReplayStore) storageFileSizes() (map[string]int64, error) {
 
 // maintainStorage runs under store.lock. It only removes exact managed files.
 // It never traverses a workspace, Codex's transcripts, or process-runtime paths.
-func (s *mekugiReplayStore) maintainStorage(replacement string, size int64, expire bool, pendingIndex *changeIndex) error {
+func (s *mekugiReplayStore) maintainStorage(replacement string, size int64, expire bool, pendingIndex *pendingChangeIndexWrite) error {
 	_, limit := s.storageNeeds(nil, replacement, size)
 	if size > limit && pendingIndex == nil {
 		return storageCapacityError("session storage write", size, limit, "A single record cannot fit; reduce the retained output or split the operation.")
@@ -788,14 +791,17 @@ func (s *mekugiReplayStore) maintainStorage(replacement string, size int64, expi
 			return storageIOError(fmt.Errorf("session cleanup partially completed: %w", deleteErr))
 		}
 		if pendingIndex != nil {
-			if err := s.reconcileRetiredChanges(pendingIndex); err != nil {
-				return err
-			}
-			data, err := marshalProtocolJSON(pendingIndex)
+			changed, err := s.reconcileRetiredChanges(&pendingIndex.index)
 			if err != nil {
 				return err
 			}
-			size = int64(len(data))
+			if changed {
+				pendingIndex.data, err = marshalProtocolJSON(pendingIndex.index)
+				if err != nil {
+					return err
+				}
+				size = int64(len(pendingIndex.data))
+			}
 		}
 		if sizes, err := s.storageFileSizes(); err != nil {
 			return storageIOError(err)

@@ -48,7 +48,7 @@ func requireNoLiveDiffTurnEvent(t *testing.T, sub *liveDiffSubscriber) {
 	select {
 	case event := <-sub.events:
 		t.Fatalf("unexpected event: %+v", event)
-	case <-time.After(25 * time.Millisecond):
+	default: // Publication is synchronous; any unexpected event is already queued.
 	}
 }
 

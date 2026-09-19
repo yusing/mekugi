@@ -23,6 +23,13 @@ type changeIndex struct {
 	Changes   map[string]trackedChange
 }
 
+// pendingChangeIndexWrite stays under store.lock. Maintenance refreshes its
+// encoding only when cleanup changes the pending index.
+type pendingChangeIndexWrite struct {
+	index changeIndex
+	data  []byte
+}
+
 type changeStream struct {
 	Thread  string
 	Next    int
@@ -123,30 +130,23 @@ func validateChangeIndex(index changeIndex) error {
 	return nil
 }
 
+// writeChangeIndex runs under store.lock, including retention and publication.
 func (s *mekugiReplayStore) writeChangeIndex(index changeIndex) (err error) {
 	if err := s.retainFiles(changeIndexName(index.Workspace)); err != nil {
 		return err
 	}
-	if err := s.reconcileRetiredChanges(&index); err != nil {
+	if _, err := s.reconcileRetiredChanges(&index); err != nil {
 		return err
 	}
 	data, err := marshalProtocolJSON(index)
 	if err != nil {
 		return err
 	}
-	if err := s.maintainStorage(changeIndexName(index.Workspace), int64(len(data)), false, &index); err != nil {
+	pending := pendingChangeIndexWrite{index: index, data: data}
+	if err := s.maintainStorage(changeIndexName(index.Workspace), int64(len(data)), false, &pending); err != nil {
 		return err
 	}
-	// Quota cleanup may have retired older changes while this snapshot was
-	// prepared. Keep stream counters, but do not restore deleted attempts.
-	if err := s.reconcileRetiredChanges(&index); err != nil {
-		return err
-	}
-	data, err = marshalProtocolJSON(index)
-	if err != nil {
-		return err
-	}
-	return storageIOError(s.writeFile(changeIndexName(index.Workspace), "changes-pending-", data))
+	return storageIOError(s.writeFile(changeIndexName(index.Workspace), "changes-pending-", pending.data))
 }
 
 // reserveChange runs before evaluation, including private direct application.

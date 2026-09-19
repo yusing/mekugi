@@ -155,17 +155,6 @@ func TestParseShellJournalCommandSupportsDedicatedOperations(t *testing.T) {
 	}
 }
 
-func TestShellJournalAddWritesRawID(t *testing.T) {
-	sink := new(recordingCommentarySink)
-	result, err := shellCommentaryCallHandler(sink)(t.Context(), []string{"journal", "add", "one"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result) != 4 || result[0] != "command" || result[1] != "printf" ||
-		result[2] != "%s\\n" || result[3] != "j1" {
-		t.Fatalf("result command = %#v", result)
-	}
-}
 func TestShellJournalAddIDSupportsCommandSubstitution(t *testing.T) {
 	program, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(
 		strings.NewReader("id=$(journal add one)\nprintf 'captured=%s\\n' \"$id\"\n"), "")

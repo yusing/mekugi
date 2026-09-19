@@ -15,10 +15,11 @@ import (
 	"github.com/yusing/mekugi"
 )
 
-// Syntax is independent of wrapping, coordinates, and recency marks. Keep a
-// bounded cache in each viewer, never shared across sessions or themes.
+// Syntax is independent of wrapping, coordinates, and recency marks. Keep
+// bounded caches in each viewer, never shared across sessions.
 type liveDiffRenderer struct {
 	syntax      map[liveDiffSyntaxKey][]string
+	lexers      map[string]chroma.Lexer
 	syntaxBytes int
 }
 
@@ -38,13 +39,28 @@ func (r *liveDiffRenderer) colorSource(ctx context.Context, theme liveDiffTheme,
 	if lines, ok := r.syntax[key]; ok {
 		return lines, nil
 	}
-	lines, err := liveDiffColorSource(ctx, theme, path, source)
+	var lexer chroma.Lexer
+	matched := false
+	lines, err := liveDiffColorSourceWithMatcher(ctx, theme, path, source, func(path string) chroma.Lexer {
+		var cached bool
+		lexer, cached = r.lexers[path]
+		if !cached {
+			lexer = lexers.Match(path)
+		}
+		matched = true
+		return lexer
+	})
 	if err != nil || source == "" {
 		return lines, err
 	}
 	// Count string headers as well as content: many blank lines still retain
 	// a sizeable slice even though the strings themselves have no bytes.
 	size := len(path) + len(source) + len(lines)*2*(strconv.IntSize/8)
+	if matched {
+		// Conservatively charge each source for its selected path and lexer
+		// headers, even when several sources share the same selection.
+		size += len(path) + 4*(strconv.IntSize/8)
+	}
 	for _, line := range lines {
 		size += len(line)
 	}
@@ -53,6 +69,7 @@ func (r *liveDiffRenderer) colorSource(ctx context.Context, theme liveDiffTheme,
 	}
 	if r.syntaxBytes+size > maxLiveDiffSyntaxCacheBytes || len(r.syntax) >= maxLiveDiffSyntaxCacheEntries {
 		clear(r.syntax)
+		clear(r.lexers)
 		r.syntaxBytes = 0
 	}
 	if r.syntax == nil {
@@ -60,6 +77,14 @@ func (r *liveDiffRenderer) colorSource(ctx context.Context, theme liveDiffTheme,
 	}
 	r.syntax[key] = lines
 	r.syntaxBytes += size
+	if matched {
+		if r.lexers == nil {
+			r.lexers = make(map[string]chroma.Lexer)
+		}
+		// Include nil results. Selections live only as long as admitted
+		// syntax entries, so unknown paths cannot grow a separate cache.
+		r.lexers[path] = lexer
+	}
 	return lines, nil
 }
 
@@ -352,7 +377,11 @@ func (r *liveDiffRenderer) colorHunk(ctx context.Context, theme liveDiffTheme, r
 // display limit; huge hunks and unknown languages still display exact safe text.
 const maxLiveDiffSyntaxBytes = 256 << 10
 
-func liveDiffColorSource(ctx context.Context, theme liveDiffTheme, path, source string) (lines []string, err error) {
+func liveDiffColorSource(ctx context.Context, theme liveDiffTheme, path, source string) ([]string, error) {
+	return liveDiffColorSourceWithMatcher(ctx, theme, path, source, lexers.Match)
+}
+
+func liveDiffColorSourceWithMatcher(ctx context.Context, theme liveDiffTheme, path, source string, match func(string) chroma.Lexer) (lines []string, err error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -367,8 +396,11 @@ func liveDiffColorSource(ctx context.Context, theme liveDiffTheme, path, source 
 			lines, err = plain, ctx.Err()
 		}
 	}()
-	lexer := lexers.Match(path)
-	if lexer == nil || len(source) > maxLiveDiffSyntaxBytes {
+	if len(source) > maxLiveDiffSyntaxBytes {
+		return plain, nil
+	}
+	lexer := match(path)
+	if lexer == nil {
 		return plain, nil
 	}
 	iterator, err := lexer.Tokenise(nil, source)

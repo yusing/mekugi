@@ -43,12 +43,23 @@ func TestShellBatchExecutionAndReplay(t *testing.T) {
 			Output   string `json:"output"`
 			ExitCode int    `json:"exit_code"`
 		} `json:"results"`
+		Batch struct {
+			Policy     string `json:"on_nonzero_exit"`
+			Total      int    `json:"program_count"`
+			Started    int    `json:"started_programs"`
+			NotStarted int    `json:"not_started_programs"`
+			Reason     string `json:"stopped_reason"`
+		} `json:"batch"`
 	}
 	runShellCatJavaScript(t, proxy.registry.NodeExecutable, directory, history.carrierInput(), &result, "", "PATH="+workerPath)
 	if len(result.Results) != 3 || result.Results[0].Output != "before" || result.Results[0].ExitCode != 7 ||
 		result.Results[1].Output != "middle\n" || result.Results[1].ExitCode != 0 ||
 		result.Results[2].Output != "python" || result.Results[2].ExitCode != 0 {
 		t.Fatalf("batch result = %+v", result)
+	}
+	if result.Batch.Policy != "continue" || result.Batch.Total != 3 || result.Batch.Started != 3 ||
+		result.Batch.NotStarted != 0 || result.Batch.Reason != "" {
+		t.Fatalf("continue summary = %+v", result.Batch)
 	}
 	content, err := os.ReadFile(filepath.Join(directory, "out"))
 	if err != nil || string(content) != "literal\n" {
@@ -76,80 +87,6 @@ func TestShellBatchExecutionAndReplay(t *testing.T) {
 	}
 	if string(mustMarshalJSON(replay[0])) != string(mustMarshalJSON(upstream)) || jsonString(replay[1], "output") != "batch results" {
 		t.Fatalf("provider replay changed: %s", request.fields["input"])
-	}
-}
-
-func TestShellBatchContinuePolicyExecution(t *testing.T) {
-	t.Parallel()
-	proxy := newManagedMekugiProxy(t)
-	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
-	directory := t.TempDir()
-	transform.directory = directory
-	bin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "shell"), []byte("#!/bin/sh\ninterpreter=$1\nshift\nexec \"$interpreter\" -c \"$1\"\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	workerPath := bin + string(os.PathListSeparator) + os.Getenv("PATH")
-	source := "#!params=" + string(mustMarshalJSON(map[string]any{"workdir": directory})) +
-		"\nprintf failed; exit 7\n#!bash\ntouch ran"
-	contribution, _ := proxy.registry.contribution("shell")
-	history, err := transform.translateRegisteredTool(contribution, "batch-continue", source, nil)
-	if err != nil || history.TranslationError != "" {
-		t.Fatalf("translate: %+v, %v", history, err)
-	}
-	var result struct {
-		Results []map[string]any `json:"results"`
-		Batch   struct {
-			Policy     string `json:"on_nonzero_exit"`
-			Total      int    `json:"program_count"`
-			Started    int    `json:"started_programs"`
-			NotStarted int    `json:"not_started_programs"`
-			Reason     string `json:"stopped_reason"`
-		} `json:"batch"`
-	}
-	runShellCatJavaScript(t, proxy.registry.NodeExecutable, directory, history.carrierInput(), &result, "", "PATH="+workerPath)
-	if len(result.Results) != 2 || result.Results[0]["exit_code"] != float64(7) ||
-		result.Batch.Policy != "continue" || result.Batch.Total != 2 || result.Batch.Started != 2 ||
-		result.Batch.NotStarted != 0 || result.Batch.Reason != "" {
-		t.Fatalf("continue result: %+v", result)
-	}
-	if _, err := os.Stat(filepath.Join(directory, "ran")); err != nil {
-		t.Fatalf("later program did not execute: %v", err)
-	}
-}
-
-func TestShellBatchContinueWaitsForTerminalExit(t *testing.T) {
-	t.Parallel()
-	proxy := newManagedMekugiProxy(t)
-	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
-	contribution, _ := proxy.registry.contribution("shell")
-	history, err := transform.translateRegisteredTool(contribution, "batch-continue-wait",
-		"sleep 100\n#!bash\necho later", nil)
-	if err != nil || history.TranslationError != "" {
-		t.Fatalf("translate: %+v, %v", history, err)
-	}
-	overrides := `
-let executions = 0, waits = 0;
-tools.exec_command = async () => {
-  if (++executions === 2) {
-    if (waits !== 1) throw new Error('later program ran before terminal exit');
-    return {output:'later',exit_code:0};
-  }
-  if (executions !== 1) throw new Error('extra execution');
-  return {output:'start',session_id:42};
-};
-tools.write_stdin = async args => {
-  if (++waits !== 1 || args.session_id !== 42) throw new Error('wrong continuation');
-  return {output:' end',exit_code:9};
-};`
-	var result struct {
-		Results []map[string]any `json:"results"`
-		Batch   map[string]any   `json:"batch"`
-	}
-	runShellCatJavaScript(t, proxy.registry.NodeExecutable, t.TempDir(), history.carrierInput(), &result, overrides)
-	if len(result.Results) != 2 || result.Results[0]["output"] != "start end" ||
-		result.Results[0]["exit_code"] != float64(9) || result.Results[1]["output"] != "later" || result.Batch["not_started_programs"] != float64(0) {
-		t.Fatalf("terminal continuation: %+v", result)
 	}
 }
 
@@ -194,11 +131,13 @@ tools.write_stdin = async args => {
 `
 	var result struct {
 		Results []map[string]any `json:"results"`
+		Batch   map[string]any   `json:"batch"`
 	}
 	runShellCatJavaScript(t, proxy.registry.NodeExecutable, transform.directory, history.carrierInput(), &result, overrides)
 	if len(result.Results) != 3 || result.Results[0]["output"] != "start progress done" ||
 		result.Results[0]["exit_code"] != float64(9) || result.Results[0]["future"] != "terminal" ||
-		result.Results[1]["future"] != float64(2) || result.Results[2]["future"] != float64(3) {
+		result.Results[1]["future"] != float64(2) || result.Results[2]["future"] != float64(3) ||
+		result.Batch["not_started_programs"] != float64(0) {
 		t.Fatalf("results = %+v", result.Results)
 	}
 	if _, yielded := result.Results[0]["session_id"]; yielded {

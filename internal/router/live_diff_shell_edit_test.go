@@ -40,6 +40,7 @@ func newLiveDiffWorkerTest(t *testing.T, workspace string) (*liveDiffBroker, *li
 }
 
 func TestLiveDiffShellEditLiteralInputs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, input, want string
 	}{
@@ -74,6 +75,7 @@ func TestLiveDiffShellEditLiteralInputs(t *testing.T) {
 }
 
 func TestLiveDiffPreviewWorkerKeepsLastValidHpatchDiff(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, header string }{
 		{"spaced heredoc", "hpatch <<'EDIT'\n"},
 		{"no-space heredoc", "hpatch<<'EDIT'\n"},
@@ -107,6 +109,7 @@ func TestLiveDiffPreviewWorkerKeepsLastValidHpatchDiff(t *testing.T) {
 }
 
 func TestLiveDiffPreviewWorkerReportsUnavailableInvalidHpatch(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "file.txt"), []byte("old\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -122,6 +125,7 @@ func TestLiveDiffPreviewWorkerReportsUnavailableInvalidHpatch(t *testing.T) {
 }
 
 func TestLiveDiffPreviewWorkerRetainsLastValidDiffForCompoundShell(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "file.txt"), []byte("old\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -144,6 +148,7 @@ func TestLiveDiffPreviewWorkerRetainsLastValidDiffForCompoundShell(t *testing.T)
 }
 
 func TestLiveDiffPreviewBrokerRetainsDisplayedDiffAfterOversizedProjection(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "file.txt"), []byte("old\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -180,6 +185,7 @@ func TestLiveDiffPreviewBrokerRetainsDisplayedDiffAfterOversizedProjection(t *te
 }
 
 func TestLiveDiffPreviewWorkerInterruptedStepKeepsDiffMode(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "handler.go"), []byte(liveDiffSimulationHandler), 0600); err != nil {
 		t.Fatal(err)
@@ -203,6 +209,7 @@ func TestLiveDiffPreviewWorkerInterruptedStepKeepsDiffMode(t *testing.T) {
 }
 
 func TestLiveDiffShellEditNoDynamicExecution(t *testing.T) {
+	t.Parallel()
 	for _, input := range []string{
 		"hpatch --recover amber 'maple target \"new\"'",
 		"hpatch forbidden.txt \"$(touch forbidden)\"",
@@ -226,6 +233,7 @@ func TestLiveDiffShellEditNoDynamicExecution(t *testing.T) {
 }
 
 func TestLiveDiffShellEditWorkdir(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	if err := os.WriteFile(filepath.Join(directory, "file.txt"), []byte("old\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -241,11 +249,13 @@ func TestLiveDiffShellEditWorkdir(t *testing.T) {
 }
 
 func TestLiveDiffShellEditRejectsUnknownExpansion(t *testing.T) {
+	t.Parallel()
 	if edits, _, ok := liveDiffShellEdit("hpatch file.txt <<EDIT\ntype \"old\" \"$literal\"", t.TempDir()); ok {
 		t.Fatalf("invented expansion: %+v", edits)
 	}
 }
 func TestLiveDiffPreviewWorkerSuccessiveShellFragments(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "file.txt"), nil, 0o600); err != nil {
 		t.Fatal(err)
@@ -291,6 +301,7 @@ func TestLiveDiffPreviewWorkerSuccessiveShellFragments(t *testing.T) {
 }
 
 func TestLiveDiffPreviewWorkerNeverRecognizedShellStaysScript(t *testing.T) {
+	t.Parallel()
 	for _, input := range []string{
 		"echo normal",
 		"hpatch --recover amber 'maple target \"new\"'",
@@ -308,6 +319,7 @@ func TestLiveDiffPreviewWorkerNeverRecognizedShellStaysScript(t *testing.T) {
 }
 
 func TestLiveDiffPreviewWorkerProgressiveRecoveryStaysScript(t *testing.T) {
+	t.Parallel()
 	broker, sub, worker := newLiveDiffWorkerTest(t, t.TempDir())
 	for _, fragment := range []string{"hpatch ", "--re", "cover", " amber", " 'maple target \"new\"'"} {
 		worker.appendDelta(fragment)
@@ -319,6 +331,7 @@ func TestLiveDiffPreviewWorkerProgressiveRecoveryStaysScript(t *testing.T) {
 }
 
 func TestLiveDiffPreviewWorkerRecognizesFailedProjection(t *testing.T) {
+	t.Parallel()
 	broker, sub, worker := newLiveDiffWorkerTest(t, t.TempDir())
 	for _, fragment := range []string{"hpatch missing.txt 'type \"old\" \"new\"'", "; echo suffix"} {
 		worker.appendDelta(fragment)

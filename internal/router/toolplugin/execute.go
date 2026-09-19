@@ -82,6 +82,9 @@ const maxFormatOutputBatchBytes = ExecutionOutputBudgetBytes
 // FormatOutput loads only the shared tokenizer, not executable tool declarations
 // or the WASM source-analysis core. It owns no workspace or inherited input.
 func FormatOutput(ctx context.Context, node, runtimeRoot string, arguments []string) (ExecutionOutput, error) {
+	if formatter := formatterFromContext(ctx, node, runtimeRoot); formatter != nil {
+		return formatOutputReused(ctx, formatter, arguments)
+	}
 	request := struct {
 		Operation    string   `json:"operation"`
 		SnapshotRoot string   `json:"snapshotRoot"`
@@ -110,6 +113,9 @@ func FormatOutputBatch(ctx context.Context, node, runtimeRoot string, arguments 
 			}
 			bytes += len(argument)
 		}
+	}
+	if formatter := formatterFromContext(ctx, node, runtimeRoot); formatter != nil {
+		return formatOutputBatchReused(ctx, formatter, arguments)
 	}
 	request := struct {
 		Operation    string     `json:"operation"`

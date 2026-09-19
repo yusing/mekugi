@@ -70,6 +70,8 @@ func executeShellTool(
 	if value, ok := parsed.Params["max_output_tokens"].(float64); ok && value >= 1 && value <= 1<<30 && value == float64(int(value)) {
 		tokens = int(value)
 	}
+	ctx, closeFormatter := toolplugin.WithOutputFormatter(ctx, manifest.NodeExecutable, runtimeRoot)
+	defer closeFormatter()
 	display := newShellOutputDisplay(ctx, manifest, runtimeRoot, tokens, streamStdout, streamStderr)
 	execution, err := executeShellProgram(ctx, manifest, runtimeRoot, shellContribution, programArguments, stdin,
 		workingDirectory, environment, commentary, &display.streams[0], &display.streams[1])

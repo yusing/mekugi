@@ -23,7 +23,7 @@ type Translator struct {
 	ctx                context.Context
 	cancel             context.CancelFunc
 	gate               chan struct{}
-	process            *translationProcess // protected by gate
+	process            *hostProcess // protected by gate
 }
 
 func NewTranslator(ctx context.Context, node, root, module string) (*Translator, error) {
@@ -104,49 +104,15 @@ func (t *Translator) Close() {
 }
 
 func (t *Translator) start(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	lifetime, cancel := context.WithCancel(t.ctx)
-	command := exec.CommandContext(lifetime, t.node, filepath.Join(t.root, hostFilename), "--translate-server")
-	ConfigureProcessGroup(command)
-	command.WaitDelay = time.Second
-	command.Dir = filepath.Join(t.root, snapshotDirectory)
-	command.Env = []string{"HOME=" + t.root, "NODE_NO_WARNINGS=1", "PATH=" + filepath.Dir(t.node)}
-	stdin, err := command.StdinPipe()
+	p, err := startHost(ctx, t.ctx, t.node, filepath.Join(t.root, hostFilename), "--translate-server",
+		filepath.Join(t.root, snapshotDirectory), ExecutionOutputBudgetBytes+1)
 	if err != nil {
-		cancel()
 		return err
 	}
-	// Own the read descriptor so Wait cannot close it before a complete response
-	// is consumed, and cancellation can unblock reads even if a child holds it.
-	stdout, writer, err := os.Pipe()
-	if err != nil {
-		cancel()
-		_ = stdin.Close()
-		return err
-	}
-	p := &translationProcess{ctx: lifetime, cancel: cancel, stdin: stdin, stdout: stdout, done: make(chan struct{})}
-	command.Stdout = writer
-	command.Stderr = &p.diagnostics
-	p.scanner = bufio.NewScanner(stdout)
-	p.scanner.Buffer(make([]byte, 4096), ExecutionOutputBudgetBytes+1)
-	if err := command.Start(); err != nil {
-		cancel()
-		_ = stdin.Close()
-		_ = stdout.Close()
-		_ = writer.Close()
-		return err
-	}
-	_ = writer.Close()
-	go func() {
-		p.waitErr = command.Wait()
-		close(p.done)
-	}()
 	request := struct {
 		SnapshotRoot string `json:"snapshotRoot"`
 		Module       string `json:"module"`
-	}{command.Dir, t.module}
+	}{filepath.Join(t.root, snapshotDirectory), t.module}
 	var ready struct {
 		Ready bool `json:"ready"`
 	}
@@ -162,25 +128,66 @@ func (t *Translator) start(ctx context.Context) error {
 	return nil
 }
 
-type translationProcess struct {
+func startHost(ctx, owner context.Context, node, host, mode, directory string, responseLimit int) (*hostProcess, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	lifetime, cancel := context.WithCancel(owner)
+	command := exec.CommandContext(lifetime, node, host, mode)
+	ConfigureProcessGroup(command)
+	command.WaitDelay = time.Second
+	command.Dir = directory
+	command.Env = []string{"HOME=" + filepath.Dir(directory), "NODE_NO_WARNINGS=1", "PATH=" + filepath.Dir(node)}
+	stdin, err := command.StdinPipe()
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	stdout, writer, err := os.Pipe()
+	if err != nil {
+		cancel()
+		_ = stdin.Close()
+		return nil, err
+	}
+	p := &hostProcess{ctx: lifetime, cancel: cancel, stdin: stdin, stdout: stdout, done: make(chan struct{})}
+	command.Stdout = writer
+	command.Stderr = &p.diagnostics
+	p.scanner = bufio.NewScanner(stdout)
+	p.scanner.Buffer(make([]byte, 4096), responseLimit)
+	if err := command.Start(); err != nil {
+		cancel()
+		_ = stdin.Close()
+		_ = stdout.Close()
+		_ = writer.Close()
+		return nil, err
+	}
+	_ = writer.Close()
+	go func() {
+		p.waitErr = command.Wait()
+		close(p.done)
+	}()
+	return p, nil
+}
+
+type hostProcess struct {
 	ctx         context.Context
 	cancel      context.CancelFunc
 	stdin       io.WriteCloser
 	stdout      *os.File
 	scanner     *bufio.Scanner
-	diagnostics translationDiagnostics
+	diagnostics hostDiagnostics
 	done        chan struct{}
 	waitErr     error // read only after done
 }
 
-func (p *translationProcess) stop() {
+func (p *hostProcess) stop() {
 	p.cancel()
 	_ = p.stdin.Close()
 	_ = p.stdout.Close()
 	<-p.done
 }
 
-func (p *translationProcess) exchange(ctx context.Context, request, response any) error {
+func (p *hostProcess) exchange(ctx context.Context, request, response any) error {
 	encoded, err := json.Marshal(request)
 	if err != nil {
 		return err
@@ -227,27 +234,27 @@ func (p *translationProcess) exchange(ctx context.Context, request, response any
 		}
 		if reply.err != nil {
 			p.stop()
-			return fmt.Errorf("plugin translator failed: %w: %v: %s", reply.err, p.waitErr, p.diagnostics.String())
+			return fmt.Errorf("plugin host failed: %w: %v: %s", reply.err, p.waitErr, p.diagnostics.String())
 		}
 		decoder := json.NewDecoder(bytes.NewReader(reply.data))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(response); err != nil {
-			return fmt.Errorf("decode plugin translation: %w", err)
+			return fmt.Errorf("decode plugin host response: %w", err)
 		}
 		if decoder.Decode(&struct{}{}) != io.EOF {
-			return errors.New("plugin translator returned trailing output")
+			return errors.New("plugin host returned trailing output")
 		}
 		return nil
 	}
 }
 
 // Persistent hosts must not accumulate unbounded diagnostics between calls.
-type translationDiagnostics struct {
+type hostDiagnostics struct {
 	mu   sync.Mutex
 	data []byte
 }
 
-func (d *translationDiagnostics) Write(data []byte) (int, error) {
+func (d *hostDiagnostics) Write(data []byte) (int, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	const limit = 16 << 10
@@ -255,7 +262,7 @@ func (d *translationDiagnostics) Write(data []byte) (int, error) {
 	return len(data), nil
 }
 
-func (d *translationDiagnostics) String() string {
+func (d *hostDiagnostics) String() string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return string(d.data)

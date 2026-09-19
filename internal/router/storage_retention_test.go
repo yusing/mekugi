@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -418,12 +419,113 @@ func TestStorageIndexLimitReclaimsInactiveChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	index, err := store.readChangeIndex("/w")
-	if err != nil || next != "apple1" || index.Streams[0].Retired != 1 {
+	if err != nil || next != "apple1" || index.Streams[0].Retired != 1 || len(index.Changes) != 1 || index.Changes[next].Correlation != strings.Repeat("y", 4096) {
 		t.Fatalf("index reclamation: next=%s retired=%+v err=%v", next, index.Streams, err)
 	}
 	if _, exists := index.Changes[id]; exists {
 		t.Fatal("inactive reservation survived index pressure")
 	}
+}
+
+func TestStorageMaintenanceReusesUnchangedIndexEncoding(t *testing.T) {
+	for _, cleanup := range []bool{false, true} {
+		t.Run(strconv.FormatBool(cleanup), func(t *testing.T) {
+			store, err := openMekugiReplayStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cleanup {
+				old, release := retentionTestSession(t, store, "old", 0)
+				retentionTestPut(t, store, old, "/other", "unrelated")
+				release()
+				retentionTestAge(t, store, "old", 30*24*time.Hour)
+			}
+			current, _ := retentionTestSession(t, store, "current", 0)
+			if _, err := store.reserveChange(current, "/w", "current", "new"); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.locked(current, func() error {
+				index, err := store.readChangeIndex("/w")
+				if err != nil {
+					return err
+				}
+				data, err := marshalProtocolJSON(index)
+				if err != nil {
+					return err
+				}
+				pending := pendingChangeIndexWrite{index: index, data: data}
+				if err := store.scoped(current).maintainStorage(changeIndexName("/w"), int64(len(data)), cleanup, &pending); err != nil {
+					return err
+				}
+				if len(pending.data) != len(data) || &pending.data[0] != &data[0] {
+					t.Fatal("maintenance encoded an unchanged index again")
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if cleanup {
+				retentionTestExists(t, store, "/other", "unrelated", false)
+			}
+		})
+	}
+}
+
+func TestStorageIndexPressurePersistsRetiredAttempts(t *testing.T) {
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, release := retentionTestSession(t, store, "old", 0)
+	id, err := store.reserveChange(old, "/w", "old", "original")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.put(old, "/w", map[string]mekugiHistory{
+		"old-call": {ChangeID: id, CorrelationID: "original", Attempt: 1, Script: strings.Repeat("x", 2048)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	release()
+	retentionTestAge(t, store, "old", time.Hour)
+	current, _ := retentionTestSession(t, store, "current", 0)
+	if err := store.put(current, "/w", map[string]mekugiHistory{
+		"current-call": {ChangeID: id, CorrelationID: "original", Attempt: 2, ExecutingThread: "current"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sizes, err := store.storageFileSizes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.maxBytes = 0
+	for _, size := range sizes {
+		store.maxBytes += size
+	}
+	// Adding the reservation exceeds the exact current usage. Cleanup must
+	// remove the old attempt, preserve the active attempt, and persist both
+	// that retirement and the newly reserved ID in the replacement index.
+	correlation := strings.Repeat("y", 1024)
+	next, err := store.reserveChange(current, "/w", "current", correlation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := store.readChangeIndex("/w")
+	if err != nil {
+		t.Fatal(err)
+	}
+	change := index.Changes[id]
+	if next != "apple1" || len(index.Changes) != 2 || index.Changes[next].Correlation != correlation {
+		t.Fatalf("new reservation missing after cleanup: next=%q index=%+v", next, index)
+	}
+	if change.RetiredCalls != 1 || len(change.Calls) != 1 || change.Calls[0].ID != "current-call" {
+		t.Fatalf("persisted attempts = %+v", change)
+	}
+	if index.Streams[0].Next != 1 || index.Streams[0].Retired != 0 {
+		t.Fatalf("partially retained stream = %+v", index.Streams[0])
+	}
+	retentionTestExists(t, store, "/w", "old-call", false)
+	retentionTestExists(t, store, "/w", "current-call", true)
 }
 
 func TestStorageLegacyJournalPressurePreservesReceipts(t *testing.T) {
@@ -668,5 +770,55 @@ func TestStorageRetentionLegacyHandlesAreCleanupOnly(t *testing.T) {
 				t.Fatalf("legacy cleanup damaged current index: %+v, %v", index, err)
 			}
 		})
+	}
+}
+
+func BenchmarkStorageReserveChange(b *testing.B) {
+	store, err := openMekugiReplayStore(b.TempDir())
+	if err != nil {
+		b.Fatal(err)
+	}
+	ctx, release, err := store.beginSession(b.Context(), "current", "current")
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(release)
+	const existing = 128
+	index := changeIndex{
+		Version: 1, Workspace: "/w",
+		Streams: []changeStream{{Thread: "current", Next: existing}},
+		Changes: make(map[string]trackedChange, existing),
+	}
+	for number := 1; number <= existing; number++ {
+		index.Changes[changeHandle("a", number)] = trackedChange{
+			Correlation: strings.Repeat("x", 2048) + strconv.Itoa(number),
+		}
+	}
+	baseline, err := marshalProtocolJSON(index)
+	if err != nil {
+		b.Fatal(err)
+	}
+	name := changeIndexName(index.Workspace)
+	if err := store.locked(ctx, func() error { return store.scoped(ctx).retainFiles(name) }); err != nil {
+		b.Fatal(err)
+	}
+	// Restore the same durable input outside the measurement: each iteration
+	// reserves one new ID against an equally sized, session-owned index.
+	for b.Loop() {
+		b.StopTimer()
+		if err := store.locked(ctx, func() error {
+			return store.writeFile(name, "changes-pending-", baseline)
+		}); err != nil {
+			b.Fatal(err)
+		}
+		b.StartTimer()
+		id, err := store.reserveChange(ctx, index.Workspace, "current", "next")
+		if err != nil || id != changeHandle("a", existing+1) {
+			b.Fatalf("reserve change = %q, %v", id, err)
+		}
+	}
+	persisted, err := store.readChangeIndex(index.Workspace)
+	if err != nil || len(persisted.Changes) != existing+1 || persisted.Changes["amber129"].Correlation != "next" {
+		b.Fatalf("persisted reservation: changes=%d err=%v", len(persisted.Changes), err)
 	}
 }
