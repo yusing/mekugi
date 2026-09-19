@@ -1,5 +1,7 @@
 # Agent navigation
 
+DO NOT write report markdown when I did not ask for.
+
 ## Project goal
 
 Mekugi is an optimization and enhancement layer for stock Codex. Evaluate features and tradeoffs
