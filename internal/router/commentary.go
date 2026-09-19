@@ -9,7 +9,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/openai/openai-go/v3/responses"
 	"github.com/yusing/mekugi/internal/commentaryid"
 	responseevents "github.com/yusing/mekugi/internal/responses"
 )
@@ -176,16 +175,30 @@ func commentaryMessageID(seed string) string {
 
 // assistantCommentaryMessage creates an assistant commentary message with the given ID and text.
 func assistantCommentaryMessage(id, text string) map[string]json.RawMessage {
-	encoded := mustMarshalJSON(responses.ResponseOutputMessageParam{
-		ID: id,
-		Content: []responses.ResponseOutputMessageContentUnionParam{{
-			OfOutputText: new(responses.ResponseOutputTextParam{
-				Annotations: []responses.ResponseOutputTextAnnotationUnionParam{},
-				Text:        text,
-			}),
+	type outputText struct {
+		Annotations []any  `json:"annotations"`
+		Text        string `json:"text"`
+		Type        string `json:"type"`
+	}
+	type outputMessage struct {
+		Type    string       `json:"type"`
+		ID      string       `json:"id,omitempty"`
+		Role    string       `json:"role"`
+		Status  string       `json:"status"`
+		Phase   string       `json:"phase"`
+		Content []outputText `json:"content"`
+	}
+	encoded := mustMarshalJSON(outputMessage{
+		Role:   "assistant",
+		Type:   "message",
+		ID:     id,
+		Status: "completed",
+		Phase:  "commentary",
+		Content: []outputText{{
+			Type:        "output_text",
+			Text:        text,
+			Annotations: []any{},
 		}},
-		Status: responses.ResponseOutputMessageStatusCompleted,
-		Phase:  responses.ResponseOutputMessagePhaseCommentary,
 	})
 	var message map[string]json.RawMessage
 	if err := json.Unmarshal(encoded, &message); err != nil {

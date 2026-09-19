@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-
-	"github.com/openai/openai-go/v3/packages/param"
-	"github.com/openai/openai-go/v3/responses"
 )
 
 type codeModeApplyPatchOwner struct {
@@ -272,15 +269,17 @@ func (t *mekugiResponseTransform) routesTool(name string) bool {
 }
 
 func customFreeformTool(name, description string) map[string]json.RawMessage {
-	tool := responses.ToolParamOfCustom(name)
-	tool.OfCustom.Description = param.NewOpt(description)
-	return mustToolDefinitionFields(tool)
-}
-
-// mustToolDefinitionFields converts a tool parameter to its JSON field map.
-func mustToolDefinitionFields(tool responses.ToolUnionParam) map[string]json.RawMessage {
+	type customTool struct {
+		Type        string `json:"type"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(mustMarshalJSON(tool), &fields); err != nil {
+	if err := json.Unmarshal(mustMarshalJSON(customTool{
+		Type:        "custom",
+		Name:        name,
+		Description: description,
+	}), &fields); err != nil {
 		panic(err)
 	}
 	return fields
