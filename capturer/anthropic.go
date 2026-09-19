@@ -6,7 +6,7 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/tiktoken-go/tokenizer"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 // Observe actual Messages transport/output shapes. Token usage still comes

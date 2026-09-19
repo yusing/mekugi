@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tiktoken-go/tokenizer"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 func TestRecorderObservesSingleListenerAndProviderRetries(t *testing.T) {
@@ -682,7 +682,7 @@ func TestObserveResponseJoinsMultilineSSEData(t *testing.T) {
 	payload := []byte("event: response.completed\n" +
 		"data: {\"type\":\"response.completed\",\n" +
 		"data: \"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":3}}}\n\n")
-	codec, err := tokenizer.ForModel(tokenizer.GPT5)
+	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}

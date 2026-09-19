@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tiktoken-go/tokenizer"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 func TestShellOutputReadPagesAndRestart(t *testing.T) {
@@ -43,7 +43,7 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 	if _, direct := registry.directBashExecCommand([]string{"bash", "hread " + id}); direct {
 		t.Fatal("hread escaped the private runner")
 	}
-	codec, err := tokenizer.ForModel(tokenizer.GPT5)
+	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}

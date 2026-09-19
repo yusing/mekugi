@@ -10,6 +10,7 @@ measure that separately from build/cache overhead.
 | Root engine | `.` |
 | Router behavior | `./internal/router` |
 | Live diff UI or streaming behavior | `./internal/router -run 'Test.*LiveDiff'` plus the terminal acceptance cases below |
+| Shared Go tokenizer | `./internal/tokenizer`, `./capturer`, `./compare`, `./contrib/codex`, and `./internal/router/toolplugin`; CTP caller changes also require router tests |
 | Capture metrics and AX evidence | `./capturer` |
 | Portable core or `mekugi:core/v1` adapter | `./internal/router/toolplugin`, then `./...` and `bun test ./internal/router/toolplugin/tests/core.test.ts` |
 | TypeScript plugin source | `go generate ./internal/router/toolplugin`, then `bun test ./internal/router/toolplugin/tests` |

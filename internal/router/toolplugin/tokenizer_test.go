@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tiktoken-go/tokenizer"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 func TestGPT5TokenizerMatchesPluginFixtures(t *testing.T) {
 	t.Parallel()
-	codec, err := tokenizer.ForModel(tokenizer.GPT5)
+	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}

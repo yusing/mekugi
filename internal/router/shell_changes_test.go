@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tiktoken-go/tokenizer"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
@@ -51,7 +51,7 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	codec, err := tokenizer.ForModel(tokenizer.GPT5)
+	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}

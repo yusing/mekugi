@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tiktoken-go/tokenizer"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 func TestHRunCapture(t *testing.T) {
@@ -82,7 +82,7 @@ func TestShellRunnerHRunDrainsBeyondDisplayAndHostBudgets(t *testing.T) {
 		if mode != "" && !strings.HasSuffix(stdout, "\nlast-marker\n") {
 			t.Fatalf("tail output = %q", stdout)
 		}
-		codec, err := tokenizer.ForModel(tokenizer.GPT5)
+		codec, err := tokenizer.New()
 		if err != nil {
 			t.Fatal(err)
 		}

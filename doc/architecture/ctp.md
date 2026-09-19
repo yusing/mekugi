@@ -16,3 +16,8 @@ CTP/2 owns no tool registry, edit semantics, cross-request history, provider usa
 metrics. The transport capturer observes the native and encoded boundaries and measures
 actual differences without receiving dictionaries or text. Wire rendering substitutes
 only changed fields instead of reserializing unrelated request content.
+
+The shared Go tokenizer owns the pinned GPT-5 vocabulary and tokenization used by
+CTP/2, capture estimates, and comparisons. Vocabulary is immutable embedded data;
+loading it does not fetch network resources. Changes to its storage must preserve
+token IDs and splitting behavior, not merely aggregate counts.

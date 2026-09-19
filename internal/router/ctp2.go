@@ -3,7 +3,7 @@ package router
 import (
 	"encoding/json"
 
-	"github.com/tiktoken-go/tokenizer"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 const (

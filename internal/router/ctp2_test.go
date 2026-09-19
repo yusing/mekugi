@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tiktoken-go/tokenizer"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 func TestCTP2RequestUsesContentLocalDictionaries(t *testing.T) {

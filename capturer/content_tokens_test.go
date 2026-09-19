@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tiktoken-go/tokenizer"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 func TestContentTokensIgnoreJSONFraming(t *testing.T) {
-	codec, err := tokenizer.ForModel(tokenizer.GPT5)
+	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestContentTokensIgnoreJSONFraming(t *testing.T) {
 }
 
 func TestContentTokensIgnoreSSEAndOutputItemJSONFraming(t *testing.T) {
-	codec, err := tokenizer.ForModel(tokenizer.GPT5)
+	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestContentTokensIgnoreSSEAndOutputItemJSONFraming(t *testing.T) {
 }
 
 func TestOutputTextCompressionExcludesToolTranslation(t *testing.T) {
-	codec, err := tokenizer.ForModel(tokenizer.GPT5)
+	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestOutputTextCompressionExcludesToolTranslation(t *testing.T) {
 }
 
 func TestContentTokensIgnoreSSEBOM(t *testing.T) {
-	codec, err := tokenizer.ForModel(tokenizer.GPT5)
+	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}

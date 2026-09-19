@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tiktoken-go/tokenizer"
 	"github.com/yusing/mekugi/internal/chat"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 type chatCaptureCall struct {

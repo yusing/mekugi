@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tiktoken-go/tokenizer"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 func TestSSEDataPreservesFieldsAcrossFraming(t *testing.T) {
@@ -32,7 +32,7 @@ func TestSSEDataPreservesFieldsAcrossFraming(t *testing.T) {
 }
 
 func TestSSEObservationAndMeasurementUseIdenticalFraming(t *testing.T) {
-	codec, err := tokenizer.Get(tokenizer.O200kBase)
+	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}

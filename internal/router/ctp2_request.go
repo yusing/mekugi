@@ -9,11 +9,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tiktoken-go/tokenizer"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 func newCTP2Codec() (*ctp2Codec, error) {
-	tokens, err := tokenizer.ForModel(tokenizer.GPT5)
+	tokens, err := tokenizer.New()
 	if err != nil {
 		return nil, fmt.Errorf("load GPT-5 tokenizer for CTP/2: %w", err)
 	}

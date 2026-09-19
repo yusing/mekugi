@@ -8,9 +8,9 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
+	github.com/dlclark/regexp2/v2 v2.8.0
 	github.com/gofrs/flock v0.13.1
 	github.com/pmezard/go-difflib v1.0.0
-	github.com/tiktoken-go/tokenizer v0.8.1
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/tree-sitter/tree-sitter-javascript v0.25.0
 	github.com/tree-sitter/tree-sitter-python v0.25.0
@@ -22,7 +22,6 @@ require (
 require (
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
-	github.com/dlclark/regexp2/v2 v2.8.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mattn/go-pointer v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.30 // indirect

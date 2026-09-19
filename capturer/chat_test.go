@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tiktoken-go/tokenizer"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 func TestChatCaptureRecordsActualToolShapeAndCompletion(t *testing.T) {
-	codec, err := tokenizer.Get(tokenizer.O200kBase)
+	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestChatCaptureRecordsActualToolShapeAndCompletion(t *testing.T) {
 }
 
 func TestChatCaptureSSELineEndingsAndBOM(t *testing.T) {
-	codec, err := tokenizer.Get(tokenizer.O200kBase)
+	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestChatCaptureSSELineEndingsAndBOM(t *testing.T) {
 }
 
 func TestChatCaptureDecodedToolItemTokens(t *testing.T) {
-	codec, err := tokenizer.Get(tokenizer.O200kBase)
+	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestChatCaptureDecodedToolItemTokens(t *testing.T) {
 }
 
 func TestChatCaptureFinishEvidence(t *testing.T) {
-	codec, err := tokenizer.Get(tokenizer.O200kBase)
+	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}

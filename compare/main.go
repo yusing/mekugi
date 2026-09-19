@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/tiktoken-go/tokenizer"
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/patchtest"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 type scenario struct {
@@ -22,7 +22,7 @@ type scenario struct {
 }
 
 func main() {
-	codec, err := tokenizer.ForModel(tokenizer.GPT5)
+	codec, err := tokenizer.New()
 	if err != nil {
 		fatalf("loading GPT-5 tokenizer: %v", err)
 	}

@@ -15,8 +15,8 @@ Each scenario contains an initial UTF-8 tree, an HPATCH script, and an independe
 authored equivalent `apply_patch` input. The program evaluates both forms and refuses
 to report a comparison unless their resulting paths and file contents are identical.
 
-After equivalence is proven, it obtains the tokenizer through the Go tokenizer
-library's GPT-5 model mapping and reports, for each scenario and in total:
+After equivalence is proven, it uses the pinned GPT-5 (`o200k_base`) encoding and
+reports, for each scenario and in total:
 
 - mekugi input tokens;
 - handwritten `apply_patch` input tokens;

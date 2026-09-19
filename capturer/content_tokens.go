@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/tiktoken-go/tokenizer"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 // contentTokens counts decoded JSON keys and scalar values independently, not

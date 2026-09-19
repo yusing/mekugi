@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tiktoken-go/tokenizer"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 func TestInstructionsSelectModelWorkflowIndependentlyOfTransport(t *testing.T) {
@@ -428,7 +428,7 @@ func TestInstructionsTeachCompactChangeHandoffs(t *testing.T) {
 }
 
 func TestInstructionsStayWithinTokenBudget(t *testing.T) {
-	codec, err := tokenizer.ForModel(tokenizer.GPT5)
+	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}

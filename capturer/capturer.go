@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tiktoken-go/tokenizer"
 	responseevents "github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 const schemaVersion = 6
@@ -215,7 +215,7 @@ func ObserveNativeRequest(ctx context.Context, body []byte) {
 
 // New creates one in-process recorder. It never starts a server.
 func New(config Config) (*Recorder, error) {
-	codec, err := tokenizer.ForModel(tokenizer.GPT5)
+	codec, err := tokenizer.New()
 	if err != nil {
 		return nil, fmt.Errorf("load capture tokenizer: %w", err)
 	}

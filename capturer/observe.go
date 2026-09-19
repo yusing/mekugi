@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tiktoken-go/tokenizer"
 	"github.com/yusing/mekugi/internal/commentaryid"
 	responseevents "github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 var errDecodedPayloadTooLarge = errors.New("decoded response exceeds capture observation limit")
