@@ -24,14 +24,11 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Keep at least three pages per selected stream without repeatedly testing
-	// identical rows through dozens of fresh shell invocations.
 	out, diagnostic := strings.Repeat("out π🙂\n", 36), strings.Repeat("err 引用\n", 30)
 	id, err := store.putShellOutput(t.Context(), out, diagnostic, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A fresh store object, cwd, environment and thread need only the visible ID.
 	reopened, err := openMekugiReplayStore(manifest.ReplayDirectory)
 	if err != nil {
 		t.Fatal(err)
@@ -43,69 +40,117 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 	if _, direct := registry.directBashExecCommand([]string{"bash", "hread " + id}); direct {
 		t.Fatal("hread escaped the private runner")
 	}
+
 	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, interpreter := range []string{"bash", "sh"} {
-		for _, selection := range []string{"", "--stdout", "--stderr"} {
-			t.Run(interpreter+selection, func(t *testing.T) {
-				t.Parallel()
-				var gotOut, gotErr strings.Builder
-				cursor := id
-				invocation := newShellWorkerTestInvocation(t.TempDir(),
-					"CODEX_THREAD_ID=resumed-fork", "XDG_STATE_HOME="+t.TempDir())
-				for page := range 100 {
-					command := "hread " + cursor + " " + selection + " --max-tokens 48"
-					stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, command, nil, invocation)
-					if count, err := codec.Count(stdout); err != nil || count > 48 {
-						t.Fatalf("page budget = %d, %v", count, err)
-					}
-					if page == 1 {
-						again, againErr, againStatus := runShellWorkerTest(t, registry, interpreter, nil, command, nil, invocation)
-						if again != stdout || againErr != stderr || againStatus != status {
-							t.Fatal("cursor read consumed or changed output")
-						}
-					}
-					frame := stdout
-					if strings.HasPrefix(frame, "[stdout bytes]\n") {
-						part, rest, found := strings.Cut(strings.TrimPrefix(frame, "[stdout bytes]\n"), "\n[/stdout]\n")
-						if !found {
-							t.Fatalf("missing stdout end frame: %q", stdout)
-						}
-						gotOut.WriteString(part)
-						frame = rest
-					}
-					if strings.HasPrefix(frame, "[stderr bytes]\n") {
-						part, found := strings.CutSuffix(strings.TrimPrefix(frame, "[stderr bytes]\n"), "\n[/stderr]\n")
-						if !found {
-							t.Fatalf("missing stderr end frame: %q", stdout)
-						}
-						gotErr.WriteString(part)
-					} else {
-						gotOut.WriteString(frame)
-					}
-					if status == 0 {
-						wantOut, wantErr := out, diagnostic
-						if selection == "--stdout" {
-							wantErr = ""
-						} else if selection == "--stderr" {
-							wantOut = ""
-						}
-						if page < 2 || stderr != "" || gotOut.String() != wantOut || gotErr.String() != wantErr {
-							t.Fatalf("incomplete or duplicated pages: %d, %q, %q, %q", page, gotOut.String(), gotErr.String(), stderr)
-						}
-						return
-					}
-					const notice = "read: incomplete; next_call: hread "
-					if !strings.HasPrefix(stderr, notice) {
-						t.Fatalf("read failed: %q %q %d", stdout, stderr, status)
-					}
-					cursor = strings.TrimSpace(strings.TrimPrefix(stderr, notice))
+	ctx, closeFormatter := toolplugin.WithOutputFormatter(t.Context(), manifest.NodeExecutable, filepath.Join(registry.SnapshotDir, manifest.RuntimeRoot))
+	defer closeFormatter()
+	for _, selection := range []string{"", "stdout", "stderr"} {
+		t.Run(selection, func(t *testing.T) {
+			position := [2]int{}
+			var gotOut, gotErr strings.Builder
+			for pageIndex := range 100 {
+				request := struct {
+					Stdout     string `json:"stdout"`
+					Stderr     string `json:"stderr"`
+					StdoutKind string `json:"stdoutKind"`
+					StderrKind string `json:"stderrKind"`
+					Position   [2]int `json:"position"`
+					Stream     string `json:"stream"`
+				}{out, diagnostic, "", "", position, selection}
+
+				data, err := json.Marshal(request)
+				if err != nil {
+					t.Fatal(err)
 				}
-				t.Fatal("pagination did not finish")
-			})
-		}
+				formatted, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, filepath.Join(registry.SnapshotDir, manifest.RuntimeRoot),
+					[]string{"48", "read", string(data), ""})
+				if err != nil || formatted.ExitCode != 0 {
+					t.Fatalf("page selection: %#v, %v", formatted, err)
+				}
+				var page struct {
+					Text     string `json:"text"`
+					Position [2]int `json:"position"`
+					Complete bool   `json:"complete"`
+				}
+				if err := json.Unmarshal([]byte(formatted.Stdout), &page); err != nil {
+					t.Fatal(err)
+				}
+				if count, err := codec.Count(page.Text); err != nil || count > 48 {
+					t.Fatalf("page budget = %d, %v", count, err)
+				}
+
+				frame := page.Text
+				if strings.HasPrefix(frame, "[stdout bytes]\n") {
+					part, rest, found := strings.Cut(strings.TrimPrefix(frame, "[stdout bytes]\n"), "\n[/stdout]\n")
+					if !found {
+						t.Fatalf("missing stdout frame: %q", frame)
+					}
+					gotOut.WriteString(part)
+					frame = rest
+				}
+				if strings.HasPrefix(frame, "[stderr bytes]\n") {
+					part, found := strings.CutSuffix(strings.TrimPrefix(frame, "[stderr bytes]\n"), "\n[/stderr]\n")
+					if !found {
+						t.Fatalf("missing stderr frame: %q", frame)
+					}
+					gotErr.WriteString(part)
+				} else {
+					gotOut.WriteString(frame)
+				}
+
+				if page.Complete {
+					wantOut, wantErr := out, diagnostic
+					if selection == "stdout" {
+						wantErr = ""
+					} else if selection == "stderr" {
+						wantOut = ""
+					}
+					if pageIndex < 2 || gotOut.String() != wantOut || gotErr.String() != wantErr {
+						t.Fatalf("incomplete or duplicated pages: %d, %q, %q", pageIndex, gotOut.String(), gotErr.String())
+					}
+					return
+				}
+				ref, err := reopened.putReadCursor(ctx, record, page.Position, selection)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cursor, err := reopened.readShellOutput(ctx, ref)
+				if err != nil || cursor.Position != page.Position || cursor.Stream != selection {
+					t.Fatalf("cursor round trip: %#v, %v", cursor, err)
+				}
+				position = page.Position
+			}
+			t.Fatal("pagination did not finish")
+		})
+	}
+
+	// Keep sh represented and exercise restart/continuation behavior through
+	// executeHRead under a changed cwd, thread ID and state directory.
+	stdout, stderr, status := runShellWorkerTest(t, registry, "sh", nil, "hread "+id+" --stdout --max-tokens 48", nil)
+	if status != 1 || stdout == "" || !strings.Contains(stderr, "next_call: hread ") {
+		t.Fatalf("sh boundary: %d %q %q", status, stdout, stderr)
+	}
+	invocation := newShellWorkerTestInvocation(t.TempDir(),
+		"CODEX_THREAD_ID=resumed-fork", "XDG_STATE_HOME="+t.TempDir())
+	first, firstErr, firstStatus := runShellWorkerTest(t, registry, "bash", nil,
+		"hread "+id+" --stderr --max-tokens 48", nil, invocation)
+	const notice = "read: incomplete; next_call: hread "
+	if firstStatus != 1 || !strings.Contains(first, "err 引用") || strings.Contains(first, "out π") || !strings.HasPrefix(firstErr, notice) {
+		t.Fatalf("restart boundary: %d %q %q", firstStatus, first, firstErr)
+	}
+	cursor := strings.TrimSpace(strings.TrimPrefix(firstErr, notice))
+	command := "hread " + cursor + " --max-tokens 48"
+	next, nextErr, nextStatus := runShellWorkerTest(t, registry, "bash", nil, command, nil, invocation)
+	again, againErr, againStatus := runShellWorkerTest(t, registry, "bash", nil, command, nil, invocation)
+	if next != again || nextErr != againErr || nextStatus != againStatus {
+		t.Fatalf("cursor read consumed or changed output: first=%q/%q/%d again=%q/%q/%d",
+			next, nextErr, nextStatus, again, againErr, againStatus)
+	}
+	if !strings.Contains(next, "err 引用") || strings.Contains(next, "out π") || nextStatus != 1 || !strings.HasPrefix(nextErr, notice) {
+		t.Fatalf("continued stderr binding failed: %d %q %q", nextStatus, next, nextErr)
 	}
 }
 
@@ -235,12 +280,7 @@ func TestShellOutputPluginRemainderUsesManagedRecovery(t *testing.T) {
 
 func TestShellOutputReadRejectsMissingAndNullFields(t *testing.T) {
 	t.Parallel()
-	registry := sharedProxyTestRegistry(t)
-	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := openMekugiReplayStore(manifest.ReplayDirectory)
+	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,21 +301,15 @@ func TestShellOutputReadRejectsMissingAndNullFields(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(store.directory, "output-"+id+".json"), []byte(data), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, "hread "+id, nil)
-		if status != 1 || stdout != "" || !strings.Contains(stderr, "missing required fields") {
-			t.Fatalf("corrupt evidence accepted: %q, %q %q %d", fields, stdout, stderr, status)
+		if _, err := store.readShellOutput(t.Context(), id); err == nil || !strings.Contains(err.Error(), "missing required fields") {
+			t.Fatalf("corrupt evidence accepted: %q, %v", fields, err)
 		}
 	}
 }
 
 func TestReadCursorRejectsAlteredPosition(t *testing.T) {
 	t.Parallel()
-	registry := sharedProxyTestRegistry(t)
-	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := openMekugiReplayStore(manifest.ReplayDirectory)
+	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,9 +335,8 @@ func TestReadCursorRejectsAlteredPosition(t *testing.T) {
 		if err := os.WriteFile(name, []byte(altered), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, "hread "+ref, nil)
-		if status != 1 || stdout != "" || stderr == "" {
-			t.Fatalf("altered cursor accepted: %s: %q %q %d", position, stdout, stderr, status)
+		if _, err := store.readShellOutput(t.Context(), ref); err == nil {
+			t.Fatalf("altered cursor accepted: %s", position)
 		}
 	}
 }

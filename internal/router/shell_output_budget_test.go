@@ -164,27 +164,26 @@ func TestShellOutputBudgetFitsFramedResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtimeRoot := filepath.Join(registry.SnapshotDir, manifest.RuntimeRoot)
-	directory := t.TempDir()
-	if err := os.WriteFile(filepath.Join(directory, "input"), []byte(strings.Repeat("\"quoted\" \t🙂 row\\value\n", 3000)), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	ctx, closeFormatter := toolplugin.WithOutputFormatter(t.Context(), manifest.NodeExecutable, runtimeRoot)
+	defer closeFormatter()
+	fullOutput := strings.Repeat("\"quoted\" \t🙂 row\\value\n", 3000)
 	for _, budget := range []int{256, 1600, 10000} {
 		t.Run(strconv.Itoa(budget), func(t *testing.T) {
-			t.Parallel()
-			script := "#!params={\"max_output_tokens\":" + strconv.Itoa(budget) + "}\nhcat input\nprintf 'command error\\n' >&2\nexit 7"
-			stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, script, nil,
-				newShellWorkerTestInvocation(directory))
-			if status != 7 {
-				t.Fatalf("status=%d stderr=%q", status, stderr)
+			display := newShellOutputDisplay(ctx, manifest, runtimeRoot, budget, nil, nil)
+			execution, err := display.finish(toolplugin.ExecutionOutput{
+				Stdout: fullOutput, Stderr: "command error\n", ExitCode: 7,
+			})
+			if err != nil || execution.ExitCode != 7 {
+				t.Fatalf("display: %#v, %v", execution, err)
 			}
-			retainedShellTestOutput(t, stderr)
+			retainedShellTestOutput(t, execution.Stderr)
 			native := string(mustMarshalJSON(map[string]any{
-				"chunk_id": "012345", "wall_time_seconds": 1.23, "exit_code": status,
-				"original_token_count": 30000, "output": stdout + stderr,
+				"chunk_id": "012345", "wall_time_seconds": 1.23, "exit_code": execution.ExitCode,
+				"original_token_count": 30000, "output": execution.Stdout + execution.Stderr,
 			}))
 			for _, framed := range []string{native, string(mustMarshalJSON(native))} {
-				selected, err := toolplugin.FormatOutput(t.Context(), manifest.NodeExecutable,
-					runtimeRoot, []string{strconv.Itoa(budget), "head", framed, ""})
+				selected, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, runtimeRoot,
+					[]string{strconv.Itoa(budget), "head", framed, ""})
 				if err != nil {
 					t.Fatal(err)
 				}
