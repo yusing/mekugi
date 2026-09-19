@@ -95,6 +95,16 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "isolate AX test instrumentation:", err)
 		os.Exit(1)
 	}
+	for _, name := range []string{
+		"OPENCODE_API_KEY",
+		"OPENCODE_GO_API_KEY",
+		"OPENCODE_ZEN_API_KEY",
+	} {
+		if err := os.Setenv(name, ""); err != nil {
+			fmt.Fprintf(os.Stderr, "isolate test environment variable %s: %v\n", name, err)
+			os.Exit(1)
+		}
+	}
 	code := m.Run()
 	var err error
 	for _, fixture := range []*proxyRegistryFixture{&proxyTestFixture, &pluginProxyTestFixture} {

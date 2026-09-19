@@ -143,6 +143,7 @@ func TestHcatMultiplePathsPreserveSingleFileMode(t *testing.T) {
 }
 
 func TestReadBundleFitsOuterDisplay(t *testing.T) {
+	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
 	for _, name := range []string{"first", "second"} {

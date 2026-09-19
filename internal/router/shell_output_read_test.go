@@ -48,6 +48,7 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 	for _, interpreter := range []string{"bash", "sh"} {
 		for _, selection := range []string{"", "--stdout", "--stderr"} {
 			t.Run(interpreter+selection, func(t *testing.T) {
+				t.Parallel()
 				var gotOut, gotErr strings.Builder
 				cursor := id
 				invocation := newShellWorkerTestInvocation(t.TempDir(),
@@ -310,6 +311,7 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
 	for _, command := range []string{"hcat", "inspect_file"} {
 		t.Run(command, func(t *testing.T) {
+			t.Parallel()
 			directory := t.TempDir()
 			source := filepath.Join(directory, "sample.go")
 			var content strings.Builder

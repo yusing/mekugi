@@ -170,6 +170,7 @@ func TestShellOutputBudgetFitsFramedResults(t *testing.T) {
 	}
 	for _, budget := range []int{256, 1600, 10000} {
 		t.Run(strconv.Itoa(budget), func(t *testing.T) {
+			t.Parallel()
 			script := "#!params={\"max_output_tokens\":" + strconv.Itoa(budget) + "}\nhcat input\nprintf 'command error\\n' >&2\nexit 7"
 			stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, script, nil,
 				newShellWorkerTestInvocation(directory))
