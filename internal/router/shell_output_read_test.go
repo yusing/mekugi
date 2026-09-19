@@ -83,16 +83,16 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 				}
 
 				frame := page.Text
-				if strings.HasPrefix(frame, "[stdout bytes]\n") {
-					part, rest, found := strings.Cut(strings.TrimPrefix(frame, "[stdout bytes]\n"), "\n[/stdout]\n")
+				if after, ok := strings.CutPrefix(frame, "[stdout bytes]\n"); ok {
+					part, rest, found := strings.Cut(after, "\n[/stdout]\n")
 					if !found {
 						t.Fatalf("missing stdout frame: %q", frame)
 					}
 					gotOut.WriteString(part)
 					frame = rest
 				}
-				if strings.HasPrefix(frame, "[stderr bytes]\n") {
-					part, found := strings.CutSuffix(strings.TrimPrefix(frame, "[stderr bytes]\n"), "\n[/stderr]\n")
+				if after, ok := strings.CutPrefix(frame, "[stderr bytes]\n"); ok {
+					part, found := strings.CutSuffix(after, "\n[/stderr]\n")
 					if !found {
 						t.Fatalf("missing stderr frame: %q", frame)
 					}

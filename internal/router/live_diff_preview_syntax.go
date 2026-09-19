@@ -66,7 +66,7 @@ func liveDiffClipSyntax(spans []liveDiffSourceSpan, cut int) []liveDiffSourceSpa
 func liveDiffSourceRows(input string, spans []liveDiffSourceSpan) []liveDiffSourceSpan {
 	var rows []liveDiffSourceSpan
 	offset, index := 0, 0
-	for _, line := range strings.Split(strings.TrimSuffix(input, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSuffix(input, "\n"), "\n") {
 		for index+1 < len(spans) && spans[index+1].Offset <= offset {
 			index++
 		}

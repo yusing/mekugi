@@ -83,8 +83,8 @@ func (e requestExecutor) execute(
 ) (requestErr error) {
 	var attempts []*requestAttempt
 	defer func() {
-		for index := len(attempts) - 1; index >= 0; index-- {
-			requestErr = attempts[index].finish(requestErr)
+		for _, attempt := range slices.Backward(attempts) {
+			requestErr = attempt.finish(requestErr)
 		}
 	}()
 

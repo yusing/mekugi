@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"io"
+	"maps"
 	"math"
 	"strings"
 
@@ -127,9 +128,7 @@ func normalizeAnthropicStream(reader io.Reader, send func(grokChunk) error) erro
 		if json.Unmarshal(raw, &update) != nil {
 			return openCodeStreamError("Invalid OpenCode Messages usage")
 		}
-		for key, value := range update {
-			usage[key] = value
-		}
+		maps.Copy(usage, update)
 		return nil
 	}
 	return readOpenCodeSSE(reader, func(data []byte) (bool, error) {

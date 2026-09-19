@@ -109,7 +109,7 @@ func TestOpenCodeEndpointRequestsAndReplay(t *testing.T) {
 				}
 				var result map[string]jsontext.Value
 				if stream {
-					for _, line := range strings.Split(string(body), "\n") {
+					for line := range strings.SplitSeq(string(body), "\n") {
 						if strings.HasPrefix(line, "data: ") {
 							var event map[string]jsontext.Value
 							_ = json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &event)

@@ -141,7 +141,7 @@ func executeShellProgram(
 	syntax.Walk(program, func(node syntax.Node) bool {
 		// mvdan does not implement >|. It is an unconditional truncating
 		// redirection, which the worker owns just like >.
-		if redirect, ok := node.(*syntax.Redirect); ok && redirect.Op == syntax.ClbOut {
+		if redirect, ok := node.(*syntax.Redirect); ok && redirect.Op == syntax.RdrClob {
 			redirect.Op = syntax.RdrOut
 		}
 		if call, ok := node.(*syntax.CallExpr); ok && len(call.Args) != 0 {

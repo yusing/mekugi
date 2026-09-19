@@ -6,6 +6,7 @@ package tokenizer
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/dlclark/regexp2/v2"
 )
@@ -72,14 +73,14 @@ func (c *codec) tokenize(input string, yield func(uint, string)) error {
 }
 
 func (c *codec) Decode(tokens []uint) (string, error) {
-	var out string
+	var out strings.Builder
 	for _, t := range tokens {
 		if t >= uint(len(c.reverseVocabulary)) {
 			return "", fmt.Errorf("invalid token: %d", t)
 		}
-		out += c.reverseVocabulary[t]
+		out.WriteString(c.reverseVocabulary[t])
 	}
-	return out, nil
+	return out.String(), nil
 }
 
 type part struct {

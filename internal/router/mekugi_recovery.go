@@ -99,7 +99,7 @@ func genericRecoveryGuidance(script string, rejections []mekugi.HostRejection, r
 		}
 	}
 	if len(rows) == 0 {
-		for index := len(logicalRows) - 1; index >= 0; index-- {
+		for index := range slices.Backward(logicalRows) {
 			addPhysical(index)
 			if len(rows) != 0 {
 				break

@@ -218,7 +218,7 @@ func (registry *toolRegistry) directBashExecCommand(arguments []string) (string,
 	}
 	for _, redirect := range statement.Redirs {
 		switch redirect.Op {
-		case syntax.RdrOut, syntax.AppOut, syntax.ClbOut, syntax.RdrAll, syntax.AppAll:
+		case syntax.RdrOut, syntax.AppOut, syntax.RdrClob, syntax.RdrAll, syntax.AppAll:
 			return "", false
 		}
 	}

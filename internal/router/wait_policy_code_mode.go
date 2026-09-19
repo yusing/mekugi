@@ -1,6 +1,7 @@
 package router
 
 import (
+	"slices"
 	"strconv"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
@@ -108,8 +109,8 @@ func rewriteCodeModeWaits(source string, policies map[string]waitPolicy) (string
 		}
 	}
 	walk(root)
-	for i := len(changes) - 1; i >= 0; i-- {
-		change := changes[i]
+	for _, change := range slices.Backward(changes) {
+
 		source = source[:change.start] + change.text + source[change.end:]
 	}
 	return source, len(changes) != 0
