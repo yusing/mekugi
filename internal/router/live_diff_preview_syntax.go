@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
@@ -82,11 +83,11 @@ func (p *liveDiffPreviewView) colorScript(ctx context.Context, theme liveDiffThe
 		next := at
 		var source strings.Builder
 		for next < end && p.paths[next] == span {
-			source.WriteString(liveDiffSafe(strings.TrimSuffix(p.source[next].text, "\n"), false))
+			source.WriteString(livediff.Safe(strings.TrimSuffix(p.source[next].text, "\n"), false))
 			source.WriteByte('\n')
 			next++
 		}
-		colored, err := p.renderer.colorSource(ctx, theme, span.Path, source.String())
+		colored, err := p.renderer.ColorSource(ctx, theme, span.Path, source.String())
 		if err != nil {
 			return nil, err
 		}

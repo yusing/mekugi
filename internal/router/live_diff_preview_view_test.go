@@ -136,8 +136,8 @@ func TestLiveDiffPreviewSyntaxAndVisibleTip(t *testing.T) {
 		}
 		center := lines[len(lines)-1]
 		if !strings.Contains(ansi.Strip(center), "STREAM_TIP") ||
-			!strings.Contains(center, theme.foreground(chroma.Keyword)+"return") ||
-			!strings.Contains(center, theme.foreground(chroma.LiteralString)) {
+			!strings.Contains(center, theme.Foreground(chroma.Keyword)+"return") ||
+			!strings.Contains(center, theme.Foreground(chroma.LiteralString)) {
 			t.Fatalf("tip not visible and colored: %q", center)
 		}
 		if strings.Contains(lines[0], "validated") || strings.Contains(lines[0], "applied") {
@@ -178,7 +178,7 @@ func TestLiveDiffPreviewScriptSyntax(t *testing.T) {
 				pane.update(liveDiffPreview{ID: tc.name, Workspace: "/workspace", Input: tc.input})
 				lines, err := pane.render(t.Context(), "/workspace", theme, 100, 20)
 				frame := strings.Join(lines, "\n")
-				if err != nil || !strings.Contains(frame, theme.foreground(tc.kind)+tc.token) {
+				if err != nil || !strings.Contains(frame, theme.Foreground(tc.kind)+tc.token) {
 					t.Fatalf("missing %s syntax: %v %q", tc.name, err, frame)
 				}
 			})

@@ -283,8 +283,8 @@ func TestShellFileGroupedRedirectionOrder(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, file := range files {
-				if file.path != filepath.Join(directory, oldName) && file.path != filepath.Join(directory, "renamed") {
-					t.Fatalf("live diff grouped a lexical rather than resolved path: %s", file.path)
+				if file.Path != filepath.Join(directory, oldName) && file.Path != filepath.Join(directory, "renamed") {
+					t.Fatalf("live diff grouped a lexical rather than resolved path: %s", file.Path)
 				}
 			}
 			if _, err := os.Stat(filepath.Join(directory, oldName)); !os.IsNotExist(err) {

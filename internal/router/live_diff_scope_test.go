@@ -62,7 +62,7 @@ func TestLiveDiffSessionScopeStreamsAndWorkspaces(t *testing.T) {
 	}
 	tempPath := filepath.Join(t.TempDir(), "notes.txt")
 	liveDiffScopeCapture(t, store, workspace, "current", "current-call", tempPath, "old", "new")
-	if files := read(); len(files) != 1 || files[0].path != tempPath {
+	if files := read(); len(files) != 1 || files[0].Path != tempPath {
 		t.Fatalf("outside-workspace edit missing: %#v", files)
 	}
 	liveDiffScopeCapture(t, store, second, "child", "child-call", filepath.Join(second, "child.txt"), "old", "new")
@@ -86,35 +86,35 @@ func TestLiveDiffSessionCrossWorkspaceOverlap(t *testing.T) {
 	scope := liveDiffScope{Workspaces: map[string]map[string]bool{first: {"root": true}, second: {"child": true}}}
 	path := filepath.Join(t.TempDir(), "notes.txt")
 	liveDiffScopeCapture(t, store, first, "root", "same-call-id", path, "original", "first")
-	view := liveDiffView{scroll: make(map[string]int)}
+	view := liveDiffView{Scroll: make(map[string]int)}
 	refresh := func() {
 		t.Helper()
 		files, err := store.liveDiffSnapshotFiles(t.Context(), scope)
 		if err != nil {
 			t.Fatal(err)
 		}
-		view.merge(files)
-		view.refreshVisible()
+		view.Merge(files)
+		view.RefreshVisible()
 	}
 	refresh()
-	key := view.files[0].key()
-	view.scroll[key] = 2
-	view.flush(true)
+	key := view.Files[0].Key()
+	view.Scroll[key] = 2
+	view.Flush(true)
 	liveDiffScopeCapture(t, store, second, "child", "same-call-id", path, "first", "fixed")
 	refresh()
-	if len(view.files) != 1 || len(view.files[0].chunks) != 2 || view.files[0].key() != key || view.scroll[key] != 2 {
+	if len(view.Files) != 1 || len(view.Files[0].Chunks) != 2 || view.Files[0].Key() != key || view.Scroll[key] != 2 {
 		t.Fatal("workspace switch broke shared file identity, selection or call identity")
 	}
-	if chunks := view.visible[key].chunks; len(chunks) != 1 || !strings.Contains(chunks[0].review.Diff, "-original\n+fixed\n") {
+	if chunks := view.Visible[key].Chunks; len(chunks) != 1 || !strings.Contains(chunks[0].Review.Diff, "-original\n+fixed\n") {
 		t.Fatalf("cross-workspace edit lost its combined result: %#v", chunks)
 	}
 	liveDiffScopeCapture(t, store, second, "child", "revert", path, "fixed", "original")
 	refresh()
-	if chunks := view.visible[key].chunks; len(chunks) != 0 {
+	if chunks := view.Visible[key].Chunks; len(chunks) != 0 {
 		t.Fatal("cross-workspace full revert retained a net diff")
 	}
-	view.flush(true)
-	if len(view.visible[key].chunks) != 0 {
+	view.Flush(true)
+	if len(view.Visible[key].Chunks) != 0 {
 		t.Fatal("flush retained reviewed captures")
 	}
 }
@@ -163,19 +163,19 @@ func TestLiveDiffFreshSnapshotComposesCrossStreamCaptures(t *testing.T) {
 				t.Fatal(err)
 			}
 			var view liveDiffView
-			view.merge(files)
-			view.refreshVisible()
-			for _, file := range view.files {
-				if file.path == path {
-					chunks := view.visible[file.key()].chunks
+			view.Merge(files)
+			view.RefreshVisible()
+			for _, file := range view.Files {
+				if file.Path == path {
+					chunks := view.Visible[file.Key()].Chunks
 					if legacy {
-						if len(chunks) != 1 || !strings.Contains(chunks[0].status, "older captures have no shared order") || chunks[0].review.Diff != "" {
+						if len(chunks) != 1 || !strings.Contains(chunks[0].Status, "older captures have no shared order") || chunks[0].Review.Diff != "" {
 							t.Fatalf("legacy captures guessed a result or rendered individual patches: %#v", chunks)
 						}
 						return
 					}
-					text := liveDiffVisibleText(view.visible[file.key()])
-					if len(chunks) != 2 || chunks[0].status != "" || chunks[1].status != "" ||
+					text := liveDiffVisibleText(view.Visible[file.Key()])
+					if len(chunks) != 2 || chunks[0].Status != "" || chunks[1].Status != "" ||
 						!strings.Contains(text, "+prefix\n") || !strings.Contains(text, "@@ -20,1 +21,1 @@\n-old\n+new\n") {
 						t.Fatalf("cross-stream result used stream order instead of capture order: %s", text)
 					}

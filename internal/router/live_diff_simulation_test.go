@@ -60,9 +60,9 @@ func TestLiveDiffSimulationRealGoFlows(t *testing.T) {
 	}
 	foundRoutes := false
 	for _, file := range files {
-		foundRoutes = foundRoutes || file.path == filepath.Join(workspace, "routes.go")
-		if !strings.HasPrefix(file.path, workspace+string(filepath.Separator)) {
-			t.Fatalf("capture escaped fixture scope: %q", file.path)
+		foundRoutes = foundRoutes || file.Path == filepath.Join(workspace, "routes.go")
+		if !strings.HasPrefix(file.Path, workspace+string(filepath.Separator)) {
+			t.Fatalf("capture escaped fixture scope: %q", file.Path)
 		}
 	}
 	if !foundRoutes {

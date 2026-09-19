@@ -130,7 +130,7 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 		marker := fmt.Sprintf("LATEST%d", i)
 		chunk := liveDiffHighlightChunk("", paths[edit.file],
 			fmt.Sprintf("@@ -%d +%d @@\n-original\n+%s\n", edit.line, edit.line, marker), true)
-		publish(fmt.Sprintf("update%d", i), []mekugi.ReviewFile{chunk.review}, true)
+		publish(fmt.Sprintf("update%d", i), []mekugi.ReviewFile{chunk.Review}, true)
 		frame := waitFrame("+" + marker)
 		if got := rowText(frame, 5); !strings.Contains(got, "+"+marker) {
 			t.Fatalf("latest change is not centered: %q", got)
@@ -167,7 +167,7 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 		t.Fatalf("sticky and in-view headings are shifted: header=%q heading=%q", header, heading)
 	}
 	chunk := liveDiffHighlightChunk("", paths[4], "@@ -19 +19 @@\n-original\n+PREPARED19\n", false)
-	history := publish("pending", []mekugi.ReviewFile{chunk.review}, false)
+	history := publish("pending", []mekugi.ReviewFile{chunk.Review}, false)
 	waitFrame("PAUSED · new changes available")
 	if _, err := terminal.Write([]byte("r")); err != nil {
 		t.Fatal(err)

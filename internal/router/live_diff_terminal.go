@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/livediff"
 	"golang.org/x/term"
 )
 
@@ -54,11 +55,11 @@ type liveDiffTerminalController struct {
 func newLiveDiffTerminalController(store *mekugiReplayStore, workspace string, stdout *os.File) *liveDiffTerminalController {
 	previewFrame := time.NewTimer(time.Hour)
 	previewFrame.Stop()
-	theme := liveDiffEnvironmentTheme(os.Getenv("COLORFGBG"))
+	theme := livediff.EnvironmentTheme(os.Getenv("COLORFGBG"))
 	return &liveDiffTerminalController{
 		store: store, workspace: workspace, stdout: stdout,
 		data: newLiveDiffData(), coverage: "CONNECTING",
-		view:              liveDiffView{scroll: make(map[string]int), following: true},
+		view:              liveDiffView{Scroll: make(map[string]int), Following: true},
 		previewFrame:      previewFrame,
 		renderedFocusFile: -1, dirty: true, followDirty: true,
 		theme: theme, renderedTheme: theme,
@@ -124,25 +125,25 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		return err
 	}
 	width, height = max(1, width), max(3, height)
-	files := make([]liveDiffFile, len(c.view.files))
+	files := make([]liveDiffFile, len(c.view.Files))
 	focusFile := -1
-	for i, file := range c.view.files {
-		files[i] = c.view.visible[file.key()]
-		if slices.ContainsFunc(file.chunks, func(chunk liveDiffChunk) bool { return chunk.key == c.view.latest }) {
+	for i, file := range c.view.Files {
+		files[i] = c.view.Visible[file.Key()]
+		if slices.ContainsFunc(file.Chunks, func(chunk liveDiffChunk) bool { return chunk.Key == c.view.Latest }) {
 			focusFile = i
 		}
 	}
-	focus := c.view.latestChunk()
-	focus.snapshotOrder = 0 // Snapshot numbering does not change a capture's geometry.
+	focus := c.view.LatestChunk()
+	focus.SnapshotOrder = 0 // Snapshot numbering does not change a capture's geometry.
 	sameFiles := reflect.DeepEqual(c.rendered, files)
 	if !sameFiles || c.renderedFocus != focus || c.renderedFocusFile != focusFile || width != c.lastWidth || c.theme != c.renderedTheme {
 		previous := c.rendering
-		c.rendering, err = c.renderer.render(ctx, c.theme, files, c.workspace, width, focusFile, focus)
+		c.rendering, err = c.renderer.Render(ctx, c.theme, files, c.workspace, width, focusFile, focus)
 		if err != nil {
 			return err
 		}
 		if width != c.lastWidth && sameFiles {
-			c.view.reflow(previous, c.rendering)
+			c.view.Reflow(previous, c.rendering)
 		}
 		c.renderedTheme = c.theme
 		c.rendered, c.renderedFocus, c.renderedFocusFile = files, focus, focusFile
@@ -152,25 +153,25 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		c.dirty, c.followDirty = true, true
 	}
 	c.lastWidth, c.lastHeight = width, height
-	lines := c.rendering.lines
+	lines := c.rendering.Lines
 	rows := height - 2
 	offset := 0
-	if len(c.view.files) > 0 {
-		start := c.rendering.starts[c.view.selected]
+	if len(c.view.Files) > 0 {
+		start := c.rendering.Starts[c.view.Selected]
 		end := len(lines)
-		if c.view.selected+1 < len(c.view.files) {
-			end = c.rendering.starts[c.view.selected+1]
+		if c.view.Selected+1 < len(c.view.Files) {
+			end = c.rendering.Starts[c.view.Selected+1]
 		}
-		offset = start + min(c.view.scroll[c.view.files[c.view.selected].key()], max(0, end-start-1))
+		offset = start + min(c.view.Scroll[c.view.Files[c.view.Selected].Key()], max(0, end-start-1))
 	}
-	if c.view.following && c.followDirty {
-		offset = c.rendering.followOffset(rows)
+	if c.view.Following && c.followDirty {
+		offset = c.rendering.FollowOffset(rows)
 	}
 	c.followDirty = false
 	// A flushed/reverted last file has an empty span at EOF. Normalize the
 	// actual viewport offset too, not only scrollTo's selection argument.
 	offset = max(0, min(offset, len(lines)-1))
-	c.view.scrollTo(c.rendering, offset)
+	c.view.ScrollTo(c.rendering, offset)
 	c.files, c.lines, c.offset, c.rows = files, lines, offset, rows
 	if !c.dirty {
 		return nil
@@ -178,24 +179,24 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 
 	var active liveDiffFile
 	if len(lines) > 0 {
-		active = files[c.view.selected]
+		active = files[c.view.Selected]
 	}
 	header := "Waiting for captured workspace edits..."
-	if len(c.view.files) > 0 {
+	if len(c.view.Files) > 0 {
 		header = "No unreviewed changes"
 	}
 	if len(lines) > 0 {
-		label := liveDiffDisplayPath(c.workspace, active.path)
+		label := livediff.DisplayPath(c.workspace, active.Path)
 		end := len(lines)
-		if c.view.selected+1 < len(files) {
-			end = c.rendering.starts[c.view.selected+1]
+		if c.view.Selected+1 < len(files) {
+			end = c.rendering.Starts[c.view.Selected+1]
 		}
-		start := c.rendering.starts[c.view.selected]
+		start := c.rendering.Starts[c.view.Selected]
 		number, total := 0, 0
 		for i, file := range files {
-			if len(file.chunks) > 0 {
+			if len(file.Chunks) > 0 {
 				total++
-				if i <= c.view.selected {
+				if i <= c.view.Selected {
 					number++
 				}
 			}
@@ -219,9 +220,9 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		fmt.Fprintf(&screen, "\x1b[%d;1H\x1b[0m\x1b[2K%s\x1b[0m", row, ansi.Truncate(text, max(0, width-1), ""))
 	}
 	if c.diffMode && len(lines) > 0 {
-		header = liveDiffGutter(active.highlighted, c.theme) + liveDiffHeader(header, width-3, c.rendering.counts[c.view.selected], c.theme)
+		header = livediff.Gutter(active.Highlighted, c.theme) + livediff.Header(header, width-3, c.rendering.Counts[c.view.Selected], c.theme)
 	} else {
-		header = liveDiffGutter(false, c.theme) + liveDiffSafe(header, false)
+		header = livediff.Gutter(false, c.theme) + livediff.Safe(header, false)
 	}
 	writeRow(1, header)
 	if c.diffMode {
@@ -247,9 +248,9 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		}
 	}
 	mode := "FOLLOW"
-	if !c.view.following {
+	if !c.view.Following {
 		mode = "PAUSED"
-		if c.view.unseenUpdate {
+		if c.view.UnseenUpdate {
 			mode += " · new changes available"
 		}
 	}
@@ -282,7 +283,7 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 			c.turnRevision = event.TurnRevision
 			c.diffMode = event.Status == "completed"
 			c.dirty = true
-			c.followDirty = c.diffMode && c.view.following
+			c.followDirty = c.diffMode && c.view.Following
 		}
 	case "coverage":
 		c.coverage, c.dirty = event.Status, true
@@ -324,8 +325,8 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 		}
 	}
 	if event.Kind == "scope" || event.Kind == "change" {
-		c.view.merge(c.data.files())
-		c.view.refreshVisible()
+		c.view.Merge(c.data.files())
+		c.view.RefreshVisible()
 		c.dirty = true
 	}
 	return false, nil
@@ -337,10 +338,10 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 	if key == 3 {
 		return true
 	}
-	if c.osc.active || c.escape == "\x1b" && key == ']' {
+	if c.osc.Active || c.escape == "\x1b" && key == ']' {
 		c.escape = ""
-		if reply, complete := c.osc.consume(key); complete {
-			if detected, ok := liveDiffBackgroundTheme(reply); ok {
+		if reply, complete := c.osc.Consume(key); complete {
+			if detected, ok := livediff.BackgroundTheme(reply); ok {
 				c.theme = detected
 			}
 		}
@@ -383,45 +384,45 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 		return false
 	}
 	if strings.ContainsRune("np\tjk bgG", rune(key)) {
-		c.view.following = false
+		c.view.Following = false
 	}
 	switch key {
 	case 'q':
 		return true
 	case 'v':
 		c.diffMode = !c.diffMode
-		c.followDirty = c.diffMode && c.view.following
+		c.followDirty = c.diffMode && c.view.Following
 	case 'r':
-		c.view.followLatest()
+		c.view.FollowLatest()
 		c.followDirty = true
 	case 'f', 'F':
-		c.view.flush(key == 'F')
+		c.view.Flush(key == 'F')
 	case 'n', '\t':
-		for range len(c.view.files) {
-			c.view.selected = (c.view.selected + 1) % len(c.view.files)
-			if len(c.files[c.view.selected].chunks) > 0 {
+		for range len(c.view.Files) {
+			c.view.Selected = (c.view.Selected + 1) % len(c.view.Files)
+			if len(c.files[c.view.Selected].Chunks) > 0 {
 				break
 			}
 		}
 	case 'p':
-		for range len(c.view.files) {
-			c.view.selected = (c.view.selected + len(c.view.files) - 1) % len(c.view.files)
-			if len(c.files[c.view.selected].chunks) > 0 {
+		for range len(c.view.Files) {
+			c.view.Selected = (c.view.Selected + len(c.view.Files) - 1) % len(c.view.Files)
+			if len(c.files[c.view.Selected].Chunks) > 0 {
 				break
 			}
 		}
 	case 'j':
-		c.view.scrollTo(c.rendering, c.offset+1)
+		c.view.ScrollTo(c.rendering, c.offset+1)
 	case 'k':
-		c.view.scrollTo(c.rendering, c.offset-1)
+		c.view.ScrollTo(c.rendering, c.offset-1)
 	case ' ':
-		c.view.scrollTo(c.rendering, c.offset+c.rows)
+		c.view.ScrollTo(c.rendering, c.offset+c.rows)
 	case 'b':
-		c.view.scrollTo(c.rendering, c.offset-c.rows)
+		c.view.ScrollTo(c.rendering, c.offset-c.rows)
 	case 'g':
-		c.view.scrollTo(c.rendering, 0)
+		c.view.ScrollTo(c.rendering, 0)
 	case 'G':
-		c.view.scrollTo(c.rendering, max(0, len(c.lines)-c.rows))
+		c.view.ScrollTo(c.rendering, max(0, len(c.lines)-c.rows))
 	}
 	c.dirty = true
 	return false

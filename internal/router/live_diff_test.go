@@ -18,6 +18,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func TestLiveDiffRedirectedWithoutExternalRenderer(t *testing.T) {
@@ -35,7 +36,7 @@ func TestLiveDiffRedirectedWithoutExternalRenderer(t *testing.T) {
 }
 
 func TestLiveDiffSafeText(t *testing.T) {
-	got := liveDiffSafe("\x1b]52;c;clipboard\a\x1b[2J\x1b[31mred\x1b[0m\t界\r\n", true)
+	got := livediff.Safe("\x1b]52;c;clipboard\a\x1b[2J\x1b[31mred\x1b[0m\t界\r\n", true)
 	if got != "\x1b[31mred\x1b[0m    界\n" {
 		t.Fatalf("unsafe rendering: %q", got)
 	}
@@ -51,14 +52,14 @@ func TestLiveDiffRelativeDisplayKeepsSourceAndCapture(t *testing.T) {
 	source := "const path = " + strconv.Quote(before)
 	diff := "--- " + strconv.Quote(before) + "\n+++ " + strconv.Quote(after) + "\n@@ -1 +1 @@\n-old\n+" + source + "\n"
 	chunk := liveDiffChunk{
-		review: mekugi.ReviewFile{BeforePath: before, AfterPath: after, Diff: diff},
+		Review: mekugi.ReviewFile{BeforePath: before, AfterPath: after, Diff: diff},
 	}
-	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: after, chunks: []liveDiffChunk{chunk}}}, workspace, 240, 0, chunk)
+	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{Path: after, Chunks: []liveDiffChunk{chunk}}}, workspace, 240, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := ansi.Strip(strings.Join(render.lines, "\n"))
-	if !strings.Contains(text, "Rename: old name.txt → sub/new.txt") || !strings.Contains(text, source) || chunk.review.Diff != diff {
+	text := ansi.Strip(strings.Join(render.Lines, "\n"))
+	if !strings.Contains(text, "Rename: old name.txt → sub/new.txt") || !strings.Contains(text, source) || chunk.Review.Diff != diff {
 		t.Fatalf("incorrect display or mutated capture: %q", text)
 	}
 }
@@ -72,75 +73,75 @@ func TestLiveDiffDisplayPathWorkspaceBoundary(t *testing.T) {
 		"/tmp/outside.go",
 	} {
 		t.Run(path, func(t *testing.T) {
-			if got := liveDiffDisplayPath(workspace, path); got != path {
+			if got := livediff.DisplayPath(workspace, path); got != path {
 				t.Fatalf("external path = %q, want %q", got, path)
 			}
 		})
 	}
 	for _, path := range []string{"", "relative.go"} {
-		if got := liveDiffDisplayPath(workspace, path); got != path {
+		if got := livediff.DisplayPath(workspace, path); got != path {
 			t.Fatalf("nonabsolute path = %q, want %q", got, path)
 		}
 	}
 }
 
 func TestLiveDiffFollowPauseAndResume(t *testing.T) {
-	view := liveDiffView{following: true}
-	first := liveDiffFile{path: "a", chunks: []liveDiffChunk{{key: "first"}}}
-	second := liveDiffFile{path: "b", chunks: []liveDiffChunk{{key: "second"}}}
-	view.merge([]liveDiffFile{first})
-	view.merge([]liveDiffFile{first, second})
-	if view.files[view.selected].path != "b" {
+	view := liveDiffView{Following: true}
+	first := liveDiffFile{Path: "a", Chunks: []liveDiffChunk{{Key: "first"}}}
+	second := liveDiffFile{Path: "b", Chunks: []liveDiffChunk{{Key: "second"}}}
+	view.Merge([]liveDiffFile{first})
+	view.Merge([]liveDiffFile{first, second})
+	if view.Files[view.Selected].Path != "b" {
 		t.Fatal("following did not select new edit")
 	}
-	view.following = false
-	view.selected = 0
-	third := liveDiffFile{path: "c", chunks: []liveDiffChunk{{key: "third"}}}
-	view.merge([]liveDiffFile{first, second, third})
-	if view.files[view.selected].path != "a" {
+	view.Following = false
+	view.Selected = 0
+	third := liveDiffFile{Path: "c", Chunks: []liveDiffChunk{{Key: "third"}}}
+	view.Merge([]liveDiffFile{first, second, third})
+	if view.Files[view.Selected].Path != "a" {
 		t.Fatal("paused update changed selection")
 	}
-	view.followLatest()
-	if !view.following || view.files[view.selected].path != "c" {
+	view.FollowLatest()
+	if !view.Following || view.Files[view.Selected].Path != "c" {
 		t.Fatal("resume did not follow the edit received while paused")
 	}
-	first.chunks[0].applied = true
-	view.merge([]liveDiffFile{first, second, third})
-	if view.files[view.selected].path != "c" {
+	first.Chunks[0].Applied = true
+	view.Merge([]liveDiffFile{first, second, third})
+	if view.Files[view.Selected].Path != "c" {
 		t.Fatal("old receipt stole follow selection")
 	}
 }
 
 func TestLiveDiffFollowUsesCaptureOrderNotFileGrouping(t *testing.T) {
-	view := liveDiffView{following: true}
-	view.merge([]liveDiffFile{
-		{path: "a", chunks: []liveDiffChunk{{key: "a1", snapshotOrder: 1}, {key: "a2", snapshotOrder: 3}}},
-		{path: "b", chunks: []liveDiffChunk{{key: "b1", snapshotOrder: 2}}},
+	view := liveDiffView{Following: true}
+	view.Merge([]liveDiffFile{
+		{Path: "a", Chunks: []liveDiffChunk{{Key: "a1", SnapshotOrder: 1}, {Key: "a2", SnapshotOrder: 3}}},
+		{Path: "b", Chunks: []liveDiffChunk{{Key: "b1", SnapshotOrder: 2}}},
 	})
-	if view.latest != "a2" || view.files[view.selected].path != "a" {
+	if view.Latest != "a2" || view.Files[view.Selected].Path != "a" {
 		t.Fatal("file grouping overrode latest capture order")
 	}
 }
 
 func TestLiveDiffMergePreservesFileAndPosition(t *testing.T) {
-	v := liveDiffView{scroll: map[string]int{"old": 40}}
-	v.merge([]liveDiffFile{
-		{path: "b", chunks: []liveDiffChunk{{key: "old", status: "prepared"}}},
-		{path: "c"},
+	v := liveDiffView{Scroll: map[string]int{"old": 40}}
+	v.Merge([]liveDiffFile{
+		{Path: "b", Chunks: []liveDiffChunk{{Key: "old", Status: "prepared"}}},
+		{Path: "c"},
 	})
-	v.merge([]liveDiffFile{
-		{path: "c"},
-		{path: "a"},
-		{path: "b", chunks: []liveDiffChunk{{key: "new"}, {key: "old", status: "applied"}}},
+	v.Merge([]liveDiffFile{
+		{Path: "c"},
+		{Path: "a"},
+		{Path: "b", Chunks: []liveDiffChunk{{Key: "new"}, {Key: "old", Status: "applied"}}},
 	})
-	if v.files[v.selected].path != "b" || v.scroll["old"] != 40 ||
-		v.files[0].chunks[0].key != "old" || v.files[0].chunks[0].status != "applied" ||
-		v.files[0].chunks[1].key != "new" {
+	if v.Files[v.Selected].Path != "b" || v.Scroll["old"] != 40 ||
+		v.Files[0].Chunks[0].Key != "old" || v.Files[0].Chunks[0].Status != "applied" ||
+		v.Files[0].Chunks[1].Key != "new" {
 		t.Fatalf("viewport shifted: %#v", v)
 	}
-	v.selected = 1
-	v.merge(append(slices.Clone(v.files), liveDiffFile{path: "d"}))
-	if v.files[v.selected].path != "c" || v.scroll["old"] != 40 {
+	v.Selected = 1
+	v.Merge(append(slices.Clone(v.Files), liveDiffFile{Path: "d"}))
+	if v.Files[v.Selected].Path != "c" || v.Scroll["old"] != 40 {
 		t.Fatal("other-file update stole navigation")
 	}
 }
@@ -172,8 +173,8 @@ func TestLiveDiffStoreRestartAndMissingEvidence(t *testing.T) {
 	liveDiffTestChange(t, store, workspace, "one", "x.go", false)
 	reopened := &mekugiReplayStore{directory: store.directory}
 	files, err := reopened.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
-	if err != nil || len(files) != 1 || !strings.Contains(files[0].chunks[0].status, "unconfirmed") {
-		t.Fatalf("files: %#v, %v", files, err)
+	if err != nil || len(files) != 1 || !strings.Contains(files[0].Chunks[0].Status, "unconfirmed") {
+		t.Fatalf("Files: %#v, %v", files, err)
 	}
 	if err := store.confirmChanges(t.Context(), workspace, map[string]mekugiHistory{
 		"one": {ChangeID: "amber1", CorrelationID: "one", confirmed: true},
@@ -181,7 +182,7 @@ func TestLiveDiffStoreRestartAndMissingEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	files, err = reopened.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
-	if err != nil || files[0].chunks[0].status != "amber1 applied" {
+	if err != nil || files[0].Chunks[0].Status != "amber1 applied" {
 		t.Fatalf("receipt: %#v, %v", files, err)
 	}
 	if err := os.Rename(filepath.Join(store.directory, replayRecordName(workspace, "one", false)), filepath.Join(store.directory, "removed-record")); err != nil {
@@ -196,20 +197,20 @@ func TestLiveDiffNativeRenderer(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "x.go")
-	file := liveDiffFile{path: path, chunks: []liveDiffChunk{{
-		status: "amber1 applied",
-		review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1 +1 @@\n-old\n+new\n"},
+	file := liveDiffFile{Path: path, Chunks: []liveDiffChunk{{
+		Status: "amber1 applied",
+		Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1 +1 @@\n-old\n+new\n"},
 	}}}
-	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 80, 0, liveDiffChunk{})
+	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 80, 0, liveDiffChunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := strings.Join(render.lines, "\n")
+	text := strings.Join(render.Lines, "\n")
 	if strings.Contains(text, workspace) || !strings.Contains(ansi.Strip(text), "x.go") {
 		t.Fatalf("native renderer did not render relative paths: %q", text)
 	}
 	if !strings.Contains(ansi.Strip(text), "new") || !strings.Contains(text, "\x1b[") {
-		t.Fatalf("native renderer did not render: %q", text)
+		t.Fatalf("native renderer did not Render: %q", text)
 	}
 }
 
@@ -219,24 +220,24 @@ func TestLiveDiffRenderFollowsLatestHunk(t *testing.T) {
 	header := "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n"
 	top := header + "@@ -1 +1 @@\n-top\n+TOP\n"
 	bottom := header + "@@ -99 +100 @@\n-bottom\n+BOTTOM\n"
-	file := liveDiffFile{chunks: []liveDiffChunk{
-		{status: "Applied", review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: top}},
-		{status: "Applied", review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: bottom}},
+	file := liveDiffFile{Chunks: []liveDiffChunk{
+		{Status: "Applied", Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: top}},
+		{Status: "Applied", Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: bottom}},
 	}}
 	for i, diff := range []string{top, bottom} {
-		focus := liveDiffChunk{review: mekugi.ReviewFile{Diff: diff}}
-		render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 80, 0, focus)
+		focus := liveDiffChunk{Review: mekugi.ReviewFile{Diff: diff}}
+		render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 80, 0, focus)
 		if err != nil {
 			t.Fatal(err)
 		}
-		text := ansi.Strip(strings.Join(render.lines[render.focusOffset:], "\n"))
+		text := ansi.Strip(strings.Join(render.Lines[render.FocusOffset:], "\n"))
 		if !strings.Contains(text, []string{"TOP", "BOTTOM"}[i]) {
-			t.Fatalf("focus missed changed hunk: offset=%d %q", render.focusOffset, text)
+			t.Fatalf("focus missed changed hunk: offset=%d %q", render.FocusOffset, text)
 		}
 		if i == 1 && strings.Contains(text, "TOP") {
 			t.Fatalf("bottom hunk focused the top: %q", text)
 		}
-		if strings.Contains(strings.Join(render.lines, "\n"), "mekugi-live-diff-") {
+		if strings.Contains(strings.Join(render.Lines, "\n"), "mekugi-live-diff-") {
 			t.Fatal("renderer markers leaked into viewport")
 		}
 	}
@@ -347,7 +348,7 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		waitFor(reply.theme.foreground(chroma.GenericInserted), "FOLLOW")
+		waitFor(reply.theme.Foreground(chroma.GenericInserted), "FOLLOW")
 	}
 	// Unrelated and malformed OSC payloads must not flush, navigate, or quit,
 	// even when they include escape-prefixed command keys or overflow the buffer.
@@ -538,32 +539,32 @@ func TestLiveDiffFlushComposesAndPreservesSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(workspace, "file.txt")
-	view := liveDiffView{scroll: map[string]int{workspace + "\x00A/0": 4}}
+	view := liveDiffView{Scroll: map[string]int{workspace + "\x00A/0": 4}}
 	refresh := func() string {
 		t.Helper()
 		files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
 		if err != nil {
 			t.Fatal(err)
 		}
-		view.merge(files)
-		view.refreshVisible()
+		view.Merge(files)
+		view.RefreshVisible()
 		var text strings.Builder
-		for _, chunk := range view.visible[workspace+"\x00A/0"].chunks {
-			text.WriteString(chunk.review.UnifiedDiff())
+		for _, chunk := range view.Visible[workspace+"\x00A/0"].Chunks {
+			text.WriteString(chunk.Review.UnifiedDiff())
 		}
 		return text.String()
 	}
 	base, a, b := "first\nold\nlast\n", "first\nA\nlast\n", "first\nB\nlast\n"
 	liveDiffFlushCapture(t, store, workspace, "A", base, a, true)
 	refresh()
-	view.flush(false)
-	if len(view.visible[workspace+"\x00A/0"].chunks) != 0 || view.files[view.selected].path != path || view.scroll[workspace+"\x00A/0"] != 4 {
+	view.Flush(false)
+	if len(view.Visible[workspace+"\x00A/0"].Chunks) != 0 || view.Files[view.Selected].Path != path || view.Scroll[workspace+"\x00A/0"] != 4 {
 		t.Fatal("flush changed file selection/scroll or left content visible")
 	}
 	liveDiffFlushCapture(t, store, workspace, "B", a, b, true)
 	text := refresh()
 	if !strings.Contains(text, "-old\n+B\n") || strings.Contains(text, "-A\n") {
-		t.Fatalf("not original-to-latest: %q", text)
+		t.Fatalf("not original-to-Latest: %q", text)
 	}
 	liveDiffFlushCapture(t, store, workspace, "revert", b, base, true)
 	if text := refresh(); text != "" {
@@ -584,17 +585,17 @@ func TestLiveDiffFlushAdjacentEditStaysHidden(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		view.merge(files)
-		view.refreshVisible()
+		view.Merge(files)
+		view.RefreshVisible()
 	}
 	liveDiffFlushCapture(t, store, workspace, "first", "a\nb\n", "a\nB\n", true)
 	refresh()
-	view.flush(true)
+	view.Flush(true)
 	liveDiffFlushCapture(t, store, workspace, "adjacent", "a\nB\n", "A\nB\n", true)
 	refresh()
 	var text strings.Builder
-	for _, chunk := range view.visible[view.files[0].key()].chunks {
-		text.WriteString(chunk.review.UnifiedDiff())
+	for _, chunk := range view.Visible[view.Files[0].Key()].Chunks {
+		text.WriteString(chunk.Review.UnifiedDiff())
 	}
 	if got := text.String(); strings.Contains(got, "+B\n") || !strings.Contains(got, "+A\n") {
 		t.Fatalf("reviewed adjacent change revived: %q", got)
@@ -607,26 +608,26 @@ func TestLiveDiffFlushPendingReceiptAndAllFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	view := liveDiffView{scroll: make(map[string]int)}
+	view := liveDiffView{Scroll: make(map[string]int)}
 	refresh := func() {
 		t.Helper()
 		files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
 		if err != nil {
 			t.Fatal(err)
 		}
-		view.merge(files)
-		view.refreshVisible()
+		view.Merge(files)
+		view.RefreshVisible()
 	}
 	liveDiffFlushCapture(t, store, workspace, "A", "old\n", "new\n", false)
 	liveDiffTestChange(t, store, workspace, "other", "other.txt", true)
 	refresh()
-	view.flush(false)
-	if len(view.visible[workspace+"\x00A/0"].chunks) != 0 || len(view.visible[workspace+"\x00other/0"].chunks) == 0 {
+	view.Flush(false)
+	if len(view.Visible[workspace+"\x00A/0"].Chunks) != 0 || len(view.Visible[workspace+"\x00other/0"].Chunks) == 0 {
 		t.Fatal("file flush scope is wrong")
 	}
-	view.flush(true)
-	for _, file := range view.visible {
-		if len(file.chunks) != 0 {
+	view.Flush(true)
+	for _, file := range view.Visible {
+		if len(file.Chunks) != 0 {
 			t.Fatal("flush all left content")
 		}
 	}
@@ -636,13 +637,13 @@ func TestLiveDiffFlushPendingReceiptAndAllFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	refresh()
-	if len(view.visible[workspace+"\x00A/0"].chunks) != 0 {
+	if len(view.Visible[workspace+"\x00A/0"].Chunks) != 0 {
 		t.Fatal("late receipt revived reviewed changes")
 	}
 	liveDiffFlushCapture(t, store, workspace, "B", "new\n", "fixed\n", true)
 	refresh()
-	if len(view.visible[workspace+"\x00A/0"].chunks) == 0 || !strings.Contains(view.visible[workspace+"\x00A/0"].chunks[0].review.Diff, "-old\n+fixed\n") {
-		t.Fatalf("fix did not revive flushed pending baseline: %#v", view.visible[workspace+"\x00A/0"])
+	if len(view.Visible[workspace+"\x00A/0"].Chunks) == 0 || !strings.Contains(view.Visible[workspace+"\x00A/0"].Chunks[0].Review.Diff, "-old\n+fixed\n") {
+		t.Fatalf("fix did not revive flushed pending baseline: %#v", view.Visible[workspace+"\x00A/0"])
 	}
 }
 
@@ -762,14 +763,14 @@ func liveDiffRefreshTest(t *testing.T, store *mekugiReplayStore, workspace strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	view.merge(files)
-	view.refreshVisible()
+	view.Merge(files)
+	view.RefreshVisible()
 }
 
 func liveDiffVisibleText(file liveDiffFile) string {
 	var text strings.Builder
-	for _, chunk := range file.chunks {
-		text.WriteString(chunk.status + "\n" + chunk.review.UnifiedDiff())
+	for _, chunk := range file.Chunks {
+		text.WriteString(chunk.Status + "\n" + chunk.Review.UnifiedDiff())
 	}
 	return text.String()
 }
@@ -780,17 +781,17 @@ func TestLiveDiffPreparedMoveKeepsAppliedBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v := liveDiffView{scroll: make(map[string]int)}
+	v := liveDiffView{Scroll: make(map[string]int)}
 	liveDiffIdentityCapture(t, store, workspace, "A", "a.txt", "a.txt", "old\n", "first\n", true)
 	liveDiffRefreshTest(t, store, workspace, &v)
-	v.flush(true)
+	v.Flush(true)
 	liveDiffIdentityCapture(t, store, workspace, "move", "a.txt", "b.txt", "first\n", "first\n", false)
 	liveDiffIdentityCapture(t, store, workspace, "fix", "a.txt", "a.txt", "first\n", "fixed\n", true)
 	liveDiffRefreshTest(t, store, workspace, &v)
-	text := liveDiffVisibleText(v.visible[workspace+"\x00A/0"])
-	if len(v.files) != 1 || v.files[0].path != filepath.Join(workspace, "a.txt") ||
+	text := liveDiffVisibleText(v.Visible[workspace+"\x00A/0"])
+	if len(v.Files) != 1 || v.Files[0].Path != filepath.Join(workspace, "a.txt") ||
 		!strings.Contains(text, "-old\n+fixed\n") || strings.Contains(text, "Uncomposed") {
-		t.Fatalf("prepared move lost baseline: %#v %q", v.files, text)
+		t.Fatalf("prepared move lost baseline: %#v %q", v.Files, text)
 	}
 }
 
@@ -802,7 +803,7 @@ func TestLiveDiffMoveIntoDeletedPathKeepsChainsSeparate(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			v := liveDiffView{scroll: map[string]int{workspace + "\x00A/0": 9}}
+			v := liveDiffView{Scroll: map[string]int{workspace + "\x00A/0": 9}}
 			order := []string{"A", "B"}
 			if reverse {
 				slices.Reverse(order)
@@ -812,22 +813,22 @@ func TestLiveDiffMoveIntoDeletedPathKeepsChainsSeparate(t *testing.T) {
 				liveDiffIdentityCapture(t, store, workspace, id, path, path, "old"+id+"\n", id+"\n", true)
 			}
 			liveDiffRefreshTest(t, store, workspace, &v)
-			v.selected = slices.IndexFunc(v.files, func(f liveDiffFile) bool { return f.key() == workspace+"\x00A/0" })
-			v.flush(true)
+			v.Selected = slices.IndexFunc(v.Files, func(f liveDiffFile) bool { return f.Key() == workspace+"\x00A/0" })
+			v.Flush(true)
 			liveDiffIdentityCapture(t, store, workspace, "deleteB", "b.txt", "", "B\n", "", true)
 			liveDiffRefreshTest(t, store, workspace, &v)
 			liveDiffIdentityCapture(t, store, workspace, "moveA", "a.txt", "b.txt", "A\n", "A\n", true)
 			liveDiffRefreshTest(t, store, workspace, &v)
 			liveDiffIdentityCapture(t, store, workspace, "fixA", "b.txt", "b.txt", "A\n", "fixed\n", true)
 			liveDiffRefreshTest(t, store, workspace, &v)
-			a, b := liveDiffVisibleText(v.visible[workspace+"\x00A/0"]), liveDiffVisibleText(v.visible[workspace+"\x00B/0"])
-			if len(v.files) != 2 || v.files[v.selected].key() != workspace+"\x00A/0" || v.scroll[workspace+"\x00A/0"] != 9 ||
+			a, b := liveDiffVisibleText(v.Visible[workspace+"\x00A/0"]), liveDiffVisibleText(v.Visible[workspace+"\x00B/0"])
+			if len(v.Files) != 2 || v.Files[v.Selected].Key() != workspace+"\x00A/0" || v.Scroll[workspace+"\x00A/0"] != 9 ||
 				!strings.Contains(a, "-oldA\n+fixed\n") || !strings.Contains(b, "-oldB\n") || strings.Contains(b, "+fixed\n") ||
 				strings.Contains(a+b, "Uncomposed") {
-				t.Fatalf("path reuse conflated chains: %#v a=%q b=%q", v.files, a, b)
+				t.Fatalf("path reuse conflated chains: %#v a=%q b=%q", v.Files, a, b)
 			}
-			v.flush(false)
-			if len(v.visible[workspace+"\x00A/0"].chunks) != 0 || len(v.visible[workspace+"\x00B/0"].chunks) == 0 {
+			v.Flush(false)
+			if len(v.Visible[workspace+"\x00A/0"].Chunks) != 0 || len(v.Visible[workspace+"\x00B/0"].Chunks) == 0 {
 				t.Fatal("flush crossed file identities")
 			}
 		})

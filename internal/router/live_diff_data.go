@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 type liveDiffAttempt struct {
@@ -44,8 +46,8 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 				old.confirmed = true
 				for i := range old.chunks {
 					chunk := &old.chunks[i]
-					if chunk.status == event.ID+" prepared (application unconfirmed)" {
-						chunk.status, chunk.applied = event.ID+" applied", true
+					if chunk.Status == event.ID+" prepared (application unconfirmed)" {
+						chunk.Status, chunk.Applied = event.ID+" applied", true
 					}
 				}
 				d.attempts[key] = old
@@ -81,9 +83,9 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 				return errors.New("live diff exceeds 64 MiB; use hchanges with a narrower range")
 			}
 			attempt.chunks = append(attempt.chunks, liveDiffChunk{
-				key: key + "/" + strconv.Itoa(n), stream: event.Workspace + "\x00" + strconv.Itoa(event.Stream),
-				captureOrder: record.CaptureOrder, status: event.ID + " " + status,
-				review: file, applied: status == "applied",
+				Key: key + "/" + strconv.Itoa(n), Stream: event.Workspace + "\x00" + strconv.Itoa(event.Stream),
+				CaptureOrder: record.CaptureOrder, Status: event.ID + " " + status,
+				Review: file, Applied: status == "applied",
 			})
 		}
 		d.attempts[key] = attempt
@@ -97,7 +99,7 @@ func (d *liveDiffData) files() []liveDiffFile {
 	for _, key := range d.order {
 		captures = append(captures, d.attempts[key].chunks...)
 	}
-	return groupLiveDiffCaptures(captures)
+	return livediff.GroupCaptures(captures)
 }
 
 func (s *mekugiReplayStore) liveDiffSnapshot(ctx context.Context, scope liveDiffScope) (*liveDiffData, error) {

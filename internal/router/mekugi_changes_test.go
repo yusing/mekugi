@@ -288,7 +288,7 @@ func TestTrackedFormerShellPathIsWorkspaceScope(t *testing.T) {
 		t.Fatalf("workspace scope = %q, %v", text, err)
 	}
 	files, err := proxy.replayStore.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
-	if err != nil || len(files) != 1 || files[0].path != filepath.Join(workspace, "@shell", "script") {
+	if err != nil || len(files) != 1 || files[0].Path != filepath.Join(workspace, "@shell", "script") {
 		t.Fatalf("workspace live diff = %#v, %v", files, err)
 	}
 }

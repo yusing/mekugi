@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 const liveDiffPreviewFrameDelay = 33 * time.Millisecond
@@ -102,7 +103,7 @@ func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, them
 	}
 	if summary > 0 {
 		label := fmt.Sprintf("STREAMING · +%d more calls · enlarge pane", count-shown)
-		lines = append(lines, ansi.Truncate(theme.accent()+label+"\x1b[0m", max(0, width-1), ""))
+		lines = append(lines, ansi.Truncate(theme.Accent()+label+"\x1b[0m", max(0, width-1), ""))
 	}
 	return lines, nil
 }
@@ -123,7 +124,7 @@ func (p *liveDiffPreviewView) columns(width int) (digits, sourceWidth int) {
 
 func liveDiffPreviewRows(review mekugi.ReviewFile, workspace string) ([]liveDiffPreviewRow, error) {
 	if review.BeforePath != "" && review.AfterPath == "" {
-		path := liveDiffDisplayPath(workspace, review.BeforePath)
+		path := livediff.DisplayPath(workspace, review.BeforePath)
 		return []liveDiffPreviewRow{{kind: ' ', text: "# " + path + " deleted\n"}}, nil
 	}
 	hunks, err := review.Hunks()
@@ -248,7 +249,7 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 		if path == "" {
 			path = file.BeforePath
 		}
-		title += " · " + liveDiffDisplayPath(workspace, path)
+		title += " · " + livediff.DisplayPath(workspace, path)
 	}
 	caller := p.current.Caller
 	if caller == "" {
@@ -258,10 +259,10 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 		caller = "unknown caller"
 	}
 	// Put attribution first so narrow panes do not silently lose the caller.
-	caller = ansi.Truncate(liveDiffSafe(caller, false), max(1, min(28, width/3)), "…")
+	caller = ansi.Truncate(livediff.Safe(caller, false), max(1, min(28, width/3)), "…")
 	identity := caller + " · " + p.current.ID[:min(6, len(p.current.ID))]
 	title = identity + " · " + title
-	header := ansi.Truncate(theme.accent()+liveDiffSafe(title, false)+"\x1b[0m", max(0, width-1), "")
+	header := ansi.Truncate(theme.Accent()+livediff.Safe(title, false)+"\x1b[0m", max(0, width-1), "")
 	lines := []string{header}
 	rows := height - 1
 	if rows == 0 || len(p.source) == 0 {
@@ -269,7 +270,7 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	}
 	digits, sourceWidth := p.columns(width)
 	fragmentsAt := func(i int) int {
-		text := liveDiffSafe(strings.TrimSuffix(p.source[i].text, "\n"), false)
+		text := livediff.Safe(strings.TrimSuffix(p.source[i].text, "\n"), false)
 		return strings.Count(ansi.Hardwrap(text, sourceWidth, true), "\n") + 1
 	}
 	// Keep the tip's last wrapped fragment visible before admitting trailing
@@ -303,7 +304,7 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 		after, err = p.colorScript(ctx, theme, colorStart, end)
 		before = after
 	} else {
-		before, after, err = p.renderer.colorHunk(ctx, theme, review, source)
+		before, after, err = p.renderer.ColorHunk(ctx, theme, review, source)
 	}
 
 	if err != nil {
@@ -346,7 +347,7 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 			if n > 0 && numbers != "" {
 				prefix = "\x1b[2m" + strings.Repeat(" ", digits) + "│\x1b[22m"
 			}
-			line := liveDiffGutter(i == p.focus, theme) + liveDiffSourceLine(theme, width, prefix, fragment, row.kind)
+			line := livediff.Gutter(i == p.focus, theme) + livediff.SourceLine(theme, width, prefix, fragment, row.kind)
 			lines = append(lines, ansi.Truncate(line, max(0, width-1), ""))
 		}
 	}

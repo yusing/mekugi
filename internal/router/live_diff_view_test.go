@@ -22,29 +22,29 @@ func TestLiveDiffRenderAllFiles(t *testing.T) {
 	for _, name := range []string{"first", "second"} {
 		path := filepath.Join(workspace, name+".txt")
 		diff := "--- /dev/null\n+++ " + strconv.Quote(path) + "\n@@ -0,0 +1 @@\n+" + name + " content\n"
-		files = append(files, liveDiffFile{path: path, chunks: []liveDiffChunk{{
-			status: "Applied",
-			review: mekugi.ReviewFile{AfterPath: path, Diff: diff},
+		files = append(files, liveDiffFile{Path: path, Chunks: []liveDiffChunk{{
+			Status: "Applied",
+			Review: mekugi.ReviewFile{AfterPath: path, Diff: diff},
 		}}})
 	}
 	for focusFile := range files {
-		render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, files, workspace, 90, focusFile, files[focusFile].chunks[0])
+		render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, files, workspace, 90, focusFile, files[focusFile].Chunks[0])
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(render.starts) != 2 || render.starts[0] != 0 || render.starts[1] <= 0 {
-			t.Fatalf("missing file boundaries: %v", render.starts)
+		if len(render.Starts) != 2 || render.Starts[0] != 0 || render.Starts[1] <= 0 {
+			t.Fatalf("missing file boundaries: %v", render.Starts)
 		}
 		for i, name := range []string{"first", "second"} {
-			end := len(render.lines)
+			end := len(render.Lines)
 			if i+1 < len(files) {
-				end = render.starts[i+1]
+				end = render.Starts[i+1]
 			}
-			text := ansi.Strip(strings.Join(render.lines[render.starts[i]:end], "\n"))
+			text := ansi.Strip(strings.Join(render.Lines[render.Starts[i]:end], "\n"))
 			if !strings.Contains(text, name+".txt") || !strings.Contains(text, name+" content") {
 				t.Fatalf("file %d not rendered in its own section: %q", i, text)
 			}
-			if i == focusFile && (render.focusOffset < render.starts[i] || render.focusOffset >= end) {
+			if i == focusFile && (render.FocusOffset < render.Starts[i] || render.FocusOffset >= end) {
 				t.Fatalf("same line number in another file stole focus: %+v", render)
 			}
 		}
@@ -57,45 +57,45 @@ func TestLiveDiffFollowEmptyLatestFile(t *testing.T) {
 	second := filepath.Join(workspace, "second.txt")
 	diff := "--- /dev/null\n+++ " + strconv.Quote(first) + "\n@@ -0,0 +1,40 @@\n" + strings.Repeat("+first content\n", 40)
 	files := []liveDiffFile{
-		{path: first, chunks: []liveDiffChunk{{status: "Applied",
-			review: mekugi.ReviewFile{AfterPath: first, Diff: diff}}}},
-		{path: second}, // The latest file was flushed or fully reverted.
+		{Path: first, Chunks: []liveDiffChunk{{Status: "Applied",
+			Review: mekugi.ReviewFile{AfterPath: first, Diff: diff}}}},
+		{Path: second}, // The latest file was flushed or fully reverted.
 	}
-	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, files, workspace, 90, 1, liveDiffChunk{})
+	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, files, workspace, 90, 1, liveDiffChunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if render.focusOffset != render.starts[1] {
-		t.Fatalf("empty latest file lost focus: offset=%d starts=%v", render.focusOffset, render.starts)
+	if render.FocusOffset != render.Starts[1] {
+		t.Fatalf("empty latest file lost focus: offset=%d starts=%v", render.FocusOffset, render.Starts)
 	}
 	const rows = 18
-	if len(render.lines) <= rows {
+	if len(render.Lines) <= rows {
 		t.Fatal("fixture must require scrolling")
 	}
-	offset := min(render.focusOffset, len(render.lines)-rows)
-	viewport := ansi.Strip(strings.Join(render.lines[offset:offset+rows], "\n"))
+	offset := min(render.FocusOffset, len(render.Lines)-rows)
+	viewport := ansi.Strip(strings.Join(render.Lines[offset:offset+rows], "\n"))
 	if strings.Contains(viewport, "second.txt") || strings.Contains(viewport, "No unreviewed changes") {
-		t.Fatalf("reverted file remained visible: %q", viewport)
+		t.Fatalf("reverted file remained Visible: %q", viewport)
 	}
 }
 
 func TestLiveDiffScrollAcrossFiles(t *testing.T) {
 	view := liveDiffView{
-		files:  []liveDiffFile{{path: "first"}, {path: "second"}},
-		scroll: make(map[string]int),
+		Files:  []liveDiffFile{{Path: "first"}, {Path: "second"}},
+		Scroll: make(map[string]int),
 	}
-	render := liveDiffRender{lines: make([]string, 20), starts: []int{0, 10}}
+	render := liveDiffRender{Lines: make([]string, 20), Starts: []int{0, 10}}
 	for _, tc := range []struct {
 		offset, file, local int
 	}{
 		{9, 0, 9}, {10, 1, 0}, {13, 1, 3}, {9, 0, 9}, {-1, 0, 0}, {25, 1, 9},
 	} {
-		view.scrollTo(render, tc.offset)
-		if view.selected != tc.file || view.scroll[view.files[tc.file].key()] != tc.local {
-			t.Fatalf("scroll %d: selected=%d positions=%v", tc.offset, view.selected, view.scroll)
+		view.ScrollTo(render, tc.offset)
+		if view.Selected != tc.file || view.Scroll[view.Files[tc.file].Key()] != tc.local {
+			t.Fatalf("scroll %d: selected=%d positions=%v", tc.offset, view.Selected, view.Scroll)
 		}
 	}
-	if view.scroll["first"] != 0 {
+	if view.Scroll["first"] != 0 {
 		t.Fatal("scrolling another file lost the first file's saved position")
 	}
 }

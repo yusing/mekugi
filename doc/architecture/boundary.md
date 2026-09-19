@@ -34,6 +34,11 @@ previews, and becomes visible only after required durable facts exist. Offline s
 inspection reads and validates those facts without opening writable recovery state or
 inferring execution from carrier source.
 
+The live-diff view and renderer consume validated review projections through a
+separate, storage-independent package. The router retains event ordering, replay
+loading, terminal lifecycle, and publication. The renderer does not read workspace
+files, acquire replay locks, or determine whether an edit was applied.
+
 Application stages the complete engine result and performs ordered external operations with
 rollback attempts. Translation renders the complete carrier without mutation. Neither an
 authorized root nor a rendered patch serializes outside writers, supplies a cross-file

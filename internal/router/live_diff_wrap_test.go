@@ -12,15 +12,15 @@ func TestLiveDiffWrapAndResize(t *testing.T) {
 	source := strings.Repeat("ab 界é  ", 12)
 	chunk := liveDiffHighlightChunk("edit", "file.txt",
 		"@@ -1,2 +1,2 @@\n "+source+"\n-old\n+new\n", true)
-	chunk.status = ""
-	files := []liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{chunk}}}
-	wrapped, err := new(liveDiffRenderer).render(t.Context(), liveDiffDarkTheme, files, "", 22, 0, chunk)
+	chunk.Status = ""
+	files := []liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{chunk}}}
+	wrapped, err := new(liveDiffRenderer).Render(t.Context(), liveDiffDarkTheme, files, "", 22, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Context has no fill, so concatenation must preserve even trailing spaces.
 	var restored strings.Builder
-	for _, line := range wrapped.lines[wrapped.rowStarts[1]:wrapped.rowStarts[2]] {
+	for _, line := range wrapped.Lines[wrapped.RowStarts[1]:wrapped.RowStarts[2]] {
 		if ansi.StringWidth(line) > 21 {
 			t.Fatalf("overflow: %q", line)
 		}
@@ -33,17 +33,17 @@ func TestLiveDiffWrapAndResize(t *testing.T) {
 	if restored.String() != source {
 		t.Fatalf("wrapped source changed: %q, want %q", restored.String(), source)
 	}
-	wide, err := new(liveDiffRenderer).render(t.Context(), liveDiffDarkTheme, files, "", 200, 0, chunk)
+	wide, err := new(liveDiffRenderer).Render(t.Context(), liveDiffDarkTheme, files, "", 200, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-	view := liveDiffView{files: files, scroll: map[string]int{"file.txt": wrapped.rowStarts[1] + 2}}
-	view.reflow(wrapped, wide)
-	if view.scroll["file.txt"] != wide.rowStarts[1] {
+	view := liveDiffView{Files: files, Scroll: map[string]int{"file.txt": wrapped.RowStarts[1] + 2}}
+	view.Reflow(wrapped, wide)
+	if view.Scroll["file.txt"] != wide.RowStarts[1] {
 		t.Fatal("widening lost the logical source row")
 	}
-	view.reflow(wide, wrapped)
-	if view.scroll["file.txt"] != wrapped.rowStarts[1] {
+	view.Reflow(wide, wrapped)
+	if view.Scroll["file.txt"] != wrapped.RowStarts[1] {
 		t.Fatal("narrowing lost the logical source row")
 	}
 }
@@ -51,19 +51,19 @@ func TestLiveDiffWrapAndResize(t *testing.T) {
 func TestLiveDiffWrappedSyntaxAndFocus(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "file.go",
 		"@@ -0,0 +1 @@\n+\""+strings.Repeat("abcdefgh", 15)+"\"\n", true)
-	chunk.status = ""
-	chunk.highlighted = true
-	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffDarkTheme,
-		[]liveDiffFile{{path: "file.go", chunks: []liveDiffChunk{chunk}}}, "", 30, 0, chunk)
+	chunk.Status = ""
+	chunk.Highlighted = true
+	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffDarkTheme,
+		[]liveDiffFile{{Path: "file.go", Chunks: []liveDiffChunk{chunk}}}, "", 30, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if render.focusRow != len(render.lines)-1 {
+	if render.FocusRow != len(render.Lines)-1 {
 		t.Fatalf("focus did not land on the final wrapped fragment: %+v", render)
 	}
-	color := liveDiffDarkTheme.foreground(chroma.LiteralStringDouble)
-	for _, line := range render.lines[render.rowStarts[1]:] {
-		if !strings.Contains(line, color) || !strings.Contains(line, liveDiffDarkTheme.rowBackground('+')) ||
+	color := liveDiffDarkTheme.Foreground(chroma.LiteralStringDouble)
+	for _, line := range render.Lines[render.RowStarts[1]:] {
+		if !strings.Contains(line, color) || !strings.Contains(line, liveDiffDarkTheme.RowBackground('+')) ||
 			!strings.Contains(line, "▎") || !strings.HasSuffix(line, "\x1b[0m") {
 			t.Fatalf("continuation lost standalone styling: %q", line)
 		}
@@ -76,36 +76,36 @@ func TestLiveDiffResizeReflowsSavedFiles(t *testing.T) {
 		path := strings.Repeat(name+"/", 8) + "file.txt"
 		chunk := liveDiffHighlightChunk("edit", path,
 			"@@ -1,2 +1,2 @@\n "+strings.Repeat("long source ", 20)+"\n-old\n+new\n", true)
-		chunk.status = strings.Repeat("prepared status ", 8)
-		files = append(files, liveDiffFile{path: path, chunks: []liveDiffChunk{chunk}})
+		chunk.Status = strings.Repeat("prepared status ", 8)
+		files = append(files, liveDiffFile{Path: path, Chunks: []liveDiffChunk{chunk}})
 	}
-	wide, err := new(liveDiffRenderer).render(t.Context(), liveDiffDarkTheme, files, "", 90, 0, liveDiffChunk{})
+	wide, err := new(liveDiffRenderer).Render(t.Context(), liveDiffDarkTheme, files, "", 90, 0, liveDiffChunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	narrow, err := new(liveDiffRenderer).render(t.Context(), liveDiffDarkTheme, files, "", 22, 0, liveDiffChunk{})
+	narrow, err := new(liveDiffRenderer).Render(t.Context(), liveDiffDarkTheme, files, "", 22, 0, liveDiffChunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(wide.rowStarts) != len(narrow.rowStarts) {
+	if len(wide.RowStarts) != len(narrow.RowStarts) {
 		t.Fatal("wrapped headings or status changed logical row identities")
 	}
-	view := liveDiffView{files: files, selected: 1, scroll: make(map[string]int)}
+	view := liveDiffView{Files: files, Selected: 1, Scroll: make(map[string]int)}
 	for i, file := range files {
-		end := len(wide.lines)
+		end := len(wide.Lines)
 		if i+1 < len(files) {
-			end = wide.starts[i+1]
+			end = wide.Starts[i+1]
 		}
 		// Last source row, after headings, status, and wrapped context.
-		view.scroll[file.key()] = end - 1 - wide.starts[i]
+		view.Scroll[file.Key()] = end - 1 - wide.Starts[i]
 	}
-	view.reflow(wide, narrow)
+	view.Reflow(wide, narrow)
 	for i, file := range files {
-		end := len(narrow.lines)
+		end := len(narrow.Lines)
 		if i+1 < len(files) {
-			end = narrow.starts[i+1]
+			end = narrow.Starts[i+1]
 		}
-		if got := view.scroll[file.key()] + narrow.starts[i]; got != end-1 {
+		if got := view.Scroll[file.Key()] + narrow.Starts[i]; got != end-1 {
 			t.Fatalf("file %d resize moved anchor to %d, want %d", i, got, end-1)
 		}
 	}

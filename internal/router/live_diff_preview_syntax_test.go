@@ -54,7 +54,7 @@ func TestLiveDiffProducerRetainsSyntaxBoundaries(t *testing.T) {
 			var pane liveDiffPreviewPane
 			pane.update(preview)
 			lines, err := pane.render(t.Context(), workspace, liveDiffDarkTheme, 100, 20)
-			if err != nil || !strings.Contains(strings.Join(lines, "\n"), liveDiffDarkTheme.foreground(tc.kind)+tc.token) {
+			if err != nil || !strings.Contains(strings.Join(lines, "\n"), liveDiffDarkTheme.Foreground(tc.kind)+tc.token) {
 				t.Fatalf("producer lost syntax for %s: %v %q", tc.token, err, lines)
 			}
 		})

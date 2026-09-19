@@ -65,17 +65,17 @@ func TestLiveDiffCaptureOrderSurvivesReceiptsAndRestart(t *testing.T) {
 	check := func(v *liveDiffView) {
 		t.Helper()
 		liveDiffRefreshTest(t, &mekugiReplayStore{directory: directory}, workspace, v)
-		if len(v.files) != 1 {
-			t.Fatalf("file membership changed: %#v", v.files)
+		if len(v.Files) != 1 {
+			t.Fatalf("file membership changed: %#v", v.Files)
 		}
-		file := v.visible[v.files[0].key()]
-		if len(file.chunks) != 1 || file.chunks[0].status != "" ||
-			!strings.Contains(file.chunks[0].review.Diff, "-original\n+final\n") {
+		file := v.Visible[v.Files[0].Key()]
+		if len(file.Chunks) != 1 || file.Chunks[0].Status != "" ||
+			!strings.Contains(file.Chunks[0].Review.Diff, "-original\n+final\n") {
 			t.Fatalf("not the combined final result: %#v", file)
 		}
 		orders := make([]uint64, 0, 3)
-		for _, chunk := range v.files[0].chunks {
-			orders = append(orders, chunk.captureOrder)
+		for _, chunk := range v.Files[0].Chunks {
+			orders = append(orders, chunk.CaptureOrder)
 		}
 		if !slices.Equal(orders, []uint64{1, 2, 3}) {
 			t.Fatalf("capture order changed: %v", orders)
@@ -83,19 +83,19 @@ func TestLiveDiffCaptureOrderSurvivesReceiptsAndRestart(t *testing.T) {
 	}
 	check(&view)
 	check(&liveDiffView{})
-	view.flush(true)
+	view.Flush(true)
 	liveDiffScopeCapture(t, store, workspace, "child", "partial-revert",
 		filepath.Join(workspace, "file.txt"), "final", "first")
 	liveDiffRefreshTest(t, store, workspace, &view)
-	result := view.visible[view.files[0].key()]
-	if len(result.chunks) != 1 || !strings.Contains(result.chunks[0].review.Diff, "-original\n+first\n") ||
-		!result.highlighted {
+	result := view.Visible[view.Files[0].Key()]
+	if len(result.Chunks) != 1 || !strings.Contains(result.Chunks[0].Review.Diff, "-original\n+first\n") ||
+		!result.Highlighted {
 		t.Fatalf("partial revert did not revive the original-to-latest result: %#v", result)
 	}
 	liveDiffScopeCapture(t, store, workspace, "root", "full-revert",
 		filepath.Join(workspace, "file.txt"), "first", "original")
 	liveDiffRefreshTest(t, store, workspace, &view)
-	if len(view.visible[view.files[0].key()].chunks) != 0 {
+	if len(view.Visible[view.Files[0].Key()].Chunks) != 0 {
 		t.Fatal("full revert retained a combined diff")
 	}
 }

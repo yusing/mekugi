@@ -1,9 +1,9 @@
-package router
+package livediff
 
 import (
 	"strings"
 
-	"mvdan.cc/sh/v3/syntax"
+	Syntax "mvdan.cc/sh/v3/syntax"
 )
 
 // Chroma's Bash lexer treats external commands as plain text. Use shell grammar,
@@ -11,14 +11,14 @@ import (
 // assignment values, comments, and heredoc bodies. This is decoration only.
 // The renderer has already bounded source size; incomplete input may still
 // provide useful parsed statements before the first unrecoverable syntax error.
-func liveDiffShellCommands(source string) map[int]string {
-	program, _ := syntax.NewParser(syntax.RecoverErrors(8)).Parse(strings.NewReader(source), "")
+func shellCommands(source string) map[int]string {
+	program, _ := Syntax.NewParser(Syntax.RecoverErrors(8)).Parse(strings.NewReader(source), "")
 	if program == nil {
 		return nil
 	}
 	var commands map[int]string
-	syntax.Walk(program, func(node syntax.Node) bool {
-		call, ok := node.(*syntax.CallExpr)
+	Syntax.Walk(program, func(node Syntax.Node) bool {
+		call, ok := node.(*Syntax.CallExpr)
 		if !ok || len(call.Args) == 0 {
 			return true
 		}

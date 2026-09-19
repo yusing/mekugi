@@ -94,7 +94,7 @@ func TestLiveDiffDirectPublicationAndCachedReceipt(t *testing.T) {
 	if err := data.apply(t.Context(), store, event); err != nil {
 		t.Fatal(err)
 	}
-	if prepared[0].chunks[0].applied || !strings.Contains(prepared[0].chunks[0].status, "unconfirmed") {
+	if prepared[0].Chunks[0].Applied || !strings.Contains(prepared[0].Chunks[0].Status, "unconfirmed") {
 		t.Fatal("receipt mutated the previous display snapshot")
 	}
 	// An older queued preparation cannot undo a receipt from the snapshot.
@@ -103,7 +103,7 @@ func TestLiveDiffDirectPublicationAndCachedReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := data.files()
-	if len(files) != 1 || !files[0].chunks[0].applied {
+	if len(files) != 1 || !files[0].Chunks[0].Applied {
 		t.Fatalf("cached receipt regressed: %+v", files)
 	}
 	if _, err := store.liveDiffSnapshot(t.Context(), broker.scope); err == nil {
@@ -277,20 +277,20 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 		t.Fatalf("one durable batch was split into display updates: %+v", event)
 	}
 	data := newLiveDiffData()
-	view := liveDiffView{following: true}
-	view.merge(nil) // The connected pane starts empty before this batch.
+	view := liveDiffView{Following: true}
+	view.Merge(nil) // The connected pane starts empty before this batch.
 	for _, change := range event.Changes {
 		if err := data.apply(t.Context(), store, change); err != nil {
 			t.Fatal(err)
 		}
 	}
-	view.merge(data.files())
-	view.refreshVisible()
-	if view.files[view.selected].path != filepath.Join(workspace, "second.txt") {
+	view.Merge(data.files())
+	view.RefreshVisible()
+	if view.Files[view.Selected].Path != filepath.Join(workspace, "second.txt") {
 		t.Fatal("FOLLOW selected an older call from the durable batch")
 	}
-	for _, file := range view.files {
-		if !view.visible[file.key()].highlighted {
+	for _, file := range view.Files {
+		if !view.Visible[file.Key()].Highlighted {
 			t.Fatal("durable batch lost a file's recency marker")
 		}
 	}
@@ -306,23 +306,23 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 func TestLiveDiffDelayedCaptureDoesNotFollowBackwards(t *testing.T) {
 	path := "same.txt"
 	older := liveDiffHighlightChunk("older", path, "@@ -20 +20 @@\n-old\n+OLDER20\n", true)
-	older.captureOrder, older.snapshotOrder = 1, 1
+	older.CaptureOrder, older.SnapshotOrder = 1, 1
 	newer := liveDiffHighlightChunk("newer", path, "@@ -90 +90 @@\n-old\n+NEWER90\n", true)
-	newer.captureOrder, newer.snapshotOrder = 2, 2
-	view := liveDiffView{following: true}
-	view.merge([]liveDiffFile{{path: path, chunks: []liveDiffChunk{newer}}})
-	view.merge([]liveDiffFile{{path: path, chunks: []liveDiffChunk{older, newer}}})
-	if view.latest != "newer" || view.files[view.selected].path != path {
+	newer.CaptureOrder, newer.SnapshotOrder = 2, 2
+	view := liveDiffView{Following: true}
+	view.Merge([]liveDiffFile{{Path: path, Chunks: []liveDiffChunk{newer}}})
+	view.Merge([]liveDiffFile{{Path: path, Chunks: []liveDiffChunk{older, newer}}})
+	if view.Latest != "newer" || view.Files[view.Selected].Path != path {
 		t.Fatal("late publication of an older capture moved FOLLOW backwards")
 	}
-	view.refreshVisible()
-	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{view.visible[view.files[0].key()]}, "", 90, 0, view.latestChunk())
+	view.RefreshVisible()
+	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{view.Visible[view.Files[0].Key()]}, "", 90, 0, view.LatestChunk())
 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if focused := render.lines[render.focusRow]; !strings.Contains(focused, "NEWER90") {
-		t.Fatalf("late older highlight stole rendered focus: row=%d %q", render.focusRow, focused)
+	if focused := render.Lines[render.FocusRow]; !strings.Contains(focused, "NEWER90") {
+		t.Fatalf("late older highlight stole rendered focus: row=%d %q", render.FocusRow, focused)
 	}
 }
 

@@ -310,7 +310,7 @@ func TestShellHpatchPublishesCommittedEditReceipt(t *testing.T) {
 		t.Fatal("another thread published edit evidence")
 	}
 	files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{directory: {thread: true}}})
-	if err != nil || len(files) != 1 || files[0].path != filepath.Join(directory, "result.txt") {
+	if err != nil || len(files) != 1 || files[0].Path != filepath.Join(directory, "result.txt") {
 		t.Fatalf("live diff files=%+v err=%v", files, err)
 	}
 	// A fork may recover the original change without inheriting its stream owner.

@@ -11,12 +11,12 @@ func BenchmarkLiveDiffWrappedRender(b *testing.B) {
 		chunk := liveDiffHighlightChunk("edit", "file.go",
 			fmt.Sprintf("@@ -0,0 +1,%d @@\n", rows)+
 				strings.Repeat("+var value = \""+strings.Repeat("abcdefgh ", 15)+"\"\n", rows), true)
-		files := []liveDiffFile{{path: "file.go", chunks: []liveDiffChunk{chunk}}}
+		files := []liveDiffFile{{Path: "file.go", Chunks: []liveDiffChunk{chunk}}}
 		for _, warm := range []bool{false, true} {
 			b.Run(fmt.Sprintf("%d/warm=%t", rows, warm), func(b *testing.B) {
 				var renderer liveDiffRenderer
 				if warm {
-					if _, err := renderer.render(b.Context(), liveDiffDarkTheme, files, "", 100, 0, chunk); err != nil {
+					if _, err := renderer.Render(b.Context(), liveDiffDarkTheme, files, "", 100, 0, chunk); err != nil {
 						b.Fatal(err)
 					}
 				}
@@ -25,7 +25,7 @@ func BenchmarkLiveDiffWrappedRender(b *testing.B) {
 					if !warm {
 						renderer = liveDiffRenderer{}
 					}
-					if _, err := renderer.render(b.Context(), liveDiffDarkTheme, files, "", 100, 0, chunk); err != nil {
+					if _, err := renderer.Render(b.Context(), liveDiffDarkTheme, files, "", 100, 0, chunk); err != nil {
 						b.Fatal(err)
 					}
 				}

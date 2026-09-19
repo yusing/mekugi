@@ -12,18 +12,19 @@ import (
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func TestLiveDiffNativeRows(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "file.txt",
 		"@@ -9,3 +9,3 @@\n context\n-old\n+new\n \n", true)
-	chunk.status = ""
-	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{chunk}}}, "", 80, 0, chunk)
+	chunk.Status = ""
+	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{chunk}}}, "", 80, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var rows []string
-	for _, line := range render.lines[1:] {
+	for _, line := range render.Lines[1:] {
 		rows = append(rows, strings.TrimRight(ansi.Strip(line), " "))
 	}
 	want := []string{
@@ -46,18 +47,18 @@ func TestLiveDiffCompactCoordinates(t *testing.T) {
 			review = mekugi.ReviewFile{BeforePath: path,
 				Diff: "--- file.txt\n+++ /dev/null\n@@ -1,20 +0,0 @@\n" + strings.Repeat("-content\n", 20)}
 		}
-		chunk := liveDiffChunk{review: review}
-		render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: path, chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk)
+		chunk := liveDiffChunk{Review: review}
+		render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{Path: path, Chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if deleted {
-			if len(render.lines) != 1 || render.counts[0].removed != 20 {
+			if len(render.Lines) != 1 || render.Counts[0].Removed != 20 {
 				t.Fatalf("deleted source not omitted: %+v", render)
 			}
 			continue
 		}
-		for i, line := range render.lines[1:] {
+		for i, line := range render.Lines[1:] {
 			marker := "+"
 			if deleted {
 				marker = "-"
@@ -71,22 +72,22 @@ func TestLiveDiffCompactCoordinates(t *testing.T) {
 }
 
 func TestLiveDiffFollowInsideCombinedHunk(t *testing.T) {
-	initial := liveDiffChunk{key: "create", applied: true,
-		review: mekugi.ReviewFile{AfterPath: "file.txt",
+	initial := liveDiffChunk{Key: "create", Applied: true,
+		Review: mekugi.ReviewFile{AfterPath: "file.txt",
 			Diff: "--- /dev/null\n+++ file.txt\n@@ -0,0 +1,100 @@\n" + strings.Repeat("+content\n", 100)}}
 	recent := liveDiffHighlightChunk("edit", "file.txt", "@@ -90 +90 @@\n-content\n+LATEST90\n", true)
 	// Initial/resumed history has no recency split. The latest edit is deep
 	// inside one composed creation hunk, not at its beginning.
-	view := liveDiffView{following: true}
-	view.merge([]liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{initial, recent}}})
-	view.refreshVisible()
-	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{view.visible[view.files[0].key()]}, "", 90, 0, recent)
+	view := liveDiffView{Following: true}
+	view.Merge([]liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{initial, recent}}})
+	view.RefreshVisible()
+	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{view.Visible[view.Files[0].Key()]}, "", 90, 0, recent)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, rows := range []int{1, 2, 3, 7} {
-		offset := render.followOffset(rows)
-		viewport := ansi.Strip(strings.Join(render.lines[offset:min(len(render.lines), offset+rows)], "\n"))
+		offset := render.FollowOffset(rows)
+		viewport := ansi.Strip(strings.Join(render.Lines[offset:min(len(render.Lines), offset+rows)], "\n"))
 		if !strings.Contains(viewport, "LATEST90") {
 			t.Fatalf("%d rows: follow hides the target: offset=%d viewport=%q", rows, offset, viewport)
 		}
@@ -94,31 +95,31 @@ func TestLiveDiffFollowInsideCombinedHunk(t *testing.T) {
 }
 
 func TestLiveDiffFollowCentersLatestRow(t *testing.T) {
-	initial := liveDiffChunk{key: "create", applied: true,
-		review: mekugi.ReviewFile{AfterPath: "file.txt",
+	initial := liveDiffChunk{Key: "create", Applied: true,
+		Review: mekugi.ReviewFile{AfterPath: "file.txt",
 			Diff: "--- /dev/null\n+++ file.txt\n@@ -0,0 +1,100 @@\n" + strings.Repeat("+content\n", 100)}}
 	recent := liveDiffHighlightChunk("edit", "file.txt", "@@ -50 +50 @@\n-content\n+LATEST50\n", true)
-	view := liveDiffView{following: true}
-	view.merge([]liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{initial}}})
-	view.merge([]liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{initial, recent}}})
-	view.refreshVisible()
-	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{view.visible[view.files[0].key()]}, "", 90, 0, recent)
+	view := liveDiffView{Following: true}
+	view.Merge([]liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{initial}}})
+	view.Merge([]liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{initial, recent}}})
+	view.RefreshVisible()
+	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{view.Visible[view.Files[0].Key()]}, "", 90, 0, recent)
 
 	if err != nil {
 		t.Fatal(err)
 	}
 	const rows = 18
-	offset := render.followOffset(rows)
-	center := ansi.Strip(render.lines[offset+rows/2])
+	offset := render.FollowOffset(rows)
+	center := ansi.Strip(render.Lines[offset+rows/2])
 	if !strings.Contains(center, "▎") || !strings.Contains(center, "+LATEST50") {
 		t.Fatalf("center is not the latest highlighted change: %q", center)
 	}
 	for _, index := range []int{offset, offset + rows - 1} {
-		if text := ansi.Strip(render.lines[index]); !strings.Contains(text, "content") {
+		if text := ansi.Strip(render.Lines[index]); !strings.Contains(text, "content") {
 			t.Fatalf("available surrounding context is missing at row %d: %q", index, text)
 		}
 	}
-	if position := render.focusRow - offset; position != rows/2 {
+	if position := render.FocusRow - offset; position != rows/2 {
 		t.Fatalf("latest row position = %d, want centered position %d", position, rows/2)
 	}
 }
@@ -126,16 +127,16 @@ func TestLiveDiffFollowCentersLatestRow(t *testing.T) {
 func TestLiveDiffFollowShortViewStartsAtAvailableContext(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "file.txt",
 		"@@ -1,3 +1,3 @@\n before\n-old\n+LATEST\n after\n", true)
-	chunk.highlighted = true
-	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme,
-		[]liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk)
+	chunk.Highlighted = true
+	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme,
+		[]liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if offset := render.followOffset(40); offset != 0 {
+	if offset := render.FollowOffset(40); offset != 0 {
 		t.Fatalf("short view offset = %d, want available context from the top", offset)
 	}
-	if got := ansi.Strip(render.lines[render.focusRow]); !strings.Contains(got, "+LATEST") {
+	if got := ansi.Strip(render.Lines[render.FocusRow]); !strings.Contains(got, "+LATEST") {
 		t.Fatalf("focus is not the highlighted change: %q", got)
 	}
 }
@@ -143,43 +144,43 @@ func TestLiveDiffFollowShortViewStartsAtAvailableContext(t *testing.T) {
 func TestLiveDiffFollowPrefersLatestHighlightedRegion(t *testing.T) {
 	path := "file.txt"
 	older := liveDiffHighlightChunk("", path, "@@ -90 +90 @@\n-old\n+OLDER90\n", true)
-	older.highlighted = false
+	older.Highlighted = false
 	latest := liveDiffHighlightChunk("", path, "@@ -20 +20 @@\n-old\n+LATEST20\n", true)
-	latest.highlighted = true
+	latest.Highlighted = true
 	// The raw capture coordinate can become ambiguous after composition. The
 	// recency mark remains authoritative for which visible region to follow.
 	focus := liveDiffHighlightChunk("latest", path, "@@ -90 +90 @@\n-old\n+raw latest\n", true)
-	focus.highlighted = true
-	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: path, chunks: []liveDiffChunk{older, latest}}}, "", 90, 0, focus)
+	focus.Highlighted = true
+	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{Path: path, Chunks: []liveDiffChunk{older, latest}}}, "", 90, 0, focus)
 
 	if err != nil {
 		t.Fatal(err)
 	}
-	focused := ansi.Strip(render.lines[render.focusRow])
+	focused := ansi.Strip(render.Lines[render.FocusRow])
 	if !strings.Contains(focused, "LATEST20") {
-		t.Fatalf("follow lost the latest highlighted region: row=%d %q", render.focusRow, focused)
+		t.Fatalf("follow lost the latest highlighted region: row=%d %q", render.FocusRow, focused)
 	}
 }
 
 func TestLiveDiffNativeFollowCentersPreparedTip(t *testing.T) {
 	diff := "--- /dev/null\n+++ file.txt\n@@ -0,0 +1,40 @@\n" + strings.Repeat("+content\n", 40)
 	chunk := liveDiffChunk{
-		key: "latest", status: "amber1 prepared (application unconfirmed)",
-		review: mekugi.ReviewFile{AfterPath: "file.txt", Diff: diff},
+		Key: "latest", Status: "amber1 prepared (application unconfirmed)",
+		Review: mekugi.ReviewFile{AfterPath: "file.txt", Diff: diff},
 	}
-	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk)
+	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 	const rows = 18
-	offset := render.followOffset(rows)
-	if render.focusRow-offset != rows-1 || render.focusRow != len(render.lines)-1 {
+	offset := render.FollowOffset(rows)
+	if render.FocusRow-offset != rows-1 || render.FocusRow != len(render.Lines)-1 {
 		t.Fatal("prepared new file did not fill the viewport through its final source row")
 	}
 	// Status remains available in the captured document, but must not pin
 	// follow to the top of a long creation.
-	document := ansi.Strip(strings.Join(render.lines, "\n"))
-	if !strings.Contains(document, chunk.status) || !strings.Contains(document, "New file") {
+	document := ansi.Strip(strings.Join(render.Lines, "\n"))
+	if !strings.Contains(document, chunk.Status) || !strings.Contains(document, "New file") {
 		t.Fatal("prepared metadata disappeared")
 	}
 }
@@ -188,17 +189,17 @@ func TestLiveDiffNativeNoNewlineAndControls(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "unknown.extension",
 		"@@ -1 +1 @@\n-before\n\\ No newline at end of file\n+after\x1b]52;c;secret\a\x1b[2J\x1b[31m\t界 é 👩‍💻\n\\ No newline at end of file\n", true)
 	for _, width := range []int{1, 2, 3, 12, 36, 90} {
-		render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: "unknown.extension", chunks: []liveDiffChunk{chunk}}}, "", width, 0, chunk)
+		render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{Path: "unknown.extension", Chunks: []liveDiffChunk{chunk}}}, "", width, 0, chunk)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, line := range render.lines {
-			if ansi.StringWidth(line) > width-1 || liveDiffSafe(line, true) != line {
+		for _, line := range render.Lines {
+			if ansi.StringWidth(line) > width-1 || livediff.Safe(line, true) != line {
 				t.Fatalf("width %d: unsafe or overflowing row: %q", width, line)
 			}
 		}
 		if width == 90 {
-			text := ansi.Strip(strings.Join(render.lines, "\n"))
+			text := ansi.Strip(strings.Join(render.Lines, "\n"))
 			if strings.Count(text, `\ No newline at end of file`) != 2 ||
 				!strings.Contains(text, "after    界 é 👩‍💻") || strings.Contains(text, "secret") {
 				t.Fatalf("missing newline or safe source text: %q", text)
@@ -209,7 +210,7 @@ func TestLiveDiffNativeNoNewlineAndControls(t *testing.T) {
 
 func TestLiveDiffNativeSyntaxSidesAndMultiline(t *testing.T) {
 	review := mekugi.ReviewFile{BeforePath: "file.go", AfterPath: "file.go"}
-	before, after, err := new(liveDiffRenderer).colorHunk(t.Context(), liveDiffTerminalTheme, review, []mekugi.ReviewRow{
+	before, after, err := new(liveDiffRenderer).ColorHunk(t.Context(), liveDiffTerminalTheme, review, []mekugi.ReviewRow{
 		{Kind: '-', Text: "/* removed comment\n"},
 		{Kind: '-', Text: "still removed */\n"},
 		{Kind: '+', Text: "return \"new\"\n"},
@@ -219,10 +220,10 @@ func TestLiveDiffNativeSyntaxSidesAndMultiline(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(before) != 3 || len(after) != 2 ||
-		!strings.Contains(before[1], liveDiffTerminalTheme.foreground(chroma.CommentMultiline)) ||
-		!strings.Contains(after[0], liveDiffTerminalTheme.foreground(chroma.Keyword)+"return\x1b[39m") ||
-		!strings.Contains(after[0], liveDiffTerminalTheme.foreground(chroma.LiteralString)) ||
-		!strings.Contains(after[1], liveDiffTerminalTheme.foreground(chroma.LiteralNumberInteger)+"42\x1b[39m") {
+		!strings.Contains(before[1], liveDiffTerminalTheme.Foreground(chroma.CommentMultiline)) ||
+		!strings.Contains(after[0], liveDiffTerminalTheme.Foreground(chroma.Keyword)+"return\x1b[39m") ||
+		!strings.Contains(after[0], liveDiffTerminalTheme.Foreground(chroma.LiteralString)) ||
+		!strings.Contains(after[1], liveDiffTerminalTheme.Foreground(chroma.LiteralNumberInteger)+"42\x1b[39m") {
 		t.Fatalf("syntax state leaked across sides or rows: before=%q after=%q", before, after)
 	}
 }
@@ -230,7 +231,7 @@ func TestLiveDiffNativeSyntaxSidesAndMultiline(t *testing.T) {
 func TestLiveDiffNativeSyntaxFallback(t *testing.T) {
 	for _, source := range []string{"plain source\n\n", strings.Repeat("x", maxLiveDiffSyntaxBytes+1) + "\n"} {
 		for _, path := range []string{"unknown.extension", "file.go"} {
-			lines, err := liveDiffColorSource(t.Context(), liveDiffTerminalTheme, path, source)
+			lines, err := livediff.ColorSource(t.Context(), liveDiffTerminalTheme, path, source)
 			if err != nil || ansi.Strip(strings.Join(lines, "\n"))+"\n" != source {
 				t.Fatalf("fallback lost source for %s: err=%v", path, err)
 			}
@@ -248,7 +249,7 @@ func TestLiveDiffNativeLexerPanicFallsBack(t *testing.T) {
 		})}}}
 	}))
 	const source = "complete source\n"
-	lines, err := liveDiffColorSource(t.Context(), liveDiffTerminalTheme, "broken.fixture", source)
+	lines, err := livediff.ColorSource(t.Context(), liveDiffTerminalTheme, "broken.fixture", source)
 	if err != nil || strings.Join(lines, "\n")+"\n" != source {
 		t.Fatalf("lexer failure changed source: %q %v", lines, err)
 	}
@@ -257,7 +258,7 @@ func TestLiveDiffNativeLexerPanicFallsBack(t *testing.T) {
 func TestLiveDiffNativePartialSourceCorpus(t *testing.T) {
 	for _, path := range []string{"file.go", "file.py", "file.js", "file.ts", "file.json", "file.yaml", "file.rb", "file.rs", "file.html", "file.raku", "file.sh"} {
 		for _, source := range []string{"/* unterminated\n", "\"unfinished\n", "'''unfinished\n", "`unfinished\n", "<!--unfinished\n", "q:to/END/;\ntext\n", "{{[(\n", "\n\n"} {
-			lines, err := liveDiffColorSource(t.Context(), liveDiffTerminalTheme, path, source)
+			lines, err := livediff.ColorSource(t.Context(), liveDiffTerminalTheme, path, source)
 			if err != nil || ansi.Strip(strings.Join(lines, "\n"))+"\n" != source {
 				t.Fatalf("%s: partial source changed: %q %v", path, lines, err)
 			}
@@ -268,57 +269,57 @@ func TestLiveDiffNativePartialSourceCorpus(t *testing.T) {
 func TestLiveDiffNativeErrors(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := new(liveDiffRenderer).render(ctx, liveDiffTerminalTheme, nil, "", 80, 0, liveDiffChunk{}); !errors.Is(err, context.Canceled) {
+	if _, err := new(liveDiffRenderer).Render(ctx, liveDiffTerminalTheme, nil, "", 80, 0, liveDiffChunk{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation: %v", err)
 	}
-	if _, err := liveDiffColorSource(ctx, liveDiffTerminalTheme, "file.go", "var x = 1\n"); !errors.Is(err, context.Canceled) {
+	if _, err := livediff.ColorSource(ctx, liveDiffTerminalTheme, "file.go", "var x = 1\n"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("syntax cancellation: %v", err)
 	}
 	chunk := liveDiffHighlightChunk("edit", "file.go", "@@ -1 +1 @@\n+missing removal\n", true)
-	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{path: "file.go", chunks: []liveDiffChunk{chunk}}}, "", 80, 0, liveDiffChunk{})
-	if err == nil || len(render.lines) != 0 {
+	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{Path: "file.go", Chunks: []liveDiffChunk{chunk}}}, "", 80, 0, liveDiffChunk{})
+	if err == nil || len(render.Lines) != 0 {
 		t.Fatalf("malformed capture returned a partial successful view: %+v %v", render, err)
 	}
-	chunk.review.Diff = strings.Repeat("x", maxChangeReadBytes+1)
-	if _, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{chunks: []liveDiffChunk{chunk}}}, "", 80, 0, liveDiffChunk{}); err == nil {
+	chunk.Review.Diff = strings.Repeat("x", maxChangeReadBytes+1)
+	if _, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{Chunks: []liveDiffChunk{chunk}}}, "", 80, 0, liveDiffChunk{}); err == nil {
 		t.Fatal("unbounded source accepted")
 	}
 }
 
 func TestLiveDiffHiddenFilesKeepNavigationAndHistory(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "visible.txt", "@@ -1 +1 @@\n-old\n+new\n", true)
-	chunk.status = ""
+	chunk.Status = ""
 	files := []liveDiffFile{
-		{path: "reverted-first"},
-		{path: "visible.txt", chunks: []liveDiffChunk{chunk}},
-		{path: "reverted-middle"},
-		{path: "deleted.txt", chunks: []liveDiffChunk{{review: mekugi.ReviewFile{
+		{Path: "reverted-first"},
+		{Path: "visible.txt", Chunks: []liveDiffChunk{chunk}},
+		{Path: "reverted-middle"},
+		{Path: "deleted.txt", Chunks: []liveDiffChunk{{Review: mekugi.ReviewFile{
 			BeforePath: "deleted.txt", Diff: "--- deleted.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-removed source\n",
 		}}}},
-		{path: "reverted-last"},
+		{Path: "reverted-last"},
 	}
-	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffDarkTheme, files, "", 90, 4, liveDiffChunk{})
+	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffDarkTheme, files, "", 90, 4, liveDiffChunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := ansi.Strip(strings.Join(render.lines, "\n"))
+	text := ansi.Strip(strings.Join(render.Lines, "\n"))
 	if strings.Contains(text, "reverted") || strings.Contains(text, "removed source") ||
 		!strings.Contains(text, "1/2  visible.txt") || !strings.Contains(text, "2/2  deleted.txt") ||
-		!strings.Contains(text, "Deleted file") || render.counts[3].removed != 1 {
+		!strings.Contains(text, "Deleted file") || render.Counts[3].Removed != 1 {
 		t.Fatalf("hidden/deleted presentation is wrong: %q", text)
 	}
-	view := liveDiffView{files: files, scroll: map[string]int{}}
-	for offset := range len(render.lines) {
-		view.scrollTo(render, offset)
+	view := liveDiffView{Files: files, Scroll: map[string]int{}}
+	for offset := range len(render.Lines) {
+		view.ScrollTo(render, offset)
 		want := 1
-		if offset >= render.starts[3] {
+		if offset >= render.Starts[3] {
 			want = 3
 		}
-		if view.selected != want {
-			t.Fatalf("offset %d selected hidden file %d", offset, view.selected)
+		if view.Selected != want {
+			t.Fatalf("offset %d selected hidden file %d", offset, view.Selected)
 		}
 	}
-	if len(view.files) != 5 {
+	if len(view.Files) != 5 {
 		t.Fatal("presentation discarded retained history")
 	}
 }
@@ -331,17 +332,17 @@ func TestLiveDiffFollowFinalChangedRowAndFragment(t *testing.T) {
 	} {
 		chunk := liveDiffHighlightChunk("latest", "file.txt", diff, true)
 		for _, width := range []int{40, 90} {
-			render, err := new(liveDiffRenderer).render(t.Context(), liveDiffDarkTheme,
-				[]liveDiffFile{{path: "file.txt", chunks: []liveDiffChunk{chunk}}}, "", width, 0, chunk)
+			render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffDarkTheme,
+				[]liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{chunk}}}, "", width, 0, chunk)
 			if err != nil {
 				t.Fatal(err)
 			}
-			offset := render.followOffset(18)
-			tip := ansi.Strip(render.lines[render.focusRow])
-			if !strings.Contains(tip, "FINAL_TIP") || render.focusRow < offset || render.focusRow >= offset+18 {
+			offset := render.FollowOffset(18)
+			tip := ansi.Strip(render.Lines[render.FocusRow])
+			if !strings.Contains(tip, "FINAL_TIP") || render.FocusRow < offset || render.FocusRow >= offset+18 {
 				t.Fatalf("width %d lost the final changed row: %q", width, tip)
 			}
-			if offset+18 != len(render.lines) {
+			if offset+18 != len(render.Lines) {
 				t.Fatalf("width %d left unused rows at EOF", width)
 			}
 		}
@@ -349,17 +350,17 @@ func TestLiveDiffFollowFinalChangedRowAndFragment(t *testing.T) {
 }
 
 func TestLiveDiffIncompleteHistory(t *testing.T) {
-	chunk := liveDiffChunk{key: "unreadable", applied: true,
-		review: mekugi.RenderIncompleteReviewFile("file", "file", "permission denied")}
+	chunk := liveDiffChunk{Key: "unreadable", Applied: true,
+		Review: mekugi.RenderIncompleteReviewFile("file", "file", "permission denied")}
 	view := liveDiffView{}
-	view.merge([]liveDiffFile{{path: "file", chunks: []liveDiffChunk{chunk}}})
-	view.refreshVisible()
-	render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme,
-		[]liveDiffFile{view.visible[view.files[0].key()]}, "", 100, 0, chunk)
+	view.Merge([]liveDiffFile{{Path: "file", Chunks: []liveDiffChunk{chunk}}})
+	view.RefreshVisible()
+	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme,
+		[]liveDiffFile{view.Visible[view.Files[0].Key()]}, "", 100, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := ansi.Strip(strings.Join(render.lines, "\n"))
+	text := ansi.Strip(strings.Join(render.Lines, "\n"))
 	if !strings.Contains(text, "counts unavailable") || !strings.Contains(text, "incomplete history") || strings.Contains(text, "+0 -0") {
 		t.Fatalf("incomplete rendering: %s", text)
 	}
@@ -367,19 +368,19 @@ func TestLiveDiffIncompleteHistory(t *testing.T) {
 
 func TestLiveDiffCompleteCaptureAfterIncompleteHistory(t *testing.T) {
 	for _, acknowledged := range []bool{false, true} {
-		incomplete := liveDiffChunk{key: "unreadable", applied: true, captureOrder: 1,
-			review: mekugi.RenderIncompleteReviewFile("file", "file", "permission denied")}
-		complete := liveDiffChunk{key: "readable", applied: true, captureOrder: 2,
-			review: mekugi.RenderReviewFile("file", "file", "before\n", "NEW KNOWN CONTENT\n")}
-		view := liveDiffView{reviewed: map[string]bool{"unreadable": acknowledged}}
-		view.merge([]liveDiffFile{{path: "file", chunks: []liveDiffChunk{incomplete, complete}}})
-		view.refreshVisible()
-		render, err := new(liveDiffRenderer).render(t.Context(), liveDiffTerminalTheme,
-			[]liveDiffFile{view.visible[view.files[0].key()]}, "", 100, 0, complete)
+		incomplete := liveDiffChunk{Key: "unreadable", Applied: true, CaptureOrder: 1,
+			Review: mekugi.RenderIncompleteReviewFile("file", "file", "permission denied")}
+		complete := liveDiffChunk{Key: "readable", Applied: true, CaptureOrder: 2,
+			Review: mekugi.RenderReviewFile("file", "file", "before\n", "NEW KNOWN CONTENT\n")}
+		view := liveDiffView{Reviewed: map[string]bool{"unreadable": acknowledged}}
+		view.Merge([]liveDiffFile{{Path: "file", Chunks: []liveDiffChunk{incomplete, complete}}})
+		view.RefreshVisible()
+		render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme,
+			[]liveDiffFile{view.Visible[view.Files[0].Key()]}, "", 100, 0, complete)
 		if err != nil {
 			t.Fatal(err)
 		}
-		text := ansi.Strip(strings.Join(render.lines, "\n"))
+		text := ansi.Strip(strings.Join(render.Lines, "\n"))
 		if !strings.Contains(text, "NEW KNOWN CONTENT") || strings.Contains(text, "incomplete history") == acknowledged {
 			t.Fatalf("acknowledged=%t: %s", acknowledged, text)
 		}
