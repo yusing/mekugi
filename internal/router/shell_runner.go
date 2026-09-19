@@ -140,6 +140,10 @@ func executeShellProgram(
 	})
 
 	shellID := rand.Text()
+	builtinDispatch := "__mekugi_builtin_" + shellID
+	if err := rewriteShellTime(program, builtinDispatch); err != nil {
+		return toolplugin.ExecutionOutput{Stderr: err.Error() + "\n", ExitCode: 2}, nil
+	}
 	privateTools := make(map[string]toolContribution)
 	for _, contribution := range manifest.Tools {
 		if contribution.PluginID == builtinToolsPluginID && !contribution.ModelVisible {
@@ -164,6 +168,9 @@ func executeShellProgram(
 				}
 			}()
 
+			if command[0] == builtinDispatch {
+				return executeShellBuiltin(handlerCtx, command[1:], privateTools, terminalShell, builtinDispatch)
+			}
 			if command[0] == "hcat" {
 				specs, budget, err := parseReadBundle(command[1:])
 				if err != nil {
@@ -276,6 +283,19 @@ func executeShellProgram(
 	)
 	if err != nil {
 		return toolplugin.ExecutionOutput{Stderr: fmt.Sprintf("shell: %v\n", err), ExitCode: 1}, nil
+	}
+	// Initial functions supply missing builtins while allowing authored functions
+	// to replace them through the interpreter's ordinary function lookup.
+	var builtinPrelude strings.Builder
+	for _, name := range []string{"type", "kill", "printf", "read", "ulimit"} {
+		fmt.Fprintf(&builtinPrelude, "%s() { %s %s \"$@\"; };\n", name, builtinDispatch, name)
+	}
+	prelude, err := syntax.NewParser(syntax.Variant(variant)).Parse(strings.NewReader(builtinPrelude.String()), "")
+	if err != nil {
+		return toolplugin.ExecutionOutput{}, err
+	}
+	if err := runner.Run(runCtx, prelude); err != nil {
+		return toolplugin.ExecutionOutput{}, err
 	}
 	runErr := runner.Run(runCtx, program)
 	if evidenceErr := files.finish(); evidenceErr != nil {

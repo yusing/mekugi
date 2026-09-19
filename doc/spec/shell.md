@@ -81,6 +81,53 @@ static command is neither a shell built-in, the reserved `journal` command, nor 
 contribution or an optional command-routing candidate, and whose statement contains no command or process substitution. The direct carrier
 removes that optional final line terminator and otherwise preserves the command text.
 
+Within the embedded shell, `type` reports `[mekugi-builtin]` for each Mekugi
+private command, including `journal` and the `type`, `kill`, `printf`, `read`, and
+`ulimit` helpers, and otherwise retains the interpreter's normal lookup output and
+failure status. `type -a` lists the shell classification followed by all executable
+matches in `PATH` order; it accepts `-t`, `-p`, and `-P` output modes. This does not
+inspect additional shell definitions hidden behind the first classification.
+`kill` resolves the executable through the current `PATH`, bypassing the embedded interpreter's unsupported builtin. Its operands are
+operating-system process IDs, not the interpreter's synthetic background-job IDs.
+The helpers use initial shell functions so authored functions retain normal
+precedence. Native `builtin type` therefore sees those helper functions. Explicit
+`command` or `builtin` prefixes bypass them and retain the underlying interpreter's behavior, including its unsupported `kill` builtin.
+The `printf` helper supports `%q` shell quoting, including empty arguments,
+format reuse, and mixing quoted conversions with ordinary conversions. Its output
+can be parsed by the embedded Bash interpreter without executing argument contents.
+The `read` helper supports NUL-delimited input with `-r -d ''` and timed input with
+`-t`, including readiness-only `-t 0`. A timeout preserves partial input and returns
+status 142; EOF returns status 1. NUL bytes are ignored unless NUL is the selected
+delimiter. Enhanced reads accept `-r`, `-d`, and `-t`;
+unsupported option combinations fail rather than silently changing semantics.
+On Linux and macOS, `ulimit` inspects soft or hard limits (`-S`, `-H`) for core
+size, data size, file size, open files, stack size, CPU time, and address space
+(`-c`, `-d`, `-f`, `-n`, `-s`, `-t`, `-v`), or lists them with `-a`.
+Setting limits is unsupported: changing the worker's process-wide limits would
+also change concurrent interpreter jobs.
+
+Execution remains embedded, without a local interpreter fork. Background IDs
+remain synthetic; they must not be passed to OS `kill`. Real `$!` process IDs,
+`wait -n`/`-p`, `INT`/`TERM` traps, and shell-local `umask` changes are not provided
+by these helpers. `type -f`, interactive job control, completion, history, and
+additional `mapfile` options retain the upstream interpreter's capabilities.
+
+In submitted Bash source (including its function bodies), `time command` invokes
+the real `time` executable through the current `PATH`,
+with its actual elapsed/user/system measurements, stderr reporting, options, and exit
+status. `time -p command` requests portable formatting; additional options are owned
+by the installed utility. Expansion, command-local environment assignments, and
+redirections remain shell-owned. The timed command must be an executable, not an
+embedded shell function or private reader. To time pipelines, compound commands,
+or shell builtins, use an explicit interpreter, for example
+`time bash -c 'command1 | command2'`. Unsupported compound timing syntax rejects
+before the script executes, rather than returning placeholder measurements.
+This translation does not reach code parsed later by `eval`, `source`/`.`, or traps.
+Within that dynamically parsed code, use `command time` to select the real utility;
+the interpreter's native `time` keyword still has placeholder CPU measurements and
+writes to stdout.
+A missing timing executable fails through ordinary command lookup.
+
 The `shell` transformation MUST NOT add flags to the rendered command. Only interpreter
 arguments supplied by the input's selector may appear as interpreter flags. Router-owned
 metadata, including commentary connection details and credentials, must travel through private
