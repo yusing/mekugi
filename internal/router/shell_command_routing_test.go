@@ -49,6 +49,49 @@ func TestShellCommandRouting(t *testing.T) {
 	}
 }
 
+func TestShellCommandRoutingAssignmentsAndWrappers(t *testing.T) {
+	t.Parallel()
+	registry := sharedProxyTestRegistry(t)
+	directory := t.TempDir()
+	for name, source := range map[string]string{
+		"rtk": "#!/bin/sh\nprintf 'routed\\n'\nexec \"$@\"\n",
+		"go":  "#!/bin/sh\nprintf 'env=<%s>\\n' \"$FOO\"\nprintf 'arg=<%s>\\n' \"$@\"\nexit 9\n",
+	} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(source), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := directory + string(os.PathListSeparator) + os.Getenv("PATH")
+	invocation := newShellWorkerTestInvocation(directory, "PATH="+path)
+	for _, interpreter := range []string{"bash", "sh"} {
+		for _, test := range []struct {
+			name, script, want string
+		}{
+			{"assignment", "FOO=bar go test ./pkg", "routed\nenv=<bar>\narg=<test>\narg=<./pkg>\n"},
+			{"timeout", "timeout 120 go test ./pkg", "routed\nenv=<>\narg=<test>\narg=<./pkg>\n"},
+			{"timeout flags", "timeout --signal=TERM 120 go test ./pkg", "routed\nenv=<>\narg=<test>\narg=<./pkg>\n"},
+			{"nice", "nice -n 5 go test ./pkg", "routed\nenv=<>\narg=<test>\narg=<./pkg>\n"},
+			{"env", "env FOO=bar go test ./pkg", "routed\nenv=<bar>\narg=<test>\narg=<./pkg>\n"},
+			{"env separator", "env -- FOO=bar go test ./pkg", "routed\nenv=<bar>\narg=<test>\narg=<./pkg>\n"},
+			{"wrapped machine output", "env FOO=bar go test -json ./pkg", "env=<bar>\narg=<test>\narg=<-json>\narg=<./pkg>\n"},
+			{"wrapped pipeline", "timeout 120 go test ./pkg | /bin/cat", "env=<>\narg=<test>\narg=<./pkg>\n"},
+			{"wrapped redirect", "env FOO=bar go test ./pkg > /dev/null; printf done", "done"},
+			{"wrapped explicit path", "env FOO=bar " + filepath.Join(directory, "go") + " test ./pkg", "env=<bar>\narg=<test>\narg=<./pkg>\n"},
+		} {
+			t.Run(interpreter+"/"+test.name, func(t *testing.T) {
+				stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, test.script, nil, invocation)
+				wantStatus := 9
+				if test.name == "wrapped pipeline" || test.name == "wrapped redirect" {
+					wantStatus = 0
+				}
+				if stdout != test.want || stderr != "" || status != wantStatus {
+					t.Fatalf("output/status = %q, %q, %d; want %q, empty stderr, %d", stdout, stderr, status, test.want, wantStatus)
+				}
+			})
+		}
+	}
+}
+
 func TestShellCommandRoutingWithoutExecutable(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
@@ -133,5 +176,20 @@ func TestShellCommandRoutingInstalledRTK(t *testing.T) {
 		"ls -1 "+shellQuoteArgument(directory), nil, newShellWorkerTestInvocation(directory))
 	if stdout != string(want) || stderr != "" || status != 0 {
 		t.Fatalf("installed RTK: %q, %q, %d; want %q", stdout, stderr, status, want)
+	}
+}
+
+func TestShellCommandRoutingCandidatesDoNotBypassWorker(t *testing.T) {
+	t.Parallel()
+	registry := sharedProxyTestRegistry(t)
+	for _, script := range []string{
+		"FOO=bar go test ./pkg",
+		"timeout 120 go test ./pkg",
+		"env FOO=bar go test ./pkg",
+		"nice -n 5 go test ./pkg",
+	} {
+		if command, direct := registry.directBashExecCommand([]string{"bash", script}); direct {
+			t.Errorf("directBashExecCommand(%q) bypassed worker as %q", script, command)
+		}
 	}
 }

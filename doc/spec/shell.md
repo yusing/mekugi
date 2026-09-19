@@ -170,7 +170,13 @@ is not executable there, commands run unchanged.
 
 Only recognized command forms are routed. Unsupported subcommands, explicit executable
 paths, already-routed commands, private readers, and explicit machine-readable output
-remain unchanged. Automatic routing applies only to display output: commands whose
+remain unchanged. Inline environment assignments retain normal shell behavior. Recognized
+`timeout` and `nice` options and simple `env NAME=value` prefixes route the inner
+command while leaving the wrapper in control. Foreground `timeout` stays raw because
+it signals only its direct child. Unknown wrapper options and `env` forms
+that change PATH or clear/unset the environment remain raw. Git `diff --check` also
+remains native so whitespace diagnostics and its exit status are preserved.
+Automatic routing applies only to display output: commands whose
 input or output is redirected, piped, or captured by substitution remain raw.
 Non-Bash/POSIX interpreters are not automatically routed. An explicit
 `hrun` opts its inner external command into routing before output capture and selection.

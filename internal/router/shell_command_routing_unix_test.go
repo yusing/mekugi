@@ -117,3 +117,61 @@ func TestShellCommandRoutingNativeRegressions(t *testing.T) {
 		t.Fatalf("interactive staging did not receive stdin: %+v, %v", result, err)
 	}
 }
+
+func TestShellCommandRoutingGitDiffCheckStaysNative(t *testing.T) {
+	t.Parallel()
+	registry := sharedProxyTestRegistry(t)
+	directory := t.TempDir()
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "rtk"), []byte("#!/bin/sh\nprintf 'unexpected RTK routing\\n' >&2\nexit 99\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) (string, string, int) {
+		t.Helper()
+		cmd := exec.CommandContext(t.Context(), "git", args...)
+		cmd.Dir = directory
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		if err == nil {
+			return stdout.String(), stderr.String(), 0
+		}
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return stdout.String(), stderr.String(), exitErr.ExitCode()
+		}
+		t.Fatalf("git %q: %v", args, err)
+		return "", "", -1
+	}
+	if stdout, stderr, status := git("init", "-q"); status != 0 {
+		t.Fatalf("git init: %q, %q, %d", stdout, stderr, status)
+	}
+	file := filepath.Join(directory, "file.txt")
+	if err := os.WriteFile(file, []byte("clean\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if stdout, stderr, status := git("add", "file.txt"); status != 0 {
+		t.Fatalf("git add: %q, %q, %d", stdout, stderr, status)
+	}
+	if err := os.WriteFile(file, []byte("trailing whitespace \n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := bin + string(os.PathListSeparator) + os.Getenv("PATH")
+	invocation := newShellWorkerTestInvocation(directory, "PATH="+path)
+	for _, interpreter := range []string{"bash", "sh"} {
+		for _, args := range [][]string{{"diff", "--check"}, {"-c", "color.ui=false", "--no-pager", "diff", "--check"}} {
+			wantStdout, wantStderr, wantStatus := git(args...)
+			if wantStatus != 2 || (wantStdout == "" && wantStderr == "") {
+				t.Fatalf("raw git fixture did not produce diagnostic/exit 2: args=%q, stdout=%q, stderr=%q, status=%d", args, wantStdout, wantStderr, wantStatus)
+			}
+			script := "git"
+			for _, arg := range args {
+				script += " " + shellQuoteArgument(arg)
+			}
+			stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, script, nil, invocation)
+			if stdout != wantStdout || stderr != wantStderr || status != wantStatus {
+				t.Errorf("%s %q = %q, %q, %d; want raw git %q, %q, %d", interpreter, args, stdout, stderr, status, wantStdout, wantStderr, wantStatus)
+			}
+		}
+	}
+}
