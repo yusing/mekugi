@@ -52,7 +52,7 @@ func TestShellCommandsAndColorSource(t *testing.T) {
 	if len(commands) != 2 || commands[strings.Index(source, " rg ")+1] != "rg" || commands[strings.Index(source, "head")] != "head" {
 		t.Fatalf("shell commands = %#v", commands)
 	}
-	lines, err := ColorSource(t.Context(), DarkTheme, "stream.sh", source)
+	lines, err := new(Renderer).ColorSource(t.Context(), DarkTheme, "stream.sh", source)
 	if err != nil {
 		t.Fatal(err)
 	}

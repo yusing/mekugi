@@ -28,11 +28,11 @@ func TestAXReadJournalRestrictiveUmask(t *testing.T) {
 		if err != nil || info.Mode().Perm() != 0600 {
 			t.Fatalf("journal mode = %v, %v", info, err)
 		}
-		observation, err := StartAXRead(path, "thread", "hcat")
+		observation, err := StartAXReadWithContext(path, "thread", "hcat", AXReadContext{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := observation.Finish(true); err != nil {
+		if err := observation.FinishResult(true, "", nil); err != nil {
 			t.Fatal(err)
 		}
 		return
@@ -116,15 +116,15 @@ func TestAXRuntimeReadJournal(t *testing.T) {
 		thread  string
 		success bool
 	}{{"thread", true}, {"thread", false}, {"other", true}} {
-		observation, err := StartAXRead(path, test.thread, "hcat")
+		observation, err := StartAXReadWithContext(path, test.thread, "hcat", AXReadContext{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := observation.Finish(test.success); err != nil {
+		if err := observation.FinishResult(test.success, "", nil); err != nil {
 			t.Fatal(err)
 		}
 	}
-	pending, err := StartAXRead(path, "thread", "inspect_file")
+	pending, err := StartAXReadWithContext(path, "thread", "inspect_file", AXReadContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,12 +171,12 @@ func TestAXReadConcurrentWriters(t *testing.T) {
 	var workers sync.WaitGroup
 	for range 20 {
 		workers.Go(func() {
-			observation, err := StartAXRead(path, "thread", "hgrep")
+			observation, err := StartAXReadWithContext(path, "thread", "hgrep", AXReadContext{})
 			if err != nil {
 				t.Error(err)
 				return
 			}
-			if err := observation.Finish(true); err != nil {
+			if err := observation.FinishResult(true, "", nil); err != nil {
 				t.Error(err)
 			}
 		})
@@ -199,7 +199,7 @@ func TestAXReadRejectsUnsafeStorageAndMalformedEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, invalid := range []string{"relative", root, path, link} {
-		if _, err := StartAXRead(invalid, "thread", "hcat"); err == nil {
+		if _, err := StartAXReadWithContext(invalid, "thread", "hcat", AXReadContext{}); err == nil {
 			t.Fatalf("invalid journal %q accepted", invalid)
 		}
 	}
@@ -373,9 +373,9 @@ func TestAXConcurrentNearCapacity(t *testing.T) {
 	var workers sync.WaitGroup
 	for range 20 {
 		workers.Go(func() {
-			observation, err := StartAXRead(path, "thread", "hcat")
+			observation, err := StartAXReadWithContext(path, "thread", "hcat", AXReadContext{})
 			if err == nil {
-				_ = observation.Finish(true)
+				_ = observation.FinishResult(true, "", nil)
 			}
 		})
 	}

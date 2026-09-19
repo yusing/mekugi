@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"github.com/yusing/mekugi/internal/livediff"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -334,7 +335,7 @@ func TestLiveDiffTerminalStandaloneShellStream(t *testing.T) {
 			return strings.Contains(ansi.Strip(frame), fmt.Sprintf("SHELL_TIP_%d", rows))
 		})
 		for _, command := range []string{"rg", "head"} {
-			if !strings.Contains(frame, liveDiffTerminalTheme.Foreground(chroma.NameFunction)+command) {
+			if !strings.Contains(frame, livediff.TerminalTheme.Foreground(chroma.NameFunction)+command) {
 				t.Fatalf("shell command remains plain in terminal: %q", frame)
 			}
 		}
@@ -374,7 +375,7 @@ func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
 	t.Cleanup(worker.stop)
 	input := "#!python3\n" + strings.Repeat("# context\n", 30) + "return 42\n"
-	tip, colored := "return 42", liveDiffDarkTheme.Foreground(chroma.Keyword)+"return"
+	tip, colored := "return 42", livediff.DarkTheme.Foreground(chroma.Keyword)+"return"
 	worker.appendDelta(input)
 	frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), tip) })
 	if !strings.Contains(liveDiffFrameRow(frame, 2), "STREAMING") ||

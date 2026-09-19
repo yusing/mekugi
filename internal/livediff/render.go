@@ -377,10 +377,6 @@ func (r *Renderer) ColorHunk(ctx context.Context, theme Theme, review mekugi.Rev
 // display limit; huge hunks and unknown languages still display exact safe text.
 const MaxSyntaxBytes = 256 << 10
 
-func ColorSource(ctx context.Context, theme Theme, path, source string) ([]string, error) {
-	return colorSourceWithMatcher(ctx, theme, path, source, lexers.Match)
-}
-
 func colorSourceWithMatcher(ctx context.Context, theme Theme, path, source string, match func(string) chroma.Lexer) (lines []string, err error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

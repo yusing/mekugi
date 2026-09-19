@@ -137,7 +137,6 @@ func commentaryExcluded(namespace, name string) bool {
 
 type structuredCommentary struct {
 	mutations         []journalMutation
-	text              string
 	originalArguments string
 	arguments         string
 }

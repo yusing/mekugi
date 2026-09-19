@@ -159,7 +159,7 @@ func TestLiveDiffLexerCacheSelections(t *testing.T) {
 					before := lexer.configCalls
 					got, err := renderer.ColorSource(t.Context(), theme, path, source)
 					calls := lexer.configCalls - before
-					want, coldErr := ColorSource(t.Context(), theme, path, source)
+					want, coldErr := new(Renderer).ColorSource(t.Context(), theme, path, source)
 					if err != nil || coldErr != nil || !reflect.DeepEqual(got, want) {
 						t.Fatalf("cached selection changed %s: got %q, want %q, errors %v %v", path, got, want, err, coldErr)
 					}
@@ -205,7 +205,7 @@ func TestLiveDiffLexerCacheSelections(t *testing.T) {
 		for _, source := range []string{"", strings.Repeat("x", MaxSyntaxBytes+1)} {
 			before := lexer.configCalls
 			got, err := renderer.ColorSource(t.Context(), DarkTheme, "file.fixture", source)
-			want, coldErr := ColorSource(t.Context(), DarkTheme, "file.fixture", source)
+			want, coldErr := new(Renderer).ColorSource(t.Context(), DarkTheme, "file.fixture", source)
 			if err != nil || coldErr != nil || !reflect.DeepEqual(got, want) || lexer.configCalls != before || len(renderer.lexers) != 0 {
 				t.Fatal("plain fallback consulted or cached a lexer")
 			}

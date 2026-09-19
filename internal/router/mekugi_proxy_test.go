@@ -2869,7 +2869,7 @@ func TestMekugiReplacementSupportsTopLevelCodeModeForGrok(t *testing.T) {
 	if names["hpatch"] || names["hpatch_recover"] || !names["shell"] || strings.Contains(execDescription, codeModeApplyPatchHeading) || strings.Contains(execDescription, "tools.exec_command") {
 		t.Fatal("Code Mode projection did not expose mekugi and shell")
 	}
-	if _, err := translateGrokRequest(mustTestJSON(t, request.fields)); err != nil {
+	if _, err := translateChatRequest(mustTestJSON(t, request.fields), nil); err != nil {
 		t.Fatal(err)
 	}
 }

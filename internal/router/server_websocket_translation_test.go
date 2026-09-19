@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/yusing/mekugi/internal/livediff"
 	"maps"
 	"net/http"
 	"os"
@@ -261,7 +262,7 @@ func TestResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T) {
 			previewID = event.Preview.ID
 			var pane liveDiffPreviewPane
 			pane.update(*event.Preview)
-			lines, err := pane.render(t.Context(), directory, liveDiffDarkTheme, 100, 10)
+			lines, err := pane.render(t.Context(), directory, livediff.DarkTheme, 100, 10)
 			if err != nil || !strings.Contains(strings.Join(lines, "\n"), "STREAMING PREVIEW") {
 				t.Fatalf("preview renderer: %v, %+v", err, lines)
 			}

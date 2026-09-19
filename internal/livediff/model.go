@@ -435,11 +435,3 @@ func (b *Output) WriteString(s string) (int, error) {
 	}
 	return b.Builder.WriteString(s)
 }
-
-// Write preserves the output bound when the embedded builder is used as io.Writer.
-func (b *Output) Write(p []byte) (int, error) {
-	if b.Len()+len(p) > MaxSourceBytes {
-		return 0, errors.New("rendered diff exceeds 64 MiB")
-	}
-	return b.Builder.Write(p)
-}

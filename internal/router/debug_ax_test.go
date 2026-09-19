@@ -54,7 +54,7 @@ func prepareAXSessionFixture(t *testing.T) (session, journal, assessments string
 	// Actual private-reader dispatch and instrumentation are covered by
 	// TestAXObservesExecutedPrivateReaders and the debug worker tests.
 	for _, read := range []struct{ thread, tool string }{{"root-thread", "hgrep"}, {"thread", "hcat"}} {
-		observation, err := capturer.StartAXRead(journal, read.thread, read.tool)
+		observation, err := capturer.StartAXReadWithContext(journal, read.thread, read.tool, capturer.AXReadContext{})
 		if err != nil {
 			t.Fatal(err)
 		}

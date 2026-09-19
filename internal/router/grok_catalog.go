@@ -7,14 +7,9 @@ import (
 	"slices"
 )
 
-// GrokModelCatalog builds a session catalog from Codex's selected native catalog.
-// It rebuilds any cached Grok entry from a native v2 template, preserving the
-// other models and Codex's evolving instruction and executor metadata.
-func GrokModelCatalog(body []byte) ([]byte, error) {
-	return ProviderModelCatalog(body, true, OpenCodeConfig{})
-}
-
 // ProviderModelCatalog adds only configured providers to the private catalog.
+// It rebuilds cached provider entries from a native v2 template, preserving
+// other models and Codex’s evolving instruction and executor metadata.
 func ProviderModelCatalog(body []byte, grok bool, openCode OpenCodeConfig) ([]byte, error) {
 	var catalog map[string]json.RawMessage
 	if json.Unmarshal(body, &catalog) != nil || catalog == nil {

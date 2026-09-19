@@ -19,7 +19,7 @@ func TestGrokEmptyContentWire(t *testing.T) {
 			map[string]any{"type": "function_call_output", "call_id": "call", "output": []any{}},
 		},
 	})
-	tr, err := translateGrokRequest(body)
+	tr, err := translateChatRequest(body, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

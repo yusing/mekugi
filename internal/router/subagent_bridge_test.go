@@ -148,7 +148,7 @@ func TestSubagentBridgeRewritesRecordedDispatchInstruction(t *testing.T) {
 
 func TestGrokCatalogPreservesNativeMetadata(t *testing.T) {
 	catalog := []byte(`{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2","use_responses_lite":true,"model_messages":{"instructions_template":"native instructions"},"unknown_future_field":42}],"extra":"keep"}`)
-	result, err := GrokModelCatalog(catalog)
+	result, err := ProviderModelCatalog(catalog, true, OpenCodeConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestGrokCatalogPreservesNativeMetadata(t *testing.T) {
 	if string(parsed.Models[1]["use_responses_lite"]) != "false" {
 		t.Fatal("inherited OpenAI lite transport")
 	}
-	repeated, err := GrokModelCatalog(result)
+	repeated, err := ProviderModelCatalog(result, true, OpenCodeConfig{})
 	if err != nil || !bytes.Equal(result, repeated) {
 		t.Fatalf("catalog changed when pinning a cached Grok entry: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestGrokCatalogRequiresAnActualV2Template(t *testing.T) {
 		if fallback {
 			models = append(models, map[string]any{"slug": "other", "multi_agent_version": "v2", "marker": "correct"})
 		}
-		result, err := GrokModelCatalog(mustTestJSON(t, map[string]any{"models": models}))
+		result, err := ProviderModelCatalog(mustTestJSON(t, map[string]any{"models": models}), true, OpenCodeConfig{})
 		if !fallback {
 			if err == nil {
 				t.Fatal("accepted non-v2 catalog")
@@ -238,7 +238,7 @@ func TestModelsHandlerPreservesNativeCatalogWithGrokEnabled(t *testing.T) {
 
 func TestGrokCatalogRebuildsCachedMetadata(t *testing.T) {
 	body := []byte(`{"models":[{"slug":"grok:grok-4.6","multi_agent_version":"v2","apply_patch_tool_type":null},{"slug":"gpt-5.6-sol","multi_agent_version":"v2","apply_patch_tool_type":"freeform","shell_type":"unified_exec"}]}`)
-	result, err := GrokModelCatalog(body)
+	result, err := ProviderModelCatalog(body, true, OpenCodeConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}

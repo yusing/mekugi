@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/internal/livediff"
 	"strings"
 	"testing"
 
@@ -14,7 +15,7 @@ func TestLiveDiffWrapAndResize(t *testing.T) {
 		"@@ -1,2 +1,2 @@\n "+source+"\n-old\n+new\n", true)
 	chunk.Status = ""
 	files := []liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{chunk}}}
-	wrapped, err := new(liveDiffRenderer).Render(t.Context(), liveDiffDarkTheme, files, "", 22, 0, chunk)
+	wrapped, err := new(liveDiffRenderer).Render(t.Context(), livediff.DarkTheme, files, "", 22, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +34,7 @@ func TestLiveDiffWrapAndResize(t *testing.T) {
 	if restored.String() != source {
 		t.Fatalf("wrapped source changed: %q, want %q", restored.String(), source)
 	}
-	wide, err := new(liveDiffRenderer).Render(t.Context(), liveDiffDarkTheme, files, "", 200, 0, chunk)
+	wide, err := new(liveDiffRenderer).Render(t.Context(), livediff.DarkTheme, files, "", 200, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +54,7 @@ func TestLiveDiffWrappedSyntaxAndFocus(t *testing.T) {
 		"@@ -0,0 +1 @@\n+\""+strings.Repeat("abcdefgh", 15)+"\"\n", true)
 	chunk.Status = ""
 	chunk.Highlighted = true
-	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffDarkTheme,
+	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.DarkTheme,
 		[]liveDiffFile{{Path: "file.go", Chunks: []liveDiffChunk{chunk}}}, "", 30, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
@@ -61,9 +62,9 @@ func TestLiveDiffWrappedSyntaxAndFocus(t *testing.T) {
 	if render.FocusRow != len(render.Lines)-1 {
 		t.Fatalf("focus did not land on the final wrapped fragment: %+v", render)
 	}
-	color := liveDiffDarkTheme.Foreground(chroma.LiteralStringDouble)
+	color := livediff.DarkTheme.Foreground(chroma.LiteralStringDouble)
 	for _, line := range render.Lines[render.RowStarts[1]:] {
-		if !strings.Contains(line, color) || !strings.Contains(line, liveDiffDarkTheme.RowBackground('+')) ||
+		if !strings.Contains(line, color) || !strings.Contains(line, livediff.DarkTheme.RowBackground('+')) ||
 			!strings.Contains(line, "▎") || !strings.HasSuffix(line, "\x1b[0m") {
 			t.Fatalf("continuation lost standalone styling: %q", line)
 		}
@@ -79,11 +80,11 @@ func TestLiveDiffResizeReflowsSavedFiles(t *testing.T) {
 		chunk.Status = strings.Repeat("prepared status ", 8)
 		files = append(files, liveDiffFile{Path: path, Chunks: []liveDiffChunk{chunk}})
 	}
-	wide, err := new(liveDiffRenderer).Render(t.Context(), liveDiffDarkTheme, files, "", 90, 0, liveDiffChunk{})
+	wide, err := new(liveDiffRenderer).Render(t.Context(), livediff.DarkTheme, files, "", 90, 0, liveDiffChunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	narrow, err := new(liveDiffRenderer).Render(t.Context(), liveDiffDarkTheme, files, "", 22, 0, liveDiffChunk{})
+	narrow, err := new(liveDiffRenderer).Render(t.Context(), livediff.DarkTheme, files, "", 22, 0, liveDiffChunk{})
 	if err != nil {
 		t.Fatal(err)
 	}

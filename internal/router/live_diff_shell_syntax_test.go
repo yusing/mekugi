@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/internal/livediff"
 	"strings"
 	"testing"
 
@@ -11,12 +12,12 @@ func TestLiveDiffShellCommandsThroughPreview(t *testing.T) {
 	var pane liveDiffPreviewPane
 	input := "rg -n 'preview' internal/router | head -65\nsed -n '1,5p' file.go\n"
 	pane.update(liveDiffPreview{ID: "shell", Workspace: "/workspace", Input: input})
-	lines, err := pane.render(t.Context(), "/workspace", liveDiffDarkTheme, 100, 8)
+	lines, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 100, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, command := range []string{"rg", "head", "sed"} {
-		if !strings.Contains(strings.Join(lines, "\n"), liveDiffDarkTheme.Foreground(chroma.NameFunction)+command) {
+		if !strings.Contains(strings.Join(lines, "\n"), livediff.DarkTheme.Foreground(chroma.NameFunction)+command) {
 			t.Fatalf("preview lost command highlighting for %s: %q", command, lines)
 		}
 	}

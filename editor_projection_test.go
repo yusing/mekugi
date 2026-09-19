@@ -67,14 +67,6 @@ func TestEditorProjectionTracksMutationSnapshots(t *testing.T) {
 	if got := e.content(); got != "x\na\nB\n" {
 		t.Fatalf("rejected edit changed snapshot: %q", got)
 	}
-	e.initialize("fresh", editOrigin{command: 1})
-	if got := e.content(); got != "fresh" || e.renderedEdits()[0].span != (renderedSpan{0, 5}) {
-		t.Fatalf("initialization retained stale projection: %q", got)
-	}
-	e.initialize("", editOrigin{command: 2})
-	if got := e.content(); got != "" || len(e.renderedEdits()) != 0 {
-		t.Fatalf("empty initialization retained stale projection: %q", got)
-	}
 }
 
 func TestEditorProjectionRefreshesAfterIndentation(t *testing.T) {

@@ -30,7 +30,7 @@ func TestLiveDiffThemeTokens(t *testing.T) {
 	for _, theme := range []Theme{TerminalTheme, LightTheme, DarkTheme} {
 		t.Run(strconv.Itoa(int(theme)), func(t *testing.T) {
 			const source = "func retainedShellTestOutput() {\n\tcount := len(make([]string, 42)) // comment\n\treturn \"value\"\n}\n"
-			lines, err := ColorSource(t.Context(), theme, "file.go", source)
+			lines, err := new(Renderer).ColorSource(t.Context(), theme, "file.go", source)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -77,7 +77,7 @@ func TestLiveDiffThemeLanguageCoverage(t *testing.T) {
 			{"file.html", "<div class=\"card\">Hello</div>\n", "div", chroma.NameTag},
 			{"file.html", "<div class=\"card\">Hello</div>\n", "class", chroma.NameAttribute},
 		} {
-			lines, err := ColorSource(t.Context(), theme, tc.path, tc.source)
+			lines, err := new(Renderer).ColorSource(t.Context(), theme, tc.path, tc.source)
 			colored := strings.Join(lines, "\n") + "\n"
 			if err != nil || ansi.Strip(colored) != tc.source ||
 				!strings.Contains(colored, theme.Foreground(tc.kind)+tc.name+"\x1b[39m") {
@@ -114,7 +114,7 @@ func TestLiveDiffThemeGeometryAndFallback(t *testing.T) {
 	for _, theme := range []Theme{LightTheme, DarkTheme} {
 		for _, path := range []string{"file.go", "unknown.extension"} {
 			for _, source := range []string{"\"unfinished\n", "/* comment\n", "\n\n", strings.Repeat("x", MaxSyntaxBytes+1) + "\n"} {
-				lines, err := ColorSource(t.Context(), theme, path, source)
+				lines, err := new(Renderer).ColorSource(t.Context(), theme, path, source)
 				if err != nil || ansi.Strip(strings.Join(lines, "\n"))+"\n" != source {
 					t.Fatalf("theme %d changed incomplete/unsupported source for %s: %v", theme, path, err)
 				}

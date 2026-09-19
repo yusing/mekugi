@@ -34,11 +34,11 @@ func TestDebugAXDiscoveryMatchesMetadataNotThreadSuffix(t *testing.T) {
 	}
 
 	d := featureDebugOutput(t)
-	read, err := capturer.StartAXRead(d.paths[4], "thread", "hcat")
+	read, err := capturer.StartAXReadWithContext(d.paths[4], "thread", "hcat", capturer.AXReadContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := read.Finish(false); err != nil {
+	if err := read.FinishResult(false, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.writeAXReport(); err != nil {

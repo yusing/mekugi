@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/internal/livediff"
 	"strings"
 	"testing"
 	"time"
@@ -53,8 +54,8 @@ func TestLiveDiffProducerRetainsSyntaxBoundaries(t *testing.T) {
 			}
 			var pane liveDiffPreviewPane
 			pane.update(preview)
-			lines, err := pane.render(t.Context(), workspace, liveDiffDarkTheme, 100, 20)
-			if err != nil || !strings.Contains(strings.Join(lines, "\n"), liveDiffDarkTheme.Foreground(tc.kind)+tc.token) {
+			lines, err := pane.render(t.Context(), workspace, livediff.DarkTheme, 100, 20)
+			if err != nil || !strings.Contains(strings.Join(lines, "\n"), livediff.DarkTheme.Foreground(tc.kind)+tc.token) {
 				t.Fatalf("producer lost syntax for %s: %v %q", tc.token, err, lines)
 			}
 		})

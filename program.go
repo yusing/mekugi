@@ -11,10 +11,7 @@ import (
 	"github.com/yusing/mekugi/internal/verifiedrow"
 )
 
-var (
-	positiveDecimalPattern = regexp.MustCompile(`^[1-9][0-9]*$`)
-	rowPattern             = regexp.MustCompile(`^([1-9][0-9]*):([0-9a-f]{4})$`)
-)
+var positiveDecimalPattern = regexp.MustCompile(`^[1-9][0-9]*$`)
 
 type targetKind uint8
 

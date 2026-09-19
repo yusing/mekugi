@@ -41,7 +41,7 @@ func TestLiveDiffShellCommandNames(t *testing.T) {
 				t.Fatalf("arguments or content became commands: %v", commands)
 			}
 			for _, theme := range []Theme{DarkTheme, LightTheme} {
-				lines, err := ColorSource(t.Context(), theme, "stream.sh", tc.source)
+				lines, err := new(Renderer).ColorSource(t.Context(), theme, "stream.sh", tc.source)
 				if err != nil || ansi.Strip(strings.Join(lines, "\n")) != strings.TrimSuffix(tc.source, "\n") {
 					t.Fatalf("decoration changed source: %v %q", err, lines)
 				}
@@ -62,7 +62,7 @@ func BenchmarkLiveDiffShellCommandSyntax(b *testing.B) {
 	source := strings.Repeat("rg -n 'pattern' file.go | head -10\n", 40)
 	b.ReportAllocs()
 	for b.Loop() {
-		if _, err := ColorSource(b.Context(), DarkTheme, "stream.sh", source); err != nil {
+		if _, err := new(Renderer).ColorSource(b.Context(), DarkTheme, "stream.sh", source); err != nil {
 			b.Fatal(err)
 		}
 	}

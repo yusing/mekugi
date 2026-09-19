@@ -116,33 +116,17 @@ func replayRecordName(workspace, callID string, commentary bool) string {
 	}
 	return prefix + fmt.Sprintf("%x.json", sha256.Sum256(fmt.Appendf(nil, "%t\x00%s\x00%s", commentary, workspace, callID)))
 }
-func (s *mekugiReplayStore) locked(ctx context.Context, fn func() error) error {
-	return s.withLock(ctx, false, fn)
-}
-
-func (s *mekugiReplayStore) readLocked(ctx context.Context, fn func() error) error {
-	return s.withLock(ctx, true, fn)
-}
-
-func (s *mekugiReplayStore) withLock(ctx context.Context, readOnly bool, fn func() error) (err error) {
+func (s *mekugiReplayStore) locked(ctx context.Context, fn func() error) (err error) {
 	path := filepath.Join(s.directory, "store.lock")
 	info, e := os.Lstat(path)
 	if e == nil && !info.Mode().IsRegular() {
 		return errors.New("replay lock is not a regular file")
 	}
-	if e != nil && (readOnly || !errors.Is(e, os.ErrNotExist)) {
+	if e != nil && !errors.Is(e, os.ErrNotExist) {
 		return e
 	}
-	options := []flock.Option{flock.SetPermissions(0600)}
-	if readOnly {
-		options = append(options, flock.SetFlag(os.O_RDONLY))
-	}
-	lock := flock.New(path, options...)
-	acquire := lock.TryLockContext
-	if readOnly {
-		acquire = lock.TryRLockContext
-	}
-	ok, err := acquire(ctx, 25*time.Millisecond)
+	lock := flock.New(path, flock.SetPermissions(0600))
+	ok, err := lock.TryLockContext(ctx, 25*time.Millisecond)
 	if err != nil {
 		return err
 	}

@@ -124,7 +124,7 @@ func TestIncompleteReview(t *testing.T) {
 		t.Fatalf("stat: %s", stat)
 	}
 	var composition ReviewComposition
-	if err := composition.Apply(file, false); err == nil || len(composition.Files()) != 0 {
+	if err := composition.ApplyWithHighlight(file, false, false); err == nil || len(composition.FilesWithHighlights()) != 0 {
 		t.Fatalf("incomplete capture composed: %v", err)
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi/internal/router"
 )
 
 const testNativeModelCatalog = `{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2","shell_type":"unified_exec","apply_patch_tool_type":"freeform","model_messages":{"instructions_template":"native instructions"}}]}`
@@ -122,7 +123,7 @@ func cancelWhenCatalogReady(t *testing.T) context.Context {
 func TestPrepareGrokCatalogExpiredDeadline(t *testing.T) {
 	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
 	defer cancel()
-	directory, path, err := prepareGrokCatalog(ctx, "not-launched", "http://127.0.0.1:12345/v1", nil)
+	directory, path, err := prepareProviderCatalog(ctx, "not-launched", "http://127.0.0.1:12345/v1", nil, true, router.OpenCodeConfig{})
 	if !errors.Is(err, context.DeadlineExceeded) || directory != "" || path != "" || strings.Contains(err.Error(), "configuration") {
 		t.Fatalf("deadline result = %q, %q, %v", directory, path, err)
 	}
@@ -133,8 +134,8 @@ func TestPrepareGrokCatalog(t *testing.T) {
 	record := filepath.Join(t.TempDir(), "args.json")
 	t.Setenv("MEKUGI_TEST_CATALOG_ARGS", record)
 	cwd := t.TempDir()
-	directory, path, err := prepareGrokCatalog(t.Context(), executable, "http://127.0.0.1:12345/v1",
-		[]string{"resume", "thread", "-C", cwd, "-c", `model_catalog_json="custom.json"`, "--", "prompt"})
+	directory, path, err := prepareProviderCatalog(t.Context(), executable, "http://127.0.0.1:12345/v1",
+		[]string{"resume", "thread", "-C", cwd, "-c", `model_catalog_json="custom.json"`, "--", "prompt"}, true, router.OpenCodeConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +185,7 @@ func TestPrepareGrokCatalogFailure(t *testing.T) {
 			if mode == "wait" {
 				ctx = cancelWhenCatalogReady(t)
 			}
-			directory, path, err := prepareGrokCatalog(ctx, executable, "http://127.0.0.1:12345/v1", nil)
+			directory, path, err := prepareProviderCatalog(ctx, executable, "http://127.0.0.1:12345/v1", nil, true, router.OpenCodeConfig{})
 			if err == nil || directory != "" || path != "" || strings.Contains(err.Error(), "private bootstrap diagnostic") {
 				t.Fatalf("failure result = %q, %q, %v", directory, path, err)
 			}
@@ -218,7 +219,7 @@ func TestPrepareGrokCatalogUsesAbsolutePath(t *testing.T) {
 	}
 	t.Setenv("TMPDIR", "temporary")
 	cwd := t.TempDir()
-	directory, path, err := prepareGrokCatalog(t.Context(), executable, "http://127.0.0.1:12345/v1", []string{"-C", cwd})
+	directory, path, err := prepareProviderCatalog(t.Context(), executable, "http://127.0.0.1:12345/v1", []string{"-C", cwd}, true, router.OpenCodeConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +262,7 @@ func TestGrokCatalogRejectsIgnoreUserConfigBeforeBootstrap(t *testing.T) {
 		{"exec", "--ignore-user-config", "prompt"},
 		{"exec", "--ignore-user-config=true", "prompt"},
 	} {
-		_, _, err := prepareGrokCatalog(t.Context(), executable, "http://127.0.0.1:12345/v1", args)
+		_, _, err := prepareProviderCatalog(t.Context(), executable, "http://127.0.0.1:12345/v1", args, true, router.OpenCodeConfig{})
 		if err == nil || !strings.Contains(err.Error(), "do not support --ignore-user-config") {
 			t.Fatalf("did not reject configuration selector before bootstrap: %v", err)
 		}
@@ -300,7 +301,7 @@ func TestCatalogProgressOutput(t *testing.T) {
 				output <- body
 			}()
 			ctx := cancelWhenCatalogReady(t)
-			_, _, err = prepareGrokCatalog(ctx, executable, "http://127.0.0.1:12345/v1", nil)
+			_, _, err = prepareProviderCatalog(ctx, executable, "http://127.0.0.1:12345/v1", nil, true, router.OpenCodeConfig{})
 			writer.Close()
 			body := string(<-output)
 			if !errors.Is(err, context.Canceled) {
@@ -414,7 +415,7 @@ func TestPrepareCatalogSucceedsWithBrokenProgress(t *testing.T) {
 	original := os.Stderr
 	os.Stderr = stderr
 	defer func() { os.Stderr = original }()
-	directory, path, err := prepareGrokCatalog(t.Context(), executable, "http://127.0.0.1:12345/v1", nil)
+	directory, path, err := prepareProviderCatalog(t.Context(), executable, "http://127.0.0.1:12345/v1", nil, true, router.OpenCodeConfig{})
 	if err != nil {
 		t.Fatalf("auxiliary output failure replaced catalog result: %v", err)
 	}

@@ -72,15 +72,11 @@ func grokFunctionParameters(namespace, name string, parameters json.RawMessage) 
 	return mustMarshalJSON(schema)
 }
 
-// translateGrokRequest translates only representations with defined equivalents.
-// In particular it never treats encrypted_content as text or silently removes an
-// unsupported history item. The caller remains responsible for executing tools.
-func translateGrokRequest(body []byte) (*grokTranslation, error) {
-	return translateChatRequest(body, nil)
-}
-
 // translateChatRequest validates shared tool identity and history, then builds
 // the selected provider's endpoint request without an intermediate Chat request.
+// It translates only representations with defined equivalents, never treating
+// encrypted_content as text or silently removing unsupported history items.
+// The caller remains responsible for executing tools.
 func translateChatRequest(body []byte, service *openCodeService) (_ *grokTranslation, err error) {
 	if service != nil {
 		defer func() {

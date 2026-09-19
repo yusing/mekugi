@@ -15,13 +15,9 @@ import (
 	"golang.org/x/term"
 )
 
-// prepareGrokCatalog leaves authentication and configuration loading to Codex.
+// prepareProviderCatalog leaves authentication and configuration loading to Codex.
 // The launched session uses a private static catalog instead of rereading the
 // provider-neutral models cache that other Codex processes can replace.
-func prepareGrokCatalog(ctx context.Context, executable, baseURL string, args []string) (directory, path string, err error) {
-	return prepareProviderCatalog(ctx, executable, baseURL, args, true, router.OpenCodeConfig{})
-}
-
 func prepareProviderCatalog(ctx context.Context, executable, baseURL string, args []string, grok bool, openCode router.OpenCodeConfig) (directory, path string, err error) {
 	overrides, cwd, err := catalogConfigArgs(args)
 	if err != nil {

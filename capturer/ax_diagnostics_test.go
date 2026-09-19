@@ -61,7 +61,7 @@ func TestAXLegacyFailuresRemainUnknown(t *testing.T) {
 
 func TestAXRejectsUnsafeDiagnosticAndMismatchedIdentity(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
-	observation, err := StartAXRead(path, "thread", "hcat")
+	observation, err := StartAXReadWithContext(path, "thread", "hcat", AXReadContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,11 +105,11 @@ func TestAXRejectsUnsafeDiagnosticAndMismatchedIdentity(t *testing.T) {
 func TestAXFailureDetailsBoundDoesNotDropCounts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
 	for range 257 {
-		observation, err := StartAXRead(path, "thread", "hcat")
+		observation, err := StartAXReadWithContext(path, "thread", "hcat", AXReadContext{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := observation.Finish(false); err != nil {
+		if err := observation.FinishResult(false, "", nil); err != nil {
 			t.Fatal(err)
 		}
 	}

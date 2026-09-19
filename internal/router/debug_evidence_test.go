@@ -136,11 +136,11 @@ func TestAXDebugLabelsJournalOnlyAndAnonymousEvidence(t *testing.T) {
 	t.Setenv("CODEX_HOME", t.TempDir())
 	d.observeAXThread("known")
 	for _, thread := range []string{"known", "not-a-known-child", ""} {
-		read, err := capturer.StartAXRead(d.paths[4], thread, "hcat")
+		read, err := capturer.StartAXReadWithContext(d.paths[4], thread, "hcat", capturer.AXReadContext{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := read.Finish(false); err != nil {
+		if err := read.FinishResult(false, "", nil); err != nil {
 			t.Fatal(err)
 		}
 	}

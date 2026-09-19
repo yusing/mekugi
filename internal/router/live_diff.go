@@ -18,19 +18,10 @@ import (
 type liveDiffFile = livediff.File
 type liveDiffChunk = livediff.Chunk
 type liveDiffView = livediff.View
-type liveDiffCounts = livediff.Counts
 type liveDiffRender = livediff.Render
 type liveDiffRenderer = livediff.Renderer
-type liveDiffOutput = livediff.Output
 type liveDiffTheme = livediff.Theme
 type liveDiffOSC = livediff.OSC
-
-const (
-	liveDiffTerminalTheme  = livediff.TerminalTheme
-	liveDiffLightTheme     = livediff.LightTheme
-	liveDiffDarkTheme      = livediff.DarkTheme
-	maxLiveDiffSyntaxBytes = livediff.MaxSyntaxBytes
-)
 
 // RunLiveDiff is the internal entry point for a router-owned terminal pane.
 func RunLiveDiff(ctx context.Context, args []string, stdin, stdout, stderr *os.File) int {

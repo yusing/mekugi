@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -54,7 +53,7 @@ func TestLiveDiffRelativeDisplayKeepsSourceAndCapture(t *testing.T) {
 	chunk := liveDiffChunk{
 		Review: mekugi.ReviewFile{BeforePath: before, AfterPath: after, Diff: diff},
 	}
-	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{{Path: after, Chunks: []liveDiffChunk{chunk}}}, workspace, 240, 0, chunk)
+	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{{Path: after, Chunks: []liveDiffChunk{chunk}}}, workspace, 240, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +200,7 @@ func TestLiveDiffNativeRenderer(t *testing.T) {
 		Status: "amber1 applied",
 		Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1 +1 @@\n-old\n+new\n"},
 	}}}
-	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 80, 0, liveDiffChunk{})
+	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{file}, workspace, 80, 0, liveDiffChunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +225,7 @@ func TestLiveDiffRenderFollowsLatestHunk(t *testing.T) {
 	}}
 	for i, diff := range []string{top, bottom} {
 		focus := liveDiffChunk{Review: mekugi.ReviewFile{Diff: diff}}
-		render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{file}, workspace, 80, 0, focus)
+		render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{file}, workspace, 80, 0, focus)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -239,25 +238,6 @@ func TestLiveDiffRenderFollowsLatestHunk(t *testing.T) {
 		}
 		if strings.Contains(strings.Join(render.Lines, "\n"), "mekugi-live-diff-") {
 			t.Fatal("renderer markers leaked into viewport")
-		}
-	}
-}
-
-func assertLiveDiffNoBackground(t *testing.T, text string) {
-	t.Helper()
-	var state byte
-	for len(text) > 0 {
-		seq, _, n, next := ansi.DecodeSequence(text, state, nil)
-		if n == 0 {
-			break
-		}
-		state, text = next, text[n:]
-		if strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
-			code, _, _ := strings.Cut(seq[2:len(seq)-1], ";")
-			value, _ := strconv.Atoi(code)
-			if value >= 40 && value <= 48 || value >= 100 && value <= 107 {
-				t.Fatalf("renderer added a background: %q", seq)
-			}
 		}
 	}
 }
@@ -339,8 +319,8 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 		text  string
 		theme liveDiffTheme
 	}{
-		{"\x1b]11;rgb:ffff/ffff/ffff\x1b\\", liveDiffLightTheme},
-		{"\x1b]11;rgb:1111/1111/1111\a", liveDiffDarkTheme},
+		{"\x1b]11;rgb:ffff/ffff/ffff\x1b\\", livediff.LightTheme},
+		{"\x1b]11;rgb:1111/1111/1111\a", livediff.DarkTheme},
 	} {
 		// Exercise a reply fragmented at every byte, including ESC + ST.
 		for _, key := range []byte(reply.text) {
@@ -391,10 +371,10 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 }
 
 func TestLiveDiffOutputBound(t *testing.T) {
-	var out liveDiffOutput
+	var out livediff.Output
 	out.Grow(maxChangeReadBytes)
 	out.WriteString(strings.Repeat("x", maxChangeReadBytes))
-	if _, err := fmt.Fprint(&out, "overflow"); err == nil {
+	if _, err := out.WriteString("overflow"); err == nil {
 		t.Fatal("unbounded renderer output")
 	}
 }

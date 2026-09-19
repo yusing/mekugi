@@ -56,7 +56,7 @@ func TestGrokTranslationPreservesToolsHistoryAndImages(t *testing.T) {
 		map[string]any{"type": "custom_tool_call_output", "call_id": "c1", "output": []any{map[string]string{"type": "input_text", "text": "image"}, map[string]string{"type": "input_image", "image_url": "data:image/png;base64,AA=="}}},
 		map[string]any{"type": "function_call_output", "call_id": "c2", "output": "result"},
 	}
-	tr, err := translateGrokRequest(mustTestJSON(t, request))
+	tr, err := translateChatRequest(mustTestJSON(t, request), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,18 +72,18 @@ func TestGrokTranslationPreservesToolsHistoryAndImages(t *testing.T) {
 	}
 	for _, kind := range []string{"encrypted_content", "input_file"} {
 		request["input"] = []any{map[string]any{"type": "agent_message", "content": []any{map[string]string{"type": kind, "encrypted_content": "opaque"}}}}
-		if _, err := translateGrokRequest(mustTestJSON(t, request)); err == nil {
+		if _, err := translateChatRequest(mustTestJSON(t, request), nil); err == nil {
 			t.Fatalf("accepted %s", kind)
 		}
 	}
 	request["input"] = []any{map[string]string{"type": "reasoning", "encrypted_content": "opaque"}}
-	if _, err := translateGrokRequest(mustTestJSON(t, request)); err == nil {
+	if _, err := translateChatRequest(mustTestJSON(t, request), nil); err == nil {
 		t.Fatal("accepted encrypted reasoning")
 	}
 }
 
 func TestGrokStreamingCustomCallsAndUsage(t *testing.T) {
-	tr, err := translateGrokRequest(grokTestRequest(t, true))
+	tr, err := translateChatRequest(grokTestRequest(t, true), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func TestGrokReasoningUsage(t *testing.T) {
 		`"reasoning_tokens":94`,
 		`"reasoning_tokens":94,"completion_tokens_details":{"reasoning_tokens":94}`,
 	} {
-		tr, err := translateGrokRequest(grokTestRequest(t, true))
+		tr, err := translateChatRequest(grokTestRequest(t, true), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -476,7 +476,7 @@ func TestGrokDisabledAndUnknownModelFailBeforeProvider(t *testing.T) {
 		t.Fatalf("disabled route=%v", err)
 	}
 	body := bytes.Replace(grokTestRequest(t, true), []byte(grokModel), []byte("grok:unknown"), 1)
-	if _, err := translateGrokRequest(body); err == nil {
+	if _, err := translateChatRequest(body, nil); err == nil {
 		t.Fatal("accepted unknown model")
 	}
 }
@@ -500,7 +500,7 @@ func grokTestHTTPClient(t *testing.T, server *httptest.Server) *http.Client {
 }
 
 func TestGrokNullCustomInputIsNotExecutable(t *testing.T) {
-	tr, err := translateGrokRequest(grokTestRequest(t, true))
+	tr, err := translateChatRequest(grokTestRequest(t, true), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,7 +527,7 @@ func TestGrokRejectsNonStringHistory(t *testing.T) {
 			{"type": "custom_tool_call", "call_id": "c1", "name": "exec", "input": value},
 		} {
 			body := mustTestJSON(t, map[string]any{"model": grokModel, "input": []any{item}})
-			if _, err := translateGrokRequest(body); err == nil {
+			if _, err := translateChatRequest(body, nil); err == nil {
 				t.Fatalf("accepted %s", body)
 			}
 		}
@@ -540,7 +540,7 @@ func TestGrokRejectsNonStringHistory(t *testing.T) {
 }
 
 func TestGrokStreamCRLF(t *testing.T) {
-	tr, err := translateGrokRequest(grokTestRequest(t, true))
+	tr, err := translateChatRequest(grokTestRequest(t, true), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -610,7 +610,7 @@ func TestGrokOutputBudgetRejectedBeforeInference(t *testing.T) {
 		t.Fatalf("expected explicit budget rejection, got %v", err)
 	}
 	request["max_output_tokens"] = nil
-	tr, err := translateGrokRequest(mustTestJSON(t, request))
+	tr, err := translateChatRequest(mustTestJSON(t, request), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

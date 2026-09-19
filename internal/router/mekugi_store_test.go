@@ -11,9 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
-	"github.com/gofrs/flock"
 	"github.com/yusing/mekugi"
 )
 
@@ -342,40 +340,6 @@ func TestMekugiReplayStoreProviderMetadataCompletion(t *testing.T) {
 				t.Fatalf("accepted changed %s", key)
 			}
 		})
-	}
-}
-
-func TestReplayReadLockIsSharedAndDoesNotCreate(t *testing.T) {
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	if err := store.readLocked(ctx, func() error {
-		// A second reader must acquire while the first reader remains active.
-		return store.readLocked(ctx, func() error {
-			writer := flock.New(filepath.Join(store.directory, "store.lock"))
-			defer writer.Unlock()
-			acquired, err := writer.TryLock()
-			if err != nil || acquired {
-				t.Fatalf("writer acquired while readers were active: %v, %v", acquired, err)
-			}
-			return nil
-		})
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.locked(ctx, func() error { return nil }); err != nil {
-		t.Fatalf("reader did not release its lock: %v", err)
-	}
-	missing := &mekugiReplayStore{directory: t.TempDir()}
-	if err := missing.readLocked(ctx, func() error { return nil }); err == nil {
-		t.Fatal("read created a missing lock")
-	}
-	entries, err := os.ReadDir(missing.directory)
-	if err != nil || len(entries) != 0 {
-		t.Fatalf("read changed an empty store: %v, %v", entries, err)
 	}
 }
 

@@ -37,20 +37,11 @@ func TestReviewCompositionHighlights(t *testing.T) {
 				before = step.text
 			}
 			var flags []bool
-			var files []ReviewFile
 			for _, file := range c.FilesWithHighlights() {
 				flags = append(flags, file.Highlighted)
-				files = append(files, file.ReviewFile)
 			}
 			if !slices.Equal(flags, tc.want) {
 				t.Fatalf("highlights = %v, want %v; diff:\n%s", flags, tc.want, composedText(&c))
-			}
-			if !reflect.DeepEqual(c.Files(), files) {
-				t.Fatal("highlight metadata changed the ordinary review projection")
-			}
-			c.Flush()
-			if len(c.FilesWithHighlights()) != 0 {
-				t.Fatal("flush retained highlighted regions")
 			}
 		})
 	}
@@ -65,10 +56,6 @@ func TestReviewCompositionHighlightPathOnly(t *testing.T) {
 	files := c.FilesWithHighlights()
 	if len(files) != 1 || !files[0].Highlighted || files[0].BeforePath != "old" || files[0].AfterPath != "new" {
 		t.Fatalf("path-only highlight = %#v", files)
-	}
-	c.Flush()
-	if len(c.FilesWithHighlights()) != 0 {
-		t.Fatal("flush retained highlighted move")
 	}
 }
 

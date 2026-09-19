@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"github.com/yusing/mekugi/internal/livediff"
 	"strings"
 	"testing"
 )
@@ -16,7 +17,7 @@ func BenchmarkLiveDiffWrappedRender(b *testing.B) {
 			b.Run(fmt.Sprintf("%d/warm=%t", rows, warm), func(b *testing.B) {
 				var renderer liveDiffRenderer
 				if warm {
-					if _, err := renderer.Render(b.Context(), liveDiffDarkTheme, files, "", 100, 0, chunk); err != nil {
+					if _, err := renderer.Render(b.Context(), livediff.DarkTheme, files, "", 100, 0, chunk); err != nil {
 						b.Fatal(err)
 					}
 				}
@@ -25,7 +26,7 @@ func BenchmarkLiveDiffWrappedRender(b *testing.B) {
 					if !warm {
 						renderer = liveDiffRenderer{}
 					}
-					if _, err := renderer.Render(b.Context(), liveDiffDarkTheme, files, "", 100, 0, chunk); err != nil {
+					if _, err := renderer.Render(b.Context(), livediff.DarkTheme, files, "", 100, 0, chunk); err != nil {
 						b.Fatal(err)
 					}
 				}

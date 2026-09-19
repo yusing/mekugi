@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/yusing/mekugi/internal/livediff"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -316,7 +317,7 @@ func TestLiveDiffDelayedCaptureDoesNotFollowBackwards(t *testing.T) {
 		t.Fatal("late publication of an older capture moved FOLLOW backwards")
 	}
 	view.RefreshVisible()
-	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, []liveDiffFile{view.Visible[view.Files[0].Key()]}, "", 90, 0, view.LatestChunk())
+	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{view.Visible[view.Files[0].Key()]}, "", 90, 0, view.LatestChunk())
 
 	if err != nil {
 		t.Fatal(err)

@@ -318,28 +318,6 @@ func (e *editor) applyMutation(operation string, target targetSpec, value string
 	return nil
 }
 
-// initialize initializes a new file's content.
-func (e *editor) initialize(value string, origin editOrigin) {
-	e.baseline = ""
-	e.edits = nil
-	e.projected = nil
-	e.finalContent = nil
-	e.finalOffsets = nil
-	if value == "" {
-		return
-	}
-	e.edits = []baselineEdit{{
-		start:       0,
-		end:         0,
-		targetStart: 0,
-		targetEnd:   0,
-		replacement: value,
-		sequence:    1,
-		editOrigin:  origin,
-	}}
-	e.lastOrigin = origin
-}
-
 // recordEdits validates and records edits, checking for conflicts.
 func (e *editor) recordEdits(candidates []baselineEdit) error {
 	pending := make([]baselineEdit, len(e.edits), len(e.edits)+len(candidates))
@@ -419,14 +397,6 @@ func baselineLine(text string, offset int) int {
 		return 1
 	}
 	return len(lines)
-}
-
-// firstEdit returns the first edit if one exists.
-func (e *editor) firstEdit() (baselineEdit, bool) {
-	if len(e.edits) == 0 {
-		return baselineEdit{}, false
-	}
-	return e.edits[0], true
 }
 
 // orderedBaselineEdits sorts baseline edits by offset and sequence.

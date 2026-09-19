@@ -57,12 +57,8 @@ func validAXReader(tool string) bool {
 	return tool == "hcat" || tool == "hgrep" || tool == "hsymbol" || tool == "inspect_file"
 }
 
-// StartAXRead is auxiliary to execution. Callers report failures separately and
+// StartAXReadWithContext is auxiliary to execution. Callers report failures separately and
 // keep the original command outcome. Each event is one O_APPEND write.
-func StartAXRead(path, threadID, tool string) (*AXReadObservation, error) {
-	return StartAXReadWithContext(path, threadID, tool, AXReadContext{})
-}
-
 func StartAXReadWithContext(path, threadID, tool string, identity AXReadContext) (*AXReadObservation, error) {
 	if path == "" {
 		return nil, nil
@@ -160,11 +156,6 @@ func (observation *AXReadObservation) write() (writeErr error) {
 		err = io.ErrShortWrite
 	}
 	return err
-}
-
-// Finish preserves the boolean API. Older callers cannot supply a failure reason.
-func (observation *AXReadObservation) Finish(succeeded bool) error {
-	return observation.FinishResult(succeeded, "", nil)
 }
 
 // FinishResult closes the observation even if classification or writing fails.

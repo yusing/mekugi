@@ -35,7 +35,7 @@ func TestGrokWaitWireAlias(t *testing.T) {
 			}
 			// A new translation has no process-local alias state, as on resume.
 			for range 2 {
-				tr, err := translateGrokRequest(mustTestJSON(t, request))
+				tr, err := translateChatRequest(mustTestJSON(t, request), nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -111,7 +111,7 @@ func TestGrokWaitIntegerParameters(t *testing.T) {
 			} else {
 				request["tools"] = []any{definition}
 			}
-			tr, err := translateGrokRequest(mustTestJSON(t, request))
+			tr, err := translateChatRequest(mustTestJSON(t, request), nil)
 			if err != nil {
 				t.Fatal(err)
 			}

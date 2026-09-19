@@ -15,7 +15,7 @@ const maxReviewComposeRows = 1 << 20
 
 // ReviewComposition composes one file's ordered, applied review captures. It
 // retains only captured lines, not source files. Its zero value is ready to use.
-// Flush hides reviewed regions without discarding their original baseline.
+// Reviewed captures hide their regions without discarding the original baseline.
 type ReviewComposition struct {
 	started               bool
 	beforePath, afterPath string
@@ -60,14 +60,9 @@ type reviewEdit struct {
 	before, after []string
 }
 
-// Apply validates the captured chain before publishing any new composition.
-// reviewed is true when the user already flushed this attempt while it was
-// awaiting confirmation; a late receipt alone must not revive reviewed content.
-func (c *ReviewComposition) Apply(file ReviewFile, reviewed bool) error {
-	return c.ApplyWithHighlight(file, reviewed, false)
-}
-
 // ApplyWithHighlight also marks touched net regions for auxiliary display.
+// It validates the captured chain before publishing any new composition. The
+// reviewed flag prevents a late receipt from reviving already reviewed content.
 // Highlights follow source regions through composition, not rendered line numbers.
 // Reviewed captures cannot introduce highlights; a full revert removes them.
 func (c *ReviewComposition) ApplyWithHighlight(file ReviewFile, reviewed, highlighted bool) error {
@@ -354,27 +349,6 @@ func (c *ReviewComposition) normalize() {
 	c.regions = normalized
 }
 
-// Flush acknowledges every current region, including path-only changes.
-// It does not change the baseline or mutate any durable capture.
-func (c *ReviewComposition) Flush() {
-	for i := range c.regions {
-		c.regions[i].reviewed = true
-		c.regions[i].highlighted = false
-	}
-	c.pathReviewed = true
-	c.pathHighlighted = false
-}
-
-// Files returns only unreviewed original-to-latest regions. Matching captured
-// context is included when available; unknown source is never synthesized.
-func (c *ReviewComposition) Files() []ReviewFile {
-	var files []ReviewFile
-	for _, file := range c.FilesWithHighlights() {
-		files = append(files, file.ReviewFile)
-	}
-	return files
-}
-
 // ReviewHighlightedFile pairs a composed projection with process-local display
 // metadata. Highlights are not part of immutable captured ReviewFile records.
 type ReviewHighlightedFile struct {
@@ -382,8 +356,10 @@ type ReviewHighlightedFile struct {
 	Highlighted bool
 }
 
-// FilesWithHighlights returns the same visible regions as Files, with highlights
-// introduced by ApplyWithHighlight. Path-only changes mark their header projection.
+// FilesWithHighlights returns visible unreviewed original-to-latest regions,
+// with highlights introduced by ApplyWithHighlight. Matching captured context
+// is included when available; unknown source is never synthesized. Path-only
+// changes mark their header projection.
 func (c *ReviewComposition) FilesWithHighlights() []ReviewHighlightedFile {
 	var files []ReviewHighlightedFile
 	oldEnd, newEnd := 0, 0

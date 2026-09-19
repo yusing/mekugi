@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"github.com/yusing/mekugi/internal/livediff"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,7 +29,7 @@ func TestLiveDiffRenderAllFiles(t *testing.T) {
 		}}})
 	}
 	for focusFile := range files {
-		render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, files, workspace, 90, focusFile, files[focusFile].Chunks[0])
+		render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, files, workspace, 90, focusFile, files[focusFile].Chunks[0])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,7 +62,7 @@ func TestLiveDiffFollowEmptyLatestFile(t *testing.T) {
 			Review: mekugi.ReviewFile{AfterPath: first, Diff: diff}}}},
 		{Path: second}, // The latest file was flushed or fully reverted.
 	}
-	render, err := new(liveDiffRenderer).Render(t.Context(), liveDiffTerminalTheme, files, workspace, 90, 1, liveDiffChunk{})
+	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, files, workspace, 90, 1, liveDiffChunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
