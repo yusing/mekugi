@@ -117,6 +117,27 @@ func ParseTargetIdentity(source string, mutationValueFollows bool) (TargetIdenti
 	return TargetIdentity{target: target}, trailing, nil
 }
 
+// ParseInlineMutation decodes a target-bearing type/add command using the edit
+// parser. Target source is normalized to put any count before the value, so
+// recovery can replace a value without dropping its occurrence selection.
+func ParseInlineMutation(source string) (targetSource, value string, identity TargetIdentity, err error) {
+	command, err := parseInstruction(1, source)
+	if err != nil {
+		return "", "", TargetIdentity{}, err
+	}
+	if command.operation != "type" && command.operation != "add" {
+		return "", "", TargetIdentity{}, fmt.Errorf("expected a target-bearing mutation")
+	}
+	_, operands, _ := strings.Cut(source[:command.valueStart], " ")
+	targetSource = strings.TrimSpace(operands)
+	if (command.target.kind == targetLiteral || command.target.kind == targetText) &&
+		strings.HasSuffix(targetSource, `"`) && command.target.count > 1 {
+		targetSource += " " + strconv.Itoa(command.target.count)
+	}
+	identity, _, err = ParseTargetIdentity(targetSource, false)
+	return targetSource, command.text, identity, err
+}
+
 // textEditCommandError creates a command error for text editing failures.
 func textEditCommandError(command instruction, index int, reason failureReason, message string) *commandError {
 	return &commandError{

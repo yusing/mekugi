@@ -133,12 +133,12 @@ func recoveryCommandPartsOf(header string, frame hpatchsyntax.CommandFrame) reco
 		return recoveryCommandParts{operation: operation}
 	}
 	target := strings.TrimSpace(operands[:len(operands)-len(trailing)])
-	value, rest, err := hpatchsyntax.DecodeQuoted(trailing)
-	if err != nil || strings.TrimSpace(rest) != "" {
+	normalized, value, identity, err := mekugi.ParseInlineMutation(header)
+	if err != nil {
 		return recoveryCommandParts{operation: operation, target: target}
 	}
 	return recoveryCommandParts{
-		operation: operation, target: target, value: value, parsed: true, identity: identity,
+		operation: operation, target: normalized, value: value, parsed: true, identity: identity,
 	}
 }
 

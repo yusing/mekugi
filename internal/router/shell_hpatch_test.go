@@ -58,6 +58,7 @@ func TestShellHpatchSemantics(t *testing.T) {
 			{"environment", `HPATCH_ONE=one HPATCH_TWO='two words' hpatch result.txt 'type "old" "environment"'`, "environment\n"},
 			{"environment stdin", "HPATCH_ONE=one hpatch result.txt < input.patch", "redirected\n"},
 			{"environment dynamic command", `HPATCH_ONE=one "hpa"tch result.txt 'type "old" "dynamic"'`, "dynamic\n"},
+			{"trailing count", `hpatch result.txt 'type "old" "counted" 1'`, "counted\n"},
 			{"argument", `hpatch result.txt 'type "old" "argument"'`, "argument\n"},
 			{"heredoc", "hpatch result.txt <<PATCH\ntype \"old\" \"foo $(printf expanded) $HPATCH_TEST bar\"\nPATCH\n", "foo expanded variable bar\n"},
 			{"quoted", "hpatch result.txt <<'PATCH'\ntype \"old\" \"$(printf literal) $HPATCH_TEST\"\nPATCH\n", "$(printf literal) $HPATCH_TEST\n"},

@@ -322,7 +322,22 @@ func parseInstructionWithValue(sourceLine int, line, heredocValue string, heredo
 			return command, scriptError(sourceLine, "invalid quoted string for "+operation+": "+err.Error())
 		}
 		if !onlyOperandWhitespace(trailing) {
-			return command, scriptError(sourceLine, "trailing text after "+operation+" value")
+			// A literal target's count may follow its inline value. The target
+			// header must end at the literal, so two count operands never win
+			// by precedence (including an explicit leading count of one).
+			header := strings.TrimRight(line[:command.valueStart], " \t")
+			if (target.kind != targetLiteral && target.kind != targetText) || !strings.HasSuffix(header, `"`) ||
+				(trailing[0] != ' ' && trailing[0] != '\t') {
+				return command, scriptError(sourceLine, "trailing text after "+operation+" value")
+			}
+			count, rest, err := parseTargetCount(sourceLine, trailing, false)
+			if err != nil {
+				return command, err
+			}
+			if !onlyOperandWhitespace(rest) {
+				return command, scriptError(sourceLine, "trailing text after target count")
+			}
+			command.target.count = count
 		}
 	}
 	command.text = value

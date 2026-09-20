@@ -57,22 +57,35 @@ func (p *shellEditCodexProvider) forwardExecution(_, _ context.Context, body []b
 			return nil, fmt.Errorf("native shell edit result missing")
 		}
 		item = map[string]any{
-			"type": "message", "id": "final-item", "role": "assistant", "phase": "final_answer", "status": "completed",
-			"content": []any{map[string]any{"type": "output_text", "text": "native hpatch complete", "annotations": []any{}}},
+			"type": "function_call", "id": "finish-item", "call_id": "finish-call",
+			"name": "journal", "namespace": "functions", "status": "completed",
+			"arguments": `{"op":"finish","journal":[{"op":"add","text":"native hpatch complete","answer":true}]}`,
 		}
+
 	default:
 		return nil, fmt.Errorf("unexpected provider turn %d", p.turns)
 	}
-	response := map[string]any{"id": fmt.Sprintf("edit-response-%d", p.turns), "status": "completed", "output": []any{item}}
+	response := map[string]any{
+		"id": fmt.Sprintf("edit-response-%d", p.turns), "status": "completed", "output": []any{item},
+		"usage": map[string]any{"input_tokens": 10, "input_tokens_details": map[string]any{"cached_tokens": 0},
+			"output_tokens": 5, "output_tokens_details": map[string]any{"reasoning_tokens": 0}, "total_tokens": 15},
+	}
+
 	wire := ""
-	for _, event := range []any{
-		map[string]any{"type": "response.created", "response": map[string]any{"id": response["id"], "status": "in_progress", "output": []any{}}},
-		map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item},
-		map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item},
-		map[string]any{"type": "response.completed", "response": response},
+	for _, event := range []map[string]any{
+		{"type": "response.created", "response": map[string]any{"id": response["id"], "status": "in_progress", "output": []any{}}},
+		{"type": "response.output_item.added", "output_index": 0, "item": item},
+		{"type": "response.output_item.done", "output_index": 0, "item": item},
+		{"type": "response.completed", "response": response},
 	} {
+		if event["type"] == "response.output_item.done" && item["type"] == "function_call" {
+			wire += "data: " + string(mustMarshalJSON(map[string]any{
+				"type": "response.function_call_arguments.done", "item_id": item["id"], "arguments": item["arguments"],
+			})) + "\n\n"
+		}
 		wire += "data: " + string(mustMarshalJSON(event)) + "\n\n"
 	}
+
 	result := serverHTTPResponse(wire)
 	result.Header.Set("Content-Type", "text/event-stream")
 	return result, nil
@@ -84,10 +97,10 @@ func TestShellHpatchNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspace := t.TempDir()
-	if err := os.WriteFile(filepath.Join(workspace, "native.txt"), []byte("old\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(workspace, "native.txt"), []byte("old old\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, "generator.py"), []byte("print('type \"old\" \"native success\"')\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(workspace, "generator.py"), []byte("print('type \"old\" \"native success\" 2')\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	provider := &shellEditCodexProvider{}
@@ -120,7 +133,7 @@ func TestShellHpatchNativeCodexE2E(t *testing.T) {
 		t.Fatalf("Codex: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}
 	content, err := os.ReadFile(filepath.Join(workspace, "native.txt"))
-	if err != nil || string(content) != "native success\n" {
+	if err != nil || string(content) != "native success native success\n" {
 		t.Fatalf("actual edit %q: %v", content, err)
 	}
 	provider.mu.Lock()

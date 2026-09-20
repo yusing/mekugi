@@ -198,3 +198,18 @@ func TestRecoverBatchMalformedScriptContextAndAggregateBound(t *testing.T) {
 		t.Fatalf("aggregate recovery bound = %v", err)
 	}
 }
+
+func TestRecoveryTrailingCountPreservesTargetSelection(t *testing.T) {
+	script := `type "old" "new" 2`
+	commands := recoveryCommands(script, testRecoveryHandles(script))
+	if len(commands) != 1 || !commands[0].parts.parsed || commands[0].parts.target != `"old" 2` {
+		t.Fatalf("trailing count was not preserved: %+v", commands)
+	}
+	recovered, err := recoverScriptForTest(t.Context(), script, commands[0].handle+` value "changed"`)
+	if err != nil || recovered != `type "old" 2 "changed"` {
+		t.Fatalf("value recovery lost count: %q, %v", recovered, err)
+	}
+	if _, err := recoverScriptForTest(t.Context(), script, commands[0].handle+` target "old" 2`); err == nil {
+		t.Fatal("equivalent target correction was accepted")
+	}
+}

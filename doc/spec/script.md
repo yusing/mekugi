@@ -29,6 +29,12 @@ HASH  := exactly four lowercase hexadecimal digits
 COUNT := positive decimal integer; default 1
 ```
 
+For inline quoted values, a text target's `COUNT` may instead follow the value:
+`type "old" "new" 2` is equivalent to `type "old" 2 "new"`.
+The same spelling works for `add` and anchored text targets. A command may specify
+the count in only one position. Counts after line/range values, after heredoc
+delimiters, or after `append` values remain invalid.
+
 An add target is a single `ROW` or an anchored or unanchored text target. `add` does not
 accept a range. `append` inserts once at the immutable baseline end, requires no target,
 and contributes no target metric. `EOF` is not a keyword.
