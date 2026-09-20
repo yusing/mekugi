@@ -67,6 +67,11 @@ func MergeSessions(directories []string, metrics, capture io.Writer) error {
 		if err != nil {
 			return err
 		}
+		// The attribution label is additive; older v4 exports used the same
+		// calculation without naming its basis.
+		if snapshot.Cache.AttributionBasis == "" {
+			snapshot.Cache.AttributionBasis = local.Cache.AttributionBasis
+		}
 		sortExchanges := func(m *metricsSnapshot) {
 			slices.SortFunc(m.Exchanges, func(a, b exchangeMetrics) int { return cmp.Compare(a.Sequence, b.Sequence) })
 		}

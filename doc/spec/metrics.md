@@ -59,7 +59,7 @@ capturer, not by the router, engine, plugin, benchmark report, or dashboard. The
 
 1. logical request and provider-attempt counts, including completed and failed logical requests;
 2. provider input, cached input, uncached input, output, reasoning, and usage-bearing attempt counts;
-3. the overall provider cache rate from authoritative cached and total provider input, plus cache attribution that separates cold/new uncached input from misses within the immediately
+3. the overall provider cache rate from authoritative cached and total provider input, plus estimated cache attribution that separates cold/new uncached input from estimated misses within the immediately
    preceding logical request's final provider attempt for the same nonempty thread; retries within
    one request MUST NOT become cache predecessors, requests without a thread are cold, concurrent
    completions MUST retain request-arrival order, and a final attempt without usage MUST break the
@@ -89,6 +89,11 @@ capturer, not by the router, engine, plugin, benchmark report, or dashboard. The
    its usage, while cumulative totals remain process-lifetime totals; and
 9. capture health for record failures, incomplete records, missing provider records,
    provider-attempt gaps, durable-write errors, skipped requests, and dropped exchange detail.
+
+Cache attribution is a previous-input-length estimate, not a measurement of matching
+provider-token prefixes or cache eligibility. `cache.attribution_basis` is
+`previous_input_length_estimate`; dashboards label those fields as estimates.
+The provider cache rate remains the measured cached-input/total-input ratio.
 
 HPATCH carrier metrics describe explicit `hpatch`/`hpatch_recover` tool records in
 historical captures. Current `hpatch` commands are emitted through `shell`
@@ -174,6 +179,12 @@ user-supplied property names. JSON framing differences MUST NOT change fingerpri
 
 At most the first 128 input items are retained, with total item count and explicit completeness.
 Truncated, malformed, missing, or cross-scope fingerprints MUST NOT claim a stable prefix.
+Fingerprints of nonempty `previous_response_id` requests carry `incremental: true`.
+Their input arrays are wire suffixes, not full model history. Comparisons involving
+such a fingerprint report unavailable prefix evidence, while retaining observed
+inference-setting changes. Continuation IDs and `generate` are transport controls
+and are excluded from the inference-field fingerprint.
+
 `cache_diagnostics` MUST compare client, native, and final-provider representations against
 the immediate same-thread arrival predecessor, and only when that request remains retained and completed.
 Requests MUST retain that predecessor sequence even when completions arrive out of order. Arrival

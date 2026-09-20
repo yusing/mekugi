@@ -88,3 +88,26 @@ func TestMergeSessionsRejectsMissingTamperedAndDuplicateEvidence(t *testing.T) {
 		t.Fatal("failed validation emitted partial evidence")
 	}
 }
+
+func TestMergeSessionsAcceptsLegacyCacheAttribution(t *testing.T) {
+	directory := sessionExport(t, "legacy")
+	path := filepath.Join(directory, "metrics.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = bytes.Replace(data, []byte(`"attribution_basis":"previous_input_length_estimate",`), nil, 1)
+	if bytes.Contains(data, []byte(`attribution_basis`)) {
+		t.Fatal("legacy fixture retained new field")
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var metrics, capture bytes.Buffer
+	if err := MergeSessions([]string{directory}, &metrics, &capture); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(metrics.Bytes(), []byte(`"attribution_basis":"previous_input_length_estimate"`)) {
+		t.Fatal("merged legacy evidence did not label the estimate")
+	}
+}

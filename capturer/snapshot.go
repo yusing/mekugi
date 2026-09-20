@@ -26,6 +26,7 @@ type requestTotals struct {
 }
 
 type cacheMetrics struct {
+	AttributionBasis             string   `json:"attribution_basis"`
 	ColdOrNewUncachedInputTokens uint64   `json:"cold_or_new_uncached_input_tokens"`
 	ProviderCacheRate            *float64 `json:"provider_cache_rate"`
 	EligiblePrefixTokens         uint64   `json:"eligible_prefix_tokens"`
@@ -193,6 +194,7 @@ func newMetricsSnapshot(mode, modelProtocol string) metricsSnapshot {
 		Schema:         "mekugi.capture.metrics.v4",
 		Mode:           mode,
 		ModelProtocol:  modelProtocol,
+		Cache:          cacheMetrics{AttributionBasis: "previous_input_length_estimate"},
 		ProviderTools:  map[string]toolAggregate{},
 		DeliveredTools: map[string]toolAggregate{},
 		Mekugi:         mekugiMetrics{Diagnostics: map[string]uint64{}},

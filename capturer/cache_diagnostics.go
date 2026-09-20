@@ -19,14 +19,15 @@ const maxFingerprintItems = 128
 // hashes. They cannot be compared across recorder lifetimes or reversed using
 // a dictionary of candidate prompts. No raw content or routing key is retained.
 type requestFingerprint struct {
-	Scope      string            `json:"scope"`
-	Fields     map[string]string `json:"fields"`
-	InputKind  string            `json:"input_kind"`
-	Items      []string          `json:"items"`
-	ItemCount  int               `json:"item_count"`
-	Complete   bool              `json:"complete"`
-	RequestKey string            `json:"request_key,omitempty"`
-	RoutingKey string            `json:"routing_key,omitempty"`
+	Scope       string            `json:"scope"`
+	Fields      map[string]string `json:"fields"`
+	InputKind   string            `json:"input_kind"`
+	Incremental bool              `json:"incremental,omitempty"`
+	Items       []string          `json:"items"`
+	ItemCount   int               `json:"item_count"`
+	Complete    bool              `json:"complete"`
+	RequestKey  string            `json:"request_key,omitempty"`
+	RoutingKey  string            `json:"routing_key,omitempty"`
 	// Nil means unobserved (older evidence or the body-only native seam).
 	// An observed empty value means no nonempty turn-state header was sent.
 	TurnState *string `json:"turn_state,omitempty"`
@@ -95,6 +96,11 @@ func (r *Recorder) requestFingerprint(body []byte) *requestFingerprint {
 	// These fields describe delivery/routing, not cacheable inference input.
 	// Normalize the established HTTP and WebSocket representations alike.
 	delete(fields, "stream")
+	// A continuation transmits a suffix, not the effective model history.
+	previousResponse, _ := fields["previous_response_id"].(string)
+	delete(fields, "previous_response_id")
+	delete(fields, "generate")
+
 	if fields["type"] == responseevents.Create {
 		delete(fields, "type")
 	}
@@ -107,7 +113,7 @@ func (r *Recorder) requestFingerprint(body []byte) *requestFingerprint {
 		}
 	}
 	normalizeFingerprintNumbers(fields)
-	fp := &requestFingerprint{Scope: r.fingerprint("scope", nil), Fields: make(map[string]string), Items: []string{}, Complete: true}
+	fp := &requestFingerprint{Scope: r.fingerprint("scope", nil), Fields: make(map[string]string), Items: []string{}, Complete: true, Incremental: previousResponse != ""}
 	if key, present := fields["prompt_cache_key"]; present {
 		fp.RequestKey = r.fingerprint("cache-key", key)
 	}
@@ -199,6 +205,10 @@ func comparePrefix(previous, current *requestFingerprint) prefixComparison {
 		if previous.Fields[key] != current.Fields[key] {
 			result.ChangedFields = append(result.ChangedFields, key)
 		}
+	}
+	if previous.Incremental || current.Incremental {
+		// Settings remain comparable, but neither suffix proves history changes.
+		return result
 	}
 	for result.CommonItems < min(len(previous.Items), len(current.Items)) && previous.Items[result.CommonItems] == current.Items[result.CommonItems] {
 		result.CommonItems++

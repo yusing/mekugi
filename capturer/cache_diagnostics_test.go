@@ -194,3 +194,39 @@ func TestTurnStateFingerprintForwarding(t *testing.T) {
 		t.Fatal("legacy evidence is not unavailable")
 	}
 }
+
+func TestCacheFingerprintIncrementalHistoryIsNotAChangedPrefix(t *testing.T) {
+	r := diagnosticRecorder(t)
+	full := r.requestFingerprint([]byte(`{"model":"model","input":["base"]}`))
+	first := r.requestFingerprint([]byte(`{"type":"response.create","model":"model","previous_response_id":"first-private-id","input":["suffix"]}`))
+	next := r.requestFingerprint([]byte(`{"type":"response.create","model":"model","previous_response_id":"second-private-id","input":["different suffix"]}`))
+	for _, pair := range [][2]*requestFingerprint{{full, first}, {first, next}, {next, full}} {
+		got := comparePrefix(pair[0], pair[1])
+		if got.Status != "unavailable" || got.CommonItems != 0 || len(got.ChangedFields) != 0 {
+			t.Fatalf("wire suffix claimed a changed prefix: %+v", got)
+		}
+	}
+	if !cloneFingerprint(next).Incremental {
+		t.Fatal("clone lost incremental marker")
+	}
+	changed := r.requestFingerprint([]byte(`{"model":"different","tools":[{"name":"new"}],"previous_response_id":"third","input":[]}`))
+	got := comparePrefix(next, changed)
+	if got.Status != "unavailable" || len(got.ChangedFields) != 2 || got.ChangedFields[0] != "model" || got.ChangedFields[1] != "tools" {
+		t.Fatalf("actual setting changes were hidden: %+v", got)
+	}
+	warm := r.requestFingerprint([]byte(`{"model":"model","generate":false,"input":["base"]}`))
+	if got := comparePrefix(warm, full); got.Status != "identical" {
+		t.Fatalf("prewarm transport flag changed inference fingerprint: %+v", got)
+	}
+	encoded, err := json.Marshal(next)
+	if err != nil || strings.Contains(string(encoded), "private-id") {
+		t.Fatalf("continuation identity leaked: %s, %v", encoded, err)
+	}
+}
+
+func TestCacheAttributionLabelsItsEstimate(t *testing.T) {
+	snapshot := newMetricsSnapshot("mekugi", "native")
+	if snapshot.Cache.AttributionBasis != "previous_input_length_estimate" {
+		t.Fatal("cache attribution is not explicitly labeled as an estimate")
+	}
+}
