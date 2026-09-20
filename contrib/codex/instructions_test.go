@@ -47,7 +47,9 @@ func TestInstructionsTeachStandaloneShellEdits(t *testing.T) {
 			got := instructionWords(InstructionsForModel(model, compact))
 			for _, required := range []string{
 				"`hpatch PATH [SCRIPT]` through `functions.shell`",
-				"standalone shell command",
+				"alone in its Bash/POSIX program",
+				"using `#!bash` separators to batch other programs in the same `functions.shell` call",
+				"prefixed with `ENV=VALUE` assignments",
 				"normal shell semantics",
 				"`hpatch --recover HANDLE [SCRIPT]`",
 			} {

@@ -111,7 +111,9 @@ The shared guidance must make these choices directly available in native and CTP
    content edits, including bulk mechanical changes, go through hpatch. Python and other
    generators may prepare scripts but do not write edit targets directly. File creation,
    moves, and removal belong to the outer shell, outside the edit transaction. Run
-   `hpatch` as a standalone shell command under [REQ-SCRIPT-001](script.md), with
+   `hpatch` as the only command in its Bash/POSIX program under [REQ-SCRIPT-001](script.md).
+   Other programs may share the same shell call using `#!bash` separators. Support inline
+   environment assignments, with
    paths supplied as shell arguments outside the scripts, ordinary stdin, expansion,
    and redirection semantics, and atomic multi-file path/script pairs. Guidance
    distinguishes atomic validation from potentially partial application and never

@@ -133,8 +133,9 @@ func executeShellProgram(
 	var standaloneEdit syntax.Pos
 	if len(program.Stmts) == 1 {
 		statement := program.Stmts[0]
-		if call, ok := statement.Cmd.(*syntax.CallExpr); ok && !statement.Background && !statement.Coprocess && !statement.Disown && !statement.Negated {
-			standaloneEdit = call.Pos()
+		if call, ok := statement.Cmd.(*syntax.CallExpr); ok && len(call.Args) != 0 && !statement.Background && !statement.Coprocess && !statement.Disown && !statement.Negated {
+			// Exec handlers receive the command word position, after any assignments.
+			standaloneEdit = call.Args[0].Pos()
 		}
 	}
 	var composedEdit bool
@@ -145,14 +146,14 @@ func executeShellProgram(
 			redirect.Op = syntax.RdrOut
 		}
 		if call, ok := node.(*syntax.CallExpr); ok && len(call.Args) != 0 {
-			if name, literal := shellCatLiteral(call.Args[0]); literal && name == "hpatch" && call.Pos() != standaloneEdit {
+			if name, literal := shellCatLiteral(call.Args[0]); literal && name == "hpatch" && call.Args[0].Pos() != standaloneEdit {
 				composedEdit = true
 			}
 		}
 		return true
 	})
 	if composedEdit {
-		return toolplugin.ExecutionOutput{Stderr: "hpatch: must be a standalone shell command\n", ExitCode: 2}, nil
+		return toolplugin.ExecutionOutput{Stderr: "hpatch: requires a standalone command in its program; use #!bash to batch other programs in the same shell call\n", ExitCode: 2}, nil
 	}
 
 	shellID := rand.Text()
@@ -196,7 +197,7 @@ func executeShellProgram(
 			}
 			if command[0] == "hpatch" {
 				if interp.HandlerCtx(handlerCtx).Pos != standaloneEdit {
-					_, _ = io.WriteString(interp.HandlerCtx(handlerCtx).Stderr, "hpatch: must be a standalone shell command\n")
+					_, _ = io.WriteString(interp.HandlerCtx(handlerCtx).Stderr, "hpatch: requires a standalone command in its program; use #!bash to batch other programs in the same shell call\n")
 					return interp.ExitStatus(2)
 				}
 				return executeHpatch(handlerCtx, manifest, command[1:], commentary)

@@ -132,19 +132,22 @@ facilities for interactive input or termination.
 
 Run `hpatch PATH [SCRIPT]` through `functions.shell`; omit SCRIPT to read the edit from stdin.
 For atomic multi-file edits, supply `hpatch PATH SCRIPT [PATH SCRIPT ...]`.
-It must be a standalone shell command, not combined with other commands.
+Keep `hpatch` (optionally prefixed with `ENV=VALUE` assignments) alone in its Bash/POSIX program, using `#!bash` separators to batch other programs in the same `functions.shell` call.
 
 ```sh
 hpatch notes.txt <<'EDIT'
 type "draft" "ready"
 EDIT
+#!bash
+go test ./...
 ```
 
 Arguments, stdin, quoting, heredoc expansion, command substitution, and redirection use
 normal shell semantics. Apply generated scripts with `hpatch notes.txt "$(python3 generator.py)"` or
 `hpatch notes.txt < prepared.hpatch`. Generators emit script bytes, not target-file writes. These edits
 retain change IDs, hchanges history, and completed live diffs; dynamic input has no speculative
-preview. Run dependent checks in subsequent shell calls.
+preview. Checks may run in a later `#!bash` program in the same call; batches continue after
+nonzero exits, so use a separate call when the next step depends on inspecting the edit result.
 
 
 ### Files, targets, and values

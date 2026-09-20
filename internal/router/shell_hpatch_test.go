@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/internal/router/toolplugin"
+	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
 func TestShellHpatchActivityPreviewSuppressesStandaloneEdits(t *testing.T) {
@@ -54,6 +55,9 @@ func TestShellHpatchSemantics(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
 	for _, interpreter := range []string{"bash", "sh"} {
 		for _, test := range []struct{ name, script, want string }{
+			{"environment", `HPATCH_ONE=one HPATCH_TWO='two words' hpatch result.txt 'type "old" "environment"'`, "environment\n"},
+			{"environment stdin", "HPATCH_ONE=one hpatch result.txt < input.patch", "redirected\n"},
+			{"environment dynamic command", `HPATCH_ONE=one "hpa"tch result.txt 'type "old" "dynamic"'`, "dynamic\n"},
 			{"argument", `hpatch result.txt 'type "old" "argument"'`, "argument\n"},
 			{"heredoc", "hpatch result.txt <<PATCH\ntype \"old\" \"foo $(printf expanded) $HPATCH_TEST bar\"\nPATCH\n", "foo expanded variable bar\n"},
 			{"quoted", "hpatch result.txt <<'PATCH'\ntype \"old\" \"$(printf literal) $HPATCH_TEST\"\nPATCH\n", "$(printf literal) $HPATCH_TEST\n"},
@@ -91,6 +95,9 @@ func TestShellHpatchSemantics(t *testing.T) {
 func TestShellHpatchRejectsCompositionBeforeEffects(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
 	for _, script := range []string{
+		`touch marker && HPATCH_ONE=one hpatch result.txt 'type "old" "new"'`,
+		`HPATCH_ONE=one hpatch result.txt 'type "old" "new"' | cat`,
+		`HPATCH_ONE=$(hpatch result.txt 'type "old" "new"') hpatch result.txt 'type "old" "new"'`,
 		`touch marker && hpatch result.txt 'type "old" "new"'`,
 		"touch marker\nhpatch result.txt 'type \"old\" \"new\"'",
 		`hpatch result.txt 'type "old" "new"' | cat`,
@@ -470,5 +477,41 @@ func TestShellHpatchGeneratedScriptHistoryAndLiveDiff(t *testing.T) {
 	secondEvent := waitLiveDiffChange(t, sub, true)
 	if secondEvent.Thread != thread || len(secondEvent.Change.Calls) != 1 {
 		t.Fatalf("committed redirect-generated event = %+v", secondEvent)
+	}
+}
+
+func TestShellHpatchBatchWithEnvironment(t *testing.T) {
+	registry := sharedProxyTestRegistry(t)
+	for _, interpreter := range []string{"bash", "sh"} {
+		t.Run(interpreter, func(t *testing.T) {
+			directory := t.TempDir()
+			script := "printf 'old\\n' > result.txt\n#!" + interpreter + "\n" +
+				`HPATCH_ONE=one HPATCH_TWO='two words' hpatch result.txt 'type "old" "batched"'` +
+				"\n#!" + interpreter + "\ncat result.txt\nprintf '%s' \"${HPATCH_ONE-unset}\" > environment.txt"
+			// Batch splitting and header translation happen before worker dispatch.
+			programs, err := shellsyntax.Split(script)
+			if err != nil || len(programs) != 3 {
+				t.Fatalf("programs=%v err=%v", programs, err)
+			}
+			contribution, _ := registry.contribution("shell")
+			for index, program := range programs {
+				translation, err := registry.builtinTranslator.Translate(t.Context(), contribution.ModuleIndex, program)
+				if err != nil || translation.Rejected {
+					t.Fatalf("translation=%+v err=%v", translation, err)
+				}
+				args := translation.Arguments
+				stdout, stderr, code := runShellWorkerTest(t, registry, args[0], args[1:len(args)-1], args[len(args)-1], nil, newShellWorkerTestInvocation(directory))
+				if code != 0 || index == 1 && !strings.Contains(stdout, "change ") || index == 2 && !strings.Contains(stdout, "batched") {
+					t.Fatalf("program=%d code=%d stdout=%s stderr=%s", index, code, stdout, stderr)
+				}
+			}
+
+			for name, want := range map[string]string{"result.txt": "batched\n", "environment.txt": "unset"} {
+				data, err := os.ReadFile(filepath.Join(directory, name))
+				if err != nil || string(data) != want {
+					t.Fatalf("%s=%q err=%v, want %q", name, data, err, want)
+				}
+			}
+		})
 	}
 }
