@@ -68,22 +68,18 @@ func TestWebSocketPrewarmInstructionDelivery(t *testing.T) {
 							t.Errorf("first turn discarded warmed prefix: parent=%q items=%d", jsonString(request, "previous_response_id"), len(input))
 						}
 					case "astra":
-						if jsonString(request, "previous_response_id") != "" || len(input) != index+2+2*(index-1) {
+						if jsonString(request, "previous_response_id") != "" || len(input) != index+2 {
 							t.Errorf("%s did not replace the stale provider prefix: parent=%q items=%d", id, jsonString(request, "previous_response_id"), len(input))
 						}
 						if !bytes.Contains(request["input"], []byte("mekugi-model-instructions:start")) || bytes.Contains(request["input"], []byte("tools.exec_command")) {
 							t.Errorf("%s did not deliver patched guidance and catalog", id)
 						}
 					case "next", "astra-next":
-						if jsonString(request, "previous_response_id") != ids[index-1] || len(input) != 2 {
+						if jsonString(request, "previous_response_id") != ids[index-1] || len(input) != 1 {
 							t.Errorf("%s unnecessarily resent unchanged history", id)
 						}
 					}
-					terminal := socketHostCallResponse(id)
-					if index == 0 {
-						terminal = socketEvent("response.completed", id)
-					}
-					if err := providerSocketWrite(ctx, upstream, terminal); err != nil {
+					if err := providerSocketWrite(ctx, upstream, socketEvent("response.completed", id)); err != nil {
 						t.Error(err)
 						return
 					}
@@ -105,13 +101,9 @@ func TestWebSocketPrewarmInstructionDelivery(t *testing.T) {
 					request["previous_response_id"] = ids[index-1]
 					request["input"] = []any{map[string]string{"role": "user", "content": id}}
 				}
-				if index > 1 {
-					request["input"] = []any{map[string]string{"type": "function_call_output", "call_id": ids[index-1] + "-call", "output": "done"}, map[string]string{"role": "user", "content": id}}
-				}
 				request["client_metadata"] = map[string]string{codexTurnMetadataHeader: string(mustMarshalJSON(metadata)), threadIDHeader: "instruction-cache-thread"}
 				socketWrite(t, ctx, conn, request)
-				wantTerminal := "response.completed"
-				if event := socketRead(t, ctx, conn); jsonString(event, "type") != wantTerminal {
+				if event := socketRead(t, ctx, conn); jsonString(event, "type") != "response.completed" {
 					t.Fatalf("%s failed: %s", id, mustMarshalJSON(event))
 				}
 			}

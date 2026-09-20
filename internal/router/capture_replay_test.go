@@ -51,7 +51,7 @@ func TestCaptureRequestBaselineAfterMekugiReplay(t *testing.T) {
 				output[0].(map[string]any)["name"] = fixture.name
 				output[0].(map[string]any)["input"] = fixture.input
 				if len(forwarded) > 1 {
-					output = []any{journalFinishCall(`{"op":"finish"}`)}
+					output = []any{}
 				}
 				_, _ = w.Write(mustTestJSON(t, map[string]any{"status": "completed", "output": output}))
 			}))

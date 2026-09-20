@@ -334,19 +334,21 @@ func TestFinalAnswerStreamExecuteRequest(t *testing.T) {
 			terminal := finalAnswerTestTerminal(t, "completed", true)
 			response := serverHTTPResponse(finalAnswerTestWire(append(slices.Clone(answer), terminal)))
 			response.Header.Set("Content-Type", "text/event-stream")
-			provider := &serverFakeProvider{results: []serverForwardResult{{response: finishTestResponse(t, response)}}}
+			provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 			var output bytes.Buffer
 			if err := executeRequest(t.Context(), t.Context(), request, headers, "session", provider, &output, nil, proxy, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			events := finalAnswerTestPayloads(output.String())
-			// Finish adds a local result and, for a child, its native journal summary.
-			wantEvents := len(answer) + 3
-			if len(events) != wantEvents || (!child && !bytes.Contains(output.Bytes(), []byte("Tokens for this session"))) {
+			wantEvents := len(answer) + 2
+			if child {
+				wantEvents--
+			}
+			if len(events) != wantEvents || (!child && !strings.HasPrefix(commentaryEventText(t, events[0]), "Tokens for this session")) {
 				t.Fatalf("completion output = %s", output.String())
 			}
-			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) || bytes.Contains(output.Bytes(), []byte("Journal result")) != child {
-				t.Fatal("provider answer or journal completion audience changed")
+			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) || bytes.Contains(output.Bytes(), []byte("Journal result")) {
+				t.Fatal("provider answer was filtered or mistaken for journal finish")
 			}
 			counts, available := proxy.usage.snapshot("thread-1")
 			if !available || counts.tokenCounts != (tokenCounts{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3}) {

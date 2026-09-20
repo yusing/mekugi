@@ -11,7 +11,7 @@ func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
-			root, _ := prepareCommentaryActivityTest(t, proxy, "root-session", "root", "", "/root", nil)
+			root, _ := prepareActivityTest(t, proxy, "root-session", "root", "", "/root", nil)
 			prepareChild := func(session, model, effort string) *mekugiResponseTransform {
 				t.Helper()
 				request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
@@ -73,7 +73,7 @@ func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
 			child.Close()
 			prepareChild("remapped-child-session", "gpt-later", "low")
 			root.Close()
-			next, _ := prepareCommentaryActivityTest(t, proxy, "remapped-root-session", "root", "", "/root", nil)
+			next, _ := prepareActivityTest(t, proxy, "remapped-root-session", "root", "", "/root", nil)
 			if result := emit(next); bytes.Contains(result, []byte("Started.")) {
 				t.Fatalf("start repeated on a later request: %s", result)
 			}

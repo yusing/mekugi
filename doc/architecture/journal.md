@@ -10,9 +10,7 @@ its session is retained; a request's completion intent is not.
 
 The router intercepts the journal tool and returns its result through the current response
 flow rather than a host executor. A valid direct finish can select terminal journal delivery
-when no client-dispatched work remains. A successful response without client-dispatched calls
-or valid finish stays inside the existing provider continuation loop, retaining completed output
-without adding instructions or taking over native agent lifecycle. Shell-origin finish uses a call-scoped capability
+when no client-dispatched work remains. Shell-origin finish uses a call-scoped capability
 and durable receipt tied to the originating turn and successful host terminal; it cannot
 complete a later, unrelated, failed, or still-pending turn.
 

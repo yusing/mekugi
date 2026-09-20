@@ -87,7 +87,7 @@ func TestReplayContinuationMatchesLiveProviderInput(t *testing.T) {
 							thread = "fork-thread"
 						}
 						headers.Set(threadIDHeader, thread)
-						provider.results = append(provider.results, serverForwardResult{response: journalFinishResponse(t, false, "completed", "full", journalFinishCall(`{"op":"finish"}`))})
+						provider.results = append(provider.results, serverForwardResult{response: serverHTTPResponse(`{"status":"completed","output":[]}`)})
 						output.Reset()
 						if err := executeRequest(t.Context(), t.Context(), request(history), headers, continuation, provider, &output, nil, proxy, codec, nil); err != nil {
 							t.Fatalf("%s: %v", continuation, err)

@@ -426,7 +426,7 @@ func TestJournalRemainsAvailableAfterManyThreads(t *testing.T) {
 				}))
 				httpResponse.Header.Set("Content-Type", "text/event-stream")
 			}
-			provider := &serverFakeProvider{results: []serverForwardResult{{response: finishTestResponse(t, httpResponse)}}}
+			provider := &serverFakeProvider{results: []serverForwardResult{{response: httpResponse}}}
 			var output bytes.Buffer
 			if err := executeRequest(t.Context(), t.Context(), request, headers, "new", provider, &output, nil, proxy, nil, nil); err != nil {
 				t.Fatalf("journal capacity blocked unrelated request: %v", err)

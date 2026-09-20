@@ -40,7 +40,7 @@ func TestTokenUsageMentorAndManualSwitch(t *testing.T) {
 				if stream {
 					response.Header.Set("Content-Type", "text/event-stream")
 				}
-				provider := &serverFakeProvider{results: []serverForwardResult{{response: finishTestResponse(t, response)}}}
+				provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 				out.Reset()
 				if err := executeRequest(t.Context(), t.Context(), req, headers, fmt.Sprint("session-", i), provider, &out, nil, proxy, nil, mentor); err != nil {
 					t.Fatal(err)
@@ -101,7 +101,7 @@ func TestTokenUsageWebSocketHandshakeRecovery(t *testing.T) {
 					}
 				}
 				terminal := map[string]any{"type": "response.completed", "response": map[string]any{
-					"id": "recovered", "status": "completed", "service_tier": "default", "output": []any{journalFinishCall(`{"op":"finish"}`)},
+					"id": "recovered", "status": "completed", "service_tier": "default", "output": []any{},
 					"usage": map[string]any{"input_tokens": 100, "input_tokens_details": map[string]any{"cached_tokens": 40}, "output_tokens": 10, "output_tokens_details": map[string]any{"reasoning_tokens": 5}},
 				}}
 				if err = providerSocketWrite(ctx, upstream, terminal); err != nil {
@@ -224,9 +224,6 @@ func TestTokenUsageGapReportsUnavailableTotals(t *testing.T) {
 					if step == 1 && gap == "http-rejection" {
 						response.StatusCode = http.StatusBadRequest
 					}
-					if !(step == 1 && (gap == "interrupted" || gap == "compaction" || gap == "http-rejection" || gap == "transport-error")) && body["status"] == "completed" {
-						response = finishTestResponse(t, response)
-					}
 					result := serverForwardResult{response: response}
 					if step == 1 && gap == "transport-error" {
 						result = serverForwardResult{err: fmt.Errorf("connection lost after forwarding")}
@@ -325,7 +322,7 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 				return
 			}
 		}
-		if err = providerSocketWrite(ctx, upstream, map[string]any{"type": "response.completed", "response": map[string]any{"id": "successor", "model": leader, "service_tier": servedTier, "status": "completed", "output": []any{journalFinishCall(`{"op":"finish"}`)}, "usage": usage}}); err != nil {
+		if err = providerSocketWrite(ctx, upstream, map[string]any{"type": "response.completed", "response": map[string]any{"id": "successor", "model": leader, "service_tier": servedTier, "status": "completed", "output": []any{}, "usage": usage}}); err != nil {
 			t.Error(err)
 			return
 		}
@@ -341,7 +338,7 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 		if wantTier == "fast" {
 			wantTier = "priority"
 		}
-		if jsonString(next, "model") != configured || jsonString(next, "previous_response_id") != "" || jsonString(next, "service_tier") != wantTier {
+		if jsonString(next, "model") != configured || jsonString(next, "previous_response_id") != "successor" || jsonString(next, "service_tier") != wantTier {
 			t.Errorf("next model=%s parent=%s tier=%s", jsonString(next, "model"), jsonString(next, "previous_response_id"), jsonString(next, "service_tier"))
 		}
 		for _, e := range finalAnswerTestEvents(t, "final_answer") {
@@ -350,7 +347,7 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 				return
 			}
 		}
-		if err = providerSocketWrite(ctx, upstream, map[string]any{"type": "response.completed", "response": map[string]any{"id": "last", "model": configured, "service_tier": servedTier, "status": "completed", "output": []any{journalFinishCall(`{"op":"finish"}`)}, "usage": usage}}); err != nil {
+		if err = providerSocketWrite(ctx, upstream, map[string]any{"type": "response.completed", "response": map[string]any{"id": "last", "model": configured, "service_tier": servedTier, "status": "completed", "output": []any{}, "usage": usage}}); err != nil {
 			t.Error(err)
 			return
 		}

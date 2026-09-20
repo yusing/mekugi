@@ -256,8 +256,6 @@ func newSubagentCommentaryTestTransformWithMetadata(
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Isolate provider commentary/usage rendering from the journal completion protocol.
-	transform.journalActive = false
 	t.Cleanup(transform.Close)
 	return transform, proxy, &request
 }

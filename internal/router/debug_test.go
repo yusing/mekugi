@@ -152,7 +152,7 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 						firstDevelopers = append(firstDevelopers, raw)
 					}
 				}
-			} else if len(input) != 2 || jsonString(request, "previous_response_id") != "first" {
+			} else if len(input) != 1 || jsonString(request, "previous_response_id") != "first" {
 				t.Error("continuation did not use upstream cached input")
 			}
 			dump, err := os.ReadFile(d.paths[3])
@@ -191,7 +191,7 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			if err := providerSocketWrite(ctx, conn, socketHostCallResponse(id)); err != nil {
+			if err := providerSocketWrite(ctx, conn, socketEvent("response.completed", id)); err != nil {
 				t.Error(err)
 				return
 			}
@@ -219,7 +219,7 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 			request["input"] = []any{testCodeModeAdditionalTools(testCodeModeDescription), map[string]string{"role": "developer", "content": "Preserve\n  exact spacing."}, map[string]string{"role": "user", "content": "first task"}}
 		} else {
 			request["previous_response_id"] = "first"
-			request["input"] = []any{map[string]string{"type": "function_call_output", "call_id": "first-call", "output": "done"}, map[string]string{"role": "user", "content": "next task"}}
+			request["input"] = []any{map[string]string{"role": "user", "content": "next task"}}
 		}
 		socketWrite(t, ctx, conn, request)
 		for {

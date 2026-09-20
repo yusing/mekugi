@@ -145,7 +145,7 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 				fields["model"], fields["service_tier"] = "gpt-5.6-luna", "flex"
 			})
 			headers := serverMetadataHeaders(t, "turn", nil)
-			provider := &serverFakeProvider{results: []serverForwardResult{{response: journalFinishResponse(t, false, "completed", "full", journalFinishCall(`{"op":"finish"}`))}}}
+			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
 			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, mekugiCalls: proxy,
 				serviceTiers: map[string]string{"gpt-6-astra": "fast"}}
 			if mentorEnabled {

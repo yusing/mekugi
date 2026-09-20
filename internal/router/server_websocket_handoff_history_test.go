@@ -98,7 +98,7 @@ func TestResponsesWebSocketHandoffPreservesStreamedCallWithActivity(t *testing.T
 				if calls != 1 || results != 1 || strings.Contains(string(next["input"]), "Inspecting child files.") {
 					t.Errorf("rebased history: calls=%d results=%d; activity must remain user-only", calls, results)
 				}
-				if err := providerSocketWrite(ctx, upstream, map[string]any{"type": "response.completed", "response": map[string]any{"id": "second", "status": "completed", "output": []any{journalFinishCall(`{"op":"finish"}`)}}}); err != nil {
+				if err := providerSocketWrite(ctx, upstream, socketEvent("response.completed", "second")); err != nil {
 					t.Error(err)
 				}
 				_, _, _ = upstream.Read(ctx)

@@ -445,15 +445,11 @@ func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
 					t.Errorf("parent = %s", request["previous_response_id"])
 				}
 				var input []map[string]json.RawMessage
-				if err := json.Unmarshal(request["input"], &input); err != nil || len(input) != i || jsonString(input[len(input)-1], "content") != wantInput {
+				if err := json.Unmarshal(request["input"], &input); err != nil || len(input) != 1 || jsonString(input[0], "content") != wantInput {
 					t.Errorf("incremental history = %s", request["input"])
 				}
 			}
-			terminal := socketHostCallResponse(id)
-			if i == 0 {
-				terminal = socketEvent("response.completed", id)
-			}
-			if err := providerSocketWrite(ctx, upstream, terminal); err != nil {
+			if err := providerSocketWrite(ctx, upstream, socketEvent("response.completed", id)); err != nil {
 				t.Error(err)
 				return
 			}
@@ -473,11 +469,7 @@ func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
 		if i == 1 {
 			input = "next"
 		}
-		items := []any{map[string]string{"role": "user", "content": input}}
-		if i == 1 {
-			items = append([]any{map[string]string{"type": "function_call_output", "call_id": "turn-call", "output": "done"}}, items...)
-		}
-		socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": items, "previous_response_id": parent, "tools": testNativeResponsesTools(), "client_metadata": turnMetadata})
+		socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": []any{map[string]string{"role": "user", "content": input}}, "previous_response_id": parent, "tools": testNativeResponsesTools(), "client_metadata": turnMetadata})
 		if got := socketRead(t, ctx, conn); jsonString(got, "type") != "response.completed" {
 			t.Fatalf("turn produced a warning: %s", mustMarshalJSON(got))
 		}

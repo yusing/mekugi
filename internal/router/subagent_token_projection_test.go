@@ -11,9 +11,9 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 		for _, missing := range []bool{false, true} {
 			t.Run(map[bool]string{false: "json", true: "sse"}[stream]+map[bool]string{false: "/complete", true: "/missing"}[missing], func(t *testing.T) {
 				proxy := newManagedMekugiProxy(t)
-				root, _ := prepareCommentaryActivityTest(t, proxy, "shared-session", "root", "", "/root", nil)
-				other, _ := prepareCommentaryActivityTest(t, proxy, "other-session", "other", "", "/root", nil)
-				child, _ := prepareCommentaryActivityTest(t, proxy, "shared-session", "child", "root", "/root/worker", nil)
+				root, _ := prepareActivityTest(t, proxy, "shared-session", "root", "", "/root", nil)
+				other, _ := prepareActivityTest(t, proxy, "other-session", "other", "", "/root", nil)
+				child, _ := prepareActivityTest(t, proxy, "shared-session", "child", "root", "/root/worker", nil)
 				child.usageTracker.model = "gpt-5.6-sol"
 				root.drainActivity()
 				root.Close()
@@ -46,7 +46,7 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 					t.Fatalf("child emitted usage or lost answer: %s", output)
 				}
 				child.Close()
-				root, _ = prepareCommentaryActivityTest(t, proxy, "remapped", "root", "", "/root", nil)
+				root, _ = prepareActivityTest(t, proxy, "remapped", "root", "", "/root", nil)
 				root.usageTracker.model = "gpt-6-astra"
 				root.observeResponseUsage(tokenCounts{InputTokens: 100, UncachedInputTokens: 50, OutputTokens: 10, ReasoningTokens: 5})
 				if stream {

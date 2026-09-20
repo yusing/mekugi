@@ -66,8 +66,7 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
   does not repeat child journal results.
 - **Finish without another model request.** A journal finish can deliver the
   final report with the last successful command, without another model turn
-  just to write the response. A plain final answer without journal finish keeps
-  the turn running through another model request; it does not end the turn.
+  just to write the response.
 
 ### Token saving
 

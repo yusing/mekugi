@@ -376,7 +376,7 @@ func TestProviderAnswerDoesNotSubstituteForJournalFinish(t *testing.T) {
 	}
 }
 
-func TestJournalPlainFinalContinuesPreservingProviderOutput(t *testing.T) {
+func TestJournalContinuationPreservesProviderOutput(t *testing.T) {
 	for _, mode := range []string{"json", "sse-full", "sse-empty", "sse-absent", "sse-snapshot-only"} {
 		t.Run(mode, func(t *testing.T) {
 			stream := mode != "json"
@@ -385,12 +385,13 @@ func TestJournalPlainFinalContinuesPreservingProviderOutput(t *testing.T) {
 				snapshot = "full"
 			}
 			proxy := newManagedMekugiProxy(t)
+			call := map[string]any{"type": "function_call", "id": "list-item", "call_id": "list-call", "name": "journal", "arguments": `{"op":"list"}`, "status": "completed"}
 			message := map[string]any{
 				"type": "message", "id": "unexpected-message", "role": "assistant", "phase": "final_answer", "status": "completed",
 				"content": []any{map[string]any{"type": "output_text", "text": "Unexpected provider text must remain visible."}},
 			}
 			provider := &serverFakeProvider{results: []serverForwardResult{
-				{response: journalFinishResponse(t, stream, "completed", snapshot, message)},
+				{response: journalFinishResponse(t, stream, "completed", snapshot, call, message)},
 				{response: journalFinishResponse(t, stream, "completed", snapshot, journalFinishCall(`{"op":"finish"}`))},
 			}}
 			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
@@ -400,15 +401,6 @@ func TestJournalPlainFinalContinuesPreservingProviderOutput(t *testing.T) {
 			}
 			if len(provider.forwarded) != 2 {
 				t.Fatalf("provider requests = %d, want 2", len(provider.forwarded))
-			}
-			var continued struct {
-				Input []map[string]json.RawMessage `json:"input"`
-			}
-			if err := json.Unmarshal(provider.forwarded[1], &continued); err != nil {
-				t.Fatal(err)
-			}
-			if len(continued.Input) == 0 || !bytes.Equal(mustMarshalJSON(continued.Input[len(continued.Input)-1]), mustMarshalJSON(message)) {
-				t.Fatalf("continuation did not retain the plain final without an injected instruction: %s", provider.forwarded[1])
 			}
 			count := 0
 			for _, item := range journalFinishClientOutput(t, stream, output.Bytes()) {
@@ -423,9 +415,6 @@ func TestJournalPlainFinalContinuesPreservingProviderOutput(t *testing.T) {
 				t.Fatalf("terminal retained %d provider messages, want 1: %s", count, output.Bytes())
 			}
 			if stream {
-				if got := strings.Count(output.String(), `"type":"response.completed"`); got != 1 {
-					t.Fatalf("client received %d terminal events, want only the finishing response", got)
-				}
 				completed := 0
 				for line := range strings.SplitSeq(output.String(), "\n") {
 					data, ok := strings.CutPrefix(line, "data: ")

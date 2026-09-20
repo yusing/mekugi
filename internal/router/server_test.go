@@ -165,7 +165,7 @@ func TestExecuteRequestDoesNotRequireWorkspaceMetadata(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			responseBody := string(mustTestJSON(t, map[string]any{"status": "completed", "output": []any{journalFinishCall(`{"op":"finish"}`)}}))
+			responseBody := string(mustTestJSON(t, map[string]any{"status": "completed"}))
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(responseBody)}}}
 			proxy := newManagedMekugiProxy(t)
 
@@ -345,7 +345,6 @@ func TestExecuteRequestForwardsRewrittenRequestAndRecordsUsage(t *testing.T) {
 			"input_tokens": 10, "input_tokens_details": map[string]any{"cached_tokens": 4},
 			"output_tokens": 6, "output_tokens_details": map[string]any{"reasoning_tokens": 2},
 		},
-		"output": []any{journalFinishCall(`{"op":"finish"}`)},
 		"future": map[string]any{"kept": true},
 	}))
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(responseBody)}}}
@@ -442,7 +441,7 @@ func TestShellHCatAfterAppliedMekugiCarrierRemainsModelVisible(t *testing.T) {
 					"name": "shell", "input": shellInput, "status": "completed",
 				}},
 			})))},
-			{response: journalFinishResponse(t, false, "completed", "full", journalFinishCall(`{"op":"finish"}`))},
+			{response: serverHTTPResponse(`{"status":"completed","output":[]}`)},
 		},
 	}
 	proxy := newManagedMekugiProxy(t)
@@ -1708,7 +1707,7 @@ func TestShellJournalFinishSuppressesProviderRequest(t *testing.T) {
 		t.Fatal("shell terminal omitted complete cumulative usage")
 	}
 	next := serverRequest(t, func(request map[string]any) { request["model"] = usageModel })
-	provider.results = []serverForwardResult{{response: finishTestResponse(t, serverHTTPResponse(`{"id":"real-next","status":"completed","output":[],"usage":{"input_tokens":3,"input_tokens_details":{"cached_tokens":0},"output_tokens":2,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":5}}`))}}
+	provider.results = []serverForwardResult{{response: serverHTTPResponse(`{"id":"real-next","status":"completed","output":[],"usage":{"input_tokens":3,"input_tokens_details":{"cached_tokens":0},"output_tokens":2,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":5}}`)}}
 	if err := executeRequest(t.Context(), t.Context(), next, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "next", provider, &bytes.Buffer{}, NewCriticalErrors(), proxy, nil, nil); err != nil {
 		t.Fatal(err)
 	}

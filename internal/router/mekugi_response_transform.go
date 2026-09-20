@@ -645,14 +645,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		object["output"] = encoded
 	}
 	if t.journalActive {
-		t.journalContinue = status == "completed" && !t.journalClientCalls && !t.journalTerminalReady()
-		if t.journalContinue && usageMessage != nil {
-			// Intermediate usage is not completion usage. The finishing response
-			// renders one cumulative report for the whole continuation chain.
-			t.journalClientOutput = withoutJournalUsage(t.journalClientOutput, jsonString(object, "id"))
-			object["output"] = mustMarshalJSON(t.journalClientOutput)
-			usageMessage = nil
-		}
+		t.journalContinue = status == "completed" && len(t.journalResults) != 0 && !t.journalClientCalls && !t.journalTerminalReady()
 		if len(journalPrefix.clientOutput) != 0 {
 			var output []map[string]json.RawMessage
 			if err := json.Unmarshal(object["output"], &output); err != nil {

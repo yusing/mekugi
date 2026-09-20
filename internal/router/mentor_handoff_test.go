@@ -710,7 +710,7 @@ func TestExecuteRequestMentorCommentaryDeliveredOnceAndStrippedOnReplay(t *testi
 			for index := range 4 {
 				responseBody := mustTestJSON(t, map[string]any{
 					"status": "completed",
-					"output": []any{journalFinishCall(`{"op":"finish"}`)},
+					"output": []any{},
 					"usage":  map[string]any{"input_tokens": mentorInputTokenLimit},
 				})
 				response := serverHTTPResponse(string(responseBody))

@@ -256,10 +256,7 @@ exports. Generated tables retain the existing exact replay filtering and auxilia
 A successful explicit main journal finish emits its own unflushed journal revisions (including live-reported
 updates), then usage, and the terminal event. Child finish emits its native journal result without a token table.
 It does not request a separately generated provider final answer. Provider answer events remain
-unfiltered and cannot trigger journal completion. Successful responses without host calls or
-valid journal finish continue internally. Usage reporting is deferred until completion and includes
-all continuation requests; earlier substantive output remains eligible for that report.
-Failed or incomplete responses release buffered
+unfiltered and cannot trigger journal completion. Failed or incomplete responses release buffered
 output without terminal journal flush or usage notices.
 The streaming transport preserves named SSE framing and one data field per payload line.
 Ordinary token-usage buffering remains bounded at 64 MiB and releases provider output unchanged

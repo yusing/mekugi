@@ -40,9 +40,6 @@ func TestThreadUsageIgnoresMalformedAuxiliaryIdentity(t *testing.T) {
 						"usage": map[string]any{"input_tokens": 12, "input_tokens_details": map[string]any{"cached_tokens": 5}, "output_tokens": 7, "output_tokens_details": map[string]any{"reasoning_tokens": 3}},
 					})
 					response := serverHTTPResponse(string(body))
-					if requestKind == "turn" {
-						response = finishTestResponse(t, response)
-					}
 					if requestKind == "compaction" {
 						event := mustTestJSON(t, map[string]any{"type": "response.completed", "response": json.RawMessage(body)})
 						response = serverHTTPResponse("event: response.completed\ndata: " + string(event) + "\n\n")

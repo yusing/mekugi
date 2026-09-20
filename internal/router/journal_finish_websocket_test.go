@@ -97,11 +97,8 @@ func TestJournalFinishWebSocketDoesNotContinueOrFinishLaterTurn(t *testing.T) {
 							return
 						}
 						var item map[string]any
-						if i <= 2 {
-							args := `{"op":"finish"}`
-							if i == 0 {
-								args = `{"op":"finish","journal":[{"op":"add","text":"Done"}]}`
-							}
+						if i < 2 {
+							args := `{"op":"finish","journal":[{"op":"add","text":"Done"}]}`
 							if i == 1 {
 								args = `{"op":"list"}`
 							}

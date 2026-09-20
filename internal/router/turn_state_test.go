@@ -43,9 +43,6 @@ func TestTurnStateRoundTrip(t *testing.T) {
 					}
 					w.Header().Set("x-codex-turn-state", token)
 					payload := `{"id":"response-test","status":"completed","output":[]}`
-					if mode != "passthrough" {
-						payload = string(mustTestJSON(t, map[string]any{"id": "response-test", "status": "completed", "output": []any{journalFinishCall(`{"op":"finish"}`)}}))
-					}
 					if stream {
 						w.Header().Set("Content-Type", "text/event-stream")
 						_, _ = io.WriteString(w, "data: {\"type\":\"response.completed\",\"response\":"+payload+"}\n\n")

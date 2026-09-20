@@ -12,13 +12,13 @@ func TestSubagentShellExcerptsJSONAndSSE(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
-			root, _ := prepareCommentaryActivityTest(t, proxy, "root", "r", "", "/root", nil)
+			root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
 			command := "go test ./internal/router\nprintf done"
 			input := []any{
 				map[string]any{"type": "function_call", "call_id": "run", "name": "exec_command", "arguments": string(mustMarshalJSON(map[string]any{"cmd": command}))},
 				map[string]any{"type": "function_call_output", "call_id": "run", "output": "Chunk ID: abc\nWall time: 1 seconds\nProcess running with session ID 26369\nFinal output:\n"},
 			}
-			child, _ := prepareCommentaryActivityTest(t, proxy, "child", "c", "r", "/root/worker", input)
+			child, _ := prepareActivityTest(t, proxy, "child", "c", "r", "/root/worker", input)
 			calls := []map[string]any{
 				{"type": "custom_tool_call", "id": "poll", "call_id": "poll", "name": "exec", "input": `text(await tools.write_stdin({session_id:26369,chars:""}));`},
 				{"type": "custom_tool_call", "id": "batch-poll", "call_id": "batch-poll", "name": "exec", "input": `text(await tools.write_stdin({session_id:26369,chars:""})); text(await tools.clock__curr_time({}));`},
