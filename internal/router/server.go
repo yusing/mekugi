@@ -493,6 +493,7 @@ type requestFinalization struct {
 	sessionID             string
 	failurePhase          requestFailurePhase
 	upstreamStatusCode    int
+	providerFailure       error
 	diagnosticReference   string
 	diagnosticCode        string
 	upstreamTerminalState responseTerminalState

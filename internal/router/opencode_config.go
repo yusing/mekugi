@@ -58,9 +58,9 @@ func loadMekugiConfig() (mekugiConfig, error) {
 			return mekugiConfig{}, errors.New("invalid model in Mekugi service_tiers")
 		}
 		switch tier {
-		case "priority":
-			config.ServiceTiers[model] = "fast"
-		case "fast", "default", "auto", "flex":
+		case "fast":
+			config.ServiceTiers[model] = "priority"
+		case "priority", "default", "auto", "flex":
 		default:
 			return mekugiConfig{}, errors.New("invalid service tier in Mekugi config.toml")
 		}

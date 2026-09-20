@@ -107,8 +107,12 @@ tool call bodies, or authentication headers are exported. Router diagnostics rec
 and parsed-request outcome/phase/status, plus a safe diagnostic code and the notice's diagnostic
 reference for failures. They also record versioned, allowlisted feature observations as specified
 below, without retaining feature payloads. Known provider error codes are retained through a fixed allowlist; unknown codes,
-messages, and error payloads are not exported. Forwarding failures classify known wrapped transport errors without
-exporting addresses, URLs, WebSocket close reasons, or arbitrary error text. Debug files remain
+messages, and error payloads are not exported to sanitized diagnostics. Caller-facing
+failure notices include the actual provider error for terminal `error` and `response.failed`
+events and failed non-stream responses, including provider status when available. These
+details use the same credential redaction, control-character cleanup, and length bound as
+provider HTTP errors; different details remain distinct notices.
+Forwarding failures classify known wrapped transport errors without exporting addresses, URLs, WebSocket close reasons, or arbitrary error text. Debug files remain
 separate from sanitized metrics/capture. Initialization failure prevents launch; subsequent
 debug write failures are surfaced on exit without changing request execution.
 

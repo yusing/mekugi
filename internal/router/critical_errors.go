@@ -18,8 +18,8 @@ import (
 	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
-// CriticalErrors retains only bounded, actionable session notices, never raw
-// request data or an operational event history. It outlives router shutdown so
+// CriticalErrors retains bounded, actionable session notices, including sanitized
+// provider error details, but no request snapshots or operational event history. It outlives router shutdown so
 // the launcher can report notices that could not reach Codex.
 type CriticalErrors struct {
 	mu             sync.Mutex
@@ -36,17 +36,23 @@ type criticalNotice struct {
 
 func NewCriticalErrors() *CriticalErrors { return &CriticalErrors{diagnosticSalt: rand.Text()} }
 
-// criticalDiagnosticError carries producer-owned text that is safe to show to
-// the user. Error retains the original cause for the request path; critical
-// notices use only summary and code, never the wrapped error text.
+// criticalDiagnosticError separates producer-owned diagnostic summaries from
+// sanitized caller-facing provider details. Arbitrary wrapped error text is not
+// copied into notices or sanitized diagnostics.
 type criticalDiagnosticError struct {
-	err      error
-	code     string
-	summary  string
-	distinct bool
+	err          error
+	code         string
+	summary      string
+	callerDetail string
+	distinct     bool
 }
 
-func (e *criticalDiagnosticError) Error() string { return e.err.Error() }
+func (e *criticalDiagnosticError) Error() string {
+	if e.callerDetail != "" {
+		return e.callerDetail
+	}
+	return e.err.Error()
+}
 func (e *criticalDiagnosticError) Unwrap() error { return e.err }
 
 func criticalDiagnostic(err error, code, summary string, distinct bool) error {
@@ -128,6 +134,9 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 		f.observation.outcome == requestOutcomeCanceledBeforeResponse || f.observation.outcome == requestOutcomeCanceledAfterResponse {
 		return
 	}
+	if err == nil && f.providerFailure != nil {
+		err = f.providerFailure
+	}
 	f.diagnosticReference = c.diagnosticReference(f, err)
 	f.diagnosticCode = "unclassified"
 	if diagnostic, ok := errors.AsType[*criticalDiagnosticError](err); ok {
@@ -138,7 +147,9 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 	}
 	category := string(f.failurePhase)
 	message := "Mekugi could not complete the request. Retry the turn; if it persists, restart the session."
-	if compatibility, ok := errors.AsType[*requestCompatibilityError](err); ok {
+	if diagnostic, ok := errors.AsType[*criticalDiagnosticError](err); ok && diagnostic.callerDetail != "" {
+		category, message = diagnostic.code+":"+f.diagnosticReference, diagnostic.callerDetail
+	} else if compatibility, ok := errors.AsType[*requestCompatibilityError](err); ok {
 		category, message = compatibility.code, compatibility.Error()
 	} else if rejection, ok := errors.AsType[*providerHTTPError](err); ok {
 		category, message = "provider_http_error:"+f.diagnosticReference, rejection.Error()

@@ -147,6 +147,9 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 		model, _ := tr.body["model"].(string)
 		price = new(service.snapshot.Models[service.prefix][model].Cost)
 	}
+	tr.providerFailureDetail = func(body []byte) string {
+		return newProviderHTTPError(label, 0, body, credentials.headers, headers).Error()
+	}
 	if !tr.stream {
 		result, err := tr.readProviderStream(upstream, func(map[string]any) error { return nil })
 		if err != nil {

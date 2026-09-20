@@ -155,7 +155,7 @@ func normalizeAnthropicStream(reader io.Reader, send func(grokChunk) error) erro
 			return false, nil
 		}
 		if event.Type == "error" {
-			return false, openCodeStreamError("OpenCode Messages reported a provider error")
+			return false, send(grokChunk{Error: data})
 		}
 		if event.Type == "message_start" {
 			if started {
@@ -398,7 +398,7 @@ func normalizeResponsesStream(reader io.Reader, send func(grokChunk) error) erro
 		case "response.output_item.done":
 			return false, consumeItem(event.OutputIndex, event.Item)
 		case "response.failed", "error":
-			return false, openCodeStreamError("OpenCode Responses reported a provider error")
+			return false, send(grokChunk{Error: data})
 		case "response.completed", "response.incomplete":
 			for index, item := range event.Response.Output {
 				if err := consumeItem(index, item); err != nil {

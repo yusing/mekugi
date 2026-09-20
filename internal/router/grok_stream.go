@@ -73,7 +73,10 @@ func (tr *grokTranslation) consumeProviderStream(source func(func(grokChunk) err
 	if tr.openCode != nil {
 		defer func() {
 			if diagnostic, ok := errors.AsType[*criticalDiagnosticError](streamErr); ok {
-				streamErr = staticCriticalDiagnostic(strings.Replace(diagnostic.code, "grok_", "opencode_", 1), strings.ReplaceAll(diagnostic.summary, "Grok", "OpenCode"))
+				copy := *diagnostic
+				copy.code = strings.Replace(diagnostic.code, "grok_", "opencode_", 1)
+				copy.summary = strings.ReplaceAll(diagnostic.summary, "Grok", "OpenCode")
+				streamErr = &copy
 			}
 		}()
 	}
@@ -122,8 +125,8 @@ func (tr *grokTranslation) consumeProviderStream(source func(func(grokChunk) err
 		return nil, err
 	}
 	// Report producer failures as protocol failures, not an unexplained EOF.
-	// Only producer-owned summaries may cross this boundary; emit/write errors
-	// remain transport errors and must not trigger another write.
+	// Provider details are sanitized at the authenticated boundary; protocol
+	// failures retain static summaries. Write errors must not trigger another write.
 	defer func() {
 		diagnostic, ok := errors.AsType[*criticalDiagnosticError](streamErr)
 		if !ok || writeFailed {
@@ -135,6 +138,9 @@ func (tr *grokTranslation) consumeProviderStream(source func(func(grokChunk) err
 			code = strings.Replace(code, "grok_", "opencode_", 1)
 			summary = strings.ReplaceAll(summary, "Grok", "OpenCode")
 		}
+		if diagnostic.callerDetail != "" {
+			summary = diagnostic.callerDetail
+		}
 		failed["error"] = map[string]string{"code": code, "message": summary}
 		if err := emit(map[string]any{"type": responseevents.Failed, "response": failed}); err != nil {
 			streamErr = errors.Join(streamErr, err)
@@ -142,7 +148,17 @@ func (tr *grokTranslation) consumeProviderStream(source func(func(grokChunk) err
 	}()
 	consume := func(chunk grokChunk) error {
 		if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
-			return staticCriticalDiagnostic("grok_stream_provider_error", "Grok reported a streaming error")
+			var detail string
+			if tr.providerFailureDetail != nil {
+				detail = tr.providerFailureDetail(chunk.Error)
+			} else {
+				detail = newProviderHTTPError("Grok", 0, chunk.Error).Error()
+			}
+			return &criticalDiagnosticError{
+				err:  errors.New("provider reported a streaming error"),
+				code: "grok_stream_provider_error", summary: "Grok reported a streaming error",
+				callerDetail: detail, distinct: true,
+			}
 		}
 		if tr.openCode != nil && tr.format != "chat" && len(chunk.RetainedReasoning) > 0 {
 			var item map[string]any

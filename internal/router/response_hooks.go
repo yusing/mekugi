@@ -28,6 +28,7 @@ type responseOutputObserver interface {
 // responseHooks observes the provider boundary before rewriting. It never emits
 // payloads or owns a transformer, transport, subscription, or background task.
 type responseHooks struct {
+	onProviderFailure func([]byte, bool)
 	streamDiagnostics *streamDiagnostics
 	onUsage           func(tokenCounts)
 	output            responseOutputObserver
@@ -51,6 +52,9 @@ func (h *responseHooks) observe(payload []byte, stream bool) error {
 	}
 	if stream {
 		h.streamDiagnostics.observe(payload)
+	}
+	if h.onProviderFailure != nil && responses.ObserveTerminal(payload, stream) == responses.TerminalFailed {
+		h.onProviderFailure(payload, stream)
 	}
 	if h.onUsage != nil {
 		if usage, ok := usageFromResponsePayload(payload, stream); ok {

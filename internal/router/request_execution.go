@@ -163,6 +163,9 @@ func (a *requestAttempt) prepare() error {
 	if err := a.startCtx.Err(); err != nil {
 		return fmt.Errorf("prepare request: %w", withRequestStartCause(a.startCtx, err))
 	}
+	a.hooks.onProviderFailure = func(payload []byte, stream bool) {
+		a.finalization.providerFailure = terminalProviderError(payload, stream, a.headers)
+	}
 	a.metadata, a.metadataValid = decodeCodexTurnMetadata(a.headers)
 	if a.metadataValid {
 		capturer.ObserveRequestKind(a.startCtx, string(a.metadata.RequestKind))
@@ -202,8 +205,8 @@ func (a *requestAttempt) prepare() error {
 	if tier := a.executor.serviceTiers[a.request.model()]; tier != "" {
 		a.request.fields["service_tier"] = mustMarshalJSON(tier)
 	}
-	if jsonString(a.request.fields, "service_tier") == "priority" {
-		a.request.fields["service_tier"] = mustMarshalJSON("fast")
+	if jsonString(a.request.fields, "service_tier") == "fast" {
+		a.request.fields["service_tier"] = mustMarshalJSON("priority")
 	}
 	if a.handoff != nil {
 		a.hooks.output = &a.handoff.observation

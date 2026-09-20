@@ -30,7 +30,7 @@ func TestServiceTierConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ value, want string }{
-		{"fast", "fast"}, {"priority", "fast"}, {"default", "default"},
+		{"fast", "priority"}, {"priority", "priority"}, {"default", "default"},
 		{"auto", "auto"}, {"flex", "flex"}, {"", ""}, {"invalid", ""},
 	} {
 		t.Run(tc.value, func(t *testing.T) {
@@ -127,8 +127,8 @@ func TestServiceTierOverrideAcrossTransports(t *testing.T) {
 			}
 			select {
 			case tier := <-received:
-				if tier != `"fast"` {
-					t.Fatalf("upstream tier=%s, want fast", tier)
+				if tier != `"priority"` {
+					t.Fatalf("upstream tier=%s, want priority", tier)
 				}
 			case <-ctx.Done():
 				t.Fatal(ctx.Err())
@@ -160,12 +160,12 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 			}
 			want := "flex"
 			if mentorEnabled {
-				want = "fast"
+				want = "priority"
 			}
 			if got := jsonString(forwarded.fields, "service_tier"); got != want {
 				t.Fatalf("tier=%s want=%s", got, want)
 			}
-			if got := subagentStartCommentary(&forwarded, ""); !strings.Contains(got, "Service tier: `"+want+"`") {
+			if got := subagentStartCommentary(&forwarded, ""); !strings.Contains(got, "Service tier: `"+strings.ReplaceAll(want, "priority", "fast")+"`") {
 				t.Fatalf("commentary=%s", got)
 			}
 		})
@@ -256,7 +256,7 @@ func TestServiceTierJournalHandoffAndRootNotice(t *testing.T) {
 	if len(provider.forwarded) != 2 {
 		t.Fatalf("forwarded=%d", len(provider.forwarded))
 	}
-	for index, want := range []string{"fast", "flex"} {
+	for index, want := range []string{"priority", "flex"} {
 		forwarded, err := parseResponsesRequest(provider.forwarded[index])
 		if err != nil {
 			t.Fatal(err)
@@ -273,4 +273,34 @@ func TestServiceTierJournalHandoffAndRootNotice(t *testing.T) {
 		}
 	}
 	t.Fatalf("root did not receive effective start tier: %s", mustTestJSON(t, notices))
+}
+
+func TestServiceTierRequestAliases(t *testing.T) {
+	for _, tier := range []string{"fast", "priority", "default", "auto", "flex", ""} {
+		t.Run(tier, func(t *testing.T) {
+			request := serverRequest(t, func(fields map[string]any) {
+				if tier != "" {
+					fields["service_tier"] = tier
+				} else {
+					delete(fields, "service_tier")
+				}
+			})
+			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
+			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}}
+			if err := executor.execute(t.Context(), t.Context(), request, http.Header{}, "alias"); err != nil {
+				t.Fatal(err)
+			}
+			forwarded, err := parseResponsesRequest(provider.forwarded[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := tier
+			if tier == "fast" {
+				want = "priority"
+			}
+			if got := jsonString(forwarded.fields, "service_tier"); got != want {
+				t.Fatalf("wire tier=%q want=%q", got, want)
+			}
+		})
+	}
 }

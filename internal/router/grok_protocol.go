@@ -14,11 +14,12 @@ const grokModel = "grok:grok-4.6"
 
 type grokTool struct{ name, namespace, kind string }
 type grokTranslation struct {
-	format   string
-	openCode *openCodeService
-	body     map[string]any
-	tools    map[string]grokTool
-	stream   bool
+	providerFailureDetail func([]byte) string
+	format                string
+	openCode              *openCodeService
+	body                  map[string]any
+	tools                 map[string]grokTool
+	stream                bool
 }
 
 func grokToolName(namespace, name string) string {

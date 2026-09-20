@@ -123,8 +123,8 @@ func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
 						t.Fatalf("report=%s", output.String())
 					}
 					requested := tc.requested
-					if requested == "priority" {
-						requested = "fast"
+					if requested == "fast" {
+						requested = "priority"
 					}
 					var forwarded map[string]json.RawMessage
 					if json.Unmarshal(provider.forwarded[0], &forwarded) != nil || jsonString(forwarded, "service_tier") != requested {

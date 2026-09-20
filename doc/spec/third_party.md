@@ -60,6 +60,11 @@ redacts credentials used on the request. Sanitized diagnostics and metrics retai
 classification, never credentials, prompts, or provider error text. The ordinary Codex
 authentication boundary still applies to incoming requests.
 
+Provider error events in Chat, Responses, and Messages streams preserve their actual
+error details in caller-facing terminal events and failure notices, including when a
+non-stream request consumes a provider stream. The same credential redaction and display
+bounds apply; sanitized diagnostics retain only producer-owned classifications.
+
 Adapters preserve native tool identities and validate complete tool arguments before exposing an
 executable call. Unsupported or encrypted history fails locally before a provider request and
 directs the caller to a compatible fresh context. Provider adapters preserve cancellation and do

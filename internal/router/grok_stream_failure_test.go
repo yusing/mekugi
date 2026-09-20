@@ -57,11 +57,14 @@ func TestGrokStreamFailureTerminal(t *testing.T) {
 				t.Fatalf("unclassified request failure: %s", finalization.diagnosticCode)
 			}
 			pending := strings.Join(notices.Pending(), "\n")
-			if !strings.Contains(pending, diagnostic.summary) || strings.Contains(pending, "not safe for display") ||
-				strings.Contains(pending, "private-provider-content") {
+			want := diagnostic.summary
+			if test.name == "provider error" {
+				want = "private-provider-content"
+			}
+			if !strings.Contains(pending, want) || strings.Contains(pending, "not safe for display") {
 				t.Fatalf("invalid notice: %s", pending)
 			}
-			if bytes.Contains(mustMarshalJSON(events), []byte("private-provider-content")) {
+			if test.name != "provider error" && bytes.Contains(mustMarshalJSON(events), []byte("private-provider-content")) {
 				t.Fatal("provider content leaked into failure events")
 			}
 		})
@@ -110,7 +113,7 @@ func TestGrokClientDeliversFailureBeforeReadError(t *testing.T) {
 	}
 	if !bytes.Contains(body, []byte("event: response.failed\n")) ||
 		bytes.Contains(body, []byte("response.completed")) ||
-		bytes.Contains(body, []byte("private-provider-content")) {
+		!bytes.Contains(body, []byte("private-provider-content")) {
 		t.Fatalf("invalid failure stream: %s", body)
 	}
 }

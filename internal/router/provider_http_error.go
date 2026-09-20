@@ -17,15 +17,24 @@ type providerHTTPError struct {
 }
 
 func (e *providerHTTPError) Error() string {
+	if e.status == 0 {
+		return e.label + ": " + e.detail
+	}
 	return fmt.Sprintf("%s returned HTTP %d: %s", e.label, e.status, e.detail)
 }
 
 func newProviderHTTPError(label string, status int, body []byte, headers ...http.Header) error {
 	detail := strings.TrimSpace(string(body))
 	var envelope struct {
-		Error jsontext.Value `json:"error"`
+		Error    jsontext.Value `json:"error"`
+		Response jsontext.Value `json:"response"`
 	}
 	if json.Unmarshal(body, &envelope) == nil {
+		if len(envelope.Response) != 0 && string(envelope.Response) != "null" {
+			body = envelope.Response
+			envelope.Error = nil
+			_ = json.Unmarshal(body, &envelope)
+		}
 		value := body
 		if len(envelope.Error) != 0 && string(envelope.Error) != "null" {
 			value = envelope.Error
@@ -43,7 +52,7 @@ func newProviderHTTPError(label string, status int, body []byte, headers ...http
 			if json.Unmarshal(value, &fields) == nil && fields.Message != "" {
 				detail = fields.Message
 				for _, kind := range []string{fields.Name, fields.Type, fields.Code} {
-					if kind != "" {
+					if kind != "" && kind != "error" {
 						detail = kind + ": " + detail
 						break
 					}
@@ -81,4 +90,38 @@ func newProviderHTTPError(label string, status int, body []byte, headers ...http
 		detail = string(runes[:2048]) + " [truncated]"
 	}
 	return &providerHTTPError{status: status, label: label, detail: detail}
+}
+
+// terminalProviderError extracts caller-facing details without exporting them
+// through sanitized stream diagnostics or changing delivery of the original event.
+func terminalProviderError(payload []byte, stream bool, headers http.Header) error {
+	var envelope struct {
+		Status   int            `json:"status"`
+		Response jsontext.Value `json:"response"`
+	}
+	// A non-stream response uses a string status, not an HTTP status.
+	body := payload
+	status := 0
+	if stream {
+		if json.Unmarshal(payload, &envelope) != nil {
+			return nil
+		}
+		if envelope.Status >= 400 && envelope.Status <= 599 {
+			status = envelope.Status
+		}
+		if len(envelope.Response) != 0 && string(envelope.Response) != "null" {
+			body = envelope.Response
+		}
+	}
+	var detail struct {
+		Error   jsontext.Value `json:"error"`
+		Message string         `json:"message"`
+	}
+	if json.Unmarshal(body, &detail) != nil {
+		return nil
+	}
+	if (len(detail.Error) == 0 || string(detail.Error) == "null") && detail.Message == "" {
+		return nil
+	}
+	return newProviderHTTPError("Upstream response failed", status, body, headers)
 }

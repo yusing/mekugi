@@ -30,7 +30,7 @@ native assignment addressed to that child. Inherited user requests, follow-up ta
 assignments are not spawn prompts. Opaque assignments remain opaque; no prompt is inferred.
 The whole notice remains subject to the auxiliary rendering budget. Omitted effort or tier is labelled "not specified", not
 inferred from the parent or role. Service tier reflects the configured per-model override;
-`priority` is forwarded and displayed as `fast`, without claiming the provider served that tier.
+`fast` is forwarded as `priority`; both aliases display as `fast`, without claiming the provider served that tier.
 The notice describes the child request, not successful provider inference. Stable child-thread
 identity deduplicates retries, later turns, and routing-session changes. Unknown or conflicting
 ancestry suppresses projection. Start notices use the existing bounded activity and replay

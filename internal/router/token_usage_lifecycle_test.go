@@ -338,8 +338,8 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 			return
 		}
 		wantTier := requestedTier
-		if wantTier == "priority" {
-			wantTier = "fast"
+		if wantTier == "fast" {
+			wantTier = "priority"
 		}
 		if jsonString(next, "model") != configured || jsonString(next, "previous_response_id") != "" || jsonString(next, "service_tier") != wantTier {
 			t.Errorf("next model=%s parent=%s tier=%s", jsonString(next, "model"), jsonString(next, "previous_response_id"), jsonString(next, "service_tier"))

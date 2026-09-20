@@ -478,8 +478,8 @@ at startup; Mekugi never rewrites this file or Codex's configuration.
 Service-tier overrides replace the request's `service_tier` after model selection
 (including Mentor Handoff), before forwarding upstream. Models not listed keep
 their requested tier. Accepted values are `auto`, `default`, `fast`, `priority`,
-and `flex`; `priority` is mapped to `fast` for forwarding and display, including
-when it comes from the request. The selected provider must support the tier.
+and `flex`; `fast` is mapped to `priority` for forwarding. Both aliases display as
+`fast`, including when the tier comes from the request. The selected provider must support the tier.
 Agent-start commentary shows the effective requested tier, not a guarantee of the
 tier the provider will serve.
 

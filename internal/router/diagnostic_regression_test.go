@@ -36,8 +36,8 @@ func TestProviderErrorEventIsFailedNotMissingTerminal(t *testing.T) {
 				t.Fatalf("provider event was not preserved: %s", output.String())
 			}
 			notices := issues.Pending()
-			if len(notices) != 1 || !strings.Contains(notices[0], "terminal state failed") ||
-				strings.Contains(notices[0], "without a completed") || strings.Contains(notices[0], "private") {
+			if len(notices) != 1 || !strings.Contains(notices[0], "private provider message") ||
+				strings.Contains(notices[0], "without a completed") {
 				t.Fatalf("wrong failure notice: %v", notices)
 			}
 		})
@@ -152,9 +152,14 @@ func TestResponsesWebSocketProviderErrorRecovery(t *testing.T) {
 	}
 	conn.CloseNow()
 	endpoint.Close()
-	for _, notice := range issues.Pending() {
-		if strings.Contains(notice, "invalid") || strings.Contains(notice, "without a completed") {
-			t.Fatalf("misclassified provider error: %s", notice)
+	issues.mu.Lock()
+	defer issues.mu.Unlock()
+	if len(issues.entries) != 1 || !strings.Contains(issues.entries[0].message, "HTTP 429: rate_limit_exceeded: private") {
+		t.Fatalf("lost actual WebSocket error: %v", issues.entries)
+	}
+	for _, notice := range issues.entries {
+		if strings.Contains(notice.message, "invalid") || strings.Contains(notice.message, "without a completed") {
+			t.Fatalf("misclassified provider error: %s", notice.message)
 		}
 	}
 }
