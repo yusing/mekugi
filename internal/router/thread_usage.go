@@ -151,14 +151,19 @@ func (t *mekugiResponseTransform) completionUsageReport() (tokenUsageReport, boo
 	}
 	report, observed := t.threadUsageCounts()
 	if !observed {
-		return report, false
+		report.Incomplete = true
 	}
 	rows := []agentTokenUsage{{agent: "/root", role: "main", report: report}}
+	report.rows = &rows
+	report.model = ""
+
 	if t.proxy != nil && t.journalAvailable {
 		journals := t.proxy.journals
 		release, err := journals.lockState(t.ctx)
 		if err != nil {
-			return tokenUsageReport{}, false
+			report.Incomplete = true
+			report.cost.known = false
+			return report, true
 		}
 		var children []threadJournal
 		read := func() error {
@@ -173,7 +178,9 @@ func (t *mekugiResponseTransform) completionUsageReport() (tokenUsageReport, boo
 		}
 		release()
 		if err != nil {
-			return tokenUsageReport{}, false
+			report.Incomplete = true
+			report.cost.known = false
+			return report, true
 		}
 		for _, child := range children {
 			counts, ok := t.usageTracker.totals.snapshot(child.Thread)
@@ -188,8 +195,6 @@ func (t *mekugiResponseTransform) completionUsageReport() (tokenUsageReport, boo
 			}
 		}
 	}
-	report.model = ""
-	report.rows = &rows
 	return report, true
 }
 

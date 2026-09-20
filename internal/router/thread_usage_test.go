@@ -224,3 +224,25 @@ func TestThreadUsageFastModelLabel(t *testing.T) {
 		t.Fatalf("mixed-tier labels = %q, ok=%v", report.model, ok)
 	}
 }
+
+func TestCompletionUsageMissingMainRetainsChildRows(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	root, _ := prepareActivityTest(t, proxy, "session", "root", "", "/root", nil)
+	child, _ := prepareActivityTest(t, proxy, "session", "child", "root", "/root/child", nil)
+	root.usageTracker.finish()
+	child.observeResponseUsage(tokenCounts{InputTokens: 20, UncachedInputTokens: 10, OutputTokens: 5})
+	report, ok := root.completionUsageReport()
+	if !ok || !report.Incomplete || report.cost.known || report.rows == nil || len(*report.rows) != 2 {
+		t.Fatalf("missing main suppressed or completed aggregate: %+v %v", report, ok)
+	}
+	rows := *report.rows
+	if !rows[0].report.Incomplete || rows[1].report.Incomplete || rows[1].report.InputTokens != 20 {
+		t.Fatalf("incorrect per-agent availability: %+v", rows)
+	}
+	text := formatTokenUsageReport(report)
+	if !strings.Contains(text, "| /root | main | n/a | n/a |") ||
+		!strings.Contains(text, "| /root/child | n/a | gpt-test | 20 (50.0%) |") ||
+		!strings.Contains(text, "Usage incomplete") {
+		t.Fatalf("incorrect report: %s", text)
+	}
+}

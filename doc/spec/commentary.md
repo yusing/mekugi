@@ -190,8 +190,9 @@ those messages from later provider-bound input while preserving the original col
 tool outputs, and inter-agent messages. A response already accompanied by its deterministic
 commentary is not projected again.
 
-A completed main response with eligible provider usage includes one token notice after its
-journal flush and before the terminal event. Child completion never emits a token table.
+A successful explicit main finish includes one token notice after its journal flush and before
+the terminal event, including when the journal is empty. Unavailable usage is reported as `n/a`
+with an incomplete-usage explanation rather than silently omitting the notice. Child completion never emits a token table.
 The `Tokens for this session` notice contains one wide Markdown table with one row per agent
 and a `Total` row. Columns are `Agent`, `Role`, `Model`, `Input (cache hit)`, `Cache write`,
 `Output`, `Reasoning`, `Input cost (cached + uncached)`, `Output cost`, and `Total cost`.
@@ -208,7 +209,8 @@ Eligibility and the child summary are defined by [REQ-JOURNAL-001](journal.md).
 JSON and streaming responses use the same cumulative provider-authoritative per-thread
 counts. Main combines only proven descendants in its selected workspace with its own row;
 unrelated threads and ordinary forks' source trees are excluded. Missing child usage or
-unavailable tree evidence must not produce an apparently complete aggregate.
+unavailable tree evidence must not produce an apparently complete aggregate. A missing main
+usage total likewise leaves its row and the aggregate unavailable while retaining known child rows.
 Intermediate responses contribute without notices. Thread accounting remains separate;
 compaction and routing-session changes do not reset totals. Repeated terminal observations
 within one request count once. Totals remain in memory until router shutdown without a
@@ -216,7 +218,7 @@ lifetime thread-count ceiling. Arithmetic overflow makes the affected total unav
 An accepted or transport-interrupted request without usable terminal usage leaves a permanent
 gap in that thread's router-lifetime totals. Missing or null input, cached-input, output, or
 reasoning counts likewise make current and later counts for that thread unavailable until router shutdown;
-they MUST NOT appear as known zeros or recover into apparently complete totals. Definite HTTP
+they MUST appear as unavailable values, not known zeros, and MUST NOT recover into apparently complete totals. Definite HTTP
 rejections, requests rejected before forwarding, and non-generating WebSocket prewarm do not
 create usage gaps. Failed and incomplete terminal responses with complete usage still contribute
 to later totals without producing their own notices.

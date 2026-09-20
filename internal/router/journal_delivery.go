@@ -373,19 +373,16 @@ func (t *mekugiResponseTransform) journalTerminalMessages(response []byte) ([]ma
 	var messages []map[string]json.RawMessage
 	var counts tokenUsageReport
 	observed := false
-	substantive := t.finalAnswer.substantive || t.journalNewCount+t.journalFlushedCount != 0
-	for _, item := range t.journalProviderOutput {
-		substantive = substantive || isSubstantiveAnswer(item)
-	}
-	if prior, ok := t.ctx.Value(journalContinuationKey{}).(journalContinuation); ok {
-		for _, item := range prior.clientOutput {
-			substantive = substantive || isSubstantiveAnswer(item)
+	// Explicit finish is completion even with an empty journal. Missing current
+	// usage must invalidate prior totals before rendering, not hide the report.
+	if !t.subagentTurn {
+		if !t.usageObserved && !t.shellFinishRequested {
+			t.usageTracker.finish()
 		}
-	}
-	if substantive && (t.usageObserved || t.shellFinishRequested) {
 		counts, observed = t.completionUsageReport()
 	}
-	if usage := formatTokenUsageCommentary(response, counts, observed && (t.usageObserved || t.shellFinishRequested), "completed", substantive); usage != nil {
+	if usage := formatTokenUsageCommentary(response, counts, observed, "completed", true); usage != nil {
+
 		retained := t.retainCommentary(usage)
 		if len(retained) != 0 {
 			t.journalUsageID = jsonString(usage, "id")

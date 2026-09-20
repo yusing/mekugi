@@ -10,14 +10,13 @@ import (
 
 func TestJournalRouterToolContinuesWithoutClientDispatch(t *testing.T) {
 	for _, usage := range []struct {
-		name       string
-		raw        json.RawMessage
-		wantTokens bool
+		name string
+		raw  json.RawMessage
 	}{
-		{"missing", nil, false},
-		{"null", json.RawMessage(`null`), false},
-		{"malformed", json.RawMessage(`{"input_tokens":"invalid"}`), false},
-		{"complete", json.RawMessage(`{"input_tokens":20,"output_tokens":5,"input_tokens_details":{"cached_tokens":12},"output_tokens_details":{"reasoning_tokens":3}}`), true},
+		{"missing", nil},
+		{"null", json.RawMessage(`null`)},
+		{"malformed", json.RawMessage(`{"input_tokens":"invalid"}`)},
+		{"complete", json.RawMessage(`{"input_tokens":20,"output_tokens":5,"input_tokens_details":{"cached_tokens":12},"output_tokens_details":{"reasoning_tokens":3}}`)},
 	} {
 		for _, stream := range []bool{false, true} {
 			t.Run(usage.name+"/"+map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
@@ -77,9 +76,13 @@ func TestJournalRouterToolContinuesWithoutClientDispatch(t *testing.T) {
 				if !strings.Contains(output.String(), "Verified the journal path") {
 					t.Fatalf("missing terminal record: %s", output.String())
 				}
-				if got := strings.Contains(output.String(), "Tokens for this session"); got != usage.wantTokens {
-					t.Fatalf("token report present = %v, want %v: %s", got, usage.wantTokens, output.String())
+				if !strings.Contains(output.String(), "Tokens for this session") {
+					t.Fatalf("missing token report: %s", output.String())
 				}
+				if strings.Contains(output.String(), "Usage incomplete") != (usage.name != "complete") {
+					t.Fatalf("incorrect usage availability: %s", output.String())
+				}
+
 				items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
 				if err != nil || len(items) != 1 || !items[0].Reported {
 					t.Fatalf("delivery acknowledgement: %+v %v", items, err)

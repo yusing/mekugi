@@ -161,7 +161,7 @@ func TestTokenUsageRejectsIncompletePricing(t *testing.T) {
 	}
 }
 
-func TestTokenUsageGapSuppressesLaterReports(t *testing.T) {
+func TestTokenUsageGapReportsUnavailableTotals(t *testing.T) {
 	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		for _, gap := range []string{"missing", "null", "partial", "invalid", "interrupted", "transport-error", "http-rejection", "failed-with-usage", "incomplete-with-usage", "compaction"} {
@@ -240,7 +240,7 @@ func TestTokenUsageGapSuppressesLaterReports(t *testing.T) {
 					}
 					if step == 2 {
 						wantReport := gap == "http-rejection" || gap == "failed-with-usage" || gap == "incomplete-with-usage"
-						if strings.Contains(out.String(), "Tokens for this session") != wantReport {
+						if !strings.Contains(out.String(), "Tokens for this session") || strings.Contains(out.String(), "Usage incomplete") == wantReport {
 							t.Fatalf("unexpected final report: %s", out.String())
 						}
 						got, valid := proxy.usage.snapshot("thread-1")

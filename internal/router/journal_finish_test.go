@@ -447,3 +447,83 @@ func TestJournalPlainFinalContinuesPreservingProviderOutput(t *testing.T) {
 		})
 	}
 }
+
+func TestJournalEmptyFinishReportsUsage(t *testing.T) {
+	for _, scenario := range []string{"complete", "prior-gap", "missing-current"} {
+		for _, stream := range []bool{false, true} {
+			t.Run(scenario+"/"+map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
+
+				// A previous accepted request with missing usage permanently invalidates totals.
+				proxy := newManagedMekugiProxy(t)
+				if scenario == "prior-gap" {
+					proxy.usage.observation("thread-1", "", "gpt-6-astra", "").finish()
+				}
+				call := journalFinishCall(`{"op":"finish"}`)
+				body := map[string]any{
+					"id": "empty-finish", "status": "completed", "output": []any{call},
+					"usage": map[string]any{
+						"input_tokens": 20, "input_tokens_details": map[string]any{"cached_tokens": 12},
+						"output_tokens": 5, "output_tokens_details": map[string]any{"reasoning_tokens": 3},
+					},
+				}
+				if scenario == "missing-current" {
+					delete(body, "usage")
+					proxy.usage.observation("thread-1", "", "gpt-6-astra", "").observe(tokenCounts{InputTokens: 100})
+				}
+				response := serverHTTPResponse(string(mustTestJSON(t, body)))
+				if stream {
+					response = serverHTTPResponse(finalAnswerTestWire([][]byte{
+						mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": call}),
+						mustTestJSON(t, map[string]any{"type": "response.completed", "response": body}),
+					}))
+					response.Header.Set("Content-Type", "text/event-stream")
+				}
+				provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
+				request := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
+				var output bytes.Buffer
+				if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "session", provider, &output, nil, proxy, nil, nil); err != nil {
+					t.Fatal(err)
+				}
+				if len(provider.forwarded) != 1 {
+					t.Fatalf("finish issued %d provider requests; want 1", len(provider.forwarded))
+				}
+				if strings.Contains(output.String(), "Journal flush") {
+					t.Fatal("empty journal emitted a flush")
+				}
+				notices := 0
+				for _, item := range journalFinishClientOutput(t, stream, output.Bytes()) {
+					if strings.Contains(commentaryMessageText(item), "Tokens for this session") {
+						notices++
+						if scenario == "complete" && !strings.Contains(commentaryMessageText(item), "20 (60.0%)") {
+							t.Fatalf("incorrect usage: %s", commentaryMessageText(item))
+						}
+					}
+				}
+				if scenario != "complete" && !strings.Contains(output.String(), "Usage incomplete") {
+					t.Fatalf("usage gap was not disclosed: %s", output.Bytes())
+				}
+				if notices != 1 {
+					t.Fatalf("usage notices = %d, want 1: %s", notices, output.Bytes())
+				}
+				if stream {
+					delivered := 0
+					for _, payload := range finalAnswerTestPayloads(output.String()) {
+						var event struct {
+							Type string                     `json:"type"`
+							Item map[string]json.RawMessage `json:"item"`
+						}
+						if err := json.Unmarshal(payload, &event); err != nil {
+							t.Fatal(err)
+						}
+						if event.Type == "response.output_item.done" && strings.Contains(commentaryMessageText(event.Item), "Tokens for this session") {
+							delivered++
+						}
+						if event.Type == "response.completed" && delivered != 1 {
+							t.Fatalf("streamed usage notices before completion = %d, want 1", delivered)
+						}
+					}
+				}
+			})
+		}
+	}
+}
