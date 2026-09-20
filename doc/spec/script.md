@@ -133,10 +133,11 @@ The model sends edits through `functions.shell` as `hpatch PATH SCRIPT`, or uses
 `hpatch PATH` to supply the script on stdin. Multiple `PATH SCRIPT` pairs in one call
 form one atomic multi-file edit. Paths are ordinary shell arguments, so shell quoting
 handles spaces without adding filename syntax to HPATCH. `--` ends option parsing for
-literal flag-like paths. The command must be the only command in its Bash/POSIX program;
-other programs may share the shell call using `#!bash` separators. The existing shell owns
-inline environment assignments, argument expansion, quoting, heredoc expansion,
-substitutions, stdin, and redirection.
+literal flag-like paths. `hpatch` may appear anywhere an ordinary command is valid, including
+conditionals, lists, pipelines, and subshells. A column-zero `#!bash` starts a separate sequential
+Bash program with isolated shell state; it is not required around `hpatch`. The existing shell owns
+inline environment assignments, argument expansion, quoting, heredoc expansion, substitutions,
+stdin, redirection, and exit-status flow.
 
 The HPATCH parser receives the resulting bytes and accepts only edit commands.
 There are no `shell` or `resume` commands inside an edit script. The host-authorized
@@ -153,8 +154,9 @@ Acceptance:
    Multiple path/script pairs validate together before any edit is applied.
 2. Unquoted shell heredocs expand substitutions normally; quoted heredocs preserve them.
 3. Input and output redirection use the shell's ordinary streams.
-4. Composed `hpatch` commands reject within a program; an hpatch-only program may use
-   substitutions and inline environment assignments (`ENV=VALUE ... hpatch`). Other programs
-   may run in the same shell call separated by `#!bash`; a separate tool call is not required.
+4. Composed `hpatch` commands retain normal shell control flow and stream semantics, including
+   conditionals, lists, pipelines, subshells, command substitutions, and background jobs.
+   Inline environment assignments (`ENV=VALUE ... hpatch`) remain supported. A `#!bash` separator
+   creates another batch program rather than changing `hpatch` semantics.
 5. Both native and Code Mode carriers run the same shell worker without a mixed-script runner.
 6. Replaying a tool result never executes the edit again.

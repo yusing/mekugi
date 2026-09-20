@@ -92,35 +92,42 @@ func TestShellHpatchSemantics(t *testing.T) {
 	}
 }
 
-func TestShellHpatchRejectsCompositionBeforeEffects(t *testing.T) {
+func TestShellHpatchSupportsComposition(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
-	for _, script := range []string{
-		`touch marker && HPATCH_ONE=one hpatch result.txt 'type "old" "new"'`,
-		`HPATCH_ONE=one hpatch result.txt 'type "old" "new"' | cat`,
-		`HPATCH_ONE=$(hpatch result.txt 'type "old" "new"') hpatch result.txt 'type "old" "new"'`,
-		`touch marker && hpatch result.txt 'type "old" "new"'`,
-		"touch marker\nhpatch result.txt 'type \"old\" \"new\"'",
-		`hpatch result.txt 'type "old" "new"' | cat`,
-		`(hpatch result.txt 'type "old" "new"')`,
-		`hpatch result.txt 'type "old" "new"' &`,
-	} {
-		t.Run(script, func(t *testing.T) {
-			directory := t.TempDir()
-			if err := os.WriteFile(filepath.Join(directory, "result.txt"), []byte("old\n"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			_, stderr, code := runShellWorkerTest(t, registry, "bash", nil, script, nil, newShellWorkerTestInvocation(directory))
-			if code != 2 || !strings.Contains(stderr, "standalone") {
-				t.Fatalf("code=%d stderr=%s", code, stderr)
-			}
-			if _, err := os.Stat(filepath.Join(directory, "marker")); !os.IsNotExist(err) {
-				t.Fatalf("marker exists: %v", err)
-			}
-			data, err := os.ReadFile(filepath.Join(directory, "result.txt"))
-			if err != nil || string(data) != "old\n" {
-				t.Fatalf("result changed: %q, %v", data, err)
-			}
-		})
+	tests := []struct {
+		name, script, want string
+		marker             bool
+	}{
+		{"conditional", `if true; then hpatch result.txt 'type "old" "conditional"'; fi`, "conditional\n", false},
+		{"and list", `touch marker && hpatch result.txt 'type "old" "and-list"'`, "and-list\n", true},
+		{"sequential list", "touch marker\nhpatch result.txt 'type \"old\" \"sequential\"'", "sequential\n", true},
+		{"pipeline", `hpatch result.txt 'type "old" "pipeline"' | cat`, "pipeline\n", false},
+		{"subshell", `(hpatch result.txt 'type "old" "subshell"')`, "subshell\n", false},
+		{"command substitution", `report=$(hpatch result.txt 'type "old" "substitution"'); test -n "$report"`, "substitution\n", false},
+		{"background", `hpatch result.txt 'type "old" "background"' & wait`, "background\n", false},
+		{"multiple edits", `hpatch result.txt 'type "old" "first"'; hpatch result.txt 'type "first" "second"'`, "second\n", false},
+	}
+	for _, interpreter := range []string{"bash", "sh"} {
+		for _, test := range tests {
+			t.Run(interpreter+"/"+test.name, func(t *testing.T) {
+				directory := t.TempDir()
+				if err := os.WriteFile(filepath.Join(directory, "result.txt"), []byte("old\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				_, stderr, code := runShellWorkerTest(t, registry, interpreter, nil, test.script, nil, newShellWorkerTestInvocation(directory))
+				if code != 0 {
+					t.Fatalf("code=%d stderr=%s", code, stderr)
+				}
+				data, err := os.ReadFile(filepath.Join(directory, "result.txt"))
+				if err != nil || string(data) != test.want {
+					t.Fatalf("result=%q, %v; want %q", data, err, test.want)
+				}
+				_, markerErr := os.Stat(filepath.Join(directory, "marker"))
+				if test.marker && markerErr != nil || !test.marker && !os.IsNotExist(markerErr) {
+					t.Fatalf("marker error=%v, want marker=%v", markerErr, test.marker)
+				}
+			})
+		}
 	}
 }
 
@@ -181,15 +188,21 @@ func TestShellHpatchRecoveryAndReview(t *testing.T) {
 	}
 }
 
-func TestShellHpatchCatProjectionKeepsCompositionGuard(t *testing.T) {
-	source := "cat > marker <<'DATA'\ncontent\nDATA\nhpatch result.txt 'type \"old\" \"new\"' \n"
+func TestShellHpatchAfterCatWrite(t *testing.T) {
+	source := "cat > marker <<'DATA'\ncontent\nDATA\nhpatch result.txt 'type \"old\" \"new\"'\n"
 	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "result.txt"), []byte("old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	_, stderr, code := runShellWorkerTest(t, sharedProxyTestRegistry(t), "bash", nil, source, nil, newShellWorkerTestInvocation(directory))
-	if code != 2 || !strings.Contains(stderr, "standalone") {
+	if code != 0 {
 		t.Fatalf("code=%d stderr=%s", code, stderr)
 	}
-	if _, err := os.Stat(filepath.Join(directory, "marker")); !os.IsNotExist(err) {
-		t.Fatalf("composed command ran: %v", err)
+	for name, want := range map[string]string{"marker": "content\n", "result.txt": "new\n"} {
+		got, err := os.ReadFile(filepath.Join(directory, name))
+		if err != nil || string(got) != want {
+			t.Fatalf("%s=%q, %v; want %q", name, got, err, want)
+		}
 	}
 }
 

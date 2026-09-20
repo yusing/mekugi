@@ -112,11 +112,12 @@ print("hello")
 Each program owns its selector and directives. Omitted params inherit the previous complete object;
 `{}` clears them, and interpreters never inherit.
 
-Each new column-zero `#!interpreter` line starts a program; use `#!bash` for another
-Bash program. Prefer these batches over separate shell calls for noninteractive programs.
-Batches continue after nonzero exits.
-Variables and `cd` do not carry over. Host errors stop the batch while preserving completed
-results and partial output. Use separate shell calls for interactive programs.
+Each new column-zero `#!interpreter` line splits the input into a separate sequential program;
+use `#!bash` to start another Bash program, not to continue the current shell. Split programs
+have isolated variables and working directories. Use a split batch when the interpreter, options,
+or desired shell state differs; keep ordinary dependent commands in one program. Batches continue
+after nonzero exits. Host errors stop the batch while preserving completed results and partial output.
+Use separate shell calls for interactive programs.
 
 ### Output and continuation
 
@@ -132,23 +133,10 @@ facilities for interactive input or termination.
 
 Run `hpatch PATH [SCRIPT]` through `functions.shell`; omit SCRIPT to read the edit from stdin.
 For atomic multi-file edits, supply `hpatch PATH SCRIPT [PATH SCRIPT ...]`.
-Keep `hpatch` (optionally prefixed with `ENV=VALUE` assignments) alone in its Bash/POSIX program, using `#!bash` separators to batch other programs in the same `functions.shell` call.
-
-```sh
-hpatch notes.txt <<'EDIT'
-type "draft" "ready"
-EDIT
-#!bash
-go test ./...
-```
-
-Arguments, stdin, quoting, heredoc expansion, command substitution, and redirection use
-normal shell semantics. Apply generated scripts with `hpatch notes.txt "$(python3 generator.py)"` or
-`hpatch notes.txt < prepared.hpatch`. Generators emit script bytes, not target-file writes. These edits
+Apply generated scripts with `hpatch notes.txt "$(python3 generator.py)"` or
+`hpatch notes.txt < prepared.hpatch`. Generators emit script bytes, not target-file writes. Edits
 retain change IDs, hchanges history, and completed live diffs; dynamic input has no speculative
-preview. Checks may run in a later `#!bash` program in the same call; batches continue after
-nonzero exits, so use a separate call when the next step depends on inspecting the edit result.
-
+preview.
 
 ### Files, targets, and values
 

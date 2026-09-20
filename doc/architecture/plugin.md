@@ -42,7 +42,7 @@ availability and display eligibility, then executes the resulting argv through i
 process owner. Output selection remains downstream, including `hrun`. Policy evaluation
 never executes, retries, or replays the target command.
 
-The standalone `hpatch` shell command receives expanded arguments or stdin in the
+The `hpatch` shell command receives expanded arguments or stdin in the
 existing executor. It calls the edit engine directly under Codex's shell execution
 authority. The router neither evaluates shell substitutions nor applies edits during
 translation. No mixed-script carrier, private control channel, or checkpoint runner

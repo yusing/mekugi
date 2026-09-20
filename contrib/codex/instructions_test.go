@@ -41,16 +41,14 @@ func TestInstructionsSelectModelWorkflowIndependentlyOfTransport(t *testing.T) {
 	}
 }
 
-func TestInstructionsTeachStandaloneShellEdits(t *testing.T) {
+func TestInstructionsTeachShellEdits(t *testing.T) {
 	for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol"} {
 		for _, compact := range []bool{false, true} {
 			got := instructionWords(InstructionsForModel(model, compact))
 			for _, required := range []string{
 				"`hpatch PATH [SCRIPT]` through `functions.shell`",
-				"alone in its Bash/POSIX program",
-				"using `#!bash` separators to batch other programs in the same `functions.shell` call",
-				"prefixed with `ENV=VALUE` assignments",
-				"normal shell semantics",
+				"`hpatch PATH SCRIPT [PATH SCRIPT ...]`",
+				"`hpatch notes.txt \"$(python3 generator.py)\"`",
 				"`hpatch --recover HANDLE [SCRIPT]`",
 			} {
 				if !strings.Contains(got, required) {
@@ -238,18 +236,19 @@ func TestInstructionsBatchReadyWorkWithoutHpatchIsolation(t *testing.T) {
 func TestInstructionsShellInterpreterBatches(t *testing.T) {
 	for _, model := range []string{"gpt-5.6-sol", "gpt-6-astra"} {
 		for _, compact := range []bool{false, true} {
-			got := InstructionsForModel(model, compact)
+			raw := InstructionsForModel(model, compact)
+			got := instructionWords(raw)
 			for _, required := range []string{
 				"echo hello\n#!python3\nprint(\"hello\")",
-				"Each new column-zero `#!interpreter` line starts a program",
-				"Prefer these batches over separate shell calls for noninteractive programs.",
-				"Batches continue after nonzero",
+				"Each new column-zero `#!interpreter` line splits the input into a separate sequential program",
+				"Use a split batch when the interpreter, options, or desired shell state differs",
+				"Batches continue after nonzero exits",
 			} {
-				if !strings.Contains(got, required) {
+				if !strings.Contains(got, instructionWords(required)) {
 					t.Errorf("model %q compact %v missing %q", model, compact, required)
 				}
 			}
-			if strings.Contains(got, "#!batch") {
+			if strings.Contains(raw, "#!batch") {
 				t.Errorf("model %q compact %v retains old batch syntax", model, compact)
 			}
 		}
@@ -272,9 +271,9 @@ func TestInstructionsOwnCompleteShellWorkflow(t *testing.T) {
 		"Write compound Bash/POSIX programs directly, using ordinary shell pipelines and redirections.",
 		"`#!params=<JSON object>`",
 		"use native session facilities for interactive input or termination",
-		"Each new column-zero `#!interpreter` line starts a program",
+		"Each new column-zero `#!interpreter` line splits the input into a separate sequential program",
 		"Omitted params inherit the previous complete object",
-		"Variables and `cd` do not carry over",
+		"Split programs have isolated variables and working directories",
 	} {
 		for _, model := range []string{"gpt-5.6-sol", "gpt-6-astra"} {
 			for _, compact := range []bool{false, true} {

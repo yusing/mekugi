@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const codexE2EPrompt = `Use functions.shell for all operations. For every file edit, run hpatch as a standalone shell command. Use other shell commands for inspection and verification.
+const codexE2EPrompt = `Use functions.shell for all operations. For every file edit, run hpatch through the shell. Use other shell commands for inspection and verification.
 
 Work through these requests in order:
 

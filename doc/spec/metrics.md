@@ -91,7 +91,7 @@ capturer, not by the router, engine, plugin, benchmark report, or dashboard. The
    provider-attempt gaps, durable-write errors, skipped requests, and dropped exchange detail.
 
 HPATCH carrier metrics describe explicit `hpatch`/`hpatch_recover` tool records in
-historical captures. Current standalone `hpatch` commands are emitted through `shell`
+historical captures. Current `hpatch` commands are emitted through `shell`
 and count in shell tool aggregates. Carrier counters do not measure the success or
 failure of those host-executed edits; retained edit receipts own that evidence.
 

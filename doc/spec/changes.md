@@ -219,12 +219,12 @@ Quitting the viewer restores terminal state without closing the pane or affectin
 ### Streaming previews
 
 Incoming shell input deltas, including WebSocket events, display before input completion.
-Literal standalone `hpatch` arguments and heredoc input show a provisional file diff through
+Literal top-level `hpatch` arguments and heredoc input show provisional file diffs through
 the engine's bounded in-memory preview, including unfinished edit values and heredocs.
-Literal standalone `cat >`, `cat >|`, and `cat >>` heredoc writes also show provisional
-file diffs, including new files, without performing the write. Batch previews follow
-the current program using its inherited shell parameters; script fallback omits earlier
-programs so their edit payloads do not reappear as shell source.
+Literal top-level `cat >`, `cat >|`, and `cat >>` heredoc writes use the same file display,
+including new files. Other top-level statements in the program do not turn recognized file
+writes back into shell source. Batch previews follow the current program using its inherited
+shell parameters; earlier programs and their edit payloads are omitted.
 Once a call is recognized as an edit, its representation stays an edit preview for
 that call. If a later fragment cannot be decoded or projected, keep the last valid
 diff and label it as such rather than flashing back to the shell script. If no valid
@@ -234,8 +234,8 @@ Calls with dynamic expansions, input files, command templates,
 or `hpatch --recover` remain script previews when no earlier prefix was recognized
 as an edit. A later incompatible fragment invalidates the current projection but
 never turns a retained provisional diff into a claim about the completed command.
-A composed hpatch call received in one fragment shows an unavailable status rather
-than exposing its edit payload as shell source.
+A composed hpatch call that has no projectable top-level file operation shows an unavailable
+status rather than exposing its edit payload as shell source.
 Previews never execute shell code, apply files, format source, run hooks, or publish durable
 changes. The actual post-expansion edit report and captured diff arrive after host execution.
 

@@ -130,31 +130,14 @@ func executeShellProgram(
 		return toolplugin.ExecutionOutput{Stderr: fmt.Sprintf("shell: %v\n", err), ExitCode: 2}, nil
 	}
 
-	var standaloneEdit syntax.Pos
-	if len(program.Stmts) == 1 {
-		statement := program.Stmts[0]
-		if call, ok := statement.Cmd.(*syntax.CallExpr); ok && len(call.Args) != 0 && !statement.Background && !statement.Coprocess && !statement.Disown && !statement.Negated {
-			// Exec handlers receive the command word position, after any assignments.
-			standaloneEdit = call.Args[0].Pos()
-		}
-	}
-	var composedEdit bool
 	syntax.Walk(program, func(node syntax.Node) bool {
 		// mvdan does not implement >|. It is an unconditional truncating
 		// redirection, which the worker owns just like >.
 		if redirect, ok := node.(*syntax.Redirect); ok && redirect.Op == syntax.RdrClob {
 			redirect.Op = syntax.RdrOut
 		}
-		if call, ok := node.(*syntax.CallExpr); ok && len(call.Args) != 0 {
-			if name, literal := shellCatLiteral(call.Args[0]); literal && name == "hpatch" && call.Args[0].Pos() != standaloneEdit {
-				composedEdit = true
-			}
-		}
 		return true
 	})
-	if composedEdit {
-		return toolplugin.ExecutionOutput{Stderr: "hpatch: requires a standalone command in its program; use #!bash to batch other programs in the same shell call\n", ExitCode: 2}, nil
-	}
 
 	shellID := rand.Text()
 	privateTools := make(map[string]toolContribution)
@@ -196,10 +179,6 @@ func executeShellProgram(
 				}
 			}
 			if command[0] == "hpatch" {
-				if interp.HandlerCtx(handlerCtx).Pos != standaloneEdit {
-					_, _ = io.WriteString(interp.HandlerCtx(handlerCtx).Stderr, "hpatch: requires a standalone command in its program; use #!bash to batch other programs in the same shell call\n")
-					return interp.ExitStatus(2)
-				}
 				return executeHpatch(handlerCtx, manifest, command[1:], commentary)
 			}
 			if command[0] == "hread" {
