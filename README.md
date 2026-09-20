@@ -22,8 +22,10 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
   for the next main-agent response; encrypted messages stay private.
 - **Follow milestones, not another task list.** Agents keep a revisable journal
   that shows live updates and groups answers at completion.
-- **Review edits as they happen.** Herdr's [live diff pane](#live-diff-pane)
-  combines main-agent and subagent edits, with pause and flush controls.
+- **Watch shell work and file changes live.** Herdr's [live diff pane](#live-diff-pane)
+  streams main-agent and subagent shell calls before completion, then switches to
+  captured diffs from hpatch and supported shell file operations, with pause and
+  flush controls.
 - **See usage and cost.** Completion tables show provider-reported tokens and
   estimated API costs per agent, not subscription charges. Missing evidence is
   not presented as a complete total.
@@ -49,8 +51,8 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
 
 - **Batch reads and commands.** Group related operations in one shell call.
   With Code Mode, batch separate programs, including different interpreters.
-- **Use one shell interface for edits and commands.** Run standalone `hpatch`
-  commands for edits, then run dependent checks in subsequent shell calls.
+- **Compose edits with dependent work.** `hpatch` behaves like an ordinary shell
+  command, so checks and other control flow can run in the same shell program.
 - **Skip redundant source lookups.** Edit text already in context, reuse unchanged
   verified rows when uniquely identifiable, and use current references returned by
   successful edit reports.
@@ -58,6 +60,8 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
   separate inspection call before correcting an edit.
 - **Report progress within tool calls.** Record journal milestones alongside
   the work instead of making separate progress calls.
+- **Hand off child changes automatically.** Child completion results include retained
+  change ranges and aggregated line counts for focused parent review.
 - **Finish without another model request.** A journal finish can deliver the
   final report with the last successful command, without another model turn
   just to write the response.
@@ -68,7 +72,7 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
   write the replacement once and let Mekugi generate the patch framing.
 - **Read less source.** Bounded searches, semantic references, and structural
   outlines keep irrelevant source out of the model's context.
-- **Review only the relevant edits.** Compact change IDs scope review output
+- **Review only the relevant changes.** Compact change IDs scope review output
   instead of requiring the entire Git diff.
 - **Write scripts without wrappers.** Direct scripts avoid wrapper code and
   extra quoting.
@@ -255,7 +259,7 @@ See the [editing guarantees](doc/spec/output.md) and
 
 ### Edits through the shell
 
-Send a standalone `hpatch` command through `functions.shell`:
+Send `hpatch` through `functions.shell`:
 
 ```sh
 hpatch notes.txt <<'EDIT'
@@ -264,8 +268,9 @@ EDIT
 ```
 
 The edit may instead be a shell argument or redirected input. Quoting, heredoc
-expansion, substitutions, and redirection work normally. Do not compose `hpatch`
-with other commands; run dependent checks in a subsequent shell call.
+expansion, substitutions, redirection, inline environment assignments, and exit
+status work normally. `hpatch` can be composed with conditionals, lists, pipelines,
+subshells, command substitutions, and background jobs.
 
 Paths belong in the shell invocation, not inside the script. Scripts contain only
 `type TARGET VALUE`, `add TARGET VALUE`, or `append VALUE`. Quote paths using normal
@@ -334,7 +339,7 @@ programs**, not as standalone utilities in your terminal:
 | Command | Purpose | Extra prerequisite on the executor's `PATH` |
 | --- | --- | --- |
 | `hrun` | Bound an external command's output, optionally keeping its ending | The wrapped command |
-| `hchanges` | Read hpatch diffs and recovery history by ID or range | Access to the router's replay directory |
+| `hchanges` | Read tracked diffs and hpatch recovery history by ID or range | Access to the router's replay directory |
 | `hcat` | Read verified source rows: `hcat path1 1:200 path2 path3 200:300`; multiple files share a budget and provide per-file recovery links | Replay-directory access for multi-file reads |
 | `hgrep` | Search text with verified row references | `rg` |
 | `hsymbol` | Look up definitions and references | `gopls` for Go; TypeScript 7 as `tsc` for JS, TS, and JSON; `pyright-langserver` for Python |
@@ -344,8 +349,8 @@ Agent-facing references use short word handles such as `maple` or `amber1`.
 Copy the emitted handle; existing references keep their original lifetime and
 scope.
 
-Hpatch keeps durable review records in the router's replay store. An agent can
-hand off `amber1..amber3`, then another agent can retrieve just those edits:
+Mekugi keeps durable review records in the router's replay store. An agent can
+hand off `amber1..amber3`, then another agent can retrieve just those changes:
 
 ```sh
 hchanges amber1..amber3
@@ -353,15 +358,16 @@ hchanges amber1..amber3 --summary
 hchanges amber2 --history
 ```
 
+For example, `--summary` returns aggregated tab-separated counts:
+
 ```text
-amber1 applied
- src/parser.go | 11 ++++++++---
- 1 file changed, 8 insertions(+), 3 deletions(-)
+8	3	src/parser.go
 ```
 
-These are hpatch's evaluated changes, including formatting, not a record of
-shell edits or other workspace changes. Incomplete reads return an exact
-`hread REF` next call. Typical follow-ups:
+Counts are summed across the selected evaluations; they are not a net diff or
+current workspace status. The records cover formatted hpatch evaluations and
+supported shell file operations. Incomplete reads return an exact `hread REF`
+next call. Typical follow-ups:
 
 ```sh
 hread REF
@@ -378,13 +384,20 @@ Use an ordinary script file for source you need to edit or run repeatedly. See t
 ### Live diff pane
 
 In an interactive Herdr pane with `herdr` on `PATH`, `mekugi codex` launches the
-live diff viewer executable directly on the first hpatch call, then places its pane
-to the right without changing focus. It does not start an interactive shell first.
-Read-only turns and redirected input/output do not open a pane. The view
-combines main-agent and subagent file edits, excluding Git and shell changes.
-The pane starts in stream view and keeps the latest streamed input visible between
-calls. It switches to diff with the turn's token metrics and journal flush, then back
-to stream for your next prompt. Press `v` to switch views manually between those
+live diff viewer executable directly on the first observed shell call, then places
+its pane to the right without changing focus. It does not start an interactive
+shell first, and read-only turns do not open a pane.
+
+The pane opens in stream view. Concurrent main-agent and subagent shell calls get
+separate labeled cards; input appears as it arrives, before each call completes,
+and completed input remains visible between calls. Literal top-level `hpatch`
+calls in compound commands and `cat` heredoc writes project provisional file
+diffs in those cards; batched shell calls follow the current program.
+
+The captured diff view combines tracked hpatch changes and supported shell file
+operations from the main agent and subagents. The viewer automatically switches
+to it when a root turn's token metrics and journal flush arrive, then back to
+stream for the next prompt. Press `v` to switch views manually between those
 transitions. Streaming previews are provisional until application is reported.
 
 To try the same UI without Codex or Herdr:
@@ -398,7 +411,7 @@ The simulation uses disposable temporary files and removes them on exit.
 
 - `v` switches between stream (the default) and diff views.
 - In diff view, `j`/`k` scroll and `n`/`p` switch files, pausing automatic following.
-- In diff view, `r` resumes following new edits.
+- In diff view, `r` resumes following new changes.
 - In diff view, `f` flushes the current file; `F` flushes all files.
 - `q` quits the viewer without ending Codex.
 
