@@ -649,7 +649,11 @@ func TestShellFileUnreadableHistory(t *testing.T) {
 			}
 			for _, option := range []string{"", " --history", " --summary"} {
 				stdout, stderr, code := runShellWorkerTest(t, registry, "bash", nil, "hchanges "+strings.Join(ids, " ")+option, nil, newShellWorkerTestInvocation(directory))
-				if code != 0 || !strings.Contains(stdout, "incomplete history") || strings.Contains(stdout, "@@") {
+				marker := "incomplete history"
+				if option == " --summary" {
+					marker = "-\t-\t"
+				}
+				if code != 0 || !strings.Contains(stdout, marker) || strings.Contains(stdout, "@@") {
 					t.Fatalf("review %s: %d %s %s", option, code, stdout, stderr)
 				}
 			}

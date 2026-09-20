@@ -209,7 +209,7 @@ baseline.
 ## Change handoffs
 
 Hpatch reports include `change amber1`; recovery keeps that ID. Review captured edits with
-`hchanges amber1..amber3`, rather than Git diff, and hand off same-agent inclusive ranges. Use `--summary` when only a diffstat is needed; skip it before an already-needed diff read.
+`hchanges amber1..amber3`, rather than Git diff, and hand off same-agent inclusive ranges. Use `--summary` when only aggregated numstat is needed; skip it before an already-needed diff read.
 Use `--history` for a recovery chain. Git remains appropriate for untracked, shell-generated, or
 unrelated changes; do not routinely pair it with hchanges for the same edits.
 

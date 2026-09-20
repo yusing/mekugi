@@ -10,8 +10,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
-	"github.com/yusing/mekugi"
 	"mvdan.cc/sh/v3/interp"
 )
 
@@ -130,6 +130,18 @@ func (s *mekugiReplayStore) readChanges(ctx context.Context, options changeReadO
 
 func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeReadOptions, index changeIndex) (string, error) {
 	var output strings.Builder
+	type counts struct {
+		added, removed int
+		incomplete     bool
+	}
+	displayPath := func(path string) string {
+		if strings.IndexFunc(path, unicode.IsControl) >= 0 || strings.ContainsAny(path, "\"\\") || strings.Contains(path, " => ") {
+			return strconv.Quote(path)
+		}
+		return path
+	}
+	stats := make(map[string]counts)
+	var paths []string
 	matched := false
 	for _, id := range options.ids {
 		if err := ctx.Err(); err != nil {
@@ -139,10 +151,13 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		if !exists {
 			return "", fmt.Errorf("change %s is missing in workspace %q; check --workspace; session data may have expired after 14 days of inactivity or been removed under storage pressure", id, options.workspace)
 		}
+		if options.view == "summary" && (change.RetiredCalls != 0 || len(change.Calls) == 0) {
+			return "", fmt.Errorf("change %s has incomplete or pending history; use --history", id)
+		}
 		if change.RetiredCalls != 0 {
 			fmt.Fprintf(&output, "%s history incomplete: %d older attempts were removed by session cleanup\n", id, change.RetiredCalls)
 		}
-		if len(change.Calls) > 1 {
+		if options.view != "summary" && len(change.Calls) > 1 {
 			fmt.Fprintf(&output, "%s attempts=%d\n", id, len(change.Calls))
 		}
 		if len(change.Calls) == 0 {
@@ -157,9 +172,9 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				return "", fmt.Errorf("change %s has a missing or inconsistent attempt", id)
 			}
 			history := record.History
-			if len(change.Calls) == 1 {
+			if options.view != "summary" && len(change.Calls) == 1 {
 				fmt.Fprintf(&output, "%s %s\n", id, trackedStatus(history, call.Confirmed))
-			} else {
+			} else if options.view != "summary" {
 				fmt.Fprintf(&output, "attempt %d %s\n", position+1, trackedStatus(history, call.Confirmed))
 			}
 			if options.view == "history" {
@@ -195,24 +210,51 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 					output.WriteByte('\n')
 				}
 			}
-			var summaryFiles []mekugi.ReviewFile
 			for _, file := range history.ReviewFiles {
 				if len(options.paths) > 0 && !changePathMatches(options, file.BeforePath) && !changePathMatches(options, file.AfterPath) {
 					continue
 				}
 				matched = true
 				if options.view == "summary" {
-					summaryFiles = append(summaryFiles, file)
+					path := file.AfterPath
+					if path == "" {
+						path = file.BeforePath
+					}
+					path = displayPath(path)
+					if file.BeforePath != "" && file.AfterPath != "" && file.BeforePath != file.AfterPath {
+						before := displayPath(file.BeforePath)
+						path = before + " => " + path
+					}
+					entry, exists := stats[path]
+					if !exists {
+						paths = append(paths, path)
+					}
+					added, removed := file.LineCounts()
+					if added < 0 {
+						entry.incomplete = true
+					} else {
+						entry.added += added
+						entry.removed += removed
+					}
+					stats[path] = entry
 				} else {
 					output.WriteString(file.UnifiedDiff())
 				}
 			}
-			if options.view == "summary" {
-				output.WriteString(mekugi.ReviewStat(summaryFiles))
-			}
 			if output.Len() > maxChangeReadBytes {
 				return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or paths after --")
 			}
+		}
+	}
+	for _, path := range paths {
+		entry := stats[path]
+		if entry.incomplete {
+			fmt.Fprintf(&output, "-\t-\t%s\n", path)
+		} else {
+			fmt.Fprintf(&output, "%d\t%d\t%s\n", entry.added, entry.removed, path)
+		}
+		if output.Len() > maxChangeReadBytes {
+			return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or paths after --")
 		}
 	}
 	if len(options.paths) > 0 && !matched {

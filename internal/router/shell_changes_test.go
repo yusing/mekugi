@@ -93,7 +93,7 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 	}
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
 		"cd child\nhchanges --workspace .. --summary "+id, nil, invocation)
-	if status != 0 || stderr != "" || !strings.Contains(stdout, "| 12 ++++++++++++") || strings.Contains(stdout, "+line") {
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "12\t0\tfile.txt\n") || strings.Contains(stdout, "+line") {
 		t.Fatalf("summary from subdirectory: %q, %q, %d", stdout, stderr, status)
 	}
 	for _, command := range []string{
@@ -102,7 +102,7 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 		"hchanges " + id + " --summary " + id + " -- ./file.txt",
 	} {
 		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, command, nil, invocation)
-		if status != 0 || stderr != "" || stdout != id+" applied\n file.txt | 12 ++++++++++++\n 1 file changed, 12 insertions(+)\n" {
+		if status != 0 || stderr != "" || stdout != "12\t0\tfile.txt\n" {
 			t.Fatalf("mixed flags: %q: %q, %q, %d", command, stdout, stderr, status)
 		}
 	}
@@ -222,5 +222,84 @@ func TestChangePathSpellings(t *testing.T) {
 	}
 	if changePathMatches(options, "file.txt") {
 		t.Fatal("empty selection unexpectedly matched")
+	}
+}
+
+func TestChangesSummaryAggregatesEvaluations(t *testing.T) {
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	var ids []string
+	for i, files := range [][]mekugi.ReviewFile{
+		{mekugi.RenderReviewFile("file", "file", "old\n", "middle\n"), mekugi.RenderReviewFile("", "empty", "", "")},
+		{mekugi.RenderReviewFile("file", "file", "middle\n", "last\nextra\n"), mekugi.RenderIncompleteReviewFile("unknown", "unknown", "missing capture")},
+		{mekugi.RenderReviewFile("unknown", "unknown", "a\n", "b\n")},
+	} {
+		call := strconv.Itoa(i)
+		id, err := store.reserveChange(t.Context(), workspace, "author", call)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+		if err := store.put(t.Context(), workspace, map[string]mekugiHistory{call: {
+			ChangeID: id, CorrelationID: call, Applied: true, ReviewFiles: files,
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	options := changeReadOptions{workspace: workspace, ids: ids, view: "summary"}
+	got, err := store.readChanges(t.Context(), options)
+	if want := "3\t2\tfile\n0\t0\tempty\n-\t-\tunknown\n"; err != nil || got != want {
+		t.Fatalf("summary = %q, %v; want %q", got, err, want)
+	}
+	options.paths = []string{"file"}
+	if got, err := store.readChanges(t.Context(), options); err != nil || got != "3\t2\tfile\n" {
+		t.Fatalf("filtered summary = %q, %v", got, err)
+	}
+	pending, err := store.reserveChange(t.Context(), workspace, "author", "pending")
+	if err != nil {
+		t.Fatal(err)
+	}
+	options.ids = append(ids, pending)
+	if got, err := store.readChanges(t.Context(), options); err == nil || got != "" {
+		t.Fatalf("pending summary = %q, %v", got, err)
+	}
+}
+
+func TestChangesSummaryRecoveryAndRetiredHistory(t *testing.T) {
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	id, err := store.reserveChange(t.Context(), workspace, "author", "original")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, history := range []mekugiHistory{
+		{TranslationError: "rejected"},
+		{Applied: true, ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "b\n")}},
+		{Applied: true, ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "b\n", "c\nd\n")}},
+	} {
+		history.ChangeID, history.CorrelationID = id, "original"
+		if err := store.put(t.Context(), workspace, map[string]mekugiHistory{strconv.Itoa(i): history}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	options := changeReadOptions{workspace: workspace, ids: []string{id}, view: "summary"}
+	if got, err := store.readChanges(t.Context(), options); err != nil || got != "3\t2\tfile\n" {
+		t.Fatalf("recovery summary = %q, %v", got, err)
+	}
+	index, err := store.readChangeIndex(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	change := index.Changes[id]
+	change.RetiredCalls = 1
+	index.Changes[id] = change
+	if got, err := store.renderChanges(t.Context(), options, index); err == nil || got != "" {
+		t.Fatalf("retired summary = %q, %v", got, err)
 	}
 }
