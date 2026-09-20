@@ -25,7 +25,7 @@ func TestLiveDiffTerminalCatWriteStreamsDiff(t *testing.T) {
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
 	t.Cleanup(worker.stop)
-	for i, delta := range []string{"cat >'visible file.txt' <<'END'\nfirst", "\nsecond", "\nEND\n"} {
+	for i, delta := range []string{"mkdir -p generated\ncat >'visible file.txt' <<'END'\nfirst", "\nsecond", "\nEND\n"} {
 		worker.appendDelta(delta)
 		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
 			return preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 1
@@ -39,7 +39,7 @@ func TestLiveDiffTerminalCatWriteStreamsDiff(t *testing.T) {
 			return strings.Contains(text, "STREAMING PREVIEW") && strings.Contains(text, want)
 		})
 		text := ansi.Strip(frame)
-		if !strings.Contains(text, "visible file.txt") || strings.Contains(text, "cat >") {
+		if !strings.Contains(text, "visible file.txt") || strings.Contains(text, "cat >") || strings.Contains(text, "mkdir -p") {
 			t.Fatalf("terminal did not show file diff: %q", text)
 		}
 		if len(preview.ID) >= 6 && strings.Contains(text, preview.ID[:6]) {

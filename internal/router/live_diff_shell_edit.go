@@ -12,9 +12,9 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// Decode only literal standalone edit input. No interpreter, expansion callbacks,
+// Decode only literal edit input. No interpreter, expansion callbacks,
 // filesystem input redirections, or recovery state participate in previews.
-func liveDiffShellStatement(input, directory string) (*syntax.Stmt, string, bool, bool) {
+func liveDiffShellStatements(input, directory string) ([]*syntax.Stmt, string, bool, bool) {
 	header, err := shellsyntax.Parse(input)
 	if err != nil || len(header.Interpreter) != 1 {
 		return nil, "", false, false
@@ -63,8 +63,8 @@ func liveDiffShellStatement(input, directory string) (*syntax.Stmt, string, bool
 		} else {
 			// Recover only a missing final quote, then validate normally.
 			recovered, _ := syntax.NewParser(syntax.Variant(variant), syntax.RecoverErrors(1)).Parse(strings.NewReader(body), "")
-			if recovered != nil && len(recovered.Stmts) == 1 {
-				if call, ok := recovered.Stmts[0].Cmd.(*syntax.CallExpr); ok && len(call.Args) >= 2 {
+			if recovered != nil && len(recovered.Stmts) != 0 {
+				if call, ok := recovered.Stmts[len(recovered.Stmts)-1].Cmd.(*syntax.CallExpr); ok && len(call.Args) >= 2 {
 					parts := call.Args[len(call.Args)-1].Parts
 					if len(parts) > 0 {
 						switch quote := parts[len(parts)-1].(type) {
@@ -82,10 +82,23 @@ func liveDiffShellStatement(input, directory string) (*syntax.Stmt, string, bool
 			}
 		}
 	}
-	if err != nil || program == nil || len(program.Stmts) != 1 {
+	completePrefix := false
+	if parseError, ok := errors.AsType[syntax.ParseError](err); ok && parseError.Incomplete &&
+		program != nil && len(program.Stmts) != 0 {
+		completePrefix = !program.Stmts[len(program.Stmts)-1].End().After(parseError.Pos)
+	}
+	if err != nil && !completePrefix || program == nil || len(program.Stmts) == 0 {
 		return nil, "", false, false
 	}
-	return program.Stmts[0], directory, partialLine, true
+	return program.Stmts, directory, partialLine, true
+}
+
+func liveDiffShellStatement(input, directory string) (*syntax.Stmt, string, bool, bool) {
+	statements, directory, partialLine, ok := liveDiffShellStatements(input, directory)
+	if !ok || len(statements) != 1 {
+		return nil, "", false, false
+	}
+	return statements[0], directory, partialLine, true
 }
 
 func liveDiffShellEdit(input, directory string) ([]mekugi.FileEdit, string, bool) {
@@ -212,6 +225,24 @@ func liveDiffIncompleteHeredoc(body string, parseErr error, variant syntax.LangV
 		return frame
 	}
 	return hpatchsyntax.CommandFrame{}
+}
+
+func liveDiffShellPreviewNeutral(stmt *syntax.Stmt) bool {
+	call, ok := stmt.Cmd.(*syntax.CallExpr)
+	if !ok || stmt.Background || stmt.Coprocess || stmt.Disown || stmt.Negated ||
+		len(stmt.Redirs) != 0 || len(call.Assigns) != 0 || len(call.Args) == 0 {
+		return false
+	}
+	name, literal := shellCatLiteral(call.Args[0])
+	if !literal || name != "mkdir" {
+		return false
+	}
+	for _, argument := range call.Args[1:] {
+		if _, literal := shellCatLiteral(argument); !literal {
+			return false
+		}
+	}
+	return true
 }
 
 // A whole composed call can arrive in one delta, before a valid edit prefix was

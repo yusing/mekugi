@@ -35,6 +35,110 @@ func TestLiveDiffPreviewWorkerBatchedFileEdits(t *testing.T) {
 	}
 }
 
+func TestLiveDiffPreviewWorkerCompoundFileWritesStayFilePreview(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
+	worker.appendDelta("mkdir -p generated\ncat >first.txt <<'END'\nfirst")
+	first := waitLiveDiffWorkerPreview(t, broker, sub, func(p liveDiffPreview) bool {
+		return p.Status == "STREAMING PREVIEW" && len(p.Files) == 1
+	})
+	if first.Input != "" || len(first.Syntax) != 0 || !strings.Contains(first.Files[0].Diff, "+first") {
+		t.Fatalf("first compound write leaked shell source: %+v", first)
+	}
+	worker.appendDelta("\nEND\ncat >second.txt <<'END'\nsecond")
+
+	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(p liveDiffPreview) bool {
+		return p.Status == "STREAMING PREVIEW" && len(p.Files) == 2
+	})
+	if preview.Input != "" || len(preview.Syntax) != 0 {
+		t.Fatalf("compound writes leaked shell source: %+v", preview)
+	}
+	got := make(map[string]string)
+	for _, file := range preview.Files {
+		got[filepath.Base(file.AfterPath)] = file.Diff
+	}
+	for name, content := range map[string]string{"first.txt": "+first", "second.txt": "+second"} {
+		if !strings.Contains(got[name], content) {
+			t.Fatalf("%s preview = %q, want %q", name, got[name], content)
+		}
+	}
+	if entries, err := os.ReadDir(workspace); err != nil || len(entries) != 0 {
+		t.Fatalf("preview caused file effects: %v, %v", entries, err)
+	}
+}
+
+func TestLiveDiffPreviewWorkerUnsafeCompoundEditsStayUnavailable(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name, input string
+		setup       func(*testing.T, string)
+	}{
+		{
+			name:  "changed directory",
+			input: "cd sub\ncat >result.txt <<'END'\ncontent\nEND\n",
+			setup: func(t *testing.T, workspace string) {
+				t.Helper()
+				if err := os.Mkdir(filepath.Join(workspace, "sub"), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name:  "repeated path",
+			input: "cat >>result.txt <<'END'\none\nEND\ncat >>result.txt <<'END'\ntwo\nEND\n",
+			setup: func(t *testing.T, workspace string) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(workspace, "result.txt"), []byte("base\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name:  "redirected neutral prefix",
+			input: "mkdir -p generated >result.txt\ncat >>result.txt <<'END'\nnew\nEND\n",
+			setup: func(t *testing.T, workspace string) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(workspace, "result.txt"), []byte("old\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name:  "expanded neutral argument",
+			input: "mkdir -p \"$(printf generated)\"\ncat >result.txt <<'END'\nnew\nEND\n",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			if test.setup != nil {
+				test.setup(t, workspace)
+			}
+			broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
+			worker.appendDelta(test.input)
+			preview := waitLiveDiffWorkerPreview(t, broker, sub, func(p liveDiffPreview) bool {
+				return strings.HasPrefix(p.Status, "PREVIEW UNAVAILABLE:")
+			})
+			if preview.Input != "" || len(preview.Syntax) != 0 || len(preview.Files) != 0 {
+				t.Fatalf("unsafe compound edit leaked source or projected stale files: %+v", preview)
+			}
+		})
+	}
+}
+
+func TestLiveDiffPreviewWorkerCompleteWriteSurvivesIncompleteSuffix(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
+	worker.appendDelta("cat >result.txt <<'END'\ncontent\nEND\nif true; then\n")
+	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(p liveDiffPreview) bool {
+		return p.Status == "STREAMING PREVIEW" && len(p.Files) == 1
+	})
+	if preview.Input != "" || len(preview.Syntax) != 0 || !strings.Contains(preview.Files[0].Diff, "+content") {
+		t.Fatalf("incomplete suffix leaked completed write source: %+v", preview)
+	}
+}
+
 func TestLiveDiffPreviewWorkerComposedHpatchDoesNotLeakScript(t *testing.T) {
 	t.Parallel()
 	for _, input := range []string{

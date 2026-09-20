@@ -146,7 +146,7 @@ func TestLiveDiffPreviewWorkerCatFragmentsRetainLastDiff(t *testing.T) {
 	}
 	worker.appendDelta("echo after\n")
 	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return strings.Contains(preview.Status, "last valid diff")
+		return preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 1
 	})
 	if len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "+second") || preview.Input != "" {
 		t.Fatalf("unsupported suffix lost last diff: %+v", preview)

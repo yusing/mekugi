@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -144,17 +145,62 @@ func (w *liveDiffPreviewWorker) run() {
 			// Preview the current program, not earlier shell framing or edit payloads.
 			projectionInput = programs[len(programs)-1]
 		}
-		stmt, directory, partialLine, parsed := liveDiffShellStatement(projectionInput, preview.Workspace)
+		statements, directory, partialLine, parsed := liveDiffShellStatements(projectionInput, preview.Workspace)
 		ok := false
 		ctx, cancel := context.WithTimeout(w.ctx, time.Second)
 		var files []mekugi.ReviewFile
 		var err error
 		if parsed {
-			if edits, _, edit := liveDiffShellEditStatement(stmt, directory, partialLine); edit {
+			seenPaths := make(map[string]struct{})
+			tainted := false
+			for index, stmt := range statements {
+				statementPartial := partialLine && index == len(statements)-1
+				var projected []mekugi.ReviewFile
+				var recognized bool
+				if edits, _, edit := liveDiffShellEditStatement(stmt, directory, statementPartial); edit {
+					recognized = true
+					if !tainted {
+						projected, err = mekugi.PreviewForHostAt(ctx, directory, edits)
+					}
+				} else {
+					projected, recognized, err = liveDiffShellWriteStatement(ctx, stmt, directory, statementPartial)
+				}
+				if !recognized {
+					if !liveDiffShellPreviewNeutral(stmt) {
+						tainted = true
+					}
+					continue
+				}
 				ok = true
-				files, err = mekugi.PreviewForHostAt(ctx, directory, edits)
-			} else {
-				files, ok, err = liveDiffShellWriteStatement(ctx, stmt, directory, partialLine)
+				if tainted {
+					err = errors.New("streaming edit follows unsupported shell state")
+					break
+				}
+				if err != nil {
+					break
+				}
+				operationPaths := make(map[string]struct{})
+				for _, file := range projected {
+					if file.BeforePath != "" {
+						operationPaths[file.BeforePath] = struct{}{}
+					}
+					if file.AfterPath != "" {
+						operationPaths[file.AfterPath] = struct{}{}
+					}
+				}
+				for path := range operationPaths {
+					if _, exists := seenPaths[path]; exists {
+						err = errors.New("streaming edits depend on an earlier operation")
+						break
+					}
+				}
+				if err != nil {
+					break
+				}
+				for path := range operationPaths {
+					seenPaths[path] = struct{}{}
+				}
+				files = append(files, projected...)
 			}
 		}
 		cancel()
