@@ -13,6 +13,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/pathdisplay"
 	"golang.org/x/term"
 )
 
@@ -186,7 +187,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		header = "No unreviewed changes"
 	}
 	if len(lines) > 0 {
-		label := livediff.DisplayPath(c.workspace, active.Path)
+		label := pathdisplay.ForWorkspace(c.workspace, active.Path)
 		end := len(lines)
 		if c.view.Selected+1 < len(files) {
 			end = c.rendering.Starts[c.view.Selected+1]

@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/pathdisplay"
 )
 
 const liveDiffPreviewFrameDelay = 33 * time.Millisecond
@@ -124,7 +125,7 @@ func (p *liveDiffPreviewView) columns(width int) (digits, sourceWidth int) {
 
 func liveDiffPreviewRows(review mekugi.ReviewFile, workspace string) ([]liveDiffPreviewRow, error) {
 	if review.BeforePath != "" && review.AfterPath == "" {
-		path := livediff.DisplayPath(workspace, review.BeforePath)
+		path := pathdisplay.ForWorkspace(workspace, review.BeforePath)
 		return []liveDiffPreviewRow{{kind: ' ', text: "# " + path + " deleted\n"}}, nil
 	}
 	hunks, err := review.Hunks()
@@ -249,7 +250,7 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 		if path == "" {
 			path = file.BeforePath
 		}
-		title += " · " + livediff.DisplayPath(workspace, path)
+		title += " · " + pathdisplay.ForWorkspace(workspace, path)
 	}
 	caller := p.current.Caller
 	if caller == "" {

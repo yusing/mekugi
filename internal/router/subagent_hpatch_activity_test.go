@@ -70,8 +70,8 @@ func TestSubagentHpatchCommittedActivity(t *testing.T) {
 		t.Fatalf("activity missing Edit label: %q", text)
 	}
 	for _, want := range []string{
-		commentaryCode(existing) + " +1 -1",
-		commentaryCode(filepath.Join(directory, "added.txt")) + " +2 -0",
+		commentaryCode("existing.txt") + " +1 -1",
+		commentaryCode("added.txt") + " +2 -0",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("activity %q missing %q", text, want)
@@ -129,7 +129,7 @@ func TestSubagentHpatchCommittedActivity(t *testing.T) {
 		t.Fatalf("successful recovery messages=%d", len(recovered))
 	}
 	recoveryText := commentaryText(t, recovered[0])
-	if !strings.Contains(recoveryText, "Edit "+commentaryCode(existing)+" +1 -1") ||
+	if !strings.Contains(recoveryText, "Edit "+commentaryCode("existing.txt")+" +1 -1") ||
 		strings.Contains(recoveryText, "--recover") || strings.Contains(recoveryText, handle) {
 		t.Fatalf("successful recovery activity=%q", recoveryText)
 	}

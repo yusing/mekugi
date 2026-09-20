@@ -13,6 +13,7 @@ import (
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/pathdisplay"
 )
 
 // Syntax is independent of wrapping, coordinates, and recency marks. Keep
@@ -172,7 +173,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 		if incomplete {
 			render.Counts[i] = Counts{-1, -1}
 		}
-		label := fmt.Sprintf("%d/%d  %s", fileNumber, fileCount, DisplayPath(workspace, file.Path))
+		label := fmt.Sprintf("%d/%d  %s", fileNumber, fileCount, pathdisplay.ForWorkspace(workspace, file.Path))
 		if action != "" {
 			label += " · " + action
 		}

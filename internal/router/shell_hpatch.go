@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/pathdisplay"
 	"mvdan.cc/sh/v3/interp"
 )
 
@@ -217,6 +218,7 @@ func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, t
 						if path == "" {
 							path = file.BeforePath
 						}
+						path = pathdisplay.ForWorkspace(workspace, path)
 						if file.Incomplete != "" {
 							summaries = append(summaries, fmt.Sprintf("Edit %s: incomplete history; line counts unavailable", commentaryCode(path)))
 							continue

@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 	"unicode"
@@ -13,6 +12,7 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/pathdisplay"
 )
 
 // Live views read immutable review projections, never workspace files or carriers.
@@ -317,16 +317,6 @@ func Safe(text string, colors bool) string {
 	return out.String()
 }
 
-func DisplayPath(workspace, path string) string {
-	if path == "" || !filepath.IsAbs(path) {
-		return path
-	}
-	if relative, err := filepath.Rel(workspace, path); err == nil && filepath.IsLocal(relative) {
-		return relative
-	}
-	return path
-}
-
 func fileAction(file mekugi.ReviewFile, workspace string) string {
 	switch {
 	case file.BeforePath == "" && file.AfterPath != "":
@@ -334,7 +324,7 @@ func fileAction(file mekugi.ReviewFile, workspace string) string {
 	case file.AfterPath == "" && file.BeforePath != "":
 		return "Deleted file"
 	case file.BeforePath != file.AfterPath:
-		return "Rename: " + DisplayPath(workspace, file.BeforePath) + " → " + DisplayPath(workspace, file.AfterPath)
+		return "Rename: " + pathdisplay.ForWorkspace(workspace, file.BeforePath) + " → " + pathdisplay.ForWorkspace(workspace, file.AfterPath)
 	default:
 		return ""
 	}

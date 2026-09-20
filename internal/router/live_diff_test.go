@@ -63,27 +63,6 @@ func TestLiveDiffRelativeDisplayKeepsSourceAndCapture(t *testing.T) {
 	}
 }
 
-func TestLiveDiffDisplayPathWorkspaceBoundary(t *testing.T) {
-	workspace := filepath.Join(t.TempDir(), "workspace")
-	for _, path := range []string{
-		filepath.Join(filepath.Dir(workspace), "outside.go"),
-		workspace + "-other/file.go",
-		filepath.Dir(workspace),
-		"/tmp/outside.go",
-	} {
-		t.Run(path, func(t *testing.T) {
-			if got := livediff.DisplayPath(workspace, path); got != path {
-				t.Fatalf("external path = %q, want %q", got, path)
-			}
-		})
-	}
-	for _, path := range []string{"", "relative.go"} {
-		if got := livediff.DisplayPath(workspace, path); got != path {
-			t.Fatalf("nonabsolute path = %q, want %q", got, path)
-		}
-	}
-}
-
 func TestLiveDiffFollowPauseAndResume(t *testing.T) {
 	view := liveDiffView{Following: true}
 	first := liveDiffFile{Path: "a", Chunks: []liveDiffChunk{{Key: "first"}}}
