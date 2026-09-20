@@ -26,14 +26,15 @@ type liveDiffPreviewPane struct {
 
 // Each call owns its source window, syntax cache, and completion state.
 type liveDiffPreviewView struct {
-	current  liveDiffPreview
-	complete bool
-	rendered liveDiffPreview
-	focus    int
-	file     int
-	renderer liveDiffRenderer
-	source   []liveDiffPreviewRow
-	paths    []liveDiffSourceSpan
+	current   liveDiffPreview
+	complete  bool
+	displayed bool
+	rendered  liveDiffPreview
+	focus     int
+	file      int
+	renderer  liveDiffRenderer
+	source    []liveDiffPreviewRow
+	paths     []liveDiffSourceSpan
 }
 
 type liveDiffPreviewRow struct {
@@ -56,17 +57,22 @@ func (p *liveDiffPreviewPane) update(preview liveDiffPreview) {
 		return
 	}
 	if view == nil {
-		// Completed cards must not crowd out a new live call or grow storage
-		// beyond the broker's active-preview limit.
+		// An evaluated completion must get a render opportunity before the next
+		// fast call replaces it. Capacity still favors new calls over old completions.
 		p.order = slices.DeleteFunc(p.order, func(id string) bool {
-			if !p.views[id].complete {
+			if !p.views[id].complete || p.views[id].current.Evaluated && !p.views[id].displayed {
 				return false
 			}
 			delete(p.views, id)
 			return true
 		})
 		if len(p.order) >= 16 {
-			return
+			evict := slices.IndexFunc(p.order, func(id string) bool { return p.views[id].complete })
+			if evict < 0 {
+				return
+			}
+			delete(p.views, p.order[evict])
+			p.order = slices.Delete(p.order, evict, evict+1)
 		}
 		if p.views == nil {
 			p.views = make(map[string]*liveDiffPreviewView)
@@ -75,7 +81,7 @@ func (p *liveDiffPreviewPane) update(preview liveDiffPreview) {
 		p.views[preview.ID] = view
 		p.order = append(p.order, preview.ID)
 	}
-	view.current, view.complete = preview, false
+	view.current, view.complete = preview, preview.Complete
 }
 
 func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, theme liveDiffTheme, width, height int) ([]string, error) {
@@ -99,6 +105,7 @@ func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, them
 		if err != nil {
 			return nil, err
 		}
+		p.views[id].displayed = len(part) > 1 || len(part) > 0 && len(p.views[id].source) == 0
 		lines = append(lines, part...)
 		// Stable card positions even when a call has little source so far.
 		if i+1 < shown || summary > 0 {
@@ -192,7 +199,11 @@ func (p *liveDiffPreviewView) prepare() error {
 	var err error
 	if current.Input != "" {
 		for i, line := range strings.Split(strings.TrimSuffix(current.Input, "\n"), "\n") {
-			source = append(source, liveDiffPreviewRow{i + 1, ' ', line + "\n"})
+			number := i + 1
+			if current.DiffText {
+				number = 0 // A clipped unified-diff row is not a source coordinate.
+			}
+			source = append(source, liveDiffPreviewRow{number, ' ', line + "\n"})
 		}
 	}
 	if len(current.Files) > 0 {
@@ -211,7 +222,7 @@ func (p *liveDiffPreviewView) prepare() error {
 	}
 	p.file, p.source, p.rendered = file, source, current
 	p.paths = nil
-	if current.Input != "" {
+	if current.Input != "" && !current.DiffText {
 		syntax := current.Syntax
 		if len(syntax) == 0 {
 			syntax = liveDiffScriptSyntax(current.Input)
@@ -234,10 +245,10 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	if title == "" {
 		title = "STREAMING PREVIEW"
 	}
-	if p.current.Input != "" {
+	if p.current.Input != "" && !p.current.DiffText {
 		title = "STREAMING SCRIPT"
 	}
-	if p.complete {
+	if p.complete && !p.current.Evaluated {
 		title = "STREAMING COMPLETE"
 		if qualification, ok := strings.CutPrefix(p.current.Status, "STREAMING PREVIEW: "); ok {
 			title += " · " + qualification
@@ -305,7 +316,12 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	}
 	var before, after []string
 	var err error
-	if p.current.Input != "" {
+	if p.current.DiffText {
+		for _, row := range p.source[colorStart:end] {
+			after = append(after, livediff.Safe(strings.TrimSuffix(row.text, "\n"), false))
+		}
+		before = after
+	} else if p.current.Input != "" {
 		after, err = p.colorScript(ctx, theme, colorStart, end)
 		before = after
 	} else {

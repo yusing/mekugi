@@ -96,7 +96,11 @@ func TestShellHpatchNativeCodexE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Codex advertises a live-view workspace for repositories, not bare /tmp directories.
 	workspace := t.TempDir()
+	if output, err := exec.CommandContext(t.Context(), "git", "init", "--quiet", workspace).CombinedOutput(); err != nil {
+		t.Fatalf("initialize disposable repository: %v: %s", err, output)
+	}
 	if err := os.WriteFile(filepath.Join(workspace, "native.txt"), []byte("old old\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -105,13 +109,52 @@ func TestShellHpatchNativeCodexE2E(t *testing.T) {
 	}
 	provider := &shellEditCodexProvider{}
 	proxy := newManagedMekugiProxy(t)
-	proxy.replayStore, err = openMekugiReplayStore(t.TempDir())
+	manifest, err := readToolWorkerManifest(filepath.Join(proxy.registry.SnapshotDir, toolPluginManifestFilename))
 	if err != nil {
 		t.Fatal(err)
 	}
+	proxy.replayStore, err = openMekugiReplayStore(manifest.ReplayDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var previewMu sync.Mutex
+	var previews []liveDiffPreview
+	proxy.commentary.previewPublisher = func(selected, thread, author string, preview liveDiffPreview) {
+		previewMu.Lock()
+		defer previewMu.Unlock()
+		previews = append(previews, preview)
+		if selected != workspace || thread == "" || author != "" && author != "/root" {
+			t.Errorf("pre-write attribution: workspace=%q thread=%q author=%q", selected, thread, author)
+		}
+		if !preview.Complete {
+			before, readErr := os.ReadFile(filepath.Join(workspace, "native.txt"))
+			if readErr != nil || string(before) != "old old\n" {
+				t.Errorf("pre-write preview arrived after the write: %q, %v", before, readErr)
+			}
+		}
+	}
 	issues := NewCriticalErrors()
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, issues, proxy, nil, nil))
+	responses := responsesHandler(t.Context(), time.Minute, provider, issues, proxy, nil, nil)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == commentaryPublisherPath {
+			record := httptest.NewRecorder()
+			proxy.commentary.serveHTTP(record, r)
+			if record.Code >= 400 {
+				t.Errorf("runtime publication rejected: HTTP %d: %s", record.Code, record.Body.String())
+			}
+			for key, values := range record.Header() {
+				w.Header()[key] = values
+			}
+			w.WriteHeader(record.Code)
+			_, _ = w.Write(record.Body.Bytes())
+			return
+
+		}
+		responses.ServeHTTP(w, r)
+	}))
 	defer server.Close()
+	proxy.commentaryEndpoint = server.URL + commentaryPublisherPath
+
 	helperDirectory := t.TempDir()
 	build := exec.CommandContext(t.Context(), "go", "build", "-o", filepath.Join(helperDirectory, "shell"), "../../cmd/shell")
 	if output, err := build.CombinedOutput(); err != nil {
@@ -135,6 +178,13 @@ func TestShellHpatchNativeCodexE2E(t *testing.T) {
 	content, err := os.ReadFile(filepath.Join(workspace, "native.txt"))
 	if err != nil || string(content) != "native success native success\n" {
 		t.Fatalf("actual edit %q: %v", content, err)
+	}
+	previewMu.Lock()
+	defer previewMu.Unlock()
+	if len(previews) != 2 || previews[0].Complete || !previews[1].Complete ||
+		!previews[0].Evaluated || len(previews[0].Files) != 1 ||
+		!strings.Contains(previews[0].Files[0].Diff, "+native success native success") {
+		t.Fatalf("native pre-write snapshots: %+v", previews)
 	}
 	provider.mu.Lock()
 	defer provider.mu.Unlock()

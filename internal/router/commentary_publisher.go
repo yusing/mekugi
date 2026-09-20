@@ -64,6 +64,7 @@ type threadCommentaryProvenance struct {
 }
 
 type commentaryBroker struct {
+	previewPublisher func(string, string, string, liveDiffPreview)
 	editPublisher    func(context.Context, string, string, string) error
 	journalPublisher func(context.Context, string, string, string, []journalMutation) ([]string, error)
 	journalLister    func(context.Context, string, string, string) ([]journalItem, error)
@@ -302,9 +303,10 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	}
 	request.Body = http.MaxBytesReader(writer, request.Body, maxJournalFlushBytes*6)
 	var publication struct {
-		Journal   json.RawMessage `json:"journal"`
-		EditCall  string          `json:"edit_call"`
-		Workspace string          `json:"workspace"`
+		Journal   json.RawMessage  `json:"journal"`
+		EditCall  string           `json:"edit_call"`
+		Preview   *liveDiffPreview `json:"preview"`
+		Workspace string           `json:"workspace"`
 		// ID is a publication receipt, never a journal operation operand.
 		ReceiptID string `json:"id"`
 		Complete  bool   `json:"complete"`
@@ -317,7 +319,7 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		http.Error(writer, "invalid commentary publication", http.StatusBadRequest)
 		return
 	}
-	if len(publication.Journal) == 0 && publication.Complete && publication.Op == "" && publication.ReceiptID == "" && publication.Agent == "" && publication.EditCall == "" && publication.Workspace == "" {
+	if len(publication.Journal) == 0 && publication.Complete && publication.Op == "" && publication.ReceiptID == "" && publication.Agent == "" && publication.EditCall == "" && publication.Workspace == "" && publication.Preview == nil {
 		if !b.publish(token, "", true) {
 			http.Error(writer, "unauthorized", http.StatusUnauthorized)
 			return
@@ -328,17 +330,36 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	b.mu.Lock()
 	b.cleanupExpiredLocked(time.Now())
 	route := b.routes[token]
-	var session, thread, question, callID, finishReceipt string
+	var session, thread, author, question, callID, finishReceipt string
 	var shellCall bool
 	if route != nil {
 		shellCall = route.shellCall
 		question, callID, finishReceipt = route.journalQuestion, route.callID, route.finishReceipt
-		session, thread = route.sessionID, route.originThread
+		session, thread, author = route.sessionID, route.originThread, route.author
 		route.expires = time.Now().Add(commentaryRouteTTL)
 	}
 	b.mu.Unlock()
 	if route == nil {
 		http.Error(writer, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if publication.Preview != nil {
+		preview := *publication.Preview
+		workspace, _, selected := strings.Cut(session, "\x00")
+		if !selected || workspace == "" || thread == "" || preview.ID == "" ||
+			len(preview.ID) > 256 || !preview.Evaluated ||
+			len(mustMarshalJSON(preview)) > 48<<10 ||
+			publication.EditCall != "" || publication.Workspace != "" ||
+			publication.Op != "" || publication.Complete || publication.ReceiptID != "" ||
+			publication.Agent != "" || len(publication.Journal) != 0 {
+			http.Error(writer, "invalid pre-write preview", http.StatusBadRequest)
+			return
+		}
+		if b.previewPublisher != nil {
+			b.previewPublisher(workspace, thread, author, preview)
+		}
+		writer.WriteHeader(http.StatusNoContent)
 		return
 	}
 

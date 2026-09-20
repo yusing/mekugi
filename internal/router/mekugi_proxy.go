@@ -95,6 +95,19 @@ func newMekugiProxy(registry *toolRegistry, customizedInstructions, compactModel
 		}
 		return proxy.replayStore.publishEditReceipt(ctx, workspace, thread, callID, activity)
 	}
+	broker.previewPublisher = func(workspace, thread, author string, preview liveDiffPreview) {
+		auto := proxy.autoLiveDiff
+		if auto == nil || !auto.enabled.Load() {
+			return
+		}
+		auto.requestLaunch(workspace, thread)
+		if author == "" {
+			author = "/root"
+		}
+		preview.ID = "prewrite:" + thread + ":" + preview.ID
+		preview.Workspace, preview.Thread, preview.Caller = workspace, thread, author
+		auto.events.publishPreview(preview, false)
+	}
 	broker.notice = func(category, message string) { proxy.notice("", category, message) }
 	activity.notice = broker.notice
 	broker.journalPublisher = func(ctx context.Context, session, thread, receipt string, mutations []journalMutation) ([]string, error) {

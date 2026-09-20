@@ -19,6 +19,12 @@ or finalization; host variants return a zero result without running hooks or pub
 `ApplyForHost`, `ApplyForHostRoot`, `ApplyForHostAt`, and `TranslateForHostAt` return `HostTranslation`, which carries
 the rendered report, final state, diagnostics, patch summary, target aliases, and per-file
 review diffs under `REQ-CHANGES-001`.
+`WithPreWriteObserver` attaches a display-only callback to `ApplyForHostAt`. It receives
+an isolated slice of formatted review files after successful evaluation and before commit,
+including an empty slice for no-ops. Rejected evaluations, translation, and speculative
+preview do not invoke it. The callback is synchronous, must be bounded, and must not
+mutate execution state. Its return is not an approval or a commit guarantee; cancellation
+is checked again before writing. The evaluation is reused, not performed twice.
 Before finalization, every changed Go file is parsed and canonically formatted;
 valid formatter transformations do not reject the transaction. Parse failures from
 all changed Go files are collected and attributed to the nearest relevant edit.

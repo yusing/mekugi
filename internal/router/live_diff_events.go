@@ -53,14 +53,15 @@ type liveDiffSubscriber struct {
 // The router owns this hub. Enqueueing never waits for a renderer or performs
 // network I/O, including when called at the durable publication boundary.
 type liveDiffBroker struct {
-	ctx          context.Context
-	mu           sync.Mutex
-	connection   liveDiffConnection
-	scope        liveDiffScope
-	subs         map[*liveDiffSubscriber]bool
-	turnRevision uint64
-	turnStatus   string
-	previews     map[string]liveDiffPreview
+	ctx               context.Context
+	mu                sync.Mutex
+	connection        liveDiffConnection
+	scope             liveDiffScope
+	subs              map[*liveDiffSubscriber]bool
+	turnRevision      uint64
+	turnStatus        string
+	completedPreviews []liveDiffPreview // Last 16 evaluated snapshots in this turn, oldest first.
+	previews          map[string]liveDiffPreview
 }
 
 func newLiveDiffBroker(ctx context.Context) *liveDiffBroker {
@@ -177,6 +178,9 @@ func (b *liveDiffBroker) publishTurn(active bool) {
 	if active {
 		status = "active"
 	}
+	if active {
+		b.completedPreviews = nil
+	}
 	b.turnStatus = status
 	b.turnRevision++
 	b.emitLocked(liveDiffEvent{Kind: "turn", Status: status, TurnRevision: b.turnRevision})
@@ -195,6 +199,7 @@ func (b *liveDiffBroker) subscribe() *liveDiffSubscriber {
 	if b.turnStatus != "" {
 		sub.events <- liveDiffEvent{Kind: "turn", Status: b.turnStatus, TurnRevision: b.turnRevision}
 	}
+	sub.previews = append(sub.previews, b.completedPreviews...)
 	for _, preview := range b.previews {
 		sub.previews = append(sub.previews, preview)
 	}

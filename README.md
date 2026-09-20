@@ -283,7 +283,11 @@ move, or remove files; those operations are outside the hpatch transaction.
 For bulk edits, Python or another program can generate the script without writing
 edit targets directly. Apply it with `hpatch notes.txt "$(python3 generator.py)"` or
 `hpatch notes.txt < prepared.hpatch`. Generated edits retain their change IDs, `hchanges`
-history, and completed live diffs. Dynamic input is not previewed before execution.
+history, and completed live diffs. With live view enabled for the workspace, successfully
+evaluated `hpatch` calls show their formatted diff before writing, including generated
+input and recovery edits.
+Literal edits can also show an early provisional preview while the model is streaming.
+Large previews show a labeled diff window; completed history retains the full diff.
 
 Rejected edits report a recovery handle. Use `hpatch --recover HANDLE` with
 corrections as an argument or on stdin. For multiple scripts, `--script N` selects

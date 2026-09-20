@@ -147,7 +147,7 @@ func TestLiveDiffPreviewWorkerRetainsLastValidDiffForCompoundShell(t *testing.T)
 	}
 }
 
-func TestLiveDiffPreviewBrokerRetainsDisplayedDiffAfterOversizedProjection(t *testing.T) {
+func TestLiveDiffPreviewBrokerDisplaysBoundedOversizedProjection(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "file.txt"), []byte("old\n"), 0600); err != nil {
@@ -165,22 +165,19 @@ func TestLiveDiffPreviewBrokerRetainsDisplayedDiffAfterOversizedProjection(t *te
 	large := strings.Repeat("x", 60<<10)
 	worker.appendDelta("append <<PATCH\n" + large + "\nPATCH\n")
 	oversized := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return preview.Status == "STREAMING PREVIEW"
+		return preview.DiffText && preview.Truncated
 	})
-	if oversized.Status != "STREAMING PREVIEW" ||
-		len(oversized.Files) != 1 || !strings.Contains(oversized.Files[0].Diff, "+small") ||
-		strings.Contains(oversized.Files[0].Diff, "+x") {
-		t.Fatalf("oversized projection displaced the displayed diff = %+v", oversized)
+	if oversized.Status != "STREAMING PREVIEW" || len(oversized.Files) != 0 ||
+		!strings.Contains(oversized.Input, strings.Repeat("x", 100)) || len(mustMarshalJSON(oversized)) > 48<<10 {
+		t.Fatalf("oversized projection did not show a bounded current diff: status=%q bytes=%d", oversized.Status, len(oversized.Input))
 	}
 
 	worker.appendDelta("\ntype \"target that does not exist\" \"rejected\"")
 	invalid := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
 		return preview.Status == "STREAMING PREVIEW"
 	})
-	if invalid.Status != "STREAMING PREVIEW" ||
-		len(invalid.Files) != 1 || !strings.Contains(invalid.Files[0].Diff, "+small") ||
-		strings.Contains(invalid.Files[0].Diff, "+x") {
-		t.Fatalf("invalid target displaced the broker-retained diff = %+v", invalid)
+	if !invalid.DiffText || !invalid.Truncated || invalid.Input != oversized.Input {
+		t.Fatal("invalid target displaced the latest bounded diff")
 	}
 }
 

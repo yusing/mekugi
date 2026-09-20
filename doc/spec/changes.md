@@ -239,8 +239,27 @@ as an edit. A later incompatible fragment invalidates the current projection but
 never turns a retained provisional diff into a claim about the completed command.
 A composed hpatch call that has no projectable top-level file operation does not display
 an edit card or expose its edit payload as shell source.
-Previews never execute shell code, apply files, format source, run hooks, or publish durable
-changes. The actual post-expansion edit report and captured diff arrive after host execution.
+Early speculative previews never execute shell code, apply files, format source, run hooks,
+or publish durable changes.
+
+During Codex-authorized execution, every successfully evaluated `hpatch` invocation publishes
+a separately labeled `PRE-WRITE DIFF` from the actual formatted evaluation before commit.
+This includes expanded arguments, generated or redirected stdin, shell compositions,
+dependent sequential calls, and recovery. It does not rerun shell effects or evaluate the edit
+again. A no-op displays `no changes`; evaluation rejection publishes no pre-write success
+projection. Cancellation is checked again before committing. A pre-write diff is not proof
+that the subsequent write succeeded; only the completed report and captured history provide
+that evidence.
+
+Exact pre-write snapshots travel through the authenticated shell publisher. Workspace and
+caller attribution come from its owning route, not supplied preview identity. Completion
+carries the same snapshot so a fast write cannot replace an unseen preview with an empty
+removal. Preview delivery stays auxiliary: an unavailable viewer or publisher cannot reject
+or replace an edit result. Preview state is router-local and never replayed as edit evidence.
+
+Both preview paths retain bounded display payloads. An oversized projected diff shows a
+clearly labeled tail window of its actual unified diff instead of disappearing or presenting
+an older small projection as current. Full completed diffs remain in captured history.
 
 Previews remain separately labeled, never composed into applied history or treated
 as receipts. The pane defaults to a full-height stream view. `v` switches between
@@ -268,13 +287,16 @@ speculative combined file result.
 
 Completion, rejection, interruption, or transform closure marks that call's preview
 complete without hiding its last frame on a timer. Stream view persists between
-calls until the root turn completes; the owning session's exit closes the viewer. A new call replaces completed cards, but
-never active cards; completion of one call cannot hide another. Retention stays
+calls until the root turn completes; the owning session's exit closes the viewer. A new call replaces completed cards after a render opportunity, but
+never active cards; completion of one call cannot hide another. Under card-capacity pressure,
+the oldest completed card may be evicted to admit a new call. Retention stays
 bounded by the active-card limit rather than accumulating session history.
 New captures, explicit resume, and terminal resize recenter the captured change
 when following; paused views retain their scroll position. Reconnect clears
-transient display state and restores only currently active router-local previews
-after the durable snapshot barrier. No preview survives router restart or history replay.
+transient display state and restores active router-local previews plus the latest 16
+completed evaluated snapshots from the current turn. Those completed snapshots also cover
+asynchronous viewer startup and expire when the next turn begins. They are not durable
+history or execution receipts. Restoration follows the durable snapshot barrier. No preview survives router restart or history replay.
 
 Preview computation is asynchronous and coalesces bursts without waiting for input
 completion. Each worker samples the latest buffered input without queuing old work;

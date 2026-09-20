@@ -4,10 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/shellsyntax"
@@ -23,6 +23,9 @@ type liveDiffPreview struct {
 	Input     string               // Display-only source, never executed.
 	Syntax    []liveDiffSourceSpan `json:",omitempty"`
 	Truncated bool
+	Evaluated bool `json:",omitzero"`
+	Complete  bool `json:",omitzero"`
+	DiffText  bool `json:",omitzero"`
 	Status    string
 }
 
@@ -240,41 +243,22 @@ func (b *liveDiffBroker) publishPreview(preview liveDiffPreview, remove bool) {
 	if b.previews == nil {
 		b.previews = make(map[string]liveDiffPreview)
 	}
-	if _, exists := b.previews[preview.ID]; !exists && len(b.previews) >= 16 {
+	if _, exists := b.previews[preview.ID]; !exists && !preview.Complete && len(b.previews) >= 16 {
 		return
 	}
-	if preview.Input != "" && len(preview.Syntax) == 0 {
+	if preview.Input != "" && !preview.DiffText && len(preview.Syntax) == 0 {
 		preview.Syntax = liveDiffScriptSyntax(preview.Input)
 	}
-	// Bound retained preview payloads independently of durable edit evidence.
-	for preview.Input != "" && len(mustMarshalJSON(preview)) > 48<<10 {
-		cut := max(1, len(preview.Input)/2)
-		for cut < len(preview.Input) && !utf8.RuneStart(preview.Input[cut]) {
-			cut++
-		}
-		preview.Input = preview.Input[cut:]
-		preview.Syntax = liveDiffClipSyntax(preview.Syntax, cut)
-		preview.Truncated = true
-	}
-	if preview.Truncated {
-		preview.Input = strings.Clone(preview.Input)
-	}
-	if len(mustMarshalJSON(preview)) > 48<<10 {
-		preview.Files = nil
-		preview.Status = "STREAMING PREVIEW"
-	}
-	if preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 0 {
-		// Retain only a diff the broker actually displayed, not an oversized
-		// projection discarded before publication.
-		if previous := b.previews[preview.ID]; len(previous.Files) != 0 {
-			preview.Files = previous.Files
-			preview.Status = "STREAMING PREVIEW"
-			if len(mustMarshalJSON(preview)) > 48<<10 {
-				preview.Files = nil
-			}
+	preview = boundLiveDiffPreview(preview)
+	if preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 0 && preview.Input == "" {
+		// Incomplete fragments retain the latest displayed projection, including
+		// a bounded raw-diff window, never the preceding shell source.
+		if previous := b.previews[preview.ID]; len(previous.Files) != 0 || previous.DiffText {
+			preview.Files, preview.Input = previous.Files, previous.Input
+			preview.DiffText, preview.Truncated = previous.DiffText, previous.Truncated
 		}
 	}
-	if preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 0 {
+	if preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 0 && preview.Input == "" {
 		// An unfinished edit is not an error panel or a raw-script preview.
 		// Wait for a real projection while leaving captured history untouched.
 		delete(b.previews, preview.ID)
@@ -282,6 +266,19 @@ func (b *liveDiffBroker) publishPreview(preview liveDiffPreview, remove bool) {
 		b.emitPreviewLocked(preview)
 		return
 	}
-	b.previews[preview.ID] = preview
+	if preview.Complete {
+		delete(b.previews, preview.ID)
+		if preview.Evaluated {
+			b.completedPreviews = slices.DeleteFunc(b.completedPreviews, func(old liveDiffPreview) bool {
+				return old.ID == preview.ID
+			})
+			if len(b.completedPreviews) == 16 {
+				b.completedPreviews = slices.Delete(b.completedPreviews, 0, 1)
+			}
+			b.completedPreviews = append(b.completedPreviews, preview)
+		}
+	} else {
+		b.previews[preview.ID] = preview
+	}
 	b.emitPreviewLocked(preview)
 }

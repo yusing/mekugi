@@ -93,6 +93,8 @@ func executeHpatch(ctx context.Context, manifest toolWorkerManifest, arguments [
 		Correction: recoveryID != "", ToolName: mekugiToolName,
 		EmittedPayload: emitted, EvaluatedScript: evaluated,
 	})
+	attemptContext, finishPreview := shellPreWriteObserver(attemptContext, commentary, callID)
+	defer finishPreview()
 	result, applyErr := mekugi.ApplyForHostAt(attemptContext, handler.Dir, edits, manifest.HookDirectory)
 
 	history := mekugiHistory{

@@ -339,10 +339,15 @@ func ApplyForHostAt(ctx context.Context, directory string, edits []FileEdit, dat
 	failureStage := ""
 	if err != nil {
 		failureStage = "evaluated"
-	} else if err = ctx.Err(); err == nil && len(changes) != 0 {
-		if err = commitChanges(changes, hostFileOperations{filesystem: filesystem}); err != nil {
-			err = fmt.Errorf("changing %s: %w", describePaths(changes), err)
-			failureStage = "applied"
+	} else if err = ctx.Err(); err == nil {
+		if observer, _ := ctx.Value(preWriteObserverKey{}).(func([]ReviewFile)); observer != nil {
+			observer(slices.Clone(result.ReviewFiles))
+		}
+		if err = ctx.Err(); err == nil && len(changes) != 0 {
+			if err = commitChanges(changes, hostFileOperations{filesystem: filesystem}); err != nil {
+				err = fmt.Errorf("changing %s: %w", describePaths(changes), err)
+				failureStage = "applied"
+			}
 		}
 	}
 	return finishHostChange(ctx, dataDirectory, joinedFileEditScripts(edits), result, failureStage, err, true)
