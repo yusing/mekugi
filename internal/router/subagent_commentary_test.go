@@ -13,7 +13,7 @@ func TestSubagentCommentaryJSONIsVisibleAndRemovedFromReplay(t *testing.T) {
 		"type": "agent_message", "id": "amsg-result", "author": "/root/explorer", "recipient": "/root",
 		"content": []any{map[string]any{
 			"type": "input_text",
-			"text": "Message Type: FINAL_ANSWER\nTask name: /root\nSender: /root/explorer\nPayload:\n" + responseText,
+			"text": "Message Type: MESSAGE\nTask name: /root\nSender: /root/explorer\nPayload:\n" + responseText,
 		}},
 	}
 	transform, _, request := newSubagentCommentaryTestTransform(t, []any{agentMessage})
@@ -56,7 +56,7 @@ func TestSubagentCommentaryJSONIsVisibleAndRemovedFromReplay(t *testing.T) {
 	if len(response.Output) != 4 {
 		t.Fatalf("output = %s", transformed)
 	}
-	if text := commentaryText(t, response.Output[0]); text != "[`/root/explorer` -> `/root`] Completed." {
+	if text := commentaryText(t, response.Output[0]); text != "[`/root/explorer` -> `/root`] Message received:\n"+responseText {
 		t.Fatalf("response commentary = %q", text)
 	}
 	if jsonString(response.Output[1], "arguments") != spawnArguments ||
@@ -86,8 +86,8 @@ func TestSubagentReceiptDirectionAndCompletionSummary(t *testing.T) {
 		{"parent message", "/root", "/root/reviewer", "MESSAGE", "Please finish.", "[`/root` -> `/root/reviewer`] Message received:\nPlease finish."},
 		{"child message", "/root/reviewer", "/root", "MESSAGE", "Need input.", "[`/root/reviewer` -> `/root`] Message received:\nNeed input."},
 		{"sibling message", "/root/a", "/root/b", "MESSAGE", "Evidence.", "[`/root/a` -> `/root/b`] Message received:\nEvidence."},
-		{"completion", "/root/reviewer", "/root", "FINAL_ANSWER", "Journal result\nQuestion: internal assignment\nAnswer: findings", "[`/root/reviewer` -> `/root`] Completed."},
-		{"large completion", "/root/reviewer", "/root", "FINAL_ANSWER", strings.Repeat("findings ", maxCommentaryPublicationBytes), "[`/root/reviewer` -> `/root`] Completed."},
+		{"completion", "/root/reviewer", "/root", "FINAL_ANSWER", "Journal result\nQuestion: internal assignment\nAnswer: findings", ""},
+		{"large completion", "/root/reviewer", "/root", "FINAL_ANSWER", strings.Repeat("findings ", maxCommentaryPublicationBytes), ""},
 		{"message lookalike", "/root/reviewer", "/root", "MESSAGE", "Journal result", "[`/root/reviewer` -> `/root`] Message received:\nJournal result"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -97,7 +97,7 @@ func TestSubagentReceiptDirectionAndCompletionSummary(t *testing.T) {
 			}})
 			fields := map[string]json.RawMessage{"input": input}
 			messages := prepareSubagentInputCommentary(fields, test.recipient)
-			if len(messages) != 1 || commentaryText(t, messages[0]) != test.want {
+			if test.want == "" && len(messages) != 0 || test.want != "" && (len(messages) != 1 || commentaryText(t, messages[0]) != test.want) {
 				t.Fatalf("receipt = %s", mustTestJSON(t, messages))
 			}
 			if !bytes.Equal(input, fields["input"]) {

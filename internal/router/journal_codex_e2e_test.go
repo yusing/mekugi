@@ -57,6 +57,22 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 		return nil, err
 	}
 	input := string(request["input"])
+	var inputItems []map[string]json.RawMessage
+	if err := json.Unmarshal(request["input"], &inputItems); err != nil {
+		return nil, err
+	}
+	for _, inputItem := range inputItems {
+		kind := jsonString(inputItem, "type")
+		content := inputItem["content"]
+		liveText := bytes.Contains(content, []byte("Native child live milestone"))
+		if (kind == "message" || kind == "agent_message") && bytes.Contains(content, []byte("Journal update")) ||
+			kind == "message" && liveText ||
+			kind == "agent_message" && liveText && !bytes.Contains(content, []byte("Message Type: FINAL_ANSWER")) {
+
+			return nil, fmt.Errorf("user-only journal update leaked into provider message input: %s", mustMarshalJSON(inputItem))
+		}
+	}
+
 	child := metadata.SubagentKind != ""
 	var item map[string]any
 	call := func(name string, args any) map[string]any {
@@ -64,13 +80,17 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 	}
 	if child {
 		p.childRequests++
-		if turn != 1 {
+		if turn > 2 {
 			return nil, fmt.Errorf("child finish triggered an extra provider request")
 		}
-		item = call("journal", map[string]any{"op": "finish", "journal": []any{
-			map[string]any{"op": "add", "text": "Native child milestone", "answer": true},
-			map[string]any{"op": "add", "text": "Native child second finding", "answer": true},
-		}})
+		if turn == 1 {
+			item = call("journal", map[string]any{"op": "add", "text": "Native child live milestone", "report_now": true})
+		} else {
+			item = call("journal", map[string]any{"op": "finish", "journal": []any{
+				map[string]any{"op": "add", "text": "Native child milestone", "answer": true},
+				map[string]any{"op": "add", "text": "Native child second finding", "answer": true},
+			}})
+		}
 	} else {
 		switch {
 		case turn == 1:
@@ -95,6 +115,12 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 		if err := json.Unmarshal([]byte(item["arguments"].(string)), &args); err != nil {
 			return nil, err
 		}
+		if child && args.Op == "add" {
+			item = map[string]any{
+				"type": "custom_tool_call", "id": item["id"], "call_id": item["call_id"],
+				"name": "shell", "namespace": "functions", "input": "journal add 'Native child live milestone' --report-now", "status": "completed",
+			}
+		}
 		if args.Op == "finish" {
 			script := "printf 'SHELL_JOURNAL_HOST_OK\\n'\njournal finish"
 			if child {
@@ -114,7 +140,15 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 	done := mustMarshalJSON(map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item})
 	completed := mustMarshalJSON(map[string]any{"type": "response.completed", "response": response})
 	wire := "data: " + string(mustMarshalJSON(map[string]any{"type": "response.created", "response": map[string]any{"id": response["id"], "status": "in_progress", "output": []any{}}})) + "\n\n"
-	wire += "data: " + string(added) + "\n\ndata: " + string(done) + "\n\ndata: " + string(completed) + "\n\n"
+	wire += "data: " + string(added) + "\n\n"
+	if item["type"] == "function_call" {
+		wire += "data: " + string(mustMarshalJSON(map[string]any{
+			"type": "response.function_call_arguments.done", "item_id": item["id"],
+			"arguments": item["arguments"],
+		})) + "\n\n"
+	}
+	wire += "data: " + string(done) + "\n\ndata: " + string(completed) + "\n\n"
+
 	result := serverHTTPResponse(wire)
 	result.Header.Set("Content-Type", "text/event-stream")
 	return result, nil
@@ -186,7 +220,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T, shellFinish bool) {
 	if !provider.childResultSeen || !provider.journalResultSeen {
 		t.Fatalf("native consumer lost journal result or child summary: child=%v journal=%v\nstdout: %.8000s\nstderr: %.8000s", provider.childResultSeen, provider.journalResultSeen, stdout.String(), stderr.String())
 	}
-	groupedResult := false
+	groupedResult, childLiveUpdate := false, false
 	for line := range strings.SplitSeq(stdout.String(), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -204,10 +238,15 @@ func runJournalNativeCodexSpawnE2E(t *testing.T, shellFinish bool) {
 			continue
 		}
 		text := event.Item.Text
-		if strings.Contains(text, "Journal result") && strings.Contains(text, "Native child milestone") {
+		childLiveUpdate = childLiveUpdate || strings.Contains(text, "Journal update `/root/journal_child`") && strings.Contains(text, "Native child live milestone")
+		if strings.Contains(text, " -> ") && (strings.Contains(text, "Completed.") || strings.Contains(text, "Journal update")) {
+			t.Fatalf("duplicate completion or journal recipient commentary: %s", text)
+		}
+		if strings.Contains(text, "Journal flush `/root/journal_child`") && strings.Contains(text, "Native child milestone") {
 			if strings.Count(text, "Record your milestone and finish.") != 1 ||
 				strings.Count(text, "**Answers:**") != 1 ||
-				!strings.Contains(text, "Native child second finding") {
+				!strings.Contains(text, "Native child second finding") ||
+				!strings.Contains(text, "Native child live milestone") {
 				t.Fatalf("native consumer did not receive one grouped question and answers: %s", text)
 			}
 			groupedResult = true
@@ -216,13 +255,13 @@ func runJournalNativeCodexSpawnE2E(t *testing.T, shellFinish bool) {
 	if !groupedResult {
 		t.Fatalf("native consumer did not display the grouped child result: %.8000s", stdout.String())
 	}
-	if provider.childRequests != 1 {
-		t.Fatalf("child provider requests = %d, want exactly one", provider.childRequests)
+	if provider.childRequests != 2 {
+		t.Fatalf("child provider requests = %d, want live update then finish without an extra request", provider.childRequests)
 	}
 	if shellFinish && (!strings.Contains(stdout.String(), "SHELL_JOURNAL_HOST_OK") || !strings.Contains(stdout.String(), `"exit_code":0`)) {
 		t.Fatalf("native shell execution was not observed: %.8000s", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "Journal update") || !strings.Contains(stdout.String(), "Journal flush ") {
+	if !childLiveUpdate || !strings.Contains(stdout.String(), "Journal flush ") {
 		t.Fatal("native consumer did not display distinct live updates and terminal flushes")
 	}
 	issues.mu.Lock()

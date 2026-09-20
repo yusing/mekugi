@@ -33,7 +33,10 @@ provenance; they never replace child answers or add follow-up, message, wait, or
 
 Complete subagent tool calls are also forwarded as user-only activity, never as executable
 root calls. Agent `send_message` calls omit generic tool activity because messaging has its own
-commentary render. Known tools use operation labels rather than raw transport arguments. Shell calls
+commentary render. Journal calls also omit generic activity, including statically recognized
+`await journal(...)` and `await tools.journal(...)` Code Mode calls and their transparent result
+wrappers; journal delivery renders their content separately. Mixed static batches keep other
+operations visible. Known tools use operation labels rather than raw transport arguments. Shell calls
 and transparent, statically recognized Code Mode shell wrappers share a `Run` display.
 An `exec` call recovered through the built-in shell pipeline uses the shell display only
 after recovery is recorded, without changing its original replay identity.
@@ -161,8 +164,8 @@ canonical agent name, commentary shows `[sender -> recipient]`, with each name w
 The recipient is `/root` for non-child turns and the canonical child name for child turns.
 An absent or malformed child identity never matches an unaddressed envelope. Valid
 plaintext `MESSAGE` payloads are shown in full under `Message received`, never as excerpts.
-A plaintext `FINAL_ANSWER` produces only a `Completed` notice, not a second copy of the
-result or its attached assignment. Native completion remains available to the parent;
+A plaintext `FINAL_ANSWER` produces no router commentary: Codex already displays completion.
+Native completion remains available to the parent;
 descendant journal content is delivered by the terminal journal flush.
 Messages exceeding the auxiliary rendering budget are omitted from commentary without
 changing the original envelope. Encrypted envelopes show receipt

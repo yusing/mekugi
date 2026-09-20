@@ -43,7 +43,7 @@ func TestReceivedReplyIsFullInChildAndRootCommentary(t *testing.T) {
 						if messageType == "FINAL_ANSWER" {
 							notice = []byte("[`/root/a` -> `/root/b`] Completed.")
 						}
-						if !bytes.Contains(output, notice) ||
+						if bytes.Contains(output, notice) != (messageType == "MESSAGE") ||
 							bytes.Contains(output, []byte(body)) != (messageType == "MESSAGE") ||
 							bytes.Contains(output, []byte("[excerpt]")) {
 							t.Fatal("receipt did not preserve the message/completion display contract")
@@ -81,7 +81,7 @@ func TestReceivedReplyResumeProjectsOnlyCurrentInput(t *testing.T) {
 	envelope := func(id string) map[string]any {
 		return map[string]any{
 			"type": "agent_message", "id": id, "author": "/root/worker", "recipient": "/root",
-			"content": []any{map[string]any{"type": "input_text", "text": "Message Type: FINAL_ANSWER\nTask name: /root\nSender: /root/worker\nPayload:\n" + id}},
+			"content": []any{map[string]any{"type": "input_text", "text": "Message Type: MESSAGE\nTask name: /root\nSender: /root/worker\nPayload:\n" + id}},
 		}
 	}
 	for name, boundary := range map[string]map[string]any{
@@ -128,8 +128,8 @@ func TestReceivedReplyResumeProjectsOnlyCurrentInput(t *testing.T) {
 					freshID := subagentCommentaryMessageID("response\x00fresh-reply\x00/root/worker\x00fresh-reply")
 					oldID := subagentCommentaryMessageID("response\x00old-reply\x00/root/worker\x00old-reply")
 					if bytes.Contains(output, []byte(oldID)) || !bytes.Contains(output, []byte(freshID)) ||
-						bytes.Contains(output, []byte("fresh-reply")) || bytes.Contains(output, []byte("old-reply")) ||
-						!bytes.Contains(output, []byte("[`/root/worker` -> `/root`] Completed.")) ||
+						!bytes.Contains(output, []byte("fresh-reply")) || bytes.Contains(output, []byte("old-reply")) ||
+						!bytes.Contains(output, []byte("[`/root/worker` -> `/root`] Message received:")) ||
 						!bytes.Contains(output, []byte("Current answer")) {
 						t.Fatalf("resumed reply projection: %s", output)
 					}

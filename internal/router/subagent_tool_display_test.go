@@ -682,3 +682,34 @@ func TestSubagentMixedHeredocPreview(t *testing.T) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
+
+func TestJournalToolActivityIsNotRepeated(t *testing.T) {
+	for _, source := range []string{
+		`const r = await tools.journal({op:"add", text:"Confirmed cold artifact", report_now:true}); text(r)`,
+		`await journal({op:"add", text:"Progress", report_now:true})`,
+		`text(await tools.journal({op:"edit", id:"amber", text:"Updated"}))`,
+		`await journal([{op:"add", text:"One"}, {op:"add", text:"Two"}])`,
+		`await Promise.all([tools.journal({op:"add", text:"Progress"}), tools.apply_patch("patch")])`,
+	} {
+		item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
+		if got := subagentToolActivityText(item, "exec"); got != "" {
+			t.Errorf("journal preview = %q for %s", got, source)
+		}
+	}
+	source := `await journal({op:"add", text:"Progress"}); text(await tools.exec_command({cmd:"cat a.go"}))`
+	item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
+	if got := subagentToolActivityText(item, "exec"); got != "Read `a.go`" {
+		t.Errorf("mixed preview = %q", got)
+	}
+	for _, source := range []string{
+		`await tools.journal({text: sideEffect()})`,
+		`const journal = await tools.exec_command({cmd:"cat a"}); text(journal); await journal({text:"x"})`,
+		`await other.journal({text:"x"})`,
+		`await journal({text:"x"}); sideEffect()`,
+	} {
+		item["input"] = mustMarshalJSON(source)
+		if got := subagentToolActivityText(item, "exec"); !strings.HasPrefix(got, "Run JavaScript") {
+			t.Errorf("opaque code was suppressed: %q", got)
+		}
+	}
+}

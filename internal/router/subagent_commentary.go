@@ -76,7 +76,7 @@ func prepareSubagentInputCommentary(fields map[string]json.RawMessage, recipient
 	budget := maxCommentaryPublicationBytes
 	for _, item := range items[currentInput:] {
 		text, sender, final, ok := subagentResponse(item)
-		if !ok || jsonString(item, "recipient") != recipient {
+		if !ok || final || jsonString(item, "recipient") != recipient {
 			continue
 		}
 		id := subagentCommentaryMessageID("response\x00" + jsonString(item, "id") + "\x00" + sender + "\x00" + text)
@@ -85,9 +85,7 @@ func prepareSubagentInputCommentary(fields map[string]json.RawMessage, recipient
 		}
 		direction := "[" + commentaryCode(sender) + " -> " + commentaryCode(recipient) + "] "
 		label := direction + "Message received."
-		if final {
-			label = direction + "Completed."
-		} else if text != "" {
+		if text != "" {
 			label = direction + "Message received:\n" + text
 		}
 		if len(label) <= budget && len(commentary) < maxCommentaryEventsPerRoute {

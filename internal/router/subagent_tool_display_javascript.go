@@ -65,7 +65,7 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 			}
 			name := binding.Utf8Text(bytes)
 			// A local runtime binding changes every call in the program, including earlier calls.
-			if slices.Contains([]string{"tools", "text", "JSON", "Object", "Promise", "generatedImage"}, name) {
+			if slices.Contains([]string{"tools", "text", "JSON", "Object", "Promise", "generatedImage", "journal"}, name) {
 				return nil, false
 			}
 			if !toolActivityResultProjection(statements[i+1], bytes, name, requireResultMetadata) {
@@ -108,7 +108,7 @@ func toolActivityAwaitedCalls(expression *sitter.Node, bytes []byte, requireResu
 		}
 	}
 	item, ok := toolActivityStaticToolCall(call, bytes)
-	if !ok {
+	if !ok || requireResultMetadata && jsonString(item, "name") == journalToolName {
 		return nil, false
 	}
 	return []map[string]json.RawMessage{item}, true
@@ -123,18 +123,23 @@ func toolActivityStaticToolCall(call *sitter.Node, bytes []byte) (map[string]jso
 		return nil, false
 	}
 	property := callee.ChildByFieldName("property")
-	if property == nil {
+	name := ""
+	if toolActivityMemberPath(callee, bytes, journalToolName) {
+		name = journalToolName
+	} else if property != nil {
+		name = property.Utf8Text(bytes)
+	} else {
 		return nil, false
 	}
-	name := property.Utf8Text(bytes)
 	switch name {
-	case "exec_command", "shell_command", "shell", "view_image", "write_stdin", "apply_patch":
+	case "exec_command", "shell_command", "shell", "view_image", "write_stdin", "apply_patch", journalToolName:
 	default:
 		if _, _, ok := toolActivityMCPName(name); !ok && toolActivityBuiltinLabel(name) == "" {
 			return nil, false
 		}
 	}
-	if !toolActivityMemberPath(callee, bytes, "tools", name) || call.ChildByFieldName("optional_chain") != nil {
+	bareJournal := name == journalToolName && toolActivityMemberPath(callee, bytes, journalToolName)
+	if !bareJournal && !toolActivityMemberPath(callee, bytes, "tools", name) || call.ChildByFieldName("optional_chain") != nil {
 		return nil, false
 	}
 	var value any

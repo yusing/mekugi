@@ -10,7 +10,8 @@ import (
 func subagentToolPreview(item map[string]json.RawMessage, qualifiedName string, shellDisplay func(map[string]json.RawMessage, string) (string, bool)) string {
 	name := jsonString(item, "name")
 	// Agent messages already have a dedicated commentary render.
-	if name == "send_message" && commentaryExcluded(jsonString(item, "namespace"), name) {
+	if strings.TrimPrefix(qualifiedName, "functions.") == journalToolName ||
+		name == "send_message" && commentaryExcluded(jsonString(item, "namespace"), name) {
 		return ""
 	}
 	if commentaryExcluded(jsonString(item, "namespace"), name) {

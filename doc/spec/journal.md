@@ -23,7 +23,8 @@ Eligible non-strict ordinary function tools receive an optional `journal` array.
 an existing ID, and a malformed array rejects the host call before execution. The array is applied
 in order atomically, then removed from executed arguments while the original call remains available
 through replay. `report_now` emits a router-owned user-only **Journal update** labelled with
-the item ID and author when known. Successful delivery marks that revision reported, not flushed.
+the item ID and author when known. Live updates do not send native inter-agent messages or
+enter any agent's provider input. Successful delivery marks that revision reported, not flushed.
 It MUST remain eligible for a terminal **Journal flush**, whose heading identifies its known author
 and whose entries identify their IDs. A flush containing one item puts its ID in the heading and
 renders its text directly, without list indentation; multi-item flushes retain the entry list.
