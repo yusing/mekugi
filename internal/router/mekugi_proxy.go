@@ -26,6 +26,86 @@ const (
 	maxMekugiPendingCalls = 128
 )
 
+func nativeSpawnRoles(raw json.RawMessage, parentAuthor string, ignoredCallIDs ...map[string]bool) map[string]journalSpawnRole {
+	var input []responsesItem
+	if json.Unmarshal(raw, &input) != nil {
+		return nil
+	}
+	type spawnCall struct {
+		role       string
+		conflicted bool
+	}
+	calls := make(map[string]spawnCall)
+	ignored := map[string]bool(nil)
+	if len(ignoredCallIDs) != 0 {
+		ignored = ignoredCallIDs[0]
+	}
+	for _, item := range input {
+		if item.Type != "function_call" || item.Namespace != subagentBridgeNamespace && item.Namespace != "collaboration" || item.Name != "spawn_agent" || item.CallID == "" || ignored[item.CallID] || item.Arguments == nil {
+			continue
+		}
+		var arguments struct {
+			AgentType string `json:"agent_type"`
+		}
+		if json.Unmarshal([]byte(*item.Arguments), &arguments) != nil || strings.TrimSpace(arguments.AgentType) == "" {
+			continue
+		}
+		call, found := calls[item.CallID]
+		if found && call.role != arguments.AgentType {
+			call.conflicted = true
+		} else if !found {
+			call.role = arguments.AgentType
+		}
+		calls[item.CallID] = call
+	}
+	roles := make(map[string]journalSpawnRole)
+	for _, item := range input {
+		if item.Type != "function_call_output" || item.CallID == "" || item.Output == nil {
+			continue
+		}
+		call, ok := calls[item.CallID]
+		if !ok {
+			continue
+		}
+		output, ok := decodeJSONString(item.Output)
+		if !ok {
+			continue
+		}
+		var result struct {
+			TaskName string `json:"task_name"`
+		}
+		if json.Unmarshal([]byte(output), &result) != nil || !directChildAuthor(parentAuthor, result.TaskName) {
+			continue
+		}
+		evidence := journalSpawnRole{Role: call.role, Conflicted: call.conflicted}
+		if current, found := roles[result.TaskName]; found && (current.Conflicted || current.Role != evidence.Role) {
+			evidence = journalSpawnRole{Conflicted: true}
+		}
+		roles[result.TaskName] = evidence
+	}
+	return roles
+}
+
+func nativeSpawnCallIDs(raw json.RawMessage) map[string]bool {
+	var input []responsesItem
+	if json.Unmarshal(raw, &input) != nil {
+		return nil
+	}
+	callIDs := make(map[string]bool)
+	for _, item := range input {
+		if item.Type == "function_call" && (item.Namespace == subagentBridgeNamespace || item.Namespace == "collaboration") && item.Name == "spawn_agent" && item.CallID != "" {
+			callIDs[item.CallID] = true
+		}
+	}
+	return callIDs
+}
+
+func directChildAuthor(parent, child string) bool {
+	prefix := strings.TrimSuffix(parent, "/") + "/"
+	remainder, ok := strings.CutPrefix(child, prefix)
+	return ok && remainder != "" && !strings.Contains(remainder, "/")
+}
+
 func mekugiDataDirectory() (string, error) {
 	configDirectory, err := os.UserConfigDir()
 	if err != nil {
@@ -575,6 +655,15 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		return nil, fmt.Errorf("initialize journal: %w", err)
 	}
 	if err := p.journals.bindIdentity(ctx, p.replayStore, directory, threadID, metadata.ParentThreadID, author, activityThreadID != ""); err != nil {
+		transform.Close()
+		return nil, err
+	}
+	spawnBaseline, err := p.journals.forkSpawnBaseline(ctx, p.replayStore, directory, threadID, fork != "", nativeSpawnCallIDs(request.fields["input"]))
+	if err != nil {
+		transform.Close()
+		return nil, err
+	}
+	if err := p.journals.bindSpawnRoles(ctx, p.replayStore, directory, threadID, nativeSpawnRoles(request.fields["input"], author, spawnBaseline)); err != nil {
 		transform.Close()
 		return nil, err
 	}

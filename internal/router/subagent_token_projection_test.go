@@ -60,11 +60,13 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 				}
 				report, ok := root.completionUsageReport()
 				text := formatTokenUsageReport(report)
-				if !ok || strings.Count(text, "| Agent |") != 1 || !strings.Contains(text, "| /root/worker | n/a |") {
+				if !ok || strings.Count(text, "| Agent |") != 1 || !strings.Contains(text, "| /root/worker") {
 					t.Fatalf("missing consolidated table: %s", text)
 				}
 				if missing {
-					if !report.Incomplete || !strings.Contains(text, "| Total | — | — | n/a |") {
+					if report.Incomplete || report.missingUsage != 1 || report.InputTokens != 100 || report.OutputTokens != 10 || !report.cost.known ||
+						!strings.Contains(text, "| /root/worker (partial) | n/a | gpt-5.6-sol | 0 (0.0%) |") ||
+						!strings.Contains(text, "| Total (partial) | — | — | 100 (50.0%) |") {
 						t.Fatal(text)
 					}
 				} else if report.InputTokens != 220 || report.OutputTokens != 40 || !strings.Contains(text, "| /root/worker | n/a | gpt-5.6-sol | 120 (66.7%) |") {

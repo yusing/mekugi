@@ -16,9 +16,10 @@ type tokenCost struct {
 
 type tokenUsageReport struct {
 	tokenCounts
-	cost  tokenCost
-	model string
-	rows  *[]agentTokenUsage
+	cost         tokenCost
+	model        string
+	rows         *[]agentTokenUsage
+	missingUsage uint64
 }
 
 type agentTokenUsage struct {
@@ -128,7 +129,7 @@ func (cost *tokenCost) add(next tokenCost) {
 
 func formatTokenUsageReport(report tokenUsageReport) string {
 	var text strings.Builder
-	text.WriteString("Tokens for this session\n\n| Agent | Role | Model | Input (cache hit) | Cache write | Output | Reasoning | Input cost (cached + uncached) | Output cost | Total cost |\n| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
+	text.WriteString("Tokens for this session\n\n| Agent | Role | Model | Input (cache hit) | Cache write | Output | Reasoning | Input cost (cached + uncached) | Output cost | Total cost | Missing usage |\n| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
 	rows := []agentTokenUsage{{agent: "/root", role: "main", report: report}}
 	if report.rows != nil {
 		rows = *report.rows
@@ -140,6 +141,9 @@ func formatTokenUsageReport(report tokenUsageReport) string {
 	total.model = "—"
 	writeTokenUsageRow(&text, "Total", "—", total)
 	text.WriteString("\nRouter-lifetime API estimates; reasoning is included in output, and cache writes are included in input.")
+	if report.missingUsage != 0 {
+		fmt.Fprintf(&text, "\nUsage incomplete: observed totals exclude %d response(s) without usable terminal usage. Missing usage counts responses, not tokens; later observed usage is included.", report.missingUsage)
+	}
 	if report.Incomplete {
 		text.WriteString("\nUsage incomplete: one or more agents have unavailable usage.")
 	} else if !report.cost.known {
@@ -174,8 +178,15 @@ func writeTokenUsageRow(text *strings.Builder, agent, role string, report tokenU
 		outputCost = fmt.Sprintf("$%.4f", report.cost.output)
 		totalCost = fmt.Sprintf("$%.4f", report.cost.cachedInput+report.cost.uncachedInput+report.cost.output)
 	}
-	fmt.Fprintf(text, "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
-		tokenUsageCell(agent), tokenUsageCell(role), tokenUsageCell(report.model), input, writes, output, reasoning, inputCost, outputCost, totalCost)
+	missing := fmt.Sprint(report.missingUsage)
+	if report.Incomplete {
+		missing = "n/a"
+	}
+	if report.missingUsage != 0 {
+		agent += " (partial)"
+	}
+	fmt.Fprintf(text, "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+		tokenUsageCell(agent), tokenUsageCell(role), tokenUsageCell(report.model), input, writes, output, reasoning, inputCost, outputCost, totalCost, missing)
 }
 
 func formatUsageTokens(count uint64) string {

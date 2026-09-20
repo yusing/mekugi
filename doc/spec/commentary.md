@@ -195,12 +195,19 @@ the terminal event, including when the journal is empty. Unavailable usage is re
 with an incomplete-usage explanation rather than silently omitting the notice. Child completion never emits a token table.
 The `Tokens for this session` notice contains one wide Markdown table with one row per agent
 and a `Total` row. Columns are `Agent`, `Role`, `Model`, `Input (cache hit)`, `Cache write`,
-`Output`, `Reasoning`, `Input cost (cached + uncached)`, `Output cost`, and `Total cost`.
+`Output`, `Reasoning`, `Input cost (cached + uncached)`, `Output cost`, `Total cost`, and
+`Missing usage`. Missing usage counts forwarded responses without usable terminal usage, not
+missing tokens. Affected agent rows and the total are labeled `partial`; their numbers and
+cache-hit percentages cover only observed usage. The report states that missing usage is excluded.
 Counts use compact decimal units, such as `149K`, `1.4M`, and `1.2B`. Input includes its
 cache-hit percentage; the total percentage is weighted by input tokens, not averaged
 across agents. Input cost displays `$a+$b=$c`, with cached cost first and uncached cost
-second. Costs are in USD. Unknown role metadata is `n/a`, not inferred from the agent's
-name. Model labels append `fast` for effective `fast` or `priority` usage, such as
+second. Costs are in USD. Child roles come from explicit native spawn arguments matched to
+successful spawn results and the child's proven parent and canonical identity. Retained role
+evidence survives router restart and does not depend on the parent remaining live. Missing or
+conflicting role evidence is `n/a`, never inferred from the agent's name. Ordinary forks
+must not reuse inherited spawn evidence to assign roles to their own children.
+Model labels append `fast` for effective `fast` or `priority` usage, such as
 `gpt-5.6-sol fast`; a provider-reported downgrade to `default` has no suffix.
 Model or tier switches retain the distinct observed labels and original per-response pricing.
 Intermediate client-tool responses and failed or incomplete responses do not report tokens.
@@ -215,12 +222,14 @@ Intermediate responses contribute without notices. Thread accounting remains sep
 compaction and routing-session changes do not reset totals. Repeated terminal observations
 within one request count once. Totals remain in memory until router shutdown without a
 lifetime thread-count ceiling. Arithmetic overflow makes the affected total unavailable.
-An accepted or transport-interrupted request without usable terminal usage leaves a permanent
-gap in that thread's router-lifetime totals. Missing or null input, cached-input, output, or
-reasoning counts likewise make current and later counts for that thread unavailable until router shutdown;
-they MUST appear as unavailable values, not known zeros, and MUST NOT recover into apparently complete totals. Definite HTTP
-rejections, requests rejected before forwarding, and non-generating WebSocket prewarm do not
-create usage gaps. Failed and incomplete terminal responses with complete usage still contribute
+An accepted or transport-interrupted request without usable terminal usage increments that
+thread's missing-usage count once. Missing or null input, cached-input, output, or reasoning
+counts likewise exclude that response from observed totals. Earlier totals, known model labels,
+and later usable usage MUST remain available; a later success MUST NOT erase the gap.
+A thread with only missing responses has zero observed usage, explicitly labeled partial,
+not a claim that those responses consumed zero tokens. Definite HTTP rejections, requests
+rejected before forwarding, and non-generating WebSocket prewarm do not create usage gaps.
+Failed and incomplete terminal responses with complete usage still contribute
 to later totals without producing their own notices.
 
 Cost estimates use built-in reference list API prices, not subscription

@@ -17,10 +17,11 @@ type threadUsage struct {
 }
 
 type threadUsageTotal struct {
-	cost     tokenCost
-	counts   tokenCounts
-	complete bool
-	models   []string
+	cost         tokenCost
+	counts       tokenCounts
+	complete     bool
+	missingUsage uint64
+	models       []string
 }
 
 type threadUsageObservation struct {
@@ -79,10 +80,18 @@ func (u *threadUsage) add(thread, model, serviceTier string, counts tokenCounts,
 	if displayModel != "" && !slices.Contains(total.models, displayModel) {
 		total.models = append(total.models, displayModel)
 	}
-	if conflicted || counts.Incomplete {
+	if conflicted {
 		total.complete = false
 	}
 	if !total.complete {
+		return
+	}
+	if counts.Incomplete {
+		if total.missingUsage == ^uint64(0) {
+			total.complete = false
+		} else {
+			total.missingUsage++
+		}
 		return
 	}
 	sum := total.counts
@@ -121,7 +130,7 @@ func (u *threadUsage) snapshot(thread string) (tokenUsageReport, bool) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if total := u.threads[thread]; !u.closed && total != nil && total.complete {
-		return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, model: strings.Join(total.models, ", ")}, true
+		return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, model: strings.Join(total.models, ", "), missingUsage: total.missingUsage}, true
 	}
 	return tokenUsageReport{}, false
 }
@@ -187,9 +196,18 @@ func (t *mekugiResponseTransform) completionUsageReport() (tokenUsageReport, boo
 			if !ok {
 				counts.Incomplete = true
 			}
-			rows = append(rows, agentTokenUsage{agent: child.Author, role: "n/a", report: counts})
+			role := child.SpawnRole
+			if role == "" {
+				role = "n/a"
+			}
+			rows = append(rows, agentTokenUsage{agent: child.Author, role: role, report: counts})
+			if ^uint64(0)-report.missingUsage < counts.missingUsage {
+				report.Incomplete = true
+			} else {
+				report.missingUsage += counts.missingUsage
+			}
 			report.cost.add(counts.cost)
-			if !ok || !addTokenUsageCounts(&report.tokenCounts, counts.tokenCounts) {
+			if !ok || report.Incomplete || !addTokenUsageCounts(&report.tokenCounts, counts.tokenCounts) {
 				report.Incomplete = true
 				report.cost.known = false
 			}

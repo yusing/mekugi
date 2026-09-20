@@ -67,26 +67,36 @@ type journalRetraction struct {
 	ID       string `json:"id"`
 	Sequence uint64 `json:"sequence"`
 }
+type journalSpawnRole struct {
+	Role       string `json:"role,omitempty"`
+	Conflicted bool   `json:"conflicted,omitzero"`
+}
 
 type threadJournal struct {
-	Parent             string                    `json:"parent,omitempty"`
-	IdentityKnown      bool                      `json:"identity_known,omitzero"`
-	IdentityConflicted bool                      `json:"identity_conflicted,omitzero"`
-	Version            int                       `json:"version"`
-	Workspace          string                    `json:"workspace"`
-	Thread             string                    `json:"thread"`
-	Author             string                    `json:"author"`
-	Sequence           uint64                    `json:"sequence"`
-	NextID             uint64                    `json:"next_id"`
-	Items              []journalItem             `json:"items"`
-	Retractions        []journalRetraction       `json:"retractions,omitempty"`
-	Receipts           map[string]journalReceipt `json:"receipts"`
+	Parent             string                      `json:"parent,omitempty"`
+	IdentityKnown      bool                        `json:"identity_known,omitzero"`
+	IdentityConflicted bool                        `json:"identity_conflicted,omitzero"`
+	Version            int                         `json:"version"`
+	Workspace          string                      `json:"workspace"`
+	Thread             string                      `json:"thread"`
+	SpawnBaselineKnown bool                        `json:"spawn_baseline_known,omitzero"`
+	SpawnBaseline      map[string]bool             `json:"spawn_baseline,omitempty"`
+	SpawnRoles         map[string]journalSpawnRole `json:"spawn_roles,omitempty"`
+	SpawnRole          string                      `json:"-"`
+	Author             string                      `json:"author"`
+	Sequence           uint64                      `json:"sequence"`
+	NextID             uint64                      `json:"next_id"`
+	Items              []journalItem               `json:"items"`
+	Retractions        []journalRetraction         `json:"retractions,omitempty"`
+	Receipts           map[string]journalReceipt   `json:"receipts"`
 }
 
 func (j threadJournal) clone() threadJournal {
 	j.Retractions = slices.Clone(j.Retractions)
 	j.Items = slices.Clone(j.Items)
 	j.Receipts = maps.Clone(j.Receipts)
+	j.SpawnBaseline = maps.Clone(j.SpawnBaseline)
+	j.SpawnRoles = maps.Clone(j.SpawnRoles)
 	return j
 }
 
@@ -327,6 +337,54 @@ func (s *journalStore) bindIdentity(ctx context.Context, store *mekugiReplayStor
 	})
 }
 
+func (s *journalStore) forkSpawnBaseline(ctx context.Context, store *mekugiReplayStore, workspace, thread string, initialize bool, callIDs map[string]bool) (map[string]bool, error) {
+	var baseline map[string]bool
+	err := s.transaction(ctx, store.scoped(ctx), workspace, thread, func(j *threadJournal, exists bool) error {
+		if !exists {
+			return errors.New("spawn baseline requires journal initialization")
+		}
+		if !j.SpawnBaselineKnown && initialize {
+			j.SpawnBaselineKnown = true
+			j.SpawnBaseline = maps.Clone(callIDs)
+			baseline = maps.Clone(j.SpawnBaseline)
+			return nil
+		}
+		baseline = maps.Clone(j.SpawnBaseline)
+		return errJournalUnchanged
+	})
+	return baseline, err
+}
+
+func (s *journalStore) bindSpawnRoles(ctx context.Context, store *mekugiReplayStore, workspace, thread string, roles map[string]journalSpawnRole) error {
+	if len(roles) == 0 {
+		return nil
+	}
+	return s.transaction(ctx, store.scoped(ctx), workspace, thread, func(j *threadJournal, exists bool) error {
+		if !exists {
+			return errors.New("spawn roles require journal initialization")
+		}
+		if j.SpawnRoles == nil {
+			j.SpawnRoles = make(map[string]journalSpawnRole)
+		}
+		changed := false
+		for author, evidence := range roles {
+			current, found := j.SpawnRoles[author]
+			if found && (current.Conflicted || !evidence.Conflicted && current.Role == evidence.Role) {
+				continue
+			}
+			if evidence.Conflicted || found && current.Role != evidence.Role {
+				evidence = journalSpawnRole{Conflicted: true}
+			}
+			j.SpawnRoles[author] = evidence
+			changed = true
+		}
+		if !changed {
+			return errJournalUnchanged
+		}
+		return nil
+	})
+}
+
 // Called under the journal mutex and replay lock. Delivery and list authorization
 // share the same workspace-scoped durable identity records.
 func (s *journalStore) workspaceJournals(store *mekugiReplayStore, workspace string) (map[string]threadJournal, map[string]error, error) {
@@ -383,6 +441,10 @@ func (s *journalStore) descendants(store *mekugiReplayStore, workspace, root str
 					return nil, chainError
 				}
 				if node.Parent == "" {
+					parent := journals[journal.Parent]
+					if evidence, ok := parent.SpawnRoles[journal.Author]; ok && !evidence.Conflicted {
+						journal.SpawnRole = evidence.Role
+					}
 					result = append(result, journal)
 				}
 				break

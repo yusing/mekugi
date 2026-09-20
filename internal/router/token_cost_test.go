@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const testTokenUsageTable = "Tokens for this session\n\n| Agent | Role | Model | Input (cache hit) | Cache write | Output | Reasoning | Input cost (cached + uncached) | Output cost | Total cost |\n"
+const testTokenUsageTable = "Tokens for this session\n\n| Agent | Role | Model | Input (cache hit) | Cache write | Output | Reasoning | Input cost (cached + uncached) | Output cost | Total cost | Missing usage |\n"
 
 func TestTokenCostDisjointCategories(t *testing.T) {
 	counts := tokenCounts{InputTokens: 100_000, UncachedInputTokens: 40_000, OutputTokens: 30_000, ReasoningTokens: 20_000}

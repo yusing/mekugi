@@ -161,7 +161,7 @@ func TestTokenUsageRejectsIncompletePricing(t *testing.T) {
 	}
 }
 
-func TestTokenUsageGapReportsUnavailableTotals(t *testing.T) {
+func TestTokenUsageGapRetainsObservedTotals(t *testing.T) {
 	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		for _, gap := range []string{"missing", "null", "partial", "invalid", "interrupted", "transport-error", "http-rejection", "failed-with-usage", "incomplete-with-usage", "compaction"} {
@@ -241,17 +241,15 @@ func TestTokenUsageGapReportsUnavailableTotals(t *testing.T) {
 							t.Fatalf("unexpected final report: %s", out.String())
 						}
 						got, valid := proxy.usage.snapshot("thread-1")
-						if valid != wantReport {
-							t.Fatalf("aggregate validity=%t", valid)
-						}
+						wantInput, wantMissing := uint64(200), uint64(1)
 						if wantReport {
-							wantInput := uint64(300)
-							if gap == "http-rejection" {
-								wantInput = 200
+							wantMissing = 0
+							if gap != "http-rejection" {
+								wantInput = 300
 							}
-							if got.InputTokens != wantInput {
-								t.Fatalf("input=%d want=%d", got.InputTokens, wantInput)
-							}
+						}
+						if !valid || got.Incomplete || got.InputTokens != wantInput || got.OutputTokens != wantInput/10 || got.missingUsage != wantMissing || !got.cost.known {
+							t.Fatalf("observed report=%+v valid=%t; want input=%d missing=%d", got, valid, wantInput, wantMissing)
 						}
 					}
 				}
