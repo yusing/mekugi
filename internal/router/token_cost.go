@@ -2,7 +2,6 @@ package router
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 )
 
@@ -17,7 +16,14 @@ type tokenCost struct {
 
 type tokenUsageReport struct {
 	tokenCounts
-	cost tokenCost
+	cost  tokenCost
+	model string
+	rows  *[]agentTokenUsage
+}
+
+type agentTokenUsage struct {
+	agent, role string
+	report      tokenUsageReport
 }
 
 type tokenPrice struct {
@@ -122,46 +128,64 @@ func (cost *tokenCost) add(next tokenCost) {
 
 func formatTokenUsageReport(report tokenUsageReport) string {
 	var text strings.Builder
-	text.WriteString("Tokens for this session\n\n| Category | Tokens | API USD |\n| --- | ---: | ---: |\n")
-	for _, row := range []struct {
-		label  string
-		tokens string
-		usd    float64
-		billed bool
-	}{
-		{"Input", formatUsageTokens(report.InputTokens), 0, false},
-		{"Cached input", formatUsageTokens(report.InputTokens - min(report.InputTokens, report.UncachedInputTokens)), report.cost.cachedInput, true},
-		{"Uncached input", formatUsageTokens(report.UncachedInputTokens), report.cost.uncachedInput, true},
-		{"Output", formatUsageTokens(report.OutputTokens), report.cost.output, true},
-		{"Reasoning", formatUsageTokens(report.ReasoningTokens), 0, false},
-		{"Total", "—", report.cost.uncachedInput + report.cost.cachedInput + report.cost.output, true},
-	} {
-		amount := "—"
-		if row.billed {
-			amount = "n/a"
-			if report.cost.known {
-				amount = fmt.Sprintf("$%.4f", row.usd)
-			}
-		}
-		fmt.Fprintf(&text, "| %s | %s | %s |\n", row.label, row.tokens, amount)
+	text.WriteString("Tokens for this session\n\n| Agent | Role | Model | Input (cache hit) | Cache write | Output | Reasoning | Input cost (cached + uncached) | Output cost | Total cost |\n| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
+	rows := []agentTokenUsage{{agent: "/root", role: "main", report: report}}
+	if report.rows != nil {
+		rows = *report.rows
 	}
-	if report.CacheWriteTokens != 0 {
-		fmt.Fprintf(&text, "\nUncached input includes %s cache-write tokens, priced at the cache-write rate.", formatUsageTokens(report.CacheWriteTokens))
+	for _, row := range rows {
+		writeTokenUsageRow(&text, row.agent, row.role, row.report)
 	}
-	if !report.cost.known {
+	total := report
+	total.model = "—"
+	writeTokenUsageRow(&text, "Total", "—", total)
+	text.WriteString("\nRouter-lifetime API estimates; reasoning is included in output, and cache writes are included in input.")
+	if report.Incomplete {
+		text.WriteString("\nUsage incomplete: one or more agents have unavailable usage.")
+	} else if !report.cost.known {
 		text.WriteString("\nCost unavailable: unknown model/service-tier pricing or inconsistent usage.")
 	}
 	return text.String()
 }
 
-func formatUsageTokens(count uint64) string {
-	digits := strconv.FormatUint(count, 10)
-	var text strings.Builder
-	for i := range len(digits) {
-		if i > 0 && (len(digits)-i)%3 == 0 {
-			text.WriteByte(',')
-		}
-		text.WriteByte(digits[i])
+func tokenUsageCell(value string) string {
+	if value == "" {
+		return "n/a"
 	}
-	return text.String()
+	return strings.NewReplacer("|", "&#124;", "\n", " ", "\r", " ", "`", "&#96;").Replace(value)
+}
+
+func writeTokenUsageRow(text *strings.Builder, agent, role string, report tokenUsageReport) {
+	input, writes, output, reasoning := "n/a", "n/a", "n/a", "n/a"
+	if !report.Incomplete {
+		hit := 0.0
+		if report.InputTokens != 0 {
+			hit = 100 * float64(report.InputTokens-min(report.InputTokens, report.UncachedInputTokens)) / float64(report.InputTokens)
+		}
+		input = fmt.Sprintf("%s (%.1f%%)", formatUsageTokens(report.InputTokens), hit)
+		if report.Inconsistent {
+			input = formatUsageTokens(report.InputTokens) + " (n/a)"
+		}
+		writes, output, reasoning = formatUsageTokens(report.CacheWriteTokens), formatUsageTokens(report.OutputTokens), formatUsageTokens(report.ReasoningTokens)
+	}
+	inputCost, outputCost, totalCost := "n/a", "n/a", "n/a"
+	if report.cost.known && !report.Incomplete {
+		inputCost = fmt.Sprintf("$%.4f+$%.4f=$%.4f", report.cost.cachedInput, report.cost.uncachedInput, report.cost.cachedInput+report.cost.uncachedInput)
+		outputCost = fmt.Sprintf("$%.4f", report.cost.output)
+		totalCost = fmt.Sprintf("$%.4f", report.cost.cachedInput+report.cost.uncachedInput+report.cost.output)
+	}
+	fmt.Fprintf(text, "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+		tokenUsageCell(agent), tokenUsageCell(role), tokenUsageCell(report.model), input, writes, output, reasoning, inputCost, outputCost, totalCost)
+}
+
+func formatUsageTokens(count uint64) string {
+	for _, unit := range []struct {
+		size   uint64
+		suffix string
+	}{{1_000_000_000, "B"}, {1_000_000, "M"}, {1_000, "K"}} {
+		if count >= unit.size {
+			return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(count)/float64(unit.size)), ".0") + unit.suffix
+		}
+	}
+	return fmt.Sprint(count)
 }

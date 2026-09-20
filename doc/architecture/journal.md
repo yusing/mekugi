@@ -14,12 +14,11 @@ when no client-dispatched work remains. Shell-origin finish uses a call-scoped c
 and durable receipt tied to the originating turn and successful host terminal; it cannot
 complete a later, unrelated, failed, or still-pending turn.
 
-Delivery snapshots and leases the complete selected tree before rendering. Live delivery
+Delivery snapshots and leases the originating journal before rendering. Live delivery
 marks a revision reported; terminal delivery separately marks it flushed, and edits reset
-both for the new revision. Main terminal delivery includes accepted descendants in stable
-agent-path order, groups answers by their exact source question, and acknowledges only
-after successful downstream delivery. Child completion can expose current journal text
-without consuming main's delivery state.
+both for the new revision. Main terminal delivery groups its own answers by their exact source question and acknowledges
+only after successful downstream delivery. Native child completion exposes the child's current
+journal text; main completion does not deliver it again.
 
 Answer association accepts actual user messages and validated plaintext native assignments
 addressed to the child. Encrypted or conflicting identity cannot fall back to stale text.

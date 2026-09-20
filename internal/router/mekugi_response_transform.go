@@ -503,7 +503,22 @@ func (t *mekugiResponseTransform) pendingCallKnown(callID string) bool {
 }
 
 func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStatus string) ([]byte, map[string]json.RawMessage, error) {
-	counts, observed := t.threadUsageCounts()
+	var counts tokenUsageReport
+	observed := false
+	// Discovery reads durable ancestry, so defer it until a report can actually
+	// be emitted. Journal finish has its own terminal reporting path.
+	if !t.subagentTurn && t.usageObserved && !t.journalTerminalReady() {
+		substantive := t.finalAnswer.substantive && !t.finalAnswer.blocked && !t.finalAnswer.disabled
+		if terminalStatus == "" {
+			substantive = tokenUsageSubstantive(payload)
+		}
+		var identity struct {
+			Status string `json:"status"`
+		}
+		if substantive && json.Unmarshal(payload, &identity) == nil && cmp.Or(terminalStatus, identity.Status) == "completed" {
+			counts, observed = t.completionUsageReport()
+		}
+	}
 	var object map[string]json.RawMessage
 	var usageMessage map[string]json.RawMessage
 	var err error

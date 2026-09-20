@@ -17,8 +17,8 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
 
 - **Keep the familiar Codex workflow.** No persistent service or configuration
   edits. Codex keeps control of permissions, execution, and patch review.
-- **See subagent activity inline.** Model notices, progress, messages, and replies
-  appear in the main conversation, with each agent identified. Some updates wait
+- **See subagent activity inline.** Start notices include the spawn prompt. Progress,
+  messages, and replies appear in the main conversation, with each agent identified. Some updates wait
   for the next main-agent response; encrypted messages stay private.
 - **Follow milestones, not another task list.** Agents keep a revisable journal
   that shows live updates and groups answers at completion.
@@ -26,9 +26,10 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
   streams main-agent and subagent shell calls before completion, then switches to
   captured diffs from hpatch and supported shell file operations, with pause and
   flush controls.
-- **See usage and cost.** Completion tables show provider-reported tokens and
-  estimated API costs per agent, not subscription charges. Missing evidence is
-  not presented as a complete total.
+- **See usage and cost.** Main completion shows one table of provider-reported tokens,
+  input cache-hit rates, and estimated API costs per agent, plus a total. Child completion
+  does not repeat the table. Costs are API estimates, not subscription charges;
+  missing evidence is not presented as a complete total.
 - **Inspect sessions in your browser.** A per-launch dashboard shows request
   metrics, token usage, compression, and cache diagnostics.
 - **Use other providers alongside OpenAI models.** Enable [Grok](#grok-models)
@@ -61,7 +62,8 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
 - **Report progress within tool calls.** Record journal milestones alongside
   the work instead of making separate progress calls.
 - **Hand off child changes automatically.** Child completion results include retained
-  change ranges and aggregated line counts for focused parent review.
+  change ranges and aggregated line counts for focused parent review. Main completion
+  does not repeat child journal results.
 - **Finish without another model request.** A journal finish can deliver the
   final report with the last successful command, without another model turn
   just to write the response.

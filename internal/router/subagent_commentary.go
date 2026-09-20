@@ -22,7 +22,7 @@ func subagentCommentaryMessageID(seed string) string {
 
 // Start metadata comes from the child's actual request, not the parent's spawn
 // arguments: native roles can override the model and reasoning configuration.
-func subagentStartCommentary(request *parsedResponsesRequest) string {
+func subagentStartCommentary(request *parsedResponsesRequest, recipient string) string {
 	model := request.model()
 	var reasoning struct {
 		Effort string `json:"effort"`
@@ -48,7 +48,24 @@ func subagentStartCommentary(request *parsedResponsesRequest) string {
 	if tier != "" {
 		renderedTier = commentaryCode(tier)
 	}
-	return "Started.\nModel: " + commentaryCode(model) + "\nReasoning effort: " + renderedEffort + "\nService tier: " + renderedTier
+	text := "Started.\nModel: " + commentaryCode(model) + "\nReasoning effort: " + renderedEffort + "\nService tier: " + renderedTier
+	input, err := decodeResponsesInput(request.fields["input"])
+	if err == nil {
+		for _, v := range input.items {
+			item, ok := decodeResponsesItem(v)
+			if !ok {
+				continue
+			}
+			if prompt, assignment := journalAssignmentText(item.fields, recipient); assignment {
+				if prompt != "" {
+					text += "\n\n**Spawn prompt:**\n\n" + prompt
+				}
+				break
+			}
+		}
+	}
+	return text
+
 }
 
 func prepareSubagentInputCommentary(fields map[string]json.RawMessage, recipient string) []map[string]json.RawMessage {
@@ -141,20 +158,24 @@ func subagentResponse(item map[string]json.RawMessage) (text, sender string, fin
 
 // tokenUsageCommentary reports usage only alongside a completed substantive answer.
 func tokenUsageCommentary(response []byte, counts tokenUsageReport, observed bool, terminalStatus string) map[string]json.RawMessage {
+	return formatTokenUsageCommentary(response, counts, observed, terminalStatus, tokenUsageSubstantive(response))
+}
+
+func tokenUsageSubstantive(response []byte) bool {
 	var body struct {
 		Output []map[string]json.RawMessage `json:"output"`
 	}
 	if json.Unmarshal(response, &body) != nil {
-		return nil
+		return false
 	}
 	substantive := false
 	for _, item := range body.Output {
 		if blocksTokenUsage(item) {
-			return nil
+			return false
 		}
 		substantive = substantive || isSubstantiveAnswer(item)
 	}
-	return formatTokenUsageCommentary(response, counts, observed, terminalStatus, substantive)
+	return substantive
 }
 
 func isFinalAnswerMessage(item map[string]json.RawMessage) bool {

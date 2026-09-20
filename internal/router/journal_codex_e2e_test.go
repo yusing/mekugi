@@ -244,7 +244,8 @@ func runJournalNativeCodexSpawnE2E(t *testing.T, shellFinish bool) {
 	if !provider.childResultSeen || !provider.journalResultSeen {
 		t.Fatalf("native consumer lost journal result or child summary: child=%v journal=%v\nstdout: %.8000s\nstderr: %.8000s", provider.childResultSeen, provider.journalResultSeen, stdout.String(), stderr.String())
 	}
-	groupedResult, childLiveUpdate := false, false
+	spawnPrompt, childLiveUpdate := false, false
+	tokenTables := 0
 	for line := range strings.SplitSeq(stdout.String(), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -262,22 +263,26 @@ func runJournalNativeCodexSpawnE2E(t *testing.T, shellFinish bool) {
 			continue
 		}
 		text := event.Item.Text
+		if strings.Contains(text, "Tokens for this session") {
+			tokenTables++
+			if !strings.Contains(text, "| /root/journal_child |") || !strings.Contains(text, "| Total |") {
+				t.Fatalf("main table omitted child usage or total: %s", text)
+			}
+		}
 		childLiveUpdate = childLiveUpdate || strings.Contains(text, "Journal update `/root/journal_child`") && strings.Contains(text, "Native child live milestone")
 		if strings.Contains(text, " -> ") && (strings.Contains(text, "Completed.") || strings.Contains(text, "Journal update")) {
 			t.Fatalf("duplicate completion or journal recipient commentary: %s", text)
 		}
-		if strings.Contains(text, "Journal flush `/root/journal_child`") && strings.Contains(text, "Native child milestone") {
-			if strings.Count(text, "Record your milestone and finish.") != 1 ||
-				strings.Count(text, "**Answers:**") != 1 ||
-				!strings.Contains(text, "Native child second finding") ||
-				!strings.Contains(text, "Native child live milestone") {
-				t.Fatalf("native consumer did not receive one grouped question and answers: %s", text)
-			}
-			groupedResult = true
+		if strings.Contains(text, "Journal flush `/root/journal_child`") {
+			t.Fatalf("main repeated the native child result: %s", text)
 		}
+		spawnPrompt = spawnPrompt || strings.Contains(text, "**Spawn prompt:**") && strings.Contains(text, "Record your milestone and finish.")
 	}
-	if !groupedResult {
-		t.Fatalf("native consumer did not display the grouped child result: %.8000s", stdout.String())
+	if tokenTables != 1 {
+		t.Fatalf("native consumer received %d token tables, want one at main completion", tokenTables)
+	}
+	if !spawnPrompt {
+		t.Fatalf("native consumer did not display the spawn prompt: %.8000s", stdout.String())
 	}
 	if provider.childRequests != 2 {
 		t.Fatalf("child provider requests = %d, want live update then finish without an extra request", provider.childRequests)

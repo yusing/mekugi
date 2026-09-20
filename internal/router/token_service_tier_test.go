@@ -100,6 +100,13 @@ func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
 					if err := executeRequest(t.Context(), t.Context(), request, headers, "tier-session", provider, &output, nil, proxy, nil, nil); err != nil {
 						t.Fatal(err)
 					}
+					modelLabel := "gpt-5.6-sol"
+					if tc.served == `"fast"` || tc.served == `"priority"` || tc.served == "" && (tc.requested == "fast" || tc.requested == "priority") {
+						modelLabel += " fast"
+					}
+					if !strings.Contains(output.String(), "| "+modelLabel+" |") {
+						t.Fatalf("missing tier-aware model label %q: %s", modelLabel, output.String())
+					}
 					want := tc.want
 					if cacheWrites != 0 {
 						switch want {
@@ -108,11 +115,11 @@ func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
 						case "$0.4560":
 							want = "$0.4760"
 						}
-						if !strings.Contains(output.String(), "20,000 cache-write tokens") {
+						if !strings.Contains(output.String(), "| 20K |") {
 							t.Fatalf("lost cache writes: %s", output.String())
 						}
 					}
-					if !strings.Contains(output.String(), "| Total | — | "+want+" |") || !strings.Contains(output.String(), "| Input | 100,000 |") {
+					if !strings.Contains(output.String(), want+" |") || !strings.Contains(output.String(), "100K (") {
 						t.Fatalf("report=%s", output.String())
 					}
 					requested := tc.requested
@@ -179,7 +186,7 @@ func TestTokenCostCacheWrites(t *testing.T) {
 			}
 			report, ok := totals.snapshot("thread")
 			text := formatTokenUsageReport(report)
-			if !ok || report.InputTokens != 2*tc.input || report.CacheWriteTokens != 80_000 || !strings.Contains(text, "80,000 cache-write tokens") {
+			if !ok || report.InputTokens != 2*tc.input || report.CacheWriteTokens != 80_000 || !strings.Contains(text, "| 80K |") {
 				t.Fatalf("report=%s", text)
 			}
 		})

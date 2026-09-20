@@ -83,11 +83,16 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 				}
 				events := finalAnswerTestPayloads(output.String())
 				wantEvents := len(answer) + 2
+				if child {
+					wantEvents--
+				}
 				if len(events) != wantEvents {
 					t.Fatalf("events = %s", output.String())
 				}
-				if text := commentaryEventText(t, events[0]); !strings.HasPrefix(text, testTokenUsageTable) {
-					t.Fatalf("usage = %q", text)
+				if !child {
+					if text := commentaryEventText(t, events[0]); !strings.HasPrefix(text, testTokenUsageTable) {
+						t.Fatalf("usage = %q", text)
+					}
 				}
 				if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) {
 					t.Fatal("provider answer was filtered")
@@ -122,6 +127,9 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 					}
 				}
 				wantMessages := 2
+				if child {
+					wantMessages--
+				}
 				wantLast := "No files were changed."
 				if !completed || len(rendered) != wantMessages || lastAgentMessage != wantLast {
 					t.Fatalf("Codex result = %q, rendered=%q, completed=%v", lastAgentMessage, rendered, completed)
@@ -333,7 +341,10 @@ func TestFinalAnswerStreamExecuteRequest(t *testing.T) {
 			}
 			events := finalAnswerTestPayloads(output.String())
 			wantEvents := len(answer) + 2
-			if len(events) != wantEvents || !strings.HasPrefix(commentaryEventText(t, events[0]), "Tokens for this session") {
+			if child {
+				wantEvents--
+			}
+			if len(events) != wantEvents || (!child && !strings.HasPrefix(commentaryEventText(t, events[0]), "Tokens for this session")) {
 				t.Fatalf("completion output = %s", output.String())
 			}
 			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) || bytes.Contains(output.Bytes(), []byte("Journal result")) {

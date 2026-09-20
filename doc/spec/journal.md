@@ -8,8 +8,7 @@ question, canonical author, router sequence creation/update values, `report_now`
 and `flushed` state. A thread has at most 256 items; there is no lifetime thread-count or mutation-receipt-count ceiling. Combined
 question and text content is limited to 16 KiB per item. The per-response live progress budget
 is also 16 KiB. Terminal flushes have a separate bound sized for all 256 items, including labels
-and the author heading. Main completion flushes descendant journals in canonical agent-path order (stable thread ID
-breaks ties), then its own journal. Each journal has its own terminal capacity. Record-size failures identify the limiting byte budget. Initialization errors retain their cause and
+and the author heading. Main completion flushes only its own journal; child results are already delivered by native completion. Each journal has its own terminal capacity. Record-size failures identify the limiting byte budget. Initialization errors retain their cause and
 reject preparation rather than exposing an uninitialized journal. Journals follow the automatic
 session-retention policy in [REQ-ROUTER-001](router.md); active turns and shared inherited records
 remain protected.
@@ -72,7 +71,7 @@ Code Mode journal publication does not expose finish. The Bash/POSIX finish surf
 binds intent to its originating invocation rather than a response-local direct-tool call.
 
 On a successful explicit main finish with no client-dispatched calls, the router emits a deterministic
-descendants-first tree flush containing only unflushed revisions, including previously live-reported entries, skips it
+flush of its own journal containing only unflushed revisions, including previously live-reported entries, skips it
 when empty, then emits token metrics. Terminal flushes and terminal retractions render as assistant
 `final_answer` messages, not commentary; live updates remain commentary. These terminal messages
 are user-visible only and retain the same exact-ID removal from later provider input.
@@ -97,10 +96,9 @@ range limit. No recorded changes is explicit; unavailable or retired evidence is
 unavailable rather than zero. Existing terminal capacity and retention requirements apply.
 The native completion result is the sole audience payload; the router does not send an
 additional completion notification or take over host lifecycle or audience routing.
-Live updates remain immediate. Descendant revisions are read from durable journals at main completion,
-including after router restart, and acknowledged only when main delivers them. Failed main delivery
-leaves unacknowledged revisions pending. Only proven, unambiguous ancestry in the selected workspace
-is included; ordinary forks do not inherit the source's child tree. Failed,
+Live updates remain immediate. Main completion never replays descendant journals, including after router restart.
+Child journal revisions remain available through authorized journal reads and subsequent child results.
+Failed main delivery leaves its own unacknowledged revisions pending. Failed,
 incomplete, and interrupted responses neither flush nor discard already-streamed provider output.
 Router-owned messages use generated IDs and are removed from later provider input by exact ID.
 Before adding journal results or notices to a streaming terminal with an absent or empty
@@ -126,7 +124,7 @@ asks for a concise final report containing only distinct, current findings, resu
 validation, or blockers, without overlapping progress or superseded summaries.
 Parents' own journals cover their results, integration decisions, and actions on findings,
 not repetitions or summaries of other agents' journals.
-The descendants-first terminal flush preserves each agent's original report.
+Native child completion preserves each agent's original report; main completion does not repeat it.
 Agents mark answer items with `answer: true` and put only the answer in
 `text`; the router supplies the original question. Live notices label these as **Question** and
 **Answer**; terminal blocks use **Answer** or **Answers**, according to the number of answers.
@@ -209,7 +207,7 @@ provider events unchanged on overflow.
 5. Immediate notices are acknowledged after successful emission without consuming the terminal
    flush. A failed live or terminal delivery remains eligible for retry. Silent edits become
    flush-eligible again; deleting a previously shown ID with report_now emits a retraction.
-6. Successful explicit main finish calls show only unflushed revisions, descendants first then main,
+6. Successful explicit main finish calls show only main's unflushed revisions,
    including live updates, then eligible token metrics. Child finish calls save without flushing and
    retain a nonempty completion result containing their current journal text. Finish makes no
    final-answer continuation request.

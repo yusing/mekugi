@@ -2,6 +2,8 @@ package router
 
 import (
 	"cmp"
+	"slices"
+	"strings"
 	"sync"
 )
 
@@ -18,6 +20,7 @@ type threadUsageTotal struct {
 	cost     tokenCost
 	counts   tokenCounts
 	complete bool
+	models   []string
 }
 
 type threadUsageObservation struct {
@@ -69,6 +72,13 @@ func (u *threadUsage) add(thread, model, serviceTier string, counts tokenCounts,
 		total = &threadUsageTotal{complete: true, cost: tokenCost{known: true}}
 		u.threads[thread] = total
 	}
+	displayModel := model
+	if model != "" && (serviceTier == "fast" || serviceTier == "priority") {
+		displayModel += " fast"
+	}
+	if displayModel != "" && !slices.Contains(total.models, displayModel) {
+		total.models = append(total.models, displayModel)
+	}
 	if conflicted || counts.Incomplete {
 		total.complete = false
 	}
@@ -111,7 +121,7 @@ func (u *threadUsage) snapshot(thread string) (tokenUsageReport, bool) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if total := u.threads[thread]; !u.closed && total != nil && total.complete {
-		return tokenUsageReport{tokenCounts: total.counts, cost: total.cost}, true
+		return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, model: strings.Join(total.models, ", ")}, true
 	}
 	return tokenUsageReport{}, false
 }
@@ -131,4 +141,74 @@ func (t *mekugiResponseTransform) threadUsageCounts() (tokenUsageReport, bool) {
 		return tokenUsageReport{}, false
 	}
 	return t.usageTracker.totals.snapshot(t.usageTracker.thread)
+}
+
+// completionUsageReport consolidates only proven descendants. Usage itself stays
+// keyed by transport thread, independent of presentation names and routing sessions.
+func (t *mekugiResponseTransform) completionUsageReport() (tokenUsageReport, bool) {
+	if t.subagentTurn || t.usageTracker == nil {
+		return tokenUsageReport{}, false
+	}
+	report, observed := t.threadUsageCounts()
+	if !observed {
+		return report, false
+	}
+	rows := []agentTokenUsage{{agent: "/root", role: "main", report: report}}
+	if t.proxy != nil && t.journalAvailable {
+		journals := t.proxy.journals
+		release, err := journals.lockState(t.ctx)
+		if err != nil {
+			return tokenUsageReport{}, false
+		}
+		var children []threadJournal
+		read := func() error {
+			var err error
+			children, err = journals.descendants(t.proxy.replayStore, t.directory, t.usageTracker.thread)
+			return err
+		}
+		if t.proxy.replayStore != nil {
+			err = t.proxy.replayStore.locked(t.ctx, read)
+		} else {
+			err = read()
+		}
+		release()
+		if err != nil {
+			return tokenUsageReport{}, false
+		}
+		for _, child := range children {
+			counts, ok := t.usageTracker.totals.snapshot(child.Thread)
+			if !ok {
+				counts.Incomplete = true
+			}
+			rows = append(rows, agentTokenUsage{agent: child.Author, role: "n/a", report: counts})
+			report.cost.add(counts.cost)
+			if !ok || !addTokenUsageCounts(&report.tokenCounts, counts.tokenCounts) {
+				report.Incomplete = true
+				report.cost.known = false
+			}
+		}
+	}
+	report.model = ""
+	report.rows = &rows
+	return report, true
+}
+
+func addTokenUsageCounts(sum *tokenCounts, next tokenCounts) bool {
+	for _, pair := range []struct {
+		dst *uint64
+		add uint64
+	}{
+		{&sum.InputTokens, next.InputTokens},
+		{&sum.UncachedInputTokens, next.UncachedInputTokens},
+		{&sum.CacheWriteTokens, next.CacheWriteTokens},
+		{&sum.OutputTokens, next.OutputTokens},
+		{&sum.ReasoningTokens, next.ReasoningTokens},
+	} {
+		if ^uint64(0)-*pair.dst < pair.add {
+			return false
+		}
+		*pair.dst += pair.add
+	}
+	sum.Inconsistent = sum.Inconsistent || next.Inconsistent
+	return true
 }

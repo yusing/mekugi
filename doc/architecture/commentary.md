@@ -23,7 +23,9 @@ interrupts, waits, and assignment lifecycle.
 Provider-authoritative usage is accumulated per stable thread for the router lifetime.
 Unknown prices preserve token totals but suppress cost claims; missing or inconsistent
 usage makes later cumulative reporting unavailable rather than partial. Usage display
-follows any main journal flush and remains separate between root and child threads.
+occurs only at main completion after its journal flush. It joins separate per-thread totals
+through proven workspace ancestry into one per-agent table and aggregate, without mutating
+the underlying thread accounting.
 Metrics use the same terminal facts but retain independent calculation and persistence.
 
 Critical notices use a separate bounded queue for failures that occur before ordinary

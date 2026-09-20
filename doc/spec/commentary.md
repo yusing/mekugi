@@ -25,7 +25,10 @@ streamed call framing remain unchanged. The router never reads encrypted message
 
 The first accepted `thread_spawn` child request adds one start notice to the root activity
 collector. It shows the child's canonical path, observed model, reasoning effort, and effective
-requested service tier as inline code. Omitted effort or tier is labelled "not specified", not
+requested service tier as inline code, followed by the plaintext spawn prompt from the first
+native assignment addressed to that child. Inherited user requests, follow-up tasks, and other agents'
+assignments are not spawn prompts. Opaque assignments remain opaque; no prompt is inferred.
+The whole notice remains subject to the auxiliary rendering budget. Omitted effort or tier is labelled "not specified", not
 inferred from the parent or role. Service tier reflects the configured per-model override;
 `priority` is forwarded and displayed as `fast`, without claiming the provider served that tier.
 The notice describes the child request, not successful provider inference. Stable child-thread
@@ -170,7 +173,7 @@ An absent or malformed child identity never matches an unaddressed envelope. Val
 plaintext `MESSAGE` payloads are shown in full under `Message received`, never as excerpts.
 A plaintext `FINAL_ANSWER` produces no router commentary: Codex already displays completion.
 Native completion remains available to the parent;
-descendant journal content is delivered by the terminal journal flush.
+descendant journal content is delivered by native child completion and is not repeated at main completion.
 Messages exceeding the auxiliary rendering budget are omitted from commentary without
 changing the original envelope. Encrypted envelopes show receipt
 and direction only, including native Codex envelopes containing a plaintext routing
@@ -187,25 +190,32 @@ those messages from later provider-bound input while preserving the original col
 tool outputs, and inter-agent messages. A response already accompanied by its deterministic
 commentary is not projected again.
 
-A completed root or child response with eligible provider usage includes one token notice
-after any main journal flush and before the child journal result and terminal event. It uses a
-`Tokens for this session` heading and one compact Markdown table with `Category`, `Tokens`, and
-`API USD` columns. Rows use full labels: `Input`, `Cached input`, `Uncached input`, `Output`,
-`Reasoning`, and `Total`. Counts use decimal thousands separators. Costs use four decimal places
-for cached input, uncached input, output, and total; input and reasoning have `—` cost cells
-because they overlap other rows. The total token cell is `—`. The standard report has no footer;
-cache-write pricing and unavailable costs add their applicable diagnostic note.
+A completed main response with eligible provider usage includes one token notice after its
+journal flush and before the terminal event. Child completion never emits a token table.
+The `Tokens for this session` notice contains one wide Markdown table with one row per agent
+and a `Total` row. Columns are `Agent`, `Role`, `Model`, `Input (cache hit)`, `Cache write`,
+`Output`, `Reasoning`, `Input cost (cached + uncached)`, `Output cost`, and `Total cost`.
+Counts use compact decimal units, such as `149K`, `1.4M`, and `1.2B`. Input includes its
+cache-hit percentage; the total percentage is weighted by input tokens, not averaged
+across agents. Input cost displays `$a+$b=$c`, with cached cost first and uncached cost
+second. Costs are in USD. Unknown role metadata is `n/a`, not inferred from the agent's
+name. Model labels append `fast` for effective `fast` or `priority` usage, such as
+`gpt-5.6-sol fast`; a provider-reported downgrade to `default` has no suffix.
+Model or tier switches retain the distinct observed labels and original per-response pricing.
 Intermediate client-tool responses and failed or incomplete responses do not report tokens.
 Eligibility and the child summary are defined by [REQ-JOURNAL-001](journal.md).
-JSON and streaming responses report the same cumulative provider-authoritative input, cached-input,
-output, and reasoning totals for the originating thread. Intermediate responses contribute to
-these totals without producing notices. Root and child threads remain separate; compaction and
-routing-session changes do not reset totals. Repeated terminal observations within one request
-count once. Totals remain in memory until router shutdown without a lifetime thread-count ceiling. Arithmetic
-overflow suppresses reporting for the affected thread rather than showing a partial total.
+
+JSON and streaming responses use the same cumulative provider-authoritative per-thread
+counts. Main combines only proven descendants in its selected workspace with its own row;
+unrelated threads and ordinary forks' source trees are excluded. Missing child usage or
+unavailable tree evidence must not produce an apparently complete aggregate.
+Intermediate responses contribute without notices. Thread accounting remains separate;
+compaction and routing-session changes do not reset totals. Repeated terminal observations
+within one request count once. Totals remain in memory until router shutdown without a
+lifetime thread-count ceiling. Arithmetic overflow makes the affected total unavailable.
 An accepted or transport-interrupted request without usable terminal usage leaves a permanent
 gap in that thread's router-lifetime totals. Missing or null input, cached-input, output, or
-reasoning counts likewise suppress current and later thread reports until router shutdown;
+reasoning counts likewise make current and later counts for that thread unavailable until router shutdown;
 they MUST NOT appear as known zeros or recover into apparently complete totals. Definite HTTP
 rejections, requests rejected before forwarding, and non-generating WebSocket prewarm do not
 create usage gaps. Failed and incomplete terminal responses with complete usage still contribute
@@ -232,20 +242,17 @@ are not proof of the billed processing mode when the provider omits it.
 Cached input is subtracted from ordinary input; reasoning is included in output and MUST NOT be
 charged again. Optional `cache_write_tokens` are part of uncached input, not additional input
 tokens. For models with published cache-write rates, their premium is included in the uncached
-input cost cell, and the footer states the cache-write count. An omitted cache-write field is
-zero for older providers; explicit null, invalid, or contradictory evidence is not known zero.
-Unknown model/service-tier pricing or inconsistent usage makes
-all four billable cost cells `n/a`, without hiding token totals or presenting a partial
-cost as complete. The report explains its thread scope, overlapping token categories,
-reference-price source, router-lifetime boundary, and any unavailable estimate. Root reports do not sum child threads.
-This is auxiliary commentary accounting, not a change to capture-owned metrics exports.
-Eligible child reports also enter the existing root activity collector as distinct notices,
-deduplicated by originating thread and usage-message identity. Root copies carry the child's
-canonical path and retain that child's totals, without adding them to root usage. They follow
-the same bounded, deferred delivery and exact replay filtering as other child activity.
+input cost cell. An omitted cache-write field is zero for older providers; explicit null,
+invalid, or contradictory evidence is not known zero. Unknown model/service-tier pricing
+or inconsistent usage makes the affected row's cost cells `n/a` and its aggregate cost
+unavailable, without hiding known token counts or presenting a partial cost as complete.
+The report explains overlapping token categories, reference pricing, the router-lifetime
+boundary, and unavailable estimates. Root accounting is not mutated when rendering the
+tree total. This is auxiliary commentary accounting, not a change to capture-owned metrics
+exports. Generated tables retain the existing exact replay filtering and auxiliary budget.
 
-A successful explicit journal finish emits unflushed journal revisions (including live-reported
-updates), then usage, then the child journal result when applicable, and the terminal event.
+A successful explicit main journal finish emits its own unflushed journal revisions (including live-reported
+updates), then usage, and the terminal event. Child finish emits its native journal result without a token table.
 It does not request a separately generated provider final answer. Provider answer events remain
 unfiltered and cannot trigger journal completion. Failed or incomplete responses release buffered
 output without terminal journal flush or usage notices.
@@ -298,8 +305,8 @@ The collector retains thread and source identities until shutdown without lifeti
 It bounds live queues to 1,024 pending events and 64 pending events per child. Queue exhaustion
 reports a user-visible notice; it does not disable later updates once the queue drains.
 Pending events expire after one hour. Live root copies share a 16 KiB budget per response, after labels
-are added. Journal terminal copies use the separate capacity-sized budget in
-[REQ-JOURNAL-001](journal.md); a deferred live notice does not block a terminal copy. Live root-copy IDs remain bound to stable root thread identity until
+are added. Main journal terminal delivery uses the separate capacity-sized budget in
+[REQ-JOURNAL-001](journal.md); a deferred live notice does not block its own terminal flush. Live root-copy IDs remain bound to stable root thread identity until
 shutdown, across session remapping and event expiry; emitted message provenance also survives
 shutdown in the workspace-scoped replay store. Live queue capacity never
 evicts executable-call history or existing replay provenance. Root copies are
@@ -320,12 +327,12 @@ Acceptance:
    items and terminal output do not duplicate root copies.
 5. Router-authored messages are removed from every later provider request and are not repeated when
    the matching message is already present in Codex history.
-6. Eligible completed root and child responses report input, cached input, uncached input,
-   output, and reasoning totals after journal flush, using one token/API-cost table.
+6. Eligible main completion reports one row per proven agent plus a total, with compact
+   counts, cache-hit percentages, and split input cost. Child completion emits no token table.
    Costs use per-response models and context tiers, do not double-charge cached input or reasoning,
-   remain cumulative across compaction, and show `n/a` for a thread containing unpriced usage.
+   remain cumulative across compaction, and show `n/a` for unavailable evidence.
    Intermediate client calls, failures, and incomplete responses do not emit token notices.
-   Child tables remain live root activity, without adding child totals to root usage; child journals wait for main completion.
+   Child results are delivered natively and are not flushed again at main completion.
 7. Journal authoring, admission, replay, runtime publishing, and terminal acceptance belong to
    [REQ-JOURNAL-001](journal.md). Automatic notices remain distinguishable from authored journal
    mutations in [feature evidence](router.md#feature-usage-debug-evidence).

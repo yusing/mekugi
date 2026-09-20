@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
+func TestJournalMainFlushOnlyOwnJournalAfterRestart(t *testing.T) {
 	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
@@ -31,7 +31,7 @@ func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
 				}
 			}
 			seed("root", "Main result")
-			// Finish in reverse display order, including a nested agent.
+			// Finish several children, including a nested agent.
 			for _, node := range []struct{ thread, parent, author string }{
 				{"b", "root", "/root/agent2"},
 				{"a", "root", "/root/agent1"},
@@ -82,18 +82,18 @@ func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
 			root.journalLiveBytes = maxCommentaryPublicationBytes
 			root.activityBytes = maxCommentaryPublicationBytes
 			messages, err := root.prepareJournalDelivery(true)
-			if err != nil || len(messages) != 4 {
-				t.Fatalf("tree snapshot: %v, %v", messages, err)
+			if err != nil || len(messages) != 1 {
+				t.Fatalf("main snapshot: %v, %v", messages, err)
 			}
-			// An abandoned write must leave all revisions pending.
+			// An abandoned main write must leave its revisions pending.
 			root.ReleaseDelivery()
 			messages, err = root.prepareJournalDelivery(true)
-			if err != nil || len(messages) != 4 {
+			if err != nil || len(messages) != 1 {
 				t.Fatalf("retry lost revisions: %v, %v", messages, err)
 			}
-			for i, want := range []string{"Result /root/agent1", "Result /root/agent1/nested", "Result /root/agent2", "Main result"} {
+			for i, want := range []string{"Main result"} {
 				if !strings.Contains(commentaryMessageText(messages[i]), want) {
-					t.Fatalf("flush order: %s", mustMarshalJSON(messages))
+					t.Fatalf("main flush: %s", mustMarshalJSON(messages))
 				}
 				body := commentaryMessageText(messages[i])
 				if strings.Count(body, "Shared assignment?") != 1 ||
@@ -106,18 +106,19 @@ func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
 			root.ReleaseDelivery()
 			for _, thread := range []string{"root", "a", "b", "nested"} {
 				items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, thread)
-				if err != nil || len(items) != 2 || !items[0].Flushed || !items[1].Flushed {
-					t.Fatalf("main did not acknowledge %s: %+v, %v", thread, items, err)
+				if err != nil || len(items) != 2 || items[0].Flushed != (thread == "root") || items[1].Flushed != (thread == "root") {
+					t.Fatalf("incorrect acknowledgement for %s: %+v, %v", thread, items, err)
 				}
 			}
 			messages, err = root.prepareJournalDelivery(true)
 			root.ReleaseDelivery()
 			if err != nil || len(messages) != 0 {
-				t.Fatalf("repeated tree flush: %s, %v", mustMarshalJSON(messages), err)
+				t.Fatalf("repeated main flush: %s, %v", mustMarshalJSON(messages), err)
 			}
 			requestJournalFinish(t, root)
-			// Exercise the actual terminal projection after a child edit.
+			// Child edits stay separate from the next main terminal projection.
 			seed("a", "Later child revision")
+			seed("root", "Later main revision")
 			var output []byte
 			if stream {
 				events, err := root.TransformSSE([]byte(`{"type":"response.completed","response":{"id":"main","status":"completed","output":[]}}`))
@@ -139,7 +140,7 @@ func TestJournalMainFlushOrderingAndRestart(t *testing.T) {
 				bytes.Contains(output, []byte("`amber`")) {
 				t.Fatalf("later delivery did not group only its own answers: %s", output)
 			}
-			if !bytes.Contains(output, []byte("Later child revision")) || bytes.Contains(output, []byte("Unrelated result")) {
+			if !bytes.Contains(output, []byte("Later main revision")) || bytes.Contains(output, []byte("Later child revision")) || bytes.Contains(output, []byte("Unrelated result")) {
 				t.Fatalf("terminal projection: %s", output)
 			}
 		})
@@ -242,14 +243,14 @@ func TestJournalMainFlushScopesCorruptRecords(t *testing.T) {
 			}
 			_, err = root.prepareJournalDelivery(true)
 			root.ReleaseDelivery()
-			if (err != nil) != (scenario == "invalid-descendant") {
+			if err != nil {
 				t.Fatalf("record error escaped its tree: %v", err)
 			}
 		})
 	}
 }
 
-func TestJournalOversizedTreeDoesNotRetainPartialDelivery(t *testing.T) {
+func TestJournalMainFlushIgnoresOversizedChild(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	root, _ := prepareActivityTest(t, proxy, "main", "root", "", "/root", nil)
 	child, _ := prepareActivityTest(t, proxy, "child", "child", "root", "/root/child", nil)
@@ -257,22 +258,13 @@ func TestJournalOversizedTreeDoesNotRetainPartialDelivery(t *testing.T) {
 	if _, err := proxy.journals.apply(t.Context(), nil, root.directory, "root", "", []journalMutation{{Op: "add", Text: new("Main result")}}); err != nil {
 		t.Fatal(err)
 	}
-	// Exercise the renderer's capacity guard after a valid earlier tree member.
 	key := journalKey(root.directory, "child")
 	journal := proxy.journals.memory[key]
 	journal.Items = []journalItem{{ID: "amber", Text: strings.Repeat("x", maxJournalFlushBytes), Updated: 1}}
 	proxy.journals.memory[key] = journal
-	before := len(proxy.memoryCommentary[root.historySessionID])
 	messages, err := root.prepareJournalDelivery(true)
-	if err == nil || len(messages) != 0 || len(root.journalDeliveries) != 0 ||
-		len(proxy.memoryCommentary[root.historySessionID]) != before || root.journalDeliveryRelease != nil {
-		t.Fatalf("partial delivery retained: messages=%d deliveries=%d err=%v", len(messages), len(root.journalDeliveries), err)
-	}
-	journal.Items[0].Text = "Child result"
-	proxy.journals.memory[key] = journal
-	messages, err = root.prepareJournalDelivery(true)
 	defer root.ReleaseDelivery()
-	if err != nil || len(messages) != 2 {
-		t.Fatalf("retry lost pending tree: messages=%d err=%v", len(messages), err)
+	if err != nil || len(messages) != 1 || !strings.Contains(commentaryMessageText(messages[0]), "Main result") {
+		t.Fatalf("child blocked main delivery: messages=%d err=%v", len(messages), err)
 	}
 }

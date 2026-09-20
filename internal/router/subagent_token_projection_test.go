@@ -8,98 +8,75 @@ import (
 
 func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 	for _, stream := range []bool{false, true} {
-		for _, outcome := range []string{"completed", "failed", "incomplete", "missing-usage", "commentary-only"} {
-			t.Run(map[bool]string{false: "json", true: "sse"}[stream]+"/"+outcome, func(t *testing.T) {
+		for _, missing := range []bool{false, true} {
+			t.Run(map[bool]string{false: "json", true: "sse"}[stream]+map[bool]string{false: "/complete", true: "/missing"}[missing], func(t *testing.T) {
 				proxy := newManagedMekugiProxy(t)
 				root, _ := prepareActivityTest(t, proxy, "shared-session", "root", "", "/root", nil)
-				other, _ := prepareActivityTest(t, proxy, "other-session", "other-root", "", "/root", nil)
+				other, _ := prepareActivityTest(t, proxy, "other-session", "other", "", "/root", nil)
 				child, _ := prepareActivityTest(t, proxy, "shared-session", "child", "root", "/root/worker", nil)
-				if outcome == "completed" {
-					if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, child.directory, child.shellThreadID, "", []journalMutation{{Op: "add", Text: new("Child milestone")}}); err != nil {
+				child.usageTracker.model = "gpt-5.6-sol"
+				root.drainActivity()
+				root.Close()
+				if missing {
+					child.usageTracker.finish()
+				} else {
+					child.observeResponseUsage(tokenCounts{InputTokens: 120, UncachedInputTokens: 40, OutputTokens: 30, ReasoningTokens: 20})
+				}
+				response := []byte(`{"id":"child-response","status":"completed","output":[{"type":"message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Child result."}]}]}`)
+				var output []byte
+				if stream {
+					events, err := child.TransformSSE([]byte(`{"type":"response.output_item.done","output_index":0,"item":{"id":"answer","type":"message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Child result."}]}}`))
+					if err != nil {
+						t.Fatal(err)
+					}
+					output = bytes.Join(events, nil)
+					events, err = child.TransformSSE(append(append([]byte(`{"type":"response.completed","response":`), response...), '}'))
+					if err != nil {
+						t.Fatal(err)
+					}
+					output = append(output, bytes.Join(events, nil)...)
+				} else {
+					var err error
+					output, err = child.TransformJSON(response)
+					if err != nil {
 						t.Fatal(err)
 					}
 				}
-				root.drainActivity() // Discard the unrelated start notice.
-				root.Close()         // Reports must survive until the next root response.
-
-				answer := map[string]any{
-					"type": "message", "id": "answer", "role": "assistant",
-					"phase": "final_answer", "status": "completed",
-					"content": []any{map[string]any{"type": "output_text", "text": "Child result."}},
-				}
-				if outcome == "commentary-only" {
-					answer["phase"] = "commentary"
-				}
-				item := answer
-				if outcome == "completed" {
-					item = journalFinishCall(`{"op":"finish"}`)
-				}
-				status := "completed"
-				if outcome == "failed" || outcome == "incomplete" {
-					status = outcome
-				}
-				response := map[string]any{
-					"id": "child-response", "status": status, "output": []any{item},
-				}
-				if outcome != "missing-usage" {
-					response["usage"] = map[string]any{
-						"input_tokens": 120, "output_tokens": 30,
-						"input_tokens_details":  map[string]any{"cached_tokens": 80},
-						"output_tokens_details": map[string]any{"reasoning_tokens": 20},
-					}
-					observeTestResponseUsage(t, child, mustTestJSON(t, response), false)
-				}
-
-				var childOutput []byte
-				for range 2 { // Repeated terminal observations must not duplicate root reports.
-					if stream {
-						itemEvent := mustTestJSON(t, map[string]any{
-							"type": "response.output_item.done", "output_index": 0, "item": item,
-						})
-						if _, err := child.TransformSSE(itemEvent); err != nil {
-							t.Fatal(err)
-						}
-						response["output"] = []any{} // Eligibility comes from streamed items.
-						events, err := child.TransformSSE(mustTestJSON(t, map[string]any{
-							"type": "response." + status, "response": response,
-						}))
-						if err != nil {
-							t.Fatal(err)
-						}
-						for _, event := range events {
-							child.Delivered(event)
-						}
-						child.ReleaseDelivery()
-						childOutput = bytes.Join(events, nil)
-					} else {
-						var err error
-						childOutput, err = child.TransformJSON(mustTestJSON(t, response))
-						if err != nil {
-							t.Fatal(err)
-						}
-						child.Delivered(childOutput)
-						child.ReleaseDelivery()
-					}
-				}
-				wantUsage := outcome == "completed"
-				if bytes.Contains(childOutput, []byte("Tokens for this session")) != wantUsage {
-					t.Fatalf("child usage eligibility: %s", childOutput)
-				}
-				if wantUsage && (bytes.Contains(childOutput, []byte("Child result.")) ||
-					!bytes.Contains(childOutput, []byte("Journal result")) ||
-					bytes.Index(childOutput, []byte("Tokens for this session")) >= bytes.Index(childOutput, []byte("Journal result"))) {
-					t.Fatalf("usage did not precede the synthetic child result: %s", childOutput)
+				if bytes.Contains(output, []byte("Tokens for this session")) || !bytes.Contains(output, []byte("Child result.")) {
+					t.Fatalf("child emitted usage or lost answer: %s", output)
 				}
 				child.Close()
-
-				root, _ = prepareActivityTest(t, proxy, "remapped-session", "root", "", "/root", nil)
-				if !stream && wantUsage {
-					requestJournalFinish(t, root)
-				}
-				rootResponse := []byte(`{"id":"root-response","status":"completed","output":[]}`)
-				var output []byte
+				root, _ = prepareActivityTest(t, proxy, "remapped", "root", "", "/root", nil)
+				root.usageTracker.model = "gpt-6-astra"
+				root.observeResponseUsage(tokenCounts{InputTokens: 100, UncachedInputTokens: 50, OutputTokens: 10, ReasoningTokens: 5})
 				if stream {
 					events, err := root.TransformSSE([]byte(`{"type":"response.created","response":{"id":"root-response"}}`))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if bytes.Contains(bytes.Join(events, nil), []byte("Tokens for this session")) {
+						t.Fatal("usage appeared before root completion")
+					}
+				}
+				report, ok := root.completionUsageReport()
+				text := formatTokenUsageReport(report)
+				if !ok || strings.Count(text, "| Agent |") != 1 || !strings.Contains(text, "| /root/worker | n/a |") {
+					t.Fatalf("missing consolidated table: %s", text)
+				}
+				if missing {
+					if !report.Incomplete || !strings.Contains(text, "| Total | — | — | n/a |") {
+						t.Fatal(text)
+					}
+				} else if report.InputTokens != 220 || report.OutputTokens != 40 || !strings.Contains(text, "| /root/worker | n/a | gpt-5.6-sol | 120 (66.7%) |") {
+					t.Fatal(text)
+				}
+				rootResponse := []byte(`{"id":"root-final","status":"completed","output":[{"id":"root-answer","type":"message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Root answer."}]}]}`)
+				if stream {
+					_, err := root.TransformSSE([]byte(`{"type":"response.output_item.done","output_index":0,"item":{"id":"root-answer","type":"message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Root answer."}]}}`))
+					if err != nil {
+						t.Fatal(err)
+					}
+					events, err := root.TransformSSE(append(append([]byte(`{"type":"response.completed","response":`), rootResponse...), '}'))
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -111,42 +88,15 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				if got := bytes.Count(output, []byte("Tokens for this session")); got != map[bool]int{false: 0, true: 1}[wantUsage] {
-					t.Fatalf("root usage report count = %d: %s", got, output)
+				if bytes.Count(output, []byte("Tokens for this session")) != 1 || !bytes.Contains(output, []byte("/root/worker")) || !bytes.Contains(output, []byte("Root answer.")) {
+					t.Fatalf("main completion did not deliver one consolidated report: %s", output)
 				}
-				if bytes.Contains(childOutput, []byte("Journal flush")) {
-					t.Fatalf("child completed with a premature flush: %s", childOutput)
-				}
-				if stream && bytes.Contains(output, []byte("Child milestone")) {
-					t.Fatalf("child journal appeared before main completion: %s", output)
-				}
-				if !stream && wantUsage && !bytes.Contains(output, []byte("Child milestone")) {
-					t.Fatalf("main completion lost child journal: %s", output)
+				other.observeResponseUsage(tokenCounts{InputTokens: 1})
+				otherReport, _ := other.completionUsageReport()
+				if strings.Contains(formatTokenUsageReport(otherReport), "/root/worker") {
+					t.Fatal("child reached unrelated root")
 				}
 				root.ReleaseDelivery()
-				if wantUsage {
-					counts, _ := child.threadUsageCounts()
-					want := "[`/root/worker`] " + formatTokenUsageReport(counts)
-					if !strings.Contains(string(output), string(mustMarshalJSON(want))) {
-						t.Fatalf("root report lost child attribution or totals: %s", output)
-					}
-					var replay []any
-					for _, message := range root.activityMessages {
-						replay = append(replay, message)
-					}
-					replay = append(replay, answer)
-					_, request := prepareActivityTest(t, proxy, "replay-session", "root", "", "/root", replay)
-					if bytes.Contains(request.fields["input"], []byte("Tokens for this session")) || !bytes.Contains(request.fields["input"], []byte("Child result.")) {
-						t.Fatalf("replay filtering changed substantive output: %s", request.fields["input"])
-					}
-				}
-				next, _ := prepareActivityTest(t, proxy, "next-session", "root", "", "/root", nil)
-				for _, target := range []*mekugiResponseTransform{other, next} {
-					visible, err := target.TransformJSON(rootResponse)
-					if err != nil || bytes.Contains(visible, []byte("Tokens for this session")) {
-						t.Fatalf("report repeated or reached another root: %s, %v", visible, err)
-					}
-				}
 			})
 		}
 	}

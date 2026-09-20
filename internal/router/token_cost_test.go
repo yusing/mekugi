@@ -8,8 +8,7 @@ import (
 	"testing"
 )
 
-const testTokenUsageTable = "Tokens for this session\n\n| Category | Tokens | API USD |\n| --- | ---: | ---: |\n" +
-	"| Input | 20 | — |\n| Cached input | 12 | n/a |\n| Uncached input | 8 | n/a |\n| Output | 5 | n/a |\n| Reasoning | 3 | — |\n| Total | — | n/a |\n"
+const testTokenUsageTable = "Tokens for this session\n\n| Agent | Role | Model | Input (cache hit) | Cache write | Output | Reasoning | Input cost (cached + uncached) | Output cost | Total cost |\n"
 
 func TestTokenCostDisjointCategories(t *testing.T) {
 	counts := tokenCounts{InputTokens: 100_000, UncachedInputTokens: 40_000, OutputTokens: 30_000, ReasoningTokens: 20_000}
@@ -109,22 +108,20 @@ func TestTokenUsageReportTables(t *testing.T) {
 	counts := tokenCounts{InputTokens: 100_000, UncachedInputTokens: 40_000, OutputTokens: 30_000, ReasoningTokens: 20_000}
 	report := tokenUsageReport{tokenCounts: counts, cost: estimateTokenCost("gpt-6-astra", "", counts)}
 	got := formatTokenUsageReport(report)
-	want := "Tokens for this session\n\n| Category | Tokens | API USD |\n| --- | ---: | ---: |\n" +
-		"| Input | 100,000 | — |\n| Cached input | 60,000 | $0.0600 |\n| Uncached input | 40,000 | $0.4000 |\n" +
-		"| Output | 30,000 | $1.5000 |\n| Reasoning | 20,000 | — |\n| Total | — | $1.9600 |\n"
-	if got != want {
+	want := "| /root | main | n/a | 100K (60.0%) | 0 | 30K | 20K | $0.0600+$0.4000=$0.4600 | $1.5000 | $1.9600 |"
+	if !strings.Contains(got, want) {
 		t.Fatalf("report:\n%s", got)
 	}
 	report.cost.known = false
 	got = formatTokenUsageReport(report)
-	if strings.Contains(got, "$") || strings.Count(got, "| n/a |") != 4 ||
-		!strings.Contains(got, "| Input | 100,000 |") || !strings.Contains(got, "Cost unavailable:") {
+	if strings.Contains(got, "$") || !strings.Contains(got, "| n/a | n/a | n/a |") ||
+		!strings.Contains(got, "100K (60.0%)") || !strings.Contains(got, "Cost unavailable:") {
 		t.Fatalf("unavailable report:\n%s", got)
 	}
 }
 
 func TestFormatUsageTokens(t *testing.T) {
-	for value, want := range map[uint64]string{0: "0", 12: "12", 123: "123", 1234: "1,234", 1234567: "1,234,567", ^uint64(0): "18,446,744,073,709,551,615"} {
+	for value, want := range map[uint64]string{0: "0", 12: "12", 123: "123", 1234: "1.2K", 149000: "149K", 1234567: "1.2M", 1200000000: "1.2B", ^uint64(0): "18446744073.7B"} {
 		if got := formatUsageTokens(value); got != want {
 			t.Errorf("%d: %q != %q", value, got, want)
 		}
@@ -234,11 +231,11 @@ func TestTokenCostReportIncludesCompactionAcrossTransports(t *testing.T) {
 				}
 				if tc.invalid != "" {
 					wantCost = "n/a"
-					if strings.Count(rendered, "| n/a |") != 4 || !strings.Contains(rendered, "Cost unavailable:") {
+					if strings.Contains(rendered, "$") || !strings.Contains(rendered, "Cost unavailable:") {
 						t.Fatal("inconsistent provider usage was priced", rendered)
 					}
 				}
-				for _, want := range []string{"| Input | 400,000 |", "| Total | — | " + wantCost + " |"} {
+				for _, want := range []string{"400K (", wantCost + " |"} {
 					if !strings.Contains(rendered, want) {
 						t.Fatalf("missing %q from %s", want, rendered)
 					}
@@ -246,7 +243,7 @@ func TestTokenCostReportIncludesCompactionAcrossTransports(t *testing.T) {
 				if !strings.Contains(output.String(), "No files were changed.") {
 					t.Fatal("provider final text was filtered")
 				}
-				if strings.Count(rendered, "| Category | Tokens | API USD |") != 1 {
+				if strings.Count(rendered, "| Agent | Role | Model |") != 1 {
 					t.Fatal("cost report duplicated", rendered)
 				}
 			}

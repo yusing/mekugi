@@ -483,7 +483,7 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 	if metadata.SubagentKind == "thread_spawn" {
 		// The collector deduplicates this source by stable child thread, including
 		// across routing-session changes, and forwards it only to the observed root.
-		p.activity.collect(activityThreadID, "subagent-start\x00"+activityThreadID, "start", subagentStartCommentary(request))
+		p.activity.collect(activityThreadID, "subagent-start\x00"+activityThreadID, "start", subagentStartCommentary(request, metadata.AgentName))
 	}
 	deferredCommentary := p.drainCommentarySession(historySessionID, threadID)
 	transform := &mekugiResponseTransform{

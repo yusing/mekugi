@@ -81,8 +81,8 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 	if !t.journalActive {
 		return nil, nil
 	}
-	// Child completion remains a native terminal, but does not consume any
-	// revisions. Main owns the ordered tree flush.
+	// Native child completion delivers its own result. Main flushes only its
+	// own journal, never repeats child results.
 	childTerminal := terminal && t.subagentTurn
 	terminal = terminal && !t.subagentTurn
 	// Journal writes atomically replace the file. Avoid decoding an unchanged
@@ -101,7 +101,6 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 		return nil, err
 	}
 	t.journalDeliveryRelease = release
-	var descendants []threadJournal
 	var changes string
 	var journal threadJournal
 	releaseState, err := t.proxy.journals.lockState(t.ctx)
@@ -122,12 +121,6 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 		}
 		if err != nil {
 			return err
-		}
-		if terminal && t.threadID != "" {
-			descendants, err = t.proxy.journals.descendants(t.proxy.replayStore, t.directory, t.shellThreadID)
-			if err != nil {
-				return err
-			}
 		}
 		if !exists {
 			journal = threadJournal{Author: "/root"}
@@ -222,42 +215,40 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 	}
 	if terminal {
 		t.journalNewCount, t.journalFlushedCount = 0, 0
-		for _, journal := range append(descendants, journal) {
-			deliveryThread = journal.Thread
-			if deliveryThread == "" {
-				deliveryThread = t.shellThreadID
+		deliveryThread = journal.Thread
+		if deliveryThread == "" {
+			deliveryThread = t.shellThreadID
+		}
+		emitRetractions(journal)
+		var text strings.Builder
+		text.WriteString("Journal flush")
+		if journal.Author != "" {
+			text.WriteString(" " + commentaryCode(journal.Author))
+		}
+		revisions := make(map[string]uint64)
+		var items []journalItem
+		flushed := 0
+		for _, item := range journal.Items {
+			if item.Flushed {
+				flushed++
+				continue
 			}
-			emitRetractions(journal)
-			var text strings.Builder
-			text.WriteString("Journal flush")
-			if journal.Author != "" {
-				text.WriteString(" " + commentaryCode(journal.Author))
+			items = append(items, item)
+			revisions[item.ID] = item.Updated
+		}
+		if len(items) == 1 {
+			writeSingleJournalItem(&text, items[0])
+		} else {
+			writeJournalItems(&text, items)
+		}
+		t.journalNewCount += len(revisions)
+		t.journalFlushedCount += flushed
+		if len(revisions) != 0 {
+			if text.Len() > maxJournalFlushBytes {
+				t.ReleaseDelivery()
+				return nil, fmt.Errorf("journal flush exceeds terminal capacity")
 			}
-			revisions := make(map[string]uint64)
-			var items []journalItem
-			flushed := 0
-			for _, item := range journal.Items {
-				if item.Flushed {
-					flushed++
-					continue
-				}
-				items = append(items, item)
-				revisions[item.ID] = item.Updated
-			}
-			if len(items) == 1 {
-				writeSingleJournalItem(&text, items[0])
-			} else {
-				writeJournalItems(&text, items)
-			}
-			t.journalNewCount += len(revisions)
-			t.journalFlushedCount += flushed
-			if len(revisions) != 0 {
-				if text.Len() > maxJournalFlushBytes {
-					t.ReleaseDelivery()
-					return nil, fmt.Errorf("journal flush exceeds terminal capacity")
-				}
-				emit(text.String(), revisions, fmt.Sprintf("flush:%d", journal.Sequence))
-			}
+			emit(text.String(), revisions, fmt.Sprintf("flush:%d", journal.Sequence))
 		}
 	} else {
 		for _, item := range journal.Items {
@@ -272,8 +263,7 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 			t.journalLiveBytes += len(text)
 		}
 	}
-	// Validate the whole tree before retaining any message IDs or delivery entries.
-	// A later oversized journal must not leave an earlier partial flush behind.
+	// Validate the journal before retaining any message IDs or delivery entries.
 	if len(messages) != 0 {
 		if len(t.retainCommentary(messages...)) == 0 {
 			t.ReleaseDelivery()
@@ -381,10 +371,14 @@ func (chain responseTransformerChain) Delivered(payload []byte) {
 
 func (t *mekugiResponseTransform) journalTerminalMessages(response []byte) ([]map[string]json.RawMessage, error) {
 	var messages []map[string]json.RawMessage
-	counts, observed := t.threadUsageCounts()
+	var counts tokenUsageReport
+	observed := false
 	substantive := t.finalAnswer.substantive || t.journalNewCount+t.journalFlushedCount != 0
 	for _, item := range t.journalProviderOutput {
 		substantive = substantive || isSubstantiveAnswer(item)
+	}
+	if substantive && (t.usageObserved || t.shellFinishRequested) {
+		counts, observed = t.completionUsageReport()
 	}
 	if usage := formatTokenUsageCommentary(response, counts, observed && (t.usageObserved || t.shellFinishRequested), "completed", substantive); usage != nil {
 		retained := t.retainCommentary(usage)

@@ -165,7 +165,7 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 			if got := jsonString(forwarded.fields, "service_tier"); got != want {
 				t.Fatalf("tier=%s want=%s", got, want)
 			}
-			if got := subagentStartCommentary(&forwarded); !strings.Contains(got, "Service tier: `"+want+"`") {
+			if got := subagentStartCommentary(&forwarded, ""); !strings.Contains(got, "Service tier: `"+want+"`") {
 				t.Fatalf("commentary=%s", got)
 			}
 		})
@@ -182,7 +182,7 @@ func TestSubagentStartServiceTier(t *testing.T) {
 				fields["service_tier"] = tc.tier
 			}
 		})
-		if got := subagentStartCommentary(&request); !strings.Contains(got, "Service tier: "+tc.want) {
+		if got := subagentStartCommentary(&request, ""); !strings.Contains(got, "Service tier: "+tc.want) {
 			t.Fatalf("tier=%s commentary=%s", tc.tier, got)
 		}
 	}

@@ -16,7 +16,7 @@ func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
 				t.Helper()
 				request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
 					"model": model, "reasoning": map[string]any{"effort": effort},
-					"input": []any{testCodeModeAdditionalTools(testCodeModeDescription)},
+					"input": []any{testCodeModeAdditionalTools(testCodeModeDescription), journalTestAssignment("/root/explorer", "NEW_TASK", "Inspect the parser.\n\n- Preserve behavior.")},
 					"tools": []any{},
 				}))
 				if err != nil {
@@ -60,7 +60,7 @@ func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
 				t.Fatalf("start notice changed the child's result: %s", result)
 			}
 			result := emit(root)
-			for _, want := range []string{"[`/root/explorer`] Started.", "Model: `gpt-effective`", "Reasoning effort: `high`"} {
+			for _, want := range []string{"[`/root/explorer`] Started.", "Model: `gpt-effective`", "Reasoning effort: `high`", "**Spawn prompt:**", "Inspect the parser.", "- Preserve behavior."} {
 				if !bytes.Contains(result, []byte(want)) {
 					t.Fatalf("missing %q in %s", want, result)
 				}
@@ -106,5 +106,49 @@ func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
 				t.Fatalf("incorrect replay filtering: %s", fields["input"])
 			}
 		})
+	}
+}
+
+func TestSubagentStartPromptUsesOnlyFirstAddressedAssignment(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input []any
+		want  string
+	}{
+		{"plaintext", []any{journalTestAssignment("/root/child", "NEW_TASK", "Original\n\n- task"), journalTestAssignment("/root/child", "NEW_TASK", "Followup")}, "Original\n\n- task"},
+		{"wrong recipient", []any{journalTestAssignment("/root/other", "NEW_TASK", "Private task")}, ""},
+		{"inherited user", []any{map[string]any{"role": "user", "content": "Inherited request"}}, ""},
+		{"message", []any{journalTestAssignment("/root/child", "MESSAGE", "Not a task")}, ""},
+		{"empty first", []any{journalTestAssignment("/root/child", "NEW_TASK", ""), journalTestAssignment("/root/child", "NEW_TASK", "Followup")}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"model": "gpt-6-astra", "input": tc.input}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := subagentStartCommentary(&request, "/root/child")
+			if tc.want == "" {
+				if strings.Contains(got, "**Spawn prompt:**") {
+					t.Fatalf("unexpected prompt: %s", got)
+				}
+			} else if !strings.HasSuffix(got, "**Spawn prompt:**\n\n"+tc.want) {
+				t.Fatalf("prompt changed: %s", got)
+			}
+		})
+	}
+}
+
+func TestSubagentStartOpaquePromptIsNotReplacedByFollowup(t *testing.T) {
+	opaque := journalTestAssignment("/root/child", "NEW_TASK", "")
+	opaque["content"] = append(opaque["content"].([]any), map[string]any{"type": "encrypted_content", "encrypted_content": "opaque"})
+	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+		"model": "gpt-6-astra",
+		"input": []any{opaque, journalTestAssignment("/root/child", "NEW_TASK", "Later task")},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := subagentStartCommentary(&request, "/root/child"); strings.Contains(got, "**Spawn prompt:**") || strings.Contains(got, "opaque") || strings.Contains(got, "Later task") {
+		t.Fatalf("opaque spawn task leaked or was replaced: %s", got)
 	}
 }

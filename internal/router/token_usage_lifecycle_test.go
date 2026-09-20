@@ -59,7 +59,12 @@ func TestTokenUsageMentorAndManualSwitch(t *testing.T) {
 			if !ok || !got.cost.known || got.InputTokens != 300000 || got.UncachedInputTokens != 180000 || got.OutputTokens != 30000 || got.ReasoningTokens != 15000 || math.Abs(total-1.6208) > 1e-10 {
 				t.Fatalf("report=%+v total=%v valid=%v", got, total, ok)
 			}
-			if !strings.Contains(out.String(), "| Total | — | $1.6208 |") {
+			for _, model := range wants {
+				if !strings.Contains(out.String(), model) {
+					t.Fatalf("model switch lost %q: %s", model, out.String())
+				}
+			}
+			if !strings.Contains(out.String(), "$1.6208 |") {
 				t.Fatalf("missing correct notice: %s", out.String())
 			}
 		})
