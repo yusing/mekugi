@@ -377,6 +377,11 @@ func (t *mekugiResponseTransform) journalTerminalMessages(response []byte) ([]ma
 	for _, item := range t.journalProviderOutput {
 		substantive = substantive || isSubstantiveAnswer(item)
 	}
+	if prior, ok := t.ctx.Value(journalContinuationKey{}).(journalContinuation); ok {
+		for _, item := range prior.clientOutput {
+			substantive = substantive || isSubstantiveAnswer(item)
+		}
+	}
 	if substantive && (t.usageObserved || t.shellFinishRequested) {
 		counts, observed = t.completionUsageReport()
 	}

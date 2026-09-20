@@ -13,13 +13,13 @@ func TestReceivedReplyIsFullInChildAndRootCommentary(t *testing.T) {
 			for _, stream := range []bool{false, true} {
 				t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
 					proxy := newManagedMekugiProxy(t)
-					root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
+					root, _ := prepareCommentaryActivityTest(t, proxy, "root", "r", "", "/root", nil)
 					body := strings.Repeat("完整 evidence ", 100) + "FINAL DETAIL"
 					envelope := map[string]any{
 						"type": "agent_message", "id": "reply", "author": "/root/a", "recipient": "/root/b",
 						"content": []any{map[string]any{"type": "input_text", "text": "Message Type: " + messageType + "\nTask name: /root/b\nSender: /root/a\nPayload:\n" + body}},
 					}
-					child, request := prepareActivityTest(t, proxy, "child", "b", "r", "/root/b", []any{envelope})
+					child, request := prepareCommentaryActivityTest(t, proxy, "child", "b", "r", "/root/b", []any{envelope})
 					if !bytes.Contains(request.fields["input"], []byte(body)) {
 						t.Fatal("original model-visible reply changed")
 					}

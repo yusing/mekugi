@@ -200,6 +200,9 @@ func TestTokenCostReportIncludesCompactionAcrossTransports(t *testing.T) {
 				if requestStream {
 					response.Header.Set("Content-Type", "text/event-stream")
 				}
+				if step == 1 {
+					response = finishTestResponse(t, response)
+				}
 				provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 				var output bytes.Buffer
 				if err := executeRequest(t.Context(), t.Context(), request, headers, model, provider, &output, nil, proxy, nil, nil); err != nil {

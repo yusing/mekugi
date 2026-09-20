@@ -63,9 +63,9 @@ func TestCollaborationCallsPassThroughWithoutCommentary(t *testing.T) {
 
 func TestChildProviderCommentaryAdmissionAndDistinctSources(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
-	root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
-	child, _ := prepareActivityTest(t, proxy, "child", "c", "r", "/root/worker", nil)
-	orphan, _ := prepareActivityTest(t, proxy, "orphan", "o", "unknown", "/root/orphan", nil)
+	root, _ := prepareCommentaryActivityTest(t, proxy, "root", "r", "", "/root", nil)
+	child, _ := prepareCommentaryActivityTest(t, proxy, "child", "c", "r", "/root/worker", nil)
+	orphan, _ := prepareCommentaryActivityTest(t, proxy, "orphan", "o", "unknown", "/root/orphan", nil)
 	for _, mutate := range []func(map[string]json.RawMessage){
 		func(item map[string]json.RawMessage) { delete(item, "id") },
 		func(item map[string]json.RawMessage) { item["status"] = mustTestJSON(t, "in_progress") },
@@ -105,10 +105,10 @@ func TestChildProviderCommentaryForwardsWithoutChangingHistory(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
-			root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
-			other, _ := prepareActivityTest(t, proxy, "other", "other", "", "/root", nil)
-			_, _ = prepareActivityTest(t, proxy, "parent", "p", "r", "/root/worker", nil)
-			child, _ := prepareActivityTest(t, proxy, "child", "c", "p", "/root/worker/nested", nil)
+			root, _ := prepareCommentaryActivityTest(t, proxy, "root", "r", "", "/root", nil)
+			other, _ := prepareCommentaryActivityTest(t, proxy, "other", "other", "", "/root", nil)
+			_, _ = prepareCommentaryActivityTest(t, proxy, "parent", "p", "r", "/root/worker", nil)
+			child, _ := prepareCommentaryActivityTest(t, proxy, "child", "c", "p", "/root/worker/nested", nil)
 			progress := assistantCommentaryMessage("provider-progress", "Checked the caller.\nThe result is consistent.")
 			answer := map[string]any{"type": "message", "id": "answer", "role": "assistant", "phase": "final_answer", "status": "completed",
 				"content": []any{map[string]any{"type": "output_text", "text": "Substantive child answer"}}}
@@ -156,7 +156,7 @@ func TestChildProviderCommentaryForwardsWithoutChangingHistory(t *testing.T) {
 			if messages := proxy.activity.drain("r", root.activityStarted, maxCommentaryPublicationBytes); len(messages) != 0 {
 				t.Fatal("completed/terminal/replay source duplicated")
 			}
-			_, replay := prepareActivityTest(t, proxy, "child-next", "c", "p", "/root/worker/nested",
+			_, replay := prepareCommentaryActivityTest(t, proxy, "child-next", "c", "p", "/root/worker/nested",
 				[]any{response.Output[0], progress, answer})
 			if bytes.Contains(replay.fields["input"], response.Output[0]["id"]) ||
 				!bytes.Contains(replay.fields["input"], mustTestJSON(t, progress)) ||

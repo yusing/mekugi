@@ -156,7 +156,7 @@ func TestAutoLiveDiffSelectedWorkspaceBoundary(t *testing.T) {
 	auto.enable()
 	request := serverRequest(t, nil)
 	headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{alias: nil})
-	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"id":"r","status":"completed","output":[]}`)}}}
+	provider := &serverFakeProvider{results: []serverForwardResult{{response: journalFinishResponse(t, false, "completed", "full", journalFinishCall(`{"op":"finish"}`))}}}
 	if err := executeRequest(t.Context(), t.Context(), request, headers, "auto", provider, io.Discard, nil, proxy, nil, nil); err != nil {
 		t.Fatal(err)
 	}

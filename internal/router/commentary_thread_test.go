@@ -89,6 +89,7 @@ func TestThreadCommentaryTerminalReplayWithoutCallHistory(t *testing.T) {
 	for _, status := range []string{"completed", "failed", "incomplete"} {
 		t.Run(status, func(t *testing.T) {
 			transform, proxy := newRuntimeCommentaryTransform(t)
+			transform.journalActive = false // Isolate commentary rendering.
 			token := proxy.commentary.subscribeThread(transform.historySessionID, transform.shellThreadID, "")
 			proxy.commentary.publish(token, "thread progress", true)
 			events, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
@@ -132,6 +133,7 @@ func TestThreadCommentaryTerminalReplayWithoutCallHistory(t *testing.T) {
 
 func TestThreadCommentaryReplaySurvivesSessionRemapAndExpiry(t *testing.T) {
 	transform, proxy := newRuntimeCommentaryTransform(t)
+	transform.journalActive = false // Isolate commentary rendering.
 	transform.shellThreadID = "stable-thread"
 	oldSession := transform.historySessionID
 	token := proxy.commentary.subscribeThread(oldSession, "stable-thread", "")
@@ -215,6 +217,7 @@ func TestThreadCommentaryHasNoLifetimeProvenanceLimit(t *testing.T) {
 
 func TestChildThreadCommentaryPreservesSubstantiveStreamResult(t *testing.T) {
 	transform, proxy := newRuntimeCommentaryTransform(t)
+	transform.journalActive = false // Isolate commentary rendering.
 	transform.subagentTurn = true
 	answer := map[string]any{"type": "message", "id": "answer", "role": "assistant", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": "Final answer."}}}
 	if events, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": answer})); err != nil || len(events) != 0 {
@@ -264,6 +267,7 @@ func TestThreadCommentaryDoesNotCrossSharedRoutingSession(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(transform.Close)
+		transform.journalActive = false // Isolate commentary rendering.
 		return transform
 	}
 	for _, timing := range []string{"deferred", "terminal"} {
@@ -311,6 +315,7 @@ func TestThreadCommentaryDeferredDeliverySurvivesRemap(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
 			transform, proxy := newRuntimeCommentaryTransform(t)
+			transform.journalActive = false // Isolate commentary rendering.
 			token := proxy.commentary.subscribeThread(transform.historySessionID, transform.shellThreadID, "")
 			proxy.commentary.publish(token, "queued before remap", false)
 			transform.deferredCommentary = proxy.drainCommentarySession(transform.historySessionID, transform.shellThreadID)

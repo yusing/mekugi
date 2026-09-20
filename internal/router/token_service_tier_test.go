@@ -95,7 +95,7 @@ func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
 					if stream {
 						response.Header.Set("Content-Type", "text/event-stream")
 					}
-					provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
+					provider := &serverFakeProvider{results: []serverForwardResult{{response: finishTestResponse(t, response)}}}
 					var output bytes.Buffer
 					if err := executeRequest(t.Context(), t.Context(), request, headers, "tier-session", provider, &output, nil, proxy, nil, nil); err != nil {
 						t.Fatal(err)

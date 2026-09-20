@@ -402,8 +402,11 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 				}
 			}
 		}
+		if len(t.pending) != 0 {
+			return nil, true, staticCriticalDiagnostic("terminal_incomplete_mekugi_call", "the upstream completed with an incomplete HPATCH call")
+		}
 		t.journalTerminal = t.journalTerminalReady()
-		if len(t.journalResults) != 0 && !t.journalClientCalls && !t.journalTerminal {
+		if !t.journalClientCalls && !t.journalTerminal {
 			if len(t.journalPending) != 0 {
 				return nil, true, errors.New("incomplete journal call at completion")
 			}

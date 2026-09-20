@@ -189,9 +189,13 @@ explicit finish can complete successfully. If required retention fails,
 the response fails instead of silently completing without the flush or child summary.
 Unacknowledged revisions remain available for a later flush.
 
-A provider final message is not a journal finish. The router neither suppresses that text nor
-uses it to trigger a journal flush. Ordinary token-usage buffering remains bounded and releases
-provider events unchanged on overflow.
+A provider final message is not a journal finish. On a successful completed response with no
+client-dispatched calls and no valid journal finish, the router withholds terminal completion
+and continues the provider request through the existing journal continuation path. Completed
+provider output remains visible and is retained in continuation history; no corrective instruction
+is injected. This prevents termination, but does not guarantee that the model resumes unfinished
+work or avoids repeating an answer. Failed and interrupted responses do not continue.
+Ordinary token-usage buffering remains bounded and releases provider events unchanged on overflow.
 
 ### Acceptance
 
@@ -211,7 +215,9 @@ provider events unchanged on overflow.
    including live updates, then eligible token metrics. Child finish calls save without flushing and
    retain a nonempty completion result containing their current journal text. Finish makes no
    final-answer continuation request.
-   Provider messages remain unfiltered and do not trigger a flush; failures and interruptions do not terminal-flush.
+   Provider messages remain unfiltered and do not trigger a flush. Successful responses without
+   host calls or valid finish continue rather than completing the turn; failures and interruptions
+   neither continue nor terminal-flush.
 7. Native client normalization preserves journal results and returns the child's
    current journal text after one finishing child request, without a final-answer
    continuation.

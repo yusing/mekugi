@@ -64,6 +64,9 @@ func TestJournalWebSocketContinuationRetainsStreamedCall(t *testing.T) {
 							item = testMekugiItem()
 							item["status"] = "completed"
 						}
+						if i == 2 {
+							item = journalFinishCall(`{"op":"finish"}`)
+						}
 						if item != nil {
 							if err := providerSocketWrite(ctx, upstream, map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item}); err != nil {
 								t.Error(err)

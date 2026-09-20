@@ -74,7 +74,7 @@ func TestResponsesWebSocketIncrementalTranslationAndVisibleSources(t *testing.T)
 		message := map[string]any{"type": "message", "id": "answer", "role": "assistant", "phase": "commentary", "status": "completed", "content": []any{
 			map[string]any{"type": "output_text", "text": "!V=source,1,1\n", "annotations": []any{}},
 		}}
-		if err := providerSocketWrite(ctx, upstream, map[string]any{"type": "response.completed", "response": map[string]any{"id": "second", "status": "completed", "output": []any{message}}}); err != nil {
+		if err := providerSocketWrite(ctx, upstream, map[string]any{"type": "response.completed", "response": map[string]any{"id": "second", "status": "completed", "output": []any{message, journalFinishCall(`{"op":"finish"}`)}}}); err != nil {
 			t.Error(err)
 			return
 		}

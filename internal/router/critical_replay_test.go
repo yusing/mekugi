@@ -23,7 +23,7 @@ func TestCriticalNoticeReplayUsesDurableExactProvenance(t *testing.T) {
 
 			first := newManagedMekugiProxy(t)
 			first.replayStore = store
-			provider := &serverFakeProvider{results: []serverForwardResult{{response: criticalTestResponse(stream)}}}
+			provider := &serverFakeProvider{results: []serverForwardResult{{response: finishTestResponse(t, criticalTestResponse(stream))}}}
 			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
 			var visible bytes.Buffer
 			if err := executeRequest(t.Context(), t.Context(), request,
@@ -38,7 +38,7 @@ func TestCriticalNoticeReplayUsesDurableExactProvenance(t *testing.T) {
 			// A fresh proxy and changed routing session model resume/fork replay.
 			fresh := newManagedMekugiProxy(t)
 			fresh.replayStore = store
-			replayProvider := &serverFakeProvider{results: []serverForwardResult{{response: criticalTestResponse(stream)}}}
+			replayProvider := &serverFakeProvider{results: []serverForwardResult{{response: finishTestResponse(t, criticalTestResponse(stream))}}}
 			replay := serverRequest(t, func(fields map[string]any) {
 				fields["stream"] = stream
 				input := fields["input"].([]any)
@@ -144,7 +144,7 @@ func TestCompactionCriticalNoticeRetainsReplayProvenanceWithoutChangingRequest(t
 		input := fields["input"].([]any)
 		fields["input"] = append([]any{assistantCommentaryMessage(noticeID, "router notice")}, input...)
 	})
-	replayProvider := &serverFakeProvider{results: []serverForwardResult{{response: criticalTestResponse(false)}}}
+	replayProvider := &serverFakeProvider{results: []serverForwardResult{{response: finishTestResponse(t, criticalTestResponse(false))}}}
 	if err := executeRequest(t.Context(), t.Context(), replay,
 		serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}),
 		"ordinary-session", replayProvider, io.Discard, NewCriticalErrors(), fresh, nil, nil); err != nil {

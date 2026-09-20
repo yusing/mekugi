@@ -181,7 +181,7 @@ func TestStructuredRequestWithEditingToolsStillRewrites(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
+				provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"incomplete","output":[]}`)}}}
 				proxy := newManagedMekugiProxy(t)
 				proxy.customizedInstructions = true
 				err = executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "session", provider, io.Discard, nil, proxy, nil, nil)
@@ -336,7 +336,7 @@ func TestToolProjectionAcrossClients(t *testing.T) {
 						if err != nil {
 							t.Fatal(err)
 						}
-						provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
+						provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"incomplete","output":[]}`)}}}
 						proxy := newManagedMekugiProxy(t)
 						proxy.customizedInstructions = true
 						err = executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "session", provider, io.Discard, nil, proxy, nil, nil)

@@ -102,6 +102,7 @@ func TestChildCommentaryAttributionJSONAndSSE(t *testing.T) {
 			token := proxy.commentary.subscribeThread(first.historySessionID, "a", "/root/alpha")
 			proxy.commentary.publish(token, "Deferred work.", false)
 			next := prepare("a-next", "a", "", "thread_spawn")
+			next.journalActive = false // Isolate deferred commentary rendering.
 			answer := map[string]any{"type": "message", "id": "answer", "role": "assistant", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": "Actual child answer."}}}
 			var output []byte
 			if stream {
