@@ -137,6 +137,33 @@ func TestResponsesWebSocketIncrementalTranslationAndVisibleSources(t *testing.T)
 // has received and rendered the preceding provisional diff.
 func TestResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T) {
 	t.Parallel()
+	for _, tc := range []struct {
+		name       string
+		deltas     []string
+		input      string
+		want       []string
+		wantOnDisk string
+	}{
+		{
+			name: "hpatch", deltas: []string{"hpatch file.txt <<'PATCH'\ntype \"old\" \"hel", "lo"},
+			input: "hpatch file.txt <<'PATCH'\ntype \"old\" \"hello\"\nPATCH\n", want: []string{"hel", "hello"}, wantOnDisk: "old\n",
+		},
+		{
+			name: "cat truncate", deltas: []string{"cat >file.txt <<'PATCH'\nhel", "lo"},
+			input: "cat >file.txt <<'PATCH'\nhello\nPATCH\n", want: []string{"hel", "hello"}, wantOnDisk: "old\n",
+		},
+		{
+			name: "cat append", deltas: []string{"cat >>file.txt <<'PATCH'\nhel", "lo"},
+			input: "cat >>file.txt <<'PATCH'\nhello\nPATCH\n", want: []string{"hel", "hello"}, wantOnDisk: "old\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testResponsesWebSocketLiveDiffStreamsBeforeInputDone(t, tc.deltas, tc.input, tc.want, tc.wantOnDisk)
+		})
+	}
+}
+
+func testResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T, deltas []string, input string, wants []string, wantOnDisk string) {
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	directory := t.TempDir()
@@ -187,7 +214,7 @@ func TestResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T) {
 			!write(map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item}) {
 			return
 		}
-		for _, delta := range []string{"hpatch file.txt <<'PATCH'\ntype \"old\" \"hel", "lo"} {
+		for _, delta := range deltas {
 			if !write(map[string]any{"type": "response.custom_tool_call_input.delta", "item_id": "preview-item", "delta": delta}) {
 				return
 			}
@@ -197,7 +224,6 @@ func TestResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T) {
 				return
 			}
 		}
-		input := "hpatch file.txt <<'PATCH'\ntype \"old\" \"hello\"\nPATCH\n"
 		if !write(map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "preview-item", "input": input}) {
 			return
 		}
@@ -247,7 +273,7 @@ func TestResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T) {
 		return liveDiffEvent{}
 	}
 	previewID := ""
-	for _, want := range []string{"hel", "hello"} {
+	for _, want := range wants {
 		for {
 			event := nextEvent()
 			if event.Kind == "change" {
@@ -266,7 +292,7 @@ func TestResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T) {
 			if err != nil || !strings.Contains(strings.Join(lines, "\n"), "STREAMING PREVIEW") {
 				t.Fatalf("preview renderer: %v, %+v", err, lines)
 			}
-			if data, _ := os.ReadFile(path); string(data) != "old\n" {
+			if data, _ := os.ReadFile(path); string(data) != wantOnDisk {
 				t.Fatal("partial input changed the workspace")
 			}
 			break

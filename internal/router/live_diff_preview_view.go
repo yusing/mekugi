@@ -260,8 +260,7 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	}
 	// Put attribution first so narrow panes do not silently lose the caller.
 	caller = ansi.Truncate(livediff.Safe(caller, false), max(1, min(28, width/3)), "…")
-	identity := caller + " · " + p.current.ID[:min(6, len(p.current.ID))]
-	title = identity + " · " + title
+	title = caller + " · " + title
 	header := ansi.Truncate(theme.Accent()+livediff.Safe(title, false)+"\x1b[0m", max(0, width-1), "")
 	lines := []string{header}
 	rows := height - 1

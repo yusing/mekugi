@@ -235,10 +235,13 @@ func TestLiveDiffConcurrentPreviewCards(t *testing.T) {
 		return ansi.Strip(strings.Join(lines, "\n"))
 	}
 	frame := check(12)
-	for _, want := range []string{"/root/editor · first", "/root/reviewer · second", "stream_0100", "stream_0200"} {
+	for _, want := range []string{"/root/editor · STREAMING SCRIPT", "/root/reviewer · STREAMING SCRIPT", "stream_0100", "stream_0200"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing concurrent caller/source %q: %s", want, frame)
 		}
+	}
+	if strings.Contains(frame, " · first") || strings.Contains(frame, " · second") {
+		t.Fatalf("internal call identifiers leaked into headings: %s", frame)
 	}
 	// Bursts cannot change call order or replace another call's source cache.
 	otherSource := pane.views["second"].source
@@ -258,7 +261,7 @@ func TestLiveDiffConcurrentPreviewCards(t *testing.T) {
 	pane.update(second)
 	pane.update(liveDiffPreview{ID: "first"})
 	frame = check(12)
-	if !strings.Contains(frame, "first · STREAMING COMPLETE") || !strings.Contains(frame, "second · STREAMING SCRIPT") {
+	if !strings.Contains(frame, "/root/editor · STREAMING COMPLETE") || !strings.Contains(frame, "/root/editor · STREAMING SCRIPT") {
 		t.Fatalf("completion replaced another call: %s", frame)
 	}
 	if len(pane.order) != 2 || !pane.views["first"].complete || pane.views["second"].complete {

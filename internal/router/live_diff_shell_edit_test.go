@@ -305,7 +305,6 @@ func TestLiveDiffPreviewWorkerNeverRecognizedShellStaysScript(t *testing.T) {
 	for _, input := range []string{
 		"echo normal",
 		"hpatch --recover amber 'maple target \"new\"'",
-		"hpatch 'new file.txt'; echo suffix",
 	} {
 		t.Run(input, func(t *testing.T) {
 			broker, sub, worker := newLiveDiffWorkerTest(t, t.TempDir())

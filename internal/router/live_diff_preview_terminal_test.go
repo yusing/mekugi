@@ -431,7 +431,7 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 		text := ansi.Strip(frame)
 		return strings.Contains(text, "stream_0100") && strings.Contains(text, "stream_0200")
 	})
-	if !strings.Contains(frame, "/root · first") || !strings.Contains(frame, "/root/editor · second") {
+	if !strings.Contains(frame, "/root · STREAMING SCRIPT") || !strings.Contains(frame, "/root/editor · STREAMING SCRIPT") {
 		t.Fatalf("concurrent frame lost attribution: %q", frame)
 	}
 	for i := 101; i <= 150; i++ {
@@ -443,12 +443,12 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 		text := ansi.Strip(frame)
 		return strings.Contains(text, "stream_0150") && strings.Contains(text, "stream_0200")
 	})
-	if strings.Index(frame, "/root · first") > strings.Index(frame, "/root/editor · second") {
+	if strings.Index(frame, "/root · STREAMING SCRIPT") > strings.Index(frame, "/root/editor · STREAMING SCRIPT") {
 		t.Fatal("concurrent delta reordered the cards")
 	}
 	broker.publishPreview(first, true)
 	ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "first · STREAMING COMPLETE") && strings.Contains(ansi.Strip(frame), "stream_0200")
+		return strings.Contains(frame, "/root · STREAMING COMPLETE") && strings.Contains(ansi.Strip(frame), "stream_0200")
 	})
 	ui.height = 12
 	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 12, Cols: 70}); err != nil {

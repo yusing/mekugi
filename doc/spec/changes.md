@@ -221,15 +221,21 @@ Quitting the viewer restores terminal state without closing the pane or affectin
 Incoming shell input deltas, including WebSocket events, display before input completion.
 Literal standalone `hpatch` arguments and heredoc input show a provisional file diff through
 the engine's bounded in-memory preview, including unfinished edit values and heredocs.
+Literal standalone `cat >`, `cat >|`, and `cat >>` heredoc writes also show provisional
+file diffs, including new files, without performing the write. Batch previews follow
+the current program using its inherited shell parameters; script fallback omits earlier
+programs so their edit payloads do not reappear as shell source.
 Once a call is recognized as an edit, its representation stays an edit preview for
 that call. If a later fragment cannot be decoded or projected, keep the last valid
 diff and label it as such rather than flashing back to the shell script. If no valid
 diff exists yet, show an unavailable status, not the literal edit script.
 Shell headers select the preview directory and interpreter using the shared header parser.
-Calls with dynamic expansions, input files, composed commands, command templates,
+Calls with dynamic expansions, input files, command templates,
 or `hpatch --recover` remain script previews when no earlier prefix was recognized
 as an edit. A later incompatible fragment invalidates the current projection but
 never turns a retained provisional diff into a claim about the completed command.
+A composed hpatch call received in one fragment shows an unavailable status rather
+than exposing its edit payload as shell source.
 Previews never execute shell code, apply files, format source, run hooks, or publish durable
 changes. The actual post-expansion edit report and captured diff arrive after host execution.
 
@@ -249,8 +255,8 @@ that tip rather than leaving centering padding below it.
 
 Concurrent calls share the stream view as separate vertically stacked cards in
 first-seen order. Each heading identifies the caller (canonical agent name when
-available, otherwise thread identity) and a short call identifier, including parallel
-calls from the same thread. Caller text is terminal-safe and width-bounded. Updates
+available, otherwise thread identity), without internal call identifiers; parallel
+calls from the same thread retain separate cards. Caller text is terminal-safe and width-bounded. Updates
 replace only that call's snapshot, never another caller's card; each card follows its
 own latest source row. Tiny regions show a
 count of additional calls rather than switching callers on each delta; enlarging the

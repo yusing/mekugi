@@ -14,10 +14,10 @@ import (
 
 // Decode only literal standalone edit input. No interpreter, expansion callbacks,
 // filesystem input redirections, or recovery state participate in previews.
-func liveDiffShellEdit(input, directory string) ([]mekugi.FileEdit, string, bool) {
+func liveDiffShellStatement(input, directory string) (*syntax.Stmt, string, bool, bool) {
 	header, err := shellsyntax.Parse(input)
 	if err != nil || len(header.Interpreter) != 1 {
-		return nil, "", false
+		return nil, "", false, false
 	}
 	variant := syntax.LangBash
 	switch shellInterpreterName(header.Interpreter[0]) {
@@ -25,12 +25,12 @@ func liveDiffShellEdit(input, directory string) ([]mekugi.FileEdit, string, bool
 	case "sh":
 		variant = syntax.LangPOSIX
 	default:
-		return nil, "", false
+		return nil, "", false, false
 	}
 	if value, exists := header.Params["workdir"]; exists {
 		workdir, ok := value.(string)
 		if !ok || !filepath.IsAbs(workdir) {
-			return nil, "", false
+			return nil, "", false, false
 		}
 		directory = workdir
 	}
@@ -83,9 +83,20 @@ func liveDiffShellEdit(input, directory string) ([]mekugi.FileEdit, string, bool
 		}
 	}
 	if err != nil || program == nil || len(program.Stmts) != 1 {
+		return nil, "", false, false
+	}
+	return program.Stmts[0], directory, partialLine, true
+}
+
+func liveDiffShellEdit(input, directory string) ([]mekugi.FileEdit, string, bool) {
+	stmt, directory, partialLine, ok := liveDiffShellStatement(input, directory)
+	if !ok {
 		return nil, "", false
 	}
-	stmt := program.Stmts[0]
+	return liveDiffShellEditStatement(stmt, directory, partialLine)
+}
+
+func liveDiffShellEditStatement(stmt *syntax.Stmt, directory string, partialLine bool) ([]mekugi.FileEdit, string, bool) {
 	call, ok := stmt.Cmd.(*syntax.CallExpr)
 	if !ok || stmt.Background || stmt.Coprocess || stmt.Disown || stmt.Negated || len(call.Assigns) != 0 ||
 		len(call.Args) == 0 || call.Args[0].Lit() != "hpatch" {
@@ -122,16 +133,23 @@ func liveDiffShellEdit(input, directory string) ([]mekugi.FileEdit, string, bool
 	if !literal || path == "" {
 		return nil, "", false
 	}
-	redirect := stmt.Redirs[0]
+	script, ok := liveDiffShellHeredoc(stmt.Redirs[0], partialLine)
+	if !ok {
+		return nil, "", false
+	}
+	return []mekugi.FileEdit{{Path: path, Script: script}}, directory, true
+}
+
+func liveDiffShellHeredoc(redirect *syntax.Redirect, partialLine bool) (string, bool) {
 	if (redirect.Op != syntax.Hdoc && redirect.Op != syntax.DashHdoc) ||
 		(redirect.N != nil && redirect.N.Value != "0") || redirect.Hdoc == nil {
-		return nil, "", false
+		return "", false
 	}
 	var source strings.Builder
 	for _, part := range redirect.Hdoc.Parts {
 		literal, ok := part.(*syntax.Lit)
 		if !ok {
-			return nil, "", false
+			return "", false
 		}
 		source.WriteString(literal.Value)
 	}
@@ -149,9 +167,10 @@ func liveDiffShellEdit(input, directory string) ([]mekugi.FileEdit, string, bool
 		}
 	}
 	if !quoted {
+		var err error
 		script, err = expand.Document(&expand.Config{}, redirect.Hdoc)
 		if err != nil {
-			return nil, "", false
+			return "", false
 		}
 	}
 	if redirect.Op == syntax.DashHdoc {
@@ -164,7 +183,7 @@ func liveDiffShellEdit(input, directory string) ([]mekugi.FileEdit, string, bool
 	if partialLine {
 		script = strings.TrimSuffix(script, "\n")
 	}
-	return []mekugi.FileEdit{{Path: path, Script: script}}, directory, true
+	return script, true
 }
 
 // Use the shell parser's error position, not a scan for shell-looking text in
@@ -193,4 +212,43 @@ func liveDiffIncompleteHeredoc(body string, parseErr error, variant syntax.LangV
 		return frame
 	}
 	return hpatchsyntax.CommandFrame{}
+}
+
+// A whole composed call can arrive in one delta, before a valid edit prefix was
+// ever displayed. Do not expose its hpatch payload as a shell script merely
+// because that invalid composition cannot be projected.
+func liveDiffShellComposedHpatch(input string) bool {
+	header, err := shellsyntax.Parse(input)
+	if err != nil || len(header.Interpreter) != 1 {
+		return false
+	}
+	variant := syntax.LangBash
+	switch shellInterpreterName(header.Interpreter[0]) {
+	case "bash":
+	case "sh":
+		variant = syntax.LangPOSIX
+	default:
+		return false
+	}
+	program, _ := syntax.NewParser(syntax.Variant(variant)).Parse(strings.NewReader(header.Body), "")
+	if program == nil {
+		return false
+	}
+	var standalone syntax.Pos
+	if len(program.Stmts) == 1 {
+		stmt := program.Stmts[0]
+		if call, ok := stmt.Cmd.(*syntax.CallExpr); ok && len(call.Args) > 0 &&
+			!stmt.Background && !stmt.Coprocess && !stmt.Disown && !stmt.Negated {
+			standalone = call.Args[0].Pos()
+		}
+	}
+	found := false
+	syntax.Walk(program, func(node syntax.Node) bool {
+		if call, ok := node.(*syntax.CallExpr); ok && len(call.Args) > 0 {
+			name, literal := shellCatLiteral(call.Args[0])
+			found = found || literal && name == "hpatch" && call.Args[0].Pos() != standalone
+		}
+		return !found
+	})
+	return found
 }

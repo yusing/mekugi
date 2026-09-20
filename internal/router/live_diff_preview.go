@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
 // Preview state is router-lifetime only and never enters the replay store.
@@ -138,23 +139,36 @@ func (w *liveDiffPreviewWorker) run() {
 		input := w.input.String()
 		preview := w.preview
 		w.mu.Unlock()
-		edits, directory, ok := liveDiffShellEdit(input, preview.Workspace)
-		editRecognized = editRecognized || ok
+		projectionInput := input
+		if programs, err := shellsyntax.Split(input); err == nil {
+			// Preview the current program, not earlier shell framing or edit payloads.
+			projectionInput = programs[len(programs)-1]
+		}
+		stmt, directory, partialLine, parsed := liveDiffShellStatement(projectionInput, preview.Workspace)
+		ok := false
+		ctx, cancel := context.WithTimeout(w.ctx, time.Second)
+		var files []mekugi.ReviewFile
+		var err error
+		if parsed {
+			if edits, _, edit := liveDiffShellEditStatement(stmt, directory, partialLine); edit {
+				ok = true
+				files, err = mekugi.PreviewForHostAt(ctx, directory, edits)
+			} else {
+				files, ok, err = liveDiffShellWriteStatement(ctx, stmt, directory, partialLine)
+			}
+		}
+		cancel()
+		editRecognized = editRecognized || ok || liveDiffShellComposedHpatch(projectionInput)
 		if editRecognized {
 			preview.Input, preview.Syntax, preview.Files = "", nil, nil
 			preview.Status = "PREVIEW UNAVAILABLE: edit cannot be projected"
 		} else {
-			preview.Input, preview.Syntax = input, liveDiffScriptSyntax(input)
+			preview.Input, preview.Syntax = projectionInput, liveDiffScriptSyntax(projectionInput)
 			preview.Status = "STREAMING SCRIPT"
 		}
-		if ok {
-			ctx, cancel := context.WithTimeout(w.ctx, time.Second)
-			files, err := mekugi.PreviewForHostAt(ctx, directory, edits)
-			cancel()
-			if err == nil {
-				preview.Files = files
-				preview.Status = "STREAMING PREVIEW"
-			}
+		if ok && err == nil {
+			preview.Files = files
+			preview.Status = "STREAMING PREVIEW"
 		}
 		w.mu.Lock()
 		// One preview is in flight, with only the latest input sampled next.
