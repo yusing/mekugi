@@ -52,7 +52,9 @@ Each mutation array is atomic; `report_now` requests immediate user-visible deli
 
 Finish with `{"op":"finish"}` plus any last mutations as the only call after required results, or end a
 successful final shell invocation with `journal finish [JSON_ARRAY]`.
-User then see all unflushed journal as a final report.
+Main finish shows unflushed journal entries as the final report. Child finish sends its current
+journal, automatically collected hchange ranges, and aggregated numstat to its native completion
+audience. Finish without repeating milestones in a separate final answer or collecting change IDs.
 
 Use one item per distinct point; no plans, narration, or superseded progress.
 Do not repeat or summarize other agents' journals.

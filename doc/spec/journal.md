@@ -86,6 +86,17 @@ An empty journal returns `No journal entries.` under the result heading. Complet
 include journal delivery counts. Result delivery does not mark items
 reported or flushed and does not include descendant journals. The parent receives the result
 text without a journal lookup or another child provider request.
+The child result appends its retained hchange ranges and one aggregated numstat using
+`hchanges --summary` count semantics. Journal and change selection share a locked snapshot.
+Selection uses durable executing-thread ownership, falling back to the originating stream
+for older records; it excludes other threads' attempts, even within a shared recovery ID.
+Ranges identify the retained changes, while counts cover only this child's evaluations.
+Like the current journal list, this is thread-wide retained history, not a per-follow-up delta.
+Ranges are ordered by stream allocation and numeric ID, split at gaps and the reader's
+range limit. No recorded changes is explicit; unavailable or retired evidence is labeled
+unavailable rather than zero. Existing terminal capacity and retention requirements apply.
+The native completion result is the sole audience payload; the router does not send an
+additional completion notification or take over host lifecycle or audience routing.
 Live updates remain immediate. Descendant revisions are read from durable journals at main completion,
 including after router restart, and acknowledged only when main delivers them. Failed main delivery
 leaves unacknowledged revisions pending. Only proven, unambiguous ancestry in the selected workspace

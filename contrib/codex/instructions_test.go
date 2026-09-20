@@ -165,7 +165,9 @@ func TestInstructionsExposeJournalAuthoring(t *testing.T) {
 			for _, required := range []string{
 				"Record meaningful milestones with journal",
 				"Bash/POSIX supports the `journal` command", "Code Mode supports `await journal(...)`",
-				"Each mutation array is atomic", "all unflushed journal as a final report",
+				"Each mutation array is atomic", "Main finish shows unflushed journal entries as the final report",
+				"Child finish sends its current journal, automatically collected hchange ranges, and aggregated numstat",
+				"Finish without repeating milestones in a separate final answer or collecting change IDs",
 				"one item per distinct point; no plans, narration, or superseded progress",
 				"Do not repeat or summarize other agents' journals",
 				"plaintext native assignment", "Set `answer: true`", "put only the answer in `text`",

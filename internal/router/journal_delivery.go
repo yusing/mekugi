@@ -102,6 +102,7 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 	}
 	t.journalDeliveryRelease = release
 	var descendants []threadJournal
+	var changes string
 	var journal threadJournal
 	releaseState, err := t.proxy.journals.lockState(t.ctx)
 	if err != nil {
@@ -134,6 +135,9 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 				journal.Author = t.commentaryAuthor
 			}
 		}
+		if childTerminal {
+			changes = t.proxy.replayStore.childJournalChanges(t.ctx, t.directory, t.shellThreadID)
+		}
 		return nil
 	}
 	if t.proxy.replayStore != nil {
@@ -163,7 +167,10 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 		if len(journal.Items) == 0 {
 			text.WriteString("\nNo journal entries.")
 		}
+		// The native completion carries the snapshot; no model recap or
+		// separate audience notification is needed.
 		writeJournalItems(&text, journal.Items)
+		text.WriteString(changes)
 		if text.Len() > maxJournalFlushBytes {
 			t.ReleaseDelivery()
 			return nil, errors.New("child journal result exceeds terminal capacity")

@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/shellruntime"
 )
 
@@ -34,6 +35,7 @@ func init() {
 // This fixture uses the installed Codex consumer and native collaboration, but
 // a deterministic local provider. No credentials or live model are involved.
 type journalCodexProvider struct {
+	store             *mekugiReplayStore
 	shellFinish       bool
 	mu                sync.Mutex
 	turns             map[string]int
@@ -84,6 +86,20 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 			return nil, fmt.Errorf("child finish triggered an extra provider request")
 		}
 		if turn == 1 {
+			workspace, _ := usableRoutingDirectory(metadata.Directories)
+			id, err := p.store.reserveChange(context.Background(), workspace, thread, "native-child-edit")
+			if err != nil {
+				return nil, err
+			}
+			err = p.store.put(context.Background(), workspace, map[string]mekugiHistory{"native-child-edit": {
+				ChangeID: id, CorrelationID: "native-child-edit", ExecutingThread: thread, Applied: true,
+				ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("native-child.txt", "native-child.txt", "before\n", "after\n")},
+			}})
+			if err != nil {
+				return nil, err
+			}
+		}
+		if turn == 1 {
 			item = call("journal", map[string]any{"op": "add", "text": "Native child live milestone", "report_now": true})
 		} else {
 			item = call("journal", map[string]any{"op": "finish", "journal": []any{
@@ -98,6 +114,13 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 		case turn == 2:
 			item = call("spawn_agent", map[string]any{"message": "Record your milestone and finish.", "task_name": "journal_child", "fork_turns": "none"})
 		case strings.Contains(input, "Journal result") && strings.Contains(input, "Native child milestone") && strings.Contains(input, "Native child second finding") && strings.Contains(input, "**Question:**") && strings.Contains(input, "**Answers:**") && strings.Contains(input, "Record your milestone and finish."):
+			if !strings.Contains(input, "**Changes:**") || !strings.Contains(input, "amber1") || !strings.Contains(input, `1\t1\tnative-child.txt`) {
+				start := strings.LastIndex(input, "**Changes:**")
+				if start < 0 {
+					start = 0
+				}
+				return nil, fmt.Errorf("native completion lost child change ranges or numstat: %.500s", input[start:])
+			}
 			p.childResultSeen = true
 			p.journalResultSeen = strings.Contains(input, "function_call_output") && strings.Contains(input, `\"id\":\"amber\"`)
 			item = call("journal", map[string]any{"op": "finish"})
@@ -176,6 +199,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T, shellFinish bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	provider.store = store
 	proxy.replayStore = store
 	issues := NewCriticalErrors()
 	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, issues, proxy, nil, nil))
