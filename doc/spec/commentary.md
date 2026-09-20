@@ -24,8 +24,10 @@ follow-up, messaging, waiting, and interruption display; schemas, executed argum
 streamed call framing remain unchanged. The router never reads encrypted message arguments.
 
 The first accepted `thread_spawn` child request adds one start notice to the root activity
-collector. It shows the child's canonical path, observed model, and reasoning effort as inline
-code; an omitted effort is labelled "not specified", not inferred from the parent or role.
+collector. It shows the child's canonical path, observed model, reasoning effort, and effective
+requested service tier as inline code. Omitted effort or tier is labelled "not specified", not
+inferred from the parent or role. Service tier reflects the configured per-model override;
+`priority` is forwarded and displayed as `fast`, without claiming the provider served that tier.
 The notice describes the child request, not successful provider inference. Stable child-thread
 identity deduplicates retries, later turns, and routing-session changes. Unknown or conflicting
 ancestry suppresses projection. Start notices use the existing bounded activity and replay
@@ -310,7 +312,7 @@ Acceptance:
    changing the original child message, substantive result, or model-visible history.
 2. Collaboration calls retain exact schemas, arguments, and streaming framing without
    commentary-specific buffering. The first accepted child request produces one root start notice
-   with observed model and effort; later requests do not repeat it, and other lifecycle events
+   with observed model, effort, and service tier; later requests do not repeat it, and other lifecycle events
    produce no added notices.
 
 3. Received inter-agent envelopes identify both parties, including siblings and nested children. Plaintext replies are shown in full or omitted when they exceed the auxiliary rendering budget; encrypted content remains opaque and original model-visible items stay exact.

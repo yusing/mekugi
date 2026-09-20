@@ -329,7 +329,11 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 			t.Error(err)
 			return
 		}
-		if jsonString(next, "model") != configured || jsonString(next, "previous_response_id") != "successor" || jsonString(next, "service_tier") != requestedTier {
+		wantTier := requestedTier
+		if wantTier == "priority" {
+			wantTier = "fast"
+		}
+		if jsonString(next, "model") != configured || jsonString(next, "previous_response_id") != "successor" || jsonString(next, "service_tier") != wantTier {
 			t.Errorf("next model=%s parent=%s tier=%s", jsonString(next, "model"), jsonString(next, "previous_response_id"), jsonString(next, "service_tier"))
 		}
 		for _, e := range finalAnswerTestEvents(t, "final_answer") {

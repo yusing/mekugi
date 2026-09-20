@@ -19,6 +19,7 @@ import (
 // requestExecutor owns the stable services used by every attempt in a request,
 // including router-generated journal continuations.
 type requestExecutor struct {
+	serviceTiers  map[string]string
 	provider      responseProvider
 	output        io.Writer
 	issues        *CriticalErrors
@@ -197,6 +198,12 @@ func (a *requestAttempt) prepare() error {
 		}
 		exchange.history.providerModel = a.request.model()
 		exchange.history.providerReasoning = a.request.fields["reasoning"]
+	}
+	if tier := a.executor.serviceTiers[a.request.model()]; tier != "" {
+		a.request.fields["service_tier"] = mustMarshalJSON(tier)
+	}
+	if jsonString(a.request.fields, "service_tier") == "priority" {
+		a.request.fields["service_tier"] = mustMarshalJSON("fast")
 	}
 	if a.handoff != nil {
 		a.hooks.output = &a.handoff.observation

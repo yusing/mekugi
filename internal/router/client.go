@@ -130,6 +130,7 @@ func composeResponseTransformers(first, second responseTransformer) responseTran
 }
 
 type providerClient struct {
+	serviceTiers      map[string]string
 	websockets        *providerWebSockets
 	opencode          map[string]*grokClient
 	grok              *grokClient

@@ -442,6 +442,11 @@ Create `mekugi/config.toml` beneath your user configuration directory:
 `$XDG_CONFIG_HOME` or `~/.config` on Linux, `~/Library/Application Support` on macOS.
 
 ```toml
+# Optional overrides, keyed by exact model ID.
+[service_tiers]
+"gpt-6-astra" = "fast"
+"gpt-5.6-sol" = "default"
+
 [providers.opencode_go]
 api_key = "your-go-key"
 
@@ -449,10 +454,18 @@ api_key = "your-go-key"
 api_key = "your-zen-key"
 ```
 
-Use either section or both. `OPENCODE_API_KEY` overrides both file keys;
+Use any of these sections independently. `OPENCODE_API_KEY` overrides both file keys;
 `OPENCODE_GO_API_KEY` and `OPENCODE_ZEN_API_KEY` override their respective service.
 An explicitly empty environment value disables that service. Settings are read
 at startup; Mekugi never rewrites this file or Codex's configuration.
+
+Service-tier overrides replace the request's `service_tier` after model selection
+(including Mentor Handoff), before forwarding upstream. Models not listed keep
+their requested tier. Accepted values are `auto`, `default`, `fast`, `priority`,
+and `flex`; `priority` is mapped to `fast` for forwarding and display, including
+when it comes from the request. The selected provider must support the tier.
+Agent-start commentary shows the effective requested tier, not a guarantee of the
+tier the provider will serve.
 
 OpenCode models, API formats, reasoning controls and prices refresh online with
 an hourly cache. Supported reasoning efforts are selectable normally; no `none`

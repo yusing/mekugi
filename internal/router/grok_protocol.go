@@ -403,7 +403,7 @@ func translateChatRequest(body []byte, service *openCodeService) (_ *grokTransla
 			tr.body["max_output_tokens"] = raw
 		}
 	}
-	for _, field := range []string{"temperature", "top_p"} {
+	for _, field := range []string{"temperature", "top_p", "service_tier"} {
 		if raw, ok := request.fields[field]; ok {
 			tr.body[field] = raw
 		}

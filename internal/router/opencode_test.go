@@ -48,8 +48,8 @@ func TestOpenCodeConfig(t *testing.T) {
 	}
 	t.Setenv("OPENCODE_GO_API_KEY", "")
 	t.Setenv("OPENCODE_ZEN_API_KEY", "")
-	config, err := loadOpenCodeConfig()
-	if err != nil || config.Enabled() {
+	config, err := loadMekugiConfig()
+	if err != nil || config.Providers.Enabled() {
 		t.Fatalf("missing config: %v", err)
 	}
 	if err := os.Mkdir(filepath.Join(directory, "mekugi"), 0o700); err != nil {
@@ -60,8 +60,8 @@ func TestOpenCodeConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	// An explicitly empty environment key disables a configured provider.
-	config, err = loadOpenCodeConfig()
-	if err != nil || config.Enabled() {
+	config, err = loadMekugiConfig()
+	if err != nil || config.Providers.Enabled() {
 		t.Fatalf("empty override: %v", err)
 	}
 	if err := os.Unsetenv("OPENCODE_GO_API_KEY"); err != nil {
@@ -70,23 +70,23 @@ func TestOpenCodeConfig(t *testing.T) {
 	if err := os.Unsetenv("OPENCODE_ZEN_API_KEY"); err != nil {
 		t.Fatal(err)
 	}
-	config, err = loadOpenCodeConfig()
-	if err != nil || config.Go.APIKey != "config-go" || config.Zen.APIKey != "config-zen" {
+	config, err = loadMekugiConfig()
+	if err != nil || config.Providers.Go.APIKey != "config-go" || config.Providers.Zen.APIKey != "config-zen" {
 		t.Fatalf("config not loaded: %v", err)
 	}
 	t.Setenv("OPENCODE_GO_API_KEY", " env-go ")
-	config, err = loadOpenCodeConfig()
-	if err != nil || config.Go.APIKey != "env-go" || config.Zen.APIKey != "config-zen" {
+	config, err = loadMekugiConfig()
+	if err != nil || config.Providers.Go.APIKey != "env-go" || config.Providers.Zen.APIKey != "config-zen" {
 		t.Fatalf("provider isolation/precedence: %v", err)
 	}
 	t.Setenv("OPENCODE_API_KEY", "shared")
-	config, err = loadOpenCodeConfig()
-	if err != nil || config.Go.APIKey != "env-go" || config.Zen.APIKey != "shared" {
+	config, err = loadMekugiConfig()
+	if err != nil || config.Providers.Go.APIKey != "env-go" || config.Providers.Zen.APIKey != "shared" {
 		t.Fatalf("shared key precedence: %v", err)
 	}
 	t.Setenv("OPENCODE_ZEN_API_KEY", "")
-	config, err = loadOpenCodeConfig()
-	if err != nil || config.Go.APIKey != "env-go" || config.Zen.APIKey != "" {
+	config, err = loadMekugiConfig()
+	if err != nil || config.Providers.Go.APIKey != "env-go" || config.Providers.Zen.APIKey != "" {
 		t.Fatalf("service-specific disable after shared key: %v", err)
 	}
 	for _, body := range []string{
@@ -96,7 +96,7 @@ func TestOpenCodeConfig(t *testing.T) {
 		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := loadOpenCodeConfig(); err == nil || strings.Contains(err.Error(), "private-secret") {
+		if _, err := loadMekugiConfig(); err == nil || strings.Contains(err.Error(), "private-secret") {
 			t.Fatalf("unsanitized config error: %v", err)
 		}
 	}

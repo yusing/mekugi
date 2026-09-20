@@ -25,31 +25,48 @@ func (c OpenCodeConfig) Enabled() bool {
 	return c.Go.APIKey != "" || c.Zen.APIKey != ""
 }
 
-func loadOpenCodeConfig() (OpenCodeConfig, error) {
-	var config struct {
-		Providers OpenCodeConfig `toml:"providers"`
-	}
+type mekugiConfig struct {
+	Providers    OpenCodeConfig    `toml:"providers"`
+	ServiceTiers map[string]string `toml:"service_tiers"`
+}
+
+func loadMekugiConfig() (mekugiConfig, error) {
+	var config mekugiConfig
 	directory, err := os.UserConfigDir()
 	if err != nil {
 		// Without a configuration directory there can be no file to load.
 		// Preserve environment-only setup and the existing startup diagnostics.
-		return openCodeEnvironment(OpenCodeConfig{})
+		config.Providers, err = openCodeEnvironment(OpenCodeConfig{})
+		return config, err
 	}
 	body, err := os.ReadFile(filepath.Join(directory, "mekugi", "config.toml"))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return OpenCodeConfig{}, errors.New("cannot read Mekugi config.toml")
+		return mekugiConfig{}, errors.New("cannot read Mekugi config.toml")
 	}
 	if err == nil {
 		metadata, err := toml.Decode(string(body), &config)
 		if err != nil {
 			// TOML errors can quote a line containing a credential.
-			return OpenCodeConfig{}, errors.New("invalid Mekugi config.toml")
+			return mekugiConfig{}, errors.New("invalid Mekugi config.toml")
 		}
 		if len(metadata.Undecoded()) != 0 {
-			return OpenCodeConfig{}, errors.New("unknown setting in Mekugi config.toml")
+			return mekugiConfig{}, errors.New("unknown setting in Mekugi config.toml")
 		}
 	}
-	return openCodeEnvironment(config.Providers)
+	for model, tier := range config.ServiceTiers {
+		if strings.TrimSpace(model) == "" || model != strings.TrimSpace(model) {
+			return mekugiConfig{}, errors.New("invalid model in Mekugi service_tiers")
+		}
+		switch tier {
+		case "priority":
+			config.ServiceTiers[model] = "fast"
+		case "fast", "default", "auto", "flex":
+		default:
+			return mekugiConfig{}, errors.New("invalid service tier in Mekugi config.toml")
+		}
+	}
+	config.Providers, err = openCodeEnvironment(config.Providers)
+	return config, err
 }
 
 func openCodeEnvironment(config OpenCodeConfig) (OpenCodeConfig, error) {

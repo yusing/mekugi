@@ -115,8 +115,12 @@ func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
 					if !strings.Contains(output.String(), "| Total | — | "+want+" |") || !strings.Contains(output.String(), "| Input | 100,000 |") {
 						t.Fatalf("report=%s", output.String())
 					}
+					requested := tc.requested
+					if requested == "priority" {
+						requested = "fast"
+					}
 					var forwarded map[string]json.RawMessage
-					if json.Unmarshal(provider.forwarded[0], &forwarded) != nil || jsonString(forwarded, "service_tier") != tc.requested {
+					if json.Unmarshal(provider.forwarded[0], &forwarded) != nil || jsonString(forwarded, "service_tier") != requested {
 						t.Fatal("accounting changed requested tier")
 					}
 				})

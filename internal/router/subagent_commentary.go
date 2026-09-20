@@ -32,15 +32,23 @@ func subagentStartCommentary(request *parsedResponsesRequest) string {
 			return ""
 		}
 	}
+	tier := jsonString(request.fields, "service_tier")
+	if tier == "priority" {
+		tier = "fast"
+	}
 	effort := strings.TrimSpace(reasoning.Effort)
-	if model == "" || len(model)+len(effort) > maxCommentaryPublicationBytes || strings.ContainsAny(model+effort, "\r\n\x00") {
+	if model == "" || len(model)+len(effort)+len(tier) > maxCommentaryPublicationBytes || strings.ContainsAny(model+effort+tier, "\r\n\x00") {
 		return ""
 	}
 	renderedEffort := "not specified"
 	if effort != "" {
 		renderedEffort = commentaryCode(effort)
 	}
-	return "Started.\nModel: " + commentaryCode(model) + "\nReasoning effort: " + renderedEffort
+	renderedTier := "not specified"
+	if tier != "" {
+		renderedTier = commentaryCode(tier)
+	}
+	return "Started.\nModel: " + commentaryCode(model) + "\nReasoning effort: " + renderedEffort + "\nService tier: " + renderedTier
 }
 
 func prepareSubagentInputCommentary(fields map[string]json.RawMessage, recipient string) []map[string]json.RawMessage {

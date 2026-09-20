@@ -100,10 +100,11 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if !*flags.grokEnabled && *flags.grokAuthFile != "" {
 		return errors.New("--grok-auth-file requires --grok")
 	}
-	openCode, err := loadOpenCodeConfig()
+	config, err := loadMekugiConfig()
 	if err != nil {
 		return err
 	}
+	openCode := config.Providers
 	if openCode.Enabled() && *flags.mode != "mekugi" {
 		return errors.New("OpenCode providers require --mode mekugi")
 	}
@@ -193,6 +194,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			log.Printf("OpenCode catalog: refresh/cache update unavailable; retaining last usable metadata")
 		}
 	}
+	provider.serviceTiers = config.ServiceTiers
 	provider.opencode = make(map[string]*grokClient)
 	for _, service := range openCode.services() {
 		client := withDialTimeout(nil)
@@ -380,6 +382,10 @@ func responsesHandler(
 	compactTokens *ctp2Codec,
 	mentor *mentorHandoff,
 ) http.HandlerFunc {
+	var serviceTiers map[string]string
+	if client, ok := provider.(*providerClient); ok {
+		serviceTiers = client.serviceTiers
+	}
 	return func(writer http.ResponseWriter, request *http.Request) {
 		trackedWriter := &trackedResponseWriter{ResponseWriter: writer}
 		body, err := readResponsesRequest(io.LimitReader(request.Body, responsesRequestBufferBytes+1))
@@ -399,7 +405,7 @@ func responsesHandler(
 		startCtx, executionCtx, cancelRequest := requestContexts(request.Context(), lifecycle, responseStartTimeout)
 		defer cancelRequest()
 		sessionID := routingSessionID(request.Header, parsedRequest)
-		executor := requestExecutor{provider: provider, output: trackedWriter, issues: issues, mekugiCalls: mekugiCalls, compactTokens: compactTokens, mentor: mentor}
+		executor := requestExecutor{provider: provider, output: trackedWriter, issues: issues, mekugiCalls: mekugiCalls, compactTokens: compactTokens, mentor: mentor, serviceTiers: serviceTiers}
 		if err := executor.execute(startCtx, executionCtx, parsedRequest, request.Header, sessionID); err != nil {
 			writeRequestError(trackedWriter, err)
 		}
