@@ -487,7 +487,7 @@ func TestLiveDiffTerminalShellHpatchDiff(t *testing.T) {
 	defer func() { worker.stop(); <-worker.done }()
 	// Exercise the shell decoder's no-space heredoc form as it appears in the
 	// provider stream, not only the direct decoder fixture.
-	worker.appendDelta("hpatch file.txt<<'EDIT'\ntype \"old\" \"new")
+	worker.appendDelta("hread tide111\nhpatch file.txt<<'EDIT'\ntype \"old\" \"new")
 	frame := ui.frame(t, func(frame string) bool {
 		text := ansi.Strip(frame)
 		return strings.Contains(text, "STREAMING PREVIEW") && strings.Contains(text, "+new")
@@ -504,7 +504,7 @@ func TestLiveDiffTerminalShellHpatchDiff(t *testing.T) {
 	worker.appendDelta("\ntype \"target that does not exist\" \"rejected\"\nEDIT\n")
 	frame = ui.frame(t, func(frame string) bool {
 		text := ansi.Strip(frame)
-		return strings.Contains(text, "STREAMING PREVIEW: last valid diff; current edit unavailable") &&
+		return strings.Contains(text, "STREAMING PREVIEW") &&
 			strings.Contains(text, "+newer")
 	})
 	text := ansi.Strip(frame)
@@ -513,8 +513,8 @@ func TestLiveDiffTerminalShellHpatchDiff(t *testing.T) {
 	}
 	worker.stop()
 	completed := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING COMPLETE") })
-	if !strings.Contains(ansi.Strip(completed), "last valid diff; current edit unavailable") {
-		t.Fatalf("completion lost unavailable-edit status: %q", completed)
+	if strings.Contains(ansi.Strip(completed), "unavailable") || !strings.Contains(ansi.Strip(completed), "+newer") {
+		t.Fatalf("completion lost provisional diff or displayed an error: %q", completed)
 	}
 	ui.quit(t)
 }

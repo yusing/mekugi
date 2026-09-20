@@ -97,9 +97,9 @@ func TestLiveDiffPreviewWorkerKeepsLastValidHpatchDiff(t *testing.T) {
 
 			worker.appendDelta("\ntype \"target that does not exist\" \"rejected\"\nEDIT\n")
 			invalid := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-				return strings.Contains(preview.Status, "last valid diff")
+				return preview.Status == "STREAMING PREVIEW"
 			})
-			if invalid.Status != "STREAMING PREVIEW: last valid diff; current edit unavailable" ||
+			if invalid.Status != "STREAMING PREVIEW" ||
 				invalid.Input != "" || len(invalid.Syntax) != 0 || len(invalid.Files) != 1 ||
 				!strings.Contains(invalid.Files[0].Diff, "+new") {
 				t.Fatalf("invalid hpatch preview did not retain last diff = %+v", invalid)
@@ -117,7 +117,7 @@ func TestLiveDiffPreviewWorkerReportsUnavailableInvalidHpatch(t *testing.T) {
 	broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
 	worker.appendDelta("hpatch file.txt<<'EDIT'\ntype \"target that does not exist\" \"rejected\"")
 	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return preview.Status == "PREVIEW UNAVAILABLE: edit cannot be projected"
+		return preview.Status == ""
 	})
 	if preview.Input != "" || len(preview.Syntax) != 0 || len(preview.Files) != 0 {
 		t.Fatalf("unprojectable first hpatch leaked source or files = %+v", preview)
@@ -141,7 +141,7 @@ func TestLiveDiffPreviewWorkerRetainsLastValidDiffForCompoundShell(t *testing.T)
 
 	worker.appendDelta("; echo after")
 	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool { return true })
-	if preview.Status != "STREAMING PREVIEW: last valid diff; current edit unavailable" ||
+	if preview.Status != "STREAMING PREVIEW" ||
 		len(preview.Files) != 1 || preview.Files[0].Diff != good.Files[0].Diff || preview.Input != "" || len(preview.Syntax) != 0 {
 		t.Fatalf("compound shell did not retain explicitly unavailable last diff = %+v", preview)
 	}
@@ -165,9 +165,9 @@ func TestLiveDiffPreviewBrokerRetainsDisplayedDiffAfterOversizedProjection(t *te
 	large := strings.Repeat("x", 60<<10)
 	worker.appendDelta("append <<PATCH\n" + large + "\nPATCH\n")
 	oversized := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return strings.Contains(preview.Status, "last valid diff")
+		return preview.Status == "STREAMING PREVIEW"
 	})
-	if oversized.Status != "STREAMING PREVIEW: last valid diff; current edit unavailable" ||
+	if oversized.Status != "STREAMING PREVIEW" ||
 		len(oversized.Files) != 1 || !strings.Contains(oversized.Files[0].Diff, "+small") ||
 		strings.Contains(oversized.Files[0].Diff, "+x") {
 		t.Fatalf("oversized projection displaced the displayed diff = %+v", oversized)
@@ -175,9 +175,9 @@ func TestLiveDiffPreviewBrokerRetainsDisplayedDiffAfterOversizedProjection(t *te
 
 	worker.appendDelta("\ntype \"target that does not exist\" \"rejected\"")
 	invalid := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return strings.Contains(preview.Status, "last valid diff")
+		return preview.Status == "STREAMING PREVIEW"
 	})
-	if invalid.Status != "STREAMING PREVIEW: last valid diff; current edit unavailable" ||
+	if invalid.Status != "STREAMING PREVIEW" ||
 		len(invalid.Files) != 1 || !strings.Contains(invalid.Files[0].Diff, "+small") ||
 		strings.Contains(invalid.Files[0].Diff, "+x") {
 		t.Fatalf("invalid target displaced the broker-retained diff = %+v", invalid)
@@ -200,7 +200,7 @@ func TestLiveDiffPreviewWorkerInterruptedStepKeepsDiffMode(t *testing.T) {
 	}
 	worker.appendDelta("\treturn \"INTERRUPTED_TIP")
 	second := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return preview.Status == "STREAMING PREVIEW" || strings.Contains(preview.Status, "last valid diff")
+		return preview.Status == "STREAMING PREVIEW"
 	})
 	if second.Input != "" || len(second.Syntax) != 0 || len(second.Files) == 0 ||
 		!strings.Contains(second.Files[0].Diff, "INTERRUPTED_TIP") {
@@ -272,9 +272,6 @@ func TestLiveDiffPreviewWorkerSuccessiveShellFragments(t *testing.T) {
 		worker.appendDelta(fragment)
 		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(liveDiffPreview) bool { return true })
 		wantStatus := "STREAMING PREVIEW"
-		if i == 1 {
-			wantStatus = "STREAMING PREVIEW: last valid diff; current edit unavailable"
-		}
 		if preview.Status != wantStatus || preview.Input != "" || len(preview.Syntax) != 0 || len(preview.Files) != 1 {
 			t.Fatalf("fragment %d flashed raw source or lost file view: %+v", i, preview)
 		}
@@ -335,8 +332,32 @@ func TestLiveDiffPreviewWorkerRecognizesFailedProjection(t *testing.T) {
 	for _, fragment := range []string{"hpatch missing.txt 'type \"old\" \"new\"'", "; echo suffix"} {
 		worker.appendDelta(fragment)
 		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(liveDiffPreview) bool { return true })
-		if preview.Status != "PREVIEW UNAVAILABLE: edit cannot be projected" || preview.Input != "" || len(preview.Syntax) != 0 || len(preview.Files) != 0 {
+		if preview.Status != "" || preview.Input != "" || len(preview.Syntax) != 0 || len(preview.Files) != 0 {
 			t.Fatalf("recognized edit returned to script mode: %+v", preview)
 		}
+	}
+}
+
+func TestLiveDiffPreviewAfterPrivateReaders(t *testing.T) {
+	t.Parallel()
+	for _, prefix := range []string{"hread tide111", "hcat file.txt", "hgrep -F old file.txt", "inspect_file file.txt", "hchanges amber1"} {
+		t.Run(prefix, func(t *testing.T) {
+			workspace := t.TempDir()
+			path := filepath.Join(workspace, "file.txt")
+			if err := os.WriteFile(path, []byte("old\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
+			worker.appendDelta(prefix + "\nhpatch file.txt <<'PATCH'\ntype \"old\" \"new")
+			preview := waitLiveDiffWorkerPreview(t, broker, sub, func(p liveDiffPreview) bool {
+				return len(p.Files) == 1
+			})
+			if preview.Status != "STREAMING PREVIEW" || !strings.Contains(preview.Files[0].Diff, "+new") {
+				t.Fatalf("reader prevented streaming projection: %+v", preview)
+			}
+			if content, err := os.ReadFile(path); err != nil || string(content) != "old\n" {
+				t.Fatalf("preview changed the workspace: %q, %v", content, err)
+			}
+		})
 	}
 }

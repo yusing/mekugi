@@ -234,9 +234,16 @@ func liveDiffShellPreviewNeutral(stmt *syntax.Stmt) bool {
 		return false
 	}
 	name, literal := shellCatLiteral(call.Args[0])
-	if !literal || name != "mkdir" {
+	if !literal {
 		return false
 	}
+	switch name {
+	case "mkdir", "hread", "hcat", "hgrep", "hsymbol", "inspect_file", "hchanges":
+		// Private readers cannot alter the workspace or shell environment.
+	default:
+		return false
+	}
+
 	for _, argument := range call.Args[1:] {
 		if _, literal := shellCatLiteral(argument); !literal {
 			return false

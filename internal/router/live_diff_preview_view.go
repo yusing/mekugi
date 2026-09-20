@@ -44,6 +44,11 @@ type liveDiffPreviewRow struct {
 
 func (p *liveDiffPreviewPane) update(preview liveDiffPreview) {
 	view := p.views[preview.ID]
+	if preview.Workspace != "" && preview.Status == "" && preview.Input == "" && len(preview.Files) == 0 {
+		delete(p.views, preview.ID)
+		p.order = slices.DeleteFunc(p.order, func(id string) bool { return id == preview.ID })
+		return
+	}
 	if preview.Workspace == "" {
 		if view != nil {
 			view.complete = true

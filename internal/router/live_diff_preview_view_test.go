@@ -308,11 +308,11 @@ func BenchmarkLiveDiffConcurrentPreviewFrame(b *testing.B) {
 	}
 }
 
-func TestLiveDiffCompletedPreviewKeepsLastValidWarning(t *testing.T) {
+func TestLiveDiffCompletedPreviewKeepsProvisionalStatus(t *testing.T) {
 	var pane liveDiffPreviewPane
 	pane.update(liveDiffPreview{
 		ID: "one", Workspace: "/workspace", Thread: "thread",
-		Status: "STREAMING PREVIEW: last valid diff; current edit unavailable",
+		Status: "STREAMING PREVIEW",
 	})
 	pane.update(liveDiffPreview{ID: "one"})
 	lines, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 160, 12)
@@ -320,9 +320,22 @@ func TestLiveDiffCompletedPreviewKeepsLastValidWarning(t *testing.T) {
 		t.Fatal(err)
 	}
 	header := ansi.Strip(lines[0])
-	for _, want := range []string{"STREAMING COMPLETE", "last valid diff; current edit unavailable"} {
+	for _, want := range []string{"STREAMING COMPLETE"} {
 		if !strings.Contains(header, want) {
 			t.Fatalf("completed preview lost %q: %s", want, header)
 		}
+	}
+}
+
+func TestLiveDiffPendingEditHidesEarlierScript(t *testing.T) {
+	var pane liveDiffPreviewPane
+	pane.update(liveDiffPreview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: "STREAMING SCRIPT", Input: "hpatch "})
+	pane.update(liveDiffPreview{ID: "one", Workspace: "/workspace", Thread: "thread"})
+	if len(pane.views) != 0 || len(pane.order) != 0 {
+		t.Fatal("pending edit left a script or empty status card")
+	}
+	pane.update(liveDiffPreview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: "STREAMING PREVIEW"})
+	if len(pane.views) != 1 {
+		t.Fatal("later projection did not restore the preview")
 	}
 }

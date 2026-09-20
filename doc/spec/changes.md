@@ -226,16 +226,19 @@ including new files. Other top-level statements in the program do not turn recog
 writes back into shell source. Batch previews follow the current program using its inherited
 shell parameters; earlier programs and their edit payloads are omitted.
 Once a call is recognized as an edit, its representation stays an edit preview for
-that call. If a later fragment cannot be decoded or projected, keep the last valid
-diff and label it as such rather than flashing back to the shell script. If no valid
-diff exists yet, show an unavailable status, not the literal edit script.
+that call. Private read commands before a literal edit do not block its projection.
+If a later fragment is unfinished or invalid, keep the last bounded provisional
+diff rather than flashing back to the shell script or displaying a preview error.
+If no diff exists yet, omit the edit card until a projection is available.
+Execution remains responsible for reporting rejected edits.
+
 Shell headers select the preview directory and interpreter using the shared header parser.
 Calls with dynamic expansions, input files, command templates,
 or `hpatch --recover` remain script previews when no earlier prefix was recognized
 as an edit. A later incompatible fragment invalidates the current projection but
 never turns a retained provisional diff into a claim about the completed command.
-A composed hpatch call that has no projectable top-level file operation shows an unavailable
-status rather than exposing its edit payload as shell source.
+A composed hpatch call that has no projectable top-level file operation does not display
+an edit card or expose its edit payload as shell source.
 Previews never execute shell code, apply files, format source, run hooks, or publish durable
 changes. The actual post-expansion edit report and captured diff arrive after host execution.
 

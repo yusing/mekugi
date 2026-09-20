@@ -117,7 +117,7 @@ func TestLiveDiffPreviewWorkerUnsafeCompoundEditsStayUnavailable(t *testing.T) {
 			broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
 			worker.appendDelta(test.input)
 			preview := waitLiveDiffWorkerPreview(t, broker, sub, func(p liveDiffPreview) bool {
-				return strings.HasPrefix(p.Status, "PREVIEW UNAVAILABLE:")
+				return p.Status == ""
 			})
 			if preview.Input != "" || len(preview.Syntax) != 0 || len(preview.Files) != 0 {
 				t.Fatalf("unsafe compound edit leaked source or projected stale files: %+v", preview)
@@ -154,7 +154,7 @@ func TestLiveDiffPreviewWorkerComposedHpatchDoesNotLeakScript(t *testing.T) {
 			broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
 			worker.appendDelta(input)
 			preview := waitLiveDiffWorkerPreview(t, broker, sub, func(p liveDiffPreview) bool {
-				return strings.HasPrefix(p.Status, "PREVIEW UNAVAILABLE:")
+				return p.Status == ""
 			})
 			if preview.Input != "" || len(preview.Files) != 0 {
 				t.Fatalf("invalid composed edit leaked source or speculative files: %+v", preview)

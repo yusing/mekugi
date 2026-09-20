@@ -86,7 +86,7 @@ func (worker *liveDiffPreviewWorker) appendDelta(delta string) {
 			worker.closed = true
 			worker.cancel()
 			worker.preview.Files = nil
-			worker.preview.Status = "PREVIEW UNAVAILABLE: input exceeds 256 KiB"
+			worker.preview.Status = "STREAMING PREVIEW"
 			worker.broker.publishPreview(worker.preview, false)
 		} else {
 			worker.input.WriteString(delta)
@@ -207,7 +207,7 @@ func (w *liveDiffPreviewWorker) run() {
 		editRecognized = editRecognized || ok || liveDiffShellComposedHpatch(projectionInput)
 		if editRecognized {
 			preview.Input, preview.Syntax, preview.Files = "", nil, nil
-			preview.Status = "PREVIEW UNAVAILABLE: edit cannot be projected"
+			preview.Status = "STREAMING PREVIEW"
 		} else {
 			preview.Input, preview.Syntax = projectionInput, liveDiffScriptSyntax(projectionInput)
 			preview.Status = "STREAMING SCRIPT"
@@ -261,20 +261,26 @@ func (b *liveDiffBroker) publishPreview(preview liveDiffPreview, remove bool) {
 	}
 	if len(mustMarshalJSON(preview)) > 48<<10 {
 		preview.Files = nil
-		preview.Status = "PREVIEW UNAVAILABLE: source exceeds 48 KiB"
+		preview.Status = "STREAMING PREVIEW"
 	}
-	if strings.HasPrefix(preview.Status, "PREVIEW UNAVAILABLE:") && preview.Input == "" {
+	if preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 0 {
 		// Retain only a diff the broker actually displayed, not an oversized
 		// projection discarded before publication.
 		if previous := b.previews[preview.ID]; len(previous.Files) != 0 {
-			unavailable := preview.Status
 			preview.Files = previous.Files
-			preview.Status = "STREAMING PREVIEW: last valid diff; current edit unavailable"
+			preview.Status = "STREAMING PREVIEW"
 			if len(mustMarshalJSON(preview)) > 48<<10 {
 				preview.Files = nil
-				preview.Status = unavailable
 			}
 		}
+	}
+	if preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 0 {
+		// An unfinished edit is not an error panel or a raw-script preview.
+		// Wait for a real projection while leaving captured history untouched.
+		delete(b.previews, preview.ID)
+		preview.Status = ""
+		b.emitPreviewLocked(preview)
+		return
 	}
 	b.previews[preview.ID] = preview
 	b.emitPreviewLocked(preview)
