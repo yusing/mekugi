@@ -190,8 +190,8 @@ those messages from later provider-bound input while preserving the original col
 tool outputs, and inter-agent messages. A response already accompanied by its deterministic
 commentary is not projected again.
 
-A successful explicit main finish includes one token notice after its journal flush and before
-the terminal event, including when the journal is empty. Unavailable usage is reported as `n/a`
+A successful explicit main finish includes one token notice before its journal flush and
+before the terminal event, including when the journal is empty. Unavailable usage is reported as `n/a`
 with an incomplete-usage explanation rather than silently omitting the notice. Child completion never emits a token table.
 The `Tokens for this session` notice contains one wide Markdown table with one row per agent
 and a `Total` row. Columns are `Agent`, `Role`, `Model`, `Input (cache hit)`, `Cache write`,
@@ -262,8 +262,10 @@ boundary, and unavailable estimates. Root accounting is not mutated when renderi
 tree total. This is auxiliary commentary accounting, not a change to capture-owned metrics
 exports. Generated tables retain the existing exact replay filtering and auxiliary budget.
 
-A successful explicit main journal finish emits its own unflushed journal revisions (including live-reported
-updates), then usage, and the terminal event. Child finish emits its native journal result without a token table.
+A successful explicit main journal finish emits usage, then its own unflushed journal revisions (including
+live-reported updates), and the terminal event. The final journal message is emitted once, after token
+metrics, and remains last in both streamed messages and the terminal snapshot.
+Child finish emits its native journal result without a token table.
 It does not request a separately generated provider final answer. Provider answer events remain
 unfiltered and cannot trigger journal completion. Failed or incomplete responses release buffered
 output without terminal journal flush or usage notices.

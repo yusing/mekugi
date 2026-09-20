@@ -10,7 +10,7 @@ import (
 func TestJournalChildCompletionResult(t *testing.T) {
 	t.Parallel()
 	for _, stream := range []bool{false, true} {
-		for _, state := range []string{"empty", "pending", "reported", "flushed", "edited", "deleted"} {
+		for _, state := range []string{"empty", "pending", "report-now", "reported", "flushed", "edited", "deleted"} {
 			t.Run(map[bool]string{false: "json/", true: "sse/"}[stream]+state, func(t *testing.T) {
 				proxy := newManagedMekugiProxy(t)
 				child, _ := prepareActivityTest(t, proxy, "child", "child", "root", "/root/child", nil)
@@ -24,7 +24,7 @@ func TestJournalChildCompletionResult(t *testing.T) {
 				}
 				if state != "empty" {
 					apply(
-						journalMutation{Op: "add", Text: new("First\r\n\r- detail\n\n```go\nok()\n```"), Answer: new(true)},
+						journalMutation{Op: "add", Text: new("First\r\n\r- detail\n\n```go\nok()\n```"), Answer: new(true), ReportNow: state == "report-now"},
 						journalMutation{Op: "add", Text: new("Second finding"), Answer: new(true)},
 					)
 					if state == "reported" || state == "flushed" || state == "edited" {
@@ -100,6 +100,16 @@ func TestJournalChildCompletionResult(t *testing.T) {
 				}
 				if !strings.Contains(result, "Journal result") || strings.Contains(result, "Journal saved:") || strings.Contains(result, "Descendant stays separate") {
 					t.Fatalf("missing or incorrectly scoped result: %q", result)
+				}
+				if len(output) == 0 || jsonString(output[len(output)-1], "phase") != "final_answer" {
+					t.Fatal("child completion result must follow pending live notices")
+				}
+				if state == "report-now" {
+					if len(output) != 2 || !strings.HasPrefix(commentaryMessageText(output[0]), "Journal update ") {
+						t.Fatalf("missing child live notice before completion: %s", mustMarshalJSON(output))
+					}
+					before[0].Reported = true
+					before[0].EverReported = true
 				}
 				if len(before) == 0 {
 					if !strings.Contains(result, "No journal entries.") || strings.Contains(result, "First") {

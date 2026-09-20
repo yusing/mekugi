@@ -107,6 +107,7 @@ func TestJournalFinishEndsWithoutProviderContinuation(t *testing.T) {
 				if !strings.Contains(output.String(), "Journal flush") || !strings.Contains(output.String(), "Completed the assigned milestone") {
 					t.Fatalf("missing journal flush: %s", output.Bytes())
 				}
+				assertJournalFinishOrder(t, stream, output.Bytes())
 				items, err := newJournalStore().list(t.Context(), proxy.replayStore, workspace, "thread-1")
 				if err != nil || len(items) != 1 || !items[0].Reported || !items[0].Flushed {
 					t.Fatalf("durable flush acknowledgement: %+v, %v", items, err)
@@ -514,5 +515,72 @@ func TestJournalEmptyFinishReportsUsage(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func assertJournalFinishOrder(t *testing.T, stream bool, wire []byte) {
+	t.Helper()
+	check := func(items []map[string]json.RawMessage) {
+		t.Helper()
+		usage, flush := -1, -1
+		for i, item := range items {
+			text := commentaryMessageText(item)
+			if strings.HasPrefix(text, "Tokens for this session") {
+				if usage >= 0 {
+					t.Fatal("duplicate token metrics")
+				}
+				usage = i
+			}
+			if strings.HasPrefix(text, "Journal flush ") {
+				if flush >= 0 {
+					t.Fatal("duplicate final journal flush")
+				}
+				if jsonString(item, "phase") != "final_answer" {
+					t.Fatal("journal flush is not a final answer")
+				}
+				flush = i
+			}
+		}
+		// Codex remembers the last completed assistant message, including
+		// commentary. If metrics follow the flush, turn completion renders the
+		// final-answer journal again because it is no longer that last message.
+		if usage < 0 || flush <= usage || flush != len(items)-1 {
+			t.Fatalf("want token metrics then one final journal flush last; usage=%d flush=%d items=%s", usage, flush, mustMarshalJSON(items))
+		}
+	}
+	output := journalFinishClientOutput(t, stream, wire)
+	check(output)
+	if !stream {
+		return
+	}
+	var done []map[string]json.RawMessage
+	completed := false
+	for _, payload := range finalAnswerTestPayloads(string(wire)) {
+		var event struct {
+			Type string                     `json:"type"`
+			Item map[string]json.RawMessage `json:"item"`
+		}
+		if err := json.Unmarshal(payload, &event); err != nil {
+			t.Fatal(err)
+		}
+		switch event.Type {
+		case "response.output_item.done":
+			if completed {
+				t.Fatal("item emitted after terminal event")
+			}
+			done = append(done, event.Item)
+		case "response.completed":
+			if completed {
+				t.Fatal("duplicate terminal event")
+			}
+			completed = true
+			check(done)
+		}
+	}
+	if !completed {
+		t.Fatal("missing terminal event")
+	}
+	if jsonString(done[len(done)-1], "id") != jsonString(output[len(output)-1], "id") {
+		t.Fatal("stream and terminal snapshot disagree on final journal identity")
 	}
 }

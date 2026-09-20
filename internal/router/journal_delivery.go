@@ -439,13 +439,19 @@ func (t *mekugiResponseTransform) decorateJournalJSON(payload []byte) ([]byte, e
 	}
 	if terminal {
 		output = withoutJournalUsage(output, jsonString(response, "id"))
-		output = append(output, messages...)
 		terminalMessages, err := t.journalTerminalMessages(payload)
 		if err != nil {
 			t.ReleaseDelivery()
 			return nil, err
 		}
-		output = append(output, terminalMessages...)
+		// Keep the final-answer flush last. Later commentary makes Codex render
+		// that final answer again when it receives turn completion.
+		if t.subagentTurn {
+			messages = append(messages, terminalMessages...)
+		} else {
+			messages = append(terminalMessages, messages...)
+		}
+		output = append(output, messages...)
 	} else {
 		output = append(messages, output...)
 	}
@@ -470,11 +476,11 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 	if err != nil {
 		return nil, err
 	}
-	var notices [][]byte
-	for _, message := range messages {
-		notices = append(notices, assistantCommentaryDoneEvent(message))
-	}
 	if !t.journalTerminal {
+		var notices [][]byte
+		for _, message := range messages {
+			notices = append(notices, assistantCommentaryDoneEvent(message))
+		}
 		if len(events) != 0 {
 			var event struct {
 				Type responseevents.Kind `json:"type"`
@@ -497,7 +503,15 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 		t.ReleaseDelivery()
 		return nil, err
 	}
-	for _, message := range terminalMessages {
+	// Stream the same ordering as the terminal snapshot: usage first, then
+	// the final-answer journal, with no commentary after it.
+	if t.subagentTurn {
+		messages = append(messages, terminalMessages...)
+	} else {
+		messages = append(terminalMessages, messages...)
+	}
+	var notices [][]byte
+	for _, message := range messages {
 		notices = append(notices, assistantCommentaryDoneEvent(message))
 	}
 	var visible [][]byte
@@ -521,7 +535,6 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 			}
 			output = withoutJournalUsage(output, jsonString(event.Response, "id"))
 			output = append(output, messages...)
-			output = append(output, terminalMessages...)
 			event.Response["output"] = mustMarshalJSON(output)
 			payload, err = replaceRawField(payload, "response", mustMarshalJSON(event.Response))
 			if err != nil {

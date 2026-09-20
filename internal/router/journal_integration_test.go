@@ -83,6 +83,7 @@ func TestJournalRouterToolContinuesWithoutClientDispatch(t *testing.T) {
 					t.Fatalf("incorrect usage availability: %s", output.String())
 				}
 
+				assertJournalFinishOrder(t, stream, output.Bytes())
 				items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
 				if err != nil || len(items) != 1 || !items[0].Reported {
 					t.Fatalf("delivery acknowledgement: %+v %v", items, err)

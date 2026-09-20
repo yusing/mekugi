@@ -70,9 +70,11 @@ Completion intent is response-local: replay, resume, and forks do not finish a n
 Code Mode journal publication does not expose finish. The Bash/POSIX finish surface below
 binds intent to its originating invocation rather than a response-local direct-tool call.
 
-On a successful explicit main finish with no client-dispatched calls, the router emits a deterministic
-flush of its own journal containing only unflushed revisions, including previously live-reported entries, skips it
-when empty, then emits token metrics. Terminal flushes and terminal retractions render as assistant
+On a successful explicit main finish with no client-dispatched calls, the router emits token metrics,
+then one deterministic flush of its own journal containing only unflushed revisions, including previously
+live-reported entries, skipping the flush when empty. The flush remains the last assistant message in
+both streamed events and the terminal snapshot so native turn completion does not display it again.
+Terminal flushes and terminal retractions render as assistant
 `final_answer` messages, not commentary; live updates remain commentary. These terminal messages
 are user-visible only and retain the same exact-ID removal from later provider input.
 Only successful terminal delivery marks a revision flushed;
@@ -208,7 +210,8 @@ provider events unchanged on overflow.
    flush. A failed live or terminal delivery remains eligible for retry. Silent edits become
    flush-eligible again; deleting a previously shown ID with report_now emits a retraction.
 6. Successful explicit main finish calls show only main's unflushed revisions,
-   including live updates, then eligible token metrics. Child finish calls save without flushing and
+   including live updates, after eligible token metrics. The flush is emitted exactly once and remains
+   the last assistant message. Child finish calls save without flushing and
    retain a nonempty completion result containing their current journal text. Finish makes no
    final-answer continuation request.
    Provider messages remain unfiltered and do not trigger a flush; failures and interruptions do not terminal-flush.
