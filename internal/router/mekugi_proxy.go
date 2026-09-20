@@ -351,6 +351,12 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 }
 
 func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedResponsesRequest, sessionID, threadID string, metadata codexTurnMetadata, metadataValid bool) (*mekugiResponseTransform, error) {
+	return p.prepareModelRequest(ctx, request, sessionID, threadID, metadata, metadataValid, false)
+}
+
+// Prewarm shares model projection but cannot initialize execution, replay, or
+// agent lifecycle state. Only the non-generating WebSocket path selects it.
+func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedResponsesRequest, sessionID, threadID string, metadata codexTurnMetadata, metadataValid, prewarm bool) (*mekugiResponseTransform, error) {
 	if p != nil {
 		request.filterInput(p.activity.stripInput)
 	}
@@ -363,19 +369,38 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 	if p == nil {
 		return nil, errors.New("mekugi response proxy is unavailable")
 	}
-	if strings.TrimSpace(sessionID) == "" {
+	if !prewarm && strings.TrimSpace(sessionID) == "" {
 		return nil, errors.New("mekugi rewrite requires a valid session ID")
 	}
-	if !metadataValid || metadata.RequestKind != responseevents.Turn {
+	if !metadataValid || (!prewarm && metadata.RequestKind != responseevents.Turn) {
 		return nil, errors.New("mekugi rewrite requires valid turn metadata")
 	}
 	// Execution-free requests retain their native instructions, tools, and schema.
 	if request.isExecutionFreeRequest() {
-		if strings.TrimSpace(threadID) == "" {
+		if !prewarm && strings.TrimSpace(threadID) == "" {
 			return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
 		}
 		return nil, nil
 	}
+	// Discover an execution owner before rewriting instructions: a native
+	// handshake may not yet carry the instruction or tool catalog of a turn.
+	if prewarm {
+		tools := request.responseTools()
+		if tools.top.err != nil {
+			return nil, incompatibleRequest("invalid_tool_catalog", tools.top.err.Error())
+		}
+		owner, err := findCodeModeApplyPatch(tools, nil)
+		if err != nil {
+			return nil, err
+		}
+		native := slices.ContainsFunc(tools.top.tools, func(tool *responsesToolDefinition) bool {
+			return tool.Name == applyPatchToolName || tool.Name == nativeExecCommandToolName
+		})
+		if owner == nil && !native {
+			return nil, nil
+		}
+	}
+
 	modelInstructions := codexinstructions.InstructionsForModel(request.model(), p.compactModelProtocol)
 	if err := rewriteReceivedModelInstructions(ctx, request, p.customizedInstructions, modelInstructions); err != nil {
 		return nil, err
@@ -433,6 +458,9 @@ func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedRespons
 		return nil, err
 	}
 
+	if prewarm {
+		return nil, nil
+	}
 	if strings.TrimSpace(threadID) == "" {
 		return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
 	}

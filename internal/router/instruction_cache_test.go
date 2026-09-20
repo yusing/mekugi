@@ -40,6 +40,7 @@ func TestWebSocketPrewarmInstructionDelivery(t *testing.T) {
 				}
 				upstream.SetReadLimit(upstreamJSONBufferBytes)
 				defer upstream.CloseNow()
+				var warmedTools json.RawMessage
 				for index, id := range ids {
 					request, err := providerSocketRead(ctx, upstream)
 					if err != nil {
@@ -53,10 +54,20 @@ func TestWebSocketPrewarmInstructionDelivery(t *testing.T) {
 					_ = json.Unmarshal(request["input"], &input)
 					switch id {
 					case "warm":
-						if !sameJSONValue(request["input"], mustMarshalJSON(base)) || string(request["generate"]) != "false" {
-							t.Error("prewarm changed native instructions or tool descriptions")
+						warmedTools = bytes.Clone(request["tools"])
+						if string(request["generate"]) != "false" || !bytes.Contains(request["input"], []byte("mekugi-model-instructions:start")) ||
+							bytes.Contains(request["input"], []byte("tools.exec_command")) ||
+							!bytes.Contains(request["tools"], []byte(`"shell"`)) || !bytes.Contains(request["tools"], []byte(`"journal"`)) {
+							t.Error("prewarm did not project non-generating turn instructions and tools")
 						}
-					case "turn", "astra":
+					case "turn":
+						if !sameJSONValue(warmedTools, request["tools"]) {
+							t.Error("first turn changed the warmed tool catalog")
+						}
+						if jsonString(request, "previous_response_id") != "warm" || len(input) != 1 {
+							t.Errorf("first turn discarded warmed prefix: parent=%q items=%d", jsonString(request, "previous_response_id"), len(input))
+						}
+					case "astra":
 						if jsonString(request, "previous_response_id") != "" || len(input) != index+2+2*(index-1) {
 							t.Errorf("%s did not replace the stale provider prefix: parent=%q items=%d", id, jsonString(request, "previous_response_id"), len(input))
 						}
@@ -114,5 +125,34 @@ func TestInstructionCacheAutomaticSuccessorCannotSilentlyDropChanges(t *testing.
 	err := exchange.reconcileProviderHistory(request, []byte(`{"input":[{"role":"developer","content":"changed"}]}`))
 	if err == nil || !strings.Contains(err.Error(), "cached provider history") {
 		t.Fatalf("automatic successor silently accepted a different prefix: %v", err)
+	}
+}
+
+func TestPrewarmUnsupportedCatalogRemainsNative(t *testing.T) {
+	proxy := newToolPluginTestProxy(t)
+	request, err := parseResponsesRequest([]byte(`{"model":"gpt-test","generate":false,"instructions":"native instructions","tools":[{"type":"web_search"}],"input":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := mustMarshalJSON(request.fields)
+	transform, err := proxy.prepareModelRequest(t.Context(), &request, "", "", codexTurnMetadata{RequestKind: "prewarm"}, true, true)
+	if err != nil || transform != nil {
+		t.Fatalf("native handshake initialized execution or failed: %v, %v", transform, err)
+	}
+	if !sameJSONValue(before, mustMarshalJSON(request.fields)) {
+		t.Fatal("unsupported prewarm catalog was partially rewritten")
+	}
+}
+
+func TestPrewarmMalformedCatalogRejectsWithoutPanic(t *testing.T) {
+	proxy := newToolPluginTestProxy(t)
+	for _, catalog := range []string{`[42]`, `"invalid"`, `[{"type":"function","name":"lookup"},42]`} {
+		request, err := parseResponsesRequest([]byte(`{"model":"gpt-test","generate":false,"tools":` + catalog + `,"input":[]}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := proxy.prepareModelRequest(t.Context(), &request, "", "", codexTurnMetadata{RequestKind: "prewarm"}, true, true); err == nil {
+			t.Fatalf("malformed catalog accepted: %s", catalog)
+		}
 	}
 }

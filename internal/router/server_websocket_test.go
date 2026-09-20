@@ -410,7 +410,7 @@ func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
 
 	headers := codexAuthHeaders()
 	headers.Set(sessionIDHeader, "prewarm-session")
-	headers.Set(threadIDHeader, "prewarm-thread")
+	// Startup metadata need not contain a thread identity yet.
 	conn := testResponsesSocket(t, ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstream, err := websocket.Accept(w, r, nil)
 		if err != nil {
@@ -461,9 +461,9 @@ func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
 		_, _, _ = upstream.Read(ctx)
 	}), proxy, nil, headers)
 	metadata := func(value any) map[string]string {
-		return map[string]string{codexTurnMetadataHeader: string(mustMarshalJSON(value))}
+		return map[string]string{codexTurnMetadataHeader: string(mustMarshalJSON(value)), threadIDHeader: "prewarm-thread"}
 	}
-	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": []any{map[string]string{"role": "user", "content": "warmup context"}}, "generate": false, "client_metadata": metadata(map[string]string{"request_kind": "prewarm"})})
+	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": []any{map[string]string{"role": "user", "content": "warmup context"}}, "generate": false, "client_metadata": map[string]string{codexTurnMetadataHeader: `{"request_kind":"prewarm"}`}})
 	if got := socketRead(t, ctx, conn); jsonString(got, "type") != "response.completed" {
 		t.Fatalf("warmup produced a warning: %s", mustMarshalJSON(got))
 	}

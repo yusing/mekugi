@@ -234,14 +234,15 @@ func (a *requestAttempt) prepare() error {
 	if a.prewarm {
 		a.compactTokens = nil
 	}
-	if a.executor.mekugiCalls != nil && !a.prewarm {
-		a.mekugiTransform, err = a.executor.mekugiCalls.prepareRequest(
+	if a.executor.mekugiCalls != nil {
+		a.mekugiTransform, err = a.executor.mekugiCalls.prepareModelRequest(
 			a.startCtx,
 			&a.request,
 			a.sessionID,
 			codexThreadID(a.headers),
 			a.metadata,
 			a.metadataValid,
+			a.prewarm,
 		)
 		if err != nil {
 			return fmt.Errorf("prepare mekugi response proxy: %w", err)
@@ -308,7 +309,7 @@ func (a *requestAttempt) prepareWire() error {
 			}
 		}
 	}
-	if !a.syntheticJournalFinish && (a.mekugiTransform != nil || grokEnabled || len(openCodeModels) > 0) {
+	if !a.syntheticJournalFinish && (a.mekugiTransform != nil || a.prewarm && a.executor.mekugiCalls != nil || grokEnabled || len(openCodeModels) > 0) {
 		a.bridge, err = prepareSubagentBridge(&a.request, grokEnabled, openCodeModels...)
 		if err != nil {
 			return fmt.Errorf("prepare collaboration bridge: %w", err)

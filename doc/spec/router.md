@@ -284,9 +284,12 @@ automatic successor. A pending tool-result continuation uses the same
 
 Startup metadata with `request_kind="prewarm"` and explicit `generate=false`
 is a non-generating transport handshake and does not require workspaces or a
-supported tool catalog. It retains native input for the next turn without
-performing tool rewriting or CTP encoding. Generating requests cannot use prewarm metadata to
-bypass ordinary turn validation.
+supported tool catalog. When Codex supplies a supported execution catalog, prewarm
+uses the same instruction, tool, and collaboration projection as a generating turn,
+so the first turn can reuse that prefix. An execution-free or catalog-free handshake
+remains native. Prewarm does not initialize shell runtimes, replay, journal or agent
+lifecycle state, and does not use CTP encoding. Generating requests cannot use prewarm
+metadata to bypass ordinary turn validation.
 
 Execution-free turns pass through without Mekugi instruction or tool rewriting or CTP
 encoding, regardless of their output schema. They require valid turn metadata and session
