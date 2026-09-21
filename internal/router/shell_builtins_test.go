@@ -12,28 +12,29 @@ import (
 func TestShellBuiltinType(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
+	mcatType := "mcat is " + registry.frontends["mcat"] + "\n"
 	mreadType := "mread is " + registry.frontends["mread"] + "\n"
 	for _, tc := range []struct {
 		name, script, want string
 		status             int
 	}{
-		{"private", "type hcat hpatch mread hchanges hrun journal", strings.Repeat("[mekugi-builtin]\n", 2) + mreadType + strings.Repeat("[mekugi-builtin]\n", 3), 0},
-		{"mixed", "type hcat printf mread", strings.Repeat("[mekugi-builtin]\n", 2) + mreadType, 0},
-		{"function", "example() { :; }; type hcat example", "[mekugi-builtin]\nexample is a function\n", 0},
-		{"missing", "type hcat mekugi_missing_command mread", "[mekugi-builtin]\n" + mreadType, 1},
-		{"quoted", "type hcat '$(echo unsafe)'", "[mekugi-builtin]\n", 1},
+		{"private", "type mcat hpatch mread hchanges hrun journal", mcatType + "[mekugi-builtin]\n" + mreadType + strings.Repeat("[mekugi-builtin]\n", 3), 0},
+		{"mixed", "type mcat printf mread", mcatType + "[mekugi-builtin]\n" + mreadType, 0},
+		{"function", "example() { :; }; type mcat example", mcatType + "example is a function\n", 0},
+		{"missing", "type mcat mekugi_missing_command mread", mcatType + mreadType, 1},
+		{"quoted", "type mcat '$(echo unsafe)'", mcatType, 1},
 		{"plus option", "type +x printf", "", 2},
-		{"custom builtin", "builtin() { printf custom; }; builtin type hcat", "custom", 0},
-		{"custom command", "command() { printf custom; }; command type hcat", "custom", 0},
-		{"invalid option", "type -z hcat", "", 2},
-		{"option operand", "type hcat -t", "[mekugi-builtin]\n", 1},
-		{"custom type", "type() { printf custom; }; type hcat", "custom", 0},
-		{"custom helpers", "eval() { printf wrong; }; builtin() { printf wrong; }; exit() { printf wrong; }; type hcat", "[mekugi-builtin]\n", 0},
+		{"custom builtin", "builtin() { printf custom; }; builtin type mcat", "custom", 0},
+		{"custom command", "command() { printf custom; }; command type mcat", "custom", 0},
+		{"invalid option", "type -z mcat", "", 2},
+		{"option operand", "type mcat -t", mcatType, 1},
+		{"custom type", "type() { printf custom; }; type mcat", "custom", 0},
+		{"custom helpers", "eval() { printf wrong; }; builtin() { printf wrong; }; exit() { printf wrong; }; type mcat", mcatType, 0},
 		{"custom kill", "kill() { printf custom; }; kill -0 1", "custom", 0},
 		{"ordinary prefixes", "command builtin type printf", "printf is a function\n", 0},
 		{"prefix positional scope", "command set -- preserved; builtin set -- final; printf '%s' \"$1\"", "final", 0},
 		{"ordinary", "type printf", "[mekugi-builtin]\n", 0},
-		{"substitution", "x=$(type hcat); printf '%s\\n' \"$x\"", "[mekugi-builtin]\n", 0},
+		{"substitution", "x=$(type mcat); printf '%s\\n' \"$x\"", mcatType, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, tc.script, nil)

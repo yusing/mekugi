@@ -16,7 +16,7 @@ func TestShellTypeAll(t *testing.T) {
 		if err := os.Mkdir(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		for _, name := range []string{"example", "hcat"} {
+		for _, name := range []string{"example", "mcat"} {
 			if err := os.WriteFile(filepath.Join(path, name), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
 				t.Fatal(err)
 			}
@@ -24,9 +24,9 @@ func TestShellTypeAll(t *testing.T) {
 	}
 	invocation := newShellWorkerTestInvocation(directory, "PATH="+first+string(os.PathListSeparator)+second)
 	matches := "example is " + filepath.Join(first, "example") + "\nexample is " + filepath.Join(second, "example") + "\n"
-	hcatMatches := "[mekugi-builtin]\nhcat is " + registry.frontends["hcat"] + "\n" +
-		"hcat is " + filepath.Join(first, "hcat") + "\n" +
-		"hcat is " + filepath.Join(second, "hcat") + "\n"
+	mcatMatches := "mcat is " + registry.frontends["mcat"] + "\n" +
+		"mcat is " + filepath.Join(first, "mcat") + "\n" +
+		"mcat is " + filepath.Join(second, "mcat") + "\n"
 	for _, tc := range []struct {
 		script, want string
 		status       int
@@ -35,7 +35,7 @@ func TestShellTypeAll(t *testing.T) {
 		{`example() { :; }; type -a example`, "example is a function\n" + matches, 0},
 		{`example() { :; }; type -at example`, "function\nfile\nfile\n", 0},
 		{`type -ap example`, filepath.Join(first, "example") + "\n" + filepath.Join(second, "example") + "\n", 0},
-		{`type -a hcat`, hcatMatches, 0},
+		{`type -a mcat`, mcatMatches, 0},
 		{`type -a missing example`, matches, 1},
 		{`type -az example`, "", 2},
 		{`type -a '$(printf unsafe)'`, "", 1},

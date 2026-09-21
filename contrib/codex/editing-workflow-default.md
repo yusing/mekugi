@@ -10,8 +10,7 @@ Tool coordination below covers native-interface tasks.
 Group ready reads and searches in one multiline script when they share an interpreter and options:
 
 ```bash
-hcat first.go 1:40
-hcat second.go 1:40
+mcat first.go 1:40 second.go 1:40
 ```
 
 Use a later call when earlier output must determine it. Reserve explicit batches for different
@@ -53,6 +52,7 @@ A stale-target correction must preserve the full intended span, not just change 
 
 Acquire target-bearing context for existing-file edits. For known literals, use hgrep first;
 use `-F` with repeated `-e` literals and bounded context. Use inspect_file for structure,
-hsymbol for symbol relationships, and bounded hcat for missing source.
+hsymbol for symbol relationships, and bounded mcat for raw missing source. Mcat output
+has no verified edit identities.
 Copy inspect_file `LINE:HASH` spans directly as HPATCH targets.
 The shared references below define target validity, framing, and recovery.

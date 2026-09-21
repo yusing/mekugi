@@ -98,7 +98,7 @@ func newProxyWithSharedTestRegistry(t *testing.T, registry *toolRegistry) *mekug
 
 func TestMain(m *testing.M) {
 	if os.Getenv(routerTestWorkerEnvironment) == "1" {
-		if os.Getenv(routerTestWorkerUnscopedEnvironment) == "1" {
+		if filepath.Base(os.Args[0]) == "mread" && os.Getenv(routerTestWorkerUnscopedEnvironment) == "1" {
 			_ = os.Unsetenv("CODEX_THREAD_ID")
 		}
 		if handled, code := RunToolPluginWorker(

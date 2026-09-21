@@ -343,7 +343,7 @@ func TestReadCursorRejectsAlteredPosition(t *testing.T) {
 func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
-	for _, command := range []string{"hcat", "inspect_file"} {
+	for _, command := range []string{"mcat", "inspect_file"} {
 		t.Run(command, func(t *testing.T) {
 			t.Parallel()
 			directory := t.TempDir()
@@ -362,8 +362,12 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 			if status != 0 || diagnostic != "" {
 				t.Fatalf("full read: %d %q", status, diagnostic)
 			}
+			budget := "256"
+			if command == "mcat" {
+				budget = "64"
+			}
 			first, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
-				command+" "+source+" --max-tokens 256", nil, invocation)
+				command+" "+source+" --max-tokens "+budget, nil, invocation)
 			if status == 0 || first == "" {
 				t.Fatalf("expected partial output: %d %q %q", status, first, diagnostic)
 			}
@@ -399,11 +403,11 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 			complete := false
 			for pageIndex := range 100 {
 				page, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil,
-					"mread "+ref+" --max-tokens 256", nil, invocation)
+					"mread "+ref+" --max-tokens "+budget, nil, invocation)
 				payload := page
-				if command == "hcat" {
+				if command == "mcat" {
 					if !strings.HasSuffix(payload, "\n") {
-						t.Fatal("partial verified row")
+						t.Fatal("partial source row")
 					}
 					rows += payload
 				} else {
@@ -425,7 +429,7 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 			if !complete {
 				t.Fatal("read did not complete")
 			}
-			if command == "hcat" {
+			if command == "mcat" {
 				if rows != full {
 					t.Fatal("recovery lost or duplicated source rows")
 				}

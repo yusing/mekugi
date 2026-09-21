@@ -303,7 +303,7 @@ def git_subcommand(words: list[str]) -> tuple[str, list[str]]:
 
 def has_explicit_file_operand(name: str, words: list[str]) -> bool:
     args = words[1:]
-    if name in {"hcat", "inspect_file"}:
+    if name in {"mcat", "inspect_file"}:
         return bool(args)
     if name == "cat":
         return any(not arg.startswith(("-", ">", "<")) for arg in args)
@@ -319,7 +319,7 @@ def classify(words: list[str]) -> str:
     if not words:
         return "other"
     name = os.path.basename(words[0])
-    if name in {"hcat", "inspect_file", "cat", "head", "tail", "nl", "sed"} and has_explicit_file_operand(name, words):
+    if name in {"mcat", "inspect_file", "cat", "head", "tail", "nl", "sed"} and has_explicit_file_operand(name, words):
         return "file_read"
     if name in SEARCH_TOOLS:
         return "search"
@@ -405,7 +405,7 @@ def positional_arguments(args: list[str], options_with_values: set[str]) -> tupl
 def file_read_path_operands(words: list[str]) -> tuple[set[str], bool]:
     name = os.path.basename(words[0])
     args = words[1:]
-    if name in {"hcat", "inspect_file"}:
+    if name in {"mcat", "inspect_file"}:
         operands: set[str] = set()
         ambiguous = False
         for argument in args:

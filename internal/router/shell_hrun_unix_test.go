@@ -74,9 +74,9 @@ func TestShellRunnerClosedInspectionPipes(t *testing.T) {
 	}
 	commands := map[string]string{
 		"hrun_lines":  "hrun -n 20000 -- cat " + shellQuoteArgument(linePath),
-		"hcat_lines":  "hcat -n 20000 " + shellQuoteArgument(linePath),
+		"mcat_lines":  "mcat -n 20000 " + shellQuoteArgument(linePath),
 		"hrun_tokens": "hrun --max-tokens 15500 -- cat " + shellQuoteArgument(tokenPath),
-		"hcat_tokens": "hcat --max-tokens 15500 " + shellQuoteArgument(tokenPath),
+		"mcat_tokens": "mcat --max-tokens 15500 " + shellQuoteArgument(tokenPath),
 	}
 	cases := []struct {
 		command, mode string
@@ -84,11 +84,11 @@ func TestShellRunnerClosedInspectionPipes(t *testing.T) {
 		{"hrun_lines", "default"},
 		{"hrun_lines", "pipefail"},
 		{"hrun_lines", "errexit"},
-		{"hcat_lines", "default"},
-		{"hcat_lines", "pipefail"},
-		{"hcat_lines", "errexit"},
+		{"mcat_lines", "default"},
+		{"mcat_lines", "pipefail"},
+		{"mcat_lines", "errexit"},
 		{"hrun_tokens", "pipefail"},
-		{"hcat_tokens", "pipefail"},
+		{"mcat_tokens", "pipefail"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.command+"/"+tc.mode, func(t *testing.T) {

@@ -30,11 +30,12 @@ byte and restores the original model-visible call without executing effects. Gen
 history cannot enter edit recovery. Diagnostics remain separate from executor output and
 retain exact provenance.
 
-The built-in shell is model-visible; its read, search, symbol, and inspection commands remain
-model-private but are executable through session-private frontends in the same authenticated
-snapshot as configured plugins. They share portable row and source semantics while retaining
-distinct selection owners. Codex remains the execution authority for those frontends. The router
-never fabricates their results or turns their command history into edit-recovery ancestry.
+The built-in shell is model-visible. `mcat` is model-private but executes only
+through its session frontend; hgrep, hsymbol, and inspect_file remain private
+shell commands while also exposing pinned frontends for their later cutovers.
+They share portable source semantics while retaining distinct selection owners.
+Codex remains the execution authority for every frontend. The router never
+fabricates their results or turns command history into edit-recovery ancestry.
 The router-native `mread` frontend shares this authenticated wrapper path and delegates retained
 output semantics to the existing managed store rather than duplicating them in the registry.
 

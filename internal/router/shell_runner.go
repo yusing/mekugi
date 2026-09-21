@@ -146,7 +146,7 @@ func executeShellProgram(
 	}
 	privateTools := make(map[string]toolContribution)
 	for _, contribution := range manifest.Tools {
-		if contribution.PluginID == builtinToolsPluginID && !contribution.ModelVisible {
+		if contribution.PluginID == builtinToolsPluginID && !contribution.ModelVisible && contribution.Name != "mcat" {
 			privateTools[contribution.Name] = contribution
 		}
 	}
@@ -170,20 +170,6 @@ func executeShellProgram(
 
 			if command[0] == builtinDispatch {
 				return executeShellBuiltin(handlerCtx, command[1:], privateTools, terminalShell, builtinDispatch)
-			}
-			if command[0] == "hcat" {
-				specs, budget, err := parseReadBundle(command[1:])
-				if err != nil {
-					_, _ = fmt.Fprintf(interp.HandlerCtx(handlerCtx).Stderr, "hcat: %v\n", err)
-					return interp.ExitStatus(1)
-				}
-				if len(specs) > 1 {
-					contribution, ok := privateTools["hcat"]
-					if !ok {
-						return errors.New("hcat requires the built-in hcat reader")
-					}
-					return executeReadBundle(handlerCtx, manifest, runtimeRoot, specs, budget, contribution, shellID)
-				}
 			}
 			if command[0] == "hpatch" {
 				return executeHpatch(handlerCtx, manifest, command[1:], commentary)

@@ -35,38 +35,27 @@ func corpusReadSelections(script string) []corpusReadSelection {
 			}
 			args = append(args, arg)
 		}
-		if len(args) < 2 || args[0] != "hcat" {
+		if len(args) < 2 || args[0] != "mcat" {
 			return false
 		}
-		args = args[1:]
-		for len(args) > 0 && strings.HasPrefix(args[0], "-") {
-			if args[0] == "--" {
-				args = args[1:]
-				break
-			}
-			if args[0] != "--max-tokens" || len(args) < 2 {
-				return false
-			}
-			args = args[2:]
-		}
-		if len(args) < 1 || len(args) > 2 {
+		specs, _, err := parseReadBundle(args[1:])
+		if err != nil {
 			return false
 		}
-		selection := corpusReadSelection{path: filepath.Clean(args[0]), first: 1, last: math.MaxUint64}
-		if len(args) == 2 {
-			first, last, ok := strings.Cut(args[1], ":")
-			if !ok {
-				return false
+		for _, spec := range specs {
+			selection := corpusReadSelection{path: filepath.Clean(spec.path), first: 1, last: math.MaxUint64}
+			if spec.span != "" {
+				first, last, _ := strings.Cut(spec.span, ":")
+				var e1, e2 error
+				selection.first, e1 = strconv.ParseUint(first, 10, 64)
+				selection.last, e2 = strconv.ParseUint(last, 10, 64)
+				if e1 != nil || e2 != nil || selection.first > selection.last {
+					return false
+				}
+				selection.first = max(1, selection.first)
 			}
-			var e1, e2 error
-			selection.first, e1 = strconv.ParseUint(first, 10, 64)
-			selection.last, e2 = strconv.ParseUint(last, 10, 64)
-			if e1 != nil || e2 != nil || selection.first > selection.last {
-				return false
-			}
-			selection.first = max(1, selection.first)
+			selections = append(selections, selection)
 		}
-		selections = append(selections, selection)
 		return false
 	})
 	return selections

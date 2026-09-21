@@ -95,8 +95,8 @@ The shared guidance must make these choices directly available in native and CTP
    [REQ-SHELL-001](shell.md). Reusable source belongs in ordinary script files.
    A failed execution is not a rollback.
 2. **Acquisition:** reuse known literals, verified rows, and confirmed mappings first.
-   Otherwise select fixed-string hgrep, bounded hcat, structural inspection, or semantic
-   lookup with a current line or verified row. Explain automatic worker display budgeting
+   Otherwise select fixed-string hgrep for hash-bearing matches, bounded mcat for raw
+   context, structural inspection, or semantic lookup with a current line or verified row. Explain automatic worker display budgeting
    and use reader controls to focus the requested context.
    Continue cursors or captured output without replaying producers;
    distinguish reader omissions from outer truncation. Explain preview and truncation limits before using partial source as an
@@ -171,7 +171,7 @@ cached model IDs, both instruction carriers, and both model protocols.
    unrelated prepared edits, and explicitly invalidates prior handles after re-rejection.
    It does not direct non-target or mixed failures to re-emit the complete script.
 7. A routed success can be followed by another hpatch call using an exact row from its report
-   without an intervening hcat; a saved pre-edit row still rejects as stale.
+   without another verified read; a saved pre-edit row still rejects as stale.
 8. Both rendered model workflows include the shared journal, framing, boundary, recovery,
    continuation, lifetime, and reader contracts exactly once, including combined output
    budgeting and complete semantic reference acquisition. Guidance uses existing limits

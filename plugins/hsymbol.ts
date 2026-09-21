@@ -145,7 +145,7 @@ function parseQuery(argv: string[]): Query {
     argv = [...argv.slice(0, workspaceIndex), ...argv.slice(workspaceIndex + 2)];
   }
   const parsed = readerOptions(argv);
-  if (parsed.options.previewBytes !== undefined) throw new HSymbolFailure("use hcat --preview-bytes for source previews");
+  if (parsed.options.previewBytes !== undefined) throw new HSymbolFailure("use a byte-window reader for source previews");
   argv = parsed.rest;
   if (argv.length !== 4 && argv.length !== 5) {
     throw new HSymbolFailure("usage: hsymbol [--workspace ROOT] (def|refs) PATH (LINE|LINE:HASH) SYMBOL [N]");

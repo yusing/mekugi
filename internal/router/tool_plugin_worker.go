@@ -184,6 +184,8 @@ func runAuthenticatedToolWorker(
 		default:
 			return fail(fmt.Errorf("built-in tool %q is unavailable", name))
 		}
+	} else if contribution.PluginID == builtinToolsPluginID && contribution.Name == "mcat" {
+		execution, err = executeMCat(ctx, manifest, runtimeRoot, args, *contribution)
 	} else if contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell" {
 		workingDirectory, workingDirectoryErr := os.Getwd()
 		if workingDirectoryErr != nil {

@@ -105,14 +105,14 @@ The plugin worker keeps the frontend standard input separate from the JavaScript
 host's JSON control stream. The host exposes that input only as a dedicated inherited descriptor during
 executor calls.
 
-Built-in shell and its private hcat, hgrep, hsymbol, and inspect_file commands use the same
-authenticated executor snapshot. The shared `shell` name locates the shell executor for the
-current thread. Each private executor-backed command also has a session-private standalone
-frontend in the same `bin` directory as configured-plugin frontends. Stock `exec_command`
-therefore invokes the pinned implementation directly under Codex's cwd, input, environment,
-sandbox, and process lifecycle; it does not pass shell source back through the router. The shell
-carrier may continue dispatching a private command until that command's migration removes the
-old surface.
+Built-in shell, standalone `mcat`, and the remaining private hgrep, hsymbol, and
+inspect_file commands use the same authenticated executor snapshot. The shared
+`shell` name locates the shell executor for the current thread. Each executable
+command has a session-private frontend in the same `bin` directory as configured
+plugins. Stock `exec_command` invokes `mcat` directly under Codex's cwd,
+environment, sandbox, and process lifecycle; the shell carrier no longer
+dispatches or transforms it. Not-yet-migrated private commands may still use the
+shell dispatcher while exposing the same pinned frontend.
 
 The router-native `mread` continuation command is an executable contribution in the same
 manifest and uses the same frontend and worker authentication. Its built-in dispatch reads only

@@ -216,7 +216,7 @@ authenticated worker so routing observes the executor's current cwd and PATH. Wh
 is not executable there, commands run unchanged.
 
 Only recognized command forms are routed. Unsupported subcommands, explicit executable
-paths, already-routed commands, private readers, and explicit machine-readable output
+paths, Mekugi reader frontends and private readers, and explicit machine-readable output
 remain unchanged. Inline environment assignments retain normal shell behavior. Recognized
 `timeout` and `nice` options and simple `env NAME=value` prefixes route the inner
 command while leaving the wrapper in control. Foreground `timeout` stays raw because
@@ -404,7 +404,8 @@ Acceptance:
     diagnostic without starting an interpreter.
 11. `make install` installs `mekugi` and the fixed `shell` helper without changing Codex
     configuration or instruction files. Startup and tool-snapshot changes do not rewrite that
-    helper and create no hcat, hgrep, hsymbol, or inspect_file basename frontend.
+    helper or install global mcat, hgrep, hsymbol, or inspect_file basenames. Router startup
+    creates owned session-private frontends from the authenticated snapshot.
 12. `#!params={"workdir":"/tmp","tty":true}` produces an exec carrier
     containing those fields and the router-supplied `cmd`. Tolerated leading params variants
     produce the same carrier after normalization. An object containing `cmd` rejects, and a

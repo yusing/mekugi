@@ -20,7 +20,7 @@ import (
 	"unicode/utf8"
 )
 
-// AXReadOutputEnvironment opts executor-side private readers into a local journal.
+// AXReadOutputEnvironment opts executor-side readers into a local journal.
 const AXReadOutputEnvironment = "MEKUGI_AX_OUTPUT"
 
 const maxAXEvidenceBytes = 64 << 20
@@ -54,7 +54,7 @@ type AXReadObservation struct {
 }
 
 func validAXReader(tool string) bool {
-	return tool == "hcat" || tool == "hgrep" || tool == "hsymbol" || tool == "inspect_file"
+	return tool == "mcat" || tool == "hgrep" || tool == "hsymbol" || tool == "inspect_file"
 }
 
 // StartAXReadWithContext is auxiliary to execution. Callers report failures separately and

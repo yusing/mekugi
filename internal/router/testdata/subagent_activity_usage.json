@@ -15,8 +15,8 @@
   },
   "debug_sampling": [
     {"directory": "/tmp/mekugi-debug-1059797773", "shell_observations": 3, "feature_usage_rows": 0},
-    {"directory": "/tmp/mekugi-debug-2747633365", "successful_hgrep_reads": 3, "successful_hcat_reads": 6, "shell_publications_accepted": 3, "shell_renders_prepared": 3},
-    {"directory": "/tmp/mekugi-debug-2034277708", "successful_hgrep_reads": 4, "hcat_starts": 42, "successful_hcat_reads": 41, "shell_publications_accepted": 3, "shell_renders_prepared": 3}
+    {"directory": "/tmp/mekugi-debug-2747633365", "successful_hgrep_reads": 3, "successful_mcat_reads": 6, "shell_publications_accepted": 3, "shell_renders_prepared": 3},
+    {"directory": "/tmp/mekugi-debug-2034277708", "successful_hgrep_reads": 4, "mcat_starts": 42, "successful_mcat_reads": 41, "shell_publications_accepted": 3, "shell_renders_prepared": 3}
   ],
   "cases": [
     {
@@ -83,7 +83,7 @@
       "source": "host",
       "call_id": "call_K6z1LyON1eBAUJRtH0ceH4L9",
       "selection": "complete script",
-      "input": "hcat internal/router/hpatch_shell_test.go 340:440\nhgrep --max-tokens 6000 -n -F -e 'func runShellCatJavaScript' -e 'const tools =' -e 'tools.exec_command' -e 'tools.write_stdin' internal/router/*_test.go\nhgrep --max-tokens 5000 -n -F -e 'store(key' -e 'load(key' -e 'notify(value' -e 'store(' -e 'load(' -e 'notify(' internal/router plugins contrib doc README.md\n",
+      "input": "mcat internal/router/hpatch_shell_test.go 340:440\nhgrep --max-tokens 6000 -n -F -e 'func runShellCatJavaScript' -e 'const tools =' -e 'tools.exec_command' -e 'tools.write_stdin' internal/router/*_test.go\nhgrep --max-tokens 5000 -n -F -e 'store(key' -e 'load(key' -e 'notify(value' -e 'store(' -e 'load(' -e 'notify(' internal/router plugins contrib doc README.md\n",
       "want": "Read `internal/router/hpatch_shell_test.go 340:440`\n\nSearch `--max-tokens 6000 -n -F -e 'func runShellCatJavaScript' -e 'const tools =' -e 'tools.exec_command' -e 'tools.write_stdin' internal/router/*_test.go`\n\nSearch `--max-tokens 5000 -n -F -e 'store(key' -e 'load(key' -e 'notify(value' -e 'store(' -e 'load(' -e 'notify(' internal/router plugins contrib doc README.md`"
     },
     {

@@ -7,7 +7,7 @@ const input = (stdout: string, stdoutKind: "" | "rows" | "json" = ""): ReadPageR
 });
 
 describe("shared read pagination", () => {
-  test("never splits a verified row or manufactures a completed row", () => {
+  test("never splits a complete row or manufactures a completed row", () => {
     const rows = Array.from({length: 30}, (_, i) => `${i + 1}:abcd word π🙂\n`);
     const request = input(rows.join(""), "rows");
     let joined = "";

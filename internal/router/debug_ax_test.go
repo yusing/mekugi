@@ -52,8 +52,8 @@ func prepareAXSessionFixture(t *testing.T) (session, journal, assessments string
 	journal = filepath.Join(t.TempDir(), "reads.jsonl")
 	// These report-consumer fixtures use the owning capturer's complete events.
 	// Actual private-reader dispatch and instrumentation are covered by
-	// TestAXObservesExecutedPrivateReaders and the debug worker tests.
-	for _, read := range []struct{ thread, tool string }{{"root-thread", "hgrep"}, {"thread", "hcat"}} {
+	// TestAXObservesExecutedReaders and the debug worker tests.
+	for _, read := range []struct{ thread, tool string }{{"root-thread", "hgrep"}, {"thread", "mcat"}} {
 		observation, err := capturer.StartAXReadWithContext(journal, read.thread, read.tool, capturer.AXReadContext{})
 		if err != nil {
 			t.Fatal(err)

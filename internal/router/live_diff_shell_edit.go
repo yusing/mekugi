@@ -238,8 +238,8 @@ func liveDiffShellPreviewNeutral(stmt *syntax.Stmt) bool {
 		return false
 	}
 	switch name {
-	case "mkdir", "mread", "hcat", "hgrep", "hsymbol", "inspect_file", "hchanges":
-		// Private readers cannot alter the workspace or shell environment.
+	case "mkdir", "mread", "mcat", "hgrep", "hsymbol", "inspect_file", "hchanges":
+		// Read-only helpers cannot alter the workspace or shell environment.
 	default:
 		return false
 	}

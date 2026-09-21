@@ -1,221 +1,184 @@
-# Shell-routed verified-row reader
+# Authenticated raw-row reader and managed continuation
 
-## REQ-READ-001 — Shell-routed verified-row reader
+## REQ-READ-001 — Authenticated raw-row reader
 
-In Mekugi mode, the model receives `hpatch` and `shell` as standalone custom
-tools. The [agent-guidance contract](guide.md) owns persistent workflow guidance.
-Hcat, hgrep, hsymbol, and inspect_file remain model-private: their specifications
-are not sent as model-visible tools and direct model calls to their names are not
-routed. Each has a session-private executable frontend in the authenticated
-snapshot. The shell carrier may dispatch these commands for not-yet-migrated
-consumers. `mread` is the standalone authenticated continuation frontend and is
-not a shell-owned builtin.
+In Mekugi mode, `mcat` is a session-private executable on the wrapped Codex
+`PATH`. Stock `tools.exec_command` owns its execution. The router authenticates
+the executable against the pinned tool snapshot, but does not expose `mcat` as a
+model-visible custom tool or intercept it as a private shell command. The
+[agent-guidance contract](guide.md) owns persistent workflow guidance.
 
-The private `hcat` command accepts one or more files:
+`mcat` accepts one or more files:
 
 ```text
-hcat [--max-tokens N] PATH [START:END] [PATH [START:END] ...]
+mcat [--max-tokens N] PATH [START:END] [PATH [START:END] ...]
 ```
 
-The shell owns quoting and argument separation. A path containing whitespace is therefore one
-ordinary quoted shell argument. `START:END`, when present, is an inclusive logical-line range
-whose positive one-based base-ten endpoints must be ordered. The start line must exist. An end
-past EOF returns through the final line. Each range applies to the preceding path.
-For example, `hcat first.go 1:200 second.go third.go 200:300` selects three files.
-A numeric `START:END` argument after a path is a range; prefix a range-like filename
-with `./` to read it as a file. `--` ends option parsing, not a file selection.
-Single-file reads also accept `-n N`, `--preview-bytes N`, and `--tail` as described below.
+The process host owns quoting and argument separation. A path containing
+whitespace is one quoted argument. `START:END` is an inclusive logical-line
+range with a canonical nonnegative start and positive base-ten end. `0:END` is
+accepted as `1:END`. The start line must exist; an end past EOF returns through the final
+line. Each range applies to the preceding path. A numeric range after a path is
+therefore an operand, so prefix a range-like filename with `./`. `--` ends
+option parsing. One invocation accepts at most 16 files.
 
-The wrapped launcher prepends the authenticated session frontend directory to
-Codex's `PATH`. The same pinned registry dispatches shell-carrier and executable
-calls; it does not rediscover implementations. Deployments with separate router
-and executor filesystems must make the authenticated runtime available at the
-same absolute location on both sides.
+The executable inherits the stock executor's working directory and environment.
+Relative and absolute paths retain their ordinary process meaning. Codex owns
+sandbox and filesystem permissions. The worker accepts only regular UTF-8 files
+and never mutates them.
 
-Hcat runs in the shell carrier's actual working directory. Relative and absolute paths keep
-their ordinary process meaning. Codex, not the router or hcat, owns sandbox and filesystem
-permissions. The worker accepts only regular UTF-8 files and never mutates them. It emits only
-the requested logical lines:
+### Raw logical rows
+
+Single-file output contains only the selected source text, without line numbers,
+hashes, JSON records, or other prefixes. CR, LF, and CRLF are recognized as
+logical terminators. Every selected logical row is emitted with one LF,
+including an unterminated final row. A trailing source terminator does not create
+an extra empty row. Empty files succeed with empty stdout. The UTF-8 BOM, when
+present in the first logical row, remains source content.
+
+`mcat` output is contextual source, not a verified edit identity. Hash-bearing
+consumers use the verified-row contract below. `mcat` has no
+`--preview-bytes` mode and performs no hashline calculation.
+
+Missing, inaccessible, non-regular, non-UTF-8, reversed-range, and
+start-past-EOF reads return concise stderr and nonzero status. An end past EOF
+returns the available rows and a warning without changing successful status.
+Whole-file UTF-8 validation continues after stdout admission stops.
+
+### Bounds, head, and tail
+
+`--max-tokens N` sets a strict GPT-5 stdout ceiling from 1 through 15,500,
+defaulting to 4,000. Options may surround operands before `--` and cannot
+repeat. Missing or invalid budgets reject before source content is read. Outer
+host output budgets remain independent.
+
+Only complete raw rows are admitted. The first row that does not fit and all
+later rows are omitted; admitted stdout remains usable and the command exits
+nonzero. Omitted rows are retained through `mread` before their reference is
+exposed. Recovery reads the captured bytes without reopening the source. If a
+row exceeds the 1,984,000-byte inspection bound or retained output exceeds
+16 MiB, the result reports that recovery is unavailable and suggests narrowing
+the source range.
+
+Single-file reads additionally accept `-n N` and `--tail`, each at most once.
+Line counts are canonical positive safe integers. `-n` selects the first N rows,
+or the last N rows with `--tail`, before an explicit token ceiling. Without an
+explicit token ceiling, line mode bypasses tokenization. `--tail` requires `-n`
+or `--max-tokens`, preserves source order, and never cuts a row or skips an
+oversized final row to expose earlier content. Tail scans still validate the
+complete file. Multi-file reads reject `-n` and `--tail`.
+
+The executable frontend owns one AX read observation per invocation, including
+invalid arguments and failed reads. It records the inherited thread identity but
+does not invent shell call or shell-worker correlation for a stock external
+command.
+
+Acceptance:
+
+1. Whole-file, range, head, and tail reads emit raw UTF-8 logical rows with the
+   newline behavior above and no hashes or line prefixes.
+2. Quoted, absolute, relative, option-like, and range-like paths keep their
+   documented process meanings.
+3. Token and line limits retain only complete rows; `mread` reconstructs omitted
+   rows after source changes and router restart.
+4. Streaming storage is bounded, cancellation-aware, and validates the complete
+   source. Invalid UTF-8 outside the displayed selection still fails.
+5. Router startup validates `mcat` in the immutable snapshot and installs one
+   session-private frontend. The old reader name and hash-preview surface are
+   absent.
+6. Stock execution preserves cwd, environment, argv, stdout, stderr, status,
+   pipes, and redirections without shell-source transformation.
+
+### Verified-row framing for hash-bearing consumers
+
+`hgrep`, `hsymbol`, `inspect_file`, HPATCH, reports, and other not-yet-migrated
+hash-bearing consumers share this logical-row identity:
 
 ```text
 LINE:HASH TEXT
 ```
 
-`LINE` is the positive one-based logical line number. `TEXT` is exact logical-line content
-without its terminator. `HASH` is lowercase hexadecimal for the first two bytes of SHA-256
-over that exact content, including leading spaces and tabs. A trailing file terminator does
-not create an additional empty line. Missing, inaccessible, non-regular, non-UTF-8,
-reversed-range, and start-past-EOF reads return concise stderr and nonzero status.
+`LINE` is the positive one-based logical line. `TEXT` is exact content without
+its terminator. `HASH` is lowercase hexadecimal for the first two bytes of
+SHA-256 over that content, including leading spaces and tabs. Equal text at
+different positions has the same hash but a different complete reference.
+These consumers, not `mcat`, own formatting and verification.
 
-Readers share `--max-tokens N`: a strict GPT-5 stdout ceiling from 1 through 15,500,
-defaulting to 4,000. Options may surround operands, stop at `--`, and cannot repeat.
-Ripgrep option values remain values even when their spelling matches a reader flag.
-Missing or invalid budgets reject before reading source content or starting a resolver.
-Outer host budgets remain independent.
-
-Verified-row commands admit only complete rows. The first row that does not fit and all
-later rows are omitted; truncation preserves admitted stdout and returns nonzero.
-Hcat retains omitted rows through the shared `mread` interface below, including omitted
-prefixes from tail selection. Recovery reads the captured snapshot without reopening the
-source. If a row exceeds the inspection bound or recovery exceeds its 16 MiB capacity,
-the result reports that recovery is unavailable and suggests narrowing the source range.
-Valid selected output remains usable, including tail rows after a source-bound row.
-
-Hcat and hgrep additionally accept `--preview-bytes N`, at most once.
-
-`--preview-bytes` accepts 1 through 65,536 and changes each stdout row to a JSON
-record with `row` (the complete source's verified `LINE:HASH`), `preview` (a UTF-8
-prefix no larger than N bytes), `source_bytes`, and `omitted_bytes`. Hgrep also
-includes `path`. This is an explicit inspection format, not exact source-row text.
-The row reference remains usable as a whole-row target; preview text must not be
-treated as a complete literal replacement or match. Hashing still covers every
-source byte, never just the prefix. A prefix may end before N to avoid splitting
-a Unicode character. Preview records themselves count against the same stdout
-token budget. Preview byte omissions are intentional and counted in each record;
-omitting an entire record at the token ceiling is still incomplete and nonzero.
-
-Exact token counting must remain practical for long unbroken words and whitespace up to
-the bounded candidate size. The pinned model's token identities and splitting rules
-remain unchanged; large pieces must not require quadratic repeated merge scans.
-
-Hcat additionally accepts `-n N` and `--tail`, each at most once. Line counts
-are canonical positive safe integers. `-n` selects first/last N complete logical source
-lines within the requested range, before any explicit token ceiling. Without a token
-ceiling, line mode bypasses tokenization and the default token admission rule; selected
-exact line lengths determine storage. Omitted lines retain the incomplete/nonzero contract.
-`--tail` requires `-n` or `--max-tokens`. It selects a suffix of complete formatted rows
-from the file or requested range, in original source order, within any supplied limits. It never cuts a row or
-skips an oversized final row to show earlier content. Preview mode still takes each
-selected source row's prefix. Omitted earlier rows use the existing incomplete/nonzero
-contract; a complete suffix covering every selected row is successful. Empty files succeed.
-Tail reads scan and validate the whole file, including source beyond the requested range. A source-bound row clears earlier tail candidates;
-later verifiable rows may still be retained. Hgrep does not accept this option.
-
-Hcat retains its bounded whole-row candidate storage in token-limited and preview modes. A source
-row exceeding 1,984,000 UTF-8 bytes cannot be verified by this reader; it is omitted
-with a distinct source-bound diagnostic and nonzero status. Use a byte-window
-reader when such a file needs content inspection. Whole-file UTF-8 validation
-still runs even after stdout admission stops.
-
-Acceptance:
-
-1. A whole-file or bounded read emits exact UTF-8 rows. Equal lines at different positions
-   have distinct row references, and indentation changes the hash.
-2. `hcat PATH`, `hcat PATH START:END`, and a shell-quoted path containing whitespace work.
-   Additional paths select coordinated reads; a second range for the same path fails.
-3. Several hcat commands in one shell call execute in authored shell order.
-   One selected file keeps the unframed single-file output.
-4. Reading and whole-file UTF-8 validation use bounded streaming storage and observe
-   cancellation. Token-limited output retains only admitted complete rows without a second read.
-5. Success and failure reach Codex through the model-visible shell carrier. Replay retains
-   the original shell call and output; it never synthesizes a model-visible hcat call or
-   includes the shell call in editable rejected-script recovery history.
-6. Router startup validates hcat inside the immutable built-in snapshot and installs its
-   session-private frontend. Passthrough mode loads and exposes none of these replacement surfaces.
-
-7. Hcat and hgrep enforce a caller's strict token ceiling identically, including
-   complete-record admission, preserved prefixes, and explicit nonzero incompleteness.
-8. Preview records retain exact full-source identities, bounded UTF-8 prefixes,
-   and byte omission counts for long rows. Default exact output is unchanged.
-9. Invalid and duplicate options reject before source content is read. Retained
-   path resolution can precede option validation. Quoted paths, line ranges,
-   and thread-private retained reads work with options before or after operands.
-10. Tail selection works with either option order, quoted paths, ranges, previews,
-    and retained descriptors. Missing limits and repeated `--tail` reject before reading.
-    In token-limited mode, long and source-bound rows cannot cause unbounded storage or prevent retaining later
-    rows; invalid UTF-8 anywhere in the file still fails.
+Hash-bearing readers share the same complete-row token admission rule. Hgrep's
+`--preview-bytes N` remains an explicit JSON inspection format with a full-row
+identity, UTF-8 prefix, source byte count, and omitted byte count. Preview text
+is not a complete literal source row.
 
 ### Managed read continuation
 
-Shell output, searches, symbol references, and change reviews use the authenticated
-`mread` executable frontend for one read continuation:
-`mread REF [--stdout|--stderr] [--max-tokens N]`. An incomplete result supplies the exact
-`read: incomplete; next_call: mread REF` command. There is no separate cursor flag or
-caller-composed hash/offset. References use short lowercase word handles, such as
-`maple`, with a decimal suffix when needed. The same visible format is used for change,
-recovery, continuation, and journal handles. Handles are feature-scoped locators, not
-integrity hashes or secrets; full snapshot fingerprints remain internal.
+Shell output, `mcat`, searches, symbol references, and change reviews use the
+authenticated `mread` executable frontend for one read continuation:
+`mread REF [--stdout|--stderr] [--max-tokens N]`. An incomplete result supplies
+the exact `read: incomplete; next_call: mread REF` command. There is no separate
+cursor flag or caller-composed hash/offset. References use short lowercase word
+handles, such as `maple`, with a decimal suffix when needed. Handles are
+feature-scoped locators, not integrity hashes or secrets; full snapshot
+fingerprints remain internal.
 
-Read and recovery handles allocate within one durable session namespace shared by
-the root thread and its subagents. Unrelated sessions restart the sequence. Forks
-and side threads snapshot the source's handles and allocation position once, then
-allocate independently without changing inherited references. Routing keys, model
-switches, request truncation, and compaction do not change the namespace. Equal
-handles in different sessions cannot address each other's records. Earlier store-wide
-handles are not imported into this namespace.
+Read and recovery handles allocate within one durable session namespace shared
+by the root thread and its subagents. Unrelated sessions restart the sequence.
+Forks and side threads snapshot the source's handles and allocation position
+once, then allocate independently without changing inherited references.
+Routing keys, model switches, request truncation, compaction, and router restart
+do not change the namespace. Equal handles in different sessions cannot address
+each other's records.
 
-An initial reference owns only omitted output or a descriptor of existing durable evidence,
-never an executable script. Change-review descriptors retain their selection and full
-fingerprint; they do not duplicate diffs and reject changed projections. A subsequent
-reference stores only the original reference, two stream positions, the stream selection,
-and the full original-record fingerprint. It does not duplicate output. Repeated reads
-produce identical pages and reuse next references while those continuations remain
-retained. If a continuation is reclaimed but its source is still retained by another
-session, reading the source may allocate a new next handle; the expired handle is
-not reassigned or revived. A continuation inherits its selection; a
-different stream selection must start from the initial reference. Budgets may change.
+An initial reference owns only omitted output or a descriptor of existing
+durable evidence, never an executable script. A subsequent reference stores the
+original reference, two stream positions, the stream selection, and the original
+record fingerprint without duplicating output. Repeated reads produce identical
+pages and reuse next references while retained. Expired handles are not
+reassigned or revived. A continuation inherits its stream selection; selecting a
+different stream starts from the initial reference. Budgets may change.
 
-Empty streams have no frame. A page containing only stdout is unframed. Stderr is always
-framed, and a page containing both streams frames both. Frames open with `[stdout bytes]`
-or `[stderr bytes]` and close with `[/stdout]` or `[/stderr]` on their own lines.
-The unit is `bytes`, `rows`, or `json`; one separator newline before the closing frame
-is not payload. Framing is not source content, and raw
-byte fragments are not verified rows. A rows page never cuts a row; a JSON page is a valid
-array of complete entries. A unit that cannot fit fails explicitly without a nonadvancing
-reference. The budget includes frames, defaults to 4,000 GPT-5 tokens, and accepts 1–15,500.
-Actual frame size determines minimum usable budgets; there is no separate fixed cutoff.
-Page completion returns status 0, and an incomplete page returns status 1 with the next
-call on stderr. The original producer's exit status is preserved independently.
+Empty streams have no frame. A page containing only stdout is unframed. Stderr
+is always framed, and a page containing both streams frames both. Frames use
+`[stdout UNIT]` or `[stderr UNIT]` and matching closing markers, where `UNIT` is
+`bytes`, `rows`, or `json`. Framing is not payload. A rows page never cuts a
+complete LF-framed row; a JSON page is a valid array of complete entries. A unit
+that cannot fit fails explicitly without a nonadvancing reference. The token
+budget includes frames, defaults to 4,000, and accepts 1 through 15,500. Page
+completion returns status 0; an incomplete page returns status 1 with the next
+call on stderr. The producer's status is preserved independently.
 
-The authenticated executor persists records through the existing managed replay-store
-locking and atomic write/fsync path before exposing references. There are no standalone
-temporary output dumps. Omitted data is bounded to 16 MiB, encoded records to the existing
-replay record limit, and all read records to a separate 256 MiB quota. Capacity or storage
-failures are explicit. Storage pressure uses the session-retention policy in [REQ-ROUTER-001](router.md),
-never arbitrary record eviction. Active readers pin complete change-review and source dependencies.
+The authenticated executor persists records through the managed replay-store
+locking and atomic write/fsync path before exposing references. There are no
+standalone output dumps. Omitted data is bounded to 16 MiB, encoded records to
+the replay record limit, and all read records to a separate 256 MiB quota.
+Storage failures are explicit. Cleanup follows the session-retention policy in
+[REQ-ROUTER-001](router.md) and does not reclaim active dependencies.
 
-A reference is portable through visible history across fork, side-thread, agent/model
-switch, and router restart, without depending on a live parent or routing-session ID.
-It remains valid while its session data is retained under that policy. Missing, corrupt, altered, or
-out-of-range records fail rather than replay producers. These durable read references do
-not extend the lifetime of executable recovery handles or native sessions.
-
-Acceptance: the session basename `mread` resolves through the authenticated pinned frontend and
-stock executor, preserves cwd, environment, stdout, stderr, and status, and never routes through
-the shell's private-command dispatcher. Complete and incomplete pages retain the token and unit
-bounds above. The worker binds `CODEX_THREAD_ID` before reading, so unrelated sessions cannot use
-equal handles while inherited fork and side-thread ownership survives restart and cleanup.
+Acceptance: the session basename `mread` resolves through the authenticated
+pinned frontend and stock executor, preserves stdout, stderr, and status, and
+does not route through the shell's private-command dispatcher. The worker binds
+`CODEX_THREAD_ID` before reading, so unrelated sessions cannot use equal handles
+while inherited fork and side-thread ownership survives restart and cleanup.
 
 ### Coordinated multi-file reads
 
-The shell-private `hcat [--max-tokens N] PATH [START:END] [PATH [START:END] ...]`
-command automatically composes coordinated reads when 2–16 paths are selected.
-No `--batch` flag or inter-file separator is used. Single-file calls retain their
-existing output and options. Multi-file reads support only `--max-tokens`, which
-may surround operands before `--`; single-file-only options reject before reads.
-The default total display budget is 4000, with the usual 1–15500 token option bounds.
-The bundle reserves conservative framing space based on
-quoted path lengths, then divides the remaining budget equally among readers. If
-framing cannot fit, it rejects before reading any file. Source parsing, permissions,
-logical rows, bounds, and verified identities remain owned by hcat.
-No new source-selection semantics are introduced.
+For 2–16 files, the same executable frontend composes one coordinated result.
+No `--batch` flag or extra basename exists. Multi-file reads support only
+`--max-tokens`. The total budget defaults to 4,000 and retains the usual
+1–15,500 bounds. The compositor reserves conservative manifest space, divides
+the remaining budget among source reads, and rejects before reading when the
+manifest cannot fit. The generated `mcat` implementation remains the sole owner
+of source parsing, UTF-8 validation, logical rows, selection, and token admission.
 
-A manifest precedes all bodies and reports each input path, displayed and retained
-omitted inclusive line ranges (or `none`), completion state, and an optional `next_call`
-using mread. Bodies are labeled by manifest index. Diagnostics and omitted rows are
-persisted before exposing the manifest. Unrecoverable omissions say `unavailable`,
-never complete. Each actual hcat execution participates in AX read observation.
-Any failed or incomplete reader makes the bundle nonzero, but other files are still read.
-Cancellation and storage failure stop delivery with an error. For direct shell display,
-the bundle fits its complete manifest and whole preview rows within the smaller of its
-requested limit and the shell's remaining escaped-token budget, after framing reserves
-and preceding stdout/stderr. Rows removed from previews remain behind per-file mread
-receipts. Display-only trimming preserves the readers' exit statuses and shell control
-flow. Redirected files, pipelines, and command substitutions retain the requested
-reader budget. If even the manifest cannot fit, normal outer retention still applies;
-the outer limiter and host budget remain independent safeguards.
+A manifest precedes the bodies and reports each input path, displayed and
+retained omitted inclusive line ranges or `none`, completion state, and an
+optional per-file `mread` call. Bodies are labeled by manifest index.
+Diagnostics and omitted rows are persisted before the manifest is exposed.
+Unrecoverable omissions say `unavailable`. Any failed or incomplete source makes
+the invocation nonzero, but other sources are still read. Cancellation or
+storage failure stops delivery.
 
-Acceptance: multiple files receive preview space under one total budget; omissions
-remain recoverable after source changes and router restart; invalid files and empty
-files have distinct manifest states; no extra batch basename or model-visible tool
-is installed. Pipelines and redirections retain ordinary shell behavior.
+The requested `mcat` budget bounds the complete manifest and bodies. Stock host
+budgets are independent safeguards and may retain outer command output without
+changing `mcat`'s source-selection result. Pipes and redirections receive the
+ordinary executable bytes. Omissions remain recoverable after source changes and
+router restart; invalid and empty files have distinct manifest states.

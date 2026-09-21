@@ -370,59 +370,11 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 		argv = append(argv, value)
 	}
 	switch argv[0] {
-	case "cat", "hcat":
+	case "cat":
 		if len(argv) < 2 {
 			return "", false
 		}
-		paths, readRange := argv[1:], ""
-		if argv[0] == "hcat" {
-			pathIndex := 1
-			seen := make(map[string]bool)
-			for pathIndex < len(argv) && (argv[pathIndex] == "--max-tokens" || argv[pathIndex] == "--preview-bytes" || argv[pathIndex] == "--tail" || argv[pathIndex] == "-n") {
-				option := argv[pathIndex]
-				if option == "--tail" {
-					if seen[option] {
-						return "", false
-					}
-					seen[option] = true
-					pathIndex++
-					continue
-				}
-				if seen[option] || pathIndex+1 == len(argv) {
-					return "", false
-				}
-				maximum := uint64(15500)
-				if option == "-n" {
-					maximum = 1<<53 - 1
-				}
-				if option == "--preview-bytes" {
-					maximum = 65536
-				}
-				if _, valid := toolActivityPositiveDecimal(argv[pathIndex+1], maximum); !valid {
-					return "", false
-				}
-				seen[option] = true
-				pathIndex += 2
-			}
-			if seen["--tail"] && !seen["--max-tokens"] && !seen["-n"] {
-				return "", false
-			}
-			if len(argv)-pathIndex != 1 && len(argv)-pathIndex != 2 {
-				return "", false
-			}
-			paths = argv[pathIndex : pathIndex+1]
-			if len(argv)-pathIndex == 2 {
-				first, last, found := strings.Cut(argv[pathIndex+1], ":")
-				start, validStart := toolActivityPositiveDecimal(first, 1<<53-1)
-				end, validEnd := toolActivityPositiveDecimal(last, 1<<53-1)
-				if !found || (!validStart && first != "0") || !validEnd || start > end {
-					return "", false
-				}
-				readRange = " " + argv[pathIndex+1]
-			}
-		}
-		for _, path := range paths {
-
+		for _, path := range argv[1:] {
 			if path == "" || strings.HasPrefix(path, "-") {
 				return "", false
 			}
@@ -430,7 +382,22 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 			if filepath.Base(path) == "SKILL.md" && filepath.Dir(path) != "." {
 				label, value = "Skill Read", filepath.Base(filepath.Dir(path))
 			}
-			add(label, value+readRange)
+			add(label, value)
+		}
+	case "mcat":
+		specs, _, err := parseReadBundle(argv[1:])
+		if err != nil {
+			return "", false
+		}
+		for _, spec := range specs {
+			label, value := "Read", spec.path
+			if filepath.Base(spec.path) == "SKILL.md" && filepath.Dir(spec.path) != "." {
+				label, value = "Skill Read", filepath.Base(filepath.Dir(spec.path))
+			}
+			if spec.span != "" {
+				value += " " + spec.span
+			}
+			add(label, value)
 		}
 	case "sed":
 		// Only a literal, bounded print is a read preview, not arbitrary
@@ -509,7 +476,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 
 }
 
-// Match the private readers' positive, canonical decimal options without executing them.
+// Match positive, canonical decimal read options without executing them.
 func toolActivityPositiveDecimal(value string, maximum uint64) (uint64, bool) {
 	if value == "" || value[0] == '0' || strings.Trim(value, "0123456789") != "" {
 		return 0, false

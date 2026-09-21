@@ -184,18 +184,20 @@ For omitted output, run the
 exact `next_call: mread REF` without repeating producer arguments. Reading never reruns a producer;
 commands retain their exit status. Outer host truncation can still hide a receipt.
 
-Private source readers run in Bash/POSIX and accept `--max-tokens N` (1–15500, default 4000).
-`mread` is the standalone executable continuation supplied on the wrapped session `PATH`.
-Copy emitted rows directly; never reconstruct hashes. Incomplete results do not establish coverage.
+`mcat` and `mread` are standalone executables supplied on the wrapped session `PATH`;
+the remaining private source readers run in Bash/POSIX. Readers accept
+`--max-tokens N` (1–15500, default 4000). Mcat emits raw context without line/hash
+prefixes. Copy verified identities only from hash-bearing tools and never reconstruct
+hashes. Incomplete results do not establish coverage.
 
 | Tool | Compact form and rules |
 | --- | --- |
-| `hcat` | `hcat PATH [START:END]`; bare path reads all. `hcat [-n N] [--tail]` selects first/last complete rows; tail needs a line/token limit. |
-| multi-file hcat | `hcat [--max-tokens N] PATH [START:END] [PATH [START:END] ...]`; ranges apply to the preceding path. Shares one budget across at most 16 files and reports each omitted range. Use `./` for range-like filenames; `-n`, `--tail`, and `--preview-bytes` require one file. |
-| `hgrep` | Ripgrep arguments; output is `"PATH":LINE:HASH TEXT`. Do not follow complete target-bearing output with hcat unless outside context is needed. |
+| `mcat` | `mcat PATH [START:END]`; bare path reads all. `mcat [-n N] [--tail]` selects first/last complete rows; tail needs a line/token limit. |
+| multi-file mcat | `mcat [--max-tokens N] PATH [START:END] [PATH [START:END] ...]`; ranges apply to the preceding path. Shares one budget across at most 16 files and reports each omitted range. Use `./` for range-like or option-like filenames; `-n` and `--tail` require one file. |
+| `hgrep` | Ripgrep arguments; output is `"PATH":LINE:HASH TEXT`. Do not follow complete target-bearing output with mcat unless outside context is needed. |
 | `hsymbol` | `hsymbol refs PATH LINE SYMBOL [N]` or `hsymbol def PATH LINE SYMBOL [N]` for Go, JavaScript, TypeScript, JSON, or Python. Plain lines query the current snapshot; use `LINE:HASH` instead of `LINE` to enforce a prior read. `N` selects an exact language-token occurrence and may be omitted only when unique. `--workspace ROOT` selects resolver scope and makes result paths absolute. |
 | `inspect_file` | Use `inspect_file PATH` for bounded metadata and an outline whose inclusive `line`/`line_end` hashes are direct row/range targets. Read source only when the outline lacks needed text. |
-| preview | Hcat/hgrep accept `--preview-bytes N` (1–65536). Preview JSON has a full-row identity and UTF-8 prefix with omitted-byte counts; obtain missing bytes before using literal text. |
+| preview | Hgrep accepts `--preview-bytes N` (1–65536). Preview JSON has a full-row identity and UTF-8 prefix with omitted-byte counts; obtain missing bytes before using literal text. |
 
 Empty output is omitted. Stdout-only retained pages are unframed; stderr/mixed pages use
 `[stream unit]` frames. Initial `mread` accepts `--stdout` or `--stderr`; later references bind

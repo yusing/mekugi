@@ -332,16 +332,17 @@ example `journal add 'Checked the inputs.' --report-now`. A final
 
 When [RTK](#token-saving) is available, recognized display commands return
 compact summaries. With `hrun`, RTK summarizes first, then `hrun` applies its
-output limit. Private readers, pipelines, redirected output, command
+output limit. Mekugi readers, pipelines, redirected output, command
 substitutions, machine-readable formats, terminal-backed commands, and native
 `find`/`diff` stay raw. Use an explicit executable path when a supported command
 needs raw output.
 
 ### Wrapped-session helpers
 
-The shell carrier recognizes the commands below. `mread`, `hcat`, `hgrep`,
-`hsymbol`, and `inspect_file` are also session-private executables on the wrapped
-Codex `PATH`; they are not installed as global terminal utilities. `hrun` and
+The wrapped session provides the commands below. `mread`, `mcat`, `hgrep`,
+`hsymbol`, and `inspect_file` are session-private executables on Codex's `PATH`;
+they are not installed as global terminal utilities. `mcat` and `mread` run
+through stock execution rather than the private shell dispatcher. `hrun` and
 `hchanges` remain shell-only until their migrations.
 
 | Command | Purpose | Extra prerequisite on the executor's `PATH` |
@@ -349,7 +350,7 @@ Codex `PATH`; they are not installed as global terminal utilities. `hrun` and
 | `mread` | Continue bounded retained output by reference | Access to the router's replay directory |
 | `hrun` | Bound an external command's output, optionally keeping its ending | The wrapped command |
 | `hchanges` | Read tracked diffs and hpatch recovery history by ID or range | Access to the router's replay directory |
-| `hcat` | Read verified source rows: `hcat path1 1:200 path2 path3 200:300`; multiple files share a budget and provide per-file recovery links | Replay-directory access for multi-file reads |
+| `mcat` | Read raw UTF-8 source rows without hashes: `mcat path1 1:200 path2 path3 200:300`; multiple files share a budget and provide per-file recovery links | Replay-directory access for multi-file reads |
 | `hgrep` | Search text with verified row references | `rg` |
 | `hsymbol` | Look up definitions and references | `gopls` for Go; TypeScript 7 as `tsc` for JS, TS, and JSON; `pyright-langserver` for Python |
 | `inspect_file` | Inspect a structural outline | None |
@@ -384,7 +385,7 @@ next call. Typical follow-ups:
 mread REF
 hsymbol def source.go 42 MyFunction
 inspect_file source.go
-hcat --tail -n 20 source.ts
+mcat --tail -n 20 source.ts
 hrun --tail -n 20 -- go test ./internal/router
 ```
 

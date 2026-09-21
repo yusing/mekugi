@@ -41,7 +41,7 @@ export function readerArguments(input: string): string[] {
 
 export type ReaderOptions = {maxTokens?: number; previewBytes?: number; tail?: boolean; maxLines?: number};
 
-export function readerOptions(argv: string[], allowTail = false, takesValue: (arg: string) => boolean = () => false, preserveTerminator = false): {options: ReaderOptions; rest: string[]; indices: number[]} {
+export function readerOptions(argv: string[], allowTail = false, takesValue: (arg: string) => boolean = () => false, preserveTerminator = false, allowPreview = true): {options: ReaderOptions; rest: string[]; indices: number[]} {
   const options: ReaderOptions = {};
   const rest: string[] = [];
   const indices: number[] = [];
@@ -54,7 +54,7 @@ export function readerOptions(argv: string[], allowTail = false, takesValue: (ar
       indices.push(...argv.slice(offset).map((_, i) => offset + i));
       break;
     }
-    if (name !== "--max-tokens" && name !== "--preview-bytes"
+    if (name !== "--max-tokens" && !(allowPreview && name === "--preview-bytes")
         && !(allowTail && (name === "--tail" || name === "-n"))) {
       rest.push(name);
       indices.push(offset++);

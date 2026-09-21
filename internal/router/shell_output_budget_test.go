@@ -45,7 +45,7 @@ func TestShellReadOutputBudgetRetainsWholeBatchAndExitStatus(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(directory, "second"), []byte(strings.Repeat("beta row\n", 400)), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			script := "#!params={\"max_output_tokens\":1600}\nhcat first\nhcat second\nprintf done > finished\nprintf 'command error\\n' >&2\nexit 7"
+			script := "#!params={\"max_output_tokens\":1600}\nmcat first\nmcat second\nprintf done > finished\nprintf 'command error\\n' >&2\nexit 7"
 			stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, script, nil,
 				newShellWorkerTestInvocation(directory))
 			if status != 7 || !strings.Contains(stderr, "mread ") || !strings.HasSuffix(stdout, "\n") {
@@ -74,7 +74,7 @@ func TestShellReadOutputBudgetDoesNotChangePipelinesOrRedirections(t *testing.T)
 		t.Fatal(err)
 	}
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		"#!params={\"max_output_tokens\":1200}\nhcat input > saved\nhcat input | wc -l\n", nil, newShellWorkerTestInvocation(directory))
+		"#!params={\"max_output_tokens\":1200}\nmcat input > saved\nmcat input | wc -l\n", nil, newShellWorkerTestInvocation(directory))
 	if status != 0 || strings.TrimSpace(stdout) != "400" || withoutShellChangeNotices(stderr) != "" {
 		t.Fatalf("status=%d stdout=%q stderr=%q", status, stdout, stderr)
 	}
@@ -128,7 +128,7 @@ func TestShellBudgetCarrierHasNoAddedFlagsOrEnvironment(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	contribution, _ := registry.contribution("shell")
-	source := "#!params={\"max_output_tokens\":1600}\nhcat first\nhcat second"
+	source := "#!params={\"max_output_tokens\":1600}\nmcat first\nmcat second"
 	command, err := registry.execCarrierCommand(contribution, source, []string{"bash", source}, "", 0)
 	if err != nil {
 		t.Fatal(err)
@@ -140,7 +140,7 @@ func TestShellBudgetCarrierHasNoAddedFlagsOrEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := "#!params={\"max_output_tokens\":1000}\nhcat first\nhcat second"
+	expected := "#!params={\"max_output_tokens\":1000}\nmcat first\nmcat second"
 	if batch != workerCommand("shell", []string{"bash", expected}) {
 		t.Fatalf("batch budget used flags or environment: %s", batch)
 	}

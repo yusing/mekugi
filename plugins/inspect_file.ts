@@ -173,7 +173,7 @@ function success(data: InspectionData, maxTokens: number): ExecutionResult {
   const omitted = JSON.stringify(data.outline.slice(selected));
   if (byteLength(omitted) > MAX_RETAINED_BYTES) {
     return {stdout, exitCode: 1, failureClass: "output_limit",
-      stderr: "inspect_file: recovery unavailable: omitted outline exceeds the 16 MiB recovery bound; use bounded hcat reads\n"};
+      stderr: "inspect_file: recovery unavailable: omitted outline exceeds the 16 MiB recovery bound; use bounded mcat reads\n"};
   }
   return {stdout, exitCode: 1, failureClass: "output_limit",
     omittedOutput: {stdout: omitted, stderr: "", stdoutKind: "json"}};

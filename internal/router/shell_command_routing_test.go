@@ -151,9 +151,9 @@ func TestShellCommandRoutingTracksPathAndPreservesReaders(t *testing.T) {
 	if stdout != "routedraw" || stderr != "" || status != 0 {
 		t.Fatalf("PATH change: %q, %q, %d", stdout, stderr, status)
 	}
-	stdout, stderr, status = runShellWorkerTest(t, registry, "bash", nil, "hcat source.txt", nil, invocation)
+	stdout, stderr, status = runShellWorkerTest(t, registry, "bash", nil, "mcat source.txt", nil, invocation)
 	if status != 0 || stderr != "" || stdout == "" || stdout == "routed" {
-		t.Fatalf("private reader was routed: %q, %q, %d", stdout, stderr, status)
+		t.Fatalf("reader frontend was routed: %q, %q, %d", stdout, stderr, status)
 	}
 }
 

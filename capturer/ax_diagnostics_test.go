@@ -13,7 +13,7 @@ import (
 func TestAXFailureEvidenceAndExplicitExclusions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
 	for _, tc := range []struct{ thread, class string }{{"child", "invalid_arguments"}, {"other", "not_found"}, {"", "retained_file"}} {
-		observation, err := StartAXReadWithContext(path, tc.thread, "hcat", AXReadContext{CallID: "call-shell", ShellID: "shell-1"})
+		observation, err := StartAXReadWithContext(path, tc.thread, "mcat", AXReadContext{CallID: "call-shell", ShellID: "shell-1"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -41,7 +41,7 @@ func TestAXRejectsUnsupportedSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	event := axReadEvent{Schema: "mekugi.ax.read.v1", ID: "old", ThreadID: "thread", Tool: "hcat", Phase: "start", At: time.Now()}
+	event := axReadEvent{Schema: "mekugi.ax.read.v1", ID: "old", ThreadID: "thread", Tool: "mcat", Phase: "start", At: time.Now()}
 	encoder := json.NewEncoder(file)
 	if err := encoder.Encode(event); err != nil {
 		t.Fatal(err)
@@ -57,7 +57,7 @@ func TestAXRejectsUnsupportedSchema(t *testing.T) {
 
 func TestAXRejectsUnsafeDiagnosticAndMismatchedIdentity(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
-	observation, err := StartAXReadWithContext(path, "thread", "hcat", AXReadContext{})
+	observation, err := StartAXReadWithContext(path, "thread", "mcat", AXReadContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestAXRejectsUnsafeDiagnosticAndMismatchedIdentity(t *testing.T) {
 		func(e *axReadEvent) { e.ExitCode = new(256) },
 		func(e *axReadEvent) { e.Schema = "mekugi.ax.read.v1" },
 	} {
-		start := axReadEvent{Schema: "mekugi.ax.read.v2", ID: "id", ThreadID: "thread", Tool: "hcat", Phase: "start", At: time.Now(), CallID: "call"}
+		start := axReadEvent{Schema: "mekugi.ax.read.v2", ID: "id", ThreadID: "thread", Tool: "mcat", Phase: "start", At: time.Now(), CallID: "call"}
 		finish := start
 		finish.Phase, finish.Succeeded, finish.DurationNS, finish.FailureClass = "finish", new(false), new(int64(1)), "reader_error"
 		mutate(&finish)
@@ -101,7 +101,7 @@ func TestAXRejectsUnsafeDiagnosticAndMismatchedIdentity(t *testing.T) {
 func TestAXFailureDetailsBoundDoesNotDropCounts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
 	for range 257 {
-		observation, err := StartAXReadWithContext(path, "thread", "hcat", AXReadContext{})
+		observation, err := StartAXReadWithContext(path, "thread", "mcat", AXReadContext{})
 		if err != nil {
 			t.Fatal(err)
 		}

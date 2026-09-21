@@ -8,7 +8,7 @@ import {pathToFileURL} from "node:url";
 import {formatVerifiedRow, hashLine} from "mekugi:core/v1";
 import {countGPT5Tokens, VerifiedRowOutput} from "../../../../plugins/common.ts";
 import {createHGrepTool, splitArguments} from "../../../../plugins/hgrep.ts";
-import {createHCatTool} from "../../../../plugins/hcat.ts";
+import {createMCatTool} from "../../../../plugins/mcat.ts";
 import {createHSymbolTool} from "../../../../plugins/hsymbol.ts";
 import {runLSPQuery} from "../../../../plugins/lsp.ts";
 import {
@@ -173,6 +173,10 @@ function contentWithFormattedTokenCount(
   throw new Error(`cannot construct ${tokens}-token formatted row fixture`);
 }
 
+function formatMCatRow(_line: number, content: string): string {
+  return `${content}\n`;
+}
+
 beforeEach(async () => {
   process.env.TMPDIR = await temporaryDirectory("reader-retention-test-");
 });
@@ -252,10 +256,7 @@ describe("reader budgets and previews", () => {
     process.chdir(directory);
     const content = `needle 🙂${" x".repeat(20_000)}`;
     await writeFile("long.txt", `${content}\nneedle second\n`, "utf8");
-    const tools = [
-      {tool: createHCatTool("test", ""), args: ["long.txt"]},
-      {tool: createHGrepTool("test", ""), args: ["-F", "needle", "long.txt"]},
-    ];
+    const tools = [{tool: createHGrepTool("test", ""), args: ["-F", "needle", "long.txt"]}];
     for (const {tool, args} of tools) {
       const result = await tool.execute(["--max-tokens", "200", "--preview-bytes", "9", ...args], executionContext);
       expect(result.exitCode).toBe(0);
@@ -289,7 +290,7 @@ describe("reader budgets and previews", () => {
     process.chdir(directory);
     await writeFile("rows.txt", "needle first\nneedle second\n", "utf8");
     for (const {tool, args} of [
-      {tool: createHCatTool("test", ""), args: ["rows.txt"]},
+      {tool: createMCatTool("test", ""), args: ["rows.txt"]},
       {tool: createHGrepTool("test", ""), args: ["-F", "needle", "rows.txt"]},
     ]) {
       const full = await tool.execute(args, executionContext);
@@ -302,35 +303,29 @@ describe("reader budgets and previews", () => {
     }
   });
 
-  test("retains bounded hcat storage and reports the preview source bound", async () => {
+  test("retains bounded mcat storage", async () => {
     const directory = await temporaryDirectory("reader-preview-bound-");
     process.chdir(directory);
     await writeFile("huge.txt", "a".repeat(2_000_000), "utf8");
-    const result = await createHCatTool("test", "").execute(["--preview-bytes", "32", "huge.txt"], executionContext);
+    const tool = createMCatTool("test", "");
+    const result = await tool.execute(["huge.txt"], executionContext);
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain("row 1 exceeds the 1984000-byte inspection bound");
   });
-
-  test("parses hcat reader options before a quoted path", async () => {
-    const tool = createHCatTool("test", "");
-    expect(await tool.parse('--preview-bytes 12 --max-tokens 100 "path with spaces" 0:2')).toEqual([
-      "--preview-bytes", "12", "--max-tokens", "100", "path with spaces", "1:2",
-    ]);
-  });
 });
 
-describe("hcat line limits", () => {
+describe("mcat line limits", () => {
   test("selects complete head/tail lines before optional token limits", async () => {
-    const directory = await temporaryDirectory("hcat-lines-");
+    const directory = await temporaryDirectory("mcat-lines-");
     const file = path.join(directory, "rows.txt");
-    const tool = createHCatTool("", "");
+    const tool = createMCatTool("", "");
     await writeFile(file, "one\r\ntwo\rthree\nfour");
     for (const [flags, expected] of [
-      [["-n", "2"], formatVerifiedRow(1, "one") + formatVerifiedRow(2, "two")],
-      [["--tail", "-n", "2"], formatVerifiedRow(3, "three") + formatVerifiedRow(4, "four")],
-      [["-n", "2", "--max-tokens", "100"], formatVerifiedRow(1, "one") + formatVerifiedRow(2, "two")],
-      [["--tail", "-n", "2", "--max-tokens", "100"], formatVerifiedRow(3, "three") + formatVerifiedRow(4, "four")],
+      [["-n", "2"], formatMCatRow(1, "one") + formatMCatRow(2, "two")],
+      [["--tail", "-n", "2"], formatMCatRow(3, "three") + formatMCatRow(4, "four")],
+      [["-n", "2", "--max-tokens", "100"], formatMCatRow(1, "one") + formatMCatRow(2, "two")],
+      [["--tail", "-n", "2", "--max-tokens", "100"], formatMCatRow(3, "three") + formatMCatRow(4, "four")],
     ] as const) {
       const result = await tool.execute([...flags, file], executionContext);
       expect(result.stdout).toBe(expected);
@@ -338,7 +333,7 @@ describe("hcat line limits", () => {
       expect(result.stderr).toContain("2-line limit");
     }
     const range = await tool.execute(["--tail", "-n", "1", file, "1:2"], executionContext);
-    expect(range.stdout).toBe(formatVerifiedRow(2, "two"));
+    expect(range.stdout).toBe(formatMCatRow(2, "two"));
     expect(await tool.parse('-n 2 --tail "rows.txt"')).toEqual(
       ["-n", "2", "--tail", "rows.txt"]);
     for (const flags of [["-n"], ["-n", "0"], ["-n", "01"], ["-n", "1", "-n", "2"], ["-n", "9007199254740992"]]) {
@@ -347,23 +342,23 @@ describe("hcat line limits", () => {
   });
 
   test("line-only mode admits long complete rows beyond the default token ceiling", async () => {
-    const directory = await temporaryDirectory("hcat-line-long-");
+    const directory = await temporaryDirectory("mcat-line-long-");
     const file = path.join(directory, "rows.txt");
     const content = "word ".repeat(20000);
     await writeFile(file, `${content}\nend`);
-    const tool = createHCatTool("", "");
+    const tool = createMCatTool("", "");
     const head = await tool.execute(["-n", "1", file], executionContext);
-    expect(head.stdout).toBe(formatVerifiedRow(1, content));
+    expect(head.stdout).toBe(formatMCatRow(1, content));
     const tail = await tool.execute(["--tail", "-n", "2", file], executionContext);
-    expect(tail.stdout).toBe(formatVerifiedRow(1, content) + formatVerifiedRow(2, "end"));
+    expect(tail.stdout).toBe(formatMCatRow(1, content) + formatMCatRow(2, "end"));
     expect(tail.exitCode).toBe(0);
     const limited = await tool.execute(["-n", "1", "--max-tokens", "20", file], executionContext);
     expect(limited.stdout).toBe("");
     const tailLimited = await tool.execute(["--tail", "-n", "2", "--max-tokens", "20", file], executionContext);
-    expect(tailLimited.stdout).toBe(formatVerifiedRow(2, "end"));
+    expect(tailLimited.stdout).toBe(formatMCatRow(2, "end"));
     await writeFile(file, `first\n${"x".repeat(2_000_000)}`);
     const smallHead = await tool.execute(["-n", "1", file], executionContext);
-    expect(smallHead.stdout).toBe(formatVerifiedRow(1, "first"));
+    expect(smallHead.stdout).toBe(formatMCatRow(1, "first"));
     expect(smallHead.stderr).toContain("row 2 exceeds");
     expect(smallHead.omittedOutput).toBeUndefined();
     // Skipping unselected rows must not skip whole-source UTF-8 validation.
@@ -375,44 +370,42 @@ describe("hcat line limits", () => {
   });
 });
 
-describe("hcat omitted rows", () => {
+describe("mcat omitted rows", () => {
   test("resumes only omitted rows across logical terminators and bounded selections", async () => {
-    const directory = await temporaryDirectory("hcat-resume-");
+    const directory = await temporaryDirectory("mcat-resume-");
     const file = path.join(directory, "rows.txt");
-    const tool = createHCatTool("", "");
+    const tool = createMCatTool("", "");
     for (const ending of ["\n", "\r", "\r\n"]) {
       await writeFile(file, ["one", "", "three", "four", "five"].join(ending));
       const head = await tool.execute(["-n", "2", file, "2:9"], executionContext);
-      expect(head.stdout).toBe(formatVerifiedRow(2, "") + formatVerifiedRow(3, "three"));
-      expect(head.omittedOutput?.stdout).toBe(formatVerifiedRow(4, "four") + formatVerifiedRow(5, "five"));
+      expect(head.stdout).toBe(formatMCatRow(2, "") + formatMCatRow(3, "three"));
+      expect(head.omittedOutput?.stdout).toBe(formatMCatRow(4, "four") + formatMCatRow(5, "five"));
       expect(head.stderr).toContain("[out of range]");
       const rest = await tool.execute([file, "4:5"], executionContext);
       expect(rest).toEqual({
-        stdout: formatVerifiedRow(4, "four") + formatVerifiedRow(5, "five"),
+        stdout: formatMCatRow(4, "four") + formatMCatRow(5, "five"),
         exitCode: 0,
       });
       const limited = await tool.execute(["-n", "1", file, "2:3"], executionContext);
-      expect(limited.omittedOutput?.stdout).toBe(formatVerifiedRow(3, "three"));
+      expect(limited.omittedOutput?.stdout).toBe(formatMCatRow(3, "three"));
       const tail = await tool.execute(["--tail", "-n", "1", file], executionContext);
-      expect(tail.omittedOutput?.stdout).toBe(["one", "", "three", "four"].map((row, i) => formatVerifiedRow(i + 1, row)).join(""));
+      expect(tail.omittedOutput?.stdout).toBe(["one", "", "three", "four"].map((row, i) => formatMCatRow(i + 1, row)).join(""));
     }
   });
 
-  test("reports the first unadmitted row for strict token and preview budgets", async () => {
-    const directory = await temporaryDirectory("hcat-resume-token-");
+  test("reports the first unadmitted row for strict token budgets", async () => {
+    const directory = await temporaryDirectory("mcat-resume-token-");
     const file = path.join(directory, "rows.txt");
-    const tool = createHCatTool("", "");
+    const tool = createMCatTool("", "");
     await writeFile(file, "first\nsecond\nthird\n");
-    const budget = countGPT5Tokens(formatVerifiedRow(1, "first"));
+    const budget = countGPT5Tokens(formatMCatRow(1, "first"));
     const first = await tool.execute(["--max-tokens", String(budget), file], executionContext);
-    expect(first.stdout).toBe(formatVerifiedRow(1, "first"));
-    expect(first.omittedOutput?.stdout).toBe(formatVerifiedRow(2, "second") + formatVerifiedRow(3, "third"));
-    for (const extra of [[], ["--preview-bytes", "1"]]) {
-      const none = await tool.execute(["--max-tokens", "1", ...extra, file], executionContext);
-      expect(none.stdout).toBe("");
-      expect(none.omittedOutput?.stdout.split("\n").filter(Boolean)).toHaveLength(3);
-      expect(none.omittedOutput?.stdoutKind).toBe("rows");
-    }
+    expect(first.stdout).toBe(formatMCatRow(1, "first"));
+    expect(first.omittedOutput?.stdout).toBe(formatMCatRow(2, "second") + formatMCatRow(3, "third"));
+    const none = await tool.execute(["--max-tokens", "1", file], executionContext);
+    expect(none.stdout).toBe("");
+    expect(none.omittedOutput?.stdout.split("\n").filter(Boolean)).toHaveLength(3);
+    expect(none.omittedOutput?.stdoutKind).toBe("rows");
     await writeFile(file, "");
     expect((await tool.execute(["-n", "1", file], executionContext)).stderr).toBeUndefined();
     await writeFile(file, Buffer.from([0xff]));
@@ -425,7 +418,7 @@ describe("shared reader controls", () => {
     const directory = await temporaryDirectory("reader-options-");
     const file = path.join(directory, "sample.go");
     await writeFile(file, "package p\nfunc First() {}\nfunc Second() {}\n");
-    for (const tool of [createHCatTool("", ""), createInspectFileTool("", "")]) {
+    for (const tool of [createMCatTool("", ""), createInspectFileTool("", "")]) {
       const before = await tool.execute(["--max-tokens", "200", file], executionContext);
       const after = await tool.execute([file, "--max-tokens", "200"], executionContext);
       expect(await tool.execute([file, "--max-tokens", "200", "--"], executionContext)).toEqual(before);
@@ -452,8 +445,8 @@ describe("shared reader controls", () => {
     const directory = await temporaryDirectory("reader-omitted-bound-");
     const file = path.join(directory, "rows.txt");
     await writeFile(file, `first\n${"x".repeat(4 * 1024 * 1024)}\nlast\n`);
-    const result = await createHCatTool("", "").execute([file, "-n", "1"], executionContext);
-    expect(result.stdout).toBe(formatVerifiedRow(1, "first"));
+    const result = await createMCatTool("", "").execute([file, "-n", "1"], executionContext);
+    expect(result.stdout).toBe(formatMCatRow(1, "first"));
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("row 2 exceeds");
     expect(result.omittedOutput).toBeUndefined();
@@ -463,21 +456,21 @@ describe("shared reader controls", () => {
     const directory = await temporaryDirectory("reader-capacity-");
     const file = path.join(directory, "rows.txt");
     await writeFile(file, `${("x".repeat(20_000) + "\n").repeat(850)}last\n`);
-    const result = await createHCatTool("", "").execute([file, "-n", "1", "--tail"], executionContext);
-    expect(result.stdout).toBe(formatVerifiedRow(851, "last"));
+    const result = await createMCatTool("", "").execute([file, "-n", "1", "--tail"], executionContext);
+    expect(result.stdout).toBe(formatMCatRow(851, "last"));
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("recovery bound");
     expect(result.omittedOutput).toBeUndefined();
   });
 });
 
-describe("hcat tail", () => {
-  test("returns a whole-row suffix within the budget, including ranges and previews", async () => {
-    const directory = await temporaryDirectory("hcat-tail-");
+describe("mcat tail", () => {
+  test("returns a whole-row suffix within the budget, including ranges", async () => {
+    const directory = await temporaryDirectory("mcat-tail-");
     const file = path.join(directory, "rows with spaces.txt");
     await writeFile(file, "first\r\nsecond\rthird\nlast", "utf8");
-    const tool = createHCatTool("test", "");
-    const last = formatVerifiedRow(4, "last");
+    const tool = createMCatTool("test", "");
+    const last = formatMCatRow(4, "last");
     const budget = countGPT5Tokens(last);
     const result = await tool.execute(["--tail", "--max-tokens", String(budget), file], executionContext);
     expect(result.stdout).toBe(last);
@@ -486,24 +479,21 @@ describe("hcat tail", () => {
     expect(countGPT5Tokens(result.stdout!)).toBeLessThanOrEqual(budget);
 
     const complete = await tool.execute(["--max-tokens", "200", "--tail", file, "2:3"], executionContext);
-    expect(complete.stdout).toBe(formatVerifiedRow(2, "second") + formatVerifiedRow(3, "third"));
+    expect(complete.stdout).toBe(formatMCatRow(2, "second") + formatMCatRow(3, "third"));
     expect(complete.exitCode).toBe(0);
-    const preview = await tool.execute(["--preview-bytes", "2", "--tail", "--max-tokens", "200", file, "4:4"], executionContext);
-    expect(JSON.parse(preview.stdout!)).toMatchObject({row: `4:${hashLine("last")}`, preview: "la", omitted_bytes: 2});
-    expect(preview.exitCode).toBe(0);
     expect(await tool.parse('--tail --max-tokens 100 "rows with spaces.txt" 0:2')).toEqual([
       "--tail", "--max-tokens", "100", "rows with spaces.txt", "1:2",
     ]);
   });
 
   test("continues after oversized rows but never skips an oversized final row", async () => {
-    const directory = await temporaryDirectory("hcat-tail-long-");
+    const directory = await temporaryDirectory("mcat-tail-long-");
     const file = path.join(directory, "rows");
-    const tool = createHCatTool("test", "");
+    const tool = createMCatTool("test", "");
     for (const large of [" x".repeat(1000), "a".repeat(2_000_000)]) {
       await writeFile(file, `first\n${large}\nlast\n`, "utf8");
       const result = await tool.execute(["--tail", "--max-tokens", "20", file], executionContext);
-      expect(result.stdout).toBe(formatVerifiedRow(3, "last"));
+      expect(result.stdout).toBe(formatMCatRow(3, "last"));
       expect(result.exitCode).toBe(1);
       await writeFile(file, `first\n${large}`, "utf8");
       const final = await tool.execute(["--tail", "--max-tokens", "20", file], executionContext);
@@ -513,31 +503,31 @@ describe("hcat tail", () => {
   });
 
   test("bounds a long scan while retaining the final rows", async () => {
-    const directory = await temporaryDirectory("hcat-tail-scan-");
+    const directory = await temporaryDirectory("mcat-tail-scan-");
     const file = path.join(directory, "rows");
     await writeFile(file, "same\n".repeat(10_000), "utf8");
-    const result = await createHCatTool("test", "").execute(
+    const result = await createMCatTool("test", "").execute(
       ["--tail", "--max-tokens", "100", file], executionContext);
-    expect(result.stdout).toEndWith(formatVerifiedRow(10_000, "same"));
+    expect(result.stdout).toEndWith(formatMCatRow(10_000, "same"));
     expect(countGPT5Tokens(result.stdout!)).toBeLessThanOrEqual(100);
     expect(result.exitCode).toBe(1);
   });
 
   test("handles a long single-piece final row without quadratic tokenization", async () => {
-    const directory = await temporaryDirectory("hcat-tail-long-piece-");
+    const directory = await temporaryDirectory("mcat-tail-long-piece-");
     const file = path.join(directory, "rows");
     const content = " ".repeat(1_500_000);
     await writeFile(file, "before\n".repeat(50) + content, "utf8");
-    const result = await createHCatTool("test", "").execute(
+    const result = await createMCatTool("test", "").execute(
       ["--tail", "--max-tokens", "15500", file], executionContext);
-    expect(result.stdout).toEndWith(formatVerifiedRow(51, content));
+    expect(result.stdout).toEndWith(formatMCatRow(51, content));
     expect(result.exitCode).toBe(0);
   }, 15_000);
 
   test("validates flags and all source bytes, even outside the retained suffix", async () => {
-    const directory = await temporaryDirectory("hcat-tail-validation-");
+    const directory = await temporaryDirectory("mcat-tail-validation-");
     const file = path.join(directory, "rows");
-    const tool = createHCatTool("test", "");
+    const tool = createMCatTool("test", "");
     for (const options of [["--tail"], ["--tail", "--max-tokens", "20", "--tail"]]) {
       const result = await tool.execute([...options, file], executionContext);
       expect(result.failureClass).toBe("invalid_arguments");
@@ -552,28 +542,29 @@ describe("hcat tail", () => {
   });
 });
 
-describe("hcat built-in plugin", () => {
+describe("mcat built-in plugin", () => {
   test("keeps the private description call-local", () => {
     const description = plugin.tools[0].specification.description.replace(/\s+/g, " ");
-    expect(description).toContain("Read one UTF-8 file or inclusive logical-line range");
-    expect(description).toContain("`LINE:HASH TEXT`");
-    expect(description).toContain("`hcat [-n N] [--max-tokens N] [--preview-bytes N] [--tail] PATH [START:END]`");
+    expect(description).toContain("Read one or more UTF-8 files or inclusive logical-line ranges");
+    expect(description).toContain("raw rows without line or hash prefixes");
+    expect(description).toContain("`mcat [-n N] [--max-tokens N] [--tail] PATH [START:END] [PATH [START:END] ...]`");
     for (const persistent of ["authorized edit", "ordinary read", "HPATCH targets", "through `shell`"]) {
       expect(description).not.toContain(persistent);
     }
   });
 
-  test("declares a single-file regex grammar", () => {
+  test("declares a multi-file regex grammar", () => {
     const format = plugin.tools[0].specification.format;
     expect(format?.syntax).toBe("regex");
     if (format === undefined) {
-      throw new Error("hcat grammar format is missing");
+      throw new Error("mcat grammar format is missing");
     }
     for (const input of [
       "plain.txt",
       "plain.txt 2:9",
       "plain.txt 0:9",
       "\"second file.txt\" 2:3",
+      "first.txt 1:2 second.txt 3:4",
       `"quoted\\"file.txt"`,
     ]) {
       expect(rustRegexMatches(format.definition, input)).toBe(true);
@@ -583,9 +574,6 @@ describe("hcat built-in plugin", () => {
       "\nplain.txt",
       "plain.txt\n",
       "plain.txt\nsecond.txt",
-      "plain file.txt",
-      "plain.txt 2:0",
-      "plain.txt 2:3 extra",
       "\"unterminated",
     ]) {
       expect(rustRegexMatches(format.definition, input)).toBe(false);
@@ -593,15 +581,15 @@ describe("hcat built-in plugin", () => {
   });
 
   test("preserves quoted option-like paths through execution", async () => {
-    const directory = await temporaryDirectory("hcat-option-path-");
+    const directory = await temporaryDirectory("mcat-option-path-");
     process.chdir(directory);
-    const tool = createHCatTool("", "");
+    const tool = createMCatTool("", "");
     for (const name of ["--tail", "--max-tokens", "--preview-bytes", "-n"]) {
       const file = path.join(directory, name);
       await writeFile(file, "first\nsecond\n");
       for (const [prefix, range, expected] of [
-        ["", "", formatVerifiedRow(1, "first") + formatVerifiedRow(2, "second")],
-        ["-n 1 --tail ", " 2:2", formatVerifiedRow(2, "second")],
+        ["", "", formatMCatRow(1, "first") + formatMCatRow(2, "second")],
+        ["-n 1 --tail ", " 2:2", formatMCatRow(2, "second")],
       ]) {
         const argv = await tool.parse(`${prefix}${JSON.stringify(name)}${range}`);
         expect(argv).toContain(`./${name}`);
@@ -611,7 +599,7 @@ describe("hcat built-in plugin", () => {
   });
 
   test("parses one path and optional range into shell arguments", async () => {
-    const tool = createHCatTool("description", "start: TEST");
+    const tool = createMCatTool("description", "start: TEST");
     const parse = (input: string) => tool.parse(input);
 
 
@@ -634,19 +622,19 @@ describe("hcat built-in plugin", () => {
 
 
   test("reads one whole file or range", async () => {
-    const directory = await temporaryDirectory("hcat-plugin-");
+    const directory = await temporaryDirectory("mcat-plugin-");
     process.chdir(directory);
     await writeFile("plain.txt", "alpha\r\nbeta\rgamma\n", "utf8");
     await writeFile("second file.txt", "one\ntwo\nthree", "utf8");
     await writeFile("token-spellings.txt", "<|endoftext|> <|im_start|> <|fim_prefix|>\n", "utf8");
 
-    const tool = createHCatTool("description", "start: TEST");
+    const tool = createMCatTool("description", "start: TEST");
     const whole = await tool.execute(["plain.txt"], executionContext);
     expect(whole).toEqual({
       stdout: [
-        formatVerifiedRow(1, "alpha"),
-        formatVerifiedRow(2, "beta"),
-        formatVerifiedRow(3, "gamma"),
+        formatMCatRow(1, "alpha"),
+        formatMCatRow(2, "beta"),
+        formatMCatRow(3, "gamma"),
       ].join(""),
       exitCode: 0,
     });
@@ -654,8 +642,8 @@ describe("hcat built-in plugin", () => {
     const range = await tool.execute(["plain.txt", "2:3"], executionContext);
     expect(range).toEqual({
       stdout: [
-        formatVerifiedRow(2, "beta"),
-        formatVerifiedRow(3, "gamma"),
+        formatMCatRow(2, "beta"),
+        formatMCatRow(3, "gamma"),
       ].join(""),
       exitCode: 0,
     });
@@ -666,29 +654,29 @@ describe("hcat built-in plugin", () => {
     const overrun = await tool.execute(["plain.txt", "2:5"], executionContext);
     expect(overrun).toEqual({
       stdout: [
-        formatVerifiedRow(2, "beta"),
-        formatVerifiedRow(3, "gamma"),
+        formatMCatRow(2, "beta"),
+        formatMCatRow(3, "gamma"),
       ].join(""),
-      stderr: "hcat: 4-5: [out of range]\n",
+      stderr: "mcat: 4-5: [out of range]\n",
       exitCode: 0,
     });
 
     const tokenSpellings = await tool.execute(["token-spellings.txt"], executionContext);
     expect(tokenSpellings).toEqual({
-      stdout: formatVerifiedRow(1, "<|endoftext|> <|im_start|> <|fim_prefix|>"),
+      stdout: formatMCatRow(1, "<|endoftext|> <|im_start|> <|fim_prefix|>"),
       exitCode: 0,
     });
 
     const outside = await tool.execute(["plain.txt", "4:5"], executionContext);
     expect(outside).toEqual({
-      stderr: "hcat: start line 4 is past EOF (3 lines)\n",
+      stderr: "mcat: start line 4 is past EOF (3 lines)\n",
       exitCode: 1,
       failureClass: "reader_error",
     });
 
     const missing = await tool.execute(["missing.txt"], executionContext);
     expect(missing).toEqual({
-      stderr: "hcat: ENOENT: no such file or directory\n",
+      stderr: "mcat: ENOENT: no such file or directory\n",
       exitCode: 1,
       failureClass: "not_found",
     });
@@ -697,7 +685,7 @@ describe("hcat built-in plugin", () => {
   });
 
   test("rejects malformed ranges, non-regular files, and invalid UTF-8", async () => {
-    const directory = await temporaryDirectory("hcat-plugin-");
+    const directory = await temporaryDirectory("mcat-plugin-");
     process.chdir(directory);
     await writeFile("short.txt", "one\n", "utf8");
     await writeFile("binary.txt", Uint8Array.from([0xff]));
@@ -707,7 +695,7 @@ describe("hcat built-in plugin", () => {
       expect(created.status).toBe(0);
     }
 
-    const tool = createHCatTool("description", "start: TEST");
+    const tool = createMCatTool("description", "start: TEST");
     for (const [argv, diagnostic] of [
       [["short.txt", "3:2"], "range start exceeds end"],
       [["binary.txt"], "not UTF-8"],
@@ -721,32 +709,32 @@ describe("hcat built-in plugin", () => {
   });
 
   test("retains whole admitted rows and fails when later rows exceed the token limit", async () => {
-    const directory = await temporaryDirectory("hcat-limit-");
+    const directory = await temporaryDirectory("mcat-limit-");
     process.chdir(directory);
-    const first = contentWithFormattedTokenCount(4_000, (content) => formatVerifiedRow(1, content));
+    const first = contentWithFormattedTokenCount(4_000, (content) => formatMCatRow(1, content));
     await writeFile("large.txt", `${first}\nsecond\nthird\n`, "utf8");
 
-    const tool = createHCatTool("description", "start: TEST");
+    const tool = createMCatTool("description", "start: TEST");
     const result = await tool.execute(["large.txt"], executionContext);
     expect(result).toEqual({
-      stdout: formatVerifiedRow(1, first),
-      stderr: "hcat: output incomplete: 4000-token limit reached\n",
-      omittedOutput: {stdout: formatVerifiedRow(2, "second") + formatVerifiedRow(3, "third"), stderr: "", stdoutKind: "rows"},
+      stdout: formatMCatRow(1, first),
+      stderr: "mcat: output incomplete: 4000-token limit reached\n",
+      omittedOutput: {stdout: formatMCatRow(2, "second") + formatMCatRow(3, "third"), stderr: "", stdoutKind: "rows"},
       exitCode: 1,
       failureClass: "output_limit",
     });
   });
 
   test("discards an unavoidably over-limit row while streaming", async () => {
-    const directory = await temporaryDirectory("hcat-oversized-row-");
+    const directory = await temporaryDirectory("mcat-oversized-row-");
     process.chdir(directory);
     await writeFile("large.txt", " ".repeat(15_500 * 128 + 1), "utf8");
 
-    const tool = createHCatTool("description", "start: TEST");
+    const tool = createMCatTool("description", "start: TEST");
     const result = await tool.execute(["large.txt"], executionContext);
     expect(result).toEqual({
       stdout: "",
-      stderr: "hcat: row 1 exceeds the 1984000-byte inspection bound; use a byte-window reader\n",
+      stderr: "mcat: row 1 exceeds the 1984000-byte inspection bound; use a byte-window reader\n",
       exitCode: 1,
       failureClass: "output_limit",
     });
@@ -840,13 +828,13 @@ describe("hgrep built-in plugin", () => {
   test("preserves BOM source rows and rejects UTF-16 search identities", async () => {
     const directory = await temporaryDirectory("reader-bom-");
     process.chdir(directory);
-    const cat = createHCatTool("test", "");
+    const cat = createMCatTool("test", "");
     const grep = createHGrepTool("test", "");
     for (const source of ["\uFEFF", "\uFEFFneedle\nnext\n"]) {
       await writeFile("bom.txt", source);
       const result = await cat.execute(["bom.txt"], executionContext);
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toStartWith(formatVerifiedRow(1, source.split("\n")[0]));
+      expect(result.stdout).toStartWith(formatMCatRow(1, source.split("\n")[0]));
       const searched = await grep.execute(["-F", source === "\uFEFF" ? "\uFEFF" : "needle", "bom.txt"], executionContext);
       expect(searched.exitCode).toBe(0);
       expect(searched.stdout).toBe(`${JSON.stringify("bom.txt")}:${formatVerifiedRow(1, source.split("\n")[0])}`);
@@ -1705,7 +1693,7 @@ describe("inspect_file built-in plugin", () => {
     expect(schema.success.data.outline).toBe("outline_entry[]");
     expect(schema).not.toHaveProperty("selected_entry_source");
     expect(JSON.stringify(schema.outline_entry)).not.toContain("source");
-    for (const persistent of ["hcat", "before editing", "Reason carefully"]) {
+    for (const persistent of ["mcat", "before editing", "Reason carefully"]) {
       expect(inspectFileDescription).not.toContain(persistent);
     }
 
@@ -1967,7 +1955,7 @@ describe("inspect_file language projections", () => {
 });
 
 describe("inspect_file command contract", () => {
-  test("reads absolute, parent-relative and outside symlink paths like hcat", async () => {
+  test("reads absolute, parent-relative and outside symlink paths like mcat", async () => {
     const directory = await temporaryDirectory("inspect-paths-");
     const outside = await temporaryDirectory("inspect-outside-");
     await writeFile(path.join(outside, "value.json"), '{"value":42}\n');

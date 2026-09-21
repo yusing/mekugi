@@ -2,9 +2,10 @@
 
 ## REQ-AX-001 — Runtime reads and evidence-backed AX reporting
 
-The shell worker observes actual invocations of private `hcat`, `hgrep`, `hsymbol`,
-and `inspect_file` at its dispatch boundary. An absolute `MEKUGI_AX_OUTPUT` opts into
-a local `mekugi.ax.read.v2` JSONL journal. The worker inherits this environment value;
+The authenticated `mcat` frontend observes its stock external invocation. The
+shell worker observes actual invocations of private `hgrep`, `hsymbol`, and
+`inspect_file` at their dispatch boundary. An absolute `MEKUGI_AX_OUTPUT` opts into
+a local `mekugi.ax.read.v2` JSONL journal. Each worker inherits this environment value;
 no router process, transport request, or static source scan supplies an executed-read count.
 
 `--debug` implies AX instrumentation without an additional flag or environment setting.
@@ -18,7 +19,7 @@ journal/inspection workflow remains available without enabling other debug artif
 Each invocation emits a random identity, thread ID, reader name, UTC timestamp,
 and start/finish phase. Finish includes elapsed monotonic nanoseconds, success,
 a fixed allowlisted `failure_class` on failure, and an optional observed process exit
-code. The host validates private reader classification metadata; dispatch separately
+code. The host validates reader classification metadata; dispatch separately
 classifies retained-file, execution, output-write, cancellation, and deadline failures.
 Unclassified failures use `unknown`.
 
@@ -29,7 +30,8 @@ pipelines preserve that argument. No outer AX comment or environment prefix is e
 Offline correlation reads literal worker framing through recognized `command` and `env`
 wrappers. Other wrapper forms remain unattributed rather than guessed. Retained historical
 outer AX markers remain readable. Neither a bare environment assignment nor an arbitrary command establishes identity.
-Direct external commands remain unchanged and have no private-reader invocation identity;
+Direct external commands, including `mcat`, remain unchanged and have no shell call or
+shell-worker invocation identity;
 their native timing remains available without an inferred logical-call join. These joins are
 local correlation evidence, not authentication.
 Normal uninstrumented carriers remain unchanged. Journal events include safe `call_id` when

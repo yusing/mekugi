@@ -321,7 +321,7 @@ func TestBuiltinToolFrontendsRunGeneratedTypeScriptImplementations(t *testing.T)
 		arguments  []string
 		wantOutput string
 	}{
-		{name: "hcat", arguments: []string{"file.txt", "0:1"}, wantOutput: "1:8ed3 alpha\n"},
+		{name: "mcat", arguments: []string{"file.txt", "0:1"}, wantOutput: "alpha\n"},
 		{name: "hgrep", arguments: []string{"-F", "alpha", "file.txt"}, wantOutput: "\"file.txt\":1:8ed3 alpha\n"},
 		{name: "hsymbol", arguments: []string{"def", "file.go", fmt.Sprintf("3:%x", alphaHash[:2]), "Alpha"}, wantOutput: strconv.Quote("file.go") + ":3:" + fmt.Sprintf("%x", alphaHash[:2]) + " func Alpha() {}\n"},
 		{name: "inspect_file", arguments: []string{"file.txt"}, wantOutput: "{\"ok\":true,\"data\":{\"path\":\"file.txt\",\"kind\":\"none\",\"language\":null,\"size_bytes\":11,\"line_count\":null,\"parse_complete\":true,\"outline\":[]},\"truncated\":false,\"truncation\":null}\n"},

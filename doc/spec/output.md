@@ -161,7 +161,7 @@ A successful report's `LINE:HASH` rows are current references for their named fi
 and may be used directly in the next invocation. An earlier row whose content is unchanged may
 also be reused: its line is a hint and its hash relocates only when unique. The projection does
 not guarantee every possible later target; when the exact target needed next is absent or
-ambiguous, the caller obtains it with a focused hcat. A row or range endpoint is never guessed
+ambiguous, the caller obtains it with a focused fixed-string hgrep read. A row or range endpoint is never guessed
 or reconstructed. An in-process successful host result also carries one structured target alias
 for every effective nonempty `type` command whose authored target is a row or inclusive row range.
 The alias maps that exact target and final path to the final rendered replacement extent after
@@ -284,7 +284,7 @@ Acceptance:
    files produce the specified report without implying cross-invocation persistence.
 3. One invocation editing multiple regions and files reports current final paths and rows
    for every effective content command in authored order. A later invocation can target an
-   exact reported row without hcat, while an unreported target requires a focused read and
+   exact reported row without another verified read, while an unreported target requires a focused hash-bearing read and
    a saved pre-edit row still rejects as stale.
 4. Changed Go files are formatted with the standard library before output, and invalid Go
    rejects the transaction without mutation. Literal normalization, comment rewriting, and

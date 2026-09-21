@@ -24,10 +24,10 @@ func TestAXReaderFailureClassesPreserveOutputAndCallIdentity(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
 	root := t.TempDir()
 	missing := shellQuoteArgument(filepath.Join(root, "private-missing"))
-	script := "MEKUGI_AX_OUTPUT= hcat " + missing + " >before.out 2>before.err; before=$?; " +
-		"hcat " + missing + " >after.out 2>after.err; after=$?; " +
+	script := "MEKUGI_AX_OUTPUT= mcat " + missing + " >before.out 2>before.err; before=$?; " +
+		"mcat " + missing + " >after.out 2>after.err; after=$?; " +
 		"printf '%s\n%s\n' \"$before\" \"$after\" >statuses; " +
-		"hgrep --max-tokens 16000 secret; hsymbol refs --workspace; hcat @shell/missing; inspect_file " + missing
+		"hgrep --max-tokens 16000 secret; hsymbol refs --workspace; mcat @shell/missing; inspect_file " + missing
 	journal := filepath.Join(root, "reads.jsonl")
 	instrumented := newShellWorkerTestInvocation(root,
 		capturer.AXReadOutputEnvironment+"="+journal,
@@ -41,7 +41,7 @@ func TestAXReaderFailureClassesPreserveOutputAndCallIdentity(t *testing.T) {
 	if beforeErr != nil || afterErr != nil || beforeDiagnosticErr != nil || afterDiagnosticErr != nil ||
 		statusesErr != nil || string(statuses) != "1\n1\n" ||
 		!bytes.Equal(beforeOut, afterOut) || !bytes.Equal(beforeDiagnostic, afterDiagnostic) {
-		t.Fatalf("instrumentation changed hcat outcome: statuses %q, outputs %q/%q, diagnostics %q/%q, errors %v",
+		t.Fatalf("instrumentation changed mcat outcome: statuses %q, outputs %q/%q, diagnostics %q/%q, errors %v",
 			statuses, beforeOut, afterOut, beforeDiagnostic, afterDiagnostic,
 			errors.Join(beforeErr, afterErr, beforeDiagnosticErr, afterDiagnosticErr, statusesErr))
 	}
@@ -52,10 +52,22 @@ func TestAXReaderFailureClassesPreserveOutputAndCallIdentity(t *testing.T) {
 	if err != nil || reads.Failed != 5 || reads.FailuresByClass["invalid_arguments"] != 2 || reads.FailuresByClass["not_found"] != 3 {
 		t.Fatalf("unexplained failures: %+v %v", reads, err)
 	}
-	shellID := reads.Failures[0].ShellID
+	shellID := ""
 	for _, failure := range reads.Failures {
-		if failure.CallID != "call-batch" || shellID == "" || failure.ShellID != shellID || failure.ExitCode == nil {
+		if failure.ExitCode == nil {
 			t.Fatalf("uncorrelated failure: %+v", failure)
+		}
+		if failure.Tool == "mcat" {
+			if failure.CallID != "" || failure.ShellID != "" {
+				t.Fatalf("external mcat inherited shell correlation: %+v", failure)
+			}
+			continue
+		}
+		if shellID == "" {
+			shellID = failure.ShellID
+		}
+		if failure.CallID != "call-batch" || shellID == "" || failure.ShellID != shellID {
+			t.Fatalf("uncorrelated private failure: %+v", failure)
 		}
 	}
 	data, _ := os.ReadFile(journal)
@@ -73,11 +85,14 @@ func TestAXDebugWorkerPinsJournalAcrossChildEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = registry.Close() })
+	if err := registry.installFrontends(); err != nil {
+		t.Fatal(err)
+	}
 	invocationDirectory := t.TempDir()
 	for _, thread := range []string{"parent", "child"} {
 		invocation := newShellWorkerTestInvocation(invocationDirectory,
 			capturer.AXReadOutputEnvironment+"=", shellruntime.ThreadIDEnvironment+"="+thread)
-		_, _, code := runShellWorkerTest(t, registry, "bash", nil, "hcat /private-missing", nil, invocation)
+		_, _, code := runShellWorkerTest(t, registry, "bash", nil, "mcat /private-missing", nil, invocation)
 		if code == 0 {
 			t.Fatal("missing read succeeded")
 		}
@@ -100,7 +115,7 @@ func TestAXTestProcessDoesNotInheritLiveJournal(t *testing.T) {
 		}
 		var stdout, stderr bytes.Buffer
 		handled, code := runAuthenticatedToolWorker(t.Context(), os.Getenv(snapshotEnv), "shell",
-			[]string{"bash", "hcat /private-missing"}, nil, &stdout, &stderr)
+			[]string{"bash", "mcat /private-missing"}, nil, &stdout, &stderr)
 		if !handled || code == 0 || !strings.Contains(stderr.String(), "ENOENT") {
 			t.Fatalf("isolated shell worker = handled %t, code %d, stdout %q, stderr %q",
 				handled, code, stdout.String(), stderr.String())
@@ -121,6 +136,8 @@ func TestAXTestProcessDoesNotInheritLiveJournal(t *testing.T) {
 		marker+"=1",
 		snapshotEnv+"="+registry.SnapshotDir,
 		capturer.AXReadOutputEnvironment+"="+path,
+		"PATH="+registry.frontendDirectory+string(os.PathListSeparator)+os.Getenv("PATH"),
+		routerTestWorkerEnvironment+"=1",
 	)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("%v: %s", err, output)
@@ -136,7 +153,7 @@ func TestAXDebugLabelsJournalOnlyAndAnonymousEvidence(t *testing.T) {
 	t.Setenv("CODEX_HOME", t.TempDir())
 	d.observeAXThread("known")
 	for _, thread := range []string{"known", "not-a-known-child", ""} {
-		read, err := capturer.StartAXReadWithContext(d.paths[4], thread, "hcat", capturer.AXReadContext{})
+		read, err := capturer.StartAXReadWithContext(d.paths[4], thread, "mcat", capturer.AXReadContext{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -227,8 +244,8 @@ func TestDebugRequestUsesCaptureCorrelation(t *testing.T) {
 
 func TestAXCommandInspectionJoinsLiteralCarrierOnly(t *testing.T) {
 	for _, tc := range []struct{ command, want string }{
-		{axCarrierCallIDPrefix + "call-batch\n" + `MEKUGI_AX_CALL_ID='call-batch' shell bash 'hcat secret'`, "call-batch"},
-		{`MEKUGI_AX_CALL_ID=$(echo secret) shell bash 'hcat secret'`, ""},
+		{axCarrierCallIDPrefix + "call-batch\n" + `MEKUGI_AX_CALL_ID='call-batch' shell bash 'mcat secret'`, "call-batch"},
+		{`MEKUGI_AX_CALL_ID=$(echo secret) shell bash 'mcat secret'`, ""},
 		{`echo MEKUGI_AX_CALL_ID=secret`, ""},
 		{`MEKUGI_AX_CALL_ID='/private/path' shell bash ':'`, ""},
 	} {
@@ -244,7 +261,7 @@ func TestAXCommandInspectionJoinsLiteralCarrierOnly(t *testing.T) {
 		kind, id string
 		ms       int
 	}{{"item_started", "one", 0}, {"item_completed", "one", 100}, {"item_started", "two", 400}, {"item_completed", "two", 500}} {
-		_ = encoder.Encode(map[string]any{"timestamp": time.Date(2026, 1, 1, 0, 0, 0, tc.ms*1000000, time.UTC).Format(time.RFC3339Nano), "type": "event_msg", "payload": map[string]any{"type": tc.kind, "item": map[string]any{"type": "CommandExecution", "id": tc.id, "command": []string{"/bin/bash", "-lc", axCarrierCallIDPrefix + "call-batch\nMEKUGI_AX_CALL_ID='call-batch' shell bash 'hcat private'"}, "exit_code": 0}}})
+		_ = encoder.Encode(map[string]any{"timestamp": time.Date(2026, 1, 1, 0, 0, 0, tc.ms*1000000, time.UTC).Format(time.RFC3339Nano), "type": "event_msg", "payload": map[string]any{"type": tc.kind, "item": map[string]any{"type": "CommandExecution", "id": tc.id, "command": []string{"/bin/bash", "-lc", axCarrierCallIDPrefix + "call-batch\nMEKUGI_AX_CALL_ID='call-batch' shell bash 'mcat private'"}, "exit_code": 0}}})
 	}
 	if err := os.WriteFile(path, records.Bytes(), 0600); err != nil {
 		t.Fatal(err)
@@ -257,7 +274,7 @@ func TestAXCommandInspectionJoinsLiteralCarrierOnly(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
-	if report.AX.Commands.GapMS != 300 || report.AX.Commands.DurationMS != 200 || report.AX.Commands.Commands[1].LogicalCallID != "call-batch" || bytes.Contains(out.Bytes(), []byte("hcat private")) {
+	if report.AX.Commands.GapMS != 300 || report.AX.Commands.DurationMS != 200 || report.AX.Commands.Commands[1].LogicalCallID != "call-batch" || bytes.Contains(out.Bytes(), []byte("mcat private")) {
 		t.Fatalf("bad sanitized timings: %s", &out)
 	}
 }

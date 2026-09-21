@@ -97,7 +97,8 @@ Cell identity comes only from a visible matched call/result pair with leading ho
 metadata; subsequent waits preserve that association and terminal results retire it.
 Missing history is labelled `operation unavailable`, never inferred from another cell.
 Stop describes the requested operation, not successful termination.
-Simple literal `cat` and `hcat` calls display `Read <file>`. Literal bounded
+Simple literal `cat` calls display `Read <file>`. Valid literal `mcat` selections
+display one `Read <file>` per selected file, including an explicit range. Literal bounded
 `sed -n 'START,ENDp' <file>` reads display `Read <file> START:END`, with positive decimal
 line numbers and an end not before the start. Only this single-file print form is classified;
 other sed programs, options, stdin operands, and dynamic commands retain their source.
@@ -110,7 +111,7 @@ Simple listing, search, and structural inspection commands use `List`, `Search`,
 labels, retaining search flags and operands. Search and listing previews preserve shell wildcard
 patterns verbatim without expanding them; substitutions still retain the original `Run` source. Native web/file search, image viewing/generation,
 code execution, and input sending use descriptive operation labels.
-Hcat and inspect_file previews validate literal option bounds, duplicates, and operand
+Mcat and inspect_file calls validate literal option bounds, duplicates, and operand
 placement before classification; invalid forms retain their source-level `Run` display.
 Native `apply_patch` calls do not generate operation commentary. Standalone shell-based
 `hpatch` calls omit the `Run` preview and patch body. After execution, authenticated

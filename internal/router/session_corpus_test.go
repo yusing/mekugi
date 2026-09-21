@@ -90,9 +90,9 @@ func TestSessionCorpusRecoveryAndReadCandidates(t *testing.T) {
 		CorrelationID: "chain", Attempt: 1})
 	recovery := inspectionFixture(t, root, "recovery", mekugiHistory{ToolName: "hpatch_recover", Root: root, Script: "fixed",
 		CarrierName: "exec", CarrierKind: codeModeCarrierCustom, CarrierPayload: "recovery carrier", CorrelationID: "chain", Attempt: 2})
-	first := inspectionFixture(t, root, "first", mekugiHistory{ToolName: "shell", Root: root, Script: "hcat file.go 1:100",
+	first := inspectionFixture(t, root, "first", mekugiHistory{ToolName: "shell", Root: root, Script: "mcat file.go 1:100",
 		CarrierName: "exec", CarrierKind: codeModeCarrierCustom, CarrierPayload: "read carrier"})
-	second := inspectionFixture(t, root, "second", mekugiHistory{ToolName: "shell", Root: root, Script: "hcat file.go 50:150",
+	second := inspectionFixture(t, root, "second", mekugiHistory{ToolName: "shell", Root: root, Script: "mcat file.go 50:150",
 		CarrierName: "exec", CarrierKind: codeModeCarrierCustom, CarrierPayload: "reread carrier"})
 	writeCorpusFixture(t, root, "session", "gpt-6-astra", edit, recovery, first,
 		map[string]any{"type": "custom_tool_call_output", "call_id": "first", "output": "read: incomplete; next_call: mread r_123"},
@@ -132,9 +132,9 @@ func TestSessionCorpusMissingEvidenceAndClassification(t *testing.T) {
 			t.Fatalf("%s != %s", got, test.want)
 		}
 	}
-	reads := corpusReadSelections("hcat 'file name' 1:20\nhcat --max-tokens 200 other 30:40")
-	if len(reads) != 2 || !corpusReadOverlap(reads, corpusReadSelections("hcat 'file name' 10:50")) ||
-		corpusReadOverlap(reads, corpusReadSelections("hcat 'file name' 21:50")) || len(corpusReadSelections("echo 'hcat file name'")) != 0 {
+	reads := corpusReadSelections("mcat 'file name' 1:20\nmcat --max-tokens 200 other 30:40")
+	if len(reads) != 2 || !corpusReadOverlap(reads, corpusReadSelections("mcat 'file name' 10:50")) ||
+		corpusReadOverlap(reads, corpusReadSelections("mcat 'file name' 21:50")) || len(corpusReadSelections("echo 'mcat file name'")) != 0 {
 		t.Fatalf("%+v", reads)
 	}
 	if strings.Contains(result.UsageScope, "estimated") {

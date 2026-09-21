@@ -20,7 +20,7 @@ const codexE2EPrompt = `Use functions.shell for all operations. For every file e
 
 Work through these requests in order:
 
-1. Inspect whole.go with fresh hcat output. Replace the complete logical lines of the status function with:
+1. Inspect whole.go with fresh mcat output. Replace the complete logical lines of the status function with:
 func status() string {
 	return "new"
 }

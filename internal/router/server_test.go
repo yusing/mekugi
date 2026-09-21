@@ -413,7 +413,7 @@ func TestExecuteRequestForwardsRewrittenRequestAndRecordsUsage(t *testing.T) {
 	}
 }
 
-func TestShellHCatAfterAppliedMekugiCarrierRemainsModelVisible(t *testing.T) {
+func TestShellMCatAfterAppliedMekugiCarrierRemainsModelVisible(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.txt")
@@ -423,7 +423,7 @@ func TestShellHCatAfterAppliedMekugiCarrierRemainsModelVisible(t *testing.T) {
 	}
 
 	mekugiScript := "type 2:f44e \"B\"\n"
-	shellInput := "hcat file.txt 1:3"
+	shellInput := "mcat file.txt 1:3"
 	provider := &serverFakeProvider{
 		results: []serverForwardResult{
 			{response: serverHTTPResponse(string(mustTestJSON(t, map[string]any{
@@ -445,7 +445,7 @@ func TestShellHCatAfterAppliedMekugiCarrierRemainsModelVisible(t *testing.T) {
 	}
 	proxy := newManagedMekugiProxy(t)
 	headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})
-	const sessionID = "session-mekugi-shell-hcat"
+	const sessionID = "session-mekugi-shell-mcat"
 
 	requestWith := func(items ...any) parsedResponsesRequest {
 		return serverRequest(t, func(request map[string]any) {
@@ -518,14 +518,14 @@ func TestShellHCatAfterAppliedMekugiCarrierRemainsModelVisible(t *testing.T) {
 		proxy.registry,
 		"bash",
 		nil,
-		"hcat file.txt 1:3",
+		"mcat file.txt 1:3",
 		os.Stdin,
 		invocation,
 	)
-	wantRows := "1:8ed3 alpha\n2:df7e B\n3:be9d gamma\n"
+	wantRows := "alpha\nB\ngamma\n"
 	if exitCode != 0 || shellStdout != wantRows || shellStderr != "" {
 		t.Fatalf(
-			"hcat worker exit %d, stdout %q, stderr %q",
+			"mcat worker exit %d, stdout %q, stderr %q",
 			exitCode,
 			shellStdout,
 			shellStderr,

@@ -50,7 +50,7 @@ linked, not copied.
 - [`REQ-GROK-001`](grok.md): Grok provider route
 - [`REQ-OPENCODE-001`](opencode.md): OpenCode Go and Zen provider routes
 - [`REQ-COMMENTARY-001`](commentary.md): user-only subagent activity details
-- [`REQ-READ-001`](read.md): routed verified-row reading and bounded ranges
+- [`REQ-READ-001`](read.md): authenticated raw-row reading, verified-row framing, and managed continuation
 - [`REQ-GREP-001`](grep.md): routed ripgrep search with directly editable verified rows
 - [`REQ-SYMBOL-001`](symbol.md): routed semantic symbol lookup with directly editable verified rows
 - [`REQ-INSPECT-001`](inspect.md): routed structural file inspection with copyable `LINE:HASH` spans

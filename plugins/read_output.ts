@@ -38,7 +38,7 @@ function jsonArrayEntries(value: string): string[] {
   return entries;
 }
 
-// One pagination owner selects bytes, whole verified rows, or complete JSON
+// One pagination owner selects bytes, whole rows, or complete JSON
 // entries. The token budget includes the stream frames, not the next-call notice.
 export function selectReadOutput(request: ReadPageRequest, budget: number): ReadPage {
   const values = [request.stdout, request.stderr];
@@ -88,7 +88,7 @@ export function selectReadOutput(request: ReadPageRequest, budget: number): Read
     } else {
       const bytes = Buffer.from(values[index]);
       if (offset < bytes.length && (bytes[offset] & 0xc0) === 0x80) throw new Error("read position splits UTF-8");
-      if (kinds[index] === "rows" && offset > 0 && bytes[offset - 1] !== 10) throw new Error("read position splits a verified row");
+      if (kinds[index] === "rows" && offset > 0 && bytes[offset - 1] !== 10) throw new Error("read position splits a complete row");
       let end = Math.min(bytes.length, offset + budget * 128 + 4);
       while (end < bytes.length && (bytes[end] & 0xc0) === 0x80) end--;
       const remaining = bytes.subarray(offset, end).toString("utf8");

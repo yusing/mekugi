@@ -16,7 +16,6 @@ import {
   readerFailureClass,
   MAX_POSSIBLE_GPT5_TOKEN_BYTES,
   stripOptionalFinalNewline,
-  formatReaderRow,
   readerArguments,
   readerOptions,
   readerLimitDiagnostic,
@@ -48,19 +47,19 @@ type ReadSpec = {
 
 
 /**
- * parseQuotedPath decodes a quoted hcat path operand and returns the unconsumed trailing text.
+ * parseQuotedPath decodes a quoted mcat path operand and returns the unconsumed trailing text.
  */
 function parseQuotedPath(input: string): {path: string; trailing: string} {
   try {
     const decoded = decodeQuotedOperand(input);
     return {path: decoded.value, trailing: decoded.rest};
   } catch (error) {
-    throw new Error(`invalid hcat path: ${errorText(error)}`);
+    throw new Error(`invalid mcat path: ${errorText(error)}`);
   }
 }
 
 /**
- * parseReadSpec parses an hcat input specification into path and optional line range.
+ * parseReadSpec parses an mcat input specification into path and optional line range.
  */
 function parseReadSpec(input: string): ReadSpec {
   let path;
@@ -72,33 +71,33 @@ function parseReadSpec(input: string): ReadSpec {
     path = separator < 0 ? input : input.slice(0, separator);
     trailing = separator < 0 ? "" : input.slice(separator);
     if (/[\u0000-\u0020"]/u.test(path)) {
-      throw new Error("invalid bare hcat path");
+      throw new Error("invalid bare mcat path");
     }
   }
   if (path === "") {
-    throw new Error("hcat path must not be empty");
+    throw new Error("mcat path must not be empty");
   }
   if (trailing === "") {
     return {path, startLine: 0, endLine: 0};
   }
   const match = trailing.match(/^ (0|[1-9][0-9]*):([1-9][0-9]*)$/u);
   if (match === null) {
-    throw new Error("hcat input must be PATH or PATH START:END");
+    throw new Error("mcat input must be PATH or PATH START:END");
   }
   let requestedStartLine;
   let endLine;
   try {
     requestedStartLine = match[1] === "0" ? 0 : parsePositiveInteger(match[1]);
   } catch {
-    throw new Error("hcat start line is out of range");
+    throw new Error("mcat start line is out of range");
   }
   try {
     endLine = parsePositiveInteger(match[2]);
   } catch {
-    throw new Error("hcat end line is out of range");
+    throw new Error("mcat end line is out of range");
   }
   if (requestedStartLine > endLine) {
-    throw new Error("hcat line range start exceeds end");
+    throw new Error("mcat line range start exceeds end");
   }
   return {path, startLine: Math.max(1, requestedStartLine), endLine};
 }
@@ -106,7 +105,7 @@ function parseReadSpec(input: string): ReadSpec {
 
 // Retain a byte-bounded suffix while scanning, then tokenize only the final
 // candidates. Counting a full token window on every source row is unnecessary.
-class VerifiedRowTail {
+class ReaderTail {
   #rows: string[] = [];
   #head = 0;
   #bytes = 0;
@@ -163,9 +162,9 @@ type ComparedOutput = {
 
 
 /**
- * readHashLines reads verified-row output from a file with token-budget enforcement.
+ * readLines reads raw-row output from a file with token-budget enforcement.
  */
-async function readHashLines(spec: ReadSpec, options: ReaderOptions): Promise<ComparedOutput> {
+async function readLines(spec: ReadSpec, options: ReaderOptions): Promise<ComparedOutput> {
   const handle = await open(spec.path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
 
   try {
@@ -183,7 +182,7 @@ async function readHashLines(spec: ReadSpec, options: ReaderOptions): Promise<Co
     const retained = new RetainedRows();
     let retentionUnavailable = false;
     let contentBytes = 0;
-    const tail = options.tail ? new VerifiedRowTail(options.maxTokens, options.maxLines) : undefined;
+    const tail = options.tail ? new ReaderTail(options.maxTokens, options.maxLines) : undefined;
     let oversizedRow = false;
     const output = new VerifiedRowOutput(options.maxTokens);
 
@@ -200,10 +199,9 @@ async function readHashLines(spec: ReadSpec, options: ReaderOptions): Promise<Co
         return;
       }
       contentBytes += byteLength(text);
-      if (!(options.maxLines !== undefined && options.maxTokens === undefined && options.previewBytes === undefined
+      if (!(options.maxLines !== undefined && options.maxTokens === undefined
           && (tail || selectedLines < options.maxLines))
           && contentBytes > VERIFIED_ROW_MAX_TOKENS * MAX_POSSIBLE_GPT5_TOKEN_BYTES) {
-        // Bound candidate storage even when only a preview will be emitted.
         limitReason = `row ${lineNumber} exceeds the ${VERIFIED_ROW_MAX_TOKENS * MAX_POSSIBLE_GPT5_TOKEN_BYTES}-byte inspection bound; use a byte-window reader\n`;
         retentionUnavailable = true;
         content = "";
@@ -220,7 +218,9 @@ async function readHashLines(spec: ReadSpec, options: ReaderOptions): Promise<Co
     const finishLine = (): void => {
       if (selected() && !oversizedRow && !(retentionUnavailable && !tail && output.incomplete)) {
         selectedLines += 1;
-        const row = formatReaderRow(lineNumber, content, options);
+        // Preserve the previous reader's logical-row framing: every selected source row is
+        // normalized to one trailing LF, including an unterminated final row.
+        const row = content + "\n";
         if (!retentionUnavailable && !retained.append(row)) {
           retentionUnavailable = true;
           limitReason = "result exceeds the 16 MiB recovery bound; narrow the source range\n";
@@ -305,7 +305,7 @@ async function readHashLines(spec: ReadSpec, options: ReaderOptions): Promise<Co
     }
     const missingStartLine = Math.max(spec.startLine, lineCount + 1);
     const warning = !wholeFile && missingStartLine <= spec.endLine
-      ? `hcat: ${missingStartLine}-${spec.endLine}: [out of range]\n`
+      ? `mcat: ${missingStartLine}-${spec.endLine}: [out of range]\n`
       : undefined;
     const result = tail?.finish() ?? {current: options.maxLines !== undefined && options.maxTokens === undefined ? lineOutput : output.current, incomplete: output.incomplete};
     const omitted = result.incomplete && !retentionUnavailable
@@ -319,13 +319,13 @@ async function readHashLines(spec: ReadSpec, options: ReaderOptions): Promise<Co
 
 
 /**
- * hcatArguments converts parsed hcat input to the internal argv representation.
+ * mcatArguments converts parsed mcat input to the internal argv representation.
  */
-function hcatArguments(input: string): {argv: string[]; pathIndex: number} {
+function mcatArguments(input: string): {argv: string[]; pathIndex: number} {
   const argv = readerArguments(input);
-  const parsed = readerOptions(argv, true);
+  const parsed = readerOptions(argv, true, () => false, false, false);
   const operands = parsed.rest;
-  const spec = parseReadSpec(hcatInput(operands));
+  const spec = parseReadSpec(mcatInput(operands));
   const pathIndex = parsed.indices[0];
   if (spec.startLine !== 0) argv[parsed.indices[1]] = `${spec.startLine}:${spec.endLine}`;
   return {argv, pathIndex};
@@ -333,9 +333,9 @@ function hcatArguments(input: string): {argv: string[]; pathIndex: number} {
 
 
 /**
- * hcatInput reconstructs the canonical input specification from argv.
+ * mcatInput reconstructs the canonical input specification from argv.
  */
-function hcatInput(argv: string[]): string {
+function mcatInput(argv: string[]): string {
   if (argv.length === 1 && argv[0] !== "") {
     return JSON.stringify(argv[0]);
   }
@@ -346,20 +346,20 @@ function hcatInput(argv: string[]): string {
   ) {
     return `${JSON.stringify(argv[0])} ${argv[1]}`;
   }
-  throw new Error("hcat expected PATH or PATH START:END");
+  throw new Error("mcat expected PATH or PATH START:END");
 }
 
 
 /**
- * createHCatTool creates the hcat tool with bounded verified-row file output.
+ * createMCatTool creates the mcat tool with bounded raw-row file output.
  */
-export function createHCatTool(description: string, grammar: string): Tool<string[]> {
+export function createMCatTool(description: string, grammar: string): Tool<string[]> {
   return createExecutorTool({
-    name: "hcat",
+    name: "mcat",
     description,
     grammar,
     argv(input) {
-      const {argv, pathIndex} = hcatArguments(input);
+      const {argv, pathIndex} = mcatArguments(input);
       // Preserve the parsed boundary after flattening into executor argv.
       // Relative option-like names need a path spelling, not an option spelling.
       const path = argv[pathIndex];
@@ -370,16 +370,16 @@ export function createHCatTool(description: string, grammar: string): Tool<strin
       let options: ReaderOptions;
       let spec: ReadSpec;
       try {
-        const parsed = readerOptions(argv, true);
+        const parsed = readerOptions(argv, true, () => false, false, false);
         options = parsed.options;
-        spec = parseReadSpec(stripOptionalFinalNewline(hcatInput(parsed.rest)));
+        spec = parseReadSpec(stripOptionalFinalNewline(mcatInput(parsed.rest)));
       } catch (error) {
-        return {stderr: `hcat: ${conciseErrorText(error)}\n`, exitCode: 1, failureClass: "invalid_arguments"};
+        return {stderr: `mcat: ${conciseErrorText(error)}\n`, exitCode: 1, failureClass: "invalid_arguments"};
       }
       try {
-        const result = await readHashLines(spec, options);
+        const result = await readLines(spec, options);
         const limitDiagnostic = result.incomplete
-          ? `hcat: ${result.limitReason ?? readerLimitDiagnostic(options)}`
+          ? `mcat: ${result.limitReason ?? readerLimitDiagnostic(options)}`
           : "";
         const stderr = `${result.warning ?? ""}${limitDiagnostic}`;
         return {
@@ -390,7 +390,7 @@ export function createHCatTool(description: string, grammar: string): Tool<strin
           ...(result.incomplete ? {failureClass: "output_limit" as const} : {}),
         };
       } catch (error) {
-        return {stderr: `hcat: ${conciseErrorText(error)}\n`, exitCode: 1, failureClass: readerFailureClass(error)};
+        return {stderr: `mcat: ${conciseErrorText(error)}\n`, exitCode: 1, failureClass: readerFailureClass(error)};
       }
     },
   });

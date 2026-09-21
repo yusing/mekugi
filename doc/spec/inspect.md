@@ -2,9 +2,9 @@
 
 ## REQ-INSPECT-001 — Shell-routed structural file inspection
 
-The private `inspect_file [--max-tokens N] PATH` command is
-available only through the model-visible shell tool. It accepts one shell-separated
-path, relative to the process working directory or absolute, like hcat. Parent
+The model-private `inspect_file [--max-tokens N] PATH` command remains available
+through the shell dispatcher and its authenticated session frontend. It accepts one shell-separated
+path, relative to the process working directory or absolute, like mcat. Parent
 paths and symlinks are allowed; the target must be a host-readable regular file.
 Codex owns filesystem permissions.
 

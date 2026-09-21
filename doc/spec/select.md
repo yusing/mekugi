@@ -32,7 +32,7 @@ Pending edits never alter the baseline identity, literal search, matches, or tar
 They may supply only the verified coordinate fallback above. Content introduced or modified by
 any command is not targetable in that script. Dependent edits require successful application and
 a later invocation. Exact authored current text may be used as an unanchored literal target
-without hcat; other introduced content requires fresh references.
+without another read; other introduced content requires fresh verified references.
 
 Independently detectable row-missing, row-stale, occurrence-missing, and target-order failures
 are collected across later commands whose file baselines can still be evaluated safely. The
@@ -45,7 +45,7 @@ all of them or none.
 
 Acceptance:
 
-1. A copied hcat row verifies complete content, including indentation, at its line hint or at
+1. A copied hash-bearing reader row verifies complete content, including indentation, at its line hint or at
    one uniquely matching relocated row.
 2. Missing and changed rows reject without choosing an unverified substitute. Duplicate baseline
    rows reject unless the supplied pending coordinate maps to one unchanged baseline row.

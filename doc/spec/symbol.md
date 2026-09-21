@@ -86,7 +86,7 @@ a standalone model-visible tool, and never enters editable rejected-script recov
 Acceptance:
 
 1. A verified use-site token resolves through one language-appropriate semantic query, and emitted
-   hashes equal hcat for the same current lines.
+   hashes equal the shared portable verified-row core for the same current lines.
 2. Every listed source format is accepted. Omitting `N` selects one unique exact language token and
    rejects an ambiguous line before the resolver starts; comments, unrelated literal text, and
    larger identifiers do not affect the count.

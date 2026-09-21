@@ -28,7 +28,7 @@ func TestAXReadJournalRestrictiveUmask(t *testing.T) {
 		if err != nil || info.Mode().Perm() != 0600 {
 			t.Fatalf("journal mode = %v, %v", info, err)
 		}
-		observation, err := StartAXReadWithContext(path, "thread", "hcat", AXReadContext{})
+		observation, err := StartAXReadWithContext(path, "thread", "mcat", AXReadContext{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,7 +60,7 @@ func TestAXReadJournalExactSizeWithoutFinalNewline(t *testing.T) {
 	writer := bufio.NewWriter(file)
 	const records = maxAXEvidenceBytes / 2048
 	for i := range records {
-		line := fmt.Sprintf(`{"schema":"mekugi.ax.read.v2","id":"%d","thread_id":"thread","tool":"hcat","phase":"start","at":"2026-09-11T00:00:00Z"}`, i)
+		line := fmt.Sprintf(`{"schema":"mekugi.ax.read.v2","id":"%d","thread_id":"thread","tool":"mcat","phase":"start","at":"2026-09-11T00:00:00Z"}`, i)
 		line += strings.Repeat(" ", 2047-len(line))
 		if i == records-1 {
 			line += " "
@@ -116,7 +116,7 @@ func TestAXRuntimeReadJournal(t *testing.T) {
 		thread  string
 		success bool
 	}{{"thread", true}, {"thread", false}, {"other", true}} {
-		observation, err := StartAXReadWithContext(path, test.thread, "hcat", AXReadContext{})
+		observation, err := StartAXReadWithContext(path, test.thread, "mcat", AXReadContext{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -131,7 +131,7 @@ func TestAXRuntimeReadJournal(t *testing.T) {
 	pending.file.Close() // Model an interrupted worker that never publishes finish.
 	result, err := ReadAXReads(t.Context(), path, "thread")
 	if err != nil || result.Started != 3 || result.Completed != 2 || result.Succeeded != 1 ||
-		result.Failed != 1 || result.Incomplete != 1 || result.ByTool["hcat"] != 2 || result.State != "observed" {
+		result.Failed != 1 || result.Incomplete != 1 || result.ByTool["mcat"] != 2 || result.State != "observed" {
 		t.Fatalf("read metrics = %+v, %v", result, err)
 	}
 	if got, err := ReadAXReads(t.Context(), "", "thread"); err != nil || got.State != "unavailable" {
@@ -145,7 +145,7 @@ func TestAXRuntimeReadJournal(t *testing.T) {
 func TestAXReadAcceptsBackwardWallClock(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
 	start := axReadEvent{Schema: "mekugi.ax.read.v2", ID: "id", ThreadID: "thread",
-		Tool: "hcat", Phase: "start", At: time.Date(2026, 9, 11, 0, 0, 0, 0, time.UTC)}
+		Tool: "mcat", Phase: "start", At: time.Date(2026, 9, 11, 0, 0, 0, 0, time.UTC)}
 	finish := start
 	finish.Phase, finish.At = "finish", start.At.Add(-time.Second)
 	finish.DurationNS, finish.Succeeded = new(int64(123)), new(true)
@@ -199,7 +199,7 @@ func TestAXReadRejectsUnsafeStorageAndMalformedEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, invalid := range []string{"relative", root, path, link} {
-		if _, err := StartAXReadWithContext(invalid, "thread", "hcat", AXReadContext{}); err == nil {
+		if _, err := StartAXReadWithContext(invalid, "thread", "mcat", AXReadContext{}); err == nil {
 			t.Fatalf("invalid journal %q accepted", invalid)
 		}
 	}
@@ -223,7 +223,7 @@ func TestAXReadRejectsDuplicateAndUnpairedEvents(t *testing.T) {
 	for _, phase := range []string{"start", "finish"} {
 		path := filepath.Join(t.TempDir(), "reads.jsonl")
 		event := axReadEvent{Schema: "mekugi.ax.read.v2", ID: "id", ThreadID: "thread",
-			Tool: "hcat", Phase: phase, At: time.Now()}
+			Tool: "mcat", Phase: phase, At: time.Now()}
 		data, _ := json.Marshal(event)
 		data = append(data, '\n')
 		if phase == "start" {
@@ -373,7 +373,7 @@ func TestAXConcurrentNearCapacity(t *testing.T) {
 	var workers sync.WaitGroup
 	for range 20 {
 		workers.Go(func() {
-			observation, err := StartAXReadWithContext(path, "thread", "hcat", AXReadContext{})
+			observation, err := StartAXReadWithContext(path, "thread", "mcat", AXReadContext{})
 			if err == nil {
 				_ = observation.FinishResult(true, "", nil)
 			}
@@ -388,8 +388,8 @@ func TestAXConcurrentNearCapacity(t *testing.T) {
 
 func TestAXReadJournalRejectsCorruptUTF8IDs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
-	start := "{\"schema\":\"mekugi.ax.read.v2\",\"id\":\"" + "\xff" + "\",\"thread_id\":\"thread\",\"tool\":\"hcat\",\"phase\":\"start\",\"at\":\"2026-09-11T00:00:00Z\"}"
-	finish := "{\"schema\":\"mekugi.ax.read.v2\",\"id\":\"" + "\xfe" + "\",\"thread_id\":\"thread\",\"tool\":\"hcat\",\"phase\":\"finish\",\"at\":\"2026-09-11T00:00:01Z\",\"duration_ns\":100,\"succeeded\":true}"
+	start := "{\"schema\":\"mekugi.ax.read.v2\",\"id\":\"" + "\xff" + "\",\"thread_id\":\"thread\",\"tool\":\"mcat\",\"phase\":\"start\",\"at\":\"2026-09-11T00:00:00Z\"}"
+	finish := "{\"schema\":\"mekugi.ax.read.v2\",\"id\":\"" + "\xfe" + "\",\"thread_id\":\"thread\",\"tool\":\"mcat\",\"phase\":\"finish\",\"at\":\"2026-09-11T00:00:01Z\",\"duration_ns\":100,\"succeeded\":true}"
 	if err := os.WriteFile(path, []byte(start+"\n"+finish+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}

@@ -1,9 +1,7 @@
 package router
 
 import (
-	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -219,12 +217,12 @@ func TestShellRunnerUsesInterpreterBasenameForLanguageVariant(t *testing.T) {
 	}
 }
 
-func TestShellRunnerEvaluatesPrivateToolsWithSnapshotWrappers(t *testing.T) {
+func TestShellRunnerEvaluatesToolFrontendsWithSnapshotWrappers(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
-	for _, name := range []string{"hcat", "hgrep", "hsymbol", "inspect_file"} {
+	for _, name := range []string{"mcat", "hgrep", "hsymbol", "inspect_file"} {
 		if _, ok := registry.wrapper(name); !ok {
-			t.Fatalf("private tool %q has no authenticated snapshot wrapper", name)
+			t.Fatalf("tool %q has no authenticated snapshot wrapper", name)
 		}
 	}
 
@@ -246,11 +244,11 @@ func TestShellRunnerEvaluatesPrivateToolsWithSnapshotWrappers(t *testing.T) {
 				registry,
 				interpreter,
 				nil,
-				"cd nested\nhcat 'space name.txt' 1:1 | { read -r row; printf 'row:%s\\n' \"$row\"; }\nhcat missing 2>/dev/null || printf recovered",
+				"cd nested\nmcat 'space name.txt' 1:1 | { read -r row; printf 'row:%s\\n' \"$row\"; }\nmcat missing 2>/dev/null || printf recovered",
 				nil,
 				invocation,
 			)
-			if exitCode != 0 || stdout != "row:1:8ed3 alpha\nrecovered" || stderr != "" {
+			if exitCode != 0 || stdout != "row:alpha\nrecovered" || stderr != "" {
 				t.Fatalf("%s: exit %d, stdout %q, stderr %q", interpreter, exitCode, stdout, stderr)
 			}
 		})
@@ -323,8 +321,8 @@ func TestShellRunnerReadsFormerShellPathsAsWorkspaceFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, source := range []string{
-		"hcat @shell/script",
-		"hcat @shell/script @shell/script",
+		"mcat @shell/script",
+		"mcat @shell/script @shell/script",
 	} {
 		t.Run(source, func(t *testing.T) {
 			stdout, stderr, code := runShellWorkerTest(t, proxy.registry, "bash", nil, source, nil, newShellWorkerTestInvocation(directory))
@@ -430,56 +428,6 @@ func TestShellRunnerBoundsAndValidatesOutput(t *testing.T) {
 			execution.Stdout,
 			execution.Stderr,
 		)
-	}
-}
-
-func TestShellWorkerStreamsReadBeforeLaterCommand(t *testing.T) {
-	t.Parallel()
-	registry := sharedProxyTestRegistry(t)
-	wrapper := registry.shellRuntime
-	for _, interpreter := range []string{"bash", "sh"} {
-		t.Run(interpreter, func(t *testing.T) {
-			file := filepath.Join(t.TempDir(), "read.txt")
-			if err := os.WriteFile(file, []byte("early read\n"), 0600); err != nil {
-				t.Fatal(err)
-			}
-			input, release, err := os.Pipe()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer input.Close()
-			defer release.Close()
-			reader, writer := io.Pipe()
-			defer reader.Close()
-			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
-			defer cancel()
-			var stderr bytes.Buffer
-			done := make(chan int, 1)
-			go func() {
-				handled, status := RunToolPluginWorker(ctx, wrapper, []string{interpreter,
-					fmt.Sprintf("hcat %q\nread release\nprintf 'later\\n'\nprintf 'failure\\n' >&2\nexit 7", file)},
-					input, writer, &stderr)
-				if !handled {
-					status = -1
-				}
-				writer.Close()
-				done <- status
-			}()
-			// The later command cannot finish until the caller sees the read.
-			buffered := bufio.NewReader(reader)
-			first, err := buffered.ReadString('\n')
-			if err != nil || !strings.Contains(first, "early read") {
-				t.Fatalf("early output = %q, %v", first, err)
-			}
-			if _, err := release.WriteString("continue\n"); err != nil {
-				t.Fatal(err)
-			}
-			rest, err := io.ReadAll(buffered)
-			status := <-done
-			if err != nil || status != 7 || string(rest) != "later\n" || stderr.String() != "failure\n" {
-				t.Fatalf("completion: %q, %q, %d, %v", rest, stderr.String(), status, err)
-			}
-		})
 	}
 }
 
