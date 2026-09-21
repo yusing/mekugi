@@ -277,12 +277,22 @@ func TestHandleScopeRouterAndShell(t *testing.T) {
 	root, _ := prepareActivityTest(t, proxy, "same-route", "root", "", "/root", nil)
 	other, _ := prepareActivityTest(t, proxy, "same-route", "other", "", "/root", nil)
 	child, _ := prepareActivityTest(t, proxy, "child-route", "child", "root", "/root/child", nil)
-	registry := sharedProxyTestRegistry(t)
+	registry, err := buildToolRegistryAt(t.Context(), t.TempDir(), false, t.TempDir(), store.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := registry.installFrontends(); err != nil {
+		t.Fatal(err)
+	}
 	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest.ReplayDirectory = store.directory
 	shell, _ := registry.contribution("shell")
 	workspace := t.TempDir()
 	for _, test := range []struct {
@@ -305,9 +315,11 @@ func TestHandleScopeRouterAndShell(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer release()
-		script := "hpatch " + path + " " + shellQuoteArgument(`type "old" "`+thread+`"`) + "; hchanges " + test.want + " --history"
+		script := "hpatch " + path + " " + shellQuoteArgument(`type "old" "`+thread+`"`) + "; mchanges " + test.want + " --history"
+		environment := prependToolFrontendPath(append(os.Environ(),
+			"CODEX_THREAD_ID="+thread, routerTestWorkerEnvironment+"=1"), registry.frontendDirectory)
 		result, err := executeShellTool(ctx, manifest, registry.RuntimeRoot, &shell, []string{"bash", script}, nil,
-			workspace, append(os.Environ(), "CODEX_THREAD_ID="+thread), nil, nil, nil)
+			workspace, environment, nil, nil, nil)
 		if err != nil || result.ExitCode != 0 || !strings.Contains(result.Stdout, "change "+test.want+"\n") || !strings.Contains(result.Stdout, path) {
 			t.Fatalf("%s shell scope: %+v, %v", thread, result, err)
 		}

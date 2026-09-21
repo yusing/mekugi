@@ -282,7 +282,7 @@ move, or remove files; those operations are outside the hpatch transaction.
 
 For bulk edits, Python or another program can generate the script without writing
 edit targets directly. Apply it with `hpatch notes.txt "$(python3 generator.py)"` or
-`hpatch notes.txt < prepared.hpatch`. Generated edits retain their change IDs, `hchanges`
+`hpatch notes.txt < prepared.hpatch`. Generated edits retain their change IDs, `mchanges`
 history, and completed live diffs. With live view enabled for the workspace, successfully
 evaluated `hpatch` calls show their formatted diff before writing, including generated
 input and recovery edits.
@@ -305,7 +305,7 @@ print("hello")
 
 Bash is the default. Interactive and long-running programs still use Codex's
 native execution and session facilities. Shell file creation, redirection writes,
-moves, and removals appear in `hchanges` and the live diff alongside hpatch edits.
+moves, and removals appear in `mchanges` and the live diff alongside hpatch edits.
 See [tracked operations and limits](doc/spec/changes.md) for supported move/removal
 options and capture requirements.
 
@@ -339,17 +339,16 @@ needs raw output.
 
 ### Wrapped-session helpers
 
-The wrapped session provides the commands below. `mread`, `mrun`, `mcat`, `hgrep`,
+The wrapped session provides the commands below. `mread`, `mrun`, `mchanges`, `mcat`, `hgrep`,
 `msymbol`, and `inspect_file` are session-private executables on Codex's `PATH`;
-they are not installed as global terminal utilities. `mread`, `mrun`, `mcat`, `msymbol`, and
-`inspect_file` run through stock execution rather than the private shell dispatcher. `hchanges`
-remains shell-only until its migration.
+they are not installed as global terminal utilities. `mread`, `mrun`, `mchanges`, `mcat`,
+`msymbol`, and `inspect_file` run through stock execution rather than the private shell dispatcher.
 
 | Command | Purpose | Extra prerequisite on the executor's `PATH` |
 | --- | --- | --- |
 | `mread` | Continue bounded retained output by reference | Access to the router's replay directory |
 | `mrun` | Bound an external command's output, optionally keeping its ending | The wrapped command |
-| `hchanges` | Read tracked diffs and hpatch recovery history by ID or range | Access to the router's replay directory |
+| `mchanges` | Read tracked diffs and hpatch recovery history by ID or range | Access to the router's replay directory |
 | `mcat` | Read raw UTF-8 source rows without hashes: `mcat path1 1:200 path2 path3 200:300`; multiple files share a budget and provide per-file recovery links | Replay-directory access for multi-file reads |
 | `hgrep` | Search text with verified row references | `rg` |
 | `msymbol` | Look up definitions and references as complete `"PATH":LINE TEXT` rows | `gopls` for Go; TypeScript 7 as `tsc` for JS, TS, and JSON; `pyright-langserver` for Python |
@@ -365,9 +364,9 @@ Mekugi keeps durable review records in the router's replay store. An agent can
 hand off `amber1..amber3`, then another agent in the same session can retrieve just those changes:
 
 ```sh
-hchanges amber1..amber3
-hchanges amber1..amber3 --summary
-hchanges amber2 --history
+mchanges amber1..amber3
+mchanges amber1..amber3 --summary
+mchanges amber2 --history
 ```
 
 For example, `--summary` returns aggregated tab-separated counts:
@@ -427,7 +426,7 @@ The simulation uses disposable temporary files and removes them on exit.
 - In diff view, `f` flushes the current file; `F` flushes all files.
 - `q` quits the viewer without ending Codex.
 
-Use `hchanges` for saved capture history; standalone live viewing is not
+Use `mchanges` for saved capture history; standalone live viewing is not
 supported. See [live view details](doc/spec/changes.md#live-terminal-view).
 
 ## Metrics

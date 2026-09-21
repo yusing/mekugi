@@ -38,7 +38,7 @@ func executeShellBuiltin(ctx context.Context, args []string, privateTools map[st
 	}
 	isPrivate := func(name string) bool {
 		switch name {
-		case "journal", "hpatch", "hchanges", "type", "kill", "printf", "read", "ulimit":
+		case "journal", "hpatch", "type", "kill", "printf", "read", "ulimit":
 			return true
 		}
 		_, ok := privateTools[name]

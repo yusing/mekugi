@@ -77,7 +77,7 @@ func (s *mekugiReplayStore) readSourceStreams(ctx context.Context, record shellO
 	}
 	if fmt.Sprintf("%x", sha256.Sum256([]byte(text))) != selection.Digest ||
 		selection.Offset < 0 || selection.Offset >= len(text) || !utf8.RuneStart(text[selection.Offset]) {
-		return output, errors.New("change snapshot changed; repeat the original hchanges read")
+		return output, errors.New("change snapshot changed; repeat the original mchanges read")
 	}
 	output.Stdout = text[selection.Offset:]
 	return output, nil

@@ -1,7 +1,9 @@
 package router
 
 import (
+	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -11,7 +13,7 @@ import (
 	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
-func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
+func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
@@ -23,10 +25,16 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ctx, release, err := store.beginSession(t.Context(), "reviewer-thread", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
 	workspace := t.TempDir()
 	invocation := newShellWorkerTestInvocation(workspace,
-		"XDG_STATE_HOME="+t.TempDir(), "MEKUGI_RUNTIME_DIR="+t.TempDir(), "CODEX_THREAD_ID=reviewer-thread")
-	id, err := store.reserveChange(t.Context(), workspace, "implementer-thread", "edited")
+		"XDG_STATE_HOME="+t.TempDir(), "MEKUGI_RUNTIME_DIR="+t.TempDir(), "CODEX_THREAD_ID=reviewer-thread",
+		routerTestWorkerUnscopedEnvironment+"=0")
+	id, err := store.reserveChange(ctx, workspace, "implementer-thread", "edited")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,14 +48,22 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 			{AfterPath: "excluded.txt", Diff: "add \"\" -> \"excluded.txt\"\n"},
 		},
 	}
-	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"edited": history}); err != nil {
+	if err := store.put(ctx, workspace, map[string]mekugiHistory{"edited": history}); err != nil {
 		t.Fatal(err)
 	}
-	// Child environment changes cannot redirect the authenticated store.
-	if _, direct := registry.directBashExecCommand([]string{"bash", "hchanges " + id}); direct {
-		t.Fatal("hchanges escaped the private runner")
+	frontend, ok := registry.frontends["mchanges"]
+	if !ok {
+		t.Fatal("mchanges frontend is unavailable")
 	}
-	want, err := store.readChanges(t.Context(), changeReadOptions{workspace: workspace, ids: []string{id}, paths: []string{"file.txt", "new name.txt"}})
+	command := exec.CommandContext(t.Context(), frontend, "--summary", id, "--", "file.txt")
+	command.Dir = workspace
+	command.Env = append(os.Environ(), "XDG_STATE_HOME="+t.TempDir(), "MEKUGI_RUNTIME_DIR="+t.TempDir(), "CODEX_THREAD_ID=reviewer-thread", routerTestWorkerEnvironment+"=1")
+	var directOut, directErr bytes.Buffer
+	command.Stdout, command.Stderr = &directOut, &directErr
+	if err := command.Run(); err != nil || directOut.String() != "12\t0\tfile.txt\n" || directErr.Len() != 0 {
+		t.Fatalf("stock frontend: output %q, stderr %q, error %v", directOut.String(), directErr.String(), err)
+	}
+	want, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}, paths: []string{"file.txt", "new name.txt"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +77,7 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 			var all strings.Builder
 			cursor := ""
 			for page := range 100 {
-				command := "hchanges --max-tokens 32 " + id + " -- 'old name.txt' file.txt 'new name.txt' ./file.txt"
+				command := "mchanges --max-tokens 32 " + id + " -- 'old name.txt' file.txt 'new name.txt' ./file.txt"
 				if cursor != "" {
 					command = "mread " + cursor + " --stdout --max-tokens 32"
 				}
@@ -92,14 +108,14 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		"cd child\nhchanges --workspace .. --summary "+id, nil, invocation)
+		"cd child\nmchanges --workspace .. --summary "+id, nil, invocation)
 	if status != 0 || stderr != "" || !strings.Contains(stdout, "12\t0\tfile.txt\n") || strings.Contains(stdout, "+line") {
 		t.Fatalf("summary from subdirectory: %q, %q, %d", stdout, stderr, status)
 	}
 	for _, command := range []string{
-		"hchanges " + id + " --summary -- file.txt",
-		"hchanges --summary " + id + " -- " + filepath.Join(workspace, "file.txt"),
-		"hchanges " + id + " --summary " + id + " -- ./file.txt",
+		"mchanges " + id + " --summary -- file.txt",
+		"mchanges --summary " + id + " -- " + filepath.Join(workspace, "file.txt"),
+		"mchanges " + id + " --summary " + id + " -- ./file.txt",
 	} {
 		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, command, nil, invocation)
 		if status != 0 || stderr != "" || stdout != "12\t0\tfile.txt\n" {
@@ -108,14 +124,14 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 	}
 	for _, interpreter := range []string{"bash", "sh"} {
 		for _, view := range []string{"", "--summary", "--history"} {
-			filtered, err := store.readChanges(t.Context(), changeReadOptions{
+			filtered, err := store.readChanges(ctx, changeReadOptions{
 				workspace: workspace, ids: []string{id}, paths: []string{"file.txt", "new name.txt"},
 				view: strings.TrimPrefix(view, "--"),
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			command := "hchanges " + id + " " + view +
+			command := "mchanges " + id + " " + view +
 				" -- 'old name.txt' " + shellQuoteArgument(filepath.Join(workspace, "file.txt")) +
 				" ./file.txt 'new name.txt' absent.txt"
 			stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, command, nil, invocation)
@@ -132,28 +148,28 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 		}
 	}
 	stdout, stderr, status = runShellWorkerTest(t, registry, "sh", nil,
-		"hchanges "+id+" -- absent.txt 'also absent.txt'", nil, invocation)
+		"mchanges "+id+" -- absent.txt 'also absent.txt'", nil, invocation)
 	if status != 0 || stderr != "" || !strings.Contains(stdout, `no files match paths after --: "absent.txt" "also absent.txt"`) {
 		t.Fatalf("unmatched union: %q, %q, %d", stdout, stderr, status)
 	}
 	stdout, stderr, status = runShellWorkerTest(t, registry, "bash", nil,
-		"hchanges "+id+" --summary -- missing.txt", nil, invocation)
+		"mchanges "+id+" --summary -- missing.txt", nil, invocation)
 	if status != 0 || stderr != "" || !strings.Contains(stdout, `no files match paths after --: "missing.txt"`) {
 		t.Fatalf("unmatched path: %q, %q, %d", stdout, stderr, status)
 	}
 	stdout, stderr, status = runShellWorkerTest(t, registry, "sh", nil,
-		"hchanges "+id+" --history --max-tokens 15500 -- file.txt", nil, invocation)
+		"mchanges "+id+" --history --max-tokens 15500 -- file.txt", nil, invocation)
 	if status != 0 || stderr != "" || !strings.Contains(stdout, "input:") ||
 		strings.Count(stdout, "--- /dev/null") != 1 || strings.Contains(stdout, `add "" ->`) {
 		t.Fatalf("history: %q, %q, %d", stdout, stderr, status)
 	}
 	stdout, stderr, status = runShellWorkerTest(t, registry, "bash", nil,
-		"hchanges "+id+" -- --summary apple2", nil, invocation)
+		"mchanges "+id+" -- --summary apple2", nil, invocation)
 	if status != 0 || stderr != "" || stdout != id+" applied\nadd \"\" -> \"--summary\"\nadd \"\" -> \"apple2\"\n" {
 		t.Fatalf("literal flag and ID paths: %q, %q, %d", stdout, stderr, status)
 	}
 	for _, arguments := range []string{"", "-- file.txt", "--summary -- file.txt", "read " + id, id + " --path file.txt", "amber99", "amber1..apple2", "--max-tokens 0 amber1", "--history --summary amber1"} {
-		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, "hchanges "+arguments, nil, invocation)
+		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, "mchanges "+arguments, nil, invocation)
 		if status == 0 || stdout != "" || stderr == "" {
 			t.Fatalf("%q did not reject: %q, %q, %d", arguments, stdout, stderr, status)
 		}

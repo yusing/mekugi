@@ -178,7 +178,7 @@ func TestShellHpatchRecoveryAndReview(t *testing.T) {
 	}
 	_, after, _ := strings.Cut(report, "change ")
 	id, _, _ := strings.Cut(after, "\n")
-	review, stderr, code := runShellWorkerTest(t, registry, "bash", nil, "hchanges "+id+" --history", nil, invocation)
+	review, stderr, code := runShellWorkerTest(t, registry, "bash", nil, "mchanges "+id+" --history", nil, invocation)
 	if code != 0 || !strings.Contains(review, "applied") || !strings.Contains(review, "+new") || !strings.Contains(review, "file \"sample.txt\"") ||
 		strings.Count(review, "evaluated script:") != 1 || strings.Count(review, `type "old" "new"`) != 1 {
 		t.Fatalf("review: %d %s %s", code, review, stderr)
@@ -228,7 +228,8 @@ func TestShellHpatchRecoveryRestartIsolationAndControlBytes(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(directory, "control.txt"), []byte("old\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	invocation := newShellWorkerTestInvocation(directory, "CODEX_THREAD_ID=recovery-test")
+	invocation := newShellWorkerTestInvocation(directory, "CODEX_THREAD_ID=recovery-test",
+		routerTestWorkerUnscopedEnvironment+"=0")
 	sampleScript := `type "package p" "package p\nvar =\n"`
 	controlScript := `type "old" "\u001b[31m\u0000\r\t"`
 	command := "hpatch sample.go " + shellQuoteArgument(sampleScript) + " control.txt " + shellQuoteArgument(controlScript)
@@ -249,11 +250,16 @@ func TestShellHpatchRecoveryRestartIsolationAndControlBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	history, err := store.rejectedEdit(t.Context(), directory, handle)
+	session, release, err := store.beginSession(t.Context(), "recovery-test", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.rejectedEdit(t.Context(), t.TempDir(), handle); err == nil {
+	defer release()
+	history, err := store.rejectedEdit(session, directory, handle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.rejectedEdit(session, t.TempDir(), handle); err == nil {
 		t.Fatal("recovered another execution directory's edit")
 	}
 	commands := recoveryBatchCommands(history.Edits, history.RecoveryHandles)
@@ -265,7 +271,7 @@ func TestShellHpatchRecoveryRestartIsolationAndControlBytes(t *testing.T) {
 	}
 	_, after, _ := strings.Cut(report, "change ")
 	changeID, _, _ := strings.Cut(after, "\n")
-	review, reviewErr, reviewCode := runShellWorkerTest(t, registry, "bash", nil, "hchanges "+changeID+" --history", nil, invocation)
+	review, reviewErr, reviewCode := runShellWorkerTest(t, registry, "bash", nil, "mchanges "+changeID+" --history", nil, invocation)
 	if reviewCode != 0 || reviewErr != "" || !strings.Contains(review, `recovery script 1 file "sample.go":`) ||
 		strings.Count(review, "evaluated script:") != 1 || strings.Count(review, payload) != 1 {
 		t.Fatalf("recovery history lost selection or duplicated input: %d %s %s", reviewCode, review, reviewErr)
@@ -274,17 +280,17 @@ func TestShellHpatchRecoveryRestartIsolationAndControlBytes(t *testing.T) {
 	if err != nil || string(data) != "\x1b[31m\x00\r\t\n" {
 		t.Fatalf("control bytes = %q, %v", data, err)
 	}
-	if _, err := store.rejectedEdit(t.Context(), directory, handle); err != nil {
+	if _, err := store.rejectedEdit(session, directory, handle); err != nil {
 		t.Fatalf("successful correction mutated original rejection: %v", err)
 	}
 	for _, binding := range []string{"", "changed"} {
 		bad := history
 		bad.RecoveryBinding = binding
 		id := "hpatch-" + binding + "bad"
-		if err := store.put(t.Context(), directory, map[string]mekugiHistory{id: bad}); err != nil {
+		if err := store.put(session, directory, map[string]mekugiHistory{id: bad}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.rejectedEdit(t.Context(), directory, binding+"bad"); err == nil {
+		if _, err := store.rejectedEdit(session, directory, binding+"bad"); err == nil {
 			t.Fatal("accepted invalid recovery binding")
 		}
 	}
@@ -473,12 +479,12 @@ func TestShellHpatchGeneratedScriptHistoryAndLiveDiff(t *testing.T) {
 	}
 	changeID, _, _ := strings.Cut(tail, "\n")
 	review, reviewErr, code := runShellWorkerTest(t, registry, "bash", nil,
-		"hchanges "+shellQuoteArgument(changeID)+" --history", nil,
-		newShellWorkerTestInvocation(directory, "CODEX_THREAD_ID="+thread))
+		"mchanges "+shellQuoteArgument(changeID)+" --history", nil,
+		newShellWorkerTestInvocation(directory))
 	if code != 0 || reviewErr != "" || !strings.Contains(review, "applied") ||
 		!strings.Contains(review, "+command") || !strings.Contains(review, "file \"result.txt\"") ||
 		strings.Count(review, "type \"old\" \"command\"") != 1 {
-		t.Fatalf("hchanges generated command = %d %s %s", code, review, reviewErr)
+		t.Fatalf("mchanges generated command = %d %s %s", code, review, reviewErr)
 	}
 
 	second := run("hpatch result.txt < generated.patch")

@@ -166,7 +166,7 @@ func (a *autoLiveDiff) observe(workspace, thread string, metadata codexTurnMetad
 		if a.scopeBytes+added > maxLiveDiffScopeBytes {
 			// Do not publish a partial scope or retain unbounded auxiliary state.
 			if a.notice != nil {
-				a.notice("live_diff_scope_capacity", "Mekugi disabled automatic live diff because session scope exceeded 1 MiB. Edits and hchanges remain available; restart the router to reset this live-view scope.")
+				a.notice("live_diff_scope_capacity", "Mekugi disabled automatic live diff because session scope exceeded 1 MiB. Edits and mchanges remain available; restart the router to reset this live-view scope.")
 			}
 			a.enabled.Store(false)
 			a.scope.Workspaces = nil

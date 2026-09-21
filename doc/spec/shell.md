@@ -170,7 +170,7 @@ diagnostic.
 Bash and POSIX programs execute with their selected semantics inside the authenticated
 worker. Private search operations share that execution's cwd, environment, redirections,
 pipelines, output, status, and cancellation. Session-private executable frontends such as
-`mcat`, `msymbol`, `inspect_file`, and `mrun` run as ordinary external commands and inherit
+`mcat`, `msymbol`, `inspect_file`, `mchanges`, and `mrun` run as ordinary external commands and inherit
 the same shell context without private dispatch. Other commands and interpreters use the inherited executor environment.
 Cancellation and output limits apply to descendant processes through a bounded
 foreground-process and inherited-pipe shutdown, without starting another router
@@ -408,7 +408,7 @@ Acceptance:
     diagnostic without starting an interpreter.
 11. `make install` installs `mekugi` and the fixed `shell` helper without changing Codex
     configuration or instruction files. Startup and tool-snapshot changes do not rewrite that
-    helper or install global mcat, hgrep, msymbol, or inspect_file basenames. Router startup
+    helper or install global mread, mrun, mchanges, mcat, hgrep, msymbol, or inspect_file basenames. Router startup
     creates owned session-private frontends from the authenticated snapshot.
 12. `#!params={"workdir":"/tmp","tty":true}` produces an exec carrier
     containing those fields and the router-supplied `cmd`. Tolerated leading params variants

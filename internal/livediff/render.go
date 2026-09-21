@@ -105,7 +105,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 		}
 	}
 	if sourceBytes > MaxSourceBytes {
-		return Render{}, errors.New("live diff source exceeds 64 MiB; use hchanges with a narrower range")
+		return Render{}, errors.New("live diff source exceeds 64 MiB; use mchanges with a narrower range")
 	}
 	render := Render{Starts: make([]int, len(files)), Counts: make([]Counts, len(files))}
 	renderedBytes := 0
@@ -116,7 +116,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 		line = ansi.Truncate(Gutter(highlighted, theme)+line, max(0, width-1), "")
 		renderedBytes += len(line) + 1
 		if renderedBytes > MaxSourceBytes {
-			return errors.New("live diff rendering exceeds 64 MiB; use hchanges with a narrower range")
+			return errors.New("live diff rendering exceeds 64 MiB; use mchanges with a narrower range")
 		}
 		if !continuation {
 			render.RowStarts = append(render.RowStarts, len(render.Lines))

@@ -146,7 +146,7 @@ func executeShellProgram(
 	}
 	privateTools := make(map[string]toolContribution)
 	for _, contribution := range manifest.Tools {
-		if contribution.PluginID == builtinToolsPluginID && !contribution.ModelVisible && contribution.Name != "mcat" && contribution.Name != "msymbol" && contribution.Name != "inspect_file" {
+		if contribution.PluginID == builtinToolsPluginID && !contribution.ModelVisible && contribution.Name != "mcat" && contribution.Name != "mchanges" && contribution.Name != "msymbol" && contribution.Name != "inspect_file" {
 			privateTools[contribution.Name] = contribution
 		}
 	}
@@ -173,9 +173,6 @@ func executeShellProgram(
 			}
 			if command[0] == "hpatch" {
 				return executeHpatch(handlerCtx, manifest, command[1:], commentary)
-			}
-			if command[0] == "hchanges" {
-				return executeHChanges(handlerCtx, manifest, runtimeRoot, command[1:])
 			}
 			contribution, private := privateTools[command[0]]
 			if !private {

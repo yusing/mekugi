@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,10 +12,10 @@ import (
 	"unicode"
 
 	"github.com/yusing/mekugi"
-	"mvdan.cc/sh/v3/interp"
+	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
-const changesReadUsage = "hchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...]"
+const changesReadUsage = "mchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...]"
 const maxChangeReadBytes = 64 << 20
 
 type changeReadOptions struct {
@@ -289,13 +288,15 @@ func changePathMatches(options changeReadOptions, recorded string) bool {
 	return false
 }
 
-func executeHChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRoot string, arguments []string) error {
-	handler := interp.HandlerCtx(ctx)
-	fail := func(err error) error {
-		_, _ = fmt.Fprintf(handler.Stderr, "hchanges: %v\n", err)
-		return interp.ExitStatus(1)
+func executeMChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRoot string, arguments []string) toolplugin.ExecutionOutput {
+	fail := func(err error) toolplugin.ExecutionOutput {
+		return toolplugin.ExecutionOutput{Stderr: fmt.Sprintf("mchanges: %v\n", err), ExitCode: 1}
 	}
-	options, err := parseChangeRead(arguments, handler.Dir)
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fail(fmt.Errorf("resolve working directory: %w", err))
+	}
+	options, err := parseChangeRead(arguments, cwd)
 	if err != nil {
 		return fail(err)
 	}
@@ -323,12 +324,8 @@ func executeHChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRo
 			return fail(err)
 		}
 	}
-	if _, err := io.WriteString(handler.Stdout, selected); err != nil {
-		return err
-	}
 	if next != "" {
-		_, _ = io.WriteString(handler.Stderr, readNextCall(next))
-		return interp.ExitStatus(1)
+		return toolplugin.ExecutionOutput{Stdout: selected, Stderr: readNextCall(next), ExitCode: 1}
 	}
-	return nil
+	return toolplugin.ExecutionOutput{Stdout: selected}
 }

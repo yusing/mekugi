@@ -83,7 +83,7 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			file.BeforePath, file.AfterPath = canonical(file.BeforePath), canonical(file.AfterPath)
 			d.bytes += len(file.Diff) + len(file.BeforePath) + len(file.AfterPath) + len(key)
 			if d.bytes > maxChangeReadBytes {
-				return errors.New("live diff exceeds 64 MiB; use hchanges with a narrower range")
+				return errors.New("live diff exceeds 64 MiB; use mchanges with a narrower range")
 			}
 			attempt.chunks = append(attempt.chunks, liveDiffChunk{
 				Key: key + "/" + strconv.Itoa(n), Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),

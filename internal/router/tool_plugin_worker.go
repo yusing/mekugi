@@ -181,6 +181,8 @@ func runAuthenticatedToolWorker(
 		switch contribution.Name {
 		case "mread":
 			execution = executeMRead(ctx, manifest, runtimeRoot, args)
+		case "mchanges":
+			execution = executeMChanges(ctx, manifest, runtimeRoot, args)
 		case "mrun":
 			execution, err = executeMRun(ctx, manifest, runtimeRoot, args, stdin)
 		default:

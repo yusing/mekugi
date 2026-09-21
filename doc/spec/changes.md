@@ -1,6 +1,6 @@
 # Tracked agent changes
 
-## REQ-CHANGES-001 — Shared change records and review reads
+## REQ-CHANGES-001 — Shared change records and executable review reads
 
 Shell `hpatch` results prepend one compact `change amber1` line. A complete edit
 reserves a session-and-workspace-scoped ID before evaluation. Each originating agent thread has
@@ -30,10 +30,10 @@ authenticated runtime publication endpoint; publication failure never changes ed
 execution or replaces its result. Each attempt records its executing thread, which
 may differ from the original change stream when a fork performs recovery.
 
-The shell-private command is:
+The authenticated executable command is:
 
 ```text
-hchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...]
+mchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...]
 ```
 
 Explicit change IDs or ranges are required. Flags may precede, follow, or be
@@ -42,13 +42,14 @@ is a literal path, including names that look like flags or change IDs. Omitting
 `--`, or supplying it with no paths, selects all files in the requested changes.
 There is no `read` subcommand or `--path` option.
 
-It has no standalone model-visible tool schema or installed executable. It runs inside
-the Bash/POSIX shell worker, including when it is the sole shell command. It performs
-no evaluation or workspace mutation. The authenticated worker manifest pins the router's
-durable store directory, rather than accepting a child environment override.
+It has no standalone model-visible tool schema or globally installed executable. The wrapped
+session places its private frontend on Codex's `PATH`, where stock command execution invokes it
+directly or from a shell. It performs no evaluation or workspace mutation. The authenticated
+worker manifest pins the router's durable store directory rather than accepting a child
+environment override.
 
-Default workspace identity is the canonical current shell directory. `--workspace DIR`
-selects another canonical directory, relative to shell cwd when needed. An explicit empty
+Default workspace identity is the canonical current process directory. `--workspace DIR`
+selects another canonical directory, relative to the current working directory when needed. An explicit empty
 directory selects the router's no-directory state. IDs resolve only within the selected
 workspace, never through conversation history or a Git diff. Isolated executor deployments
 must expose the router's replay directory at the same absolute path.
@@ -148,7 +149,7 @@ When output is omitted, the executor persists a small selection descriptor using
 `mread REF` next call. The descriptor holds IDs, filters, the position, and the full
 projection fingerprint, not another copy of the diff. Later pages rebuild and validate
 the same selection without repeating arguments. Changed projections fail explicitly;
-a new `hchanges` invocation selects the current state.
+a new `mchanges` invocation selects the current state.
 The read continuation is raw diff text and may end within a hunk or line; it is not
 verified source-row evidence. A budget too small for one character fails explicitly.
 Persistence is limited to incomplete reads and must complete before the page is exposed.
@@ -173,8 +174,8 @@ Acceptance:
    repeated scripts and full diagnostics.
 6. Token-bounded pages concatenate to the selected projection without byte loss or repetition.
    Corrupt read references, malformed ranges, unavailable records, and quota failures are explicit.
-7. Both shell interpreter modes execute the private reader; sole-command optimization never
-   dispatches it through PATH. Model-visible tool schemas remain unchanged.
+7. Direct stock execution and both shell interpreter modes use the authenticated session frontend.
+   Model-visible tool schemas remain unchanged.
 
 ## Live terminal view
 
@@ -184,7 +185,7 @@ not include Git changes or untracked external writes. Updates arrive
 as authenticated events from the owning router, never through filesystem watching or
 polling. The viewer does not write the store, evaluate edits, or start another router.
 Manual live viewing of existing sessions is unsupported; durable history remains
-available through `hchanges`. `mekugi live-diff --simulate` runs a deterministic,
+available through `mchanges`. `mekugi live-diff --simulate` runs a deterministic,
 isolated demonstration of the same worker, authenticated event transport, captures,
 and terminal UI without Codex or Herdr. `--speed` controls playback from 0.1 to 20;
 `--repeat` loops the scenario until exit. Re-running the command replays from fresh

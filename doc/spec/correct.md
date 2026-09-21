@@ -35,7 +35,7 @@ evaluation, formatting, and application.
 An invalid correction changes neither the workspace nor the retained baseline.
 A rebuilt script that fails evaluation returns a new recovery handle and fresh
 command handles. Earlier immutable baselines remain unchanged. Successful recovery
-keeps the original change ID, so `hchanges --history` can display the attempts.
+keeps the original change ID, so `mchanges --history` can display the attempts.
 Application failures are not evaluation rejections and do not offer automatic
 recovery.
 

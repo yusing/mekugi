@@ -30,11 +30,21 @@ func TestShellFileOperationsHistoryAndLiveDiff(t *testing.T) {
 		t.Fatal(err)
 	}
 	directory, thread := t.TempDir(), "shell-files"
+	ctx, release, err := store.beginSession(t.Context(), thread, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
 	_, events, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{directory: {thread: true}}})
 	sub := events.subscribe()
 	broker := newCommentaryBroker()
 	broker.editPublisher = func(ctx context.Context, workspace, thread, callID string) error {
-		return store.publishEditReceipt(ctx, workspace, thread, callID, nil)
+		session, release, err := store.beginSession(ctx, thread, "")
+		if err != nil {
+			return err
+		}
+		defer release()
+		return store.publishEditReceipt(session, workspace, thread, callID, nil)
 	}
 	server := httptest.NewServer(http.HandlerFunc(broker.serveHTTP))
 	defer server.Close()
@@ -43,9 +53,11 @@ func TestShellFileOperationsHistoryAndLiveDiff(t *testing.T) {
 	shell, _ := registry.contribution("shell")
 	run := func(command string) toolplugin.ExecutionOutput {
 		t.Helper()
-		result, err := executeShellTool(t.Context(), manifest, registry.RuntimeRoot, &shell,
+		environment := prependToolFrontendPath(append(os.Environ(),
+			"CODEX_THREAD_ID="+thread, routerTestWorkerEnvironment+"=1"), registry.frontendDirectory)
+		result, err := executeShellTool(ctx, manifest, registry.RuntimeRoot, &shell,
 			[]string{"bash", command}, nil, directory,
-			append(os.Environ(), "CODEX_THREAD_ID="+thread), sink, nil, nil)
+			environment, sink, nil, nil)
 		if err != nil || result.ExitCode != 0 {
 			t.Fatalf("%s: %+v, %v", command, result, err)
 		}
@@ -77,7 +89,7 @@ func TestShellFileOperationsHistoryAndLiveDiff(t *testing.T) {
 		if lastID == "" {
 			t.Fatalf("no change notice: %+v", result)
 		}
-		review := run("hchanges " + lastID + " --history")
+		review := run("mchanges " + lastID + " --history")
 		if !strings.Contains(review.Stdout, test.diff) || !strings.Contains(review.Stdout, "shell input:") {
 			t.Fatalf("%s: %s", test.command, review.Stdout)
 		}
@@ -91,11 +103,11 @@ func TestShellFileOperationsHistoryAndLiveDiff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	review, err := restarted.readChanges(t.Context(), changeReadOptions{workspace: directory, ids: ids})
+	review, err := restarted.readChanges(ctx, changeReadOptions{workspace: directory, ids: ids})
 	if err != nil || !strings.Contains(review, "-old") || strings.Contains(review, "external") {
 		t.Fatalf("durable review: %s, %v", review, err)
 	}
-	files, err := restarted.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{directory: {thread: true}}})
+	files, err := restarted.liveDiffSnapshotFiles(ctx, liveDiffScope{Workspaces: map[string]map[string]bool{directory: {thread: true}}})
 	if err != nil || len(files) == 0 {
 		t.Fatalf("live view missing captured operations: %+v, %v", files, err)
 	}
@@ -161,7 +173,7 @@ func TestShellCatCommittedActivityClassifiesCreateAndEdit(t *testing.T) {
 		}
 		summary, readErr := store.readChanges(t.Context(), changeReadOptions{workspace: workspace, ids: []string{id}, view: "summary"})
 		if readErr != nil || !strings.Contains(summary, "target.txt") {
-			t.Fatalf("hchanges summary=%q; want classified target: %v", summary, readErr)
+			t.Fatalf("mchanges summary=%q; want classified target: %v", summary, readErr)
 		}
 	}
 
@@ -239,7 +251,7 @@ func TestShellFilePartialFailuresAndOverwriteMove(t *testing.T) {
 	if len(ids) != 2 {
 		t.Fatalf("lost partial results: %s", stderr)
 	}
-	review, readErr, code := runShellWorkerTest(t, registry, "bash", nil, "hchanges "+strings.Join(ids, " "), nil, invocation)
+	review, readErr, code := runShellWorkerTest(t, registry, "bash", nil, "mchanges "+strings.Join(ids, " "), nil, invocation)
 	if code != 0 || !strings.Contains(review, "-old") || !strings.Contains(review, "move ") || !strings.Contains(review, "-deleted") {
 		t.Fatalf("partial review: %d %s %s", code, review, readErr)
 	}
@@ -326,7 +338,8 @@ func TestShellFileGroupedRedirectionOrder(t *testing.T) {
 			if strings.Contains(command, "real/file") {
 				oldName = "real/file"
 			}
-			invocation := newShellWorkerTestInvocation(directory, "CODEX_THREAD_ID=grouped-redirection")
+			invocation := newShellWorkerTestInvocation(directory, "CODEX_THREAD_ID=grouped-redirection",
+				routerTestWorkerUnscopedEnvironment+"=0")
 			_, stderr, code := runShellWorkerTest(t, registry, "bash", nil, command, nil, invocation)
 			if code != 0 {
 				t.Fatalf("%d %s", code, stderr)
@@ -344,7 +357,7 @@ func TestShellFileGroupedRedirectionOrder(t *testing.T) {
 			if len(ids) != want {
 				t.Fatalf("unordered descriptor effects: %s", stderr)
 			}
-			review, readErr, code := runShellWorkerTest(t, registry, "bash", nil, "hchanges "+strings.Join(ids, " "), nil, invocation)
+			review, readErr, code := runShellWorkerTest(t, registry, "bash", nil, "mchanges "+strings.Join(ids, " "), nil, invocation)
 			if code != 0 || strings.Count(review, `+++ "`+directory+"/"+oldName+`"`) != 1 || strings.Contains(review, "+discarded") {
 				t.Fatalf("descriptor history: %d %s %s", code, review, readErr)
 			}
@@ -573,7 +586,7 @@ func TestShellFileCrossDeviceMoves(t *testing.T) {
 				t.Fatalf("destination: %q %v %v %v", content, info, err, statErr)
 			}
 			id := strings.TrimSpace(strings.TrimPrefix(stderr, "change "))
-			review, readErr, code := runShellWorkerTest(t, registry, "bash", nil, "hchanges "+id, nil, invocation)
+			review, readErr, code := runShellWorkerTest(t, registry, "bash", nil, "mchanges "+id, nil, invocation)
 			if code != 0 || !strings.Contains(review, "move ") || name == "file" && !strings.Contains(review, "-old destination") {
 				t.Fatalf("cross-device evidence: %d %s %s", code, review, readErr)
 			}
@@ -607,7 +620,7 @@ func TestShellFileCrossDeviceMoves(t *testing.T) {
 		}
 		_, id, _ := strings.Cut(stderr, "change ")
 		review, readErr, code := runShellWorkerTest(t, registry, "bash", nil,
-			"hchanges "+strings.TrimSpace(id), nil, invocation)
+			"mchanges "+strings.TrimSpace(id), nil, invocation)
 		if code != 0 || !strings.Contains(review, "+copied") || strings.Contains(review, "move ") {
 			t.Fatalf("partial-copy evidence: %d %s %s", code, review, readErr)
 		}
@@ -726,7 +739,7 @@ func TestShellFileUnreadableHistory(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, option := range []string{"", " --history", " --summary"} {
-				stdout, stderr, code := runShellWorkerTest(t, registry, "bash", nil, "hchanges "+strings.Join(ids, " ")+option, nil, newShellWorkerTestInvocation(directory))
+				stdout, stderr, code := runShellWorkerTest(t, registry, "bash", nil, "mchanges "+strings.Join(ids, " ")+option, nil, newShellWorkerTestInvocation(directory))
 				marker := "incomplete history"
 				if option == " --summary" {
 					marker = "-\t-\t"

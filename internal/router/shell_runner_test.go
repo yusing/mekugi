@@ -41,7 +41,8 @@ func runShellWorkerTest(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := openMekugiReplayStore(manifest.ReplayDirectory); err != nil {
+	store, err := openMekugiReplayStore(manifest.ReplayDirectory)
+	if err != nil {
 		t.Fatal(err)
 	}
 	shell, ok := registry.contribution("shell")
@@ -64,10 +65,33 @@ func runShellWorkerTest(
 	}
 	environment = prependToolFrontendPath(environment, registry.frontendDirectory)
 	environment = append(environment, routerTestWorkerEnvironment+"=1")
-	environment = append(environment, routerTestWorkerUnscopedEnvironment+"=1")
+	workerScope := ""
+	for _, entry := range environment {
+		if value, ok := strings.CutPrefix(entry, routerTestWorkerUnscopedEnvironment+"="); ok {
+			workerScope = value
+		}
+	}
+	if workerScope == "" {
+		environment = append(environment, routerTestWorkerUnscopedEnvironment+"=1")
+	}
+	ctx := t.Context()
+	release := func() {}
+	if workerScope == "0" {
+		thread := ""
+		for _, entry := range environment {
+			if value, ok := strings.CutPrefix(entry, "CODEX_THREAD_ID="); ok {
+				thread = value
+			}
+		}
+		ctx, release, err = store.beginSession(ctx, thread, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer release()
 	arguments = append(arguments, script)
 	execution, err := executeShellTool(
-		t.Context(),
+		ctx,
 		manifest,
 		registry.RuntimeRoot,
 		&shell,

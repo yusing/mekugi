@@ -94,7 +94,7 @@ Run `hpatch PATH [SCRIPT]` through `functions.shell`; omit SCRIPT to read the ed
 For atomic multi-file edits, supply `hpatch PATH SCRIPT [PATH SCRIPT ...]`.
 Apply generated scripts with `hpatch notes.txt "$(python3 generator.py)"` or
 `hpatch notes.txt < prepared.hpatch`. Generators emit script bytes, not target-file writes. Edits
-retain change IDs, hchanges history, and completed live diffs; dynamic input has no speculative
+retain change IDs, mchanges history, and completed live diffs; dynamic input has no speculative
 preview.
 
 ### Files, targets, and values
@@ -168,9 +168,9 @@ baseline.
 ## Change handoffs
 
 Hpatch reports include `change amber1`; recovery keeps that ID. Review captured edits with
-`hchanges amber1..amber3`, rather than Git diff, and hand off same-agent inclusive ranges. Use `--summary` when only aggregated numstat is needed; skip it before an already-needed diff read.
+`mchanges amber1..amber3`, rather than Git diff, and hand off same-agent inclusive ranges. Use `--summary` when only aggregated numstat is needed; skip it before an already-needed diff read.
 Use `--history` for a recovery chain. Git remains appropriate for untracked, shell-generated, or
-unrelated changes; do not routinely pair it with hchanges for the same edits.
+unrelated changes; do not routinely pair it with mchanges for the same edits.
 
 Reads default to 4,000 tokens. An incomplete read supplies exact `next_call: mread REF`; continue it
 without repeating IDs or filters. Historical evaluated diffs are not current editable rows or
@@ -184,8 +184,8 @@ For omitted output, run the
 exact `next_call: mread REF` without repeating producer arguments. Reading never reruns a producer;
 commands retain their exit status. Outer host truncation can still hide a receipt.
 
-`mcat`, `mread`, `msymbol`, and `inspect_file` are standalone executables supplied on the wrapped
-session `PATH`; the remaining private source reader runs in Bash/POSIX. Readers accept
+`mcat`, `mread`, `mchanges`, `msymbol`, and `inspect_file` are standalone executables supplied on
+the wrapped session `PATH`; the remaining private source reader runs in Bash/POSIX. Readers accept
 `--max-tokens N` (1–15500, default 4000). Mcat emits raw context without line/hash
 prefixes. Copy verified identities only from hash-bearing tools and never reconstruct
 hashes. Incomplete results do not establish coverage.

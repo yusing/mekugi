@@ -13,13 +13,14 @@ func TestShellBuiltinType(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	mcatType := "mcat is " + registry.frontends["mcat"] + "\n"
+	mchangesType := "mchanges is " + registry.frontends["mchanges"] + "\n"
 	mreadType := "mread is " + registry.frontends["mread"] + "\n"
 	mrunType := "mrun is " + registry.frontends["mrun"] + "\n"
 	for _, tc := range []struct {
 		name, script, want string
 		status             int
 	}{
-		{"helpers", "type mcat hpatch mread hchanges mrun journal", mcatType + "[mekugi-builtin]\n" + mreadType + "[mekugi-builtin]\n" + mrunType + "[mekugi-builtin]\n", 0},
+		{"helpers", "type mcat hpatch mread mchanges mrun journal", mcatType + "[mekugi-builtin]\n" + mreadType + mchangesType + mrunType + "[mekugi-builtin]\n", 0},
 		{"mixed", "type mcat printf mread mrun", mcatType + "[mekugi-builtin]\n" + mreadType + mrunType, 0},
 		{"function", "example() { :; }; type mcat example", mcatType + "example is a function\n", 0},
 		{"missing", "type mcat mekugi_missing_command mread", mcatType + mreadType, 1},

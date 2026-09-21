@@ -88,7 +88,7 @@ include journal delivery counts. Result delivery does not mark items
 reported or flushed and does not include descendant journals. The parent receives the result
 text without a journal lookup or another child provider request.
 The child result appends its retained hchange ranges and one aggregated numstat using
-`hchanges --summary` count semantics. Journal and change selection share a locked snapshot.
+`mchanges --summary` count semantics. Journal and change selection share a locked snapshot.
 Selection uses durable executing-thread ownership, falling back to the originating stream
 for older records; it excludes other threads' attempts, even within a shared recovery ID.
 Ranges identify the retained changes, while counts cover only this child's evaluations.
