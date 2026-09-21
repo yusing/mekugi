@@ -9,20 +9,6 @@ import (
 
 const subagentBridgeNamespace = "mekugi_collaboration"
 
-const legacySubagentDispatchInstruction = "Note that collaboration tools cannot be called from inside `functions.exec`. Call `spawn_agent`, `send_message`, `followup_task`, `wait_agent`, `interrupt_agent`, and `list_agents` only as direct tool calls using the recipient shown in their tool definitions, such as `to=functions.collaboration.spawn_agent`, since they are intentionally absent from the `functions.exec` `tools.*` namespace. Available tools in `functions.exec` are explicitly described with a `tools` namespace in the developer message."
-
-func rewriteSubagentDispatchInstruction(input string, fence *instructionFence) string {
-	lines := strings.SplitAfter(input, "\n")
-	for index, raw := range lines {
-		line := strings.TrimRight(raw, "\r\n")
-		if fence.consume(line) || line != legacySubagentDispatchInstruction {
-			continue
-		}
-		lines[index] = strings.Replace(raw, "to=functions.collaboration.spawn_agent", "to="+subagentBridgeNamespace+".spawn_agent", 1)
-	}
-	return strings.Join(lines, "")
-}
-
 // subagentBridge projects the provider-reserved collaboration schema into an
 // ordinary plaintext namespace. Codex still executes every restored native call.
 // An explicitly empty encrypted_function_args is significant to Codex: without
@@ -169,25 +155,10 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled bool, op
 	if len(bridge.names) == 0 {
 		return nil, nil
 	}
-	for _, item := range input {
-		if jsonString(item, "type") != "message" || jsonString(item, "role") != "developer" {
-			continue
-		}
-		var fence instructionFence
-		content, changed, err := transformCTP2Content(item["content"], func(text string) string {
-			return rewriteSubagentDispatchInstruction(text, &fence)
-		}, isCTP2InputTextPart)
-		if err != nil {
-			return nil, fmt.Errorf("rewrite collaboration instructions: %w", err)
-		}
-		if changed {
-			item["content"] = content
-		}
-	}
 	if input != nil {
 		request.setInput(mustMarshalJSON(input))
 	}
-	instructions := rewriteSubagentDispatchInstruction(jsonString(request.fields, "instructions"), new(instructionFence))
+	instructions := jsonString(request.fields, "instructions")
 	instructions += "\nUse mekugi_collaboration for native agent operations. Its message arguments are plaintext; Codex owns agent execution, permissions and lifecycle." + openCodeNote
 	if grokEnabled {
 		instructions += " For grok:grok-4.6 start a fresh context (fork_turns=none); encrypted OpenAI history cannot be sent to Grok."

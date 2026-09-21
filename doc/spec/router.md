@@ -68,7 +68,7 @@ threads clone it once. These bindings survive a fresh router or standalone worke
 Durable catalogs bind file dependencies to stable thread IDs across workspaces, routing remaps,
 forks, and restarts. Visible inherited calls, commentary provenance, and read-reference dependencies
 gain another owner. A shared record survives removal of another owner. Snapshot validation and
-ownership publication cannot race cleanup. Journal receipts and change streams provide legacy
+ownership publication cannot race cleanup. Journal receipts and change streams provide
 ownership where available; recent records with no trustworthy owner remain protected, while
 unattributed records older than 14 days use last-write time for cleanup.
 

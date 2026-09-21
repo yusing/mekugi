@@ -183,14 +183,7 @@ function normalizeInputPath(input: string): string {
   if (input === "" || input.includes("\0")) {
     throw new InspectFailure("usage", "inspect_file expects exactly one usable path");
   }
-  const normalized = path.normalize(input);
-  if (
-    normalized === "@shell"
-    || normalized.startsWith(`@shell${path.sep}`)
-  ) {
-    throw new InspectFailure("usage", "@shell references are read through hcat");
-  }
-  return normalized;
+  return path.normalize(input);
 }
 
 function filesystemFailure(error: unknown): InspectFailure {

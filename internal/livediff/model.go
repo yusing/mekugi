@@ -167,8 +167,6 @@ func (v *View) RefreshVisible() {
 		var pending []Chunk
 		var failure error
 		unreviewed := false
-		legacy, mixed := false, false
-		stream := ""
 		chunks := slices.Clone(file.Chunks)
 		slices.SortStableFunc(chunks, func(a, b Chunk) int {
 			return cmp.Compare(a.CaptureOrder, b.CaptureOrder)
@@ -200,15 +198,9 @@ func (v *View) RefreshVisible() {
 				}
 				continue
 			}
-			legacy = legacy || chunk.CaptureOrder == 0
-			mixed = mixed || stream != "" && stream != chunk.Stream
-			stream = chunk.Stream
 			if failure == nil {
 				failure = composition.ApplyWithHighlight(chunk.Review, reviewed, chunk.Highlighted)
 			}
-		}
-		if legacy && mixed {
-			failure = errors.New("older captures have no shared order")
 		}
 		if failure != nil {
 			if unreviewed {

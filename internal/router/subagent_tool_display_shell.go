@@ -439,10 +439,6 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 		if len(argv) != 2 || argv[1] == "" || strings.ContainsRune(argv[1], '\x00') {
 			return "", false
 		}
-		path := filepath.Clean(argv[1])
-		if path == "@shell" || strings.HasPrefix(path, "@shell"+string(filepath.Separator)) {
-			return "", false
-		}
 		add("Inspect", argv[1])
 	case "ls":
 		detail := "."

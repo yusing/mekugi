@@ -685,97 +685,52 @@ func TestStorageStaleTerminalPreservesNewerHandoff(t *testing.T) {
 	p.releaseIdleStorageSession(newer.ctx, "thread")
 }
 
-func TestStorageRetentionLegacyHandlesAreCleanupOnly(t *testing.T) {
-	for _, owned := range []bool{false, true} {
-		t.Run(map[bool]string{false: "unowned", true: "owned"}[owned], func(t *testing.T) {
-			store, err := openMekugiReplayStore(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			const workspace = "/legacy-workspace"
-			const oldID = "r_AAAAAAAAAAAAAAAAAAAAAA"
-			outputName := "output-" + oldID + ".json"
-			indexName := strings.Replace(changeIndexName(workspace, ""), changeIndexPrefix, "changes-", 1)
-			records := map[string][]byte{
-				outputName: mustMarshalJSON(shellOutputRecord{Version: 1, ID: oldID, Stdout: "old output"}),
-				indexName: mustMarshalJSON(changeIndex{
-					Version: 1, Workspace: workspace,
-					Streams: []changeStream{{Thread: "old", Next: 1}},
-					Changes: map[string]trackedChange{"hp_a1": {Correlation: "old-call"}},
-				}),
-			}
-			for name, data := range records {
-				if err := os.WriteFile(filepath.Join(store.directory, name), data, 0600); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if owned {
-				catalog := retainedSession{Version: 1, Thread: "old", LastUsed: time.Now(),
-					Files: map[string]bool{outputName: true, indexName: true}}
-				if err := os.WriteFile(filepath.Join(store.directory, storageSessionName("old")), mustMarshalJSON(catalog), 0600); err != nil {
-					t.Fatal(err)
-				}
-				// Resuming the original owner must not fail on old output names.
-				_, release := retentionTestSession(t, store, "old", 0)
-				release()
-			}
-			current, _ := retentionTestSession(t, store, "current", 0)
-			if err := store.retainInput(current, workspace, nil, nil, nil); err != nil {
-				t.Fatalf("new request blocked by old index: %v", err)
-			}
-			id, err := store.reserveChange(current, workspace, "current", "new-call")
-			if err != nil || id != "amber1" {
-				t.Fatalf("new index allocation = %q, %v", id, err)
-			}
-			if _, err := store.putShellOutput(current, "new output", "", 0); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := store.readShellOutput(current, oldID); err == nil {
-				t.Fatal("legacy read reference became usable")
-			}
-			if err := store.cleanupSessions(current); err != nil {
-				t.Fatal(err)
-			}
-			snapshot, err := store.storageSnapshot()
-			if err != nil {
-				t.Fatal(err)
-			}
-			for name, data := range records {
-				if snapshot.files[name] != int64(len(data)) || snapshot.owners[name] != 1 {
-					t.Fatalf("old storage lost accounting or ownership: %s", name)
-				}
-				got, err := os.ReadFile(filepath.Join(store.directory, name))
-				if err != nil || string(got) != string(data) {
-					t.Fatalf("old storage was modified before expiration: %s, %v", name, err)
-				}
-			}
-			if owned {
-				retentionTestAge(t, store, "old", 15*24*time.Hour)
-			} else {
-				expired := time.Now().Add(-15 * 24 * time.Hour)
-				for name := range records {
-					if err := os.Chtimes(filepath.Join(store.directory, name), expired, expired); err != nil {
-						t.Fatal(err)
-					}
-				}
-			}
-			sweepTime := time.Now().Add(-2 * time.Hour)
-			if err := os.Chtimes(filepath.Join(store.directory, "retention-sweep"), sweepTime, sweepTime); err != nil {
-				t.Fatal(err)
-			}
-			if err := store.cleanupSessions(current); err != nil {
-				t.Fatalf("old storage blocked cleanup: %v", err)
-			}
-			for name := range records {
-				if _, err := os.Stat(filepath.Join(store.directory, name)); !os.IsNotExist(err) {
-					t.Fatalf("expired legacy record survived: %s, %v", name, err)
-				}
-			}
-			index, err := store.scoped(current).readChangeIndex(workspace)
-			if err != nil || index.Changes[id].Correlation != "new-call" {
-				t.Fatalf("legacy cleanup damaged current index: %+v, %v", index, err)
-			}
-		})
+func TestStorageRetentionRejectsObsoleteHandleNames(t *testing.T) {
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := "/current-workspace"
+	oldOutput := "output-r_AAAAAAAAAAAAAAAAAAAAAA.json"
+	oldIndex := strings.Replace(changeIndexName(workspace, ""), changeIndexPrefix, "changes-", 1)
+	for name, data := range map[string][]byte{
+		oldOutput: mustMarshalJSON(shellOutputRecord{Version: 1, ID: "r_AAAAAAAAAAAAAAAAAAAAAA", Stdout: "old output"}),
+		oldIndex: mustMarshalJSON(changeIndex{
+			Version: 1, Workspace: workspace,
+			Streams: []changeStream{{Thread: "old", Next: 1}},
+			Changes: map[string]trackedChange{"hp_a1": {Correlation: "old-call"}},
+		}),
+	} {
+		if err := os.WriteFile(filepath.Join(store.directory, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	current, _ := retentionTestSession(t, store, "current", 0)
+	if err := store.retainInput(current, workspace, nil, nil, nil); err != nil {
+		t.Fatalf("new request blocked by leftover names: %v", err)
+	}
+	id, err := store.reserveChange(current, workspace, "current", "new-call")
+	if err != nil || id != "amber1" {
+		t.Fatalf("new index allocation = %q, %v", id, err)
+	}
+	if _, err := store.putShellOutput(current, "new output", "", 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.readShellOutput(current, "r_AAAAAAAAAAAAAAAAAAAAAA"); err == nil {
+		t.Fatal("obsolete read reference became usable")
+	}
+	snapshot, err := store.storageSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{oldOutput, oldIndex} {
+		if snapshot.files[name] != 0 || snapshot.owners[name] != 0 {
+			t.Fatalf("obsolete name entered retained accounting: %s", name)
+		}
+	}
+	index, err := store.scoped(current).readChangeIndex(workspace)
+	if err != nil || index.Changes[id].Correlation != "new-call" {
+		t.Fatalf("leftover names damaged current index: %+v, %v", index, err)
 	}
 }
 

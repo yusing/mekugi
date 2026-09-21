@@ -340,7 +340,7 @@ func ReadAXReadJournal(ctx context.Context, path string) (AXReadJournal, error) 
 			class := event.FailureClass
 			if class == "" {
 				class = "unknown"
-			} // Legacy v1 evidence is not reclassified.
+			}
 			reads.FailuresByClass[class]++
 			if len(reads.Failures) < 256 {
 				reads.Failures = append(reads.Failures, AXReadFailure{AXReadContext: event.AXReadContext,
@@ -366,12 +366,9 @@ func ReadAXReadJournal(ctx context.Context, path string) (AXReadJournal, error) 
 }
 
 func validAXReadEvent(event axReadEvent) bool {
-	if (event.Schema != "mekugi.ax.read.v1" && event.Schema != "mekugi.ax.read.v2") || event.ID == "" ||
+	if event.Schema != "mekugi.ax.read.v2" || event.ID == "" ||
 		!validAXReader(event.Tool) || event.At.IsZero() || !validAXReadContext(event.AXReadContext) ||
 		len(event.ThreadID) > 128 || strings.ContainsAny(event.ThreadID, "\r\n\x00") {
-		return false
-	}
-	if event.Schema == "mekugi.ax.read.v1" && (event.FailureClass != "" || event.ExitCode != nil || event.AXReadContext != (AXReadContext{})) {
 		return false
 	}
 	if event.Phase == "start" {
@@ -382,9 +379,6 @@ func validAXReadEvent(event axReadEvent) bool {
 	}
 	if event.ExitCode != nil && (*event.ExitCode < 0 || *event.ExitCode > 255 || *event.Succeeded && *event.ExitCode != 0) {
 		return false
-	}
-	if event.Schema == "mekugi.ax.read.v1" {
-		return true
 	}
 	return *event.Succeeded && event.FailureClass == "" || !*event.Succeeded && validAXFailureClass(event.FailureClass)
 }

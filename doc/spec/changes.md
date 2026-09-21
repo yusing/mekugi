@@ -14,8 +14,7 @@ forks and side threads clone the source session's retained state once, then allo
 independently; the source thread's stream continues under the clone's thread identity.
 Routing keys, model switches, request truncation, and compaction do not change the namespace.
 
-Session-scoped change indexes use a separate storage namespace. Earlier indexes remain
-owned storage for accounting and reclamation only; they are not migrated or read as current changes.
+Session-scoped change indexes use a separate storage namespace.
 Only the word-based ID format is accepted; earlier `hp_` IDs are unsupported.
 IDs and stream allocation persist across router restarts. The original hpatch, all
 recovery inputs and diagnostics, and any successful evaluated review diff are available
@@ -76,8 +75,8 @@ Pending or partially retired history fails explicitly rather than returning part
 `--history` additionally returns original inputs, recovery amendments, rebuilt scripts
 when different, and full diagnostics. Each path after `--` matches either recorded before or after
 path, accepting equivalent lexical absolute and workspace-relative spellings for workspace
-files. It does not consult current filesystem contents or resolve file symlinks. Historical private
-shell-script paths match exactly. Filtering affects diff/file entries, not attempt history.
+files. It does not consult current filesystem contents or resolve file symlinks. Filtering affects
+diff/file entries, not attempt history.
 Multiple paths select the union of matching files in recorded order.
 A file matching multiple filters is emitted once per evaluation, not once per filter.
 A selection with no matching files explicitly lists the requested filters.
@@ -120,11 +119,7 @@ Temporary-copy cleanup failures identify the retained artifact path.
 Absolute executable paths, nested external shells, external formatters, and arbitrary program-internal
 writes are not intercepted. Existing-content editing remains an instruction-level
 hpatch requirement, not a runtime write prohibition. Unrelated workspace changes are
-not tracked.
-
-Historical edits to retained `@shell/` scripts are labeled separately from workspace
-files; their recorded paths are relative to that private script store. Reads do not
-combine several invocations into a synthetic net diff.
+not tracked. Reads do not combine several invocations into a synthetic net diff.
 
 An attempt is `rejected`, `no-op`, `prepared (application unconfirmed)`, or `applied`.
 A translated patch alone is never proof of application. Exact successful-report replay
@@ -185,7 +180,7 @@ Acceptance:
 
 The live pane is a read-only view of this session's captured hpatch and supported
 shell file operations, plus transient streaming previews. It does
-not include Git changes, untracked external writes, or retained shell scripts. Updates arrive
+not include Git changes or untracked external writes. Updates arrive
 as authenticated events from the owning router, never through filesystem watching or
 polling. The viewer does not write the store, evaluate edits, or start another router.
 Manual live viewing of existing sessions is unsupported; durable history remains
@@ -350,9 +345,7 @@ removed evidence fails explicitly, never as an empty successful view.
 Applied captures form one original-to-latest result per file, following captured moves
 across threads and workspaces. Composition uses durable capture order, unchanged by
 restart, replay, metadata updates, or receipt arrival. Order gaps are allowed; this
-display order does not control host execution. Legacy records retain stream-local
-order, but mixed-stream legacy history reports unavailable shared order rather than
-guessing a combined result.
+display order does not control host execution.
 
 Composition uses captured source only. Missing context, inconsistent source, or capacity
 failure is reported instead of inventing context or substituting individual applied

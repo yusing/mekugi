@@ -130,9 +130,7 @@ Shell output, searches, symbol references, and change reviews use one read conti
 caller-composed hash/offset. References use short lowercase word handles, such as
 `maple`, with a decimal suffix when needed. The same visible format is used for change,
 recovery, continuation, and journal handles. Handles are feature-scoped locators, not
-integrity hashes or secrets; full snapshot fingerprints remain internal. Earlier `r_`
-references are unsupported. Their stored files remain accounted for and protected by
-existing session ownership until normal retention cleanup reclaims them.
+integrity hashes or secrets; full snapshot fingerprints remain internal.
 
 Read and recovery handles allocate within one durable session namespace shared by
 the root thread and its subagents. Unrelated sessions restart the sequence. Forks

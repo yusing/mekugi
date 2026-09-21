@@ -4,7 +4,7 @@
 
 The shell worker observes actual invocations of private `hcat`, `hgrep`, `hsymbol`,
 and `inspect_file` at its dispatch boundary. An absolute `MEKUGI_AX_OUTPUT` opts into
-a local `mekugi.ax.read.v2` JSONL journal (v1 remains readable). The worker inherits this environment value;
+a local `mekugi.ax.read.v2` JSONL journal. The worker inherits this environment value;
 no router process, transport request, or static source scan supplies an executed-read count.
 
 `--debug` implies AX instrumentation without an additional flag or environment setting.
@@ -20,7 +20,7 @@ and start/finish phase. Finish includes elapsed monotonic nanoseconds, success,
 a fixed allowlisted `failure_class` on failure, and an optional observed process exit
 code. The host validates private reader classification metadata; dispatch separately
 classifies retained-file, execution, output-write, cancellation, and deadline failures.
-Unclassified failures use `unknown`; v1 failures are never reclassified from prose.
+Unclassified failures use `unknown`.
 
 With AX enabled, generated shell workers carry the opaque logical call identity in private
 framing inside their existing quoted source argument. The worker removes it before execution

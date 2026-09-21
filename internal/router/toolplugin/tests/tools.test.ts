@@ -1995,6 +1995,16 @@ describe("inspect_file command contract", () => {
       expect(JSON.parse(result.stdout!).error.code).toBe("usage");
     }
   });
+
+  test("inspects workspace @shell paths like other files", async () => {
+    const directory = await temporaryDirectory("inspect-shell-path-");
+    process.chdir(directory);
+    await mkdir("@shell");
+    await writeFile(path.join("@shell", "sample.go"), "package p\nfunc Visible() {}\n");
+    const result = await inspect("@shell/sample.go");
+    expect(result.exitCode).toBe(0);
+    expect(result.result.data.outline.map((entry: Record<string, unknown>) => entry.name)).toEqual(["Visible"]);
+  });
 });
 
 describe("inspect_file bounds and paths", () => {

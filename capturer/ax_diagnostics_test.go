@@ -35,18 +35,14 @@ func TestAXFailureEvidenceAndExplicitExclusions(t *testing.T) {
 	}
 }
 
-func TestAXLegacyFailuresRemainUnknown(t *testing.T) {
+func TestAXRejectsUnsupportedSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
 	file, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	event := axReadEvent{Schema: "mekugi.ax.read.v1", ID: "legacy", ThreadID: "thread", Tool: "hcat", Phase: "start", At: time.Now()}
+	event := axReadEvent{Schema: "mekugi.ax.read.v1", ID: "old", ThreadID: "thread", Tool: "hcat", Phase: "start", At: time.Now()}
 	encoder := json.NewEncoder(file)
-	if err := encoder.Encode(event); err != nil {
-		t.Fatal(err)
-	}
-	event.Phase, event.DurationNS, event.Succeeded = "finish", new(int64(1)), new(false)
 	if err := encoder.Encode(event); err != nil {
 		t.Fatal(err)
 	}
@@ -54,8 +50,8 @@ func TestAXLegacyFailuresRemainUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 	reads, err := ReadAXReads(t.Context(), path, "thread")
-	if err != nil || reads.FailuresByClass["unknown"] != 1 || reads.Failures[0].ExitCode != nil {
-		t.Fatalf("invented legacy reason: %+v %v", reads, err)
+	if err == nil || reads.State != "unavailable" {
+		t.Fatalf("accepted unsupported schema: %+v %v", reads, err)
 	}
 }
 

@@ -38,6 +38,7 @@ func TestSubagentToolDisplay(t *testing.T) {
 		{"shell", "hgrep -n -F -e 'some text' a.go", "Search `-n -F -e 'some text' a.go`"},
 		{"shell", "hcat --max-tokens 15500 --preview-bytes 65536 a.go 0:1", "Read `a.go 0:1`"},
 		{"shell", "inspect_file a.go", "Inspect `a.go`"},
+		{"shell", "inspect_file @shell/script", "Inspect `@shell/script`"},
 		{"shell", "ls src", "List `src`"},
 		{"shell", `{"command":[]}`, "Run"},
 		{"shell", `{"command":["sh","-c","echo done"]}`, "Run\n```sh\necho done\n```"},
@@ -128,7 +129,7 @@ func TestSubagentToolDisplayInvalidReaderOptions(t *testing.T) {
 		"inspect_file --source Main --source-bytes 01 a.go",
 		"inspect_file --source Main --source-bytes 1 --source-bytes 2 a.go",
 		"inspect_file a.go --source Main",
-		"inspect_file ''", "inspect_file @shell/script", "inspect_file dir/../@shell/script",
+		"inspect_file ''",
 	} {
 		t.Run(input, func(t *testing.T) {
 			item := map[string]json.RawMessage{"name": mustMarshalJSON("shell"), "input": mustMarshalJSON(input)}

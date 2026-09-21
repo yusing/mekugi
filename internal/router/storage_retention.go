@@ -161,20 +161,16 @@ func (s *mekugiReplayStore) readRetainedSession(name string) (retainedSession, e
 	return session, nil
 }
 
-// Legacy output names are recognized only for ownership, accounting, and cleanup.
-// They are not accepted by hread or adopted from request-visible references.
-var legacyRetainedOutputID = regexp.MustCompile(`^r_[A-Za-z0-9_-]{21}[AQgw]$`)
-
 func retainedDataName(name string) bool {
 	if filepath.Base(name) != name || !strings.HasSuffix(name, ".json") {
 		return false
 	}
 	if id, ok := strings.CutPrefix(strings.TrimSuffix(name, ".json"), "output-"); ok {
-		if validShellOutputID(id) || legacyRetainedOutputID.MatchString(id) {
+		if validShellOutputID(id) {
 			return true
 		}
 	}
-	for _, prefix := range []string{"call-", "commentary-", "journal-", changeIndexPrefix, "changes-v2-", "changes-", "cursor-", "output-"} {
+	for _, prefix := range []string{"call-", "commentary-", "journal-", changeIndexPrefix, "cursor-", "output-"} {
 		if hash, ok := strings.CutPrefix(strings.TrimSuffix(name, ".json"), prefix); ok {
 			if len(hash) != 64 {
 				return false
