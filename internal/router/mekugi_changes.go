@@ -19,6 +19,7 @@ import (
 type changeIndex struct {
 	Version   int
 	Workspace string
+	Namespace string `json:",omitzero"`
 	Streams   []changeStream
 	Changes   map[string]trackedChange
 }
@@ -55,16 +56,17 @@ func changeNotice(id string) string {
 	return "change " + id + "\n"
 }
 
-// The word-based IDs use a separate namespace; older indexes remain cleanup-only.
-const changeIndexPrefix = "changes-v2-"
+const changeIndexPrefix = "changes-v3-"
 
-func changeIndexName(workspace string) string {
-	return fmt.Sprintf("%s%x.json", changeIndexPrefix, sha256.Sum256([]byte(workspace)))
+func changeIndexName(workspace, namespace string) string {
+	key := namespace + "\x00" + workspace
+	return fmt.Sprintf("%s%x.json", changeIndexPrefix, sha256.Sum256([]byte(key)))
 }
 
 func (s *mekugiReplayStore) readChangeIndex(workspace string) (changeIndex, error) {
-	index := changeIndex{Version: 1, Workspace: workspace, Changes: make(map[string]trackedChange)}
-	path := filepath.Join(s.directory, changeIndexName(workspace))
+	namespace := s.handleNamespace()
+	index := changeIndex{Version: 1, Workspace: workspace, Namespace: namespace, Changes: make(map[string]trackedChange)}
+	path := filepath.Join(s.directory, changeIndexName(workspace, namespace))
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return index, nil
@@ -85,7 +87,7 @@ func (s *mekugiReplayStore) readChangeIndex(workspace string) (changeIndex, erro
 	if err := json.Unmarshal(data, &index); err != nil {
 		return index, fmt.Errorf("decode change index: %w", err)
 	}
-	if index.Version != 1 || index.Workspace != workspace || index.Changes == nil {
+	if index.Version != 1 || index.Workspace != workspace || index.Namespace != namespace || index.Changes == nil {
 		return index, errors.New("change index identity/version mismatch")
 	}
 	if err := validateChangeIndex(index); err != nil {
@@ -132,7 +134,7 @@ func validateChangeIndex(index changeIndex) error {
 
 // writeChangeIndex runs under store.lock, including retention and publication.
 func (s *mekugiReplayStore) writeChangeIndex(index changeIndex) (err error) {
-	if err := s.retainFiles(changeIndexName(index.Workspace)); err != nil {
+	if err := s.retainFiles(changeIndexName(index.Workspace, index.Namespace)); err != nil {
 		return err
 	}
 	if _, err := s.reconcileRetiredChanges(&index); err != nil {
@@ -143,10 +145,10 @@ func (s *mekugiReplayStore) writeChangeIndex(index changeIndex) (err error) {
 		return err
 	}
 	pending := pendingChangeIndexWrite{index: index, data: data}
-	if err := s.maintainStorage(changeIndexName(index.Workspace), int64(len(data)), false, &pending); err != nil {
+	if err := s.maintainStorage(changeIndexName(index.Workspace, index.Namespace), int64(len(data)), false, &pending); err != nil {
 		return err
 	}
-	return storageIOError(s.writeFile(changeIndexName(index.Workspace), "changes-pending-", pending.data))
+	return storageIOError(s.writeFile(changeIndexName(index.Workspace, index.Namespace), "changes-pending-", pending.data))
 }
 
 // reserveChange runs before evaluation, including private direct application.

@@ -176,7 +176,7 @@ func TestShellOutputReadRejectsInvalidState(t *testing.T) {
 	if _, err := store.readShellOutput(t.Context(), "r_"+strings.Repeat("A", 22)); err == nil {
 		t.Fatal("missing record accepted")
 	}
-	name := filepath.Join(store.directory, "output-"+id+".json")
+	name := filepath.Join(store.directory, scopedOutputName("", id))
 	if err := os.WriteFile(name, []byte(`{"version":2,"id":"`+id+`"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -204,12 +204,12 @@ func TestShellOutputStoreQuotaAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Stat(filepath.Join(store.directory, "output-"+id+".json"))
+	info, err := os.Stat(filepath.Join(store.directory, scopedOutputName("", id)))
 	if err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("record permissions: %v, %v", info, err)
 	}
 	// A sparse fixture exercises the separate quota without large allocations.
-	file, err := os.Create(filepath.Join(store.directory, "output-maple.json"))
+	file, err := os.Create(filepath.Join(store.directory, scopedOutputName("", "maple")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +298,7 @@ func TestShellOutputReadRejectsMissingAndNullFields(t *testing.T) {
 		`,"stdout":"","stderr":"","exit_code":null`,
 	} {
 		data := `{"version":1,"id":"` + id + `"` + fields + `}`
-		if err := os.WriteFile(filepath.Join(store.directory, "output-"+id+".json"), []byte(data), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(store.directory, scopedOutputName("", id)), []byte(data), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := store.readShellOutput(t.Context(), id); err == nil || !strings.Contains(err.Error(), "missing required fields") {
@@ -325,7 +325,7 @@ func TestReadCursorRejectsAlteredPosition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	name := filepath.Join(store.directory, "output-"+ref+".json")
+	name := filepath.Join(store.directory, scopedOutputName("", ref))
 	data, err := os.ReadFile(name)
 	if err != nil {
 		t.Fatal(err)

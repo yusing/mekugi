@@ -24,8 +24,12 @@ type storageTurnKey struct{}
 type storageSessionKey struct{}
 
 type storageSessionIdentity struct {
-	Thread  string
-	Routing string
+	Thread     string
+	Routing    string
+	Namespace  string
+	Parent     string
+	Fork       string
+	Initialize bool
 }
 
 type retainedSession struct {
@@ -57,7 +61,15 @@ func (s *mekugiReplayStore) beginSession(ctx context.Context, thread, routing st
 	if s == nil || thread == "" {
 		return ctx, func() {}, nil
 	}
-	ctx = context.WithValue(ctx, storageSessionKey{}, storageSessionIdentity{Thread: thread, Routing: routing})
+	identity := storageSessionIdentity{Thread: thread, Routing: routing, Namespace: thread}
+	if err := s.locked(ctx, func() error {
+		var err error
+		identity.Namespace, err = s.namespaceForThread(thread)
+		return err
+	}); err != nil {
+		return ctx, nil, err
+	}
+	ctx = context.WithValue(ctx, storageSessionKey{}, identity)
 	s = s.scoped(ctx)
 	path := filepath.Join(s.directory, strings.TrimSuffix(storageSessionName(thread), ".json")+".lock")
 	if info, err := os.Lstat(path); err == nil && !info.Mode().IsRegular() {
@@ -158,9 +170,11 @@ func retainedDataName(name string) bool {
 		return false
 	}
 	if id, ok := strings.CutPrefix(strings.TrimSuffix(name, ".json"), "output-"); ok {
-		return validShellOutputID(id) || legacyRetainedOutputID.MatchString(id)
+		if validShellOutputID(id) || legacyRetainedOutputID.MatchString(id) {
+			return true
+		}
 	}
-	for _, prefix := range []string{"call-", "commentary-", "journal-", changeIndexPrefix, "changes-", "cursor-"} {
+	for _, prefix := range []string{"call-", "commentary-", "journal-", changeIndexPrefix, "changes-v2-", "changes-", "cursor-", "output-"} {
 		if hash, ok := strings.CutPrefix(strings.TrimSuffix(name, ".json"), prefix); ok {
 			if len(hash) != 64 {
 				return false
@@ -259,18 +273,8 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 	}
 	return s.locked(ctx, func() error {
 		var names []string
-		index, err := s.readChangeIndex(workspace)
-		if err != nil {
-			return err
-		}
-		for call, history := range histories {
+		for call := range histories {
 			names = append(names, replayRecordName(workspace, call, false))
-			if change, exists := index.Changes[history.ChangeID]; exists {
-				names = append(names, changeIndexName(workspace))
-				for _, attempt := range change.Calls {
-					names = append(names, replayRecordName(workspace, attempt.ID, false))
-				}
-			}
 		}
 		var items []map[string]json.RawMessage
 		_ = json.Unmarshal(raw, &items)
@@ -282,12 +286,31 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 				}
 			}
 		}
+		if err := s.initializeHandleScope(names, releaseSnapshot); err != nil {
+			return err
+		}
+		index, err := s.readChangeIndex(workspace)
+		if err != nil {
+			return err
+		}
+		for _, history := range histories {
+			if change, exists := index.Changes[history.ChangeID]; exists {
+				names = append(names, changeIndexName(workspace, index.Namespace))
+				for _, attempt := range change.Calls {
+					names = append(names, replayRecordName(workspace, attempt.ID, false))
+				}
+			}
+		}
 		for _, match := range retainedReadReference.FindAllStringSubmatch(string(raw), -1) {
 			id := match[1]
 			if !validShellOutputID(id) {
 				continue
 			}
-			data, err := readManagedOutputFile(filepath.Join(s.directory, "output-"+id+".json"))
+			name, err := s.outputName(id)
+			if err != nil {
+				continue // A textual reference alone cannot import another session.
+			}
+			data, err := readManagedOutputFile(filepath.Join(s.directory, name))
 			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
@@ -318,7 +341,7 @@ func (s *mekugiReplayStore) changeDependencyNames(workspace string, ids []string
 	if err != nil {
 		return nil, err
 	}
-	names := []string{changeIndexName(workspace)}
+	names := []string{changeIndexName(workspace, index.Namespace)}
 	for _, id := range ids {
 		change, exists := index.Changes[id]
 		if !exists {
@@ -339,10 +362,14 @@ func (s *mekugiReplayStore) readDependencyNames(record shellOutputRecord) ([]str
 			return nil, errors.New("cyclic read recovery reference")
 		}
 		seen[record.ID] = true
-		if record.CursorDigest != "" {
-			names = append(names, "cursor-"+record.CursorDigest+".json")
+		owner, err := s.handleOwner(record.ID)
+		if err != nil {
+			return nil, err
 		}
-		names = append(names, "output-"+record.ID+".json")
+		if record.CursorDigest != "" {
+			names = append(names, scopedCursorName(owner, record.CursorDigest))
+		}
+		names = append(names, scopedOutputName(owner, record.ID))
 		if record.Changes != nil {
 			dependencies, err := s.changeDependencyNames(record.Changes.Workspace, record.Changes.IDs)
 			if err != nil {
@@ -354,7 +381,11 @@ func (s *mekugiReplayStore) readDependencyNames(record shellOutputRecord) ([]str
 			return names, nil
 		}
 		id := record.Source
-		data, err := readManagedOutputFile(filepath.Join(s.directory, "output-"+id+".json"))
+		name, err := s.outputName(id)
+		if err != nil {
+			return nil, err
+		}
+		data, err := readManagedOutputFile(filepath.Join(s.directory, name))
 		if err != nil {
 			return nil, fmt.Errorf("read recovery source is unavailable: %w", err)
 		}
@@ -386,7 +417,7 @@ func (s *mekugiReplayStore) retainJournalDependencies(journal threadJournal) err
 		if stream.Thread != journal.Thread {
 			continue
 		}
-		names = append(names, changeIndexName(journal.Workspace))
+		names = append(names, changeIndexName(journal.Workspace, index.Namespace))
 		for id, change := range index.Changes {
 			owner, _, _ := parseChangeID(id)
 			if owner == changeStreamName(position) {
@@ -537,7 +568,7 @@ func (s *mekugiReplayStore) pruneStoredChanges(deleted map[string]bool, thread s
 			return err
 		}
 		var index changeIndex
-		if json.Unmarshal(data, &index) != nil || changeIndexName(index.Workspace) != entry.Name() || validateChangeIndex(index) != nil {
+		if json.Unmarshal(data, &index) != nil || changeIndexName(index.Workspace, index.Namespace) != entry.Name() || validateChangeIndex(index) != nil {
 			return errors.New("invalid change index during session cleanup")
 		}
 		changed := false
@@ -582,6 +613,9 @@ func (s *mekugiReplayStore) pruneStoredChanges(deleted map[string]bool, thread s
 }
 
 func (s *mekugiReplayStore) reconcileRetiredChanges(index *changeIndex) (bool, error) {
+	copy := *s
+	copy.session.Namespace = index.Namespace
+	s = &copy
 	current, err := s.readChangeIndex(index.Workspace)
 	if err != nil {
 		return false, err

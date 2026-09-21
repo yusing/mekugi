@@ -60,6 +60,11 @@ space before exposing retained facts; age sweeps run at most hourly during reque
 The policy never deletes Codex transcripts, workspace files, exported metrics, or explicit debug
 bundles. It never infers expiry from request truncation or compaction.
 
+Small per-thread namespace bindings and allocation high-water marks outlive reclaimed
+payloads, like storage lease metadata. They prevent resumed sessions from reusing
+expired handles. Subagents share their root's namespace; ordinary forks and side
+threads clone it once. These bindings survive a fresh router or standalone worker.
+
 Durable catalogs bind file dependencies to stable thread IDs across workspaces, routing remaps,
 forks, and restarts. Visible inherited calls, commentary provenance, and read-reference dependencies
 gain another owner. A shared record survives removal of another owner. Snapshot validation and

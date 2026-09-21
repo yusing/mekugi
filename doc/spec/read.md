@@ -134,6 +134,14 @@ integrity hashes or secrets; full snapshot fingerprints remain internal. Earlier
 references are unsupported. Their stored files remain accounted for and protected by
 existing session ownership until normal retention cleanup reclaims them.
 
+Read and recovery handles allocate within one durable session namespace shared by
+the root thread and its subagents. Unrelated sessions restart the sequence. Forks
+and side threads snapshot the source's handles and allocation position once, then
+allocate independently without changing inherited references. Routing keys, model
+switches, request truncation, and compaction do not change the namespace. Equal
+handles in different sessions cannot address each other's records. Earlier store-wide
+handles are not imported into this namespace.
+
 An initial reference owns only omitted output or a descriptor of existing durable evidence,
 never an executable script. Change-review descriptors retain their selection and full
 fingerprint; they do not duplicate diffs and reject changed projections. A subsequent

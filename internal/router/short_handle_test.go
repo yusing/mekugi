@@ -78,7 +78,7 @@ func TestShortHandleAllocationConcurrentRestart(t *testing.T) {
 	if err != nil || len(ids) != 1 || ids[0] != shortHandle(64) {
 		t.Fatalf("restart allocation: %v, %v", ids, err)
 	}
-	if err := os.WriteFile(filepath.Join(directory, "handle-counter"), []byte("corrupt"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, handleScopeName("")), []byte("corrupt"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.allocateHandles(t.Context(), 1); err == nil {

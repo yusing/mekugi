@@ -27,6 +27,7 @@ type liveDiffConnection struct {
 
 type liveDiffChange struct {
 	Workspace string
+	Namespace string `json:",omitzero"`
 	Thread    string
 	Stream    int
 	ID        string
@@ -299,7 +300,7 @@ func (s *mekugiReplayStore) notifyLiveDiff(index changeIndex, updates map[string
 				}
 				for _, thread := range slices.Sorted(maps.Keys(byThread)) {
 					changes = append(changes, liveDiffChange{
-						Workspace: index.Workspace, Thread: thread, Stream: stream, ID: id,
+						Workspace: index.Workspace, Namespace: index.Namespace, Thread: thread, Stream: stream, ID: id,
 						Change: trackedChange{Correlation: index.Changes[id].Correlation, Calls: byThread[thread]},
 					})
 				}

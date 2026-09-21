@@ -352,11 +352,13 @@ programs**, not as standalone utilities in your terminal:
 | `inspect_file` | Inspect a structural outline | None |
 
 Agent-facing references use short word handles such as `maple` or `amber1`.
-Copy the emitted handle; existing references keep their original lifetime and
-scope.
+IDs start fresh in each session. The root and its subagents share a namespace;
+`/fork` and `/side` copy its state once, then allocate independently. Resuming a
+session keeps its counters and retained references. Old store-wide IDs are not
+migrated or supported by the session-scoped format.
 
 Mekugi keeps durable review records in the router's replay store. An agent can
-hand off `amber1..amber3`, then another agent can retrieve just those changes:
+hand off `amber1..amber3`, then another agent in the same session can retrieve just those changes:
 
 ```sh
 hchanges amber1..amber3

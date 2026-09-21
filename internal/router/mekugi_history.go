@@ -324,7 +324,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 	visible := make(map[string]mekugiHistory)
 	raw, ok := request.fields["input"]
 	if !ok {
-		return visible, nil
+		raw = json.RawMessage(`[]`)
 	}
 	var items []map[string]json.RawMessage
 	if json.Unmarshal(raw, &items) != nil {

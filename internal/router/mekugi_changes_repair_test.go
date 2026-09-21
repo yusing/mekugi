@@ -93,7 +93,7 @@ func TestTrackedConfirmationRejectsUnrepairablePublication(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			path := filepath.Join(store.directory, changeIndexName("/w"))
+			path := filepath.Join(store.directory, changeIndexName("/w", ""))
 			before, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)

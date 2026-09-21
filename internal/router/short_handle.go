@@ -3,11 +3,7 @@ package router
 import (
 	"context"
 	"errors"
-	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
-	"strings"
 )
 
 // The vocabulary is protocol data: never reorder or remove words. Handles are
@@ -56,14 +52,12 @@ func parseShortHandle(handle string) (uint64, bool) {
 	return 0, false
 }
 
-// The constant-sized high-water mark is store metadata, like store.lock. It is
-// not session data and must outlive reclaimed records so an old handle can never
-// name a newly allocated object. Callers already holding store.lock use the
-// locked variant.
+// Callers already holding store.lock use the locked variant.
 func (s *mekugiReplayStore) allocateHandles(ctx context.Context, count int) ([]string, error) {
 	if s == nil {
 		return nil, errors.New("handle allocation storage is unavailable")
 	}
+	s = s.scoped(ctx)
 	var handles []string
 	err := s.locked(ctx, func() error {
 		var err error
@@ -77,18 +71,14 @@ func (s *mekugiReplayStore) allocateHandlesLocked(count int) ([]string, error) {
 	if count < 1 {
 		return nil, errors.New("handle allocation must be nonempty")
 	}
-	const name = "handle-counter"
-	data, err := readManagedOutputFile(filepath.Join(s.directory, name))
-	var next uint64
-	if err == nil {
-		value := strings.TrimSuffix(string(data), "\n")
-		next, err = strconv.ParseUint(value, 10, 64)
-		if err != nil || strconv.FormatUint(next, 10) != value {
-			return nil, errors.New("invalid handle allocation counter")
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
+	scope, _, err := s.readHandleScope(s.handleNamespace())
+	if err != nil {
 		return nil, err
 	}
+	if scope.Namespace != s.handleNamespace() {
+		return nil, errors.New("handle allocation requires the root namespace")
+	}
+	next := scope.Next
 	if uint64(count) > ^uint64(0)-next {
 		return nil, errors.New("handle allocation counter exhausted")
 	}
@@ -96,8 +86,9 @@ func (s *mekugiReplayStore) allocateHandlesLocked(count int) ([]string, error) {
 	for index := range handles {
 		handles[index] = shortHandle(next + uint64(index))
 	}
-	if err := s.writeFile(name, "handle-counter-pending-", []byte(fmt.Sprintf("%d\n", next+uint64(count)))); err != nil {
-		return nil, storageIOError(err)
+	scope.Next += uint64(count)
+	if err := s.writeHandleScope(scope); err != nil {
+		return nil, err
 	}
 	return handles, nil
 }

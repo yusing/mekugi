@@ -3,20 +3,26 @@
 ## REQ-CHANGES-001 — Shared change records and review reads
 
 Shell `hpatch` results prepend one compact `change amber1` line. A complete edit
-reserves a workspace-scoped ID before evaluation. Each originating agent thread has
+reserves a session-and-workspace-scoped ID before evaluation. Each originating agent thread has
 a word-named stream and increasing decimal sequence, such as `amber1`, `amber2`,
 and `apple1`. Evaluated recovery attempts reuse the explicitly named rejection's
 correlation and change ID. Invalid corrections do not evaluate or allocate changes.
 
-Word-based change indexes use a separate storage namespace. Earlier indexes remain
+The root thread and its subagents share one durable ID namespace. Unrelated sessions
+start with independent counters and streams, even in the same workspace. Ordinary
+forks and side threads clone the source session's retained state once, then allocate
+independently; the source thread's stream continues under the clone's thread identity.
+Routing keys, model switches, request truncation, and compaction do not change the namespace.
+
+Session-scoped change indexes use a separate storage namespace. Earlier indexes remain
 owned storage for accounting and reclamation only; they are not migrated or read as current changes.
 Only the word-based ID format is accepted; earlier `hp_` IDs are unsupported.
 IDs and stream allocation persist across router restarts. The original hpatch, all
 recovery inputs and diagnostics, and any successful evaluated review diff are available
 through the one ID. Published attempts are never removed or overwritten; replay does not duplicate attempts.
-A fork continuing an inherited recovery retains its original ID. Separate new calls
-in the fork use its own thread stream. Concurrent branches under one ID retain every
-outcome rather than overwriting an earlier successful diff.
+A fork continuing an inherited recovery retains its original ID. New calls in the
+fork continue its cloned stream. Later attempts and allocations in another branch
+do not alter the clone's index. Immutable inherited attempt evidence remains shared.
 
 The shell worker applies validated edits through the engine and retains immutable
 attempt evidence before returning its result. Application failure is not success.

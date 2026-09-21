@@ -16,6 +16,7 @@ func (s *mekugiReplayStore) childJournalChanges(ctx context.Context, workspace, 
 	if s == nil || thread == "" {
 		return unavailable + "change storage or thread identity is unavailable.\n"
 	}
+	s = s.scoped(ctx)
 	index, err := s.readChangeIndex(workspace)
 	if err != nil {
 		return unavailable + err.Error() + "\n"

@@ -190,6 +190,7 @@ func TestStorageRetentionPreservesReadSourceAndExpiresSessionOutputs(t *testing.
 	}
 	releaseParent()
 	child, releaseChild := retentionTestSession(t, store, "child", 0)
+	child = bindTestHandleScope(t, store, child, "", "parent")
 	if _, err := store.readShellOutput(child, cursor); err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +200,7 @@ func TestStorageRetentionPreservesReadSourceAndExpiresSessionOutputs(t *testing.
 	if err := store.cleanupSessions(current); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.readShellOutput(current, id); err != nil {
+	if _, err := store.readShellOutput(child, id); err != nil {
 		t.Fatalf("shared source lost: %v", err)
 	}
 }
@@ -246,14 +247,15 @@ func TestStorageCleanupRetiresChangesWithoutReusingIDs(t *testing.T) {
 	if err := store.cleanupSessions(current); err != nil {
 		t.Fatal(err)
 	}
-	index, err := store.readChangeIndex("/w")
+	index, err := store.scoped(old).readChangeIndex("/w")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, exists := index.Changes[id]; exists {
 		t.Fatal("expired change remains")
 	}
-	next, err := store.reserveChange(current, "/w", "old", "second")
+	resumed, _ := retentionTestSession(t, store, "old", 0)
+	next, err := store.reserveChange(resumed, "/w", "old", "second")
 	if err != nil || next != "amber2" {
 		t.Fatalf("next change = %s, %v", next, err)
 	}
@@ -285,6 +287,7 @@ func TestStorageChangeReadDependenciesSurviveOriginalSessionExpiry(t *testing.T)
 	}
 	release()
 	child, _ := retentionTestSession(t, store, "child", 0)
+	child = bindTestHandleScope(t, store, child, "", "parent")
 	// This is the inherited hread path, without a preceding hchanges in child.
 	record, err := store.readShellOutput(child, reference)
 	if err != nil {
@@ -414,11 +417,12 @@ func TestStorageIndexLimitReclaimsInactiveChanges(t *testing.T) {
 	release()
 	retentionTestAge(t, store, "old", time.Hour)
 	current, _ := retentionTestSession(t, store, "current", 0)
+	current = bindTestHandleScope(t, store, current, "old", "")
 	next, err := store.reserveChange(current, "/w", "current", strings.Repeat("y", 4096))
 	if err != nil {
 		t.Fatal(err)
 	}
-	index, err := store.readChangeIndex("/w")
+	index, err := store.scoped(current).readChangeIndex("/w")
 	if err != nil || next != "apple1" || index.Streams[0].Retired != 1 || len(index.Changes) != 1 || index.Changes[next].Correlation != strings.Repeat("y", 4096) {
 		t.Fatalf("index reclamation: next=%s retired=%+v err=%v", next, index.Streams, err)
 	}
@@ -445,7 +449,7 @@ func TestStorageMaintenanceReusesUnchangedIndexEncoding(t *testing.T) {
 				t.Fatal(err)
 			}
 			if err := store.locked(current, func() error {
-				index, err := store.readChangeIndex("/w")
+				index, err := store.scoped(current).readChangeIndex("/w")
 				if err != nil {
 					return err
 				}
@@ -454,7 +458,7 @@ func TestStorageMaintenanceReusesUnchangedIndexEncoding(t *testing.T) {
 					return err
 				}
 				pending := pendingChangeIndexWrite{index: index, data: data}
-				if err := store.scoped(current).maintainStorage(changeIndexName("/w"), int64(len(data)), cleanup, &pending); err != nil {
+				if err := store.scoped(current).maintainStorage(changeIndexName("/w", index.Namespace), int64(len(data)), cleanup, &pending); err != nil {
 					return err
 				}
 				if len(pending.data) != len(data) || &pending.data[0] != &data[0] {
@@ -489,6 +493,7 @@ func TestStorageIndexPressurePersistsRetiredAttempts(t *testing.T) {
 	release()
 	retentionTestAge(t, store, "old", time.Hour)
 	current, _ := retentionTestSession(t, store, "current", 0)
+	current = bindTestHandleScope(t, store, current, "old", "")
 	if err := store.put(current, "/w", map[string]mekugiHistory{
 		"current-call": {ChangeID: id, CorrelationID: "original", Attempt: 2, ExecutingThread: "current"},
 	}); err != nil {
@@ -510,7 +515,7 @@ func TestStorageIndexPressurePersistsRetiredAttempts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	index, err := store.readChangeIndex("/w")
+	index, err := store.scoped(current).readChangeIndex("/w")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -574,6 +579,7 @@ func TestStorageDuplicateCursorAdoptsDependencies(t *testing.T) {
 		t.Fatal(err)
 	}
 	child, _ := retentionTestSession(t, store, "child", 0)
+	child = bindTestHandleScope(t, store, child, "", "parent")
 	source, err = store.readShellOutput(child, id)
 	if err != nil {
 		t.Fatal(err)
@@ -689,7 +695,7 @@ func TestStorageRetentionLegacyHandlesAreCleanupOnly(t *testing.T) {
 			const workspace = "/legacy-workspace"
 			const oldID = "r_AAAAAAAAAAAAAAAAAAAAAA"
 			outputName := "output-" + oldID + ".json"
-			indexName := strings.Replace(changeIndexName(workspace), changeIndexPrefix, "changes-", 1)
+			indexName := strings.Replace(changeIndexName(workspace, ""), changeIndexPrefix, "changes-", 1)
 			records := map[string][]byte{
 				outputName: mustMarshalJSON(shellOutputRecord{Version: 1, ID: oldID, Stdout: "old output"}),
 				indexName: mustMarshalJSON(changeIndex{
@@ -765,7 +771,7 @@ func TestStorageRetentionLegacyHandlesAreCleanupOnly(t *testing.T) {
 					t.Fatalf("expired legacy record survived: %s, %v", name, err)
 				}
 			}
-			index, err := store.readChangeIndex(workspace)
+			index, err := store.scoped(current).readChangeIndex(workspace)
 			if err != nil || index.Changes[id].Correlation != "new-call" {
 				t.Fatalf("legacy cleanup damaged current index: %+v, %v", index, err)
 			}
@@ -798,7 +804,7 @@ func BenchmarkStorageReserveChange(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	name := changeIndexName(index.Workspace)
+	name := changeIndexName(index.Workspace, index.Namespace)
 	if err := store.locked(ctx, func() error { return store.scoped(ctx).retainFiles(name) }); err != nil {
 		b.Fatal(err)
 	}

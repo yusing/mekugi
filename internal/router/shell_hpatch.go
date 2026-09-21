@@ -75,7 +75,10 @@ func executeHpatch(ctx context.Context, manifest toolWorkerManifest, arguments [
 		return fail(err)
 	}
 	recoveryHandle := handles[0]
-	callID := "hpatch-" + recoveryHandle
+	callID, err := store.scoped(ctx).hpatchCallID(recoveryHandle)
+	if err != nil {
+		return fail(err)
+	}
 
 	correlationID := callID
 	attempt := 1
@@ -172,7 +175,11 @@ func (s *mekugiReplayStore) rejectedEdit(ctx context.Context, workspace, id stri
 	s = s.scoped(ctx)
 	var history mekugiHistory
 	err := s.locked(ctx, func() error {
-		record, found, err := s.read(workspace, "hpatch-"+id, false)
+		callID, err := s.hpatchCallID(id)
+		if err != nil {
+			return err
+		}
+		record, found, err := s.read(workspace, callID, false)
 		if err != nil {
 			return err
 		}
@@ -199,6 +206,11 @@ func (s *mekugiReplayStore) rejectedEdit(ctx context.Context, workspace, id stri
 func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, thread, callID string, activity *subagentActivity) error {
 	s = s.scoped(ctx)
 	return s.locked(ctx, func() error {
+		if scope, found, err := s.readHandleScope(thread); err != nil {
+			return err
+		} else if found {
+			s.session.Namespace = scope.Namespace
+		}
 		record, found, err := s.read(workspace, callID, false)
 		if err != nil {
 			return err

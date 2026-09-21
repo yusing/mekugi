@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -131,26 +132,43 @@ func (s *mekugiReplayStore) putReadCursor(ctx context.Context, source shellOutpu
 	}
 	record.CursorDigest = readCursorDigest(record)
 	s = s.scoped(ctx)
-	name := "cursor-" + record.CursorDigest + ".json"
 	err := s.locked(ctx, func() error {
-		data, err := readManagedOutputFile(filepath.Join(s.directory, name))
-		if err == nil {
+		scope, _, err := s.readHandleScope(s.handleNamespace())
+		if err != nil {
+			return err
+		}
+		candidates := append(slices.Clone(scope.Inherited), handleRange{Namespace: scope.Namespace, End: scope.Next})
+		for _, candidate := range candidates {
+			name := scopedCursorName(candidate.Namespace, record.CursorDigest)
+			data, err := readManagedOutputFile(filepath.Join(s.directory, name))
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
 			if err := json.Unmarshal(data, &record.ID); err != nil {
 				return err
 			}
-			if _, ok := parseShortHandle(record.ID); !ok {
+			number, ok := parseShortHandle(record.ID)
+			if !ok {
 				return errors.New("invalid read cursor handle")
 			}
+			if number >= candidate.End {
+				continue // This cursor was allocated after the fork snapshot.
+			}
+			owner, err := s.handleOwner(record.ID)
+			if err != nil || owner != candidate.Namespace {
+				return errors.New("read cursor scope mismatch")
+			}
 			return s.retainFiles(name)
-		}
-		if !errors.Is(err, os.ErrNotExist) {
-			return err
 		}
 		handles, err := s.allocateHandlesLocked(1)
 		if err != nil {
 			return err
 		}
 		record.ID = handles[0]
+		name := scopedCursorName(s.handleNamespace(), record.CursorDigest)
 		return s.writeManagedFile(name, "cursor-pending-", mustMarshalJSON(record.ID))
 	})
 	if err != nil {
@@ -223,8 +241,11 @@ func (s *mekugiReplayStore) putReadRecord(ctx context.Context, record shellOutpu
 	if len(data) > maxReplayRecordBytes {
 		return "", storageCapacityError("encoded read record", int64(len(data)), maxReplayRecordBytes, "Narrow the command output or split the operation before retrying.")
 	}
-	name := "output-" + record.ID + ".json"
 	err = s.locked(ctx, func() error {
+		name, err := s.outputName(record.ID)
+		if err != nil {
+			return err
+		}
 		if previous, err := readManagedOutputFile(filepath.Join(s.directory, name)); err == nil {
 			if !bytes.Equal(previous, data) {
 				return errors.New("read reference conflicts with retained record")
@@ -274,8 +295,11 @@ func (s *mekugiReplayStore) readShellOutput(ctx context.Context, id string) (she
 	}
 	s = s.scoped(ctx)
 	err := s.locked(ctx, func() error {
-		name := filepath.Join(s.directory, "output-"+id+".json")
-		data, err := readManagedOutputFile(name)
+		name, err := s.outputName(id)
+		if err != nil {
+			return err
+		}
+		data, err := readManagedOutputFile(filepath.Join(s.directory, name))
 		if errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("read reference %s is unavailable; session data may have been cleaned after 14 days of inactivity or storage pressure", id)
 		}

@@ -168,7 +168,7 @@ func TestTrackedChangeQuota(t *testing.T) {
 	if _, err := store.reserveChange(t.Context(), "/w", "a", "one"); err == nil {
 		t.Fatal("accepted index quota overflow")
 	}
-	if _, err := os.Stat(filepath.Join(store.directory, changeIndexName("/w"))); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(store.directory, changeIndexName("/w", ""))); !os.IsNotExist(err) {
 		t.Fatal(fmt.Errorf("published over-quota index: %w", err))
 	}
 }
@@ -243,7 +243,7 @@ func TestTrackedChangeCorruptCounterCannotReplaceID(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			path := filepath.Join(store.directory, changeIndexName("/w"))
+			path := filepath.Join(store.directory, changeIndexName("/w", ""))
 			if err := os.WriteFile(path, data, 0600); err != nil {
 				t.Fatal(err)
 			}

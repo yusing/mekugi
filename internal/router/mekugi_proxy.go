@@ -570,6 +570,11 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		p.deactivateSession(historySessionID)
 		return nil, storageIOError(err)
 	}
+	ctx, err = p.replayStore.prepareHandleScope(ctx, metadata)
+	if err != nil {
+		p.deactivateSession(historySessionID)
+		return nil, err
+	}
 	p.prepareShellCommentary(threadID, historySessionID, metadata.commentaryAuthor())
 	visible, err := p.reconcileVisibleInput(ctx, request, directory, historySessionID)
 	if err != nil {

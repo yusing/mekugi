@@ -19,6 +19,7 @@ func TestJournalChildCompletionIncludesOwnChanges(t *testing.T) {
 	proxy.replayStore = store
 	child, _ := prepareActivityTest(t, proxy, "child", "child", "root", "/root/child", nil)
 	defer child.Close()
+	store = store.scoped(child.ctx)
 
 	seed := func(stream, call, executing, path, before, after string) string {
 		t.Helper()
@@ -93,6 +94,7 @@ func TestJournalChildCompletionPartiallyRetiredForeignChangeUnavailable(t *testi
 			proxy.replayStore = store
 			child, _ := prepareActivityTest(t, proxy, "child", "child", "root", "/root/child", nil)
 			defer child.Close()
+			store = store.scoped(child.ctx)
 
 			partial, err := store.reserveChange(t.Context(), child.directory, child.shellThreadID, "partial")
 			if err != nil {
@@ -179,7 +181,7 @@ func TestJournalChildCompletionChangesEmptyUnavailableAndRestart(t *testing.T) {
 		proxy.replayStore = store
 		child, _ := prepareActivityTest(t, proxy, "child", "child", "root", "/root/child", nil)
 		defer child.Close()
-		if err := os.WriteFile(filepath.Join(store.directory, changeIndexName(child.directory)), []byte("{"), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(store.directory, changeIndexName(child.directory, store.scoped(child.ctx).handleNamespace())), []byte("{"), 0600); err != nil {
 			t.Fatal(err)
 		}
 		result := finishChildJournalForChanges(t, child)
@@ -197,6 +199,7 @@ func TestJournalChildCompletionChangesEmptyUnavailableAndRestart(t *testing.T) {
 		}
 		proxy.replayStore = store
 		child, _ := prepareActivityTest(t, proxy, "initial", "child", "root", "/root/child", nil)
+		store = store.scoped(child.ctx)
 		workspace := child.directory
 		id, err := store.reserveChange(t.Context(), workspace, "original-stream", "edit")
 		if err != nil {
