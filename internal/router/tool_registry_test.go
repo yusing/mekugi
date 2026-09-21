@@ -118,11 +118,21 @@ func TestToolRegistryStartup(t *testing.T) {
 			if !ok {
 				t.Fatalf("built-in %q is unavailable", name)
 			}
+		}
+		for _, name := range []string{"hchanges", "hread", mekugiToolName, "shell"} {
 			if wrapper, ok := registry.wrapper(name); ok {
-				t.Fatalf("built-in %q unexpectedly has wrapper %q", name, wrapper)
+				t.Fatalf("router-native built-in %q unexpectedly has wrapper %q", name, wrapper)
 			}
 			if frontend, ok := registry.frontends[name]; ok {
-				t.Fatalf("built-in %q unexpectedly has frontend %q", name, frontend)
+				t.Fatalf("router-native built-in %q unexpectedly has frontend %q", name, frontend)
+			}
+		}
+		for _, name := range []string{"hcat", "hgrep", "hsymbol", "inspect_file"} {
+			if _, ok := registry.wrapper(name); !ok {
+				t.Fatalf("executor-backed built-in %q has no snapshot wrapper", name)
+			}
+			if _, ok := registry.frontends[name]; !ok {
+				t.Fatalf("executor-backed built-in %q has no session frontend", name)
 			}
 		}
 		specifications, err := registry.specifications()
@@ -224,7 +234,12 @@ func TestToolRegistryStartup(t *testing.T) {
 				t.Fatalf("wrapper %q targets %q", wrapper, target)
 			}
 		}
-		for _, name := range []string{mekugiToolName, "hcat", "hgrep", "hsymbol", "inspect_file", "shell"} {
+		for _, name := range []string{"hcat", "hgrep", "hsymbol", "inspect_file"} {
+			if _, ok := registry.wrapper(name); !ok {
+				t.Fatalf("executor-backed built-in %q has no worker wrapper", name)
+			}
+		}
+		for _, name := range []string{mekugiToolName, "hread", "hchanges", "shell"} {
 			if _, ok := registry.wrapper(name); ok {
 				t.Fatalf("built-in %q unexpectedly has an executor wrapper", name)
 			}

@@ -184,7 +184,7 @@ func buildToolRegistryAt(
 	}
 	var shellRuntime string
 	for _, contribution := range contributions {
-		if contribution.Builtin || (contribution.PluginID == builtinToolsPluginID && contribution.Name != "shell") {
+		if contribution.Builtin {
 			continue
 		}
 		wrapper, wrapperErr := ensureWorkerSymlinkInDirectory(executable, snapshotDirectory, contribution.Name)
@@ -192,7 +192,7 @@ func buildToolRegistryAt(
 			validationErrors = append(validationErrors, wrapperErr)
 			continue
 		}
-		if contribution.PluginID == builtinToolsPluginID {
+		if contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell" {
 			shellRuntime = wrapper
 		} else {
 			wrappers[contribution.Name] = wrapper

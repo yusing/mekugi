@@ -83,7 +83,8 @@ accepts the item's transition from `in_progress` to `incomplete` without evaluat
 An absent status on a completion event remains accepted. Completed calls remain replayable
 when a later call or the response is interrupted.
 
-For each configured executor-backed contributed tool, startup creates or verifies a session-private
+For each configured executor-backed tool and each executor-backed model-private built-in,
+startup creates or verifies a session-private
 executable symlink in the authenticated snapshot's `bin` directory. Its basename is exactly the contributed tool name,
 and its target is the authenticated process-scoped snapshot wrapper with the same basename.
 The snapshot wrapper targets a session-private pinned instance of the running `mekugi`
@@ -100,14 +101,18 @@ remaining argv unchanged.
 Worker authentication compares the executing file's identity with the resolved wrapper
 target. Strict manifest decoding remains mandatory; unknown fields are not ignored
 to accommodate a mismatched executable.
-The configured-plugin worker keeps the frontend standard input separate from the JavaScript
+The plugin worker keeps the frontend standard input separate from the JavaScript
 host's JSON control stream. The host exposes that input only as a dedicated inherited descriptor during
 executor calls.
 
-Built-in shell and its private hcat, hgrep, hsymbol, and inspect_file commands use a shared authenticated executor boundary.
-The shared `shell` name locates the authenticated executor for the current thread.
-Private commands execute only inside that boundary and do not create standalone
-frontends or additional `PATH` dependencies.
+Built-in shell and its private hcat, hgrep, hsymbol, and inspect_file commands use the same
+authenticated executor snapshot. The shared `shell` name locates the shell executor for the
+current thread. Each private executor-backed command also has a session-private standalone
+frontend in the same `bin` directory as configured-plugin frontends. Stock `exec_command`
+therefore invokes the pinned implementation directly under Codex's cwd, input, environment,
+sandbox, and process lifecycle; it does not pass shell source back through the router. The shell
+carrier may continue dispatching a private command until that command's migration removes the
+old surface.
 
 Executors may attach a private `failureClass` only with a nonzero exit status.
 The host accepts only the documented reader-failure allowlist; arbitrary values and
@@ -189,7 +194,7 @@ Acceptance:
 6. The exec wrapper renders the canonical Code Mode program or native function arguments and independently quotes every argv
    value. An optional template contains exactly one `{.}`, which expands to the complete worker
    command. The plugin declaration does not contain or generate the outer carrier shape.
-7. Invoking a configured executor-backed tool resolves its session basename frontend through the
+7. Invoking a configured or executor-backed built-in tool resolves its session basename frontend through the
    authenticated snapshot wrapper to `mekugi`, verifies the pinned registry, dispatches
    by `argv[0]`, and delivers the declared argv under Codex's cwd, sandbox, and permissions.
 8. JSON and SSE responses preserve call identity while replacing a contributed call with its

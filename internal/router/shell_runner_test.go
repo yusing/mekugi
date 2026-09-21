@@ -197,12 +197,12 @@ func TestShellRunnerUsesInterpreterBasenameForLanguageVariant(t *testing.T) {
 	}
 }
 
-func TestShellRunnerEvaluatesPrivateToolsWithoutFrontends(t *testing.T) {
+func TestShellRunnerEvaluatesPrivateToolsWithSnapshotWrappers(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	for _, name := range []string{"hcat", "hgrep", "hsymbol", "inspect_file"} {
-		if wrapper, ok := registry.wrapper(name); ok {
-			t.Fatalf("private tool %q unexpectedly has wrapper %q", name, wrapper)
+		if _, ok := registry.wrapper(name); !ok {
+			t.Fatalf("private tool %q has no authenticated snapshot wrapper", name)
 		}
 	}
 

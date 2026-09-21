@@ -52,3 +52,8 @@ They cover direct finish and Bash/POSIX finish through the real shell helper, in
 and child terminal acceptance without a final-answer provider request. Plaintext projection and
 history tests live in `internal/router/subagent_bridge_test.go`; journal source and restart tests
 are in `internal/router/journal_question_source_test.go`.
+
+The configured executable-frontend fixture lives in
+`internal/router/tool_frontend_codex_e2e_test.go`. It uses the installed Codex Code Mode host and
+a deterministic local provider to invoke a configured frontend through stock
+`tools.exec_command`, including cwd, environment, argv, stdin separation, and exit status.

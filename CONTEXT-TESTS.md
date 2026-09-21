@@ -15,6 +15,7 @@ measure that separately from build/cache overhead.
 | Portable core or `mekugi:core/v1` adapter | `./internal/router/toolplugin`, then `./...` and `bun test ./internal/router/toolplugin/tests/core.test.ts` |
 | TypeScript plugin source | `go generate ./internal/router/toolplugin`, then `bun test ./internal/router/toolplugin/tests` |
 | Router or shell-helper process entry point | `./cmd/mekugi ./cmd/shell` |
+| Configured frontend host acceptance | `-tags journal_e2e ./internal/router -run '^TestConfiguredToolFrontendNativeCodexE2E$'` (installed Codex, local mock provider) |
 | Native shell edit acceptance | `-tags journal_e2e ./internal/router -run '^TestShellHpatchNativeCodexE2E$'` (installed Codex, local mock provider) |
 | Native journal child-result acceptance | `-tags journal_e2e ./internal/router -run '^Test(Shell)?JournalNativeCodexSpawnE2E$'` (installed Codex, local mock provider) |
 | Cross-package or broad contract | `./...` |

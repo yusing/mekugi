@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,6 +17,10 @@ import (
 )
 
 func newToolPluginTestRegistry(t *testing.T) (*toolRegistry, string) {
+	return newToolPluginTestRegistryWithDeclaration(t, testToolPluginDeclaration)
+}
+
+func newToolPluginTestRegistryWithDeclaration(t *testing.T, declaration string) (*toolRegistry, string) {
 	t.Helper()
 	dataDirectory := t.TempDir()
 	pluginDirectory := filepath.Join(dataDirectory, "plugins")
@@ -22,7 +28,7 @@ func newToolPluginTestRegistry(t *testing.T) (*toolRegistry, string) {
 		t.Fatal(err)
 	}
 	liveModule := filepath.Join(pluginDirectory, "proxy.mjs")
-	if err := os.WriteFile(liveModule, []byte(testToolPluginDeclaration), 0o600); err != nil {
+	if err := os.WriteFile(liveModule, []byte(declaration), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, false)
@@ -57,7 +63,11 @@ func copiedToolPluginTestRegistry(t *testing.T) *toolRegistry {
 	}
 	// Only runtime files and the manifest are mutated. Wrappers borrow the
 	// parent's pinned executable instead of copying an unused test binary.
-	for _, name := range []string{"shell", "plugin_tool"} {
+	names := []string{"shell"}
+	for name := range source.wrappers {
+		names = append(names, name)
+	}
+	for _, name := range names {
 		if _, err := ensureWorkerSymlinkInDirectory(filepath.Join(source.SnapshotDir, toolWorkerExecutableFilename), snapshot, name); err != nil {
 			t.Fatal(err)
 		}
@@ -161,11 +171,125 @@ func TestToolPluginWorkerResolvesBasenameFromPath(t *testing.T) {
 	}
 }
 
-func TestBuiltinToolWorkersRunGeneratedTypeScriptImplementations(t *testing.T) {
-	t.Parallel()
-	registry := sharedProxyTestRegistry(t)
+func TestToolPluginFrontendCleanupIsSessionOwned(t *testing.T) {
+	first, _ := newToolPluginTestRegistry(t)
+	second, _ := newToolPluginTestRegistry(t)
+	if err := first.installFrontends(); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.installFrontends(); err != nil {
+		t.Fatal(err)
+	}
+	firstFrontend := first.frontends["plugin_tool"]
+	secondFrontend := second.frontends["plugin_tool"]
+	if firstFrontend == secondFrontend {
+		t.Fatal("sessions share a plugin frontend")
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(firstFrontend); !os.IsNotExist(err) {
+		t.Fatalf("closed session frontend remains: %v", err)
+	}
+	if _, err := os.Lstat(secondFrontend); err != nil {
+		t.Fatalf("closing one session removed another frontend: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+	handled, exitCode := RunToolPluginWorker(
+		t.Context(), secondFrontend, []string{"still-active"}, os.Stdin, &stdout, &stderr,
+	)
+	if !handled || exitCode != 7 || !strings.HasSuffix(stdout.String(), "|still-active") || stderr.String() != "fixture stderr" {
+		t.Fatalf("remaining session handled %t, exit %d, stdout %q, stderr %q", handled, exitCode, stdout.String(), stderr.String())
+	}
+}
+
+const stdinToolPluginDeclaration = `import {readFileSync} from "node:fs";
+export default {
+  apiVersion: "mekugi-tool-plugin/v1",
+  id: "stdin.test",
+  tools: [{
+    specification: {type: "custom", name: "stdin_tool", description: "stdin fixture"},
+    parse(input) { return input; },
+    argv(input) { return [input]; },
+    translate(_input, api) { return api.exec(); },
+    execute(argv, context) {
+      const input = context.stdinFD === null ? "<none>" : readFileSync(context.stdinFD, "utf8");
+      return {
+        stdout: [process.cwd(), process.env.MEKUGI_PLUGIN_TEST, ...argv, input].join("|"),
+        exitCode: 0,
+      };
+    }
+  }]
+};
+`
+
+func TestToolPluginFrontendRunsThroughHostProcess(t *testing.T) {
+	registry, _ := newToolPluginTestRegistryWithDeclaration(t, stdinToolPluginDeclaration)
+	if err := registry.installFrontends(); err != nil {
+		t.Fatal(err)
+	}
+	frontend, ok := registry.frontends["stdin_tool"]
+	if !ok {
+		t.Fatal("stdin fixture frontend is unavailable")
+	}
 	workspace := t.TempDir()
 	workspace, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", filepath.Dir(frontend))
+	command := exec.CommandContext(t.Context(), filepath.Base(frontend),
+		"-test.run=^TestToolPluginFrontendHostProcess$", "--", "one", "two words")
+	command.Dir = workspace
+	command.Env = append(os.Environ(),
+		"MEKUGI_PLUGIN_TEST=inherited",
+		"MEKUGI_TOOL_FRONTEND_HOST_PROCESS=1",
+	)
+	command.Stdin = strings.NewReader("stdin is not worker JSON\n")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("execute session frontend: %v\n%s", err, output)
+	}
+	want := strings.Join([]string{workspace, "inherited", "one", "two words", "stdin is not worker JSON\n"}, "|")
+	if string(output) != want {
+		t.Fatalf("frontend output %q, want %q", output, want)
+	}
+}
+
+func TestToolPluginFrontendHostProcess(t *testing.T) {
+	if os.Getenv("MEKUGI_TOOL_FRONTEND_HOST_PROCESS") == "" {
+		return
+	}
+	separator := slices.Index(os.Args, "--")
+	if separator < 0 {
+		fmt.Fprintln(os.Stderr, "missing frontend argument separator")
+		os.Exit(98)
+	}
+	handled, exitCode := RunToolPluginWorker(
+		t.Context(), os.Args[0], os.Args[separator+1:], os.Stdin, os.Stdout, os.Stderr,
+	)
+	if !handled {
+		fmt.Fprintln(os.Stderr, "frontend was not handled")
+		os.Exit(99)
+	}
+	os.Exit(exitCode)
+}
+
+func TestBuiltinToolFrontendsRunGeneratedTypeScriptImplementations(t *testing.T) {
+	registry, err := buildToolRegistryForTest(t, t.Context(), t.TempDir(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := registry.installFrontends(); err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	workspace, err = filepath.EvalSymlinks(workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,8 +312,8 @@ func TestBuiltinToolWorkersRunGeneratedTypeScriptImplementations(t *testing.T) {
 	if err := os.WriteFile(goplsPath, fmt.Appendf(nil, "#!/bin/sh\ncat <<'EOF'\n%sEOF\n", goplsOutput), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	invocation := newShellWorkerTestInvocation(workspace,
-		"PATH="+workspace+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Chdir(workspace)
+	t.Setenv("PATH", workspace+string(os.PathListSeparator)+os.Getenv("PATH"))
 	alphaHash := sha256.Sum256([]byte("func Alpha() {}"))
 
 	for _, test := range []struct {
@@ -203,26 +327,22 @@ func TestBuiltinToolWorkersRunGeneratedTypeScriptImplementations(t *testing.T) {
 		{name: "inspect_file", arguments: []string{"file.txt"}, wantOutput: "{\"ok\":true,\"data\":{\"path\":\"file.txt\",\"kind\":\"none\",\"language\":null,\"size_bytes\":11,\"line_count\":null,\"parse_complete\":true,\"outline\":[]},\"truncated\":false,\"truncation\":null}\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			if wrapper, ok := registry.wrapper(test.name); ok {
-				t.Fatalf("%s unexpectedly has wrapper %q", test.name, wrapper)
+			frontend, ok := registry.frontends[test.name]
+			if !ok {
+				t.Fatalf("%s session frontend is unavailable", test.name)
 			}
-			stdout, stderr, exitCode := runShellWorkerTest(
-				t,
-				registry,
-				"bash",
-				nil,
-				workerCommand(test.name, test.arguments),
-				os.Stdin,
-				invocation,
+			var stdout, stderr bytes.Buffer
+			handled, exitCode := RunToolPluginWorker(
+				t.Context(), frontend, test.arguments, os.Stdin, &stdout, &stderr,
 			)
-			if exitCode != 0 || stdout != test.wantOutput || stderr != "" {
+			if !handled || exitCode != 0 || stdout.String() != test.wantOutput || stderr.String() != "" {
 				t.Fatalf(
-					"%s worker exit %d, stdout %q, stderr %q",
+					"%s handled %t, exit %d, stdout %q, stderr %q",
 					test.name,
+					handled,
 					exitCode,
-					stdout,
-					stderr,
+					stdout.String(),
+					stderr.String(),
 				)
 			}
 		})

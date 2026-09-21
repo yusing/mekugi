@@ -30,10 +30,11 @@ byte and restores the original model-visible call without executing effects. Gen
 history cannot enter edit recovery. Diagnostics remain separate from executor output and
 retain exact provenance.
 
-The built-in shell is model-visible; its read, search, symbol, and inspection commands are
-private to the authenticated executor. They share portable row and source semantics while
-retaining distinct selection owners. The router never fabricates their results, adds
-standalone frontends, or turns their shell history into edit-recovery ancestry.
+The built-in shell is model-visible; its read, search, symbol, and inspection commands remain
+model-private but are executable through session-private frontends in the same authenticated
+snapshot as configured plugins. They share portable row and source semantics while retaining
+distinct selection owners. Codex remains the execution authority for those frontends. The router
+never fabricates their results or turns their command history into edit-recovery ancestry.
 
 Optional shell command-routing policy is built-in plugin code, separate from model-visible
 tool declarations. The authenticated registry retains its candidate names and required
