@@ -331,7 +331,7 @@ example `journal add 'Checked the inputs.' --report-now`. A final
 ### Command output summaries
 
 When [RTK](#token-saving) is available, recognized display commands return
-compact summaries. With `hrun`, RTK summarizes first, then `hrun` applies its
+compact summaries. With `mrun`, RTK summarizes first, then `mrun` applies its
 output limit. Mekugi readers, pipelines, redirected output, command
 substitutions, machine-readable formats, terminal-backed commands, and native
 `find`/`diff` stay raw. Use an explicit executable path when a supported command
@@ -339,16 +339,16 @@ needs raw output.
 
 ### Wrapped-session helpers
 
-The wrapped session provides the commands below. `mread`, `mcat`, `hgrep`,
+The wrapped session provides the commands below. `mread`, `mrun`, `mcat`, `hgrep`,
 `hsymbol`, and `inspect_file` are session-private executables on Codex's `PATH`;
-they are not installed as global terminal utilities. `mcat` and `mread` run
-through stock execution rather than the private shell dispatcher. `hrun` and
-`hchanges` remain shell-only until their migrations.
+they are not installed as global terminal utilities. `mread`, `mrun`, and `mcat`
+run through stock execution rather than the private shell dispatcher. `hchanges`
+remains shell-only until its migration.
 
 | Command | Purpose | Extra prerequisite on the executor's `PATH` |
 | --- | --- | --- |
 | `mread` | Continue bounded retained output by reference | Access to the router's replay directory |
-| `hrun` | Bound an external command's output, optionally keeping its ending | The wrapped command |
+| `mrun` | Bound an external command's output, optionally keeping its ending | The wrapped command |
 | `hchanges` | Read tracked diffs and hpatch recovery history by ID or range | Access to the router's replay directory |
 | `mcat` | Read raw UTF-8 source rows without hashes: `mcat path1 1:200 path2 path3 200:300`; multiple files share a budget and provide per-file recovery links | Replay-directory access for multi-file reads |
 | `hgrep` | Search text with verified row references | `rg` |
@@ -386,7 +386,7 @@ mread REF
 hsymbol def source.go 42 MyFunction
 inspect_file source.go
 mcat --tail -n 20 source.ts
-hrun --tail -n 20 -- go test ./internal/router
+mrun --tail -n 20 -- go test ./internal/router
 ```
 
 Use an ordinary script file for source you need to edit or run repeatedly. See the

@@ -78,13 +78,13 @@ func TestShellCommandRoutingNativeRegressions(t *testing.T) {
 		t.Fatalf("package script replaced: %q, %q, %d", stdout, stderr, status)
 	}
 
-	// Combined short flags must also preserve stdin through explicit hrun.
+	// Combined short flags must also preserve stdin through explicit mrun.
 	git("add", "file.txt")
 	if err := os.WriteFile(filepath.Join(directory, "file.txt"), []byte("piped\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, stderr, status = runShellWorkerTest(t, registry, "bash", nil,
-		"printf 'y\\n' | hrun -n 100 -- git add -vp file.txt", nil, invocation)
+		"printf 'y\\n' | mrun -n 100 -- git add -vp file.txt", nil, invocation)
 	if status != 0 || git("show", ":file.txt") != "piped\n" {
 		t.Fatalf("combined interactive flags lost stdin: %q, %d", stderr, status)
 	}

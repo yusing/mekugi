@@ -25,7 +25,7 @@ const shellCommandNames = new Set([
   "printf", "pushd", "pwd", "read", "readarray", "readonly", "return", "select", "set",
   "shift", "shopt", "source", "suspend", "test", "then", "time", "times", "trap",
   "true", "type", "typeset", "ulimit", "umask", "unalias", "unset", "until", "wait",
-  "while", "hrun",
+  "while", "mrun",
 ]);
 
 function byteLength(value) {
@@ -784,7 +784,7 @@ async function serveTranslations() {
 }
 
 
-async function formatRequest(request, formatHRunOutput) {
+async function formatRequest(request, formatMRunOutput) {
   switch (request.operation) {
     case "format-output-batch": {
       if (!Array.isArray(request.arguments) || request.arguments.length === 0 || request.arguments.length > 3) {
@@ -800,10 +800,10 @@ async function formatRequest(request, formatHRunOutput) {
           }
         }
       }
-      return candidates.map(formatHRunOutput);
+      return candidates.map(formatMRunOutput);
     }
     case "format-output":
-      return formatHRunOutput(validateArguments(request.arguments));
+      return formatMRunOutput(validateArguments(request.arguments));
     default:
       throw new Error(`unsupported formatter operation ${JSON.stringify(request.operation)}`);
   }
@@ -811,16 +811,16 @@ async function formatRequest(request, formatHRunOutput) {
 
 async function serveFormatting() {
   const lines = createInterface({input: process.stdin, crlfDelay: Infinity});
-  let formatHRunOutput;
+  let formatMRunOutput;
   for await (const line of lines) {
     const request = JSON.parse(line);
     let response;
-    if (formatHRunOutput === undefined) {
+    if (formatMRunOutput === undefined) {
       const snapshotRoot = await registerSnapshot(request.snapshotRoot);
-      ({formatHRunOutput} = await import(pathToFileURL(path.join(snapshotRoot, "builtin/hrun.js")).href));
+      ({formatMRunOutput} = await import(pathToFileURL(path.join(snapshotRoot, "builtin/mrun.js")).href));
       response = {ready: true};
     } else {
-      response = await formatRequest(request, formatHRunOutput);
+      response = await formatRequest(request, formatMRunOutput);
     }
     await new Promise((resolve, reject) => {
       process.stdout.write(JSON.stringify(response) + "\n", (error) => error ? reject(error) : resolve());
@@ -875,8 +875,8 @@ async function main() {
     }
     case "format-output-batch":
     case "format-output": {
-      const {formatHRunOutput} = await import(pathToFileURL(path.join(snapshotRoot, "builtin/hrun.js")).href);
-      response = await formatRequest(request, formatHRunOutput);
+      const {formatMRunOutput} = await import(pathToFileURL(path.join(snapshotRoot, "builtin/mrun.js")).href);
+      response = await formatRequest(request, formatMRunOutput);
       break;
     }
     case "translate":

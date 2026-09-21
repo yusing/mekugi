@@ -12,15 +12,15 @@ import (
 	"time"
 )
 
-func TestHRunCancellationDrainsDescendantPipes(t *testing.T) {
-	testHRunCancellation(t, `hrun --max-tokens 20 --tail -- sh -c 'sleep 30 & printf ready > ready; wait'`)
+func TestMRunCancellationDrainsDescendantPipes(t *testing.T) {
+	testMRunCancellation(t, []string{"--max-tokens", "20", "--tail", "--", "sh", "-c", "sleep 30 & printf ready > ready; wait"})
 }
 
-func TestHRunLineCancellation(t *testing.T) {
-	testHRunCancellation(t, `hrun -n 20 -- sh -c 'printf ready > ready; exec yes'`)
+func TestMRunLineCancellation(t *testing.T) {
+	testMRunCancellation(t, []string{"-n", "20", "--", "sh", "-c", "printf ready > ready; exec yes"})
 }
 
-func testHRunCancellation(t *testing.T, script string) {
+func testMRunCancellation(t *testing.T, arguments []string) {
 	t.Helper()
 
 	registry := sharedProxyTestRegistry(t)
@@ -30,8 +30,8 @@ func testHRunCancellation(t *testing.T, script string) {
 	defer cancel()
 	finished := make(chan int, 1)
 	go func() {
-		_, status := RunToolPluginWorker(ctx, registry.shellRuntime,
-			[]string{"bash", script},
+		_, status := RunToolPluginWorker(ctx, registry.frontends["mrun"],
+			arguments,
 			nil, io.Discard, io.Discard)
 		finished <- status
 	}()
@@ -73,21 +73,15 @@ func TestShellRunnerClosedInspectionPipes(t *testing.T) {
 		t.Fatal(err)
 	}
 	commands := map[string]string{
-		"hrun_lines":  "hrun -n 20000 -- cat " + shellQuoteArgument(linePath),
 		"mcat_lines":  "mcat -n 20000 " + shellQuoteArgument(linePath),
-		"hrun_tokens": "hrun --max-tokens 15500 -- cat " + shellQuoteArgument(tokenPath),
 		"mcat_tokens": "mcat --max-tokens 15500 " + shellQuoteArgument(tokenPath),
 	}
 	cases := []struct {
 		command, mode string
 	}{
-		{"hrun_lines", "default"},
-		{"hrun_lines", "pipefail"},
-		{"hrun_lines", "errexit"},
 		{"mcat_lines", "default"},
 		{"mcat_lines", "pipefail"},
 		{"mcat_lines", "errexit"},
-		{"hrun_tokens", "pipefail"},
 		{"mcat_tokens", "pipefail"},
 	}
 	for _, tc := range cases {

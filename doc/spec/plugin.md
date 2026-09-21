@@ -29,9 +29,9 @@ implementation are part of the validated declaration. Standard JSON-schema funct
 runtime TypeScript transpilation, and arbitrary undocumented specification fields are not
 supported by this increment.
 Configured executor-backed names must also differ from shell keywords and built-ins,
-including the shell-owned `hrun` command. This rule
-ensures that their basename carrier selects an executable frontend instead of shell-owned
-behavior.
+including the reserved built-in `mrun` executable. This rule ensures that a basename
+selects exactly one authenticated frontend rather than a configured declaration with a
+conflicting owner.
 
 Before opening its listener or installing any configured contributed-tool wrapper, the router
 loads every discovered declaration and validates the complete registry. It reports all detected plugin
@@ -105,19 +105,22 @@ The plugin worker keeps the frontend standard input separate from the JavaScript
 host's JSON control stream. The host exposes that input only as a dedicated inherited descriptor during
 executor calls.
 
-Built-in shell, standalone `mcat`, and the remaining private hgrep, hsymbol, and
-inspect_file commands use the same authenticated executor snapshot. The shared
+Built-in shell, standalone `mcat`, router-native `mread` and `mrun`, and the remaining
+private hgrep, hsymbol, and inspect_file commands use the same authenticated executor snapshot. The shared
 `shell` name locates the shell executor for the current thread. Each executable
 command has a session-private frontend in the same `bin` directory as configured
-plugins. Stock `exec_command` invokes `mcat` directly under Codex's cwd,
+plugins. Stock `exec_command` invokes `mcat` and `mrun` directly under Codex's cwd,
 environment, sandbox, and process lifecycle; the shell carrier no longer
-dispatches or transforms it. Not-yet-migrated private commands may still use the
+dispatches or transforms them. Not-yet-migrated private commands may still use the
 shell dispatcher while exposing the same pinned frontend.
 
 The router-native `mread` continuation command is an executable contribution in the same
 manifest and uses the same frontend and worker authentication. Its built-in dispatch reads only
 the manifest-selected managed output store and preserves the worker's session scope. It does not
 introduce a second registry, plugin host, or process owner.
+The router-native `mrun` contribution uses that worker only to validate its invocation,
+execute one foreground child, bound its completed streams, and persist any delivery remainder.
+Codex still owns the frontend process, yielding, terminal, signals, and continuation.
 
 Executors may attach a private `failureClass` only with a nonzero exit status.
 The host accepts only the documented reader-failure allowlist; arbitrary values and

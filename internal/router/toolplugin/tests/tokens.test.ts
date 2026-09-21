@@ -1,7 +1,7 @@
 import {expect, test} from "bun:test";
 import {encode} from "../../../../plugins/node_modules/gpt-tokenizer/esm/model/gpt-5.js";
 import {countGPT5Tokens, encodeGPT5, MAX_POSSIBLE_GPT5_TOKEN_BYTES, tokenBytes} from "../../../../plugins/tokens.ts";
-import {formatHRunOutput, selectHRunText} from "../../../../plugins/hrun.ts";
+import {formatMRunOutput, selectMRunText} from "../../../../plugins/mrun.ts";
 
 const ordinary = {disallowedSpecial: new Set<string>()};
 
@@ -34,7 +34,7 @@ test("long single pieces stay practical at the maximum retained byte window", ()
   expect(countGPT5Tokens("a".repeat(length))).toBe(length / 8);
 }, 15_000);
 
-test("hrun token selection preserves Unicode and a strict independently counted ceiling", () => {
+test("mrun token selection preserves Unicode and a strict independently counted ceiling", () => {
   for (const tail of [false, true]) {
     for (const budget of [0, 1, 2, 7, 42, 100]) {
       for (const value of [
@@ -42,7 +42,7 @@ test("hrun token selection preserves Unicode and a strict independently counted 
         " ".repeat(5000), "<|endoftext|>\r\n",
         "\uFEFFhello world more words", "before\uFEFFhello world", "\uFEFF\uFEFF",
       ]) {
-        const result = selectHRunText(value, budget, tail);
+        const result = selectMRunText(value, budget, tail);
         expect(countGPT5Tokens(result.text)).toBe(result.tokens);
         expect(result.tokens).toBeLessThanOrEqual(budget);
         expect(tail ? value.endsWith(result.text) : value.startsWith(result.text)).toBe(true);
@@ -53,22 +53,22 @@ test("hrun token selection preserves Unicode and a strict independently counted 
   }
 });
 
-test("private hrun formatting prioritizes stderr and rejects malformed requests", () => {
-  expect(formatHRunOutput(["1", "tail", "stdout", "first error"])).toEqual({
+test("mrun formatting prioritizes stderr and rejects malformed requests", () => {
+  expect(formatMRunOutput(["1", "tail", "stdout", "first error"])).toEqual({
     stdout: "", stderr: " error", exitCode: 0,
   });
   for (const argv of [
     [], ["0", "head", "", ""], ["15501", "head", "", ""],
     ["01", "head", "", ""], ["1", "unknown", "", ""],
   ]) {
-    expect(() => formatHRunOutput(argv)).toThrow("invalid hrun output selection");
+    expect(() => formatMRunOutput(argv)).toThrow("invalid mrun output selection");
   }
 });
 
 test("shell selection budgets nested JSON framing and preserves complete row prefixes", () => {
   const value = '"path\\\\name":1:abcd "\t🙂 café 中文"\r\n'.repeat(5000);
   for (const budget of [1, 20, 123, 256, 1600, 8976]) {
-    const result = formatHRunOutput([String(budget), "shell", value, ""]);
+    const result = formatMRunOutput([String(budget), "shell", value, ""]);
     const selected = JSON.parse(result.stdout!);
     expect(value.startsWith(selected.text)).toBe(true);
     expect(selected.text === "" || selected.text.endsWith("\n")).toBe(true);

@@ -177,9 +177,6 @@ func executeShellProgram(
 			if command[0] == "hchanges" {
 				return executeHChanges(handlerCtx, manifest, runtimeRoot, command[1:])
 			}
-			if command[0] == "hrun" {
-				return executeHRun(handlerCtx, manifest, runtimeRoot, command[1:], terminalShell)
-			}
 			contribution, private := privateTools[command[0]]
 			if !private {
 				return files.command(handlerCtx, command, next)

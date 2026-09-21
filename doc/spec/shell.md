@@ -226,7 +226,7 @@ remains native so whitespace diagnostics and its exit status are preserved.
 Automatic routing applies only to display output: commands whose
 input or output is redirected, piped, or captured by substitution remain raw.
 Non-Bash/POSIX interpreters are not automatically routed. An explicit
-`hrun` opts its inner external command into routing before output capture and selection.
+`mrun` opts its inner external command into routing before output capture and selection.
 Terminal-backed commands and interactive Git staging bypass automatic routing. Native `find`,
 `diff`, `git add`, and `pnpm typecheck` also remain raw because their RTK
 counterparts change more than display output.
@@ -234,25 +234,29 @@ RTK changes the displayed output; the existing command executor retains ownershi
 argv, environment, exit status, cancellation, and descendant cleanup. Rewrite failure
 falls back to the original argv before execution, never by retrying an executed command.
 
-The shell-owned command `hrun [-n N] [--max-tokens N] [--tail] -- COMMAND [ARG...]`
-executes one external command with selected displayed output. At least one limit is required.
+The authenticated session-private executable
+`mrun [-n N] [--max-tokens N] [--tail] -- COMMAND [ARG...]` executes one external
+command with selected displayed output. Stock `tools.exec_command` launches `mrun`; it is
+not a model-visible custom tool or a private shell command. At least one limit is required.
 Token budgets are canonical positive decimal integers from 1 through 15,500; line counts
 are canonical positive integers fitting a Go int. Each option may appear once, in any order;
 `--` and a nonempty command are required. Invalid arguments reject with status 2 before execution.
-Hrun has no plugin contribution, installed frontend, or model-visible custom tool. Simple
-hrun calls must use the worker, not the direct external-command carrier. Its name is reserved
-against configured plugin declarations. It does not add private-reader AX events.
+The router installs one authenticated frontend on the wrapped session `PATH`; the name is
+reserved against configured plugin declarations. Simple calls may use Codex's direct external
+command carrier. Mrun does not add reader AX events.
 
-Hrun uses the existing external-command owner for PATH resolution, argv, current directory,
-exported environment, stdin, signals, cancellation, and descendant cleanup. It does not
-evaluate shell syntax, shell functions, or private reader names. An explicit shell executable
-is required for compound commands. Display-budget exhaustion never cancels the command:
+Mrun inherits the stock executor's cwd, environment, stdin, terminal, signals, cancellation,
+and yielded-session lifecycle. It starts one child with exact argv and does not evaluate shell
+syntax, shell functions, or private reader names. An explicit shell executable is required for
+compound commands. A terminal-backed invocation keeps the child's controlling foreground
+terminal; nonterminal cancellation owns the child process group. Display-budget exhaustion never cancels the command:
 stdout and stderr are drained to completion. Token-only capture uses byte-bounded buffers;
 line capture retains at most N complete lines per stream plus the current unfinished line,
 so line-only memory depends on line lengths. With both limits, each line candidate is
 byte-bounded during ingestion before final token selection. Infinite producers still require cancellation.
 Prefix mode keeps the beginning of each stream; tail mode keeps the ending. Results are delivered after completion,
-not streamed as live progress. Existing host continuation and cancellation remain authoritative.
+not streamed as live progress. While the child is running, stock executor yielding and
+`write_stdin` remain authoritative; mrun creates no router-owned background handle.
 
 `-n N` selects the first or last N LF-delimited lines per stream, preserving terminators
 and counting a nonempty unterminated final line. It never cuts a selected line. Without
@@ -262,14 +266,13 @@ selection; that subsequent token ceiling may cut a line. Tail selection waits fo
 The strict GPT-5 token budget is shared by retained command stdout and stderr, counted
 independently, with stderr allocated first and stdout receiving the remainder. Streams stay
 separate. Selection may cut lines but not UTF-8 characters; malformed byte sequences are
-rendered as replacement characters. Omission adds a fixed `hrun: output incomplete` diagnostic
+rendered as replacement characters. Omission adds a fixed `mrun: output incomplete` diagnostic
 on stderr outside the command-output budget. Omission alone preserves the command's actual
 exit status, including success, nonzero exit, and signal status. Missing executables retain
-status 127. Closed downstream pipes from shell-owned commands become command status 141,
-not fatal interpreter errors: ordinary pipelines use the last stage's status, `pipefail`
-observes the failure, and subsequent statements run unless shell error policy stops them.
-Other execution, capture, and output-write errors propagate normally. Outer shell and
-host output limits remain independent.
+status 127. After requested selection, a 10,000-token frontend delivery window retains any
+remaining selected stdout/stderr before exposing its `mread` reference. Requested head/tail
+omissions remain intentional and are not reclassified as delivery truncation. Other execution,
+capture, and output-write errors propagate normally. Stock host output limits remain independent.
 
 Other interpreters retain the plugin executor path. It passes middle fields as interpreter
 arguments, supplies the final exact body through an anonymous script descriptor such as
@@ -531,18 +534,19 @@ Acceptance:
     `#!script=` directive cannot execute a historical source reference. Historical call/result
     replay remains byte-preserving and does not resolve or revive expired source.
 
-29. Hrun routes through the authenticated shell worker for Bash and POSIX scripts,
-    including a single static call. It preserves argv, stdin, cwd, exported environment,
-    streams, and command status; configured plugins cannot claim its name.
-30. Hrun head/tail selection enforces the shared token ceiling with valid UTF-8 output,
+29. Mrun resolves through its authenticated session frontend and stock executor, including a
+    single static call. It preserves argv, stdin, cwd, environment, streams, and command status;
+    configured plugins cannot claim its name.
+30. Mrun head/tail selection enforces the shared token ceiling with valid UTF-8 output,
     prioritizes stderr and marks omission. Token-only mode bounds memory regardless of output volume;
     line mode retains selected complete lines and bypasses tokenization without a token ceiling.
     Maximum-budget long unbroken output uses bounded, non-quadratic token selection.
-    Commands producing more than the outer shell's byte limit still finish when their
-    displayed output fits. Cancellation retains existing process-group cleanup.
-31. Hrun rejects malformed, repeated, missing, or out-of-range options before execution.
+    Commands producing more than the delivery window finish before selected suffixes are retained.
+    Cancellation retains process-group cleanup.
+31. Mrun rejects malformed, repeated, missing, or out-of-range options before execution.
     It never converts display omission into command failure or early termination.
-32. `hrun -n 20 -- seq 1 1000` retains lines 1–20; `--tail -n 20` retains 981–1000.
+32. `mrun -n 20 -- seq 1 1000` retains lines 1–20; `--tail -n 20` retains 981–1000.
     Combined limits select lines before tokens, independently per stream. Empty output and
-    unterminated final lines work. A closed downstream pipe does not abort later statements;
-    `pipefail` and `errexit` retain their ordinary command-status behavior.
+    unterminated final lines work. A terminal child can read its controlling terminal, a
+    long-running child yields a stock host session, `write_stdin` resumes that session, and
+    delivery omissions remain recoverable through `mread`.

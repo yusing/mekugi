@@ -31,19 +31,22 @@ history cannot enter edit recovery. Diagnostics remain separate from executor ou
 retain exact provenance.
 
 The built-in shell is model-visible. `mcat` is model-private but executes only
-through its session frontend; hgrep, hsymbol, and inspect_file remain private
+through its session frontend. Router-native `mread` and `mrun` use the same
+authenticated frontend path; hgrep, hsymbol, and inspect_file remain private
 shell commands while also exposing pinned frontends for their later cutovers.
 They share portable source semantics while retaining distinct selection owners.
 Codex remains the execution authority for every frontend. The router never
 fabricates their results or turns command history into edit-recovery ancestry.
-The router-native `mread` frontend shares this authenticated wrapper path and delegates retained
-output semantics to the existing managed store rather than duplicating them in the registry.
+The `mread` frontend delegates retained output semantics to the existing managed store rather
+than duplicating them in the registry. The `mrun` frontend retains Codex's foreground process
+authority and owns only one bounded child execution plus completed-output retention.
 
 Optional shell command-routing policy is built-in plugin code, separate from model-visible
 tool declarations. The authenticated registry retains its candidate names and required
 executable. The plugin transforms expanded argv only; the shell executor checks current
-availability and display eligibility, then executes the resulting argv through its existing
-process owner. Output selection remains downstream, including `hrun`. Policy evaluation
+availability and display eligibility. The `mrun` frontend performs the same pinned check for
+its one child. Each path executes the resulting argv through its existing host-owned
+process lifecycle. Output selection remains downstream. Policy evaluation
 never executes, retries, or replays the target command.
 
 The `hpatch` shell command receives expanded arguments or stdin in the

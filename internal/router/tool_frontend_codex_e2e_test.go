@@ -38,6 +38,9 @@ func init() {
 type toolFrontendCodexProvider struct {
 	mu         sync.Mutex
 	workspace  string
+	program    string
+	expected   []string
+	finalText  string
 	turns      int
 	callSent   bool
 	resultSeen bool
@@ -60,10 +63,13 @@ func (p *toolFrontendCodexProvider) forwardExecution(
 			return nil, fmt.Errorf("Codex request does not advertise stock exec_command")
 		}
 		p.callSent = true
-		program := `const result = await tools.exec_command({"cmd":` +
-			string(mustMarshalJSON("printf 'stdin is not worker JSON\\n' | stdin_tool one 'two words'")) +
-			`,"workdir":` + string(mustMarshalJSON(p.workspace)) + `,"login":false});
+		program := p.program
+		if program == "" {
+			program = `const result = await tools.exec_command({"cmd":` +
+				string(mustMarshalJSON("printf 'stdin is not worker JSON\\n' | stdin_tool one 'two words'")) +
+				`,"workdir":` + string(mustMarshalJSON(p.workspace)) + `,"login":false});
 text(JSON.stringify({output: result.output, exit_code: result.exit_code}));`
+		}
 		item = map[string]any{
 			"type": "custom_tool_call", "id": "frontend-item", "call_id": "frontend-call",
 			"name": "exec", "status": "completed", "input": program,
@@ -81,15 +87,26 @@ text(JSON.stringify({output: result.output, exit_code: result.exit_code}));`
 				continue
 			}
 			output := string(input["output"])
-			p.resultSeen = strings.Contains(output, want) && strings.Contains(output, `\"exit_code\":0`)
+			if len(p.expected) == 0 {
+				p.resultSeen = strings.Contains(output, want) && strings.Contains(output, `\"exit_code\":0`)
+				continue
+			}
+			p.resultSeen = true
+			for _, expected := range p.expected {
+				p.resultSeen = p.resultSeen && strings.Contains(output, expected)
+			}
 		}
 		if !p.resultSeen {
 			return nil, fmt.Errorf("stock exec_command result lacks authenticated frontend output: %.3000s", body)
 		}
+		finalText := p.finalText
+		if finalText == "" {
+			finalText = "frontend host accepted"
+		}
 		item = map[string]any{
 			"type": "message", "id": "frontend-finish", "role": "assistant", "status": "completed",
 			"content": []any{map[string]any{
-				"type": "output_text", "text": "frontend host accepted", "annotations": []any{},
+				"type": "output_text", "text": finalText, "annotations": []any{},
 			}},
 		}
 	}
@@ -170,6 +187,75 @@ func TestConfiguredToolFrontendNativeCodexE2E(t *testing.T) {
 	defer provider.mu.Unlock()
 	if provider.turns != 2 || !provider.resultSeen || !strings.Contains(stdout.String(), "frontend host accepted") {
 		t.Fatalf("frontend acceptance: turns=%d result=%t\nstdout: %s\nstderr: %s",
+			provider.turns, provider.resultSeen, stdout.String(), stderr.String())
+	}
+}
+
+func TestMRunNativeCodexYieldAndWriteStdinE2E(t *testing.T) {
+	codex, err := exec.LookPath("codex")
+	if err != nil {
+		t.Fatal("installed Codex is required for the mrun continuation acceptance gate")
+	}
+	registry, err := buildToolRegistryForTest(t, t.Context(), t.TempDir(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := registry.installFrontends(); err != nil {
+		t.Fatal(err)
+	}
+	frontend, ok := registry.frontends["mrun"]
+	if !ok {
+		t.Fatal("mrun session frontend is unavailable")
+	}
+	workspace := t.TempDir()
+	workspace, err = filepath.EvalSymlinks(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commandText := `mrun --max-tokens 100 -- sh -c 'printf ready > ready; IFS= read -r value; printf "continued:%s\n" "$value"'`
+	program := `const started = await tools.exec_command({"cmd":` + string(mustMarshalJSON(commandText)) +
+		`,"workdir":` + string(mustMarshalJSON(workspace)) + `,"login":false,"tty":true,"yield_time_ms":250});
+if (typeof started.session_id !== "number") throw new Error("mrun did not yield a host session");
+const completed = await tools.write_stdin({"session_id":started.session_id,"chars":"codex-input\n","yield_time_ms":30000,"max_output_tokens":1000});
+text(JSON.stringify({started, completed}));`
+	provider := &toolFrontendCodexProvider{
+		workspace: workspace,
+		program:   program,
+		expected:  []string{"continued:codex-input", `\"exit_code\":0`, "session_id"},
+		finalText: "mrun continuation accepted",
+	}
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil))
+	defer server.Close()
+
+	t.Setenv("CODEX_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("PATH", filepath.Dir(frontend)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv(routerTestWorkerEnvironment, "1")
+	config := `model_providers.frontend_fixture={name="frontend_fixture",base_url=` +
+		strconv.Quote(server.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, codex,
+		"-c", config, "-c", `model_provider="frontend_fixture"`,
+		"--model", "gpt-6-astra", "--sandbox", "danger-full-access", "--ask-for-approval", "never",
+		"exec", "--ignore-user-config", "--skip-git-repo-check", "--json", "--color", "never",
+		"-C", workspace, "Exercise mrun yielding and stock write_stdin continuation.",
+	)
+	var stdout, stderr bytes.Buffer
+	command.Stdout, command.Stderr = &stdout, &stderr
+	if err := command.Run(); err != nil {
+		t.Fatalf("Codex mrun continuation fixture: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	if provider.turns != 2 || !provider.resultSeen ||
+		!strings.Contains(stdout.String(), "mrun continuation accepted") {
+		t.Fatalf("mrun continuation acceptance: turns=%d result=%t\nstdout: %s\nstderr: %s",
 			provider.turns, provider.resultSeen, stdout.String(), stderr.String())
 	}
 }

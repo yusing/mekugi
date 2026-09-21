@@ -80,7 +80,7 @@ Use separate shell calls for interactive programs.
 
 ### Output and continuation
 
-`hrun [-n N] [--max-tokens N] [--tail] -- COMMAND [ARG...]` bound noisy external output.
+`mrun [-n N] [--max-tokens N] [--tail] -- COMMAND [ARG...]` bound noisy external output.
 `--tail` keeps the ending.
 
 For pending execution, follow the latest `continuation` notice's `next_call`; prefer host completion

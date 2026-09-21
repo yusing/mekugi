@@ -153,9 +153,9 @@ describe("plugin declaration validation", () => {
     expect(response.errors.join("\n")).toContain(diagnostic);
   });
 
-  test("reserves the shell-owned hrun name", async () => {
+  test("reserves the built-in mrun name", async () => {
     const {response} = await validateDeclaration(
-      pluginDeclaration().replace('name: "grammar_test"', 'name: "hrun"'),
+      pluginDeclaration().replace('name: "grammar_test"', 'name: "mrun"'),
     );
     expect(response.plugins).toEqual([]);
     expect(response.errors.join("\n")).toContain("collides with a shell keyword or built-in");

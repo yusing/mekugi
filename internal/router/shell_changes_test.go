@@ -186,7 +186,7 @@ func TestParseChangeRead(t *testing.T) {
 		{}, {"--"}, {"--", "amber1"}, {"--summary"}, {"--summary", "--", "file"},
 		{"read", "amber1"}, {"amber1", "--path", "file"}, {"amber1", "--", ""},
 		{"--summary", "--summary", "amber1"}, {"--max-tokens", "01", "amber1"},
-		{"--max-tokens", strconv.Itoa(hrunMaxTokens + 1), "amber1"},
+		{"--max-tokens", strconv.Itoa(maxOutputTokens + 1), "amber1"},
 		{"--workspace", workspace, "--workspace", workspace, "amber1"},
 		{"--cursor"}, {"--cursor", "", "amber1"}, {"--unknown", "amber1"},
 	} {

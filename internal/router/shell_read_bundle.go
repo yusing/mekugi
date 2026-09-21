@@ -40,7 +40,7 @@ func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 			}
 			i++
 			n, err := strconv.Atoi(args[i])
-			if err != nil || n < 1 || n > hrunMaxTokens || strconv.Itoa(n) != args[i] {
+			if err != nil || n < 1 || n > maxOutputTokens || strconv.Itoa(n) != args[i] {
 				return nil, 0, errors.New("--max-tokens must be an integer from 1 through 15500")
 			}
 			budget, tokenOption = n, true

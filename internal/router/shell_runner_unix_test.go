@@ -26,8 +26,8 @@ const (
 func TestShellRunnerExternalPipelineReadsPTY(t *testing.T) {
 	if mode := os.Getenv(shellPTYHelperEnvironment); mode != "" {
 		prefix := ""
-		if mode == "hrun" {
-			prefix = "hrun --max-tokens 100 --tail -- "
+		if mode == "mrun" {
+			prefix = "mrun --max-tokens 100 --tail -- "
 		}
 		var stdout, stderr bytes.Buffer
 		handled, exitCode := runAuthenticatedToolWorker(
@@ -43,14 +43,16 @@ func TestShellRunnerExternalPipelineReadsPTY(t *testing.T) {
 	}
 
 	registry := sharedProxyTestRegistry(t)
-	for _, mode := range []string{"direct", "hrun"} {
+	for _, mode := range []string{"direct", "mrun"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Parallel()
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 			command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestShellRunnerExternalPipelineReadsPTY$")
 			command.Env = append(os.Environ(), shellPTYHelperEnvironment+"="+mode,
-				shellPTYSnapshotEnvironment+"="+registry.SnapshotDir)
+				shellPTYSnapshotEnvironment+"="+registry.SnapshotDir,
+				"PATH="+registry.frontendDirectory+string(os.PathListSeparator)+os.Getenv("PATH"),
+				routerTestWorkerEnvironment+"=1")
 			terminal, err := pty.Start(command)
 			if err != nil {
 				t.Fatal(err)

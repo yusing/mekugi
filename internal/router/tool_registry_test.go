@@ -107,13 +107,13 @@ func TestToolRegistryStartup(t *testing.T) {
 			t.Fatal(err)
 		}
 		snapshot := registry.SnapshotDir
-		if registry.NodeExecutable == "" || len(registry.ordered) != 8 {
+		if registry.NodeExecutable == "" || len(registry.ordered) != 9 {
 			t.Fatalf("registry = %+v", registry)
 		}
 		if err := registry.installFrontends(); err != nil {
 			t.Fatal(err)
 		}
-		for _, name := range []string{"hchanges", "mread", "mcat", "hgrep", "hsymbol", "inspect_file", "shell"} {
+		for _, name := range []string{"hchanges", "mread", "mrun", "mcat", "hgrep", "hsymbol", "inspect_file", "shell"} {
 			_, ok := registry.contribution(name)
 			if !ok {
 				t.Fatalf("built-in %q is unavailable", name)
@@ -127,7 +127,7 @@ func TestToolRegistryStartup(t *testing.T) {
 				t.Fatalf("router-native built-in %q unexpectedly has frontend %q", name, frontend)
 			}
 		}
-		for _, name := range []string{"mread", "mcat", "hgrep", "hsymbol", "inspect_file"} {
+		for _, name := range []string{"mread", "mrun", "mcat", "hgrep", "hsymbol", "inspect_file"} {
 			if _, ok := registry.wrapper(name); !ok {
 				t.Fatalf("executor-backed built-in %q has no snapshot wrapper", name)
 			}
@@ -216,9 +216,9 @@ func TestToolRegistryStartup(t *testing.T) {
 			t.Fatal(err)
 		}
 		snapshot := registry.SnapshotDir
-		if len(registry.ordered) != 10 ||
-			registry.ordered[8].PluginID != "alpha.plugin" ||
-			registry.ordered[9].PluginID != "zeta.plugin" {
+		if len(registry.ordered) != 11 ||
+			registry.ordered[9].PluginID != "alpha.plugin" ||
+			registry.ordered[10].PluginID != "zeta.plugin" {
 			t.Fatalf("registration order = %+v", registry.ordered)
 		}
 		for _, name := range []string{"alpha_tool", "zeta_tool"} {
@@ -234,7 +234,7 @@ func TestToolRegistryStartup(t *testing.T) {
 				t.Fatalf("wrapper %q targets %q", wrapper, target)
 			}
 		}
-		for _, name := range []string{"mread", "mcat", "hgrep", "hsymbol", "inspect_file"} {
+		for _, name := range []string{"mread", "mrun", "mcat", "hgrep", "hsymbol", "inspect_file"} {
 			if _, ok := registry.wrapper(name); !ok {
 				t.Fatalf("executor-backed built-in %q has no worker wrapper", name)
 			}
@@ -266,7 +266,7 @@ func TestToolRegistryStartup(t *testing.T) {
 			t.Fatal(err)
 		}
 		registryID, authenticated := toolRegistryIDFromDirectory(snapshot)
-		if !authenticated || manifest.RegistryID != registryID || len(manifest.Tools) != 10 {
+		if !authenticated || manifest.RegistryID != registryID || len(manifest.Tools) != 11 {
 			t.Fatalf("manifest = %+v, snapshot registry ID %q, authenticated %t", manifest, registryID, authenticated)
 		}
 		if err := registry.Close(); err != nil {

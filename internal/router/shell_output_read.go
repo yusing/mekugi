@@ -11,6 +11,8 @@ import (
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
+const maxOutputTokens = 15_500
+
 const outputReadUsage = "mread REF [--stdout|--stderr] [--max-tokens N]"
 
 type outputReadOptions struct {
@@ -49,8 +51,8 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 			value := arguments[0]
 			arguments = arguments[1:]
 			number, err := strconv.Atoi(value)
-			if err != nil || number < 1 || number > hrunMaxTokens || strconv.Itoa(number) != value {
-				return options, fmt.Errorf("--max-tokens requires an integer from 1 to %d", hrunMaxTokens)
+			if err != nil || number < 1 || number > maxOutputTokens || strconv.Itoa(number) != value {
+				return options, fmt.Errorf("--max-tokens requires an integer from 1 to %d", maxOutputTokens)
 			}
 			options.maxTokens = number
 		default:

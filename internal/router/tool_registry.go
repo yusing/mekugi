@@ -80,6 +80,7 @@ func buildToolRegistryAt(
 	}
 	contributions := []toolContribution{
 		{PluginID: "builtin.mekugi", Name: "mread", Builtin: true, Executable: true},
+		{PluginID: "builtin.mekugi", Name: "mrun", Builtin: true, Executable: true},
 		{PluginID: "builtin.mekugi", Name: "hchanges", Builtin: true},
 		{PluginID: "builtin.mekugi", Name: mekugiToolName, Builtin: true},
 	}

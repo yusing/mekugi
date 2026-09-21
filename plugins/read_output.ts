@@ -1,5 +1,5 @@
 import {countGPT5Tokens} from "./tokens.ts";
-import {selectHRunText} from "./hrun.ts";
+import {selectMRunText} from "./mrun.ts";
 
 type ReadKind = "" | "rows" | "json";
 export type ReadPageRequest = {
@@ -94,7 +94,7 @@ export function selectReadOutput(request: ReadPageRequest, budget: number): Read
       const remaining = bytes.subarray(offset, end).toString("utf8");
       let allowance = budget;
       while (allowance > 0) {
-        let selected = selectHRunText(remaining, allowance, false).text;
+        let selected = selectMRunText(remaining, allowance, false).text;
         if (kinds[index] === "rows" && (selected.length < remaining.length || end < bytes.length)) {
           selected = selected.slice(0, selected.lastIndexOf("\n") + 1);
         }

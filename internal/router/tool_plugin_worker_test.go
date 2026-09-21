@@ -275,7 +275,7 @@ func TestToolPluginFrontendHostProcess(t *testing.T) {
 	os.Exit(exitCode)
 }
 
-func TestBuiltinToolFrontendsRunGeneratedTypeScriptImplementations(t *testing.T) {
+func TestBuiltinToolFrontendsRunRegisteredImplementations(t *testing.T) {
 	registry, err := buildToolRegistryForTest(t, t.Context(), t.TempDir(), false)
 	if err != nil {
 		t.Fatal(err)
@@ -321,6 +321,7 @@ func TestBuiltinToolFrontendsRunGeneratedTypeScriptImplementations(t *testing.T)
 		arguments  []string
 		wantOutput string
 	}{
+		{name: "mrun", arguments: []string{"--max-tokens", "100", "--", "sh", "-c", "printf 'run output\\n'"}, wantOutput: "run output\n"},
 		{name: "mcat", arguments: []string{"file.txt", "0:1"}, wantOutput: "alpha\n"},
 		{name: "hgrep", arguments: []string{"-F", "alpha", "file.txt"}, wantOutput: "\"file.txt\":1:8ed3 alpha\n"},
 		{name: "hsymbol", arguments: []string{"def", "file.go", fmt.Sprintf("3:%x", alphaHash[:2]), "Alpha"}, wantOutput: strconv.Quote("file.go") + ":3:" + fmt.Sprintf("%x", alphaHash[:2]) + " func Alpha() {}\n"},

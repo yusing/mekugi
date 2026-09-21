@@ -28,7 +28,7 @@ func TestShellCommandRouting(t *testing.T) {
 		}{
 			{"direct", "git status", "routed:git status\nextra\n", 7},
 			{"expanded", "arg=status; git \"$arg\"", "routed:git status\nextra\n", 7},
-			{"before hrun", "hrun -n 1 -- git status", "routed:git status\n", 7},
+			{"before mrun", "mrun -n 1 -- git status", "routed:git status\n", 7},
 			{"already routed", "rtk git status", "routed:git status\nextra\n", 7},
 			{"unsupported", "git rev-parse HEAD", "raw:rev-parse HEAD\n", 0},
 			{"machine output", "git status --porcelain", "raw:status --porcelain\n", 0},
@@ -100,7 +100,7 @@ func TestShellCommandRoutingWithoutExecutable(t *testing.T) {
 		t.Fatal(err)
 	}
 	invocation := newShellWorkerTestInvocation(directory, "PATH="+directory)
-	for _, script := range []string{"git status", "hrun -n 1 -- git status"} {
+	for _, script := range []string{"git status", "mrun -n 1 -- git status"} {
 		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, script, nil, invocation)
 		if stdout != "raw" || stderr != "" || status != 0 {
 			t.Fatalf("%s: %q, %q, %d", script, stdout, stderr, status)

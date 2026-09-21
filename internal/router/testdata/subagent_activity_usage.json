@@ -138,17 +138,17 @@
       "name": "bounded_test_run",
       "source": "host",
       "call_id": "call_garavAol85wE8kHUuWDzmKY3",
-      "selection": "hrun statement",
-      "input": "hrun --max-tokens 5000 -- go test ./internal/router -run 'TestHpatch|TestShellCatCarrier|TestShellBatch' -count=1",
-      "want": "Run\n```bash\nhrun --max-tokens 5000 -- go test ./internal/router -run 'TestHpatch|TestShellCatCarrier|TestShellBatch' -count=1\n```"
+      "selection": "mrun statement",
+      "input": "mrun --max-tokens 5000 -- go test ./internal/router -run 'TestHpatch|TestShellCatCarrier|TestShellBatch' -count=1",
+      "want": "Run\n```bash\nmrun --max-tokens 5000 -- go test ./internal/router -run 'TestHpatch|TestShellCatCarrier|TestShellBatch' -count=1\n```"
     },
     {
       "name": "background_checks_preserve_control_flow",
       "source": "checks",
       "call_id": "call_MRxDLxRcp2iorpjTD3kMgnbk",
       "selection": "complete script",
-      "input": "rtk go test ./internal/router &\nrouter_check_pid=$!\nhrun --tail --max-tokens 1200 -- rtk proxy bun test ./internal/router/toolplugin/tests &\nplugin_check_pid=$!\nchecks_status=0\nwait \"$router_check_pid\" || checks_status=$?\nwait \"$plugin_check_pid\" || checks_status=$?\ngit diff --check || checks_status=$?\nexit \"$checks_status\"\n",
-      "want": "Run\n```bash\nrtk go test ./internal/router &\nrouter_check_pid=$!\nhrun --tail --max-tokens 1200 -- rtk proxy bun test ./internal/router/toolplugin/tests &\nplugin_check_pid=$!\nchecks_status=0\nwait \"$router_check_pid\" || checks_status=$?\nwait \"$plugin_check_pid\" || checks_status=$?\ngit diff --check || checks_status=$?\nexit \"$checks_status\"\n```"
+      "input": "rtk go test ./internal/router &\nrouter_check_pid=$!\nmrun --tail --max-tokens 1200 -- rtk proxy bun test ./internal/router/toolplugin/tests &\nplugin_check_pid=$!\nchecks_status=0\nwait \"$router_check_pid\" || checks_status=$?\nwait \"$plugin_check_pid\" || checks_status=$?\ngit diff --check || checks_status=$?\nexit \"$checks_status\"\n",
+      "want": "Run\n```bash\nrtk go test ./internal/router &\nrouter_check_pid=$!\nmrun --tail --max-tokens 1200 -- rtk proxy bun test ./internal/router/toolplugin/tests &\nplugin_check_pid=$!\nchecks_status=0\nwait \"$router_check_pid\" || checks_status=$?\nwait \"$plugin_check_pid\" || checks_status=$?\ngit diff --check || checks_status=$?\nexit \"$checks_status\"\n```"
     },
     {
       "name": "screenshot_host_discovery",

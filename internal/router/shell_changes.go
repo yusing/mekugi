@@ -66,8 +66,8 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 				options.workspace = value
 			case "--max-tokens":
 				number, err := strconv.Atoi(value)
-				if err != nil || number < 1 || number > hrunMaxTokens || strconv.Itoa(number) != value {
-					return options, fmt.Errorf("--max-tokens requires an integer from 1 to %d", hrunMaxTokens)
+				if err != nil || number < 1 || number > maxOutputTokens || strconv.Itoa(number) != value {
+					return options, fmt.Errorf("--max-tokens requires an integer from 1 to %d", maxOutputTokens)
 				}
 				options.maxTokens = number
 			}
