@@ -21,6 +21,9 @@ type proxyRegistryFixture struct {
 
 var proxyTestFixture, pluginProxyTestFixture proxyRegistryFixture
 
+const routerTestWorkerEnvironment = "MEKUGI_ROUTER_TEST_WORKER"
+const routerTestWorkerUnscopedEnvironment = "MEKUGI_ROUTER_TEST_WORKER_UNSCOPED"
+
 // Ordinary proxy tests borrow the real, immutable built-in catalog and its
 // stateless shell translator. Each proxy still owns its session state and shell
 // storage. Tests of plugin loading, registry mutation, startup, or shutdown
@@ -71,6 +74,9 @@ func (fixture *proxyRegistryFixture) get(t *testing.T, pluginSource string) *too
 			filepath.Join(fixture.directory, "runtime"),
 			filepath.Join(fixture.directory, "replay"),
 		)
+		if fixture.err == nil {
+			fixture.err = fixture.registry.installFrontends()
+		}
 	})
 	if fixture.err != nil {
 		t.Fatal(fixture.err)
@@ -91,6 +97,16 @@ func newProxyWithSharedTestRegistry(t *testing.T, registry *toolRegistry) *mekug
 }
 
 func TestMain(m *testing.M) {
+	if os.Getenv(routerTestWorkerEnvironment) == "1" {
+		if os.Getenv(routerTestWorkerUnscopedEnvironment) == "1" {
+			_ = os.Unsetenv("CODEX_THREAD_ID")
+		}
+		if handled, code := RunToolPluginWorker(
+			context.Background(), os.Args[0], os.Args[1:], os.Stdin, os.Stdout, os.Stderr,
+		); handled {
+			os.Exit(code)
+		}
+	}
 	if err := os.Unsetenv(capturer.AXReadOutputEnvironment); err != nil {
 		fmt.Fprintln(os.Stderr, "isolate AX test instrumentation:", err)
 		os.Exit(1)

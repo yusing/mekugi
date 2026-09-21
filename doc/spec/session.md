@@ -90,7 +90,7 @@ Empty-poll evidence requires an empty-input call and explicitly empty native out
 for the same session; transparent Code Mode projections are recognized, but printed
 lookalikes are not. This is offline analysis and does not change continuation behavior.
 Truncation/reread findings are explicitly static candidates: adjacent selected calls
-must have matched shell scripts, an hread omission receipt, the same workspace, and
+must have matched shell scripts, an mread omission receipt, the same workspace, and
 overlapping literal hcat path/range selections. They do not establish execution counts,
 unchanged files, unnecessary reads, or actual duplicate delivered bytes. Unsupported
 scripts/carriers are not decoded or executed to manufacture evidence.

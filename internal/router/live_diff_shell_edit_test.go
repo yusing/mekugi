@@ -380,7 +380,7 @@ func TestLiveDiffPreviewWorkerRecognizesFailedProjection(t *testing.T) {
 
 func TestLiveDiffPreviewAfterPrivateReaders(t *testing.T) {
 	t.Parallel()
-	for _, prefix := range []string{"hread tide111", "hcat file.txt", "hgrep -F old file.txt", "inspect_file file.txt", "hchanges amber1"} {
+	for _, prefix := range []string{"mread tide111", "hcat file.txt", "hgrep -F old file.txt", "inspect_file file.txt", "hchanges amber1"} {
 		t.Run(prefix, func(t *testing.T) {
 			workspace := t.TempDir()
 			path := filepath.Join(workspace, "file.txt")

@@ -24,6 +24,9 @@ func TestShellTypeAll(t *testing.T) {
 	}
 	invocation := newShellWorkerTestInvocation(directory, "PATH="+first+string(os.PathListSeparator)+second)
 	matches := "example is " + filepath.Join(first, "example") + "\nexample is " + filepath.Join(second, "example") + "\n"
+	hcatMatches := "[mekugi-builtin]\nhcat is " + registry.frontends["hcat"] + "\n" +
+		"hcat is " + filepath.Join(first, "hcat") + "\n" +
+		"hcat is " + filepath.Join(second, "hcat") + "\n"
 	for _, tc := range []struct {
 		script, want string
 		status       int
@@ -32,7 +35,7 @@ func TestShellTypeAll(t *testing.T) {
 		{`example() { :; }; type -a example`, "example is a function\n" + matches, 0},
 		{`example() { :; }; type -at example`, "function\nfile\nfile\n", 0},
 		{`type -ap example`, filepath.Join(first, "example") + "\n" + filepath.Join(second, "example") + "\n", 0},
-		{`type -a hcat`, "[mekugi-builtin]\nhcat is " + filepath.Join(first, "hcat") + "\nhcat is " + filepath.Join(second, "hcat") + "\n", 0},
+		{`type -a hcat`, hcatMatches, 0},
 		{`type -a missing example`, matches, 1},
 		{`type -az example`, "", 2},
 		{`type -a '$(printf unsafe)'`, "", 1},

@@ -423,7 +423,7 @@ func inspectionEmptyOutput(call executionCall, texts []string, notice executionC
 
 func inspectionHasReadContinuation(call sessionInspectionCall) bool {
 	for _, output := range call.outputs {
-		if strings.Contains(string(output.Output), "read: incomplete; next_call: hread ") {
+		if strings.Contains(string(output.Output), "read: incomplete; next_call: mread ") {
 			return true
 		}
 	}

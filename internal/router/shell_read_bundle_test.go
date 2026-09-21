@@ -59,7 +59,7 @@ func TestReadBundleRetainsPerFileOmissions(t *testing.T) {
 	if status != 1 || stderr != "" || !strings.Contains(stdout, `path="first" shown=1:`) || !strings.Contains(stdout, `path="second" shown=1:`) {
 		t.Fatalf("status=%d out=%s err=%s", status, stdout, stderr)
 	}
-	refs := regexp.MustCompile(`next_call="(hread [a-z]+[0-9]*)"`).FindAllStringSubmatch(stdout, -1)
+	refs := regexp.MustCompile(`next_call="(mread [a-z]+[0-9]*)"`).FindAllStringSubmatch(stdout, -1)
 	if len(refs) != 2 {
 		t.Fatalf("missing per-file receipts: %s", stdout)
 	}
@@ -162,10 +162,10 @@ func TestReadBundleFitsOuterDisplay(t *testing.T) {
 			out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
 				"#!params={\"max_output_tokens\":2000}\n"+prefix+"hcat --max-tokens 2000 first second",
 				nil, newShellWorkerTestInvocation(directory))
-			if status != 1 || strings.Contains(diagnostic, "hread ") {
+			if status != 1 || strings.Contains(diagnostic, "mread ") {
 				t.Fatalf("status=%d out=%s err=%s", status, out, diagnostic)
 			}
-			receipts := regexp.MustCompile(`shown=(1:\d+).*next_call="(hread [a-z]+[0-9]*)"`).FindAllStringSubmatch(out, -1)
+			receipts := regexp.MustCompile(`shown=(1:\d+).*next_call="(mread [a-z]+[0-9]*)"`).FindAllStringSubmatch(out, -1)
 			bodies := strings.Split(out, "--- file ")
 			if len(receipts) != 2 || len(bodies) != 3 {
 				t.Fatalf("missing previews or receipts: %s", out)
@@ -199,7 +199,7 @@ func TestReadBundleFitsOuterDisplay(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				saved = append(saved, regexp.MustCompile(`hread [a-z]+[0-9]*`).ReplaceAllString(string(data), "hread REFERENCE"))
+				saved = append(saved, regexp.MustCompile(`mread [a-z]+[0-9]*`).ReplaceAllString(string(data), "mread REFERENCE"))
 			}
 			if saved[0] != saved[1] {
 				t.Fatalf("%s changed redirected bytes with display budget", route)
@@ -233,12 +233,12 @@ func TestReadBundleDisplayTrimmingPreservesSuccess(t *testing.T) {
 	}
 }
 
-var outerShellReadNotice = regexp.MustCompile(`\nread: incomplete; next_call: hread [a-z]+[0-9]*\n$`)
+var outerShellReadNotice = regexp.MustCompile(`\nread: incomplete; next_call: mread [a-z]+[0-9]*\n$`)
 
 func TestOuterShellReadNoticePreservesVisibleDiagnostics(t *testing.T) {
 	t.Parallel()
-	for _, visible := range []string{"", "unexpected visible diagnostic\n", "read: incomplete; next_call: hread not-a-reference\n"} {
-		shown := visible + "\nread: incomplete; next_call: hread amber\n"
+	for _, visible := range []string{"", "unexpected visible diagnostic\n", "read: incomplete; next_call: mread not-a-reference\n"} {
+		shown := visible + "\nread: incomplete; next_call: mread amber\n"
 		retained := "unexpected retained diagnostic\n"
 		got := outerShellReadNotice.ReplaceAllString(shown, "") + retained
 		if got != visible+retained {

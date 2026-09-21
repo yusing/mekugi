@@ -254,7 +254,7 @@ func (s *mekugiReplayStore) retainFiles(names ...string) error {
 	return nil
 }
 
-var retainedReadReference = regexp.MustCompile(`(?:\b|\\[nr])hread(?:[ \t]|\\t)+([a-z]+[0-9]*)\b`)
+var retainedReadReference = regexp.MustCompile(`(?:\b|\\[nr])mread(?:[ \t]|\\t)+([a-z]+[0-9]*)\b`)
 
 // Retain the complete visible history in one locked catalog update. A fork
 // shares immutable records with its source; removing either chat keeps facts

@@ -353,5 +353,5 @@ func retainExecutionOutput(ctx context.Context, manifest toolWorkerManifest, exe
 }
 
 func readNextCall(id string) string {
-	return fmt.Sprintf("read: incomplete; next_call: hread %s\n", id)
+	return fmt.Sprintf("read: incomplete; next_call: mread %s\n", id)
 }

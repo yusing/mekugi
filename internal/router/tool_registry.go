@@ -79,7 +79,7 @@ func buildToolRegistryAt(
 		return fail(err)
 	}
 	contributions := []toolContribution{
-		{PluginID: "builtin.mekugi", Name: "hread", Builtin: true},
+		{PluginID: "builtin.mekugi", Name: "mread", Builtin: true, Executable: true},
 		{PluginID: "builtin.mekugi", Name: "hchanges", Builtin: true},
 		{PluginID: "builtin.mekugi", Name: mekugiToolName, Builtin: true},
 	}
@@ -126,6 +126,7 @@ func buildToolRegistryAt(
 				Specification: slices.Clone(tool.Specification),
 				Module:        plugin.Module,
 				ModuleIndex:   toolIndex,
+				Executable:    true,
 				ModelVisible:  name != "hcat" && name != "hgrep" && name != "hsymbol" && name != "inspect_file",
 			}
 			if validationErr := validateToolContribution(contribution); validationErr != nil {
@@ -184,7 +185,7 @@ func buildToolRegistryAt(
 	}
 	var shellRuntime string
 	for _, contribution := range contributions {
-		if contribution.Builtin {
+		if !contribution.Executable {
 			continue
 		}
 		wrapper, wrapperErr := ensureWorkerSymlinkInDirectory(executable, snapshotDirectory, contribution.Name)

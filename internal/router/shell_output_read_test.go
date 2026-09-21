@@ -37,8 +37,8 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 	if err != nil || record.Stdout != out || record.Stderr != diagnostic || record.ExitCode != 7 {
 		t.Fatalf("restart record: %#v, %v", record, err)
 	}
-	if _, direct := registry.directBashExecCommand([]string{"bash", "hread " + id}); direct {
-		t.Fatal("hread escaped the private runner")
+	if _, direct := registry.directBashExecCommand([]string{"bash", "mread " + id}); !direct {
+		t.Fatal("mread did not use the stock executable carrier")
 	}
 
 	codec, err := tokenizer.New()
@@ -127,22 +127,21 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 		})
 	}
 
-	// Keep sh represented and exercise restart/continuation behavior through
-	// executeHRead under a changed cwd, thread ID and state directory.
-	stdout, stderr, status := runShellWorkerTest(t, registry, "sh", nil, "hread "+id+" --stdout --max-tokens 48", nil)
-	if status != 1 || stdout == "" || !strings.Contains(stderr, "next_call: hread ") {
+	// Keep sh represented and exercise the executable frontend's
+	// restart/continuation behavior under a changed cwd, thread ID and state directory.
+	stdout, stderr, status := runShellWorkerTest(t, registry, "sh", nil, "mread "+id+" --stdout --max-tokens 48", nil)
+	if status != 1 || stdout == "" || !strings.Contains(stderr, "next_call: mread ") {
 		t.Fatalf("sh boundary: %d %q %q", status, stdout, stderr)
 	}
-	invocation := newShellWorkerTestInvocation(t.TempDir(),
-		"CODEX_THREAD_ID=resumed-fork", "XDG_STATE_HOME="+t.TempDir())
+	invocation := newShellWorkerTestInvocation(t.TempDir(), "XDG_STATE_HOME="+t.TempDir())
 	first, firstErr, firstStatus := runShellWorkerTest(t, registry, "bash", nil,
-		"hread "+id+" --stderr --max-tokens 48", nil, invocation)
-	const notice = "read: incomplete; next_call: hread "
+		"mread "+id+" --stderr --max-tokens 48", nil, invocation)
+	const notice = "read: incomplete; next_call: mread "
 	if firstStatus != 1 || !strings.Contains(first, "err 引用") || strings.Contains(first, "out π") || !strings.HasPrefix(firstErr, notice) {
 		t.Fatalf("restart boundary: %d %q %q", firstStatus, first, firstErr)
 	}
 	cursor := strings.TrimSpace(strings.TrimPrefix(firstErr, notice))
-	command := "hread " + cursor + " --max-tokens 48"
+	command := "mread " + cursor + " --max-tokens 48"
 	next, nextErr, nextStatus := runShellWorkerTest(t, registry, "bash", nil, command, nil, invocation)
 	again, againErr, againStatus := runShellWorkerTest(t, registry, "bash", nil, command, nil, invocation)
 	if next != again || nextErr != againErr || nextStatus != againStatus {
@@ -230,7 +229,7 @@ func TestShellOutputStoreQuotaAndPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	execution, err := display.finish(toolplugin.ExecutionOutput{ExitCode: 7})
-	if err == nil || strings.Contains(execution.Stderr, "hread") {
+	if err == nil || strings.Contains(execution.Stderr, "mread") {
 		t.Fatalf("quota failure exposed recovery receipt: %#v, %v", execution, err)
 	}
 	for _, budget := range []int{1, 64, 15500} {
@@ -263,9 +262,9 @@ func TestShellOutputPluginRemainderUsesManagedRecovery(t *testing.T) {
 	if err := os.Remove(name); err != nil {
 		t.Fatal(err)
 	}
-	start := strings.Index(stderr, "hread ")
+	start := strings.Index(stderr, "mread ")
 	if start < 0 {
-		t.Fatalf("missing hread receipt: %q", stderr)
+		t.Fatalf("missing mread receipt: %q", stderr)
 	}
 	command := strings.TrimSpace(stderr[start:]) + " --stdout"
 	rest, readErr, readStatus := runShellWorkerTest(t, registry, "sh", nil, command, nil, invocation)
@@ -370,7 +369,7 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 			}
 			reference := func(diagnostic string) string {
 				t.Helper()
-				_, ref, found := strings.Cut(diagnostic, "read: incomplete; next_call: hread ")
+				_, ref, found := strings.Cut(diagnostic, "read: incomplete; next_call: mread ")
 				if !found {
 					t.Fatalf("missing continuation: %q", diagnostic)
 				}
@@ -382,7 +381,7 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 			}
 			// A stream-only read must not consume the other stream or reopen the source.
 			empty, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil,
-				"hread "+ref+" --stderr", nil, invocation)
+				"mread "+ref+" --stderr", nil, invocation)
 			if status != 0 || empty != "" || diagnostic != "" {
 				t.Fatalf("stderr selection: %d %q %q", status, empty, diagnostic)
 			}
@@ -400,7 +399,7 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 			complete := false
 			for pageIndex := range 100 {
 				page, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil,
-					"hread "+ref+" --max-tokens 256", nil, invocation)
+					"mread "+ref+" --max-tokens 256", nil, invocation)
 				payload := page
 				if command == "hcat" {
 					if !strings.HasSuffix(payload, "\n") {

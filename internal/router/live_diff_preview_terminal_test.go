@@ -487,7 +487,7 @@ func TestLiveDiffTerminalShellHpatchDiff(t *testing.T) {
 	defer func() { worker.stop(); <-worker.done }()
 	// Exercise the shell decoder's no-space heredoc form as it appears in the
 	// provider stream, not only the direct decoder fixture.
-	worker.appendDelta("hread tide111\nhpatch file.txt<<'EDIT'\ntype \"old\" \"new")
+	worker.appendDelta("mread tide111\nhpatch file.txt<<'EDIT'\ntype \"old\" \"new")
 	frame := ui.frame(t, func(frame string) bool {
 		text := ansi.Strip(frame)
 		return strings.Contains(text, "STREAMING PREVIEW") && strings.Contains(text, "+new")

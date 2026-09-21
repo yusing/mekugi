@@ -288,7 +288,7 @@ func TestStorageChangeReadDependenciesSurviveOriginalSessionExpiry(t *testing.T)
 	release()
 	child, _ := retentionTestSession(t, store, "child", 0)
 	child = bindTestHandleScope(t, store, child, "", "parent")
-	// This is the inherited hread path, without a preceding hchanges in child.
+	// This is the inherited mread path, without a preceding hchanges in child.
 	record, err := store.readShellOutput(child, reference)
 	if err != nil {
 		t.Fatal(err)

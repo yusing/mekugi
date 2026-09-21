@@ -35,6 +35,8 @@ model-private but are executable through session-private frontends in the same a
 snapshot as configured plugins. They share portable row and source semantics while retaining
 distinct selection owners. Codex remains the execution authority for those frontends. The router
 never fabricates their results or turns their command history into edit-recovery ancestry.
+The router-native `mread` frontend shares this authenticated wrapper path and delegates retained
+output semantics to the existing managed store rather than duplicating them in the registry.
 
 Optional shell command-routing policy is built-in plugin code, separate from model-visible
 tool declarations. The authenticated registry retains its candidate names and required

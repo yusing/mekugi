@@ -16,6 +16,7 @@ type (
 		Module        string          `json:"module,omitempty"`
 		ModuleIndex   int             `json:"module_index,omitempty"`
 		Builtin       bool            `json:"builtin"`
+		Executable    bool            `json:"executable"`
 		ModelVisible  bool            `json:"model_visible"`
 	}
 

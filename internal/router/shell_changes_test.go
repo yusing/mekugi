@@ -63,7 +63,7 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 			for page := range 100 {
 				command := "hchanges --max-tokens 32 " + id + " -- 'old name.txt' file.txt 'new name.txt' ./file.txt"
 				if cursor != "" {
-					command = "hread " + cursor + " --stdout --max-tokens 32"
+					command = "mread " + cursor + " --stdout --max-tokens 32"
 				}
 				stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, command, nil, invocation)
 				count, err := codec.Count(stdout)
@@ -80,7 +80,7 @@ func TestShellChangesReadAcrossAgentsAndPages(t *testing.T) {
 					}
 					break
 				}
-				const notice = "read: incomplete; next_call: hread "
+				const notice = "read: incomplete; next_call: mread "
 				if !strings.HasPrefix(stderr, notice) || stdout == "" || page == 99 {
 					t.Fatalf("read failed: %q, %q, %d", stdout, stderr, status)
 				}

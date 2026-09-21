@@ -349,6 +349,64 @@ func TestBuiltinToolFrontendsRunGeneratedTypeScriptImplementations(t *testing.T)
 	}
 }
 
+func TestMReadFrontendPreservesSessionOwnership(t *testing.T) {
+	registry, err := buildToolRegistryForTest(t, t.Context(), t.TempDir(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := registry.installFrontends(); err != nil {
+		t.Fatal(err)
+	}
+	frontend, ok := registry.frontends["mread"]
+	if !ok {
+		t.Fatal("mread session frontend is unavailable")
+	}
+	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := shellOutputStore(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, release, err := store.beginSession(t.Context(), "owner-thread", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := store.putShellOutput(owner, "retained output\n", "", 0)
+	release()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(thread string) (string, string, int) {
+		t.Helper()
+		t.Setenv("CODEX_THREAD_ID", thread)
+		var stdout, stderr bytes.Buffer
+		handled, status := RunToolPluginWorker(
+			t.Context(), frontend, []string{id, "--stdout", "--max-tokens", "100"},
+			os.Stdin, &stdout, &stderr,
+		)
+		if !handled {
+			t.Fatal("mread frontend was not handled")
+		}
+		return stdout.String(), stderr.String(), status
+	}
+	stdout, stderr, status := run("owner-thread")
+	if status != 0 || stdout != "retained output\n" || stderr != "" {
+		t.Fatalf("owner read: exit %d, stdout %q, stderr %q", status, stdout, stderr)
+	}
+	stdout, stderr, status = run("other-thread")
+	if status != 1 || stdout != "" || !strings.Contains(stderr, "unavailable in this session") {
+		t.Fatalf("cross-session read: exit %d, stdout %q, stderr %q", status, stdout, stderr)
+	}
+}
+
 func TestHGrepWorkerReferencesSelectRepeatedMixedNewlineRows(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)

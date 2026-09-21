@@ -12,14 +12,15 @@ import (
 func TestShellBuiltinType(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
+	mreadType := "mread is " + registry.frontends["mread"] + "\n"
 	for _, tc := range []struct {
 		name, script, want string
 		status             int
 	}{
-		{"private", "type hcat hpatch hread hchanges hrun journal", strings.Repeat("[mekugi-builtin]\n", 6), 0},
-		{"mixed", "type hcat printf hread", strings.Repeat("[mekugi-builtin]\n", 3), 0},
+		{"private", "type hcat hpatch mread hchanges hrun journal", strings.Repeat("[mekugi-builtin]\n", 2) + mreadType + strings.Repeat("[mekugi-builtin]\n", 3), 0},
+		{"mixed", "type hcat printf mread", strings.Repeat("[mekugi-builtin]\n", 2) + mreadType, 0},
 		{"function", "example() { :; }; type hcat example", "[mekugi-builtin]\nexample is a function\n", 0},
-		{"missing", "type hcat mekugi_missing_command hread", "[mekugi-builtin]\n[mekugi-builtin]\n", 1},
+		{"missing", "type hcat mekugi_missing_command mread", "[mekugi-builtin]\n" + mreadType, 1},
 		{"quoted", "type hcat '$(echo unsafe)'", "[mekugi-builtin]\n", 1},
 		{"plus option", "type +x printf", "", 2},
 		{"custom builtin", "builtin() { printf custom; }; builtin type hcat", "custom", 0},

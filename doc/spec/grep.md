@@ -30,7 +30,7 @@ cancellation, invalid-pattern, and missing-executable failures return concise no
 diagnostics. Output contains only complete rows and uses the shared verified-row token admission
 rule in `REQ-READ-001`. Display-budget exhaustion does not stop the search: hgrep retains
 the formatted result up to 16 MiB and returns only omitted rows to the host's managed
-output recovery store. The `hread` receipt and pagination follow the shell output contract;
+output recovery store. The `mread` receipt and pagination follow the shell output contract;
 reads preserve original verified-row identities without rerunning ripgrep or writing temporary dumps. Source/event/retention bounds still terminate and reap ripgrep and must
 not describe the retained prefix as complete. A later search failure remains a failure even
 after display output was limited.

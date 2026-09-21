@@ -5,15 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 
 	"github.com/yusing/mekugi/internal/router/toolplugin"
-	"mvdan.cc/sh/v3/interp"
 )
 
-const outputReadUsage = "hread REF [--stdout|--stderr] [--max-tokens N]"
+const outputReadUsage = "mread REF [--stdout|--stderr] [--max-tokens N]"
 
 type outputReadOptions struct {
 	id        string
@@ -65,11 +63,14 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 	return options, nil
 }
 
-func executeHRead(ctx context.Context, manifest toolWorkerManifest, runtimeRoot string, arguments []string) error {
-	handler := interp.HandlerCtx(ctx)
-	fail := func(err error) error {
-		_, _ = fmt.Fprintf(handler.Stderr, "hread: %v\n", err)
-		return interp.ExitStatus(1)
+func executeMRead(
+	ctx context.Context,
+	manifest toolWorkerManifest,
+	runtimeRoot string,
+	arguments []string,
+) toolplugin.ExecutionOutput {
+	fail := func(err error) toolplugin.ExecutionOutput {
+		return toolplugin.ExecutionOutput{Stderr: fmt.Sprintf("mread: %v\n", err), ExitCode: 1}
 	}
 	options, err := parseOutputRead(arguments)
 	if err != nil {
@@ -138,12 +139,8 @@ func executeHRead(ctx context.Context, manifest toolWorkerManifest, runtimeRoot 
 			return fail(err)
 		}
 	}
-	if _, err := io.WriteString(handler.Stdout, page.Text); err != nil {
-		return err
-	}
 	if next != "" {
-		_, _ = io.WriteString(handler.Stderr, readNextCall(next))
-		return interp.ExitStatus(1)
+		return toolplugin.ExecutionOutput{Stdout: page.Text, Stderr: readNextCall(next), ExitCode: 1}
 	}
-	return nil
+	return toolplugin.ExecutionOutput{Stdout: page.Text}
 }

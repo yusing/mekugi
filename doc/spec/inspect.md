@@ -40,7 +40,7 @@ The complete successful stdout, including its final LF, is at most 65,536 UTF-8 
 uses the shared [reader token ceiling](read.md). Options may precede or follow the path.
 When necessary, the worker emits a complete outline prefix, exits nonzero, and returns
 `truncation: {"reason":"output_bytes"|"output_tokens","after_entries":N}`.
-Omitted complete entries are available as JSON arrays through the shared `hread` interface,
+Omitted complete entries are available as JSON arrays through the shared `mread` interface,
 without repeating the prefix or reopening the source. Lezer parser recovery or YAML
 frontmatter diagnostics set `parse_complete: false` independently of output truncation. There is
 no input-size or entry-count limit. If an empty-outline success envelope cannot fit, the command

@@ -195,7 +195,7 @@ and pipelines are not display streams and keep their original bytes.
 
 Display exhaustion does not stop execution or change command status. The worker retains
 only omitted stdout/stderr through [managed read continuation](read.md#managed-read-continuation).
-The shared `next_call: hread REF` receipt replaces standalone output dumps. Existing producer
+The shared `next_call: mread REF` receipt replaces standalone output dumps. Existing producer
 byte limits, invalid UTF-8, cancellation, and execution failures still apply; retention
 cannot make an incomplete producer complete.
 The receipt itself needs display space: a caller budget smaller than the receipt and host

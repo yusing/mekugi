@@ -4,10 +4,12 @@
 
 In Mekugi mode, the model receives `hpatch` and `shell` as standalone custom
 tools. The [agent-guidance contract](guide.md) owns persistent workflow guidance.
-Hcat, hgrep, hsymbol, and inspect_file are private commands available only inside
-the shell execution boundary: their specifications are not sent as model-visible
-tools, direct model calls to their names are not routed, and no executable frontend
-is installed for them.
+Hcat, hgrep, hsymbol, and inspect_file remain model-private: their specifications
+are not sent as model-visible tools and direct model calls to their names are not
+routed. Each has a session-private executable frontend in the authenticated
+snapshot. The shell carrier may dispatch these commands for not-yet-migrated
+consumers. `mread` is the standalone authenticated continuation frontend and is
+not a shell-owned builtin.
 
 The private `hcat` command accepts one or more files:
 
@@ -24,10 +26,11 @@ A numeric `START:END` argument after a path is a range; prefix a range-like file
 with `./` to read it as a file. `--` ends option parsing, not a file selection.
 Single-file reads also accept `-n N`, `--preview-bytes N`, and `--tail` as described below.
 
-The shell boundary resolves the authenticated private commands for the current
-thread. These names are not filesystem entries and do not depend on `PATH`.
-Deployments with separate router and executor filesystems must make the authenticated
-runtime available at the same absolute location on both sides.
+The wrapped launcher prepends the authenticated session frontend directory to
+Codex's `PATH`. The same pinned registry dispatches shell-carrier and executable
+calls; it does not rediscover implementations. Deployments with separate router
+and executor filesystems must make the authenticated runtime available at the
+same absolute location on both sides.
 
 Hcat runs in the shell carrier's actual working directory. Relative and absolute paths keep
 their ordinary process meaning. Codex, not the router or hcat, owns sandbox and filesystem
@@ -52,7 +55,7 @@ Outer host budgets remain independent.
 
 Verified-row commands admit only complete rows. The first row that does not fit and all
 later rows are omitted; truncation preserves admitted stdout and returns nonzero.
-Hcat retains omitted rows through the shared `hread` interface below, including omitted
+Hcat retains omitted rows through the shared `mread` interface below, including omitted
 prefixes from tail selection. Recovery reads the captured snapshot without reopening the
 source. If a row exceeds the inspection bound or recovery exceeds its 16 MiB capacity,
 the result reports that recovery is unavailable and suggests narrowing the source range.
@@ -107,8 +110,8 @@ Acceptance:
 5. Success and failure reach Codex through the model-visible shell carrier. Replay retains
    the original shell call and output; it never synthesizes a model-visible hcat call or
    includes the shell call in editable rejected-script recovery history.
-6. Router startup validates hcat inside the immutable built-in snapshot without installing a
-   frontend. Passthrough mode loads and exposes none of these replacement surfaces.
+6. Router startup validates hcat inside the immutable built-in snapshot and installs its
+   session-private frontend. Passthrough mode loads and exposes none of these replacement surfaces.
 
 7. Hcat and hgrep enforce a caller's strict token ceiling identically, including
    complete-record admission, preserved prefixes, and explicit nonzero incompleteness.
@@ -124,9 +127,10 @@ Acceptance:
 
 ### Managed read continuation
 
-Shell output, searches, symbol references, and change reviews use one read continuation:
-`hread REF [--stdout|--stderr] [--max-tokens N]`. An incomplete result supplies the exact
-`read: incomplete; next_call: hread REF` command. There is no separate cursor flag or
+Shell output, searches, symbol references, and change reviews use the authenticated
+`mread` executable frontend for one read continuation:
+`mread REF [--stdout|--stderr] [--max-tokens N]`. An incomplete result supplies the exact
+`read: incomplete; next_call: mread REF` command. There is no separate cursor flag or
 caller-composed hash/offset. References use short lowercase word handles, such as
 `maple`, with a decimal suffix when needed. The same visible format is used for change,
 recovery, continuation, and journal handles. Handles are feature-scoped locators, not
@@ -176,6 +180,12 @@ It remains valid while its session data is retained under that policy. Missing, 
 out-of-range records fail rather than replay producers. These durable read references do
 not extend the lifetime of executable recovery handles or native sessions.
 
+Acceptance: the session basename `mread` resolves through the authenticated pinned frontend and
+stock executor, preserves cwd, environment, stdout, stderr, and status, and never routes through
+the shell's private-command dispatcher. Complete and incomplete pages retain the token and unit
+bounds above. The worker binds `CODEX_THREAD_ID` before reading, so unrelated sessions cannot use
+equal handles while inherited fork and side-thread ownership survives restart and cleanup.
+
 ### Coordinated multi-file reads
 
 The shell-private `hcat [--max-tokens N] PATH [START:END] [PATH [START:END] ...]`
@@ -192,14 +202,14 @@ No new source-selection semantics are introduced.
 
 A manifest precedes all bodies and reports each input path, displayed and retained
 omitted inclusive line ranges (or `none`), completion state, and an optional `next_call`
-using hread. Bodies are labeled by manifest index. Diagnostics and omitted rows are
+using mread. Bodies are labeled by manifest index. Diagnostics and omitted rows are
 persisted before exposing the manifest. Unrecoverable omissions say `unavailable`,
 never complete. Each actual hcat execution participates in AX read observation.
 Any failed or incomplete reader makes the bundle nonzero, but other files are still read.
 Cancellation and storage failure stop delivery with an error. For direct shell display,
 the bundle fits its complete manifest and whole preview rows within the smaller of its
 requested limit and the shell's remaining escaped-token budget, after framing reserves
-and preceding stdout/stderr. Rows removed from previews remain behind per-file hread
+and preceding stdout/stderr. Rows removed from previews remain behind per-file mread
 receipts. Display-only trimming preserves the readers' exit statuses and shell control
 flow. Redirected files, pipelines, and command substitutions retain the requested
 reader budget. If even the manifest cannot fit, normal outer retention still applies;
@@ -207,5 +217,5 @@ the outer limiter and host budget remain independent safeguards.
 
 Acceptance: multiple files receive preview space under one total budget; omissions
 remain recoverable after source changes and router restart; invalid files and empty
-files have distinct manifest states; no executable basename or model-visible tool
+files have distinct manifest states; no extra batch basename or model-visible tool
 is installed. Pipelines and redirections retain ordinary shell behavior.

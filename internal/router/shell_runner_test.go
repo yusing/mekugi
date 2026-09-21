@@ -22,9 +22,10 @@ type shellWorkerTestInvocation struct {
 }
 
 func newShellWorkerTestInvocation(directory string, environment ...string) shellWorkerTestInvocation {
+	base := append(os.Environ(), "CODEX_THREAD_ID=")
 	return shellWorkerTestInvocation{
 		directory:   directory,
-		environment: append(os.Environ(), environment...),
+		environment: append(base, environment...),
 	}
 }
 
@@ -58,11 +59,14 @@ func runShellWorkerTest(
 	if err != nil {
 		t.Fatal(err)
 	}
-	environment := os.Environ()
+	environment := append(os.Environ(), "CODEX_THREAD_ID=")
 	if len(invocations) == 1 {
 		workingDirectory = invocations[0].directory
 		environment = invocations[0].environment
 	}
+	environment = prependToolFrontendPath(environment, registry.frontendDirectory)
+	environment = append(environment, routerTestWorkerEnvironment+"=1")
+	environment = append(environment, routerTestWorkerUnscopedEnvironment+"=1")
 	arguments = append(arguments, script)
 	execution, err := executeShellTool(
 		t.Context(),
@@ -80,6 +84,24 @@ func runShellWorkerTest(
 		t.Fatal(err)
 	}
 	return execution.Stdout, execution.Stderr, execution.ExitCode
+}
+
+func prependToolFrontendPath(environment []string, frontendDirectory string) []string {
+	result := make([]string, 0, len(environment)+1)
+	path := ""
+	for _, entry := range environment {
+		if value, ok := strings.CutPrefix(entry, "PATH="); ok {
+			path = value
+			continue
+		}
+		result = append(result, entry)
+	}
+	if path == "" {
+		path = frontendDirectory
+	} else {
+		path = frontendDirectory + string(os.PathListSeparator) + path
+	}
+	return append(result, "PATH="+path)
 }
 
 func TestShellRunnerJoinsIndependentBackgroundJobsAndPreservesFailure(t *testing.T) {

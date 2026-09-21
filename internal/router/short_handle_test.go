@@ -124,10 +124,10 @@ func TestShortReadCursorSurvivesRestart(t *testing.T) {
 
 func TestShortReadReferencesInInheritedJSON(t *testing.T) {
 	for _, source := range []string{
-		"hread maple",
-		"echo before\nhread maple",
-		"echo before\r\nhread\tmaple",
-		"read: incomplete; next_call: hread maple",
+		"mread maple",
+		"echo before\nmread maple",
+		"echo before\r\nmread\tmaple",
+		"read: incomplete; next_call: mread maple",
 	} {
 		raw := string(mustMarshalJSON(source))
 		matches := retainedReadReference.FindAllStringSubmatch(raw, -1)

@@ -248,7 +248,7 @@ async function inspect(input: string): Promise<InspectionData> {
   };
 }
 
-export const inspectFileDescription = `Inspect one host-readable regular file and return bounded JSON metadata and a structural outline. --max-tokens N sets the shared strict 1–15500 ceiling (default 4000). Recover omitted entries with hread. Outline line and line_end are copyable LINE:HASH identities, not source text.
+export const inspectFileDescription = `Inspect one host-readable regular file and return bounded JSON metadata and a structural outline. --max-tokens N sets the shared strict 1–15500 ceiling (default 4000). Recover omitted entries with mread. Outline line and line_end are copyable LINE:HASH identities, not source text.
 
 Result shape schema:
 ${inspectFileShapeSchemaJSON}`;

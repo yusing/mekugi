@@ -88,7 +88,7 @@ func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 var readBundleRange = regexp.MustCompile(`^[0-9]+:[0-9]+$`)
 
 // Bundle composition delegates source parsing, verified rows and row admission to
-// hcat. Only framing and allocation belong here; omitted rows use the hread store.
+// hcat. Only framing and allocation belong here; omitted rows use the mread store.
 func executeReadBundle(ctx context.Context, manifest toolWorkerManifest, runtime string, specs []readBundleSpec, budget int, hcat toolContribution, shellID string) error {
 	handler := interp.HandlerCtx(ctx)
 	fail := func(err error) error {
@@ -288,7 +288,7 @@ func renderReadBundle(entries []readBundleEntry) string {
 		fmt.Fprintf(&manifest, "%d path=%s shown=%s omitted=%s status=%s", i+1,
 			mustMarshalJSON(entry.path), bundleRowSpan(entry.shown), entry.omitted, entry.state)
 		if entry.record.Stdout != "" || entry.record.Stderr != "" {
-			fmt.Fprintf(&manifest, " next_call=%q", "hread "+entry.record.ID)
+			fmt.Fprintf(&manifest, " next_call=%q", "mread "+entry.record.ID)
 		}
 		manifest.WriteByte('\n')
 		if entry.shown != "" {

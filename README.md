@@ -337,13 +337,16 @@ substitutions, machine-readable formats, terminal-backed commands, and native
 `find`/`diff` stay raw. Use an explicit executable path when a supported command
 needs raw output.
 
-### Shell helpers
+### Wrapped-session helpers
 
-The following commands are available **inside the tool's Bash and POSIX
-programs**, not as standalone utilities in your terminal:
+The shell carrier recognizes the commands below. `mread`, `hcat`, `hgrep`,
+`hsymbol`, and `inspect_file` are also session-private executables on the wrapped
+Codex `PATH`; they are not installed as global terminal utilities. `hrun` and
+`hchanges` remain shell-only until their migrations.
 
 | Command | Purpose | Extra prerequisite on the executor's `PATH` |
 | --- | --- | --- |
+| `mread` | Continue bounded retained output by reference | Access to the router's replay directory |
 | `hrun` | Bound an external command's output, optionally keeping its ending | The wrapped command |
 | `hchanges` | Read tracked diffs and hpatch recovery history by ID or range | Access to the router's replay directory |
 | `hcat` | Read verified source rows: `hcat path1 1:200 path2 path3 200:300`; multiple files share a budget and provide per-file recovery links | Replay-directory access for multi-file reads |
@@ -374,11 +377,11 @@ For example, `--summary` returns aggregated tab-separated counts:
 
 Counts are summed across the selected evaluations; they are not a net diff or
 current workspace status. The records cover formatted hpatch evaluations and
-supported shell file operations. Incomplete reads return an exact `hread REF`
+supported shell file operations. Incomplete reads return an exact `mread REF`
 next call. Typical follow-ups:
 
 ```sh
-hread REF
+mread REF
 hsymbol def source.go 42 MyFunction
 inspect_file source.go
 hcat --tail -n 20 source.ts

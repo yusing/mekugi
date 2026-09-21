@@ -95,7 +95,7 @@ func TestSessionCorpusRecoveryAndReadCandidates(t *testing.T) {
 	second := inspectionFixture(t, root, "second", mekugiHistory{ToolName: "shell", Root: root, Script: "hcat file.go 50:150",
 		CarrierName: "exec", CarrierKind: codeModeCarrierCustom, CarrierPayload: "reread carrier"})
 	writeCorpusFixture(t, root, "session", "gpt-6-astra", edit, recovery, first,
-		map[string]any{"type": "custom_tool_call_output", "call_id": "first", "output": "read: incomplete; next_call: hread r_123"},
+		map[string]any{"type": "custom_tool_call_output", "call_id": "first", "output": "read: incomplete; next_call: mread r_123"},
 		second)
 	result, status, diagnostic := runCorpusFixture(t, root)
 	if status != 0 || len(result.Sessions) != 1 || len(result.Sessions[0].Findings) != 2 {

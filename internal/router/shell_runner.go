@@ -188,9 +188,6 @@ func executeShellProgram(
 			if command[0] == "hpatch" {
 				return executeHpatch(handlerCtx, manifest, command[1:], commentary)
 			}
-			if command[0] == "hread" {
-				return executeHRead(handlerCtx, manifest, runtimeRoot, command[1:])
-			}
 			if command[0] == "hchanges" {
 				return executeHChanges(handlerCtx, manifest, runtimeRoot, command[1:])
 			}

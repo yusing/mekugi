@@ -145,7 +145,7 @@ Reads default to 4,000 GPT-5 stdout tokens; `--max-tokens` accepts 1–15,500.
 
 When output is omitted, the executor persists a small selection descriptor using
 [managed read continuation](read.md#managed-read-continuation) and supplies the exact
-`hread REF` next call. The descriptor holds IDs, filters, the position, and the full
+`mread REF` next call. The descriptor holds IDs, filters, the position, and the full
 projection fingerprint, not another copy of the diff. Later pages rebuild and validate
 the same selection without repeating arguments. Changed projections fail explicitly;
 a new `hchanges` invocation selects the current state.

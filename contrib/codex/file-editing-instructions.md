@@ -172,7 +172,7 @@ Hpatch reports include `change amber1`; recovery keeps that ID. Review captured 
 Use `--history` for a recovery chain. Git remains appropriate for untracked, shell-generated, or
 unrelated changes; do not routinely pair it with hchanges for the same edits.
 
-Reads default to 4,000 tokens. An incomplete read supplies exact `next_call: hread REF`; continue it
+Reads default to 4,000 tokens. An incomplete read supplies exact `next_call: mread REF`; continue it
 without repeating IDs or filters. Historical evaluated diffs are not current editable rows or
 proof of application, and counts are per evaluation rather than combined net change.
 
@@ -181,11 +181,12 @@ proof of application, and counts are per evaluation rather than combined net cha
 Use ordinary `cat` or bounded `sed` unless verified rows help an anticipated edit. Budget combined
 reads and searches before execution. Shell workers budget combined display output automatically.
 For omitted output, run the
-exact `next_call: hread REF` without repeating producer arguments. Reading never reruns a producer;
+exact `next_call: mread REF` without repeating producer arguments. Reading never reruns a producer;
 commands retain their exit status. Outer host truncation can still hide a receipt.
 
-Private readers run in Bash/POSIX and accept `--max-tokens N` (1–15500, default 4000). Copy emitted
-rows directly; never reconstruct hashes. Incomplete results do not establish coverage.
+Private source readers run in Bash/POSIX and accept `--max-tokens N` (1–15500, default 4000).
+`mread` is the standalone executable continuation supplied on the wrapped session `PATH`.
+Copy emitted rows directly; never reconstruct hashes. Incomplete results do not establish coverage.
 
 | Tool | Compact form and rules |
 | --- | --- |
@@ -197,7 +198,7 @@ rows directly; never reconstruct hashes. Incomplete results do not establish cov
 | preview | Hcat/hgrep accept `--preview-bytes N` (1–65536). Preview JSON has a full-row identity and UTF-8 prefix with omitted-byte counts; obtain missing bytes before using literal text. |
 
 Empty output is omitted. Stdout-only retained pages are unframed; stderr/mixed pages use
-`[stream unit]` frames. Initial `hread` accepts `--stdout` or `--stderr`; later references bind
+`[stream unit]` frames. Initial `mread` accepts `--stdout` or `--stderr`; later references bind
 stream and position. Pages hold raw bytes, verified rows, or JSON entries; fragments and framing are
 not verified rows. If one complete unit cannot fit, increase the budget or use preview. Reads are
 repeatable and retained with their session; missing references fail explicitly.

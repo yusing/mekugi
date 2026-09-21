@@ -143,11 +143,16 @@ func runAuthenticatedToolWorker(
 			contribution = &manifest.Tools[index]
 		}
 	}
-	if contribution == nil || contribution.Builtin || contribution.Module == "" || contribution.PluginID == "" {
+	if contribution == nil || !contribution.Executable || contribution.PluginID == "" {
 		return fail(fmt.Errorf("tool %q is unavailable in worker manifest", name))
 	}
-	if err := validateToolContribution(*contribution); err != nil {
-		return fail(err)
+	if !contribution.Builtin {
+		if contribution.Module == "" {
+			return fail(fmt.Errorf("tool %q has no executable module", name))
+		}
+		if err := validateToolContribution(*contribution); err != nil {
+			return fail(err)
+		}
 	}
 	if manifest.ReplayDirectory != "" {
 		store, err := shellOutputStore(manifest)
@@ -162,7 +167,7 @@ func runAuthenticatedToolWorker(
 		}
 		defer release()
 	}
-	if contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell" {
+	if !contribution.Builtin && contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell" {
 		if handled, publishErr := publishCommentaryOnce(ctx, stdout, args); handled {
 			if publishErr != nil {
 				return fail(publishErr)
@@ -172,7 +177,14 @@ func runAuthenticatedToolWorker(
 	}
 
 	var execution toolplugin.ExecutionOutput
-	if contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell" {
+	if contribution.Builtin {
+		switch contribution.Name {
+		case "mread":
+			execution = executeMRead(ctx, manifest, runtimeRoot, args)
+		default:
+			return fail(fmt.Errorf("built-in tool %q is unavailable", name))
+		}
+	} else if contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell" {
 		workingDirectory, workingDirectoryErr := os.Getwd()
 		if workingDirectoryErr != nil {
 			err = fmt.Errorf("resolve shell working directory: %w", workingDirectoryErr)
@@ -194,17 +206,17 @@ func runAuthenticatedToolWorker(
 		)
 	}
 	if err != nil {
-		return fail(fmt.Errorf("execute tool plugin: %w", err))
+		return fail(fmt.Errorf("execute tool: %w", err))
 	}
 	execution, err = retainExecutionOutput(ctx, manifest, execution)
 	if err != nil {
 		return fail(fmt.Errorf("retain plugin output: %w", err))
 	}
 	if _, err := io.WriteString(stdout, execution.Stdout); err != nil {
-		return fail(fmt.Errorf("write plugin stdout: %w", err))
+		return fail(fmt.Errorf("write tool stdout: %w", err))
 	}
 	if _, err := io.WriteString(stderr, execution.Stderr); err != nil {
-		return fail(fmt.Errorf("write plugin stderr: %w", err))
+		return fail(fmt.Errorf("write tool stderr: %w", err))
 	}
 	return true, execution.ExitCode
 }
