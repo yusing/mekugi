@@ -26,7 +26,7 @@ describe("RTK argv routing policy", () => {
 
   test.each([
     ["rtk", "git", "status"], ["mcat", "file"], ["mread", "ref"],
-    ["hgrep", "-F", "text"], ["hsymbol", "refs"], ["inspect_file", "."],
+    ["hgrep", "-F", "text"], ["msymbol", "refs"], ["inspect_file", "."],
     ["mrun", "-n", "1", "--", "git", "status"], ["journal", "list"],
     ["cat", "file"], ["sed", "-n", "1p", "file"], ["jq", "."],
     ["/usr/bin/git", "status"], ["git", "rev-parse", "HEAD"],
@@ -58,7 +58,7 @@ describe("RTK argv routing policy", () => {
     const policy = commandRouting();
     expect(policy.executable).toBe("rtk");
     expect(policy.commands).toContain("git");
-    for (const name of ["rtk", "mrun", "mcat", "mread", "hgrep", "hsymbol", "inspect_file", "cat"]) {
+    for (const name of ["rtk", "mrun", "mcat", "mread", "hgrep", "msymbol", "inspect_file", "cat"]) {
       expect(policy.commands).not.toContain(name);
     }
   });

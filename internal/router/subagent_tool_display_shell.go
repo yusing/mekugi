@@ -421,6 +421,42 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 			return "", false
 		}
 		add("Inspect", argv[1])
+	case "msymbol":
+		var operands []string
+		seenOptions := make(map[string]bool)
+		for index := 1; index < len(argv); index++ {
+			if argv[index] == "--workspace" || argv[index] == "--max-tokens" {
+				if seenOptions[argv[index]] || index+1 >= len(argv) || argv[index+1] == "" {
+					return "", false
+				}
+				seenOptions[argv[index]] = true
+				if argv[index] == "--max-tokens" {
+					if _, valid := toolActivityPositiveDecimal(argv[index+1], maxOutputTokens); !valid {
+						return "", false
+					}
+				}
+				index++
+				continue
+			}
+			operands = append(operands, argv[index])
+		}
+		if (len(operands) != 4 && len(operands) != 5) ||
+			(operands[0] != "def" && operands[0] != "refs") || operands[1] == "" || operands[3] == "" {
+			return "", false
+		}
+		if _, valid := toolActivityPositiveDecimal(operands[2], 1<<53-1); !valid {
+			return "", false
+		}
+		if len(operands) == 5 {
+			if _, valid := toolActivityPositiveDecimal(operands[4], 1<<53-1); !valid {
+				return "", false
+			}
+		}
+		label := "Read"
+		if operands[0] == "refs" {
+			label = "Search"
+		}
+		add(label, script[int(call.Args[1].Pos().Offset()):int(call.End().Offset())])
 	case "ls":
 		detail := "."
 		if len(argv) > 1 {

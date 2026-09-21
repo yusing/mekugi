@@ -220,7 +220,7 @@ func TestShellRunnerUsesInterpreterBasenameForLanguageVariant(t *testing.T) {
 func TestShellRunnerEvaluatesToolFrontendsWithSnapshotWrappers(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
-	for _, name := range []string{"mcat", "hgrep", "hsymbol", "inspect_file"} {
+	for _, name := range []string{"mcat", "hgrep", "msymbol", "inspect_file"} {
 		if _, ok := registry.wrapper(name); !ok {
 			t.Fatalf("tool %q has no authenticated snapshot wrapper", name)
 		}
@@ -275,8 +275,8 @@ func TestShellRunnerQueriesCurrentSymbol(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout, stderr, status := runShellWorkerTest(t, registry, "/bin/sh", nil,
-		fmt.Sprintf("hsymbol --workspace %q refs source.go 2 Pick", alias), nil, invocation)
-	if status != 0 || !strings.Contains(stdout, fmt.Sprintf("%q:2:", source)) ||
+		fmt.Sprintf("msymbol --workspace %q refs source.go 2 Pick", alias), nil, invocation)
+	if status != 0 || !strings.Contains(stdout, fmt.Sprintf("%q:2 ", source)) ||
 		!strings.Contains(stdout, "func Pick() {}") || !strings.Contains(stderr, "(current snapshot)") {
 		t.Fatalf("semantic lookup: stdout=%q stderr=%q exit=%d", stdout, stderr, status)
 	}

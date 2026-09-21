@@ -2,14 +2,12 @@ package router
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"fmt"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -314,17 +312,16 @@ func TestBuiltinToolFrontendsRunRegisteredImplementations(t *testing.T) {
 	}
 	t.Chdir(workspace)
 	t.Setenv("PATH", workspace+string(os.PathListSeparator)+os.Getenv("PATH"))
-	alphaHash := sha256.Sum256([]byte("func Alpha() {}"))
-
 	for _, test := range []struct {
 		name       string
 		arguments  []string
 		wantOutput string
+		wantError  string
 	}{
 		{name: "mrun", arguments: []string{"--max-tokens", "100", "--", "sh", "-c", "printf 'run output\\n'"}, wantOutput: "run output\n"},
 		{name: "mcat", arguments: []string{"file.txt", "0:1"}, wantOutput: "alpha\n"},
 		{name: "hgrep", arguments: []string{"-F", "alpha", "file.txt"}, wantOutput: "\"file.txt\":1:8ed3 alpha\n"},
-		{name: "hsymbol", arguments: []string{"def", "file.go", fmt.Sprintf("3:%x", alphaHash[:2]), "Alpha"}, wantOutput: strconv.Quote("file.go") + ":3:" + fmt.Sprintf("%x", alphaHash[:2]) + " func Alpha() {}\n"},
+		{name: "msymbol", arguments: []string{"def", "file.go", "3", "Alpha"}, wantOutput: "\"file.go\":3 func Alpha() {}\n", wantError: "msymbol: input \"file.go\":3 (current snapshot)\n"},
 		{name: "inspect_file", arguments: []string{"file.txt"}, wantOutput: "{\"ok\":true,\"data\":{\"path\":\"file.txt\",\"kind\":\"none\",\"language\":null,\"size_bytes\":11,\"line_count\":null,\"parse_complete\":true,\"outline\":[]},\"truncated\":false,\"truncation\":null}\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -336,7 +333,7 @@ func TestBuiltinToolFrontendsRunRegisteredImplementations(t *testing.T) {
 			handled, exitCode := RunToolPluginWorker(
 				t.Context(), frontend, test.arguments, os.Stdin, &stdout, &stderr,
 			)
-			if !handled || exitCode != 0 || stdout.String() != test.wantOutput || stderr.String() != "" {
+			if !handled || exitCode != 0 || stdout.String() != test.wantOutput || stderr.String() != test.wantError {
 				t.Fatalf(
 					"%s handled %t, exit %d, stdout %q, stderr %q",
 					test.name,

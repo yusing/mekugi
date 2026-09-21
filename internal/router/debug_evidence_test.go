@@ -27,7 +27,7 @@ func TestAXReaderFailureClassesPreserveOutputAndCallIdentity(t *testing.T) {
 	script := "MEKUGI_AX_OUTPUT= mcat " + missing + " >before.out 2>before.err; before=$?; " +
 		"mcat " + missing + " >after.out 2>after.err; after=$?; " +
 		"printf '%s\n%s\n' \"$before\" \"$after\" >statuses; " +
-		"hgrep --max-tokens 16000 secret; hsymbol refs --workspace; mcat @shell/missing; inspect_file " + missing
+		"hgrep --max-tokens 16000 secret; msymbol refs --workspace; mcat @shell/missing; inspect_file " + missing
 	journal := filepath.Join(root, "reads.jsonl")
 	instrumented := newShellWorkerTestInvocation(root,
 		capturer.AXReadOutputEnvironment+"="+journal,
@@ -57,9 +57,9 @@ func TestAXReaderFailureClassesPreserveOutputAndCallIdentity(t *testing.T) {
 		if failure.ExitCode == nil {
 			t.Fatalf("uncorrelated failure: %+v", failure)
 		}
-		if failure.Tool == "mcat" {
+		if failure.Tool == "mcat" || failure.Tool == "msymbol" {
 			if failure.CallID != "" || failure.ShellID != "" {
-				t.Fatalf("external mcat inherited shell correlation: %+v", failure)
+				t.Fatalf("external frontend inherited shell correlation: %+v", failure)
 			}
 			continue
 		}

@@ -785,7 +785,7 @@ func TestMekugiRoutesOnlyModelVisibleRegistryTools(t *testing.T) {
 		"shell":        true,
 		"mcat":         false,
 		"hgrep":        false,
-		"hsymbol":      false,
+		"msymbol":      false,
 		"inspect_file": false,
 		"lookup":       false,
 	} {

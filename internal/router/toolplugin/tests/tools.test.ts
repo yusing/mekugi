@@ -9,7 +9,7 @@ import {formatVerifiedRow, hashLine} from "mekugi:core/v1";
 import {countGPT5Tokens, VerifiedRowOutput} from "../../../../plugins/common.ts";
 import {createHGrepTool, splitArguments} from "../../../../plugins/hgrep.ts";
 import {createMCatTool} from "../../../../plugins/mcat.ts";
-import {createHSymbolTool} from "../../../../plugins/hsymbol.ts";
+import {createMSymbolTool} from "../../../../plugins/msymbol.ts";
 import {runLSPQuery} from "../../../../plugins/lsp.ts";
 import {
   createInspectFileTool,
@@ -39,7 +39,7 @@ type FakeGopls = {
 };
 
 async function installFakeGopls(): Promise<FakeGopls> {
-  const directory = await temporaryDirectory("hsymbol-gopls-");
+  const directory = await temporaryDirectory("msymbol-gopls-");
   const executable = path.join(directory, "gopls");
   const callsPath = path.join(directory, "calls");
   await Promise.all([
@@ -950,33 +950,37 @@ describe("hgrep built-in plugin", () => {
   });
 });
 
-describe("hsymbol built-in plugin", () => {
-  test("keeps its private contract behavioral", () => {
+describe("msymbol built-in plugin", () => {
+  const symbolRow = (sourcePath: string, line: number, text: string): string =>
+    `${JSON.stringify(sourcePath)}:${line} ${text}\n`;
+
+  test("keeps its executable contract behavioral", () => {
     const description = plugin.tools[2].specification.description.replace(/\s+/g, " ");
-    expect(description).toContain("hsymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH (LINE|LINE:HASH) SYMBOL [N]");
-    expect(description).toContain('"PATH":LINE:HASH TEXT');
-    expect(description).toContain("ambiguous selectors");
+    expect(description).toContain("msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH LINE SYMBOL [N]");
+    expect(description).toContain('"PATH":LINE TEXT');
+    expect(description).not.toContain("HASH");
+    expect(description).toContain("Ambiguous selectors");
     for (const persistent of ["rename", "audit", "before editing", "functions.hpatch"]) {
       expect(description).not.toContain(persistent);
     }
   });
 
-  test("keeps a BOM in Go resolver byte offsets and verified first rows", async () => {
-    const directory = await temporaryDirectory("hsymbol-bom-");
+  test("keeps a BOM in Go resolver byte offsets and complete first rows", async () => {
+    const directory = await temporaryDirectory("msymbol-bom-");
     process.chdir(directory);
     const source = "\uFEFFpackage p\nfunc Pick() {\n  println(1)\n}\n";
     const target = path.join(directory, "sample.go");
     await writeFile(target, source);
     const fake = await installFakeGopls();
     await fake.respond(`${target}:2:6-10\n`);
-    const result = await createHSymbolTool("test", "").execute(["refs", "sample.go", "2", "Pick"], executionContext);
+    const result = await createMSymbolTool("test", "").execute(["refs", "sample.go", "2", "Pick"], executionContext);
     expect(result).toMatchObject({exitCode: 0});
     expect(await readFile(fake.callsPath, "utf8")).toContain(`:#${Buffer.byteLength(source.slice(0, source.indexOf("Pick")))}`);
     await fake.respond(definitionJSON(target, source, source.indexOf("Pick"), "Pick"));
-    const definition = await createHSymbolTool("test", "").execute(["def", "sample.go", "2", "Pick"], executionContext);
+    const definition = await createMSymbolTool("test", "").execute(["def", "sample.go", "2", "Pick"], executionContext);
     expect(definition.exitCode).toBe(0);
     expect(definition.stdout).toBe([2, 3, 4].map((line) =>
-      `${JSON.stringify("sample.go")}:${formatVerifiedRow(line, source.split("\n")[line - 1])}`).join(""));
+      symbolRow("sample.go", line, source.split("\n")[line - 1])).join(""));
     const goInspection = await createInspectFileTool("test", "").execute(["sample.go"], executionContext);
     expect(JSON.parse(goInspection.stdout!).data).toMatchObject({
       parse_complete: true,
@@ -1015,18 +1019,18 @@ describe("hsymbol built-in plugin", () => {
   });
 
   test("queries a current line in an explicit workspace without a verified read", async () => {
-    const directory = await temporaryDirectory("hsymbol-current-");
-    const caller = await temporaryDirectory("hsymbol-caller-");
+    const directory = await temporaryDirectory("msymbol-current-");
+    const caller = await temporaryDirectory("msymbol-caller-");
     const source = "package p\nfunc Pick() {}\nfunc Use() { Pick() }\n";
     await writeFile(path.join(directory, "sample.go"), source);
     process.chdir(caller);
     const fake = await installFakeGopls();
-    const tool = createHSymbolTool("test", "");
+    const tool = createMSymbolTool("test", "");
     await fake.respond(`${path.join(directory, "sample.go")}:3:14-18\n`);
     const result = await tool.execute(["--workspace", directory, "refs", "sample.go", "3", "Pick"], executionContext);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe(`${JSON.stringify(path.join(directory, "sample.go"))}:${formatVerifiedRow(3, "func Use() { Pick() }")}`);
-    expect(result.stderr).toBe(`hsymbol: input ${JSON.stringify(path.join(directory, "sample.go"))}:3:${hashLine("func Use() { Pick() }")} (current snapshot)\n`);
+    expect(result.stdout).toBe(symbolRow(path.join(directory, "sample.go"), 3, "func Use() { Pick() }"));
+    expect(result.stderr).toBe(`msymbol: input ${JSON.stringify(path.join(directory, "sample.go"))}:3 (current snapshot)\n`);
     expect(await readFile(path.join(path.dirname(fake.callsPath), "cwd"), "utf8")).toBe(`${directory}\n`);
     expect(process.cwd()).toBe(caller);
     expect(await tool.parse(`--workspace "${directory}" def sample.go 3 Pick`, {})).toEqual([
@@ -1045,8 +1049,8 @@ describe("hsymbol built-in plugin", () => {
   });
 
   test("classifies selected source failures without starting a resolver", async () => {
-    const directory = await temporaryDirectory("hsymbol-source-failures-");
-    const outside = await temporaryDirectory("hsymbol-outside-");
+    const directory = await temporaryDirectory("msymbol-source-failures-");
+    const outside = await temporaryDirectory("msymbol-outside-");
     process.chdir(directory);
     await mkdir("directory.go");
     await writeFile("invalid.go", Uint8Array.from([0xff]));
@@ -1054,27 +1058,27 @@ describe("hsymbol built-in plugin", () => {
     await writeFile(path.join(outside, "source.go"), "package p\n");
     await symlink(path.join(outside, "source.go"), "outside.go");
     const fake = await installFakeGopls();
-    const tool = createHSymbolTool("test", "");
+    const tool = createMSymbolTool("test", "");
     for (const [source, diagnostic] of [
       ["missing.go", "path does not exist"],
       ["directory.go", "path is not a regular file"],
       ["invalid.go", "path is not UTF-8"],
-      ["unsupported.bin", "path has an unsupported hsymbol source format"],
+      ["unsupported.bin", "path has an unsupported msymbol source format"],
       [path.join(outside, "source.go"), "path is outside the workspace"],
       ["outside.go", "path resolves outside the workspace"],
     ]) {
       const result = await tool.execute(["refs", source, "1", "target"], executionContext);
-      expect(result).toEqual({stderr: `hsymbol: ${diagnostic}\n`, exitCode: 1, failureClass: "invalid_source"});
+      expect(result).toEqual({stderr: `msymbol: ${diagnostic}\n`, exitCode: 1, failureClass: "invalid_source"});
     }
     expect(await readFile(fake.callsPath, "utf8")).toBe("");
   });
 
   test("plain-line selection retains exact tokens and ambiguity checks before resolver startup", async () => {
-    const directory = await temporaryDirectory("hsymbol-plain-validation-");
+    const directory = await temporaryDirectory("msymbol-plain-validation-");
     process.chdir(directory);
     await writeFile("sample.go", 'package p\nfunc Use() { target := 1; _ = target; _ = "target" }\n');
     const fake = await installFakeGopls();
-    const tool = createHSymbolTool("test", "");
+    const tool = createMSymbolTool("test", "");
     for (const args of [
       ["refs", "sample.go", "2", "target"],
       ["refs", "sample.go", "2", "targ"],
@@ -1093,39 +1097,39 @@ describe("hsymbol built-in plugin", () => {
   });
 
   test("plain-line TypeScript lookup uses the explicit resolver workspace", async () => {
-    const directory = await temporaryDirectory("hsymbol-current-ts-");
-    const caller = await temporaryDirectory("hsymbol-current-ts-caller-");
+    const directory = await temporaryDirectory("msymbol-current-ts-");
+    const caller = await temporaryDirectory("msymbol-current-ts-caller-");
     await writeFile(path.join(directory, "tsconfig.json"), '{"include":["*.ts"]}');
     await writeFile(path.join(directory, "sample.ts"), "export const target = 42;\nconsole.log(target);\n");
     process.chdir(caller);
     process.env.PATH = `${pluginBin}${path.delimiter}${originalPath ?? ""}`;
-    const result = await createHSymbolTool("test", "").execute([
+    const result = await createMSymbolTool("test", "").execute([
       "--workspace", directory, "def", "sample.ts", "2", "target",
     ], executionContext);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(`${JSON.stringify(path.join(directory, "sample.ts"))}:${formatVerifiedRow(1, "export const target = 42;")}`);
-    expect(result.stderr).toContain(`${JSON.stringify(path.join(directory, "sample.ts"))}:2:${hashLine("console.log(target);")} (current snapshot)`);
+    expect(result.stdout).toContain(symbolRow(path.join(directory, "sample.ts"), 1, "export const target = 42;"));
+    expect(result.stderr).toContain(`${JSON.stringify(path.join(directory, "sample.ts"))}:2 (current snapshot)`);
   }, 30_000);
 
   test.skipIf(Bun.which("gopls") === null)("Go field references include differently named internal and external tests", async () => {
-    const directory = await temporaryDirectory("hsymbol-go-callers-");
+    const directory = await temporaryDirectory("msymbol-go-callers-");
     process.chdir(directory);
     await writeFile("go.mod", "module example.com/callers\n\ngo 1.26\n");
     await writeFile("state.go", "package callers\ntype State struct { Removed int }\n");
     await writeFile("capture_order_test.go", "package callers\nfunc capture(s State) int { return s.Removed }\n");
     await writeFile("consumer_test.go", 'package callers_test\nimport "example.com/callers"\nfunc use(s callers.State) int { return s.Removed }\n');
-    const result = await createHSymbolTool("description", "start: TEST").execute(
+    const result = await createMSymbolTool("description", "start: TEST").execute(
       ["refs", "state.go", "2", "Removed"], executionContext,
     );
     expect(result.exitCode).toBe(0);
     expect(result.stderr ?? "").not.toContain("skipped");
-    expect(result.stdout).toContain('"state.go":2:');
-    expect(result.stdout).toContain('"capture_order_test.go":2:');
-    expect(result.stdout).toContain('"consumer_test.go":3:');
+    expect(result.stdout).toContain('"state.go":2 ');
+    expect(result.stdout).toContain('"capture_order_test.go":2 ');
+    expect(result.stdout).toContain('"consumer_test.go":3 ');
   }, 30_000);
 
-  test("validates the verified Go token selector before starting gopls", async () => {
-    const directory = await temporaryDirectory("hsymbol-plugin-");
+  test("validates the Go token selector before starting gopls", async () => {
+    const directory = await temporaryDirectory("msymbol-plugin-");
     process.chdir(directory);
     const source = [
       "package sample",
@@ -1136,20 +1140,13 @@ describe("hsymbol built-in plugin", () => {
     ].join("\n");
     await writeFile("path with spaces.go", source, "utf8");
     const fake = await installFakeGopls();
-    const tool = createHSymbolTool("description", "start: TEST");
-    const line = new LineMap(source).logicalLine(3)?.text;
-    if (line === undefined) {
-      throw new Error("selector fixture line is missing");
-    }
-    const reference = `3:${hashLine(line)}`;
-
+    const tool = createMSymbolTool("description", "start: TEST");
     for (const argv of [
-      ["refs", "path with spaces.go", "3:ffff", "名稱"],
-      ["refs", "path with spaces.go", reference, "名稱"],
-      ["refs", "path with spaces.go", reference, "名稱", "3"],
-      ["refs", "path with spaces.go", reference, "名稱", "01"],
-      ["refs", "path with spaces.go", reference, "func"],
-      ["refs", "path with spaces.go", reference, "Name"],
+      ["refs", "path with spaces.go", "3", "名稱"],
+      ["refs", "path with spaces.go", "3", "名稱", "3"],
+      ["refs", "path with spaces.go", "3", "名稱", "01"],
+      ["refs", "path with spaces.go", "3", "func"],
+      ["refs", "path with spaces.go", "3", "Name"],
     ]) {
       const result = await tool.execute(argv, executionContext);
       expect(result.exitCode).toBe(1);
@@ -1158,11 +1155,12 @@ describe("hsymbol built-in plugin", () => {
     expect(await readFile(fake.callsPath, "utf8")).toBe("");
 
     const selected = await tool.execute(
-      ["refs", "path with spaces.go", reference, "名稱", "2"],
+      ["refs", "path with spaces.go", "3", "名稱", "2"],
       executionContext,
     );
     expect(selected).toEqual({
       stdout: "",
+      stderr: "msymbol: input \"path with spaces.go\":3 (current snapshot)\n",
       exitCode: 0,
       terminationReason: "resolver_cleanup",
     });
@@ -1174,47 +1172,42 @@ describe("hsymbol built-in plugin", () => {
   });
 
   test("rejects JavaScript labels before starting TypeScript", async () => {
-    const directory = await temporaryDirectory("hsymbol-label-");
+    const directory = await temporaryDirectory("msymbol-label-");
     process.chdir(directory);
     const source = "target: while (false) break target;\n";
     await writeFile("input.js", source);
-    process.env.PATH = await temporaryDirectory("hsymbol-label-empty-path-");
-    const result = await createHSymbolTool("description", "start: TEST").execute(
-      ["refs", "input.js", `1:${hashLine(source.trimEnd())}`, "target"],
+    process.env.PATH = await temporaryDirectory("msymbol-label-empty-path-");
+    const result = await createMSymbolTool("description", "start: TEST").execute(
+      ["refs", "input.js", "1", "target"],
       executionContext,
     );
     expect(result).toEqual({
-      stderr: "hsymbol: target is not a symbol token on the selected line\n",
+      stderr: "msymbol: target is not a symbol token on the selected line\n",
       exitCode: 1,
       failureClass: "resolver_error",
     });
   });
 
   test("accepts canonical in-workspace paths and rejects workspace escapes before gopls", async () => {
-    const directory = await temporaryDirectory("hsymbol-path-");
+    const directory = await temporaryDirectory("msymbol-path-");
     process.chdir(directory);
     const source = "package sample\nfunc Use() { Target() }\n";
     const inputPath = path.join(directory, "input.go");
     await writeFile(inputPath, source, "utf8");
-    const inputLine = new LineMap(source).logicalLine(2)?.text;
-    if (inputLine === undefined) {
-      throw new Error("path input line is missing");
-    }
-    const reference = `2:${hashLine(inputLine)}`;
     const fake = await installFakeGopls();
-    const tool = createHSymbolTool("description", "start: TEST");
-    expect(await tool.execute(["refs", inputPath, reference, "Target"], executionContext)).toEqual({
+    const tool = createMSymbolTool("description", "start: TEST");
+    expect(await tool.execute(["refs", inputPath, "2", "Target"], executionContext)).toMatchObject({
       stdout: "",
       exitCode: 0,
       terminationReason: "resolver_cleanup",
     });
 
-    const externalDirectory = await temporaryDirectory("hsymbol-external-");
+    const externalDirectory = await temporaryDirectory("msymbol-external-");
     const externalPath = path.join(externalDirectory, "external.go");
     await writeFile(externalPath, source, "utf8");
     await symlink(externalPath, "escaped.go");
     for (const escapedPath of [externalPath, "escaped.go"]) {
-      const result = await tool.execute(["refs", escapedPath, reference, "Target"], executionContext);
+      const result = await tool.execute(["refs", escapedPath, "2", "Target"], executionContext);
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("outside the workspace");
       expect(result.stdout).toBeUndefined();
@@ -1223,7 +1216,7 @@ describe("hsymbol built-in plugin", () => {
   });
 
   test("expands only exact top-level and direct-method outline declarations", async () => {
-    const directory = await temporaryDirectory("hsymbol-def-");
+    const directory = await temporaryDirectory("msymbol-def-");
     process.chdir(directory);
     const source = [
       "package sample",
@@ -1249,12 +1242,7 @@ describe("hsymbol built-in plugin", () => {
     const filePath = path.join(directory, "declarations.go");
     await writeFile(filePath, source, "utf8");
     const fake = await installFakeGopls();
-    const tool = createHSymbolTool("description", "start: TEST");
-    const useLine = new LineMap(source).logicalLine(18)?.text;
-    if (useLine === undefined) {
-      throw new Error("definition fixture line is missing");
-    }
-    const reference = `18:${hashLine(useLine)}`;
+    const tool = createMSymbolTool("description", "start: TEST");
     const cases = [
       {name: "A", from: 3, to: 3},
       {name: "B", from: 5, to: 7},
@@ -1269,7 +1257,7 @@ describe("hsymbol built-in plugin", () => {
       const response = definitionJSON(filePath, source, nameOffset, testCase.name);
       await fake.respond(response);
       const result = await tool.execute(
-        ["def", "declarations.go", reference, testCase.name],
+        ["def", "declarations.go", "18", testCase.name],
         executionContext,
       );
       let expected = "";
@@ -1278,9 +1266,9 @@ describe("hsymbol built-in plugin", () => {
         if (text === undefined) {
           throw new Error(`missing fixture line ${lineNumber}`);
         }
-        expected += `${JSON.stringify("declarations.go")}:${formatVerifiedRow(lineNumber, text)}`;
+        expected += symbolRow("declarations.go", lineNumber, text);
       }
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         stdout: expected,
         exitCode: 0,
         terminationReason: "resolver_cleanup",
@@ -1289,7 +1277,7 @@ describe("hsymbol built-in plugin", () => {
   });
 
   test("falls back to the definition line for unowned or uncertain declarations", async () => {
-    const directory = await temporaryDirectory("hsymbol-def-");
+    const directory = await temporaryDirectory("msymbol-def-");
     process.chdir(directory);
     const source = [
       "package sample",
@@ -1318,23 +1306,19 @@ describe("hsymbol built-in plugin", () => {
     const fake = await installFakeGopls();
     const response = definitionJSON(filePath, source, fieldOffset, "Field");
     await fake.respond(response);
-    const useLine = new LineMap(source).logicalLine(5)?.text;
-    if (useLine === undefined) {
-      throw new Error("field use line is missing");
-    }
-    const result = await createHSymbolTool("description", "start: TEST").execute(
-      ["def", "field.go", `5:${hashLine(useLine)}`, "Field"],
+    const result = await createMSymbolTool("description", "start: TEST").execute(
+      ["def", "field.go", "5", "Field"],
       executionContext,
     );
-    expect(result).toEqual({
-      stdout: `${JSON.stringify("field.go")}:${formatVerifiedRow(3, "  Field int")}`,
+    expect(result).toMatchObject({
+      stdout: symbolRow("field.go", 3, "  Field int"),
       exitCode: 0,
       terminationReason: "resolver_cleanup",
     });
   });
 
   test("deduplicates canonical reference rows and reports skipped locations", async () => {
-    const directory = await temporaryDirectory("hsymbol-refs-");
+    const directory = await temporaryDirectory("msymbol-refs-");
     process.chdir(directory);
     const inputSource = "package sample\nfunc Use() { Target() }\n";
     const resultSource = "package sample\nfunc Target() {}\n";
@@ -1346,7 +1330,7 @@ describe("hsymbol built-in plugin", () => {
       mkdir("folder.go"),
     ]);
     await symlink("result.go", "alias.go");
-    const externalDirectory = await temporaryDirectory("hsymbol-external-");
+    const externalDirectory = await temporaryDirectory("msymbol-external-");
     const externalPath = path.join(externalDirectory, "external.go");
     await writeFile(externalPath, "package external\nfunc Target() {}\n", "utf8");
     const resultPath = path.join(directory, "result.go");
@@ -1364,18 +1348,14 @@ describe("hsymbol built-in plugin", () => {
     const goplsStdout = `${rows.join("\n")}\n`;
     const fake = await installFakeGopls();
     await fake.respond(goplsStdout, "gopls note\n");
-    const inputLine = new LineMap(inputSource).logicalLine(2)?.text;
-    if (inputLine === undefined) {
-      throw new Error("reference input line is missing");
-    }
-    const result = await createHSymbolTool("description", "start: TEST").execute(
-      ["refs", "input.go", `2:${hashLine(inputLine)}`, "Target"],
+    const result = await createMSymbolTool("description", "start: TEST").execute(
+      ["refs", "input.go", "2", "Target"],
       executionContext,
     );
     expect(result).toEqual({
-      stdout: `${JSON.stringify("result.go")}:${formatVerifiedRow(2, "func Target() {}")}`
-        + `${JSON.stringify("input.go")}:${formatVerifiedRow(2, "func Use() { Target() }")}`,
-      stderr: "gopls note\nhsymbol: skipped 1 location outside workspace, 1 location not Go, 1 location not regular, 1 location not UTF-8, 1 location unavailable\n",
+      stdout: symbolRow("result.go", 2, "func Target() {}")
+        + symbolRow("input.go", 2, "func Use() { Target() }"),
+      stderr: "gopls note\nmsymbol: input \"input.go\":2 (current snapshot)\nmsymbol: skipped 1 location outside workspace, 1 location not Go, 1 location not regular, 1 location not UTF-8, 1 location unavailable\n",
       exitCode: 0,
       terminationReason: "resolver_cleanup",
     });
@@ -1383,43 +1363,38 @@ describe("hsymbol built-in plugin", () => {
   });
 
   test("fails an uneditable definition and a missing gopls without useful stdout", async () => {
-    const directory = await temporaryDirectory("hsymbol-failure-");
+    const directory = await temporaryDirectory("msymbol-failure-");
     process.chdir(directory);
     const source = "package sample\nfunc Use() { Target() }\n";
     await writeFile("input.go", source, "utf8");
-    const inputLine = new LineMap(source).logicalLine(2)?.text;
-    if (inputLine === undefined) {
-      throw new Error("failure input line is missing");
-    }
-    const reference = `2:${hashLine(inputLine)}`;
-    const externalDirectory = await temporaryDirectory("hsymbol-external-");
+    const externalDirectory = await temporaryDirectory("msymbol-external-");
     const externalSource = "package external\nfunc Target() {}\n";
     const externalPath = path.join(externalDirectory, "external.go");
     await writeFile(externalPath, externalSource, "utf8");
     const response = definitionJSON(externalPath, externalSource, externalSource.indexOf("Target"), "Target");
     const fake = await installFakeGopls();
     await fake.respond(response);
-    const tool = createHSymbolTool("description", "start: TEST");
-    const external = await tool.execute(["def", "input.go", reference, "Target"], executionContext);
+    const tool = createMSymbolTool("description", "start: TEST");
+    const external = await tool.execute(["def", "input.go", "2", "Target"], executionContext);
     expect(external).toEqual({
-      stderr: "hsymbol: skipped 1 location outside workspace\nhsymbol: definition has no editable workspace location\n",
+      stderr: "msymbol: input \"input.go\":2 (current snapshot)\nmsymbol: skipped 1 location outside workspace\nmsymbol: definition has no editable workspace location\n",
       exitCode: 1,
       failureClass: "no_editable_location",
       terminationReason: "resolver_cleanup",
     });
 
     await fake.respond("", "query failed\n", 2);
-    const failed = await tool.execute(["refs", "input.go", reference, "Target"], executionContext);
-    expect(failed).toEqual({stderr: "hsymbol: query failed\n", exitCode: 1, failureClass: "resolver_error", terminationReason: "resolver_cleanup"});
+    const failed = await tool.execute(["refs", "input.go", "2", "Target"], executionContext);
+    expect(failed).toEqual({stderr: "msymbol: query failed\n", exitCode: 1, failureClass: "resolver_error", terminationReason: "resolver_cleanup"});
 
-    const emptyPath = await temporaryDirectory("hsymbol-empty-path-");
+    const emptyPath = await temporaryDirectory("msymbol-empty-path-");
     process.env.PATH = emptyPath;
-    const unavailable = await tool.execute(["refs", "input.go", reference, "Target"], executionContext);
-    expect(unavailable).toEqual({stderr: "hsymbol: gopls is unavailable; expose gopls on the executor PATH\n", exitCode: 1, failureClass: "dependency_unavailable", terminationReason: "resolver_cleanup"});
+    const unavailable = await tool.execute(["refs", "input.go", "2", "Target"], executionContext);
+    expect(unavailable).toEqual({stderr: "msymbol: gopls is unavailable; expose gopls on the executor PATH\n", exitCode: 1, failureClass: "dependency_unavailable", terminationReason: "resolver_cleanup"});
   });
 
   test("fails without query output when the selected input changes during gopls", async () => {
-    const directory = await temporaryDirectory("hsymbol-changing-input-");
+    const directory = await temporaryDirectory("msymbol-changing-input-");
     process.chdir(directory);
     const source = "package sample\nfunc Use() { Target() }\n";
     const inputPath = path.join(directory, "input.go");
@@ -1432,26 +1407,25 @@ describe("hsymbol built-in plugin", () => {
     await fake.respond(`${inputPath}:2:14-20\n`);
     await fake.mutateBeforeResponse(inputPath, `package sample\n\n${inputLine}\n`);
 
-    const result = await createHSymbolTool("description", "start: TEST").execute(
-      ["refs", "input.go", `2:${hashLine(inputLine)}`, "Target"],
+    const result = await createMSymbolTool("description", "start: TEST").execute(
+      ["refs", "input.go", "2", "Target"],
       executionContext,
     );
-    expect(result).toEqual({stderr: "hsymbol: input changed during query\n", exitCode: 1, failureClass: "resolver_error", terminationReason: "resolver_cleanup"});
+    expect(result).toEqual({stderr: "msymbol: input changed during query\n", exitCode: 1, failureClass: "resolver_error", terminationReason: "resolver_cleanup"});
   });
 
   test("applies the shared whole-row token admission to references", async () => {
-    const directory = await temporaryDirectory("hsymbol-limit-");
+    const directory = await temporaryDirectory("msymbol-limit-");
     process.chdir(directory);
     const inputSource = "package sample\nfunc Use() { Target() }\n";
     await writeFile("input.go", inputSource, "utf8");
     const resultPath = path.join(directory, "large.go");
-    const prefix = `${JSON.stringify("large.go")}:`;
     const first = contentWithFormattedTokenCount(
       15_000,
-      (content) => `${prefix}${formatVerifiedRow(1, content)}`,
+      (content) => symbolRow("large.go", 1, content),
     );
     await writeFile(resultPath, `${first}\nsecond\nthird\n`, "utf8");
-    const externalDirectory = await temporaryDirectory("hsymbol-limit-external-");
+    const externalDirectory = await temporaryDirectory("msymbol-limit-external-");
     const externalPath = path.join(externalDirectory, "external.go");
     await writeFile(externalPath, "package external\n", "utf8");
     const goplsStdout = [
@@ -1460,19 +1434,15 @@ describe("hsymbol built-in plugin", () => {
     ].join("\n") + "\n";
     const fake = await installFakeGopls();
     await fake.respond(goplsStdout);
-    const inputLine = new LineMap(inputSource).logicalLine(2)?.text;
-    if (inputLine === undefined) {
-      throw new Error("limit input line is missing");
-    }
-    const result = await createHSymbolTool("description", "start: TEST").execute(
-      ["refs", "input.go", `2:${hashLine(inputLine)}`, "Target"],
+    const result = await createMSymbolTool("description", "start: TEST").execute(
+      ["refs", "input.go", "2", "Target"],
       executionContext,
     );
     expect(result).toEqual({
-      omittedOutput: {stdout: `${prefix}${formatVerifiedRow(1, first)}${prefix}${formatVerifiedRow(2, "second")}${prefix}${formatVerifiedRow(3, "third")}`, stderr: "", stdoutKind: "rows"},
+      omittedOutput: {stdout: symbolRow("large.go", 1, first) + symbolRow("large.go", 2, "second") + symbolRow("large.go", 3, "third"), stderr: "", stdoutKind: "rows"},
       stdout: "",
-      stderr: expect.stringContaining("hsymbol: skipped 1 location outside workspace\n"
-        + "hsymbol: output incomplete: 4000-token limit reached\n"),
+      stderr: expect.stringContaining("msymbol: skipped 1 location outside workspace\n"
+        + "msymbol: output incomplete: 4000-token limit reached\n"),
       exitCode: 1,
       failureClass: "output_limit",
       terminationReason: "resolver_cleanup",
@@ -1480,7 +1450,7 @@ describe("hsymbol built-in plugin", () => {
   });
 
   test("retained references survive source removal without another resolver call", async () => {
-    const directory = await temporaryDirectory("hsymbol-retained-");
+    const directory = await temporaryDirectory("msymbol-retained-");
     process.chdir(directory);
     const source = "package sample\nfunc Use() { Target() }\n";
     await writeFile("input.go", source);
@@ -1488,7 +1458,7 @@ describe("hsymbol built-in plugin", () => {
     await writeFile("uses.go", huge + "\nfunc Other() { Target() }\n");
     const fake = await installFakeGopls();
     await fake.respond(`${path.join(directory, "uses.go")}:1:5-11\n${path.join(directory, "uses.go")}:2:16-22\n`);
-    const result = await createHSymbolTool("description", "start: TEST").execute(
+    const result = await createMSymbolTool("description", "start: TEST").execute(
       ["refs", "input.go", "2", "Target"], executionContext,
     );
     expect(result.exitCode).toBe(1);
@@ -1496,13 +1466,13 @@ describe("hsymbol built-in plugin", () => {
     expect(result.stderr).toContain("output incomplete");
     await rm("uses.go");
     expect(result.omittedOutput?.stdout).toBe(
-      `"uses.go":${formatVerifiedRow(1, huge)}"uses.go":${formatVerifiedRow(2, "func Other() { Target() }")}`,
+      symbolRow("uses.go", 1, huge) + symbolRow("uses.go", 2, "func Other() { Target() }"),
     );
     expect((await readFile(fake.callsPath, "utf8")).trim().split("\n")).toHaveLength(1);
   });
 
   test("resolves TypeScript 7 and Python definitions through their LSP servers", async () => {
-    const directory = await temporaryDirectory("hsymbol-lsp-");
+    const directory = await temporaryDirectory("msymbol-lsp-");
     process.chdir(directory);
     process.env.PATH = `${pluginBin}${path.delimiter}${originalPath ?? ""}`;
     // TypeScript supports a version probe; Pyright is validated by the LSP query below.
@@ -1553,56 +1523,50 @@ describe("hsymbol built-in plugin", () => {
       writeFile("ambient.d.ts", ambientTarget),
       writeFile("ambient_input.ts", ambientInput),
     ]);
-    const tool = createHSymbolTool("description", "start: TEST");
-    const typescriptLine = new LineMap(typescriptInput).logicalLine(2)?.text;
-    const pythonLine = new LineMap(pythonInput).logicalLine(2)?.text;
-    if (typescriptLine === undefined || pythonLine === undefined) {
-      throw new Error("LSP fixture line is missing");
-    }
-
+    const tool = createMSymbolTool("description", "start: TEST");
     const typescript = await tool.execute(
-      ["def", "input.ts", `2:${hashLine(typescriptLine)}`, "target"],
+      ["def", "input.ts", "2", "target"],
       executionContext,
     );
     expect(typescript).toMatchObject({exitCode: 0});
-    expect(typescript.stdout).toContain(`${JSON.stringify("target.ts")}:${formatVerifiedRow(1, "export function target(value: number) {")}`);
-    expect(typescript.stdout).toContain(`${JSON.stringify("target.ts")}:${formatVerifiedRow(3, "}")}`);
+    expect(typescript.stdout).toContain(symbolRow("target.ts", 1, "export function target(value: number) {"));
+    expect(typescript.stdout).toContain(symbolRow("target.ts", 3, "}"));
 
     const ambient = await tool.execute(
-      ["def", "ambient_input.ts", `2:${hashLine(ambientInput.split("\n")[1])}`, "ambientTarget"],
+      ["def", "ambient_input.ts", "2", "ambientTarget"],
       executionContext,
     );
     expect(ambient).toMatchObject({exitCode: 0});
     for (const [line, text] of ambientTarget.trimEnd().split("\n").entries()) {
-      expect(ambient.stdout).toContain(`${JSON.stringify("ambient.d.ts")}:${formatVerifiedRow(line + 1, text)}`);
+      expect(ambient.stdout).toContain(symbolRow("ambient.d.ts", line + 1, text));
     }
 
     const python = await tool.execute(
-      ["def", "input.py", `2:${hashLine(pythonLine)}`, "target"],
+      ["def", "input.py", "2", "target"],
       executionContext,
     );
     expect(python).toMatchObject({exitCode: 0});
-    expect(python.stdout).toContain(`${JSON.stringify("target.py")}:${formatVerifiedRow(1, "def target(value: int) -> int:")}`);
-    expect(python.stdout).toContain(`${JSON.stringify("target.py")}:${formatVerifiedRow(2, "    return value + 1")}`);
+    expect(python.stdout).toContain(symbolRow("target.py", 1, "def target(value: int) -> int:"));
+    expect(python.stdout).toContain(symbolRow("target.py", 2, "    return value + 1"));
     const stub = await tool.execute(
-      ["refs", "sample.pyi", `1:${hashLine(pythonStub.trimEnd())}`, "stub_target"],
+      ["refs", "sample.pyi", "1", "stub_target"],
       executionContext,
     );
     expect(stub).toMatchObject({exitCode: 0});
 
-    process.env.PATH = await temporaryDirectory("hsymbol-empty-lsp-path-");
+    process.env.PATH = await temporaryDirectory("msymbol-empty-lsp-path-");
     expect(await tool.execute(
-      ["refs", "input.ts", `2:${hashLine(typescriptLine)}`, "target"],
+      ["refs", "input.ts", "2", "target"],
       executionContext,
-    )).toEqual({stderr: "hsymbol: tsc is unavailable; expose TypeScript 7 tsc with --lsp support on the executor PATH\n", exitCode: 1, failureClass: "dependency_unavailable", terminationReason: "resolver_cleanup"});
+    )).toEqual({stderr: "msymbol: tsc is unavailable; expose TypeScript 7 tsc with --lsp support on the executor PATH\n", exitCode: 1, failureClass: "dependency_unavailable", terminationReason: "resolver_cleanup"});
     expect(await tool.execute(
-      ["refs", "input.py", `2:${hashLine(pythonLine)}`, "target"],
+      ["refs", "input.py", "2", "target"],
       executionContext,
-    )).toEqual({stderr: "hsymbol: pyright-langserver is unavailable; expose pyright-langserver on the executor PATH\n", exitCode: 1, failureClass: "dependency_unavailable", terminationReason: "resolver_cleanup"});
+    )).toEqual({stderr: "msymbol: pyright-langserver is unavailable; expose pyright-langserver on the executor PATH\n", exitCode: 1, failureClass: "dependency_unavailable", terminationReason: "resolver_cleanup"});
   });
 
   test("reaps a language server that ignores shutdown", async () => {
-    const directory = await temporaryDirectory("hsymbol-lsp-shutdown-");
+    const directory = await temporaryDirectory("msymbol-lsp-shutdown-");
     const server = path.join(directory, "server.mjs");
     await writeFile(server, String.raw`
 let input = Buffer.alloc(0);
@@ -1647,7 +1611,7 @@ process.stdin.on("data", (chunk) => {
   });
 
   test("accepts every stable TypeScript 7 source format", async () => {
-    const directory = await temporaryDirectory("hsymbol-typescript-formats-");
+    const directory = await temporaryDirectory("msymbol-typescript-formats-");
     process.chdir(directory);
     process.env.PATH = `${pluginBin}${path.delimiter}${originalPath ?? ""}`;
     await writeFile("tsconfig.json", JSON.stringify({
@@ -1669,16 +1633,16 @@ process.stdin.on("data", (chunk) => {
       ["sample.json", '{"target": 1}'],
     ] as const;
     await Promise.all(fixtures.map(([name, source]) => writeFile(name, `${source}\n`)));
-    const tool = createHSymbolTool("description", "start: TEST");
+    const tool = createMSymbolTool("description", "start: TEST");
 
     for (const [name, source] of fixtures) {
       const result = await tool.execute(
-        ["refs", name, `1:${hashLine(source)}`, "target", "1"],
+        ["refs", name, "1", "target", "1"],
         executionContext,
       );
       expect(result).toMatchObject({exitCode: 0});
       // The real server may log shutdown timing; backend stderr is preserved.
-      expect(result.stderr ?? "").not.toContain("hsymbol:");
+      expect(result.stderr ?? "").toContain("(current snapshot)");
     }
   }, 30_000);
 });
@@ -1835,10 +1799,9 @@ describe("inspect_file language projections", () => {
     }
     const fake = await installFakeGopls();
     await fake.respond(definitionJSON(path.join(directory, "scope.go"), source, source.indexOf("localVar"), "localVar"));
-    const useLine = source.split("\n")[5];
-    const tool = createHSymbolTool("description", "start: TEST");
-    const result = await tool.execute(["def", "scope.go", `6:${hashLine(useLine)}`, "localVar"], executionContext);
-    expect(result).toEqual({ stdout: `${JSON.stringify("scope.go")}:${formatVerifiedRow(3, source.split("\n")[2])}`, exitCode: 0, terminationReason: "resolver_cleanup" });
+    const tool = createMSymbolTool("description", "start: TEST");
+    const result = await tool.execute(["def", "scope.go", "6", "localVar"], executionContext);
+    expect(result).toMatchObject({ stdout: `"scope.go":3 ${source.split("\n")[2]}\n`, exitCode: 0, terminationReason: "resolver_cleanup" });
   });
 
 

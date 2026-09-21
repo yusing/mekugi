@@ -12,8 +12,6 @@ import (
 	"syscall"
 	"testing"
 	"time"
-
-	"github.com/yusing/mekugi/internal/verifiedrow"
 )
 
 func TestResolverCleanupRetiresInheritedPipeDescendants(t *testing.T) {
@@ -87,7 +85,7 @@ func TestResolverCleanupRetiresInheritedPipeDescendants(t *testing.T) {
 				}
 				started := time.Now()
 				result, err := Execute(ctx, snapshot.NodeExecutable, snapshot.Root, "builtin/tools.js", 2,
-					[]string{"refs", name, row + ":" + verifiedrow.Hash(line), "Target"}, nil, directory, environment)
+					[]string{"refs", name, row, "Target"}, nil, directory, environment)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -95,8 +93,9 @@ func TestResolverCleanupRetiresInheritedPipeDescendants(t *testing.T) {
 					t.Fatal("resolver exceeded its cleanup bound")
 				}
 				if outcome == "success" || outcome == "ignore_shutdown" || outcome == "queued_success" {
-					expected := strconv.Quote(name) + ":" + row + ":" + verifiedrow.Hash(line) + " " + line + "\n"
-					if result.ExitCode != 0 || result.Stdout != expected || result.Stderr != "" {
+					expected := strconv.Quote(name) + ":" + row + " " + line + "\n"
+					diagnostic := "msymbol: input " + strconv.Quote(name) + ":" + row + " (current snapshot)\n"
+					if result.ExitCode != 0 || result.Stdout != expected || result.Stderr != diagnostic {
 						t.Fatalf("semantic result changed during cleanup: %+v", result)
 					}
 				} else {

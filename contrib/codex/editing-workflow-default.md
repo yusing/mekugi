@@ -52,7 +52,7 @@ A stale-target correction must preserve the full intended span, not just change 
 
 Acquire target-bearing context for existing-file edits. For known literals, use hgrep first;
 use `-F` with repeated `-e` literals and bounded context. Use inspect_file for structure,
-hsymbol for symbol relationships, and bounded mcat for raw missing source. Mcat output
-has no verified edit identities.
+msymbol for symbol relationships, and bounded mcat for raw missing source. Msymbol and mcat
+output have no verified edit identities.
 Copy inspect_file `LINE:HASH` spans directly as HPATCH targets.
 The shared references below define target validity, framing, and recovery.

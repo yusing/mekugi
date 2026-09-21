@@ -5,7 +5,7 @@ import {tmpdir} from "node:os";
 import path from "node:path";
 
 const preload = path.resolve(import.meta.dir, "preload.ts");
-const hsymbol = path.resolve(import.meta.dir, "../../../../plugins/hsymbol.ts");
+const msymbol = path.resolve(import.meta.dir, "../../../../plugins/msymbol.ts");
 const lsp = path.resolve(import.meta.dir, "../../../../plugins/lsp.ts");
 
 for (const resolver of ["gopls", "lsp"] as const) {
@@ -42,10 +42,9 @@ process.stdin.on("data", (chunk) => {
 });
 `);
         const script = resolver === "gopls" ? `
-import {createHSymbolTool} from ${JSON.stringify(hsymbol)};
-import {hashLine} from "mekugi:core/v1";
-const result = await createHSymbolTool("test", "test").execute(
-  ["refs", "input.go", "2:" + hashLine("var Target = 1"), "Target"],
+import {createMSymbolTool} from ${JSON.stringify(msymbol)};
+const result = await createMSymbolTool("test", "test").execute(
+  ["refs", "input.go", "2", "Target"],
   {stdinFD: null, scriptReadFD: null, scriptWriteFD: null, outputBudgetBytes: 1024},
 );
 console.log(result.exitCode === 0 ? "success" : "failure");

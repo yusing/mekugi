@@ -450,6 +450,69 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 	}
 }
 
+func TestMSymbolFrontendRecoveryAfterSourceRemoval(t *testing.T) {
+	t.Parallel()
+	registry := sharedProxyTestRegistry(t)
+	directory := t.TempDir()
+	source := filepath.Join(directory, "sample.go")
+	var content, references strings.Builder
+	content.WriteString("package p\nfunc Target() {}\n")
+	for index := range 80 {
+		fmt.Fprintf(&content, "func Use%d() { Target() }\n", index)
+		fmt.Fprintf(&references, "%s:%d:14-20\n", source, index+3)
+	}
+	if err := os.WriteFile(source, []byte(content.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resolverDirectory := t.TempDir()
+	resolver := "#!/bin/sh\ncat <<'EOF'\n" + references.String() + "EOF\n"
+	if err := os.WriteFile(filepath.Join(resolverDirectory, "gopls"), []byte(resolver), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	invocation := newShellWorkerTestInvocation(directory,
+		"PATH="+resolverDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	full, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil,
+		"msymbol --max-tokens 15500 refs sample.go 2 Target", nil, invocation)
+	if status != 0 || !strings.Contains(diagnostic, "(current snapshot)") ||
+		!strings.Contains(full, `"sample.go":3 func Use0() { Target() }`) {
+		t.Fatalf("full symbol read: %d %q %q", status, full, diagnostic)
+	}
+	first, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil,
+		"msymbol --max-tokens 16 refs sample.go 2 Target", nil, invocation)
+	if status == 0 || !strings.Contains(diagnostic, "msymbol: output incomplete") {
+		t.Fatalf("partial symbol read: %d %q %q", status, first, diagnostic)
+	}
+	_, reference, found := strings.Cut(diagnostic, "read: incomplete; next_call: mread ")
+	if !found {
+		t.Fatalf("missing symbol continuation: %q", diagnostic)
+	}
+	reference = strings.TrimSpace(reference)
+	if err := os.Remove(source); err != nil {
+		t.Fatal(err)
+	}
+	recovered := first
+	for range 100 {
+		page, next, pageStatus := runShellWorkerTest(t, registry, "sh", nil,
+			"mread "+reference+" --max-tokens 256", nil, invocation)
+		if page != "" && !strings.HasSuffix(page, "\n") {
+			t.Fatal("partial symbol row")
+		}
+		recovered += page
+		if pageStatus == 0 {
+			if recovered != full {
+				t.Fatal("symbol recovery lost or duplicated rows")
+			}
+			return
+		}
+		_, reference, found = strings.Cut(next, "read: incomplete; next_call: mread ")
+		if !found {
+			t.Fatalf("missing next symbol continuation: %q", next)
+		}
+		reference = strings.TrimSpace(reference)
+	}
+	t.Fatal("symbol recovery did not complete")
+}
+
 func TestOutlineRecoveryCapacityPreservesCurrentOutput(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)

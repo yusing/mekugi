@@ -2,9 +2,9 @@
 
 ## REQ-AX-001 — Runtime reads and evidence-backed AX reporting
 
-The authenticated `mcat` frontend observes its stock external invocation. The
-shell worker observes actual invocations of private `hgrep`, `hsymbol`, and
-`inspect_file` at their dispatch boundary. An absolute `MEKUGI_AX_OUTPUT` opts into
+The authenticated `mcat` and `msymbol` frontends observe their stock external invocations. The
+shell worker observes actual invocations of private `hgrep` and `inspect_file` at their
+dispatch boundary. An absolute `MEKUGI_AX_OUTPUT` opts into
 a local `mekugi.ax.read.v2` JSONL journal. Each worker inherits this environment value;
 no router process, transport request, or static source scan supplies an executed-read count.
 

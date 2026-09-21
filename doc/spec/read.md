@@ -91,7 +91,7 @@ Acceptance:
 
 ### Verified-row framing for hash-bearing consumers
 
-`hgrep`, `hsymbol`, `inspect_file`, HPATCH, reports, and other not-yet-migrated
+`hgrep`, `inspect_file`, HPATCH, reports, and other not-yet-migrated
 hash-bearing consumers share this logical-row identity:
 
 ```text

@@ -442,7 +442,7 @@ ${installed.stderr}`);
     expect(wrapped.stdout).toBe("ready");
     expect(wrapped.stderr).toMatch(/^mekugi dashboard: http:\/\/127\.0\.0\.1:\d+\/\n$/);
     expect((await stat(shellHelperPath)).mode & 0o111).not.toBe(0);
-    for (const name of ["mrun", "mcat", "hgrep", "hsymbol", "inspect_file"]) {
+    for (const name of ["mrun", "mcat", "hgrep", "msymbol", "inspect_file"]) {
       await expect(lstat(path.join(binaryDirectory, name))).rejects.toThrow();
     }
   }, 15000);

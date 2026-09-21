@@ -27,6 +27,6 @@ Reuse current target evidence instead of rereading solely to reacquire targets.
 ## Target acquisition
 
 Use hgrep with `-F` and repeated `-e` literals for known targets, inspect_file for structure,
-hsymbol for symbol relationships, and bounded mcat for raw missing source. Copy `LINE:HASH`
-identities only from the hash-bearing tools; mcat output is context, not an edit target.
+msymbol for symbol relationships, and bounded mcat for raw missing source. Msymbol and mcat
+output are context, not edit targets. Copy `LINE:HASH` identities only from hash-bearing tools.
 The shared references define validity, framing, and recovery.

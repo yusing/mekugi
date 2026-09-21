@@ -1,7 +1,7 @@
 import type {Plugin, Tool} from "../internal/router/toolplugin/plugin.d.ts";
 import {createHGrepTool} from "./hgrep.ts";
 import {createMCatTool} from "./mcat.ts";
-import {createHSymbolTool} from "./hsymbol.ts";
+import {createMSymbolTool} from "./msymbol.ts";
 import {createInspectFileTool, inspectFileDescription} from "./inspect_file.ts";
 import {shellTool} from "./shell.mjs";
 
@@ -19,8 +19,8 @@ const hgrepDescription = `Search files with supported ripgrep arguments and emit
 const hgrepPart = `(?:'[^'\\r\\n]*'|"(?:\\\\[^\\r\\n]|[^"\\\\\\r\\n])*"|(?:\\\\[^\\r\\n]|[^\\s'"\\\\])+)`;
 const hgrepRegex = `\\A[ \\t]*${hgrepPart}+(?:[ \\t]+${hgrepPart}+)*[ \\t]*\\z`;
 
-const hsymbolDescription = `Resolve one current or hash-verified Go, JavaScript, TypeScript, JSON, or Python symbol and emit complete rows as \`"PATH":LINE:HASH TEXT\`. Usage: \`hsymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH (LINE|LINE:HASH) SYMBOL [N]\`. A plain line selects the current snapshot; a hash additionally checks previously read content. ROOT sets resolver scope and relative paths without changing shell state. N selects an exact language-token occurrence. --max-tokens follows the shared 4000-token default and strict 1–15500 ceiling. Stale rows, ambiguous selectors, unavailable language servers, and definitions without an editable workspace location fail without stdout rows. ${verifiedRowLimitDescription}`;
-const hsymbolRegex = `\\A(?:(?:--workspace ${readerPath}|--max-tokens [1-9][0-9]*) )*(?:def|refs) ${readerPath} [1-9][0-9]*(?::[0-9a-f]{4})? [^\\x00-\\x20]+(?: [1-9][0-9]*)?(?: (?:--workspace ${readerPath}|--max-tokens [1-9][0-9]*))*\\z`;
+const msymbolDescription = `Resolve one current Go, JavaScript, TypeScript, JSON, or Python symbol and emit complete rows as \`"PATH":LINE TEXT\`. Usage: \`msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH LINE SYMBOL [N]\`. LINE selects the current snapshot. ROOT sets resolver scope and relative paths without changing shell state. N selects an exact language-token occurrence. --max-tokens follows the shared 4000-token default and strict 1–15500 ceiling. Ambiguous selectors, unavailable language servers, input changes during the query, and definitions without an editable workspace location fail without stdout rows. ${verifiedRowLimitDescription}`;
+const msymbolRegex = `\\A(?:(?:--workspace ${readerPath}|--max-tokens [1-9][0-9]*) )*(?:def|refs) ${readerPath} [1-9][0-9]* [^\\x00-\\x20]+(?: [1-9][0-9]*)?(?: (?:--workspace ${readerPath}|--max-tokens [1-9][0-9]*))*\\z`;
 
 type BuiltinPlugin = Omit<Plugin, "tools"> & {
   tools: [Tool<string[]>, Tool<string[]>, Tool<string[]>, Tool<string[]>, typeof shellTool];
@@ -32,7 +32,7 @@ const plugin: BuiltinPlugin = {
   tools: [
     createMCatTool(mcatDescription, mcatRegex),
     createHGrepTool(hgrepDescription, hgrepRegex),
-    createHSymbolTool(hsymbolDescription, hsymbolRegex),
+    createMSymbolTool(msymbolDescription, msymbolRegex),
     createInspectFileTool(inspectFileDescription, inspectFileRegex),
     shellTool,
   ],

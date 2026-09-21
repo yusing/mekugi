@@ -146,7 +146,7 @@ func executeShellProgram(
 	}
 	privateTools := make(map[string]toolContribution)
 	for _, contribution := range manifest.Tools {
-		if contribution.PluginID == builtinToolsPluginID && !contribution.ModelVisible && contribution.Name != "mcat" {
+		if contribution.PluginID == builtinToolsPluginID && !contribution.ModelVisible && contribution.Name != "mcat" && contribution.Name != "msymbol" {
 			privateTools[contribution.Name] = contribution
 		}
 	}

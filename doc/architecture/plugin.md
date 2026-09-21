@@ -31,15 +31,17 @@ history cannot enter edit recovery. Diagnostics remain separate from executor ou
 retain exact provenance.
 
 The built-in shell is model-visible. `mcat` is model-private but executes only
-through its session frontend. Router-native `mread` and `mrun` use the same
-authenticated frontend path; hgrep, hsymbol, and inspect_file remain private
-shell commands while also exposing pinned frontends for their later cutovers.
+through its session frontend. Router-native `mread` and `mrun`, plus generated
+`msymbol`, use the same authenticated frontend path; hgrep and inspect_file remain
+private shell commands while also exposing pinned frontends for their later cutovers.
 They share portable source semantics while retaining distinct selection owners.
 Codex remains the execution authority for every frontend. The router never
 fabricates their results or turns command history into edit-recovery ancestry.
 The `mread` frontend delegates retained output semantics to the existing managed store rather
 than duplicating them in the registry. The `mrun` frontend retains Codex's foreground process
-authority and owns only one bounded child execution plus completed-output retention.
+authority and owns only one bounded child execution plus completed-output retention. The
+`msymbol` frontend delegates the semantic query to the generated plugin executor and adds only
+the shared AX observation around that authenticated invocation.
 
 Optional shell command-routing policy is built-in plugin code, separate from model-visible
 tool declarations. The authenticated registry retains its candidate names and required

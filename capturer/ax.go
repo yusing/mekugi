@@ -54,7 +54,7 @@ type AXReadObservation struct {
 }
 
 func validAXReader(tool string) bool {
-	return tool == "mcat" || tool == "hgrep" || tool == "hsymbol" || tool == "inspect_file"
+	return tool == "mcat" || tool == "hgrep" || tool == "msymbol" || tool == "inspect_file"
 }
 
 // StartAXReadWithContext is auxiliary to execution. Callers report failures separately and

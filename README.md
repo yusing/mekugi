@@ -340,9 +340,9 @@ needs raw output.
 ### Wrapped-session helpers
 
 The wrapped session provides the commands below. `mread`, `mrun`, `mcat`, `hgrep`,
-`hsymbol`, and `inspect_file` are session-private executables on Codex's `PATH`;
-they are not installed as global terminal utilities. `mread`, `mrun`, and `mcat`
-run through stock execution rather than the private shell dispatcher. `hchanges`
+`msymbol`, and `inspect_file` are session-private executables on Codex's `PATH`;
+they are not installed as global terminal utilities. `mread`, `mrun`, `mcat`, and
+`msymbol` run through stock execution rather than the private shell dispatcher. `hchanges`
 remains shell-only until its migration.
 
 | Command | Purpose | Extra prerequisite on the executor's `PATH` |
@@ -352,7 +352,7 @@ remains shell-only until its migration.
 | `hchanges` | Read tracked diffs and hpatch recovery history by ID or range | Access to the router's replay directory |
 | `mcat` | Read raw UTF-8 source rows without hashes: `mcat path1 1:200 path2 path3 200:300`; multiple files share a budget and provide per-file recovery links | Replay-directory access for multi-file reads |
 | `hgrep` | Search text with verified row references | `rg` |
-| `hsymbol` | Look up definitions and references | `gopls` for Go; TypeScript 7 as `tsc` for JS, TS, and JSON; `pyright-langserver` for Python |
+| `msymbol` | Look up definitions and references as complete `"PATH":LINE TEXT` rows | `gopls` for Go; TypeScript 7 as `tsc` for JS, TS, and JSON; `pyright-langserver` for Python |
 | `inspect_file` | Inspect a structural outline | None |
 
 Agent-facing references use short word handles such as `maple` or `amber1`.
@@ -383,7 +383,7 @@ next call. Typical follow-ups:
 
 ```sh
 mread REF
-hsymbol def source.go 42 MyFunction
+msymbol def source.go 42 MyFunction
 inspect_file source.go
 mcat --tail -n 20 source.ts
 mrun --tail -n 20 -- go test ./internal/router

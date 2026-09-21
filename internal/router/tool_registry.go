@@ -128,7 +128,7 @@ func buildToolRegistryAt(
 				Module:        plugin.Module,
 				ModuleIndex:   toolIndex,
 				Executable:    true,
-				ModelVisible:  name != "mcat" && name != "hgrep" && name != "hsymbol" && name != "inspect_file",
+				ModelVisible:  name != "mcat" && name != "hgrep" && name != "msymbol" && name != "inspect_file",
 			}
 			if validationErr := validateToolContribution(contribution); validationErr != nil {
 				validationErrors = append(validationErrors, validationErr)
