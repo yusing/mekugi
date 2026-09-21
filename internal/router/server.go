@@ -207,10 +207,6 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}
 	titles := newSessionTitleCache()
 	if *flags.mode == "mekugi" {
-		customizedInstructions, err := codexModelInstructionFileConfigured()
-		if err != nil {
-			return fmt.Errorf("initialize model instruction rewriting: %w", err)
-		}
 		registry, err := buildToolRegistry(ctx, dataDirectory, os.Getenv("MEKUGI_DIAGNOSE") == "1")
 		if err != nil {
 			return fmt.Errorf("initialize tool registry: %w", err)
@@ -233,7 +229,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		if err != nil {
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
-		mekugiCalls = newMekugiProxy(registry, customizedInstructions, titles)
+		mekugiCalls = newMekugiProxy(registry, titles)
 		mekugiCalls.noticeSink = issues.addNotice
 		replayStore.storageNotice = func(session, message string) { issues.addNotice(session, "storage_cleanup", message) }
 		mekugiCalls.commentary.debug = debug

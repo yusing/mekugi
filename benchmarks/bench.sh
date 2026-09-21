@@ -65,7 +65,7 @@ benchmark_main() {
 		printf 'Both arms use the same static %s/%s parent prompt and %s/%s child role and prompt; only the mekugi-mentor router enables the child handoff.\n' \
 			"$mentor_parent_model" "$mentor_parent_reasoning_effort" "$model" "$reasoning_effort"
 	fi
-	printf 'Base instruction override source: %s\n' "$instruction_source"
+	printf 'Base instruction override source: %s\n' "${instruction_source:-none (tool guidance is projected separately)}"
 	printf 'Base instruction diff: %s\n' "$instruction_diff"
 
 	run_phase base-qualification validate_revision base "$base_commit" fail

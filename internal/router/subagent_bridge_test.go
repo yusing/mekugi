@@ -36,8 +36,8 @@ func TestSubagentBridgeProjectsAndRestoresPlaintext(t *testing.T) {
 		if bytes.Contains(data, []byte(`"encrypted":true`)) || !bytes.Contains(data, []byte(`"namespace":"mekugi_collaboration"`)) {
 			t.Fatalf("projection=%s", data)
 		}
-		if !strings.Contains(jsonString(request.fields, "instructions"), "plaintext") {
-			t.Fatal("missing bridge guidance")
+		if jsonString(request.fields, "instructions") != "keep" || !bytes.Contains(data, []byte("Message arguments are plaintext")) {
+			t.Fatal("bridge guidance changed base instructions or is missing from the projected namespace")
 		}
 		item := map[string]any{"type": "function_call", "namespace": subagentBridgeNamespace, "name": "spawn_agent", "call_id": "c1", "arguments": `{"message":"plain"}`}
 		response, err := bridge.TransformJSON(mustTestJSON(t, map[string]any{"output": []any{item}}))
@@ -339,7 +339,7 @@ func TestSubagentBridgeWithoutGrok(t *testing.T) {
 			bytes.Contains(wire, []byte(`"encrypted":true`)) {
 			t.Fatalf("ordinary projection exposes wrong contract: %s", wire)
 		}
-		if !strings.Contains(jsonString(request.fields, "instructions"), "message arguments are plaintext") {
+		if !bytes.Contains(wire, []byte("Message arguments are plaintext")) || jsonString(request.fields, "instructions") != "keep" {
 			t.Fatal("missing plaintext guidance")
 		}
 	}

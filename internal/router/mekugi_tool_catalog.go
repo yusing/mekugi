@@ -236,7 +236,11 @@ func codeModeToolChoiceRestricted(fields map[string]json.RawMessage, codeToolNam
 
 // exposeStandaloneMekugi exposes standalone mekugi tools in the tool catalog.
 func exposeStandaloneMekugi(fields map[string]json.RawMessage, catalog *responsesToolCatalog, owner *codeModeApplyPatchOwner, installedTools []*responsesToolDefinition) error {
-	owner.section.tools[owner.toolIndex].setDescription(owner.strippedDescription)
+	description, err := injectCodeModeJournalGuidance(owner.strippedDescription)
+	if err != nil {
+		return err
+	}
+	owner.section.tools[owner.toolIndex].setDescription(description)
 	shellIndex := slices.IndexFunc(installedTools, func(tool *responsesToolDefinition) bool {
 		return tool.Name == "shell"
 	})

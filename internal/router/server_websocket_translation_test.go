@@ -55,7 +55,6 @@ func testResponsesWebSocketLiveDiffStreamsBeforeInputDone(t *testing.T, deltas [
 		t.Fatal(err)
 	}
 	proxy := newManagedMekugiProxy(t)
-	proxy.customizedInstructions = true
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

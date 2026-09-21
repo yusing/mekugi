@@ -123,7 +123,6 @@ type providerAttemptMetrics struct {
 }
 
 type exchangeMetrics struct {
-	InstructionRewrite  *InstructionRewrite      `json:"instruction_rewrite,omitempty"`
 	PredecessorSequence uint64                   `json:"predecessor_sequence,omitempty"`
 	RequestKind         string                   `json:"request_kind,omitempty"`
 	ClientFingerprint   *requestFingerprint      `json:"client_fingerprint,omitempty"`
@@ -204,9 +203,8 @@ func (r *Recorder) addExchange(front captureRecord, state *requestState, provide
 	}
 
 	exchange := exchangeMetrics{
-		RequestKind:        front.RequestKind,
-		InstructionRewrite: front.InstructionRewrite,
-		Sequence:           front.RequestSequence, ThreadID: front.ThreadID, PredecessorSequence: front.PredecessorSequence,
+		RequestKind: front.RequestKind,
+		Sequence:    front.RequestSequence, ThreadID: front.ThreadID, PredecessorSequence: front.PredecessorSequence,
 		Status: front.ResponseStatus, ClientRequest: front.Request, ClientResponse: front.Response,
 		ClientFingerprint: front.Fingerprint,
 		ClientFinalOutput: front.FinalOutput, ClientFinalText: front.FinalText,

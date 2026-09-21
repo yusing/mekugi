@@ -12,13 +12,12 @@ import (
 	"github.com/coder/websocket"
 )
 
-// Exercise the provider wire, not the locally reconstructed instruction dump.
-func TestWebSocketPrewarmInstructionDelivery(t *testing.T) {
+// Exercise the provider wire, not the locally reconstructed tool catalog.
+func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	proxy := newToolPluginTestProxy(t)
-	proxy.customizedInstructions = true
 	base := []any{testCodeModeAdditionalTools(testCodeModeDescription), map[string]string{"type": "message", "role": "developer", "content": "Follow the task."}}
 	incoming := []any{base[0], map[string]string{"type": "message", "role": "developer", "content": "Follow the task." + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd}}
 	ids := []string{"warm", "turn", "next", "astra", "astra-next"}
@@ -48,10 +47,10 @@ func TestWebSocketPrewarmInstructionDelivery(t *testing.T) {
 			switch id {
 			case "warm":
 				warmedTools = bytes.Clone(request["tools"])
-				if string(request["generate"]) != "false" || !bytes.Contains(request["input"], []byte("mekugi-model-instructions:start")) ||
+				if string(request["generate"]) != "false" || !bytes.Contains(request["input"], []byte("mekugi-journal:start")) ||
 					bytes.Contains(request["input"], []byte("tools.exec_command")) ||
 					!bytes.Contains(request["tools"], []byte(`"shell"`)) || !bytes.Contains(request["tools"], []byte(`"journal"`)) {
-					t.Error("prewarm did not project non-generating turn instructions and tools")
+					t.Errorf("prewarm did not project non-generating tool guidance and catalog: input=%s tools=%s", request["input"], request["tools"])
 				}
 			case "turn":
 				if !sameJSONValue(warmedTools, request["tools"]) {
@@ -60,16 +59,12 @@ func TestWebSocketPrewarmInstructionDelivery(t *testing.T) {
 				if jsonString(request, "previous_response_id") != "warm" || len(input) != 1 {
 					t.Errorf("first turn discarded warmed prefix: parent=%q items=%d", jsonString(request, "previous_response_id"), len(input))
 				}
-			case "astra":
-				if jsonString(request, "previous_response_id") != "" || len(input) != index+2 {
-					t.Errorf("%s did not replace the stale provider prefix: parent=%q items=%d", id, jsonString(request, "previous_response_id"), len(input))
-				}
-				if !bytes.Contains(request["input"], []byte("mekugi-model-instructions:start")) || bytes.Contains(request["input"], []byte("tools.exec_command")) {
-					t.Errorf("%s did not deliver patched guidance and catalog", id)
-				}
-			case "next", "astra-next":
+			case "next", "astra", "astra-next":
 				if jsonString(request, "previous_response_id") != ids[index-1] || len(input) != 1 {
 					t.Errorf("%s unnecessarily resent unchanged history", id)
+				}
+				if !sameJSONValue(warmedTools, request["tools"]) {
+					t.Errorf("%s changed model-independent tool guidance", id)
 				}
 			}
 			if err := providerSocketWrite(ctx, upstream, socketEvent("response.completed", id)); err != nil {

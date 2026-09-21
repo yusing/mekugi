@@ -39,7 +39,7 @@ func TestReplayContinuationMatchesLiveProviderInput(t *testing.T) {
 				headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})
 				request := func(history []json.RawMessage) parsedResponsesRequest {
 					return serverRequest(t, func(fields map[string]any) {
-						fields["instructions"] = stockModelInstructionsForTest("", "")
+						fields["instructions"] = testBaseInstructions
 						if carrier == "native" {
 							fields["tools"] = testNativeResponsesTools()
 							fields["input"] = []any{map[string]any{"role": "user", "content": "task"}}

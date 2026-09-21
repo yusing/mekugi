@@ -616,6 +616,12 @@ func TestJournalToolSchemaIncludesBatchedMutations(t *testing.T) {
 	if !bytes.Equal(schema.Properties["journal"], journalMutationsSchema()) {
 		t.Fatalf("missing or incorrect journal schema: %s", schema.Properties["journal"])
 	}
+	description := catalog.top.tools[0].Description
+	for _, required := range []string{"durable milestone journal", "await journal", "call finish alone", "without another model request", "without", "separate final answer"} {
+		if !strings.Contains(description, required) {
+			t.Fatalf("journal description lacks %q: %q", required, description)
+		}
+	}
 }
 
 func TestJournalFlushNestsMultilineMarkdown(t *testing.T) {

@@ -37,6 +37,9 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled bool, op
 			case subagentBridgeNamespace:
 				return nil, errors.New("tool namespace mekugi_collaboration is reserved by the collaboration bridge")
 			case "collaboration":
+				namespaceDescription := strings.TrimSpace(jsonString(tool, "description") +
+					"\nNative agent operations use this projected namespace. Message arguments are plaintext; Codex owns agent execution, permissions, and lifecycle.")
+				tool["description"] = mustMarshalJSON(namespaceDescription)
 				var functions []map[string]json.RawMessage
 				if err := json.Unmarshal(tool["tools"], &functions); err != nil {
 					return nil, err
@@ -158,12 +161,6 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled bool, op
 	if input != nil {
 		request.setInput(mustMarshalJSON(input))
 	}
-	instructions := jsonString(request.fields, "instructions")
-	instructions += "\nUse mekugi_collaboration for native agent operations. Its message arguments are plaintext; Codex owns agent execution, permissions and lifecycle." + openCodeNote
-	if grokEnabled {
-		instructions += " For grok:grok-4.6 start a fresh context (fork_turns=none); encrypted OpenAI history cannot be sent to Grok."
-	}
-	request.fields["instructions"] = mustMarshalJSON(instructions)
 	if raw, ok := request.fields["tool_choice"]; ok {
 		var choice map[string]json.RawMessage
 		if json.Unmarshal(raw, &choice) == nil && jsonString(choice, "namespace") == "collaboration" {

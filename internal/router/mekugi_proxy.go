@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	codexinstructions "github.com/yusing/mekugi/contrib/codex"
 	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
@@ -115,19 +114,18 @@ func mekugiDataDirectory() (string, error) {
 }
 
 type mekugiProxy struct {
-	registry               *toolRegistry
-	customizedInstructions bool
-	shellDirectory         string
-	titles                 *sessionTitleCache
-	shellSessions          map[string]*shellSession
-	shellParent            *os.Root
-	memoryCommentary       map[string]map[string]struct{}
-	commentary             *commentaryBroker
-	commentaryEndpoint     string
-	journals               *journalStore
-	usage                  *threadUsage
-	autoLiveDiff           *autoLiveDiff
-	activity               *subagentActivity
+	registry           *toolRegistry
+	shellDirectory     string
+	titles             *sessionTitleCache
+	shellSessions      map[string]*shellSession
+	shellParent        *os.Root
+	memoryCommentary   map[string]map[string]struct{}
+	commentary         *commentaryBroker
+	commentaryEndpoint string
+	journals           *journalStore
+	usage              *threadUsage
+	autoLiveDiff       *autoLiveDiff
+	activity           *subagentActivity
 
 	mu              sync.RWMutex
 	replayStore     *mekugiReplayStore
@@ -142,7 +140,7 @@ type mekugiProxy struct {
 	closed          bool
 }
 
-func newMekugiProxy(registry *toolRegistry, customizedInstructions bool, titleCaches ...*sessionTitleCache) *mekugiProxy {
+func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *mekugiProxy {
 	if registry == nil {
 		return nil
 	}
@@ -155,17 +153,16 @@ func newMekugiProxy(registry *toolRegistry, customizedInstructions bool, titleCa
 	broker := newCommentaryBroker()
 	broker.activity = activity
 	proxy := &mekugiProxy{
-		registry:               registry,
-		customizedInstructions: customizedInstructions,
-		shellDirectory:         directory,
-		titles:                 titles,
-		shellSessions:          make(map[string]*shellSession),
-		commentary:             broker,
-		journals:               newJournalStore(),
-		usage:                  newThreadUsage(),
-		activity:               activity,
-		sessions:               make(map[string]*mekugiHistorySession),
-		activeSessions:         make(map[string]int),
+		registry:       registry,
+		shellDirectory: directory,
+		titles:         titles,
+		shellSessions:  make(map[string]*shellSession),
+		commentary:     broker,
+		journals:       newJournalStore(),
+		usage:          newThreadUsage(),
+		activity:       activity,
+		sessions:       make(map[string]*mekugiHistorySession),
+		activeSessions: make(map[string]int),
 	}
 	broker.editPublisher = func(ctx context.Context, workspace, thread, callID string) error {
 		if proxy.replayStore == nil {
@@ -473,7 +470,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		}
 		return nil, nil
 	}
-	// Discover an execution owner before rewriting instructions: a native
+	// Discover an execution owner before projecting tools: a native
 	// handshake may not yet carry the instruction or tool catalog of a turn.
 	if prewarm {
 		tools := request.responseTools()
@@ -492,10 +489,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		}
 	}
 
-	modelInstructions := codexinstructions.InstructionsForModel(request.model())
-	if err := rewriteReceivedModelInstructions(ctx, request, p.customizedInstructions, modelInstructions); err != nil {
-		return nil, err
-	}
 	recipient := metadata.AgentName
 	if metadata.SubagentKind == "" {
 		recipient = "/root"

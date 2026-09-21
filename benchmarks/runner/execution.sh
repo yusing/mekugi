@@ -390,7 +390,7 @@ run_agent() {
 				sha256: $base_instructions_sha256,
 				stock_path: $stock_base_instructions_path,
 				override_diff_path: (if $override_diff_path == "" then null else $override_diff_path end),
-				override_source_path: (if $override_diff_path == "" then null else $override_source_path end)
+				override_source_path: (if $override_diff_path == "" or $override_source_path == "" then null else $override_source_path end)
 			},
 			agent: $agent,
 			changed_paths: $changed_paths,

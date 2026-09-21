@@ -68,7 +68,7 @@ linked, not copied.
 - [`REQ-EDIT-001`](edit.md): target-bearing mutation behavior
 - [`REQ-OUTPUT-001`](output.md): output, validation, and failure behavior
 - [`REQ-MENTOR-001`](mentor.md): main and subagent Mentor Handoff schedule
-- [`REQ-GUIDE-001`](guide.md): concise agent guidance
+- [`REQ-GUIDE-001`](guide.md): caller-preserving additive tool guidance
 - [`REQ-COMPARE-001`](comparison.md): token comparison scenarios
 - [`REQ-BENCH-001`](benchmark.md): historical-commit correctness and paired model evaluation
 - [`REQ-CTP-001`](ctp.md): lossless token-positive model-visible data-plane encoding

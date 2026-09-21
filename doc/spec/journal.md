@@ -87,7 +87,7 @@ An empty journal returns `No journal entries.` under the result heading. Complet
 include journal delivery counts. Result delivery does not mark items
 reported or flushed and does not include descendant journals. The parent receives the result
 text without a journal lookup or another child provider request.
-The child result appends its retained hchange ranges and one aggregated numstat using
+The child result appends its retained change ranges and one aggregated numstat using
 `mchanges --summary` count semantics. Journal and change selection share a locked snapshot.
 Selection uses durable executing-thread ownership, falling back to the originating stream
 for older records; it excludes other threads' attempts, even within a shared recovery ID.
@@ -106,7 +106,7 @@ Router-owned messages use generated IDs and are removed from later provider inpu
 Before adding journal results or notices to a streaming terminal with an absent or empty
 output snapshot, the router MUST preserve completed streamed items in the projected snapshot.
 Internal journal continuations MUST preserve client-dispatched calls and their paired
-results in subsequent WebSocket history, under both native and CTP/2 protocols.
+results in subsequent WebSocket history.
 Visible named journal results MUST also invalidate the provider's cached input prefix when
 the current workspace has no matching replay record, including a new turn whose workspace
 metadata has not arrived yet. Replay sends those standalone results unchanged without
@@ -116,8 +116,9 @@ provider prefix ending with that call allows the WebSocket reconciler to send on
 the missing result and new input; restoration alone does not establish cache validity.
 
 Mekugi mode forces `tools.update_plan.enabled=false` and removes `update_plan` declarations from
-the request catalog, including nested additional-tool namespaces. Stock Planning/Tasks conflicts
-are rewritten to journal guidance. Passthrough retains the stock tool and prompt.
+the request catalog, including nested additional-tool namespaces. The caller's base instructions
+remain unchanged; the journal tool descriptions supply additive guidance. Passthrough retains the
+stock tool catalog and prompt.
 
 ### Runtime authoring
 

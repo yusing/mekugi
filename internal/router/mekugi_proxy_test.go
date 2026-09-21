@@ -13,19 +13,13 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	codexinstructions "github.com/yusing/mekugi/contrib/codex"
 )
 
-func stockModelInstructionsForTest(prefix, suffix string) string {
-	return prefix + stockRGInstruction + "\n" + stockExecInstruction + "\n" +
-		stockEditHeading + "\n\n" + stockEditInstruction + "\n" + suffix
-}
-
 const (
-	testTranslatedPatch = "*** Begin Patch\n*** Add File: created.txt\n+payload\n*** End Patch\n"
-	testMekugiScript    = "new created.txt\ntype \"payload\"\n"
-	testMekugiReport    = "in created.txt\nlast type 1 ranges 1:1-1:1\nfiles add=1 update=0 move=0 delete=0\nrefs 2 type\n1:239f payload\n"
+	testBaseInstructions = "caller-owned base instructions\n"
+	testTranslatedPatch  = "*** Begin Patch\n*** Add File: created.txt\n+payload\n*** End Patch\n"
+	testMekugiScript     = "new created.txt\ntype \"payload\"\n"
+	testMekugiReport     = "in created.txt\nlast type 1 ranges 1:1-1:1\nfiles add=1 update=0 move=0 delete=0\nrefs 2 type\n1:239f payload\n"
 )
 
 var testShellEditSource = "hpatch " + shellQuoteArgument(testMekugiScript)
@@ -299,13 +293,14 @@ func TestBuildCodeModeCarrierCatalogRejectsDuplicateNames(t *testing.T) {
 	}
 }
 
-func TestMekugiPrepareRequestRewritesNamespacedExecWithShell(t *testing.T) {
+func TestMekugiPrepareRequestProjectsJournalWithoutChangingInstructions(t *testing.T) {
 	workspace := t.TempDir()
+	const baseInstructions = "existing base\ncaller-owned editing policy\nexisting suffix\n"
 	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
 		"input":        []any{testCodeModeAdditionalTools(testCodeModeDescription)},
 		"tools":        []any{map[string]any{"type": "function", "name": "lookup", "future": true}},
 		"tool_choice":  "auto",
-		"instructions": stockModelInstructionsForTest("existing base\n", "existing suffix\n"),
+		"instructions": baseInstructions,
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -335,7 +330,10 @@ func TestMekugiPrepareRequestRewritesNamespacedExecWithShell(t *testing.T) {
 			t.Fatalf("namespaced exec description contains %q: %q", forbidden, description)
 		}
 	}
-	if !strings.Contains(description, "### `create_goal`") {
+	if !strings.Contains(description, "### `create_goal`") ||
+		strings.Count(description, codeModeJournalStart) != 1 ||
+		strings.Count(description, codeModeJournalEnd) != 1 ||
+		!strings.Contains(description, "await journal") || !strings.Contains(description, "functions.journal") {
 		t.Fatalf("namespaced exec lost unrelated nested tool: %q", description)
 	}
 	if !slices.ContainsFunc(functionsTools, func(tool map[string]json.RawMessage) bool {
@@ -348,141 +346,66 @@ func TestMekugiPrepareRequestRewritesNamespacedExecWithShell(t *testing.T) {
 	}) {
 		t.Fatalf("additional_tools lost sibling namespace: %#v", namespaces)
 	}
-	var rewrittenInstructions string
-	if err := json.Unmarshal(request.fields["instructions"], &rewrittenInstructions); err != nil {
+	var forwardedInstructions string
+	if err := json.Unmarshal(request.fields["instructions"], &forwardedInstructions); err != nil {
 		t.Fatal(err)
 	}
-	wantInstructions := "existing base\n" + codexinstructions.InstructionsForModel("") + "existing suffix\n"
-	if rewrittenInstructions != wantInstructions {
-		t.Fatalf("request instructions = %q, want %q", rewrittenInstructions, wantInstructions)
+	if forwardedInstructions != baseInstructions {
+		t.Fatalf("request instructions = %q, want %q", forwardedInstructions, baseInstructions)
 	}
 }
 
-func TestMekugiPrepareRequestSupportsAstraStockInstructions(t *testing.T) {
-	stock, err := os.ReadFile("testdata/gpt-6-astra-instructions.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
-		"model":        "gpt-6-astra",
-		"input":        []any{testCodeModeAdditionalTools(testCodeModeDescription)},
-		"tool_choice":  "auto",
-		"instructions": string(stock),
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	proxy := newManagedMekugiProxy(t)
-	metadata := codexTurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{t.TempDir(): nil}}
-	transform, err := proxy.prepareRequest(t.Context(), &request, "astra-session", "astra-thread", metadata, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if transform == nil {
-		t.Fatal("Astra request did not receive HPATCH tool projection")
-	}
-	defer transform.Close()
-	if request.model() != "gpt-6-astra" {
-		t.Fatalf("Astra model was changed to %q", request.model())
-	}
-	var instructions string
-	if err := json.Unmarshal(request.fields["instructions"], &instructions); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Count(instructions, codexinstructions.InstructionsForModel("gpt-6-astra")) != 1 ||
-		strings.Contains(instructions, stockRGInstruction) || strings.Contains(instructions, stockExecInstruction) {
-		t.Fatal("Astra request did not receive exactly one replacement guidance section")
-	}
-}
-
-func TestMekugiPrepareRequestRefreshesWorkflowOnModelSwitch(t *testing.T) {
-	for _, compact := range []bool{false, true} {
-		for _, developer := range []bool{false, true} {
-			proxy := newManagedMekugiProxy(t)
-			metadata := codexTurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{t.TempDir(): nil}}
-			instructions := "prefix\n" + codexinstructions.InstructionsForModel("") + "suffix\n"
-			for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-6-astra-2026-09-01"} {
+func TestMekugiPrepareRequestPreservesCallerInstructionsAcrossModels(t *testing.T) {
+	for _, developer := range []bool{false, true} {
+		for index, model := range []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-6-astra-2026-09-01"} {
+			t.Run(model+"/developer="+strconv.FormatBool(developer), func(t *testing.T) {
+				const base = "custom instructions\nwith caller policy\n"
 				input := []any{testCodeModeAdditionalTools(testCodeModeDescription)}
-				fields := map[string]any{"model": model, "tool_choice": "auto", "instructions": instructions}
+				fields := map[string]any{"model": model, "tool_choice": "auto", "instructions": base}
 				if developer {
 					delete(fields, "instructions")
-					input = append([]any{map[string]any{"type": "message", "role": "developer", "content": instructions}}, input...)
+					input = append([]any{map[string]any{"type": "message", "role": "developer", "content": base}}, input...)
 				}
 				fields["input"] = input
 				request, err := parseResponsesRequest(mustTestJSON(t, fields))
 				if err != nil {
 					t.Fatal(err)
 				}
-				transform, err := proxy.prepareRequest(t.Context(), &request, "model-switch-session", "model-switch-thread", metadata, true)
+				proxy := newManagedMekugiProxy(t)
+				metadata := codexTurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{t.TempDir(): nil}}
+				transform, err := proxy.prepareRequest(t.Context(), &request, "instruction-session-"+strconv.Itoa(index), "instruction-thread-"+strconv.Itoa(index), metadata, true)
 				if err != nil {
 					t.Fatal(err)
 				}
-				transform.Close()
+				defer transform.Close()
 				if developer {
-					var rewritten []map[string]any
-					if err := json.Unmarshal(request.fields["input"], &rewritten); err != nil {
-						t.Fatal(err)
+					var forwarded []map[string]any
+					if err := json.Unmarshal(request.fields["input"], &forwarded); err != nil || forwarded[0]["content"] != base {
+						t.Fatalf("developer instructions changed: %#v, %v", forwarded, err)
 					}
-					instructions = rewritten[0]["content"].(string)
-				} else if err := json.Unmarshal(request.fields["instructions"], &instructions); err != nil {
-					t.Fatal(err)
+				} else if got := jsonString(request.fields, "instructions"); got != base {
+					t.Fatalf("instructions = %q, want %q", got, base)
 				}
-				want := "prefix\n" + codexinstructions.InstructionsForModel(model) + "suffix\n"
-				if instructions != want || request.model() != model {
-					t.Fatalf("model %q compact %v developer %v: incorrect request-local refresh", model, compact, developer)
-				}
-			}
+			})
 		}
 	}
 }
 
-func TestMekugiPrepareRequestUsesCustomizedModelInstructions(t *testing.T) {
-	workspace := t.TempDir()
-	newRequest := func(t *testing.T) parsedResponsesRequest {
-		t.Helper()
-		request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
-			"input":        []any{testCodeModeAdditionalTools(testCodeModeDescription)},
-			"tool_choice":  "auto",
-			"instructions": "custom instructions\n",
-		}))
-		if err != nil {
-			t.Fatal(err)
-		}
-		return request
+func TestCodeModeJournalGuidanceRefreshesIdempotently(t *testing.T) {
+	base := "Run JavaScript."
+	first, err := injectCodeModeJournalGuidance(base)
+	if err != nil {
+		t.Fatal(err)
 	}
-	metadata := codexTurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil}}
-
-	t.Run("configured file appends", func(t *testing.T) {
-		proxy := newManagedMekugiProxy(t)
-		proxy.customizedInstructions = true
-		request := newRequest(t)
-		transform, err := proxy.prepareRequest(t.Context(), &request, "custom-session", "custom-thread", metadata, true)
-		if err != nil {
-			t.Fatal(err)
+	second, err := injectCodeModeJournalGuidance(first)
+	if err != nil || first != second || strings.Count(second, codeModeJournalStart) != 1 {
+		t.Fatalf("journal guidance refresh = %q, %v", second, err)
+	}
+	for _, malformed := range []string{base + codeModeJournalStart, base + codeModeJournalEnd, base + codeModeJournalEnd + codeModeJournalStart} {
+		if _, err := injectCodeModeJournalGuidance(malformed); err == nil {
+			t.Fatalf("accepted malformed journal guidance %q", malformed)
 		}
-		defer transform.Close()
-		var instructions string
-		if err := json.Unmarshal(request.fields["instructions"], &instructions); err != nil {
-			t.Fatal(err)
-		}
-		want := "custom instructions\n\n" + codexinstructions.InstructionsForModel("")
-		if instructions != want {
-			t.Fatalf("instructions = %q, want %q", instructions, want)
-		}
-	})
-
-	t.Run("unconfigured prompt fails before tool rewrite", func(t *testing.T) {
-		proxy := newManagedMekugiProxy(t)
-		request := newRequest(t)
-		originalInput := bytes.Clone(request.fields["input"])
-		if _, err := proxy.prepareRequest(t.Context(), &request, "stock-session", "stock-thread", metadata, true); err == nil ||
-			!strings.Contains(err.Error(), "neither stock nor marked") {
-			t.Fatalf("error = %v", err)
-		}
-		if !bytes.Equal(request.fields["input"], originalInput) {
-			t.Fatal("failed instruction rewrite changed Code Mode tools")
-		}
-	})
+	}
 }
 
 func TestMekugiPrepareRequestExposesShellWithoutEditTools(t *testing.T) {
@@ -824,7 +747,6 @@ func TestReportIssueRouting(t *testing.T) {
 		}
 		proxy := newMekugiProxy(
 			registry,
-			false,
 			newSessionTitleCacheAt(indexPath),
 		)
 		t.Cleanup(func() {
@@ -876,7 +798,7 @@ func TestReportIssueRouting(t *testing.T) {
 		); err != nil {
 			t.Fatal(err)
 		}
-		proxy := newMekugiProxy(registry, false)
+		proxy := newMekugiProxy(registry)
 		t.Cleanup(func() {
 			if err := proxy.Close(); err != nil {
 				t.Error(err)
@@ -899,7 +821,7 @@ func TestReportIssueRouting(t *testing.T) {
 			t.Fatal(err)
 		}
 		calls := 0
-		proxy := newMekugiProxy(registry, false)
+		proxy := newMekugiProxy(registry)
 		t.Cleanup(func() {
 			if err := proxy.Close(); err != nil {
 				t.Error(err)

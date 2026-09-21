@@ -127,7 +127,7 @@ mekugi codex
 ```
 
 Mekugi prints a dashboard URL before Codex opens. Use Codex as usual; the router
-supplies the agent's tool guidance automatically.
+projects its tools and additive journal guidance automatically.
 
 ### From a checkout
 
@@ -200,7 +200,7 @@ request or accepted steering. Grok and OpenCode provider requests remain on HTTP
 | `--stream-idle-timeout` | `4m` | Limit gaps between provider messages during an active response, or HTTP response bytes |
 | `--capture-output PATH` | Disabled | Append sanitized JSONL metrics |
 | `--metrics-output PATH` | Disabled | Write the final metrics snapshot on shutdown, overwriting the destination |
-| `--debug` | Disabled | Record diagnostics, capture, metrics, patched instructions, runtime reads, and an AX report; print all artifact paths on exit |
+| `--debug` | Disabled | Record diagnostics, capture, metrics, forwarded instruction/tool snapshots, runtime reads, and an AX report; print all artifact paths on exit |
 
 For a transport-only session:
 
@@ -447,14 +447,14 @@ measurements, not raw prompts, scripts, patches, or credentials.
 Provider-reported usage is authoritative; local token estimates are not billing
 figures. See the [metrics reference](doc/spec/metrics.md).
 
-To record diagnostics and patched instructions for new requests:
+To record diagnostics and forwarded request instructions for new requests:
 
 ```sh
 mekugi --debug codex
 ```
 
 Debug mode writes a private `mekugi-debug-*` directory in the system temporary
-directory and prints its artifact paths on exit. Instruction dumps are not
+directory and prints its artifact paths on exit. Forwarded instruction dumps are not
 sanitized and can contain private information from your instructions. Existing
 `--capture-output` and `--metrics-output` paths take precedence. Resuming with
 `--debug` records future requests; it cannot recover an earlier request that was
@@ -499,10 +499,9 @@ supported APIs and history limitations.
 
 ## Configuration and troubleshooting
 
-- **Custom instructions:** Mekugi supplies tool guidance in memory without
-  editing your instruction file. If you use a custom prompt, configure it with
-  Codex's `model_instructions_file` setting and restart Mekugi. See
-  [guidance compatibility](doc/spec/guide.md).
+- **Instructions:** Mekugi preserves Codex's stock or caller-configured base instructions. It adds
+  journal and finish guidance through the projected tool descriptions without editing instruction
+  files. See [guidance behavior](doc/spec/guide.md).
 - **Plugins:** put regular `.js` or `.mjs` modules in `mekugi/plugins` beneath
   your platform's user configuration directory. On Linux this is
   `$XDG_CONFIG_HOME/mekugi/plugins` or `~/.config/mekugi/plugins`; on macOS it is

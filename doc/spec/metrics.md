@@ -259,18 +259,7 @@ aggregation belongs to this package: complete source snapshots must reconcile th
 records, modes/protocols must match, and sessions must have distinct threads.
 Combined sequences are rebased while original session exports remain unchanged.
 
-### Instruction and shell-misuse evidence
-
-Eligible router turns record optional `instruction_rewrite` in capture records and detailed
-metric exchanges. It contains only fixed categories: `carrier` (`instructions`, `developer`,
-`none`), `strategy` (`marked`, `stock-gpt5`, `stock-astra`, `custom-append`, `unchanged`, `rejected`),
-`workflow` (`astra`, `default`), and the boolean `custom_configured`. The router supplies the
-actual branch outcome, including rewrite rejection; the capturer rejects unknown categories.
-Carrier selection follows the real top-level/first-developer fallback. This evidence neither
-retains prompt text or configuration paths nor changes forwarding. Missing evidence, including
-older captures and requests that bypass rewriting, means unobserved rather than unchanged.
-Existing request, thread, model, status, and provider-attempt fields supply correlation and
-forwarding context. A successful rewrite does not prove model compliance or later delivery.
+### Shell-misuse evidence
 
 Rejected Bash bodies identified as TypeScript/JavaScript carry the allowlisted
 `shell-typescript-misuse` code in the delivered call's existing `diagnostic` field, with its

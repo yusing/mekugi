@@ -82,7 +82,6 @@ type toolCallMetrics struct {
 type captureRecord struct {
 	Transport            string                             `json:"transport,omitempty"`
 	ControlDirection     ResponsesWebSocketControlDirection `json:"control_direction,omitempty"`
-	InstructionRewrite   *InstructionRewrite                `json:"instruction_rewrite,omitempty"`
 	ProviderResponse     *providerResponseEvidence          `json:"provider_response,omitempty"`
 	PredecessorSequence  uint64                             `json:"predecessor_sequence,omitempty"`
 	SchemaVersion        int                                `json:"schema_version"`
@@ -133,7 +132,6 @@ type Recorder struct {
 
 type requestState struct {
 	requestKind           string
-	instructionRewrite    *InstructionRewrite
 	predecessorSequence   uint64
 	recorder              *Recorder
 	projectedRequest      *payloadMetrics
@@ -416,9 +414,6 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 	}
 	state.mu.Lock()
 	record.RequestKind = state.requestKind
-	if state.instructionRewrite != nil {
-		record.InstructionRewrite = new(*state.instructionRewrite)
-	}
 	state.mu.Unlock()
 	if contentType == webSocketContentType {
 		record.Transport = "websocket"

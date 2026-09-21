@@ -27,7 +27,6 @@ func TestJournalFinishWebSocketDoesNotContinueOrFinishLaterTurn(t *testing.T) {
 			if storeErr != nil {
 				t.Fatal(storeErr)
 			}
-			proxy.customizedInstructions = true
 			headers := codexAuthHeaders()
 			metadata := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 			headers.Set(codexTurnMetadataHeader, metadata.Get(codexTurnMetadataHeader))

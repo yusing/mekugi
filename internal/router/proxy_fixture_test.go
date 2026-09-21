@@ -86,7 +86,7 @@ func (fixture *proxyRegistryFixture) get(t *testing.T, pluginSource string) *too
 
 func newProxyWithSharedTestRegistry(t *testing.T, registry *toolRegistry) *mekugiProxy {
 	t.Helper()
-	proxy := newMekugiProxy(registry, false)
+	proxy := newMekugiProxy(registry)
 	proxy.shellDirectory = t.TempDir()
 	t.Cleanup(func() {
 		if err := proxy.Close(); err != nil {

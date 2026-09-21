@@ -45,8 +45,7 @@ authorized root nor a rendered patch serializes outside writers, supplies a cros
 snapshot, or makes installation crash-atomic. Callers retain writer coordination through
 the final external effect, and failures report known effects and rollback outcomes honestly.
 
-Persistent agent guidance is rendered from one shared owner with a model-specific workflow
-selection. Tool descriptions remain call-local. Instruction rewriting replaces only
-complete recognized conflicts and preserves caller-owned policy; transport selection does
-not change those semantics. Capture and commentary observe this boundary but cannot replace
+Caller-owned base instructions pass through unchanged except for explicit omission blocks.
+Additive journal guidance is projected from one owner into its tool descriptions and remains
+call-local and model-independent. Capture and commentary observe this boundary but cannot replace
 a successful tool or provider result.

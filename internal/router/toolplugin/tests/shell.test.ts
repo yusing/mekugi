@@ -383,7 +383,6 @@ describe("installable shell plugin", () => {
     const codexHome = path.join(installRoot, "codex-home");
     const configPath = path.join(codexHome, "config.toml");
     const instructionsPath = path.join(codexHome, "custom-instructions.md");
-    const defaultInstructionsPath = path.join(codexHome, "mekugi-model-instructions.md");
     await mkdir(binaryDirectory, {recursive: true});
     const installEnvironment = {
       ...process.env,
@@ -422,7 +421,6 @@ ${installed.stderr}`);
     expect(await readFile(configPath, "utf8")).toBe(initialConfig);
     expect(await readFile(instructionsPath, "utf8")).toBe(initialInstructions);
     expect((await stat(instructionsPath)).mode & 0o777).toBe(0o600);
-    await expect(stat(defaultInstructionsPath)).rejects.toThrow();
 
     await writeFile(path.join(binaryDirectory, "codex"), [
       "#!/bin/sh",

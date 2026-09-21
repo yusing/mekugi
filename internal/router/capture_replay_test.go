@@ -68,7 +68,7 @@ func TestCaptureRequestBaselineAfterMekugiReplay(t *testing.T) {
 					t.Error(err)
 				}
 			}))
-			initial := serverRequest(t, func(fields map[string]any) { fields["instructions"] = stockModelInstructionsForTest("", "") })
+			initial := serverRequest(t, func(fields map[string]any) { fields["instructions"] = testBaseInstructions })
 			first := httptest.NewRecorder()
 			firstRequest := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(initial.originalBody))
 			firstRequest.Header = headers.Clone()
@@ -94,7 +94,7 @@ func TestCaptureRequestBaselineAfterMekugiReplay(t *testing.T) {
 				t.Fatalf("shell write did not retain its execution carrier: %s", carrier)
 			}
 			next := serverRequest(t, func(fields map[string]any) {
-				fields["instructions"] = stockModelInstructionsForTest("", "")
+				fields["instructions"] = testBaseInstructions
 				fields["input"] = append(fields["input"].([]any), carrier, map[string]any{"type": "custom_tool_call_output", "call_id": "call-H", "output": strings.Repeat("repeated result text with enough exact words; ", 24)})
 			})
 			second := httptest.NewRecorder()

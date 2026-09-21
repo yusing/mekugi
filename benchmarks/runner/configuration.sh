@@ -201,7 +201,7 @@ initialize_run() {
 	control_instruction="$instruction_dir/control.md"
 	mekugi_instruction="$instruction_dir/mekugi.md"
 	instruction_diff="$instruction_dir/control-to-mekugi-request.diff"
-	instruction_source="$benchmark_root/../contrib/codex/file-editing-instructions.md"
+	instruction_source=
 	mentor_parent_prompt="$instruction_dir/mentor-parent.md"
 	mentor_child_prompt="$instruction_dir/mentor-child.md"
 	mentor_child_role_config="$instruction_dir/mentor-child.toml"

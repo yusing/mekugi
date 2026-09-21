@@ -66,7 +66,7 @@ func TestTurnStateRoundTrip(t *testing.T) {
 						headers.Set("x-codex-turn-state", firstToken)
 					}
 					parsed := serverRequest(t, func(fields map[string]any) {
-						fields["instructions"] = stockModelInstructionsForTest("", "")
+						fields["instructions"] = testBaseInstructions
 						fields["stream"] = stream
 					})
 					original := bytes.Clone(parsed.originalBody)

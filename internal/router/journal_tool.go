@@ -17,6 +17,20 @@ import (
 const journalToolName = "journal"
 const journalHistoryTool = "__mekugi_journal"
 
+const journalToolDescription = `Manage the calling thread's durable milestone journal. Record distinct current results, validation, decisions, or blockers, not plans, narration, superseded progress, or summaries of other agents. Mutations return router-assigned IDs; report_now requests immediate user-visible delivery. Prefer the optional journal field on a useful ordinary tool call. In Code Mode, await journal({op: "add", text: "..."}) or pass an atomic mutation array. Use this dedicated tool for list, or call finish alone after all required tool results, optionally with final mutations in journal. Successful finish ends the turn without another model request or a separate final answer; main flushes its unflushed items and a child returns its current journal to its native completion audience.`
+
+const codeModeJournalStart = "<!-- mekugi-journal:start -->"
+const codeModeJournalEnd = "<!-- mekugi-journal:end -->"
+const codeModeJournalGuidance = codeModeJournalStart + "\n" +
+	"### Journal\n\n" +
+	"Record distinct current results, validation, decisions, or blockers, not plans or narration. Prefer\n" +
+	"the optional journal field on a useful ordinary tool call. In Code Mode, use\n" +
+	"`await journal({op: \"add\", text: \"...\", report_now: true})` for one add/edit/delete mutation,\n" +
+	"or pass an atomic mutation array. Use the dedicated `functions.journal` tool to list entries or\n" +
+	"finish. After every required tool result, finish as the only call, optionally batching final\n" +
+	"mutations in its `journal` field. Successful finish ends the turn without a separate final answer.\n" +
+	codeModeJournalEnd
+
 type journalListItem struct {
 	ID       string `json:"id"`
 	Text     string `json:"text"`
@@ -41,6 +55,27 @@ func journalMutationsSchema() json.RawMessage {
 			}, "required": []string{"op"},
 		},
 	})
+}
+
+func injectCodeModeJournalGuidance(description string) (string, error) {
+	start := strings.Count(description, codeModeJournalStart)
+	end := strings.Count(description, codeModeJournalEnd)
+	if start == 0 && end == 0 {
+		if strings.TrimSpace(description) == "" {
+			return codeModeJournalGuidance, nil
+		}
+		return strings.TrimRight(description, "\r\n") + "\n\n" + codeModeJournalGuidance, nil
+	}
+	if start != 1 || end != 1 {
+		return "", errors.New("Code Mode description contains incomplete journal guidance markers")
+	}
+	startIndex := strings.Index(description, codeModeJournalStart)
+	endIndex := strings.Index(description, codeModeJournalEnd)
+	if startIndex > endIndex {
+		return "", errors.New("Code Mode description contains reversed journal guidance markers")
+	}
+	endIndex += len(codeModeJournalEnd)
+	return description[:startIndex] + codeModeJournalGuidance + description[endIndex:], nil
 }
 
 func exposeJournalTool(fields map[string]json.RawMessage, catalog *responsesToolCatalog) error {
@@ -75,7 +110,7 @@ func exposeJournalTool(fields map[string]json.RawMessage, catalog *responsesTool
 	catalog.appendTop([]*responsesToolDefinition{newResponsesToolDefinition(map[string]json.RawMessage{
 		"type":        mustMarshalJSON("function"),
 		"name":        mustMarshalJSON(journalToolName),
-		"description": mustMarshalJSON("Manage the calling thread's durable milestone journal. Mutations return router-assigned IDs. Finish ends the turn with its final journal entries, without another model request."),
+		"description": mustMarshalJSON(journalToolDescription),
 		"strict":      mustMarshalJSON(false),
 		"parameters": mustMarshalJSON(map[string]any{
 			"type": "object",

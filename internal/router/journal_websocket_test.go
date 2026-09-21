@@ -19,7 +19,6 @@ func TestJournalWebSocketContinuationRetainsStreamedCall(t *testing.T) {
 			defer cancel()
 			translations := 0
 			proxy := newManagedMekugiProxy(t)
-			proxy.customizedInstructions = true
 			headers := codexAuthHeaders()
 			metadata := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 			headers.Set(codexTurnMetadataHeader, metadata.Get(codexTurnMetadataHeader))

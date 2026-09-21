@@ -1,6 +1,7 @@
 package router
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -17,7 +18,6 @@ func TestResponsesWebSocketHandoffPreservesStreamedCallWithActivity(t *testing.T
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	proxy := newToolPluginTestProxy(t)
-	proxy.customizedInstructions = true
 	const thread = "handoff-history"
 	proxy.activity.observe(thread, "", "/root", false)
 	proxy.activity.observe("child", thread, "/root/child", true)
@@ -61,35 +61,18 @@ func TestResponsesWebSocketHandoffPreservesStreamedCallWithActivity(t *testing.T
 			t.Error(err)
 			return
 		}
-		if jsonString(next, "model") != "gpt-5.6-sol" || jsonString(next, "previous_response_id") != "" {
-			t.Errorf("handoff did not rebase: model=%q parent=%q", jsonString(next, "model"), jsonString(next, "previous_response_id"))
+		if jsonString(next, "model") != "gpt-5.6-sol" || jsonString(next, "previous_response_id") != "first" {
+			t.Errorf("handoff did not retain provider prefix: model=%q parent=%q", jsonString(next, "model"), jsonString(next, "previous_response_id"))
 		}
 		var input []map[string]json.RawMessage
 		if err := json.Unmarshal(next["input"], &input); err != nil {
 			t.Error(err)
 			return
 		}
-		calls, results, callIndex := 0, 0, -1
-		for index, item := range input {
-			if jsonString(item, "call_id") != "shell-call" {
-				continue
-			}
-			switch jsonString(item, "type") {
-			case "custom_tool_call":
-				calls++
-				callIndex = index
-				if jsonString(item, "name") != "shell" || jsonString(item, "input") != "printf ok" {
-					t.Error("rebased call lost its original tool identity or input")
-				}
-			case "custom_tool_call_output":
-				results++
-				if callIndex < 0 || callIndex >= index || jsonString(item, "output") != "ok" {
-					t.Error("rebased result lost its preceding call or output")
-				}
-			}
-		}
-		if calls != 1 || results != 1 || strings.Contains(string(next["input"]), "Inspecting child files.") {
-			t.Errorf("rebased history: calls=%d results=%d; activity must remain user-only", calls, results)
+		if len(input) != 1 || jsonString(input[0], "type") != "custom_tool_call_output" ||
+			jsonString(input[0], "call_id") != "shell-call" || jsonString(input[0], "output") != "ok" ||
+			bytes.Contains(next["input"], []byte("Inspecting child files.")) {
+			t.Errorf("provider prefix continuation lost its result or leaked activity: %s", next["input"])
 		}
 		if err := providerSocketWrite(ctx, upstream, socketEvent("response.completed", "second")); err != nil {
 			t.Error(err)
