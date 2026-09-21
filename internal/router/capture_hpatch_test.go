@@ -18,7 +18,7 @@ import (
 func TestCaptureHistoricalHPatchCarrierOutcomes(t *testing.T) {
 	for _, streaming := range []bool{false, true} {
 		t.Run("stream="+strconv.FormatBool(streaming), func(t *testing.T) {
-			recorder, err := capturer.New(capturer.Config{Mode: "mekugi", ModelProtocol: "native"})
+			recorder, err := capturer.New(capturer.Config{Mode: "mekugi"})
 			if err != nil {
 				t.Fatal(err)
 			}

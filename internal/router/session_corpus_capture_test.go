@@ -26,7 +26,7 @@ func TestCorpusUsageFromProductionCapture(t *testing.T) {
 		for _, stream := range []bool{false, true} {
 			t.Run(test.name+map[bool]string{true: "/SSE", false: "/JSON"}[stream], func(t *testing.T) {
 				path := filepath.Join(t.TempDir(), "capture.jsonl")
-				recorder, err := capturer.New(capturer.Config{Mode: "passthrough", ModelProtocol: "native", Output: path})
+				recorder, err := capturer.New(capturer.Config{Mode: "passthrough", Output: path})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -55,7 +55,7 @@ func TestCorpusUsageFromProductionCapture(t *testing.T) {
 						t.Error(err)
 						return
 					}
-					if err := executeRequest(r.Context(), r.Context(), parsed, headers, "capture-usage", provider, w, nil, nil, nil, nil); err != nil {
+					if err := executeRequest(r.Context(), r.Context(), parsed, headers, "capture-usage", provider, w, nil, nil, nil); err != nil {
 						t.Error(err)
 					}
 				}))

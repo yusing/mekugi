@@ -12,7 +12,6 @@ type routerFlags struct {
 	timeout                  *time.Duration
 	streamIdleTimeout        *time.Duration
 	mode                     *string
-	modelProtocol            *string
 	mainMentorHandoffEnabled *bool
 	mentorHandoffEnabled     *bool
 	grokEnabled              *bool
@@ -35,7 +34,6 @@ func newRouterFlags(stderr io.Writer) routerFlags {
 		timeout:                  flags.Duration("timeout", defaultRequestTimeout, "upstream response-start timeout"),
 		streamIdleTimeout:        flags.Duration("stream-idle-timeout", defaultStreamIdleTimeout, "maximum upstream inactivity between WebSocket messages or HTTP response bytes"),
 		mode:                     flags.String("mode", defaultRewriteMode, "response mode: mekugi or passthrough"),
-		modelProtocol:            flags.String("model-protocol", defaultModelProtocol, "model protocol: native or ctp2"),
 		mainMentorHandoffEnabled: flags.Bool("main-mentor-handoff", true, "start eligible main threads with a mentor model"),
 		mentorHandoffEnabled:     flags.Bool("mentor-handoff", true, "start eligible spawned subagents with a mentor model"),
 		grokEnabled:              flags.Bool("grok", false, "enable Grok models and plaintext collaboration projection"),

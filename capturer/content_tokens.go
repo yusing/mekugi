@@ -111,8 +111,8 @@ func normalizedNumber(value string) string {
 	return sign + digits + "e" + power.String()
 }
 
-// Only assistant text participates in CTP output compression. Tool-call
-// translation, reasoning, and generated commentary are not compression savings.
+// Measure assistant text separately from tool calls, reasoning, and generated
+// commentary so semantic output remains visible independently of wire framing.
 func measureOutputText(output []byte, codec tokenizer.Codec) (payloadMetrics, error) {
 	var rawItems []json.RawMessage
 	if err := json.Unmarshal(output, &rawItems); err != nil {

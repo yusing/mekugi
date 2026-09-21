@@ -29,15 +29,12 @@ func (p captureReplayProvider) forwardExecution(ctx, _ context.Context, body []b
 func TestCaptureRequestBaselineAfterMekugiReplay(t *testing.T) {
 	t.Parallel()
 	const catWrite = "foo; cat > cache-replay.txt <<'EOF'\nliteral content\nEOF\nbar"
-	for _, fixture := range []struct{ name, input, protocol string }{
-		{"hpatch", testMekugiScript, "native"},
-		{"hpatch", testMekugiScript, "ctp2"},
-		{"shell", catWrite, "native"},
-		{"shell", catWrite, "ctp2"},
+	for _, fixture := range []struct{ name, input string }{
+		{"hpatch", testMekugiScript},
+		{"shell", catWrite},
 	} {
-		protocol := fixture.protocol
-		t.Run(fixture.name+"/"+protocol, func(t *testing.T) {
-			recorder, err := capturer.New(capturer.Config{Mode: "mekugi", ModelProtocol: protocol})
+		t.Run(fixture.name, func(t *testing.T) {
+			recorder, err := capturer.New(capturer.Config{Mode: "mekugi"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -58,10 +55,6 @@ func TestCaptureRequestBaselineAfterMekugiReplay(t *testing.T) {
 			t.Cleanup(upstream.Close)
 			provider := captureReplayProvider{client: &http.Client{Transport: recorder.Transport(http.DefaultTransport)}, url: upstream.URL}
 			proxy := newManagedMekugiProxy(t)
-			var codec *ctp2Codec
-			if protocol == "ctp2" {
-				codec = mustCTP2Codec(t)
-			}
 			headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 			handler := recorder.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				body, _ := io.ReadAll(r.Body)
@@ -71,7 +64,7 @@ func TestCaptureRequestBaselineAfterMekugiReplay(t *testing.T) {
 					return
 				}
 				w.Header().Set("Content-Type", "application/json")
-				if err := executeRequest(r.Context(), r.Context(), parsed, headers, "capture-replay", provider, w, nil, proxy, codec, nil); err != nil {
+				if err := executeRequest(r.Context(), r.Context(), parsed, headers, "capture-replay", provider, w, nil, proxy, nil); err != nil {
 					t.Error(err)
 				}
 			}))
@@ -127,17 +120,14 @@ func TestCaptureRequestBaselineAfterMekugiReplay(t *testing.T) {
 			metrics := httptest.NewRecorder()
 			recorder.ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/api/metrics", nil))
 			var snapshot struct {
-				Protocol struct {
-					Input int64 `json:"input_payload_tokens_saved"`
-				} `json:"protocol"`
 				Capture struct {
 					Errors int `json:"capture_errors"`
 				} `json:"capture"`
 				Exchanges []struct {
 					Diagnosis struct {
-						Native struct {
+						Projected struct {
 							Status string `json:"status"`
-						} `json:"native"`
+						} `json:"projected"`
 						Provider struct {
 							Status string `json:"status"`
 						} `json:"provider"`
@@ -146,9 +136,9 @@ func TestCaptureRequestBaselineAfterMekugiReplay(t *testing.T) {
 						Tokens int64 `json:"tokens"`
 					} `json:"client_request"`
 					Attempts []struct {
-						Native struct {
+						Projected struct {
 							Tokens int64 `json:"tokens"`
-						} `json:"native_request"`
+						} `json:"projected_request"`
 						Request struct {
 							Tokens int64 `json:"tokens"`
 						} `json:"request"`
@@ -158,22 +148,17 @@ func TestCaptureRequestBaselineAfterMekugiReplay(t *testing.T) {
 			if err := json.Unmarshal(metrics.Body.Bytes(), &snapshot); err != nil {
 				t.Fatal(err)
 			}
-			if len(snapshot.Exchanges) != 2 || snapshot.Exchanges[1].Diagnosis.Native.Status != "appended" || snapshot.Exchanges[1].Diagnosis.Provider.Status != "appended" {
-				t.Fatalf("replay/CTP changed an existing prefix: %+v", snapshot.Exchanges)
+			if len(snapshot.Exchanges) != 2 || snapshot.Exchanges[1].Diagnosis.Projected.Status != "appended" || snapshot.Exchanges[1].Diagnosis.Provider.Status != "appended" {
+				t.Fatalf("replay changed an existing prefix: %+v", snapshot.Exchanges)
 			}
-			var expected int64
 			var differs bool
 			for _, exchange := range snapshot.Exchanges {
 				for _, attempt := range exchange.Attempts {
-					expected += attempt.Native.Tokens - attempt.Request.Tokens
-					differs = differs || exchange.Client.Tokens != attempt.Native.Tokens
+					differs = differs || exchange.Client.Tokens != attempt.Projected.Tokens
 				}
 			}
-			if !differs || snapshot.Protocol.Input != expected || snapshot.Capture.Errors != 0 {
-				t.Fatalf("replay baseline = %+v, expected %d", snapshot, expected)
-			}
-			if protocol == "native" && expected != 0 {
-				t.Fatalf("replay incorrectly counted as compression: %d", expected)
+			if !differs || snapshot.Capture.Errors != 0 {
+				t.Fatalf("replay baseline = %+v", snapshot)
 			}
 		})
 	}

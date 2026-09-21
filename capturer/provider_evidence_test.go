@@ -63,7 +63,7 @@ func TestProviderEvidenceDistinguishesMissingNullAndZero(t *testing.T) {
 
 func TestProviderEvidenceRetainsAttemptHeadersWithoutSecrets(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "capture.jsonl")
-	r, err := New(Config{Mode: "passthrough", ModelProtocol: "native", Output: path})
+	r, err := New(Config{Mode: "passthrough", Output: path})
 	if err != nil {
 		t.Fatal(err)
 	}

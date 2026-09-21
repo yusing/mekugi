@@ -17,6 +17,11 @@ import (
 	codexinstructions "github.com/yusing/mekugi/contrib/codex"
 )
 
+func stockModelInstructionsForTest(prefix, suffix string) string {
+	return prefix + stockRGInstruction + "\n" + stockExecInstruction + "\n" +
+		stockEditHeading + "\n\n" + stockEditInstruction + "\n" + suffix
+}
+
 const (
 	testTranslatedPatch = "*** Begin Patch\n*** Add File: created.txt\n+payload\n*** End Patch\n"
 	testMekugiScript    = "new created.txt\ntype \"payload\"\n"
@@ -347,7 +352,7 @@ func TestMekugiPrepareRequestRewritesNamespacedExecWithShell(t *testing.T) {
 	if err := json.Unmarshal(request.fields["instructions"], &rewrittenInstructions); err != nil {
 		t.Fatal(err)
 	}
-	wantInstructions := "existing base\n" + codexinstructions.InstructionsForModel("", false) + "existing suffix\n"
+	wantInstructions := "existing base\n" + codexinstructions.InstructionsForModel("") + "existing suffix\n"
 	if rewrittenInstructions != wantInstructions {
 		t.Fatalf("request instructions = %q, want %q", rewrittenInstructions, wantInstructions)
 	}
@@ -384,7 +389,7 @@ func TestMekugiPrepareRequestSupportsAstraStockInstructions(t *testing.T) {
 	if err := json.Unmarshal(request.fields["instructions"], &instructions); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(instructions, codexinstructions.InstructionsForModel("gpt-6-astra", false)) != 1 ||
+	if strings.Count(instructions, codexinstructions.InstructionsForModel("gpt-6-astra")) != 1 ||
 		strings.Contains(instructions, stockRGInstruction) || strings.Contains(instructions, stockExecInstruction) {
 		t.Fatal("Astra request did not receive exactly one replacement guidance section")
 	}
@@ -394,9 +399,8 @@ func TestMekugiPrepareRequestRefreshesWorkflowOnModelSwitch(t *testing.T) {
 	for _, compact := range []bool{false, true} {
 		for _, developer := range []bool{false, true} {
 			proxy := newManagedMekugiProxy(t)
-			proxy.compactModelProtocol = compact
 			metadata := codexTurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{t.TempDir(): nil}}
-			instructions := "prefix\n" + codexinstructions.InstructionsForModel("", false) + "suffix\n"
+			instructions := "prefix\n" + codexinstructions.InstructionsForModel("") + "suffix\n"
 			for _, model := range []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-6-astra-2026-09-01"} {
 				input := []any{testCodeModeAdditionalTools(testCodeModeDescription)}
 				fields := map[string]any{"model": model, "tool_choice": "auto", "instructions": instructions}
@@ -423,7 +427,7 @@ func TestMekugiPrepareRequestRefreshesWorkflowOnModelSwitch(t *testing.T) {
 				} else if err := json.Unmarshal(request.fields["instructions"], &instructions); err != nil {
 					t.Fatal(err)
 				}
-				want := "prefix\n" + codexinstructions.InstructionsForModel(model, compact) + "suffix\n"
+				want := "prefix\n" + codexinstructions.InstructionsForModel(model) + "suffix\n"
 				if instructions != want || request.model() != model {
 					t.Fatalf("model %q compact %v developer %v: incorrect request-local refresh", model, compact, developer)
 				}
@@ -461,7 +465,7 @@ func TestMekugiPrepareRequestUsesCustomizedModelInstructions(t *testing.T) {
 		if err := json.Unmarshal(request.fields["instructions"], &instructions); err != nil {
 			t.Fatal(err)
 		}
-		want := "custom instructions\n\n" + codexinstructions.InstructionsForModel("", false)
+		want := "custom instructions\n\n" + codexinstructions.InstructionsForModel("")
 		if instructions != want {
 			t.Fatalf("instructions = %q, want %q", instructions, want)
 		}
@@ -821,7 +825,6 @@ func TestReportIssueRouting(t *testing.T) {
 		proxy := newMekugiProxy(
 			registry,
 			false,
-			false,
 			newSessionTitleCacheAt(indexPath),
 		)
 		t.Cleanup(func() {
@@ -873,7 +876,7 @@ func TestReportIssueRouting(t *testing.T) {
 		); err != nil {
 			t.Fatal(err)
 		}
-		proxy := newMekugiProxy(registry, false, false)
+		proxy := newMekugiProxy(registry, false)
 		t.Cleanup(func() {
 			if err := proxy.Close(); err != nil {
 				t.Error(err)
@@ -896,7 +899,7 @@ func TestReportIssueRouting(t *testing.T) {
 			t.Fatal(err)
 		}
 		calls := 0
-		proxy := newMekugiProxy(registry, false, false)
+		proxy := newMekugiProxy(registry, false)
 		t.Cleanup(func() {
 			if err := proxy.Close(); err != nil {
 				t.Error(err)

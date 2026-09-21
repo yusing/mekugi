@@ -34,13 +34,10 @@ var recoveryTemplate = template.Must(template.New("mekugi-recovery").Parse(recov
 
 // InstructionsForModel selects the editing workflow per request, independently of transport.
 // Unknown model IDs use the default workflow; Astra-prefixed variants share the Astra workflow.
-func InstructionsForModel(model string, compactModelProtocol bool) string {
+func InstructionsForModel(model string) string {
 	selected := instructions
 	if WorkflowForModel(model) == "astra" {
 		selected = astraInstructions
-	}
-	if !compactModelProtocol {
-		return nativeInstructions(selected)
 	}
 	return selected
 }
@@ -51,23 +48,6 @@ func WorkflowForModel(model string) string {
 		return "astra"
 	}
 	return "default"
-}
-
-func nativeInstructions(instructions string) string {
-	const (
-		ctpHeading         = "## CTP/2 transport\n"
-		fileEditingHeading = "## File editing\n"
-	)
-	start := strings.Index(instructions, ctpHeading)
-	if start < 0 {
-		panic("central model instructions omit the CTP heading")
-	}
-	remainder := instructions[start:]
-	end := strings.Index(remainder, fileEditingHeading)
-	if end < 0 {
-		panic("central model instructions omit the file-editing heading after CTP")
-	}
-	return instructions[:start] + remainder[end:]
 }
 
 // RecoveryGuidance renders dynamic rejected-script guidance.

@@ -15,7 +15,7 @@ import (
 // Model the Codex-owned lifecycle: capture the first response's sticky token,
 // echo it on continuations, then omit it on a new turn in the same session.
 func TestTurnStateRoundTrip(t *testing.T) {
-	for _, mode := range []string{"passthrough", "mekugi", "ctp2"} {
+	for _, mode := range []string{"passthrough", "mekugi"} {
 		for _, stream := range []bool{false, true} {
 			name := mode + "/json"
 			if stream {
@@ -54,12 +54,8 @@ func TestTurnStateRoundTrip(t *testing.T) {
 				defer upstream.Close()
 				provider := newProviderClient(upstream.URL, upstream.Client())
 				var proxy *mekugiProxy
-				var codec *ctp2Codec
 				if mode != "passthrough" {
 					proxy = newManagedMekugiProxy(t)
-				}
-				if mode == "ctp2" {
-					codec = mustCTP2Codec(t)
 				}
 				headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 				maps.Copy(headers, codexAuthHeaders())
@@ -75,7 +71,7 @@ func TestTurnStateRoundTrip(t *testing.T) {
 					})
 					original := bytes.Clone(parsed.originalBody)
 					output := httptest.NewRecorder()
-					if err := executeRequest(t.Context(), t.Context(), parsed, headers, "stable-session", provider, output, nil, proxy, codec, nil); err != nil {
+					if err := executeRequest(t.Context(), t.Context(), parsed, headers, "stable-session", provider, output, nil, proxy, nil); err != nil {
 						t.Fatal(err)
 					}
 					if step == 0 {

@@ -85,8 +85,8 @@ test('render unknown carriers separately from rejection and host confirmation', 
     tableRows = () => {};
     renderDetails = () => {};
     sample = {
-      schema: 'mekugi.capture.metrics.v4', requests: {}, usage: {}, cache: {},
-      transport: {}, semantic: {}, protocol: {}, capture: {}, exchanges: [],
+      schema: 'mekugi.capture.metrics.v5', requests: {}, usage: {}, cache: {},
+	  transport: {}, semantic: {}, capture: {}, exchanges: [],
       mekugi: { calls: 21, successful: 0, rejected: 2, unclassified: 19, unmatched: 0 }
     };
     render(sample);

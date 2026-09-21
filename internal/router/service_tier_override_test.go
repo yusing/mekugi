@@ -101,7 +101,7 @@ func TestServiceTierOverrideAcrossTransports(t *testing.T) {
 				fields["model"], fields["service_tier"], fields["stream"] = "gpt-6-astra", "default", transport != "http"
 			})
 			if transport == "websocket" {
-				endpoint := responsesWebSocketHandler(ctx, 10*time.Second, client, nil, nil, nil, nil)
+				endpoint := responsesWebSocketHandler(ctx, 10*time.Second, client, nil, nil, nil)
 				defer endpoint.Close()
 				server := httptest.NewServer(endpoint)
 				defer server.Close()
@@ -120,7 +120,7 @@ func TestServiceTierOverrideAcrossTransports(t *testing.T) {
 				req := httptest.NewRequest("POST", "/v1/responses", bytes.NewReader(mustTestJSON(t, request.fields)))
 				req.Header = codexAuthHeaders()
 				recorder := httptest.NewRecorder()
-				responsesHandler(ctx, 10*time.Second, client, nil, nil, nil, nil)(recorder, req)
+				responsesHandler(ctx, 10*time.Second, client, nil, nil, nil)(recorder, req)
 				if recorder.Code != 200 {
 					t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body)
 				}

@@ -17,7 +17,7 @@ func TestWebSocketCaptureUsesActualMessageBytes(t *testing.T) {
 	first := []byte("{\n\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg\",\"content\":[{\"type\":\"output_text\",\"text\":\"private response text\"}]}}")
 	terminal := []byte(`{"type":"response.completed","response":{"model":"actual-model","output":[],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":2},"output_tokens":3}}}`)
 	handler := recorder.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ObserveNativeRequest(r.Context(), []byte(`{"model":"model","input":[]}`))
+		ObserveProjectedRequest(r.Context(), []byte(`{"model":"model","input":[]}`))
 		headers := http.Header{}
 		headers.Set("Session_id", "session")
 		headers.Set("x-codex-turn-state", "private-route")

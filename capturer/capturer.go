@@ -23,7 +23,7 @@ import (
 	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
-const schemaVersion = 6
+const schemaVersion = 7
 
 // Detailed exchanges are diagnostic evidence rather than the cumulative
 // counters. Keeping a fixed recent window prevents an always-on router from
@@ -48,9 +48,8 @@ type captureKey struct{}
 // Config identifies the observed router behavior and optional durable JSONL
 // destination. An empty Output retains records only for the process lifetime.
 type Config struct {
-	Output        string
-	Mode          string
-	ModelProtocol string
+	Output string
+	Mode   string
 }
 
 // ProviderUsage is the provider-authoritative token count parsed from one
@@ -81,41 +80,40 @@ type toolCallMetrics struct {
 }
 
 type captureRecord struct {
-	Transport           string                             `json:"transport,omitempty"`
-	ControlDirection    ResponsesWebSocketControlDirection `json:"control_direction,omitempty"`
-	InstructionRewrite  *InstructionRewrite                `json:"instruction_rewrite,omitempty"`
-	ProviderResponse    *providerResponseEvidence          `json:"provider_response,omitempty"`
-	PredecessorSequence uint64                             `json:"predecessor_sequence,omitempty"`
-	SchemaVersion       int                                `json:"schema_version"`
-	Boundary            string                             `json:"boundary"`
-	CaptureID           string                             `json:"capture_id"`
-	RequestSequence     uint64                             `json:"request_sequence"`
-	ProviderAttempt     uint64                             `json:"provider_attempt,omitempty"`
-	Mode                string                             `json:"mode"`
-	ModelProtocol       string                             `json:"model_protocol"`
-	RequestID           string                             `json:"request_id,omitempty"`
-	SessionID           string                             `json:"session_id,omitempty"`
-	ThreadID            string                             `json:"thread_id,omitempty"`
-	Subagent            string                             `json:"subagent,omitempty"`
-	RequestKind         string                             `json:"request_kind,omitempty"`
-	ProviderExpected    *bool                              `json:"provider_expected,omitempty"`
-	RequestModel        string                             `json:"request_model,omitempty"`
-	Request             payloadMetrics                     `json:"request"`
-	Fingerprint         *requestFingerprint                `json:"cache_fingerprint,omitempty"`
-	NativeFingerprint   *requestFingerprint                `json:"native_fingerprint,omitempty"`
-	NativeRequest       *payloadMetrics                    `json:"native_request,omitempty"`
-	RequestTools        []string                           `json:"request_tools,omitempty"`
-	StatusCode          int                                `json:"status_code"`
-	ResponseComplete    bool                               `json:"response_complete"`
-	ResponseStatus      string                             `json:"response_status,omitempty"`
-	Usage               *ProviderUsage                     `json:"usage,omitempty"`
-	ToolCalls           []toolCallMetrics                  `json:"tool_calls,omitempty"`
-	Response            payloadMetrics                     `json:"response"`
-	FinalOutput         payloadMetrics                     `json:"final_output,omitzero"`
-	FinalText           payloadMetrics                     `json:"final_text,omitzero"`
-	CaptureError        string                             `json:"capture_error,omitempty"`
-	DurationMillis      uint64                             `json:"duration_ms"`
-	CapturedAt          time.Time                          `json:"captured_at"`
+	Transport            string                             `json:"transport,omitempty"`
+	ControlDirection     ResponsesWebSocketControlDirection `json:"control_direction,omitempty"`
+	InstructionRewrite   *InstructionRewrite                `json:"instruction_rewrite,omitempty"`
+	ProviderResponse     *providerResponseEvidence          `json:"provider_response,omitempty"`
+	PredecessorSequence  uint64                             `json:"predecessor_sequence,omitempty"`
+	SchemaVersion        int                                `json:"schema_version"`
+	Boundary             string                             `json:"boundary"`
+	CaptureID            string                             `json:"capture_id"`
+	RequestSequence      uint64                             `json:"request_sequence"`
+	ProviderAttempt      uint64                             `json:"provider_attempt,omitempty"`
+	Mode                 string                             `json:"mode"`
+	RequestID            string                             `json:"request_id,omitempty"`
+	SessionID            string                             `json:"session_id,omitempty"`
+	ThreadID             string                             `json:"thread_id,omitempty"`
+	Subagent             string                             `json:"subagent,omitempty"`
+	RequestKind          string                             `json:"request_kind,omitempty"`
+	ProviderExpected     *bool                              `json:"provider_expected,omitempty"`
+	RequestModel         string                             `json:"request_model,omitempty"`
+	Request              payloadMetrics                     `json:"request"`
+	Fingerprint          *requestFingerprint                `json:"cache_fingerprint,omitempty"`
+	ProjectedFingerprint *requestFingerprint                `json:"projected_fingerprint,omitempty"`
+	ProjectedRequest     *payloadMetrics                    `json:"projected_request,omitempty"`
+	RequestTools         []string                           `json:"request_tools,omitempty"`
+	StatusCode           int                                `json:"status_code"`
+	ResponseComplete     bool                               `json:"response_complete"`
+	ResponseStatus       string                             `json:"response_status,omitempty"`
+	Usage                *ProviderUsage                     `json:"usage,omitempty"`
+	ToolCalls            []toolCallMetrics                  `json:"tool_calls,omitempty"`
+	Response             payloadMetrics                     `json:"response"`
+	FinalOutput          payloadMetrics                     `json:"final_output,omitzero"`
+	FinalText            payloadMetrics                     `json:"final_text,omitzero"`
+	CaptureError         string                             `json:"capture_error,omitempty"`
+	DurationMillis       uint64                             `json:"duration_ms"`
+	CapturedAt           time.Time                          `json:"captured_at"`
 }
 
 // Recorder owns correlation, sanitized measurement, durable capture, and
@@ -127,7 +125,6 @@ type Recorder struct {
 	file                *os.File
 	codec               tokenizer.Codec
 	mode                string
-	modelProtocol       string
 	requestSequence     uint64
 	metrics             metricsSnapshot
 	previousInput       map[string]uint64
@@ -135,27 +132,27 @@ type Recorder struct {
 }
 
 type requestState struct {
-	requestKind         string
-	instructionRewrite  *InstructionRewrite
-	predecessorSequence uint64
-	recorder            *Recorder
-	nativeRequest       *payloadMetrics
-	nativeRequestError  bool
-	nativeFingerprint   *requestFingerprint
-	providerRouting     map[uint64]requestRouting
-	clientTurnState     string
-	mu                  sync.Mutex
-	captureID           string
-	sequence            uint64
-	providerAttempts    uint64
-	requestID           string
-	sessionID           string
-	threadID            string
-	subagent            string
-	providers           []captureRecord
-	providerUsage       map[uint64]ProviderUsage
-	cacheReady          bool
-	cacheUsage          *usageMetrics
+	requestKind           string
+	instructionRewrite    *InstructionRewrite
+	predecessorSequence   uint64
+	recorder              *Recorder
+	projectedRequest      *payloadMetrics
+	projectedRequestError bool
+	projectedFingerprint  *requestFingerprint
+	providerRouting       map[uint64]requestRouting
+	clientTurnState       string
+	mu                    sync.Mutex
+	captureID             string
+	sequence              uint64
+	providerAttempts      uint64
+	requestID             string
+	sessionID             string
+	threadID              string
+	subagent              string
+	providers             []captureRecord
+	providerUsage         map[uint64]ProviderUsage
+	cacheReady            bool
+	cacheUsage            *usageMetrics
 }
 
 type requestRouting struct {
@@ -196,10 +193,10 @@ func ObserveProviderUsage(ctx context.Context, usage ProviderUsage) {
 	state.providerUsage[state.providerAttempts] = usage
 }
 
-// ObserveNativeRequest supplies the actual request after replay/tool projection
-// and before CTP encoding. Measurement is capture-owned; no raw body is retained.
+// ObserveProjectedRequest supplies the actual request after replay and tool
+// projection. Measurement is capture-owned; no raw body is retained.
 // It is observation only and cannot fail or change the routed operation.
-func ObserveNativeRequest(ctx context.Context, body []byte) {
+func ObserveProjectedRequest(ctx context.Context, body []byte) {
 	state, ok := ctx.Value(captureKey{}).(*requestState)
 	if !ok {
 		return
@@ -208,9 +205,9 @@ func ObserveNativeRequest(ctx context.Context, body []byte) {
 	fingerprint := state.recorder.requestFingerprint(body)
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	state.nativeRequest = &measured
-	state.nativeFingerprint = fingerprint
-	state.nativeRequestError = err != nil
+	state.projectedRequest = &measured
+	state.projectedFingerprint = fingerprint
+	state.projectedRequestError = err != nil
 }
 
 // New creates one in-process recorder. It never starts a server.
@@ -234,9 +231,9 @@ func New(config Config) (*Recorder, error) {
 		return nil, fmt.Errorf("initialize private cache fingerprints: %w", err)
 	}
 	return &Recorder{
-		fingerprintKey: fingerprintKey, file: file, codec: codec, mode: config.Mode, modelProtocol: config.ModelProtocol,
+		fingerprintKey: fingerprintKey, file: file, codec: codec, mode: config.Mode,
 		lastRequestSequence: make(map[string]uint64),
-		metrics:             newMetricsSnapshot(config.Mode, config.ModelProtocol),
+		metrics:             newMetricsSnapshot(config.Mode),
 		previousInput:       make(map[string]uint64),
 		cacheQueues:         make(map[string][]*requestState),
 	}, nil
@@ -408,7 +405,6 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 		RequestSequence: state.sequence, PredecessorSequence: state.predecessorSequence,
 		ProviderAttempt: attempt,
 		Mode:            r.mode,
-		ModelProtocol:   r.modelProtocol,
 		RequestID:       state.requestID,
 		SessionID:       state.sessionID,
 		ThreadID:        state.threadID,
@@ -448,7 +444,7 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 	}
 	if boundary == "provider" {
 		state.mu.Lock()
-		record.NativeFingerprint = state.nativeFingerprint
+		record.ProjectedFingerprint = state.projectedFingerprint
 		if record.Fingerprint != nil {
 			if routing, ok := state.providerRouting[attempt]; ok {
 				record.Fingerprint.RoutingKey = routing.sessionKey
@@ -456,26 +452,22 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 			}
 		}
 
-		if state.nativeRequest != nil {
-			baseline := *state.nativeRequest
-			record.NativeRequest = &baseline
+		if state.projectedRequest != nil {
+			baseline := *state.projectedRequest
+			record.ProjectedRequest = &baseline
 		}
-		baselineError := state.nativeRequestError
+		baselineError := state.projectedRequestError
 		state.mu.Unlock()
 		if baselineError {
-			record.CaptureError = "measure native request"
+			record.CaptureError = "measure projected request"
 		}
-		if record.NativeRequest == nil {
-			if r.modelProtocol == "ctp2" {
-				record.CaptureError = "missing native request observation"
-			} else {
-				baseline := record.Request
-				record.NativeRequest = &baseline
-				record.NativeFingerprint = cloneFingerprint(record.Fingerprint)
-				if record.NativeFingerprint != nil {
-					record.NativeFingerprint.RoutingKey = ""
-					record.NativeFingerprint.TurnState = nil
-				}
+		if record.ProjectedRequest == nil {
+			baseline := record.Request
+			record.ProjectedRequest = &baseline
+			record.ProjectedFingerprint = cloneFingerprint(record.Fingerprint)
+			if record.ProjectedFingerprint != nil {
+				record.ProjectedFingerprint.RoutingKey = ""
+				record.ProjectedFingerprint.TurnState = nil
 			}
 		}
 	}

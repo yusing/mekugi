@@ -42,7 +42,7 @@ func TestTokenUsageMentorAndManualSwitch(t *testing.T) {
 				}
 				provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 				out.Reset()
-				if err := executeRequest(t.Context(), t.Context(), req, headers, fmt.Sprint("session-", i), provider, &out, nil, proxy, nil, mentor); err != nil {
+				if err := executeRequest(t.Context(), t.Context(), req, headers, fmt.Sprint("session-", i), provider, &out, nil, proxy, mentor); err != nil {
 					t.Fatal(err)
 				}
 				forwarded, err := parseResponsesRequest(provider.forwarded[0])
@@ -111,7 +111,7 @@ func TestTokenUsageWebSocketHandshakeRecovery(t *testing.T) {
 				_, _, _ = upstream.Read(ctx)
 			}))
 			defer provider.Close()
-			endpoint := responsesWebSocketHandler(ctx, 10*time.Second, newProviderClient(provider.URL, provider.Client()), nil, proxy, nil, nil)
+			endpoint := responsesWebSocketHandler(ctx, 10*time.Second, newProviderClient(provider.URL, provider.Client()), nil, proxy, nil)
 			defer endpoint.Close()
 			router := httptest.NewServer(endpoint)
 			defer router.Close()
@@ -230,7 +230,7 @@ func TestTokenUsageGapRetainsObservedTotals(t *testing.T) {
 					}
 					provider := &serverFakeProvider{results: []serverForwardResult{result}}
 					var out bytes.Buffer
-					err := executeRequest(t.Context(), t.Context(), req, currentHeaders, "session", provider, &out, nil, proxy, nil, nil)
+					err := executeRequest(t.Context(), t.Context(), req, currentHeaders, "session", provider, &out, nil, proxy, nil)
 					wantErr := step == 1 && (gap == "interrupted" || gap == "transport-error")
 					if (err != nil) != wantErr {
 						t.Fatalf("step=%d err=%v", step, err)
@@ -352,7 +352,7 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 		_, _, _ = upstream.Read(ctx)
 	}))
 	defer provider.Close()
-	endpoint := responsesWebSocketHandler(ctx, 10*time.Second, newProviderClient(provider.URL, provider.Client()), nil, proxy, nil, mentor)
+	endpoint := responsesWebSocketHandler(ctx, 10*time.Second, newProviderClient(provider.URL, provider.Client()), nil, proxy, mentor)
 	defer endpoint.Close()
 	router := httptest.NewServer(endpoint)
 	defer router.Close()

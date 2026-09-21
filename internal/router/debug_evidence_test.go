@@ -319,7 +319,7 @@ func TestDebugCanceledRequestHasCauseWithoutReplayDiagnostic(t *testing.T) {
 				cancelParent()
 			}
 			<-start.Done()
-			if err := executeRequest(start, execution, parsedResponsesRequest{}, http.Header{}, "session", nil, io.Discard, nil, nil, nil, nil); err == nil {
+			if err := executeRequest(start, execution, parsedResponsesRequest{}, http.Header{}, "session", nil, io.Discard, nil, nil, nil); err == nil {
 				t.Fatal("canceled request succeeded")
 			}
 			data, err := os.ReadFile(d.paths[0])

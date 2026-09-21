@@ -117,7 +117,6 @@ func mekugiDataDirectory() (string, error) {
 type mekugiProxy struct {
 	registry               *toolRegistry
 	customizedInstructions bool
-	compactModelProtocol   bool
 	shellDirectory         string
 	titles                 *sessionTitleCache
 	shellSessions          map[string]*shellSession
@@ -143,7 +142,7 @@ type mekugiProxy struct {
 	closed          bool
 }
 
-func newMekugiProxy(registry *toolRegistry, customizedInstructions, compactModelProtocol bool, titleCaches ...*sessionTitleCache) *mekugiProxy {
+func newMekugiProxy(registry *toolRegistry, customizedInstructions bool, titleCaches ...*sessionTitleCache) *mekugiProxy {
 	if registry == nil {
 		return nil
 	}
@@ -158,7 +157,6 @@ func newMekugiProxy(registry *toolRegistry, customizedInstructions, compactModel
 	proxy := &mekugiProxy{
 		registry:               registry,
 		customizedInstructions: customizedInstructions,
-		compactModelProtocol:   compactModelProtocol,
 		shellDirectory:         directory,
 		titles:                 titles,
 		shellSessions:          make(map[string]*shellSession),
@@ -494,7 +492,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		}
 	}
 
-	modelInstructions := codexinstructions.InstructionsForModel(request.model(), p.compactModelProtocol)
+	modelInstructions := codexinstructions.InstructionsForModel(request.model())
 	if err := rewriteReceivedModelInstructions(ctx, request, p.customizedInstructions, modelInstructions); err != nil {
 		return nil, err
 	}

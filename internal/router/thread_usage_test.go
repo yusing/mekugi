@@ -124,7 +124,7 @@ func TestThreadUsageIncludesCompactionWithoutRewritingIt(t *testing.T) {
 	headers := serverCompactionMetadataHeaders(t)
 	headers.Set(threadIDHeader, "root-thread")
 	var output bytes.Buffer
-	if err := executeRequest(t.Context(), t.Context(), request, headers, "compaction-session", provider, &output, nil, proxy, nil, nil); err != nil {
+	if err := executeRequest(t.Context(), t.Context(), request, headers, "compaction-session", provider, &output, nil, proxy, nil); err != nil {
 		t.Fatal(err)
 	}
 	if output.String() != responseBody {

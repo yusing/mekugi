@@ -126,7 +126,6 @@ func (capture *responsesWebSocketCapture) observeControl(boundary ResponsesWebSo
 		ControlDirection: direction,
 		CaptureID:        capture.controlCaptureID,
 		Mode:             capture.recorder.mode,
-		ModelProtocol:    capture.recorder.modelProtocol,
 		RequestID:        capture.headers.Get("x-client-request-id"),
 		SessionID:        capture.headers.Get("session-id"),
 		ThreadID:         capture.headers.Get("thread-id"),

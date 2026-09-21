@@ -47,7 +47,7 @@ func TestThreadUsageIgnoresMalformedAuxiliaryIdentity(t *testing.T) {
 					}
 					provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 					var output bytes.Buffer
-					if err := executeRequest(t.Context(), t.Context(), request, headers, "session", provider, &output, nil, proxy, nil, nil); err != nil {
+					if err := executeRequest(t.Context(), t.Context(), request, headers, "session", provider, &output, nil, proxy, nil); err != nil {
 						t.Fatal(err)
 					}
 					got, valid := proxy.usage.snapshot("stable-thread")

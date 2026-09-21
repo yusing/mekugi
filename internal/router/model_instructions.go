@@ -168,7 +168,7 @@ func rewriteDeveloperToolConflicts(request *parsedResponsesRequest) error {
 		if !ok || item.Type != "message" || item.Role != "developer" {
 			continue
 		}
-		content, found, err := transformCTP2Content(item.Content, rewriteConflicts, isCTP2InputTextPart)
+		content, found, err := transformResponsesTextContent(item.Content, rewriteConflicts, isResponsesInputTextPart)
 		if err != nil {
 			return fmt.Errorf("rewrite developer instruction conflicts: %w", err)
 		}

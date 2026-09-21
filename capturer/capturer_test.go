@@ -45,7 +45,7 @@ func TestRecorderObservesSingleListenerAndProviderRetries(t *testing.T) {
 	defer provider.Close()
 
 	capturePath := filepath.Join(t.TempDir(), "capture.jsonl")
-	recorder, err := New(Config{Output: capturePath, Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Output: capturePath, Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,10 +145,8 @@ func TestRecorderObservesSingleListenerAndProviderRetries(t *testing.T) {
 		snapshot.Mekugi.Calls != 1 || snapshot.Mekugi.Successful != 1 || snapshot.Mekugi.Rejected != 0 ||
 		snapshot.Mekugi.ProviderInputTokens != second.ToolCalls[0].InputTokens ||
 		snapshot.Mekugi.DeliveredInputTokens != front.ToolCalls[0].InputTokens ||
-		snapshot.Protocol.InputPayloadTokensSaved != 0 ||
 		snapshot.Semantic.ClientOutputs.Tokens != front.FinalOutput.Tokens ||
 		snapshot.Semantic.ProviderAttemptOutputs.Tokens != second.FinalOutput.Tokens ||
-		snapshot.Protocol.OutputPayloadTokensExpansion != signedDifference(front.FinalOutput.Tokens, second.FinalOutput.Tokens) ||
 		snapshot.Capture.Records != 3 || snapshot.Capture.CaptureErrors != 0 || snapshot.Capture.Incomplete != 0 ||
 		snapshot.Capture.MissingProvider != 0 || snapshot.Capture.AttemptGaps != 0 {
 		t.Fatalf("snapshot = %#v", snapshot)
@@ -175,7 +173,7 @@ func (body *terminalResponseBody) Close() error {
 }
 
 func TestRecorderAcceptsConsumerCloseAfterTerminalResponse(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +231,7 @@ func (body *trackedRequestBody) Close() error {
 }
 
 func TestRecorderClosesAndRestoresNonReplayableProviderRequest(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +256,7 @@ func TestRecorderClosesAndRestoresNonReplayableProviderRequest(t *testing.T) {
 }
 
 func TestRecorderDoesNotForwardPartiallyReadProviderRequest(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +280,7 @@ func TestRecorderDoesNotForwardPartiallyReadProviderRequest(t *testing.T) {
 }
 
 func TestRecorderClosesOriginalProviderRequestWhenReplayFails(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,14 +312,13 @@ func (reader failingReader) Read([]byte) (int, error) {
 }
 
 func TestSnapshotAccountsCacheCorrectionsDiagnosticsAndMissingEvidence(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	complete := func(record captureRecord) captureRecord {
 		record.SchemaVersion = schemaVersion
 		record.Mode = "mekugi"
-		record.ModelProtocol = "native"
 		record.StatusCode = http.StatusOK
 		record.ResponseStatus = "completed"
 		record.ResponseComplete = true
@@ -366,7 +363,7 @@ func TestSnapshotAccountsCacheCorrectionsDiagnosticsAndMissingEvidence(t *testin
 }
 
 func TestSnapshotUsesTerminalOutputOnceInsteadOfWholeSSEStream(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,11 +409,8 @@ func TestSnapshotUsesTerminalOutputOnceInsteadOfWholeSSEStream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := signedDifference(clientOutputMetrics.Tokens, providerOutputMetrics.Tokens)
-	raw := signedDifference(exchange.ClientResponse.Tokens, provider.Response.Tokens)
-	if exchange.ClientFinalOutput != clientOutputMetrics || provider.FinalOutput != providerOutputMetrics ||
-		snapshot.Protocol.OutputPayloadTokensExpansion != want || snapshot.Protocol.OutputPayloadTokensExpansion == raw {
-		t.Fatalf("semantic protocol = %d, want %d; raw stream difference = %d; snapshot %#v", snapshot.Protocol.OutputPayloadTokensExpansion, want, raw, snapshot)
+	if exchange.ClientFinalOutput != clientOutputMetrics || provider.FinalOutput != providerOutputMetrics {
+		t.Fatalf("terminal output metrics = %#v", snapshot)
 	}
 	if snapshot.Usage.OutputTokens != 4 || snapshot.Usage.ProviderAttempts != 1 {
 		t.Fatalf("provider usage = %#v", snapshot.Usage)
@@ -424,11 +418,11 @@ func TestSnapshotUsesTerminalOutputOnceInsteadOfWholeSSEStream(t *testing.T) {
 }
 
 func TestObserveResponseMeasuresOnlyTerminalOutput(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi", ModelProtocol: "ctp2"})
+	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstItem := `{"type":"message","content":[{"type":"output_text","text":"decoded CTP text"}]}`
+	firstItem := `{"type":"message","content":[{"type":"output_text","text":"assistant text"}]}`
 	secondItem := `{"type":"custom_tool_call","call_id":"call","name":"hpatch","input":"edit"}`
 	output := `[` + firstItem + `,` + secondItem + `]`
 	response := `{"status":"completed","tools":[{"description":` + strconv.Quote(strings.Repeat("unrelated tool metadata ", 200)) + `}],"output":` + output + `}`
@@ -459,7 +453,7 @@ func TestObserveResponseMeasuresOnlyTerminalOutput(t *testing.T) {
 }
 
 func TestRouterHTTPRejectionDoesNotBecomeCaptureCorruption(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -487,7 +481,7 @@ func TestSignedDifferenceSaturates(t *testing.T) {
 }
 
 func TestSnapshotBoundsExchangeDetailWithoutLosingTotals(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -575,7 +569,7 @@ func (writer *discardStreamingWriter) Flush() {
 }
 
 func TestRecorderBoundsLargeStreamingObservationAfterFirstFlush(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -621,7 +615,7 @@ func TestRecorderBoundsLargeStreamingObservationAfterFirstFlush(t *testing.T) {
 }
 
 func TestRecorderFinalizesClientCaptureWhenHandlerPanics(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -770,7 +764,7 @@ func TestClassifyToolInputRetainsOnlyStableDiagnosticCodes(t *testing.T) {
 
 func TestDurableCaptureDiscardsArbitraryTextCarrierContent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "capture.jsonl")
-	recorder, err := New(Config{Output: path, Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Output: path, Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -796,7 +790,7 @@ func TestDurableCaptureDiscardsArbitraryTextCarrierContent(t *testing.T) {
 }
 
 func TestCacheAttributionUsesFinalAttemptOfPrecedingLogicalRequest(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -847,7 +841,7 @@ func TestCacheAttributionUsesFinalAttemptOfPrecedingLogicalRequest(t *testing.T)
 }
 
 func TestCacheAttributionFollowsRequestSequenceWhenResponsesFinishOutOfOrder(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -885,7 +879,7 @@ func TestCacheAttributionFollowsRequestSequenceWhenResponsesFinishOutOfOrder(t *
 }
 
 func TestRecorderIgnoresUnregisteredResponsesSuffix(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}

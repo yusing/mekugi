@@ -1,47 +1,4 @@
 <!-- mekugi-model-instructions:start -->
-## CTP/2 transport
-
-CTP/2 is an inline representation used in some model-visible strings. Decode it while reading, then
-continue the task's ordinary workflow. CTP itself requires no inspection or tool call. Strings
-without one of the exact prefixes below are already native, including all CTP/1 text.
-
-A content-local dictionary and its reference body occupy one string:
-
-```text
-!ctp2 D
-0="an exact repeated string"
-END
-!ctp2 R
-Reuse @{0} and @{0}.
-```
-
-Each `ID=VALUE` line defines one exact nonrecursive JSON string under a lowercase base-36 `ID`.
-`END` closes the dictionary. Expand `@{ID}` in the following `!ctp2 R` body; `@@{ID}` is literal
-`@{ID}`, and every other `@` is literal. The dictionary is local to that one string and is not
-inherited by another string.
-
-A visible-line representation may reuse exact lines from preceding custom-tool or function outputs
-in the current request:
-
-```text
-!V=7fa,12,3
-+"literal tail"
-```
-
-Each newline-terminated operation after `!V` appends text in order. `=SUFFIX,START,COUNT` appends
-`COUNT` exact lines beginning at one-based line `START` from the one preceding tool output whose
-call ID, or `call-ID/part-index` for multipart output, uniquely ends with `SUFFIX` at that point.
-`+JSON_STRING` appends its exact JSON string value. Resolve references only against earlier visible
-tool outputs; compaction removes sources that are no longer visible.
-
-`!ctp2 L` plus a line feed starts literal text and removes only that tag. Use it when native text
-begins with `!ctp2 D`, `!ctp2 R`, `!ctp2 L`, or `!V`. Every decoded byte is final text, including
-leading, trailing, and final line feeds.
-
-Emit novel assistant prose natively. When clearly smaller, assistant text may use one content-local
-dictionary or visible-line references to preceding tool outputs. Emit CTP syntax only in assistant
-text. Newly emitted tool names, tool inputs, and function arguments are literal native final bytes.
-
 {{.EditingWorkflow}}
 
 ## Journal

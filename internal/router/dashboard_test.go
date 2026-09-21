@@ -21,10 +21,10 @@ func TestDashboardUsesCaptureMetricsOnTheExistingListener(t *testing.T) {
 	for _, required := range []string{
 		"Token<br>Telemetry", "Skip to content", `role="tablist"`, `data-view="overview"`,
 		`id="status-pill"`, `class="cards"`, "prefers-reduced-motion",
-		"fetch('/api/metrics'", "mekugi.capture.metrics.v4", "Provider usage",
+		"fetch('/api/metrics'", "mekugi.capture.metrics.v5", "Provider usage",
 		"Client steering requests", "Provider steering requests", "Provider steering events", "Client steering events",
 		"Translation delivery, not host application", "Unclassified", "data.mekugi.unclassified",
-		"Transport", "Protocol representation", "Hashline edits", "Hashline edit diagnostics",
+		"Transport", "Hashline edits", "Hashline edit diagnostics",
 		"Provider response evidence", "provider_response", "Provider request ID", "Explicit cached tokens", "Cache-prefix diagnostics", "cache_diagnostics", "Post-replay prefix", "Outgoing route key", "Turn-state forwarding", "turn_state_forwarding", "Capture health", "Tool transport", "Recent exchanges", "Provider attempts",
 		"Provider tool calls", "Delivered tool calls", "Usage-bearing attempts", "Provider input tokens",
 		"Estimated prefix reuse", "Estimated prefix misses",
@@ -32,8 +32,8 @@ func TestDashboardUsesCaptureMetricsOnTheExistingListener(t *testing.T) {
 		"provider_attempt_outputs", "client_final_output", "Provider-attempt model outputs",
 		"Client model outputs", "<th>Client model output</th>", "<th>Provider model output</th>",
 		"Complete model-origin output arrays", "excludes router-generated commentary",
-		"Exact wire bytes; decoded-content token estimates", "Delivery token expansion", "CTP assistant-text tokens saved", "native_request", "Raw Codex request", "Provider request (native/CTP)",
-		`value==null?'unavailable':payload(value)`, "measuredPayload(attempt.native_request)",
+		"Exact wire bytes; decoded-content token estimates", "projected_request", "Raw Codex request", "Projected request", "Provider request",
+		`value==null?'unavailable':payload(value)`, "measuredPayload(attempt.projected_request)",
 		"thread_id", "uncached_input_tokens", "id=\"newer\"", "id=\"older\"",
 	} {
 		if !strings.Contains(body, required) {

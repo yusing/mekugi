@@ -42,7 +42,7 @@ type prefixComparison struct {
 type cacheDiagnosis struct {
 	PreviousSequence    uint64           `json:"previous_sequence"`
 	Client              prefixComparison `json:"client"`
-	Native              prefixComparison `json:"native"`
+	Projected           prefixComparison `json:"projected"`
 	Provider            prefixComparison `json:"provider"`
 	Routing             string           `json:"routing"`
 	RequestKey          string           `json:"request_key"`
@@ -262,7 +262,7 @@ func diagnoseCacheExchanges(exchanges []exchangeMetrics) {
 			continue
 		}
 		empty := prefixComparison{Status: "unavailable", ChangedFields: []string{}}
-		diagnosis := &cacheDiagnosis{Client: empty, Native: empty, Provider: empty, Routing: "unavailable", RequestKey: "unavailable"}
+		diagnosis := &cacheDiagnosis{Client: empty, Projected: empty, Provider: empty, Routing: "unavailable", RequestKey: "unavailable"}
 		if hasTurnState {
 			diagnosis.TurnStateForwarding = compareTurnState(current.ClientFingerprint, final.Fingerprint)
 		}
@@ -273,7 +273,7 @@ func diagnoseCacheExchanges(exchanges []exchangeMetrics) {
 				last := before.ProviderAttempts[len(before.ProviderAttempts)-1]
 				diagnosis.PreviousSequence = before.Sequence
 				diagnosis.Client = comparePrefix(before.ClientFingerprint, current.ClientFingerprint)
-				diagnosis.Native = comparePrefix(last.NativeFingerprint, final.NativeFingerprint)
+				diagnosis.Projected = comparePrefix(last.ProjectedFingerprint, final.ProjectedFingerprint)
 				diagnosis.Provider = comparePrefix(last.Fingerprint, final.Fingerprint)
 				diagnosis.Routing = compareRouting(last.Fingerprint, final.Fingerprint, false)
 				diagnosis.RequestKey = compareRouting(last.Fingerprint, final.Fingerprint, true)

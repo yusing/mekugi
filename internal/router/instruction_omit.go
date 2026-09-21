@@ -95,11 +95,11 @@ func stripRequestInstructionOmissions(request *parsedResponsesRequest) error {
 			continue
 		}
 		textChanged := false
-		content, _, err := transformCTP2Content(item.Content, func(text string) string {
+		content, _, err := transformResponsesTextContent(item.Content, func(text string) string {
 			stripped := transform(text)
 			textChanged = textChanged || stripped != text
 			return stripped
-		}, isCTP2InputTextPart)
+		}, isResponsesInputTextPart)
 		if err != nil {
 			return fmt.Errorf("strip instruction omissions: %w", err)
 		}

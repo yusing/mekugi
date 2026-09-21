@@ -83,7 +83,7 @@ func TestOutputTextCompressionExcludesToolTranslation(t *testing.T) {
 		t.Fatal(err)
 	}
 	if left != right || left.Tokens == 0 {
-		t.Fatalf("tool delivery affected CTP text savings: %v != %v", left, right)
+		t.Fatalf("tool delivery affected assistant text measurement: %v != %v", left, right)
 	}
 }
 

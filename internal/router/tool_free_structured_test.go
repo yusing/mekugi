@@ -36,7 +36,7 @@ func titleRequestFields() map[string]any {
 	return map[string]any{
 		"model":        "gpt-test",
 		"instructions": "Generate a short title. Keep these instructions unchanged.",
-		"input":        []any{map[string]any{"type": "message", "role": "user", "content": "!ctp2 D\nFormat Run previews"}},
+		"input":        []any{map[string]any{"type": "message", "role": "user", "content": "Format Run previews"}},
 		"text": map[string]any{"format": map[string]any{
 			"type": "json_schema", "name": "title", "strict": true,
 			"schema": map[string]any{"type": "object", "properties": map[string]any{
@@ -47,7 +47,6 @@ func titleRequestFields() map[string]any {
 }
 
 func TestExecuteAuxiliaryStructuredRequest(t *testing.T) {
-	codec := mustCTP2Codec(t)
 	for _, catalog := range []string{"omitted", "null", "empty", "additional", "both", "code mode", "flat code mode", "top code mode", "top namespaced code mode", "helper code mode", "unstructured helper code mode", "native helper", "unstructured empty"} {
 		t.Run(catalog, func(t *testing.T) {
 			fields := titleRequestFields()
@@ -95,7 +94,7 @@ func TestExecuteAuxiliaryStructuredRequest(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
 			proxy.customizedInstructions = true
 			var output bytes.Buffer
-			err = executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "title-session", provider, &output, nil, proxy, codec, nil)
+			err = executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "title-session", provider, &output, nil, proxy, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -145,7 +144,7 @@ func TestAuxiliaryCodeModeDoesNotAdmitOtherTools(t *testing.T) {
 				t.Fatal(err)
 			}
 			provider := &serverFakeProvider{}
-			err = executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "title-session", provider, io.Discard, nil, newManagedMekugiProxy(t), nil, nil)
+			err = executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "title-session", provider, io.Discard, nil, newManagedMekugiProxy(t), nil)
 			if err == nil || len(provider.forwarded) != 0 {
 				t.Fatalf("unsupported catalog admitted: error=%v forwards=%d", err, len(provider.forwarded))
 			}
@@ -184,7 +183,7 @@ func TestStructuredRequestWithEditingToolsStillRewrites(t *testing.T) {
 				provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
 				proxy := newManagedMekugiProxy(t)
 				proxy.customizedInstructions = true
-				err = executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "session", provider, io.Discard, nil, proxy, nil, nil)
+				err = executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "session", provider, io.Discard, nil, proxy, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -224,7 +223,7 @@ func TestToolFreeStructuredRequestDoesNotBypassAdmission(t *testing.T) {
 				t.Fatal(err)
 			}
 			provider := &serverFakeProvider{}
-			err = executeRequest(t.Context(), t.Context(), request, headers, "title-session", provider, io.Discard, nil, newManagedMekugiProxy(t), nil, nil)
+			err = executeRequest(t.Context(), t.Context(), request, headers, "title-session", provider, io.Discard, nil, newManagedMekugiProxy(t), nil)
 			if err == nil || len(provider.forwarded) != 0 {
 				t.Fatalf("invalid request admitted: error=%v forwards=%d", err, len(provider.forwarded))
 			}
@@ -266,7 +265,7 @@ func TestResponsesWebSocketToolFreeStructuredTurnAfterPrewarm(t *testing.T) {
 			}
 		}
 		_, _, _ = upstream.Read(ctx)
-	}), proxy, nil, headers)
+	}), proxy, headers)
 	metadata := func(kind string) map[string]string {
 		return map[string]string{codexTurnMetadataHeader: string(mustMarshalJSON(codexTurnMetadata{RequestKind: responses.RequestKind(kind)}))}
 	}
@@ -339,7 +338,7 @@ func TestToolProjectionAcrossClients(t *testing.T) {
 						provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
 						proxy := newManagedMekugiProxy(t)
 						proxy.customizedInstructions = true
-						err = executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "session", provider, io.Discard, nil, proxy, nil, nil)
+						err = executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "session", provider, io.Discard, nil, proxy, nil)
 						if err != nil {
 							t.Fatal(err)
 						}

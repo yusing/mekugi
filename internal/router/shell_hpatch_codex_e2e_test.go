@@ -134,7 +134,7 @@ func TestShellHpatchNativeCodexE2E(t *testing.T) {
 		}
 	}
 	issues := NewCriticalErrors()
-	responses := responsesHandler(t.Context(), time.Minute, provider, issues, proxy, nil, nil)
+	responses := responsesHandler(t.Context(), time.Minute, provider, issues, proxy, nil)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == commentaryPublisherPath {
 			record := httptest.NewRecorder()

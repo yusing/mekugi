@@ -58,18 +58,6 @@ func TestRequestWireBodyReplacesOnlyProjectedFields(t *testing.T) {
 	}
 }
 
-func TestCTP2NativeRequestPreservesWireBytes(t *testing.T) {
-	body := []byte(` { "model" : "model", "input": "<text>&\u0061" } `)
-	request, err := parseResponsesRequest(body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	transform, got, err := prepareCTP2TestRequest(t, mustCTP2Codec(t), &request)
-	if err != nil || transform != nil || !bytes.Equal(got, body) {
-		t.Fatalf("native CTP request: %s, %v", got, err)
-	}
-}
-
 func TestProtocolJSONDoesNotEscapeHTML(t *testing.T) {
 	got, err := marshalProtocolJSON(map[string]any{"text": "<tag>&", "nested": map[string]string{"text": "<&>"}})
 	if err != nil {

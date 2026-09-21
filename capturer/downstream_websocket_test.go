@@ -13,7 +13,7 @@ import (
 
 func TestResponsesWebSocketCapturesLogicalExchanges(t *testing.T) {
 	capturePath := filepath.Join(t.TempDir(), "capture.jsonl")
-	recorder, err := New(Config{Output: capturePath, Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Output: capturePath, Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestResponsesWebSocketCapturesLogicalExchanges(t *testing.T) {
 		snapshot.Transport.ClientControlResponses != payloadTotals(clientAcceptedMetric) {
 		t.Fatalf("control transport accounting = %+v", snapshot.Transport)
 	}
-	rebuilt, err := metricsFromRecords(recorder.mode, recorder.modelProtocol, records)
+	rebuilt, err := metricsFromRecords(recorder.mode, records)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestResponsesWebSocketCapturesLogicalExchanges(t *testing.T) {
 }
 
 func TestResponsesWebSocketHandshakeDoesNotCreateLogicalRequest(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -83,7 +83,7 @@ func TestThreadUsageGapOnlyRetainsModelAndUnknownPricingRemainsUnknown(t *testin
 	}
 }
 
-func TestCompletionUsageRolesAndGapsFromNativeRequest(t *testing.T) {
+func TestCompletionUsageRolesAndGapsFromProjectedRequest(t *testing.T) {
 	for _, namespace := range []string{"collaboration", "mekugi_collaboration"} {
 		t.Run(namespace, func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)

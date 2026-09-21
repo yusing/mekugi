@@ -143,7 +143,7 @@ func TestExecuteRequestFailsClosedBeforeUpstreamWhenRewriteIsIneligible(t *testi
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			provider := &serverFakeProvider{}
-			err := executeRequest(t.Context(), t.Context(), serverRequest(t, test.mutate), test.headers, test.sessionID, provider, io.Discard, nil, newManagedMekugiProxy(t), nil, nil)
+			err := executeRequest(t.Context(), t.Context(), serverRequest(t, test.mutate), test.headers, test.sessionID, provider, io.Discard, nil, newManagedMekugiProxy(t), nil)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want containing %q", err, test.want)
 			}
@@ -180,7 +180,7 @@ func TestExecuteRequestDoesNotRequireWorkspaceMetadata(t *testing.T) {
 				&output,
 				nil,
 				proxy,
-				nil, nil,
+				nil,
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -216,7 +216,7 @@ func TestExecuteRequestSupportsNativeToolsOnTheSameResponsesPath(t *testing.T) {
 		&output,
 		nil,
 		newManagedMekugiProxy(t),
-		nil, nil,
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -261,7 +261,7 @@ func TestExecuteRequestForwardsCompactionWithoutRouterRewrite(t *testing.T) {
 		"type": "response.completed",
 		"response": map[string]any{"status": "completed", "output": []any{
 			map[string]any{"type": "message", "role": "assistant", "content": []any{
-				map[string]any{"type": "output_text", "text": "!ctp2 R\n@{0}"},
+				map[string]any{"type": "output_text", "text": "native response"},
 			}},
 		}},
 	})
@@ -271,9 +271,8 @@ func TestExecuteRequestForwardsCompactionWithoutRouterRewrite(t *testing.T) {
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 	proxy := newManagedMekugiProxy(t)
 
-	codec := mustCTP2Codec(t)
 	var output bytes.Buffer
-	err = executeRequest(t.Context(), t.Context(), parsed, serverCompactionMetadataHeaders(t), "session", provider, &output, nil, proxy, codec, nil)
+	err = executeRequest(t.Context(), t.Context(), parsed, serverCompactionMetadataHeaders(t), "session", provider, &output, nil, proxy, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +305,7 @@ func TestExecuteRequestPassesThroughOriginalRequestAndRecordsUsage(t *testing.T)
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(responseBody)}}}
 	var output bytes.Buffer
 	issues := NewCriticalErrors()
-	if err := executeRequest(t.Context(), t.Context(), parsed, http.Header{}, "session", provider, &output, issues, nil, nil, nil); err != nil {
+	if err := executeRequest(t.Context(), t.Context(), parsed, http.Header{}, "session", provider, &output, issues, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(provider.forwarded) != 1 || !bytes.Equal(provider.forwarded[0], originalBody) {
@@ -351,7 +350,7 @@ func TestExecuteRequestForwardsRewrittenRequestAndRecordsUsage(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 
 	var output bytes.Buffer
-	err := executeRequest(t.Context(), t.Context(), parsed, headers, "session", provider, &output, nil, proxy, nil, nil)
+	err := executeRequest(t.Context(), t.Context(), parsed, headers, "session", provider, &output, nil, proxy, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,7 +465,7 @@ func TestShellHCatAfterAppliedMekugiCarrierRemainsModelVisible(t *testing.T) {
 			&output,
 			nil,
 			proxy,
-			nil, nil,
+			nil,
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -587,7 +586,7 @@ func TestExecuteRequestRejectsDirectAdditionalApplyPatchWithoutExecCarrier(t *te
 		&output,
 		nil,
 		proxy,
-		nil, nil,
+		nil,
 	)
 	if err == nil || !strings.Contains(err.Error(), "unsupported flat apply_patch") {
 		t.Fatalf("direct request error = %v", err)
@@ -609,7 +608,7 @@ func TestExecuteRequestRecordsUsageAndFailureWhenDeliveryFails(t *testing.T) {
 	}))
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(responseBody)}}}
 	issues := NewCriticalErrors()
-	err := executeRequest(t.Context(), t.Context(), serverRequest(t, nil), serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "session", provider, serverErrorWriter{err: io.ErrClosedPipe}, issues, newManagedMekugiProxy(t), nil, nil)
+	err := executeRequest(t.Context(), t.Context(), serverRequest(t, nil), serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "session", provider, serverErrorWriter{err: io.ErrClosedPipe}, issues, newManagedMekugiProxy(t), nil)
 	if err == nil {
 		t.Fatal("delivery failure returned no error")
 	}
@@ -632,7 +631,7 @@ func TestResponsesHandlerRejectsBackgroundBeforeUpstream(t *testing.T) {
 	)
 	recorder := httptest.NewRecorder()
 	provider := &serverFakeProvider{}
-	responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil, nil)(recorder, request)
+	responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil)(recorder, request)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
 	}
@@ -649,7 +648,7 @@ func TestResponsesHandlerRejectsBodyBeyondRouterBufferBudget(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	provider := &serverFakeProvider{}
 
-	responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil, nil)(recorder, request)
+	responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil)(recorder, request)
 
 	if recorder.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusRequestEntityTooLarge)
@@ -697,7 +696,7 @@ func TestResponsesHandlerDoesNotLogClientCancellationAsOperationalEvent(t *testi
 		}, nil
 	})
 	issues := NewCriticalErrors()
-	handler := responsesHandler(t.Context(), time.Minute, provider, issues, nil, nil, nil)
+	handler := responsesHandler(t.Context(), time.Minute, provider, issues, nil, nil)
 	handled := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		handler(writer, request)
@@ -767,7 +766,7 @@ func TestExecuteRequestSuccessfulStreamLifecycle(t *testing.T) {
 	err := executeRequest(
 		t.Context(), t.Context(),
 		serverRequest(t, func(request map[string]any) { request["stream"] = true }),
-		http.Header{}, "stream-session", provider, writer, issues, nil, nil, nil,
+		http.Header{}, "stream-session", provider, writer, issues, nil, nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -819,7 +818,7 @@ func TestExecuteRequestTerminalOutcomes(t *testing.T) {
 			issues := NewCriticalErrors()
 			err := executeRequest(
 				t.Context(), t.Context(), serverRequest(t, test.mutate), http.Header{}, "session",
-				provider, io.Discard, issues, nil, nil, nil,
+				provider, io.Discard, issues, nil, nil,
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -844,7 +843,7 @@ func TestExecuteRequestCancellationBeforeResponseLifecycle(t *testing.T) {
 	go func() {
 		result <- executeRequest(
 			ctx, ctx, serverRequest(t, nil), http.Header{}, "session", provider, io.Discard,
-			issues, nil, nil, nil,
+			issues, nil, nil,
 		)
 	}()
 	<-started
@@ -993,7 +992,7 @@ func TestExecuteRequestStreamIdleTimeoutLifecycle(t *testing.T) {
 			result <- executeRequest(
 				t.Context(), t.Context(),
 				serverRequest(t, func(request map[string]any) { request["stream"] = true }),
-				http.Header{}, "idle-session", provider, writer, issues, nil, nil, nil,
+				http.Header{}, "idle-session", provider, writer, issues, nil, nil,
 			)
 		}()
 
@@ -1065,7 +1064,7 @@ func TestExecuteRequestCancellationAfterResponseLifecycle(t *testing.T) {
 		result <- executeRequest(
 			ctx, ctx,
 			serverRequest(t, func(request map[string]any) { request["stream"] = true }),
-			http.Header{}, "session", provider, writer, issues, nil, nil, nil,
+			http.Header{}, "session", provider, writer, issues, nil, nil,
 		)
 	}()
 	<-blocked
@@ -1124,7 +1123,7 @@ func TestExecuteRequestCompletesAtTerminalEventBeforeStreamEOF(t *testing.T) {
 	err := executeRequest(
 		ctx, ctx,
 		serverRequest(t, func(request map[string]any) { request["stream"] = true }),
-		http.Header{}, "session", provider, writer, issues, nil, nil, nil,
+		http.Header{}, "session", provider, writer, issues, nil, nil,
 	)
 	if err != nil {
 		t.Fatalf("terminal response returned error: %v", err)
@@ -1150,7 +1149,7 @@ func TestExecuteRequestResponseStartDeadlineLifecycle(t *testing.T) {
 	go func() {
 		result <- executeRequest(
 			ctx, t.Context(), serverRequest(t, nil), http.Header{}, "session", provider, io.Discard,
-			nil, nil, nil, nil,
+			nil, nil, nil,
 		)
 	}()
 	<-started
@@ -1167,7 +1166,7 @@ func TestExecuteRequestIndependentUpstreamCancellationIsFailure(t *testing.T) {
 	issues := NewCriticalErrors()
 	err := executeRequest(
 		t.Context(), t.Context(), serverRequest(t, nil), http.Header{}, "session",
-		provider, io.Discard, issues, nil, nil, nil,
+		provider, io.Discard, issues, nil, nil,
 	)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v, want wrapped upstream cancellation", err)
@@ -1188,7 +1187,7 @@ func TestExecuteRequestTransformFailureLifecycle(t *testing.T) {
 		t.Context(), t.Context(), serverRequest(t, nil),
 		serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}),
 		"session", provider, io.Discard, issues,
-		newManagedMekugiProxy(t), nil, nil,
+		newManagedMekugiProxy(t), nil,
 	)
 	if err == nil {
 		t.Fatal("transform failure returned no error")
@@ -1222,7 +1221,7 @@ func TestCommittedSSETransformFailureDefersSafeCauseToCriticalNotice(t *testing.
 	req.Header.Set(sessionIDHeader, "session")
 	output := httptest.NewRecorder()
 	responsesHandler(t.Context(), time.Minute, provider, issues,
-		newManagedMekugiProxy(t), nil, nil)(output, req)
+		newManagedMekugiProxy(t), nil)(output, req)
 
 	if output.Code != http.StatusOK || !strings.Contains(output.Body.String(), "response.created") {
 		t.Fatalf("stream was not committed before transform failure: %d %s", output.Code, output.Body.String())
@@ -1596,7 +1595,7 @@ func TestExecuteRequestUnsafeCacheKeyRetainsSessionAffinity(t *testing.T) {
 		parsed := serverRequest(t, func(request map[string]any) { request["prompt_cache_key"] = key })
 		original := bytes.Clone(parsed.originalBody)
 		provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
-		if err := executeRequest(t.Context(), t.Context(), parsed, http.Header{}, "stable-session", provider, io.Discard, nil, nil, nil, nil); err != nil {
+		if err := executeRequest(t.Context(), t.Context(), parsed, http.Header{}, "stable-session", provider, io.Discard, nil, nil, nil); err != nil {
 			t.Fatal(err)
 		}
 		if provider.forwardedCacheKey[0] != "stable-session" {
@@ -1670,7 +1669,7 @@ func TestShellJournalFinishSuppressesProviderRequest(t *testing.T) {
 		&output,
 		NewCriticalErrors(),
 		proxy,
-		nil,
+
 		mentor,
 	)
 	if err != nil {
@@ -1708,7 +1707,7 @@ func TestShellJournalFinishSuppressesProviderRequest(t *testing.T) {
 	}
 	next := serverRequest(t, func(request map[string]any) { request["model"] = usageModel })
 	provider.results = []serverForwardResult{{response: serverHTTPResponse(`{"id":"real-next","status":"completed","output":[],"usage":{"input_tokens":3,"input_tokens_details":{"cached_tokens":0},"output_tokens":2,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":5}}`)}}
-	if err := executeRequest(t.Context(), t.Context(), next, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "next", provider, &bytes.Buffer{}, NewCriticalErrors(), proxy, nil, nil); err != nil {
+	if err := executeRequest(t.Context(), t.Context(), next, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "next", provider, &bytes.Buffer{}, NewCriticalErrors(), proxy, nil); err != nil {
 		t.Fatal(err)
 	}
 	after, complete = proxy.usage.snapshot("thread-1")

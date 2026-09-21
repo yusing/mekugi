@@ -58,7 +58,7 @@ func TestJournalRouterToolContinuesWithoutClientDispatch(t *testing.T) {
 				provider := &serverFakeProvider{results: []serverForwardResult{{response: response1}, {response: response2}}}
 				var output bytes.Buffer
 				issues := NewCriticalErrors()
-				if err := executeRequest(t.Context(), t.Context(), request, headers, "session", provider, &output, issues, proxy, nil, nil); err != nil {
+				if err := executeRequest(t.Context(), t.Context(), request, headers, "session", provider, &output, issues, proxy, nil); err != nil {
 					t.Fatal(err)
 				}
 				if len(issues.entries) != 0 {
@@ -429,7 +429,7 @@ func TestJournalRemainsAvailableAfterManyThreads(t *testing.T) {
 			}
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: httpResponse}}}
 			var output bytes.Buffer
-			if err := executeRequest(t.Context(), t.Context(), request, headers, "new", provider, &output, nil, proxy, nil, nil); err != nil {
+			if err := executeRequest(t.Context(), t.Context(), request, headers, "new", provider, &output, nil, proxy, nil); err != nil {
 				t.Fatalf("journal capacity blocked unrelated request: %v", err)
 			}
 			transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
@@ -476,7 +476,7 @@ func TestJournalTerminalRetentionFailureDoesNotSucceedSilently(t *testing.T) {
 			}
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: journalFinishResponse(t, false, "completed", "full", journalFinishCall(`{"op":"finish"}`))}}}
 			var output bytes.Buffer
-			if err := executeRequest(t.Context(), t.Context(), request, headers, "quota", provider, &output, nil, proxy, nil, nil); err == nil {
+			if err := executeRequest(t.Context(), t.Context(), request, headers, "quota", provider, &output, nil, proxy, nil); err == nil {
 				t.Fatal("terminal succeeded after required journal retention failed")
 			}
 			items, err := proxy.journals.list(t.Context(), store, workspace, "thread-1")

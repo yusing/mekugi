@@ -30,7 +30,7 @@ func TestCaptureShellMisuseAndInstructionRewrite(t *testing.T) {
 						t.Fatal(err)
 					}
 					t.Cleanup(func() { _ = debug.close(); _ = os.RemoveAll(filepath.Dir(debug.paths[0])) })
-					recorder, err := capturer.New(capturer.Config{Mode: "mekugi", ModelProtocol: "native", Output: capturePath})
+					recorder, err := capturer.New(capturer.Config{Mode: "mekugi", Output: capturePath})
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -63,7 +63,7 @@ func TestCaptureShellMisuseAndInstructionRewrite(t *testing.T) {
 						if bytes.Contains(dump, []byte("private-script-sentinel")) {
 							t.Error("dump included a tool call")
 						}
-						if !strings.Contains(instructions, codexinstructions.InstructionsForModel("gpt-5.6-luna", false)) || strings.Contains(instructions, stockExecInstruction) {
+						if !strings.Contains(instructions, codexinstructions.InstructionsForModel("gpt-5.6-luna")) || strings.Contains(instructions, stockExecInstruction) {
 							t.Error("Astra-shaped override was not rewritten for Luna")
 						}
 						if streaming {
@@ -87,7 +87,7 @@ func TestCaptureShellMisuseAndInstructionRewrite(t *testing.T) {
 							t.Error(err)
 							return
 						}
-						if err := executeRequest(r.Context(), r.Context(), parsed, headers, "capture-diagnostic", provider, w, nil, proxy, nil, nil); err != nil {
+						if err := executeRequest(r.Context(), r.Context(), parsed, headers, "capture-diagnostic", provider, w, nil, proxy, nil); err != nil {
 							t.Error(err)
 						}
 					})))
@@ -165,7 +165,7 @@ func TestCaptureInstructionCarrierAndFailures(t *testing.T) {
 		{"developer fallback", "developer", "stock-gpt5", map[string]any{"instructions": "", "input": []any{map[string]any{"type": "message", "role": "developer", "content": stockModelInstructionsForTest("", "")}}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			recorder, err := capturer.New(capturer.Config{Mode: "mekugi", ModelProtocol: "native"})
+			recorder, err := capturer.New(capturer.Config{Mode: "mekugi"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -177,7 +177,7 @@ func TestCaptureInstructionCarrierAndFailures(t *testing.T) {
 					t.Error(err)
 					return
 				}
-				err = rewriteReceivedModelInstructions(r.Context(), &request, true, codexinstructions.InstructionsForModel("", false))
+				err = rewriteReceivedModelInstructions(r.Context(), &request, true, codexinstructions.InstructionsForModel(""))
 				if (err != nil) != (test.strategy == "rejected") {
 					t.Errorf("rewrite error: %v", err)
 				}

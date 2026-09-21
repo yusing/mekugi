@@ -51,7 +51,7 @@ func TestProviderWebSocketAncillaryResponseStatus(t *testing.T) {
 					_, _, _ = conn.Read(r.Context())
 				}))
 				defer upstream.Close()
-				recorder, err := capturer.New(capturer.Config{Mode: "passthrough", ModelProtocol: "native"})
+				recorder, err := capturer.New(capturer.Config{Mode: "passthrough"})
 				if err != nil {
 					t.Fatal(err)
 				}

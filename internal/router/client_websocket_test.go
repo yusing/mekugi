@@ -546,7 +546,7 @@ func TestProviderWebSocketMekugiTranslationAndCapture(t *testing.T) {
 				_, _, _ = conn.Read(r.Context())
 			}))
 			defer upstream.Close()
-			capture, err := capturer.New(capturer.Config{Mode: "mekugi", ModelProtocol: "ctp2"})
+			capture, err := capturer.New(capturer.Config{Mode: "mekugi"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -567,7 +567,7 @@ func TestProviderWebSocketMekugiTranslationAndCapture(t *testing.T) {
 			request.Header = serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})
 			maps.Copy(request.Header, codexAuthHeaders())
 			request.Header.Set(sessionIDHeader, "session")
-			handler := capture.Handler(responsesHandler(t.Context(), time.Minute, client, nil, proxy, mustCTP2Codec(t), nil))
+			handler := capture.Handler(responsesHandler(t.Context(), time.Minute, client, nil, proxy, nil))
 			output := httptest.NewRecorder()
 			handler.ServeHTTP(output, request)
 			if output.Code != 200 || calls != 0 || !strings.Contains(output.Body.String(), nativeExecCommandToolName) || strings.Contains(output.Body.String(), `"name":"hpatch"`) {
@@ -722,7 +722,7 @@ func TestWebSocketCaptureCountsFirstUnreadMessage(t *testing.T) {
 		_, _, _ = conn.Read(r.Context())
 	}))
 	defer upstream.Close()
-	capture, err := capturer.New(capturer.Config{Mode: "passthrough", ModelProtocol: "native"})
+	capture, err := capturer.New(capturer.Config{Mode: "passthrough"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -811,7 +811,7 @@ func TestProviderWebSocketAncillaryEventsAndEventOwnedCompletion(t *testing.T) {
 			defer client.websockets.close()
 			parsed := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
 			output := httptest.NewRecorder()
-			if err := executeRequest(t.Context(), t.Context(), parsed, codexAuthHeaders(), "session", client, output, nil, nil, nil, nil); err != nil {
+			if err := executeRequest(t.Context(), t.Context(), parsed, codexAuthHeaders(), "session", client, output, nil, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			if stream {
@@ -865,7 +865,7 @@ func TestWebSocketCaptureIncludesQueuedAndReservedReadsOnClose(t *testing.T) {
 		_, _, _ = conn.Read(r.Context())
 	}))
 	defer upstream.Close()
-	capture, err := capturer.New(capturer.Config{Mode: "passthrough", ModelProtocol: "native"})
+	capture, err := capturer.New(capturer.Config{Mode: "passthrough"})
 	if err != nil {
 		t.Fatal(err)
 	}

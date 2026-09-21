@@ -202,7 +202,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T, shellFinish bool) {
 	provider.store = store
 	proxy.replayStore = store
 	issues := NewCriticalErrors()
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, issues, proxy, nil, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, issues, proxy, nil))
 	defer server.Close()
 	if shellFinish {
 		proxy.commentaryEndpoint = server.URL + commentaryPublisherPath
@@ -212,7 +212,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T, shellFinish bool) {
 				proxy.commentary.serveHTTP(w, r)
 				return
 			}
-			responsesHandler(t.Context(), time.Minute, provider, issues, proxy, nil, nil)(w, r)
+			responsesHandler(t.Context(), time.Minute, provider, issues, proxy, nil)(w, r)
 		})
 		helperDirectory := t.TempDir()
 		build := exec.CommandContext(t.Context(), "go", "build", "-o", filepath.Join(helperDirectory, "shell"), "../../cmd/shell")

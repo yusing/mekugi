@@ -217,28 +217,10 @@ func TestOpenCodeReasoningToolReplay(t *testing.T) {
 		"input": input,
 		"tools": []any{map[string]string{"type": "custom", "name": "exec"}},
 	}
-	// Round-trip through the actual CTP history transform as resumed turns do.
 	parsed, err := parseResponsesRequest(mustTestJSON(t, request))
 	if err != nil {
 		t.Fatal(err)
 	}
-	identity := func(s string) string { return s }
-	history, err := decodeResponsesInput(parsed.fields["input"])
-	if err != nil {
-		t.Fatal(err)
-	}
-	codec, err := newCTP2Codec()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := transformCTP2Input(&history, identity, identity, newCTP2VisibleLineEncoder(codec), true); err != nil {
-		t.Fatal(err)
-	}
-	encodedHistory, err := history.encode()
-	if err != nil {
-		t.Fatal(err)
-	}
-	parsed.setInput(encodedHistory)
 	body, err := parsed.wireBody(parsed.fields)
 	if err != nil {
 		t.Fatal(err)
@@ -288,7 +270,7 @@ func TestOpenCodeWebSocketPrewarmContinuationAndDisconnect(t *testing.T) {
 			return nil, request.Context().Err()
 		}),
 	}}}
-	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, provider, nil, nil, nil, nil)
+	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, provider, nil, nil, nil)
 	defer endpoint.Close()
 	server := httptest.NewServer(endpoint)
 	defer server.Close()
@@ -415,7 +397,7 @@ func TestOpenCodeStartupAndMode(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	ready := false
-	err := RunSession(ctx, []string{"--model-protocol", "native", "--mentor-handoff=false"}, nil, func(session Session) {
+	err := RunSession(ctx, []string{"--mentor-handoff=false"}, nil, func(session Session) {
 		ready = true
 		if session.GrokEnabled || session.OpenCode.Go.APIKey != "go-test" || session.OpenCode.Zen.APIKey != "zen-test" {
 			t.Error("startup lost separate OpenCode settings")

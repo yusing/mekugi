@@ -28,7 +28,7 @@ func TestProviderErrorEventIsFailedNotMissingTerminal(t *testing.T) {
 			var output bytes.Buffer
 			err := executeRequest(t.Context(), t.Context(),
 				serverRequest(t, func(request map[string]any) { request["stream"] = true }),
-				http.Header{}, "error-session", provider, &output, issues, nil, nil, nil)
+				http.Header{}, "error-session", provider, &output, issues, nil, nil)
 			if err != nil {
 				t.Fatalf("explicit provider error became a router error: %v", err)
 			}
@@ -72,7 +72,7 @@ func TestGrokEncryptedHistoryCompatibility(t *testing.T) {
 			provider := &serverFakeProvider{results: []serverForwardResult{{err: err}}}
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
-			responsesHandler(t.Context(), time.Second, provider, nil, nil, nil, nil)(recorder, request)
+			responsesHandler(t.Context(), time.Second, provider, nil, nil, nil)(recorder, request)
 			if recorder.Code != http.StatusBadRequest {
 				t.Fatalf("compatibility rejection is retryable: %d %s", recorder.Code, recorder.Body.String())
 			}
@@ -126,7 +126,7 @@ func TestResponsesWebSocketProviderErrorRecovery(t *testing.T) {
 	}))
 	defer upstream.Close()
 	issues := NewCriticalErrors()
-	endpoint := responsesWebSocketHandler(ctx, time.Second, newProviderClient(upstream.URL, upstream.Client()), issues, nil, nil, nil)
+	endpoint := responsesWebSocketHandler(ctx, time.Second, newProviderClient(upstream.URL, upstream.Client()), issues, nil, nil)
 	defer endpoint.Close()
 	server := httptest.NewServer(endpoint)
 	defer server.Close()
@@ -169,7 +169,7 @@ func TestResponsesWebSocketGrokEncryptedHistoryStatus(t *testing.T) {
 	defer cancel()
 	provider := newProviderClient("http://unused.invalid", nil)
 	provider.grok = &grokClient{}
-	endpoint := responsesWebSocketHandler(ctx, time.Second, provider, nil, nil, nil, nil)
+	endpoint := responsesWebSocketHandler(ctx, time.Second, provider, nil, nil, nil)
 	defer endpoint.Close()
 	server := httptest.NewServer(endpoint)
 	defer server.Close()

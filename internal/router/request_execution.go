@@ -19,13 +19,12 @@ import (
 // requestExecutor owns the stable services used by every attempt in a request,
 // including router-generated journal continuations.
 type requestExecutor struct {
-	serviceTiers  map[string]string
-	provider      responseProvider
-	output        io.Writer
-	issues        *CriticalErrors
-	mekugiCalls   *mekugiProxy
-	compactTokens *ctp2Codec
-	mentor        *mentorHandoff
+	serviceTiers map[string]string
+	provider     responseProvider
+	output       io.Writer
+	issues       *CriticalErrors
+	mekugiCalls  *mekugiProxy
+	mentor       *mentorHandoff
 }
 
 type requestContinuation struct {
@@ -60,10 +59,8 @@ type requestAttempt struct {
 	prewarm       bool
 
 	mekugiTransform        *mekugiResponseTransform
-	compactTokens          *ctp2Codec
 	syntheticJournalFinish bool
 	bridge                 *subagentBridge
-	compactTransform       *ctp2ResponseTransform
 	forwardBody            []byte
 	usageTracker           *threadUsageObservation
 
@@ -139,7 +136,6 @@ func newRequestAttempt(
 		journalStartWindow: journalRequestWindow(startCtx),
 		hooks:              hooks, finalization: finalization,
 		debug: debug, debugID: debugID, started: time.Now(), trace: trace,
-		compactTokens: executor.compactTokens,
 	}
 }
 
@@ -234,9 +230,6 @@ func (a *requestAttempt) prepare() error {
 	_, webSocketRequest := a.executor.provider.(*webSocketExchange)
 	a.prewarm = webSocketRequest && a.metadataValid &&
 		a.metadata.RequestKind == responses.Prewarm && string(a.request.fields["generate"]) == "false"
-	if a.prewarm {
-		a.compactTokens = nil
-	}
 	if a.executor.mekugiCalls != nil {
 		a.mekugiTransform, err = a.executor.mekugiCalls.prepareModelRequest(
 			a.startCtx,
@@ -249,11 +242,6 @@ func (a *requestAttempt) prepare() error {
 		)
 		if err != nil {
 			return fmt.Errorf("prepare mekugi response proxy: %w", err)
-		}
-		// Compaction and auxiliary structured turns do not receive the
-		// Mekugi instructions needed to decode CTP text.
-		if a.mekugiTransform == nil {
-			a.compactTokens = nil
 		}
 	}
 	if a.executor.mekugiCalls != nil {
@@ -289,7 +277,6 @@ func (a *requestAttempt) prepare() error {
 		a.handoff = nil
 		a.hooks.output = nil
 		a.mekugiTransform.journalTerminal = true
-		a.compactTokens = nil
 	}
 	return nil
 }
@@ -322,13 +309,7 @@ func (a *requestAttempt) prepareWire() error {
 	if err != nil {
 		return fmt.Errorf("encode native Responses request: %w", err)
 	}
-	a.compactTransform, a.forwardBody, err = a.compactTokens.prepareRequest(&a.request, nativeBody)
-	if err != nil {
-		return fmt.Errorf("prepare compact token protocol: %w", err)
-	}
-	if a.forwardBody == nil {
-		a.forwardBody = nativeBody
-	}
+	a.forwardBody = nativeBody
 	if !a.syntheticJournalFinish {
 		if exchange, ok := a.executor.provider.(*webSocketExchange); ok {
 			started := time.Now()
@@ -348,9 +329,9 @@ func (a *requestAttempt) prepareWire() error {
 	}
 	if !a.syntheticJournalFinish {
 		if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.automatic {
-			capturer.ObserveNativeRequest(a.startCtx, nil)
+			capturer.ObserveProjectedRequest(a.startCtx, nil)
 		} else {
-			capturer.ObserveNativeRequest(a.startCtx, nativeWire)
+			capturer.ObserveProjectedRequest(a.startCtx, nativeWire)
 		}
 	}
 
@@ -434,9 +415,6 @@ func (a *requestAttempt) forward() error {
 
 func (a *requestAttempt) prepareResponse() error {
 	if a.response.StatusCode >= http.StatusOK && a.response.StatusCode < http.StatusMultipleChoices {
-		if a.compactTransform != nil {
-			a.responseTransform = composeResponseTransformers(a.responseTransform, a.compactTransform)
-		}
 		if a.bridge != nil {
 			a.responseTransform = composeResponseTransformers(a.responseTransform, a.bridge)
 		}

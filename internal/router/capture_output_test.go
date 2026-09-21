@@ -35,7 +35,7 @@ func TestCaptureModelOutputThroughRouterCommentary(t *testing.T) {
 				stream.WriteString("\n\n")
 				payload = stream.Bytes()
 			}
-			recorder, err := capturer.New(capturer.Config{Mode: "mekugi", ModelProtocol: "native"})
+			recorder, err := capturer.New(capturer.Config{Mode: "mekugi"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -103,10 +103,6 @@ func TestCaptureModelOutputThroughRouterCommentary(t *testing.T) {
 			metrics := httptest.NewRecorder()
 			recorder.ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/api/metrics", nil))
 			var snapshot struct {
-				Protocol struct {
-					Bytes  int `json:"output_payload_bytes_saved"`
-					Tokens int `json:"output_payload_tokens_saved"`
-				} `json:"protocol"`
 				Semantic struct {
 					Client struct {
 						Bytes int `json:"bytes"`
@@ -119,7 +115,7 @@ func TestCaptureModelOutputThroughRouterCommentary(t *testing.T) {
 			if err := json.Unmarshal(metrics.Body.Bytes(), &snapshot); err != nil {
 				t.Fatal(err)
 			}
-			if snapshot.Protocol.Bytes != 0 || snapshot.Protocol.Tokens != 0 || snapshot.Semantic.Client.Bytes < 100 || snapshot.Usage.Output != 5 {
+			if snapshot.Semantic.Client.Bytes < 100 || snapshot.Usage.Output != 5 {
 				t.Fatalf("router commentary affected model output: %s", metrics.Body.String())
 			}
 		})

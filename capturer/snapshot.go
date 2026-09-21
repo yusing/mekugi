@@ -104,30 +104,22 @@ type captureHealth struct {
 	DroppedExchangeDetails uint64 `json:"dropped_exchange_details"`
 }
 
-type protocolMetrics struct {
-	InputPayloadTokensSaved      int64 `json:"input_payload_tokens_saved"`
-	InputPayloadBytesSaved       int64 `json:"input_payload_bytes_saved"`
-	OutputTextTokensSaved        int64 `json:"output_text_tokens_saved"`
-	OutputPayloadTokensExpansion int64 `json:"output_payload_tokens_expansion"`
-	OutputPayloadBytesExpansion  int64 `json:"output_payload_bytes_expansion"`
-}
-
 type providerAttemptMetrics struct {
-	Transport         string                    `json:"transport,omitempty"`
-	ProviderResponse  *providerResponseEvidence `json:"provider_response,omitempty"`
-	Attempt           uint64                    `json:"attempt"`
-	Model             string                    `json:"model,omitempty"`
-	Status            string                    `json:"status"`
-	ResponseComplete  bool                      `json:"response_complete"`
-	Usage             *usageMetrics             `json:"usage,omitempty"`
-	Request           payloadMetrics            `json:"request"`
-	Fingerprint       *requestFingerprint       `json:"cache_fingerprint,omitempty"`
-	NativeFingerprint *requestFingerprint       `json:"native_fingerprint,omitempty"`
-	NativeRequest     *payloadMetrics           `json:"native_request,omitempty"`
-	Response          payloadMetrics            `json:"response"`
-	FinalOutput       payloadMetrics            `json:"final_output,omitzero"`
-	FinalText         payloadMetrics            `json:"final_text,omitzero"`
-	Tools             []toolCallMetrics         `json:"tools,omitempty"`
+	Transport            string                    `json:"transport,omitempty"`
+	ProviderResponse     *providerResponseEvidence `json:"provider_response,omitempty"`
+	Attempt              uint64                    `json:"attempt"`
+	Model                string                    `json:"model,omitempty"`
+	Status               string                    `json:"status"`
+	ResponseComplete     bool                      `json:"response_complete"`
+	Usage                *usageMetrics             `json:"usage,omitempty"`
+	Request              payloadMetrics            `json:"request"`
+	Fingerprint          *requestFingerprint       `json:"cache_fingerprint,omitempty"`
+	ProjectedFingerprint *requestFingerprint       `json:"projected_fingerprint,omitempty"`
+	ProjectedRequest     *payloadMetrics           `json:"projected_request,omitempty"`
+	Response             payloadMetrics            `json:"response"`
+	FinalOutput          payloadMetrics            `json:"final_output,omitzero"`
+	FinalText            payloadMetrics            `json:"final_text,omitzero"`
+	Tools                []toolCallMetrics         `json:"tools,omitempty"`
 }
 
 type exchangeMetrics struct {
@@ -152,13 +144,11 @@ type exchangeMetrics struct {
 type metricsSnapshot struct {
 	Schema         string                   `json:"schema"`
 	Mode           string                   `json:"mode"`
-	ModelProtocol  string                   `json:"model_protocol"`
 	Requests       requestTotals            `json:"requests"`
 	Usage          usageMetrics             `json:"usage"`
 	Cache          cacheMetrics             `json:"cache"`
 	Transport      transportMetrics         `json:"transport"`
 	Semantic       semanticOutputMetrics    `json:"semantic"`
-	Protocol       protocolMetrics          `json:"protocol"`
 	ProviderTools  map[string]toolAggregate `json:"provider_tools"`
 	DeliveredTools map[string]toolAggregate `json:"delivered_tools"`
 	Mekugi         mekugiMetrics            `json:"mekugi"`
@@ -189,11 +179,10 @@ func (r *Recorder) snapshot() metricsSnapshot {
 	return snapshot
 }
 
-func newMetricsSnapshot(mode, modelProtocol string) metricsSnapshot {
+func newMetricsSnapshot(mode string) metricsSnapshot {
 	return metricsSnapshot{
-		Schema:         "mekugi.capture.metrics.v4",
+		Schema:         "mekugi.capture.metrics.v5",
 		Mode:           mode,
-		ModelProtocol:  modelProtocol,
 		Cache:          cacheMetrics{AttributionBasis: "previous_input_length_estimate"},
 		ProviderTools:  map[string]toolAggregate{},
 		DeliveredTools: map[string]toolAggregate{},
@@ -247,9 +236,9 @@ func (r *Recorder) addExchange(front captureRecord, state *requestState, provide
 			ProviderResponse: provider.ProviderResponse,
 			Attempt:          provider.ProviderAttempt, Model: provider.RequestModel, Status: provider.ResponseStatus,
 			ResponseComplete: provider.ResponseComplete,
-			Fingerprint:      provider.Fingerprint, NativeFingerprint: provider.NativeFingerprint,
-			NativeRequest: provider.NativeRequest,
-			Request:       provider.Request, Response: provider.Response, FinalOutput: provider.FinalOutput, FinalText: provider.FinalText,
+			Fingerprint:      provider.Fingerprint, ProjectedFingerprint: provider.ProjectedFingerprint,
+			ProjectedRequest: provider.ProjectedRequest,
+			Request:          provider.Request, Response: provider.Response, FinalOutput: provider.FinalOutput, FinalText: provider.FinalText,
 			Tools: slices.Clone(provider.ToolCalls),
 		}
 		if provider.RequestModel != "" {
@@ -269,13 +258,6 @@ func (r *Recorder) addExchange(front captureRecord, state *requestState, provide
 	if len(providers) != 0 {
 		final := providers[len(providers)-1]
 		r.recordCacheObservation(state, final.Usage)
-		if final.NativeRequest != nil {
-			r.metrics.Protocol.InputPayloadTokensSaved += signedDifference(final.NativeRequest.Tokens, final.Request.Tokens)
-			r.metrics.Protocol.InputPayloadBytesSaved += signedDifference(final.NativeRequest.Bytes, final.Request.Bytes)
-		}
-		r.metrics.Protocol.OutputTextTokensSaved += signedDifference(front.FinalText.Tokens, final.FinalText.Tokens)
-		r.metrics.Protocol.OutputPayloadTokensExpansion += signedDifference(front.FinalOutput.Tokens, final.FinalOutput.Tokens)
-		r.metrics.Protocol.OutputPayloadBytesExpansion += signedDifference(front.FinalOutput.Bytes, final.FinalOutput.Bytes)
 	} else {
 		r.recordCacheObservation(state, nil)
 	}
@@ -350,7 +332,7 @@ func cloneMetricsSnapshot(source metricsSnapshot) metricsSnapshot {
 			clone.Exchanges[index].ProviderAttempts[attemptIndex] = attempt
 			clone.Exchanges[index].ProviderAttempts[attemptIndex].ProviderResponse = cloneProviderEvidence(attempt.ProviderResponse)
 			clone.Exchanges[index].ProviderAttempts[attemptIndex].Fingerprint = cloneFingerprint(attempt.Fingerprint)
-			clone.Exchanges[index].ProviderAttempts[attemptIndex].NativeFingerprint = cloneFingerprint(attempt.NativeFingerprint)
+			clone.Exchanges[index].ProviderAttempts[attemptIndex].ProjectedFingerprint = cloneFingerprint(attempt.ProjectedFingerprint)
 			clone.Exchanges[index].ProviderAttempts[attemptIndex].Tools = slices.Clone(attempt.Tools)
 			if attempt.Usage != nil {
 				usage := *attempt.Usage

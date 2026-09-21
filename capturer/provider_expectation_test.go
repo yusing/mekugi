@@ -12,7 +12,7 @@ import (
 
 func TestRecorderDistinguishesNoGenerateFromMissingProvider(t *testing.T) {
 	capturePath := filepath.Join(t.TempDir(), "capture.jsonl")
-	recorder, err := New(Config{Output: capturePath, Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Output: capturePath, Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestRecorderDistinguishesNoGenerateFromMissingProvider(t *testing.T) {
 		third.ProviderExpected == nil || *third.ProviderExpected {
 		t.Fatalf("provider expectation evidence = first %#v ordinary %#v provider %#v third %#v", first.ProviderExpected, ordinary.ProviderExpected, provider, third.ProviderExpected)
 	}
-	rebuilt, err := metricsFromRecords(recorder.mode, recorder.modelProtocol, records)
+	rebuilt, err := metricsFromRecords(recorder.mode, records)
 	if err != nil {
 		t.Fatal(err)
 	}

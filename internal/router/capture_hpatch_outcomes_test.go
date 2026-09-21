@@ -13,7 +13,7 @@ import (
 )
 
 func TestCaptureRenderedHpatchOutcomes(t *testing.T) {
-	recorder, err := capturer.New(capturer.Config{Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := capturer.New(capturer.Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}

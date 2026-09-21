@@ -77,12 +77,12 @@ func TestOpenCodeHTTPErrorDelivery(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 			req.Header = grokTestHeaders()
 			recorder := httptest.NewRecorder()
-			responsesHandler(ctx, time.Second, provider, issues, nil, nil, nil)(recorder, req)
+			responsesHandler(ctx, time.Second, provider, issues, nil, nil)(recorder, req)
 			if recorder.Code != status || recorder.Header().Get("Content-Type") != "application/json" ||
 				!strings.Contains(recorder.Body.String(), "Useful provider detail [redacted]") || calls != 1 {
 				t.Fatalf("HTTP error lost: %d %s (calls %d)", recorder.Code, recorder.Body.String(), calls)
 			}
-			endpoint := responsesWebSocketHandler(ctx, time.Second, provider, issues, nil, nil, nil)
+			endpoint := responsesWebSocketHandler(ctx, time.Second, provider, issues, nil, nil)
 			defer endpoint.Close()
 			server := httptest.NewServer(endpoint)
 			defer server.Close()

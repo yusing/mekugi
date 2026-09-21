@@ -358,7 +358,7 @@ func TestExecuteRequestMentorHandoffPreservesHistoryAndRestoresRequestedModel(t 
 		request := mentorTestRequest(t, "gpt-5.6-luna")
 		if err := executeRequest(
 			t.Context(), t.Context(), request, headers, "session", provider, io.Discard,
-			nil, nil, nil, mentor,
+			nil, nil, mentor,
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -400,7 +400,7 @@ func TestExecuteRequestMainNonTurnsDoNotConsumeMentorBudget(t *testing.T) {
 				headers.Set(threadIDHeader, "main")
 				request := mentorTestRequest(t, "gpt-5.6-sol")
 				if err := executeRequest(t.Context(), t.Context(), request, headers, "main",
-					provider, io.Discard, nil, nil, nil, mentor); err != nil {
+					provider, io.Discard, nil, nil, mentor); err != nil {
 					t.Fatal(err)
 				}
 				if index == 0 && len(mentor.sessions) != 0 {
@@ -466,7 +466,7 @@ func TestExecuteRequestCompactionRestartsMentorHandoff(t *testing.T) {
 				}
 				request := mentorTestRequest(t, model)
 				if err := executeRequest(t.Context(), t.Context(), request, tc.headers(kind), threadID,
-					provider, io.Discard, nil, nil, nil, mentor); err != nil {
+					provider, io.Discard, nil, nil, mentor); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -503,7 +503,7 @@ func TestExecuteRequestFailedCompactionPreservesCompletedHandoff(t *testing.T) {
 		headers.Set(threadIDHeader, "main")
 		request := mentorTestRequest(t, "gpt-5.6-luna")
 		if err := executeRequest(t.Context(), t.Context(), request, headers, "main",
-			provider, io.Discard, nil, nil, nil, mentor); err != nil {
+			provider, io.Discard, nil, nil, mentor); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -547,14 +547,14 @@ func TestExecuteRequestSteeredCompactionPreservesCompletedHandoff(t *testing.T) 
 		fields["stream"] = true
 	})
 	if err := executeRequest(t.Context(), t.Context(), compaction, headers, "main",
-		provider, io.Discard, nil, nil, nil, mentor); err != nil {
+		provider, io.Discard, nil, nil, mentor); err != nil {
 		t.Fatal(err)
 	}
 
 	headers = serverMetadataHeaders(t, "turn", nil)
 	headers.Set(threadIDHeader, "main")
 	if err := executeRequest(t.Context(), t.Context(), mentorTestRequest(t, "gpt-5.6-luna"), headers, "main",
-		provider, io.Discard, nil, nil, nil, mentor); err != nil {
+		provider, io.Discard, nil, nil, mentor); err != nil {
 		t.Fatal(err)
 	}
 	request, err := parseResponsesRequest(provider.forwarded[1])
@@ -594,7 +594,7 @@ func testExecuteRequestMainAstraMentorHandoff(t *testing.T, model string) {
 			t.Fatal(err)
 		}
 		if err := executeRequest(t.Context(), t.Context(), request, headers, "main",
-			provider, io.Discard, nil, nil, nil, mentor); err != nil {
+			provider, io.Discard, nil, nil, mentor); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -632,7 +632,7 @@ func TestExecuteRequestMentorHandoffCountsFailedResponseInput(t *testing.T) {
 		request := mentorTestRequest(t, "gpt-5.6-luna")
 		if err := executeRequest(
 			t.Context(), t.Context(), request, headers, "session", provider, io.Discard,
-			nil, nil, nil, mentor,
+			nil, nil, mentor,
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -729,7 +729,7 @@ func TestExecuteRequestMentorCommentaryDeliveredOnceAndStrippedOnReplay(t *testi
 				})
 				var output bytes.Buffer
 				if err := executeRequest(t.Context(), t.Context(), request, headers, "session",
-					provider, &output, nil, proxy, nil, mentor); err != nil {
+					provider, &output, nil, proxy, mentor); err != nil {
 					t.Fatal(err)
 				}
 				const notice = "Mentor handoff complete."
@@ -797,7 +797,7 @@ func TestExecuteRequestMentorJournalContinuationAccounting(t *testing.T) {
 					fields["model"] = "gpt-5.6-luna"
 					fields["stream"] = stream
 				})
-				if err := executeRequest(t.Context(), t.Context(), request, headers, "session", provider, io.Discard, nil, proxy, nil, mentor); err != nil {
+				if err := executeRequest(t.Context(), t.Context(), request, headers, "session", provider, io.Discard, nil, proxy, mentor); err != nil {
 					t.Fatal(err)
 				}
 				if len(provider.forwarded) != count {
@@ -848,7 +848,7 @@ func TestExecuteRequestChildNonTurnsHandleMentorSchedule(t *testing.T) {
 					"usage": map[string]any{"input_tokens": mentorInputTokenLimit},
 				})))}}}
 				request := mentorTestRequest(t, "gpt-5.6-luna")
-				if err := executeRequest(t.Context(), t.Context(), request, headers, "session", provider, io.Discard, nil, nil, nil, mentor); err != nil {
+				if err := executeRequest(t.Context(), t.Context(), request, headers, "session", provider, io.Discard, nil, nil, mentor); err != nil {
 					t.Fatal(err)
 				}
 				forwarded, err := parseResponsesRequest(provider.forwarded[0])

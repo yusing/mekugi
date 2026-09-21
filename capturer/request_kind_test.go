@@ -15,7 +15,7 @@ func TestRequestKindEvidence(t *testing.T) {
 	for _, kind := range []string{"turn", "prewarm", "compaction", "private input", ""} {
 		t.Run(kind, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "capture.jsonl")
-			recorder, err := New(Config{Output: path, Mode: "mekugi", ModelProtocol: "native"})
+			recorder, err := New(Config{Output: path, Mode: "mekugi"})
 			if err != nil {
 				t.Fatal(err)
 			}

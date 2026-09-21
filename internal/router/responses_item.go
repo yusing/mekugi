@@ -10,7 +10,7 @@ import (
 )
 
 // responsesItem keeps the complete provider object while exposing the stable
-// fields used by CTP, Code Mode, commentary, history, and carrier rendering.
+// fields used by Code Mode, commentary, history, and carrier rendering.
 type responsesItem struct {
 	fields    map[string]json.RawMessage
 	Type      string

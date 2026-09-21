@@ -38,7 +38,7 @@ func TestTerminalProviderErrorNotices(t *testing.T) {
 			var output bytes.Buffer
 			err := executeRequest(t.Context(), t.Context(),
 				serverRequest(t, func(fields map[string]any) { fields["stream"] = tc.stream }),
-				http.Header{}, "terminal-detail", provider, &output, issues, nil, nil, nil)
+				http.Header{}, "terminal-detail", provider, &output, issues, nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -113,7 +113,7 @@ func TestAdaptedProviderErrorDelivery(t *testing.T) {
 				req.Header.Set("Authorization", "Bearer caller-secret")
 				issues := NewCriticalErrors()
 				recorder := httptest.NewRecorder()
-				responsesHandler(t.Context(), 5*time.Second, provider, issues, nil, nil, nil)(recorder, req)
+				responsesHandler(t.Context(), 5*time.Second, provider, issues, nil, nil)(recorder, req)
 				for _, text := range []string{recorder.Body.String(), strings.Join(issues.Pending(), "\n")} {
 					if !strings.Contains(text, "actual rejection [redacted] [redacted]") ||
 						strings.Contains(text, "provider-secret") || strings.Contains(text, "caller-secret") {

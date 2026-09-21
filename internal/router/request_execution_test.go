@@ -18,12 +18,11 @@ func executeRequest(
 	output io.Writer,
 	issues *CriticalErrors,
 	mekugiCalls *mekugiProxy,
-	compactTokens *ctp2Codec,
 	mentor *mentorHandoff,
 ) error {
 	executor := requestExecutor{
 		provider: provider, output: output, issues: issues,
-		mekugiCalls: mekugiCalls, compactTokens: compactTokens, mentor: mentor,
+		mekugiCalls: mekugiCalls, mentor: mentor,
 	}
 	return executor.execute(ctx, executionCtx, request, headers, sessionID)
 }

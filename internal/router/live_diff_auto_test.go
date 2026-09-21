@@ -157,7 +157,7 @@ func TestAutoLiveDiffSelectedWorkspaceBoundary(t *testing.T) {
 	request := serverRequest(t, nil)
 	headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{alias: nil})
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"id":"r","status":"completed","output":[]}`)}}}
-	if err := executeRequest(t.Context(), t.Context(), request, headers, "auto", provider, io.Discard, nil, proxy, nil, nil); err != nil {
+	if err := executeRequest(t.Context(), t.Context(), request, headers, "auto", provider, io.Discard, nil, proxy, nil); err != nil {
 		t.Fatal(err)
 	}
 	auto.mu.Lock()
@@ -172,7 +172,7 @@ func TestAutoLiveDiffSelectedWorkspaceBoundary(t *testing.T) {
 			"type": "custom_tool_call", "name": "shell", "call_id": "first-edit", "input": testShellEditSource,
 		}},
 	})))}}}
-	if err := executeRequest(t.Context(), t.Context(), request, headers, "auto", provider, io.Discard, nil, proxy, nil, nil); err != nil {
+	if err := executeRequest(t.Context(), t.Context(), request, headers, "auto", provider, io.Discard, nil, proxy, nil); err != nil {
 		t.Fatal(err)
 	}
 	data := waitAutoLiveDiff(t, log, "done\n")

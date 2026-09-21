@@ -166,7 +166,7 @@ func (r *parsedResponsesRequest) filterInput(filter func(map[string]json.RawMess
 }
 
 // incrementalBody removes only the projected prefix already cached upstream.
-// Preparation and CTP decoding still see that prefix; HTTP and Chat Completions providers do not use
+// Preparation still sees that prefix; HTTP and Chat Completions providers do not use
 // the provider's connection-local Responses cache.
 func (r parsedResponsesRequest) incrementalBody(body []byte) ([]byte, error) {
 	if (r.cachedInput == 0 && !r.rebaseInput) || isChatCompletionsModel(r.model()) {

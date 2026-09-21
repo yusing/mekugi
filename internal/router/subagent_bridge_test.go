@@ -378,7 +378,7 @@ func TestOrdinaryCollaborationBridgeAtServerBoundary(t *testing.T) {
 				headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 				var output bytes.Buffer
 				if err := executeRequest(t.Context(), t.Context(), request, headers, "bridge-session",
-					provider, &output, NewCriticalErrors(), proxy, nil, nil); err != nil {
+					provider, &output, NewCriticalErrors(), proxy, nil); err != nil {
 					t.Fatal(err)
 				}
 				if len(provider.forwarded) != 1 {

@@ -11,7 +11,7 @@ import (
 )
 
 func TestModelOutputExcludesGeneratedCommentary(t *testing.T) {
-	r, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+	r, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,8 +59,8 @@ func TestModelOutputExcludesGeneratedCommentary(t *testing.T) {
 	}
 }
 
-func TestGeneratedCommentaryChangesTransportButNotOutputSavingsOrUsage(t *testing.T) {
-	r, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+func TestGeneratedCommentaryChangesTransportButNotSemanticOutputOrUsage(t *testing.T) {
+	r, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,8 +79,7 @@ func TestGeneratedCommentaryChangesTransportButNotOutputSavingsOrUsage(t *testin
 		r.recordExchange(state, boundary, attempt, time.Now(), []byte(`{"model":"model"}`), observedPayload{content: []byte(body), bytes: uint64(len(body))}, 200, "text/event-stream", "", nil, providerResponseEvidence{})
 	}
 	snapshot := r.snapshot()
-	if snapshot.Protocol.OutputPayloadTokensExpansion != 0 || snapshot.Protocol.OutputPayloadBytesExpansion != 0 ||
-		snapshot.Semantic.ClientOutputs != snapshot.Semantic.ProviderAttemptOutputs {
+	if snapshot.Semantic.ClientOutputs != snapshot.Semantic.ProviderAttemptOutputs {
 		encoded, _ := json.Marshal(snapshot)
 		t.Fatalf("synthetic output affected savings: %s", encoded)
 	}
@@ -89,10 +88,10 @@ func TestGeneratedCommentaryChangesTransportButNotOutputSavingsOrUsage(t *testin
 	}
 }
 
-func TestGrokIdenticalTextHasNoOutputTextSavings(t *testing.T) {
+func TestGrokTextMeasurementMatchesAcrossBoundaries(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprintf("stream=%v", stream), func(t *testing.T) {
-			r, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+			r, err := New(Config{Mode: "mekugi"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -115,9 +114,6 @@ func TestGrokIdenticalTextHasNoOutputTextSavings(t *testing.T) {
 				r.recordExchange(state, boundary, attempt, time.Now(), []byte(request), observedPayload{content: []byte(body), bytes: uint64(len(body))}, 200, kind, "", nil, providerResponseEvidence{})
 			}
 			report := r.snapshot()
-			if report.Protocol.OutputTextTokensSaved != 0 {
-				t.Fatalf("fabricated text savings: %+v", report.Protocol)
-			}
 			// Inspect the serialized report consumed by session tooling too.
 			data, err := json.Marshal(report)
 			if err != nil {

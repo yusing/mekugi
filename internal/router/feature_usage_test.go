@@ -345,7 +345,7 @@ func TestFeatureUsageProductionRequestCorrelation(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(`{"status":"completed","output":[{"type":"function_call","name":"lookup","call_id":"call-production","arguments":"{\"journal\":[{\"op\":\"add\",\"text\":\"private progress\",\"report_now\":true}]}"}]}`)),
 	}}}}
 	handler := d.handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := executeRequest(r.Context(), r.Context(), initial, headers, "public-session", provider, w, nil, proxy, nil, nil); err != nil {
+		if err := executeRequest(r.Context(), r.Context(), initial, headers, "public-session", provider, w, nil, proxy, nil); err != nil {
 			t.Error(err)
 		}
 	}))

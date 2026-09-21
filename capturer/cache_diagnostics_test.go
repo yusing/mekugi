@@ -12,7 +12,7 @@ import (
 
 func diagnosticRecorder(t *testing.T) *Recorder {
 	t.Helper()
-	r, err := New(Config{Mode: "mekugi", ModelProtocol: "native"})
+	r, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,13 +81,13 @@ func TestCacheDiagnosisUsesArrivalOrderThreadAndFinalAttempt(t *testing.T) {
 	second := r.requestFingerprint([]byte(`{"model":"model","input":["one","two"]}`))
 	second.RoutingKey = "route-b"
 	exchanges := []exchangeMetrics{
-		{Sequence: 2, PredecessorSequence: 1, ThreadID: "thread", Status: "completed", ClientFingerprint: second, ProviderAttempts: []providerAttemptMetrics{{Fingerprint: first}, {Fingerprint: second, NativeFingerprint: second}}},
-		{Sequence: 1, ThreadID: "thread", Status: "completed", ClientFingerprint: first, ProviderAttempts: []providerAttemptMetrics{{Fingerprint: first, NativeFingerprint: first}}},
-		{Sequence: 3, ThreadID: "other", Status: "completed", ClientFingerprint: second, ProviderAttempts: []providerAttemptMetrics{{Fingerprint: second, NativeFingerprint: second}}},
+		{Sequence: 2, PredecessorSequence: 1, ThreadID: "thread", Status: "completed", ClientFingerprint: second, ProviderAttempts: []providerAttemptMetrics{{Fingerprint: first}, {Fingerprint: second, ProjectedFingerprint: second}}},
+		{Sequence: 1, ThreadID: "thread", Status: "completed", ClientFingerprint: first, ProviderAttempts: []providerAttemptMetrics{{Fingerprint: first, ProjectedFingerprint: first}}},
+		{Sequence: 3, ThreadID: "other", Status: "completed", ClientFingerprint: second, ProviderAttempts: []providerAttemptMetrics{{Fingerprint: second, ProjectedFingerprint: second}}},
 	}
 	diagnoseCacheExchanges(exchanges)
 	got := exchanges[0].CacheDiagnosis
-	if got.PreviousSequence != 1 || got.Provider.Status != "appended" || got.Native.Status != "appended" || got.Routing != "changed" {
+	if got.PreviousSequence != 1 || got.Provider.Status != "appended" || got.Projected.Status != "appended" || got.Routing != "changed" {
 		t.Fatalf("diagnosis: %+v", got)
 	}
 	if exchanges[2].CacheDiagnosis.PreviousSequence != 0 || exchanges[2].CacheDiagnosis.Provider.Status != "unavailable" {
@@ -225,7 +225,7 @@ func TestCacheFingerprintIncrementalHistoryIsNotAChangedPrefix(t *testing.T) {
 }
 
 func TestCacheAttributionLabelsItsEstimate(t *testing.T) {
-	snapshot := newMetricsSnapshot("mekugi", "native")
+	snapshot := newMetricsSnapshot("mekugi")
 	if snapshot.Cache.AttributionBasis != "previous_input_length_estimate" {
 		t.Fatal("cache attribution is not explicitly labeled as an estimate")
 	}

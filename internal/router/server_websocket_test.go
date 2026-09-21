@@ -59,11 +59,11 @@ func socketEvent(kind, id string) map[string]any {
 	return map[string]any{"type": kind, "response": map[string]any{"id": id, "status": status, "output": []any{}}}
 }
 
-func testResponsesSocket(t *testing.T, ctx context.Context, upstream http.Handler, proxy *mekugiProxy, codec *ctp2Codec, headers http.Header) *websocket.Conn {
+func testResponsesSocket(t *testing.T, ctx context.Context, upstream http.Handler, proxy *mekugiProxy, headers http.Header) *websocket.Conn {
 	t.Helper()
 	provider := httptest.NewServer(upstream)
 	t.Cleanup(provider.Close)
-	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, newProviderClient(provider.URL, provider.Client()), nil, proxy, codec, nil)
+	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, newProviderClient(provider.URL, provider.Client()), nil, proxy, nil)
 	t.Cleanup(endpoint.Close)
 	router := httptest.NewServer(endpoint)
 	t.Cleanup(router.Close)
@@ -144,7 +144,7 @@ func TestResponsesWebSocketSteeringAndAutomaticSuccessor(t *testing.T) {
 			return
 		}
 		_, _, _ = upstream.Read(ctx)
-	}), nil, nil, codexAuthHeaders())
+	}), nil, codexAuthHeaders())
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": "initial"})
 	if got := socketRead(t, ctx, conn); jsonString(got, "type") != "response.created" {
 		t.Fatalf("created = %s", mustMarshalJSON(got))
@@ -242,7 +242,7 @@ func TestResponsesWebSocketPendingAndPrewarm(t *testing.T) {
 			return
 		}
 		_, _, _ = upstream.Read(ctx)
-	}), nil, nil, codexAuthHeaders())
+	}), nil, codexAuthHeaders())
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": "initial", "generate": false})
 	_ = socketRead(t, ctx, conn)
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "previous_response_id": "warm", "input": []any{}})
@@ -307,7 +307,7 @@ func TestResponsesWebSocketGrokPrewarmContinuationAndDisconnect(t *testing.T) {
 			return nil, request.Context().Err()
 		}),
 	}}
-	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, provider, nil, nil, nil, nil)
+	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, provider, nil, nil, nil)
 	defer endpoint.Close()
 	server := httptest.NewServer(endpoint)
 	defer server.Close()
@@ -368,7 +368,7 @@ func TestResponsesWebSocketEndpointCloseWaitsAndRejectsNewAdmission(t *testing.T
 		_, _, _ = conn.Read(ctx)
 	}))
 	defer provider.Close()
-	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, newProviderClient(provider.URL, provider.Client()), nil, nil, nil, nil)
+	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, newProviderClient(provider.URL, provider.Client()), nil, nil, nil)
 	defer endpoint.Close()
 	server := httptest.NewServer(endpoint)
 	defer server.Close()
@@ -455,7 +455,7 @@ func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
 			}
 		}
 		_, _, _ = upstream.Read(ctx)
-	}), proxy, nil, headers)
+	}), proxy, headers)
 	metadata := func(value any) map[string]string {
 		return map[string]string{codexTurnMetadataHeader: string(mustMarshalJSON(value)), threadIDHeader: "prewarm-thread"}
 	}
@@ -487,7 +487,7 @@ func TestMekugiPrewarmRequiresExplicitNonGeneratingRequest(t *testing.T) {
 				request.fields["generate"] = json.RawMessage(generate)
 			}
 			proxy := &mekugiProxy{}
-			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "prewarm", nil), "session", &webSocketExchange{}, io.Discard, nil, proxy, nil, nil); err == nil {
+			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "prewarm", nil), "session", &webSocketExchange{}, io.Discard, nil, proxy, nil); err == nil {
 				t.Fatal("generating prewarm bypassed turn validation")
 			}
 		})
@@ -501,7 +501,7 @@ func TestResponsesHTTPPrewarmCannotBypassPreparation(t *testing.T) {
 	request.Header.Set(threadIDHeader, "prewarm-thread")
 	provider := &serverFakeProvider{}
 	recorder := httptest.NewRecorder()
-	responsesHandler(t.Context(), time.Minute, provider, nil, &mekugiProxy{}, nil, nil)(recorder, request)
+	responsesHandler(t.Context(), time.Minute, provider, nil, &mekugiProxy{}, nil)(recorder, request)
 	if len(provider.forwarded) != 0 {
 		t.Fatal("HTTP prewarm reached a potentially generating provider")
 	}
@@ -537,7 +537,7 @@ func TestResponsesWebSocketLocalErrorStatus(t *testing.T) {
 			}
 			conn := testResponsesSocket(t, ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				t.Error("invalid request reached provider")
-			}), proxy, nil, headers)
+			}), proxy, headers)
 			if err := conn.Write(ctx, websocket.MessageText, []byte(test.body)); err != nil {
 				t.Fatal(err)
 			}
@@ -582,7 +582,7 @@ func TestResponsesWebSocketAutomaticParentErrorStatus(t *testing.T) {
 			return
 		}
 		_, _, _ = upstream.Read(ctx)
-	}), nil, nil, codexAuthHeaders())
+	}), nil, codexAuthHeaders())
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": "task"})
 	if event := socketRead(t, ctx, conn); jsonString(event, "type") != "response.completed" {
 		t.Fatalf("completion = %s", mustMarshalJSON(event))

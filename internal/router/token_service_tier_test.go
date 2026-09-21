@@ -97,7 +97,7 @@ func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
 					}
 					provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 					var output bytes.Buffer
-					if err := executeRequest(t.Context(), t.Context(), request, headers, "tier-session", provider, &output, nil, proxy, nil, nil); err != nil {
+					if err := executeRequest(t.Context(), t.Context(), request, headers, "tier-session", provider, &output, nil, proxy, nil); err != nil {
 						t.Fatal(err)
 					}
 					modelLabel := "gpt-5.6-sol"

@@ -12,14 +12,14 @@ import (
 func sessionExport(t *testing.T, thread string) string {
 	t.Helper()
 	directory := t.TempDir()
-	recorder, err := New(Config{Output: filepath.Join(directory, "capture.jsonl"), Mode: "mekugi", ModelProtocol: "native"})
+	recorder, err := New(Config{Output: filepath.Join(directory, "capture.jsonl"), Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for sequence := uint64(1); sequence <= 2; sequence++ {
 		state := &requestState{captureID: fmt.Sprintf("%s-%d", thread, sequence), sequence: sequence, threadID: thread}
 		recorder.cacheQueues[thread] = append(recorder.cacheQueues[thread], state)
-		record := captureRecord{SchemaVersion: schemaVersion, Mode: "mekugi", ModelProtocol: "native", CaptureID: state.captureID, RequestSequence: sequence, PredecessorSequence: sequence - 1, ThreadID: thread, ResponseStatus: "completed", ResponseComplete: true, StatusCode: 200}
+		record := captureRecord{SchemaVersion: schemaVersion, Mode: "mekugi", CaptureID: state.captureID, RequestSequence: sequence, PredecessorSequence: sequence - 1, ThreadID: thread, ResponseStatus: "completed", ResponseComplete: true, StatusCode: 200}
 		record.Boundary = "provider"
 		record.ProviderAttempt = 1
 		record.Usage = &ProviderUsage{InputTokens: 100, CachedTokens: 40, OutputTokens: 10}
@@ -75,7 +75,7 @@ func TestMergeSessionsRejectsMissingTamperedAndDuplicateEvidence(t *testing.T) {
 	if err := MergeSessions([]string{directory, directory}, &output, &output); err == nil {
 		t.Fatal("duplicate session accepted")
 	}
-	if err := os.WriteFile(filepath.Join(directory, "metrics.json"), []byte(`{"schema":"mekugi.capture.metrics.v4","mode":"mekugi","model_protocol":"native"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, "metrics.json"), []byte(`{"schema":"mekugi.capture.metrics.v5","mode":"mekugi"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := MergeSessions([]string{directory}, &output, &output); err == nil {

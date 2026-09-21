@@ -590,7 +590,7 @@ func TestGrokAPIKeyStartupWithoutHome(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	err := RunSession(ctx, []string{"--grok", "--model-protocol", "native", "--mentor-handoff=false"}, nil, func(Session) { cancel() }, nil)
+	err := RunSession(ctx, []string{"--grok", "--mentor-handoff=false"}, nil, func(Session) { cancel() }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

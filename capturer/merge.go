@@ -17,7 +17,7 @@ import (
 // only sequence identities in the combined artifacts are rebased.
 func MergeSessions(directories []string, metrics, capture io.Writer) error {
 	var all []captureRecord
-	var mode, protocol string
+	var mode string
 	var offset uint64
 	threads := make(map[string]bool)
 	for index, directory := range directories {
@@ -29,14 +29,14 @@ func MergeSessions(directories []string, metrics, capture io.Writer) error {
 		if err := json.Unmarshal(encoded, &snapshot); err != nil {
 			return err
 		}
-		if snapshot.Schema != "mekugi.capture.metrics.v4" {
+		if snapshot.Schema != "mekugi.capture.metrics.v5" {
 			return errors.New("unsupported session metrics schema")
 		}
 		if index == 0 {
-			mode, protocol = snapshot.Mode, snapshot.ModelProtocol
+			mode = snapshot.Mode
 		}
-		if snapshot.Mode != mode || snapshot.ModelProtocol != protocol {
-			return errors.New("session modes or protocols differ")
+		if snapshot.Mode != mode {
+			return errors.New("session modes differ")
 		}
 		file, err := os.Open(filepath.Join(directory, "capture.jsonl"))
 		if err != nil {
@@ -54,7 +54,7 @@ func MergeSessions(directories []string, metrics, capture io.Writer) error {
 				file.Close()
 				return err
 			}
-			if record.SchemaVersion != schemaVersion || record.Mode != mode || record.ModelProtocol != protocol || record.CaptureError != "" || !record.ResponseComplete {
+			if record.SchemaVersion != schemaVersion || record.Mode != mode || record.CaptureError != "" || !record.ResponseComplete {
 				file.Close()
 				return errors.New("incomplete or incompatible session capture")
 			}
@@ -63,7 +63,7 @@ func MergeSessions(directories []string, metrics, capture io.Writer) error {
 		if err := file.Close(); err != nil {
 			return err
 		}
-		local, err := metricsFromRecords(mode, protocol, records)
+		local, err := metricsFromRecords(mode, records)
 		if err != nil {
 			return err
 		}
@@ -107,7 +107,7 @@ func MergeSessions(directories []string, metrics, capture io.Writer) error {
 	if len(directories) == 0 {
 		return errors.New("no session exports")
 	}
-	result, err := metricsFromRecords(mode, protocol, all)
+	result, err := metricsFromRecords(mode, all)
 	if err != nil {
 		return err
 	}
@@ -120,8 +120,8 @@ func MergeSessions(directories []string, metrics, capture io.Writer) error {
 	return json.NewEncoder(metrics).Encode(result)
 }
 
-func metricsFromRecords(mode, protocol string, records []captureRecord) (metricsSnapshot, error) {
-	recorder := &Recorder{metrics: newMetricsSnapshot(mode, protocol), previousInput: make(map[string]uint64), cacheQueues: make(map[string][]*requestState)}
+func metricsFromRecords(mode string, records []captureRecord) (metricsSnapshot, error) {
+	recorder := &Recorder{metrics: newMetricsSnapshot(mode), previousInput: make(map[string]uint64), cacheQueues: make(map[string][]*requestState)}
 	fronts := make(map[string]captureRecord)
 	providers := make(map[string][]captureRecord)
 	var order []string

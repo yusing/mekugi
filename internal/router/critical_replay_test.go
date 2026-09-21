@@ -28,7 +28,7 @@ func TestCriticalNoticeReplayUsesDurableExactProvenance(t *testing.T) {
 			var visible bytes.Buffer
 			if err := executeRequest(t.Context(), t.Context(), request,
 				serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}),
-				"parent-session", provider, &visible, issues, first, nil, nil); err != nil {
+				"parent-session", provider, &visible, issues, first, nil); err != nil {
 				t.Fatal(err)
 			}
 			if !bytes.Contains(visible.Bytes(), []byte(noticeID)) {
@@ -46,7 +46,7 @@ func TestCriticalNoticeReplayUsesDurableExactProvenance(t *testing.T) {
 			})
 			if err := executeRequest(t.Context(), t.Context(), replay,
 				serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}),
-				"fork-session", replayProvider, io.Discard, NewCriticalErrors(), fresh, nil, nil); err != nil {
+				"fork-session", replayProvider, io.Discard, NewCriticalErrors(), fresh, nil); err != nil {
 				t.Fatal(err)
 			}
 			if bytes.Contains(replayProvider.forwarded[0], []byte(noticeID)) {
@@ -83,7 +83,7 @@ func TestCriticalNoticePassthroughStillEmitsWithoutReplayStore(t *testing.T) {
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: criticalTestResponse(false)}}}
 	var visible bytes.Buffer
 	if err := executeRequest(t.Context(), t.Context(), serverRequest(t, nil), nil, "session",
-		provider, &visible, issues, nil, nil, nil); err != nil {
+		provider, &visible, issues, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Contains(visible.Bytes(), []byte(issues.entries[0].id)) {
@@ -128,7 +128,7 @@ func TestCompactionCriticalNoticeRetainsReplayProvenanceWithoutChangingRequest(t
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: criticalTestResponse(true)}}}
 	var visible bytes.Buffer
 	if err := executeRequest(t.Context(), t.Context(), parsed, headers, "compaction-session",
-		provider, &visible, issues, proxy, mustCTP2Codec(t), nil); err != nil {
+		provider, &visible, issues, proxy, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(provider.forwarded[0], original) {
@@ -147,7 +147,7 @@ func TestCompactionCriticalNoticeRetainsReplayProvenanceWithoutChangingRequest(t
 	replayProvider := &serverFakeProvider{results: []serverForwardResult{{response: criticalTestResponse(false)}}}
 	if err := executeRequest(t.Context(), t.Context(), replay,
 		serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}),
-		"ordinary-session", replayProvider, io.Discard, NewCriticalErrors(), fresh, nil, nil); err != nil {
+		"ordinary-session", replayProvider, io.Discard, NewCriticalErrors(), fresh, nil); err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Contains(replayProvider.forwarded[0], []byte(noticeID)) {

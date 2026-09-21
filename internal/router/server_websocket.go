@@ -25,7 +25,7 @@ import (
 // A downstream socket owns a dedicated provider socket. In particular it never
 // enters the HTTP pool: accepted steering and previous_response_id are scoped
 // to this connection, including the quiet interval after response.completed.
-func responsesWebSocketHandler(lifecycle context.Context, timeout time.Duration, provider *providerClient, issues *CriticalErrors, proxy *mekugiProxy, codec *ctp2Codec, mentor *mentorHandoff) *responsesWebSocketEndpoint {
+func responsesWebSocketHandler(lifecycle context.Context, timeout time.Duration, provider *providerClient, issues *CriticalErrors, proxy *mekugiProxy, mentor *mentorHandoff) *responsesWebSocketEndpoint {
 	lifecycle, cancel := context.WithCancel(lifecycle)
 	endpoint := &responsesWebSocketEndpoint{cancel: cancel}
 	endpoint.handler = func(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +45,7 @@ func responsesWebSocketHandler(lifecycle context.Context, timeout time.Duration,
 		defer stop()
 		s := &responsesWebSocket{
 			ctx: ctx, downstream: conn, provider: provider, headers: r.Header.Clone(),
-			timeout: timeout, issues: issues, proxy: proxy, codec: codec, mentor: mentor,
+			timeout: timeout, issues: issues, proxy: proxy, mentor: mentor,
 			clientMessages: readResponsesWebSocket(ctx, conn, cancel), histories: make(map[string]*webSocketHistory),
 		}
 		defer func() {
@@ -244,7 +244,6 @@ type responsesWebSocket struct {
 	timeout          time.Duration
 	issues           *CriticalErrors
 	proxy            *mekugiProxy
-	codec            *ctp2Codec
 	mentor           *mentorHandoff
 	histories        map[string]*webSocketHistory
 	lastID           string
@@ -393,7 +392,7 @@ func (s *responsesWebSocket) observeControl(body []byte) {
 
 // Acknowledgement/failure can arrive after a continuation was sent. Admission,
 // not preparation's snapshot, owns native history. Legal steering contains user
-// messages, never CTP tool-output sources or developer instruction/tool carriers.
+// messages, never developer instruction or tool carriers.
 func (s *responsesWebSocket) commitSteering(history *webSocketHistory, parent string) {
 	var committed []json.RawMessage
 	remaining := s.steers[:0]
@@ -548,7 +547,7 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 	defer cancel()
 	exchange.ctx = executionCtx
 	output := &webSocketOutput{exchange: exchange}
-	executor := requestExecutor{provider: exchange, output: output, issues: s.issues, mekugiCalls: s.proxy, compactTokens: s.codec, mentor: s.mentor, serviceTiers: s.provider.serviceTiers}
+	executor := requestExecutor{provider: exchange, output: output, issues: s.issues, mekugiCalls: s.proxy, mentor: s.mentor, serviceTiers: s.provider.serviceTiers}
 	err = executor.execute(startCtx, executionCtx, parsed, headers, routingSessionID(headers, parsed))
 	if err != nil && executionCtx.Err() == nil && !s.errorDelivered {
 		if payload, writeErr := s.writeError(executionCtx, err); writeErr == nil {
@@ -779,7 +778,7 @@ func (e *webSocketExchange) Read(buffer []byte) (int, error) {
 func (e *webSocketExchange) Close() error { return nil }
 
 // executeRequest retains the normal SSE transformer composition. This final
-// adapter changes framing only, after CTP decoding, tool restoration and replay.
+// adapter changes framing only, after tool restoration and replay.
 type webSocketOutput struct {
 	exchange  *webSocketExchange
 	buffer    bytes.Buffer

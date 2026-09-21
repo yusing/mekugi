@@ -25,7 +25,6 @@ import (
 const (
 	defaultListenAddress        = "127.0.0.1:0"
 	defaultRewriteMode          = "mekugi"
-	defaultModelProtocol        = "native"
 	defaultRequestTimeout       = 10 * time.Minute
 	defaultStreamIdleTimeout    = 4 * time.Minute
 	requestBodyReadTimeout      = 30 * time.Second
@@ -64,16 +63,10 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if *flags.mode != "mekugi" && *flags.mode != "passthrough" {
 		return errors.New("--mode must be mekugi or passthrough")
 	}
-	if *flags.modelProtocol != "native" && *flags.modelProtocol != "ctp2" {
-		return errors.New("--model-protocol must be native or ctp2")
-	}
-	protocolSet := false
 	mainMentorSet := false
 	mentorSet := false
 	flags.Visit(func(item *flag.Flag) {
 		switch item.Name {
-		case "model-protocol":
-			protocolSet = true
 		case "main-mentor-handoff":
 			mainMentorSet = true
 		case "mentor-handoff":
@@ -81,16 +74,12 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		}
 	})
 	if *flags.mode == "passthrough" {
-		if protocolSet && *flags.modelProtocol != "native" {
-			return errors.New("--model-protocol ctp2 requires --mode mekugi")
-		}
 		if mentorSet && *flags.mentorHandoffEnabled {
 			return errors.New("--mentor-handoff requires --mode mekugi")
 		}
 		if mainMentorSet && *flags.mainMentorHandoffEnabled {
 			return errors.New("--main-mentor-handoff requires --mode mekugi")
 		}
-		*flags.modelProtocol = "native"
 		*flags.mainMentorHandoffEnabled = false
 		*flags.mentorHandoffEnabled = false
 	}
@@ -133,7 +122,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			}
 		}
 	}()
-	capture, err := capturer.New(capturer.Config{Output: *flags.captureOutput, Mode: *flags.mode, ModelProtocol: *flags.modelProtocol})
+	capture, err := capturer.New(capturer.Config{Output: *flags.captureOutput, Mode: *flags.mode})
 	if err != nil {
 		return fmt.Errorf("initialize capture: %w", err)
 	}
@@ -205,19 +194,12 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	var frontendDirectory string
 	var dataDirectory string
 	var mekugiCalls *mekugiProxy
-	var compactTokens *ctp2Codec
 	var mentor *mentorHandoff
 	if *flags.mode == "mekugi" {
 		var err error
 		dataDirectory, err = mekugiDataDirectory()
 		if err != nil {
 			return fmt.Errorf("initialize mekugi response proxy: %w", err)
-		}
-		if *flags.modelProtocol == "ctp2" {
-			compactTokens, err = newCTP2Codec()
-			if err != nil {
-				return fmt.Errorf("initialize compact token protocol: %w", err)
-			}
 		}
 	}
 	if *flags.mentorHandoffEnabled || *flags.mainMentorHandoffEnabled {
@@ -251,7 +233,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		if err != nil {
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
-		mekugiCalls = newMekugiProxy(registry, customizedInstructions, compactTokens != nil, titles)
+		mekugiCalls = newMekugiProxy(registry, customizedInstructions, titles)
 		mekugiCalls.noticeSink = issues.addNotice
 		replayStore.storageNotice = func(session, message string) { issues.addNotice(session, "storage_cleanup", message) }
 		mekugiCalls.commentary.debug = debug
@@ -288,10 +270,10 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		mux.HandleFunc("GET "+liveDiffEventsPath, mekugiCalls.autoLiveDiff.events.serveEvents)
 		mux.HandleFunc("POST "+commentaryPublisherPath, mekugiCalls.commentary.serveHTTP)
 	}
-	webSocketEndpoint := responsesWebSocketHandler(ctx, *flags.timeout, provider, issues, mekugiCalls, compactTokens, mentor)
+	webSocketEndpoint := responsesWebSocketHandler(ctx, *flags.timeout, provider, issues, mekugiCalls, mentor)
 	defer webSocketEndpoint.Close()
 	mux.Handle("GET /v1/responses", webSocketEndpoint)
-	mux.HandleFunc("POST /v1/responses", responsesHandler(ctx, *flags.timeout, provider, issues, mekugiCalls, compactTokens, mentor))
+	mux.HandleFunc("POST /v1/responses", responsesHandler(ctx, *flags.timeout, provider, issues, mekugiCalls, mentor))
 
 	server := &http.Server{
 		ErrorLog:          log.New(io.Discard, "", 0), // Disable net/http terminal diagnostics while Codex owns it.
@@ -379,7 +361,6 @@ func responsesHandler(
 	provider responseProvider,
 	issues *CriticalErrors,
 	mekugiCalls *mekugiProxy,
-	compactTokens *ctp2Codec,
 	mentor *mentorHandoff,
 ) http.HandlerFunc {
 	var serviceTiers map[string]string
@@ -405,7 +386,7 @@ func responsesHandler(
 		startCtx, executionCtx, cancelRequest := requestContexts(request.Context(), lifecycle, responseStartTimeout)
 		defer cancelRequest()
 		sessionID := routingSessionID(request.Header, parsedRequest)
-		executor := requestExecutor{provider: provider, output: trackedWriter, issues: issues, mekugiCalls: mekugiCalls, compactTokens: compactTokens, mentor: mentor, serviceTiers: serviceTiers}
+		executor := requestExecutor{provider: provider, output: trackedWriter, issues: issues, mekugiCalls: mekugiCalls, mentor: mentor, serviceTiers: serviceTiers}
 		if err := executor.execute(startCtx, executionCtx, parsedRequest, request.Header, sessionID); err != nil {
 			writeRequestError(trackedWriter, err)
 		}
