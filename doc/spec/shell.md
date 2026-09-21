@@ -168,9 +168,9 @@ channel, not a script-input interface; unsupported stdin returns an actionable
 diagnostic.
 
 Bash and POSIX programs execute with their selected semantics inside the authenticated
-worker. Private search and inspection operations share that execution's cwd, environment,
-redirections, pipelines, output, status, and cancellation. Session-private executable
-frontends such as `mcat`, `msymbol`, and `mrun` run as ordinary external commands and inherit
+worker. Private search operations share that execution's cwd, environment, redirections,
+pipelines, output, status, and cancellation. Session-private executable frontends such as
+`mcat`, `msymbol`, `inspect_file`, and `mrun` run as ordinary external commands and inherit
 the same shell context without private dispatch. Other commands and interpreters use the inherited executor environment.
 Cancellation and output limits apply to descendant processes through a bounded
 foreground-process and inherited-pipe shutdown, without starting another router

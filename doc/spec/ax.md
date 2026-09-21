@@ -2,9 +2,9 @@
 
 ## REQ-AX-001 — Runtime reads and evidence-backed AX reporting
 
-The authenticated `mcat` and `msymbol` frontends observe their stock external invocations. The
-shell worker observes actual invocations of private `hgrep` and `inspect_file` at their
-dispatch boundary. An absolute `MEKUGI_AX_OUTPUT` opts into
+The authenticated `mcat`, `msymbol`, and `inspect_file` frontends observe their stock external
+invocations. The shell worker observes actual invocations of private `hgrep` at its dispatch
+boundary. An absolute `MEKUGI_AX_OUTPUT` opts into
 a local `mekugi.ax.read.v2` JSONL journal. Each worker inherits this environment value;
 no router process, transport request, or static source scan supplies an executed-read count.
 
@@ -30,7 +30,7 @@ pipelines preserve that argument. No outer AX comment or environment prefix is e
 Offline correlation reads literal worker framing through recognized `command` and `env`
 wrappers. Other wrapper forms remain unattributed rather than guessed. Retained historical
 outer AX markers remain readable. Neither a bare environment assignment nor an arbitrary command establishes identity.
-Direct external commands, including `mcat`, remain unchanged and have no shell call or
+Direct external commands, including `mcat` and `inspect_file`, remain unchanged and have no shell call or
 shell-worker invocation identity;
 their native timing remains available without an inferred logical-call join. These joins are
 local correlation evidence, not authentication.

@@ -57,7 +57,7 @@ func TestAXReaderFailureClassesPreserveOutputAndCallIdentity(t *testing.T) {
 		if failure.ExitCode == nil {
 			t.Fatalf("uncorrelated failure: %+v", failure)
 		}
-		if failure.Tool == "mcat" || failure.Tool == "msymbol" {
+		if failure.Tool == "mcat" || failure.Tool == "msymbol" || failure.Tool == "inspect_file" {
 			if failure.CallID != "" || failure.ShellID != "" {
 				t.Fatalf("external frontend inherited shell correlation: %+v", failure)
 			}

@@ -188,7 +188,7 @@ func runAuthenticatedToolWorker(
 		}
 	} else if contribution.PluginID == builtinToolsPluginID && contribution.Name == "mcat" {
 		execution, err = executeMCat(ctx, manifest, runtimeRoot, args, *contribution)
-	} else if contribution.PluginID == builtinToolsPluginID && contribution.Name == "msymbol" {
+	} else if contribution.PluginID == builtinToolsPluginID && (contribution.Name == "msymbol" || contribution.Name == "inspect_file") {
 		execution, err = executeFrontendReader(ctx, manifest, runtimeRoot, args, *contribution)
 	} else if contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell" {
 		workingDirectory, workingDirectoryErr := os.Getwd()

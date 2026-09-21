@@ -63,6 +63,7 @@ func TestSubagentToolDisplay(t *testing.T) {
 		{"shell", "echo a\n  echo b", "Run\n```bash\necho a\n  echo b\n```"},
 		{"exec_command", `{"cmd":"shell bash $'cat a\\n'","login":false}`, "Read `a`"},
 		{"exec_command", `{"cmd":"msymbol refs a.go 42 Name","login":false}`, "Search `refs a.go 42 Name`"},
+		{"exec_command", `{"cmd":"inspect_file a.go","login":false}`, "Inspect `a.go`"},
 		{"shell", `{"command":["bash","-lc","cat a"]}`, "Read `a`"},
 		{"view_image", `{"path":"/tmp/a.png"}`, "View image\n`/tmp/a.png`"},
 		{"exec", `const result = await tools.exec_command({"cmd":"shell bash $'cat a\\n'","login":false}); text(JSON.stringify(Object.assign({}, result, {"retained":false})));`, "Read `a`"},

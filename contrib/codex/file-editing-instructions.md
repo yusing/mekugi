@@ -184,8 +184,8 @@ For omitted output, run the
 exact `next_call: mread REF` without repeating producer arguments. Reading never reruns a producer;
 commands retain their exit status. Outer host truncation can still hide a receipt.
 
-`mcat`, `mread`, and `msymbol` are standalone executables supplied on the wrapped session `PATH`;
-the remaining private source readers run in Bash/POSIX. Readers accept
+`mcat`, `mread`, `msymbol`, and `inspect_file` are standalone executables supplied on the wrapped
+session `PATH`; the remaining private source reader runs in Bash/POSIX. Readers accept
 `--max-tokens N` (1–15500, default 4000). Mcat emits raw context without line/hash
 prefixes. Copy verified identities only from hash-bearing tools and never reconstruct
 hashes. Incomplete results do not establish coverage.

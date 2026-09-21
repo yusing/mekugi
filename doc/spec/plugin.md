@@ -105,11 +105,11 @@ The plugin worker keeps the frontend standard input separate from the JavaScript
 host's JSON control stream. The host exposes that input only as a dedicated inherited descriptor during
 executor calls.
 
-Built-in shell, standalone `mcat` and `msymbol`, router-native `mread` and `mrun`, and the remaining
-private hgrep and inspect_file commands use the same authenticated executor snapshot. The shared
+Built-in shell, standalone `mcat`, `msymbol`, and `inspect_file`, router-native `mread` and `mrun`,
+and the remaining private hgrep command use the same authenticated executor snapshot. The shared
 `shell` name locates the shell executor for the current thread. Each executable
 command has a session-private frontend in the same `bin` directory as configured
-plugins. Stock `exec_command` invokes `mcat`, `mrun`, and `msymbol` directly under Codex's cwd,
+plugins. Stock `exec_command` invokes `mcat`, `mrun`, `msymbol`, and `inspect_file` directly under Codex's cwd,
 environment, sandbox, and process lifecycle; the shell carrier no longer
 dispatches or transforms them. Not-yet-migrated private commands may still use the
 shell dispatcher while exposing the same pinned frontend.
@@ -124,6 +124,8 @@ Codex still owns the frontend process, yielding, terminal, signals, and continua
 The generated `msymbol` contribution uses the same authenticated executable path and
 generated plugin implementation. Its worker wrapper adds the shared AX observation but
 does not duplicate language-server, selection, output-bound, or recovery semantics.
+The generated `inspect_file` contribution uses that wrapper without changing its structural
+inspection, output-bound, or recovery semantics.
 
 Executors may attach a private `failureClass` only with a nonzero exit status.
 The host accepts only the documented reader-failure allowlist; arbitrary values and

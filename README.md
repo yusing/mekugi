@@ -341,8 +341,8 @@ needs raw output.
 
 The wrapped session provides the commands below. `mread`, `mrun`, `mcat`, `hgrep`,
 `msymbol`, and `inspect_file` are session-private executables on Codex's `PATH`;
-they are not installed as global terminal utilities. `mread`, `mrun`, `mcat`, and
-`msymbol` run through stock execution rather than the private shell dispatcher. `hchanges`
+they are not installed as global terminal utilities. `mread`, `mrun`, `mcat`, `msymbol`, and
+`inspect_file` run through stock execution rather than the private shell dispatcher. `hchanges`
 remains shell-only until its migration.
 
 | Command | Purpose | Extra prerequisite on the executor's `PATH` |

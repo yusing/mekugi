@@ -1,9 +1,9 @@
-# Shell-routed structural file inspection
+# Executable structural file inspection
 
-## REQ-INSPECT-001 — Shell-routed structural file inspection
+## REQ-INSPECT-001 — Executable structural file inspection
 
 The model-private `inspect_file [--max-tokens N] PATH` command remains available
-through the shell dispatcher and its authenticated session frontend. It accepts one shell-separated
+through its authenticated session frontend and stock command execution. It accepts one shell-separated
 path, relative to the process working directory or absolute, like mcat. Parent
 paths and symlinks are allowed; the target must be a host-readable regular file.
 Codex owns filesystem permissions.
@@ -53,8 +53,8 @@ Command failures write one closed LF-terminated JSON envelope to stdout, leave s
 exit nonzero. Stable codes are `usage`, `not_found`, `not_regular`, `not_utf8`,
 `read`, `parse`, and `output_limit`. The centralized Codex guidance and
 private call contract embed a concise success, failure, and outline-entry shape rather than the
-normative specification schema. Shell replay keeps the original call and output; inspect_file is
-not model-visible, directly routed, or included in mekugi recovery ancestry. Passthrough mode
+normative specification schema. Stock execution keeps the original call and output; inspect_file is
+not model-visible, shell-routed, or included in mekugi recovery ancestry. Passthrough mode
 installs and advertises none of these surfaces.
 
 Acceptance:
@@ -67,9 +67,9 @@ Acceptance:
    `/`, preserves duplicate pointers, and never returns scalar values.
 3. Unsupported files are checked as regular without content reads, UTF-8 validation,
    line counting, content detection, or command-level truncation.
-4. Private routing, model visibility, replay, and passthrough isolation follow
-   [REQ-READ-001](read.md). Instruction and CTP behavior remain owned by
-   `REQ-GUIDE-001` and `REQ-CTP-001`.
+4. Frontend authentication, model visibility, replay, and passthrough isolation follow
+   [REQ-READ-001](read.md). Instruction and executable-frontend behavior remain owned by
+   `REQ-GUIDE-001` and `REQ-PLUGIN-001`.
 
 5. Absolute, parent-relative, and symlink paths outside the current directory work
    when host permissions allow; non-regular files still fail.
