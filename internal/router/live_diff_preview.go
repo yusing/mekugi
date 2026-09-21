@@ -213,6 +213,10 @@ func (w *liveDiffPreviewWorker) run() {
 			preview.Status = "STREAMING PREVIEW"
 		} else {
 			preview.Input, preview.Syntax = projectionInput, liveDiffScriptSyntax(projectionInput)
+			if projection, projected := shellInterpreterScriptProjection(projectionInput); projected {
+				preview.Input = projection.Source
+				preview.Syntax = []liveDiffSourceSpan{{Path: liveDiffLanguagePath(projection.Language)}}
+			}
 			preview.Status = "STREAMING SCRIPT"
 		}
 		if ok && err == nil {

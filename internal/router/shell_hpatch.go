@@ -228,17 +228,18 @@ func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, t
 				if record.History.Applied && record.History.TranslationError == "" {
 					var summaries []string
 					for _, file := range record.History.ReviewFiles {
+						action := file.Action().Title()
 						path := file.AfterPath
 						if path == "" {
 							path = file.BeforePath
 						}
 						path = pathdisplay.ForWorkspace(workspace, path)
 						if file.Incomplete != "" {
-							summaries = append(summaries, fmt.Sprintf("Edit %s: incomplete history; line counts unavailable", commentaryCode(path)))
+							summaries = append(summaries, fmt.Sprintf("%s %s: incomplete history; line counts unavailable", action, commentaryCode(path)))
 							continue
 						}
 						added, removed := file.LineCounts()
-						summaries = append(summaries, fmt.Sprintf("Edit %s +%d -%d", commentaryCode(path), added, removed))
+						summaries = append(summaries, fmt.Sprintf("%s %s +%d -%d", action, commentaryCode(path), added, removed))
 					}
 					activity.collect(thread, "edit-receipt\x00"+workspace+"\x00"+callID, "tool", strings.Join(summaries, "\n\n"))
 				}

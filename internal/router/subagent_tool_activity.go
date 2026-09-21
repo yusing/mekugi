@@ -95,7 +95,7 @@ func toolActivityGroup(author, text string) string {
 		heading, detail, _ := strings.Cut(block, "\n")
 		separator := "\n"
 		// These classified operations place their operand on the heading line.
-		for _, label := range []string{"Read", "Skill Read", "Skill Reference Read", "List", "Search", "Inspect", "Write", "Edit", "Delete", "Move", "Run"} {
+		for _, label := range []string{"Read", "Skill Read", "Skill Reference Read", "List", "Search", "Inspect", "Write", "Create", "Edit", "Delete", "Move", "Run"} {
 			if operand, ok := strings.CutPrefix(heading, label+" "); ok && strings.HasPrefix(operand, "`") {
 				heading = label
 				if detail != "" {

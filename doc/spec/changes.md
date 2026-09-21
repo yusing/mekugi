@@ -243,6 +243,12 @@ an edit card or expose its edit payload as shell source.
 Early speculative previews never execute shell code, apply files, format source, run hooks,
 or publish durable changes.
 
+For a literal single-command interpreter wrapper, streaming script display uses the literal program
+body and its normalized language rather than the surrounding Bash command. Command-string forms such
+as `python -c` and `node -e`, and literal stdin heredocs such as `python - <<'PY'`, share the same
+display-only projector as completed operation commentary. Partial input remains provisional and never
+publishes a completed change before host execution succeeds.
+
 During Codex-authorized execution, every successfully evaluated `hpatch` invocation publishes
 a separately labeled `PRE-WRITE DIFF` from the actual formatted evaluation before commit.
 This includes expanded arguments, generated or redirected stdin, shell compositions,

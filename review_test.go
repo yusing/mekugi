@@ -26,6 +26,23 @@ func TestReviewFiles(t *testing.T) {
 	}
 }
 
+func TestReviewActionClassifiesCapturedIdentity(t *testing.T) {
+	for _, test := range []struct {
+		file   ReviewFile
+		action ReviewAction
+		title  string
+	}{
+		{ReviewFile{AfterPath: "new"}, ReviewAdd, "Create"},
+		{ReviewFile{BeforePath: "same", AfterPath: "same"}, ReviewUpdate, "Edit"},
+		{ReviewFile{BeforePath: "old"}, ReviewDelete, "Delete"},
+		{ReviewFile{BeforePath: "old", AfterPath: "new"}, ReviewMove, "Move"},
+	} {
+		if got := test.file.Action(); got != test.action || got.Title() != test.title {
+			t.Errorf("Action(%+v) = %q/%q; want %q/%q", test.file, got, got.Title(), test.action, test.title)
+		}
+	}
+}
+
 func TestHostReviewCapturesFormattedState(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "sample.go", "", 0o644)

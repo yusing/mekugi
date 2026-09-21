@@ -61,11 +61,23 @@ func toolActivityShellLanguage(script, language string) string {
 	if strings.TrimSpace(script) == "" {
 		return "Run"
 	}
+	if projection, ok := shellInterpreterScriptProjection(script); ok {
+		return "Run\n" + toolActivityFenced(projection.Language, projection.Source)
+	}
 	if err != nil || len(parsed.Interpreter) == 0 {
 		language = ""
 	} else if parsed.Interpreter[0] != "bash" {
-		language = shellsyntax.InterpreterIdentity(parsed.Interpreter[0])
+		language = parsed.Interpreter[0]
 	}
+	language = toolActivityLanguage(language)
+	return "Run\n" + toolActivityFenced(language, script)
+}
+
+func toolActivityLanguage(interpreter string) string {
+	if strings.TrimSpace(interpreter) == "" {
+		return ""
+	}
+	language := shellsyntax.InterpreterIdentity(interpreter)
 	// Normalize known executable families, including versioned names such as
 	// python3.12 and lua5.4. Leave other names intact for Codex's syntax lookup.
 	switch strings.TrimRight(language, "0123456789.") {
@@ -95,12 +107,14 @@ func toolActivityShellLanguage(script, language string) string {
 		language = "bash"
 	case "gawk", "mawk", "nawk":
 		language = "awk"
+	case "psql", "mysql", "sqlite":
+		language = "sql"
 	}
 	// Interpreter filenames need not be safe Markdown info strings.
 	if strings.ContainsAny(language, "`~ \t\r\n") {
 		language = ""
 	}
-	return "Run\n" + toolActivityFenced(language, script)
+	return language
 }
 
 func toolActivityReads(script string) (string, bool) {

@@ -25,6 +25,7 @@ func TestSubagentToolActivityJSONAndSSE(t *testing.T) {
 				{"type": "function_call", "id": "native-message", "call_id": "native-message", "namespace": "mekugi_collaboration", "name": "send_message", "arguments": "opaque message"},
 				{"type": "shell_call", "id": "shell", "status": "completed", "action": map[string]any{"commands": []string{"echo a", "  echo b"}}},
 				{"type": "local_shell_call", "id": "exec", "status": "completed", "action": map[string]any{"command": []string{"bash", "-lc", "cat a"}}},
+				{"type": "local_shell_call", "id": "python-wrapper", "status": "completed", "action": map[string]any{"command": []string{"bash", "-lc", "python3 - <<'PY'\nprint('projected')\nPY\n"}}},
 				{"type": "web_search_call", "id": "web", "status": "completed", "action": map[string]any{"type": "search", "query": "Go parser"}},
 				{"type": "custom_tool_call", "id": "mcp", "call_id": "mcp", "name": "exec", "input": `const r = await tools.mcp__openaiDeveloperDocs__fetch_openai_doc({url:"https://learn.chatgpt.com/docs/developer-commands",anchor:"#built-in-slash-commands"}); text(r);`},
 				{"type": "function_call", "id": "namespaced-mcp", "call_id": "namespaced-mcp", "namespace": "mcp__docs", "name": "lookup", "arguments": "{}"},
@@ -62,7 +63,7 @@ func TestSubagentToolActivityJSONAndSSE(t *testing.T) {
 			want := "In `/root/worker`\n\n- Still Running\n  ```bash\n  go test ./internal/router\n  ```\n\n- Stop\n  ```bash\n  go test ./internal/router\n  ```\n\n- Tool call: `functions.lookup`\n  `{\"query\":\"hello\"}`" +
 				"\n\n- Tool call: `external`\n  ```\n  first line\n  " + strings.Repeat("界", 300) + "\n  ```" +
 				"\n\n- Run\n  ```bash\n  echo a\n    echo b\n  ```" +
-				"\n\n- Read `a`\n\n- Search web\n  `Go parser`" +
+				"\n\n- Read `a`\n\n- Run\n  ```python\n  print('projected')\n  ```\n\n- Search web\n  `Go parser`" +
 				"\n\n- MCP `openaiDeveloperDocs.fetch_openai_doc`\n  `{\"anchor\":\"#built-in-slash-commands\",\"url\":\"https://learn.chatgpt.com/docs/developer-commands\"}`" +
 				"\n\n- MCP `docs.lookup`\n  `{}`" +
 				"\n\n- List MCP resources\n  `{}`\n\n- Read current time\n  `{}`"

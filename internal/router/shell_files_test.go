@@ -101,6 +101,84 @@ func TestShellFileOperationsHistoryAndLiveDiff(t *testing.T) {
 	}
 }
 
+func TestShellCatCommittedActivityClassifiesCreateAndEdit(t *testing.T) {
+	registry := sharedProxyTestRegistry(t)
+	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := openMekugiReplayStore(manifest.ReplayDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	const root, child = "cat-root", "cat-child"
+	activity := newSubagentActivity()
+	if !activity.observe(root, "", "/root", false) || !activity.observe(child, root, "/root/writer", true) {
+		t.Fatal("failed to establish activity ancestry")
+	}
+	broker := newCommentaryBroker()
+	broker.editPublisher = func(ctx context.Context, workspace, thread, callID string) error {
+		return store.publishEditReceipt(ctx, workspace, thread, callID, activity)
+	}
+	server := httptest.NewServer(http.HandlerFunc(broker.serveHTTP))
+	defer server.Close()
+	sink := &httpShellCommentarySink{
+		endpoint: server.URL,
+		token:    broker.subscribeThread(workspace+"\x00cat", child, "/root/writer"),
+		client:   server.Client(),
+	}
+	shell, _ := registry.contribution("shell")
+	run := func(source, wantAction string) {
+		t.Helper()
+		result, err := executeShellTool(t.Context(), manifest, registry.RuntimeRoot, &shell,
+			[]string{"bash", source}, nil, workspace,
+			append(os.Environ(), "CODEX_THREAD_ID="+child), sink, nil, nil)
+		if err != nil || result.ExitCode != 0 {
+			t.Fatalf("execution=%+v err=%v", result, err)
+		}
+		messages := activity.drain(root, time.Time{}, maxCommentaryPublicationBytes)
+		if len(messages) != 1 {
+			t.Fatalf("activity messages=%d for %q", len(messages), source)
+		}
+		text := commentaryText(t, messages[0])
+		if !strings.Contains(text, wantAction+" `target.txt`") {
+			t.Fatalf("activity=%q; want %s label", text, wantAction)
+		}
+		var id string
+		for line := range strings.SplitSeq(result.Stderr, "\n") {
+			if value, ok := strings.CutPrefix(line, "change "); ok {
+				id = value
+			}
+		}
+		index, readErr := store.readChangeIndex(workspace)
+		if readErr != nil || id == "" || len(index.Changes[id].Calls) != 1 {
+			t.Fatalf("change index=%+v id=%q err=%v", index.Changes[id], id, readErr)
+		}
+		record, found, readErr := store.read(workspace, index.Changes[id].Calls[0].ID, false)
+		if readErr != nil || !found || len(record.History.ReviewFiles) != 1 || record.History.ReviewFiles[0].Action().Title() != wantAction {
+			t.Fatalf("durable evidence=%+v found=%t err=%v", record.History.ReviewFiles, found, readErr)
+		}
+		summary, readErr := store.readChanges(t.Context(), changeReadOptions{workspace: workspace, ids: []string{id}, view: "summary"})
+		if readErr != nil || !strings.Contains(summary, "target.txt") {
+			t.Fatalf("hchanges summary=%q; want classified target: %v", summary, readErr)
+		}
+	}
+
+	run("cat >target.txt <<'DATA'\none\nDATA\n", "Create")
+	run("cat >>target.txt <<'DATA'\ntwo\nDATA\n", "Edit")
+	run("cat >target.txt <<'DATA'\nthree\nDATA\n", "Edit")
+	failed, err := executeShellTool(t.Context(), manifest, registry.RuntimeRoot, &shell,
+		[]string{"bash", "cat >missing/target.txt <<'DATA'\nnope\nDATA\n"}, nil, workspace,
+		append(os.Environ(), "CODEX_THREAD_ID="+child), sink, nil, nil)
+	if err != nil || failed.ExitCode == 0 {
+		t.Fatalf("failed redirect execution=%+v err=%v", failed, err)
+	}
+	if messages := activity.drain(root, time.Time{}, maxCommentaryPublicationBytes); len(messages) != 0 {
+		t.Fatalf("failed redirect published %d successful changes", len(messages))
+	}
+}
+
 func TestShellFileWritesPreserveBytesInodesAndProgramData(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
 	for _, interpreter := range []string{"bash", "sh"} {

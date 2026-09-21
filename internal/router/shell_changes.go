@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/yusing/mekugi"
 	"mvdan.cc/sh/v3/interp"
 )
 
@@ -211,17 +212,18 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				}
 			}
 			for _, file := range history.ReviewFiles {
+				action := file.Action()
 				if len(options.paths) > 0 && !changePathMatches(options, file.BeforePath) && !changePathMatches(options, file.AfterPath) {
 					continue
 				}
 				matched = true
 				if options.view == "summary" {
 					path := file.AfterPath
-					if path == "" {
+					if action == mekugi.ReviewDelete {
 						path = file.BeforePath
 					}
 					path = displayPath(path)
-					if file.BeforePath != "" && file.AfterPath != "" && file.BeforePath != file.AfterPath {
+					if action == mekugi.ReviewMove {
 						before := displayPath(file.BeforePath)
 						path = before + " => " + path
 					}

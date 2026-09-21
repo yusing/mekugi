@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func waitLiveDiffWorkerPreview(t *testing.T, broker *liveDiffBroker, sub *liveDiffSubscriber, match func(liveDiffPreview) bool) liveDiffPreview {
@@ -37,6 +39,47 @@ func newLiveDiffWorkerTest(t *testing.T, workspace string) (*liveDiffBroker, *li
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
 	t.Cleanup(worker.stop)
 	return broker, sub, worker
+}
+
+func TestLiveDiffInterpreterWrapperStreamsProjectedProgram(t *testing.T) {
+	workspace := t.TempDir()
+	broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
+	worker.appendDelta("python3 - <<'PY'\nprint('stream")
+	first := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+		return strings.Contains(preview.Input, "print('stream")
+	})
+	if first.Status != "STREAMING SCRIPT" || first.Input != "print('stream" || len(first.Files) != 0 ||
+		first.Complete || first.Evaluated || len(first.Syntax) != 1 || first.Syntax[0].Path != "stream.py" {
+		t.Fatalf("partial interpreter projection claimed more than streamed source: %+v", first)
+	}
+	worker.appendDelta("ing')")
+	final := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+		return preview.Input == "print('streaming')"
+	})
+	if strings.Contains(final.Input, "python3") || final.Status != "STREAMING SCRIPT" || final.Complete || final.Evaluated {
+		t.Fatalf("streamed wrapper was not a provisional program projection: %+v", final)
+	}
+	var pane liveDiffPreviewPane
+	pane.update(final)
+	lines, err := pane.render(t.Context(), workspace, livediff.DarkTheme, 80, 8)
+	frame := ansi.Strip(strings.Join(lines, "\n"))
+	if err != nil || !strings.Contains(frame, "print('streaming')") || strings.Contains(frame, "python3 -") ||
+		!strings.Contains(frame, "STREAMING SCRIPT") {
+		t.Fatalf("rendered streaming projection=%q err=%v", frame, err)
+	}
+}
+
+func TestLiveDiffInterpreterWrapperUsesProjectedLanguage(t *testing.T) {
+	workspace := t.TempDir()
+	broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
+	worker.appendDelta(`lua -e 'print("streamed")'`)
+	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+		return preview.Input == `print("streamed")`
+	})
+	if len(preview.Syntax) != 1 || preview.Syntax[0].Path != "stream.lua" || preview.Status != "STREAMING SCRIPT" ||
+		preview.Complete || preview.Evaluated {
+		t.Fatalf("Lua wrapper projection=%+v", preview)
+	}
 }
 
 func TestLiveDiffShellEditLiteralInputs(t *testing.T) {

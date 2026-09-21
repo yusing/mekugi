@@ -153,9 +153,45 @@ func TestSubagentCodeModeOutputProjection(t *testing.T) {
 			`,workdir:"/tmp",yield_time_ms:30000,max_output_tokens:12000});` +
 			"\n" + projection + ";"
 		item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
-		want := "Run\n```bash\n" + command + "\n```"
+		want := "Run\n```python\nimport pathlib, json\nprint('done')\n```"
 		if got := subagentToolActivityText(item, "exec"); got != want {
 			t.Fatalf("display = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestSubagentInterpreterWrapperProjection(t *testing.T) {
+	for _, test := range []struct {
+		name, source, language, program string
+	}{
+		{"python command", `python3 -I -c 'print("ok")'`, "python", `print("ok")`},
+		{"pypy command", `pypy3 -c 'print("ok")'`, "python", `print("ok")`},
+		{"python heredoc", "python3 - <<'PY'\nprint('ok')\nPY\n", "python", "print('ok')\n"},
+		{"node command", `node --input-type=module -e 'console.log("ok")'`, "javascript", `console.log("ok")`},
+		{"bun heredoc", "bun - <<'JS'\nconsole.log('ok')\nJS\n", "javascript", "console.log('ok')\n"},
+		{"ruby command", `ruby -e 'puts "ok"'`, "ruby", `puts "ok"`},
+		{"php command", `php -r 'echo "ok";'`, "php", `echo "ok";`},
+		{"shell combined flag", `sh -ec 'printf ok'`, "sh", `printf ok`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			want := "Run\n" + toolActivityFenced(test.language, test.program)
+			if got := toolActivityShell(test.source); got != want {
+				t.Fatalf("display = %q; want %q", got, want)
+			}
+		})
+	}
+
+	for _, source := range []string{
+		`python3 -c "$program"`,
+		`python3 -c 'print(1)' "$(touch hidden-effect)"`,
+		"python3 script.py <<'PY'\ndata\nPY\n",
+		"printf before\npython3 -c 'print(1)'",
+		"python3 -c 'print(1)' <<'DATA'\ninput\nDATA\n",
+		`perl -e 'print "first\n"' -e 'print "second\n"'`,
+		`perl -e 'print "first\n"' '-eprint "second\n"'`,
+	} {
+		if got, want := toolActivityShell(source), "Run\n"+toolActivityFenced("bash", source); got != want {
+			t.Errorf("dynamic or composed wrapper display = %q; want %q", got, want)
 		}
 	}
 }

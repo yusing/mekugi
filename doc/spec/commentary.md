@@ -54,7 +54,11 @@ runghc/runhaskell to `haskell`, pwsh to `powershell`, ash/dash/ksh to `bash`, an
 gawk/mawk/nawk to `awk`. Numeric version suffixes on these known executable families,
 Python, Ruby, Perl, PHP, Lua, and PowerShell are normalized too, such as `python3.12`
 and `php8.3`. Other interpreter names pass through unchanged after path and case
-normalization; unavailable or unsafe language tags use an untagged fence. Source text remains intact.
+normalization; unavailable or unsafe language tags use an untagged fence. Source text otherwise remains intact.
+Literal single-command interpreter wrappers project the program itself rather than the Bash wrapper.
+This includes supported command-string flags such as Python `-c` and Node `-e`, plus literal stdin
+heredocs such as `python - <<'PY'`; the same projector supplies live streaming script previews and
+completed generated commentary without evaluating shell expansions or implying execution success.
 Transparent result wrappers include inline `text(await tools.exec_command(...))` and
 `text(await tools.write_stdin(...))`, as well as `text(result)`, `text(result.output)`, and JSON result
 projections, with the matching local binding name. Recognition uses the JavaScript parse tree,
@@ -110,7 +114,9 @@ Hcat and inspect_file previews validate literal option bounds, duplicates, and o
 placement before classification; invalid forms retain their source-level `Run` display.
 Native `apply_patch` calls do not generate operation commentary. Standalone shell-based
 `hpatch` calls omit the `Run` preview and patch body. After execution, authenticated
-committed receipts produce `Edit <path> +N -N` per file for child activity, using the
+committed receipts classify the captured before/after identities once and produce
+`Create <path> +N -N`, `Edit <path> +N -N`, `Delete <path> +N -N`, or
+`Move <path> +N -N` per file for child activity, using the
 captured formatted result's added and removed line counts. Paths inside the workspace are
 relative; paths outside it remain absolute, matching the live diff display. Supported shell
 file-operation receipts use the same display; incomplete captures explicitly report incomplete history

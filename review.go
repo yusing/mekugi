@@ -21,6 +21,45 @@ type ReviewFile struct {
 	Incomplete string `json:",omitzero"`
 }
 
+// ReviewAction classifies a committed before/after file identity. Renderers use
+// this one classification instead of inferring operation labels independently.
+type ReviewAction string
+
+const (
+	ReviewAdd    ReviewAction = "add"
+	ReviewUpdate ReviewAction = "update"
+	ReviewDelete ReviewAction = "delete"
+	ReviewMove   ReviewAction = "move"
+)
+
+// Action classifies the committed file operation from its captured identities.
+func (file ReviewFile) Action() ReviewAction {
+	switch {
+	case file.BeforePath == "":
+		return ReviewAdd
+	case file.AfterPath == "":
+		return ReviewDelete
+	case file.BeforePath != file.AfterPath:
+		return ReviewMove
+	default:
+		return ReviewUpdate
+	}
+}
+
+// Title returns the user-facing operation name for reports and commentary.
+func (action ReviewAction) Title() string {
+	switch action {
+	case ReviewAdd:
+		return "Create"
+	case ReviewDelete:
+		return "Delete"
+	case ReviewMove:
+		return "Move"
+	default:
+		return "Edit"
+	}
+}
+
 // UnifiedDiff omits the redundant operation header when unified headers already
 // describe the file. Header-only changes (empty files and pure moves) retain it.
 // Rendering captured records here also keeps historical reads consistent.
@@ -176,17 +215,8 @@ func RenderIncompleteReviewFile(beforePath, afterPath, reason string) ReviewFile
 // renderReviewFile also renders sparse composed regions, without pretending that
 // uncaptured source outside a region is known.
 func renderReviewFile(file ReviewFile, a, b []string, beforeOffset, afterOffset int) ReviewFile {
-	action := "update"
-	switch {
-	case file.BeforePath == "":
-		action = "add"
-	case file.AfterPath == "":
-		action = "delete"
-	case file.BeforePath != file.AfterPath:
-		action = "move"
-	}
 	var diff strings.Builder
-	fmt.Fprintf(&diff, "%s %q -> %q\n", action, file.BeforePath, file.AfterPath)
+	fmt.Fprintf(&diff, "%s %q -> %q\n", file.Action(), file.BeforePath, file.AfterPath)
 	groups := difflib.NewMatcher(a, b).GetGroupedOpCodes(3)
 	if len(groups) != 0 {
 		fmt.Fprintf(&diff, "--- %s\n+++ %s\n", reviewPath(file.BeforePath), reviewPath(file.AfterPath))

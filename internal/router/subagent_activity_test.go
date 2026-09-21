@@ -273,6 +273,11 @@ func TestToolActivityCollapsesActionsWithinAndAcrossCalls(t *testing.T) {
 			want:  "[`/root/c`] Edit `a`\n```diff\n-old\n+new\n```\n`b`\n```diff\n-before\n+after\n```",
 		},
 		{
+			name:  "created files",
+			calls: []string{"Create `a` +1 -0", "Create `b` +2 -0"},
+			want:  "[`/root/c`] Create `a` +1 -0 `b` +2 -0",
+		},
+		{
 			name:  "source fences",
 			calls: []string{"Run\n````bash\nprintf '```'\n\n# Run\n````", "Run\n```python\nprint(1)\n```"},
 			want:  "[`/root/c`] Run\n````bash\nprintf '```'\n\n# Run\n````\n```python\nprint(1)\n```",

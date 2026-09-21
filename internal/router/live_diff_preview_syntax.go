@@ -28,26 +28,43 @@ func liveDiffScriptSyntax(input string) []liveDiffSourceSpan {
 			if shellsyntax.InterpreterIdentity(args[0]) == "uv" && len(args) >= 3 && args[1] == "run" {
 				args = args[2:]
 			}
-			name := shellsyntax.InterpreterIdentity(args[0])
-			switch {
-			case strings.HasPrefix(name, "python"):
-				path = "stream.py"
-			case name == "node" || name == "nodejs" || name == "bun" || name == "deno":
-				path = "stream.ts"
-			case name == "ruby":
-				path = "stream.rb"
-			case name == "perl":
-				path = "stream.pl"
-			case name == "php":
-				path = "stream.php"
-			case name == "pwsh" || name == "powershell":
-				path = "stream.ps1"
-			}
+			path = liveDiffLanguagePath(toolActivityLanguage(args[0]))
 		}
 		spans = append(spans, liveDiffSourceSpan{offset, path})
 		offset += len(program)
 	}
 	return spans
+}
+
+func liveDiffLanguagePath(language string) string {
+	switch language {
+	case "python":
+		return "stream.py"
+	case "javascript", "typescript":
+		return "stream.ts"
+	case "ruby":
+		return "stream.rb"
+	case "perl":
+		return "stream.pl"
+	case "php":
+		return "stream.php"
+	case "lua":
+		return "stream.lua"
+	case "tcl":
+		return "stream.tcl"
+	case "r":
+		return "stream.r"
+	case "haskell":
+		return "stream.hs"
+	case "awk":
+		return "stream.awk"
+	case "powershell":
+		return "stream.ps1"
+	case "sql":
+		return "stream.sql"
+	default:
+		return "stream.sh"
+	}
 }
 
 // Clip offsets together with source, retaining the language of a removed header.
