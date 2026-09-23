@@ -734,6 +734,55 @@ func TestStorageRetentionRejectsObsoleteHandleNames(t *testing.T) {
 	}
 }
 
+func TestNewRequestDoesNotReadUnrelatedRetentionCatalog(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	store := proxy.replayStore
+	name := storageSessionName("unrelated-thread")
+	invalid := retainedSession{
+		Version: 1, Thread: "unrelated-thread", LastUsed: time.Now().Add(-15 * 24 * time.Hour),
+		Files: map[string]bool{"obsolete.json": true},
+	}
+	if err := os.WriteFile(filepath.Join(store.directory, name), mustMarshalJSON(invalid), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.readRetainedSession(name); err == nil {
+		t.Fatal("unrelated catalog was not invalid")
+	}
+	newNativeMekugiTestTransformWithProxy(t, proxy)
+}
+
+func TestBackgroundRetentionReportsUnrelatedCatalogFailure(t *testing.T) {
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := storageSessionName("unrelated-thread")
+	invalid := retainedSession{
+		Version: 1, Thread: "unrelated-thread", LastUsed: time.Now().Add(-15 * 24 * time.Hour),
+		Files: map[string]bool{"obsolete.json": true},
+	}
+	if err := os.WriteFile(filepath.Join(store.directory, name), mustMarshalJSON(invalid), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	notified := make(chan struct{}, 1)
+	go func() {
+		defer close(done)
+		store.runRetentionSweeps(ctx, func() { notified <- struct{}{} })
+	}()
+	defer func() {
+		cancel()
+		<-done
+	}()
+	select {
+	case <-notified:
+	case <-time.After(5 * time.Second):
+		t.Fatal("background retention did not report the catalog failure")
+	}
+}
+
 func BenchmarkStorageReserveChange(b *testing.B) {
 	store, err := openMekugiReplayStore(b.TempDir())
 	if err != nil {

@@ -253,6 +253,18 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		if err != nil {
 			return fmt.Errorf("initialize commentary publisher: %w", err)
 		}
+		retentionCtx, stopRetention := context.WithCancel(ctx)
+		retentionDone := make(chan struct{})
+		go func() {
+			defer close(retentionDone)
+			mekugiCalls.replayStore.runRetentionSweeps(retentionCtx, func() {
+				issues.addNotice("", "storage_cleanup_failure", "Mekugi could not complete background storage cleanup. Session requests continue unless storage reaches its limit.")
+			})
+		}()
+		defer func() {
+			stopRetention()
+			<-retentionDone
+		}()
 	}
 
 	mux := http.NewServeMux()

@@ -56,7 +56,9 @@ consuming the managed-data allowance.
 
 Automatic retention removes Mekugi-owned data after 14 days without activity and reclaims the
 least recently active inactive sessions when a byte budget would be exceeded. Requests check
-space before exposing retained facts; age sweeps run at most hourly during request preparation.
+space before exposing retained facts; the router attempts an age sweep on startup and then
+hourly in the background, outside request preparation. An age-sweep failure does not fail an
+unrelated request and is reported as a router-wide notice.
 The policy never deletes Codex transcripts, workspace files, exported metrics, or explicit debug
 bundles. It never infers expiry from request truncation or compaction.
 

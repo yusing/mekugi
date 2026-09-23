@@ -408,7 +408,8 @@ old commands or restore live processes.
 Mekugi removes its session data after **14 days without activity**. When storage
 fills, it removes the least recently active inactive sessions until the new data
 fits. Running work is protected. **Your original Codex chats and workspace files
-are never deleted.** Cleanup can make old recovery and review references stop
+are never deleted.** Age-based cleanup runs in the background rather than as
+part of a new request. Cleanup can make old recovery and review references stop
 working. To reset storage, stop all Mekugi wrappers and move the replay
 directory aside.
 

@@ -907,3 +907,24 @@ func (s *mekugiReplayStore) cleanupSessions(ctx context.Context) error {
 		return s.writeFile("retention-sweep", "retention-pending-", nil)
 	})
 }
+
+// Age-based cleanup is router maintenance, not part of any request's replay
+// view. An unrelated catalog must not prevent a new thread from starting.
+func (s *mekugiReplayStore) runRetentionSweeps(ctx context.Context, notice func()) {
+	cleanup := func() {
+		if err := s.cleanupSessions(ctx); err != nil && ctx.Err() == nil && notice != nil {
+			notice()
+		}
+	}
+	cleanup()
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			cleanup()
+		}
+	}
+}

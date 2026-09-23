@@ -605,10 +605,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	transform.journalActive = true
 	transform.journalPending = make(map[string]bool)
 	transform.journalCalls = make(map[string]map[string]json.RawMessage)
-	if err := p.replayStore.cleanupSessions(ctx); err != nil {
-		transform.Close()
-		return nil, err
-	}
 	projectExecutionContinuations(request, tools, codeModeToolName, visible)
 	if transform.subagentTurn {
 		transform.prepareShellActivity(request.fields["input"])
