@@ -29,11 +29,27 @@ Mekugi records evidence under [REQ-CHANGES-001](changes.md). The stock tool
 result is forwarded unchanged, including errors. A failed call may have a
 partial workspace effect, but it never publishes a successful edit receipt.
 
-The live stream may also display stock `cat` heredoc writes and interpreter
-programs extracted from `exec_command` or Code Mode. This projection is for
+Command observation under [REQ-CHANGES-001](changes.md) reads the completed
+`exec_command` arguments or literal Code Mode command text. The forwarded call
+stays byte-identical, and its pre-call capture is time-bounded so that an
+unreadable scope becomes incomplete evidence rather than delaying Codex.
+Post-result change sweeps are bounded auxiliary observation, not execution hooks.
+They do not wrap commands, inject environments, or alter yielded-session handling.
+Command change notices in model-visible stock output remain deferred; results stay
+unchanged.
+Scope providers may parse local source or issue a validated local read-only query.
+They never evaluate interpreter source, run a writer stage, contact a remote, or
+invoke configured hooks, preprocessors, filters, or monitors. Missing tools and
+provider timeouts reduce evidence coverage without replacing the stock result.
+
+The live stream may also display stock `cat` heredoc writes, literal file
+operations, and interpreter programs extracted from `exec_command` or Code Mode. This projection is for
 visibility only: it does not execute the command, create change evidence by
 itself, or claim success before the host result. Commands continue to use
 Codex's normal PTY, yield timing, environment, workdir, and session IDs.
+Running scope polling is display-only and cannot finalize a command, revive a
+continuation, or contribute predicted bytes to saved evidence. Finalization still
+requires the terminal host result and post-result reconciliation.
 
 Acceptance:
 
@@ -43,8 +59,9 @@ Acceptance:
    alongside an independent command, without router-side serial execution.
 3. Streaming patch input produces an early provisional preview; incomplete
    calls produce no successful durable change.
-4. Successful, failed, and partial patch outcomes yield truthful change
-   evidence, and a dependent `mchanges` read sees only persisted records.
+4. Successful, failed, and partial patch and declared-command outcomes yield
+   truthful change evidence, and a dependent `mchanges` read sees only
+   persisted records.
 5. Stock `cat`, interpreter previews, command labels, PTY/yield behavior, and
    `write_stdin` continuation remain available through the stock path. Wait
    arguments pass through without router-imposed floors.

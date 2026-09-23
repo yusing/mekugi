@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi"
@@ -15,6 +16,14 @@ import (
 // Project only literal heredoc writes; shell execution remains the sole owner
 // of actual file effects and durable change evidence.
 func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directory string, partialLine bool) ([]mekugi.ReviewFile, bool, error) {
+	if !partialLine {
+		if files, recognized, err := liveDiffInterpreterWrite(ctx, stmt, directory); recognized || err != nil {
+			return files, recognized, err
+		}
+	}
+	if files, recognized, err := liveDiffShellFileOperation(ctx, stmt, directory, partialLine); recognized {
+		return files, true, err
+	}
 	call, ok := stmt.Cmd.(*syntax.CallExpr)
 	if !ok || stmt.Background || stmt.Coprocess || stmt.Disown || stmt.Negated ||
 		len(call.Assigns) != 0 || len(call.Args) != 1 || len(stmt.Redirs) != 2 {
@@ -53,33 +62,17 @@ func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directo
 	if err := ctx.Err(); err != nil {
 		return nil, true, err
 	}
-	const limit = 256 << 10
+	const limit = liveDiffPreviewFileLimit
 	if len(content) > limit || !utf8.ValidString(content) {
 		return nil, true, errors.New("streaming file write requires bounded UTF-8 content")
 	}
-	beforePath, before := path, ""
-	info, err := os.Stat(path)
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		beforePath = ""
-	case err != nil:
+	before, exists, err := liveDiffPreviewFile(path)
+	if err != nil {
 		return nil, true, err
-	case !info.Mode().IsRegular() || info.Size() > limit:
-		return nil, true, errors.New("streaming file write requires a bounded regular file")
-	default:
-		file, err := os.Open(path)
-		if err != nil {
-			return nil, true, err
-		}
-		data, err := io.ReadAll(io.LimitReader(file, limit+1))
-		file.Close()
-		if err != nil {
-			return nil, true, err
-		}
-		if len(data) > limit || !utf8.Valid(data) {
-			return nil, true, errors.New("streaming file write source exceeds capacity or is not UTF-8")
-		}
-		before = string(data)
+	}
+	beforePath := path
+	if !exists {
+		beforePath = ""
 	}
 	if output.Op == syntax.AppOut {
 		content = before + content
@@ -91,4 +84,175 @@ func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directo
 		return nil, true, err
 	}
 	return []mekugi.ReviewFile{mekugi.RenderReviewFile(beforePath, path, before, content)}, true, nil
+}
+
+const liveDiffPreviewFileLimit = 256 << 10
+
+// liveDiffPreviewFile reads bounded UTF-8 content that a preview predicts from.
+func liveDiffPreviewFile(path string) (string, bool, error) {
+	info, err := os.Stat(path)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return "", false, nil
+	case err != nil:
+		return "", false, err
+	case !info.Mode().IsRegular() || info.Size() > liveDiffPreviewFileLimit:
+		return "", false, errors.New("streaming file preview requires a bounded regular file")
+	}
+	file, err := openNativePatchFile(path)
+	if err != nil {
+		return "", false, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, liveDiffPreviewFileLimit+1))
+	if err != nil {
+		return "", false, err
+	}
+	if len(data) > liveDiffPreviewFileLimit || !utf8.Valid(data) {
+		return "", false, errors.New("streaming file preview source exceeds capacity or is not UTF-8")
+	}
+	return string(data), true, nil
+}
+
+// liveDiffShellFileOperation predicts literal cp, mv, rm, and tee heredoc
+// effects from current files. The prediction is display only; the command's
+// observed record is the evidence.
+func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, directory string, partialLine bool) ([]mekugi.ReviewFile, bool, error) {
+	call, ok := stmt.Cmd.(*syntax.CallExpr)
+	if !ok || stmt.Background || stmt.Coprocess || stmt.Disown || stmt.Negated ||
+		len(call.Assigns) != 0 || len(call.Args) < 2 {
+		return nil, false, nil
+	}
+	words := make([]string, 0, len(call.Args))
+	for _, arg := range call.Args {
+		word, literal := shellCatLiteral(arg)
+		if !literal || word == "" {
+			return nil, false, nil
+		}
+		words = append(words, word)
+	}
+	name := words[0]
+	var flags []string
+	var operands []string
+	for index, word := range words[1:] {
+		if word == "--" {
+			operands = append(operands, words[index+2:]...)
+			break
+		}
+		if strings.HasPrefix(word, "-") && len(word) > 1 {
+			flags = append(flags, word)
+			continue
+		}
+		operands = append(operands, word)
+	}
+	allowed := map[string]string{"cp": "fp", "mv": "f", "rm": "f", "tee": "a"}[name]
+	if allowed == "" {
+		return nil, false, nil
+	}
+	appendOutput := false
+	for _, flag := range flags {
+		if strings.HasPrefix(flag, "--") || strings.Trim(flag[1:], allowed) != "" {
+			return nil, false, nil
+		}
+		appendOutput = appendOutput || strings.Contains(flag, "a")
+	}
+	var heredoc *syntax.Redirect
+	for _, redirect := range stmt.Redirs {
+		switch {
+		case name == "tee" && (redirect.Op == syntax.Hdoc || redirect.Op == syntax.DashHdoc):
+			heredoc = redirect
+		case name == "tee" && redirect.Op == syntax.RdrOut:
+			if target, literal := shellCatLiteral(redirect.Word); !literal || target != "/dev/null" {
+				return nil, false, nil
+			}
+		default:
+			return nil, false, nil
+		}
+	}
+	if len(operands) == 0 || name == "tee" && heredoc == nil || (name == "cp" || name == "mv") && len(operands) != 2 {
+		return nil, false, nil
+	}
+	// A partial final word could still grow into another path.
+	if partialLine && heredoc == nil {
+		return nil, false, nil
+	}
+	if !filepath.IsAbs(directory) {
+		return nil, true, errors.New("streaming file preview requires an absolute execution directory")
+	}
+	for index := range operands {
+		operands[index] = filepath.Clean(shellFilePath(directory, operands[index]))
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, true, err
+	}
+	switch name {
+	case "rm":
+		files := make([]mekugi.ReviewFile, 0, len(operands))
+		for _, path := range operands {
+			before, exists, err := liveDiffPreviewFile(path)
+			if err != nil {
+				return nil, true, err
+			}
+			if exists {
+				files = append(files, mekugi.RenderReviewFile(path, "", before, ""))
+			}
+		}
+		return files, true, nil
+	case "tee":
+		content, literal := liveDiffShellHeredoc(heredoc, partialLine)
+		if !literal || len(content) > liveDiffPreviewFileLimit || !utf8.ValidString(content) {
+			return nil, true, errors.New("streaming file write requires bounded UTF-8 content")
+		}
+		files := make([]mekugi.ReviewFile, 0, len(operands))
+		for _, path := range operands {
+			before, exists, err := liveDiffPreviewFile(path)
+			if err != nil {
+				return nil, true, err
+			}
+			after, beforePath := content, path
+			if appendOutput {
+				after = before + content
+			}
+			if !exists {
+				beforePath = ""
+			}
+			files = append(files, mekugi.RenderReviewFile(beforePath, path, before, after))
+		}
+		return files, true, nil
+	}
+	source, target := operands[0], operands[1]
+	if info, err := os.Stat(target); err == nil && info.IsDir() {
+		target = filepath.Join(target, filepath.Base(source))
+	}
+	content, exists, err := liveDiffPreviewFile(source)
+	if err != nil {
+		return nil, true, err
+	}
+	if !exists {
+		return nil, true, errors.New("streaming file preview source does not exist")
+	}
+	before, targetExists, err := liveDiffPreviewFile(target)
+	if err != nil {
+		return nil, true, err
+	}
+	if name == "cp" {
+		beforePath := target
+		if !targetExists {
+			beforePath = ""
+		}
+		file := mekugi.RenderReviewFile(beforePath, target, before, content)
+		if !targetExists {
+			file.CopyFrom = source
+		}
+		return []mekugi.ReviewFile{file}, true, nil
+	}
+	if targetExists {
+		// A replacing move deletes the target's content, which one move
+		// entry cannot show.
+		return []mekugi.ReviewFile{
+			mekugi.RenderReviewFile(source, "", content, ""),
+			mekugi.RenderReviewFile(target, target, before, content),
+		}, true, nil
+	}
+	return []mekugi.ReviewFile{mekugi.RenderReviewFile(source, target, content, content)}, true, nil
 }

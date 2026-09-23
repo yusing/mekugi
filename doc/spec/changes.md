@@ -1,6 +1,6 @@
 # Observed changes and live view
 
-## REQ-CHANGES-001 — Durable review of stock edits
+## REQ-CHANGES-001 — Durable review of stock edits and command effects
 
 Mekugi observes stock Codex `apply_patch` calls. Codex executes each call once;
 Mekugi does not replace the tool, run a hook, apply a second patch, or alter the
@@ -20,12 +20,135 @@ some files changed; the visible partial difference remains reviewable and the
 failure is retained in history. An unfinished call has no completed record.
 Storage failure must not expose dependent review evidence as durable.
 
+### Command effects
+
+Mekugi also observes stock `exec_command` calls and literal `tools.exec_command`
+calls in a Code Mode cell. Before Codex receives the call, Mekugi classifies
+the Bash command text without running it. A command is declared when every
+file it can write follows from literal text: output redirects, coreutils file
+operations, in-place `sed` and `perl` substitutions, and version-control move
+and remove forms, including glob operands, `cd`, and coreutils destination
+rules. The command is read in its own `shell`, or else in the session shell
+that the request's environment context names. A `cd` moves later operands only
+where its failure stops them: the rest of an `&&` chain, or the statements after
+`cd DIR || exit`. Any other shell, command substitution, dynamic word,
+background job, change to command lookup, or unknown or path-qualified program
+makes the command undeclared, as does a relative operand after a `cd` that may
+have failed and a call for another environment. Non-neutral undeclared commands
+and Code Mode cells with dynamic command calls are observed with an open scope.
+
+For a declared command, Mekugi captures the derived paths before the call is
+forwarded, within bounds on file count, file size, total and encoded size, and
+time. A path past a bound is recorded as omitted. When an earlier statement can
+change what a destination names, such as a directory it creates or removes,
+every reading is captured. A recursive destination is listed so that files it
+gains are found afterward. A write through a symlink captures the link's
+target, and a dangling link is omitted. Capture never follows a final symlink
+or blocks on a special file. Content that is not UTF-8 or contains NUL is kept
+as size and hash, and a symlink as its target.
+
+After the terminal host result, Mekugi compares captured paths and listed
+destinations. Every non-declared command also receives a stateless change-time
+sweep of the selected metadata directory, or its absolute workdir when no
+metadata directory exists. Outside-root paths require a named scope. The
+record states the outcome, the command labels, the host exit code when
+visible, the command class, and its coverage:
+
+| Host result | Status |
+| --- | --- |
+| Native exit 0, exact coverage, no overlap | `completed` |
+| Native exit 0, overlap or incomplete coverage | `completed; attribution shared` or `completed; partial coverage` |
+| Native nonzero exit, or an aborted or unrecognized result | `failed; observed effects` |
+| Code Mode `Script completed` | `observed; unconfirmed`, because nested exit codes are not visible |
+| Code Mode `Script failed` or `Script terminated` | `failed; observed effects` |
+| Yielded session or running cell | pending until a `write_stdin` result shows the exit or an unknown session, or a terminal `wait` result |
+
+Coverage is `exact` only when all changed paths have captured baselines and the
+required sweep completes without outside-scope findings. Unbased findings or
+incomplete baselines make coverage `partial`; an unavailable or truncated sweep
+makes it `unswept`. A deletion and an addition with
+identical, nonempty content form one move. A created copy names its source when the
+content matches. Binary content is shown as sizes and hashes rather than
+rows, and a symlink change as its link target. A path that could not be
+compared is incomplete. A command with no observed effect is retained without
+a change ID. A successful edit receipt requires `completed`, `exact` coverage,
+complete evidence, and no overlapping writer window.
+
+The sweep compares inode change times with a marker's filesystem time, not the
+router's wall clock. It is bounded to 100 ms and 50,000 entries. Network and FUSE
+roots are unswept. It prunes VCS metadata and plain `.gitignore`, `.ignore`, and
+`.rgignore` patterns even without a repository. Without governing ignore files,
+dependency directories, Python bytecode caches, and directories containing
+`CACHEDIR.TAG` or `pyvenv.cfg` are also pruned. Named ignored paths remain captured.
+New inodes show unbased content labeled `new file or replacement`, never a guessed
+Create action. Other unknown baselines show size/hash or unbased content when birth
+time is unavailable. A changed directory with no explaining entry reports removed
+or renamed entries without inventing names.
+
+Swept sibling calls emitted in one response and completed in one request share
+one record. Other overlapping writer windows are identified as `observed alongside`
+call references or retained change IDs; their scoped paths and same-cell patch
+paths are excluded from sweep evidence. Records describe changes observed during
+a window, not proof of causation. Yielded windows remaining across turns become
+background windows: they stop producing overlap tags, and later sweep findings
+name the background session or cell. No record is finalized without a terminal
+result. The overlap registry is process-local; restart preserves captured scope
+but does not restore overlap or background tags.
+
+Review origin is direct by default. Tools that choose content or paths, including
+formatters, package managers, generators, and opaque commands, produce tool-managed
+effects. Interpreter edits and declared file operations remain direct. An ambiguous
+sweep finding is direct only when every undeclared statement is direct. Default
+`mchanges` shows managed effects as rows, collapsing more than 20; explicit paths
+and `--history` show their evidence. Summary counts distinguish tool-managed files,
+and managed-only records are labeled in `--list`. Receipts group managed files into
+one line; the saved DIFF view groups them into one display-only card per record.
+
+Interpreter scope providers parse Python and JavaScript/TypeScript source without
+evaluation. Literal eval arguments, stdin heredocs, and bounded script files are
+supported. They derive literal filesystem writes, single-assignment path values,
+path joins, and iteration scopes, including Python `Path.glob/rglob` and JavaScript
+directory enumeration. Literal subprocess arguments are classified recursively
+with a depth bound. Unresolved targets, dynamic evaluation/loading, and unknown
+working-directory changes leave the scope open. Node and Deno write permissions
+provide bounded scope hints; subprocess/native-code permissions reopen them.
+Deno named permission sets are read from bounded local configuration, never by
+launching Deno. Every provider-scoped command still receives the change sweep.
+
+Literal `find` tests feeding a supported writer through `-exec` or `xargs` derive
+scopes without executing the writer. Known read-only `rg -l`, `grep -rl`, `fd`,
+`git ls-files`, and `git grep -l` producer stages may run alone with bounded output
+under the provider deadline. Executable preprocessing, output writers, and dynamic
+producer arguments are rejected. Provider work shares a 200 ms budget within the
+500 ms pre-call capture hold. A failed, unavailable, or timed-out provider degrades
+to an open observation with its reason retained in history, never a host-call error.
+
 Each completed observed call receives a short session-scoped change ID. Root
 and child agents share an inherited namespace; forks and side threads receive
 an isolated copy of visible records, and resume can read durable records after
 a fresh router process. Retention may expire inactive records according to
 [REQ-ROUTER-001](router.md). Replay reads retained facts and never repeats a
 host edit.
+
+VCS providers scope local discard and history operations using read-only queries.
+Git queries disable optional locks and filesystem monitors; diff queries disable
+external diff and text conversion. Configured clean filters prevent worktree
+comparison queries, leaving an open operand scope. Restore, checkout, hard reset,
+stash, clean, patch application, and local revision changes are supported; remote
+and iterative operations remain open. Clean expands reported directories and
+preserves exclusion patterns; patch scopes include rename sources. SVN revert
+uses offline status at the requested depth. Mercurial revert uses operands and
+possible `.orig` backups only; Jujutsu uses operands without snapshotting queries.
+
+Known formatter scopes expand operands by supported file extension. Dependency
+manager scopes include their local manifests and lockfiles. These are tool-managed
+effects. Direct paths take capture priority; a path also in a managed scope stays
+direct with shared-origin attribution.
+
+Completed observations may supply a process-local last-seen content cache, bounded
+to 64 MiB and 4,096 entries. Sweep diffs from that cache say `since last observed
+(change ID)` and remain partial with unknown counts. They are not call baselines.
+Deletion evicts content; restart loses the cache without losing durable records.
 
 ### Bounded read command
 
@@ -41,9 +164,9 @@ mchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [
 does not expose sibling threads' IDs. Explicit IDs can still be read across
 agents in the shared namespace. The default view shows each status and unified
 file diff. `--summary` gives added and removed line counts by path across
-selected records. It is not a net workspace diff. `--history` includes the
-original observed patch input and
-host result. Paths after `--` filter review files without re-reading the
+selected records. It is not a net workspace diff; binary files have unknown
+counts. `--history` includes the original observed patch or command input, the
+host result, and for a command the observed scope. Paths after `--` filter review files without re-reading the
 current filesystem. `--workspace ..` selects the owning workspace index when
 the command runs from a subdirectory; paths after `--` only filter entries in
 the selected record. `--max-tokens` bounds displayed output. When output is
@@ -65,19 +188,37 @@ user-only presentation, not a tool result or application receipt.
 When an interactive Herdr pane is available, Mekugi opens the viewer on the
 first observed editing or execution call. The stream view shows concurrent
 main-agent and child calls, and can display provisional `apply_patch` and
-stock `cat` heredoc diffs before completion. Interpreter programs can be
+stock `cat` heredoc diffs before completion. Literal `cp`, `mv`, `rm`, and
+`tee` heredoc commands are predicted from current file contents. Interpreter programs can be
 shown in their own language rather than as a shell wrapper. A preview does
 not claim that Codex ran or accepted an edit. A Code Mode patch held in an
 immutable top-level literal binding is rendered as the patch preview; its
 escaped JavaScript source is not exposed as a streaming script while the
 patch is incomplete.
+Literal Python `Path.write_text` and `open(..., "w").write` bodies and literal
+JavaScript `writeFileSync`/`writeFile` bodies can be predicted without evaluation.
+Python same-path `read_text().replace(A, B[, count])` supports literal replacements;
+regex replacement is excluded. Unsupported expressions remain source previews.
+Scope cards list pending VCS restore, deletion, or switch targets. A `may write`
+footer distinguishes scoped paths from unresolved targets.
+
+While a writer window is open, display-only polling runs about every 500 ms over
+captured paths, reading content only after a stat change. Polling is bounded by
+path, time, and content budgets; it never runs a workspace sweep or provider query.
+Cards say `RUNNING · observed so far`. Terminal results, background transition,
+or viewer shutdown remove their live preview. Running previews and predictions
+never become durable evidence, and replay does not restart polling.
+
+Query-based Mercurial scoping and literal `sed`/`perl` substitution prediction are
+outside this delivery. Model-visible command-change notices are also deferred;
+stock result bytes remain unchanged.
 In the live input stream, literal `tools.exec_command` command strings inside
 Code Mode are displayed as Bash while the JavaScript wrapper is still arriving.
 Numbered `# tools.exec_command N` headers separate distinct tool calls; line
 breaks within one command remain inside its header. This provisional display
 never changes Codex's original tool input or asserts that the command ran.
 
-The saved diff view uses completed observed patch outcomes. It includes
+The saved diff view uses completed observed patch and command outcomes. It includes
 changes from children that are visible to the parent. The viewer switches
 to it after the root's usage and journal flush, and back to stream for the
 next prompt. The user can switch, scroll, pause following, resume, or flush
@@ -104,5 +245,17 @@ Acceptance:
    through the authenticated frontend, with bounded `mread` continuation.
 5. Child handoff and resume use durable ownership, not a live process; replay
    never executes an edit again.
-6. Live `cat` and interpreter projections are presentation only and preserve
-   stock PTY, yield, result, and `write_stdin` behavior.
+6. Live `cat`, file-operation, and interpreter projections are presentation
+   only and preserve stock PTY, yield, result, and `write_stdin` behavior.
+7. A declared native or literal Code Mode command produces a record with the
+   status from the outcome table, reviewable effects, and exact coverage. A
+   nonzero exit never shows `completed` or publishes a receipt.
+8. A yielded command is finalized only by its terminal continuation result.
+   Replaying the same input neither re-reads the workspace nor allocates a
+   second change ID.
+9. Moves, copies, binary content, symlinks, and bounded or unreadable paths
+   are represented without inventing rows. A link is reviewed by its target
+   name; only a write through it reads the file it points to.
+10. A destination that an earlier statement creates, removes, or fills is
+    captured under every reading, and a `cd` whose failure would not stop later
+    statements leaves their relative operands undeclared.

@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"cmp"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -659,7 +660,10 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 			return false, err
 		}
 		patches := nativePatchesInCall(name, originalInput, t.directory)
-		if !changed && len(patches) == 0 {
+		execs, dynamic := stockLiteralExecCommands(originalInput, t.directory, t.sessionShell)
+		observation, observed := captureExecObservation(execs, dynamic, true, t.execCaptureEnvironment(patches))
+		t.openExecWindow(callID, observation, patches)
+		if !changed && len(patches) == 0 && !observed {
 			return false, nil
 		}
 		// Retain the provider input and captured baseline before exposing any
@@ -670,6 +674,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 			CarrierName: name, CarrierPayload: input, UpstreamItem: item.cloneFields(),
 			ReplayCarrier:   !changed,
 			NativePatches:   patches,
+			ExecObservation: observation,
 			ExecutingThread: t.shellThreadID,
 		}
 		if !changed {
@@ -680,6 +685,9 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 			item.setInput(input)
 		}
 		return changed, nil
+	}
+	if t.nativeTools && name == nativeExecCommandToolName && item.Type == "function_call" {
+		return false, t.observeStockExecCommand(item)
 	}
 	if !t.nativeTools || name != applyPatchToolName || item.Type != "custom_tool_call" {
 		return false, nil
@@ -701,6 +709,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 	if len(patches) == 0 {
 		return false, nil
 	}
+	t.openExecWindow(callID, nil, patches)
 	history := mekugiHistory{
 		ToolName: name, Script: input,
 		CarrierKind: codeModeCarrierCustom, CarrierName: name, CarrierPayload: input,
@@ -709,6 +718,89 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 	}
 	t.recordLocal(callID, &history)
 	return false, nil
+}
+
+// observeStockExecCommand captures a stock command's declared scope before
+// Codex receives the call. The forwarded arguments stay byte-identical.
+func (t *mekugiResponseTransform) observeStockExecCommand(item *responsesItem) error {
+	callID := item.CallID
+	if callID == "" || item.Arguments == nil {
+		return errors.New("upstream emitted malformed stock exec_command call")
+	}
+	arguments := *item.Arguments
+	retained, exists := t.local[callID]
+	if exists && retained.ExecObservation != nil {
+		if retained.CarrierPayload != arguments {
+			return fmt.Errorf("stock exec_command call %q changed arguments", callID)
+		}
+		retained.UpstreamItem = item.cloneFields()
+		t.local[callID] = retained
+		return nil
+	}
+	command, ok := execCommandArguments(arguments, t.directory, t.sessionShell)
+	if !ok {
+		return nil
+	}
+	observation, observed := captureExecObservation([]execCommandInput{command}, false, false, t.execCaptureEnvironment(nil))
+	if !observed {
+		return nil
+	}
+	t.openExecWindow(callID, observation, nil)
+	if exists {
+		// Journal commentary already retained this call with its stripped
+		// arguments; the observation joins that record.
+		retained.ExecObservation = observation
+		retained.ExecutingThread = cmp.Or(retained.ExecutingThread, t.shellThreadID)
+		t.local[callID] = retained
+		return nil
+	}
+	t.recordLocal(callID, &mekugiHistory{
+		ToolName: nativeExecCommandToolName, Script: arguments,
+		CarrierKind: codeModeCarrierFunction, CarrierName: nativeExecCommandToolName, CarrierPayload: arguments,
+		ReplayCarrier: true, UpstreamItem: item.cloneFields(), ExecObservation: observation,
+		ExecutingThread: t.shellThreadID,
+	})
+	return nil
+}
+
+func (t *mekugiResponseTransform) execCaptureEnvironment(patches []nativePatchObservation) execCaptureEnv {
+	env := execCaptureEnv{directory: t.directory}
+	if t.proxy != nil && t.proxy.replayStore != nil {
+		env.clock = t.proxy.replayStore.directory
+	}
+	for _, patch := range patches {
+		for _, file := range patch.Files {
+			for _, path := range []string{file.BeforePath, file.AfterPath} {
+				if path != "" && !slices.Contains(env.excluded, path) {
+					env.excluded = append(env.excluded, path)
+				}
+			}
+		}
+	}
+	return env
+}
+
+func (t *mekugiResponseTransform) openExecWindow(callID string, observation *execObservation, patches []nativePatchObservation) {
+	if observation == nil && len(patches) == 0 || t.proxy == nil {
+		return
+	}
+	if t.execGroup == "" {
+		t.execGroup = rand.Text()
+	}
+	window := &execWindow{ref: callID, thread: t.shellThreadID, turn: t.shellTurnID, group: t.execGroup}
+	window.paths = t.execCaptureEnvironment(patches).excluded
+	if observation != nil {
+		observation.Group = t.execGroup
+		window.roots = slices.Clone(observation.Roots)
+		window.paths = append(window.paths, observation.scopePaths()...)
+	}
+	if len(patches) != 0 {
+		window.roots = execAddRoot(window.roots, t.directory)
+	}
+	t.proxy.execWindows.open(window)
+	if observation != nil && t.proxy.autoLiveDiff != nil && t.proxy.autoLiveDiff.enabled.Load() {
+		t.proxy.execWindows.preview(callID, *observation, t.proxy.autoLiveDiff.events, t.directory, t.threadID, t.commentaryAuthor)
+	}
 }
 
 func replaceRawField(payload []byte, name string, value json.RawMessage) ([]byte, error) {

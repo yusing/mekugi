@@ -191,8 +191,12 @@ func (v *View) RefreshVisible() {
 				}
 				composition = mekugi.ReviewComposition{}
 				if !reviewed {
+					status := "incomplete history: " + chunk.Review.Incomplete
+					if chunk.Review.Origin != "" {
+						status = chunk.Review.Incomplete
+					}
 					visible.Chunks = append(visible.Chunks, Chunk{
-						Status: "incomplete history: " + chunk.Review.Incomplete,
+						Status: status,
 						Review: chunk.Review, Highlighted: chunk.Highlighted,
 					})
 				}

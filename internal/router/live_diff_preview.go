@@ -30,6 +30,7 @@ type liveDiffPreview struct {
 	Complete  bool `json:",omitzero"`
 	DiffText  bool `json:",omitzero"`
 	Status    string
+	Footer    string `json:",omitempty"`
 }
 
 type liveDiffPreviewWorker struct {

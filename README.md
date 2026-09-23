@@ -45,7 +45,9 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Recover omitted output.** Read captured overflow with `mread` without
   rerunning the command or reader that produced it.
 - **Review completed edits.** `mchanges` tracks observed `apply_patch` results
-  and the resulting workspace change, including partial outcomes.
+  and the file effects of shell commands such as redirects, `cp`, `mv`, `rm`,
+  and `sed -i`, interpreter writes, VCS operations, and formatters, including
+  partial outcomes and explicitly labeled gaps in coverage.
 
 ### Round-trip and token saving
 
@@ -241,9 +243,11 @@ for (const result of results) text(result.output);
 Run ordinary shell commands or an interpreter through `exec_command`. For a
 long-running command, use Codex's returned session ID with `write_stdin`; Mekugi
 does not create a second process handle. A `cat > path <<'EOF'` command can be
-previewed while it streams, but only a finalized stock `apply_patch` call
-creates durable `mchanges` edit evidence. Interpreter programs shown in the
-live pane are previews, not a claim that execution succeeded.
+previewed while it streams. Durable `mchanges` evidence comes from a finalized
+stock `apply_patch` call or observed command effects. Derived scopes retain before
+content; bounded sweeps report additional changes without inventing baselines.
+Literal Python and JavaScript writes can also be previewed. Running cards show
+scoped changes observed so far, not a claim that execution succeeded.
 
 ### Wrapped-session helpers
 
@@ -256,7 +260,7 @@ snapshot-owned descriptions to the agent in the execution tool guidance.
 | --- | --- | --- |
 | `mread` | Continue bounded retained output by reference | Access to the router's replay directory |
 | `mrun` | Bound a foreground command's output and optionally keep its ending | The wrapped command |
-| `mchanges` | List the current agent thread's change IDs or read observed patches by ID or range | Access to the router's replay directory |
+| `mchanges` | List the current agent thread's change IDs or read observed patches and command effects by ID or range | Access to the router's replay directory |
 | `mcat` | Read raw UTF-8 rows, with multi-file batching, ranges, and tail selection | None |
 | `msymbol` | Look up definitions and references as `"PATH":LINE TEXT` rows | `gopls` for Go; TypeScript 7 as `tsc` for JS, TS, and JSON; `pyright-langserver` for Python |
 | `inspect_file` | Inspect a structural outline | None |
@@ -275,8 +279,10 @@ mrun --tail -n 20 -- go test ./internal/router
 ```
 
 `mchanges --summary` gives tab-separated added/deleted line counts per path.
-These counts are summed across selected observed patches, not a current Git
-diff. Bounded output includes an exact `mread REF` continuation when needed.
+These counts are summed across selected observed records, not a current Git
+diff. Tool-managed files have a separate group; unknown counts stay unknown.
+Use `--history` or an explicit path filter to expand managed diffs.
+Bounded output includes an exact `mread REF` continuation when needed.
 `mchanges --list` shows the current thread's pending and completed IDs. A
 Code Mode patch may show observed file changes as application unconfirmed:
 completion of the outer JavaScript cell is not proof that its nested patch

@@ -87,7 +87,7 @@ Bound one foreground command's output, retaining its beginning or end. Use for n
 </tool>
 
 <tool name="mchanges">
-Review completed observed stock apply_patch evidence, not a Git diff or provisional preview. Usage: `mchanges --list` or `mchanges ID[..ID] ... [--summary|--history] [-- PATH ...]`. Hand reviewers explicit IDs or same-agent inclusive ranges for the requested changes, together with the review scope; --list only lists the calling thread's changes. Prefer mchanges for captured edits. Use Git for shell-generated or unrelated changes. Do not routinely pair Git diff with mchanges for the same edits; skip --summary before an already-needed diff. Omitted review output supplies mread continuation; recorded diffs are historical evidence, not proof of current workspace contents.
+Review completed observed evidence from stock apply_patch and declared shell file operations such as redirects, cp, mv, rm, and sed -i; not a Git diff or provisional preview. Usage: `mchanges --list` or `mchanges ID[..ID] ... [--summary|--history] [-- PATH ...]`. Hand reviewers explicit IDs or same-agent inclusive ranges for the requested changes, together with the review scope; --list only lists the calling thread's changes. Prefer mchanges for captured edits. Use Git for other shell-generated or unrelated changes. Do not routinely pair Git diff with mchanges for the same edits; skip --summary before an already-needed diff. Omitted review output supplies mread continuation; recorded diffs are historical evidence, not proof of current workspace contents.
 </tool>
 
 </mekugi-frontends>

@@ -14,7 +14,12 @@ import (
 func prepareNativeStockTransform(t *testing.T, proxy *mekugiProxy, workspace, session string) *mekugiResponseTransform {
 	t.Helper()
 	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
-		"model": "gpt-test", "input": []any{map[string]any{"role": "user", "content": "task"}},
+		"model": "gpt-test", "input": []any{
+			map[string]any{"type": "message", "role": "user", "content": []any{map[string]any{
+				"type": "input_text", "text": "<environment_context>\n  <cwd>" + workspace + "</cwd>\n  <shell>bash</shell>\n</environment_context>",
+			}}},
+			map[string]any{"role": "user", "content": "task"},
+		},
 		"tools": testNativeResponsesTools(), "tool_choice": "auto",
 	}))
 	if err != nil {
@@ -314,7 +319,7 @@ func TestNativePatchReviewChecksActualDeletionAndMove(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if reviews, complete := nativePatchReview(observation.Files); !complete || len(reviews) != 0 {
+		if reviews, complete := nativePatchReview(observation.Files, nil); !complete || len(reviews) != 0 {
 			t.Fatalf("unchanged deletion or move fabricated a diff: %+v, complete=%t", reviews, complete)
 		}
 		if strings.Contains(patch, "Move to") {
@@ -322,7 +327,7 @@ func TestNativePatchReviewChecksActualDeletionAndMove(t *testing.T) {
 			if err := os.WriteFile(destination, []byte("copied\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			reviews, complete := nativePatchReview(observation.Files)
+			reviews, complete := nativePatchReview(observation.Files, nil)
 			if !complete || len(reviews) != 1 || reviews[0].Action() != mekugi.ReviewAdd {
 				t.Fatalf("partial move was not reported as destination creation: %+v, complete=%t", reviews, complete)
 			}
@@ -350,7 +355,7 @@ func TestNativePatchReviewShowsOnlyObservedPartialCodeModeEffect(t *testing.T) {
 	if err := os.WriteFile(first, []byte("new\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	reviews, complete := nativePatchReview(observation.Files)
+	reviews, complete := nativePatchReview(observation.Files, nil)
 	if !complete || len(reviews) != 1 || reviews[0].AfterPath != first {
 		t.Fatalf("partial effect = %+v, complete=%t", reviews, complete)
 	}

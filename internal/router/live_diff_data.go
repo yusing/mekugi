@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 )
 
@@ -70,7 +71,12 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 		history := record.History
 		status := trackedStatus(history, call.Confirmed)
 		attempt := liveDiffAttempt{change: event.ID, correlation: event.Change.Correlation, stream: event.Stream, confirmed: call.Confirmed}
+		var managed []string
 		for n, file := range history.ReviewFiles {
+			if file.Origin != "" {
+				managed = append(managed, managedReviewRow(file))
+				continue
+			}
 			canonical := func(path string) string {
 				if path == "" {
 					return ""
@@ -88,7 +94,20 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			attempt.chunks = append(attempt.chunks, liveDiffChunk{
 				Key: key + "/" + strconv.Itoa(n), Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),
 				CaptureOrder: record.CaptureOrder, Status: event.ID + " " + status,
-				Review: file, Applied: status == "applied",
+				Review: file, Applied: status == "applied" || history.ExecOutcome != nil && history.Applied,
+			})
+		}
+		if len(managed) != 0 {
+			label := fmt.Sprintf("%s: %d tool-managed files", event.ID, len(managed))
+			reason := status + "\n" + strings.Join(managed, "\n")
+			d.bytes += len(reason) + len(label)*2 + len(key)
+			if d.bytes > maxChangeReadBytes {
+				return errors.New("live diff exceeds 64 MiB; use mchanges with a narrower range")
+			}
+			attempt.chunks = append(attempt.chunks, liveDiffChunk{
+				Key: key + "/managed", Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),
+				CaptureOrder: record.CaptureOrder, Status: event.ID + " " + status, Applied: true,
+				Review: mekugi.ReviewFile{BeforePath: label, AfterPath: label, Origin: "tool-managed", Incomplete: reason},
 			})
 		}
 		d.attempts[key] = attempt

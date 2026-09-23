@@ -389,7 +389,7 @@ func stockPatchResultState(toolName string, raw json.RawMessage) (terminal, repo
 	}
 }
 
-func nativePatchReview(files []nativePatchFileSnapshot) ([]mekugi.ReviewFile, bool) {
+func nativePatchReview(files []nativePatchFileSnapshot, remember func(string, string, bool)) ([]mekugi.ReviewFile, bool) {
 	reviews := make([]mekugi.ReviewFile, 0, len(files))
 	complete := true
 	appendDifference := func(pathBefore, pathAfter, before, after string, existedBefore, existsAfter bool) {
@@ -432,6 +432,12 @@ func nativePatchReview(files []nativePatchFileSnapshot) ([]mekugi.ReviewFile, bo
 			complete = false
 			continue
 		}
+		if remember != nil {
+			remember(readPath, after, afterExists)
+			if move {
+				remember(file.BeforePath, sourceAfter, sourceExists)
+			}
+		}
 		if !move {
 			appendDifference(file.BeforePath, readPath, file.Before, after, file.Exists, afterExists)
 			continue
@@ -473,7 +479,18 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 		if err != nil {
 			return err
 		}
-		reviews, complete := nativePatchReview(observation.Files)
+		var after []execFileSnapshot
+		reviews, complete := nativePatchReview(observation.Files, func(path, content string, exists bool) {
+			file := execFileSnapshot{Path: path}
+			if exists {
+				info, err := os.Lstat(path)
+				if err != nil || !info.Mode().IsRegular() {
+					return
+				}
+				file.Kind, file.Content = execFileText, content
+			}
+			after = append(after, file)
+		})
 		// Only a direct stock result establishes nested patch success. A Code
 		// Mode cell can complete after catching a failed or skipped patch; its
 		// observed differences remain reviewable but unconfirmed.
@@ -513,6 +530,13 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 		}
 		if err := p.replayStore.put(context.WithoutCancel(ctx), workspace, map[string]mekugiHistory{derivedCallID: attempt}); err != nil {
 			return err
+		}
+		namespace := workspace
+		if p.replayStore != nil {
+			namespace += "\x00" + p.replayStore.scoped(ctx).handleNamespace()
+		}
+		for _, file := range after {
+			p.execLastSeen.put(namespace, changeID, file)
 		}
 		if success {
 			_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, p.activity)

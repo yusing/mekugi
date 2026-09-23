@@ -32,6 +32,8 @@ type mekugiHistory struct {
 	ChangeID        string
 	ReviewFiles     []mekugi.ReviewFile
 	NativePatches   []nativePatchObservation `json:",omitempty"`
+	ExecObservation *execObservation         `json:",omitempty"`
+	ExecOutcome     *execOutcome             `json:",omitempty"`
 	Applied         bool
 	CarrierName     string
 	CarrierKind     codeModeCarrierKind
@@ -331,29 +333,43 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 		output  json.RawMessage
 	}
 	var completedPatches []completedNativePatch
-	pendingCells := make(map[string]completedNativePatch)
-	waitCells := make(map[string]string)
+	pendingCalls := make(map[string]completedNativePatch)
+	continuations := make(map[string]string)
 	for index, item := range items {
 		itemType := jsonString(item, "type")
 		if itemType != "custom_tool_call" && itemType != "function_call" && itemType != "custom_tool_call_output" && itemType != "function_call_output" {
 			continue
 		}
 		callID := jsonString(item, "call_id")
-		if itemType == "function_call" && strings.TrimPrefix(jsonString(item, "name"), "functions.") == "wait" {
+		if itemType == "function_call" {
 			var args struct {
-				CellID string `json:"cell_id"`
+				CellID    string          `json:"cell_id"`
+				SessionID json.RawMessage `json:"session_id"`
 			}
-			if json.Unmarshal([]byte(jsonString(item, "arguments")), &args) == nil && args.CellID != "" {
-				waitCells[callID] = args.CellID
+			switch strings.TrimPrefix(jsonString(item, "name"), "functions.") {
+			case "wait":
+				if json.Unmarshal([]byte(jsonString(item, "arguments")), &args) == nil && args.CellID != "" {
+					continuations[callID] = "cell:" + args.CellID
+				}
+			case "write_stdin":
+				if json.Unmarshal([]byte(jsonString(item, "arguments")), &args) == nil && len(args.SessionID) != 0 {
+					continuations[callID] = "session:" + strings.Trim(string(args.SessionID), `"`)
+				}
 			}
 		}
 		if itemType == "function_call_output" {
-			if cell := waitCells[callID]; cell != "" {
-				if pending, found := pendingCells[cell]; found {
-					if terminal, _, _, _ := stockPatchResultState(pending.history.ToolName, item["output"]); terminal {
+			if key := continuations[callID]; key != "" {
+				if pending, found := pendingCalls[key]; found {
+					// A continuation completes the original call, and its
+					// result is read with the original call's state rules.
+					resultTool := pending.history.ToolName
+					if strings.HasPrefix(key, "session:") {
+						resultTool = "write_stdin"
+					}
+					if terminal, _, _, _, _ := execResultState(resultTool, item["output"]); terminal {
 						pending.output = bytes.Clone(item["output"])
 						completedPatches = append(completedPatches, pending)
-						delete(pendingCells, cell)
+						delete(pendingCalls, key)
 					}
 				}
 			}
@@ -384,12 +400,13 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 		}
 		carrierKind := history.effectiveCarrierKind()
 		if itemType == carrierOutputItemType(carrierKind) {
-			if len(history.NativePatches) != 0 {
+			if len(history.NativePatches) != 0 || history.ExecObservation != nil {
 				patch := completedNativePatch{callID: callID, history: history, output: bytes.Clone(item["output"])}
-				if terminal, _, _, cell := stockPatchResultState(history.ToolName, item["output"]); terminal {
+				if terminal, _, _, _, pending := execResultState(history.ToolName, item["output"]); terminal {
 					completedPatches = append(completedPatches, patch)
-				} else if cell != "" {
-					pendingCells[cell] = patch
+				} else if pending != "" {
+					pendingCalls[pending] = patch
+					p.execWindows.setSession(callID, pending)
 				}
 			}
 			if history.confirmsReport(item["output"]) {
@@ -460,10 +477,31 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 		return nil, err
 	}
 	releaseSnapshot()
+	execGroups := make(map[string][]execCompletion)
+	for _, completed := range completedPatches {
+		key := execSiblingKey(completed.history)
+		if key == "" {
+			key = completed.callID
+		}
+		execGroups[key] = append(execGroups[key], execCompletion(completed))
+	}
 	for _, completed := range completedPatches {
 		thread := completed.history.ExecutingThread
 		if err := p.finalizeNativePatches(ctx, workspace, thread, completed.callID, completed.history, completed.output); err != nil {
 			return nil, err
+		}
+		if completed.history.ExecObservation == nil {
+			p.execWindows.close(completed.callID)
+		}
+		key := execSiblingKey(completed.history)
+		if key == "" {
+			key = completed.callID
+		}
+		if members := execGroups[key]; len(members) != 0 {
+			if err := p.finalizeExecObservations(ctx, workspace, members); err != nil {
+				return nil, err
+			}
+			delete(execGroups, key)
 		}
 	}
 	if err := p.replayStore.confirmChanges(ctx, workspace, visible); err != nil {

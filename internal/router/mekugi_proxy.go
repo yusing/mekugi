@@ -123,6 +123,8 @@ type mekugiProxy struct {
 	autoLiveDiff       *autoLiveDiff
 	activity           *subagentActivity
 	skillsManager      bool
+	execWindows        *execWindowRegistry
+	execLastSeen       *execLastSeen
 
 	mu              sync.RWMutex
 	replayStore     *mekugiReplayStore
@@ -155,6 +157,8 @@ func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *
 		journals:       newJournalStore(),
 		usage:          newThreadUsage(),
 		activity:       activity,
+		execWindows:    &execWindowRegistry{},
+		execLastSeen:   &execLastSeen{},
 		sessions:       make(map[string]*mekugiHistorySession),
 		activeSessions: make(map[string]int),
 	}
@@ -286,6 +290,7 @@ type mekugiResponseTransform struct {
 	proxy            *mekugiProxy
 	sessionID        string
 	shellTurnID      string
+	execGroup        string
 	shellThreadID    string // Runtime identity remains available when activity attribution is invalid.
 	model            string
 	visible          map[string]mekugiHistory
@@ -311,6 +316,8 @@ type mekugiResponseTransform struct {
 
 	codeModeToolName string
 	nativeTools      bool
+	// sessionShell runs stock commands that name no shell of their own.
+	sessionShell string
 }
 
 func (t *mekugiResponseTransform) Close() {
@@ -425,6 +432,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	if !metadataValid || (!prewarm && metadata.RequestKind != responseevents.Turn) {
 		return nil, errors.New("mekugi rewrite requires valid turn metadata")
 	}
+	p.execWindows.markBackground(threadID, metadata.TurnID)
 	// Execution-free requests retain their native instructions, tools, and schema.
 	if request.isExecutionFreeRequest() {
 		if !prewarm && strings.TrimSpace(threadID) == "" {
@@ -591,6 +599,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		usageTracker:              p.usage.observation(threadID, metadata.ThreadID, request.model(), usageServiceTier(request.fields["service_tier"])),
 		codeModeToolName:          codeModeToolName,
 		nativeTools:               execution.native,
+		sessionShell:              requestSessionShell(request.fields["input"]),
 	}
 	author := metadata.AgentName
 	if metadata.SubagentKind == "" {

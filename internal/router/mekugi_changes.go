@@ -47,6 +47,7 @@ type trackedCall struct {
 	Thread    string `json:",omitempty"` // Empty uses the originating change stream.
 	ID        string
 	Confirmed bool
+	Managed   bool `json:",omitzero"`
 }
 
 func changeNotice(id string) string {
@@ -221,8 +222,13 @@ func (s *mekugiReplayStore) publishChanges(workspace string, histories map[strin
 			return errors.New("change identity does not match replay record")
 		}
 		if !slices.ContainsFunc(change.Calls, func(call trackedCall) bool { return call.ID == callID }) {
-			change.Calls = append(change.Calls, trackedCall{ID: callID, Thread: history.ExecutingThread, Confirmed: history.Applied})
-			updates[history.ChangeID] = append(updates[history.ChangeID], trackedCall{ID: callID, Thread: history.ExecutingThread, Confirmed: history.Applied})
+			managed := len(history.ReviewFiles) != 0
+			for _, file := range history.ReviewFiles {
+				managed = managed && file.Origin != ""
+			}
+			call := trackedCall{ID: callID, Thread: history.ExecutingThread, Confirmed: history.Applied, Managed: managed}
+			change.Calls = append(change.Calls, call)
+			updates[history.ChangeID] = append(updates[history.ChangeID], call)
 			index.Changes[history.ChangeID] = change
 			changed = true
 		}

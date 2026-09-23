@@ -19,6 +19,14 @@ type ReviewFile struct {
 	Diff       string
 	// Incomplete describes unavailable content; it is not an empty-file diff.
 	Incomplete string `json:",omitzero"`
+	// Binary marks intact non-text content, reviewed by size and hash only.
+	Binary bool `json:",omitzero"`
+	// CopyFrom names an unchanged source whose content an added file copies.
+	CopyFrom string `json:",omitzero"`
+	// Origin labels the tool that chose this file or its content. Empty means
+	// the agent chose both.
+	Origin     string `json:",omitzero"`
+	OriginNote string `json:",omitzero"`
 }
 
 // ReviewAction classifies a committed before/after file identity. Renderers use
@@ -117,6 +125,7 @@ func ReviewStat(files []ReviewFile) string {
 	type entry struct {
 		path           string
 		added, removed int
+		binary         bool
 	}
 	entries := make([]entry, 0, len(files))
 	pathWidth, largest, added, removed := 0, 0, 0, 0
@@ -135,7 +144,7 @@ func ReviewStat(files []ReviewFile) string {
 			path = displayPath(file.BeforePath) + " => " + path
 		}
 		a, r := file.LineCounts()
-		entries = append(entries, entry{path, a, r})
+		entries = append(entries, entry{path, a, r, file.Binary})
 		pathWidth = max(pathWidth, ansi.StringWidth(path))
 		largest = max(largest, a+r)
 		added += a
@@ -144,6 +153,10 @@ func ReviewStat(files []ReviewFile) string {
 	var output strings.Builder
 	countWidth := len(strconv.Itoa(largest))
 	for _, entry := range entries {
+		if entry.binary {
+			fmt.Fprintf(&output, " %s%s | Bin\n", entry.path, strings.Repeat(" ", pathWidth-ansi.StringWidth(entry.path)))
+			continue
+		}
 		a, r := entry.added, entry.removed
 		if largest > 40 {
 			width := max(1, (a+r)*40/largest)
@@ -187,10 +200,39 @@ func RenderReviewFile(beforePath, afterPath, before, after string) ReviewFile {
 	return renderReviewFile(ReviewFile{BeforePath: beforePath, AfterPath: afterPath}, reviewLines(before), reviewLines(after), 0, 0)
 }
 
+// RenderBinaryReviewFile reviews intact non-text content without source rows,
+// in the spirit of git's "Binary files differ".
+func RenderBinaryReviewFile(beforePath, afterPath string, beforeSize, afterSize int64, beforeHash, afterHash string) ReviewFile {
+	file := RenderReviewFile(beforePath, afterPath, "", "")
+	file.Binary = true
+	side := func(path string, size int64, hash string) string {
+		if path == "" {
+			return "absent"
+		}
+		if len(hash) > 12 {
+			hash = hash[:12]
+		}
+		return fmt.Sprintf("%d bytes, sha256 %s", size, hash)
+	}
+	file.Diff += fmt.Sprintf("Binary files %s and %s differ (%s -> %s)\n",
+		reviewPath(beforePath), reviewPath(afterPath), side(beforePath, beforeSize, beforeHash), side(afterPath, afterSize, afterHash))
+	return file
+}
+
 // RenderIncompleteReviewFile retains an applied operation's identity without
 // inventing source rows when its contents could not be captured.
 func RenderIncompleteReviewFile(beforePath, afterPath, reason string) ReviewFile {
 	file := RenderReviewFile(beforePath, afterPath, "", "")
+	file.Incomplete = reason
+	file.Diff += "incomplete history: " + reason + "\n"
+	return file
+}
+
+// RenderUnbasedReviewFile shows a file's current content when its prior
+// content is unknown. The rows are context for review, not a diff against an
+// empty file, so line counts stay unavailable.
+func RenderUnbasedReviewFile(path, after, reason string) ReviewFile {
+	file := renderReviewFile(ReviewFile{BeforePath: path, AfterPath: path}, nil, reviewLines(after), 0, 0)
 	file.Incomplete = reason
 	file.Diff += "incomplete history: " + reason + "\n"
 	return file

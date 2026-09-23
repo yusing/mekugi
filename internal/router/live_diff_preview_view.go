@@ -256,7 +256,7 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	if title == "" {
 		title = "STREAMING PREVIEW"
 	}
-	if p.current.Input != "" && !p.current.DiffText {
+	if p.current.Input != "" && !p.current.DiffText && !strings.HasPrefix(title, "RUNNING") && !strings.HasPrefix(title, "PENDING") {
 		title = "STREAMING SCRIPT"
 	}
 	if p.complete && !p.current.Evaluated {
@@ -295,8 +295,13 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	header := ansi.Truncate(theme.Accent()+caller+" · "+livediff.Safe(title, false)+"\x1b[0m", max(0, width-1), "")
 	lines := []string{header}
 	rows := height - 1
+	var footer []string
+	if p.current.Footer != "" && rows > 0 {
+		footer = []string{ansi.Truncate(livediff.Safe(p.current.Footer, false), max(0, width-1), "…")}
+		rows--
+	}
 	if rows == 0 || len(p.source) == 0 {
-		return lines, nil
+		return append(lines, footer...), nil
 	}
 	digits, sourceWidth := p.columns(width)
 	fragmentsAt := func(i int) int {
@@ -386,5 +391,5 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 			lines = append(lines, ansi.Truncate(line, max(0, width-1), ""))
 		}
 	}
-	return lines, nil
+	return append(lines, footer...), nil
 }
