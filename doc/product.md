@@ -20,9 +20,9 @@ Success is measured in this order:
 2. Make agent and user workflows clearer and more recoverable.
 3. Improve agent performance without weakening correctness or host authority.
 
-The [benchmark methodology](benchmarks.md) defines how performance claims are
-tested. Provider usage and complete captured results take precedence over local
-estimates or model prose.
+Controlled comparisons live in [codex-setup-ab](https://github.com/yusing/codex-setup-ab).
+Provider usage and complete captured results take precedence over local estimates
+or model prose.
 
 ## Product principles
 
@@ -84,8 +84,7 @@ Mekugi includes:
 - durable replay, journals, session inspection, commentary, diagnostics, and
   provider-authoritative usage reporting;
 - optional model handoff and authenticated third-party model routing; and
-- reproducible historical-workspace benchmarks with correctness gates and
-  content-safe metrics.
+- content-safe captured metrics for evaluating real traffic.
 
 User installation, configuration, and commands belong in the
 [README](../README.md). Detailed behavior belongs to the corresponding file

@@ -35,8 +35,7 @@ Keep repeatable test costs visible. Reuse immutable registry fixtures while
 isolating mutable thread, workspace, and process state. Startup and shutdown
 tests still need their own owners. Use controlled time for in-process lifetimes.
 Preserve real process-cleanup coverage and prove boundary coverage before
-shrinking large fixtures. Historical benchmark artifacts must stay outside
-root Go package discovery without deleting their evidence.
+shrinking large fixtures.
 
 Choose acceptance cases at the changed consumer:
 

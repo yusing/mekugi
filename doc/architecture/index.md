@@ -4,7 +4,7 @@ pjdoc:
   kind: architecture
   scope: root
   status: draft
-  revision: "48"
+  revision: "49"
   files:
     - journal.md
     - third_party.md
@@ -16,7 +16,6 @@ pjdoc:
     - plugin.md
     - execution.md
     - metrics.md
-    - bench.md
 ---
 # Mekugi architecture ownership
 
@@ -37,4 +36,3 @@ collaborators without restating implementation.
 - [`CTR-PLUGIN-001`](plugin.md): authenticated executable plugin registry
 - [`CTR-EXECUTION-001`](execution.md): host-owned editing and process lifecycle
 - [`CTR-METRICS-001`](metrics.md): capture-owned transport metrics
-- [`CTR-BENCH-001`](bench.md): benchmark trust and execution boundary

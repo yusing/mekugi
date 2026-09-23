@@ -69,8 +69,8 @@ sessions, and patch review. No fork, no config edits, no daemon.
   [controls](#options) for main sessions and subagents.
 
 Fewer model round trips, token savings, and model handoffs do not guarantee faster
-commands or better results on every task. See the [benchmark methodology](doc/benchmarks.md)
-for comparisons.
+commands or better results on every task. For controlled comparisons, use
+[codex-setup-ab](https://github.com/yusing/codex-setup-ab).
 
 ## Install
 
@@ -459,7 +459,7 @@ change evidence. Editing and execution are Codex-owned, not root-library APIs.
 - [Product specification](doc/product.md)
 - [Interface contracts](doc/spec/index.md)
 - [Architecture ownership](doc/architecture/index.md)
-- [Benchmark methodology](doc/benchmarks.md)
+- [Controlled comparisons](doc/benchmarks.md)
 - [Codex end-to-end checks](doc/codex-router-e2e.md)
 
 ## Development

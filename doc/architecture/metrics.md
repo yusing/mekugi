@@ -19,7 +19,7 @@ Production feature owners supply only validated observation facts at existing se
 do not keep synthetic baselines, metric callbacks, parallel histories, or dashboard-owned
 calculations. Terminal parsing provides usage;
 private reader execution provides opt-in AX events. Capturer calculations are reused by the
-dashboard, offline aggregation, and benchmark validation.
+dashboard and controlled-comparison exports.
 
 Debug artifacts are a separate router-owned, explicitly requested surface. They may combine
 sanitized capture exports with instruction snapshots, lifecycle outcomes, and feature events,

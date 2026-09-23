@@ -4,7 +4,7 @@ pjdoc:
   kind: spec
   scope: root
   status: draft
-  revision: "61"
+  revision: "62"
   files:
     - journal.md
     - router.md
@@ -24,7 +24,6 @@ pjdoc:
     - execution.md
     - mentor.md
     - guide.md
-    - benchmark.md
 ---
 # Mekugi interface contracts
 
@@ -53,4 +52,3 @@ linked, not copied.
 - [`REQ-EXECUTION-001`](execution.md): stock editing, execution, and executable frontends
 - [`REQ-MENTOR-001`](mentor.md): main and subagent Mentor Handoff schedule
 - [`REQ-GUIDE-001`](guide.md): caller-preserving additive tool guidance
-- [`REQ-BENCH-001`](benchmark.md): historical-commit correctness and paired model evaluation

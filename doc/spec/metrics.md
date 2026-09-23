@@ -34,7 +34,7 @@ and structured-response measurements as complete.
 A durable record MUST contain only:
 
 - schema version, boundary, private capture identity, logical sequence, and provider attempt;
-- mode, provider request model, and benchmark correlation fields already supplied
+- mode, provider request model, and correlation fields already supplied
   by Codex;
 - complete transport byte counts and framing-independent GPT-5 content estimates plus the terminal Responses `output` array measured once;
 - HTTP and Responses status, completeness, duration, a bounded capture-error category, and an optional `transport: "websocket"` marker;
@@ -57,7 +57,7 @@ a capture error and no `projected_request`, rather than substituting the
 provider wire request.
 
 `GET /api/metrics` MUST return `mekugi.capture.metrics.v6`. Its calculations MUST be made by the
-capturer, not by the router, engine, plugin, benchmark report, or dashboard. The snapshot MUST expose:
+capturer, not by the router, engine, plugin, comparison report, or dashboard. The snapshot MUST expose:
 
 1. logical request and provider-attempt counts, including completed and failed logical requests;
 2. provider input, cached input, uncached input, output, reasoning, and usage-bearing attempt counts;
@@ -97,11 +97,9 @@ content, not event/data framing; repeated events remain stream evidence, not fin
 Non-JSON text is counted as literal text. Transport byte counts MUST remain exact observed bytes.
 These reproducible GPT-5 content estimates include envelope and opaque reasoning values when
 present; they MUST NOT be labeled as exact provider input or billed generated tokens.
-A benchmark report MUST read these calculations from the snapshot. It MAY independently reconcile
-the snapshot against sanitized records and measured result usage, but MUST NOT replace the
-capturer's calculations with report-local formulas. A fresh measured arm with any nonzero capture
-health error, including dropped detail, MUST fail validation instead of reporting partial evidence
-as zero.
+The snapshot is the source of published measurements. Readers MAY independently reconcile it
+against sanitized records and measured result usage, but MUST NOT replace capturer calculations
+with alternate formulas. Incomplete capture health is not a zero measurement.
 
 Acceptance:
 
@@ -114,17 +112,15 @@ Acceptance:
    terminal output preserves finalized item order and counts once. Generated router
    commentary is excluded from model output while genuine model commentary is kept,
    even with identical text.
-4. Snapshot totals reconcile their exchanges and provider attempts, and benchmark validation rejects
-   changed aggregate usage or nonzero capture-health errors.
+4. Snapshot totals reconcile their exchanges and provider attempts; capture-health errors remain visible.
 5. Passthrough, Mekugi, and Mentor Handoff use the same capture owner and endpoint;
    none requires another listener.
 6. Cumulative metrics remain complete after the detailed exchange window fills, while health marks
-   the discarded detail and benchmark validation rejects it.
+   the discarded detail.
 7. A response larger than the observation bound preserves delivery while failing capture health.
 
 Schema-7 records and metrics v6 identify this content-token and output-accounting contract. Older records cannot be
-reinterpreted as corrected measurements because they do not retain the raw output items; benchmark
-validation MUST reject them as current comparison evidence.
+reinterpreted as corrected measurements because they do not retain the raw output items.
 
 JSON whitespace, key order, and equivalent string escaping MUST leave all content estimates unchanged while observed bytes may differ. Literal model-visible escape sequences MUST retain their token cost.
 
@@ -171,8 +167,7 @@ model-token prefix, cache residency, or a guarantee of cache reuse. Reports and 
 show unavailable evidence explicitly and correlate stage changes with authoritative input/cached
 usage without labeling inferred shortfalls as proven router-induced cache misses.
 Older captures without these additive fields remain valid for their existing metrics but cannot
-supply cache-prefix diagnoses. Benchmark validation MUST reconcile retained fingerprints and
-independently verify published diagnostic comparisons.
+supply cache-prefix diagnoses.
 
 Client and provider request fingerprints MUST additionally observe `x-codex-turn-state` with
 the recorder-private HMAC key. `turn_state` is an empty string when no nonempty header value was
@@ -198,7 +193,7 @@ missing or invalid identifiers are omitted. The response model MUST NOT fall bac
 request model. Header and body model values remain separate provider claims, not proof of
 the backend identity. Arbitrary headers, credentials, routing tokens, and response content
 MUST NOT be retained. Provider request IDs MAY appear in local dashboard details for support
-correlation, but MUST NOT appear in benchmark summaries.
+correlation, but MUST NOT appear in public summaries.
 
 `cached_tokens_state` MUST distinguish `present`, `missing`, `null`, `invalid`, and
 `unavailable`. Missing or null at any level of `usage.input_tokens_details.cached_tokens`
@@ -211,9 +206,8 @@ JSON, SSE, and supported compressed payloads MUST follow the same rules.
 This evidence is part of schema-7/metrics-v6 and does not change existing normalized
 usage counters. Missing older evidence is unavailable, never explicit zero. Reports and
 dashboard MUST warn that normalized aggregate counters may default missing telemetry to zero
-and MUST show per-attempt field state and explicit counts separately. Benchmark validation
-MUST reconcile raw evidence with snapshots, reject unsafe shapes, and reject a present cached
-count that disagrees with normalized usage. All retries retain their own response evidence.
+and MUST show per-attempt field state and explicit counts separately. All retries retain their
+own response evidence.
 
 Provider usage records may additionally carry `evidence_complete`: true only when
 the production usage parser observed all required token categories without inconsistent
@@ -224,15 +218,12 @@ false/unknown completeness from observed totals rather than presenting missing f
 as zero consumption.
 
 Explicit `--metrics-output PATH` writes the capturer's final metrics snapshot during
-session shutdown. It is independent of operational logging. Benchmark session
-aggregation belongs to this package: complete source snapshots must reconcile their
-records, modes must match, and sessions must have distinct threads.
-Combined sequences are rebased while original session exports remain unchanged.
+session shutdown. It is independent of operational logging.
 
 ### WebSocket capture
 
 Provider WebSocket exchanges use the same request-private correlation, attempt
-sequence, sanitized records, snapshots, and offline aggregation as HTTP.
+sequence, sanitized records, and snapshots as HTTP.
 Each sent `response.create` is one provider attempt. An automatic steering
 successor is a separate logical exchange and provider attempt with zero request
 bytes at both boundaries; capture MUST NOT invent a `response.create` payload. A rejected upgrade that
@@ -269,9 +260,9 @@ adaptation MUST NOT contribute synthetic framing bytes to either boundary.
 An explicit `generate:false` prewarm may complete locally without a provider
 attempt. Capture derives this exception from the observed request and persists
 `provider_expected:false` on the sanitized client record, so live and offline
-aggregation do not report a missing provider. An absent field still means a
+readers do not report a missing provider. An absent field still means a
 provider is expected. Any actual prewarm provider traffic remains measured in provider usage and
-transport totals. Because Codex turn usage excludes prewarm, benchmark reconciliation with the
+transport totals. Because Codex turn usage excludes prewarm, reconciliation with the
 Codex result MUST exclude only logical exchanges whose sanitized client record explicitly retains
 `provider_expected:false`.
 
@@ -283,7 +274,7 @@ direction, even if steering fails or the socket closes before a successor.
 Sanitized `codex_control` and `provider_control` records MUST contain only
 measurement and direction metadata, never raw control payloads. They MUST NOT
 increment logical requests, provider attempts, usage, or completion counts.
-Snapshots, offline aggregation, and the dashboard MUST expose the four
+Snapshots and the dashboard MUST expose the four
 `transport` measures `client_control_requests`, `client_control_responses`,
 `provider_control_requests`, and `provider_control_responses`. These measures
 are separate from ordinary request and response totals, not counted twice.

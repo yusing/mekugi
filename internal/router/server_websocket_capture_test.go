@@ -1,12 +1,10 @@
 package router
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -151,16 +149,6 @@ func TestResponsesWebSocketCaptureSeparatesSteeringAndAutomaticRequest(t *testin
 	}
 	if !automatic {
 		t.Fatal("missing zero-request automatic successor")
-	}
-	if err := record.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(directory, "metrics.json"), response.Body.Bytes(), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	var metrics, capture bytes.Buffer
-	if err := capturer.MergeSessions([]string{directory}, &metrics, &capture); err != nil {
-		t.Fatal(err)
 	}
 }
 

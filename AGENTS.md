@@ -103,8 +103,10 @@ The linked contracts own interface details, exceptions, and acceptance cases.
   results, path scope, and required graders, not model prose or transcript
   labels. Provider usage owns model-consumption claims; local estimates and
   transport expansion are different measures. Missing or incomplete
-  evidence is not zero or success. See [benchmark](doc/spec/benchmark.md),
-  [metrics](doc/spec/metrics.md), and [E2E evidence](doc/codex-router-e2e.md).
+  evidence is not zero or success. See [metrics](doc/spec/metrics.md),
+  [E2E evidence](doc/codex-router-e2e.md), and the separate
+  [codex-setup-ab](https://github.com/yusing/codex-setup-ab) repository for
+  controlled comparisons.
 
 Instruction projection preserves caller-owned base policy except explicitly marked omission blocks
 and pinned inherited conflicts. Additive journal guidance belongs to the journal tool projection;

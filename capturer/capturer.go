@@ -28,7 +28,7 @@ const schemaVersion = 7
 // Detailed exchanges are diagnostic evidence rather than the cumulative
 // counters. Keeping a fixed recent window prevents an always-on router from
 // retaining request history without bound; overflow is explicit capture
-// health so benchmark validation fails rather than using incomplete detail.
+// health so incomplete detail cannot be mistaken for complete evidence.
 const maxRetainedExchangeDetails = 4096
 
 const maxObservedResponseBytes = 8 << 20
