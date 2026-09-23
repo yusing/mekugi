@@ -316,6 +316,9 @@ describe("mcat omitted rows", () => {
         exitCode: 0,
       });
       const limited = await tool.execute(["-n", "1", file, "2:3"], executionContext);
+      expect(limited.stdout).toBe(formatMCatRow(2, ""));
+      expect(limited.stderr).toContain("1-line limit");
+      expect(limited.exitCode).toBe(1);
       expect(limited.omittedOutput?.stdout).toBe(formatMCatRow(3, "three"));
       const tail = await tool.execute(["--tail", "-n", "1", file], executionContext);
       expect(tail.omittedOutput?.stdout).toBe(["one", "", "three", "four"].map((row, i) => formatMCatRow(i + 1, row)).join(""));
@@ -465,7 +468,14 @@ describe("mcat built-in plugin", () => {
     const description = plugin.tools[0].specification.description.replace(/\s+/g, " ");
     expect(description).toContain("Read one or more UTF-8 files or inclusive logical-line ranges");
     expect(description).toContain("raw rows without line or hash prefixes");
-    expect(description).toContain("`mcat [-n N] [--max-tokens N] [--tail] PATH [START:END] [PATH [START:END] ...]`");
+    expect(description).toContain("Usage: mcat [-n N] [--max-tokens N] [--tail] PATH [START:END] [PATH [START:END] ...]");
+    expect(description).toContain("START:END is a separate operand after its path, inclusive of both endpoints. -n counts rows within that range.");
+    expect(description).toContain("mcat src/main.go 100:150");
+    expect(description).toContain("rows 100–150 (51 rows)");
+    expect(description).toContain("mcat -n 20 src/main.go");
+    expect(description).toContain("first 20 rows");
+    expect(description).not.toContain("mcat -n 20 src/main.go 100:150");
+    expect(description).toContain("Limited output contains complete rows and exits nonzero; retained omissions provide per-file mread recovery.");
   });
 
   test("declares a multi-file regex grammar", () => {
@@ -1365,7 +1375,7 @@ describe("inspect_file built-in plugin", () => {
     expect(schema.success.data.outline).toBe("outline_entry[]");
     expect(schema).not.toHaveProperty("selected_entry_source");
     expect(JSON.stringify(schema.outline_entry)).not.toContain("source");
-    for (const persistent of ["mcat", "before editing", "Reason carefully"]) {
+    for (const persistent of ["before editing", "Reason carefully"]) {
       expect(inspectFileDescription).not.toContain(persistent);
     }
 

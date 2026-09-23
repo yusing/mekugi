@@ -121,7 +121,7 @@ export function createMReadTool(): NativeTool {
     specification: {
       type: "custom",
       name: "mread",
-      description: "Continue omitted retained output without rerunning its producer. Usage: `mread REF [--stdout|--stderr] [--max-tokens N]`. Follow an incomplete result's exact next_call; incomplete output does not establish coverage.",
+      description: "Continue omitted retained output without rerunning its producer. Usage: `mread REF [--stdout|--stderr] [--max-tokens N]`. REF is the producer's returned reference, not a path or line range; for example, `mread amber`. --stdout or --stderr selects one stream; otherwise both are returned.",
     },
     nativeExecutor: "mread",
   };

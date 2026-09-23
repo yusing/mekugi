@@ -356,7 +356,16 @@ function mcatInput(argv: string[]): string {
 export function createMCatTool(grammar: string): Tool<string[]> {
   return createExecutorTool({
     name: "mcat",
-    description: "Read one or more UTF-8 files or inclusive logical-line ranges as raw rows without line or hash prefixes. Usage: `mcat [-n N] [--max-tokens N] [--tail] PATH [START:END] [PATH [START:END] ...]`. --max-tokens N sets a strict total ceiling (1–15500; default 4000). -n N selects complete lines without tokenization unless --max-tokens is also supplied. --tail requires -n or --max-tokens and selects final rows in source order. Multiple files support --max-tokens and provide per-file mread recovery. An incomplete token-limited result retains complete rows, writes stderr, and exits nonzero.",
+    description: `Read one or more UTF-8 files or inclusive logical-line ranges as raw rows without line or hash prefixes.
+Usage: mcat [-n N] [--max-tokens N] [--tail] PATH [START:END] [PATH [START:END] ...]
+
+START:END is a separate operand after its path, inclusive of both endpoints. -n counts rows within that range.
+Examples:
+  mcat src/main.go 100:150                # rows 100–150 (51 rows)
+  mcat -n 20 src/main.go                  # first 20 rows
+  mcat src/main.go 10:40 src/config.go 1:30
+
+Limited output contains complete rows and exits nonzero; retained omissions provide per-file mread recovery.`,
     grammar,
     argv(input) {
       const {argv, pathIndex} = mcatArguments(input);

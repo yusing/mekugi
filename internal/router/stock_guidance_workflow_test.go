@@ -37,6 +37,12 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 			"Only an emitted mread reference recovers retained delivery overflow",
 			"ordinary exec_command truncation has no mread recovery",
 		},
+		"mcat": {
+			"START:END is a separate operand after its path, inclusive of both endpoints. -n counts rows within that range.",
+			"mcat src/main.go 100:150",
+			"mcat -n 20 src/main.go",
+			"first 20 rows",
+		},
 	}
 	checkFrontendRequirements := func(t *testing.T, description string) {
 		t.Helper()
@@ -47,9 +53,33 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 				}
 			}
 		}
+		for _, required := range []string{
+			"<common-options>",
+			"--max-tokens N bounds output to 1–15500 tokens.",
+			"-n N selects up to N rows;",
+			"mcat keeps complete rows; mrun token limits may cut within a row.",
+		} {
+			if count := strings.Count(description, required); count != 1 {
+				t.Errorf("shared option guidance %q appears %d times; want one owner", required, count)
+			}
+		}
 	}
 	checkStableRefresh := func(t *testing.T, fields map[string]jsonv1.RawMessage) {
 		t.Helper()
+		if _, ok := fields["previous_response_id"]; ok {
+			t.Fatal("guidance fixture unexpectedly includes a previous-response handle")
+		}
+		if raw, ok := fields["input"]; ok {
+			var input []map[string]jsonv1.RawMessage
+			if err := jsonv1.Unmarshal(raw, &input); err != nil {
+				t.Fatal(err)
+			}
+			for _, item := range input {
+				if jsonString(item, "type") != "additional_tools" {
+					t.Fatalf("guidance fixture unexpectedly includes conversation history: %s", raw)
+				}
+			}
+		}
 		before := mustMarshalJSON(fields)
 		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil {
 			t.Fatal(err)
@@ -57,6 +87,7 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 		if !sameJSONValue(before, mustMarshalJSON(fields)) {
 			t.Fatal("refreshing stock guidance changed an already-projected request")
 		}
+		checkFrontendRequirements(t, string(mustMarshalJSON(fields)))
 	}
 
 	t.Run("native exec_command", func(t *testing.T) {
@@ -126,7 +157,8 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 			// Count across the actual combined request, not each surface in isolation.
 			combined := string(mustMarshalJSON(request.fields))
 			for _, rule := range []string{
-				"Record distinct current results",
+				"Record milestones when established, not only at completion",
+				"Use journal mutations instead of commentary for milestone updates",
 				"Prefer the optional journal field",
 				"Once the assigned work is complete",
 				"no host-dispatched calls in the same response",

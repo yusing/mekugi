@@ -5,6 +5,13 @@ Codex owns stock editing and execution. The following session-private PATH comma
 Reuse still-current source context instead of rereading solely to prepare an edit. Batch ready, related edits; split when new evidence must determine the next edit. Budget combined reads and command output before execution.
 </usage>
 
+<common-options>
+Options apply only to commands whose Usage lists them.
+- --max-tokens N bounds output to 1–15500 tokens. mcat, msymbol, inspect_file, and mread default to 4000; mrun requires an explicit limit. For multi-file mcat, the token budget is shared across files.
+- -n N selects up to N rows; --tail selects the last rows in source order and requires -n or --max-tokens. These options belong to mcat and mrun. With -n alone, no token limit is applied; with both limits, both apply. mcat keeps complete rows; mrun token limits may cut within a row.
+- Quote paths containing spaces. Retained omissions include an exact mread next_call. Use it to continue without rerunning the producer; an incomplete result does not establish full coverage. mrun discards output outside its selected window.
+</common-options>
+
 {{range . -}}
 <tool name="{{.Name}}">
 {{.Description}}
@@ -15,7 +22,13 @@ Reuse still-current source context instead of rereading solely to prepare an edi
 <!-- mekugi-frontends:end -->
 
 <instruction id="journal_tool">
-Manage the calling thread's durable milestone journal. Record distinct current results, validation, decisions, or blockers, not plans, narration, superseded progress, or summaries of other agents. Mutations return router-assigned IDs; report_now requests immediate user-visible delivery. Prefer the optional journal field on a useful ordinary tool call. In Code Mode, await journal({op: "add", text: "..."}) or pass an atomic mutation array. Use this dedicated tool for list. Once the assigned work is complete and all required tool results have been inspected, request finish, optionally with final mutations in journal. Finish can complete only with no host-dispatched calls in the same response. Successful finish ends the turn without another model request or a separate final answer; main flushes its unflushed items and a child returns its current journal to its native completion audience. Child completion automatically includes owned change ranges and aggregated numstat; do not collect them just to finish.
+Manage the calling thread's durable milestone journal.
+
+Record milestones when established, not only at completion: distinct current findings, validation results, decisions, or blockers. Use journal mutations instead of commentary for milestone updates; set report_now when the user needs the update immediately. Do not duplicate the update in commentary. Plans, ongoing narration, superseded progress, and summaries of other agents are not milestones. Questions and direct conversational replies remain separate from milestone reporting.
+
+Prefer the optional journal field on a useful ordinary tool call. In Code Mode, await journal({op: "add", text: "..."}) or pass an atomic mutation array; for example, after inspecting a test result, record the validated outcome alongside the next useful call. Mutations return router-assigned IDs; edit an existing item when its result is superseded. Use this dedicated tool for list.
+
+Once the assigned work is complete and all required tool results have been inspected, request finish, optionally with final mutations in journal. Finish can complete only with no host-dispatched calls in the same response. Successful finish ends the turn without another model request or a separate final answer; main flushes its unflushed items and a child returns its current journal to its native completion audience. Child completion automatically includes owned change ranges and aggregated numstat; do not collect them just to finish.
 </instruction>
 
 <instruction id="journal_code_mode">

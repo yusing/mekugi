@@ -5,16 +5,34 @@ Codex owns stock editing and execution. The following session-private PATH comma
 Reuse still-current source context instead of rereading solely to prepare an edit. Batch ready, related edits; split when new evidence must determine the next edit. Budget combined reads and command output before execution.
 </usage>
 
+<common-options>
+Options apply only to commands whose Usage lists them.
+- --max-tokens N bounds output to 1–15500 tokens. mcat, msymbol, inspect_file, and mread default to 4000; mrun requires an explicit limit. For multi-file mcat, the token budget is shared across files.
+- -n N selects up to N rows; --tail selects the last rows in source order and requires -n or --max-tokens. These options belong to mcat and mrun. With -n alone, no token limit is applied; with both limits, both apply. mcat keeps complete rows; mrun token limits may cut within a row.
+- Quote paths containing spaces. Retained omissions include an exact mread next_call. Use it to continue without rerunning the producer; an incomplete result does not establish full coverage. mrun discards output outside its selected window.
+</common-options>
+
 <tool name="mcat">
-Read one or more UTF-8 files or inclusive logical-line ranges as raw rows without line or hash prefixes. Usage: `mcat [-n N] [--max-tokens N] [--tail] PATH [START:END] [PATH [START:END] ...]`. --max-tokens N sets a strict total ceiling (1–15500; default 4000). -n N selects complete lines without tokenization unless --max-tokens is also supplied. --tail requires -n or --max-tokens and selects final rows in source order. Multiple files support --max-tokens and provide per-file mread recovery. An incomplete token-limited result retains complete rows, writes stderr, and exits nonzero.
+Read one or more UTF-8 files or inclusive logical-line ranges as raw rows without line or hash prefixes.
+Usage: mcat [-n N] [--max-tokens N] [--tail] PATH [START:END] [PATH [START:END] ...]
+
+START:END is a separate operand after its path, inclusive of both endpoints. -n counts rows within that range.
+Examples:
+  mcat src/main.go 100:150                # rows 100–150 (51 rows)
+  mcat -n 20 src/main.go                  # first 20 rows
+  mcat src/main.go 10:40 src/config.go 1:30
+
+Limited output contains complete rows and exits nonzero; retained omissions provide per-file mread recovery.
 </tool>
 
 <tool name="msymbol">
-Resolve one current Go, JavaScript, TypeScript, JSON, or Python symbol and emit complete rows as `"PATH":LINE TEXT`. Before removing a field or changing a signature, use refs to acquire semantic references across affected packages and tests. Read all returned reference rows before dependent edits, continuing incomplete output; report skipped or unavailable coverage rather than treating text matches as complete caller coverage. Usage: `msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH LINE SYMBOL [N]`. LINE selects the current snapshot. ROOT sets resolver scope and relative paths without changing shell state. N selects an exact language-token occurrence. --max-tokens follows the shared 4000-token default and strict 1–15500 ceiling. Ambiguous selectors, unavailable language servers, input changes during the query, and definitions without an editable workspace location fail without stdout rows. An incomplete token-limited result retains complete rows, writes stderr, and exits nonzero.
+Resolve one current Go, JavaScript, TypeScript, JSON, or Python symbol and emit complete rows as `"PATH":LINE TEXT`. Before removing a field or changing a signature, use refs to acquire semantic references across affected packages and tests. Read all returned reference rows before dependent edits, continuing incomplete output; report skipped or unavailable coverage rather than treating text matches as complete caller coverage. Usage: `msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH LINE SYMBOL [N]`. LINE selects the current snapshot. ROOT sets resolver scope and relative paths without changing shell state. N selects an exact language-token occurrence. Ambiguous selectors, unavailable language servers, input changes during the query, and definitions without an editable workspace location fail without stdout rows. An incomplete token-limited result retains complete rows, writes stderr, and exits nonzero.
 </tool>
 
 <tool name="inspect_file">
-Inspect one host-readable regular file and return bounded JSON metadata and a structural outline. When only structure is needed, prefer an outline to a full-file read; read source only for information missing from the outline or current context. --max-tokens N sets the shared strict 1–15500 ceiling (default 4000). Recover omitted entries with mread. Outline line and line_end are one-based source line numbers.
+Inspect one host-readable regular file and return bounded JSON metadata and a structural outline. When only structure is needed, prefer an outline to a full-file read; read source only for information missing from the outline or current context.
+Usage: inspect_file [--max-tokens N] PATH
+Example: inspect_file src/main.go, then mcat src/main.go START:END for the relevant outline entry. Reuse known locations instead of outlining a file again. Outline line and line_end are one-based source line numbers.
 
 Result shape schema:
 {
@@ -79,7 +97,7 @@ Result shape schema:
 </tool>
 
 <tool name="mread">
-Continue omitted retained output without rerunning its producer. Usage: `mread REF [--stdout|--stderr] [--max-tokens N]`. Follow an incomplete result's exact next_call; incomplete output does not establish coverage.
+Continue omitted retained output without rerunning its producer. Usage: `mread REF [--stdout|--stderr] [--max-tokens N]`. REF is the producer's returned reference, not a path or line range; for example, `mread amber`. --stdout or --stderr selects one stream; otherwise both are returned.
 </tool>
 
 <tool name="mrun">
@@ -94,7 +112,13 @@ Review completed observed evidence from stock apply_patch and declared shell fil
 <!-- mekugi-frontends:end -->
 
 <instruction id="journal_tool">
-Manage the calling thread's durable milestone journal. Record distinct current results, validation, decisions, or blockers, not plans, narration, superseded progress, or summaries of other agents. Mutations return router-assigned IDs; report_now requests immediate user-visible delivery. Prefer the optional journal field on a useful ordinary tool call. In Code Mode, await journal({op: "add", text: "..."}) or pass an atomic mutation array. Use this dedicated tool for list. Once the assigned work is complete and all required tool results have been inspected, request finish, optionally with final mutations in journal. Finish can complete only with no host-dispatched calls in the same response. Successful finish ends the turn without another model request or a separate final answer; main flushes its unflushed items and a child returns its current journal to its native completion audience. Child completion automatically includes owned change ranges and aggregated numstat; do not collect them just to finish.
+Manage the calling thread's durable milestone journal.
+
+Record milestones when established, not only at completion: distinct current findings, validation results, decisions, or blockers. Use journal mutations instead of commentary for milestone updates; set report_now when the user needs the update immediately. Do not duplicate the update in commentary. Plans, ongoing narration, superseded progress, and summaries of other agents are not milestones. Questions and direct conversational replies remain separate from milestone reporting.
+
+Prefer the optional journal field on a useful ordinary tool call. In Code Mode, await journal({op: "add", text: "..."}) or pass an atomic mutation array; for example, after inspecting a test result, record the validated outcome alongside the next useful call. Mutations return router-assigned IDs; edit an existing item when its result is superseded. Use this dedicated tool for list.
+
+Once the assigned work is complete and all required tool results have been inspected, request finish, optionally with final mutations in journal. Finish can complete only with no host-dispatched calls in the same response. Successful finish ends the turn without another model request or a separate final answer; main flushes its unflushed items and a child returns its current journal to its native completion audience. Child completion automatically includes owned change ranges and aggregated numstat; do not collect them just to finish.
 </instruction>
 
 <instruction id="journal_code_mode">

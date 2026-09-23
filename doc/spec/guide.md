@@ -31,6 +31,9 @@ model-specific prompt file or routing-session ID.
 The projected helper guidance explains when the tools reduce work, not just their syntax:
 structural outlines for navigation, semantic references for caller-impacting edits, bounded
 command windows and retained-output recovery, and explicit captured-change ranges for reviewers.
+CLI help includes concrete invocation examples and consequential option interactions, including
+inclusive file ranges and line limits within those ranges. A smaller window is incomplete
+evidence, not coverage of the full requested range.
 It preserves context reuse and batching of ready related edits without replacing the stock editor.
 Review handoffs include the requested scope and explicit IDs or same-agent inclusive ranges;
 the recipient's own change listing cannot discover another agent's IDs. Historical edit evidence

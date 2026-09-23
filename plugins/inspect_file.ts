@@ -243,7 +243,9 @@ async function inspect(input: string): Promise<InspectionData> {
 export function createInspectFileTool(grammar: string): Tool<string[]> {
   return createExecutorTool({
     name: "inspect_file",
-    description: `Inspect one host-readable regular file and return bounded JSON metadata and a structural outline. When only structure is needed, prefer an outline to a full-file read; read source only for information missing from the outline or current context. --max-tokens N sets the shared strict 1–15500 ceiling (default 4000). Recover omitted entries with mread. Outline line and line_end are one-based source line numbers.
+    description: `Inspect one host-readable regular file and return bounded JSON metadata and a structural outline. When only structure is needed, prefer an outline to a full-file read; read source only for information missing from the outline or current context.
+Usage: inspect_file [--max-tokens N] PATH
+Example: inspect_file src/main.go, then mcat src/main.go START:END for the relevant outline entry. Reuse known locations instead of outlining a file again. Outline line and line_end are one-based source line numbers.
 
 Result shape schema:
 ${inspectFileShapeSchemaJSON}`,

@@ -124,7 +124,10 @@ stock tool catalog and prompt.
 
 ### Runtime authoring
 
-Journals record checkpoints and milestones, not plans or ongoing narration. Agent guidance
+Journals record checkpoints and milestones when established, not only at completion.
+Milestone updates use journal mutations rather than duplicate commentary; immediate updates
+use `report_now`. Questions and direct conversational replies are distinct from milestone reporting.
+Journals do not record plans or ongoing narration. Agent guidance
 asks for a concise final report containing only distinct, current findings, results,
 validation, or blockers, without overlapping progress or superseded summaries.
 Parents' own journals cover their results, integration decisions, and actions on findings,
