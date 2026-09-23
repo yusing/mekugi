@@ -1,6 +1,18 @@
 import {selectReadOutput} from "./read_output.ts";
+import type {NativeTool} from "../internal/router/toolplugin/plugin.d.ts";
 import type {ExecutionOutput} from "../internal/router/toolplugin/plugin.d.ts";
 import {countGPT5Tokens, encodeGPT5, tokenBytes} from "./tokens.ts";
+
+export function createMRunTool(): NativeTool {
+  return {
+    specification: {
+      type: "custom",
+      name: "mrun",
+      description: "Bound one foreground command's output, retaining its beginning or end. Usage: `mrun (-n N|--max-tokens N) [--tail] -- COMMAND [ARG...]`. Stock yielded sessions and write_stdin still own interactive continuation.",
+    },
+    nativeExecutor: "mrun",
+  };
+}
 
 export function selectMRunText(value: string, budget: number, tail: boolean): {text: string; tokens: number} {
   if (budget === 0) {

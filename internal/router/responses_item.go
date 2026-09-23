@@ -80,39 +80,10 @@ func (item *responsesItem) setContent(content json.RawMessage) {
 	item.fields["content"] = content
 }
 
-// setOutput updates the item's output field.
-func (item *responsesItem) setOutput(output json.RawMessage) {
-	item.Output = output
-	item.fields["output"] = output
-}
-
 // setInput updates the item's input field.
 func (item *responsesItem) setInput(input string) {
 	item.Input = new(input)
 	item.fields["input"] = mustMarshalJSON(input)
-}
-
-// setArguments updates the item's arguments field.
-func (item *responsesItem) setArguments(arguments string) {
-	item.Arguments = new(arguments)
-	item.fields["arguments"] = mustMarshalJSON(arguments)
-}
-
-// renderCarrier transforms the item into a Code Mode carrier with the given kind, name, and payload.
-func (item *responsesItem) renderCarrier(kind codeModeCarrierKind, name, payload string) {
-	item.Type = carrierItemType(kind)
-	item.Name = name
-	item.fields["type"] = mustMarshalJSON(item.Type)
-	item.fields["name"] = mustMarshalJSON(name)
-	delete(item.fields, "input")
-	delete(item.fields, "arguments")
-	item.Input = nil
-	item.Arguments = nil
-	if kind == codeModeCarrierFunction {
-		item.setArguments(payload)
-	} else {
-		item.setInput(payload)
-	}
 }
 
 // cloneFields returns a shallow clone of the item's JSON field map.

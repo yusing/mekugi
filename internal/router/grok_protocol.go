@@ -169,9 +169,9 @@ func translateChatRequest(body []byte, service *openCodeService) (_ *grokTransla
 						fn["strict"] = strict
 					}
 				} else {
-					fn["parameters"] = map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "string", "description": "The exact tool program or input, without JSON encoding or Markdown fences."}}, "required": []string{"input"}, "additionalProperties": false}
+					fn["parameters"] = map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "string", "description": embeddedInstruction("grok_input")}}, "required": []string{"input"}, "additionalProperties": false}
 					if format, ok := def["format"]; ok {
-						fn["description"] = jsonString(def, "description") + "\nThe input string must obey this tool format: " + string(format)
+						fn["description"] = jsonString(def, "description") + "\n" + embeddedInstruction("grok_format_prefix") + " " + string(format)
 					}
 				}
 				switch tr.format {

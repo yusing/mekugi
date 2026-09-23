@@ -17,12 +17,13 @@ import (
 )
 
 const (
-	reportIssueToolName        = "report_issue"
-	reportIssueHistoryTool     = "__mekugi_report_issue"
-	reportIssueToolDescription = "Report an observed Mekugi interaction problem as Markdown to the configured diagnose hooks."
-	maxDiagnoseSettingsBytes   = 1 << 20
-	diagnoseTimeout            = 10 * time.Second
+	reportIssueToolName      = "report_issue"
+	reportIssueHistoryTool   = "__mekugi_report_issue"
+	maxDiagnoseSettingsBytes = 1 << 20
+	diagnoseTimeout          = 10 * time.Second
 )
+
+var reportIssueToolDescription = embeddedInstruction("report_issue")
 
 func exposeReportIssueTool(fields map[string]json.RawMessage, catalog *responsesToolCatalog) error {
 	var check func(*responsesToolSection) error
@@ -61,7 +62,7 @@ func exposeReportIssueTool(fields map[string]json.RawMessage, catalog *responses
 		"parameters": mustMarshalJSON(map[string]any{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]any{
-				"markdown": map[string]any{"type": "string", "description": "The exact Markdown issue report."},
+				"markdown": map[string]any{"type": "string", "description": embeddedInstruction("report_markdown")},
 			},
 			"required": []string{"markdown"},
 		}),

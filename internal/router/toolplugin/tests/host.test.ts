@@ -152,12 +152,14 @@ describe("plugin declaration validation", () => {
     expect(response.errors.join("\n")).toContain(diagnostic);
   });
 
-  test("reserves the built-in mrun name", async () => {
+  test("rejects a user declaration claiming a native executor", async () => {
     const {response} = await validateDeclaration(
-      pluginDeclaration().replace('name: "grammar_test"', 'name: "mrun"'),
+      pluginDeclaration()
+        .replace('name: "grammar_test"', 'name: "mread"')
+        .replace('parse(input) { return input; },\n    argv(input) { return [input]; },\n    execute() { return {stdout: "", exitCode: 0}; }', 'nativeExecutor: "mread"'),
     );
     expect(response.plugins).toEqual([]);
-    expect(response.errors.join("\n")).toContain("collides with a shell keyword or built-in");
+    expect(response.errors.join("\n")).toContain("native executor is not a bundled tool");
   });
 
   test("reports independent declaration errors together", async () => {

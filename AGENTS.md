@@ -60,7 +60,8 @@ The linked contracts own interface details, exceptions, and acceptance cases.
   Mode JavaScript, permissions, sandboxing, native agents, and yielded-session
   continuation. Router observation and display must not execute effects again
   or take over that lifecycle. Keep overrides invocation-local and leave
-  user configuration and instructions untouched. The wrapper owns startup
+  user configuration untouched; instruction changes are limited to the
+  guidance contract below. The wrapper owns startup
   cancellation until Codex takes the terminal. See
   [execution](doc/spec/execution.md), [plugins](doc/spec/plugin.md), and
   [launch](doc/spec/router.md).
@@ -105,8 +106,9 @@ The linked contracts own interface details, exceptions, and acceptance cases.
   evidence is not zero or success. See [benchmark](doc/spec/benchmark.md),
   [metrics](doc/spec/metrics.md), and [E2E evidence](doc/codex-router-e2e.md).
 
-Instruction projection preserves caller-owned base policy. Only explicitly marked omission blocks
-are removed from instruction text; additive journal guidance belongs to the journal tool projection.
+Instruction projection preserves caller-owned base policy except explicitly marked omission blocks
+and pinned inherited conflicts. Additive journal guidance belongs to the journal tool projection;
+frontend guidance comes from the authenticated registry, not a second description catalog.
 The model guidance owner is [guide](doc/spec/guide.md).
 
 ## Build and installation constraints

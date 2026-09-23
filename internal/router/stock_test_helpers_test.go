@@ -79,6 +79,10 @@ func newManagedMekugiProxy(t *testing.T) *mekugiProxy {
 	return newProxyWithSharedTestRegistry(t, sharedProxyTestRegistry(t))
 }
 
+func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedResponsesRequest, sessionID, threadID string, metadata codexTurnMetadata, metadataValid bool) (*mekugiResponseTransform, error) {
+	return p.prepareModelRequest(ctx, request, sessionID, threadID, metadata, metadataValid, false)
+}
+
 func attachTestReplayStore(t *testing.T, proxy *mekugiProxy) {
 	t.Helper()
 	store, err := openMekugiReplayStore(t.TempDir())

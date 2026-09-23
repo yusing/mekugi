@@ -154,7 +154,7 @@ func runAuthenticatedToolWorker(
 		return fail(fmt.Errorf("tool %q is unavailable in worker manifest", name))
 	}
 	if !contribution.Builtin {
-		if owned, _ := ctx.Value(frontendProcessOwnerKey{}).(bool); owned {
+		if owned, _ := ctx.Value(frontendProcessOwnerKey{}).(bool); owned && contribution.NativeExecutor == "" {
 			ctx, err = toolplugin.EnableFrontendOrphanCleanup(ctx)
 			if err != nil {
 				return fail(fmt.Errorf("prepare frontend process cleanup: %w", err))
@@ -183,12 +183,6 @@ func runAuthenticatedToolWorker(
 	var execution toolplugin.ExecutionOutput
 	if contribution.Builtin {
 		switch contribution.Name {
-		case "mread":
-			execution = executeMRead(ctx, manifest, runtimeRoot, args)
-		case "mchanges":
-			execution = executeMChanges(ctx, manifest, runtimeRoot, args)
-		case "mrun":
-			execution, err = executeMRun(ctx, manifest, runtimeRoot, args, stdin)
 		case "mcommentary":
 			handled, publishErr := publishCommentaryOnce(ctx, stdout, args)
 			if publishErr != nil {
@@ -200,6 +194,17 @@ func runAuthenticatedToolWorker(
 			return true, 0
 		default:
 			return fail(fmt.Errorf("built-in tool %q is unavailable", name))
+		}
+	} else if contribution.PluginID == builtinToolsPluginID && contribution.NativeExecutor != "" {
+		switch contribution.NativeExecutor {
+		case "mread":
+			execution = executeMRead(ctx, manifest, runtimeRoot, args)
+		case "mchanges":
+			execution = executeMChanges(ctx, manifest, runtimeRoot, args)
+		case "mrun":
+			execution, err = executeMRun(ctx, manifest, runtimeRoot, args, stdin)
+		default:
+			return fail(fmt.Errorf("native executor %q is unavailable", contribution.NativeExecutor))
 		}
 	} else if contribution.PluginID == builtinToolsPluginID && contribution.Name == "mcat" {
 		execution, err = executeMCat(ctx, manifest, runtimeRoot, args, *contribution)

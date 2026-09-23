@@ -12,7 +12,6 @@ import {runLSPQuery} from "../../../../plugins/lsp.ts";
 import {
   createInspectFileTool,
   goDeclarationRange,
-  inspectFileDescription,
   LineMap,
 } from "../../../../plugins/inspect_file.ts";
 import plugin from "../../../../plugins/tools.ts";
@@ -101,7 +100,7 @@ function definitionJSON(filePath: string, source: string, nameOffset: number, na
 }
 
 async function inspect(...argv: string[]) {
-  const tool = createInspectFileTool("description", String.raw`\A.+\z`);
+  const tool = createInspectFileTool(String.raw`\A.+\z`);
   const execution = await tool.execute(argv, executionContext);
   return {...execution, raw: execution.stdout ?? "", result: JSON.parse(execution.stdout ?? "")};
 }
@@ -249,7 +248,7 @@ describe("mcat line limits", () => {
   test("selects complete head/tail lines before optional token limits", async () => {
     const directory = await temporaryDirectory("mcat-lines-");
     const file = path.join(directory, "rows.txt");
-    const tool = createMCatTool("", "");
+    const tool = createMCatTool("");
     await writeFile(file, "one\r\ntwo\rthree\nfour");
     for (const [flags, expected] of [
       [["-n", "2"], formatMCatRow(1, "one") + formatMCatRow(2, "two")],
@@ -276,7 +275,7 @@ describe("mcat line limits", () => {
     const file = path.join(directory, "rows.txt");
     const content = "word ".repeat(20000);
     await writeFile(file, `${content}\nend`);
-    const tool = createMCatTool("", "");
+    const tool = createMCatTool("");
     const head = await tool.execute(["-n", "1", file], executionContext);
     expect(head.stdout).toBe(formatMCatRow(1, content));
     const tail = await tool.execute(["--tail", "-n", "2", file], executionContext);
@@ -304,7 +303,7 @@ describe("mcat omitted rows", () => {
   test("resumes only omitted rows across logical terminators and bounded selections", async () => {
     const directory = await temporaryDirectory("mcat-resume-");
     const file = path.join(directory, "rows.txt");
-    const tool = createMCatTool("", "");
+    const tool = createMCatTool("");
     for (const ending of ["\n", "\r", "\r\n"]) {
       await writeFile(file, ["one", "", "three", "four", "five"].join(ending));
       const head = await tool.execute(["-n", "2", file, "2:9"], executionContext);
@@ -326,7 +325,7 @@ describe("mcat omitted rows", () => {
   test("reports the first unadmitted row for strict token budgets", async () => {
     const directory = await temporaryDirectory("mcat-resume-token-");
     const file = path.join(directory, "rows.txt");
-    const tool = createMCatTool("", "");
+    const tool = createMCatTool("");
     await writeFile(file, "first\nsecond\nthird\n");
     const budget = countGPT5Tokens(formatMCatRow(1, "first"));
     const first = await tool.execute(["--max-tokens", String(budget), file], executionContext);
@@ -348,7 +347,7 @@ describe("shared reader controls", () => {
     const directory = await temporaryDirectory("reader-options-");
     const file = path.join(directory, "sample.go");
     await writeFile(file, "package p\nfunc First() {}\nfunc Second() {}\n");
-    for (const tool of [createMCatTool("", ""), createInspectFileTool("", "")]) {
+    for (const tool of [createMCatTool(""), createInspectFileTool("")]) {
       const before = await tool.execute(["--max-tokens", "200", file], executionContext);
       const after = await tool.execute([file, "--max-tokens", "200"], executionContext);
       expect(await tool.execute([file, "--max-tokens", "200", "--"], executionContext)).toEqual(before);
@@ -364,7 +363,7 @@ describe("shared reader controls", () => {
     const directory = await temporaryDirectory("reader-omitted-bound-");
     const file = path.join(directory, "rows.txt");
     await writeFile(file, `first\n${"x".repeat(4 * 1024 * 1024)}\nlast\n`);
-    const result = await createMCatTool("", "").execute([file, "-n", "1"], executionContext);
+    const result = await createMCatTool("").execute([file, "-n", "1"], executionContext);
     expect(result.stdout).toBe(formatMCatRow(1, "first"));
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("row 2 exceeds");
@@ -375,7 +374,7 @@ describe("shared reader controls", () => {
     const directory = await temporaryDirectory("reader-capacity-");
     const file = path.join(directory, "rows.txt");
     await writeFile(file, `${("x".repeat(20_000) + "\n").repeat(850)}last\n`);
-    const result = await createMCatTool("", "").execute([file, "-n", "1", "--tail"], executionContext);
+    const result = await createMCatTool("").execute([file, "-n", "1", "--tail"], executionContext);
     expect(result.stdout).toBe(formatMCatRow(851, "last"));
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("recovery bound");
@@ -388,7 +387,7 @@ describe("mcat tail", () => {
     const directory = await temporaryDirectory("mcat-tail-");
     const file = path.join(directory, "rows with spaces.txt");
     await writeFile(file, "first\r\nsecond\rthird\nlast", "utf8");
-    const tool = createMCatTool("test", "");
+    const tool = createMCatTool("");
     const last = formatMCatRow(4, "last");
     const budget = countGPT5Tokens(last);
     const result = await tool.execute(["--tail", "--max-tokens", String(budget), file], executionContext);
@@ -408,7 +407,7 @@ describe("mcat tail", () => {
   test("continues after oversized rows but never skips an oversized final row", async () => {
     const directory = await temporaryDirectory("mcat-tail-long-");
     const file = path.join(directory, "rows");
-    const tool = createMCatTool("test", "");
+    const tool = createMCatTool("");
     for (const large of [" x".repeat(1000), "a".repeat(2_000_000)]) {
       await writeFile(file, `first\n${large}\nlast\n`, "utf8");
       const result = await tool.execute(["--tail", "--max-tokens", "20", file], executionContext);
@@ -425,7 +424,7 @@ describe("mcat tail", () => {
     const directory = await temporaryDirectory("mcat-tail-scan-");
     const file = path.join(directory, "rows");
     await writeFile(file, "same\n".repeat(10_000), "utf8");
-    const result = await createMCatTool("test", "").execute(
+    const result = await createMCatTool("").execute(
       ["--tail", "--max-tokens", "100", file], executionContext);
     expect(result.stdout).toEndWith(formatMCatRow(10_000, "same"));
     expect(countGPT5Tokens(result.stdout!)).toBeLessThanOrEqual(100);
@@ -437,7 +436,7 @@ describe("mcat tail", () => {
     const file = path.join(directory, "rows");
     const content = " ".repeat(1_500_000);
     await writeFile(file, "before\n".repeat(50) + content, "utf8");
-    const result = await createMCatTool("test", "").execute(
+    const result = await createMCatTool("").execute(
       ["--tail", "--max-tokens", "15500", file], executionContext);
     expect(result.stdout).toEndWith(formatMCatRow(51, content));
     expect(result.exitCode).toBe(0);
@@ -446,7 +445,7 @@ describe("mcat tail", () => {
   test("validates flags and all source bytes, even outside the retained suffix", async () => {
     const directory = await temporaryDirectory("mcat-tail-validation-");
     const file = path.join(directory, "rows");
-    const tool = createMCatTool("test", "");
+    const tool = createMCatTool("");
     for (const options of [["--tail"], ["--tail", "--max-tokens", "20", "--tail"]]) {
       const result = await tool.execute([...options, file], executionContext);
       expect(result.failureClass).toBe("invalid_arguments");
@@ -499,7 +498,7 @@ describe("mcat built-in plugin", () => {
   test("preserves quoted option-like paths through execution", async () => {
     const directory = await temporaryDirectory("mcat-option-path-");
     process.chdir(directory);
-    const tool = createMCatTool("", "");
+    const tool = createMCatTool("");
     for (const name of ["--tail", "--max-tokens", "--preview-bytes", "-n"]) {
       const file = path.join(directory, name);
       await writeFile(file, "first\nsecond\n");
@@ -515,7 +514,7 @@ describe("mcat built-in plugin", () => {
   });
 
   test("parses one path and optional range into shell arguments", async () => {
-    const tool = createMCatTool("description", "start: TEST");
+    const tool = createMCatTool("start: TEST");
     const parse = (input: string) => tool.parse(input);
 
 
@@ -544,7 +543,7 @@ describe("mcat built-in plugin", () => {
     await writeFile("second file.txt", "one\ntwo\nthree", "utf8");
     await writeFile("token-spellings.txt", "<|endoftext|> <|im_start|> <|fim_prefix|>\n", "utf8");
 
-    const tool = createMCatTool("description", "start: TEST");
+    const tool = createMCatTool("start: TEST");
     const whole = await tool.execute(["plain.txt"], executionContext);
     expect(whole).toEqual({
       stdout: [
@@ -611,7 +610,7 @@ describe("mcat built-in plugin", () => {
       expect(created.status).toBe(0);
     }
 
-    const tool = createMCatTool("description", "start: TEST");
+    const tool = createMCatTool("start: TEST");
     for (const [argv, diagnostic] of [
       [["short.txt", "3:2"], "range start exceeds end"],
       [["binary.txt"], "not UTF-8"],
@@ -630,7 +629,7 @@ describe("mcat built-in plugin", () => {
     const first = contentWithFormattedTokenCount(4_000, (content) => formatMCatRow(1, content));
     await writeFile("large.txt", `${first}\nsecond\nthird\n`, "utf8");
 
-    const tool = createMCatTool("description", "start: TEST");
+    const tool = createMCatTool("start: TEST");
     const result = await tool.execute(["large.txt"], executionContext);
     expect(result).toEqual({
       stdout: formatMCatRow(1, first),
@@ -646,7 +645,7 @@ describe("mcat built-in plugin", () => {
     process.chdir(directory);
     await writeFile("large.txt", " ".repeat(15_500 * 128 + 1), "utf8");
 
-    const tool = createMCatTool("description", "start: TEST");
+    const tool = createMCatTool("start: TEST");
     const result = await tool.execute(["large.txt"], executionContext);
     expect(result).toEqual({
       stdout: "",
@@ -681,21 +680,21 @@ describe("msymbol built-in plugin", () => {
     await writeFile(target, source);
     const fake = await installFakeGopls();
     await fake.respond(`${target}:2:6-10\n`);
-    const result = await createMSymbolTool("test", "").execute(["refs", "sample.go", "2", "Pick"], executionContext);
+    const result = await createMSymbolTool("").execute(["refs", "sample.go", "2", "Pick"], executionContext);
     expect(result).toMatchObject({exitCode: 0});
     expect(await readFile(fake.callsPath, "utf8")).toContain(`:#${Buffer.byteLength(source.slice(0, source.indexOf("Pick")))}`);
     await fake.respond(definitionJSON(target, source, source.indexOf("Pick"), "Pick"));
-    const definition = await createMSymbolTool("test", "").execute(["def", "sample.go", "2", "Pick"], executionContext);
+    const definition = await createMSymbolTool("").execute(["def", "sample.go", "2", "Pick"], executionContext);
     expect(definition.exitCode).toBe(0);
     expect(definition.stdout).toBe([2, 3, 4].map((line) =>
       symbolRow("sample.go", line, source.split("\n")[line - 1])).join(""));
-    const goInspection = await createInspectFileTool("test", "").execute(["sample.go"], executionContext);
+    const goInspection = await createInspectFileTool("").execute(["sample.go"], executionContext);
     expect(JSON.parse(goInspection.stdout!).data).toMatchObject({
       parse_complete: true,
       outline: [{kind: "function", name: "Pick", line: 2, line_end: 4}],
     });
     await writeFile("sample.ts", "\uFEFFfunction pick() {}\n");
-    const inspected = await createInspectFileTool("test", "").execute(["sample.ts"], executionContext);
+    const inspected = await createInspectFileTool("").execute(["sample.ts"], executionContext);
     expect(inspected.exitCode).toBe(0);
     expect(JSON.parse(inspected.stdout!).data.outline[0].line).toBe(1);
   });
@@ -703,7 +702,7 @@ describe("msymbol built-in plugin", () => {
   test("parses BOM Markdown frontmatter and JSON with original row identities", async () => {
     const directory = await temporaryDirectory("inspect-bom-");
     process.chdir(directory);
-    const tool = createInspectFileTool("test", "");
+    const tool = createInspectFileTool("");
     await writeFile("frontmatter.md", "\uFEFF---\ntitle: Example\n---\n# Heading\n");
     const markdown = await tool.execute(["frontmatter.md"], executionContext);
     expect(JSON.parse(markdown.stdout!).data).toMatchObject({
@@ -733,7 +732,7 @@ describe("msymbol built-in plugin", () => {
     await writeFile(path.join(directory, "sample.go"), source);
     process.chdir(caller);
     const fake = await installFakeGopls();
-    const tool = createMSymbolTool("test", "");
+    const tool = createMSymbolTool("");
     await fake.respond(`${path.join(directory, "sample.go")}:3:14-18\n`);
     const result = await tool.execute(["--workspace", directory, "refs", "sample.go", "3", "Pick"], executionContext);
     expect(result.exitCode).toBe(0);
@@ -766,7 +765,7 @@ describe("msymbol built-in plugin", () => {
     await writeFile(path.join(outside, "source.go"), "package p\n");
     await symlink(path.join(outside, "source.go"), "outside.go");
     const fake = await installFakeGopls();
-    const tool = createMSymbolTool("test", "");
+    const tool = createMSymbolTool("");
     for (const [source, diagnostic] of [
       ["missing.go", "path does not exist"],
       ["directory.go", "path is not a regular file"],
@@ -786,7 +785,7 @@ describe("msymbol built-in plugin", () => {
     process.chdir(directory);
     await writeFile("sample.go", 'package p\nfunc Use() { target := 1; _ = target; _ = "target" }\n');
     const fake = await installFakeGopls();
-    const tool = createMSymbolTool("test", "");
+    const tool = createMSymbolTool("");
     for (const args of [
       ["refs", "sample.go", "2", "target"],
       ["refs", "sample.go", "2", "targ"],
@@ -811,7 +810,7 @@ describe("msymbol built-in plugin", () => {
     await writeFile(path.join(directory, "sample.ts"), "export const target = 42;\nconsole.log(target);\n");
     process.chdir(caller);
     process.env.PATH = `${pluginBin}${path.delimiter}${originalPath ?? ""}`;
-    const result = await createMSymbolTool("test", "").execute([
+    const result = await createMSymbolTool("").execute([
       "--workspace", directory, "def", "sample.ts", "2", "target",
     ], executionContext);
     expect(result.exitCode).toBe(0);
@@ -826,7 +825,7 @@ describe("msymbol built-in plugin", () => {
     await writeFile("state.go", "package callers\ntype State struct { Removed int }\n");
     await writeFile("capture_order_test.go", "package callers\nfunc capture(s State) int { return s.Removed }\n");
     await writeFile("consumer_test.go", 'package callers_test\nimport "example.com/callers"\nfunc use(s callers.State) int { return s.Removed }\n');
-    const result = await createMSymbolTool("description", "start: TEST").execute(
+    const result = await createMSymbolTool("start: TEST").execute(
       ["refs", "state.go", "2", "Removed"], executionContext,
     );
     expect(result.exitCode).toBe(0);
@@ -848,7 +847,7 @@ describe("msymbol built-in plugin", () => {
     ].join("\n");
     await writeFile("path with spaces.go", source, "utf8");
     const fake = await installFakeGopls();
-    const tool = createMSymbolTool("description", "start: TEST");
+    const tool = createMSymbolTool("start: TEST");
     for (const argv of [
       ["refs", "path with spaces.go", "3", "名稱"],
       ["refs", "path with spaces.go", "3", "名稱", "3"],
@@ -885,7 +884,7 @@ describe("msymbol built-in plugin", () => {
     const source = "target: while (false) break target;\n";
     await writeFile("input.js", source);
     process.env.PATH = await temporaryDirectory("msymbol-label-empty-path-");
-    const result = await createMSymbolTool("description", "start: TEST").execute(
+    const result = await createMSymbolTool("start: TEST").execute(
       ["refs", "input.js", "1", "target"],
       executionContext,
     );
@@ -903,7 +902,7 @@ describe("msymbol built-in plugin", () => {
     const inputPath = path.join(directory, "input.go");
     await writeFile(inputPath, source, "utf8");
     const fake = await installFakeGopls();
-    const tool = createMSymbolTool("description", "start: TEST");
+    const tool = createMSymbolTool("start: TEST");
     expect(await tool.execute(["refs", inputPath, "2", "Target"], executionContext)).toMatchObject({
       stdout: "",
       exitCode: 0,
@@ -951,7 +950,7 @@ describe("msymbol built-in plugin", () => {
 	await writeFile(filePath, source, "utf8");
 	const lines = new LineMap(source);
     const fake = await installFakeGopls();
-    const tool = createMSymbolTool("description", "start: TEST");
+    const tool = createMSymbolTool("start: TEST");
     const cases = [
       {name: "A", from: 3, to: 3},
       {name: "B", from: 5, to: 7},
@@ -1014,7 +1013,7 @@ describe("msymbol built-in plugin", () => {
     const fake = await installFakeGopls();
     const response = definitionJSON(filePath, source, fieldOffset, "Field");
     await fake.respond(response);
-    const result = await createMSymbolTool("description", "start: TEST").execute(
+    const result = await createMSymbolTool("start: TEST").execute(
       ["def", "field.go", "5", "Field"],
       executionContext,
     );
@@ -1056,7 +1055,7 @@ describe("msymbol built-in plugin", () => {
     const goplsStdout = `${rows.join("\n")}\n`;
     const fake = await installFakeGopls();
     await fake.respond(goplsStdout, "gopls note\n");
-    const result = await createMSymbolTool("description", "start: TEST").execute(
+    const result = await createMSymbolTool("start: TEST").execute(
       ["refs", "input.go", "2", "Target"],
       executionContext,
     );
@@ -1082,7 +1081,7 @@ describe("msymbol built-in plugin", () => {
     const response = definitionJSON(externalPath, externalSource, externalSource.indexOf("Target"), "Target");
     const fake = await installFakeGopls();
     await fake.respond(response);
-    const tool = createMSymbolTool("description", "start: TEST");
+    const tool = createMSymbolTool("start: TEST");
     const external = await tool.execute(["def", "input.go", "2", "Target"], executionContext);
     expect(external).toEqual({
       stderr: "msymbol: input \"input.go\":2 (current snapshot)\nmsymbol: skipped 1 location outside workspace\nmsymbol: definition has no editable workspace location\n",
@@ -1115,7 +1114,7 @@ describe("msymbol built-in plugin", () => {
     await fake.respond(`${inputPath}:2:14-20\n`);
     await fake.mutateBeforeResponse(inputPath, `package sample\n\n${inputLine}\n`);
 
-    const result = await createMSymbolTool("description", "start: TEST").execute(
+    const result = await createMSymbolTool("start: TEST").execute(
       ["refs", "input.go", "2", "Target"],
       executionContext,
     );
@@ -1142,7 +1141,7 @@ describe("msymbol built-in plugin", () => {
     ].join("\n") + "\n";
     const fake = await installFakeGopls();
     await fake.respond(goplsStdout);
-    const result = await createMSymbolTool("description", "start: TEST").execute(
+    const result = await createMSymbolTool("start: TEST").execute(
       ["refs", "input.go", "2", "Target"],
       executionContext,
     );
@@ -1166,7 +1165,7 @@ describe("msymbol built-in plugin", () => {
     await writeFile("uses.go", huge + "\nfunc Other() { Target() }\n");
     const fake = await installFakeGopls();
     await fake.respond(`${path.join(directory, "uses.go")}:1:5-11\n${path.join(directory, "uses.go")}:2:16-22\n`);
-    const result = await createMSymbolTool("description", "start: TEST").execute(
+    const result = await createMSymbolTool("start: TEST").execute(
       ["refs", "input.go", "2", "Target"], executionContext,
     );
     expect(result.exitCode).toBe(1);
@@ -1231,7 +1230,7 @@ describe("msymbol built-in plugin", () => {
       writeFile("ambient.d.ts", ambientTarget),
       writeFile("ambient_input.ts", ambientInput),
     ]);
-    const tool = createMSymbolTool("description", "start: TEST");
+    const tool = createMSymbolTool("start: TEST");
     const typescript = await tool.execute(
       ["def", "input.ts", "2", "target"],
       executionContext,
@@ -1341,7 +1340,7 @@ process.stdin.on("data", (chunk) => {
       ["sample.json", '{"target": 1}'],
     ] as const;
     await Promise.all(fixtures.map(([name, source]) => writeFile(name, `${source}\n`)));
-    const tool = createMSymbolTool("description", "start: TEST");
+    const tool = createMSymbolTool("start: TEST");
 
     for (const [name, source] of fixtures) {
       const result = await tool.execute(
@@ -1358,6 +1357,7 @@ process.stdin.on("data", (chunk) => {
 describe("inspect_file built-in plugin", () => {
 
   test("embeds its outline-only shape schema", async () => {
+    const inspectFileDescription = createInspectFileTool("").specification.description;
     const marker = "Result shape schema:\n";
     const schema = JSON.parse(inspectFileDescription.slice(
       inspectFileDescription.indexOf(marker) + marker.length,
@@ -1506,7 +1506,7 @@ describe("inspect_file language projections", () => {
     }
     const fake = await installFakeGopls();
     await fake.respond(definitionJSON(path.join(directory, "scope.go"), source, source.indexOf("localVar"), "localVar"));
-    const tool = createMSymbolTool("description", "start: TEST");
+    const tool = createMSymbolTool("start: TEST");
     const result = await tool.execute(["def", "scope.go", "6", "localVar"], executionContext);
     expect(result).toMatchObject({ stdout: `"scope.go":3 ${source.split("\n")[2]}\n`, exitCode: 0, terminationReason: "resolver_cleanup" });
   });
@@ -1631,7 +1631,7 @@ describe("inspect_file command contract", () => {
     await writeFile(path.join(outside, "value.json"), '{"value":42}\n');
     process.chdir(directory);
     await symlink(path.join(outside, "value.json"), "linked.json");
-    const tool = createInspectFileTool("test", "");
+    const tool = createInspectFileTool("");
     for (const input of [path.join(outside, "value.json"), path.relative(directory, path.join(outside, "value.json")), "linked.json"]) {
       const result = await tool.execute([input], executionContext);
       expect(result.exitCode).toBe(0);
@@ -1642,7 +1642,7 @@ describe("inspect_file command contract", () => {
   });
 
   test("accepts only a path operand", async () => {
-    const tool = createInspectFileTool("test", "");
+    const tool = createInspectFileTool("");
     for (const args of [
       ["--max-tokens", "0", "sample.go"],
       ["--source", "Pick", "sample.go"],

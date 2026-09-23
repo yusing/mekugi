@@ -17,18 +17,20 @@ type codeModeExecutionOwner struct {
 	section   *responsesToolSection
 	toolIndex int
 	name      string
+	command   bool
 }
 
 // prepareStockExecution recognizes the stock Codex execution interfaces and
-// adds only Mekugi's journal guidance to the authoritative Code Mode exec
-// description. It never removes, replaces, or rewrites apply_patch,
-// exec_command, or the JavaScript execution contract.
-func prepareStockExecution(fields map[string]json.RawMessage, catalog *responsesToolCatalog) (stockExecutionCatalog, error) {
+// adds session-helper guidance to the owning execution description. It never
+// removes, replaces, or rewrites apply_patch, exec_command, or the JavaScript
+// execution contract.
+func prepareStockExecution(fields map[string]json.RawMessage, catalog *responsesToolCatalog, frontendGuidance string) (stockExecutionCatalog, error) {
 	if catalog.top.present && catalog.top.err != nil {
 		return stockExecutionCatalog{}, fmt.Errorf("decode responses tools: %w", catalog.top.err)
 	}
 	var result stockExecutionCatalog
 	seenApplyPatch, seenExecCommand := false, false
+	nativeExecIndex := -1
 	claim := func(group *responsesAdditionalTools, section *responsesToolSection, index int) error {
 		tool := section.tools[index]
 		if tool == nil {
@@ -36,13 +38,24 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *responses
 		}
 		switch tool.Name {
 		case "exec":
-			if tool.Type != "custom" || !codeModeOwnsStockExecution(tool.Description) {
+			if tool.Type != "custom" {
+				return nil
+			}
+			if err := validateIndependentToolGuidance(tool.Description); err != nil {
+				return err
+			}
+			stockDescription, err := removeFrontendGuidance(tool.Description)
+			if err != nil {
+				return err
+			}
+			if !codeModeOwnsStockExecution(stockDescription) {
 				return nil
 			}
 			if result.codeMode != nil {
 				return errors.New("responses request defines Code Mode exec more than once")
 			}
-			result.codeMode = &codeModeExecutionOwner{group: group, section: section, toolIndex: index, name: tool.Name}
+			result.codeMode = &codeModeExecutionOwner{group: group, section: section, toolIndex: index, name: tool.Name,
+				command: strings.Contains(stockDescription, "tools.exec_command")}
 		case applyPatchToolName:
 			if group != nil || section != catalog.top {
 				return nil
@@ -65,6 +78,7 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *responses
 				return incompatibleRequest("invalid_tool_catalog", "Native exec_command must be a function tool. Check the Codex tool catalog.")
 			}
 			seenExecCommand = true
+			nativeExecIndex = index
 		}
 		return nil
 	}
@@ -112,6 +126,17 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *responses
 		if err != nil {
 			return stockExecutionCatalog{}, err
 		}
+		if owner.command {
+			description, err = injectFrontendGuidance(description, frontendGuidance)
+			if err != nil {
+				return stockExecutionCatalog{}, err
+			}
+		} else {
+			description, err = removeFrontendGuidance(description)
+			if err != nil {
+				return stockExecutionCatalog{}, err
+			}
+		}
 		owner.section.tools[owner.toolIndex].setDescription(description)
 		if owner.group == nil {
 			if err := catalog.encodeTop(fields); err != nil {
@@ -120,10 +145,34 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *responses
 		} else if err := catalog.encodeAdditional(fields, owner.group, owner.section); err != nil {
 			return stockExecutionCatalog{}, fmt.Errorf("encode Responses input: %w", err)
 		}
+	} else if nativeExecIndex >= 0 {
+		tool := catalog.top.tools[nativeExecIndex]
+		description, err := injectFrontendGuidance(tool.Description, frontendGuidance)
+		if err != nil {
+			return stockExecutionCatalog{}, err
+		}
+		tool.setDescription(description)
+		if err := catalog.encodeTop(fields); err != nil {
+			return stockExecutionCatalog{}, fmt.Errorf("encode Responses tools: %w", err)
+		}
 	}
 	return result, nil
 }
 
 func codeModeOwnsStockExecution(description string) bool {
 	return strings.Contains(description, "tools.exec_command") || strings.Contains(description, "tools.apply_patch")
+}
+
+func validateIndependentToolGuidance(description string) error {
+	journalStart, frontendStart := strings.Index(description, codeModeJournalStart), strings.Index(description, frontendGuidanceStart)
+	journalEnd, frontendEnd := strings.Index(description, codeModeJournalEnd), strings.Index(description, frontendGuidanceEnd)
+	if journalStart < 0 || frontendStart < 0 || journalEnd < 0 || frontendEnd < 0 {
+		return nil // Each section's own validator reports missing markers.
+	}
+	journalEnd += len(codeModeJournalEnd)
+	frontendEnd += len(frontendGuidanceEnd)
+	if journalStart < frontendEnd && frontendStart < journalEnd {
+		return errors.New("Code Mode journal and frontend guidance markers overlap")
+	}
+	return nil
 }

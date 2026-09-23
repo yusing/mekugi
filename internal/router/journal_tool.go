@@ -17,19 +17,11 @@ import (
 const journalToolName = "journal"
 const journalHistoryTool = "__mekugi_journal"
 
-const journalToolDescription = `Manage the calling thread's durable milestone journal. Record distinct current results, validation, decisions, or blockers, not plans, narration, superseded progress, or summaries of other agents. Mutations return router-assigned IDs; report_now requests immediate user-visible delivery. Prefer the optional journal field on a useful ordinary tool call. In Code Mode, await journal({op: "add", text: "..."}) or pass an atomic mutation array. Use this dedicated tool for list, or call finish alone after all required tool results, optionally with final mutations in journal. Successful finish ends the turn without another model request or a separate final answer; main flushes its unflushed items and a child returns its current journal to its native completion audience.`
-
 const codeModeJournalStart = "<!-- mekugi-journal:start -->"
 const codeModeJournalEnd = "<!-- mekugi-journal:end -->"
-const codeModeJournalGuidance = codeModeJournalStart + "\n" +
-	"### Journal\n\n" +
-	"Record distinct current results, validation, decisions, or blockers, not plans or narration. Prefer\n" +
-	"the optional journal field on a useful ordinary tool call. In Code Mode, use\n" +
-	"`await journal({op: \"add\", text: \"...\", report_now: true})` for one add/edit/delete mutation,\n" +
-	"or pass an atomic mutation array. Use the dedicated `functions.journal` tool to list entries or\n" +
-	"finish. After every required tool result, finish as the only call, optionally batching final\n" +
-	"mutations in its `journal` field. Successful finish ends the turn without a separate final answer.\n" +
-	codeModeJournalEnd
+
+var journalToolDescription = embeddedInstruction("journal_tool")
+var codeModeJournalGuidance = embeddedInstruction("journal_code_mode")
 
 type journalListItem struct {
 	ID       string `json:"id"`
@@ -43,13 +35,13 @@ type journalListItem struct {
 func journalMutationsSchema() json.RawMessage {
 	return mustMarshalJSON(map[string]any{
 		"type": "array", "maxItems": maxJournalItems,
-		"description": "Optional atomic journal mutations applied before this operation. report_now shows progress immediately.",
+		"description": embeddedInstruction("journal_mutations"),
 		"items": map[string]any{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]any{
 				"op":         map[string]any{"type": "string", "enum": []string{"add", "edit", "delete"}},
 				"id":         map[string]any{"type": "string"},
-				"answer":     map[string]any{"type": "boolean", "description": "Mark text as an answer to the latest user message or native assignment to this child; edit preserves the association when omitted and clears it when false."},
+				"answer":     map[string]any{"type": "boolean", "description": embeddedInstruction("journal_answer_mutation")},
 				"text":       map[string]any{"type": "string"},
 				"report_now": map[string]any{"type": "boolean"},
 			}, "required": []string{"op"},
@@ -58,24 +50,7 @@ func journalMutationsSchema() json.RawMessage {
 }
 
 func injectCodeModeJournalGuidance(description string) (string, error) {
-	start := strings.Count(description, codeModeJournalStart)
-	end := strings.Count(description, codeModeJournalEnd)
-	if start == 0 && end == 0 {
-		if strings.TrimSpace(description) == "" {
-			return codeModeJournalGuidance, nil
-		}
-		return strings.TrimRight(description, "\r\n") + "\n\n" + codeModeJournalGuidance, nil
-	}
-	if start != 1 || end != 1 {
-		return "", errors.New("Code Mode description contains incomplete journal guidance markers")
-	}
-	startIndex := strings.Index(description, codeModeJournalStart)
-	endIndex := strings.Index(description, codeModeJournalEnd)
-	if startIndex > endIndex {
-		return "", errors.New("Code Mode description contains reversed journal guidance markers")
-	}
-	endIndex += len(codeModeJournalEnd)
-	return description[:startIndex] + codeModeJournalGuidance + description[endIndex:], nil
+	return refreshMarkedToolGuidance(description, codeModeJournalStart, codeModeJournalEnd, codeModeJournalGuidance)
 }
 
 func exposeJournalTool(fields map[string]json.RawMessage, catalog *responsesToolCatalog) error {
@@ -116,11 +91,11 @@ func exposeJournalTool(fields map[string]json.RawMessage, catalog *responsesTool
 			"type": "object",
 			"properties": map[string]any{
 				"op":         map[string]any{"type": "string", "enum": []string{"list", "add", "edit", "delete", "finish"}},
-				"id":         map[string]any{"type": "string", "description": "Router-assigned item ID; required for edit and delete."},
-				"text":       map[string]any{"type": "string", "description": "Required nonblank milestone text for add and edit."},
-				"answer":     map[string]any{"type": "boolean", "description": "For add/edit, associate text with the latest user message or native assignment to this child. Omit on edit to preserve; false clears it."},
+				"id":         map[string]any{"type": "string", "description": embeddedInstruction("journal_id")},
+				"text":       map[string]any{"type": "string", "description": embeddedInstruction("journal_text")},
+				"answer":     map[string]any{"type": "boolean", "description": embeddedInstruction("journal_answer")},
 				"journal":    journalMutationsSchema(),
-				"agent":      map[string]any{"type": "string", "description": "Canonical path of a proven ancestor or descendant, for list only. Defaults to the caller."},
+				"agent":      map[string]any{"type": "string", "description": embeddedInstruction("journal_agent")},
 				"report_now": map[string]any{"type": "boolean"},
 			},
 			"required": []string{"op"},

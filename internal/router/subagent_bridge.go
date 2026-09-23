@@ -20,7 +20,7 @@ type subagentBridge struct {
 func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled bool, openCode ...string) (*subagentBridge, error) {
 	openCodeNote := ""
 	if len(openCode) > 0 {
-		openCodeNote = " OpenCode model overrides: " + strings.Join(openCode, ", ") + ". Use fork_turns=\"none\" and a self-contained message; encrypted OpenAI history is unsupported. Omit reasoning_effort for provider defaults, or select an effort supported by the model catalog."
+		openCodeNote = " " + strings.ReplaceAll(embeddedInstruction("opencode_spawn"), "%MODELS%", strings.Join(openCode, ", "))
 	}
 	bridge := &subagentBridge{names: make(map[string]bool)}
 	var projectTools func(json.RawMessage) (json.RawMessage, error)
@@ -37,8 +37,7 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled bool, op
 			case subagentBridgeNamespace:
 				return nil, errors.New("tool namespace mekugi_collaboration is reserved by the collaboration bridge")
 			case "collaboration":
-				namespaceDescription := strings.TrimSpace(jsonString(tool, "description") +
-					"\nNative agent operations use this projected namespace. Message arguments are plaintext; Codex owns agent execution, permissions, and lifecycle.")
+				namespaceDescription := strings.TrimSpace(jsonString(tool, "description") + "\n" + embeddedInstruction("collaboration_namespace"))
 				tool["description"] = mustMarshalJSON(namespaceDescription)
 				var functions []map[string]json.RawMessage
 				if err := json.Unmarshal(tool["tools"], &functions); err != nil {
@@ -47,7 +46,7 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled bool, op
 				for _, fn := range functions {
 					bridge.names[jsonString(fn, "name")] = true
 					if grokEnabled && jsonString(fn, "name") == "spawn_agent" {
-						fn["description"] = mustMarshalJSON(jsonString(fn, "description") + "\nAdditional model override: grok:grok-4.6, with reasoning low/medium/high/xhigh and fork_turns=none.")
+						fn["description"] = mustMarshalJSON(jsonString(fn, "description") + "\n" + embeddedInstruction("grok_spawn"))
 					}
 					if openCodeNote != "" && jsonString(fn, "name") == "spawn_agent" {
 						fn["description"] = mustMarshalJSON(jsonString(fn, "description") + openCodeNote)
@@ -73,9 +72,9 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled bool, op
 						}
 						if grokEnabled && jsonString(fn, "name") == "spawn_agent" {
 							for name, note := range map[string]string{
-								"model":            "Grok override: grok:grok-4.6 requires fork_turns=\"none\".",
-								"fork_turns":       "For grok:grok-4.6, explicitly use \"none\" and include the complete task in message.",
-								"reasoning_effort": "For grok:grok-4.6: low, medium, high, or xhigh.",
+								"model":            embeddedInstruction("grok_model"),
+								"fork_turns":       embeddedInstruction("grok_fork_turns"),
+								"reasoning_effort": embeddedInstruction("grok_reasoning_effort"),
 							} {
 								raw, exists := properties[name]
 								if !exists {

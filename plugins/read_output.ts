@@ -1,5 +1,6 @@
 import {countGPT5Tokens} from "./tokens.ts";
 import {selectMRunText} from "./mrun.ts";
+import type {NativeTool} from "../internal/router/toolplugin/plugin.d.ts";
 
 type ReadKind = "" | "rows" | "json";
 export type ReadPageRequest = {
@@ -114,4 +115,14 @@ export function selectReadOutput(request: ReadPageRequest, budget: number): Read
     if (position[index] < size(index)) break;
   }
   return {text: frame(), position, complete: position.every((offset, index) => !included(index) || offset === size(index))};
+}
+export function createMReadTool(): NativeTool {
+  return {
+    specification: {
+      type: "custom",
+      name: "mread",
+      description: "Continue omitted retained output without rerunning its producer. Usage: `mread REF [--stdout|--stderr] [--max-tokens N]`. Follow an incomplete result's exact next_call; incomplete output does not establish coverage.",
+    },
+    nativeExecutor: "mread",
+  };
 }

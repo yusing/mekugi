@@ -43,7 +43,7 @@ process.stdin.on("data", (chunk) => {
 `);
         const script = resolver === "gopls" ? `
 import {createMSymbolTool} from ${JSON.stringify(msymbol)};
-const result = await createMSymbolTool("test", "test").execute(
+const result = await createMSymbolTool("test").execute(
   ["refs", "input.go", "2", "Target"],
   {stdinFD: null, scriptReadFD: null, scriptWriteFD: null, outputBudgetBytes: 1024},
 );

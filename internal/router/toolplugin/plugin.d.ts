@@ -42,8 +42,15 @@ export type Tool<T> = {
   execute(argv: string[], context: ExecutionContext): ExecutionResult | Promise<ExecutionResult>;
 };
 
+// Bundled tools with router-owned state or process execution use a pinned
+// native backend while retaining their plugin-owned specification.
+export type NativeTool = {
+  specification: Tool<unknown>["specification"];
+  nativeExecutor: "mread" | "mrun" | "mchanges";
+};
+
 export type Plugin = {
   apiVersion: "mekugi-tool-plugin/v1";
   id: string;
-  tools: Tool<unknown>[];
+  tools: (Tool<unknown> | NativeTool)[];
 };

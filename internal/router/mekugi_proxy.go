@@ -398,10 +398,6 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 	return nil
 }
 
-func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedResponsesRequest, sessionID, threadID string, metadata codexTurnMetadata, metadataValid bool) (*mekugiResponseTransform, error) {
-	return p.prepareModelRequest(ctx, request, sessionID, threadID, metadata, metadataValid, false)
-}
-
 // Prewarm shares model projection but cannot initialize execution, replay, or
 // agent lifecycle state. Only the non-generating WebSocket path selects it.
 func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedResponsesRequest, sessionID, threadID string, metadata codexTurnMetadata, metadataValid, prewarm bool) (*mekugiResponseTransform, error) {
@@ -434,13 +430,16 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	// handshake may not yet carry the instruction or tool catalog of a turn.
 	if prewarm {
 		tools := request.responseTools()
-		execution, err := prepareStockExecution(request.fields, tools)
+		execution, err := prepareStockExecution(request.fields, tools, p.registry.frontendGuidance)
 		if err != nil {
 			return nil, err
 		}
 		if execution.codeMode == nil && !execution.native {
 			return nil, nil
 		}
+	}
+	if err := rewriteRequestInstructionConflicts(request); err != nil {
+		return nil, err
 	}
 
 	recipient := metadata.AgentName
@@ -464,7 +463,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	if err := stripStockPlanTools(request.fields, tools); err != nil {
 		return nil, err
 	}
-	execution, err := prepareStockExecution(request.fields, tools)
+	execution, err := prepareStockExecution(request.fields, tools, p.registry.frontendGuidance)
 	if err != nil {
 		return nil, err
 	}

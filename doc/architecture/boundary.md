@@ -24,6 +24,10 @@ Retirement neither transfers execution authority nor recycles change IDs.
 The live-diff renderer consumes provisional inputs and completed review files
 without owning workspace effects or replay locks. Commentary and capture are
 auxiliary consumers of observed facts; they cannot replace a stock result or
-provider response. Caller-owned base instructions pass through unchanged
-except for explicit omission blocks. Additive journal guidance belongs to the
-journal tool projection and remains call-local.
+provider response. Caller-owned base instructions pass through except for
+explicit omission blocks and pinned inherited conflicts. Additive journal
+guidance belongs to the journal tool projection. XML-framed session-helper guidance is
+embedded from a checked-in standalone Markdown file generated from tool-source descriptions and
+an out-of-router template. Configured plugin entries are derived from the authenticated frontend
+registry. Both projections remain call-local; only the frontend section is stored with the pinned
+registry snapshot.

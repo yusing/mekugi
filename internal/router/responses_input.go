@@ -53,56 +53,6 @@ func (input responsesInput) encode() (json.RawMessage, error) {
 	return bytes.Clone(input.raw), nil
 }
 
-// transformFirstDeveloperText finds and transforms the first developer message's text content.
-func transformFirstDeveloperText(input *responsesInput, transform func(string) string) (bool, error) {
-	if input == nil || !input.array {
-		return false, nil
-	}
-	for index, raw := range input.items {
-		item, ok := decodeResponsesItem(raw)
-		if !ok || item.Type != "message" || item.Role != "developer" {
-			continue
-		}
-		content, found, err := transformLastTextContent(item.Content, transform)
-		if err != nil {
-			return false, err
-		}
-		if found {
-			item.setContent(content)
-			input.items[index] = mustMarshalJSON(item)
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// transformLastTextContent finds and transforms the last input text content part.
-func transformLastTextContent(raw json.RawMessage, transform func(string) string) (json.RawMessage, bool, error) {
-	if transform == nil {
-		return raw, false, nil
-	}
-	if text, ok := decodeJSONString(raw); ok {
-		return mustMarshalJSON(transform(text)), true, nil
-	}
-	parts, ok := decodeResponsesTextParts(raw)
-	if !ok {
-		return raw, false, nil
-	}
-	for index := len(parts) - 1; index >= 0; index-- {
-		part := &parts[index]
-		if part.text != nil && isResponsesInputTextPart(part.typeName) {
-			updated, err := replaceRawField(part.raw, "text", mustMarshalJSON(transform(*part.text)))
-			if err != nil {
-				return nil, false, err
-			}
-			part.raw = updated
-			encoded, err := encodeResponsesTextParts(parts)
-			return encoded, true, err
-		}
-	}
-	return raw, false, nil
-}
-
 // transformResponsesTextContent transforms selected text parts in message content.
 func transformResponsesTextContent(
 	raw json.RawMessage,

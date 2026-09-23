@@ -18,8 +18,9 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	proxy := newToolPluginTestProxy(t)
-	base := []any{testCodeModeAdditionalTools(testCodeModeDescription), map[string]string{"type": "message", "role": "developer", "content": "Follow the task."}}
-	incoming := []any{base[0], map[string]string{"type": "message", "role": "developer", "content": "Follow the task." + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd}}
+	const conflictingProgress = "As you work, you send messages to the `commentary` channel."
+	base := []any{testCodeModeAdditionalTools(testCodeModeDescription), map[string]string{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress}}
+	incoming := []any{base[0], map[string]string{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd}}
 	ids := []string{"warm", "turn", "next", "astra", "astra-next"}
 	headers := codexAuthHeaders()
 	headers.Set(sessionIDHeader, "instruction-cache-session")
@@ -39,8 +40,8 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			if bytes.Contains(request["input"], []byte("omitted-rtk-policy")) || bytes.Contains(request["input"], []byte("mekugi:omit")) {
-				t.Error("provider received omitted instructions")
+			if bytes.Contains(request["input"], []byte("omitted-rtk-policy")) || bytes.Contains(request["input"], []byte("mekugi:omit")) || bytes.Contains(request["input"], []byte(conflictingProgress)) {
+				t.Error("provider received omitted or conflicting instructions")
 			}
 			var input []json.RawMessage
 			_ = json.Unmarshal(request["input"], &input)
@@ -48,9 +49,13 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 			case "warm":
 				warmedTools = bytes.Clone(request["tools"])
 				if string(request["generate"]) != "false" || !bytes.Contains(request["input"], []byte("mekugi-journal:start")) ||
+					!bytes.Contains(request["input"], []byte("mekugi-frontends:start")) || !bytes.Contains(request["input"], []byte("batch journal mutations")) ||
 					!bytes.Contains(request["input"], []byte("tools.exec_command")) ||
 					bytes.Contains(request["tools"], []byte(`"shell"`)) || !bytes.Contains(request["tools"], []byte(`"journal"`)) {
-					t.Errorf("prewarm did not project non-generating tool guidance and catalog: input=%s tools=%s", request["input"], request["tools"])
+					t.Errorf("prewarm projection: generate=%s journal=%t frontends=%t conflict=%t stock=%t shell=%t tool=%t",
+						request["generate"], bytes.Contains(request["input"], []byte("mekugi-journal:start")),
+						bytes.Contains(request["input"], []byte("mekugi-frontends:start")), bytes.Contains(request["input"], []byte("batch journal mutations")),
+						bytes.Contains(request["input"], []byte("tools.exec_command")), bytes.Contains(request["tools"], []byte(`"shell"`)), bytes.Contains(request["tools"], []byte(`"journal"`)))
 				}
 			case "turn":
 				if !sameJSONValue(warmedTools, request["tools"]) {

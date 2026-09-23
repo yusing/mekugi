@@ -167,12 +167,6 @@ func (c *responsesToolCatalog) appendTop(tools []*responsesToolDefinition) {
 	}
 }
 
-// removeTop removes a tool from the top-level catalog at the given index.
-func (c *responsesToolCatalog) removeTop(index int) {
-	c.top.tools = append(c.top.tools[:index], c.top.tools[index+1:]...)
-	c.top.rawTools = append(c.top.rawTools[:index], c.top.rawTools[index+1:]...)
-}
-
 // encodeTop encodes the top-level tools back into the request fields.
 func (c *responsesToolCatalog) encodeTop(fields map[string]json.RawMessage) error {
 	encoded, err := marshalProtocolJSON(c.top.tools)

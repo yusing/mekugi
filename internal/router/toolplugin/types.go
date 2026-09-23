@@ -4,7 +4,8 @@ import "encoding/json"
 
 type (
 	Tool struct {
-		Specification json.RawMessage `json:"specification"`
+		Specification  json.RawMessage `json:"specification"`
+		NativeExecutor string          `json:"nativeExecutor,omitempty"`
 	}
 
 	Plugin struct {

@@ -78,9 +78,6 @@ func buildToolRegistryAt(
 		return fail(err)
 	}
 	contributions := []toolContribution{
-		{PluginID: "builtin.mekugi", Name: "mread", Builtin: true, Executable: true},
-		{PluginID: "builtin.mekugi", Name: "mrun", Builtin: true, Executable: true},
-		{PluginID: "builtin.mekugi", Name: "mchanges", Builtin: true, Executable: true},
 		{PluginID: "builtin.mekugi", Name: "mcommentary", Builtin: true, Executable: true},
 	}
 	if diagnose {
@@ -117,21 +114,24 @@ func buildToolRegistryAt(
 			}
 			name := specification.Name
 			contribution := toolContribution{
-				PluginID:      plugin.ID,
-				Name:          name,
-				Specification: slices.Clone(tool.Specification),
-				Module:        plugin.Module,
-				ModuleIndex:   toolIndex,
-				Executable:    true,
-			}
-			if validationErr := validateToolContribution(contribution); validationErr != nil {
-				validationErrors = append(validationErrors, validationErr)
+				PluginID:       plugin.ID,
+				Name:           name,
+				Specification:  slices.Clone(tool.Specification),
+				Module:         plugin.Module,
+				ModuleIndex:    toolIndex,
+				NativeExecutor: tool.NativeExecutor,
+				Executable:     true,
 			}
 			contributions = append(contributions, contribution)
 		}
 	}
 	byName := make(map[string]toolContribution, len(contributions))
 	for _, contribution := range contributions {
+		if len(contribution.Specification) != 0 {
+			if validationErr := validateToolContribution(contribution); validationErr != nil {
+				validationErrors = append(validationErrors, validationErr)
+			}
+		}
 		if prior, exists := byName[contribution.Name]; exists {
 			validationErrors = append(validationErrors, fmt.Errorf(
 				"tool name %q is owned by both %s and %s",
@@ -146,13 +146,19 @@ func buildToolRegistryAt(
 	if len(validationErrors) != 0 {
 		return fail(errors.Join(validationErrors...))
 	}
+	frontendGuidance, err := frontendGuidanceFromRegistry(contributions)
+	if err != nil {
+		return fail(err)
+	}
 
+	guidanceHash := sha256.Sum256([]byte(frontendGuidance))
 	manifest := toolWorkerManifest{
 		ReplayDirectory: replayDirectory,
 		HookDirectory:   dataDirectory,
 		Version:         1,
 		NodeExecutable:  pluginSnapshot.NodeExecutable,
 		RuntimeRoot:     "runtime",
+		GuidanceSHA256:  hex.EncodeToString(guidanceHash[:]),
 		Tools:           slices.Clone(contributions),
 	}
 	if debug, _ := ctx.Value(debugContextKey{}).(*debugOutput); debug != nil {
@@ -170,6 +176,9 @@ func buildToolRegistryAt(
 	snapshotDirectory = authenticatedDirectory
 	executable := filepath.Join(snapshotDirectory, toolWorkerExecutableFilename)
 	runtimeRoot := filepath.Join(snapshotDirectory, manifest.RuntimeRoot)
+	if err := os.WriteFile(filepath.Join(snapshotDirectory, "frontend_guidance.md"), []byte(frontendGuidance), 0o600); err != nil {
+		return fail(fmt.Errorf("write generated frontend guidance: %w", err))
+	}
 	if err := writeToolWorkerManifest(snapshotDirectory, manifest); err != nil {
 		return fail(err)
 	}
@@ -194,7 +203,7 @@ func buildToolRegistryAt(
 		frontendDirectory: filepath.Join(snapshotDirectory, "bin"),
 		runtimeDirectory:  runtimeDirectory,
 		ordered:           contributions,
-		byName:            byName,
+		frontendGuidance:  frontendGuidance,
 		wrappers:          wrappers,
 		frontends:         frontends,
 		diagnoseHooks:     reportHooks,
@@ -350,20 +359,4 @@ func (registry *toolRegistry) Close() error {
 
 	})
 	return registry.closeErr
-}
-
-func (registry *toolRegistry) wrapper(name string) (string, bool) {
-	if registry == nil {
-		return "", false
-	}
-	path, ok := registry.wrappers[name]
-	return path, ok
-}
-
-func (registry *toolRegistry) contribution(name string) (toolContribution, bool) {
-	if registry == nil {
-		return toolContribution{}, false
-	}
-	contribution, ok := registry.byName[name]
-	return contribution, ok
 }

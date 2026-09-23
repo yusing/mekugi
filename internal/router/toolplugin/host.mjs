@@ -25,7 +25,7 @@ const shellCommandNames = new Set([
   "printf", "pushd", "pwd", "read", "readarray", "readonly", "return", "select", "set",
   "shift", "shopt", "source", "suspend", "test", "then", "time", "times", "trap",
   "true", "type", "typeset", "ulimit", "umask", "unalias", "unset", "until", "wait",
-  "while", "mrun",
+  "while",
 ]);
 
 function byteLength(value) {
@@ -461,6 +461,22 @@ function validateSpecification(specification, label, errors) {
 
 function validateTool(tool, modulePath, index, errors) {
   const label = `${modulePath}: tool ${index + 1}`;
+  if (tool !== null && typeof tool === "object" && !Array.isArray(tool)
+      && Object.hasOwn(tool, "nativeExecutor")) {
+    if (!exactKeys(tool, ["specification", "nativeExecutor"])) {
+      errors.push(`${label}: native declaration contains unsupported or missing fields`);
+      return null;
+    }
+    const specification = validateSpecification(tool.specification, label, errors);
+    if (modulePath !== "builtin/tools.js" || !["mread", "mrun", "mchanges"].includes(tool.nativeExecutor)
+        || specification?.name !== tool.nativeExecutor) {
+      errors.push(`${label}: native executor is not a bundled tool`);
+    }
+    if (specification === null || errors.some((message) => message.startsWith(`${label}:`))) {
+      return null;
+    }
+    return {specification, nativeExecutor: tool.nativeExecutor};
+  }
   if (tool === null || typeof tool !== "object" || Array.isArray(tool)
       || !exactKeys(tool, ["specification", "parse", "argv", "execute"])) {
     errors.push(`${label}: declaration contains unsupported or missing fields`);

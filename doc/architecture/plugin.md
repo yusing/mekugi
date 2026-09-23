@@ -12,9 +12,11 @@ The snapshot provides one session-private PATH directory. Codex starts each
 frontend through its stock executor and retains process, sandbox, permission,
 and continuation authority. Worker dispatch owns only authenticated argv,
 stdin separation, bounded output, and optional managed-output retention.
-`mread` and `mchanges` delegate to existing stores; `mrun` executes one
-foreground child within Codex's frontend process. Reader implementations and
-AX observation are not duplicated in the registry.
+The bundled plugin declaration owns the specifications and descriptions of
+`mread`, `mchanges`, and `mrun`. Their pinned native host executors delegate to
+existing stores or run one foreground child within Codex's frontend process.
+Configured plugin declarations cannot claim a native executor. Reader
+implementations and AX observation are not duplicated in the registry.
 
 `mekugi:core/v1` owns deterministic portable helpers, not file access or
 execution. Configured JavaScript hosts are isolated per call. The registry

@@ -240,15 +240,13 @@ async function inspect(input: string): Promise<InspectionData> {
   };
 }
 
-export const inspectFileDescription = `Inspect one host-readable regular file and return bounded JSON metadata and a structural outline. --max-tokens N sets the shared strict 1–15500 ceiling (default 4000). Recover omitted entries with mread. Outline line and line_end are one-based source line numbers.
-
-Result shape schema:
-${inspectFileShapeSchemaJSON}`;
-
-export function createInspectFileTool(description: string, grammar: string): Tool<string[]> {
+export function createInspectFileTool(grammar: string): Tool<string[]> {
   return createExecutorTool({
     name: "inspect_file",
-    description,
+    description: `Inspect one host-readable regular file and return bounded JSON metadata and a structural outline. --max-tokens N sets the shared strict 1–15500 ceiling (default 4000). Recover omitted entries with mread. Outline line and line_end are one-based source line numbers.
+
+Result shape schema:
+${inspectFileShapeSchemaJSON}`,
     grammar,
     argv: readerArguments,
     async execute(argv) {

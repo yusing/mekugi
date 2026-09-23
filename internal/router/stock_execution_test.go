@@ -7,6 +7,7 @@ import (
 )
 
 func TestPrepareStockExecutionPreservesCodeModeAndNativeTools(t *testing.T) {
+	guide := newManagedMekugiProxy(t).registry.frontendGuidance
 	t.Run("Code Mode", func(t *testing.T) {
 		fields := map[string]json.RawMessage{
 			"tools": mustMarshalJSON([]any{map[string]any{
@@ -19,7 +20,7 @@ func TestPrepareStockExecutionPreservesCodeModeAndNativeTools(t *testing.T) {
 		if err := json.Unmarshal(fields["tools"], &before); err != nil {
 			t.Fatal(err)
 		}
-		execution, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields))
+		execution, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide)
 		if err != nil || execution.codeMode == nil || execution.native {
 			t.Fatalf("execution = %+v, %v", execution, err)
 		}
@@ -31,7 +32,8 @@ func TestPrepareStockExecutionPreservesCodeModeAndNativeTools(t *testing.T) {
 			t.Fatalf("unrelated stock tool changed: before=%s after=%s", mustMarshalJSON(before), mustMarshalJSON(after))
 		}
 		if !strings.Contains(string(fields["input"]), "tools.exec_command") ||
-			!strings.Contains(string(fields["input"]), "mekugi-journal:start") {
+			!strings.Contains(string(fields["input"]), "mekugi-journal:start") ||
+			!strings.Contains(string(fields["input"]), frontendGuidanceStart) {
 			t.Fatalf("Code Mode contract or additive journal guidance missing: %s", fields["input"])
 		}
 	})
@@ -39,24 +41,32 @@ func TestPrepareStockExecutionPreservesCodeModeAndNativeTools(t *testing.T) {
 	t.Run("direct", func(t *testing.T) {
 		fields := map[string]json.RawMessage{"tools": mustMarshalJSON(testNativeResponsesTools())}
 		before := append(json.RawMessage(nil), fields["tools"]...)
-		execution, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields))
+		execution, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide)
 		if err != nil || execution.codeMode != nil || !execution.native {
 			t.Fatalf("execution = %+v, %v", execution, err)
 		}
-		if !sameJSONValue(before, fields["tools"]) {
-			t.Fatalf("native tools changed: before=%s after=%s", before, fields["tools"])
+		var original, projected []map[string]json.RawMessage
+		if err := json.Unmarshal(before, &original); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(fields["tools"], &projected); err != nil {
+			t.Fatal(err)
+		}
+		if !sameJSONValue(mustMarshalJSON(original[1]), mustMarshalJSON(projected[1])) || !strings.Contains(string(projected[0]["description"]), frontendGuidanceStart) {
+			t.Fatalf("native projection changed patch tool or omitted frontend guidance: %s", fields["tools"])
 		}
 	})
 }
 
 func TestStockExecutionAllowsHostSelectedToolSubset(t *testing.T) {
+	guide := newManagedMekugiProxy(t).registry.frontendGuidance
 	for _, tools := range [][]any{
 		{map[string]any{"type": "function", "name": nativeExecCommandToolName}},
 		{map[string]any{"type": "custom", "name": applyPatchToolName}},
 		{map[string]any{"type": "function", "name": "collaboration.wait_agent"}},
 	} {
 		fields := map[string]json.RawMessage{"tools": mustMarshalJSON(tools)}
-		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields)); err != nil {
+		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil {
 			t.Fatalf("stock subset %s: %v", fields["tools"], err)
 		}
 	}
@@ -65,8 +75,47 @@ func TestStockExecutionAllowsHostSelectedToolSubset(t *testing.T) {
 		"tools": mustMarshalJSON([]any{}),
 		"input": mustMarshalJSON([]any{testCodeModeAdditionalTools(description)}),
 	}
-	if result, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields)); err != nil || result.codeMode == nil {
+	if result, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil || result.codeMode == nil {
 		t.Fatalf("Code Mode subset = %+v, %v", result, err)
+	}
+	fields = map[string]json.RawMessage{
+		"input": mustMarshalJSON([]any{testCodeModeAdditionalTools("Run JS with tools.apply_patch.\n" + guide)}),
+	}
+	if result, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil || result.codeMode == nil {
+		t.Fatalf("patch-only Code Mode subset = %+v, %v", result, err)
+	}
+	if strings.Contains(string(fields["input"]), "mekugi-frontends:start") || !strings.Contains(string(fields["input"]), "mekugi-journal:start") {
+		t.Fatalf("patch-only Code Mode retained irrelevant frontend guide: %s", fields["input"])
+	}
+}
+
+func TestNativeFrontendGuidanceDeliveredByRequestPreparation(t *testing.T) {
+	_, request := newNativeMekugiTestTransformWithProxy(t, newManagedMekugiProxy(t))
+	var tools []map[string]json.RawMessage
+	if err := json.Unmarshal(request.fields["tools"], &tools); err != nil {
+		t.Fatal(err)
+	}
+	if len(tools) < 2 || strings.Count(jsonString(tools[0], "description"), frontendGuidanceStart) != 1 ||
+		!strings.Contains(jsonString(tools[0], "description"), "<tool name=\"mcat\">") ||
+		strings.Contains(jsonString(tools[1], "description"), frontendGuidanceStart) {
+		t.Fatalf("native frontend guidance not owned by exec_command: %s", request.fields["tools"])
+	}
+}
+
+func TestCodeModeRejectsOverlappingGuidanceSections(t *testing.T) {
+	guide := newManagedMekugiProxy(t).registry.frontendGuidance
+	for _, description := range []string{
+		"Run JS with tools.exec_command.\n" + frontendGuidanceStart + codeModeJournalStart + codeModeJournalEnd + frontendGuidanceEnd,
+		"Run JS with tools.exec_command.\n" + codeModeJournalStart + frontendGuidanceStart + frontendGuidanceEnd + codeModeJournalEnd,
+	} {
+		fields := map[string]json.RawMessage{"input": mustMarshalJSON([]any{testCodeModeAdditionalTools(description)})}
+		before := append(json.RawMessage(nil), fields["input"]...)
+		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err == nil {
+			t.Fatalf("accepted overlapping guidance: %q", description)
+		}
+		if !sameJSONValue(before, fields["input"]) {
+			t.Fatalf("rejected guidance changed request: %s", fields["input"])
+		}
 	}
 }
 

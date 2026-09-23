@@ -618,10 +618,10 @@ async function executeQuery(query: Query, onResolverStart: () => void): Promise<
   };
 }
 
-export function createMSymbolTool(description: string, grammar: string): Tool<string[]> {
+export function createMSymbolTool(grammar: string): Tool<string[]> {
   return createExecutorTool({
     name: "msymbol",
-    description,
+    description: "Resolve one current Go, JavaScript, TypeScript, JSON, or Python symbol and emit complete rows as `\"PATH\":LINE TEXT`. Usage: `msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH LINE SYMBOL [N]`. LINE selects the current snapshot. ROOT sets resolver scope and relative paths without changing shell state. N selects an exact language-token occurrence. --max-tokens follows the shared 4000-token default and strict 1–15500 ceiling. Ambiguous selectors, unavailable language servers, input changes during the query, and definitions without an editable workspace location fail without stdout rows. An incomplete token-limited result retains complete rows, writes stderr, and exits nonzero.",
     grammar,
     argv(input) {
       return readerArguments(input);

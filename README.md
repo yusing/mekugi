@@ -242,7 +242,8 @@ live pane are previews, not a claim that execution succeeded.
 
 The commands below are session-private executables on Codex's `PATH`, not global
 utilities. They use the same authenticated pinned tool snapshot as configured
-plugins. Invoke them through stock `exec_command`.
+plugins. Invoke them through stock `exec_command`. Mekugi also shows their
+snapshot-owned descriptions to the agent in the execution tool guidance.
 
 | Command | Purpose | Extra prerequisite on the executor's `PATH` |
 | --- | --- | --- |

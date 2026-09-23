@@ -1,0 +1,82 @@
+<!-- mekugi-frontends:start -->
+<mekugi-frontends>
+<usage>
+Codex owns stock editing and execution. The following session-private PATH commands run through exec_command (or tools.exec_command in Code Mode); use them when useful rather than replacing ordinary shell tools.
+</usage>
+
+{{range . -}}
+<tool name="{{.Name}}">
+{{.Description}}
+</tool>
+
+{{end -}}
+</mekugi-frontends>
+<!-- mekugi-frontends:end -->
+
+<instruction id="journal_tool">
+Manage the calling thread's durable milestone journal. Record distinct current results, validation, decisions, or blockers, not plans, narration, superseded progress, or summaries of other agents. Mutations return router-assigned IDs; report_now requests immediate user-visible delivery. Prefer the optional journal field on a useful ordinary tool call. In Code Mode, await journal({op: "add", text: "..."}) or pass an atomic mutation array. Use this dedicated tool for list, or call finish alone after all required tool results, optionally with final mutations in journal. Successful finish ends the turn without another model request or a separate final answer; main flushes its unflushed items and a child returns its current journal to its native completion audience.
+</instruction>
+
+<instruction id="journal_code_mode">
+<!-- mekugi-journal:start -->
+<journal>
+Record distinct current results, validation, decisions, or blockers, not plans or narration. Prefer
+the optional journal field on a useful ordinary tool call. In Code Mode, use
+`await journal({op: "add", text: "...", report_now: true})` for one add/edit/delete mutation,
+or pass an atomic mutation array. Use the dedicated `functions.journal` tool to list entries or
+finish. After every required tool result, finish as the only call, optionally batching final
+mutations in its `journal` field. Successful finish ends the turn without a separate final answer.
+</journal>
+<!-- mekugi-journal:end -->
+</instruction>
+
+<instruction id="journal_mutations">
+Optional atomic journal mutations applied before this operation. report_now shows progress immediately.
+</instruction>
+<instruction id="journal_answer_mutation">
+Mark text as an answer to the latest user message or native assignment to this child; edit preserves the association when omitted and clears it when false.
+</instruction>
+<instruction id="journal_id">
+Router-assigned item ID; required for edit and delete.
+</instruction>
+<instruction id="journal_text">
+Required nonblank milestone text for add and edit.
+</instruction>
+<instruction id="journal_answer">
+For add/edit, associate text with the latest user message or native assignment to this child. Omit on edit to preserve; false clears it.
+</instruction>
+<instruction id="journal_agent">
+Canonical path of a proven ancestor or descendant, for list only. Defaults to the caller.
+</instruction>
+
+<instruction id="report_issue">
+Report an observed Mekugi interaction problem as Markdown to the configured diagnose hooks.
+</instruction>
+<instruction id="report_markdown">
+The exact Markdown issue report.
+</instruction>
+
+<instruction id="collaboration_namespace">
+Native agent operations use this projected namespace. Message arguments are plaintext; Codex owns agent execution, permissions, and lifecycle.
+</instruction>
+<instruction id="grok_spawn">
+Additional model override: grok:grok-4.6, with reasoning low/medium/high/xhigh and fork_turns=none.
+</instruction>
+<instruction id="opencode_spawn">
+OpenCode model overrides: %MODELS%. Use fork_turns="none" and a self-contained message; encrypted OpenAI history is unsupported. Omit reasoning_effort for provider defaults, or select an effort supported by the model catalog.
+</instruction>
+<instruction id="grok_model">
+Grok override: grok:grok-4.6 requires fork_turns="none".
+</instruction>
+<instruction id="grok_fork_turns">
+For grok:grok-4.6, explicitly use "none" and include the complete task in message.
+</instruction>
+<instruction id="grok_reasoning_effort">
+For grok:grok-4.6: low, medium, high, or xhigh.
+</instruction>
+<instruction id="grok_input">
+The exact tool program or input, without JSON encoding or Markdown fences.
+</instruction>
+<instruction id="grok_format_prefix">
+The input string must obey this tool format:
+</instruction>
