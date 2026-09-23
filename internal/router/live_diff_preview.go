@@ -158,6 +158,7 @@ func (w *liveDiffPreviewWorker) run() {
 	defer close(w.done)
 	editRecognized := false
 	codePatchHidden := false
+	scriptVisible := false
 	for {
 		select {
 		case <-w.ctx.Done():
@@ -182,6 +183,8 @@ func (w *liveDiffPreviewWorker) run() {
 		preview := w.preview
 		w.mu.Unlock()
 		projectionInput := input
+		shellDisplay := ""
+		shellProvisional := false
 		if w.kind == applyPatchToolName {
 			if projected, ok := nativePatchPreview(input); ok {
 				projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
@@ -225,13 +228,43 @@ func (w *liveDiffPreviewWorker) run() {
 					}
 					continue
 				}
-				preview.Input, preview.Syntax, preview.Status = input, []liveDiffSourceSpan{{Path: "preview.js"}}, "STREAMING SCRIPT"
-				w.mu.Lock()
-				if !w.closed && w.ctx.Err() == nil && input != "" {
-					w.broker.publishPreview(preview, false)
+				scripts, shellProgram := codeModeShellFragments(input)
+				if len(scripts) != 0 {
+					projectionInput = scripts[len(scripts)-1]
+					shellDisplay = codeModeShellDisplay(scripts)
+					shellProvisional = true
+				} else {
+					if shellProgram {
+						// A batch prefix is not a JavaScript preview. Wait for a
+						// literal command rather than flashing its unfinished wrapper.
+						if scriptVisible {
+							w.broker.publishPreview(liveDiffPreview{ID: preview.ID}, true)
+							scriptVisible = false
+						}
+						continue
+					}
+					preview.Input, preview.Syntax, preview.Status = input, []liveDiffSourceSpan{{Path: "preview.js"}}, "STREAMING SCRIPT"
+					w.mu.Lock()
+					if !w.closed && w.ctx.Err() == nil && input != "" {
+						w.broker.publishPreview(preview, false)
+						scriptVisible = true
+					}
+					w.mu.Unlock()
+					continue
 				}
-				w.mu.Unlock()
-				continue
+			}
+			var scripts []string
+			for _, call := range calls {
+				if jsonString(call, "name") != nativeExecCommandToolName {
+					continue
+				}
+				var arguments map[string]json.RawMessage
+				if json.Unmarshal([]byte(jsonString(call, "arguments")), &arguments) == nil {
+					scripts = append(scripts, jsonString(arguments, "cmd"))
+				}
+			}
+			if len(scripts) != 0 && shellDisplay == "" {
+				shellDisplay = codeModeShellDisplay(scripts)
 			}
 			for index := len(calls) - 1; index >= 0; index-- {
 				call := calls[index]
@@ -268,6 +301,16 @@ func (w *liveDiffPreviewWorker) run() {
 			if w.kind == "" {
 				projectionInput = programs[len(programs)-1]
 			}
+		}
+		if shellProvisional {
+			preview.Input, preview.Syntax, preview.Status = shellDisplay, []liveDiffSourceSpan{{Path: "stream.sh"}}, "STREAMING SCRIPT"
+			w.mu.Lock()
+			if !w.closed && w.ctx.Err() == nil {
+				w.broker.publishPreview(preview, false)
+				scriptVisible = true
+			}
+			w.mu.Unlock()
+			continue
 		}
 		statements, directory, partialLine, parsed := liveDiffShellStatements(projectionInput, preview.Workspace)
 		ok := false
@@ -323,11 +366,15 @@ func (w *liveDiffPreviewWorker) run() {
 		cancel()
 		editRecognized = editRecognized || ok
 		if editRecognized {
+			scriptVisible = false
 			preview.Input, preview.Syntax, preview.Files = "", nil, nil
 			preview.Status = "STREAMING PREVIEW"
 		} else {
+			scriptVisible = true
 			preview.Input, preview.Syntax = projectionInput, liveDiffScriptSyntax(projectionInput)
-			if projection, projected := shellInterpreterScriptProjection(projectionInput); projected {
+			if shellDisplay != "" {
+				preview.Input, preview.Syntax = shellDisplay, []liveDiffSourceSpan{{Path: "stream.sh"}}
+			} else if projection, projected := shellInterpreterScriptProjection(projectionInput); projected {
 				preview.Input = projection.Source
 				preview.Syntax = []liveDiffSourceSpan{{Path: liveDiffLanguagePath(projection.Language)}}
 			}

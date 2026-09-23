@@ -567,6 +567,8 @@ func TestSubagentStaticMultiCallDisplays(t *testing.T) {
 		`const results = await Promise.allSettled([tools.list_mcp_resources({}), tools.clock__curr_time({})]); text(results);`,
 		`const results = await Promise.allSettled([tools.list_mcp_resources({}), tools.clock__curr_time({})]); results.forEach((result, i) => text(JSON.stringify({i, result})));`,
 		`const r=await Promise.allSettled([tools.list_mcp_resources({}),tools.clock__curr_time({})]); r.forEach((v,i)=>text(JSON.stringify({i,...v})));`,
+		`const r=await Promise.allSettled([tools.list_mcp_resources({}),tools.clock__curr_time({})]);for(let i=0;i<r.length;i++)text(JSON.stringify({i,...r[i]}))`,
+		`const r=await Promise.allSettled([tools.list_mcp_resources({}),tools.clock__curr_time({})]); for (let n = 0; n < r.length; ++n) text(JSON.stringify({index:n, result:r[n]}));`,
 	} {
 		item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
 		want := "List MCP resources\n`{}`\n\nRead current time\n`{}`"
@@ -591,6 +593,9 @@ func TestSubagentStaticMultiCallDisplays(t *testing.T) {
 		`const results = await Promise.allSettled([tools.list_mcp_resources({}), tools.clock__curr_time({})]); results.forEach((result) => text(JSON.stringify({result, extra})));`,
 		`const r=await Promise.allSettled([tools.list_mcp_resources({}),tools.clock__curr_time({})]); r.forEach((v,i)=>text(JSON.stringify({i,...extra})));`,
 		`const r=await Promise.allSettled([tools.list_mcp_resources({}),tools.clock__curr_time({})]); r.forEach((v,i)=>text(JSON.stringify({i,...tools.exec_command({cmd:"echo hidden"})})));`,
+		`const r=await Promise.allSettled([tools.list_mcp_resources({}),tools.clock__curr_time({})]);for(let i=0;i<=r.length;i++)text(JSON.stringify({i,...r[i]}))`,
+		`const r=await Promise.allSettled([tools.list_mcp_resources({}),tools.clock__curr_time({})]);for(let i=0;i<r.length;i++)text(JSON.stringify({i,...r[i+1]}))`,
+		`const r=await Promise.allSettled([tools.list_mcp_resources({}),tools.clock__curr_time({})]);for(let i=0;i<r.length;i++){tools.exec_command({cmd:"echo hidden"});text(JSON.stringify({i,...r[i]}))}`,
 		`const results = await Promise.allSettled([tools.list_mcp_resources({}), tools.clock__curr_time({})]); results.forEach((result) => { text(JSON.stringify({result})) });`,
 		`const results = await Promise.allSettled([tools.list_mcp_resources({}), tools.clock__curr_time({})]); results.forEach((text) => text(JSON.stringify({text})));`,
 		`const results = await Promise.allSettled([tools.list_mcp_resources({}), tools.clock__curr_time({})]); results.forEach((JSON) => text(JSON.stringify({result:JSON})));`,
@@ -600,7 +605,12 @@ func TestSubagentStaticMultiCallDisplays(t *testing.T) {
 		`await tools.list_mcp_resources({}); await tools.update_plan({});`,
 	} {
 		item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
-		if got := subagentToolActivityText(item, "exec"); got != toolActivityJavaScript(source) {
+		want := toolActivityJavaScript(source)
+		if strings.HasPrefix(source, "const results = await Promise.allSettled") ||
+			strings.HasPrefix(source, "const r=await Promise.allSettled") {
+			want = "List MCP resources\n`{}`\n\nRead current time\n`{}`\n\nRun JavaScript · other code"
+		}
+		if got := subagentToolActivityText(item, "exec"); got != want {
 			t.Fatalf("unsafe or excluded %s: %q", source, got)
 		}
 	}
@@ -622,6 +632,59 @@ func TestSubagentPromiseBatchResultLoopDisplaysCommands(t *testing.T) {
 	}
 	if jsonString(item, "input") != source {
 		t.Fatal("source changed")
+	}
+}
+
+func TestSubagentPromiseBatchIndexedLoopsAndUnknownResultFormatting(t *testing.T) {
+	source := `const r=await Promise.allSettled([tools.exec_command({cmd:"cat a.go"}),tools.exec_command({cmd:"cat b.go"})]);
+for(let i=0;i<r.length;i++)text(JSON.stringify({i,...r[i]}));
+const next=await Promise.allSettled([tools.exec_command({cmd:"cat c.go"})]);
+for(let j=0;j<next.length;j++)text(JSON.stringify({j,...next[j]}));`
+	item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
+	want := "Read `a.go`\n\nRead `b.go`\n\nRead `c.go`"
+	if got := subagentToolActivityText(item, "exec"); got != want {
+		t.Fatalf("two indexed batches = %q, want %q", got, want)
+	}
+	source = `const r=await Promise.allSettled([tools.exec_command({cmd:"cat a.go"}),tools.exec_command({cmd:"cat b.go"})]); for(const row of r){text(row)}`
+	item["input"] = mustMarshalJSON(source)
+	want = "Read `a.go`\n\nRead `b.go`\n\nRun JavaScript · other code"
+	if got := subagentToolActivityText(item, "exec"); got != want {
+		t.Fatalf("unknown result formatter hid proven calls: %q", got)
+	}
+	for _, prefixOrSuffix := range []string{
+		"// @exec: {\"max_output_tokens\":1000}\n",
+		``,
+	} {
+		shadowed := prefixOrSuffix + `const r=await Promise.allSettled([tools.exec_command({cmd:"cat a.go"})]);for(var tools of []){}`
+		item["input"] = mustMarshalJSON(shadowed)
+		if got := subagentToolActivityText(item, "exec"); got != toolActivityJavaScript(shadowed) {
+			t.Fatalf("hoisted tools binding was classified as a real call: %q", got)
+		}
+	}
+	for _, suffix := range []string{`var \u0074ools;`, `function \u0074ools(){}`, `class \u0074ools{}`} {
+		escaped := `const r=await Promise.allSettled([tools.exec_command({cmd:"cat a.go"})]);` + suffix
+		item["input"] = mustMarshalJSON(escaped)
+		if got := subagentToolActivityText(item, "exec"); got != toolActivityJavaScript(escaped) {
+			t.Fatalf("escaped tools binding %q was classified as a real call: %q", suffix, got)
+		}
+	}
+	source = `// @exec: {"max_output_tokens":1000}
+const r=await Promise.allSettled([tools.exec_command({cmd:"cat a.go"})]);for(const row of r){text(row)}`
+	item["input"] = mustMarshalJSON(source)
+	want = "Read `a.go`\n\nRun JavaScript · other code"
+	if got := subagentToolActivityText(item, "exec"); got != want {
+		t.Fatalf("leading pragma hid proven batch: %q", got)
+	}
+	for _, suffix := range []string{
+		`if(r[0].status === "fulfilled") text(r[0].value)`,
+		`try { text(r[0]) } catch (error) { text(error) }`,
+		`for(var i=0;i<r.length;i++) text(r[i])`,
+	} {
+		source = `const r=await Promise.allSettled([tools.exec_command({cmd:"cat a.go"})]);` + suffix
+		item["input"] = mustMarshalJSON(source)
+		if got := subagentToolActivityText(item, "exec"); got != want {
+			t.Fatalf("result formatter %q hid proven batch: %q", suffix, got)
+		}
 	}
 }
 

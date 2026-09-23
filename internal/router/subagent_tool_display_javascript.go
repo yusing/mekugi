@@ -72,7 +72,8 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 			value := declaration.ChildByFieldName("value")
 			if !toolActivityResultProjection(statements[i+1], bytes, name, requireResultMetadata) {
 				batchProjection = !requireResultMetadata &&
-					toolActivityBatchForEachProjection(statements[i+1], bytes, name)
+					(toolActivityBatchForEachProjection(statements[i+1], bytes, name) ||
+						toolActivityBatchIndexedProjection(statements[i+1], bytes, name))
 				if !batchProjection {
 					return nil, false
 				}
@@ -87,6 +88,127 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 		calls = append(calls, nested...)
 	}
 	return calls, true
+}
+
+// A top-level literal Promise batch schedules its calls before any result
+// presentation runs. When the presentation syntax is unknown, retain those
+// proven calls for activity and label the remainder instead of discarding the
+// whole batch. This is preview-only, never result or session evidence.
+func toolActivityBatchProducerCalls(source string) ([]map[string]json.RawMessage, bool, bool) {
+	if len(source) > maxMekugiScriptBytes {
+		return nil, false, false
+	}
+	parser := sitter.NewParser()
+	defer parser.Close()
+	if parser.SetLanguage(codeModeJavaScriptLanguage) != nil {
+		return nil, false, false
+	}
+	bytes := []byte(source)
+	tree := parser.Parse(bytes, nil)
+	if tree == nil {
+		return nil, false, false
+	}
+	defer tree.Close()
+	root := tree.RootNode()
+	if root.HasError() || root.NamedChildCount() == 0 {
+		return nil, false, false
+	}
+	var statements []*sitter.Node
+	for i := range root.NamedChildCount() {
+		statement := root.NamedChild(uint(i))
+		if statement.Kind() != "comment" {
+			statements = append(statements, statement)
+		}
+	}
+	if len(statements) == 0 {
+		return nil, false, false
+	}
+	first := statements[0]
+	if first.Kind() != "lexical_declaration" || first.NamedChildCount() != 1 {
+		return nil, false, false
+	}
+	declaration := first.NamedChild(0)
+	name := declaration.ChildByFieldName("name")
+	value := declaration.ChildByFieldName("value")
+	if name == nil || name.Kind() != "identifier" ||
+		strings.ContainsRune(name.Utf8Text(bytes), '\\') ||
+		slices.Contains([]string{"tools", "Promise", "journal"}, name.Utf8Text(bytes)) ||
+		!toolActivityPromiseBatch(value, bytes) {
+		return nil, false, false
+	}
+	for _, statement := range statements[1:] {
+		if toolActivityHoistedBinding(statement, bytes) {
+			return nil, false, false
+		}
+		switch statement.Kind() {
+		case "lexical_declaration":
+			for j := range statement.NamedChildCount() {
+				binding := statement.NamedChild(uint(j)).ChildByFieldName("name")
+				if binding == nil || binding.Kind() != "identifier" ||
+					strings.ContainsRune(binding.Utf8Text(bytes), '\\') ||
+					slices.Contains([]string{"tools", "Promise", "journal"}, binding.Utf8Text(bytes)) {
+					return nil, false, false
+				}
+			}
+		case "class_declaration":
+			if toolActivityProtectedBindingName(statement.ChildByFieldName("name"), bytes) {
+				return nil, false, false
+			}
+		case "import_statement", "export_statement":
+			// Module bindings may be instantiated before any top-level code.
+			return nil, false, false
+		}
+	}
+	calls, ok := toolActivityAwaitedCalls(value, bytes, false)
+	return calls, len(statements) > 1, ok
+}
+
+// A protected var or function binding in a later statement can hoist into
+// the producer's scope, even though the declaration appears after the batch.
+func toolActivityHoistedBinding(node *sitter.Node, source []byte) bool {
+	if node.Kind() == "function_declaration" &&
+		toolActivityProtectedBindingName(node.ChildByFieldName("name"), source) {
+		return true
+	}
+	if node.Kind() == "variable_declaration" {
+		for i := range node.NamedChildCount() {
+			if toolActivityProtectedBindingName(node.NamedChild(uint(i)).ChildByFieldName("name"), source) {
+				return true
+			}
+		}
+	}
+	if node.Kind() == "for_in_statement" {
+		for i := range node.ChildCount() {
+			if node.Child(uint(i)).Kind() == "var" &&
+				toolActivityProtectedBindingName(node.ChildByFieldName("left"), source) {
+				return true
+			}
+		}
+	}
+	for i := range node.NamedChildCount() {
+		if toolActivityHoistedBinding(node.NamedChild(uint(i)), source) {
+			return true
+		}
+	}
+	return false
+}
+
+func toolActivityProtectedBindingName(node *sitter.Node, source []byte) bool {
+	if node == nil {
+		return false
+	}
+	if node.Kind() == "identifier" || node.Kind() == "shorthand_property_identifier_pattern" {
+		if strings.ContainsRune(node.Utf8Text(source), '\\') {
+			return true // An escape may spell a protected binding after JS decoding.
+		}
+		return slices.Contains([]string{"tools", "Promise", "journal"}, node.Utf8Text(source))
+	}
+	for i := range node.NamedChildCount() {
+		if toolActivityProtectedBindingName(node.NamedChild(uint(i)), source) {
+			return true
+		}
+	}
+	return false
 }
 
 func toolActivityPromiseBatch(expression *sitter.Node, source []byte) bool {
@@ -140,6 +262,48 @@ func toolActivityBatchForEachProjection(statement *sitter.Node, source []byte, b
 	if len(allowed) == 0 {
 		return false
 	}
+	return toolActivityBatchPrintedObject(body, source, allowed, "", "")
+}
+
+// The indexed form consumes the same completed batch, once per result. Its
+// loop header is checked structurally so unrelated work cannot be hidden.
+func toolActivityBatchIndexedProjection(statement *sitter.Node, source []byte, binding string) bool {
+	if statement.Kind() != "for_statement" {
+		return false
+	}
+	initializer := statement.ChildByFieldName("initializer")
+	condition := statement.ChildByFieldName("condition")
+	increment := statement.ChildByFieldName("increment")
+	body := statement.ChildByFieldName("body")
+	if initializer == nil || initializer.Kind() != "lexical_declaration" || initializer.NamedChildCount() != 1 ||
+		initializer.ChildByFieldName("kind").Kind() != "let" || condition == nil ||
+		condition.Kind() != "binary_expression" || increment == nil || increment.Kind() != "update_expression" ||
+		body == nil || body.Kind() != "expression_statement" || body.NamedChildCount() != 1 {
+		return false
+	}
+	declaration := initializer.NamedChild(0)
+	index := declaration.ChildByFieldName("name")
+	start := declaration.ChildByFieldName("value")
+	if index == nil || index.Kind() != "identifier" || start == nil || start.Kind() != "number" ||
+		start.Utf8Text(source) != "0" {
+		return false
+	}
+	indexName := index.Utf8Text(source)
+	if indexName == binding || slices.Contains([]string{"text", "JSON", "tools", "Promise", "journal"}, indexName) ||
+		strings.ContainsRune(indexName, '\\') ||
+		!toolActivityMemberPath(condition.ChildByFieldName("left"), source, indexName) ||
+		!toolActivityMemberPath(condition.ChildByFieldName("right"), source, binding, "length") ||
+		condition.ChildByFieldName("operator").Kind() != "<" ||
+		!toolActivityMemberPath(increment.ChildByFieldName("argument"), source, indexName) ||
+		increment.ChildByFieldName("operator").Kind() != "++" {
+		return false
+	}
+	return toolActivityBatchPrintedObject(body.NamedChild(0), source, map[string]bool{indexName: true}, binding, indexName)
+}
+
+// Both callback and indexed loops print an object built only from their local
+// result and index references. This inspects output shape, not JS execution.
+func toolActivityBatchPrintedObject(body *sitter.Node, source []byte, allowed map[string]bool, binding, index string) bool {
 	textArgs, ok := toolActivityCallArguments(body, source, "text")
 	if !ok || len(textArgs) != 1 {
 		return false
@@ -154,31 +318,43 @@ func toolActivityBatchForEachProjection(statement *sitter.Node, source []byte, b
 	}
 	for i := range object.NamedChildCount() {
 		member := object.NamedChild(uint(i))
-		var identifier string
+		var value *sitter.Node
 		switch member.Kind() {
 		case "pair":
 			key := member.ChildByFieldName("key")
-			value := member.ChildByFieldName("value")
+			value = member.ChildByFieldName("value")
 			if key == nil || key.Kind() != "property_identifier" && key.Kind() != "string" ||
-				value == nil || value.Kind() != "identifier" {
+				value == nil {
 				return false
 			}
-			identifier = value.Utf8Text(source)
 		case "shorthand_property_identifier":
-			identifier = member.Utf8Text(source)
+			value = member
 		case "spread_element":
-			if member.NamedChildCount() != 1 || member.NamedChild(0).Kind() != "identifier" {
+			if member.NamedChildCount() != 1 {
 				return false
 			}
-			identifier = member.NamedChild(0).Utf8Text(source)
+			value = member.NamedChild(0)
 		default:
 			return false
 		}
-		if !allowed[identifier] {
+		if !toolActivityBatchReference(value, source, allowed, binding, index) {
 			return false
 		}
 	}
 	return true
+}
+
+func toolActivityBatchReference(node *sitter.Node, source []byte, allowed map[string]bool, binding, index string) bool {
+	if node == nil {
+		return false
+	}
+	if node.Kind() == "identifier" || node.Kind() == "shorthand_property_identifier" {
+		return allowed[node.Utf8Text(source)]
+	}
+	return binding != "" && node.Kind() == "subscript_expression" &&
+		node.ChildByFieldName("optional_chain") == nil &&
+		toolActivityMemberPath(node.ChildByFieldName("object"), source, binding) &&
+		toolActivityMemberPath(node.ChildByFieldName("index"), source, index)
 }
 
 func toolActivityAwaitedCalls(expression *sitter.Node, bytes []byte, requireResultMetadata bool) ([]map[string]json.RawMessage, bool) {

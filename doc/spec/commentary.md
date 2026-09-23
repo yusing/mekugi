@@ -48,11 +48,13 @@ Direct `exec_command` and statically recognizable Code Mode
 Transparent `text(result)` and output projections do not hide the command.
 Literal `Promise.all` and `Promise.allSettled` batches display nonsuppressed
 operations in source order without serializing their execution. A following
-`forEach` that only prints a JSON object of callback parameters, including a
-direct object spread of a parameter, is transparent.
+result-only `forEach` or indexed `for` that prints a JSON object of result and
+index references, including a direct object spread, is transparent.
 Recognition uses the JavaScript parse tree and never evaluates expressions. Dynamic
-arguments, control flow, name shadowing, or unrelated statements fall back to
-the original JavaScript source rather than a partially simplified preview.
+arguments, control flow, and name shadowing fall back to the original JavaScript
+source. A top-level static Promise batch remains visible even when later result
+presentation is unrecognized; that remainder is marked `Run JavaScript · other
+code` rather than silently dropped or mistaken for a batch command.
 These presentation rules do not change tool input, result, or replay payload.
 
 A simple literal `cat`, valid `mcat` read, bounded `sed -n` print, or literal

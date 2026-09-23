@@ -36,12 +36,20 @@ func subagentToolPreview(item map[string]json.RawMessage, qualifiedName string, 
 		return toolActivityDetail("MCP "+commentaryCode(server+"."+tool), input)
 	}
 	if shortName == "exec" {
-		if calls, ok := toolActivityUnwrapExecCalls(input, false); ok {
+		calls, ok := toolActivityUnwrapExecCalls(input, false)
+		otherCode := false
+		if !ok {
+			calls, otherCode, ok = toolActivityBatchProducerCalls(input)
+		}
+		if ok {
 			var displays []string
 			for _, nested := range calls {
 				if display := subagentToolPreview(nested, qualifiedToolName(jsonString(nested, "namespace"), jsonString(nested, "name")), shellDisplay); display != "" {
 					displays = append(displays, display)
 				}
+			}
+			if otherCode {
+				displays = append(displays, "Run JavaScript · other code")
 			}
 			return strings.Join(displays, "\n\n")
 		}

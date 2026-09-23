@@ -71,6 +71,11 @@ not claim that Codex ran or accepted an edit. A Code Mode patch held in an
 immutable top-level literal binding is rendered as the patch preview; its
 escaped JavaScript source is not exposed as a streaming script while the
 patch is incomplete.
+In the live input stream, literal `tools.exec_command` command strings inside
+Code Mode are displayed as Bash while the JavaScript wrapper is still arriving.
+Numbered `# tools.exec_command N` headers separate distinct tool calls; line
+breaks within one command remain inside its header. This provisional display
+never changes Codex's original tool input or asserts that the command ran.
 
 The saved diff view uses completed observed patch outcomes. It includes
 changes from children that are visible to the parent. The viewer switches

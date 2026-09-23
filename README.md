@@ -298,6 +298,10 @@ provisional file diffs. Completed `apply_patch` results and workspace outcomes
 supply the saved diff view. A failed or unfinished call never becomes a
 successful change record.
 
+For Code Mode batches, the live input card displays literal `tools.exec_command`
+commands as Bash while they arrive. Numbered `# tools.exec_command N` headers
+separate calls; multiline commands stay under one header.
+
 The viewer switches to the saved diff when a root turn's token metrics and
 journal flush arrive, then back to stream for the next prompt. Press `v` to
 switch manually. Previews remain provisional until application is confirmed.
