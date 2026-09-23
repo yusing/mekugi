@@ -52,6 +52,14 @@ parts remain intact. Each text part is processed independently, including fenced
 multiple complete blocks are supported. Unmatched markers and bytes outside complete blocks are
 preserved. Filtering also applies to prewarm and execution-free requests.
 
+In Mekugi mode, when `skills-mgr` is executable in the wrapped Codex PATH, the wrapper enforces the
+invocation-local Codex setting `skills.include_instructions=false`, so the stock skill catalog is not
+duplicated alongside the skills-mgr catalog. The router replaces explicitly selected Codex skill
+instructions with the compact identity `<skill name="…"/>` before provider forwarding. This
+idempotent projection applies to ordinary, prewarm, execution-free, and replayed selected-skill
+messages without modifying Codex configuration files. In passthrough mode or when `skills-mgr` is
+unavailable, both stock catalog instructions and selected-skill messages remain unchanged.
+
 Acceptance:
 
 1. Stock, custom, missing, null, top-level, and developer-carried base instructions are forwarded
@@ -71,3 +79,6 @@ Acceptance:
    checked-in generated Markdown matches the built-in projection, and the session copy matches
    the complete projected frontend section.
 5. Omission filtering preserves unmatched markers and all bytes outside complete owned blocks.
+6. In Mekugi mode with `skills-mgr` in PATH, Codex launches disable stock skill-catalog instructions
+   after caller overrides and selected skill wrappers reach the provider as `<skill name="…"/>`.
+   In passthrough mode or without `skills-mgr`, neither projection occurs.

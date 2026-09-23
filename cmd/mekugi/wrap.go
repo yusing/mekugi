@@ -98,7 +98,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	}
 	// Announce once before Codex takes over the terminal, never during its UI.
 	fmt.Fprintf(os.Stderr, "mekugi dashboard: %s/\n", strings.TrimSuffix(session.BaseURL, "/v1"))
-	cmd := exec.CommandContext(ctx, executable, codexArgs(session.BaseURL, args, session.JournalEnabled)...)
+	cmd := exec.CommandContext(ctx, executable, codexArgs(session.BaseURL, args, session.JournalEnabled, session.SkillsManagerAvailable)...)
 	cmd.Env = append(os.Environ(), "MEKUGI_BASE_URL="+session.BaseURL)
 	if session.AXReadOutput != "" {
 		cmd.Env = append(cmd.Env, capturer.AXReadOutputEnvironment+"="+session.AXReadOutput)
@@ -201,7 +201,7 @@ func watchStartupInterrupts(ctx context.Context, cancel context.CancelFunc, inte
 	})
 }
 
-func codexArgs(baseURL string, args []string, journal bool) []string {
+func codexArgs(baseURL string, args []string, journal, skillsManagerAvailable bool) []string {
 	// Keep overrides in the final command's config layer: Codex subcommands
 	// can replace pre-subcommand -c settings with their own. Never cross --.
 	index := slices.Index(args, "--")
@@ -212,11 +212,15 @@ func codexArgs(baseURL string, args []string, journal bool) []string {
 		args = slices.Insert(slices.Clone(args), index, "-c", "tools.update_plan.enabled=false")
 		index += 2
 	}
-	return slices.Insert(slices.Clone(args), index,
+	overrides := []string{
 		"-c", `model_provider="mekugi_wrap"`,
 		"-c", fmt.Sprintf(`model_providers.mekugi_wrap={name="mekugi",base_url=%q,wire_api="responses",requires_openai_auth=true,supports_websockets=true}`, baseURL),
 		"-c", `include_collaboration_mode_instructions=false`,
-	)
+	}
+	if skillsManagerAvailable {
+		overrides = append(overrides, "-c", "skills.include_instructions=false")
+	}
+	return slices.Insert(slices.Clone(args), index, overrides...)
 }
 
 func validateCodexArgs(args []string) error {

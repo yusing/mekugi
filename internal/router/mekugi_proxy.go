@@ -122,6 +122,7 @@ type mekugiProxy struct {
 	usage              *threadUsage
 	autoLiveDiff       *autoLiveDiff
 	activity           *subagentActivity
+	skillsManager      bool
 
 	mu              sync.RWMutex
 	replayStore     *mekugiReplayStore

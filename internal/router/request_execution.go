@@ -229,6 +229,9 @@ func (a *requestAttempt) prepare() error {
 		if err := stripRequestInstructionOmissions(&a.request); err != nil {
 			return err
 		}
+		if err := rewriteRequestSelectedSkillInstructions(&a.request, a.executor.mekugiCalls.skillsManager); err != nil {
+			return err
+		}
 	}
 
 	// Only the WebSocket provider guarantees non-generating warmup for every

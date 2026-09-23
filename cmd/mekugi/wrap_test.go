@@ -22,15 +22,18 @@ import (
 
 func TestCodexArgsPreservesArguments(t *testing.T) {
 	forwarded := []string{"exec", "-c", "model=\"example\"", "--", "a prompt with spaces"}
-	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true)
+	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true)
 	index := slices.Index(forwarded, "--")
-	if !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[index+8:], forwarded[index:]) {
+	if !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[index+10:], forwarded[index:]) {
 		t.Fatalf("forwarded arguments changed: %q", args)
 	}
 	var config struct {
-		IncludeCollaborationModeInstructions *bool  `toml:"include_collaboration_mode_instructions"`
-		ModelProvider                        string `toml:"model_provider"`
-		Providers                            map[string]struct {
+		IncludeCollaborationModeInstructions *bool `toml:"include_collaboration_mode_instructions"`
+		Skills                               struct {
+			IncludeInstructions *bool `toml:"include_instructions"`
+		} `toml:"skills"`
+		ModelProvider string `toml:"model_provider"`
+		Providers     map[string]struct {
 			Name       string `toml:"name"`
 			BaseURL    string `toml:"base_url"`
 			WireAPI    string `toml:"wire_api"`
@@ -39,7 +42,7 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 		} `toml:"model_providers"`
 	}
 	var settings []string
-	for i := index; i < index+8; i += 2 {
+	for i := index; i < index+10; i += 2 {
 		if args[i] != "-c" {
 			t.Fatalf("not a config override: %q", args)
 		}
@@ -51,12 +54,15 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 	if config.IncludeCollaborationModeInstructions == nil || *config.IncludeCollaborationModeInstructions {
 		t.Fatalf("collaboration mode instructions not disabled: %q", args)
 	}
+	if config.Skills.IncludeInstructions == nil || *config.Skills.IncludeInstructions {
+		t.Fatalf("skill instructions not disabled: %q", args)
+	}
 	provider := config.Providers[config.ModelProvider]
 	if provider.Name == "" || provider.BaseURL != "http://127.0.0.1:12345/v1" || provider.WireAPI != "responses" || !provider.Auth || !provider.WebSockets {
 		t.Fatalf("provider = %+v", provider)
 	}
 	withoutDelimiter := []string{"exec", "-c", `model="example"`, "prompt"}
-	if got := codexArgs("http://127.0.0.1:12345/v1", withoutDelimiter, true); !slices.Equal(got[:len(withoutDelimiter)], withoutDelimiter) {
+	if got := codexArgs("http://127.0.0.1:12345/v1", withoutDelimiter, true, true); !slices.Equal(got[:len(withoutDelimiter)], withoutDelimiter) {
 		t.Fatalf("ordinary -c or prompt moved: %q", got)
 	}
 }
@@ -96,14 +102,39 @@ func TestCodexArgsEnforcesCollaborationModeInstructions(t *testing.T) {
 		{"-c", "include_collaboration_mode_instructions=true", "exec", "--config=include_collaboration_mode_instructions=true", "prompt"},
 		{"resume", "session", "-cinclude_collaboration_mode_instructions=true", "--", "prompt"},
 	} {
-		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true)
+		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true)
 		end := slices.Index(args, "--")
 		if end < 0 {
 			end = len(args)
 		}
-		if !slices.Equal(args[end-2:end], []string{"-c", "include_collaboration_mode_instructions=false"}) {
-			t.Fatalf("enforced override is not last before delimiter: %q", args)
+		if !slices.Equal(args[end-4:end], []string{"-c", "include_collaboration_mode_instructions=false", "-c", "skills.include_instructions=false"}) {
+			t.Fatalf("enforced overrides are not last before delimiter: %q", args)
 		}
+	}
+}
+
+func TestCodexArgsEnforcesSkillInstructionsWhenSkillsManagerAvailable(t *testing.T) {
+	for _, forwarded := range [][]string{
+		{"-c", "skills.include_instructions=true"},
+		{"exec", "--config=skills.include_instructions=true", "prompt"},
+		{"resume", "session", "-cskills.include_instructions=true", "--", "prompt"},
+	} {
+		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, false, true)
+		end := slices.Index(args, "--")
+		if end < 0 {
+			end = len(args)
+		}
+		if !slices.Equal(args[end-2:end], []string{"-c", "skills.include_instructions=false"}) {
+			t.Fatalf("enforced skill override is not last before delimiter: %q", args)
+		}
+	}
+}
+
+func TestCodexArgsPreservesSkillInstructionsWithoutSkillsManager(t *testing.T) {
+	forwarded := []string{"exec", "--config=skills.include_instructions=true", "prompt"}
+	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, false, false)
+	if !slices.Equal(args[:len(forwarded)], forwarded) || slices.Contains(args[len(forwarded):], "skills.include_instructions=false") {
+		t.Fatalf("skill instructions changed without skills-mgr: %q", args)
 	}
 }
 
@@ -501,7 +532,7 @@ func TestWrapDebugPassesAXJournalToCodex(t *testing.T) {
 
 func TestCodexArgsJournalPlanOverridePreservesPassthrough(t *testing.T) {
 	for _, journal := range []bool{false, true} {
-		args := codexArgs("http://127.0.0.1:12345/v1", []string{"exec", "-c", "tools.update_plan.enabled=true", "--", "prompt"}, journal)
+		args := codexArgs("http://127.0.0.1:12345/v1", []string{"exec", "-c", "tools.update_plan.enabled=true", "--", "prompt"}, journal, false)
 		end := slices.Index(args, "--")
 		disabled := slices.Contains(args[:end], "tools.update_plan.enabled=false")
 		if disabled != journal {

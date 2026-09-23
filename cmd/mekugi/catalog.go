@@ -33,7 +33,7 @@ func prepareProviderCatalog(ctx context.Context, executable, baseURL string, arg
 			fmt.Fprintln(os.Stderr, "mekugi: catalog progress unavailable")
 		}
 	}()
-	cmd := exec.CommandContext(ctx, executable, codexArgs(baseURL, append([]string{"debug", "models"}, overrides...), false)...)
+	cmd := exec.CommandContext(ctx, executable, codexArgs(baseURL, append([]string{"debug", "models"}, overrides...), false, false)...)
 	cmd.Dir = cwd
 	cmd.WaitDelay = 5 * time.Second
 	// Do not forward diagnostics from the bootstrap command into the TUI or

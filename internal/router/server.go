@@ -34,11 +34,12 @@ var errUpstreamResponseWithoutTerminal = errors.New("upstream Responses response
 
 // Session is available only after initialization and listener binding succeed.
 type Session struct {
-	BaseURL        string
-	JournalEnabled bool
-	GrokEnabled    bool
-	OpenCode       OpenCodeConfig
-	AXReadOutput   string
+	BaseURL                string
+	JournalEnabled         bool
+	GrokEnabled            bool
+	OpenCode               OpenCodeConfig
+	AXReadOutput           string
+	SkillsManagerAvailable bool
 	// EnableLiveDiff arms a best-effort pane on the first selected turn workspace.
 	EnableLiveDiff    func()
 	FrontendDirectory string
@@ -240,6 +241,10 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			runErr = errors.Join(runErr, mekugiCalls.Close())
 		}()
 	}
+	skillsManagerAvailable := mekugiCalls != nil && skillsManagerInPath(frontendDirectory)
+	if mekugiCalls != nil {
+		mekugiCalls.skillsManager = skillsManagerAvailable
+	}
 
 	listener, err := net.Listen("tcp", defaultListenAddress)
 	if err != nil {
@@ -294,7 +299,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		serverError <- server.Serve(listener)
 	}()
 	if ready != nil && ctx.Err() == nil {
-		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: *flags.grokEnabled, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi"}
+		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: *flags.grokEnabled, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", SkillsManagerAvailable: skillsManagerAvailable}
 		if mekugiCalls != nil {
 			session.EnableLiveDiff = mekugiCalls.autoLiveDiff.enable
 		}

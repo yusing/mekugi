@@ -13,23 +13,32 @@ import (
 )
 
 func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "skills-mgr"), []byte("#!/bin/sh\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	ready := make(chan string, 1)
+	ready := make(chan Session, 1)
 	done := make(chan error, 1)
 	go func() {
 		done <- RunSession(ctx, []string{"--mode", "passthrough"}, nil, func(session Session) {
-			ready <- session.BaseURL
+			ready <- session
 		}, nil)
 	}()
-	var baseURL string
+	var session Session
 	select {
-	case baseURL = <-ready:
+	case session = <-ready:
 	case err := <-done:
 		t.Fatalf("router stopped before ready: %v", err)
 	case <-time.After(10 * time.Second):
 		t.Fatal("router did not become ready")
 	}
+	if session.SkillsManagerAvailable {
+		t.Fatal("passthrough session enabled skills-mgr integration")
+	}
+	baseURL := session.BaseURL
 	address := strings.TrimSuffix(strings.TrimPrefix(baseURL, "http://"), "/v1")
 	if _, port, err := net.SplitHostPort(address); err != nil || port == "0" {
 		t.Fatalf("ready URL = %q", baseURL)
