@@ -200,7 +200,17 @@ func (w *liveDiffPreviewWorker) projectStockPreview(input, workspace string, fin
 	}
 	ctx, cancel := context.WithTimeout(projectionContext, time.Second)
 	defer cancel()
-	return projectStockPatchPreview(ctx, workspace, preview), true
+	projected := projectStockPatchPreview(ctx, workspace, preview)
+	if !final && strings.HasPrefix(projected.Status, "PREVIEW UNAVAILABLE:") && !strings.HasSuffix(input, "\n") {
+		// Try the completed prefix only after the live suffix fails. Valid
+		// partial additions remain visible as they stream, while unfinished
+		// context or control lines cannot invalidate the last usable preview.
+		if end := strings.LastIndexByte(input, '\n'); end >= 0 {
+			preview.Input = input[:end+1]
+			projected = projectStockPatchPreview(ctx, workspace, preview)
+		}
+	}
+	return projected, true
 }
 
 func (w *liveDiffPreviewWorker) run() {
@@ -257,7 +267,7 @@ func (w *liveDiffPreviewWorker) run() {
 				projected.Complete = final
 				projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
 				w.mu.Lock()
-				if !w.closed && (w.ctx.Err() == nil || final) {
+				if !w.closed && (w.ctx.Err() == nil || final) && (final || !strings.HasPrefix(projected.Status, "PREVIEW UNAVAILABLE:")) {
 					w.broker.publishPreview(projected, false)
 				}
 				w.mu.Unlock()
@@ -286,7 +296,7 @@ func (w *liveDiffPreviewWorker) run() {
 						projected.Complete = final
 						projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
 						w.mu.Lock()
-						if !w.closed && (w.ctx.Err() == nil || final) {
+						if !w.closed && (w.ctx.Err() == nil || final) && (final || !strings.HasPrefix(projected.Status, "PREVIEW UNAVAILABLE:")) {
 							w.broker.publishPreview(projected, false)
 						}
 						w.mu.Unlock()
@@ -345,7 +355,7 @@ func (w *liveDiffPreviewWorker) run() {
 						projected.Complete = final
 						projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
 						w.mu.Lock()
-						if !w.closed && (w.ctx.Err() == nil || final) {
+						if !w.closed && (w.ctx.Err() == nil || final) && (final || !strings.HasPrefix(projected.Status, "PREVIEW UNAVAILABLE:")) {
 							w.broker.publishPreview(projected, false)
 						}
 						w.mu.Unlock()

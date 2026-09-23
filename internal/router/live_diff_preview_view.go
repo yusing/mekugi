@@ -288,11 +288,12 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	}
 	// Put attribution first so narrow panes do not silently lose the caller.
 	// The caller keeps the agents pane's color for the same canonical path.
-	caller = ansi.Truncate(livediff.Safe(caller, false), max(1, min(28, width/3)), "…")
+	safeTitle := livediff.Safe(title, false)
+	caller = ansi.Truncate(livediff.Safe(caller, false), max(1, width/3, width-6-ansi.StringWidth(safeTitle)), "…")
 	if color := liveAgentColor(p.current.Caller); color != "" {
 		caller = color + caller + "\x1b[0m" + theme.Accent()
 	}
-	header := ansi.Truncate(theme.Accent()+caller+" · "+livediff.Safe(title, false)+"\x1b[0m", max(0, width-1), "")
+	header := ansi.Truncate(livediff.Gutter(false, theme)+theme.Accent()+caller+" · "+safeTitle+"\x1b[0m", max(0, width-1), "")
 	lines := []string{header}
 	rows := height - 1
 	var footer []string

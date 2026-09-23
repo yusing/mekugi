@@ -118,7 +118,7 @@ The recipient is `/root` for non-child turns and the canonical child name for ch
 An absent or malformed child identity never matches an unaddressed envelope. Valid
 plaintext `MESSAGE` payloads are shown in full under `Message received`, never as excerpts.
 A plaintext `FINAL_ANSWER` produces no router commentary: Codex already displays completion.
-It only sets the sender's final-answer marker in the agents pane.
+It sets the sender's final-answer marker and shows the answer in the agents pane when available.
 Native completion remains available to the parent;
 descendant journal content is delivered by native child completion and is not repeated at main completion.
 Messages exceeding the auxiliary rendering budget are omitted from commentary without

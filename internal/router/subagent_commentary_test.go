@@ -96,9 +96,13 @@ func TestSubagentReceiptDirectionAndCompletionSummary(t *testing.T) {
 				"content": []any{map[string]any{"type": "input_text", "text": "Message Type: " + test.kind + "\nTask name: " + test.recipient + "\nSender: " + test.sender + "\nPayload:\n" + test.body}},
 			}})
 			fields := map[string]json.RawMessage{"input": input}
-			messages := prepareSubagentInputEnvelopes(fields, test.recipient).commentary
+			envelopes := prepareSubagentInputEnvelopes(fields, test.recipient)
+			messages := envelopes.commentary
 			if test.want == "" && len(messages) != 0 || test.want != "" && (len(messages) != 1 || commentaryText(t, messages[0]) != test.want) {
 				t.Fatalf("receipt = %s", mustTestJSON(t, messages))
+			}
+			if test.kind == "FINAL_ANSWER" && (len(envelopes.finals) != 1 || envelopes.finals[0].sender != test.sender || envelopes.finals[0].text != test.body) {
+				t.Fatalf("final pane projection = %+v", envelopes.finals)
 			}
 			if !bytes.Equal(input, fields["input"]) {
 				t.Fatal("receipt projection changed the native envelope")

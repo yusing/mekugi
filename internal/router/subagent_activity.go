@@ -187,6 +187,9 @@ func (a *subagentActivity) drain(root string, started time.Time, budget int) []m
 			kept = append(kept, event)
 			continue
 		}
+		if event.kind == "final" {
+			continue // Native Codex already delivers the completion to the parent.
+		}
 		text := event.text
 		author := "[" + commentaryCode(a.threads[event.thread].name) + "] "
 		// Omit oversized events rather than blocking later activity until expiry.

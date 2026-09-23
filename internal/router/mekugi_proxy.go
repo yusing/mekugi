@@ -557,8 +557,8 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		// across routing-session changes, and forwards it only to the observed root.
 		p.activity.collect(activityThreadID, "subagent-start\x00"+activityThreadID, "start", subagentStartCommentary(request, metadata.AgentName))
 	}
-	for _, sender := range envelopes.finals {
-		p.activity.markFinal(activityThreadID, sender)
+	for _, final := range envelopes.finals {
+		p.activity.markFinal(activityThreadID, final)
 	}
 	if recipient == "/root" && activityThreadID != "" {
 		subagentDeferred = p.activity.divertRootReplies(activityThreadID, subagentDeferred, envelopes.senders)

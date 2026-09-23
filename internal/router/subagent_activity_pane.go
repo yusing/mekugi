@@ -322,23 +322,33 @@ func (a *subagentActivity) endResponse(thread string) {
 	}
 }
 
-// markFinal records an observed plaintext FINAL_ANSWER envelope from a sender
-// under the recipient's root. It asserts only that the envelope was sent.
-func (a *subagentActivity) markFinal(recipientThread, sender string) {
+// markFinal records a plaintext FINAL_ANSWER under the recipient's root. Its
+// body is pane-only; native Codex already delivers the substantive completion.
+func (a *subagentActivity) markFinal(recipientThread string, final subagentFinal) {
 	if a == nil {
 		return
 	}
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	root := a.rootLocked(recipientThread)
 	if a.closed || root == "" {
+		a.mu.Unlock()
 		return
 	}
+	var threads []string
 	for thread, node := range a.threads {
-		if node.child && !node.conflicted && node.name == sender && a.rootLocked(thread) == root {
+		if node.child && !node.conflicted && node.name == final.sender && a.rootLocked(thread) == root {
 			node.final = true
+			threads = append(threads, thread)
 			a.wakePaneLocked()
 		}
+	}
+	a.mu.Unlock()
+	body := final.text
+	if len(body) > maxCommentaryPublicationBytes/2 {
+		body = strings.ToValidUTF8(body[:maxCommentaryPublicationBytes/2], "") + "\n… (full answer in Codex completion)"
+	}
+	for _, thread := range threads {
+		a.collect(thread, final.source, "final", body)
 	}
 }
 

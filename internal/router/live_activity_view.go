@@ -335,7 +335,7 @@ func (v *liveActivityView) renderRoster(rows []liveActivityRosterRow, width, lim
 	for _, row := range rows {
 		nameWidth = max(nameWidth, ansi.StringWidth(liveActivityRosterName(row)))
 	}
-	nameWidth = max(1, min(nameWidth, max(8, width/3), width-10))
+	nameWidth = max(1, min(nameWidth, width-10-max(8, width/4)))
 	var lines []string
 	for i := start; i < end; i++ {
 		row := rows[i]
@@ -430,7 +430,7 @@ func (v *liveActivityView) renderRun(agent string, observed time.Time, blocks []
 		part := v.painter.block(block, width-2)
 		// Messages carry results, so they get twice the operation share.
 		limit := clip
-		if block.kind == "message" {
+		if block.kind == "message" || block.kind == "final" {
 			limit *= 2
 		}
 		if limit > 0 && len(part) > limit {

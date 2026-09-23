@@ -369,6 +369,23 @@ func TestSubagentSedReadDisplay(t *testing.T) {
 	}
 }
 
+func TestSubagentCatHeadReadDisplay(t *testing.T) {
+	for _, tc := range []struct{ source, want string }{
+		{"cat foo | head", "Read `foo`"},
+		{"cat 'a b.txt' | head -n 20", "Read `a b.txt`"},
+		{"cat foo bar | head -5", "Read `foo`\n\nRead `bar`"},
+	} {
+		if got := toolActivityShell(tc.source); got != tc.want {
+			t.Errorf("%q: got %q, want %q", tc.source, got, tc.want)
+		}
+	}
+	for _, source := range []string{"cat foo | head bar", "cat foo | head -n \"$count\"", "cat foo | head > out"} {
+		if got := toolActivityShell(source); !strings.HasPrefix(got, "Run\n") {
+			t.Errorf("unsafe pipeline %q: %q", source, got)
+		}
+	}
+}
+
 func TestSubagentNumberedReadDisplay(t *testing.T) {
 	source := "nl -ba semantic-assessment.ts | sed -n '58,154p'; printf '\\n--- judge validations ---\\n'; " +
 		"nl -ba judge.ts | sed -n '79,162p'; printf '\\n--- run grading / assessment lifecycle ---\\n'; " +

@@ -249,6 +249,12 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool)
 				return left + "\n\n" + filter, true
 			}
 		}
+		if binary.Op == syntax.Pipe && len(statement.Redirs) == 0 && len(argv) > 0 && argv[0] == "head" && toolActivitySearchFilter(argv) {
+			if source, valid := toolActivityLiteralCall(binary.X); valid && source[0] == "cat" &&
+				(strings.HasPrefix(left, "Read ") || strings.HasPrefix(left, "Skill Read ")) {
+				return left, true
+			}
+		}
 		if binary.Op == syntax.OrStmt && strings.HasPrefix(left, "Inspect ") &&
 			len(argv) == 1 && argv[0] == "true" {
 			label = "Inspect"

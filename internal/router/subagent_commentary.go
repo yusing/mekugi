@@ -68,12 +68,16 @@ func subagentStartCommentary(request *parsedResponsesRequest, recipient string) 
 	return text.String()
 }
 
-// subagentInputEnvelopes pairs each projected message with its sender and lists
-// senders of current plaintext FINAL_ANSWER envelopes, which produce no commentary.
+// subagentInputEnvelopes pairs each projected message with its sender and keeps
+// current plaintext final answers for the agents pane, not router commentary.
 type subagentInputEnvelopes struct {
 	commentary []map[string]json.RawMessage
 	senders    []string
-	finals     []string
+	finals     []subagentFinal
+}
+
+type subagentFinal struct {
+	sender, source, text string
 }
 
 func prepareSubagentInputEnvelopes(fields map[string]json.RawMessage, recipient string) (envelopes subagentInputEnvelopes) {
@@ -112,7 +116,11 @@ func prepareSubagentInputEnvelopes(fields map[string]json.RawMessage, recipient 
 			continue
 		}
 		if final {
-			envelopes.finals = append(envelopes.finals, sender)
+			envelopes.finals = append(envelopes.finals, subagentFinal{
+				sender: sender,
+				source: subagentCommentaryMessageID("final\x00" + jsonString(item, "id") + "\x00" + sender + "\x00" + text),
+				text:   text,
+			})
 			continue
 		}
 		id := subagentCommentaryMessageID("response\x00" + jsonString(item, "id") + "\x00" + sender + "\x00" + text)

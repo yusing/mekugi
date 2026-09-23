@@ -65,6 +65,30 @@ func TestStockPatchPreviewRefusesUnmatchedSource(t *testing.T) {
 	}
 }
 
+func TestStockPatchStreamingPartialLinesStayProjectable(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "sample.go"), []byte("old()\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	worker := &liveDiffPreviewWorker{ctx: t.Context()}
+	for _, fragment := range []string{
+		"*** Begin Patch",
+		"*** Begin Patch\n*** Update File: sample.go\n@@\n-old",
+		"*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n+new",
+		"*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n+new()\n*** End Pat",
+	} {
+		preview, ok := worker.projectStockPreview(fragment, workspace, false)
+		if !ok || strings.HasPrefix(preview.Status, "PREVIEW UNAVAILABLE:") {
+			t.Fatalf("partial patch became unavailable: %+v, recognized=%t", preview, ok)
+		}
+	}
+	complete := "*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n+new()\n*** End Patch\n"
+	preview, ok := worker.projectStockPreview(complete, workspace, true)
+	if !ok || len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "+new()") {
+		t.Fatalf("final patch was not projected: %+v, recognized=%t", preview, ok)
+	}
+}
+
 func TestStockPatchPreviewBlankContextAndInsertion(t *testing.T) {
 	for _, tc := range []struct{ before, patch, removed, added string }{
 		{"a()\n\na()\n", "@@\n\n-a()\n+b()", "-a()", "+b()"},

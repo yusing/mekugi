@@ -41,6 +41,8 @@ func parseLiveActivity(entry activityPaneEntry) []liveActivityBlock {
 		}
 	}
 	switch entry.Kind {
+	case "final":
+		return []liveActivityBlock{{kind: "final", body: text}}
 	case "start":
 		if strings.HasPrefix(text, "Started") {
 			return []liveActivityBlock{parseLiveActivityStart(text)}

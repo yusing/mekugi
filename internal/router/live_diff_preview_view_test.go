@@ -295,6 +295,30 @@ func TestLiveDiffPreviewCallerSafeAndBounded(t *testing.T) {
 	}
 }
 
+func TestLiveDiffPreviewCallerUsesAvailableWidth(t *testing.T) {
+	var pane liveDiffPreviewPane
+	preview := previewViewFixture("caller", 1)
+	preview.Caller = "/root/review_stock_preview"
+	pane.update(preview)
+	lines, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 100, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := ansi.Strip(lines[0])
+	if !strings.HasPrefix(header, "  "+preview.Caller+" · STREAMING") || strings.Contains(header, "…") {
+		t.Fatalf("caller truncated despite available width: %q", header)
+	}
+	preview.Status = "PREVIEW UNAVAILABLE: " + strings.Repeat("reason ", 20)
+	pane.update(preview)
+	lines, err = pane.render(t.Context(), "/workspace", livediff.DarkTheme, 60, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header = ansi.Strip(lines[0]); !strings.HasPrefix(header, "  /root/review_stock") {
+		t.Fatalf("long status obscured caller: %q", header)
+	}
+}
+
 func BenchmarkLiveDiffConcurrentPreviewFrame(b *testing.B) {
 	var pane liveDiffPreviewPane
 	for i := range 16 {

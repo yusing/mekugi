@@ -149,7 +149,7 @@ func TestActivityPaneOwnsChildActivityAndDeliversWithoutRootBoundary(t *testing.
 		t.Fatalf("responding not reported: %+v", state.Agents)
 	}
 	f.activity.endResponse("probe")
-	f.activity.markFinal("explorer", "/root/explorer/probe")
+	f.activity.markFinal("explorer", subagentFinal{sender: "/root/explorer/probe"})
 	final := client.next(t, "agents")
 	for final.Agents[1].Responding || !final.Agents[1].Final {
 		final = client.next(t, "agents")
@@ -195,6 +195,45 @@ func TestActivityPaneOwnsChildActivityAndDeliversWithoutRootBoundary(t *testing.
 	response.Body.Close()
 	if response.StatusCode != http.StatusGone {
 		t.Fatalf("released pane accepted a viewer: %d", response.StatusCode)
+	}
+}
+
+func TestActivityPaneShowsFinalAnswerWithoutRootCopy(t *testing.T) {
+	f := newActivityPaneFixture(t, true)
+	final := subagentFinal{sender: "/root/explorer/probe", source: "answer-1", text: "The final result is ready.\n\n- verified"}
+	f.activity.markFinal("explorer", final)
+	f.activity.markFinal("explorer", final) // Replayed input must not duplicate the pane event.
+	client := f.connect(t)
+	snapshot := client.next(t, "snapshot")
+	if !snapshot.Agents[1].Final {
+		t.Fatalf("final marker missing: %+v", snapshot.Agents)
+	}
+	entries := client.next(t, "entries")
+	if len(entries.Entries) != 1 || entries.Entries[0].Kind != "final" || entries.Entries[0].Text != final.text {
+		t.Fatalf("final pane entry = %+v", entries.Entries)
+	}
+	view := newLiveActivityView()
+	view.apply(snapshot)
+	view.apply(entries)
+	frame := strings.Join(plainLines(view.render(80, 20, time.Now())), "\n")
+	if !strings.Contains(frame, "✓ The final result is ready") || !strings.Contains(frame, "verified") {
+		t.Fatalf("final content absent from pane: %s", frame)
+	}
+	if got := drainText(f.activity.drain("root", time.Now(), maxCommentaryPublicationBytes)); strings.Contains(got, final.text) {
+		t.Fatalf("native completion copied into commentary: %q", got)
+	}
+
+	withoutPane := newActivityPaneFixture(t, false)
+	withoutPane.activity.markFinal("explorer", final)
+	if got := drainText(withoutPane.activity.drain("root", time.Now(), maxCommentaryPublicationBytes)); strings.Contains(got, final.text) {
+		t.Fatalf("native completion copied without pane: %q", got)
+	}
+	large := subagentFinal{sender: final.sender, source: "answer-large", text: strings.Repeat("界", maxCommentaryPublicationBytes/3)}
+	withoutPane.activity.markFinal("explorer", large)
+	withoutPane.activity.mu.Lock()
+	defer withoutPane.activity.mu.Unlock()
+	if len(withoutPane.activity.events) != 1 || !strings.Contains(withoutPane.activity.events[0].raw, "full answer in Codex completion") {
+		t.Fatalf("large final answer lost from bounded pane preview: %+v", withoutPane.activity.events)
 	}
 }
 
@@ -366,6 +405,19 @@ func TestLiveActivityViewTinyAndNarrowPanes(t *testing.T) {
 	}
 	if got := liveActivityMiddle("/root/explorer/deeply/nested/worker", 20); !strings.HasSuffix(got, "…worker") || ansi.StringWidth(got) != 20 {
 		t.Fatalf("middle = %q", got)
+	}
+}
+
+func TestLiveActivityRosterUsesAvailableWidth(t *testing.T) {
+	view := liveActivityTestView("/root/review_stock_preview")
+	lines := plainLines(view.render(80, 20, time.Now()))
+	if !strings.Contains(lines[1], "review_stock_preview  ") || strings.Contains(lines[1], "…") {
+		t.Fatalf("roster name clipped or padded unexpectedly: %q", lines[1])
+	}
+	view = liveActivityTestView("/root/very/long/agent/name/that/could/eat/the/whole/roster", "/root/b")
+	lines = plainLines(view.render(60, 20, time.Now()))
+	if !strings.Contains(lines[2], "Read b.go") {
+		t.Fatalf("long name obscured short agent's summary: %q", lines[2])
 	}
 }
 

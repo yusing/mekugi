@@ -292,6 +292,8 @@ func liveActivityIndent(lines []string, prefix string) []string {
 func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string {
 	width = max(8, width)
 	switch block.kind {
+	case "final":
+		return append([]string{liveActivityGreen + "✓ Final answer" + liveActivityReset}, liveActivityIndent(p.markdown(block.body, width-2), "  ")...)
 	case "reads":
 		var items []string
 		for _, read := range block.reads {
@@ -378,6 +380,8 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 		return ""
 	}
 	switch block.kind {
+	case "final":
+		return liveActivityGreen + "✓ " + liveActivityReset + firstLine(block.body)
 	case "reads":
 		var names []string
 		for _, read := range block.reads {
