@@ -53,11 +53,13 @@ arguments, control flow, name shadowing, or unrelated statements fall back to
 the original JavaScript source rather than a partially simplified preview.
 These presentation rules do not change tool input, result, or replay payload.
 
-A simple literal `cat`, valid `mcat` read, or bounded `sed -n` print is labeled
-`Read`; literal `rg` is `Search`; simple listings are `List`; and
+A simple literal `cat`, valid `mcat` read, bounded `sed -n` print, or literal
+`nl -ba FILE | sed -n RANGES` selection is labeled `Read`; literal `rg` is `Search`; simple listings are `List`; and
 `inspect_file` is `Inspect`. Invalid or compound commands retain a `Run`
 preview instead of claiming a simpler operation. Mixed command scripts keep
 every classified operation and show unclassified neighbors as `Run` in order.
+Literal `printf` section headings between classified reads are omitted as
+display decoration; standalone or dynamic headings remain `Run` operations.
 Code Mode waits show `Still Running` or `Stop` only when a visible call/result
 pair establishes the same cell; missing history is `operation unavailable`.
 Native `write_stdin` with characters is `Send input`.

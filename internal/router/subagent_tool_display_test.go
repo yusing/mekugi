@@ -369,6 +369,44 @@ func TestSubagentSedReadDisplay(t *testing.T) {
 	}
 }
 
+func TestSubagentNumberedReadDisplay(t *testing.T) {
+	source := "nl -ba semantic-assessment.ts | sed -n '58,154p'; printf '\\n--- judge validations ---\\n'; " +
+		"nl -ba judge.ts | sed -n '79,162p'; printf '\\n--- run grading / assessment lifecycle ---\\n'; " +
+		"nl -ba runner.ts | sed -n '231,250p;314,452p';"
+	want := "Read `semantic-assessment.ts 58:154`\n\n" +
+		"Read `judge.ts 79:162`\n\n" +
+		"Read `runner.ts 231:250 314:452`"
+	if got := toolActivityShell(source); got != want {
+		t.Fatalf("numbered read display: got %q, want %q", got, want)
+	}
+	for _, invalid := range []string{
+		"nl -b a source.go | sed -n '1,2p'",
+		"nl -ba \"$file\" | sed -n '1,2p'",
+		"nl -ba source.go | sed -n '1,$p'",
+		"nl -ba source.go | sed -n '1,2p' > copy.go",
+		"nl -ba source.go | sed -n '1,2p' | head -n 1",
+	} {
+		want := "Run\n" + toolActivityFenced("bash", invalid)
+		if got := toolActivityShell(invalid); got != want {
+			t.Errorf("invalid numbered read %q: got %q, want %q", invalid, got, want)
+		}
+	}
+	for _, visible := range []string{
+		"printf '\\n--- heading ---\\n'",
+		"cat source.go; printf \"\\n--- $heading ---\\n\"",
+		"cat source.go; printf '\\nnot a heading\\n'",
+		"ls; printf '\\n--- heading ---\\n'",
+		"printf '\\n--- heading ---\\n'; cat source.go",
+		"cat source.go; printf '\\n--- heading ---\\n'",
+		"cat source.go; printf '\\n--- heading ---\\n'; make test",
+	} {
+		got := toolActivityShell(visible)
+		if !strings.Contains(got, "Run") {
+			t.Errorf("visible printf %q was hidden: %q", visible, got)
+		}
+	}
+}
+
 func TestSubagentSearchReadRunGrouping(t *testing.T) {
 	source := "rg -n 'func shellCatLiteral|func toolActivityGroup|toolActivityGroup\\(' internal/router\n" +
 		"sed -n '238,265p' internal/router/subagent_tool_display.go\n" +

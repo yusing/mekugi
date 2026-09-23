@@ -120,10 +120,26 @@ func toolActivityReads(script string) (string, bool) {
 		source.WriteString(script[offset:])
 		return "Run\n" + toolActivityFenced("bash", strings.Trim(source.String(), "\r\n")), true
 	}
+	type statementDisplay struct {
+		display   string
+		ok        bool
+		separator bool
+	}
+	statements := make([]statementDisplay, len(program.Stmts))
+	for index, statement := range program.Stmts {
+		statements[index].display, statements[index].ok = toolActivityStatement(script, statement)
+		statements[index].separator = toolActivityReadSeparator(statement)
+	}
 	var displays []string
 	classified := false
-	for _, statement := range program.Stmts {
-		display, ok := toolActivityStatement(script, statement)
+	for index, statement := range program.Stmts {
+		result := statements[index]
+		if result.separator && index > 0 && index+1 < len(statements) &&
+			statements[index-1].ok && strings.HasPrefix(statements[index-1].display, "Read ") &&
+			statements[index+1].ok && strings.HasPrefix(statements[index+1].display, "Read ") {
+			continue
+		}
+		display, ok := result.display, result.ok
 		if ok {
 			classified = true
 			if display == "" {
@@ -154,6 +170,22 @@ func toolActivityReads(script string) (string, bool) {
 	return strings.Join(displays, "\n\n"), true
 }
 
+// Read bundles sometimes print literal section headings between source slices.
+// They are display decoration rather than a separate operation. Keep other
+// printf calls visible, and keep a headings-only script as an ordinary Run.
+func toolActivityReadSeparator(statement *syntax.Stmt) bool {
+	argv, ok := toolActivityLiteralCall(statement)
+	if !ok || len(argv) != 2 || argv[0] != "printf" {
+		return false
+	}
+	heading, ok := strings.CutPrefix(argv[1], `\n--- `)
+	if !ok {
+		return false
+	}
+	heading, ok = strings.CutSuffix(heading, ` ---\n`)
+	return ok && heading != "" && !strings.ContainsAny(heading, "\r\n")
+}
+
 // Recognize only transparent search bounds and executable lookups. Keep their
 // complete source, including redirections and guards, rather than implying that
 // a pipeline's stages are independent operations.
@@ -162,6 +194,9 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool)
 		return "", false
 	}
 	if binary, ok := statement.Cmd.(*syntax.BinaryCmd); ok {
+		if display, ok := toolActivityNumberedRead(script, statement, binary); ok {
+			return display, true
+		}
 		right, ok := binary.Y.Cmd.(*syntax.CallExpr)
 		if !ok || len(right.Assigns) != 0 || len(binary.Y.Redirs) != 0 ||
 			binary.Y.Background || binary.Y.Negated || binary.Y.Coprocess || binary.Y.Disown {
@@ -233,6 +268,68 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool)
 		return "Search " + toolActivityCode(script[int(statement.Pos().Offset()):int(statement.End().Offset())]), true
 	}
 	return display, ok
+}
+
+// Recognize the common line-numbered source read produced by `nl -ba FILE |
+// sed -n RANGES`. Both sides are deliberately strict: other nl numbering modes
+// do not preserve a one-to-one mapping between source and output line numbers,
+// and arbitrary sed programs may do more than select bounded source lines.
+func toolActivityNumberedRead(script string, statement *syntax.Stmt, binary *syntax.BinaryCmd) (string, bool) {
+	if binary.Op != syntax.Pipe || len(statement.Redirs) != 0 {
+		return "", false
+	}
+	left, leftOK := toolActivityLiteralCall(binary.X)
+	right, rightOK := toolActivityLiteralCall(binary.Y)
+	if !leftOK || !rightOK || len(left) != 3 || left[0] != "nl" || left[1] != "-ba" ||
+		left[2] == "" || strings.HasPrefix(left[2], "-") || len(right) != 3 ||
+		right[0] != "sed" || right[1] != "-n" {
+		return "", false
+	}
+	spans, ok := toolActivityPrintSpans(right[2])
+	if !ok {
+		return "", false
+	}
+	return "Read " + toolActivityCode(left[2]+" "+strings.Join(spans, " ")), true
+}
+
+func toolActivityLiteralCall(statement *syntax.Stmt) ([]string, bool) {
+	if statement == nil || len(statement.Redirs) != 0 || statement.Background || statement.Negated ||
+		statement.Coprocess || statement.Disown {
+		return nil, false
+	}
+	call, ok := statement.Cmd.(*syntax.CallExpr)
+	if !ok || len(call.Args) == 0 || len(call.Assigns) != 0 {
+		return nil, false
+	}
+	argv := make([]string, 0, len(call.Args))
+	for _, arg := range call.Args {
+		value, literal := shellCatLiteral(arg)
+		if !literal {
+			return nil, false
+		}
+		argv = append(argv, value)
+	}
+	return argv, true
+}
+
+func toolActivityPrintSpans(program string) ([]string, bool) {
+	commands := strings.Split(program, ";")
+	spans := make([]string, 0, len(commands))
+	for _, command := range commands {
+		addresses, printOnly := strings.CutSuffix(command, "p")
+		start, end, hasRange := strings.Cut(addresses, ",")
+		if !printOnly || !hasRange || strings.Trim(start, "0123456789") != "" ||
+			strings.Trim(end, "0123456789") != "" {
+			return nil, false
+		}
+		first, firstErr := strconv.Atoi(start)
+		last, lastErr := strconv.Atoi(end)
+		if firstErr != nil || lastErr != nil || first < 1 || last < first {
+			return nil, false
+		}
+		spans = append(spans, start+":"+end)
+	}
+	return spans, len(spans) != 0
 }
 
 // These filters retain the complete pipeline in the preview. File operands,
@@ -339,17 +436,11 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 		if len(argv) != 4 || argv[1] != "-n" || argv[3] == "" || strings.HasPrefix(argv[3], "-") {
 			return "", false
 		}
-		addresses, printOnly := strings.CutSuffix(argv[2], "p")
-		start, end, hasRange := strings.Cut(addresses, ",")
-		if !printOnly || !hasRange || strings.Trim(start, "0123456789") != "" || strings.Trim(end, "0123456789") != "" {
+		spans, ok := toolActivityPrintSpans(argv[2])
+		if !ok {
 			return "", false
 		}
-		first, firstErr := strconv.Atoi(start)
-		last, lastErr := strconv.Atoi(end)
-		if firstErr != nil || lastErr != nil || first < 1 || last < first {
-			return "", false
-		}
-		add("Read", argv[3]+" "+start+":"+end)
+		add("Read", argv[3]+" "+strings.Join(spans, " "))
 	case "inspect_file":
 		if len(argv) != 2 || argv[1] == "" || strings.ContainsRune(argv[1], '\x00') {
 			return "", false
