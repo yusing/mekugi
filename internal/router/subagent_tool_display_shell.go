@@ -132,11 +132,12 @@ func toolActivityReads(script string) (string, bool) {
 	}
 	var displays []string
 	classified := false
+	for _, result := range statements {
+		classified = classified || result.ok
+	}
 	for index, statement := range program.Stmts {
 		result := statements[index]
-		if result.separator && index > 0 && index+1 < len(statements) &&
-			statements[index-1].ok && strings.HasPrefix(statements[index-1].display, "Read ") &&
-			statements[index+1].ok && strings.HasPrefix(statements[index+1].display, "Read ") {
+		if result.separator && classified {
 			continue
 		}
 		display, ok := result.display, result.ok
@@ -182,20 +183,29 @@ func toolActivityStatementDisplayEnd(script string, statement *syntax.Stmt) int 
 	return end
 }
 
-// Read bundles sometimes print literal section headings between source slices.
-// They are display decoration rather than a separate operation. Keep other
-// printf calls visible, and keep a headings-only script as an ordinary Run.
+// Literal section headings alongside classified operations are decoration.
+// Keep dynamic output, redirections, and headings-only scripts visible.
 func toolActivityReadSeparator(statement *syntax.Stmt) bool {
 	argv, ok := toolActivityLiteralCall(statement)
-	if !ok || len(argv) != 2 || argv[0] != "printf" {
+	if !ok || len(argv) < 2 || argv[0] != "printf" {
 		return false
 	}
-	heading, ok := strings.CutPrefix(argv[1], `\n--- `)
-	if !ok {
+	heading := argv[1]
+	if len(argv) == 3 && (heading == `%s\n` || heading == `\n%s\n`) {
+		heading = argv[2]
+	} else if len(argv) != 2 || strings.Contains(heading, "%") {
 		return false
 	}
-	heading, ok = strings.CutSuffix(heading, ` ---\n`)
-	return ok && heading != "" && !strings.ContainsAny(heading, "\r\n")
+	heading = strings.TrimSpace(strings.ReplaceAll(heading, `\n`, "\n"))
+	if strings.ContainsAny(heading, "\r\n\\") {
+		return false
+	}
+	for _, border := range []string{"---", "===", "###"} {
+		if strings.HasPrefix(heading, border) && strings.HasSuffix(heading, border) {
+			return true
+		}
+	}
+	return false
 }
 
 // Recognize only transparent search bounds and executable lookups. Keep their
@@ -230,11 +240,13 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool)
 			return "", false
 		}
 		label := ""
-		if binary.Op == syntax.Pipe && (strings.HasPrefix(left, "Search ") || strings.HasPrefix(left, "Search\n")) {
+		if binary.Op == syntax.Pipe && len(statement.Redirs) == 0 && (strings.HasPrefix(left, "Search ") || strings.HasPrefix(left, "Search\n") || strings.HasPrefix(left, "List ")) {
 			filter, search := toolActivityStatement(script, binary.Y)
-			if toolActivitySearchFilter(argv) || search &&
-				(strings.HasPrefix(filter, "Search ") || strings.HasPrefix(filter, "Search\n")) {
-				label = "Search"
+			if toolActivitySearchFilter(argv) {
+				return left, true
+			}
+			if search && (strings.HasPrefix(filter, "Search ") || strings.HasPrefix(filter, "Search\n")) {
+				return left + "\n\n" + filter, true
 			}
 		}
 		if binary.Op == syntax.OrStmt && strings.HasPrefix(left, "Inspect ") &&
@@ -276,9 +288,6 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool)
 		}
 	}
 	display, ok := toolActivityReadCommand(script, call)
-	if ok && len(statement.Redirs) != 0 {
-		return "Search " + toolActivityCode(script[int(statement.Pos().Offset()):int(statement.End().Offset())]), true
-	}
 	return display, ok
 }
 
@@ -344,7 +353,7 @@ func toolActivityPrintSpans(program string) ([]string, bool) {
 	return spans, len(spans) != 0
 }
 
-// These filters retain the complete pipeline in the preview. File operands,
+// Omit output-only pipeline helpers from the operation label. File operands,
 // output-file flags, and dynamic bounds are not transparent output filters.
 func toolActivitySearchFilter(argv []string) bool {
 	if len(argv) == 0 {
@@ -352,6 +361,9 @@ func toolActivitySearchFilter(argv []string) bool {
 	}
 	switch argv[0] {
 	case "head", "tail":
+		if len(argv) == 1 {
+			return true
+		}
 		bound := ""
 		if len(argv) == 3 && argv[1] == "-n" {
 			bound = argv[2]
@@ -413,6 +425,8 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 		argv = append(argv, value)
 	}
 	switch argv[0] {
+	case "mread":
+		return "", true
 	case "cat":
 		if len(argv) < 2 {
 			return "", false
@@ -512,14 +526,12 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 				return "", false
 			}
 		}
-		fallthrough
-	case "rg", "grep":
 		if len(argv) < 2 {
 			return "", false
 		}
-		// Keep all search flags and operands visible; do not guess which
-		// operand is a query when an option may consume it.
 		add("Search", script[int(call.Args[1].Pos().Offset()):int(call.End().Offset())])
+	case "rg", "grep":
+		return toolActivitySearch(argv)
 	case "skills-mgr":
 		if (len(argv) != 3 && len(argv) != 4) || argv[1] != "get" {
 			return "", false

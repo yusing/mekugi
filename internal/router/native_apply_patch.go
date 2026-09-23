@@ -306,17 +306,59 @@ func stockPatchLiteralPresent(source string) bool {
 	return false
 }
 
+// Decode arriving patch text without requiring the closing quote, call, or
+// envelope. This is display-only and must never feed capture or execution.
+func stockPatchFragment(source string) string {
+	if len(source) > maxMekugiScriptBytes {
+		return ""
+	}
+	ranges, _, _ := codeModePreviewSyntax(source)
+	rangeIndex := 0
+	patch := ""
+	for at := 0; at < len(source); {
+		for rangeIndex < len(ranges) && at >= ranges[rangeIndex].end {
+			rangeIndex++
+		}
+		if rangeIndex < len(ranges) && at >= ranges[rangeIndex].start {
+			at = ranges[rangeIndex].end
+			continue
+		}
+		if next := codeModeSkipComment(source, at); next > at {
+			at = next
+			continue
+		}
+		if source[at] == '\'' || source[at] == '"' || source[at] == '`' {
+			value, consumed := toolActivityJavaScriptStringFragment(source[at:])
+			if _, ok := nativePatchPreview(value); ok {
+				patch = value
+			}
+			at += max(1, consumed)
+			continue
+		}
+		at++
+	}
+	return patch
+}
+
 func toolActivityJavaScriptStringFragment(source string) (string, int) {
 	quote := source[0]
 	var value strings.Builder
 	for offset := 1; offset < len(source); {
+		if quote == '`' && strings.HasPrefix(source[offset:], "${") {
+			return value.String(), codeModeSkipString(source, 0)
+		}
 		if source[offset] == quote {
 			return value.String(), offset + 1
+		}
+		if quote == '`' && (source[offset] == '\r' || source[offset] == '\n') {
+			value.WriteByte(source[offset])
+			offset++
+			continue
 		}
 		if source[offset] == '\r' || source[offset] == '\n' {
 			return value.String(), offset
 		}
-		if source[offset] == '\\' && offset+1 < len(source) && strings.ContainsRune(`'"/\\`, rune(source[offset+1])) {
+		if source[offset] == '\\' && offset+1 < len(source) && (strings.ContainsRune(`'"/\\`, rune(source[offset+1])) || quote == '`' && (source[offset+1] == '`' || source[offset+1] == '$')) {
 			value.WriteByte(source[offset+1])
 			offset += 2
 			continue
@@ -546,7 +588,8 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 }
 
 func nativePatchPreview(input string) (liveDiffPreview, bool) {
-	if _, err := nativePatchPaths(input, string(filepath.Separator)); err != nil {
+	// Incomplete input is useful provisional display, never application evidence.
+	if input != "*** Begin Patch" && !strings.HasPrefix(input, "*** Begin Patch\n") && !strings.HasPrefix(input, "*** Begin Patch\r\n") {
 		return liveDiffPreview{}, false
 	}
 	return liveDiffPreview{Input: input, DiffText: true, Status: "STREAMING PREVIEW"}, true

@@ -187,7 +187,7 @@ func TestCodeModeSpreadBatchActivityProjectsCommandsJSONAndSSE(t *testing.T) {
 				for _, want := range []string{
 					"Read `internal/router/mekugi_proxy.go 48:56`",
 					"internal/router/commentary.go 39:46",
-					"Search `-n 'func .*TransformSSE' internal/router`",
+					"Search `func .*TransformSSE` in `internal/router`",
 				} {
 					if !strings.Contains(display, want) {
 						t.Fatalf("command preview missing %q: %s", want, display)

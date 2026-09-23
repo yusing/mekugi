@@ -45,7 +45,7 @@ func TestLiveDiffCodeModeConstPatchDoesNotLeakScript(t *testing.T) {
 	select {
 	case <-sub.previewReady:
 		for _, event := range broker.takePreviews(sub) {
-			if event.Preview != nil && strings.Contains(event.Preview.Input, "*** Begin Patch") {
+			if event.Preview != nil && strings.Contains(event.Preview.Input, "*** Begin Patch") && !event.Preview.DiffText {
 				t.Fatalf("partial Code Mode patch leaked as script: %+v", event.Preview)
 			}
 		}
@@ -55,7 +55,7 @@ func TestLiveDiffCodeModeConstPatchDoesNotLeakScript(t *testing.T) {
 
 	worker.appendDelta(source[marker+len("*** Begin Patch"):])
 	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return preview.Status == "STREAMING PREVIEW" && preview.DiffText
+		return preview.Status == "STREAMING PREVIEW" && preview.DiffText && preview.Input == patch
 	})
 	if preview.Input != patch || strings.Contains(preview.Input, "const patch") || strings.Contains(preview.Input, `\\n`) {
 		t.Fatalf("Code Mode patch preview leaked script encoding: %+v", preview)

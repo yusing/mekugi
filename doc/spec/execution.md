@@ -22,8 +22,9 @@ them rather than leaving detached descendants. A dedicated Linux frontend also
 reaps resolver orphans after an explicit cleanup result; on other platforms,
 those descendants remain in the stock group until the command ends.
 
-A complete `apply_patch` argument stream may produce a provisional live diff
-before Codex executes it. An unfinished argument or preview has no application
+A streaming `apply_patch` argument, including a decoded Code Mode string literal,
+produces a provisional live diff as patch text arrives, without waiting for the
+closing quote, call, or end marker. An unfinished argument or preview has no application
 status. After Codex returns a result and the workspace outcome is observable,
 Mekugi records evidence under [REQ-CHANGES-001](changes.md). The stock tool
 result is forwarded unchanged, including errors. A failed call may have a
@@ -41,6 +42,13 @@ Scope providers may parse local source or issue a validated local read-only quer
 They never evaluate interpreter source, run a writer stage, contact a remote, or
 invoke configured hooks, preprocessors, filters, or monitors. Missing tools and
 provider timeouts reduce evidence coverage without replacing the stock result.
+
+Input completion flushes the authoritative final input through the preview worker,
+including Code Mode JavaScript and native command arguments. Final content and
+the streaming-complete marker share one snapshot, so coalescing cannot leave a
+truncated last frame. This remains auxiliary projection, not tool completion or
+execution evidence; interrupted requests without completed input do not flush
+a fabricated final script.
 
 The live stream may also display stock `cat` heredoc writes, literal file
 operations, and interpreter programs extracted from `exec_command` or Code Mode. This projection is for

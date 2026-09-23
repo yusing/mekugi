@@ -93,14 +93,15 @@ func (t *mekugiResponseTransform) transformNonJournalSSE(payload []byte) ([][]by
 
 func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte, error) {
 	var envelope struct {
-		Type     responseevents.Kind `json:"type"`
-		ItemID   string              `json:"item_id"`
-		CallID   string              `json:"call_id"`
-		Name     string              `json:"name"`
-		Delta    string              `json:"delta"`
-		Input    string              `json:"input"`
-		Item     json.RawMessage     `json:"item"`
-		Response json.RawMessage     `json:"response"`
+		Type      responseevents.Kind `json:"type"`
+		ItemID    string              `json:"item_id"`
+		CallID    string              `json:"call_id"`
+		Name      string              `json:"name"`
+		Delta     string              `json:"delta"`
+		Input     string              `json:"input"`
+		Arguments string              `json:"arguments"`
+		Item      json.RawMessage     `json:"item"`
+		Response  json.RawMessage     `json:"response"`
 	}
 	if err := json.Unmarshal(payload, &envelope); err != nil {
 		if visible, buffered := t.finalAnswer.observe(payload); buffered {
@@ -193,7 +194,6 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.CustomInputDone:
-		t.endPreview(envelope.ItemID)
 		if addedFields, stockCall := t.nativeExecCalls[envelope.ItemID]; stockCall {
 			if jsonString(addedFields, "type") == "custom_tool_call" {
 				addedCallID := jsonString(addedFields, "call_id")
@@ -201,6 +201,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 					return nil, staticCriticalDiagnostic("changed_code_mode_call", "the upstream changed a Code Mode call identity")
 				}
 				callID := cmp.Or(addedCallID, envelope.CallID)
+				t.finishPreview(envelope.ItemID, envelope.Input)
 				addedFields["call_id"] = mustMarshalJSON(callID)
 				original := maps.Clone(addedFields)
 				original["input"] = mustMarshalJSON(envelope.Input)
@@ -226,7 +227,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 
 	case envelope.Type == responseevents.FunctionArgumentsDone:
 		if fields := t.nativeExecCalls[envelope.ItemID]; fields != nil && jsonString(fields, "name") == nativeExecCommandToolName {
-			t.endPreview(envelope.ItemID)
+			t.finishPreview(envelope.ItemID, envelope.Arguments)
 			return [][]byte{payload}, nil
 		}
 		pending, ok := t.pending[envelope.ItemID]
@@ -245,9 +246,9 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if !ok {
 			return [][]byte{payload}, nil //nolint:nilerr // Malformed unrelated output remains the upstream's responsibility.
 		}
-		t.endPreview(item.ID)
 		activityFields := maps.Clone(item.fields)
 		if _, delivered := t.local[item.CallID]; item.Status == "incomplete" && !delivered {
+			t.endPreview(item.ID)
 			// Item completion can report interrupted generation, not complete input.
 			delete(t.pending, item.ID)
 			delete(t.nativeExecCalls, item.ID)
@@ -259,8 +260,16 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			expectedCallID := jsonString(addedFields, "call_id")
 			expectedType, expectedName := jsonString(addedFields, "type"), jsonString(addedFields, "name")
 			if item.Type != expectedType || item.Name != expectedName || expectedCallID != "" && expectedCallID != callID {
+				t.endPreview(item.ID)
 				return nil, staticCriticalDiagnostic("inconsistent_stock_call", "the upstream completed an inconsistent stock tool call")
 			}
+		}
+		if item.Input != nil {
+			t.finishPreview(item.ID, *item.Input)
+		} else if item.Arguments != nil {
+			t.finishPreview(item.ID, *item.Arguments)
+		} else {
+			t.endPreview(item.ID)
 		}
 		delete(t.nativeExecCalls, itemID)
 		if pending, buffered := t.pending[itemID]; buffered && pending.structured {

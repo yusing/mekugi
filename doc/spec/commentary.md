@@ -62,10 +62,15 @@ A simple literal `cat`, valid `mcat` read, bounded `sed -n` print, or literal
 `inspect_file` is `Inspect`. Invalid or compound commands retain a `Run`
 preview instead of claiming a simpler operation. Mixed command scripts keep
 every classified operation and show unclassified neighbors as `Run` in order.
+`rg` and `grep` search previews show the query and target, omitting execution
+flags and recognized output-only pipeline helpers such as `head`. Unknown or
+effectful pipeline stages retain the original `Run` preview. Shell execution
+still receives the exact original command, including flags and pipes.
 Per-command `Run` excerpts omit statement-terminating semicolons; quoted
 semicolons and other executable syntax remain visible.
-Literal `printf` section headings between classified reads are omitted as
+Literal `printf` section headings alongside classified operations are omitted as
 display decoration; standalone or dynamic headings remain `Run` operations.
+Literal `mread` recovery calls omit activity entries rather than appearing as `Run`.
 Code Mode waits show `Still Running` or `Stop` only when a visible call/result
 pair establishes the same cell; missing history is `operation unavailable`.
 Native `write_stdin` with characters is `Send input`.
@@ -77,8 +82,10 @@ wrapper. This same projector supplies provisional streaming previews and final
 generated commentary. It never evaluates shell expansions or implies that a
 command succeeded. Source line breaks and indentation remain intact.
 
-Stock `apply_patch` does not produce a generic `Run` preview or echo its patch
-body into child activity. After the host result and workspace outcome are
+Stock `apply_patch` shows an `Edit` operation label, including transparent Code
+Mode calls using immutable literal patch bindings. It does not produce a generic
+`Run` preview or echo its patch body into child activity. This label does not
+claim execution or success. After the host result and workspace outcome are
 recorded, authenticated successful edit receipts classify each changed path as
 `Create`, `Edit`, `Delete`, or `Move` with added and removed line counts.
 Classification uses the same review files as `mchanges`; it does not guess from

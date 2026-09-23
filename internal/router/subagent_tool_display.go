@@ -105,9 +105,8 @@ func subagentToolPreview(item map[string]json.RawMessage, qualifiedName string, 
 	case "write_stdin":
 		return toolActivityWriteStdin(arguments)
 	case "apply_patch":
-		// Edit evidence belongs in host tool results and the live diff viewer,
-		// not a second generated commentary rendering.
-		return ""
+		// Label the operation, not its outcome or a duplicate patch payload.
+		return "Edit"
 	}
 	switch jsonString(item, "type") {
 	case "web_search_call":

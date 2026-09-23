@@ -34,16 +34,17 @@ type liveDiffPreview struct {
 }
 
 type liveDiffPreviewWorker struct {
-	mu      sync.Mutex
-	ctx     context.Context
-	cancel  context.CancelFunc
-	broker  *liveDiffBroker
-	preview liveDiffPreview
-	input   strings.Builder
-	wake    chan struct{}
-	done    chan struct{}
-	closed  bool
-	kind    string
+	mu        sync.Mutex
+	ctx       context.Context
+	cancel    context.CancelFunc
+	broker    *liveDiffBroker
+	preview   liveDiffPreview
+	input     strings.Builder
+	wake      chan struct{}
+	done      chan struct{}
+	closed    bool
+	finishing bool
+	kind      string
 }
 
 // Large previews retain a bounded suffix of the actual unified diff.
@@ -122,7 +123,7 @@ func (t *mekugiResponseTransform) previewStockDelta(itemID, kind, delta string) 
 
 func (worker *liveDiffPreviewWorker) appendDelta(delta string) {
 	worker.mu.Lock()
-	if !worker.closed {
+	if !worker.closed && !worker.finishing {
 		if worker.input.Len()+len(delta) > 256<<10 {
 			worker.closed = true
 			worker.cancel()
@@ -147,23 +148,66 @@ func (t *mekugiResponseTransform) endPreview(itemID string) {
 	}
 }
 
+func (t *mekugiResponseTransform) finishPreview(itemID, input string) {
+	if worker := t.previews[itemID]; worker != nil {
+		worker.finish(input)
+		delete(t.previews, itemID)
+	}
+}
+
+// Complete from the authoritative done payload, not whichever delta happened
+// to reach the coalesced renderer last. Projection stays off the forwarding path.
+func (worker *liveDiffPreviewWorker) finish(input string) {
+	worker.mu.Lock()
+	defer worker.mu.Unlock()
+	if worker.closed || worker.finishing {
+		return
+	}
+	if len(input) > 256<<10 {
+		worker.closed = true
+		worker.cancel()
+		worker.broker.discardPreview(worker.preview.ID)
+		return
+	}
+	worker.input.Reset()
+	worker.input.WriteString(input)
+	worker.finishing = true
+	select {
+	case worker.wake <- struct{}{}:
+	default:
+	}
+}
+
 func (worker *liveDiffPreviewWorker) stop() {
 	worker.mu.Lock()
 	defer worker.mu.Unlock()
+	if worker.closed {
+		return
+	}
 	worker.closed = true
 	worker.cancel()
-	worker.broker.publishPreview(worker.preview, true)
+	worker.broker.discardPreview(worker.preview.ID)
 }
 
 func (w *liveDiffPreviewWorker) run() {
 	defer close(w.done)
+	defer w.cancel()
+	defer func() {
+		w.mu.Lock()
+		w.closed = true
+		w.broker.discardPreview(w.preview.ID)
+		w.mu.Unlock()
+	}()
 	editRecognized := false
 	codePatchHidden := false
 	scriptVisible := false
+	final := false
 	for {
+		if final {
+			return
+		}
 		select {
 		case <-w.ctx.Done():
-			return
 		case <-w.wake:
 		}
 		// Coalesce bursts, but keep producing while the provider is still
@@ -172,7 +216,6 @@ func (w *liveDiffPreviewWorker) run() {
 		select {
 		case <-w.ctx.Done():
 			timer.Stop()
-			return
 		case <-timer.C:
 		}
 		select {
@@ -180,17 +223,27 @@ func (w *liveDiffPreviewWorker) run() {
 		default:
 		}
 		w.mu.Lock()
+		if w.closed || w.ctx.Err() != nil && !w.finishing {
+			w.mu.Unlock()
+			return
+		}
 		input := w.input.String()
 		preview := w.preview
+		final, preview.Complete = w.finishing, w.finishing
 		w.mu.Unlock()
+		if final && input == "" {
+			w.broker.publishPreview(preview, false)
+			continue
+		}
 		projectionInput := input
 		shellDisplay := ""
 		shellProvisional := false
 		if w.kind == applyPatchToolName {
 			if projected, ok := nativePatchPreview(input); ok {
+				projected.Complete = final
 				projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
 				w.mu.Lock()
-				if !w.closed && w.ctx.Err() == nil {
+				if !w.closed && (w.ctx.Err() == nil || final) {
 					w.broker.publishPreview(projected, false)
 				}
 				w.mu.Unlock()
@@ -211,11 +264,15 @@ func (w *liveDiffPreviewWorker) run() {
 			calls, ok := toolActivityUnwrapExecCalls(input, false)
 			if !ok {
 				patches := stockLiteralPatchInputs(input)
+				if fragment := stockPatchFragment(input); fragment != "" {
+					patches = append(patches, fragment)
+				}
 				if len(patches) != 0 {
 					if projected, valid := nativePatchPreview(patches[len(patches)-1]); valid {
+						projected.Complete = final
 						projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
 						w.mu.Lock()
-						if !w.closed && w.ctx.Err() == nil {
+						if !w.closed && (w.ctx.Err() == nil || final) {
 							w.broker.publishPreview(projected, false)
 						}
 						w.mu.Unlock()
@@ -246,7 +303,7 @@ func (w *liveDiffPreviewWorker) run() {
 					}
 					preview.Input, preview.Syntax, preview.Status = input, []liveDiffSourceSpan{{Path: "preview.js"}}, "STREAMING SCRIPT"
 					w.mu.Lock()
-					if !w.closed && w.ctx.Err() == nil && input != "" {
+					if !w.closed && (w.ctx.Err() == nil || final) && input != "" {
 						w.broker.publishPreview(preview, false)
 						scriptVisible = true
 					}
@@ -271,9 +328,10 @@ func (w *liveDiffPreviewWorker) run() {
 				switch jsonString(call, "name") {
 				case applyPatchToolName:
 					if projected, ok := nativePatchPreview(jsonString(call, "input")); ok {
+						projected.Complete = final
 						projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
 						w.mu.Lock()
-						if !w.closed && w.ctx.Err() == nil {
+						if !w.closed && (w.ctx.Err() == nil || final) {
 							w.broker.publishPreview(projected, false)
 						}
 						w.mu.Unlock()
@@ -295,6 +353,15 @@ func (w *liveDiffPreviewWorker) run() {
 			if projectionInput == "" {
 				continue
 			}
+			if projectionInput == input && !shellProvisional {
+				preview.Input, preview.Syntax, preview.Status = input, []liveDiffSourceSpan{{Path: "preview.js"}}, "STREAMING SCRIPT"
+				w.mu.Lock()
+				if !w.closed && (w.ctx.Err() == nil || final) && input != "" {
+					w.broker.publishPreview(preview, false)
+				}
+				w.mu.Unlock()
+				continue
+			}
 		}
 		if programs, err := shellsyntax.Split(projectionInput); err == nil {
 			// Preview the current program, not earlier shell framing or edit payloads.
@@ -305,7 +372,7 @@ func (w *liveDiffPreviewWorker) run() {
 		if shellProvisional {
 			preview.Input, preview.Syntax, preview.Status = shellDisplay, []liveDiffSourceSpan{{Path: "stream.sh"}}, "STREAMING SCRIPT"
 			w.mu.Lock()
-			if !w.closed && w.ctx.Err() == nil {
+			if !w.closed && (w.ctx.Err() == nil || final) {
 				w.broker.publishPreview(preview, false)
 				scriptVisible = true
 			}
@@ -314,7 +381,13 @@ func (w *liveDiffPreviewWorker) run() {
 		}
 		statements, directory, partialLine, parsed := liveDiffShellStatements(projectionInput, preview.Workspace)
 		ok := false
-		ctx, cancel := context.WithTimeout(w.ctx, time.Second)
+		projectionContext := w.ctx
+		if final {
+			// Accepted final input outlives transport teardown, but projection
+			// remains independently bounded and never executes the command.
+			projectionContext = context.WithoutCancel(projectionContext)
+		}
+		ctx, cancel := context.WithTimeout(projectionContext, time.Second)
 		var files []mekugi.ReviewFile
 		var err error
 		if parsed {
@@ -386,11 +459,23 @@ func (w *liveDiffPreviewWorker) run() {
 		}
 		w.mu.Lock()
 		// One preview is in flight, with only the latest input sampled next.
-		// New deltas must not starve visible progress; completion cancels output.
-		if !w.closed && w.ctx.Err() == nil && input != "" {
+		// Final content and completion share one replaceable snapshot, so a slow
+		// viewer cannot receive only removal after losing the last content frame.
+		if !w.closed && (w.ctx.Err() == nil || final) && input != "" {
 			w.broker.publishPreview(preview, false)
 		}
 		w.mu.Unlock()
+	}
+}
+
+// Cleanup only live state. An unconditional removal would overwrite an atomic
+// final snapshot still queued for a slow viewer with a contentless marker.
+func (b *liveDiffBroker) discardPreview(id string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, active := b.previews[id]; active {
+		delete(b.previews, id)
+		b.emitPreviewLocked(liveDiffPreview{ID: id})
 	}
 }
 

@@ -116,7 +116,8 @@ func TestSubagentTranslatedEditActivityJSONAndSSE(t *testing.T) {
 			if err := json.Unmarshal(visible, &response); err != nil {
 				t.Fatal(err)
 			}
-			if len(response.Output) != 1 || !strings.Contains(commentaryText(t, response.Output[0]), "Started.") ||
+			if len(response.Output) != 2 || !strings.Contains(commentaryText(t, response.Output[0]), "Started.") ||
+				!strings.Contains(commentaryText(t, response.Output[1]), "Edit") ||
 				bytes.Contains(visible, []byte("apply_patch")) || bytes.Contains(visible, []byte("new result.txt")) {
 				t.Fatalf("stock apply_patch leaked into activity: %s", visible)
 			}
@@ -127,7 +128,7 @@ func TestSubagentTranslatedEditActivityJSONAndSSE(t *testing.T) {
 	}
 }
 
-func TestSubagentPatchCommentarySuppressedJSONAndSSE(t *testing.T) {
+func TestSubagentPatchLabelJSONAndSSE(t *testing.T) {
 	patch := "*** Begin Patch\n*** Add File: a\n+x\n*** Update File: b\n@@\n-old\n+new\n*** End Patch\n"
 	for _, name := range []string{"apply_patch", "exec"} {
 		for _, stream := range []bool{false, true} {
@@ -155,8 +156,9 @@ func TestSubagentPatchCommentarySuppressedJSONAndSSE(t *testing.T) {
 					t.Fatal(err)
 				}
 				var response struct{ Output []map[string]json.RawMessage }
-				if err := json.Unmarshal(visible, &response); err != nil || len(response.Output) != 1 ||
-					!strings.Contains(commentaryText(t, response.Output[0]), "Started.") {
+				if err := json.Unmarshal(visible, &response); err != nil || len(response.Output) != 2 ||
+					!strings.Contains(commentaryText(t, response.Output[0]), "Started.") ||
+					!strings.Contains(commentaryText(t, response.Output[1]), "Edit") || bytes.Contains(visible, []byte("Begin Patch")) {
 					t.Fatalf("edit generated commentary: %s, %v", visible, err)
 				}
 			})

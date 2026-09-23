@@ -45,6 +45,7 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 		return nil, false
 	}
 	var calls []map[string]json.RawMessage
+	bindings := make(map[string]string)
 	for i := 0; i < len(statements); i++ {
 		first := statements[i]
 		var expression *sitter.Node
@@ -70,6 +71,14 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 				return nil, false
 			}
 			value := declaration.ChildByFieldName("value")
+			if first.Child(0).Kind() == "const" && !requireResultMetadata {
+				if literal, ok := toolActivityStaticJavaScriptValue(value, bytes); ok {
+					if value, ok := literal.(string); ok {
+						bindings[name] = value
+						continue
+					}
+				}
+			}
 			if !toolActivityResultProjection(statements[i+1], bytes, name, requireResultMetadata) {
 				batchProjection = !requireResultMetadata &&
 					(toolActivityBatchForEachProjection(statements[i+1], bytes, name) ||
@@ -80,6 +89,14 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 			}
 			expression = value
 			i++
+		}
+		if expression != nil && expression.Kind() == "await_expression" && !requireResultMetadata {
+			if args, ok := toolActivityCallArguments(expression.NamedChild(0), bytes, "tools", applyPatchToolName); ok && len(args) == 1 && args[0].Kind() == "identifier" {
+				if patch, found := bindings[args[0].Utf8Text(bytes)]; found {
+					calls = append(calls, map[string]json.RawMessage{"name": mustMarshalJSON(applyPatchToolName), "input": mustMarshalJSON(patch)})
+					continue
+				}
+			}
 		}
 		nested, ok := toolActivityAwaitedCalls(expression, bytes, requireResultMetadata)
 		if !ok || batchProjection && !toolActivityPromiseBatch(expression, bytes) {
@@ -574,7 +591,7 @@ func toolActivityStaticJavaScriptValue(node *sitter.Node, source []byte) (any, b
 			return nil, false
 		}
 		return value, true
-	case "string":
+	case "string", "template_string":
 		return toolActivityJavaScriptString(node.Utf8Text(source))
 	case "number":
 		return toolActivityJSONNumber(node.Utf8Text(source))
@@ -609,18 +626,38 @@ func toolActivityJSONNumber(source string) (any, bool) {
 }
 
 func toolActivityJavaScriptString(source string) (string, bool) {
-	if len(source) < 2 || source[0] != source[len(source)-1] || source[0] != '"' && source[0] != '\'' {
+	if len(source) < 2 || source[0] != source[len(source)-1] || source[0] != '"' && source[0] != '\'' && source[0] != '`' {
 		return "", false
 	}
 	quote := source[0]
 	rest := source[1 : len(source)-1]
 	var value strings.Builder
 	for rest != "" {
+		if quote == '`' {
+			if strings.HasPrefix(rest, "${") {
+				return "", false // Never evaluate template interpolation.
+			}
+			if rest[0] == '\n' || rest[0] == '\r' {
+				value.WriteByte('\n')
+				if strings.HasPrefix(rest, "\r\n") {
+					rest = rest[1:]
+				}
+				rest = rest[1:]
+				continue
+			}
+		}
 		if rest[0] == '\\' {
 			if len(rest) < 2 {
 				return "", false
 			}
 			switch rest[1] {
+			case '`', '$':
+				if quote != '`' {
+					return "", false
+				}
+				value.WriteByte(rest[1])
+				rest = rest[2:]
+				continue
 			case '\'', '"', '/', '\\':
 				value.WriteByte(rest[1])
 				rest = rest[2:]

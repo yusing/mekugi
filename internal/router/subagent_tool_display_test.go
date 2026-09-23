@@ -29,7 +29,7 @@ func TestSubagentToolDisplay(t *testing.T) {
 		{"wait", `{"cell_id":7}`, "Tool call: `wait`\n`{\"cell_id\":7}`"},
 		{"external.wait", `{"cell_id":"7"}`, "Tool call: `external.wait`\n`{\"cell_id\":\"7\"}`"},
 		{"exec_command", `{"cmd":"cat 'a b.txt'"}`, "Read `a b.txt`"},
-		{"exec_command", `{"cmd":"rg -n -F -e 'some text' a.go"}`, "Search `-n -F -e 'some text' a.go`"},
+		{"exec_command", `{"cmd":"rg -n -F -e 'some text' a.go"}`, "Search `some text` in `a.go`"},
 		{"exec_command", `{"cmd":"mcat a.go 1:20"}`, "Read `a.go 1:20`"},
 		{"exec_command", `{"cmd":"#!python\nprint(1)"}`, "Run\n```python\n#!python\nprint(1)\n```"},
 		{"exec_command", `{"cmd":"msymbol refs a.go 42 Name","login":false}`, "Search `refs a.go 42 Name`"},
@@ -41,7 +41,7 @@ func TestSubagentToolDisplay(t *testing.T) {
 		{"exec", `await tools.write_stdin({session_id: 9007199254740993, chars: ""})`, "Still Running · command unavailable"},
 		{"exec", `await tools.write_stdin({session_id: -9007199254740993, chars: ""})`, "Still Running · command unavailable"},
 		{"exec", `await tools.exec_command({cmd: 'cat a', login: false})`, "Read `a`"},
-		{"exec", `await tools.apply_patch("*** Begin Patch\n*** Add File: a\n+x\n*** End Patch\n")`, ""},
+		{"exec", `await tools.apply_patch("*** Begin Patch\n*** Add File: a\n+x\n*** End Patch\n")`, "Edit"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name+"/"+tt.input, func(t *testing.T) {
@@ -395,9 +395,6 @@ func TestSubagentNumberedReadDisplay(t *testing.T) {
 		"printf '\\n--- heading ---\\n'",
 		"cat source.go; printf \"\\n--- $heading ---\\n\"",
 		"cat source.go; printf '\\nnot a heading\\n'",
-		"ls; printf '\\n--- heading ---\\n'",
-		"printf '\\n--- heading ---\\n'; cat source.go",
-		"cat source.go; printf '\\n--- heading ---\\n'",
 		"cat source.go; printf '\\n--- heading ---\\n'; make test",
 	} {
 		got := toolActivityShell(visible)
@@ -414,7 +411,7 @@ func TestSubagentSearchReadRunGrouping(t *testing.T) {
 		"git status --short"
 	item := stockExecDisplayItem(source)
 	want := "In `/root/review_sed_display`\n\n" +
-		"- Search `-n 'func shellCatLiteral|func toolActivityGroup|toolActivityGroup\\(' internal/router`\n\n" +
+		"- Search `func shellCatLiteral|func toolActivityGroup|toolActivityGroup\\(` in `internal/router`\n\n" +
 		"- Read `internal/router/subagent_tool_display.go 238:265` `doc/spec/commentary.md 140:170`\n\n" +
 		"- Run `git status --short`"
 	if got := toolActivityGroup("[`/root/review_sed_display`] ", subagentToolActivityText(item, "exec_command")); got != want {
@@ -476,13 +473,13 @@ func TestSubagentMixedSedReadGrouping(t *testing.T) {
 func TestClassifiedToolActivityShowsEveryOperation(t *testing.T) {
 	path := strings.Repeat("a", 4200)
 	input := "cat " + path + "\nrg needle src\ncat last"
-	want := "Read `" + path + "`\n\nSearch `needle src`\n\nRead `last`"
+	want := "Read `" + path + "`\n\nSearch `needle` in `src`\n\nRead `last`"
 	if got := toolActivityShell(input); got != want {
 		t.Fatalf("display: got %q, want %q", got, want)
 	}
 }
 
-func TestSubagentEditDisplaySuppressed(t *testing.T) {
+func TestSubagentEditDisplayLabel(t *testing.T) {
 	for _, name := range []string{"apply_patch"} {
 		for _, input := range []string{
 			"*** Begin Patch\n*** Update File: a\n@@\n-old\n+new\n*** End Patch\n",
@@ -492,12 +489,12 @@ func TestSubagentEditDisplaySuppressed(t *testing.T) {
 			item := map[string]json.RawMessage{
 				"name": mustMarshalJSON(name), "input": mustMarshalJSON(input),
 			}
-			if got := subagentToolActivityText(item, name); got != "" {
+			if got := subagentToolActivityText(item, name); got != "Edit" {
 				t.Fatalf("%s generated edit commentary: %q", name, got)
 			}
 			item["arguments"] = mustMarshalJSON(`{"patch":` + string(mustMarshalJSON(input)) + `}`)
 			delete(item, "input")
-			if got := subagentToolActivityText(item, "functions."+name); got != "" {
+			if got := subagentToolActivityText(item, "functions."+name); got != "Edit" {
 				t.Fatalf("structured %s generated edit commentary: %q", name, got)
 			}
 		}
@@ -626,7 +623,7 @@ func TestSubagentPromiseBatchResultLoopDisplaysCommands(t *testing.T) {
 		tools.exec_command({cmd:"mcat internal/router/subagent_tool_display.go 1:20"}),
 	]); r.forEach((x, i) => text(JSON.stringify({i, result:x})));`
 	item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
-	want := "Search `-n 'needle' internal/router`\n\nRead `internal/router/subagent_tool_display.go 1:20`"
+	want := "Search `needle` in `internal/router`\n\nRead `internal/router/subagent_tool_display.go 1:20`"
 	if got := subagentToolActivityText(item, "exec"); got != want {
 		t.Fatalf("batch command preview = %q, want %q", got, want)
 	}
@@ -692,7 +689,7 @@ func TestSubagentBatchSuppressesOnlyPatchCommentary(t *testing.T) {
 	source := `text(await tools.apply_patch("*** Begin Patch\n*** Add File: a\n+x\n*** Add File: b\n+y\n*** End Patch\n")); text(await tools.clock__curr_time({}));`
 	item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
 	display := subagentToolPreview(item, "exec", nil)
-	if display != "Read current time\n`{}`" {
+	if display != "Edit\n\nRead current time\n`{}`" {
 		t.Fatalf("mixed batch preview = %q", display)
 	}
 }
@@ -748,7 +745,6 @@ func TestJournalToolActivityIsNotRepeated(t *testing.T) {
 		`await journal({op:"add", text:"Progress", report_now:true})`,
 		`text(await tools.journal({op:"edit", id:"amber", text:"Updated"}))`,
 		`await journal([{op:"add", text:"One"}, {op:"add", text:"Two"}])`,
-		`await Promise.all([tools.journal({op:"add", text:"Progress"}), tools.apply_patch("patch")])`,
 	} {
 		item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
 		if got := subagentToolActivityText(item, "exec"); got != "" {
