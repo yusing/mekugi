@@ -21,7 +21,7 @@ type readBundleSpec struct {
 }
 
 func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
-	budget := 4000
+	budget := 6000
 	var operands []string
 	optionsEnded, tokenOption, lineOption, tailOption := false, false, false, false
 	for i := 0; i < len(args); i++ {

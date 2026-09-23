@@ -41,7 +41,7 @@ export function readerArguments(input: string): string[] {
 
 export type ReaderOptions = {maxTokens?: number; previewBytes?: number; tail?: boolean; maxLines?: number};
 
-export function readerOptions(argv: string[], allowTail = false, takesValue: (arg: string) => boolean = () => false, preserveTerminator = false, allowPreview = true): {options: ReaderOptions; rest: string[]; indices: number[]} {
+export function readerOptions(argv: string[], allowTail = false, takesValue: (arg: string) => boolean = () => false, preserveTerminator = false, allowPreview = true, defaultMaxTokens = READ_DEFAULT_TOKENS): {options: ReaderOptions; rest: string[]; indices: number[]} {
   const options: ReaderOptions = {};
   const rest: string[] = [];
   const indices: number[] = [];
@@ -86,7 +86,7 @@ export function readerOptions(argv: string[], allowTail = false, takesValue: (ar
   if (options.tail && options.maxTokens === undefined && options.maxLines === undefined) {
     throw new Error("--tail requires -n or --max-tokens");
   }
-  if (options.maxTokens === undefined && options.maxLines === undefined) options.maxTokens = READ_DEFAULT_TOKENS;
+  if (options.maxTokens === undefined && options.maxLines === undefined) options.maxTokens = defaultMaxTokens;
   return {options, rest, indices};
 }
 

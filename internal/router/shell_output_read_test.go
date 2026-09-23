@@ -193,6 +193,17 @@ func TestShellOutputReadRejectsInvalidState(t *testing.T) {
 	}
 }
 
+func TestParseOutputReadDefaultBudgetAndOverride(t *testing.T) {
+	defaults, err := parseOutputRead([]string{"amber"})
+	if err != nil || defaults.maxTokens != 8000 {
+		t.Fatalf("default output-read budget: options=%+v err=%v", defaults, err)
+	}
+	override, err := parseOutputRead([]string{"amber", "--max-tokens", "12000"})
+	if err != nil || override.maxTokens != 12000 {
+		t.Fatalf("explicit output-read budget: options=%+v err=%v", override, err)
+	}
+}
+
 func TestShellOutputStoreQuotaAndPermissions(t *testing.T) {
 	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())

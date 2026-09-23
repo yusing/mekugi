@@ -323,7 +323,7 @@ async function readLines(spec: ReadSpec, options: ReaderOptions): Promise<Compar
  */
 function mcatArguments(input: string): {argv: string[]; pathIndex: number} {
   const argv = readerArguments(input);
-  const parsed = readerOptions(argv, true, () => false, false, false);
+  const parsed = readerOptions(argv, true, () => false, false, false, 6_000);
   const operands = parsed.rest;
   const spec = parseReadSpec(mcatInput(operands));
   const pathIndex = parsed.indices[0];
@@ -379,7 +379,7 @@ Limited output contains complete rows and exits nonzero; retained omissions prov
       let options: ReaderOptions;
       let spec: ReadSpec;
       try {
-        const parsed = readerOptions(argv, true, () => false, false, false);
+        const parsed = readerOptions(argv, true, () => false, false, false, 6_000);
         options = parsed.options;
         spec = parseReadSpec(stripOptionalFinalNewline(mcatInput(parsed.rest)));
       } catch (error) {

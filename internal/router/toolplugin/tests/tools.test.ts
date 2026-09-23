@@ -278,6 +278,8 @@ describe("mcat line limits", () => {
     const tool = createMCatTool("");
     const head = await tool.execute(["-n", "1", file], executionContext);
     expect(head.stdout).toBe(formatMCatRow(1, content));
+    expect(head.stderr).toContain("1-line limit");
+    expect(head.stderr).not.toContain("token limit");
     const tail = await tool.execute(["--tail", "-n", "2", file], executionContext);
     expect(tail.stdout).toBe(formatMCatRow(1, content) + formatMCatRow(2, "end"));
     expect(tail.exitCode).toBe(0);
@@ -636,17 +638,23 @@ describe("mcat built-in plugin", () => {
   test("retains whole admitted rows and fails when later rows exceed the token limit", async () => {
     const directory = await temporaryDirectory("mcat-limit-");
     process.chdir(directory);
-    const first = contentWithFormattedTokenCount(4_000, (content) => formatMCatRow(1, content));
+    const first = contentWithFormattedTokenCount(6_000, (content) => formatMCatRow(1, content));
     await writeFile("large.txt", `${first}\nsecond\nthird\n`, "utf8");
 
     const tool = createMCatTool("start: TEST");
     const result = await tool.execute(["large.txt"], executionContext);
     expect(result).toEqual({
       stdout: formatMCatRow(1, first),
-      stderr: "mcat: output incomplete: 4000-token limit reached\n",
+      stderr: "mcat: output incomplete: 6000-token limit reached\n",
       omittedOutput: {stdout: formatMCatRow(2, "second") + formatMCatRow(3, "third"), stderr: "", stdoutKind: "rows"},
       exitCode: 1,
       failureClass: "output_limit",
+    });
+
+    const override = await tool.execute(["--max-tokens", "8000", "large.txt"], executionContext);
+    expect(override).toEqual({
+      stdout: formatMCatRow(1, first) + formatMCatRow(2, "second") + formatMCatRow(3, "third"),
+      exitCode: 0,
     });
   });
 
@@ -1676,6 +1684,31 @@ describe("inspect_file command contract", () => {
 });
 
 describe("inspect_file bounds and paths", () => {
+
+  test("keeps the inspect_file default token ceiling at 4000", async () => {
+    const directory = await temporaryDirectory("inspect-file-default-budget-");
+    process.chdir(directory);
+    const source = [
+      "package p",
+      ...Array.from({length: 300}, (_, index) => `func Generated${index}() {}`),
+    ].join("\n");
+    await writeFile("many.go", source);
+    const tool = createInspectFileTool("");
+    const complete = await tool.execute(["--max-tokens", "15500", "many.go"], executionContext);
+    expect(complete.exitCode).toBe(0);
+    const completeJSON = JSON.parse(complete.stdout);
+    expect(completeJSON.truncated).toBe(false);
+    const completeTokens = countGPT5Tokens(complete.stdout);
+    expect(completeTokens).toBeGreaterThan(4000);
+    expect(completeTokens).toBeLessThanOrEqual(6000);
+
+    const defaultResult = await tool.execute(["many.go"], executionContext);
+    expect(defaultResult.exitCode).toBe(1);
+    expect(defaultResult.failureClass).toBe("output_limit");
+    const defaultJSON = JSON.parse(defaultResult.stdout);
+    expect(defaultJSON.truncated).toBe(true);
+    expect(defaultJSON.truncation.reason).toBe("output_tokens");
+  });
 
   test.each(["none.bin", "outline.go"])("classifies minimum-result overflow for %s", async (name) => {
     const directory = await temporaryDirectory("inspect-file-output-limit-");

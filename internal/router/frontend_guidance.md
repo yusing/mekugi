@@ -7,7 +7,7 @@ Reuse still-current source context instead of rereading solely to prepare an edi
 
 <common-options>
 Options apply only to commands whose Usage lists them.
-- --max-tokens N bounds output to 1–15500 tokens. mcat, msymbol, inspect_file, and mread default to 4000; mrun requires an explicit limit. For multi-file mcat, the token budget is shared across files.
+- --max-tokens N bounds output to 1–15500 tokens. Defaults: mcat 6000, mread 8000, msymbol and inspect_file 4000; mrun requires an explicit limit. For multi-file mcat, the token budget is shared across files.
 - -n N selects up to N rows; --tail selects the last rows in source order and requires -n or --max-tokens. These options belong to mcat and mrun. With -n alone, no token limit is applied; with both limits, both apply. mcat keeps complete rows; mrun token limits may cut within a row.
 - Quote paths containing spaces. Retained omissions include an exact mread next_call. Use it to continue without rerunning the producer; an incomplete result does not establish full coverage. mrun discards output outside its selected window.
 </common-options>

@@ -34,6 +34,9 @@ command windows and retained-output recovery, and explicit captured-change range
 CLI help includes concrete invocation examples and consequential option interactions, including
 inclusive file ranges and line limits within those ranges. A smaller window is incomplete
 evidence, not coverage of the full requested range.
+Default token budgets are 6000 for file reads (`mcat`), 8000 for retained-output continuation
+(`mread`), and 4000 for symbol queries and structural outlines. Explicit token limits override
+these defaults up to 15500; line-only reads retain their existing no-token-limit behavior.
 It preserves context reuse and batching of ready related edits without replacing the stock editor.
 Review handoffs include the requested scope and explicit IDs or same-agent inclusive ranges;
 the recipient's own change listing cannot discover another agent's IDs. Historical edit evidence

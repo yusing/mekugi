@@ -23,6 +23,13 @@ func TestReadBundleValidation(t *testing.T) {
 	}
 }
 
+func TestReadBundleDefaultMultiFileBudget(t *testing.T) {
+	specs, budget, err := parseReadBundle([]string{"first.go", "second.go"})
+	if err != nil || budget != 6000 || len(specs) != 2 {
+		t.Fatalf("parse default multi-file bundle: specs=%+v budget=%d err=%v", specs, budget, err)
+	}
+}
+
 func TestMCatMixedPathsAndRanges(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)

@@ -22,7 +22,7 @@ type outputReadOptions struct {
 }
 
 func parseOutputRead(arguments []string) (outputReadOptions, error) {
-	options := outputReadOptions{maxTokens: 4000}
+	options := outputReadOptions{maxTokens: 8000}
 	seen := make(map[string]bool)
 	for len(arguments) > 0 {
 		flag := arguments[0]
