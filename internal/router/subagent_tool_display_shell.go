@@ -146,7 +146,7 @@ func toolActivityReads(script string) (string, bool) {
 				continue
 			}
 		} else {
-			start, end := int(statement.Pos().Offset()), int(statement.End().Offset())
+			start, end := int(statement.Pos().Offset()), toolActivityStatementDisplayEnd(script, statement)
 			source := script[start:end]
 			if strings.ContainsAny(source, "\r\n") {
 				// Retain leading indentation, but not an earlier command on
@@ -168,6 +168,18 @@ func toolActivityReads(script string) (string, bool) {
 		return "", false
 	}
 	return strings.Join(displays, "\n\n"), true
+}
+
+// A statement's End includes its separator. Keep that separator in the
+// executed source, but omit a cosmetic trailing semicolon from a per-command
+// activity preview. Other terminators (notably &) remain visible.
+func toolActivityStatementDisplayEnd(script string, statement *syntax.Stmt) int {
+	end := int(statement.End().Offset())
+	offset := int(statement.Semicolon.Offset())
+	if statement.Semicolon.IsValid() && offset < len(script) && script[offset] == ';' {
+		return offset
+	}
+	return end
 }
 
 // Read bundles sometimes print literal section headings between source slices.

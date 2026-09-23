@@ -60,6 +60,8 @@ A simple literal `cat`, valid `mcat` read, bounded `sed -n` print, or literal
 `inspect_file` is `Inspect`. Invalid or compound commands retain a `Run`
 preview instead of claiming a simpler operation. Mixed command scripts keep
 every classified operation and show unclassified neighbors as `Run` in order.
+Per-command `Run` excerpts omit statement-terminating semicolons; quoted
+semicolons and other executable syntax remain visible.
 Literal `printf` section headings between classified reads are omitted as
 display decoration; standalone or dynamic headings remain `Run` operations.
 Code Mode waits show `Still Running` or `Stop` only when a visible call/result

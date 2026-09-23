@@ -202,7 +202,7 @@ func TestSubagentInlineAwaitDisplay(t *testing.T) {
 	}{
 		{
 			`text(await tools.exec_command({cmd:"cat /home/ubuntu/.codex/IMPLEMENTATION.md; git diff --stat; git diff -- internal/router/subagent_tool_display.go doc/spec/commentary.md",max_output_tokens:11000}));`,
-			"Read `/home/ubuntu/.codex/IMPLEMENTATION.md`\n\nRun `git diff --stat;`\n\nRun `git diff -- internal/router/subagent_tool_display.go doc/spec/commentary.md`",
+			"Read `/home/ubuntu/.codex/IMPLEMENTATION.md`\n\nRun `git diff --stat`\n\nRun `git diff -- internal/router/subagent_tool_display.go doc/spec/commentary.md`",
 		},
 		{
 			`text(await tools.exec_command({cmd:"skills-mgr get golang-best-practices; sed -n '1,245p' internal/router/subagent_tool_display.go; sed -n '320,475p' internal/router/subagent_tool_display.go; git diff -- internal/router/subagent_tool_display_test.go",max_output_tokens:10100}));`,
@@ -210,7 +210,7 @@ func TestSubagentInlineAwaitDisplay(t *testing.T) {
 		},
 		{
 			`text(await tools.exec_command({cmd:"gopls references internal/router/subagent_tool_display.go:17:6; sed -n '60,135p' doc/spec/commentary.md; sed -n '1,65p' internal/router/subagent_tool_display_test.go; sed -n '540,650p' internal/router/subagent_tool_display.go",max_output_tokens:5000}));`,
-			"Run `gopls references internal/router/subagent_tool_display.go:17:6;`\n\nRead `doc/spec/commentary.md 60:135`\n\nRead `internal/router/subagent_tool_display_test.go 1:65`\n\nRead `internal/router/subagent_tool_display.go 540:650`",
+			"Run `gopls references internal/router/subagent_tool_display.go:17:6`\n\nRead `doc/spec/commentary.md 60:135`\n\nRead `internal/router/subagent_tool_display_test.go 1:65`\n\nRead `internal/router/subagent_tool_display.go 540:650`",
 		},
 		{
 			`text(await tools.write_stdin({session_id:23221,chars:"",yield_time_ms:1000,max_output_tokens:5000}));`,
@@ -424,6 +424,9 @@ func TestSubagentSearchReadRunGrouping(t *testing.T) {
 
 func TestSubagentMixedReadRunFallbacks(t *testing.T) {
 	for _, tc := range []struct{ source, want string }{
+		{"cat a; git diff --check; git diff --stat;", "Read `a`\n\nRun `git diff --check`\n\nRun `git diff --stat`"},
+		{"cat a; printf '%s;' value;", "Read `a`\n\nRun `printf '%s;' value`"},
+		{"cat a; sleep 1 &", "Read `a`\n\nRun `sleep 1 &`"},
 		{"git status --short\ncat a", "Run `git status --short`\n\nRead `a`"},
 		{"cat a\nsed -n '1,$p' b", "Read `a`\n\nRun `sed -n '1,$p' b`"},
 		{"cat a\ncat \"$file\"", "Read `a`\n\nRun `cat \"$file\"`"},
