@@ -136,6 +136,67 @@ func TestActualChildActivityProjectsWithoutChangingChildResult(t *testing.T) {
 	}
 }
 
+func TestCodeModeSpreadBatchActivityProjectsCommandsJSONAndSSE(t *testing.T) {
+	const source = `const r=await Promise.allSettled([
+		tools.exec_command({cmd:"mcat internal/router/mekugi_proxy.go 48:56"}),
+		tools.exec_command({cmd:"mcat internal/router/commentary.go 39:46"}),
+		tools.exec_command({cmd:"rg -n 'func .*TransformSSE' internal/router"})
+	]); r.forEach((v,i)=>text(JSON.stringify({i,...v})));`
+	for _, stream := range []bool{false, true} {
+		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
+			p := newManagedMekugiProxy(t)
+			root, _ := prepareActivityTest(t, p, "root-session", "root-thread", "", "/root", nil)
+			child, request := prepareActivityTest(t, p, "child-session", "child-thread", "root-thread", "/root/worker", nil)
+			originalRequestInput := bytes.Clone(request.fields["input"])
+			call := map[string]any{"type": "custom_tool_call", "id": "batch", "call_id": "batch", "name": "exec", "input": source}
+			childResponse := mustTestJSON(t, map[string]any{"status": "completed", "output": []any{call}})
+			if stream {
+				for _, eventType := range []string{"response.output_item.added", "response.output_item.done"} {
+					event := mustTestJSON(t, map[string]any{"type": eventType, "item": call})
+					events, err := child.TransformSSE(event)
+					if err != nil || len(events) != 1 || !bytes.Equal(events[0], event) {
+						t.Fatalf("child Code Mode call changed: %s, %v", events, err)
+					}
+				}
+				if _, err := child.TransformSSE(mustTestJSON(t, map[string]any{
+					"type": "response.completed", "response": json.RawMessage(childResponse),
+				})); err != nil {
+					t.Fatal(err)
+				}
+			} else if output, err := child.TransformJSON(childResponse); err != nil || !bytes.Equal(output, childResponse) {
+				t.Fatalf("child Code Mode response changed: %s, %v", output, err)
+			}
+			if !bytes.Equal(request.fields["input"], originalRequestInput) {
+				t.Fatal("child tool input changed while collecting activity")
+			}
+
+			projected, err := root.TransformJSON([]byte(`{"status":"completed","output":[]}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var response struct{ Output []map[string]json.RawMessage }
+			if err := json.Unmarshal(projected, &response); err != nil || len(response.Output) != 2 {
+				t.Fatalf("child activity projection: %s, %v", projected, err)
+			}
+			display := commentaryText(t, response.Output[1])
+			for _, want := range []string{
+				"Read `internal/router/mekugi_proxy.go 48:56`",
+				"internal/router/commentary.go 39:46",
+				"Search `-n 'func .*TransformSSE' internal/router`",
+			} {
+				if !strings.Contains(display, want) {
+					t.Fatalf("command preview missing %q: %s", want, display)
+				}
+			}
+			for _, leaked := range []string{"const r=await Promise.allSettled", "r.forEach", "JSON.stringify", "tools.exec_command"} {
+				if strings.Contains(display, leaked) {
+					t.Fatalf("raw Code Mode source leaked into root display (%q): %s", leaked, display)
+				}
+			}
+		})
+	}
+}
+
 func TestSiblingReceiptAndOpaqueCallsKeepExactEnvelope(t *testing.T) {
 	p := newManagedMekugiProxy(t)
 	root, _ := prepareActivityTest(t, p, "root", "r", "", "/root", nil)

@@ -562,6 +562,8 @@ func TestSubagentStaticMultiCallDisplays(t *testing.T) {
 		`const r = await tools.list_mcp_resources({}); text(r); const clock = await tools.clock__curr_time({}); text(clock);`,
 		`text(await Promise.all([tools.list_mcp_resources({}), tools.clock__curr_time({})]));`,
 		`const results = await Promise.allSettled([tools.list_mcp_resources({}), tools.clock__curr_time({})]); text(results);`,
+		`const results = await Promise.allSettled([tools.list_mcp_resources({}), tools.clock__curr_time({})]); results.forEach((result, i) => text(JSON.stringify({i, result})));`,
+		`const r=await Promise.allSettled([tools.list_mcp_resources({}),tools.clock__curr_time({})]); r.forEach((v,i)=>text(JSON.stringify({i,...v})));`,
 	} {
 		item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
 		want := "List MCP resources\n`{}`\n\nRead current time\n`{}`"
@@ -583,6 +585,14 @@ func TestSubagentStaticMultiCallDisplays(t *testing.T) {
 		`const tools = await tools.list_mcp_resources({}); text(tools);`,
 		`const text = await tools.list_mcp_resources({}); text(text);`,
 		`const Promise = await tools.list_mcp_resources({}); text(Promise);`,
+		`const results = await Promise.allSettled([tools.list_mcp_resources({}), tools.clock__curr_time({})]); results.forEach((result) => text(JSON.stringify({result, extra})));`,
+		`const r=await Promise.allSettled([tools.list_mcp_resources({}),tools.clock__curr_time({})]); r.forEach((v,i)=>text(JSON.stringify({i,...extra})));`,
+		`const r=await Promise.allSettled([tools.list_mcp_resources({}),tools.clock__curr_time({})]); r.forEach((v,i)=>text(JSON.stringify({i,...tools.exec_command({cmd:"echo hidden"})})));`,
+		`const results = await Promise.allSettled([tools.list_mcp_resources({}), tools.clock__curr_time({})]); results.forEach((result) => { text(JSON.stringify({result})) });`,
+		`const results = await Promise.allSettled([tools.list_mcp_resources({}), tools.clock__curr_time({})]); results.forEach((text) => text(JSON.stringify({text})));`,
+		`const results = await Promise.allSettled([tools.list_mcp_resources({}), tools.clock__curr_time({})]); results.forEach((JSON) => text(JSON.stringify({result:JSON})));`,
+		`const results = await Promise.allSettled([tools.list_mcp_resources({}), tools.clock__curr_time({})]); results.forEach((\u0074ext) => text(JSON.stringify({result:\u0074ext})));`,
+		`const results = await Promise.allSettled([tools.list_mcp_resources({}), tools.clock__curr_time({})]); results.forEach((result) => text(JSON.stringify({[tools.exec_command({cmd:"echo hidden"})]:result})));`,
 		`await tools.update_plan({});`,
 		`await tools.list_mcp_resources({}); await tools.update_plan({});`,
 	} {
@@ -594,6 +604,21 @@ func TestSubagentStaticMultiCallDisplays(t *testing.T) {
 	item := map[string]json.RawMessage{"name": mustMarshalJSON("update_plan"), "arguments": mustMarshalJSON(`{}`)}
 	if got := subagentToolActivityText(item, "update_plan"); got != "Tool call: `update_plan`\n`{}`" {
 		t.Fatal(got)
+	}
+}
+
+func TestSubagentPromiseBatchResultLoopDisplaysCommands(t *testing.T) {
+	source := `const r = await Promise.allSettled([
+		tools.exec_command({cmd:"rg -n 'needle' internal/router"}),
+		tools.exec_command({cmd:"mcat internal/router/subagent_tool_display.go 1:20"}),
+	]); r.forEach((x, i) => text(JSON.stringify({i, result:x})));`
+	item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
+	want := "Search `-n 'needle' internal/router`\n\nRead `internal/router/subagent_tool_display.go 1:20`"
+	if got := subagentToolActivityText(item, "exec"); got != want {
+		t.Fatalf("batch command preview = %q, want %q", got, want)
+	}
+	if jsonString(item, "input") != source {
+		t.Fatal("source changed")
 	}
 }
 

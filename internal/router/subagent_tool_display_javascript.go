@@ -48,6 +48,7 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 	for i := 0; i < len(statements); i++ {
 		first := statements[i]
 		var expression *sitter.Node
+		batchProjection := false
 		if first.Kind() == "expression_statement" {
 			expression = first.NamedChild(0)
 			if args, ok := toolActivityCallArguments(expression, bytes, "text"); ok && len(args) == 1 {
@@ -68,19 +69,116 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 			if slices.Contains([]string{"tools", "text", "JSON", "Object", "Promise", "generatedImage", "journal"}, name) {
 				return nil, false
 			}
+			value := declaration.ChildByFieldName("value")
 			if !toolActivityResultProjection(statements[i+1], bytes, name, requireResultMetadata) {
-				return nil, false
+				batchProjection = !requireResultMetadata &&
+					toolActivityBatchForEachProjection(statements[i+1], bytes, name)
+				if !batchProjection {
+					return nil, false
+				}
 			}
-			expression = declaration.ChildByFieldName("value")
+			expression = value
 			i++
 		}
 		nested, ok := toolActivityAwaitedCalls(expression, bytes, requireResultMetadata)
-		if !ok {
+		if !ok || batchProjection && !toolActivityPromiseBatch(expression, bytes) {
 			return nil, false
 		}
 		calls = append(calls, nested...)
 	}
 	return calls, true
+}
+
+func toolActivityPromiseBatch(expression *sitter.Node, source []byte) bool {
+	if expression == nil || expression.Kind() != "await_expression" {
+		return false
+	}
+	call := expression.NamedChild(0)
+	for _, method := range []string{"all", "allSettled"} {
+		if args, ok := toolActivityCallArguments(call, source, "Promise", method); ok &&
+			len(args) == 1 && args[0].Kind() == "array" {
+			return true
+		}
+	}
+	return false
+}
+
+// Accept the common compact projection used for a Promise batch:
+//
+//	results.forEach((result, i) => text(JSON.stringify({i, result})))
+//
+// The callback must only print a JSON object made from its own parameters.
+// This keeps display recognition presentation-only and rejects callbacks with
+// additional effects or values from outside the callback.
+func toolActivityBatchForEachProjection(statement *sitter.Node, source []byte, binding string) bool {
+	if statement.Kind() != "expression_statement" || statement.NamedChildCount() != 1 {
+		return false
+	}
+	call := statement.NamedChild(0)
+	args, ok := toolActivityCallArguments(call, source, binding, "forEach")
+	if !ok || len(args) != 1 || args[0].Kind() != "arrow_function" {
+		return false
+	}
+	callback := args[0]
+	parameters := callback.ChildByFieldName("parameters")
+	body := callback.ChildByFieldName("body")
+	if parameters == nil || body == nil || parameters.Kind() != "formal_parameters" {
+		return false
+	}
+	allowed := make(map[string]bool, parameters.NamedChildCount())
+	for i := range parameters.NamedChildCount() {
+		parameter := parameters.NamedChild(uint(i))
+		if parameter.Kind() != "identifier" {
+			return false
+		}
+		name := parameter.Utf8Text(source)
+		if strings.ContainsRune(name, '\\') || name == "text" || name == "JSON" {
+			return false
+		}
+		allowed[name] = true
+	}
+	if len(allowed) == 0 {
+		return false
+	}
+	textArgs, ok := toolActivityCallArguments(body, source, "text")
+	if !ok || len(textArgs) != 1 {
+		return false
+	}
+	jsonArgs, ok := toolActivityCallArguments(textArgs[0], source, "JSON", "stringify")
+	if !ok || len(jsonArgs) != 1 || jsonArgs[0].Kind() != "object" {
+		return false
+	}
+	object := jsonArgs[0]
+	if object.NamedChildCount() == 0 {
+		return false
+	}
+	for i := range object.NamedChildCount() {
+		member := object.NamedChild(uint(i))
+		var identifier string
+		switch member.Kind() {
+		case "pair":
+			key := member.ChildByFieldName("key")
+			value := member.ChildByFieldName("value")
+			if key == nil || key.Kind() != "property_identifier" && key.Kind() != "string" ||
+				value == nil || value.Kind() != "identifier" {
+				return false
+			}
+			identifier = value.Utf8Text(source)
+		case "shorthand_property_identifier":
+			identifier = member.Utf8Text(source)
+		case "spread_element":
+			if member.NamedChildCount() != 1 || member.NamedChild(0).Kind() != "identifier" {
+				return false
+			}
+			identifier = member.NamedChild(0).Utf8Text(source)
+		default:
+			return false
+		}
+		if !allowed[identifier] {
+			return false
+		}
+	}
+	return true
 }
 
 func toolActivityAwaitedCalls(expression *sitter.Node, bytes []byte, requireResultMetadata bool) ([]map[string]json.RawMessage, bool) {

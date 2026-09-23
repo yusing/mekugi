@@ -47,8 +47,10 @@ Direct `exec_command` and statically recognizable Code Mode
 `tools.exec_command` or `tools.write_stdin` calls share the same command display.
 Transparent `text(result)` and output projections do not hide the command.
 Literal `Promise.all` and `Promise.allSettled` batches display nonsuppressed
-operations in source order without serializing their execution. Recognition
-uses the JavaScript parse tree and never evaluates expressions. Dynamic
+operations in source order without serializing their execution. A following
+`forEach` that only prints a JSON object of callback parameters, including a
+direct object spread of a parameter, is transparent.
+Recognition uses the JavaScript parse tree and never evaluates expressions. Dynamic
 arguments, control flow, name shadowing, or unrelated statements fall back to
 the original JavaScript source rather than a partially simplified preview.
 These presentation rules do not change tool input, result, or replay payload.
