@@ -270,7 +270,7 @@ session notices and main-completion usage stay in the root conversation.
 
 The pane lists agents as a canonical-path tree in observation order, with each
 agent's latest activity and age, and an interleaved feed that clamps each entry to
-6 rows. Its only mode shows one agent in full. Roster markers are observed facts only:
+6 rows. A roster row for a Code Mode batch adds the count of its other operations. Its only mode shows one agent in full. Roster markers are observed facts only:
 `◐` an open provider response, `!` a latest error event, `✓` a plaintext
 `FINAL_ANSWER` sent, and `·` otherwise. No marker claims that an agent finished.
 Agent colors derive from the canonical path, so the live diff pane uses the same

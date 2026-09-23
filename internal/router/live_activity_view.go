@@ -268,6 +268,10 @@ func (v *liveActivityView) renderRoster(rows []liveActivityRosterRow, width, bod
 		summary, age := "", ""
 		if latest, ok := v.latest(row.agent.Name); ok {
 			summary, age = liveActivitySummary(latest.Text), liveActivityAge(now.Sub(latest.Observed))
+			// A Code Mode batch reports several operations in one entry.
+			if more := liveActivityOperations(latest) - 1; more > 0 {
+				summary += fmt.Sprintf(" · +%d more", more)
+			}
 		}
 		nameWidth := min(ansi.StringWidth(name), max(8, width*2/5))
 		name = liveActivityMiddle(name, nameWidth)
@@ -405,6 +409,37 @@ func liveActivitySummary(text string) string {
 		}
 	}
 	return ""
+}
+
+// liveActivityOperations counts the blank-line separated operations of a tool
+// entry. Blank lines inside fenced programs do not start a new operation.
+func liveActivityOperations(entry activityPaneEntry) int {
+	if entry.Kind != "tool" {
+		return 1
+	}
+	count, fence, blank := 0, "", true
+	for line := range strings.SplitSeq(entry.Text, "\n") {
+		if fence != "" {
+			if line == fence {
+				fence = ""
+			}
+			continue
+		}
+		if delimiter, ok := toolActivityFenceDelimiter(line); ok {
+			fence = delimiter
+			blank = false
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			blank = true
+			continue
+		}
+		if blank {
+			count++
+		}
+		blank = false
+	}
+	return max(1, count)
 }
 
 func liveActivityAge(age time.Duration) string {

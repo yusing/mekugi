@@ -503,3 +503,16 @@ func TestActivityPaneRetryDoesNotRepeatDivertedReply(t *testing.T) {
 		t.Fatalf("diverted reply delivered %d times: %q", strings.Count(got, "hello"), got)
 	}
 }
+
+func TestLiveActivityViewSummarizesCodeModeBatches(t *testing.T) {
+	view := liveActivityTestView("/root/a", "/root/b")
+	batch := "Read `a.go`\n\nRun `go test`\n```bash\ngo test ./...\n\necho done\n```\n\nRead `c.go`\n\nRun JavaScript · other code"
+	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", Kind: "tool", Text: batch, Observed: time.Now()}}})
+	lines := plainLines(view.render(80, 20, time.Now()))
+	if !strings.Contains(lines[1], "Read a.go · +3 more") {
+		t.Fatalf("batch roster row = %q", lines[1])
+	}
+	if strings.Contains(lines[2], "more") {
+		t.Fatalf("single operation marked as a batch: %q", lines[2])
+	}
+}
