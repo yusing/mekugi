@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"syscall"
 	"time"
 	"unicode/utf8"
@@ -34,7 +35,6 @@ type inspectedCall struct {
 	Outcome       string                   `json:"outcome"`
 	CorrelationID string                   `json:"correlation_id,omitempty"`
 	Attempt       int                      `json:"attempt,omitempty"`
-	Rejections    int                      `json:"rejections"`
 	Text          map[string]inspectedText `json:"text"`
 }
 
@@ -69,14 +69,14 @@ type sessionAXReport struct {
 }
 
 type sessionInspectionItem struct {
-	JournalResult bool            `json:"-"`
-	Type          string          `json:"type"`
-	CallID        string          `json:"call_id"`
-	Name          string          `json:"name"`
-	Namespace     string          `json:"namespace"`
-	Input         string          `json:"input"`
-	Arguments     string          `json:"arguments"`
-	Output        json.RawMessage `json:"output"`
+	LocalResult bool            `json:"-"`
+	Type        string          `json:"type"`
+	CallID      string          `json:"call_id"`
+	Name        string          `json:"name"`
+	Namespace   string          `json:"namespace"`
+	Input       string          `json:"input"`
+	Arguments   string          `json:"arguments"`
+	Output      json.RawMessage `json:"output"`
 }
 
 type sessionInspectionCall struct {
@@ -103,7 +103,7 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 	callID := flags.String("call-id", "", "select one call identity")
 	offset := flags.Int("offset", 0, "skip this many matching logical calls")
 	limit := flags.Int("limit", 50, "maximum calls returned (1-500)")
-	field := flags.String("field", "", "include text: script, evaluated, patch, report, diagnostic, rejections, output, or all")
+	field := flags.String("field", "", "include text: script, report, diagnostic, output, or all")
 	textBytes := flags.Int("text-bytes", 4096, "maximum UTF-8 bytes per included field (1-65536)")
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: mekugi inspect-session --session PATH [options]")
@@ -120,7 +120,7 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 		fmt.Fprintln(stderr, "mekugi inspect-session:", err)
 		return 1
 	}
-	fields := []string{"script", "evaluated", "patch", "report", "diagnostic", "rejections", "output"}
+	fields := []string{"script", "report", "diagnostic", "output"}
 	if *session == "" || flags.NArg() != 0 || *offset < 0 ||
 		*limit < 1 || *limit > 500 || *textBytes < 1 || *textBytes > 65536 ||
 		(*field != "" && *field != "all" && !slices.Contains(fields, *field)) {
@@ -172,7 +172,7 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 	editCalls := make(map[string]bool)
 	if withAX {
 		inspected = allCalls
-		result.AX = &sessionAXReport{Scope: "entire supplied rollout; edit metrics require matched replay",
+		result.AX = &sessionAXReport{Scope: "entire supplied rollout; edit metrics require matched observed patches",
 			ThreadID: observations.ThreadID, Completion: observations.Completion.Result(), Commands: observations.Commands.Result()}
 	}
 	for _, call := range inspected {
@@ -194,11 +194,29 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 				return fail(fmt.Errorf("call %q: %w", call.item.CallID, err))
 			}
 		}
+		var observed []mekugiHistory
+		if found && len(record.History.NativePatches) != 0 {
+			for index := range record.History.NativePatches {
+				derived, exists, readErr := store.read(root, nativePatchDerivedCallID(call.item.CallID, index), false)
+				if readErr != nil {
+					return fail(fmt.Errorf("call %q patch %d: %w", call.item.CallID, index+1, readErr))
+				}
+				if exists {
+					if derived.History.CorrelationID != call.item.CallID+"\x00"+fmt.Sprint(index) ||
+						derived.History.Script != record.History.NativePatches[index].Input {
+						return fail(fmt.Errorf("call %q patch %d: inconsistent observation", call.item.CallID, index+1))
+					}
+					observed = append(observed, derived.History)
+				} else {
+					observed = append(observed, mekugiHistory{})
+				}
+			}
+		}
 		selectedField := ""
 		if selected[call.item.CallID] {
 			selectedField = *field
 		}
-		projected, err := inspectSessionCall(call, record, found, selectedField, *textBytes)
+		projected, err := inspectSessionCall(call, record, found, observed, selectedField, *textBytes)
 		if err != nil {
 			return fail(err)
 		}
@@ -209,11 +227,12 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 		if withAX {
 			if !found {
 				result.AX.UnmatchedCalls++
-			} else if projected.Tool == mekugiToolName || projected.Tool == mekugiRecoveryToolName {
+			} else if len(observed) != 0 {
 				editCalls[call.item.CallID] = true
-				edits.Observe(record.History.Script, record.History.Attempt > 1,
-					projected.Outcome == "rejected",
-					projected.Outcome == "unconfirmed" || projected.Outcome == "translated_unconfirmed")
+				for index, patch := range record.History.NativePatches {
+					outcome := observed[index]
+					edits.Observe(patch.Input, outcome.TranslationError != "", outcome.ToolName == "")
+				}
 			}
 		}
 		if selected[call.item.CallID] {
@@ -250,7 +269,7 @@ func readSessionInspection(ctx context.Context, path string, observations *sessi
 	if !info.Mode().IsRegular() || info.Size() > maxSessionInspectionBytes {
 		return nil, errors.New("session must be a regular file no larger than 64 MiB")
 	}
-	// Like retained-shell reads, reject a FIFO substituted after the mode check
+	// Reject a FIFO substituted after the mode check
 	// without blocking before descriptor validation.
 	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
@@ -374,11 +393,11 @@ func readSessionInspection(ctx context.Context, path string, observations *sessi
 		if !isCall && !isOutput {
 			continue
 		}
-		if item.CallID == "" && isOutput && item.Name == journalToolName && item.Namespace == "functions" {
+		if item.CallID == "" && isOutput && (item.Name == journalToolName || item.Name == reportIssueToolName) && item.Namespace == "functions" {
 			var raw map[string]json.RawMessage
 			if json.Unmarshal(envelope.Payload, &raw) == nil {
 				item.CallID = journalResultCallID(raw)
-				item.JournalResult = item.CallID != ""
+				item.LocalResult = item.CallID != ""
 			}
 		}
 		if item.CallID == "" {
@@ -420,7 +439,7 @@ func readSessionInspection(ctx context.Context, path string, observations *sessi
 	return calls, nil
 }
 
-func inspectSessionCall(call sessionInspectionCall, record replayRecord, found bool, field string, limit int) (inspectedCall, error) {
+func inspectSessionCall(call sessionInspectionCall, record replayRecord, found bool, observed []mekugiHistory, field string, limit int) (inspectedCall, error) {
 	result := inspectedCall{
 		CallID: call.item.CallID, Tool: qualifiedToolName(call.item.Namespace, call.item.Name), Replay: "missing",
 		Outcome: "unavailable", Text: make(map[string]inspectedText),
@@ -437,7 +456,7 @@ func inspectSessionCall(call sessionInspectionCall, record replayRecord, found b
 	}
 	if found {
 		for _, output := range call.outputs {
-			if output.JournalResult && (record.History.ToolName != journalHistoryTool || !isJournalCall(record.History.UpstreamItem)) {
+			if output.LocalResult && (record.History.ToolName != routerLocalHistoryTool(record.History.UpstreamItem) || !isRouterLocalCall(record.History.UpstreamItem)) {
 				return result, fmt.Errorf("call %q: journal result does not match replay identity", call.item.CallID)
 			}
 		}
@@ -465,14 +484,8 @@ func inspectSessionCall(call sessionInspectionCall, record replayRecord, found b
 		}
 		result.Tool, result.Replay = history.ToolName, "matched"
 		result.CorrelationID, result.Attempt = history.CorrelationID, history.Attempt
-		result.Rejections = len(history.Rejections)
-		values["script"], values["evaluated"] = history.Script, history.Evaluated
-		if values["evaluated"] == "" && !history.Unevaluated {
-			values["evaluated"] = history.Script
-		}
-		values["patch"], values["report"], values["diagnostic"] = history.Patch, history.Report, history.TranslationError
-		rejections, _ := json.Marshal(history.Rejections)
-		values["rejections"] = string(rejections)
+		values["script"] = history.Script
+		values["report"], values["diagnostic"] = history.Report, history.TranslationError
 		switch {
 		case history.TranslationError != "":
 			result.Outcome = "rejected"
@@ -480,8 +493,6 @@ func inspectSessionCall(call sessionInspectionCall, record replayRecord, found b
 			result.Outcome = "applied"
 		case history.AlreadySatisfied:
 			result.Outcome = "already_satisfied"
-		case history.Patch != "":
-			result.Outcome = "translated_unconfirmed"
 		default:
 			result.Outcome = "unconfirmed"
 		}
@@ -493,6 +504,33 @@ func inspectSessionCall(call sessionInspectionCall, record replayRecord, found b
 					result.Outcome = "confirmed"
 					break
 				}
+			}
+		}
+		if len(observed) != 0 {
+			applied, noOp, failed := true, true, false
+			var reports, diagnostics []string
+			for _, patch := range observed {
+				applied = applied && patch.ToolName != "" && patch.Applied
+				noOp = noOp && patch.ToolName != "" && patch.AlreadySatisfied
+				failed = failed || patch.TranslationError != ""
+				if patch.Report != "" {
+					reports = append(reports, patch.Report)
+				}
+				if patch.TranslationError != "" {
+					diagnostics = append(diagnostics, patch.TranslationError)
+				}
+			}
+			values["report"] = strings.Join(reports, "\n")
+			values["diagnostic"] = strings.Join(diagnostics, "\n")
+			switch {
+			case failed:
+				result.Outcome = "rejected"
+			case noOp:
+				result.Outcome = "already_satisfied"
+			case applied:
+				result.Outcome = "applied"
+			default:
+				result.Outcome = "unconfirmed"
 			}
 		}
 	}

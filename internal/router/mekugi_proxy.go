@@ -17,7 +17,6 @@ import (
 )
 
 const (
-	mekugiToolName     = "hpatch"
 	applyPatchToolName = "apply_patch"
 
 	maxMekugiScriptBytes = 1 << 20
@@ -115,10 +114,7 @@ func mekugiDataDirectory() (string, error) {
 
 type mekugiProxy struct {
 	registry           *toolRegistry
-	shellDirectory     string
 	titles             *sessionTitleCache
-	shellSessions      map[string]*shellSession
-	shellParent        *os.Root
 	memoryCommentary   map[string]map[string]struct{}
 	commentary         *commentaryBroker
 	commentaryEndpoint string
@@ -148,40 +144,18 @@ func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *
 	if len(titleCaches) != 0 && titleCaches[0] != nil {
 		titles = titleCaches[0]
 	}
-	directory := registry.runtimeDirectory
 	activity := newSubagentActivity()
 	broker := newCommentaryBroker()
 	broker.activity = activity
 	proxy := &mekugiProxy{
 		registry:       registry,
-		shellDirectory: directory,
 		titles:         titles,
-		shellSessions:  make(map[string]*shellSession),
 		commentary:     broker,
 		journals:       newJournalStore(),
 		usage:          newThreadUsage(),
 		activity:       activity,
 		sessions:       make(map[string]*mekugiHistorySession),
 		activeSessions: make(map[string]int),
-	}
-	broker.editPublisher = func(ctx context.Context, workspace, thread, callID string) error {
-		if proxy.replayStore == nil {
-			return errors.New("edit storage unavailable")
-		}
-		return proxy.replayStore.publishEditReceipt(ctx, workspace, thread, callID, activity)
-	}
-	broker.previewPublisher = func(workspace, thread, author string, preview liveDiffPreview) {
-		auto := proxy.autoLiveDiff
-		if auto == nil || !auto.enabled.Load() {
-			return
-		}
-		auto.requestLaunch(workspace, thread)
-		if author == "" {
-			author = "/root"
-		}
-		preview.ID = "prewrite:" + thread + ":" + preview.ID
-		preview.Workspace, preview.Thread, preview.Caller = workspace, thread, author
-		auto.events.publishPreview(preview, false)
 	}
 	broker.notice = func(category, message string) { proxy.notice("", category, message) }
 	activity.notice = broker.notice
@@ -219,14 +193,6 @@ func (p *mekugiProxy) Close() error {
 	p.closed = true
 	defer p.mu.Unlock()
 	var cleanupErr error
-	for _, session := range p.shellSessions {
-		cleanupErr = errors.Join(cleanupErr, session.close())
-	}
-	clear(p.shellSessions)
-	if p.shellParent != nil {
-		cleanupErr = errors.Join(cleanupErr, p.shellParent.Close())
-		p.shellParent = nil
-	}
 	for _, release := range p.storageLeases {
 		release()
 	}
@@ -303,7 +269,6 @@ type mekugiJournalState struct {
 	journalClientCalls     bool
 	journalTerminal        bool
 	journalContinue        bool
-	shellFinishRequested   bool
 	journalFinishRequested bool
 }
 
@@ -320,7 +285,6 @@ type mekugiResponseTransform struct {
 	sessionID        string
 	shellTurnID      string
 	shellThreadID    string // Runtime identity remains available when activity attribution is invalid.
-	shellDirectory   string
 	model            string
 	visible          map[string]mekugiHistory
 	historySessionID string
@@ -334,11 +298,7 @@ type mekugiResponseTransform struct {
 	originalToolChoice        json.RawMessage
 	originalToolChoicePresent bool
 	directory                 string
-	carriers                  codeModeCarrierCatalog
-
 	mekugiTranslationState
-
-	waitPolicies waitPolicies
 
 	commentaryAuthor string
 	commentaryTools  commentaryToolCatalog
@@ -474,17 +434,11 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	// handshake may not yet carry the instruction or tool catalog of a turn.
 	if prewarm {
 		tools := request.responseTools()
-		if tools.top.err != nil {
-			return nil, incompatibleRequest("invalid_tool_catalog", tools.top.err.Error())
-		}
-		owner, err := findCodeModeApplyPatch(tools, nil)
+		execution, err := prepareStockExecution(request.fields, tools)
 		if err != nil {
 			return nil, err
 		}
-		native := slices.ContainsFunc(tools.top.tools, func(tool *responsesToolDefinition) bool {
-			return tool.Name == applyPatchToolName || tool.Name == nativeExecCommandToolName
-		})
-		if owner == nil && !native {
+		if execution.codeMode == nil && !execution.native {
 			return nil, nil
 		}
 	}
@@ -510,31 +464,23 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	if err := stripStockPlanTools(request.fields, tools); err != nil {
 		return nil, err
 	}
-	carriers, err := buildCodeModeCarrierCatalog(tools, p.registry)
-	if err != nil {
-		return nil, incompatibleRequest("invalid_tool_catalog", err.Error()+". Check the Codex tool catalog.")
-	}
-	installedTools, err := p.registry.specifications()
+	execution, err := prepareStockExecution(request.fields, tools)
 	if err != nil {
 		return nil, err
 	}
-	codeModeToolName, replaced, err := replaceCodeModeTools(request.fields, tools, installedTools)
-	if err != nil {
-		return nil, err
-	}
-	nativeTools := false
-	if !replaced {
-		codeModeToolName, replaced, err = replaceNativeTools(request.fields, tools, installedTools)
-		if err != nil {
-			return nil, err
-		}
-		nativeTools = replaced
-	}
-	if !replaced {
-		return nil, incompatibleRequest("unsupported_tool_catalog", "This request exposes no supported editing and execution tools. Use a Codex session with apply_patch and exec_command, or the supported Code Mode exec tool.")
+	// Collaboration-only turns still need journal and commentary projection;
+	// absence of execution tools is not an incompatible Codex catalog.
+	codeModeToolName := ""
+	if execution.codeMode != nil {
+		codeModeToolName = execution.codeMode.name
 	}
 	if err := exposeJournalTool(request.fields, tools); err != nil {
 		return nil, err
+	}
+	if p.registry.diagnoseEnabled {
+		if err := exposeReportIssueTool(request.fields, tools); err != nil {
+			return nil, err
+		}
 	}
 	var commentaryTools commentaryToolCatalog
 	commentaryTools, err = prepareCommentaryTools(request.fields, tools)
@@ -547,10 +493,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	}
 	if strings.TrimSpace(threadID) == "" {
 		return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
-	}
-	shellDirectory, err := p.storeShellRuntime(threadID)
-	if err != nil {
-		return nil, fmt.Errorf("store shell runtime: %w", err)
 	}
 	historySessionID := directory + "\x00" + threadID
 	if err := p.activateSession(historySessionID); err != nil {
@@ -566,7 +508,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		p.deactivateSession(historySessionID)
 		return nil, err
 	}
-	p.prepareShellCommentary(threadID, historySessionID, metadata.commentaryAuthor())
 	visible, err := p.reconcileVisibleInput(ctx, request, directory, historySessionID)
 	if err != nil {
 		p.deactivateSession(historySessionID)
@@ -609,7 +550,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		sessionID:        sessionID,
 		shellTurnID:      metadata.TurnID,
 		shellThreadID:    threadID,
-		shellDirectory:   shellDirectory,
 		model:            request.modelDescription(),
 		historySessionID: historySessionID,
 		visible:          visible,
@@ -622,13 +562,11 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		originalToolChoice:        originalToolChoice,
 		originalToolChoicePresent: originalToolChoicePresent,
 		directory:                 directory,
-		carriers:                  carriers,
 		pending:                   make(map[string]mekugiPendingCall),
 		nativeExecCalls:           make(map[string]map[string]json.RawMessage),
 		local:                     make(map[string]mekugiHistory),
 		commentaryAuthor:          metadata.commentaryAuthor(),
 		commentaryTools:           commentaryTools,
-		waitPolicies:              collectWaitPolicies(tools, codeModeToolName),
 		subagentDeferred:          subagentDeferred,
 		subagentResponses:         subagentDeferred,
 		subagentTurn:              metadata.SubagentKind != "",
@@ -636,7 +574,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		commentaryEmitted:         make(map[string]struct{}),
 		usageTracker:              p.usage.observation(threadID, metadata.ThreadID, request.model(), usageServiceTier(request.fields["service_tier"])),
 		codeModeToolName:          codeModeToolName,
-		nativeTools:               nativeTools,
+		nativeTools:               execution.native,
 	}
 	author := metadata.AgentName
 	if metadata.SubagentKind == "" {
@@ -668,14 +606,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	transform.journalActive = true
 	transform.journalPending = make(map[string]bool)
 	transform.journalCalls = make(map[string]map[string]json.RawMessage)
-	if transform.journalAvailable {
-		transform.shellFinishRequested, err = transform.shellJournalFinished(request.fields["input"])
-		if err != nil {
-			transform.Close()
-			return nil, err
-		}
-		transform.journalFinishRequested = transform.shellFinishRequested
-	}
 	if err := p.replayStore.cleanupSessions(ctx); err != nil {
 		transform.Close()
 		return nil, err

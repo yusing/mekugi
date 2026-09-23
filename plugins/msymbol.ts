@@ -23,7 +23,7 @@ import {
   errorText,
   isOutsideWorkspace,
   stripOptionalFinalNewline,
-  VerifiedRowOutput,
+  BoundedTextOutput,
 } from "./common.ts";
 import {
   declarationRange,
@@ -534,7 +534,7 @@ async function executeQuery(query: Query, onResolverStart: () => void): Promise<
   if (currentInput.source !== inputFile.source) {
     throw new MSymbolFailure("input changed during query");
   }
-  const output = new VerifiedRowOutput(query.maxTokens);
+  const output = new BoundedTextOutput(query.maxTokens);
   const retainedRows = new RetainedRows();
   const skipped = new Map<SourceFailureReason, number>();
   const skip = (reason: SourceFailureReason): void => {

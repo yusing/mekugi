@@ -7,6 +7,29 @@ import (
 	"path/filepath"
 )
 
+type hostProcessGroupKey struct{}
+type frontendOrphanCleanupKey struct{}
+
+// WithHostProcessGroup keeps executable frontend descendants in Codex's
+// command group so stock cancellation can terminate the whole invocation.
+func WithHostProcessGroup(ctx context.Context) context.Context {
+	return context.WithValue(ctx, hostProcessGroupKey{}, true)
+}
+
+func hostProcessGroupOwned(ctx context.Context) bool {
+	owned, _ := ctx.Value(hostProcessGroupKey{}).(bool)
+	return owned
+}
+
+// EnableFrontendOrphanCleanup is for a dedicated authenticated frontend
+// process, not a router or test process that owns unrelated child commands.
+func EnableFrontendOrphanCleanup(ctx context.Context) (context.Context, error) {
+	if err := enableFrontendSubreaper(); err != nil {
+		return ctx, err
+	}
+	return context.WithValue(ctx, frontendOrphanCleanupKey{}, true), nil
+}
+
 // JSON can encode each byte as a six-byte Unicode escape. The additional
 // allowance covers the execution envelope.
 const maxEncodedExecutionHostOutputBytes = 6*(ExecutionOutputBudgetBytes+16<<20) + 1<<20
@@ -65,6 +88,7 @@ func Execute(
 		directory,
 		environment,
 		maxEncodedExecutionHostOutputBytes,
+		!hostProcessGroupOwned(ctx),
 		stdin,
 		scriptFiles,
 		request,
@@ -92,7 +116,7 @@ func FormatOutput(ctx context.Context, node, runtimeRoot string, arguments []str
 	}{"format-output", filepath.Join(runtimeRoot, snapshotDirectory), arguments}
 	var result ExecutionOutput
 	err := invoke(ctx, node, filepath.Join(runtimeRoot, hostFilename), request.SnapshotRoot,
-		"", nil, maxEncodedExecutionHostOutputBytes, nil, nil, request, &result)
+		"", nil, maxEncodedExecutionHostOutputBytes, false, nil, nil, request, &result)
 	return result, err
 }
 
@@ -128,7 +152,7 @@ func FormatOutputBatch(ctx context.Context, node, runtimeRoot string, arguments 
 		ExitCode *int    `json:"exitCode"`
 	}
 	if err := invoke(ctx, node, filepath.Join(runtimeRoot, hostFilename), request.SnapshotRoot,
-		"", nil, maxEncodedExecutionHostOutputBytes, nil, nil, request, &response); err != nil {
+		"", nil, maxEncodedExecutionHostOutputBytes, false, nil, nil, request, &response); err != nil {
 		return nil, err
 	}
 	if len(response) != len(arguments) {
@@ -142,39 +166,4 @@ func FormatOutputBatch(ctx context.Context, node, runtimeRoot string, arguments 
 		results[i] = ExecutionOutput{Stdout: *result.Stdout, Stderr: result.Stderr, ExitCode: *result.ExitCode}
 	}
 	return results, nil
-}
-
-type CommandRouting struct {
-	Executable string   `json:"executable"`
-	Commands   []string `json:"commands"`
-}
-
-func LoadCommandRouting(ctx context.Context, node, runtimeRoot string) (CommandRouting, error) {
-	ctx, cancel := context.WithTimeout(ctx, pluginInvocationTimeout)
-	defer cancel()
-	request := struct {
-		Operation    string `json:"operation"`
-		SnapshotRoot string `json:"snapshotRoot"`
-	}{"command-routing", filepath.Join(runtimeRoot, snapshotDirectory)}
-	var result CommandRouting
-	err := invoke(ctx, node, filepath.Join(runtimeRoot, hostFilename), request.SnapshotRoot,
-		"", nil, 128<<10, nil, nil, request, &result)
-	return result, err
-}
-
-// RewriteCommand maps argv without executing commands or interpreting shell source.
-func RewriteCommand(ctx context.Context, node, runtimeRoot, directory string, environment, arguments []string) ([]string, error) {
-	ctx, cancel := context.WithTimeout(ctx, pluginInvocationTimeout)
-	defer cancel()
-	request := struct {
-		Operation    string   `json:"operation"`
-		SnapshotRoot string   `json:"snapshotRoot"`
-		Arguments    []string `json:"arguments"`
-	}{"rewrite-command", filepath.Join(runtimeRoot, snapshotDirectory), arguments}
-	var result struct {
-		Arguments []string `json:"arguments"`
-	}
-	err := invoke(ctx, node, filepath.Join(runtimeRoot, hostFilename), request.SnapshotRoot,
-		directory, environment, 128<<10, nil, nil, request, &result)
-	return result.Arguments, err
 }

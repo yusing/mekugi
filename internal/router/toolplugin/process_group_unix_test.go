@@ -37,7 +37,7 @@ setInterval(() => {}, 1000);
 	result := make(chan error, 1)
 	go func() {
 		var response map[string]any
-		result <- invoke(ctx, node, hostPath, "", "", nil, 1024, nil, nil, map[string]any{}, &response)
+		result <- invoke(ctx, node, hostPath, "", "", nil, 1024, true, nil, nil, map[string]any{}, &response)
 	}()
 
 	var childPID int
@@ -78,6 +78,54 @@ setInterval(() => {}, 1000);
 	t.Fatalf("plugin child process %d survived cancellation", childPID)
 }
 
+func TestFrontendPluginHostSharesCallerProcessGroup(t *testing.T) {
+	t.Parallel()
+	node, err := resolveNodeRuntime(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := t.TempDir()
+	pidPath := filepath.Join(directory, "host.pid")
+	hostPath := filepath.Join(directory, "host.mjs")
+	script := `import {writeFileSync} from "node:fs";
+writeFileSync(` + strconv.Quote(pidPath) + `, String(process.pid));
+setInterval(() => {}, 1000);
+`
+	if err := os.WriteFile(hostPath, []byte(script), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		var response map[string]any
+		result <- invoke(ctx, node, hostPath, "", "", nil, 1024, false, nil, nil, map[string]any{}, &response)
+	}()
+	var pid int
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if encoded, err := os.ReadFile(pidPath); err == nil {
+			pid, _ = strconv.Atoi(string(encoded))
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if pid == 0 {
+		t.Fatal("frontend host did not start")
+	}
+	got, err := syscall.Getpgid(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := syscall.Getpgrp(); got != want {
+		t.Fatalf("frontend host process group = %d, want caller group %d", got, want)
+	}
+	cancel()
+	if err := <-result; !errors.Is(err, context.Canceled) {
+		t.Fatalf("frontend host cancellation = %v", err)
+	}
+}
+
 func TestInvokeCancellationAfterHostExit(t *testing.T) {
 	t.Parallel()
 	node, err := resolveNodeRuntime(t.Context())
@@ -110,7 +158,7 @@ process.exit(0);
 	result := make(chan error, 1)
 	go func() {
 		var response map[string]any
-		result <- invoke(ctx, node, hostPath, "", "", nil, 1024, nil, nil, map[string]any{}, &response)
+		result <- invoke(ctx, node, hostPath, "", "", nil, 1024, true, nil, nil, map[string]any{}, &response)
 	}()
 	var childPID int
 	t.Cleanup(func() {

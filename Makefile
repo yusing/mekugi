@@ -7,9 +7,9 @@ install: install-binaries
 install-binaries:
 	bun install --cwd plugins --frozen-lockfile
 	go generate ./internal/router/toolplugin
-	$(GO) install ./cmd/mekugi ./cmd/shell
+	$(GO) install ./cmd/mekugi
 
 uninstall: uninstall-binaries
 
 uninstall-binaries:
-	$(GO) clean -i ./cmd/mekugi ./cmd/shell
+	$(GO) clean -i ./cmd/mekugi

@@ -1,231 +1,88 @@
 # Router-local tool plugins
 
-## REQ-PLUGIN-001 — Router-local tool plugins
+## REQ-PLUGIN-001 — Authenticated executable frontends
 
-In mekugi mode, `mekugi` discovers tool plugins only from the `mekugi/plugins`
-directory beneath the platform user configuration directory. Each direct regular file whose
-name ends in `.js` or `.mjs` is one compiled ECMAScript-module declaration, loaded in lexical
-filename order; directories, symlinks, and other entries are not declarations. A missing or
-empty directory contributes no plugins. There are no plugin-related router flags,
-workspace-local discovery, remote discovery, or hot reload. TypeScript is an authoring format,
-and the complete registry remains immutable for the router process lifetime. Passthrough mode
-neither loads nor exposes the contributed tools.
+In Mekugi mode, plugins are loaded from the `mekugi/plugins` directory beneath
+the platform user configuration directory. Each direct regular `.js` or
+`.mjs` file is a compiled ECMAScript-module declaration, loaded in lexical
+filename order. Directories and symlinks are not declarations; relative
+module dependencies may be copied into the immutable snapshot. A missing or
+empty directory contributes no configured plugins. TypeScript is an authoring
+format, not runtime-transpiled plugin input. Passthrough mode loads none.
 
-During declaration validation, translation, and execution, configured and built-in modules may import
-`mekugi:core/v1`. This exact virtual ECMAScript module is supplied by the router's authenticated snapshot;
-it requires no plugin-owned dependency or copied binary. It exposes deterministic verified-row hashing,
-formatting, logical-line counts and UTF-8 byte bounds, positive integer and `LINE:HASH` parsing, quoted
-operand decoding, source-format capability classification, Go identifier and string-literal handling,
-shell-header parsing, and interpreter identity. An unknown `mekugi:` module fails declaration loading.
-The shared core exposes no filesystem, workspace, symlink, process, network, credential, carrier, or
-row-resolution authority. Existing declarations that do not import it retain their behavior.
+Each declaration uses `mekugi-tool-plugin/v1`, a stable plugin ID, and one or
+more globally named tools. A tool provides an exact Responses custom-tool
+specification, bounded string parser, `argv` conversion, and executor-side
+`execute` implementation. The supported specification is unconstrained text
+or a Lark or Rust-regex grammar. Standard JSON-schema function declarations
+and arbitrary undocumented fields are not plugin declarations. Tool names
+must not collide with another declaration, a Mekugi built-in, or a shell
+keyword/built-in that would make a basename ambiguous.
 
-Each plugin declares a stable plugin identity and one or more globally named tools. Each tool
-provides its exact OpenAI Responses custom-tool specification, a bounded string-input parser,
-a translator, and an executor-side implementation. A specification may omit `format` for
-unconstrained text or use an OpenAI grammar format whose syntax is `lark` or `regex`. The
-model-visible name, description, format, grammar definition, input limit, translator, and
-implementation are part of the validated declaration. Standard JSON-schema function tools,
-runtime TypeScript transpilation, and arbitrary undocumented specification fields are not
-supported by this increment.
-Configured executor-backed names must also differ from shell keywords and built-ins,
-including the reserved built-in `mrun` executable. This rule ensures that a basename
-selects exactly one authenticated frontend rather than a configured declaration with a
-conflicting owner.
+The optional `mekugi:core/v1` import provides deterministic quoted-operand,
+logical-row, source-format, Go-lexical, shell-header, and interpreter helpers.
+It grants no filesystem, workspace, process, network, credential, or router
+transport authority. Unknown `mekugi:` modules reject during startup.
 
-Before opening its listener or installing any configured contributed-tool wrapper, the router
-loads every discovered declaration and validates the complete registry. It reports all detected plugin
-schema, API-version, identity, duplicate-name, input, translator, implementation, and wrapper
-conflicts, then exits nonzero if any declaration is invalid. Failure exposes no
-partial registry, forwards no Responses request, or starts an executor implementation. Locally deterministic grammar syntax and unsupported construct
-checks occur at startup; this does not promise to reproduce a provider's model-specific or
-complexity limits.
+Before opening the listener or exposing any frontend, Mekugi snapshots and
+validates the complete registry. Independent declaration, grammar, identity,
+name, API-version, wrapper, and implementation failures are reported together.
+An invalid registry starts no partial subset and forwards no Responses request.
+A snapshot is immutable for the router lifetime; edits to plugin files require
+a new launch. Grammar syntax checks are local and bounded, not a promise to
+reproduce every provider complexity limit. Rust regexes use installed `rg`
+with configuration disabled; Lark supports the documented common-import
+subset. Lookarounds, lazy repetitions, extended mode, terminal priorities,
+templates, non-common imports, and `%declare` are not supported. Regex-free
+declarations do not require `rg` for grammar validation.
 
-Built-in translations MUST use a router-lifetime host that loads its declaration and shared core
-before the listener opens. Calls MUST be serialized within that host, retain the five-second
-translation bound (including queue admission), and propagate caller cancellation. A timeout,
-crash, malformed response, or output overflow MUST fail the current call and discard that host;
-only a later call may start a replacement. No failed call or executor effect may be retried by
-this mechanism. Input rejections remain ordinary bounded diagnostics and do not poison the host.
-Shutdown MUST cancel active translation and reap the host before removing its snapshot.
-Configured declarations and all executor invocations MUST retain isolated per-call hosts.
+For each tool, the router creates a session-private frontend in the snapshot's
+`bin` directory. Its basename equals the tool name and points through the
+authenticated wrapper to a pinned copy of the running Mekugi executable.
+The worker verifies the invoked frontend, snapshot identity, exact manifest,
+and executable identity before dispatch. Replacing the installed binary or
+plugin source cannot change an active worker. The launcher prepends only its
+own `bin` directory to wrapped Codex's `PATH`; no global command, shared
+frontend, MCP server, or Codex configuration change is created. Concurrent
+sessions cannot replace each other's frontends. Cleanup removes only the
+owning session's resources.
 
-A successful translator returns a typed normal executor tool-call carrier. The router
-validates the carrier kind, name, and payload against the tools available in that
-request and retains ownership of response item IDs, call IDs, status, JSON and SSE framing,
-history, and replay. A plugin cannot invent an unavailable carrier or return a raw Responses
-envelope. The plugin API provides a canonical exec wrapper for tools that need one. The wrapper
-owns the repeated outer Code Mode exec program, nested tool invocation, serialization, argument
-quoting, and result forwarding. Its canonical Bash quoting keeps the worker command on one
-physical line, escaping embedded line terminators while reconstructing each exact argv value.
-The optional exec command template contains exactly one `{.}`
-placeholder, which the router replaces with the complete quoted worker command. For configured
-tools this is their frontend command. For built-in shell it is normally the fixed
-`shell <interpreter> <program>` helper command; without a shebang, directive, or template, one
-physical line containing one static external Bash command that is not an optional command-routing
-candidate instead remains the complete outer command. An optional JSON parameter object cannot contain `cmd`. The router supplies `cmd` from
-the selected command. If the parameter object contains `login`, its value must be exactly `false`.
+Stock `exec_command` invokes configured tools and built-ins under Codex's cwd,
+environment, sandbox, terminal, signals, and process lifecycle. The worker
+receives argv unchanged after frontend dispatch and keeps the command's stdin
+separate from its JavaScript host control stream. Each configured execution
+uses an isolated host. The tool returns stdout, stderr, and exit status once;
+Mekugi does not rerun an effect to inspect or replay it. Built-in `mread`,
+`mchanges`, and `mrun` share the same authenticated snapshot and their existing
+stores. Generated `mcat`, `msymbol`, and `inspect_file` use it too.
 
-Requests may expose the Code Mode custom `exec` owner at the top level or in `additional_tools`, or native
-top-level custom `apply_patch` plus function `exec_command`. The router replaces the editing
-surface in either shape without opening another listener. In native requests, `exec_command`
-remains the executor-owned carrier. Mekugi invokes the executor's `apply_patch` command through
-that carrier and returns the already-rendered report as its exact successful output; ordinary
-exec-backed contributions use direct native function arguments rather than a Code Mode wrapper.
-Response restoration and replay retain the request's original carrier shape. Durable replay accepts
-updates to the opaque `internal_chat_message_metadata_passthrough` field as the provider completes
-a tool call, retaining its latest encoding without allowing changes to tool identity or input. JSON and all
-terminal SSE statuses restore the request's tool catalog and choice plus completed calls' exact
-carriers. Failed or incomplete responses do not evaluate unfinished call input or retain it for
-replay. An output-item completion explicitly marked `incomplete` likewise does not evaluate unfinished
-input. If `input.done` already handed off the complete call, replay retains that translation and
-accepts the item's transition from `in_progress` to `incomplete` without evaluating it again.
-An absent status on a completion event remains accepted. Completed calls remain replayable
-when a later call or the response is interrupted.
+An executor may return bounded `omittedOutput` for managed `mread` recovery.
+The worker validates and persists this output before exposing a continuation
+reference. Storage failure cannot claim that recovery is available.
+`failureClass` is private allowlisted metadata on nonzero results, used for AX
+without replacing stderr. `terminationReason` may request cleanup of an
+invocation-owned resolver process group, but cannot change the completed
+semantic result. Ordinary worker cancellation and host process cleanup do not
+create private Codex continuation handles.
 
-For each configured executor-backed tool and each executor-backed model-private built-in,
-startup creates or verifies a session-private
-executable symlink in the authenticated snapshot's `bin` directory. Its basename is exactly the contributed tool name,
-and its target is the authenticated process-scoped snapshot wrapper with the same basename.
-The snapshot wrapper targets a session-private pinned instance of the running `mekugi`
-executable, not its replaceable installation pathname. Replacing the installation
-must not change the worker implementation or manifest decoder for an active session.
-The runtime directory must be on storage that permits execution of the pinned binary.
-On Linux, startup also pins the running image when its installation pathname has
-already been replaced or removed. Without a command template,
-the exec wrapper invokes only the basename and represents the parsed model input as its ordered
-argv. With a command template, the router replaces `{.}` with that same independently quoted
-basename and argv. When launched through both symlinks, the router verifies the session frontend
-location, snapshot identity, wrapper target, and registered implementation before passing the
-remaining argv unchanged.
-Worker authentication compares the executing file's identity with the resolved wrapper
-target. Strict manifest decoding remains mandatory; unknown fields are not ignored
-to accommodate a mismatched executable.
-The plugin worker keeps the frontend standard input separate from the JavaScript
-host's JSON control stream. The host exposes that input only as a dedicated inherited descriptor during
-executor calls.
-
-Built-in shell, standalone `mcat`, `msymbol`, and `inspect_file`, router-native `mread`, `mchanges`, and `mrun`,
-and the remaining private hgrep command use the same authenticated executor snapshot. The shared
-`shell` name locates the shell executor for the current thread. Each executable
-command has a session-private frontend in the same `bin` directory as configured
-plugins. Stock `exec_command` invokes `mcat`, `mrun`, `mchanges`, `msymbol`, and `inspect_file` directly under Codex's cwd,
-environment, sandbox, and process lifecycle; the shell carrier no longer
-dispatches or transforms them. Not-yet-migrated private commands may still use the
-shell dispatcher while exposing the same pinned frontend.
-
-The router-native `mread` continuation command is an executable contribution in the same
-manifest and uses the same frontend and worker authentication. Its built-in dispatch reads only
-the manifest-selected managed output store and preserves the worker's session scope. It does not
-introduce a second registry, plugin host, or process owner.
-The router-native `mchanges` contribution uses the same path and reads the existing durable change
-store; bounded projections continue through `mread` without duplicating either store.
-The router-native `mrun` contribution uses that worker only to validate its invocation,
-execute one foreground child, bound its completed streams, and persist any delivery remainder.
-Codex still owns the frontend process, yielding, terminal, signals, and continuation.
-The generated `msymbol` contribution uses the same authenticated executable path and
-generated plugin implementation. Its worker wrapper adds the shared AX observation but
-does not duplicate language-server, selection, output-bound, or recovery semantics.
-The generated `inspect_file` contribution uses that wrapper without changing its structural
-inspection, output-bound, or recovery semantics.
-
-Executors may attach a private `failureClass` only with a nonzero exit status.
-The host accepts only the documented reader-failure allowlist; arbitrary values and
-success/class combinations reject without reflecting their contents. This metadata
-supports opt-in AX evidence without changing command output or transport metrics.
-
-Executors may return `omittedOutput: {stdout, stderr, stdoutKind?, stderrKind?}` containing
-only omitted suffixes, bounded to 16 MiB combined. Optional kinds are `rows` for complete
-verified rows and `json` for a JSON array of complete entries; absent kinds mean raw bytes. The host validates the strings, and the authenticated executor
-persists them in the managed output recovery store before exposing an `mread` receipt.
-This optional result field does not execute effects or change the original exit status;
-storage failure is explicit and never claims that recovery is available.
-
-An executor returns its current stdout, stderr, and exit status once. Observation
-never starts a second execution or substitutes a benchmark baseline.
-An executor may attach `terminationReason: "output_limit"` only to a nonzero result
-after bounded output capture and stream cleanup. Semantic resolvers may request
-invocation-owned descendant cleanup without changing a completed semantic result.
-The host validates this private metadata and retires the requested process group on
-supported platforms before returning. Absent metadata preserves ordinary successful
-background-process and cancellation behavior.
-
-Without exec parameters, the carrier supplies no working-directory or environment override.
-With exec parameters, the router forwards the JSON values without replacing the request-specific
-Codex contract. Codex validates those values and remains the owner of working directory, sandbox,
-filesystem, process, network, terminal, and permission enforcement. Missing, conflicting,
-incorrectly targeted, or unusable configured-tool symlinks fail startup before the listener
-opens. Configured frontends reside in disjoint session directories. The launcher
-prepends only its own directory to Codex's PATH; no installation-directory lock or
-shared frontend is created. Concurrent sessions cannot replace each other's
-frontends. Shutdown removes only the owning session's frontends and snapshot.
-
-Translated history retains the plugin identity, original tool name and input, and exact carrier
-kind, name, and payload. Replay accepts only the byte-identical retained carrier and restores
-the original model-visible call before upstream forwarding. Ordinary plugins do not enter
-mekugi recovery ancestry. Runtime model-input rejection returns a bounded diagnostic
-through an available executor carrier; a translator protocol violation, unavailable carrier,
-or malformed carrier is a routing failure rather than a successful approximation.
-
-Completed translations MUST survive router restart and restore inherited calls in resumed or
-forked threads within the same canonical workspace, independently of routing-session IDs and
-cache keys. The router MUST durably retain a completed mapping before exposing its executable
-carrier, including completed streaming calls whose enclosing response later ends or is interrupted.
-Storage failures MUST fail routing before that carrier is exposed. Replay MUST NOT reevaluate
-the historical input or invoke an old plugin worker. Changed carrier identity, conflicting
-mappings, and corrupt records reject; unknown legacy calls without retained mappings remain
-unchanged. Durable records do not keep executor processes or private runtime capabilities alive.
-
-Grammar compatibility for this requirement is pinned to OpenAI's Custom tools guide
-(<https://developers.openai.com/api/docs/guides/function-calling#custom-tools>): regex
-definitions use Rust `regex` syntax and do not support lookarounds or lazy quantifiers; Lark
-definitions support common imports and `%ignore` while terminal priorities, templates,
-non-common imports, and `%declare` are unsupported. Startup validates this stable subset
-locally. Rust regex compilation is delegated to installed ripgrep's default engine with
-configuration files disabled; PCRE is never selected. The router resolves `rg` on its own `PATH`
-before isolating the validation host. The prerequisite applies only when a declaration contains
-an actual regex, whether a regex-format definition or a Lark regex terminal. Missing or unusable
-`rg`, compilation failure, or a bounded validator failure rejects that declaration with a clear
-diagnostic; unconstrained and regex-free Lark declarations remain independent of `rg`.
-Provider modifier checks respect escapes, nested character classes, capture names, and group
-flags rather than inspecting raw substrings. Lazy repetitions, including counted lazy repetitions,
-and extended mode are rejected; ordinary Rust escapes, Unicode properties, classes, and supported
-flags retain their engine semantics. Lark terminal flags participate in validation rather than
-being discarded. Provider model-specific and complexity limits remain provider-owned, distinct
-from the local compiler's resource limits.
+Replay retains completed observed stock calls and references without invoking
+old plugin workers. A frontend or output continuation is a live session
+capability, not something reconstructed by replay. The router does not create
+carrier mappings for unchanged stock calls.
 
 Acceptance:
 
-1. A valid discovered JavaScript declaration contributes its exact unconstrained, Lark, or
-   regex custom-tool object to mekugi-mode Responses requests without a plugin flag.
-2. A missing or empty plugin directory preserves the built-in mekugi-mode behavior, while
-   passthrough mode loads and exposes no contributed tools.
-3. One invalid declaration or configured-tool symlink prevents the listener from opening;
-   independent startup mismatches are reported together and no valid subset is exposed.
-4. Duplicate tool names across plugins or built-ins fail startup, and the registry does not
-   change until process restart.
-5. A plugin may translate to any compatible executor tool call available in the current
-   request; an unavailable or wrong-kind carrier rejects before upstream execution.
-6. The exec wrapper renders the canonical Code Mode program or native function arguments and independently quotes every argv
-   value. An optional template contains exactly one `{.}`, which expands to the complete worker
-   command. The plugin declaration does not contain or generate the outer carrier shape.
-7. Invoking a configured or executor-backed built-in tool resolves its session basename frontend through the
-   authenticated snapshot wrapper to `mekugi`, verifies the pinned registry, dispatches
-   by `argv[0]`, and delivers the declared argv under Codex's cwd, sandbox, and permissions.
-8. JSON and SSE responses preserve call identity while replacing a contributed call with its
-   validated carrier. While the complete streaming input is buffered for validation, each withheld
-   input delta becomes a content-free native `response.in_progress` event so downstream SSE remains
-   active without exposing untranslated content. Native function-argument events replace custom
-   input events when the request uses native tools. Replay restores the exact original contributed
-   call after verifying the retained carrier.
-   Fresh-process resume and same- or different-process forks preserve that exact call in both
-   native and Code Mode histories. A fork with fewer inherited calls cannot remove the parent's
-   records or use its omitted calls for recovery.
-9. A model-input diagnostic is bounded and recoverable, while an invalid translator result
-   cannot be returned or counted as a successful tool call.
-10. Observation failure cannot replace an otherwise successful translated carrier or executor
-    result; request cancellation still propagates.
-11. An executor returns one validated current result and does not run a comparison execution.
-12. A configured plugin can import `mekugi:core/v1` and obtains the same verified-row, source, Go lexical,
-    and shell-header semantics as built-in contributions. An unavailable core version rejects startup,
-    and passthrough mode loads no core artifact.
+1. Valid configured and built-in frontends resolve through the same pinned
+   authenticated snapshot and execute under stock `exec_command`.
+2. Complete-registry validation fails before serving if any declaration,
+   grammar, or symlink is invalid; no valid subset leaks through.
+3. An active registry does not change when installed binaries or plugin files
+   are replaced. A new launch can pick up new declarations.
+4. Configured stdin remains separate from worker control data, and workdir,
+   environment, sandbox, PTY, yield, and signals remain Codex-owned.
+5. Session-private PATH directories and cleanup cannot cross into another
+   session. Missing, expired, or corrupt snapshots reject rather than silently
+   dispatching to an unauthenticated implementation.
+6. Bounded omitted output is durable before an `mread` reference is exposed;
+   the command's exit status and visible output are not rewritten to claim
+   success.

@@ -1,6 +1,7 @@
 package router
 
 import (
+	"encoding/json"
 	"math"
 	"path/filepath"
 	"strconv"
@@ -8,6 +9,35 @@ import (
 
 	"mvdan.cc/sh/v3/syntax"
 )
+
+func corpusReadSelectionsForCall(call sessionInspectionCall) []corpusReadSelection {
+	readCommand := func(input string) []corpusReadSelection {
+		var arguments struct {
+			Command string `json:"cmd"`
+		}
+		if json.Unmarshal([]byte(input), &arguments) != nil {
+			return nil
+		}
+		return corpusReadSelections(arguments.Command)
+	}
+	if call.item.Name == "exec_command" {
+		return readCommand(call.item.Arguments)
+	}
+	if call.item.Name != "exec" {
+		return nil
+	}
+	calls, ok := toolActivityUnwrapExecCalls(call.item.Input, false)
+	if !ok {
+		return nil
+	}
+	var selections []corpusReadSelection
+	for _, nested := range calls {
+		if jsonString(nested, "name") == "exec_command" {
+			selections = append(selections, readCommand(jsonString(nested, "arguments"))...)
+		}
+	}
+	return selections
+}
 
 type corpusReadSelection struct {
 	path        string

@@ -84,7 +84,7 @@ func TestResolverCleanupRetiresInheritedPipeDescendants(t *testing.T) {
 						"FIXTURE_DEADLINE_READY="+deadlineReadyPath, "FIXTURE_DEADLINE_EXPIRED="+deadlineExpiredPath)
 				}
 				started := time.Now()
-				result, err := Execute(ctx, snapshot.NodeExecutable, snapshot.Root, "builtin/tools.js", 2,
+				result, err := Execute(ctx, snapshot.NodeExecutable, snapshot.Root, "builtin/tools.js", 1,
 					[]string{"refs", name, row, "Target"}, nil, directory, environment)
 				if err != nil {
 					t.Fatal(err)

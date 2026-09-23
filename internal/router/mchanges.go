@@ -15,7 +15,7 @@ import (
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
-const changesReadUsage = "mchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...]"
+const changesReadUsage = "mchanges --list [--workspace DIR] [--max-tokens N] | mchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...]"
 const maxChangeReadBytes = 64 << 20
 
 type changeReadOptions struct {
@@ -49,9 +49,9 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		}
 		seen[flag] = true
 		switch flag {
-		case "--summary", "--history":
+		case "--list", "--summary", "--history":
 			if options.view != "" {
-				return options, errors.New("choose either --summary or --history")
+				return options, errors.New("choose one of --list, --summary, or --history")
 			}
 			options.view = strings.TrimPrefix(flag, "--")
 		case "--workspace", "--max-tokens":
@@ -74,13 +74,18 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 			return options, fmt.Errorf("unknown option %s; %s", flag, changesReadUsage)
 		}
 	}
-	if len(refs) == 0 {
+	if options.view == "list" && (len(refs) != 0 || len(options.paths) != 0) {
+		return options, errors.New("--list does not accept change IDs or paths")
+	}
+	if len(refs) == 0 && options.view != "list" {
 		return options, fmt.Errorf("explicit change IDs or ranges are required; %s", changesReadUsage)
 	}
 	var err error
-	options.ids, err = expandChangeRefs(refs)
-	if err != nil {
-		return options, err
+	if options.view != "list" {
+		options.ids, err = expandChangeRefs(refs)
+		if err != nil {
+			return options, err
+		}
 	}
 	if options.workspace != "" {
 		if !filepath.IsAbs(options.workspace) {
@@ -115,6 +120,16 @@ func (s *mekugiReplayStore) readChanges(ctx context.Context, options changeReadO
 		if err != nil {
 			return err
 		}
+		if options.view == "list" {
+			if s.session.Thread == "" {
+				return errors.New("--list requires a Codex thread identity")
+			}
+			if err := s.retainFiles(changeIndexName(options.workspace, s.handleNamespace())); err != nil {
+				return err
+			}
+			output, err = listThreadChanges(index, s.session.Thread)
+			return err
+		}
 		names, err := s.changeDependencyNames(options.workspace, options.ids)
 		if err != nil {
 			return err
@@ -126,6 +141,31 @@ func (s *mekugiReplayStore) readChanges(ctx context.Context, options changeReadO
 		return err
 	})
 	return output, err
+}
+
+func listThreadChanges(index changeIndex, thread string) (string, error) {
+	var output strings.Builder
+	for streamIndex, stream := range index.Streams {
+		if stream.Thread != thread {
+			continue
+		}
+		var numbers []int
+		for id := range index.Changes {
+			name, number, err := parseChangeID(id)
+			if err == nil && name == changeStreamName(streamIndex) {
+				numbers = append(numbers, number)
+			}
+		}
+		slices.Sort(numbers)
+		for _, number := range numbers {
+			fmt.Fprintln(&output, changeHandle(changeStreamName(streamIndex), number))
+			if output.Len() > maxChangeReadBytes {
+				return "", errors.New("change list exceeds 64 MiB")
+			}
+		}
+		break
+	}
+	return output.String(), nil
 }
 
 func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeReadOptions, index changeIndex) (string, error) {
@@ -178,29 +218,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				fmt.Fprintf(&output, "attempt %d %s\n", position+1, trackedStatus(history, call.Confirmed))
 			}
 			if options.view == "history" {
-				if history.RecoveryScript != 0 {
-					var path string
-					if history.RecoveryScript <= len(history.Edits) {
-						path = history.Edits[history.RecoveryScript-1].Path
-					}
-					fmt.Fprintf(&output, "recovery script %d file %q:\n", history.RecoveryScript, path)
-				}
-				input, evaluated := history.Script, history.Evaluated
-				if len(history.Edits) != 0 {
-					var scripts strings.Builder
-					for _, edit := range history.Edits {
-						fmt.Fprintf(&scripts, "file %q:\n%s\n", edit.Path, edit.Script)
-					}
-					if history.Attempt > 1 {
-						evaluated = scripts.String()
-					} else {
-						input, evaluated = scripts.String(), ""
-					}
-				}
-				fmt.Fprintf(&output, "%s input:\n%s\n", history.ToolName, input)
-				if evaluated != "" {
-					fmt.Fprintf(&output, "evaluated script:\n%s\n", evaluated)
-				}
+				fmt.Fprintf(&output, "%s input:\n%s\n", history.ToolName, history.Script)
 				if history.Report != "" {
 					output.WriteString(strings.TrimPrefix(history.Report, changeNotice(id)))
 					output.WriteByte('\n')

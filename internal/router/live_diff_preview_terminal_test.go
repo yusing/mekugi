@@ -216,50 +216,6 @@ func TestLiveDiffTerminalTurnRevisionPreservesManualReconnectChoice(t *testing.T
 	}
 }
 
-func TestLiveDiffSimulationTerminalReplay(t *testing.T) {
-	t.Parallel()
-	directory := t.TempDir()
-	ui := startLiveDiffTerminal(t, "", "", "", 22, "MEKUGI_LIVE_DIFF_SIMULATION_TEST=1", "TMPDIR="+directory)
-	ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "STREAMING PREVIEW") && strings.Contains(ansi.Strip(frame), "/api/")
-	})
-	ui.write(t, "vg")
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
-	ui.write(t, "v")
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "ROUTES_READY") })
-	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "demo requests") })
-	// Exercise real code, not just synthetic repeated rows, at a narrow size.
-	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 22, Cols: 60}); err != nil {
-		t.Fatal(err)
-	}
-	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "response.Code") })
-	ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "SHELL_TIP")
-	})
-	ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "FUNCTIONS_SHELL_TIP")
-	})
-	ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "lifecycle.go")
-	})
-	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "without final newline") })
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "rejected as expected") })
-	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "INTERRUPTED_TIP") })
-	ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "SIMULATION: finished") && strings.Contains(frame, "STREAMING COMPLETE")
-	})
-	ui.write(t, "v")
-	final := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
-	if !strings.Contains(final, "DIFF · v stream") {
-		t.Fatal("simulation altered captured-diff paused state")
-	}
-	ui.quit(t)
-	entries, err := os.ReadDir(directory)
-	if err != nil || len(entries) != 0 {
-		t.Fatalf("simulation left temporary state: %v %v", entries, err)
-	}
-}
-
 func TestLiveDiffTerminalComposedContextIsNotDuplicated(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()
@@ -291,72 +247,6 @@ func TestLiveDiffTerminalComposedContextIsNotDuplicated(t *testing.T) {
 			t.Fatalf("duplicated composed context %q: %q", text, ansi.Strip(frame))
 		}
 	}
-	ui.quit(t)
-}
-
-func TestLiveDiffTerminalStandaloneShellStream(t *testing.T) {
-	t.Parallel()
-	transform, proxy, _, workspace := newMekugiTestTransform(t)
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
-		Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true, "thread": true}},
-	})
-	proxy.autoLiveDiff = &autoLiveDiff{events: broker, requested: true}
-	proxy.autoLiveDiff.enabled.Store(true)
-	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
-	liveDiffTestChange(t, store, workspace, transform.threadID, "captured.go", true)
-	ui.write(t, "v")
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "captured.go") })
-	ui.write(t, "v")
-	transform.commentaryAuthor, transform.subagentTurn = "/root/editor", true
-	// Exercise provider input routing, not a synthetic broker preview.
-	_, err = transform.TransformSSE(mustTestJSON(t, map[string]any{
-		"type": "response.output_item.added",
-		"item": map[string]any{"type": "custom_tool_call", "id": "shell-item", "call_id": "shell-call",
-			"name": "shell", "input": "", "status": "in_progress"},
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, rows := range []int{1, 100, 500} {
-		input := strings.Repeat("echo body\n", rows) + fmt.Sprintf("rg 'SHELL_TIP_%d' file.go | head -10\n", rows)
-		_, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
-			"type": "response.custom_tool_call_input.delta", "item_id": "shell-item", "delta": input,
-		}))
-		if err != nil {
-			t.Fatal(err)
-		}
-		frame := ui.frame(t, func(frame string) bool {
-			return strings.Contains(ansi.Strip(frame), fmt.Sprintf("SHELL_TIP_%d", rows))
-		})
-		for _, command := range []string{"rg", "head"} {
-			if !strings.Contains(frame, livediff.TerminalTheme.Foreground(chroma.NameFunction)+command) {
-				t.Fatalf("shell command remains plain in terminal: %q", frame)
-			}
-		}
-		text := ansi.Strip(frame)
-		if !strings.Contains(text, "/root/editor") || !strings.Contains(text, "STREAMING SCRIPT") {
-			t.Fatalf("full-pane shell stream lost heading or caller attribution: %q", frame)
-		}
-	}
-	ui.height = 12
-	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 12, Cols: 60}); err != nil {
-		t.Fatal(err)
-	}
-	frame := ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "\x1b[12;1H") && strings.Contains(frame, "SHELL_TIP_500")
-	})
-	if !strings.Contains(ansi.Strip(frame), "STREAMING SCRIPT") {
-		t.Fatal("resized shell preview lost its full-pane stream")
-	}
-
-	transform.Close()
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING COMPLETE") })
 	ui.quit(t)
 }
 
@@ -463,58 +353,6 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 	diff := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
 	if !strings.Contains(diff, "v stream") {
 		t.Fatal("stream updates changed the paused diff mode")
-	}
-	ui.quit(t)
-}
-
-func TestLiveDiffTerminalShellHpatchDiff(t *testing.T) {
-	t.Parallel()
-	workspace := t.TempDir()
-	path := filepath.Join(workspace, "file.txt")
-	if err := os.WriteFile(path, []byte("old\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
-		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
-	})
-	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
-	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
-	defer func() { worker.stop(); <-worker.done }()
-	// Exercise the shell decoder's no-space heredoc form as it appears in the
-	// provider stream, not only the direct decoder fixture.
-	worker.appendDelta("mread tide111\nhpatch file.txt<<'EDIT'\ntype \"old\" \"new")
-	frame := ui.frame(t, func(frame string) bool {
-		text := ansi.Strip(frame)
-		return strings.Contains(text, "STREAMING PREVIEW") && strings.Contains(text, "+new")
-	})
-	if strings.Contains(ansi.Strip(frame), "hpatch") || !strings.Contains(ansi.Strip(frame), "-old") {
-		t.Fatalf("expected a diff, not shell source: %q", frame)
-	}
-	worker.appendDelta("er\"")
-	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "+newer") })
-	content, err := os.ReadFile(path)
-	if err != nil || string(content) != "old\n" {
-		t.Fatalf("preview applied an edit: %q, %v", content, err)
-	}
-	worker.appendDelta("\ntype \"target that does not exist\" \"rejected\"\nEDIT\n")
-	frame = ui.frame(t, func(frame string) bool {
-		text := ansi.Strip(frame)
-		return strings.Contains(text, "STREAMING PREVIEW") &&
-			strings.Contains(text, "+newer")
-	})
-	text := ansi.Strip(frame)
-	if strings.Contains(text, "hpatch") || !strings.Contains(text, "-old") || !strings.Contains(text, "+newer") {
-		t.Fatalf("rejected hpatch suffix replaced the last valid diff with shell source: %q", frame)
-	}
-	worker.stop()
-	completed := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING COMPLETE") })
-	if strings.Contains(ansi.Strip(completed), "unavailable") || !strings.Contains(ansi.Strip(completed), "+newer") {
-		t.Fatalf("completion lost provisional diff or displayed an error: %q", completed)
 	}
 	ui.quit(t)
 }

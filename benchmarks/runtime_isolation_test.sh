@@ -35,7 +35,7 @@ printf 'host-only\n' >"$fixture/host-marker"
 "${compose[@]}" run --interactive=false --no-tty --rm --no-deps \
     --env MEKUGI_RUNTIME_DIR=/runtime --volume "$fixture/runtime:/runtime" \
     --env BENCH_ARTIFACT_DIR=/artifacts --volume "$fixture/artifacts/probe:/artifacts" \
-    --env MEKUGI_BENCH_MODE=mekugi --env MEKUGI_BENCH_PROTOCOL=native \
+    --env MEKUGI_BENCH_MODE=mekugi \
     --env CODEX_HOME=/benchmark-codex-home \
     --volume "$fixture/codex-home:/benchmark-codex-home" \
     --volume "$fixture/auth.json:/benchmark-codex-home/auth.json:ro" \

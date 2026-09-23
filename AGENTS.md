@@ -39,66 +39,71 @@ filing without authorization.
 
 ## Common requirements
 
-The linked contracts own interface-specific details, exceptions, and acceptance cases.
+The linked contracts own interface details, exceptions, and acceptance cases.
 
-- **Session continuity:** Features must remain correct across `/fork`, `/side`, agent switching
-  through `/subagents`, model switches, and `codex resume`, including a fresh router process.
-  Restore inherited state and relationship authorization from visible history and durable
-  workspace records, not routing-session IDs, cache keys, or a live parent. Preserve documented
-  lifetimes: replay does not revive processes, continuation handles, or expired private checkpoints;
-  Mentor schedules are router-lifetime.
-  Evidence: [replay](doc/spec/plugin.md), [recovery](doc/spec/correct.md),
-  [guidance switches](doc/spec/guide.md), [Mentor lifetime](doc/spec/mentor.md).
-- **State isolation:** Keep request views, stable thread identity, workspace replay, and process
-  resources distinct. Concurrent requests and branches must not borrow another thread's state.
-  Truncation or compaction removes invisible ancestry from that request, not durable records
-  needed by other branches. Cleanup follows the documented session-retention policy and is limited to owned resources.
-  See [history ownership](doc/architecture/boundary.md) and [commentary identity](doc/architecture/commentary.md).
-- **Host authority:** Codex owns tool execution, permissions, sandboxing, native agent lifecycle,
-  and yielded-session continuation. Router translation, replay, observation, and display must not
-  execute effects again or take over that lifecycle. Keep overrides invocation-local and leave
-  user configuration and instructions untouched.
-  Before Codex starts, the wrapper owns cancellation and startup feedback. Once Codex owns
-  the terminal, preserve its signal handling and stop startup rendering.
-  See [plugins](doc/spec/plugin.md), [third-party providers](doc/spec/third_party.md), and [launch](doc/spec/router.md).
-- **Filesystem authority:** Normal router translation uses the selected metadata directory,
-  never router cwd, and does not impose the root library's confinement boundary. Without a
-  selected directory, relative operands reject. Do not add workspace selectors, rebasing, or
-  multi-directory routing without evidence from a real Codex request.
-  See [boundary](doc/architecture/boundary.md) and [dated host observations](doc/codex-router-e2e.md).
-- **Atomic edits and usable evidence:** Resolve targets against one immutable invocation baseline;
-  parsing, validation, and evaluation failures publish no partial edit or success report.
-  Readers, target checks, and reports share exact source-byte and logical-row semantics,
-  including BOM, CR, LF, and CRLF.
-  Reports describe completed, formatted state, not guessed coordinates. Translation is not
-  proof of application, hashes are
-  not writer locks, and multi-file commit is not crash-atomic. Preserve caller coordination and
-  truthful rollback diagnostics.
-  See [targets](doc/spec/select.md), [output](doc/spec/output.md), and [core](doc/architecture/core.md).
-- **One semantic owner:** Reuse the engine, portable core, carrier renderer, and capturer rather
-  than duplicating their semantics in plugins, adapters, reports, or dashboards. Validate the
-  complete plugin registry before exposing it; reject unsupported or corrupt translations rather
-  than silently approximate them. Preserve exact tool identity and input across JSON, streaming,
-  native, and Code Mode paths.
-  See [plugin boundary](doc/architecture/plugin.md) and [plugin requirements](doc/spec/plugin.md).
-- **Durability before exposure:** Persist completed call mappings before exposing executable
-  carriers, including calls completed before their enclosing stream terminates. Never evaluate
-  unfinished arguments. Storage failure blocks carrier exposure. Session retention may reclaim
-  inactive data under [the router policy](doc/spec/router.md), but must preserve running work and
-  shared dependencies. Replay validates retained facts without retranslating.
-  See [replay requirements](doc/spec/plugin.md) and [store ownership](doc/architecture/boundary.md).
-- **Auxiliary means non-invasive:** Commentary, capture, and diagnostics must not replace tool
-  results, alter execution, or replay effects. Bound their resources independently of correctness
-  state; remove generated history only by retained provenance, not text resemblance. Keep secrets
-  and content out of sanitized metrics, and credentials separated by provider. Explicit diagnostic
-  artifacts have their own documented content and startup-failure contracts.
+- **Session continuity:** Features remain correct across `/fork`, `/side`,
+  agent switching through `/subagents`, model switches, and `codex resume`,
+  including a fresh router process. Restore inherited authorization from
+  visible history and durable workspace records, not routing-session IDs or
+  a live parent. Replay does not revive processes, continuation handles, or
+  expired checkpoints; Mentor schedules are router-lifetime. See
+  [replay](doc/spec/plugin.md), [changes](doc/spec/changes.md),
+  [guidance](doc/spec/guide.md), and [Mentor](doc/spec/mentor.md).
+- **State isolation:** Keep request views, stable thread identity, workspace
+  replay, and process resources distinct. Concurrent requests and branches
+  must not borrow another thread's state. Compaction removes invisible
+  ancestry from that request, not durable records needed by other branches.
+  Cleanup is limited to owned resources. See
+  [history ownership](doc/architecture/boundary.md) and
+  [commentary identity](doc/architecture/commentary.md).
+- **Host authority:** Codex owns stock `apply_patch`, `exec_command`, Code
+  Mode JavaScript, permissions, sandboxing, native agents, and yielded-session
+  continuation. Router observation and display must not execute effects again
+  or take over that lifecycle. Keep overrides invocation-local and leave
+  user configuration and instructions untouched. The wrapper owns startup
+  cancellation until Codex takes the terminal. See
+  [execution](doc/spec/execution.md), [plugins](doc/spec/plugin.md), and
+  [launch](doc/spec/router.md).
+- **Filesystem authority:** Observations use the selected metadata directory,
+  never router cwd. Without it, relative operands reject. Do not add
+  workspace selectors, rebasing, or multi-directory routing without evidence
+  from a real Codex request. Codex authorizes filesystem effects. See
+  [boundary](doc/architecture/boundary.md) and
+  [dated host observations](doc/codex-router-e2e.md).
+- **Truthful edit evidence:** Stock `apply_patch` input and result pass through
+  unchanged. A streaming preview is provisional. Confirm the actual result
+  and workspace outcome before persisting a completed change; failed and
+  partial outcomes cannot become success reports. No router hook, replayed
+  edit, or substitute executor is allowed. See
+  [changes](doc/spec/changes.md) and [execution](doc/spec/execution.md).
+- **One semantic owner:** Reuse the authenticated plugin snapshot, shared
+  portable core, managed output store, change classifier, and capturer rather
+  than duplicating them in adapters or dashboards. Validate the complete
+  registry before exposure. Preserve exact stock tool identity and input
+  across JSON, streaming, native, and Code Mode paths. See
+  [plugin boundary](doc/architecture/plugin.md) and
+  [plugin requirements](doc/spec/plugin.md).
+- **Durability before dependent reads:** Persist completed patch evidence and
+  bounded omitted output before exposing their review or continuation
+  references. Never evaluate unfinished arguments. Storage failure cannot
+  claim durable evidence. Retention may reclaim inactive data under
+  [router policy](doc/spec/router.md), but must protect running work and
+  shared dependencies. Replay validates retained facts without rerunning
+  tools. See [changes](doc/spec/changes.md) and
+  [store ownership](doc/architecture/boundary.md).
+- **Auxiliary means non-invasive:** Commentary, capture, and diagnostics must
+  not replace tool results, alter execution, or replay effects. Bound their
+  resources independently of correctness state; remove generated history
+  only by retained provenance, not text resemblance. Keep secrets and
+  content out of sanitized metrics, with credentials separated by provider.
   See [commentary](doc/spec/commentary.md), [metrics](doc/spec/metrics.md),
-  [debug artifacts](doc/spec/router.md), and [provider isolation](doc/spec/third_party.md).
-- **Evidence over apparent success:** Judge correctness by actual results, path scope, and required
-  graders, not model prose, transcript labels, or reference-patch similarity. Provider usage owns
-  model-consumption claims; local token estimates and transport expansion are different measures.
-  Missing, malformed, or incomplete evidence is not zero or success.
-  See [benchmark](doc/spec/benchmark.md), [metrics](doc/spec/metrics.md), and [E2E evidence](doc/codex-router-e2e.md).
+  and [provider isolation](doc/spec/third_party.md).
+- **Evidence over apparent success:** Judge correctness by actual host
+  results, path scope, and required graders, not model prose or transcript
+  labels. Provider usage owns model-consumption claims; local estimates and
+  transport expansion are different measures. Missing or incomplete
+  evidence is not zero or success. See [benchmark](doc/spec/benchmark.md),
+  [metrics](doc/spec/metrics.md), and [E2E evidence](doc/codex-router-e2e.md).
 
 Instruction projection preserves caller-owned base policy. Only explicitly marked omission blocks
 are removed from instruction text; additive journal guidance belongs to the journal tool projection.
@@ -131,30 +136,24 @@ back here. Docs must stand on their own interface and architecture references.
 
 | Behavior | Authoritative area |
 | --- | --- |
-| Public engine entry points and workspace APIs | `run.go` |
-| Parsing, targets, edit planning, transactions, translation, reports, hooks, and engine metrics | Root-package `*.go` files and adjacent tests |
-| Shared quoted-string and heredoc framing | `internal/hpatchsyntax` |
-| Portable verified-row, source-capability, Go-lexical, and shell-header semantics | `internal/verifiedrow`, `internal/sourcekind`, `internal/golex`, `internal/shellsyntax` |
+| Review-diff rendering used by observed change evidence | Root-package `review*.go` |
+| Shared quoted operands, logical rows, source capability, Go lexical, and shell-header semantics | `internal/quotedoperand`, `internal/logicalrow`, `internal/sourcekind`, `internal/golex`, `internal/shellsyntax` |
 | Versioned plugin shared-core adapter and private WASM bridge | `internal/router/toolplugin/core-v1.mjs`, `internal/router/toolplugin/core-v1.d.ts`, `internal/sharedwasm` |
 | Router lifecycle, launch flags, modes, and HTTP endpoints | `internal/router/server.go`, `internal/router/flags.go` |
-| Third-party native-agent projection, Grok authentication/translation, and model-catalog metadata | `internal/router/subagent_bridge.go`, `internal/router/grok_*.go` |
-| Automatic router notices and root-visible child activity | `internal/router/commentary.go`, `internal/router/commentary_publisher.go`, `internal/router/subagent_activity.go`; detailed ownership in `doc/architecture/commentary.md` |
+| Third-party native-agent projection, Grok authentication/translation, and model metadata | `internal/router/subagent_bridge.go`, `internal/router/grok_*.go` |
+| Automatic notices and root-visible child activity | `internal/router/commentary.go`, `internal/router/commentary_publisher.go`, `internal/router/subagent_activity.go`; details in `doc/architecture/commentary.md` |
 | Per-thread token/cost reports and final-answer stream ordering | `internal/router/thread_usage.go`, `internal/router/token_cost.go`, `internal/router/final_answer_stream.go` |
 | Mentor Handoff model schedule | `internal/router/mentor_handoff.go` |
-| CTP/2 provider representation | `internal/router/ctp2.go` |
 | Codex-facing WebSocket sessions, incremental history, and steering | `internal/router/server_websocket.go` |
 | Codex authentication and upstream Responses transport | `internal/router/client.go`, `internal/router/client_websocket.go` |
-| Tool replacement, host translation, and response restoration | `internal/router/mekugi_proxy.go` |
+| Stock tool preservation and response observation | `internal/router/mekugi_proxy.go`, `internal/router/mekugi_response_transform.go`, `internal/router/native_apply_patch.go` |
 | Journal state, router-owned CRUD, terminal delivery, and replay | `internal/router/journal.go`, `internal/router/journal_tool.go`, `internal/router/journal_delivery.go` |
-| Bash/POSIX execution and bounded external-command output | `internal/router/shell_runner.go`, `internal/router/shell_hrun.go` |
-| AX runtime evidence and offline measurements | `capturer/ax.go`; actual private-reader dispatch in `internal/router/shell_runner.go` |
+| AX runtime evidence and offline measurements | `capturer/ax.go`; authenticated reader dispatch in `internal/router/tool_plugin_worker.go` |
 | Offline logical session inspection | `internal/router/session_inspect.go`, dispatched by `cmd/mekugi/main.go` |
-| Hpatch review diffs, shared change IDs, and bounded change reads | `review.go`, `internal/router/mekugi_changes.go`, `internal/router/shell_changes.go` |
-| Durable replay records, request-visible history, and rejected-script recovery | `internal/router/mekugi_store.go`, `internal/router/mekugi_history.go`, `internal/router/mekugi_recovery.go` |
-| Carrier catalog and model-visible projection | `internal/router/tool_carrier.go`, `internal/router/tool_registry.go` |
-| Built-in tool sources, shared GPT-5 output tokenization, and private execution runtime | `plugins` (tokenization in `plugins/tokens.ts`), `internal/router/toolplugin` |
-| Fixed shell-runtime locator and per-thread runtime path | `cmd/shell`, `internal/shellruntime`, `internal/router/shell_runtime.go` |
-| Configured plugin discovery, authenticated snapshots, and frontends | `internal/router/toolplugin/runtime.go`, `internal/router/tool_registry.go`, `internal/router/tool_wrapper.go` |
-| Router process signals, wrapped Codex lifecycle, private model-catalog snapshot, and top-level exit behavior | `cmd/mekugi/main.go`, `cmd/mekugi/wrap.go`, `cmd/mekugi/catalog.go` |
+| Observed review diffs, change IDs, and bounded reads | `review.go`, `internal/router/native_apply_patch.go`, `internal/router/mekugi_changes.go`, `internal/router/mchanges.go` |
+| Durable replay, request-visible history, and retained output | `internal/router/mekugi_store.go`, `internal/router/mekugi_history.go`, `internal/router/shell_output_read.go` |
+| Authenticated frontend registry, worker, and PATH | `internal/router/tool_registry.go`, `internal/router/tool_plugin_worker.go`, `internal/router/tool_wrapper.go`, `internal/runtimepath` |
+| Built-in tool sources, output tokenization, and plugin runtime | `plugins`, `internal/router/toolplugin` |
+| Router process signals, wrapped Codex lifecycle, and top-level exit | `cmd/mekugi/main.go`, `cmd/mekugi/wrap.go` |
 | Normative interface requirements | `doc/spec/index.md` and the listed requirement file |
 | Stable ownership contracts | `doc/architecture/index.md` and the listed contract file |

@@ -30,15 +30,13 @@ and never mutates them.
 ### Raw logical rows
 
 Single-file output contains only the selected source text, without line numbers,
-hashes, JSON records, or other prefixes. CR, LF, and CRLF are recognized as
+JSON records, or other prefixes. CR, LF, and CRLF are recognized as
 logical terminators. Every selected logical row is emitted with one LF,
 including an unterminated final row. A trailing source terminator does not create
 an extra empty row. Empty files succeed with empty stdout. The UTF-8 BOM, when
 present in the first logical row, remains source content.
 
-`mcat` output is contextual source, not a verified edit identity. Hash-bearing
-consumers use the verified-row contract below. `mcat` has no
-`--preview-bytes` mode and performs no hashline calculation.
+`mcat` output is contextual source, not a verified edit identity.
 
 Missing, inaccessible, non-regular, non-UTF-8, reversed-range, and
 start-past-EOF reads return concise stderr and nonzero status. An end past EOF
@@ -70,13 +68,12 @@ complete file. Multi-file reads reject `-n` and `--tail`.
 
 The executable frontend owns one AX read observation per invocation, including
 invalid arguments and failed reads. It records the inherited thread identity but
-does not invent shell call or shell-worker correlation for a stock external
-command.
+does not invent call correlation for a stock external command.
 
 Acceptance:
 
 1. Whole-file, range, head, and tail reads emit raw UTF-8 logical rows with the
-   newline behavior above and no hashes or line prefixes.
+   newline behavior above and no line prefixes.
 2. Quoted, absolute, relative, option-like, and range-like paths keep their
    documented process meanings.
 3. Token and line limits retain only complete rows; `mread` reconstructs omitted
@@ -84,41 +81,19 @@ Acceptance:
 4. Streaming storage is bounded, cancellation-aware, and validates the complete
    source. Invalid UTF-8 outside the displayed selection still fails.
 5. Router startup validates `mcat` in the immutable snapshot and installs one
-   session-private frontend. The old reader name and hash-preview surface are
-   absent.
+   session-private frontend. No alternate reader name is installed.
 6. Stock execution preserves cwd, environment, argv, stdout, stderr, status,
    pipes, and redirections without shell-source transformation.
 
-### Verified-row framing for hash-bearing consumers
-
-`hgrep`, `inspect_file`, HPATCH, reports, and other not-yet-migrated
-hash-bearing consumers share this logical-row identity:
-
-```text
-LINE:HASH TEXT
-```
-
-`LINE` is the positive one-based logical line. `TEXT` is exact content without
-its terminator. `HASH` is lowercase hexadecimal for the first two bytes of
-SHA-256 over that content, including leading spaces and tabs. Equal text at
-different positions has the same hash but a different complete reference.
-These consumers, not `mcat`, own formatting and verification.
-
-Hash-bearing readers share the same complete-row token admission rule. Hgrep's
-`--preview-bytes N` remains an explicit JSON inspection format with a full-row
-identity, UTF-8 prefix, source byte count, and omitted byte count. Preview text
-is not a complete literal source row.
-
 ### Managed read continuation
 
-Shell output, `mcat`, searches, symbol references, and change reviews use the
+Bounded command output, `mcat`, symbol references, and change reviews use the
 authenticated `mread` executable frontend for one read continuation:
 `mread REF [--stdout|--stderr] [--max-tokens N]`. An incomplete result supplies
 the exact `read: incomplete; next_call: mread REF` command. There is no separate
-cursor flag or caller-composed hash/offset. References use short lowercase word
+cursor flag or caller-composed offset. References use short lowercase word
 handles, such as `maple`, with a decimal suffix when needed. Handles are
-feature-scoped locators, not integrity hashes or secrets; full snapshot
-fingerprints remain internal.
+feature-scoped locators, not secrets; full snapshot fingerprints remain internal.
 
 Read and recovery handles allocate within one durable session namespace shared
 by the root thread and its subagents. Unrelated sessions restart the sequence.
@@ -155,7 +130,7 @@ Storage failures are explicit. Cleanup follows the session-retention policy in
 
 Acceptance: the session basename `mread` resolves through the authenticated
 pinned frontend and stock executor, preserves stdout, stderr, and status, and
-does not route through the shell's private-command dispatcher. The worker binds
+does not route through a private command dispatcher. The worker binds
 `CODEX_THREAD_ID` before reading, so unrelated sessions cannot use equal handles
 while inherited fork and side-thread ownership survives restart and cleanup.
 

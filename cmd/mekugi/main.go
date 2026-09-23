@@ -20,7 +20,7 @@ func main() {
 func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if handled, exitCode := router.RunToolPluginWorker(
+	if handled, exitCode := router.RunOwnedToolPluginWorker(
 		ctx,
 		os.Args[0],
 		os.Args[1:],

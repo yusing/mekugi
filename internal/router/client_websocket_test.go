@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -514,101 +513,6 @@ func TestProviderWebSocketWrappedErrorPreservesStatusAndHeaders(t *testing.T) {
 	_ = response.Body.Close()
 	if err != nil || response.StatusCode != 429 || response.Header.Get("Retry-After") != "7" || response.Header.Get("x-request-id") != "error-id" || response.Header.Get("Connection") != "" || !bytes.Contains(body, []byte("rate limited")) || sends.Load() != 1 {
 		t.Fatalf("error contract changed: status=%d headers=%v err=%v", response.StatusCode, response.Header, err)
-	}
-}
-
-func TestProviderWebSocketMekugiTranslationAndCapture(t *testing.T) {
-	for _, stream := range []bool{false, true} {
-		t.Run(strconv.FormatBool(stream), func(t *testing.T) {
-			item := map[string]any{"type": "custom_tool_call", "id": "item-H", "call_id": "call-H", "name": "shell", "input": testShellEditSource, "status": "completed"}
-			terminal := map[string]any{"id": "response", "status": "completed", "output": []any{item}, "usage": map[string]any{"input_tokens": 20, "output_tokens": 5}}
-			payloads := [][]byte{
-				mustTestJSON(t, map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item}),
-				mustTestJSON(t, map[string]any{"type": "response.completed", "response": terminal}),
-			}
-			sent := make(chan []byte, 1)
-			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				conn, err := websocket.Accept(w, r, nil)
-				if err != nil {
-					return
-				}
-				defer conn.CloseNow()
-				_, request, err := conn.Read(r.Context())
-				if err != nil {
-					return
-				}
-				sent <- request
-				for _, payload := range payloads {
-					if err := conn.Write(r.Context(), websocket.MessageText, payload); err != nil {
-						return
-					}
-				}
-				_, _, _ = conn.Read(r.Context())
-			}))
-			defer upstream.Close()
-			capture, err := capturer.New(capturer.Config{Mode: "mekugi"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer capture.Close()
-			client := newProviderClient(upstream.URL, upstream.Client())
-			client.httpClient.Transport = capture.Transport(client.httpClient.Transport)
-			client.enableWebSockets(t.Context())
-			defer client.websockets.close()
-			calls := 0
-			proxy := newManagedMekugiProxy(t)
-			workspace := t.TempDir()
-			parsed := serverRequest(t, func(fields map[string]any) {
-				fields["stream"] = stream
-				fields["input"] = []any{map[string]any{"role": "user", "content": "task"}}
-				fields["tools"] = testNativeResponsesTools()
-			})
-			request := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(parsed.originalBody))
-			request.Header = serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})
-			maps.Copy(request.Header, codexAuthHeaders())
-			request.Header.Set(sessionIDHeader, "session")
-			handler := capture.Handler(responsesHandler(t.Context(), time.Minute, client, nil, proxy, nil))
-			output := httptest.NewRecorder()
-			handler.ServeHTTP(output, request)
-			if output.Code != 200 || calls != 0 || !strings.Contains(output.Body.String(), nativeExecCommandToolName) || strings.Contains(output.Body.String(), `"name":"hpatch"`) {
-				t.Fatalf("translation changed: status=%d calls=%d body=%s", output.Code, calls, output.Body.String())
-			}
-			providerRequest := <-sent
-			if bytes.Contains(providerRequest, []byte(`"name":"apply_patch"`)) || !bytes.Contains(providerRequest, []byte(`"name":"shell"`)) {
-				t.Fatal("tool request projection bypassed on WS")
-			}
-			metrics := httptest.NewRecorder()
-			capture.ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/api/metrics", nil))
-			var snapshot struct {
-				Requests struct {
-					Logical, Completed uint64
-					Attempts           uint64 `json:"provider_attempts"`
-				} `json:"requests"`
-				Transport struct {
-					Request struct {
-						Bytes uint64 `json:"bytes"`
-					} `json:"provider_attempt_requests"`
-					Response struct {
-						Bytes uint64 `json:"bytes"`
-					} `json:"provider_responses"`
-				} `json:"transport"`
-				Usage struct {
-					Input  uint64 `json:"input_tokens"`
-					Output uint64 `json:"output_tokens"`
-				} `json:"usage"`
-				Capture struct {
-					Errors     uint64 `json:"capture_errors"`
-					Incomplete uint64 `json:"incomplete_records"`
-					Missing    uint64 `json:"missing_provider_records"`
-				} `json:"capture"`
-			}
-			if err := json.Unmarshal(metrics.Body.Bytes(), &snapshot); err != nil {
-				t.Fatal(err)
-			}
-			if snapshot.Requests.Logical != 1 || snapshot.Requests.Completed != 1 || snapshot.Requests.Attempts != 1 || snapshot.Transport.Request.Bytes != uint64(len(providerRequest)) || snapshot.Transport.Response.Bytes != uint64(len(payloads[0])+len(payloads[1])) || snapshot.Usage.Input != 20 || snapshot.Usage.Output != 5 || snapshot.Capture.Errors != 0 || snapshot.Capture.Incomplete != 0 || snapshot.Capture.Missing != 0 {
-				t.Fatalf("WS router/capture contract: %s", metrics.Body.String())
-			}
-		})
 	}
 }
 

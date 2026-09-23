@@ -15,11 +15,9 @@ from benchmark_jsonl import load_jsonl
 
 USAGE_KEYS = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_tokens")
 EXPECTED_ARM_CONFIG = {
-    "control": ("passthrough", "native"),
-    "mekugi": ("mekugi", "native"),
-    "native": ("mekugi", "native"),
-    "ctp": ("mekugi", "ctp2"),
-    "mekugi-mentor": ("mekugi", "native"),
+    "control": "passthrough",
+    "mekugi": "mekugi",
+    "mekugi-mentor": "mekugi",
 }
 INFERENCE_TRANSPORT_KEYS = (
     "client_requests",
@@ -138,7 +136,7 @@ def validate_cache_diagnostics(exchanges):
         for attempt in attempts:
             validate_provider_evidence(attempt.get("provider_response"), attempt.get("usage"))
             validate_fingerprint(attempt.get("cache_fingerprint"))
-            validate_fingerprint(attempt.get("native_fingerprint"))
+            validate_fingerprint(attempt.get("projected_fingerprint"))
         client_fp = exchange.get("client_fingerprint")
         provider_fp = attempts[-1].get("cache_fingerprint") if attempts else None
         has_turn_state = "turn_state" in (client_fp or {}) or "turn_state" in (provider_fp or {})
@@ -157,7 +155,7 @@ def validate_cache_diagnostics(exchanges):
         expected = {
             "previous_sequence": before["sequence"] if before else 0,
             "client": compare_prefix(before.get("client_fingerprint") if before else None, exchange.get("client_fingerprint")),
-            "native": compare_prefix(last.get("native_fingerprint"), final.get("native_fingerprint")),
+            "projected": compare_prefix(last.get("projected_fingerprint"), final.get("projected_fingerprint")),
             "provider": compare_prefix(last.get("cache_fingerprint"), final.get("cache_fingerprint")),
             "routing": compare_route(last.get("cache_fingerprint"), final.get("cache_fingerprint"), "routing_key"),
             "request_key": compare_route(last.get("cache_fingerprint"), final.get("cache_fingerprint"), "request_key"),
@@ -259,15 +257,15 @@ def validate_raw_capture(path: Path, metrics: dict[str, Any]) -> set[int]:
     for record in records:
         boundary = record.get("boundary")
         capture_id = record.get("capture_id")
-        if record.get("schema_version") != 6 or boundary not in {
+        if record.get("schema_version") != 7 or boundary not in {
             "codex",
             "provider",
             "codex_control",
             "provider_control",
         }:
             raise ValueError("capture has an unsupported schema or boundary")
-        if record.get("mode") != metrics.get("mode") or record.get("model_protocol") != metrics.get("model_protocol"):
-            raise ValueError("raw capture mode or protocol differs from the metrics snapshot")
+        if record.get("mode") != metrics.get("mode"):
+            raise ValueError("raw capture mode differs from the metrics snapshot")
         if not isinstance(capture_id, str) or not capture_id:
             raise ValueError("capture record is missing its correlation identity")
         if record.get("capture_error") or record.get("response_complete") is not True:
@@ -352,9 +350,9 @@ def validate_raw_capture(path: Path, metrics: dict[str, Any]) -> set[int]:
                 raw.get("predecessor_sequence", 0) != front.get("predecessor_sequence", 0)
                 or raw.get("transport") != measured.get("transport")
                 or raw.get("cache_fingerprint") != measured.get("cache_fingerprint")
-                or raw.get("native_fingerprint") != measured.get("native_fingerprint")
+                or raw.get("projected_fingerprint") != measured.get("projected_fingerprint")
                 or payload(raw.get("request")) != payload(measured.get("request"))
-                or payload(raw.get("native_request")) != payload(measured.get("native_request"))
+                or payload(raw.get("projected_request")) != payload(measured.get("projected_request"))
                 or payload(raw.get("response")) != payload(measured.get("response"))
                 or payload(raw.get("final_output")) != payload(measured.get("final_output"))
                 or payload(raw.get("final_text")) != payload(measured.get("final_text"))
@@ -390,23 +388,13 @@ def validate_raw_capture(path: Path, metrics: dict[str, Any]) -> set[int]:
 
 
 def validate_snapshot(metrics: dict[str, Any], arm: str, config: dict[str, Any]) -> None:
-    if metrics.get("schema") != "mekugi.capture.metrics.v4":
+    if metrics.get("schema") != "mekugi.capture.metrics.v6":
         raise ValueError("metrics have an unsupported schema")
     expected = EXPECTED_ARM_CONFIG.get(arm)
     if expected is None:
         raise ValueError(f"unsupported benchmark arm {arm}")
-    if config.get("benchmark_mode") == "mentor-handoff" and arm in {"mekugi", "mekugi-mentor"}:
-        protocol = config.get("mentor_handoff", {}).get("model_protocol", "native")
-        if protocol not in {"native", "ctp2"}:
-            raise ValueError("unsupported Mentor benchmark model protocol")
-        expected = ("mekugi", protocol)
-    if config.get("benchmark_mode") in {"paired", "mekugi-diagnostic"} and arm == "mekugi":
-        protocol = config.get("treatment_model_protocol", "native")
-        if protocol not in {"native", "ctp2"}:
-            raise ValueError("unsupported treatment benchmark model protocol")
-        expected = ("mekugi", protocol)
-    if (metrics.get("mode"), metrics.get("model_protocol")) != expected:
-        raise ValueError(f"{arm} capture has the wrong router mode or model protocol")
+    if metrics.get("mode") != expected:
+        raise ValueError(f"{arm} capture has the wrong router mode")
     exchanges = metrics.get("exchanges")
     if not isinstance(exchanges, list):
         raise ValueError("metrics are missing exchanges")
@@ -440,29 +428,10 @@ def validate_calculations(metrics: dict[str, Any], exchanges: list[dict[str, Any
         "provider_attempt_outputs": empty_payload(),
         "client_outputs": empty_payload(),
     }
-    protocol = {
-        "input_payload_tokens_saved": 0,
-        "input_payload_bytes_saved": 0,
-        "output_payload_tokens_expansion": 0,
-        "output_text_tokens_saved": 0,
-        "output_payload_bytes_expansion": 0,
-    }
     provider_tools: dict[str, dict[str, int]] = {}
     delivered_tools: dict[str, dict[str, int]] = {}
     previous_input: dict[str, int] = {}
     cold_or_new = eligible = eligible_cached = 0
-    mekugi = {
-        "calls": 0,
-        "corrections": 0,
-        "successful": 0,
-        "rejected": 0,
-        "unclassified": 0,
-        "unmatched": 0,
-        "provider_input_tokens": 0,
-        "delivered_input_tokens": 0,
-        "carrier_input_tokens_expansion": 0,
-    }
-    diagnostics: dict[str, int] = defaultdict(int)
 
     for exchange in ordered:
         attempts = exchange.get("provider_attempts")
@@ -479,31 +448,20 @@ def validate_calculations(metrics: dict[str, Any], exchanges: list[dict[str, Any
             raise ValueError("exchange delivered tools must be an array")
         for call in delivered:
             add_tool(delivered_tools, call)
-        delivered_by_id = {
-            call.get("call_id"): call
-            for call in delivered
-            if isinstance(call, dict) and isinstance(call.get("call_id"), str) and call["call_id"]
-        }
         exchange_usage = empty_usage()
         exchange_usage_attempts = 0
         final_usage = None
-        for attempt_index, attempt in enumerate(attempts):
+        for attempt in attempts:
             if not isinstance(attempt, dict):
                 raise ValueError("provider attempt must be an object")
             if not isinstance(attempt.get("model"), str) or not attempt["model"]:
                 raise ValueError("provider attempt is missing its actual model")
-            if not isinstance(attempt.get("native_request"), dict):
-                raise ValueError("missing post-replay native request observation")
-            native_request = payload(attempt["native_request"])
+            if not isinstance(attempt.get("projected_request"), dict):
+                raise ValueError("missing projected request observation")
+            payload(attempt["projected_request"])
             transport_kind = attempt.get("transport")
             if transport_kind not in {None, "websocket"}:
                 raise ValueError("provider attempt has an unsupported transport")
-            if (
-                metrics.get("model_protocol") == "native"
-                and transport_kind != "websocket"
-                and native_request != payload(attempt.get("request"))
-            ):
-                raise ValueError("native HTTP protocol changed the post-replay request")
             published_attempt_usage = attempt.get("usage")
             parsed_attempt_usage = None
             if published_attempt_usage is not None:
@@ -513,8 +471,7 @@ def validate_calculations(metrics: dict[str, Any], exchanges: list[dict[str, Any
                 exchange_usage_attempts += 1
                 usage_attempts += 1
                 validate_published_usage(published_attempt_usage, parsed_attempt_usage, 1)
-            if attempt_index == len(attempts) - 1:
-                final_usage = parsed_attempt_usage
+            final_usage = parsed_attempt_usage
             add_payload(transport["provider_attempt_requests"], attempt.get("request"))
             add_payload(transport["provider_responses"], attempt.get("response"))
             add_payload(semantic["provider_attempt_outputs"], attempt.get("final_output"))
@@ -523,26 +480,6 @@ def validate_calculations(metrics: dict[str, Any], exchanges: list[dict[str, Any
                 raise ValueError("provider attempt tools must be an array")
             for emitted in tools:
                 add_tool(provider_tools, emitted)
-                if emitted.get("name") not in {"hpatch", "hpatch_recover"}:
-                    continue
-                mekugi["calls"] += 1
-                if emitted["name"] == "hpatch_recover":
-                    mekugi["corrections"] += 1
-                mekugi["provider_input_tokens"] += emitted.get("input_tokens", 0)
-                carrier = delivered_by_id.get(emitted.get("call_id"))
-                if carrier is None:
-                    mekugi["unmatched"] += 1
-                    continue
-                mekugi["delivered_input_tokens"] += carrier.get("input_tokens", 0)
-                if carrier.get("kind") in {"apply_patch", "mekugi_report"}:
-                    mekugi["successful"] += 1
-                elif carrier.get("kind") == "mekugi_diagnostic":
-                    mekugi["rejected"] += 1
-                    reason = carrier.get("diagnostic")
-                    if isinstance(reason, str) and reason:
-                        diagnostics[reason] += 1
-                else:
-                    mekugi["unclassified"] += 1
 
         published_exchange_usage = exchange.get("usage")
         if exchange_usage_attempts:
@@ -567,18 +504,6 @@ def validate_calculations(metrics: dict[str, Any], exchanges: list[dict[str, Any
             cold_or_new += final_usage["input_tokens"] - final_usage["cached_input_tokens"] - current_miss
             previous_input[thread] = final_usage["input_tokens"]
 
-        if attempts:
-            final = attempts[-1]
-            native_request = payload(final["native_request"])
-            provider_request = payload(final.get("request"))
-            client_output = payload(exchange.get("client_final_output"))
-            provider_output = payload(final.get("final_output"))
-            protocol["input_payload_bytes_saved"] += native_request["bytes"] - provider_request["bytes"]
-            protocol["input_payload_tokens_saved"] += native_request["tokens"] - provider_request["tokens"]
-            protocol["output_text_tokens_saved"] += payload(exchange.get("client_final_text"))["tokens"] - payload(final.get("final_text"))["tokens"]
-            protocol["output_payload_bytes_expansion"] += client_output["bytes"] - provider_output["bytes"]
-            protocol["output_payload_tokens_expansion"] += client_output["tokens"] - provider_output["tokens"]
-
     validate_cache_diagnostics(exchanges)
 
     if metrics.get("requests") != requests:
@@ -595,21 +520,8 @@ def validate_calculations(metrics: dict[str, Any], exchanges: list[dict[str, Any
         or metrics.get("semantic") != semantic
     ):
         raise ValueError("payload totals do not reconcile exchanges")
-    if metrics.get("protocol") != protocol:
-        raise ValueError("protocol savings do not reconcile final provider attempts")
     if metrics.get("provider_tools") != provider_tools or metrics.get("delivered_tools") != delivered_tools:
         raise ValueError("tool aggregates do not reconcile exchanges")
-
-    mekugi["carrier_input_tokens_expansion"] = mekugi["delivered_input_tokens"] - mekugi["provider_input_tokens"]
-    published_mekugi = metrics.get("mekugi")
-    if not isinstance(published_mekugi, dict):
-        raise ValueError("metrics are missing HPATCH calculations")
-    # Older v4 snapshots without unknown carriers can still reconcile exactly.
-    published_mekugi = {"unclassified": 0, **published_mekugi}
-    if {key: published_mekugi.get(key) for key in mekugi} != mekugi or published_mekugi.get(
-        "diagnostics", {}
-    ) != dict(diagnostics):
-        raise ValueError("HPATCH calculations do not reconcile tool calls")
 
     published_cache = metrics.get("cache")
     if not isinstance(published_cache, dict):

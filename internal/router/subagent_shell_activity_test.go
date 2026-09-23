@@ -3,9 +3,7 @@ package router
 import (
 	"bytes"
 	"encoding/json"
-	"strings"
 	"testing"
-	"unicode/utf8"
 )
 
 func TestSubagentShellExcerptsJSONAndSSE(t *testing.T) {
@@ -104,18 +102,6 @@ func TestShellActivityDoesNotCorrelateProgramOutput(t *testing.T) {
 	}
 }
 
-func TestShellActivityExcerptBounds(t *testing.T) {
-	for _, source := range []string{strings.Repeat("界", 121), strings.Repeat("界", 120) + "\nmore"} {
-		excerpt := toolActivityCommandExcerpt(source)
-		if !utf8.ValidString(excerpt) || len([]rune(excerpt)) != 120 || !strings.HasSuffix(excerpt, "…") {
-			t.Fatalf("invalid excerpt: %q", excerpt)
-		}
-	}
-	if got := toolActivityCommandExcerpt("#!params={\"yield_time_ms\":30000}\nshell bash $'go test ./...\\nprintf done'"); got != "go test ./...…" {
-		t.Fatalf("excerpt: %q", got)
-	}
-}
-
 func TestShellBatchActivityExcerpt(t *testing.T) {
 	const source = "#!params={}\nprintf one\n#!python3\nprint(2)"
 	if got := toolActivityCommandExcerpt(source); got != "printf one…" {
@@ -157,39 +143,6 @@ func TestCellActivityCorrelation(t *testing.T) {
 		if len(tr.activityCellOperations) != 0 {
 			t.Fatal("program output treated as cell metadata")
 		}
-	}
-}
-
-func TestCellActivityPreparedShellReplay(t *testing.T) {
-	transform, proxy, _, workspace := newMekugiTestTransform(t)
-	upstream := continuationTestCall("shell", "shell-cell", "sleep 100")
-	response, err := transform.TransformJSON(mustMarshalJSON(map[string]any{"status": "completed", "output": []any{upstream}}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var delivered struct{ Output []map[string]json.RawMessage }
-	if err := json.Unmarshal(response, &delivered); err != nil || len(delivered.Output) != 1 {
-		t.Fatalf("carrier: %s, %v", response, err)
-	}
-	request, err := parseResponsesRequest(mustMarshalJSON(map[string]any{
-		"model": "gpt-test", "tools": []any{}, "tool_choice": "auto", "input": []any{
-			testCodeModeAdditionalTools(testCodeModeDescription), delivered.Output[0],
-			continuationTestOutput("shell-cell", "Script running with cell ID 7\nWall time 30 seconds\nOutput:\n"),
-		},
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := proxy.prepareRequest(t.Context(), &request, "session-2", "thread-1", codexTurnMetadata{
-		RequestKind: "turn", SubagentKind: "thread_spawn", AgentName: "/root/worker",
-		ParentThreadID: "root-thread", Directories: map[string]json.RawMessage{workspace: nil},
-	}, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer prepared.Close()
-	if got := prepared.activityCellOperations["7"]; got != "```bash\nsleep 100\n```" {
-		t.Fatalf("replayed origin: %q", got)
 	}
 }
 

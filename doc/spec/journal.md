@@ -149,41 +149,23 @@ A single mutation returns its item ID; a mutation array returns the ordered item
 Nested calls can use an added item's returned ID in a subsequent edit. Publication failures
 throw rather than returning an execution envelope as a journal ID.
 
-Bash and POSIX reserve `journal list [AGENT]`, `journal add TEXT`, `journal edit ID TEXT`,
-`journal delete ID`, `journal batch JSON_ARRAY`, and `journal finish [JSON_ARRAY]`. Mutation
-commands accept trailing `--answer`, `--clear-answer`, and `--report-now` options where applicable.
-`add` writes its assigned item ID; `list` returns the current journal as JSON. Other successful
-mutations are silent. Batch mutations are applied atomically by the same durable store as
-`functions.journal`. Expanded operands remain individual argv values, and answer mutations use
-the current user or plaintext native assignment attached to the shell request. Invalid mutations
-and unavailable publishers return errors rather than silently losing records. The authenticated
-HTTP publisher preserves the underlying mutation/list error, and both shell and Code Mode
-include that reason rather than reporting only a failed HTTP status or generic publication failure.
-Delete accepts
-`--report-now` to retract an already displayed item. Required operands may start with `--`;
-only arguments following those operands are parsed as flags. List responses cover the store's
-complete JSON-encoded capacity and reject oversized responses explicitly rather than truncating.
+Code Mode journal mutations are lowered to an authenticated `mcommentary`
+frontend invoked through stock `tools.exec_command`. The frontend publishes
+only the requested mutation through a call-scoped broker capability; it does
+not run the surrounding program or replace the stock result. Programmatic
+calls can await the returned item ID, including an add followed by an edit.
+Failed publication throws. The capability expires with its owning call and
+cannot be borrowed by another thread. Agent-authored source and private
+publisher credentials are not added to sanitized metrics.
 
-`finish` applies its optional final batch and records completion intent atomically in a durable receipt bound to
-the originating host call and Codex turn. Only that call's successful terminal host result, or
-its proven host-continuation chain, can complete the turn without a provider follow-up request.
-Unrelated historical session handles are not completion prerequisites: an opaque Code Mode
-program may already have awaited them without exposing a separately provable continuation chain.
-Yielded, failed, cancelled, incomplete, or unassociated results do not complete it. Later user
-input or unrelated calls supersede the intent. Replay can recover the same turn's receipt after
-a router restart, but another turn or fork cannot consume it. Missing turn identity or call
-provenance fails closed; use direct `functions.journal` finish in that case. There is no `commentary` alias.
-Other interpreters have no journal builtin.
-
-Both forms reuse authenticated broker routes and private thread-bound discovery.
-Shell routes use inherited `CODEX_THREAD_ID`; agents do not add publisher flags or inline
-environment assignments to scripts. Translated Bash/POSIX invocations carry a private call-scoped
-capability with an immutable answer source in private framing inside the existing quoted source
-argument. The worker strips this framing before parsing headers, binds the capability to its
-own sink, and never exports it to the program environment. Background commands share that invocation's sink,
-not mutable thread-wide question state. Unattributed workers retain the thread route for ordinary
-mutations and lists, but cannot finish or infer an answer source. Code Mode retains its per-call
-capability until completion or expiry. Closing an already handed-off response does not cancel its publisher.
+`functions.journal` owns `list`, `add`, `edit`, `delete`, and `finish`. Its
+`finish` operation may include a final mutation batch. A successful direct
+finish with no pending Codex-dispatched work can deliver the terminal journal
+without another provider request. Failed, incomplete, or unrelated tool calls
+cannot turn a prior finish into a new terminal result. Replay may restore the
+exact journal call and result, but cannot finish another turn or branch. For
+Code Mode, finish through the dedicated `functions.journal` tool after required
+stock results, not as an executable command.
 
 ### Delivery failures
 

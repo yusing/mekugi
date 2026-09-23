@@ -68,7 +68,7 @@ func subagentToolPreview(item map[string]json.RawMessage, qualifiedName string, 
 		return "Run"
 	}
 	switch shortName {
-	case "shell", "shell_command", "exec_command":
+	case "exec_command":
 		script := input
 		if arguments != nil {
 			script = jsonString(arguments, "cmd")

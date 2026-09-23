@@ -13,25 +13,22 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
-	"github.com/yusing/mekugi/internal/shellruntime"
+	"github.com/yusing/mekugi/internal/runtimepath"
 )
 
 const (
 	toolPluginManifestFilename = "workers.json"
-	builtinToolsPluginID       = "builtin.shell"
-	reportIssueToolName        = "report_issue"
-	reportIssueToolDescription = `Free-form Markdown issue report for an observed mekugi-related tool interaction.`
+	builtinToolsPluginID       = "builtin.frontends"
 )
 
 func buildToolRegistry(ctx context.Context, dataDirectory string, diagnose bool) (*toolRegistry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	runtimeDirectory, err := shellruntime.Directory()
+	runtimeDirectory, err := runtimepath.Directory()
 	if err != nil {
-		return nil, fmt.Errorf("locate shell runtime directory: %w", err)
+		return nil, fmt.Errorf("locate tool runtime directory: %w", err)
 	}
 	replayDirectory, err := defaultMekugiReplayDirectory()
 	if err != nil {
@@ -47,7 +44,7 @@ func buildToolRegistryAt(
 	runtimeDirectory, replayDirectory string,
 ) (*toolRegistry, error) {
 	if err := os.MkdirAll(runtimeDirectory, 0o700); err != nil {
-		return nil, fmt.Errorf("create shell runtime directory: %w", err)
+		return nil, fmt.Errorf("create tool runtime directory: %w", err)
 	}
 	snapshotDirectory, err := os.MkdirTemp(runtimeDirectory, "mekugi-tools-")
 	if err != nil {
@@ -65,11 +62,13 @@ func buildToolRegistryAt(
 	if err := pinRunningToolWorker(snapshotDirectory); err != nil {
 		return fail(err)
 	}
-	diagnoseHooks := mekugi.NewDiagnoseHooks("")
+	var reportHooks diagnoseHooks
 	if diagnose {
-		diagnoseHooks = mekugi.NewDiagnoseHooks(dataDirectory)
+		reportHooks, err = loadDiagnoseHooks(dataDirectory)
+		if err != nil {
+			return fail(err)
+		}
 	}
-
 	pluginSnapshot, err := toolplugin.Load(
 		ctx,
 		filepath.Join(dataDirectory, "plugins"),
@@ -82,15 +81,11 @@ func buildToolRegistryAt(
 		{PluginID: "builtin.mekugi", Name: "mread", Builtin: true, Executable: true},
 		{PluginID: "builtin.mekugi", Name: "mrun", Builtin: true, Executable: true},
 		{PluginID: "builtin.mekugi", Name: "mchanges", Builtin: true, Executable: true},
-		{PluginID: "builtin.mekugi", Name: mekugiToolName, Builtin: true},
+		{PluginID: "builtin.mekugi", Name: "mcommentary", Builtin: true, Executable: true},
 	}
 	if diagnose {
 		contributions = append(contributions, toolContribution{
-			PluginID:      "builtin.mekugi",
-			Name:          reportIssueToolName,
-			Specification: mustMarshalJSON(customFreeformTool(reportIssueToolName, reportIssueToolDescription)),
-			Builtin:       true,
-			ModelVisible:  true,
+			PluginID: "builtin.mekugi", Name: reportIssueToolName, Builtin: true,
 		})
 	}
 	var validationErrors []error
@@ -128,7 +123,6 @@ func buildToolRegistryAt(
 				Module:        plugin.Module,
 				ModuleIndex:   toolIndex,
 				Executable:    true,
-				ModelVisible:  name != "mcat" && name != "hgrep" && name != "msymbol" && name != "inspect_file",
 			}
 			if validationErr := validateToolContribution(contribution); validationErr != nil {
 				validationErrors = append(validationErrors, validationErr)
@@ -153,12 +147,7 @@ func buildToolRegistryAt(
 		return fail(errors.Join(validationErrors...))
 	}
 
-	routing, err := toolplugin.LoadCommandRouting(ctx, pluginSnapshot.NodeExecutable, filepath.Join(snapshotDirectory, "runtime"))
-	if err != nil {
-		return fail(fmt.Errorf("load shell command routing policy: %w", err))
-	}
 	manifest := toolWorkerManifest{
-		CommandRouting:  &routing,
 		ReplayDirectory: replayDirectory,
 		HookDirectory:   dataDirectory,
 		Version:         1,
@@ -184,7 +173,6 @@ func buildToolRegistryAt(
 	if err := writeToolWorkerManifest(snapshotDirectory, manifest); err != nil {
 		return fail(err)
 	}
-	var shellRuntime string
 	for _, contribution := range contributions {
 		if !contribution.Executable {
 			continue
@@ -194,36 +182,23 @@ func buildToolRegistryAt(
 			validationErrors = append(validationErrors, wrapperErr)
 			continue
 		}
-		if contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell" {
-			shellRuntime = wrapper
-		} else {
-			wrappers[contribution.Name] = wrapper
-		}
+		wrappers[contribution.Name] = wrapper
 	}
 	if len(validationErrors) != 0 {
 		return fail(errors.Join(validationErrors...))
 	}
-	if shellRuntime == "" {
-		return fail(errors.New("built-in shell runtime is unavailable"))
-	}
-	translator, err := toolplugin.NewTranslator(ctx, pluginSnapshot.NodeExecutable, runtimeRoot, byName["shell"].Module)
-	if err != nil {
-		return fail(err)
-	}
 	return &toolRegistry{
-		commandRouting:    &routing,
-		builtinTranslator: translator,
 		SnapshotDir:       snapshotDirectory,
 		RuntimeRoot:       runtimeRoot,
 		NodeExecutable:    pluginSnapshot.NodeExecutable,
 		frontendDirectory: filepath.Join(snapshotDirectory, "bin"),
 		runtimeDirectory:  runtimeDirectory,
-		shellRuntime:      shellRuntime,
 		ordered:           contributions,
 		byName:            byName,
 		wrappers:          wrappers,
 		frontends:         frontends,
-		DiagnoseHooks:     diagnoseHooks,
+		diagnoseHooks:     reportHooks,
+		diagnoseEnabled:   diagnose,
 	}, nil
 }
 
@@ -368,7 +343,6 @@ func (registry *toolRegistry) Close() error {
 		return nil
 	}
 	registry.closeOnce.Do(func() {
-		registry.builtinTranslator.Close()
 		registry.closeErr = errors.Join(
 			removeWorkerFrontendSymlinks(registry.frontends, registry.wrappers),
 			os.RemoveAll(registry.SnapshotDir),
@@ -392,23 +366,4 @@ func (registry *toolRegistry) contribution(name string) (toolContribution, bool)
 	}
 	contribution, ok := registry.byName[name]
 	return contribution, ok
-}
-
-// specifications returns the tool specifications for all model-visible contributions.
-func (registry *toolRegistry) specifications() ([]*responsesToolDefinition, error) {
-	if registry == nil {
-		return nil, errors.New("tool registry is unavailable")
-	}
-	specifications := make([]*responsesToolDefinition, 0, len(registry.ordered))
-	for _, contribution := range registry.ordered {
-		if !contribution.ModelVisible {
-			continue
-		}
-		specification, err := decodeResponsesToolDefinition(contribution.Specification)
-		if err != nil {
-			return nil, fmt.Errorf("decode registered tool %s/%s: %w", contribution.PluginID, contribution.Name, err)
-		}
-		specifications = append(specifications, specification)
-	}
-	return specifications, nil
 }

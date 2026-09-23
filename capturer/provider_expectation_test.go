@@ -1,6 +1,7 @@
 package capturer
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -27,6 +28,7 @@ func TestRecorderDistinguishesNoGenerateFromMissingProvider(t *testing.T) {
 			t.Fatal(err)
 		}
 		if withProvider {
+			ObserveProjectedRequest(context.WithValue(t.Context(), captureKey{}, state), body)
 			attempt := state.beginProviderAttempt()
 			recorder.recordExchange(state, "provider", attempt, time.Now(), body, observedTerminal, http.StatusOK, "application/json", "", nil, providerResponseEvidence{})
 		}
@@ -77,5 +79,28 @@ func TestRecorderDistinguishesNoGenerateFromMissingProvider(t *testing.T) {
 	}
 	if rebuilt.Requests != snapshot.Requests || rebuilt.Capture.MissingProvider != snapshot.Capture.MissingProvider {
 		t.Fatalf("provider expectation does not reconcile: live=%+v rebuilt=%+v", snapshot, rebuilt)
+	}
+}
+
+func TestRecorderMarksMissingProjectedRequestIncomplete(t *testing.T) {
+	recorder, err := New(Config{Mode: "mekugi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recorder.Close()
+	state, err := recorder.beginRequest(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := []byte(`{"model":"test","input":[]}`)
+	terminal := []byte(`{"status":"completed","output":[]}`)
+	response := observedPayload{content: terminal, bytes: uint64(len(terminal))}
+	attempt := state.beginProviderAttempt()
+	recorder.recordExchange(state, "provider", attempt, time.Now(), request, response, http.StatusOK, "application/json", "", nil, providerResponseEvidence{})
+	recorder.recordExchange(state, "codex", 0, time.Now(), request, response, http.StatusOK, "application/json", "", nil, providerResponseEvidence{})
+	snapshot := recorder.snapshot()
+	if snapshot.Capture.CaptureErrors != 1 || len(snapshot.Exchanges) != 1 ||
+		len(snapshot.Exchanges[0].ProviderAttempts) != 1 || snapshot.Exchanges[0].ProviderAttempts[0].ProjectedRequest != nil {
+		t.Fatalf("missing projected request was presented as complete: %+v", snapshot)
 	}
 }

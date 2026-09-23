@@ -21,14 +21,13 @@ func TestDashboardUsesCaptureMetricsOnTheExistingListener(t *testing.T) {
 	for _, required := range []string{
 		"Token<br>Telemetry", "Skip to content", `role="tablist"`, `data-view="overview"`,
 		`id="status-pill"`, `class="cards"`, "prefers-reduced-motion",
-		"fetch('/api/metrics'", "mekugi.capture.metrics.v5", "Provider usage",
+		"fetch('/api/metrics'", "mekugi.capture.metrics.v6", "Provider usage",
 		"Client steering requests", "Provider steering requests", "Provider steering events", "Client steering events",
-		"Translation delivery, not host application", "Unclassified", "data.mekugi.unclassified",
-		"Transport", "Hashline edits", "Hashline edit diagnostics",
+		"Transport",
 		"Provider response evidence", "provider_response", "Provider request ID", "Explicit cached tokens", "Cache-prefix diagnostics", "cache_diagnostics", "Post-replay prefix", "Outgoing route key", "Turn-state forwarding", "turn_state_forwarding", "Capture health", "Tool transport", "Recent exchanges", "Provider attempts",
-		"Provider tool calls", "Delivered tool calls", "Usage-bearing attempts", "Provider input tokens",
+		"Provider tool calls", "Delivered tool calls", "Usage-bearing attempts",
 		"Estimated prefix reuse", "Estimated prefix misses",
-		"Delivered input tokens", "Input bytes", "Item bytes", "response_complete", "Semantic output",
+		"Input bytes", "Item bytes", "response_complete", "Semantic output",
 		"provider_attempt_outputs", "client_final_output", "Provider-attempt model outputs",
 		"Client model outputs", "<th>Client model output</th>", "<th>Provider model output</th>",
 		"Complete model-origin output arrays", "excludes router-generated commentary",
@@ -40,7 +39,7 @@ func TestDashboardUsesCaptureMetricsOnTheExistingListener(t *testing.T) {
 			t.Fatalf("dashboard is missing %q", required)
 		}
 	}
-	for _, forbidden := range []string{"EventSource(", "fonts.googleapis.com", "fonts.gstatic.com", ".innerHTML"} {
+	for _, forbidden := range []string{"EventSource(", "fonts.googleapis.com", "fonts.gstatic.com", ".innerHTML", "data.mekugi"} {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("dashboard contains obsolete or unsafe fragment %q", forbidden)
 		}

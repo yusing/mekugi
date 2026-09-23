@@ -1,11 +1,44 @@
 package router
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/yusing/mekugi/internal/shellsyntax"
 	"mvdan.cc/sh/v3/syntax"
 )
+
+const shellInterpreterNamePattern = `python(?:[0-9]+(?:\.[0-9]+)*)?|pypy[0-9]*|node(?:js)?|bun|` +
+	`bash|dash|fish|ksh|mksh|sh|yash|zsh|perl|ruby|php|lua(?:jit)?|` +
+	`r(?:script)?|psql|mysql|sqlite3|pwsh|powershell`
+
+var (
+	shellInterpreterPattern = regexp.MustCompile(`(?i)^(?:` + shellInterpreterNamePattern + `)$`)
+	shellCommandFlagPattern = regexp.MustCompile(`^-[euilx]*c$`)
+)
+
+func shellInterpreterFlag(name, flag string) (source, harmless bool) {
+	switch {
+	case strings.HasPrefix(name, "python"), strings.HasPrefix(name, "pypy"):
+		return flag == "-c", flag == "-I" || flag == "-u" || flag == "-B" || flag == "-E" || flag == "-s" || flag == "-S"
+	case name == "node" || name == "nodejs" || name == "bun":
+		return flag == "-e" || flag == "--eval", flag == "--input-type=module" || flag == "--input-type=commonjs" || flag == "--trace-warnings"
+	case name == "bash" || name == "sh" || name == "dash" || name == "zsh" || name == "ksh" || name == "mksh" || name == "yash":
+		return shellCommandFlagPattern.MatchString(flag), flag == "-e" || flag == "-u" || flag == "-x" || flag == "-l" || flag == "-i"
+	case name == "fish":
+		return flag == "-c" || flag == "--command", false
+	case name == "php":
+		return flag == "-r", false
+	case name == "psql":
+		return flag == "-c" || flag == "--command", false
+	case name == "mysql":
+		return flag == "-e" || flag == "--execute", false
+	case name == "perl" || name == "ruby" || name == "r" || name == "rscript" || strings.HasPrefix(name, "lua"):
+		return flag == "-e", false
+	default:
+		return false, false
+	}
+}
 
 // shellScriptProjection is display-only. It exposes literal interpreter source
 // without changing, evaluating, or claiming completion of the observed command.

@@ -171,7 +171,7 @@ func TestAXReadConcurrentWriters(t *testing.T) {
 	var workers sync.WaitGroup
 	for range 20 {
 		workers.Go(func() {
-			observation, err := StartAXReadWithContext(path, "thread", "hgrep", AXReadContext{})
+			observation, err := StartAXReadWithContext(path, "thread", "mcat", AXReadContext{})
 			if err != nil {
 				t.Error(err)
 				return
@@ -238,17 +238,17 @@ func TestAXReadRejectsDuplicateAndUnpairedEvents(t *testing.T) {
 	}
 }
 
-func TestAXEditMeasurementsUseOriginalPayloadBytes(t *testing.T) {
+func TestAXEditMeasurementsUseObservedStockPatchBytes(t *testing.T) {
 	var edits AXEditAccumulator
-	first := "in f\nold\nold\n"
+	first := "*** Begin Patch\n*** Update File: f\n-old\n+new\n*** End Patch\n"
 	second := first + "old\n"
-	edits.Observe(first, false, true, false)
-	edits.Observe(second, true, true, false)
-	edits.Observe(`type "old" "new"`, true, false, true)
-	if edits.Metrics.Calls != 3 || edits.Metrics.RecoveryRetries != 2 ||
-		edits.Metrics.ReEmittedLineBytes != uint64(len(first)) ||
-		edits.Metrics.EmittedBytes != uint64(len(first)+len(second)+len(`type "old" "new"`)) ||
-		edits.Metrics.Rejected != 2 || edits.Metrics.Unconfirmed != 1 {
+	edits.Observe(first, true, false)
+	edits.Observe(second, true, false)
+	edits.Observe("*** Begin Patch\n*** Add File: other\n+ready\n*** End Patch\n", false, true)
+	if edits.Metrics.Calls != 3 ||
+		edits.Metrics.ReEmittedLineBytes != uint64(len(first)+len("*** Begin Patch\n")+len("*** End Patch\n")) ||
+		edits.Metrics.EmittedBytes != uint64(len(first)+len(second)+len("*** Begin Patch\n*** Add File: other\n+ready\n*** End Patch\n")) ||
+		edits.Metrics.Failed != 2 || edits.Metrics.Unconfirmed != 1 {
 		t.Fatalf("edit metrics = %+v", edits.Metrics)
 	}
 }

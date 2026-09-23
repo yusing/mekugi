@@ -5,9 +5,7 @@ import {tmpdir} from "node:os";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
 
-import {formatVerifiedRow, hashLine} from "mekugi:core/v1";
-import {countGPT5Tokens, VerifiedRowOutput} from "../../../../plugins/common.ts";
-import {createHGrepTool, splitArguments} from "../../../../plugins/hgrep.ts";
+import {BoundedTextOutput, countGPT5Tokens} from "../../../../plugins/common.ts";
 import {createMCatTool} from "../../../../plugins/mcat.ts";
 import {createMSymbolTool} from "../../../../plugins/msymbol.ts";
 import {runLSPQuery} from "../../../../plugins/lsp.ts";
@@ -112,15 +110,12 @@ async function inspectOutline(name: string): Promise<Record<string, unknown>[]> 
   return (await inspect(name)).result.data.outline;
 }
 
-const hashedRowPattern = /^(\d+):[0-9a-f]{4}$/u;
-
 function outlineLine(entry: Record<string, unknown>, field = "line"): number {
-  const value = String(entry[field]);
-  const match = hashedRowPattern.exec(value);
-  if (match === null) {
-    throw new Error(`invalid ${field} identity ${value}`);
-  }
-  return Number(match[1]);
+	const value = entry[field];
+	if (!Number.isSafeInteger(value) || Number(value) < 1) {
+		throw new Error(`invalid ${field} identity ${String(value)}`);
+	}
+	return Number(value);
 }
 
 function rustRegexMatches(pattern: string, input: string): boolean {
@@ -198,7 +193,7 @@ afterEach(async () => {
   );
 });
 
-describe("verified-row output", () => {
+describe("bounded text output", () => {
   test("matches the shared Go GPT-5 token fixtures", async () => {
     const fixtures = JSON.parse(await readFile(
       new URL("./testdata/gpt5_tokens.json", import.meta.url),
@@ -210,12 +205,12 @@ describe("verified-row output", () => {
   });
 
   test("byte-bound admission preserves exact token limits", () => {
-    const unicode = new VerifiedRowOutput(1);
+    const unicode = new BoundedTextOutput(1);
     expect(unicode.append("🙂")).toBe(true);
     expect(unicode.append("x")).toBe(false);
     expect(unicode.current).toBe("🙂");
 
-    const compressible = new VerifiedRowOutput(15_000);
+    const compressible = new BoundedTextOutput(15_000);
     const row = " x".repeat(8000);
     expect(Buffer.byteLength(row)).toBeGreaterThan(15_000);
     expect(countGPT5Tokens(row)).toBeLessThan(15_000);
@@ -225,7 +220,7 @@ describe("verified-row output", () => {
   });
 
   test("uses strict GPT-5 limits with complete rows", () => {
-    const exact = new VerifiedRowOutput(15_500);
+    const exact = new BoundedTextOutput(15_500);
     const atSoftLimit = contentWithFormattedTokenCount(15_000, (content) => `${content}\n`);
     expect(exact.append(atSoftLimit)).toBe(true);
     expect(exact.incomplete).toBe(false);
@@ -242,76 +237,11 @@ describe("verified-row output", () => {
     expect(exact.incomplete).toBe(true);
     expect(exact.current).toBe(atSoftLimit + overshootRow);
 
-    const tooLarge = new VerifiedRowOutput(15_500);
+    const tooLarge = new BoundedTextOutput(15_500);
     const aboveMaximum = contentWithFormattedTokenCount(15_501, (content) => `${content}\n`);
     expect(tooLarge.append(`${aboveMaximum}\n`)).toBe(false);
     expect(tooLarge.current).toBe("");
     expect(tooLarge.incomplete).toBe(true);
-  });
-});
-
-describe("reader budgets and previews", () => {
-  test("shares strict budgets and explicit previews without changing row identities", async () => {
-    const directory = await temporaryDirectory("reader-preview-");
-    process.chdir(directory);
-    const content = `needle 🙂${" x".repeat(20_000)}`;
-    await writeFile("long.txt", `${content}\nneedle second\n`, "utf8");
-    const tools = [{tool: createHGrepTool("test", ""), args: ["-F", "needle", "long.txt"]}];
-    for (const {tool, args} of tools) {
-      const result = await tool.execute(["--max-tokens", "200", "--preview-bytes", "9", ...args], executionContext);
-      expect(result.exitCode).toBe(0);
-      expect(countGPT5Tokens(result.stdout ?? "")).toBeLessThanOrEqual(200);
-      const rows = result.stdout!.trimEnd().split("\n").map((line) => JSON.parse(line));
-      expect(rows).toHaveLength(2);
-      expect(rows[0]).toMatchObject({
-        row: `1:${hashLine(content)}`,
-        preview: "needle ",
-        source_bytes: Buffer.byteLength(content),
-        omitted_bytes: Buffer.byteLength(content) - 7,
-      });
-      expect(rows[1].row).toBe(`2:${hashLine("needle second")}`);
-      const limited = await tool.execute(["--max-tokens", "1", ...args], executionContext);
-      expect(limited.exitCode).toBe(1);
-      expect(limited.stdout).toBe("");
-      expect(limited.stderr).toContain("output incomplete: 1-token limit reached");
-      for (const invalid of [
-        ["--max-tokens", "0"], ["--max-tokens", "15501"], ["--preview-bytes", "65537"],
-        ["--preview-bytes", "2", "--preview-bytes", "3"], ["--max-tokens", "1e3"],
-      ]) {
-        const rejected = await tool.execute([...invalid, ...args], executionContext);
-        expect(rejected.exitCode).toBe(1);
-        expect(rejected.stderr).toContain("requires one integer");
-      }
-    }
-  });
-
-  test("keeps admitted rows within a strict caller budget", async () => {
-    const directory = await temporaryDirectory("reader-budget-");
-    process.chdir(directory);
-    await writeFile("rows.txt", "needle first\nneedle second\n", "utf8");
-    for (const {tool, args} of [
-      {tool: createMCatTool("test", ""), args: ["rows.txt"]},
-      {tool: createHGrepTool("test", ""), args: ["-F", "needle", "rows.txt"]},
-    ]) {
-      const full = await tool.execute(args, executionContext);
-      const first = full.stdout!.split("\n")[0] + "\n";
-      const budget = countGPT5Tokens(first);
-      const limited = await tool.execute(["--max-tokens", String(budget), ...args], executionContext);
-      expect(limited.stdout).toBe(first);
-      expect(limited.exitCode).toBe(1);
-      expect(countGPT5Tokens(limited.stdout!)).toBeLessThanOrEqual(budget);
-    }
-  });
-
-  test("retains bounded mcat storage", async () => {
-    const directory = await temporaryDirectory("reader-preview-bound-");
-    process.chdir(directory);
-    await writeFile("huge.txt", "a".repeat(2_000_000), "utf8");
-    const tool = createMCatTool("test", "");
-    const result = await tool.execute(["huge.txt"], executionContext);
-    expect(result.exitCode).toBe(1);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("row 1 exceeds the 1984000-byte inspection bound");
   });
 });
 
@@ -428,17 +358,6 @@ describe("shared reader controls", () => {
         expect(await tool.execute(argv, executionContext)).toEqual(before);
       }
     }
-    await writeFile(file, "--max-tokens\nordinary\n");
-    const grep = createHGrepTool("", "");
-    for (const args of [
-      ["-F", "-e", "--max-tokens", file, "--max-tokens", "200"],
-      ["--max-tokens", "200", "-F", "--regexp", "--max-tokens", file],
-      ["--max-tokens", "200", "-F", "--", "--max-tokens", file],
-    ]) {
-      const result = await grep.execute(args, executionContext);
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain(formatVerifiedRow(1, "--max-tokens"));
-    }
   });
 
   test("bounds omitted rows even when selected line-only rows bypass tokenization", async () => {
@@ -548,9 +467,6 @@ describe("mcat built-in plugin", () => {
     expect(description).toContain("Read one or more UTF-8 files or inclusive logical-line ranges");
     expect(description).toContain("raw rows without line or hash prefixes");
     expect(description).toContain("`mcat [-n N] [--max-tokens N] [--tail] PATH [START:END] [PATH [START:END] ...]`");
-    for (const persistent of ["authorized edit", "ordinary read", "HPATCH targets", "through `shell`"]) {
-      expect(description).not.toContain(persistent);
-    }
   });
 
   test("declares a multi-file regex grammar", () => {
@@ -742,225 +658,17 @@ describe("mcat built-in plugin", () => {
 
 });
 
-describe("hgrep built-in plugin", () => {
-  test("keeps the private description call-local", () => {
-    const description = plugin.tools[1].specification.description.replace(/\s+/g, " ");
-    expect(description).toContain("Search files with supported ripgrep arguments");
-    expect(description).toContain("`\"PATH\":LINE:HASH TEXT`");
-    for (const persistent of ["authorized edit", "ordinary search", "HPATCH targets", "through `shell`"]) {
-      expect(description).not.toContain(persistent);
-    }
-  });
-
-  test("splits literal arguments without shell evaluation", () => {
-    expect(splitArguments(
-      `-F 'two words' "path with spaces.txt" semi;colon dollar$(value) back\\\\slash`,
-    )).toEqual([
-      "-F",
-      "two words",
-      "path with spaces.txt",
-      "semi;colon",
-      "dollar$(value)",
-      "back\\slash",
-    ]);
-    for (const input of ["", "'unterminated", "\"escape\\", "one\nsecond"]) {
-      expect(() => splitArguments(input)).toThrow();
-    }
-  });
-
-  test("declares a strict Rust regex and accepts one transport newline", async () => {
-    const format = plugin.tools[1].specification.format;
-    expect(format?.syntax).toBe("regex");
-    if (format === undefined) {
-      throw new Error("hgrep grammar format is missing");
-    }
-    const tool = createHGrepTool("description", format.definition);
-    const accepted = [
-      "needle",
-      "  -F 'two words' \"path with spaces.txt\"\t",
-      "empty''argument",
-      "escaped\\ space",
-      "\"\"",
-    ];
-    for (const input of accepted) {
-      expect(rustRegexMatches(format.definition, input)).toBe(true);
-      const parsed = await tool.parse(input);
-      expect(await tool.argv(parsed)).toEqual(splitArguments(input));
-    }
-    for (const input of ["needle\n", "needle\r\n"]) {
-      expect(rustRegexMatches(format.definition, input)).toBe(false);
-      const parsed = await tool.parse(input);
-      expect(await tool.argv(parsed)).toEqual(["needle"]);
-    }
-    for (const input of [
-      "",
-      " \t",
-      "\nneedle",
-      "needle\n\n",
-      "needle\r",
-      "one\r\ntwo",
-      "'unterminated",
-      "\"escape\\",
-      "'one\nsecond'",
-    ]) {
-      expect(rustRegexMatches(format.definition, input)).toBe(false);
-      expect(() => tool.parse(input)).toThrow();
-    }
-  });
-
-
-  test("maps repeated matches after bare CR to exact logical rows", async () => {
-    const directory = await temporaryDirectory("hgrep-logical-");
-    process.chdir(directory);
-    await writeFile("mixed.txt", "prefix\rskip\nsame\nsame\n");
-    const result = await createHGrepTool("test", "").execute(["-F", "same", "mixed.txt"], executionContext);
-    expect(result).toEqual({
-      stdout: `${JSON.stringify("mixed.txt")}:${formatVerifiedRow(3, "same")}`
-        + `${JSON.stringify("mixed.txt")}:${formatVerifiedRow(4, "same")}`,
-      stderr: "",
-      exitCode: 0,
-    });
-    const contextual = await createHGrepTool("test", "").execute(["-B1", "-F", "same", "mixed.txt"], executionContext);
-    expect(contextual.exitCode).toBe(0);
-    expect(contextual.stdout).toContain(`${JSON.stringify("mixed.txt")}:${formatVerifiedRow(2, "skip")}`);
-  });
-
-  test("preserves BOM source rows and rejects UTF-16 search identities", async () => {
-    const directory = await temporaryDirectory("reader-bom-");
-    process.chdir(directory);
-    const cat = createMCatTool("test", "");
-    const grep = createHGrepTool("test", "");
-    for (const source of ["\uFEFF", "\uFEFFneedle\nnext\n"]) {
-      await writeFile("bom.txt", source);
-      const result = await cat.execute(["bom.txt"], executionContext);
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toStartWith(formatMCatRow(1, source.split("\n")[0]));
-      const searched = await grep.execute(["-F", source === "\uFEFF" ? "\uFEFF" : "needle", "bom.txt"], executionContext);
-      expect(searched.exitCode).toBe(0);
-      expect(searched.stdout).toBe(`${JSON.stringify("bom.txt")}:${formatVerifiedRow(1, source.split("\n")[0])}`);
-    }
-    await writeFile("utf16.txt", Buffer.from("\uFEFFneedle\n", "utf16le"));
-    const rejected = await grep.execute(["-F", "n", "utf16.txt"], executionContext);
-    expect(rejected.exitCode).toBe(1);
-    expect(rejected.stdout).toBeUndefined();
-    expect(rejected.stderr).toContain("not UTF-8");
-  });
-
-  test("runs ripgrep and emits verified complete rows", async () => {
-    const directory = await temporaryDirectory("hgrep-plugin-");
-    process.chdir(directory);
-    await writeFile("path with spaces.txt", "before\nneedle\nafter\n", "utf8");
-    await writeFile("token-spellings.txt", "<|endoftext|> <|im_start|> <|fim_prefix|>\n", "utf8");
-
-    const tool = createHGrepTool("description", "start: TEST");
-    const result = await tool.execute(["-A1", "-F", "needle", "path with spaces.txt"], executionContext);
-    expect(result).toEqual({
-      stdout: `${JSON.stringify("path with spaces.txt")}:${formatVerifiedRow(2, "needle")}`
-        + `${JSON.stringify("path with spaces.txt")}:${formatVerifiedRow(3, "after")}`,
-      stderr: "",
-      exitCode: 0,
-    });
-
-    await writeFile("carriage.txt", "needle\r", "utf8");
-    const carriage = await tool.execute(["-F", "needle", "carriage.txt"], executionContext);
-    expect(carriage).toEqual({
-      stdout: `${JSON.stringify("carriage.txt")}:${formatVerifiedRow(1, "needle")}`,
-      stderr: "",
-      exitCode: 0,
-    });
-
-    const tokenSpellings = await tool.execute(["-F", "<|im_start|>", "token-spellings.txt"], executionContext);
-    expect(tokenSpellings).toEqual({
-      stdout: `${JSON.stringify("token-spellings.txt")}:${formatVerifiedRow(
-        1,
-        "<|endoftext|> <|im_start|> <|fim_prefix|>",
-      )}`,
-      stderr: "",
-      exitCode: 0,
-    });
-
-    const missing = await tool.execute(["-F", "needle", "missing.txt"], executionContext);
-    expect(missing.exitCode).toBe(1);
-    expect(missing.stderr).toMatch(
-      /^hgrep: (?!rg:)(?!.*missing\.txt)(?!.*IO error for operation on ).+\n$/u,
-    );
-  });
-
-  test("retains whole admitted matches and fails when later matches exceed the token limit", async () => {
-    const directory = await temporaryDirectory("hgrep-limit-");
-    process.chdir(directory);
-    const prefix = `${JSON.stringify("large.txt")}:`;
-    const first = contentWithFormattedTokenCount(
-      15_000,
-      (content) => `${prefix}${formatVerifiedRow(1, content)}`,
-    );
-    await writeFile("large.txt", `${first}\nneedle second\nneedle third\n`, "utf8");
-
-    const tool = createHGrepTool("description", "start: TEST");
-    const result = await tool.execute(["-F", "needle", "large.txt"], executionContext);
-    expect(result).toEqual({
-      stdout: `${prefix}${formatVerifiedRow(2, "needle second")}`
-        + `${prefix}${formatVerifiedRow(3, "needle third")}`,
-      stderr: "",
-      exitCode: 0,
-    });
-
-    await writeFile("large.txt", `needle ${first}\nneedle second\nneedle third\n`, "utf8");
-    const limited = await tool.execute(["-F", "needle", "large.txt"], executionContext);
-    expect(limited.exitCode).toBe(1);
-    expect(limited.stderr).toStartWith("hgrep: output incomplete: 4000-token limit reached\n");
-    await rm("large.txt");
-    expect(limited.omittedOutput).toEqual({stdout:
-      `${prefix}${formatVerifiedRow(1, `needle ${first}`)}`
-      + `${prefix}${formatVerifiedRow(2, "needle second")}`
-      + `${prefix}${formatVerifiedRow(3, "needle third")}`, stderr: "", stdoutKind: "rows"});
-    expect(limited.stdout).toBe("");
-    expect(limited.stdout).not.toContain("needle second");
-    expect(limited.stdout).not.toContain("needle third");
-  });
-
-  test("bounds source events separately from JSON wire bytes", async () => {
-    const directory = await temporaryDirectory("hgrep-source-bound-");
-    process.chdir(directory);
-    await writeFile("large.txt", `needle\nneedle ${"x".repeat(2_000_000)}\n`);
-    const result = await createHGrepTool("test", "").execute(["--preview-bytes", "32", "-F", "needle", "large.txt"], executionContext);
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toBe("hgrep: output incomplete: rg source event exceeds the 1984000-byte inspection bound\n");
-    expect(JSON.parse(result.stdout!)).toMatchObject({row: `1:${hashLine("needle")}`, preview: "needle"});
-  });
-
-  test("accepts GNU grep and ripgrep search options while rejecting incompatible modes", async () => {
-    const directory = await temporaryDirectory("hgrep-plugin-");
-    process.chdir(directory);
-    await writeFile("file.txt", "needle\n", "utf8");
-
-    const tool = createHGrepTool("description", "start: TEST");
-    const gnuGrep = await tool.execute(["-R", "-n", "-F", "needle", "file.txt"], executionContext);
-    const ripgrep = await tool.execute(["--glob", "*.txt", "-F", "needle", "file.txt"], executionContext);
-    expect(gnuGrep).toEqual(ripgrep);
-    expect(gnuGrep.stderr).toBe("");
-
-    const ignored = await tool.execute(["--color", "always", "-F", "needle", "file.txt"], executionContext);
-    expect(ignored.exitCode).toBe(0);
-    expect(ignored.stderr).toContain("ignoring ripgrep options --color");
-
-    const rejected = await tool.execute(["--multiline", "needle", "file.txt"], executionContext);
-    expect(rejected.exitCode).toBe(1);
-    expect(rejected.stderr).toContain("--multiline is incompatible");
-  });
-});
-
 describe("msymbol built-in plugin", () => {
   const symbolRow = (sourcePath: string, line: number, text: string): string =>
     `${JSON.stringify(sourcePath)}:${line} ${text}\n`;
 
   test("keeps its executable contract behavioral", () => {
-    const description = plugin.tools[2].specification.description.replace(/\s+/g, " ");
+	const description = plugin.tools[1].specification.description.replace(/\s+/g, " ");
     expect(description).toContain("msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH LINE SYMBOL [N]");
     expect(description).toContain('"PATH":LINE TEXT');
     expect(description).not.toContain("HASH");
     expect(description).toContain("Ambiguous selectors");
-    for (const persistent of ["rename", "audit", "before editing", "functions.hpatch"]) {
+    for (const persistent of ["rename", "audit", "before editing"]) {
       expect(description).not.toContain(persistent);
     }
   });
@@ -984,12 +692,12 @@ describe("msymbol built-in plugin", () => {
     const goInspection = await createInspectFileTool("test", "").execute(["sample.go"], executionContext);
     expect(JSON.parse(goInspection.stdout!).data).toMatchObject({
       parse_complete: true,
-      outline: [{kind: "function", name: "Pick", line: `2:${hashLine("func Pick() {")}`, line_end: `4:${hashLine("}")}`}],
+      outline: [{kind: "function", name: "Pick", line: 2, line_end: 4}],
     });
     await writeFile("sample.ts", "\uFEFFfunction pick() {}\n");
     const inspected = await createInspectFileTool("test", "").execute(["sample.ts"], executionContext);
     expect(inspected.exitCode).toBe(0);
-    expect(inspected.stdout).toContain(`1:${hashLine("\uFEFFfunction pick() {}")}`);
+    expect(JSON.parse(inspected.stdout!).data.outline[0].line).toBe(1);
   });
 
   test("parses BOM Markdown frontmatter and JSON with original row identities", async () => {
@@ -1001,8 +709,8 @@ describe("msymbol built-in plugin", () => {
     expect(JSON.parse(markdown.stdout!).data).toMatchObject({
       parse_complete: true,
       outline: [
-        {kind: "frontmatter", name: "title", line: `2:${hashLine("title: Example")}`},
-        {kind: "heading", line: `4:${hashLine("# Heading")}`},
+        {kind: "frontmatter", name: "title", line: 2},
+        {kind: "heading", line: 4},
       ],
     });
     for (const [file, source] of [
@@ -1014,11 +722,11 @@ describe("msymbol built-in plugin", () => {
       const result = await tool.execute([file], executionContext);
       const data = JSON.parse(result.stdout!).data;
       expect(data.parse_complete).toBe(true);
-      expect(data.outline[0].line).toBe(`1:${hashLine(source.split("\n")[0])}`);
+      expect(data.outline[0].line).toBe(1);
     }
   });
 
-  test("queries a current line in an explicit workspace without a verified read", async () => {
+	test("queries a current line in an explicit workspace", async () => {
     const directory = await temporaryDirectory("msymbol-current-");
     const caller = await temporaryDirectory("msymbol-caller-");
     const source = "package p\nfunc Pick() {}\nfunc Use() { Pick() }\n";
@@ -1239,8 +947,9 @@ describe("msymbol built-in plugin", () => {
       "func Use(r R) { _ = A; _ = B; _ = C{}; D(); r.M() }",
       "",
     ].join("\n");
-    const filePath = path.join(directory, "declarations.go");
-    await writeFile(filePath, source, "utf8");
+	const filePath = path.join(directory, "declarations.go");
+	await writeFile(filePath, source, "utf8");
+	const lines = new LineMap(source);
     const fake = await installFakeGopls();
     const tool = createMSymbolTool("description", "start: TEST");
     const cases = [
@@ -1250,7 +959,6 @@ describe("msymbol built-in plugin", () => {
       {name: "D", from: 11, to: 13},
       {name: "M", from: 15, to: 17},
     ];
-    const lines = new LineMap(source);
 
     for (const testCase of cases) {
       const nameOffset = source.indexOf(testCase.name, lines.logicalLine(testCase.from)?.from);
@@ -1742,7 +1450,7 @@ describe("inspect_file language projections", () => {
     }
   });
 
-  test("hashes each outline boundary once per inspected snapshot", async () => {
+  test("validates each outline boundary once per inspected snapshot", async () => {
     const directory = await temporaryDirectory("inspect-hash-cache-");
     process.chdir(directory);
     const source = JSON.stringify(Array.from({length: 10000}, (_, index) => index));
@@ -1753,9 +1461,8 @@ describe("inspect_file language projections", () => {
       expect(first.result.ok).toBe(true);
       expect(first.result.truncated).toBe(true);
       expect(logicalLine).toHaveBeenCalledTimes(1);
-      const identity = `1:${hashLine(source)}`;
       for (const entry of first.result.data.outline) {
-        expect(entry.line).toBe(identity);
+        expect(entry.line).toBe(1);
         expect(entry.line_end).toBe(entry.line);
       }
       await writeFile("dense.json", "[true, false]\r\n");
@@ -1763,7 +1470,7 @@ describe("inspect_file language projections", () => {
       expect(logicalLine).toHaveBeenCalledTimes(2);
       expect(second.result.data.outline).toHaveLength(3);
       for (const entry of second.result.data.outline) {
-        expect(entry.line).toBe(`1:${hashLine("[true, false]")}`);
+        expect(entry.line).toBe(1);
         expect(entry.line_end).toBe(entry.line);
       }
     } finally {
@@ -1974,7 +1681,7 @@ describe("inspect_file bounds and paths", () => {
     expect(result.failureClass).toBe("output_limit");
   });
 
-  test("emits LINE:HASH span identities without source bodies", async () => {
+  test("emits numeric span identities without source bodies", async () => {
     const directory = await temporaryDirectory("inspect-file-hash-");
     process.chdir(directory);
     const source = [
@@ -1986,13 +1693,12 @@ describe("inspect_file bounds and paths", () => {
     ].join("\n");
     await writeFile("sample.go", source);
     const outline = await inspectOutline("sample.go");
-    const lines = new LineMap(source);
     expect(outline.map((entry) => [entry.kind, entry.name, entry.line, entry.line_end])).toEqual([
       [
         "function",
         "Visible",
-        `2:${hashLine(lines.logicalLine(2)?.text ?? "")}`,
-        `4:${hashLine(lines.logicalLine(4)?.text ?? "")}`,
+        2,
+        4,
       ],
     ]);
     expect(JSON.stringify(outline)).not.toMatch(/body-secret|secret/u);

@@ -75,9 +75,8 @@ for (const failure of ['network', 'HTTP', 'JSON']) {
   });
 }
 
-test('render unknown carriers separately from rejection and host confirmation', () => {
+test('render current capture schema without retired edit-translation metrics', () => {
   const app = dashboard();
-  // Restore the shipped renderer, keeping the existing scheduler test harness.
   runInContext(script.slice(script.indexOf('function render(data){'), script.indexOf('const tabs=')), app.context);
   runInContext(`
     renderedRows = {};
@@ -85,16 +84,12 @@ test('render unknown carriers separately from rejection and host confirmation', 
     tableRows = () => {};
     renderDetails = () => {};
     sample = {
-      schema: 'mekugi.capture.metrics.v5', requests: {}, usage: {}, cache: {},
-	  transport: {}, semantic: {}, capture: {}, exchanges: [],
-      mekugi: { calls: 21, successful: 0, rejected: 2, unclassified: 19, unmatched: 0 }
+      schema: 'mekugi.capture.metrics.v6', requests: {}, usage: {}, cache: {},
+      transport: {}, semantic: {}, capture: {}, exchanges: []
     };
     render(sample);
   `, app.context);
-  const metric = label => runInContext(`renderedRows.mekugi.find(([label]) => label === ${JSON.stringify(label)})[1]`, app.context);
-  assert.equal(metric('Rejected'), '2');
-  assert.equal(metric('Unclassified'), '19');
-  assert.equal(metric('Translated'), '0');
-  runInContext('delete sample.mekugi.unclassified; render(sample)', app.context);
-  assert.equal(metric('Unclassified'), 'unavailable');
+  assert.equal(runInContext('validSnapshot(sample)', app.context), true);
+  assert.equal(runInContext('Object.hasOwn(renderedRows, "mekugi")', app.context), false);
+  assert.equal(runInContext('Object.hasOwn(renderedRows, "health")', app.context), true);
 });

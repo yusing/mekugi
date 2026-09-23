@@ -376,7 +376,7 @@ func (t *mekugiResponseTransform) journalTerminalMessages(response []byte) ([]ma
 	// Explicit finish is completion even with an empty journal. Missing current
 	// usage must invalidate prior totals before rendering, not hide the report.
 	if !t.subagentTurn {
-		if !t.usageObserved && !t.shellFinishRequested {
+		if !t.usageObserved {
 			t.usageTracker.finish()
 		}
 		counts, observed = t.completionUsageReport()

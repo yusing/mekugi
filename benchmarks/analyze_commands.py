@@ -32,7 +32,7 @@ CATEGORIES = (
 SHELLS = {"bash", "dash", "sh", "zsh"}
 CONTROL_WORDS = {"case", "do", "done", "else", "esac", "fi", "for", "function", "select", "then"}
 PREFIX_WORDS = {"if", "elif", "until", "while", "!"}
-SEARCH_TOOLS = {"grep", "hgrep", "rg", "search_code"}
+SEARCH_TOOLS = {"grep", "rg", "search_code"}
 DISCOVERY_TOOLS = {"fd", "find", "ls"}
 FORMATTERS = {"black", "gofmt", "goimports", "prettier", "rustfmt"}
 METADATA_DIFF_OPTIONS = {
@@ -452,7 +452,7 @@ def search_path_operands(words: list[str]) -> tuple[set[str], bool]:
 
 
 def supported_search_include_globs(words: list[str]) -> list[str] | None:
-    if os.path.basename(words[0]) not in {"hgrep", "rg"}:
+    if os.path.basename(words[0]) != "rg":
         return []
     patterns: list[str] = []
     args = words[1:]

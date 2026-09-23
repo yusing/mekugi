@@ -132,7 +132,7 @@ func toolActivityStaticToolCall(call *sitter.Node, bytes []byte) (map[string]jso
 		return nil, false
 	}
 	switch name {
-	case "exec_command", "shell_command", "shell", "view_image", "write_stdin", "apply_patch", journalToolName:
+	case "exec_command", "view_image", "write_stdin", "apply_patch", journalToolName:
 	default:
 		if _, _, ok := toolActivityMCPName(name); !ok && toolActivityBuiltinLabel(name) == "" {
 			return nil, false

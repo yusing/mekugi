@@ -1,11 +1,11 @@
-import {decodeQuotedOperand, formatVerifiedRow, hashLine} from "mekugi:core/v1";
+import {decodeQuotedOperand} from "mekugi:core/v1";
 import path from "node:path";
 import {countGPT5Tokens} from "./tokens.ts";
 export {countGPT5Tokens, MAX_POSSIBLE_GPT5_TOKEN_BYTES} from "./tokens.ts";
 import type {ExecutionContext, ExecutionResult, ReaderFailureClass, Tool} from "../internal/router/toolplugin/plugin.d.ts";
 
 export const READ_DEFAULT_TOKENS = 4_000;
-export const VERIFIED_ROW_MAX_TOKENS = 15_500;
+export const MAX_READER_TOKENS = 15_500;
 
 export function byteLength(value: string): number {
   return Buffer.byteLength(value, "utf8");
@@ -73,7 +73,7 @@ export function readerOptions(argv: string[], allowTail = false, takesValue: (ar
       continue;
     }
     const key = name === "-n" ? "maxLines" : name === "--max-tokens" ? "maxTokens" : "previewBytes";
-    const maximum = key === "maxLines" ? Number.MAX_SAFE_INTEGER : key === "maxTokens" ? VERIFIED_ROW_MAX_TOKENS : 65_536;
+    const maximum = key === "maxLines" ? Number.MAX_SAFE_INTEGER : key === "maxTokens" ? MAX_READER_TOKENS : 65_536;
     const raw = argv[offset + 1] ?? "";
     const value = Number(raw);
     if (options[key] !== undefined || !/^[1-9][0-9]*$/u.test(raw)
@@ -97,36 +97,7 @@ export function readerLimitDiagnostic(options: ReaderOptions): string {
   return `output incomplete: ${options.maxTokens ?? READ_DEFAULT_TOKENS}-token limit reached\n`;
 }
 
-export function utf8SourcePrefix(content: string, maxBytes: number): {text: string; source_bytes: number; omitted_bytes: number} {
-  const bytes = Buffer.from(content, "utf8");
-  let end = Math.min(bytes.length, maxBytes);
-  while (end > 0 && end < bytes.length && (bytes[end] & 0xc0) === 0x80) {
-    end -= 1;
-  }
-  return {
-    text: bytes.subarray(0, end).toString("utf8"),
-    source_bytes: bytes.length,
-    omitted_bytes: bytes.length - end,
-  };
-}
-
-// Preview records never impersonate exact source rows. Their identity still
-// hashes the entire logical row through the portable core.
-export function formatReaderRow(line: number, content: string, options: ReaderOptions, path?: string): string {
-  if (options.previewBytes === undefined) {
-    return `${path === undefined ? "" : `${JSON.stringify(path)}:`}${formatVerifiedRow(line, content)}`;
-  }
-  const {text: preview, source_bytes, omitted_bytes} = utf8SourcePrefix(content, options.previewBytes);
-  return `${JSON.stringify({
-    ...(path === undefined ? {} : {path}),
-    row: `${line}:${hashLine(content)}`,
-    preview,
-    source_bytes,
-    omitted_bytes,
-  })}\n`;
-}
-
-export class VerifiedRowOutput {
+export class BoundedTextOutput {
   current = "";
   incomplete = false;
   constructor(private readonly maxTokens = READ_DEFAULT_TOKENS) {}
@@ -193,9 +164,6 @@ export function createExecutorTool(options: ExecutorToolOptions): Tool<string[]>
     },
     argv(input) {
       return input;
-    },
-    translate(input, api) {
-      return api.exec();
     },
     execute: options.execute,
   };

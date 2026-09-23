@@ -61,6 +61,35 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 	}
 }
 
+func TestFrontendPathSurvivesLoginBash(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash unavailable")
+	}
+	snapshot := filepath.Join(t.TempDir(), "snapshot with spaces")
+	frontend := filepath.Join(snapshot, "bin")
+	if err := os.MkdirAll(frontend, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(frontend, "mcat"), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	prior := filepath.Join(snapshot, "prior-bash-env")
+	if err := os.WriteFile(prior, []byte("export MEKUGI_PRIOR_BASH_ENV=preserved\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "BASH_ENV=" + prior}, frontend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(bash, "-lc", "command -v mcat; printf '%s' \"$MEKUGI_PRIOR_BASH_ENV\"")
+	command.Env = environment
+	output, err := command.Output()
+	if err != nil || string(output) != filepath.Join(frontend, "mcat")+"\npreserved" {
+		t.Fatalf("login Bash frontend = %q, %v", output, err)
+	}
+}
+
 func TestCodexArgsEnforcesCollaborationModeInstructions(t *testing.T) {
 	for _, forwarded := range [][]string{
 		{"-c", "include_collaboration_mode_instructions=true"},
@@ -170,7 +199,7 @@ func TestWrappedRouterProcess(t *testing.T) {
 	if os.Getenv("MEKUGI_TEST_ROUTER") != "1" {
 		return
 	}
-	os.Args = []string{os.Args[0], "--grok", "--model-protocol", "native", "--mentor-handoff=false", "codex"}
+	os.Args = []string{os.Args[0], "--grok", "--mentor-handoff=false", "codex"}
 	os.Exit(run())
 }
 

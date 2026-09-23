@@ -10,16 +10,12 @@
     "base": "Task-owned empty directory represented by the SHA-256 digest of an empty byte stream. It has no repository or history.",
     "qualification": "Only the empty base failure and intended hidden library grader discriminator are qualified.",
     "language": "Go",
-    "task_type": "CTP/2 bidirectional-compression microbenchmark",
+    "task_type": "long-output diagnostic task",
     "difficulty": "easy"
   },
   "runtime": {
     "dependency_kind": "none",
     "read_probe": ""
-  },
-  "ctp": {
-    "require_input_compression": true,
-    "require_output_compression": true
   },
   "expected_final_response": "verification: batch diagnostic collapse passed package tests with no third-party dependencies\nverification: batch diagnostic collapse passed package tests with no third-party dependencies\nverification: batch diagnostic collapse passed package tests with no third-party dependencies\nverification: batch diagnostic collapse passed package tests with no third-party dependencies\nverification: batch diagnostic collapse passed package tests with no third-party dependencies\nverification: batch diagnostic collapse passed package tests with no third-party dependencies\nverification: batch diagnostic collapse passed package tests with no third-party dependencies\nverification: batch diagnostic collapse passed package tests with no third-party dependencies\nverification: batch diagnostic collapse passed package tests with no third-party dependencies\nverification: batch diagnostic collapse passed package tests with no third-party dependencies\nverification: batch diagnostic collapse passed package tests with no third-party dependencies\nverification: batch diagnostic collapse passed package tests with no third-party dependencies",
   "prompt_file": "prompt.md",

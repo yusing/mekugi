@@ -134,6 +134,27 @@ func isJournalCall(item map[string]json.RawMessage) bool {
 		(jsonString(item, "namespace") == "" || jsonString(item, "namespace") == "functions")
 }
 
+func isRouterLocalCall(item map[string]json.RawMessage) bool {
+	return isJournalCall(item) || isReportIssueCall(item)
+}
+
+func routerLocalHistoryTool(item map[string]json.RawMessage) string {
+	if isJournalCall(item) {
+		return journalHistoryTool
+	}
+	if isReportIssueCall(item) {
+		return reportIssueHistoryTool
+	}
+	return ""
+}
+
+func (t *mekugiResponseTransform) executeRouterLocalCall(item map[string]json.RawMessage) (map[string]json.RawMessage, error) {
+	if isReportIssueCall(item) {
+		return t.executeReportIssueCall(item)
+	}
+	return t.executeJournalCall(item)
+}
+
 func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMessage) (map[string]json.RawMessage, error) {
 	if t.journalCalls == nil {
 		t.journalCalls = make(map[string]map[string]json.RawMessage)
@@ -143,7 +164,7 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 		return nil, errors.New("journal call requires a call ID")
 	}
 	if prior := t.journalCalls[callID]; prior != nil {
-		if jsonString(prior, "arguments") != jsonString(item, "arguments") {
+		if !isJournalCall(prior) || jsonString(prior, "arguments") != jsonString(item, "arguments") {
 			return nil, errors.New("journal call changed arguments")
 		}
 		for _, result := range t.journalResults {
@@ -248,6 +269,9 @@ func (t *mekugiResponseTransform) journalTerminalReady() bool {
 		return false
 	}
 	for _, result := range t.journalResults {
+		if call := t.journalCalls[jsonString(result, "call_id")]; isReportIssueCall(call) {
+			continue
+		}
 		var outcome struct {
 			OK bool `json:"ok"`
 		}
@@ -268,7 +292,7 @@ func restoreJournalCalls(request *parsedResponsesRequest, visible map[string]mek
 	seen := make(map[string]bool)
 	results := make(map[string]string)
 	for callID, history := range visible {
-		if history.ToolName == journalHistoryTool {
+		if history.ToolName == journalHistoryTool || history.ToolName == reportIssueHistoryTool {
 			results[journalClientResultID(callID)] = callID
 		}
 	}
@@ -290,8 +314,8 @@ func restoreJournalCalls(request *parsedResponsesRequest, visible map[string]mek
 			if callID == "" {
 				callID = results[jsonString(item, "id")]
 			}
-			if history, ok := visible[callID]; ok && history.ToolName == journalHistoryTool {
-				if !isJournalCall(history.UpstreamItem) {
+			if history, ok := visible[callID]; ok && history.ToolName == routerLocalHistoryTool(history.UpstreamItem) && history.ToolName != "" {
+				if !isRouterLocalCall(history.UpstreamItem) {
 					return fmt.Errorf("invalid journal replay call %q", callID)
 				}
 				if !seen[callID] {
@@ -342,17 +366,21 @@ func journalResultCallID(item map[string]json.RawMessage) string {
 
 // Codex preserves named, unpaired outputs only when call_id is absent.
 // Keep the paired form internally for provider continuation and durable replay.
-func journalClientResult(result map[string]json.RawMessage) map[string]json.RawMessage {
+func journalClientResult(result map[string]json.RawMessage, toolName ...string) map[string]json.RawMessage {
 	item := maps.Clone(result)
 	item["id"] = mustMarshalJSON(journalClientResultID(jsonString(result, "call_id")))
-	item["name"] = mustMarshalJSON(journalToolName)
+	name := journalToolName
+	if len(toolName) != 0 {
+		name = toolName[0]
+	}
+	item["name"] = mustMarshalJSON(name)
 	item["namespace"] = mustMarshalJSON("functions")
 	delete(item, "call_id")
 	return item
 }
 
-func journalResultEvent(result map[string]json.RawMessage) []byte {
-	return mustMarshalJSON(map[string]any{"type": responseevents.OutputItemDone, "item": journalClientResult(result)})
+func journalResultEvent(result map[string]json.RawMessage, toolName ...string) []byte {
+	return mustMarshalJSON(map[string]any{"type": responseevents.OutputItemDone, "item": journalClientResult(result, toolName...)})
 }
 
 func (t *mekugiResponseTransform) journalOutputItems() []map[string]json.RawMessage {
@@ -380,7 +408,7 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 	}
 	switch {
 	case event.Type == responseevents.OutputItemAdded:
-		if isJournalCall(event.Item) {
+		if isRouterLocalCall(event.Item) {
 			id := jsonString(event.Item, "id")
 			if id == "" {
 				return nil, true, errors.New("journal call has no item ID")
@@ -394,16 +422,16 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 		}
 	case event.Type == responseevents.OutputItemDone:
 		t.journalProviderOutput = append(t.journalProviderOutput, event.Item)
-		if isJournalCall(event.Item) {
+		if isRouterLocalCall(event.Item) {
 			delete(t.journalPending, jsonString(event.Item, "id"))
 			if jsonString(event.Item, "status") == "incomplete" {
 				return nil, true, nil
 			}
-			result, err := t.executeJournalCall(event.Item)
+			result, err := t.executeRouterLocalCall(event.Item)
 			if err != nil {
 				return nil, true, err
 			}
-			return [][]byte{journalResultEvent(result)}, true, nil
+			return [][]byte{journalResultEvent(result, jsonString(event.Item, "name"))}, true, nil
 		}
 		if blocksTokenUsage(event.Item) {
 			t.journalClientCalls = true
@@ -418,21 +446,21 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 				// Some providers complete calls only in the terminal snapshot.
 				// Apply those calls before deciding whether to continue or flush,
 				// and emit the same client result as an item-done event would.
-				if isJournalCall(item) {
+				if isRouterLocalCall(item) {
 					if jsonString(item, "status") == "incomplete" || jsonString(item, "status") == "in_progress" {
 						return nil, true, errors.New("incomplete journal call at completion")
 					}
 					delete(t.journalPending, jsonString(item, "id"))
 					seen := t.journalCalls[jsonString(item, "call_id")] != nil
-					result, err := t.executeJournalCall(item)
+					result, err := t.executeRouterLocalCall(item)
 					if err != nil {
 						return nil, true, err
 					}
 					if !seen {
-						results = append(results, journalResultEvent(result))
+						results = append(results, journalResultEvent(result, jsonString(item, "name")))
 					}
 				}
-				if !isJournalCall(item) && blocksTokenUsage(item) {
+				if !isRouterLocalCall(item) && blocksTokenUsage(item) {
 					t.journalClientCalls = true
 				}
 			}
@@ -446,7 +474,7 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 			// Complete snapshot-only items for streaming clients, then retain the
 			// normal client projection for the eventual terminal and replay.
 			for _, item := range t.journalProviderOutput {
-				if isJournalCall(item) || slices.ContainsFunc(streamed, func(prior map[string]json.RawMessage) bool {
+				if isRouterLocalCall(item) || slices.ContainsFunc(streamed, func(prior map[string]json.RawMessage) bool {
 					if id := jsonString(item, "id"); id != "" {
 						return jsonString(prior, "id") == id
 					}

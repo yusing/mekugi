@@ -45,7 +45,7 @@ func TestPinnedToolWorkerProcess(t *testing.T) {
 		return
 	}
 	if stage == "worker" {
-		handled, status := RunToolPluginWorker(t.Context(), os.Args[0], []string{"bash", "printf pinned"}, os.Stdin, os.Stdout, os.Stderr)
+		handled, status := RunToolPluginWorker(t.Context(), os.Args[0], []string{"--max-tokens", "100", "--", "printf", "pinned"}, os.Stdin, os.Stdout, os.Stderr)
 		if !handled {
 			os.Exit(99)
 		}
@@ -58,7 +58,7 @@ func TestPinnedToolWorkerProcess(t *testing.T) {
 	replace := func() {
 		t.Helper()
 		replacement := location + ".replacement"
-		if err := os.WriteFile(replacement, []byte("#!/bin/sh\nprintf 'shell: decode tool worker manifest: json: unknown field replay_directory\\n' >&2\nexit 1\n"), 0o700); err != nil {
+		if err := os.WriteFile(replacement, []byte("#!/bin/sh\nprintf 'replacement executable ran\\n' >&2\nexit 1\n"), 0o700); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.Rename(replacement, location); err != nil {
@@ -77,7 +77,7 @@ func TestPinnedToolWorkerProcess(t *testing.T) {
 	if stage == "after-registry" {
 		replace()
 	}
-	command := exec.CommandContext(t.Context(), registry.shellRuntime, "-test.run=^TestPinnedToolWorkerProcess$")
+	command := exec.CommandContext(t.Context(), registry.wrappers["mrun"], "-test.run=^TestPinnedToolWorkerProcess$")
 	command.Env = append(os.Environ(), "MEKUGI_PIN_WORKER_TEST=worker")
 	output, err := command.CombinedOutput()
 	if err != nil || string(output) != "pinned" {

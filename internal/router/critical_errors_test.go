@@ -15,8 +15,6 @@ import (
 	"testing"
 	"time"
 
-	responseevents "github.com/yusing/mekugi/internal/responses"
-
 	"github.com/coder/websocket"
 )
 
@@ -55,46 +53,6 @@ func TestCriticalErrorsDeduplicateReserveAndRetainUntilDelivery(t *testing.T) {
 	}
 	if pending := c.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "3 times") {
 		t.Fatalf("repeat summary = %v", pending)
-	}
-}
-
-func TestCriticalErrorsKeepDistinctSafeCausesAndHideExternalPayloads(t *testing.T) {
-	c := NewCriticalErrors()
-	record := func(err error) {
-		c.record(&requestFinalization{sessionID: "one", failurePhase: requestFailureTransform,
-			observation: requestObservation{outcome: requestOutcomeFailed}}, err)
-	}
-	first := staticCriticalDiagnostic("stream_ended_incomplete_mekugi_call", "the upstream stream ended with an incomplete HPATCH call")
-	record(first)
-	record(first)
-	record(staticCriticalDiagnostic("malformed_mekugi_call", "the upstream emitted a malformed HPATCH call"))
-	if len(c.entries) != 2 || c.entries[0].count != 2 || c.entries[1].count != 1 {
-		t.Fatalf("safe causes collapsed or did not deduplicate: %+v", c.entries)
-	}
-	pending := strings.Join(c.Pending(), "\n")
-	for _, want := range []string{"incomplete HPATCH call", "malformed HPATCH call", "occurred 2 times", "Diagnostic reference:"} {
-		if !strings.Contains(pending, want) {
-			t.Fatalf("pending notice lacks %q: %s", want, pending)
-		}
-	}
-
-	external := NewCriticalErrors()
-	secret := "Authorization: Bearer token-plain prompt unquoted-secret-script"
-	external.record(&requestFinalization{sessionID: "one", failurePhase: requestFailureTransform,
-		observation: requestObservation{outcome: requestOutcomeFailed}}, errors.New(secret))
-	externalNotice := strings.Join(external.Pending(), "\n")
-	if strings.Contains(externalNotice, "token-plain") || strings.Contains(externalNotice, "unquoted-secret-script") ||
-		!strings.Contains(externalNotice, "not safe for display") || !strings.Contains(externalNotice, "Diagnostic reference:") {
-		t.Fatalf("external payload was exposed or safe fallback was absent: %s", externalNotice)
-	}
-
-	unsafeEvent := NewCriticalErrors()
-	unsafeEventName := "unquotedsecretpayload"
-	unsafeEvent.record(&requestFinalization{sessionID: "one", failurePhase: requestFailureTransform,
-		observation: requestObservation{outcome: requestOutcomeFailed}}, unsupportedMekugiStreamEvent(responseevents.Kind(unsafeEventName)))
-	unsafeEventNotice := strings.Join(unsafeEvent.Pending(), "\n")
-	if strings.Contains(unsafeEventNotice, unsafeEventName) || !strings.Contains(unsafeEventNotice, "unsupported HPATCH-related streaming event") {
-		t.Fatalf("untrusted protocol value was exposed or hid its safe cause: %s", unsafeEventNotice)
 	}
 }
 
@@ -211,42 +169,6 @@ func TestCriticalErrorsBoundedAndCancellationSilent(t *testing.T) {
 	}
 }
 
-func TestPermanentRewriteFailureIsBadRequestAndQueued(t *testing.T) {
-	c := NewCriticalErrors()
-	proxy := newManagedMekugiProxy(t)
-	provider := &serverFakeProvider{}
-	request := serverRequest(t, func(fields map[string]any) { fields["tool_choice"] = map[string]any{"type": "custom", "name": "exec"} })
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(request.originalBody)))
-	req.Header = serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
-	req.Header.Set(sessionIDHeader, "one")
-	output := httptest.NewRecorder()
-	responsesHandler(t.Context(), time.Minute, provider, c, proxy, nil)(output, req)
-	if output.Code != 400 || !strings.Contains(output.Body.String(), "restricted_tool_choice") || len(provider.forwarded) != 0 {
-		t.Fatalf("response %d: %s", output.Code, output.Body.String())
-	}
-	if len(c.Pending()) != 1 {
-		t.Fatal("permanent failure was not retained")
-	}
-}
-
-func TestRequestCompatibilityMissingNativeTools(t *testing.T) {
-	for _, test := range []struct {
-		name  string
-		tools []any
-		code  string
-	}{
-		{"editing", []any{map[string]any{"type": "function", "name": "exec_command"}}, "missing_apply_patch"},
-		{"execution", []any{map[string]any{"type": "custom", "name": "apply_patch"}}, "missing_exec_command"},
-	} {
-		fields := map[string]json.RawMessage{"tools": mustTestJSON(t, test.tools)}
-		_, replaced, err := replaceNativeTools(fields, decodeResponsesToolCatalog(fields), testInstalledTools())
-		compatibility, ok := errors.AsType[*requestCompatibilityError](err)
-		if replaced || !ok || compatibility.code != test.code {
-			t.Fatalf("%s: %v", test.name, err)
-		}
-	}
-}
-
 func TestInvalidNativeCatalogIsBadRequestBeforeForwarding(t *testing.T) {
 	tool := func(kind, name string) any { return map[string]any{"type": kind, "name": name} }
 	for _, tools := range [][]any{
@@ -254,7 +176,6 @@ func TestInvalidNativeCatalogIsBadRequestBeforeForwarding(t *testing.T) {
 		{tool("custom", "apply_patch"), tool("custom", "exec_command")},
 		{tool("custom", "apply_patch"), tool("custom", "apply_patch"), tool("function", "exec_command")},
 		{tool("custom", "apply_patch"), tool("function", "exec_command"), tool("function", "exec_command")},
-		{tool("custom", "apply_patch"), tool("function", "exec_command"), tool("custom", "hpatch")},
 	} {
 		proxy := newManagedMekugiProxy(t)
 		provider := &serverFakeProvider{}

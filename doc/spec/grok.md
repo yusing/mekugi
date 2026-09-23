@@ -35,8 +35,8 @@ never reach OpenAI. Credential-bearing requests do not follow redirects.
 
 The adapter preserves supported text/image messages, plaintext agent messages, custom/function tool
 calls and their identities/results, parallel calls, structured output, reasoning effort and usage.
-Multipart text retains separate content parts so independent CTP dictionaries and visible-output
-source identities do not merge. Empty text arrays retain empty-string content.
+Multipart text retains separate content parts so visible-output source identities do not merge.
+Empty text arrays retain empty-string content.
 Custom tool grammars remain explicit input instructions and are still validated by their existing
 router/executor owners. Provider-hosted OpenAI search is not offered on the Grok route; the model is
 informed of its absence. Other unsupported provider tools/content fail explicitly rather than being

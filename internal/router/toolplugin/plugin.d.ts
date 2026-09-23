@@ -1,34 +1,5 @@
 /// <reference path="./core-v1.d.ts" />
 
-export type CustomCarrier = {
-  kind: "custom";
-  name: string;
-  payload: string;
-};
-
-export type FunctionCarrier = {
-  kind: "function";
-  name: string;
-  payload: string;
-};
-
-export type ExecCarrier = {
-  kind: "exec";
-  template?: string;
-  params?: Record<string, unknown>;
-};
-
-export type Carrier = CustomCarrier | FunctionCarrier | ExecCarrier;
-
-export type TranslationAPI = {
-  custom(name: string, input: string): CustomCarrier;
-  function(name: string, argumentsJSON: string): FunctionCarrier;
-  exec(
-    template?: string,
-    params?: Record<string, unknown>,
-  ): ExecCarrier;
-};
-
 export type ExecutionOutput = {
   stdout?: string;
   stderr?: string;
@@ -68,7 +39,6 @@ export type Tool<T> = {
   };
   parse(input: string): T | Promise<T>;
   argv(input: T): string[] | Promise<string[]>;
-  translate(input: T, api: TranslationAPI): Carrier | Promise<Carrier>;
   execute(argv: string[], context: ExecutionContext): ExecutionResult | Promise<ExecutionResult>;
 };
 

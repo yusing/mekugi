@@ -313,11 +313,3 @@ func (s *mekugiReplayStore) outputName(id string) (string, error) {
 	owner, err := s.handleOwner(id)
 	return scopedOutputName(owner, id), err
 }
-
-func (s *mekugiReplayStore) hpatchCallID(id string) (string, error) {
-	owner, err := s.handleOwner(id)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("hpatch-%x-%s", sha256.Sum256([]byte(owner)), id), nil
-}

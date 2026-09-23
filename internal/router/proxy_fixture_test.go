@@ -24,10 +24,7 @@ var proxyTestFixture, pluginProxyTestFixture proxyRegistryFixture
 const routerTestWorkerEnvironment = "MEKUGI_ROUTER_TEST_WORKER"
 const routerTestWorkerUnscopedEnvironment = "MEKUGI_ROUTER_TEST_WORKER_UNSCOPED"
 
-// Ordinary proxy tests borrow the real, immutable built-in catalog and its
-// stateless shell translator. Each proxy still owns its session state and shell
-// storage. Tests of plugin loading, registry mutation, startup, or shutdown
-// build and close their own registries instead.
+// Ordinary proxy tests borrow the real, immutable built-in frontend catalog.
 func sharedProxyTestRegistry(t *testing.T) *toolRegistry {
 	t.Helper()
 	return proxyTestFixture.get(t, "")
@@ -87,7 +84,6 @@ func (fixture *proxyRegistryFixture) get(t *testing.T, pluginSource string) *too
 func newProxyWithSharedTestRegistry(t *testing.T, registry *toolRegistry) *mekugiProxy {
 	t.Helper()
 	proxy := newMekugiProxy(registry)
-	proxy.shellDirectory = t.TempDir()
 	t.Cleanup(func() {
 		if err := proxy.Close(); err != nil {
 			t.Error(err)

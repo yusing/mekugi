@@ -8,8 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -130,15 +128,6 @@ func TestExecuteRequestFailsClosedBeforeUpstreamWhenRewriteIsIneligible(t *testi
 			request["stream"] = true
 			request["parallel_tool_calls"] = false
 		}, want: "compaction request cannot expose tools"},
-		{name: "missing apply_patch", sessionID: "session", headers: validHeaders, mutate: func(request map[string]any) {
-			input := request["input"].([]any)
-			additional := input[0].(map[string]any)
-			tools := additional["tools"].([]any)
-			tools[0].(map[string]any)["description"] = "### exec_command\nRun a command without an editing tool."
-		}, want: "unsupported_tool_catalog"},
-		{name: "restricted Code Mode tool", sessionID: "session", headers: validHeaders, mutate: func(request map[string]any) {
-			request["tool_choice"] = map[string]any{"type": "custom", "name": "exec"}
-		}, want: "restricted_tool_choice"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -198,7 +187,7 @@ func TestExecuteRequestSupportsNativeToolsOnTheSameResponsesPath(t *testing.T) {
 		"status": "completed",
 		"output": []any{map[string]any{
 			"type": "custom_tool_call", "id": "item-H", "call_id": "call-H",
-			"name": "shell", "input": testShellEditSource, "status": "completed",
+			"name": applyPatchToolName, "input": testTranslatedPatch, "status": "completed",
 		}},
 	})))}}}
 	request := serverRequest(t, func(request map[string]any) {
@@ -221,8 +210,9 @@ func TestExecuteRequestSupportsNativeToolsOnTheSameResponsesPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(provider.forwarded) != 1 || bytes.Contains(provider.forwarded[0], []byte(`"name":"apply_patch"`)) ||
-		!bytes.Contains(provider.forwarded[0], []byte(`"name":"shell"`)) {
+	if len(provider.forwarded) != 1 || !bytes.Contains(provider.forwarded[0], []byte(`"name":"apply_patch"`)) ||
+		!bytes.Contains(provider.forwarded[0], []byte(`"name":"exec_command"`)) ||
+		bytes.Contains(provider.forwarded[0], []byte(`"name":"shell"`)) {
 		t.Fatalf("native forwarded request = %s", provider.forwarded)
 	}
 	var response struct {
@@ -231,8 +221,9 @@ func TestExecuteRequestSupportsNativeToolsOnTheSameResponsesPath(t *testing.T) {
 	if err := json.Unmarshal(output.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if len(response.Output) != 1 || jsonString(response.Output[0], "type") != "function_call" ||
-		jsonString(response.Output[0], "name") != nativeExecCommandToolName {
+	if len(response.Output) != 1 || jsonString(response.Output[0], "type") != "custom_tool_call" ||
+		jsonString(response.Output[0], "name") != applyPatchToolName ||
+		jsonString(response.Output[0], "input") != testTranslatedPatch {
 		t.Fatalf("native client response = %s", output.Bytes())
 	}
 }
@@ -323,278 +314,6 @@ func TestExecuteRequestPassesThroughOriginalRequestAndRecordsUsage(t *testing.T)
 }
 
 //nolint:canonicalheader // Exact lowercase names match Codex's observed wire headers.
-func TestExecuteRequestForwardsRewrittenRequestAndRecordsUsage(t *testing.T) {
-	workspace := t.TempDir()
-	parsed := serverRequest(t, func(request map[string]any) {
-		request["prompt_cache_key"] = "prompt-cache"
-	})
-
-	headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})
-	headers.Add(sessionIDHeader, "session-primary")
-	headers.Add(sessionIDHeader, "session-secondary")
-	headers.Set(threadIDHeader, "thread")
-	headers.Set(clientRequestIDHeader, "client-request")
-	headers.Set(codexWindowIDHeader, "window:0")
-	headers.Set(codexBetaFeaturesHeader, "feature")
-	headers.Set(codexResponsesLiteHeader, "true")
-	headers.Set(openAISubagentHeader, threadSpawnSubagent)
-	responseBody := string(mustTestJSON(t, map[string]any{
-		"status": "completed",
-		"usage": map[string]any{
-			"input_tokens": 10, "input_tokens_details": map[string]any{"cached_tokens": 4},
-			"output_tokens": 6, "output_tokens_details": map[string]any{"reasoning_tokens": 2},
-		},
-		"future": map[string]any{"kept": true},
-	}))
-	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(responseBody)}}}
-	proxy := newManagedMekugiProxy(t)
-
-	var output bytes.Buffer
-	err := executeRequest(t.Context(), t.Context(), parsed, headers, "session", provider, &output, nil, proxy, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(provider.forwarded) != 1 {
-		t.Fatalf("upstream requests = %d, want 1", len(provider.forwarded))
-	}
-	if got := provider.forwardedCacheKey[0]; got != "prompt-cache" {
-		t.Fatalf("upstream cache key = %q, want prompt_cache_key", got)
-	}
-	for _, name := range []string{sessionIDHeader, threadIDHeader, clientRequestIDHeader, codexWindowIDHeader, codexBetaFeaturesHeader, codexResponsesLiteHeader, openAISubagentHeader, codexTurnMetadataHeader} {
-		if got, want := provider.forwardedHeaders[0].Values(name), headers.Values(name); !slices.Equal(got, want) {
-			t.Fatalf("forwarded header %s = %q, want %q", name, got, want)
-		}
-	}
-	forwarded, err := parseResponsesRequest(provider.forwarded[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(forwarded.fields["tools"]), "\"name\":\"shell\"") || strings.Contains(string(forwarded.fields["tools"]), workspace) {
-		t.Fatalf("unstable rewritten tools = %s", forwarded.fields["tools"])
-	}
-	if strings.Contains(string(forwarded.fields["input"]), workspace) {
-		t.Fatalf("single-workspace input contains redundant metadata: %s", forwarded.fields["input"])
-	}
-	input := string(forwarded.fields["input"])
-	if strings.Contains(input, codeModeApplyPatchHeading) ||
-		strings.Contains(input, codeModeExecCommandHeading) ||
-		!strings.Contains(input, `"name":"exec"`) {
-		t.Fatalf("flat app-server exec was not rewritten: %s", input)
-	}
-	var forwardedTools []map[string]json.RawMessage
-	if err := json.Unmarshal(forwarded.fields["tools"], &forwardedTools); err != nil {
-		t.Fatal(err)
-	}
-	shellIndex := slices.IndexFunc(forwardedTools, func(tool map[string]json.RawMessage) bool {
-		return jsonString(tool, "name") == "shell"
-	})
-	if shellIndex < 0 {
-		t.Fatalf("rewritten tools lost shell: %#v", forwardedTools)
-	}
-	shellDescription := jsonString(forwardedTools[shellIndex], "description")
-	for _, required := range []string{"Run free-form scripts", "### `#!params`", "{ workdir?: string }"} {
-		if !strings.Contains(shellDescription, required) {
-			t.Fatalf("shell description is missing %q: %q", required, shellDescription)
-		}
-	}
-	if strings.Contains(shellDescription, "exec_command") || strings.Contains(shellDescription, "cmd: string") {
-		t.Fatalf("shell description exposes nested command syntax: %q", shellDescription)
-	}
-	for _, persistent := range []string{"#!cmd=", "@shell/", "#!batch=", "#!batch-stop=", "Multiline commands share", "shell & and wait"} {
-		if strings.Contains(shellDescription, persistent) {
-			t.Fatalf("shell description duplicates persistent workflow %q: %q", persistent, shellDescription)
-		}
-	}
-	if string(forwarded.fields["reasoning"]) != "{\"effort\":\"high\"}" {
-		t.Fatalf("reasoning request changed: %s", forwarded.fields["reasoning"])
-	}
-	if strings.Contains(output.String(), "selected_reasoning_effort") || !strings.Contains(output.String(), "\"future\":{\"kept\":true}") {
-		t.Fatalf("visible response changed unexpectedly: %s", output.String())
-	}
-}
-
-func TestShellMCatAfterAppliedMekugiCarrierRemainsModelVisible(t *testing.T) {
-	t.Parallel()
-	workspace := t.TempDir()
-	path := filepath.Join(workspace, "file.txt")
-	initial := "alpha\nbeta\ngamma\n"
-	if err := os.WriteFile(path, []byte(initial), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	mekugiScript := "type 2:f44e \"B\"\n"
-	shellInput := "mcat file.txt 1:3"
-	provider := &serverFakeProvider{
-		results: []serverForwardResult{
-			{response: serverHTTPResponse(string(mustTestJSON(t, map[string]any{
-				"status": "completed",
-				"output": []any{map[string]any{
-					"type": "custom_tool_call", "id": "item-H", "call_id": "call-H",
-					"name": "shell", "input": "hpatch file.txt " + shellQuoteArgument(mekugiScript), "status": "completed",
-				}},
-			})))},
-			{response: serverHTTPResponse(string(mustTestJSON(t, map[string]any{
-				"status": "completed",
-				"output": []any{map[string]any{
-					"type": "custom_tool_call", "id": "item-R", "call_id": "call-R",
-					"name": "shell", "input": shellInput, "status": "completed",
-				}},
-			})))},
-			{response: serverHTTPResponse(`{"status":"completed","output":[]}`)},
-		},
-	}
-	proxy := newManagedMekugiProxy(t)
-	headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})
-	const sessionID = "session-mekugi-shell-mcat"
-
-	requestWith := func(items ...any) parsedResponsesRequest {
-		return serverRequest(t, func(request map[string]any) {
-			additional := request["input"].([]any)[0]
-			request["input"] = append([]any{additional}, items...)
-		})
-	}
-	runRequest := func(request parsedResponsesRequest) []byte {
-		var output bytes.Buffer
-		if err := executeRequest(
-			t.Context(),
-			t.Context(),
-			request,
-			headers,
-			sessionID,
-			provider,
-			&output,
-			nil,
-			proxy,
-			nil,
-		); err != nil {
-			t.Fatal(err)
-		}
-		return output.Bytes()
-	}
-	outputItems := func(response []byte) []map[string]json.RawMessage {
-		var envelope struct {
-			Output []map[string]json.RawMessage `json:"output"`
-		}
-		if err := json.Unmarshal(response, &envelope); err != nil {
-			t.Fatal(err)
-		}
-		return envelope.Output
-	}
-
-	firstVisible := runRequest(requestWith(map[string]any{"role": "user", "content": "edit file.txt"}))
-	firstItems := outputItems(firstVisible)
-	if len(firstItems) != 1 || jsonString(firstItems[0], "name") != "exec" {
-		t.Fatalf("translated mekugi response = %s", firstVisible)
-	}
-	mekugiCarrier := firstItems[0]
-	carrierInput := jsonString(mekugiCarrier, "input")
-	if !strings.Contains(carrierInput, "hpatch") || strings.Contains(carrierInput, "apply_patch") {
-		t.Fatalf("edit is not carried through ordinary shell execution: %s", carrierInput)
-	}
-	report, editStderr, editStatus := runShellWorkerTest(t, proxy.registry, "bash", nil,
-		"hpatch file.txt "+shellQuoteArgument(mekugiScript), nil, newShellWorkerTestInvocation(workspace))
-	if editStatus != 0 {
-		t.Fatalf("edit failed: %d %s %s", editStatus, report, editStderr)
-	}
-
-	mekugiOutput := map[string]any{
-		"type": "custom_tool_call_output", "call_id": "call-H", "output": report,
-	}
-	secondVisible := runRequest(requestWith(mekugiCarrier, mekugiOutput))
-	secondItems := outputItems(secondVisible)
-	if len(secondItems) != 1 ||
-		jsonString(secondItems[0], "name") != "exec" ||
-		!strings.Contains(jsonString(secondItems[0], "input"), shellInput) {
-		t.Fatalf("translated shell response = %s", secondVisible)
-	}
-	shellCarrier := secondItems[0]
-
-	if _, exists := proxy.registry.contribution("shell"); !exists {
-		t.Fatal("shell worker is unavailable")
-	}
-	invocation := newShellWorkerTestInvocation(workspace)
-	shellStdout, shellStderr, exitCode := runShellWorkerTest(
-		t,
-		proxy.registry,
-		"bash",
-		nil,
-		"mcat file.txt 1:3",
-		os.Stdin,
-		invocation,
-	)
-	wantRows := "alpha\nB\ngamma\n"
-	if exitCode != 0 || shellStdout != wantRows || shellStderr != "" {
-		t.Fatalf(
-			"mcat worker exit %d, stdout %q, stderr %q",
-			exitCode,
-			shellStdout,
-			shellStderr,
-		)
-	}
-
-	shellOutput := map[string]any{
-		"type": "custom_tool_call_output", "call_id": "call-R", "output": shellStdout,
-	}
-	runRequest(requestWith(mekugiCarrier, mekugiOutput, shellCarrier, shellOutput))
-	if len(provider.forwarded) != 3 {
-		t.Fatalf("upstream requests = %d, want 3", len(provider.forwarded))
-	}
-	thirdForwarded, err := parseResponsesRequest(provider.forwarded[2])
-	if err != nil {
-		t.Fatal(err)
-	}
-	var forwardedItems []map[string]json.RawMessage
-	if err := json.Unmarshal(thirdForwarded.fields["input"], &forwardedItems); err != nil {
-		t.Fatal(err)
-	}
-	sawShell, sawRows := false, false
-	for _, item := range forwardedItems {
-		if jsonString(item, "name") == "shell" && jsonString(item, "input") == shellInput {
-			sawShell = true
-		}
-		if jsonString(item, "type") == "custom_tool_call_output" &&
-			jsonString(item, "call_id") == "call-R" &&
-			jsonString(item, "output") == wantRows {
-			sawRows = true
-		}
-	}
-	if !sawShell || !sawRows {
-		t.Fatalf("model-visible shell history = %s", thirdForwarded.fields["input"])
-	}
-}
-
-func TestExecuteRequestRejectsDirectAdditionalApplyPatchWithoutExecCarrier(t *testing.T) {
-	workspace := t.TempDir()
-	parsed := serverRequest(t, func(request map[string]any) {
-		additional := request["input"].([]any)[0].(map[string]any)
-		additional["tools"] = []any{
-			map[string]any{"type": "custom", "name": "unrelated"},
-			map[string]any{"type": "custom", "name": applyPatchToolName, "description": "Apply a patch."},
-		}
-	})
-	responseBody := string(mustTestJSON(t, map[string]any{"status": "completed", "output": []any{}}))
-	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(responseBody)}}}
-	var output bytes.Buffer
-	proxy := newManagedMekugiProxy(t)
-	err := executeRequest(
-		t.Context(),
-		t.Context(),
-		parsed,
-		serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}),
-		"session-direct",
-		provider,
-		&output,
-		nil,
-		proxy,
-		nil,
-	)
-	if err == nil || !strings.Contains(err.Error(), "unsupported flat apply_patch") {
-		t.Fatalf("direct request error = %v", err)
-	}
-	if len(provider.forwarded) != 0 || output.Len() != 0 {
-		t.Fatalf("direct request was forwarded %d time(s), output %q", len(provider.forwarded), output.String())
-	}
-}
 
 type serverErrorWriter struct{ err error }
 
@@ -1173,78 +892,6 @@ func TestExecuteRequestIndependentUpstreamCancellationIsFailure(t *testing.T) {
 	}
 }
 
-func TestExecuteRequestTransformFailureLifecycle(t *testing.T) {
-	workspace := t.TempDir()
-	item := testMekugiItem()
-	item["type"] = "message"
-	responseBody := string(mustTestJSON(t, map[string]any{
-		"status": "completed",
-		"output": []any{item},
-	}))
-	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(responseBody)}}}
-	issues := NewCriticalErrors()
-	err := executeRequest(
-		t.Context(), t.Context(), serverRequest(t, nil),
-		serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}),
-		"session", provider, io.Discard, issues,
-		newManagedMekugiProxy(t), nil,
-	)
-	if err == nil {
-		t.Fatal("transform failure returned no error")
-	}
-}
-
-func TestCommittedSSETransformFailureDefersSafeCauseToCriticalNotice(t *testing.T) {
-	workspace := t.TempDir()
-	added := testMekugiItem()
-	added["status"] = "in_progress"
-	added["input"] = ""
-	secret := "Authorization Bearer token-plain prompt unquoted-secret-script"
-	responseBody := "data: " + string(mustTestJSON(t, map[string]any{
-		"type": "response.created", "response": map[string]any{"id": "response", "status": "in_progress", "output": []any{}},
-	})) + "\n\n" +
-		"data: " + string(mustTestJSON(t, map[string]any{"type": "response.output_item.added", "item": added})) + "\n\n" +
-		"data: " + string(mustTestJSON(t, map[string]any{
-		"type": "response.function_call_arguments.done", "item_id": "item-H", "arguments": secret,
-	})) + "\n\n"
-	response := &http.Response{
-		StatusCode: http.StatusOK,
-		Status:     "200 OK",
-		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
-		Body:       io.NopCloser(strings.NewReader(responseBody)),
-	}
-	provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
-	issues := NewCriticalErrors()
-	request := serverRequest(t, func(fields map[string]any) { fields["stream"] = true })
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(request.originalBody)))
-	req.Header = serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})
-	req.Header.Set(sessionIDHeader, "session")
-	output := httptest.NewRecorder()
-	responsesHandler(t.Context(), time.Minute, provider, issues,
-		newManagedMekugiProxy(t), nil)(output, req)
-
-	if output.Code != http.StatusOK || !strings.Contains(output.Body.String(), "response.created") {
-		t.Fatalf("stream was not committed before transform failure: %d %s", output.Code, output.Body.String())
-	}
-	if strings.Contains(output.Body.String(), "unsupported HPATCH-related") || strings.Contains(output.Body.String(), secret) {
-		t.Fatalf("failure detail was written into the active response: %s", output.Body.String())
-	}
-	pending := strings.Join(issues.Pending(), "\n")
-	if !strings.Contains(pending, `response.function_call_arguments.done`) ||
-		!strings.Contains(pending, "Diagnostic reference:") || strings.Contains(pending, secret) {
-		t.Fatalf("safe underlying cause was not retained: %s", pending)
-	}
-	visible := issues.transform("session", false)
-	if len(visible.messages) != 1 {
-		t.Fatalf("critical notice was not available to a later response: %d", len(visible.messages))
-	}
-	encoded := string(mustTestJSON(t, visible.messages[0]))
-	visible.finish(false)
-	if !strings.Contains(encoded, `response.function_call_arguments.done`) || strings.Contains(encoded, secret) {
-		t.Fatalf("user-only notice was unsafe or hid the cause: %s", encoded)
-	}
-}
-
 const testProviderBaseURL = "https://provider.example"
 
 type serverRoundTripper func(*http.Request) (*http.Response, error)
@@ -1604,117 +1251,5 @@ func TestExecuteRequestUnsafeCacheKeyRetainsSessionAffinity(t *testing.T) {
 		if !bytes.Equal(provider.forwarded[0], original) {
 			t.Fatal("cache routing fallback rewrote client request")
 		}
-	}
-}
-func TestShellJournalFinishSuppressesProviderRequest(t *testing.T) {
-	workspace := t.TempDir()
-	call := map[string]any{"type": "custom_tool_call", "call_id": "shell-call", "id": "shell-item", "name": "exec", "input": "text({exit_code: 0, output: ''})"}
-	parsed := serverRequest(t, func(request map[string]any) {
-		input := request["input"].([]any)
-		request["input"] = append(input,
-			map[string]any{"type": "function_call", "call_id": "old-shell", "name": "exec_command", "arguments": `{"cmd":"work"}`},
-			map[string]any{"type": "function_call_output", "call_id": "old-shell", "output": "Wall time: 0.1 seconds\nProcess running with session ID 7\nOutput:\n"},
-			map[string]any{"type": "custom_tool_call", "call_id": "opaque-poll", "name": "exec", "input": `text(await tools.write_stdin({session_id:7,chars:""})); text("extra output");`},
-			map[string]any{"type": "custom_tool_call_output", "call_id": "opaque-poll", "output": "Script completed\nWall time 0.1 seconds\nOutput:\n{\"exit_code\":0,\"output\":\"\"}\nextra output"},
-			call,
-			map[string]any{"type": "custom_tool_call_output", "call_id": "shell-call", "output": "Script completed\nWall time 0.1 seconds\nOutput:\n{\"exit_code\":0,\"output\":\"\"}"},
-		)
-	})
-	provider := &serverFakeProvider{}
-	proxy := newManagedMekugiProxy(t)
-	if err := proxy.journals.initialize(t.Context(), proxy.replayStore, workspace, "thread-1", "/root", ""); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "seed", []journalMutation{{Op: "add", Text: new("Shell completed")}}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "runtime:"+shellJournalFinishReceipt("turn-1", "shell-call"), nil); err != nil {
-		t.Fatal(err)
-	}
-	var upstreamItem map[string]json.RawMessage
-	if err := json.Unmarshal(mustMarshalJSON(call), &upstreamItem); err != nil {
-		t.Fatal(err)
-	}
-	upstreamItem["name"] = mustMarshalJSON("shell")
-	upstreamItem["input"] = mustMarshalJSON("journal finish")
-	history := mekugiHistory{
-		ToolName: "shell", PluginID: builtinToolsPluginID, ShellJournalTurnID: "turn-1",
-		Script: "journal finish", Root: workspace, CarrierName: "exec", CarrierKind: codeModeCarrierCustom,
-		CarrierPayload: "text({exit_code: 0, output: ''})", UpstreamItem: upstreamItem,
-	}
-	if err := proxy.rememberBatch(workspace+"\x00thread-1", map[string]mekugiHistory{"shell-call": history}); err != nil {
-		t.Fatal(err)
-	}
-	const usageModel = "gpt-5.6-sol" // Exercise the real Mentor preparation and completion hooks.
-	parsed.fields["model"] = mustMarshalJSON(usageModel)
-	seed := tokenCounts{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 5}
-	proxy.usage.observation("thread-1", "", usageModel, "").observe(seed)
-	before, complete := proxy.usage.snapshot("thread-1")
-	if !complete {
-		t.Fatal("seed usage is incomplete")
-	}
-	mentor := newMentorHandoff(true, false)
-	mentorBefore := mentorSession{latestInputTokens: 1000, toolCalls: 1, awaitingToolResult: true}
-	mentor.sessions["thread-1"] = mentorBefore
-	headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})
-	headers.Set(codexTurnMetadataHeader, string(mustMarshalJSON(codexTurnMetadata{RequestKind: "turn", TurnID: "turn-1", Directories: map[string]json.RawMessage{workspace: nil}})))
-	var output bytes.Buffer
-	err := executeRequest(
-		t.Context(),
-		t.Context(),
-		parsed,
-		headers,
-		"session",
-		provider,
-		&output,
-		NewCriticalErrors(),
-		proxy,
-
-		mentor,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(provider.forwarded) != 0 {
-		t.Fatalf("shell finish reached provider: %d request(s)", len(provider.forwarded))
-	}
-	after, complete := proxy.usage.snapshot("thread-1")
-	if !complete || after != before {
-		t.Fatalf("synthetic completion changed authoritative usage: before=%+v after=%+v complete=%v", before, after, complete)
-	}
-	if mentor.sessions["thread-1"] != mentorBefore {
-		t.Fatalf("synthetic completion changed Mentor progress: %+v", mentor.sessions["thread-1"])
-	}
-	var terminal struct {
-		Output []struct {
-			Content []struct{ Text string }
-		}
-	}
-	if err := json.Unmarshal(output.Bytes(), &terminal); err != nil {
-		t.Fatal(err)
-	}
-	reported := false
-	for _, item := range terminal.Output {
-		for _, part := range item.Content {
-			reported = reported || part.Text == formatTokenUsageReport(before)
-		}
-	}
-	if !strings.Contains(output.String(), "Shell completed") || !strings.Contains(output.String(), "Journal flush") {
-		t.Fatal("shell terminal omitted the journal flush")
-	}
-	if !reported {
-		t.Fatal("shell terminal omitted complete cumulative usage")
-	}
-	next := serverRequest(t, func(request map[string]any) { request["model"] = usageModel })
-	provider.results = []serverForwardResult{{response: serverHTTPResponse(`{"id":"real-next","status":"completed","output":[],"usage":{"input_tokens":3,"input_tokens_details":{"cached_tokens":0},"output_tokens":2,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":5}}`)}}
-	if err := executeRequest(t.Context(), t.Context(), next, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "next", provider, &bytes.Buffer{}, NewCriticalErrors(), proxy, nil); err != nil {
-		t.Fatal(err)
-	}
-	after, complete = proxy.usage.snapshot("thread-1")
-	if !complete || after.InputTokens != 13 || after.OutputTokens != 7 || len(provider.forwarded) != 1 {
-		t.Fatalf("subsequent real response did not accumulate: %+v, complete=%v forwards=%d", after, complete, len(provider.forwarded))
-	}
-	if !strings.Contains(output.String(), "Journal flush") {
-		t.Fatalf("synthetic terminal omitted journal flush: %s", output.String())
 	}
 }

@@ -25,14 +25,10 @@ type corpusCallRef struct {
 }
 
 type corpusFinding struct {
-	Kind            string          `json:"kind"`
-	Candidate       bool            `json:"candidate"`
-	Calls           []corpusCallRef `json:"calls"`
-	CallCount       int             `json:"call_count"`
-	Rejected        int             `json:"rejected,omitempty"`
-	EmittedBytes    int             `json:"emitted_bytes,omitempty"`
-	DiagnosticBytes int             `json:"diagnostic_bytes,omitempty"`
-	CorrelationID   string          `json:"correlation_id,omitempty"`
+	Kind      string          `json:"kind"`
+	Candidate bool            `json:"candidate"`
+	Calls     []corpusCallRef `json:"calls"`
+	CallCount int             `json:"call_count"`
 }
 
 type corpusSession struct {
@@ -232,7 +228,6 @@ func classifyCorpusSession(observation sessionAXInput) string {
 func inspectCorpusSession(ctx context.Context, path string, calls []sessionInspectionCall, observation sessionAXInput, store *mekugiReplayStore, since, until time.Time, model string, limit int) (corpusSession, error) {
 	session := corpusSession{Path: path, ThreadID: observation.ThreadID, Models: observation.Models, Findings: []corpusFinding{},
 		ProviderUsage: capturer.UsageInspection{State: "unavailable"}}
-	chains := make(map[string]int)
 	var findings []corpusFinding
 	var previous *sessionInspectionCall
 	var previousReads []corpusReadSelection
@@ -264,7 +259,7 @@ func inspectCorpusSession(ctx context.Context, path string, calls []sessionInspe
 				return session, err
 			}
 		}
-		projected, err := inspectSessionCall(call, record, found, "", 1)
+		_, err = inspectSessionCall(call, record, found, nil, "", 1)
 		if err != nil {
 			return session, err
 		}
@@ -274,35 +269,10 @@ func inspectCorpusSession(ctx context.Context, path string, calls []sessionInspe
 			session.UnavailableCalls++
 		}
 		ref := corpusCallRef{call.item.CallID, call.line, call.timestamp}
-		if found && (projected.Tool == mekugiToolName || projected.Tool == mekugiRecoveryToolName) {
-			key := projected.CorrelationID
-			if key == "" {
-				key = call.item.CallID
-			}
-			index, exists := chains[key]
-			if !exists {
-				index = len(findings)
-				chains[key] = index
-				findings = append(findings, corpusFinding{Kind: "recovery_chain", CorrelationID: key})
-			}
-			finding := &findings[index]
-			finding.CallCount++
-			if len(finding.Calls) < 16 {
-				finding.Calls = append(finding.Calls, ref)
-			}
-			if projected.Outcome == "rejected" {
-				finding.Rejected++
-			}
-			finding.EmittedBytes += len(record.History.Script)
-			finding.DiagnosticBytes += len(record.History.TranslationError)
-		}
 		if inspectionEmptyPoll(call, record.History, found) {
 			findings = append(findings, corpusFinding{Kind: "empty_poll", Calls: []corpusCallRef{ref}, CallCount: 1})
 		}
-		var reads []corpusReadSelection
-		if found && projected.Tool == "shell" {
-			reads = corpusReadSelections(record.History.Script)
-		}
+		reads := corpusReadSelectionsForCall(call)
 		if previous != nil && previous.workspace == call.workspace && corpusReadOverlap(previousReads, reads) {
 			findings = append(findings, corpusFinding{Kind: "truncation_reread", Candidate: true, CallCount: 2,
 				Calls: []corpusCallRef{{previous.item.CallID, previous.line, previous.timestamp}, ref}})
@@ -315,9 +285,6 @@ func inspectCorpusSession(ctx context.Context, path string, calls []sessionInspe
 		}
 	}
 	for _, finding := range findings {
-		if finding.Kind == "recovery_chain" && finding.Rejected == 0 && finding.CallCount == 1 {
-			continue
-		}
 		if len(session.Findings) < limit {
 			session.Findings = append(session.Findings, finding)
 		} else {
@@ -375,9 +342,6 @@ func inspectionEmptyInput(item map[string]json.RawMessage, history mekugiHistory
 	name := strings.TrimPrefix(jsonString(item, "name"), "functions.")
 	if name == "exec" {
 		source := jsonString(item, "input")
-		if known && history.TranslationError == "" && history.ToolName == codeModeCommentaryHistoryTool {
-			source = history.Script
-		}
 		nested, ok := toolActivityUnwrapExec(source, false)
 		if !ok {
 			return false

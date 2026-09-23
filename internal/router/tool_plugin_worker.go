@@ -17,7 +17,13 @@ import (
 )
 
 // RunToolPluginWorker handles the private child-process mode used by a
-// stable contributed-tool frontend or the current thread's shell runtime.
+// stable contributed-tool frontend.
+func RunOwnedToolPluginWorker(ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
+	return RunToolPluginWorker(context.WithValue(ctx, frontendProcessOwnerKey{}, true), argv0, args, stdin, stdout, stderr)
+}
+
+type frontendProcessOwnerKey struct{}
+
 func RunToolPluginWorker(
 	ctx context.Context,
 	argv0 string,
@@ -107,6 +113,7 @@ func runAuthenticatedToolWorker(
 	stdin *os.File,
 	stdout, stderr io.Writer,
 ) (bool, int) {
+	ctx = toolplugin.WithHostProcessGroup(ctx)
 	fail := func(err error) (bool, int) {
 		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
 		return true, 1
@@ -147,6 +154,12 @@ func runAuthenticatedToolWorker(
 		return fail(fmt.Errorf("tool %q is unavailable in worker manifest", name))
 	}
 	if !contribution.Builtin {
+		if owned, _ := ctx.Value(frontendProcessOwnerKey{}).(bool); owned {
+			ctx, err = toolplugin.EnableFrontendOrphanCleanup(ctx)
+			if err != nil {
+				return fail(fmt.Errorf("prepare frontend process cleanup: %w", err))
+			}
+		}
 		if contribution.Module == "" {
 			return fail(fmt.Errorf("tool %q has no executable module", name))
 		}
@@ -167,15 +180,6 @@ func runAuthenticatedToolWorker(
 		}
 		defer release()
 	}
-	if !contribution.Builtin && contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell" {
-		if handled, publishErr := publishCommentaryOnce(ctx, stdout, args); handled {
-			if publishErr != nil {
-				return fail(publishErr)
-			}
-			return true, 0
-		}
-	}
-
 	var execution toolplugin.ExecutionOutput
 	if contribution.Builtin {
 		switch contribution.Name {
@@ -185,6 +189,15 @@ func runAuthenticatedToolWorker(
 			execution = executeMChanges(ctx, manifest, runtimeRoot, args)
 		case "mrun":
 			execution, err = executeMRun(ctx, manifest, runtimeRoot, args, stdin)
+		case "mcommentary":
+			handled, publishErr := publishCommentaryOnce(ctx, stdout, args)
+			if publishErr != nil {
+				return fail(publishErr)
+			}
+			if !handled {
+				return fail(errors.New("invalid commentary invocation"))
+			}
+			return true, 0
 		default:
 			return fail(fmt.Errorf("built-in tool %q is unavailable", name))
 		}
@@ -192,14 +205,6 @@ func runAuthenticatedToolWorker(
 		execution, err = executeMCat(ctx, manifest, runtimeRoot, args, *contribution)
 	} else if contribution.PluginID == builtinToolsPluginID && (contribution.Name == "msymbol" || contribution.Name == "inspect_file") {
 		execution, err = executeFrontendReader(ctx, manifest, runtimeRoot, args, *contribution)
-	} else if contribution.PluginID == builtinToolsPluginID && contribution.Name == "shell" {
-		workingDirectory, workingDirectoryErr := os.Getwd()
-		if workingDirectoryErr != nil {
-			err = fmt.Errorf("resolve shell working directory: %w", workingDirectoryErr)
-		} else {
-			execution, err = executeShellTool(ctx, manifest, runtimeRoot, contribution, args, stdin,
-				workingDirectory, os.Environ(), discoverShellCommentary(filepath.Join(directory, name)), stdout, stderr)
-		}
 	} else {
 		execution, err = toolplugin.Execute(
 			ctx,

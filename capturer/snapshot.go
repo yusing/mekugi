@@ -80,19 +80,6 @@ type toolAggregate struct {
 	ItemTokens  uint64 `json:"item_tokens"`
 }
 
-type mekugiMetrics struct {
-	Calls                       uint64            `json:"calls"`
-	Corrections                 uint64            `json:"corrections"`
-	Successful                  uint64            `json:"successful"`
-	Rejected                    uint64            `json:"rejected"`
-	Unclassified                uint64            `json:"unclassified"`
-	Unmatched                   uint64            `json:"unmatched"`
-	ProviderInputTokens         uint64            `json:"provider_input_tokens"`
-	DeliveredInputTokens        uint64            `json:"delivered_input_tokens"`
-	CarrierInputTokensExpansion int64             `json:"carrier_input_tokens_expansion"`
-	Diagnostics                 map[string]uint64 `json:"diagnostics,omitempty"`
-}
-
 type captureHealth struct {
 	Records                uint64 `json:"records"`
 	CaptureErrors          uint64 `json:"capture_errors"`
@@ -150,7 +137,6 @@ type metricsSnapshot struct {
 	Semantic       semanticOutputMetrics    `json:"semantic"`
 	ProviderTools  map[string]toolAggregate `json:"provider_tools"`
 	DeliveredTools map[string]toolAggregate `json:"delivered_tools"`
-	Mekugi         mekugiMetrics            `json:"mekugi"`
 	Exchanges      []exchangeMetrics        `json:"exchanges"`
 	Capture        captureHealth            `json:"capture"`
 }
@@ -180,12 +166,11 @@ func (r *Recorder) snapshot() metricsSnapshot {
 
 func newMetricsSnapshot(mode string) metricsSnapshot {
 	return metricsSnapshot{
-		Schema:         "mekugi.capture.metrics.v5",
+		Schema:         "mekugi.capture.metrics.v6",
 		Mode:           mode,
 		Cache:          cacheMetrics{AttributionBasis: "previous_input_length_estimate"},
 		ProviderTools:  map[string]toolAggregate{},
 		DeliveredTools: map[string]toolAggregate{},
-		Mekugi:         mekugiMetrics{Diagnostics: map[string]uint64{}},
 	}
 }
 
@@ -211,7 +196,6 @@ func (r *Recorder) addExchange(front captureRecord, state *requestState, provide
 		DeliveredTools: slices.Clone(front.ToolCalls),
 	}
 	var exchangeUsage usageMetrics
-	var providerTools []toolCallMetrics
 	r.metrics.Requests.Logical++
 	r.metrics.Requests.ProviderAttempts += uint64(len(providers))
 	addPayload(&r.metrics.Transport.ClientRequests, front.Request)
@@ -228,7 +212,6 @@ func (r *Recorder) addExchange(front captureRecord, state *requestState, provide
 		addPayload(&r.metrics.Transport.ProviderResponses, provider.Response)
 		addPayload(&r.metrics.Semantic.ProviderAttemptOutputs, provider.FinalOutput)
 		addTools(r.metrics.ProviderTools, provider.ToolCalls)
-		providerTools = append(providerTools, provider.ToolCalls...)
 		attempt := providerAttemptMetrics{
 			Transport:        provider.Transport,
 			ProviderResponse: provider.ProviderResponse,
@@ -259,7 +242,6 @@ func (r *Recorder) addExchange(front captureRecord, state *requestState, provide
 	} else {
 		r.recordCacheObservation(state, nil)
 	}
-	addMekugi(&r.metrics.Mekugi, providerTools, exchange.DeliveredTools)
 	if r.metrics.Cache.EligiblePrefixTokens != 0 {
 		rate := float64(r.metrics.Cache.EligiblePrefixCachedTokens) / float64(r.metrics.Cache.EligiblePrefixTokens)
 		r.metrics.Cache.EligiblePrefixCacheRate = &rate
@@ -311,7 +293,6 @@ func cloneMetricsSnapshot(source metricsSnapshot) metricsSnapshot {
 	clone := source
 	clone.ProviderTools = maps.Clone(source.ProviderTools)
 	clone.DeliveredTools = maps.Clone(source.DeliveredTools)
-	clone.Mekugi.Diagnostics = maps.Clone(source.Mekugi.Diagnostics)
 	if source.Cache.EligiblePrefixCacheRate != nil {
 		rate := *source.Cache.EligiblePrefixCacheRate
 		clone.Cache.EligiblePrefixCacheRate = &rate
@@ -413,39 +394,4 @@ func addTools(totals map[string]toolAggregate, calls []toolCallMetrics) {
 		total.ItemTokens += call.ItemTokens
 		totals[call.Name] = total
 	}
-}
-
-func addMekugi(total *mekugiMetrics, provider, delivered []toolCallMetrics) {
-	byID := make(map[string]toolCallMetrics, len(delivered))
-	for _, call := range delivered {
-		byID[call.CallID] = call
-	}
-	for _, emitted := range provider {
-		if emitted.Name != "hpatch" && emitted.Name != "hpatch_recover" {
-			continue
-		}
-		total.Calls++
-		if emitted.Name == "hpatch_recover" {
-			total.Corrections++
-		}
-		total.ProviderInputTokens += emitted.InputTokens
-		carrier := byID[emitted.CallID]
-		if carrier.CallID == "" {
-			total.Unmatched++
-			continue
-		}
-		total.DeliveredInputTokens += carrier.InputTokens
-		switch carrier.Kind {
-		case "apply_patch", "mekugi_report":
-			total.Successful++
-		case "mekugi_diagnostic":
-			total.Rejected++
-			if carrier.Diagnostic != "" {
-				total.Diagnostics[carrier.Diagnostic]++
-			}
-		default:
-			total.Unclassified++
-		}
-	}
-	total.CarrierInputTokensExpansion = signedDifference(total.DeliveredInputTokens, total.ProviderInputTokens)
 }

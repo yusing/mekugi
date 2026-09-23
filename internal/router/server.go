@@ -3,9 +3,7 @@ package router
 // Source: main.go:20:551 HTTP lifecycle and Responses proxy execution.
 
 import (
-	"bytes"
 	"context"
-	"crypto/rand"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,7 +17,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/capturer"
-	"github.com/yusing/mekugi/internal/responses"
 )
 
 const (
@@ -530,41 +527,4 @@ func (f *requestFinalization) classifyCopyError(err error) {
 	default:
 		f.failurePhase = requestFailureInspectResponse
 	}
-}
-
-type journalFinishResponseProvider struct {
-	stream bool
-}
-
-func (provider journalFinishResponseProvider) forwardExecution(context.Context, context.Context, []byte, http.Header, string) (*http.Response, error) {
-	id := "resp_mekugi_journal_" + rand.Text()
-	response := map[string]any{
-		"id": id, "object": "response", "status": "completed", "output": []any{},
-	}
-	if !provider.stream {
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Status:     "200 OK",
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(bytes.NewReader(mustMarshalJSON(response))),
-		}, nil
-	}
-	created := mustMarshalJSON(map[string]any{
-		"type":     responses.Created,
-		"response": map[string]any{"id": id, "object": "response", "status": "in_progress", "output": []any{}},
-	})
-	completed := mustMarshalJSON(map[string]any{
-		"type": responses.Completed, "response": response,
-	})
-	body := append([]byte("data: "), created...)
-	body = append(body, '\n', '\n')
-	body = append(body, []byte("data: ")...)
-	body = append(body, completed...)
-	body = append(body, '\n', '\n')
-	return &http.Response{
-		StatusCode: http.StatusOK,
-		Status:     "200 OK",
-		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
-		Body:       io.NopCloser(bytes.NewReader(body)),
-	}, nil
 }

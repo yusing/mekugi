@@ -82,7 +82,7 @@ func TestRunSessionExportsFinalMetricsWithoutLogging(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, err := os.ReadFile(path)
-	if err != nil || !bytes.Contains(body, []byte(`"schema":"mekugi.capture.metrics.v5"`)) {
+	if err != nil || !bytes.Contains(body, []byte(`"schema":"mekugi.capture.metrics.v6"`)) {
 		t.Fatalf("metrics = %s, %v", body, err)
 	}
 }

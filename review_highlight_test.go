@@ -48,7 +48,7 @@ func TestReviewCompositionHighlights(t *testing.T) {
 }
 
 func TestReviewCompositionHighlightPathOnly(t *testing.T) {
-	move := reviewFiles([]change{{kind: changeUpdate, originalPath: "old", path: "new"}})[0]
+	move := RenderReviewFile("old", "new", "", "")
 	var c ReviewComposition
 	if err := c.ApplyWithHighlight(move, false, true); err != nil {
 		t.Fatal(err)

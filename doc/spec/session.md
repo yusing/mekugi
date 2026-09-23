@@ -15,27 +15,25 @@ an explicit override. Returned calls identify their selected workspace.
 The result is `mekugi.session.v1` JSON. It enumerates tool calls and output-only call
 identities in first-observed order from `response_item` records, not by scanning all
 stored calls. Repeated identical call identities coalesce; conflicting payloads or call workspaces fail.
-Replay lookup is workspace-and-call scoped. Matched carriers or original upstream
-calls must agree with the stored mapping; corrupt or incompatible records fail rather
-than guessing. Missing records expose native call identity and unavailable outcomes. Canonical router
-journal result IDs are decoded through the journal provenance owner only for named
-`functions.journal` function outputs lacking a call ID. They participate under the
-original call ID without inventing execution or success. Matched replay must identify
-a journal call; malformed IDs and unrelated missing-call-ID outputs still reject.
+Replay lookup is workspace-and-call scoped. Matched observed calls must agree with retained identity; corrupt or
+incompatible records fail rather than guessing. Missing records expose native call identity and unavailable outcomes.
+Canonical router-local result IDs are decoded through the journal provenance owner only
+for named `functions.journal` or opt-in `functions.report_issue` outputs lacking a call ID.
+They participate under the original call ID without inventing execution or success. Matched
+replay must identify the corresponding local function call; malformed IDs and unrelated
+missing-call-ID outputs still reject.
 
-Each call exposes original tool identity, correlation/attempt when recorded, rejection
-count, outcome, and text byte counts. `--field` selects `script`, `evaluated`, `patch`,
-`report`, `diagnostic`, `rejections`, `output`, or `all`; text is omitted by default.
+Each call exposes original tool identity, observed outcome, and text byte counts. `--field` selects `script`,
+`report`, `diagnostic`, `output`, or `all`; text is omitted by default.
 Selected text is an exact UTF-8 prefix capped by `--text-bytes` (default 4096, 1–65536).
-Every field reports full byte size and omitted bytes. Rejections use the stored structured
-array, not interpretation of diagnostic prose. Output is the last observed tool output;
+Every field reports full byte size and omitted bytes. Diagnostics use retained result evidence rather than interpretation of model prose. Output is the last observed tool output;
 non-string output retains its JSON representation.
 
-`translated_unconfirmed` never means applied. `confirmed` requires a recorded output
-of the expected carrier kind equal to the successful stored report, matching request
-replay's confirmation rule. `applied` identifies stored router-owned application;
-`already_satisfied`, `rejected`, `unconfirmed`, and `unavailable` remain distinct.
-No outcome claims semantic correctness or turns a missing output into success.
+`applied` requires a completed observed stock patch result and workspace outcome.
+`already_satisfied`, `rejected`, `unconfirmed`, and `unavailable` remain distinct;
+partial workspace effects may accompany a failed result without becoming
+successful edits. Missing output is not success. No outcome claims semantic
+correctness.
 
 `--call-id` filters before pagination. `--offset` and `--limit` (default 50, 1–500)
 bound returned calls with `total_calls` and optional `next_offset`. Missing matches
@@ -49,12 +47,13 @@ contain calls that are no longer visible after compaction. It does not revive pr
 references, or permissions, and does not expose private records over HTTP or metrics.
 
 Acceptance:
-1. Dispatch returns original HPATCH and recovery payloads, evaluated scripts,
-   structured rejections, patches, reports, and matching executor confirmation.
+1. Inspection returns original stock call identity, observed patch input,
+   durable result and review evidence when available, without executing effects.
 2. Workspace inference, turn-level workspace changes, overrides, missing metadata,
    corrupt or mismatched records, output-only calls, and workspace isolation preserve
    the documented result and failure behavior.
-3. Native, function, and custom carriers work without decoding carrier source.
+3. Direct native and Code Mode calls retain their observed identities without
+   decoding or executing source.
 4. Text selection, UTF-8 bounds, pagination, duplicates, and invalid input follow
    the documented schema.
 5. Inspection leaves session, replay records, and directory permissions unchanged.
@@ -84,14 +83,12 @@ source metadata is unknown. Exclusion counts identify the applied filters.
 The `mekugi.sessions.v1` JSON report contains per-rollout evidence, absolute paths,
 call IDs and original line numbers, with no source bodies. Counts are per rollout;
 fork-inherited calls are not summed into a global workload. Each session distinguishes
-matched from unavailable replay. Recovery chains use validated replay correlation
-IDs and report call/rejection counts and emitted/diagnostic bytes, not token savings.
-Empty-poll evidence requires an empty-input call and explicitly empty native output
+matched from unavailable replay. Empty-poll evidence requires an empty-input call and explicitly empty native output
 for the same session; transparent Code Mode projections are recognized, but printed
 lookalikes are not. This is offline analysis and does not change continuation behavior.
 Truncation/reread findings are explicitly static candidates: adjacent selected calls
-must have matched shell scripts, an mread omission receipt, the same workspace, and
-overlapping literal mcat path/range selections. They do not establish execution counts,
+must have an `mread` omission receipt, the same workspace, and overlapping
+literal `mcat` path/range selections in stock execution input. They do not establish execution counts,
 unchanged files, unnecessary reads, or actual duplicate delivered bytes. Unsupported
 scripts/carriers are not decoded or executed to manufacture evidence.
 

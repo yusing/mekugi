@@ -21,20 +21,6 @@ summary="$run_dir/summary.md"
 temporary="$summary.tmp"
 mode=paired
 [[ -s $config ]] && mode=$(jq -r '.benchmark_mode // "paired"' "$config")
-require_ctp_input_compression=false
-require_ctp_output_compression=false
-treatment_protocol=native
-if [[ ($mode == paired || $mode == mekugi-diagnostic) && -s $config ]]; then
-	treatment_protocol=$(jq -r '.treatment_model_protocol // "native"' "$config")
-fi
-mentor_protocol=native
-if [[ $mode == mentor-handoff ]]; then
-	mentor_protocol=$(jq -r '.mentor_handoff.model_protocol // "native"' "$config")
-fi
-if [[ $mode == ctp-only || $mentor_protocol == ctp2 || $treatment_protocol == ctp2 ]]; then
-	require_ctp_input_compression=$(jq -r '.ctp.require_input_compression // false' "$config")
-	require_ctp_output_compression=$(jq -r '.ctp.require_output_compression // false' "$config")
-fi
 
 baseline_arm=control
 baseline_label=Control
@@ -55,12 +41,6 @@ case "$mode" in
 		treatment_metrics="$run_dir/control-metrics.json"
 		treatment_capture="$run_dir/captures/control.jsonl"
 		;;
-	ctp-only)
-		baseline_arm=native
-		baseline_label='Native protocol'
-		treatment_arm=ctp
-		treatment_label='CTP/2'
-		;;
 	mentor-handoff)
 		baseline_arm=mekugi
 		baseline_label=Mekugi
@@ -70,18 +50,12 @@ case "$mode" in
 		treatment_metrics="$run_dir/mekugi-mentor-metrics.json"
 		;;
 	mekugi-only|mekugi-diagnostic)
-		if [[ $treatment_protocol == ctp2 ]]; then treatment_label="Mekugi + CTP/2"; fi
 		baseline_arm=
 		baseline_label=
 		baseline_metrics=
 		baseline_capture=
 		;;
-	paired)
-		if [[ $treatment_protocol == ctp2 ]]; then
-			baseline_label="Stock"
-			treatment_label="Mekugi + CTP/2"
-		fi
-		;;
+	paired) baseline_label=Stock ;;
 	*) printf 'report.sh: unsupported benchmark mode: %s\n' "$mode" >&2; exit 1 ;;
 esac
 
@@ -207,7 +181,6 @@ model=$(jq -sr '.[0] | .parent_model // .model' "$results")
 effort=$(jq -sr '.[0] | .parent_reasoning_effort // .reasoning_effort' "$results")
 treatment_input=$(metric "$treatment_metrics" '.usage.input_tokens')
 treatment_output=$(metric "$treatment_metrics" '.usage.output_tokens')
-ctp_failed=false
 
 {
 	printf '# Mekugi benchmark: %s\n\n' "$task_id"
@@ -221,7 +194,6 @@ ctp_failed=false
 			"$(jq -r '.main_mentor.requested_reasoning_effort' "$config")"
 	fi
 	if [[ $mode == mentor-handoff ]]; then
-		printf -- '- Both arms model protocol: `%s`\n' "$mentor_protocol"
 		printf -- '- Requested child model: `%s`; initial mentor model: `%s`\n' \
 			"$(jq -sr '.[0].child_model' "$results")" \
 			"$(jq -r '.mentor_handoff.mentor_model' "$config")"
@@ -264,8 +236,8 @@ ctp_failed=false
 	done
 
 	printf '\n## Cache-prefix diagnostics\n\n'
-	printf 'Comparisons use decoded request items, not the provider hidden token prefix. Appended/identical means the observed earlier content is stable; it does not guarantee a cache hit. A changed post-replay prefix with a stable client prefix points to projection/replay; a changed provider prefix with a stable native prefix points to CTP. Missing, truncated, restarted, or first prefix observations are unavailable. Routing compares private fingerprints of the actual outgoing session key. Turn-state forwarding compares the current client/provider sticky-routing header: absent, preserved, dropped, changed, or unavailable. Stable session keys alone do not prove sticky routing; no key or content hash is shown.\n\n'
-	printf '| Arm | Request ordinal | Input | Cached | Client prefix | Post-replay prefix | Provider prefix | Route key | Request cache key | Turn-state forwarding |\n'
+		printf 'Comparisons use decoded request items, not the provider hidden token prefix. Appended/identical means the observed earlier content is stable; it does not guarantee a cache hit. A changed projected prefix with a stable client prefix points to projection/replay. Missing, truncated, restarted, or first prefix observations are unavailable. Routing compares private fingerprints of the actual outgoing session key. Turn-state forwarding compares the current client/provider sticky-routing header: absent, preserved, dropped, changed, or unavailable. Stable session keys alone do not prove sticky routing; no key or content hash is shown.\n\n'
+		printf '| Arm | Request ordinal | Input | Cached | Client prefix | Projected prefix | Provider prefix | Route key | Request cache key | Turn-state forwarding |\n'
 	printf '|---|---:|---:|---:|---|---|---|---|---|---|\n'
 	for row in treatment ${has_baseline/true/baseline}; do
 		[[ $row == false ]] && continue
@@ -275,7 +247,7 @@ ctp_failed=false
           def prefix: if . == null then "unavailable" else .status + (if .status == "changed" then " (common items=" + (.common_items|tostring) + (if (.changed_fields|length)>0 then "; fields=" + (.changed_fields|join(",")) else "" end) + ")" else "" end) end;
           .exchanges | sort_by(.sequence) | to_entries[] | .key as $ordinal | .value as $e |
           $e.provider_attempts[-1] as $p | $e.cache_diagnostics as $d |
-          "| \($arm) | \($ordinal+1) | \($p.usage.input_tokens // "n/a") | \($p.usage.cached_input_tokens // "n/a") | \($d.client | prefix) | \($d.native | prefix) | \($d.provider | prefix) | \($d.routing // "unavailable") | \($d.request_key // "unavailable") | \($d.turn_state_forwarding // "unavailable") |"
+	          "| \($arm) | \($ordinal+1) | \($p.usage.input_tokens // "n/a") | \($p.usage.cached_input_tokens // "n/a") | \($d.client | prefix) | \($d.projected | prefix) | \($d.provider | prefix) | \($d.routing // "unavailable") | \($d.request_key // "unavailable") | \($d.turn_state_forwarding // "unavailable") |"
         ' "$metrics"
 	done
 
@@ -295,26 +267,8 @@ ctp_failed=false
         ' "$metrics"
     done
 
-	printf '\n## Protocol transformation\n\n'
-	printf 'Token estimates count decoded JSON keys and scalar values, excluding outer JSON framing and escaping; literal escapes inside content still count. Byte counts retain exact observed bytes. Input savings compare the actual native request AFTER replay and Mekugi projection with its final CTP provider request, not incoming Codex history. Output representation differences compare complete model-origin output arrays, reconstructed from finalized stream items when needed and excluding router-generated commentary, echoed tools, and other response metadata as well as repeated SSE events. Output differences include tool-carrier translation and are not CTP savings or stock-model savings. Positive output differences mean the delivered representation is larger than provider output. Only paired provider usage measures actual model-use differences. Retries remain separate provider attempts.\n\n'
-	printf '| Arm | CTP input bytes saved | CTP input tokens saved | Delivery byte expansion | Delivery token expansion | Provider attempts |\n'
-	printf '|---|---:|---:|---:|---:|---:|\n'
-	if [[ $has_baseline == true ]]; then
-		printf '| %s | %s | %s | %s | %s | %s |\n' "$baseline_label" \
-			"$(metric "$baseline_metrics" '.protocol.input_payload_bytes_saved')" \
-			"$(metric "$baseline_metrics" '.protocol.input_payload_tokens_saved')" \
-			"$(metric "$baseline_metrics" '.protocol.output_payload_bytes_expansion')" \
-			"$(metric "$baseline_metrics" '.protocol.output_payload_tokens_expansion')" \
-			"$(metric "$baseline_metrics" '.requests.provider_attempts')"
-	fi
-	printf '| %s | %s | %s | %s | %s | %s |\n' "$treatment_label" \
-		"$(metric "$treatment_metrics" '.protocol.input_payload_bytes_saved')" \
-		"$(metric "$treatment_metrics" '.protocol.input_payload_tokens_saved')" \
-		"$(metric "$treatment_metrics" '.protocol.output_payload_bytes_expansion')" \
-		"$(metric "$treatment_metrics" '.protocol.output_payload_tokens_expansion')" \
-		"$(metric "$treatment_metrics" '.requests.provider_attempts')"
-
-	printf '\n### Observed content-token estimates\n\n'
+	printf '\n## Observed payload-token estimates\n\n'
+	printf 'These local estimates measure observed request and response representations. They are not provider usage or billed tokens. Retries remain separate provider attempts.\n\n'
 	printf '| Arm | Client requests | Provider requests | Provider response streams | Client response streams | Provider outputs | Client outputs |\n'
 	printf '|---|---:|---:|---:|---:|---:|---:|\n'
 	for row in treatment ${has_baseline/true/baseline}; do
@@ -329,28 +283,6 @@ ctp_failed=false
 			"$(metric "$metrics" '.semantic.provider_attempt_outputs.tokens')" \
 			"$(metric "$metrics" '.semantic.client_outputs.tokens')"
 	done
-	ctp_rows=()
-	if [[ $mode == ctp-only || $treatment_protocol == ctp2 ]]; then ctp_rows=(treatment); fi
-	if [[ $mentor_protocol == ctp2 ]]; then ctp_rows=(baseline treatment); fi
-	for row in "${ctp_rows[@]}"; do
-		if [[ $row == baseline ]]; then label=$baseline_label; metrics=$baseline_metrics; else label=$treatment_label; metrics=$treatment_metrics; fi
-		ctp_input_saved=$(metric "$metrics" '.protocol.input_payload_tokens_saved')
-		ctp_output_saved=$(metric "$metrics" '.protocol.output_text_tokens_saved')
-		printf '\n### CTP/2 acceptance: %s\n\n' "$label"
-		printf 'Input compression uses the post-replay native request versus its CTP encoding. Output compression uses only assistant output_text, excluding tool-carrier translation.\n\n'
-		printf '| Direction | Required | Tokens saved | Result |\n|---|---|---:|---|\n'
-		input_result='not required'; output_result='not required'
-		if [[ $require_ctp_input_compression == true ]]; then
-			if ((ctp_input_saved > 0)); then input_result=passed; else input_result=failed; fi
-		fi
-		if [[ $require_ctp_output_compression == true ]]; then
-			if ((ctp_output_saved > 0)); then output_result=passed; else output_result=failed; fi
-		fi
-		printf '| Input | %s | %s | %s |\n' "$require_ctp_input_compression" "$ctp_input_saved" "$input_result"
-		printf '| Output | %s | %s | %s |\n' "$require_ctp_output_compression" "$ctp_output_saved" "$output_result"
-		if [[ $input_result == failed || $output_result == failed ]]; then ctp_failed=true; fi
-	done
-
 	printf '\n## Actual model use\n\n'
 	printf '| Arm | Provider model | Provider attempts | Usage-bearing attempts | Input tokens | Cached input | Output tokens | Reasoning tokens |\n'
 	printf '|---|---|---:|---:|---:|---:|---:|---:|\n'
@@ -363,33 +295,14 @@ ctp_failed=false
 	if [[ $has_baseline == true ]]; then print_tool_rows "$baseline_label" "$baseline_metrics"; fi
 	print_tool_rows "$treatment_label" "$treatment_metrics"
 
-	if [[ $mode != control-only ]]; then
-		printf '\n## HPATCH delivery\n\n'
-		printf '| Measure | Result |\n|---|---:|\n'
-		for spec in \
-			'Calls:.mekugi.calls' 'Corrections:.mekugi.corrections' \
-			'Successful deliveries:.mekugi.successful' 'Rejected deliveries:.mekugi.rejected' \
-			'Unmatched calls:.mekugi.unmatched' 'Provider HPATCH input tokens:.mekugi.provider_input_tokens' \
-			'Delivered carrier input tokens:.mekugi.delivered_input_tokens' \
-			'Carrier token expansion:.mekugi.carrier_input_tokens_expansion'; do
-			label=${spec%%:*}; expression=${spec#*:}
-			printf '| %s | %s |\n' "$label" "$(metric "$treatment_metrics" "$expression")"
-		done
-		jq -r '.mekugi.diagnostics // {} | to_entries[] | "| Diagnostic `\(.key)` | \(.value) |"' "$treatment_metrics"
-	fi
-
 	printf '\n## Capture completeness\n\n'
 	printf '| Arm | Records | Provider attempts | Capture errors | Incomplete | Provider/sequence errors | Write/skipped errors | Dropped detail |\n'
 	printf '|---|---:|---:|---:|---:|---:|---:|---:|\n'
 	if [[ $has_baseline == true ]]; then print_capture_rows "$baseline_label" "$baseline_metrics"; fi
 	print_capture_rows "$treatment_label" "$treatment_metrics"
 
-	printf '\nThe capturer snapshot is authoritative for calculations. `results.jsonl` is reconciled against per-thread provider usage, and the sanitized schema-6 JSONL in `captures/` is reconciled against snapshot health and exchange totals. The summary contains no request, session, thread, call, or capture identifiers.\n'
+	printf '\nThe capturer snapshot is authoritative for calculations. `results.jsonl` is reconciled against per-thread provider usage, and the sanitized schema-7 JSONL in `captures/` is reconciled against snapshot health and exchange totals. The summary contains no request, session, thread, call, or capture identifiers.\n'
 } >"$temporary"
 
 mv -f -- "$temporary" "$summary"
 printf 'Benchmark summary: %s\n' "$summary"
-if [[ $ctp_failed == true ]]; then
-	printf 'report.sh: required CTP/2 compression was not observed; see per-arm acceptance\n' >&2
-	exit 1
-fi

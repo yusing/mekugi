@@ -10,7 +10,7 @@ import (
 )
 
 func composeCapture(before, after string) ReviewFile {
-	return reviewFiles([]change{{kind: changeUpdate, originalPath: "file.txt", path: "file.txt", original: before, content: after}})[0]
+	return RenderReviewFile("file.txt", "file.txt", before, after)
 }
 
 func composedText(c *ReviewComposition) string {
@@ -126,11 +126,11 @@ func TestReviewCompositionReviewedPartialRevertAndLineShifts(t *testing.T) {
 
 func TestReviewCompositionNewlineAndPathChanges(t *testing.T) {
 	var c ReviewComposition
-	add := reviewFiles([]change{{kind: changeAdd, path: "a.txt", content: "a\r\nb"}})[0]
+	add := RenderReviewFile("", "a.txt", "", "a\r\nb")
 	if err := c.ApplyWithHighlight(add, false, false); err != nil {
 		t.Fatal(err)
 	}
-	move := reviewFiles([]change{{kind: changeUpdate, originalPath: "a.txt", path: "b.txt", original: "a\r\nb", content: "a\nb\n"}})[0]
+	move := RenderReviewFile("a.txt", "b.txt", "a\r\nb", "a\nb\n")
 	if err := c.ApplyWithHighlight(move, false, false); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestReviewCompositionNewlineAndPathChanges(t *testing.T) {
 	if !strings.Contains(text, "--- /dev/null\n+++ \"b.txt\"") || !strings.Contains(text, "+a\n+b\n") {
 		t.Fatalf("move/add: %q", text)
 	}
-	del := reviewFiles([]change{{kind: changeDelete, originalPath: "b.txt", original: "a\nb\n"}})[0]
+	del := RenderReviewFile("b.txt", "", "a\nb\n", "")
 	if err := c.ApplyWithHighlight(del, false, false); err != nil {
 		t.Fatal(err)
 	}

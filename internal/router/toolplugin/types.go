@@ -13,21 +13,6 @@ type (
 		Tools  []Tool `json:"tools"`
 	}
 
-	Carrier struct {
-		Kind     string                     `json:"kind"`
-		Name     string                     `json:"name"`
-		Payload  string                     `json:"payload"`
-		Template string                     `json:"template"`
-		Params   map[string]json.RawMessage `json:"params"`
-	}
-
-	Translation struct {
-		Rejected   bool     `json:"rejected"`
-		Diagnostic string   `json:"diagnostic"`
-		Arguments  []string `json:"arguments"`
-		Carrier    Carrier  `json:"carrier"`
-	}
-
 	OmittedOutput struct {
 		StdoutKind string `json:"stdoutKind,omitempty"`
 		StderrKind string `json:"stderrKind,omitempty"`

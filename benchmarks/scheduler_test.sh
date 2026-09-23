@@ -11,64 +11,55 @@ source "$benchmark_root/bench.sh"
 [[ $(trap -p) == "$before_traps" ]]
 [[ ! -v run_dir ]]
 
-for mode in paired control-only mekugi-only mekugi-diagnostic ctp-only mentor-handoff; do
+for mode in paired control-only mekugi-only mekugi-diagnostic mentor-handoff; do
  (
   export BENCHMARK_MODE=$mode MODEL=gpt-5.6-luna REPETITIONS=1
   export BENCHMARK_REPORT_ISSUES=false
-  unset DIAGNOSTIC_MODEL_PROTOCOL MENTOR_MODEL_PROTOCOL
   configure_benchmark
   case $mode in
    paired) expected=(control mekugi); retained=(control mekugi) ;;
    control-only) expected=(control); retained=(control) ;;
    mekugi-only) expected=(mekugi); retained=(control mekugi) ;;
    mekugi-diagnostic) expected=(mekugi); retained=(mekugi) ;;
-   ctp-only) expected=(native ctp); retained=(native ctp) ;;
    mentor-handoff) expected=(mekugi mekugi-mentor); retained=(mekugi mekugi-mentor) ;;
   esac
   [[ ${run_arms[*]} == "${expected[*]}" && ${retained_arms[*]} == "${retained[*]}" ]]
   calls="$fixture/$mode"
   run_attempt() {
    local arm=$1
-   printf '%s %s %s %s %s %s %s %s\n' "$arm" "$2" "$3" "${arm_services[$arm]}" \
-    "${arm_modes[$arm]}" "${arm_protocols[$arm]}" "${arm_instructions[$arm]}" "${arm_mentor[$arm]}" >>"$calls"
+   printf '%s %s %s %s %s %s %s\n' "$arm" "$2" "$3" "${arm_services[$arm]}" \
+    "${arm_modes[$arm]}" "${arm_instructions[$arm]}" "${arm_mentor[$arm]}" >>"$calls"
   }
   (run_block 1)
   (run_block 2)
   case $mode in
    paired) cat >"$fixture/want" <<'EOF'
-mekugi 1 1 mekugi-agent mekugi ctp2 mekugi.md false
-control 1 2 control-agent passthrough native control.md false
-control 2 1 control-agent passthrough native control.md false
-mekugi 2 2 mekugi-agent mekugi ctp2 mekugi.md false
+mekugi 1 1 mekugi-agent mekugi mekugi.md false
+control 1 2 control-agent passthrough control.md false
+control 2 1 control-agent passthrough control.md false
+mekugi 2 2 mekugi-agent mekugi mekugi.md false
 EOF
     ;;
    control-only) cat >"$fixture/want" <<'EOF'
-control 1 1 control-agent passthrough native control.md false
-control 2 1 control-agent passthrough native control.md false
+control 1 1 control-agent passthrough control.md false
+control 2 1 control-agent passthrough control.md false
 EOF
     ;;
    mekugi-only) cat >"$fixture/want" <<'EOF'
-mekugi 1 2 mekugi-agent mekugi native mekugi.md false
-mekugi 2 2 mekugi-agent mekugi native mekugi.md false
+mekugi 1 2 mekugi-agent mekugi mekugi.md false
+mekugi 2 2 mekugi-agent mekugi mekugi.md false
 EOF
     ;;
    mekugi-diagnostic) cat >"$fixture/want" <<'EOF'
-mekugi 1 1 mekugi-agent mekugi native mekugi.md false
-mekugi 2 1 mekugi-agent mekugi native mekugi.md false
-EOF
-    ;;
-   ctp-only) cat >"$fixture/want" <<'EOF'
-ctp 1 1 mekugi-agent mekugi ctp2 mekugi.md false
-native 1 2 control-agent mekugi native mekugi.md false
-native 2 1 control-agent mekugi native mekugi.md false
-ctp 2 2 mekugi-agent mekugi ctp2 mekugi.md false
+mekugi 1 1 mekugi-agent mekugi mekugi.md false
+mekugi 2 1 mekugi-agent mekugi mekugi.md false
 EOF
     ;;
    mentor-handoff) cat >"$fixture/want" <<'EOF'
-mekugi-mentor 1 1 mekugi-agent mekugi native mekugi.md true
-mekugi 1 2 control-agent mekugi native mekugi.md false
-mekugi 2 1 control-agent mekugi native mekugi.md false
-mekugi-mentor 2 2 mekugi-agent mekugi native mekugi.md true
+mekugi-mentor 1 1 mekugi-agent mekugi mekugi.md true
+mekugi 1 2 control-agent mekugi mekugi.md false
+mekugi 2 1 control-agent mekugi mekugi.md false
+mekugi-mentor 2 2 mekugi-agent mekugi mekugi.md true
 EOF
     ;;
   esac

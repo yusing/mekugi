@@ -17,7 +17,7 @@ authoritative over local token estimates.
 
 Production feature owners supply only validated observation facts at existing seams. They
 do not keep synthetic baselines, metric callbacks, parallel histories, or dashboard-owned
-calculations. CTP provides native and encoded boundaries; terminal parsing provides usage;
+calculations. Terminal parsing provides usage;
 private reader execution provides opt-in AX events. Capturer calculations are reused by the
 dashboard, offline aggregation, and benchmark validation.
 

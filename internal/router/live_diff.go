@@ -29,9 +29,6 @@ func RunLiveDiff(ctx context.Context, args []string, stdin, stdout, stderr *os.F
 	flags.SetOutput(stderr)
 	workspace := flags.String("workspace", "", "workspace for displayed paths (default current directory)")
 	replay := flags.String("replay-dir", "", "replay directory (default platform state directory)")
-	simulate := flags.Bool("simulate", false, "replay an isolated streaming UI demonstration; no Codex or Herdr required")
-	speed := flags.Float64("speed", 1, "simulation playback speed (0.1 to 20)")
-	repeat := flags.Bool("repeat", false, "repeat the simulation until q")
 	sessionFile := flags.String("session-file", "", "private router event connection")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -45,15 +42,6 @@ func RunLiveDiff(ctx context.Context, args []string, stdin, stdout, stderr *os.F
 	}
 	if flags.NArg() != 0 {
 		return fail(errors.New("unexpected arguments"))
-	}
-	if *simulate {
-		if *workspace != "" || *replay != "" || *sessionFile != "" {
-			return fail(errors.New("simulation owns its temporary workspace, replay store, and connection"))
-		}
-		if err := runLiveDiffSimulation(ctx, stdin, stdout, *speed, *repeat); err != nil {
-			return fail(err)
-		}
-		return 0
 	}
 	var err error
 	if *workspace == "" {

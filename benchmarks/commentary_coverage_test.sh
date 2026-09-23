@@ -7,7 +7,7 @@ manifest="$benchmark_root/tasks/commentary-coverage/task.json"
 fixture=$(mktemp -d)
 trap 'rm -rf -- "$fixture"' EXIT
 
-for mode in mekugi-diagnostic ctp-only mentor-handoff; do
+for mode in mekugi-diagnostic mentor-handoff; do
 	python3 "$checker" validate "$manifest" "$mode"
 done
 if python3 "$checker" validate "$manifest" paired >/dev/null 2>&1; then
@@ -16,18 +16,12 @@ if python3 "$checker" validate "$manifest" paired >/dev/null 2>&1; then
 fi
 
 cat >"$fixture/operations.jsonl" <<'JSONL'
-{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"hpatch 'new go.mod'"}}
-{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"journal add coverage:bash --report-now"}}
-{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":1,"command":"hpatch 'stale target'"}}
-{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"hpatch --recover amber 'maple target'"}}
-{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"journal add coverage:recovered --report-now"}}
-{"type":"item.completed","item":{"type":"agent_message","text":"coverage:bash\n\ncoverage:recovered"}}
+{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"sed -i 's/draft/current/' coverage.go"}}
+{"type":"item.completed","item":{"type":"agent_message","text":"coverage:command\n\ncoverage:edited"}}
 {"type":"item.completed","item":{"type":"agent_message","text":"coverage:reported"}}
-{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"journal add coverage:posix --report-now"}}
-{"type":"item.completed","item":{"type":"agent_message","text":"coverage:posix\n\ncoverage:code-mode"}}
-{"type":"item.completed","item":{"type":"agent_message","text":"Running the requested operation."}}
-{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"printf coverage:exec-complete"}}
-{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"publish coverage%3Acode-mode"}}
+{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"gofmt -w coverage.go && go test ./..."}}
+{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"printf '%s\\n' coverage:exec-complete"}}
+{"type":"item.completed","item":{"type":"agent_message","text":"coverage:validated\n\ncoverage:code-mode"}}
 {"type":"item.completed","item":{"type":"agent_message","text":"Tokens for this session\n\n| Category | Tokens | API USD |\n| --- | ---: | ---: |\n| Input | 120 | — |\n| Cached input | 80 | n/a |\n| Uncached input | 40 | n/a |\n| Output | 30 | n/a |\n| Reasoning | 20 | — |\n| Total | — | n/a |\n"}}
 JSONL
 
@@ -36,57 +30,33 @@ python3 "$checker" check "$manifest" mekugi-diagnostic mekugi \
 jq -e '.passed == true and .profiles == ["operations", "reporting", "terminal"]' \
 	"$fixture/result.json" >/dev/null
 
-grep -v 'coverage:reported' "$fixture/operations.jsonl" >"$fixture/ctp.jsonl"
-for arm in native ctp; do
-	python3 "$checker" check "$manifest" ctp-only "$arm" \
-		"$fixture/ctp.jsonl" >"$fixture/result.json"
-	jq -e '.passed == true and .profiles == ["operations", "terminal"]' \
-		"$fixture/result.json" >/dev/null
-done
-
+grep -v 'coverage:reported' "$fixture/operations.jsonl" >"$fixture/missing-report.jsonl"
 if python3 "$checker" check "$manifest" mekugi-diagnostic mekugi \
-	"$fixture/ctp.jsonl" >"$fixture/missing.json"; then
-	printf 'commentary coverage accepted a missing report_issue message\n' >&2
+	"$fixture/missing-report.jsonl" >"$fixture/missing.json"; then
+	printf 'commentary coverage accepted a missing issue-report marker\n' >&2
 	exit 1
 fi
 jq -e '.passed == false and (.missing | index("message:regex:coverage:reported") != null)' \
 	"$fixture/missing.json" >/dev/null
 
-# Markers alone must not pass when shell recovery is missing or failed.
-for recovery_status in missing failed; do
-	jq -c --arg state "$recovery_status" '
-		if (.item.command // "" | contains("hpatch --recover ")) then
-			if $state == "missing" then empty else .item.exit_code = 1 end
-		else . end
-	' "$fixture/ctp.jsonl" >"$fixture/recovery-$recovery_status.jsonl"
-	if python3 "$checker" check "$manifest" ctp-only ctp \
-		"$fixture/recovery-$recovery_status.jsonl" >"$fixture/missing-recovery.json"; then
-		printf 'commentary coverage accepted %s shell recovery\n' "$recovery_status" >&2
-		exit 1
-	fi
-	jq -e '.passed == false and (.missing | index("command:contains:hpatch --recover ") != null)' \
-		"$fixture/missing-recovery.json" >/dev/null
-done
-
-# Successful commands alone do not establish journal delivery.
-jq -c 'select(.item.type != "agent_message" or (.item.text | contains("coverage:recovered") | not))' \
-	"$fixture/ctp.jsonl" >"$fixture/missing-journal.jsonl"
-if python3 "$checker" check "$manifest" ctp-only ctp \
+jq -c 'select(.item.type != "agent_message" or (.item.text | contains("coverage:edited") | not))' \
+	"$fixture/operations.jsonl" >"$fixture/missing-journal.jsonl"
+if python3 "$checker" check "$manifest" mekugi-diagnostic mekugi \
 	"$fixture/missing-journal.jsonl" >"$fixture/missing-journal.json"; then
-	printf 'commentary coverage accepted missing recovery journal delivery\n' >&2
+	printf 'commentary coverage accepted missing edit journal delivery\n' >&2
 	exit 1
 fi
-jq -e '.passed == false and (.missing | index("message:regex:coverage:recovered") != null)' \
+jq -e '.passed == false and (.missing | index("message:regex:coverage:edited") != null)' \
 	"$fixture/missing-journal.json" >/dev/null
 
-grep -v 'coverage%3Acode-mode' "$fixture/ctp.jsonl" >"$fixture/failed-command.jsonl"
-printf '%s\n' '{"type":"item.completed","item":{"type":"command_execution","status":"failed","exit_code":1,"command":"publish coverage%3Acode-mode"}}' >>"$fixture/failed-command.jsonl"
-if python3 "$checker" check "$manifest" ctp-only ctp \
+jq -c 'if (.item.command // "" | contains("go test ./...")) then .item.exit_code = 1 else . end' \
+	"$fixture/operations.jsonl" >"$fixture/failed-command.jsonl"
+if python3 "$checker" check "$manifest" mekugi-diagnostic mekugi \
 	"$fixture/failed-command.jsonl" >"$fixture/missing-command.json"; then
-	printf 'commentary coverage accepted a failed runtime publication command\n' >&2
+	printf 'commentary coverage accepted a failed validation command\n' >&2
 	exit 1
 fi
-jq -e '.passed == false and (.missing | index("command:regex:coverage(?:%3A|:)code-mode") != null)' \
+jq -e '.passed == false and (.missing | index("command:contains:go test ./...") != null)' \
 	"$fixture/missing-command.json" >/dev/null
 
 cat >"$fixture/collaboration.jsonl" <<'JSONL'
@@ -101,14 +71,14 @@ for arm in mekugi mekugi-mentor; do
 done
 
 printf '%s\n' '{invalid' >"$fixture/malformed.jsonl"
-if python3 "$checker" check "$manifest" ctp-only ctp \
+if python3 "$checker" check "$manifest" mekugi-diagnostic mekugi \
 	"$fixture/malformed.jsonl" >/dev/null 2>&1; then
 	printf 'commentary coverage accepted malformed Codex JSONL\n' >&2
 	exit 1
 fi
 
 jq '.commentary_coverage.version = 2' "$manifest" >"$fixture/invalid-manifest.json"
-if python3 "$checker" validate "$fixture/invalid-manifest.json" ctp-only >/dev/null 2>&1; then
+if python3 "$checker" validate "$fixture/invalid-manifest.json" mekugi-diagnostic >/dev/null 2>&1; then
 	printf 'commentary coverage accepted an unsupported manifest version\n' >&2
 	exit 1
 fi

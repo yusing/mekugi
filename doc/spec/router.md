@@ -165,8 +165,8 @@ These files are separate from sanitized transport metrics.
 capturer's immutable `capture_id` and `request_sequence`. All request-scoped debug and
 instruction records use that capture ID as their `request_id`; without capture they use
 a local random ID. `tool_observation` maps this request identity to safe logical `call_id`
-and tool name at local translation, not execution. AX and existing HPATCH evidence join
-through call identity; no correlation header is added to either transport boundary.
+and tool name at local observation, not execution. AX and observed patch evidence
+join through call identity; no correlation header is added to either transport boundary.
 Cancellation evidence is independent of replay diagnostic references. Allowlisted causes
 are `router_shutdown`, `response_start_timeout`, `upstream_idle_timeout`,
 `downstream_context_canceled`, `downstream_disconnected`, `downstream_deadline_exceeded`, `cancellation_unknown`,
@@ -296,22 +296,20 @@ is a non-generating transport handshake and does not require workspaces or a
 supported tool catalog. When Codex supplies a supported execution catalog, prewarm
 uses the same instruction, tool, and collaboration projection as a generating turn,
 so the first turn can reuse that prefix. An execution-free or catalog-free handshake
-remains native. Prewarm does not initialize shell runtimes, replay, journal or agent
-lifecycle state, and does not use CTP encoding. Generating requests cannot use prewarm
+remains native. Prewarm does not initialize replay, journal, or agent lifecycle state. Generating requests cannot use prewarm
 metadata to bypass ordinary turn validation.
 
-Execution-free turns pass through without Mekugi instruction or tool rewriting or CTP
-encoding, regardless of their output schema. They require valid turn metadata and session
+Execution-free turns pass through without Mekugi instruction or tool rewriting, regardless of their output schema. They require valid turn metadata and session
 and thread IDs. Catalogs may be empty or contain native helper tools and Codex's JavaScript
 Code Mode `exec` with optional `wait`, flat or namespaced. Nested clock and lookup declarations
 are allowed. Generic preamble examples mentioning `tools.exec_command` are not declarations.
 Admission depends on advertised tool declarations, not client preamble wording or request purpose.
 Malformed catalogs, duplicate tools, wrong-kind execution wrappers, and partial editing or
 process-execution catalogs do not qualify. Requests advertising native or nested editing or
-process-execution tools retain the existing Mekugi admission and rewriting checks.
+process-execution tools keep their stock execution catalog after validation.
 
-Request preparation and response restoration retain HPATCH tools, replay,
-CTP/2, and native carrier behavior. Connection-local native history supplies ordinary
+Request preparation and response restoration retain stock tool identity,
+replay, and native execution behavior. Connection-local native history supplies ordinary
 projection and durable replay. Separately, the transport fingerprints the complete
 provider input plus raw completed output, reconciling streamed items with terminal
 snapshots before any client-facing transformation. Only a successful or steered
@@ -366,7 +364,7 @@ Acceptance:
    and receive an automatic successor through the same connection.
 3. Accepted steering waiting on tool output survives parent completion, and one
    incremental tool-result continuation does not duplicate the steering input.
-4. Prewarming, incremental history, tool restoration, and CTP references preserve
+4. Prewarming, incremental history, and tool restoration preserve
    their existing meaning across responses.
 5. HTTP clients remain supported; a dropped active WebSocket fails without
    transparent replay, and lifecycle cancellation closes owned sockets.
@@ -434,7 +432,7 @@ Acceptance:
 3. Terminal events finish responses without waiting for socket EOF. Nonstream
    output reconstructs finalized items in index order when the terminal array
    is empty or absent, and applies tool translation once.
-4. SSE translation, native tool carriers, CTP/2, provider usage, and capture
+4. SSE translation, stock tool calls, provider usage, and capture
    remain integrated; neither nonstream delivery nor Grok needs WebSocket support
    in Codex.
 5. Unsupported-upgrade fallback is pre-send only. Failed sends, partial streams,

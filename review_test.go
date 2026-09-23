@@ -1,18 +1,17 @@
 package mekugi
 
 import (
-	"strconv"
 	"strings"
 	"testing"
 )
 
 func TestReviewFiles(t *testing.T) {
-	files := reviewFiles([]change{
-		{kind: changeDelete, originalPath: "old.txt", original: "removed\n"},
-		{kind: changeAdd, path: "empty.txt"},
-		{kind: changeUpdate, originalPath: "before.txt", path: "after.txt", original: "unchanged\n", content: "unchanged\n"},
-		{kind: changeUpdate, originalPath: "end.txt", path: "end.txt", original: "a\r\nb", content: "a\nb\n"},
-	})
+	files := []ReviewFile{
+		RenderReviewFile("old.txt", "", "removed\n", ""),
+		RenderReviewFile("", "empty.txt", "", ""),
+		RenderReviewFile("before.txt", "after.txt", "unchanged\n", "unchanged\n"),
+		RenderReviewFile("end.txt", "end.txt", "a\r\nb", "a\nb\n"),
+	}
 	if len(files) != 4 {
 		t.Fatalf("files = %#v", files)
 	}
@@ -43,32 +42,15 @@ func TestReviewActionClassifiesCapturedIdentity(t *testing.T) {
 	}
 }
 
-func TestHostReviewCapturesFormattedState(t *testing.T) {
-	root := t.TempDir()
-	writeTestFile(t, root, "sample.go", "", 0o644)
-	edits := []FileEdit{{Path: "sample.go", Script: "append " + strconv.Quote("package sample\nvar X=1\n")}}
-	result, err := TranslateForHostAt(t.Context(), root, edits, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.ReviewFiles) != 1 || !strings.Contains(result.ReviewFiles[0].Diff, "+var X = 1\n") {
-		t.Fatalf("review = %#v", result.ReviewFiles)
-	}
-	rejected, err := TranslateForHostAt(t.Context(), root, []FileEdit{{Path: "sample.go", Script: "append " + strconv.Quote("invalid go\n")}}, "")
-	if err == nil || len(rejected.ReviewFiles) != 0 {
-		t.Fatalf("rejected review = %#v, err = %v", rejected.ReviewFiles, err)
-	}
-}
-
 func TestReviewPresentation(t *testing.T) {
-	files := reviewFiles([]change{
-		{kind: changeUpdate, originalPath: "file.txt", path: "file.txt", original: "--old\n", content: "++new\n"},
-		{kind: changeAdd, path: "new.txt", content: "new"},
-		{kind: changeDelete, originalPath: "gone.txt", original: "gone\n"},
-		{kind: changeAdd, path: "empty.txt"},
-		{kind: changeDelete, originalPath: "empty-old.txt"},
-		{kind: changeUpdate, originalPath: "old.txt", path: "renamed.txt", original: "same\n", content: "same\n"},
-	})
+	files := []ReviewFile{
+		RenderReviewFile("file.txt", "file.txt", "--old\n", "++new\n"),
+		RenderReviewFile("", "new.txt", "", "new"),
+		RenderReviewFile("gone.txt", "", "gone\n", ""),
+		RenderReviewFile("", "empty.txt", "", ""),
+		RenderReviewFile("empty-old.txt", "", "", ""),
+		RenderReviewFile("old.txt", "renamed.txt", "same\n", "same\n"),
+	}
 	for i, want := range []string{
 		" file.txt | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)\n",
 		" new.txt | 1 +\n 1 file changed, 1 insertion(+)\n",
@@ -97,11 +79,11 @@ func TestReviewPresentation(t *testing.T) {
 }
 
 func TestReviewStatAlignmentAndScaling(t *testing.T) {
-	files := reviewFiles([]change{
-		{kind: changeAdd, path: "large.txt", content: strings.Repeat("new\n", 100)},
-		{kind: changeUpdate, originalPath: "small", path: "small", original: "old\n", content: "new\n"},
-		{kind: changeAdd, path: "empty"},
-	})
+	files := []ReviewFile{
+		RenderReviewFile("", "large.txt", "", strings.Repeat("new\n", 100)),
+		RenderReviewFile("small", "small", "old\n", "new\n"),
+		RenderReviewFile("", "empty", "", ""),
+	}
 	want := " large.txt | 100 " + strings.Repeat("+", 40) + "\n" +
 		" small     |   2 +-\n empty     |   0\n" +
 		" 3 files changed, 101 insertions(+), 1 deletion(-)\n"

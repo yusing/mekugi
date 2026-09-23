@@ -3,7 +3,7 @@ import {readFile, stat} from "node:fs/promises";
 import path from "node:path";
 
 import type {ExecutionResult, Tool} from "../internal/router/toolplugin/plugin.d.ts";
-import {classifySourcePath, hashLine} from "mekugi:core/v1";
+import {classifySourcePath} from "mekugi:core/v1";
 import {
   readerArguments,
   readerOptions,
@@ -79,27 +79,19 @@ export function sourceFormat(filePath: string): SourceFormat | null {
   };
 }
 
-function hashOutline(lines: LineMap, outline: LocatedEntry[]): PublicOutlineEntry[] {
-  // All entries refer to this immutable source snapshot, including repeated endpoints.
-  const identities = new Map<number, string>();
-  function rowIdentity(line: number): string {
-    const cached = identities.get(line);
-    if (cached !== undefined) {
-      return cached;
+function publicOutline(lines: LineMap, outline: LocatedEntry[]): PublicOutlineEntry[] {
+  const verified = new Set<number>();
+  return outline.map(({entry}) => {
+    for (const line of [entry.line, entry.line_end]) {
+      if (!verified.has(line)) {
+        if (lines.logicalLine(line) === null) {
+          throw new InspectFailure("parse", `missing line ${line}`);
+        }
+        verified.add(line);
+      }
     }
-    const logical = lines.logicalLine(line);
-    if (logical === null) {
-      throw new InspectFailure("parse", `missing line ${line}`);
-    }
-    const identity = `${line}:${hashLine(logical.text)}`;
-    identities.set(line, identity);
-    return identity;
-  }
-  return outline.map(({entry}) => ({
-    ...entry,
-    line: rowIdentity(entry.line),
-    line_end: rowIdentity(entry.line_end),
-  }));
+    return entry;
+  });
 }
 
 function parseContent(
@@ -112,7 +104,7 @@ function parseContent(
       const tree = codeTree(source, format);
       return {
         parseComplete: !hasParseError(tree),
-        outline: hashOutline(lines, ordered(codeOutline(source, lines, format, tree))),
+		outline: publicOutline(lines, ordered(codeOutline(source, lines, format, tree))),
         lineCount: lines.count,
       };
     }
@@ -121,14 +113,14 @@ function parseContent(
       const outline = markdownOutline(source, lines, tree);
       return {
         parseComplete: !hasParseError(tree) && outline.parseComplete,
-        outline: hashOutline(lines, ordered(outline.entries)),
+		outline: publicOutline(lines, ordered(outline.entries)),
         lineCount: lines.count,
       };
     }
     const tree = jsonTree(source);
     return {
       parseComplete: !hasParseError(tree),
-      outline: hashOutline(lines, ordered(jsonOutline(source, lines, tree))),
+	  outline: publicOutline(lines, ordered(jsonOutline(source, lines, tree))),
       lineCount: lines.count,
     };
   } catch (error) {
@@ -248,7 +240,7 @@ async function inspect(input: string): Promise<InspectionData> {
   };
 }
 
-export const inspectFileDescription = `Inspect one host-readable regular file and return bounded JSON metadata and a structural outline. --max-tokens N sets the shared strict 1–15500 ceiling (default 4000). Recover omitted entries with mread. Outline line and line_end are copyable LINE:HASH identities, not source text.
+export const inspectFileDescription = `Inspect one host-readable regular file and return bounded JSON metadata and a structural outline. --max-tokens N sets the shared strict 1–15500 ceiling (default 4000). Recover omitted entries with mread. Outline line and line_end are one-based source line numbers.
 
 Result shape schema:
 ${inspectFileShapeSchemaJSON}`;

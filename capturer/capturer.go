@@ -33,16 +33,6 @@ const maxRetainedExchangeDetails = 4096
 
 const maxObservedResponseBytes = 8 << 20
 
-// The router-owned marker identifies the carrier independently of wrappers
-// around the host call, such as change-ID failure reporting.
-const mekugiApplyCarrierPrefix = "// mekugi-proxy: apply translated patch\n"
-
-const (
-	mekugiNativeApplyCarrierPrefix      = "# mekugi-proxy: apply translated patch\n"
-	mekugiNativeReportCarrierPrefix     = "# mekugi-proxy: return mekugi report\n"
-	mekugiNativeDiagnosticCarrierPrefix = "# mekugi-proxy: return mekugi diagnostic "
-)
-
 type captureKey struct{}
 
 // Config identifies the observed router behavior and optional durable JSONL
@@ -75,8 +65,6 @@ type toolCallMetrics struct {
 	InputTokens uint64 `json:"input_tokens"`
 	ItemBytes   uint64 `json:"item_bytes"`
 	ItemTokens  uint64 `json:"item_tokens"`
-	Kind        string `json:"kind,omitempty"`
-	Diagnostic  string `json:"diagnostic,omitempty"`
 }
 
 type captureRecord struct {
@@ -457,13 +445,7 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 			record.CaptureError = "measure projected request"
 		}
 		if record.ProjectedRequest == nil {
-			baseline := record.Request
-			record.ProjectedRequest = &baseline
-			record.ProjectedFingerprint = cloneFingerprint(record.Fingerprint)
-			if record.ProjectedFingerprint != nil {
-				record.ProjectedFingerprint.RoutingKey = ""
-				record.ProjectedFingerprint.TurnState = nil
-			}
+			record.CaptureError = "missing projected request observation"
 		}
 	}
 	var requestEnvelope struct {

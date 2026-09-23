@@ -146,7 +146,7 @@ print_capture_summary() {
 	printf 'arm\tlogical_requests\tprovider_attempts\tcompleted\tfailed\tcapture_errors\tincomplete_records\n'
 	for arm in "${retained_arms[@]}"; do
 		metrics="$run_dir/${arm_metrics[$arm]}"
-		if [[ ! -s $metrics ]] || ! jq -e '.schema == "mekugi.capture.metrics.v4"' "$metrics" >/dev/null; then
+		if [[ ! -s $metrics ]] || ! jq -e '.schema == "mekugi.capture.metrics.v6"' "$metrics" >/dev/null; then
 			printf 'bench.sh: capture summary unavailable for %s\n' "$arm" >&2
 			continue
 		fi
@@ -249,10 +249,10 @@ generate_summary() {
 }
 
 enforce_edit_loop_acceptance() {
-	# Stock has no HPATCH event stream or Mekugi-specific loop policy.
+	# Inspect stock command behavior without inferring edit success from model prose.
 	if [[ $benchmark_mode == control-only ]]; then return; fi
 	local -a mekugi_events=()
-	if [[ $benchmark_mode == ctp-only || $benchmark_mode == mentor-handoff ]]; then
+	if [[ $benchmark_mode == mentor-handoff ]]; then
 		mapfile -t mekugi_events < <(
 			find "$run_dir/artifacts" -type f \( -name codex.jsonl -o -name child-events.jsonl \) -print | sort
 		)

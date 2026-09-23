@@ -4,13 +4,97 @@ package router
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
+
+func TestMRunCodexGroupTermination(t *testing.T) {
+	if os.Getenv("MEKUGI_MRUN_GROUP_HELPER") == "1" {
+		frontend := os.Getenv("MEKUGI_MRUN_GROUP_FRONTEND")
+		_, status := RunOwnedToolPluginWorker(t.Context(), frontend,
+			[]string{"-n", "1", "--", "sh", "-c", "echo $$ > child.pid; exec sleep 60"},
+			nil, io.Discard, os.Stderr)
+		os.Exit(status)
+	}
+	registry := sharedProxyTestRegistry(t)
+	directory := t.TempDir()
+	child := exec.Command(os.Args[0], "-test.run=^TestMRunCodexGroupTermination$")
+	child.Dir = directory
+	child.Env = append(os.Environ(), "MEKUGI_MRUN_GROUP_HELPER=1", "MEKUGI_MRUN_GROUP_FRONTEND="+registry.frontends["mrun"])
+	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	child.Stderr = os.Stderr
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(-child.Process.Pid, syscall.SIGKILL); _ = child.Wait() })
+	pidPath := filepath.Join(directory, "child.pid")
+	var commandPID int
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if encoded, err := os.ReadFile(pidPath); err == nil {
+			commandPID, _ = strconv.Atoi(strings.TrimSpace(string(encoded)))
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if commandPID == 0 {
+		t.Fatal("mrun command did not start")
+	}
+	if group, err := syscall.Getpgid(commandPID); err != nil || group != child.Process.Pid {
+		t.Fatalf("mrun command group = %d, %v; want host group %d", group, err, child.Process.Pid)
+	}
+	if err := syscall.Kill(-child.Process.Pid, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := syscall.Kill(commandPID, 0); errors.Is(err, syscall.ESRCH) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("mrun command %d survived stock group termination", commandPID)
+}
+
+func TestMRunFormattingPreservesBackgroundCommand(t *testing.T) {
+	if os.Getenv("MEKUGI_MRUN_FORMAT_HELPER") == "1" {
+		frontend := os.Getenv("MEKUGI_MRUN_FORMAT_FRONTEND")
+		if handled, status := RunOwnedToolPluginWorker(t.Context(), frontend,
+			[]string{"--max-tokens", "1", "--", "sh", "-c", "sleep 30 </dev/null >/dev/null 2>&1 & echo $! > child.pid; printf abc"},
+			nil, io.Discard, os.Stderr); !handled || status != 0 {
+			t.Fatalf("mrun frontend handled=%v status=%d", handled, status)
+		}
+		return
+	}
+	registry := sharedProxyTestRegistry(t)
+	directory := t.TempDir()
+	child := exec.Command(os.Args[0], "-test.run=^TestMRunFormattingPreservesBackgroundCommand$")
+	child.Dir = directory
+	child.Env = append(os.Environ(), "MEKUGI_MRUN_FORMAT_HELPER=1", "MEKUGI_MRUN_FORMAT_FRONTEND="+registry.frontends["mrun"])
+	if output, err := child.CombinedOutput(); err != nil {
+		t.Fatalf("mrun frontend: %v: %s", err, output)
+	}
+	encoded, err := os.ReadFile(filepath.Join(directory, "child.pid"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(encoded)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+	if err := syscall.Kill(pid, 0); err != nil {
+		t.Fatalf("formatter killed background command %d: %v", pid, err)
+	}
+}
 
 func TestMRunCancellationDrainsDescendantPipes(t *testing.T) {
 	testMRunCancellation(t, []string{"--max-tokens", "20", "--tail", "--", "sh", "-c", "sleep 30 & printf ready > ready; wait"})

@@ -23,7 +23,7 @@ func TestAutoWrapProcess(t *testing.T) {
 		return
 	}
 	if os.Args[3] == "router" {
-		code, err := wrapCodex(t.Context(), []string{"--model-protocol=native", "--mentor-handoff=false"}, nil)
+		code, err := wrapCodex(t.Context(), []string{"--mentor-handoff=false"}, nil)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 		}
@@ -54,7 +54,7 @@ func TestAutoWrapProcess(t *testing.T) {
 	}
 }
 
-func TestWrapLiveDiffWaitsForHpatchTerminalAndRedirected(t *testing.T) {
+func TestWrapLiveDiffWaitsForStockActivityAndTerminal(t *testing.T) {
 	for _, terminal := range []bool{true, false} {
 		t.Run(strconv.FormatBool(terminal), func(t *testing.T) {
 			dir := t.TempDir()
@@ -105,7 +105,7 @@ esac
 				t.Fatalf("wrapper: %v\n%s", err, output)
 			}
 			if _, err := os.Stat(marker); !os.IsNotExist(err) {
-				t.Fatal("wrapper launched live diff without an hpatch call")
+				t.Fatal("wrapper launched live diff without a stock edit or command call")
 			}
 			if _, err := os.Stat(marker + ".closed"); !os.IsNotExist(err) {
 				t.Fatal("wrapper closed a pane it never needed")

@@ -51,6 +51,18 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	if err := store.put(ctx, workspace, map[string]mekugiHistory{"edited": history}); err != nil {
 		t.Fatal(err)
 	}
+	if stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
+		"mchanges --list", nil, invocation); status != 0 || stderr != "" || stdout != "" {
+		t.Fatalf("other thread's changes leaked into list: %q, %q, %d", stdout, stderr, status)
+	}
+	ownID, err := store.reserveChange(ctx, workspace, "reviewer-thread", "own-edit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
+		"mchanges --list", nil, invocation); status != 0 || stderr != "" || stdout != ownID+"\n" {
+		t.Fatalf("own pending change not discoverable: %q, %q, %d", stdout, stderr, status)
+	}
 	frontend, ok := registry.frontends["mchanges"]
 	if !ok {
 		t.Fatal("mchanges frontend is unavailable")
@@ -194,6 +206,9 @@ func TestParseChangeRead(t *testing.T) {
 			t.Fatalf("unfiltered read: %+v, %v", options, err)
 		}
 	}
+	if options, err := parseChangeRead([]string{"--list", "--max-tokens", "32"}, workspace); err != nil || options.view != "list" || len(options.ids) != 0 {
+		t.Fatalf("list options: %+v, %v", options, err)
+	}
 	options, err := parseChangeRead([]string{"amber1..amber2", "--summary", "apple1", "--", "file"}, workspace)
 	if err != nil || strings.Join(options.ids, ",") != "amber1,amber2,apple1" {
 		t.Fatalf("range and flags: %+v, %v", options, err)
@@ -205,6 +220,7 @@ func TestParseChangeRead(t *testing.T) {
 		{"--max-tokens", strconv.Itoa(maxOutputTokens + 1), "amber1"},
 		{"--workspace", workspace, "--workspace", workspace, "amber1"},
 		{"--cursor"}, {"--cursor", "", "amber1"}, {"--unknown", "amber1"},
+		{"--list", "amber1"}, {"--list", "--", "file"}, {"--list", "--summary"},
 	} {
 		if _, err := parseChangeRead(arguments, workspace); err == nil {
 			t.Fatalf("accepted %q", arguments)

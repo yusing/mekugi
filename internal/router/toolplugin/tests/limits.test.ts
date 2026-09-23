@@ -26,7 +26,6 @@ test("bounds combined executor output", async () => {
     specification: {type: "custom", name: "execution_output_test", description: "test tool"},
     parse(input) { return input; },
     argv(input) { return [input]; },
-    translate(_input, api) { return api.exec(); },
     execute() {
       return {stdout: "x".repeat(16 * 1024 * 1024 + 1), stderr: "", exitCode: 0};
     }

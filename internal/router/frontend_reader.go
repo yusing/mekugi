@@ -9,8 +9,9 @@ import (
 
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
-	"github.com/yusing/mekugi/internal/shellruntime"
 )
+
+const codexThreadIDEnvironment = "CODEX_THREAD_ID"
 
 // executeFrontendReader preserves reader AX evidence around one authenticated
 // executable-frontend invocation. Codex remains the process owner.
@@ -27,7 +28,7 @@ func executeFrontendReader(
 	}
 	observation, observeErr := capturer.StartAXReadWithContext(
 		journal,
-		os.Getenv(shellruntime.ThreadIDEnvironment),
+		os.Getenv(codexThreadIDEnvironment),
 		contribution.Name,
 		capturer.AXReadContext{},
 	)

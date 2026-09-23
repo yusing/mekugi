@@ -476,16 +476,13 @@ func liveDiffFlushCapture(t *testing.T, store *mekugiReplayStore, workspace, cal
 	if err := os.WriteFile(filepath.Join(workspace, "file.txt"), []byte(before), 0600); err != nil {
 		t.Fatal(err)
 	}
-	result, err := mekugi.TranslateForHostAt(t.Context(), workspace,
-		[]mekugi.FileEdit{{Path: "file.txt", Script: "type " + strconv.Quote(before) + " " + strconv.Quote(after) + "\n"}}, "")
-	if err != nil {
-		t.Fatal(err)
-	}
 	id, err := store.reserveChange(t.Context(), workspace, "flush-thread", call)
 	if err != nil {
 		t.Fatal(err)
 	}
-	history := mekugiHistory{ChangeID: id, CorrelationID: call, Applied: applied, ReviewFiles: result.ReviewFiles}
+	path := filepath.Join(workspace, "file.txt")
+	history := mekugiHistory{ToolName: applyPatchToolName, ChangeID: id, CorrelationID: call, Applied: applied,
+		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(path, path, before, after)}}
 	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{call: history}); err != nil {
 		t.Fatal(err)
 	}

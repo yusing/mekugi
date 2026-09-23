@@ -29,7 +29,7 @@ floored at `low` and capped at `xhigh`: `low` and `medium` map to `low`, `high` 
 effort uses `low`. Other configured models, including `gpt-6-astra`,
 remain unchanged. The router replaces only the top-level model and reasoning effort,
 preserving other reasoning members, input history, tools, metadata, and request fields.
-This happens before Mekugi projection, CTP preparation, provider serialization, and transport capture. Codex continues to construct later requests from its session
+This happens before Mekugi projection, provider serialization, and transport capture. Codex continues to construct later requests from its session
 settings; the router never rewrites response model metadata.
 
 The router retains one bounded schedule per thread. Completed provider responses contribute

@@ -7,8 +7,6 @@ import (
 	"strconv"
 )
 
-const codeModeCommentaryHistoryTool = "__mekugi_code_mode_commentary"
-
 type codeModeCommentaryCall struct {
 	start         int
 	end           int
@@ -77,7 +75,7 @@ func (t *mekugiResponseTransform) lowerCodeModeCommentary(callID, input string) 
 			end := childCall.end - call.argumentStart
 			argument = argument[:start] + replacements[child] + argument[end:]
 		}
-		command := workerCommand("shell", []string{
+		command := workerCommand("mcommentary", []string{
 			commentaryOnceArgument,
 			t.proxy.commentaryEndpoint,
 			token,

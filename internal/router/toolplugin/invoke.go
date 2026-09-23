@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func invoke(
@@ -18,6 +19,7 @@ func invoke(
 	node, hostPath, isolatedCWD, processDirectory string,
 	processEnvironment []string,
 	outputLimit int64,
+	isolatedProcessGroup bool,
 	inheritedInput *os.File,
 	transientExtraFiles []*os.File,
 	request, response any,
@@ -27,7 +29,10 @@ func invoke(
 		return fmt.Errorf("encode plugin runtime request: %w", err)
 	}
 	command := exec.CommandContext(ctx, node, hostPath)
-	ConfigureProcessGroup(command)
+	if isolatedProcessGroup {
+		ConfigureProcessGroup(command)
+	}
+	command.WaitDelay = time.Second
 	if inheritedInput != nil {
 		command.ExtraFiles = append([]*os.File{inheritedInput}, transientExtraFiles...)
 	}
@@ -43,14 +48,9 @@ func invoke(
 		command.Env = processEnvironment
 	}
 	command.Stdin = bytes.NewReader(encoded)
-	stdoutPipe, err := command.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("capture plugin runtime output: %w", err)
-	}
-	stderrPipe, err := command.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("capture plugin runtime diagnostics: %w", err)
-	}
+	stdout := &boundedHostOutput{limit: outputLimit + 1}
+	stderr := &boundedHostOutput{limit: outputLimit + 1}
+	command.Stdout, command.Stderr = stdout, stderr
 	if err := command.Start(); err != nil {
 		return fmt.Errorf("start plugin runtime: %w", err)
 	}
@@ -64,45 +64,22 @@ func invoke(
 		return fmt.Errorf("close inherited plugin runtime files: %w", closeErr)
 	}
 
-	// Drain before Wait so os/exec's context watcher remains responsible for
-	// descendants retaining these pipes after the host exits.
-	type capturedOutput struct {
-		data []byte
-		err  error
-	}
-	capture := func(reader io.Reader) <-chan capturedOutput {
-		done := make(chan capturedOutput, 1)
-		go func() {
-			data, err := io.ReadAll(io.LimitReader(reader, outputLimit+1))
-			if err == nil {
-				_, err = io.Copy(io.Discard, reader)
-			}
-			done <- capturedOutput{data, err}
-		}()
-		return done
-	}
-	stdoutResult := capture(stdoutPipe)
-	stderrResult := capture(stderrPipe)
-	stdout, stderr := <-stdoutResult, <-stderrResult
 	runErr := command.Wait()
 
 	if contextErr := ctx.Err(); contextErr != nil {
 		return contextErr
 	}
-	if err := errors.Join(stdout.err, stderr.err); err != nil {
-		return fmt.Errorf("read plugin runtime output: %w", err)
-	}
-	if int64(len(stdout.data)) > outputLimit || int64(len(stderr.data)) > outputLimit {
+	if int64(stdout.Len()) > outputLimit || int64(stderr.Len()) > outputLimit {
 		return fmt.Errorf("plugin runtime output exceeds %d bytes", outputLimit)
 	}
-	if runErr != nil {
-		diagnostic := strings.TrimSpace(string(stderr.data))
+	if runErr != nil && !errors.Is(runErr, exec.ErrWaitDelay) {
+		diagnostic := strings.TrimSpace(stderr.String())
 		if diagnostic == "" {
 			return fmt.Errorf("invoke plugin runtime: %w", runErr)
 		}
 		return fmt.Errorf("invoke plugin runtime: %w: %s", runErr, diagnostic)
 	}
-	decoder := json.NewDecoder(bytes.NewReader(stdout.data))
+	decoder := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(response); err != nil {
 		return fmt.Errorf("decode plugin runtime result: %w", err)
@@ -114,11 +91,31 @@ func invoke(
 		if execution.TerminationReason != "resolver_cleanup" && (execution.TerminationReason != "output_limit" || execution.ExitCode == 0) {
 			return errors.New("invalid plugin runtime termination reason")
 		}
-		// The host has released its interpreter pipes and returned the bounded
-		// result. Retire only this invocation's explicitly requested remaining group.
-		if err := command.Cancel(); err != nil && !errors.Is(err, os.ErrProcessDone) {
-			return fmt.Errorf("retire plugin process group: %w", err)
+		if enabled, _ := ctx.Value(frontendOrphanCleanupKey{}).(bool); enabled {
+			cleanupFrontendOrphans()
 		}
+		if isolatedProcessGroup {
+			if err := command.Cancel(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				return fmt.Errorf("retire plugin process group: %w", err)
+			}
+		}
+	} else if runErr != nil {
+		return fmt.Errorf("invoke plugin runtime: %w", runErr)
 	}
 	return nil
+}
+
+// os/exec owns pipe draining and WaitDelay; descendants cannot hold invoke
+// forever after the direct host exits. Keep only the bounded result bytes.
+type boundedHostOutput struct {
+	bytes.Buffer
+	limit int64
+}
+
+func (b *boundedHostOutput) Write(data []byte) (int, error) {
+	available := max(0, b.limit-int64(b.Len()))
+	if available > 0 {
+		_, _ = b.Buffer.Write(data[:min(int64(len(data)), available)])
+	}
+	return len(data), nil
 }

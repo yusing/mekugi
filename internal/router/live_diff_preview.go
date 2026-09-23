@@ -3,11 +3,14 @@ package router
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/shellsyntax"
@@ -39,25 +42,59 @@ type liveDiffPreviewWorker struct {
 	wake    chan struct{}
 	done    chan struct{}
 	closed  bool
+	kind    string
 }
 
-func startLiveDiffPreview(ctx context.Context, broker *liveDiffBroker, workspace, thread string) *liveDiffPreviewWorker {
+// Large previews retain a bounded suffix of the actual unified diff.
+func boundLiveDiffPreview(preview liveDiffPreview) liveDiffPreview {
+	const limit = 48 << 10
+	if len(mustMarshalJSON(preview)) <= limit {
+		return preview
+	}
+	if len(preview.Files) != 0 {
+		var tail string
+		for index := len(preview.Files) - 1; index >= 0 && len(tail) < 16<<10; index-- {
+			diff := preview.Files[index].UnifiedDiff()
+			if len(diff) > 16<<10 {
+				diff = diff[len(diff)-(16<<10):]
+			}
+			tail = diff + tail
+		}
+		preview.Input = tail
+		preview.Files, preview.Syntax = nil, nil
+		preview.DiffText, preview.Truncated = true, true
+	}
+	for preview.Input != "" && len(mustMarshalJSON(preview)) > limit {
+		cut := max(1, len(preview.Input)/2)
+		for cut < len(preview.Input) && !utf8.RuneStart(preview.Input[cut]) {
+			cut++
+		}
+		preview.Input = preview.Input[cut:]
+		preview.Syntax = liveDiffClipSyntax(preview.Syntax, cut)
+		preview.Truncated = true
+	}
+	for preview.Input != "" && !utf8.RuneStart(preview.Input[0]) {
+		preview.Input = preview.Input[1:]
+	}
+	return preview
+}
+
+func startLiveDiffPreview(ctx context.Context, broker *liveDiffBroker, workspace, thread string, kind ...string) *liveDiffPreviewWorker {
 	ctx, cancel := context.WithCancel(ctx)
 	worker := &liveDiffPreviewWorker{
 		ctx: ctx, cancel: cancel, broker: broker,
 		preview: liveDiffPreview{ID: rand.Text(), Workspace: workspace, Thread: thread},
 		wake:    make(chan struct{}, 1), done: make(chan struct{}),
 	}
+	if len(kind) != 0 {
+		worker.kind = kind[0]
+	}
 	go worker.run()
 	return worker
 }
 
-func (t *mekugiResponseTransform) previewDelta(itemID, delta string) {
-	pending, ok := t.pending[itemID]
-	if !ok || pending.toolName != "shell" || delta == "" {
-		return
-	}
-	if _, complete := t.local[pending.callID]; complete {
+func (t *mekugiResponseTransform) previewStockDelta(itemID, kind, delta string) {
+	if delta == "" {
 		return
 	}
 	auto := t.proxy.autoLiveDiff
@@ -70,7 +107,7 @@ func (t *mekugiResponseTransform) previewDelta(itemID, delta string) {
 	worker := t.previews[itemID]
 	if worker == nil {
 		auto.requestLaunch(t.directory, t.threadID)
-		worker = startLiveDiffPreview(t.ctx, auto.events, t.directory, t.threadID)
+		worker = startLiveDiffPreview(t.ctx, auto.events, t.directory, t.threadID, kind)
 		worker.mu.Lock()
 		worker.preview.Caller = t.commentaryAuthor
 		if !t.subagentTurn {
@@ -144,9 +181,85 @@ func (w *liveDiffPreviewWorker) run() {
 		preview := w.preview
 		w.mu.Unlock()
 		projectionInput := input
-		if programs, err := shellsyntax.Split(input); err == nil {
+		if w.kind == applyPatchToolName {
+			if projected, ok := nativePatchPreview(input); ok {
+				projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
+				w.mu.Lock()
+				if !w.closed && w.ctx.Err() == nil {
+					w.broker.publishPreview(projected, false)
+				}
+				w.mu.Unlock()
+			}
+			continue
+		}
+		if w.kind == nativeExecCommandToolName {
+			var arguments map[string]json.RawMessage
+			if json.Unmarshal([]byte(input), &arguments) != nil {
+				continue
+			}
+			projectionInput = jsonString(arguments, "cmd")
+			if directory := jsonString(arguments, "workdir"); filepath.IsAbs(directory) {
+				preview.Workspace = directory
+			}
+		}
+		if w.kind == "exec" {
+			calls, ok := toolActivityUnwrapExecCalls(input, false)
+			if !ok {
+				patches := stockLiteralPatchInputs(input)
+				if len(patches) != 0 {
+					if projected, valid := nativePatchPreview(patches[len(patches)-1]); valid {
+						projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
+						w.mu.Lock()
+						if !w.closed && w.ctx.Err() == nil {
+							w.broker.publishPreview(projected, false)
+						}
+						w.mu.Unlock()
+						continue
+					}
+				}
+				preview.Input, preview.Syntax, preview.Status = input, []liveDiffSourceSpan{{Path: "preview.js"}}, "STREAMING SCRIPT"
+				w.mu.Lock()
+				if !w.closed && w.ctx.Err() == nil && input != "" {
+					w.broker.publishPreview(preview, false)
+				}
+				w.mu.Unlock()
+				continue
+			}
+			for index := len(calls) - 1; index >= 0; index-- {
+				call := calls[index]
+				switch jsonString(call, "name") {
+				case applyPatchToolName:
+					if projected, ok := nativePatchPreview(jsonString(call, "input")); ok {
+						projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
+						w.mu.Lock()
+						if !w.closed && w.ctx.Err() == nil {
+							w.broker.publishPreview(projected, false)
+						}
+						w.mu.Unlock()
+						projectionInput = ""
+					}
+				case nativeExecCommandToolName:
+					var arguments map[string]json.RawMessage
+					if json.Unmarshal([]byte(jsonString(call, "arguments")), &arguments) == nil {
+						projectionInput = jsonString(arguments, "cmd")
+						if directory := jsonString(arguments, "workdir"); filepath.IsAbs(directory) {
+							preview.Workspace = directory
+						}
+					}
+				}
+				if projectionInput != input {
+					break
+				}
+			}
+			if projectionInput == "" {
+				continue
+			}
+		}
+		if programs, err := shellsyntax.Split(projectionInput); err == nil {
 			// Preview the current program, not earlier shell framing or edit payloads.
-			projectionInput = programs[len(programs)-1]
+			if w.kind == "" {
+				projectionInput = programs[len(programs)-1]
+			}
 		}
 		statements, directory, partialLine, parsed := liveDiffShellStatements(projectionInput, preview.Workspace)
 		ok := false
@@ -160,14 +273,7 @@ func (w *liveDiffPreviewWorker) run() {
 				statementPartial := partialLine && index == len(statements)-1
 				var projected []mekugi.ReviewFile
 				var recognized bool
-				if edits, _, edit := liveDiffShellEditStatement(stmt, directory, statementPartial); edit {
-					recognized = true
-					if !tainted {
-						projected, err = mekugi.PreviewForHostAt(ctx, directory, edits)
-					}
-				} else {
-					projected, recognized, err = liveDiffShellWriteStatement(ctx, stmt, directory, statementPartial)
-				}
+				projected, recognized, err = liveDiffShellWriteStatement(ctx, stmt, directory, statementPartial)
 				if !recognized {
 					if !liveDiffShellPreviewNeutral(stmt) {
 						tainted = true
@@ -207,7 +313,7 @@ func (w *liveDiffPreviewWorker) run() {
 			}
 		}
 		cancel()
-		editRecognized = editRecognized || ok || liveDiffShellComposedHpatch(projectionInput)
+		editRecognized = editRecognized || ok
 		if editRecognized {
 			preview.Input, preview.Syntax, preview.Files = "", nil, nil
 			preview.Status = "STREAMING PREVIEW"

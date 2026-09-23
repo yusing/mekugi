@@ -2,13 +2,14 @@
 
 package router
 
-import "os"
+import (
+	"os/exec"
+	"syscall"
+)
 
-func processHasControllingTerminal() bool {
-	terminal, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
-	if err != nil {
-		return false
+func mrunProcessExitCode(err *exec.ExitError) int {
+	if status, ok := err.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+		return 128 + int(status.Signal())
 	}
-	_ = terminal.Close()
-	return true
+	return err.ExitCode()
 }

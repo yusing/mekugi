@@ -22,7 +22,6 @@ export default {
     specification: {type: "custom", name: "output_test", description: "test tool"},
     parse(input) { return input; },
     argv(input) { return [input]; },
-    translate(_input, api) { return api.exec(); },
     execute() { return {stdout: "", exitCode: 0}; }
   }]
 };
@@ -41,8 +40,8 @@ export default {
 func TestLoadProvidesSharedCoreToConfiguredPlugin(t *testing.T) {
 	t.Parallel()
 	pluginDirectory := t.TempDir()
-	declaration := `import {hashLine, parseRowReference} from "mekugi:core/v1";
-const row = parseRowReference("12:abcd");
+	declaration := `import {decodeQuotedOperand, parsePositiveInteger} from "mekugi:core/v1";
+const operand = decodeQuotedOperand("\"a b\"");
 export default {
   apiVersion: "mekugi-tool-plugin/v1",
   id: "shared-core.test",
@@ -50,11 +49,10 @@ export default {
     specification: {
       type: "custom",
       name: "shared_core_test",
-      description: hashLine("hello") + ":" + row.line + ":" + row.hash,
+      description: parsePositiveInteger("12") + ":" + operand.value,
     },
     parse(input) { return input; },
     argv(input) { return [input]; },
-    translate(_input, api) { return api.exec(); },
     execute() { return {stdout: "", exitCode: 0}; }
   }]
 };
@@ -81,7 +79,7 @@ export default {apiVersion: "mekugi-tool-plugin/v1", id: "future.test", tools: [
 		if plugin.ID != "shared-core.test" {
 			continue
 		}
-		if len(plugin.Tools) != 1 || !strings.Contains(string(plugin.Tools[0].Specification), `"description":"2cf2:12:abcd"`) {
+		if len(plugin.Tools) != 1 || !strings.Contains(string(plugin.Tools[0].Specification), `"description":"12:a b"`) {
 			t.Fatalf("shared-core plugin = %+v", plugin)
 		}
 		return

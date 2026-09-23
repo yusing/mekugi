@@ -272,7 +272,7 @@ func TestStorageChangeReadDependenciesSurviveOriginalSessionExpiry(t *testing.T)
 		t.Fatal(err)
 	}
 	if err := store.put(parent, "/w", map[string]mekugiHistory{"edit-call": {
-		ToolName: "hpatch", ChangeID: id, CorrelationID: "edit", Attempt: 1, Script: "original",
+		ToolName: applyPatchToolName, ChangeID: id, CorrelationID: "edit", Attempt: 1, Script: "original",
 	}}); err != nil {
 		t.Fatal(err)
 	}

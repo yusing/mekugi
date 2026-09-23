@@ -245,7 +245,7 @@ func TestWrapGrokCatalogFailureCleansRuntime(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
-	code, err := wrapCodex(ctx, []string{"--grok", "--model-protocol", "native"}, []string{"exec", "prompt"})
+	code, err := wrapCodex(ctx, []string{"--grok"}, []string{"exec", "prompt"})
 	if code != 1 || err == nil || !strings.Contains(err.Error(), "codex debug models failed") {
 		t.Fatalf("catalog bootstrap failure = %d, %v", code, err)
 	}

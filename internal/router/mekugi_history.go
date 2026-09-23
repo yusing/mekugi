@@ -1,6 +1,7 @@
 package router
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
@@ -25,28 +26,16 @@ type mekugiHistory struct {
 	ToolName string
 	PluginID string
 
-	Script string
-	// Edits preserves the explicit path and pathless script for every file in
-	// one atomic invocation. Script remains the legacy single-input projection.
-	Edits           []mekugi.FileEdit `json:",omitempty"`
-	RecoveryScript  int               `json:",omitempty"`
+	Script          string
 	Root            string
 	ExecutingThread string `json:",omitempty"`
-	// Evaluated is the script mekugi actually received when it differs from the
-	// model's payload, which happens when the payload was a recovery edit. Replay
-	// must restore what the model emitted, while a following recovery must target
-	// the script that produced the latest diagnostic.
-	Evaluated      string
-	ChangeID       string
-	ReviewFiles    []mekugi.ReviewFile
-	Patch          string
-	Applied        bool
-	CarrierName    string
-	CarrierKind    codeModeCarrierKind
-	CarrierPayload string
-
-	// Optional invocation provenance preserves the version-1 wire shape for older calls.
-	ShellJournalTurnID string `json:",omitempty"`
+	ChangeID        string
+	ReviewFiles     []mekugi.ReviewFile
+	NativePatches   []nativePatchObservation `json:",omitempty"`
+	Applied         bool
+	CarrierName     string
+	CarrierKind     codeModeCarrierKind
+	CarrierPayload  string
 
 	Report string
 	// Deferred diagnostics are projected onto the model-visible result, never
@@ -54,21 +43,12 @@ type mekugiHistory struct {
 	JournalIDs           []string
 	OutputWarning        string
 	TranslationError     string
-	EvaluatorRejected    bool
-	RecoveryBinding      string   `json:",omitempty"`
-	RecoveryHandles      []string `json:",omitempty"`
-	Rejections           []mekugi.HostRejection
 	CorrelationID        string
 	Attempt              int
 	UpstreamItem         map[string]json.RawMessage
 	ReplayCarrier        bool
 	CommentaryMessageIDs []string
-	// Unevaluated marks a call the proxy rejected before mekugi saw it. Such a
-	// recovery changed nothing and has no script of its own, so another recovery
-	// looks past it to the rejected script it was trying to repair.
-	Unevaluated      bool
-	AlreadySatisfied bool
-	Aliases          []mekugi.TargetAlias
+	AlreadySatisfied     bool
 
 	bytes     int
 	confirmed bool
@@ -152,23 +132,16 @@ func (p *mekugiProxy) rememberBatch(sessionID string, histories map[string]mekug
 		if err != nil {
 			return fmt.Errorf("encode mekugi history item: %w", err)
 		}
-		history.bytes = len(sessionID) + len(callID) + len(history.ToolName) + len(history.PluginID) + len(history.Script) + len(history.Root) + len(history.Evaluated) + len(history.Patch) + len(history.CarrierKind) + len(history.CarrierName) + len(history.CarrierPayload) + len(history.Report) + len(history.OutputWarning) + len(history.TranslationError) + len(history.CorrelationID) + len(encodedItem)
-		history.bytes += history.RecoveryScript
-		for _, edit := range history.Edits {
-			history.bytes += len(edit.Path) + len(edit.Script)
+		history.bytes = len(sessionID) + len(callID) + len(history.ToolName) + len(history.PluginID) + len(history.Script) + len(history.Root) + len(history.CarrierKind) + len(history.CarrierName) + len(history.CarrierPayload) + len(history.Report) + len(history.OutputWarning) + len(history.TranslationError) + len(history.CorrelationID) + len(encodedItem)
+		for _, patch := range history.NativePatches {
+			history.bytes += len(patch.Input)
+			for _, file := range patch.Files {
+				history.bytes += len(file.BeforePath) + len(file.AfterPath) + len(file.Before) + len(file.Error)
+			}
 		}
-		history.bytes += len(history.ChangeID) + len(history.RecoveryBinding) + len(history.ExecutingThread)
+		history.bytes += len(history.ChangeID) + len(history.ExecutingThread)
 		for _, file := range history.ReviewFiles {
 			history.bytes += len(file.BeforePath) + len(file.AfterPath) + len(file.Diff)
-		}
-		for _, handle := range history.RecoveryHandles {
-			history.bytes += len(handle)
-		}
-		for _, rejection := range history.Rejections {
-			history.bytes += mekugiRejectionTextBytes(rejection)
-		}
-		for _, alias := range history.Aliases {
-			history.bytes += len(alias.Path) + len(alias.Before) + len(alias.After)
 		}
 		for _, messageID := range history.CommentaryMessageIDs {
 			history.bytes += len(messageID)
@@ -279,11 +252,6 @@ func (p *mekugiProxy) rememberBatch(sessionID string, histories map[string]mekug
 	return nil
 }
 
-func mekugiRejectionTextBytes(rejection mekugi.HostRejection) int {
-	return len(rejection.Operation) + len(rejection.Target) + len(rejection.TargetAliasRelation) +
-		len(rejection.Reason) + len(rejection.Path)
-}
-
 func oldestHistoryCall(histories map[string]mekugiHistory, protected map[string]bool) (string, bool) {
 	oldestID := ""
 	var oldest mekugiHistory
@@ -357,12 +325,39 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 	}
 	items = filtered
 	validatedCarriers := make(map[string]bool)
+	type completedNativePatch struct {
+		callID  string
+		history mekugiHistory
+		output  json.RawMessage
+	}
+	var completedPatches []completedNativePatch
+	pendingCells := make(map[string]completedNativePatch)
+	waitCells := make(map[string]string)
 	for index, item := range items {
 		itemType := jsonString(item, "type")
 		if itemType != "custom_tool_call" && itemType != "function_call" && itemType != "custom_tool_call_output" && itemType != "function_call_output" {
 			continue
 		}
 		callID := jsonString(item, "call_id")
+		if itemType == "function_call" && strings.TrimPrefix(jsonString(item, "name"), "functions.") == "wait" {
+			var args struct {
+				CellID string `json:"cell_id"`
+			}
+			if json.Unmarshal([]byte(jsonString(item, "arguments")), &args) == nil && args.CellID != "" {
+				waitCells[callID] = args.CellID
+			}
+		}
+		if itemType == "function_call_output" {
+			if cell := waitCells[callID]; cell != "" {
+				if pending, found := pendingCells[cell]; found {
+					if terminal, _, _, _ := stockPatchResultState(pending.history.ToolName, item["output"]); terminal {
+						pending.output = bytes.Clone(item["output"])
+						completedPatches = append(completedPatches, pending)
+						delete(pendingCells, cell)
+					}
+				}
+			}
+		}
 		journalResult := callID == "" && journalResultCallID(item) != ""
 		if journalResult {
 			callID = journalResultCallID(item)
@@ -384,11 +379,19 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 			history.sequence = uint64(len(visible) + 1)
 			history.confirmed = false
 		}
-		if journalResult && history.ToolName != journalHistoryTool {
+		if journalResult && history.ToolName != journalHistoryTool && history.ToolName != reportIssueHistoryTool {
 			continue
 		}
 		carrierKind := history.effectiveCarrierKind()
 		if itemType == carrierOutputItemType(carrierKind) {
+			if len(history.NativePatches) != 0 {
+				patch := completedNativePatch{callID: callID, history: history, output: bytes.Clone(item["output"])}
+				if terminal, _, _, cell := stockPatchResultState(history.ToolName, item["output"]); terminal {
+					completedPatches = append(completedPatches, patch)
+				} else if cell != "" {
+					pendingCells[cell] = patch
+				}
+			}
 			if history.confirmsReport(item["output"]) {
 				history.confirmed = true
 			}
@@ -440,7 +443,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 		if len(history.UpstreamItem) != 0 {
 			items[index] = maps.Clone(history.UpstreamItem)
 		} else {
-			item["name"] = mustMarshalJSON(cmp.Or(history.ToolName, mekugiToolName))
+			item["name"] = mustMarshalJSON(cmp.Or(history.ToolName, applyPatchToolName))
 			item["input"] = mustMarshalJSON(history.Script)
 		}
 		changed = true
@@ -457,6 +460,12 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 		return nil, err
 	}
 	releaseSnapshot()
+	for _, completed := range completedPatches {
+		thread := completed.history.ExecutingThread
+		if err := p.finalizeNativePatches(ctx, workspace, thread, completed.callID, completed.history, completed.output); err != nil {
+			return nil, err
+		}
+	}
 	if err := p.replayStore.confirmChanges(ctx, workspace, visible); err != nil {
 		return nil, err
 	}
@@ -486,20 +495,6 @@ func appendToolOutputWarning(raw json.RawMessage, warning string) (json.RawMessa
 
 func (t *mekugiResponseTransform) recordLocal(callID string, history *mekugiHistory) {
 	t.featureTrace.toolCall(callID, history.ToolName)
-	if t.nativeTools && history.CarrierKind == "" {
-		history.CarrierKind = codeModeCarrierFunction
-		history.CarrierName = nativeExecCommandToolName
-		history.CarrierPayload = renderExecCarrier(
-			codeModeCarrierFunction,
-			execCommandArguments(mekugiNativeCommand(*history), nil),
-			false,
-		)
-	} else if history.CarrierKind == "" && history.PluginID == "" {
-		// Pin the delivered bytes before retention. carrierInput still renders
-		// older records that predate explicit Code Mode carrier storage.
-		history.CarrierPayload = history.carrierInput()
-		history.CarrierKind = codeModeCarrierCustom
-	}
 	t.localSequence++
 	history.sequence = t.localSequence
 	t.local[callID] = *history

@@ -180,22 +180,6 @@ func ReviewStat(files []ReviewFile) string {
 	return output.String()
 }
 
-func reviewFiles(changes []change) []ReviewFile {
-	files := make([]ReviewFile, 0, len(changes))
-	for _, change := range changes {
-		file := ReviewFile{BeforePath: change.originalPath, AfterPath: change.path}
-		before, after := change.original, change.content
-		switch change.kind {
-		case changeAdd:
-			file.BeforePath, before = "", ""
-		case changeDelete:
-			file.AfterPath, after = "", ""
-		}
-		files = append(files, renderReviewFile(file, reviewLines(before), reviewLines(after), 0, 0))
-	}
-	return files
-}
-
 // RenderReviewFile captures an operation-owned before/after pair using the same
 // diff semantics as engine edits. An empty path denotes an absent side. Pure
 // moves may supply empty contents on both sides without reading the source.

@@ -317,16 +317,3 @@ func TestToolActivityGroupingKeepsDeferredKindsDistinct(t *testing.T) {
 		t.Fatalf("deferred single-item formatting: %q", got)
 	}
 }
-
-func TestToolActivityGroupingPreservesMixedFencedOperations(t *testing.T) {
-	a := newSubagentActivity()
-	a.observe("r", "", "/root", false)
-	a.observe("c", "r", "/root/c", true)
-	mixed := toolActivityShell("hgrep -F 'alpha\nbeta' a\ncat b")
-	a.collect("c", "mixed", "tool", mixed)
-	a.collect("c", "search", "tool", toolActivityShell("hgrep gamma c"))
-	messages := a.drain("r", time.Time{}, maxCommentaryPublicationBytes)
-	if len(messages) != 1 || commentaryText(t, messages[0]) != "In `/root/c`\n\n- Search\n  ```\n  -F 'alpha\n  beta' a\n  ```\n\n- Read `b`\n\n- Search `gamma c`" {
-		t.Fatalf("mixed operation rendering: %v", messages)
-	}
-}

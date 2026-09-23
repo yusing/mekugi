@@ -2,23 +2,21 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"strconv"
 	"unicode/utf8"
 	"unsafe"
 
 	"github.com/yusing/mekugi/internal/golex"
-	"github.com/yusing/mekugi/internal/hpatchsyntax"
+	"github.com/yusing/mekugi/internal/logicalrow"
+	"github.com/yusing/mekugi/internal/quotedoperand"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 	"github.com/yusing/mekugi/internal/sourcekind"
-	"github.com/yusing/mekugi/internal/verifiedrow"
 )
 
 const abiVersion = 1
 
 const (
-	operationParseRow = iota + 1
-	operationParsePositiveInteger
+	operationParsePositiveInteger = iota + 2
 	operationDecodeQuotedOperand
 	operationClassifySourcePath
 	operationIsGoIdentifier
@@ -70,25 +68,18 @@ func reserveInput(size uint32) uint32 {
 	return uint32(uintptr(unsafe.Pointer(unsafe.SliceData(inputBuffer))))
 }
 
-// hash16 returns the two-byte verified-row hash of the input buffer as a big-endian uint32.
-//
-//go:wasmexport mekugi_core_hash16
-func hash16() uint32 {
-	return verifiedrow.Hash16(inputBuffer)
-}
-
 // lineCount returns the number of targetable logical lines in the input buffer.
 //
 //go:wasmexport mekugi_core_line_count
 func lineCount() uint32 {
-	return uint32(verifiedrow.Count(string(inputBuffer)))
+	return uint32(logicalrow.Count(string(inputBuffer)))
 }
 
 // lineBounds returns a WASM pointer to a three-element array containing the start, content-end, and full-end offsets for the given line number.
 //
 //go:wasmexport mekugi_core_line_bounds
 func lineBounds(lineNumber uint32) uint32 {
-	line, ok := verifiedrow.At(string(inputBuffer), int(lineNumber))
+	line, ok := logicalrow.At(string(inputBuffer), int(lineNumber))
 	if !ok {
 		return 0
 	}
@@ -107,12 +98,10 @@ func invoke(operation uint32) uint32 {
 	var value any
 	var err *coreError
 	switch operation {
-	case operationParseRow:
-		value, err = parseRow(input)
 	case operationParsePositiveInteger:
 		value, err = parsePositiveInteger(input)
 	case operationDecodeQuotedOperand:
-		decoded, rest, decodeErr := hpatchsyntax.DecodeQuoted(input)
+		decoded, rest, decodeErr := quotedoperand.DecodeQuoted(input)
 		if decodeErr != nil {
 			err = &coreError{Code: "invalid_quoted_operand", Message: decodeErr.Error()}
 		} else {
@@ -158,21 +147,6 @@ func resultPointer() uint32 {
 		return 0
 	}
 	return uint32(uintptr(unsafe.Pointer(unsafe.SliceData(resultBuffer))))
-}
-
-// parseRow parses a LINE:HASH verified-row reference and returns its components.
-func parseRow(input string) (any, *coreError) {
-	reference, err := verifiedrow.ParseReference(input)
-	if err != nil {
-		if errors.Is(err, verifiedrow.ErrLineOutOfRange) {
-			return nil, &coreError{Code: "integer_out_of_range", Message: "row line is too large"}
-		}
-		return nil, &coreError{Code: "invalid_row_reference", Message: err.Error()}
-	}
-	if reference.Line > maxJavaScriptSafeInteger {
-		return nil, &coreError{Code: "integer_out_of_range", Message: "row line is too large"}
-	}
-	return map[string]any{"line": reference.Line, "hash": reference.Hash}, nil
 }
 
 // parsePositiveInteger parses a positive decimal integer within JavaScript's safe integer range.

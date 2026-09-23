@@ -329,7 +329,7 @@ func TestLiveDiffCompletedPreviewKeepsProvisionalStatus(t *testing.T) {
 
 func TestLiveDiffPendingEditHidesEarlierScript(t *testing.T) {
 	var pane liveDiffPreviewPane
-	pane.update(liveDiffPreview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: "STREAMING SCRIPT", Input: "hpatch "})
+	pane.update(liveDiffPreview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: "STREAMING SCRIPT", Input: "apply_patch "})
 	pane.update(liveDiffPreview{ID: "one", Workspace: "/workspace", Thread: "thread"})
 	if len(pane.views) != 0 || len(pane.order) != 0 {
 		t.Fatal("pending edit left a script or empty status card")

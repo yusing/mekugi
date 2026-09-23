@@ -50,7 +50,6 @@ run_agent() {
 	local instruction_path="$instruction_dir/$instruction_name"
 	local instruction_sha=$control_instruction_sha
 	local instruction_diff_for_arm=
-	local model_protocol=${arm_protocols[$arm]}
 	local router_mode=${arm_modes[$arm]}
 	local attempts_per_repetition=$((${#run_arms[@]} + ${#imported_arms[@]}))
 	local executor_process_creation_errors=0
@@ -110,7 +109,7 @@ run_agent() {
 		cd "$repository" || exit 1
 		export BENCH_AGENT_SERVICE=$agent_service
 		export BENCH_ARTIFACT_DIR=$artifact_dir
-		export MEKUGI_BENCH_MODE=$router_mode MEKUGI_BENCH_PROTOCOL=$model_protocol
+		export MEKUGI_BENCH_MODE=$router_mode
 		export MEKUGI_BENCH_MAIN_MENTOR=$main_mentor
 		export MEKUGI_BENCH_MENTOR=${arm_mentor[$arm]}
 		if [[ -n $codex_home ]]; then
@@ -348,7 +347,6 @@ run_agent() {
 		--arg parent_model "$root_model" \
 		--arg parent_reasoning_effort "$root_reasoning_effort" \
 		--argjson mentor_mode "$([[ $benchmark_mode == mentor-handoff ]] && printf true || printf false)" \
-		--arg model_protocol "$model_protocol" \
 		--arg router_mode "$router_mode" \
 		--arg started_at "$started_at" \
 		--arg task_id "$task_id" \
@@ -381,7 +379,6 @@ run_agent() {
 			parent_reasoning_effort: $parent_reasoning_effort,
 			child_model: (if $mentor_mode then $model else null end),
 			child_reasoning_effort: (if $mentor_mode then $reasoning_effort else null end),
-			model_protocol: $model_protocol,
 			router_mode: $router_mode,
 			started_at: $started_at,
 			base_instructions: {

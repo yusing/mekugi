@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -103,7 +104,11 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		cmd.Env = append(cmd.Env, capturer.AXReadOutputEnvironment+"="+session.AXReadOutput)
 	}
 	if session.FrontendDirectory != "" {
-		cmd.Env = append(cmd.Env, "PATH="+session.FrontendDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+		cmd.Env, err = frontendShellEnvironment(cmd.Env, session.FrontendDirectory)
+		if err != nil {
+			cancel()
+			return 1, errors.Join(err, <-routerDone)
+		}
 	}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
@@ -146,6 +151,34 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		return 1, err
 	}
 	return 0, nil
+}
+
+func frontendShellEnvironment(environment []string, directory string) ([]string, error) {
+	// Login Bash may replace inherited PATH while reading /etc/profile. Its
+	// noninteractive startup file runs afterward, including for `bash -lc`.
+	previous := ""
+	basePath := ""
+	for _, entry := range environment {
+		if value, ok := strings.CutPrefix(entry, "BASH_ENV="); ok {
+			previous = value
+		}
+		if value, ok := strings.CutPrefix(entry, "PATH="); ok {
+			basePath = value
+		}
+	}
+	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
+	startup := ""
+	if previous != "" {
+		startup = ". " + quote(previous) + "\n"
+	}
+	startup += "PATH=" + quote(directory) + ":\"$PATH\"; export PATH\n"
+	path := filepath.Join(filepath.Dir(directory), "frontend-bash-env")
+	if err := os.WriteFile(path, []byte(startup), 0o600); err != nil {
+		return nil, fmt.Errorf("prepare frontend shell environment: %w", err)
+	}
+	return append(environment,
+		"PATH="+directory+string(os.PathListSeparator)+basePath,
+		"BASH_ENV="+path), nil
 }
 
 // Joining the startup receiver before launch ensures an interrupt it has already

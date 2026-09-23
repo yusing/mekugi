@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
@@ -142,72 +141,8 @@ func waitAutoLiveDiff(t *testing.T, log, marker string) string {
 	}
 }
 
-func TestAutoLiveDiffSelectedWorkspaceBoundary(t *testing.T) {
-	proxy := newManagedMekugiProxy(t)
-	log := autoLiveDiffFixture(t)
-	workspace := t.TempDir()
-	alias := filepath.Join(t.TempDir(), "selected")
-	if err := os.Symlink(workspace, alias); err != nil {
-		t.Fatal(err)
-	}
-	auto, stop := newAutoLiveDiff(t.Context(), t.TempDir())
-	defer stop()
-	proxy.autoLiveDiff = auto
-	auto.enable()
-	request := serverRequest(t, nil)
-	headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{alias: nil})
-	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"id":"r","status":"completed","output":[]}`)}}}
-	if err := executeRequest(t.Context(), t.Context(), request, headers, "auto", provider, io.Discard, nil, proxy, nil); err != nil {
-		t.Fatal(err)
-	}
-	auto.mu.Lock()
-	requested := auto.requested
-	auto.mu.Unlock()
-	if requested {
-		t.Fatal("read-only turn requested a pane")
-	}
-	request = serverRequest(t, nil)
-	provider = &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(string(mustTestJSON(t, map[string]any{
-		"id": "edit-response", "status": "completed", "output": []any{map[string]any{
-			"type": "custom_tool_call", "name": "shell", "call_id": "first-edit", "input": testShellEditSource,
-		}},
-	})))}}}
-	if err := executeRequest(t.Context(), t.Context(), request, headers, "auto", provider, io.Discard, nil, proxy, nil); err != nil {
-		t.Fatal(err)
-	}
-	data := waitAutoLiveDiff(t, log, "done\n")
-	if !strings.Contains(data, `"method":"pane.current"`) ||
-		!strings.Contains(data, `"method":"layout.apply"`) ||
-		!strings.Contains(data, `"method":"pane.move"`) ||
-		!strings.Contains(data, `"live-diff","--workspace","`+workspace+`","--replay-dir"`) ||
-		!strings.Contains(data, string(os.PathSeparator)+`mekugi-live-diff","live-diff"`) ||
-		!strings.Contains(data, `"split":"right"`) ||
-		!strings.Contains(data, `"target_pane_id":"caller"`) {
-		t.Fatalf("incorrect selected workspace or direct launch: %s", data)
-	}
-	if strings.Contains(data, "\nsplit\n") || strings.Contains(data, "\nrun\n") {
-		t.Fatal("launch started an interactive shell instead of the viewer executable")
-	}
-	var callers sync.WaitGroup
-	for range 20 {
-		callers.Go(func() {
-			auto.observe(workspace, "thread-1", codexTurnMetadata{RequestKind: "turn"})
-			auto.requestLaunch(workspace, "thread-1")
-		})
-	}
-	callers.Wait()
-	stop()
-	dataBytes, _ := os.ReadFile(log)
-	if !strings.Contains(string(dataBytes), "\nclose\nnew\n") {
-		t.Fatalf("router exit did not close its owned pane: %s", dataBytes)
-	}
-	if strings.Count(string(dataBytes), `"method":"layout.apply"`) != 1 {
-		t.Fatal("subsequent turns created duplicate panes")
-	}
-}
-
 func TestAutoLiveDiffEligibility(t *testing.T) {
-	for _, name := range []string{"disabled", "outside", "missing_herdr", "empty", "child", "auxiliary", "no_hpatch", "unknown_thread"} {
+	for _, name := range []string{"disabled", "outside", "missing_herdr", "empty", "child", "auxiliary", "no_call", "unknown_thread"} {
 		t.Run(name, func(t *testing.T) {
 			log := autoLiveDiffFixture(t)
 			a, stop := newAutoLiveDiff(t.Context(), t.TempDir())
@@ -234,7 +169,7 @@ func TestAutoLiveDiffEligibility(t *testing.T) {
 			a.observe(workspace, "thread-1", metadata)
 			if name == "unknown_thread" {
 				a.requestLaunch(workspace, "other")
-			} else if name != "no_hpatch" {
+			} else if name != "no_call" {
 				a.requestLaunch(workspace, "thread-1")
 			}
 			stop()
@@ -314,7 +249,7 @@ func TestAutoLiveDiffScopeCapacity(t *testing.T) {
 	}
 }
 
-func TestAutoLiveDiffChildHpatchWaitsForRootWorkspace(t *testing.T) {
+func TestAutoLiveDiffChildPreviewWaitsForRootWorkspace(t *testing.T) {
 	log := autoLiveDiffFixture(t)
 	a, stop := newAutoLiveDiff(t.Context(), t.TempDir())
 	defer stop()
@@ -325,12 +260,12 @@ func TestAutoLiveDiffChildHpatchWaitsForRootWorkspace(t *testing.T) {
 	a.mu.Lock()
 	if !a.requested || a.workspace != "" {
 		a.mu.Unlock()
-		t.Fatal("child hpatch did not defer launch until root workspace selection")
+		t.Fatal("child preview did not defer launch until root workspace selection")
 	}
 	a.mu.Unlock()
 	a.observe(rootWorkspace, "root", codexTurnMetadata{RequestKind: "turn"})
 	data := waitAutoLiveDiff(t, log, "done\n")
 	if !strings.Contains(data, `"cwd":"`+rootWorkspace+`"`) {
-		t.Fatalf("child hpatch overrode root workspace: %s", data)
+		t.Fatalf("child preview overrode root workspace: %s", data)
 	}
 }

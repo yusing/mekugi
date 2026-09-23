@@ -22,7 +22,7 @@ func (t *mekugiResponseTransform) TransformJSON(payload []byte) ([]byte, error) 
 
 func (t *mekugiResponseTransform) Finish(streamEvent bool) error {
 	if streamEvent && len(t.pending) != 0 {
-		return staticCriticalDiagnostic("stream_ended_incomplete_mekugi_call", "the upstream stream ended with an incomplete HPATCH call")
+		return staticCriticalDiagnostic("stream_ended_incomplete_intercepted_call", "the upstream stream ended with an incomplete intercepted function call")
 	}
 	return nil
 }
@@ -106,7 +106,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			return visible, nil
 		}
 		if len(t.pending) != 0 {
-			return nil, staticCriticalDiagnostic("malformed_pending_mekugi_event", "the upstream sent a malformed event while an HPATCH call was pending")
+			return nil, staticCriticalDiagnostic("malformed_pending_intercepted_event", "the upstream sent a malformed event while an intercepted function call was pending")
 		}
 		return [][]byte{payload}, nil
 	}
@@ -141,8 +141,15 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			return [][]byte{payload}, nil //nolint:nilerr // Unrelated output items pass through unchanged.
 		}
 		name := item.Name
-		if t.codeModeToolName != "" && name == t.codeModeToolName {
+		if t.codeModeToolName != "" && name == t.codeModeToolName ||
+			t.nativeTools && (item.Type == "custom_tool_call" && name == applyPatchToolName ||
+				item.Type == "function_call" && name == nativeExecCommandToolName) {
 			if item.Type == "custom_tool_call" && item.ID != "" {
+				t.nativeExecCalls[item.ID] = item.cloneFields()
+				if item.Input != nil {
+					t.previewStockDelta(item.ID, name, *item.Input)
+				}
+			} else if item.Type == "function_call" && item.ID != "" {
 				t.nativeExecCalls[item.ID] = item.cloneFields()
 			}
 			return [][]byte{payload}, nil
@@ -150,8 +157,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if item.Type == "function_call" {
 			key := functionToolKey(item.Namespace, name)
 			_, instrumented := t.commentaryTools[key]
-			_, waits := t.waitPolicies.direct[key]
-			if instrumented || waits {
+			if instrumented {
 				itemID, callID := item.ID, item.CallID
 				if itemID == "" || callID == "" {
 					return nil, staticCriticalDiagnostic("malformed_commentary_call", "the upstream emitted a malformed commentary function call")
@@ -168,32 +174,11 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 				return nil, nil
 			}
 		}
-		if !t.routesTool(name) {
-			return [][]byte{payload}, nil
-		}
-		itemID, callID := item.ID, item.CallID
-		if item.Type != "custom_tool_call" || itemID == "" || callID == "" {
-			return nil, staticCriticalDiagnostic("malformed_mekugi_call", "the upstream emitted a malformed HPATCH call")
-		}
-		if len(t.pending) >= maxMekugiPendingCalls {
-			return nil, staticCriticalDiagnostic("mekugi_call_capacity", "the upstream HPATCH call capacity was exceeded")
-		}
-		if _, exists := t.pending[itemID]; exists {
-			return nil, staticCriticalDiagnostic("reused_mekugi_item", "the upstream reused an HPATCH item identity")
-		}
-		t.pending[itemID] = mekugiPendingCall{callID: callID, toolName: name, added: bytes.Clone(payload)}
-		if item.Input != nil {
-			t.previewDelta(itemID, *item.Input)
-		}
-		return nil, nil
+		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.CustomInputDelta:
-		t.previewDelta(envelope.ItemID, envelope.Delta)
-		if pending, ok := t.pending[envelope.ItemID]; ok && !pending.structured {
-			// Translation needs the complete input, but Codex's SSE idle timer only
-			// observes dispatched events. Preserve liveness without exposing the
-			// untranslated input fragment.
-			return [][]byte{[]byte(`{"type":"response.in_progress"}`)}, nil
+		if fields := t.nativeExecCalls[envelope.ItemID]; fields != nil {
+			t.previewStockDelta(envelope.ItemID, jsonString(fields, "name"), envelope.Delta)
 		}
 		return [][]byte{payload}, nil
 
@@ -201,16 +186,15 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if pending, ok := t.pending[envelope.ItemID]; ok && pending.structured {
 			return [][]byte{[]byte(`{"type":"response.in_progress"}`)}, nil
 		}
-		if _, pending := t.pending[envelope.ItemID]; pending {
-			return nil, unsupportedMekugiStreamEvent(envelope.Type)
+		if fields := t.nativeExecCalls[envelope.ItemID]; fields != nil && jsonString(fields, "name") == nativeExecCommandToolName {
+			t.previewStockDelta(envelope.ItemID, nativeExecCommandToolName, envelope.Delta)
 		}
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.CustomInputDone:
 		t.endPreview(envelope.ItemID)
-		pending, ok := t.pending[envelope.ItemID]
-		if !ok || pending.structured {
-			if addedFields, nativeExec := t.nativeExecCalls[envelope.ItemID]; nativeExec {
+		if addedFields, stockCall := t.nativeExecCalls[envelope.ItemID]; stockCall {
+			if jsonString(addedFields, "type") == "custom_tool_call" {
 				addedCallID := jsonString(addedFields, "call_id")
 				if addedCallID != "" && envelope.CallID != "" && addedCallID != envelope.CallID {
 					return nil, staticCriticalDiagnostic("changed_code_mode_call", "the upstream changed a Code Mode call identity")
@@ -236,51 +220,17 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 				}
 				return [][]byte{event}, nil
 			}
-			return [][]byte{payload}, nil
 		}
-		var addedEnvelope struct {
-			Item json.RawMessage `json:"item"`
-		}
-		if json.Unmarshal(pending.added, &addedEnvelope) != nil {
-			return nil, staticCriticalDiagnostic("malformed_buffered_mekugi_item", "Mekugi could not decode a buffered upstream item")
-		}
-		addedItem, ok := decodeResponsesItem(addedEnvelope.Item)
-		if !ok {
-			return nil, staticCriticalDiagnostic("malformed_buffered_mekugi_call", "Mekugi could not decode a buffered upstream call")
-		}
-		// input.done is already an executable handoff boundary. Retain the
-		// original item shape now; output_item.done may never arrive.
-		addedItem.setInput(envelope.Input)
-		history, err := t.translateTool(pending.toolName, pending.callID, envelope.Input, addedItem.cloneFields())
-		if err != nil {
-			return nil, err
-		}
-		kind := history.effectiveCarrierKind()
-		addedItem.renderCarrier(kind, history.CarrierName, "")
-		itemPayload, err := marshalProtocolJSON(addedItem)
-		if err != nil {
-			return nil, err
-		}
-		addedEvent, err := replaceRawField(pending.added, "item", itemPayload)
-		if err != nil {
-			return nil, err
-		}
-		doneEvent, err := renderCarrierDoneEvent(payload, kind, history.carrierInput())
-		if err != nil {
-			return nil, err
-		}
-		if err := t.commitLocalCall(pending.callID); err != nil {
-			return nil, err
-		}
-		return [][]byte{addedEvent, doneEvent}, nil
+		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.FunctionArgumentsDone:
+		if fields := t.nativeExecCalls[envelope.ItemID]; fields != nil && jsonString(fields, "name") == nativeExecCommandToolName {
+			t.endPreview(envelope.ItemID)
+			return [][]byte{payload}, nil
+		}
 		pending, ok := t.pending[envelope.ItemID]
 		if !ok {
 			return [][]byte{payload}, nil
-		}
-		if !pending.structured {
-			return nil, unsupportedMekugiStreamEvent(envelope.Type)
 		}
 		if len(pending.argumentsDone) != 0 {
 			return nil, staticCriticalDiagnostic("repeated_commentary_arguments", "the upstream repeated commentary argument completion")
@@ -304,11 +254,11 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		}
 		itemID := item.ID
 		callID := item.CallID
-		if addedFields, nativeExec := t.nativeExecCalls[itemID]; nativeExec {
+		if addedFields, stockCall := t.nativeExecCalls[itemID]; stockCall {
 			expectedCallID := jsonString(addedFields, "call_id")
-			if item.Type != "custom_tool_call" || item.Name != t.codeModeToolName ||
-				expectedCallID != callID {
-				return nil, staticCriticalDiagnostic("inconsistent_code_mode_call", "the upstream completed an inconsistent Code Mode call")
+			expectedType, expectedName := jsonString(addedFields, "type"), jsonString(addedFields, "name")
+			if item.Type != expectedType || item.Name != expectedName || expectedCallID != "" && expectedCallID != callID {
+				return nil, staticCriticalDiagnostic("inconsistent_stock_call", "the upstream completed an inconsistent stock tool call")
 			}
 		}
 		delete(t.nativeExecCalls, itemID)
@@ -393,7 +343,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		clear(t.nativeExecCalls)
 		if envelope.Type == responseevents.Completed {
 			if len(t.pending) != 0 {
-				return nil, staticCriticalDiagnostic("terminal_incomplete_mekugi_call", "the upstream completed with an incomplete HPATCH call")
+				return nil, staticCriticalDiagnostic("terminal_incomplete_intercepted_call", "the upstream completed with an incomplete intercepted function call")
 			}
 		} else {
 			clear(t.pending)
@@ -469,7 +419,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		return visible, nil
 
 	default:
-		if _, pending := t.pending[envelope.ItemID]; pending || t.pendingCallKnown(envelope.CallID) || t.routesTool(envelope.Name) || envelope.Name == applyPatchToolName {
+		if _, pending := t.pending[envelope.ItemID]; pending || t.pendingCallKnown(envelope.CallID) {
 			return nil, unsupportedMekugiStreamEvent(envelope.Type)
 		}
 		return [][]byte{payload}, nil
@@ -477,19 +427,19 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 }
 
 func unsupportedMekugiStreamEvent(eventType responseevents.Kind) error {
-	underlying := fmt.Errorf("unsupported mekugi-related stream event %q", eventType)
+	underlying := fmt.Errorf("unsupported intercepted stream event %q", eventType)
 	switch {
 	case eventType.FunctionArguments():
 		return criticalDiagnostic(
 			underlying,
 			"unsupported_mekugi_stream_event:"+string(eventType),
-			fmt.Sprintf("the upstream emitted unsupported HPATCH-related streaming event %q", eventType),
+			fmt.Sprintf("the upstream emitted unsupported intercepted streaming event %q", eventType),
 			false,
 		)
 	default:
 		// Unknown event names are provider-controlled payload. Their lexical
 		// shape alone cannot establish that they are safe to display.
-		return criticalDiagnostic(underlying, "unsupported_mekugi_stream_event", "the upstream emitted an unsupported HPATCH-related streaming event", true)
+		return criticalDiagnostic(underlying, "unsupported_mekugi_stream_event", "the upstream emitted an unsupported intercepted streaming event", true)
 	}
 }
 
@@ -580,7 +530,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		if t.journalActive && terminalStatus == "" {
 			t.journalProviderOutput = output
 			for _, item := range output {
-				if !isJournalCall(item) && blocksTokenUsage(item) {
+				if !isRouterLocalCall(item) && blocksTokenUsage(item) {
 					t.journalClientCalls = true
 				}
 			}
@@ -599,15 +549,15 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		}
 		t.subagentDeferred = nil
 		for _, fields := range output {
-			if t.journalActive && isJournalCall(fields) {
+			if t.journalActive && isRouterLocalCall(fields) {
 				// A completed stream event can omit status. Its already-executed
 				// result must survive a later interruption without running a new call.
 				if !interrupted || jsonString(fields, "status") == "completed" || t.journalCalls[jsonString(fields, "call_id")] != nil {
-					result, err := t.executeJournalCall(fields)
+					result, err := t.executeRouterLocalCall(fields)
 					if err != nil {
 						return nil, nil, err
 					}
-					transformedOutput = append(transformedOutput, journalClientResult(result))
+					transformedOutput = append(transformedOutput, journalClientResult(result, jsonString(fields, "name")))
 				}
 				continue
 			}
@@ -690,63 +640,41 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 	if t.codeModeToolName != "" && name == t.codeModeToolName &&
 		item.Type == "custom_tool_call" {
 		callID := item.CallID
+		if callID == "" {
+			return false, errors.New("Code Mode call has no call ID")
+		}
 		var originalInput string
 		if item.Input != nil {
 			originalInput = *item.Input
 		}
-		if contribution, ok := t.proxy.registry.contribution("shell"); ok &&
-			contribution.PluginID == builtinToolsPluginID && !t.nativeTools {
-			retained, exists := t.local[callID]
-			if exists && retained.ToolName == "shell" || execShellRecovery(originalInput) {
-				if callID == "" {
-					return false, errors.New("Code Mode call has no call ID")
-				}
-				history, err := t.translateRegisteredTool(contribution, callID, originalInput, item.cloneFields())
-				if err != nil {
-					return false, err
-				}
-				item.renderCarrier(history.effectiveCarrierKind(), history.CarrierName, history.carrierInput())
-				return true, nil
-			}
-		}
-		if retained, exists := t.local[callID]; exists && retained.ToolName == codeModeCommentaryHistoryTool {
+		if retained, exists := t.local[callID]; exists && retained.ToolName == name {
 			if retained.Script != originalInput {
-				return false, fmt.Errorf("Code Mode commentary call %q changed input", callID)
+				return false, fmt.Errorf("Code Mode call %q changed input", callID)
 			}
 			retained.UpstreamItem = item.cloneFields()
 			t.local[callID] = retained
 			item.setInput(retained.CarrierPayload)
 			return retained.CarrierPayload != originalInput, nil
 		}
-		input, warningInput, changed, detected := nativeExecCommandInput(originalInput)
-		outputWarning := ""
-		if detected && warningInput == "" {
-			outputWarning = nativeExecCommandWarning + "\n"
-		}
-		input, commentaryChanged, err := t.lowerCodeModeCommentary(callID, input)
+		input, changed, err := t.lowerCodeModeCommentary(callID, originalInput)
 		if err != nil {
 			return false, err
 		}
-		input, waitsChanged := rewriteCodeModeWaits(input, t.waitPolicies.nested)
-		changed = changed || commentaryChanged || waitsChanged
-		if t.proxy.commentaryEndpoint == "" && outputWarning == "" && !waitsChanged {
-			if changed {
-				item.setInput(input)
-			}
-			return changed, nil
+		patches := nativePatchesInCall(name, originalInput, t.directory)
+		if !changed && len(patches) == 0 {
+			return false, nil
 		}
-		if callID == "" {
-			return false, errors.New("Code Mode call has no call ID")
-		}
-		// Retain the provider input before applying warning or commentary rewrites.
+		// Retain the provider input and captured baseline before exposing any
+		// executable call. The stock host remains the only edit executor.
 		history := mekugiHistory{
-			ToolName: codeModeCommentaryHistoryTool,
+			ToolName: name,
 			Script:   originalInput, CarrierKind: codeModeCarrierCustom,
 			CarrierName: name, CarrierPayload: input, UpstreamItem: item.cloneFields(),
-			OutputWarning: outputWarning,
+			ReplayCarrier:   !changed,
+			NativePatches:   patches,
+			ExecutingThread: t.shellThreadID,
 		}
-		if !commentaryChanged && !waitsChanged {
-			history.ReplayCarrier = true
+		if !changed {
 			history.CommentaryMessageIDs = []string{commentaryMessageID(callID)}
 		}
 		t.recordLocal(callID, &history)
@@ -755,23 +683,34 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		}
 		return changed, nil
 	}
-	if !t.routesTool(name) {
+	if !t.nativeTools || name != applyPatchToolName || item.Type != "custom_tool_call" {
 		return false, nil
 	}
 	callID := item.CallID
-	if item.Type != "custom_tool_call" || callID == "" {
-		return false, fmt.Errorf("upstream emitted malformed %s call", name)
+	if callID == "" || item.Input == nil {
+		return false, errors.New("upstream emitted malformed stock apply_patch call")
 	}
-	var input string
-	if item.Input != nil {
-		input = *item.Input
+	input := *item.Input
+	if retained, exists := t.local[callID]; exists {
+		if retained.ToolName != name || retained.Script != input {
+			return false, fmt.Errorf("stock apply_patch call %q changed input", callID)
+		}
+		retained.UpstreamItem = item.cloneFields()
+		t.local[callID] = retained
+		return false, nil
 	}
-	history, err := t.translateTool(name, callID, input, item.cloneFields())
-	if err != nil {
-		return false, err
+	patches := nativePatchesInCall(name, input, t.directory)
+	if len(patches) == 0 {
+		return false, nil
 	}
-	item.renderCarrier(history.effectiveCarrierKind(), history.CarrierName, history.carrierInput())
-	return true, nil
+	history := mekugiHistory{
+		ToolName: name, Script: input,
+		CarrierKind: codeModeCarrierCustom, CarrierName: name, CarrierPayload: input,
+		ReplayCarrier: true, UpstreamItem: item.cloneFields(), NativePatches: patches,
+		ExecutingThread: t.shellThreadID,
+	}
+	t.recordLocal(callID, &history)
+	return false, nil
 }
 
 func replaceRawField(payload []byte, name string, value json.RawMessage) ([]byte, error) {

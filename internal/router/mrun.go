@@ -13,7 +13,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/internal/router/toolplugin"
-	"golang.org/x/term"
 )
 
 const (
@@ -260,10 +259,6 @@ func executeMRun(
 	if err != nil {
 		return toolplugin.ExecutionOutput{Stderr: fmt.Sprintf("mrun: %v\n", err), ExitCode: 2}, nil
 	}
-	terminal := stdin != nil && term.IsTerminal(int(stdin.Fd())) || processHasControllingTerminal()
-	if !terminal {
-		command = routeFrontendCommand(ctx, manifest, runtimeRoot, command)
-	}
 	// Source: plugins/tokens.ts MAX_POSSIBLE_GPT5_TOKEN_BYTES.
 	// No GPT-5 token spans more than 128 bytes. Keep a small UTF-8 boundary
 	// reserve, separately for each stream, before exact final token selection.
@@ -278,9 +273,6 @@ func executeMRun(
 	child.Args = command
 	child.Stdin, child.Stdout, child.Stderr = stdin, &stdout, &stderr
 	child.WaitDelay = mrunProcessWaitDelay
-	if !terminal {
-		toolplugin.ConfigureProcessGroup(child)
-	}
 	runErr := child.Run()
 	if ctx.Err() != nil {
 		return toolplugin.ExecutionOutput{}, ctx.Err()
@@ -288,7 +280,7 @@ func executeMRun(
 	exitCode := 0
 	if runErr != nil {
 		if exitErr, ok := errors.AsType[*exec.ExitError](runErr); ok {
-			exitCode = shellProcessExitCode(exitErr)
+			exitCode = mrunProcessExitCode(exitErr)
 		} else if _, ok := errors.AsType[*exec.Error](runErr); ok {
 			return toolplugin.ExecutionOutput{Stderr: fmt.Sprintln(runErr), ExitCode: 127}, nil
 		} else {

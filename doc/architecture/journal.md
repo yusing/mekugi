@@ -8,11 +8,12 @@ acknowledgements. It shares durable workspace coordination and session retention
 Journal mutations do not impose a lifetime thread-count limit. Journal state is durable while
 its session is retained; a request's completion intent is not.
 
-The router intercepts the journal tool and returns its result through the current response
-flow rather than a host executor. A valid direct finish can select terminal journal delivery
-when no client-dispatched work remains. Shell-origin finish uses a call-scoped capability
-and durable receipt tied to the originating turn and successful host terminal; it cannot
-complete a later, unrelated, failed, or still-pending turn.
+The router intercepts the dedicated journal tool and returns its result through
+the current response flow rather than a host executor. A valid direct finish
+can select terminal delivery when no client-dispatched work remains. Code Mode
+mutations use a call-scoped authenticated publisher through a stock executable
+frontend; that publisher cannot complete a turn or acquire Codex execution
+authority. Replay of an old result cannot finish a later turn.
 
 Delivery snapshots and leases the originating journal before rendering. Live delivery
 marks a revision reported; terminal delivery separately marks it flushed, and edits reset

@@ -5,7 +5,7 @@
 `mekugi` MUST create one in-process capturer and MUST keep one HTTP listener. The same listener
 MUST serve `POST /v1/responses`, WebSocket upgrades at `GET /v1/responses`,
 `GET /v1/models`, and `GET /api/metrics`. Enabling
-`--capture-output PATH` MUST append sanitized schema-6 JSONL records at `PATH`; it MUST NOT start or
+`--capture-output PATH` MUST append sanitized schema-7 JSONL records at `PATH`; it MUST NOT start or
 require a capturer service, listener, proxy, or network hop.
 
 The same listener MUST serve a human-readable dashboard at `GET /`. The dashboard MUST consume the
@@ -34,27 +34,29 @@ and structured-response measurements as complete.
 A durable record MUST contain only:
 
 - schema version, boundary, private capture identity, logical sequence, and provider attempt;
-- mode, model protocol, provider request model, and benchmark correlation fields already supplied
+- mode, provider request model, and benchmark correlation fields already supplied
   by Codex;
 - complete transport byte counts and framing-independent GPT-5 content estimates plus the terminal Responses `output` array measured once;
 - HTTP and Responses status, completeness, duration, a bounded capture-error category, and an optional `transport: "websocket"` marker;
 - optional `request_kind`, restricted to `turn`, `prewarm`, or `compaction`, supplied
   from validated router metadata and preserved in the corresponding exchange snapshot;
 - provider usage counters;
-- the measured `native_request` after history replay/tool projection and before CTP, on provider records;
+- the measured `projected_request` after history replay and tool projection, on provider records;
 - decoded assistant `final_text` sizes, separate from complete output arrays;
   this includes Chat assistant string content as well as Responses text parts, so
-  identical provider/client text has zero measured text savings;
+  provider and client text can be compared as separate observed sizes;
 - bounded private request/routing fingerprints as specified below;
 - bounded, allowlisted provider-response evidence as specified below;
 - request tool names; and
-- tool name, call identity, byte/token sizes, sanitized delivered kind, and an allowlisted stable
-  diagnostic reason parsed from the complete router-owned diagnostic envelope.
+- tool name, call identity, and byte/token sizes.
 
 It MUST NOT contain authorization material, prompts, instructions, message content, tool arguments,
 command output, response text, script text, patches, reports, or diagnostics beyond the stable code.
+If the projected-request observation is missing, the provider record MUST have
+a capture error and no `projected_request`, rather than substituting the
+provider wire request.
 
-`GET /api/metrics` MUST return `mekugi.capture.metrics.v4`. Its calculations MUST be made by the
+`GET /api/metrics` MUST return `mekugi.capture.metrics.v6`. Its calculations MUST be made by the
 capturer, not by the router, engine, plugin, benchmark report, or dashboard. The snapshot MUST expose:
 
 1. logical request and provider-attempt counts, including completed and failed logical requests;
@@ -75,30 +77,16 @@ capturer, not by the router, engine, plugin, benchmark report, or dashboard. The
    model-origin output in `output_index` order from finalized `response.output_item.done` items,
    excluding generated commentary there as well. A missing terminal event MUST NOT be treated as a
    completed output;
-5. signed CTP input byte and token savings between the actual post-replay, post-Mekugi native
-   request and its final provider request, never between raw client history and provider input,
-   plus signed delivery expansion between their complete model-origin `output` arrays, excluding generated commentary, echoed tools, and all
-   other response metadata, so repeated SSE framing and response metadata remain transport evidence
-   rather than model-output savings. Tool translation is delivery expansion, not CTP compression
-   or a hypothetical stock-model saving. Separate `output_text_tokens_saved` MUST compare only
-   decoded assistant `output_text` strings, excluding tool calls and reasoning;
-6. provider-emitted and client-delivered tool aggregates;
-7. HPATCH call, correction, success, rejection, unclassified, unmatched, diagnostic, provider-input,
-   delivered-carrier-input, and signed delivered-carrier input expansion, not stock-model savings;
-8. a bounded recent window of per-logical-request exchanges containing every provider attempt and
+5. provider-emitted and client-delivered tool aggregates;
+6. a bounded recent window of per-logical-request exchanges containing every provider attempt and
    its usage, while cumulative totals remain process-lifetime totals; and
-9. capture health for record failures, incomplete records, missing provider records,
+7. capture health for record failures, incomplete records, missing provider records,
    provider-attempt gaps, durable-write errors, skipped requests, and dropped exchange detail.
 
 Cache attribution is a previous-input-length estimate, not a measurement of matching
 provider-token prefixes or cache eligibility. `cache.attribution_basis` is
 `previous_input_length_estimate`; dashboards label those fields as estimates.
 The provider cache rate remains the measured cached-input/total-input ratio.
-
-HPATCH carrier metrics describe explicit `hpatch`/`hpatch_recover` tool records in
-historical captures. Current `hpatch` commands are emitted through `shell`
-and count in shell tool aggregates. Carrier counters do not measure the success or
-failure of those host-executed edits; retained edit receipts own that evidence.
 
 Provider usage is authoritative for model consumption. Local token estimates MUST count decoded
 JSON object keys and scalar values independently, excluding JSON punctuation, field ordering,
@@ -109,23 +97,6 @@ content, not event/data framing; repeated events remain stream evidence, not fin
 Non-JSON text is counted as literal text. Transport byte counts MUST remain exact observed bytes.
 These reproducible GPT-5 content estimates include envelope and opaque reasoning values when
 present; they MUST NOT be labeled as exact provider input or billed generated tokens.
-The HPATCH comparison MUST pair the
-actual provider-emitted HPATCH call with the actual delivered native carrier by tool-call identity;
-it MUST NOT synthesize an `apply_patch`, `exec_command`, shell command, or stock result.
-Apply carriers MUST be recognized by their router-owned leading marker, including when a
-change-ID error-reporting wrapper surrounds the host call. HPATCH success here describes
-successful translation and carrier delivery, not proof that the host applied the patch.
-Only recognized router diagnostic carriers count as `rejected`. A leading router change notice
-MUST NOT hide a report or an allowlisted diagnostic; the notice alone is not outcome evidence.
-Matched carriers of unknown kind count separately as `unclassified`, never as success or
-rejection; missing carriers remain
-`unmatched`. These delivery categories do not replace AX's receipt-based confirmed/unconfirmed
-outcomes. The dashboard MUST label translation separately from host application and expose
-unclassified counts, showing unavailable when an older snapshot lacks the field.
-The additive `unclassified` field does not invalidate older v4 snapshots whose retained carrier
-kinds reconcile with zero unclassified calls. Older snapshots that counted unknown carriers as
-rejected MUST fail reconciliation rather than be accepted as current rejection evidence.
-
 A benchmark report MUST read these calculations from the snapshot. It MAY independently reconcile
 the snapshot against sanitized records and measured result usage, but MUST NOT replace the
 capturer's calculations with report-local formulas. A fresh measured arm with any nonzero capture
@@ -145,30 +116,29 @@ Acceptance:
    even with identical text.
 4. Snapshot totals reconcile their exchanges and provider attempts, and benchmark validation rejects
    changed aggregate usage or nonzero capture-health errors.
-5. Passthrough, Mekugi with native protocol, CTP/2, and Mentor Handoff use the same capture owner and endpoint;
+5. Passthrough, Mekugi, and Mentor Handoff use the same capture owner and endpoint;
    none requires another listener.
 6. Cumulative metrics remain complete after the detailed exchange window fills, while health marks
    the discarded detail and benchmark validation rejects it.
-7. Arbitrary or malformed `text(...)` carrier content never becomes a durable diagnostic, and a
-   response larger than the observation bound preserves delivery while failing capture health.
+7. A response larger than the observation bound preserves delivery while failing capture health.
 
-Schema-6 records and metrics v4 identify this content-token and output-accounting contract. Older records cannot be
+Schema-7 records and metrics v6 identify this content-token and output-accounting contract. Older records cannot be
 reinterpreted as corrected measurements because they do not retain the raw output items; benchmark
 validation MUST reject them as current comparison evidence.
 
 JSON whitespace, key order, and equivalent string escaping MUST leave all content estimates unchanged while observed bytes may differ. Literal model-visible escape sequences MUST retain their token cost.
 
-The router supplies the actual native request at the projection seam as observation data. The
-capturer owns its measurement, discards the bytes immediately, and correlates the sizes with each
-provider attempt. Missing CTP baseline observation MUST mark capture incomplete, never fall back to
-client history. Native-only forwarding observes the same inference request before transport framing; WebSocket metadata and its `response.create` envelope remain part of measured provider transport costs.
-Only paired authoritative provider usage measures actual model-consumption changes. Input CTP
-savings and assistant-text CTP savings measure representation changes, not billing predictions.
+The router supplies the actual projected request at its post-replay observation seam. The
+capturer measures it, discards the bytes immediately, and correlates the sizes with each
+provider attempt. Missing projected-request observation is incomplete evidence, not a
+reason to substitute raw client history. WebSocket metadata and the `response.create`
+envelope remain part of measured provider transport costs. Only paired authoritative
+provider usage measures actual model-consumption changes.
 
 ### Privacy-safe cache diagnostics
 
-Schema-6 records and metrics v4 MAY additionally contain `cache_fingerprint` for observed
-request representations, `native_fingerprint` for the actual post-replay/pre-CTP request,
+Schema-7 records and metrics v6 MAY additionally contain `cache_fingerprint` for observed
+request representations, `projected_fingerprint` for the actual post-replay request,
 and `client_fingerprint` in exchanges. New captures MUST produce these for valid requests.
 The capturer MUST HMAC decoded JSON components and ordered input items with a fresh random
 256-bit recorder-lifetime key, retaining only 128-bit digests. It MUST NOT persist that key,
@@ -185,7 +155,7 @@ such a fingerprint report unavailable prefix evidence, while retaining observed
 inference-setting changes. Continuation IDs and `generate` are transport controls
 and are excluded from the inference-field fingerprint.
 
-`cache_diagnostics` MUST compare client, native, and final-provider representations against
+`cache_diagnostics` MUST compare client, projected, and final-provider representations against
 the immediate same-thread arrival predecessor, and only when that request remains retained and completed.
 Requests MUST retain that predecessor sequence even when completions arrive out of order. Arrival
 head metadata is bounded to the existing 4096-entry detail limit; evicted head metadata yields
@@ -238,7 +208,7 @@ Only terminal response usage supplies this evidence; nonterminal usage MUST NOT 
 An incomplete, malformed, or unobserved terminal response yields unavailable evidence.
 JSON, SSE, and supported compressed payloads MUST follow the same rules.
 
-This evidence is additive to schema-6/metrics-v4 and does not change existing normalized
+This evidence is part of schema-7/metrics-v6 and does not change existing normalized
 usage counters. Missing older evidence is unavailable, never explicit zero. Reports and
 dashboard MUST warn that normalized aggregate counters may default missing telemetry to zero
 and MUST show per-attempt field state and explicit counts separately. Benchmark validation
@@ -248,7 +218,7 @@ count that disagrees with normalized usage. All retries retain their own respons
 Provider usage records may additionally carry `evidence_complete`: true only when
 the production usage parser observed all required token categories without inconsistent
 counts, false when fields were missing or inconsistent. Absence identifies legacy
-normalized counters with unknown completeness. This additive schema-6 field does not
+normalized counters with unknown completeness. This schema-7 field does not
 change existing normalized metric calculations. Offline corpus inspection excludes
 false/unknown completeness from observed totals rather than presenting missing fields
 as zero consumption.
@@ -256,21 +226,8 @@ as zero consumption.
 Explicit `--metrics-output PATH` writes the capturer's final metrics snapshot during
 session shutdown. It is independent of operational logging. Benchmark session
 aggregation belongs to this package: complete source snapshots must reconcile their
-records, modes/protocols must match, and sessions must have distinct threads.
+records, modes must match, and sessions must have distinct threads.
 Combined sequences are rebased while original session exports remain unchanged.
-
-### Shell-misuse evidence
-
-Rejected Bash bodies identified as TypeScript/JavaScript carry the allowlisted
-`shell-typescript-misuse` code in the delivered call's existing `diagnostic` field, with its
-original `call_id`. Native and Code Mode carriers, JSON and SSE, share that classification.
-Recovered Code Mode calls instead use `kind: "code_mode_recovery"` and the fixed
-`shell-code-mode-recovered` diagnostic, distinguishing recovery from rejection.
-Only the fixed code is retained, not the diagnostic prose or script. The delivered diagnostic
-carrier is evidence of router rejection, not confirmation that the host ran that carrier.
-Both additions use existing process-lifetime retention, detail limits, JSONL capture, and metrics
-exports. They are additive to schema-6/metrics-v4; older evidence remains valid but cannot supply
-these diagnoses.
 
 ### WebSocket capture
 

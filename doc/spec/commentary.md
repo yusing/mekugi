@@ -36,133 +36,57 @@ identity deduplicates retries, later turns, and routing-session changes. Unknown
 ancestry suppresses projection. Start notices use the existing bounded activity and replay
 provenance; they never replace child answers or add follow-up, message, wait, or interruption notices.
 
-Complete subagent tool calls are also forwarded as user-only activity, never as executable
-root calls. Agent `send_message` calls omit generic tool activity because messaging has its own
-commentary render. Journal calls also omit generic activity, including statically recognized
-`await journal(...)` and `await tools.journal(...)` Code Mode calls and their transparent result
-wrappers; journal delivery renders their content separately. Mixed static batches keep other
-operations visible. Known tools use operation labels rather than raw transport arguments. Shell calls
-and transparent, statically recognized Code Mode shell wrappers share a `Run` display.
-An `exec` call recovered through the built-in shell pipeline uses the shell display only
-after recovery is recorded, without changing its original replay identity.
-Whole-script nonempty `Run` previews use fenced code blocks even for single-line commands, tagged with
-the selected interpreter language: default/Bash uses `bash`, Python/Python3 uses `python`,
-and Node/Bun/Deno uses `javascript`. Common executable aliases normalize to renderer language
-names: PyPy/Pythonw to `python`, QuickJS to `javascript`, ts-node/tsx to `typescript`,
-JRuby/TruffleRuby to `ruby`, LuaJIT to `lua`, tclsh/wish to `tcl`, Rscript to `r`,
-runghc/runhaskell to `haskell`, pwsh to `powershell`, ash/dash/ksh to `bash`, and
-gawk/mawk/nawk to `awk`. Numeric version suffixes on these known executable families,
-Python, Ruby, Perl, PHP, Lua, and PowerShell are normalized too, such as `python3.12`
-and `php8.3`. Other interpreter names pass through unchanged after path and case
-normalization; unavailable or unsafe language tags use an untagged fence. Source text otherwise remains intact.
-Literal single-command interpreter wrappers project the program itself rather than the Bash wrapper.
-This includes supported command-string flags such as Python `-c` and Node `-e`, plus literal stdin
-heredocs such as `python - <<'PY'`; the same projector supplies live streaming script previews and
-completed generated commentary without evaluating shell expansions or implying execution success.
-Transparent result wrappers include inline `text(await tools.exec_command(...))` and
-`text(await tools.write_stdin(...))`, as well as `text(result)`, `text(result.output)`, and JSON result
-projections, with the matching local binding name. Recognition uses the JavaScript parse tree,
-not source-text matching, so whitespace variations do not affect it. The output-only projection displays the
-decoded command, preserving its line breaks rather than showing the JavaScript wrapper.
-Code Mode recognition accepts literal JavaScript objects with identifier or quoted keys and
-recursively static JSON-compatible values. It never evaluates source; computed keys, spreads,
-calls, references, and other dynamic expressions retain a `Run JavaScript` display with the
-original source in a `javascript` fence. A literal `write_stdin` call with no characters is
-shown as `Still Running` with a short excerpt of the actual command, matching native
-`write_stdin` polls. Stored shell references display `Running stored script` with the
-resolved command excerpt, not transport directives or reference IDs. These excerpts
-use the first source line, at most 120 characters including an ellipsis when shortened.
-For an explicit batch, they use the first program's body and an ellipsis for the remaining
-programs, rather than exposing the batch header as the command.
-Polls correlate only with visible call/result pairs that include execution metadata in the
-same request; output-only Code Mode projections are not session evidence. Missing command
-history or unavailable stored source is labelled `command unavailable`, never guessed.
-These presentation rules do not change execution, validation, or replay payloads. Calls that send nonempty characters display `Send input`.
-MCP function names in Codex's `mcp__<server>__<tool>` form and native calls with
-namespace `mcp__<server>` display `MCP` with the `server.tool` identity and full
-arguments. MCP resource listing, template listing, and reading, clock, context,
-goal, execution-wait, web, and image-generation helpers use descriptive operation
-labels with full arguments. `update_plan` is absent from Mekugi-mode catalogs.
-Transparent Code Mode wrappers use the same display, including bound results,
-inline awaited calls, and `generatedImage(result)` for image generation.
-Static sequential calls and literal `Promise.all`/`Promise.allSettled` batches
-display nonsuppressed operations in source order as one grouped preview. Batches do not
-establish shell-session result metadata. Dynamic arguments, control flow, runtime
-name shadowing, unknown tools, or unrelated executable statements retain the
-complete JavaScript preview, never a partially simplified subset. Rendering never
-evaluates a call or claims success, and collaboration display stays Codex-owned.
-Code Mode `wait` calls display `Still Running` with the originating operation or source,
-or `Stop` with that operation when `terminate` is true, without transport arguments.
-Cell identity comes only from a visible matched call/result pair with leading host execution
-metadata; subsequent waits preserve that association and terminal results retire it.
-Missing history is labelled `operation unavailable`, never inferred from another cell.
-Stop describes the requested operation, not successful termination.
-Simple literal `cat` calls display `Read <file>`. Valid literal `mcat` selections
-display one `Read <file>` per selected file, including an explicit range. Literal bounded
-`sed -n 'START,ENDp' <file>` reads display `Read <file> START:END`, with positive decimal
-line numbers and an end not before the start. Only this single-file print form is classified;
-other sed programs, options, stdin operands, and dynamic commands retain their source.
-These reads can share a script with other classified operations without forcing a `Run` fallback.
-`skills-mgr get <skill-name>` and reads of a named skill's `SKILL.md` display
-`Skill Read <skill-name>`.
-`skills-mgr get <skill-name>/<reference-path>` displays `Skill Reference Read` with the
-full skill/reference operand. Optional read ranges remain visible for both forms.
-Simple listing, search, and structural inspection commands use `List`, `Search`, and `Inspect`
-labels, retaining search flags and operands. Search and listing previews preserve shell wildcard
-patterns verbatim without expanding them; substitutions still retain the original `Run` source. Native web/file search, image viewing/generation,
-code execution, and input sending use descriptive operation labels.
-Mcat and inspect_file calls validate literal option bounds, duplicates, and operand
-placement before classification; invalid forms retain their source-level `Run` display.
-Native `apply_patch` calls do not generate operation commentary. Standalone shell-based
-`hpatch` calls omit the `Run` preview and patch body. After execution, authenticated
-committed receipts classify the captured before/after identities once and produce
-`Create <path> +N -N`, `Edit <path> +N -N`, `Delete <path> +N -N`, or
-`Move <path> +N -N` per file for child activity, using the
-captured formatted result's added and removed line counts. Paths inside the workspace are
-relative; paths outside it remain absolute, matching the live diff display. Supported shell
-file-operation receipts use the same display; incomplete captures explicitly report incomplete history
-receipts use the same display; incomplete captures explicitly report incomplete history
-and unavailable line counts rather than numeric counts. Rejected edits do not
-produce successful edit summaries; repeated receipts are deduplicated. `hpatch --recover`
-uses the same display: each successful repair reports its own committed file counts,
-not cumulative counts for earlier attempts, and recovery scripts remain hidden. Host results
-and captured evidence remain unchanged; the [live view](changes.md#live-terminal-view)
-owns the separate full edit display.
-Valid explicit shell batches classify each program independently, in order, using
-that program's interpreter and directives. Batch headers and separator lines are
-transport framing, not displayed commands. Malformed batches retain the complete
-source-level fallback; marker-like lines inside ordinary programs remain source.
+Complete subagent tool calls are forwarded as user-only activity, never as
+executable root calls. Native collaboration remains Codex-owned. `send_message`
+and journal calls omit generic tool activity because their own commentary
+handles them. Other recognized stock calls use useful operation labels such as
+`Read`, `Search`, `Inspect`, `Run`, `Send input`, and `Still Running` rather than
+raw transport JSON. Unknown calls keep their qualified name and full input.
 
-Mixed scripts of simple commands classify each command independently. An unclassified command
-retains its source as a `Run` action without hiding neighboring `Search`, `Read`, or other
-classified operations. Single-line `Run` details in these mixed summaries use inline code;
-multiline details use fenced code blocks. Scripts with no classified commands retain the
-whole-script `Run` preview. Unsupported compound commands retain their complete statement as a
-`Run` action rather than splitting control flow into independent operations. Literal searches with
-discarded stderr and pipelines of searches, bounded `head`/`tail` (`-n N` or `-N`), and output-only `sort`
-(with optional `-n`, `-r`, and `-u` flags) retain the complete pipeline under `Search`. `find` actions
-that execute commands, delete files, or write result files retain `Run`. Literal
-`command -v` lookups, including an `|| true` guard, use `Inspect`; `ls` keeps its flags and paths
-under `List`. Standalone Bash/POSIX `commentary` commands are omitted from tool previews;
-a commentary-only script produces no tool activity. Commands with executable substitutions or
-redirections retain their source. Heredoc scripts retain a whole-source preview, excluding
-standalone commentary commands, so bodies and delimiters are not lost at statement boundaries.
-Runtime progress delivery is unchanged. Dynamic commands are never labelled as simpler operations.
-Multiline source previews preserve line breaks and indentation in fenced code blocks, including
-language-tagged fences and literal backticks. Transformed displays retain every nonsuppressed operation and its
-full detail without preview truncation. Unknown tools retain their qualified name and full input.
-Collaboration and user-messaging arguments remain opaque: only their tool identity is displayed.
-Calls without textual input show only the operation or tool name.
-Single-item root copies retain the inline agent prefix without an `In` heading or bullet wrapper.
-Consecutive matching actions from the same child collapse into one action heading, retaining
-every operand and source block in order. A single resulting action uses the inline agent prefix,
-without an `In` heading or bullets. Two or more resulting actions share an
-`In <canonical path>` heading with nested bullet items, including mixed action kinds. Grouping uses only calls already pending
-at a root delivery boundary and never waits for more calls. A different child, notice, or
-deferred/current boundary ends the group. Multiline details keep their nested code fences.
-Each source call remains independently deduplicated; grouped root copies remain user-only
-and preserve the existing auxiliary rendering budget and replay rules. Over-budget displays
-are deferred or omitted under those rules, never shortened.
+Direct `exec_command` and statically recognizable Code Mode
+`tools.exec_command` or `tools.write_stdin` calls share the same command display.
+Transparent `text(result)` and output projections do not hide the command.
+Literal `Promise.all` and `Promise.allSettled` batches display nonsuppressed
+operations in source order without serializing their execution. Recognition
+uses the JavaScript parse tree and never evaluates expressions. Dynamic
+arguments, control flow, name shadowing, or unrelated statements fall back to
+the original JavaScript source rather than a partially simplified preview.
+These presentation rules do not change tool input, result, or replay payload.
+
+A simple literal `cat`, valid `mcat` read, or bounded `sed -n` print is labeled
+`Read`; literal `rg` is `Search`; simple listings are `List`; and
+`inspect_file` is `Inspect`. Invalid or compound commands retain a `Run`
+preview instead of claiming a simpler operation. Mixed command scripts keep
+every classified operation and show unclassified neighbors as `Run` in order.
+Code Mode waits show `Still Running` or `Stop` only when a visible call/result
+pair establishes the same cell; missing history is `operation unavailable`.
+Native `write_stdin` with characters is `Send input`.
+
+Whole-program previews use fenced code blocks with the selected interpreter
+language. Literal interpreter wrappers, including `python -c`,
+`python - <<'PY'`, and `node -e`, show the actual program rather than a Bash
+wrapper. This same projector supplies provisional streaming previews and final
+generated commentary. It never evaluates shell expansions or implies that a
+command succeeded. Source line breaks and indentation remain intact.
+
+Stock `apply_patch` does not produce a generic `Run` preview or echo its patch
+body into child activity. After the host result and workspace outcome are
+recorded, authenticated successful edit receipts classify each changed path as
+`Create`, `Edit`, `Delete`, or `Move` with added and removed line counts.
+Classification uses the same review files as `mchanges`; it does not guess from
+the command text. Paths inside the workspace display relatively; outside paths
+remain absolute. Incomplete captures show unavailable counts. Failed and
+unfinished patches produce no successful edit summary, and repeated receipts
+are deduplicated. The live pane separately owns full provisional and completed
+diff display under [REQ-CHANGES-001](changes.md).
+
+MCP calls display their `server.tool` identity and arguments. Other native web,
+image, clock, context, goal, and execution helpers use descriptive labels.
+Consecutive matching actions from one child may group under one canonical
+agent heading while preserving every detail. A different child, notice, or
+root delivery boundary ends that group. Grouping is user-only, bounded, and
+never waits for another call or shortens a substantive tool result.
+
 The display describes an observed call, not successful execution or agent completion.
 JSON output, completed SSE items, and terminal output share source-identity deduplication;
 partial calls are not projected. Native child call framing and replay stay unchanged.
@@ -296,13 +220,13 @@ routing-session ID. Missing ancestry, cycles, conflicting identity, or exhausted
 auxiliary capacity suppress projection, not child output or tool execution.
 Identity observation and start/reply collection begin only after request preparation succeeds.
 A prepared request with malformed auxiliary identity or a contradictory thread ID disables
-root projection for that stable thread until shutdown. Shell workers share thread capabilities,
-so later valid metadata cannot distinguish delayed work from the ambiguous request. Local runtime
+root projection for that stable thread until shutdown. Runtime publications use thread-bound capabilities, so later valid metadata
+cannot distinguish delayed work from the ambiguous request. Local runtime
 delivery, immutable authors, and replay provenance remain intact. Invalid turn headers and requests
 rejected during preparation do not register or invalidate collector identities.
 Critical errors from rejected requests still use previously established request-thread identity.
 
-Child-authored commentary, operation, shell, and Code Mode progress enters the same collector as
+Child-authored commentary, operation, and Code Mode progress enters the same collector as
 received inter-agent envelopes, tool-call displays, and existing critical-error notices.
 Errors are collected from the originating request before session-level deduplication,
 never attributed from another request's retained session queue. Projecting an error

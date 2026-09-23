@@ -8,7 +8,7 @@ prepare_instructions() {
 	diagnostic_instruction=$(cat <<'INSTRUCTION'
 ## Benchmark diagnostic reporting
 
-If any hpatch edit is rejected or `hpatch --recover` is invoked, call `report_issue` exactly once after that recovery chain ends, then continue the task. Also report any distinct misleading or unnecessarily costly mekugi-related interaction once you have concrete evidence. State the intended action, the observed tool result or behavior, its impact, and the smallest useful improvement. Do not report project bugs, and do not speculate.
+If a stock `apply_patch` call fails or a distinct misleading or unnecessarily costly Mekugi interaction occurs, call `report_issue` once after you have concrete evidence, then continue the task. State the intended action, observed result, impact, and smallest useful improvement. Do not report project bugs or speculate.
 INSTRUCTION
 	)
 	offline_instruction=$(cat <<'INSTRUCTION'
@@ -95,22 +95,18 @@ configure_issue_reporting() {
 
 	mkdir -p "$settings_directory" "$issue_reports_directory"
 	cat >"$settings_directory/settings.json" <<'JSON'
-{"hooks":{"diagnose":["mekugi-benchmark-report-issue {{shellquote .Title}} {{shellquote (format_markdown .)}}"]}}
+{"hooks":{"diagnose":["mekugi-benchmark-report-issue {{shellquote .Title}} {{shellquote (format_markdown .Body)}}"]}}
 JSON
 	jq -cn \
 		--argjson report_issue_enabled "$report_issues" \
 		--argjson enforce_no_edit_loops "$enforce_no_edit_loops" \
-		--argjson require_ctp_input_compression "$require_ctp_input_compression" \
-		--argjson require_ctp_output_compression "$require_ctp_output_compression" \
 		--argjson main_mentor "$main_mentor" \
 		--arg benchmark_mode "$benchmark_mode" \
 		--arg task_contract_sha256 "$task_contract_sha256" \
-		--arg treatment_model_protocol "$MEKUGI_BENCH_MEKUGI_MODEL_PROTOCOL" \
 		--arg benchmark_commit "$benchmark_commit" \
 		--arg codex_release "$codex_release" \
 		--slurpfile build_identity "$run_dir/build-identity.json" \
 		--arg parent_model "$mentor_parent_model" \
-		--arg mentor_model_protocol "$mentor_model_protocol" \
 		--arg parent_reasoning_effort "$mentor_parent_reasoning_effort" \
 		--arg child_model "$model" \
 		--arg child_reasoning_effort "$reasoning_effort" \
@@ -122,7 +118,6 @@ JSON
 		'{
 			benchmark_mode: $benchmark_mode,
 			task_contract_sha256: $task_contract_sha256,
-			treatment_model_protocol: $treatment_model_protocol,
 			benchmark_commit: $benchmark_commit,
 			codex_release: $codex_release,
 			build_identity: $build_identity[0],
@@ -138,7 +133,6 @@ JSON
 				mentor_model: "gpt-5.6-sol",
 				mentor_reasoning_effort: "high",
 				parent_model: $parent_model,
-				model_protocol: $mentor_model_protocol,
 				parent_reasoning_effort: $parent_reasoning_effort,
 				child_model: $child_model,
 				child_reasoning_effort: $child_reasoning_effort,
@@ -149,11 +143,7 @@ JSON
 			},
 			report_issue_enabled: $report_issue_enabled,
 			agent_issue_reports: $reports,
-			enforce_no_edit_loops: $enforce_no_edit_loops,
-			ctp: {
-				require_input_compression: $require_ctp_input_compression,
-				require_output_compression: $require_ctp_output_compression
-			}
+			enforce_no_edit_loops: $enforce_no_edit_loops
 		}' \
 		>"$benchmark_config"
 }

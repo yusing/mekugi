@@ -63,9 +63,9 @@
       "id": "batch-diagnostic-collapse",
       "manifest": "tasks/batch-diagnostic-collapse/task.json",
       "source_kind": "task-owned empty fixture",
-      "popularity_policy": "not applicable to a protocol-focused greenfield task",
+      "popularity_policy": "not applicable to a task-owned empty fixture",
       "language": "Go",
-      "task_type": "CTP/2 bidirectional-compression microbenchmark",
+      "task_type": "long-output diagnostic task",
       "difficulty": "easy"
     },
     {

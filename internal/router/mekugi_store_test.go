@@ -7,12 +7,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
-	"strings"
 	"sync"
 	"testing"
-
-	"github.com/yusing/mekugi"
 )
 
 func TestMekugiReplayStoreRestartAndConflict(t *testing.T) {
@@ -338,65 +334,6 @@ func TestMekugiReplayStoreProviderMetadataCompletion(t *testing.T) {
 			defer func() { h.UpstreamItem[key] = original }()
 			if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"call": h}); err == nil {
 				t.Fatalf("accepted changed %s", key)
-			}
-		})
-	}
-}
-
-func TestReplayHistoryVersionOneWireCompatibility(t *testing.T) {
-	// Freeze the pre-simplification wire schema, independent of the current type.
-	const legacy = `{"Version":1,"Workspace":"/workspace","CallID":"call","Commentary":false,"History":{"ToolName":"hpatch","PluginID":"builtin","Script":"emitted","Root":"/workspace","Evaluated":"evaluated","ChangeID":"hp_1","ReviewFiles":[{"BeforePath":"old","AfterPath":"new","Diff":"diff"}],"Patch":"patch","Applied":true,"CarrierName":"exec","CarrierKind":"custom","CarrierPayload":"carrier","Report":"report","JournalIDs":["j1"],"OutputWarning":"warning","TranslationError":"rejected","EvaluatorRejected":true,"Rejections":[{"command":2,"source_line":3,"operation":"type","reason":"row-stale"}],"CorrelationID":"correlation","Attempt":2,"UpstreamItem":{"input":"<>& \\u003c","status":"completed"},"ReplayCarrier":true,"CommentaryMessageIDs":["notice"],"Unevaluated":true,"AlreadySatisfied":true,"Aliases":[{"Path":"new","Before":"1:abcd","After":"2:abcd"}]}}`
-	want := mekugiHistory{
-		ToolName: "hpatch", PluginID: "builtin", Script: "emitted", Root: "/workspace",
-		Evaluated: "evaluated", ChangeID: "hp_1",
-		ReviewFiles: []mekugi.ReviewFile{{BeforePath: "old", AfterPath: "new", Diff: "diff"}},
-		Patch:       "patch", Applied: true, CarrierName: "exec", CarrierKind: codeModeCarrierCustom,
-		CarrierPayload: "carrier", Report: "report", JournalIDs: []string{"j1"},
-		OutputWarning: "warning", TranslationError: "rejected", EvaluatorRejected: true,
-		Rejections:    []mekugi.HostRejection{{Command: 2, SourceLine: 3, Operation: "type", Reason: "row-stale"}},
-		CorrelationID: "correlation", Attempt: 2,
-		UpstreamItem: map[string]json.RawMessage{
-			"input": json.RawMessage(`"<>& \\u003c"`), "status": json.RawMessage(`"completed"`),
-		},
-		ReplayCarrier: true, CommentaryMessageIDs: []string{"notice"},
-		Unevaluated: true, AlreadySatisfied: true,
-		Aliases: []mekugi.TargetAlias{{Path: "new", Before: "1:abcd", After: "2:abcd"}},
-	}
-	dir := t.TempDir()
-	path := filepath.Join(dir, replayRecordName("/workspace", "call", false))
-	if err := os.WriteFile(path, []byte(legacy), 0600); err != nil {
-		t.Fatal(err)
-	}
-	store, err := openMekugiReplayStore(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, found, err := store.lookup(t.Context(), "/workspace", "call")
-	if err != nil || !found || !reflect.DeepEqual(got, want) {
-		t.Fatalf("legacy lookup = %#v, %v, %v; want %#v", got, found, err, want)
-	}
-
-	got.bytes, got.confirmed, got.sequence = 123, true, 42
-	persistent := durableHistory(got)
-	if !reflect.DeepEqual(persistent, want) || got.bytes != 123 || !got.confirmed || got.sequence != 42 {
-		t.Fatal("durable projection retained local state or mutated the request view")
-	}
-	record := replayRecord{Version: 1, Workspace: "/workspace", CallID: "call", History: persistent}
-	encoded, err := marshalProtocolJSON(record)
-	if err != nil || !sameJSONValue(encoded, []byte(legacy)) {
-		t.Fatalf("wire schema changed: %s, %v", encoded, err)
-	}
-	if err := store.locked(t.Context(), func() error { return store.write(record) }); err != nil {
-		t.Fatalf("local confirmation/order created a durable conflict: %v", err)
-	}
-	for _, field := range []string{"bytes", "confirmed", "sequence", "Bytes", "Confirmed", "Sequence", "FutureField"} {
-		t.Run(field, func(t *testing.T) {
-			corrupt := strings.Replace(legacy, `"ToolName":`, `"`+field+`":1,"ToolName":`, 1)
-			if err := os.WriteFile(path, []byte(corrupt), 0600); err != nil {
-				t.Fatal(err)
-			}
-			if _, _, err := store.lookup(t.Context(), "/workspace", "call"); err == nil {
-				t.Fatal("accepted an unknown or request-local durable field")
 			}
 		})
 	}

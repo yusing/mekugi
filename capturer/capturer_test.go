@@ -31,7 +31,7 @@ func TestRecorderObservesSingleListenerAndProviderRetries(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		if !bytes.Contains(body, []byte(`"name":"hpatch"`)) {
+		if !bytes.Contains(body, []byte(`"name":"apply_patch"`)) {
 			t.Errorf("provider request = %s", body)
 		}
 		writer.Header().Set("Content-Type", "application/json")
@@ -40,7 +40,7 @@ func TestRecorderObservesSingleListenerAndProviderRetries(t *testing.T) {
 			_, _ = io.WriteString(writer, `{"error":{"message":"capacity"}}`)
 			return
 		}
-		_, _ = io.WriteString(writer, `{"status":"completed","output":[{"type":"custom_tool_call","call_id":"call-1","name":"hpatch","input":"private edit"}],"usage":{"input_tokens":20,"input_tokens_details":{"cached_tokens":8},"output_tokens":5,"output_tokens_details":{"reasoning_tokens":2}}}`)
+		_, _ = io.WriteString(writer, `{"status":"completed","output":[{"type":"custom_tool_call","call_id":"call-1","name":"apply_patch","input":"private edit"}],"usage":{"input_tokens":20,"input_tokens_details":{"cached_tokens":8},"output_tokens":5,"output_tokens_details":{"reasoning_tokens":2}}}`)
 	}))
 	defer provider.Close()
 
@@ -56,8 +56,9 @@ func TestRecorderObservesSingleListenerAndProviderRetries(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		providerBody := []byte(`{"model":"model","tools":[{"type":"custom","name":"hpatch"}]}`)
+		providerBody := []byte(`{"model":"model","tools":[{"type":"custom","name":"apply_patch"}]}`)
 		for attempt := range 2 {
+			ObserveProjectedRequest(incoming.Context(), providerBody)
 			request, err := http.NewRequestWithContext(incoming.Context(), http.MethodPost, provider.URL+"/responses", bytes.NewReader(providerBody))
 			if err != nil {
 				t.Error(err)
@@ -79,7 +80,7 @@ func TestRecorderObservesSingleListenerAndProviderRetries(t *testing.T) {
 				continue
 			}
 			writer.Header().Set("Content-Type", "application/json")
-			_, _ = io.WriteString(writer, `{"status":"completed","output":[{"type":"custom_tool_call","call_id":"call-1","name":"exec","input":"// mekugi-proxy: apply translated patch\nawait tools.apply_patch(\"private patch\");\ntext(\"done\");"}]}`)
+			_, _ = io.WriteString(writer, `{"status":"completed","output":[{"type":"custom_tool_call","call_id":"call-1","name":"apply_patch","input":"private edit"}]}`)
 		}
 	})))
 	defer router.Close()
@@ -100,7 +101,7 @@ func TestRecorderObservesSingleListenerAndProviderRetries(t *testing.T) {
 	if err := response.Body.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(visible, []byte(`"name":"exec"`)) {
+	if !bytes.Contains(visible, []byte(`"name":"apply_patch"`)) {
 		t.Fatalf("visible response = %s", visible)
 	}
 
@@ -133,18 +134,15 @@ func TestRecorderObservesSingleListenerAndProviderRetries(t *testing.T) {
 		first.ResponseStatus != "http_error" || !first.ResponseComplete || first.Usage != nil ||
 		second.RequestModel != "model" || second.Usage == nil || second.Usage.InputTokens != 20 ||
 		second.Request.Bytes == 0 || second.Response.Tokens == 0 || front.Request.Tokens == 0 || front.Response.Bytes == 0 ||
-		len(second.ToolCalls) != 1 || second.ToolCalls[0].Name != "hpatch" ||
-		len(front.ToolCalls) != 1 || front.ToolCalls[0].Name != "exec" || second.ToolCalls[0].CallID != front.ToolCalls[0].CallID {
+		len(second.ToolCalls) != 1 || second.ToolCalls[0].Name != "apply_patch" ||
+		len(front.ToolCalls) != 1 || front.ToolCalls[0].Name != "apply_patch" || second.ToolCalls[0].CallID != front.ToolCalls[0].CallID {
 		t.Fatalf("captured exchanges = %#v", records)
 	}
 	snapshot := recorder.snapshot()
 	if snapshot.Requests.Logical != 1 || snapshot.Requests.ProviderAttempts != 2 || snapshot.Requests.Completed != 1 ||
 		snapshot.Usage.ProviderAttempts != 1 || snapshot.Usage.InputTokens != 20 || snapshot.Usage.CachedInputTokens != 8 ||
 		snapshot.Transport.ClientRequests.Bytes == 0 || snapshot.Transport.ProviderAttemptRequests.Bytes != first.Request.Bytes+second.Request.Bytes ||
-		snapshot.ProviderTools["hpatch"].Calls != 1 || snapshot.DeliveredTools["exec"].Calls != 1 ||
-		snapshot.Mekugi.Calls != 1 || snapshot.Mekugi.Successful != 1 || snapshot.Mekugi.Rejected != 0 ||
-		snapshot.Mekugi.ProviderInputTokens != second.ToolCalls[0].InputTokens ||
-		snapshot.Mekugi.DeliveredInputTokens != front.ToolCalls[0].InputTokens ||
+		snapshot.ProviderTools["apply_patch"].Calls != 1 || snapshot.DeliveredTools["apply_patch"].Calls != 1 ||
 		snapshot.Semantic.ClientOutputs.Tokens != front.FinalOutput.Tokens ||
 		snapshot.Semantic.ProviderAttemptOutputs.Tokens != second.FinalOutput.Tokens ||
 		snapshot.Capture.Records != 3 || snapshot.Capture.CaptureErrors != 0 || snapshot.Capture.Incomplete != 0 ||
@@ -177,7 +175,7 @@ func TestRecorderAcceptsConsumerCloseAfterTerminalResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := &requestState{captureID: "capture", sequence: 1}
+	state := &requestState{recorder: recorder, captureID: "capture", sequence: 1}
 	providerBody := &terminalResponseBody{content: []byte(`{"status":"completed","usage":{"input_tokens":3}}`)}
 	transport := recorder.Transport(roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{
@@ -188,6 +186,7 @@ func TestRecorderAcceptsConsumerCloseAfterTerminalResponse(t *testing.T) {
 	}))
 	request := httptest.NewRequest(http.MethodPost, "https://provider.example/responses", strings.NewReader(`{"model":"model"}`))
 	request = request.WithContext(context.WithValue(request.Context(), captureKey{}, state))
+	ObserveProjectedRequest(request.Context(), []byte(`{"model":"model"}`))
 	response, err := transport.RoundTrip(request)
 	if err != nil {
 		t.Fatal(err)
@@ -311,7 +310,7 @@ func (reader failingReader) Read([]byte) (int, error) {
 	return 0, reader.err
 }
 
-func TestSnapshotAccountsCacheCorrectionsDiagnosticsAndMissingEvidence(t *testing.T) {
+func TestSnapshotAccountsCacheAndMissingEvidence(t *testing.T) {
 	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
@@ -331,8 +330,8 @@ func TestSnapshotAccountsCacheCorrectionsDiagnosticsAndMissingEvidence(t *testin
 	for _, record := range []captureRecord{
 		complete(captureRecord{Boundary: "provider", CaptureID: "first", RequestSequence: 1, ProviderAttempt: 1, ThreadID: "thread", Usage: usage(100, 20, 10)}),
 		complete(captureRecord{Boundary: "codex", CaptureID: "first", RequestSequence: 1, ThreadID: "thread"}),
-		complete(captureRecord{Boundary: "provider", CaptureID: "second", RequestSequence: 2, ProviderAttempt: 1, ThreadID: "thread", Usage: usage(120, 80, 12), ToolCalls: []toolCallMetrics{{CallID: "correction", Name: "hpatch_recover", InputTokens: 4}}}),
-		complete(captureRecord{Boundary: "codex", CaptureID: "second", RequestSequence: 2, ThreadID: "thread", ToolCalls: []toolCallMetrics{{CallID: "correction", Name: "exec", InputTokens: 10, Kind: "mekugi_diagnostic", Diagnostic: "row-stale"}}}),
+		complete(captureRecord{Boundary: "provider", CaptureID: "second", RequestSequence: 2, ProviderAttempt: 1, ThreadID: "thread", Usage: usage(120, 80, 12), ToolCalls: []toolCallMetrics{{CallID: "correction", Name: "apply_patch", InputTokens: 4}}}),
+		complete(captureRecord{Boundary: "codex", CaptureID: "second", RequestSequence: 2, ThreadID: "thread", ToolCalls: []toolCallMetrics{{CallID: "correction", Name: "apply_patch", InputTokens: 10}}}),
 		complete(captureRecord{Boundary: "codex", CaptureID: "missing", RequestSequence: 3, ThreadID: "thread"}),
 	} {
 		state := states[record.CaptureID]
@@ -355,8 +354,6 @@ func TestSnapshotAccountsCacheCorrectionsDiagnosticsAndMissingEvidence(t *testin
 		snapshot.Cache.ColdOrNewUncachedInputTokens != 100 || snapshot.Cache.EligiblePrefixTokens != 100 ||
 		snapshot.Cache.EligiblePrefixCachedTokens != 80 || snapshot.Cache.EligiblePrefixMissTokens != 20 ||
 		snapshot.Cache.EligiblePrefixCacheRate == nil || *snapshot.Cache.EligiblePrefixCacheRate != 0.8 ||
-		snapshot.Mekugi.Calls != 1 || snapshot.Mekugi.Corrections != 1 || snapshot.Mekugi.Rejected != 1 ||
-		snapshot.Mekugi.Diagnostics["row-stale"] != 1 || snapshot.Mekugi.CarrierInputTokensExpansion != 6 ||
 		snapshot.Capture.MissingProvider != 1 {
 		t.Fatalf("snapshot = %#v", snapshot)
 	}
@@ -374,13 +371,13 @@ func TestSnapshotUsesTerminalOutputOnceInsteadOfWholeSSEStream(t *testing.T) {
 			InputTokens: 10, CachedTokens: 8, OutputTokens: 4,
 		}},
 	}
-	providerItem := `{"type":"custom_tool_call","call_id":"call","name":"hpatch","input":"edit"}`
-	clientItem := `{"type":"custom_tool_call","call_id":"call","name":"exec","input":"text(\"done\");"}`
+	providerItem := `{"type":"custom_tool_call","call_id":"call","name":"apply_patch","input":"edit"}`
+	clientItem := `{"type":"custom_tool_call","call_id":"call","name":"apply_patch","input":"text(\"done\");"}`
 	providerOutput := `[` + providerItem + `]`
 	clientOutput := `[` + clientItem + `]`
 	providerDone := `{"type":"response.output_item.done","output_index":0,"item":` + providerItem + `}`
 	clientDone := `{"type":"response.output_item.done","output_index":0,"item":` + clientItem + `}`
-	providerTerminal := `{"type":"response.completed","response":{"status":"completed","tools":[{"type":"custom","name":"hpatch","description":` + strconv.Quote(strings.Repeat("large provider tool definition ", 400)) + `}],"output":[],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":8},"output_tokens":4}}}`
+	providerTerminal := `{"type":"response.completed","response":{"status":"completed","tools":[{"type":"custom","name":"apply_patch","description":` + strconv.Quote(strings.Repeat("large provider tool definition ", 400)) + `}],"output":[],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":8},"output_tokens":4}}}`
 	clientTerminal := `{"type":"response.completed","response":{"status":"completed","tools":[{"type":"custom","name":"apply_patch"}],"output":[]}}`
 	providerStream := strings.Repeat("data: {\"type\":\"response.custom_tool_call_input.delta\",\"delta\":\""+strings.Repeat("x", 400)+"\"}\n\n", 200) +
 		"data: " + providerDone + "\n\ndata: " + providerTerminal + "\n\n"
@@ -423,7 +420,7 @@ func TestObserveResponseMeasuresOnlyTerminalOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	firstItem := `{"type":"message","content":[{"type":"output_text","text":"assistant text"}]}`
-	secondItem := `{"type":"custom_tool_call","call_id":"call","name":"hpatch","input":"edit"}`
+	secondItem := `{"type":"custom_tool_call","call_id":"call","name":"apply_patch","input":"edit"}`
 	output := `[` + firstItem + `,` + secondItem + `]`
 	response := `{"status":"completed","tools":[{"description":` + strconv.Quote(strings.Repeat("unrelated tool metadata ", 200)) + `}],"output":` + output + `}`
 	tests := map[string]struct {
@@ -687,81 +684,6 @@ func TestObserveResponseJoinsMultilineSSEData(t *testing.T) {
 	}
 }
 
-func TestClassifyToolInputRetainsOnlyStableDiagnosticCodes(t *testing.T) {
-	nativeInput := func(command string) string {
-		t.Helper()
-		payload, err := json.Marshal(map[string]string{"cmd": command})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return string(payload)
-	}
-	diagnostic := "type: command 2, reason row-stale: private detail\n"
-	for _, test := range []struct {
-		name       string
-		toolName   string
-		input      string
-		wantKind   string
-		wantReason string
-	}{
-		{name: "apply carrier", input: mekugiApplyCarrierPrefix + `await tools.apply_patch("*** Begin Patch\\n*** End Patch");\ntext("done");`, wantKind: "apply_patch"},
-		{name: "change ID apply carrier", input: mekugiApplyCarrierPrefix + "try {\n" + `await tools.apply_patch("patch");` + "\n} catch (error) { text(\"change c1\"); throw error; }\ntext(\"done\");", wantKind: "apply_patch"},
-		{name: "unmarked apply call", input: `await tools.apply_patch("patch");`, wantKind: "other"},
-		{name: "quoted apply marker", input: "text(" + strconv.Quote(mekugiApplyCarrierPrefix) + ");", wantKind: "other"},
-		{name: "exec command carrier", input: `const result = await tools.exec_command({"cmd":"true"});\ntext(result.output);`, wantKind: "exec_command"},
-		{name: "router diagnostic", input: `text("type: command 2, reason row-stale: private detail\n");`, wantKind: "mekugi_diagnostic", wantReason: "row-stale"},
-		{name: "change ID diagnostic", input: `text("change amber1\ntype: command 2, reason row-stale: private detail\n");`, wantKind: "mekugi_diagnostic", wantReason: "row-stale"},
-		{name: "change ID report", input: `text("change amber1\nfile file.go\nlast type 1 ranges 1:1-1:2\nfiles add=0 update=0 move=0 delete=0\n");`, wantKind: "mekugi_report"},
-		{name: "retained historical report", input: `text("change amber1\nin file.go\nlast type 1 ranges 1:1-1:2\nfiles add=0 update=0 move=0 delete=0\n");`, wantKind: "mekugi_report"},
-		{name: "change notice only", input: `text("change amber1\n");`, wantKind: "other"},
-		{name: "change ID private text", input: `text("change amber1\nprivate detail\n");`, wantKind: "other"},
-		{name: "change ID forged reason", input: `text("change amber1\ntype: command 2, reason private-sentinel: detail\n");`, wantKind: "other"},
-		{name: "nested change notices", input: `text("change amber1\nchange amber2\ntype: command 2, reason row-stale: detail\n");`, wantKind: "other"},
-		{name: "malformed change notice", input: `text("change \ntype: command 2, reason row-stale: detail\n");`, wantKind: "other"},
-		{name: "apply substring in diagnostic", input: `text("type: command 2, reason file-path: missing tools.apply_patch(example)\n");`, wantKind: "mekugi_diagnostic", wantReason: "file-path"},
-		{name: "arbitrary text", input: `text("private sentinel\nmore private content");`, wantKind: "other"},
-		{name: "forged reason", input: `text("type: command 2, reason private-sentinel: detail\n");`, wantKind: "other"},
-		{name: "malformed envelope", input: `text("prefix, reason row-stale: detail\n");`, wantKind: "other"},
-		{
-			name:     "native apply carrier",
-			toolName: "exec_command",
-			input:    nativeInput(mekugiNativeApplyCarrierPrefix + "printf ok"),
-			wantKind: "apply_patch",
-		},
-		{
-			name:     "native report carrier",
-			toolName: "exec_command",
-			input:    nativeInput(mekugiNativeReportCarrierPrefix + "printf ok"),
-			wantKind: "mekugi_report",
-		},
-		{
-			name:       "native diagnostic carrier",
-			toolName:   "exec_command",
-			input:      nativeInput(mekugiNativeDiagnosticCarrierPrefix + strconv.Quote(diagnostic) + "\nprintf ok"),
-			wantKind:   "mekugi_diagnostic",
-			wantReason: "row-stale",
-		},
-		{
-			name:       "native change ID diagnostic",
-			toolName:   "exec_command",
-			input:      nativeInput(mekugiNativeDiagnosticCarrierPrefix + strconv.Quote("change amber1\n"+diagnostic) + "\nprintf ok"),
-			wantKind:   "mekugi_diagnostic",
-			wantReason: "row-stale",
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			toolName := test.toolName
-			if toolName == "" {
-				toolName = "exec"
-			}
-			kind, reason := classifyToolInput(toolName, test.input)
-			if kind != test.wantKind || reason != test.wantReason {
-				t.Fatalf("classification = %q, %q", kind, reason)
-			}
-		})
-	}
-}
-
 func TestDurableCaptureDiscardsArbitraryTextCarrierContent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "capture.jsonl")
 	recorder, err := New(Config{Output: path, Mode: "mekugi"})
@@ -770,7 +692,7 @@ func TestDurableCaptureDiscardsArbitraryTextCarrierContent(t *testing.T) {
 	}
 	handler := recorder.Handler(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(writer, `{"status":"completed","output":[{"type":"custom_tool_call","call_id":"call","name":"exec","input":"text(\\\"private-sentinel\\\");"}]}`)
+		_, _ = io.WriteString(writer, `{"status":"completed","output":[{"type":"custom_tool_call","call_id":"call","name":"apply_patch","input":"text(\\\"private-sentinel\\\");"}]}`)
 	}))
 	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"model"}`)))
 	if err := recorder.Close(); err != nil {
@@ -784,8 +706,8 @@ func TestDurableCaptureDiscardsArbitraryTextCarrierContent(t *testing.T) {
 		t.Fatalf("durable capture retained arbitrary carrier content: %s", payload)
 	}
 	snapshot := recorder.snapshot()
-	if snapshot.Mekugi.Diagnostics != nil && len(snapshot.Mekugi.Diagnostics) != 0 {
-		t.Fatalf("diagnostics = %#v", snapshot.Mekugi.Diagnostics)
+	if snapshot.Capture.CaptureErrors != 0 {
+		t.Fatalf("capture errors = %d", snapshot.Capture.CaptureErrors)
 	}
 }
 

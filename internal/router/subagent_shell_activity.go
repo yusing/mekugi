@@ -9,7 +9,6 @@ import (
 
 // Keep the excerpt to one line and 120 characters, including the ellipsis.
 func toolActivityCommandExcerpt(script string) string {
-	script, _ = toolActivityUnwrapShell(script, "bash")
 	morePrograms := false
 	if shellsyntax.IsBatch(script) {
 		if programs, err := shellsyntax.Split(script); err == nil {
@@ -61,9 +60,6 @@ func toolActivityShellCall(item map[string]json.RawMessage, name string, require
 				script = argv[2]
 			}
 		}
-	}
-	if name == "shell" || name == "exec_command" || name == "shell_command" {
-		script, _ = toolActivityUnwrapShell(script, "bash")
 	}
 	return name, args, script
 }
@@ -124,17 +120,10 @@ func (t *mekugiResponseTransform) prepareShellActivity(input json.RawMessage) {
 		if kind == "function_call" || kind == "custom_tool_call" {
 			qualifiedName := qualifiedToolName(jsonString(item, "namespace"), jsonString(item, "name"))
 			if len(cellCalls) < 1024 {
-				history, known := t.visible[callID]
 				name := strings.TrimPrefix(qualifiedName, "functions.")
-				// Replay restores the public tool identity (for example shell),
-				// but its recorded carrier still owns the host's cell metadata.
 				switch {
-				case name == "exec" || known && history.TranslationError == "" && history.effectiveCarrierKind() == codeModeCarrierCustom:
+				case name == "exec":
 					operation := subagentToolPreview(item, qualifiedName, t.shellActivityDisplay)
-					if history.ToolName == "shell" && history.PluginID == builtinToolsPluginID &&
-						!history.ReplayCarrier && jsonString(history.UpstreamItem, "name") == t.codeModeToolName {
-						operation = toolActivityShell(history.Script)
-					}
 					operation = strings.TrimPrefix(strings.TrimPrefix(operation, "Run\n"), "Run JavaScript\n")
 					operation = strings.TrimPrefix(strings.TrimPrefix(operation, "Still Running\n"), "Running stored script\n")
 					if operation == "Still Running · command unavailable" || operation == "Running stored script · command unavailable" {
@@ -154,13 +143,8 @@ func (t *mekugiResponseTransform) prepareShellActivity(input json.RawMessage) {
 				continue
 			}
 			name, args, script := toolActivityShellCall(item, qualifiedToolName(jsonString(item, "namespace"), jsonString(item, "name")), true)
-			if history, ok := t.visible[callID]; ok &&
-				history.ToolName == "shell" && history.PluginID == builtinToolsPluginID &&
-				!history.ReplayCarrier && jsonString(history.UpstreamItem, "name") == t.codeModeToolName {
-				name, script = "shell", history.Script
-			}
 			switch name {
-			case "shell", "shell_command", "exec_command":
+			case "exec_command":
 				calls[callID] = toolActivityCommandExcerpt(script)
 			case "write_stdin":
 				calls[callID] = t.activityShellSessions[strings.TrimSpace(string(args["session_id"]))]

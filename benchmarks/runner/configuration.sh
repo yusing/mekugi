@@ -6,9 +6,7 @@ configure_benchmark() {
 	reasoning_effort=${REASONING_EFFORT:-medium}
 	mentor_parent_model=${MENTOR_PARENT_MODEL:-gpt-5.6-sol}
 	mentor_parent_reasoning_effort=high
-	mentor_model_protocol=${MENTOR_MODEL_PROTOCOL:-native}
 	main_mentor=${BENCHMARK_MAIN_MENTOR:-false}
-	diagnostic_model_protocol=${DIAGNOSTIC_MODEL_PROTOCOL:-native}
 	mentor_child_role=benchmark_worker
 	repetitions=${REPETITIONS:-1}
 	benchmark_mode=${BENCHMARK_MODE:-paired}
@@ -40,7 +38,7 @@ configure_benchmark() {
 		;;
 	esac
 	case "$benchmark_mode" in
-		paired|ctp-only|mentor-handoff) ;;
+		paired|mentor-handoff) ;;
 		control-only|mekugi-only|mekugi-diagnostic)
 			if ((repetitions != 1)); then
 				printf 'bench.sh: %s mode requires REPETITIONS=1; run separate trials for independent evidence\n' "$benchmark_mode" >&2
@@ -48,32 +46,17 @@ configure_benchmark() {
 			fi
 			;;
 		*)
-			printf 'bench.sh: BENCHMARK_MODE must be paired, control-only, ctp-only, mentor-handoff, mekugi-only, or mekugi-diagnostic, got %s\n' "$benchmark_mode" >&2
+			printf 'bench.sh: BENCHMARK_MODE must be paired, control-only, mentor-handoff, mekugi-only, or mekugi-diagnostic, got %s\n' "$benchmark_mode" >&2
 			exit 2
 			;;
 	esac
-	if [[ ($benchmark_mode == control-only || $benchmark_mode == ctp-only || $benchmark_mode == mentor-handoff) && $report_issues != false ]]; then
+	if [[ ($benchmark_mode == control-only || $benchmark_mode == mentor-handoff) && $report_issues != false ]]; then
 		printf 'bench.sh: %s mode requires BENCHMARK_REPORT_ISSUES=false so diagnostic reporting does not confound the treatment\n' "$benchmark_mode" >&2
 		exit 2
 	fi
 	if [[ $benchmark_mode == mentor-handoff && $model != gpt-5.6-luna && $model != gpt-5.6-terra ]]; then
 		printf 'bench.sh: mentor-handoff mode requires MODEL=gpt-5.6-luna or MODEL=gpt-5.6-terra, got %s\n' "$model" >&2
 		exit 2
-	fi
-	case $mentor_model_protocol in
-	native|ctp2) ;;
-	*)
-		printf 'bench.sh: MENTOR_MODEL_PROTOCOL must be native or ctp2, got %s\n' "$mentor_model_protocol" >&2
-		exit 2
-		;;
-	esac
-	case $diagnostic_model_protocol in
-	native|ctp2) ;;
-	*) printf 'bench.sh: DIAGNOSTIC_MODEL_PROTOCOL must be native or ctp2\n' >&2; exit 2 ;;
-	esac
-	if [[ -n ${DIAGNOSTIC_MODEL_PROTOCOL+x} && $benchmark_mode != mekugi-diagnostic ]]; then
-	    printf 'bench.sh: DIAGNOSTIC_MODEL_PROTOCOL requires mekugi-diagnostic mode\n' >&2
-	    exit 2
 	fi
 	case $main_mentor in
 	true)
@@ -105,8 +88,6 @@ configure_benchmark() {
 	baseline_output_contains=
 	dependency_kind=none
 	preload_go_qualification_grader=false
-	require_ctp_input_compression=false
-	require_ctp_output_compression=false
 	expected_final_response=
 	commentary_coverage_enabled=false
 
@@ -121,36 +102,30 @@ configure_benchmark_plan() {
 	run_arms=(control mekugi)
 	imported_arms=()
 	first_arm_order=1
-	export MEKUGI_BENCH_MEKUGI_MODEL_PROTOCOL=native
 	case $benchmark_mode in
-	paired) MEKUGI_BENCH_MEKUGI_MODEL_PROTOCOL=ctp2 ;;
+	paired) ;;
 	control-only) run_arms=(control) ;;
 	mekugi-only) run_arms=(mekugi); imported_arms=(control); first_arm_order=2 ;;
-	mekugi-diagnostic) run_arms=(mekugi); MEKUGI_BENCH_MEKUGI_MODEL_PROTOCOL=$diagnostic_model_protocol ;;
-	ctp-only) run_arms=(native ctp); MEKUGI_BENCH_MEKUGI_MODEL_PROTOCOL=ctp2 ;;
-	mentor-handoff) run_arms=(mekugi mekugi-mentor); MEKUGI_BENCH_MEKUGI_MODEL_PROTOCOL=$mentor_model_protocol ;;
+	mekugi-diagnostic) run_arms=(mekugi) ;;
+	mentor-handoff) run_arms=(mekugi mekugi-mentor) ;;
 	esac
 	retained_arms=("${imported_arms[@]}" "${run_arms[@]}")
-	declare -gA arm_services=() arm_modes=() arm_protocols=() arm_instructions=()
+	declare -gA arm_services=() arm_modes=() arm_instructions=()
 	declare -gA arm_metrics=() arm_captures=() arm_mentor=()
 	for arm in "${retained_arms[@]}"; do
 		arm_services[$arm]=mekugi-agent
 		arm_modes[$arm]=mekugi
-		arm_protocols[$arm]=$MEKUGI_BENCH_MEKUGI_MODEL_PROTOCOL
 		arm_instructions[$arm]=mekugi.md
 		arm_metrics[$arm]=mekugi-metrics.json
 		arm_captures[$arm]=captures/mekugi.jsonl
 		arm_mentor[$arm]=false
 		case $arm in
-		control|native)
+		control)
 			arm_services[$arm]=control-agent
-			arm_protocols[$arm]=native
 			arm_metrics[$arm]=control-metrics.json
 			arm_captures[$arm]=captures/control.jsonl
-			if [[ $arm == control ]]; then
-				arm_modes[$arm]=passthrough
-				arm_instructions[$arm]=control.md
-			fi
+			arm_modes[$arm]=passthrough
+			arm_instructions[$arm]=control.md
 			;;
 		mekugi)
 			if [[ $benchmark_mode == mentor-handoff ]]; then

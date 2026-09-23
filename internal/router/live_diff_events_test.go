@@ -264,11 +264,12 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(workspace, name+".txt"), nil, 0600); err != nil {
 			t.Fatal(err)
 		}
-		result, err := mekugi.ApplyForHostAt(t.Context(), workspace, []mekugi.FileEdit{{Path: name + ".txt", Script: `append "content\n"`}}, "")
-		if err != nil {
+		path := filepath.Join(workspace, name+".txt")
+		if err := os.WriteFile(path, []byte("content\n"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		histories[name] = mekugiHistory{ToolName: mekugiToolName, ChangeID: id, CorrelationID: name, Applied: true, ReviewFiles: result.ReviewFiles}
+		histories[name] = mekugiHistory{ToolName: applyPatchToolName, ChangeID: id, CorrelationID: name, Applied: true,
+			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(path, path, "", "content\n")}}
 	}
 	if err := store.put(t.Context(), workspace, histories); err != nil {
 		t.Fatal(err)
@@ -324,78 +325,6 @@ func TestLiveDiffDelayedCaptureDoesNotFollowBackwards(t *testing.T) {
 	}
 	if focused := render.Lines[render.FocusRow]; !strings.Contains(focused, "NEWER90") {
 		t.Fatalf("late older highlight stole rendered focus: row=%d %q", render.FocusRow, focused)
-	}
-}
-
-func TestLiveDiffPreviewLifecycleAndReconnect(t *testing.T) {
-	for _, interrupted := range []bool{false, true} {
-		t.Run(fmt.Sprint(interrupted), func(t *testing.T) {
-			calls := 0
-			transform, proxy, _, workspace := newMekugiTestTransform(t)
-			if err := os.WriteFile(filepath.Join(workspace, "created.txt"), nil, 0600); err != nil {
-				t.Fatal(err)
-			}
-			broker := newLiveDiffBroker(t.Context())
-			broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true}}})
-			proxy.autoLiveDiff = &autoLiveDiff{events: broker, requested: true}
-			proxy.autoLiveDiff.enabled.Store(true)
-			sub := broker.subscribe()
-			item := testMekugiItem()
-			item["status"], item["input"] = "in_progress", ""
-			_, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.added", "item": item}))
-			if err != nil {
-				t.Fatal(err)
-			}
-			_, err = transform.TransformSSE(mustTestJSON(t, map[string]any{
-				"type": "response.custom_tool_call_input.delta", "item_id": "item-H",
-				"delta": "hpatch created.txt <<'EDIT'\nappend <<PATCH\npay",
-			}))
-			if err != nil {
-				t.Fatal(err)
-			}
-			var preview liveDiffPreview
-			timer := time.NewTimer(5 * time.Second)
-			defer timer.Stop()
-			for preview.ID == "" {
-				select {
-				case <-sub.previewReady:
-					for _, update := range broker.takePreviews(sub) {
-						if update.Preview != nil {
-							preview = *update.Preview
-						}
-					}
-				case <-timer.C:
-					t.Fatal("preview did not arrive")
-				}
-			}
-			if calls != 0 || len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "+pay") {
-				t.Fatalf("preview=%+v translations=%d", preview, calls)
-			}
-			reconnected := broker.subscribe()
-			if event := <-reconnected.events; event.Kind != "scope" || !event.Resync {
-				t.Fatal("missing snapshot barrier")
-			}
-			if updates := broker.takePreviews(reconnected); len(updates) != 1 || updates[0].Preview == nil || updates[0].Preview.ID != preview.ID {
-				t.Fatal("active preview lost on reconnect")
-			}
-			if interrupted {
-				item["status"] = "incomplete"
-				if _, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": item})); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				transform.Close()
-			}
-			broker.mu.Lock()
-			remaining := len(broker.previews)
-			broker.mu.Unlock()
-			if remaining != 0 || calls != 0 {
-				t.Fatalf("interruption retained preview or translated input: remaining=%d calls=%d", remaining, calls)
-			}
-			if updates := broker.takePreviews(sub); len(updates) != 1 || updates[0].Preview == nil || updates[0].Preview.Workspace != "" {
-				t.Fatal("missing preview removal")
-			}
-		})
 	}
 }
 

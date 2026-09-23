@@ -9,7 +9,6 @@ import (
 	"io"
 	"maps"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/yusing/mekugi/internal/commentaryid"
@@ -250,7 +249,6 @@ func observeOutputItem(payload []byte, record *captureRecord, codec tokenizer.Co
 		InputBytes: uint64(len(input)), InputTokens: uint64(inputTokens),
 		ItemBytes: uint64(len(payload)), ItemTokens: uint64(itemTokens),
 	}
-	metric.Kind, metric.Diagnostic = classifyToolInput(item.Name, input)
 	for index := range record.ToolCalls {
 		if record.ToolCalls[index].CallID == callID {
 			if metric.InputBytes != 0 || record.ToolCalls[index].InputBytes == 0 {
@@ -260,105 +258,6 @@ func observeOutputItem(payload []byte, record *captureRecord, codec tokenizer.Co
 		}
 	}
 	record.ToolCalls = append(record.ToolCalls, metric)
-}
-
-func classifyToolInput(name, input string) (string, string) {
-	if name == "exec_command" {
-		var arguments struct {
-			Command string `json:"cmd"`
-		}
-		if json.Unmarshal([]byte(input), &arguments) != nil {
-			return "", ""
-		}
-		switch {
-		case strings.HasPrefix(arguments.Command, mekugiNativeApplyCarrierPrefix):
-			return "apply_patch", ""
-		case strings.HasPrefix(arguments.Command, mekugiNativeReportCarrierPrefix):
-			return "mekugi_report", ""
-		case strings.HasPrefix(arguments.Command, mekugiNativeDiagnosticCarrierPrefix):
-			line, _, _ := strings.Cut(arguments.Command, "\n")
-			encoded := strings.TrimPrefix(line, mekugiNativeDiagnosticCarrierPrefix)
-			diagnostic, err := strconv.Unquote(encoded)
-			if err != nil {
-				return "mekugi_diagnostic", ""
-			}
-			return "mekugi_diagnostic", mekugiDiagnosticCode(diagnostic)
-		default:
-			return "", ""
-		}
-	}
-	if name != "exec" {
-		return "", ""
-	}
-	if first, _, ok := strings.Cut(input, "\n"); ok {
-		if encoded, ok := strings.CutPrefix(first, "text("); ok {
-			if encoded, ok := strings.CutSuffix(encoded, ");"); ok {
-				if warning, err := strconv.Unquote(encoded); err == nil && strings.HasPrefix(warning, "shell: [shell-code-mode-recovered] ") {
-					return "code_mode_recovery", "shell-code-mode-recovered"
-				}
-			}
-		}
-	}
-	switch {
-	case strings.HasPrefix(input, mekugiApplyCarrierPrefix):
-		return "apply_patch", ""
-	case strings.HasPrefix(input, "const result = await tools.exec_command("):
-		return "exec_command", ""
-	}
-	encoded, ok := strings.CutPrefix(input, "text(")
-	if !ok {
-		return "other", ""
-	}
-	encoded, ok = strings.CutSuffix(encoded, ");")
-	if !ok {
-		return "other", ""
-	}
-	text, err := strconv.Unquote(encoded)
-	if err != nil {
-		return "other", ""
-	}
-	report := withoutChangeNotice(text)
-	if (strings.HasPrefix(report, "file ") || strings.HasPrefix(report, "in ")) && strings.Contains(report, "\nlast ") && strings.Contains(report, "\nfiles ") {
-		return "mekugi_report", ""
-	}
-	if code := mekugiDiagnosticCode(text); code != "" {
-		return "mekugi_diagnostic", code
-	}
-	return "other", ""
-}
-
-// A change notice precedes both reports and rejection diagnostics. It is not
-// outcome evidence on its own; the remaining envelope must still be recognized.
-func withoutChangeNotice(text string) string {
-	line, rest, newline := strings.Cut(text, "\n")
-	if id, notice := strings.CutPrefix(line, "change "); newline && notice && id != "" && !strings.ContainsAny(id, " \t\r") {
-		return rest
-	}
-	return text
-}
-
-func mekugiDiagnosticCode(text string) string {
-	text = withoutChangeNotice(text)
-	if strings.HasPrefix(text, "shell: [shell-typescript-misuse] ") {
-		return "shell-typescript-misuse"
-	}
-	line, _, _ := strings.Cut(text, "\n")
-	command, reason, ok := strings.Cut(line, ", reason ")
-	if !ok || !strings.Contains(command, ": command ") {
-		return ""
-	}
-	code, _, ok := strings.Cut(reason, ":")
-	if !ok {
-		return ""
-	}
-	switch code {
-	case "script-syntax", "row-missing", "row-stale", "occurrence-missing", "invalid-count",
-		"target-order", "edit-conflict", "active-file", "initialization", "file-path",
-		"language-syntax", "other":
-		return code
-	default:
-		return ""
-	}
 }
 
 func requestToolNames(tools []json.RawMessage) []string {

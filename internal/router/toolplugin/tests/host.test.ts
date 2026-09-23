@@ -66,7 +66,6 @@ function pluginDeclaration(format?: {
     },
     parse(input) { return input; },
     argv(input) { return [input]; },
-    translate(_input, api) { return api.exec(); },
     execute() { return {stdout: "", exitCode: 0}; }
   }]
 };
@@ -187,36 +186,18 @@ describe("plugin declaration validation", () => {
   });
 });
 
-describe("plugin translation and execution", () => {
-  test("applies parse, argv, and carrier contracts", async () => {
+describe("plugin execution", () => {
+  test("applies the executor contract", async () => {
     const directory = await temporaryDirectory();
     await writeFile(
       path.join(directory, "plugin.mjs"),
       `export default {
   apiVersion: "mekugi-tool-plugin/v1",
-  id: "translation.test",
+  id: "execution.test",
   tools: [{
-    specification: {type: "custom", name: "translation_test", description: "test tool"},
-    parse(input) {
-      if (input === "reject") throw new Error("input rejected");
-      return input;
-    },
+    specification: {type: "custom", name: "execution_test", description: "test tool"},
+    parse(input) { return input; },
     argv(input) { return ["--fixed", input]; },
-    translate(input, api) {
-      if (input === "custom") return api.custom("exec", "custom payload");
-      if (input === "function") return api.function("lookup", "{\\"value\\":1}");
-      if (input === "template") return api.exec("before | {.} | after");
-      if (input === "params") return api.exec(undefined, {workdir: "/tmp"});
-      if (input === "invalid-params") return api.exec(undefined, {cmd: "forbidden"});
-      if (input === "invalid-login") return api.exec(undefined, {login: true});
-      if (input === "invalid-undefined") return api.exec(undefined, {workdir: undefined});
-      if (input === "invalid-function") return api.exec(undefined, {tty: () => true});
-      if (input === "invalid-symbol") return api.exec(undefined, {tty: Symbol("tty")});
-      if (input === "invalid-nan") return api.exec(undefined, {tty: Number.NaN});
-      if (input === "invalid-template") return api.exec("missing placeholder");
-      if (input === "malformed") return {kind: "exec", payload: "unexpected"};
-      return api.exec();
-    },
     execute(argv) {
       return {stdout: argv.join("|"), stderr: "fixture stderr", exitCode: 7};
     }
@@ -225,88 +206,6 @@ describe("plugin translation and execution", () => {
 `,
       "utf8",
     );
-
-    for (const [input, carrier] of [
-      ["exec", {kind: "exec"}],
-      ["template", {kind: "exec", template: "before | {.} | after"}],
-      ["params", {kind: "exec", params: {workdir: "/tmp"}}],
-      ["custom", {kind: "custom", name: "exec", payload: "custom payload"}],
-      ["function", {kind: "function", name: "lookup", payload: "{\"value\":1}"}],
-    ] as const) {
-      const translated = invokeHost(directory, {
-        operation: "translate",
-        module: "plugin.mjs",
-        index: 0,
-        input,
-      });
-      expect(translated.status).toBe(0);
-      expect(JSON.parse(translated.stdout)).toEqual({
-        rejected: false,
-        diagnostic: "",
-        arguments: ["--fixed", input],
-        carrier,
-      });
-    }
-
-    const rejected = invokeHost(directory, {
-      operation: "translate",
-      module: "plugin.mjs",
-      index: 0,
-      input: "reject",
-    });
-    expect(rejected.status).toBe(0);
-    expect(JSON.parse(rejected.stdout)).toMatchObject({
-      rejected: true,
-      diagnostic: "input rejected",
-      arguments: [],
-    });
-
-    const malformed = invokeHost(directory, {
-      operation: "translate",
-      module: "plugin.mjs",
-      index: 0,
-      input: "malformed",
-    });
-    expect(malformed.status).toBe(1);
-    expect(malformed.stderr).toContain("translator returned a malformed carrier");
-
-    const invalidTemplate = invokeHost(directory, {
-      operation: "translate",
-      module: "plugin.mjs",
-      index: 0,
-      input: "invalid-template",
-    });
-    expect(invalidTemplate.status).toBe(1);
-    expect(invalidTemplate.stderr).toContain("translator returned a malformed carrier");
-
-    const invalidParams = invokeHost(directory, {
-      operation: "translate",
-      module: "plugin.mjs",
-      index: 0,
-      input: "invalid-params",
-    });
-    expect(invalidParams.status).toBe(1);
-    expect(invalidParams.stderr).toContain("exec carrier params must be an object without cmd");
-
-    const invalidLogin = invokeHost(directory, {
-      operation: "translate",
-      module: "plugin.mjs",
-      index: 0,
-      input: "invalid-login",
-    });
-    expect(invalidLogin.status).toBe(1);
-    expect(invalidLogin.stderr).toContain("exec carrier params login must be false");
-
-    for (const input of ["invalid-undefined", "invalid-function", "invalid-symbol", "invalid-nan"]) {
-      const invalidJSONValue = invokeHost(directory, {
-        operation: "translate",
-        module: "plugin.mjs",
-        index: 0,
-        input,
-      });
-      expect(invalidJSONValue.status).toBe(1);
-      expect(invalidJSONValue.stderr).toContain("exec carrier params must contain only JSON-native values");
-    }
 
     const executed = invokeHost(directory, {
       operation: "execute",

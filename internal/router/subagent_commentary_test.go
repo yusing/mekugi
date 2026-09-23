@@ -198,24 +198,6 @@ func observeTestResponseUsage(t *testing.T, transform *mekugiResponseTransform, 
 	transform.observeResponseUsage(counts)
 }
 
-func TestSubagentCommentaryPreservesPendingMekugiEventRejection(t *testing.T) {
-	transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
-	transform.pending["item-mekugi"] = mekugiPendingCall{callID: "call-mekugi"}
-
-	for _, eventType := range []string{
-		"response.function_call_arguments.delta",
-		"response.function_call_arguments.done",
-	} {
-		t.Run(eventType, func(t *testing.T) {
-			payload := mustTestJSON(t, map[string]any{"type": eventType, "item_id": "item-mekugi"})
-			events, err := transform.TransformSSE(payload)
-			if err == nil || !strings.Contains(err.Error(), "unsupported mekugi-related stream event") || len(events) != 0 {
-				t.Fatalf("events = %q, error = %v", events, err)
-			}
-		})
-	}
-}
-
 func newSubagentCommentaryTestTransform(
 	t *testing.T,
 	conversation []any,
@@ -255,6 +237,9 @@ func newSubagentCommentaryTestTransformWithMetadata(
 	transform, err := proxy.prepareRequest(t.Context(), &request, "session", "thread", metadata, true)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if transform == nil {
+		t.Fatal("prepareRequest returned no transform")
 	}
 	t.Cleanup(transform.Close)
 	return transform, proxy, &request

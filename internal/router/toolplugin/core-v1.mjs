@@ -3,7 +3,6 @@ import {WASI} from "node:wasi";
 
 const ABI_VERSION = 1;
 const operations = Object.freeze({
-  parseRow: 1,
   parsePositiveInteger: 2,
   decodeQuotedOperand: 3,
   classifySourcePath: 4,
@@ -34,7 +33,6 @@ for (const name of [
   "memory",
   "mekugi_core_abi_version",
   "mekugi_core_reserve_input",
-  "mekugi_core_hash16",
   "mekugi_core_line_count",
   "mekugi_core_line_bounds",
   "mekugi_core_invoke",
@@ -96,21 +94,6 @@ function invoke(operation, value) {
   return response.value ?? null;
 }
 
-export function hashLine(value) {
-  loadInput(value);
-  return wasm.mekugi_core_hash16().toString(16).padStart(4, "0");
-}
-
-export function formatVerifiedRow(line, content) {
-  if (!Number.isSafeInteger(line) || line < 1) {
-    throw new SharedCoreError("invalid_positive_integer", "line must be a positive decimal integer");
-  }
-  if (typeof content !== "string") {
-    throw new TypeError("verified-row content must be a string");
-  }
-  return `${line}:${hashLine(content)} ${content}\n`;
-}
-
 export function lineCount(value) {
   loadInput(value);
   return wasm.mekugi_core_line_count();
@@ -131,10 +114,6 @@ export function lineBounds(value, line) {
     byteContentEnd: view.getUint32(4, true),
     byteEnd: view.getUint32(8, true),
   });
-}
-
-export function parseRowReference(value) {
-  return invoke(operations.parseRow, value);
 }
 
 export function parsePositiveInteger(value) {

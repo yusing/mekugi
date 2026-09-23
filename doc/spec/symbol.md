@@ -26,8 +26,7 @@ workspace and be a regular UTF-8 supported source file. Supported sources are Go
 `.ts`, `.tsx`, `.d.ts`, `.mts`, `.d.mts`, `.cts`, `.d.cts`, `.js`, `.jsx`, `.mjs`,
 and `.cjs`.
 
-`LINE` is a positive current logical line. It does not carry or require a verified
-row hash. Msymbol selects an exact language token on that line, rejects
+`LINE` is a positive current logical line. It needs no additional source token. Msymbol selects an exact language token on that line, rejects
 missing or ambiguous occurrences before resolver startup, and rejects an input
 change during the semantic query before emitting result rows. Successful queries
 report the selected current input on stderr as
@@ -55,7 +54,7 @@ exit status. Reference queries include declarations. Missing dependencies, inval
 input, changed source, malformed protocol results, timeouts, and failed queries
 return concise stderr and nonzero status without useful stdout.
 
-Successful stdout contains first-seen complete rows without hashes:
+Successful stdout contains first-seen complete rows:
 
 ```text
 "PATH":LINE TEXT
@@ -73,7 +72,7 @@ nonzero.
 
 Token-limited results retain all formatted rows up to 16 MiB and return only
 omitted rows to the host's managed output recovery store. The `mread` receipt and
-pagination follow the shell output contract without rerunning the resolver or
+pagination follow the managed read contract without rerunning the resolver or
 writing temporary dumps, even after source changes or router shutdown. Display
 truncation remains nonzero, and skipped locations still prevent claiming a
 complete definition or reference set. Location skip counts cover the complete
@@ -91,13 +90,13 @@ Token admission never emits a partial result row.
 
 The authenticated frontend owns one AX read observation without retaining command,
 path, source, or result content. Msymbol remains excluded from custom-tool routing
-and editable rejected-script recovery. Generated `def` activity is labeled `Read`;
+. Generated `def` activity is labeled `Read`;
 generated `refs` activity is labeled `Search`.
 
 Acceptance:
 
 1. A current use-site token resolves through one language-appropriate semantic
-   query and emits complete `"PATH":LINE TEXT` rows without hash operands or output.
+   query and emits complete `"PATH":LINE TEXT` rows.
 2. Every listed source format is accepted. Omitting `N` selects one unique exact
    language token and rejects an ambiguous line before the resolver starts;
    comments, unrelated literal text, and larger identifiers do not affect the count.
@@ -111,7 +110,7 @@ Acceptance:
    uneditable definitions fail without useful stdout.
 6. The stock executable frontend preserves cwd, environment, resolver cleanup,
    bounded output recovery, AX observation, and `Read`/`Search` activity across
-   direct and shell-authored invocation.
+   direct and Code Mode invocation.
 7. Explicit workspace selection determines input resolution and resolver cwd
    without changing shell state. Results remain confined to that root and use
    unambiguous absolute paths. Missing prerequisites are actionable without

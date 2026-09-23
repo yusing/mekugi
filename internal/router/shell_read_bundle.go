@@ -11,7 +11,6 @@ import (
 
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
-	"github.com/yusing/mekugi/internal/shellruntime"
 )
 
 const readBundleUsage = "mcat [--max-tokens N] PATH [START:END] [PATH [START:END] ...]"
@@ -122,7 +121,7 @@ func executeMCat(
 	}
 	observation, observeErr := capturer.StartAXReadWithContext(
 		journal,
-		os.Getenv(shellruntime.ThreadIDEnvironment),
+		os.Getenv(codexThreadIDEnvironment),
 		"mcat",
 		capturer.AXReadContext{},
 	)

@@ -93,8 +93,6 @@ load_task_manifest() {
 	dependency_kind=$(jq -er '.runtime.dependency_kind // "go"' "$task_manifest")
 	preload_go_qualification_grader=$(jq -er \
 		'.runtime.preload_go_qualification_grader // false' "$task_manifest")
-	require_ctp_input_compression=$(jq -r '.ctp.require_input_compression // false' "$task_manifest")
-	require_ctp_output_compression=$(jq -r '.ctp.require_output_compression // false' "$task_manifest")
 	if ! jq -e '(.expected_final_response // "") | type == "string"' "$task_manifest" >/dev/null; then
 		printf 'bench.sh: expected_final_response must be a string for %s\n' "$task_id" >&2
 		return 1
@@ -126,22 +124,6 @@ load_task_manifest() {
 	false) ;;
 	*)
 		printf 'bench.sh: runtime.preload_go_qualification_grader must be true or false for %s\n' \
-			"$task_id" >&2
-		return 1
-		;;
-	esac
-	case $require_ctp_input_compression in
-	true|false) ;;
-	*)
-		printf 'bench.sh: ctp.require_input_compression must be true or false for %s\n' \
-			"$task_id" >&2
-		return 1
-		;;
-	esac
-	case $require_ctp_output_compression in
-	true|false) ;;
-	*)
-		printf 'bench.sh: ctp.require_output_compression must be true or false for %s\n' \
 			"$task_id" >&2
 		return 1
 		;;

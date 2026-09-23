@@ -33,7 +33,7 @@ func (r *parsedResponsesRequest) responseTools() *responsesToolCatalog {
 	return r.toolCatalog
 }
 
-// isExecutionFreeRequest identifies catalogs that need no HPATCH editing or
+// isExecutionFreeRequest identifies catalogs that need no editing or
 // process-execution projection. Other tools and output schemas remain Codex-owned.
 func (r *parsedResponsesRequest) isExecutionFreeRequest() bool {
 	// Admission precedes explicit instruction omission, which can remove input items.
@@ -66,7 +66,7 @@ func (r *parsedResponsesRequest) isExecutionFreeRequest() bool {
 				return false
 			}
 			switch tool.Name {
-			case "apply_patch", "exec_command", "shell", "functions.exec":
+			case "apply_patch", "exec_command", "functions.exec":
 				return false
 			case "exec":
 				if execSeen || tool.Type != "custom" || !isExecutionFreeCodeModeDescription(tool.Description) {
@@ -96,7 +96,7 @@ func (r *parsedResponsesRequest) isExecutionFreeRequest() bool {
 // Both clients advertise nested tools through headings; the App also exposes
 // TypeScript declarations. Match declarations, not examples such as
 // `await tools.exec_command(...)`, and do not depend on the client's preamble.
-var codeModeExecutionDeclaration = regexp.MustCompile(`(?:^|[;{])\s*(?:apply_patch|exec_command|shell)\s*\(`)
+var codeModeExecutionDeclaration = regexp.MustCompile(`(?:^|[;{])\s*(?:apply_patch|exec_command)\s*\(`)
 
 func isExecutionFreeCodeModeDescription(description string) bool {
 	for line := range strings.SplitSeq(description, "\n") {
@@ -105,7 +105,7 @@ func isExecutionFreeCodeModeDescription(description string) bool {
 			continue
 		}
 		switch strings.Trim(heading[1], "`") {
-		case "apply_patch", "exec_command", "shell":
+		case "apply_patch", "exec_command":
 			return false
 		}
 	}

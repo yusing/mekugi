@@ -2,4 +2,6 @@
 
 package router
 
-func processHasControllingTerminal() bool { return false }
+import "os/exec"
+
+func mrunProcessExitCode(err *exec.ExitError) int { return err.ExitCode() }

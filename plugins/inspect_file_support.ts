@@ -44,10 +44,7 @@ export type JSONEntry = {
 };
 
 export type OutlineEntry = CodeEntry | MethodEntry | HeadingEntry | FrontmatterEntry | JSONEntry;
-export type PublicOutlineEntry = Omit<OutlineEntry, "line" | "line_end"> & {
-  line: string;
-  line_end: string;
-};
+export type PublicOutlineEntry = OutlineEntry;
 export type LocatedEntry = {
   entry: OutlineEntry;
   end: number;

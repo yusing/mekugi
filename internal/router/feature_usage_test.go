@@ -151,7 +151,7 @@ func TestFeatureUsageStructuredJSONAndSSE(t *testing.T) {
 }
 
 func TestFeatureUsageRuntimePublicationAndRendering(t *testing.T) {
-	for _, source := range []string{"shell", "code_mode"} {
+	for _, source := range []string{"code_mode"} {
 		for _, stream := range []bool{false, true} {
 			t.Run(source+map[bool]string{false: "/json", true: "/sse"}[stream], func(t *testing.T) {
 				d := featureDebugOutput(t)
@@ -169,7 +169,7 @@ func TestFeatureUsageRuntimePublicationAndRendering(t *testing.T) {
 				}
 				server := httptest.NewServer(http.HandlerFunc(proxy.commentary.serveHTTP))
 				t.Cleanup(server.Close)
-				sink := &httpShellCommentarySink{endpoint: server.URL, token: token, client: server.Client()}
+				sink := &httpCommentarySink{endpoint: server.URL, token: token, client: server.Client()}
 				if err := sink.Publish(t.Context(), `{"op":"add","text":"private runtime text","report_now":true}`); err != nil {
 					t.Fatal(err)
 				}

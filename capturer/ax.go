@@ -54,7 +54,7 @@ type AXReadObservation struct {
 }
 
 func validAXReader(tool string) bool {
-	return tool == "mcat" || tool == "hgrep" || tool == "msymbol" || tool == "inspect_file"
+	return tool == "mcat" || tool == "msymbol" || tool == "inspect_file"
 }
 
 // StartAXReadWithContext is auxiliary to execution. Callers report failures separately and
@@ -399,10 +399,9 @@ func openAXEvidence(path string, limit int64) (*os.File, error) {
 // AXEditMetrics reports measured emissions separately from defect judgments.
 type AXEditMetrics struct {
 	Calls              uint64 `json:"calls"`
-	RecoveryRetries    uint64 `json:"recovery_retries"`
 	EmittedBytes       uint64 `json:"emitted_bytes"`
 	ReEmittedLineBytes uint64 `json:"re_emitted_line_bytes"`
-	Rejected           uint64 `json:"rejected"`
+	Failed             uint64 `json:"failed"`
 	Unconfirmed        uint64 `json:"unconfirmed"`
 }
 
@@ -413,14 +412,11 @@ type AXEditAccumulator struct {
 	previous string
 }
 
-func (accumulator *AXEditAccumulator) Observe(script string, retry, rejected, unconfirmed bool) {
+func (accumulator *AXEditAccumulator) Observe(script string, failed, unconfirmed bool) {
 	accumulator.Metrics.Calls++
 	accumulator.Metrics.EmittedBytes += uint64(len(script))
-	if retry {
-		accumulator.Metrics.RecoveryRetries++
-	}
-	if rejected {
-		accumulator.Metrics.Rejected++
+	if failed {
+		accumulator.Metrics.Failed++
 	}
 	if unconfirmed {
 		accumulator.Metrics.Unconfirmed++

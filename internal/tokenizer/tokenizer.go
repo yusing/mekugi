@@ -18,7 +18,7 @@ import (
 	_ "github.com/yusing/mekugi/internal/tokenizer/regex"
 )
 
-// Codec is the tokenization surface used by capture and CTP.
+// Codec is the tokenization surface used by sanitized capture estimates.
 type Codec interface {
 	GetName() string
 	Count(string) (int, error)

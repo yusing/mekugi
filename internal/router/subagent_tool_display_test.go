@@ -2,10 +2,16 @@ package router
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 )
+
+func stockExecDisplayItem(command string) map[string]json.RawMessage {
+	return map[string]json.RawMessage{
+		"name":      mustMarshalJSON("exec_command"),
+		"arguments": mustMarshalJSON(string(mustMarshalJSON(map[string]string{"cmd": command}))),
+	}
+}
 
 // Most display tests compare one textual preview; delivery tests check message boundaries.
 func subagentToolActivityText(item map[string]json.RawMessage, name string) string {
@@ -22,51 +28,13 @@ func TestSubagentToolDisplay(t *testing.T) {
 		{"wait", `{"cell_id":""}`, "Tool call: `wait`\n`{\"cell_id\":\"\"}`"},
 		{"wait", `{"cell_id":7}`, "Tool call: `wait`\n`{\"cell_id\":7}`"},
 		{"external.wait", `{"cell_id":"7"}`, "Tool call: `external.wait`\n`{\"cell_id\":\"7\"}`"},
-		{"shell", "cat 'a b.txt'", "Read `a b.txt`"},
-		{"shell", "skills-mgr get golang-best-practices", "Skill Read `golang-best-practices`"},
-		{"shell", "skills-mgr get writing-readme/references/cli.md", "Skill Reference Read `writing-readme/references/cli.md`"},
-		{"shell", "skills-mgr get writing-readme/references/cli.md 10:30", "Skill Reference Read `writing-readme/references/cli.md 10:30`"},
-		{"shell", "skills-mgr get writing-readme 10:30", "Skill Read `writing-readme 10:30`"},
-		{"shell", "mcat /skills/writing-readme/SKILL.md 1:20", "Skill Read `writing-readme 1:20`"},
-		{"shell", "  echo first\n  echo second\n", "Run\n```bash\n  echo first\n  echo second\n```"},
-		{"shell", "cat /skills/writing-readme/SKILL.md", "Skill Read `writing-readme`"},
-		{"shell", "cat a\ncat b", "Read `a`\n\nRead `b`"},
-		{"shell", "mcat --max-tokens 100 a.go 1:20", "Read `a.go 1:20`"},
-		{"shell", "mcat --tail -n 20 a.go", "Read `a.go`"},
-		{"shell", "mcat --tail --max-tokens 100 a.go", "Read `a.go`"},
-		{"shell", "mcat a.go 1:20", "Read `a.go 1:20`"},
-		{"shell", "mcat a.go --max-tokens 100", "Read `a.go`"},
-		{"shell", "mcat -- a.go", "Read `a.go`"},
-		{"shell", "mcat a.go 1:20 b.go 4:8", "Read `a.go 1:20`\n\nRead `b.go 4:8`"},
-		{"shell", "hgrep -n -F -e 'some text' a.go", "Search `-n -F -e 'some text' a.go`"},
-		{"shell", "msymbol def a.go 42 Name", "Read `def a.go 42 Name`"},
-		{"shell", "msymbol --workspace root refs a.go 42 Name 2 --max-tokens 100", "Search `--workspace root refs a.go 42 Name 2 --max-tokens 100`"},
-		{"shell", "mcat --max-tokens 15500 a.go 0:1", "Read `a.go 0:1`"},
-		{"shell", "inspect_file a.go", "Inspect `a.go`"},
-		{"shell", "inspect_file @shell/script", "Inspect `@shell/script`"},
-		{"shell", "ls src", "List `src`"},
-		{"shell", `{"command":[]}`, "Run"},
-		{"shell", `{"command":["sh","-c","echo done"]}`, "Run\n```sh\necho done\n```"},
-		{"shell", "shell sh $'echo done'", "Run\n```sh\necho done\n```"},
-		{"shell", "#!python\nprint(1)", "Run\n```python\n#!python\nprint(1)\n```"},
-		{"shell", "#!python3\nprint(1)", "Run\n```python\n#!python3\nprint(1)\n```"},
-		{"shell", "#!/usr/bin/env -S python3 -u\nprint(1)", "Run\n```python\n#!/usr/bin/env -S python3 -u\nprint(1)\n```"},
-		{"shell", "#!node\nprint(1)", "Run\n```javascript\n#!node\nprint(1)\n```"},
-		{"shell", "#!ruby\nprint(1)", "Run\n```ruby\n#!ruby\nprint(1)\n```"},
-		{"shell", "#!sh\nprint(1)", "Run\n```sh\n#!sh\nprint(1)\n```"},
-		{"shell", "#!pwsh\nprint(1)", "Run\n```powershell\n#!pwsh\nprint(1)\n```"},
-		{"shell", "cat a > b", "Run\n```bash\ncat a > b\n```"},
-		{"shell", "cat a && rm b", "Run\n```bash\ncat a && rm b\n```"},
-		{"shell", "cat $(echo a)", "Run\n```bash\ncat $(echo a)\n```"},
-		{"shell", "cat *.go", "Run\n```bash\ncat *.go\n```"},
-		{"shell", "#!params={\"max_output_tokens\":20000}\ncat a\npwd", "Read `a`\n\nRun `pwd`"},
-		{"shell", "echo a\n  echo b", "Run\n```bash\necho a\n  echo b\n```"},
-		{"exec_command", `{"cmd":"shell bash $'cat a\\n'","login":false}`, "Read `a`"},
+		{"exec_command", `{"cmd":"cat 'a b.txt'"}`, "Read `a b.txt`"},
+		{"exec_command", `{"cmd":"rg -n -F -e 'some text' a.go"}`, "Search `-n -F -e 'some text' a.go`"},
+		{"exec_command", `{"cmd":"mcat a.go 1:20"}`, "Read `a.go 1:20`"},
+		{"exec_command", `{"cmd":"#!python\nprint(1)"}`, "Run\n```python\n#!python\nprint(1)\n```"},
 		{"exec_command", `{"cmd":"msymbol refs a.go 42 Name","login":false}`, "Search `refs a.go 42 Name`"},
 		{"exec_command", `{"cmd":"inspect_file a.go","login":false}`, "Inspect `a.go`"},
-		{"shell", `{"command":["bash","-lc","cat a"]}`, "Read `a`"},
 		{"view_image", `{"path":"/tmp/a.png"}`, "View image\n`/tmp/a.png`"},
-		{"exec", `const result = await tools.exec_command({"cmd":"shell bash $'cat a\\n'","login":false}); text(JSON.stringify(Object.assign({}, result, {"retained":false})));`, "Read `a`"},
 		{"exec", `await tools.exec_command({"cmd":"echo a\necho b"})`, "Run\n```bash\necho a\necho b\n```"},
 		{"exec", `const r = await tools.write_stdin({session_id: 52915, chars: "", yield_time_ms: 30000, max_output_tokens: 3000}); text(r);`, "Still Running · command unavailable"},
 		{"exec", `await tools.write_stdin({session_id: -12, chars: ""})`, "Still Running · command unavailable"},
@@ -140,9 +108,9 @@ func TestSubagentToolDisplayInvalidReaderOptions(t *testing.T) {
 		"inspect_file ''",
 	} {
 		t.Run(input, func(t *testing.T) {
-			item := map[string]json.RawMessage{"name": mustMarshalJSON("shell"), "input": mustMarshalJSON(input)}
+			item := stockExecDisplayItem(input)
 			want := "Run\n```bash\n" + input + "\n```"
-			if got := subagentToolActivityText(item, "shell"); got != want {
+			if got := subagentToolActivityText(item, "exec_command"); got != want {
 				t.Fatalf("display = %q, want source fallback %q", got, want)
 			}
 		})
@@ -284,9 +252,9 @@ func TestSubagentRunInterpreterLanguages(t *testing.T) {
 		for _, interpreter := range tt.interpreters {
 			t.Run(interpreter, func(t *testing.T) {
 				source := "#!" + interpreter + "\nsource `with` backticks\n"
-				item := map[string]json.RawMessage{"name": mustMarshalJSON("shell"), "input": mustMarshalJSON(source)}
+				item := stockExecDisplayItem(source)
 				want := "Run\n```" + tt.language + "\n" + source + "```"
-				if got := subagentToolActivityText(item, "shell"); got != want {
+				if got := subagentToolActivityText(item, "exec_command"); got != want {
 					t.Fatalf("got %q, want %q", got, want)
 				}
 			})
@@ -317,7 +285,6 @@ func TestSubagentToolDisplayDoesNotUnwrapArbitraryCode(t *testing.T) {
 		`await tools.exec_command({["cmd"]:"cat a"})`,
 		`await tools.exec_command({...args})`,
 		`await tools.exec_command({get cmd() { return "cat a" }})`,
-		`await tools.shell({command: ["cat", , "a"]})`,
 		`await tools.write_stdin({session_id: 0x10, chars: ""})`,
 		`await tools.write_stdin({session_id: 1_000, chars: ""})`,
 		`await tools.write_stdin({session_id: 1n, chars: ""})`,
@@ -407,12 +374,12 @@ func TestSubagentSearchReadRunGrouping(t *testing.T) {
 		"sed -n '238,265p' internal/router/subagent_tool_display.go\n" +
 		"sed -n '140,170p' doc/spec/commentary.md\n" +
 		"git status --short"
-	item := map[string]json.RawMessage{"name": mustMarshalJSON("shell"), "input": mustMarshalJSON(source)}
+	item := stockExecDisplayItem(source)
 	want := "In `/root/review_sed_display`\n\n" +
 		"- Search `-n 'func shellCatLiteral|func toolActivityGroup|toolActivityGroup\\(' internal/router`\n\n" +
 		"- Read `internal/router/subagent_tool_display.go 238:265` `doc/spec/commentary.md 140:170`\n\n" +
 		"- Run `git status --short`"
-	if got := toolActivityGroup("[`/root/review_sed_display`] ", subagentToolActivityText(item, "shell")); got != want {
+	if got := toolActivityGroup("[`/root/review_sed_display`] ", subagentToolActivityText(item, "exec_command")); got != want {
 		t.Fatalf("grouped display: got %q, want %q", got, want)
 	}
 }
@@ -449,18 +416,17 @@ func TestSubagentMixedReadRunFallbacks(t *testing.T) {
 }
 
 func TestSubagentMixedSedReadGrouping(t *testing.T) {
-	source := "#!params={\"workdir\":\"/project\",\"yield_time_ms\":10000,\"max_output_tokens\":30000}\n" +
-		"cat /project/COLLABORATION.md\n" +
+	source := "cat /project/COLLABORATION.md\n" +
 		"skills-mgr get deltapath-go-common-patterns\n" +
 		"skills-mgr get golang-best-practices\n" +
 		"sed -n '1,260p' source.go\n" +
 		"sed -n '261,520p' 'source file.go'"
-	item := map[string]json.RawMessage{"name": mustMarshalJSON("shell"), "input": mustMarshalJSON(source)}
+	item := stockExecDisplayItem(source)
 	want := "In `/root/dect_evidence`\n\n" +
 		"- Read `/project/COLLABORATION.md`\n\n" +
 		"- Skill Read `deltapath-go-common-patterns` `golang-best-practices`\n\n" +
 		"- Read `source.go 1:260` `source file.go 261:520`"
-	got := toolActivityGroup("[`/root/dect_evidence`] ", subagentToolActivityText(item, "shell"))
+	got := toolActivityGroup("[`/root/dect_evidence`] ", subagentToolActivityText(item, "exec_command"))
 	if got != want {
 		t.Fatalf("grouped display: got %q, want %q", got, want)
 	}
@@ -631,87 +597,6 @@ func TestShellBatchActivityDisplay(t *testing.T) {
 		if got := toolActivityShell(invalid); got != "Run\n"+toolActivityFenced("", invalid) {
 			t.Fatalf("invalid batch lost source: %q", got)
 		}
-	}
-}
-
-func TestSubagentShellJournalAndDiscovery(t *testing.T) {
-	for _, tc := range []struct{ source, want string }{
-		{"journal add 'Checking tools.'", ""},
-		{"journal add \"$progress\"\njournal add 'More progress.'", ""},
-		{"journal add 'Checking.'\nprintf done", "Run `printf done`"},
-		{"journal add 'Checking.'\nhgrep --max-tokens 2000 -F -e 'needle' a.go", "Search `--max-tokens 2000 -F -e 'needle' a.go`"},
-		{"command -v codex-code-mode-host || true", "Inspect `command -v codex-code-mode-host || true`"},
-		{"find /home/ubuntu/projects/codex -type f -name codex-code-mode-host -perm -111 -print 2>/dev/null | head -n 40",
-			"Search `find /home/ubuntu/projects/codex -type f -name codex-code-mode-host -perm -111 -print 2>/dev/null | head -n 40`"},
-		{"find /home/ubuntu/projects/codex -type f -path '*/target/*' -name '*code*mode*host*' -print 2>/dev/null | head -n 40",
-			"Search `find /home/ubuntu/projects/codex -type f -path '*/target/*' -name '*code*mode*host*' -print 2>/dev/null | head -n 40`"},
-		{"ls -ld /clone/code-mode-host /clone/code-mode-runtime", "List `-ld /clone/code-mode-host /clone/code-mode-runtime`"},
-		{"hgrep --max-tokens 2000 needle a.go\nfalse || true", "Search `--max-tokens 2000 needle a.go`\n\nRun `false || true`"},
-		{"journal add 'Working'\n#!bash\ncat a", "Read `a`"},
-	} {
-		t.Run(tc.source, func(t *testing.T) {
-			if got := toolActivityShell(tc.source); got != tc.want {
-				t.Fatalf("got %q, want %q", got, tc.want)
-			}
-		})
-	}
-	for _, source := range []string{
-		"journal add \"$(touch marker)\"",
-		"find /tmp/cache -type f -delete",
-		"find /tmp/cache -type f -exec rm '{}' ';'",
-		"find /tmp/cache -fprint results",
-		"journal add 'Working' > progress.txt",
-		"find /tmp -print 2>errors | head -n 40",
-		"find /tmp -print | head -n \"$limit\"",
-		"command -v tool || rm file",
-		"#!python3\njournal('Working')",
-	} {
-		if got := toolActivityShell(source); !strings.HasPrefix(got, "Run\n") || !strings.Contains(got, source) {
-			t.Fatalf("unsafe simplification: %q", got)
-		}
-	}
-}
-
-func TestSubagentDiscoveryActivityJSONAndSSE(t *testing.T) {
-	const script = "journal add 'Checking whether the host is installed.'\n" +
-		"command -v codex-code-mode-host || true\n" +
-		"find /clone -type f -name codex-code-mode-host -perm -111 -print 2>/dev/null | head -n 40\n" +
-		"find /clone -type f -path '*/target/*' -name '*code*mode*host*' -print 2>/dev/null | head -n 40\n" +
-		"ls -ld /clone/code-mode-host /clone/code-mode-runtime\n" +
-		"hgrep --max-tokens 2000 -F host /clone/config"
-	for _, stream := range []bool{false, true} {
-		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t)
-			root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
-			child, _ := prepareActivityTest(t, proxy, "child", "c", "r", "/root/host_test_evidence", nil)
-			for i, source := range []string{"journal add 'Progress only.'", script} {
-				call := map[string]any{
-					"type": "custom_tool_call", "name": "shell", "id": fmt.Sprintf("display-%d", i),
-					"call_id": fmt.Sprintf("display-%d", i), "input": source,
-				}
-				if stream {
-					if _, err := child.TransformSSE(mustMarshalJSON(map[string]any{"type": "response.output_item.done", "item": call})); err != nil {
-						t.Fatal(err)
-					}
-				} else if _, err := child.TransformJSON(mustMarshalJSON(map[string]any{"status": "completed", "output": []any{call}})); err != nil {
-					t.Fatal(err)
-				}
-			}
-			output, err := root.TransformJSON([]byte(`{"status":"completed","output":[]}`))
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, want := range []string{"Inspect", "Search", "List", "--max-tokens 2000", "/root/host_test_evidence", "*code*mode*host*"} {
-				if !strings.Contains(string(output), want) {
-					t.Fatalf("missing %q: %s", want, output)
-				}
-			}
-			for _, hidden := range []string{"Progress only.", "Checking whether", "Run", "journal add '", "```bash"} {
-				if strings.Contains(string(output), hidden) {
-					t.Fatalf("unexpected %q: %s", hidden, output)
-				}
-			}
-		})
 	}
 }
 

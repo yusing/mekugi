@@ -35,7 +35,6 @@ exec docker compose -f "$MEKUGI_BENCH_COMPOSE_FILE" run \
 	--volume "$session_runtime:$session_runtime" \
 	--env "BENCH_ARTIFACT_DIR=$BENCH_ARTIFACT_DIR" \
 	--env "MEKUGI_BENCH_MODE=${MEKUGI_BENCH_MODE:?}" \
-	--env "MEKUGI_BENCH_PROTOCOL=${MEKUGI_BENCH_PROTOCOL:?}" \
 	--env "MEKUGI_BENCH_MAIN_MENTOR=${MEKUGI_BENCH_MAIN_MENTOR:-false}" \
 	--env "MEKUGI_BENCH_MENTOR=${MEKUGI_BENCH_MENTOR:-false}" \
 	--volume "$BENCH_ARTIFACT_DIR:$BENCH_ARTIFACT_DIR" \

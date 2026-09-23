@@ -12,7 +12,7 @@ The journal owner supplies the additive durable-work guidance. The dedicated
 `functions.journal` description explains milestone scope, immediate reporting, Code Mode mutation,
 and finish semantics. Eligible structured tools receive the optional atomic `journal` mutation
 field. For Code Mode, Mekugi appends one marked Journal section to the authoritative `exec` tool
-description after removing only the superseded nested tool contracts owned by that description.
+description without removing the caller's stock execution contracts.
 The section documents `await journal(...)`, the ordinary-call field preference, and the requirement
 to call `functions.journal` finish alone after required results rather than emitting a separate final
 answer. A previously marked section is refreshed in place. Duplicate, incomplete, or reversed
@@ -34,11 +34,6 @@ parts remain intact. Each text part is processed independently, including fenced
 multiple complete blocks are supported. Unmatched markers and bytes outside complete blocks are
 preserved. Filtering also applies to prewarm and execution-free requests.
 
-The recovery template in `contrib/codex/mekugi-recovery.tmpl` owns dynamic rejected-script prose.
-It appears only with actionable recovery context and supplies request-specific handles or bounded
-retained-script rows. Durable tool descriptions own ordinary syntax; diagnostics do not recreate a
-general base-instruction fork.
-
 Acceptance:
 
 1. Stock, custom, missing, null, top-level, and developer-carried base instructions are forwarded
@@ -52,5 +47,3 @@ Acceptance:
 4. Ordinary, fork, side-thread, subagent, model-switch, compaction, and resume consumers derive
    guidance from their current tool catalog rather than invisible ancestry or live router state.
 5. Omission filtering preserves unmatched markers and all bytes outside complete owned blocks.
-6. Dynamic rejected-script recovery guidance remains request-specific and does not alter base
-   instructions.

@@ -4,9 +4,9 @@ A mekugi is the small peg that pins a Japanese sword's handle to the blade.
 Take it out and the handle comes off. Leave it in and the blade is still the
 blade.
 
-Mekugi pins compact agent tools onto stock Codex: hashline edits, direct
-scripts, and inline subagent activity. Codex keeps the sandbox, permissions,
-command sessions, and patch diff UI. No fork, no config edits, no daemon.
+Mekugi adds compact, recoverable tools and inline subagent activity to stock
+Codex. Codex keeps editing, execution, the sandbox, permissions, command
+sessions, and patch review. No fork, no config edits, no daemon.
 
 [Features](#features) · [Install](#install) · [Usage](#usage) ·
 [Metrics](#metrics) · [Settings](#mekugi-settings) · [Troubleshooting](#configuration-and-troubleshooting) · [Documentation](#documentation)
@@ -22,10 +22,9 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
   for the next main-agent response; encrypted messages stay private.
 - **Follow milestones, not another task list.** Agents keep a revisable journal
   that shows live updates and groups answers at completion.
-- **Watch shell work and file changes live.** Herdr's [live diff pane](#live-diff-pane)
-  streams main-agent and subagent shell calls before completion, then switches to
-  captured diffs from hpatch and supported shell file operations, with pause and
-  flush controls.
+- **Watch commands and file changes live.** Herdr's [live diff pane](#live-diff-pane)
+  streams main-agent and subagent stock tool calls before completion, then
+  switches to observed edits, with pause and flush controls.
 - **See usage and cost.** Main completion shows one table of provider-reported tokens,
   input cache-hit rates, and estimated API costs per agent, plus a total. Child completion
   does not repeat the table. Costs are API estimates, not subscription charges;
@@ -38,54 +37,29 @@ command sessions, and patch diff UI. No fork, no config edits, no daemon.
 
 ### AX (agent experience)
 
-- **Validate edits before application.** Related edits share one validation pass.
-  Go edits are parsed and formatted; supported Python, JavaScript, and TypeScript
-  edits get syntax checks and indentation correction. These checks do not replace tests.
-- **Repair rejected edits without starting over.** Correct the retained script
-  while preserving unrelated prepared changes.
+- **Use familiar stock tools.** Code Mode JavaScript, `tools.exec_command`, and
+  `tools.apply_patch` keep their ordinary Codex behavior. Mekugi does not run an
+  edit a second time.
 - **Resume running work.** Continue yielded processes through Codex's
-  continuation handles instead of restarting them.
-- **Recover omitted output.** Read captured overflow without rerunning the
-  command or search that produced it.
+  `write_stdin` handles instead of restarting them.
+- **Recover omitted output.** Read captured overflow with `mread` without
+  rerunning the command or reader that produced it.
+- **Review completed edits.** `mchanges` tracks observed `apply_patch` results
+  and the resulting workspace change, including partial outcomes.
 
-### Round-trip saving
+### Round-trip and token saving
 
-- **Batch reads and commands.** Group related operations in one shell call.
-  With Code Mode, batch separate programs, including different interpreters.
-- **Compose edits with dependent work.** `hpatch` behaves like an ordinary shell
-  command, so checks and other control flow can run in the same shell program.
-- **Skip redundant source lookups.** Edit text already in context, reuse unchanged
-  verified rows when uniquely identifiable, and use current references returned by
-  successful edit reports.
-- **Get repair context with the rejection.** Localized diagnostics can avoid a
-  separate inspection call before correcting an edit.
-- **Report progress within tool calls.** Record journal milestones alongside
-  the work instead of making separate progress calls.
-- **Hand off child changes automatically.** Child completion results include retained
-  change ranges and aggregated line counts for focused parent review. Main completion
-  does not repeat child journal results.
-- **Finish without another model request.** A journal finish can deliver the
-  final report with the last successful command, without another model turn
-  just to write the response.
-
-### Token saving
-
-- **Omit repeated patch context.** Target verified rows, ranges, or exact text;
-  write the replacement once and let Mekugi generate the patch framing.
-- **Read less source.** Bounded searches, semantic references, and structural
+- **Batch work in Code Mode.** Use JavaScript to group related stock tool calls;
+  `Promise.all` can run independent calls in parallel. `mcat` batches file reads
+  under one output budget.
+- **Read less source.** Bounded reads, semantic references, and structural
   outlines keep irrelevant source out of the model's context.
-- **Review only the relevant changes.** Compact change IDs scope review output
+- **Review only relevant changes.** Compact change IDs scope review output
   instead of requiring the entire Git diff.
-- **Write scripts without wrappers.** Direct scripts avoid wrapper code and
-  extra quoting.
-- **Compress repeated text.** Optional [CTP/2](doc/spec/ctp.md) losslessly encodes
-  eligible model-visible text using local dictionaries and references. Tool names
-  and new tool payloads stay native. Enable it with `--model-protocol ctp2`;
-  it is off by default.
-- **Summarize noisy command output.** If [RTK](https://github.com/rtk-ai/rtk) is on
-  the executor's `PATH`, recognized display commands such as Git, Go, Cargo,
-  JavaScript tooling, and search return compact summaries instead of full logs.
-  Missing RTK leaves commands unchanged.
+- **Hand off child changes automatically.** Child completion results include
+  retained change ranges and aggregated line counts for focused parent review.
+- **Finish with a journal update.** A `functions.journal` finish can deliver the
+  final report without another model request just to restate it.
 
 ### Agent performance
 
@@ -102,22 +76,20 @@ for comparisons.
 
 ### Requirements
 
-- **Go 1.27+**, CGO enabled, and a C toolchain to build the binaries.
+- **Go 1.27+**, CGO enabled, and a C toolchain to build the binary.
 - **Codex CLI**, signed in with `codex login` using ChatGPT authentication.
 - **Node.js 24+** available as `node`, and **ripgrep** available as `rg` on
   the router's `PATH` for mekugi mode.
 - Any interpreter your agent selects, such as `python3`, on the executor's
-  `PATH`. Bash and POSIX shell execution are built in.
+  `PATH`.
 
-Install both the router and its shell helper:
+Install the router:
 
 ```sh
-go install github.com/yusing/mekugi/cmd/mekugi@latest \
-  github.com/yusing/mekugi/cmd/shell@latest
+go install github.com/yusing/mekugi/cmd/mekugi@latest
 ```
 
-Add `$GOBIN`, or `$(go env GOPATH)/bin` when unset, to the `PATH` used by both
-Mekugi and Codex. The fixed `shell` helper must be available to Codex's executor.
+Add `$GOBIN`, or `$(go env GOPATH)/bin` when unset, to your `PATH`.
 
 Then launch:
 
@@ -137,19 +109,17 @@ With **Bun** and **Make** installed:
 make install
 ```
 
-This regenerates the embedded plugins and installs both binaries. Installation
+This regenerates the embedded plugins and installs the router binary. Installation
 and uninstallation leave Codex configuration and instruction files untouched.
-`make uninstall` removes only the installed `mekugi` and `shell` binaries.
-Running sessions retain their own worker executable; start a new session to use
-an installed update. For sessions started by older versions, follow
-[the older-installation guidance](#older-installations) before replacing binaries.
+`make uninstall` removes only the installed `mekugi` binary. Running sessions
+retain their own worker executable; start a new session to use an update.
 
 ## Usage
 
 Mekugi keeps private replay records on disk so resumed and forked conversations
-retain their original tool history. These records include tool inputs and recovery
-diagnostics, not just metrics. See [replay storage](#replay-storage) for location,
-limits, and cleanup.
+retain their original tool history. These records include observed tool inputs
+and change evidence, not just metrics. See [replay storage](#replay-storage) for
+location, limits, and cleanup.
 
 Put Mekugi flags **before** `codex`; arguments after it belong to Codex:
 
@@ -158,7 +128,7 @@ mekugi codex
 mekugi codex --model gpt-6-astra
 mekugi codex exec "Explain this repository"
 mekugi codex resume 'CONVERSATION_ID'
-mekugi --model-protocol native --mentor-handoff=false codex
+mekugi --mentor-handoff=false codex
 ```
 
 Each invocation starts a private router on a random loopback port and shuts it
@@ -190,8 +160,7 @@ request or accepted steering. Grok and OpenCode provider requests remain on HTTP
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
-| `--mode` | `mekugi` | Use `passthrough` to forward traffic without mekugi tools, plugins, CTP/2, or Mentor Handoff |
-| `--model-protocol` | `native` | Use `ctp2` to enable CTP/2 in mekugi mode |
+| `--mode` | `mekugi` | Use `passthrough` to forward traffic without mekugi tools, plugins, or Mentor Handoff |
 | `--main-mentor-handoff` | `true` | Enable mentor handoff for eligible main sessions and ordinary forks |
 | `--mentor-handoff` | `true` | Use `false` to keep subagents on their configured models |
 | `--grok` | `false` | Enable Grok models in mekugi mode |
@@ -247,171 +216,85 @@ export OPENCODE_ZEN_API_KEY='your-key'
 mekugi codex -m opencode-zen:kimi-k3
 ```
 
-## How editing and execution work
+## Editing and execution
 
-Mekugi exposes one shell interface for scripts and edits. Codex still authorizes execution.
+Codex owns editing and execution. Use its stock `apply_patch` and
+`exec_command` tools directly, or call them from Code Mode JavaScript. Mekugi
+passes their arguments and results through unchanged. For independent work, a
+Code Mode cell can use `Promise.all` to run calls in parallel:
 
-### Hashline edits
-
-The agent selects a verified `LINE:HASH` target and sends the new text once.
-The host-executed `hpatch` command checks and applies the complete edit through the
-edit engine. Supported language checks run before application. Verification is not a workspace lock.
-See the [editing guarantees](doc/spec/output.md) and
-[target selection rules](doc/spec/select.md).
-
-### Edits through the shell
-
-Send `hpatch` through `functions.shell`:
-
-```sh
-hpatch notes.txt <<'EDIT'
-type "draft" "ready"
-EDIT
+```js
+const results = await Promise.all([
+  tools.exec_command({cmd: "rg -n 'TODO' src"}),
+  tools.exec_command({cmd: "mcat README.md 1:80"}),
+]);
+for (const result of results) text(result.output);
 ```
 
-The edit may instead be a shell argument or redirected input. Quoting, heredoc
-expansion, substitutions, redirection, inline environment assignments, and exit
-status work normally. `hpatch` can be composed with conditionals, lists, pipelines,
-subshells, command substitutions, and background jobs.
-
-Paths belong in the shell invocation, not inside the script. Scripts contain only
-`type TARGET VALUE`, `add TARGET VALUE`, or `append VALUE`. Quote paths using normal
-shell quoting, and use `--` before flag-like paths. Use `hpatch PATH SCRIPT [PATH SCRIPT ...]`
-to edit several files atomically, with one immutable baseline per file. Use shell commands to create,
-move, or remove files; those operations are outside the hpatch transaction.
-
-For bulk edits, Python or another program can generate the script without writing
-edit targets directly. Apply it with `hpatch notes.txt "$(python3 generator.py)"` or
-`hpatch notes.txt < prepared.hpatch`. Generated edits retain their change IDs, `mchanges`
-history, and completed live diffs. With live view enabled for the workspace, successfully
-evaluated `hpatch` calls show their formatted diff before writing, including generated
-input and recovery edits.
-Literal edits can also show an early provisional preview while the model is streaming.
-Large previews show a labeled diff window; completed history retains the full diff.
-
-Rejected edits report a recovery handle. Use `hpatch --recover HANDLE` with
-corrections as an argument or on stdin. For multiple scripts, `--script N` selects
-the original 1-based path/script pair to correct; the complete batch is reevaluated. See [recovery](doc/spec/correct.md).
-
-
-### Direct scripts
-
-The agent can send a program directly to `functions.shell`:
-
-```python
-#!python3
-print("hello")
-```
-
-Bash is the default. Interactive and long-running programs still use Codex's
-native execution and session facilities. Shell file creation, redirection writes,
-moves, and removals appear in `mchanges` and the live diff alongside hpatch edits.
-See [tracked operations and limits](doc/spec/changes.md) for supported move/removal
-options and capture requirements.
-
-Commands that share an interpreter and execution options belong in one
-multiline script. Start each additional program with its interpreter header:
-
-```text
-#!params={"yield_time_ms":1000}
-echo hello
-#!python3
-print("hello")
-```
-
-Use `#!bash` to start another Bash program. Batches continue after nonzero exits.
-Prefer these batches over separate shell calls for noninteractive programs.
-`#!params` stays with the current program.
-
-Bash and POSIX scripts can record journal milestones on the current call, for
-example `journal add 'Checked the inputs.' --report-now`. A final
-`journal finish` can complete the turn without another model request. See the
-[shell contract](doc/spec/shell.md) and [journal contract](doc/spec/journal.md).
-
-### Command output summaries
-
-When [RTK](#token-saving) is available, recognized display commands return
-compact summaries. With `mrun`, RTK summarizes first, then `mrun` applies its
-output limit. Mekugi readers, pipelines, redirected output, command
-substitutions, machine-readable formats, terminal-backed commands, and native
-`find`/`diff` stay raw. Use an explicit executable path when a supported command
-needs raw output.
+Run ordinary shell commands or an interpreter through `exec_command`. For a
+long-running command, use Codex's returned session ID with `write_stdin`; Mekugi
+does not create a second process handle. A `cat > path <<'EOF'` command can be
+previewed while it streams, but only a finalized stock `apply_patch` call
+creates durable `mchanges` edit evidence. Interpreter programs shown in the
+live pane are previews, not a claim that execution succeeded.
 
 ### Wrapped-session helpers
 
-The wrapped session provides the commands below. `mread`, `mrun`, `mchanges`, `mcat`, `hgrep`,
-`msymbol`, and `inspect_file` are session-private executables on Codex's `PATH`;
-they are not installed as global terminal utilities. `mread`, `mrun`, `mchanges`, `mcat`,
-`msymbol`, and `inspect_file` run through stock execution rather than the private shell dispatcher.
+The commands below are session-private executables on Codex's `PATH`, not global
+utilities. They use the same authenticated pinned tool snapshot as configured
+plugins. Invoke them through stock `exec_command`.
 
 | Command | Purpose | Extra prerequisite on the executor's `PATH` |
 | --- | --- | --- |
 | `mread` | Continue bounded retained output by reference | Access to the router's replay directory |
-| `mrun` | Bound an external command's output, optionally keeping its ending | The wrapped command |
-| `mchanges` | Read tracked diffs and hpatch recovery history by ID or range | Access to the router's replay directory |
-| `mcat` | Read raw UTF-8 source rows without hashes: `mcat path1 1:200 path2 path3 200:300`; multiple files share a budget and provide per-file recovery links | Replay-directory access for multi-file reads |
-| `hgrep` | Search text with verified row references | `rg` |
-| `msymbol` | Look up definitions and references as complete `"PATH":LINE TEXT` rows | `gopls` for Go; TypeScript 7 as `tsc` for JS, TS, and JSON; `pyright-langserver` for Python |
+| `mrun` | Bound a foreground command's output and optionally keep its ending | The wrapped command |
+| `mchanges` | List the current agent thread's change IDs or read observed patches by ID or range | Access to the router's replay directory |
+| `mcat` | Read raw UTF-8 rows, with multi-file batching, ranges, and tail selection | None |
+| `msymbol` | Look up definitions and references as `"PATH":LINE TEXT` rows | `gopls` for Go; TypeScript 7 as `tsc` for JS, TS, and JSON; `pyright-langserver` for Python |
 | `inspect_file` | Inspect a structural outline | None |
 
-Agent-facing references use short word handles such as `maple` or `amber1`.
-IDs start fresh in each session. The root and its subagents share a namespace;
-`/fork` and `/side` copy its state once, then allocate independently. Resuming a
-session keeps its counters and retained references. Old store-wide IDs are not
-migrated or supported by the session-scoped format.
-
-Mekugi keeps durable review records in the router's replay store. An agent can
-hand off `amber1..amber3`, then another agent in the same session can retrieve just those changes:
+Agent-facing change and output references use short word handles. The root and
+its subagents share a namespace; `/fork` and `/side` copy visible state once,
+then allocate independently. Resuming keeps retained references. For example:
 
 ```sh
-mchanges amber1..amber3
+mchanges --list
 mchanges amber1..amber3 --summary
 mchanges amber2 --history
-```
-
-For example, `--summary` returns aggregated tab-separated counts:
-
-```text
-8	3	src/parser.go
-```
-
-Counts are summed across the selected evaluations; they are not a net diff or
-current workspace status. The records cover formatted hpatch evaluations and
-supported shell file operations. Incomplete reads return an exact `mread REF`
-next call. Typical follow-ups:
-
-```sh
 mread REF
-msymbol def source.go 42 MyFunction
-inspect_file source.go
 mcat --tail -n 20 source.ts
 mrun --tail -n 20 -- go test ./internal/router
 ```
 
-Use an ordinary script file for source you need to edit or run repeatedly. See the
-[change record](doc/spec/changes.md), [reader](doc/spec/read.md), and
-[shell](doc/spec/shell.md) contracts for flags, bounds, and recovery.
+`mchanges --summary` gives tab-separated added/deleted line counts per path.
+These counts are summed across selected observed patches, not a current Git
+diff. Bounded output includes an exact `mread REF` continuation when needed.
+`mchanges --list` shows the current thread's pending and completed IDs. A
+Code Mode patch may show observed file changes as application unconfirmed:
+completion of the outer JavaScript cell is not proof that its nested patch
+succeeded. From a subdirectory, `--workspace ..` selects the parent workspace's
+change index; paths after `--` only filter files within a selected change.
+See the [change record](doc/spec/changes.md), [reader](doc/spec/read.md), and
+[execution contract](doc/spec/execution.md).
 
 ### Live diff pane
 
-In an interactive Herdr pane with `herdr` on `PATH`, `mekugi codex` launches the
-live diff viewer executable directly on the first observed shell call, then places
-its pane to the right without changing focus. It does not start an interactive
-shell first, and read-only turns do not open a pane.
+In an interactive Herdr pane with `herdr` on `PATH`, `mekugi codex` launches
+the live diff viewer when it first observes editing or execution. Read-only
+turns do not open a pane.
 
-The pane opens in stream view. Concurrent main-agent and subagent shell calls get
-separate labeled cards; input appears as it arrives, before each call completes,
-and completed input remains visible between calls. Literal top-level `hpatch`
-calls in compound commands and `cat` heredoc writes project provisional file
-diffs in those cards; batched shell calls follow the current program.
+The pane opens in stream view. Concurrent main-agent and subagent stock calls
+get separate labeled cards; input appears as it arrives, before each call
+completes. `apply_patch` input and stock `cat` heredoc writes can show
+provisional file diffs. Completed `apply_patch` results and workspace outcomes
+supply the saved diff view. A failed or unfinished call never becomes a
+successful change record.
 
-The captured diff view combines tracked hpatch changes and supported shell file
-operations from the main agent and subagents. The viewer automatically switches
-to it when a root turn's token metrics and journal flush arrive, then back to
-stream for the next prompt. Press `v` to switch views manually between those
-transitions. Streaming previews are provisional until application is reported.
+The viewer switches to the saved diff when a root turn's token metrics and
+journal flush arrive, then back to stream for the next prompt. Press `v` to
+switch manually. Previews remain provisional until application is confirmed.
 
-To try the same UI without Codex or Herdr:
+To try the UI without Codex or Herdr:
 
 ```sh
 mekugi live-diff --simulate
@@ -426,8 +309,7 @@ The simulation uses disposable temporary files and removes them on exit.
 - In diff view, `f` flushes the current file; `F` flushes all files.
 - `q` quits the viewer without ending Codex.
 
-Use `mchanges` for saved capture history; standalone live viewing is not
-supported. See [live view details](doc/spec/changes.md#live-terminal-view).
+Use `mchanges` for saved capture history. See [live view details](doc/spec/changes.md#live-terminal-view).
 
 ## Metrics
 
@@ -508,7 +390,7 @@ supported APIs and history limitations.
   `~/Library/Application Support/mekugi/plugins`. See the
   [plugin contract](doc/spec/plugin.md).
 - **Executor environment:** the router and executor must see the same workspace
-  paths and shell runtime directory. `MEKUGI_RUNTIME_DIR` overrides the default
+  paths and tool runtime directory. `MEKUGI_RUNTIME_DIR` overrides the default
   temporary directory; both must resolve it to the same absolute path.
 - **Failures:** startup errors appear before Codex launches. Session failures
   appear as user-only commentary; undelivered notices appear on stderr after
@@ -556,15 +438,8 @@ authentication. Use `mekugi codex` for future sessions.
 
 ## Go library
 
-The root package, `github.com/yusing/mekugi`, also exposes workspace evaluation,
-application, reporting, and host translation APIs. See the
-[workspace API requirements](doc/spec/file.md) and
-[translation contract](doc/architecture/translate.md).
-
-Library callers must coordinate concurrent writers. Multi-file installation is
-not crash-atomic or isolated from readers, and an application error can follow
-filesystem changes. Inspect the outcome before retrying; see the
-[complete guarantees](doc/spec/output.md).
+The root package provides review-diff rendering helpers used by the router's
+change evidence. Editing and execution are Codex-owned, not root-library APIs.
 
 ## Documentation
 
@@ -583,12 +458,11 @@ go generate ./internal/router/toolplugin
 bun test ./internal/router/toolplugin/tests
 go test ./...
 go vet ./...
-make install
 ```
 
-For focused checks, use `go test .` for the engine,
+For focused checks, use `go test .` for review rendering,
 `go test ./internal/router` for routing, or
-`go test ./cmd/mekugi ./cmd/shell` for process entry points.
+`go test ./cmd/mekugi` for the process entry point.
 
 ## License
 

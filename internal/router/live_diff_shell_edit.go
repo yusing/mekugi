@@ -1,19 +1,20 @@
 package router
 
 import (
-	"errors"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
-	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/hpatchsyntax"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// Decode only literal edit input. No interpreter, expansion callbacks,
-// filesystem input redirections, or recovery state participate in previews.
+// liveDiffShellStatements parses display-only stock command input. It never
+// expands shell values or authorizes execution. Recovery is limited to the
+// parser's incomplete final construct so streaming cat and interpreter
+// heredocs can become visible before the host completes the call.
 func liveDiffShellStatements(input, directory string) ([]*syntax.Stmt, string, bool, bool) {
 	header, err := shellsyntax.Parse(input)
 	if err != nil || len(header.Interpreter) != 1 {
@@ -34,126 +35,66 @@ func liveDiffShellStatements(input, directory string) ([]*syntax.Stmt, string, b
 		}
 		directory = workdir
 	}
-	body := header.Body
-	parse := func(source string) (*syntax.File, error) {
-		return syntax.NewParser(syntax.Variant(variant)).Parse(strings.NewReader(source), "")
-	}
-	program, err := parse(body)
-	partialLine := false
-	if err != nil {
-		// An incomplete-shell diagnostic points at the actual redirect token,
-		// including after comments or blank lines. Share delimiter decoding,
-		// then validate the entire completed shell AST before projection.
-		frame := liveDiffIncompleteHeredoc(body, err, variant)
-		lines := hpatchsyntax.SplitPhysicalLines(body)
-		if frame.Delimiter != "" {
-			last := lines[len(lines)-1]
-			candidate := last.Text
-			if frame.StripTabs {
-				candidate = strings.TrimLeft(candidate, "\t")
-			}
-			if last.Terminator == "" && candidate != "" && strings.HasPrefix(frame.Delimiter, candidate) {
-				body = strings.TrimSuffix(body, last.Text)
-			}
-			partialLine = !strings.HasSuffix(body, "\n")
-			if partialLine {
-				body += "\n"
-			}
-			program, err = parse(body + frame.Delimiter + "\n")
+	program, parseErr := syntax.NewParser(syntax.Variant(variant)).Parse(strings.NewReader(header.Body), "")
+	partial := false
+	if parseErr != nil {
+		partial = true
+		if completed, ok := completeStreamingHeredoc(header.Body); ok {
+			program, _ = syntax.NewParser(syntax.Variant(variant)).Parse(strings.NewReader(completed), "")
 		} else {
-			// Recover only a missing final quote, then validate normally.
-			recovered, _ := syntax.NewParser(syntax.Variant(variant), syntax.RecoverErrors(1)).Parse(strings.NewReader(body), "")
-			if recovered != nil && len(recovered.Stmts) != 0 {
-				if call, ok := recovered.Stmts[len(recovered.Stmts)-1].Cmd.(*syntax.CallExpr); ok && len(call.Args) >= 2 {
-					parts := call.Args[len(call.Args)-1].Parts
-					if len(parts) > 0 {
-						switch quote := parts[len(parts)-1].(type) {
-						case *syntax.SglQuoted:
-							if quote.Right.IsRecovered() {
-								program, err = parse(body + "'")
-							}
-						case *syntax.DblQuoted:
-							if quote.Right.IsRecovered() {
-								program, err = parse(body + `"`)
-							}
-						}
-					}
-				}
-			}
+			program, _ = syntax.NewParser(syntax.Variant(variant), syntax.RecoverErrors(4)).Parse(strings.NewReader(header.Body), "")
 		}
 	}
-	completePrefix := false
-	if parseError, ok := errors.AsType[syntax.ParseError](err); ok && parseError.Incomplete &&
-		program != nil && len(program.Stmts) != 0 {
-		completePrefix = !program.Stmts[len(program.Stmts)-1].End().After(parseError.Pos)
-	}
-	if err != nil && !completePrefix || program == nil || len(program.Stmts) == 0 {
+	if program == nil || len(program.Stmts) == 0 {
 		return nil, "", false, false
 	}
-	return program.Stmts, directory, partialLine, true
+	return program.Stmts, directory, partial, true
+}
+
+var streamingHeredocOpener = regexp.MustCompile(`<<(-?)[ \t]*(?:'([A-Za-z_][A-Za-z0-9_]*)'|"([A-Za-z_][A-Za-z0-9_]*)"|([A-Za-z_][A-Za-z0-9_]*))`)
+
+func completeStreamingHeredoc(input string) (string, bool) {
+	matches := streamingHeredocOpener.FindAllStringSubmatchIndex(input, -1)
+	if len(matches) == 0 {
+		return "", false
+	}
+	match := matches[len(matches)-1]
+	delimiter := ""
+	for _, pair := range [][2]int{{match[4], match[5]}, {match[6], match[7]}, {match[8], match[9]}} {
+		if pair[0] >= 0 {
+			delimiter = input[pair[0]:pair[1]]
+			break
+		}
+	}
+	if delimiter == "" {
+		return "", false
+	}
+	stripTabs := match[2] >= 0 && input[match[2]:match[3]] == "-"
+	lineEnd := strings.IndexByte(input[match[1]:], '\n')
+	if lineEnd < 0 {
+		return "", false
+	}
+	body := input[match[1]+lineEnd+1:]
+	for line := range strings.SplitSeq(body, "\n") {
+		if stripTabs {
+			line = strings.TrimLeft(line, "\t")
+		}
+		if line == delimiter {
+			return "", false
+		}
+	}
+	return strings.TrimSuffix(input, "\n") + "\n" + delimiter + "\n", true
 }
 
 func liveDiffShellStatement(input, directory string) (*syntax.Stmt, string, bool, bool) {
-	statements, directory, partialLine, ok := liveDiffShellStatements(input, directory)
+	statements, directory, partial, ok := liveDiffShellStatements(input, directory)
 	if !ok || len(statements) != 1 {
 		return nil, "", false, false
 	}
-	return statements[0], directory, partialLine, true
+	return statements[0], directory, partial, true
 }
 
-func liveDiffShellEdit(input, directory string) ([]mekugi.FileEdit, string, bool) {
-	stmt, directory, partialLine, ok := liveDiffShellStatement(input, directory)
-	if !ok {
-		return nil, "", false
-	}
-	return liveDiffShellEditStatement(stmt, directory, partialLine)
-}
-
-func liveDiffShellEditStatement(stmt *syntax.Stmt, directory string, partialLine bool) ([]mekugi.FileEdit, string, bool) {
-	call, ok := stmt.Cmd.(*syntax.CallExpr)
-	if !ok || stmt.Background || stmt.Coprocess || stmt.Disown || stmt.Negated || len(call.Assigns) != 0 ||
-		len(call.Args) == 0 || call.Args[0].Lit() != "hpatch" {
-		return nil, "", false
-	}
-	// Recovery arguments are not path/script pairs, including partial flags.
-	if len(call.Args) > 1 {
-		argument, literal := shellCatLiteral(call.Args[1])
-		if literal && argument != "" && strings.HasPrefix("--recover", argument) {
-			return nil, "", false
-		}
-	}
-	if len(stmt.Redirs) == 0 {
-		if len(call.Args) < 3 || (len(call.Args)-1)%2 != 0 {
-			// hpatch PATH with shell stdin, and every command-substituted or
-			// otherwise non-literal script, are execution-dependent.
-			return nil, "", false
-		}
-		edits := make([]mekugi.FileEdit, 0, (len(call.Args)-1)/2)
-		for index := 1; index < len(call.Args); index += 2 {
-			path, pathLiteral := shellCatLiteral(call.Args[index])
-			script, scriptLiteral := shellCatLiteral(call.Args[index+1])
-			if !pathLiteral || path == "" || !scriptLiteral {
-				return nil, "", false
-			}
-			edits = append(edits, mekugi.FileEdit{Path: path, Script: script})
-		}
-		return edits, directory, true
-	}
-	if len(call.Args) != 2 || len(stmt.Redirs) != 1 {
-		return nil, "", false
-	}
-	path, literal := shellCatLiteral(call.Args[1])
-	if !literal || path == "" {
-		return nil, "", false
-	}
-	script, ok := liveDiffShellHeredoc(stmt.Redirs[0], partialLine)
-	if !ok {
-		return nil, "", false
-	}
-	return []mekugi.FileEdit{{Path: path, Script: script}}, directory, true
-}
-
-func liveDiffShellHeredoc(redirect *syntax.Redirect, partialLine bool) (string, bool) {
+func liveDiffShellHeredoc(redirect *syntax.Redirect, partial bool) (string, bool) {
 	if (redirect.Op != syntax.Hdoc && redirect.Op != syntax.DashHdoc) ||
 		(redirect.N != nil && redirect.N.Value != "0") || redirect.Hdoc == nil {
 		return "", false
@@ -166,10 +107,7 @@ func liveDiffShellHeredoc(redirect *syntax.Redirect, partialLine bool) (string, 
 		}
 		source.WriteString(literal.Value)
 	}
-	script := source.String()
-	// A quoted delimiter suppresses all heredoc expansion. For an unquoted
-	// delimiter, only literal escape processing is safe; AST validation above
-	// has excluded parameters and command substitutions.
+	content := source.String()
 	quoted := false
 	for _, part := range redirect.Word.Parts {
 		switch part := part.(type) {
@@ -181,50 +119,60 @@ func liveDiffShellHeredoc(redirect *syntax.Redirect, partialLine bool) (string, 
 	}
 	if !quoted {
 		var err error
-		script, err = expand.Document(&expand.Config{}, redirect.Hdoc)
+		content, err = expand.Document(&expand.Config{}, redirect.Hdoc)
 		if err != nil {
 			return "", false
 		}
 	}
 	if redirect.Op == syntax.DashHdoc {
-		lines := strings.Split(script, "\n")
-		for i := range lines {
-			lines[i] = strings.TrimLeft(lines[i], "\t")
+		lines := strings.Split(content, "\n")
+		for index := range lines {
+			lines[index] = strings.TrimLeft(lines[index], "\t")
 		}
-		script = strings.Join(lines, "\n")
+		content = strings.Join(lines, "\n")
 	}
-	if partialLine {
-		script = strings.TrimSuffix(script, "\n")
+	if partial {
+		content = strings.TrimSuffix(content, "\n")
 	}
-	return script, true
+	return content, true
 }
 
-// Use the shell parser's error position, not a scan for shell-looking text in
-// quoted arguments or heredoc bodies. Only the delimiter word is HPATCH-shared.
-func liveDiffIncompleteHeredoc(body string, parseErr error, variant syntax.LangVariant) hpatchsyntax.CommandFrame {
-	diagnostic, ok := errors.AsType[syntax.ParseError](parseErr)
-	if !ok {
-		return hpatchsyntax.CommandFrame{}
+func shellInterpreterName(interpreter string) string {
+	return shellsyntax.InterpreterIdentity(interpreter)
+}
+
+func shellCatLiteral(word *syntax.Word) (string, bool) {
+	if word == nil || !shellCatLiteralParts(word.Parts, false) {
+		return "", false
 	}
-	offset := int(diagnostic.Pos.Offset())
-	if offset >= len(body) || !strings.HasPrefix(body[offset:], "<<") {
-		return hpatchsyntax.CommandFrame{}
-	}
-	marker, _, newline := strings.Cut(body[offset:], "\n")
-	if !newline {
-		return hpatchsyntax.CommandFrame{}
-	}
-	wordSource := strings.TrimPrefix(marker[2:], "-")
-	wordOffset := len(marker) - len(wordSource)
-	for word, err := range syntax.NewParser(syntax.Variant(variant)).WordsSeq(strings.NewReader(wordSource)) {
-		if err != nil {
-			break
+	value, err := expand.Literal(&expand.Config{}, word)
+	return value, err == nil
+}
+
+func shellCatLiteralParts(parts []syntax.WordPart, quoted bool) bool {
+	for _, part := range parts {
+		switch value := part.(type) {
+		case *syntax.SglQuoted:
+		case *syntax.DblQuoted:
+			if !shellCatLiteralParts(value.Parts, true) {
+				return false
+			}
+		case *syntax.Lit:
+			if !quoted && strings.ContainsAny(value.Value, "~*?[") {
+				return false
+			}
+		default:
+			return false
 		}
-		header := "shell " + marker[:wordOffset+int(word.End().Offset())]
-		frame, _ := hpatchsyntax.FrameCommand([]hpatchsyntax.PhysicalLine{{Text: header, Terminator: "\n"}}, 0, header)
-		return frame
 	}
-	return hpatchsyntax.CommandFrame{}
+	return true
+}
+
+func shellFilePath(directory, path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return directory + string(os.PathSeparator) + path
 }
 
 func liveDiffShellPreviewNeutral(stmt *syntax.Stmt) bool {
@@ -238,55 +186,14 @@ func liveDiffShellPreviewNeutral(stmt *syntax.Stmt) bool {
 		return false
 	}
 	switch name {
-	case "mkdir", "mread", "mcat", "hgrep", "msymbol", "inspect_file", "mchanges":
-		// Read-only helpers cannot alter the workspace or shell environment.
+	case "mkdir", "mread", "mcat", "msymbol", "inspect_file", "mchanges":
 	default:
 		return false
 	}
-
 	for _, argument := range call.Args[1:] {
 		if _, literal := shellCatLiteral(argument); !literal {
 			return false
 		}
 	}
 	return true
-}
-
-// A whole composed call can arrive in one delta, before a valid edit prefix was
-// ever displayed. Do not expose its hpatch payload as a shell script merely
-// because that invalid composition cannot be projected.
-func liveDiffShellComposedHpatch(input string) bool {
-	header, err := shellsyntax.Parse(input)
-	if err != nil || len(header.Interpreter) != 1 {
-		return false
-	}
-	variant := syntax.LangBash
-	switch shellInterpreterName(header.Interpreter[0]) {
-	case "bash":
-	case "sh":
-		variant = syntax.LangPOSIX
-	default:
-		return false
-	}
-	program, _ := syntax.NewParser(syntax.Variant(variant)).Parse(strings.NewReader(header.Body), "")
-	if program == nil {
-		return false
-	}
-	var standalone syntax.Pos
-	if len(program.Stmts) == 1 {
-		stmt := program.Stmts[0]
-		if call, ok := stmt.Cmd.(*syntax.CallExpr); ok && len(call.Args) > 0 &&
-			!stmt.Background && !stmt.Coprocess && !stmt.Disown && !stmt.Negated {
-			standalone = call.Args[0].Pos()
-		}
-	}
-	found := false
-	syntax.Walk(program, func(node syntax.Node) bool {
-		if call, ok := node.(*syntax.CallExpr); ok && len(call.Args) > 0 {
-			name, literal := shellCatLiteral(call.Args[0])
-			found = found || literal && name == "hpatch" && call.Args[0].Pos() != standalone
-		}
-		return !found
-	})
-	return found
 }

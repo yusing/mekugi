@@ -177,23 +177,3 @@ func TestRuntimeCommentaryRenderedByteBudget(t *testing.T) {
 		t.Fatal("shared thread completion retired publisher")
 	}
 }
-
-func TestOversizedRuntimeAuthorPreservesOperationResult(t *testing.T) {
-	transform, proxy := newRuntimeCommentaryTransform(t)
-	transform.commentaryAuthor = "/root/" + strings.Repeat("a", maxCommentaryPublicationBytes)
-	call := map[string]any{"type": "custom_tool_call", "name": transform.codeModeToolName, "id": "code", "call_id": "call", "input": "await commentary('progress'); text('actual result');"}
-	output, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"status": "completed", "output": []any{call}}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(transform.commentarySubscriptions) != 0 || len(proxy.commentary.routes) != 0 {
-		t.Fatal("oversized author retained runtime capability")
-	}
-	if !bytes.Contains(output, []byte("actual result")) || bytes.Contains(output, []byte(commentaryOnceArgument)) {
-		t.Fatalf("operation changed: %s", output)
-	}
-	history := transform.local["call"]
-	if history.Script != "await commentary('progress'); text('actual result');" {
-		t.Fatal("original replay source changed")
-	}
-}

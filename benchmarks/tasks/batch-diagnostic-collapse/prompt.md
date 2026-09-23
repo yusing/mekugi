@@ -145,5 +145,3 @@ verification: batch diagnostic collapse passed package tests with no third-party
 
 Separate adjacent copies with one line feed. The response begins with the first `v` and ends with
 the twelfth `s`, with no leading or trailing line feed.
-
-When CTP/2 is active, use one content-local response dictionary or visible-line references to preceding tool output so the provider-emitted assistant text is smaller while the restored final response remains those exact twelve lines.

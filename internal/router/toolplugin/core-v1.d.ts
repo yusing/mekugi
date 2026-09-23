@@ -28,11 +28,8 @@ declare module "mekugi:core/v1" {
     params?: Record<string, unknown>;
   };
 
-  export function hashLine(value: SharedCoreInput): string;
-  export function formatVerifiedRow(line: number, content: string): string;
   export function lineCount(value: SharedCoreInput): number;
   export function lineBounds(value: SharedCoreInput, line: number): LineBounds | null;
-  export function parseRowReference(value: string): {line: number; hash: string};
   export function parsePositiveInteger(value: string): number;
   export function decodeQuotedOperand(value: string): {value: string; rest: string};
   export function classifySourcePath(value: string): SourceCapabilities | null;

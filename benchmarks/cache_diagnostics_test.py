@@ -17,7 +17,7 @@ def fingerprint(items):
 def exchange(sequence, fp, diagnosis):
     return {"sequence": sequence, "predecessor_sequence": sequence-1, "thread_id": "thread", "status": "completed",
             "client_fingerprint": fp, "provider_attempts": [
-                {"cache_fingerprint": fp, "native_fingerprint": fp}],
+                {"cache_fingerprint": fp, "projected_fingerprint": fp}],
             "cache_diagnostics": diagnosis}
 
 
@@ -26,9 +26,9 @@ class CacheDiagnosticsTests(unittest.TestCase):
         a, b = fingerprint(["d" * 32]), fingerprint(["d" * 32, "e" * 32])
         unavailable = {"status": "unavailable", "common_items": 0, "changed_fields": []}
         appended = {"status": "appended", "common_items": 1, "changed_fields": []}
-        first = {"previous_sequence": 0, "client": unavailable, "native": unavailable,
+        first = {"previous_sequence": 0, "client": unavailable, "projected": unavailable,
                  "provider": unavailable, "routing": "unavailable", "request_key": "unavailable"}
-        second = {"previous_sequence": 1, "client": appended, "native": appended,
+        second = {"previous_sequence": 1, "client": appended, "projected": appended,
                   "provider": appended, "routing": "stable", "request_key": "stable"}
         rows = [exchange(2, b, second), exchange(1, a, first)]
         validate_cache_diagnostics(rows)
@@ -47,7 +47,7 @@ class CacheDiagnosticsTests(unittest.TestCase):
                                            ("d"*32, "", "dropped"), ("d"*32, "e"*32, "changed")):
             fp = fingerprint([])
             fp["turn_state"] = client
-            diagnosis = {"previous_sequence": 0, "client": unavailable, "native": unavailable,
+            diagnosis = {"previous_sequence": 0, "client": unavailable, "projected": unavailable,
                          "provider": unavailable, "routing": "unavailable", "request_key": "unavailable",
                          "turn_state_forwarding": expected}
             row = exchange(1, fp, diagnosis)

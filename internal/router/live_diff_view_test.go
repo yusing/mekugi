@@ -110,17 +110,27 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	publish := func(call string, edits []mekugi.FileEdit) {
+	type capturedEdit struct{ path, after string }
+	publish := func(call string, edits []capturedEdit) {
 		t.Helper()
-		result, err := mekugi.TranslateForHostAt(t.Context(), workspace, edits, "")
-		if err != nil {
-			t.Fatal(err)
+		files := make([]mekugi.ReviewFile, 0, len(edits))
+		for _, edit := range edits {
+			path := filepath.Join(workspace, edit.path)
+			before, err := os.ReadFile(path)
+			if err != nil && !os.IsNotExist(err) {
+				t.Fatal(err)
+			}
+			beforePath := path
+			if os.IsNotExist(err) {
+				beforePath = ""
+			}
+			files = append(files, mekugi.RenderReviewFile(beforePath, path, string(before), edit.after))
 		}
 		id, err := store.reserveChange(t.Context(), workspace, "thread", call)
 		if err != nil {
 			t.Fatal(err)
 		}
-		history := mekugiHistory{ChangeID: id, CorrelationID: call, Applied: true, ReviewFiles: result.ReviewFiles}
+		history := mekugiHistory{ToolName: applyPatchToolName, ChangeID: id, CorrelationID: call, Applied: true, ReviewFiles: files}
 		if err := store.put(t.Context(), workspace, map[string]mekugiHistory{call: history}); err != nil {
 			t.Fatal(err)
 		}
@@ -131,9 +141,9 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	publish("populate-both", []mekugi.FileEdit{
-		{Path: "first.txt", Script: "append \"Temporary file one." + longSuffix + "\\nStatus: created\\n\""},
-		{Path: "second.txt", Script: `append "Temporary file two.\nStatus: created\n"`},
+	publish("populate-both", []capturedEdit{
+		{"first.txt", "Temporary file one." + longSuffix + "\nStatus: created\n"},
+		{"second.txt", "Temporary file two.\nStatus: created\n"},
 	})
 
 	for name, content := range map[string]string{
@@ -289,9 +299,9 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	if strings.Contains(frame, "LATEST UPDATE") || strings.Contains(frame, "▎") {
 		t.Fatal("startup history was marked as newly observed")
 	}
-	publish("update-both", []mekugi.FileEdit{
-		{Path: "first.txt", Script: `type "Status: created" "Status: updated 界 é"`},
-		{Path: "second.txt", Script: `type "Status: created" "Status: updated"`},
+	publish("update-both", []capturedEdit{
+		{"first.txt", "Temporary file one." + longSuffix + "\nStatus: updated 界 é\n"},
+		{"second.txt", "Temporary file two.\nStatus: updated\n"},
 	})
 
 	frame = waitFrame(func(frame string) bool {
@@ -312,7 +322,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 		[]byte("Temporary file one."+longSuffix+"\nStatus: updated 界 é\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	publish("update-first", []mekugi.FileEdit{{Path: "first.txt", Script: `type "Status: updated 界 é" "Status: adjusted 界 é"`}})
+	publish("update-first", []capturedEdit{{"first.txt", "Temporary file one." + longSuffix + "\nStatus: adjusted 界 é\n"}})
 	waitFrame(func(frame string) bool {
 		return strings.HasPrefix(strings.TrimLeft(frame, " ▎"), "2/2") && strings.Contains(frame, "PAUSED · new changes available") &&
 			!strings.Contains(frame, "LATEST UPDATE")

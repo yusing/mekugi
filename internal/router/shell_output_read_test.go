@@ -37,10 +37,6 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 	if err != nil || record.Stdout != out || record.Stderr != diagnostic || record.ExitCode != 7 {
 		t.Fatalf("restart record: %#v, %v", record, err)
 	}
-	if _, direct := registry.directBashExecCommand([]string{"bash", "mread " + id}); !direct {
-		t.Fatal("mread did not use the stock executable carrier")
-	}
-
 	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
@@ -224,56 +220,10 @@ func TestShellOutputStoreQuotaAndPermissions(t *testing.T) {
 	if record, err := store.readShellOutput(t.Context(), id); err != nil || record.Stdout != "omitted" {
 		t.Fatalf("quota evicted prior record: %#v, %v", record, err)
 	}
-	display := newShellOutputDisplay(t.Context(), toolWorkerManifest{ReplayDirectory: store.directory}, "", 1, nil, nil)
-	if _, err := display.streams[0].Write([]byte("omitted")); err != nil {
-		t.Fatal(err)
-	}
-	execution, err := display.finish(toolplugin.ExecutionOutput{ExitCode: 7})
-	if err == nil || strings.Contains(execution.Stderr, "mread") {
-		t.Fatalf("quota failure exposed recovery receipt: %#v, %v", execution, err)
-	}
 	for _, budget := range []int{1, 64, 15500} {
 		if _, err := parseOutputRead([]string{id, "--max-tokens", strconv.Itoa(budget)}); err != nil {
 			t.Fatal(err)
 		}
-	}
-}
-
-func TestShellOutputPluginRemainderUsesManagedRecovery(t *testing.T) {
-	t.Parallel()
-	registry := sharedProxyTestRegistry(t)
-	directory := t.TempDir()
-	source := strings.Repeat("needle row\n", 30)
-	name := filepath.Join(directory, "matches")
-	if err := os.WriteFile(name, []byte(source), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	invocation := newShellWorkerTestInvocation(directory)
-	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		"hgrep --max-tokens 32 -F needle matches", nil, invocation)
-	if status != 1 {
-		t.Fatalf("expected reader limit: %q, %q, %d", stdout, stderr, status)
-	}
-	omitted, omittedErr := retainedShellTestOutput(t, stderr)
-	if omitted == "" || omittedErr != "" || strings.Count(stdout+omitted, "needle row") != 30 {
-		t.Fatalf("omitted prefix or missing results: %q %q", stdout, omitted)
-	}
-	// Reading the original result must not require the source or another search.
-	if err := os.Remove(name); err != nil {
-		t.Fatal(err)
-	}
-	start := strings.Index(stderr, "mread ")
-	if start < 0 {
-		t.Fatalf("missing mread receipt: %q", stderr)
-	}
-	command := strings.TrimSpace(stderr[start:]) + " --stdout"
-	rest, readErr, readStatus := runShellWorkerTest(t, registry, "sh", nil, command, nil, invocation)
-	if readStatus != 0 || readErr != "" || rest != omitted {
-		t.Fatalf("managed reader failed: %q %q %d", rest, readErr, readStatus)
-	}
-	entries, err := os.ReadDir(directory)
-	if err != nil || len(entries) != 0 {
-		t.Fatalf("output recovery polluted cwd: %v, %v", entries, err)
 	}
 }
 

@@ -355,7 +355,7 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 	for _, i := range []int{0, 312, 335, 339} {
 		rows[i] = ""
 	}
-	// Retained creation captures still render, although current hpatch only edits existing files.
+	// Retained creation captures still render, although stock apply_patch also edits existing files.
 	path := filepath.Join(workspace, "review_highlight_test.txt")
 	initial := liveDiffChunk{
 		Key: "create", Applied: true,

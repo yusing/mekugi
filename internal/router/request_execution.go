@@ -58,11 +58,10 @@ type requestAttempt struct {
 	handoff       *mentorRequest
 	prewarm       bool
 
-	mekugiTransform        *mekugiResponseTransform
-	syntheticJournalFinish bool
-	bridge                 *subagentBridge
-	forwardBody            []byte
-	usageTracker           *threadUsageObservation
+	mekugiTransform *mekugiResponseTransform
+	bridge          *subagentBridge
+	forwardBody     []byte
+	usageTracker    *threadUsageObservation
 
 	response           *http.Response
 	streamResponse     bool
@@ -270,14 +269,6 @@ func (a *requestAttempt) prepare() error {
 		a.mekugiTransform.featureTrace = a.trace
 		a.commentaryObserved = true
 	}
-	a.syntheticJournalFinish = a.mekugiTransform != nil && a.mekugiTransform.shellFinishRequested
-	// A shell finish is already terminal for this attempt. Preserve normal
-	// response transformation and journal delivery without provider generation.
-	if a.syntheticJournalFinish {
-		a.handoff = nil
-		a.hooks.output = nil
-		a.mekugiTransform.journalTerminal = true
-	}
 	return nil
 }
 
@@ -299,7 +290,7 @@ func (a *requestAttempt) prepareWire() error {
 			}
 		}
 	}
-	if !a.syntheticJournalFinish && (a.mekugiTransform != nil || a.prewarm && a.executor.mekugiCalls != nil || grokEnabled || len(openCodeModels) > 0) {
+	if a.mekugiTransform != nil || a.prewarm && a.executor.mekugiCalls != nil || grokEnabled || len(openCodeModels) > 0 {
 		a.bridge, err = prepareSubagentBridge(&a.request, grokEnabled, openCodeModels...)
 		if err != nil {
 			return fmt.Errorf("prepare collaboration bridge: %w", err)
@@ -310,29 +301,25 @@ func (a *requestAttempt) prepareWire() error {
 		return fmt.Errorf("encode native Responses request: %w", err)
 	}
 	a.forwardBody = nativeBody
-	if !a.syntheticJournalFinish {
-		if exchange, ok := a.executor.provider.(*webSocketExchange); ok {
-			started := time.Now()
-			if err := exchange.reconcileProviderHistory(&a.request, a.forwardBody); err != nil {
-				return err
-			}
-			a.debug.event(map[string]any{
-				"event": "provider_history_reconciliation", "request_id": a.debugID,
-				"reason": exchange.reconciliationReason, "reused_input_items": a.request.cachedInput,
-				"duration_us": time.Since(started).Microseconds(),
-			})
+	if exchange, ok := a.executor.provider.(*webSocketExchange); ok {
+		started := time.Now()
+		if err := exchange.reconcileProviderHistory(&a.request, a.forwardBody); err != nil {
+			return err
 		}
+		a.debug.event(map[string]any{
+			"event": "provider_history_reconciliation", "request_id": a.debugID,
+			"reason": exchange.reconciliationReason, "reused_input_items": a.request.cachedInput,
+			"duration_us": time.Since(started).Microseconds(),
+		})
 	}
 	nativeWire, err := a.request.incrementalBody(nativeBody)
 	if err != nil {
 		return err
 	}
-	if !a.syntheticJournalFinish {
-		if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.automatic {
-			capturer.ObserveProjectedRequest(a.startCtx, nil)
-		} else {
-			capturer.ObserveProjectedRequest(a.startCtx, nativeWire)
-		}
+	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.automatic {
+		capturer.ObserveProjectedRequest(a.startCtx, nil)
+	} else {
+		capturer.ObserveProjectedRequest(a.startCtx, nativeWire)
 	}
 
 	return nil
@@ -355,7 +342,7 @@ func (a *requestAttempt) forward() error {
 		debugWire = nil
 	}
 	a.debug.instructions(projectedBody, debugWire, a.headers, a.sessionID, a.debugID, a.request.cachedInput)
-	if !a.prewarm && !a.syntheticJournalFinish {
+	if !a.prewarm {
 		if a.mekugiTransform != nil {
 			a.usageTracker = a.mekugiTransform.usageTracker
 		} else if a.executor.mekugiCalls != nil && a.metadataValid {
@@ -367,11 +354,7 @@ func (a *requestAttempt) forward() error {
 			)
 		}
 	}
-	forwardProvider := a.executor.provider
-	if a.syntheticJournalFinish {
-		forwardProvider = journalFinishResponseProvider{stream: a.request.streamResponse}
-	}
-	a.response, err = forwardProvider.forwardExecution(
+	a.response, err = a.executor.provider.forwardExecution(
 		a.startCtx,
 		a.executionCtx,
 		a.forwardBody,

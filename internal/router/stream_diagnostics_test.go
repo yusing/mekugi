@@ -19,53 +19,6 @@ import (
 	"github.com/coder/websocket"
 )
 
-func TestStreamDiagnosticsIncompleteHPATCH(t *testing.T) {
-	calls := 0
-	transform, _, _, _ := newMekugiTestTransform(t)
-	d := &streamDiagnostics{}
-	hooks := &responseHooks{streamDiagnostics: d}
-	input := "secret patch é"
-	stream := `data: {"type":"response.output_item.added","output_index":0,"item":{"type":"custom_tool_call","id":"ctc_1","call_id":"call_1","name":"shell","status":"in_progress","input":""}}` + "\n\n" +
-		`data: {"type":"response.custom_tool_call_input.delta","item_id":"ctc_1","delta":` + string(mustMarshalJSON(input)) + "}\n\n"
-	var output bytes.Buffer
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("X-Request-Id", "req_123")
-		_, _ = io.WriteString(w, stream)
-	}))
-	defer upstream.Close()
-	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, upstream.URL, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response, err := upstream.Client().Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = copyUpstreamBodyTransformed(&output, response, true, transform, hooks)
-	diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
-	if !ok || diagnostic.code != "stream_ended_incomplete_mekugi_call" {
-		t.Fatalf("expected existing incomplete guard, got %v", err)
-	}
-	if calls != 0 || strings.Contains(output.String(), input) || strings.Contains(output.String(), "custom_tool_call") {
-		t.Fatal("incomplete input was translated or exposed")
-	}
-	call := d.pending["ctc_1"]
-	if call == nil || call.CallID != "call_1" || call.Fragments != 1 || call.InputBytes != uint64(len(input)) || call.InputDone {
-		t.Fatalf("missing fragment evidence: %+v", call)
-	}
-	if d.ReadTermination != "upstream_eof" || d.CopyStop != "translation_error" || d.LastEvent != "response.custom_tool_call_input.delta" || d.LastEventAt.IsZero() || d.ProviderRequestID != "req_123" {
-		t.Fatalf("missing termination evidence: %+v", d)
-	}
-	if d.EndReason != "http_body_complete_without_terminal" {
-		t.Fatalf("partial-call rejection hid the HTTP end: %+v", d)
-	}
-	encoded, err := json.Marshal(d.snapshot())
-	if err != nil || bytes.Contains(encoded, []byte("secret")) {
-		t.Fatalf("unsafe diagnostics: %s, %v", encoded, err)
-	}
-}
-
 func TestStreamDiagnosticsReadTermination(t *testing.T) {
 	for _, tc := range []struct {
 		name      string

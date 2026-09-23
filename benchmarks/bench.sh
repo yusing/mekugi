@@ -33,10 +33,6 @@ benchmark_main() {
 	if ! load_task_manifest; then
 		exit 1
 	fi
-	if [[ $benchmark_mode == ctp-only && -z $expected_final_response ]]; then
-		printf 'bench.sh: ctp-only mode requires task expected_final_response for decoded-output parity\n' >&2
-		exit 2
-	fi
 	if [[ $source_is_public == true ]]; then
 		git init --bare --quiet "$source_repo"
 		git --git-dir="$source_repo" fetch --quiet --depth=1 "$source_repository" "$base_commit"
@@ -58,9 +54,6 @@ benchmark_main() {
 	run_phase dependencies prepare_dependency_cache
 	printf 'Control base instructions: %s\n' "$control_instruction"
 	printf 'Mekugi base instructions: %s\n' "$mekugi_instruction"
-	if [[ $benchmark_mode == ctp-only ]]; then
-		printf 'Native and CTP/2-active receive the same pre-router instructions; the router selects protocol guidance.\n'
-	fi
 	if [[ $benchmark_mode == mentor-handoff ]]; then
 		printf 'Both arms use the same static %s/%s parent prompt and %s/%s child role and prompt; only the mekugi-mentor router enables the child handoff.\n' \
 			"$mentor_parent_model" "$mentor_parent_reasoning_effort" "$model" "$reasoning_effort"

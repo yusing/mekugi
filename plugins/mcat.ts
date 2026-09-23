@@ -19,8 +19,8 @@ import {
   readerArguments,
   readerOptions,
   readerLimitDiagnostic,
-  VERIFIED_ROW_MAX_TOKENS,
-  VerifiedRowOutput,
+  MAX_READER_TOKENS,
+  BoundedTextOutput,
 } from "./common.ts";
 
 import type {ReaderOptions} from "./common.ts";
@@ -184,7 +184,7 @@ async function readLines(spec: ReadSpec, options: ReaderOptions): Promise<Compar
     let contentBytes = 0;
     const tail = options.tail ? new ReaderTail(options.maxTokens, options.maxLines) : undefined;
     let oversizedRow = false;
-    const output = new VerifiedRowOutput(options.maxTokens);
+    const output = new BoundedTextOutput(options.maxTokens);
 
     let selectedLines = 0;
     let lineOutput = "";
@@ -201,8 +201,8 @@ async function readLines(spec: ReadSpec, options: ReaderOptions): Promise<Compar
       contentBytes += byteLength(text);
       if (!(options.maxLines !== undefined && options.maxTokens === undefined
           && (tail || selectedLines < options.maxLines))
-          && contentBytes > VERIFIED_ROW_MAX_TOKENS * MAX_POSSIBLE_GPT5_TOKEN_BYTES) {
-        limitReason = `row ${lineNumber} exceeds the ${VERIFIED_ROW_MAX_TOKENS * MAX_POSSIBLE_GPT5_TOKEN_BYTES}-byte inspection bound; use a byte-window reader\n`;
+          && contentBytes > MAX_READER_TOKENS * MAX_POSSIBLE_GPT5_TOKEN_BYTES) {
+		limitReason = `row ${lineNumber} exceeds the ${MAX_READER_TOKENS * MAX_POSSIBLE_GPT5_TOKEN_BYTES}-byte inspection bound; use a byte-window reader\n`;
         retentionUnavailable = true;
         content = "";
         oversizedRow = true;

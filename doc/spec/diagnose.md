@@ -2,33 +2,32 @@
 
 ## REQ-DIAGNOSE-001 — Agent issue reports
 
-When mekugi mode starts with the inherited environment variable `MEKUGI_DIAGNOSE` exactly
-equal to `1`, the immutable built-in registry contributes a model-visible unconstrained custom
-tool named `report_issue`. Any other value, including an unset variable, omits that contribution.
-Passthrough mode remains unchanged because it does not construct the registry.
+When Mekugi mode starts with inherited `MEKUGI_DIAGNOSE=1`, the router adds a
+`report_issue` function to the stock tool catalog. The function accepts one
+`markdown` string. Other values and passthrough mode leave the catalog alone.
+Issue reporting is a router-local diagnostic call, not an editing or execution
+replacement and not an executable plugin frontend.
 
-The tool accepts agent-authored Markdown for problems encountered while using mekugi and its
-related tools. The router snapshots `hooks.diagnose` from the existing `settings.json` hook
-configuration at startup and invokes those commands directly when the model calls `report_issue`.
-It does not install an executable wrapper or frontend and does not route the report through the
-executor plugin worker.
+The router snapshots `hooks.diagnose` from `settings.json` at startup. A
+completed report calls each configured command once with the exact Markdown as
+`.Body` and the current Codex task title as `.Title`; the fallback title is
+`mekugi diagnostic`. `format_markdown` returns the same body, and `shellquote`
+quotes a string for the hook shell. Commands share a 10-second timeout. An
+empty hook list succeeds without side effects. Invalid settings prevent
+startup; command or template failures yield a `mekugi: warning:` tool result
+without interrupting response routing.
 
-Each command is rendered against an event whose `Body` is the exact Markdown and whose `Title`
-is the current Codex task title, using the same session-title lookup as other routed hooks; when
-no title is available, `Title` is `mekugi diagnostic`. `format_markdown` returns that same body,
-and `shellquote` retains its existing behavior. All configured diagnose commands share the
-existing 10-second error-hook timeout. A missing or empty diagnose list is a successful no-op.
-Successful dispatch returns `Issue reported.` through the existing Code Mode result carrier;
-settings or registry initialization failures prevent startup. Rendering, execution,
-cancellation, or timeout failures return an `mekugi: warning:` in the tool result and do not
-fail or interrupt response routing.
+The router intercepts this function before Codex dispatch. It durably records
+the completed call/result and restores that exact pair on continuation so
+replay never runs a hook again. Incomplete calls do not run hooks. The function
+does not observe, execute, or alter stock `apply_patch`.
 
 Acceptance:
 
-1. Exactly `MEKUGI_DIAGNOSE=1` in mekugi mode exposes the free-form `report_issue` specification;
-   all other values and passthrough mode expose none of it.
-2. One report reaches each configured `hooks.diagnose` command byte-for-byte through `.Body` and
-   `format_markdown`, exposes the task title through `.Title`, and does not run `hooks.error`.
-3. No configured diagnose hook succeeds without side effects, while hook failures remain
-   observable as tool-result warnings without failing the translated response.
-4. `report_issue` has no executable wrapper, stable frontend, or plugin-worker implementation.
+1. Only exact opt-in exposes one `report_issue` function. Configured frontend
+   names cannot collide with it when enabled.
+2. One completed report sends its body and task title to every configured
+   diagnose hook; replay or duplicate stream completion does not rerun it.
+3. No hooks is a successful no-op; hook failures remain visible as result
+   warnings without turning the response into an execution failure.
+4. No executable wrapper or plugin worker is installed for this function.

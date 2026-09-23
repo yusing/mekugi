@@ -10,7 +10,7 @@
     "base": "Task-owned empty directory represented by the SHA-256 digest of an empty byte stream. It has no repository or history.",
     "qualification": "Only the empty base failure, intended hidden library grader discriminator, and runner-owned commentary evidence are qualified.",
     "language": "Go",
-    "task_type": "shell editing and journal publication coverage",
+    "task_type": "stock editing and journal publication coverage",
     "difficulty": "easy"
   },
   "runtime": {
@@ -23,21 +23,19 @@
     "profiles": {
       "operations": {
         "messages": [
-          {"kind": "regex", "value": "coverage:bash", "minimum": 1},
-          {"kind": "regex", "value": "coverage:recovered", "minimum": 1},
-          {"kind": "regex", "value": "coverage:posix", "minimum": 1},
+          {"kind": "regex", "value": "coverage:command", "minimum": 1},
+          {"kind": "regex", "value": "coverage:edited", "minimum": 1},
+          {"kind": "regex", "value": "coverage:validated", "minimum": 1},
           {"kind": "regex", "value": "coverage:code-mode", "minimum": 1}
         ],
         "commands": [
-          {"kind": "contains", "value": "hpatch ", "minimum": 2},
-          {"kind": "contains", "value": "hpatch --recover ", "minimum": 1},
-          {"kind": "contains", "value": "journal add coverage:bash", "minimum": 1},
-          {"kind": "contains", "value": "journal add coverage:posix", "minimum": 1},
-          {"kind": "contains", "value": "coverage:exec-complete", "minimum": 1},
-          {"kind": "regex", "value": "coverage(?:%3A|:)code-mode", "minimum": 1}
+          {"kind": "contains", "value": "sed ", "minimum": 1},
+          {"kind": "contains", "value": "gofmt -w coverage.go", "minimum": 1},
+          {"kind": "contains", "value": "go test ./...", "minimum": 1},
+          {"kind": "contains", "value": "coverage:exec-complete", "minimum": 1}
         ],
         "items": {
-          "command_execution": 7
+          "command_execution": 3
         }
       },
       "reporting": {
@@ -59,10 +57,6 @@
     "mode_arms": {
       "mekugi-diagnostic": {
         "mekugi": ["operations", "reporting", "terminal"]
-      },
-      "ctp-only": {
-        "native": ["operations", "terminal"],
-        "ctp": ["operations", "terminal"]
       },
       "mentor-handoff": {
         "mekugi": ["collaboration", "terminal"],

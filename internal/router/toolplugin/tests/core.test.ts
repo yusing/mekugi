@@ -4,22 +4,17 @@ import {
   classifySourcePath,
   decodeGoStringLiteral,
   decodeQuotedOperand,
-  formatVerifiedRow,
-  hashLine,
   interpreterIdentity,
   isGoIdentifier,
   lineBounds,
   lineCount,
   parsePositiveInteger,
-  parseRowReference,
   parseShellHeader,
   SharedCoreError,
 } from "../core-v1.mjs";
 
 describe("shared core v1", () => {
-  test("owns verified-row hashing and logical lines", () => {
-    expect(hashLine("hello")).toBe("2cf2");
-    expect(formatVerifiedRow(2, "hello")).toBe("2:2cf2 hello\n");
+  test("owns logical lines", () => {
     expect(lineCount("a\r\nb\rc\n")).toBe(3);
     expect(lineBounds("a\r\nb", 1)).toEqual({
       byteStart: 0,
@@ -30,7 +25,6 @@ describe("shared core v1", () => {
   });
 
   test("owns portable syntax and source classification", () => {
-    expect(parseRowReference("12:abcd")).toEqual({line: 12, hash: "abcd"});
     expect(parsePositiveInteger("12")).toBe(12);
     expect(decodeQuotedOperand('"a b" rest')).toEqual({value: "a b", rest: " rest"});
     expect(classifySourcePath("source.d.ts")).toMatchObject({
@@ -44,7 +38,7 @@ describe("shared core v1", () => {
     expect(decodeGoStringLiteral('"example.com/pkg"')).toBe("example.com/pkg");
   });
 
-  test("parses shell headers without applying carrier policy", () => {
+  test("parses shell headers without applying execution policy", () => {
     expect(parseShellHeader("#!/usr/bin/env -S python3 -u\n#!params={\"login\":true}\nprint(1)"))
       .toEqual({
         interpreter: ["python3", "-u"],
@@ -57,11 +51,11 @@ describe("shared core v1", () => {
 
   test("returns stable error codes", () => {
     try {
-      parseRowReference("0:abcd");
-      throw new Error("expected parseRowReference to fail");
+      parsePositiveInteger("0");
+      throw new Error("expected parsePositiveInteger to fail");
     } catch (error) {
       expect(error).toBeInstanceOf(SharedCoreError);
-      expect((error as SharedCoreError).code).toBe("invalid_row_reference");
+      expect((error as SharedCoreError).code).toBe("invalid_positive_integer");
     }
   });
 });

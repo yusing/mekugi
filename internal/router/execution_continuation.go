@@ -2,9 +2,24 @@ package router
 
 import (
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"strconv"
 	"strings"
 )
+
+const minimumStatusWaitMS = 300000
+
+func statusWaitFloor(kind string, maximumJSON []byte) int {
+	if kind != "integer" && kind != "number" {
+		return 0
+	}
+	floor := minimumStatusWaitMS
+	var maximum float64
+	if jsonv2.Unmarshal(maximumJSON, &maximum) == nil && maximum > 0 && maximum < float64(floor) {
+		floor = int(maximum)
+	}
+	return floor
+}
 
 // Continuations describe the next host call at an observed yield. They never
 // resume a process, allocate an ID, or retain execution state.
@@ -48,8 +63,10 @@ func executionTools(catalog *responsesToolCatalog, execName string) executionCon
 			path := qualifiedToolName(namespace, tool.Name)
 			if tool.Type == "custom" && name == strings.TrimPrefix(execName, "functions.") {
 				found.exec = path
-				found.nestedSessionWait = hasCodeModeSessionWait(tool.Description)
-				if section := codeModeSessionWaitSection(tool.Description); found.nestedSessionWait && strings.Contains(section, "yield_time_ms") {
+				waitSection := codeModeSessionWaitSection(tool.Description)
+				found.nestedSessionWait = strings.Contains(waitSection, "declare const tools: { write_stdin(") &&
+					strings.Contains(waitSection, "session_id") && strings.Contains(waitSection, "chars")
+				if found.nestedSessionWait && strings.Contains(waitSection, "yield_time_ms") {
 					found.nestedSessionWaitMS = minimumStatusWaitMS
 				}
 			}
@@ -87,12 +104,6 @@ func executionTools(catalog *responsesToolCatalog, execName string) executionCon
 		visit(group.tools, "")
 	}
 	return found
-}
-
-func hasCodeModeSessionWait(description string) bool {
-	section := codeModeSessionWaitSection(description)
-	return strings.Contains(section, "declare const tools: { write_stdin(") &&
-		strings.Contains(section, "session_id") && strings.Contains(section, "chars")
 }
 
 func codeModeSessionWaitSection(description string) string {
@@ -166,9 +177,6 @@ func executionResumeHandle(item map[string]json.RawMessage, history mekugiHistor
 	name := strings.TrimPrefix(jsonString(item, "name"), "functions.")
 	if name == strings.TrimPrefix(execName, "functions.") {
 		source := jsonString(item, "input")
-		if known && history.TranslationError == "" && history.ToolName == codeModeCommentaryHistoryTool {
-			source = history.Script
-		}
 		nested, ok := toolActivityUnwrapExec(source, false)
 		if !ok {
 			return ""
@@ -328,10 +336,11 @@ func executionCallFor(item map[string]json.RawMessage, history mekugiHistory, kn
 	if known && history.TranslationError == "" {
 		call.codeMode = history.effectiveCarrierKind() == codeModeCarrierCustom
 		call.native = history.effectiveCarrierKind() == codeModeCarrierFunction
-		call.nativePayload = history.PluginID == builtinToolsPluginID && history.ToolName == "shell" && !history.ReplayCarrier
-		if call.codeMode && history.PluginID == "" && history.ToolName == codeModeCommentaryHistoryTool {
+		call.nativePayload = history.ToolName == nativeExecCommandToolName
+		if call.codeMode && history.ToolName == "exec" {
 			if nested, ok := toolActivityUnwrapExec(history.Script, true); ok {
-				call.nativePayload = jsonString(nested, "name") == "exec_command" || jsonString(nested, "name") == "write_stdin"
+				name := jsonString(nested, "name")
+				call.nativePayload = name == nativeExecCommandToolName || name == "write_stdin"
 			}
 		}
 		if call.codeMode || call.native {

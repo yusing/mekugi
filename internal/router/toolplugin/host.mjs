@@ -462,12 +462,12 @@ function validateSpecification(specification, label, errors) {
 function validateTool(tool, modulePath, index, errors) {
   const label = `${modulePath}: tool ${index + 1}`;
   if (tool === null || typeof tool !== "object" || Array.isArray(tool)
-      || !exactKeys(tool, ["specification", "parse", "argv", "translate", "execute"])) {
+      || !exactKeys(tool, ["specification", "parse", "argv", "execute"])) {
     errors.push(`${label}: declaration contains unsupported or missing fields`);
     return null;
   }
   const specification = validateSpecification(tool.specification, label, errors);
-  for (const name of ["parse", "argv", "translate", "execute"]) {
+  for (const name of ["parse", "argv", "execute"]) {
     if (typeof tool[name] !== "function") {
       errors.push(`${label}: ${name} must be a function`);
     }
@@ -543,111 +543,6 @@ function validateArguments(argumentsValue) {
     throw new Error("argv must contain only strings");
   }
   return argumentsValue;
-}
-
-function isJSONNativeValue(value, seen = new Set()) {
-  if (value === null || typeof value === "string" || typeof value === "boolean") {
-    return true;
-  }
-  if (typeof value === "number") {
-    return Number.isFinite(value);
-  }
-  if (typeof value !== "object" || seen.has(value)) {
-    return false;
-  }
-  if (!Array.isArray(value)) {
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) {
-      return false;
-    }
-  }
-  seen.add(value);
-  const valid = Object.keys(value).every((key) => isJSONNativeValue(value[key], seen));
-  seen.delete(value);
-  return valid;
-}
-
-function validateExecParams(params) {
-  if (params === null || typeof params !== "object" || Array.isArray(params)
-      || Object.hasOwn(params, "cmd")) {
-    throw new Error("exec carrier params must be an object without cmd");
-  }
-  if (Object.hasOwn(params, "login") && params.login !== false) {
-    throw new Error("exec carrier params login must be false");
-  }
-  let snapshot;
-  try {
-    if (!isJSONNativeValue(params)) {
-      throw new Error("not JSON-native");
-    }
-    snapshot = JSON.parse(JSON.stringify(params));
-  } catch {
-    throw new Error("exec carrier params must contain only JSON-native values");
-  }
-  return snapshot;
-}
-
-function validateCarrier(carrier) {
-  if (carrier === null || typeof carrier !== "object" || Array.isArray(carrier)) {
-    throw new Error("translator must return a carrier object");
-  }
-  if (carrier.kind === "exec") {
-    const keys = Object.keys(carrier);
-    if (!keys.every((key) => ["kind", "template", "params"].includes(key))) {
-      throw new Error("translator returned a malformed carrier");
-    }
-    const normalized = {kind: "exec"};
-    if (carrier.template !== undefined) {
-      if (typeof carrier.template !== "string"
-          || carrier.template.split("{.}").length !== 2) {
-        throw new Error("translator returned a malformed carrier");
-      }
-      normalized.template = carrier.template;
-    }
-    if (carrier.params !== undefined) {
-      normalized.params = validateExecParams(carrier.params);
-    }
-    return Object.freeze(normalized);
-  }
-  if ((carrier.kind === "custom" || carrier.kind === "function")
-      && exactKeys(carrier, ["kind", "name", "payload"])
-      && typeof carrier.name === "string"
-      && toolNamePattern.test(carrier.name)
-      && typeof carrier.payload === "string") {
-    return carrier;
-  }
-  throw new Error("translator returned a malformed carrier");
-}
-
-async function translateTool(request) {
-  const tool = await loadTool(request.snapshotRoot, request.module, request.index);
-  let parsed;
-  try {
-    parsed = await tool.parse(request.input);
-  } catch (error) {
-    return {rejected: true, diagnostic: errorText(error), arguments: [], carrier: {kind: "", name: "", payload: ""}};
-  }
-  const argumentsValue = validateArguments(await tool.argv(parsed));
-  const api = Object.freeze({
-    custom(name, input) {
-      return Object.freeze({kind: "custom", name, payload: input});
-    },
-    function(name, argumentsJSON) {
-      return Object.freeze({kind: "function", name, payload: argumentsJSON});
-    },
-    exec(template, params) {
-      const carrier = {kind: "exec"};
-      if (template !== undefined) {
-        carrier.template = template;
-      }
-      if (params !== undefined) {
-        carrier.params = params;
-      }
-      return Object.freeze(carrier);
-    },
-  });
-  const carrier = validateCarrier(await tool.translate(parsed, api));
-  return {rejected: false, diagnostic: "", arguments: argumentsValue, carrier};
 }
 
 function normalizeExecutionOutput(candidate, allowedKeys) {
@@ -760,30 +655,6 @@ async function registerSnapshot(root) {
   return snapshotRoot;
 }
 
-// Only the router-owned built-in declaration uses a warm translation process.
-// Configured declarations and executor effects retain their one-shot hosts.
-async function serveTranslations() {
-  const lines = createInterface({input: process.stdin, crlfDelay: Infinity});
-  let snapshotRoot;
-  let module;
-  for await (const line of lines) {
-    const request = JSON.parse(line);
-    let response;
-    if (snapshotRoot === undefined) {
-      snapshotRoot = await registerSnapshot(request.snapshotRoot);
-      module = request.module;
-      await loadDeclaration(snapshotRoot, module);
-      response = {ready: true};
-    } else {
-      response = await translateTool({...request, snapshotRoot, module});
-    }
-    await new Promise((resolve, reject) => {
-      process.stdout.write(JSON.stringify(response) + "\n", (error) => error ? reject(error) : resolve());
-    });
-  }
-}
-
-
 async function formatRequest(request, formatMRunOutput) {
   switch (request.operation) {
     case "format-output-batch": {
@@ -831,9 +702,6 @@ async function main() {
   if (process.argv[2] === "--format-server") {
     return serveFormatting();
   }
-  if (process.argv[2] === "--translate-server") {
-    return serveTranslations();
-  }
   const request = JSON.parse(await new Promise((resolve, reject) => {
     const chunks = [];
     process.stdin.on("data", (chunk) => chunks.push(chunk));
@@ -863,25 +731,12 @@ async function main() {
       response = {plugins, errors};
       break;
     }
-    case "command-routing": {
-      const {commandRouting} = await import(pathToFileURL(path.join(snapshotRoot, "builtin/rtk.js")).href);
-      response = commandRouting();
-      break;
-    }
-    case "rewrite-command": {
-      const {rewriteCommand} = await import(pathToFileURL(path.join(snapshotRoot, "builtin/rtk.js")).href);
-      response = rewriteCommand(validateArguments(request.arguments));
-      break;
-    }
     case "format-output-batch":
     case "format-output": {
       const {formatMRunOutput} = await import(pathToFileURL(path.join(snapshotRoot, "builtin/mrun.js")).href);
       response = await formatRequest(request, formatMRunOutput);
       break;
     }
-    case "translate":
-      response = await translateTool(request);
-      break;
     case "execute":
       response = await executeTool(request);
       break;

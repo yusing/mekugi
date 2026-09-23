@@ -1,7 +1,6 @@
 package router
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -16,46 +15,6 @@ import (
 
 	"github.com/coder/websocket"
 )
-
-func TestDownstreamEOFDoesNotBecomeIncompletePatchFailure(t *testing.T) {
-	for _, stop := range []string{"before_input_done", "after_input_done"} {
-		t.Run(stop, func(t *testing.T) {
-			calls := 0
-			transform, _, _, _ := newMekugiTestTransform(t)
-			added := testMekugiItem()
-			added["status"], added["input"] = "in_progress", ""
-			events := [][]byte{mustTestJSON(t, map[string]any{
-				"type": "response.output_item.added", "item": added,
-			})}
-			if stop == "after_input_done" {
-				events = append(events, mustTestJSON(t, map[string]any{
-					"type": "response.custom_tool_call_input.done", "item_id": "item-H", "input": testShellEditSource,
-				}))
-			}
-			disconnected := downstreamWebSocketError(io.EOF)
-			reader := io.MultiReader(strings.NewReader(finalAnswerTestWire(events)), finalAnswerErrorReader{disconnected})
-			var output bytes.Buffer
-			_, err := copySSETransformed(&output, reader, transform, nil)
-			if !errors.Is(err, errDownstreamDisconnected) || errors.Is(err, errResponseTransform) {
-				t.Fatalf("disconnect became translation failure: %v", err)
-			}
-			wantCalls := 0
-			if calls != wantCalls {
-				t.Fatalf("translation count = %d, want %d", calls, wantCalls)
-			}
-			if stop == "before_input_done" && strings.Contains(output.String(), "custom_tool_call") {
-				t.Fatal("unfinished call escaped")
-			}
-			f := &requestFinalization{}
-			f.classifyCopyError(err)
-			issues := NewCriticalErrors()
-			_ = f.finish(t.Context(), err, &webSocketOutput{committed: true}, issues)
-			if f.observation.outcome != requestOutcomeCanceledAfterResponse || len(issues.Pending()) != 0 {
-				t.Fatalf("disconnect produced outcome %v, notices %v", f.observation.outcome, issues.Pending())
-			}
-		})
-	}
-}
 
 func TestDownstreamEOFDuringResponseSniffing(t *testing.T) {
 	disconnected := downstreamWebSocketError(io.EOF)

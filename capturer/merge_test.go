@@ -75,7 +75,7 @@ func TestMergeSessionsRejectsMissingTamperedAndDuplicateEvidence(t *testing.T) {
 	if err := MergeSessions([]string{directory, directory}, &output, &output); err == nil {
 		t.Fatal("duplicate session accepted")
 	}
-	if err := os.WriteFile(filepath.Join(directory, "metrics.json"), []byte(`{"schema":"mekugi.capture.metrics.v5","mode":"mekugi"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, "metrics.json"), []byte(`{"schema":"mekugi.capture.metrics.v6","mode":"mekugi"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := MergeSessions([]string{directory}, &output, &output); err == nil {

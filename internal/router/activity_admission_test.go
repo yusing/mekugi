@@ -26,15 +26,15 @@ func TestFailedPreparationDoesNotChangeActivityIdentity(t *testing.T) {
 	child, _ := prepareActivityTest(t, proxy, "child-session", "c", "r", "/root/child", nil)
 	child.Close()
 	root.drainActivity()
-	request, err := parseResponsesRequest([]byte(`{"model":"gpt-test","input":[],"tools":[{"type":"function","name":"exec_command"}]}`))
+	request, err := parseResponsesRequest([]byte(`{"model":"gpt-test","input":[],"tools":[{"type":"function","name":"apply_patch"}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = proxy.prepareRequest(t.Context(), &request, "bad-session", "c", codexTurnMetadata{
 		RequestKind: "turn", ThreadID: "c", ParentThreadID: "other-root", AgentName: "/root/other", SubagentKind: "thread_spawn",
 	}, true)
-	if err == nil || !strings.Contains(err.Error(), "missing_apply_patch") {
-		t.Fatal("expected unsupported catalog", err)
+	if err == nil || !strings.Contains(err.Error(), "Native apply_patch must be a custom tool") {
+		t.Fatal("expected invalid catalog", err)
 	}
 	next, _ := prepareActivityTest(t, proxy, "next-session", "c", "r", "/root/child", nil)
 	next.collectProviderCommentary(assistantCommentaryMessage("progress", "Still working."))
@@ -147,6 +147,9 @@ func TestInitiallyAmbiguousShellActivityCannotAcquireAncestry(t *testing.T) {
 			}, true)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if child == nil {
+				return // Invalid auxiliary identity cannot acquire a runtime capability.
 			}
 			t.Cleanup(child.Close)
 			token := proxy.commentary.subscribeThread(child.historySessionID, "c", "/root/child")

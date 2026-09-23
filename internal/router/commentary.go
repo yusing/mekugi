@@ -222,16 +222,8 @@ func (t *mekugiResponseTransform) transformStructuredCommentary(item map[string]
 	if err != nil {
 		return nil, err
 	}
-	policy, waits := t.waitPolicies.direct[functionToolKey(jsonString(item, "namespace"), jsonString(item, "name"))]
 	if !matched {
-		if !waits || jsonString(item, "type") != "function_call" {
-			return nil, nil
-		}
-		original := jsonString(item, "arguments")
-		extracted = structuredCommentary{originalArguments: original, arguments: original}
-	}
-	if waits {
-		extracted.arguments = policy.rewrite(jsonString(item, "name"), extracted.arguments)
+		return nil, nil
 	}
 	callID := jsonString(item, "call_id")
 	if callID == "" {

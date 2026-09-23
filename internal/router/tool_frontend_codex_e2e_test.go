@@ -21,12 +21,38 @@ import (
 
 const toolFrontendCodexWorkerEnvironment = "MEKUGI_TOOL_FRONTEND_CODEX_WORKER"
 
+func setCodexFrontendLoginEnvironment(t *testing.T, directory string) {
+	t.Helper()
+	quote := "'" + strings.ReplaceAll(directory, "'", "'\\''") + "'"
+	startup := filepath.Join(t.TempDir(), "bash-env")
+	if err := os.WriteFile(startup, []byte("PATH="+quote+":\"$PATH\"; export PATH\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("BASH_ENV", startup)
+}
+
+const stdinToolPluginDeclaration = `import { readFileSync } from "node:fs";
+export default {
+  apiVersion: "mekugi-tool-plugin/v1",
+  id: "frontend.stdin",
+  tools: [{
+    specification: {type: "custom", name: "stdin_tool", description: "stdin fixture"},
+    parse(input) { return input; },
+    argv(input) { return [input]; },
+    execute(argv, context) {
+      const input = context.stdinFD === null ? "" : readFileSync(context.stdinFD, "utf8").trimEnd();
+      return {stdout: [process.cwd(), process.env.MEKUGI_PLUGIN_TEST, ...argv, input].join("|"), stderr: "", exitCode: 0};
+    }
+  }]
+};`
+
 // The registry pins this test executable. In the worker child, enter the same
 // authenticated dispatch path as the real mekugi process before testing parses
 // the configured tool's argv.
 func init() {
 	if os.Getenv(toolFrontendCodexWorkerEnvironment) == "1" && filepath.Base(os.Args[0]) == "stdin_tool" {
-		if handled, code := RunToolPluginWorker(
+		if handled, code := RunOwnedToolPluginWorker(
 			context.Background(), os.Args[0], os.Args[1:], os.Stdin, os.Stdout, os.Stderr,
 		); handled {
 			os.Exit(code)
@@ -67,7 +93,7 @@ func (p *toolFrontendCodexProvider) forwardExecution(
 		if program == "" {
 			program = `const result = await tools.exec_command({"cmd":` +
 				string(mustMarshalJSON("printf 'stdin is not worker JSON\\n' | stdin_tool one 'two words'")) +
-				`,"workdir":` + string(mustMarshalJSON(p.workspace)) + `,"login":false});
+				`,"workdir":` + string(mustMarshalJSON(p.workspace)) + `});
 text(JSON.stringify({output: result.output, exit_code: result.exit_code}));`
 		}
 		item = map[string]any{
@@ -146,7 +172,23 @@ func TestConfiguredToolFrontendNativeCodexE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal("installed Codex is required for the frontend acceptance gate")
 	}
-	registry, _ := newToolPluginTestRegistryWithDeclaration(t, stdinToolPluginDeclaration)
+	dataDirectory := t.TempDir()
+	pluginDirectory := filepath.Join(dataDirectory, "plugins")
+	if err := os.Mkdir(pluginDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDirectory, "stdin.mjs"), []byte(stdinToolPluginDeclaration), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	if err := registry.installFrontends(); err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +207,7 @@ func TestConfiguredToolFrontendNativeCodexE2E(t *testing.T) {
 
 	t.Setenv("CODEX_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("PATH", filepath.Dir(frontend)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	setCodexFrontendLoginEnvironment(t, filepath.Dir(frontend))
 	t.Setenv("MEKUGI_PLUGIN_TEST", "inherited")
 	t.Setenv(toolFrontendCodexWorkerEnvironment, "1")
 	config := `model_providers.frontend_fixture={name="frontend_fixture",base_url=` +
@@ -173,7 +215,7 @@ func TestConfiguredToolFrontendNativeCodexE2E(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, codex,
-		"-c", config, "-c", `model_provider="frontend_fixture"`,
+		"-c", config, "-c", `model_provider="frontend_fixture"`, "-c", "features.plugins=false",
 		"--model", "gpt-6-astra", "--sandbox", "danger-full-access", "--ask-for-approval", "never",
 		"exec", "--ignore-user-config", "--skip-git-repo-check", "--json", "--color", "never",
 		"-C", workspace, "Exercise the configured executable frontend fixture.",
@@ -219,7 +261,7 @@ func TestMRunNativeCodexYieldAndWriteStdinE2E(t *testing.T) {
 	}
 	commandText := `mrun --max-tokens 100 -- sh -c 'printf ready > ready; IFS= read -r value; printf "continued:%s\n" "$value"'`
 	program := `const started = await tools.exec_command({"cmd":` + string(mustMarshalJSON(commandText)) +
-		`,"workdir":` + string(mustMarshalJSON(workspace)) + `,"login":false,"tty":true,"yield_time_ms":250});
+		`,"workdir":` + string(mustMarshalJSON(workspace)) + `,"tty":true,"yield_time_ms":250});
 if (typeof started.session_id !== "number") throw new Error("mrun did not yield a host session");
 const completed = await tools.write_stdin({"session_id":started.session_id,"chars":"codex-input\n","yield_time_ms":30000,"max_output_tokens":1000});
 text(JSON.stringify({started, completed}));`
@@ -234,14 +276,14 @@ text(JSON.stringify({started, completed}));`
 
 	t.Setenv("CODEX_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("PATH", filepath.Dir(frontend)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	setCodexFrontendLoginEnvironment(t, filepath.Dir(frontend))
 	t.Setenv(routerTestWorkerEnvironment, "1")
 	config := `model_providers.frontend_fixture={name="frontend_fixture",base_url=` +
 		strconv.Quote(server.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, codex,
-		"-c", config, "-c", `model_provider="frontend_fixture"`,
+		"-c", config, "-c", `model_provider="frontend_fixture"`, "-c", "features.plugins=false",
 		"--model", "gpt-6-astra", "--sandbox", "danger-full-access", "--ask-for-approval", "never",
 		"exec", "--ignore-user-config", "--skip-git-repo-check", "--json", "--color", "never",
 		"-C", workspace, "Exercise mrun yielding and stock write_stdin continuation.",

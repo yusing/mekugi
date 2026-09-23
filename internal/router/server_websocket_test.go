@@ -432,8 +432,10 @@ func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
 				if len(request["generate"]) != 0 {
 					t.Error("warmup generate setting inherited")
 				}
-				if !strings.Contains(string(request["tools"]), "shell") {
-					t.Errorf("ordinary turn tools were not rewritten: %s", request["tools"])
+				if !strings.Contains(string(request["tools"]), "apply_patch") ||
+					!strings.Contains(string(request["tools"]), "exec_command") ||
+					strings.Contains(string(request["tools"]), `"shell"`) {
+					t.Errorf("ordinary turn tools were not preserved: %s", request["tools"])
 				}
 				wantParent := "warm"
 				wantInput := "task"
@@ -520,7 +522,6 @@ func TestResponsesWebSocketLocalErrorStatus(t *testing.T) {
 		{name: "invalid JSON", body: `{`, status: "400"},
 		{name: "invalid input", body: `{"type":"response.create","model":"gpt-test","input":42}`, status: "400"},
 		{name: "unknown parent", body: `{"type":"response.create","model":"gpt-test","previous_response_id":"missing"}`, status: "400"},
-		{name: "unsupported tools", body: `{"type":"response.create","model":"gpt-test","input":[],"tools":[{"type":"function","name":"exec_command"}]}`, metadata: "turn", status: "400"},
 		{name: "execution failure", body: `{"type":"response.create","model":"gpt-test","input":[]}`, metadata: "invalid", status: "502"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

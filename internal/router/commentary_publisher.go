@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -40,8 +39,6 @@ type publishedCommentary struct {
 
 type commentaryRoute struct {
 	journalQuestion string
-	shellCall       bool
-	finishReceipt   string
 	originThread    string
 	author          string
 	threadID        string
@@ -64,8 +61,6 @@ type threadCommentaryProvenance struct {
 }
 
 type commentaryBroker struct {
-	previewPublisher func(string, string, string, liveDiffPreview)
-	editPublisher    func(context.Context, string, string, string) error
 	journalPublisher func(context.Context, string, string, string, []journalMutation) ([]string, error)
 	journalLister    func(context.Context, string, string, string) ([]journalItem, error)
 	notice           func(string, string)
@@ -303,10 +298,7 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	}
 	request.Body = http.MaxBytesReader(writer, request.Body, maxJournalFlushBytes*6)
 	var publication struct {
-		Journal   json.RawMessage  `json:"journal"`
-		EditCall  string           `json:"edit_call"`
-		Preview   *liveDiffPreview `json:"preview"`
-		Workspace string           `json:"workspace"`
+		Journal json.RawMessage `json:"journal"`
 		// ID is a publication receipt, never a journal operation operand.
 		ReceiptID string `json:"id"`
 		Complete  bool   `json:"complete"`
@@ -319,7 +311,7 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		http.Error(writer, "invalid commentary publication", http.StatusBadRequest)
 		return
 	}
-	if len(publication.Journal) == 0 && publication.Complete && publication.Op == "" && publication.ReceiptID == "" && publication.Agent == "" && publication.EditCall == "" && publication.Workspace == "" && publication.Preview == nil {
+	if len(publication.Journal) == 0 && publication.Complete && publication.Op == "" && publication.ReceiptID == "" && publication.Agent == "" {
 		if !b.publish(token, "", true) {
 			http.Error(writer, "unauthorized", http.StatusUnauthorized)
 			return
@@ -330,51 +322,15 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	b.mu.Lock()
 	b.cleanupExpiredLocked(time.Now())
 	route := b.routes[token]
-	var session, thread, author, question, callID, finishReceipt string
-	var shellCall bool
+	var session, thread, question, callID string
 	if route != nil {
-		shellCall = route.shellCall
-		question, callID, finishReceipt = route.journalQuestion, route.callID, route.finishReceipt
-		session, thread, author = route.sessionID, route.originThread, route.author
+		question, callID = route.journalQuestion, route.callID
+		session, thread = route.sessionID, route.originThread
 		route.expires = time.Now().Add(commentaryRouteTTL)
 	}
 	b.mu.Unlock()
 	if route == nil {
 		http.Error(writer, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	if publication.Preview != nil {
-		preview := *publication.Preview
-		workspace, _, selected := strings.Cut(session, "\x00")
-		if !selected || workspace == "" || thread == "" || preview.ID == "" ||
-			len(preview.ID) > 256 || !preview.Evaluated ||
-			len(mustMarshalJSON(preview)) > 48<<10 ||
-			publication.EditCall != "" || publication.Workspace != "" ||
-			publication.Op != "" || publication.Complete || publication.ReceiptID != "" ||
-			publication.Agent != "" || len(publication.Journal) != 0 {
-			http.Error(writer, "invalid pre-write preview", http.StatusBadRequest)
-			return
-		}
-		if b.previewPublisher != nil {
-			b.previewPublisher(workspace, thread, author, preview)
-		}
-		writer.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	if publication.EditCall != "" || publication.Workspace != "" {
-		if publication.EditCall == "" || publication.Workspace == "" || publication.Op != "" ||
-			publication.Complete || publication.ReceiptID != "" || publication.Agent != "" ||
-			len(publication.Journal) != 0 || b.editPublisher == nil {
-			http.Error(writer, "invalid edit receipt", http.StatusBadRequest)
-			return
-		}
-		if err := b.editPublisher(request.Context(), publication.Workspace, thread, publication.EditCall); err != nil {
-			http.Error(writer, "unavailable edit receipt", http.StatusBadRequest)
-			return
-		}
-		writer.WriteHeader(http.StatusNoContent)
 		return
 	}
 
@@ -395,12 +351,6 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 			http.Error(writer, "journal lister unavailable", http.StatusBadRequest)
 			return
 		}
-	case "finish":
-		if publication.Complete || publication.Agent != "" || finishReceipt == "" {
-			http.Error(writer, "journal finish requires a turn-bound shell invocation", http.StatusBadRequest)
-			return
-		}
-		publication.ReceiptID = finishReceipt
 	default:
 		http.Error(writer, "unknown journal operation", http.StatusBadRequest)
 		return
@@ -418,7 +368,7 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		}
 	}
 	ids := []string{}
-	if len(mutations) != 0 || publication.Op == "finish" {
+	if len(mutations) != 0 {
 		if b.journalPublisher == nil {
 			http.Error(writer, "journal publisher unavailable", http.StatusBadRequest)
 			return
@@ -428,12 +378,8 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 			http.Error(writer, "journal mutation rejected: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		source := "code_mode"
-		if callID == "" || shellCall {
-			source = "shell"
-		}
 		trace := featureUsageTrace{debug: b.debug, threadID: thread}
-		trace.record("journal", source, "mutation", "accepted", callID, "")
+		trace.record("journal", "code_mode", "mutation", "accepted", callID, "")
 	}
 
 	switch publication.Op {
@@ -455,10 +401,6 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		encoder := json.NewEncoder(writer)
 		encoder.SetEscapeHTML(false) // Match the journal store's protocol encoding.
 		_ = encoder.Encode(map[string]any{"ok": true, "items": listed})
-		return
-	case "finish":
-		writer.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(writer).Encode(map[string]any{"ok": true, "finish_requested": true, "journal_ids": ids})
 		return
 	}
 	writer.Header().Set("Content-Type", "application/json")
@@ -525,13 +467,7 @@ func (b *commentaryBroker) cancel(token string) {
 	b.mu.Unlock()
 }
 
-type shellCommentarySink interface {
-	RequestJournal(context.Context, shellJournalCommand) (shellJournalResult, error)
-	Publish(context.Context, string) error
-	Complete(context.Context) error
-}
-
-type httpShellCommentarySink struct {
+type httpCommentarySink struct {
 	endpoint string
 	token    string
 	client   *http.Client
@@ -545,7 +481,7 @@ func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []st
 	if err != nil {
 		return true, err
 	}
-	sink := &httpShellCommentarySink{endpoint: arguments[1], token: arguments[2], client: commentaryHTTPClient}
+	sink := &httpCommentarySink{endpoint: arguments[1], token: arguments[2], client: commentaryHTTPClient}
 	result, err := sink.send(ctx, map[string]any{"journal": json.RawMessage(text), "id": rand.Text()})
 	if err != nil {
 		return true, err
@@ -554,79 +490,17 @@ func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []st
 	return true, err
 }
 
-func (s *httpShellCommentarySink) PublishEdit(ctx context.Context, workspace, callID string) error {
-	_, err := s.send(ctx, map[string]any{"edit_call": callID, "workspace": workspace})
-	return err
-}
-
-func (s *httpShellCommentarySink) Publish(ctx context.Context, text string) error {
+func (s *httpCommentarySink) Publish(ctx context.Context, text string) error {
 	_, err := s.send(ctx, map[string]any{"journal": json.RawMessage(text), "id": rand.Text()})
 	return err
 }
 
-func (s *httpShellCommentarySink) RequestJournal(ctx context.Context, command shellJournalCommand) (shellJournalResult, error) {
-	publication := make(map[string]any)
-	if command.Op != "list" && command.Op != "finish" {
-		publication["id"] = rand.Text()
-	}
-	switch command.Op {
-	case "list":
-		publication["op"] = "list"
-		if command.Agent != "" {
-			publication["agent"] = command.Agent
-		}
-	case "finish":
-		if len(command.Batch) != 0 {
-			publication["journal"] = command.Batch
-		}
-		publication["op"] = "finish"
-	case "batch":
-		publication["op"] = "batch"
-		publication["journal"] = command.Batch
-	case "add", "edit", "delete":
-		if command.Mutation == nil {
-			return shellJournalResult{}, errors.New("journal mutation is missing")
-		}
-		publication["journal"] = []journalMutation{*command.Mutation}
-	default:
-		return shellJournalResult{}, errors.New("unknown journal operation")
-	}
-	resultBytes, err := s.send(ctx, publication)
-	if err != nil {
-		return shellJournalResult{}, err
-	}
-	var response struct {
-		OK              bool            `json:"ok"`
-		Items           json.RawMessage `json:"items"`
-		JournalIDs      []string        `json:"journal_ids"`
-		FinishRequested bool            `json:"finish_requested"`
-	}
-	if err := json.Unmarshal(resultBytes, &response); err != nil || !response.OK {
-		return shellJournalResult{}, errors.New("journal publisher returned an invalid result")
-	}
-	result := shellJournalResult{FinishRequested: response.FinishRequested}
-	if command.Op == "list" {
-		if err := json.Unmarshal(response.Items, &result.Items); err != nil {
-			return shellJournalResult{}, errors.New("journal publisher returned invalid list items")
-		}
-		return result, nil
-	}
-	if len(response.Items) != 0 {
-		if err := json.Unmarshal(response.Items, &result.IDs); err != nil {
-			return shellJournalResult{}, errors.New("journal publisher returned invalid journal IDs")
-		}
-	} else {
-		result.IDs = response.JournalIDs
-	}
-	return result, nil
-}
-
-func (s *httpShellCommentarySink) Complete(ctx context.Context) error {
+func (s *httpCommentarySink) Complete(ctx context.Context) error {
 	_, err := s.send(ctx, map[string]any{"complete": true})
 	return err
 }
 
-func (s *httpShellCommentarySink) send(ctx context.Context, publication map[string]any) ([]byte, error) {
+func (s *httpCommentarySink) send(ctx context.Context, publication map[string]any) ([]byte, error) {
 	body, err := json.Marshal(publication)
 	if err != nil {
 		return nil, err

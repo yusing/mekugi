@@ -27,14 +27,10 @@ including single- and double-quoted literals and ECMAScript escapes and line con
 Recovered invalid module strings MUST NOT contribute fabricated names.
 Markdown includes only ATX headings outside fences and top-level scalar keys parsed from a closed
 initial `---` YAML frontmatter block. JSON includes every recognized value as a depth-first RFC
-6901 pointer and value type, including the empty root pointer. Each outline entry's `line` and
-`line_end` are `REQ-READ-001` `LINE:HASH` identities for the inclusive span: the positive one-based
-logical line and the lowercase four-digit hash of that complete logical line, excluding its
-terminator. A single-line span repeats the same identity in both fields. Repeated boundaries within an
-inspection MUST reuse the verified identity of that immutable source line rather than rehashing
-the complete line for every entry. Those identities are
-copyable HPATCH row or `ROW..ROW` range targets. Results contain no raw
-excerpts, bodies, fields, comments, frontmatter values, JSON scalar values, or row `TEXT`.
+6901 pointer and value type, including the empty root pointer. Each outline entry's `line` and `line_end` are positive one-based numeric
+logical lines for the inclusive span. A single-line span repeats that number.
+Results contain no raw excerpts, bodies, fields, comments, frontmatter values,
+JSON scalar values, or source text.
 
 The complete successful stdout, including its final LF, is at most 65,536 UTF-8 bytes and
 uses the shared [reader token ceiling](read.md). Options may precede or follow the path.
@@ -60,7 +56,7 @@ installs and advertises none of these surfaces.
 Acceptance:
 
 1. Each default language projection returns only its declared navigation identifiers and exact
-   inclusive `LINE:HASH` span identities, while malformed recoverable input remains a successful
+   inclusive numeric line spans, while malformed recoverable input remains a successful
    partial result with `parse_complete: false`.
 2. Default Markdown inspection excludes fences, Setext headings, nested YAML frontmatter keys, and all frontmatter
    values while preserving source order for repeated top-level scalar keys; JSON escapes `~` and

@@ -20,12 +20,12 @@ func TestJournalPublisherPreservesUnderlyingError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(broker.serveHTTP))
 	defer server.Close()
 	token := broker.subscribeThread("/w\x00thread", "thread", "")
-	sink := &httpShellCommentarySink{endpoint: server.URL, token: token, client: server.Client()}
-	for _, command := range []shellJournalCommand{
-		{Op: "add", Mutation: &journalMutation{Op: "add", Text: new("milestone")}},
-		{Op: "list"},
+	sink := &httpCommentarySink{endpoint: server.URL, token: token, client: server.Client()}
+	for _, publication := range []map[string]any{
+		{"id": "fixture-add", "journal": []journalMutation{{Op: "add", Text: new("milestone")}}},
+		{"op": "list"},
 	} {
-		_, err := sink.RequestJournal(t.Context(), command)
+		_, err := sink.send(t.Context(), publication)
 		if err == nil || !strings.Contains(err.Error(), "HTTP 400") ||
 			!strings.Contains(err.Error(), "delete obsolete items") && !strings.Contains(err.Error(), "retry initialization") {
 			t.Fatalf("underlying publisher error lost: %v", err)
