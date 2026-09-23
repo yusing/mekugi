@@ -75,7 +75,7 @@ func (t *mekugiResponseTransform) lowerCodeModeCommentary(callID, input string) 
 			end := childCall.end - call.argumentStart
 			argument = argument[:start] + replacements[child] + argument[end:]
 		}
-		command := workerCommand("mcommentary", []string{
+		command := workerCommand("mjournal", []string{
 			commentaryOnceArgument,
 			t.proxy.commentaryEndpoint,
 			token,

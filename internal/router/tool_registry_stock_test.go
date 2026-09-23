@@ -12,7 +12,7 @@ import (
 
 func TestToolRegistryExposesOnlyExecutableFrontends(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
-	want := []string{"inspect_file", "mcat", "mchanges", "mcommentary", "mread", "mrun", "msymbol"}
+	want := []string{"inspect_file", "mcat", "mchanges", "mjournal", "mread", "mrun", "msymbol"}
 	var got []string
 	for name := range registry.frontends {
 		got = append(got, name)

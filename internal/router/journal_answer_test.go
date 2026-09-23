@@ -130,9 +130,12 @@ func TestCodeModeJournalPinsQuestionAtLowering(t *testing.T) {
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	proxy.commentaryEndpoint = "http://localhost/internal/commentary"
 	transform.journalQuestion = "Original question?"
-	_, lowered, err := transform.lowerCodeModeCommentary("call", `await journal({op: "add", text: "Answer", answer: true})`)
+	carrier, lowered, err := transform.lowerCodeModeCommentary("call", `await journal({op: "add", text: "Answer", answer: true})`)
 	if err != nil || !lowered {
 		t.Fatalf("lower: %v %v", lowered, err)
+	}
+	if !strings.Contains(carrier, "mjournal --journal-once") {
+		t.Fatalf("Code Mode journal used the wrong frontend: %s", carrier)
 	}
 	transform.journalQuestion = "Later question?"
 	proxy.commentary.journalPublisher = func(_ context.Context, _, _, _ string, mutations []journalMutation) ([]string, error) {

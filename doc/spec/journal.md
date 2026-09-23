@@ -149,7 +149,7 @@ A single mutation returns its item ID; a mutation array returns the ordered item
 Nested calls can use an added item's returned ID in a subsequent edit. Publication failures
 throw rather than returning an execution envelope as a journal ID.
 
-Code Mode journal mutations are lowered to an authenticated `mcommentary`
+Code Mode journal mutations are lowered to an authenticated `mjournal`
 frontend invoked through stock `tools.exec_command`. The frontend publishes
 only the requested mutation through a call-scoped broker capability; it does
 not run the surrounding program or replace the stock result. Programmatic

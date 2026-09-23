@@ -183,7 +183,7 @@ func runAuthenticatedToolWorker(
 	var execution toolplugin.ExecutionOutput
 	if contribution.Builtin {
 		switch contribution.Name {
-		case "mcommentary":
+		case "mjournal":
 			handled, publishErr := publishCommentaryOnce(ctx, stdout, args)
 			if publishErr != nil {
 				return fail(publishErr)
