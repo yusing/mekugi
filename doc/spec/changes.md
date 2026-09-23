@@ -67,7 +67,10 @@ first observed editing or execution call. The stream view shows concurrent
 main-agent and child calls, and can display provisional `apply_patch` and
 stock `cat` heredoc diffs before completion. Interpreter programs can be
 shown in their own language rather than as a shell wrapper. A preview does
-not claim that Codex ran or accepted an edit.
+not claim that Codex ran or accepted an edit. A Code Mode patch held in an
+immutable top-level literal binding is rendered as the patch preview; its
+escaped JavaScript source is not exposed as a streaming script while the
+patch is incomplete.
 
 The saved diff view uses completed observed patch outcomes. It includes
 changes from children that are visible to the parent. The viewer switches

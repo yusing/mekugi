@@ -157,6 +157,7 @@ func (worker *liveDiffPreviewWorker) stop() {
 func (w *liveDiffPreviewWorker) run() {
 	defer close(w.done)
 	editRecognized := false
+	codePatchHidden := false
 	for {
 		select {
 		case <-w.ctx.Done():
@@ -216,6 +217,13 @@ func (w *liveDiffPreviewWorker) run() {
 						w.mu.Unlock()
 						continue
 					}
+				}
+				if strings.Contains(input, "*** Begin Patch") || stockPatchLiteralPresent(input) {
+					if !codePatchHidden {
+						w.broker.publishPreview(liveDiffPreview{ID: preview.ID}, true)
+						codePatchHidden = true
+					}
+					continue
 				}
 				preview.Input, preview.Syntax, preview.Status = input, []liveDiffSourceSpan{{Path: "preview.js"}}, "STREAMING SCRIPT"
 				w.mu.Lock()

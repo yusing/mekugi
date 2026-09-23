@@ -192,8 +192,27 @@ func TestCodeModeLiteralPatchObservationInOrdinaryJavaScript(t *testing.T) {
 	if len(observed) != 1 || observed[0].Input != patch || len(observed[0].Files) != 1 {
 		t.Fatalf("ordinary Code Mode patch observation = %+v", observed)
 	}
-	if got := stockLiteralPatchInputs("const patch = " + string(mustMarshalJSON(patch)) + "; await tools.apply_patch(patch);"); len(got) != 0 {
-		t.Fatalf("dynamic argument was treated as literal: %+v", got)
+	if got := stockLiteralPatchInputs("const patch = " + string(mustMarshalJSON(patch)) + "; await tools.apply_patch(patch);"); len(got) != 1 || got[0] != patch {
+		t.Fatalf("immutable literal binding was not recognized: %+v", got)
+	}
+	for _, static := range []string{
+		"const\npatch = " + string(mustMarshalJSON(patch)) + "; await tools.apply_patch(patch);",
+		"const patch = " + string(mustMarshalJSON(patch)) + ", other = 1; await tools.apply_patch(patch);",
+		"const patch = " + string(mustMarshalJSON(patch)) + "; const result = await tools.apply_patch(patch); text(result);",
+	} {
+		if got := stockLiteralPatchInputs(static); len(got) != 1 || got[0] != patch {
+			t.Fatalf("immutable literal binding variant was not recognized: %+v", got)
+		}
+	}
+	for _, dynamic := range []string{
+		"let patch = " + string(mustMarshalJSON(patch)) + "; await tools.apply_patch(patch);",
+		"const patch = getPatch(); await tools.apply_patch(patch);",
+		"const patch = " + string(mustMarshalJSON(patch)) + "; function run(patch) { return tools.apply_patch(patch); }",
+		"const patch = " + string(mustMarshalJSON(patch)) + "; (() => tools.apply_patch(patch))();",
+	} {
+		if got := stockLiteralPatchInputs(dynamic); len(got) != 0 {
+			t.Fatalf("dynamic argument was treated as literal: %+v", got)
+		}
 	}
 }
 
@@ -218,7 +237,7 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 			patch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-old\n+new\n*** End Patch\n"
 			call := map[string]any{
 				"type": "custom_tool_call", "id": "code-item", "call_id": "code-call",
-				"name": "exec", "input": "await tools.apply_patch(" + string(mustMarshalJSON(patch)) + ");", "status": "completed",
+				"name": "exec", "input": "const patch = " + string(mustMarshalJSON(patch)) + "; text(await tools.apply_patch(patch));", "status": "completed",
 			}
 			if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{
 				"id": "response", "status": "completed", "output": []any{call},
@@ -272,6 +291,10 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 			if history.Applied || history.AlreadySatisfied || history.TranslationError != "" ||
 				(len(history.ReviewFiles) != 0) != test.change {
 				t.Fatalf("completed patch = %+v", history)
+			}
+			listed, err := proxy.replayStore.readChanges(transform.ctx, changeReadOptions{workspace: workspace, view: "list"})
+			if err != nil || listed != history.ChangeID+"\n" {
+				t.Fatalf("mchanges list = %q, %v; want %q", listed, err, history.ChangeID)
 			}
 		})
 	}

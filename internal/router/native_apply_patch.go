@@ -197,7 +197,8 @@ func nativePatchesInCall(name, input, workspace string) []nativePatchObservation
 
 // Inspect the entire Code Mode syntax tree rather than only transparent
 // one-call wrappers. This recognizes literal patch arguments in ordinary JS
-// sequencing and Promise batches without evaluating JavaScript or taking over
+// sequencing and Promise batches, plus immutable top-level literal bindings
+// used by a top-level expression. It never evaluates JavaScript or takes over
 // the host tool. Dynamic arguments have no trustworthy pre-edit baseline.
 func stockLiteralPatchInputs(source string) []string {
 	if len(source) > maxMekugiScriptBytes {
@@ -218,26 +219,134 @@ func stockLiteralPatchInputs(source string) []string {
 	if root.HasError() {
 		return nil
 	}
+	bindings := make(map[string]string)
+	for index := range root.NamedChildCount() {
+		statement := root.NamedChild(uint(index))
+		if statement.Kind() != "lexical_declaration" || statement.ChildCount() == 0 ||
+			statement.Child(0).Kind() != "const" {
+			continue
+		}
+		for childIndex := range statement.NamedChildCount() {
+			declaration := statement.NamedChild(uint(childIndex))
+			if declaration.Kind() != "variable_declarator" {
+				continue
+			}
+			name, value := declaration.ChildByFieldName("name"), declaration.ChildByFieldName("value")
+			if name == nil || name.Kind() != "identifier" {
+				continue
+			}
+			literal, ok := toolActivityStaticJavaScriptValue(value, bytes)
+			text, ok := literal.(string)
+			if ok {
+				bindings[name.Utf8Text(bytes)] = text
+			}
+		}
+	}
 	var patches []string
-	stack := []*sitter.Node{root}
-	for len(stack) != 0 {
-		node := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		if args, ok := toolActivityCallArguments(node, bytes, "tools", applyPatchToolName); ok && len(args) == 1 {
-			if value, ok := toolActivityStaticJavaScriptValue(args[0], bytes); ok {
-				if patch, ok := value.(string); ok {
-					patches = append(patches, patch)
-					if len(patches) > 32 {
-						return nil
+	for rootIndex := range root.NamedChildCount() {
+		rootStatement := root.NamedChild(uint(rootIndex))
+		allowBinding := rootStatement.Kind() == "expression_statement" ||
+			rootStatement.Kind() == "lexical_declaration" || rootStatement.Kind() == "variable_declaration"
+		type visit struct {
+			node         *sitter.Node
+			allowBinding bool
+		}
+		stack := []visit{{node: rootStatement, allowBinding: allowBinding}}
+		for len(stack) != 0 {
+			current := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			node := current.node
+			if node != rootStatement {
+				switch node.Kind() {
+				case "arrow_function", "function_expression", "function_declaration",
+					"generator_function", "generator_function_declaration", "method_definition", "class":
+					current.allowBinding = false
+				}
+			}
+			if args, ok := toolActivityCallArguments(node, bytes, "tools", applyPatchToolName); ok && len(args) == 1 {
+				if value, ok := toolActivityStaticJavaScriptValue(args[0], bytes); ok {
+					if patch, ok := value.(string); ok {
+						patches = append(patches, patch)
+					}
+				} else if current.allowBinding && args[0].Kind() == "identifier" {
+					if patch, ok := bindings[args[0].Utf8Text(bytes)]; ok {
+						patches = append(patches, patch)
 					}
 				}
 			}
-		}
-		for index := int(node.NamedChildCount()) - 1; index >= 0; index-- {
-			stack = append(stack, node.NamedChild(uint(index)))
+			if len(patches) > 32 {
+				return nil
+			}
+			for index := int(node.NamedChildCount()) - 1; index >= 0; index-- {
+				stack = append(stack, visit{node: node.NamedChild(uint(index)), allowBinding: current.allowBinding})
+			}
 		}
 	}
 	return patches
+}
+
+// Detect a JavaScript string fragment containing a patch envelope even while
+// the string or surrounding streamed program is incomplete. This is
+// display-only suppression: evidence capture still requires a complete, valid
+// program.
+func stockPatchLiteralPresent(source string) bool {
+	if len(source) > maxMekugiScriptBytes {
+		return false
+	}
+	for offset := 0; offset < len(source); {
+		if source[offset] != '\'' && source[offset] != '"' {
+			offset++
+			continue
+		}
+		value, consumed := toolActivityJavaScriptStringFragment(source[offset:])
+		if strings.Contains(value, "*** Begin Patch") {
+			return true
+		}
+		offset += max(1, consumed)
+	}
+	return false
+}
+
+func toolActivityJavaScriptStringFragment(source string) (string, int) {
+	quote := source[0]
+	var value strings.Builder
+	for offset := 1; offset < len(source); {
+		if source[offset] == quote {
+			return value.String(), offset + 1
+		}
+		if source[offset] == '\r' || source[offset] == '\n' {
+			return value.String(), offset
+		}
+		if source[offset] == '\\' && offset+1 < len(source) && strings.ContainsRune(`'"/\\`, rune(source[offset+1])) {
+			value.WriteByte(source[offset+1])
+			offset += 2
+			continue
+		}
+		char, _, tail, err := strconv.UnquoteChar(source[offset:], quote)
+		if err != nil {
+			// Go and JavaScript accept different escape sets. If this display-only
+			// decoder cannot interpret one, recover at the string's lexical end so
+			// a later patch literal is still inspected.
+			for cursor := offset; cursor < len(source); {
+				if source[cursor] == '\\' {
+					cursor = min(len(source), cursor+2)
+					continue
+				}
+				if source[cursor] == quote {
+					return value.String(), cursor + 1
+				}
+				if source[cursor] == '\r' || source[cursor] == '\n' {
+					return value.String(), cursor
+				}
+				_, size := utf8.DecodeRuneInString(source[cursor:])
+				cursor += max(1, size)
+			}
+			return value.String(), len(source)
+		}
+		value.WriteRune(char)
+		offset = len(source) - len(tail)
+	}
+	return value.String(), len(source)
 }
 
 func stockToolOutput(raw json.RawMessage) (text string, success *bool) {
