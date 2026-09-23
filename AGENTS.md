@@ -121,7 +121,7 @@ For automated live Codex tests, read `CONTEXT-AUTOMATED-TESTS.md`.
 
 ## Where to look
 
-- `README.md`: user facing documentation.
+- `README.md`: user facing documentation. DO NOT ADD AGENT FACING DETAILS.
 - `doc/spec/index.md`: interface requirements and acceptance criteria.
 - `doc/architecture/index.md`: boundary ownership contracts.
 - `internal/router/journal_tool.go`: additive journal and finish guidance projected through the
