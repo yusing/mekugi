@@ -165,9 +165,9 @@ func TestPaneOperationRegressionNativePatchStreamsProvisionalDiff(t *testing.T) 
 	}
 
 	for _, step := range []struct{ fragment, want string }{
-		{"*** Begin Patch", "*** Begin Patch"},
-		{"\n*** Add File: new.txt\n+first line", "*** Begin Patch\n*** Add File: new.txt\n+first line"},
-		{"\n+second line", "*** Begin Patch\n*** Add File: new.txt\n+first line\n+second line"},
+		{"*** Begin Patch", ""},
+		{"\n*** Add File: new.txt\n+first line", "+first line"},
+		{"\n+second line", "+second line"},
 	} {
 		delta := mustTestJSON(t, map[string]any{
 			"type": "response.custom_tool_call_input.delta", "item_id": "patch-item", "delta": step.fragment,
@@ -176,7 +176,10 @@ func TestPaneOperationRegressionNativePatchStreamsProvisionalDiff(t *testing.T) 
 			t.Fatalf("stock patch delta changed: visible=%q err=%v", visible, err)
 		}
 		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-			return preview.Input == step.want
+			if step.want == "" {
+				return preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 0
+			}
+			return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, step.want)
 		})
 		assertProvisionalPatchPreview(t, preview)
 	}
@@ -208,35 +211,32 @@ func TestPaneOperationRegressionCodeModePatchStreamsThroughPTY(t *testing.T) {
 			}
 			worker.appendDelta(opening + "*** Begin Patch")
 			assertProvisionalPatchPreview(t, waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-				return preview.Input == "*** Begin Patch"
+				return preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 0
 			}))
 			assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
-				return strings.Contains(ansi.Strip(frame), "*** Begin Patch")
-			}), "*** Begin Patch")
+				return strings.Contains(ansi.Strip(frame), "STREAMING PREVIEW")
+			}))
 
 			worker.appendDelta(lineBreak + "*** Add File: new.txt" + lineBreak + "+first line")
-			first := "*** Begin Patch\n*** Add File: new.txt\n+first line"
 			assertProvisionalPatchPreview(t, waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-				return preview.Input == first
+				return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+first line")
 			}))
 			assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
 				plain := ansi.Strip(frame)
-				return strings.Contains(plain, "*** Add File: new.txt") && strings.Contains(plain, "+first line")
-			}), "*** Begin Patch", "*** Add File: new.txt", "+first line")
+				return strings.Contains(plain, "new.txt") && strings.Contains(plain, "+first line")
+			}), "new.txt", "+first line")
 
 			worker.appendDelta(lineBreak + "+second line")
-			second := first + "\n+second line"
 			assertProvisionalPatchPreview(t, waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-				return preview.Input == second
+				return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+second line")
 			}))
 			assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
 				return strings.Contains(ansi.Strip(frame), "+second line")
-			}), "*** Begin Patch", "*** Add File: new.txt", "+first line", "+second line")
+			}), "new.txt", "+first line", "+second line")
 			if quote == "template" {
 				worker.appendDelta("\n+Use \\`mcat\\` and \\${literal}\n+after escapes")
-				escaped := second + "\n+Use `mcat` and ${literal}\n+after escapes"
 				assertProvisionalPatchPreview(t, waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-					return preview.Input == escaped
+					return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+after escapes")
 				}))
 				assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
 					return strings.Contains(ansi.Strip(frame), "+after escapes")
@@ -249,7 +249,7 @@ func TestPaneOperationRegressionCodeModePatchStreamsThroughPTY(t *testing.T) {
 
 func assertProvisionalPatchPreview(t *testing.T, preview liveDiffPreview) {
 	t.Helper()
-	if !preview.DiffText || preview.Status != "STREAMING PREVIEW" || preview.Complete {
+	if preview.Status != "STREAMING PREVIEW" || preview.Complete || len(preview.Files) == 0 && !preview.DiffText {
 		t.Fatalf("patch fragment was not displayed as a provisional diff: %+v", preview)
 	}
 }
@@ -268,7 +268,7 @@ func assertCodeModePatchFrame(t *testing.T, frame string, ordered ...string) {
 		}
 		last = position
 	}
-	for _, wrapper := range []string{"const patch", "tools.apply_patch"} {
+	for _, wrapper := range []string{"const patch", "tools.apply_patch", "*** Begin Patch", "*** Add File:"} {
 		if strings.Contains(plain, wrapper) {
 			t.Fatalf("terminal leaked Code Mode wrapper %q: %q", wrapper, plain)
 		}

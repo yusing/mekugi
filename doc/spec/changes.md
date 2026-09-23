@@ -212,6 +212,9 @@ never become durable evidence, and replay does not restart polling.
 Query-based Mercurial scoping and literal `sed`/`perl` substitution prediction are
 outside this delivery. Model-visible command-change notices are also deferred;
 stock result bytes remain unchanged.
+Patch previews show projected source changes with the affected file's language
+highlighting, not the `apply_patch` instruction envelope. If source matching
+cannot establish that projection, the viewer must not fabricate a diff.
 In the live input stream, literal `tools.exec_command` command strings inside
 Code Mode are displayed as Bash while the JavaScript wrapper is still arriving.
 Numbered `# tools.exec_command N` headers separate distinct tool calls; line

@@ -189,6 +189,20 @@ func (worker *liveDiffPreviewWorker) stop() {
 	worker.broker.discardPreview(worker.preview.ID)
 }
 
+func (w *liveDiffPreviewWorker) projectStockPreview(input, workspace string, final bool) (liveDiffPreview, bool) {
+	preview, ok := nativePatchPreview(input)
+	if !ok {
+		return liveDiffPreview{}, false
+	}
+	projectionContext := w.ctx
+	if final {
+		projectionContext = context.WithoutCancel(projectionContext)
+	}
+	ctx, cancel := context.WithTimeout(projectionContext, time.Second)
+	defer cancel()
+	return projectStockPatchPreview(ctx, workspace, preview), true
+}
+
 func (w *liveDiffPreviewWorker) run() {
 	defer close(w.done)
 	defer w.cancel()
@@ -239,7 +253,7 @@ func (w *liveDiffPreviewWorker) run() {
 		shellDisplay := ""
 		shellProvisional := false
 		if w.kind == applyPatchToolName {
-			if projected, ok := nativePatchPreview(input); ok {
+			if projected, ok := w.projectStockPreview(input, preview.Workspace, final); ok {
 				projected.Complete = final
 				projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
 				w.mu.Lock()
@@ -268,7 +282,7 @@ func (w *liveDiffPreviewWorker) run() {
 					patches = append(patches, fragment)
 				}
 				if len(patches) != 0 {
-					if projected, valid := nativePatchPreview(patches[len(patches)-1]); valid {
+					if projected, valid := w.projectStockPreview(patches[len(patches)-1], preview.Workspace, final); valid {
 						projected.Complete = final
 						projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
 						w.mu.Lock()
@@ -327,7 +341,7 @@ func (w *liveDiffPreviewWorker) run() {
 			for _, call := range slices.Backward(calls) {
 				switch jsonString(call, "name") {
 				case applyPatchToolName:
-					if projected, ok := nativePatchPreview(jsonString(call, "input")); ok {
+					if projected, ok := w.projectStockPreview(jsonString(call, "input"), preview.Workspace, final); ok {
 						projected.Complete = final
 						projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
 						w.mu.Lock()
