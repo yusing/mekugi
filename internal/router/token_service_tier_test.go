@@ -18,6 +18,10 @@ func TestTokenCostServiceTiers(t *testing.T) {
 	}{
 		{"gpt-6-astra", "default", 200_000, 1, .1, .5, true},
 		{"gpt-6-astra", "priority", 200_000, 2, .2, 1, true},
+		{"gpt-6-sol", "default", 200_000, .2, .02, .1, true},
+		{"gpt-6-sol", "fast", 200_000, .4, .04, .2, true},
+		{"gpt-6-luna", "default", 200_000, .01, .001, .005, true},
+		{"gpt-6-luna", "fast", 200_000, .02, .002, .01, true},
 		{"openai/gpt-6-astra", "fast", 200_000, 2, .2, 1, true},
 		{"gpt-6-astra", "fast", 272_000, 2, .344, 1, true},
 		{"gpt-6-astra", "fast", 272_001, 4, .688004, 1.5, true},

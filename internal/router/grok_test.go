@@ -481,6 +481,58 @@ func TestGrokDisabledAndUnknownModelFailBeforeProvider(t *testing.T) {
 	}
 }
 
+func TestGrokModelRoutingAndBuildFastCredentialBoundary(t *testing.T) {
+	for _, model := range grokModels {
+		t.Run(model, func(t *testing.T) {
+			var calls int
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				var body map[string]any
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Error(err)
+				}
+				if body["model"] != model || r.Header.Get("X-Grok-Model-Override") != "" {
+					t.Errorf("API route selected model=%v override=%q", body["model"], r.Header.Get("X-Grok-Model-Override"))
+				}
+				w.Header().Set("Content-Type", "text/event-stream")
+				io.WriteString(w, grokTextStream())
+			}))
+			defer server.Close()
+			client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: newGrokAuth("", "xai-test")}
+			body := mustTestJSON(t, map[string]any{"model": "grok:" + model, "input": []any{}})
+			response, err := client.forwardExecution(t.Context(), t.Context(), body, grokTestHeaders())
+			if model == "grok-4.7-build-fast" {
+				if err == nil || !strings.Contains(err.Error(), "requires Grok OAuth") || calls != 0 {
+					t.Fatalf("Build Fast API route: response=%v err=%v calls=%d", response, err, calls)
+				}
+				return
+			}
+			if err != nil || calls != 1 {
+				t.Fatalf("model %s: response=%v err=%v calls=%d", model, response, err, calls)
+			}
+			response.Body.Close()
+		})
+	}
+
+	path := filepath.Join(t.TempDir(), "auth.json")
+	grokWriteTestAuth(t, path, time.Now().Add(time.Hour))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Grok-Model-Override") != "grok-4.7-build-fast" {
+			t.Errorf("OAuth model override = %q", r.Header.Get("X-Grok-Model-Override"))
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, grokTextStream())
+	}))
+	defer server.Close()
+	client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: newGrokAuth(path, "")}
+	body := mustTestJSON(t, map[string]any{"model": "grok:grok-4.7-build-fast", "input": []any{}})
+	response, err := client.forwardExecution(t.Context(), t.Context(), body, grokTestHeaders())
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+}
+
 func grokTestHTTPClient(t *testing.T, server *httptest.Server) *http.Client {
 	t.Helper()
 	endpoint, err := url.Parse(server.URL)

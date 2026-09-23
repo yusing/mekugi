@@ -12,6 +12,11 @@
       "owned_by": "opencode"
     },
     {
+      "id": "claude-opus-5-5",
+      "object": "model",
+      "owned_by": "opencode"
+    },
+    {
       "id": "claude-opus-5",
       "object": "model",
       "owned_by": "opencode"
@@ -98,6 +103,16 @@
     },
     {
       "id": "gpt-6-astra",
+      "object": "model",
+      "owned_by": "opencode"
+    },
+    {
+      "id": "gpt-6-sol",
+      "object": "model",
+      "owned_by": "opencode"
+    },
+    {
+      "id": "gpt-6-luna",
       "object": "model",
       "owned_by": "opencode"
     },
@@ -207,6 +222,11 @@
       "owned_by": "opencode"
     },
     {
+      "id": "grok-4.7",
+      "object": "model",
+      "owned_by": "opencode"
+    },
+    {
       "id": "grok-4.6",
       "object": "model",
       "owned_by": "opencode"
@@ -223,6 +243,11 @@
     },
     {
       "id": "muse-spark-1.2",
+      "object": "model",
+      "owned_by": "opencode"
+    },
+    {
+      "id": "deepseek-v4.1-flash",
       "object": "model",
       "owned_by": "opencode"
     },
@@ -302,6 +327,11 @@
       "owned_by": "opencode"
     },
     {
+      "id": "qwen3.8-flash",
+      "object": "model",
+      "owned_by": "opencode"
+    },
+    {
       "id": "qwen3.6-plus",
       "object": "model",
       "owned_by": "opencode"
@@ -312,12 +342,17 @@
       "owned_by": "opencode"
     },
     {
+      "id": "jev-1.13",
+      "object": "model",
+      "owned_by": "opencode"
+    },
+    {
       "id": "big-pickle",
       "object": "model",
       "owned_by": "opencode"
     },
     {
-      "id": "union-alpha",
+      "id": "jev-1.13-free",
       "object": "model",
       "owned_by": "opencode"
     },
@@ -333,6 +368,11 @@
     },
     {
       "id": "muse-spark-1.2-contributor-free",
+      "object": "model",
+      "owned_by": "opencode"
+    },
+    {
+      "id": "mimo-v2.6-flash-free",
       "object": "model",
       "owned_by": "opencode"
     },

@@ -194,6 +194,13 @@ func (a *requestAttempt) prepare() error {
 				a.request.fields["reasoning"] = parent.providerReasoning
 			}
 		}
+	}
+	// Terra remains a selectable legacy Codex model, but all provider requests
+	// use Sol. Do this after Mentor and automatic-continuation selection.
+	if a.request.model() == "gpt-5.6-terra" {
+		a.request.fields["model"] = mustMarshalJSON("gpt-6-sol")
+	}
+	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.history != nil {
 		exchange.history.providerModel = a.request.model()
 		exchange.history.providerReasoning = a.request.fields["reasoning"]
 	}

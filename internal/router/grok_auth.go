@@ -65,7 +65,7 @@ func (a *grokAuth) credentials(ctx context.Context) (grokCredentials, error) {
 	}
 	return grokCredentials{endpoint: grokProxyEndpoint, headers: http.Header{
 		"Authorization": []string{"Bearer " + token}, "X-Xai-Token-Auth": []string{"xai-grok-cli"},
-		"X-Grok-Model-Override": []string{"grok-4.6"}, "X-Grok-Client-Identifier": []string{"mekugi"},
+		"X-Grok-Client-Identifier": []string{"mekugi"},
 		// The proxy gates its CLI wire protocol independently of our user agent.
 		"X-Grok-Client-Version": []string{"1.0.13"}, "X-Grok-Client-Mode": []string{"headless"}, "User-Agent": []string{"mekugi"},
 	}}, nil

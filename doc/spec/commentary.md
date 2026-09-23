@@ -176,8 +176,9 @@ the standard reference estimate. Unresolved `auto`, malformed or null tier evide
 unsupported model/tier/context combinations have unavailable cost, not guessed standard pricing.
 Rates follow the [official pricing tables](https://developers.openai.com/api/docs/pricing),
 [model pricing notes](https://developers.openai.com/api/docs/models/gpt-6-astra), and the
-[xAI Grok 4.6 list prices](https://docs.x.ai/docs/models); `grok:grok-4.6` and `grok-4.6`
-share that Grok table. Grok has no Fast or priority reference rates, and unpublished
+[xAI model prices](https://docs.x.ai/developers/pricing); prefixed and unprefixed Grok IDs
+share each model's table. Grok Build Fast uses its own published rates. Grok has no
+service-tier Fast or priority reference rates, and unpublished
 cache-write rates remain unavailable rather than inferred. Reference estimates
 are not proof of the billed processing mode when the provider omits it.
 

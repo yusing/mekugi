@@ -16,7 +16,7 @@ import (
 // values for AgentControl thread spawns and does not emit the header for an
 // ordinary new session or fork.
 const (
-	mentorLeaderModel       = "gpt-5.6-sol"
+	mentorLeaderModel       = "gpt-6-sol"
 	mentorLeaderEffort      = "high"
 	mentorInputTokenLimit   = uint64(50_000)
 	mentorMinToolCalls      = uint64(3)
@@ -115,7 +115,7 @@ func (m *mentorHandoff) prepare(headers http.Header, metadata codexTurnMetadata,
 
 	requestedModel := request.model()
 	model, effort := mentorLeaderModel, mentorLeaderEffort
-	if requestedModel == "gpt-5.6" || requestedModel == "gpt-5.6-sol" {
+	if requestedModel == "gpt-5.6" || requestedModel == "gpt-5.6-sol" || requestedModel == "gpt-6-sol" {
 		model = "gpt-6-astra"
 		var reasoning struct {
 			Effort string `json:"effort"`
@@ -132,7 +132,7 @@ func (m *mentorHandoff) prepare(headers http.Header, metadata codexTurnMetadata,
 			effort = "low"
 		}
 	}
-	if !isThreadSpawnSubagent(headers) && requestedModel == "gpt-5.6-luna" {
+	if !isThreadSpawnSubagent(headers) && (requestedModel == "gpt-5.6-luna" || requestedModel == "gpt-6-luna") {
 		model, effort = "gpt-6-astra", "medium"
 	}
 	if err := request.setModelAndReasoningEffort(model, effort); err != nil {
@@ -147,7 +147,7 @@ func (m *mentorHandoff) prepare(headers http.Header, metadata codexTurnMetadata,
 }
 
 func mentorEligibleModel(model string) bool {
-	return model == "gpt-5.6" || model == "gpt-5.6-sol" || model == "gpt-5.6-luna" || model == "gpt-5.6-terra"
+	return model == "gpt-5.6" || model == "gpt-5.6-sol" || model == "gpt-5.6-luna" || model == "gpt-5.6-terra" || model == "gpt-6-sol" || model == "gpt-6-luna"
 }
 
 func isThreadSpawnSubagent(headers http.Header) bool {

@@ -29,6 +29,12 @@ func TestTokenCostDisjointCategories(t *testing.T) {
 			t.Fatalf("%s: %+v", model, cost)
 		}
 	}
+	for model, want := range map[string]float64{"gpt-6-sol": 0.392, "gpt-6-luna": 0.0196} {
+		cost := estimateTokenCost(model, "", counts)
+		if !cost.known || math.Abs(cost.uncachedInput+cost.cachedInput+cost.output-want) > 1e-10 {
+			t.Fatalf("%s: %+v", model, cost)
+		}
+	}
 	if estimateTokenCost("gpt-6-astra", "", tokenCounts{InputTokens: 1, UncachedInputTokens: 2}).known {
 		t.Fatal("priced inconsistent input")
 	}
@@ -66,6 +72,11 @@ func TestTokenCostGrokContextTierAndUnsupportedCombinations(t *testing.T) {
 		known                             bool
 	}{
 		{"grok:grok-4.6", "", 199_999, 0, 0.2, 0.0499995, 0.06, true},
+		{"grok:grok-4.5", "", 199_999, 0, 0.2, 0.0299997, 0.06, true},
+		{"grok:grok-4.7", "", 199_999, 0, 0.2, 0.0499995, 0.06, true},
+		{"grok:grok-4.7-build-fast", "", 199_999, 0, 0.4, 0.099999, 0.12, true},
+		{"grok:grok-4.7-build-fast", "", 200_000, 0, 0.4, 0.1, 0.12, true},
+		{"grok:grok-4.7-build-fast", "", 200_001, 0, 0.6, 0.1500015, 0.18, true},
 		{"grok-4.6", "default", 200_000, 0, 0.4, 0.1, 0.12, true},
 		{"grok:grok-4.6", "", 200_001, 0, 0.4, 0.100001, 0.12, true},
 		{"grok:grok-4.6", "fast", 100_000, 0, 0, 0, 0, false},

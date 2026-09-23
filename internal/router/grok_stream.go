@@ -89,10 +89,7 @@ func (tr *grokTranslation) consumeProviderStream(source func(func(grokChunk) err
 	}
 	id := "resp_" + rand.Text()
 	messageID := "msg_" + rand.Text()
-	model := "grok-4.6"
-	if tr.openCode != nil {
-		model, _ = tr.body["model"].(string)
-	}
+	model, _ := tr.body["model"].(string)
 	var retainedReasoning []any
 	reasoning := strings.Builder{}
 	refusal := false

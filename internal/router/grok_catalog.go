@@ -5,7 +5,15 @@ import (
 	"errors"
 	"maps"
 	"slices"
+	"strings"
 )
+
+var grokModels = []string{"grok-4.5", "grok-4.6", "grok-4.7", "grok-4.7-build-fast"}
+
+func grokProviderModel(slug string) (string, bool) {
+	model, ok := strings.CutPrefix(slug, "grok:")
+	return model, ok && slices.Contains(grokModels, model)
+}
 
 // ProviderModelCatalog adds only configured providers to the private catalog.
 // It rebuilds cached provider entries from a native v2 template, preserving
@@ -20,11 +28,12 @@ func ProviderModelCatalog(body []byte, grok bool, openCode OpenCodeConfig) ([]by
 		return nil, errors.New("codex model catalog is missing models")
 	}
 	models = slices.DeleteFunc(models, func(model map[string]json.RawMessage) bool {
-		return jsonString(model, "slug") == grokModel || isOpenCodeModel(jsonString(model, "slug"))
+		slug := jsonString(model, "slug")
+		return strings.HasPrefix(slug, "grok:") || isOpenCodeModel(slug)
 	})
 	var template map[string]json.RawMessage
 	for _, model := range models {
-		if jsonString(model, "slug") == "gpt-5.6-sol" && jsonString(model, "multi_agent_version") == "v2" {
+		if jsonString(model, "slug") == "gpt-6-sol" && jsonString(model, "multi_agent_version") == "v2" {
 			template = model
 		}
 	}
@@ -54,7 +63,12 @@ func ProviderModelCatalog(body []byte, grok bool, openCode OpenCodeConfig) ([]by
 	// Do not inherit account-gated OpenAI scheduling or model-upgrade defaults.
 	delete(model, "multi_agent_reasoning_effort")
 	if grok {
-		models = append(models, model)
+		for _, id := range grokModels {
+			entry := maps.Clone(model)
+			entry["slug"] = mustMarshalJSON("grok:" + id)
+			entry["display_name"] = mustMarshalJSON("grok:" + id)
+			models = append(models, entry)
+		}
 	}
 	for _, service := range openCode.services() {
 		for _, definition := range service.models() {

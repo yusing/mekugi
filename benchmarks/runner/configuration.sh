@@ -54,8 +54,8 @@ configure_benchmark() {
 		printf 'bench.sh: %s mode requires BENCHMARK_REPORT_ISSUES=false so diagnostic reporting does not confound the treatment\n' "$benchmark_mode" >&2
 		exit 2
 	fi
-	if [[ $benchmark_mode == mentor-handoff && $model != gpt-5.6-luna && $model != gpt-5.6-terra ]]; then
-		printf 'bench.sh: mentor-handoff mode requires MODEL=gpt-5.6-luna or MODEL=gpt-5.6-terra, got %s\n' "$model" >&2
+	if [[ $benchmark_mode == mentor-handoff && $model != gpt-5.6-luna && $model != gpt-5.6-terra && $model != gpt-6-luna && $model != gpt-6-sol ]]; then
+		printf 'bench.sh: mentor-handoff mode requires MODEL=gpt-5.6-luna, gpt-5.6-terra, gpt-6-luna, or gpt-6-sol, got %s\n' "$model" >&2
 		exit 2
 	fi
 	case $main_mentor in

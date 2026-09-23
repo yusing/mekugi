@@ -4,7 +4,8 @@
 
 Grok follows the shared [third-party native-agent routing contract](third_party.md).
 
-`--grok` enables `grok:grok-4.6` in `mekugi` mode. Passthrough mode rejects the flag.
+`--grok` enables `grok:grok-4.5`, `grok:grok-4.6`, `grok:grok-4.7`, and
+`grok:grok-4.7-build-fast` in `mekugi` mode. Passthrough mode rejects the flag.
 Without it, the existing model catalog and OpenAI routing remain unchanged;
 a `grok:` request fails locally rather than sending it to the OpenAI provider.
 
@@ -24,6 +25,8 @@ a self-contained assignment; projection never changes submitted arguments.
 
 Grok uses streaming Chat Completions, either through the public xAI API with `XAI_API_KEY`, or through
 the Grok CLI chat proxy with the existing Grok OAuth credential store. An API key takes precedence.
+`grok:grok-4.7-build-fast` is available only through the OAuth proxy, not the public API;
+an API-key request for it fails locally. The selected model is sent as the proxy model override.
 `--grok-auth-file` selects a different credential file; otherwise the router uses the current user's
 Grok OAuth store. This route supports the standard `https://auth.x.ai` Grok public client, not custom
 enterprise issuers. Grok owns interactive login; Mekugi refreshes expired/near-expiry OAuth tokens

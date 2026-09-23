@@ -66,6 +66,8 @@ func TestMentorHandoffRecognizesMainAndCanonicalThreadSpawn(t *testing.T) {
 	}{
 		{name: "thread spawn", model: "gpt-5.6-luna", headers: mentorTestHeaders(t, "child"), want: true},
 		{name: "second eligible model", model: "gpt-5.6-terra", headers: mentorTestHeaders(t, "child-terra"), want: true},
+		{name: "sol successor", model: "gpt-6-sol", headers: mentorTestHeaders(t, "child-sol"), want: true},
+		{name: "luna successor", model: "gpt-6-luna", headers: mentorTestHeaders(t, "child-luna"), want: true},
 		{name: "ordinary session", model: "gpt-5.6-luna", headers: http.Header{}},
 		{name: "ordinary fork metadata", model: "gpt-5.6-luna", headers: serverMetadataHeaders(t, "turn", nil), want: true},
 		{name: "astra unchanged", model: "gpt-6-astra", headers: mentorTestHeaders(t, "leader")},
@@ -98,8 +100,11 @@ func TestMentorHandoffRecognizesMainAndCanonicalThreadSpawn(t *testing.T) {
 				return
 			}
 			wantModel := mentorLeaderModel + " " + mentorLeaderEffort
-			if !isThreadSpawnSubagent(test.headers) && test.model == "gpt-5.6-luna" {
+			if !isThreadSpawnSubagent(test.headers) && (test.model == "gpt-5.6-luna" || test.model == "gpt-6-luna") {
 				wantModel = "gpt-6-astra medium"
+			}
+			if test.model == "gpt-6-sol" {
+				wantModel = "gpt-6-astra low"
 			}
 			if got := request.modelDescription(); got != wantModel {
 				t.Fatalf("leader request = %q", got)
@@ -194,6 +199,8 @@ func TestMentorHandoffMainBoundary(t *testing.T) {
 		want                          bool
 	}{
 		{"main luna", "gpt-5.6-luna", `{"request_kind":"turn"}`, "", true},
+		{"main gpt-6 luna", "gpt-6-luna", `{"request_kind":"turn"}`, "", true},
+		{"main gpt-6 sol", "gpt-6-sol", `{"request_kind":"turn"}`, "", true},
 		{"main terra", "gpt-5.6-terra", `{"request_kind":"turn"}`, "", true},
 		{"main astra unchanged", "gpt-6-astra", `{"request_kind":"turn"}`, "", false},
 		{"main prewarm", "gpt-5.6-luna", `{"request_kind":"prewarm"}`, "", false},
@@ -222,8 +229,11 @@ func TestMentorHandoffMainBoundary(t *testing.T) {
 			want := test.model + " medium"
 			if test.want && !handoff.reset {
 				want = mentorLeaderModel + " " + mentorLeaderEffort
-				if test.model == "gpt-5.6-luna" {
+				if test.model == "gpt-5.6-luna" || test.model == "gpt-6-luna" {
 					want = "gpt-6-astra medium"
+				}
+				if test.model == "gpt-6-sol" {
+					want = "gpt-6-astra low"
 				}
 			}
 			if request.modelDescription() != want {
@@ -441,7 +451,7 @@ func TestExecuteRequestCompactionRestartsMentorHandoff(t *testing.T) {
 				})))
 				return headers
 			},
-			wantNextModel: "gpt-5.6-sol high",
+			wantNextModel: "gpt-6-sol high",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -689,7 +699,7 @@ func TestMentorHandoffLunaMainMappingKeepsSubagentsUnchanged(t *testing.T) {
 			handoff, err := newMentorHandoff(true, true).prepare(headers, metadata, valid, &request)
 			want := "gpt-6-astra medium"
 			if child {
-				want = "gpt-5.6-sol high"
+				want = "gpt-6-sol high"
 			}
 			if err != nil || handoff == nil || request.modelDescription() != want {
 				t.Fatalf("child=%t effort=%q: model=%q handoff=%v err=%v", child, effort, request.modelDescription(), handoff, err)

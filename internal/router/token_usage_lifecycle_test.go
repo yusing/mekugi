@@ -263,9 +263,9 @@ func TestTokenUsageAutomaticSuccessorAtHandoff(t *testing.T) {
 		configured, leader, requestedTier, servedTier string
 		mentorCost, configuredCost                    float64
 	}{
-		{"gpt-5.6-terra", "gpt-5.6-sol", "default", "default", .456, .248},
+		{"gpt-5.6-terra", "gpt-6-sol", "default", "default", .228, .228},
 		{"gpt-5.6-sol", "gpt-6-astra", "default", "default", 1.14, .456},
-		{"gpt-5.6-terra", "gpt-5.6-sol", "fast", "priority", .912, .496},
+		{"gpt-5.6-terra", "gpt-6-sol", "fast", "priority", .456, .456},
 		{"gpt-5.6-sol", "gpt-6-astra", "priority", "fast", 2.28, .912},
 	} {
 		t.Run(tc.configured+"/"+tc.requestedTier, func(t *testing.T) {
@@ -336,7 +336,11 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 		if wantTier == "fast" {
 			wantTier = "priority"
 		}
-		if jsonString(next, "model") != configured || jsonString(next, "previous_response_id") != "successor" || jsonString(next, "service_tier") != wantTier {
+		wantModel := configured
+		if configured == "gpt-5.6-terra" {
+			wantModel = "gpt-6-sol"
+		}
+		if jsonString(next, "model") != wantModel || jsonString(next, "previous_response_id") != "successor" || jsonString(next, "service_tier") != wantTier {
 			t.Errorf("next model=%s parent=%s tier=%s", jsonString(next, "model"), jsonString(next, "previous_response_id"), jsonString(next, "service_tier"))
 		}
 		for _, e := range finalAnswerTestEvents(t, "final_answer") {

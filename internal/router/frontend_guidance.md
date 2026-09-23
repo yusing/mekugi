@@ -139,19 +139,19 @@ The exact Markdown issue report.
 Native agent operations use this projected namespace. Message arguments are plaintext; Codex owns agent execution, permissions, and lifecycle.
 </instruction>
 <instruction id="grok_spawn">
-Additional model override: grok:grok-4.6, with reasoning low/medium/high/xhigh and fork_turns=none.
+Additional model overrides: grok:grok-4.5, grok:grok-4.6, grok:grok-4.7, grok:grok-4.7-build-fast, with reasoning low/medium/high/xhigh and fork_turns=none. The build-fast variant requires Grok OAuth.
 </instruction>
 <instruction id="opencode_spawn">
 OpenCode model overrides: %MODELS%. Use fork_turns="none" and a self-contained message; encrypted OpenAI history is unsupported. Omit reasoning_effort for provider defaults, or select an effort supported by the model catalog.
 </instruction>
 <instruction id="grok_model">
-Grok override: grok:grok-4.6 requires fork_turns="none".
+Grok overrides: grok:grok-4.5, grok:grok-4.6, grok:grok-4.7, grok:grok-4.7-build-fast require fork_turns="none".
 </instruction>
 <instruction id="grok_fork_turns">
-For grok:grok-4.6, explicitly use "none" and include the complete task in message.
+For Grok overrides, explicitly use "none" and include the complete task in message.
 </instruction>
 <instruction id="grok_reasoning_effort">
-For grok:grok-4.6: low, medium, high, or xhigh.
+For Grok overrides: low, medium, high, or xhigh.
 </instruction>
 <instruction id="grok_input">
 The exact tool program or input, without JSON encoding or Markdown fences.

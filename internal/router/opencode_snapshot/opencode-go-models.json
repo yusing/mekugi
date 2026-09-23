@@ -132,6 +132,16 @@
       "owned_by": "opencode"
     },
     {
+      "id": "mimo-v2.6-pro",
+      "object": "model",
+      "owned_by": "opencode"
+    },
+    {
+      "id": "mimo-v2.6-flash",
+      "object": "model",
+      "owned_by": "opencode"
+    },
+    {
       "id": "mimo-v2.5-pro",
       "object": "model",
       "owned_by": "opencode"
@@ -152,11 +162,6 @@
       "owned_by": "opencode"
     },
     {
-      "id": "union-alpha",
-      "object": "model",
-      "owned_by": "opencode"
-    },
-    {
       "id": "hy3-preview",
       "object": "model",
       "owned_by": "opencode"
@@ -168,6 +173,11 @@
     },
     {
       "id": "grok-4.5",
+      "object": "model",
+      "owned_by": "opencode"
+    },
+    {
+      "id": "grok-4.7",
       "object": "model",
       "owned_by": "opencode"
     },

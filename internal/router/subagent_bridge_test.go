@@ -117,13 +117,18 @@ func TestGrokCatalogPreservesNativeMetadata(t *testing.T) {
 	if err := json.Unmarshal(result, &parsed); err != nil {
 		t.Fatal(err)
 	}
-	if len(parsed.Models) != 2 || parsed.Extra != "keep" || jsonString(parsed.Models[0], "slug") != "gpt-5.6-sol" || jsonString(parsed.Models[1], "slug") != grokModel || string(parsed.Models[1]["unknown_future_field"]) != "42" {
+	if len(parsed.Models) != 5 || parsed.Extra != "keep" || jsonString(parsed.Models[0], "slug") != "gpt-5.6-sol" || jsonString(parsed.Models[2], "slug") != grokModel || string(parsed.Models[1]["unknown_future_field"]) != "42" {
 		t.Fatalf("catalog=%s", result)
 	}
-	if jsonString(parsed.Models[1], "visibility") != "list" || string(parsed.Models[1]["supported_in_api"]) != "true" {
+	for index, id := range grokModels {
+		if got := jsonString(parsed.Models[index+1], "slug"); got != "grok:"+id {
+			t.Fatalf("catalog model %d = %q", index+1, got)
+		}
+	}
+	if jsonString(parsed.Models[2], "visibility") != "list" || string(parsed.Models[2]["supported_in_api"]) != "true" {
 		t.Fatal("Grok is not available in the main-agent model picker")
 	}
-	if string(parsed.Models[1]["use_responses_lite"]) != "false" {
+	if string(parsed.Models[2]["use_responses_lite"]) != "false" {
 		t.Fatal("inherited OpenAI lite transport")
 	}
 	repeated, err := ProviderModelCatalog(result, true, OpenCodeConfig{})
@@ -203,10 +208,10 @@ func TestGrokCatalogRebuildsCachedMetadata(t *testing.T) {
 	var catalog struct {
 		Models []map[string]json.RawMessage
 	}
-	if err := json.Unmarshal(result, &catalog); err != nil || len(catalog.Models) != 2 {
+	if err := json.Unmarshal(result, &catalog); err != nil || len(catalog.Models) != 5 {
 		t.Fatalf("rebuilt catalog: %v", err)
 	}
-	grok := catalog.Models[1]
+	grok := catalog.Models[2]
 	if jsonString(grok, "slug") != grokModel || jsonString(grok, "apply_patch_tool_type") != "freeform" || jsonString(grok, "shell_type") != "unified_exec" {
 		t.Fatalf("cached Grok tool metadata was not rebuilt: %s", result)
 	}
@@ -268,7 +273,7 @@ func TestSubagentBridgeSpawnArgumentGuidancePreservesNativeContract(t *testing.T
 				property := properties[name].(map[string]any)
 				description := property["description"].(string)
 				native := original[name].(map[string]any)["description"].(string)
-				if !strings.HasPrefix(description, native+"\n") || !strings.Contains(description, "grok:grok-4.6") {
+				if !strings.HasPrefix(description, native+"\n") || !strings.Contains(description, "Grok") {
 					t.Fatalf("%s guidance = %q", name, description)
 				}
 				if name == "fork_turns" && (!strings.Contains(description, `"none"`) || !strings.Contains(description, "complete task")) {

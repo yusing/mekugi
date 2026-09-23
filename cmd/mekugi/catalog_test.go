@@ -153,10 +153,10 @@ func TestPrepareGrokCatalog(t *testing.T) {
 	var catalog struct {
 		Models []map[string]any
 	}
-	if err := json.Unmarshal(body, &catalog); err != nil || len(catalog.Models) != 2 {
+	if err := json.Unmarshal(body, &catalog); err != nil || len(catalog.Models) != 5 {
 		t.Fatalf("catalog models: %v, %v", catalog.Models, err)
 	}
-	grok := catalog.Models[1]
+	grok := catalog.Models[2]
 	if grok["slug"] != "grok:grok-4.6" || grok["apply_patch_tool_type"] != "freeform" || grok["shell_type"] != "unified_exec" {
 		t.Fatalf("lost Grok execution metadata: %v", grok)
 	}

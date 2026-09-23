@@ -6,9 +6,9 @@ model=${MODEL:-gpt-5.6-luna}
 reasoning_effort=${REASONING_EFFORT:-medium}
 
 case $model in
-gpt-5.6-luna|gpt-5.6-terra) ;;
+gpt-5.6-luna|gpt-5.6-terra|gpt-6-luna|gpt-6-sol) ;;
 *)
-	printf 'run-commentary-coverage.sh: MODEL must be gpt-5.6-luna or gpt-5.6-terra, got %s\n' "$model" >&2
+	printf 'run-commentary-coverage.sh: MODEL must be gpt-5.6-luna, gpt-5.6-terra, gpt-6-luna, or gpt-6-sol, got %s\n' "$model" >&2
 	exit 2
 	;;
 esac

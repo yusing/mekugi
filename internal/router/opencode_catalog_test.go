@@ -225,7 +225,7 @@ func TestOpenCodeCatalogExpiryAndOffline(t *testing.T) {
 	if err := os.WriteFile(catalog.path, []byte(`{"version":1,"models":{}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if len(newOpenCodeCatalog().current().Models["opencode-go"]) != 38 {
+	if len(newOpenCodeCatalog().current().Models["opencode-go"]) != len(openCodeBootstrap.Models["opencode-go"]) {
 		t.Fatal("corrupt disk cache did not fall back to bootstrap")
 	}
 }

@@ -126,6 +126,8 @@ Put Mekugi flags **before** `codex`; arguments after it belong to Codex:
 ```sh
 mekugi codex
 mekugi codex --model gpt-6-astra
+mekugi codex --model gpt-6-sol
+mekugi codex --model gpt-6-luna
 mekugi codex exec "Explain this repository"
 mekugi codex resume 'CONVERSATION_ID'
 mekugi --mentor-handoff=false codex
@@ -135,6 +137,9 @@ Each invocation starts a private router on a random loopback port and shuts it
 down when Codex exits. Multiple sessions can run independently. Codex handles
 terminal Ctrl-C after launch, and its exit status is preserved. During startup,
 Ctrl-C cancels preparation without launching Codex.
+
+Legacy `gpt-5.6-terra` selections route to `gpt-6-sol`; use `gpt-6-sol`
+directly for new sessions.
 
 The wrapper uses the fixed Codex ChatGPT upstream and overrides provider
 selection for that invocation only. Standalone serving, fixed ports, custom
@@ -188,10 +193,12 @@ Codex credentials are never forwarded to Grok.
 
 ```sh
 mekugi --grok codex
-mekugi --grok codex -m grok:grok-4.6
+mekugi --grok codex -m grok:grok-4.7
 ```
 
-Ask the main agent to spawn `grok:grok-4.6` in fresh context (`fork_turns="none"`).
+Ask the main agent to spawn `grok:grok-4.5`, `grok:grok-4.6`, `grok:grok-4.7`,
+or `grok:grok-4.7-build-fast` in fresh context (`fork_turns="none"`). The Fast
+variant requires Grok OAuth; it is unavailable with `XAI_API_KEY`.
 Codex still manages the child, tools, permissions, and follow-ups. Switching an
 existing OpenAI conversation still requires history that Grok can read; encrypted
 OpenAI history remains unsupported.

@@ -103,10 +103,12 @@ func translateChatRequest(body []byte, service *openCodeService) (_ *grokTransla
 	if err != nil {
 		return nil, err
 	}
-	model := "grok-4.6"
+	var model string
 	if service == nil {
-		if request.model() != grokModel {
-			return nil, errors.New("unsupported Grok model; use grok:grok-4.6")
+		var ok bool
+		model, ok = grokProviderModel(request.model())
+		if !ok {
+			return nil, errors.New("unsupported Grok model")
 		}
 	} else {
 		var ok bool

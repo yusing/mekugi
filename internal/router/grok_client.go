@@ -60,6 +60,12 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 		if err != nil {
 			return nil, err
 		}
+		if tr.body["model"] == "grok-4.7-build-fast" && g.auth.apiKey != "" {
+			return nil, incompatibleRequest("grok_fast_requires_build", "Grok 4.7 Build Fast requires Grok OAuth; it is not available on the public xAI API.")
+		}
+		if g.auth.apiKey == "" {
+			credentials.headers.Set("X-Grok-Model-Override", tr.body["model"].(string))
+		}
 	}
 	endpoint := credentials.endpoint
 	encoded, err := json.Marshal(tr.body)
@@ -98,6 +104,7 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 			cancel()
 			return nil, err
 		}
+		credentials.headers.Set("X-Grok-Model-Override", tr.body["model"].(string))
 		retry, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(encoded))
 		if err != nil {
 			stopStart()

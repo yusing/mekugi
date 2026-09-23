@@ -310,7 +310,7 @@
         "structured_output": true,
         "temperature": true,
         "release_date": "2026-08-21",
-        "last_updated": "2026-08-21",
+        "last_updated": "2026-09-01",
         "modalities": {
           "input": [
             "text",
@@ -320,7 +320,7 @@
             "text"
           ]
         },
-        "open_weights": false,
+        "open_weights": true,
         "limit": {
           "context": 1000000,
           "output": 384000
@@ -379,8 +379,7 @@
               "low",
               "medium",
               "high",
-              "xhigh",
-              "max"
+              "xhigh"
             ]
           }
         ],
@@ -715,6 +714,76 @@
           "cache_read": 0
         }
       },
+      "gpt-6-sol": {
+        "id": "gpt-6-sol",
+        "name": "GPT-6 Sol",
+        "description": "OpenAI model for complex coding and agentic workflows",
+        "family": "gpt-sol",
+        "attachment": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": false,
+        "knowledge": "2026-04-20",
+        "release_date": "2026-09-22",
+        "last_updated": "2026-09-22",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1050000,
+          "input": 922000,
+          "output": 128000
+        },
+        "provider": {
+          "npm": "@ai-sdk/openai"
+        },
+        "cost": {
+          "input": 2,
+          "output": 10,
+          "cache_read": 0.2,
+          "cache_write": 2.5,
+          "tiers": [
+            {
+              "input": 4,
+              "output": 15,
+              "cache_read": 0.4,
+              "cache_write": 5,
+              "tier": {
+                "type": "context",
+                "size": 272000
+              }
+            }
+          ],
+          "context_over_200k": {
+            "input": 4,
+            "output": 15,
+            "cache_read": 0.4,
+            "cache_write": 5
+          }
+        }
+      },
       "gpt-5.1-codex-mini": {
         "id": "gpt-5.1-codex-mini",
         "name": "GPT-5.1 Codex Mini",
@@ -760,6 +829,55 @@
           "input": 0.25,
           "output": 2,
           "cache_read": 0.025
+        }
+      },
+      "claude-opus-5-5": {
+        "id": "claude-opus-5-5",
+        "name": "Claude Opus 5.5",
+        "description": "Claude model for long-running agentic coding and knowledge work",
+        "family": "claude-opus",
+        "attachment": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "tool_call": true,
+        "temperature": false,
+        "knowledge": "2026-06",
+        "release_date": "2026-09-22",
+        "last_updated": "2026-09-22",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1000000,
+          "output": 128000
+        },
+        "provider": {
+          "npm": "@ai-sdk/anthropic"
+        },
+        "cost": {
+          "input": 4,
+          "output": 20,
+          "cache_read": 0.2,
+          "cache_write": 5
         }
       },
       "qwen3.6-plus": {
@@ -857,7 +975,7 @@
       },
       "gpt-5.6-sol": {
         "id": "gpt-5.6-sol",
-        "name": "GPT-5.6 Sol (50% Off)",
+        "name": "GPT-5.6 Sol",
         "description": "Frontier GPT-5.6 model for complex professional work, coding, and agentic workflows",
         "family": "gpt-sol",
         "attachment": true,
@@ -901,16 +1019,16 @@
           "npm": "@ai-sdk/openai"
         },
         "cost": {
-          "input": 2,
-          "output": 10,
-          "cache_read": 0.2,
-          "cache_write": 2.5,
+          "input": 4,
+          "output": 20,
+          "cache_read": 0.4,
+          "cache_write": 5,
           "tiers": [
             {
-              "input": 4,
-              "output": 15,
-              "cache_read": 0.4,
-              "cache_write": 5,
+              "input": 8,
+              "output": 30,
+              "cache_read": 0.8,
+              "cache_write": 10,
               "tier": {
                 "type": "context",
                 "size": 272000
@@ -918,10 +1036,10 @@
             }
           ],
           "context_over_200k": {
-            "input": 4,
-            "output": 15,
-            "cache_read": 0.4,
-            "cache_write": 5
+            "input": 8,
+            "output": 30,
+            "cache_read": 0.8,
+            "cache_write": 10
           }
         }
       },
@@ -1097,6 +1215,43 @@
           "input": 1.75,
           "output": 14,
           "cache_read": 0.175
+        }
+      },
+      "mimo-v2.6-flash-free": {
+        "id": "mimo-v2.6-flash-free",
+        "name": "MiMo-V2.6-Flash Free",
+        "description": "MiMo Flash model for multimodal coding agents and long-context automation",
+        "family": "mimo",
+        "attachment": true,
+        "reasoning": true,
+        "reasoning_options": [],
+        "tool_call": true,
+        "interleaved": {
+          "field": "reasoning_content"
+        },
+        "temperature": true,
+        "release_date": "2026-09-22",
+        "last_updated": "2026-09-22",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "audio",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 200000,
+          "output": 32000
+        },
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cache_read": 0
         }
       },
       "longcat-2.0-free": {
@@ -1917,6 +2072,52 @@
           "output": 1.8
         }
       },
+      "deepseek-v4.1-flash": {
+        "id": "deepseek-v4.1-flash",
+        "name": "DeepSeek V4.1 Flash",
+        "description": "DeepSeek V4.1 Flash model for reasoning and agentic coding",
+        "family": "deepseek-flash",
+        "attachment": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "high",
+              "max"
+            ]
+          }
+        ],
+        "tool_call": true,
+        "interleaved": {
+          "field": "reasoning_content"
+        },
+        "structured_output": true,
+        "temperature": true,
+        "knowledge": "2025-05",
+        "release_date": "2026-09-10",
+        "last_updated": "2026-09-10",
+        "modalities": {
+          "input": [
+            "text",
+            "image"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 1000000,
+          "output": 384000
+        },
+        "cost": {
+          "input": 0.3,
+          "output": 1.2,
+          "cache_read": 0.006
+        }
+      },
       "claude-fable-5-1": {
         "id": "claude-fable-5-1",
         "name": "Claude Fable 5.1",
@@ -2259,6 +2460,76 @@
           "input": 0,
           "output": 0,
           "cache_read": 0
+        }
+      },
+      "gpt-6-luna": {
+        "id": "gpt-6-luna",
+        "name": "GPT-6 Luna",
+        "description": "OpenAI's most efficient model for focused, high-volume tasks",
+        "family": "gpt-luna",
+        "attachment": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": false,
+        "knowledge": "2026-05-18",
+        "release_date": "2026-09-22",
+        "last_updated": "2026-09-22",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1050000,
+          "input": 922000,
+          "output": 128000
+        },
+        "provider": {
+          "npm": "@ai-sdk/openai"
+        },
+        "cost": {
+          "input": 0.1,
+          "output": 0.5,
+          "cache_read": 0.01,
+          "cache_write": 0.125,
+          "tiers": [
+            {
+              "input": 0.2,
+              "output": 0.75,
+              "cache_read": 0.02,
+              "cache_write": 0.25,
+              "tier": {
+                "type": "context",
+                "size": 272000
+              }
+            }
+          ],
+          "context_over_200k": {
+            "input": 0.2,
+            "output": 0.75,
+            "cache_read": 0.02,
+            "cache_write": 0.25
+          }
         }
       },
       "gpt-5.6-luna": {
@@ -2909,6 +3180,7 @@
           "context": 200000,
           "output": 32000
         },
+        "status": "deprecated",
         "cost": {
           "input": 0,
           "output": 0,
@@ -2983,39 +3255,6 @@
           "output": 128000
         },
         "status": "deprecated",
-        "cost": {
-          "input": 0,
-          "output": 0,
-          "cache_read": 0
-        }
-      },
-      "union-alpha": {
-        "id": "union-alpha",
-        "name": "Union Alpha Free",
-        "description": "Stealth model built for agentic coding",
-        "attachment": true,
-        "reasoning": true,
-        "reasoning_options": [],
-        "tool_call": true,
-        "release_date": "2026-09-16",
-        "last_updated": "2026-09-16",
-        "modalities": {
-          "input": [
-            "text",
-            "image"
-          ],
-          "output": [
-            "text"
-          ]
-        },
-        "open_weights": false,
-        "limit": {
-          "context": 262144,
-          "output": 131072
-        },
-        "provider": {
-          "npm": "@ai-sdk/anthropic"
-        },
         "cost": {
           "input": 0,
           "output": 0,
@@ -3118,6 +3357,59 @@
           "input": 30,
           "output": 180,
           "cache_read": 30
+        }
+      },
+      "qwen3.8-flash": {
+        "id": "qwen3.8-flash",
+        "name": "Qwen3.8 Flash",
+        "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+        "family": "qwen",
+        "attachment": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "toggle"
+          },
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "xhigh"
+            ]
+          },
+          {
+            "type": "budget_tokens"
+          }
+        ],
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "release_date": "2026-08-26",
+        "last_updated": "2026-08-26",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1000000,
+          "output": 131072
+        },
+        "provider": {
+          "npm": "@ai-sdk/anthropic"
+        },
+        "cost": {
+          "input": 0.15,
+          "output": 0.47,
+          "cache_read": 0.016,
+          "cache_write": 0.2
         }
       },
       "big-pickle": {
@@ -4202,6 +4494,70 @@
           "cache_read": 0.175
         }
       },
+      "grok-4.7": {
+        "id": "grok-4.7",
+        "name": "Grok 4.7 (30% Off)",
+        "description": "xAI's frontier model for long-running agents, coding, knowledge work, and visual projects",
+        "family": "grok",
+        "attachment": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
+        ],
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "knowledge": "2026-05",
+        "release_date": "2026-09-21",
+        "last_updated": "2026-09-21",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 500000,
+          "output": 500000
+        },
+        "provider": {
+          "npm": "@ai-sdk/openai"
+        },
+        "cost": {
+          "input": 1.4,
+          "output": 4.2,
+          "cache_read": 0.35,
+          "tiers": [
+            {
+              "input": 2.8,
+              "output": 8.4,
+              "cache_read": 0.7,
+              "tier": {
+                "type": "context",
+                "size": 200000
+              }
+            }
+          ],
+          "context_over_200k": {
+            "input": 2.8,
+            "output": 8.4,
+            "cache_read": 0.7
+          }
+        }
+      },
       "gemini-3-flash": {
         "id": "gemini-3-flash",
         "name": "Gemini 3 Flash",
@@ -4721,7 +5077,7 @@
     "npm": "@ai-sdk/openai-compatible",
     "api": "https://opencode.ai/zen/go/v1",
     "name": "OpenCode Go",
-    "doc": "https://opencode.ai/docs/zen",
+    "doc": "https://opencode.ai/docs/go",
     "models": {
       "qwen3.7-max": {
         "id": "qwen3.7-max",
@@ -4828,7 +5184,7 @@
         "structured_output": true,
         "temperature": true,
         "release_date": "2026-08-21",
-        "last_updated": "2026-08-21",
+        "last_updated": "2026-09-01",
         "modalities": {
           "input": [
             "text",
@@ -4838,7 +5194,7 @@
             "text"
           ]
         },
-        "open_weights": false,
+        "open_weights": true,
         "limit": {
           "context": 1000000,
           "output": 384000
@@ -4960,6 +5316,43 @@
           "cache_read": 0.002
         }
       },
+      "mimo-v2.6-pro": {
+        "id": "mimo-v2.6-pro",
+        "name": "MiMo-V2.6-Pro",
+        "description": "Stronger MiMo Pro tier for multimodal reasoning and coding-agent execution",
+        "family": "mimo",
+        "attachment": true,
+        "reasoning": true,
+        "reasoning_options": [],
+        "tool_call": true,
+        "interleaved": {
+          "field": "reasoning_content"
+        },
+        "temperature": true,
+        "release_date": "2026-09-22",
+        "last_updated": "2026-09-22",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "audio",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 1048576,
+          "output": 131072
+        },
+        "cost": {
+          "input": 0.435,
+          "output": 0.87,
+          "cache_read": 0.003625
+        }
+      },
       "minimax-m2.7": {
         "id": "minimax-m2.7",
         "name": "MiniMax-M2.7",
@@ -4992,7 +5385,8 @@
         "cost": {
           "input": 0.3,
           "output": 1.2,
-          "cache_read": 0.06
+          "cache_read": 0.06,
+          "cache_write": 0.375
         }
       },
       "kimi-k2.6": {
@@ -5108,7 +5502,8 @@
         "cost": {
           "input": 0.3,
           "output": 1.2,
-          "cache_read": 0.03
+          "cache_read": 0.06,
+          "cache_write": 0.375
         }
       },
       "minimax-m3": {
@@ -5740,39 +6135,6 @@
           "cache_read": 0.002
         }
       },
-      "union-alpha": {
-        "id": "union-alpha",
-        "name": "Union Alpha Free",
-        "description": "Stealth model built for agentic coding",
-        "attachment": true,
-        "reasoning": true,
-        "reasoning_options": [],
-        "tool_call": true,
-        "release_date": "2026-09-16",
-        "last_updated": "2026-09-16",
-        "modalities": {
-          "input": [
-            "text",
-            "image"
-          ],
-          "output": [
-            "text"
-          ]
-        },
-        "open_weights": false,
-        "limit": {
-          "context": 262144,
-          "output": 131072
-        },
-        "provider": {
-          "npm": "@ai-sdk/anthropic"
-        },
-        "cost": {
-          "input": 0,
-          "output": 0,
-          "cache_read": 0
-        }
-      },
       "mimo-v2-pro": {
         "id": "mimo-v2-pro",
         "name": "MiMo V2 Pro",
@@ -5876,6 +6238,43 @@
           "output": 0.47,
           "cache_read": 0.016,
           "cache_write": 0.2
+        }
+      },
+      "mimo-v2.6-flash": {
+        "id": "mimo-v2.6-flash",
+        "name": "MiMo-V2.6-Flash",
+        "description": "MiMo Flash model for multimodal coding agents and long-context automation",
+        "family": "mimo",
+        "attachment": true,
+        "reasoning": true,
+        "reasoning_options": [],
+        "tool_call": true,
+        "interleaved": {
+          "field": "reasoning_content"
+        },
+        "temperature": true,
+        "release_date": "2026-09-22",
+        "last_updated": "2026-09-22",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "audio",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 1048576,
+          "output": 131072
+        },
+        "cost": {
+          "input": 0.14,
+          "output": 0.28,
+          "cache_read": 0.0028
         }
       },
       "grok-4.6": {
@@ -6286,6 +6685,70 @@
           "input": 1.4,
           "output": 4.4,
           "cache_read": 0.26
+        }
+      },
+      "grok-4.7": {
+        "id": "grok-4.7",
+        "name": "Grok 4.7",
+        "description": "xAI's frontier model for long-running agents, coding, knowledge work, and visual projects",
+        "family": "grok",
+        "attachment": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
+        ],
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "knowledge": "2026-05",
+        "release_date": "2026-09-21",
+        "last_updated": "2026-09-21",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 500000,
+          "output": 500000
+        },
+        "provider": {
+          "npm": "@ai-sdk/openai"
+        },
+        "cost": {
+          "input": 2,
+          "output": 6,
+          "cache_read": 0.5,
+          "tiers": [
+            {
+              "input": 4,
+              "output": 12,
+              "cache_read": 1,
+              "tier": {
+                "type": "context",
+                "size": 200000
+              }
+            }
+          ],
+          "context_over_200k": {
+            "input": 4,
+            "output": 12,
+            "cache_read": 1
+          }
         }
       },
       "mimo-v2.5": {

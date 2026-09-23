@@ -14,16 +14,18 @@ The router forwards the subagent header unchanged. It does not infer a subagent 
 or instructions. Requests outside these boundaries remain unchanged.
 
 Main prewarm requests remain unchanged and do not start or consume the main handoff schedule.
-A successfully completed compaction request remains unchanged itself, then resets that thread's
+A successfully completed compaction request is not changed by the Mentor schedule, then resets that thread's
 schedule so its next eligible turn starts with Mentor again. Failed, canceled, and incomplete
 compaction requests preserve the existing schedule. The same reset applies to canonical
-thread-spawn subagent compaction requests.
+thread-spawn subagent compaction requests. The Terra route alias still applies to compaction.
 
-For an eligible main request configured with `gpt-5.6-luna`, the mentor is
+For an eligible main request configured with `gpt-5.6-luna` or `gpt-6-luna`, the mentor is
 `gpt-6-astra` with `medium` reasoning, regardless of the configured effort.
-Subagent mappings remain unchanged: `gpt-5.6-luna` and `gpt-5.6-terra` use
-`gpt-5.6-sol` with `high` reasoning. Main `gpt-5.6-terra` requests also retain that mapping.
-For exactly `gpt-5.6` or `gpt-5.6-sol`, the mentor is `gpt-6-astra` with one lower reasoning level,
+Subagent `gpt-5.6-luna` and `gpt-6-luna` requests use `gpt-6-sol` with `high` reasoning.
+Legacy `gpt-5.6-terra` requests use `gpt-6-sol` with `high` reasoning during the mentor phase;
+after handoff, they route to `gpt-6-sol` with their requested effort. The same Terra alias applies
+when Mentor Handoff is disabled.
+For exactly `gpt-5.6`, `gpt-5.6-sol`, or `gpt-6-sol`, the mentor is `gpt-6-astra` with one lower reasoning level,
 floored at `low` and capped at `xhigh`: `low` and `medium` map to `low`, `high` to
 `medium`, `xhigh` to `high`, and `max` and `ultra` to `xhigh`. Missing or unrecognized
 effort uses `low`. Other configured models, including `gpt-6-astra`,
