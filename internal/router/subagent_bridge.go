@@ -45,9 +45,6 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled bool, op
 				}
 				for _, fn := range functions {
 					bridge.names[jsonString(fn, "name")] = true
-					if grokEnabled && jsonString(fn, "name") == "spawn_agent" {
-						fn["description"] = mustMarshalJSON(jsonString(fn, "description") + "\n" + embeddedInstruction("grok_spawn"))
-					}
 					if openCodeNote != "" && jsonString(fn, "name") == "spawn_agent" {
 						fn["description"] = mustMarshalJSON(jsonString(fn, "description") + openCodeNote)
 					}

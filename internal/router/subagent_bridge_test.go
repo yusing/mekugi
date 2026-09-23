@@ -264,7 +264,7 @@ func TestSubagentBridgeSpawnArgumentGuidancePreservesNativeContract(t *testing.T
 				t.Fatal(err)
 			}
 			got := projected[0].Tools[0]
-			if !got.Strict || !strings.HasPrefix(got.Description, "Native lifecycle rules") {
+			if !got.Strict || got.Description != "Native lifecycle rules" {
 				t.Fatalf("native function contract changed: %+v", got)
 			}
 			properties := got.Parameters["properties"].(map[string]any)
@@ -275,6 +275,16 @@ func TestSubagentBridgeSpawnArgumentGuidancePreservesNativeContract(t *testing.T
 				native := original[name].(map[string]any)["description"].(string)
 				if !strings.HasPrefix(description, native+"\n") || !strings.Contains(description, "Grok") {
 					t.Fatalf("%s guidance = %q", name, description)
+				}
+				if name == "model" {
+					for _, model := range grokModels {
+						if strings.Count(description, "`grok:"+model+"`") != 1 {
+							t.Fatalf("missing or duplicated Grok model %q in guidance: %q", model, description)
+						}
+					}
+					if !strings.Contains(description, "build-fast variant requires Grok OAuth") {
+						t.Fatalf("missing build-fast credential guidance: %q", description)
+					}
 				}
 				if name == "fork_turns" && (!strings.Contains(description, `"none"`) || !strings.Contains(description, "complete task")) {
 					t.Fatalf("missing fresh-context assignment guidance: %q", description)
