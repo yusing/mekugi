@@ -58,6 +58,47 @@ func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 	}
 }
 
+func TestSolLunaInstructionConflictRewrite(t *testing.T) {
+	// Shared stock wording from the 2026-09-23 models cache, including its typo.
+	const conflict = "Do NOT send user facing questions in intermedaite commentary messages. Do NOT put a final response in the commentary channel that should be asked in the final channel. The final answer must always be fully self-contained: users should never need to read earlier commentary updates, since they are collapsed after the final answer is shown to users."
+	const replacement = "Use the user-input tools for questions when available. Record the terminal result in the journal; do not emit provider final-answer text."
+	const policy = "- Do not add or run tests unless the user asks you to test or verify implementation."
+	for _, newline := range []string{"\n", "\r\n"} {
+		suffix := newline + "```text" + newline + conflict + newline + "```" + newline + policy
+		source := conflict + suffix
+		request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+			"instructions": mustMarshalJSON(source),
+			"input": mustMarshalJSON([]any{
+				map[string]any{"role": "developer", "content": []any{
+					map[string]string{"type": "input_text", "text": source},
+				}},
+				map[string]string{"role": "user", "content": source},
+				map[string]string{"role": "system", "content": source},
+			}),
+		}}
+		if err := rewriteRequestInstructionConflicts(&request); err != nil {
+			t.Fatal(err)
+		}
+		if got := jsonString(request.fields, "instructions"); got != replacement+suffix {
+			t.Fatalf("top-level rewrite = %q", got)
+		}
+		wantInput := mustMarshalJSON([]any{
+			map[string]any{"role": "developer", "content": []any{
+				map[string]string{"type": "input_text", "text": replacement + suffix},
+			}},
+			map[string]string{"role": "user", "content": source},
+			map[string]string{"role": "system", "content": source},
+		})
+		if !sameJSONValue(request.fields["input"], wantInput) {
+			t.Fatalf("input rewrite = %s", request.fields["input"])
+		}
+		before := mustMarshalJSON(request.fields)
+		if err := rewriteRequestInstructionConflicts(&request); err != nil || !sameJSONValue(before, mustMarshalJSON(request.fields)) {
+			t.Fatalf("conflict rewrite not idempotent: %v", err)
+		}
+	}
+}
+
 func TestPlanOnlyConflictRewriteFindsNestedAdditionalTool(t *testing.T) {
 	const phrase = "Use the `request_user_input` tool only when it is listed in the available tools for this turn."
 	request := parsedResponsesRequest{fields: map[string]json.RawMessage{
