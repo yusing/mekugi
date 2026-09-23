@@ -14,14 +14,6 @@ import (
 
 // Project only literal heredoc writes; shell execution remains the sole owner
 // of actual file effects and durable change evidence.
-func liveDiffShellWrite(ctx context.Context, input, directory string) ([]mekugi.ReviewFile, bool, error) {
-	stmt, directory, partialLine, ok := liveDiffShellStatement(input, directory)
-	if !ok {
-		return nil, false, nil
-	}
-	return liveDiffShellWriteStatement(ctx, stmt, directory, partialLine)
-}
-
 func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directory string, partialLine bool) ([]mekugi.ReviewFile, bool, error) {
 	call, ok := stmt.Cmd.(*syntax.CallExpr)
 	if !ok || stmt.Background || stmt.Coprocess || stmt.Disown || stmt.Negated ||

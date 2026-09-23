@@ -3,7 +3,6 @@ import { realpath } from "node:fs/promises";
 import { registerHooks } from "node:module";
 import path from "node:path";
 import process from "node:process";
-import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const API_VERSION = "mekugi-tool-plugin/v1";
@@ -671,53 +670,7 @@ async function registerSnapshot(root) {
   return snapshotRoot;
 }
 
-async function formatRequest(request, formatMRunOutput) {
-  switch (request.operation) {
-    case "format-output-batch": {
-      if (!Array.isArray(request.arguments) || request.arguments.length === 0 || request.arguments.length > 3) {
-        throw new Error("formatting batch must contain 1 to 3 candidates");
-      }
-      const candidates = request.arguments.map(validateArguments);
-      let bytes = 0;
-      for (const candidate of candidates) {
-        for (const argument of candidate) {
-          bytes += byteLength(argument);
-          if (bytes > 16 * 1024 * 1024) {
-            throw new Error("formatting batch arguments exceed 16777216 bytes");
-          }
-        }
-      }
-      return candidates.map(formatMRunOutput);
-    }
-    case "format-output":
-      return formatMRunOutput(validateArguments(request.arguments));
-    default:
-      throw new Error(`unsupported formatter operation ${JSON.stringify(request.operation)}`);
-  }
-}
-
-async function serveFormatting() {
-  const lines = createInterface({input: process.stdin, crlfDelay: Infinity});
-  let formatMRunOutput;
-  for await (const line of lines) {
-    const request = JSON.parse(line);
-    let response;
-    if (formatMRunOutput === undefined) {
-      const snapshotRoot = await registerSnapshot(request.snapshotRoot);
-      ({formatMRunOutput} = await import(pathToFileURL(path.join(snapshotRoot, "builtin/mrun.js")).href));
-      response = {ready: true};
-    } else {
-      response = await formatRequest(request, formatMRunOutput);
-    }
-    await new Promise((resolve, reject) => {
-      process.stdout.write(JSON.stringify(response) + "\n", (error) => error ? reject(error) : resolve());
-    });
-  }
-}
 async function main() {
-  if (process.argv[2] === "--format-server") {
-    return serveFormatting();
-  }
   const request = JSON.parse(await new Promise((resolve, reject) => {
     const chunks = [];
     process.stdin.on("data", (chunk) => chunks.push(chunk));
@@ -747,10 +700,9 @@ async function main() {
       response = {plugins, errors};
       break;
     }
-    case "format-output-batch":
     case "format-output": {
       const {formatMRunOutput} = await import(pathToFileURL(path.join(snapshotRoot, "builtin/mrun.js")).href);
-      response = await formatRequest(request, formatMRunOutput);
+      response = formatMRunOutput(validateArguments(request.arguments));
       break;
     }
     case "execute":

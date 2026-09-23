@@ -101,7 +101,7 @@ func TestCorpusStockMcatRereadCandidate(t *testing.T) {
 	}
 	if len(result.Sessions) != 1 || len(result.Sessions[0].Findings) != 1 ||
 		result.Sessions[0].Findings[0].Kind != "truncation_reread" || !result.Sessions[0].Findings[0].Candidate ||
-		!strings.Contains(string(out.Bytes()), `"call_id":"second"`) {
+		!strings.Contains(out.String(), `"call_id":"second"`) {
 		t.Fatalf("mcat corpus result = %+v", result)
 	}
 }

@@ -48,7 +48,7 @@ func splitLiveDiff(ctx context.Context, workspace, replay string, lifetime *live
 	}
 	if current.Type != "pane_current" || current.Pane.PaneID == "" ||
 		current.Pane.TabID == "" || current.Pane.WorkspaceID == "" {
-		return errors.New("Herdr current-pane lookup returned no pane identity")
+		return errors.New("herdr current-pane lookup returned no pane identity")
 	}
 
 	executable := lifetime.executable
@@ -80,7 +80,7 @@ func splitLiveDiff(ctx context.Context, workspace, replay string, lifetime *live
 		return err
 	}
 	if created.Type != "layout_apply" || created.Layout.TabID == "" || created.Layout.FocusedPaneID == "" {
-		return errors.New("Herdr direct launch returned no pane identity")
+		return errors.New("herdr direct launch returned no pane identity")
 	}
 	lifetime.id = created.Layout.FocusedPaneID
 
@@ -108,7 +108,7 @@ func splitLiveDiff(ctx context.Context, workspace, replay string, lifetime *live
 		moved.MoveResult.Pane.PaneID == "" || moved.MoveResult.ClosedTabID != created.Layout.TabID ||
 		moved.MoveResult.Pane.TabID != current.Pane.TabID ||
 		moved.MoveResult.Pane.WorkspaceID != current.Pane.WorkspaceID {
-		return fmt.Errorf("Herdr did not place direct pane %s beside its caller", lifetime.id)
+		return fmt.Errorf("herdr did not place direct pane %s beside its caller", lifetime.id)
 	}
 	lifetime.id = moved.MoveResult.Pane.PaneID
 	return nil
@@ -121,14 +121,14 @@ func callHerdrAPI(ctx context.Context, id, method string, params, result any) er
 	}
 	connection, err := (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
 	if err != nil {
-		return fmt.Errorf("Herdr %s: %w", method, err)
+		return fmt.Errorf("herdr %s: %w", method, err)
 	}
 	defer connection.Close()
 	stop := context.AfterFunc(ctx, func() { _ = connection.Close() })
 	defer stop()
 	if deadline, ok := ctx.Deadline(); ok {
 		if err := connection.SetDeadline(deadline); err != nil {
-			return fmt.Errorf("Herdr %s: %w", method, err)
+			return fmt.Errorf("herdr %s: %w", method, err)
 		}
 	}
 	request := struct {
@@ -137,19 +137,19 @@ func callHerdrAPI(ctx context.Context, id, method string, params, result any) er
 		Params any    `json:"params"`
 	}{ID: id, Method: method, Params: params}
 	if err := json.NewEncoder(connection).Encode(request); err != nil {
-		return fmt.Errorf("Herdr %s: %w", method, err)
+		return fmt.Errorf("herdr %s: %w", method, err)
 	}
 	reader := bufio.NewReader(io.LimitReader(connection, maxHerdrAPIResponseBytes+1))
 	data, readErr := reader.ReadBytes('\n')
 	if len(data) > maxHerdrAPIResponseBytes {
-		return fmt.Errorf("Herdr %s response exceeds 1 MiB", method)
+		return fmt.Errorf("herdr %s response exceeds 1 MiB", method)
 	}
 	if readErr != nil && !errors.Is(readErr, io.EOF) {
-		return fmt.Errorf("Herdr %s: %w", method, readErr)
+		return fmt.Errorf("herdr %s: %w", method, readErr)
 	}
 	data = bytes.TrimSpace(data)
 	if len(data) == 0 {
-		return fmt.Errorf("Herdr %s returned an empty response", method)
+		return fmt.Errorf("herdr %s returned an empty response", method)
 	}
 	var response struct {
 		ID     string          `json:"id"`
@@ -160,19 +160,19 @@ func callHerdrAPI(ctx context.Context, id, method string, params, result any) er
 		} `json:"error"`
 	}
 	if err := json.Unmarshal(data, &response); err != nil {
-		return fmt.Errorf("Herdr %s returned invalid JSON: %w", method, err)
+		return fmt.Errorf("herdr %s returned invalid JSON: %w", method, err)
 	}
 	if response.ID != id {
-		return fmt.Errorf("Herdr %s returned a mismatched response", method)
+		return fmt.Errorf("herdr %s returned a mismatched response", method)
 	}
 	if response.Error != nil {
-		return fmt.Errorf("Herdr %s: %s: %s", method, response.Error.Code, response.Error.Message)
+		return fmt.Errorf("herdr %s: %s: %s", method, response.Error.Code, response.Error.Message)
 	}
 	if len(response.Result) == 0 {
-		return fmt.Errorf("Herdr %s returned no result", method)
+		return fmt.Errorf("herdr %s returned no result", method)
 	}
 	if err := json.Unmarshal(response.Result, result); err != nil {
-		return fmt.Errorf("Herdr %s returned an invalid result: %w", method, err)
+		return fmt.Errorf("herdr %s returned an invalid result: %w", method, err)
 	}
 	return nil
 }

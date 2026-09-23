@@ -467,16 +467,6 @@ func TestRouterHTTPRejectionDoesNotBecomeCaptureCorruption(t *testing.T) {
 	}
 }
 
-func TestSignedDifferenceSaturates(t *testing.T) {
-	maximum := uint64(^uint64(0) >> 1)
-	if got := signedDifference(^uint64(0), 0); got != int64(maximum) {
-		t.Fatalf("positive saturation = %d", got)
-	}
-	if got := signedDifference(0, ^uint64(0)); got != -int64(maximum)-1 {
-		t.Fatalf("negative saturation = %d", got)
-	}
-}
-
 func TestSnapshotBoundsExchangeDetailWithoutLosingTotals(t *testing.T) {
 	recorder, err := New(Config{Mode: "mekugi"})
 	if err != nil {

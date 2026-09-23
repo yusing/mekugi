@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,6 +13,10 @@ import (
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/internal/tokenizer"
 )
+
+func (s *mekugiReplayStore) putShellOutput(ctx context.Context, stdout, stderr string, exitCode int) (string, error) {
+	return s.putTypedOutput(ctx, toolplugin.OmittedOutput{Stdout: stdout, Stderr: stderr}, exitCode)
+}
 
 func TestShellOutputReadPagesAndRestart(t *testing.T) {
 	t.Parallel()
@@ -41,8 +46,7 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, closeFormatter := toolplugin.WithOutputFormatter(t.Context(), manifest.NodeExecutable, filepath.Join(registry.SnapshotDir, manifest.RuntimeRoot))
-	defer closeFormatter()
+	ctx := t.Context()
 	for _, selection := range []string{"", "stdout", "stderr"} {
 		t.Run(selection, func(t *testing.T) {
 			position := [2]int{}

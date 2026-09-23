@@ -170,13 +170,13 @@ func TestFeatureUsageRuntimePublicationAndRendering(t *testing.T) {
 				server := httptest.NewServer(http.HandlerFunc(proxy.commentary.serveHTTP))
 				t.Cleanup(server.Close)
 				sink := &httpCommentarySink{endpoint: server.URL, token: token, client: server.Client()}
-				if err := sink.Publish(t.Context(), `{"op":"add","text":"private runtime text","report_now":true}`); err != nil {
+				if _, err := sink.send(t.Context(), map[string]any{"journal": json.RawMessage(`{"op":"add","text":"private runtime text","report_now":true}`), "id": "private-publication"}); err != nil {
 					t.Fatal(err)
 				}
-				if err := sink.Publish(t.Context(), `{"op":"add","text":"  "}`); err == nil {
+				if _, err := sink.send(t.Context(), map[string]any{"journal": json.RawMessage(`{"op":"add","text":"  "}`), "id": "blank-publication"}); err == nil {
 					t.Fatal("blank milestone accepted")
 				}
-				if err := sink.Complete(t.Context()); err != nil {
+				if _, err := sink.send(t.Context(), map[string]any{"complete": true}); err != nil {
 					t.Fatal(err)
 				}
 				var visible []byte

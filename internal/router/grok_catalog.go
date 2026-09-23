@@ -17,7 +17,7 @@ func ProviderModelCatalog(body []byte, grok bool, openCode OpenCodeConfig) ([]by
 	}
 	var models []map[string]json.RawMessage
 	if json.Unmarshal(catalog["models"], &models) != nil {
-		return nil, errors.New("Codex model catalog is missing models")
+		return nil, errors.New("codex model catalog is missing models")
 	}
 	models = slices.DeleteFunc(models, func(model map[string]json.RawMessage) bool {
 		return jsonString(model, "slug") == grokModel || isOpenCodeModel(jsonString(model, "slug"))

@@ -108,10 +108,6 @@ func validReadKind(kind string) bool {
 	return kind == "" || kind == "rows" || kind == "json"
 }
 
-func (s *mekugiReplayStore) putShellOutput(ctx context.Context, stdout, stderr string, exitCode int) (string, error) {
-	return s.putTypedOutput(ctx, toolplugin.OmittedOutput{Stdout: stdout, Stderr: stderr}, exitCode)
-}
-
 func (s *mekugiReplayStore) putTypedOutput(ctx context.Context, output toolplugin.OmittedOutput, exitCode int) (string, error) {
 	handles, err := s.allocateHandles(ctx, 1)
 	if err != nil {

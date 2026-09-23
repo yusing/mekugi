@@ -544,9 +544,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 			}
 		}
 		t.deferredCommentary = nil
-		for _, message := range t.subagentResponses {
-			transformedOutput = append(transformedOutput, message)
-		}
+		transformedOutput = append(transformedOutput, t.subagentResponses...)
 		t.subagentDeferred = nil
 		for _, fields := range output {
 			if t.journalActive && isRouterLocalCall(fields) {
@@ -641,7 +639,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		item.Type == "custom_tool_call" {
 		callID := item.CallID
 		if callID == "" {
-			return false, errors.New("Code Mode call has no call ID")
+			return false, errors.New("code Mode call has no call ID")
 		}
 		var originalInput string
 		if item.Input != nil {
@@ -649,7 +647,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		}
 		if retained, exists := t.local[callID]; exists && retained.ToolName == name {
 			if retained.Script != originalInput {
-				return false, fmt.Errorf("Code Mode call %q changed input", callID)
+				return false, fmt.Errorf("code Mode call %q changed input", callID)
 			}
 			retained.UpstreamItem = item.cloneFields()
 			t.local[callID] = retained

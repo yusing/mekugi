@@ -490,16 +490,6 @@ func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []st
 	return true, err
 }
 
-func (s *httpCommentarySink) Publish(ctx context.Context, text string) error {
-	_, err := s.send(ctx, map[string]any{"journal": json.RawMessage(text), "id": rand.Text()})
-	return err
-}
-
-func (s *httpCommentarySink) Complete(ctx context.Context) error {
-	_, err := s.send(ctx, map[string]any{"complete": true})
-	return err
-}
-
 func (s *httpCommentarySink) send(ctx context.Context, publication map[string]any) ([]byte, error) {
 	body, err := json.Marshal(publication)
 	if err != nil {

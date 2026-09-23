@@ -172,7 +172,7 @@ func validateIndependentToolGuidance(description string) error {
 	journalEnd += len(codeModeJournalEnd)
 	frontendEnd += len(frontendGuidanceEnd)
 	if journalStart < frontendEnd && frontendStart < journalEnd {
-		return errors.New("Code Mode journal and frontend guidance markers overlap")
+		return errors.New("code Mode journal and frontend guidance markers overlap")
 	}
 	return nil
 }

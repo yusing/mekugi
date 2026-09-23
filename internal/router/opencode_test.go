@@ -196,6 +196,20 @@ func TestOpenCodeRoutesAndCredentials(t *testing.T) {
 	}
 }
 
+func TestOpenCodeRebrandsLowercaseGrokError(t *testing.T) {
+	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
+	request := mustTestJSON(t, map[string]any{
+		"model":                service.prefix + ":" + openCodeTestModel(service),
+		"previous_response_id": "old",
+		"input":                []any{},
+	})
+	_, err := translateChatRequest(request, &service)
+	if err == nil || !strings.Contains(err.Error(), "OpenCode requires explicit conversation history") ||
+		strings.Contains(err.Error(), "grok requires") {
+		t.Fatalf("OpenCode error lost provider identity: %v", err)
+	}
+}
+
 func TestOpenCodeReasoningToolReplay(t *testing.T) {
 	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
 	tr, err := translateChatRequest(openCodeTestRequest(t, service, false), &service)

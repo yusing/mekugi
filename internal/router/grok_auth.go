@@ -51,7 +51,7 @@ func (a *grokAuth) credentials(ctx context.Context) (grokCredentials, error) {
 	}
 	expiry, err := time.Parse(time.RFC3339Nano, jsonString(entry, "expires_at"))
 	if err != nil {
-		return grokCredentials{}, errors.New("Grok OAuth expiry is invalid; run grok login")
+		return grokCredentials{}, errors.New("grok OAuth expiry is invalid; run grok login")
 	}
 	if !expiry.After(a.now().Add(time.Minute)) {
 		entry, err = a.refresh(ctx, "")
@@ -61,7 +61,7 @@ func (a *grokAuth) credentials(ctx context.Context) (grokCredentials, error) {
 	}
 	token := jsonString(entry, "key")
 	if token == "" {
-		return grokCredentials{}, errors.New("Grok access token is missing; run grok login")
+		return grokCredentials{}, errors.New("grok access token is missing; run grok login")
 	}
 	return grokCredentials{endpoint: grokProxyEndpoint, headers: http.Header{
 		"Authorization": []string{"Bearer " + token}, "X-Xai-Token-Auth": []string{"xai-grok-cli"},
@@ -73,7 +73,7 @@ func (a *grokAuth) credentials(ctx context.Context) (grokCredentials, error) {
 func (a *grokAuth) read() (map[string]json.RawMessage, map[string]json.RawMessage, error) {
 	info, err := os.Lstat(a.path)
 	if err != nil || !info.Mode().IsRegular() {
-		return nil, nil, errors.New("Grok credential store must be an existing regular file; run grok login or set XAI_API_KEY")
+		return nil, nil, errors.New("grok credential store must be an existing regular file; run grok login or set XAI_API_KEY")
 	}
 	file, err := os.Open(a.path)
 	if err != nil {
@@ -90,7 +90,7 @@ func (a *grokAuth) read() (map[string]json.RawMessage, map[string]json.RawMessag
 	}
 	var entry map[string]json.RawMessage
 	if json.Unmarshal(store[grokIssuer+"::"+grokOAuthClientID], &entry) != nil || entry == nil {
-		return nil, nil, errors.New("Grok OAuth login is missing; run grok login --oauth or set XAI_API_KEY")
+		return nil, nil, errors.New("grok OAuth login is missing; run grok login --oauth or set XAI_API_KEY")
 	}
 	if jsonString(entry, "auth_mode") != "oidc" || jsonString(entry, "oidc_issuer") != grokIssuer || jsonString(entry, "oidc_client_id") != grokOAuthClientID {
 		return nil, nil, errors.New("unsupported Grok OAuth credential issuer or client")
@@ -116,7 +116,7 @@ func (a *grokAuth) refresh(ctx context.Context, rejectedToken string) (map[strin
 	}
 	current, err := os.Stat(lockPath)
 	if err != nil || !os.SameFile(held, current) {
-		return nil, errors.New("Grok refresh lock was replaced")
+		return nil, errors.New("grok refresh lock was replaced")
 	}
 	stamp, err := os.OpenFile(lockPath, os.O_WRONLY, 0)
 	if err != nil {
@@ -160,7 +160,7 @@ func (a *grokAuth) refresh(ctx context.Context, rejectedToken string) (map[strin
 	}
 	refresh := jsonString(entry, "refresh_token")
 	if refresh == "" {
-		return nil, errors.New("Grok refresh token is missing; run grok login")
+		return nil, errors.New("grok refresh token is missing; run grok login")
 	}
 	discovery, err := http.NewRequestWithContext(ctx, http.MethodGet, grokIssuer+"/.well-known/openid-configuration", nil)
 	if err != nil {
@@ -213,11 +213,11 @@ func (a *grokAuth) refresh(ctx context.Context, rejectedToken string) (map[strin
 func (a *grokAuth) authJSON(request *http.Request, target any) error {
 	response, err := a.httpClient.Do(request)
 	if err != nil {
-		return errors.Join(request.Context().Err(), errors.New("Grok OAuth request failed"))
+		return errors.Join(request.Context().Err(), errors.New("grok OAuth request failed"))
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("Grok OAuth returned HTTP %d; retry or run grok login", response.StatusCode)
+		return fmt.Errorf("grok OAuth returned HTTP %d; retry or run grok login", response.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, grokAuthLimit+1))
 	if err != nil || len(data) > grokAuthLimit || json.Unmarshal(data, target) != nil {
@@ -228,7 +228,7 @@ func (a *grokAuth) authJSON(request *http.Request, target any) error {
 func writeGrokCredentials(path string, data []byte) error {
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() {
-		return errors.New("Grok credential store is not a regular file")
+		return errors.New("grok credential store is not a regular file")
 	}
 	file, err := os.CreateTemp(filepath.Dir(path), ".mekugi-grok-auth-")
 	if err != nil {

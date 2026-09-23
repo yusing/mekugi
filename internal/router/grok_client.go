@@ -111,7 +111,7 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 		if err != nil {
 			stopStart()
 			cancel()
-			return nil, errors.New("Grok retry after authentication refresh failed")
+			return nil, errors.New("grok retry after authentication refresh failed")
 		}
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {

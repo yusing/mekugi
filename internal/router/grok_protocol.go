@@ -80,15 +80,22 @@ func grokFunctionParameters(namespace, name string, parameters json.RawMessage) 
 // The caller remains responsible for executing tools.
 func translateChatRequest(body []byte, service *openCodeService) (_ *grokTranslation, err error) {
 	if service != nil {
+		openCodeError := func(message string) string {
+			message = strings.ReplaceAll(message, "Grok", "OpenCode")
+			if rest, ok := strings.CutPrefix(message, "grok "); ok {
+				return "OpenCode " + rest
+			}
+			return message
+		}
 		defer func() {
 			if err == nil {
 				return
 			}
 			if diagnostic, ok := errors.AsType[*requestCompatibilityError](err); ok {
 				code := strings.Replace(diagnostic.code, "grok_", "opencode_", 1)
-				err = incompatibleRequest(code, strings.ReplaceAll(diagnostic.message, "Grok", "OpenCode"))
+				err = incompatibleRequest(code, openCodeError(diagnostic.message))
 			} else {
-				err = incompatibleRequest("opencode_unsupported_request", strings.ReplaceAll(err.Error(), "Grok", "OpenCode"))
+				err = incompatibleRequest("opencode_unsupported_request", openCodeError(err.Error()))
 			}
 		}()
 	}
@@ -110,7 +117,7 @@ func translateChatRequest(body []byte, service *openCodeService) (_ *grokTransla
 		}
 	}
 	if value := jsonString(request.fields, "previous_response_id"); value != "" {
-		return nil, errors.New("Grok requires explicit conversation history, not previous_response_id")
+		return nil, errors.New("grok requires explicit conversation history, not previous_response_id")
 	}
 	tr := &grokTranslation{openCode: service, body: map[string]any{"model": model, "stream": true}, tools: make(map[string]grokTool), stream: request.streamResponse}
 	if service != nil {
@@ -151,7 +158,7 @@ func translateChatRequest(body []byte, service *openCodeService) (_ *grokTransla
 			switch kind {
 			case "function", "custom":
 				if name == "" {
-					return errors.New("Grok tool has no name")
+					return errors.New("grok tool has no name")
 				}
 				wireName := grokToolName(namespace, name)
 				if _, exists := tr.tools[wireName]; exists {
@@ -188,7 +195,7 @@ func translateChatRequest(body []byte, service *openCodeService) (_ *grokTransla
 				// unavailable executor; explicitly describe this capability difference.
 				tr.body["_no_hosted_search"] = true
 			default:
-				return fmt.Errorf("Grok does not support provider tool type %q", kind)
+				return fmt.Errorf("grok does not support provider tool type %q", kind)
 			}
 		}
 		return nil
@@ -200,7 +207,7 @@ func translateChatRequest(body []byte, service *openCodeService) (_ *grokTransla
 	}
 	var input []map[string]json.RawMessage
 	if err := json.Unmarshal(request.fields["input"], &input); err != nil {
-		return nil, errors.New("Grok requires an array of conversation items")
+		return nil, errors.New("grok requires an array of conversation items")
 	}
 	for _, item := range input {
 		if jsonString(item, "type") == "additional_tools" {
@@ -250,7 +257,7 @@ func translateChatRequest(body []byte, service *openCodeService) (_ *grokTransla
 			if kind == "custom_tool_call" {
 				var input *string
 				if json.Unmarshal(item["input"], &input) != nil || input == nil {
-					return nil, errors.New("Grok custom tool history input is not a string")
+					return nil, errors.New("grok custom tool history input is not a string")
 				}
 				arguments = string(mustMarshalJSON(map[string]string{"input": *input}))
 			}
@@ -309,7 +316,7 @@ func translateChatRequest(body []byte, service *openCodeService) (_ *grokTransla
 			}
 			// Unencrypted reasoning summaries are explanatory metadata, not messages.
 		default:
-			return nil, fmt.Errorf("Grok cannot translate history item type %q", kind)
+			return nil, fmt.Errorf("grok cannot translate history item type %q", kind)
 		}
 	}
 
@@ -334,7 +341,7 @@ func translateChatRequest(body []byte, service *openCodeService) (_ *grokTransla
 			}
 			name := grokToolName(jsonString(obj, "namespace"), jsonString(obj, "name"))
 			if _, ok := tr.tools[name]; !ok {
-				return nil, errors.New("Grok tool choice references an unavailable tool")
+				return nil, errors.New("grok tool choice references an unavailable tool")
 			}
 			switch tr.format {
 			case "anthropic":
@@ -388,7 +395,7 @@ func translateChatRequest(body []byte, service *openCodeService) (_ *grokTransla
 			case "low", "medium", "high", "xhigh":
 				tr.body["reasoning_effort"] = reasoning.Effort
 			default:
-				return nil, errors.New("Grok supports reasoning effort low, medium, high or xhigh")
+				return nil, errors.New("grok supports reasoning effort low, medium, high or xhigh")
 			}
 		}
 	}
@@ -396,7 +403,7 @@ func translateChatRequest(body []byte, service *openCodeService) (_ *grokTransla
 	// Responses total output budget. Reject it before sending an inference.
 	if raw, ok := request.fields["max_output_tokens"]; ok && strings.TrimSpace(string(raw)) != "null" {
 		if service == nil || tr.format == "chat" {
-			return nil, errors.New("Grok Chat Completions cannot enforce max_output_tokens including reasoning; omit this unsupported setting")
+			return nil, errors.New("grok Chat Completions cannot enforce max_output_tokens including reasoning; omit this unsupported setting")
 		}
 		if tr.format == "anthropic" {
 			tr.body["max_tokens"] = raw
@@ -475,7 +482,7 @@ func grokContent(raw json.RawMessage) (any, error) {
 		case "input_image":
 			imageURL := jsonString(part, "image_url")
 			if imageURL == "" {
-				return nil, errors.New("Grok requires an image URL or data URL, not a provider file ID")
+				return nil, errors.New("grok requires an image URL or data URL, not a provider file ID")
 			}
 			image := map[string]string{"url": imageURL}
 			if detail := jsonString(part, "detail"); detail != "" {

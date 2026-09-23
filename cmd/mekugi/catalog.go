@@ -59,7 +59,7 @@ func prepareProviderCatalog(ctx context.Context, executable, baseURL string, arg
 		return "", "", fmt.Errorf("read Codex model catalog: %w", readErr)
 	}
 	if len(body) > maxCatalogBytes {
-		return "", "", errors.New("Codex model catalog exceeds 8 MiB")
+		return "", "", errors.New("codex model catalog exceeds 8 MiB")
 	}
 	if err := ctx.Err(); err != nil {
 		return "", "", fmt.Errorf("prepare Codex model catalog: %w", err)

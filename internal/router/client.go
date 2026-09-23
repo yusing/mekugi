@@ -202,7 +202,7 @@ func (c *providerClient) forwardExecution(startCtx, responseCtx context.Context,
 	}
 	if isGrokModel(model.Model) {
 		if c.grok == nil {
-			return nil, errors.New("Grok models require --grok")
+			return nil, errors.New("grok models require --grok")
 		}
 		return c.grok.forwardExecution(startCtx, responseCtx, body, headers)
 	}

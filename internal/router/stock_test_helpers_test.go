@@ -17,8 +17,6 @@ const testCodeModeDescription = "Run JavaScript. All nested tools are available 
 const testBaseInstructions = "caller-owned base instructions\n"
 
 const testTranslatedPatch = "*** Begin Patch\n*** Add File: created.txt\n+payload\n*** End Patch\n"
-const testMekugiScript = testTranslatedPatch
-const testMekugiReport = "Success. Updated the following files:\nA created.txt\n"
 
 var testShellEditSource = "await tools.apply_patch(" + strconv.Quote(testTranslatedPatch) + ");"
 

@@ -23,7 +23,7 @@ func (t *mekugiResponseTransform) lowerCodeModeCommentary(callID, input string) 
 		return input, false, err
 	}
 	if callID == "" {
-		return "", false, errors.New("Code Mode commentary call has no call ID")
+		return "", false, errors.New("code Mode commentary call has no call ID")
 	}
 	slices.SortFunc(calls, func(first, second codeModeCommentaryCall) int {
 		if order := cmp.Compare(first.start, second.start); order != 0 {
@@ -43,7 +43,7 @@ func (t *mekugiResponseTransform) lowerCodeModeCommentary(callID, input string) 
 		if len(stack) != 0 {
 			parent := stack[len(stack)-1]
 			if call.start < calls[parent].argumentStart || call.end > calls[parent].argumentEnd {
-				return "", false, errors.New("Code Mode commentary calls overlap without nesting")
+				return "", false, errors.New("code Mode commentary calls overlap without nesting")
 			}
 			parents[index] = parent
 		}

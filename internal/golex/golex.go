@@ -14,7 +14,7 @@ func IsIdentifier(value string) bool {
 // DecodeStringLiteral decodes one interpreted or raw Go string literal.
 func DecodeStringLiteral(literal string) (string, error) {
 	if len(literal) < 2 || literal[0] != '"' && literal[0] != '`' {
-		return "", errors.New("Go string literal must begin with a quote or backtick")
+		return "", errors.New("go string literal must begin with a quote or backtick")
 	}
 	decoded, err := strconv.Unquote(literal)
 	if err != nil {

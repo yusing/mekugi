@@ -170,10 +170,10 @@ func readResponsesWebSocket(ctx context.Context, conn *websocket.Conn, disconnec
 			}
 			readFailed := err != nil
 			if err == nil && kind != websocket.MessageText {
-				err = errors.New("Responses WebSocket requires text JSON messages")
+				err = errors.New("responses WebSocket requires text JSON messages")
 			}
 			if err == nil && !json.Valid(body) {
-				err = errors.New("Responses WebSocket received invalid JSON")
+				err = errors.New("responses WebSocket received invalid JSON")
 			}
 			if !readFailed && err != nil && disconnected != nil {
 				err = incompatibleRequest("invalid_websocket_request", err.Error())
@@ -258,7 +258,7 @@ func (s *responsesWebSocket) retain(items []json.RawMessage) error {
 		s.retainedBytes += len(item)
 	}
 	if s.retainedBytes > upstreamJSONBufferBytes {
-		return errors.New("Responses WebSocket history exceeds the router buffer budget")
+		return errors.New("responses WebSocket history exceeds the router buffer budget")
 	}
 	return nil
 }
@@ -472,7 +472,7 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 	if !automatic {
 		s.retainedBytes += len(command)
 		if s.retainedBytes > upstreamJSONBufferBytes {
-			return errors.New("Responses WebSocket history exceeds the router buffer budget")
+			return errors.New("responses WebSocket history exceeds the router buffer budget")
 		}
 	}
 	input, err := webSocketInput(fields["input"])
@@ -519,7 +519,7 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 		return err
 	}
 	if len(body) > responsesRequestBufferBytes {
-		return errors.New("Responses WebSocket reconstructed request exceeds the router buffer budget")
+		return errors.New("responses WebSocket reconstructed request exceeds the router buffer budget")
 	}
 	parsed, err := parseResponsesRequest(body)
 	if err != nil {

@@ -326,21 +326,6 @@ func cloneMetricsSnapshot(source metricsSnapshot) metricsSnapshot {
 	return clone
 }
 
-func signedDifference(larger, smaller uint64) int64 {
-	if larger >= smaller {
-		difference := larger - smaller
-		if difference > uint64(^uint64(0)>>1) {
-			return int64(^uint64(0) >> 1)
-		}
-		return int64(difference)
-	}
-	difference := smaller - larger
-	if difference > uint64(^uint64(0)>>1) {
-		return -int64(^uint64(0)>>1) - 1
-	}
-	return -int64(difference)
-}
-
 // usageOf converts a ProviderUsage observation to internal usageMetrics.
 func usageOf(usage ProviderUsage) usageMetrics {
 	cached := min(usage.InputTokens, usage.CachedTokens)

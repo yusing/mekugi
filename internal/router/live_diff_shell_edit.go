@@ -86,14 +86,6 @@ func completeStreamingHeredoc(input string) (string, bool) {
 	return strings.TrimSuffix(input, "\n") + "\n" + delimiter + "\n", true
 }
 
-func liveDiffShellStatement(input, directory string) (*syntax.Stmt, string, bool, bool) {
-	statements, directory, partial, ok := liveDiffShellStatements(input, directory)
-	if !ok || len(statements) != 1 {
-		return nil, "", false, false
-	}
-	return statements[0], directory, partial, true
-}
-
 func liveDiffShellHeredoc(redirect *syntax.Redirect, partial bool) (string, bool) {
 	if (redirect.Op != syntax.Hdoc && redirect.Op != syntax.DashHdoc) ||
 		(redirect.N != nil && redirect.N.Value != "0") || redirect.Hdoc == nil {

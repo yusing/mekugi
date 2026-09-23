@@ -1,11 +1,22 @@
 package router
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi"
 )
+
+func testLiveDiffShellWrite(ctx context.Context, input, directory string) ([]mekugi.ReviewFile, bool, error) {
+	statements, directory, partial, ok := liveDiffShellStatements(input, directory)
+	if !ok || len(statements) != 1 {
+		return nil, false, nil
+	}
+	return liveDiffShellWriteStatement(ctx, statements[0], directory, partial)
+}
 
 func TestLiveDiffShellWriteLiteralInputs(t *testing.T) {
 	t.Parallel()
@@ -35,7 +46,7 @@ func TestLiveDiffShellWriteLiteralInputs(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				files, decoded, err := liveDiffShellWrite(t.Context(), tc.input, directory)
+				files, decoded, err := testLiveDiffShellWrite(t.Context(), tc.input, directory)
 				if err != nil || !decoded || len(files) != 1 {
 					t.Fatalf("projection = %+v, %t, %v", files, decoded, err)
 				}
@@ -96,7 +107,7 @@ func TestLiveDiffShellWriteRejectsUnsupportedShell(t *testing.T) {
 	} {
 		t.Run(input, func(t *testing.T) {
 			directory := t.TempDir()
-			files, decoded, err := liveDiffShellWrite(t.Context(), input, directory)
+			files, decoded, err := testLiveDiffShellWrite(t.Context(), input, directory)
 			if decoded || len(files) != 0 || err != nil {
 				t.Fatalf("unsupported input projected = %+v, %t, %v", files, decoded, err)
 			}
@@ -123,7 +134,7 @@ func TestLiveDiffShellWriteProjectionErrorsRemainDecoded(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			files, decoded, err := liveDiffShellWrite(t.Context(), "cat >>file <<'END'\nhello\nEND\n", directory)
+			files, decoded, err := testLiveDiffShellWrite(t.Context(), "cat >>file <<'END'\nhello\nEND\n", directory)
 			if !decoded || err == nil || len(files) != 0 {
 				t.Fatalf("projection error = %+v, %t, %v", files, decoded, err)
 			}
