@@ -76,7 +76,15 @@ The saved diff view uses completed observed patch outcomes. It includes
 changes from children that are visible to the parent. The viewer switches
 to it after the root's usage and journal flush, and back to stream for the
 next prompt. The user can switch, scroll, pause following, resume, or flush
-visible cards without changing execution or durable evidence.
+visible cards without changing execution or durable evidence. Each mode's
+footer reports what the other holds: live calls from the diff view, and
+unreviewed files from the stream view. A child caller's card label uses the
+same color as that agent in the agents pane.
+
+Subagent activity uses a separate Mekugi agents pane, specified in
+[REQ-COMMENTARY-001](commentary.md). If a live diff pane is open, the agents
+pane opens below it; otherwise it opens beside the caller, and a diff pane that
+opens later goes below it. A failed or closed pane leaves the other one open.
 
 Acceptance:
 

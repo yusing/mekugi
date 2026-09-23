@@ -235,6 +235,9 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		mekugiCalls.autoLiveDiff, stopLiveDiff = newAutoLiveDiff(ctx, replayDirectory)
 		mekugiCalls.autoLiveDiff.notice = func(category, message string) { issues.addNotice("", category, message) }
 		replayStore.liveDiff = mekugiCalls.autoLiveDiff.events.publish
+		mekugiCalls.activity.attachPane(newActivityPane(ctx, mekugiCalls.autoLiveDiff.requestActivity))
+		mekugiCalls.autoLiveDiff.activityConnection = mekugiCalls.activity.paneDescriptor
+		mekugiCalls.autoLiveDiff.activityFailed = mekugiCalls.activity.releasePane
 		defer stopLiveDiff()
 		mekugiCalls.replayStore = replayStore
 		defer func() {
@@ -254,6 +257,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	address := listener.Addr().String()
 	if mekugiCalls != nil {
 		mekugiCalls.autoLiveDiff.events.setEndpoint("http://" + address + liveDiffEventsPath)
+		mekugiCalls.activity.setPaneEndpoint("http://" + address + liveActivityEventsPath)
 		mekugiCalls.commentaryEndpoint, err = commentaryPublisherURL(address)
 		if err != nil {
 			return fmt.Errorf("initialize commentary publisher: %w", err)
@@ -278,6 +282,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))
 	if mekugiCalls != nil {
 		mux.HandleFunc("GET "+liveDiffEventsPath, mekugiCalls.autoLiveDiff.events.serveEvents)
+		mux.HandleFunc("GET "+liveActivityEventsPath, mekugiCalls.activity.serveActivityPane)
 		mux.HandleFunc("POST "+commentaryPublisherPath, mekugiCalls.commentary.serveHTTP)
 	}
 	webSocketEndpoint := responsesWebSocketHandler(ctx, *flags.timeout, provider, issues, mekugiCalls, mentor)

@@ -85,16 +85,34 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 	if err != nil {
 		return err
 	}
+	return withRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1000;1006h\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1000;1006l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
+		streamCtx, cancelStream := context.WithCancel(ctx)
+		events := make(chan liveDiffEvent, 32)
+		streamDone := make(chan struct{})
+		go func() { defer close(streamDone); liveDiffStream(streamCtx, connection, events) }()
+		defer func() { cancelStream(); <-streamDone }()
+		controller := newLiveDiffTerminalController(store, workspace, stdout)
+		defer controller.close()
+		resizes := make(chan os.Signal, 1)
+		signal.Notify(resizes, syscall.SIGWINCH)
+		defer signal.Stop(resizes)
+		return controller.run(ctx, events, keys, resizes)
+	})
+}
+
+// withRawPane owns raw mode, screen setup, and a cancellable key reader for a
+// router pane. The reader is joined before terminal state is restored.
+func withRawPane(ctx context.Context, stdin, stdout *os.File, enter, leave string, body func(<-chan byte) error) (err error) {
 	old, err := term.MakeRaw(int(stdin.Fd()))
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, term.Restore(int(stdin.Fd()), old)) }()
-	if _, err := io.WriteString(stdout, "\x1b[?1049h\x1b[?25l\x1b[?1000;1006h\x1b]11;?\x1b\\"); err != nil {
+	if _, err := io.WriteString(stdout, enter); err != nil {
 		return err
 	}
 	defer func() {
-		_, e := io.WriteString(stdout, "\x1b[?2026l\x1b[?1000;1006l\x1b[0m\x1b[?25h\x1b[?1049l")
+		_, e := io.WriteString(stdout, leave)
 		err = errors.Join(err, e)
 	}()
 	// A private descriptor makes cancellation interrupt Read without closing the
@@ -125,15 +143,5 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 		}
 	}()
 	defer func() { cancel(); input.Close(); <-done }()
-	streamCtx, cancelStream := context.WithCancel(ctx)
-	events := make(chan liveDiffEvent, 32)
-	streamDone := make(chan struct{})
-	go func() { defer close(streamDone); liveDiffStream(streamCtx, connection, events) }()
-	defer func() { cancelStream(); <-streamDone }()
-	controller := newLiveDiffTerminalController(store, workspace, stdout)
-	defer controller.close()
-	resizes := make(chan os.Signal, 1)
-	signal.Notify(resizes, syscall.SIGWINCH)
-	defer signal.Stop(resizes)
-	return controller.run(ctx, events, keys, resizes)
+	return body(keys)
 }

@@ -69,9 +69,21 @@ func subagentStartCommentary(request *parsedResponsesRequest, recipient string) 
 }
 
 func prepareSubagentInputCommentary(fields map[string]json.RawMessage, recipient string) []map[string]json.RawMessage {
+	return prepareSubagentInputEnvelopes(fields, recipient).commentary
+}
+
+// subagentInputEnvelopes pairs each projected message with its sender and lists
+// senders of current plaintext FINAL_ANSWER envelopes, which produce no commentary.
+type subagentInputEnvelopes struct {
+	commentary []map[string]json.RawMessage
+	senders    []string
+	finals     []string
+}
+
+func prepareSubagentInputEnvelopes(fields map[string]json.RawMessage, recipient string) (envelopes subagentInputEnvelopes) {
 	var items []map[string]json.RawMessage
 	if json.Unmarshal(fields["input"], &items) != nil {
-		return nil
+		return envelopes
 	}
 	visible := make(map[string]struct{})
 	currentInput := 0
@@ -94,14 +106,17 @@ func prepareSubagentInputCommentary(fields map[string]json.RawMessage, recipient
 	// An absent or malformed identity cannot establish that an envelope is
 	// addressed to this request.
 	if recipient != "/root" && !strings.HasPrefix(recipient, "/root/") || strings.ContainsAny(recipient, "\r\n\x00") {
-		return nil
+		return envelopes
 	}
 
-	var commentary []map[string]json.RawMessage
 	budget := maxCommentaryPublicationBytes
 	for _, item := range items[currentInput:] {
 		text, sender, final, ok := subagentResponse(item)
-		if !ok || final || jsonString(item, "recipient") != recipient {
+		if !ok || jsonString(item, "recipient") != recipient {
+			continue
+		}
+		if final {
+			envelopes.finals = append(envelopes.finals, sender)
 			continue
 		}
 		id := subagentCommentaryMessageID("response\x00" + jsonString(item, "id") + "\x00" + sender + "\x00" + text)
@@ -113,12 +128,13 @@ func prepareSubagentInputCommentary(fields map[string]json.RawMessage, recipient
 		if text != "" {
 			label = direction + "Message received:\n" + text
 		}
-		if len(label) <= budget && len(commentary) < maxCommentaryEventsPerRoute {
+		if len(label) <= budget && len(envelopes.commentary) < maxCommentaryEventsPerRoute {
 			budget -= len(label)
-			commentary = append(commentary, assistantCommentaryMessage(id, label))
+			envelopes.commentary = append(envelopes.commentary, assistantCommentaryMessage(id, label))
+			envelopes.senders = append(envelopes.senders, sender)
 		}
 	}
-	return commentary
+	return envelopes
 }
 
 func subagentResponse(item map[string]json.RawMessage) (text, sender string, final, ok bool) {

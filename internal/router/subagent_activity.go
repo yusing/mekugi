@@ -18,16 +18,21 @@ type subagentActivity struct {
 	copies  map[string]struct{}
 	events  []activityEvent
 	closed  bool
+	order   int
+	pane    *activityPane
 }
 
 type activityThread struct {
 	parent, name      string
 	child, conflicted bool
 	seen              map[string]struct{}
+	order, responding int
+	final             bool
 }
 
 type activityEvent struct {
 	thread, source, kind, text string
+	raw                        string // Unattributed text for the agents pane.
 	observed                   time.Time
 }
 
@@ -56,7 +61,8 @@ func (a *subagentActivity) observe(thread, parent, name string, child bool) bool
 		}
 		return !old.conflicted
 	}
-	a.threads[thread] = &activityThread{parent: parent, name: name, child: child, seen: make(map[string]struct{})}
+	a.order++
+	a.threads[thread] = &activityThread{parent: parent, name: name, child: child, seen: make(map[string]struct{}), order: a.order}
 	return true
 }
 
@@ -110,6 +116,7 @@ func (a *subagentActivity) collect(thread, source, kind, text string) {
 		return
 	}
 	header, _, directed := strings.Cut(text, "] ")
+	raw := activityPaneText(node.name, text)
 	directed = directed && strings.HasPrefix(header, "[") &&
 		(strings.HasPrefix(header, "["+commentaryCode(node.name)+" -> ") ||
 			strings.HasSuffix(header, " -> "+commentaryCode(node.name)))
@@ -139,7 +146,11 @@ func (a *subagentActivity) collect(thread, source, kind, text string) {
 		return
 	}
 	node.seen[source] = struct{}{}
-	a.events = append(a.events, activityEvent{thread: thread, source: source, kind: kind, text: text, observed: now})
+	a.events = append(a.events, activityEvent{thread: thread, source: source, kind: kind, text: text, raw: raw, observed: now})
+	a.claimPaneLocked(thread, now)
+	if a.paneOwnsLocked(a.rootLocked(thread), now) {
+		a.wakePaneLocked()
+	}
 }
 
 func (a *subagentActivity) expireLocked(now time.Time) {
@@ -156,8 +167,18 @@ func (a *subagentActivity) drain(root string, started time.Time, budget int) []m
 	if node == nil || node.child || a.rootLocked(root) != root {
 		return nil
 	}
-	a.expireLocked(time.Now())
-	var messages []map[string]json.RawMessage
+	now := time.Now()
+	a.expireLocked(now)
+	// Pane-owned child activity stays queued for the viewer; the root receives
+	// only one-time ownership notices until the pane is released.
+	owned := a.paneOwnsLocked(root, now)
+	messages := a.paneNoticesLocked(root)
+	if owned {
+		return messages
+	}
+	for _, message := range messages {
+		budget -= len(message["content"])
+	}
 	kept := a.events[:0]
 	blocked := make(map[string]bool)
 	for index := 0; index < len(a.events); index++ {

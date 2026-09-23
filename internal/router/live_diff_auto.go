@@ -31,6 +31,12 @@ type autoLiveDiff struct {
 	turn         liveDiffTurn
 	turnComplete bool
 	changed      chan struct{}
+
+	// The agents pane shares this launcher; its ownership lives in the collector.
+	activityRequested  bool
+	stopped            bool // The launcher exited; later requests cannot be served.
+	activityConnection func() liveDiffConnection
+	activityFailed     func()
 }
 
 func newAutoLiveDiff(ctx context.Context, replay string) (*autoLiveDiff, func()) {
@@ -51,20 +57,60 @@ func newAutoLiveDiff(ctx context.Context, replay string) (*autoLiveDiff, func())
 
 func (a *autoLiveDiff) run(ctx context.Context, replay string) {
 	var directory string
-	var pane liveDiffPane
+	var pane, activity liveDiffPane
+	diffTried, activityTried := false, false
+	diffOpen, activityOpen := false, false
+	below := func(open bool, lifetime liveDiffPane) string {
+		if open {
+			return lifetime.id
+		}
+		return ""
+	}
 	defer func() {
 		// The event stream ends the viewer even if pane cleanup is unavailable.
 		if directory != "" {
 			_ = os.RemoveAll(directory)
 		}
-		if pane.id != "" {
+		for _, id := range []string{activity.id, pane.id} {
+			if id == "" {
+				continue
+			}
 			closeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(closeCtx, "herdr", "pane", "close", pane.id)
+			cmd := exec.CommandContext(closeCtx, "herdr", "pane", "close", id)
 			cmd.WaitDelay = time.Second
 			_ = cmd.Run()
+			cancel()
+		}
+		a.mu.Lock()
+		a.stopped = true
+		unserved := a.activityRequested && !activityOpen
+		a.mu.Unlock()
+		if unserved && a.activityFailed != nil {
+			a.activityFailed()
 		}
 	}()
+	prepare := func() bool {
+		if directory != "" {
+			return true
+		}
+		var err error
+		directory, err = os.MkdirTemp("", "mekugi-live-diff-")
+		if err != nil {
+			directory = ""
+			return false
+		}
+		executable := filepath.Join(directory, "mekugi-live-diff")
+		if pinRunningExecutable(executable) != nil {
+			return false
+		}
+		pane.executable, activity.executable = executable, executable
+		return true
+	}
+	writeSession := func(name string, connection liveDiffConnection) (string, bool) {
+		data, err := json.Marshal(connection)
+		path := filepath.Join(directory, name)
+		return path, err == nil && os.WriteFile(path, data, 0600) == nil
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -75,36 +121,41 @@ func (a *autoLiveDiff) run(ctx context.Context, replay string) {
 			return
 		}
 		a.mu.Lock()
-		if a.scope.Workspaces == nil {
+		if a.scope.Workspaces == nil && !a.activityRequested {
 			a.mu.Unlock()
 			return
 		}
-		workspace, requested := a.workspace, a.requested
+		workspace, activityRequested := a.workspace, a.activityRequested
+		requested := a.requested && a.scope.Workspaces != nil
 		a.mu.Unlock()
-		if !requested || workspace == "" || directory != "" {
-			continue
+		// Each pane fails alone: a failed launch leaves the other one running, and
+		// a created but unplaced pane keeps its ID for shutdown cleanup.
+		if requested && workspace != "" && !diffTried {
+			diffTried = true
+			var ok bool
+			if prepare() {
+				pane.sessionFile, ok = writeSession("session.json", a.events.descriptor())
+			}
+			if ok {
+				launch, stop := context.WithTimeout(ctx, 5*time.Second)
+				diffOpen = splitLiveDiff(launch, workspace, replay, below(activityOpen, activity), &pane) == nil
+				stop()
+			}
 		}
-		data, err := json.Marshal(a.events.descriptor())
-		if err != nil {
-			return
-		}
-		directory, err = os.MkdirTemp("", "mekugi-live-diff-")
-		if err != nil {
-			return
-		}
-		pane.executable = filepath.Join(directory, "mekugi-live-diff")
-		if err := pinRunningExecutable(pane.executable); err != nil {
-			return
-		}
-		pane.sessionFile = filepath.Join(directory, "session.json")
-		if err := os.WriteFile(pane.sessionFile, data, 0600); err != nil {
-			return
-		}
-		launch, stop := context.WithTimeout(ctx, 5*time.Second)
-		err = splitLiveDiff(launch, workspace, replay, &pane)
-		stop()
-		if err != nil {
-			return
+		if activityRequested && workspace != "" && !activityTried {
+			activityTried = true
+			var ok bool
+			if prepare() {
+				activity.sessionFile, ok = writeSession("activity.json", a.activityConnection())
+			}
+			if ok {
+				launch, stop := context.WithTimeout(ctx, 5*time.Second)
+				activityOpen = splitLiveActivity(launch, workspace, below(diffOpen, pane), &activity) == nil
+				stop()
+			}
+			if !activityOpen && a.activityFailed != nil {
+				a.activityFailed()
+			}
 		}
 	}
 }
@@ -136,6 +187,27 @@ func (a *autoLiveDiff) requestLaunch(workspace, thread string) {
 	case a.changed <- struct{}{}:
 	default:
 	}
+}
+
+// requestActivity asks for the one-shot agents pane. It never blocks and
+// reports false when no Herdr pane can be launched.
+func (a *autoLiveDiff) requestActivity() bool {
+	if a == nil || !a.enabled.Load() || a.activityConnection == nil {
+		return false
+	}
+	a.mu.Lock()
+	// Without a root workspace or a running launcher, delivery stays inline.
+	if a.activityRequested || a.stopped || a.workspace == "" {
+		a.mu.Unlock()
+		return false
+	}
+	a.activityRequested = true
+	a.mu.Unlock()
+	select {
+	case a.changed <- struct{}{}:
+	default:
+	}
+	return true
 }
 
 func (a *autoLiveDiff) observe(workspace, thread string, metadata codexTurnMetadata) {

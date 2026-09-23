@@ -109,6 +109,7 @@ The recipient is `/root` for non-child turns and the canonical child name for ch
 An absent or malformed child identity never matches an unaddressed envelope. Valid
 plaintext `MESSAGE` payloads are shown in full under `Message received`, never as excerpts.
 A plaintext `FINAL_ANSWER` produces no router commentary: Codex already displays completion.
+It only sets the sender's final-answer marker in the agents pane.
 Native completion remains available to the parent;
 descendant journal content is delivered by native child completion and is not repeated at main completion.
 Messages exceeding the auxiliary rendering budget are omitted from commentary without
@@ -249,8 +250,29 @@ before the terminal. JSON responses offer ready activity before substantive outp
 Events observed before the current response use the same formatting without an additional
 update heading. No production response is held open, and no polling or model
 turn is created. During an idle stream there may be no event boundary to deliver
-through; once a response closes, updates wait for the next eligible root response.
-This guarantees attributed deferred inline updates, not continuous wait-time display.
+through; once a response closes, inline updates wait for the next eligible root response.
+
+When an interactive Herdr pane is available, the first child event under a root opens
+one Mekugi agents pane for that root and moves that root's child activity there,
+including replies addressed to `/root`. The pane receives events as they are observed,
+independent of root responses, so updates continue during a native wait. While the pane
+owns a root, its root responses carry no child activity copies, only one notice that
+activity moved and, once delivery returns inline, one notice that the pane closed. An
+event leaves the queue only after the pane's write is flushed. A viewer that
+disconnects keeps ownership for 5 seconds and reconnects without duplicates. A pane
+that does not attach within 15 seconds, closes, or stays disconnected past that grace
+returns its pending events and later activity to inline delivery, and is not
+relaunched for the router session. Without Herdr, inline delivery is unchanged. Only
+the first root with child activity uses the pane; other roots stay inline. Critical
+session notices and main-completion usage stay in the root conversation.
+
+The pane lists agents as a canonical-path tree in observation order, with each
+agent's latest activity and age, and an interleaved feed that clamps each entry to
+6 rows. Its only mode shows one agent in full. Roster markers are observed facts only:
+`◐` an open provider response, `!` a latest error event, `✓` a plaintext
+`FINAL_ANSWER` sent, and `·` otherwise. No marker claims that an agent finished.
+Agent colors derive from the canonical path, so the live diff pane uses the same
+color for a caller.
 
 The collector retains thread and source identities until shutdown without lifetime count ceilings.
 It bounds live queues to 1,024 pending events and 64 pending events per child. Queue exhaustion

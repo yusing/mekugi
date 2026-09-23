@@ -17,7 +17,11 @@ Child activity is attributed from validated stable thread relationships and cano
 agent identity, never session IDs or message text. The collector coalesces eligible
 operations, starts, replies, completed commentary, usage, and critical errors for deferred
 root delivery. It drains atomically at response-event boundaries; idle streams wait for
-the next boundary rather than being extended. Codex retains scheduling, recipients,
+the next boundary rather than being extended. When the agents pane owns a root, the
+collector delivers that root's events to the pane's private authenticated stream
+instead, and drains yield only the pane's one-time notices. Pane ownership,
+acknowledgement after flush, the reconnect grace period and inline fallback all belong to
+the collector. The viewer only presents what it is given. Codex retains scheduling, recipients,
 interrupts, waits, and assignment lifecycle.
 
 Provider-authoritative usage is accumulated per stable thread for the router lifetime.

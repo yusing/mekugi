@@ -84,6 +84,17 @@ func (p *liveDiffPreviewPane) update(preview liveDiffPreview) {
 	view.current, view.complete = preview, preview.Complete
 }
 
+// live counts calls whose input is still streaming.
+func (p *liveDiffPreviewPane) live() int {
+	count := 0
+	for _, id := range p.order {
+		if !p.views[id].complete {
+			count++
+		}
+	}
+	return count
+}
+
 func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, theme liveDiffTheme, width, height int) ([]string, error) {
 	if height <= 0 || len(p.order) == 0 {
 		return nil, nil
@@ -276,9 +287,12 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 		caller = "unknown caller"
 	}
 	// Put attribution first so narrow panes do not silently lose the caller.
+	// The caller keeps the agents pane's color for the same canonical path.
 	caller = ansi.Truncate(livediff.Safe(caller, false), max(1, min(28, width/3)), "…")
-	title = caller + " · " + title
-	header := ansi.Truncate(theme.Accent()+livediff.Safe(title, false)+"\x1b[0m", max(0, width-1), "")
+	if color := liveAgentColor(p.current.Caller); color != "" {
+		caller = color + caller + "\x1b[0m" + theme.Accent()
+	}
+	header := ansi.Truncate(theme.Accent()+caller+" · "+livediff.Safe(title, false)+"\x1b[0m", max(0, width-1), "")
 	lines := []string{header}
 	rows := height - 1
 	if rows == 0 || len(p.source) == 0 {

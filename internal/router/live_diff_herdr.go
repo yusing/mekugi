@@ -26,10 +26,27 @@ type herdrPaneIdentity struct {
 	WorkspaceID string `json:"workspace_id"`
 }
 
-func splitLiveDiff(ctx context.Context, workspace, replay string, lifetime *liveDiffPane) error {
+func splitLiveDiff(ctx context.Context, workspace, replay, below string, lifetime *liveDiffPane) error {
 	if lifetime == nil || lifetime.sessionFile == "" {
 		return errors.New("live diff requires a router session")
 	}
+	return splitMekugiPane(ctx, workspace, "Mekugi live diff", below, lifetime, func(executable string) []string {
+		return []string{executable, "live-diff", "--workspace", workspace, "--replay-dir", replay, "--session-file", lifetime.sessionFile}
+	})
+}
+
+// splitLiveActivity places the agents pane below another Mekugi pane when one
+// exists, otherwise beside its caller.
+func splitLiveActivity(ctx context.Context, workspace, below string, lifetime *liveDiffPane) error {
+	if lifetime == nil || lifetime.sessionFile == "" {
+		return errors.New("live activity requires a router session")
+	}
+	return splitMekugiPane(ctx, workspace, "Mekugi agents", below, lifetime, func(executable string) []string {
+		return []string{executable, "live-activity", "--session-file", lifetime.sessionFile}
+	})
+}
+
+func splitMekugiPane(ctx context.Context, workspace, label, below string, lifetime *liveDiffPane, command func(string) []string) error {
 	if os.Getenv("HERDR_ENV") != "1" {
 		return errors.New("live diff requires a Herdr-managed pane")
 	}
@@ -68,13 +85,13 @@ func splitLiveDiff(ctx context.Context, workspace, replay string, lifetime *live
 	}
 	if err := callHerdrAPI(ctx, "mekugi:live-diff:create", "layout.apply", map[string]any{
 		"workspace_id": current.Pane.WorkspaceID,
-		"tab_label":    "Mekugi live diff",
+		"tab_label":    label,
 		"focus":        false,
 		"root": map[string]any{
 			"type":    "pane",
-			"label":   "Mekugi live diff",
+			"label":   label,
 			"cwd":     workspace,
-			"command": []string{executable, "live-diff", "--workspace", workspace, "--replay-dir", replay, "--session-file", lifetime.sessionFile},
+			"command": command(executable),
 		},
 	}, &created); err != nil {
 		return err
@@ -84,6 +101,10 @@ func splitLiveDiff(ctx context.Context, workspace, replay string, lifetime *live
 	}
 	lifetime.id = created.Layout.FocusedPaneID
 
+	target, split := current.Pane.PaneID, "right"
+	if below != "" {
+		target, split = below, "down"
+	}
 	var moved struct {
 		Type       string `json:"type"`
 		MoveResult struct {
@@ -98,8 +119,8 @@ func splitLiveDiff(ctx context.Context, workspace, replay string, lifetime *live
 		"destination": map[string]any{
 			"type":           "tab",
 			"tab_id":         current.Pane.TabID,
-			"target_pane_id": current.Pane.PaneID,
-			"split":          "right",
+			"target_pane_id": target,
+			"split":          split,
 		},
 	}, &moved); err != nil {
 		return fmt.Errorf("created direct pane %s but could not place it: %w", lifetime.id, err)

@@ -160,7 +160,8 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 		return strings.Contains(frame, "v stream") && strings.Contains(ansi.Strip(frame), "80│+new")
 	})
 	ui.write(t, "g")
-	paused := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream · PAUSED") })
+	// The diff footer reports the call still streaming in the other mode.
+	paused := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream (1 live) · PAUSED") })
 	pausedHeader := liveDiffFrameRow(paused, 1)
 
 	ui.write(t, "v")
@@ -321,7 +322,11 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 		text := ansi.Strip(frame)
 		return strings.Contains(text, "stream_0100") && strings.Contains(text, "stream_0200")
 	})
-	if !strings.Contains(frame, "/root · STREAMING SCRIPT") || !strings.Contains(frame, "/root/editor · STREAMING SCRIPT") {
+	if text := ansi.Strip(frame); !strings.Contains(text, "/root · STREAMING SCRIPT") || !strings.Contains(text, "/root/editor · STREAMING SCRIPT") {
+		t.Fatalf("concurrent frame lost attribution: %q", frame)
+	}
+	// Child callers keep the agents pane's color for the same canonical path.
+	if !strings.Contains(frame, liveAgentColor("/root/editor")+"/root/editor") || !strings.Contains(frame, "STREAM · v diff") {
 		t.Fatalf("concurrent frame lost attribution: %q", frame)
 	}
 	for i := 101; i <= 150; i++ {
@@ -333,7 +338,7 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 		text := ansi.Strip(frame)
 		return strings.Contains(text, "stream_0150") && strings.Contains(text, "stream_0200")
 	})
-	if strings.Index(frame, "/root · STREAMING SCRIPT") > strings.Index(frame, "/root/editor · STREAMING SCRIPT") {
+	if text := ansi.Strip(frame); strings.Index(text, "/root · STREAMING SCRIPT") > strings.Index(text, "/root/editor · STREAMING SCRIPT") {
 		t.Fatal("concurrent delta reordered the cards")
 	}
 	broker.publishPreview(first, true)

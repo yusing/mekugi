@@ -269,3 +269,71 @@ func TestAutoLiveDiffChildPreviewWaitsForRootWorkspace(t *testing.T) {
 		t.Fatalf("child preview overrode root workspace: %s", data)
 	}
 }
+
+func TestAutoLiveDiffStacksAgentsPane(t *testing.T) {
+	for _, order := range []string{"diff_first", "agents_first"} {
+		t.Run(order, func(t *testing.T) {
+			log := autoLiveDiffFixture(t)
+			a, stop := newAutoLiveDiff(t.Context(), t.TempDir())
+			defer stop()
+			a.activityConnection = func() liveDiffConnection { return liveDiffConnection{Endpoint: "http://127.0.0.1:1", Token: "token"} }
+			a.enable()
+			workspace := t.TempDir()
+			a.observe(workspace, "thread-1", codexTurnMetadata{RequestKind: "turn"})
+			first, second := func() { a.requestLaunch(workspace, "thread-1") }, func() {
+				if !a.requestActivity() {
+					t.Fatal("agents pane request was refused")
+				}
+			}
+			if order == "agents_first" {
+				first, second = second, first
+			}
+			first()
+			waitAutoLiveDiff(t, log, "done\n")
+			second()
+			data := waitAutoLiveDiff(t, log, "done\n")
+			for deadline := time.Now().Add(10 * time.Second); strings.Count(data, "done\n") < 2; {
+				if time.Now().After(deadline) {
+					t.Fatalf("second pane was not placed: %s", data)
+				}
+				time.Sleep(10 * time.Millisecond)
+				data = waitAutoLiveDiff(t, log, "done\n")
+			}
+			if a.requestActivity() {
+				t.Fatal("agents pane launched twice")
+			}
+			var moves []string
+			for line := range strings.SplitSeq(data, "\n") {
+				if strings.Contains(line, `"method":"pane.move"`) {
+					moves = append(moves, line)
+				}
+			}
+			if len(moves) != 2 || !strings.Contains(moves[0], `"target_pane_id":"caller"`) || !strings.Contains(moves[0], `"split":"right"`) ||
+				!strings.Contains(moves[1], `"target_pane_id":"new"`) || !strings.Contains(moves[1], `"split":"down"`) {
+				t.Fatalf("pane placement = %q", moves)
+			}
+			command := "live-diff"
+			if order == "agents_first" {
+				command = "live-activity"
+			}
+			if !strings.Contains(data[:strings.Index(data, "done\n")], command) {
+				t.Fatalf("first pane was not %s: %s", command, data)
+			}
+		})
+	}
+}
+
+func TestAutoLiveDiffAgentsPaneUnavailableAfterStop(t *testing.T) {
+	autoLiveDiffFixture(t)
+	a, stop := newAutoLiveDiff(t.Context(), t.TempDir())
+	a.activityConnection = func() liveDiffConnection { return liveDiffConnection{Endpoint: "http://127.0.0.1:1", Token: "token"} }
+	a.enable()
+	if a.requestActivity() {
+		t.Fatal("agents pane accepted without a root workspace")
+	}
+	a.observe(t.TempDir(), "thread-1", codexTurnMetadata{RequestKind: "turn"})
+	stop()
+	if a.requestActivity() {
+		t.Fatal("agents pane accepted after the launcher stopped")
+	}
+}

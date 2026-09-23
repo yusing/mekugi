@@ -387,7 +387,7 @@ func TestLiveDiffHerdrMissingDirectPaneIdentity(t *testing.T) {
 	log := autoLiveDiffFixture(t)
 	t.Setenv("MEKUGI_AUTO_DIFF_API_MODE", "missing_identity")
 	dir := t.TempDir()
-	err := splitLiveDiff(t.Context(), dir, dir, &liveDiffPane{sessionFile: filepath.Join(dir, "connection.json")})
+	err := splitLiveDiff(t.Context(), dir, dir, "", &liveDiffPane{sessionFile: filepath.Join(dir, "connection.json")})
 	if err == nil || !strings.Contains(err.Error(), "no pane identity") {
 		t.Fatalf("missing identity accepted: %v", err)
 	}

@@ -247,6 +247,7 @@ type mekugiCommentaryState struct {
 	subagentDeferred        []map[string]json.RawMessage
 	subagentResponses       []map[string]json.RawMessage
 	subagentTurn            bool
+	activityResponding      bool // Counted in the agents-pane roster until Close.
 }
 
 type mekugiJournalState struct {
@@ -318,6 +319,10 @@ func (t *mekugiResponseTransform) Close() {
 	}
 	for itemID := range t.previews {
 		t.endPreview(itemID)
+	}
+	if t.activityResponding {
+		t.activityResponding = false
+		t.proxy.activity.endResponse(t.threadID)
 	}
 	t.ReleaseDelivery()
 	t.releaseCommentarySubscriptions()
@@ -453,7 +458,8 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 
 	// Projection deduplication needs the original visible messages. Keep this
 	// request-local result until replay validation succeeds and strips known copies.
-	subagentDeferred := prepareSubagentInputCommentary(request.fields, recipient)
+	envelopes := prepareSubagentInputEnvelopes(request.fields, recipient)
+	subagentDeferred := envelopes.commentary
 
 	tools := request.responseTools()
 	directory, _ := usableRoutingDirectory(metadata.Directories)
@@ -543,6 +549,15 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		// across routing-session changes, and forwards it only to the observed root.
 		p.activity.collect(activityThreadID, "subagent-start\x00"+activityThreadID, "start", subagentStartCommentary(request, metadata.AgentName))
 	}
+	for _, sender := range envelopes.finals {
+		p.activity.markFinal(activityThreadID, sender)
+	}
+	if recipient == "/root" && activityThreadID != "" {
+		subagentDeferred = p.activity.divertRootReplies(activityThreadID, subagentDeferred, envelopes.senders)
+	}
+	if metadata.SubagentKind != "" && activityThreadID != "" {
+		p.activity.beginResponse(activityThreadID)
+	}
 	deferredCommentary := p.drainCommentarySession(historySessionID, threadID)
 	transform := &mekugiResponseTransform{
 		ctx:              ctx,
@@ -570,6 +585,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		subagentDeferred:          subagentDeferred,
 		subagentResponses:         subagentDeferred,
 		subagentTurn:              metadata.SubagentKind != "",
+		activityResponding:        metadata.SubagentKind != "" && activityThreadID != "",
 		deferredCommentary:        deferredCommentary,
 		commentaryEmitted:         make(map[string]struct{}),
 		usageTracker:              p.usage.observation(threadID, metadata.ThreadID, request.model(), usageServiceTier(request.fields["service_tier"])),

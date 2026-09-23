@@ -258,10 +258,19 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	if c.coverage != "" && !strings.HasPrefix(c.coverage, "SIMULATION:") {
 		mode, _, _ = strings.Cut(c.coverage, ":")
 	}
+	// Each mode reports what is waiting in the other one.
 	if c.diffMode {
-		writeRow(height, "DIFF · v stream · "+mode+" · r follow · j/k · n/p · f/F · q quit")
+		stream := "v stream"
+		if live := c.previewPane.live(); live > 0 {
+			stream += fmt.Sprintf(" (%d live)", live)
+		}
+		writeRow(height, "DIFF · "+stream+" · "+mode+" · r follow · j/k · n/p · f/F · q quit")
 	} else {
-		writeRow(height, "STREAM · v diff · q quit")
+		diff := "v diff"
+		if pending := c.unreviewedFiles(); pending > 0 {
+			diff += fmt.Sprintf(" (%d unreviewed)", pending)
+		}
+		writeRow(height, "STREAM · "+diff+" · q quit")
 	}
 	screen.WriteString("\x1b[?2026l")
 	if _, err := io.WriteString(c.stdout, screen.String()); err != nil {
@@ -269,6 +278,16 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	}
 	c.dirty = false
 	return nil
+}
+
+func (c *liveDiffTerminalController) unreviewedFiles() int {
+	count := 0
+	for _, file := range c.files {
+		if len(file.Chunks) > 0 {
+			count++
+		}
+	}
+	return count
 }
 
 func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveDiffEvent) (bool, error) {
