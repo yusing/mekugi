@@ -8,6 +8,7 @@ credentials or live model usage:
 go test -tags journal_e2e ./internal/router -run '^TestConfiguredToolFrontendNativeCodexE2E$'
 go test -tags journal_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'
 go test -tags journal_e2e ./internal/router -run '^TestJournalNativeCodexSpawnE2E$'
+go test -tags journal_e2e ./internal/router -run '^TestPostCompactNativeCodexE2E$'
 ```
 
 The frontend fixture invokes an authenticated configured command through
@@ -16,6 +17,13 @@ separation, and exit status. The mrun fixture checks Codex-owned PTY yield and
 `write_stdin` continuation. The journal fixture checks native child
 assignment, live milestones, terminal child result, and parent delivery without
 an extra final-answer provider request.
+
+The post-compaction fixture forces native automatic compaction and verifies that
+the immediate continuation contains the durable journal and change summary. It
+also checks coexistence of file-based and invocation-local native hooks. Only
+this isolated fixture bypasses hook trust; production registration requires the
+normal Codex hook review. The fixture does not exercise the interactive `/hooks`
+trust UI or manual `/compact` command.
 
 The fixtures are under `internal/router/tool_frontend_codex_e2e_test.go` and
 `internal/router/journal_codex_e2e_test.go`. A tagged compile-only check is

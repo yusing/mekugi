@@ -399,6 +399,20 @@ supported APIs and history limitations.
 
 ## Configuration and troubleshooting
 
+- **Post-compaction recovery:** in Mekugi mode, the wrapper registers a native
+  Codex `SessionStart` hook matching `compact`. Open `/hooks` in Codex and trust
+  the Mekugi `post-compact` command before using it. After manual or automatic
+  compaction, it restores a bounded snapshot of the main thread's journal and
+  recorded change summary before the next model request. Subagents and
+  passthrough mode are unchanged. Requires Codex's compact `SessionStart` support
+  (validated with CLI 0.156.1); disabling native hooks disables recovery.
+  Existing user/project hooks remain loaded, and Mekugi does not change your
+  Codex configuration files or bypass hook trust. If you supply explicit
+  `hooks` configuration through CLI `-c`, Mekugi leaves it untouched and prints
+  a notice instead of registering its hook. Add a `SessionStart` command handler
+  matching `^compact$`, with command `/absolute/path/to/mekugi post-compact`, to
+  your hook configuration in that case. Quote the executable path if it contains
+  spaces. Hook failures are advisory and do not stop the task.
 - **Instructions:** Mekugi preserves Codex's stock or caller-configured base instructions. It adds
   journal and finish guidance through the projected tool descriptions without editing instruction
   files. See [guidance behavior](doc/spec/guide.md).

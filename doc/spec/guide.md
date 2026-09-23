@@ -93,3 +93,41 @@ Acceptance:
 6. In Mekugi mode with `skills-mgr` in PATH, Codex launches disable stock skill-catalog instructions
    after caller overrides and selected skill wrappers reach the provider as `<skill name="…"/>`.
    In passthrough mode or without `skills-mgr`, neither projection occurs.
+
+## REQ-GUIDE-002 — Native post-compaction recovery
+
+Main threads recover useful durable facts after compaction without a model-driven
+journal/change lookup. The wrapper registers a native Codex `SessionStart` command
+hook matching `compact`, using invocation-local configuration. Codex owns event
+timing, trust review, execution, context insertion, and hook-output history. Native
+`PostCompact` is not the injection surface because it does not expose additional
+context. Subagents and passthrough sessions are outside this feature's scope.
+
+The hook reads the retained journal and executing-thread-owned change evidence
+through their existing owners. It includes journal IDs, authors, questions, delivery
+state, retained change ranges, and aggregated numstat, not full diffs. These are
+historical facts, not new authorization or proof of current workspace state. No
+tools or effects are replayed, and listing does not acknowledge journal delivery.
+
+Recovery uses the native event's stable session identity and absolute workspace,
+not a live router, parent process, routing-session ID, or process cwd. Missing or
+conflicted identity and unavailable storage produce advisory failure, never an
+invented empty success. Existing hooks and user configuration remain owned by
+Codex; explicit CLI hooks configuration takes precedence over auto-registration.
+Trust is never bypassed. Native hook disablement remains effective.
+
+Acceptance:
+
+1. Manual and automatic root compaction invoke the same `SessionStart` hook;
+   its output reaches the immediate model continuation without another model call.
+2. Restart and resume read the same durable records. Forks read their own journal
+   and own change attempts; unrelated workspaces, threads, and children cannot
+   contribute records to that snapshot.
+3. Journal and change selection share a locked snapshot. Each section is bounded
+   to 8 KiB with UTF-8-safe truncation and explicit retrieval instructions. Removed,
+   partial, or unavailable change evidence retains the change owner's limitations.
+4. Non-compact events do nothing. Child identities do not inject context. Invalid
+   input and storage errors are advisory native hook failures; they neither stop
+   the turn nor claim successful recovery.
+5. Automatic registration preserves file-based hooks, does not write configuration
+   files, and leaves explicit CLI hooks untouched with a visible registration notice.

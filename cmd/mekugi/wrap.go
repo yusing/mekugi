@@ -98,6 +98,18 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	}
 	// Announce once before Codex takes over the terminal, never during its UI.
 	fmt.Fprintf(os.Stderr, "mekugi dashboard: %s/\n", strings.TrimSuffix(session.BaseURL, "/v1"))
+	if session.JournalEnabled {
+		hookExecutable, err := os.Executable()
+		if err != nil {
+			cancel()
+			return 1, errors.Join(err, <-routerDone)
+		}
+		var registered bool
+		args, registered = postCompactHookArgs(args, hookExecutable)
+		if !registered {
+			fmt.Fprintln(os.Stderr, "mekugi: explicit CLI hooks configuration retained; add the post-compact SessionStart hook to that configuration to enable recovery")
+		}
+	}
 	cmd := exec.CommandContext(ctx, executable, codexArgs(session.BaseURL, args, session.JournalEnabled, session.SkillsManagerAvailable)...)
 	cmd.Env = append(os.Environ(), "MEKUGI_BASE_URL="+session.BaseURL)
 	if session.AXReadOutput != "" {
