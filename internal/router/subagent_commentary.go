@@ -48,7 +48,8 @@ func subagentStartCommentary(request *parsedResponsesRequest, recipient string) 
 	if tier != "" {
 		renderedTier = commentaryCode(tier)
 	}
-	text := "Started.\nModel: " + commentaryCode(model) + "\nReasoning effort: " + renderedEffort + "\nService tier: " + renderedTier
+	var text strings.Builder
+	text.WriteString("Started.\nModel: " + commentaryCode(model) + "\nReasoning effort: " + renderedEffort + "\nService tier: " + renderedTier)
 	input, err := decodeResponsesInput(request.fields["input"])
 	if err == nil {
 		for _, v := range input.items {
@@ -58,18 +59,13 @@ func subagentStartCommentary(request *parsedResponsesRequest, recipient string) 
 			}
 			if prompt, assignment := journalAssignmentText(item.fields, recipient); assignment {
 				if prompt != "" {
-					text += "\n\n**Spawn prompt:**\n\n" + prompt
+					text.WriteString("\n\n**Spawn prompt:**\n\n" + prompt)
 				}
 				break
 			}
 		}
 	}
-	return text
-
-}
-
-func prepareSubagentInputCommentary(fields map[string]json.RawMessage, recipient string) []map[string]json.RawMessage {
-	return prepareSubagentInputEnvelopes(fields, recipient).commentary
+	return text.String()
 }
 
 // subagentInputEnvelopes pairs each projected message with its sender and lists

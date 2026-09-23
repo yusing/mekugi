@@ -96,7 +96,7 @@ func TestSubagentReceiptDirectionAndCompletionSummary(t *testing.T) {
 				"content": []any{map[string]any{"type": "input_text", "text": "Message Type: " + test.kind + "\nTask name: " + test.recipient + "\nSender: " + test.sender + "\nPayload:\n" + test.body}},
 			}})
 			fields := map[string]json.RawMessage{"input": input}
-			messages := prepareSubagentInputCommentary(fields, test.recipient)
+			messages := prepareSubagentInputEnvelopes(fields, test.recipient).commentary
 			if test.want == "" && len(messages) != 0 || test.want != "" && (len(messages) != 1 || commentaryText(t, messages[0]) != test.want) {
 				t.Fatalf("receipt = %s", mustTestJSON(t, messages))
 			}

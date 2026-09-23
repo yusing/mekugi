@@ -77,8 +77,8 @@ func nativePatchPaths(input, workspace string) ([]nativePatchPath, error) {
 			after = before
 			if index+1 < len(lines)-1 {
 				next := strings.TrimSuffix(lines[index+1], "\r")
-				if strings.HasPrefix(next, "*** Move to: ") {
-					after = strings.TrimPrefix(next, "*** Move to: ")
+				if moved, ok := strings.CutPrefix(next, "*** Move to: "); ok {
+					after = moved
 					index++
 				}
 			}
@@ -236,8 +236,7 @@ func stockLiteralPatchInputs(source string) []string {
 				continue
 			}
 			literal, ok := toolActivityStaticJavaScriptValue(value, bytes)
-			text, ok := literal.(string)
-			if ok {
+			if text, isText := literal.(string); ok && isText {
 				bindings[name.Utf8Text(bytes)] = text
 			}
 		}

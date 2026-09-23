@@ -68,7 +68,7 @@ func TestReceivedReplyOverBudgetIsOmittedWithoutChangingInput(t *testing.T) {
 	}
 	original := mustMarshalJSON([]any{envelope("oversized", body), envelope("small", "Complete small reply.")})
 	fields := map[string]json.RawMessage{"input": original}
-	messages := prepareSubagentInputCommentary(fields, "/root/b")
+	messages := prepareSubagentInputEnvelopes(fields, "/root/b").commentary
 	if !bytes.Equal(fields["input"], original) {
 		t.Fatal("oversized reply changed model-visible input")
 	}

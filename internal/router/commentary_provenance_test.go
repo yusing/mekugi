@@ -48,7 +48,7 @@ func TestSubagentProjectionPreservesUnretainedPrefixMessage(t *testing.T) {
 	fields := map[string]json.RawMessage{"input": mustTestJSON(t, []any{unknown, envelope})}
 	original := bytes.Clone(fields["input"])
 
-	if messages := prepareSubagentInputCommentary(fields, "/root/b"); len(messages) != 0 {
+	if messages := prepareSubagentInputEnvelopes(fields, "/root/b").commentary; len(messages) != 0 {
 		t.Fatalf("visible exact ID was projected twice: %s", mustTestJSON(t, messages))
 	}
 	if !bytes.Equal(fields["input"], original) {

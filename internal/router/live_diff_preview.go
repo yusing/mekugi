@@ -266,8 +266,7 @@ func (w *liveDiffPreviewWorker) run() {
 			if len(scripts) != 0 && shellDisplay == "" {
 				shellDisplay = codeModeShellDisplay(scripts)
 			}
-			for index := len(calls) - 1; index >= 0; index-- {
-				call := calls[index]
+			for _, call := range slices.Backward(calls) {
 				switch jsonString(call, "name") {
 				case applyPatchToolName:
 					if projected, ok := nativePatchPreview(jsonString(call, "input")); ok {

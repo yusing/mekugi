@@ -168,7 +168,7 @@ func TestUnnamedRecipientPreservesUnretainedPrefixMessage(t *testing.T) {
 	generated := assistantCommentaryMessage(subagentCommentaryMessageID("old"), "Old notice.")
 	envelope := map[string]any{"type": "agent_message", "author": "/root/sender", "content": []any{map[string]any{"type": "encrypted_content"}}}
 	fields := map[string]json.RawMessage{"input": mustTestJSON(t, []any{generated, envelope})}
-	if got := prepareSubagentInputCommentary(fields, ""); len(got) != 0 {
+	if got := prepareSubagentInputEnvelopes(fields, "").commentary; len(got) != 0 {
 		t.Fatal("absent recipient matched absent identity", got)
 	}
 	if !bytes.Equal(fields["input"], mustTestJSON(t, []any{generated, envelope})) {
