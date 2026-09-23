@@ -8,7 +8,7 @@ export function createMRunTool(): NativeTool {
     specification: {
       type: "custom",
       name: "mrun",
-      description: "Bound one foreground command's output, retaining its beginning or end. Usage: `mrun (-n N|--max-tokens N) [--tail] -- COMMAND [ARG...]`. Stock yielded sessions and write_stdin still own interactive continuation.",
+      description: "Bound one foreground command's output, retaining its beginning or end. Use for noisy commands when a bounded head or tail is sufficient; output outside the selected window is discarded. Only an emitted mread reference recovers retained delivery overflow; ordinary exec_command truncation has no mread recovery. Usage: `mrun (-n N|--max-tokens N) [--tail] -- COMMAND [ARG...]`. Stock yielded sessions and write_stdin still own interactive continuation.",
     },
     nativeExecutor: "mrun",
   };

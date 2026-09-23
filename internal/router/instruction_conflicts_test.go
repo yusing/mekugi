@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -163,6 +164,51 @@ func TestConflictRewriteLeavesOrdinaryStockAdvice(t *testing.T) {
 	}
 }
 
+func TestConflictRewriteRestoresDecisionAndWaitGuidance(t *testing.T) {
+	// Planning fragments still occur in Codex's collaboration-mode Plan template.
+	// The wait fragment occurs in the previously pinned Astra stock instructions.
+	for _, test := range []struct{ source, want string }{
+		{"* Keep asking until you can clearly state: goal + success criteria, audience, in/out of scope, constraints, current state, and the key preferences/tradeoffs.", "* Resolve enough intent to clearly state: goal + success criteria, audience, in/out of scope, constraints, current state, and the key preferences/tradeoffs."},
+		{"* Once intent is stable, keep asking until the spec is decision complete: approach, interfaces (APIs/schemas/I/O), data flow, edge cases/failure modes, testing + acceptance criteria, rollout/monitoring, and any migrations/compat constraints.", "* Once intent is stable, resolve the spec until it is decision complete: approach, interfaces (APIs/schemas/I/O), data flow, edge cases/failure modes, testing + acceptance criteria, rollout/monitoring, and any migrations/compat constraints."},
+		{"You SHOULD ask many questions, but each question must:", "Ask only the questions needed to make the plan decision complete. Each question must:"},
+		{"- Avoid performing blocking sleep or wait calls longer than 60 seconds, as they may prevent you from communicating with the user for their duration.", "- Use completion notifications or interruptible waits; do not shorten waits solely to record progress."},
+	} {
+		t.Run(test.source, func(t *testing.T) {
+			const policy = "Ask for approval before publishing."
+			for _, newline := range []string{"\n", "\r\n"} {
+				suffix := newline + policy + newline + test.source + " Caller qualification." + newline + "```text" + newline + test.source + newline + "```"
+				source := test.source + suffix
+				request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+					"instructions": mustMarshalJSON(source),
+					"input": mustMarshalJSON([]any{
+						map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": source}}},
+						map[string]string{"role": "user", "content": source},
+						map[string]string{"role": "system", "content": source},
+					}),
+				}}
+				if err := rewriteRequestInstructionConflicts(&request); err != nil {
+					t.Fatal(err)
+				}
+				if got := jsonString(request.fields, "instructions"); got != test.want+suffix {
+					t.Errorf("top-level conflict not resolved: %q", got)
+				}
+				wantInput := mustMarshalJSON([]any{
+					map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": test.want + suffix}}},
+					map[string]string{"role": "user", "content": source},
+					map[string]string{"role": "system", "content": source},
+				})
+				if !sameJSONValue(request.fields["input"], wantInput) {
+					t.Error("developer conflict unresolved or unrelated carriers changed")
+				}
+				before := mustMarshalJSON(request.fields)
+				if err := rewriteRequestInstructionConflicts(&request); err != nil || !sameJSONValue(before, mustMarshalJSON(request.fields)) {
+					t.Fatalf("conflict rewrite not idempotent: %v", err)
+				}
+			}
+		})
+	}
+}
+
 func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 	registry := newManagedMekugiProxy(t).registry
 	guide := registry.frontendGuidance
@@ -193,7 +239,7 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 		}
 	}
 	for _, removed := range []string{"hcat", "hread", "hpatch", "hchanges", "functions.shell"} {
-		if strings.Contains(guide, removed) {
+		if regexp.MustCompile(`\b` + regexp.QuoteMeta(removed) + `\b`).MatchString(guide) {
 			t.Fatalf("retired instruction %q in frontend guide", removed)
 		}
 	}

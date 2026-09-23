@@ -2,6 +2,7 @@
 <mekugi-frontends>
 <usage>
 Codex owns stock editing and execution. The following session-private PATH commands run through exec_command (or tools.exec_command in Code Mode); use them when useful rather than replacing ordinary shell tools.
+Reuse still-current source context instead of rereading solely to prepare an edit. Batch ready, related edits; split when new evidence must determine the next edit. Budget combined reads and command output before execution.
 </usage>
 
 <tool name="mcat">
@@ -9,11 +10,11 @@ Read one or more UTF-8 files or inclusive logical-line ranges as raw rows withou
 </tool>
 
 <tool name="msymbol">
-Resolve one current Go, JavaScript, TypeScript, JSON, or Python symbol and emit complete rows as `"PATH":LINE TEXT`. Usage: `msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH LINE SYMBOL [N]`. LINE selects the current snapshot. ROOT sets resolver scope and relative paths without changing shell state. N selects an exact language-token occurrence. --max-tokens follows the shared 4000-token default and strict 1–15500 ceiling. Ambiguous selectors, unavailable language servers, input changes during the query, and definitions without an editable workspace location fail without stdout rows. An incomplete token-limited result retains complete rows, writes stderr, and exits nonzero.
+Resolve one current Go, JavaScript, TypeScript, JSON, or Python symbol and emit complete rows as `"PATH":LINE TEXT`. Before removing a field or changing a signature, use refs to acquire semantic references across affected packages and tests. Read all returned reference rows before dependent edits, continuing incomplete output; report skipped or unavailable coverage rather than treating text matches as complete caller coverage. Usage: `msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH LINE SYMBOL [N]`. LINE selects the current snapshot. ROOT sets resolver scope and relative paths without changing shell state. N selects an exact language-token occurrence. --max-tokens follows the shared 4000-token default and strict 1–15500 ceiling. Ambiguous selectors, unavailable language servers, input changes during the query, and definitions without an editable workspace location fail without stdout rows. An incomplete token-limited result retains complete rows, writes stderr, and exits nonzero.
 </tool>
 
 <tool name="inspect_file">
-Inspect one host-readable regular file and return bounded JSON metadata and a structural outline. --max-tokens N sets the shared strict 1–15500 ceiling (default 4000). Recover omitted entries with mread. Outline line and line_end are one-based source line numbers.
+Inspect one host-readable regular file and return bounded JSON metadata and a structural outline. When only structure is needed, prefer an outline to a full-file read; read source only for information missing from the outline or current context. --max-tokens N sets the shared strict 1–15500 ceiling (default 4000). Recover omitted entries with mread. Outline line and line_end are one-based source line numbers.
 
 Result shape schema:
 {
@@ -82,29 +83,24 @@ Continue omitted retained output without rerunning its producer. Usage: `mread R
 </tool>
 
 <tool name="mrun">
-Bound one foreground command's output, retaining its beginning or end. Usage: `mrun (-n N|--max-tokens N) [--tail] -- COMMAND [ARG...]`. Stock yielded sessions and write_stdin still own interactive continuation.
+Bound one foreground command's output, retaining its beginning or end. Use for noisy commands when a bounded head or tail is sufficient; output outside the selected window is discarded. Only an emitted mread reference recovers retained delivery overflow; ordinary exec_command truncation has no mread recovery. Usage: `mrun (-n N|--max-tokens N) [--tail] -- COMMAND [ARG...]`. Stock yielded sessions and write_stdin still own interactive continuation.
 </tool>
 
 <tool name="mchanges">
-Review completed observed stock apply_patch evidence, not a Git diff or provisional preview. Usage: `mchanges --list` or `mchanges ID[..ID] ... [--summary|--history] [-- PATH ...]`. Use Git for shell-generated or unrelated changes; omitted review output supplies mread continuation.
+Review completed observed stock apply_patch evidence, not a Git diff or provisional preview. Usage: `mchanges --list` or `mchanges ID[..ID] ... [--summary|--history] [-- PATH ...]`. Hand reviewers explicit IDs or same-agent inclusive ranges for the requested changes, together with the review scope; --list only lists the calling thread's changes. Prefer mchanges for captured edits. Use Git for shell-generated or unrelated changes. Do not routinely pair Git diff with mchanges for the same edits; skip --summary before an already-needed diff. Omitted review output supplies mread continuation; recorded diffs are historical evidence, not proof of current workspace contents.
 </tool>
 
 </mekugi-frontends>
 <!-- mekugi-frontends:end -->
 
 <instruction id="journal_tool">
-Manage the calling thread's durable milestone journal. Record distinct current results, validation, decisions, or blockers, not plans, narration, superseded progress, or summaries of other agents. Mutations return router-assigned IDs; report_now requests immediate user-visible delivery. Prefer the optional journal field on a useful ordinary tool call. In Code Mode, await journal({op: "add", text: "..."}) or pass an atomic mutation array. Use this dedicated tool for list, or call finish alone after all required tool results, optionally with final mutations in journal. Successful finish ends the turn without another model request or a separate final answer; main flushes its unflushed items and a child returns its current journal to its native completion audience.
+Manage the calling thread's durable milestone journal. Record distinct current results, validation, decisions, or blockers, not plans, narration, superseded progress, or summaries of other agents. Mutations return router-assigned IDs; report_now requests immediate user-visible delivery. Prefer the optional journal field on a useful ordinary tool call. In Code Mode, await journal({op: "add", text: "..."}) or pass an atomic mutation array. Use this dedicated tool for list. Once the assigned work is complete and all required tool results have been inspected, request finish, optionally with final mutations in journal. Finish can complete only with no host-dispatched calls in the same response. Successful finish ends the turn without another model request or a separate final answer; main flushes its unflushed items and a child returns its current journal to its native completion audience. Child completion automatically includes owned change ranges and aggregated numstat; do not collect them just to finish.
 </instruction>
 
 <instruction id="journal_code_mode">
 <!-- mekugi-journal:start -->
 <journal>
-Record distinct current results, validation, decisions, or blockers, not plans or narration. Prefer
-the optional journal field on a useful ordinary tool call. In Code Mode, use
-`await journal({op: "add", text: "...", report_now: true})` for one add/edit/delete mutation,
-or pass an atomic mutation array. Use the dedicated `functions.journal` tool to list entries or
-finish. After every required tool result, finish as the only call, optionally batching final
-mutations in its `journal` field. Successful finish ends the turn without a separate final answer.
+Follow the `functions.journal` tool description for milestone, mutation, and completion rules.
 </journal>
 <!-- mekugi-journal:end -->
 </instruction>

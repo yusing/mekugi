@@ -53,7 +53,7 @@ func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
 		"As you work, you send messages to the `commentary` channel.",
 		"As you work, batch journal mutations on supported tool calls.",
 		"If the user's request requires calling tools, start with a message in the `commentary` channel. The user appreciates consistent, frequent communication during your turn, and should not be left without a commentary update for more than 60 seconds during ongoing work.",
-		"Use the projected Journal guidance for progress delivery; batch add/edit/delete mutations on useful ordinary calls. Call functions.journal for list or to finish alone after required results.",
+		"Use the projected Journal guidance for progress delivery; batch add/edit/delete mutations on useful ordinary calls. Call functions.journal for list or finish.",
 		"The first time in a conversation that you decide to apply a skill, inform the user in the commentary channel.",
 		"When applying a skill is a meaningful milestone, record it in the journal.",
 		"Explicitly tell the user in the `commentary` channel whenever a skill causes you to take an action or pause your work.",
@@ -62,6 +62,16 @@ func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
 		"- Record why you are using the skill when it is a meaningful journal milestone.",
 		"answer briefly in commentary,",
 		"answer briefly with a report_now journal item,",
+	}
+	// Restore the pinned planning/wait conflicts without rewriting caller-added
+	// qualifications. Newlines restrict these replacements to whole physical lines.
+	for _, pair := range [][2]string{
+		{"* Keep asking until you can clearly state: goal + success criteria, audience, in/out of scope, constraints, current state, and the key preferences/tradeoffs.", "* Resolve enough intent to clearly state: goal + success criteria, audience, in/out of scope, constraints, current state, and the key preferences/tradeoffs."},
+		{"* Once intent is stable, keep asking until the spec is decision complete: approach, interfaces (APIs/schemas/I/O), data flow, edge cases/failure modes, testing + acceptance criteria, rollout/monitoring, and any migrations/compat constraints.", "* Once intent is stable, resolve the spec until it is decision complete: approach, interfaces (APIs/schemas/I/O), data flow, edge cases/failure modes, testing + acceptance criteria, rollout/monitoring, and any migrations/compat constraints."},
+		{"You SHOULD ask many questions, but each question must:", "Ask only the questions needed to make the plan decision complete. Each question must:"},
+		{"- Avoid performing blocking sleep or wait calls longer than 60 seconds, as they may prevent you from communicating with the user for their duration.", "- Use completion notifications or interruptible waits; do not shorten waits solely to record progress."},
+	} {
+		pairs = append(pairs, "\n"+pair[0]+"\n", "\n"+pair[1]+"\n")
 	}
 	// Frame one physical line at a time, so only complete stock-tool lines
 	// disappear. In particular, caller-added suffixes and generic plan advice

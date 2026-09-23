@@ -70,8 +70,9 @@ func journalFinishClientOutput(t *testing.T, stream bool, wire []byte) []map[str
 func TestJournalFinishEndsWithoutProviderContinuation(t *testing.T) {
 	t.Parallel()
 	for _, mode := range []string{"json", "sse-full", "sse-empty", "sse-absent", "sse-snapshot-only"} {
-		for _, batched := range []bool{false, true} {
-			name := mode + map[bool]string{false: "/existing", true: "/batched"}[batched]
+		for _, mutationMode := range []string{"existing", "batched", "sibling"} {
+			batched := mutationMode == "batched"
+			name := mode + "/" + mutationMode
 			t.Run(name, func(t *testing.T) {
 				stream := mode != "json"
 				snapshot := strings.TrimPrefix(mode, "sse-")
@@ -92,10 +93,17 @@ func TestJournalFinishEndsWithoutProviderContinuation(t *testing.T) {
 				arguments := `{"op":"finish"}`
 				if batched {
 					arguments = `{"op":"finish","journal":[{"op":"add","text":"Completed the assigned milestone"}]}`
-				} else if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "seed", []journalMutation{{Op: "add", Text: new("Completed the assigned milestone")}}); err != nil {
-					t.Fatal(err)
+				} else if mutationMode == "existing" {
+					if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "seed", []journalMutation{{Op: "add", Text: new("Completed the assigned milestone")}}); err != nil {
+						t.Fatal(err)
+					}
 				}
-				provider := &serverFakeProvider{results: []serverForwardResult{{response: journalFinishResponse(t, stream, "completed", snapshot, journalFinishCall(arguments))}}}
+				calls := []any{journalFinishCall(arguments)}
+				if mutationMode == "sibling" {
+					seed := map[string]any{"type": "function_call", "id": "seed-item", "call_id": "seed-call", "name": "journal", "arguments": `{"op":"add","text":"Completed the assigned milestone"}`, "status": "completed"}
+					calls = append([]any{seed}, calls...)
+				}
+				provider := &serverFakeProvider{results: []serverForwardResult{{response: journalFinishResponse(t, stream, "completed", snapshot, calls...)}}}
 				request := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
 				var output bytes.Buffer
 				if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "session", provider, &output, NewCriticalErrors(), proxy, nil); err != nil {

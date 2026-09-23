@@ -8,10 +8,13 @@ It does not detect stock prompt shapes, replace editing sections, select model-s
 inspect `model_instructions_file`, or create or modify instruction files. It does not restore the
 retired shell carrier, HPATCH, hash-target editing, or CTP instructions.
 
-Exact inherited stock fragments that conflict with the current journal or planning
+Exact inherited stock fragments that conflict with the current journal, planning, or wait
 workflow are rewritten in top-level instructions and developer text parts. Unrelated policy,
 system messages, user content, non-text parts, and fenced examples remain unchanged. Rewriting is
 idempotent and model-independent. Execution-free requests retain their native guidance.
+Pinned planning fragments require decision completeness rather than a quota of questions;
+the pinned short-wait fragment yields to completion notifications or interruptible waits.
+These replacements match complete lines and preserve caller-added qualifications.
 
 Each executable helper's tool source owns its description. A template outside router produces a
 checked-in standalone Markdown file with XML-framed built-in frontends and named guidance used by
@@ -25,14 +28,22 @@ marked section in place; malformed or duplicate markers reject before forwarding
 combines the embedded generated built-in section with current pinned plugin descriptions, not a
 model-specific prompt file or routing-session ID.
 
+The projected helper guidance explains when the tools reduce work, not just their syntax:
+structural outlines for navigation, semantic references for caller-impacting edits, bounded
+command windows and retained-output recovery, and explicit captured-change ranges for reviewers.
+It preserves context reuse and batching of ready related edits without replacing the stock editor.
+Review handoffs include the requested scope and explicit IDs or same-agent inclusive ranges;
+the recipient's own change listing cannot discover another agent's IDs. Historical edit evidence
+does not assert the current workspace state or cover shell-generated changes.
+
 The journal owner supplies the additive durable-work guidance. The dedicated
 `functions.journal` description explains milestone scope, immediate reporting, Code Mode mutation,
 and finish semantics. Eligible structured tools receive the optional atomic `journal` mutation
 field. For Code Mode, Mekugi appends one marked Journal section to the authoritative `exec` tool
 description without removing the caller's stock execution contracts.
-The section documents `await journal(...)`, the ordinary-call field preference, and the requirement
-to call `functions.journal` finish alone after required results rather than emitting a separate final
-answer. A previously marked section is refreshed in place. Duplicate, incomplete, or reversed
+The section points to the dedicated journal tool description rather than repeating its rules.
+That description owns Code Mode mutation syntax, batching, and completion conditions for both
+native and Code Mode consumers. A previously marked section is refreshed in place. Duplicate, incomplete, or reversed
 markers reject before forwarding instead of creating ambiguous guidance.
 
 Journal projection is rebuilt from the current request's authenticated tool catalog. It does not

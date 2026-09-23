@@ -2,6 +2,7 @@
 <mekugi-frontends>
 <usage>
 Codex owns stock editing and execution. The following session-private PATH commands run through exec_command (or tools.exec_command in Code Mode); use them when useful rather than replacing ordinary shell tools.
+Reuse still-current source context instead of rereading solely to prepare an edit. Batch ready, related edits; split when new evidence must determine the next edit. Budget combined reads and command output before execution.
 </usage>
 
 {{range . -}}
@@ -14,18 +15,13 @@ Codex owns stock editing and execution. The following session-private PATH comma
 <!-- mekugi-frontends:end -->
 
 <instruction id="journal_tool">
-Manage the calling thread's durable milestone journal. Record distinct current results, validation, decisions, or blockers, not plans, narration, superseded progress, or summaries of other agents. Mutations return router-assigned IDs; report_now requests immediate user-visible delivery. Prefer the optional journal field on a useful ordinary tool call. In Code Mode, await journal({op: "add", text: "..."}) or pass an atomic mutation array. Use this dedicated tool for list, or call finish alone after all required tool results, optionally with final mutations in journal. Successful finish ends the turn without another model request or a separate final answer; main flushes its unflushed items and a child returns its current journal to its native completion audience.
+Manage the calling thread's durable milestone journal. Record distinct current results, validation, decisions, or blockers, not plans, narration, superseded progress, or summaries of other agents. Mutations return router-assigned IDs; report_now requests immediate user-visible delivery. Prefer the optional journal field on a useful ordinary tool call. In Code Mode, await journal({op: "add", text: "..."}) or pass an atomic mutation array. Use this dedicated tool for list. Once the assigned work is complete and all required tool results have been inspected, request finish, optionally with final mutations in journal. Finish can complete only with no host-dispatched calls in the same response. Successful finish ends the turn without another model request or a separate final answer; main flushes its unflushed items and a child returns its current journal to its native completion audience. Child completion automatically includes owned change ranges and aggregated numstat; do not collect them just to finish.
 </instruction>
 
 <instruction id="journal_code_mode">
 <!-- mekugi-journal:start -->
 <journal>
-Record distinct current results, validation, decisions, or blockers, not plans or narration. Prefer
-the optional journal field on a useful ordinary tool call. In Code Mode, use
-`await journal({op: "add", text: "...", report_now: true})` for one add/edit/delete mutation,
-or pass an atomic mutation array. Use the dedicated `functions.journal` tool to list entries or
-finish. After every required tool result, finish as the only call, optionally batching final
-mutations in its `journal` field. Successful finish ends the turn without a separate final answer.
+Follow the `functions.journal` tool description for milestone, mutation, and completion rules.
 </journal>
 <!-- mekugi-journal:end -->
 </instruction>

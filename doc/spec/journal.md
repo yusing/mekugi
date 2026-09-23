@@ -57,10 +57,12 @@ nested additional-tool namespaces, reject built-in tool exposure.
 
 Direct `functions.journal({"op":"finish","journal":[...]})` requests turn completion,
 optionally applying the last atomic mutation array in the same call. Finish takes final mutations
-only through `journal`; other operands must be unset or at their empty/default values. Agents call it alone after required tool
-results arrive, rather than waiting or generating another final-answer turn. On a successful
+only through `journal`; other operands must be unset or at their empty/default values. Agents request it once
+their assigned work is complete and all required tool results have been inspected, not after an intermediate
+result or to generate another final-answer turn. On a successful
 response with successful journal results and no client-dispatched calls, it completes and
-returns the terminal response without another provider request. Mixed client calls remain
+returns the terminal response without another provider request. Other successful router-owned
+journal calls may share that response. Mixed client calls remain
 host-dispatched and prevent completion; journal operation error results continue for correction.
 Invalid or rejected mutations in a dedicated journal call return an `ok: false` tool result
 for correction and prevent its primary operation. Batched fields on host-dispatched tools
