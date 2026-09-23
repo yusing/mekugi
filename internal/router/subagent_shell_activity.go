@@ -2,6 +2,7 @@ package router
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/yusing/mekugi/internal/shellsyntax"
@@ -93,7 +94,7 @@ func (t *mekugiResponseTransform) shellActivityDisplay(item map[string]json.RawM
 		return "", false
 	}
 	if excerpt == "" {
-		return label + " · command unavailable", true
+		return label, true
 	}
 	return label + "\n" + commentaryCode(excerpt), true
 }
@@ -105,11 +106,16 @@ func (t *mekugiResponseTransform) prepareShellActivity(input json.RawMessage) {
 	if json.Unmarshal(input, &items) != nil {
 		return
 	}
-	calls := make(map[string]string)
+	type shellCall struct {
+		excerpt  string
+		codeMode bool
+	}
+	calls := make(map[string]shellCall)
 	t.activityShellSessions = make(map[string]string)
 	t.activityCellOperations = make(map[string]string)
+	cellExcerpts := make(map[string]string)
 	type cellCall struct {
-		cell, operation string
+		cell, operation, excerpt string
 	}
 	cellCalls := make(map[string]cellCall)
 	for _, item := range items {
@@ -126,7 +132,7 @@ func (t *mekugiResponseTransform) prepareShellActivity(input json.RawMessage) {
 					operation := subagentToolPreview(item, qualifiedName, t.shellActivityDisplay)
 					operation = strings.TrimPrefix(strings.TrimPrefix(operation, "Run\n"), "Run JavaScript\n")
 					operation = strings.TrimPrefix(strings.TrimPrefix(operation, "Still Running\n"), "Running stored script\n")
-					if operation == "Still Running · command unavailable" || operation == "Running stored script · command unavailable" {
+					if operation == "Still Running" || operation == "Running stored script · command unavailable" {
 						operation = ""
 					}
 					cellCalls[callID] = cellCall{operation: operation}
@@ -135,7 +141,7 @@ func (t *mekugiResponseTransform) prepareShellActivity(input json.RawMessage) {
 					_ = json.Unmarshal([]byte(jsonString(item, "arguments")), &args)
 					cell := jsonString(args, "cell_id")
 					if cell != "" {
-						cellCalls[callID] = cellCall{cell: cell, operation: t.activityCellOperations[cell]}
+						cellCalls[callID] = cellCall{cell: cell, operation: t.activityCellOperations[cell], excerpt: cellExcerpts[cell]}
 					}
 				}
 			}
@@ -145,9 +151,13 @@ func (t *mekugiResponseTransform) prepareShellActivity(input json.RawMessage) {
 			name, args, script := toolActivityShellCall(item, qualifiedToolName(jsonString(item, "namespace"), jsonString(item, "name")), true)
 			switch name {
 			case "exec_command":
-				calls[callID] = toolActivityCommandExcerpt(script)
+				calls[callID] = shellCall{toolActivityCommandExcerpt(script), strings.TrimPrefix(qualifiedName, "functions.") == "exec"}
 			case "write_stdin":
-				calls[callID] = t.activityShellSessions[strings.TrimSpace(string(args["session_id"]))]
+				calls[callID] = shellCall{t.activityShellSessions[strings.TrimSpace(string(args["session_id"]))], strings.TrimPrefix(qualifiedName, "functions.") == "exec"}
+			}
+			if call, ok := cellCalls[callID]; ok && calls[callID].codeMode {
+				call.excerpt = calls[callID].excerpt
+				cellCalls[callID] = call
 			}
 		} else if kind == "function_call_output" || kind == "custom_tool_call_output" {
 			if call, ok := cellCalls[callID]; ok {
@@ -156,20 +166,66 @@ func (t *mekugiResponseTransform) prepareShellActivity(input json.RawMessage) {
 					status, cell, _ := codeModeExecutionHeader(texts[0])
 					if status == "running" && (call.cell == "" || call.cell == cell) && len(t.activityCellOperations) < 1024 {
 						t.activityCellOperations[cell] = call.operation
+						if call.excerpt != "" {
+							cellExcerpts[cell] = call.excerpt
+						}
 					} else if status != "" && status != "running" {
 						delete(t.activityCellOperations, call.cell)
+						delete(cellExcerpts, call.cell)
+						if call.cell != "" && call.excerpt != "" && len(t.activityShellSessions) < 1024 {
+							if session := toolActivityCodeModeSession(item["output"]); session != "" {
+								t.activityShellSessions[session] = call.excerpt
+							}
+						}
 					}
 				}
 			}
-			excerpt := calls[callID]
+			call := calls[callID]
 			delete(calls, callID)
-			if excerpt != "" && len(t.activityShellSessions) < 1024 {
-				if session := toolActivityOutputSession(item["output"]); session != "" {
-					t.activityShellSessions[session] = excerpt
+			if call.excerpt != "" && len(t.activityShellSessions) < 1024 {
+				session := ""
+				if call.codeMode {
+					session = toolActivityCodeModeSession(item["output"])
+				} else {
+					session = toolActivityOutputSession(item["output"])
+				}
+				if session != "" {
+					t.activityShellSessions[session] = call.excerpt
 				}
 			}
 		}
 	}
+}
+
+// A transparent Code Mode call prints the stock result after the host's
+// completed-script header. Only that verified result body can name a session;
+// arbitrary program output and output-only projections cannot.
+func toolActivityCodeModeSession(raw json.RawMessage) string {
+	texts := executionOutputTexts(raw)
+	if len(texts) == 0 {
+		return toolActivityOutputSession(raw)
+	}
+	status, _, body := codeModeExecutionHeader(texts[0])
+	if status == "" && !strings.HasPrefix(texts[0], "Script ") {
+		return toolActivityOutputSession(raw)
+	}
+	if status != "Script completed" {
+		return ""
+	}
+	texts[0] = body
+	var session int64
+	for _, payload := range texts {
+		if id := nativeJSONSession(payload); id != 0 {
+			if session != 0 {
+				return ""
+			}
+			session = id
+		}
+	}
+	if session == 0 {
+		return ""
+	}
+	return strconv.FormatInt(session, 10)
 }
 
 func toolActivityOutputSession(raw json.RawMessage) string {

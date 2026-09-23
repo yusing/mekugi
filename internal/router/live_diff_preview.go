@@ -261,6 +261,7 @@ func (w *liveDiffPreviewWorker) run() {
 		}
 		projectionInput := input
 		shellDisplay := ""
+		var shellSyntax []liveDiffSourceSpan
 		shellProvisional := false
 		if w.kind == applyPatchToolName {
 			if projected, ok := w.projectStockPreview(input, preview.Workspace, final); ok {
@@ -313,7 +314,7 @@ func (w *liveDiffPreviewWorker) run() {
 				scripts, shellProgram := codeModeShellFragments(input)
 				if len(scripts) != 0 {
 					projectionInput = scripts[len(scripts)-1]
-					shellDisplay = codeModeShellDisplay(scripts)
+					shellDisplay, shellSyntax = codeModeShellDisplay(scripts)
 					shellProvisional = true
 				} else {
 					if shellProgram {
@@ -346,7 +347,7 @@ func (w *liveDiffPreviewWorker) run() {
 				}
 			}
 			if len(scripts) != 0 && shellDisplay == "" {
-				shellDisplay = codeModeShellDisplay(scripts)
+				shellDisplay, shellSyntax = codeModeShellDisplay(scripts)
 			}
 			for _, call := range slices.Backward(calls) {
 				switch jsonString(call, "name") {
@@ -394,7 +395,7 @@ func (w *liveDiffPreviewWorker) run() {
 			}
 		}
 		if shellProvisional {
-			preview.Input, preview.Syntax, preview.Status = shellDisplay, []liveDiffSourceSpan{{Path: "stream.sh"}}, "STREAMING SCRIPT"
+			preview.Input, preview.Syntax, preview.Status = shellDisplay, shellSyntax, "STREAMING SCRIPT"
 			w.mu.Lock()
 			if !w.closed && (w.ctx.Err() == nil || final) {
 				w.broker.publishPreview(preview, false)
@@ -470,7 +471,7 @@ func (w *liveDiffPreviewWorker) run() {
 			scriptVisible = true
 			preview.Input, preview.Syntax = projectionInput, liveDiffScriptSyntax(projectionInput)
 			if shellDisplay != "" {
-				preview.Input, preview.Syntax = shellDisplay, []liveDiffSourceSpan{{Path: "stream.sh"}}
+				preview.Input, preview.Syntax = shellDisplay, shellSyntax
 			} else if projection, projected := shellInterpreterScriptProjection(projectionInput); projected {
 				preview.Input = projection.Source
 				preview.Syntax = []liveDiffSourceSpan{{Path: liveDiffLanguagePath(projection.Language)}}

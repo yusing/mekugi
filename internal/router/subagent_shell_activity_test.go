@@ -87,6 +87,77 @@ func TestShellActivitySessionCorrelation(t *testing.T) {
 	}
 }
 
+func TestShellActivityCodeModeSessionCorrelation(t *testing.T) {
+	const sessionID = 35274
+	const header = "Script completed\nWall time 0.2 seconds\nOutput:\n"
+	const payload = `{"output":"partial","session_id":35274}`
+	for _, origin := range []string{
+		`text(await tools.exec_command({cmd:"go test ./internal/router",yield_time_ms:1000}));`,
+		`const r = await tools.exec_command({cmd:"go test ./internal/router",yield_time_ms:1000}); text(r);`,
+	} {
+		for _, output := range []any{header + payload, []any{map[string]any{"type": "input_text", "text": header}, map[string]any{"type": "input_text", "text": payload}}} {
+			tr := &mekugiResponseTransform{}
+			tr.prepareShellActivity(mustMarshalJSON([]any{
+				map[string]any{"type": "custom_tool_call", "call_id": "run", "name": "exec", "input": origin},
+				map[string]any{"type": "custom_tool_call_output", "call_id": "run", "output": output},
+			}))
+			if got := tr.activityShellSessions["35274"]; got != "go test ./internal/router" {
+				t.Fatalf("origin %q: missing command for session %d: %q", origin, sessionID, got)
+			}
+			poll := map[string]json.RawMessage{"input": mustMarshalJSON(`text(await tools.write_stdin({session_id:35274,chars:"",yield_time_ms:300000}));`)}
+			if got, ok := tr.shellActivityDisplay(poll, "exec"); !ok || got != "Still Running\n`go test ./internal/router`" {
+				t.Fatalf("origin %q: poll = %q, %v", origin, got, ok)
+			}
+		}
+	}
+	tr := &mekugiResponseTransform{}
+	tr.prepareShellActivity(mustMarshalJSON([]any{
+		map[string]any{"type": "custom_tool_call", "call_id": "run", "name": "exec", "input": `text((await tools.exec_command({cmd:"go test ./internal/router"})).output);`},
+		map[string]any{"type": "custom_tool_call_output", "call_id": "run", "output": header + payload},
+	}))
+	if len(tr.activityShellSessions) != 0 {
+		t.Fatalf("output-only projection claimed session metadata: %+v", tr.activityShellSessions)
+	}
+	tr.prepareShellActivity(mustMarshalJSON([]any{
+		map[string]any{"type": "custom_tool_call", "call_id": "run", "name": "exec", "input": `text(await tools.exec_command({cmd:"go test ./internal/router"}));`},
+		map[string]any{"type": "custom_tool_call_output", "call_id": "run", "output": "Script failed\nWall time 0.2 seconds\nOutput:\n" + `{"output":"partial","session_id":35274}`},
+	}))
+	if len(tr.activityShellSessions) != 0 {
+		t.Fatalf("failed Code Mode script claimed session metadata: %+v", tr.activityShellSessions)
+	}
+}
+
+func TestShellActivityCodeModeYieldedSessionCorrelation(t *testing.T) {
+	const running = "Script running with cell ID 7\nWall time 30 seconds\nOutput:\n"
+	const completed = "Script completed\nWall time 0.2 seconds\nOutput:\n" + `{"output":"partial","session_id":35274}`
+	tr := &mekugiResponseTransform{}
+	tr.prepareShellActivity(mustMarshalJSON([]any{
+		map[string]any{"type": "custom_tool_call", "call_id": "run", "name": "exec", "input": `text(await tools.exec_command({cmd:"go test ./internal/router",yield_time_ms:1000}));`},
+		map[string]any{"type": "custom_tool_call_output", "call_id": "run", "output": running},
+		map[string]any{"type": "function_call", "call_id": "wait", "name": "wait", "arguments": `{"cell_id":"7"}`},
+		map[string]any{"type": "function_call_output", "call_id": "wait", "output": completed},
+	}))
+	if got := tr.activityShellSessions["35274"]; got != "go test ./internal/router" {
+		t.Fatalf("yielded Code Mode command lost session origin: %q", got)
+	}
+	if len(tr.activityCellOperations) != 0 {
+		t.Fatalf("completed cell still active: %+v", tr.activityCellOperations)
+	}
+	poll := map[string]json.RawMessage{"input": mustMarshalJSON(`text(await tools.write_stdin({session_id:35274,chars:""}));`)}
+	if got, ok := tr.shellActivityDisplay(poll, "exec"); !ok || got != "Still Running\n`go test ./internal/router`" {
+		t.Fatalf("yielded session poll = %q, %v", got, ok)
+	}
+	tr.prepareShellActivity(mustMarshalJSON([]any{
+		map[string]any{"type": "custom_tool_call", "call_id": "run", "name": "exec", "input": `text((await tools.exec_command({cmd:"go test ./internal/router"})).output);`},
+		map[string]any{"type": "custom_tool_call_output", "call_id": "run", "output": running},
+		map[string]any{"type": "function_call", "call_id": "wait", "name": "wait", "arguments": `{"cell_id":"7"}`},
+		map[string]any{"type": "function_call_output", "call_id": "wait", "output": completed},
+	}))
+	if len(tr.activityShellSessions) != 0 {
+		t.Fatalf("output-only projection claimed yielded session metadata: %+v", tr.activityShellSessions)
+	}
+}
+
 func TestShellActivityDoesNotCorrelateProgramOutput(t *testing.T) {
 	for _, misleading := range []string{`{"session_id":42}`, "Process running with session ID 42"} {
 		transform := &mekugiResponseTransform{}
@@ -156,5 +227,19 @@ func TestCellActivityWrappedSessionPoll(t *testing.T) {
 	}))
 	if got := tr.activityCellOperations["7"]; got != "`go test ./internal/router`" {
 		t.Fatalf("poll origin: %q", got)
+	}
+}
+
+func TestUnknownSessionPollDoesNotBecomeCellOrigin(t *testing.T) {
+	tr := &mekugiResponseTransform{}
+	tr.prepareShellActivity(mustMarshalJSON([]any{
+		continuationTestCall("exec", "poll", `text(await tools.write_stdin({session_id:42,chars:""}));`),
+		continuationTestOutput("poll", "Script running with cell ID 7\nWall time 30 seconds\nOutput:\n"),
+	}))
+	if operation := tr.activityCellOperations["7"]; operation != "" {
+		t.Fatalf("unknown command became a cell origin: %q", operation)
+	}
+	if got, ok := tr.shellActivityDisplay(map[string]json.RawMessage{"arguments": mustMarshalJSON(`{"session_id":42,"chars":""}`)}, "write_stdin"); !ok || got != "Still Running" {
+		t.Fatalf("unknown session poll = %q, %v", got, ok)
 	}
 }

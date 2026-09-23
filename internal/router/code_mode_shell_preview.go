@@ -420,14 +420,23 @@ func codeModeSkipString(source string, at int) int {
 	return len(source)
 }
 
-func codeModeShellDisplay(scripts []string) string {
+// Preserve the call boundaries while painting literal interpreter bodies in
+// their own language. The projected source is display-only, never executed.
+func codeModeShellDisplay(scripts []string) (string, []liveDiffSourceSpan) {
 	var source strings.Builder
+	var spans []liveDiffSourceSpan
 	for index, script := range scripts {
 		if index > 0 {
 			source.WriteString("\n\n")
 		}
+		spans = append(spans, liveDiffSourceSpan{Offset: source.Len(), Path: "stream.sh"})
 		fmt.Fprintf(&source, "# tools.exec_command %d\n", index+1)
-		source.WriteString(script)
+		if projection, ok := shellInterpreterScriptProjection(script); ok {
+			spans = append(spans, liveDiffSourceSpan{Offset: source.Len(), Path: liveDiffLanguagePath(projection.Language)})
+			source.WriteString(projection.Source)
+		} else {
+			source.WriteString(script)
+		}
 	}
-	return source.String()
+	return source.String(), spans
 }

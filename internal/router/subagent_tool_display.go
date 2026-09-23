@@ -212,7 +212,7 @@ func toolActivityWriteStdin(arguments map[string]json.RawMessage) string {
 	if chars != "" {
 		return toolActivityDetail("Send input", chars)
 	}
-	return "Still Running · command unavailable"
+	return "Still Running"
 }
 
 func toolActivityShellArgv(argv []string) string {

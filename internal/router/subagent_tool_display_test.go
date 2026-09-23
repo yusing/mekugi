@@ -36,10 +36,10 @@ func TestSubagentToolDisplay(t *testing.T) {
 		{"exec_command", `{"cmd":"inspect_file a.go","login":false}`, "Inspect `a.go`"},
 		{"view_image", `{"path":"/tmp/a.png"}`, "View image\n`/tmp/a.png`"},
 		{"exec", `await tools.exec_command({"cmd":"echo a\necho b"})`, "Run\n```bash\necho a\necho b\n```"},
-		{"exec", `const r = await tools.write_stdin({session_id: 52915, chars: "", yield_time_ms: 30000, max_output_tokens: 3000}); text(r);`, "Still Running · command unavailable"},
-		{"exec", `await tools.write_stdin({session_id: -12, chars: ""})`, "Still Running · command unavailable"},
-		{"exec", `await tools.write_stdin({session_id: 9007199254740993, chars: ""})`, "Still Running · command unavailable"},
-		{"exec", `await tools.write_stdin({session_id: -9007199254740993, chars: ""})`, "Still Running · command unavailable"},
+		{"exec", `const r = await tools.write_stdin({session_id: 52915, chars: "", yield_time_ms: 30000, max_output_tokens: 3000}); text(r);`, "Still Running"},
+		{"exec", `await tools.write_stdin({session_id: -12, chars: ""})`, "Still Running"},
+		{"exec", `await tools.write_stdin({session_id: 9007199254740993, chars: ""})`, "Still Running"},
+		{"exec", `await tools.write_stdin({session_id: -9007199254740993, chars: ""})`, "Still Running"},
 		{"exec", `await tools.exec_command({cmd: 'cat a', login: false})`, "Read `a`"},
 		{"exec", `await tools.apply_patch("*** Begin Patch\n*** Add File: a\n+x\n*** End Patch\n")`, "Edit"},
 	}
@@ -136,6 +136,32 @@ func TestSubagentCodeModeOutputProjection(t *testing.T) {
 	}
 }
 
+func TestSubagentInlineAwaitOutputProjection(t *testing.T) {
+	for _, tc := range []struct{ script, want string }{
+		{`rg -n 'function success|success\(' internal/router`, "Search `function success|success\\(` in `internal/router`"},
+		{`mcat plugins/inspect_file.ts 125:162`, "Read `plugins/inspect_file.ts 125:162`"},
+		{`echo hello`, "Run\n```bash\necho hello\n```"},
+	} {
+		source := "text((await tools.exec_command({cmd:" + string(mustMarshalJSON(tc.script)) + "})).output);"
+		item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
+		if got := subagentToolActivityText(item, "exec"); got != tc.want {
+			t.Fatalf("display %q = %q, want %q", source, got, tc.want)
+		}
+		if _, ok := toolActivityUnwrapExec(source, true); ok {
+			t.Fatalf("output-only form claimed result metadata: %q", source)
+		}
+	}
+	for _, source := range []string{
+		`text((await tools.exec_command({cmd:"cat a"})).output + "other")`,
+		`text((await tools.exec_command({cmd:"cat a"}))?.output)`,
+		`text((await tools.exec_command({cmd:"cat a"}))["output"])`,
+	} {
+		if _, ok := toolActivityUnwrapExec(source, false); ok {
+			t.Fatalf("nontransparent inline output unwrapped: %q", source)
+		}
+	}
+}
+
 func TestSubagentInterpreterWrapperProjection(t *testing.T) {
 	for _, test := range []struct {
 		name, source, language, program string
@@ -144,7 +170,11 @@ func TestSubagentInterpreterWrapperProjection(t *testing.T) {
 		{"pypy command", `pypy3 -c 'print("ok")'`, "python", `print("ok")`},
 		{"python heredoc", "python3 - <<'PY'\nprint('ok')\nPY\n", "python", "print('ok')\n"},
 		{"node command", `node --input-type=module -e 'console.log("ok")'`, "javascript", `console.log("ok")`},
+		{"node heredoc", "node - <<'JS'\nconsole.log('ok')\nJS\n", "javascript", "console.log('ok')\n"},
+		{"bun command", `bun -e 'console.log("ok")'`, "javascript", `console.log("ok")`},
 		{"bun heredoc", "bun - <<'JS'\nconsole.log('ok')\nJS\n", "javascript", "console.log('ok')\n"},
+		{"perl command", `perl -e 'print "ok"'`, "perl", `print "ok"`},
+		{"perl heredoc", "perl - <<'PL'\n" + `print "ok";` + "\nPL\n", "perl", `print "ok";` + "\n"},
 		{"ruby command", `ruby -e 'puts "ok"'`, "ruby", `puts "ok"`},
 		{"php command", `php -r 'echo "ok";'`, "php", `echo "ok";`},
 		{"shell combined flag", `sh -ec 'printf ok'`, "sh", `printf ok`},
@@ -177,8 +207,8 @@ func TestSubagentWriteStdinDisplay(t *testing.T) {
 		arguments string
 		want      string
 	}{
-		{`{"session_id":52915}`, "Still Running · command unavailable"},
-		{`{"session_id":52915,"chars":""}`, "Still Running · command unavailable"},
+		{`{"session_id":52915}`, "Still Running"},
+		{`{"session_id":52915,"chars":""}`, "Still Running"},
 		{`{"session_id":52915,"chars":"yes"}`, "Send input\n`yes`"},
 	} {
 		for _, projection := range []string{"text(r)", "text (r . output)", "text(JSON.stringify(r))"} {
@@ -214,7 +244,7 @@ func TestSubagentInlineAwaitDisplay(t *testing.T) {
 		},
 		{
 			`text(await tools.write_stdin({session_id:23221,chars:"",yield_time_ms:1000,max_output_tokens:5000}));`,
-			"Still Running · command unavailable",
+			"Still Running",
 		},
 	} {
 		t.Run(tt.source, func(t *testing.T) {

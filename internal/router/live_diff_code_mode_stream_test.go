@@ -3,12 +3,94 @@ package router
 import (
 	"bytes"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 )
+
+func TestLiveDiffCodeModeInterpreterScriptSyntax(t *testing.T) {
+	for _, tc := range []struct {
+		name, command, language, token string
+		kind                           chroma.TokenType
+	}{
+		{"python heredoc", "python3 - <<'PY'\nfor n in range(1):\n    print(n)\nPY\n", "stream.py", "for", chroma.Keyword},
+		{"python command", "python3 -c 'for n in range(1):\n    print(n)'", "stream.py", "for", chroma.Keyword},
+		{"node command", "node -e 'const value = 1;\nconsole.log(value)'", "stream.ts", "const", chroma.KeywordDeclaration},
+		{"bun heredoc", "bun - <<'JS'\nconst value = 1;\nconsole.log(value)\nJS\n", "stream.ts", "const", chroma.KeywordDeclaration},
+		{"bun command", "bun -e 'const value = 1; console.log(value)'", "stream.ts", "const", chroma.KeywordDeclaration},
+		{"perl heredoc", "perl - <<'PL'\nmy $value = 1;\nprint $value;\nPL\n", "stream.pl", "my", chroma.KeywordDeclaration},
+		{"perl command", "perl -e 'my $value = 1; print $value;'", "stream.pl", "my", chroma.KeywordDeclaration},
+		{"ruby command", "ruby -e 'if true\n  puts \"ok\"\nend'", "stream.rb", "if", chroma.Keyword},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
+			worker.appendDelta("text(await tools.exec_command({cmd:" + strconv.Quote(tc.command))
+			preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+				return strings.Contains(preview.Input, tc.token)
+			})
+			if len(preview.Syntax) != 2 || preview.Syntax[0].Path != "stream.sh" || preview.Syntax[1].Path != tc.language {
+				t.Fatalf("interpreter preview syntax = %+v, input = %q", preview.Syntax, preview.Input)
+			}
+			var pane liveDiffPreviewPane
+			pane.update(preview)
+			lines, err := pane.render(t.Context(), workspace, livediff.DarkTheme, 100, 15)
+			if err != nil || !strings.Contains(strings.Join(lines, "\n"), livediff.DarkTheme.Foreground(tc.kind)+tc.token) {
+				t.Fatalf("missing %s color: %v %q", tc.token, err, lines)
+			}
+		})
+	}
+
+	commands := []string{"printf before", "python3 - <<'PY'\nfor n in range(1):\n    print(n)\nPY\n", "printf after"}
+	input, spans := codeModeShellDisplay(commands)
+	rows := liveDiffSourceRows(input, spans)
+	pythonRow := strings.Count(input[:strings.Index(input, "for n")], "\n")
+	if len(spans) != 4 || rows[1].Path != "stream.sh" || rows[pythonRow].Path != "stream.py" || rows[len(rows)-1].Path != "stream.sh" {
+		t.Fatalf("mixed shell and interpreter syntax = %+v; input = %q", spans, input)
+	}
+}
+
+func TestLiveDiffTerminalCodeModePythonHeredocSyntax(t *testing.T) {
+	workspace := t.TempDir()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
+	})
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 18, "COLORFGBG=15;0")
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
+	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", "exec")
+	t.Cleanup(worker.stop)
+	command := "python3 - <<'PY'\nfor n in range(1):\n    print(n)\nPY\n"
+	input := "text(await tools.exec_command({cmd:" + strconv.Quote(command) + "}));"
+	split := strings.Index(input, "    print(n)")
+	if split < 0 {
+		t.Fatal("fixture does not contain a Python body")
+	}
+	worker.appendDelta(input[:split])
+	colored := livediff.DarkTheme.Foreground(chroma.Keyword) + "for"
+	frame := ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(frame, colored)
+	})
+	if strings.Contains(ansi.Strip(frame), "python3 - <<") {
+		t.Fatalf("shell framing displaced Python source: %q", frame)
+	}
+	worker.appendDelta(input[split:])
+	ui.frame(t, func(frame string) bool {
+		return strings.Contains(ansi.Strip(frame), "print(n)") && strings.Contains(frame, colored)
+	})
+	worker.finish(input)
+	ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "STREAMING COMPLETE") && strings.Contains(frame, colored)
+	})
+	ui.quit(t)
+}
 
 func TestLiveDiffCodeModeSSEStreamsBashWithoutChangingEvents(t *testing.T) {
 	workspace := t.TempDir()

@@ -216,9 +216,11 @@ Patch previews show projected source changes with the affected file's language
 highlighting, not the `apply_patch` instruction envelope. If source matching
 cannot establish that projection, the viewer must not fabricate a diff.
 In the live input stream, literal `tools.exec_command` command strings inside
-Code Mode are displayed as Bash while the JavaScript wrapper is still arriving.
+Code Mode are displayed while the JavaScript wrapper is still arriving.
 Numbered `# tools.exec_command N` headers separate distinct tool calls; line
-breaks within one command remain inside its header. This provisional display
+breaks within one command remain inside its header. Shell commands use Bash
+colors, while literal interpreter `-c`, `-e`, and heredoc bodies use their own
+language colors. This provisional display
 never changes Codex's original tool input or asserts that the command ran.
 
 The saved diff view uses completed observed patch and command outcomes. It includes

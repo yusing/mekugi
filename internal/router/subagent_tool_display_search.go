@@ -65,11 +65,19 @@ func toolActivitySearch(argv []string) (string, bool) {
 	if len(queries) == 0 {
 		return "", false
 	}
-	display := "Search " + toolActivityCode(strings.Join(queries, " | "))
+	var display strings.Builder
+	display.WriteString("Search " + toolActivityCode(strings.Join(queries, " | ")))
 	if len(paths) != 0 {
-		display += " in " + toolActivityCode(strings.Join(paths, " "))
+		for i, path := range paths {
+			if i == 0 {
+				display.WriteString(" in ")
+			} else {
+				display.WriteString(" ")
+			}
+			display.WriteString(toolActivityCode(path))
+		}
 	}
-	return display, true
+	return display.String(), true
 }
 
 // 0: switch, 1: option value, 2: pattern value, 3: file listing.

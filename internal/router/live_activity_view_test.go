@@ -125,6 +125,61 @@ func TestLiveActivityPainterColors(t *testing.T) {
 	}
 }
 
+func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
+	for _, tc := range []struct {
+		shell, first, second string
+	}{
+		{"python -c 'import json\nprint(json.dumps(1))'", "import json", "print(json.dumps(1))"},
+		{"node -e 'const value = 1;\nconsole.log(value)'", "const value = 1;", "console.log(value)"},
+		{"bun - <<'JS'\nconst value = 1;\nconsole.log(value)\nJS\n", "const value = 1;", "console.log(value)"},
+		{"perl - <<'PL'\nmy $value = 1;\nprint $value;\nPL\n", "my $value = 1;", "print $value;"},
+	} {
+		t.Run(tc.shell, func(t *testing.T) {
+			blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(tc.shell)})
+			if len(blocks) != 1 || !blocks[0].fenced {
+				t.Fatalf("interpreter preview = %+v", blocks)
+			}
+			painter := liveActivityPainter{theme: livediff.DarkTheme}
+			rows := painter.block(blocks[0], 80)
+			if len(rows) < 2 || !strings.HasPrefix(ansi.Strip(rows[0]), "Run    │ "+tc.first) || !strings.Contains(ansi.Strip(rows[1]), "│ "+tc.second) {
+				t.Fatalf("preview rows = %q", plainLines(rows))
+			}
+			if !strings.Contains(rows[0], "\x1b[38;2;") {
+				t.Fatalf("source was not syntax highlighted: %q", rows[0])
+			}
+			for _, width := range []int{11, 18, 40} {
+				for _, row := range painter.block(blocks[0], width) {
+					if ansi.StringWidth(row) > width {
+						t.Fatalf("width %d: overlong row %q", width, row)
+					}
+				}
+			}
+		})
+	}
+
+	painter := liveActivityPainter{theme: livediff.DarkTheme}
+	search := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: "Search `create(MCat|MSymbol)|description:` in `plugins/mrun.ts`"})[0]
+	colored := strings.Join(painter.block(search, 110), "\n")
+	if !strings.Contains(colored, painter.theme.Accent()+"create(MCat|MSymbol)|description:\x1b[39m") ||
+		!strings.Contains(colored, liveActivityVerbColor("Search")+liveActivityDim+"plugins/"+liveActivityUndim+"\x1b[1mmrun.ts") ||
+		!strings.HasPrefix(colored, liveActivityVerbColor("Search")) {
+		t.Fatalf("search query/path colors = %q", colored)
+	}
+	search = parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(`rg needle src/a.go 'lib/with space.go'`)})[0]
+	colored = strings.Join(painter.block(search, 110), "\n")
+	if !strings.Contains(colored, liveActivityVerbColor("Search")+liveActivityDim+"src/"+liveActivityUndim+"\x1b[1ma.go") ||
+		!strings.Contains(colored, liveActivityVerbColor("Search")+liveActivityDim+"lib/"+liveActivityUndim+"\x1b[1mwith space.go") {
+		t.Fatalf("multiple search targets lost emphasis: %q", colored)
+	}
+	search = parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(`rg -n 'create(MCat|MSymbol|InspectFile|MRead|MRun)|description:|--max-tokens' plugins/mrun.ts plugins/msymbol.ts plugins/inspect_file.ts`)})[0]
+	colored = strings.Join(painter.block(search, 130), "\n")
+	for _, name := range []string{"mrun.ts", "msymbol.ts", "inspect_file.ts"} {
+		if !strings.Contains(colored, liveActivityVerbColor("Search")+liveActivityDim+"plugins/"+liveActivityUndim+"\x1b[1m"+name) {
+			t.Fatalf("search target %s is not purple: %q", name, colored)
+		}
+	}
+}
+
 func TestPlaceMekugiPane(t *testing.T) {
 	for _, test := range []struct {
 		neighbor string

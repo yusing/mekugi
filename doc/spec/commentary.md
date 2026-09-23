@@ -55,6 +55,11 @@ arguments, control flow, and name shadowing fall back to the original JavaScript
 source. A top-level static Promise batch remains visible even when later result
 presentation is unrecognized; that remainder is marked `Run JavaScript · other
 code` rather than silently dropped or mistaken for a batch command.
+Direct `text((await tools.exec_command({...})).output)` presentation is
+transparent for activity, but does not establish result metadata for waits.
+Completed transparent Code Mode result projections retain a session-to-command
+link from host-wrapped `exec_command` metadata, including after a yielded cell
+finishes through `wait`, not from program output.
 These presentation rules do not change tool input, result, or replay payload.
 
 A simple literal `cat`, valid `mcat` read, bounded `sed -n` print, or literal
@@ -74,6 +79,8 @@ Literal `mread` recovery calls omit activity entries rather than appearing as `R
 Code Mode waits show `Still Running` or `Stop` only when a visible call/result
 pair establishes the same cell; missing history is `operation unavailable`.
 Native `write_stdin` with characters is `Send input`.
+An empty-input poll without visible command correlation shows only `Still Running`,
+not a guessed command or a diagnostic qualifier.
 
 Whole-program previews use fenced code blocks with the selected interpreter
 language. Literal interpreter wrappers, including `python -c`,
@@ -282,6 +289,10 @@ highlighting in the terminal's theme. Text it does not recognize stays plain.
 Consecutive reads by one agent collapse into one row that joins ranges of the
 same file. Child text is sanitized before layout, so it cannot emit terminal
 controls.
+Fenced `Run` previews put the first source row beside the verb when space
+allows. Python, JavaScript (Node and Bun), and Perl interpreter previews use
+their own syntax colors. `Search` patterns are styled as literal patterns,
+not shell commands, while every target path uses the Search violet with path emphasis.
 
 The pane always shows the agents, as a canonical-path tree in observation order,
 with each agent's current activity and age. A Code Mode batch shows its latest

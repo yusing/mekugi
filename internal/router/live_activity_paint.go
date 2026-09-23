@@ -70,6 +70,8 @@ func liveActivityLanguagePath(lang string) string {
 		return "source.ts"
 	case "python", "py":
 		return "source.py"
+	case "perl":
+		return "source.pl"
 	case "ruby", "rb":
 		return "source.rb"
 	}
@@ -159,8 +161,12 @@ func liveActivityPath(path string) string {
 func (p *liveActivityPainter) code(verb, code string) string {
 	first, _, _ := strings.Cut(verb, " ")
 	switch first {
-	case "Run", "Search", "Send":
+	case "Run", "Send":
 		return strings.Join(p.highlight("bash", code), " ")
+	case "Search":
+		// Search operands are patterns, not shell programs. A shell lexer
+		// miscolors regular-expression punctuation and can reset the verb color.
+		return p.theme.Accent() + code + "\x1b[39m"
 	case "Read", "Edit", "Create", "Delete", "Update", "Write", "View", "Move", "Rename":
 		return liveActivityPath(code)
 	case "MCP", "Tool":
@@ -171,9 +177,14 @@ func (p *liveActivityPainter) code(verb, code string) string {
 
 func (p *liveActivityPainter) label(verb, label string) string {
 	var out strings.Builder
+	searchTargets := false
 	for i := 0; i < len(label); {
 		if code, end, ok := liveActivityCodeSpan(label, i); ok {
-			out.WriteString(p.code(verb, code))
+			if verb == "Search" && searchTargets {
+				out.WriteString(liveActivityVerbColor(verb) + liveActivityPath(code) + "\x1b[39m")
+			} else {
+				out.WriteString(p.code(verb, code))
+			}
 			i = end
 			continue
 		}
@@ -181,6 +192,9 @@ func (p *liveActivityPainter) label(verb, label string) string {
 		text := label[i:]
 		if next >= 0 {
 			text = label[i : i+1+next]
+		}
+		if verb == "Search" && strings.Contains(text, " in ") {
+			searchTargets = true
 		}
 		for j, word := range strings.Split(text, " ") {
 			if j > 0 {
@@ -307,6 +321,22 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 	case "op":
 		label := p.label(block.verb, block.label)
 		code, body := block.code, block.body
+		if block.verb == "Run" && block.fenced && label == "" && strings.Contains(code, "\n") && width-ansi.StringWidth(liveActivityVerb(block.verb)) >= 4 {
+			lead := liveActivityVerb(block.verb)
+			indent := ansi.StringWidth(lead)
+			lines := p.program(block.lang, code, width-indent)
+			for i := range lines {
+				if i == 0 {
+					lines[i] = lead + lines[i]
+				} else {
+					lines[i] = strings.Repeat(" ", indent) + lines[i]
+				}
+			}
+			if body != "" {
+				lines = append(lines, liveActivityIndent(p.markdown(body, width-2), "  ")...)
+			}
+			return lines
+		}
 		// A single-line program or argument reads best on the operation row.
 		if code != "" && !strings.Contains(code, "\n") && (label == "" || !block.fenced) {
 			inline := p.code(block.verb, code)

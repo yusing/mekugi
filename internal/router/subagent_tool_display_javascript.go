@@ -98,6 +98,15 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 				}
 			}
 		}
+		if !requireResultMetadata && expression != nil && expression.Kind() == "member_expression" &&
+			expression.ChildByFieldName("optional_chain") == nil {
+			property := expression.ChildByFieldName("property")
+			object := expression.ChildByFieldName("object")
+			if property != nil && property.Kind() == "property_identifier" && property.Utf8Text(bytes) == "output" &&
+				object != nil && object.Kind() == "parenthesized_expression" && object.NamedChildCount() == 1 {
+				expression = object.NamedChild(0)
+			}
+		}
 		nested, ok := toolActivityAwaitedCalls(expression, bytes, requireResultMetadata)
 		if !ok || batchProjection && !toolActivityPromiseBatch(expression, bytes) {
 			return nil, false
