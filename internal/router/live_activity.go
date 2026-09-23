@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/livediff"
 	"golang.org/x/term"
 )
 
@@ -50,7 +51,7 @@ func RunLiveActivity(ctx context.Context, args []string, stdin, stdout, stderr *
 	if err != nil {
 		return fail(err)
 	}
-	err = withRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l", "\x1b[?2026l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
+	err = withRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
 		streamCtx, cancelStream := context.WithCancel(ctx)
 		events := make(chan activityPaneEvent, 32)
 		streamDone := make(chan struct{})
@@ -132,6 +133,19 @@ func liveActivityErrorText(event activityPaneEvent) []string {
 func (v *liveActivityView) handleKey(escape string, key byte) (string, bool) {
 	if key == 3 {
 		return "", true
+	}
+	// A background-color reply selects the syntax theme, as in the diff pane.
+	// A byte that cannot occur in the reply ends the capture and is handled as
+	// a key, so a stray Esc then ']' does not swallow later input.
+	if v.osc.Active && !liveActivityOSCByte(key) {
+		v.osc = livediff.OSC{}
+	} else if v.osc.Active || escape == "\x1b" && key == ']' {
+		if reply, complete := v.osc.Consume(key); complete {
+			if theme, ok := livediff.BackgroundTheme(reply); ok {
+				v.painter.theme = theme
+			}
+		}
+		return "", false
 	}
 	if key == 27 {
 		return "\x1b", false
@@ -262,4 +276,14 @@ func liveActivityStream(ctx context.Context, connection liveDiffConnection, outp
 		case <-timer.C:
 		}
 	}
+}
+
+// liveActivityOSCByte reports whether key can occur in an OSC 11 reply such
+// as "11;rgb:ffff/ffff/ffff" with a BEL or ST terminator.
+func liveActivityOSCByte(key byte) bool {
+	switch {
+	case key >= '0' && key <= '9', key >= 'a' && key <= 'f', key >= 'A' && key <= 'F':
+		return true
+	}
+	return strings.IndexByte("rgb:/;?\\\a\x1b", key) >= 0
 }

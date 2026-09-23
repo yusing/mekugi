@@ -268,9 +268,22 @@ relaunched for the router session. Without Herdr, inline delivery is unchanged. 
 the first root with child activity uses the pane; other roots stay inline. Critical
 session notices and main-completion usage stay in the root conversation.
 
-The pane lists agents as a canonical-path tree in observation order, with each
-agent's latest activity and age, and an interleaved feed that clamps each entry to
-6 rows. A roster row for a Code Mode batch adds the count of its other operations. Its only mode shows one agent in full. Roster markers are observed facts only:
+The pane renders child activity natively rather than as commentary Markdown. It
+parses the router's own commentary grammar into operations, messages, start
+notices, and errors, and shows each with verb colors, path emphasis, and syntax
+highlighting in the terminal's theme. Text it does not recognize stays plain.
+Consecutive reads by one agent collapse into one row that joins ranges of the
+same file. Child text is sanitized before layout, so it cannot emit terminal
+controls.
+
+The pane always shows the agents, as a canonical-path tree in observation order,
+with each agent's current activity and age. A Code Mode batch shows its latest
+operation and the count of the others. The layout follows the pane size. At 100
+columns or wider, agent cards sit beside the feed. Narrower panes stack one row per
+agent above the feed, and panes with few rows show a one-line strip. The feed groups
+consecutive entries by agent under a colored heading. In the shared view it clips
+long entries, and its only mode shows one agent in full. Roster markers are
+observed facts only:
 `◐` an open provider response, `!` a latest error event, `✓` a plaintext
 `FINAL_ANSWER` sent, and `·` otherwise. No marker claims that an agent finished.
 Agent colors derive from the canonical path, so the live diff pane uses the same

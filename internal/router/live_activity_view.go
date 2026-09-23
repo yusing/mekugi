@@ -2,16 +2,19 @@ package router
 
 import (
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 const (
 	liveActivityFeedLimit = 2000
-	liveActivityEntryRows = 6 // Per-entry clamp in the interleaved feed.
+	// Panes at least this wide place agent cards beside the feed.
+	liveActivitySideColumns = 100
 )
 
 // The agents view is presentation state only. Entries carry router sequence
@@ -19,6 +22,7 @@ const (
 type liveActivityView struct {
 	agents    []activityPaneAgent
 	entries   []activityPaneEntry
+	blocks    [][]liveActivityBlock // Parsed entries, aligned with entries.
 	lastSeq   uint64
 	selected  string
 	only      bool
@@ -26,6 +30,9 @@ type liveActivityView struct {
 	offset    int
 	unseen    int
 	status    string
+	painter   liveActivityPainter
+	osc       livediff.OSC
+	runs      map[liveActivityRunKey][]string
 
 	// Geometry of the last frame, used by scrolling keys.
 	feedLines, feedRows int
@@ -34,11 +41,19 @@ type liveActivityView struct {
 type liveActivityRosterRow struct {
 	agent activityPaneAgent
 	depth int
-	color string
+}
+
+type liveActivityRunKey struct {
+	first, last uint64
+	width, clip int
+	theme       livediff.Theme
 }
 
 func newLiveActivityView() *liveActivityView {
-	return &liveActivityView{following: true, status: "CONNECTING"}
+	return &liveActivityView{
+		following: true, status: "CONNECTING",
+		painter: liveActivityPainter{theme: livediff.EnvironmentTheme(os.Getenv("COLORFGBG"))},
+	}
 }
 
 // apply reports whether the viewer should exit.
@@ -64,12 +79,14 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 		}
 		v.lastSeq = entry.Seq
 		v.entries = append(v.entries, entry)
+		v.blocks = append(v.blocks, parseLiveActivity(entry))
 		if !v.following && v.visible(entry) {
 			v.unseen++
 		}
 	}
 	if extra := len(v.entries) - liveActivityFeedLimit; extra > 0 {
 		v.entries = slices.Delete(v.entries, 0, extra)
+		v.blocks = slices.Delete(v.blocks, 0, extra)
 	}
 	if v.selected == "" || !slices.ContainsFunc(v.agents, func(a activityPaneAgent) bool { return a.Name == v.selected }) {
 		if rows := v.roster(); len(rows) > 0 {
@@ -107,42 +124,31 @@ func (v *liveActivityView) roster() []liveActivityRosterRow {
 		}
 	}
 	visit("", 0)
-	for i := range rows {
-		rows[i].color = v.color(rows[i].agent.Name)
-	}
 	return rows
 }
 
-// color matches the live diff pane's attribution for the same agent.
-func (v *liveActivityView) color(name string) string {
-	if color := liveAgentColor(name); color != "" {
-		return color
-	}
-	return "\x1b[1m"
-}
-
-func (v *liveActivityView) latest(name string) (activityPaneEntry, bool) {
-	for i := len(v.entries) - 1; i >= 0; i-- {
-		if v.entries[i].Agent == name {
-			return v.entries[i], true
+func (v *liveActivityView) latest(name string) int {
+	for i, entry := range slices.Backward(v.entries) {
+		if entry.Agent == name {
+			return i
 		}
 	}
-	return activityPaneEntry{}, false
+	return -1
 }
 
 // glyph shows only observed facts: an open provider response, a latest error
 // event, or a sent plaintext final answer. None of them claims completion.
 func (v *liveActivityView) glyph(agent activityPaneAgent) string {
-	latest, _ := v.latest(agent.Name)
+	latest := v.latest(agent.Name)
 	switch {
 	case agent.Responding:
-		return "◐"
-	case latest.Kind == "error":
-		return "!"
+		return liveActivityAmber + "◐" + liveActivityReset
+	case latest >= 0 && v.entries[latest].Kind == "error":
+		return liveActivityRed + "!" + liveActivityReset
 	case agent.Final:
-		return "✓"
+		return liveActivityGreen + "✓" + liveActivityReset
 	}
-	return "·"
+	return liveActivityDim + "·" + liveActivityUndim
 }
 
 func (v *liveActivityView) selectAgent(step int) {
@@ -170,46 +176,53 @@ func (v *liveActivityView) scroll(delta int) {
 	v.offset = max(0, min(v.offset+delta, v.feedLines-v.feedRows))
 }
 
+// render lays the pane out for its size: agent cards beside the feed on wide
+// panes, a roster above the feed on narrower ones, and a one-line strip when
+// rows are scarce. Every row fits within width-1 columns.
 func (v *liveActivityView) render(width, height int, now time.Time) []string {
 	width, height = max(10, width), max(3, height)
 	text := max(1, width-1)
 	rows := v.roster()
-	body := height - 2
-	var roster []string
-	// The roster needs its line, a separator, and at least one feed row.
-	if len(rows) >= 2 && body >= 3 {
-		roster = v.renderRoster(rows, text, body, now)
+	footer := height >= 10
+	body := height - 1
+	if footer {
+		body--
 	}
-	feedRows := body
-	if len(roster) > 0 {
-		feedRows -= len(roster) + 1
-	}
-	feed := v.renderFeed(rows, text)
-	v.feedLines, v.feedRows = len(feed), max(0, feedRows)
-	if v.following {
-		v.offset = max(0, len(feed)-v.feedRows)
-		v.unseen = 0
-	}
-	v.offset = max(0, min(v.offset, len(feed)-v.feedRows))
-
 	lines := []string{v.header(rows, text)}
-	lines = append(lines, roster...)
-	if len(roster) > 0 {
-		lines = append(lines, "\x1b[2m"+strings.Repeat("─", text)+"\x1b[0m")
-	}
-	for row := range v.feedRows {
-		line := ""
-		if index := v.offset + row; index < len(feed) {
-			line = feed[index]
+	switch {
+	case len(rows) > 0 && text >= liveActivitySideColumns && body >= 6:
+		cardWidth := min(44, max(28, text*3/10))
+		feedWidth := text - cardWidth - 3
+		cards := v.renderCards(rows, cardWidth, body, now)
+		feed := v.viewport(v.renderFeed(feedWidth, body), body)
+		for i := range body {
+			lines = append(lines, liveActivityPad(cards[i], cardWidth)+liveActivityDim+" │ "+liveActivityUndim+feed[i])
 		}
-		lines = append(lines, line)
+	case len(rows) > 0 && body >= 8:
+		roster := v.renderRoster(rows, text, max(2, body/3), now)
+		feedRows := body - len(roster) - 1
+		lines = append(lines, roster...)
+		lines = append(lines, liveActivityDim+strings.Repeat("─", text)+liveActivityUndim)
+		lines = append(lines, v.viewport(v.renderFeed(text, feedRows), feedRows)...)
+	case len(rows) > 0:
+		lines = append(lines, v.renderStrip(rows, text))
+		lines = append(lines, v.viewport(v.renderFeed(text, body-1), body-1)...)
+	default:
+		lines = append(lines, v.viewport(v.renderFeed(text, body), body)...)
 	}
-	lines = append(lines, ansi.Truncate(v.footer(), text, "…"))
+	if footer {
+		lines = append(lines, v.footer(text))
+	}
 	return lines
 }
 
+func liveActivityPad(line string, width int) string {
+	line = ansi.Truncate(line, width, "…")
+	return line + strings.Repeat(" ", max(0, width-ansi.StringWidth(line)))
+}
+
 func (v *liveActivityView) header(rows []liveActivityRosterRow, width int) string {
-	left := "AGENTS"
+	left := "\x1b[1m" + v.painter.theme.Accent() + "AGENTS" + liveActivityReset
 	responding := 0
 	for _, row := range rows {
 		if row.agent.Responding {
@@ -218,18 +231,16 @@ func (v *liveActivityView) header(rows []liveActivityRosterRow, width int) strin
 	}
 	switch {
 	case len(rows) == 0:
-		left += " · waiting for subagent activity"
+		left += liveActivityDim + " · waiting for subagent activity" + liveActivityUndim
 	case v.only:
 		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
-		left += fmt.Sprintf(" · %s (%d/%d)", v.selected, index+1, len(rows))
-	case len(rows) == 1:
-		left += " · " + v.glyph(rows[0].agent) + " " + rows[0].agent.Name
+		left += fmt.Sprintf(" · only %s %s(%d/%d)%s", v.painter.agent(v.selected), liveActivityDim, index+1, len(rows), liveActivityUndim)
 	default:
 		left += fmt.Sprintf(" · %d · %d responding", len(rows), responding)
 	}
 	right := "FOLLOW"
 	if !v.following {
-		right = "PAUSED"
+		right = liveActivityAmber + "PAUSED" + liveActivityReset
 		if v.unseen > 0 {
 			right += fmt.Sprintf(" · %d new", v.unseen)
 		}
@@ -244,202 +255,228 @@ func (v *liveActivityView) header(rows []liveActivityRosterRow, width int) strin
 	return left + strings.Repeat(" ", gap) + right
 }
 
-func (v *liveActivityView) renderRoster(rows []liveActivityRosterRow, width, body int, now time.Time) []string {
+// liveActivityRosterName drops the shared /root/ prefix; nested agents show
+// their leaf under the parent. Feed headings always carry the full path.
+func liveActivityRosterName(row liveActivityRosterRow) string {
+	name := strings.TrimPrefix(row.agent.Name, "/root/")
+	if row.depth > 0 {
+		name = strings.Repeat("  ", row.depth-1) + "└ " + name[strings.LastIndex(name, "/")+1:]
+	}
+	return name
+}
+
+// current is an agent's latest activity summary and its age.
+func (v *liveActivityView) current(name string, now time.Time) (string, string) {
+	latest := v.latest(name)
+	if latest < 0 {
+		return liveActivityDim + "no activity yet" + liveActivityUndim, ""
+	}
+	return v.painter.summary(v.blocks[latest]), liveActivityAge(now.Sub(v.entries[latest].Observed))
+}
+
+// liveActivityWindow keeps the selected item visible among at most limit items.
+func liveActivityWindow(count, selected, limit int) (start, end int) {
+	if count <= limit {
+		return 0, count
+	}
+	start = max(0, min(selected-limit/2, count-limit))
+	return start, start + limit
+}
+
+func (v *liveActivityView) marker(selected bool) string {
+	if selected {
+		return v.painter.theme.Accent() + "▸" + liveActivityReset
+	}
+	return " "
+}
+
+// renderCards shows each agent as a name row and a current-activity row. A
+// short pane keeps one row per agent, and the selected agent keeps its detail.
+func (v *liveActivityView) renderCards(rows []liveActivityRosterRow, width, height int, now time.Time) []string {
 	selected := max(0, slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected }))
-	// Very short panes keep one roster line so the feed stays readable.
-	if body < 8 {
-		return []string{ansi.Truncate(fmt.Sprintf("%d agents · %s · n/p select", len(rows), v.selected), width, "…")}
+	detailed := len(rows)*2 <= height
+	limit := height / 2
+	if !detailed {
+		// Reserve the selected agent's detail row and, if needed, the overflow line.
+		limit = height - 1
+		if len(rows) > limit {
+			limit--
+		}
 	}
-	limit := max(3, body/3)
-	start, shown, more := 0, len(rows), 0
+	start, end := liveActivityWindow(len(rows), selected, max(1, limit))
+	var lines []string
+	for i := start; i < end; i++ {
+		row := rows[i]
+		summary, age := v.current(row.agent.Name, now)
+		name := ansi.Truncate(liveAgentColor(row.agent.Name)+liveActivityRosterName(row)+liveActivityReset, max(1, width-4-ansi.StringWidth(age)), "…")
+		gap := max(1, width-3-ansi.StringWidth(name)-ansi.StringWidth(age))
+		lines = append(lines, v.marker(i == selected)+v.glyph(row.agent)+" "+name+strings.Repeat(" ", gap)+liveActivityDim+age+liveActivityUndim)
+		if detailed || i == selected {
+			lines = append(lines, "   "+ansi.Truncate(summary, width-3, "…"))
+		}
+	}
+	if hidden := len(rows) - (end - start); hidden > 0 {
+		lines = append(lines, liveActivityDim+fmt.Sprintf("   +%d more · n/p", hidden)+liveActivityUndim)
+	}
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+	return lines[:height]
+}
+
+// renderRoster shows one row per agent: glyph, name, current activity, age.
+func (v *liveActivityView) renderRoster(rows []liveActivityRosterRow, width, limit int, now time.Time) []string {
+	selected := max(0, slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected }))
 	if len(rows) > limit {
-		shown = limit - 1
-		start = max(0, min(selected-shown+1, len(rows)-shown))
-		start = min(start, selected)
-		more = len(rows) - shown
+		limit--
 	}
-	var lines []string
-	for i, row := range rows[start : start+shown] {
-		marker := " "
-		if start+i == selected {
-			marker = "▸"
-		}
-		name := strings.Repeat("  ", row.depth) + row.agent.Name
-		summary, age := "", ""
-		if latest, ok := v.latest(row.agent.Name); ok {
-			summary, age = liveActivitySummary(latest.Text), liveActivityAge(now.Sub(latest.Observed))
-			// A Code Mode batch reports several operations in one entry.
-			if more := liveActivityOperations(latest) - 1; more > 0 {
-				summary += fmt.Sprintf(" · +%d more", more)
-			}
-		}
-		nameWidth := min(ansi.StringWidth(name), max(8, width*2/5))
-		name = liveActivityMiddle(name, nameWidth)
-		left := marker + v.glyph(row.agent) + " " + row.color + name + "\x1b[0m"
-		used := 3 + nameWidth + 2
-		ageWidth := ansi.StringWidth(age)
-		summaryWidth := max(0, width-used-ageWidth-1)
-		summary = ansi.Truncate(summary, summaryWidth, "…")
-		pad := max(0, width-used-ansi.StringWidth(summary)-ageWidth)
-		lines = append(lines, left+"  "+summary+strings.Repeat(" ", pad)+"\x1b[2m"+age+"\x1b[0m")
-	}
-	if more > 0 {
-		lines = append(lines, fmt.Sprintf("\x1b[2m  +%d more · n/p to scroll\x1b[0m", more))
-	}
-	return lines
-}
-
-func (v *liveActivityView) renderFeed(rows []liveActivityRosterRow, width int) []string {
-	colors := make(map[string]string, len(rows))
+	start, end := liveActivityWindow(len(rows), selected, max(1, limit))
+	nameWidth := 0
 	for _, row := range rows {
-		colors[row.agent.Name] = row.color
+		nameWidth = max(nameWidth, ansi.StringWidth(liveActivityRosterName(row)))
 	}
+	nameWidth = max(1, min(nameWidth, max(8, width/3), width-10))
 	var lines []string
-	previous := ""
-	for _, entry := range v.entries {
-		if !v.visible(entry) {
-			continue
-		}
-		if entry.Agent != previous {
-			color := colors[entry.Agent]
-			if color == "" {
-				color = "\x1b[1m"
-			}
-			lines = append(lines, ansi.Truncate(color+entry.Agent+"\x1b[0m\x1b[2m · "+entry.Observed.Local().Format("15:04:05")+"\x1b[0m", width, "…"))
-			previous = entry.Agent
-		}
-		body := liveActivityText(entry.Text, width-2)
-		if !v.only && len(body) > liveActivityEntryRows {
-			hidden := len(body) - liveActivityEntryRows + 1
-			body = append(body[:liveActivityEntryRows-1], fmt.Sprintf("\x1b[2m… +%d lines · o shows this agent in full\x1b[0m", hidden))
-		}
-		for _, line := range body {
-			lines = append(lines, "  "+line)
-		}
+	for i := start; i < end; i++ {
+		row := rows[i]
+		summary, age := v.current(row.agent.Name, now)
+		name := liveAgentColor(row.agent.Name) + liveActivityMiddle(liveActivityRosterName(row), nameWidth) + liveActivityReset
+		summaryWidth := max(0, width-3-nameWidth-2-ansi.StringWidth(age)-1)
+		summary = ansi.Truncate(summary, summaryWidth, "…")
+		pad := max(1, width-3-nameWidth-2-ansi.StringWidth(summary)-ansi.StringWidth(age))
+		line := v.marker(i == selected) + v.glyph(row.agent) + " " + name + "  " + summary + strings.Repeat(" ", pad) + liveActivityDim + age + liveActivityUndim
+		lines = append(lines, ansi.Truncate(line, width, "…"))
+	}
+	if hidden := len(rows) - (end - start); hidden > 0 {
+		lines = append(lines, ansi.Truncate(liveActivityDim+fmt.Sprintf("  +%d more · n/p", hidden)+liveActivityUndim, width, "…"))
 	}
 	return lines
 }
 
-func (v *liveActivityView) footer() string {
-	if v.only {
-		return "ONLY " + v.selected + " · n/p agent · o all · j/k · r follow · q quit"
+// renderStrip is the one-line roster for short panes.
+func (v *liveActivityView) renderStrip(rows []liveActivityRosterRow, width int) string {
+	var parts []string
+	for _, row := range rows {
+		name := strings.TrimPrefix(row.agent.Name, "/root/")
+		if row.agent.Name == v.selected {
+			name = "\x1b[4m" + name + "\x1b[24m"
+		}
+		parts = append(parts, v.glyph(row.agent)+" "+liveAgentColor(row.agent.Name)+name+liveActivityReset)
 	}
-	return "ALL · n/p agent · o only · j/k · r follow · q quit"
+	return ansi.Truncate(strings.Join(parts, "  "), width, "…")
 }
 
-// liveActivityText renders the commentary Markdown subset used by activity:
-// fenced programs keep their lines under a gutter, and inline code or bold
-// markers become terminal emphasis. Nothing is interpreted or executed.
-func liveActivityText(text string, width int) []string {
-	width = max(4, width)
-	var lines []string
-	fence := ""
-	for line := range strings.SplitSeq(strings.ReplaceAll(text, "\t", "    "), "\n") {
-		if fence != "" {
-			if line == fence {
-				fence = ""
-				continue
-			}
-			for _, part := range strings.Split(ansi.Hardwrap(line, width-2, true), "\n") {
-				lines = append(lines, "\x1b[2m│\x1b[0m "+part)
-			}
-			continue
-		}
-		if delimiter, ok := toolActivityFenceDelimiter(line); ok {
-			fence = delimiter
-			continue
-		}
-		for _, part := range strings.Split(ansi.Wrap(liveActivityInline(line), width, ""), "\n") {
-			lines = append(lines, part)
-		}
-	}
-	for len(lines) > 0 && ansi.Strip(lines[len(lines)-1]) == "" {
-		lines = lines[:len(lines)-1]
-	}
-	return lines
+type liveActivityFeed struct {
+	lines []string
+	heads []int // Index of the heading that owns each line.
 }
 
-func liveActivityInline(line string) string {
-	var out strings.Builder
-	bold := false
-	for i := 0; i < len(line); {
-		switch {
-		case line[i] == '`':
-			run := 1
-			for i+run < len(line) && line[i+run] == '`' {
-				run++
-			}
-			fence := strings.Repeat("`", run)
-			end := strings.Index(line[i+run:], fence)
-			if end < 0 {
-				out.WriteString(line[i : i+run])
-				i += run
-				continue
-			}
-			code := line[i+run : i+run+end]
-			if len(code) > 1 && code[0] == ' ' && code[len(code)-1] == ' ' {
-				code = code[1 : len(code)-1]
-			}
-			out.WriteString("\x1b[1m" + ansi.Strip(code) + "\x1b[22m")
-			i += run + end + run
-		case strings.HasPrefix(line[i:], "**"):
-			bold = !bold
-			if bold {
-				out.WriteString("\x1b[1m")
-			} else {
-				out.WriteString("\x1b[22m")
-			}
-			i += 2
-		default:
-			out.WriteByte(line[i])
+// renderFeed groups consecutive entries of one agent under a heading with a
+// colored gutter. Adjacent reads collapse into one row. In the interleaved
+// view each block is clipped to a share of the feed that grows with the pane.
+func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
+	clip := 0
+	if !v.only {
+		clip = min(12, max(3, rows/3))
+	}
+	var feed liveActivityFeed
+	used := make(map[liveActivityRunKey][]string)
+	for i := 0; i < len(v.entries); {
+		if !v.visible(v.entries[i]) {
 			i++
+			continue
 		}
-	}
-	if bold {
-		out.WriteString("\x1b[22m")
-	}
-	return out.String()
-}
-
-// liveActivitySummary is the first readable line of an entry, without markup.
-func liveActivitySummary(text string) string {
-	for _, line := range liveActivityText(text, 1<<16) {
-		if plain := strings.TrimSpace(strings.TrimPrefix(ansi.Strip(line), "│")); plain != "" {
-			return plain
-		}
-	}
-	return ""
-}
-
-// liveActivityOperations counts the blank-line separated operations of a tool
-// entry. Blank lines inside fenced programs do not start a new operation.
-func liveActivityOperations(entry activityPaneEntry) int {
-	if entry.Kind != "tool" {
-		return 1
-	}
-	count, fence, blank := 0, "", true
-	for line := range strings.SplitSeq(entry.Text, "\n") {
-		if fence != "" {
-			if line == fence {
-				fence = ""
+		agent := v.entries[i].Agent
+		last, j := i, i
+		for ; j < len(v.entries); j++ {
+			if !v.visible(v.entries[j]) {
+				continue
 			}
-			continue
+			if v.entries[j].Agent != agent {
+				break
+			}
+			last = j
 		}
-		if delimiter, ok := toolActivityFenceDelimiter(line); ok {
-			fence = delimiter
-			blank = false
-			continue
+		key := liveActivityRunKey{v.entries[i].Seq, v.entries[last].Seq, width, clip, v.painter.theme}
+		lines, ok := v.runs[key]
+		if !ok {
+			var blocks []liveActivityBlock
+			for k := i; k <= last; k++ {
+				if v.visible(v.entries[k]) {
+					blocks = append(blocks, v.blocks[k]...)
+				}
+			}
+			lines = v.renderRun(agent, v.entries[last].Observed, mergeLiveActivityReads(blocks), width, clip)
 		}
-		if strings.TrimSpace(line) == "" {
-			blank = true
-			continue
+		used[key] = lines
+		head := len(feed.lines)
+		for range lines {
+			feed.heads = append(feed.heads, head)
 		}
-		if blank {
-			count++
-		}
-		blank = false
+		feed.lines = append(feed.lines, lines...)
+		i = j
 	}
-	return max(1, count)
+	v.runs = used
+	return feed
+}
+
+func (v *liveActivityView) renderRun(agent string, observed time.Time, blocks []liveActivityBlock, width, clip int) []string {
+	stamp := " " + observed.Local().Format("15:04:05")
+	head := liveAgentGutter(agent, v.painter.theme) + "●" + liveActivityReset + " " + v.painter.agent(agent)
+	rule := max(1, width-ansi.StringWidth(head)-ansi.StringWidth(stamp)-1)
+	lines := []string{ansi.Truncate(head+" "+liveActivityDim+strings.Repeat("─", rule)+stamp+liveActivityUndim, width, "")}
+	gutter := liveAgentGutter(agent, v.painter.theme) + "▎" + liveActivityReset + " "
+	for _, block := range blocks {
+		part := v.painter.block(block, width-2)
+		// Messages carry results, so they get twice the operation share.
+		limit := clip
+		if block.kind == "message" {
+			limit *= 2
+		}
+		if limit > 0 && len(part) > limit {
+			hidden := len(part) - limit + 1
+			part = append(part[:limit-1:limit-1], liveActivityDim+fmt.Sprintf("… +%d lines · o", hidden)+liveActivityUndim)
+		}
+		for _, line := range part {
+			lines = append(lines, gutter+ansi.Truncate(line, width-2, "…"))
+		}
+	}
+	return lines
+}
+
+// viewport returns exactly rows lines. When scrolled into a run, that run's
+// heading stays pinned on the first row.
+func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
+	rows = max(0, rows)
+	v.feedLines, v.feedRows = len(feed.lines), rows
+	if v.following {
+		v.offset = max(0, len(feed.lines)-rows)
+		v.unseen = 0
+	}
+	v.offset = max(0, min(v.offset, len(feed.lines)-rows))
+	lines := make([]string, rows)
+	for row := range rows {
+		if index := v.offset + row; index < len(feed.lines) {
+			lines[row] = feed.lines[index]
+		}
+	}
+	// Pin only when the run keeps a visible line under its heading.
+	if rows > 1 && v.offset+1 < len(feed.heads) && feed.heads[v.offset] != v.offset && feed.heads[v.offset+1] == feed.heads[v.offset] {
+		lines[0] = feed.lines[feed.heads[v.offset]]
+	}
+	return lines
+}
+
+func (v *liveActivityView) footer(width int) string {
+	mode, toggle := "ALL", "o only"
+	if v.only {
+		mode, toggle = "ONLY", "o all"
+	}
+	keys := "n/p agent · " + toggle + " · j/k scroll · r follow · q quit"
+	if width < 60 {
+		keys = "n/p · o · j/k · r · q"
+	}
+	return ansi.Truncate("\x1b[1m"+mode+liveActivityUndim+liveActivityDim+" · "+keys+liveActivityUndim, width, "…")
 }
 
 func liveActivityAge(age time.Duration) string {

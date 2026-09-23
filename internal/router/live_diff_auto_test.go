@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -101,6 +102,16 @@ func serveAutoLiveDiffAPI(connection net.Conn, log string) {
 			layout["focused_pane_id"] = ""
 		}
 		result = map[string]any{"type": "layout_apply", "layout": layout}
+	case "pane.layout":
+		// Without a width the tab layout is unknown, which stacks the panes.
+		width, err := strconv.Atoi(os.Getenv("MEKUGI_AUTO_DIFF_TAB_WIDTH"))
+		if err != nil {
+			_ = json.NewEncoder(connection).Encode(map[string]any{
+				"id": request.ID, "error": map[string]string{"code": "unknown_method", "message": request.Method},
+			})
+			return
+		}
+		result = map[string]any{"type": "pane_layout", "layout": map[string]any{"area": map[string]int{"width": width, "height": 60}}}
 	case "pane.move":
 		result = map[string]any{
 			"type": "pane_move",
@@ -271,8 +282,20 @@ func TestAutoLiveDiffChildPreviewWaitsForRootWorkspace(t *testing.T) {
 }
 
 func TestAutoLiveDiffStacksAgentsPane(t *testing.T) {
-	for _, order := range []string{"diff_first", "agents_first"} {
-		t.Run(order, func(t *testing.T) {
+	for _, test := range []struct {
+		order, width, split string
+	}{
+		{"diff_first", "", `"ratio":0.55,"split":"down","tab_id":"tab","target_pane_id":"new"`},
+		{"agents_first", "", `"ratio":0.45,"split":"down","tab_id":"tab","target_pane_id":"new"`},
+		{"diff_first", "160", `"ratio":0.55,"split":"down","tab_id":"tab","target_pane_id":"new"`},
+		// Wide tabs give each pane its own full-height column. Either way the
+		// diff pane keeps the larger share.
+		{"diff_first", "280", `"ratio":0.55,"split":"right","tab_id":"tab","target_pane_id":"new"`},
+		{"agents_first", "280", `"ratio":0.45,"split":"right","tab_id":"tab","target_pane_id":"new"`},
+	} {
+		order := test.order
+		t.Run(order+test.width, func(t *testing.T) {
+			t.Setenv("MEKUGI_AUTO_DIFF_TAB_WIDTH", test.width)
 			log := autoLiveDiffFixture(t)
 			a, stop := newAutoLiveDiff(t.Context(), t.TempDir())
 			defer stop()
@@ -308,8 +331,7 @@ func TestAutoLiveDiffStacksAgentsPane(t *testing.T) {
 					moves = append(moves, line)
 				}
 			}
-			if len(moves) != 2 || !strings.Contains(moves[0], `"target_pane_id":"caller"`) || !strings.Contains(moves[0], `"split":"right"`) ||
-				!strings.Contains(moves[1], `"target_pane_id":"new"`) || !strings.Contains(moves[1], `"split":"down"`) {
+			if len(moves) != 2 || !strings.Contains(moves[0], `{"split":"right","tab_id":"tab","target_pane_id":"caller"`) || !strings.Contains(moves[1], test.split) {
 				t.Fatalf("pane placement = %q", moves)
 			}
 			command := "live-diff"

@@ -292,15 +292,17 @@ func TestLiveActivityViewRosterTreeOverflowAndSelection(t *testing.T) {
 	if !strings.HasPrefix(lines[0], "AGENTS · 7 · 1 responding") || !strings.HasSuffix(lines[0], "FOLLOW") {
 		t.Fatalf("header = %q", lines[0])
 	}
-	// body=18 → roster limit 6: five agents plus the overflow line.
-	if !strings.HasPrefix(lines[1], "▸◐ /root/a") || !strings.HasPrefix(lines[4], " ✓ /root/b") || !strings.HasPrefix(lines[5], " ! /root/c") || lines[6] != "  +2 more · n/p to scroll" {
+	// body=18 → roster limit 6: five agents plus the overflow line. Each row
+	// carries the agent's current operation.
+	if !strings.HasPrefix(lines[1], "▸◐ a    Read a.go") || !strings.HasPrefix(lines[2], " · └ x  Read x.go") ||
+		!strings.HasPrefix(lines[4], " ✓ b") || !strings.HasPrefix(lines[5], " ! c    ✗ failed") || lines[6] != "  +2 more · n/p" {
 		t.Fatalf("roster = %q", lines[1:7])
 	}
 	for range 6 {
 		view.selectAgent(1)
 	}
 	lines = plainLines(view.render(60, 20, time.Now()))
-	if view.selected != "/root/e" || !strings.HasPrefix(lines[5], "▸· /root/e") {
+	if view.selected != "/root/e" || !strings.HasPrefix(lines[5], "▸· e") {
 		t.Fatalf("selection scroll: selected=%s roster=%q", view.selected, lines[1:7])
 	}
 	view.selectAgent(1)
@@ -319,16 +321,16 @@ func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 	long := "Plan\n```go\n" + strings.Repeat("line\n", 20) + "```"
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", Text: long, Observed: time.Now()}}})
 	all := strings.Join(plainLines(view.render(80, 40, time.Now())), "\n")
-	if !strings.Contains(all, "… +16 lines · o shows this agent in full") || !strings.Contains(all, "│ line") {
+	if !strings.Contains(all, "… +11 lines · o") || !strings.Contains(all, "│ line") {
 		t.Fatalf("clamped feed = %s", all)
 	}
 	view.handleKey("", 'o')
 	only := plainLines(view.render(80, 40, time.Now()))
 	joined := strings.Join(only, "\n")
-	if strings.Contains(joined, "+16 lines") || strings.Count(joined, "│ line") != 20 || strings.Contains(joined, "/root/b ·") {
+	if strings.Contains(joined, "+11 lines") || strings.Count(joined, "│ line") != 20 || strings.Contains(joined, "● /root/b") {
 		t.Fatalf("only feed = %s", joined)
 	}
-	if !strings.HasPrefix(only[len(only)-1], "ONLY /root/a") || !strings.Contains(only[0], "/root/a (1/2)") {
+	if !strings.HasPrefix(only[len(only)-1], "ONLY ·") || !strings.Contains(only[0], "only /root/a (1/2)") {
 		t.Fatalf("only chrome = %q / %q", only[0], only[len(only)-1])
 	}
 	view.handleKey("", 'k')
@@ -359,7 +361,7 @@ func TestLiveActivityViewTinyAndNarrowPanes(t *testing.T) {
 			}
 		}
 	}
-	if lines := plainLines(view.render(40, 6, time.Now())); !strings.HasPrefix(lines[1], "3 agents · ") {
+	if lines := plainLines(view.render(40, 6, time.Now())); !strings.HasPrefix(lines[1], "· explorer/deeply/nested/worker  · b") {
 		t.Fatalf("short pane roster = %q", lines)
 	}
 	if got := liveActivityMiddle("/root/explorer/deeply/nested/worker", 20); !strings.HasSuffix(got, "…worker") || ansi.StringWidth(got) != 20 {
@@ -418,7 +420,7 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 		return strings.Join(rows, "\n")
 	}
 
-	h.frame(t, func(frame string) bool { return strings.Contains(text(frame), "Started /root/explorer") })
+	h.frame(t, func(frame string) bool { return strings.Contains(text(frame), "▶ Started") })
 	// The parent is in a native wait: no root response is open, yet the pane updates.
 	f.activity.collect("probe", "tool-1", "tool", "Read `live.go`")
 	frame := h.frame(t, func(frame string) bool { return strings.Contains(text(frame), "Read live.go") })
@@ -427,7 +429,8 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 	}
 	h.write(t, "no")
 	h.frame(t, func(frame string) bool {
-		return strings.Contains(liveDiffFrameRow(frame, height), "ONLY /root/explorer/probe") && !strings.Contains(text(frame), "/root/explorer ·")
+		return strings.Contains(liveDiffFrameRow(frame, 1), "only /root/explorer/probe") && strings.HasPrefix(liveDiffFrameRow(frame, height), "ONLY") &&
+			!strings.Contains(text(frame), "● /root/explorer ─")
 	})
 	h.quit(t)
 	// A closed pane stays closed; the next root drain carries the backlog inline.
@@ -509,7 +512,8 @@ func TestLiveActivityViewSummarizesCodeModeBatches(t *testing.T) {
 	batch := "Read `a.go`\n\nRun `go test`\n```bash\ngo test ./...\n\necho done\n```\n\nRead `c.go`\n\nRun JavaScript · other code"
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", Kind: "tool", Text: batch, Observed: time.Now()}}})
 	lines := plainLines(view.render(80, 20, time.Now()))
-	if !strings.Contains(lines[1], "Read a.go · +3 more") {
+	// The roster shows the latest operation of the batch.
+	if !strings.Contains(lines[1], "Run JavaScript · other code · +3 more") {
 		t.Fatalf("batch roster row = %q", lines[1])
 	}
 	if strings.Contains(lines[2], "more") {

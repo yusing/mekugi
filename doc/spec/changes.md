@@ -87,9 +87,11 @@ unreviewed files from the stream view. A child caller's card label uses the
 same color as that agent in the agents pane.
 
 Subagent activity uses a separate Mekugi agents pane, specified in
-[REQ-COMMENTARY-001](commentary.md). If a live diff pane is open, the agents
-pane opens below it; otherwise it opens beside the caller, and a diff pane that
-opens later goes below it. A failed or closed pane leaves the other one open.
+[REQ-COMMENTARY-001](commentary.md). Whichever pane opens first goes beside the
+caller. The second joins it: in a tab at least 240 columns wide it gets its own
+full-height column, and in a narrower tab it is stacked below the first. Either
+way, the diff pane keeps 55% of the shared space. If the tab width is unavailable,
+the panes stack. A failed or closed pane leaves the other one open.
 
 Acceptance:
 
