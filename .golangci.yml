@@ -1,0 +1,21 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  settings:
+    govet:
+      disable:
+        - composites
+    staticcheck:
+      checks:
+        - all
+        - '-QF*'
+        - '-ST*'
+  exclusions:
+    paths:
+      - internal/tokenizer/regex/regexp.gen.go
