@@ -8,15 +8,15 @@ Reuse still-current source context instead of rereading solely to prepare an edi
 <common-options>
 Options apply only to commands whose Usage lists them.
 - --max-tokens N bounds output to 1–15500 tokens. Defaults: mcat 6000, mread 8000, msymbol and inspect_file 4000; mrun requires an explicit limit. For multi-file mcat, the token budget is shared across files.
-- -n N selects up to N rows; --tail selects the last rows in source order and requires -n or --max-tokens. These options belong to mcat and mrun. With -n alone, no token limit is applied; with both limits, both apply. mcat keeps complete rows; mrun token limits may cut within a row.
-- Quote paths containing spaces. Retained omissions include an exact mread next_call. Use it to continue without rerunning the producer; an incomplete result does not establish full coverage. mrun discards output outside its selected window.
+- -n N selects up to N rows; --tail selects the last rows in source order and requires -n or --max-tokens. These options belong to mcat and mrun. mcat keeps its default token ceiling with -n alone and always keeps complete rows; mrun token limits may cut within a row.
+- Quote paths containing spaces. An incomplete result does not establish full coverage; follow its next_call rather than rerunning the producer. mrun discards output outside its selected window.
 </common-options>
 
 <tool name="mcat">
 Read one or more UTF-8 files or inclusive logical-line ranges as raw rows without line or hash prefixes.
-Usage: mcat [-n N] [--max-tokens N] [--tail] PATH [START:END] [PATH [START:END] ...]
+Usage: mcat [-n N] [--max-tokens N] [--tail] PATH [START:END ...] [PATH [START:END ...] ...]
 
-START:END is a separate operand after its path, inclusive of both endpoints. -n counts rows within that range.
+START:END or START-END is a separate operand after its path, inclusive of both endpoints. Several ranges may follow one path; at most 16 reads are allowed. -n counts rows within a single range and retains the default token ceiling.
 Examples:
   mcat src/main.go 100:150                # rows 100–150 (51 rows)
   mcat -n 20 src/main.go                  # first 20 rows
@@ -97,7 +97,7 @@ Result shape schema:
 </tool>
 
 <tool name="mread">
-Continue omitted retained output without rerunning its producer. Usage: `mread REF [--stdout|--stderr] [--max-tokens N]`. REF is the producer's returned reference, not a path or line range; for example, `mread amber`. --stdout or --stderr selects one stream; otherwise both are returned.
+Continue omitted retained output without rerunning its producer. Usage: `mread REF [REF ...] [--stdout|--stderr] [--max-tokens N]`. REF is a returned handle, not a path or range. Multiple handles share one budget and return one combined next_call. --stdout or --stderr selects one stream; otherwise both are returned. Source-row pages state their row range.
 </tool>
 
 <tool name="mrun">

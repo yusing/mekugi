@@ -7,7 +7,7 @@ import {createMRunTool} from "./mrun.ts";
 import {createMChangesTool} from "./mchanges.ts";
 
 const readerPath = `(?:"(?:\\\\(?:["\\\\/bfnrt]|u[0-9A-Fa-f]{4})|[^\\x00-\\x1F"\\\\]|\\t)*"|[^\\x00-\\x20"]+)`;
-const readSpec = `${readerPath}(?: (?:0|[1-9][0-9]*):[1-9][0-9]*)?`;
+const readSpec = `${readerPath}(?: (?:0|[1-9][0-9]*)[:-][1-9][0-9]*)*`;
 const mcatRegex = `\\A(?:(?:-n|--max-tokens) [1-9][0-9]* |--tail )*${readSpec}(?: ${readSpec})*(?: (?:-n|--max-tokens) [1-9][0-9]*| --tail)*\\z`;
 const inspectFileRegex = `\\A(?:--max-tokens [1-9][0-9]* )*${readerPath}(?: --max-tokens [1-9][0-9]*)*\\z`;
 

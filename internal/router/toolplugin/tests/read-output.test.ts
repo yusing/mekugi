@@ -21,8 +21,11 @@ describe("shared read pagination", () => {
       if (result.complete) break;
     }
     expect(joined).toBe(rows.join(""));
-    expect(() => selectReadOutput(input(`1:abcd ${"word ".repeat(200)}\n`, "rows"), 80))
-      .toThrow("next complete read unit does not fit");
+    const oversizedRow = `1:abcd ${"word ".repeat(200)}\n`;
+    expect(selectReadOutput(input(oversizedRow, "rows"), 80)).toEqual({
+      text: "", position: [0, 0], complete: false,
+      neededTokens: countGPT5Tokens(oversizedRow),
+    });
   });
 
   test("JSON pages contain complete entries and valid arrays", () => {

@@ -140,7 +140,7 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 	if firstStatus != 1 || !strings.Contains(first, "err 引用") || strings.Contains(first, "out π") || !strings.HasPrefix(firstErr, notice) {
 		t.Fatalf("restart boundary: %d %q %q", firstStatus, first, firstErr)
 	}
-	cursor := strings.TrimSpace(strings.TrimPrefix(firstErr, notice))
+	cursor := strings.Fields(strings.TrimPrefix(firstErr, notice))[0]
 	command := "mread " + cursor + " --max-tokens 48"
 	next, nextErr, nextStatus := runShellWorkerTest(t, registry, "bash", nil, command, nil, invocation)
 	again, againErr, againStatus := runShellWorkerTest(t, registry, "bash", nil, command, nil, invocation)
@@ -164,7 +164,7 @@ func TestShellOutputReadRejectsInvalidState(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, flags := range []string{
-		"", "../outside", id + " " + id, id + " --stdout --stderr",
+		"", "../outside", id + " --stdout --stderr",
 		id + " --max-tokens 0", id + " --max-tokens 01", id + " --max-tokens 15501",
 		id + " --cursor", id + " --tail", id + " --stdout --stdout",
 	} {
@@ -338,11 +338,11 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 			}
 			reference := func(diagnostic string) string {
 				t.Helper()
-				_, ref, found := strings.Cut(diagnostic, "read: incomplete; next_call: mread ")
+				_, ref, found := strings.Cut(diagnostic, "next_call: mread ")
 				if !found {
 					t.Fatalf("missing continuation: %q", diagnostic)
 				}
-				return strings.TrimSpace(ref)
+				return strings.Fields(ref)[0]
 			}
 			ref := reference(diagnostic)
 			if err := os.Remove(source); err != nil {
@@ -371,6 +371,11 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 					"mread "+ref+" --max-tokens "+budget, nil, invocation)
 				payload := page
 				if command == "mcat" {
+					var found bool
+					_, payload, found = strings.Cut(payload, "\n")
+					if !found || !strings.HasPrefix(page, "[rows ") {
+						t.Fatalf("missing row range: %q", page)
+					}
 					if !strings.HasSuffix(payload, "\n") {
 						t.Fatal("partial source row")
 					}
@@ -451,7 +456,7 @@ func TestMSymbolFrontendRecoveryAfterSourceRemoval(t *testing.T) {
 	if !found {
 		t.Fatalf("missing symbol continuation: %q", diagnostic)
 	}
-	reference = strings.TrimSpace(reference)
+	reference = strings.Fields(reference)[0]
 	if err := os.Remove(source); err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +478,7 @@ func TestMSymbolFrontendRecoveryAfterSourceRemoval(t *testing.T) {
 		if !found {
 			t.Fatalf("missing next symbol continuation: %q", next)
 		}
-		reference = strings.TrimSpace(reference)
+		reference = strings.Fields(reference)[0]
 	}
 	t.Fatal("symbol recovery did not complete")
 }

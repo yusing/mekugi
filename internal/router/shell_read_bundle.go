@@ -11,9 +11,10 @@ import (
 
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
-const readBundleUsage = "mcat [--max-tokens N] PATH [START:END] [PATH [START:END] ...]"
+const readBundleUsage = "mcat [-n N] [--max-tokens N] [--tail] PATH [START:END ...] [PATH [START:END ...] ...]"
 
 type readBundleSpec struct {
 	path string
@@ -48,6 +49,9 @@ func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 				return nil, 0, errors.New("-n requires one value and cannot repeat")
 			}
 			i++
+			if readBundleRange.MatchString(args[i]) {
+				return nil, 0, fmt.Errorf("-n takes a row count, not a range; retry: mcat PATH %s", strings.ReplaceAll(args[i], "-", ":"))
+			}
 			n, err := strconv.ParseUint(args[i], 10, 64)
 			if err != nil || n == 0 || n > 1<<53-1 || strconv.FormatUint(n, 10) != args[i] {
 				return nil, 0, errors.New("-n must be a positive integer")
@@ -64,18 +68,38 @@ func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 	}
 	var specs []readBundleSpec
 	for _, operand := range operands {
-		if readBundleRange.MatchString(operand) && len(specs) > 0 {
-			if specs[len(specs)-1].span != "" {
-				return nil, 0, errors.New("only one range may follow each path; prefix range-like paths with ./")
+		if readBundleRange.MatchString(operand) {
+			if len(specs) == 0 {
+				return nil, 0, fmt.Errorf("range-like paths require ./; retry: %s", workerCommand("mcat", []string{"./" + operand}))
 			}
+			operand = strings.ReplaceAll(operand, "-", ":")
 			if _, _, err := parseReadBundleRange(operand); err != nil {
 				return nil, 0, err
 			}
-			specs[len(specs)-1].span = operand
+			if specs[len(specs)-1].span == "" {
+				specs[len(specs)-1].span = operand
+			} else {
+				if len(specs) == 16 {
+					return nil, 0, errors.New(readBundleUsage + " (1–16 reads)")
+				}
+				specs = append(specs, readBundleSpec{path: specs[len(specs)-1].path, span: operand})
+			}
 			continue
 		}
+		if correction := correctedReadRange(operand); correction != "" {
+			path := "PATH"
+			if len(specs) > 0 {
+				path = specs[len(specs)-1].path
+			}
+			return nil, 0, fmt.Errorf("invalid range %q; retry: %s", operand, workerCommand("mcat", []string{path, correction}))
+		}
+		if path, row, ok := strings.CutLast(operand, ":"); ok && path != "" && readRowNumber.MatchString(row) {
+			if _, err := os.Stat(operand); errors.Is(err, os.ErrNotExist) {
+				return nil, 0, fmt.Errorf("ranges must be separate operands; retry: %s", workerCommand("mcat", []string{path, row + ":" + row}))
+			}
+		}
 		if operand == "" || len(specs) == 16 {
-			return nil, 0, errors.New(readBundleUsage + " (1–16 files)")
+			return nil, 0, errors.New(readBundleUsage + " (1–16 reads)")
 		}
 		specs = append(specs, readBundleSpec{path: operand})
 	}
@@ -91,7 +115,28 @@ func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 	return specs, budget, nil
 }
 
-var readBundleRange = regexp.MustCompile(`^[0-9]+:[0-9]+$`)
+var readBundleRange = regexp.MustCompile(`^[0-9]+[:-][0-9]+$`)
+var readRowNumber = regexp.MustCompile(`^[0-9]+$`)
+var readMalformedRange = regexp.MustCompile(`^([0-9]+)(:\+|,)([0-9]+)$`)
+
+func correctedReadRange(operand string) string {
+	if readRowNumber.MatchString(operand) {
+		return operand + ":" + operand
+	}
+	parts := readMalformedRange.FindStringSubmatch(operand)
+	if parts == nil {
+		return ""
+	}
+	if parts[2] == "," {
+		return parts[1] + ":" + parts[3]
+	}
+	start, err := strconv.ParseUint(parts[1], 10, 64)
+	count, countErr := strconv.ParseUint(parts[3], 10, 64)
+	if err != nil || countErr != nil || count == 0 || start > 1<<53-1 || count > 1<<53-max(1, start) {
+		return parts[1] + ":END"
+	}
+	return fmt.Sprintf("%d:%d", max(1, start), max(1, start)+count-1)
+}
 
 func parseReadBundleRange(span string) (uint64, uint64, error) {
 	first, last, _ := strings.Cut(span, ":")
@@ -156,7 +201,7 @@ func executeMCat(
 		}, nil
 	}
 	if len(specs) == 1 {
-		return toolplugin.Execute(
+		execution, err := toolplugin.Execute(
 			ctx,
 			manifest.NodeExecutable,
 			runtime,
@@ -167,6 +212,34 @@ func executeMCat(
 			"",
 			nil,
 		)
+		if err == nil && execution.OmittedOutput != nil {
+			start := readBundleStart(specs[0])
+			shown, omitted := bundleRowCount(execution.Stdout), bundleRowCount(execution.OmittedOutput.Stdout)
+			execution.OmittedOutput.SourceRow = start + shown
+			shownStart := start
+			for _, arg := range args {
+				if arg == "--" {
+					break
+				}
+				if arg == "--tail" {
+					execution.OmittedOutput.SourceRow = start
+					shownStart = start + omitted
+					break
+				}
+			}
+			if budget != 6000 {
+				execution.OmittedOutput.MaxTokens = budget
+			}
+			var notices strings.Builder
+			for line := range strings.Lines(execution.Stderr) {
+				if !strings.HasPrefix(line, "mcat: output incomplete:") {
+					notices.WriteString(line)
+				}
+			}
+			fmt.Fprintf(&notices, "mcat: shown %s of %d rows (%d-token limit)\n", bundleRowSpan(shownStart, execution.Stdout), shown+omitted, budget)
+			execution.Stderr = notices.String()
+		}
+		return execution, err
 	}
 	return executeMCatBundle(ctx, manifest, runtime, specs, budget, mcat)
 }
@@ -186,16 +259,52 @@ func executeMCatBundle(
 			FailureClass: class,
 		}, nil
 	}
-	reserve := 0
+	codec, err := tokenizer.New()
+	if err != nil {
+		return toolplugin.ExecutionOutput{}, err
+	}
+	reserve := 16
 	for _, spec := range specs {
-		// UTF-8/JSON escaped byte lengths conservatively bound framing tokens.
-		// Each path may appear in both its manifest row and its body header.
-		reserve += len(mustMarshalJSON(spec.path))*2 + 512
+		pathTokens, err := codec.Count(string(mustMarshalJSON(spec.path)))
+		if err != nil {
+			return toolplugin.ExecutionOutput{}, err
+		}
+		reserve += pathTokens*2 + 48
 	}
 	if budget-reserve < len(specs) {
 		return fail("budget cannot fit the bundle manifest; increase --max-tokens or select fewer paths", "invalid_arguments")
 	}
 	share := (budget - reserve) / len(specs)
+	executions := make([]toolplugin.ExecutionOutput, len(specs))
+	unused, pending := budget-reserve-share*len(specs), 0
+	for i, spec := range specs {
+		execution, err := readMCatBundleFile(ctx, manifest, runtime, spec, share, mcat)
+		if err != nil {
+			return toolplugin.ExecutionOutput{}, err
+		}
+		executions[i] = execution
+		if execution.ExitCode == 0 {
+			used, err := codec.Count(execution.Stdout)
+			if err != nil {
+				return toolplugin.ExecutionOutput{}, err
+			}
+			unused += max(0, share-used)
+		} else if execution.OmittedOutput != nil {
+			pending++
+		}
+	}
+	if pending > 0 && unused >= pending {
+		for i, execution := range executions {
+			if execution.OmittedOutput == nil {
+				continue
+			}
+			execution, err := readMCatBundleFile(ctx, manifest, runtime, specs[i], share+unused/pending, mcat)
+			if err != nil {
+				return toolplugin.ExecutionOutput{}, err
+			}
+			executions[i] = execution
+		}
+	}
 	store, err := shellOutputStore(manifest)
 	if err != nil {
 		return toolplugin.ExecutionOutput{}, err
@@ -204,14 +313,11 @@ func executeMCatBundle(
 	var diagnostics strings.Builder
 	incomplete := false
 	failureClass := ""
-	for _, spec := range specs {
+	for i, spec := range specs {
 		if err := ctx.Err(); err != nil {
 			return toolplugin.ExecutionOutput{}, err
 		}
-		execution, err := readMCatBundleFile(ctx, manifest, runtime, spec, share, mcat)
-		if err != nil {
-			return toolplugin.ExecutionOutput{}, err
-		}
+		execution := executions[i]
 		state := "complete"
 		omitted := "none"
 		start := readBundleStart(spec)
@@ -227,7 +333,12 @@ func executeMCatBundle(
 		}
 		// Source diagnostics are short and path-free, so they stay visible with
 		// a path prefix; only omitted output needs a retained continuation.
-		diagnostics.WriteString(prefixReadBundleDiagnostic(spec.path, execution.Stderr))
+		for line := range strings.Lines(execution.Stderr) {
+			if execution.FailureClass == "output_limit" && strings.HasPrefix(line, "mcat: output incomplete:") {
+				continue
+			}
+			diagnostics.WriteString(prefixReadBundleDiagnostic(spec.path, line))
+		}
 		var remainder toolplugin.OmittedOutput
 		if execution.OmittedOutput != nil {
 			remainder = *execution.OmittedOutput
@@ -241,8 +352,54 @@ func executeMCatBundle(
 			path: spec.path, start: start, shown: execution.Stdout, omitted: omitted, state: state,
 			record: shellOutputRecord{Version: 1, ID: handles[0],
 				Stdout: remainder.Stdout, Stderr: remainder.Stderr, StdoutKind: remainder.StdoutKind,
-				StderrKind: remainder.StderrKind, ExitCode: execution.ExitCode},
+				StderrKind: remainder.StderrKind, ExitCode: execution.ExitCode, SourceRow: start + bundleRowCount(execution.Stdout)},
 		})
+	}
+	render := func() string {
+		text := renderReadBundle(entries)
+		var handles []string
+		for _, entry := range entries {
+			if entry.record.Stdout != "" || entry.record.Stderr != "" {
+				handles = append(handles, entry.record.ID)
+			}
+		}
+		if len(handles) != 0 {
+			limit := 0
+			if budget != 6000 {
+				limit = budget
+			}
+			text += "\n" + strings.TrimPrefix(readNextCall(strings.Join(handles, " "), limit), "read: incomplete; ")
+		}
+		return text
+	}
+	// Verify the actual framing, including handles, rather than trusting the reserve.
+	for {
+		used, err := codec.Count(render())
+		if err != nil {
+			return toolplugin.ExecutionOutput{}, err
+		}
+		if used <= budget {
+			break
+		}
+		trimmed := false
+		for i := len(entries) - 1; i >= 0; i-- {
+			entry := &entries[i]
+			if entry.shown == "" {
+				continue
+			}
+			end := strings.LastIndex(entry.shown[:len(entry.shown)-1], "\n") + 1
+			entry.record.Stdout = entry.shown[end:] + entry.record.Stdout
+			entry.record.StdoutKind = "rows"
+			entry.shown = entry.shown[:end]
+			entry.record.SourceRow = entry.start + bundleRowCount(entry.shown)
+			entry.omitted = bundleRowSpan(entry.record.SourceRow, entry.record.Stdout)
+			entry.state, entry.record.ExitCode = "incomplete", 1
+			incomplete, failureClass, trimmed = true, "output_limit", true
+			break
+		}
+		if !trimmed {
+			return fail("budget cannot fit the bundle manifest; increase --max-tokens or select fewer paths", "invalid_arguments")
+		}
 	}
 	for _, entry := range entries {
 		if entry.record.Stdout != "" || entry.record.Stderr != "" {
@@ -256,7 +413,7 @@ func executeMCatBundle(
 		status = 1
 	}
 	return toolplugin.ExecutionOutput{
-		Stdout:       renderReadBundle(entries),
+		Stdout:       render(),
 		Stderr:       diagnostics.String(),
 		ExitCode:     status,
 		FailureClass: failureClass,
@@ -279,9 +436,6 @@ func renderReadBundle(entries []readBundleEntry) string {
 		continued := entry.record.Stdout != "" || entry.record.Stderr != ""
 		if entry.state != "complete" || entry.shown == "" || entry.omitted != "none" || continued {
 			fmt.Fprintf(&manifest, "%d path=%s shown=%s omitted=%s status=%s", i+1, path, shown, entry.omitted, entry.state)
-			if continued {
-				fmt.Fprintf(&manifest, " next_call=%q", "mread "+entry.record.ID)
-			}
 			manifest.WriteByte('\n')
 		}
 		if entry.shown != "" {

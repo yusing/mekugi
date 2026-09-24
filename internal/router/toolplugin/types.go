@@ -15,6 +15,9 @@ type (
 	}
 
 	OmittedOutput struct {
+		// Host-owned mcat provenance, not part of the plugin wire protocol.
+		SourceRow  uint64 `json:"-"`
+		MaxTokens  int    `json:"-"`
 		StdoutKind string `json:"stdoutKind,omitempty"`
 		StderrKind string `json:"stderrKind,omitempty"`
 		Stdout     string `json:"stdout"`

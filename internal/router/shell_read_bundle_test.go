@@ -12,7 +12,7 @@ import (
 )
 
 func TestReadBundleValidation(t *testing.T) {
-	for _, args := range [][]string{nil, {"--max-tokens", "0", "a"}, {"a", "1:2", "2:3"}, {"a", "2:1"}, {"a", "01:2"}, {"a", "1:9007199254740992"}, {"a", ""}, {"a", "--max-tokens", "2000", "--max-tokens", "2000"}, {"-n", "1", "a", "b"}, {"-n", "0", "a"}, {"-n", "1", "-n", "2", "a"}, {"--tail", "a"}, {"--tail", "--tail", "-n", "1", "a"}, {"--tail", "a", "b"}, {"--max-tokens"}, {"-n"}, slices.Repeat([]string{"a"}, 17)} {
+	for _, args := range [][]string{nil, {"--max-tokens", "0", "a"}, {"a", "2:1"}, {"a", "01:2"}, {"a", "1:9007199254740992"}, {"a", ""}, {"a", "--max-tokens", "2000", "--max-tokens", "2000"}, {"-n", "1", "a", "b"}, {"-n", "0", "a"}, {"-n", "1", "-n", "2", "a"}, {"--tail", "a"}, {"--tail", "--tail", "-n", "1", "a"}, {"--tail", "a", "b"}, {"--max-tokens"}, {"-n"}, slices.Repeat([]string{"a"}, 17)} {
 		if _, _, err := parseReadBundle(args); err == nil {
 			t.Fatalf("accepted %q", args)
 		}
@@ -56,18 +56,22 @@ func TestReadBundleRetainsPerFileOmissions(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
 	for _, name := range []string{"first", "second"} {
-		if err := os.WriteFile(filepath.Join(directory, name), []byte(strings.Repeat(name+" row\n", 200)), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(strings.Repeat(name+" row\n", 2000)), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
 		"#!params={\"max_output_tokens\":10000}\nmcat --max-tokens 2000 first second", nil,
 		newShellWorkerTestInvocation(directory))
-	if status != 1 || !strings.Contains(stderr, `mcat: "first": output incomplete`) || !strings.Contains(stderr, `mcat: "second": output incomplete`) ||
+	if status != 1 || stderr != "" ||
 		!strings.Contains(stdout, `path="first" shown=1:`) || !strings.Contains(stdout, `path="second" shown=1:`) {
 		t.Fatalf("status=%d out=%s err=%s", status, stdout, stderr)
 	}
-	refs := regexp.MustCompile(`next_call="(mread [a-z]+[0-9]*)"`).FindAllStringSubmatch(stdout, -1)
+	_, continuation, found := strings.Cut(stdout, "next_call: mread ")
+	if !found {
+		t.Fatalf("missing combined continuation: %s", stdout)
+	}
+	refs := strings.Fields(strings.Split(continuation, " --max-tokens")[0])
 	if len(refs) != 2 {
 		t.Fatalf("missing per-file receipts: %s", stdout)
 	}
@@ -75,7 +79,7 @@ func TestReadBundleRetainsPerFileOmissions(t *testing.T) {
 		if err := os.Remove(filepath.Join(directory, name)); err != nil {
 			t.Fatal(err)
 		}
-		out, _, _ := runShellWorkerTest(t, registry, "bash", nil, refs[i][1]+" --max-tokens 10000", nil, newShellWorkerTestInvocation(directory))
+		out, _, _ := runShellWorkerTest(t, registry, "bash", nil, "mread "+refs[i]+" --max-tokens 10000", nil, newShellWorkerTestInvocation(directory))
 		if !strings.Contains(out, name+" row") {
 			t.Fatalf("snapshot not recoverable: %s", out)
 		}
@@ -109,7 +113,7 @@ func TestReadBundleBudgetAndMissingFileFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
-		"#!params={\"max_output_tokens\":15000}\nmcat --max-tokens 1037 a b", nil, newShellWorkerTestInvocation(directory))
+		"#!params={\"max_output_tokens\":15000}\nmcat --max-tokens 100 a b", nil, newShellWorkerTestInvocation(directory))
 	if status != 1 || out != "" || !strings.Contains(diagnostic, "budget cannot fit") {
 		t.Fatalf("%d %q %q", status, out, diagnostic)
 	}
@@ -152,7 +156,7 @@ func TestReadBundleOmitsCompleteRowsAndShowsDiagnostics(t *testing.T) {
 		"\n--- file 1 path=\"first\" shown=1:2 ---\nfirst one\nfirst two\n\n--- file 3 path=\"second\" shown=2:2 ---\nsecond two\n"
 	if status != 1 || out != want || strings.Contains(out, "next_call") ||
 		!regexp.MustCompile(`(?m)^mcat: "missing": ENOENT`).MatchString(diagnostic) ||
-		!strings.Contains(diagnostic, "mcat: \"second\": 3-3: [out of range]\n") {
+		!strings.Contains(diagnostic, "mcat: \"second\": rows 3:3 past EOF (2 rows)\n") {
 		t.Fatalf("failed bundle: %d %q %q", status, out, diagnostic)
 	}
 }

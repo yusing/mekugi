@@ -112,7 +112,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 				if !strings.HasPrefix(stderr, notice) || stdout == "" || page == 99 {
 					t.Fatalf("read failed: %q, %q, %d", stdout, stderr, status)
 				}
-				cursor = strings.TrimSpace(strings.TrimPrefix(stderr, notice))
+				cursor = strings.Fields(strings.TrimPrefix(stderr, notice))[0]
 			}
 		})
 	}

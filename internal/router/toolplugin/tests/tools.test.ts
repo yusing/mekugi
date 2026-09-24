@@ -270,19 +270,20 @@ describe("mcat line limits", () => {
     }
   });
 
-  test("line-only mode admits long complete rows beyond the default token ceiling", async () => {
+  test("line-only mode retains the default token ceiling and complete rows", async () => {
     const directory = await temporaryDirectory("mcat-line-long-");
     const file = path.join(directory, "rows.txt");
     const content = "word ".repeat(20000);
     await writeFile(file, `${content}\nend`);
     const tool = createMCatTool("");
     const head = await tool.execute(["-n", "1", file], executionContext);
-    expect(head.stdout).toBe(formatMCatRow(1, content));
+    expect(head.stdout).toBe("");
     expect(head.stderr).toContain("1-line limit");
-    expect(head.stderr).not.toContain("token limit");
+    expect(head.stderr).toContain("6000-token limit");
+    expect(head.omittedOutput?.stdout).toBe(`${content}\nend\n`);
     const tail = await tool.execute(["--tail", "-n", "2", file], executionContext);
-    expect(tail.stdout).toBe(formatMCatRow(1, content) + formatMCatRow(2, "end"));
-    expect(tail.exitCode).toBe(0);
+    expect(tail.stdout).toBe(formatMCatRow(2, "end"));
+    expect(tail.exitCode).toBe(1);
     const limited = await tool.execute(["-n", "1", "--max-tokens", "20", file], executionContext);
     expect(limited.stdout).toBe("");
     const tailLimited = await tool.execute(["--tail", "-n", "2", "--max-tokens", "20", file], executionContext);
@@ -311,7 +312,7 @@ describe("mcat omitted rows", () => {
       const head = await tool.execute(["-n", "2", file, "2:9"], executionContext);
       expect(head.stdout).toBe(formatMCatRow(2, "") + formatMCatRow(3, "three"));
       expect(head.omittedOutput?.stdout).toBe(formatMCatRow(4, "four") + formatMCatRow(5, "five"));
-      expect(head.stderr).toContain("[out of range]");
+      expect(head.stderr).toContain("mcat: rows 6:9 past EOF (5 rows)");
       const rest = await tool.execute([file, "4:5"], executionContext);
       expect(rest).toEqual({
         stdout: formatMCatRow(4, "four") + formatMCatRow(5, "five"),
@@ -470,8 +471,8 @@ describe("mcat built-in plugin", () => {
     const description = plugin.tools[0].specification.description.replace(/\s+/g, " ");
     expect(description).toContain("Read one or more UTF-8 files or inclusive logical-line ranges");
     expect(description).toContain("raw rows without line or hash prefixes");
-    expect(description).toContain("Usage: mcat [-n N] [--max-tokens N] [--tail] PATH [START:END] [PATH [START:END] ...]");
-    expect(description).toContain("START:END is a separate operand after its path, inclusive of both endpoints. -n counts rows within that range.");
+    expect(description).toContain("Usage: mcat [-n N] [--max-tokens N] [--tail] PATH [START:END ...] [PATH [START:END ...] ...]");
+    expect(description).toContain("START:END or START-END is a separate operand after its path, inclusive of both endpoints.");
     expect(description).toContain("mcat src/main.go 100:150");
     expect(description).toContain("rows 100–150 (51 rows)");
     expect(description).toContain("mcat -n 20 src/main.go");
@@ -584,7 +585,7 @@ describe("mcat built-in plugin", () => {
         formatMCatRow(2, "beta"),
         formatMCatRow(3, "gamma"),
       ].join(""),
-      stderr: "mcat: 4-5: [out of range]\n",
+      stderr: "mcat: rows 4:5 past EOF (3 rows)\n",
       exitCode: 0,
     });
 
@@ -596,7 +597,7 @@ describe("mcat built-in plugin", () => {
 
     const outside = await tool.execute(["plain.txt", "4:5"], executionContext);
     expect(outside).toEqual({
-      stderr: "mcat: start line 4 is past EOF (3 lines)\n",
+      stderr: "mcat: rows 4:5 past EOF (3 rows)\n",
       exitCode: 1,
       failureClass: "reader_error",
     });
@@ -667,7 +668,7 @@ describe("mcat built-in plugin", () => {
     const result = await tool.execute(["large.txt"], executionContext);
     expect(result).toEqual({
       stdout: "",
-      stderr: "mcat: row 1 exceeds the 1984000-byte inspection bound; use a byte-window reader\n",
+      stderr: "mcat: row 1 exceeds the 1984000-byte inspection bound; use mrun with a byte-oriented command such as head -c\n",
       exitCode: 1,
       failureClass: "output_limit",
     });

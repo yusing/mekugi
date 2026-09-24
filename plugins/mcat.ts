@@ -80,7 +80,7 @@ function parseReadSpec(input: string): ReadSpec {
   if (trailing === "") {
     return {path, startLine: 0, endLine: 0};
   }
-  const match = trailing.match(/^ (0|[1-9][0-9]*):([1-9][0-9]*)$/u);
+  const match = trailing.match(/^ (0|[1-9][0-9]*)[:-]([1-9][0-9]*)$/u);
   if (match === null) {
     throw new Error("mcat input must be PATH or PATH START:END");
   }
@@ -187,7 +187,6 @@ async function readLines(spec: ReadSpec, options: ReaderOptions): Promise<Compar
     const output = new BoundedTextOutput(options.maxTokens);
 
     let selectedLines = 0;
-    let lineOutput = "";
     const selected = () => wholeFile
       || (lineNumber >= spec.startLine && lineNumber <= spec.endLine);
     const appendContent = (text: string): void => {
@@ -199,10 +198,8 @@ async function readLines(spec: ReadSpec, options: ReaderOptions): Promise<Compar
         return;
       }
       contentBytes += byteLength(text);
-      if (!(options.maxLines !== undefined && options.maxTokens === undefined
-          && (tail || selectedLines < options.maxLines))
-          && contentBytes > MAX_READER_TOKENS * MAX_POSSIBLE_GPT5_TOKEN_BYTES) {
-		limitReason = `row ${lineNumber} exceeds the ${MAX_READER_TOKENS * MAX_POSSIBLE_GPT5_TOKEN_BYTES}-byte inspection bound; use a byte-window reader\n`;
+      if (contentBytes > MAX_READER_TOKENS * MAX_POSSIBLE_GPT5_TOKEN_BYTES) {
+		limitReason = `row ${lineNumber} exceeds the ${MAX_READER_TOKENS * MAX_POSSIBLE_GPT5_TOKEN_BYTES}-byte inspection bound; use mrun with a byte-oriented command such as head -c\n`;
         retentionUnavailable = true;
         content = "";
         oversizedRow = true;
@@ -230,8 +227,6 @@ async function readLines(spec: ReadSpec, options: ReaderOptions): Promise<Compar
         } else {
           if (tail) {
             tail.append(row);
-          } else if (options.maxLines !== undefined && options.maxTokens === undefined) {
-            lineOutput += row;
           } else if (!output.incomplete) {
             output.append(row);
           }
@@ -301,13 +296,13 @@ async function readLines(spec: ReadSpec, options: ReaderOptions): Promise<Compar
     }
     const lineCount = lineNumber - 1;
     if (spec.startLine > lineCount) {
-      throw new Error(`start line ${spec.startLine} is past EOF (${lineCount} lines)`);
+      throw new Error(`rows ${spec.startLine}:${spec.endLine} past EOF (${lineCount} rows)`);
     }
     const missingStartLine = Math.max(spec.startLine, lineCount + 1);
     const warning = !wholeFile && missingStartLine <= spec.endLine
-      ? `mcat: ${missingStartLine}-${spec.endLine}: [out of range]\n`
+      ? `mcat: rows ${missingStartLine}:${spec.endLine} past EOF (${lineCount} rows)\n`
       : undefined;
-    const result = tail?.finish() ?? {current: options.maxLines !== undefined && options.maxTokens === undefined ? lineOutput : output.current, incomplete: output.incomplete};
+    const result = tail?.finish() ?? {current: output.current, incomplete: output.incomplete};
     const omitted = result.incomplete && !retentionUnavailable
       ? tail ? retained.prefixBefore(result.current) : retained.remainder(result.current)
       : undefined;
@@ -342,7 +337,7 @@ function mcatInput(argv: string[]): string {
   if (
     argv.length === 2 &&
     argv[0] !== "" &&
-    /^(?:0|[1-9][0-9]*):[1-9][0-9]*$/u.test(argv[1])
+    /^(?:0|[1-9][0-9]*)[:-][1-9][0-9]*$/u.test(argv[1])
   ) {
     return `${JSON.stringify(argv[0])} ${argv[1]}`;
   }
@@ -357,9 +352,9 @@ export function createMCatTool(grammar: string): Tool<string[]> {
   return createExecutorTool({
     name: "mcat",
     description: `Read one or more UTF-8 files or inclusive logical-line ranges as raw rows without line or hash prefixes.
-Usage: mcat [-n N] [--max-tokens N] [--tail] PATH [START:END] [PATH [START:END] ...]
+Usage: mcat [-n N] [--max-tokens N] [--tail] PATH [START:END ...] [PATH [START:END ...] ...]
 
-START:END is a separate operand after its path, inclusive of both endpoints. -n counts rows within that range.
+START:END or START-END is a separate operand after its path, inclusive of both endpoints. Several ranges may follow one path; at most 16 reads are allowed. -n counts rows within a single range and retains the default token ceiling.
 Examples:
   mcat src/main.go 100:150                # rows 100–150 (51 rows)
   mcat -n 20 src/main.go                  # first 20 rows
@@ -381,6 +376,7 @@ Limited output contains complete rows and exits nonzero; retained omissions prov
       try {
         const parsed = readerOptions(argv, true, () => false, false, false, 6_000);
         options = parsed.options;
+        options.maxTokens ??= 6_000;
         spec = parseReadSpec(stripOptionalFinalNewline(mcatInput(parsed.rest)));
       } catch (error) {
         return {stderr: `mcat: ${conciseErrorText(error)}\n`, exitCode: 1, failureClass: "invalid_arguments"};

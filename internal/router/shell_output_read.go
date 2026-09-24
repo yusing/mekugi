@@ -9,14 +9,15 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/router/toolplugin"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 const maxOutputTokens = 15_500
 
-const outputReadUsage = "mread REF [--stdout|--stderr] [--max-tokens N]"
+const outputReadUsage = "mread REF [REF ...] [--stdout|--stderr] [--max-tokens N]"
 
 type outputReadOptions struct {
-	id        string
+	ids       []string
 	stream    string
 	maxTokens int
 }
@@ -28,10 +29,10 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 		flag := arguments[0]
 		arguments = arguments[1:]
 		if !strings.HasPrefix(flag, "--") {
-			if options.id != "" || !validShellOutputID(flag) {
-				return options, errors.New(outputReadUsage)
+			if !validShellOutputID(flag) {
+				return options, errors.New("REF must be a returned handle such as amber; paths and ranges belong to mcat")
 			}
-			options.id = flag
+			options.ids = append(options.ids, flag)
 			continue
 		}
 		if seen[flag] {
@@ -59,7 +60,7 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 			return options, fmt.Errorf("unknown option %s; %s", flag, outputReadUsage)
 		}
 	}
-	if options.id == "" {
+	if len(options.ids) == 0 {
 		return options, errors.New(outputReadUsage)
 	}
 	return options, nil
@@ -82,67 +83,123 @@ func executeMRead(
 	if err != nil {
 		return fail(err)
 	}
-	cursor, err := store.readShellOutput(ctx, options.id)
+	codec, err := tokenizer.New()
 	if err != nil {
 		return fail(err)
 	}
-	source := cursor
-	stream := options.stream
-	if cursor.Source != "" {
-		source, err = store.readShellOutput(ctx, cursor.Source)
+	var result strings.Builder
+	var nextHandles []string
+	used := 0
+	for _, id := range options.ids {
+		cursor, err := store.readShellOutput(ctx, id)
 		if err != nil {
 			return fail(err)
 		}
-		if source.Source != "" || readRecordBinding(source) != cursor.Binding {
-			return fail(errors.New("read snapshot changed or is invalid"))
+		source := cursor
+		stream := options.stream
+		if cursor.Source != "" {
+			source, err = store.readShellOutput(ctx, cursor.Source)
+			if err != nil {
+				return fail(err)
+			}
+			if source.Source != "" || readRecordBinding(source) != cursor.Binding {
+				return fail(errors.New("read snapshot changed or is invalid"))
+			}
+			if stream != "" && stream != cursor.Stream {
+				return fail(errors.New("continuation already binds a stream; use the initial reference to change selection"))
+			}
+			stream = cursor.Stream
 		}
-		if stream != "" && stream != cursor.Stream {
-			return fail(errors.New("continuation already binds a stream; use the initial reference to change selection"))
+		remaining := options.maxTokens - used
+		separator := ""
+		if result.Len() > 0 {
+			separator = "\n"
+			remaining--
 		}
-		stream = cursor.Stream
-	}
-	output, err := store.readSourceStreams(ctx, source)
-	if err != nil {
-		return fail(err)
-	}
-	request := struct {
-		Stdout     string `json:"stdout"`
-		Stderr     string `json:"stderr"`
-		StdoutKind string `json:"stdoutKind"`
-		StderrKind string `json:"stderrKind"`
-		Position   [2]int `json:"position"`
-		Stream     string `json:"stream"`
-	}{output.Stdout, output.Stderr, output.StdoutKind, output.StderrKind, cursor.Position, stream}
-	data, err := json.Marshal(request)
-	if err != nil {
-		return fail(err)
-	}
-	formatted, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, runtimeRoot,
-		[]string{strconv.Itoa(options.maxTokens), "read", string(data), ""})
-	if err != nil {
-		return fail(err)
-	}
-	var page struct {
-		Text     string `json:"text"`
-		Position [2]int `json:"position"`
-		Complete bool   `json:"complete"`
-	}
-	if formatted.ExitCode != 0 {
-		return fail(fmt.Errorf("page selection failed: %s", strings.TrimSpace(formatted.Stderr)))
-	}
-	if json.Unmarshal([]byte(formatted.Stdout), &page) != nil {
-		return fail(errors.New("invalid read page"))
-	}
-	next := ""
-	if !page.Complete {
-		// Persist before exposing this page or suggesting the next operation.
-		next, err = store.putReadCursor(ctx, source, page.Position, stream)
+		if remaining <= 0 {
+			nextHandles = append(nextHandles, id)
+			continue
+		}
+		output, err := store.readSourceStreams(ctx, source)
 		if err != nil {
 			return fail(err)
 		}
+		request := struct {
+			Stdout     string `json:"stdout"`
+			Stderr     string `json:"stderr"`
+			StdoutKind string `json:"stdoutKind"`
+			StderrKind string `json:"stderrKind"`
+			Position   [2]int `json:"position"`
+			Stream     string `json:"stream"`
+			SourceRow  uint64 `json:"sourceRow,omitzero"`
+			Label      string `json:"label,omitempty"`
+		}{Stdout: output.Stdout, Stderr: output.Stderr, StdoutKind: output.StdoutKind, StderrKind: output.StderrKind,
+			Position: cursor.Position, Stream: stream, SourceRow: source.SourceRow}
+		if len(options.ids) > 1 {
+			request.Label = id
+		}
+		data, err := json.Marshal(request)
+		if err != nil {
+			return fail(err)
+		}
+		formatted, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, runtimeRoot,
+			[]string{strconv.Itoa(remaining), "read", string(data), ""})
+		if err != nil {
+			return fail(err)
+		}
+		var page struct {
+			Text         string `json:"text"`
+			Position     [2]int `json:"position"`
+			Complete     bool   `json:"complete"`
+			NeededTokens int    `json:"neededTokens"`
+		}
+		if formatted.ExitCode != 0 {
+			return fail(fmt.Errorf("page selection failed: %s", strings.TrimSpace(formatted.Stderr)))
+		}
+		if json.Unmarshal([]byte(formatted.Stdout), &page) != nil {
+			return fail(errors.New("invalid read page"))
+		}
+		if page.NeededTokens > 0 {
+			if result.Len() != 0 {
+				nextHandles = append(nextHandles, id)
+				continue
+			}
+			if page.NeededTokens > maxOutputTokens {
+				return fail(fmt.Errorf("next row needs ~%d tokens (maximum %d); use mrun with a byte-oriented command", page.NeededTokens, maxOutputTokens))
+			}
+			return fail(fmt.Errorf("next row needs ~%d tokens; retry: mread %s --max-tokens %d", page.NeededTokens, id, page.NeededTokens))
+		}
+		if page.Text != "" {
+			tokens, err := codec.Count(result.String() + separator + page.Text)
+			if err != nil {
+				return fail(err)
+			}
+			if tokens > options.maxTokens {
+				nextHandles = append(nextHandles, id)
+				continue
+			}
+			result.WriteString(separator)
+			result.WriteString(page.Text)
+			used = tokens
+		}
+		next := ""
+		if !page.Complete {
+			// Persist before exposing this page or suggesting the next operation.
+			next, err = store.putReadCursor(ctx, source, page.Position, stream)
+			if err != nil {
+				return fail(err)
+			}
+		}
+		if next != "" {
+			nextHandles = append(nextHandles, next)
+		}
 	}
-	if next != "" {
-		return toolplugin.ExecutionOutput{Stdout: page.Text, Stderr: readNextCall(next), ExitCode: 1}
+	if len(nextHandles) != 0 {
+		budget := 0
+		if options.maxTokens != 8000 {
+			budget = options.maxTokens
+		}
+		return toolplugin.ExecutionOutput{Stdout: result.String(), Stderr: readNextCall(strings.Join(nextHandles, " "), budget), ExitCode: 1}
 	}
-	return toolplugin.ExecutionOutput{Stdout: page.Text}
+	return toolplugin.ExecutionOutput{Stdout: result.String()}
 }

@@ -7,8 +7,9 @@ export type ReadPageRequest = {
   stdout: string; stderr: string;
   stdoutKind: ReadKind; stderrKind: ReadKind;
   position: [number, number]; stream: "" | "stdout" | "stderr";
+  sourceRow?: number; label?: string;
 };
-export type ReadPage = {text: string; position: [number, number]; complete: boolean};
+export type ReadPage = {text: string; position: [number, number]; complete: boolean; neededTokens?: number};
 
 // JSON.parse validates syntax, but its numeric values must never become the
 // recovered evidence. Split the validated top-level array into original slices.
@@ -46,12 +47,20 @@ export function selectReadOutput(request: ReadPageRequest, budget: number): Read
   const kinds = [request.stdoutKind, request.stderrKind];
   const position: [number, number] = [...request.position];
   const pages = ["", ""];
+  const sourceStart = request.sourceRow
+    ? request.sourceRow + (Buffer.from(request.stdout).subarray(0, request.position[0]).toString("utf8").match(/\n/gu)?.length ?? 0)
+    : 0;
   const entries = values.map((value, index): string[] | null => kinds[index] === "json" ? jsonArrayEntries(value) : null);
   const included = (index: number): boolean => request.stream === "" || request.stream === ["stdout", "stderr"][index];
   const size = (index: number): number => entries[index]?.length ?? Buffer.byteLength(values[index]);
   const frame = (): string => {
-    if (!pages[1]) return pages[0];
-    return pages.map((page, index) => {
+    let prefix = request.label ? `--- ${request.label} ---\n` : "";
+    if (pages[0] && sourceStart) {
+      const end = sourceStart + (pages[0].match(/\n/gu)?.length ?? 0) - 1;
+      prefix += `[rows ${sourceStart}:${end}]\n`;
+    }
+    if (!pages[1]) return pages[0] ? prefix + pages[0] : "";
+    return prefix + pages.map((page, index) => {
       if (!page) return "";
       const name = ["stdout", "stderr"][index];
       return `[${name} ${kinds[index] || "bytes"}]\n${page}\n[/${name}]\n`;
@@ -64,7 +73,7 @@ export function selectReadOutput(request: ReadPageRequest, budget: number): Read
     if (!included(index)) continue;
     if (entries[index]?.length === 0) pages[index] = "[]";
   }
-  if (!fits()) throw new Error("token budget cannot admit the stream frames; increase --max-tokens");
+  if (!fits()) return {text: "", position: request.position, complete: false, neededTokens: countGPT5Tokens(frame())};
   let advanced = false;
   for (let index = 0; index < 2; index++) {
     if (!included(index) || position[index] === size(index)) continue;
@@ -108,7 +117,15 @@ export function selectReadOutput(request: ReadPageRequest, budget: number): Read
       position[index] += Buffer.byteLength(pages[index]);
     }
     if (position[index] === offset) {
-      if (!advanced) throw new Error("next complete read unit does not fit; increase --max-tokens or use source preview");
+      if (!advanced) {
+        if (array !== null) pages[index] = `[${array[offset]}]`;
+        else {
+          const remaining = Buffer.from(values[index]).subarray(offset).toString("utf8");
+          const end = kinds[index] === "rows" ? remaining.indexOf("\n") + 1 : (remaining.codePointAt(0) ?? 0) > 0xffff ? 2 : 1;
+          pages[index] = remaining.slice(0, end || remaining.length);
+        }
+        return {text: "", position: request.position, complete: false, neededTokens: countGPT5Tokens(frame())};
+      }
       break;
     }
     advanced = true;
@@ -121,7 +138,7 @@ export function createMReadTool(): NativeTool {
     specification: {
       type: "custom",
       name: "mread",
-      description: "Continue omitted retained output without rerunning its producer. Usage: `mread REF [--stdout|--stderr] [--max-tokens N]`. REF is the producer's returned reference, not a path or line range; for example, `mread amber`. --stdout or --stderr selects one stream; otherwise both are returned.",
+      description: "Continue omitted retained output without rerunning its producer. Usage: `mread REF [REF ...] [--stdout|--stderr] [--max-tokens N]`. REF is a returned handle, not a path or range. Multiple handles share one budget and return one combined next_call. --stdout or --stderr selects one stream; otherwise both are returned. Source-row pages state their row range.",
     },
     nativeExecutor: "mread",
   };

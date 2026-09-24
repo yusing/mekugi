@@ -11,16 +11,20 @@ model-visible custom tool or intercept it as a private shell command. The
 `mcat` accepts one or more files:
 
 ```text
-mcat [--max-tokens N] PATH [START:END] [PATH [START:END] ...]
+mcat [-n N] [--max-tokens N] [--tail] PATH [START:END ...] [PATH [START:END ...] ...]
 ```
 
 The process host owns quoting and argument separation. A path containing
 whitespace is one quoted argument. `START:END` is an inclusive logical-line
-range with a canonical nonnegative start and positive base-ten end. `0:END` is
+range; `START-END` is equivalent. Bounds use a canonical nonnegative start and positive base-ten end. `0:END` is
 accepted as `1:END`. The start line must exist; an end past EOF returns through the final
 line. Each range applies to the preceding path. A numeric range after a path is
 therefore an operand, so prefix a range-like filename with `./`. `--` ends
-option parsing. One invocation accepts at most 16 files.
+option parsing. Several ranges may follow one path, each counting toward the maximum of
+16 reads. Before reading sources, `A:+N`, `A,B`, and bare numeric operands reject with a
+corrected command. A nonexistent `PATH:N` operand suggests `mcat PATH N:N`; an existing
+literal file retains its ordinary meaning. `-n A:B` suggests `mcat PATH A:B`.
+EOF messages use colon ranges and the observed row count.
 
 The executable inherits the stock executor's working directory and environment.
 Relative and absolute paths retain their ordinary process meaning. Codex owns
@@ -46,7 +50,7 @@ Whole-file UTF-8 validation continues after stdout admission stops.
 ### Bounds, head, and tail
 
 `--max-tokens N` sets a strict GPT-5 stdout ceiling from 1 through 15,500,
-defaulting to 4,000. Options may surround operands before `--` and cannot
+defaulting to 6,000. Options may surround operands before `--` and cannot
 repeat. Missing or invalid budgets reject before source content is read. Outer
 host output budgets remain independent.
 
@@ -56,12 +60,14 @@ nonzero. Omitted rows are retained through `mread` before their reference is
 exposed. Recovery reads the captured bytes without reopening the source. If a
 row exceeds the 1,984,000-byte inspection bound or retained output exceeds
 16 MiB, the result reports that recovery is unavailable and suggests narrowing
-the source range.
+the source range or using `mrun` with a byte-oriented command such as `head -c`.
 
 Single-file reads additionally accept `-n N` and `--tail`, each at most once.
 Line counts are canonical positive safe integers. `-n` selects the first N rows,
-or the last N rows with `--tail`, before an explicit token ceiling. Without an
-explicit token ceiling, line mode bypasses tokenization. `--tail` requires `-n`
+or the last N rows with `--tail`, while retaining the default token ceiling unless overridden.
+An incomplete recoverable read reports the absolute shown range, selected row count, budget,
+and continuation in one line. A nondefault budget is carried into that command.
+`--tail` requires `-n`
 or `--max-tokens`, preserves source order, and never cuts a row or skips an
 oversized final row to expose earlier content. Tail scans still validate the
 complete file. Multi-file reads reject `-n` and `--tail`.
@@ -88,8 +94,8 @@ Acceptance:
 ### Managed read continuation
 
 Bounded command output, `mcat`, symbol references, and change reviews use the
-authenticated `mread` executable frontend for one read continuation:
-`mread REF [--stdout|--stderr] [--max-tokens N]`. An incomplete result supplies
+authenticated `mread` executable frontend for retained continuations:
+`mread REF [REF ...] [--stdout|--stderr] [--max-tokens N]`. An incomplete result supplies
 the exact `read: incomplete; next_call: mread REF` command. There is no separate
 cursor flag or caller-composed offset. References use short lowercase word
 handles, such as `maple`, with a decimal suffix when needed. Handles are
@@ -111,13 +117,19 @@ pages and reuse next references while retained. Expired handles are not
 reassigned or revived. A continuation inherits its stream selection; selecting a
 different stream starts from the initial reference. Budgets may change.
 
-Empty streams have no frame. A page containing only stdout is unframed. Stderr
+Empty streams have no frame. Source reads report `[rows START:END]`; multiple handles
+have per-handle labels, share one total budget, and produce one combined next call.
+Generated producer-limit diagnostics are not stored as omitted source stderr; actual
+captured command stderr remains evidence and is not removed by text matching.
+A page containing only generic stdout is unframed. Stderr
 is always framed, and a page containing both streams frames both. Frames use
 `[stdout UNIT]` or `[stderr UNIT]` and matching closing markers, where `UNIT` is
 `bytes`, `rows`, or `json`. Framing is not payload. A rows page never cuts a
 complete LF-framed row; a JSON page is a valid array of complete entries. A unit
-that cannot fit fails explicitly without a nonadvancing reference. The token
-budget includes frames, defaults to 4,000, and accepts 1 through 15,500. Page
+that cannot fit reports its estimated token requirement and an exact retry command, without
+a stack trace or nonadvancing reference. Units above the accepted maximum instead name
+byte-oriented recovery. Malformed path/range operands explain that REF must be a returned handle.
+The token budget includes frames, defaults to 8,000, and accepts 1 through 15,500. Page
 completion returns status 0; an incomplete page returns status 1 with the next
 call on stderr. The producer's status is preserved independently.
 
@@ -136,20 +148,24 @@ while inherited fork and side-thread ownership survives restart and cleanup.
 
 ### Coordinated multi-file reads
 
-For 2–16 files, the same executable frontend composes one coordinated result.
+For 2–16 reads, the same executable frontend composes one coordinated result.
 No `--batch` flag or extra basename exists. Multi-file reads support only
 `--max-tokens`. The total budget defaults to 6,000 and retains the usual
-1–15,500 bounds. The compositor reserves conservative manifest space, divides
-the remaining budget among source reads, and rejects before reading when the
-manifest cannot fit. The generated `mcat` implementation remains the sole owner
+1–15,500 bounds. The compositor reserves framing space based on actual path token cost,
+divides the remaining budget equally, then redistributes unused shares from complete files
+to incomplete reads in one reread pass. It verifies the complete rendered result against the
+budget, retaining any extra rows removed to fit framing. Insufficient manifest allowance
+rejects before reading. The generated `mcat` implementation remains the sole owner
 of source parsing, UTF-8 validation, logical rows, selection, and token admission.
 
 A manifest precedes the bodies and has a row for each failed, incomplete,
 empty, or continued input, reporting its input index, path, displayed and
-retained omitted inclusive line ranges or `none`, completion state, and an
-`mread` call only when output was omitted. A complete nonempty read has no row.
+retained omitted inclusive line ranges or `none`, and completion state. One combined
+`next_call: mread A B ...` follows an incomplete bundle, with one retained source per read.
+A complete nonempty read has no row.
 Each body header names its input index, path, and displayed range. Source
-diagnostics appear on stderr with each line prefixed by the source path.
+diagnostics appear on stderr with each line prefixed by the source path; redundant
+per-file token-limit lines are omitted because the manifest already reports incompleteness.
 Omitted rows are persisted before the manifest is exposed. Unrecoverable
 omissions say `unavailable`. Any failed or incomplete source makes the
 invocation nonzero, but other sources are still read. Cancellation or storage

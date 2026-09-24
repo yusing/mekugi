@@ -23,6 +23,7 @@ const maxShellOutputStoreBytes = 256 << 20
 // Initial references own immutable omitted data. Later references contain only
 // a source reference and positions, never another copy of the output.
 type shellOutputRecord struct {
+	SourceRow    uint64              `json:"source_row,omitzero"`
 	Changes      *changeReadSnapshot `json:"changes,omitempty"`
 	Version      int                 `json:"version"`
 	ID           string              `json:"id"`
@@ -117,6 +118,7 @@ func (s *mekugiReplayStore) putTypedOutput(ctx context.Context, output toolplugi
 		Version: 1, ID: handles[0],
 		Stdout: output.Stdout, Stderr: output.Stderr, ExitCode: exitCode,
 		StdoutKind: output.StdoutKind, StderrKind: output.StderrKind,
+		SourceRow: output.SourceRow,
 	}
 	return s.putReadRecord(ctx, record)
 }
@@ -188,6 +190,9 @@ func validateReadRecord(record shellOutputRecord) error {
 		!utf8.ValidString(record.Stdout) || !utf8.ValidString(record.Stderr) ||
 		!validReadKind(record.StdoutKind) || !validReadKind(record.StderrKind) {
 		return errors.New("invalid read recovery record")
+	}
+	if record.SourceRow != 0 && (record.StdoutKind != "rows" || record.SourceRow > 1<<53-1) {
+		return errors.New("invalid source row provenance")
 	}
 	if record.Changes != nil {
 		selection := record.Changes
@@ -343,11 +348,20 @@ func retainExecutionOutput(ctx context.Context, manifest toolWorkerManifest, exe
 	if err != nil {
 		return execution, err
 	}
+	omitted := execution.OmittedOutput
 	execution.OmittedOutput = nil
-	execution.Stderr += readNextCall(id)
+	if omitted.SourceRow != 0 {
+		execution.Stderr = strings.TrimSuffix(execution.Stderr, "\n") + "; " + strings.TrimPrefix(readNextCall(id, omitted.MaxTokens), "read: incomplete; ")
+	} else {
+		execution.Stderr += readNextCall(id)
+	}
 	return execution, nil
 }
 
-func readNextCall(id string) string {
-	return fmt.Sprintf("read: incomplete; next_call: mread %s\n", id)
+func readNextCall(id string, budgets ...int) string {
+	command := "mread " + id
+	if len(budgets) > 0 && budgets[0] > 0 {
+		command += fmt.Sprintf(" --max-tokens %d", budgets[0])
+	}
+	return "read: incomplete; next_call: " + command + "\n"
 }

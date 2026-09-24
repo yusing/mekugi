@@ -38,7 +38,7 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 			"ordinary exec_command truncation has no mread recovery",
 		},
 		"mcat": {
-			"START:END is a separate operand after its path, inclusive of both endpoints. -n counts rows within that range.",
+			"START:END or START-END is a separate operand after its path, inclusive of both endpoints.",
 			"mcat src/main.go 100:150",
 			"mcat -n 20 src/main.go",
 			"first 20 rows",
@@ -57,7 +57,7 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 			"<common-options>",
 			"--max-tokens N bounds output to 1–15500 tokens.",
 			"-n N selects up to N rows;",
-			"mcat keeps complete rows; mrun token limits may cut within a row.",
+			"mcat keeps its default token ceiling with -n alone and always keeps complete rows; mrun token limits may cut within a row.",
 		} {
 			if count := strings.Count(description, required); count != 1 {
 				t.Errorf("shared option guidance %q appears %d times; want one owner", required, count)

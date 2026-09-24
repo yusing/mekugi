@@ -157,7 +157,7 @@ func TestShellRunnerClosedInspectionPipes(t *testing.T) {
 		t.Fatal(err)
 	}
 	commands := map[string]string{
-		"mcat_lines":  "mcat -n 20000 " + shellQuoteArgument(linePath),
+		"mcat_lines":  "mcat -n 20000 --max-tokens 15500 " + shellQuoteArgument(linePath),
 		"mcat_tokens": "mcat --max-tokens 15500 " + shellQuoteArgument(tokenPath),
 	}
 	cases := []struct {
