@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi"
+	"mvdan.cc/sh/v3/syntax"
 )
 
 // The window registry owns display cancellation, not process continuation.
@@ -19,7 +20,7 @@ var execRunningPreviewSlots = make(chan struct{}, 16)
 const execRunningPreviewBytes = 1 << 20
 
 func (r *execWindowRegistry) preview(ref string, observation execObservation, broker *liveDiffBroker, workspace, thread, caller string) {
-	if r == nil || broker == nil {
+	if r == nil || broker == nil || len(observation.Files) == 0 && execPendingScope(observation) == "" {
 		return
 	}
 	r.mu.Lock()
@@ -71,22 +72,53 @@ func execScopePreviewFooter(observation execObservation) string {
 }
 
 func execPendingScope(observation execObservation) string {
-	verb := "may write"
+	paths := execPreviewPaths(observation)
+	if len(paths) == 0 {
+		return ""
+	}
+	verb := ""
 	for _, command := range observation.Commands {
-		words := strings.Fields(command.Command)
-		if len(words) < 2 {
+		program, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(command.Command), "")
+		if err != nil {
 			continue
 		}
-		switch filepath.Base(words[0]) + " " + words[1] {
-		case "git restore", "git reset", "svn revert", "hg revert":
-			verb = "will restore (pending)"
-		case "git clean":
-			verb = "will delete (pending)"
-		case "git switch", "git checkout":
-			verb = "will switch (pending)"
-		}
+		syntax.Walk(program, func(node syntax.Node) bool {
+			if _, declaration := node.(*syntax.FuncDecl); declaration {
+				// A definition alone does not run its body. Actual writes still
+				// appear through the running file watch.
+				return false
+			}
+			call, ok := node.(*syntax.CallExpr)
+			if !ok {
+				return true
+			}
+			words, ok := literalArgs(call.Args)
+			if !ok || len(words) < 2 {
+				return true
+			}
+			name := filepath.Base(words[0])
+			subcommand := words[1]
+			if name == "git" {
+				var parsed bool
+				subcommand, _, _, parsed = gitSubcommand(words[1:])
+				if !parsed {
+					return true
+				}
+			}
+			switch name + " " + subcommand {
+			case "git restore", "git reset", "svn revert", "hg revert":
+				verb = "will restore (pending)"
+			case "git clean":
+				verb = "will delete (pending)"
+			case "git switch", "git checkout":
+				verb = "will switch (pending)"
+			}
+			return true
+		})
 	}
-	paths := execPreviewPaths(observation)
+	if verb == "" {
+		return ""
+	}
 	var body strings.Builder
 	body.WriteString(verb)
 	for _, path := range paths[:min(32, len(paths))] {
@@ -99,16 +131,13 @@ func execPendingScope(observation execObservation) string {
 }
 
 func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observation execObservation, preview liveDiffPreview) {
-	defer func() {
-		broker.mu.Lock()
-		defer broker.mu.Unlock()
-		delete(broker.previews, preview.ID)
-		// A running observation disappears, rather than becoming the retained
-		// STREAMING COMPLETE card used for finished argument streams.
-		broker.emitPreviewLocked(liveDiffPreview{ID: preview.ID, Workspace: preview.Workspace, Thread: preview.Thread})
-	}()
-	preview.Status, preview.Input, preview.Footer = "PENDING · scoped effects", execPendingScope(observation), execScopePreviewFooter(observation)
-	broker.publishPreview(preview, false)
+	defer broker.discardRunningPreview(preview)
+	pending := execPendingScope(observation)
+	preview.Footer = execScopePreviewFooter(observation)
+	if pending != "" {
+		preview.Status, preview.Input = "PENDING · scoped effects", pending
+		broker.publishPreview(preview, false)
+	}
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	stamps := make(map[string]string)
@@ -122,7 +151,7 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 		}
 		deadline := time.Now().Add(30 * time.Millisecond)
 		budget := execRunningPreviewBytes
-		updated := preview.Status != "RUNNING · observed so far"
+		updated := false
 		for visited := 0; visited < len(observation.Files) && time.Now().Before(deadline) && budget > 0; visited++ {
 			before := observation.Files[cursor]
 			cursor = (cursor + 1) % len(observation.Files)
@@ -132,10 +161,7 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 			info, err := os.Lstat(before.Path)
 			stamp := "absent"
 			if err == nil {
-				stamp = execFileStamp(info)
-				if change, _, _, ok := execFileTimes(before.Path); ok {
-					stamp += fmt.Sprint(":", change.UnixNano())
-				}
+				stamp = execWatchFileStamp(before.Path, info)
 			} else if !os.IsNotExist(err) {
 				continue
 			}
@@ -152,6 +178,12 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 			stamps[before.Path] = stamp
 			var file mekugi.ReviewFile
 			if before.Error != "" || after.Error != "" {
+				if before.watchStamp != "" && before.watchStamp == stamp {
+					_, existed := changed[before.Path]
+					updated = updated || existed
+					delete(changed, before.Path)
+					continue
+				}
 				file = mekugi.RenderIncompleteReviewFile(before.Path, before.Path, strings.Trim(strings.Join([]string{before.Error, after.Error}, "; "), "; "))
 			} else if sameExecContent(before, after) {
 				_, existed := changed[before.Path]
@@ -173,6 +205,23 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 				updated = true
 			}
 		}
+		preview.Files = nil
+		for _, before := range observation.Files {
+			if file, ok := changed[before.Path]; ok {
+				preview.Files = append(preview.Files, file)
+			}
+		}
+		status, input := "RUNNING · observed so far", ""
+		if len(preview.Files) == 0 {
+			if pending == "" {
+				broker.discardRunningPreview(preview)
+				preview.Status, preview.Input = "", ""
+				continue
+			}
+			status, input = "PENDING · scoped effects", pending
+		}
+		updated = updated || preview.Status != status || preview.Input != input
+		preview.Status, preview.Input = status, input
 		if !updated {
 			// Admission can reject a new card while the broker is full. Keep
 			// retrying until it is visible, even if its files remain unchanged.
@@ -183,20 +232,20 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 				continue
 			}
 		}
-		preview.Files = nil
-		for _, before := range observation.Files {
-			if file, ok := changed[before.Path]; ok {
-				preview.Files = append(preview.Files, file)
-			}
-		}
-		preview.Status = "RUNNING · observed so far"
-		preview.Input = "No scoped changes observed yet"
-		if len(preview.Files) > 0 {
-			preview.Input = ""
-		}
 		if ctx.Err() != nil {
 			return
 		}
 		broker.publishPreview(preview, false)
+	}
+}
+
+// A running card vanishes when it has no observed effect. Unlike completed
+// input streams, it must not leave a STREAMING COMPLETE placeholder behind.
+func (b *liveDiffBroker) discardRunningPreview(preview liveDiffPreview) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, active := b.previews[preview.ID]; active {
+		delete(b.previews, preview.ID)
+		b.emitPreviewLocked(liveDiffPreview{ID: preview.ID, Workspace: preview.Workspace, Thread: preview.Thread})
 	}
 }

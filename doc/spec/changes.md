@@ -199,14 +199,17 @@ Literal Python `Path.write_text` and `open(..., "w").write` bodies and literal
 JavaScript `writeFileSync`/`writeFile` bodies can be predicted without evaluation.
 Python same-path `read_text().replace(A, B[, count])` supports literal replacements;
 regex replacement is excluded. Unsupported expressions remain source previews.
-Scope cards list pending VCS restore, deletion, or switch targets. A `may write`
-footer distinguishes scoped paths from unresolved targets.
+Scope cards list pending VCS restore, deletion, or switch targets when their
+targets are known. Ordinary command watches remain hidden until a captured
+file changes. A `may write` footer distinguishes scoped paths from unresolved
+targets on visible cards.
 
 While a writer window is open, display-only polling runs about every 500 ms over
 captured paths, reading content only after a stat change. Polling is bounded by
 path, time, and content budgets; it never runs a workspace sweep or provider query.
-Cards say `RUNNING · observed so far`. Terminal results, background transition,
-or viewer shutdown remove their live preview. Running previews and predictions
+Changed-file cards say `RUNNING · observed so far` and disappear if the files
+return to their captured state. Terminal results, background transition, or
+viewer shutdown remove their live preview. Running previews and predictions
 never become durable evidence, and replay does not restart polling.
 
 Query-based Mercurial scoping and literal `sed`/`perl` substitution prediction are

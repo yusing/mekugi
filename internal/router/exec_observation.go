@@ -77,6 +77,9 @@ type execFileSnapshot struct {
 	// reported just because its content was over a bound.
 	Stamp string `json:",omitempty"`
 	Error string `json:",omitempty"`
+	// watchStamp is the live preview's capture-time metadata baseline. It is
+	// not durable evidence and must not replace content comparison.
+	watchStamp string
 	// CopyOf names the source a copy command writes into this path.
 	CopyOf string `json:",omitempty"`
 }
@@ -745,6 +748,14 @@ func execFileStamp(info os.FileInfo) string {
 	return strconv.FormatInt(info.Size(), 10) + ":" + strconv.FormatInt(info.ModTime().UnixNano(), 10) + ":" + execFileIdentity(info)
 }
 
+func execWatchFileStamp(path string, info os.FileInfo) string {
+	stamp := execFileStamp(info)
+	if change, _, _, ok := execFileTimes(path); ok {
+		stamp += ":" + strconv.FormatInt(change.UnixNano(), 10)
+	}
+	return stamp
+}
+
 // snapshotExecFile reads one path without following a final symlink or
 // blocking on a FIFO.
 func snapshotExecFile(path string, budget *int) execFileSnapshot {
@@ -760,6 +771,7 @@ func snapshotExecFile(path string, budget *int) execFileSnapshot {
 		snapshot.Kind, snapshot.Error = execFileOther, err.Error()
 		return snapshot
 	}
+	snapshot.watchStamp = execWatchFileStamp(path, info)
 	switch mode := info.Mode(); {
 	case mode&os.ModeSymlink != 0:
 		target, err := os.Readlink(path)

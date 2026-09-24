@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -108,10 +109,10 @@ func TestExecScopePreviewPublishesOnlyReviewChanges(t *testing.T) {
 			ID: previewID, Workspace: root, Thread: "thread",
 		})
 		synctest.Wait()
-		assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, "PENDING · scoped effects")
+		assertNoExecCleanupPreview(t, broker.takePreviews(sub), "unchanged scope should stay out of the pane")
 
 		advanceExecCleanupPreviewTicker(t)
-		assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, "RUNNING · observed so far")
+		assertNoExecCleanupPreview(t, broker.takePreviews(sub), "unchanged scope should stay out of the pane after polling")
 		advanceExecCleanupPreviewTicker(t)
 		assertNoExecCleanupPreview(t, broker.takePreviews(sub), "unchanged review map was republished")
 
@@ -131,17 +132,11 @@ func TestExecScopePreviewPublishesOnlyReviewChanges(t *testing.T) {
 			t.Fatal(err)
 		}
 		advanceExecCleanupPreviewTicker(t)
-		reverted := assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, "RUNNING · observed so far")
-		if len(reverted.Files) != 0 || reverted.Input != "No scoped changes observed yet" {
-			t.Fatalf("reversion did not clear the running review map: %+v", reverted)
-		}
+		assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, "")
 
 		cancel()
 		synctest.Wait()
-		removed := assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, "")
-		if len(removed.Files) != 0 || removed.Input != "" {
-			t.Errorf("terminal preview removal retained review content: %+v", removed)
-		}
+		assertNoExecCleanupPreview(t, broker.takePreviews(sub), "cancellation republished an already removed preview")
 		broker.mu.Lock()
 		_, active := broker.previews[previewID]
 		broker.mu.Unlock()
@@ -191,19 +186,22 @@ func TestExecScopePreviewRetriesAfterBrokerAdmissionRejection(t *testing.T) {
 			ID: previewID, Workspace: root, Thread: "thread",
 		})
 		synctest.Wait()
-		assertNoExecCleanupPreview(t, broker.takePreviews(sub), "broker-full PENDING preview should be rejected")
+		assertNoExecCleanupPreview(t, broker.takePreviews(sub), "unchanged scope should not seek broker admission")
 		assertExecCleanupPreviewNotActive(t, broker, previewID)
 
+		if err := os.WriteFile(path, []byte("changed\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 		advanceExecCleanupPreviewTicker(t)
-		assertNoExecCleanupPreview(t, broker.takePreviews(sub), "broker-full RUNNING preview should be rejected")
+		assertNoExecCleanupPreview(t, broker.takePreviews(sub), "broker-full changed preview should be rejected")
 		assertExecCleanupPreviewNotActive(t, broker, previewID)
 
 		broker.publishPreview(liveDiffPreview{ID: "occupied/a"}, true)
 		assertExecCleanupPreview(t, broker.takePreviews(sub), "occupied/a", "")
-		advanceExecCleanupPreviewTicker(t) // Files are unchanged; absent broker state must still trigger a retry.
+		advanceExecCleanupPreviewTicker(t) // The file is unchanged since the rejected preview; retry it.
 		preview := assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, "RUNNING · observed so far")
-		if preview.Input != "No scoped changes observed yet" || len(preview.Files) != 0 {
-			t.Fatalf("retried preview lost its unchanged-file projection: %+v", preview)
+		if len(preview.Files) != 1 {
+			t.Fatalf("retried preview lost its changed-file projection: %+v", preview)
 		}
 		broker.mu.Lock()
 		active, found := broker.previews[previewID]
@@ -213,6 +211,51 @@ func TestExecScopePreviewRetriesAfterBrokerAdmissionRejection(t *testing.T) {
 			t.Fatalf("retried preview not admitted to full broker: found=%v active=%+v count=%d", found, active, count)
 		}
 
+		cancel()
+		synctest.Wait()
+		assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, "")
+	})
+}
+
+func TestExecScopePreviewDoesNotTreatReadBudgetAsChange(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		root := t.TempDir()
+		path := filepath.Join(root, "large.txt")
+		original := strings.Repeat("old\n", 400000)
+		if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		before := snapshotExecFile(path, nil)
+		if before.Error != "" || before.watchStamp == "" {
+			t.Fatalf("capture did not retain a preview metadata baseline: %+v", before)
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		broker := newLiveDiffBroker(ctx)
+		broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
+		sub := broker.subscribe()
+		broker.takePreviews(sub)
+		const previewID = "running:large-unchanged"
+		go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, liveDiffPreview{
+			ID: previewID, Workspace: root, Thread: "thread",
+		})
+		advanceExecCleanupPreviewTicker(t)
+		assertNoExecCleanupPreview(t, broker.takePreviews(sub), "unchanged large file became a running change")
+		broker.mu.Lock()
+		_, active := broker.previews[previewID]
+		broker.mu.Unlock()
+		if active {
+			t.Fatal("unchanged large file occupied a preview slot")
+		}
+
+		if err := os.WriteFile(path, []byte(strings.Repeat("new\n", 400000)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		advanceExecCleanupPreviewTicker(t)
+		changed := assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, "RUNNING · observed so far")
+		if len(changed.Files) != 1 || !strings.Contains(changed.Files[0].Incomplete, "content bound") {
+			t.Fatalf("changed large file lost its bounded observation: %+v", changed)
+		}
 		cancel()
 		synctest.Wait()
 		assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, "")

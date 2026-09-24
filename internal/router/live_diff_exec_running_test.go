@@ -70,6 +70,41 @@ func TestExecScopePreviewFooterDeduplicatesBoundedTargets(t *testing.T) {
 	}
 }
 
+func TestExecWatchWithoutCapturedPathsDoesNotCrowdStreamingInput(t *testing.T) {
+	workspace := t.TempDir()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
+	})
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
+	registry := &execWindowRegistry{}
+	for index := range 8 {
+		ref := fmt.Sprintf("watch-%d", index)
+		registry.open(&execWindow{ref: ref, roots: []string{workspace}, thread: "thread"})
+		registry.preview(ref, execObservation{Class: execOpaque.String(), Reason: "unresolved command"}, broker, workspace, "thread", "same-caller")
+	}
+	broker.publishPreview(liveDiffPreview{ID: "script", Workspace: workspace, Thread: "thread", Caller: "same-caller",
+		Status: "STREAMING SCRIPT", Input: "cat /tmp/example\n"}, false)
+	frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "cat /tmp/example") })
+	plain := ansi.Strip(frame)
+	if strings.Count(plain, "same-caller ·") != 1 || strings.Contains(plain, "No scoped changes") ||
+		strings.Contains(plain, "unresolved targets") || !strings.Contains(plain, "cat /tmp/example") {
+		t.Fatalf("empty exec watches crowded streaming input: %s", plain)
+	}
+	broker.mu.Lock()
+	active := len(broker.previews)
+	broker.mu.Unlock()
+	if active != 1 {
+		t.Fatalf("empty exec watches occupied %d preview slots, want only the script", active)
+	}
+	registry.close("watch-0", "watch-1", "watch-2", "watch-3", "watch-4", "watch-5", "watch-6", "watch-7")
+	ui.quit(t)
+}
+
 func captureRunningExecVCSScope(t *testing.T) (string, string, *execObservation) {
 	t.Helper()
 	repo := newExecVCSTestRepo(t, map[string]string{"tracked.txt": "committed bytes\n"})
@@ -80,6 +115,35 @@ func captureRunningExecVCSScope(t *testing.T) (string, string, *execObservation)
 	observation := captureExecVCSTestCommand(t, repo, "git restore -- tracked.txt")
 	assertCapturedExecVCSTestFile(t, observation, tracked, "before bytes\n")
 	return repo, tracked, observation
+}
+
+func TestExecPendingScopeParsesCapturedGitCommands(t *testing.T) {
+	repo, tracked, _ := captureRunningExecVCSScope(t)
+	for _, command := range []string{
+		"git -C " + repo + " restore -- tracked.txt",
+		"printf untouched && git restore -- tracked.txt",
+	} {
+		t.Run(command, func(t *testing.T) {
+			observation := captureExecVCSTestCommand(t, repo, command)
+			if got := execPendingScope(*observation); !strings.Contains(got, "will restore (pending)") || !strings.Contains(got, tracked) {
+				t.Fatalf("captured VCS target had no actionable pending card: %q", got)
+			}
+		})
+	}
+}
+
+func TestExecPendingScopeIgnoresUncalledFunction(t *testing.T) {
+	workspace := t.TempDir()
+	command := "cleanup() { git clean -fd; }; printf x > ordinary.txt"
+	observation, observed := captureExecObservation([]execCommandInput{{
+		Command: command, Workdir: workspace, Shell: "bash",
+	}}, false, false, execCaptureEnv{directory: workspace})
+	if !observed || len(observation.Files) == 0 {
+		t.Fatalf("ordinary write had no captured path: %+v", observation)
+	}
+	if pending := execPendingScope(*observation); pending != "" {
+		t.Fatalf("uncalled function created an actionable pending card: %q", pending)
+	}
 }
 
 func TestExecRunningPreviewShowsScopedVCSAndCancelsWithoutEvidence(t *testing.T) {
@@ -223,7 +287,7 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 			registry.open(&execWindow{ref: "lifecycle", roots: []string{repo}, thread: "thread", turn: "old-turn", session: "session:42"})
 			registry.preview("lifecycle", *observation, broker, repo, "thread", "lifecycle-test")
 			waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
-				return preview.ID == "running:lifecycle" && preview.Status == "RUNNING · observed so far"
+				return preview.ID == "running:lifecycle" && preview.Status == "PENDING · scoped effects"
 			})
 
 			if lifecycle == "background" {
