@@ -123,8 +123,8 @@ func TestPaneOperationRegressionApplyPatchDisplay(t *testing.T) {
 		}
 		item := map[string]json.RawMessage{"name": mustMarshalJSON(name), "input": mustMarshalJSON(input)}
 		originalInput := bytes.Clone(item["input"])
-		if got := subagentToolPreview(item, "functions."+name, nil); got != "Edit" {
-			t.Errorf("patch operation display = %q, want Edit", got)
+		if got := subagentToolPreview(item, "functions."+name, nil); got != "" {
+			t.Errorf("patch operation display = %q, want no bare label", got)
 		}
 		if !bytes.Equal(item["input"], originalInput) {
 			t.Fatal("patch activity projection changed the original tool input")

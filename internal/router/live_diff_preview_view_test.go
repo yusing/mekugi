@@ -1,8 +1,11 @@
 package router
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"github.com/yusing/mekugi/internal/livediff"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -11,6 +14,7 @@ import (
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/creack/pty"
 )
 
 func previewViewFixture(id string, rows int) liveDiffPreview {
@@ -48,6 +52,117 @@ func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 	lines, err = pane.render(t.Context(), "/workspace", livediff.DarkTheme, 70, 12)
 	if err != nil || !strings.Contains(lines[0], "STREAMING COMPLETE") || !strings.Contains(strings.Join(lines, "\n"), "stream_0010") {
 		t.Fatalf("completed stream did not persist: %v %q", err, lines)
+	}
+}
+
+func TestLiveDiffPreviewPaneFinishedCardExpiresWithoutAnotherCall(t *testing.T) {
+	var pane liveDiffPreviewPane
+	pane.update(previewViewFixture("done", 2))
+	pane.update(previewViewFixture("live", 2))
+	pane.update(liveDiffPreview{ID: "done"})
+	if _, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 70, 12); err != nil {
+		t.Fatal(err)
+	}
+	now := pane.views["done"].completed.Add(liveDiffPreviewStaleAfter)
+	if !pane.expire(now) || !slices.Equal(pane.order, []string{"live"}) || pane.live() != 1 {
+		t.Fatalf("finished card did not expire independently: %v", pane.order)
+	}
+	if pane.nextExpiry(now) != 0 {
+		t.Fatal("live card scheduled an expiry")
+	}
+}
+
+func TestLiveDiffPreviewUpdatePreemptsDistantExpiry(t *testing.T) {
+	c := newLiveDiffTerminalController(nil, "/workspace", os.Stdout)
+	defer c.close()
+	c.scope.Workspaces = map[string]map[string]bool{"/workspace": {"thread": true}}
+	c.previewPane.update(previewViewFixture("finished", 1))
+	c.previewPane.update(previewViewFixture("live", 1))
+	c.previewPane.update(liveDiffPreview{ID: "finished"})
+	c.previewFrame.Reset(time.Minute)
+	c.previewFrameC = c.previewFrame.C
+	c.previewFrameDue = time.Now().Add(time.Minute)
+	preview := previewViewFixture("live", 2)
+	if done, err := c.applyEvent(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview}); done || err != nil {
+		t.Fatalf("preview event: done=%v err=%v", done, err)
+	}
+	if delay := time.Until(c.previewFrameDue); delay <= 0 || delay > time.Second {
+		t.Fatalf("fresh input waited for old expiry: %v", delay)
+	}
+}
+
+func TestLiveDiffFirstAndCompletedInputRedrawImmediately(t *testing.T) {
+	c := newLiveDiffTerminalController(nil, "/workspace", os.Stdout)
+	defer c.close()
+	c.scope.Workspaces = map[string]map[string]bool{"/workspace": {"thread": true}}
+	c.dirty = false
+	preview := previewViewFixture("first", 1)
+	if _, err := c.applyEvent(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview}); err != nil || !c.dirty || c.previewFrameC != nil {
+		t.Fatalf("first input waited for pacing timer: dirty=%v timer=%v err=%v", c.dirty, c.previewFrameC != nil, err)
+	}
+	c.dirty = false
+	if _, err := c.applyEvent(t.Context(), liveDiffEvent{Kind: "preview", Preview: &liveDiffPreview{ID: "first"}}); err != nil || !c.dirty || c.previewFrameC != nil {
+		t.Fatalf("completion waited for pacing timer: dirty=%v timer=%v err=%v", c.dirty, c.previewFrameC != nil, err)
+	}
+}
+
+func TestLiveDiffFinishedInputClearsOnTerminalWithoutAnotherEvent(t *testing.T) {
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer master.Close()
+	defer slave.Close()
+	if err := pty.Setsize(master, &pty.Winsize{Rows: 12, Cols: 100}); err != nil {
+		t.Fatal(err)
+	}
+	c := newLiveDiffTerminalController(nil, "/workspace", slave)
+	defer c.close()
+	c.coverage = ""
+	c.previewPane.update(previewViewFixture("done", 2))
+	c.previewPane.update(liveDiffPreview{ID: "done"})
+	c.previewPane.views["done"].completed = time.Now().Add(-liveDiffPreviewStaleAfter)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	frames := make(chan string, 2)
+	go func() {
+		var pending []byte
+		buffer := make([]byte, 8192)
+		for {
+			n, err := master.Read(buffer)
+			if err != nil {
+				return
+			}
+			pending = append(pending, buffer[:n]...)
+			for {
+				end := bytes.Index(pending, []byte("\x1b[?2026l"))
+				if end < 0 {
+					break
+				}
+				end += len("\x1b[?2026l")
+				frames <- string(pending[:end])
+				pending = pending[end:]
+			}
+		}
+	}()
+	done := make(chan error, 1)
+	go func() { done <- c.run(ctx, nil, nil, nil) }()
+	for index := range 2 {
+		select {
+		case frame := <-frames:
+			if index == 0 && !strings.Contains(frame, "STREAMING COMPLETE") {
+				t.Fatalf("first frame did not show completion: %q", frame)
+			}
+			if index == 1 && (strings.Contains(frame, "Live input") || strings.Contains(frame, "STREAMING COMPLETE")) {
+				t.Fatalf("finished stream persisted after expiry: %q", frame)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("terminal did not redraw after finished input expired")
+		}
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }
 

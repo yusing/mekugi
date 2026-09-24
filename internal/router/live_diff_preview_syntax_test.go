@@ -61,3 +61,43 @@ func TestLiveDiffProducerRetainsSyntaxBoundaries(t *testing.T) {
 		})
 	}
 }
+
+func TestLiveDiffBatchHeredocUsesInterpreterSyntax(t *testing.T) {
+	input := "nl -ba semantic.ts; rg -n CHECK runner.ts; python3 - <<'PY'\nimport pathlib\nprint(pathlib.Path('semantic.ts'))\nPY\nprintf done\n"
+	spans := liveDiffScriptSyntax(input)
+	rows := liveDiffSourceRows(input, spans)
+	for row, want := range []string{"stream.sh", "stream.py", "stream.py", "stream.sh", "stream.sh"} {
+		if rows[row].Path != want {
+			t.Fatalf("row %d syntax = %q, want %q; spans=%+v", row, rows[row].Path, want, spans)
+		}
+	}
+	partial := "echo before; python3 - <<'PY'\nimport pathlib\n"
+	partialRows := liveDiffSourceRows(partial, liveDiffScriptSyntax(partial))
+	if partialRows[1].Path != "stream.py" {
+		t.Fatalf("unfinished heredoc did not highlight as Python: %+v", partialRows)
+	}
+	var pane liveDiffPreviewPane
+	pane.update(liveDiffPreview{ID: "batch", Workspace: "/workspace", Thread: "thread", Input: input, Syntax: spans})
+	lines, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 110, 15)
+	if err != nil || !strings.Contains(strings.Join(lines, "\n"), livediff.DarkTheme.Foreground(chroma.KeywordNamespace)+"import") {
+		t.Fatalf("embedded Python remained plain: %v %q", err, lines)
+	}
+}
+
+func TestLiveDiffInterpreterHeredocInCompoundAndShebang(t *testing.T) {
+	for _, prefix := range []string{"cd /tmp && ", "#!/bin/bash\ncd /tmp && ", "#!/bin/sh\ncd /tmp; "} {
+		input := prefix + "python3 - <<'PY'\nimport pathlib\nPY\necho after\n"
+		spans := liveDiffScriptSyntax(input)
+		rows := liveDiffSourceRows(input, spans)
+		index := strings.Count(prefix, "\n") + 1
+		if rows[index].Path != "stream.py" || rows[index+1].Path != "stream.sh" {
+			t.Fatalf("prefix %q lost Python boundaries: %+v", prefix, rows)
+		}
+		var pane liveDiffPreviewPane
+		pane.update(liveDiffPreview{ID: "compound", Workspace: "/workspace", Thread: "thread", Input: input, Syntax: spans})
+		lines, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 110, 15)
+		if err != nil || !strings.Contains(strings.Join(lines, "\n"), livediff.DarkTheme.Foreground(chroma.KeywordNamespace)+"import") {
+			t.Fatalf("compound interpreter remained plain: %v %q", err, lines)
+		}
+	}
+}

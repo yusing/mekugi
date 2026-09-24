@@ -105,8 +105,9 @@ func subagentToolPreview(item map[string]json.RawMessage, qualifiedName string, 
 	case "write_stdin":
 		return toolActivityWriteStdin(arguments)
 	case "apply_patch":
-		// Label the operation, not its outcome or a duplicate patch payload.
-		return "Edit"
+		// The confirmed edit receipt owns this display. A bare operation label
+		// duplicates it without adding useful information.
+		return ""
 	}
 	switch jsonString(item, "type") {
 	case "web_search_call":

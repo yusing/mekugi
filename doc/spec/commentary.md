@@ -88,11 +88,11 @@ wrapper. This same projector supplies provisional streaming previews and final
 generated commentary. It never evaluates shell expansions or implies that a
 command succeeded. Source line breaks and indentation remain intact.
 
-Stock `apply_patch` shows an `Edit` operation label, including transparent Code
-Mode calls using immutable literal patch bindings. It does not produce a generic
-`Run` preview or echo its patch body into child activity. This label does not
-claim execution or success. After the host result and workspace outcome are
-recorded, authenticated successful edit receipts classify each changed path as
+Stock `apply_patch`, including transparent Code Mode calls using immutable
+literal patch bindings, does not emit a bare `Edit` label, a generic `Run`
+preview, or its patch body into child activity. After the host result and
+workspace outcome are recorded, authenticated successful edit receipts
+classify each changed path as
 `Create`, `Edit`, `Delete`, or `Move` with added and removed line counts and a
 bounded diff of the observed hunks. A completed transparent Code Mode cell
 reports its complete observed workspace effect the same way, without claiming

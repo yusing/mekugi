@@ -30,6 +30,7 @@ type liveDiffTerminalController struct {
 
 	previewFrame      *time.Timer
 	previewFrameC     <-chan time.Time
+	previewFrameDue   time.Time
 	turnRevision      uint64
 	diffMode          bool
 	renderer          liveDiffRenderer
@@ -86,6 +87,8 @@ func (c *liveDiffTerminalController) run(
 			return nil
 		case <-c.previewFrameC:
 			c.previewFrameC, c.dirty = nil, true
+			c.previewFrameDue = time.Time{}
+			c.previewPane.expire(time.Now())
 		case event, open := <-events:
 			if !open {
 				return nil
@@ -248,6 +251,13 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 			writeRow(row+2, text)
 		}
 	}
+	if c.previewFrameC == nil {
+		if delay := c.previewPane.nextExpiry(time.Now()); delay > 0 {
+			c.previewFrame.Reset(delay)
+			c.previewFrameC = c.previewFrame.C
+			c.previewFrameDue = time.Now().Add(delay)
+		}
+	}
 	mode := "FOLLOW"
 	if !c.view.Following {
 		mode = "PAUSED"
@@ -312,10 +322,25 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 		}
 	case "preview":
 		if event.Preview.Workspace == "" || c.scope.Workspaces[event.Preview.Workspace][event.Preview.Thread] {
+			prior := c.previewPane.views[event.Preview.ID]
 			c.previewPane.update(*event.Preview)
-			if c.previewFrameC == nil {
-				c.previewFrame.Reset(liveDiffPreviewFrameDelay)
-				c.previewFrameC = c.previewFrame.C
+			// Show the first usable frame and terminal state immediately. The
+			// pacing timer is only for intermediate input deltas.
+			if prior == nil || event.Preview.Complete || event.Preview.Workspace == "" ||
+				event.Preview.Status == "" && event.Preview.Input == "" && len(event.Preview.Files) == 0 {
+				c.previewFrame.Stop()
+				c.previewFrameC = nil
+				c.previewFrameDue = time.Time{}
+				c.dirty = true
+			} else {
+				// A hold-expiry wake may be seconds away. A fresh input snapshot
+				// must not wait for it (nor for some unrelated redraw).
+				if due := time.Now().Add(liveDiffPreviewFrameDelay); c.previewFrameC == nil || c.previewFrameDue.After(due) {
+					c.previewFrame.Stop()
+					c.previewFrame.Reset(liveDiffPreviewFrameDelay)
+					c.previewFrameC = c.previewFrame.C
+					c.previewFrameDue = due
+				}
 			}
 		}
 	case "scope":

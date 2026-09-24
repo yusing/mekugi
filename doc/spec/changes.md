@@ -331,9 +331,11 @@ never changes Codex's original tool input or asserts that the command ran.
 Provider input arrives in bursts. The stream view reveals each call's received
 input at its recent arrival rate, so the preview grows steadily rather than
 jumping per burst; the reveal trails received input by at most a bounded
-window and completes on the call's final input. Card positions stay stable: a
+window and completes on the call's final input. The first usable frame and
+completion redraw immediately; intermediate deltas may be coalesced. Card
+positions stay stable: a
 new call takes over a finished card's slot, preferring its own caller's, and a
-finished card leaves only after it has been idle while another call starts.
+finished card leaves after a brief idle hold, even when no other call starts.
 The line-number column of a card never narrows while its call streams.
 
 The saved diff view uses completed observed patch and command outcomes. It includes

@@ -44,7 +44,7 @@ func TestSubagentToolDisplay(t *testing.T) {
 		{"exec", `await tools.write_stdin({session_id: 9007199254740993, chars: ""})`, "Still Running"},
 		{"exec", `await tools.write_stdin({session_id: -9007199254740993, chars: ""})`, "Still Running"},
 		{"exec", `await tools.exec_command({cmd: 'cat a', login: false})`, "Read `a`"},
-		{"exec", `await tools.apply_patch("*** Begin Patch\n*** Add File: a\n+x\n*** End Patch\n")`, "Edit"},
+		{"exec", `await tools.apply_patch("*** Begin Patch\n*** Add File: a\n+x\n*** End Patch\n")`, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name+"/"+tt.input, func(t *testing.T) {
@@ -539,12 +539,12 @@ func TestSubagentEditDisplayLabel(t *testing.T) {
 			item := map[string]json.RawMessage{
 				"name": mustMarshalJSON(name), "input": mustMarshalJSON(input),
 			}
-			if got := subagentToolActivityText(item, name); got != "Edit" {
+			if got := subagentToolActivityText(item, name); got != "" {
 				t.Fatalf("%s generated edit commentary: %q", name, got)
 			}
 			item["arguments"] = mustMarshalJSON(`{"patch":` + string(mustMarshalJSON(input)) + `}`)
 			delete(item, "input")
-			if got := subagentToolActivityText(item, "functions."+name); got != "Edit" {
+			if got := subagentToolActivityText(item, "functions."+name); got != "" {
 				t.Fatalf("structured %s generated edit commentary: %q", name, got)
 			}
 		}
@@ -739,7 +739,7 @@ func TestSubagentBatchSuppressesOnlyPatchCommentary(t *testing.T) {
 	source := `text(await tools.apply_patch("*** Begin Patch\n*** Add File: a\n+x\n*** Add File: b\n+y\n*** End Patch\n")); text(await tools.clock__curr_time({}));`
 	item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
 	display := subagentToolPreview(item, "exec", nil)
-	if display != "Edit\n\nRead current time\n`{}`" {
+	if display != "Read current time\n`{}`" {
 		t.Fatalf("mixed batch preview = %q", display)
 	}
 }

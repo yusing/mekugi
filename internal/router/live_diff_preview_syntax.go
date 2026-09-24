@@ -6,6 +6,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/shellsyntax"
+	"mvdan.cc/sh/v3/syntax"
 )
 
 // Display-only syntax boundaries survive transport clipping and never select
@@ -31,7 +32,76 @@ func liveDiffScriptSyntax(input string) []liveDiffSourceSpan {
 			path = liveDiffLanguagePath(toolActivityLanguage(args[0]))
 		}
 		spans = append(spans, liveDiffSourceSpan{offset, path})
+		if path == "stream.sh" {
+			for _, span := range liveDiffInlineHeredocSyntax(program) {
+				span.Offset += offset
+				spans = append(spans, span)
+			}
+		}
 		offset += len(program)
+	}
+	return spans
+}
+
+// A shell batch can contain a literal interpreter heredoc after other
+// commands. Keep the shell framing but paint only its body as program source.
+func liveDiffInlineHeredocSyntax(program string) []liveDiffSourceSpan {
+	if !strings.Contains(program, "<<") {
+		return nil
+	}
+	parsed, err := shellsyntax.Parse(program)
+	if err != nil || len(parsed.Interpreter) != 1 {
+		return nil
+	}
+	interpreter := shellsyntax.InterpreterIdentity(parsed.Interpreter[0])
+	if interpreter != "bash" && interpreter != "sh" {
+		return nil
+	}
+	base := strings.Index(program, parsed.Body)
+	if base < 0 {
+		return nil
+	}
+	statements, _, _, ok := liveDiffShellStatements(program, "")
+	if !ok {
+		return nil
+	}
+	var spans []liveDiffSourceSpan
+	var visit func(*syntax.Stmt)
+	visit = func(statement *syntax.Stmt) {
+		if binary, ok := statement.Cmd.(*syntax.BinaryCmd); ok {
+			visit(binary.X)
+			visit(binary.Y)
+			return
+		}
+		call, ok := statement.Cmd.(*syntax.CallExpr)
+		if !ok || len(call.Args) == 0 || len(statement.Redirs) != 1 {
+			return
+		}
+		command, literal := shellCatLiteral(call.Args[0])
+		name := shellsyntax.InterpreterIdentity(command)
+		if !literal || !shellInterpreterPattern.MatchString(name) {
+			return
+		}
+		redirect := statement.Redirs[0]
+		if redirect.Hdoc == nil || (redirect.Op != syntax.Hdoc && redirect.Op != syntax.DashHdoc) {
+			return
+		}
+		delimiter, literal := shellCatLiteral(redirect.Word)
+		if !literal {
+			return
+		}
+		start := base + int(redirect.Hdoc.Pos().Offset())
+		end := base + int(redirect.Hdoc.End().Offset()) - len(delimiter)
+		if start < 0 || start >= len(program) || end <= start {
+			return
+		}
+		spans = append(spans, liveDiffSourceSpan{start, liveDiffLanguagePath(toolActivityLanguage(name))})
+		if end < len(program) {
+			spans = append(spans, liveDiffSourceSpan{end, "stream.sh"})
+		}
+	}
+	for _, statement := range statements {
+		visit(statement)
 	}
 	return spans
 }

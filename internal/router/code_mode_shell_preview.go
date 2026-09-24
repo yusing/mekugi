@@ -435,7 +435,12 @@ func codeModeShellDisplay(scripts []string) (string, []liveDiffSourceSpan) {
 			spans = append(spans, liveDiffSourceSpan{Offset: source.Len(), Path: liveDiffLanguagePath(projection.Language)})
 			source.WriteString(projection.Source)
 		} else {
+			start := source.Len()
 			source.WriteString(script)
+			for _, span := range liveDiffInlineHeredocSyntax(script) {
+				span.Offset += start
+				spans = append(spans, span)
+			}
 		}
 	}
 	return source.String(), spans

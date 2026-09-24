@@ -121,6 +121,36 @@ func (p *liveDiffPreviewPane) live() int {
 	return count
 }
 
+// Finished cards leave after a brief hold without waiting for another tool
+// call. Active cards are never aged out.
+func (p *liveDiffPreviewPane) expire(now time.Time) bool {
+	old := len(p.order)
+	p.order = slices.DeleteFunc(p.order, func(id string) bool {
+		view := p.views[id]
+		if !view.complete || now.Sub(view.completed) < liveDiffPreviewStaleAfter {
+			return false
+		}
+		delete(p.views, id)
+		return true
+	})
+	return len(p.order) != old
+}
+
+func (p *liveDiffPreviewPane) nextExpiry(now time.Time) time.Duration {
+	var next time.Duration
+	for _, id := range p.order {
+		view := p.views[id]
+		if !view.complete {
+			continue
+		}
+		remaining := max(time.Millisecond, liveDiffPreviewStaleAfter-now.Sub(view.completed))
+		if next == 0 || remaining < next {
+			next = remaining
+		}
+	}
+	return next
+}
+
 func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, theme liveDiffTheme, width, height int) ([]string, error) {
 	if height <= 0 || len(p.order) == 0 {
 		return nil, nil

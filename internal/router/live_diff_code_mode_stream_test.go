@@ -13,6 +13,30 @@ import (
 )
 
 func TestLiveDiffCodeModeInterpreterScriptSyntax(t *testing.T) {
+	batch := "nl -ba semantic.ts; rg CHECK runner.ts; python3 - <<'PY'\nimport pathlib\nprint(pathlib.Path('semantic.ts'))\nPY\n"
+	batchInput, batchSpans := codeModeShellDisplay([]string{batch})
+	batchRows := liveDiffSourceRows(batchInput, batchSpans)
+	if batchRows[2].Path != "stream.py" || batchRows[3].Path != "stream.py" || batchRows[4].Path != "stream.sh" {
+		t.Fatalf("inline batch interpreter syntax = %+v", batchRows)
+	}
+	t.Run("batch producer", func(t *testing.T) {
+		workspace := t.TempDir()
+		broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
+		worker.appendDelta("text(await tools.exec_command({cmd:" + strconv.Quote(batch))
+		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+			return strings.Contains(preview.Input, "\nPY\n")
+		})
+		rows := liveDiffSourceRows(preview.Input, preview.Syntax)
+		if rows[2].Path != "stream.py" || rows[4].Path != "stream.sh" {
+			t.Fatalf("producer lost embedded interpreter span: %+v", preview.Syntax)
+		}
+		var pane liveDiffPreviewPane
+		pane.update(preview)
+		lines, err := pane.render(t.Context(), workspace, livediff.DarkTheme, 100, 15)
+		if err != nil || !strings.Contains(strings.Join(lines, "\n"), livediff.DarkTheme.Foreground(chroma.KeywordNamespace)+"import") {
+			t.Fatalf("producer left embedded Python plain: %v %q", err, lines)
+		}
+	})
 	for _, tc := range []struct {
 		name, command, language, token string
 		kind                           chroma.TokenType
