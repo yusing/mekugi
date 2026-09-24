@@ -268,9 +268,12 @@ func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
 	input := "#!python3\n" + strings.Repeat("# context\n", 30) + "return 42\n"
 	tip, colored := "return 42", livediff.DarkTheme.Foreground(chroma.Keyword)+"return"
 	worker.appendDelta(input)
-	frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), tip) })
+	// Revealed rows fade in, so wait for the tip to settle on its syntax color.
+	frame := ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, colored) && strings.Contains(ansi.Strip(frame), tip)
+	})
 	if !strings.Contains(liveDiffFrameRow(frame, 2), "STREAMING") ||
-		strings.Contains(frame, "Waiting for captured") || !strings.Contains(frame, colored) {
+		strings.Contains(frame, "Waiting for captured") {
 		t.Fatalf("empty shell preview wasted space or lost syntax: %q", frame)
 	}
 	// A full-height preview still follows after resizing and stays visible

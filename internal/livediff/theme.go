@@ -106,38 +106,52 @@ func EnvironmentTheme(value string) Theme {
 // OSC 11 uses X11 rgb: components of one to four hex digits. Do not treat
 // malformed replies as evidence of a dark background.
 func BackgroundTheme(reply string) (Theme, bool) {
-	value, ok := strings.CutPrefix(reply, "\x1b]11;rgb:")
+	rgb, ok := backgroundComponents(reply)
 	if !ok {
 		return TerminalTheme, false
-	}
-	if before, ok0 := strings.CutSuffix(value, "\a"); ok0 {
-		value = before
-	} else if before, ok0 := strings.CutSuffix(value, "\x1b\\"); ok0 {
-		value = before
-	} else {
-		return TerminalTheme, false
-	}
-	components := strings.Split(value, "/")
-	if len(components) != 3 {
-		return TerminalTheme, false
-	}
-	var rgb [3]float64
-	for i, component := range components {
-		if len(component) < 1 || len(component) > 4 ||
-			strings.Trim(component, "0123456789abcdefABCDEF") != "" {
-			return TerminalTheme, false
-		}
-		n, err := strconv.ParseUint(component, 16, 16)
-		if err != nil {
-			return TerminalTheme, false
-		}
-		rgb[i] = float64(n) / float64((uint64(1)<<(4*len(component)))-1)
 	}
 	// Perceived brightness, with green contributing most to readability.
 	if .299*rgb[0]+.587*rgb[1]+.114*rgb[2] >= .5 {
 		return LightTheme, true
 	}
 	return DarkTheme, true
+}
+
+// BackgroundColor is the reported background, for blending toward it.
+func BackgroundColor(reply string) (RGB, bool) {
+	rgb, ok := backgroundComponents(reply)
+	channel := func(value float64) uint8 { return uint8(value*255 + .5) }
+	return RGB{channel(rgb[0]), channel(rgb[1]), channel(rgb[2])}, ok
+}
+
+func backgroundComponents(reply string) (rgb [3]float64, ok bool) {
+	value, ok := strings.CutPrefix(reply, "\x1b]11;rgb:")
+	if !ok {
+		return rgb, false
+	}
+	if before, ok0 := strings.CutSuffix(value, "\a"); ok0 {
+		value = before
+	} else if before, ok0 := strings.CutSuffix(value, "\x1b\\"); ok0 {
+		value = before
+	} else {
+		return rgb, false
+	}
+	components := strings.Split(value, "/")
+	if len(components) != 3 {
+		return rgb, false
+	}
+	for i, component := range components {
+		if len(component) < 1 || len(component) > 4 ||
+			strings.Trim(component, "0123456789abcdefABCDEF") != "" {
+			return [3]float64{}, false
+		}
+		n, err := strconv.ParseUint(component, 16, 16)
+		if err != nil {
+			return [3]float64{}, false
+		}
+		rgb[i] = float64(n) / float64((uint64(1)<<(4*len(component)))-1)
+	}
+	return rgb, true
 }
 
 // Consume OSC replies separately from navigation. The payload is bounded even

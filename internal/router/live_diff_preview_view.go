@@ -18,14 +18,26 @@ const (
 	liveDiffPreviewFrameDelay = 33 * time.Millisecond
 	// A finished card idle this long yields its slot when another call needs room.
 	liveDiffPreviewStaleAfter = 10 * time.Second
+	// Revealed rows fade in; rows revealed together cascade within a bound.
+	liveDiffPreviewFade       = 180 * time.Millisecond
+	liveDiffPreviewStagger    = 24 * time.Millisecond
+	liveDiffPreviewMaxStagger = 160 * time.Millisecond
 )
 
 // Streaming has its own viewport and lifecycle. It never changes the captured
 // diff's selection, scroll, acknowledgements, or follow mode.
 // Updates replace snapshots; only a displayed frame parses and lays out rows.
 type liveDiffPreviewPane struct {
-	views map[string]*liveDiffPreviewView
-	order []string
+	views  map[string]*liveDiffPreviewView
+	order  []string
+	motion liveDiffPreviewMotion
+}
+
+// Motion is display-only. Without it, rows appear at their final colors.
+type liveDiffPreviewMotion struct {
+	enabled bool
+	canvas  livediff.Canvas
+	now     time.Time
 }
 
 // Each call owns its source window, syntax cache, and completion state.
@@ -40,6 +52,8 @@ type liveDiffPreviewView struct {
 	file      int
 	renderer  liveDiffRenderer
 	source    []liveDiffPreviewRow
+	born      []time.Time // When each source row was revealed, for its fade.
+	fading    time.Time   // Until a displayed row finishes fading in.
 	paths     []liveDiffSourceSpan
 }
 
@@ -151,9 +165,25 @@ func (p *liveDiffPreviewPane) nextExpiry(now time.Time) time.Duration {
 	return next
 }
 
+// animating reports whether a displayed row is still fading in.
+func (p *liveDiffPreviewPane) animating(now time.Time) bool {
+	if !p.motion.enabled {
+		return false
+	}
+	for _, id := range p.order {
+		if p.views[id].fading.After(now) {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, theme liveDiffTheme, width, height int) ([]string, error) {
 	if height <= 0 || len(p.order) == 0 {
 		return nil, nil
+	}
+	if p.motion.enabled {
+		p.motion.now = time.Now()
 	}
 	// Give every visible call a heading and at least one source row. Reserve a
 	// summary when a tiny terminal cannot show all calls, rather than cycling
@@ -168,7 +198,7 @@ func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, them
 	var lines []string
 	for i, id := range p.order[:shown] {
 		rows := (height - summary - len(lines)) / (shown - i)
-		part, err := p.views[id].render(ctx, workspace, theme, width, rows)
+		part, err := p.views[id].render(ctx, workspace, theme, width, rows, p.motion)
 		if err != nil {
 			return nil, err
 		}
@@ -232,18 +262,24 @@ func liveDiffPreviewRows(review mekugi.ReviewFile, workspace string) ([]liveDiff
 	return rows, nil
 }
 
-// Locate the new end of the changed range, not the hunk's start. Trailing
-// unchanged context must not steal focus from a growing multiline replacement.
-func liveDiffPreviewFocus(before, after []liveDiffPreviewRow) int {
-	start := 0
+// liveDiffPreviewChanged returns the replaced rows: after[start:end] took the
+// place of before[start:oldEnd].
+func liveDiffPreviewChanged(before, after []liveDiffPreviewRow) (start, end, oldEnd int) {
 	for start < len(before) && start < len(after) && before[start] == after[start] {
 		start++
 	}
-	end, oldEnd := len(after), len(before)
+	end, oldEnd = len(after), len(before)
 	for end > start && oldEnd > start && after[end-1] == before[oldEnd-1] {
 		end--
 		oldEnd--
 	}
+	return start, end, oldEnd
+}
+
+// Locate the new end of the changed range, not the hunk's start. Trailing
+// unchanged context must not steal focus from a growing multiline replacement.
+func liveDiffPreviewFocus(before, after []liveDiffPreviewRow) int {
+	start, end, _ := liveDiffPreviewChanged(before, after)
 	for i := end - 1; i >= start; i-- {
 		if after[i].kind == '+' || after[i].kind == '-' {
 			return i
@@ -252,7 +288,7 @@ func liveDiffPreviewFocus(before, after []liveDiffPreviewRow) int {
 	return max(0, min(start, len(after)-1))
 }
 
-func (p *liveDiffPreviewView) prepare() error {
+func (p *liveDiffPreviewView) prepare(now time.Time) error {
 	current := p.current
 	if p.rendered.ID == current.ID && p.rendered.Input == current.Input && slices.Equal(p.rendered.Syntax, current.Syntax) && slices.Equal(p.rendered.Files, current.Files) {
 		return nil
@@ -285,6 +321,7 @@ func (p *liveDiffPreviewView) prepare() error {
 		before = nil
 	}
 	p.focus = liveDiffPreviewFocus(before, source)
+	p.born = liveDiffPreviewBirths(before, source, p.born, now)
 	if current.Input != "" {
 		p.focus = max(0, len(source)-1)
 	}
@@ -300,15 +337,78 @@ func (p *liveDiffPreviewView) prepare() error {
 	return nil
 }
 
+// liveDiffPreviewBirths carries reveal times across a snapshot. Unchanged rows
+// and rows that only grew keep theirs, so a streaming line does not restart
+// its fade; newly revealed rows cascade in order.
+func liveDiffPreviewBirths(before, after []liveDiffPreviewRow, born []time.Time, now time.Time) []time.Time {
+	if len(born) != len(before) {
+		born = make([]time.Time, len(before))
+	}
+	next := make([]time.Time, len(after))
+	start, end, oldEnd := liveDiffPreviewChanged(before, after)
+	shift := 0 // A clipped tail slides and renumbers its rows.
+	if start == 0 && len(before) > 0 {
+		for shift = 1; shift < len(before); shift++ {
+			if n := min(len(before)-shift, len(after)); liveDiffPreviewOverlap(before[shift:shift+n], after[:n]) {
+				start, end, oldEnd = 0, len(after), len(before)
+				break
+			}
+		}
+		shift %= len(before)
+	}
+	copy(next[end:], born[oldEnd:])
+	step := liveDiffPreviewStagger
+	if count := time.Duration(end - start); count > 0 {
+		step = min(step, liveDiffPreviewMaxStagger/count)
+	}
+	fresh := time.Duration(0)
+	for i := range end {
+		// Replaced rows pair up in order; a row that only grew keeps its time.
+		if old := i + shift; i < start || old < oldEnd && liveDiffPreviewOverlap(before[old:old+1], after[i:i+1]) {
+			next[i] = born[old]
+			continue
+		}
+		next[i] = now.Add(fresh * step)
+		fresh++
+	}
+	return next
+}
+
+// liveDiffPreviewOverlap matches rows by content, letting the last one grow.
+func liveDiffPreviewOverlap(before, after []liveDiffPreviewRow) bool {
+	if len(before) != len(after) || len(before) == 0 {
+		return false
+	}
+	last := len(before) - 1
+	for i := range last {
+		if before[i].kind != after[i].kind || before[i].text != after[i].text {
+			return false
+		}
+	}
+	return before[last].kind == after[last].kind &&
+		strings.HasPrefix(after[last].text, strings.TrimSuffix(before[last].text, "\n"))
+}
+
+// liveDiffPreviewEase decelerates a fade so rows settle rather than stop.
+func liveDiffPreviewEase(progress float64) float64 {
+	progress = 1 - min(1, max(0, progress))
+	return 1 - progress*progress*progress
+}
+
 // Render and color only a bounded source window around the streaming tip.
 // Captured history composition stays out of this high-frequency path.
-func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, theme liveDiffTheme, width, height int) ([]string, error) {
+func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, theme liveDiffTheme, width, height int, motion liveDiffPreviewMotion) ([]string, error) {
 	if height <= 0 || p.current.ID == "" {
 		return nil, nil
 	}
-	if err := p.prepare(); err != nil {
+	now := motion.now
+	if !motion.enabled {
+		now = time.Now()
+	}
+	if err := p.prepare(now); err != nil {
 		return nil, err
 	}
+	p.fading = time.Time{}
 	title := p.current.Status
 	if title == "" {
 		title = "STREAMING PREVIEW"
@@ -446,7 +546,15 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 				prefix = "\x1b[2m" + strings.Repeat(" ", digits) + "│\x1b[22m"
 			}
 			line := livediff.Gutter(i == p.focus, theme) + livediff.SourceLine(theme, width, prefix, fragment, row.kind)
-			lines = append(lines, ansi.Truncate(line, max(0, width-1), ""))
+			line = ansi.Truncate(line, max(0, width-1), "")
+			if until := p.born[i].Add(liveDiffPreviewFade); motion.enabled && until.After(motion.now) {
+				if until.After(p.fading) {
+					p.fading = until
+				}
+				progress := float64(motion.now.Sub(p.born[i])) / float64(liveDiffPreviewFade)
+				line = livediff.Fade(line, liveDiffPreviewEase(progress), motion.canvas)
+			}
+			lines = append(lines, line)
 		}
 	}
 	return append(lines, footer...), nil

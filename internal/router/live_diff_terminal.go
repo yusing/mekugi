@@ -49,9 +49,12 @@ type liveDiffTerminalController struct {
 	offset int
 	rows   int
 	theme  liveDiffTheme
-	mouse  liveDiffMouse
-	osc    liveDiffOSC
-	escape string
+	// A reported background replaces the theme's assumed fade canvas.
+	background   livediff.RGB
+	backgrounded bool
+	mouse        liveDiffMouse
+	osc          liveDiffOSC
+	escape       string
 }
 
 func newLiveDiffTerminalController(store *mekugiReplayStore, workspace string, stdout *os.File) *liveDiffTerminalController {
@@ -239,6 +242,11 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		}
 	}
 	if !c.diffMode {
+		c.previewPane.motion.enabled = true
+		c.previewPane.motion.canvas = c.theme.Canvas()
+		if c.backgrounded {
+			c.previewPane.motion.canvas.Background = c.background
+		}
 		previewLines, err := c.previewPane.render(ctx, c.workspace, c.theme, width, rows)
 		if err != nil {
 			return err
@@ -251,12 +259,17 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 			writeRow(row+2, text)
 		}
 	}
-	if c.previewFrameC == nil {
-		if delay := c.previewPane.nextExpiry(time.Now()); delay > 0 {
-			c.previewFrame.Reset(delay)
-			c.previewFrameC = c.previewFrame.C
-			c.previewFrameDue = time.Now().Add(delay)
-		}
+	// A fade keeps frames coming; otherwise wake only for the next expiry.
+	now := time.Now()
+	delay := c.previewPane.nextExpiry(now)
+	if !c.diffMode && c.previewPane.animating(now) && (delay == 0 || delay > liveDiffPreviewFrameDelay) {
+		delay = liveDiffPreviewFrameDelay
+	}
+	if due := now.Add(delay); delay > 0 && (c.previewFrameC == nil || c.previewFrameDue.After(due)) {
+		c.previewFrame.Stop()
+		c.previewFrame.Reset(delay)
+		c.previewFrameC = c.previewFrame.C
+		c.previewFrameDue = due
 	}
 	mode := "FOLLOW"
 	if !c.view.Following {
@@ -388,6 +401,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 		if reply, complete := c.osc.Consume(key); complete {
 			if detected, ok := livediff.BackgroundTheme(reply); ok {
 				c.theme = detected
+				c.background, c.backgrounded = livediff.BackgroundColor(reply)
 			}
 		}
 		return false

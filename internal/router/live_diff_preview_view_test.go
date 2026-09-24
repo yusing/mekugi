@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -538,32 +537,115 @@ func TestLiveDiffPreviewCardsKeepSlotsAndGutter(t *testing.T) {
 
 func TestLiveDiffPreviewPacerIsSteadyAndBounded(t *testing.T) {
 	var pacer liveDiffPreviewPacer
+	lines := liveDiffRevealUnits{}
 	input := ""
 	shown := 0
-	// Bursts every fourth frame reveal on every frame, never all at once.
+	// Bursts every fourth frame reveal whole lines on most frames, never all at once.
+	steps := 0
 	for frame := range 40 {
 		if frame%4 == 0 {
-			input += strings.Repeat("界x", 20)
+			input += strings.Repeat("界x", 6) + "\n" + strings.Repeat("y", 10) + "\n"
 		}
-		next := pacer.advance(input, false)
-		if next < shown || next > len(input) || next < len(input) && !utf8.RuneStart(input[next]) {
+		next := pacer.advance(input, false, lines)
+		if next < shown || next > len(input) || next > 0 && input[next-1] != '\n' {
 			t.Fatalf("frame %d revealed %d of %d after %d", frame, next, len(input), shown)
 		}
-		if frame > 8 && (next == shown && next < len(input) || frame%4 == 0 && next == len(input)) {
+		if frame > 8 && frame%4 == 0 && next == len(input) {
 			t.Fatalf("frame %d did not pace the burst: %d -> %d of %d", frame, shown, next, len(input))
+		}
+		if next > shown {
+			steps++
 		}
 		shown = next
 	}
+	if steps < 16 {
+		t.Fatalf("bursts were not revealed line by line: %d steps", steps)
+	}
 	// A large backlog skips to the window at the tip.
-	input += strings.Repeat("y", 64<<10)
-	if next := pacer.advance(input, false); next < len(input)-liveDiffPreviewMaxLag {
+	input += strings.Repeat("y", 64<<10) + "\n"
+	if next := pacer.advance(input, false, lines); next < len(input)-liveDiffPreviewMaxLag {
 		t.Fatalf("lag exceeded its window: %d of %d", next, len(input))
 	}
-	// A finished call converges promptly.
+	// A finished call converges promptly, including an unterminated line.
+	input += "tail"
 	for range 20 {
-		shown = pacer.advance(input, true)
+		shown = pacer.advance(input, true, lines)
 	}
 	if shown != len(input) {
 		t.Fatalf("final input not reached: %d of %d", shown, len(input))
+	}
+}
+
+func TestLiveDiffPreviewPacerBuffersUnits(t *testing.T) {
+	// Arrival steps stay within the hold, so only unit ends are revealed.
+	reveal := func(input string, units liveDiffRevealUnits, step int) []string {
+		var pacer liveDiffPreviewPacer
+		var shown []string
+		for i := min(step, len(input)); ; i = min(i+step, len(input)) {
+			if next := pacer.advance(input[:i], false, units); len(shown) == 0 && next > 0 || len(shown) > 0 && input[:next] != shown[len(shown)-1] {
+				shown = append(shown, input[:next])
+			}
+			if i == len(input) {
+				return shown
+			}
+		}
+	}
+	command := "cd a && make test || true; go vet | tee x\nls"
+	got := reveal(command, liveDiffRevealUnits{segments: true}, 1)
+	want := []string{"cd a &&", "cd a && make test ||", "cd a && make test || true;", "cd a && make test || true; go vet |", "cd a && make test || true; go vet | tee x\n"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("segments:\n got %q\nwant %q", got, want)
+	}
+	// An edit payload reveals by line, even when its source contains operators.
+	body := "for (i = 0; i < n; i++) {\n\tx();\n"
+	if got := reveal(body, liveDiffRevealUnits{}, 3); !slices.Equal(got, []string{"for (i = 0; i < n; i++) {\n", body}) {
+		t.Fatalf("lines: %q", got)
+	}
+	// Encoded input breaks at escaped line breaks, not at an escaped backslash.
+	encoded := `{"cmd":"cat > f <<'EOF'\nsay \\n here\nnext`
+	if got := reveal(encoded, liveDiffRevealUnits{encoded: true}, 3); !slices.Equal(got, []string{
+		`{"cmd":"cat > f <<'EOF'\n`, `{"cmd":"cat > f <<'EOF'\nsay \\n here\n`,
+	}) {
+		t.Fatalf("encoded: %q", got)
+	}
+	// A unit that outlives the hold streams rather than stalling the card.
+	var pacer liveDiffPreviewPacer
+	long := strings.Repeat("z", 64)
+	shown := 0
+	for range liveDiffPreviewMaxHold + 2 {
+		shown = pacer.advance(long, false, liveDiffRevealUnits{})
+	}
+	if shown != len(long) {
+		t.Fatalf("held unit was not released: %d of %d", shown, len(long))
+	}
+}
+
+func TestLiveDiffPreviewBirthsCarryAcrossSnapshots(t *testing.T) {
+	rows := func(texts ...string) []liveDiffPreviewRow {
+		var out []liveDiffPreviewRow
+		for i, text := range texts {
+			out = append(out, liveDiffPreviewRow{i + 1, ' ', text})
+		}
+		return out
+	}
+	start := time.Unix(100, 0)
+	before := rows("a\n", "b\n", "par")
+	born := liveDiffPreviewBirths(nil, before, nil, start)
+	// A first display cascades, bounded by the maximum stagger.
+	if !born[0].Equal(start) || !born[1].After(born[0]) || born[2].Sub(start) > liveDiffPreviewMaxStagger {
+		t.Fatalf("first cascade: %v", born)
+	}
+	later := start.Add(time.Second)
+	after := rows("a\n", "b\n", "partial\n", "c\n")
+	next := liveDiffPreviewBirths(before, after, born, later)
+	// Unchanged and grown rows keep their times; only the new row fades.
+	if !slices.Equal(next[:3], born) || !next[3].Equal(later) {
+		t.Fatalf("carried births: %v from %v", next, born)
+	}
+	// A clipped tail slides and renumbers without refading its rows.
+	slid := rows("b\n", "partial\n", "c\n", "d\n")
+	shifted := liveDiffPreviewBirths(after, slid, next, later.Add(time.Second))
+	if !slices.Equal(shifted[:3], next[1:]) || !shifted[3].Equal(later.Add(time.Second)) {
+		t.Fatalf("sliding tail: %v from %v", shifted, next)
 	}
 }
