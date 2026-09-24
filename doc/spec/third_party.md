@@ -54,16 +54,17 @@ contract explicitly defines a sanitized replacement. Third-party credentials nev
 Rejected third-party inference requests preserve the provider's HTTP status and error details in
 HTTP/WebSocket errors and user-facing failure notices instead of replacing them with authentication
 advice. Error reads are limited to 8 KiB and five seconds; unreadable or oversized bodies get an
-explicit explanation. JSON error messages retain their name, type, or code when present; other
-bodies use bounded text. Display text is limited to 2,048 characters, strips terminal controls, and
-redacts credentials used on the request. Sanitized diagnostics and metrics retain only the HTTP
-classification, never credentials, prompts, or provider error text. The ordinary Codex
+explicit explanation. JSON error messages retain their name, type, or code when present alongside
+the original buffered payload; other bodies retain the available text. Error display and failure
+records do not redact credentials or truncate the resulting error string. Sanitized capture and
+metrics retain only the HTTP classification, never credentials, prompts, or provider error text.
+The ordinary Codex
 authentication boundary still applies to incoming requests.
 
 Provider error events in Chat, Responses, and Messages streams preserve their actual
 error details in caller-facing terminal events and failure notices, including when a
-non-stream request consumes a provider stream. The same credential redaction and display
-bounds apply; sanitized diagnostics retain only producer-owned classifications.
+non-stream request consumes a provider stream. The buffered error payload is retained without
+display redaction or truncation; sanitized capture and metrics retain only classifications.
 
 Adapters preserve native tool identities and validate complete tool arguments before exposing an
 executable call. Unsupported or encrypted history fails locally before a provider request and

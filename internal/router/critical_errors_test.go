@@ -56,7 +56,7 @@ func TestCriticalErrorsDeduplicateReserveAndRetainUntilDelivery(t *testing.T) {
 	}
 }
 
-func TestCriticalErrorsIdentifyEveryGenericFailurePhaseWithoutExposingCauses(t *testing.T) {
+func TestCriticalErrorsIdentifyEveryGenericFailurePhaseWithCompleteCauses(t *testing.T) {
 	for _, test := range []struct {
 		phase requestFailurePhase
 		label string
@@ -79,10 +79,10 @@ func TestCriticalErrorsIdentifyEveryGenericFailurePhaseWithoutExposingCauses(t *
 				t.Fatalf("non-transform causes collapsed or did not deduplicate: %+v", c.entries)
 			}
 			pending := strings.Join(c.Pending(), "\n")
-			if strings.Contains(pending, "firstsecret") || strings.Contains(pending, "secondsecret") ||
+			if !strings.Contains(pending, first.Error()) || !strings.Contains(pending, "plain secondsecret prompt") ||
 				strings.Count(pending, "Failure phase: "+test.label+".") != 2 ||
 				strings.Count(pending, "Diagnostic reference:") != 2 {
-				t.Fatalf("generic notices were unsafe or ambiguous: %s", pending)
+				t.Fatalf("generic notices omitted causes or phases: %s", pending)
 			}
 		})
 	}
@@ -100,7 +100,7 @@ func TestCriticalErrorsIdentifyEveryGenericFailurePhaseWithoutExposingCauses(t *
 	prepare.record(&requestFinalization{sessionID: "one", failurePhase: requestFailurePrepare,
 		observation: requestObservation{outcome: requestOutcomeFailed}}, errors.New("plain preparesecret"))
 	prepareNotice := strings.Join(prepare.Pending(), "\n")
-	if strings.Contains(prepareNotice, "check the request error") || strings.Contains(prepareNotice, "preparesecret") ||
+	if strings.Contains(prepareNotice, "check the request error") || !strings.Contains(prepareNotice, "preparesecret") ||
 		!strings.Contains(prepareNotice, "Failure phase: request preparation.") {
 		t.Fatalf("prepare notice was not self-contained: %s", prepareNotice)
 	}
@@ -264,8 +264,9 @@ func TestForwardFailureDiagnostics(t *testing.T) {
 			if !strings.Contains(notices, reference) {
 				t.Fatalf("notice/reference mismatch: %s", notices)
 			}
-			if strings.Contains(string(data)+notices, "private") {
-				t.Fatal("diagnostic leaked external error text")
+			loggedError, _ := record["error"].(string)
+			if !strings.Contains(notices, loggedError) || !strings.Contains(loggedError, test.err.Error()) {
+				t.Fatal("complete wrapped error missing from notice or debug event")
 			}
 		})
 	}
@@ -316,8 +317,9 @@ func TestCriticalSynthesizedDiagnosticCodes(t *testing.T) {
 				len(issues.entries) != 1 || !strings.Contains(issues.entries[0].category, test.code) {
 				t.Fatalf("diagnostics disagree: %v, %s", record, notices)
 			}
-			if strings.Contains(string(data)+notices, "private") {
-				t.Fatal("diagnostic leaked external error text")
+			if test.code == "downstream_response_write" &&
+				(!strings.Contains(notices, "private write failure") || record["error"] == nil) {
+				t.Fatal("downstream write error missing from diagnostics")
 			}
 		})
 	}

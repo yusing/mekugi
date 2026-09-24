@@ -27,8 +27,8 @@ func TestProviderHTTPErrorDetails(t *testing.T) {
 		{"top level", `{"name":"AccessError","message":"Workspace disabled"}`, "AccessError: Workspace disabled"},
 		{"plain", "Service maintenance", "Service maintenance"},
 		{"empty", "", "Forbidden"},
-		{"redacted", `{"error":{"message":"key provider-secret caller-secret account-secret"}}`, "key [redacted] [redacted] [redacted]"},
-		{"controls", `{"error":{"message":"before\u001bafter\u202eend"}}`, "before after end"},
+		{"unredacted", `{"error":{"message":"key provider-secret caller-secret account-secret"}}`, "key provider-secret caller-secret account-secret"},
+		{"controls", `{"error":{"message":"before\u001bafter\u202eend"}}`, "before\x1bafter\u202eend"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			err := newProviderHTTPError("OpenCode Go", 403, []byte(test.body),
@@ -52,8 +52,8 @@ func TestProviderHTTPErrorDetails(t *testing.T) {
 		})
 	}
 	err := newProviderHTTPError("Grok", 500, []byte(strings.Repeat("界", 3000)))
-	if !strings.HasSuffix(err.Error(), " [truncated]") || len([]rune(err.Error())) > 2100 {
-		t.Fatalf("unbounded detail: %d", len([]rune(err.Error())))
+	if !strings.HasSuffix(err.Error(), strings.Repeat("界", 3000)) {
+		t.Fatalf("provider detail was truncated: %d", len([]rune(err.Error())))
 	}
 }
 
@@ -79,7 +79,7 @@ func TestOpenCodeHTTPErrorDelivery(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			responsesHandler(ctx, time.Second, provider, issues, nil, nil)(recorder, req)
 			if recorder.Code != status || recorder.Header().Get("Content-Type") != "application/json" ||
-				!strings.Contains(recorder.Body.String(), "Useful provider detail [redacted]") || calls != 1 {
+				!strings.Contains(recorder.Body.String(), "Useful provider detail provider-secret") || calls != 1 {
 				t.Fatalf("HTTP error lost: %d %s (calls %d)", recorder.Code, recorder.Body.String(), calls)
 			}
 			endpoint := responsesWebSocketHandler(ctx, time.Second, provider, issues, nil, nil)
@@ -98,7 +98,7 @@ func TestOpenCodeHTTPErrorDelivery(t *testing.T) {
 			command["type"] = "response.create"
 			socketWrite(t, ctx, conn, command)
 			event := socketRead(t, ctx, conn)
-			if string(event["status"]) != fmt.Sprint(status) || !strings.Contains(string(event["error"]), "Useful provider detail [redacted]") {
+			if string(event["status"]) != fmt.Sprint(status) || !strings.Contains(string(event["error"]), "Useful provider detail provider-secret") {
 				t.Fatalf("WebSocket error lost: %s", mustMarshalJSON(event))
 			}
 			conn.CloseNow()
@@ -106,8 +106,8 @@ func TestOpenCodeHTTPErrorDelivery(t *testing.T) {
 			if calls != 2 {
 				t.Fatalf("unexpected provider retries: %d", calls)
 			}
-			if notices := strings.Join(issues.Pending(), "\n"); !strings.Contains(notices, "Useful provider detail [redacted]") || strings.Contains(notices, "provider-secret") {
-				t.Fatalf("notice missing or unsafe: %s", notices)
+			if notices := strings.Join(issues.Pending(), "\n"); !strings.Contains(notices, "Useful provider detail provider-secret") {
+				t.Fatalf("notice missing complete detail: %s", notices)
 			}
 		})
 	}
@@ -154,8 +154,8 @@ func TestOpenCodeHTTPErrorReadFailure(t *testing.T) {
 		return &http.Response{StatusCode: 403, Header: http.Header{}, Body: body}, nil
 	})}}
 	_, err := client.forwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders())
-	if !body.closed || err == nil || !strings.Contains(err.Error(), "could not be read") || strings.Contains(err.Error(), "private") {
-		t.Fatalf("read failure hidden or unsafe: %v", err)
+	if !body.closed || err == nil || !strings.Contains(err.Error(), "could not be read") || !strings.Contains(err.Error(), "private transport detail") {
+		t.Fatalf("read failure hidden: %v", err)
 	}
 }
 
@@ -198,12 +198,12 @@ func TestOpenCodeHTTPErrorReadCancellation(t *testing.T) {
 	})
 }
 
-func TestProviderHTTPErrorCredentialSchemes(t *testing.T) {
+func TestProviderHTTPErrorPreservesCredentialTextFromProvider(t *testing.T) {
 	for _, scheme := range []string{"Bearer", "bearer", "bEaReR"} {
 		err := newProviderHTTPError("OpenCode", 403, []byte(`{"error":{"message":"caller-secret provider-secret"}}`),
 			http.Header{"Authorization": {scheme + " caller-secret"}, "X-Api-Key": {"provider-secret"}})
-		if strings.Contains(err.Error(), "secret") || !strings.Contains(err.Error(), "[redacted] [redacted]") {
-			t.Fatalf("credential escaped redaction for %s: %v", scheme, err)
+		if !strings.Contains(err.Error(), "caller-secret provider-secret") {
+			t.Fatalf("provider error text changed for %s: %v", scheme, err)
 		}
 	}
 }

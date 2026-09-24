@@ -32,7 +32,8 @@ Grok OAuth store. This route supports the standard `https://auth.x.ai` Grok publ
 enterprise issuers. Grok owns interactive login; Mekugi refreshes expired/near-expiry OAuth tokens
 and retries one rejected access token. Refresh uses Grok's cross-process advisory lock, re-reads
 credentials under that lock, and atomically saves rotated credentials while preserving unrelated
-accounts and fields. No credentials, provider error bodies, or prompts enter sanitized diagnostics.
+accounts and fields. No credentials, provider error bodies, or prompts enter sanitized capture or
+metrics; diagnostic error strings can contain them.
 Codex credentials and internal account/thread headers are never forwarded to Grok, and Grok credentials
 never reach OpenAI. Credential-bearing requests do not follow redirects.
 

@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-// Failure records intentionally exclude messages, wrapped errors and request bodies.
+// Failure records retain the actual error for post-session diagnosis.
 type failureRecord struct {
 	Version   int                 `json:"version"`
 	Time      time.Time           `json:"time"`
@@ -24,6 +24,7 @@ type failureRecord struct {
 	Phase     requestFailurePhase `json:"phase"`
 	Code      string              `json:"code"`
 	Reference string              `json:"reference"`
+	Error     string              `json:"error,omitempty"`
 	Stream    jsontext.Value      `json:"stream,omitempty"`
 }
 
@@ -61,7 +62,8 @@ func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 			c.addNotice(f.sessionID, "failure_cleanup", "Mekugi could not complete failure-record retention cleanup.")
 		}
 		record := failureRecord{Version: 1, Time: time.Now().UTC(), Thread: f.threadID,
-			Phase: f.failurePhase, Code: f.diagnosticCode, Reference: f.diagnosticReference}
+			Phase: f.failurePhase, Code: f.diagnosticCode, Reference: f.diagnosticReference,
+			Error: f.diagnosticError}
 		if f.streamDiagnostics != nil {
 			record.Stream, err = json.Marshal(f.streamDiagnostics.snapshot())
 		}

@@ -1045,7 +1045,7 @@ func TestModelsHandlerRejectsMissingAuthentication(t *testing.T) {
 	}
 }
 
-func TestModelsHandlerReportsSafeForwardFailure(t *testing.T) {
+func TestModelsHandlerReportsCompleteForwardFailure(t *testing.T) {
 	secret := "Bearer should-not-appear"
 	httpClient := &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("%s: %w", secret, syscall.ECONNRESET)
@@ -1071,9 +1071,8 @@ func TestModelsHandlerReportsSafeForwardFailure(t *testing.T) {
 	if !strings.Contains(notices, "could not refresh the model catalog") ||
 		!strings.Contains(notices, "model catalog could not be fetched") ||
 		!strings.Contains(notices, "connection was reset") ||
-		strings.Contains(notices, secret) || strings.Contains(notices, "not safe for display") ||
-		strings.Contains(recorder.Body.String(), secret) {
-		t.Fatalf("unsafe or missing models diagnostic: %s", notices)
+		!strings.Contains(notices, secret) || !strings.Contains(recorder.Body.String(), secret) {
+		t.Fatalf("incomplete models diagnostic: %s", notices)
 	}
 	raw, err := os.ReadFile(debugLog.Name())
 	if err != nil {
@@ -1083,6 +1082,7 @@ func TestModelsHandlerReportsSafeForwardFailure(t *testing.T) {
 		Event               string `json:"event"`
 		DiagnosticCode      string `json:"diagnostic_code"`
 		DiagnosticReference string `json:"diagnostic_reference"`
+		Error               string `json:"error"`
 		SessionID           string `json:"session_id"`
 	}
 	if err := json.Unmarshal(raw, &event); err != nil {
@@ -1090,12 +1090,12 @@ func TestModelsHandlerReportsSafeForwardFailure(t *testing.T) {
 	}
 	if event.Event != "models_request_failure" || event.DiagnosticCode != "models_upstream_connection_reset" ||
 		event.DiagnosticReference == "" || event.SessionID != "models-session" ||
-		!strings.Contains(notices, event.DiagnosticReference) || strings.Contains(string(raw), secret) {
-		t.Fatalf("uncorrelated or unsafe models debug event: %s", raw)
+		!strings.Contains(notices, event.DiagnosticReference) || !strings.Contains(event.Error, secret) {
+		t.Fatalf("uncorrelated or incomplete models debug event: %s", raw)
 	}
 }
 
-func TestModelsHandlerReportsUpstreamStatusWithoutBody(t *testing.T) {
+func TestModelsHandlerReportsUpstreamStatusAndBody(t *testing.T) {
 	secret := "private upstream body"
 	httpClient := &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusServiceUnavailable,
@@ -1112,8 +1112,78 @@ func TestModelsHandlerReportsUpstreamStatusWithoutBody(t *testing.T) {
 		t.Fatalf("status = %d", recorder.Code)
 	}
 	notices := strings.Join(issues.Pending(), "\n")
-	if !strings.Contains(notices, "model catalog returned HTTP 503") || strings.Contains(notices, secret) {
-		t.Fatalf("unsafe or missing models status: %s", notices)
+	if !strings.Contains(notices, "model catalog returned HTTP 503") || !strings.Contains(notices, secret) ||
+		recorder.Body.String() != secret {
+		t.Fatalf("incomplete models status or changed response: %s", notices)
+	}
+}
+
+func TestInferenceHTTPRejectionRetainsCompleteError(t *testing.T) {
+	for _, body := range []string{
+		`{"error":{"type":"invalid_request_error","code":"invalid_api_key","message":"rejected","param":"authorization"}}`,
+		"plain upstream rejection",
+	} {
+		t.Run(body[:min(len(body), 8)], func(t *testing.T) {
+			directory := t.TempDir()
+			store, err := openMekugiReplayStore(directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			issues := NewCriticalErrors()
+			issues.failureStore = store
+			log, err := os.CreateTemp(t.TempDir(), "router-*.jsonl")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer log.Close()
+			dump, err := os.CreateTemp(t.TempDir(), "instructions-*.jsonl")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer dump.Close()
+			ctx := context.WithValue(t.Context(), debugContextKey{}, &debugOutput{log: log, dump: dump})
+			provider := &serverFakeProvider{results: []serverForwardResult{{response: &http.Response{
+				StatusCode: http.StatusBadRequest,
+				Header:     http.Header{"Content-Type": {"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(body)),
+			}}}}
+			var output bytes.Buffer
+			if err := executeRequest(ctx, ctx, serverRequest(t, nil), http.Header{}, "error-session",
+				provider, &output, issues, nil, nil); err != nil {
+				t.Fatal(err)
+			}
+			if output.String() != body || len(issues.Pending()) != 1 || !strings.Contains(issues.Pending()[0], body) {
+				t.Fatal("HTTP rejection body missing from delivery or notice")
+			}
+			var retained bytes.Buffer
+			if err := inspectFailures(t.Context(), directory, "", &retained); err != nil {
+				t.Fatal(err)
+			}
+			var records []failureRecord
+			if err := json.Unmarshal(retained.Bytes(), &records); err != nil || len(records) != 1 || !strings.Contains(records[0].Error, body) {
+				t.Fatal("HTTP rejection body missing from durable failure record")
+			}
+			logged, err := os.ReadFile(log.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var recordedError string
+			for line := range strings.SplitSeq(strings.TrimSpace(string(logged)), "\n") {
+				var event struct {
+					Event string `json:"event"`
+					Error string `json:"error"`
+				}
+				if err := json.Unmarshal([]byte(line), &event); err != nil {
+					t.Fatal(err)
+				}
+				if event.Event == "request_complete" {
+					recordedError = event.Error
+				}
+			}
+			if !strings.Contains(recordedError, body) {
+				t.Fatal("HTTP rejection body missing from debug event")
+			}
+		})
 	}
 }
 
@@ -1143,7 +1213,8 @@ func TestModelsHandlerReportsCatalogFailureBeforeInferenceFailure(t *testing.T) 
 			notice := strings.Join(issues.Pending(), "\n")
 			if !strings.Contains(notice, "could not refresh the model catalog") ||
 				!strings.Contains(notice, test.cause) || !strings.Contains(notice, "Diagnostic reference:") ||
-				strings.Contains(notice, "rate-limited this turn") || strings.Contains(notice, "private body") {
+				strings.Contains(notice, "rate-limited this turn") ||
+				(test.status != 0 && !strings.Contains(notice, "private body")) {
 				t.Fatalf("incorrect catalog diagnostic: %s", notice)
 			}
 		})

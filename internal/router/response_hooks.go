@@ -29,6 +29,7 @@ type responseOutputObserver interface {
 // payloads or owns a transformer, transport, subscription, or background task.
 type responseHooks struct {
 	onProviderFailure   func([]byte, bool)
+	upstreamStatus      int
 	streamDiagnostics   *streamDiagnostics
 	onUsage             func(tokenCounts)
 	output              responseOutputObserver
@@ -55,7 +56,8 @@ func (h *responseHooks) observe(payload []byte, stream bool) error {
 	if stream {
 		h.streamDiagnostics.observe(payload)
 	}
-	if h.onProviderFailure != nil && responses.ObserveTerminal(payload, stream) == responses.TerminalFailed {
+	if h.onProviderFailure != nil &&
+		(!stream && h.upstreamStatus >= 400 || responses.ObserveTerminal(payload, stream) == responses.TerminalFailed) {
 		h.onProviderFailure(payload, stream)
 	}
 	if h.onUsage != nil {

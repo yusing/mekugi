@@ -6,24 +6,29 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"unicode"
 )
 
-// Provider details belong in caller-facing errors, not sanitized diagnostics.
+// Provider details are included in the caller-facing error and failure records.
 type providerHTTPError struct {
 	status int
 	label  string
 	detail string
+	raw    string
 }
 
 func (e *providerHTTPError) Error() string {
-	if e.status == 0 {
-		return e.label + ": " + e.detail
+	message := e.label + ": " + e.detail
+	if e.status != 0 {
+		message = fmt.Sprintf("%s returned HTTP %d: %s", e.label, e.status, e.detail)
 	}
-	return fmt.Sprintf("%s returned HTTP %d: %s", e.label, e.status, e.detail)
+	if e.raw != "" && e.raw != e.detail {
+		message += "\nRaw response: " + e.raw
+	}
+	return message
 }
 
-func newProviderHTTPError(label string, status int, body []byte, headers ...http.Header) error {
+func newProviderHTTPError(label string, status int, body []byte, _ ...http.Header) error {
+	raw := string(body)
 	detail := strings.TrimSpace(string(body))
 	var envelope struct {
 		Error    jsontext.Value `json:"error"`
@@ -60,36 +65,10 @@ func newProviderHTTPError(label string, status int, body []byte, headers ...http
 			}
 		}
 	}
-	// Scrub both provider and caller credentials before bounding display text.
-	for _, header := range headers {
-		for _, name := range []string{"Authorization", "x-api-key", chatGPTAccountIDHeader} {
-			for _, value := range header.Values(name) {
-				secret := strings.TrimSpace(value)
-				if strings.EqualFold(name, "Authorization") {
-					if scheme, token, ok := strings.Cut(secret, " "); ok && strings.EqualFold(scheme, "Bearer") {
-						secret = strings.TrimSpace(token)
-					}
-				}
-				if secret != "" {
-					detail = strings.ReplaceAll(detail, secret, "[redacted]")
-				}
-			}
-		}
-	}
-	detail = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || unicode.In(r, unicode.Cf) {
-			return ' '
-		}
-		return r
-	}, detail)
-	detail = strings.TrimSpace(detail)
 	if detail == "" {
 		detail = http.StatusText(status)
 	}
-	if runes := []rune(detail); len(runes) > 2048 {
-		detail = string(runes[:2048]) + " [truncated]"
-	}
-	return &providerHTTPError{status: status, label: label, detail: detail}
+	return &providerHTTPError{status: status, label: label, detail: detail, raw: raw}
 }
 
 // terminalProviderError extracts caller-facing details without exporting them

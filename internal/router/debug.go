@@ -15,8 +15,8 @@ import (
 	"github.com/yusing/mekugi/capturer"
 )
 
-// Debug output is separate from sanitized capture. Only the instruction dump
-// contains prompt text; diagnostics never serialize arbitrary errors or headers.
+// Debug output is separate from sanitized capture. Failure events include the
+// complete error string, which can contain request content or credentials.
 type debugOutput struct {
 	mu               sync.Mutex
 	log              *os.File

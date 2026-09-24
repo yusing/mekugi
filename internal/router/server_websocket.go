@@ -97,7 +97,10 @@ type webSocketStatusError struct {
 }
 
 func (e *webSocketStatusError) Error() string {
-	return fmt.Sprintf("provider WebSocket upgrade returned HTTP %d", e.status)
+	if len(e.body) == 0 {
+		return fmt.Sprintf("provider WebSocket upgrade returned HTTP %d", e.status)
+	}
+	return fmt.Sprintf("provider WebSocket upgrade returned HTTP %d: %s", e.status, e.body)
 }
 
 func (s *responsesWebSocket) writeError(ctx context.Context, err error) ([]byte, error) {

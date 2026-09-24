@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -18,8 +19,8 @@ import (
 	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
-// CriticalErrors retains bounded, actionable session notices, including sanitized
-// provider error details, but no request snapshots or operational event history. It outlives router shutdown so
+// CriticalErrors retains bounded, actionable session notices with complete error text,
+// but no request snapshots or operational event history. It outlives router shutdown so
 // the launcher can report notices that could not reach Codex.
 type CriticalErrors struct {
 	mu              sync.Mutex
@@ -39,9 +40,8 @@ type criticalNotice struct {
 
 func NewCriticalErrors() *CriticalErrors { return &CriticalErrors{diagnosticSalt: rand.Text()} }
 
-// criticalDiagnosticError separates producer-owned diagnostic summaries from
-// sanitized caller-facing provider details. Arbitrary wrapped error text is not
-// copied into notices or sanitized diagnostics.
+// criticalDiagnosticError keeps a stable classification alongside the underlying
+// error. Notices and failure records include the complete error string.
 type criticalDiagnosticError struct {
 	err          error
 	code         string
@@ -140,6 +140,9 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 	if err == nil && f.providerFailure != nil {
 		err = f.providerFailure
 	}
+	if err != nil {
+		f.diagnosticError = err.Error()
+	}
 	f.diagnosticReference = c.diagnosticReference(f, err)
 	f.diagnosticCode = "unclassified"
 	if diagnostic, ok := errors.AsType[*criticalDiagnosticError](err); ok {
@@ -194,11 +197,8 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 				}
 				message += " Cause: " + diagnostic.code + ": " + diagnostic.summary + ". Diagnostic reference: " + reference + "."
 			} else {
-				// Unknown errors may contain unquoted prompts, scripts, headers, or
-				// credentials. Retain a correlation reference and phase without
-				// copying arbitrary error text into a user-visible notice.
 				category += ":unclassified:" + reference
-				message += " The detailed cause was not safe for display. Diagnostic reference: " + reference + "."
+				message += " Diagnostic reference: " + reference + "."
 			}
 		} else {
 			if f.diagnosticCode == "unclassified" {
@@ -207,6 +207,9 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 			category += ":" + f.diagnosticReference
 			message += " Diagnostic reference: " + f.diagnosticReference + "."
 		}
+	}
+	if f.diagnosticError != "" && !strings.Contains(message, f.diagnosticError) {
+		message += " Error: " + f.diagnosticError
 	}
 	f.diagnosticMessage = message
 	if f.turnID != "" {

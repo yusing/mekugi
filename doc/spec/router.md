@@ -39,9 +39,10 @@ in-memory metrics belong to this invocation and expire on shutdown.
 Interactive Herdr launches may also open a router-owned
 [live diff pane](changes.md#live-terminal-view), under its session and lifecycle contract.
 
-Detailed operational logging is absent unless `--debug` is enabled. Sanitized failure records
-are always retained with time, thread, phase, diagnostic code/reference, and bounded stream
-diagnostics, never messages, request content, secrets, or raw wrapped errors. They share the
+Detailed operational logging is absent unless `--debug` is enabled. Failure records
+are always retained with time, thread, phase, diagnostic code/reference, the complete
+error string, and bounded stream diagnostics. Error strings may contain request content
+or credentials supplied by an upstream error. They share the
 managed store's quota and retention policy and can be looked up after restart using
 `mekugi inspect-session --failures [REF]`. Failure to retain a record produces a notice,
 not a claim of successful persistence or a different request outcome. Startup and cleanup failures are concise stderr
@@ -116,25 +117,32 @@ cached-prefix removal. Separate `wire_developer_messages`, `wire_additional_tool
 `cached_input_items` counts only the prefix actually reused. `wire_request_present` is false
 for automatic successors. A prepared snapshot does not claim successful provider acceptance;
 Grok records precede Chat Completions conversion. No ordinary user messages,
-tool call bodies, or authentication headers are exported. Router diagnostics record lifecycle
-and parsed-request outcome/phase/status, plus a safe diagnostic code and the notice's diagnostic
-reference for failures. They also record versioned, allowlisted feature observations as specified
+tool call bodies, or authentication headers are exported as separate diagnostic fields;
+error strings can contain any of them. Router diagnostics record lifecycle
+and parsed-request outcome/phase/status, plus a diagnostic code, reference, and complete error
+string for failures. They also record versioned, allowlisted feature observations as specified
 below, without retaining feature payloads. Known provider error codes are retained through a fixed allowlist; unknown codes,
-messages, and error payloads are not exported to sanitized diagnostics. Caller-facing
+messages, and error payloads are not exported to sanitized metrics or capture. Caller-facing
 failure notices include the actual provider error for terminal `error` and `response.failed`
 events and failed non-stream responses, including provider status when available. These
-details use the same credential redaction, control-character cleanup, and length bound as
-provider HTTP errors; different details remain distinct notices.
-Forwarding failures classify known wrapped transport errors without exporting addresses, URLs, WebSocket close reasons, or arbitrary error text. Debug files remain
+details retain the provider error text and original error payload without credential redaction
+or display-length truncation;
+different details remain distinct notices. Forwarding failures classify known wrapped
+transport errors and display the complete wrapped error, including addresses, URLs,
+WebSocket close reasons, and arbitrary error text. Debug files remain
 separate from sanitized metrics/capture. Initialization failure prevents launch; subsequent
 debug write failures are surfaced on exit without changing request execution.
 Model-catalog failures are identified as catalog refresh failures, not failed inference turns.
-Their notices report a safe transport class or upstream HTTP status, and a debug event carries
-the same diagnostic reference, safe code, and upstream/downstream status without response bodies
-or raw errors. The catalog HTTP response remains available to Codex.
+Their notices report the complete error and transport class or upstream HTTP status;
+the debug event carries the same error, diagnostic reference, code, and upstream/downstream
+status. The catalog HTTP response remains available to Codex.
+Existing transport body budgets remain: provider HTTP errors and WebSocket upgrade
+rejections can be limited to 8 KiB, and catalog responses to 8 MiB. A body-limit
+failure reports the limit instead of claiming the omitted body is complete.
 Streaming tool-call projection and replay-persistence failures report their safe operation or
 conflict class instead of collapsing into a generic translation error. Tool input, provider
-field values, and raw storage errors remain absent from notices and sanitized diagnostics.
+field values, and raw storage errors remain absent from sanitized metrics and capture;
+failure error strings are displayed and retained without redaction.
 After a delivered `response.created`, a deterministic response-translation fault emits
 `response.failed` with error code `invalid_prompt`, unless a terminal has already been delivered
 or the downstream cannot be written. Its message carries the safe cause code and diagnostic
@@ -153,8 +161,9 @@ distinguishes an actual read error/close from a stopped reader channel; cancella
 preserved rather than converted into a synthetic upstream EOF. A reader publishes its
 actual terminal error into an available bounded slot before cancellation can discard it;
 queued messages are not evicted and an abandoned consumer cannot block shutdown. The first observed
-termination origin is not overwritten by outer readers. Close reasons, response text,
-credentials, and arbitrary headers are never logged. These facts classify the observable
+termination origin is not overwritten by outer readers. The sanitized stream-diagnostics
+fields never contain close reasons, response text, credentials, or arbitrary headers;
+the separate raw error string may contain them. These facts classify the observable
 end; an unreported provider-internal cause is not inferred.
 
 A recognized downstream WebSocket disconnect is cancellation even when the write

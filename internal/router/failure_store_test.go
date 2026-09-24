@@ -21,8 +21,7 @@ func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T
 		t.Fatal(err)
 	}
 
-	// No debug output is configured. The ordinary replay store is enough to
-	// durably retain a bounded failure record.
+	// No debug output is configured. The ordinary replay store retains the error.
 	issues := NewCriticalErrors()
 	issues.failureStore = store
 	const secret = "Authorization Bearer failure-store-secret"
@@ -51,18 +50,14 @@ func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T
 	if len(files) != 1 {
 		t.Fatalf("persisted failure files = %d, want 1", len(files))
 	}
-	for _, forbidden := range []string{secret, prompt, wrapped.Error()} {
-		if bytes.Contains(files[0], []byte(forbidden)) {
-			t.Fatalf("failure record contains arbitrary error or request content %q: %s", forbidden, files[0])
-		}
-	}
 
 	var record failureRecord
 	if err := json.Unmarshal(files[0], &record); err != nil {
 		t.Fatal(err)
 	}
 	if record.Version != 1 || record.Thread != failure.threadID || record.Phase != requestFailureTransform ||
-		record.Code != "mekugi_sse:invalid_json" || record.Reference != failure.diagnosticReference || record.Time.IsZero() {
+		record.Code != "mekugi_sse:invalid_json" || record.Reference != failure.diagnosticReference || record.Time.IsZero() ||
+		record.Error != wrapped.Error() || !strings.Contains(record.Error, secret) || !strings.Contains(record.Error, prompt) {
 		t.Fatalf("persisted failure metadata = %+v", record)
 	}
 	var stream map[string]any

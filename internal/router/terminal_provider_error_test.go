@@ -53,13 +53,12 @@ func TestTerminalProviderErrorNotices(t *testing.T) {
 	}
 }
 
-func TestTerminalProviderErrorRedactionAndIsolation(t *testing.T) {
+func TestTerminalProviderErrorCompletenessAndCaptureIsolation(t *testing.T) {
 	headers := http.Header{"Authorization": {"Bearer credential-secret"}}
 	payload := []byte(`{"type":"error","status":400,"error":{"message":"actual detail credential-secret\u001b\n"}}`)
 	err := terminalProviderError(payload, true, headers)
-	if err == nil || strings.Contains(err.Error(), "credential-secret") || strings.ContainsAny(err.Error(), "\x1b\n") ||
-		!strings.Contains(err.Error(), "actual detail [redacted]") {
-		t.Fatalf("unsafe or missing error: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "actual detail credential-secret\x1b\n") {
+		t.Fatalf("incomplete provider error: %v", err)
 	}
 	diagnostics := &streamDiagnostics{}
 	diagnostics.observe(payload)
@@ -69,7 +68,7 @@ func TestTerminalProviderErrorRedactionAndIsolation(t *testing.T) {
 	}
 	issues := NewCriticalErrors()
 	for _, message := range []string{"first cause", "second cause", "first cause"} {
-		body, _ := json.Marshal(map[string]any{"type": "error", "error": map[string]string{"message": message}})
+		body := []byte(`{"type":"error","error":{"message":"` + message + `"}}`)
 		issues.record(&requestFinalization{
 			sessionID: "same", failurePhase: requestFailureTerminalValidation,
 			upstreamTerminalState: responseTerminalFailed,
@@ -83,8 +82,8 @@ func TestTerminalProviderErrorRedactionAndIsolation(t *testing.T) {
 		t.Fatalf("distinct causes were merged: %q", notices)
 	}
 	body, _ := json.Marshal(map[string]any{"type": "error", "message": strings.Repeat("x", 3000)})
-	if err := terminalProviderError(body, true, nil); err == nil || !strings.Contains(err.Error(), "[truncated]") || len(err.Error()) > 2200 {
-		t.Fatalf("unbounded error: %v", err)
+	if err := terminalProviderError(body, true, nil); err == nil || !strings.Contains(err.Error(), strings.Repeat("x", 3000)) {
+		t.Fatalf("provider error truncated: %v", err)
 	}
 }
 
@@ -115,9 +114,8 @@ func TestAdaptedProviderErrorDelivery(t *testing.T) {
 				recorder := httptest.NewRecorder()
 				responsesHandler(t.Context(), 5*time.Second, provider, issues, nil, nil)(recorder, req)
 				for _, text := range []string{recorder.Body.String(), strings.Join(issues.Pending(), "\n")} {
-					if !strings.Contains(text, "actual rejection [redacted] [redacted]") ||
-						strings.Contains(text, "provider-secret") || strings.Contains(text, "caller-secret") {
-						t.Fatalf("missing or unsafe adapted error: %s", text)
+					if !strings.Contains(text, "actual rejection provider-secret caller-secret") {
+						t.Fatalf("incomplete adapted error: %s", text)
 					}
 				}
 				if stream && (!strings.Contains(recorder.Body.String(), "response.failed") || strings.Contains(recorder.Body.String(), "response.completed")) {

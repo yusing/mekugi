@@ -134,7 +134,7 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 			return nil, err
 		}
 		if readErr != nil {
-			detail = []byte("provider error body could not be read")
+			detail = []byte(fmt.Sprintf("provider error body could not be read: %v", readErr))
 		} else if len(detail) > maxUpstreamErrorDetailBytes {
 			detail = []byte("provider error body exceeds the 8 KiB limit")
 		}

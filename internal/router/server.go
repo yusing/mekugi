@@ -366,6 +366,7 @@ func modelsHandler(provider *providerClient, issues *CriticalErrors) http.Handle
 					"upstream_status": upstreamStatus, "downstream_status": tracked.statusCode,
 					"diagnostic_code":      finalization.diagnosticCode,
 					"diagnostic_reference": finalization.diagnosticReference,
+					"error":                finalization.diagnosticError,
 				})
 			}
 		}()
@@ -373,8 +374,7 @@ func modelsHandler(provider *providerClient, issues *CriticalErrors) http.Handle
 		response, err := provider.forwardModels(request.Context(), request.Header, request.URL.RawQuery)
 		if err != nil {
 			failure = modelsForwardDiagnostic(err)
-			diagnostic, _ := errors.AsType[*criticalDiagnosticError](failure)
-			http.Error(writer, diagnostic.summary, http.StatusBadGateway)
+			http.Error(writer, failure.Error(), http.StatusBadGateway)
 			return
 		}
 		defer response.Body.Close()
@@ -389,6 +389,14 @@ func modelsHandler(provider *providerClient, issues *CriticalErrors) http.Handle
 			failure = staticCriticalDiagnostic("models_body_limit", "the upstream model catalog response exceeded the router buffer budget")
 			http.Error(writer, "upstream models response exceeds the router buffer budget", http.StatusBadGateway)
 			return
+		}
+		if response.StatusCode >= http.StatusBadRequest {
+			cause := fmt.Sprintf("model catalog upstream returned HTTP %d", response.StatusCode)
+			if len(body) != 0 {
+				cause += ": " + string(body)
+			}
+			failure = criticalDiagnostic(errors.New(cause), fmt.Sprintf("models_http_%d", response.StatusCode),
+				fmt.Sprintf("the upstream model catalog returned HTTP %d", response.StatusCode), true)
 		}
 		for _, name := range []string{"Content-Type", "Cache-Control", "ETag"} {
 			for _, value := range response.Header.Values(name) {
@@ -534,6 +542,7 @@ type requestFinalization struct {
 	threadID              string
 	turnID                string
 	diagnosticMessage     string
+	diagnosticError       string
 	diagnosticNotice      *criticalNotice
 	streamDiagnostics     *streamDiagnostics
 	failurePhase          requestFailurePhase

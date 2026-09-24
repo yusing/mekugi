@@ -378,16 +378,14 @@ Acceptance:
 
 ### Critical session errors
 
-Router failures that block work or require action produce bounded, actionable
-user-only notices, not raw request data or event logs. Success and ordinary
+Router failures that block work or require action produce actionable
+user-only notices, not raw request data or event logs as separate fields. Success and ordinary
 cancellation are silent. Deduplication is by routing session and failure category.
-Every otherwise-generic failure notice identifies its request phase and includes
-an opaque per-process diagnostic reference. Producers may also provide a bounded
-safe cause. Distinct causes remain separate; repeats of the same cause retain the
-existing repeat count. Unclassified errors retain only their phase and reference
-because arbitrary error text can contain prompts, scripts, headers, paths, or
-credentials. Provider-controlled values are not safe merely because they resemble
-protocol identifiers.
+Every otherwise-generic failure notice identifies its request phase, an opaque
+per-process diagnostic reference, and the complete error string when one exists. Distinct causes remain
+separate; repeats of the same cause retain the existing repeat count. Error strings can
+contain prompts, scripts, headers, paths, or credentials, including provider-controlled
+values.
 Notices without a writable response remain queued for that session. A failed
 render/write does not consume them. Ready root streaming notices precede provider
 output; child notices appear before substantive output only in the terminal

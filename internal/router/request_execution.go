@@ -167,7 +167,11 @@ func (a *requestAttempt) prepare() error {
 		return fmt.Errorf("prepare request: %w", withRequestStartCause(a.startCtx, err))
 	}
 	a.hooks.onProviderFailure = func(payload []byte, stream bool) {
-		a.finalization.providerFailure = terminalProviderError(payload, stream, a.headers)
+		if !stream && a.response.StatusCode >= http.StatusBadRequest {
+			a.finalization.providerFailure = newProviderHTTPError("Upstream response", a.response.StatusCode, payload)
+		} else {
+			a.finalization.providerFailure = terminalProviderError(payload, stream, a.headers)
+		}
 	}
 	a.metadata, a.metadataValid = decodeCodexTurnMetadata(a.headers)
 	if a.metadataValid {
@@ -416,6 +420,7 @@ func (a *requestAttempt) forward() error {
 }
 
 func (a *requestAttempt) prepareResponse() error {
+	a.hooks.upstreamStatus = a.response.StatusCode
 	if a.response.StatusCode >= http.StatusOK && a.response.StatusCode < http.StatusMultipleChoices {
 		if a.bridge != nil {
 			a.responseTransform = composeResponseTransformers(a.responseTransform, a.bridge)
@@ -665,6 +670,7 @@ func (a *requestAttempt) finish(requestErr error) error {
 	if a.finalization.diagnosticReference != "" {
 		fields["diagnostic_reference"] = a.finalization.diagnosticReference
 		fields["diagnostic_code"] = a.finalization.diagnosticCode
+		fields["error"] = a.finalization.diagnosticError
 	}
 	a.debug.event(fields)
 	return requestErr
