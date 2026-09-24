@@ -306,6 +306,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if mekugiCalls != nil {
 		mux.HandleFunc("GET "+liveDiffEventsPath, mekugiCalls.autoLiveDiff.events.serveEvents)
 		mux.HandleFunc("GET "+liveActivityEventsPath, mekugiCalls.activity.serveActivityPane)
+		mux.HandleFunc("POST "+liveActivityEventsPath, mekugiCalls.activity.serveActivitySelection)
 		mux.HandleFunc("POST "+commentaryPublisherPath, mekugiCalls.commentary.serveHTTP)
 	}
 	webSocketEndpoint := responsesWebSocketHandler(ctx, *flags.timeout, provider, issues, mekugiCalls, mentor)

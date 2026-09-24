@@ -406,7 +406,9 @@ Subagent activity uses a separate Mekugi agents pane, specified in
 caller. The second joins it: in a tab at least 240 columns wide it gets its own
 full-height column, and in a narrower tab it is stacked below the first. Either
 way, the diff pane keeps 55% of the shared space. If the tab width is unavailable,
-the panes stack. A failed or closed pane leaves the other one open.
+the panes stack. A failed or closed pane leaves the other one open. The agents
+roster then opens in its own pane under the caller, which keeps 80% of its height;
+see [REQ-COMMENTARY-001](commentary.md).
 
 Acceptance:
 

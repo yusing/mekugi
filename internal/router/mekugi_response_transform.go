@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	responseevents "github.com/yusing/mekugi/internal/responses"
 )
@@ -135,6 +136,9 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			return nil, staticCriticalDiagnostic("malformed_pending_intercepted_event", "the upstream sent a malformed event while an intercepted function call was pending")
 		}
 		return [][]byte{payload}, nil
+	}
+	if envelope.Delta != "" && t.threadID != "" && strings.HasSuffix(string(envelope.Type), ".delta") {
+		t.proxy.activity.streamOutput(t.threadID, len(envelope.Delta))
 	}
 	if envelope.Type == responseevents.OutputItemDone {
 		var item map[string]json.RawMessage

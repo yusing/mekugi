@@ -315,7 +315,8 @@ func TestAutoLiveDiffStacksAgentsPane(t *testing.T) {
 			waitAutoLiveDiff(t, log, "done\n")
 			second()
 			data := waitAutoLiveDiff(t, log, "done\n")
-			for deadline := time.Now().Add(10 * time.Second); strings.Count(data, "done\n") < 2; {
+			// The agents pane is followed by its roster, so three panes are placed.
+			for deadline := time.Now().Add(10 * time.Second); strings.Count(data, "done\n") < 3; {
 				if time.Now().After(deadline) {
 					t.Fatalf("second pane was not placed: %s", data)
 				}
@@ -325,11 +326,20 @@ func TestAutoLiveDiffStacksAgentsPane(t *testing.T) {
 			if a.requestActivity() {
 				t.Fatal("agents pane launched twice")
 			}
-			var moves []string
+			var moves, rosters []string
 			for line := range strings.SplitSeq(data, "\n") {
-				if strings.Contains(line, `"method":"pane.move"`) {
+				if !strings.Contains(line, `"method":"pane.move"`) {
+					continue
+				}
+				// The roster always sits under the caller, whatever the order.
+				if strings.Contains(line, `"ratio":0.8,"split":"down","tab_id":"tab","target_pane_id":"caller"`) {
+					rosters = append(rosters, line)
+				} else {
 					moves = append(moves, line)
 				}
+			}
+			if len(rosters) != 1 || !strings.Contains(data, `"--view","roster"`) {
+				t.Fatalf("roster placement = %q", rosters)
 			}
 			if len(moves) != 2 || !strings.Contains(moves[0], `{"split":"right","tab_id":"tab","target_pane_id":"caller"`) || !strings.Contains(moves[1], test.split) {
 				t.Fatalf("pane placement = %q", moves)

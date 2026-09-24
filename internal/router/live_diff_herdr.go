@@ -30,6 +30,14 @@ type herdrPaneIdentity struct {
 // column; narrower tabs, such as laptops, stack them in one side column.
 const mekugiWideTabColumns = 240
 
+type mekugiPaneKind int
+
+const (
+	mekugiDiffPane mekugiPaneKind = iota
+	mekugiAgentsPane
+	mekugiRosterPane
+)
+
 // mekugiPlacement is where a new pane goes. Ratio is the share of the target
 // pane's space that the target keeps; zero leaves Herdr's default.
 type mekugiPlacement struct {
@@ -37,11 +45,16 @@ type mekugiPlacement struct {
 	ratio         float64
 }
 
-// placeMekugiPane chooses a responsive placement. The first pane opens beside
-// the caller. The second joins the first as a column on wide tabs, or below it
-// otherwise, keeping a little more room for the live diff in either case.
-func placeMekugiPane(caller, neighbor string, agents bool, tabWidth int) mekugiPlacement {
+// placeMekugiPane chooses a responsive placement. The agents roster sits under
+// the caller, which keeps most of its height. Of the diff and agents activity
+// panes, the first opens beside the caller. The second joins the first as a
+// column on wide tabs, or below it otherwise, keeping a little more room for
+// the live diff in either case.
+func placeMekugiPane(caller, neighbor string, kind mekugiPaneKind, tabWidth int) mekugiPlacement {
+	agents := kind == mekugiAgentsPane
 	switch {
+	case kind == mekugiRosterPane:
+		return mekugiPlacement{target: caller, split: "down", ratio: 0.8}
 	case neighbor == "":
 		return mekugiPlacement{target: caller, split: "right"}
 	case tabWidth >= mekugiWideTabColumns && agents:
@@ -58,7 +71,7 @@ func splitLiveDiff(ctx context.Context, workspace, replay, below string, lifetim
 	if lifetime == nil || lifetime.sessionFile == "" {
 		return errors.New("live diff requires a router session")
 	}
-	return splitMekugiPane(ctx, workspace, "Mekugi live diff", below, false, lifetime, func(executable string) []string {
+	return splitMekugiPane(ctx, workspace, "Mekugi live diff", below, mekugiDiffPane, lifetime, func(executable string) []string {
 		return []string{executable, "live-diff", "--workspace", workspace, "--replay-dir", replay, "--session-file", lifetime.sessionFile}
 	})
 }
@@ -69,12 +82,23 @@ func splitLiveActivity(ctx context.Context, workspace, below string, lifetime *l
 	if lifetime == nil || lifetime.sessionFile == "" {
 		return errors.New("live activity requires a router session")
 	}
-	return splitMekugiPane(ctx, workspace, "Mekugi agents", below, true, lifetime, func(executable string) []string {
+	return splitMekugiPane(ctx, workspace, "Mekugi agents", below, mekugiAgentsPane, lifetime, func(executable string) []string {
 		return []string{executable, "live-activity", "--session-file", lifetime.sessionFile}
 	})
 }
 
-func splitMekugiPane(ctx context.Context, workspace, label, neighbor string, agents bool, lifetime *liveDiffPane, command func(string) []string) error {
+// splitLiveRoster places the agents roster under its caller. It observes the
+// agents pane's stream, so it shares that pane's session file.
+func splitLiveRoster(ctx context.Context, workspace string, lifetime *liveDiffPane) error {
+	if lifetime == nil || lifetime.sessionFile == "" {
+		return errors.New("live roster requires a router session")
+	}
+	return splitMekugiPane(ctx, workspace, "Mekugi roster", "", mekugiRosterPane, lifetime, func(executable string) []string {
+		return []string{executable, "live-activity", "--view", "roster", "--session-file", lifetime.sessionFile}
+	})
+}
+
+func splitMekugiPane(ctx context.Context, workspace, label, neighbor string, kind mekugiPaneKind, lifetime *liveDiffPane, command func(string) []string) error {
 	if os.Getenv("HERDR_ENV") != "1" {
 		return errors.New("live diff requires a Herdr-managed pane")
 	}
@@ -143,7 +167,7 @@ func splitMekugiPane(ctx context.Context, workspace, label, neighbor string, age
 			tabWidth = layout.Layout.Area.Width
 		}
 	}
-	placement := placeMekugiPane(current.Pane.PaneID, neighbor, agents, tabWidth)
+	placement := placeMekugiPane(current.Pane.PaneID, neighbor, kind, tabWidth)
 	destination := map[string]any{
 		"type":           "tab",
 		"tab_id":         current.Pane.TabID,

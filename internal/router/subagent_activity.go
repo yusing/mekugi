@@ -28,6 +28,9 @@ type activityThread struct {
 	seen              map[string]struct{}
 	order, responding int
 	final             bool
+	// Provider-reported usage summed over this thread's responses, and the
+	// visible delta bytes streamed since the last report.
+	inputTokens, outputTokens, streamed uint64
 }
 
 type activityEvent struct {

@@ -321,19 +321,22 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 func TestPlaceMekugiPane(t *testing.T) {
 	for _, test := range []struct {
 		neighbor string
-		agents   bool
+		kind     mekugiPaneKind
 		width    int
 		want     mekugiPlacement
 	}{
-		{"", true, 300, mekugiPlacement{target: "caller", split: "right"}},
-		{"diff", true, 0, mekugiPlacement{target: "diff", split: "down", ratio: 0.55}},
-		{"diff", true, mekugiWideTabColumns - 1, mekugiPlacement{target: "diff", split: "down", ratio: 0.55}},
-		{"diff", true, mekugiWideTabColumns, mekugiPlacement{target: "diff", split: "right", ratio: 0.55}},
-		{"agents", false, mekugiWideTabColumns, mekugiPlacement{target: "agents", split: "right", ratio: 0.45}},
-		{"agents", false, 200, mekugiPlacement{target: "agents", split: "down", ratio: 0.45}},
+		{"", mekugiAgentsPane, 300, mekugiPlacement{target: "caller", split: "right"}},
+		{"diff", mekugiAgentsPane, 0, mekugiPlacement{target: "diff", split: "down", ratio: 0.55}},
+		{"diff", mekugiAgentsPane, mekugiWideTabColumns - 1, mekugiPlacement{target: "diff", split: "down", ratio: 0.55}},
+		{"diff", mekugiAgentsPane, mekugiWideTabColumns, mekugiPlacement{target: "diff", split: "right", ratio: 0.55}},
+		{"agents", mekugiDiffPane, mekugiWideTabColumns, mekugiPlacement{target: "agents", split: "right", ratio: 0.45}},
+		{"agents", mekugiDiffPane, 200, mekugiPlacement{target: "agents", split: "down", ratio: 0.45}},
+		// The roster ignores other Mekugi panes and stays under Codex.
+		{"", mekugiRosterPane, 300, mekugiPlacement{target: "caller", split: "down", ratio: 0.8}},
+		{"diff", mekugiRosterPane, 300, mekugiPlacement{target: "caller", split: "down", ratio: 0.8}},
 	} {
-		if got := placeMekugiPane("caller", test.neighbor, test.agents, test.width); got != test.want {
-			t.Errorf("placeMekugiPane(%q, %v, %d) = %+v, want %+v", test.neighbor, test.agents, test.width, got, test.want)
+		if got := placeMekugiPane("caller", test.neighbor, test.kind, test.width); got != test.want {
+			t.Errorf("placeMekugiPane(%q, %v, %d) = %+v, want %+v", test.neighbor, test.kind, test.width, got, test.want)
 		}
 	}
 }

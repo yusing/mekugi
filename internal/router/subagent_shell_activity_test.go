@@ -344,3 +344,22 @@ func TestUnknownSessionPollDoesNotBecomeCellOrigin(t *testing.T) {
 		t.Fatalf("unknown session poll = %q, %v", got, ok)
 	}
 }
+
+func TestActivityStreamsOutputDeltaEstimate(t *testing.T) {
+	activity := newSubagentActivity()
+	activity.observe("root", "", "/root", false)
+	activity.observe("child", "root", "/root/a", true)
+	transform := &mekugiResponseTransform{proxy: &mekugiProxy{activity: activity}, threadID: "child"}
+	for _, event := range []map[string]any{
+		{"type": "response.output_text.delta", "item_id": "m", "delta": "hello world!"},
+		{"type": "response.function_call_arguments.delta", "item_id": "f", "delta": "{}"},
+		{"type": "response.output_text.done", "item_id": "m", "delta": "ignored"},
+	} {
+		if _, err := transform.transformActivitySSE(mustMarshalJSON(event)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := activity.threads["child"].streamed; got != 14 {
+		t.Fatalf("streamed bytes = %d, want 14", got)
+	}
+}

@@ -353,6 +353,9 @@ func (t *mekugiResponseTransform) Close() {
 func (t *mekugiResponseTransform) observeResponseUsage(counts tokenCounts) {
 	t.usageTracker.observe(counts)
 	t.usageObserved = true
+	if t.proxy != nil && t.threadID != "" {
+		t.proxy.activity.addUsage(t.threadID, counts)
+	}
 }
 
 func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata codexTurnMetadata) error {

@@ -57,7 +57,7 @@ func newAutoLiveDiff(ctx context.Context, replay string) (*autoLiveDiff, func())
 
 func (a *autoLiveDiff) run(ctx context.Context, replay string) {
 	var directory string
-	var pane, activity liveDiffPane
+	var pane, activity, roster liveDiffPane
 	diffTried, activityTried := false, false
 	diffOpen, activityOpen := false, false
 	below := func(open bool, lifetime liveDiffPane) string {
@@ -71,7 +71,7 @@ func (a *autoLiveDiff) run(ctx context.Context, replay string) {
 		if directory != "" {
 			_ = os.RemoveAll(directory)
 		}
-		for _, id := range []string{activity.id, pane.id} {
+		for _, id := range []string{roster.id, activity.id, pane.id} {
 			if id == "" {
 				continue
 			}
@@ -103,7 +103,7 @@ func (a *autoLiveDiff) run(ctx context.Context, replay string) {
 		if pinRunningExecutable(executable) != nil {
 			return false
 		}
-		pane.executable, activity.executable = executable, executable
+		pane.executable, activity.executable, roster.executable = executable, executable, executable
 		return true
 	}
 	writeSession := func(name string, connection liveDiffConnection) (string, bool) {
@@ -151,6 +151,13 @@ func (a *autoLiveDiff) run(ctx context.Context, replay string) {
 			if ok {
 				launch, stop := context.WithTimeout(ctx, 5*time.Second)
 				activityOpen = splitLiveActivity(launch, workspace, below(diffOpen, pane), &activity) == nil
+				stop()
+			}
+			// The roster is optional: without it the agents pane keeps its own.
+			if activityOpen {
+				roster.sessionFile = activity.sessionFile
+				launch, stop := context.WithTimeout(ctx, 5*time.Second)
+				_ = splitLiveRoster(launch, workspace, &roster)
 				stop()
 			}
 			if !activityOpen && a.activityFailed != nil {

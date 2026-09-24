@@ -37,6 +37,14 @@ type liveActivityView struct {
 	osc       livediff.OSC
 	runs      map[liveActivityRunKey][]string
 
+	// rosterPane renders only the roster, for the pane under Codex. rosterAway
+	// reports that such a pane is connected, so this feed omits its own roster.
+	rosterPane, rosterAway bool
+	// publish shares a local selection change with the other viewers. Pending
+	// changes are not yet echoed back; an echo must not undo a later change.
+	publish func(activityPaneSelection)
+	pending []activityPaneSelection
+
 	// Geometry of the last frame, used by scrolling keys.
 	feedLines, feedRows int
 	width, height       int
@@ -73,11 +81,28 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 	case "coverage":
 		v.status = "RECONNECTING"
 		return false
+	case "select":
+		selection := activityPaneSelection{Selected: event.Selected, Only: event.Only}
+		if i := slices.Index(v.pending, selection); i >= 0 {
+			v.pending = v.pending[i+1:]
+			return false
+		}
+		v.pending = nil
+		v.share(event.Selected, event.Only)
+		v.keepSelection()
+		return false
 	case "snapshot":
 		v.status = ""
+		// A snapshot taken before a pending change arrived would undo it.
+		if len(v.pending) == 0 {
+			v.share(event.Selected, event.Only)
+		}
 	case "entries", "agents", "heartbeat":
 	default:
 		return false
+	}
+	if event.Kind != "heartbeat" {
+		v.rosterAway = event.Roster
 	}
 	if event.Agents != nil || event.Kind == "snapshot" {
 		if !slices.EqualFunc(v.agents, event.Agents, func(a, b activityPaneAgent) bool { return a.Name == b.Name }) {
@@ -114,12 +139,49 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 		v.entries = slices.Delete(v.entries, 0, extra)
 		v.blocks = slices.Delete(v.blocks, 0, extra)
 	}
+	v.keepSelection()
+	return false
+}
+
+// keepSelection falls back to the first agent when the selection is unknown.
+func (v *liveActivityView) keepSelection() {
 	if v.selected == "" || !slices.ContainsFunc(v.agents, func(a activityPaneAgent) bool { return a.Name == v.selected }) {
 		if rows := v.roster(); len(rows) > 0 {
 			v.selected = rows[0].agent.Name
 		}
 	}
-	return false
+}
+
+// share applies a selection made in another viewer.
+func (v *liveActivityView) share(selected string, only bool) {
+	if selected != "" && selected != v.selected {
+		v.selected, v.hovered = selected, ""
+		if v.only || only {
+			v.follow()
+		}
+	}
+	if only != v.only {
+		v.only = only
+		v.follow()
+	}
+}
+
+func (v *liveActivityView) selection() activityPaneSelection {
+	return activityPaneSelection{Selected: v.selected, Only: v.only}
+}
+
+// publishSelection shares a local change made since before.
+func (v *liveActivityView) publishSelection(before activityPaneSelection) {
+	after := v.selection()
+	if after == before || v.publish == nil {
+		return
+	}
+	// A lost post never echoes; the bound keeps its entry from lingering.
+	v.pending = append(v.pending, after)
+	if len(v.pending) > 16 {
+		v.pending = v.pending[1:]
+	}
+	v.publish(after)
 }
 
 func (v *liveActivityView) visible(entry activityPaneEntry) bool {
@@ -243,6 +305,18 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 	}
 	lines := []string{v.header(rows, text)}
 	switch {
+	case v.rosterPane:
+		// The roster pane under Codex: one row per agent, no feed or footer.
+		if len(rows) > 0 {
+			lines = append(lines, v.renderRoster(rows, text, height-1, now)...)
+		}
+		for len(lines) < height {
+			lines = append(lines, "")
+		}
+		return lines[:height]
+	case v.rosterAway:
+		// A roster pane shows the agents, so the feed takes the whole body.
+		lines = append(lines, v.viewport(v.renderFeed(text, body), body)...)
 	case len(rows) > 0 && text >= liveActivitySideColumns && body >= 6:
 		cardWidth := min(44, max(28, text*3/10))
 		feedWidth := text - cardWidth - 3
@@ -275,7 +349,11 @@ func liveActivityPad(line string, width int) string {
 }
 
 func (v *liveActivityView) header(rows []liveActivityRosterRow, width int) string {
-	left := "\x1b[1m" + v.painter.theme.Accent() + "AGENTS" + liveActivityReset
+	title := "AGENTS"
+	if v.rosterAway && !v.rosterPane {
+		title = "ACTIVITY"
+	}
+	left := "\x1b[1m" + v.painter.theme.Accent() + title + liveActivityReset
 	responding := 0
 	for _, row := range rows {
 		if row.agent.Responding {
@@ -288,14 +366,20 @@ func (v *liveActivityView) header(rows []liveActivityRosterRow, width int) strin
 	case v.only:
 		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
 		left += fmt.Sprintf(" · only %s %s(%d/%d)%s", v.painter.agent(v.selected), liveActivityDim, index+1, len(rows), liveActivityUndim)
+	case title == "ACTIVITY":
+		left += liveActivityDim + " · all agents" + liveActivityUndim
 	default:
 		left += fmt.Sprintf(" · %d · %d responding", len(rows), responding)
 	}
-	right := "FOLLOW"
-	if !v.following {
-		right = liveActivityAmber + "PAUSED" + liveActivityReset
-		if v.unseen > 0 {
-			right += fmt.Sprintf(" · %d new", v.unseen)
+	// Follow state belongs to the feed; the roster pane has none.
+	right := ""
+	if !v.rosterPane {
+		right = "FOLLOW"
+		if !v.following {
+			right = liveActivityAmber + "PAUSED" + liveActivityReset
+			if v.unseen > 0 {
+				right += fmt.Sprintf(" · %d new", v.unseen)
+			}
 		}
 	}
 	if v.status != "" {
@@ -318,13 +402,25 @@ func liveActivityRosterName(row liveActivityRosterRow) string {
 	return name
 }
 
-// current is an agent's latest activity summary and its age.
-func (v *liveActivityView) current(name string, now time.Time) (string, string) {
-	latest := v.latest(name)
-	if latest < 0 {
-		return liveActivityDim + "no activity yet" + liveActivityUndim, ""
+// current is an agent's latest activity summary and its right-aligned status:
+// the activity's age and the agent's token totals.
+func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (string, string) {
+	summary, status := liveActivityDim+"no activity yet"+liveActivityUndim, ""
+	if latest := v.latest(agent.Name); latest >= 0 {
+		summary, status = v.painter.summary(v.blocks[latest]), liveActivityAge(now.Sub(v.entries[latest].Observed))
 	}
-	return v.painter.summary(v.blocks[latest]), liveActivityAge(now.Sub(v.entries[latest].Observed))
+	if tokens := liveActivityTokens(agent); tokens != "" {
+		status = strings.TrimPrefix(status+" · "+tokens, " · ")
+	}
+	return summary, status
+}
+
+// liveActivityTokens shows cumulative input (sent) and output (received) tokens.
+func liveActivityTokens(agent activityPaneAgent) string {
+	if agent.InputTokens == 0 && agent.OutputTokens == 0 {
+		return ""
+	}
+	return "↑ " + formatUsageTokens(agent.InputTokens) + " ↓ " + formatUsageTokens(agent.OutputTokens)
 }
 
 // liveActivityWindow keeps the selected item visible among at most limit items.
@@ -371,7 +467,7 @@ func (v *liveActivityView) renderCards(rows []liveActivityRosterRow, width, heig
 	for i := start; i < end; i++ {
 		row := rows[i]
 		firstRow := len(lines) + 2
-		summary, age := v.current(row.agent.Name, now)
+		summary, age := v.current(row.agent, now)
 		name := ansi.Truncate(liveAgentColor(row.agent.Name)+v.hoverName(liveActivityRosterName(row), row.agent.Name)+liveActivityReset, max(1, width-4-ansi.StringWidth(age)), "…")
 		gap := max(1, width-3-ansi.StringWidth(name)-ansi.StringWidth(age))
 		lines = append(lines, v.marker(i == selected, row.agent.Name == v.hovered)+v.glyph(row.agent)+" "+name+strings.Repeat(" ", gap)+liveActivityDim+age+liveActivityUndim)
@@ -407,7 +503,7 @@ func (v *liveActivityView) renderRoster(rows []liveActivityRosterRow, width, lim
 	for i := start; i < end; i++ {
 		row := rows[i]
 		v.hits = append(v.hits, liveActivityHit{len(lines) + 2, 1, width, row.agent.Name})
-		summary, age := v.current(row.agent.Name, now)
+		summary, age := v.current(row.agent, now)
 		name := liveAgentColor(row.agent.Name) + v.hoverName(liveActivityMiddle(liveActivityRosterName(row), nameWidth), row.agent.Name) + liveActivityReset
 		summaryWidth := max(0, width-3-nameWidth-2-ansi.StringWidth(age)-1)
 		summary = ansi.Truncate(summary, summaryWidth, "…")
@@ -548,6 +644,9 @@ func (v *liveActivityView) footer(width int) string {
 		mode, toggle = "ONLY", "o all"
 	}
 	keys := "click agent · n/p agent · " + toggle + " · j/k scroll · r follow · q quit"
+	if v.rosterAway {
+		keys = strings.TrimPrefix(keys, "click agent · ")
+	}
 	if width < 60 {
 		keys = "n/p · o · j/k · r · q"
 	}

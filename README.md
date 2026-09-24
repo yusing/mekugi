@@ -232,8 +232,8 @@ See [live view details](doc/spec/changes.md#live-terminal-view).
 
 In the same Herdr setup, the first subagent event opens a **Mekugi agents** pane.
 It streams child progress, messages, and replies as they happen, including
-during a native wait, next to a roster of agents. Markers show what was
-observed: `◐` open response, `!` latest error, `✓` final answer sent. Usage
+during a native wait. A roster under Codex lists agents with activity, age, and
+`↑`/`↓` tokens. Markers show what was observed: `◐` open response, `!` latest error, `✓` final answer sent. Usage
 tables and critical notices stay in the main conversation.
 
 If the pane doesn't attach within 15 seconds, or it is closed or disconnected

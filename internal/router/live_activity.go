@@ -2,6 +2,7 @@ package router
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -25,6 +26,7 @@ func RunLiveActivity(ctx context.Context, args []string, stdin, stdout, stderr *
 	flags := flag.NewFlagSet("live-activity", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	sessionFile := flags.String("session-file", "", "private router event connection")
+	viewName := flags.String("view", "", `"roster" shows only the agents roster`)
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -37,6 +39,9 @@ func RunLiveActivity(ctx context.Context, args []string, stdin, stdout, stderr *
 	}
 	if flags.NArg() != 0 {
 		return fail(errors.New("unexpected arguments"))
+	}
+	if *viewName != "" && *viewName != "roster" {
+		return fail(fmt.Errorf("unknown view %q", *viewName))
 	}
 	if *sessionFile == "" {
 		return fail(errors.New("live-activity is a router-owned pane; start an interactive mekugi codex session"))
@@ -54,13 +59,29 @@ func RunLiveActivity(ctx context.Context, args []string, stdin, stdout, stderr *
 	err = withRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006h\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1006l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
 		streamCtx, cancelStream := context.WithCancel(ctx)
 		events := make(chan activityPaneEvent, 32)
-		streamDone := make(chan struct{})
-		go func() { defer close(streamDone); liveActivityStream(streamCtx, connection, events) }()
-		defer func() { cancelStream(); <-streamDone }()
+		selections := make(chan activityPaneSelection, 1)
+		stream := connection
+		if *viewName == "roster" {
+			stream.Endpoint += "?view=roster"
+		}
+		streamDone, publishDone := make(chan struct{}), make(chan struct{})
+		go func() { defer close(streamDone); liveActivityStream(streamCtx, stream, events) }()
+		go func() { defer close(publishDone); liveActivityPublish(streamCtx, connection, selections) }()
+		defer func() { cancelStream(); <-streamDone; <-publishDone }()
 		resizes := make(chan os.Signal, 1)
 		signal.Notify(resizes, syscall.SIGWINCH)
 		defer signal.Stop(resizes)
-		return runLiveActivityTerminal(ctx, stdout, events, keys, resizes)
+		view := newLiveActivityView()
+		view.rosterPane = *viewName == "roster"
+		view.publish = func(selection activityPaneSelection) {
+			// Only the latest selection matters; replace one not yet sent.
+			select {
+			case <-selections:
+			default:
+			}
+			selections <- selection
+		}
+		return runLiveActivityTerminal(ctx, stdout, view, events, keys, resizes)
 	})
 	if err != nil {
 		return fail(err)
@@ -68,8 +89,7 @@ func RunLiveActivity(ctx context.Context, args []string, stdin, stdout, stderr *
 	return 0
 }
 
-func runLiveActivityTerminal(ctx context.Context, stdout *os.File, events <-chan activityPaneEvent, keys <-chan byte, resizes <-chan os.Signal) error {
-	view := newLiveActivityView()
+func runLiveActivityTerminal(ctx context.Context, stdout *os.File, view *liveActivityView, events <-chan activityPaneEvent, keys <-chan byte, resizes <-chan os.Signal) error {
 	ages := time.NewTicker(time.Second)
 	defer ages.Stop()
 	escape := ""
@@ -124,14 +144,16 @@ func runLiveActivityTerminal(ctx context.Context, stdout *os.File, events <-chan
 			if key == 27 {
 				mouse = liveDiffMouse{}
 			}
+			before := view.selection()
 			if mouse.active || escape == "\x1b[" && key == '<' {
 				escape = ""
 				action, row, column := mouse.consume(key)
 				redraw = view.handleMouse(action, row, column)
-				continue
+			} else {
+				escape, quit = view.handleKey(escape, key)
+				redraw = escape == ""
 			}
-			escape, quit = view.handleKey(escape, key)
-			redraw = escape == ""
+			view.publishSelection(before)
 			if quit {
 				return nil
 			}
@@ -292,6 +314,28 @@ func liveActivityStream(ctx context.Context, connection liveDiffConnection, outp
 			timer.Stop()
 			return
 		case <-timer.C:
+		}
+	}
+}
+
+// liveActivityPublish sends local selection changes to the router, which
+// shares them with the other agents viewer. Failures only lose the sync.
+func liveActivityPublish(ctx context.Context, connection liveDiffConnection, selections <-chan activityPaneSelection) {
+	client := &http.Client{Transport: &http.Transport{Proxy: nil}, Timeout: 2 * time.Second}
+	defer client.CloseIdleConnections()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case selection := <-selections:
+			body, _ := json.Marshal(selection)
+			req, err := liveDiffRequest(ctx, connection, http.MethodPost, bytes.NewReader(body))
+			if err != nil {
+				return
+			}
+			if response, err := client.Do(req); err == nil {
+				response.Body.Close()
+			}
 		}
 	}
 }
