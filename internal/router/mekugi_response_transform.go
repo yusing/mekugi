@@ -779,6 +779,7 @@ func (t *mekugiResponseTransform) execCaptureEnvironment(patches []nativePatchOb
 	env := execCaptureEnv{directory: t.directory}
 	if t.proxy != nil && t.proxy.replayStore != nil {
 		env.clock = t.proxy.replayStore.directory
+		env.changes = storeChangeResolver(t.ctx, t.proxy.replayStore)
 	}
 	for _, patch := range patches {
 		for _, file := range patch.Files {

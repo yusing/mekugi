@@ -263,6 +263,8 @@ type execCaptureEnv struct {
 	clock string
 	// excluded paths belong to patch records of the same call.
 	excluded []string
+	// changes scopes mchanges revert and apply by their recorded paths.
+	changes execChangeResolver
 }
 
 // captureExecObservation classifies commands and captures their scope before
@@ -327,7 +329,7 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 	class := execNeutral
 	var scope []execScopeEntry
 	for _, command := range commands {
-		plan := classifyExecShellWithin(command.Command, command.Workdir, command.Shell, started.Add(execProviderBudget), 0)
+		plan := classifyExecShellWithin(command.Command, command.Workdir, command.Shell, started.Add(execProviderBudget), 0, env.changes)
 		if plan.Class > class {
 			class = plan.Class
 		}
@@ -871,7 +873,9 @@ func renderExecReview(beforePath, afterPath string, before, after execFileSnapsh
 		afterSize, afterHash := execSnapshotHash(after)
 		return mekugi.RenderBinaryReviewFile(beforePath, afterPath, beforeSize, afterSize, beforeHash, afterHash)
 	}
-	return mekugi.RenderReviewFile(beforePath, afterPath, execReviewText(before), execReviewText(after))
+	review := mekugi.RenderReviewFile(beforePath, afterPath, execReviewText(before), execReviewText(after))
+	review.Link = before.Kind == execFileSymlink || after.Kind == execFileSymlink
+	return review
 }
 
 // reconcileExecObservation compares the pre-call capture with the files now on

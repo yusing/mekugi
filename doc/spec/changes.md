@@ -158,6 +158,7 @@ IDs or reads selected IDs and ranges:
 ```text
 mchanges --list [--workspace DIR] [--max-tokens N]
 mchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...]
+mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]
 ```
 
 `--list` includes pending and completed IDs owned by the calling thread, but
@@ -185,6 +186,58 @@ observed review files as `mchanges`, including whether a path existed before
 the edit. Each summary carries a bounded copy of the observed hunks. Failed,
 unchanged, and unfinished calls do not publish a summary. These messages are
 user-only presentation, not a tool result or application receipt.
+
+### Revert and apply
+
+`mchanges revert` undoes the selected completed records in the workspace, latest
+capture first; `mchanges apply` replays them in capture order. Paths after `--`
+select files within the records. Records hold only hunk context, not source
+files, so each hunk is located near its recorded position: first exactly, then
+by its leading and trailing context, dropping outer or inner context lines while
+at least one line anchors each side that is not a file boundary. A located
+region that has drifted is merged three ways against the requested side.
+Changes on one side apply cleanly; overlapping or adjacent changes on both sides
+leave git-style `<<<<<<< workspace`, `=======`, and `>>>>>>> mchanges revert ID`
+markers. A hunk whose context cannot be found is printed and left unapplied, not
+guessed. A hunk already in the requested state is counted as already reverted
+or applied. Undoing a creation whose file gained other content keeps the file
+as a conflict, like git's modify/delete. Binary, incomplete, symlink (a link on
+either recorded side), and unreadable entries are skipped with their reason. A file with a conflict takes
+no further hunks from later records in the same command. All merges complete in
+memory before the workspace is written; creations and updates are written
+before removals, and a move's source is removed only after its destination is
+written. A write that replaces a directory, or that needs a file removed where
+its parent directory belongs, waits until the removals are done. A directory is
+replaced only once it is empty, so a file swapped for a directory, or the
+reverse, is restored without deleting unrelated files. Recreated files are written with mode 0644, since records do not hold
+modes.
+
+Each touched file reports its state relative to recorded mchanges history, not
+version control. The file's retained captures, in store-wide capture order, are
+composed with the command's own effect, following moves, deletion, and
+re-creation. `clean` means the composed net change is empty. Otherwise the line
+shows ` M`, ` A`, ` D`, or ` R` and the net `+N -N` rows. `UU` marks conflicts,
+and `??` marks a file whose stat is unknown: its content before the command
+disagrees with the composed history, such as after an unobserved edit; its
+history cannot be read; or its write failed. History loading is limited to
+records connected to the selected paths through moves, and a failure there
+degrades the stat rather than blocking the mutation. The command exits 1 when
+any file conflicts, is skipped, or leaves a hunk unapplied. The summary or undo
+line comes first so that paging cannot hide it. A continuation retains the
+report as plain output and never repeats the mutation; when the report cannot
+be paged or retained, it is printed in full with the reason on stderr.
+
+The router classifies `mchanges revert` and `apply` as declared writers whose
+scope is every path named by the selected records, read from the change index
+before the call is forwarded. The host runs the command once; its observed
+effects become a new change record like any declared command. A revert is
+therefore revertable, and a clean command prints `undo: mchanges apply ID ...`
+or `undo: mchanges revert ID ...`, with the same paths after `--`. When some hunk was already in the requested
+state, skipped, or conflicted, the inverse command is not an exact undo, so the
+report instead points to reverting the command's own change. Without a readable
+change index, or when the subcommand or a mutation operand is dynamic, the
+command is observed with an open scope. A read with dynamic operands stays
+neutral.
 
 ### Live terminal view
 
@@ -262,6 +315,9 @@ Acceptance:
    result and workspace state. Read failures remain visibly incomplete.
 4. `mchanges` lists the caller's IDs and reads completed records by ID, range, path, summary, and history
    through the authenticated frontend, with bounded `mread` continuation.
+   `mchanges revert` and `apply` merge selected records into the workspace, leave
+   markers for conflicts, report each file relative to recorded history, and are
+   themselves recorded as revertable changes.
 5. Child handoff and resume use durable ownership, not a live process; replay
    never executes an edit again.
 6. Live `cat`, file-operation, and interpreter projections are presentation

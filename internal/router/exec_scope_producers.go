@@ -60,7 +60,7 @@ func (w *execShellWalker) producerPipeline(binary *syntax.BinaryCmd) bool {
 		w.opaque("xargs scope is not literal")
 		return true
 	}
-	input := execProviderInput{cwd: w.cwd, deadline: w.deadline, depth: w.depth}
+	input := execProviderInput{cwd: w.cwd, deadline: w.deadline, depth: w.depth, changes: w.changes}
 	var paths []string
 	var err error
 	if producer[0] == "find" {
@@ -169,7 +169,7 @@ func (w *execShellWalker) addProducerWriter(input execProviderInput, writer []st
 		if replacement == "" {
 			words = append(words, shellQuoteArgument(path))
 		}
-		plan := classifyExecShellWithin(strings.Join(words, " "), input.cwd, "bash", input.deadline, input.depth+1)
+		plan := classifyExecShellWithin(strings.Join(words, " "), input.cwd, "bash", input.deadline, input.depth+1, input.changes)
 		w.plan.Scope = append(w.plan.Scope, plan.Scope...)
 		w.plan.Programs = append(w.plan.Programs, plan.Programs...)
 		if plan.Class == execOpaque {
@@ -187,7 +187,7 @@ func (w *execShellWalker) findProvider(args []*syntax.Word) bool {
 	if index < 0 {
 		return false
 	}
-	input := execProviderInput{cwd: w.cwd, deadline: w.deadline, depth: w.depth}
+	input := execProviderInput{cwd: w.cwd, deadline: w.deadline, depth: w.depth, changes: w.changes}
 	paths, _, err := execFindPaths(input, values[:index])
 	if err != nil {
 		w.opaque(err.Error())

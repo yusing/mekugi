@@ -182,8 +182,10 @@ func liveDiffShellPreviewNeutral(stmt *syntax.Stmt) bool {
 	default:
 		return false
 	}
-	for _, argument := range call.Args[1:] {
-		if _, literal := shellCatLiteral(argument); !literal {
+	for index, argument := range call.Args[1:] {
+		value, literal := shellCatLiteral(argument)
+		// mchanges revert and apply rewrite files that later previews read.
+		if !literal || index == 0 && name == "mchanges" && (value == "revert" || value == "apply") {
 			return false
 		}
 	}

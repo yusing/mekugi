@@ -16,7 +16,7 @@ import (
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
-const changesReadUsage = "mchanges --list [--workspace DIR] [--max-tokens N] | mchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...]"
+const changesReadUsage = "mchanges --list [--workspace DIR] [--max-tokens N] | mchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...] | mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]"
 const maxChangeReadBytes = 64 << 20
 
 type changeReadOptions struct {
@@ -31,6 +31,9 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 	options := changeReadOptions{workspace: cwd, maxTokens: 4000}
 	seen := make(map[string]bool)
 	var refs []string
+	if len(arguments) > 0 && (arguments[0] == "revert" || arguments[0] == "apply") {
+		options.view, arguments = arguments[0], arguments[1:]
+	}
 	for len(arguments) > 0 {
 		flag := arguments[0]
 		arguments = arguments[1:]
@@ -51,6 +54,9 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		seen[flag] = true
 		switch flag {
 		case "--list", "--summary", "--history":
+			if options.view == "revert" || options.view == "apply" {
+				return options, fmt.Errorf("%s does not accept %s", options.view, flag)
+			}
 			if options.view != "" {
 				return options, errors.New("choose one of --list, --summary, or --history")
 			}
@@ -392,6 +398,31 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRo
 		return fail(errors.New("change storage is missing or invalid"))
 	}
 	store := &mekugiReplayStore{directory: manifest.ReplayDirectory}
+	if options.view == "revert" || options.view == "apply" {
+		text, status, err := store.mutateChanges(ctx, options)
+		if err != nil {
+			return fail(err)
+		}
+		// A continuation must not repeat the mutation, so the remainder is
+		// retained as plain output instead of a re-rendered change read. The
+		// workspace has already changed; any paging failure keeps the full report.
+		whole := func(err error) toolplugin.ExecutionOutput {
+			return toolplugin.ExecutionOutput{Stdout: text, Stderr: "mchanges: report not paged: " + err.Error() + "\n", ExitCode: status}
+		}
+		selected, err := selectReadPage(ctx, manifest, runtimeRoot, text, options.maxTokens)
+		if err != nil {
+			return whole(err)
+		}
+		execution := toolplugin.ExecutionOutput{Stdout: selected, ExitCode: status}
+		if len(selected) < len(text) {
+			execution.OmittedOutput = &toolplugin.OmittedOutput{Stdout: text[len(selected):]}
+			execution.ExitCode = 1
+			if execution, err = retainExecutionOutput(ctx, manifest, execution); err != nil {
+				return whole(err)
+			}
+		}
+		return execution
+	}
 	text, err := store.readChanges(ctx, options)
 	if err != nil {
 		return fail(err)

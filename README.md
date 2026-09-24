@@ -269,7 +269,7 @@ snapshot-owned descriptions to the agent in the execution tool guidance.
 | --- | --- | --- |
 | `mread` | Continue bounded retained output by reference | Access to the router's replay directory |
 | `mrun` | Bound a foreground command's output and optionally keep its ending | The wrapped command |
-| `mchanges` | List the current agent thread's change IDs or read observed patches and command effects by ID or range | Access to the router's replay directory |
+| `mchanges` | List the current agent thread's change IDs, read observed patches and command effects by ID or range, or revert and reapply them | Access to the router's replay directory |
 | `mcat` | Read raw UTF-8 rows, with multi-file batching, ranges, and tail selection | None |
 | `msymbol` | Look up definitions and references as `"PATH":LINE TEXT` rows | `gopls` for Go; TypeScript 7 as `tsc` for JS, TS, and JSON; `pyright-langserver` for Python |
 | `inspect_file` | Inspect a structural outline | None |
@@ -282,6 +282,8 @@ then allocate independently. Resuming keeps retained references. For example:
 mchanges --list
 mchanges amber1..amber3 --summary
 mchanges amber2 --history
+mchanges revert amber2
+mchanges apply amber2
 mread REF
 mcat --tail -n 20 source.ts
 mrun --tail -n 20 -- go test ./internal/router
@@ -297,6 +299,12 @@ Code Mode patch may show observed file changes as application unconfirmed:
 completion of the outer JavaScript cell is not proof that its nested patch
 succeeded. From a subdirectory, `--workspace ..` selects the parent workspace's
 change index; paths after `--` only filter files within a selected change.
+`mchanges revert` undoes selected changes in the workspace and `mchanges apply`
+replays them. As with `git revert`, edits made since then are merged, and
+overlapping ones leave conflict markers. Each touched file is reported relative
+to the recorded change history rather than Git: `clean` when every recorded
+change to it is undone, or its net `+N -N` rows. A revert is recorded as a new
+change, so it can be undone too.
 See the [change record](doc/spec/changes.md), [reader](doc/spec/read.md), and
 [execution contract](doc/spec/execution.md).
 

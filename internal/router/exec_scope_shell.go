@@ -121,7 +121,7 @@ func (p *execPlan) add(entry execScopeEntry) {
 	p.Scope = append(p.Scope, entry)
 }
 
-func classifyExecShellWithin(command, workdir, shell string, deadline time.Time, depth int) execPlan {
+func classifyExecShellWithin(command, workdir, shell string, deadline time.Time, depth int, changes execChangeResolver) execPlan {
 	plan := execPlan{}
 	switch shellsyntax.InterpreterIdentity(shell) {
 	case "bash", "sh":
@@ -155,7 +155,7 @@ func classifyExecShellWithin(command, workdir, shell string, deadline time.Time,
 		plan.raise(execOpaque, "command substitution")
 		return plan
 	}
-	walker := execShellWalker{cwd: filepath.Clean(workdir), plan: &plan, deadline: deadline, depth: depth}
+	walker := execShellWalker{cwd: filepath.Clean(workdir), plan: &plan, deadline: deadline, depth: depth, changes: changes}
 	walker.stmts(program.Stmts)
 	return plan
 }
@@ -176,6 +176,8 @@ type execShellWalker struct {
 	program execProgram
 	// functions are shell functions defined earlier in the command.
 	functions []string
+	// changes resolves the paths mchanges revert and apply may write.
+	changes execChangeResolver
 }
 
 // opaque marks the current statement as undeclared. Walking continues, so
@@ -394,7 +396,7 @@ func execResolutionVariable(assign *syntax.Assign) bool {
 }
 
 func (w *execShellWalker) subshell(walk func(*execShellWalker)) {
-	inner := execShellWalker{cwd: w.cwd, plan: w.plan, functions: w.functions, deadline: w.deadline, depth: w.depth}
+	inner := execShellWalker{cwd: w.cwd, plan: w.plan, functions: w.functions, deadline: w.deadline, depth: w.depth, changes: w.changes}
 	walk(&inner)
 }
 
@@ -780,6 +782,8 @@ func (w *execShellWalker) command(identity, name string, args []*syntax.Word) {
 		w.sort(args)
 	case "git":
 		w.git(args)
+	case "mchanges":
+		w.mchanges(args)
 	case "svn":
 		w.svn(args)
 	case "awk", "gawk", "mawk":

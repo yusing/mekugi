@@ -8,7 +8,7 @@ import (
 )
 
 func classifyExecShell(command, workdir, shell string) execPlan {
-	return classifyExecShellWithin(command, workdir, shell, time.Now().Add(execProviderBudget), 0)
+	return classifyExecShellWithin(command, workdir, shell, time.Now().Add(execProviderBudget), 0, nil)
 }
 
 func execPlanScope(plan execPlan, workdir string) []string {

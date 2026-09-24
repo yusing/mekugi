@@ -21,6 +21,9 @@ type ReviewFile struct {
 	Incomplete string `json:",omitzero"`
 	// Binary marks intact non-text content, reviewed by size and hash only.
 	Binary bool `json:",omitzero"`
+	// Link marks a symbolic link on either side; its rows are link targets,
+	// not file content.
+	Link bool `json:",omitzero"`
 	// CopyFrom names an unchanged source whose content an added file copies.
 	CopyFrom string `json:",omitzero"`
 	// Origin labels the tool that chose this file or its content. Empty means

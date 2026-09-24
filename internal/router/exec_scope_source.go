@@ -469,7 +469,7 @@ func (s *execSourceScope) subprocess(args []*sitter.Node) {
 		s.result.open = true
 		return
 	}
-	plan := classifyExecShellWithin(command, s.input.cwd, "bash", s.input.deadline, s.input.depth+1)
+	plan := classifyExecShellWithin(command, s.input.cwd, "bash", s.input.deadline, s.input.depth+1, s.input.changes)
 	s.result.scope = append(s.result.scope, plan.Scope...)
 	s.result.programs = append(s.result.programs, plan.Programs...)
 	s.result.open = s.result.open || plan.Class == execOpaque || plan.Reason != ""
