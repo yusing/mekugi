@@ -4,7 +4,7 @@ A mekugi is the small peg that pins a Japanese sword's handle to the blade.
 Take it out and the handle comes off. Leave it in and the blade is still the
 blade.
 
-Mekugi adds compact, recoverable tools and inline subagent activity to stock
+Mekugi adds compact, recoverable tools and live subagent activity to stock
 Codex. Codex keeps editing, execution, the sandbox, permissions, command
 sessions, and patch review. No fork, no config edits, no daemon.
 
@@ -17,9 +17,11 @@ sessions, and patch review. No fork, no config edits, no daemon.
 
 - **Keep the familiar Codex workflow.** No persistent service or configuration
   edits. Codex keeps control of permissions, execution, and patch review.
-- **See subagent activity inline.** Start notices include the spawn prompt. Progress,
-  messages, and replies appear in the main conversation, with each agent identified. Some updates wait
-  for the next main-agent response; encrypted messages stay private.
+- **See subagent activity as it happens.** Start notices include the spawn prompt.
+  Progress, messages, and replies appear in the main conversation, with each agent
+  identified. Some updates wait for the next main-agent response; encrypted messages
+  stay private. In Herdr, the [agents pane](#agents-pane) takes over this activity
+  and shows it live, beside a roster of every agent.
 - **Follow milestones, not another task list.** Agents keep a revisable journal
   that shows live updates and groups answers at completion.
 - **Watch commands and file changes live.** Herdr's [live diff pane](#live-diff-pane)
@@ -30,7 +32,7 @@ sessions, and patch review. No fork, no config edits, no daemon.
   does not repeat the table. Costs are API estimates, not subscription charges;
   missing evidence is not presented as a complete total.
 - **Inspect sessions in your browser.** A per-launch dashboard shows request
-  metrics, token usage, compression, and cache diagnostics.
+  metrics, token usage, and cache diagnostics.
 - **Use other providers alongside OpenAI models.** Enable [Grok](#grok-models)
   with `--grok`, or configure [OpenCode Go or Zen](#opencode-go-and-zen) with an
   API key.
@@ -40,6 +42,9 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Use familiar stock tools.** Code Mode JavaScript, `tools.exec_command`, and
   `tools.apply_patch` keep their ordinary Codex behavior. Mekugi does not run an
   edit a second time.
+- **Keep context after compaction.** A trusted Codex hook restores a bounded
+  snapshot of the main thread's journal and recorded changes after compaction,
+  without another model request. See [setup](#configuration-and-troubleshooting).
 - **Resume running work.** Continue yielded processes through Codex's
   `write_stdin` handles instead of restarting them.
 - **Recover omitted output.** Read captured overflow with `mread` without
@@ -203,11 +208,8 @@ or `grok:grok-4.7-build-fast` in fresh context (`fork_turns="none"`). The Fast
 variant requires Grok OAuth; it is unavailable with `XAI_API_KEY`.
 Codex still manages the child, tools, permissions, and follow-ups. Switching an
 existing OpenAI conversation still requires history that Grok can read; encrypted
-OpenAI history remains unsupported.
-
-`--grok` cannot be combined with Codex's named `--profile` option or
-`exec --ignore-user-config`. Use the default configuration or an explicit
-`-c model_catalog_json=...` instead. See the
+OpenAI history remains unsupported. Grok sessions also have
+[catalog restrictions](#third-party-model-catalogs). See the
 [Grok model requirements](doc/spec/grok.md) for catalog, search, and
 token-limit behavior.
 
@@ -224,6 +226,13 @@ mekugi codex -m opencode-go:glm-5.3
 export OPENCODE_ZEN_API_KEY='your-key'
 mekugi codex -m opencode-zen:kimi-k3
 ```
+
+### Third-party model catalogs
+
+When Grok or an OpenCode service is enabled, Mekugi adds its models to Codex's
+model catalog for that invocation. This cannot be combined with Codex's named
+`--profile` option or `exec --ignore-user-config`. Use the default configuration
+or an explicit `-c model_catalog_json=...` instead.
 
 ## Editing and execution
 
@@ -312,22 +321,41 @@ The viewer switches to the saved diff when a root turn's token metrics and
 journal flush arrive, then back to stream for the next prompt. Press `v` to
 switch manually. Previews remain provisional until application is confirmed.
 
-To try the UI without Codex or Herdr:
-
-```sh
-mekugi live-diff --simulate
-mekugi live-diff --simulate --speed 2 --repeat
-```
-
-The simulation uses disposable temporary files and removes them on exit.
-
 - `v` switches between stream (the default) and diff views.
-- In diff view, `j`/`k` scroll and `n`/`p` switch files, pausing automatic following.
+- In diff view, `j`/`k` scroll, `Space`/`b` page, `g`/`G` jump to the top or
+  bottom, and `n`/`p` switch files. Each pauses automatic following.
 - In diff view, `r` resumes following new changes.
 - In diff view, `f` flushes the current file; `F` flushes all files.
 - `q` quits the viewer without ending Codex.
 
 Use `mchanges` for saved capture history. See [live view details](doc/spec/changes.md#live-terminal-view).
+
+### Agents pane
+
+In the same Herdr setup, the first subagent event opens a **Mekugi agents** pane.
+Child progress, messages, and replies stream there as they are observed, including
+during a native wait, instead of waiting for the next main-agent response. The main
+conversation gets one notice when activity moves to the pane and another if it
+returns inline. Usage tables and critical session notices stay in the main
+conversation. Only the first root conversation with subagents uses the pane.
+
+The pane shows a tree of agents with each one's current activity and age, beside
+or above a feed grouped by agent. Roster markers are observed facts, not
+completion claims: `◐` an open provider response, `!` a latest error, `✓` a
+final answer sent, and `·` otherwise. Journal results appear as questions and
+answers with each agent's recorded change totals. An agent keeps the same color
+in both panes.
+
+If the pane does not attach within 15 seconds, is closed, or stays disconnected
+for more than 5 seconds, activity returns to the main conversation for the rest of
+that session. Without Herdr, delivery stays inline.
+
+- `n`/`Tab` and `p` select the next or previous agent; `o` shows only that agent.
+- `j`/`k` scroll, `Space`/`b` page, and `g` jumps to the top.
+- `r` or `G` resumes following new activity.
+- `q` closes the pane without ending Codex.
+
+See the [agents pane contract](doc/spec/commentary.md).
 
 ## Metrics
 
