@@ -245,7 +245,7 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	cmd.Env = append(os.Environ(),
 		"MEKUGI_LIVE_DIFF_TEST_CHILD=1", "MEKUGI_LIVE_DIFF_WORKSPACE="+workspace,
 		"MEKUGI_LIVE_DIFF_REPLAY="+store.directory, "MEKUGI_LIVE_DIFF_SESSION="+liveDiffTestSession(t, store, workspace), "GIT_PAGER=cat")
-	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 20, Cols: 90})
+	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 20, Cols: 120})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,10 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 			select {
 			case text, open := <-chunks:
 				output.WriteString(text)
-				if !slices.ContainsFunc(want, func(part string) bool { return !strings.Contains(output.String(), part) }) {
+				plain := ansi.Strip(output.String())
+				if !slices.ContainsFunc(want, func(part string) bool {
+					return !strings.Contains(output.String(), part) && !strings.Contains(plain, part)
+				}) {
 					return output.String()
 				}
 				if !open {
@@ -315,23 +318,45 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 		"\x1b]0;" + strings.Repeat("F", 1024) + "\x1b\\")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := terminal.Write([]byte("gnkjjj")); err != nil {
+	if _, err := terminal.Write([]byte("gnkjjj?")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor("Diff navigation") // Barrier: all navigation keys have been handled.
+	if _, err := terminal.Write([]byte("?")); err != nil {
 		t.Fatal(err)
 	}
 	// Following fills the viewport through the final row of this replacement.
-	// File navigation restores that offset rather than resetting to its heading.
-	waitFor("second.go  | row 146/")
+	// New files must not move the paused selection or its visible source row.
+	before := waitFor("▎ M  second.go", "PAUSED")
+	if !strings.Contains(ansi.Strip(before), "▎ M  second.go") {
+		t.Fatalf("navigation did not select second.go: %q", liveDiffFrameRow(before, 5))
+	}
+	lastRow := func(output string, row int) string {
+		start := strings.LastIndex(output, "\x1b["+strconv.Itoa(row)+";1H\x1b[0m\x1b[2K")
+		if start < 0 {
+			return ""
+		}
+		return liveDiffFrameRow(output[start:], row)
+	}
+	_, beforeSource, _ := strings.Cut(lastRow(before, 2), "│")
 	liveDiffTestChange(t, store, workspace, "three", "first.go", true)
 	liveDiffTestChange(t, store, workspace, "four", "third.go", true)
-	waitFor("2/3  second.go  | row 146/")
+	after := waitFor("▎ M  second.go", "3/3 · tree", "PAUSED")
+	if !strings.Contains(ansi.Strip(after), "▎ M  second.go") {
+		t.Fatalf("new files moved paused selection: %q", liveDiffFrameRow(after, 5))
+	}
+	_, source, _ := strings.Cut(lastRow(after, 2), "│")
+	if source != beforeSource {
+		t.Fatalf("new files moved paused source row: before %q, after %q", beforeSource, source)
+	}
 	if err := pty.Setsize(terminal, &pty.Winsize{Rows: 25, Cols: 100}); err != nil {
 		t.Fatal(err)
 	}
-	waitFor("second.go  | row 146/")
+	waitFor("▎ M  second.go")
 	if _, err := terminal.Write([]byte("r")); err != nil {
 		t.Fatal(err)
 	}
-	if output := waitFor("FOLLOW"); !strings.Contains(output, "third.go  | row ") {
+	if output := waitFor("FOLLOW", "▎ M  third.go"); !strings.Contains(ansi.Strip(output), "▎ M  third.go") {
 		t.Fatalf("resume did not select latest edit: %s", output)
 	}
 	if _, err := terminal.Write([]byte("q")); err != nil {

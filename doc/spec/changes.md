@@ -353,6 +353,28 @@ footer reports what the other holds: live calls from the diff view, and
 unreviewed files from the stream view. A child caller's card label uses the
 same color as that agent in the agents pane.
 
+The saved diff navigator is a presentation index over unreviewed files, not a
+reordering of capture history. Wide panes show a persistent, collapsible left
+dock with colored status and inline added/removed counts; `s` hides it. Narrow
+panes use `s` to toggle a full-width picker so code retains its reading width.
+The diff pane header omits the redundant file/path/row count; section headings
+within the diff still identify each file.
+Tree and flat choices remain stable for the viewer lifetime. Filtering shows
+matching relative paths, including descendants of collapsed folders; clearing
+it restores the tree's expansion and navigation position. Files use stable
+path ordering, with folders first in tree mode. Next/previous file navigation
+uses the matching set, revealing destinations inside collapsed folders.
+
+The navigator and diff have independent viewports. Keyboard focus is visible;
+mouse scrolling targets the region under the pointer. File selection restores
+its saved diff position, and hunk navigation uses rendered hunk boundaries.
+Incoming updates retain the paused file, navigator cursor, and top-row identity
+where those entries still exist. Resize keeps the logical diff anchor and the
+focused navigator entry visible. File status, known line counts, folder file
+counts, and recent-update marks remain distinct from capture confirmation;
+unknown counts are not presented as zero. Help is available without permanently
+occupying code rows. These controls change no execution or durable evidence.
+
 Subagent activity uses a separate Mekugi agents pane, specified in
 [REQ-COMMENTARY-001](commentary.md). Whichever pane opens first goes beside the
 caller. The second joins it: in a tab at least 240 columns wide it gets its own

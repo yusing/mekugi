@@ -355,6 +355,7 @@ type Counts struct {
 type Render struct {
 	Lines       []string
 	Starts      []int
+	Hunks       []int // Display offsets for hunk navigation.
 	RowStarts   []int // First display row of each logical row, including chrome.
 	Counts      []Counts
 	FocusOffset int // Hunk/context anchor retained while locating the target.

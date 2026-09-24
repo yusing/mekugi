@@ -12,10 +12,10 @@ type liveDiffMouse struct {
 	payload         string
 }
 
-func (m *liveDiffMouse) consume(key byte) (action byte, row int) {
+func (m *liveDiffMouse) consume(key byte) (action byte, row, column int) {
 	if !m.active {
 		m.active = true // The caller consumed CSI and passed its '<' introducer.
-		return 0, 0
+		return 0, 0, 0
 	}
 	if key != 'M' && key != 'm' {
 		if len(m.payload) >= 48 || key != ';' && (key < '0' || key > '9') {
@@ -24,31 +24,33 @@ func (m *liveDiffMouse) consume(key byte) (action byte, row int) {
 		if !m.discard {
 			m.payload += string(key)
 		}
-		return 0, 0
+		return 0, 0, 0
 	}
 	payload, discard := m.payload, m.discard
 	*m = liveDiffMouse{}
 	if discard || key == 'm' { // Button releases do not scroll.
-		return 0, 0
+		return 0, 0, 0
 	}
 	fields := strings.Split(payload, ";")
 	if len(fields) != 3 {
-		return 0, 0
+		return 0, 0, 0
 	}
 	var values [3]int
 	for i, field := range fields {
 		value, err := strconv.Atoi(field)
 		if err != nil || value < 0 || i > 0 && value == 0 {
-			return 0, 0
+			return 0, 0, 0
 		}
 		values[i] = value
 	}
 	// Ignore Shift/Alt/Ctrl modifiers, but not motion or unknown button bits.
 	switch values[0] &^ 28 {
+	case 0:
+		return '\r', values[2], values[1]
 	case 64:
-		return 'k', values[2]
+		return 'k', values[2], values[1]
 	case 65:
-		return 'j', values[2]
+		return 'j', values[2], values[1]
 	}
-	return 0, 0
+	return 0, 0, 0
 }

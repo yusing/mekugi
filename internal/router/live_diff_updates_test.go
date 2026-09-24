@@ -136,8 +136,8 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 			fmt.Sprintf("@@ -%d +%d @@\n-original\n+%s\n", edit.line, edit.line, marker), true)
 		publish(fmt.Sprintf("update%d", i), []mekugi.ReviewFile{chunk.Review}, true)
 		frame := waitFrame("+" + marker)
-		if got := rowText(frame, 5); !strings.Contains(got, "+"+marker) {
-			t.Fatalf("latest change is not centered: %q", got)
+		if middle := rowText(frame, 4) + rowText(frame, 5); !strings.Contains(middle, "+"+marker) {
+			t.Fatalf("latest change is not centered: rows 4-5: %q", middle)
 		}
 		if !strings.Contains(frame, "FOLLOW") || strings.Contains(frame, "Unable to combine") {
 			t.Fatalf("update %d lost follow or composition: %q", i, frame)
@@ -167,8 +167,9 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 	frame := waitFrame("PAUSED")
-	if header, heading := rowText(frame, 1), rowText(frame, 2); !strings.HasPrefix(header, "▎ 1/5") || !strings.HasPrefix(heading, "▎ 1/5") {
-		t.Fatalf("sticky and in-view headings are shifted: header=%q heading=%q", header, heading)
+	if heading := rowText(frame, 1); !strings.Contains(heading, "Files  5/5 · tree") || strings.Contains(heading, "Changes") ||
+		strings.Contains(heading, "| row") || !strings.Contains(heading, "▎ 1/5  file1.tmp") {
+		t.Fatalf("navigator and first diff heading are shifted: heading=%q", heading)
 	}
 	chunk := liveDiffHighlightChunk("", paths[4], "@@ -19 +19 @@\n-original\n+PREPARED19\n", false)
 	history := publish("pending", []mekugi.ReviewFile{chunk.Review}, false)

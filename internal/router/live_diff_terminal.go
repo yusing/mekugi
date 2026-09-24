@@ -13,7 +13,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/pathdisplay"
 	"golang.org/x/term"
 )
 
@@ -41,6 +40,12 @@ type liveDiffTerminalController struct {
 	renderedTheme     liveDiffTheme
 	lastWidth         int
 	lastHeight        int
+	diffWidth         int
+	navigation        liveDiffNavigation
+	navigationFile    string
+	help              bool
+	escapeTimer       *time.Timer
+	escapeC           <-chan time.Time
 	dirty             bool
 	followDirty       bool
 
@@ -73,6 +78,9 @@ func newLiveDiffTerminalController(store *mekugiReplayStore, workspace string, s
 
 func (c *liveDiffTerminalController) close() {
 	c.previewFrame.Stop()
+	if c.escapeTimer != nil {
+		c.escapeTimer.Stop()
+	}
 }
 
 func (c *liveDiffTerminalController) run(
@@ -116,6 +124,13 @@ func (c *liveDiffTerminalController) run(
 					break drainEvents
 				}
 			}
+		case <-c.escapeC:
+			c.escapeC = nil
+			if c.escape == "\x1b" {
+				c.escape = ""
+				c.navigation.filtering, c.navigation.focused, c.help = false, false, false
+				c.dirty = true
+			}
 		case <-resizes:
 			c.dirty = true
 		case key, open := <-keys:
@@ -142,26 +157,36 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	}
 	focus := c.view.LatestChunk()
 	focus.SnapshotOrder = 0 // Snapshot numbering does not change a capture's geometry.
+	navWidth := c.navigation.width(width)
+	navigatorVisible := c.diffMode && (navWidth > 0 || c.navigation.focused && !c.navigation.hidden)
+	diffWidth := width
+	if navWidth > 0 {
+		diffWidth -= navWidth + 1
+	}
 	sameFiles := reflect.DeepEqual(c.rendered, files)
-	if !sameFiles || c.renderedFocus != focus || c.renderedFocusFile != focusFile || width != c.lastWidth || c.theme != c.renderedTheme {
+	if !sameFiles || c.renderedFocus != focus || c.renderedFocusFile != focusFile || diffWidth != c.diffWidth || c.theme != c.renderedTheme {
 		previous := c.rendering
-		c.rendering, err = c.renderer.Render(ctx, c.theme, files, c.workspace, width, focusFile, focus)
+		c.rendering, err = c.renderer.Render(ctx, c.theme, files, c.workspace, diffWidth, focusFile, focus)
 		if err != nil {
 			return err
 		}
-		if width != c.lastWidth && sameFiles {
+		if diffWidth != c.diffWidth && sameFiles {
 			c.view.Reflow(previous, c.rendering)
 		}
 		c.renderedTheme = c.theme
 		c.rendered, c.renderedFocus, c.renderedFocusFile = files, focus, focusFile
 		c.dirty, c.followDirty = true, true
 	}
-	if height != c.lastHeight {
+	resized := height != c.lastHeight || width != c.lastWidth
+	if resized {
 		c.dirty, c.followDirty = true, true
 	}
-	c.lastWidth, c.lastHeight = width, height
+	c.lastWidth, c.lastHeight, c.diffWidth = width, height, diffWidth
 	lines := c.rendering.Lines
 	rows := height - 2
+	if navigatorVisible {
+		rows++ // The file navigator owns the first row; no separate title row.
+	}
 	offset := 0
 	if len(c.view.Files) > 0 {
 		start := c.rendering.Starts[c.view.Selected]
@@ -179,7 +204,22 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	// actual viewport offset too, not only scrollTo's selection argument.
 	offset = max(0, min(offset, len(lines)-1))
 	c.view.ScrollTo(c.rendering, offset)
+	activeKey := ""
+	if len(files) > 0 {
+		activeKey = files[c.view.Selected].Key()
+	}
+	selectionChanged := c.navigationFile != activeKey
+	c.navigationFile = activeKey
 	c.files, c.lines, c.offset, c.rows = files, lines, offset, rows
+	if !sameFiles {
+		c.navigation.rebuild(files, c.workspace)
+	}
+	if resized && c.navigation.focused {
+		c.navigation.ensureVisible(rows)
+	}
+	if selectionChanged && !c.navigation.focused {
+		c.revealFile()
+	}
 	if !c.dirty {
 		return nil
 	}
@@ -193,22 +233,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		header = "No unreviewed changes"
 	}
 	if len(lines) > 0 {
-		label := pathdisplay.ForWorkspace(c.workspace, active.Path)
-		end := len(lines)
-		if c.view.Selected+1 < len(files) {
-			end = c.rendering.Starts[c.view.Selected+1]
-		}
-		start := c.rendering.Starts[c.view.Selected]
-		number, total := 0, 0
-		for i, file := range files {
-			if len(file.Chunks) > 0 {
-				total++
-				if i <= c.view.Selected {
-					number++
-				}
-			}
-		}
-		header = fmt.Sprintf("%d/%d  %s  | row %d/%d", number, total, label, offset-start+1, end-start)
+		header = "Changes"
 	}
 	if !c.diffMode {
 		header = "Waiting for live input..."
@@ -226,19 +251,48 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	writeRow := func(row int, text string) {
 		fmt.Fprintf(&screen, "\x1b[%d;1H\x1b[0m\x1b[2K%s\x1b[0m", row, ansi.Truncate(text, max(0, width-1), ""))
 	}
-	if c.diffMode && len(lines) > 0 {
-		header = livediff.Gutter(active.Highlighted, c.theme) + livediff.Header(header, width-3, c.rendering.Counts[c.view.Selected], c.theme)
+	if c.diffMode && len(lines) > 0 && !navigatorVisible {
+		header = livediff.Gutter(active.Highlighted, c.theme) + livediff.Header(header, diffWidth-3, c.rendering.Counts[c.view.Selected], c.theme)
 	} else {
 		header = livediff.Gutter(false, c.theme) + livediff.Safe(header, false)
 	}
-	writeRow(1, header)
+	if !navigatorVisible {
+		writeRow(1, header)
+	}
 	if c.diffMode {
+		var nav []string
+		if navWidth > 0 {
+			nav = c.navigation.render(files, c.rendering.Counts, c.view.Selected, navWidth, rows, c.theme)
+		}
+		overlay := c.navigation.focused && navWidth == 0
+		if overlay {
+			nav = c.navigation.render(files, c.rendering.Counts, c.view.Selected, width-1, rows, c.theme)
+		}
 		for row := range rows {
 			text := ""
 			if index := offset + row; index < len(lines) {
 				text = lines[index]
+			} else if row == 0 && len(lines) == 0 && navWidth > 0 {
+				text = header
 			}
-			writeRow(row+2, text)
+			if overlay {
+				text = nav[row]
+			} else if navWidth > 0 {
+				left := nav[row]
+				text = left + strings.Repeat(" ", max(0, navWidth-ansi.StringWidth(left))) + "\x1b[2m│\x1b[0m" + text
+			}
+			if c.help {
+				help := []string{"", "  Diff navigation", "", "  s       show / hide files", "  /       search and filter paths · Ctrl-U clear", "  t       tree / flat list", "  ↑↓ j/k  move or scroll", "  ←→ h/l  collapse / expand folder", "  Enter   open file or toggle folder", "  n/p     next / previous matching file", "  [ / ]   previous / next hunk", "  PgUp/Dn page · Home/End first / last", "  r       resume following changes", "  f / F   flush current / all files", "  v       stream / diff", "  Esc     close picker or help", "  ?       close help · q quit"}
+				text = ""
+				if row < len(help) {
+					text = livediff.Safe(help[row], false)
+				}
+			}
+			if navigatorVisible {
+				writeRow(row+1, text)
+			} else {
+				writeRow(row+2, text)
+			}
 		}
 	}
 	if !c.diffMode {
@@ -287,7 +341,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		if live := c.previewPane.live(); live > 0 {
 			stream += fmt.Sprintf(" (%d live)", live)
 		}
-		writeRow(height, "DIFF · "+stream+" · "+mode+" · r follow · j/k · n/p · f/F · q quit")
+		writeRow(height, "DIFF · "+stream+" · "+mode+" · s files · ? help · q quit")
 	} else {
 		diff := "v diff"
 		if pending := c.unreviewedFiles(); pending > 0 {
@@ -407,42 +461,113 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 		return false
 	}
 	// Decode common terminal keys incrementally, including fragmented reads.
+	if c.escapeTimer != nil {
+		c.escapeTimer.Stop()
+		c.escapeC = nil
+	}
 	if key == 27 {
+		if c.escapeTimer == nil {
+			c.escapeTimer = time.NewTimer(40 * time.Millisecond)
+		} else {
+			c.escapeTimer.Reset(40 * time.Millisecond)
+		}
+		c.escapeC = c.escapeTimer.C
 		c.mouse = liveDiffMouse{}
 		c.escape = "\x1b"
 		return false
 	}
 	if c.mouse.active || c.escape == "\x1b[" && key == '<' {
 		c.escape = ""
-		key, _ = c.mouse.consume(key)
-		if key == 0 || !c.diffMode {
+		action, row, column := c.mouse.consume(key)
+		if action == 0 || !c.diffMode || c.help {
 			return false
 		}
+		navWidth := c.navigation.width(c.lastWidth)
+		inNav := navWidth > 0 && column <= navWidth || navWidth == 0 && c.navigation.focused
+		navigatorVisible := navWidth > 0 || c.navigation.focused && !c.navigation.hidden
+		firstRow := 2
+		if navigatorVisible {
+			firstRow = 1
+		}
+		if row < firstRow || row >= c.lastHeight {
+			return false
+		}
+		c.dirty = true
+		if inNav {
+			n := &c.navigation
+			if action == '\r' {
+				if row == firstRow+1 {
+					c.navigationKey('/')
+					return false
+				}
+				index := n.top + row - firstRow - 2
+				if row >= firstRow+2 && index < len(n.entries) {
+					n.cursor, n.focused, c.view.Following = index, true, false
+					c.openNavEntry()
+				}
+			} else {
+				c.view.Following = false
+				delta := 1
+				if action == 'k' {
+					delta = -1
+				}
+				n.top = max(0, min(n.top+delta, max(0, len(n.entries)-max(1, c.rows-2))))
+			}
+			return false
+		}
+		if action != '\r' {
+			delta := 1
+			if action == 'k' {
+				delta = -1
+			}
+			c.view.Following = false
+			c.view.ScrollTo(c.rendering, c.offset+delta)
+		}
+		return false
 	}
 	if c.escape != "" {
 		c.escape += string(key)
 		switch c.escape {
-		case "\x1b[", "\x1b[5", "\x1b[6", "\x1bO":
+		case "\x1b[", "\x1b[1", "\x1b[4", "\x1b[5", "\x1b[6", "\x1bO":
 			return false
 		case "\x1b[A", "\x1bOA":
 			key = 'k'
 		case "\x1b[B", "\x1bOB":
 			key = 'j'
-		case "\x1b[C", "\x1bOC", "\x1b[D", "\x1bOD":
-			c.escape = ""
-			return false
+		case "\x1b[C", "\x1bOC":
+			key = 'l'
+		case "\x1b[D", "\x1bOD":
+			key = 'h'
+		case "\x1b[H", "\x1bOH", "\x1b[1~":
+			key = 'g'
+		case "\x1b[F", "\x1bOF", "\x1b[4~":
+			key = 'G'
 		case "\x1b[5~":
 			key = 'b'
 		case "\x1b[6~":
 			key = ' '
 		}
 		c.escape = ""
+		c.navigation.filtering = false
 	}
 	if key != 'q' && key != 'v' && !c.diffMode {
 		c.dirty = true
 		return false
 	}
-	if strings.ContainsRune("np\tjk bgG", rune(key)) {
+	if c.diffMode {
+		c.dirty = true
+		if key == '?' && !c.navigation.filtering {
+			c.help = !c.help
+			return false
+		}
+		if c.help && key != 'q' {
+			return false
+		}
+		if c.navigationKey(key) {
+			return false
+		}
+	}
+	if strings.ContainsRune("npjk bgG[]", rune(key)) {
 		c.view.Following = false
 	}
 	switch key {
@@ -452,22 +577,29 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 		c.diffMode = !c.diffMode
 		c.followDirty = c.diffMode && c.view.Following
 	case 'r':
+		c.navigation.focused, c.navigation.filtering = false, false
 		c.view.FollowLatest()
 		c.followDirty = true
 	case 'f', 'F':
 		c.view.Flush(key == 'F')
-	case 'n', '\t':
-		for range len(c.view.Files) {
-			c.view.Selected = (c.view.Selected + 1) % len(c.view.Files)
-			if len(c.files[c.view.Selected].Chunks) > 0 {
-				break
-			}
-		}
+	case 'n':
+		c.stepFile(1)
 	case 'p':
-		for range len(c.view.Files) {
-			c.view.Selected = (c.view.Selected + len(c.view.Files) - 1) % len(c.view.Files)
-			if len(c.files[c.view.Selected].Chunks) > 0 {
-				break
+		c.stepFile(-1)
+	case '[', ']':
+		if key == ']' {
+			for _, at := range c.rendering.Hunks {
+				if at > c.offset {
+					c.view.ScrollTo(c.rendering, at)
+					break
+				}
+			}
+		} else {
+			for _, at := range slices.Backward(c.rendering.Hunks) {
+				if at < c.offset {
+					c.view.ScrollTo(c.rendering, at)
+					break
+				}
 			}
 		}
 	case 'j':

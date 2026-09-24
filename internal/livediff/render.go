@@ -251,6 +251,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 			}
 			for hunkIndex, hunk := range hunks {
 				hunkStart := len(render.Lines)
+				render.Hunks = append(render.Hunks, hunkStart)
 				if hunkIndex == 0 {
 					hunkStart = chunkStart // Keep prepared status visible when following.
 				}

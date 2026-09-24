@@ -351,8 +351,21 @@ journal flush arrive, then back to stream for the next prompt. Press `v` to
 switch manually. Previews remain provisional until application is confirmed.
 
 - `v` switches between stream (the default) and diff views.
-- In diff view, `j`/`k` scroll, `Space`/`b` page, `g`/`G` jump to the top or
-  bottom, and `n`/`p` switch files. Each pauses automatic following.
+- The diff view docks a colored file tree on the left of wide panes, with status
+  and added/removed counts beside each file. `s` hides or shows the dock; on
+  narrow panes it opens or closes a full-width picker instead. `t` toggles
+  tree/flat paths. Layout choices last for the viewer session.
+- `/` searches paths and focuses the list, including files inside collapsed
+  folders. `Ctrl-U` clears the filter and restores the tree position. `Enter`
+  opens a file or toggles a folder; left/right arrows collapse/expand. `Esc`
+  closes the picker.
+- `j`/`k` or up/down arrows move within the focused region. `Space`/`b` or
+  Page Down/Up page; `g`/`G` or Home/End jump to the first/last position.
+  The file list and diff scroll independently, including with the mouse wheel.
+- `n`/`p` switch matching files, remembering each file's diff position; `[`/`]`
+  jump between hunks. Browsing pauses automatic following, and new changes
+  are indicated without moving the paused diff.
+- `?` opens the shortcut guide. Click a file to open it.
 - In diff view, `r` resumes following new changes.
 - In diff view, `f` flushes the current file; `F` flushes all files.
 - `q` quits the viewer without ending Codex.
