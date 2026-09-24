@@ -204,6 +204,9 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		mentor = newMentorHandoff(*flags.mainMentorHandoffEnabled, *flags.mentorHandoffEnabled)
 	}
 	titles := newSessionTitleCache()
+	if issues != nil {
+		issues.persistFailures = true
+	}
 	if *flags.mode == "mekugi" {
 		registry, err := buildToolRegistry(ctx, dataDirectory, os.Getenv("MEKUGI_DIAGNOSE") == "1")
 		if err != nil {
@@ -240,6 +243,9 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		mekugiCalls.autoLiveDiff.activityFailed = mekugiCalls.activity.releasePane
 		defer stopLiveDiff()
 		mekugiCalls.replayStore = replayStore
+		if issues != nil {
+			issues.failureStore = replayStore
+		}
 		defer func() {
 			runErr = errors.Join(runErr, mekugiCalls.Close())
 		}()
@@ -348,9 +354,11 @@ func modelsHandler(provider *providerClient, issues *CriticalErrors) http.Handle
 						fmt.Sprintf("the upstream model catalog returned HTTP %d", upstreamStatus))
 				}
 				finalization := &requestFinalization{sessionID: request.Header.Get(sessionIDHeader),
+					threadID:     codexThreadID(request.Header),
 					failurePhase: requestFailureModels, upstreamStatusCode: upstreamStatus,
 					observation: requestObservation{outcome: requestOutcomeFailed}}
 				issues.record(finalization, failure)
+				issues.persistFailure(finalization)
 				debug.event(map[string]any{
 					"event": "models_request_failure", "request_id": requestID,
 					"session_id": finalization.sessionID, "thread_id": codexThreadID(request.Header),
@@ -522,6 +530,11 @@ type requestFinalization struct {
 	observeCriticalNotice func(source, text string)
 	observation           requestObservation
 	sessionID             string
+	threadID              string
+	turnID                string
+	diagnosticMessage     string
+	diagnosticNotice      *criticalNotice
+	streamDiagnostics     *streamDiagnostics
 	failurePhase          requestFailurePhase
 	upstreamStatusCode    int
 	providerFailure       error
@@ -558,6 +571,7 @@ func (f *requestFinalization) finish(
 		}
 	}
 	issues.record(f, requestErr)
+	issues.persistFailure(f)
 
 	return nil
 }

@@ -758,6 +758,20 @@ func writeSSEEvent(writer io.Writer, lines []string, separator string, transform
 	}
 	for _, payload := range visible {
 		confirmResponseDelivery(transformer, payload)
+		if hooks != nil {
+			var event struct {
+				Type     string `json:"type"`
+				Response struct {
+					ID string `json:"id"`
+				} `json:"response"`
+			}
+			if json.Unmarshal(payload, &event) == nil && event.Type == "response.created" {
+				hooks.deliveredResponseID = event.Response.ID
+			}
+			if isResponseTerminal(observeResponseTerminal(payload, true)) {
+				hooks.deliveredTerminal = true
+			}
+		}
 	}
 	return terminalState, nil
 }

@@ -98,6 +98,7 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 	workspace := flags.String("workspace", "", "override workspace inferred from rollout metadata")
 	replayDir := flags.String("replay-dir", "", "replay directory (default platform state directory)")
 	ax := flags.Bool("ax", false, "include whole-rollout AX measurements, independent of call pagination")
+	failures := flags.Bool("failures", false, "list sanitized failures, optionally selecting one reference")
 	readLog := flags.String("read-log", "", "runtime AX read journal; implies --ax")
 	defects := flags.String("defects", "", "JSON defect assessments with evidence paths; implies --ax")
 	callID := flags.String("call-id", "", "select one call identity")
@@ -107,6 +108,7 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 	textBytes := flags.Int("text-bytes", 4096, "maximum UTF-8 bytes per included field (1-65536)")
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: mekugi inspect-session --session PATH [options]")
+		fmt.Fprintln(stderr, "       mekugi inspect-session [--replay-dir PATH] --failures [REF]")
 		fmt.Fprintln(stderr, "Read local logical calls without running them. Text is omitted unless --field is selected.")
 		flags.PrintDefaults()
 	}
@@ -121,6 +123,24 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 		return 1
 	}
 	fields := []string{"script", "report", "diagnostic", "output"}
+	if *failures {
+		if flags.NArg() > 1 || *session != "" || *ax || *readLog != "" || *defects != "" || *field != "" || *callID != "" || *workspace != "" ||
+			*offset != 0 || *limit != 50 || *textBytes != 4096 {
+			flags.Usage()
+			return 2
+		}
+		if *replayDir == "" {
+			var err error
+			*replayDir, err = defaultMekugiReplayDirectory()
+			if err != nil {
+				return fail(err)
+			}
+		}
+		if err := inspectFailures(ctx, *replayDir, flags.Arg(0), stdout); err != nil {
+			return fail(err)
+		}
+		return 0
+	}
 	if *session == "" || flags.NArg() != 0 || *offset < 0 ||
 		*limit < 1 || *limit > 500 || *textBytes < 1 || *textBytes > 65536 ||
 		(*field != "" && *field != "all" && !slices.Contains(fields, *field)) {

@@ -18,7 +18,7 @@ func (t *mekugiResponseTransform) TransformJSON(payload []byte) ([]byte, error) 
 	if err == nil && t.journalActive {
 		transformed, err = t.decorateJournalJSON(transformed)
 	}
-	return transformed, criticalDiagnostic(err, "mekugi_json", "Mekugi response translation failed while processing a JSON response", true)
+	return transformed, translationDiagnostic(err, "mekugi_json", "Mekugi response translation failed while processing a JSON response")
 }
 
 func (t *mekugiResponseTransform) Finish(streamEvent bool) error {
@@ -48,7 +48,18 @@ func (t *mekugiResponseTransform) TransformSSE(payload []byte) ([][]byte, error)
 	if err == nil && t.journalActive {
 		visible, err = t.decorateJournalSSE(payload, visible)
 	}
-	return visible, criticalDiagnostic(err, "mekugi_sse", "Mekugi response translation failed while processing an upstream streaming event", true)
+	return visible, translationDiagnostic(err, "mekugi_sse", "Mekugi response translation failed while processing an upstream streaming event")
+}
+
+func translationDiagnostic(err error, code, summary string) error {
+	if err == nil {
+		return nil
+	}
+	if inner, ok := errors.AsType[*criticalDiagnosticError](err); ok {
+		code += ":" + inner.code
+		summary = inner.summary
+	}
+	return &criticalDiagnosticError{err: err, code: code, summary: summary, distinct: true}
 }
 
 func (t *mekugiResponseTransform) transformSSE(payload []byte) ([][]byte, error) {

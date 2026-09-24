@@ -179,7 +179,7 @@ func TestTerminalResponseReplayPersistenceFailureIsClassified(t *testing.T) {
 		t.Fatal("terminal response claimed successful persistence")
 	}
 	diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
-	if !ok || diagnostic.code != "replay_history_commit" || diagnostic.summary != "Mekugi could not persist completed response history" {
+	if !ok || diagnostic.code != "mekugi_sse:replay_history_commit" || diagnostic.summary != "Mekugi could not persist completed response history" {
 		t.Fatalf("terminal persistence diagnostic = %#v, wrapped = %v", diagnostic, err)
 	}
 	if transform.historyCommitted {

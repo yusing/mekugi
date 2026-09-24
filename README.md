@@ -462,8 +462,10 @@ supported APIs and history limitations.
   temporary directory; both must resolve it to the same absolute path.
 - **Failures:** startup errors appear before Codex launches. Session failures
   appear as user-only commentary; undelivered notices appear on stderr after
-  Codex exits. Mekugi does not create operational log files unless `--debug` is
-  enabled. See [opt-in agent issue reports](doc/spec/diagnose.md).
+  Codex exits. A router translation fault ends the turn instead of repeatedly retrying;
+  its notice offers recovery steps. Sanitized failure references survive restart,
+  without storing request content. Detailed logs still require `--debug`.
+  See [opt-in agent issue reports](doc/spec/diagnose.md).
 
 ### Replay storage
 
@@ -487,6 +489,8 @@ and starts no router:
 
 ```sh
 mekugi inspect-session --session /path/to/rollout.jsonl
+mekugi inspect-session --failures
+mekugi inspect-session --failures e8bd3ee1d49f
 mekugi inspect-sessions --exclude-model '*grok*' --class production
 MEKUGI_AX_OUTPUT=/path/to/private/reads.jsonl mekugi --debug codex
 mekugi inspect-session --session /path/to/rollout.jsonl --ax \

@@ -107,7 +107,7 @@ func TestCompletedCodeModeCallInputChangeHasSafeDiagnostic(t *testing.T) {
 			"name": "exec", "input": "changed private input", "status": "completed"},
 	}))
 	diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
-	if !ok || diagnostic.code != "code_mode_call_input_changed" ||
+	if !ok || diagnostic.code != "mekugi_sse:code_mode_call_input_changed" ||
 		strings.Contains(diagnostic.summary, "private input") {
 		t.Fatalf("completed call diagnostic = %#v, error = %v", diagnostic, err)
 	}
@@ -124,7 +124,7 @@ func TestCompletedOutputItemCommentaryFailureHasSafeDiagnostic(t *testing.T) {
 			"namespace": "functions", "name": "exec_command", "arguments": "private malformed arguments", "status": "completed"},
 	}))
 	diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
-	if !ok || diagnostic.code != "output_item_commentary" ||
+	if !ok || diagnostic.code != "mekugi_sse:output_item_commentary" ||
 		strings.Contains(diagnostic.summary, "private malformed") {
 		t.Fatalf("completed commentary diagnostic = %#v, error = %v", diagnostic, err)
 	}

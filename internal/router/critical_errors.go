@@ -22,14 +22,17 @@ import (
 // provider error details, but no request snapshots or operational event history. It outlives router shutdown so
 // the launcher can report notices that could not reach Codex.
 type CriticalErrors struct {
-	mu             sync.Mutex
-	entries        []*criticalNotice
-	overflow       uint64
-	diagnosticSalt string
+	mu              sync.Mutex
+	entries         []*criticalNotice
+	overflow        uint64
+	diagnosticSalt  string
+	failureStore    *mekugiReplayStore
+	persistFailures bool
 }
 
 type criticalNotice struct {
 	session, category, message, id string
+	thread, turn, reference        string
 	count, delivered               uint64
 	inFlight                       bool
 }
@@ -166,7 +169,7 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 		case f.failurePhase == requestFailurePrepare:
 			message = "Mekugi could not prepare this request. Check the session's tool and configuration compatibility before retrying."
 		case f.failurePhase == requestFailureTransform:
-			message = "Mekugi could not safely translate the response. No unsupported tool call was released."
+			message = "Mekugi could not safely translate the response. Retrying will fail the same way. Switch model, use passthrough mode, or relaunch with --debug and report the diagnostic reference."
 		}
 		if category == string(f.failurePhase) {
 			reference := f.diagnosticReference
@@ -189,7 +192,7 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 				if diagnostic.distinct {
 					category += ":" + reference
 				}
-				message += " Cause: " + diagnostic.summary + ". Diagnostic reference: " + reference + "."
+				message += " Cause: " + diagnostic.code + ": " + diagnostic.summary + ". Diagnostic reference: " + reference + "."
 			} else {
 				// Unknown errors may contain unquoted prompts, scripts, headers, or
 				// credentials. Retain a correlation reference and phase without
@@ -205,18 +208,31 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 			message += " Diagnostic reference: " + f.diagnosticReference + "."
 		}
 	}
-	// Observe this request's safe description before session deduplication. A
-	// routing session can be shared or remapped; its retained queue cannot tell
-	// us which thread produced an earlier failure.
-	noticeID := commentaryMessageID("critical:" + f.sessionID + ":" + category)
-	if f.observeCriticalNotice != nil {
-		f.observeCriticalNotice(noticeID, message)
+	f.diagnosticMessage = message
+	if f.turnID != "" {
+		category += ":" + f.threadID + ":" + f.turnID
 	}
+	noticeID := commentaryMessageID("critical:" + f.sessionID + ":" + category)
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	observe := false
+	defer func() {
+		c.mu.Unlock()
+		if observe && f.observeCriticalNotice != nil {
+			f.observeCriticalNotice(noticeID, message)
+		}
+	}()
+	for _, notice := range c.entries {
+		if f.turnID != "" && notice.thread == f.threadID && notice.turn == f.turnID && notice.reference == f.diagnosticReference {
+			f.diagnosticNotice = notice
+			return
+		}
+	}
+	observe = true
 	for _, notice := range c.entries {
 		if notice.session == f.sessionID && notice.category == category {
 			notice.count++
+			notice.thread, notice.turn, notice.reference = f.threadID, f.turnID, f.diagnosticReference
+			f.diagnosticNotice = notice
 			return
 		}
 	}
@@ -224,8 +240,10 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 		c.overflow++
 		return
 	}
-	c.entries = append(c.entries, &criticalNotice{session: f.sessionID, category: category, message: message,
-		id: noticeID, count: 1})
+	f.diagnosticNotice = &criticalNotice{session: f.sessionID, category: category, message: message,
+		thread: f.threadID, turn: f.turnID, reference: f.diagnosticReference,
+		id: noticeID, count: 1}
+	c.entries = append(c.entries, f.diagnosticNotice)
 }
 
 // Auxiliary degradation and automatic cleanup are user-visible without turning

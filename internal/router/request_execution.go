@@ -78,6 +78,9 @@ func (e requestExecutor) execute(
 	headers http.Header,
 	sessionID string,
 ) (requestErr error) {
+	if e.issues == nil {
+		e.issues = NewCriticalErrors()
+	}
 	var attempts []*requestAttempt
 	defer func() {
 		for _, attempt := range slices.Backward(attempts) {
@@ -87,6 +90,13 @@ func (e requestExecutor) execute(
 
 	for {
 		attempt := newRequestAttempt(e, startCtx, executionCtx, request, headers, sessionID)
+		if len(attempts) != 0 {
+			// A journal continuation shares the downstream exchange. It may
+			// fail before its own provider response has delivered a creation.
+			previous := attempts[len(attempts)-1]
+			attempt.hooks.deliveredResponseID = previous.hooks.deliveredResponseID
+			attempt.hooks.deliveredTerminal = previous.hooks.deliveredTerminal
+		}
 		attempts = append(attempts, attempt)
 		continuation, err := attempt.run()
 		if err != nil {
@@ -110,10 +120,7 @@ func newRequestAttempt(
 	sessionID string,
 ) *requestAttempt {
 	debug, debugID := debugRequest(startCtx)
-	hooks := &responseHooks{}
-	if debug != nil {
-		hooks.streamDiagnostics = &streamDiagnostics{}
-	}
+	hooks := &responseHooks{streamDiagnostics: &streamDiagnostics{}}
 	if exchange, ok := executor.provider.(*webSocketExchange); ok {
 		exchange.streamDiagnostics = hooks.streamDiagnostics
 	}
@@ -124,7 +131,7 @@ func newRequestAttempt(
 	if debug != nil {
 		trace.summary = &featureUsageSummary{counts: make(map[string]uint64)}
 	}
-	finalization := requestFinalization{failurePhase: requestFailurePrepare}
+	finalization := requestFinalization{failurePhase: requestFailurePrepare, streamDiagnostics: hooks.streamDiagnostics}
 	if sessionID != "" {
 		finalization.sessionID = sessionID
 	}
@@ -166,6 +173,8 @@ func (a *requestAttempt) prepare() error {
 		capturer.ObserveRequestKind(a.startCtx, string(a.metadata.RequestKind))
 	}
 	a.threadID = codexThreadID(a.headers)
+	a.finalization.threadID = a.threadID
+	a.finalization.turnID = a.metadata.TurnID
 	if a.executor.mekugiCalls != nil && a.metadataValid && !a.metadata.activityIdentityInvalid &&
 		(a.metadata.ThreadID == "" || a.metadata.ThreadID == a.threadID) {
 		a.finalization.observeCriticalNotice = func(source, text string) {
@@ -546,11 +555,15 @@ func (a *requestAttempt) deliver() (*requestContinuation, error) {
 func (a *requestAttempt) continueJournal() (*requestContinuation, error) {
 	next, err := nextJournalRequest(a.journalOriginal, a.mekugiTransform)
 	if err != nil {
-		return nil, err
+		a.finalization.failurePhase = requestFailureTransform
+		return nil, fmt.Errorf("%w: %w", errResponseTransform, criticalDiagnostic(err,
+			"journal_continuation_request", "Mekugi could not prepare the journal continuation", true))
 	}
 	nextCtx, err := continueJournalContext(a.executionCtx, a.mekugiTransform)
 	if err != nil {
-		return nil, err
+		a.finalization.failurePhase = requestFailureTransform
+		return nil, fmt.Errorf("%w: %w", errResponseTransform, criticalDiagnostic(err,
+			"journal_continuation_limit", "the journal continuation limit was reached", true))
 	}
 	a.mekugiTransform.Close()
 	resetJournalExchange(a.executor.provider)
@@ -587,6 +600,27 @@ func (a *requestAttempt) finish(requestErr error) error {
 		requestErr,
 		a.finalization.finish(a.executionCtx, requestErr, a.executor.output, a.executor.issues),
 	)
+	_, compatibilityFault := errors.AsType[*requestCompatibilityError](requestErr)
+	if (a.finalization.failurePhase == requestFailureTransform || a.finalization.failurePhase == requestFailurePrepare && compatibilityFault) &&
+		a.hooks.deliveredResponseID != "" && !a.hooks.deliveredTerminal &&
+		a.finalization.observation.outcome == requestOutcomeFailed {
+		payload := mustMarshalJSON(map[string]any{
+			"type": "response.failed",
+			"response": map[string]any{
+				"id": a.hooks.deliveredResponseID, "status": "failed", "output": []any{},
+				"error": map[string]any{"code": "invalid_prompt", "message": a.finalization.diagnosticMessage},
+			},
+		})
+		_, deliveryErr := writeSSEEvent(a.executor.output, responseSSELines(payload, "\n"), "\n", nil, nil)
+		requestErr = errors.Join(requestErr, deliveryErr)
+		if deliveryErr == nil && a.executor.issues != nil {
+			a.executor.issues.mu.Lock()
+			if notice := a.finalization.diagnosticNotice; notice != nil {
+				notice.delivered = notice.count
+			}
+			a.executor.issues.mu.Unlock()
+		}
+	}
 	a.hooks.finish(a.finalization.completion())
 	fields := map[string]any{
 		"event": "request_complete", "request_id": a.debugID,

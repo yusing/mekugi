@@ -8,6 +8,10 @@ build for validation. Build and test directly in the affected package.
 Go package rows use `go test <packages>`. Add `-count=1` when an uncached run
 matters; measure its runtime separately from build/cache overhead.
 
+Inside an active Mekugi shell, run tests with invocation-local `env -u BASH_ENV`.
+The session's Bash startup hook can otherwise prepend live frontends ahead of a test's
+isolated frontend PATH, sending fixture reads to the wrong retained-output store.
+
 | Changed owner | Focused check |
 | --- | --- |
 | Root review rendering | `.` |

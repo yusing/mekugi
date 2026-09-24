@@ -1,5 +1,17 @@
 # Logical session inspection
 
+## Failure reference lookup
+
+`mekugi inspect-session [--replay-dir PATH] --failures [REF]` reads retained sanitized
+failure records without a rollout, router, or state writes. It returns a JSON array ordered
+by time; an optional exact reference selects matching records, including records from a
+previous router process. Each version-1 record includes `time`, `thread`, `phase`, `code`,
+`reference`, and optional bounded `stream` diagnostics. It contains neither original error
+messages nor request content. Missing references fail with an expiry-aware error. This mode
+cannot be combined with rollout selection, AX, workspace, call, or text-field options.
+Failures follow the [router retention policy](router.md); lookup does not revive expired data.
+Exit status is 0 for success, 2 for invalid options, and 1 for read, validation, or output errors.
+
 ## REQ-SESSION-001 — Offline logical call inspection
 
 `mekugi inspect-session --session PATH` reads a Codex rollout JSONL

@@ -9,6 +9,7 @@ go test -tags journal_e2e ./internal/router -run '^TestConfiguredToolFrontendNat
 go test -tags journal_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'
 go test -tags journal_e2e ./internal/router -run '^TestJournalNativeCodexSpawnE2E$'
 go test -tags journal_e2e ./internal/router -run '^TestPostCompactNativeCodexE2E$'
+go test -tags journal_e2e ./internal/router -run '^(TestRouterTransformFaultNativeCodexE2E|TestRetryablePrestream5xxStillRetriesInNativeCodexE2E)$'
 ```
 
 The frontend fixture invokes an authenticated configured command through
@@ -33,3 +34,7 @@ These deterministic tests do not prove live-model behavior or decrypt prior
 encrypted assignments. If a task needs real provider behavior, report that
 coverage separately and use an isolated workspace and a temporary build
 outside the repository; do not use an installation build.
+
+The router-fault fixture forces an intercepted-call translation failure after response
+creation and checks one upstream request, one terminal turn failure, and durable reference
+lookup. Its retry case confirms a pre-stream 503 still permits a successful retry.

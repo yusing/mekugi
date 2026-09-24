@@ -82,6 +82,10 @@ func defaultMekugiReplayDirectory() (string, error) {
 	return filepath.Join(base, "mekugi", "replay"), nil
 }
 func openMekugiReplayStore(directory string) (*mekugiReplayStore, error) {
+	return openMekugiReplayStoreContext(context.Background(), directory)
+}
+
+func openMekugiReplayStoreContext(ctx context.Context, directory string) (*mekugiReplayStore, error) {
 	directory, err := filepath.Abs(directory)
 	if err != nil {
 		return nil, err
@@ -124,7 +128,7 @@ func openMekugiReplayStore(directory string) (*mekugiReplayStore, error) {
 		}
 	}
 	s := &mekugiReplayStore{directory: directory, maxBytes: 1 << 30, maxCommentaryBytes: 16 << 20}
-	if err := s.locked(context.Background(), func() error { return nil }); err != nil {
+	if err := s.locked(ctx, func() error { return nil }); err != nil {
 		return nil, err
 	}
 	return s, nil

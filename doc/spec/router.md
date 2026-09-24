@@ -39,7 +39,12 @@ in-memory metrics belong to this invocation and expire on shutdown.
 Interactive Herdr launches may also open a router-owned
 [live diff pane](changes.md#live-terminal-view), under its session and lifecycle contract.
 
-Operational logging is absent unless `--debug` is enabled. Startup and cleanup failures are concise stderr
+Detailed operational logging is absent unless `--debug` is enabled. Sanitized failure records
+are always retained with time, thread, phase, diagnostic code/reference, and bounded stream
+diagnostics, never messages, request content, secrets, or raw wrapped errors. They share the
+managed store's quota and retention policy and can be looked up after restart using
+`mekugi inspect-session --failures [REF]`. Failure to retain a record produces a notice,
+not a claim of successful persistence or a different request outcome. Startup and cleanup failures are concise stderr
 errors outside the active Codex UI. Critical request failures use the user-only
 commentary contract. The launcher prints undelivered notices and repetition
 summaries after Codex exits. In-memory metrics, explicit sanitized capture and
@@ -48,7 +53,8 @@ final metrics exports, and opt-in issue reports are not operational logging.
 their original model-visible tools. This is correctness state, not an operational session log.
 It lives at `$XDG_STATE_HOME/mekugi/replay`, or `~/.local/state/mekugi/replay` when that variable is
 unset, and survives wrapper shutdown. A relative `XDG_STATE_HOME` is invalid. Passthrough mode
-does not open this store. Initialization failure prevents Codex launch. The store admits at most
+opens this store only when retaining a failure; it does not retain tool replay state.
+Mekugi-mode initialization failure prevents Codex launch. The store admits at most
 1 GiB of managed data, including session ownership catalogs, journals, read outputs, and change
 indexes, with 32 MiB per encoded record. Exact commentary provenance has an independent
 16 MiB budget; failure to retain it suppresses new commentary with a diagnostic instead of
@@ -129,6 +135,13 @@ or raw errors. The catalog HTTP response remains available to Codex.
 Streaming tool-call projection and replay-persistence failures report their safe operation or
 conflict class instead of collapsing into a generic translation error. Tool input, provider
 field values, and raw storage errors remain absent from notices and sanitized diagnostics.
+After a delivered `response.created`, a deterministic response-translation fault emits
+`response.failed` with error code `invalid_prompt`, unless a terminal has already been delivered
+or the downstream cannot be written. Its message carries the safe cause code and diagnostic
+reference and advises switching model, using passthrough, or relaunching with `--debug` and
+reporting the reference; retrying the unchanged request is not advised. The terminal itself
+delivers the notice. Repeated references in the same identified thread/turn are neither
+re-injected nor counted again. Pre-stream retryable provider failures retain their retry behavior.
 
 Stream-end diagnostics identify the actual upstream transport separately from a synthetic
 HTTP status used by a WebSocket bridge. They retain bounded provider request/response IDs,
