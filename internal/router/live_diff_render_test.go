@@ -165,7 +165,7 @@ func TestLiveDiffFollowPrefersLatestHighlightedRegion(t *testing.T) {
 func TestLiveDiffNativeFollowCentersPreparedTip(t *testing.T) {
 	diff := "--- /dev/null\n+++ file.txt\n@@ -0,0 +1,40 @@\n" + strings.Repeat("+content\n", 40)
 	chunk := liveDiffChunk{
-		Key: "latest", Status: "amber1 prepared (application unconfirmed)",
+		Key: "latest", Status: "amber1 changes observed",
 		Review: mekugi.ReviewFile{AfterPath: "file.txt", Diff: diff},
 	}
 	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk)

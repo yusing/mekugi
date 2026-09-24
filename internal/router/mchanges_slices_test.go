@@ -133,6 +133,44 @@ func (f *mchangesSliceFixture) retire(t *testing.T, id string) {
 	}
 }
 
+func TestMChangesUnconfirmedHistorySeparatesObservationAndResult(t *testing.T) {
+	t.Parallel()
+	f := newMChangesSliceFixture(t, "unconfirmed-status-detail")
+
+	patchID := f.reserve(t, f.thread, "patch-observed")
+	f.publish(t, patchID, "patch-observed", "patch-call", mekugiHistory{
+		ToolName:    applyPatchToolName,
+		Script:      "update file.txt",
+		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", "before\n", "after\n")},
+	})
+	patchHistory, patchErr, patchStatus := f.run(t, "mchanges --history "+patchID)
+	if patchStatus != 0 || patchErr != "" || !strings.HasPrefix(patchHistory, patchID+" changes observed\n") ||
+		!strings.Contains(patchHistory, "application confirmation: unavailable; observed changes do not establish tool success") {
+		t.Fatalf("unconfirmed patch history = %q, %q, %d", patchHistory, patchErr, patchStatus)
+	}
+
+	execID := f.reserve(t, f.thread, "exec-observed")
+	f.publish(t, execID, "exec-observed", "exec-call", mekugiHistory{
+		ToolName: nativeExecCommandToolName,
+		Script:   "text(await tools.exec_command({cmd: 'touch file.txt'}));\n",
+		ExecOutcome: &execOutcome{
+			Status: execStatusUnconfirmed, Class: "Code Mode", Coverage: execCoverageExact,
+		},
+		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", "before\n", "after\n")},
+	})
+	execHistory, execErr, execStatus := f.run(t, "mchanges --history "+execID)
+	if execStatus != 0 || execErr != "" || !strings.HasPrefix(execHistory, execID+" changes observed") ||
+		!strings.Contains(execHistory, "tool result: nested tool result unavailable") {
+		t.Fatalf("unconfirmed exec history = %q, %q, %d", execHistory, execErr, execStatus)
+	}
+
+	list, listErr, listStatus := f.run(t, "mchanges --list")
+	if listStatus != 0 || listErr != "" || !strings.Contains(list, patchID+" changes observed ") ||
+		!strings.Contains(list, execID+" changes observed ") || strings.Contains(list, "confirmation:") || strings.Contains(list, "tool result:") {
+		t.Fatalf("mchanges list leaked history-only details or lost observed statuses: %q, %q, %d", list, listErr, listStatus)
+	}
+}
+
 func TestMChangesSlicesUsageArgumentsAndWorkspaceErrors(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "slice-arguments")

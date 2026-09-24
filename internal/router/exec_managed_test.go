@@ -11,6 +11,21 @@ import (
 	"github.com/yusing/mekugi"
 )
 
+func TestManagedReviewRowDistinguishesBinaryFromMissingEvidence(t *testing.T) {
+	for _, test := range []struct {
+		file mekugi.ReviewFile
+		want string
+	}{
+		{mekugi.RenderBinaryReviewFile("asset", "asset", 2, 3, "before", "after"), `Edit "asset" binary (size/hash evidence) · go generate`},
+		{mekugi.RenderIncompleteReviewFile("asset", "asset", "baseline unavailable"), `Edit "asset" counts unavailable · go generate`},
+	} {
+		test.file.Origin = "go generate"
+		if got := managedReviewRow(test.file); got != test.want {
+			t.Errorf("managed review row = %q, want %q", got, test.want)
+		}
+	}
+}
+
 func TestManagedExecMChangesSurface(t *testing.T) {
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {

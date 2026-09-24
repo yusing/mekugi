@@ -16,7 +16,7 @@ import (
 
 func liveDiffHighlightChunk(key, path, hunk string, applied bool) liveDiffChunk {
 	diff := "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n" + hunk
-	status := key + " prepared (application unconfirmed)"
+	status := key + " changes observed"
 	if applied {
 		status = key + " applied"
 	}
@@ -52,8 +52,8 @@ func TestLiveDiffHighlightBatchAndReceipts(t *testing.T) {
 	}
 	visible := v.Visible[v.Files[0].Key()]
 	if len(visible.Chunks) != 2 || visible.Chunks[0].Highlighted || !visible.Chunks[1].Highlighted ||
-		!strings.Contains(visible.Chunks[1].Status, "unconfirmed") {
-		t.Fatalf("prepared capture highlight = %#v", visible)
+		!strings.Contains(visible.Chunks[1].Status, "changes observed") {
+		t.Fatalf("changes-observed capture highlight = %#v", visible)
 	}
 	snapshot[0].Chunks[1].Applied = true
 	snapshot[0].Chunks[1].Status = "second applied"
@@ -323,7 +323,7 @@ func TestLiveDiffPreparedRenameKeepsDestination(t *testing.T) {
 	diff := "--- " + strconv.Quote(oldPath) + "\n+++ " + strconv.Quote(newPath) +
 		"\n@@ -1 +1 @@\n-before\n+after\n@@ -20 +20 @@\n-older\n+newer\n"
 	chunk := liveDiffChunk{
-		Key: "rename", Status: "amber1 prepared (application unconfirmed)",
+		Key: "rename", Status: "amber1 changes observed",
 		Review: mekugi.ReviewFile{BeforePath: oldPath, AfterPath: newPath, Diff: diff},
 	}
 	v := liveDiffView{}
@@ -334,12 +334,12 @@ func TestLiveDiffPreparedRenameKeepsDestination(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := ansi.Strip(strings.Join(render.Lines, "\n"))
-	for _, want := range []string{"1/1  old.go", "Rename: old.go → new.go", "application unconfirmed", "after"} {
+	for _, want := range []string{"1/1  old.go", "Rename: old.go → new.go", "changes observed", "after"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("prepared rename lost %q:\n%s", want, text)
 		}
 	}
-	for _, label := range []string{"Rename: old.go → new.go", "amber1 prepared (application unconfirmed)"} {
+	for _, label := range []string{"Rename: old.go → new.go", "amber1 changes observed"} {
 		if strings.Count(text, label) != 1 {
 			t.Fatalf("capture label repeated between hunks: %q\n%s", label, text)
 		}
@@ -537,7 +537,7 @@ func TestLiveDiffPathOnlyChangesStayCompact(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			review := mekugi.ReviewFile{BeforePath: tc.before, AfterPath: tc.after,
 				Diff: tc.name + " " + strconv.Quote(tc.before) + " -> " + strconv.Quote(tc.after) + "\n"}
-			for _, status := range []string{"", "amber1 prepared (application unconfirmed)"} {
+			for _, status := range []string{"", "amber1 changes observed"} {
 				chunk := liveDiffChunk{Key: "change", Status: status, Review: review}
 				render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{{Path: path, Chunks: []liveDiffChunk{chunk}}}, workspace, 100, 0, chunk)
 

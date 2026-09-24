@@ -13,6 +13,33 @@ import (
 	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
+func TestTrackedStatusSeparatesObservedChangesFromApplication(t *testing.T) {
+	change := mekugi.RenderReviewFile("file.txt", "file.txt", "before\n", "after\n")
+	incomplete := mekugi.RenderIncompleteReviewFile("file.txt", "file.txt", "workspace unreadable")
+	for _, test := range []struct {
+		name      string
+		history   mekugiHistory
+		confirmed bool
+		want      string
+	}{
+		{name: "unconfirmed patch with observed changes", history: mekugiHistory{ReviewFiles: []mekugi.ReviewFile{change}}, want: "changes observed"},
+		{name: "unconfirmed patch without observed changes", history: mekugiHistory{}, want: "no changes observed"},
+		{name: "incomplete observation is not absence", history: mekugiHistory{ReviewFiles: []mekugi.ReviewFile{incomplete}}, want: "observation incomplete"},
+		{name: "rejected", history: mekugiHistory{TranslationError: "invalid patch", ReviewFiles: []mekugi.ReviewFile{change}}, want: "rejected"},
+		{name: "no-op", history: mekugiHistory{AlreadySatisfied: true}, want: "no-op"},
+		{name: "applied", history: mekugiHistory{Applied: true, ReviewFiles: []mekugi.ReviewFile{change}}, want: "applied"},
+		{name: "receipt confirms application", history: mekugiHistory{ReviewFiles: []mekugi.ReviewFile{change}}, confirmed: true, want: "applied"},
+		{name: "failed execution", history: mekugiHistory{ExecOutcome: &execOutcome{Status: execStatusFailed}}, want: "failed; observed effects"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := trackedStatus(test.history, test.confirmed)
+			if !strings.HasPrefix(got, test.want) {
+				t.Fatalf("tracked status = %q, want prefix %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)

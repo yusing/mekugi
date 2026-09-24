@@ -151,7 +151,7 @@ func TestLiveDiffStoreRestartAndMissingEvidence(t *testing.T) {
 	liveDiffTestChange(t, store, workspace, "one", "x.go", false)
 	reopened := &mekugiReplayStore{directory: store.directory}
 	files, err := reopened.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
-	if err != nil || len(files) != 1 || !strings.Contains(files[0].Chunks[0].Status, "unconfirmed") {
+	if err != nil || len(files) != 1 || !strings.Contains(files[0].Chunks[0].Status, "changes observed") {
 		t.Fatalf("Files: %#v, %v", files, err)
 	}
 	if err := store.confirmChanges(t.Context(), workspace, map[string]mekugiHistory{

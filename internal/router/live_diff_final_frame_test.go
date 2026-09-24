@@ -269,11 +269,11 @@ func TestLiveDiffFinalFrameCodeModeHeredocIncludesLastLineAfterContextCancellati
 		t.Fatal(err)
 	}
 	fullInput := "const result = await tools.exec_command({cmd:" + string(encodedCommand) + "}); text(JSON.stringify(result));"
-	marker := strings.Index(fullInput, "FINAL_CODEMODE_EDIT")
-	if marker < 0 {
+	before, _, ok := strings.Cut(fullInput, "FINAL_CODEMODE_EDIT")
+	if !ok {
 		t.Fatal("fixture command did not contain its final marker")
 	}
-	delta := fullInput[:marker]
+	delta := before
 	for _, event := range [][]byte{
 		mustTestJSON(t, map[string]any{"type": "response.output_item.added", "output_index": 0,
 			"item": map[string]any{"type": "custom_tool_call", "id": "code-mode-final-item", "call_id": "code-mode-final-call", "name": "exec", "input": "", "status": "in_progress"}}),

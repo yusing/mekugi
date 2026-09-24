@@ -314,7 +314,11 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 			if test.change {
 				counts = "+1 -1"
 			}
-			if err != nil || listed != history.ChangeID+" prepared (application unconfirmed) "+counts+"\n" {
+			status := "no changes observed"
+			if test.change {
+				status = "changes observed"
+			}
+			if err != nil || listed != history.ChangeID+" "+status+" "+counts+"\n" {
 				t.Fatalf("mchanges list = %q, %v; want %q", listed, err, history.ChangeID)
 			}
 		})

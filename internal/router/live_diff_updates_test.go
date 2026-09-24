@@ -77,7 +77,7 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 		}
 	}()
 	pending := ""
-	waitFrame := func(want string) string {
+	waitMatchingFrame := func(matches func(string) bool) string {
 		t.Helper()
 		for {
 			for {
@@ -89,20 +89,24 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 				end += len(endMarker)
 				frame := pending[:end]
 				pending = pending[end:]
-				if strings.Contains(ansi.Strip(frame), want) {
+				if matches(frame) {
 					return frame
 				}
 			}
 			select {
 			case chunk, open := <-chunks:
 				if !open {
-					t.Fatalf("viewer exited waiting for %q: %q", want, pending)
+					t.Fatalf("viewer exited before expected terminal frame: %q", pending)
 				}
 				pending += chunk
 			case <-ctx.Done():
-				t.Fatalf("waiting for %q: %q", want, pending)
+				t.Fatalf("waiting for expected terminal frame: %q", pending)
 			}
 		}
+	}
+	waitFrame := func(want string) string {
+		t.Helper()
+		return waitMatchingFrame(func(frame string) bool { return strings.Contains(ansi.Strip(frame), want) })
 	}
 	rowText := func(frame string, row int) string {
 		t.Helper()
@@ -173,19 +177,22 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 	frame = waitFrame("+PREPARED19")
-	if !strings.Contains(ansi.Strip(frame), "application unconfirmed") {
-		t.Fatalf("following hid the prepared caption: %q", frame)
+	if !strings.Contains(ansi.Strip(frame), "changes observed") || strings.Contains(ansi.Strip(frame), "application unconfirmed") {
+		t.Fatalf("following hid the changes-observed status: %q", frame)
 	}
 	if got := rowText(frame, 8); !strings.Contains(got, "+PREPARED19") {
-		t.Fatalf("prepared change did not fill the bottom row: %q", got)
+		t.Fatalf("observed change did not fill the bottom row: %q", got)
 	}
 	history.confirmed = true
 	if err := store.confirmChanges(t.Context(), workspace, map[string]mekugiHistory{"pending": history}); err != nil {
 		t.Fatal(err)
 	}
-	frame = waitFrame("+PREPARED19")
-	if strings.Contains(ansi.Strip(frame), "application unconfirmed") {
-		t.Fatalf("receipt did not refresh prepared content: %q", frame)
+	frame = waitMatchingFrame(func(frame string) bool {
+		text := ansi.Strip(frame)
+		return strings.Contains(text, "+PREPARED19") && !strings.Contains(text, "changes observed")
+	})
+	if strings.Contains(ansi.Strip(frame), "changes observed") {
+		t.Fatalf("receipt did not transition changes observed to applied: %q", frame)
 	}
 	if _, err := terminal.Write([]byte("q")); err != nil {
 		t.Fatal(err)

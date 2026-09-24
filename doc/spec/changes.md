@@ -65,7 +65,7 @@ visible, the command class, and its coverage:
 | Native exit 0, exact coverage, no overlap | `completed` |
 | Native exit 0, overlap or incomplete coverage | `completed; attribution shared` or `completed; partial coverage` |
 | Native nonzero exit, or an aborted or unrecognized result | `failed; observed effects` |
-| Code Mode `Script completed` | `observed; unconfirmed`, because nested exit codes are not visible |
+| Code Mode `Script completed` | `changes observed`; nested exit codes remain unavailable in `--history` |
 | Code Mode `Script failed` or `Script terminated` | `failed; observed effects` |
 | Yielded session or running cell | pending until a `write_stdin` result shows the exit or an unknown session, or a terminal `wait` result |
 
@@ -212,7 +212,14 @@ attempts or a pending change completing cannot change an existing continuation;
 its original pending/retired markers remain visible. Older receipts without a
 frozen selection retain their digest-check behavior. Pending, expired, or incomplete
 history is explicit; no missing evidence becomes an empty successful diff.
-For a Code Mode cell, an observed workspace effect remains application
+Completed patch observations without application confirmation display `changes
+observed`, or `no changes observed` when no differences were captured. Incomplete
+file evidence displays `observation incomplete`; its per-file reason remains
+visible. Confirmed success, no-op, and rejection retain their outcome labels.
+These are observation labels,
+not success claims. Only unfinished work is `pending`. The live diff uses the same
+labels. Confirmation limitations belong in `--history`, not a pending-looking
+headline. For a Code Mode cell, an observed workspace effect remains application
 unconfirmed because outer JavaScript completion does not prove the nested
 `apply_patch` result. Direct stock patch success requires both its successful
 host result and a complete workspace observation.
@@ -220,7 +227,7 @@ host result and a complete workspace observation.
 A confirmed successful edit can publish a generated `Create` or `Edit`
 commentary summary. A completed Code Mode cell with a complete observed
 workspace effect publishes the same summary for that observed effect; it
-remains application unconfirmed in `mchanges`. Classification uses the same
+remains application unconfirmed in the retained evidence. Classification uses the same
 observed review files as `mchanges`, including whether a path existed before
 the edit. Each summary carries a bounded copy of the observed hunks. Failed,
 unchanged, and unfinished calls do not publish a summary. These messages are

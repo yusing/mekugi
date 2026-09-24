@@ -141,7 +141,15 @@ func trackedStatus(history mekugiHistory, confirmed bool) string {
 	case history.Applied || confirmed:
 		return "applied"
 	default:
-		return "prepared (application unconfirmed)"
+		for _, file := range history.ReviewFiles {
+			if file.Incomplete != "" {
+				return "observation incomplete"
+			}
+		}
+		if len(history.ReviewFiles) == 0 {
+			return "no changes observed"
+		}
+		return "changes observed"
 	}
 }
 
@@ -318,6 +326,13 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				fmt.Fprintf(&output, "attempt %d %s\n", position+1, trackedStatus(history, call.Confirmed))
 			}
 			if options.view == "history" {
+				if history.ExecOutcome != nil {
+					if history.ExecOutcome.Status == execStatusUnconfirmed {
+						output.WriteString("tool result: nested tool result unavailable\n")
+					}
+				} else if !history.Applied && !call.Confirmed && !history.AlreadySatisfied && history.TranslationError == "" {
+					output.WriteString("application confirmation: unavailable; observed changes do not establish tool success\n")
+				}
 				fmt.Fprintf(&output, "%s input:\n%s\n", history.ToolName, history.Script)
 				if history.ExecOutcome != nil && history.ExecOutcome.ScopeReason != "" {
 					fmt.Fprintf(&output, "scope: %s\n", history.ExecOutcome.ScopeReason)
@@ -419,7 +434,9 @@ func managedReviewRow(file mekugi.ReviewFile) string {
 	}
 	added, removed := file.LineCounts()
 	counts := "counts unavailable"
-	if added >= 0 && !file.Binary {
+	if file.Binary {
+		counts = "binary (size/hash evidence)"
+	} else if added >= 0 {
 		counts = fmt.Sprintf("+%d -%d", added, removed)
 	}
 	return fmt.Sprintf("%s %q %s · %s", file.Action().Title(), path, counts, file.Origin)

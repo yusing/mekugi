@@ -50,7 +50,8 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 				old.confirmed = true
 				for i := range old.chunks {
 					chunk := &old.chunks[i]
-					if chunk.Status == event.ID+" prepared (application unconfirmed)" {
+					switch chunk.Status {
+					case event.ID + " changes observed", event.ID + " no changes observed", event.ID + " observation incomplete":
 						chunk.Status, chunk.Applied = event.ID+" applied", true
 					}
 				}

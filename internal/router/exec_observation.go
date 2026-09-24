@@ -160,7 +160,7 @@ func (o execOutcome) text() string {
 	case o.Status == execStatusFailed:
 		status = "failed; observed effects"
 	default:
-		status = "observed; unconfirmed"
+		status = "changes observed"
 	}
 	label := "exec"
 	if len(o.Labels) != 0 {

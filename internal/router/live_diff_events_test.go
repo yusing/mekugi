@@ -95,8 +95,8 @@ func TestLiveDiffDirectPublicationAndCachedReceipt(t *testing.T) {
 	if err := data.apply(t.Context(), store, event); err != nil {
 		t.Fatal(err)
 	}
-	if prepared[0].Chunks[0].Applied || !strings.Contains(prepared[0].Chunks[0].Status, "unconfirmed") {
-		t.Fatal("receipt mutated the previous display snapshot")
+	if prepared[0].Chunks[0].Applied || !strings.Contains(prepared[0].Chunks[0].Status, "changes observed") {
+		t.Fatal("receipt mutated the previous changes-observed snapshot")
 	}
 	// An older queued preparation cannot undo a receipt from the snapshot.
 	event.Change.Calls[0].Confirmed = false
@@ -104,7 +104,7 @@ func TestLiveDiffDirectPublicationAndCachedReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := data.files()
-	if len(files) != 1 || !files[0].Chunks[0].Applied {
+	if len(files) != 1 || !files[0].Chunks[0].Applied || !strings.HasSuffix(files[0].Chunks[0].Status, " applied") {
 		t.Fatalf("cached receipt regressed: %+v", files)
 	}
 	if _, err := store.liveDiffSnapshot(t.Context(), broker.scope); err == nil {

@@ -560,7 +560,7 @@ func TestCodeModeExecCommandRecordsUnconfirmedEffects(t *testing.T) {
 	if err != nil || !found || history.Applied || history.ChangeID == "" || len(history.ReviewFiles) != 1 {
 		t.Fatalf("Code Mode record = %+v found=%v err=%v", history, found, err)
 	}
-	if got := trackedStatus(history, false); !strings.HasPrefix(got, "observed; unconfirmed · exec printf") {
+	if got := trackedStatus(history, false); !strings.HasPrefix(got, "changes observed · exec printf") {
 		t.Fatalf("status = %q", got)
 	}
 }
