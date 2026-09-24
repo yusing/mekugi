@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/internal/responses"
@@ -774,15 +775,18 @@ func TestExecuteRequestMentorCommentaryDeliveredOnceAndStrippedOnReplay(t *testi
 						!bytes.Contains(output.Bytes(), []byte("Mentor gpt-6-astra → gpt-5.6-luna")) {
 						t.Fatalf("first post-switch report lacks the actual transition: model=%q output=%s", forwarded.model(), output.Bytes())
 					}
-					for id := range proxy.commentaryMessageIDs(workspace + "\x00main") {
-						replay = append(replay, assistantCommentaryMessage(id, "Router session usage · Main turn: ... · Mentor gpt-6-astra → gpt-5.6-luna"))
+					for _, item := range journalFinishClientOutput(t, stream, output.Bytes()) {
+						text := commentaryMessageText(item)
+						if strings.Contains(text, "Router session usage") || strings.Contains(text, "Journal flush") {
+							replay = append(replay, assistantCommentaryMessage(jsonString(item, "id"), text))
+						}
 					}
-					if len(replay) != 1 {
-						t.Fatalf("usage-report provenance = %d messages", len(replay))
+					if len(replay) != 2 {
+						t.Fatalf("generated-message provenance = %d messages, want usage and journal flush", len(replay))
 					}
 				}
-				if index == 2 && bytes.Contains(provider.forwarded[0], []byte("Router session usage")) {
-					t.Fatal("generated usage report leaked into provider history")
+				if index == 2 && (bytes.Contains(provider.forwarded[0], []byte("Router session usage")) || bytes.Contains(provider.forwarded[0], []byte("Journal flush"))) {
+					t.Fatal("generated usage report or journal flush leaked into provider history")
 				}
 			}
 		})

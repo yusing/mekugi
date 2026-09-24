@@ -81,27 +81,71 @@ func TestBufferedAnswerSSEFraming(t *testing.T) {
 				// Parse physical SSE lines, not the JSON type alone: a consumer
 				// listening for named events must receive every complete payload.
 				frames := strings.Split(strings.TrimSuffix(strings.ReplaceAll(output.String(), "\r\n", "\n"), "\n\n"), "\n\n")
-				if len(frames) != len(expected) {
-					t.Fatalf("wrong frame count: %s", output.String())
-				}
-				for i, frame := range frames {
-					lines := strings.Split(frame, "\n")
-					payload := ssePayload(lines)
-					if !bytes.Equal(payload, expected[i]) {
-						t.Fatalf("payload %d changed: %q, want %q", i, payload, expected[i])
+				if stop == "completed" {
+					if len(frames) != 3 {
+						t.Fatalf("completed final answer produced %d frames, want usage, journal flush, terminal: %s", len(frames), output.String())
 					}
-					var envelope struct {
-						Type string `json:"type"`
+					for index, frame := range frames {
+						lines := strings.Split(frame, "\n")
+						payload := ssePayload(lines)
+						var event struct {
+							Type     string                     `json:"type"`
+							Item     map[string]json.RawMessage `json:"item"`
+							Response struct {
+								Output []map[string]json.RawMessage `json:"output"`
+							} `json:"response"`
+						}
+						if err := json.Unmarshal(payload, &event); err != nil {
+							t.Fatal(err)
+						}
+						if lines[0] != "event: "+event.Type {
+							t.Fatalf("event name lost: %q", lines[0])
+						}
+						for _, line := range lines[1:] {
+							if !strings.HasPrefix(line, "data: ") {
+								t.Fatalf("unframed payload line: %q", line)
+							}
+						}
+						if index < 2 {
+							if event.Type != "response.output_item.done" {
+								t.Fatalf("frame %d type=%s, want output_item.done", index, event.Type)
+							}
+							text := commentaryMessageText(event.Item)
+							if index == 0 && !strings.Contains(text, "Router session usage") {
+								t.Fatalf("first terminal message is not usage: %s", text)
+							}
+							if index == 1 && (!strings.Contains(text, "Journal flush") || !strings.Contains(text, "**Question:**") ||
+								!strings.Contains(text, "**Answer:**") || !strings.Contains(text, "No files were changed.")) {
+								t.Fatalf("final answer was not rendered as a Question/Answer flush: %s", text)
+							}
+						} else if event.Type != "response.completed" || len(event.Response.Output) != 2 ||
+							jsonString(event.Response.Output[0], "id") == "answer" || jsonString(event.Response.Output[1], "id") == "answer" {
+							t.Fatalf("terminal snapshot did not retain only usage and journal messages: %s", payload)
+						}
 					}
-					if err := json.Unmarshal(payload, &envelope); err != nil {
-						t.Fatal(err)
+				} else {
+					if len(frames) != len(expected) {
+						t.Fatalf("wrong frame count: %s", output.String())
 					}
-					if lines[0] != "event: "+envelope.Type {
-						t.Fatalf("event name lost: %q", lines[0])
-					}
-					for _, line := range lines[1:] {
-						if !strings.HasPrefix(line, "data: ") {
-							t.Fatalf("unframed payload line: %q", line)
+					for i, frame := range frames {
+						lines := strings.Split(frame, "\n")
+						payload := ssePayload(lines)
+						if !bytes.Equal(payload, expected[i]) {
+							t.Fatalf("payload %d changed: %q, want %q", i, payload, expected[i])
+						}
+						var envelope struct {
+							Type string `json:"type"`
+						}
+						if err := json.Unmarshal(payload, &envelope); err != nil {
+							t.Fatal(err)
+						}
+						if lines[0] != "event: "+envelope.Type {
+							t.Fatalf("event name lost: %q", lines[0])
+						}
+						for _, line := range lines[1:] {
+							if !strings.HasPrefix(line, "data: ") {
+								t.Fatalf("unframed payload line: %q", line)
+							}
 						}
 					}
 				}

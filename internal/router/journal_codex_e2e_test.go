@@ -69,7 +69,7 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 	if child {
 		p.childRequests++
 		if turn > 2 {
-			return nil, fmt.Errorf("child finish triggered an extra provider request")
+			return nil, fmt.Errorf("child natural completion triggered an extra provider request")
 		}
 		if turn == 1 {
 			workspace, _ := usableRoutingDirectory(metadata.Directories)
@@ -88,18 +88,17 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 		if turn == 1 {
 			item = call("journal", map[string]any{"op": "add", "text": "Native child live milestone", "report_now": true})
 		} else {
-			item = call("journal", map[string]any{"op": "finish", "journal": []any{
-				map[string]any{"op": "add", "text": "Native child milestone", "answer": true},
-				map[string]any{"op": "add", "text": "Native child second finding", "answer": true},
-			}})
+			item = map[string]any{"type": "message", "id": fmt.Sprintf("answer_%s_%d", thread, turn), "role": "assistant",
+				"phase": "final_answer", "status": "completed",
+				"content": []any{map[string]any{"type": "output_text", "text": "Native child milestone\n\nNative child second finding"}}}
 		}
 	} else {
 		switch {
 		case turn == 1:
 			item = call("journal", map[string]any{"op": "add", "text": "Native root milestone", "report_now": true})
 		case turn == 2:
-			item = call("spawn_agent", map[string]any{"message": "Record your milestone and finish.", "task_name": "journal_child", "fork_turns": "none"})
-		case strings.Contains(input, "Journal result") && strings.Contains(input, "Native child milestone") && strings.Contains(input, "Native child second finding") && strings.Contains(input, "**Question:**") && strings.Contains(input, "**Answers:**") && strings.Contains(input, "Record your milestone and finish."):
+			item = call("spawn_agent", map[string]any{"message": "Record your milestone, then report your findings.", "task_name": "journal_child", "fork_turns": "none"})
+		case strings.Contains(input, "Journal result") && strings.Contains(input, "Native child milestone") && strings.Contains(input, "Native child second finding") && strings.Contains(input, "**Question:**") && strings.Contains(input, "**Answer:**") && strings.Contains(input, "Record your milestone, then report your findings."):
 			if !strings.Contains(input, "**Changes:**") || !strings.Contains(input, "amber1") || !strings.Contains(input, `1\t1\tnative-child.txt`) {
 				start := strings.LastIndex(input, "**Changes:**")
 				if start < 0 {
@@ -109,7 +108,9 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 			}
 			p.childResultSeen = true
 			p.journalResultSeen = strings.Contains(input, "function_call_output") && strings.Contains(input, `\"id\":\"amber\"`)
-			item = call("journal", map[string]any{"op": "finish"})
+			item = map[string]any{"type": "message", "id": fmt.Sprintf("answer_%s_%d", thread, turn), "role": "assistant",
+				"phase": "final_answer", "status": "completed",
+				"content": []any{map[string]any{"type": "output_text", "text": "Native root completion after child review."}}}
 		case turn < 8:
 			item = call("wait_agent", map[string]any{"timeout_ms": 10000})
 		default:
@@ -233,7 +234,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 		t.Fatalf("native consumer did not display the compact child start: %.8000s", stdout.String())
 	}
 	if provider.childRequests != 2 {
-		t.Fatalf("child provider requests = %d, want live update then finish without an extra request", provider.childRequests)
+		t.Fatalf("child provider requests = %d, want live update then a natural final answer without another request", provider.childRequests)
 	}
 	if !childLiveUpdate || !strings.Contains(stdout.String(), "Journal flush ") {
 		t.Fatal("native consumer did not display distinct live updates and terminal flushes")

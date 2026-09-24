@@ -41,9 +41,8 @@ func journalMutationsSchema() json.RawMessage {
 			"properties": map[string]any{
 				"op":         map[string]any{"type": "string", "enum": []string{"add", "edit", "delete"}, "description": "Add a milestone, edit its current result, or delete a superseded item."},
 				"id":         map[string]any{"type": "string"},
-				"answer":     map[string]any{"type": "boolean", "description": embeddedInstruction("journal_answer")},
 				"text":       map[string]any{"type": "string"},
-				"report_now": map[string]any{"type": "boolean", "description": "Show this milestone to the user immediately rather than waiting for finish."},
+				"report_now": map[string]any{"type": "boolean", "description": "Show this milestone to the user immediately rather than waiting for completion."},
 			}, "required": []string{"op"},
 		},
 	})
@@ -90,13 +89,12 @@ func exposeJournalTool(fields map[string]json.RawMessage, catalog *responsesTool
 		"parameters": mustMarshalJSON(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"op":         map[string]any{"type": "string", "enum": []string{"list", "add", "edit", "delete", "finish"}, "description": "List or mutate milestones, or finish completed work without another model request."},
+				"op":         map[string]any{"type": "string", "enum": []string{"list", "add", "edit", "delete"}, "description": "List or mutate milestones."},
 				"id":         map[string]any{"type": "string", "description": embeddedInstruction("journal_id")},
 				"text":       map[string]any{"type": "string", "description": embeddedInstruction("journal_text")},
-				"answer":     map[string]any{"type": "boolean", "description": embeddedInstruction("journal_answer")},
 				"journal":    journalMutationsSchema(),
 				"agent":      map[string]any{"type": "string", "description": embeddedInstruction("journal_agent")},
-				"report_now": map[string]any{"type": "boolean", "description": "Show this milestone to the user immediately rather than waiting for finish."},
+				"report_now": map[string]any{"type": "boolean", "description": "Show this milestone to the user immediately rather than waiting for completion."},
 			},
 			"required": []string{"op"},
 		}),
@@ -451,8 +449,18 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 			}
 		}
 		results = append(results, t.finishDeferredJournalResults()...)
+		naturalResponse := maps.Clone(event.Response)
+		if naturalResponse == nil {
+			naturalResponse = make(map[string]json.RawMessage)
+		}
+		if jsonString(naturalResponse, "status") == "" {
+			naturalResponse["status"] = mustMarshalJSON("completed")
+		}
+		if err := t.captureNaturalJournalAnswer(mustMarshalJSON(naturalResponse)); err != nil {
+			return nil, true, err
+		}
 		t.journalTerminal = t.journalTerminalReady()
-		if len(t.journalResults) != 0 && !t.journalClientCalls && !t.journalTerminal {
+		if len(t.journalResults) != 0 && !t.journalClientCalls && !t.journalTerminal && !t.journalNaturalFinalSeen {
 			if len(t.journalPending) != 0 {
 				return nil, true, errors.New("incomplete journal call at completion")
 			}

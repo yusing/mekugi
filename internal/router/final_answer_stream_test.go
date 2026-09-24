@@ -82,9 +82,12 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 					t.Fatalf("state=%v, error=%v", state, err)
 				}
 				events := finalAnswerTestPayloads(output.String())
-				wantEvents := len(answer) + 2
+				// A successful final answer is rendered as the journal result. The
+				// buffered provider message is suppressed; only usage (for main),
+				// the journal terminal, and the response terminal remain.
+				wantEvents := 3
 				if child {
-					wantEvents--
+					wantEvents = 2
 				}
 				if len(events) != wantEvents {
 					t.Fatalf("events = %s", output.String())
@@ -99,7 +102,8 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 				}
 
 				// Model Codex's event handling: every done assistant item updates
-				// last_agent_message, including commentary. Only completed stops it.
+				// last_agent_message, including the final journal renderer. Only
+				// completed stops it.
 				var lastAgentMessage string
 				completed := false
 				var rendered []string
@@ -127,11 +131,14 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 					}
 				}
 				wantMessages := 2
+				wantHeading := "Journal flush `/root`"
 				if child {
-					wantMessages--
+					wantMessages = 1
+					wantHeading = "Journal result"
 				}
-				wantLast := "No files were changed."
-				if !completed || len(rendered) != wantMessages || lastAgentMessage != wantLast {
+				if !completed || len(rendered) != wantMessages || !strings.HasPrefix(lastAgentMessage, wantHeading) ||
+					!strings.Contains(lastAgentMessage, "**Question:**") || !strings.Contains(lastAgentMessage, "**Answer:**") ||
+					!strings.Contains(lastAgentMessage, "No files were changed.") || bytes.Contains(output.Bytes(), []byte(`"id":"answer"`)) {
 					t.Fatalf("Codex result = %q, rendered=%q, completed=%v", lastAgentMessage, rendered, completed)
 				}
 			})
@@ -200,6 +207,14 @@ func TestFinalAnswerStreamFlushesWithoutUsage(t *testing.T) {
 				t.Fatal(err)
 			}
 			events := finalAnswerTestPayloads(output.String())
+			if stop == "missing_usage" {
+				if len(events) != 3 || !bytes.Contains(output.Bytes(), []byte("Router session usage")) ||
+					!bytes.Contains(output.Bytes(), []byte("Journal flush")) || !bytes.Contains(output.Bytes(), []byte("**Answer:**")) ||
+					bytes.Contains(output.Bytes(), []byte(`"id":"answer"`)) {
+					t.Fatalf("successful completion did not journal-flush the answer: %s", output.String())
+				}
+				return
+			}
 			if len(events) < len(answer) || bytes.Contains(output.Bytes(), []byte("Router session usage")) {
 				t.Fatalf("lost answer or emitted usage: %s", output.String())
 			}
@@ -340,15 +355,18 @@ func TestFinalAnswerStreamExecuteRequest(t *testing.T) {
 				t.Fatal(err)
 			}
 			events := finalAnswerTestPayloads(output.String())
-			wantEvents := len(answer) + 2
+			wantEvents := 3
 			if child {
-				wantEvents--
+				wantEvents = 2
 			}
 			if len(events) != wantEvents || (!child && !strings.HasPrefix(commentaryEventText(t, events[0]), "Router session usage · Main turn: ")) {
 				t.Fatalf("completion output = %s", output.String())
 			}
-			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) || bytes.Contains(output.Bytes(), []byte("Journal result")) {
-				t.Fatal("provider answer was filtered or mistaken for journal finish")
+			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) ||
+				!bytes.Contains(output.Bytes(), []byte("**Answer:**")) || bytes.Contains(output.Bytes(), []byte(`"id":"answer"`)) ||
+				(child && !bytes.Contains(output.Bytes(), []byte("Journal result"))) ||
+				(!child && !bytes.Contains(output.Bytes(), []byte("Journal flush"))) {
+				t.Fatal("natural completion did not render the answer through the journal")
 			}
 			counts, available := proxy.usage.snapshot("thread-1")
 			if !available || counts.tokenCounts != (tokenCounts{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3}) {

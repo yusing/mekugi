@@ -14,7 +14,20 @@ import (
 )
 
 func (t *mekugiResponseTransform) TransformJSON(payload []byte) ([]byte, error) {
+	if t.journalActive {
+		if err := t.captureNaturalJournalAnswer(payload); err != nil {
+			return nil, translationDiagnostic(err, "mekugi_json", "Mekugi final answer capture failed")
+		}
+	}
 	transformed, _, err := t.transformResponse(payload, "")
+	if err == nil && t.journalActive {
+		if len(t.journalNaturalAnswerIDs) == 0 {
+			err = t.captureNaturalJournalAnswer(payload)
+		}
+		if err == nil && (t.journalTerminalReady() || t.journalNaturalFinalSeen) {
+			t.journalContinue = false
+		}
+	}
 	if err == nil && t.journalActive {
 		transformed, err = t.decorateJournalJSON(transformed)
 	}
@@ -426,7 +439,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if usageMessage != nil {
 			visible = append(visible, assistantCommentaryDoneEvent(usageMessage))
 		}
-		visible = append(visible, t.finalAnswer.flush()...)
+		visible = append(visible, t.filterNaturalAnswerEvents(t.finalAnswer.flush())...)
 		visible = append(visible, event)
 		return visible, nil
 
@@ -606,7 +619,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		object["output"] = encoded
 	}
 	if t.journalActive {
-		t.journalContinue = status == "completed" && len(t.journalResults) != 0 && !t.journalClientCalls && !t.journalTerminalReady()
+		t.journalContinue = status == "completed" && len(t.journalResults) != 0 && !t.journalClientCalls && !t.journalTerminalReady() && !t.journalNaturalFinalSeen
 		if len(journalPrefix.clientOutput) != 0 {
 			var output []map[string]json.RawMessage
 			if err := json.Unmarshal(object["output"], &output); err != nil {

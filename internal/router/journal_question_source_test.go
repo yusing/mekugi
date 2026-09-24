@@ -1,7 +1,8 @@
 package router
 
 import (
-	"encoding/json"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -37,9 +38,9 @@ func TestJournalQuestionFromVisibleInput(t *testing.T) {
 	}
 }
 
-func TestJournalAnswerSourceIsRequestLocal(t *testing.T) {
+func TestNaturalJournalAnswerSourceIsRequestLocal(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
-	for _, question := range []string{"Original question?", "Steered question?"} {
+	for index, question := range []string{"Original question?", "Steered question?"} {
 		request := serverRequest(t, func(fields map[string]any) {
 			fields["input"] = []any{testFlatCodeModeAdditionalTools(testCodeModeDescription), map[string]any{"role": "user", "content": question}}
 		})
@@ -51,13 +52,16 @@ func TestJournalAnswerSourceIsRequestLocal(t *testing.T) {
 		if transform.journalQuestion != question {
 			t.Fatalf("source = %q, want %q", transform.journalQuestion, question)
 		}
-		result, err := transform.executeJournalCall(map[string]json.RawMessage{
-			"type": mustTestJSON(t, "function_call"), "name": mustTestJSON(t, "journal"),
-			"call_id": mustTestJSON(t, question), "arguments": mustTestJSON(t, `{"op":"add","answer":true,"text":"No."}`),
-		})
-		if err != nil || jsonString(result, "output") == "" {
-			t.Fatalf("answer call: %s %v", result, err)
+		answer := map[string]any{"type": "message", "id": "answer-" + strconv.Itoa(index+1), "role": "assistant", "phase": "final_answer", "status": "completed",
+			"content": []any{map[string]any{"type": "output_text", "text": "Answer for " + question}}}
+		visible, err := transform.TransformJSON(mustTestJSON(t, map[string]any{
+			"id": "response-" + strconv.Itoa(index+1), "status": "completed", "output": []any{answer},
+		}))
+		if err != nil {
+			t.Fatalf("capture natural answer: %v", err)
 		}
+		transform.Delivered(visible)
+		transform.ReleaseDelivery()
 	}
 	items, err := proxy.journals.list(t.Context(), proxy.replayStore, "", "thread")
 	if err != nil || len(items) != 2 || items[0].Question != "Original question?" || items[1].Question != "Steered question?" {
@@ -116,7 +120,7 @@ func TestJournalNativeAssignmentSource(t *testing.T) {
 	}
 }
 
-func TestJournalAssignmentAnswerAfterRestartAndFollowup(t *testing.T) {
+func TestJournalAssignmentFinalAnswerAfterRestartAndFollowup(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	var err error
 	proxy.replayStore, err = openMekugiReplayStore(t.TempDir())
@@ -130,14 +134,16 @@ func TestJournalAssignmentAnswerAfterRestartAndFollowup(t *testing.T) {
 		if child.journalQuestion != question {
 			t.Fatalf("request source = %q, want %q", child.journalQuestion, question)
 		}
-		result, err := child.executeJournalCall(map[string]json.RawMessage{
-			"type": mustTestJSON(t, "function_call"), "name": mustTestJSON(t, "journal"),
-			"call_id":   mustTestJSON(t, question),
-			"arguments": mustTestJSON(t, `{"op":"finish","journal":[{"op":"add","text":"Completed","answer":true}]}`),
-		})
-		if err != nil || !child.journalTerminalReady() {
-			t.Fatalf("assignment finish failed: %s, %v", mustTestJSON(t, result), err)
+		answer := map[string]any{"type": "message", "id": "assignment-answer", "role": "assistant", "phase": "final_answer", "status": "completed",
+			"content": []any{map[string]any{"type": "output_text", "text": "Completed " + question}}}
+		visible, err := child.TransformJSON(mustTestJSON(t, map[string]any{
+			"id": "assignment-response-" + question, "status": "completed", "output": []any{answer},
+		}))
+		if err != nil || !strings.Contains(string(visible), "Journal result") {
+			t.Fatalf("natural assignment completion failed: %s, %v", visible, err)
 		}
+		child.Delivered(visible)
+		child.ReleaseDelivery()
 		items, err := proxy.journals.list(t.Context(), proxy.replayStore, child.directory, "child")
 		if err != nil || len(items) != index+1 || items[index].Question != question || items[0].Question != "Initial assignment" {
 			t.Fatalf("assignment association lost: %+v, %v", items, err)

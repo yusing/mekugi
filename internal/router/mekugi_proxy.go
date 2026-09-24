@@ -266,7 +266,7 @@ type mekugiJournalState struct {
 	journalChildResult      string
 	journalFlushedCount     int
 	journalDeliveryRelease  func()
-	journalQuestion         string // Request-local user text for answer-marked journal mutations.
+	journalQuestion         string // Request-local user text for the natural final answer.
 	journalAvailable        bool
 	journalActive           bool
 	journalPending          map[string]bool
@@ -279,6 +279,8 @@ type mekugiJournalState struct {
 	journalTerminal         bool
 	journalContinue         bool
 	journalFinishRequested  bool
+	journalNaturalAnswerIDs map[string]bool
+	journalNaturalFinalSeen bool
 }
 
 type mekugiDeliveryState struct {

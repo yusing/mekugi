@@ -49,15 +49,22 @@ func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
+					for _, event := range events {
+						transform.Delivered(event)
+					}
+					transform.ReleaseDelivery()
 					return bytes.Join(events, nil)
 				}
 				result, err := transform.TransformJSON(response)
 				if err != nil {
 					t.Fatal(err)
 				}
+				transform.Delivered(result)
+				transform.ReleaseDelivery()
 				return result
 			}
-			if result := emit(child); bytes.Contains(result, []byte("Started ·")) || bytes.Contains(result, []byte("Journal result")) || !bytes.Contains(result, []byte("Substantive answer.")) {
+			if result := emit(child); bytes.Contains(result, []byte("Started ·")) || !bytes.Contains(result, []byte("Journal result")) ||
+				!bytes.Contains(result, []byte("**Answer:**")) || !bytes.Contains(result, []byte("Substantive answer.")) {
 				t.Fatalf("start notice changed the child's result: %s", result)
 			}
 			result := emit(root)

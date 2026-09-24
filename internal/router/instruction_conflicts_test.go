@@ -62,7 +62,7 @@ func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 func TestSolLunaInstructionConflictRewrite(t *testing.T) {
 	// Shared stock wording from the 2026-09-23 models cache, including its typo.
 	const conflict = "Do NOT send user facing questions in intermedaite commentary messages. Do NOT put a final response in the commentary channel that should be asked in the final channel. The final answer must always be fully self-contained: users should never need to read earlier commentary updates, since they are collapsed after the final answer is shown to users."
-	const replacement = "Use the user-input tools for questions when available. Record the terminal result in the journal; do not emit provider final-answer text."
+	const replacement = "Use the user-input tools for questions when available. Finish with a concise final answer; the router flushes it with the journal."
 	const policy = "- Do not add or run tests unless the user asks you to test or verify implementation."
 	for _, newline := range []string{"\n", "\r\n"} {
 		suffix := newline + "```text" + newline + conflict + newline + "```" + newline + policy

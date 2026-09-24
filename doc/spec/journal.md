@@ -30,23 +30,27 @@ renders its text directly, without list indentation; multi-item flushes retain t
 These labels distinguish journals from stock commentary and reasoning summaries without rewriting
 stock output. Deletes are silent unless retracting an already-reported ID.
 
-An add/edit mutation may carry `answer: true`, with only the answer in `text`. The router
-attaches the latest actual user message or native `NEW_TASK` assignment addressed to the
-requesting child from that request's visible history, not instruction or environment context.
+The router associates a completed assistant final answer with the latest actual user message
+or native `NEW_TASK` assignment addressed to the requesting child from that request's visible
+history, not instruction or environment context.
 Assignments use their plaintext payload, not the routing header. The request's canonical child
 name must match both the native recipient and task header, and the header sender must match the
 native author. Ordinary inter-agent messages, completion notifications, and assignments to other
 agents are not answer sources. A later user message or eligible assignment replaces the earlier
 source. An encrypted assignment cannot supply a question and blocks fallback to an older source.
-The agent does not repeat the message. Missing or oversized source content rejects the answer
-mutation rather than inventing or silently truncating a question.
-Omitting `answer` on edit preserves the attached question; false clears it; true attaches the
-current source message. Delete, list, and finish reject a direct `answer` operand. The attached
-question is retained by list, durable replay, restart, and forks, independently of later user
-messages. Inference is request-local; concurrent threads and branches do not share its source.
+The agent does not repeat the message. The completed answer is normally captured as a durable
+journal item before terminal delivery, and its original question is retained by list, durable
+replay, restart, and forks, independently of later user messages. If the automatic answer exceeds
+the per-item limit, the journal is full, or streaming already exposed the raw answer, the provider
+answer remains visible unchanged. In these capacity cases, unflushed milestones remain pending;
+the router does not claim a journal flush or lose the answer from subsequent provider history.
+Inference is request-local;
+concurrent threads and branches do not share its source. Journal mutation schemas do not
+expose an answer flag, and ordinary milestone edits preserve any attached question. Previously
+retained answer-marked and finish calls remain replayable but are not offered to new model turns.
 
-Mekugi mode also exposes `functions.journal` with one operation: `list`, `add`, `edit`, or
-`delete`, or `finish`. List is read-only and may address only a proven ancestor or descendant journal. Unknown
+Mekugi mode also exposes `functions.journal` with `list`, `add`, `edit`, or
+`delete`. List is read-only and may address only a proven ancestor or descendant journal. Unknown
 or conflicted ancestry fails closed. Durable workspace identities, not the live activity
 collector, authorize relative access after a router restart with only the requesting
 thread observed. Authorization and returned items use the same locked snapshot.
@@ -55,28 +59,19 @@ router state operations and do not invoke an executor. The dedicated schema expo
 batched `journal` field. Existing journal declarations anywhere in the tool catalog, including
 nested additional-tool namespaces, reject built-in tool exposure.
 
-Direct `functions.journal({"op":"finish","journal":[...]})` requests turn completion,
-optionally applying the last atomic mutation array in the same call. Finish takes final mutations
-only through `journal`; other operands must be unset or at their empty/default values. Agents request it once
-their assigned work is complete and all required tool results have been inspected, not after an intermediate
-result or to generate another final-answer turn. On a successful
-response with successful journal results and no client-dispatched calls, it completes and
-returns the terminal response without another provider request. Other successful router-owned
-journal calls may share that response. Mixed client calls remain
-host-dispatched and prevent completion. Their finish result is `ok:false`, names the pending
-host work, and asks the caller to inspect those results before retrying finish without host calls.
-Already-applied batched mutations and their `journal_ids` remain valid. Streaming finish results
-are held until terminal classification, so a later host call cannot contradict an earlier success.
-Journal operation error results continue for correction.
+The agent finishes naturally with a final answer after inspecting required tool results.
+On a successful completed response with no client-dispatched calls, the router captures the final
+answer for the journal renderer, suppresses the raw provider final-answer message, and returns the
+terminal journal delivery without another provider request. A journal-only operation without
+a final answer continues so its result remains inspectable. Mixed client calls remain
+host-dispatched and prevent terminal delivery. Journal operation error results continue for correction.
 Invalid or rejected mutations in a dedicated journal call return an `ok: false` tool result
 for correction and prevent its primary operation. Batched fields on host-dispatched tools
 still fail translation under the atomic field contract.
-Failed, incomplete, or interrupted responses never complete or flush via finish.
-Completion intent is response-local: replay, resume, and forks do not finish a new turn.
-Code Mode journal publication does not expose finish. The Bash/POSIX finish surface below
-binds intent to its originating invocation rather than a response-local direct-tool call.
+Failed, incomplete, or interrupted responses never flush. Completion is response-local:
+replay, resume, and forks do not finish a new turn.
 
-On a successful explicit main finish with no client-dispatched calls, the router emits token metrics,
+On successful main completion with no client-dispatched calls, the router emits token metrics,
 then one deterministic flush of its own journal containing only unflushed revisions, including previously
 live-reported entries, skipping the flush when empty. The flush remains the last assistant message in
 both streamed events and the terminal snapshot so native turn completion does not display it again.
@@ -84,8 +79,7 @@ Terminal flushes and terminal retractions render as assistant
 `final_answer` messages, not commentary; live updates remain commentary. These terminal messages
 are user-visible only and retain the same exact-ID removal from later provider input.
 Only successful terminal delivery marks a revision flushed;
-edits clear both current-revision delivery flags. `list` exposes both flags. Finish ends the
-turn without a follow-up provider request or a separately generated final answer. A child finishes without flushing and emits
+edits clear both current-revision delivery flags. `list` exposes both flags. A child completes without flushing and emits
 `Journal result` with its own current journal items,
 including already-flushed items, as the native completion result. The result preserves item
 IDs, author, questions, and Markdown using the terminal item renderer and capacity bound.
@@ -137,8 +131,7 @@ validation, or blockers, without overlapping progress or superseded summaries.
 Parents' own journals cover their results, integration decisions, and actions on findings,
 not repetitions or summaries of other agents' journals.
 Native child completion preserves each agent's original report; main completion does not repeat it.
-Agents mark answer items with `answer: true` and put only the answer in
-`text`; the router supplies the original question. Live notices label these as **Question** and
+The final answer becomes a journal item; the router supplies the original question. Live notices label question-associated items as **Question** and
 **Answer**; terminal blocks use **Answer** or **Answers**, according to the number of answers.
 The router preserves authored Markdown rather than summarizing it. Within each terminal journal
 message, all items with an identical question form one block: the question appears once, followed
@@ -151,7 +144,7 @@ Stored questions remain attached to every answer, and standalone live updates re
 Each answer keeps its ID separate from its body and indents all body lines under that item,
 including blank lines, nested lists, paragraphs, and fenced code blocks.
 
-Code Mode reserves `await journal({op, id?, text?, answer?, report_now?})`, also accepting
+Code Mode reserves `await journal({op, id?, text?, report_now?})`, also accepting
 a mutation array. The parser preserves strings, comments, properties, and unrelated
 identifiers, and leaves unparseable source unchanged for the executor to diagnose.
 A single mutation returns its item ID; a mutation array returns the ordered item IDs.
@@ -169,25 +162,21 @@ The capability expires with its owning call and
 cannot be borrowed by another thread. Agent-authored source and private
 publisher credentials are not added to sanitized metrics.
 
-`functions.journal` owns `list`, `add`, `edit`, `delete`, and `finish`. Its
-`finish` operation may include a final mutation batch. A successful direct
-finish with no pending Codex-dispatched work can deliver the terminal journal
-without another provider request. Failed, incomplete, or unrelated tool calls
-cannot turn a prior finish into a new terminal result. Replay may restore the
-exact journal call and result, but cannot finish another turn or branch. For
-Code Mode, finish through the dedicated `functions.journal` tool after required
-stock results, not as an executable command.
+`functions.journal` owns `list`, `add`, `edit`, and `delete`. A successful natural
+final answer with no pending Codex-dispatched work delivers the terminal journal
+without another provider request. Replay may restore journal calls and results,
+but cannot finish another turn or branch.
 
 ### Delivery failures
 
-Required terminal journal messages must have retained replay provenance before an
-explicit finish can complete successfully. If required retention fails,
+Required terminal journal messages must have retained replay provenance before
+natural completion can succeed. If required retention fails,
 the response fails instead of silently completing without the flush or child summary.
 Unacknowledged revisions remain available for a later flush.
 
-A provider final message is not a journal finish. The router neither suppresses that text nor
-uses it to trigger a journal flush. Ordinary token-usage buffering remains bounded and releases
-provider events unchanged on overflow.
+A successful provider final message is captured as the journal answer and triggers a flush.
+Ordinary token-usage buffering remains bounded and releases provider events unchanged on
+failure or overflow.
 
 ### Acceptance
 
@@ -203,15 +192,15 @@ provider events unchanged on overflow.
 5. Immediate notices are acknowledged after successful emission without consuming the terminal
    flush. A failed live or terminal delivery remains eligible for retry. Silent edits become
    flush-eligible again; deleting a previously shown ID with report_now emits a retraction.
-6. Successful explicit main finish calls show only main's unflushed revisions,
+6. Successful natural main completions show only main's unflushed revisions,
    including live updates, after eligible token metrics. The flush is emitted exactly once and remains
-   the last assistant message. Child finish calls save without flushing and
-   retain a nonempty completion result containing their current journal text. Finish makes no
+   the last assistant message. Child completions save without flushing and
+   retain a nonempty completion result containing their current journal text. Completion makes no
    final-answer continuation request.
-   Provider messages remain unfiltered and do not trigger a flush; failures and interruptions do not terminal-flush.
+   A captured provider final answer is not also rendered separately; failures and interruptions do not terminal-flush.
 7. Native client normalization preserves journal results and returns the child's
-   current journal text after one finishing child request, without a final-answer
-   continuation.
+   current journal text after one naturally completing child request, without a
+   final-answer continuation.
 8. Debug evidence separates applied mutations, runtime wiring, live rendering, and
    terminal flushing without recording journal bodies or private publication credentials.
 9. Multiline Markdown stays within its terminal journal item. Answer items display the

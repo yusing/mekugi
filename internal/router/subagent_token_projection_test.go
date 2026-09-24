@@ -90,7 +90,15 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				if bytes.Count(output, []byte("Router session usage")) != 1 || !bytes.Contains(output, []byte("/root/worker")) || !bytes.Contains(output, []byte("Root answer.")) {
+				wantUsageOccurrences := 1
+				if stream {
+					// SSE carries each completed assistant item and repeats it in
+					// the response.completed snapshot.
+					wantUsageOccurrences = 2
+				}
+				if bytes.Count(output, []byte("Router session usage")) != wantUsageOccurrences || !bytes.Contains(output, []byte("/root/worker")) ||
+					!bytes.Contains(output, []byte("Journal flush")) || !bytes.Contains(output, []byte("Root answer.")) ||
+					bytes.Contains(output, []byte(`"id":"root-answer"`)) {
 					t.Fatalf("main completion did not deliver one consolidated report: %s", output)
 				}
 				other.observeResponseUsage(tokenCounts{InputTokens: 1})

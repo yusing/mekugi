@@ -66,8 +66,8 @@ sessions, and patch review. No fork, no config edits, no daemon.
   instead of requiring the entire Git diff.
 - **Hand off child changes automatically.** Child completion results include
   retained change ranges and aggregated line counts for focused parent review.
-- **Finish with a journal update.** A `functions.journal` finish can deliver the
-  final report without another model request just to restate it.
+- **Finish naturally.** A final answer becomes a Question and Answer journal flush
+  without another model request just to restate it.
 
 ### Agent performance
 
@@ -488,7 +488,7 @@ supported APIs and history limitations.
   your hook configuration in that case. Quote the executable path if it contains
   spaces. Hook failures are advisory and do not stop the task.
 - **Instructions:** Mekugi preserves Codex's stock or caller-configured base instructions. It adds
-  journal and finish guidance through the projected tool descriptions without editing instruction
+  journal and completion guidance through the projected tool descriptions without editing instruction
   files. See [guidance behavior](doc/spec/guide.md).
 - **Plugins:** put regular `.js` or `.mjs` modules in `mekugi/plugins` beneath
   your platform's user configuration directory. On Linux this is

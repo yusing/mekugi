@@ -147,7 +147,7 @@ those messages from later provider-bound input while preserving the original col
 tool outputs, and inter-agent messages. A response already accompanied by its deterministic
 commentary is not projected again.
 
-A successful explicit main finish includes one token notice before its journal flush and
+A successful natural main completion includes one token notice before its journal flush and
 before the terminal event, including when the journal is empty. Unavailable usage is reported as `n/a`
 with an incomplete-usage explanation rather than silently omitting the notice, unless
 reporting is disabled. Child completion never emits its own usage report.
@@ -237,12 +237,12 @@ boundary, and unavailable estimates. Root accounting is not mutated when renderi
 tree total. This is auxiliary commentary accounting, not a change to capture-owned metrics
 exports. Generated tables retain the existing exact replay filtering and auxiliary budget.
 
-A successful explicit main journal finish emits usage, then its own unflushed journal revisions (including
+A successful natural main completion emits usage, then its own unflushed journal revisions (including
 live-reported updates), and the terminal event. The final journal message is emitted once, after token
 metrics, and remains last in both streamed messages and the terminal snapshot.
-Child finish emits its native journal result without a token table.
-It does not request a separately generated provider final answer. Provider answer events remain
-unfiltered and cannot trigger journal completion. Failed or incomplete responses release buffered
+Child completion emits its native journal result without a token table.
+The completed provider final answer is captured in the journal rather than rendered separately.
+Failed or incomplete responses release buffered
 output without terminal journal flush or usage notices.
 The streaming transport preserves named SSE framing and one data field per payload line.
 Ordinary token-usage buffering remains bounded at 64 MiB and releases provider output unchanged

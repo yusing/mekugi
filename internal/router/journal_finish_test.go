@@ -550,18 +550,19 @@ func requestJournalFinish(t *testing.T, transform *mekugiResponseTransform) {
 	}
 }
 
-func TestProviderAnswerDoesNotSubstituteForJournalFinish(t *testing.T) {
+func TestNaturalProviderAnswerBecomesJournalTerminalResult(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		for _, child := range []bool{false, true} {
 			t.Run(map[bool]string{false: "json", true: "sse"}[stream]+map[bool]string{false: "/main", true: "/child"}[child], func(t *testing.T) {
-				transform, proxy, _, _ := newMekugiTestTransform(t)
+				transform, proxy, _, workspace := newMekugiTestTransform(t)
 				transform.subagentTurn = child
+				transform.journalQuestion = "How did the task go?"
 				if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, transform.directory, transform.shellThreadID, "seed",
 					[]journalMutation{{Op: "add", Text: new("Pending report")}}); err != nil {
 					t.Fatal(err)
 				}
-				answer := map[string]any{"type": "message", "id": "unexpected-answer", "role": "assistant", "phase": "final_answer", "status": "completed",
-					"content": []any{map[string]any{"type": "output_text", "text": "Provider text stays intact."}}}
+				answer := map[string]any{"type": "message", "id": "natural-answer", "role": "assistant", "phase": "final_answer", "status": "completed",
+					"content": []any{map[string]any{"type": "output_text", "text": "Provider answer is captured."}}}
 				response := map[string]any{"id": "unexpected", "status": "completed", "output": []any{answer}}
 				var output []byte
 				if stream {
@@ -576,9 +577,6 @@ func TestProviderAnswerDoesNotSubstituteForJournalFinish(t *testing.T) {
 					}
 					events := append(first, last...)
 					output = bytes.Join(events, nil)
-					if !bytes.Contains(output, original) {
-						t.Fatal("provider event was filtered or rewritten")
-					}
 					for _, event := range events {
 						transform.Delivered(event)
 					}
@@ -591,20 +589,31 @@ func TestProviderAnswerDoesNotSubstituteForJournalFinish(t *testing.T) {
 					transform.Delivered(output)
 				}
 				transform.ReleaseDelivery()
-				if !bytes.Contains(output, mustTestJSON(t, answer)) || bytes.Contains(output, []byte("Journal flush")) ||
-					bytes.Contains(output, []byte("Journal result")) || transform.journalTerminalReady() {
-					t.Fatalf("provider answer became a journal finish: %s", output)
+				if bytes.Contains(output, []byte(`"id":"natural-answer"`)) || !bytes.Contains(output, []byte("Provider answer is captured.")) {
+					t.Fatalf("provider answer was not exclusively rendered through the journal: %s", output)
 				}
-				items, err := proxy.journals.list(t.Context(), proxy.replayStore, transform.directory, transform.shellThreadID)
-				if err != nil || len(items) != 1 || items[0].Flushed {
-					t.Fatalf("provider answer consumed pending report: %+v, %v", items, err)
+				if child {
+					if !bytes.Contains(output, []byte("Journal result")) {
+						t.Fatalf("child completion omitted its journal result: %s", output)
+					}
+				} else if !bytes.Contains(output, []byte("Journal flush")) {
+					t.Fatalf("main completion omitted its journal flush: %s", output)
+				}
+				if !bytes.Contains(output, []byte("**Question:**")) || !bytes.Contains(output, []byte("How did the task go?")) ||
+					!bytes.Contains(output, []byte("**Answer:**")) {
+					t.Fatalf("natural answer lost its question association: %s", output)
+				}
+				items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, transform.shellThreadID)
+				if err != nil || len(items) != 2 || items[0].Text != "Pending report" || items[1].Text != "Provider answer is captured." ||
+					items[1].Question != "How did the task go?" {
+					t.Fatalf("natural answer was not stored alongside the pending report: %+v, %v", items, err)
 				}
 			})
 		}
 	}
 }
 
-func TestJournalContinuationPreservesProviderOutput(t *testing.T) {
+func TestJournalListContinuationCapturesNaturalAnswer(t *testing.T) {
 	for _, mode := range []string{"json", "sse-full", "sse-empty", "sse-absent", "sse-snapshot-only"} {
 		t.Run(mode, func(t *testing.T) {
 			stream := mode != "json"
@@ -614,13 +623,15 @@ func TestJournalContinuationPreservesProviderOutput(t *testing.T) {
 			}
 			proxy := newManagedMekugiProxy(t)
 			call := map[string]any{"type": "function_call", "id": "list-item", "call_id": "list-call", "name": "journal", "arguments": `{"op":"list"}`, "status": "completed"}
+			progress := map[string]any{"type": "message", "id": "intermediate-message", "role": "assistant", "phase": "commentary", "status": "completed",
+				"content": []any{map[string]any{"type": "output_text", "text": "Provider interim progress."}}}
 			message := map[string]any{
 				"type": "message", "id": "unexpected-message", "role": "assistant", "phase": "final_answer", "status": "completed",
-				"content": []any{map[string]any{"type": "output_text", "text": "Unexpected provider text must remain visible."}},
+				"content": []any{map[string]any{"type": "output_text", "text": "Natural provider final answer."}},
 			}
 			provider := &serverFakeProvider{results: []serverForwardResult{
-				{response: journalFinishResponse(t, stream, "completed", snapshot, call, message)},
-				{response: journalFinishResponse(t, stream, "completed", snapshot, journalFinishCall(`{"op":"finish"}`))},
+				{response: journalFinishResponse(t, stream, "completed", snapshot, call, progress)},
+				{response: journalFinishResponse(t, stream, "completed", snapshot, message)},
 			}}
 			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
 			var output bytes.Buffer
@@ -630,17 +641,28 @@ func TestJournalContinuationPreservesProviderOutput(t *testing.T) {
 			if len(provider.forwarded) != 2 {
 				t.Fatalf("provider requests = %d, want 2", len(provider.forwarded))
 			}
-			count := 0
+			if !bytes.Contains(provider.forwarded[1], []byte("function_call_output")) ||
+				!bytes.Contains(provider.forwarded[1], []byte("list-call")) ||
+				!bytes.Contains(provider.forwarded[1], []byte("intermediate-message")) {
+				t.Fatalf("journal result or non-answer provider history was lost on continuation: %s", provider.forwarded[1])
+			}
+			if bytes.Contains(output.Bytes(), []byte(`"id":"unexpected-message"`)) ||
+				!bytes.Contains(output.Bytes(), []byte("Provider interim progress.")) {
+				t.Fatalf("natural final answer was not replaced or interim progress was lost: %s", output.Bytes())
+			}
+			var flushes int
 			for _, item := range journalFinishClientOutput(t, stream, output.Bytes()) {
-				if jsonString(item, "id") == "unexpected-message" {
-					count++
-					if !bytes.Equal(mustMarshalJSON(item), mustMarshalJSON(message)) {
-						t.Fatalf("provider message changed: %s", mustMarshalJSON(item))
+				text := commentaryMessageText(item)
+				if strings.Contains(text, "Journal flush") {
+					flushes++
+					if !strings.Contains(text, "**Question:**") || !strings.Contains(text, "task") ||
+						!strings.Contains(text, "**Answer:**") || !strings.Contains(text, "Natural provider final answer.") {
+						t.Fatalf("natural final answer lost Q/A rendering: %s", text)
 					}
 				}
 			}
-			if count != 1 {
-				t.Fatalf("terminal retained %d provider messages, want 1: %s", count, output.Bytes())
+			if flushes != 1 {
+				t.Fatalf("terminal flushes = %d, want one: %s", flushes, output.Bytes())
 			}
 			if stream {
 				completed := 0
@@ -657,8 +679,8 @@ func TestJournalContinuationPreservesProviderOutput(t *testing.T) {
 						completed++
 					}
 				}
-				if completed != 1 {
-					t.Fatalf("stream emitted %d completed provider messages, want 1", completed)
+				if completed != 0 {
+					t.Fatalf("stream emitted %d raw provider final answers, want 0", completed)
 				}
 			}
 		})

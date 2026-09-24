@@ -378,7 +378,7 @@ func (t *mekugiResponseTransform) journalTerminalMessages(response []byte) ([]ma
 	var messages []map[string]json.RawMessage
 	var counts tokenUsageReport
 	observed := false
-	// Explicit finish is completion even with an empty journal. Missing current
+	// Natural completion is terminal even with an empty journal. Missing current
 	// usage must invalidate prior totals before rendering, not hide the report.
 	if !t.subagentTurn {
 		if !t.usageObserved {
@@ -443,7 +443,7 @@ func (t *mekugiResponseTransform) decorateJournalJSON(payload []byte) ([]byte, e
 		return nil, err
 	}
 	if terminal {
-		output = withoutJournalUsage(output, jsonString(response, "id"))
+		output = t.withoutNaturalAnswer(withoutJournalUsage(output, jsonString(response, "id")))
 		terminalMessages, err := t.journalTerminalMessages(payload)
 		if err != nil {
 			t.ReleaseDelivery()
@@ -538,7 +538,7 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 			if err := decodeJournalOutput(event.Response["output"], &output); err != nil {
 				return nil, err
 			}
-			output = withoutJournalUsage(output, jsonString(event.Response, "id"))
+			output = t.withoutNaturalAnswer(withoutJournalUsage(output, jsonString(event.Response, "id")))
 			output = append(output, messages...)
 			event.Response["output"] = mustMarshalJSON(output)
 			payload, err = replaceRawField(payload, "response", mustMarshalJSON(event.Response))

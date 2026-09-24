@@ -131,8 +131,8 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 		if strings.Contains(codeModeJournalGuidance, "After every required tool result, finish") {
 			t.Error("Code Mode journal guidance still directs finishing after every individual tool result")
 		}
-		if strings.Contains(got, "finish alone") || strings.Contains(got, "finish as the only call") {
-			t.Error("Code Mode guidance unnecessarily forbids accompanying router-owned mutations")
+		if strings.Contains(got, "finish without another provider request or separate final answer") {
+			t.Error("Code Mode guidance still directs an explicit finish instead of a natural final answer")
 		}
 		checkStableRefresh(t, fields)
 	})
@@ -161,8 +161,7 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 				"Use journal mutations instead of commentary for milestone updates",
 				"Prefer the optional journal field",
 				"Once the assigned work is complete",
-				"no host-dispatched calls in the same response",
-				"Successful finish ends the turn",
+				"Finish naturally with a concise final answer",
 			} {
 				if count := strings.Count(combined, rule); count != 1 {
 					t.Errorf("journal rule %q appears %d times; want one owner", rule, count)

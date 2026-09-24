@@ -251,6 +251,14 @@ func TestExecScopePreviewDoesNotTreatReadBudgetAsChange(t *testing.T) {
 		if err := os.WriteFile(path, []byte(strings.Repeat("new\n", 400000)), 0o600); err != nil {
 			t.Fatal(err)
 		}
+		// The running preview polls a metadata stamp before attempting a
+		// bounded read. A same-size rewrite can retain the same filesystem
+		// timestamp when the test completes within one clock tick, so make the
+		// fixture's change observable independently of timestamp resolution.
+		changedTime := time.Now().Add(time.Hour)
+		if err := os.Chtimes(path, changedTime, changedTime); err != nil {
+			t.Fatal(err)
+		}
 		advanceExecCleanupPreviewTicker(t)
 		changed := assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, "RUNNING · observed so far")
 		if len(changed.Files) != 1 || !strings.Contains(changed.Files[0].Incomplete, "content bound") {

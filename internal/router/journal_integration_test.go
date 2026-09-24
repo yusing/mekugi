@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -625,7 +626,7 @@ func TestJournalToolSchemaIncludesBatchedMutations(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, properties := range []map[string]json.RawMessage{schema.Properties, nested.Items.Properties} {
-		for _, name := range []string{"op", "report_now", "answer"} {
+		for _, name := range []string{"op", "report_now"} {
 			var property struct {
 				Description string `json:"description"`
 			}
@@ -633,15 +634,27 @@ func TestJournalToolSchemaIncludesBatchedMutations(t *testing.T) {
 				t.Fatalf("missing %s schema guidance: %s, %v", name, properties[name], err)
 			}
 		}
+		if _, visible := properties["answer"]; visible {
+			t.Fatalf("model-visible answer property remains in journal schema: %s", mustMarshalJSON(properties))
+		}
+		var operation struct {
+			Enum []string `json:"enum"`
+		}
+		if err := json.Unmarshal(properties["op"], &operation); err != nil {
+			t.Fatalf("decode journal operation schema: %v", err)
+		}
+		if slices.Contains(operation.Enum, "finish") {
+			t.Fatalf("finish remains a model-visible journal operation: %s", properties["op"])
+		}
 	}
 	description := catalog.top.tools[0].Description
-	for _, required := range []string{"durable milestone journal", "await journal", "no host-dispatched calls in the same response", "final mutations in journal", "without another model request", "without", "separate final answer"} {
+	for _, required := range []string{"durable milestone journal", "await journal", "Finish naturally with a concise final answer", "Question and Answer flush"} {
 		if !strings.Contains(description, required) {
 			t.Fatalf("journal description lacks %q: %q", required, description)
 		}
 	}
-	if strings.Contains(description, "finish alone") || strings.Contains(description, "finish as the only call") {
-		t.Fatal("journal guidance unnecessarily forbids accompanying router-owned mutations")
+	if strings.Contains(description, "without another provider request or separate final answer") {
+		t.Fatal("journal guidance still directs an explicit finish instead of a natural final answer")
 	}
 }
 

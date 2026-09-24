@@ -44,7 +44,7 @@ does not assert the current workspace state or cover shell-generated changes.
 
 The journal owner supplies the additive durable-work guidance. The dedicated
 `functions.journal` description explains milestone scope, immediate reporting, Code Mode mutation,
-and finish semantics. Eligible structured tools receive the optional atomic `journal` mutation
+and natural completion semantics. Eligible structured tools receive the optional atomic `journal` mutation
 field. For Code Mode, Mekugi appends one marked Journal section to the authoritative `exec` tool
 description without removing the caller's stock execution contracts.
 The section points to the dedicated journal tool description rather than repeating its rules.
@@ -88,8 +88,8 @@ Acceptance:
    section. Refresh is idempotent, malformed markers fail closed, and unrelated descriptions,
    sibling tools, and stock execution contracts remain unchanged.
 3. The dedicated journal tool and optional mutation field expose enough guidance to record concise
-   milestones, request immediate reporting, list retained items, and finish without another provider
-   request or separate final answer.
+   milestones, request immediate reporting, list retained items, and finish naturally with a final
+   answer rendered as a journal flush without another provider request.
 4. Ordinary, fork, side-thread, subagent, model-switch, compaction, and resume consumers derive
    guidance from their current tool catalog and authenticated registry rather than invisible ancestry
    or live router state. Each helper has one description owner; the built-in section of the

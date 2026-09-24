@@ -46,7 +46,10 @@ func TestJournalAnswerDurabilityReplayAndEditing(t *testing.T) {
 			t.Fatalf("%s: %+v %v", thread, items, err)
 		}
 	}
-	for _, question := range []string{"", " \n", "\xff", strings.Repeat("q", maxJournalItemBytes)} {
+	if err := apply("root", "without-source", "", mutation); err != nil {
+		t.Fatalf("answer without a source question was rejected: %v", err)
+	}
+	for _, question := range []string{"\xff", strings.Repeat("q", maxJournalItemBytes)} {
 		if err := apply("root", "", question, mutation); err == nil {
 			t.Fatalf("accepted invalid source of %d bytes", len(question))
 		}
@@ -71,7 +74,7 @@ func TestJournalAnswerDurabilityReplayAndEditing(t *testing.T) {
 	}
 }
 
-func TestJournalAnswerRoutingAndRendering(t *testing.T) {
+func TestJournalMutationRoutingAndRendering(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	transform.journalQuestion = "Which?\n\n- A\n- B"
@@ -90,24 +93,16 @@ func TestJournalAnswerRoutingAndRendering(t *testing.T) {
 		}
 		return output
 	}
-	result := call("add", `{"op":"add","text":"Result\n\n- first\n\nParagraph.","answer":true,"report_now":true}`)
+	result := call("add", `{"op":"add","text":"Result\n\n- first\n\nParagraph.","report_now":true}`)
 	if string(result["ok"]) != "true" {
 		t.Fatalf("add: %s", mustMarshalJSON(result))
 	}
 	result = call("list", `{"op":"list"}`)
 	var items []journalListItem
-	if err := json.Unmarshal(result["items"], &items); err != nil || len(items) != 1 || items[0].Question != transform.journalQuestion {
+	if err := json.Unmarshal(result["items"], &items); err != nil || len(items) != 1 || items[0].Question != "" {
 		t.Fatalf("list: %s %v", mustMarshalJSON(result), err)
 	}
-	for _, op := range []string{"list", "finish"} {
-		for _, answer := range []bool{false, true} {
-			result := call(op+string(mustMarshalJSON(answer)), string(mustMarshalJSON(map[string]any{"op": op, "answer": answer})))
-			if string(result["ok"]) != "false" {
-				t.Fatalf("accepted %s answer: %s", op, mustMarshalJSON(result))
-			}
-		}
-	}
-	body := "**Question:**\n\nWhich?\n\n- A\n- B\n\n**Answer:**\n\nResult\n\n- first\n\nParagraph."
+	body := "Result\n\n- first\n\nParagraph."
 	for _, terminal := range []bool{false, true} {
 		messages, err := transform.prepareJournalDelivery(terminal)
 		transform.ReleaseDelivery()
@@ -119,8 +114,8 @@ func TestJournalAnswerRoutingAndRendering(t *testing.T) {
 			t.Fatalf("terminal=%v: %s %v", terminal, mustMarshalJSON(messages), err)
 		}
 	}
-	result = call("batch", `{"op":"list","journal":[{"op":"add","text":"Batched","answer":true}]}`)
-	if err := json.Unmarshal(result["items"], &items); err != nil || len(items) != 2 || items[1].Question != transform.journalQuestion {
+	result = call("batch", `{"op":"list","journal":[{"op":"add","text":"Batched"}]}`)
+	if err := json.Unmarshal(result["items"], &items); err != nil || len(items) != 2 || items[1].Question != "" {
 		t.Fatalf("batch: %s %v", mustMarshalJSON(result), err)
 	}
 }
@@ -130,7 +125,7 @@ func TestCodeModeJournalPinsQuestionAtLowering(t *testing.T) {
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	proxy.commentaryEndpoint = "http://localhost/internal/commentary"
 	transform.journalQuestion = "Original question?"
-	carrier, lowered, err := transform.lowerCodeModeCommentary("call", `await journal({op: "add", text: "Answer", answer: true})`)
+	carrier, lowered, err := transform.lowerCodeModeCommentary("call", `await journal({op: "add", text: "Milestone"})`)
 	if err != nil || !lowered {
 		t.Fatalf("lower: %v %v", lowered, err)
 	}
@@ -139,12 +134,12 @@ func TestCodeModeJournalPinsQuestionAtLowering(t *testing.T) {
 	}
 	transform.journalQuestion = "Later question?"
 	proxy.commentary.journalPublisher = func(_ context.Context, _, _, _ string, mutations []journalMutation) ([]string, error) {
-		if len(mutations) != 1 || mutations[0].inferredQuestion != "Original question?" || mutations[0].Answer == nil || !*mutations[0].Answer {
+		if len(mutations) != 1 || mutations[0].Text == nil || *mutations[0].Text != "Milestone" || mutations[0].Answer != nil {
 			t.Fatalf("publication source: %+v", mutations)
 		}
 		return []string{"amber"}, nil
 	}
-	request := httptest.NewRequest(http.MethodPost, commentaryPublisherPath, strings.NewReader(`{"journal":{"op":"add","text":"Answer","answer":true},"id":"publication"}`))
+	request := httptest.NewRequest(http.MethodPost, commentaryPublisherPath, strings.NewReader(`{"journal":{"op":"add","text":"Milestone"},"id":"publication"}`))
 	request.Header.Set("Authorization", "Bearer "+transform.commentarySubscriptions[0].token)
 	writer := httptest.NewRecorder()
 	proxy.commentary.serveHTTP(writer, request)
@@ -153,7 +148,7 @@ func TestCodeModeJournalPinsQuestionAtLowering(t *testing.T) {
 	}
 }
 
-func TestStructuredJournalAnswerBindsQuestion(t *testing.T) {
+func TestStructuredJournalMutationIsPlainMilestone(t *testing.T) {
 	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	transform.journalQuestion = "Run checks?"
 	transform.commentaryTools = commentaryToolCatalog{
@@ -162,7 +157,7 @@ func TestStructuredJournalAnswerBindsQuestion(t *testing.T) {
 	item := map[string]json.RawMessage{
 		"type": mustMarshalJSON("function_call"), "namespace": mustMarshalJSON("functions"),
 		"name": mustMarshalJSON("exec_command"), "call_id": mustMarshalJSON("structured-answer"),
-		"arguments": mustMarshalJSON(`{"cmd":"true","journal":[{"op":"add","text":"Passed","answer":true}]}`),
+		"arguments": mustMarshalJSON(`{"cmd":"true","journal":[{"op":"add","text":"Passed"}]}`),
 	}
 	if _, err := transform.transformStructuredCommentary(item); err != nil {
 		t.Fatal(err)
@@ -171,7 +166,7 @@ func TestStructuredJournalAnswerBindsQuestion(t *testing.T) {
 		t.Fatalf("host arguments: %s", item["arguments"])
 	}
 	items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
-	if err != nil || len(items) != 1 || items[0].Question != "Run checks?" {
+	if err != nil || len(items) != 1 || items[0].Question != "" {
 		t.Fatalf("state: %+v %v", items, err)
 	}
 }

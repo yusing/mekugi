@@ -34,6 +34,7 @@ const (
 
 // errJournalUnchanged skips publication after the locked durable read.
 var errJournalUnchanged = errors.New("journal unchanged")
+var errJournalItemLimit = errors.New("journal item limit reached")
 
 type journalMutation struct {
 	Op               string  `json:"op"`
@@ -461,7 +462,7 @@ func (s *journalStore) descendants(store *mekugiReplayStore, workspace, root str
 	return result, nil
 }
 
-// Pin inferred source without changing the model-authored receipt digest.
+// Pin a legacy answer source without changing the model-authored receipt digest.
 func bindJournalAnswers(mutations []journalMutation, question string) []journalMutation {
 	bound := slices.Clone(mutations)
 	for index := range bound {
@@ -517,8 +518,8 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 				question = ""
 				if *mutation.Answer {
 					question = mutation.inferredQuestion
-					if strings.TrimSpace(question) == "" || !utf8.ValidString(question) {
-						return errors.New("journal answer requires a nonblank UTF-8 user question or native assignment")
+					if !utf8.ValidString(question) {
+						return errors.New("journal question must be UTF-8")
 					}
 				}
 			}
@@ -529,7 +530,7 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 					return errors.New("journal text must be nonblank UTF-8; text and question together must be at most 16 KiB")
 				}
 				if mutation.Op == "add" && (mutation.ID != "" || len(j.Items) >= maxJournalItems) {
-					return fmt.Errorf("journal add requires no ID and at most %d items; delete obsolete items before adding more", maxJournalItems)
+					return fmt.Errorf("%w: journal add requires no ID and at most %d items; delete obsolete items before adding more", errJournalItemLimit, maxJournalItems)
 				}
 				if mutation.Op == "edit" && index < 0 {
 					return errors.New("journal item not found")
