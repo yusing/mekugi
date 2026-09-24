@@ -6,6 +6,7 @@ credentials or live model usage:
 
 ```sh
 go test -tags journal_e2e ./internal/router -run '^TestConfiguredToolFrontendNativeCodexE2E$'
+go test -tags journal_e2e ./internal/router -run '^TestMChangesNestedNativeCodexE2E$'
 go test -tags journal_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'
 go test -tags journal_e2e ./internal/router -run '^TestJournalNativeCodexSpawnE2E$'
 go test -tags journal_e2e ./internal/router -run '^TestPostCompactNativeCodexE2E$'
@@ -18,6 +19,12 @@ separation, and exit status. The mrun fixture checks Codex-owned PTY yield and
 `write_stdin` continuation. The journal fixture checks native child
 assignment, live milestones, terminal child result, and parent delivery without
 an extra final-answer provider request.
+
+The mchanges fixture executes nested stock patch and shell calls without printing
+their results, then checks durable native receipts, net review, explicit-ID reads
+from another thread, caught failures, and cross-request yielded-command completion.
+Its native traces are deleted before
+review reads, and the replay store is reopened to verify durable confirmation.
 
 The post-compaction fixture forces native automatic compaction and verifies that
 the immediate continuation contains the durable journal and change summary. It

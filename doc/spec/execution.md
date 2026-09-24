@@ -68,6 +68,23 @@ Post-result change sweeps are bounded auxiliary observation, not execution hooks
 They do not wrap commands, inject environments, or alter yielded-session handling.
 Command change notices in model-visible stock output remain deferred; results stay
 unchanged.
+
+Wrapped Mekugi launches enable Codex's native rollout trace in a private,
+session-scoped temporary directory. Observation joins the executing thread,
+outer call and source, Code Mode cell, and individual tool results. It does not
+wrap tools, change JavaScript, install execution hooks, or trust printed results.
+Shell success requires a terminal exit code of zero, not merely a completed
+dispatch. A yielded process stays unfinished until its native runtime result.
+Matched receipts are persisted with the captured changes, so review after resume
+does not depend on the temporary trace or revive a process.
+
+Trace reading is incremental and bounded; missing, ambiguous, unsupported, or
+corrupt evidence cannot confirm success. Codex's recorder itself currently has
+no tool-only switch or storage cap and also records prompts and responses. Its
+private directory is removed when the router session closes; abrupt process
+termination can leave temporary files. This invocation-local override does not
+change user configuration. Older captures without receipts remain reviewable
+as observed effects rather than being upgraded to confirmed edits.
 Scope providers may parse local source or issue a validated local read-only query.
 They never evaluate interpreter source, run a writer stage, contact a remote, or
 invoke configured hooks, preprocessors, filters, or monitors. Missing tools and

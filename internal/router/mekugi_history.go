@@ -34,6 +34,7 @@ type mekugiHistory struct {
 	NativePatches   []nativePatchObservation `json:",omitempty"`
 	ExecObservation *execObservation         `json:",omitempty"`
 	ExecOutcome     *execOutcome             `json:",omitempty"`
+	HostResults     []nativeToolResult       `json:",omitempty"`
 	Applied         bool
 	CarrierName     string
 	CarrierKind     codeModeCarrierKind
@@ -52,8 +53,9 @@ type mekugiHistory struct {
 	CommentaryMessageIDs []string
 	AlreadySatisfied     bool
 
-	bytes     int
-	confirmed bool
+	bytes      int
+	confirmed  bool
+	nativeCell *nativeTraceCell
 	// sequence orders a request-visible view (or the bounded memory cache).
 	// It is never durable: replay derives recovery order from the input.
 	sequence uint64
@@ -477,6 +479,23 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 		return nil, err
 	}
 	releaseSnapshot()
+	// The native trace supplies per-tool outcomes even when JavaScript discards
+	// or catches a nested result. Never infer them from text printed by the cell.
+	ready := completedPatches[:0]
+	for _, completed := range completedPatches {
+		if completed.history.ToolName != applyPatchToolName && completed.history.ToolName != nativeExecCommandToolName {
+			source := completed.history.CarrierPayload
+			if source == "" {
+				source = completed.history.Script
+			}
+			completed.history.nativeCell = p.nativeTrace.readCell(completed.history.ExecutingThread, completed.callID, source)
+			if completed.history.nativeCell.pending() {
+				continue
+			}
+		}
+		ready = append(ready, completed)
+	}
+	completedPatches = ready
 	execGroups := make(map[string][]execCompletion)
 	for _, completed := range completedPatches {
 		key := execSiblingKey(completed.history)

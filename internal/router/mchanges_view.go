@@ -54,6 +54,7 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 			next.status = "pending"
 		default:
 			var outcome *execOutcome
+			hasFiles := false
 			for _, call := range change.Calls {
 				record, found, err := s.read(options.workspace, call.ID, false)
 				if err != nil {
@@ -63,6 +64,7 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 					return "", fmt.Errorf("change %s has a missing or inconsistent attempt", id)
 				}
 				history := record.History
+				hasFiles = hasFiles || len(history.ReviewFiles) != 0
 				next.status = trackedStatus(history, call.Confirmed)
 				if history.ExecOutcome != nil {
 					outcome = history.ExecOutcome
@@ -81,6 +83,13 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 					next.added += added
 					next.removed += removed
 				}
+			}
+			if !hasFiles && change.RetiredCalls == 0 {
+				// Older routers allocated no-op IDs. Keep explicit reads valid,
+				// but do not advertise them or compress a range across their gap.
+				flush()
+				previous = nil
+				continue
 			}
 			switch next.status {
 			case "changes observed":
@@ -152,9 +161,13 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 	}
 	chains := make(map[string]*mekugi.ReviewComposition)
 	var ordered []*mekugi.ReviewComposition
+	var notices strings.Builder
 	for _, capture := range captures {
-		if len(capture.files) != 0 && (!capture.applied || capture.coverage != "" && capture.coverage != execCoverageExact) {
-			return "", fmt.Errorf("change %s has unconfirmed or partial captured effects; read without --net to inspect them", capture.id)
+		if len(capture.files) != 0 && capture.coverage != "" && capture.coverage != execCoverageExact {
+			return "", fmt.Errorf("change %s has partial captured effects; read without --net to inspect them", capture.id)
+		}
+		if !capture.applied && len(capture.files) != 0 {
+			fmt.Fprintf(&notices, "%s %s; composing observed effects, not a success receipt\n", capture.id, capture.status)
 		}
 		for _, file := range capture.files {
 			if file.Binary {
@@ -194,5 +207,5 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 	if output.Len() == 0 {
 		output.WriteString("no net changes in selected captured history\n")
 	}
-	return output.String(), nil
+	return notices.String() + output.String(), nil
 }

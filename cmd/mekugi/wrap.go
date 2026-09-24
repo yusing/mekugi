@@ -112,6 +112,9 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	}
 	cmd := exec.CommandContext(ctx, executable, codexArgs(session.BaseURL, args, session.JournalEnabled, session.SkillsManagerAvailable)...)
 	cmd.Env = append(os.Environ(), "MEKUGI_BASE_URL="+session.BaseURL)
+	if session.NativeTraceDirectory != "" {
+		cmd.Env = append(cmd.Env, "CODEX_ROLLOUT_TRACE_ROOT="+session.NativeTraceDirectory)
+	}
 	if session.AXReadOutput != "" {
 		cmd.Env = append(cmd.Env, capturer.AXReadOutputEnvironment+"="+session.AXReadOutput)
 	}

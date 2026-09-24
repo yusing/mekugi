@@ -126,6 +126,7 @@ type mekugiProxy struct {
 	skillsManager      bool
 	execWindows        *execWindowRegistry
 	execLastSeen       *execLastSeen
+	nativeTrace        *nativeToolTrace
 
 	mu              sync.RWMutex
 	replayStore     *mekugiReplayStore

@@ -327,6 +327,9 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				fmt.Fprintf(&output, "attempt %d %s\n", position+1, trackedStatus(history, call.Confirmed))
 			}
 			if options.view == "history" {
+				for _, result := range history.HostResults {
+					fmt.Fprintln(&output, result.text())
+				}
 				if history.ExecOutcome != nil {
 					if history.ExecOutcome.Status == execStatusUnconfirmed {
 						output.WriteString("tool result: nested tool result unavailable\n")

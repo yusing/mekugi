@@ -81,3 +81,29 @@ func TestMChangesListDoesNotMergeSharedWithExclusive(t *testing.T) {
 		t.Fatalf("shared attribution was lost or merged: %q %v", list, err)
 	}
 }
+
+func TestMChangesListHidesLegacyNoOpsWithoutRetiringEvidence(t *testing.T) {
+	f := newMChangesSliceFixture(t, "legacy-noops")
+	var ids []string
+	for _, call := range []string{"first", "noop", "last"} {
+		id := f.reserve(t, f.thread, call)
+		ids = append(ids, id)
+		history := mekugiHistory{Applied: true}
+		if call != "noop" {
+			history.ReviewFiles = []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")}
+		} else {
+			history.AlreadySatisfied = true
+		}
+		f.publish(t, id, call, call, history)
+	}
+	pending := f.reserve(t, f.thread, "pending")
+	stdout, stderr, status := f.run(t, "mchanges --list")
+	want := ids[0] + " applied +1 -1\n" + ids[2] + " applied +1 -1\n" + pending + " pending\n"
+	if status != 0 || stderr != "" || stdout != want {
+		t.Fatalf("legacy no-op list = %q, %q, %d; want %q", stdout, stderr, status, want)
+	}
+	stdout, stderr, status = f.run(t, "mchanges "+ids[1]+" --history")
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "noop") {
+		t.Fatalf("legacy attempt became unreadable: %q %q %d", stdout, stderr, status)
+	}
+}

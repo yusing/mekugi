@@ -539,7 +539,7 @@ func TestMChangesNetWithoutOwnStreamExcludesSiblingChanges(t *testing.T) {
 	}
 }
 
-func TestMChangesNetRejectsUnconfirmedAndPartialCaptures(t *testing.T) {
+func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "net-capture-confidence")
 	assertRejected := func(id, reason string) {
@@ -561,7 +561,10 @@ func TestMChangesNetRejectsUnconfirmedAndPartialCaptures(t *testing.T) {
 		Applied:         false,
 		ReviewFiles:     []mekugi.ReviewFile{mekugi.RenderReviewFile("code-mode.txt", "code-mode.txt", "before\n", "after\n")},
 	})
-	assertRejected(codeMode, "unconfirmed or partial captured effects")
+	stdout, stderr, status := f.run(t, "mchanges --net "+codeMode)
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "composing observed effects, not a success receipt") || !strings.Contains(stdout, "-before\n+after\n") {
+		t.Fatalf("unconfirmed capture lost its diff or outcome: %q, %q, %d", stdout, stderr, status)
+	}
 
 	moveCorrelation := "unconfirmed-move-chain"
 	move := f.reserve(t, f.thread, moveCorrelation)
@@ -583,7 +586,10 @@ func TestMChangesNetRejectsUnconfirmedAndPartialCaptures(t *testing.T) {
 			mekugi.RenderReviewFile("after.txt", "after.txt", "same content\n", "confirmed edit\n"),
 		},
 	})
-	assertRejected(move, "unconfirmed or partial captured effects")
+	stdout, stderr, status = f.run(t, "mchanges --net "+move)
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "composing observed effects, not a success receipt") || !strings.Contains(stdout, "+confirmed edit\n") {
+		t.Fatalf("unconfirmed move lost its diff or outcome: %q, %q, %d", stdout, stderr, status)
+	}
 
 	partialCorrelation := "partial-shell-capture"
 	partial := f.reserve(t, f.thread, partialCorrelation)
@@ -594,7 +600,7 @@ func TestMChangesNetRejectsUnconfirmedAndPartialCaptures(t *testing.T) {
 		Applied:     true,
 		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("partial.txt", "partial.txt", "before\n", "after\n")},
 	})
-	assertRejected(partial, "unconfirmed or partial captured effects")
+	assertRejected(partial, "partial captured effects")
 }
 
 func TestMChangesNetRejectsBinaryOnlyAndMixedEvidence(t *testing.T) {

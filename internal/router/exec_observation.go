@@ -1517,6 +1517,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	}
 	outcome.Scope = observation.scopePaths()
 	var reports []string
+	var hostResults []nativeToolResult
 	for index, member := range members {
 		_, exit, completed, resultText, _ := execResultState(member.history.ToolName, member.output)
 		status := execStatusCompleted
@@ -1527,6 +1528,18 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 			status = execStatusUnconfirmed
 		case !completed:
 			status = execStatusFailed
+		}
+		if results, confirmed := member.history.nativeCell.commands(member.history.ExecObservation.Commands, workspace); confirmed {
+			status = execStatusCompleted
+			hostResults = append(hostResults, results...)
+			for _, result := range results {
+				if result.Status != "completed" || result.ExitCode == nil || *result.ExitCode != 0 {
+					status = execStatusFailed
+				}
+			}
+			if len(results) == 1 {
+				exit = results[0].ExitCode
+			}
 		}
 		if len(members) == 1 {
 			outcome.Exit = exit
@@ -1554,6 +1567,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		ReviewFiles:     reviews,
 		Report:          strings.Join(reports, "\n"),
 		ExecOutcome:     outcome,
+		HostResults:     hostResults,
 		CarrierKind:     codeModeCarrierFunction,
 		CarrierName:     nativeExecCommandToolName,
 		CarrierPayload:  arguments,

@@ -1,9 +1,31 @@
 # Codex router end-to-end behavior
 
-The host observations below were recorded on 2026-07-28 with Codex CLI
+The original workspace observations below were recorded on 2026-07-28 with Codex CLI
 0.145.0, `codex-dynamic`, and `gpt-5.6-luna`. They are dated evidence, not an
 eternal Codex contract. Re-run focused E2E checks after a Codex upgrade before
 changing routing assumptions.
+
+### Native nested-tool receipts (2026-09-25)
+
+Installed Codex CLI 0.156.1 was exercised with a deterministic local provider by
+`TestMChangesNestedNativeCodexE2E`. Native rollout tracing linked outer calls to
+Code Mode cells and individual nested tool results without printing those results
+or modifying execution. Patch success and shell exit zero produced durable
+confirmed captures; a caught patch failure and shell exit 7 remained failed
+despite outer-cell completion. A failed patch without file effects allocated no
+change ID, while a failed command's file effects remained reviewable.
+
+The fixture checked both a running cell continued by `wait` and an already
+completed cell whose nested command was still running, followed by `write_stdin`.
+Neither produced completed changes before terminal native evidence. It also
+deleted native traces, reopened the replay store, and read explicit author IDs
+through another thread's authenticated frontend.
+
+The native recorder writes whole-session payloads, not only tool receipts, and
+has no tool-only filter or disk cap. Mekugi's launch-scoped cleanup does not imply
+otherwise. A non-repository temporary directory again supplied no workspace
+metadata; initializing the fixture repository made its root available for
+relative capture. No router-cwd fallback was used.
 
 ### Codex workspace metadata
 

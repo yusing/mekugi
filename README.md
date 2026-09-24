@@ -313,16 +313,25 @@ oversized rows and unterminated command streams use byte continuation.
 use `--json` for metadata and structured outlines. Syntax-error rows identify
 incomplete parsing without hiding valid declaration ranges elsewhere.
 A bare `mchanges` reviews your current thread’s recorded edits. `--list` shows
-compressed ID ranges, short statuses, and known direct counts. Partial records
+compressed ID ranges, short statuses, and known direct counts. Complete no-effect
+attempts do not allocate change IDs.
+Older no-effect IDs remain readable explicitly but are hidden from `--list`. Partial records
 keep their own IDs and mark unknown direct counts with `?`; `shared` flags
 overlapping writers, and tool-managed file
 counts are separate. `--net` composes repeated edits into
-captured net diffs, not a live Git diff. Unconfirmed, incomplete, and binary
-evidence requires ordinary review without `--net`. `amber1..3` is a supported range shorthand.
-Paged reviews remain stable when another edit completes. A
-Code Mode patch may show observed file changes as application unconfirmed:
-completion of the outer JavaScript cell is not proof that its nested patch
-succeeded. From a subdirectory, `--workspace ..` selects the parent workspace's
+captured net diffs, not a live Git diff. Complete observed diffs can be composed
+even when tool success is unconfirmed or failed; their outcome labels remain
+visible. Incomplete and binary evidence requires ordinary review without `--net`.
+`amber1..3` is a supported range shorthand.
+Paged reviews remain stable when another edit completes.
+Code Mode edits use native Codex tool results to confirm each captured operation,
+including commands whose output the JavaScript cell did not print. `--history`
+shows these receipts and shell exit codes. Missing receipts, including older
+captures, remain explicitly unconfirmed. Mekugi enables native tracing in a
+private temporary directory for each wrapped session and removes it at shutdown.
+Codex currently traces entire sessions, including prompts and responses, without
+a disk cap; a forced kill can leave that temporary directory behind.
+From a subdirectory, `--workspace ..` selects the parent workspace's
 change index; paths after `--` only filter files within a selected change.
 `mchanges revert` undoes selected changes in the workspace and `mchanges apply`
 replays them. As with `git revert`, edits made since then are merged, and

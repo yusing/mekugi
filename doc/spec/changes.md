@@ -7,8 +7,9 @@ Mekugi does not replace the tool, run a hook, apply a second patch, or alter the
 argument or result. A complete argument may be projected as a provisional live
 diff while streaming. Only the actual host result and resulting workspace
 state determine a completed change record. For a Code Mode cell, outer script
-completion alone does not prove a nested patch succeeded, even when file effects
-are visible, so nested application remains unconfirmed. A cell that yields
+completion alone does not prove a nested patch succeeded. Matching native Codex
+tool-result evidence can confirm it independently of printed JavaScript output.
+Without that evidence, nested application remains unconfirmed. A cell that yields
 remains unfinished until its host wait result is terminal.
 
 The observer captures bounded pre-edit UTF-8 contents for paths named by a
@@ -65,7 +66,8 @@ visible, the command class, and its coverage:
 | Native exit 0, exact coverage, no overlap | `completed` |
 | Native exit 0, overlap or incomplete coverage | `completed; attribution shared` or `completed; partial coverage` |
 | Native nonzero exit, or an aborted or unrecognized result | `failed; observed effects` |
-| Code Mode `Script completed` | `changes observed`; nested exit codes remain unavailable in `--history` |
+| Code Mode terminal result with matched native tool results | Per-tool success/failure and shell exit codes determine the outcome; `--history` retains these receipts |
+| Code Mode `Script completed` without native results | `changes observed`; nested exit codes remain unavailable in `--history` |
 | Code Mode `Script failed` or `Script terminated` | `failed; observed effects` |
 | Yielded session or running cell | pending until a `write_stdin` result shows the exit or an unknown session, or a terminal `wait` result |
 
@@ -131,7 +133,10 @@ producer arguments are rejected. Provider work shares a 200 ms budget within the
 500 ms pre-call capture hold. A failed, unavailable, or timed-out provider degrades
 to an open observation with its reason retained in history, never a host-call error.
 
-Each completed observed call receives a short session-scoped change ID. Root
+Each completed observation with changed or incomplete file evidence receives a
+short session-scoped change ID. Complete no-effect attempts remain in retained
+call history without allocating IDs. Legacy no-effect IDs remain explicitly
+readable but are omitted from `--list`; compressed ranges do not bridge them. Root
 and child agents share an inherited namespace; forks and side threads receive
 an isolated copy of visible records, and resume can read durable records after
 a fresh router process. Retention may expire inactive records according to
@@ -210,8 +215,12 @@ the selected workspace so callers can correct `--workspace`.
 `--net` composes selected completed captures in recorded capture order using the
 same review composition as the live view. It follows moves and emits canonical
 absolute paths; it never reads the live workspace. Pending or retired history and
-inconsistent, incomplete, unconfirmed, partial-coverage, or binary capture chains
-fail rather than claim a complete net diff; ordinary reads preserve that evidence. Path filters apply to the composed files. An empty composition is explicit.
+inconsistent, incomplete, partial-coverage, or binary capture chains
+fail rather than claim a complete net diff; ordinary reads preserve that evidence.
+Complete observed diffs remain composable when tool success is unconfirmed or
+failed, including historical records predating native confirmation. Their outcome
+labels remain above the composed diff and explicitly do not claim a success receipt.
+Path filters apply to the composed files. An empty composition is explicit.
 Mutations still require explicit IDs; `--mine` never selects writes. `--history` includes the original observed patch or command input, the
 host result, and for a command the observed scope. Paths after `--` filter review files without re-reading the
 current filesystem. `--workspace ..` selects the owning workspace index when
@@ -231,15 +240,15 @@ visible. Confirmed success, no-op, and rejection retain their outcome labels.
 These are observation labels,
 not success claims. Only unfinished work is `pending`. The live diff uses the same
 labels. Confirmation limitations belong in `--history`, not a pending-looking
-headline. For a Code Mode cell, an observed workspace effect remains application
-unconfirmed because outer JavaScript completion does not prove the nested
-`apply_patch` result. Direct stock patch success requires both its successful
+headline. For a Code Mode cell, an observed workspace effect without a matched
+native receipt remains application unconfirmed. Outer JavaScript completion does
+not prove the nested `apply_patch` result. Direct stock patch success requires both its successful
 host result and a complete workspace observation.
 
 A confirmed successful edit can publish a generated `Create` or `Edit`
 commentary summary. A completed Code Mode cell with a complete observed
 workspace effect publishes the same summary for that observed effect; it
-remains application unconfirmed in the retained evidence. Classification uses the same
+remains application unconfirmed unless a native receipt confirms it. Classification uses the same
 observed review files as `mchanges`, including whether a path existed before
 the edit. Each summary carries a bounded copy of the observed hunks. Failed,
 unchanged, and unfinished calls do not publish a summary. These messages are

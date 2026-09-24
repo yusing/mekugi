@@ -517,10 +517,6 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			continue
 		}
 		correlation := callID + "\x00" + strconv.Itoa(index)
-		changeID, err := p.replayStore.reserveChange(ctx, workspace, thread, correlation)
-		if err != nil {
-			return err
-		}
 		var after []execFileSnapshot
 		reviews, complete := nativePatchReview(observation.Files, func(path, content string, exists bool) {
 			file := execFileSnapshot{Path: path}
@@ -533,10 +529,21 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			}
 			after = append(after, file)
 		})
-		// Only a direct stock result establishes nested patch success. A Code
-		// Mode cell can complete after catching a failed or skipped patch; its
-		// observed differences remain reviewable but unconfirmed.
+		// Attempts remain durable, but IDs select actual or incomplete file
+		// evidence, not successful no-ops or rejected patches with no effects.
+		changeID := ""
+		if len(reviews) != 0 {
+			var err error
+			changeID, err = p.replayStore.reserveChange(ctx, workspace, thread, correlation)
+			if err != nil {
+				return err
+			}
+		}
 		success := history.ToolName == applyPatchToolName && reportedSuccess && complete
+		nested, confirmed := history.nativeCell.patch(observation.Input)
+		if confirmed {
+			success = nested.Status == "completed" && complete
+		}
 		attempt := mekugiHistory{
 			ToolName:         applyPatchToolName,
 			Script:           observation.Input,
@@ -561,6 +568,12 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 				"status":  mustMarshalJSON("completed"),
 			},
 		}
+		if confirmed {
+			attempt.HostResults = []nativeToolResult{nested}
+			if nested.Status != "completed" {
+				attempt.TranslationError = nested.text()
+			}
+		}
 		if history.ToolName == applyPatchToolName && !reportedSuccess {
 			attempt.TranslationError = strings.TrimSpace(resultText)
 			if attempt.TranslationError == "" {
@@ -578,11 +591,13 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			namespace += "\x00" + p.replayStore.scoped(ctx).handleNamespace()
 		}
 		for _, file := range after {
-			p.execLastSeen.put(namespace, changeID, file)
+			if changeID != "" {
+				p.execLastSeen.put(namespace, changeID, file)
+			}
 		}
 		// A completed Code Mode cell reports its captured workspace differences,
 		// still unconfirmed as nested patch success.
-		observed := history.ToolName != applyPatchToolName && reportedSuccess && complete && len(reviews) != 0
+		observed := !confirmed && history.ToolName != applyPatchToolName && reportedSuccess && complete && len(reviews) != 0
 		if success || observed {
 			_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, observed, p.activity)
 		}

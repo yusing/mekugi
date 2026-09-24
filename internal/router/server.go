@@ -41,8 +41,9 @@ type Session struct {
 	AXReadOutput           string
 	SkillsManagerAvailable bool
 	// EnableLiveDiff arms a best-effort pane on the first selected turn workspace.
-	EnableLiveDiff    func()
-	FrontendDirectory string
+	EnableLiveDiff       func()
+	FrontendDirectory    string
+	NativeTraceDirectory string
 }
 
 // RunSession owns the private router for one wrapped Codex process.
@@ -231,6 +232,13 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
 		mekugiCalls = newMekugiProxy(registry, titles)
+		traceDirectory, traceErr := os.MkdirTemp("", "mekugi-native-trace-")
+		if traceErr == nil {
+			mekugiCalls.nativeTrace = &nativeToolTrace{directory: traceDirectory}
+			defer func() { runErr = errors.Join(runErr, os.RemoveAll(traceDirectory)) }()
+		} else {
+			issues.addNotice("", "native_trace", "Nested tool confirmation unavailable: "+traceErr.Error())
+		}
 		mekugiCalls.usageReport = *flags.usageReport
 		mekugiCalls.noticeSink = issues.addNotice
 		replayStore.storageNotice = func(session, message string) { issues.addNotice(session, "storage_cleanup", message) }
@@ -314,6 +322,9 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: *flags.grokEnabled, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", SkillsManagerAvailable: skillsManagerAvailable}
 		if mekugiCalls != nil {
 			session.EnableLiveDiff = mekugiCalls.autoLiveDiff.enable
+			if mekugiCalls.nativeTrace != nil {
+				session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory
+			}
 		}
 		if debug != nil {
 			session.AXReadOutput = debug.paths[4]
