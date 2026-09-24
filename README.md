@@ -9,165 +9,109 @@ Codex. Codex keeps editing, execution, the sandbox, permissions, command
 sessions, and patch review. No fork, no config edits, no daemon.
 
 [Features](#features) · [Install](#install) · [Usage](#usage) ·
-[Metrics](#metrics) · [Settings](#mekugi-settings) · [Troubleshooting](#configuration-and-troubleshooting) · [Documentation](#documentation)
+[Metrics](#metrics) · [Settings](#mekugi-settings) ·
+[Troubleshooting](#configuration-and-troubleshooting) · [Documentation](#documentation)
 
 ## Features
 
-### UX
+- **Stock Codex workflow.** Code Mode JavaScript, `exec_command`, and
+  `apply_patch` behave as usual. Mekugi never re-runs an edit and changes no
+  configuration or instruction files. A persistent WebSocket lets a supporting
+  Codex client [steer a running turn](#usage).
+- **Milestone journal.** Agents keep a revisable journal. You see live updates,
+  and answers are grouped at completion. A final answer goes into the journal
+  without an extra model request.
+- **Live subagent activity.** Start notices show model and effort. Progress and
+  message excerpts appear in the main conversation, or live in Herdr's
+  [agents pane](#agents-pane). Encrypted messages stay private.
+- **Live diffs.** Herdr's [live diff pane](#live-diff-pane) streams tool calls
+  and provisional diffs as they arrive, then shows the saved edits.
+- **Recoverable output and change review.** [Session helpers](#wrapped-session-helpers)
+  continue truncated output without rerunning, and track edits from
+  `apply_patch` and shell commands, with any gaps in coverage labeled. Edits can
+  be reverted and reapplied by ID.
+- **Fewer tokens and round trips.** Bounded and batched reads, semantic symbol
+  lookup, structural outlines, scoped change IDs, and child change handoffs.
+- **Leaner instructions.** Blocks marked with `<!-- mekugi:omit -->` are
+  [stripped](#configuration-and-troubleshooting) before forwarding. With
+  `skills-mgr`, selected skills are sent as compact references.
+- **Resume, fork, and compaction continuity.** [Replay records](#replay-storage)
+  keep tool history and references across resume, `/fork`, and `/side`. After
+  compaction, a Codex hook restores a bounded journal and change snapshot. The
+  hook is on by default; [opt out](#configuration-and-troubleshooting) with
+  `--post-compact-recovery=false`.
+- **Custom tools.** Add your own [plugins](doc/spec/plugin.md) as JavaScript
+  modules.
+- **Usage and cost.** Each completion reports usage and cost. A per-launch
+  browser dashboard shows request metrics and cache diagnostics. Costs are API
+  estimates, not subscription charges.
+- **Diagnostics.** [Inspect past sessions](#inspect-a-session) offline, record
+  debug evidence, or let agents [report issues](#configuration-and-troubleshooting)
+  to your own command.
+- **Mentor Handoff.** [Eligible threads](doc/spec/mentor.md) start on a stronger
+  model and then return to their configured one. It is on by default.
+- **Other providers and tiers.** [Grok](#grok-models) and
+  [OpenCode Go or Zen](#opencode-go-and-zen) run alongside OpenAI models.
+  [Service tiers](#mekugi-settings) can be set per model.
 
-- **Keep the familiar Codex workflow.** No persistent service or configuration
-  edits. Codex keeps control of permissions, execution, and patch review.
-- **See subagent activity as it happens.** One-line start notices show the model and effort.
-  Progress and short message excerpts appear in the main conversation, with each agent
-  identified. Some updates wait for the next main-agent response; encrypted messages
-  stay private. In Herdr, the [agents pane](#agents-pane) takes over this activity
-  and shows it live, beside a roster of every agent.
-- **Follow milestones, not another task list.** Agents keep a revisable journal
-  that shows live updates and groups answers at completion.
-- **Watch commands and file changes live.** Herdr's [live diff pane](#live-diff-pane)
-  streams main-agent and subagent stock tool calls before completion, then
-  switches to observed edits, with pause and flush controls.
-- **See usage and cost.** Main completion shows a compact main-turn and router-session
-  usage/cost line, or a per-agent table when multiple agents ran. Choose
-  `--usage-report=off|compact|table` to override it. Totals cover this router run. Child completion
-  does not repeat the table. Costs are API estimates, not subscription charges;
-  missing evidence is not presented as a complete total.
-- **Inspect sessions in your browser.** A per-launch dashboard shows request
-  metrics, token usage, and cache diagnostics.
-- **Use other providers alongside OpenAI models.** Enable [Grok](#grok-models)
-  with `--grok`, or configure [OpenCode Go or Zen](#opencode-go-and-zen) with an
-  API key.
-
-### AX (agent experience)
-
-- **Use familiar stock tools.** Code Mode JavaScript, `tools.exec_command`, and
-  `tools.apply_patch` keep their ordinary Codex behavior. Mekugi does not run an
-  edit a second time.
-- **Keep context after compaction.** A trusted Codex hook restores a bounded
-  snapshot of the main thread's journal and recorded changes after compaction,
-  without another model request. See [setup](#configuration-and-troubleshooting).
-- **Resume running work.** Continue yielded processes through Codex's
-  `write_stdin` handles instead of restarting them.
-- **Recover omitted output.** Read captured overflow with `mread` without
-  rerunning the command or reader that produced it.
-- **Review completed edits.** `mchanges` tracks observed `apply_patch` results
-  and the file effects of shell commands such as redirects, `cp`, `mv`, `rm`,
-  and `sed -i`, interpreter writes, VCS operations, and formatters, including
-  partial outcomes and explicitly labeled gaps in coverage.
-
-### Round-trip and token saving
-
-- **Batch work in Code Mode.** Use JavaScript to group related stock tool calls;
-  `Promise.all` can run independent calls in parallel. `mcat` batches file reads
-  under one output budget.
-- **Read less source.** Bounded reads, semantic references, and structural
-  outlines keep irrelevant source out of the model's context.
-- **Review only relevant changes.** Compact change IDs scope review output
-  instead of requiring the entire Git diff.
-- **Hand off child changes automatically.** Child completion results include
-  retained change ranges and aggregated line counts for focused parent review.
-- **Finish naturally.** A final answer becomes a Question and Answer journal flush
-  without another model request just to restate it.
-
-### Agent performance
-
-- **Start with a mentor, then hand back.** [Mentor Handoff](doc/spec/mentor.md)
-  lets eligible threads begin on a stronger model before returning to their
-  configured model. It is enabled by default, with independent
-  [controls](#options) for main sessions and subagents.
-
-Fewer model round trips, token savings, and model handoffs do not guarantee faster
-commands or better results on every task. For controlled comparisons, use
-[codex-setup-ab](https://github.com/yusing/codex-setup-ab).
+These savings don't guarantee better results on every task. For controlled
+comparisons, use [codex-setup-ab](https://github.com/yusing/codex-setup-ab).
 
 ## Install
 
-### Requirements
+Requirements:
 
-- **Go 1.27+**, CGO enabled, and a C toolchain to build the binary.
+- **Go 1.27+**, with CGO enabled and a C toolchain.
 - **Codex CLI**, signed in with `codex login` using ChatGPT authentication.
-- **Node.js 24+** available as `node`, and **ripgrep** available as `rg` on
-  the router's `PATH` for mekugi mode.
-- Any interpreter your agent selects, such as `python3`, on the executor's
-  `PATH`.
-
-Install the router:
+- **Node.js 24+** as `node` and **ripgrep** as `rg` on the router's `PATH`.
+- Any interpreter your agent picks, such as `python3`, on the executor's `PATH`.
 
 ```sh
 go install github.com/yusing/mekugi/cmd/mekugi@latest
-```
-
-Add `$GOBIN`, or `$(go env GOPATH)/bin` when unset, to your `PATH`.
-
-Then launch:
-
-```sh
 codex login
 mekugi codex
 ```
 
-Mekugi prints a dashboard URL before Codex opens. Use Codex as usual; the router
-projects its tools and additive journal guidance automatically.
+Add `$GOBIN`, or `$(go env GOPATH)/bin` if that is unset, to your `PATH`. Mekugi
+prints a dashboard URL, then opens Codex. Use Codex as usual.
 
-### From a checkout
-
-With **Bun** and **Make** installed:
-
-```sh
-make install
-```
-
-This regenerates the embedded plugins and installs the router binary. Installation
-and uninstallation leave Codex configuration and instruction files untouched.
-`make uninstall` removes only the installed `mekugi` binary. Running sessions
-retain their own worker executable; start a new session to use an update.
+From a checkout with **Bun** and **Make**, run `make install`. It regenerates the
+embedded plugins and installs the binary. `make uninstall` removes only that
+binary. Running sessions keep their worker executable, so start a new session
+to pick up an update.
 
 ## Usage
 
-Mekugi keeps private replay records on disk so resumed and forked conversations
-retain their original tool history. These records include observed tool inputs
-and change evidence, not just metrics. See [replay storage](#replay-storage) for
-location, limits, and cleanup.
-
-Put Mekugi flags **before** `codex`; arguments after it belong to Codex:
+Mekugi flags go **before** `codex`; everything after `codex` goes to Codex:
 
 ```sh
-mekugi codex
-mekugi codex --model gpt-6-astra
 mekugi codex --model gpt-6-sol
-mekugi codex --model gpt-6-luna
 mekugi codex exec "Explain this repository"
 mekugi codex resume 'CONVERSATION_ID'
 mekugi --mentor-handoff=false codex
 ```
 
-Each invocation starts a private router on a random loopback port and shuts it
-down when Codex exits. Multiple sessions can run independently. Codex handles
-terminal Ctrl-C after launch, and its exit status is preserved. During startup,
-Ctrl-C cancels preparation without launching Codex.
+Each invocation:
 
-Legacy `gpt-5.6-terra` selections route to `gpt-6-sol`; use `gpt-6-sol`
-directly for new sessions.
+- starts a private router on a random loopback port and stops it when Codex
+  exits. Independent sessions can run side by side. Codex handles Ctrl-C after
+  launch and keeps its exit status. During startup, Ctrl-C cancels without
+  launching Codex.
+- uses the fixed ChatGPT upstream. Standalone serving, fixed ports, custom
+  provider endpoints, and `--oss` are not supported.
+- forces `include_collaboration_mode_instructions=false`, and routes the
+  legacy `gpt-5.6-terra` to `gpt-6-sol`.
+- connects to ChatGPT over WebSockets, so a supporting client and model can use
+  [mid-turn steering](https://developers.openai.com/api/docs/guides/steering).
+  Your network must allow secure WebSockets. Mekugi falls back to HTTP only when
+  ChatGPT explicitly rejects the upgrade, and never silently replays a request.
+- keeps private [replay records](#replay-storage) on disk, including tool inputs
+  and change evidence, so resumed and forked conversations keep their history.
+- enables Codex's native session tracing in a private temporary directory and
+  removes it at shutdown. The trace includes prompts and responses and has no
+  disk cap. A forced kill can leave it behind.
 
-The wrapper uses the fixed Codex ChatGPT upstream and overrides provider
-selection for that invocation only. Standalone serving, fixed ports, custom
-provider endpoints, and provider-selection arguments such as `--oss` are not supported.
-The built-in Grok and OpenCode routes use their own authentication.
-It also forces `include_collaboration_mode_instructions=false` for the invocation,
-so Codex does not inject collaboration-mode instructions, even if enabled in your
-config or command-line overrides. No configuration files are changed.
-
-The wrapper enables WebSockets between Codex and Mekugi for that invocation,
-without changing Codex configuration. Mekugi keeps the ChatGPT connection open
-across responses so a compatible Codex client can send
-[mid-turn steering](https://developers.openai.com/api/docs/guides/steering)
-updates. Steering requires a supporting client and model; enabling the transport
-does not add steering to an older Codex client.
-
-Networks must allow secure WebSocket connections to ChatGPT. Mekugi also accepts
-HTTP/SSE clients and can fall back to HTTP for those requests when ChatGPT
-explicitly rejects the WebSocket upgrade. It never silently replays a dropped
-request or accepted steering. Grok and OpenCode provider requests remain on HTTP.
+These overrides last only for the invocation; no configuration files change.
 
 ### Options
 
@@ -177,6 +121,7 @@ request or accepted steering. Grok and OpenCode provider requests remain on HTTP
 | `--mode` | `mekugi` | Use `passthrough` to forward traffic without mekugi tools, plugins, or Mentor Handoff |
 | `--main-mentor-handoff` | `true` | Enable mentor handoff for eligible main sessions and ordinary forks |
 | `--mentor-handoff` | `true` | Use `false` to keep subagents on their configured models |
+| `--post-compact-recovery` | `true` | Use `false` to skip the post-compaction context hook |
 | `--grok` | `false` | Enable Grok models in mekugi mode |
 | `--grok-auth-file` | `~/.grok/auth.json` | Select a Grok OAuth credential store |
 | `--timeout` | `10m` | Wait for the upstream response to start |
@@ -185,63 +130,46 @@ request or accepted steering. Grok and OpenCode provider requests remain on HTTP
 | `--metrics-output PATH` | Disabled | Write the final metrics snapshot on shutdown, overwriting the destination |
 | `--debug` | Disabled | Record diagnostics, capture, metrics, forwarded instruction/tool snapshots, runtime reads, and an AX report; print all artifact paths on exit |
 
-For a transport-only session:
-
-```sh
-mekugi --mode passthrough codex
-```
-
-Passthrough does not load the plugin registry, so it does not require Node.js or
-plugin grammar validation. Capture remains available.
+`mekugi --mode passthrough codex` forwards traffic only. It doesn't need Node.js,
+and capture still works.
 
 ### Grok models
 
-Opting in enables Grok in the model picker. Authenticate with `grok login --oauth`,
-or supply `XAI_API_KEY` in the router's environment. An API key takes precedence.
-Codex credentials are never forwarded to Grok.
+Authenticate with `grok login --oauth`, or set `XAI_API_KEY` in the router's
+environment; an API key takes precedence. Codex credentials are never sent to
+Grok.
 
 ```sh
-mekugi --grok codex
 mekugi --grok codex -m grok:grok-4.7
 ```
 
-Ask the main agent to spawn `grok:grok-4.5`, `grok:grok-4.6`, `grok:grok-4.7`,
-or `grok:grok-4.7-build-fast` in fresh context (`fork_turns="none"`). The Fast
-variant requires Grok OAuth; it is unavailable with `XAI_API_KEY`.
-Codex still manages the child, tools, permissions, and follow-ups. Switching an
-existing OpenAI conversation still requires history that Grok can read; encrypted
-OpenAI history remains unsupported. Grok sessions also have
-[catalog restrictions](#third-party-model-catalogs). See the
-[Grok model requirements](doc/spec/grok.md) for catalog, search, and
-token-limit behavior.
+Subagents can use `grok:grok-4.5`, `grok:grok-4.6`, `grok:grok-4.7`, or
+`grok:grok-4.7-build-fast` (OAuth only) in fresh context (`fork_turns="none"`).
+Grok can't read encrypted OpenAI history, so switching an existing OpenAI
+conversation to Grok isn't supported. See the [Grok requirements](doc/spec/grok.md).
 
 ### OpenCode Go and Zen
 
-Set an API key, or use [Mekugi settings](#mekugi-settings).
+Set an API key here or in [Mekugi settings](#mekugi-settings):
 
 ```sh
-export OPENCODE_GO_API_KEY='your-key'
-mekugi codex -m opencode-go:glm-5.3
+OPENCODE_GO_API_KEY='your-key' mekugi codex -m opencode-go:glm-5.3
+OPENCODE_ZEN_API_KEY='your-key' mekugi codex -m opencode-zen:kimi-k3
 ```
 
-```sh
-export OPENCODE_ZEN_API_KEY='your-key'
-mekugi codex -m opencode-zen:kimi-k3
-```
+Models, reasoning controls, and prices refresh from an hourly cache. The model
+picker updates on the next launch. See the [provider contract](doc/spec/opencode.md).
 
-### Third-party model catalogs
-
-When Grok or an OpenCode service is enabled, Mekugi adds its models to Codex's
-model catalog for that invocation. This cannot be combined with Codex's named
-`--profile` option or `exec --ignore-user-config`. Use the default configuration
-or an explicit `-c model_catalog_json=...` instead.
+Grok and OpenCode requests use HTTP and their own authentication. Their models
+are added to Codex's catalog for the invocation. That can't be combined with
+`--profile` or `exec --ignore-user-config`; use the default configuration or an
+explicit `-c model_catalog_json=...` instead.
 
 ## Editing and execution
 
-Codex owns editing and execution. Use its stock `apply_patch` and
-`exec_command` tools directly, or call them from Code Mode JavaScript. Mekugi
-passes their arguments and results through unchanged. For independent work, a
-Code Mode cell can use `Promise.all` to run calls in parallel:
+Codex owns editing and execution. Mekugi passes stock `apply_patch` and
+`exec_command` arguments and results through unchanged. In Code Mode,
+`Promise.all` runs independent calls in parallel:
 
 ```js
 const results = await Promise.all([
@@ -251,203 +179,95 @@ const results = await Promise.all([
 for (const result of results) text(result.output);
 ```
 
-Run ordinary shell commands or an interpreter through `exec_command`. For a
-long-running command, use Codex's returned session ID with `write_stdin`; Mekugi
-does not create a second process handle. A `cat > path <<'EOF'` command can be
-previewed while it streams. Durable `mchanges` evidence comes from a finalized
-stock `apply_patch` call or observed command effects. Derived scopes retain before
-content; bounded sweeps report additional changes without inventing baselines.
-Literal Python and JavaScript writes can also be previewed. Running cards show
-scoped changes observed so far, not a claim that execution succeeded.
+Long-running commands continue through Codex's `write_stdin` session IDs.
 
 ### Wrapped-session helpers
 
-The commands below are session-private executables on Codex's `PATH`, not global
-utilities. They use the same authenticated pinned tool snapshot as configured
-plugins. Invoke them through stock `exec_command`. Mekugi also shows their
-snapshot-owned descriptions to the agent in the execution tool guidance.
+These executables are on Codex's `PATH` only inside a wrapped session. The agent
+learns them from its tool guidance, and you can ask it to use them.
 
 | Command | Purpose | Extra prerequisite on the executor's `PATH` |
 | --- | --- | --- |
 | `mread` | Continue bounded retained output by reference | Access to the router's replay directory |
 | `mrun` | Bound a foreground command's output and optionally keep its ending | The wrapped command |
-| `mchanges` | Review the current thread’s edits, compose captured diffs, or read/revert/reapply explicit IDs | Access to the router's replay directory |
+| `mchanges` | Review the current thread's edits, compose captured diffs, or read/revert/reapply explicit IDs | Access to the router's replay directory |
 | `mcat` | Read raw UTF-8 rows, with multi-file batching, ranges, and tail selection | None |
 | `msymbol` | Look up compact definitions and file-grouped references; batch queries in one call | `gopls` for Go; TypeScript 7 as `tsc` for JS, TS, and JSON; `pyright-langserver` for Python |
 | `inspect_file` | Inspect a structural outline | None |
 
-Agent-facing change and output references use short word handles. The root and
-its subagents share a namespace; `/fork` and `/side` copy visible state once,
-then allocate independently. Resuming keeps retained references. For example:
-
 ```sh
-mchanges
 mchanges --list
-mchanges --mine --net
 mchanges amber1..amber3 --summary
-mchanges amber2 --history
 mchanges revert amber2
-mchanges apply amber2
 mread REF
-mread REF_A REF_B
-mcat source.ts 10-20 40:60
-mcat --number source.ts 10-20
-mcat --tail -n 20 source.ts
-inspect_file source.ts other.go
-inspect_file --json source.ts
+mcat --number source.ts 10-20 40:60
+inspect_file source.ts
 mrun --tail -n 20 go test ./internal/router
 ```
 
-`mchanges --summary` gives tab-separated added/deleted line counts per path,
-relative to the selected workspace where possible. These are known captured
-counts across selected records, not a current Git diff. Tool-managed effects
-are folded into one count line; unavailable counts are reported separately.
-Use `--history` or an explicit path filter to inspect managed paths and diffs.
-Bounded output includes an exact `mread` continuation when needed. Multiple handles
-share one budget. `mcat` accepts colon or dash ranges and several ranges per path;
-`--number` prefixes absolute source lines like `nl -ba`, including blank rows;
-`-n` retains its default 6000-token ceiling, with omitted rows recoverable through `mread`.
-All helpers accept `--max-tokens=N` as well as `--max-tokens N`. `mrun` accepts
-the command directly or after `--`, shares its budget between stdout and stderr,
-and caps delivery at 15500 tokens on row boundaries. Overflow remains recoverable;
-oversized rows and unterminated command streams use byte continuation.
-`inspect_file` defaults to compact declaration ranges, with imports collapsed;
-use `--json` for metadata and structured outlines. Syntax-error rows identify
-incomplete parsing without hiding valid declaration ranges elsewhere.
-A bare `mchanges` reviews your current thread’s recorded edits. `--list` shows
-compressed ID ranges, short statuses, and known direct counts. Complete no-effect
-attempts do not allocate change IDs.
-Older no-effect IDs remain readable explicitly but are hidden from `--list`. Partial records
-keep their own IDs and mark unknown direct counts with `?`; `shared` flags
-overlapping writers, and tool-managed file
-counts are separate. `--net` composes repeated edits into
-captured net diffs, not a live Git diff. Complete observed diffs can be composed
-even when tool success is unconfirmed or failed; their outcome labels remain
-visible. Incomplete and binary evidence requires ordinary review without `--net`.
-`amber1..3` is a supported range shorthand.
-Paged reviews remain stable when another edit completes.
-Code Mode edits use native Codex tool results to confirm each captured operation,
-including commands whose output the JavaScript cell did not print. `--history`
-shows these receipts and shell exit codes. Missing receipts, including older
-captures, remain explicitly unconfirmed. Mekugi enables native tracing in a
-private temporary directory for each wrapped session and removes it at shutdown.
-Codex currently traces entire sessions, including prompts and responses, without
-a disk cap; a forced kill can leave that temporary directory behind.
-From a subdirectory, `--workspace ..` selects the parent workspace's
-change index; paths after `--` only filter files within a selected change.
-`mchanges revert` undoes selected changes in the workspace and `mchanges apply`
-replays them. As with `git revert`, edits made since then are merged, and
-overlapping ones leave conflict markers. Each touched file is reported relative
-to the recorded change history rather than Git: `clean` when every recorded
-change to it is undone, or its net `+N -N` rows. A revert is recorded as a new
-change, so it can be undone too.
-See the [change record](doc/spec/changes.md), [reader](doc/spec/read.md), and
-[execution contract](doc/spec/execution.md).
+`mchanges` counts come from recorded changes, not a live Git diff. Like
+`git revert`, `mchanges revert` merges any later edits and marks overlaps with
+conflict markers. The revert is recorded as a new change, so it can be undone
+too. See the [change record](doc/spec/changes.md), [reader](doc/spec/read.md),
+and [execution contract](doc/spec/execution.md).
 
 ### Live diff pane
 
-In an interactive Herdr pane with `herdr` on `PATH`, `mekugi codex` launches
-the live diff viewer when it first observes editing or execution. Read-only
-turns do not open a pane.
+In an interactive Herdr pane with `herdr` on `PATH`, `mekugi codex` opens a live
+diff viewer at the first edit or command. Read-only turns don't open it. Main-agent
+and subagent calls get labeled cards that stream input as it arrives. When a
+turn finishes, the viewer switches to the saved diff. A failed or unfinished
+call never becomes a saved change.
 
-The pane opens in stream view. Concurrent main-agent and subagent stock calls
-get separate labeled cards; input appears as it arrives, before each call
-completes. `apply_patch` input and stock `cat` heredoc writes can show
-provisional file diffs. Completed `apply_patch` results and workspace outcomes
-supply the saved diff view. A failed or unfinished call never becomes a
-successful change record.
+- `v` switches views; `?` lists all shortcuts; `q` quits without ending Codex.
+- `s` shows or hides the file tree, `t` toggles tree/flat paths, `/` filters files.
+- `n`/`p` change files, `[`/`]` jump between hunks, and `j`/`k`, `Space`/`b`,
+  and `g`/`G` scroll.
+- Browsing pauses following; `r` resumes. `f`/`F` flush the current file or all
+  files.
 
-For Code Mode batches, the live input card displays literal `tools.exec_command`
-commands as Bash while they arrive. Numbered `# tools.exec_command N` headers
-separate calls; multiline commands stay under one header.
-
-The viewer switches to the saved diff when a root turn's token metrics and
-journal flush arrive, then back to stream for the next prompt. Press `v` to
-switch manually. Previews remain provisional until application is confirmed.
-
-- `v` switches between stream (the default) and diff views.
-- The diff view docks a colored file tree on the left of wide panes, with status
-  and added/removed counts beside each file. `s` hides or shows the dock; on
-  narrow panes it opens or closes a full-width picker instead. `t` toggles
-  tree/flat paths. Layout choices last for the viewer session.
-- `/` searches paths and focuses the list, including files inside collapsed
-  folders. `Ctrl-U` clears the filter and restores the tree position. `Enter`
-  opens a file or toggles a folder; left/right arrows collapse/expand. `Esc`
-  closes the picker.
-- `j`/`k` or up/down arrows move within the focused region. `Space`/`b` or
-  Page Down/Up page; `g`/`G` or Home/End jump to the first/last position.
-  The file list and diff scroll independently, including with the mouse wheel.
-- `n`/`p` switch matching files, remembering each file's diff position; `[`/`]`
-  jump between hunks. Browsing pauses automatic following, and new changes
-  are indicated without moving the paused diff.
-- `?` opens the shortcut guide. Click a file to open it.
-- In diff view, `r` resumes following new changes.
-- In diff view, `f` flushes the current file; `F` flushes all files.
-- `q` quits the viewer without ending Codex.
-
-Use `mchanges` for saved capture history. See [live view details](doc/spec/changes.md#live-terminal-view).
+See [live view details](doc/spec/changes.md#live-terminal-view).
 
 ### Agents pane
 
 In the same Herdr setup, the first subagent event opens a **Mekugi agents** pane.
-Child progress, messages, and replies stream there as they are observed, including
-during a native wait, instead of waiting for the next main-agent response. The main
-conversation gets one notice when activity moves to the pane and another if it
-returns inline. Usage tables and critical session notices stay in the main
-conversation. Only the first root conversation with subagents uses the pane.
+It streams child progress, messages, and replies as they happen, including
+during a native wait, next to a roster of agents. Markers show what was
+observed: `◐` open response, `!` latest error, `✓` final answer sent. Usage
+tables and critical notices stay in the main conversation.
 
-The pane shows a tree of agents with each one's current activity and age, beside
-or above a feed grouped by agent. Roster markers are observed facts, not
-completion claims: `◐` an open provider response, `!` a latest error, `✓` a
-final answer sent, and `·` otherwise. Journal results appear as questions and
-answers with each agent's recorded change totals. An agent keeps the same color
-in both panes.
+If the pane doesn't attach within 15 seconds, or it is closed or disconnected
+for more than 5 seconds, activity goes back to the main conversation.
 
-If the pane does not attach within 15 seconds, is closed, or stays disconnected
-for more than 5 seconds, activity returns to the main conversation for the rest of
-that session. Without Herdr, delivery stays inline.
-
-- `n`/`Tab` and `p` select the next or previous agent; `o` shows only that agent.
-- `j`/`k` scroll, `Space`/`b` page, and `g` jumps to the top.
-- `r` or `G` resumes following new activity.
+- `n`/`Tab` and `p` select agents; `o` shows only the selected one.
+- `j`/`k`, `Space`/`b`, and `g` scroll; `r` or `G` resumes following.
 - `q` closes the pane without ending Codex.
 
 See the [agents pane contract](doc/spec/commentary.md).
 
 ## Metrics
 
-Open the dashboard URL printed at startup. It belongs to that session and stops
-working when Codex exits. For an SSH session, forward its assigned port first.
-The dashboard's **Transport** column is the provider connection (WebSocket or
-HTTP), not the Codex-to-mekugi HTTP/SSE connection.
+The dashboard URL printed at startup works only while that session runs. Over
+SSH, forward its port first.
 
 ```sh
 curl -sS "${MEKUGI_BASE_URL%/v1}/api/metrics"
 mekugi --capture-output capture.jsonl --metrics-output metrics.json codex
 ```
 
-Metrics stay in memory unless you request an export. Capture appends JSONL; the
-final snapshot overwrites its destination. Exports contain sanitized
-measurements, not raw prompts, scripts, patches, or credentials.
-Provider-reported usage is authoritative; local token estimates are not billing
-figures. See the [metrics reference](doc/spec/metrics.md).
+Metrics stay in memory unless you export them. Exports hold sanitized
+measurements only, with no prompts, patches, or credentials. Provider-reported
+usage is authoritative; local token estimates are not billing figures. See the
+[metrics reference](doc/spec/metrics.md).
 
-To record diagnostics and forwarded request instructions for new requests:
-
-```sh
-mekugi --debug codex
-```
-
-Debug mode writes a private `mekugi-debug-*` directory in the system temporary
-directory and prints its artifact paths on exit. Forwarded instruction dumps are not
-sanitized and can contain private information from your instructions. Existing
-`--capture-output` and `--metrics-output` paths take precedence. Resuming with
-`--debug` records future requests; it cannot recover an earlier request that was
-not dumped. See the [feature evidence contract](doc/spec/router.md#feature-usage-debug-evidence).
+`mekugi --debug codex` writes a private `mekugi-debug-*` directory in the system
+temporary directory and prints its paths on exit. Its instruction dumps are
+**not sanitized**. Debug mode records future requests only. See
+[debug evidence](doc/spec/router.md#feature-usage-debug-evidence).
 
 ## Mekugi settings
 
-Create `mekugi/config.toml` beneath your user configuration directory:
+Create `mekugi/config.toml` in your user configuration directory:
 `$XDG_CONFIG_HOME` or `~/.config` on Linux, `~/Library/Application Support` on macOS.
 
 ```toml
@@ -463,105 +283,89 @@ api_key = "your-go-key"
 api_key = "your-zen-key"
 ```
 
-Use any of these sections independently. `OPENCODE_API_KEY` overrides both file keys;
-`OPENCODE_GO_API_KEY` and `OPENCODE_ZEN_API_KEY` override their respective service.
-An explicitly empty environment value disables that service. Settings are read
-at startup; Mekugi never rewrites this file or Codex's configuration.
+Every section is optional. Settings are read at startup and never rewritten.
 
-Service-tier overrides replace the request's `service_tier` after model selection
-(including Mentor Handoff), before forwarding upstream. Models not listed keep
-their requested tier. Accepted values are `auto`, `default`, `fast`, `priority`,
-and `flex`; `fast` is mapped to `priority` for forwarding. Both aliases display as
-`fast`, including when the tier comes from the request. The selected provider must support the tier.
-Agent-start commentary shows the effective requested tier, not a guarantee of the
-tier the provider will serve.
-
-OpenCode models, API formats, reasoning controls and prices refresh online with
-an hourly cache. Supported reasoning efforts are selectable normally; no `none`
-override is required. The model picker updates on the next launch. See the
-[provider contract](doc/spec/opencode.md) for cache behavior,
-supported APIs and history limitations.
+- **Service tiers** replace the request's tier after model selection, Mentor
+  Handoff included. The values are `auto`, `default`, `fast` (sent as
+  `priority`), `priority`, and `flex`. The provider must support the tier you
+  choose.
+- **API keys:** `OPENCODE_API_KEY` overrides both file keys. The per-service
+  variables override their own service. Setting one to an empty string turns
+  that service off.
 
 ## Configuration and troubleshooting
 
-- **Post-compaction recovery:** in Mekugi mode, the wrapper registers a native
-  Codex `SessionStart` hook matching `compact`. Open `/hooks` in Codex and trust
-  the Mekugi `post-compact` command before using it. After manual or automatic
-  compaction, it restores a bounded snapshot of the main thread's journal and
-  recorded change summary before the next model request. Subagents and
-  passthrough mode are unchanged. Requires Codex's compact `SessionStart` support
-  (validated with CLI 0.156.1); disabling native hooks disables recovery.
-  Existing user/project hooks remain loaded, and Mekugi does not change your
-  Codex configuration files or bypass hook trust. If you supply explicit
-  `hooks` configuration through CLI `-c`, Mekugi leaves it untouched and prints
-  a notice instead of registering its hook. Add a `SessionStart` command handler
-  matching `^compact$`, with command `/absolute/path/to/mekugi post-compact`, to
-  your hook configuration in that case. Quote the executable path if it contains
-  spaces. Hook failures are advisory and do not stop the task.
-- **Instructions:** Mekugi preserves Codex's stock or caller-configured base instructions. It adds
-  journal and completion guidance through the projected tool descriptions without editing instruction
-  files. See [guidance behavior](doc/spec/guide.md).
-- **Plugins:** put regular `.js` or `.mjs` modules in `mekugi/plugins` beneath
-  your platform's user configuration directory. On Linux this is
-  `$XDG_CONFIG_HOME/mekugi/plugins` or `~/.config/mekugi/plugins`; on macOS it is
-  `~/Library/Application Support/mekugi/plugins`. See the
-  [plugin contract](doc/spec/plugin.md).
+- **Post-compaction recovery:** Mekugi registers a Codex `SessionStart` hook that
+  matches `compact` and pre-trusts only that hook for the session. It never
+  bypasses trust for other hooks. After each compaction, the hook restores a
+  bounded snapshot of the main thread's journal and changes. Subagents and
+  passthrough mode are unaffected. It needs Codex's compact `SessionStart`
+  support (tested with CLI 0.156.1). If a Codex update changes how hooks are
+  hashed, Codex asks you to review the hook under `/hooks` instead. Opt out with
+  `--post-compact-recovery=false`, or disable the hook in `/hooks`. If you pass
+  `hooks` through `-c`, Mekugi leaves them alone and prints a notice. In that
+  case, add a `SessionStart` handler matching `^compact$` that runs
+  `/absolute/path/to/mekugi post-compact`. Hook failures don't stop the task.
+  See [guidance behavior](doc/spec/guide.md).
+- **Instructions:** Mekugi keeps Codex's base instructions and adds its guidance
+  through tool descriptions. Anything between `<!-- mekugi:omit -->` and
+  `<!-- /mekugi:omit -->` in instructions, including `AGENTS.md`, is removed before
+  forwarding. When `skills-mgr` is on the `PATH`, Mekugi turns off Codex's stock
+  skill catalog for the session and sends each selected skill as
+  `<skill name="…"/>`. See [guidance behavior](doc/spec/guide.md).
+- **Issue reports:** start with `MEKUGI_DIAGNOSE=1` to give agents a
+  `report_issue` tool. Each report runs the commands in `hooks.diagnose` of
+  `mekugi/settings.json` in your user configuration directory. Commands are
+  templates with `.Title`, `.Body`, `shellquote`, and `format_markdown`, for
+  example `gh issue create --title {{shellquote .Title}} --body {{shellquote .Body}}`.
+  See [agent issue reports](doc/spec/diagnose.md).
+- **Plugins:** put `.js` or `.mjs` modules in `mekugi/plugins` in your user
+  configuration directory. See the [plugin contract](doc/spec/plugin.md).
 - **Executor environment:** the router and executor must see the same workspace
-  paths and tool runtime directory. `MEKUGI_RUNTIME_DIR` overrides the default
-  temporary directory; both must resolve it to the same absolute path.
-- **Failures:** startup errors appear before Codex launches. Session failures
-  appear as user-only commentary; undelivered notices appear on stderr after
-  Codex exits. A router translation fault ends the turn instead of repeatedly retrying;
-  its notice offers recovery steps. Sanitized failure references survive restart,
-  without storing request content. Detailed logs still require `--debug`.
-  See [opt-in agent issue reports](doc/spec/diagnose.md).
+  paths and runtime directory. `MEKUGI_RUNTIME_DIR` overrides the default
+  temporary directory.
+- **Failures:** startup errors print before Codex launches. Session failures
+  appear as user-only commentary; undelivered notices print to stderr after
+  exit. A router translation fault ends the turn and suggests recovery steps.
 
 ### Replay storage
 
-Replay records live at `$XDG_STATE_HOME/mekugi/replay`, or
-`~/.local/state/mekugi/replay` when `XDG_STATE_HOME` is unset. Resuming or
-opening a side conversation needs no extra Mekugi flag. Replay does not rerun
-old commands or restore live processes.
+Replay records live in `$XDG_STATE_HOME/mekugi/replay`, or
+`~/.local/state/mekugi/replay` if that variable is unset. Resuming and side
+conversations need no extra flag. Replay doesn't rerun old commands or restore
+processes.
 
-Mekugi removes its session data after **14 days without activity**. When storage
-fills, it removes the least recently active inactive sessions until the new data
-fits. Running work is protected. **Your original Codex chats and workspace files
-are never deleted.** Age-based cleanup runs in the background rather than as
-part of a new request. Cleanup can make old recovery and review references stop
-working. To reset storage, stop all Mekugi wrappers and move the replay
-directory aside.
+Mekugi deletes session data after **14 days without activity**. When storage is
+full, it removes the least recently active inactive sessions first, and never
+touches running work. **Your Codex chats and workspace files are never deleted.**
+Cleanup can break old recovery and review references. To reset, stop all Mekugi
+wrappers and move the directory aside.
 
 ### Inspect a session
 
-Inspect a local Codex rollout without running old commands. This is read-only
-and starts no router:
+This reads a Codex rollout without running anything or starting a router:
 
 ```sh
 mekugi inspect-session --session /path/to/rollout.jsonl
 mekugi inspect-session --failures
-mekugi inspect-session --failures e8bd3ee1d49f
 mekugi inspect-sessions --exclude-model '*grok*' --class production
-MEKUGI_AX_OUTPUT=/path/to/private/reads.jsonl mekugi --debug codex
-mekugi inspect-session --session /path/to/rollout.jsonl --ax \
-  --read-log /path/to/private/reads.jsonl
 ```
 
-Default JSON contains logical tool names, call IDs, outcomes, and sizes, not
-private text. Requested `--field` values may contain source and command output.
-Reread candidates are not proof of waste. See the
-[session inspection](doc/spec/session.md) and [AX evidence](doc/spec/ax.md)
-contracts.
+The default JSON holds tool names, call IDs, outcomes, and sizes, but no
+private text. Values you request with `--field` may include source and command
+output. See [session inspection](doc/spec/session.md) and
+[AX evidence](doc/spec/ax.md).
 
 ### Older installations
 
 Finish active sessions before replacing an older installation. Retire any old
-service and provider configuration separately, preserving unrelated settings and
-authentication. Use `mekugi codex` for future sessions.
+service and provider configuration separately, keeping unrelated settings and
+authentication. Use `mekugi codex` from then on.
 
 ## Go library
 
-The root package provides review-diff rendering helpers used by the router's
-change evidence. Editing and execution are Codex-owned, not root-library APIs.
+The root package provides the review-diff rendering helpers behind the router's
+change evidence.
 
 ## Documentation
 
@@ -581,10 +385,6 @@ bun test ./internal/router/toolplugin/tests
 go test ./...
 go vet ./...
 ```
-
-For focused checks, use `go test .` for review rendering,
-`go test ./internal/router` for routing, or
-`go test ./cmd/mekugi` for the process entry point.
 
 ## License
 
