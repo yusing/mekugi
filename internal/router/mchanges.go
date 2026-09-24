@@ -35,6 +35,7 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		options.view, arguments = arguments[0], arguments[1:]
 	}
 	for len(arguments) > 0 {
+		arguments = expandMaxTokensOption(arguments)
 		flag := arguments[0]
 		arguments = arguments[1:]
 		if flag == "--" {
@@ -49,6 +50,9 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 			continue
 		}
 		if seen[flag] {
+			if flag == "--max-tokens" {
+				return options, errors.New(maxTokensArgumentError)
+			}
 			return options, fmt.Errorf("duplicate option %s", flag)
 		}
 		seen[flag] = true
@@ -63,6 +67,9 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 			options.view = strings.TrimPrefix(flag, "--")
 		case "--workspace", "--max-tokens":
 			if len(arguments) == 0 {
+				if flag == "--max-tokens" {
+					return options, errors.New(maxTokensArgumentError)
+				}
 				return options, fmt.Errorf("%s requires a value", flag)
 			}
 			value := arguments[0]
@@ -73,7 +80,7 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 			case "--max-tokens":
 				number, err := strconv.Atoi(value)
 				if err != nil || number < 1 || number > maxOutputTokens || strconv.Itoa(number) != value {
-					return options, fmt.Errorf("--max-tokens requires an integer from 1 to %d", maxOutputTokens)
+					return options, errors.New(maxTokensArgumentError)
 				}
 				options.maxTokens = number
 			}

@@ -8,7 +8,7 @@ export function createMRunTool(): NativeTool {
     specification: {
       type: "custom",
       name: "mrun",
-      description: "Bound one foreground command's output, retaining its beginning or end. Use for noisy commands when a bounded head or tail is sufficient; output outside the selected window is discarded. Only an emitted mread reference recovers retained delivery overflow; ordinary exec_command truncation has no mread recovery. Usage: `mrun (-n N|--max-tokens N) [--tail] -- COMMAND [ARG...]`. Stock yielded sessions and write_stdin still own interactive continuation.",
+      description: "Bound one foreground command's output, retaining its beginning or end. Use for noisy commands when a bounded head or tail is sufficient; output outside the selected window is discarded. Usage: `mrun (-n N|--max-tokens N) [--tail] [--] COMMAND [ARG...]`. Stock yielded sessions and write_stdin still own interactive continuation.",
     },
     nativeExecutor: "mrun",
   };
@@ -67,7 +67,7 @@ export function formatMRunOutput(argv: string[]): ExecutionOutput {
   const [rawBudget, mode, stdout, stderr] = argv;
   const budget = Number(rawBudget);
   if (argv.length !== 4 || !/^[1-9][0-9]*$/u.test(rawBudget)
-      || budget > 15_500 || (mode !== "head" && mode !== "tail" && mode !== "shell" && mode !== "read")) {
+      || budget > 15_500 || !["head", "tail", "shell", "read", "rows"].includes(mode)) {
     throw new Error("invalid mrun output selection");
   }
   if (mode === "read") {
@@ -76,7 +76,13 @@ export function formatMRunOutput(argv: string[]): ExecutionOutput {
   if (mode === "shell") {
     return {stdout: JSON.stringify(selectShellText(stdout, budget)), exitCode: 0};
   }
-  const error = selectMRunText(stderr, budget, mode === "tail");
-  const output = selectMRunText(stdout, budget - error.tokens, mode === "tail");
+  const select = (value: string, limit: number): {text: string; tokens: number} => {
+    const selected = selectMRunText(value, limit, mode === "tail");
+    if (mode !== "rows" || selected.text.length === value.length) return selected;
+    const text = selected.text.slice(0, selected.text.lastIndexOf("\n") + 1);
+    return {text, tokens: countGPT5Tokens(text)};
+  };
+  const error = select(stderr, stdout === "" ? budget : Math.floor(budget / 2));
+  const output = select(stdout, budget - error.tokens);
   return {stdout: output.text, stderr: error.text, exitCode: 0};
 }

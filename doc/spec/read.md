@@ -1,5 +1,11 @@
 # Authenticated raw-row reader and managed continuation
 
+All frontends accepting `--max-tokens N` also accept `--max-tokens=N` before
+their operand terminator or command boundary. Missing, invalid, out-of-range,
+and repeated token budgets use the same diagnostic:
+`--max-tokens requires one integer from 1 to 15500 and cannot repeat`.
+Continuation commands use `next_call: COMMAND`, never an equals-sign attribute.
+
 ## REQ-READ-001 — Authenticated raw-row reader
 
 In Mekugi mode, `mcat` is a session-private executable on the wrapped Codex

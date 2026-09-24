@@ -34,7 +34,7 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 		"mrun": {
 			"Use for noisy commands",
 			"outside the selected window is discarded",
-			"Only an emitted mread reference recovers retained delivery overflow",
+			"Only emitted references recover retained output",
 			"ordinary exec_command truncation has no mread recovery",
 		},
 		"mcat": {
@@ -55,9 +55,9 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 		}
 		for _, required := range []string{
 			"<common-options>",
-			"--max-tokens N bounds output to 1–15500 tokens.",
+			"--max-tokens N (also --max-tokens=N) bounds output to 1–15500 tokens.",
 			"-n N selects up to N rows;",
-			"mcat keeps its default token ceiling with -n alone and always keeps complete rows; mrun token limits may cut within a row.",
+			"mcat keeps its default token ceiling with -n alone and always keeps complete rows.",
 		} {
 			if count := strings.Count(description, required); count != 1 {
 				t.Errorf("shared option guidance %q appears %d times; want one owner", required, count)

@@ -1,5 +1,35 @@
 # Stock editing and execution
 
+## Bounded command output: mrun
+
+`mrun (-n N|--max-tokens N) [--tail] [--] COMMAND [ARG...]` runs a foreground
+command under the host's existing process, stdin, cancellation, and continuation
+authority. The first non-option operand starts the command; all subsequent
+arguments belong to it. `--` explicitly marks the same boundary.
+
+`-n` selects up to N rows per stream. `--max-tokens` accepts 1–15500 and bounds
+the combined selected command text. When stdout is nonempty, stderr receives
+at most half that budget; stdout receives the remainder. Token-window selection
+may cut a row. `--tail` selects the ending instead of the beginning. Output
+outside the selected window is discarded, not promised as recoverable.
+
+Delivery is separately capped at 15500 tokens and ends on complete rows. Only
+overflow of this delivery page is retained for `mread`; retained stderr consists
+of command output, never the frontend's generated limit notice. The notice is
+outside the command-output budget. The command's exit status is preserved even
+when output is incomplete; invalid frontend arguments exit 2 and a missing
+command exits 127.
+Newline-terminated retained streams use complete-row continuation when each row
+fits a maximum page including framing. Oversized rows and unterminated generic
+streams use byte continuation instead, preserving recoverability without adding
+or discarding command bytes. This exception does not change the initial delivery
+page's complete-row boundary.
+
+Acceptance: mixed streams retain stdout and bound stderr; a 15000-token window
+needs no extra continuation solely due to the delivery cap; line-only delivery
+overflow reconstructs exact selected output on row boundaries; both explicit
+and implicit command boundaries preserve command arguments.
+
 ## REQ-EXECUTION-001 — Preserve Codex's execution authority
 
 In Mekugi mode, the Codex request keeps its stock Code Mode JavaScript

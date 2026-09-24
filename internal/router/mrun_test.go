@@ -154,9 +154,13 @@ func TestShellRunnerMRunDrainsBeyondDisplayAndHostBudgets(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		errTokens, err := codec.Count(strings.Split(stderr, "mrun:")[0])
+		errPayload, _, _ := strings.Cut(stderr, "mrun:")
+		errTokens, err := codec.Count(errPayload)
 		if err != nil || outTokens+errTokens > 32 {
 			t.Fatalf("shared budget: %d + %d, %v", outTokens, errTokens, err)
+		}
+		if stdout != "" && errTokens > 16 {
+			t.Fatalf("stderr consumed %d tokens of the 32-token shared budget while stdout was present", errTokens)
 		}
 		if data, err := os.ReadFile(filepath.Join(directory, "completed")); err != nil || string(data) != "completed" {
 			t.Fatalf("child did not finish: %q, %v", data, err)
@@ -167,13 +171,22 @@ func TestShellRunnerMRunDrainsBeyondDisplayAndHostBudgets(t *testing.T) {
 	}
 }
 
-func TestShellRunnerMRunPrioritizesStderrAndPreservesSuccess(t *testing.T) {
+func TestShellRunnerMRunBoundsStderrWhenStdoutIsPresentAndPreservesSuccess(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	stdout, stderr, status := runShellWorkerTest(t, registry, "sh", nil,
 		`mrun --tail --max-tokens 1 -- sh -c 'printf stdout; printf "first error" >&2'`, nil)
-	if stdout != "" || !strings.HasPrefix(stderr, " error\nmrun: output incomplete:") || status != 0 {
+	if stdout == "" || strings.Contains(stderr, "first error") ||
+		!strings.Contains(stderr, "mrun: output incomplete: 1-token limit reached") || status != 0 {
 		t.Fatalf("shared budget: %q, %q, %d", stdout, stderr, status)
+	}
+	codec, err := tokenizer.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdoutTokens, err := codec.Count(stdout)
+	if err != nil || stdoutTokens > 1 {
+		t.Fatalf("stdout uses %d tokens for one-token budget: %v", stdoutTokens, err)
 	}
 }
 
@@ -197,7 +210,7 @@ func TestShellRunnerMRunRejectsBeforeExecution(t *testing.T) {
 			t.Fatalf("invalid invocation executed a command: %v", err)
 		}
 	}
-	for _, command := range []string{"mrun --max-tokens 10 --", "mrun --max-tokens 10 echo done"} {
+	for _, command := range []string{"mrun --max-tokens 10 --", "mrun --max-tokens 10"} {
 		_, _, status := runShellWorkerTest(t, registry, "bash", nil, command, nil, invocation)
 		if status != 2 {
 			t.Fatalf("%q status = %d", command, status)
@@ -296,20 +309,41 @@ func TestShellRunnerMRunLines(t *testing.T) {
 		handled, status := RunToolPluginWorker(t.Context(), registry.frontends["mrun"],
 			[]string{"-n", "1", "--", "sh", "-c", `head -c 200000 /dev/zero | tr "\000" a`},
 			nil, &stdout, &stderr)
-		if !handled || status != 0 {
+		if !handled || status != 0 || stdout.Len() != 0 {
 			t.Fatalf("line-only default: handled %t, %d bytes %q %d", handled, stdout.Len(), stderr.String(), status)
 		}
 		_, receipt, found := strings.Cut(stderr.String(), "next_call: mread ")
 		if !found || len(strings.Fields(receipt)) == 0 {
 			t.Fatalf("missing mrun recovery receipt: %q", stderr.String())
 		}
-		var retainedStdout, retainedStderr bytes.Buffer
-		handled, status = RunToolPluginWorker(t.Context(), registry.frontends["mread"],
-			[]string{strings.Fields(receipt)[0], "--max-tokens", "15500"},
-			nil, &retainedStdout, &retainedStderr)
-		if !handled || status != 0 || stdout.Len()+retainedStdout.Len() != 200000 || retainedStderr.String() != "" {
-			t.Fatalf("mrun recovery: handled %t, visible %d, retained %d, stderr %q, status %d",
-				handled, stdout.Len(), retainedStdout.Len(), retainedStderr.String(), status)
+		reference := strings.Fields(receipt)[0]
+		var recovered bytes.Buffer
+		for pageIndex := range 20 {
+			var page, diagnostic bytes.Buffer
+			handled, status = RunToolPluginWorker(t.Context(), registry.frontends["mread"],
+				[]string{reference, "--max-tokens", "15500"}, nil, &page, &diagnostic)
+			if !handled || status != 0 && status != 1 || strings.Trim(page.String(), "a") != "" {
+				t.Fatalf("mrun recovery page %d: handled %t, bytes %d, stderr %q, status %d",
+					pageIndex, handled, page.Len(), diagnostic.String(), status)
+			}
+			recovered.Write(page.Bytes())
+			if status == 0 {
+				if diagnostic.Len() != 0 {
+					t.Fatalf("completed mrun recovery has diagnostics: %q", diagnostic.String())
+				}
+				break
+			}
+			_, next, found := strings.Cut(diagnostic.String(), "next_call: mread ")
+			if !found || len(strings.Fields(next)) == 0 {
+				t.Fatalf("missing mread continuation on page %d: %q", pageIndex, diagnostic.String())
+			}
+			reference = strings.Fields(next)[0]
+			if pageIndex == 19 {
+				t.Fatal("mrun line-only recovery exceeded its page bound")
+			}
+		}
+		if recovered.Len() != 200000 || strings.Trim(recovered.String(), "a") != "" {
+			t.Fatalf("mrun recovery: visible %d, retained %d", stdout.Len(), recovered.Len())
 		}
 	})
 

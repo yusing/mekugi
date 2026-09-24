@@ -53,10 +53,23 @@ test("mrun token selection preserves Unicode and a strict independently counted 
   }
 });
 
-test("mrun formatting prioritizes stderr and rejects malformed requests", () => {
-  expect(formatMRunOutput(["1", "tail", "stdout", "first error"])).toEqual({
-    stdout: "", stderr: " error", exitCode: 0,
-  });
+test("mrun formatting caps stderr at half the budget when stdout is present", () => {
+  const tiny = formatMRunOutput(["1", "tail", "stdout", "first error"]);
+  expect(tiny.stdout).not.toBe("");
+  expect(tiny.stderr).toBe("");
+  expect(countGPT5Tokens(tiny.stdout ?? "") + countGPT5Tokens(tiny.stderr ?? "")).toBeLessThanOrEqual(1);
+
+  for (const budget of [2, 7, 42]) {
+    const result = formatMRunOutput([
+      String(budget), "head", "out ".repeat(200), "err ".repeat(200),
+    ]);
+    const stdoutTokens = countGPT5Tokens(result.stdout ?? "");
+    const stderrTokens = countGPT5Tokens(result.stderr ?? "");
+    expect(stdoutTokens).toBeGreaterThan(0);
+    expect(stderrTokens).toBeLessThanOrEqual(Math.floor(budget / 2));
+    expect(stdoutTokens + stderrTokens).toBeLessThanOrEqual(budget);
+  }
+
   for (const argv of [
     [], ["0", "head", "", ""], ["15501", "head", "", ""],
     ["01", "head", "", ""], ["1", "unknown", "", ""],

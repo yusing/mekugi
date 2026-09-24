@@ -47,7 +47,9 @@ export function readerOptions(argv: string[], allowTail = false, takesValue: (ar
   const indices: number[] = [];
   let offset = 0;
   while (offset < argv.length) {
-    const name = argv[offset];
+    const argument = argv[offset];
+    const inlineBudget = argument.startsWith("--max-tokens=");
+    const name = inlineBudget ? "--max-tokens" : argument;
     if (name === "--") {
       if (!preserveTerminator) offset++;
       rest.push(...argv.slice(offset));
@@ -74,14 +76,14 @@ export function readerOptions(argv: string[], allowTail = false, takesValue: (ar
     }
     const key = name === "-n" ? "maxLines" : name === "--max-tokens" ? "maxTokens" : "previewBytes";
     const maximum = key === "maxLines" ? Number.MAX_SAFE_INTEGER : key === "maxTokens" ? MAX_READER_TOKENS : 65_536;
-    const raw = argv[offset + 1] ?? "";
+    const raw = inlineBudget ? argument.slice("--max-tokens=".length) : argv[offset + 1] ?? "";
     const value = Number(raw);
     if (options[key] !== undefined || !/^[1-9][0-9]*$/u.test(raw)
         || !Number.isSafeInteger(value) || value > maximum) {
       throw new Error(`${name} requires one integer from 1 to ${maximum} and cannot repeat`);
     }
     options[key] = value;
-    offset += 2;
+    offset += inlineBudget ? 1 : 2;
   }
   if (options.tail && options.maxTokens === undefined && options.maxLines === undefined) {
     throw new Error("--tail requires -n or --max-tokens");

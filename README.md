@@ -288,7 +288,7 @@ mread REF
 mread REF_A REF_B
 mcat source.ts 10-20 40:60
 mcat --tail -n 20 source.ts
-mrun --tail -n 20 -- go test ./internal/router
+mrun --tail -n 20 go test ./internal/router
 ```
 
 `mchanges --summary` gives tab-separated added/deleted line counts per path.
@@ -298,6 +298,10 @@ Use `--history` or an explicit path filter to expand managed diffs.
 Bounded output includes an exact `mread` continuation when needed. Multiple handles
 share one budget. `mcat` accepts colon or dash ranges and several ranges per path;
 `-n` retains its default 6000-token ceiling, with omitted rows recoverable through `mread`.
+All helpers accept `--max-tokens=N` as well as `--max-tokens N`. `mrun` accepts
+the command directly or after `--`, shares its budget between stdout and stderr,
+and caps delivery at 15500 tokens on row boundaries. Overflow remains recoverable;
+oversized rows and unterminated command streams use byte continuation.
 `mchanges --list` shows the current thread's pending and completed IDs. A
 Code Mode patch may show observed file changes as application unconfirmed:
 completion of the outer JavaScript cell is not proof that its nested patch

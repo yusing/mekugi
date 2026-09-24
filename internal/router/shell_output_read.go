@@ -26,6 +26,7 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 	options := outputReadOptions{maxTokens: 8000}
 	seen := make(map[string]bool)
 	for len(arguments) > 0 {
+		arguments = expandMaxTokensOption(arguments)
 		flag := arguments[0]
 		arguments = arguments[1:]
 		if !strings.HasPrefix(flag, "--") {
@@ -36,6 +37,9 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 			continue
 		}
 		if seen[flag] {
+			if flag == "--max-tokens" {
+				return options, errors.New(maxTokensArgumentError)
+			}
 			return options, fmt.Errorf("duplicate option %s", flag)
 		}
 		seen[flag] = true
@@ -47,13 +51,13 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 			options.stream = strings.TrimPrefix(flag, "--")
 		case "--max-tokens":
 			if len(arguments) == 0 {
-				return options, errors.New("--max-tokens requires a value")
+				return options, errors.New(maxTokensArgumentError)
 			}
 			value := arguments[0]
 			arguments = arguments[1:]
 			number, err := strconv.Atoi(value)
 			if err != nil || number < 1 || number > maxOutputTokens || strconv.Itoa(number) != value {
-				return options, fmt.Errorf("--max-tokens requires an integer from 1 to %d", maxOutputTokens)
+				return options, errors.New(maxTokensArgumentError)
 			}
 			options.maxTokens = number
 		default:

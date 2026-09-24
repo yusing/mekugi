@@ -13,10 +13,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/internal/router/toolplugin"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 const (
-	mrunDeliveryTokens   = 10_000
+	mrunDeliveryTokens   = maxOutputTokens
 	mrunProcessWaitDelay = 2 * time.Second
 )
 
@@ -29,15 +30,16 @@ type mrunOptions struct {
 func parseMRunArguments(arguments []string) (mrunOptions, []string, error) {
 	var options mrunOptions
 	for len(arguments) > 0 {
+		arguments = expandMaxTokensOption(arguments)
 		switch arguments[0] {
 		case "--max-tokens":
 			if len(arguments) < 2 || options.maxTokens != 0 {
-				return options, nil, fmt.Errorf("--max-tokens requires one integer from 1 to %d and cannot repeat", maxOutputTokens)
+				return options, nil, errors.New(maxTokensArgumentError)
 			}
 			value := arguments[1]
 			number, err := strconv.Atoi(value)
 			if err != nil || number < 1 || number > maxOutputTokens || strconv.Itoa(number) != value {
-				return options, nil, fmt.Errorf("--max-tokens requires one integer from 1 to %d", maxOutputTokens)
+				return options, nil, errors.New(maxTokensArgumentError)
 			}
 			options.maxTokens = number
 			arguments = arguments[2:]
@@ -64,6 +66,9 @@ func parseMRunArguments(arguments []string) (mrunOptions, []string, error) {
 			}
 			return options, arguments[1:], nil
 		default:
+			if !strings.HasPrefix(arguments[0], "-") && arguments[0] != "" && (options.maxTokens != 0 || options.maxLines != 0) {
+				return options, arguments, nil
+			}
 			return options, nil, fmt.Errorf("expected -n N or --max-tokens N, optionally --tail, then -- COMMAND [ARG...]")
 		}
 	}
@@ -288,15 +293,15 @@ func executeMRun(
 		}
 	}
 
-	// Preserve streams and prioritize diagnostics when they compete for the
-	// shared command-output budget. The fixed omission notice is outside it.
+	// Preserve both streams when they compete for the shared budget. Generated
+	// notices are never part of command-output selection or retained data.
 	errText, outText := stderr.text(), stdout.text()
 	mode := "head"
 	if options.tail {
 		mode = "tail"
 	}
 	selectedOut, selectedErr := outText, errText
-	if options.maxTokens > 0 && len(outText)+len(errText) > options.maxTokens {
+	if options.maxTokens > 0 && (len(outText)+len(errText) > options.maxTokens || outText != "" && len(errText) > options.maxTokens/2) {
 		// A token always contains at least one source byte. Only invoke the exact
 		// tokenizer when the captured byte count cannot prove the output fits.
 		formatted, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, runtimeRoot,
@@ -309,11 +314,8 @@ func executeMRun(
 		}
 		selectedOut, selectedErr = formatted.Stdout, formatted.Stderr
 	}
+	notice := ""
 	if stdout.omitted || stderr.omitted || selectedOut != outText || selectedErr != errText {
-		separator := ""
-		if selectedErr != "" && !strings.HasSuffix(selectedErr, "\n") {
-			separator = "\n"
-		}
 		limit := fmt.Sprintf("%d-token limit", options.maxTokens)
 		if options.maxLines > 0 {
 			limit = fmt.Sprintf("%d-line limit", options.maxLines)
@@ -321,14 +323,23 @@ func executeMRun(
 				limit += fmt.Sprintf(" or %d-token limit", options.maxTokens)
 			}
 		}
-		selectedErr += fmt.Sprintf("%smrun: output incomplete: %s reached\n", separator, limit)
+		notice = fmt.Sprintf("mrun: output incomplete: %s reached\n", limit)
 	}
 	execution := toolplugin.ExecutionOutput{Stdout: selectedOut, Stderr: selectedErr, ExitCode: exitCode}
-	if len(selectedOut)+len(selectedErr) <= mrunDeliveryTokens {
+	appendNotice := func() {
+		if notice != "" {
+			if execution.Stderr != "" && !strings.HasSuffix(execution.Stderr, "\n") {
+				execution.Stderr += "\n"
+			}
+			execution.Stderr += notice
+		}
+	}
+	if len(selectedOut)+len(selectedErr) <= mrunDeliveryTokens && (selectedOut == "" || len(selectedErr) <= mrunDeliveryTokens/2) {
+		appendNotice()
 		return execution, nil
 	}
 	formatted, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, runtimeRoot,
-		[]string{strconv.Itoa(mrunDeliveryTokens), "head", selectedOut, selectedErr})
+		[]string{strconv.Itoa(mrunDeliveryTokens), "rows", selectedOut, selectedErr})
 	if err != nil {
 		return toolplugin.ExecutionOutput{}, fmt.Errorf("select retained output: %w", err)
 	}
@@ -340,11 +351,38 @@ func executeMRun(
 		Stdout: selectedOut[len(formatted.Stdout):],
 		Stderr: selectedErr[len(formatted.Stderr):],
 	}
+	omitted.StdoutKind = mrunRetainedKind(omitted.Stdout)
+	omitted.StderrKind = mrunRetainedKind(omitted.Stderr)
 	if omitted.Stdout != "" || omitted.Stderr != "" {
 		execution.OmittedOutput = &omitted
 		if execution.Stderr != "" && !strings.HasSuffix(execution.Stderr, "\n") {
 			execution.Stderr += "\n"
 		}
 	}
+	appendNotice()
 	return execution, nil
+}
+
+// Generic commands can emit rows larger than any mread page. Keep those streams
+// byte-pageable rather than publishing an unusable continuation. Reserve room
+// for mread's stream frame and handle label when testing a row's admission.
+func mrunRetainedKind(text string) string {
+	if !strings.HasSuffix(text, "\n") {
+		return ""
+	}
+	const rowBudget = maxOutputTokens - 64
+	for row := range strings.SplitAfterSeq(text, "\n") {
+		if len(row) <= rowBudget {
+			continue
+		}
+		codec, err := tokenizer.New()
+		if err != nil {
+			return ""
+		}
+		count, err := codec.Count(row)
+		if err != nil || count > rowBudget {
+			return ""
+		}
+	}
+	return "rows"
 }

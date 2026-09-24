@@ -26,6 +26,9 @@ func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 	var operands []string
 	optionsEnded, tokenOption, lineOption, tailOption := false, false, false, false
 	for i := 0; i < len(args); i++ {
+		if !optionsEnded && strings.HasPrefix(args[i], "--max-tokens=") {
+			args = append(append([]string(nil), args[:i]...), expandMaxTokensOption(args[i:])...)
+		}
 		arg := args[i]
 		if optionsEnded || !strings.HasPrefix(arg, "-") {
 			operands = append(operands, arg)
@@ -36,12 +39,12 @@ func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 			optionsEnded = true
 		case "--max-tokens":
 			if tokenOption || i+1 == len(args) {
-				return nil, 0, errors.New("--max-tokens requires one value and cannot repeat")
+				return nil, 0, errors.New(maxTokensArgumentError)
 			}
 			i++
 			n, err := strconv.Atoi(args[i])
 			if err != nil || n < 1 || n > maxOutputTokens || strconv.Itoa(n) != args[i] {
-				return nil, 0, errors.New("--max-tokens must be an integer from 1 through 15500")
+				return nil, 0, errors.New(maxTokensArgumentError)
 			}
 			budget, tokenOption = n, true
 		case "-n":

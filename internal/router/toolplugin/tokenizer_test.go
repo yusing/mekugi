@@ -71,7 +71,7 @@ func TestFormatOutputDoesNotLoadToolDeclarationsOrWASM(t *testing.T) {
 	t.Parallel()
 	node, root := newFormatterFixture(t)
 	result, err := FormatOutput(t.Context(), node, root, []string{"3", "head", "hello world", "diagnostic"})
-	if err != nil || result.Stdout != "hello" || result.Stderr != "diagnostic" || result.ExitCode != 0 {
+	if err != nil || result.Stdout != "hello world" || result.Stderr != "diagn" || result.ExitCode != 0 {
 		t.Fatalf("isolated formatter = %+v, %v", result, err)
 	}
 }

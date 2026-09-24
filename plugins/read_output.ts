@@ -138,7 +138,7 @@ export function createMReadTool(): NativeTool {
     specification: {
       type: "custom",
       name: "mread",
-      description: "Continue omitted retained output without rerunning its producer. Usage: `mread REF [REF ...] [--stdout|--stderr] [--max-tokens N]`. REF is a returned handle, not a path or range. Multiple handles share one budget and return one combined next_call. --stdout or --stderr selects one stream; otherwise both are returned. Source-row pages state their row range.",
+      description: "Continue omitted retained output without rerunning its producer. Only emitted references recover retained output; ordinary exec_command truncation has no mread recovery. Usage: `mread REF [REF ...] [--stdout|--stderr] [--max-tokens N]`. REF is a returned handle, not a path or range. Multiple handles share one budget and return one combined next_call. --stdout or --stderr selects one stream; otherwise both are returned. Source-row pages state their row range.",
     },
     nativeExecutor: "mread",
   };

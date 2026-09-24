@@ -3,12 +3,23 @@
 <usage>
 Codex owns stock editing and execution. The following session-private PATH commands run through exec_command (or tools.exec_command in Code Mode); use them when useful rather than replacing ordinary shell tools.
 Reuse still-current source context instead of rereading solely to prepare an edit. Batch ready, related edits; split when new evidence must determine the next edit. Budget combined reads and command output before execution.
+For parallel Code Mode commands, print labeled outputs without serializing result envelopes:
+```js
+const jobs = [{label: "source", cmd: "mcat src/main.go 1:80"}, {label: "tests", cmd: "rg -n TestThing ."}];
+const results = await Promise.allSettled(jobs.map(job => tools.exec_command({cmd: job.cmd})));
+for (let i = 0; i < results.length; i++) {
+  const result = results[i];
+  if (result.status === "rejected") { text(`${jobs[i].label}: ${result.reason}`); continue; }
+  const value = result.value;
+  text(`${jobs[i].label}: ${value.session_id ? `running session_id=${value.session_id}` : `exit_code=${value.exit_code}`}\n${value.output}`);
+}
+```
 </usage>
 
 <common-options>
 Options apply only to commands whose Usage lists them.
-- --max-tokens N bounds output to 1–15500 tokens. Defaults: mcat 6000, mread 8000, msymbol and inspect_file 4000; mrun requires an explicit limit. For multi-file mcat, the token budget is shared across files.
-- -n N selects up to N rows; --tail selects the last rows in source order and requires -n or --max-tokens. These options belong to mcat and mrun. mcat keeps its default token ceiling with -n alone and always keeps complete rows; mrun token limits may cut within a row.
+- --max-tokens N (also --max-tokens=N) bounds output to 1–15500 tokens. Defaults: mcat 6000, mread 8000, msymbol, inspect_file, and mchanges 4000; mrun requires an explicit limit. For multi-file mcat, the token budget is shared across files.
+- -n N selects up to N rows; --tail selects the last rows in source order and requires -n or --max-tokens. These options belong to mcat and mrun. mcat keeps its default token ceiling with -n alone and always keeps complete rows. mrun's selected token window may end within a row; delivery overflow keeps row boundaries, except oversized or unterminated generic streams use byte continuation.
 - Quote paths containing spaces. An incomplete result does not establish full coverage; follow its next_call rather than rerunning the producer. mrun discards output outside its selected window.
 </common-options>
 
@@ -97,15 +108,15 @@ Result shape schema:
 </tool>
 
 <tool name="mread">
-Continue omitted retained output without rerunning its producer. Usage: `mread REF [REF ...] [--stdout|--stderr] [--max-tokens N]`. REF is a returned handle, not a path or range. Multiple handles share one budget and return one combined next_call. --stdout or --stderr selects one stream; otherwise both are returned. Source-row pages state their row range.
+Continue omitted retained output without rerunning its producer. Only emitted references recover retained output; ordinary exec_command truncation has no mread recovery. Usage: `mread REF [REF ...] [--stdout|--stderr] [--max-tokens N]`. REF is a returned handle, not a path or range. Multiple handles share one budget and return one combined next_call. --stdout or --stderr selects one stream; otherwise both are returned. Source-row pages state their row range.
 </tool>
 
 <tool name="mrun">
-Bound one foreground command's output, retaining its beginning or end. Use for noisy commands when a bounded head or tail is sufficient; output outside the selected window is discarded. Only an emitted mread reference recovers retained delivery overflow; ordinary exec_command truncation has no mread recovery. Usage: `mrun (-n N|--max-tokens N) [--tail] -- COMMAND [ARG...]`. Stock yielded sessions and write_stdin still own interactive continuation.
+Bound one foreground command's output, retaining its beginning or end. Use for noisy commands when a bounded head or tail is sufficient; output outside the selected window is discarded. Usage: `mrun (-n N|--max-tokens N) [--tail] [--] COMMAND [ARG...]`. Stock yielded sessions and write_stdin still own interactive continuation.
 </tool>
 
 <tool name="mchanges">
-Review, revert, or reapply completed observed evidence from stock apply_patch and declared shell file operations such as redirects, cp, mv, rm, and sed -i; not a Git diff or provisional preview. Usage: `mchanges --list`, `mchanges ID[..ID] ... [--summary|--history] [-- PATH ...]`, or `mchanges revert|apply ID[..ID] ... [-- PATH ...]`. Hand reviewers explicit IDs or same-agent inclusive ranges for the requested changes, together with the review scope; --list only lists the calling thread's changes. Prefer mchanges for captured edits. Use Git for other shell-generated or unrelated changes. Do not routinely pair Git diff with mchanges for the same edits; skip --summary before an already-needed diff. `revert` undoes and `apply` replays selected changes in the workspace, git-style: drifted regions merge; overlapping edits leave conflict markers (exit 1). Output states each file relative to mchanges history, not Git (`clean`, `+N -N`, `UU` conflict, `??` unknown). The revert is itself recorded as a change; follow the printed undo line. Omitted review output supplies mread continuation; recorded diffs are historical evidence, not proof of current workspace contents.
+Review, revert, or reapply completed observed evidence from stock apply_patch and declared shell file operations such as redirects, cp, mv, rm, and sed -i; not a Git diff or provisional preview. Usage: `mchanges --list [--workspace DIR] [--max-tokens N] | mchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...] | mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]`. Hand reviewers explicit IDs or same-agent inclusive ranges for the requested changes, together with the review scope; --list only lists the calling thread's changes. Prefer mchanges for captured edits. Use Git for other shell-generated or unrelated changes. Do not routinely pair Git diff with mchanges for the same edits; skip --summary before an already-needed diff. `revert` undoes and `apply` replays selected changes in the workspace, git-style: drifted regions merge; overlapping edits leave conflict markers (exit 1). Output states each file relative to mchanges history, not Git (`clean`, `+N -N`, `UU` conflict, `??` unknown). The revert is itself recorded as a change; follow the printed undo line. Recorded diffs are historical evidence, not proof of current workspace contents.
 </tool>
 
 </mekugi-frontends>
