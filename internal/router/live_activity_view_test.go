@@ -249,3 +249,64 @@ func TestLiveActivityReviewRegressions(t *testing.T) {
 		t.Fatalf("theme reply: theme=%v osc=%+v", view.painter.theme, view.osc)
 	}
 }
+
+func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
+	question := "Does the preview color\ninterpreter bodies?"
+	var text strings.Builder
+	text.WriteString("Journal result `/root/reviewer`")
+	writeJournalItems(&text, []journalItem{
+		{ID: "verdict", Question: question, Text: "Yes.\n\n- `node -e` covered"},
+		{ID: "risk", Question: question, Text: "Nested templates stay plain."},
+		{ID: "misc", Text: "Nothing else."},
+	})
+	text.WriteString("\n\n**Changes:** amber3..amber4\n\nAggregated numstat (this agent's recorded evaluations, not a net diff):\n\n" +
+		indentJournalText("10\t2\tinternal/a.go\n2\t2\tb.go", "    "))
+	blocks := parseLiveActivity(activityPaneEntry{Kind: "final", Text: text.String()})
+	journal := blocks[0].journal
+	if len(blocks) != 1 || journal == nil || len(journal.groups) != 2 || journal.groups[0].question != question ||
+		len(journal.groups[0].answers) != 2 || journal.groups[0].answers[0].text != "Yes.\n\n- `node -e` covered" ||
+		journal.groups[1].question != "" || journal.groups[1].answers[0].id != "misc" ||
+		journal.changes != "amber3..amber4" || len(journal.stats) != 2 || journal.stats[0] != (liveActivityStat{"10", "2", "internal/a.go"}) {
+		t.Fatalf("journal = %+v", journal)
+	}
+	painter := liveActivityPainter{theme: livediff.DarkTheme}
+	render := func(compact bool) string {
+		block := blocks[0]
+		block.compact = compact
+		return ansi.Strip(strings.Join(painter.block(block, 80), "\n"))
+	}
+	full := render(false)
+	for _, want := range []string{
+		"✓ Final answer · 3 answers · 2 files +12 -4",
+		"  Q Does the preview color\n    interpreter bodies?",
+		"  A verdict\n    Yes.", "  A risk\n    Nested templates stay plain.", "  • misc\n    Nothing else.",
+		"  Changes amber3..amber4\n    +10 -2 internal/a.go\n     +2 -2 b.go",
+	} {
+		if !strings.Contains(full, want) {
+			t.Fatalf("full layout missing %q:\n%s", want, full)
+		}
+	}
+	if strings.Contains(full, "Journal result") || strings.Contains(full, "**") || strings.Contains(full, "Answer") {
+		t.Fatalf("legacy journal grammar leaked into the pane:\n%s", full)
+	}
+	if compact := render(true); !strings.Contains(compact, "  Q Does the preview color interpreter bodies?\n  A verdict") {
+		t.Fatalf("shared view kept a multi-row question:\n%s", compact)
+	}
+	if summary := ansi.Strip(painter.summary(blocks)); summary != "✓ Yes." {
+		t.Fatalf("roster summary = %q", summary)
+	}
+
+	// A read-only result omits its empty change report; plain answers stay Markdown.
+	var readOnly strings.Builder
+	readOnly.WriteString("Journal result `/root/reader`")
+	writeJournalItems(&readOnly, []journalItem{{ID: "only", Text: "Found it."}})
+	readOnly.WriteString("\n\n**Changes:**\nNo recorded changes.\n")
+	blocks = parseLiveActivity(activityPaneEntry{Kind: "final", Text: readOnly.String()})
+	if got := ansi.Strip(strings.Join(painter.block(blocks[0], 80), "\n")); got != "✓ Final answer · 1 answer\n  • Found it." {
+		t.Fatalf("read-only layout = %q", got)
+	}
+	blocks = parseLiveActivity(activityPaneEntry{Kind: "final", Text: "Plain **answer**."})
+	if blocks[0].journal != nil || ansi.Strip(strings.Join(painter.block(blocks[0], 80), "\n")) != "✓ Final answer\n  Plain answer." {
+		t.Fatalf("plain final = %+v", blocks[0])
+	}
+}

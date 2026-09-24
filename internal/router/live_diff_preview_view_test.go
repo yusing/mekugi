@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+	"unicode/utf8"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -361,5 +363,92 @@ func TestLiveDiffPendingEditHidesEarlierScript(t *testing.T) {
 	pane.update(liveDiffPreview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: "STREAMING PREVIEW"})
 	if len(pane.views) != 1 {
 		t.Fatal("later projection did not restore the preview")
+	}
+}
+
+func TestLiveDiffPreviewCardsKeepSlotsAndGutter(t *testing.T) {
+	var pane liveDiffPreviewPane
+	for _, call := range []struct{ id, caller string }{{"a1", "/root/a"}, {"b1", "/root/b"}, {"c1", "/root/c"}} {
+		preview := previewViewFixture(call.id, 5)
+		preview.Caller = call.caller
+		pane.update(preview)
+	}
+	render := func() {
+		t.Helper()
+		if _, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 100, 30); err != nil {
+			t.Fatal(err)
+		}
+	}
+	render()
+	pane.update(liveDiffPreview{ID: "a1"})
+	pane.update(liveDiffPreview{ID: "b1"})
+	render()
+	// b's next call reuses b's slot; a's finished card and c's live card stay put.
+	next := previewViewFixture("b2", 5)
+	next.Caller = "/root/b"
+	pane.update(next)
+	if !slices.Equal(pane.order, []string{"a1", "b2", "c1"}) {
+		t.Fatalf("new call moved other cards: %v", pane.order)
+	}
+	// Another caller takes the finished slot rather than appending.
+	other := previewViewFixture("d1", 5)
+	other.Caller = "/root/d"
+	pane.update(other)
+	if !slices.Equal(pane.order, []string{"d1", "b2", "c1"}) {
+		t.Fatalf("new caller did not reuse a finished slot: %v", pane.order)
+	}
+	// A stale finished card leaves when another call starts.
+	pane.update(liveDiffPreview{ID: "c1"})
+	pane.views["c1"].completed = time.Now().Add(-liveDiffPreviewStaleAfter)
+	render()
+	pane.update(liveDiffPreview{ID: "d1"})
+	render()
+	pane.update(previewViewFixture("e1", 5))
+	if !slices.Equal(pane.order, []string{"e1", "b2"}) {
+		t.Fatalf("stale card was not dropped: %v", pane.order)
+	}
+
+	// Line numbers keep their width when the source shrinks back.
+	var single liveDiffPreviewPane
+	single.update(previewViewFixture("one", 100))
+	if _, err := single.render(t.Context(), "/workspace", livediff.DarkTheme, 100, 10); err != nil {
+		t.Fatal(err)
+	}
+	single.update(previewViewFixture("one", 99))
+	lines, err := single.render(t.Context(), "/workspace", livediff.DarkTheme, 100, 10)
+	if err != nil || !strings.Contains(ansi.Strip(lines[len(lines)-1]), "  99│") {
+		t.Fatalf("line-number gutter narrowed: %v %q", err, lines)
+	}
+}
+
+func TestLiveDiffPreviewPacerIsSteadyAndBounded(t *testing.T) {
+	var pacer liveDiffPreviewPacer
+	input := ""
+	shown := 0
+	// Bursts every fourth frame reveal on every frame, never all at once.
+	for frame := range 40 {
+		if frame%4 == 0 {
+			input += strings.Repeat("界x", 20)
+		}
+		next := pacer.advance(input, false)
+		if next < shown || next > len(input) || next < len(input) && !utf8.RuneStart(input[next]) {
+			t.Fatalf("frame %d revealed %d of %d after %d", frame, next, len(input), shown)
+		}
+		if frame > 8 && (next == shown && next < len(input) || frame%4 == 0 && next == len(input)) {
+			t.Fatalf("frame %d did not pace the burst: %d -> %d of %d", frame, shown, next, len(input))
+		}
+		shown = next
+	}
+	// A large backlog skips to the window at the tip.
+	input += strings.Repeat("y", 64<<10)
+	if next := pacer.advance(input, false); next < len(input)-liveDiffPreviewMaxLag {
+		t.Fatalf("lag exceeded its window: %d of %d", next, len(input))
+	}
+	// A finished call converges promptly.
+	for range 20 {
+		shown = pacer.advance(input, true)
+	}
+	if shown != len(input) {
+		t.Fatalf("final input not reached: %d of %d", shown, len(input))
 	}
 }

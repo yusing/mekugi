@@ -8,9 +8,17 @@ import (
 	"github.com/yusing/mekugi/internal/pathdisplay"
 )
 
+// Receipt diffs are display-only and stay well inside one publication.
+const (
+	maxEditReceiptDiffBytes = 8 << 10
+	maxEditReceiptFileLines = 80
+)
+
 // publishEditReceipt reads committed stock-edit evidence. It never accepts a
-// caller-supplied diff and never participates in edit execution.
-func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, thread, callID string, activity *subagentActivity) error {
+// caller-supplied diff and never participates in edit execution. observed
+// admits a Code Mode cell whose terminal result cannot confirm the nested
+// patch; the receipt then reports only the captured workspace differences.
+func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, thread, callID string, observed bool, activity *subagentActivity) error {
 	s = s.scoped(ctx)
 	return s.locked(ctx, func() error {
 		if scope, found, err := s.readHandleScope(thread); err != nil {
@@ -35,22 +43,28 @@ func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, t
 			if call.ID != callID || call.Thread != thread {
 				continue
 			}
-			if record.History.Applied && record.History.TranslationError == "" {
-				activity.collect(thread, "edit-receipt\x00"+workspace+"\x00"+callID, "tool", editReceiptText(workspace, record.History))
+			if (record.History.Applied || observed) && record.History.TranslationError == "" {
+				if receipt := editReceiptText(workspace, record.History); receipt != "" {
+					activity.collect(thread, "edit-receipt\x00"+workspace+"\x00"+callID, "tool", receipt)
+				}
 			}
-			s.notifyLiveDiff(index, map[string][]trackedCall{id: {call}})
+			if record.History.Applied {
+				s.notifyLiveDiff(index, map[string][]trackedCall{id: {call}})
+			}
 			return nil
 		}
 		return fmt.Errorf("edit receipt does not belong to publishing thread")
 	})
 }
 
-// editReceiptText summarizes a confirmed edit, one line per file. Command
-// records name the command that produced each file.
+// editReceiptText summarizes each captured file with its line counts and a
+// bounded copy of its captured hunks. Command records name the command that
+// produced each file.
 func editReceiptText(workspace string, history mekugiHistory) string {
 	exec := history.ExecOutcome
 	var summaries []string
 	var managed []string
+	budget := maxEditReceiptDiffBytes
 	for _, file := range history.ReviewFiles {
 		action := file.Action().Title()
 		path := file.AfterPath
@@ -82,6 +96,11 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 		if exec != nil && len(exec.Labels) != 0 {
 			summary += " · " + strings.Join(exec.Labels, ", ")
 		}
+		if !file.Binary {
+			if hunks := editReceiptHunks(file.Diff, &budget); hunks != "" {
+				summary += "\n" + toolActivityFenced("diff", hunks)
+			}
+		}
 		summaries = append(summaries, summary)
 	}
 	if len(managed) != 0 {
@@ -93,4 +112,28 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 		summaries = append(summaries, fmt.Sprintf("+ %d tool-managed files (%s)", len(managed), label))
 	}
 	return strings.Join(summaries, "\n\n")
+}
+
+// editReceiptHunks keeps hunk rows only; file headers repeat the summary.
+func editReceiptHunks(diff string, budget *int) string {
+	_, hunks, ok := strings.Cut(diff, "\n@@ ")
+	if !ok || *budget <= 0 {
+		return ""
+	}
+	lines := strings.Split(strings.TrimSuffix("@@ "+hunks, "\n"), "\n")
+	var kept strings.Builder
+	shown := 0
+	for _, line := range lines {
+		if shown == maxEditReceiptFileLines || kept.Len()+len(line)+1 > *budget {
+			break
+		}
+		kept.WriteString(line)
+		kept.WriteByte('\n')
+		shown++
+	}
+	if hidden := len(lines) - shown; hidden > 0 {
+		fmt.Fprintf(&kept, "… %d more diff lines\n", hidden)
+	}
+	*budget -= kept.Len()
+	return kept.String()
 }

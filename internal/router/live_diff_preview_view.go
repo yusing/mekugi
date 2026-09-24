@@ -14,7 +14,11 @@ import (
 	"github.com/yusing/mekugi/internal/pathdisplay"
 )
 
-const liveDiffPreviewFrameDelay = 33 * time.Millisecond
+const (
+	liveDiffPreviewFrameDelay = 33 * time.Millisecond
+	// A finished card idle this long yields its slot when another call needs room.
+	liveDiffPreviewStaleAfter = 10 * time.Second
+)
 
 // Streaming has its own viewport and lifecycle. It never changes the captured
 // diff's selection, scroll, acknowledgements, or follow mode.
@@ -28,7 +32,9 @@ type liveDiffPreviewPane struct {
 type liveDiffPreviewView struct {
 	current   liveDiffPreview
 	complete  bool
+	completed time.Time
 	displayed bool
+	digits    int // Line-number width only grows, so the source never shifts sideways.
 	rendered  liveDiffPreview
 	focus     int
 	file      int
@@ -51,35 +57,55 @@ func (p *liveDiffPreviewPane) update(preview liveDiffPreview) {
 		return
 	}
 	if preview.Workspace == "" {
-		if view != nil {
-			view.complete = true
+		if view != nil && !view.complete {
+			view.complete, view.completed = true, time.Now()
 		}
 		return
 	}
 	if view == nil {
 		// An evaluated completion must get a render opportunity before the next
-		// fast call replaces it. Capacity still favors new calls over old completions.
-		p.order = slices.DeleteFunc(p.order, func(id string) bool {
-			if !p.views[id].complete || p.views[id].current.Evaluated && !p.views[id].displayed {
-				return false
-			}
-			delete(p.views, id)
-			return true
+		// fast call replaces it.
+		replaceable := func(id string) bool {
+			return p.views[id].complete && (!p.views[id].current.Evaluated || p.views[id].displayed)
+		}
+		// A new call takes over a finished card's slot, preferring its caller's,
+		// so the other cards keep their positions and heights. Cards resize only
+		// when concurrency grows or a stale finished card is dropped.
+		slot := slices.IndexFunc(p.order, func(id string) bool {
+			return replaceable(id) && p.views[id].current.Caller == preview.Caller
 		})
-		if len(p.order) >= 16 {
-			evict := slices.IndexFunc(p.order, func(id string) bool { return p.views[id].complete })
-			if evict < 0 {
+		if slot < 0 {
+			slot = slices.IndexFunc(p.order, replaceable)
+		}
+		if slot < 0 && len(p.order) >= 16 {
+			// Capacity still favors new calls over old completions.
+			slot = slices.IndexFunc(p.order, func(id string) bool { return p.views[id].complete })
+			if slot < 0 {
 				return
 			}
-			delete(p.views, p.order[evict])
-			p.order = slices.Delete(p.order, evict, evict+1)
 		}
 		if p.views == nil {
 			p.views = make(map[string]*liveDiffPreviewView)
 		}
 		view = &liveDiffPreviewView{}
+		if slot >= 0 {
+			delete(p.views, p.order[slot])
+			p.order[slot] = preview.ID
+		} else {
+			p.order = append(p.order, preview.ID)
+		}
 		p.views[preview.ID] = view
-		p.order = append(p.order, preview.ID)
+		now := time.Now()
+		p.order = slices.DeleteFunc(p.order, func(id string) bool {
+			if id == preview.ID || !replaceable(id) || now.Sub(p.views[id].completed) < liveDiffPreviewStaleAfter {
+				return false
+			}
+			delete(p.views, id)
+			return true
+		})
+	}
+	if preview.Complete && !view.complete {
+		view.completed = time.Now()
 	}
 	view.current, view.complete = preview, preview.Complete
 }
@@ -134,7 +160,8 @@ func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, them
 
 func (p *liveDiffPreviewView) columns(width int) (digits, sourceWidth int) {
 	if len(p.source) > 0 && p.source[len(p.source)-1].number > 0 {
-		digits = len(strconv.Itoa(p.source[len(p.source)-1].number))
+		p.digits = max(p.digits, len(strconv.Itoa(p.source[len(p.source)-1].number)))
+		digits = p.digits
 	}
 	numberWidth := 0
 	if digits > 0 {

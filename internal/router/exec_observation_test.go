@@ -563,7 +563,7 @@ func TestExecReceiptAndSummaryText(t *testing.T) {
 			mekugi.RenderBinaryReviewFile(filepath.Join(workspace, "blob"), filepath.Join(workspace, "blob"), 2, 2, "aa", "bb"),
 		},
 	}
-	want := "Create `b.txt` (copy of `a.txt`) +1 -0 · cp\n\nEdit `blob` binary · cp"
+	want := "Create `b.txt` (copy of `a.txt`) +1 -0 · cp\n```diff\n@@ -0,0 +1,1 @@\n+a\n```\n\nEdit `blob` binary · cp"
 	if got := editReceiptText(workspace, history); got != want {
 		t.Fatalf("receipt = %q, want %q", got, want)
 	}

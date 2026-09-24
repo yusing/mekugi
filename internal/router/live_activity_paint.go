@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -307,6 +308,9 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 	width = max(8, width)
 	switch block.kind {
 	case "final":
+		if block.journal != nil {
+			return p.journal(block.journal, width, block.compact)
+		}
 		return append([]string{liveActivityGreen + "✓ Final answer" + liveActivityReset}, liveActivityIndent(p.markdown(block.body, width-2), "  ")...)
 	case "reads":
 		var items []string
@@ -379,6 +383,104 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 	return p.markdown(block.body, width)
 }
 
+// journal lays out a final journal result: a heading with its answer and
+// change totals, each question with its answers, then recorded changes. The
+// agent heading already names the author. The shared feed keeps questions to
+// one row so clipping reaches the answers.
+func (p *liveActivityPainter) journal(journal *liveActivityJournal, width int, compact bool) []string {
+	answers := 0
+	for _, group := range journal.groups {
+		answers += len(group.answers)
+	}
+	head := liveActivityGreen + "✓ Final answer" + liveActivityReset
+	var facts []string
+	switch {
+	case answers == 1:
+		facts = append(facts, "1 answer")
+	case answers > 1:
+		facts = append(facts, fmt.Sprintf("%d answers", answers))
+	}
+	if len(journal.stats) > 0 {
+		added, removed := 0, 0
+		for _, stat := range journal.stats {
+			a, errA := strconv.Atoi(stat.added)
+			r, errR := strconv.Atoi(stat.removed)
+			if errA == nil && errR == nil {
+				added, removed = added+a, removed+r
+			}
+		}
+		files := "1 file"
+		if len(journal.stats) > 1 {
+			files = fmt.Sprintf("%d files", len(journal.stats))
+		}
+		facts = append(facts, files+" "+liveActivityGreen+fmt.Sprintf("+%d", added)+"\x1b[39m "+liveActivityRed+fmt.Sprintf("-%d", removed)+"\x1b[39m")
+	}
+	if len(facts) > 0 {
+		head += liveActivityDim + " · " + strings.Join(facts, " · ") + liveActivityUndim
+	}
+	lines := []string{ansi.Truncate(head, width, "…")}
+	if journal.empty {
+		lines = append(lines, "  "+liveActivityDim+"No journal entries"+liveActivityUndim)
+	}
+	hang := func(lead string, body []string) {
+		for i, line := range body {
+			if i == 0 {
+				lines = append(lines, "  "+lead+line)
+			} else {
+				lines = append(lines, "    "+line)
+			}
+		}
+		if len(body) == 0 {
+			lines = append(lines, "  "+strings.TrimRight(lead, " "))
+		}
+	}
+	accent := "\x1b[1m" + p.theme.Accent()
+	for _, group := range journal.groups {
+		if group.question != "" {
+			question := p.markdown(group.question, width-4)
+			if compact && len(question) > 1 {
+				flat := strings.Join(strings.Fields(ansi.Strip(strings.Join(question, " "))), " ")
+				question = []string{ansi.Truncate(flat, width-4, "…")}
+			}
+			hang(accent+"Q"+liveActivityReset+" ", liveActivityIndent(question, "\x1b[1m"))
+		}
+		for _, answer := range group.answers {
+			lead := liveActivityGreen + "\x1b[1mA" + liveActivityReset + " "
+			if group.question == "" {
+				lead = liveActivityDim + "•" + liveActivityUndim + " "
+			}
+			body := p.markdown(answer.text, width-4)
+			if answers > 1 {
+				hang(lead, []string{liveActivityDim + answer.id + liveActivityUndim})
+				lines = append(lines, liveActivityIndent(body, "    ")...)
+				continue
+			}
+			hang(lead, body)
+		}
+	}
+	if journal.clipped {
+		lines = append(lines, "  "+liveActivityDim+"… full answer in Codex completion"+liveActivityUndim)
+	}
+	if len(journal.stats) > 0 || journal.changes != "" && len(journal.notes) > 0 {
+		lines = append(lines, "  "+liveActivityVerb("Changes")+liveActivityDim+journal.changes+liveActivityUndim)
+		addedWidth, removedWidth := 0, 0
+		for _, stat := range journal.stats {
+			addedWidth, removedWidth = max(addedWidth, len(stat.added)), max(removedWidth, len(stat.removed))
+		}
+		for _, stat := range journal.stats {
+			counts := liveActivityGreen + fmt.Sprintf("%*s", addedWidth+1, "+"+stat.added) + "\x1b[39m " + liveActivityRed + fmt.Sprintf("%-*s", removedWidth+1, "-"+stat.removed) + "\x1b[39m "
+			lines = append(lines, "    "+ansi.Truncate(counts+liveActivityPath(stat.path), width-4, "…"))
+		}
+	}
+	// "No recorded changes." is the ordinary read-only outcome, not news.
+	for _, note := range journal.notes {
+		if note != "No recorded changes." && note != "No recorded file changes." {
+			lines = append(lines, liveActivityIndent(liveActivityWrap(liveActivityDim+note+liveActivityUndim, width-4, false), "    ")...)
+		}
+	}
+	return lines
+}
+
 // liveActivityVerb pads verbs to a common column so arguments line up.
 func liveActivityVerb(verb string) string {
 	if verb == "" {
@@ -411,7 +513,17 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 	}
 	switch block.kind {
 	case "final":
-		return liveActivityGreen + "✓ " + liveActivityReset + firstLine(block.body)
+		text := firstLine(block.body)
+		if block.journal != nil {
+			text = "Final answer"
+			for _, group := range block.journal.groups {
+				if len(group.answers) > 0 {
+					text = firstLine(group.answers[0].text)
+					break
+				}
+			}
+		}
+		return liveActivityGreen + "✓ " + liveActivityReset + text
 	case "reads":
 		var names []string
 		for _, read := range block.reads {

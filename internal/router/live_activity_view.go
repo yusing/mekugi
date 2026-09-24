@@ -427,6 +427,7 @@ func (v *liveActivityView) renderRun(agent string, observed time.Time, blocks []
 	lines := []string{ansi.Truncate(head+" "+liveActivityDim+strings.Repeat("─", rule)+stamp+liveActivityUndim, width, "")}
 	gutter := liveAgentGutter(agent, v.painter.theme) + "▎" + liveActivityReset + " "
 	for _, block := range blocks {
+		block.compact = clip > 0
 		part := v.painter.block(block, width-2)
 		// Messages carry results, so they get twice the operation share.
 		limit := clip

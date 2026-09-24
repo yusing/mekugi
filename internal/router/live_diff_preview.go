@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"math"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -226,17 +227,21 @@ func (w *liveDiffPreviewWorker) run() {
 	codePatchHidden := false
 	scriptVisible := false
 	final := false
+	var pacer liveDiffPreviewPacer
+	backlog := false
 	for {
 		if final {
 			return
 		}
-		select {
-		case <-w.ctx.Done():
-		case <-w.wake:
+		if !backlog {
+			select {
+			case <-w.ctx.Done():
+			case <-w.wake:
+			}
 		}
 		// Coalesce bursts, but keep producing while the provider is still
 		// streaming. No filesystem work runs on the provider forwarding path.
-		timer := time.NewTimer(33 * time.Millisecond)
+		timer := time.NewTimer(liveDiffPreviewFrameDelay)
 		select {
 		case <-w.ctx.Done():
 			timer.Stop()
@@ -255,6 +260,17 @@ func (w *liveDiffPreviewWorker) run() {
 		preview := w.preview
 		final, preview.Complete = w.finishing, w.finishing
 		w.mu.Unlock()
+		// Provider deltas arrive in bursts. Reveal the received input at a steady
+		// pace instead of jumping per burst. A completed call waits briefly for the
+		// reveal to catch up; a cancelled transport shows its final input at once.
+		shown := len(input)
+		if w.ctx.Err() == nil {
+			shown = pacer.advance(input, final)
+		}
+		backlog = shown < len(input)
+		if backlog {
+			input, final, preview.Complete = input[:shown], false, false
+		}
 		if final && input == "" {
 			w.broker.publishPreview(preview, false)
 			continue
@@ -491,6 +507,36 @@ func (w *liveDiffPreviewWorker) run() {
 		}
 		w.mu.Unlock()
 	}
+}
+
+// liveDiffPreviewPacer reveals bursty provider input at its recent average
+// arrival rate, so a preview grows at a steady speed between bursts. A
+// catch-up share bounds the lag, and a large backlog skips to its last
+// window because the preview follows the tip.
+type liveDiffPreviewPacer struct {
+	shown, received int
+	rate            float64 // Bytes per frame, averaged over about eight frames.
+}
+
+const liveDiffPreviewMaxLag = 2 << 10
+
+func (p *liveDiffPreviewPacer) advance(input string, finishing bool) int {
+	p.rate += (float64(max(0, len(input)-p.received)) - p.rate) / 8
+	p.received = len(input)
+	p.shown = max(min(p.shown, len(input)), len(input)-liveDiffPreviewMaxLag)
+	backlog := len(input) - p.shown
+	share := 8
+	if finishing {
+		share = 3 // The call is complete; converge on its final input promptly.
+	}
+	p.shown += max(int(math.Ceil(p.rate)), (backlog+share-1)/share, 4)
+	if p.shown >= len(input) {
+		p.shown = len(input)
+	}
+	for p.shown < len(input) && !utf8.RuneStart(input[p.shown]) {
+		p.shown++
+	}
+	return p.shown
 }
 
 // Cleanup only live state. An unconditional removal would overwrite an atomic

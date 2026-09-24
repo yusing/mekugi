@@ -138,7 +138,7 @@ func TestLiveDiffCodeModeSSEStreamsBashWithoutChangingEvents(t *testing.T) {
 		t.Fatalf("stock second SSE event changed: %q, %v", visible, err)
 	}
 	preview = waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return strings.Contains(preview.Input, "# tools.exec_command 2")
+		return strings.Contains(preview.Input, "printf second")
 	})
 	assertCodeModeBashPreview(t, preview, []string{"# tools.exec_command 1", "printf first\nprintf again", "# tools.exec_command 2", "printf second"}, "JSON.stringify")
 }
@@ -155,7 +155,7 @@ tools.exec_command({cmd:"printf 'first'\nprintf 'first-tail'", note:"tools.exec_
 	}
 	worker.appendDelta(firstChunk)
 	first := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return strings.Contains(preview.Input, "# tools.exec_command 1")
+		return strings.Contains(preview.Input, "printf 'first-tail'")
 	})
 	assertCodeModeBashPreview(t, first, []string{
 		"# tools.exec_command 1",
@@ -172,7 +172,7 @@ for (let i=0;i<results.length;i++) text(JSON.stringify({i,...results[i]}));
 // tools.exec_command({cmd:"printf fake-comment"})`
 	worker.appendDelta(secondChunk)
 	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return strings.Contains(preview.Input, "# tools.exec_command 2")
+		return strings.Contains(preview.Input, "printf 'second'")
 	})
 	assertCodeModeBashPreview(t, complete, []string{
 		"# tools.exec_command 1",
@@ -277,7 +277,7 @@ func TestLiveDiffCodeModeRetractsJSWhenBatchPrefixArrives(t *testing.T) {
 	}
 	worker.appendDelta(`tools.exec_command({cmd:"printf ready"})`)
 	bash := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return strings.Contains(preview.Input, "# tools.exec_command 1")
+		return strings.Contains(preview.Input, "printf ready")
 	})
 	assertCodeModeBashPreview(t, bash, []string{"# tools.exec_command 1", "printf ready"}, "Promise.allSettled")
 }

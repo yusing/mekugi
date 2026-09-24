@@ -57,7 +57,7 @@ func TestLiveDiffFinalFrameCustomInputDoneFlushesAuthoritativeJavaScript(t *test
 		requireLiveDiffSSEUnchanged(t, transform, event)
 	}
 	partial := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return strings.Contains(preview.Input, "session_id:48") && !preview.Complete
+		return strings.HasSuffix(preview.Input, "max_output_tokens:") && !preview.Complete
 	})
 	if partial.Input != delta {
 		t.Fatalf("partial JavaScript preview = %q, want delta %q", partial.Input, delta)

@@ -94,7 +94,10 @@ Mode calls using immutable literal patch bindings. It does not produce a generic
 `Run` preview or echo its patch body into child activity. This label does not
 claim execution or success. After the host result and workspace outcome are
 recorded, authenticated successful edit receipts classify each changed path as
-`Create`, `Edit`, `Delete`, or `Move` with added and removed line counts.
+`Create`, `Edit`, `Delete`, or `Move` with added and removed line counts and a
+bounded diff of the observed hunks. A completed transparent Code Mode cell
+reports its complete observed workspace effect the same way, without claiming
+nested patch success.
 Classification uses the same review files as `mchanges`; it does not guess from
 the command text. Paths inside the workspace display relatively; outside paths
 remain absolute. Incomplete captures show unavailable counts. Failed and
@@ -293,6 +296,13 @@ Fenced `Run` previews put the first source row beside the verb when space
 allows. Python, JavaScript (Node and Bun), and Perl interpreter previews use
 their own syntax colors. `Search` patterns are styled as literal patterns,
 not shell commands, while every target path uses the Search violet with path emphasis.
+A final answer in journal-result form is laid out natively: a heading with its
+answer count and recorded change totals, each question with its answers, then
+this agent's recorded changes by path. The agent heading already names the
+author, and an ordinary read-only result omits its empty change report. The
+shared view keeps each question to one row so clipping reaches the answers;
+the roster summary shows the first answer line. Other final answers remain
+authored Markdown.
 
 The pane always shows the agents, as a canonical-path tree in observation order,
 with each agent's current activity and age. A Code Mode batch shows its latest

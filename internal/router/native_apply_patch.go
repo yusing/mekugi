@@ -580,8 +580,11 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 		for _, file := range after {
 			p.execLastSeen.put(namespace, changeID, file)
 		}
-		if success {
-			_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, p.activity)
+		// A completed Code Mode cell reports its captured workspace differences,
+		// still unconfirmed as nested patch success.
+		observed := history.ToolName != applyPatchToolName && reportedSuccess && complete && len(reviews) != 0
+		if success || observed {
+			_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, observed, p.activity)
 		}
 	}
 	return nil

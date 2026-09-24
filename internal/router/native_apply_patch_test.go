@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi"
 )
@@ -59,7 +60,7 @@ func streamNativePatch(t *testing.T, transform *mekugiResponseTransform, patch s
 	}
 	if subscriber != nil {
 		preview := waitLiveDiffWorkerPreview(t, broker, subscriber, func(preview liveDiffPreview) bool {
-			return len(preview.Files) == 1 && preview.Status == "STREAMING PREVIEW"
+			return len(preview.Files) == 1 && preview.Status == "STREAMING PREVIEW" && strings.Contains(preview.Files[0].Diff, "+new")
 		})
 		if preview.Input != "" || !strings.Contains(preview.Files[0].Diff, "+new") {
 			t.Fatalf("preview = %+v", preview)
@@ -288,7 +289,18 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 					t.Fatal(err)
 				}
 			}
+			proxy.activity = newSubagentActivity()
+			proxy.activity.observe("root", "", "/root", false)
+			proxy.activity.observe("thread-1", "root", "/root/editor", true)
 			reconcile(items)
+			receipts := proxy.activity.drain("root", time.Now(), maxCommentaryPublicationBytes)
+			if test.change {
+				if len(receipts) != 1 || commentaryText(t, receipts[0]) != "[`/root/editor`] Edit `file.txt` +1 -1\n```diff\n@@ -1,1 +1,1 @@\n-old\n+new\n```" {
+					t.Fatalf("observed Code Mode edit receipt = %v", receipts)
+				}
+			} else if len(receipts) != 0 {
+				t.Fatalf("unchanged Code Mode edit published a receipt: %v", receipts)
+			}
 			history, found, err := proxy.replayStore.lookup(transform.ctx, workspace, nativePatchDerivedCallID("code-call", 0))
 			if err != nil || !found {
 				t.Fatalf("completed patch missing: found=%v err=%v", found, err)

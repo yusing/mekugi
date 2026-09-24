@@ -31,20 +31,20 @@ func TestLiveDiffProducerRetainsSyntaxBoundaries(t *testing.T) {
 			worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
 			t.Cleanup(worker.stop)
 			worker.appendDelta(tc.input)
-			select {
-			case <-sub.previewReady:
-			case <-time.After(5 * time.Second):
-				t.Fatal("no streamed preview")
-			}
-			updates := broker.takePreviews(sub)
+			// Paced frames reveal the burst progressively; check the frame at its tip.
 			var preview liveDiffPreview
-			for _, update := range updates {
-				if update.Preview != nil {
-					preview = *update.Preview
+			tip := tc.input[strings.LastIndex(strings.TrimSuffix(tc.input, "\n"), "\n")+1:]
+			for !strings.HasSuffix(preview.Input, tip) {
+				select {
+				case <-sub.previewReady:
+				case <-time.After(5 * time.Second):
+					t.Fatalf("no streamed preview reached the tip: %q", preview.Input)
 				}
-			}
-			if preview.ID == "" {
-				t.Fatalf("missing preview: %+v", updates)
+				for _, update := range broker.takePreviews(sub) {
+					if update.Preview != nil {
+						preview = *update.Preview
+					}
+				}
 			}
 			if preview.Truncated != tc.clipped || len(mustMarshalJSON(preview)) > 48<<10 {
 				t.Fatalf("unexpected clipping: %+v", preview.Syntax)

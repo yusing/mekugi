@@ -178,9 +178,12 @@ unconfirmed because outer JavaScript completion does not prove the nested
 host result and a complete workspace observation.
 
 A confirmed successful edit can publish a generated `Create` or `Edit`
-commentary summary. Classification uses the same observed review files as
-`mchanges`, including whether a path existed before the edit. Failed and
-unfinished calls do not publish success commentary. These messages are
+commentary summary. A completed Code Mode cell with a complete observed
+workspace effect publishes the same summary for that observed effect; it
+remains application unconfirmed in `mchanges`. Classification uses the same
+observed review files as `mchanges`, including whether a path existed before
+the edit. Each summary carries a bounded copy of the observed hunks. Failed,
+unchanged, and unfinished calls do not publish a summary. These messages are
 user-only presentation, not a tool result or application receipt.
 
 ### Live terminal view
@@ -225,6 +228,14 @@ breaks within one command remain inside its header. Shell commands use Bash
 colors, while literal interpreter `-c`, `-e`, and heredoc bodies use their own
 language colors. This provisional display
 never changes Codex's original tool input or asserts that the command ran.
+
+Provider input arrives in bursts. The stream view reveals each call's received
+input at its recent arrival rate, so the preview grows steadily rather than
+jumping per burst; the reveal trails received input by at most a bounded
+window and completes on the call's final input. Card positions stay stable: a
+new call takes over a finished card's slot, preferring its own caller's, and a
+finished card leaves only after it has been idle while another call starts.
+The line-number column of a card never narrows while its call streams.
 
 The saved diff view uses completed observed patch and command outcomes. It includes
 changes from children that are visible to the parent. The viewer switches

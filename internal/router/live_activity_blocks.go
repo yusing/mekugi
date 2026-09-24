@@ -21,7 +21,29 @@ type liveActivityBlock struct {
 	from, to string
 	body     string
 	reads    []liveActivityRead
+	journal  *liveActivityJournal // A final answer in journal-result form.
+	compact  bool                 // Rendered in the clipped shared feed.
 }
+
+// liveActivityJournal is a child's journal result laid out by the router's
+// journal delivery grammar: answer groups, then this agent's recorded changes.
+type liveActivityJournal struct {
+	groups  []liveActivityAnswerGroup
+	empty   bool
+	changes string // Change ranges.
+	stats   []liveActivityStat
+	notes   []string // Unavailable or empty change reports.
+	clipped bool
+}
+
+type liveActivityAnswerGroup struct {
+	question string
+	answers  []liveActivityAnswer
+}
+
+type liveActivityAnswer struct{ id, text string }
+
+type liveActivityStat struct{ added, removed, path string }
 
 type liveActivityRead struct {
 	path   string
@@ -42,7 +64,8 @@ func parseLiveActivity(entry activityPaneEntry) []liveActivityBlock {
 	}
 	switch entry.Kind {
 	case "final":
-		return []liveActivityBlock{{kind: "final", body: text}}
+		journal, _ := parseLiveActivityJournal(text)
+		return []liveActivityBlock{{kind: "final", body: text, journal: journal}}
 	case "start":
 		if strings.HasPrefix(text, "Started") {
 			return []liveActivityBlock{parseLiveActivityStart(text)}
@@ -224,4 +247,70 @@ func mergeLiveActivityReads(blocks []liveActivityBlock) []liveActivityBlock {
 		}
 	}
 	return merged
+}
+
+const liveActivityClippedAnswer = "… (full answer in Codex completion)"
+
+// parseLiveActivityJournal reads the journal result grammar written by journal
+// delivery. Any other shape stays authored Markdown.
+func parseLiveActivityJournal(text string) (*liveActivityJournal, bool) {
+	lines := strings.Split(text, "\n")
+	if lines[0] != "Journal result" && !strings.HasPrefix(lines[0], "Journal result `") {
+		return nil, false
+	}
+	journal := &liveActivityJournal{}
+	current, inChanges := -1, false
+	for i := 1; i < len(lines); i++ {
+		line := lines[i]
+		switch {
+		case line == liveActivityClippedAnswer:
+			journal.clipped = true
+		case line == "":
+		case line == "---":
+			current = -1
+		case line == "No journal entries." && !inChanges:
+			journal.empty = true
+		case line == "**Question:**" && !inChanges:
+			var question []string
+			for i+1 < len(lines) && lines[i+1] != "**Answer:**" && lines[i+1] != "**Answers:**" && lines[i+1] != liveActivityClippedAnswer {
+				i++
+				question = append(question, lines[i])
+			}
+			if i+1 < len(lines) && lines[i+1] != liveActivityClippedAnswer {
+				i++ // The answer label.
+			}
+			journal.groups = append(journal.groups, liveActivityAnswerGroup{question: strings.Trim(strings.Join(question, "\n"), "\n")})
+			current = len(journal.groups) - 1
+		case strings.HasPrefix(line, "- `") && !inChanges:
+			id, end, ok := liveActivityCodeSpan(line, 2)
+			if !ok || end != len(line) {
+				return nil, false
+			}
+			var body []string
+			for i+1 < len(lines) && (lines[i+1] == "" || strings.HasPrefix(lines[i+1], "  ")) {
+				i++
+				body = append(body, strings.TrimPrefix(lines[i], "  "))
+			}
+			if current < 0 {
+				journal.groups = append(journal.groups, liveActivityAnswerGroup{})
+				current = len(journal.groups) - 1
+			}
+			group := &journal.groups[current]
+			group.answers = append(group.answers, liveActivityAnswer{id: id, text: strings.Trim(strings.Join(body, "\n"), "\n")})
+		case strings.HasPrefix(line, "**Changes:**"):
+			inChanges = true
+			journal.changes = strings.TrimSpace(strings.TrimPrefix(line, "**Changes:**"))
+		case inChanges && strings.HasPrefix(line, "    "):
+			// Numstat columns are tabs, expanded by the sanitizer.
+			if fields := strings.SplitN(strings.TrimPrefix(line, "    "), "    ", 3); len(fields) == 3 {
+				journal.stats = append(journal.stats, liveActivityStat{fields[0], fields[1], fields[2]})
+			}
+		case inChanges && strings.HasPrefix(line, "Aggregated numstat"):
+		case inChanges:
+			journal.notes = append(journal.notes, line)
+		default:
+			return nil, false
+		}
+	}
+	return journal, true
 }
