@@ -98,7 +98,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	}
 	// Announce once before Codex takes over the terminal, never during its UI.
 	fmt.Fprintf(os.Stderr, "mekugi dashboard: %s/\n", strings.TrimSuffix(session.BaseURL, "/v1"))
-	if session.JournalEnabled {
+	if session.PostCompactRecovery {
 		hookExecutable, err := os.Executable()
 		if err != nil {
 			cancel()

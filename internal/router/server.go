@@ -36,6 +36,7 @@ var errUpstreamResponseWithoutTerminal = errors.New("upstream Responses response
 type Session struct {
 	BaseURL                string
 	JournalEnabled         bool
+	PostCompactRecovery    bool
 	GrokEnabled            bool
 	OpenCode               OpenCodeConfig
 	AXReadOutput           string
@@ -64,8 +65,11 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}
 	mainMentorSet := false
 	mentorSet := false
+	postCompactSet := false
 	flags.Visit(func(item *flag.Flag) {
 		switch item.Name {
+		case "post-compact-recovery":
+			postCompactSet = true
 		case "main-mentor-handoff":
 			mainMentorSet = true
 		case "mentor-handoff":
@@ -79,8 +83,12 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		if mainMentorSet && *flags.mainMentorHandoffEnabled {
 			return errors.New("--main-mentor-handoff requires --mode mekugi")
 		}
+		if postCompactSet && *flags.postCompactRecovery {
+			return errors.New("--post-compact-recovery requires --mode mekugi")
+		}
 		*flags.mainMentorHandoffEnabled = false
 		*flags.mentorHandoffEnabled = false
+		*flags.postCompactRecovery = false
 	}
 	if *flags.grokEnabled && *flags.mode != "mekugi" {
 		return errors.New("--grok requires --mode mekugi")
@@ -319,7 +327,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		serverError <- server.Serve(listener)
 	}()
 	if ready != nil && ctx.Err() == nil {
-		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: *flags.grokEnabled, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", SkillsManagerAvailable: skillsManagerAvailable}
+		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: *flags.grokEnabled, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", PostCompactRecovery: *flags.postCompactRecovery, SkillsManagerAvailable: skillsManagerAvailable}
 		if mekugiCalls != nil {
 			session.EnableLiveDiff = mekugiCalls.autoLiveDiff.enable
 			if mekugiCalls.nativeTrace != nil {

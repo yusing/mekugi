@@ -175,8 +175,8 @@ func TestPostCompactNativeCodexE2E(t *testing.T) {
 	config := `model_providers.compact_fixture={name="compact_fixture",base_url=` + strconv.Quote(server.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
-	// Only this isolated, fully controlled fixture bypasses trust. Production
-	// registration leaves trust with Codex's /hooks interface.
+	// Only this isolated, fully controlled fixture bypasses trust, which also
+	// runs the file-based hook. Production pre-trusts only its own session hook.
 	command := exec.CommandContext(ctx, codex,
 		"exec", "--skip-git-repo-check", "--json", "--color", "never",
 		"--dangerously-bypass-hook-trust", "-c", config, "-c", `model_provider="compact_fixture"`,

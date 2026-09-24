@@ -21,7 +21,7 @@ func TestPostCompactHookArgsAddsSessionHookWithoutMutatingCaller(t *testing.T) {
 	if !slices.Equal(caller, original) {
 		t.Fatalf("caller-owned arguments mutated: got %q, original %q", caller, original)
 	}
-	if len(got) != len(caller)+2 || !slices.Equal(got[:len(caller)], caller) || got[len(caller)] != "-c" || got[len(caller)+1] == "" {
+	if len(got) != len(caller)+4 || !slices.Equal(got[:len(caller)], caller) || got[len(caller)] != "-c" || got[len(caller)+2] != "-c" {
 		t.Fatalf("hook args not added without changing caller arguments: %q", got)
 	}
 	if !strings.Contains(got[len(caller)+1], "hooks.SessionStart") || !strings.Contains(got[len(caller)+1], "matcher=\"^compact$\"") {
@@ -96,7 +96,7 @@ func TestPostCompactHookArgsDoesNotTreatAfterDelimiterAsCLIConfig(t *testing.T) 
 		t.Fatal("prompt text after -- incorrectly suppressed hook registration")
 	}
 	delimiter := slices.Index(got, "--")
-	if delimiter != 3 || !slices.Equal(got[delimiter+1:], caller[2:]) {
+	if delimiter != 5 || !slices.Equal(got[delimiter+1:], caller[2:]) {
 		t.Fatalf("injection did not preserve positional text after --: %q", got)
 	}
 }
@@ -107,10 +107,37 @@ func TestPostCompactHookArgsIgnoresOtherConfigAndAddsSessionHook(t *testing.T) {
 	if !registered {
 		t.Fatal("unrelated CLI config prevented hook registration")
 	}
-	if len(got) != len(caller)+2 || !slices.Equal(got[:len(caller)], caller) {
+	if len(got) != len(caller)+4 || !slices.Equal(got[:len(caller)], caller) {
 		t.Fatalf("caller options changed or hook inserted in wrong position: %q", got)
 	}
 	if caller[1] != "-c" || caller[2] != "model='example'" {
 		t.Fatalf("original config was modified: %q", caller)
+	}
+}
+
+func TestPostCompactHookArgsPreTrustsOnlyTheSessionHook(t *testing.T) {
+	got, registered := postCompactHookArgs([]string{"exec"}, "/home/yusing/go/bin/mekugi")
+	if !registered || len(got) != 5 || got[3] != "-c" {
+		t.Fatalf("hook and trust state not added: %q", got)
+	}
+	var config struct {
+		Hooks struct {
+			State map[string]struct {
+				TrustedHash string `toml:"trusted_hash"`
+				Enabled     *bool  `toml:"enabled"`
+			} `toml:"state"`
+		} `toml:"hooks"`
+	}
+	if _, err := toml.Decode(got[4], &config); err != nil {
+		t.Fatalf("decode trust state %q: %v", got[4], err)
+	}
+	state, ok := config.Hooks.State[postCompactHookKey]
+	if len(config.Hooks.State) != 1 || !ok || state.Enabled != nil {
+		t.Fatalf("trust state must name only the session hook and leave enablement to the user: %+v", config.Hooks.State)
+	}
+	// Reported by `codex app-server` hooks/list (codex-cli 0.156.1) for this exact hook.
+	const codexHash = "sha256:e72c5a5ab116ce1322974d145590008173b3d1f7d4815a581b0bd4b9c9ba983e"
+	if state.TrustedHash != codexHash {
+		t.Fatalf("trusted hash %q does not match Codex's hook hash %q", state.TrustedHash, codexHash)
 	}
 }

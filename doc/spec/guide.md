@@ -103,9 +103,10 @@ Acceptance:
 ## REQ-GUIDE-002 — Native post-compaction recovery
 
 Main threads recover useful durable facts after compaction without a model-driven
-journal/change lookup. The wrapper registers a native Codex `SessionStart` command
-hook matching `compact`, using invocation-local configuration. Codex owns event
-timing, trust review, execution, context insertion, and hook-output history. Native
+journal/change lookup. It is on by default in mekugi mode; `--post-compact-recovery=false`
+opts out. The wrapper registers a native Codex `SessionStart` command hook matching
+`compact`, using invocation-local configuration. Codex owns event timing, execution,
+context insertion, and hook-output history. Native
 `PostCompact` is not the injection surface because it does not expose additional
 context. Subagents and passthrough sessions are outside this feature's scope.
 
@@ -120,7 +121,11 @@ not a live router, parent process, routing-session ID, or process cwd. Missing o
 conflicted identity and unavailable storage produce advisory failure, never an
 invented empty success. Existing hooks and user configuration remain owned by
 Codex; explicit CLI hooks configuration takes precedence over auto-registration.
-Trust is never bypassed. Native hook disablement remains effective.
+The wrapper pre-trusts only its own registered hook, through invocation-local hook
+state carrying that hook's exact Codex trust hash; global trust bypass is never used,
+and every other hook keeps native trust review. A hash Codex no longer computes
+identically leaves the hook under native review. Native hook disablement remains
+effective.
 
 Acceptance:
 
@@ -137,3 +142,6 @@ Acceptance:
    the turn nor claim successful recovery.
 5. Automatic registration preserves file-based hooks, does not write configuration
    files, and leaves explicit CLI hooks untouched with a visible registration notice.
+6. Without prior `/hooks` approval, the registered hook is trusted and runs; a user
+   `enabled = false` state for its key still disables it. Opting out registers no
+   hook and no trust state.

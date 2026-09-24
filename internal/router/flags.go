@@ -15,6 +15,7 @@ type routerFlags struct {
 	usageReport              *string
 	mainMentorHandoffEnabled *bool
 	mentorHandoffEnabled     *bool
+	postCompactRecovery      *bool
 	grokEnabled              *bool
 	grokAuthFile             *string
 	captureOutput            *string
@@ -47,6 +48,7 @@ func newRouterFlags(stderr io.Writer) routerFlags {
 		mode:                     flags.String("mode", defaultRewriteMode, "response mode: mekugi or passthrough"),
 		mainMentorHandoffEnabled: flags.Bool("main-mentor-handoff", true, "start eligible main threads with a mentor model"),
 		mentorHandoffEnabled:     flags.Bool("mentor-handoff", true, "start eligible spawned subagents with a mentor model"),
+		postCompactRecovery:      flags.Bool("post-compact-recovery", true, "restore journal and change context after compaction through a pre-trusted Codex hook"),
 		grokEnabled:              flags.Bool("grok", false, "enable Grok models and plaintext collaboration projection"),
 		grokAuthFile:             flags.String("grok-auth-file", "", "Grok OAuth credential file (default ~/.grok/auth.json)"),
 		metricsOutput:            flags.String("metrics-output", "", "optional final metrics JSON path"),
