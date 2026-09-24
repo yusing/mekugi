@@ -60,7 +60,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	if stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		"mchanges --list", nil, invocation); status != 0 || stderr != "" || stdout != ownID+"\n" {
+		"mchanges --list", nil, invocation); status != 0 || stderr != "" || stdout != ownID+" pending - -\n" {
 		t.Fatalf("own pending change not discoverable: %q, %q, %d", stdout, stderr, status)
 	}
 	frontend, ok := registry.frontends["mchanges"]
@@ -180,7 +180,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	if status != 0 || stderr != "" || stdout != id+" applied\nadd \"\" -> \"--summary\"\nadd \"\" -> \"apple2\"\n" {
 		t.Fatalf("literal flag and ID paths: %q, %q, %d", stdout, stderr, status)
 	}
-	for _, arguments := range []string{"", "-- file.txt", "--summary -- file.txt", "read " + id, id + " --path file.txt", "amber99", "amber1..apple2", "--max-tokens 0 amber1", "--history --summary amber1"} {
+	for _, arguments := range []string{"read " + id, id + " --path file.txt", "amber99", "amber1..apple2", "--max-tokens 0 amber1", "--history --summary amber1"} {
 		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, "mchanges "+arguments, nil, invocation)
 		if status == 0 || stdout != "" || stderr == "" {
 			t.Fatalf("%q did not reject: %q, %q, %d", arguments, stdout, stderr, status)
@@ -214,7 +214,6 @@ func TestParseChangeRead(t *testing.T) {
 		t.Fatalf("range and flags: %+v, %v", options, err)
 	}
 	for _, arguments := range [][]string{
-		{}, {"--"}, {"--", "amber1"}, {"--summary"}, {"--summary", "--", "file"},
 		{"read", "amber1"}, {"amber1", "--path", "file"}, {"amber1", "--", ""},
 		{"--summary", "--summary", "amber1"}, {"--max-tokens", "01", "amber1"},
 		{"--max-tokens", strconv.Itoa(maxOutputTokens + 1), "amber1"},
@@ -295,7 +294,7 @@ func TestChangesSummaryAggregatesEvaluations(t *testing.T) {
 		t.Fatal(err)
 	}
 	options.ids = append(ids, pending)
-	if got, err := store.readChanges(t.Context(), options); err == nil || got != "" {
+	if got, err := store.readChanges(t.Context(), options); err != nil || got != pending+" pending (no completed result)\n3\t2\tfile\n" {
 		t.Fatalf("pending summary = %q, %v", got, err)
 	}
 }
@@ -331,7 +330,7 @@ func TestChangesSummaryRecoveryAndRetiredHistory(t *testing.T) {
 	change := index.Changes[id]
 	change.RetiredCalls = 1
 	index.Changes[id] = change
-	if got, err := store.renderChanges(t.Context(), options, index); err == nil || got != "" {
+	if got, err := store.renderChanges(t.Context(), options, index); err != nil || got != id+" retired (partial history)\n3\t2\tfile\n" {
 		t.Fatalf("retired summary = %q, %v", got, err)
 	}
 }

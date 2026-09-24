@@ -378,6 +378,9 @@ func expandChangeRefs(refs []string) ([]string, error) {
 		}
 		last := first
 		if ranged {
+			if number, err := strconv.Atoi(end); err == nil && number > 0 && strconv.Itoa(number) == end {
+				end = changeHandle(stream, number)
+			}
 			endStream, endNumber, err := parseChangeID(end)
 			if err != nil {
 				return nil, err

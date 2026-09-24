@@ -277,11 +277,11 @@ func TestStorageChangeReadDependenciesSurviveOriginalSessionExpiry(t *testing.T)
 		t.Fatal(err)
 	}
 	options := changeReadOptions{workspace: "/w", ids: []string{id}, view: "history"}
-	text, err := store.readChanges(parent, options)
+	text, snapshot, err := store.readChangeView(parent, options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	reference, err := store.putChangeRead(parent, options, text, 1)
+	reference, err := store.putChangeRead(parent, snapshot, text, 1)
 	if err != nil {
 		t.Fatal(err)
 	}

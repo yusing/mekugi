@@ -40,12 +40,9 @@ func TestManagedExecMChangesSurface(t *testing.T) {
 		mekugi.RenderReviewFile("", "direct-summary.txt", "", "direct\n"),
 	}
 	mixedID := saveManagedExecChange(t, store, ctx, workspace, thread, "mixed", mixedFiles)
-	index, err := store.scoped(ctx).readChangeIndex(workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	stdout, err := listThreadChanges(index, thread)
-	wantList := managedID + " managed only\n" + mixedID + "\n"
+	stdout, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, view: "list"})
+	wantList := managedID + " completed · exec formatter · generator, exact coverage managed only +21 -0\n" + mixedID + " completed · exec formatter · generator, exact coverage +2 -0\n"
+
 	if err != nil || stdout != wantList {
 		t.Fatalf("managed list = %q, %v; want %q", stdout, err, wantList)
 	}
@@ -78,7 +75,7 @@ func TestManagedExecMChangesSurface(t *testing.T) {
 		t.Fatalf("managed summary labels = %q, %v", stdout, err)
 	}
 
-	index, err = store.scoped(ctx).readChangeIndex(workspace)
+	index, err := store.scoped(ctx).readChangeIndex(workspace)
 	if err != nil {
 		t.Fatal(err)
 	}

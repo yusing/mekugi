@@ -16,15 +16,17 @@ import (
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
-const changesReadUsage = "mchanges --list [--workspace DIR] [--max-tokens N] | mchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...] | mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]"
+const changesReadUsage = "mchanges --list [--workspace DIR] [--max-tokens N] | mchanges [--mine | ID[..ID] ...] [--summary|--history|--net] [--workspace DIR] [--max-tokens N] [-- PATH ...] | mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]"
 const maxChangeReadBytes = 64 << 20
 
 type changeReadOptions struct {
-	view      string
-	paths     []string
-	workspace string
-	maxTokens int
-	ids       []string
+	overlapLabels map[string]string
+	mine          bool
+	view          string
+	paths         []string
+	workspace     string
+	maxTokens     int
+	ids           []string
 }
 
 func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) {
@@ -45,7 +47,11 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 			options.paths = append(options.paths, arguments...)
 			break
 		}
-		if !strings.HasPrefix(flag, "--") {
+		if !strings.HasPrefix(flag, "-") {
+			start, _, _ := strings.Cut(flag, "..")
+			if _, _, err := parseChangeID(start); err != nil {
+				return options, fmt.Errorf("invalid change operand %q; paths belong after -- PATH", flag)
+			}
 			refs = append(refs, flag)
 			continue
 		}
@@ -57,12 +63,17 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		}
 		seen[flag] = true
 		switch flag {
-		case "--list", "--summary", "--history":
+		case "--mine":
+			if options.view == "revert" || options.view == "apply" {
+				return options, errors.New("--mine is for reads; mutations require explicit change IDs")
+			}
+			options.mine = true
+		case "--list", "--summary", "--history", "--net":
 			if options.view == "revert" || options.view == "apply" {
 				return options, fmt.Errorf("%s does not accept %s", options.view, flag)
 			}
 			if options.view != "" {
-				return options, errors.New("choose one of --list, --summary, or --history")
+				return options, errors.New("choose one of --list, --summary, --history, or --net")
 			}
 			options.view = strings.TrimPrefix(flag, "--")
 		case "--workspace", "--max-tokens":
@@ -91,8 +102,14 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 	if options.view == "list" && (len(refs) != 0 || len(options.paths) != 0) {
 		return options, errors.New("--list does not accept change IDs or paths")
 	}
+	if options.mine && len(refs) != 0 {
+		return options, errors.New("--mine does not accept explicit change IDs")
+	}
 	if len(refs) == 0 && options.view != "list" {
-		return options, fmt.Errorf("explicit change IDs or ranges are required; %s", changesReadUsage)
+		if options.view == "revert" || options.view == "apply" {
+			return options, fmt.Errorf("mutations require explicit change IDs; %s", changesReadUsage)
+		}
+		options.mine = true
 	}
 	var err error
 	if options.view != "list" {
@@ -129,26 +146,44 @@ func trackedStatus(history mekugiHistory, confirmed bool) string {
 }
 
 func (s *mekugiReplayStore) readChanges(ctx context.Context, options changeReadOptions) (string, error) {
+	text, _, err := s.readChangeView(ctx, options)
+	return text, err
+}
+
+func (s *mekugiReplayStore) readChangeView(ctx context.Context, options changeReadOptions) (string, *changeReadSnapshot, error) {
 	s = s.scoped(ctx)
 	var output string
+	var snapshot *changeReadSnapshot
 	err := s.locked(ctx, func() error {
 		index, err := s.readChangeIndex(options.workspace)
 		if err != nil {
 			return err
 		}
-		if options.view == "list" {
+		if options.mine || options.view == "list" {
 			if s.session.Thread == "" {
-				return errors.New("--list requires a Codex thread identity")
+				return errors.New("own-thread reads require a Codex thread identity")
 			}
-			if err := s.retainFiles(changeIndexName(options.workspace, s.handleNamespace())); err != nil {
+			options.ids, err = threadChangeIDs(index, s.session.Thread)
+			if err != nil {
 				return err
 			}
-			output, err = listThreadChanges(index, s.session.Thread)
-			return err
 		}
-		names, err := s.changeDependencyNames(options.workspace, options.ids)
-		if err != nil {
-			return err
+		snapshot = &changeReadSnapshot{Workspace: options.workspace, IDs: options.ids, Paths: options.paths, View: options.view, Frozen: true,
+			Selected: make(map[string]trackedChange), Streams: index.Streams, Mine: options.mine, OverlapLabels: make(map[string]string)}
+		options.overlapLabels = snapshot.OverlapLabels
+		names := []string{changeIndexName(options.workspace, index.Namespace)}
+		for _, id := range options.ids {
+			change, exists := index.Changes[id]
+			if !exists {
+				if options.view != "summary" && options.view != "list" && !options.mine {
+					return missingChangeError(index, id)
+				}
+				continue
+			}
+			snapshot.Selected[id] = change
+			for _, call := range change.Calls {
+				names = append(names, replayRecordName(options.workspace, call.ID, false))
+			}
 		}
 		if err := s.retainFiles(names...); err != nil {
 			return err
@@ -156,44 +191,56 @@ func (s *mekugiReplayStore) readChanges(ctx context.Context, options changeReadO
 		output, err = s.renderChanges(ctx, options, index)
 		return err
 	})
-	return output, err
+	return output, snapshot, err
 }
 
-func listThreadChanges(index changeIndex, thread string) (string, error) {
-	var output strings.Builder
-	for streamIndex, stream := range index.Streams {
+func threadChangeIDs(index changeIndex, thread string) ([]string, error) {
+	for position, stream := range index.Streams {
 		if stream.Thread != thread {
 			continue
 		}
-		var numbers []int
-		for id := range index.Changes {
-			name, number, err := parseChangeID(id)
-			if err == nil && name == changeStreamName(streamIndex) {
-				numbers = append(numbers, number)
-			}
+		if stream.Next > maxChangeReadBytes/32 {
+			return nil, errors.New("change list exceeds 64 MiB; select explicit IDs")
 		}
-		slices.Sort(numbers)
-		for _, number := range numbers {
-			id := changeHandle(changeStreamName(streamIndex), number)
-			managed := len(index.Changes[id].Calls) != 0
-			for _, call := range index.Changes[id].Calls {
-				managed = managed && call.Managed
-			}
-			if managed {
-				fmt.Fprintln(&output, id+" managed only")
-			} else {
-				fmt.Fprintln(&output, id)
-			}
-			if output.Len() > maxChangeReadBytes {
-				return "", errors.New("change list exceeds 64 MiB")
-			}
+		ids := make([]string, stream.Next)
+		for number := 1; number <= stream.Next; number++ {
+			ids[number-1] = changeHandle(changeStreamName(position), number)
 		}
-		break
+		return ids, nil
 	}
-	return output.String(), nil
+	return nil, nil
+}
+
+func missingChangeState(index changeIndex, id string) (string, string) {
+	name, number, _ := parseChangeID(id)
+	for position, stream := range index.Streams {
+		if changeStreamName(position) != name {
+			continue
+		}
+		if number <= stream.Next {
+			return "retired", changeHandle(name, stream.Next)
+		}
+		return "unknown", changeHandle(name, stream.Next)
+	}
+	return "unknown", "none in this stream"
+}
+
+func missingChangeError(index changeIndex, id string) error {
+	state, latest := missingChangeState(index, id)
+	reason := "retired by session retention"
+	if state == "unknown" {
+		reason = "never allocated (latest is " + latest + ")"
+	}
+	return fmt.Errorf("change %s is %s in workspace %q; check --workspace when reading from a subdirectory", id, reason, index.Workspace)
 }
 
 func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeReadOptions, index changeIndex) (string, error) {
+	if options.view == "list" {
+		return s.renderChangeList(ctx, options, index)
+	}
+	if options.view == "net" {
+		return s.renderNetChanges(ctx, options, index)
+	}
 	var output strings.Builder
 	type counts struct {
 		added, removed int
@@ -209,17 +256,25 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 	var paths []string
 	matched := false
 	for _, id := range options.ids {
+		if output.Len() > maxChangeReadBytes {
+			return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or paths after --")
+		}
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
 		change, exists := index.Changes[id]
 		if !exists {
-			return "", fmt.Errorf("change %s is missing in workspace %q; check --workspace; session data may have expired after 14 days of inactivity or been removed under storage pressure", id, options.workspace)
+			if options.view != "summary" && !options.mine {
+				return "", missingChangeError(index, id)
+			}
+			state, _ := missingChangeState(index, id)
+			fmt.Fprintf(&output, "%s %s\n", id, state)
+			continue
 		}
-		if options.view == "summary" && (change.RetiredCalls != 0 || len(change.Calls) == 0) {
-			return "", fmt.Errorf("change %s has incomplete or pending history; use --history", id)
+		if options.view == "summary" && change.RetiredCalls != 0 {
+			fmt.Fprintf(&output, "%s retired (partial history)\n", id)
 		}
-		if change.RetiredCalls != 0 {
+		if change.RetiredCalls != 0 && options.view != "summary" {
 			fmt.Fprintf(&output, "%s history incomplete: %d older attempts were removed by session cleanup\n", id, change.RetiredCalls)
 		}
 		if options.view != "summary" && len(change.Calls) > 1 {
@@ -240,11 +295,17 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			if options.view != "summary" && history.ExecOutcome != nil && len(history.ExecOutcome.Overlaps) != 0 {
 				var alongside []string
 				for _, ref := range history.ExecOutcome.Overlaps {
-					label := ref
-					for otherID, other := range index.Changes {
-						if slices.ContainsFunc(other.Calls, func(call trackedCall) bool { return strings.HasPrefix(call.ID, ref+":") }) {
-							label = otherID
-							break
+					label, frozen := options.overlapLabels[ref]
+					if !frozen {
+						label = ref
+						for otherID, other := range index.Changes {
+							if slices.ContainsFunc(other.Calls, func(call trackedCall) bool { return strings.HasPrefix(call.ID, ref+":") }) {
+								label = otherID
+								break
+							}
+						}
+						if options.overlapLabels != nil {
+							options.overlapLabels[ref] = label
 						}
 					}
 					alongside = append(alongside, label)
@@ -422,7 +483,7 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRo
 		}
 		execution := toolplugin.ExecutionOutput{Stdout: selected, ExitCode: status}
 		if len(selected) < len(text) {
-			execution.OmittedOutput = &toolplugin.OmittedOutput{Stdout: text[len(selected):]}
+			execution.OmittedOutput = &toolplugin.OmittedOutput{Stdout: text[len(selected):], StdoutKind: "rows"}
 			execution.ExitCode = 1
 			if execution, err = retainExecutionOutput(ctx, manifest, execution); err != nil {
 				return whole(err)
@@ -430,7 +491,7 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRo
 		}
 		return execution
 	}
-	text, err := store.readChanges(ctx, options)
+	text, snapshot, err := store.readChangeView(ctx, options)
 	if err != nil {
 		return fail(err)
 	}
@@ -440,7 +501,7 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRo
 	}
 	next := ""
 	if len(selected) < len(text) {
-		next, err = store.putChangeRead(ctx, options, text, len(selected))
+		next, err = store.putChangeRead(ctx, snapshot, text, len(selected))
 		if err != nil {
 			return fail(err)
 		}

@@ -310,7 +310,11 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 				t.Fatalf("completed patch = %+v", history)
 			}
 			listed, err := proxy.replayStore.readChanges(transform.ctx, changeReadOptions{workspace: workspace, view: "list"})
-			if err != nil || listed != history.ChangeID+"\n" {
+			counts := "+0 -0"
+			if test.change {
+				counts = "+1 -1"
+			}
+			if err != nil || listed != history.ChangeID+" prepared (application unconfirmed) "+counts+"\n" {
 				t.Fatalf("mchanges list = %q, %v; want %q", listed, err, history.ChangeID)
 			}
 		})

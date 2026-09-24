@@ -26,8 +26,12 @@ func selectReadPage(ctx context.Context, manifest toolWorkerManifest, runtimeRoo
 	if formatted.ExitCode != 0 || !strings.HasPrefix(text, formatted.Stdout) {
 		return "", errors.New("read output selection failed")
 	}
+	if len(formatted.Stdout) < len(text) {
+		end := strings.LastIndexByte(formatted.Stdout, '\n') + 1
+		formatted.Stdout = formatted.Stdout[:end]
+	}
 	if formatted.Stdout == "" && text != "" {
-		return "", errors.New("token budget cannot admit the next character; increase --max-tokens")
+		return "", errors.New("token budget cannot admit the next complete row; increase --max-tokens")
 	}
 	return formatted.Stdout, nil
 }

@@ -20,9 +20,11 @@ import (
 // changeCapture is one completed attempt's review files with absolute paths,
 // in the store-wide order that also orders the saved diff view.
 type changeCapture struct {
-	id    string
-	order uint64
-	files []mekugi.ReviewFile
+	id       string
+	order    uint64
+	files    []mekugi.ReviewFile
+	applied  bool
+	coverage string
 	// links are captured symlink paths; their review text is a link target.
 	links map[string]bool
 	// exec marks captures from observed shell commands.
@@ -93,7 +95,10 @@ func (s *mekugiReplayStore) loadChangeCaptures(ctx context.Context, workspace st
 			if err != nil {
 				return nil, err
 			}
-			capture := changeCapture{id: id, order: record.CaptureOrder, links: make(map[string]bool)}
+			capture := changeCapture{id: id, order: record.CaptureOrder, links: make(map[string]bool), applied: record.History.Applied || call.Confirmed}
+			if record.History.ExecOutcome != nil {
+				capture.coverage = record.History.ExecOutcome.Coverage
+			}
 			if observation := record.History.ExecObservation; observation != nil {
 				capture.exec = true
 				for _, file := range observation.Files {

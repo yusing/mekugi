@@ -341,7 +341,7 @@ func (s *mekugiReplayStore) changeDependencyNames(workspace string, ids []string
 	for _, id := range ids {
 		change, exists := index.Changes[id]
 		if !exists {
-			return nil, fmt.Errorf("change %s is unavailable; its session data may have expired or been removed under storage pressure", id)
+			return nil, missingChangeError(index, id)
 		}
 		for _, call := range change.Calls {
 			names = append(names, replayRecordName(workspace, call.ID, false))
@@ -366,13 +366,22 @@ func (s *mekugiReplayStore) readDependencyNames(record shellOutputRecord) ([]str
 			names = append(names, scopedCursorName(owner, record.CursorDigest))
 		}
 		names = append(names, scopedOutputName(owner, record.ID))
-		if record.Changes != nil {
-			dependencies, err := s.changeDependencyNames(record.Changes.Workspace, record.Changes.IDs)
-			if err != nil {
-				return nil, err
+		if selection := record.Changes; selection != nil {
+			if selection.Frozen {
+				for _, id := range selection.IDs {
+					for _, call := range selection.Selected[id].Calls {
+						names = append(names, replayRecordName(selection.Workspace, call.ID, false))
+					}
+				}
+			} else {
+				dependencies, err := s.changeDependencyNames(selection.Workspace, selection.IDs)
+				if err != nil {
+					return nil, err
+				}
+				names = append(names, dependencies...)
 			}
-			names = append(names, dependencies...)
 		}
+
 		if record.Source == "" {
 			return names, nil
 		}

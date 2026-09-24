@@ -269,7 +269,7 @@ snapshot-owned descriptions to the agent in the execution tool guidance.
 | --- | --- | --- |
 | `mread` | Continue bounded retained output by reference | Access to the router's replay directory |
 | `mrun` | Bound a foreground command's output and optionally keep its ending | The wrapped command |
-| `mchanges` | List the current agent thread's change IDs, read observed patches and command effects by ID or range, or revert and reapply them | Access to the router's replay directory |
+| `mchanges` | Review the current thread’s edits, compose captured diffs, or read/revert/reapply explicit IDs | Access to the router's replay directory |
 | `mcat` | Read raw UTF-8 rows, with multi-file batching, ranges, and tail selection | None |
 | `msymbol` | Look up compact definitions and file-grouped references; batch queries in one call | `gopls` for Go; TypeScript 7 as `tsc` for JS, TS, and JSON; `pyright-langserver` for Python |
 | `inspect_file` | Inspect a structural outline | None |
@@ -279,7 +279,9 @@ its subagents share a namespace; `/fork` and `/side` copy visible state once,
 then allocate independently. Resuming keeps retained references. For example:
 
 ```sh
+mchanges
 mchanges --list
+mchanges --mine --net
 mchanges amber1..amber3 --summary
 mchanges amber2 --history
 mchanges revert amber2
@@ -307,7 +309,11 @@ oversized rows and unterminated command streams use byte continuation.
 `inspect_file` defaults to compact declaration ranges, with imports collapsed;
 use `--json` for metadata and structured outlines. Syntax-error rows identify
 incomplete parsing without hiding valid declaration ranges elsewhere.
-`mchanges --list` shows the current thread's pending and completed IDs. A
+A bare `mchanges` reviews your current thread’s recorded edits. `--list` shows
+compressed ID ranges, statuses and counts; `--net` composes repeated edits into
+captured net diffs, not a live Git diff. Unconfirmed, incomplete, and binary
+evidence requires ordinary review without `--net`. `amber1..3` is a supported range shorthand.
+Paged reviews remain stable when another edit completes. A
 Code Mode patch may show observed file changes as application unconfirmed:
 completion of the outer JavaScript cell is not proof that its nested patch
 succeeded. From a subdirectory, `--workspace ..` selects the parent workspace's

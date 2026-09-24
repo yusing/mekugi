@@ -157,21 +157,42 @@ IDs or reads selected IDs and ranges:
 
 ```text
 mchanges --list [--workspace DIR] [--max-tokens N]
-mchanges ID[..ID] ... [--summary|--history] [--workspace DIR] [--max-tokens N] [-- PATH ...]
+mchanges [--mine | ID[..ID] ...] [--summary|--history|--net] [--workspace DIR] [--max-tokens N] [-- PATH ...]
 mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]
 ```
 
-`--list` includes pending and completed IDs owned by the calling thread, but
+A bare `mchanges` or `--mine` selects every allocated ID owned by the calling
+thread, including explicit markers for retired evidence. Forked threads inherit
+their visible stream under the fork's identity; resume uses the durable identity.
+`--list` compresses consecutive same-status IDs and shows accumulated `+N -N`
+counts, or `- -` for unknown counts. It includes pending and retired status and
 does not expose sibling threads' IDs. Explicit IDs can still be read across
 agents in the shared namespace. The default view shows each status and unified
 file diff. `--summary` gives added and removed line counts by path across
-selected records. It is not a net workspace diff; binary files have unknown
-counts. `--history` includes the original observed patch or command input, the
+selected records. Pending, retired and never-allocated selections get per-ID
+status rows without hiding the remaining summary. It is not a net workspace diff;
+binary or incomplete files have unknown counts. Numeric range ends such as
+`amber1..3` are equivalent to `amber1..amber3`. A path operand belongs after `--`;
+unknown options are diagnosed as options. Missing-ID errors distinguish retired
+from never allocated, give the latest allocation for the stream, and identify
+the selected workspace so callers can correct `--workspace`.
+
+`--net` composes selected completed captures in recorded capture order using the
+same review composition as the live view. It follows moves and emits canonical
+absolute paths; it never reads the live workspace. Pending or retired history and
+inconsistent, incomplete, unconfirmed, partial-coverage, or binary capture chains
+fail rather than claim a complete net diff; ordinary reads preserve that evidence. Path filters apply to the composed files. An empty composition is explicit.
+Mutations still require explicit IDs; `--mine` never selects writes. `--history` includes the original observed patch or command input, the
 host result, and for a command the observed scope. Paths after `--` filter review files without re-reading the
 current filesystem. `--workspace ..` selects the owning workspace index when
 the command runs from a subdirectory; paths after `--` only filter entries in
 the selected record. `--max-tokens` bounds displayed output. When output is
-omitted, an `mread` reference retrieves the retained remainder. Pending, expired, or incomplete
+omitted, an `mread` reference retrieves the retained remainder on complete-row
+boundaries. The receipt freezes the selected attempts, allocation state and view
+under the read lock, and retains those exact attempt dependencies. Appended
+attempts or a pending change completing cannot change an existing continuation;
+its original pending/retired markers remain visible. Older receipts without a
+frozen selection retain their digest-check behavior. Pending, expired, or incomplete
 history is explicit; no missing evidence becomes an empty successful diff.
 For a Code Mode cell, an observed workspace effect remains application
 unconfirmed because outer JavaScript completion does not prove the nested

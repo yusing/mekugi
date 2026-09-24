@@ -40,26 +40,26 @@ type shellOutputRecord struct {
 }
 
 type changeReadSnapshot struct {
-	Workspace string   `json:"workspace"`
-	IDs       []string `json:"ids"`
-	Paths     []string `json:"paths"`
-	View      string   `json:"view"`
-	Offset    int      `json:"offset"`
-	Digest    string   `json:"digest"`
+	OverlapLabels map[string]string        `json:"overlap_labels,omitempty"`
+	Selected      map[string]trackedChange `json:"selected,omitempty"`
+	Streams       []changeStream           `json:"streams,omitempty"`
+	Frozen        bool                     `json:"frozen,omitzero"`
+	Mine          bool                     `json:"mine,omitzero"`
+	Workspace     string                   `json:"workspace"`
+	IDs           []string                 `json:"ids"`
+	Paths         []string                 `json:"paths"`
+	View          string                   `json:"view"`
+	Offset        int                      `json:"offset"`
+	Digest        string                   `json:"digest"`
 }
 
-func (s *mekugiReplayStore) putChangeRead(ctx context.Context, options changeReadOptions, text string, offset int) (string, error) {
+func (s *mekugiReplayStore) putChangeRead(ctx context.Context, snapshot *changeReadSnapshot, text string, offset int) (string, error) {
 	handles, err := s.allocateHandles(ctx, 1)
 	if err != nil {
 		return "", err
 	}
-	return s.putReadRecord(ctx, shellOutputRecord{
-		Version: 1, ID: handles[0],
-		Changes: &changeReadSnapshot{
-			Workspace: options.workspace, IDs: options.ids, Paths: options.paths, View: options.view,
-			Offset: offset, Digest: fmt.Sprintf("%x", sha256.Sum256([]byte(text))),
-		},
-	})
+	snapshot.Offset, snapshot.Digest, snapshot.Frozen = offset, fmt.Sprintf("%x", sha256.Sum256([]byte(text))), true
+	return s.putReadRecord(ctx, shellOutputRecord{Version: 1, ID: handles[0], Changes: snapshot})
 }
 
 func (s *mekugiReplayStore) readSourceStreams(ctx context.Context, record shellOutputRecord) (toolplugin.OmittedOutput, error) {
@@ -70,9 +70,19 @@ func (s *mekugiReplayStore) readSourceStreams(ctx context.Context, record shellO
 		return output, nil
 	}
 	selection := record.Changes
-	text, err := s.readChanges(ctx, changeReadOptions{
-		workspace: selection.Workspace, ids: selection.IDs, paths: selection.Paths, view: selection.View,
-	})
+	options := changeReadOptions{workspace: selection.Workspace, ids: selection.IDs, paths: selection.Paths, view: selection.View, mine: selection.Mine, overlapLabels: selection.OverlapLabels}
+	var text string
+	var err error
+	if selection.Frozen {
+		scoped := s.scoped(ctx)
+		err = scoped.locked(ctx, func() error {
+			text, err = scoped.renderChanges(ctx, options, changeIndex{Workspace: selection.Workspace, Changes: selection.Selected, Streams: selection.Streams})
+			return err
+		})
+	} else {
+		text, err = s.readChanges(ctx, options)
+	}
+
 	if err != nil {
 		return output, err
 	}
@@ -81,6 +91,9 @@ func (s *mekugiReplayStore) readSourceStreams(ctx context.Context, record shellO
 		return output, errors.New("change snapshot changed; repeat the original mchanges read")
 	}
 	output.Stdout = text[selection.Offset:]
+	if selection.Frozen {
+		output.StdoutKind = "rows"
+	}
 	return output, nil
 }
 
@@ -198,9 +211,30 @@ func validateReadRecord(record shellOutputRecord) error {
 		selection := record.Changes
 		if record.Source != "" || record.Stdout != "" || record.Stderr != "" ||
 			record.StdoutKind != "" || record.StderrKind != "" ||
-			selection.Offset < 0 || len(selection.Digest) != 64 || len(selection.IDs) == 0 ||
-			(selection.View != "" && selection.View != "summary" && selection.View != "history") {
+			selection.Offset < 0 || len(selection.Digest) != 64 || (!selection.Frozen && len(selection.IDs) == 0) ||
+			(selection.View != "" && selection.View != "summary" && selection.View != "history" && selection.View != "list" && selection.View != "net") {
 			return errors.New("invalid change read selection")
+		}
+		if selection.Frozen {
+			ids := make(map[string]bool, len(selection.IDs))
+			for _, id := range selection.IDs {
+				if _, _, err := parseChangeID(id); err != nil || ids[id] {
+					return errors.New("invalid frozen change IDs")
+				}
+				ids[id] = true
+			}
+			calls := make(map[string]bool)
+			for id, change := range selection.Selected {
+				if !ids[id] || change.Correlation == "" || change.RetiredCalls < 0 {
+					return errors.New("invalid frozen change selection")
+				}
+				for _, call := range change.Calls {
+					if call.ID == "" || calls[call.ID] {
+						return errors.New("invalid frozen change attempt")
+					}
+					calls[call.ID] = true
+				}
+			}
 		}
 	}
 	if record.Stream != "" && record.Stream != "stdout" && record.Stream != "stderr" {
