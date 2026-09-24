@@ -308,9 +308,14 @@ notices, and errors, and shows each with verb colors, path emphasis, and syntax
 highlighting in the terminal's theme. Text it does not recognize stays plain.
 Consecutive reads by one agent collapse into one row that joins ranges of the
 same file. Child text is sanitized before layout, so it cannot emit terminal
-controls.
+controls. Local absolute-path Markdown links show their label as a terminal
+hyperlink rather than exposing the raw destination syntax. A completed child
+compaction appears as an event in the feed and as the agent's latest roster
+activity; an attempted or failed compaction does not claim completion.
 Fenced `Run` previews put the first source row beside the verb when space
-allows. Python, JavaScript (Node and Bun), and Perl interpreter previews use
+allows. A confirmed nonzero command exit displays a red `(exit N)` beside a
+single-line `Run` or beneath a multiline one. Unknown and zero exits add no
+failure label. Python, JavaScript (Node and Bun), and Perl interpreter previews use
 their own syntax colors. `Search` patterns are styled as literal patterns,
 not shell commands, while every target path uses the Search violet with path emphasis.
 A final answer in journal-result form is laid out natively: a heading with its

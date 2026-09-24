@@ -228,6 +228,117 @@ func toolActivityCodeModeSession(raw json.RawMessage) string {
 	return strconv.FormatInt(session, 10)
 }
 
+// collectShellExits reads completed host results from this request's visible
+// call/result pairs. Output after the host metadata boundary is never parsed
+// as status, because a program can print arbitrary status-looking text.
+func (t *mekugiResponseTransform) collectShellExits(input json.RawMessage) {
+	var items []map[string]json.RawMessage
+	if json.Unmarshal(input, &items) != nil {
+		return
+	}
+	type call struct {
+		id, name, session, cell string
+		codeMode                bool
+	}
+	calls := make(map[string]call)
+	sessions := make(map[string]string)
+	cells := make(map[string]string)
+	for _, item := range items {
+		kind, callID := jsonString(item, "type"), jsonString(item, "call_id")
+		if callID == "" {
+			continue
+		}
+		if kind == "function_call" || kind == "custom_tool_call" {
+			if namespace := jsonString(item, "namespace"); namespace != "" && namespace != "functions" {
+				continue
+			}
+			outer := strings.TrimPrefix(jsonString(item, "name"), "functions.")
+			name, args, _ := toolActivityShellCall(item, outer, true)
+			if name == "exec_command" || name == "shell" || name == "write_stdin" || name == "wait" {
+				current := call{id: jsonString(item, "id"), name: name, codeMode: outer == "exec" || outer == "wait"}
+				current.session, current.cell = strings.TrimSpace(string(args["session_id"])), jsonString(args, "cell_id")
+				calls[callID] = current
+			}
+			continue
+		}
+		if kind != "function_call_output" && kind != "custom_tool_call_output" {
+			continue
+		}
+		origin := calls[callID]
+		if origin.id == "" {
+			continue
+		}
+		result := item["output"]
+		if origin.name == "exec_command" || origin.name == "shell" {
+			session := toolActivityOutputSession(result)
+			if origin.codeMode {
+				session = toolActivityCodeModeSession(result)
+			}
+			if session != "" {
+				sessions[session] = origin.id
+			}
+			if origin.codeMode {
+				if texts := executionOutputTexts(result); len(texts) > 0 {
+					if state, cell, _ := codeModeExecutionHeader(texts[0]); state == "running" {
+						cells[cell] = origin.id
+					}
+				}
+			}
+		} else if origin.name == "write_stdin" {
+			origin.id = sessions[origin.session]
+		} else if origin.name == "wait" {
+			origin.id = cells[origin.cell]
+			if origin.id != "" {
+				if session := toolActivityCodeModeSession(result); session != "" {
+					sessions[session] = origin.id
+				}
+			}
+		}
+		if origin.id != "" {
+			if code, ok := toolActivityExitCode(result, origin.codeMode); ok && code != 0 {
+				t.proxy.activity.collect(t.threadID, "tool-exit\x00"+origin.id, "exit", strconv.Itoa(code))
+			}
+		}
+	}
+}
+
+func toolActivityExitCode(raw json.RawMessage, codeMode bool) (int, bool) {
+	texts := executionOutputTexts(raw)
+	if len(texts) == 0 {
+		return 0, false
+	}
+	text := texts[0]
+	if codeMode {
+		status, _, body := codeModeExecutionHeader(text)
+		if status != "Script completed" {
+			return 0, false
+		}
+		text = body
+		if strings.TrimSpace(text) == "" && len(texts) == 2 {
+			text = texts[1]
+		}
+	}
+	var result struct {
+		ExitCode *int `json:"exit_code"`
+	}
+	if json.Unmarshal([]byte(text), &result) == nil && result.ExitCode != nil {
+		return *result.ExitCode, true
+	}
+	if codeMode {
+		return 0, false
+	}
+	for line := range strings.SplitSeq(text, "\n") {
+		if line == "Output:" || line == "Final output:" {
+			break
+		}
+		if value, ok := strings.CutPrefix(line, "Process exited with code "); ok {
+			code, err := strconv.Atoi(value)
+			return code, err == nil
+		}
+	}
+	return 0, false
+}
+
 func toolActivityOutputSession(raw json.RawMessage) string {
 	var value map[string]json.RawMessage
 	if json.Unmarshal(raw, &value) == nil && value != nil {

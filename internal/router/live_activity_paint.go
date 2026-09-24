@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -221,6 +222,14 @@ func (p *liveActivityPainter) inline(line string) string {
 	var out strings.Builder
 	bold := false
 	for i := 0; i < len(line); {
+		if line[i] == '[' {
+			if label, target, end, ok := liveActivityLink(line[i:]); ok {
+				link := url.URL{Scheme: "file", Path: target}
+				out.WriteString("\x1b]8;;" + link.String() + "\x1b\\" + p.theme.Accent() + "\x1b[4m" + label + "\x1b[24;39m\x1b]8;;\x1b\\")
+				i += end
+				continue
+			}
+		}
 		if code, end, ok := liveActivityCodeSpan(line, i); ok {
 			out.WriteString(p.theme.Accent() + code + "\x1b[39m")
 			i = end
@@ -243,6 +252,27 @@ func (p *liveActivityPainter) inline(line string) string {
 		out.WriteString(liveActivityUndim)
 	}
 	return out.String()
+}
+
+// Only local absolute paths become terminal links. Relative or malformed
+// Markdown remains visible verbatim rather than guessing a filesystem target.
+func liveActivityLink(s string) (label, target string, end int, ok bool) {
+	close := strings.Index(s, "](")
+	if close < 2 || s[0] != '[' {
+		return
+	}
+	rest := s[close+2:]
+	if strings.HasPrefix(rest, "<") {
+		if i := strings.Index(rest, ">)"); i >= 0 {
+			target, end = rest[1:i], close+2+i+2
+		}
+	} else if i := strings.IndexByte(rest, ')'); i >= 0 {
+		target, end = rest[:i], close+2+i+1
+	}
+	if end == 0 || !strings.HasPrefix(target, "/") || strings.ContainsAny(target, "\x00\x1b\r\n") {
+		return "", "", 0, false
+	}
+	return s[1:close], target, end, true
 }
 
 // markdown renders authored text: fenced programs are highlighted under a
@@ -325,6 +355,10 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 	case "op":
 		label := p.label(block.verb, block.label)
 		code, body := block.code, block.body
+		exit := ""
+		if block.verb == "Run" && block.exitCode != 0 {
+			exit = liveActivityRed + fmt.Sprintf("(exit %d)", block.exitCode) + liveActivityReset
+		}
 		if block.verb == "Run" && block.fenced && label == "" && strings.Contains(code, "\n") && width-ansi.StringWidth(liveActivityVerb(block.verb)) >= 4 {
 			lead := liveActivityVerb(block.verb)
 			indent := ansi.StringWidth(lead)
@@ -335,6 +369,9 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 				} else {
 					lines[i] = strings.Repeat(" ", indent) + lines[i]
 				}
+			}
+			if exit != "" {
+				lines = append(lines, strings.Repeat(" ", indent)+exit)
 			}
 			if body != "" {
 				lines = append(lines, liveActivityIndent(p.markdown(body, width-2), "  ")...)
@@ -360,6 +397,14 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 		if body != "" {
 			lines = append(lines, liveActivityIndent(p.markdown(body, width-2), "  ")...)
 		}
+		if exit != "" {
+			last := len(lines) - 1
+			if ansi.StringWidth(lines[last])+1+ansi.StringWidth(exit) <= width {
+				lines[last] += " " + exit
+			} else {
+				lines = append(lines, strings.Repeat(" ", ansi.StringWidth(liveActivityVerb(block.verb)))+exit)
+			}
+		}
 		return lines
 	case "message":
 		// The envelope glyph already says a message arrived; other headlines stay.
@@ -372,6 +417,8 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 		return append(lines, liveActivityIndent(p.markdown(block.body, width-2), bar)...)
 	case "start":
 		return liveActivityHang(liveActivityGreen+"\x1b[1m▶ Started"+liveActivityReset+"  ", p.inline(block.label), width)
+	case "compaction":
+		return []string{liveActivityAmber + "◉ Context compacted" + liveActivityReset}
 	case "error":
 		return liveActivityIndent(liveActivityWrap(liveActivityRed+block.body+liveActivityReset, width-2, false), liveActivityRed+"✗"+liveActivityReset+" ")
 	}
@@ -530,6 +577,9 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 		if detail == "" || strings.HasPrefix(detail, "·") {
 			detail = strings.TrimSpace(firstLine(block.code) + " " + detail)
 		}
+		if block.verb == "Run" && block.exitCode != 0 {
+			detail += " " + liveActivityRed + fmt.Sprintf("(exit %d)", block.exitCode) + liveActivityReset
+		}
 		return liveActivitySummaryVerb(block.verb) + detail + more
 	case "message":
 		text := firstLine(block.body)
@@ -539,6 +589,8 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 		return liveActivityDim + "✉ → " + liveActivityUndim + p.agent(block.to) + " " + text
 	case "start":
 		return liveActivityGreen + "▶ Started" + liveActivityReset + " " + p.inline(block.label)
+	case "compaction":
+		return liveActivityAmber + "◉ Context compacted" + liveActivityReset
 	case "error":
 		return liveActivityRed + "✗ " + firstLine(block.body) + liveActivityReset
 	}

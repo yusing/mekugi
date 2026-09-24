@@ -23,6 +23,7 @@ type liveActivityBlock struct {
 	reads    []liveActivityRead
 	journal  *liveActivityJournal // A final answer in journal-result form.
 	compact  bool                 // Rendered in the clipped shared feed.
+	exitCode int                  // Nonzero command exit; zero means no failure label.
 }
 
 // liveActivityJournal is a child's journal result laid out by the router's
@@ -72,6 +73,8 @@ func parseLiveActivity(entry activityPaneEntry) []liveActivityBlock {
 		}
 	case "error":
 		return []liveActivityBlock{{kind: "error", body: text}}
+	case "compaction":
+		return []liveActivityBlock{{kind: "compaction", body: text}}
 	case "tool":
 		var blocks []liveActivityBlock
 		for _, paragraph := range liveActivityParagraphs(text) {

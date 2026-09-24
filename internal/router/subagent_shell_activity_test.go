@@ -3,7 +3,9 @@ package router
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestSubagentShellExcerptsJSONAndSSE(t *testing.T) {
@@ -84,6 +86,106 @@ func TestShellActivitySessionCorrelation(t *testing.T) {
 	}
 	if got := toolActivityOutputSession(mustMarshalJSON("Output:\nProcess running with session ID 42")); got != "" {
 		t.Fatal("parsed program output as metadata")
+	}
+}
+
+func TestShellActivityExitCodeUsesHostMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		output string
+		mode   bool
+		want   int
+		ok     bool
+	}{
+		{`{"exit_code":1,"output":""}`, false, 1, true},
+		{"Chunk ID: a\nProcess exited with code 2\nOutput:\nProcess exited with code 3", false, 2, true},
+		{"Script completed\nWall time 0.1 seconds\nOutput:\n{\"exit_code\":4,\"output\":\"\"}", true, 4, true},
+		{"Script completed\nWall time 0.1 seconds\nOutput:\n", true, 0, false},
+		{"Chunk ID: a\nOutput:\nProcess exited with code 3", false, 0, false},
+		{"Script completed\nOutput:\nanything {\"exit_code\":5}", true, 0, false},
+	} {
+		got, ok := toolActivityExitCode(mustMarshalJSON(tc.output), tc.mode)
+		if got != tc.want || ok != tc.ok {
+			t.Fatalf("%q: exit = %d, %t", tc.output, got, ok)
+		}
+	}
+}
+
+func TestShellActivityExitEventCorrelatesCompletedCall(t *testing.T) {
+	activity := newSubagentActivity()
+	activity.observe("root", "", "/root", false)
+	activity.observe("child", "root", "/root/a", true)
+	transform := &mekugiResponseTransform{proxy: &mekugiProxy{activity: activity}, threadID: "child"}
+	input := mustMarshalJSON([]any{
+		map[string]any{"type": "function_call", "id": "call-item", "call_id": "call", "name": "exec_command", "arguments": `{"cmd":"false"}`},
+		map[string]any{"type": "function_call_output", "call_id": "call", "output": "Chunk ID: a\nProcess exited with code 1\nOutput:\n"},
+	})
+	transform.collectShellExits(input)
+	if len(activity.events) != 1 || activity.events[0].kind != "exit" || activity.events[0].callID != "call-item" || activity.events[0].raw != "1" {
+		t.Fatalf("exit activity = %+v", activity.events)
+	}
+	transform.collectShellExits(input)
+	if len(activity.events) != 1 {
+		t.Fatalf("duplicate exit activity = %+v", activity.events)
+	}
+	// A JavaScript printout is not a host command result, even when its JSON
+	// resembles the result object. A transparent one-call projection is.
+	transform.collectShellExits(mustMarshalJSON([]any{
+		map[string]any{"type": "custom_tool_call", "id": "fake-item", "call_id": "fake", "name": "exec", "input": `text({exit_code:7});`},
+		map[string]any{"type": "custom_tool_call_output", "call_id": "fake", "output": "Script completed\nWall time 0.1 seconds\nOutput:\n{\"exit_code\":7}"},
+	}))
+	if len(activity.events) != 1 {
+		t.Fatalf("fabricated status = %+v", activity.events)
+	}
+	transform.collectShellExits(mustMarshalJSON([]any{
+		map[string]any{"type": "custom_tool_call", "id": "real-item", "call_id": "real", "name": "exec", "input": `text(await tools.exec_command({cmd:"false"}));`},
+		map[string]any{"type": "custom_tool_call_output", "call_id": "real", "output": []any{
+			map[string]any{"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
+			map[string]any{"type": "input_text", "text": `{"exit_code":3,"output":""}`},
+		}},
+	}))
+	if len(activity.events) != 2 || activity.events[1].callID != "real-item" || activity.events[1].raw != "3" {
+		t.Fatalf("split Code Mode status = %+v", activity.events)
+	}
+	transform.collectShellExits(mustMarshalJSON([]any{
+		map[string]any{"type": "function_call", "id": "yield-item", "call_id": "yield", "name": "exec_command", "arguments": `{"cmd":"false"}`},
+		map[string]any{"type": "function_call_output", "call_id": "yield", "output": `{"session_id":19,"output":""}`},
+		map[string]any{"type": "function_call", "id": "poll-item", "call_id": "poll", "name": "write_stdin", "arguments": `{"session_id":19,"chars":""}`},
+		map[string]any{"type": "function_call_output", "call_id": "poll", "output": `{"exit_code":5,"output":""}`},
+	}))
+	if len(activity.events) != 3 || activity.events[2].callID != "yield-item" || activity.events[2].raw != "5" {
+		t.Fatalf("yielded command status = %+v", activity.events)
+	}
+	transform.collectShellExits(mustMarshalJSON([]any{
+		map[string]any{"type": "custom_tool_call", "id": "cell-item", "call_id": "cell", "name": "exec", "input": `text(await tools.exec_command({cmd:"false"}));`},
+		map[string]any{"type": "custom_tool_call_output", "call_id": "cell", "output": "Script running with cell ID c-1\nWall time 0.1 seconds\nOutput:\n"},
+		map[string]any{"type": "custom_tool_call", "id": "wait-item", "call_id": "wait", "name": "wait", "input": `{"cell_id":"c-1"}`},
+		map[string]any{"type": "custom_tool_call_output", "call_id": "wait", "output": "Script completed\nWall time 0.2 seconds\nOutput:\n{\"exit_code\":6,\"output\":\"\"}"},
+	}))
+	if len(activity.events) != 4 || activity.events[3].callID != "cell-item" || activity.events[3].raw != "6" {
+		t.Fatalf("yielded Code Mode status = %+v", activity.events)
+	}
+	transform.collectShellExits(mustMarshalJSON([]any{
+		map[string]any{"type": "custom_tool_call", "id": "session-item", "call_id": "session", "name": "exec", "input": `text(await tools.exec_command({cmd:"false",yield_time_ms:1000}));`},
+		map[string]any{"type": "custom_tool_call_output", "call_id": "session", "output": "Script completed\nWall time 0.1 seconds\nOutput:\n{\"session_id\":44,\"output\":\"\"}"},
+		map[string]any{"type": "function_call", "id": "session-poll", "call_id": "session-poll", "name": "write_stdin", "arguments": `{"session_id":44,"chars":""}`},
+		map[string]any{"type": "function_call_output", "call_id": "session-poll", "output": `{"exit_code":7,"output":""}`},
+	}))
+	if len(activity.events) != 5 || activity.events[4].callID != "session-item" || activity.events[4].raw != "7" {
+		t.Fatalf("Code Mode session status = %+v", activity.events)
+	}
+	transform.collectShellExits(mustMarshalJSON([]any{
+		map[string]any{"type": "custom_tool_call", "id": "handoff-item", "call_id": "handoff", "name": "exec", "input": `text(await tools.exec_command({cmd:"false",yield_time_ms:1000}));`},
+		map[string]any{"type": "custom_tool_call_output", "call_id": "handoff", "output": "Script running with cell ID c-2\nWall time 0.1 seconds\nOutput:\n"},
+		map[string]any{"type": "custom_tool_call", "id": "handoff-wait", "call_id": "handoff-wait", "name": "wait", "input": `{"cell_id":"c-2"}`},
+		map[string]any{"type": "custom_tool_call_output", "call_id": "handoff-wait", "output": "Script completed\nWall time 0.2 seconds\nOutput:\n{\"session_id\":45,\"output\":\"\"}"},
+		map[string]any{"type": "function_call", "id": "handoff-poll", "call_id": "handoff-poll", "name": "write_stdin", "arguments": `{"session_id":45,"chars":""}`},
+		map[string]any{"type": "function_call_output", "call_id": "handoff-poll", "output": `{"exit_code":8,"output":""}`},
+	}))
+	if len(activity.events) != 6 || activity.events[5].callID != "handoff-item" || activity.events[5].raw != "8" {
+		t.Fatalf("cell-to-session status = %+v", activity.events)
+	}
+	if got := drainText(activity.drain("root", time.Now(), maxCommentaryPublicationBytes)); strings.Contains(got, "[/root/a] 1") || strings.Contains(got, "[/root/a] 3") {
+		t.Fatalf("pane-only exit leaked into root commentary: %q", got)
 	}
 }
 

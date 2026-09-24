@@ -638,6 +638,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	projectExecutionContinuations(request, tools, codeModeToolName, visible)
 	if transform.subagentTurn {
 		transform.prepareShellActivity(request.fields["input"])
+		transform.collectShellExits(request.fields["input"])
 	}
 	return transform, nil
 }

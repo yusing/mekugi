@@ -479,6 +479,15 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 	if row := liveDiffFrameRow(frame, 1); !strings.Contains(row, "AGENTS · 2") {
 		t.Fatalf("header = %q", row)
 	}
+	f.activity.collect("probe", "tool-call\x00run-1", "tool", "Run `false`")
+	f.activity.collect("probe", "tool-exit\x00run-1", "exit", "1")
+	h.frame(t, func(frame string) bool { return strings.Contains(text(frame), "false (exit 1)") })
+	f.activity.collect("probe", "compact-1", "compaction", "Context compacted")
+	h.frame(t, func(frame string) bool { return strings.Count(text(frame), "Context compacted") >= 2 })
+	f.activity.collect("probe", "link-1", "commentary", "See [live.go](/tmp/live.go:4)")
+	h.frame(t, func(frame string) bool {
+		return strings.Contains(text(frame), "See live.go") && !strings.Contains(text(frame), "(/tmp/live.go:4)")
+	})
 	h.write(t, "no")
 	h.frame(t, func(frame string) bool {
 		return strings.Contains(liveDiffFrameRow(frame, 1), "only /root/explorer/probe") && strings.HasPrefix(liveDiffFrameRow(frame, height), "ONLY") &&

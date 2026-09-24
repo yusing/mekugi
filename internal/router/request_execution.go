@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -621,6 +622,18 @@ func (a *requestAttempt) finish(requestErr error) error {
 		}
 	}
 	a.hooks.finish(a.finalization.completion())
+	if a.executor.mekugiCalls != nil && a.metadataValid && a.metadata.RequestKind == responses.Compaction &&
+		a.metadata.SubagentKind != "" && a.finalization.completion().succeeded() {
+		activity := a.executor.mekugiCalls.activity
+		thread := a.threadID
+		if activity.observe(thread, a.metadata.ParentThreadID, a.metadata.AgentName, true) {
+			id := a.hooks.deliveredResponseID
+			if id == "" {
+				id = rand.Text()
+			}
+			activity.collect(thread, "agent-compaction\x00"+id, "compaction", "Context compacted")
+		}
+	}
 	fields := map[string]any{
 		"event": "request_complete", "request_id": a.debugID,
 		"client_request_id": a.headers.Get("x-client-request-id"),

@@ -32,6 +32,7 @@ type activityThread struct {
 
 type activityEvent struct {
 	thread, source, kind, text string
+	callID                     string
 	raw                        string // Unattributed text for the agents pane.
 	observed                   time.Time
 }
@@ -111,6 +112,12 @@ func (a *subagentActivity) collect(thread, source, kind, text string) {
 	if a.closed || node == nil || !node.child || node.conflicted {
 		return
 	}
+	callID := ""
+	if kind == "tool" {
+		callID, _ = strings.CutPrefix(source, "tool-call\x00")
+	} else if kind == "exit" {
+		callID, _ = strings.CutPrefix(source, "tool-exit\x00")
+	}
 	source = commentaryMessageID(source)
 	if _, exists := node.seen[source]; exists {
 		return
@@ -146,7 +153,7 @@ func (a *subagentActivity) collect(thread, source, kind, text string) {
 		return
 	}
 	node.seen[source] = struct{}{}
-	a.events = append(a.events, activityEvent{thread: thread, source: source, kind: kind, text: text, raw: raw, observed: now})
+	a.events = append(a.events, activityEvent{thread: thread, source: source, kind: kind, callID: callID, text: text, raw: raw, observed: now})
 	a.claimPaneLocked(thread, now)
 	if a.paneOwnsLocked(a.rootLocked(thread), now) {
 		a.wakePaneLocked()
@@ -187,8 +194,8 @@ func (a *subagentActivity) drain(root string, started time.Time, budget int) []m
 			kept = append(kept, event)
 			continue
 		}
-		if event.kind == "final" {
-			continue // Native Codex already delivers the completion to the parent.
+		if event.kind == "final" || event.kind == "exit" {
+			continue // Final is native; exit is pane-only decoration for a Run.
 		}
 		text := event.text
 		author := "[" + commentaryCode(a.threads[event.thread].name) + "] "

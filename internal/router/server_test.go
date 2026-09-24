@@ -264,9 +264,22 @@ func TestExecuteRequestForwardsCompactionWithoutRouterRewrite(t *testing.T) {
 	response.Header.Set("Content-Type", "text/event-stream")
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 	proxy := newManagedMekugiProxy(t)
+	proxy.activity.observe("root", "", "/root", false)
+	headers := serverCompactionMetadataHeaders(t)
+	var compactMetadata map[string]any
+	for name, values := range headers {
+		if err := json.Unmarshal([]byte(values[0]), &compactMetadata); err != nil {
+			t.Fatal(err)
+		}
+		delete(headers, name)
+	}
+	compactMetadata["thread_id"], compactMetadata["parent_thread_id"] = "agent-thread", "root"
+	compactMetadata["agent_name"], compactMetadata["subagent_kind"] = "/root/probe", "thread_spawn"
+	headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, compactMetadata)))
+	headers.Set(threadIDHeader, "agent-thread")
 
 	var output bytes.Buffer
-	err = executeRequest(t.Context(), t.Context(), parsed, serverCompactionMetadataHeaders(t), "session", provider, &output, nil, proxy, nil)
+	err = executeRequest(t.Context(), t.Context(), parsed, headers, "session", provider, &output, nil, proxy, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,6 +291,18 @@ func TestExecuteRequestForwardsCompactionWithoutRouterRewrite(t *testing.T) {
 	}
 	if output.String() != responseBody {
 		t.Fatalf("visible response = %s, want %s", output.String(), responseBody)
+	}
+	if len(proxy.activity.events) != 1 || proxy.activity.events[0].kind != "compaction" || proxy.activity.events[0].thread != "agent-thread" {
+		t.Fatalf("child compaction activity = %+v", proxy.activity.events)
+	}
+	provider = &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(responseBody)}}}
+	provider.results[0].response.Header.Set("Content-Type", "text/event-stream")
+	output.Reset()
+	if err := executeRequest(t.Context(), t.Context(), parsed, headers, "session", provider, &output, nil, proxy, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(proxy.activity.events) != 2 {
+		t.Fatalf("repeated successful compaction was lost: %+v", proxy.activity.events)
 	}
 }
 

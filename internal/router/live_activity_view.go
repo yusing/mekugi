@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -78,6 +79,20 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			continue
 		}
 		v.lastSeq = entry.Seq
+		if entry.Kind == "exit" {
+			for i, v0 := range slices.Backward(v.entries) {
+				if v0.Agent == entry.Agent && v0.CallID == entry.CallID && entry.CallID != "" {
+					for j := range v.blocks[i] {
+						if v.blocks[i][j].verb == "Run" {
+							v.blocks[i][j].exitCode, _ = strconv.Atoi(entry.Text)
+						}
+					}
+					v.runs = nil
+					break
+				}
+			}
+			continue
+		}
 		v.entries = append(v.entries, entry)
 		v.blocks = append(v.blocks, parseLiveActivity(entry))
 		if !v.following && v.visible(entry) {

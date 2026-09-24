@@ -57,6 +57,7 @@ type activityPaneEntry struct {
 	Agent    string
 	Kind     string
 	Text     string
+	CallID   string `json:",omitempty"`
 	Observed time.Time
 
 	event activityEvent // Original queue entry, requeued if the write fails.
@@ -213,6 +214,7 @@ func (a *subagentActivity) takePane(generation uint64) ([]activityPaneEntry, []a
 			Seq: pane.sequence, Agent: a.threads[event.thread].name, Kind: event.kind,
 			Text: event.raw, Observed: event.observed, event: event,
 		}
+		entry.CallID = event.callID
 		// Escaping can expand text up to sixfold, so budget the encoded form.
 		data, _ := json.Marshal(entry)
 		entry.size = len(data) + 1

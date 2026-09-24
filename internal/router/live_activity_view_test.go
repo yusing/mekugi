@@ -125,6 +125,56 @@ func TestLiveActivityPainterColors(t *testing.T) {
 	}
 }
 
+func TestLiveActivityLinksAndCommandExit(t *testing.T) {
+	painter := liveActivityPainter{theme: livediff.DarkTheme}
+	link := painter.inline("[report.go](</tmp/review folder/report.go:12>)")
+	if ansi.Strip(link) != "report.go" || !strings.Contains(link, "\x1b]8;;file:///tmp/review%20folder/report.go:12\x1b\\") ||
+		!strings.Contains(link, "\x1b]8;;\x1b\\") {
+		t.Fatalf("local link = %q", link)
+	}
+	if got := painter.inline("[remote](https://example.com)"); got != "[remote](https://example.com)" {
+		t.Fatalf("unhandled link changed: %q", got)
+	}
+	for _, tc := range []struct {
+		block liveActivityBlock
+		want  string
+	}{
+		{liveActivityBlock{kind: "op", verb: "Run", code: "false", exitCode: 1}, "Run    false (exit 1)"},
+		{liveActivityBlock{kind: "op", verb: "Run", code: "false\necho done", lang: "bash", fenced: true, exitCode: 2}, "       (exit 2)"},
+	} {
+		rows := painter.block(tc.block, 80)
+		if !strings.Contains(strings.Join(plainLines(rows), "\n"), tc.want) || !strings.Contains(strings.Join(rows, "\n"), liveActivityRed) {
+			t.Fatalf("run rows = %q", rows)
+		}
+	}
+}
+
+func TestLiveActivityViewAppliesExitToMatchingRun(t *testing.T) {
+	view := newLiveActivityView()
+	now := time.Now()
+	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/a"}}, Entries: []activityPaneEntry{
+		{Seq: 1, Agent: "/root/a", CallID: "call-1", Kind: "tool", Text: "Run `false`", Observed: now},
+		{Seq: 2, Agent: "/root/a", CallID: "other", Kind: "tool", Text: "Run `true`", Observed: now},
+	}})
+	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", CallID: "call-1", Kind: "exit", Text: "1", Observed: now}}})
+	got := strings.Join(plainLines(view.render(90, 15, now)), "\n")
+	if !strings.Contains(got, "false (exit 1)") || strings.Contains(got, "true (exit 1)") || strings.Count(got, "▎ Run") != 2 {
+		t.Fatalf("exit rendering = %s", got)
+	}
+}
+
+func TestLiveActivityCompactionAppearsInFeedAndRoster(t *testing.T) {
+	view := newLiveActivityView()
+	now := time.Now()
+	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/a"}}, Entries: []activityPaneEntry{
+		{Seq: 1, Agent: "/root/a", Kind: "compaction", Text: "Context compacted", Observed: now},
+	}})
+	got := strings.Join(plainLines(view.render(110, 15, now)), "\n")
+	if strings.Count(got, "Context compacted") != 2 {
+		t.Fatalf("compaction feed/roster = %s", got)
+	}
+}
+
 func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 	for _, tc := range []struct {
 		shell, first, second string
