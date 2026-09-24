@@ -40,6 +40,27 @@ func TestParseLiveActivityBlocks(t *testing.T) {
 	}
 }
 
+func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
+	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+		"model": "gpt-effective", "input": []any{journalTestAssignment("/root/explorer", "NEW_TASK", "Inspect parser.\n\n- Preserve behavior.")},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	view := newLiveActivityView()
+	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/explorer"}}, Entries: []activityPaneEntry{{
+		Seq: 1, Agent: "/root/explorer", Kind: "start", Text: subagentStartCommentary(&request, "/root/explorer"), Observed: now,
+	}}})
+	view.only, view.selected = true, "/root/explorer"
+	frame := strings.Join(plainLines(view.render(100, 20, now)), "\n")
+	for _, want := range []string{"Started", "gpt-effective", "Spawn assignment:", "Inspect parser.", "Preserve behavior."} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("pane does not render %q:\n%s", want, frame)
+		}
+	}
+}
+
 func TestLiveActivityViewCollapsesReadsAcrossRun(t *testing.T) {
 	view := newLiveActivityView()
 	now := time.Now()

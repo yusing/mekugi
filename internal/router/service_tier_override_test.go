@@ -170,7 +170,7 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 				wantModel = "gpt-6-astra"
 			}
 			start := subagentStartCommentary(&forwarded, "/root/child")
-			if strings.Contains(start, "\n") || !strings.Contains(start, "`"+wantModel+"`") || !strings.Contains(start, "tier `"+strings.ReplaceAll(want, "priority", "fast")+"`") {
+			if !strings.Contains(start, "`"+wantModel+"`") || !strings.Contains(start, "tier `"+strings.ReplaceAll(want, "priority", "fast")+"`") {
 				t.Fatalf("commentary=%s", start)
 			}
 		})
@@ -188,7 +188,7 @@ func TestSubagentStartServiceTier(t *testing.T) {
 			}
 		})
 		got := subagentStartCommentary(&request, "/root/child")
-		if strings.Contains(got, "\n") || !strings.Contains(got, "`gpt-6-astra`") || tc.want != "" && !strings.Contains(got, tc.want) || tc.want == "" && strings.Contains(got, "tier") {
+		if !strings.Contains(got, "`gpt-6-astra`") || tc.want != "" && !strings.Contains(got, tc.want) || tc.want == "" && strings.Contains(got, "tier") {
 			t.Fatalf("tier=%s commentary=%s", tc.tier, got)
 		}
 	}
@@ -274,7 +274,7 @@ func TestServiceTierJournalHandoffAndRootNotice(t *testing.T) {
 	notices := proxy.activity.drain("root", root.activityStarted, maxCommentaryPublicationBytes)
 	for _, notice := range notices {
 		text := commentaryText(t, notice)
-		if strings.Contains(text, "Started ·") && !strings.Contains(text, "\n") && strings.Contains(text, "tier `fast`") {
+		if strings.Contains(text, "Started ·") && strings.Contains(text, "tier `fast`") {
 			return
 		}
 	}

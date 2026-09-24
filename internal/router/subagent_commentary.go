@@ -21,8 +21,9 @@ func subagentCommentaryMessageID(seed string) string {
 	return fmt.Sprintf("%s%x", subagentCommentaryMessagePrefix, digest[:12])
 }
 
-// Start metadata comes from the child's actual request, not the parent's spawn
-// arguments: native roles can override the model and reasoning configuration.
+// Start metadata and any readable assignment come from the child's actual
+// request. Native roles can override the parent's model and reasoning settings,
+// while opaque native collaboration arguments must remain opaque.
 func subagentStartCommentary(request *parsedResponsesRequest, recipient string) string {
 	model := request.model()
 	var reasoning struct {
@@ -49,7 +50,37 @@ func subagentStartCommentary(request *parsedResponsesRequest, recipient string) 
 	if tier != "" {
 		text.WriteString(" · tier " + commentaryCode(tier))
 	}
+	assignment, found := subagentSpawnAssignment(request.fields["input"], recipient)
+	if !found || strings.TrimSpace(assignment) == "" {
+		text.WriteString("\nSpawn assignment unavailable.")
+	} else {
+		text.WriteString("\nSpawn assignment:\n")
+		const assignmentLimit = 8 << 10
+		if len(assignment) > assignmentLimit {
+			end := assignmentLimit
+			for !utf8.RuneStart(assignment[end]) {
+				end--
+			}
+			assignment = assignment[:end] + "\n… (assignment truncated)"
+		}
+		text.WriteString(assignment)
+	}
 	return text.String()
+}
+
+// The first native NEW_TASK for this child is its spawn assignment. Later
+// NEW_TASK envelopes may be follow-ups, and inherited user text is not a task.
+func subagentSpawnAssignment(raw json.RawMessage, recipient string) (string, bool) {
+	var items []map[string]json.RawMessage
+	if json.Unmarshal(raw, &items) != nil {
+		return "", false
+	}
+	for _, item := range items {
+		if assignment, ok := journalAssignmentText(item, recipient); ok {
+			return assignment, true
+		}
+	}
+	return "", false
 }
 
 // subagentInputEnvelopes pairs each projected message with its sender and keeps

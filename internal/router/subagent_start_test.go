@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
@@ -103,8 +104,8 @@ func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
 			}
 			for _, item := range commentaryItems {
 				text := commentaryText(t, item)
-				if strings.Contains(text, "\n") || strings.Contains(text, "Spawn prompt") || strings.Contains(text, "Inspect the parser") {
-					t.Fatalf("child start is not one line or contains task text: %q", text)
+				if !strings.Contains(text, "\nSpawn assignment:\nInspect the parser.\n\n- Preserve behavior.") {
+					t.Fatalf("child start omitted assignment: %q", text)
 				}
 			}
 			// SSE repeats the same item in the completed event and terminal snapshot.
@@ -151,16 +152,17 @@ func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
 	}
 }
 
-func TestSubagentStartOmitsSpawnPrompt(t *testing.T) {
+func TestSubagentStartShowsOnlyNativeSpawnAssignment(t *testing.T) {
 	for _, tc := range []struct {
-		name  string
-		input []any
+		name, want string
+		input      []any
 	}{
-		{"plaintext assignment", []any{journalTestAssignment("/root/child", "NEW_TASK", "Original\n\n- task")}},
-		{"wrong recipient", []any{journalTestAssignment("/root/other", "NEW_TASK", "Private task")}},
-		{"inherited user", []any{map[string]any{"role": "user", "content": "Inherited request"}}},
-		{"message", []any{journalTestAssignment("/root/child", "MESSAGE", "Not a task")}},
-		{"empty assignment", []any{journalTestAssignment("/root/child", "NEW_TASK", "")}},
+		{"plaintext assignment", "Spawn assignment:\nOriginal\n\n- task", []any{journalTestAssignment("/root/child", "NEW_TASK", "Original\n\n- task")}},
+		{"wrong recipient", "Spawn assignment unavailable.", []any{journalTestAssignment("/root/other", "NEW_TASK", "Private task")}},
+		{"inherited user", "Spawn assignment unavailable.", []any{map[string]any{"role": "user", "content": "Inherited request"}}},
+		{"message", "Spawn assignment unavailable.", []any{journalTestAssignment("/root/child", "MESSAGE", "Not a task")}},
+		{"empty assignment", "Spawn assignment unavailable.", []any{journalTestAssignment("/root/child", "NEW_TASK", "")}},
+		{"first assignment wins", "Spawn assignment:\nOriginal", []any{journalTestAssignment("/root/child", "NEW_TASK", "Original"), journalTestAssignment("/root/child", "NEW_TASK", "Follow-up")}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"model": "gpt-6-astra", "input": tc.input}))
@@ -168,13 +170,9 @@ func TestSubagentStartOmitsSpawnPrompt(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := subagentStartCommentary(&request, "/root/child")
-			for _, secret := range []string{"Spawn prompt", "Original", "Private task", "Inherited request", "Not a task"} {
-				if strings.Contains(got, secret) {
-					t.Fatalf("start includes task input %q: %s", secret, got)
-				}
-			}
-			if strings.Contains(got, "\n") {
-				t.Fatalf("start is not a single line: %s", got)
+			if !strings.Contains(got, "\n"+tc.want) || strings.Contains(got, "Private task") ||
+				strings.Contains(got, "Inherited request") || strings.Contains(got, "Not a task") || strings.Contains(got, "Follow-up") {
+				t.Fatalf("start assignment = %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -190,7 +188,20 @@ func TestSubagentStartOpaquePromptIsNotReplacedByFollowup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := subagentStartCommentary(&request, "/root/child"); strings.Contains(got, "\n") || strings.Contains(got, "Spawn prompt") || strings.Contains(got, "opaque") || strings.Contains(got, "Later task") {
+	if got := subagentStartCommentary(&request, "/root/child"); !strings.Contains(got, "\nSpawn assignment unavailable.") || strings.Contains(got, "opaque") || strings.Contains(got, "Later task") {
 		t.Fatalf("opaque spawn task leaked or was replaced: %s", got)
+	}
+}
+
+func TestSubagentStartBoundsAssignmentAtRuneBoundary(t *testing.T) {
+	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+		"model": "gpt-6-astra", "input": []any{journalTestAssignment("/root/child", "NEW_TASK", strings.Repeat("界", 4000))},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := subagentStartCommentary(&request, "/root/child")
+	if !strings.Contains(got, "… (assignment truncated)") || !utf8.ValidString(got) || len(got) > maxCommentaryPublicationBytes {
+		t.Fatalf("invalid bounded assignment: %q", got)
 	}
 }

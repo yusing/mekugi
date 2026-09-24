@@ -108,7 +108,14 @@ func drainText(messages []map[string]json.RawMessage) string {
 
 func TestActivityPaneOwnsChildActivityAndDeliversWithoutRootBoundary(t *testing.T) {
 	f := newActivityPaneFixture(t, true)
-	f.activity.collect("explorer", "start", "start", "Started `/root/explorer`")
+	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+		"model": "gpt-effective", "input": []any{journalTestAssignment("/root/explorer", "NEW_TASK", "Inspect parser.\n\n- Preserve behavior.")},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := subagentStartCommentary(&request, "/root/explorer")
+	f.activity.collect("explorer", "start", "start", start)
 	if f.launches != 1 {
 		t.Fatalf("launches = %d, want 1", f.launches)
 	}
@@ -123,7 +130,7 @@ func TestActivityPaneOwnsChildActivityAndDeliversWithoutRootBoundary(t *testing.
 		t.Fatalf("snapshot roster = %+v", snapshot.Agents)
 	}
 	first := client.next(t, "entries")
-	if len(first.Entries) != 1 || first.Entries[0].Agent != "/root/explorer" || first.Entries[0].Text != "Started `/root/explorer`" {
+	if len(first.Entries) != 1 || first.Entries[0].Agent != "/root/explorer" || first.Entries[0].Text != start {
 		t.Fatalf("first entries = %+v", first.Entries)
 	}
 
@@ -164,7 +171,7 @@ func TestActivityPaneOwnsChildActivityAndDeliversWithoutRootBoundary(t *testing.
 	}
 	reconnect := f.connect(t)
 	restored := reconnect.next(t, "snapshot")
-	if len(restored.Entries) != 2 {
+	if len(restored.Entries) != 2 || restored.Entries[0].Text != start {
 		t.Fatalf("reconnect history = %+v", restored.Entries)
 	}
 	pending := reconnect.next(t, "entries")
@@ -428,7 +435,13 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 		os.Exit(RunLiveActivity(ctx, []string{"--session-file", os.Getenv("MEKUGI_LIVE_ACTIVITY_SESSION")}, os.Stdin, os.Stdout, os.Stderr))
 	}
 	f := newActivityPaneFixture(t, true)
-	f.activity.collect("explorer", "start", "start", "Started `/root/explorer`")
+	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+		"model": "gpt-effective", "input": []any{journalTestAssignment("/root/explorer", "NEW_TASK", "Inspect parser.\n\n- Preserve behavior.")},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.activity.collect("explorer", "start", "start", subagentStartCommentary(&request, "/root/explorer"))
 	session := filepath.Join(t.TempDir(), "activity.json")
 	data, err := json.Marshal(f.activity.paneDescriptor())
 	if err != nil {
@@ -472,7 +485,11 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 		return strings.Join(rows, "\n")
 	}
 
-	h.frame(t, func(frame string) bool { return strings.Contains(text(frame), "▶ Started") })
+	h.frame(t, func(frame string) bool {
+		visible := text(frame)
+		return strings.Contains(visible, "▶ Started") && strings.Contains(visible, "Spawn assignment:") &&
+			strings.Contains(visible, "Inspect parser.") && strings.Contains(visible, "Preserve behavior.")
+	})
 	// The parent is in a native wait: no root response is open, yet the pane updates.
 	f.activity.collect("probe", "tool-1", "tool", "Read `live.go`")
 	frame := h.frame(t, func(frame string) bool { return strings.Contains(text(frame), "Read live.go") })

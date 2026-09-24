@@ -25,9 +25,14 @@ streamed call framing remain unchanged. The router never reads encrypted message
 
 The first accepted `thread_spawn` child request adds one start notice to the root activity
 collector. One line shows the child's canonical path, `Started`, observed model and supplied
-reasoning effort, plus the requested service tier when present. Metadata uses inline code;
-spawn prompts are not repeated. The whole notice remains subject to the auxiliary rendering
-budget. Omitted effort or tier is omitted, not inferred from the parent or role.
+reasoning effort, plus the requested service tier when present. Metadata uses inline code.
+The start notice also shows up to 8 KiB of the first native plaintext `NEW_TASK`
+assignment addressed to that child, preserving line breaks and ending a truncated excerpt
+at a Unicode code-point boundary with an explicit truncation marker. When the assignment is absent,
+empty, or opaque, it explicitly reports unavailability; it never decrypts an opaque part,
+borrows inherited user text, or substitutes a later follow-up. The whole notice remains
+subject to the auxiliary rendering budget. Omitted effort or tier is omitted, not inferred
+from the parent or role.
 Service tier reflects the configured per-model override;
 `fast` is forwarded as `priority`; both aliases display as `fast`, without claiming the provider served that tier.
 The notice describes the child request, not successful provider inference. Stable child-thread

@@ -416,7 +416,11 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 		bar := liveAgentGutter(block.from, p.theme) + "┃" + liveActivityReset + " "
 		return append(lines, liveActivityIndent(p.markdown(block.body, width-2), bar)...)
 	case "start":
-		return liveActivityHang(liveActivityGreen+"\x1b[1m▶ Started"+liveActivityReset+"  ", p.inline(block.label), width)
+		lines := liveActivityHang(liveActivityGreen+"\x1b[1m▶ Started"+liveActivityReset+"  ", p.inline(block.label), width)
+		if block.body != "" {
+			lines = append(lines, liveActivityIndent(p.markdown(block.body, width-2), "  ")...)
+		}
+		return lines
 	case "compaction":
 		return []string{liveActivityAmber + "◉ Context compacted" + liveActivityReset}
 	case "error":

@@ -122,8 +122,9 @@ func parseLiveActivityEnvelope(text string) (from, to, headline, body string, ok
 }
 
 func parseLiveActivityStart(text string) liveActivityBlock {
-	_, details, _ := strings.Cut(text, "Started · ")
-	return liveActivityBlock{kind: "start", label: details}
+	heading, body, _ := strings.Cut(text, "\n")
+	_, details, _ := strings.Cut(heading, "Started · ")
+	return liveActivityBlock{kind: "start", label: details, body: body}
 }
 
 // liveActivityParagraphs splits operations at blank lines outside fences.
