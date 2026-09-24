@@ -107,6 +107,7 @@ func reconcileNativePatchResult(t *testing.T, proxy *mekugiProxy, workspace, pat
 }
 
 func TestNativeApplyPatchStreamsBeforeCompletionAndPersistsMChangesEvidence(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	workspace := t.TempDir()

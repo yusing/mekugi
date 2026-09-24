@@ -47,6 +47,7 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := t.Context()
+	const pageBudget = 96
 	for _, selection := range []string{"", "stdout", "stderr"} {
 		t.Run(selection, func(t *testing.T) {
 			position := [2]int{}
@@ -66,7 +67,7 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 					t.Fatal(err)
 				}
 				formatted, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, filepath.Join(registry.SnapshotDir, manifest.RuntimeRoot),
-					[]string{"48", "read", string(data), ""})
+					[]string{strconv.Itoa(pageBudget), "read", string(data), ""})
 				if err != nil || formatted.ExitCode != 0 {
 					t.Fatalf("page selection: %#v, %v", formatted, err)
 				}
@@ -78,7 +79,7 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 				if err := json.Unmarshal([]byte(formatted.Stdout), &page); err != nil {
 					t.Fatal(err)
 				}
-				if count, err := codec.Count(page.Text); err != nil || count > 48 {
+				if count, err := codec.Count(page.Text); err != nil || count > pageBudget {
 					t.Fatalf("page budget = %d, %v", count, err)
 				}
 
@@ -108,7 +109,11 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 					} else if selection == "stderr" {
 						wantOut = ""
 					}
-					if pageIndex < 2 || gotOut.String() != wantOut || gotErr.String() != wantErr {
+					minimumPageIndex := 1
+					if selection == "" {
+						minimumPageIndex = 2
+					}
+					if pageIndex < minimumPageIndex || gotOut.String() != wantOut || gotErr.String() != wantErr {
 						t.Fatalf("incomplete or duplicated pages: %d, %q, %q", pageIndex, gotOut.String(), gotErr.String())
 					}
 					return
@@ -315,7 +320,7 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 			source := filepath.Join(directory, "sample.go")
 			var content strings.Builder
 			content.WriteString("package p\n")
-			for i := range 60 {
+			for i := range 24 {
 				fmt.Fprintf(&content, "func Item%d() {}\n", i)
 			}
 			if err := os.WriteFile(source, []byte(content.String()), 0o600); err != nil {
@@ -393,7 +398,7 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 				}
 				if status == 0 {
 					if pageIndex < 1 {
-						t.Fatal("fixture did not exercise continuation pagination")
+						t.Fatalf("fixture did not exercise continuation pagination: %d pages", pageIndex+1)
 					}
 					complete = true
 					break

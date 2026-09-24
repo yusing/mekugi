@@ -58,27 +58,21 @@ func TestPaneOperationRegressionMReadIsOmitted(t *testing.T) {
 			if got != tc.want {
 				t.Fatalf("display = %q, want %q", got, tc.want)
 			}
-			if strings.Contains(got, "mread") {
-				t.Fatalf("continuation command leaked into display: %q", got)
-			}
 		})
 	}
 
-	for _, source := range []string{
-		`text(await tools.exec_command({cmd:"mread amber"}));`,
-		`const r=await Promise.allSettled([tools.exec_command({cmd:"mread amber"}),tools.exec_command({cmd:"mcat source.go"})]);for(let i=0;i<r.length;i++)text(JSON.stringify({i,...r[i]}));`,
+	for _, test := range []struct{ source, want string }{
+		{`text(await tools.exec_command({cmd:"mread amber"}));`, ""},
+		{`const r=await Promise.allSettled([tools.exec_command({cmd:"mread amber"}),tools.exec_command({cmd:"mcat source.go"})]);for(let i=0;i<r.length;i++)text(JSON.stringify({i,...r[i]}));`, "Read `source.go`"},
 	} {
-		item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
+		item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(test.source)}
 		originalInput := bytes.Clone(item["input"])
 		got := subagentToolPreview(item, "functions.exec", nil)
 		if !bytes.Equal(item["input"], originalInput) {
 			t.Fatal("mread activity projection changed the original Code Mode input")
 		}
-		if strings.Contains(got, "mread") || strings.Contains(got, "Run") {
-			t.Fatalf("mread-only or mixed Code Mode display = %q", got)
-		}
-		if strings.Contains(source, `mcat source.go`) && got != "Read `source.go`" {
-			t.Fatalf("Code Mode display = %q, want read only", got)
+		if got != test.want {
+			t.Fatalf("Code Mode display = %q, want %q", got, test.want)
 		}
 	}
 }
@@ -145,6 +139,7 @@ func TestPaneOperationRegressionApplyPatchDisplay(t *testing.T) {
 }
 
 func TestPaneOperationRegressionNativePatchStreamsProvisionalDiff(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t)
 	workspace := t.TempDir()
 	transform := prepareNativeStockTransform(t, proxy, workspace, "native-progress")
@@ -186,6 +181,7 @@ func TestPaneOperationRegressionNativePatchStreamsProvisionalDiff(t *testing.T) 
 }
 
 func TestPaneOperationRegressionCodeModePatchStreamsThroughPTY(t *testing.T) {
+	t.Parallel()
 	for _, quote := range []string{"double", "template"} {
 		t.Run(quote, func(t *testing.T) {
 			workspace := t.TempDir()

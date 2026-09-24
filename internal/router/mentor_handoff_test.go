@@ -59,18 +59,17 @@ func mentorTestItems(t *testing.T, itemTypes ...string) []json.RawMessage {
 func TestMentorHandoffRecognizesMainAndCanonicalThreadSpawn(t *testing.T) {
 	mentor := newMentorHandoff(true, true)
 	tests := []struct {
-		name    string
-		model   string
-		headers http.Header
-		want    bool
-		wantErr string
+		name, model, wantModel string
+		headers                http.Header
+		want                   bool
+		wantErr                string
 	}{
-		{name: "thread spawn", model: "gpt-5.6-luna", headers: mentorTestHeaders(t, "child"), want: true},
-		{name: "second eligible model", model: "gpt-5.6-terra", headers: mentorTestHeaders(t, "child-terra"), want: true},
-		{name: "sol successor", model: "gpt-6-sol", headers: mentorTestHeaders(t, "child-sol"), want: true},
-		{name: "luna successor", model: "gpt-6-luna", headers: mentorTestHeaders(t, "child-luna"), want: true},
+		{name: "thread spawn", model: "gpt-5.6-luna", headers: mentorTestHeaders(t, "child"), want: true, wantModel: "gpt-6-sol high"},
+		{name: "second eligible model", model: "gpt-5.6-terra", headers: mentorTestHeaders(t, "child-terra"), want: true, wantModel: "gpt-6-sol high"},
+		{name: "sol successor", model: "gpt-6-sol", headers: mentorTestHeaders(t, "child-sol"), want: true, wantModel: "gpt-6-astra low"},
+		{name: "luna successor", model: "gpt-6-luna", headers: mentorTestHeaders(t, "child-luna"), want: true, wantModel: "gpt-6-sol high"},
 		{name: "ordinary session", model: "gpt-5.6-luna", headers: http.Header{}},
-		{name: "ordinary fork metadata", model: "gpt-5.6-luna", headers: serverMetadataHeaders(t, "turn", nil), want: true},
+		{name: "ordinary fork metadata", model: "gpt-5.6-luna", headers: serverMetadataHeaders(t, "turn", nil), want: true, wantModel: "gpt-6-astra medium"},
 		{name: "astra unchanged", model: "gpt-6-astra", headers: mentorTestHeaders(t, "leader")},
 		{name: "unknown lower model", model: "gpt-test", headers: mentorTestHeaders(t, "unknown")},
 		{name: "marker without metadata", model: "gpt-5.6-luna", headers: http.Header{openAISubagentHeader: []string{threadSpawnSubagent}}, wantErr: "canonical thread-spawn metadata"},
@@ -100,15 +99,8 @@ func TestMentorHandoffRecognizesMainAndCanonicalThreadSpawn(t *testing.T) {
 				}
 				return
 			}
-			wantModel := mentorLeaderModel + " " + mentorLeaderEffort
-			if !isThreadSpawnSubagent(test.headers) && (test.model == "gpt-5.6-luna" || test.model == "gpt-6-luna") {
-				wantModel = "gpt-6-astra medium"
-			}
-			if test.model == "gpt-6-sol" {
-				wantModel = "gpt-6-astra low"
-			}
-			if got := request.modelDescription(); got != wantModel {
-				t.Fatalf("leader request = %q", got)
+			if got := request.modelDescription(); got != test.wantModel {
+				t.Fatalf("leader request = %q, want %q", got, test.wantModel)
 			}
 			var reasoning map[string]json.RawMessage
 			if err := json.Unmarshal(request.fields["reasoning"], &reasoning); err != nil {
@@ -196,21 +188,21 @@ func TestMentorHandoffAstraMapping(t *testing.T) {
 
 func TestMentorHandoffMainBoundary(t *testing.T) {
 	for _, test := range []struct {
-		name, model, metadata, marker string
-		want                          bool
+		name, model, metadata, marker, wantModel string
+		want                                     bool
 	}{
-		{"main luna", "gpt-5.6-luna", `{"request_kind":"turn"}`, "", true},
-		{"main gpt-6 luna", "gpt-6-luna", `{"request_kind":"turn"}`, "", true},
-		{"main gpt-6 sol", "gpt-6-sol", `{"request_kind":"turn"}`, "", true},
-		{"main terra", "gpt-5.6-terra", `{"request_kind":"turn"}`, "", true},
-		{"main astra unchanged", "gpt-6-astra", `{"request_kind":"turn"}`, "", false},
-		{"main prewarm", "gpt-5.6-luna", `{"request_kind":"prewarm"}`, "", false},
-		{"main compaction", "gpt-5.6-luna", `{"request_kind":"compaction"}`, "", true},
-		{"missing request kind", "gpt-5.6-luna", `{}`, "", false},
-		{"missing metadata", "gpt-5.6-luna", "", "", false},
-		{"invalid metadata", "gpt-5.6-luna", "{", "", false},
-		{"unmarked child", "gpt-5.6-luna", `{"subagent_kind":"thread_spawn"}`, "", false},
-		{"other subagent", "gpt-5.6-luna", `{"request_kind":"turn"}`, "review", false},
+		{"main luna", "gpt-5.6-luna", `{"request_kind":"turn"}`, "", "gpt-6-astra medium", true},
+		{"main gpt-6 luna", "gpt-6-luna", `{"request_kind":"turn"}`, "", "gpt-6-astra medium", true},
+		{"main gpt-6 sol", "gpt-6-sol", `{"request_kind":"turn"}`, "", "gpt-6-astra low", true},
+		{"main terra", "gpt-5.6-terra", `{"request_kind":"turn"}`, "", "gpt-6-sol high", true},
+		{"main astra unchanged", "gpt-6-astra", `{"request_kind":"turn"}`, "", "gpt-6-astra medium", false},
+		{"main prewarm", "gpt-5.6-luna", `{"request_kind":"prewarm"}`, "", "gpt-5.6-luna medium", false},
+		{"main compaction", "gpt-5.6-luna", `{"request_kind":"compaction"}`, "", "gpt-5.6-luna medium", true},
+		{"missing request kind", "gpt-5.6-luna", `{}`, "", "gpt-5.6-luna medium", false},
+		{"missing metadata", "gpt-5.6-luna", "", "", "gpt-5.6-luna medium", false},
+		{"invalid metadata", "gpt-5.6-luna", "{", "", "gpt-5.6-luna medium", false},
+		{"unmarked child", "gpt-5.6-luna", `{"subagent_kind":"thread_spawn"}`, "", "gpt-5.6-luna medium", false},
+		{"other subagent", "gpt-5.6-luna", `{"request_kind":"turn"}`, "review", "gpt-5.6-luna medium", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			headers := http.Header{}
@@ -227,18 +219,8 @@ func TestMentorHandoffMainBoundary(t *testing.T) {
 			if err != nil || (handoff != nil) != test.want {
 				t.Fatalf("handoff=%v err=%v, want active=%t", handoff, err, test.want)
 			}
-			want := test.model + " medium"
-			if test.want && !handoff.reset {
-				want = mentorLeaderModel + " " + mentorLeaderEffort
-				if test.model == "gpt-5.6-luna" || test.model == "gpt-6-luna" {
-					want = "gpt-6-astra medium"
-				}
-				if test.model == "gpt-6-sol" {
-					want = "gpt-6-astra low"
-				}
-			}
-			if request.modelDescription() != want {
-				t.Fatalf("request=%q, want %q", request.modelDescription(), want)
+			if request.modelDescription() != test.wantModel {
+				t.Fatalf("request=%q, want %q", request.modelDescription(), test.wantModel)
 			}
 		})
 	}

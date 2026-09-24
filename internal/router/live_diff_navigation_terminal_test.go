@@ -13,6 +13,7 @@ import (
 )
 
 func TestLiveDiffTerminalFileNavigator(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {

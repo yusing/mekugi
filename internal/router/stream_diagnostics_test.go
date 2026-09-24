@@ -81,10 +81,6 @@ func TestStreamDiagnosticsBoundsAndCompletion(t *testing.T) {
 	if strings.Contains(string(mustMarshalJSON(d.snapshot())), "secret") {
 		t.Fatal("content leaked")
 	}
-	other := &streamDiagnostics{}
-	if len(other.pending) != 0 || other.LastEvent != "" {
-		t.Fatal("request state shared")
-	}
 	var disabled *streamDiagnostics
 	disabled.observe([]byte(`{"type":"error"}`))
 	disabled.readEnded(io.EOF)

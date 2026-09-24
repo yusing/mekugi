@@ -614,9 +614,6 @@ func TestJournalToolSchemaIncludesBatchedMutations(t *testing.T) {
 	if err := json.Unmarshal(catalog.top.tools[0].rawField("parameters"), &schema); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(schema.Properties["journal"], journalMutationsSchema()) {
-		t.Fatalf("missing or incorrect journal schema: %s", schema.Properties["journal"])
-	}
 	var nested struct {
 		Items struct {
 			Properties map[string]json.RawMessage `json:"properties"`

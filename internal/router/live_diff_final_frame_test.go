@@ -42,6 +42,7 @@ func requireLiveDiffSSEUnchanged(t *testing.T, transform *mekugiResponseTransfor
 }
 
 func TestLiveDiffFinalFrameCustomInputDoneFlushesAuthoritativeJavaScript(t *testing.T) {
+	t.Parallel()
 	transform, broker, sub := newLiveDiffFinalFrameTransform(t, false)
 	workerCtx, cancel := context.WithCancel(transform.ctx)
 	transform.ctx = workerCtx
@@ -112,6 +113,7 @@ func TestLiveDiffFinalFrameCustomInputDoneFlushesAuthoritativeJavaScript(t *test
 }
 
 func TestLiveDiffFinalFrameOutputItemDoneFallback(t *testing.T) {
+	t.Parallel()
 	transform, broker, sub := newLiveDiffFinalFrameTransform(t, false)
 	delta := `const result = await tools.write_stdin({session_id:48,chars:"",yield_time_ms:1000,`
 	fullInput := delta + `max_output_tokens:100}); text(JSON.stringify(result));`
@@ -137,6 +139,7 @@ func TestLiveDiffFinalFrameOutputItemDoneFallback(t *testing.T) {
 }
 
 func TestLiveDiffFinalFrameNativeExecArgumentsDoneUsesFullCommand(t *testing.T) {
+	t.Parallel()
 	transform, broker, sub := newLiveDiffFinalFrameTransform(t, true)
 	delta := `{"cmd":"printf 'first `
 	arguments := `{"cmd":"printf 'first FINAL_NATIVE'"}`
@@ -158,6 +161,7 @@ func TestLiveDiffFinalFrameNativeExecArgumentsDoneUsesFullCommand(t *testing.T) 
 }
 
 func TestLiveDiffCancellationBeforeDoneDiscardsActivePreview(t *testing.T) {
+	t.Parallel()
 	transform, broker, sub := newLiveDiffFinalFrameTransform(t, false)
 	requestCtx, cancel := context.WithCancel(transform.ctx)
 	transform.ctx = requestCtx
@@ -191,6 +195,7 @@ func TestLiveDiffCancellationBeforeDoneDiscardsActivePreview(t *testing.T) {
 }
 
 func TestLiveDiffInputOverflowAfterPartialPreviewDiscardsActiveState(t *testing.T) {
+	t.Parallel()
 	transform, broker, sub := newLiveDiffFinalFrameTransform(t, false)
 	delta := `const activeStream = true;`
 	for _, event := range [][]byte{
@@ -364,6 +369,7 @@ func TestLiveDiffFinalFramePTYShowsCompleteJavaScriptAfterTruncatedPreview(t *te
 }
 
 func TestLiveDiffFinalFrameTransformCloseDoesNotDiscardFinalUpdate(t *testing.T) {
+	t.Parallel()
 	transform, broker, sub := newLiveDiffFinalFrameTransform(t, false)
 	delta := `text(await tools.write_stdin({session_id:48,chars:""`
 	fullInput := delta + `,yield_time_ms:1000,max_output_tokens:100}));`

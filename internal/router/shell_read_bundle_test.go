@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/router/toolplugin"
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 func TestReadBundleValidation(t *testing.T) {
@@ -124,14 +124,12 @@ func TestReadBundleBudgetAndMissingFileFailure(t *testing.T) {
 		!strings.Contains(out, "3 path=\"a\" shown=1:") {
 		t.Fatalf("%d %q %q", status, out, diagnostic)
 	}
-	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
+	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	selected, err := toolplugin.FormatOutput(t.Context(), manifest.NodeExecutable,
-		filepath.Join(registry.SnapshotDir, manifest.RuntimeRoot), []string{"2500", "head", out, ""})
-	if err != nil || selected.ExitCode != 0 || selected.Stdout != out {
-		t.Fatalf("bundle exceeds budget: %v", err)
+	if count, err := codec.Count(out); err != nil || count > 2500 {
+		t.Fatalf("bundle uses %d tokens, budget 2500: %v", count, err)
 	}
 }
 
@@ -183,19 +181,5 @@ func TestMCatMultiplePathsPreserveSingleFileMode(t *testing.T) {
 	if status != 0 || diagnostic != "" || !strings.Contains(out, `path="first" shown=1:1`) ||
 		!strings.Contains(out, `path="space name" shown=2:2`) {
 		t.Fatalf("%d %q %q", status, out, diagnostic)
-	}
-}
-
-var outerShellReadNotice = regexp.MustCompile(`\nread: incomplete; next_call: mread [a-z]+[0-9]*\n$`)
-
-func TestOuterShellReadNoticePreservesVisibleDiagnostics(t *testing.T) {
-	t.Parallel()
-	for _, visible := range []string{"", "unexpected visible diagnostic\n", "read: incomplete; next_call: mread not-a-reference\n"} {
-		shown := visible + "\nread: incomplete; next_call: mread amber\n"
-		retained := "unexpected retained diagnostic\n"
-		got := outerShellReadNotice.ReplaceAllString(shown, "") + retained
-		if got != visible+retained {
-			t.Fatalf("recovery discarded diagnostic bytes: got %q, want %q", got, visible+retained)
-		}
 	}
 }

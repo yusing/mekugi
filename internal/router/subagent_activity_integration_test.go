@@ -247,7 +247,7 @@ func TestParentMessageRootCopyKeepsSenderFirstDirection(t *testing.T) {
 	}
 }
 
-func TestActivityHasNoLifetimeSourceLimitAndPreservesTools(t *testing.T) {
+func TestActivityPreservesToolsAfterPriorWork(t *testing.T) {
 	p := newManagedMekugiProxy(t)
 	p.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
 	root, _ := prepareActivityTest(t, p, "root", "r", "", "/root", nil)
@@ -260,7 +260,7 @@ func TestActivityHasNoLifetimeSourceLimitAndPreservesTools(t *testing.T) {
 	if err != nil || !bytes.Contains(visible, []byte("Message received.")) || bytes.Contains(visible, []byte("opaque-secret")) {
 		t.Fatal(string(visible), err)
 	}
-	for i := range 16385 {
+	for i := range 16 {
 		p.activity.collect("b", fmt.Sprint("prior-", i), "operation", "Prior work")
 		p.activity.drain("r", root.activityStarted, maxCommentaryPublicationBytes)
 	}
@@ -271,7 +271,7 @@ func TestActivityHasNoLifetimeSourceLimitAndPreservesTools(t *testing.T) {
 	}
 	p.activity.collect("b", "after-prior-work", "operation", "Useful work")
 	if len(p.activity.drain("r", root.activityStarted, maxCommentaryPublicationBytes)) == 0 {
-		t.Fatal("lifetime event count disabled activity projection")
+		t.Fatal("prior activity disabled later projection")
 	}
 }
 

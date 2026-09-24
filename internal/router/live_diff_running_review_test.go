@@ -9,6 +9,7 @@ import (
 )
 
 func TestExecRunningPreviewReportsOversizedFile(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	path := filepath.Join(root, "large")
 	writeTestFile(t, path, strings.Repeat("old\n", 400000))
@@ -28,6 +29,7 @@ func TestExecRunningPreviewReportsOversizedFile(t *testing.T) {
 }
 
 func TestExecRunningPreviewRetriesBudgetedFiles(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	const rows = 56_000 // Each snapshot is over 600 KiB; two exceed the 1 MiB poll budget.
 	baseline := strings.Repeat("stable row\n", rows) + "old ending\n"

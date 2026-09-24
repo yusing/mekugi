@@ -85,14 +85,6 @@ func TestGitRestoreAndCheckoutPathQueriesFromSubdirectory(t *testing.T) {
 			}
 			writeTestFile(t, filepath.Join(repo, "tracked.txt"), "worktree bytes\n")
 
-			queryPath := strings.TrimSpace(string(runExecVCSTestGitAt(
-				t, repo, subdirectory, "diff", "--name-only", "--", "../tracked.txt",
-			)))
-			if queryPath != "tracked.txt" && queryPath != "../tracked.txt" {
-				t.Fatalf("git diff --name-only from subdirectory returned unexpected path %q", queryPath)
-			}
-			t.Logf("git diff --name-only from subdirectory emitted %q", queryPath)
-
 			observation := captureExecVCSTestCommandAt(t, repo, subdirectory, test.command)
 			assertCapturedExecVCSTestFile(t, observation, filepath.Join(repo, "tracked.txt"), "worktree bytes\n")
 			assertExecVCSTestFileContent(t, filepath.Join(repo, "tracked.txt"), "worktree bytes\n")
@@ -137,20 +129,12 @@ func TestGitApplyRenameProviderCapturesSourcePath(t *testing.T) {
 	if !strings.Contains(string(patch), "rename from old-name.txt") || !strings.Contains(string(patch), "rename to new-name.txt") {
 		t.Fatalf("fixture patch is not a rename: %q", patch)
 	}
-	t.Logf("rename patch is %q", patch)
 	patchPath := filepath.Join(t.TempDir(), "rename.patch")
 	if err := os.WriteFile(patchPath, patch, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	runExecVCSTestGit(t, repo, "reset", "--hard", "HEAD")
 
-	subdirectory := filepath.Join(repo, "subdir")
-	if err := os.Mkdir(subdirectory, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	rootQueryOutput := runExecVCSTestGit(t, repo, "apply", "--numstat", "--summary", "-z", patchPath)
-	subdirectoryQueryOutput := runExecVCSTestGitAt(t, repo, subdirectory, "apply", "--numstat", "--summary", "-z", patchPath)
-	t.Logf("git apply --numstat --summary -z from root emitted %q and from subdirectory emitted %q", rootQueryOutput, subdirectoryQueryOutput)
 	command := "git apply " + shellQuoteArgument(patchPath)
 	observation := captureExecVCSTestCommand(t, repo, command)
 	assertCapturedExecVCSTestFile(t, observation, filepath.Join(repo, "old-name.txt"), original)

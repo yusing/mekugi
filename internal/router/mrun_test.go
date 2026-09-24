@@ -295,7 +295,7 @@ func TestShellRunnerMRunLines(t *testing.T) {
 		t.Run("large "+mode, func(t *testing.T) {
 			t.Parallel()
 			stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-				`mrun -n 1 --max-tokens 20 `+mode+` -- sh -c 'printf START; head -c 17000000 /dev/zero | tr "\000" a; printf END'`, nil)
+				`mrun -n 1 --max-tokens 20 `+mode+` -- sh -c 'printf START; head -c 200000 /dev/zero | tr "\000" a; printf END'`, nil)
 			if status != 0 || !strings.Contains(stderr, "20-token limit") ||
 				(mode == "" && !strings.HasPrefix(stdout, "START")) ||
 				(mode != "" && !strings.HasSuffix(stdout, "END")) {

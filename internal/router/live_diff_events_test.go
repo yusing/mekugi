@@ -199,6 +199,7 @@ func TestLiveDiffScopeReconciliationUsesCachedAttempts(t *testing.T) {
 }
 
 func TestLiveDiffStreamReconnectSnapshotBarrier(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	requests := 0

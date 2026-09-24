@@ -125,21 +125,19 @@ func TestCodeModeJournalPinsQuestionAtLowering(t *testing.T) {
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	proxy.commentaryEndpoint = "http://localhost/internal/commentary"
 	transform.journalQuestion = "Original question?"
-	carrier, lowered, err := transform.lowerCodeModeCommentary("call", `await journal({op: "add", text: "Milestone"})`)
+	_, lowered, err := transform.lowerCodeModeCommentary("call", `await journal({op: "add", text: "Milestone", answer: true})`)
 	if err != nil || !lowered {
 		t.Fatalf("lower: %v %v", lowered, err)
 	}
-	if !strings.Contains(carrier, "mjournal --journal-once") {
-		t.Fatalf("Code Mode journal used the wrong frontend: %s", carrier)
-	}
 	transform.journalQuestion = "Later question?"
 	proxy.commentary.journalPublisher = func(_ context.Context, _, _, _ string, mutations []journalMutation) ([]string, error) {
-		if len(mutations) != 1 || mutations[0].Text == nil || *mutations[0].Text != "Milestone" || mutations[0].Answer != nil {
+		if len(mutations) != 1 || mutations[0].Text == nil || *mutations[0].Text != "Milestone" ||
+			mutations[0].Answer == nil || !*mutations[0].Answer || mutations[0].inferredQuestion != "Original question?" {
 			t.Fatalf("publication source: %+v", mutations)
 		}
 		return []string{"amber"}, nil
 	}
-	request := httptest.NewRequest(http.MethodPost, commentaryPublisherPath, strings.NewReader(`{"journal":{"op":"add","text":"Milestone"},"id":"publication"}`))
+	request := httptest.NewRequest(http.MethodPost, commentaryPublisherPath, strings.NewReader(`{"journal":{"op":"add","text":"Milestone","answer":true},"id":"publication"}`))
 	request.Header.Set("Authorization", "Bearer "+transform.commentarySubscriptions[0].token)
 	writer := httptest.NewRecorder()
 	proxy.commentary.serveHTTP(writer, request)

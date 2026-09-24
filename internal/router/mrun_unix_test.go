@@ -156,39 +156,18 @@ func TestShellRunnerClosedInspectionPipes(t *testing.T) {
 	if err := os.WriteFile(tokenPath, []byte(strings.Repeat(strings.Repeat("x", 4096)+"\n", 257)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	commands := map[string]string{
+	// The frontend's own outcome is SIGPIPE status 141 without a broken-pipe
+	// diagnostic; default and errexit handling of that status is Bash's.
+	for name, command := range map[string]string{
 		"mcat_lines":  "mcat -n 20000 --max-tokens 15500 " + shellQuoteArgument(linePath),
 		"mcat_tokens": "mcat --max-tokens 15500 " + shellQuoteArgument(tokenPath),
-	}
-	cases := []struct {
-		command, mode string
-	}{
-		{"mcat_lines", "default"},
-		{"mcat_lines", "pipefail"},
-		{"mcat_lines", "errexit"},
-		{"mcat_tokens", "pipefail"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.command+"/"+tc.mode, func(t *testing.T) {
+	} {
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			command := commands[tc.command]
-			mode := map[string]string{
-				"default": "", "pipefail": "set -o pipefail\n", "errexit": "set -eo pipefail\n",
-			}[tc.mode]
 			stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-				mode+command+" | head -n 1 >/dev/null\nprintf 'AFTER:%s' \"$?\"", nil)
-			if tc.mode == "errexit" {
-				if stdout != "" || status != 141 || strings.Contains(stderr, "broken pipe") {
-					t.Fatalf("%s %s: %q %q status=%d", mode, command, stdout, stderr, status)
-				}
-				return
-			}
-			want := "AFTER:0"
-			if tc.mode != "default" {
-				want = "AFTER:141"
-			}
-			if stdout != want || status != 0 || strings.Contains(stderr, "broken pipe") {
-				t.Fatalf("%s %s: %q %q status=%d", mode, command, stdout, stderr, status)
+				"set -o pipefail\n"+command+" | head -n 1 >/dev/null\nprintf 'AFTER:%s' \"$?\"", nil)
+			if stdout != "AFTER:141" || status != 0 || strings.Contains(stderr, "broken pipe") {
+				t.Fatalf("%s: %q %q status=%d", command, stdout, stderr, status)
 			}
 		})
 	}

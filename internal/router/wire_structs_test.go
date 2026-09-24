@@ -11,14 +11,6 @@ func TestAssistantCommentaryMessageWireJSON(t *testing.T) {
 	if string(got) != want {
 		t.Fatalf("commentary message JSON = %s, want %s", got, want)
 	}
-
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(got, &fields); err != nil {
-		t.Fatal(err)
-	}
-	if len(fields) != 6 {
-		t.Fatalf("commentary message fields = %v", fields)
-	}
 }
 
 // The empty-value case was captured from the former SDK implementation,

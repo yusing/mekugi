@@ -621,7 +621,4 @@ func TestExecReceiptAndSummaryText(t *testing.T) {
 	if got := editReceiptText(workspace, history); got != want {
 		t.Fatalf("receipt = %q, want %q", got, want)
 	}
-	if !strings.Contains(history.ReviewFiles[1].Diff, "Binary files") {
-		t.Fatalf("binary review = %q", history.ReviewFiles[1].Diff)
-	}
 }

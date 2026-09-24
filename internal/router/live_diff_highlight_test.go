@@ -286,7 +286,7 @@ func TestLiveDiffHeaders(t *testing.T) {
 
 func TestLiveDiffHeaderWidthAndControls(t *testing.T) {
 	for _, width := range []int{0, 1, 2, 10, 36, 90} {
-		header := livediff.Header("1/2  界 é.go\x1b]52;c;clipboard\a", width, livediff.Counts{12, 4}, livediff.TerminalTheme)
+		header := livediff.Header("1/2  界 é.go\x1b]52;c;clipboard\a", width, livediff.Counts{Added: 12, Removed: 4}, livediff.TerminalTheme)
 		if !utf8.ValidString(header) || ansi.StringWidth(header) > width || strings.Contains(header, "clipboard") {
 			t.Fatalf("width %d: unsafe or overflowing header: %q", width, header)
 		}
@@ -304,7 +304,7 @@ func TestLiveDiffHeaderCountsUseVisibleComposition(t *testing.T) {
 	snapshot[0].Chunks = append(snapshot[0].Chunks, second)
 	v.Merge(snapshot)
 	v.RefreshVisible()
-	for _, want := range []livediff.Counts{{2, 1}, {0, 0}} {
+	for _, want := range []livediff.Counts{{Added: 2, Removed: 1}, {Added: 0, Removed: 0}} {
 		file := v.Visible[v.Files[0].Key()]
 		render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{file}, workspace, 90, 0, second)
 		if err != nil {
@@ -401,7 +401,7 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 			t.Fatalf("file label is missing from its header or repeats between hunks: %q\n%s", label, text)
 		}
 	}
-	if len(render.Lines) != len(rows)+1 || render.Counts[0] != (livediff.Counts{340, 0}) {
+	if len(render.Lines) != len(rows)+1 || render.Counts[0] != (livediff.Counts{Added: 340, Removed: 0}) {
 		t.Fatalf("extra heading rows or lost blank source rows: rows=%d counts=%v\n%s",
 			len(render.Lines), render.Counts, text)
 	}
@@ -444,7 +444,7 @@ func TestLiveDiffFollowLatestCombinedResult(t *testing.T) {
 		t.Fatalf("follow selected an older capture or hunk: %q", focused)
 	}
 	text = ansi.Strip(strings.Join(render.Lines, "\n"))
-	if strings.Contains(text, "LATEST UPDATE") || render.Counts[0] != (livediff.Counts{2, 2}) {
+	if strings.Contains(text, "LATEST UPDATE") || render.Counts[0] != (livediff.Counts{Added: 2, Removed: 2}) {
 		t.Fatalf("unexpected update label or incorrect counts: counts=%v\n%s", render.Counts, text)
 	}
 	for _, line := range render.Lines {
@@ -513,7 +513,7 @@ func TestLiveDiffBlankSourceRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantRows := 7
-	if len(render.Lines) != wantRows || render.Counts[0] != (livediff.Counts{2, 2}) {
+	if len(render.Lines) != wantRows || render.Counts[0] != (livediff.Counts{Added: 2, Removed: 2}) {
 		t.Fatalf("blank context/added/removed rows changed: rows=%d counts=%v\n%s",
 			len(render.Lines), render.Counts, strings.Join(render.Lines, "\n"))
 	}

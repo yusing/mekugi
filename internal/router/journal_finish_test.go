@@ -10,8 +10,6 @@ import (
 	"testing"
 )
 
-const journalFinishHostCallError = "journal finish cannot complete with host-dispatched calls; inspect their results, then retry finish in a response without host calls"
-
 func assertJournalFinishRejected(t *testing.T, stream bool, wire []byte, callID, hostCallID string, wantIDs []string) {
 	t.Helper()
 	var resultCount int
@@ -28,7 +26,7 @@ func assertJournalFinishRejected(t *testing.T, stream bool, wire []byte, callID,
 		if err := json.Unmarshal([]byte(jsonString(item, "output")), &outcome); err != nil {
 			t.Fatalf("decode rejected finish result %s: %v", mustMarshalJSON(item), err)
 		}
-		if outcome.OK || outcome.Error != journalFinishHostCallError || !slices.Equal(outcome.JournalIDs, wantIDs) {
+		if outcome.OK || outcome.Error != journalFinishHostCallsError || !slices.Equal(outcome.JournalIDs, wantIDs) {
 			t.Fatalf("finish result = %+v, want ok=false, retry guidance and IDs %v", outcome, wantIDs)
 		}
 	}
@@ -56,7 +54,7 @@ func assertJournalFinishRejected(t *testing.T, stream bool, wire []byte, callID,
 					OK    bool   `json:"ok"`
 					Error string `json:"error"`
 				}
-				if err := json.Unmarshal([]byte(jsonString(event.Item, "output")), &outcome); err != nil || outcome.OK || outcome.Error != journalFinishHostCallError {
+				if err := json.Unmarshal([]byte(jsonString(event.Item, "output")), &outcome); err != nil || outcome.OK || outcome.Error != journalFinishHostCallsError {
 					t.Fatalf("SSE finish event result = %+v, err=%v", outcome, err)
 				}
 			}
@@ -402,12 +400,12 @@ func TestJournalFinishHostRetrySucceedsOnNextTurn(t *testing.T) {
 	if len(secondProvider.forwarded) != 1 {
 		t.Fatalf("finish retry issued %d provider requests, want one", len(secondProvider.forwarded))
 	}
-	for _, inspected := range []string{journalFinishHostCallError, "Host lookup result inspected: README.md contains the expected guidance."} {
+	for _, inspected := range []string{journalFinishHostCallsError, "Host lookup result inspected: README.md contains the expected guidance."} {
 		if !bytes.Contains(secondProvider.forwarded[0], []byte(inspected)) {
 			t.Fatalf("retry omitted inspected result %q from provider input: %s", inspected, secondProvider.forwarded[0])
 		}
 	}
-	if !strings.Contains(secondOutput.String(), "Journal flush") || strings.Contains(secondOutput.String(), journalFinishHostCallError) {
+	if !strings.Contains(secondOutput.String(), "Journal flush") || strings.Contains(secondOutput.String(), journalFinishHostCallsError) {
 		t.Fatalf("host-free retry did not finish the retained milestone: %s", secondOutput.Bytes())
 	}
 	foundRetryResult := false

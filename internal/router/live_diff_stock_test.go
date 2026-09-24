@@ -212,6 +212,7 @@ func waitLiveDiffWorkerPreview(t *testing.T, broker *liveDiffBroker, sub *liveDi
 }
 
 func TestLiveDiffCodeModeConstPatchDoesNotLeakScript(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	broker := newLiveDiffBroker(t.Context())
 	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
@@ -249,6 +250,7 @@ func TestLiveDiffCodeModeConstPatchDoesNotLeakScript(t *testing.T) {
 }
 
 func TestLiveDiffCodeModeEscapedPatchMarkerDoesNotLeakScript(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	broker := newLiveDiffBroker(t.Context())
 	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})

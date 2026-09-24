@@ -94,6 +94,7 @@ func TestReadBundleColonPathDisambiguation(t *testing.T) {
 }
 
 func TestMCatDashFilenameAndEOFRangeMessages(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	if err := os.WriteFile(filepath.Join(directory, "100-150"), []byte("literal range-like filename\n"), 0o600); err != nil {
 		t.Fatal(err)

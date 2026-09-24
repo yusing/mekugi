@@ -3,8 +3,10 @@ package tokenizer
 import (
 	"bytes"
 	"encoding/json/v2"
+	"math/rand/v2"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -96,5 +98,39 @@ func TestVocabularyAndConcurrentCodecs(t *testing.T) {
 		if _, err := shared.Decode([]uint{id}); err == nil {
 			t.Fatalf("accepted invalid token %d", id)
 		}
+	}
+}
+
+// Long pieces take the heap merge; it must select exactly the verbatim merges.
+func TestLongPieceMergeMatchesVerbatimMerge(t *testing.T) {
+	c, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	random := rand.New(rand.NewPCG(1, 2))
+	letters := make([]byte, longPieceBytes+1)
+	for i := range letters {
+		letters[i] = "abcdefghijklmnopqrstuvwxyz"[random.IntN(26)]
+	}
+	for name, piece := range map[string]string{
+		"repeated":   strings.Repeat("a", longPieceBytes+1),
+		"whitespace": strings.Repeat(" \t", longPieceBytes),
+		"letters":    string(letters),
+		"multibyte":  strings.Repeat("世界🙂", longPieceBytes/10),
+	} {
+		codec := c.(*codec)
+		got, want := codec.mergeLongPiece(piece), codec.mergePairs(piece)
+		if len(got) != len(want) {
+			t.Fatalf("%s: %d parts, want %d", name, len(got), len(want))
+		}
+		for i := range want {
+			if got[i].offset != want[i].offset {
+				t.Fatalf("%s: part %d offset = %d, want %d", name, i, got[i].offset, want[i].offset)
+			}
+		}
+	}
+	count, err := c.Count(strings.Repeat("a", 120000))
+	if err != nil || count != 15000 {
+		t.Fatalf("long repeated piece count = %d, want 15000: %v", count, err)
 	}
 }

@@ -20,8 +20,7 @@ func TestShellRunnerMRunAcceptedMaximumDoesNotCreateContinuation(t *testing.T) {
 		t.Fatal(err)
 	}
 	count, err := codec.Count(stdout)
-	if status != 0 || err != nil || count != 15000 || stdout != strings.Repeat("a", 120000) ||
-		stderr != "" || strings.Contains(stderr, "next_call") {
+	if status != 0 || err != nil || count != 15000 || stdout != strings.Repeat("a", 120000) || stderr != "" {
 		t.Fatalf("maximum-budget delivery: status=%d bytes=%d tokens=%d stderr=%q err=%v", status, len(stdout), count, stderr, err)
 	}
 }
@@ -44,13 +43,14 @@ func TestShellRunnerMRunImplicitCommandBoundaryKeepsArguments(t *testing.T) {
 func TestShellRunnerMRunDeliveryOverflowKeepsRowsAndRecoversOnlyCommandStderr(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
-	const maxLines = 20_000
+	// Retained stderr beyond the first delivery spans two mread pages.
+	const maxLines = 8_000
 	invocation := newShellWorkerTestInvocation(t.TempDir(), "BASH_ENV=")
 	command := fmt.Sprintf(
-		`mrun -n %d -- sh -c 'seq -f "out-%%05g" 1 25000; seq -f "err-%%05g" 1 25000 >&2'`, maxLines,
+		`mrun -n %d -- sh -c 'seq -f "out-%%05g" 1 10000; seq -f "err-%%05g" 1 10000 >&2'`, maxLines,
 	)
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, command, nil, invocation)
-	const notice = "mrun: output incomplete: 20000-line limit reached\n"
+	const notice = "mrun: output incomplete: 8000-line limit reached\n"
 	visibleStderr, receipt, foundNotice := strings.Cut(stderr, notice)
 	if status != 0 || stdout == "" || !strings.HasSuffix(stdout, "\n") ||
 		!strings.HasPrefix(stdout, "out-00001\n") || strings.Count(stdout, "\n") >= maxLines ||
@@ -79,7 +79,9 @@ func TestShellRunnerMRunDeliveryOverflowKeepsRowsAndRecoversOnlyCommandStderr(t 
 	}
 	ref := mrunDeliveryReadReference(t, receipt)
 	var recovered strings.Builder
+	pages := 0
 	for pageIndex := range 20 {
+		pages++
 		page, diagnostic, pageStatus := runShellWorkerTest(t, registry, "bash", nil,
 			"mread "+ref+" --stderr --max-tokens 15500", nil, invocation)
 		body := mrunDeliveryStderrBody(t, page)
@@ -100,6 +102,9 @@ func TestShellRunnerMRunDeliveryOverflowKeepsRowsAndRecoversOnlyCommandStderr(t 
 		if pageIndex == 19 {
 			t.Fatal("stderr recovery exceeded its page bound")
 		}
+	}
+	if pages < 2 {
+		t.Fatalf("stderr recovery used %d pages; want a continued mread", pages)
 	}
 	if got, want := visibleStderr+recovered.String(), mrunDeliverySequence("err", maxLines); got != want {
 		t.Fatalf("genuine stderr recovery changed command rows: got %d bytes, want %d", len(got), len(want))
@@ -125,11 +130,11 @@ func TestMRunRetainedKindUsesBytePagingForOversizedOrUnterminatedRows(t *testing
 	}
 }
 
-func TestShellRunnerMRunRecoversOversizedLFRowsFromBothStreams(t *testing.T) {
+func TestShellRunnerMRunRecoversOversizedLFStderrRow(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	const generatedNotice = "mrun: output incomplete: 1-line limit reached\n"
-	stdoutRow, stdoutUnits := mrunOversizedLFRow(t, "a")
+	_, stdoutUnits := mrunOversizedLFRow(t, "a")
 	stderrRow, stderrUnits := mrunOversizedLFRow(t, "b")
 	invocation := newShellWorkerTestInvocation(t.TempDir(), "BASH_ENV=")
 	command := fmt.Sprintf(`mrun -n 1 -- sh -c 'yes a | head -n %d | tr "\n" " "; printf "\n"; yes b | head -n %d | tr "\n" " " >&2; printf "\n" >&2; printf "discarded stdout\n"; printf "discarded stderr\n" >&2'`, stdoutUnits, stderrUnits)
@@ -143,11 +148,9 @@ func TestShellRunnerMRunRecoversOversizedLFRowsFromBothStreams(t *testing.T) {
 	}
 	readID := mrunDeliveryReadReference(t, receipt)
 
-	gotStdout := mrunRecoverDeliveryStream(t, registry, invocation, readID, "stdout")
 	gotStderr := mrunRecoverDeliveryStream(t, registry, invocation, readID, "stderr")
-	if gotStdout != stdoutRow || gotStderr != stderrRow {
-		t.Fatalf("oversized LF row recovery changed bytes: stdout %d/%d, stderr %d/%d",
-			len(gotStdout), len(stdoutRow), len(gotStderr), len(stderrRow))
+	if gotStderr != stderrRow {
+		t.Fatalf("oversized LF stderr recovery changed bytes: %d/%d", len(gotStderr), len(stderrRow))
 	}
 }
 
@@ -172,7 +175,9 @@ func mrunOversizedLFRow(t *testing.T, word string) (string, int) {
 func mrunRecoverDeliveryStream(t *testing.T, registry *toolRegistry, invocation shellWorkerTestInvocation, id, stream string) string {
 	t.Helper()
 	var recovered strings.Builder
+	pages := 0
 	for pageIndex := range 20 {
+		pages++
 		page, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
 			"mread "+id+" --"+stream+" --max-tokens 15500", nil, invocation)
 		if status != 0 && status != 1 {

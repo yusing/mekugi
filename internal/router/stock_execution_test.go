@@ -155,8 +155,7 @@ func TestPrepareStockExecutionPreservesCodeModeAndNativeTools(t *testing.T) {
 		if !sameJSONValue(mustMarshalJSON(before), mustMarshalJSON(after)) {
 			t.Fatalf("unrelated stock tool changed: before=%s after=%s", mustMarshalJSON(before), mustMarshalJSON(after))
 		}
-		if !strings.Contains(string(fields["input"]), "tools.exec_command") ||
-			!strings.Contains(string(fields["input"]), "mekugi-journal:start") ||
+		if !strings.Contains(string(fields["input"]), "mekugi-journal:start") ||
 			!strings.Contains(string(fields["input"]), frontendGuidanceStart) {
 			t.Fatalf("Code Mode contract or additive journal guidance missing: %s", fields["input"])
 		}

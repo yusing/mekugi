@@ -187,18 +187,6 @@ func TestInspectFileCompactRecoveryAfterSourceRemoval(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 
-	t.Run("single path", func(t *testing.T) {
-		directory := t.TempDir()
-		source := inspectFixture(t, directory, "single.go", 20)
-		result := recoverInspectAfterRemovingSources(t, registry, directory, []string{source}, 64, false, 64)
-		if result.recovered != result.full {
-			t.Fatalf("single-path compact recovery changed output:\nrecovered %q\nfull      %q", result.recovered, result.full)
-		}
-		if result.initial == "" || len(result.pages) < 2 {
-			t.Fatalf("fixture did not exercise bounded multi-page recovery: initial=%q pages=%d", result.initial, len(result.pages))
-		}
-	})
-
 	t.Run("multi-path labels survive recovery", func(t *testing.T) {
 		directory := t.TempDir()
 		first := inspectFixture(t, directory, "first.go", 12)
@@ -207,6 +195,9 @@ func TestInspectFileCompactRecoveryAfterSourceRemoval(t *testing.T) {
 		result := recoverInspectAfterRemovingSources(t, registry, directory, paths, 64, false, 64)
 		if result.recovered != result.full {
 			t.Fatalf("multi-path compact recovery changed output:\nrecovered %q\nfull      %q", result.recovered, result.full)
+		}
+		if len(result.pages) < 2 {
+			t.Fatalf("fixture did not exercise multi-page recovery: pages=%d", len(result.pages))
 		}
 		firstHeader, secondHeader := "--- "+filepath.ToSlash(first)+" ---\n", "--- "+filepath.ToSlash(second)+" ---\n"
 		if !strings.Contains(result.recovered, firstHeader) || !strings.Contains(result.recovered, secondHeader) {
@@ -224,7 +215,7 @@ func TestInspectFileJSONLMultiPathByteRecoveryAfterSourceRemoval(t *testing.T) {
 	directory := t.TempDir()
 	first := inspectFixture(t, directory, "first.go", 8)
 	second := inspectFixture(t, directory, "second.go", 8)
-	result := recoverInspectAfterRemovingSources(t, registry, directory, []string{first, second}, 64, true, 64)
+	result := recoverInspectAfterRemovingSources(t, registry, directory, []string{first, second}, 64, true, 192)
 	if result.recovered != result.full {
 		t.Fatalf("multi-path JSONL byte recovery changed output:\nrecovered %q\nfull      %q", result.recovered, result.full)
 	}

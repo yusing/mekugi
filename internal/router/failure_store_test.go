@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/gofrs/flock"
@@ -240,68 +241,70 @@ func TestFailurePersistenceOpenFailureRetainsOnlyNotice(t *testing.T) {
 func TestFailureStoreLockTimeoutDoesNotBlockCriticalNoticeAccess(t *testing.T) {
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
-	directory, err := defaultMekugiReplayDirectory()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := openMekugiReplayStore(directory); err != nil {
-		t.Fatal(err)
-	}
-	storeLock := flock.New(filepath.Join(directory, "store.lock"), flock.SetPermissions(0600))
-	locked, err := storeLock.TryLock()
-	if err != nil || !locked {
-		t.Fatalf("could not hold managed store lock: locked=%v err=%v", locked, err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		directory, err := defaultMekugiReplayDirectory()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := openMekugiReplayStore(directory); err != nil {
+			t.Fatal(err)
+		}
+		storeLock := flock.New(filepath.Join(directory, "store.lock"), flock.SetPermissions(0600))
+		locked, err := storeLock.TryLock()
+		if err != nil || !locked {
+			t.Fatalf("could not hold managed store lock: locked=%v err=%v", locked, err)
+		}
 
-	issues := NewCriticalErrors()
-	issues.persistFailures = true
-	failure := failureStoreTestFinalization("lock-timeout-reference")
-	done := make(chan struct{})
-	started := time.Now()
-	persistDeadline := time.After(5 * time.Second)
-	go func() {
-		issues.persistFailure(failure)
-		close(done)
-	}()
-	defer func() {
-		_ = storeLock.Unlock()
+		issues := NewCriticalErrors()
+		issues.persistFailures = true
+		failure := failureStoreTestFinalization("lock-timeout-reference")
+		done := make(chan struct{})
+		started := time.Now()
+		persistDeadline := time.After(5 * time.Second)
+		go func() {
+			issues.persistFailure(failure)
+			close(done)
+		}()
+		defer func() {
+			_ = storeLock.Unlock()
+			select {
+			case <-done:
+			case <-time.After(3 * time.Second):
+				t.Error("failure persistence goroutine did not stop after releasing store.lock")
+			}
+		}()
+
+		// Let lazy open reach the held store lock before exercising the mutex-backed
+		// notice API. The persistence operation has a two-second internal deadline.
+		time.Sleep(100 * time.Millisecond)
+		accessed := make(chan struct{})
+		go func() {
+			issues.addNotice("session", "concurrent-access", "notice access remained available")
+			_ = issues.Pending()
+			close(accessed)
+		}()
+		select {
+		case <-accessed:
+		case <-time.After(750 * time.Millisecond):
+			t.Fatal("notice access blocked while failure-store initialization waited for store.lock")
+		}
+
 		select {
 		case <-done:
-		case <-time.After(3 * time.Second):
-			t.Error("failure persistence goroutine did not stop after releasing store.lock")
+		case <-persistDeadline:
+			t.Fatal("failure persistence did not return within its bounded timeout")
 		}
-	}()
-
-	// Let lazy open reach the held store lock before exercising the mutex-backed
-	// notice API. The persistence operation has a two-second internal deadline.
-	time.Sleep(100 * time.Millisecond)
-	accessed := make(chan struct{})
-	go func() {
-		issues.addNotice("session", "concurrent-access", "notice access remained available")
-		_ = issues.Pending()
-		close(accessed)
-	}()
-	select {
-	case <-accessed:
-	case <-time.After(750 * time.Millisecond):
-		t.Fatal("notice access blocked while failure-store initialization waited for store.lock")
-	}
-
-	select {
-	case <-done:
-	case <-persistDeadline:
-		t.Fatal("failure persistence did not return within its bounded timeout")
-	}
-	if elapsed := time.Since(started); elapsed > 5*time.Second {
-		t.Fatalf("failure persistence exceeded timeout headroom: %s", elapsed)
-	}
-	pending := strings.Join(issues.Pending(), "\n")
-	if !strings.Contains(pending, "could not retain the failure reference") {
-		t.Fatalf("timed-out persistence did not report degradation: %s", pending)
-	}
-	if files, err := failureRecordFiles(directory); err != nil || len(files) != 0 {
-		t.Fatalf("timed-out persistence published failure records: files=%d err=%v", len(files), err)
-	}
+		if elapsed := time.Since(started); elapsed > 5*time.Second {
+			t.Fatalf("failure persistence exceeded timeout headroom: %s", elapsed)
+		}
+		pending := strings.Join(issues.Pending(), "\n")
+		if !strings.Contains(pending, "could not retain the failure reference") {
+			t.Fatalf("timed-out persistence did not report degradation: %s", pending)
+		}
+		if files, err := failureRecordFiles(directory); err != nil || len(files) != 0 {
+			t.Fatalf("timed-out persistence published failure records: files=%d err=%v", len(files), err)
+		}
+	})
 }
 
 func failureStoreTestFinalization(reference string) *requestFinalization {

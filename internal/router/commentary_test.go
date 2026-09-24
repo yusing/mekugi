@@ -167,93 +167,66 @@ func TestStructuredCommentaryRejectsNonStringValues(t *testing.T) {
 }
 
 func TestStructuredCommentaryBuffersStreamingArguments(t *testing.T) {
-	transform, _, _, _ := newMekugiTestTransform(t)
-	transform.commentaryTools = commentaryToolCatalog{
-		functionToolKey("functions", "exec_command"): {
-			qualifiedName: "functions.exec_command",
-		},
-	}
-	added := mustTestJSON(t, map[string]any{
-		"type": "response.output_item.added", "output_index": 0,
-		"item": map[string]any{
-			"type": "function_call", "id": "item-exec", "call_id": "call-exec",
-			"namespace": "functions", "name": "exec_command", "arguments": "",
-		},
-	})
-	if events, err := transform.TransformSSE(added); err != nil || len(events) != 0 {
-		t.Fatalf("added events = %q, error %v", events, err)
-	}
 	arguments := `{"cmd":"go test ./...","journal":[{"op":"add","text":"Testing the project.","report_now":true}]}`
-	argumentsDone := mustTestJSON(t, map[string]any{
-		"type": "response.function_call_arguments.done", "item_id": "item-exec", "output_index": 0,
-		"arguments": arguments,
-	})
-	if events, err := transform.TransformSSE(argumentsDone); err != nil || len(events) != 1 {
-		t.Fatalf("arguments events = %q, error %v", events, err)
-	}
-	itemDone := mustTestJSON(t, map[string]any{
-		"type": "response.output_item.done", "output_index": 0,
-		"item": map[string]any{
-			"type": "function_call", "id": "item-exec", "call_id": "call-exec",
-			"namespace": "functions", "name": "exec_command", "arguments": arguments,
-		},
-	})
-	events, err := transform.TransformSSE(itemDone)
-	if err != nil || len(events) != 4 {
-		t.Fatalf("done events = %q, error %v", events, err)
-	}
-	if !bytes.Contains(events[0], []byte("Testing the project.")) {
-		t.Fatalf("commentary event = %s", events[0])
-	}
-	for _, event := range events[1:] {
-		if bytes.Contains(event, []byte(commentaryArgumentName)) {
-			t.Fatalf("router-owned argument leaked: %s", event)
-		}
-	}
-}
-
-func TestBufferedStructuredCommentaryOmitsNullCompletionMessage(t *testing.T) {
-	transform, _, _, _ := newMekugiTestTransform(t)
-	transform.commentaryTools = commentaryToolCatalog{
-		functionToolKey("functions", "exec_command"): {
-			qualifiedName: "functions.exec_command",
-		},
-	}
-	added := mustTestJSON(t, map[string]any{
-		"type": "response.output_item.added", "output_index": 0,
-		"item": map[string]any{
-			"type": "function_call", "id": "item-exec", "call_id": "call-exec",
-			"namespace": "functions", "name": "exec_command", "arguments": "",
-		},
-	})
-	if events, err := transform.TransformSSE(added); err != nil || len(events) != 0 {
-		t.Fatalf("added events = %q, error %v", events, err)
-	}
-	arguments := `{"cmd":"go test ./...","journal":[{"op":"add","text":"Testing the project.","report_now":true}]}`
-	argumentsDone := mustTestJSON(t, map[string]any{
-		"type": "response.function_call_arguments.done", "item_id": "item-exec", "output_index": 0,
-		"arguments": arguments,
-	})
-	if events, err := transform.TransformSSE(argumentsDone); err != nil || len(events) != 1 {
-		t.Fatalf("arguments events = %q, error %v", events, err)
-	}
-	itemDone := mustTestJSON(t, map[string]any{
-		"type": "response.output_item.done", "output_index": 0,
-		"item": map[string]any{
-			"type": "function_call", "id": "item-exec", "call_id": "call-exec",
-			"namespace": "functions", "name": "renamed", "arguments": arguments,
-		},
-	})
-	events, err := transform.TransformSSE(itemDone)
-	if err != nil || len(events) != 3 {
-		t.Fatalf("done events = %q, error %v", events, err)
-	}
-	wantTypes := []string{"response.output_item.added", "response.function_call_arguments.done", "response.output_item.done"}
-	for index, event := range events {
-		var envelope map[string]json.RawMessage
-		if json.Unmarshal(event, &envelope) != nil || jsonString(envelope, "type") != wantTypes[index] ||
-			bytes.Contains(event, []byte(`"item":null`)) {
-			t.Fatalf("event %d = %s", index, event)
-		}
+	for _, test := range []struct {
+		name, doneName string
+		commentary     bool
+	}{
+		{"published", "exec_command", true},
+		// A renamed completion is no longer the cataloged tool; the buffered
+		// replay must not emit a null completion item.
+		{"renamed completion", "renamed", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			transform, _, _, _ := newMekugiTestTransform(t)
+			transform.commentaryTools = commentaryToolCatalog{
+				functionToolKey("functions", "exec_command"): {
+					qualifiedName: "functions.exec_command",
+				},
+			}
+			added := mustTestJSON(t, map[string]any{
+				"type": "response.output_item.added", "output_index": 0,
+				"item": map[string]any{
+					"type": "function_call", "id": "item-exec", "call_id": "call-exec",
+					"namespace": "functions", "name": "exec_command", "arguments": "",
+				},
+			})
+			if events, err := transform.TransformSSE(added); err != nil || len(events) != 0 {
+				t.Fatalf("added events = %q, error %v", events, err)
+			}
+			argumentsDone := mustTestJSON(t, map[string]any{
+				"type": "response.function_call_arguments.done", "item_id": "item-exec", "output_index": 0,
+				"arguments": arguments,
+			})
+			if events, err := transform.TransformSSE(argumentsDone); err != nil || len(events) != 1 {
+				t.Fatalf("arguments events = %q, error %v", events, err)
+			}
+			itemDone := mustTestJSON(t, map[string]any{
+				"type": "response.output_item.done", "output_index": 0,
+				"item": map[string]any{
+					"type": "function_call", "id": "item-exec", "call_id": "call-exec",
+					"namespace": "functions", "name": test.doneName, "arguments": arguments,
+				},
+			})
+			events, err := transform.TransformSSE(itemDone)
+			wantTypes := []string{"response.output_item.added", "response.function_call_arguments.done", "response.output_item.done"}
+			if test.commentary {
+				if err != nil || len(events) != 4 || !bytes.Contains(events[0], []byte("Testing the project.")) {
+					t.Fatalf("done events = %q, error %v", events, err)
+				}
+				events = events[1:]
+			}
+			if err != nil || len(events) != len(wantTypes) {
+				t.Fatalf("done events = %q, error %v", events, err)
+			}
+			for index, event := range events {
+				var envelope map[string]json.RawMessage
+				if json.Unmarshal(event, &envelope) != nil || jsonString(envelope, "type") != wantTypes[index] ||
+					bytes.Contains(event, []byte(`"item":null`)) ||
+					test.commentary && bytes.Contains(event, []byte(commentaryArgumentName)) {
+					t.Fatalf("event %d = %s", index, event)
+				}
+			}
+		})
 	}
 }

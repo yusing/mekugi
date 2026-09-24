@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/dlclark/regexp2/v2"
 	"github.com/yusing/mekugi/capturer"
 )
 
@@ -102,6 +104,14 @@ func TestMain(m *testing.M) {
 		); handled {
 			os.Exit(code)
 		}
+	}
+	// Chroma lexers set regexp2 match timeouts, which lazily start one shared
+	// clock goroutine. Start it here so a synctest bubble never owns it.
+	clock := regexp2.MustCompile("x", regexp2.None)
+	clock.MatchTimeout = 1000 * time.Hour
+	if _, err := clock.MatchString("x"); err != nil {
+		fmt.Fprintln(os.Stderr, "start regexp2 timeout clock:", err)
+		os.Exit(1)
 	}
 	if err := os.Unsetenv(capturer.AXReadOutputEnvironment); err != nil {
 		fmt.Fprintln(os.Stderr, "isolate AX test instrumentation:", err)

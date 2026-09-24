@@ -3,7 +3,6 @@ package router
 import (
 	"bytes"
 	"encoding/json"
-	"strings"
 	"testing"
 	"time"
 )
@@ -184,7 +183,7 @@ func TestShellActivityExitEventCorrelatesCompletedCall(t *testing.T) {
 	if len(activity.events) != 6 || activity.events[5].callID != "handoff-item" || activity.events[5].raw != "8" {
 		t.Fatalf("cell-to-session status = %+v", activity.events)
 	}
-	if got := drainText(activity.drain("root", time.Now(), maxCommentaryPublicationBytes)); strings.Contains(got, "[/root/a] 1") || strings.Contains(got, "[/root/a] 3") {
+	if got := drainText(activity.drain("root", time.Now(), maxCommentaryPublicationBytes)); got != "" {
 		t.Fatalf("pane-only exit leaked into root commentary: %q", got)
 	}
 }

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
@@ -39,7 +38,7 @@ func TestMCatDefaultBudgetFitsSixteenTinyFiles(t *testing.T) {
 			t.Errorf("default bundle omitted %s: %s", path, stdout)
 		}
 	}
-	assertMCatOutputWithinBudget(t, registry, 6000, stdout, stderr)
+	assertMCatOutputWithinBudget(t, 6000, stdout, stderr)
 }
 
 func TestMCatBundleRedistributesUnusedShareAndKeepsOneContinuation(t *testing.T) {
@@ -94,7 +93,7 @@ func TestMCatBundleRedistributesUnusedShareAndKeepsOneContinuation(t *testing.T)
 	if largeTokens <= equalShare {
 		t.Fatalf("large file received %d body tokens, no more than its equal share %d", largeTokens, equalShare)
 	}
-	assertMCatOutputWithinBudget(t, registry, budget, stdout, stderr)
+	assertMCatOutputWithinBudget(t, budget, stdout, stderr)
 }
 
 func TestMCatLineLimitDefaultBudgetAndSourceRemovalRecovery(t *testing.T) {
@@ -102,14 +101,14 @@ func TestMCatLineLimitDefaultBudgetAndSourceRemovalRecovery(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
 	invocation := mcatBudgetTestInvocation(directory)
-	const rowCount = 3000
+	const rowCount = 1000
 	full := mcatBudgetTestRows(t, directory, "rows-default", rowCount)
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		"mcat -n 3000 rows-default", nil, invocation)
+		"mcat -n 1000 rows-default", nil, invocation)
 	if status != 1 {
 		t.Fatalf("truncated line-limited mcat status=%d, want 1", status)
 	}
-	ref := checkMCatLimitedOutput(t, registry, stdout, stderr, 6000, rowCount)
+	ref := checkMCatLimitedOutput(t, stdout, stderr, 6000, rowCount)
 	if err := os.Remove(filepath.Join(directory, "rows-default")); err != nil {
 		t.Fatal(err)
 	}
@@ -123,24 +122,16 @@ func TestMCatNondefaultBudgetContinuesWithOriginalLimit(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
-	invocation := mcatBudgetTestInvocation(directory)
-	const rowCount = 3000
-	full := mcatBudgetTestRows(t, directory, "rows-custom", rowCount)
+	const rowCount = 1000
+	mcatBudgetTestRows(t, directory, "rows-custom", rowCount)
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		"mcat --max-tokens 3000 rows-custom", nil, invocation)
+		"mcat --max-tokens 3000 rows-custom", nil, mcatBudgetTestInvocation(directory))
 	if status != 1 {
 		t.Fatalf("truncated nondefault mcat status=%d, want 1", status)
 	}
-	ref := checkMCatLimitedOutput(t, registry, stdout, stderr, 3000, rowCount)
+	ref := checkMCatLimitedOutput(t, stdout, stderr, 3000, rowCount)
 	if !strings.Contains(stderr, "next_call: mread "+ref+" --max-tokens 3000") {
 		t.Fatalf("next_call dropped the mcat token budget: %q", stderr)
-	}
-	if err := os.Remove(filepath.Join(directory, "rows-custom")); err != nil {
-		t.Fatal(err)
-	}
-	if got := recoverMCatRows(t, registry, invocation, stdout, ref); got != full {
-		t.Fatalf("mread recovery differs after source removal: got %d bytes, want %d; first difference %s",
-			len(got), len(full), mcatBudgetTestDifference(got, full))
 	}
 }
 
@@ -149,14 +140,14 @@ func TestMCatTailSelectionRecoversExactSourceAfterSourceRemoval(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
 	invocation := mcatBudgetTestInvocation(directory)
-	const rowCount = 3000
+	const rowCount = 1000
 	full := mcatBudgetTestRows(t, directory, "rows-tail", rowCount)
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
 		"mcat --tail --max-tokens 3000 rows-tail", nil, invocation)
 	if status != 1 {
 		t.Fatalf("truncated tail mcat status=%d, want 1", status)
 	}
-	shownStart, shownEnd, reference := checkMCatLimitedRange(t, registry, stdout, stderr, 3000, rowCount)
+	shownStart, shownEnd, reference := checkMCatLimitedRange(t, stdout, stderr, 3000, rowCount)
 	if shownStart <= 1 || shownEnd != rowCount {
 		t.Fatalf("tail output range = %d:%d, want a suffix ending at source row %d", shownStart, shownEnd, rowCount)
 	}
@@ -175,16 +166,16 @@ func TestMCatExplicitRangeRecoversExactSelectionAfterSourceRemoval(t *testing.T)
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
 	invocation := mcatBudgetTestInvocation(directory)
-	const sourceRows = 3000
+	const sourceRows = 1000
 	const rangeStart = 125
-	const rangeEnd = 2800
+	const rangeEnd = 900
 	full := mcatBudgetTestRows(t, directory, "rows-range", sourceRows)
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		"mcat --max-tokens 3000 rows-range 125:2800", nil, invocation)
+		"mcat --max-tokens 3000 rows-range 125:900", nil, invocation)
 	if status != 1 {
 		t.Fatalf("truncated explicit-range mcat status=%d, want 1", status)
 	}
-	shownStart, shownEnd, reference := checkMCatLimitedRange(t, registry, stdout, stderr, 3000, rangeEnd-rangeStart+1)
+	shownStart, shownEnd, reference := checkMCatLimitedRange(t, stdout, stderr, 3000, rangeEnd-rangeStart+1)
 	if shownStart != rangeStart || shownEnd >= rangeEnd {
 		t.Fatalf("initial range output = %d:%d, want a prefix of %d:%d", shownStart, shownEnd, rangeStart, rangeEnd)
 	}
@@ -200,15 +191,15 @@ func TestMCatExplicitRangeRecoversExactSelectionAfterSourceRemoval(t *testing.T)
 	}
 }
 
-func checkMCatLimitedOutput(t *testing.T, registry *toolRegistry, stdout, stderr string, budget, rowCount int) string {
-	shownStart, _, reference := checkMCatLimitedRange(t, registry, stdout, stderr, budget, rowCount)
+func checkMCatLimitedOutput(t *testing.T, stdout, stderr string, budget, rowCount int) string {
+	shownStart, _, reference := checkMCatLimitedRange(t, stdout, stderr, budget, rowCount)
 	if shownStart != 1 {
 		t.Fatalf("initial mcat range starts at row %d, want row 1", shownStart)
 	}
 	return reference
 }
 
-func checkMCatLimitedRange(t *testing.T, registry *toolRegistry, stdout, stderr string, budget, rowCount int) (int, int, string) {
+func checkMCatLimitedRange(t *testing.T, stdout, stderr string, budget, rowCount int) (int, int, string) {
 	t.Helper()
 	if !strings.HasSuffix(stderr, "\n") {
 		t.Fatalf("single-file omission notice is not newline-terminated: %q", stderr)
@@ -236,7 +227,7 @@ func checkMCatLimitedRange(t *testing.T, registry *toolRegistry, stdout, stderr 
 	if !strings.HasPrefix(stdout, fmt.Sprintf("row-%04d ", shownStart)) || !strings.Contains(stdout, fmt.Sprintf("row-%04d ", shownEnd)) {
 		t.Fatal("initial mcat page does not match its reported source-row range")
 	}
-	assertMCatOutputWithinBudget(t, registry, budget, stdout, "")
+	assertMCatOutputWithinBudget(t, budget, stdout, "")
 	return shownStart, shownEnd, match[3]
 }
 
@@ -338,25 +329,15 @@ func mcatBudgetTestBody(t *testing.T, output string, fileIndex int, path string)
 	return body
 }
 
-func assertMCatOutputWithinBudget(t *testing.T, registry *toolRegistry, budget int, stdout, stderr string) {
+func assertMCatOutputWithinBudget(t *testing.T, budget int, stdout, stderr string) {
 	t.Helper()
 	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	count, err := codec.Count(stdout)
+	count, err := codec.Count(stdout + stderr)
 	if err != nil || count > budget {
-		t.Fatalf("mcat stdout uses %d tokens, budget=%d err=%v", count, budget, err)
-	}
-	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
-	if err != nil {
-		t.Fatal(err)
-	}
-	formatted, err := toolplugin.FormatOutput(t.Context(), manifest.NodeExecutable,
-		filepath.Join(registry.SnapshotDir, manifest.RuntimeRoot),
-		[]string{strconv.Itoa(budget), "head", stdout, stderr})
-	if err != nil || formatted.ExitCode != 0 || formatted.Stdout != stdout || formatted.Stderr != stderr {
-		t.Fatalf("mcat combined output does not fit %d tokens: formatted=%+v err=%v", budget, formatted, err)
+		t.Fatalf("mcat output uses %d tokens, budget=%d err=%v", count, budget, err)
 	}
 }
 

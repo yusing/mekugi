@@ -256,6 +256,7 @@ func TestLiveDiffNativeLexerPanicFallsBack(t *testing.T) {
 }
 
 func TestLiveDiffNativePartialSourceCorpus(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{"file.go", "file.py", "file.js", "file.ts", "file.json", "file.yaml", "file.rb", "file.rs", "file.html", "file.raku", "file.sh"} {
 		for _, source := range []string{"/* unterminated\n", "\"unfinished\n", "'''unfinished\n", "`unfinished\n", "<!--unfinished\n", "q:to/END/;\ntext\n", "{{[(\n", "\n\n"} {
 			lines, err := new(livediff.Renderer).ColorSource(t.Context(), livediff.TerminalTheme, path, source)

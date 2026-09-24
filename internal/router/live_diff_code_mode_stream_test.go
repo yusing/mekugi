@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/alecthomas/chroma/v2"
@@ -14,6 +15,7 @@ import (
 )
 
 func TestLiveDiffCodeModeInterpreterScriptSyntax(t *testing.T) {
+	t.Parallel()
 	batch := "nl -ba semantic.ts; rg CHECK runner.ts; python3 - <<'PY'\nimport pathlib\nprint(pathlib.Path('semantic.ts'))\nPY\n"
 	batchInput, batchSpans := codeModeShellDisplay([]string{batch})
 	batchRows := liveDiffSourceRows(batchInput, batchSpans)
@@ -21,22 +23,25 @@ func TestLiveDiffCodeModeInterpreterScriptSyntax(t *testing.T) {
 		t.Fatalf("inline batch interpreter syntax = %+v", batchRows)
 	}
 	t.Run("batch producer", func(t *testing.T) {
-		workspace := t.TempDir()
-		broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
-		worker.appendDelta("text(await tools.exec_command({cmd:" + strconv.Quote(batch))
-		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-			return strings.Contains(preview.Input, "\nPY\n")
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			workspace := t.TempDir()
+			broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
+			worker.appendDelta("text(await tools.exec_command({cmd:" + strconv.Quote(batch))
+			preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+				return strings.Contains(preview.Input, "\nPY\n")
+			})
+			rows := liveDiffSourceRows(preview.Input, preview.Syntax)
+			if rows[2].Path != "stream.py" || rows[4].Path != "stream.sh" {
+				t.Fatalf("producer lost embedded interpreter span: %+v", preview.Syntax)
+			}
+			var pane liveDiffPreviewPane
+			pane.update(preview)
+			lines, err := pane.render(t.Context(), workspace, livediff.DarkTheme, 100, 15)
+			if err != nil || !strings.Contains(strings.Join(lines, "\n"), livediff.DarkTheme.Foreground(chroma.KeywordNamespace)+"import") {
+				t.Fatalf("producer left embedded Python plain: %v %q", err, lines)
+			}
 		})
-		rows := liveDiffSourceRows(preview.Input, preview.Syntax)
-		if rows[2].Path != "stream.py" || rows[4].Path != "stream.sh" {
-			t.Fatalf("producer lost embedded interpreter span: %+v", preview.Syntax)
-		}
-		var pane liveDiffPreviewPane
-		pane.update(preview)
-		lines, err := pane.render(t.Context(), workspace, livediff.DarkTheme, 100, 15)
-		if err != nil || !strings.Contains(strings.Join(lines, "\n"), livediff.DarkTheme.Foreground(chroma.KeywordNamespace)+"import") {
-			t.Fatalf("producer left embedded Python plain: %v %q", err, lines)
-		}
 	})
 	for _, tc := range []struct {
 		name, command, language, token string
@@ -52,21 +57,24 @@ func TestLiveDiffCodeModeInterpreterScriptSyntax(t *testing.T) {
 		{"ruby command", "ruby -e 'if true\n  puts \"ok\"\nend'", "stream.rb", "if", chroma.Keyword},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			workspace := t.TempDir()
-			broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
-			worker.appendDelta("text(await tools.exec_command({cmd:" + strconv.Quote(tc.command))
-			preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-				return strings.Contains(preview.Input, tc.token)
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				workspace := t.TempDir()
+				broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
+				worker.appendDelta("text(await tools.exec_command({cmd:" + strconv.Quote(tc.command))
+				preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+					return strings.Contains(preview.Input, tc.token)
+				})
+				if len(preview.Syntax) != 2 || preview.Syntax[0].Path != "stream.sh" || preview.Syntax[1].Path != tc.language {
+					t.Fatalf("interpreter preview syntax = %+v, input = %q", preview.Syntax, preview.Input)
+				}
+				var pane liveDiffPreviewPane
+				pane.update(preview)
+				lines, err := pane.render(t.Context(), workspace, livediff.DarkTheme, 100, 15)
+				if err != nil || !strings.Contains(strings.Join(lines, "\n"), livediff.DarkTheme.Foreground(tc.kind)+tc.token) {
+					t.Fatalf("missing %s color: %v %q", tc.token, err, lines)
+				}
 			})
-			if len(preview.Syntax) != 2 || preview.Syntax[0].Path != "stream.sh" || preview.Syntax[1].Path != tc.language {
-				t.Fatalf("interpreter preview syntax = %+v, input = %q", preview.Syntax, preview.Input)
-			}
-			var pane liveDiffPreviewPane
-			pane.update(preview)
-			lines, err := pane.render(t.Context(), workspace, livediff.DarkTheme, 100, 15)
-			if err != nil || !strings.Contains(strings.Join(lines, "\n"), livediff.DarkTheme.Foreground(tc.kind)+tc.token) {
-				t.Fatalf("missing %s color: %v %q", tc.token, err, lines)
-			}
 		})
 	}
 
@@ -80,6 +88,7 @@ func TestLiveDiffCodeModeInterpreterScriptSyntax(t *testing.T) {
 }
 
 func TestLiveDiffTerminalCodeModePythonHeredocSyntax(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -118,6 +127,7 @@ func TestLiveDiffTerminalCodeModePythonHeredocSyntax(t *testing.T) {
 }
 
 func TestLiveDiffCodeModeSSEStreamsBashWithoutChangingEvents(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	proxy := newManagedMekugiProxy(t)
 	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
@@ -169,6 +179,7 @@ func TestLiveDiffCodeModeSSEStreamsBashWithoutChangingEvents(t *testing.T) {
 }
 
 func TestLiveDiffCodeModeStreamsBatchedCommandsAsBash(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
 
@@ -226,6 +237,7 @@ for (let i=0;i<results.length;i++) text(JSON.stringify({i,...results[i]}));
 }
 
 func TestLiveDiffTerminalStreamsCodeModeBashBoundaries(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -259,6 +271,7 @@ func TestLiveDiffTerminalStreamsCodeModeBashBoundaries(t *testing.T) {
 }
 
 func TestLiveDiffCodeModeRejectsDynamicShellPreviewAndKeepsNonShellJS(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
 	worker.appendDelta(`tools.exec_command({cmd:"printf safe"`)
@@ -286,6 +299,7 @@ func TestLiveDiffCodeModeRejectsDynamicShellPreviewAndKeepsNonShellJS(t *testing
 }
 
 func TestLiveDiffCodeModeRetractsJSWhenBatchPrefixArrives(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
 	const prefix = `const r=await Promise.`
@@ -308,6 +322,7 @@ func TestLiveDiffCodeModeRetractsJSWhenBatchPrefixArrives(t *testing.T) {
 }
 
 func TestLiveDiffPartialShellDoesNotProjectEditsInWrongWorkdir(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
 	source := `tools.exec_command({cmd:"cat > result.txt <<'EOF'\ncontent\nEOF",workdir:"/other/workspace"`
@@ -358,6 +373,7 @@ func assertCodeModeBashPreview(t *testing.T, preview liveDiffPreview, ordered []
 }
 
 func TestLiveDiffCodeModeRevealsWholeShellUnits(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
 	source := `tools.exec_command({cmd:"cat f | head; echo \"a | b\" && python3 -c 'import os\nprint(1); f()\n'"})`

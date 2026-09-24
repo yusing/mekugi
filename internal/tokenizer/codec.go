@@ -1,6 +1,6 @@
 // Source: github.com/tiktoken-go/tokenizer/codec/codec.go@v0.8.1
-// The splitting and byte-pair merge algorithm is retained verbatim; vocabulary
-// storage is owned by tokenizer.go. See LICENSE for the upstream MIT license.
+// The splitting and byte-pair merge algorithm is retained verbatim; long pieces
+// use an equivalent heap merge, and vocabulary storage is owned by tokenizer.go. See LICENSE for the upstream MIT license.
 package tokenizer
 
 import (
@@ -56,7 +56,12 @@ func (c *codec) tokenize(input string, yield func(uint, string)) error {
 		if id, ok := c.vocabulary[piece]; ok {
 			yield(id, piece)
 		} else {
-			parts := c.mergePairs(piece)
+			var parts []part
+			if len(piece) > longPieceBytes {
+				parts = c.mergeLongPiece(piece)
+			} else {
+				parts = c.mergePairs(piece)
+			}
 
 			for i := range len(parts) - 1 {
 				token := piece[parts[i].offset:parts[i+1].offset]
@@ -137,4 +142,93 @@ func (c *codec) mergePairs(piece string) []part {
 	}
 
 	return parts
+}
+
+// Pieces above this size use mergeLongPiece. The verbatim merge rescans every
+// remaining pair per merge, which is quadratic for long words or whitespace.
+const longPieceBytes = 4096
+
+// mergeLongPiece selects the same lowest-rank pair as mergePairs, breaking
+// ties at the leftmost byte, using a heap and linked part offsets. This is
+// OpenAI tiktoken's _byte_pair_merge_large strategy.
+func (c *codec) mergeLongPiece(piece string) []part {
+	length := len(piece)
+	next := make([]int, length)
+	previous := make([]int, length)
+	pending := make([]uint, length)
+	var heap []uint64
+	stride := uint64(length) + 1
+	push := func(key uint64) {
+		index := len(heap)
+		heap = append(heap, key)
+		for index > 0 {
+			parent := (index - 1) / 2
+			if heap[parent] <= key {
+				break
+			}
+			heap[index] = heap[parent]
+			index = parent
+		}
+		heap[index] = key
+	}
+	pop := func() uint64 {
+		result, last := heap[0], heap[len(heap)-1]
+		heap = heap[:len(heap)-1]
+		if len(heap) == 0 {
+			return result
+		}
+		index := 0
+		for index*2+1 < len(heap) {
+			child := index*2 + 1
+			if child+1 < len(heap) && heap[child+1] < heap[child] {
+				child++
+			}
+			if heap[child] >= last {
+				break
+			}
+			heap[index] = heap[child]
+			index = child
+		}
+		heap[index] = last
+		return result
+	}
+	update := func(index int) {
+		pending[index] = math.MaxUint
+		right := next[index]
+		if right >= length {
+			return
+		}
+		if rank, ok := c.vocabulary[piece[index:next[right]]]; ok {
+			pending[index] = rank
+			push(uint64(rank)*stride + uint64(index))
+		}
+	}
+	for index := range length {
+		next[index], previous[index] = index+1, index-1
+	}
+	for index := range length - 1 {
+		update(index)
+	}
+	for len(heap) > 0 {
+		key := pop()
+		left, rank := int(key%stride), uint(key/stride)
+		if pending[left] != rank {
+			continue
+		}
+		right := next[left]
+		next[left] = next[right]
+		pending[right] = math.MaxUint
+		if next[left] < length {
+			previous[next[left]] = left
+		}
+		update(left)
+		if previous[left] >= 0 {
+			update(previous[left])
+		}
+	}
+	var parts []part
+	for index := 0; index < length; index = next[index] {
+		parts = append(parts, part{offset: index, rank: math.MaxUint})
+	}
+	return append(parts, part{offset: length, rank: math.MaxUint})
 }

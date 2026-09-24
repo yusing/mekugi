@@ -62,32 +62,33 @@ func TestManagedExecMChangesSurface(t *testing.T) {
 		t.Fatalf("managed list = %q, %v; want %q", stdout, err, wantList)
 	}
 
-	stdout, err = store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{managedID}})
-	if err != nil || !strings.HasPrefix(stdout, managedID+" completed · exec formatter · generator, exact coverage\n") ||
-		strings.Count(stdout, " · formatter\n") != 20 || !strings.Contains(stdout, "+1 more tool-managed files\n") ||
-		strings.Contains(stdout, "managed-21.txt") || strings.Contains(stdout, "BODY SHOULD NOT LEAK") || strings.Contains(stdout, "@@") {
-		t.Fatalf("default managed read = %q, %v", stdout, err)
+	header := managedID + " completed · exec formatter · generator, exact coverage\n"
+	var rows, diffs strings.Builder
+	for i := range 21 {
+		if i < 20 {
+			fmt.Fprintf(&rows, "Create \"managed-%02d.txt\" +1 -0 · formatter\n", i+1)
+		}
+		fmt.Fprintf(&diffs, "--- /dev/null\n+++ \"managed-%02d.txt\"\n@@ -0,0 +1,1 @@\n+BODY SHOULD NOT LEAK\n", i+1)
 	}
-
-	stdout, err = store.readChanges(ctx, changeReadOptions{
-		workspace: workspace, ids: []string{managedID}, paths: []string{"managed-21.txt"},
-	})
-	if err != nil || !strings.Contains(stdout, "managed-21.txt") ||
-		!strings.Contains(stdout, "+BODY SHOULD NOT LEAK") || strings.Contains(stdout, "+1 more tool-managed files") {
-		t.Fatalf("explicit managed path = %q, %v", stdout, err)
-	}
-
-	stdout, err = store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{managedID}, view: "history"})
-	if err != nil || !strings.Contains(stdout, "exec_command input:\npython generate.py") ||
-		!strings.Contains(stdout, "managed-21.txt") || !strings.Contains(stdout, "+BODY SHOULD NOT LEAK") {
-		t.Fatalf("managed history = %q, %v", stdout, err)
-	}
-
-	stdout, err = store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{mixedID}, view: "summary"})
-	if err != nil ||
-		!strings.Contains(stdout, "tool-managed: 1 changed +1 -0\n") ||
-		!strings.Contains(stdout, "1\t0\tdirect-summary.txt\n") {
-		t.Fatalf("managed summary labels = %q, %v", stdout, err)
+	lastDiff := "--- /dev/null\n+++ \"managed-21.txt\"\n@@ -0,0 +1,1 @@\n+BODY SHOULD NOT LEAK\n"
+	for _, read := range []struct {
+		name    string
+		options changeReadOptions
+		want    string
+	}{
+		{"default managed read", changeReadOptions{ids: []string{managedID}},
+			header + rows.String() + "+1 more tool-managed files\n"},
+		{"explicit managed path", changeReadOptions{ids: []string{managedID}, paths: []string{"managed-21.txt"}},
+			header + lastDiff},
+		{"managed history", changeReadOptions{ids: []string{managedID}, view: "history"},
+			header + "exec_command input:\npython generate.py\n" + diffs.String()},
+		{"managed summary labels", changeReadOptions{ids: []string{mixedID}, view: "summary"},
+			"1\t0\tdirect-summary.txt\ntool-managed: 1 changed +1 -0\n"},
+	} {
+		read.options.workspace = workspace
+		if stdout, err := store.readChanges(ctx, read.options); err != nil || stdout != read.want {
+			t.Fatalf("%s = %q, %v; want %q", read.name, stdout, err, read.want)
+		}
 	}
 
 	index, err := store.scoped(ctx).readChangeIndex(workspace)

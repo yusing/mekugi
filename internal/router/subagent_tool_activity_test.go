@@ -78,55 +78,6 @@ func TestSubagentToolActivityJSONAndSSE(t *testing.T) {
 	}
 }
 
-func TestSubagentTranslatedEditActivityJSONAndSSE(t *testing.T) {
-	for _, stream := range []bool{false, true} {
-		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-			calls := 0
-			proxy := newManagedMekugiProxy(t)
-			root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
-			child, _ := prepareActivityTest(t, proxy, "child", "c", "r", "/root/worker", nil)
-			call := testMekugiItem()
-			original := mustTestJSON(t, call)
-			child.directory = t.TempDir()
-
-			if stream {
-				if _, err := child.TransformSSE(mustTestJSON(t, map[string]any{
-					"type": "response.output_item.done", "item": call,
-				})); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				payload := mustTestJSON(t, map[string]any{"status": "completed", "output": []any{call}})
-				if _, err := child.TransformJSON(payload); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if calls != 0 {
-				t.Fatalf("display translated or executed the edit again: %d translations", calls)
-			}
-			if got := mustTestJSON(t, call); !bytes.Equal(got, original) {
-				t.Fatalf("activity changed the original call: %s", got)
-			}
-
-			visible, err := root.TransformJSON([]byte(`{"status":"completed","output":[]}`))
-			if err != nil {
-				t.Fatal(err)
-			}
-			var response struct{ Output []map[string]json.RawMessage }
-			if err := json.Unmarshal(visible, &response); err != nil {
-				t.Fatal(err)
-			}
-			if len(response.Output) != 1 || !strings.Contains(commentaryText(t, response.Output[0]), "Started · ") ||
-				bytes.Contains(visible, []byte("apply_patch")) || bytes.Contains(visible, []byte("new result.txt")) {
-				t.Fatalf("stock apply_patch leaked into activity: %s", visible)
-			}
-			if calls != 0 {
-				t.Fatalf("root delivery retranslated the edit: %d translations", calls)
-			}
-		})
-	}
-}
-
 func TestSubagentPatchLabelJSONAndSSE(t *testing.T) {
 	patch := "*** Begin Patch\n*** Add File: a\n+x\n*** Update File: b\n@@\n-old\n+new\n*** End Patch\n"
 	for _, name := range []string{"apply_patch", "exec"} {

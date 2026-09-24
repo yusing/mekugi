@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -17,8 +16,6 @@ const testCodeModeDescription = "Run JavaScript. All nested tools are available 
 const testBaseInstructions = "caller-owned base instructions\n"
 
 const testTranslatedPatch = "*** Begin Patch\n*** Add File: created.txt\n+payload\n*** End Patch\n"
-
-var testShellEditSource = "await tools.apply_patch(" + strconv.Quote(testTranslatedPatch) + ");"
 
 const testToolPluginDeclaration = `export default {
   apiVersion: "mekugi-tool-plugin/v1",
@@ -137,13 +134,6 @@ func newNativeMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (*m
 	}
 	t.Cleanup(transform.Close)
 	return transform, &request
-}
-
-func testMekugiItem() map[string]any {
-	return map[string]any{
-		"type": "custom_tool_call", "id": "item-H", "call_id": "call-H",
-		"name": "exec", "input": testShellEditSource, "status": "completed",
-	}
 }
 
 func shellCommentaryTestItem() map[string]any {

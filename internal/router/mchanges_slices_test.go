@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -304,7 +305,7 @@ func TestMChangesSlicesPageKeepsOriginalPendingAndAttemptSnapshot(t *testing.T) 
 	if !strings.Contains(expected, pending+" pending") || strings.Contains(expected, "finalized-after-page") {
 		t.Fatalf("bad pre-page fixture: %q", expected[len(expected)-min(len(expected), 200):])
 	}
-	stdout, stderr, status := f.run(t, "mchanges --mine --history --max-tokens 32")
+	stdout, stderr, status := f.run(t, "mchanges --mine --history --max-tokens 400")
 	if status == 0 || stdout == "" || !strings.HasPrefix(stderr, "read: incomplete; next_call: mread ") ||
 		!strings.HasSuffix(stdout, "\n") {
 		t.Fatalf("first page: %q, %q, %d", stdout, stderr, status)
@@ -331,12 +332,14 @@ func TestMChangesSlicesPageKeepsOriginalPendingAndAttemptSnapshot(t *testing.T) 
 		!strings.Contains(updated, "appended-after-page") {
 		t.Fatal("fixture mutations did not change the selected review state")
 	}
+	pages := 1
 	for page := range 100 {
-		stdout, stderr, status = f.run(t, "mread "+cursor+" --stdout --max-tokens 32")
+		stdout, stderr, status = f.run(t, "mread "+cursor+" --stdout --max-tokens 400")
 		if stdout != "" && !strings.HasSuffix(stdout, "\n") {
 			t.Fatalf("page %d ends within a row: %q", page+2, stdout)
 		}
 		stitched += stdout
+		pages = page + 2
 		if status == 0 {
 			if stderr != "" {
 				t.Fatalf("final page diagnostic: %q", stderr)
@@ -348,6 +351,9 @@ func TestMChangesSlicesPageKeepsOriginalPendingAndAttemptSnapshot(t *testing.T) 
 			t.Fatalf("continuation page %d: %q, %q, %d", page+2, stdout, stderr, status)
 		}
 		cursor = strings.Fields(strings.TrimPrefix(stderr, marker))[0]
+	}
+	if pages < 3 {
+		t.Fatalf("snapshot read used %d pages; want continuation beyond the mutation page", pages)
 	}
 	if stitched != expected || !strings.Contains(stitched, pending+" pending") ||
 		strings.Contains(stitched, "finalized-after-page") || strings.Contains(stitched, "appended-after-page") {
@@ -452,20 +458,9 @@ func TestMChangesSlicesNetComposesRepeatedEditsAndRejectsIncompleteEvidence(t *t
 	second := mekugi.RenderReviewFile(path, path, "intermediate value\n", "final value\n")
 	f.publish(t, id, correlation, "net-first-call", mekugiHistory{Applied: true, ReviewFiles: []mekugi.ReviewFile{first}})
 	f.publish(t, id, correlation, "net-second-call", mekugiHistory{Applied: true, Attempt: 2, ReviewFiles: []mekugi.ReviewFile{second}})
-	var composition mekugi.ReviewComposition
-	if err := composition.ApplyWithHighlight(first, false, false); err != nil {
-		t.Fatal(err)
-	}
-	if err := composition.ApplyWithHighlight(second, false, false); err != nil {
-		t.Fatal(err)
-	}
-	composed := composition.FilesWithHighlights()
-	if len(composed) != 1 {
-		t.Fatalf("composed files = %+v", composed)
-	}
-	want := composed[0].UnifiedDiff()
+	want := "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1,1 +1,1 @@\n-old value\n+final value\n"
 	stdout, stderr, status := f.run(t, "mchanges --net "+id)
-	if status != 0 || stderr != "" || stdout != want || strings.Contains(stdout, "intermediate value") {
+	if status != 0 || stderr != "" || stdout != want {
 		t.Fatalf("net composition = %q, %q, %d; want %q", stdout, stderr, status, want)
 	}
 	stdout, stderr, status = f.run(t, "mchanges --mine --net")

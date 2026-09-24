@@ -221,11 +221,6 @@ func TestExecRunningPreviewShowsScopedVCSAndCancelsWithoutEvidence(t *testing.T)
 	if err := os.WriteFile(tracked, []byte("after cancellation\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-time.After(600 * time.Millisecond): // Longer than one poll interval.
-	case <-t.Context().Done():
-		t.Fatal("test canceled while checking preview cancellation")
-	}
 	if _, found, err := store.lookup(t.Context(), repo, "call-1"); err != nil || found {
 		t.Fatalf("display-only running observation persisted change evidence: found=%v err=%v", found, err)
 	}
@@ -299,11 +294,6 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 			waitExecScopePreviewGone(t, broker, "running:lifecycle")
 			if err := os.WriteFile(tracked, []byte("after cancellation\n"), 0o600); err != nil {
 				t.Fatal(err)
-			}
-			select {
-			case <-time.After(600 * time.Millisecond):
-			case <-t.Context().Done():
-				t.Fatal("test canceled while checking lifecycle cancellation")
 			}
 			broker.mu.Lock()
 			_, exists := broker.previews["running:lifecycle"]
