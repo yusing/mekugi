@@ -12,6 +12,7 @@ import {
   byteLength,
   decodeUTF8,
   createExecutorTool,
+  BoundedTextOutput,
   errorText,
 } from "./common.ts";
 import {codeOutline, codeTree} from "./inspect_file_code.ts";
@@ -23,6 +24,7 @@ import {
 } from "./inspect_file_document.ts";
 import {
   hasParseError,
+  parseErrorEntries,
   LineMap,
   type FileKind,
   type Language,
@@ -30,7 +32,6 @@ import {
   type PublicOutlineEntry,
   type SourceFormat,
 } from "./inspect_file_support.ts";
-import {inspectFileShapeSchemaJSON} from "./inspect_file_schema.ts";
 
 export {declarationRange, goDeclarationRange, symbolOffsets} from "./inspect_file_code.ts";
 export {LineMap, type SourceFormat} from "./inspect_file_support.ts";
@@ -59,6 +60,11 @@ class InspectFailure extends Error {
   constructor(readonly code: ErrorCode, message: string) {
     super(message);
   }
+}
+
+function inspectionFailureClass(code: ErrorCode): ExecutionResult["failureClass"] {
+  return code === "usage" ? "invalid_arguments" : code === "not_found" ? "not_found"
+    : code === "output_limit" ? "output_limit" : "reader_error";
 }
 function ordered(entries: LocatedEntry[]): LocatedEntry[] {
   return entries.sort((left, right) => left.offset - right.offset || left.order - right.order);
@@ -101,10 +107,12 @@ function parseContent(
   const lines = new LineMap(source);
   try {
     if (format.kind === "code") {
-      const tree = codeTree(source, format);
+      const tree = format.language === "go" || format.language === "typescript" ? undefined : codeTree(source, format);
+      const outline = codeOutline(source, lines, format, tree);
+      if (tree && format.language !== "typescript") outline.push(...parseErrorEntries(tree, lines));
       return {
-        parseComplete: !hasParseError(tree),
-		outline: publicOutline(lines, ordered(codeOutline(source, lines, format, tree))),
+        parseComplete: !outline.some(item => item.entry.kind === "parse_error"),
+		outline: publicOutline(lines, ordered(outline)),
         lineCount: lines.count,
       };
     }
@@ -113,14 +121,14 @@ function parseContent(
       const outline = markdownOutline(source, lines, tree);
       return {
         parseComplete: !hasParseError(tree) && outline.parseComplete,
-		outline: publicOutline(lines, ordered(outline.entries)),
+		outline: publicOutline(lines, ordered([...outline.entries, ...parseErrorEntries(tree, lines)])),
         lineCount: lines.count,
       };
     }
     const tree = jsonTree(source);
     return {
       parseComplete: !hasParseError(tree),
-	  outline: publicOutline(lines, ordered(jsonOutline(source, lines, tree))),
+	  outline: publicOutline(lines, ordered([...jsonOutline(source, lines, tree), ...parseErrorEntries(tree, lines)])),
       lineCount: lines.count,
     };
   } catch (error) {
@@ -240,35 +248,108 @@ async function inspect(input: string): Promise<InspectionData> {
   };
 }
 
+function displayOutlineName(value: string): string {
+  return /[\u0000-\u001f\u007f]/u.test(value) ? JSON.stringify(value) : value;
+}
+
+function compactOutline(data: InspectionData): string[] {
+  const imports = data.outline.filter(entry => entry.kind === "import");
+  let importsShown = false;
+  const rows: string[] = [];
+  for (const entry of data.outline) {
+    if (entry.kind === "import") {
+      if (!importsShown) {
+        const first = imports.reduce((line, item) => Math.min(line, item.line), Infinity);
+        const last = imports.reduce((line, item) => Math.max(line, item.line_end), 0);
+        rows.push(`${first}-${last} import\n`);
+      }
+      importsShown = true;
+      continue;
+    }
+    const name = entry.kind === "method" ? `${entry.receiver}.${entry.name}`
+      : entry.kind === "json" ? `${entry.pointer || "/"} ${entry.value_type}` : entry.name;
+    rows.push(`${entry.line}-${entry.line_end} ${entry.kind} ${displayOutlineName(name)}\n`);
+  }
+  return rows.length ? rows : ["(no outline)\n"];
+}
+
 export function createInspectFileTool(grammar: string): Tool<string[]> {
   return createExecutorTool({
     name: "inspect_file",
-    description: `Inspect one host-readable regular file and return bounded JSON metadata and a structural outline. When only structure is needed, prefer an outline to a full-file read; read source only for information missing from the outline or current context.
-Usage: inspect_file [--max-tokens N] PATH
-Example: inspect_file src/main.go, then mcat src/main.go START:END for the relevant outline entry. Reuse known locations instead of outlining a file again. Outline line and line_end are one-based source line numbers.
-
-Result shape schema:
-${inspectFileShapeSchemaJSON}`,
+    description: `Inspect host-readable regular files and return compact structural rows: START-END KIND NAME. Imports collapse to one range; parse_error rows locate syntax errors. When only structure is needed, prefer an outline to a full-file read; read source only for information missing from the outline or current context.
+Usage: inspect_file [--json] [--max-tokens N] PATH [PATH ...]
+Multiple files have path headers and share one budget. --json returns metadata and structured outline entries instead. Line ranges are one-based. Example: inspect_file src/main.go, then mcat src/main.go START:END for the relevant entry. Reuse known locations instead of outlining a file again.`,
     grammar,
     argv: readerArguments,
     async execute(argv) {
       let suppliedPath: string | null = null;
+      let json = false;
       try {
-        const parsed = readerOptions(argv);
+        const optionEnd = argv.indexOf("--");
+        json = argv.slice(0, optionEnd < 0 ? argv.length : optionEnd).includes("--json");
+        const parsed = readerOptions(argv, false, () => false, true);
         if (parsed.options.previewBytes !== undefined) throw new InspectFailure("usage", "inspect_file does not accept source preview flags");
         argv = parsed.rest;
-        if (argv.length !== 1) {
-          throw new InspectFailure("usage", "inspect_file expects PATH");
+        const terminator = argv.indexOf("--");
+        let jsonSeen = false;
+        argv = argv.filter((argument, index) => {
+          if (index === terminator) return false;
+          if (argument !== "--json" || terminator >= 0 && index > terminator) return true;
+          if (jsonSeen) throw new InspectFailure("usage", "--json cannot repeat");
+          jsonSeen = true;
+          return false;
+        });
+        if (argv.length === 0) {
+          throw new InspectFailure("usage", "inspect_file expects PATH [PATH ...]");
         }
-        suppliedPath = argv[0];
-        return success(await inspect(suppliedPath), parsed.options.maxTokens ?? READ_DEFAULT_TOKENS);
+        const budget = parsed.options.maxTokens ?? READ_DEFAULT_TOKENS;
+        if (json && argv.length === 1) {
+          suppliedPath = argv[0];
+          return success(await inspect(suppliedPath), budget);
+        }
+        const output = new BoundedTextOutput(budget);
+        const omitted: string[] = [];
+        const errors: string[] = [];
+        let failed = false;
+        let failureClass: ExecutionResult["failureClass"];
+        for (const input of argv) {
+          suppliedPath = input;
+          try {
+            const data = await inspect(input);
+            const rows = json
+              ? [`${JSON.stringify({ok: true, data, truncated: false, truncation: null})}\n`]
+              : [...(argv.length > 1 ? [`--- ${displayOutlineName(data.path)} ---\n`] : []), ...compactOutline(data)];
+            for (const row of rows) {
+              if (byteLength(output.current) + byteLength(row) > OUTPUT_BYTES || !output.append(row)) {
+                output.incomplete = true;
+                omitted.push(row);
+              }
+            }
+          } catch (error) {
+            failed = true;
+            const cause = filesystemFailure(error);
+            failureClass ??= inspectionFailureClass(cause.code);
+            if (json) {
+              const row = failure(input, cause.code, cause.message);
+              if (!output.append(row)) omitted.push(row);
+            } else errors.push(`inspect_file: ${displayOutlineName(input)}: ${cause.message}\n`);
+          }
+        }
+        const retained = omitted.join("");
+        const stderr = errors.join("");
+        if (byteLength(retained) > MAX_RETAINED_BYTES) {
+          return {stdout: output.current, stderr: stderr + "inspect_file: recovery unavailable: omitted outline exceeds the 16 MiB recovery bound; use bounded mcat reads\n", exitCode: 1, failureClass: "output_limit"};
+        }
+        return {stdout: output.current, ...(stderr ? {stderr} : {}), exitCode: retained || failed ? 1 : 0,
+          ...(failureClass ? {failureClass} : {}),
+          ...(retained ? {failureClass: "output_limit" as const, omittedOutput: {stdout: retained, stderr: "", ...(json ? {} : {stdoutKind: "rows" as const})}} : {})};
       } catch (error) {
         const cause = error instanceof InspectFailure
           ? error
           : new InspectFailure(suppliedPath === null ? "usage" : "read", `cannot inspect file: ${errorText(error)}`);
-        return {stdout: failure(suppliedPath, cause.code, cause.message), exitCode: 1,
-          failureClass: cause.code === "usage" ? "invalid_arguments" : cause.code === "not_found" ? "not_found"
-            : cause.code === "output_limit" ? "output_limit" : "reader_error"};
+        return {stdout: json ? failure(suppliedPath, cause.code, cause.message) : "",
+          ...(!json ? {stderr: `inspect_file: ${suppliedPath === null ? "" : displayOutlineName(suppliedPath) + ": "}${cause.message}\n`} : {}), exitCode: 1,
+          failureClass: inspectionFailureClass(cause.code)};
       }
     },
   });

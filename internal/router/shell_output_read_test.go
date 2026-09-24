@@ -322,8 +322,12 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 				t.Fatal(err)
 			}
 			invocation := newShellWorkerTestInvocation(directory)
+			readCommand := command
+			if command == "inspect_file" {
+				readCommand += " --json"
+			}
 			full, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
-				command+" "+source+" --max-tokens 15500", nil, invocation)
+				readCommand+" "+source+" --max-tokens 15500", nil, invocation)
 			if status != 0 || diagnostic != "" {
 				t.Fatalf("full read: %d %q", status, diagnostic)
 			}
@@ -332,7 +336,7 @@ func TestFileAndOutlineReadRecoveryAfterSourceRemoval(t *testing.T) {
 				budget = "64"
 			}
 			first, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
-				command+" "+source+" --max-tokens "+budget, nil, invocation)
+				readCommand+" "+source+" --max-tokens "+budget, nil, invocation)
 			if status == 0 || first == "" {
 				t.Fatalf("expected partial output: %d %q %q", status, first, diagnostic)
 			}
@@ -492,7 +496,7 @@ func TestOutlineRecoveryCapacityPreservesCurrentOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		"inspect_file "+source+" --max-tokens 256", nil, newShellWorkerTestInvocation(directory))
+		"inspect_file --json "+source+" --max-tokens 256", nil, newShellWorkerTestInvocation(directory))
 	if status != 1 || !json.Valid([]byte(stdout)) || !strings.Contains(stdout, `"truncated":true`) ||
 		!strings.Contains(stderr, "recovery unavailable") || strings.Contains(stderr, "next_call") {
 		t.Fatalf("capacity discarded valid output or advertised recovery: %d %q %q", status, stdout, stderr)

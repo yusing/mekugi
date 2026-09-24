@@ -1,16 +1,17 @@
 import type {SyntaxNode, Tree} from "@lezer/common";
-import {decodeGoStringLiteral} from "mekugi:core/v1";
+import {goOutline as parseGoOutline} from "mekugi:core/v1";
 import {byteLength} from "./common.ts";
 import {decodeJavaScriptStringLiteral} from "./javascript_string.ts";
+import {typescriptOutline} from "./inspect_file_typescript.ts";
 import {
   addNamedEntries,
   children,
   descendants,
   firstDescendant,
-  hasParseError,
   LineMap,
   nodeText,
   parseSource,
+  parseErrorEntries,
   type CodeEntry,
   type LocatedEntry,
   type SourceFormat,
@@ -35,12 +36,6 @@ const javascriptIdentifierNodes = new Set([
   "VariableName",
 ]);
 const pythonIdentifierNodes = new Set(["PropertyName", "VariableName"]);
-
-const goDeclarationProjections: Record<string, {node: string; name: string; kind: CodeEntry["kind"]}> = {
-  ConstDecl: {node: "ConstSpec", name: "DefName", kind: "constant"},
-  VarDecl: {node: "VarSpec", name: "DefName", kind: "variable"},
-  TypeDecl: {node: "TypeSpec", name: "DefName", kind: "type"},
-};
 
 const javascriptDeclarationProjections: Record<string, {name: string; kind: CodeEntry["kind"]}> = {
   AmbientFunctionDeclaration: {name: "VariableDefinition", kind: "function"},
@@ -73,96 +68,39 @@ export function codeTree(source: string, format: SourceFormat): Tree {
   }
   return parseSource(jsonParser(), source);
 }
-function decodeGoImportPath(source: string, node: SyntaxNode): string | null {
-  const literal = nodeText(source, node);
-  try {
-    return decodeGoStringLiteral(literal);
-  } catch {
-    return null;
+function goOutline(source: string, lines: LineMap, _tree?: Tree): LocatedEntry[] {
+  const parsed = parseGoOutline(source);
+  const bytes = Buffer.from(source);
+  const positions = [...parsed.entries.flatMap(entry => [entry.from, entry.to, entry.name_from, entry.name_to]),
+    ...parsed.errors.map(error => error.offset)].filter(value => value >= 0);
+  const offsets = new Map<number, number>();
+  let previous = 0, characters = 0;
+  for (const position of [...new Set(positions)].sort((a, b) => a - b)) {
+    characters += bytes.subarray(previous, position).toString("utf8").length;
+    offsets.set(position, characters);
+    previous = position;
   }
-}
-
-function goSpecifications(declaration: SyntaxNode, name: string): SyntaxNode[] {
-  const container = children(declaration).find((child) => child.name === "SpecList") ?? declaration;
-  return children(container).filter((child) => child.name === name);
-}
-
-function goOutline(source: string, lines: LineMap, tree: Tree): LocatedEntry[] {
-  const output: LocatedEntry[] = [];
-  for (const declaration of children(tree.topNode)) {
-    if (declaration.name === "ImportDecl") {
-      for (const specification of goSpecifications(declaration, "ImportSpec")) {
-        const pathNode = firstDescendant(specification, new Set(["String"]));
-        if (pathNode === null) {
-          continue;
-        }
-        const name = decodeGoImportPath(source, pathNode);
-        if (name !== null && name !== "") {
-          output.push({
-            entry: {kind: "import", name, ...lines.range(specification)},
-            end: specification.to,
-            offset: specification.from,
-            order: output.length,
-          });
-        }
-      }
-      continue;
-    }
-
-    const projected = goDeclarationProjections[declaration.name];
-    if (projected !== undefined) {
-      for (const specification of goSpecifications(declaration, projected.node)) {
-        addNamedEntries(
-          output,
-          source,
-          lines,
-          declaration,
-          children(specification).filter((child) => child.name === projected.name),
-          projected.kind,
-          specification,
-        );
-      }
-      continue;
-    }
-
-    if (declaration.name === "FunctionDecl") {
-      const name = firstDescendant(declaration, new Set(["DefName"]));
-      if (name !== null) {
-        addNamedEntries(output, source, lines, declaration, [name], "function");
-      }
-      continue;
-    }
-
-    if (declaration.name === "MethodDecl") {
-      const name = firstDescendant(declaration, new Set(["FieldName"]));
-      const receiverParameters = children(declaration).find((child) => child.name === "Parameters");
-      const parameter = receiverParameters === undefined
-        ? null
-        : firstDescendant(receiverParameters, new Set(["Parameter"]));
-      const receiverNode = parameter === null
-        ? null
-        : firstDescendant(parameter, new Set(["PointerType", "ParameterizedType", "TypeName"]));
-      if (name !== null && receiverNode !== null) {
-        const receiver = nodeText(source, receiverNode).replace(/\s+/gu, "");
-        if (receiver !== "") {
-          output.push({
-            entry: {
-              kind: "method",
-              name: nodeText(source, name),
-              receiver,
-              ...lines.range(declaration),
-            },
-            end: declaration.to,
-            offset: declaration.from,
-            order: output.length,
-            nameFrom: name.from,
-            nameTo: name.to,
-          });
-        }
-      }
-    }
+  const offset = (value: number): number => offsets.get(value)!;
+  const entries: LocatedEntry[] = parsed.entries.map((entry, order) => {
+    const from = offset(entry.from), to = offset(entry.to);
+    const span = {line: lines.lineAt(from), line_end: lines.lineAt(Math.max(from, to - 1))};
+    return {
+      entry: entry.kind === "method"
+        ? {kind: "method", name: entry.name, receiver: entry.receiver ?? "", ...span}
+        : {kind: entry.kind, name: entry.name, ...span},
+      offset: from, end: to, order, complete: entry.complete,
+      ...(entry.name_from >= 0 ? {nameFrom: offset(entry.name_from), nameTo: offset(entry.name_to)} : {}),
+    };
+  });
+  const errorRows = new Set<number>();
+  for (const error of parsed.errors) {
+    const at = Math.min(offset(error.offset), Math.max(0, source.length - 1));
+    const line = lines.lineAt(at);
+    if (lines.count === 0 || errorRows.has(line)) continue;
+    errorRows.add(line);
+    entries.push({entry: {kind: "parse_error", name: "syntax error", line, line_end: line}, offset: at, end: at, order: entries.length});
   }
-  return output;
+  return entries;
 }
 
 export function goDeclarationRange(
@@ -171,15 +109,11 @@ export function goDeclarationRange(
   definitionEndByte: number,
 ): {line: number; line_end: number} | null {
   const lines = new LineMap(source);
-  const tree = parseSource(goParser(), source);
-  if (hasParseError(tree)) {
-    return null;
-  }
-  for (const located of goOutline(source, lines, tree)) {
+  for (const located of goOutline(source, lines)) {
     if (
       located.nameFrom === undefined
       || located.nameTo === undefined
-      || located.entry.kind === "import"
+      || located.entry.kind === "import" || located.complete === false
     ) {
       continue;
     }
@@ -468,15 +402,50 @@ function pythonOutline(source: string, lines: LineMap, tree: Tree): LocatedEntry
   return output;
 }
 
-export function codeOutline(source: string, lines: LineMap, format: SourceFormat, tree: Tree): LocatedEntry[] {
+export function codeOutline(source: string, lines: LineMap, format: SourceFormat, tree?: Tree): LocatedEntry[] {
   if (format.language === "go") {
     return goOutline(source, lines, tree);
   }
+  if (format.language === "typescript") {
+    const parsed = typescriptOutline(source, lines, format.jsx === true);
+    if (parsed.recoveryFrom === undefined) return parsed.entries;
+    const recovered = tree ?? codeTree(source, format);
+    const fallback = [...javascriptOutline(source, lines, recovered), ...parseErrorEntries(recovered, lines)]
+      .sort((a, b) => a.offset - b.offset);
+    // A fatal error cannot discard intact declarations on either side. Lezer
+    // supplies recovery boundaries, but Babel verifies every recovered segment.
+    // A typeof-import query is not a new top-level import statement.
+    const boundaries = [...new Set([0, ...children(recovered.topNode)
+      .filter(node => node.name.endsWith("Declaration")
+        && !(node.name === "ImportDeclaration" && /^import\s*[.(]/u.test(source.slice(node.from, node.to))))
+      .map(node => node.from), source.length])].sort((a, b) => a - b);
+    const output: LocatedEntry[] = [];
+    let fallbackIndex = 0;
+    for (let index = 0; index + 1 < boundaries.length; index++) {
+      const from = boundaries[index], to = boundaries[index + 1];
+      const firstFallback = fallbackIndex;
+      while (fallbackIndex < fallback.length && fallback[fallbackIndex].offset < to) fallbackIndex++;
+      const text = source.slice(from, to);
+      const segment = typescriptOutline(text, new LineMap(text), format.jsx === true);
+      if (segment.recoveryFrom !== undefined) {
+        output.push(...fallback.slice(firstFallback, fallbackIndex));
+        continue;
+      }
+      for (const entry of segment.entries) {
+        const offset = entry.offset + from, end = entry.end + from;
+        output.push({...entry, offset, end, order: output.length,
+          entry: {...entry.entry, line: lines.lineAt(offset), line_end: lines.lineAt(Math.max(offset, end - 1))},
+          ...(entry.nameFrom !== undefined ? {nameFrom: entry.nameFrom + from, nameTo: entry.nameTo! + from} : {}),
+        });
+      }
+    }
+    return output;
+  }
   if (format.language === "javascript" || format.language === "typescript") {
-    return javascriptOutline(source, lines, tree);
+    return javascriptOutline(source, lines, tree ?? codeTree(source, format));
   }
   if (format.language === "python") {
-    return pythonOutline(source, lines, tree);
+    return pythonOutline(source, lines, tree ?? codeTree(source, format));
   }
   return [];
 }
@@ -491,16 +460,22 @@ export function declarationRange(
   if (format.kind !== "code") {
     return null;
   }
-  const tree = codeTree(source, format);
-  if (hasParseError(tree)) {
-    return null;
+  if (format.language === "go") {
+    return goDeclarationRange(source, byteLength(source.slice(0, definitionFrom)), byteLength(source.slice(0, definitionTo)));
   }
+  const tree = format.language === "typescript" ? undefined : codeTree(source, format);
   for (const located of codeOutline(source, lines, format, tree)) {
     if (
       located.nameFrom === definitionFrom
       && located.nameTo === definitionTo
       && located.entry.kind !== "import"
+      && located.complete !== false
     ) {
+      let invalid = false;
+      if (located.complete === undefined) (tree ?? codeTree(source, format)).iterate({from: located.offset, to: located.end, enter(node) {
+        if (node.type.isError && node.from >= located.offset && node.from <= located.end) invalid = true;
+      }});
+      if (invalid) return null;
       return {line: located.entry.line, line_end: located.entry.line_end};
     }
   }

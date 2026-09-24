@@ -22,7 +22,10 @@ must not collide with another declaration, a Mekugi built-in, or a shell
 keyword/built-in that would make a basename ambiguous.
 
 The optional `mekugi:core/v1` import provides deterministic quoted-operand,
-logical-row, source-format, Go-lexical, shell-header, and interpreter helpers.
+logical-row, source-format, Go-lexical, Go declaration-outline, shell-header, and interpreter helpers.
+`goOutline(source)` returns declaration and declared-name UTF-8 byte offsets,
+per-declaration syntax completeness, and syntax-error offsets using the host Go
+grammar. It parses supplied text only; it does not resolve imports or read files.
 It grants no filesystem, workspace, process, network, credential, or router
 transport authority. Unknown `mekugi:` modules reject during startup.
 

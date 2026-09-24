@@ -7,6 +7,7 @@ import (
 	"unsafe"
 
 	"github.com/yusing/mekugi/internal/golex"
+	"github.com/yusing/mekugi/internal/gooutline"
 	"github.com/yusing/mekugi/internal/logicalrow"
 	"github.com/yusing/mekugi/internal/quotedoperand"
 	"github.com/yusing/mekugi/internal/shellsyntax"
@@ -23,6 +24,7 @@ const (
 	operationDecodeGoStringLiteral
 	operationParseShellHeader
 	operationInterpreterIdentity
+	operationGoOutline
 )
 
 const maxJavaScriptSafeInteger = 1<<53 - 1
@@ -130,6 +132,8 @@ func invoke(operation uint32) uint32 {
 		}
 	case operationInterpreterIdentity:
 		value = shellsyntax.InterpreterIdentity(input)
+	case operationGoOutline:
+		value = gooutline.Parse(input)
 	default:
 		err = &coreError{Code: "unknown_operation", Message: "shared-core operation is unavailable"}
 	}

@@ -37,4 +37,16 @@ declare module "mekugi:core/v1" {
   export function decodeGoStringLiteral(value: string): string;
   export function parseShellHeader(value: string): ParsedShellHeader;
   export function interpreterIdentity(value: string): string;
+  export type GoOutlineEntry = {
+    kind: "import" | "constant" | "variable" | "type" | "function" | "method";
+    name: string;
+    receiver?: string;
+    from: number;
+    to: number;
+    name_from: number;
+    name_to: number;
+    complete: boolean;
+  };
+  /** Byte offsets into the original UTF-8 source, parsed by Go's own grammar. */
+  export function goOutline(value: string): {entries: GoOutlineEntry[]; errors: {offset: number}[]};
 }

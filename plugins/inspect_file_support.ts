@@ -43,7 +43,8 @@ export type JSONEntry = {
   line_end: number;
 };
 
-export type OutlineEntry = CodeEntry | MethodEntry | HeadingEntry | FrontmatterEntry | JSONEntry;
+export type ParseErrorEntry = {kind: "parse_error"; name: "syntax error"; line: number; line_end: number};
+export type OutlineEntry = CodeEntry | MethodEntry | HeadingEntry | FrontmatterEntry | JSONEntry | ParseErrorEntry;
 export type PublicOutlineEntry = OutlineEntry;
 export type LocatedEntry = {
   entry: OutlineEntry;
@@ -52,6 +53,7 @@ export type LocatedEntry = {
   order: number;
   nameFrom?: number;
   nameTo?: number;
+  complete?: boolean;
 };
 
 export type SourceFormat = {
@@ -185,6 +187,21 @@ export function hasParseError(tree: Tree): boolean {
     },
   });
   return found;
+}
+
+export function parseErrorEntries(tree: Tree, lines: LineMap): LocatedEntry[] {
+  const entries: LocatedEntry[] = [];
+  const seen = new Set<number>();
+  tree.iterate({enter(node) {
+    if (!node.type.isError || lines.count === 0) return;
+    const offset = Math.min(node.from, Math.max(0, lines.source.length - 1));
+    const line = lines.lineAt(offset);
+    if (seen.has(line)) return;
+    seen.add(line);
+    entries.push({entry: {kind: "parse_error", name: "syntax error", line, line_end: line},
+      offset, end: node.to, order: entries.length});
+  }});
+  return entries;
 }
 
 export function addNamedEntries(

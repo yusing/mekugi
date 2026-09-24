@@ -85,7 +85,9 @@ Definition expansion occurs only when the resolver's definition selection exactl
 matches the declared name of a complete inspect_file outline entry. Supported
 package or module declarations, functions, classes, types, variables, and direct
 methods emit the entry's inclusive logical-line range. JSON, imports, fields,
-parameters, locals, and files with uncertain parsing emit only the definition line.
+parameters, locals, and declarations whose own syntax is uncertain emit only the
+definition line. An unrelated parse error elsewhere in the file does not suppress
+an error-free declaration's range. Go boundaries use the shared `go/parser` owner.
 Token admission never emits a partial result row.
 
 The authenticated frontend owns one AX read observation without retaining command,

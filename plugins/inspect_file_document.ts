@@ -69,6 +69,15 @@ function markdownFrontmatter(
       });
     }
   }
+  const errorRows = new Set<number>();
+  for (const error of document.errors) {
+    const offset = Math.min(contentStart + error.pos[0], Math.max(0, source.length - 1));
+    const line = lines.lineAt(offset);
+    if (errorRows.has(line)) continue;
+    errorRows.add(line);
+    entries.push({entry: {kind: "parse_error", name: "syntax error", line, line_end: line},
+      offset, end: offset, order: entries.length});
+  }
   return {
     endOffset: lines.starts[closingLine + 1] ?? source.length,
     entries,

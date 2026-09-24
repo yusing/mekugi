@@ -101,7 +101,7 @@ function definitionJSON(filePath: string, source: string, nameOffset: number, na
 
 async function inspect(...argv: string[]) {
   const tool = createInspectFileTool(String.raw`\A.+\z`);
-  const execution = await tool.execute(argv, executionContext);
+  const execution = await tool.execute(["--json", ...argv], executionContext);
   return {...execution, raw: execution.stdout ?? "", result: JSON.parse(execution.stdout ?? "")};
 }
 
@@ -707,13 +707,13 @@ describe("msymbol built-in plugin", () => {
     expect(definition.exitCode).toBe(0);
     expect(definition.stdout).toBe([2, 3, 4].map((line) =>
       symbolRow("sample.go", line, source.split("\n")[line - 1])).join(""));
-    const goInspection = await createInspectFileTool("").execute(["sample.go"], executionContext);
+    const goInspection = await createInspectFileTool("").execute(["--json", "sample.go"], executionContext);
     expect(JSON.parse(goInspection.stdout!).data).toMatchObject({
       parse_complete: true,
       outline: [{kind: "function", name: "Pick", line: 2, line_end: 4}],
     });
     await writeFile("sample.ts", "\uFEFFfunction pick() {}\n");
-    const inspected = await createInspectFileTool("").execute(["sample.ts"], executionContext);
+    const inspected = await createInspectFileTool("").execute(["--json", "sample.ts"], executionContext);
     expect(inspected.exitCode).toBe(0);
     expect(JSON.parse(inspected.stdout!).data.outline[0].line).toBe(1);
   });
@@ -723,7 +723,7 @@ describe("msymbol built-in plugin", () => {
     process.chdir(directory);
     const tool = createInspectFileTool("");
     await writeFile("frontmatter.md", "\uFEFF---\ntitle: Example\n---\n# Heading\n");
-    const markdown = await tool.execute(["frontmatter.md"], executionContext);
+    const markdown = await tool.execute(["--json", "frontmatter.md"], executionContext);
     expect(JSON.parse(markdown.stdout!).data).toMatchObject({
       parse_complete: true,
       outline: [
@@ -737,7 +737,7 @@ describe("msymbol built-in plugin", () => {
       ["source.md", "\uFEFF# Heading\n"],
     ]) {
       await writeFile(file, source);
-      const result = await tool.execute([file], executionContext);
+      const result = await tool.execute(["--json", file], executionContext);
       const data = JSON.parse(result.stdout!).data;
       expect(data.parse_complete).toBe(true);
       expect(data.outline[0].line).toBe(1);
@@ -1027,7 +1027,7 @@ describe("msymbol built-in plugin", () => {
       broken,
       Buffer.byteLength(broken.slice(0, useOffset), "utf8"),
       Buffer.byteLength(broken.slice(0, useOffset + "Use".length), "utf8"),
-    )).toBeNull();
+    )).toEqual({line: 5, line_end: 5});
 
     const fake = await installFakeGopls();
     const response = definitionJSON(filePath, source, fieldOffset, "Field");
@@ -1038,6 +1038,44 @@ describe("msymbol built-in plugin", () => {
     );
     expect(result).toMatchObject({
       stdout: symbolRow("field.go", 3, "  Field int"),
+      exitCode: 0,
+      terminationReason: "resolver_cleanup",
+    });
+  });
+
+  test("expands the tracked parseChangeRead definition to its complete body", async () => {
+    const relativePath = "internal/router/mchanges.go";
+    const filePath = path.resolve(relativePath);
+    const source = await readFile(filePath, "utf8");
+    const declarationFrom = source.indexOf("func parseChangeRead");
+    expect(declarationFrom).toBeGreaterThanOrEqual(0);
+    const nameFrom = source.indexOf("parseChangeRead", declarationFrom);
+    const lines = new LineMap(source);
+    const definitionLine = lines.lineAt(nameFrom);
+    const inspection = await createInspectFileTool("").execute(
+      ["--json", "--max-tokens", "15500", relativePath],
+      executionContext,
+    );
+    const data = JSON.parse(inspection.stdout!).data;
+    const declaration = data.outline.find((entry: Record<string, unknown>) =>
+      entry.kind === "function" && entry.name === "parseChangeRead",
+    );
+    expect(declaration).toBeDefined();
+
+    const fake = await installFakeGopls();
+    await fake.respond(definitionJSON(filePath, source, nameFrom, "parseChangeRead"));
+    const result = await createMSymbolTool("start: TEST").execute(
+      ["def", relativePath, String(definitionLine), "parseChangeRead"],
+      executionContext,
+    );
+    let expected = "";
+    for (let line = declaration.line; line <= declaration.line_end; line += 1) {
+      const text = lines.logicalLine(line)?.text;
+      if (text === undefined) throw new Error(`missing mchanges.go line ${line}`);
+      expected += symbolRow(relativePath, line, text);
+    }
+    expect(result).toMatchObject({
+      stdout: expected,
       exitCode: 0,
       terminationReason: "resolver_cleanup",
     });
@@ -1375,18 +1413,9 @@ process.stdin.on("data", (chunk) => {
 
 describe("inspect_file built-in plugin", () => {
 
-  test("embeds its outline-only shape schema", async () => {
+  test("keeps the always-on description concise", async () => {
     const inspectFileDescription = createInspectFileTool("").specification.description;
-    const marker = "Result shape schema:\n";
-    const schema = JSON.parse(inspectFileDescription.slice(
-      inspectFileDescription.indexOf(marker) + marker.length,
-    ));
-    expect(schema.success.data.outline).toBe("outline_entry[]");
-    expect(schema).not.toHaveProperty("selected_entry_source");
-    expect(JSON.stringify(schema.outline_entry)).not.toContain("source");
-    for (const persistent of ["before editing", "Reason carefully"]) {
-      expect(inspectFileDescription).not.toContain(persistent);
-    }
+    expect(inspectFileDescription).not.toContain("Result shape schema:");
 
     const directory = await temporaryDirectory("inspect-file-");
     process.chdir(directory);
@@ -1430,7 +1459,13 @@ describe("inspect_file built-in plugin", () => {
     );
     const duplicate = await inspect("duplicate.md");
     expect(duplicate.result.data.parse_complete).toBe(false);
-    expect(duplicate.result.data.outline.map((entry: Record<string, unknown>) => entry.name)).toEqual(["a", "a"]);
+    expect(duplicate.result.data.outline.map((entry: Record<string, unknown>) => entry.name))
+      .toEqual(["a", "a", "syntax error"]);
+    expect(duplicate.result.data.outline.at(-1)).toMatchObject({
+      kind: "parse_error",
+      line: 3,
+      line_end: 3,
+    });
 
     const json = await inspect("sample.json");
     expect(json.result.data.outline.map((entry: Record<string, unknown>) =>
@@ -1652,24 +1687,24 @@ describe("inspect_file command contract", () => {
     await symlink(path.join(outside, "value.json"), "linked.json");
     const tool = createInspectFileTool("");
     for (const input of [path.join(outside, "value.json"), path.relative(directory, path.join(outside, "value.json")), "linked.json"]) {
-      const result = await tool.execute([input], executionContext);
+      const result = await tool.execute(["--json", input], executionContext);
       expect(result.exitCode).toBe(0);
       expect(JSON.parse(result.stdout!).data.outline).toHaveLength(2);
     }
-    const directoryResult = await tool.execute([outside], executionContext);
+    const directoryResult = await tool.execute(["--json", outside], executionContext);
     expect(JSON.parse(directoryResult.stdout!).error.code).toBe("not_regular");
   });
 
-  test("accepts only a path operand", async () => {
+  test("rejects an invalid budget and a missing path", async () => {
     const tool = createInspectFileTool("");
     for (const args of [
       ["--max-tokens", "0", "sample.go"],
-      ["--source", "Pick", "sample.go"],
-      ["--source-bytes", "100", "sample.go"],
+      [],
     ]) {
       const result = await tool.execute(args, executionContext);
       expect(result.exitCode).toBe(1);
-      expect(JSON.parse(result.stdout!).error.code).toBe("usage");
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toMatch(/^inspect_file: /u);
     }
   });
 
@@ -1695,7 +1730,7 @@ describe("inspect_file bounds and paths", () => {
     ].join("\n");
     await writeFile("many.go", source);
     const tool = createInspectFileTool("");
-    const complete = await tool.execute(["--max-tokens", "15500", "many.go"], executionContext);
+    const complete = await tool.execute(["--json", "--max-tokens", "15500", "many.go"], executionContext);
     expect(complete.exitCode).toBe(0);
     const completeJSON = JSON.parse(complete.stdout);
     expect(completeJSON.truncated).toBe(false);
@@ -1703,7 +1738,7 @@ describe("inspect_file bounds and paths", () => {
     expect(completeTokens).toBeGreaterThan(4000);
     expect(completeTokens).toBeLessThanOrEqual(6000);
 
-    const defaultResult = await tool.execute(["many.go"], executionContext);
+    const defaultResult = await tool.execute(["--json", "many.go"], executionContext);
     expect(defaultResult.exitCode).toBe(1);
     expect(defaultResult.failureClass).toBe("output_limit");
     const defaultJSON = JSON.parse(defaultResult.stdout);

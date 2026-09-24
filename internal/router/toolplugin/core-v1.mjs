@@ -10,6 +10,7 @@ const operations = Object.freeze({
   decodeGoStringLiteral: 6,
   parseShellHeader: 7,
   interpreterIdentity: 8,
+  goOutline: 9,
 });
 
 const wasi = new WASI({version: "preview1", args: [], env: {}, preopens: {}});
@@ -147,4 +148,8 @@ export function parseShellHeader(value) {
 
 export function interpreterIdentity(value) {
   return invoke(operations.interpreterIdentity, value);
+}
+
+export function goOutline(value) {
+  return invoke(operations.goOutline, value);
 }

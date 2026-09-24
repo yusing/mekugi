@@ -41,70 +41,9 @@ Resolve one current Go, JavaScript, TypeScript, JSON, or Python symbol and emit 
 </tool>
 
 <tool name="inspect_file">
-Inspect one host-readable regular file and return bounded JSON metadata and a structural outline. When only structure is needed, prefer an outline to a full-file read; read source only for information missing from the outline or current context.
-Usage: inspect_file [--max-tokens N] PATH
-Example: inspect_file src/main.go, then mcat src/main.go START:END for the relevant outline entry. Reuse known locations instead of outlining a file again. Outline line and line_end are one-based source line numbers.
-
-Result shape schema:
-{
-  "success": {
-    "ok": true,
-    "data": {
-      "path": "string",
-      "kind": "code | markdown | json | none",
-      "language": "go | javascript | typescript | python | null",
-      "size_bytes": "integer",
-      "line_count": "integer | null",
-      "parse_complete": "boolean",
-      "outline": "outline_entry[]"
-    },
-    "truncated": "boolean",
-    "truncation": "null | {reason: output_bytes | output_tokens, after_entries: integer}"
-  },
-  "failure": {
-    "ok": false,
-    "path": "string | null",
-    "error": {
-      "code": "usage | not_found | not_regular | not_utf8 | read | parse | output_limit",
-      "message": "string"
-    }
-  },
-  "outline_entry": [
-    {
-      "kind": "import | constant | variable | type | class | function",
-      "name": "string",
-      "line": "integer",
-      "line_end": "integer"
-    },
-    {
-      "kind": "method",
-      "name": "string",
-      "receiver": "string",
-      "line": "integer",
-      "line_end": "integer"
-    },
-    {
-      "kind": "heading",
-      "name": "string",
-      "level": "1 | 2 | 3 | 4 | 5 | 6",
-      "line": "integer",
-      "line_end": "integer"
-    },
-    {
-      "kind": "frontmatter",
-      "name": "string",
-      "line": "integer",
-      "line_end": "integer"
-    },
-    {
-      "kind": "json",
-      "pointer": "RFC 6901 string",
-      "value_type": "object | array | string | number | boolean | null",
-      "line": "integer",
-      "line_end": "integer"
-    }
-  ]
-}
+Inspect host-readable regular files and return compact structural rows: START-END KIND NAME. Imports collapse to one range; parse_error rows locate syntax errors. When only structure is needed, prefer an outline to a full-file read; read source only for information missing from the outline or current context.
+Usage: inspect_file [--json] [--max-tokens N] PATH [PATH ...]
+Multiple files have path headers and share one budget. --json returns metadata and structured outline entries instead. Line ranges are one-based. Example: inspect_file src/main.go, then mcat src/main.go START:END for the relevant entry. Reuse known locations instead of outlining a file again.
 </tool>
 
 <tool name="mread">

@@ -1,6 +1,7 @@
 {
   "private": true,
   "dependencies": {
+    "@babel/parser": "7.29.9",
     "@lezer/go": "1.0.1",
     "@lezer/javascript": "1.5.4",
     "@lezer/json": "1.0.3",
