@@ -35,7 +35,12 @@ type liveActivityView struct {
 	status    string
 	painter   liveActivityPainter
 	osc       livediff.OSC
-	runs      map[liveActivityRunKey][]string
+	runs      map[liveActivityRunKey]liveActivityRun
+
+	// expanded snippets show in full in the shared feed; snippet is the
+	// hovered collapsed one.
+	expanded map[liveActivitySnippet]bool
+	snippet  liveActivitySnippet
 
 	// rosterPane renders only the roster, for the pane under Codex. rosterAway
 	// reports that such a pane is connected, so this feed omits its own roster.
@@ -45,9 +50,26 @@ type liveActivityView struct {
 	publish func(activityPaneSelection)
 	pending []activityPaneSelection
 
-	// Geometry of the last frame, used by scrolling keys.
-	feedLines, feedRows int
-	width, height       int
+	// Geometry of the last frame, used by scrolling keys and the pointer.
+	// feedSnippets holds each feed row's snippet, from screen row feedTop
+	// between columns feedLeft and feedRight.
+	feedLines, feedRows          int
+	feedSnippets                 []liveActivitySnippet
+	feedTop, feedLeft, feedRight int
+	width, height                int
+}
+
+// liveActivitySnippet names a clippable block in the shared feed: the
+// sequence of its run's first entry and its index in the run. Sequences start
+// at one, so the zero value names no snippet.
+type liveActivitySnippet struct {
+	run   uint64
+	block int
+}
+
+type liveActivityRun struct {
+	lines    []string
+	snippets []liveActivitySnippet // Aligned with lines.
 }
 
 type liveActivityRosterRow struct {
@@ -64,6 +86,7 @@ type liveActivityRunKey struct {
 	first, last uint64
 	width, clip int
 	theme       livediff.Theme
+	hover       int // Hovered snippet block in this run, or -1.
 }
 
 func newLiveActivityView() *liveActivityView {
@@ -138,6 +161,11 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 	if extra := len(v.entries) - liveActivityFeedLimit; extra > 0 {
 		v.entries = slices.Delete(v.entries, 0, extra)
 		v.blocks = slices.Delete(v.blocks, 0, extra)
+		for snippet := range v.expanded {
+			if snippet.run < v.entries[0].Seq {
+				delete(v.expanded, snippet)
+			}
+		}
 	}
 	v.keepSelection()
 	return false
@@ -279,6 +307,48 @@ func (v *liveActivityView) handleMouse(action byte, row, column int) bool {
 	if action != 'h' && action != '\r' {
 		return false
 	}
+	snippet := v.pointSnippet(action, row, column)
+	agent := v.pointAgent(action, row, column)
+	return snippet || agent
+}
+
+// pointSnippet underlines a hovered collapsed snippet. A click expands a
+// collapsed snippet or collapses an expanded one.
+func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
+	var snippet liveActivitySnippet
+	if index := row - v.feedTop; index >= 0 && index < len(v.feedSnippets) && column >= v.feedLeft && column <= v.feedRight {
+		snippet = v.feedSnippets[index]
+	}
+	redraw := false
+	if action == '\r' && snippet != (liveActivitySnippet{}) {
+		if v.expanded[snippet] {
+			delete(v.expanded, snippet)
+		} else {
+			if v.expanded == nil {
+				v.expanded = make(map[liveActivitySnippet]bool)
+			}
+			v.expanded[snippet] = true
+			// Hold the feed still so the expanded lines open below the pointer.
+			v.scroll(0)
+		}
+		for key := range v.runs {
+			if key.first == snippet.run {
+				delete(v.runs, key)
+			}
+		}
+		redraw = true
+	}
+	if v.expanded[snippet] {
+		snippet = liveActivitySnippet{}
+	}
+	if snippet != v.snippet {
+		v.snippet, redraw = snippet, true
+	}
+	return redraw
+}
+
+// pointAgent highlights a hovered roster agent; a click filters the feed.
+func (v *liveActivityView) pointAgent(action byte, row, column int) bool {
 	previous := v.hovered
 	v.hovered = ""
 	for _, hit := range v.hits {
@@ -314,10 +384,11 @@ func (v *liveActivityView) scroll(delta int) {
 func (v *liveActivityView) render(width, height int, now time.Time) []string {
 	width, height = max(10, width), max(3, height)
 	if width != v.width || height != v.height {
-		v.hovered = ""
+		v.hovered, v.snippet = "", liveActivitySnippet{}
 		v.width, v.height = width, height
 	}
 	v.hits = v.hits[:0]
+	v.feedSnippets = nil
 	text := max(1, width-1)
 	rows := v.roster()
 	footer := height >= 10
@@ -326,6 +397,7 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 		body--
 	}
 	lines := []string{v.header(rows, text)}
+	v.feedTop, v.feedLeft, v.feedRight = 2, 1, text
 	switch {
 	case v.rosterPane:
 		// The roster pane under Codex: one row per agent, no feed or footer.
@@ -344,6 +416,7 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 		feedWidth := text - cardWidth - 3
 		cards := v.renderCards(rows, cardWidth, body, now)
 		feed := v.viewport(v.renderFeed(feedWidth, body), body)
+		v.feedLeft = cardWidth + 4
 		for i := range body {
 			lines = append(lines, liveActivityPad(cards[i], cardWidth)+liveActivityDim+" │ "+liveActivityUndim+feed[i])
 		}
@@ -352,9 +425,11 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 		feedRows := body - len(roster) - 1
 		lines = append(lines, roster...)
 		lines = append(lines, liveActivityDim+strings.Repeat("─", text)+liveActivityUndim)
+		v.feedTop = len(lines) + 1
 		lines = append(lines, v.viewport(v.renderFeed(text, feedRows), feedRows)...)
 	case len(rows) > 0:
 		lines = append(lines, v.renderStrip(rows, text))
+		v.feedTop = 3
 		lines = append(lines, v.viewport(v.renderFeed(text, body-1), body-1)...)
 	default:
 		lines = append(lines, v.viewport(v.renderFeed(text, body), body)...)
@@ -563,20 +638,22 @@ func (v *liveActivityView) renderStrip(rows []liveActivityRosterRow, width int) 
 }
 
 type liveActivityFeed struct {
-	lines []string
-	heads []int // Index of the heading that owns each line.
+	lines    []string
+	heads    []int                 // Index of the heading that owns each line.
+	snippets []liveActivitySnippet // Snippet that owns each line, if any.
 }
 
 // renderFeed groups consecutive entries of one agent under a heading with a
 // colored gutter. Adjacent reads collapse into one row. In the interleaved
-// view each block is clipped to a share of the feed that grows with the pane.
+// view each block is clipped to a share of the feed that grows with the pane,
+// unless the viewer expanded it.
 func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 	clip := 0
 	if !v.only {
 		clip = min(12, max(3, rows/3))
 	}
 	var feed liveActivityFeed
-	used := make(map[liveActivityRunKey][]string)
+	used := make(map[liveActivityRunKey]liveActivityRun)
 	for i := 0; i < len(v.entries); {
 		if !v.visible(v.entries[i]) {
 			i++
@@ -593,8 +670,11 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 			}
 			last = j
 		}
-		key := liveActivityRunKey{v.entries[i].Seq, v.entries[last].Seq, width, clip, v.painter.theme}
-		lines, ok := v.runs[key]
+		key := liveActivityRunKey{v.entries[i].Seq, v.entries[last].Seq, width, clip, v.painter.theme, -1}
+		if v.snippet.run == key.first {
+			key.hover = v.snippet.block
+		}
+		run, ok := v.runs[key]
 		if !ok {
 			var blocks []liveActivityBlock
 			for k := i; k <= last; k++ {
@@ -602,27 +682,31 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 					blocks = append(blocks, v.blocks[k]...)
 				}
 			}
-			lines = v.renderRun(agent, v.entries[last].Observed, mergeLiveActivityReads(blocks), width, clip)
+			run = v.renderRun(key.first, agent, v.entries[last].Observed, mergeLiveActivityReads(blocks), width, clip)
 		}
-		used[key] = lines
+		used[key] = run
 		head := len(feed.lines)
-		for range lines {
+		for range run.lines {
 			feed.heads = append(feed.heads, head)
 		}
-		feed.lines = append(feed.lines, lines...)
+		feed.lines = append(feed.lines, run.lines...)
+		feed.snippets = append(feed.snippets, run.snippets...)
 		i = j
 	}
 	v.runs = used
 	return feed
 }
 
-func (v *liveActivityView) renderRun(agent string, observed time.Time, blocks []liveActivityBlock, width, clip int) []string {
+func (v *liveActivityView) renderRun(first uint64, agent string, observed time.Time, blocks []liveActivityBlock, width, clip int) liveActivityRun {
 	stamp := " " + observed.Local().Format("15:04:05")
 	head := liveAgentGutter(agent, v.painter.theme) + "●" + liveActivityReset + " " + v.painter.agent(agent)
 	rule := max(1, width-ansi.StringWidth(head)-ansi.StringWidth(stamp)-1)
-	lines := []string{ansi.Truncate(head+" "+liveActivityDim+strings.Repeat("─", rule)+stamp+liveActivityUndim, width, "")}
+	run := liveActivityRun{
+		lines:    []string{ansi.Truncate(head+" "+liveActivityDim+strings.Repeat("─", rule)+stamp+liveActivityUndim, width, "")},
+		snippets: make([]liveActivitySnippet, 1),
+	}
 	gutter := liveAgentGutter(agent, v.painter.theme) + "▎" + liveActivityReset + " "
-	for _, block := range blocks {
+	for index, block := range blocks {
 		block.compact = clip > 0
 		part := v.painter.block(block, width-2)
 		// Messages carry results, so they get twice the operation share.
@@ -630,15 +714,23 @@ func (v *liveActivityView) renderRun(agent string, observed time.Time, blocks []
 		if block.kind == "message" || block.kind == "final" {
 			limit *= 2
 		}
+		var snippet liveActivitySnippet
 		if limit > 0 && len(part) > limit {
-			hidden := len(part) - limit + 1
-			part = append(part[:limit-1:limit-1], liveActivityDim+fmt.Sprintf("… +%d lines · o", hidden)+liveActivityUndim)
+			snippet = liveActivitySnippet{first, index}
+			if !v.expanded[snippet] {
+				hint := fmt.Sprintf("… +%d lines", len(part)-limit+1)
+				if snippet == v.snippet {
+					hint = "\x1b[4m" + hint + "\x1b[24m"
+				}
+				part = append(part[:limit-1:limit-1], liveActivityDim+hint+liveActivityUndim)
+			}
 		}
 		for _, line := range part {
-			lines = append(lines, gutter+ansi.Truncate(line, width-2, "…"))
+			run.lines = append(run.lines, gutter+ansi.Truncate(line, width-2, "…"))
+			run.snippets = append(run.snippets, snippet)
 		}
 	}
-	return lines
+	return run
 }
 
 // viewport returns exactly rows lines. When scrolled into a run, that run's
@@ -652,14 +744,15 @@ func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 	}
 	v.offset = max(0, min(v.offset, len(feed.lines)-rows))
 	lines := make([]string, rows)
+	v.feedSnippets = make([]liveActivitySnippet, rows)
 	for row := range rows {
 		if index := v.offset + row; index < len(feed.lines) {
-			lines[row] = feed.lines[index]
+			lines[row], v.feedSnippets[row] = feed.lines[index], feed.snippets[index]
 		}
 	}
 	// Pin only when the run keeps a visible line under its heading.
 	if rows > 1 && v.offset+1 < len(feed.heads) && feed.heads[v.offset] != v.offset && feed.heads[v.offset+1] == feed.heads[v.offset] {
-		lines[0] = feed.lines[feed.heads[v.offset]]
+		lines[0], v.feedSnippets[0] = feed.lines[feed.heads[v.offset]], liveActivitySnippet{}
 	}
 	return lines
 }

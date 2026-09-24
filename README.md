@@ -242,6 +242,7 @@ for more than 5 seconds, activity goes back to the main conversation.
 
 - In the roster, `↑`/`↓` pick the agent the feed shows; `o` toggles all agents.
 - `j`/`k`, `Space`/`b`, and `g` scroll; `r` or `G` resumes following.
+- Click a clipped snippet in the feed to expand it; click again to collapse it.
 - `Ctrl-C` closes the pane without ending Codex.
 
 See the [agents pane contract](doc/spec/commentary.md).

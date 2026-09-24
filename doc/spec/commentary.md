@@ -348,7 +348,9 @@ operation and the count of the others. The layout follows the pane size. At 100
 columns or wider, agent cards sit beside the feed. Narrower panes stack one row per
 agent above the feed, and panes with few rows show a one-line strip. The feed groups
 consecutive entries by agent under a colored heading. In the shared view it clips
-long entries, and its only mode shows one agent in full. Roster rows are
+long entries, and its only mode shows one agent in full. Hovering a clipped
+snippet underlines its hidden-line count; clicking it expands it in place and
+pauses following so it stays put, and clicking it again clips it. Roster rows are
 clickable: hovering highlights an agent; clicking it shows only that agent,
 and clicking it again restores the shared feed. In the roster pane, `↑`/`↓`
 (or `j`/`k`) move through a list whose top entry is all agents, followed by each
@@ -358,7 +360,8 @@ connected, the agents pane has no selection keys and only scrolls; without one,
 `n`/`Tab`, `p`, and `o` select and filter there. Roster status symbols are
 observed facts only:
 `◐` an open provider response, `!` a latest error event, `✓` a plaintext
-`FINAL_ANSWER` sent, and `·` otherwise. No marker claims that an agent finished.
+`FINAL_ANSWER` sent, and `·` otherwise. A final-answer summary does not repeat
+the `✓`. No marker claims that an agent finished.
 Agent colors derive from the canonical path, so the live diff pane uses the same
 color for a caller.
 

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"syscall"
@@ -334,8 +335,14 @@ func TestActivityPaneShowsFinalAnswerWithoutRootCopy(t *testing.T) {
 	view.apply(snapshot)
 	view.apply(entries)
 	frame := strings.Join(plainLines(view.render(80, 20, time.Now())), "\n")
-	if !strings.Contains(frame, "✓ The final result is ready") || !strings.Contains(frame, "verified") {
+	if !strings.Contains(frame, "The final result is ready") || !strings.Contains(frame, "verified") {
 		t.Fatalf("final content absent from pane: %s", frame)
+	}
+	// The status glyph marks the final answer; the summary does not repeat it.
+	for _, line := range strings.Split(frame, "\n") {
+		if strings.Contains(line, "The final result is ready") && strings.Count(line, "✓") > 1 {
+			t.Fatalf("roster repeats the final marker: %q", line)
+		}
 	}
 	if got := drainText(f.activity.drain("root", time.Now(), maxCommentaryPublicationBytes)); strings.Contains(got, final.text) {
 		t.Fatalf("native completion copied into commentary: %q", got)
@@ -478,7 +485,7 @@ func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 	long := "Plan\n```go\n" + strings.Repeat("line\n", 20) + "```"
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", Text: long, Observed: time.Now()}}})
 	all := strings.Join(plainLines(view.render(80, 40, time.Now())), "\n")
-	if !strings.Contains(all, "… +11 lines · o") || !strings.Contains(all, "│ line") {
+	if !strings.Contains(all, "… +11 lines") || !strings.Contains(all, "│ line") {
 		t.Fatalf("clamped feed = %s", all)
 	}
 	view.handleKey("", 'o')
@@ -502,6 +509,52 @@ func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 	view.handleKey("", 'r')
 	if header := plainLines(view.render(80, 40, time.Now()))[0]; !strings.HasSuffix(header, "FOLLOW") {
 		t.Fatalf("follow header = %q", header)
+	}
+}
+
+func TestLiveActivitySnippetClick(t *testing.T) {
+	long := "Plan\n```go\n" + strings.Repeat("line\n", 20) + "```"
+	hint := regexp.MustCompile(`… \+\d+ lines$`)
+	for _, size := range [][2]int{{80, 40}, {140, 40}} {
+		view := liveActivityTestView("/root/a", "/root/b")
+		now := time.Now()
+		view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", Text: long, Observed: now}}})
+		lines := view.render(size[0], size[1], now)
+		clipped := func(lines []string) bool {
+			return slices.ContainsFunc(plainLines(lines), func(line string) bool { return hint.MatchString(strings.TrimRight(line, " ")) })
+		}
+		row := slices.IndexFunc(plainLines(lines), func(line string) bool { return hint.MatchString(strings.TrimRight(line, " ")) }) + 1
+		if row == 0 {
+			t.Fatalf("%v: no clipped snippet: %q", size, plainLines(lines))
+		}
+		column := view.feedLeft + 4
+		if !view.handleMouse('h', row-2, column) || !strings.Contains(view.render(size[0], size[1], now)[row-1], "\x1b[4m… +") {
+			t.Fatalf("%v: hovering a collapsed snippet did not underline its hint", size)
+		}
+		if !view.handleMouse('h', 1, column) || view.render(size[0], size[1], now)[row-1] != lines[row-1] {
+			t.Fatalf("%v: leaving the snippet kept its underline", size)
+		}
+		// Clicks outside a snippet leave it clipped.
+		view.handleMouse('\r', 1, column)
+		if !clipped(view.render(size[0], size[1], now)) {
+			t.Fatalf("%v: header click expanded the snippet", size)
+		}
+		if !view.handleMouse('\r', row, column) {
+			t.Fatalf("%v: click did not redraw", size)
+		}
+		expanded := view.render(size[0], size[1], now)
+		if clipped(expanded) || strings.Count(strings.Join(plainLines(expanded), "\n"), "│ line") != 20 {
+			t.Fatalf("%v: click did not expand: %q", size, plainLines(expanded))
+		}
+		// Hovering an expanded snippet underlines nothing; another click collapses it.
+		view.handleMouse('h', row, column)
+		if strings.Contains(strings.Join(view.render(size[0], size[1], now), "\n"), "\x1b[4m") {
+			t.Fatalf("%v: expanded snippet underlined", size)
+		}
+		view.handleMouse('\r', row, column)
+		if collapsed := view.render(size[0], size[1], now); !clipped(collapsed) {
+			t.Fatalf("%v: second click did not collapse: %q", size, plainLines(collapsed))
+		}
 	}
 }
 

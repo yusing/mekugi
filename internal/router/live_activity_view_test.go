@@ -433,7 +433,7 @@ func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
 	if compact := render(true); !strings.Contains(compact, "  Q Does the preview color interpreter bodies?\n  A verdict") {
 		t.Fatalf("shared view kept a multi-row question:\n%s", compact)
 	}
-	if summary := ansi.Strip(painter.summary(blocks)); summary != "✓ Yes." {
+	if summary := ansi.Strip(painter.summary(blocks)); summary != "Yes." {
 		t.Fatalf("roster summary = %q", summary)
 	}
 

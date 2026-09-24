@@ -569,7 +569,8 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 				}
 			}
 		}
-		return liveActivityGreen + "✓ " + liveActivityReset + text
+		// The roster's status glyph already marks a sent final answer.
+		return text
 	case "reads":
 		var names []string
 		for _, read := range block.reads {
