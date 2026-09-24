@@ -5,13 +5,16 @@ Codex owns stock editing and execution. The following session-private PATH comma
 Reuse still-current source context instead of rereading solely to prepare an edit. Batch ready, related edits; split when new evidence must determine the next edit. Budget combined reads and command output before execution.
 For parallel Code Mode commands, print labeled outputs without serializing result envelopes:
 ```js
-const jobs = [{label: "source", cmd: "mcat src/main.go 1:80"}, {label: "tests", cmd: "rg -n TestThing ."}];
-const results = await Promise.allSettled(jobs.map(job => tools.exec_command({cmd: job.cmd})));
+const results = await Promise.allSettled([
+  tools.exec_command({cmd: "mcat src/main.go 1:80", max_output_tokens: 2000}),
+  tools.exec_command({cmd: "rg -n TestThing .", max_output_tokens: 2000}),
+]);
+const labels = ["source", "tests"];
 for (let i = 0; i < results.length; i++) {
   const result = results[i];
-  if (result.status === "rejected") { text(`${jobs[i].label}: ${result.reason}`); continue; }
+  if (result.status === "rejected") { text(`${labels[i]}: ${result.reason}`); continue; }
   const value = result.value;
-  text(`${jobs[i].label}: ${value.session_id ? `running session_id=${value.session_id}` : `exit_code=${value.exit_code}`}\n${value.output}`);
+  text(`${labels[i]}: ${value.session_id ? `running session_id=${value.session_id}` : `exit_code=${value.exit_code}`}\n${value.output}`);
 }
 ```
 </usage>

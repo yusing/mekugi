@@ -5,13 +5,16 @@ Codex owns stock editing and execution. The following session-private PATH comma
 Reuse still-current source context instead of rereading solely to prepare an edit. Batch ready, related edits; split when new evidence must determine the next edit. Budget combined reads and command output before execution.
 For parallel Code Mode commands, print labeled outputs without serializing result envelopes:
 ```js
-const jobs = [{label: "source", cmd: "mcat src/main.go 1:80"}, {label: "tests", cmd: "rg -n TestThing ."}];
-const results = await Promise.allSettled(jobs.map(job => tools.exec_command({cmd: job.cmd})));
+const results = await Promise.allSettled([
+  tools.exec_command({cmd: "mcat src/main.go 1:80", max_output_tokens: 2000}),
+  tools.exec_command({cmd: "rg -n TestThing .", max_output_tokens: 2000}),
+]);
+const labels = ["source", "tests"];
 for (let i = 0; i < results.length; i++) {
   const result = results[i];
-  if (result.status === "rejected") { text(`${jobs[i].label}: ${result.reason}`); continue; }
+  if (result.status === "rejected") { text(`${labels[i]}: ${result.reason}`); continue; }
   const value = result.value;
-  text(`${jobs[i].label}: ${value.session_id ? `running session_id=${value.session_id}` : `exit_code=${value.exit_code}`}\n${value.output}`);
+  text(`${labels[i]}: ${value.session_id ? `running session_id=${value.session_id}` : `exit_code=${value.exit_code}`}\n${value.output}`);
 }
 ```
 </usage>
@@ -55,7 +58,7 @@ Bound one foreground command's output, retaining its beginning or end. Use for n
 </tool>
 
 <tool name="mchanges">
-Review, revert, or reapply completed observed evidence from stock apply_patch and declared shell file operations such as redirects, cp, mv, rm, and sed -i; not a Git diff or provisional preview. Usage: `mchanges --list [--workspace DIR] [--max-tokens N] | mchanges [--mine | ID[..ID] ...] [--summary|--history|--net] [--workspace DIR] [--max-tokens N] [-- PATH ...] | mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]`. Hand reviewers explicit IDs or same-agent inclusive ranges for the requested changes, together with the review scope; bare mchanges and --mine review the calling thread's changes; --list compresses their IDs with status and counts. --net composes selected captured diffs, not a live Git diff. Prefer mchanges for captured edits. Use Git for other shell-generated or unrelated changes. Do not routinely pair Git diff with mchanges for the same edits; skip --summary before an already-needed diff. `revert` undoes and `apply` replays selected changes in the workspace, git-style: drifted regions merge; overlapping edits leave conflict markers (exit 1). Output states each file relative to mchanges history, not Git (`clean`, `+N -N`, `UU` conflict, `??` unknown). The revert is itself recorded as a change; follow the printed undo line. Recorded diffs are historical evidence, not proof of current workspace contents.
+Review, revert, or reapply completed observed evidence from stock apply_patch, shell file operations, and supported Python/JS writes; not a Git diff or provisional preview. Usage: `mchanges --list [--workspace DIR] [--max-tokens N] | mchanges [--mine | ID[..ID] ...] [--summary|--history|--net] [--workspace DIR] [--max-tokens N] [-- PATH ...] | mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]`. Hand reviewers explicit IDs or same-agent inclusive ranges for the requested changes, together with the review scope; bare mchanges and --mine review the calling thread's changes; --list compresses their IDs with status and counts. --net composes selected captured diffs, not a live Git diff. Choose editing tools for the task, not capture support. Use mchanges when its evidence covers the review; use a scoped workspace diff or file inspection for uncovered paths or missing baselines. Changes observed describes captured filesystem differences, not confirmed tool success; --history shows confirmation and capture details. Missing confirmation alone does not require repeating an edit or review. Avoid duplicate reviews of the same evidence; skip --summary before an already-needed diff. `revert` undoes and `apply` replays selected changes in the workspace, git-style: drifted regions merge; overlapping edits leave conflict markers (exit 1). Output states each file relative to mchanges history, not Git (`clean`, `+N -N`, `UU` conflict, `??` unknown). The revert is itself recorded as a change; follow the printed undo line. Recorded diffs are historical evidence, not proof of current workspace contents.
 </tool>
 
 </mekugi-frontends>

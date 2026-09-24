@@ -18,7 +18,7 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 		"mchanges": {
 			"same-agent inclusive ranges",
 			"calling thread",
-			"Do not routinely pair Git diff with mchanges",
+			"Avoid duplicate reviews of the same evidence",
 			"skip --summary before an already-needed diff",
 		},
 		"msymbol": {
