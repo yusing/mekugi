@@ -183,7 +183,7 @@ func (observation *AXReadObservation) FinishResult(succeeded bool, failureClass 
 func validAXFailureClass(value string) bool {
 	switch value {
 	case "unknown", "invalid_arguments", "not_found", "permission_denied", "not_regular",
-		"invalid_source", "reader_error", "search_error", "resolver_error", "dependency_unavailable",
+		"invalid_source", "reader_error", "search_error", "resolver_error", "resolver_timeout", "dependency_unavailable",
 		"no_editable_location", "output_limit", "retained_file", "execution_error",
 		"output_write", "canceled", "deadline_exceeded":
 		return true

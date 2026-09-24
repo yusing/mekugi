@@ -677,13 +677,16 @@ describe("mcat built-in plugin", () => {
 });
 
 describe("msymbol built-in plugin", () => {
-  const symbolRow = (sourcePath: string, line: number, text: string): string =>
-    `${JSON.stringify(sourcePath)}:${line} ${text}\n`;
+  const definitionBlock = (sourcePath: string, start: number, end: number, rows: string[]): string =>
+    `${JSON.stringify(sourcePath)}:${start}-${end}\n${rows.join("\n")}\n`;
+  const referenceGroup = (sourcePath: string, rows: Array<[number, string]>): string =>
+    `${JSON.stringify(sourcePath)}:\n${rows.map(([line, text]) => `${line} ${text}\n`).join("")}`;
 
   test("keeps its executable contract behavioral", () => {
 	const description = plugin.tools[1].specification.description.replace(/\s+/g, " ");
-    expect(description).toContain("msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH LINE SYMBOL [N]");
-    expect(description).toContain('"PATH":LINE TEXT');
+    expect(description).toContain("msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH [LINE] SYMBOL [N]");
+    expect(description).toContain("PATH:LINE is also accepted");
+    expect(description).toContain("compact definition bodies and references grouped by file");
     expect(description).not.toContain("HASH");
     expect(description).toContain("Ambiguous selectors");
     for (const persistent of ["rename", "audit", "before editing"]) {
@@ -705,8 +708,8 @@ describe("msymbol built-in plugin", () => {
     await fake.respond(definitionJSON(target, source, source.indexOf("Pick"), "Pick"));
     const definition = await createMSymbolTool("").execute(["def", "sample.go", "2", "Pick"], executionContext);
     expect(definition.exitCode).toBe(0);
-    expect(definition.stdout).toBe([2, 3, 4].map((line) =>
-      symbolRow("sample.go", line, source.split("\n")[line - 1])).join(""));
+    expect(definition.stdout).toBe(definitionBlock("sample.go", 2, 4,
+      [2, 3, 4].map((line) => source.split("\n")[line - 1])));
     const goInspection = await createInspectFileTool("").execute(["--json", "sample.go"], executionContext);
     expect(JSON.parse(goInspection.stdout!).data).toMatchObject({
       parse_complete: true,
@@ -753,10 +756,10 @@ describe("msymbol built-in plugin", () => {
     const fake = await installFakeGopls();
     const tool = createMSymbolTool("");
     await fake.respond(`${path.join(directory, "sample.go")}:3:14-18\n`);
-    const result = await tool.execute(["--workspace", directory, "refs", "sample.go", "3", "Pick"], executionContext);
+    const result = await tool.execute(["--workspace", directory, "refs", '"sample.go":3', "pkg.Pick"], executionContext);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe(symbolRow(path.join(directory, "sample.go"), 3, "func Use() { Pick() }"));
-    expect(result.stderr).toBe(`msymbol: input ${JSON.stringify(path.join(directory, "sample.go"))}:3 (current snapshot)\n`);
+    expect(result.stdout).toBe(referenceGroup(path.join(directory, "sample.go"), [[3, "func Use() { Pick() }"]]));
+    expect(result.stderr ?? "").toBe("");
     expect(await readFile(path.join(path.dirname(fake.callsPath), "cwd"), "utf8")).toBe(`${directory}\n`);
     expect(process.cwd()).toBe(caller);
     expect(await tool.parse(`--workspace "${directory}" def sample.go 3 Pick`, {})).toEqual([
@@ -816,10 +819,18 @@ describe("msymbol built-in plugin", () => {
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBeUndefined();
     }
+    expect(await tool.execute(["refs", "sample.go", "2", "target"], executionContext)).toMatchObject({
+      stderr: "msymbol: target is ambiguous on the selected line (2 occurrences); supply N\n",
+      exitCode: 1,
+    });
+    expect(await tool.execute(["refs", "sample.go", "1", "target"], executionContext)).toMatchObject({
+      stderr: "msymbol: target is not a symbol token on the selected line; nearby lines: 2\n",
+      exitCode: 1,
+    });
     expect(await readFile(fake.callsPath, "utf8")).toBe("");
     const selected = await tool.execute(["refs", "sample.go", "2", "target", "2"], executionContext);
     expect(selected.exitCode).toBe(0);
-    expect(selected.stderr).toContain("(current snapshot)");
+    expect(selected.stderr ?? "").toBe("");
   });
 
   test("plain-line TypeScript lookup uses the explicit resolver workspace", async () => {
@@ -833,8 +844,9 @@ describe("msymbol built-in plugin", () => {
       "--workspace", directory, "def", "sample.ts", "2", "target",
     ], executionContext);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(symbolRow(path.join(directory, "sample.ts"), 1, "export const target = 42;"));
-    expect(result.stderr).toContain(`${JSON.stringify(path.join(directory, "sample.ts"))}:2 (current snapshot)`);
+    expect(result.stdout).toBe(definitionBlock(path.join(directory, "sample.ts"), 1, 1,
+      ["export const target = 42;"]));
+    expect(result.stderr ?? "").toBe("");
   }, 30_000);
 
   test.skipIf(Bun.which("gopls") === null)("Go field references include differently named internal and external tests", async () => {
@@ -849,9 +861,9 @@ describe("msymbol built-in plugin", () => {
     );
     expect(result.exitCode).toBe(0);
     expect(result.stderr ?? "").not.toContain("skipped");
-    expect(result.stdout).toContain('"state.go":2 ');
-    expect(result.stdout).toContain('"capture_order_test.go":2 ');
-    expect(result.stdout).toContain('"consumer_test.go":3 ');
+    expect(result.stdout).toContain('"state.go":\n2 type State struct { Removed int }\n');
+    expect(result.stdout).toContain('"capture_order_test.go":\n2 func capture(s State) int { return s.Removed }\n');
+    expect(result.stdout).toContain('"consumer_test.go":\n3 func use(s callers.State) int { return s.Removed }\n');
   }, 30_000);
 
   test("validates the Go token selector before starting gopls", async () => {
@@ -881,12 +893,11 @@ describe("msymbol built-in plugin", () => {
     expect(await readFile(fake.callsPath, "utf8")).toBe("");
 
     const selected = await tool.execute(
-      ["refs", "path with spaces.go", "3", "名稱", "2"],
+      ["refs", '"path with spaces.go":3', "名稱", "2"],
       executionContext,
     );
     expect(selected).toEqual({
       stdout: "",
-      stderr: "msymbol: input \"path with spaces.go\":3 (current snapshot)\n",
       exitCode: 0,
       terminationReason: "resolver_cleanup",
     });
@@ -908,7 +919,7 @@ describe("msymbol built-in plugin", () => {
       executionContext,
     );
     expect(result).toEqual({
-      stderr: "msymbol: target is not a symbol token on the selected line\n",
+      stderr: "msymbol: target is not a symbol token on the selected line; no matching token in this file\n",
       exitCode: 1,
       failureClass: "resolver_error",
     });
@@ -986,16 +997,16 @@ describe("msymbol built-in plugin", () => {
         ["def", "declarations.go", "18", testCase.name],
         executionContext,
       );
-      let expected = "";
+      const expectedRows: string[] = [];
       for (let lineNumber = testCase.from; lineNumber <= testCase.to; lineNumber += 1) {
         const text = lines.logicalLine(lineNumber)?.text;
         if (text === undefined) {
           throw new Error(`missing fixture line ${lineNumber}`);
         }
-        expected += symbolRow("declarations.go", lineNumber, text);
+        expectedRows.push(text);
       }
       expect(result).toMatchObject({
-        stdout: expected,
+        stdout: definitionBlock("declarations.go", testCase.from, testCase.to, expectedRows),
         exitCode: 0,
         terminationReason: "resolver_cleanup",
       });
@@ -1037,7 +1048,7 @@ describe("msymbol built-in plugin", () => {
       executionContext,
     );
     expect(result).toMatchObject({
-      stdout: symbolRow("field.go", 3, "  Field int"),
+      stdout: definitionBlock("field.go", 3, 3, ["  Field int"]),
       exitCode: 0,
       terminationReason: "resolver_cleanup",
     });
@@ -1068,14 +1079,14 @@ describe("msymbol built-in plugin", () => {
       ["def", relativePath, String(definitionLine), "parseChangeRead"],
       executionContext,
     );
-    let expected = "";
+    const expectedRows: string[] = [];
     for (let line = declaration.line; line <= declaration.line_end; line += 1) {
       const text = lines.logicalLine(line)?.text;
       if (text === undefined) throw new Error(`missing mchanges.go line ${line}`);
-      expected += symbolRow(relativePath, line, text);
+      expectedRows.push(text);
     }
     expect(result).toMatchObject({
-      stdout: expected,
+      stdout: definitionBlock(relativePath, declaration.line, declaration.line_end, expectedRows),
       exitCode: 0,
       terminationReason: "resolver_cleanup",
     });
@@ -1117,9 +1128,9 @@ describe("msymbol built-in plugin", () => {
       executionContext,
     );
     expect(result).toEqual({
-      stdout: symbolRow("result.go", 2, "func Target() {}")
-        + symbolRow("input.go", 2, "func Use() { Target() }"),
-      stderr: "gopls note\nmsymbol: input \"input.go\":2 (current snapshot)\nmsymbol: skipped 1 location outside workspace, 1 location not Go, 1 location not regular, 1 location not UTF-8, 1 location unavailable\n",
+      stdout: referenceGroup("result.go", [[2, "func Target() {}"]])
+        + referenceGroup("input.go", [[2, "func Use() { Target() }"]]),
+      stderr: "gopls note\nmsymbol: skipped 1 location outside workspace, 1 location not Go, 1 location not regular, 1 location not UTF-8, 1 location unavailable\n",
       exitCode: 0,
       terminationReason: "resolver_cleanup",
     });
@@ -1141,7 +1152,7 @@ describe("msymbol built-in plugin", () => {
     const tool = createMSymbolTool("start: TEST");
     const external = await tool.execute(["def", "input.go", "2", "Target"], executionContext);
     expect(external).toEqual({
-      stderr: "msymbol: input \"input.go\":2 (current snapshot)\nmsymbol: skipped 1 location outside workspace\nmsymbol: definition has no editable workspace location\n",
+      stderr: "msymbol: skipped 1 location outside workspace\nmsymbol: definition has no editable workspace location\n",
       exitCode: 1,
       failureClass: "no_editable_location",
       terminationReason: "resolver_cleanup",
@@ -1186,7 +1197,7 @@ describe("msymbol built-in plugin", () => {
     const resultPath = path.join(directory, "large.go");
     const first = contentWithFormattedTokenCount(
       15_000,
-      (content) => symbolRow("large.go", 1, content),
+      (content) => referenceGroup("large.go", [[1, content]]),
     );
     await writeFile(resultPath, `${first}\nsecond\nthird\n`, "utf8");
     const externalDirectory = await temporaryDirectory("msymbol-limit-external-");
@@ -1203,8 +1214,8 @@ describe("msymbol built-in plugin", () => {
       executionContext,
     );
     expect(result).toEqual({
-      omittedOutput: {stdout: symbolRow("large.go", 1, first) + symbolRow("large.go", 2, "second") + symbolRow("large.go", 3, "third"), stderr: "", stdoutKind: "rows"},
-      stdout: "",
+      omittedOutput: {stdout: "1 " + first + "\n2 second\n3 third\n", stderr: "", stdoutKind: "rows"},
+      stdout: '"large.go":\n',
       stderr: expect.stringContaining("msymbol: skipped 1 location outside workspace\n"
         + "msymbol: output incomplete: 4000-token limit reached\n"),
       exitCode: 1,
@@ -1226,11 +1237,11 @@ describe("msymbol built-in plugin", () => {
       ["refs", "input.go", "2", "Target"], executionContext,
     );
     expect(result.exitCode).toBe(1);
-    expect(result.stdout).toBe("");
+    expect(result.stdout).toBe('"uses.go":\n');
     expect(result.stderr).toContain("output incomplete");
     await rm("uses.go");
     expect(result.omittedOutput?.stdout).toBe(
-      symbolRow("uses.go", 1, huge) + symbolRow("uses.go", 2, "func Other() { Target() }"),
+      `1 ${huge}\n2 func Other() { Target() }\n`,
     );
     expect((await readFile(fake.callsPath, "utf8")).trim().split("\n")).toHaveLength(1);
   });
@@ -1293,8 +1304,9 @@ describe("msymbol built-in plugin", () => {
       executionContext,
     );
     expect(typescript).toMatchObject({exitCode: 0});
-    expect(typescript.stdout).toContain(symbolRow("target.ts", 1, "export function target(value: number) {"));
-    expect(typescript.stdout).toContain(symbolRow("target.ts", 3, "}"));
+    expect(typescript.stdout).toBe(definitionBlock("target.ts", 1, 3, [
+      "export function target(value: number) {", "  return value + 1;", "}",
+    ]));
 
     const ambient = await tool.execute(
       ["def", "ambient_input.ts", "2", "ambientTarget"],
@@ -1302,16 +1314,17 @@ describe("msymbol built-in plugin", () => {
     );
     expect(ambient).toMatchObject({exitCode: 0});
     for (const [line, text] of ambientTarget.trimEnd().split("\n").entries()) {
-      expect(ambient.stdout).toContain(symbolRow("ambient.d.ts", line + 1, text));
+      expect(ambient.stdout).toContain(text);
     }
+    expect(ambient.stdout?.startsWith('"ambient.d.ts":1-3\n')).toBe(true);
 
     const python = await tool.execute(
       ["def", "input.py", "2", "target"],
       executionContext,
     );
     expect(python).toMatchObject({exitCode: 0});
-    expect(python.stdout).toContain(symbolRow("target.py", 1, "def target(value: int) -> int:"));
-    expect(python.stdout).toContain(symbolRow("target.py", 2, "    return value + 1"));
+    expect(python.stdout).toBe(definitionBlock("target.py", 1, 2,
+      ["def target(value: int) -> int:", "    return value + 1"]));
     const stub = await tool.execute(
       ["refs", "sample.pyi", "1", "stub_target"],
       executionContext,
@@ -1406,7 +1419,7 @@ process.stdin.on("data", (chunk) => {
       );
       expect(result).toMatchObject({exitCode: 0});
       // The real server may log shutdown timing; backend stderr is preserved.
-      expect(result.stderr ?? "").toContain("(current snapshot)");
+      expect(result.stderr ?? "").not.toContain("(current snapshot)");
     }
   }, 30_000);
 });
@@ -1562,7 +1575,11 @@ describe("inspect_file language projections", () => {
     await fake.respond(definitionJSON(path.join(directory, "scope.go"), source, source.indexOf("localVar"), "localVar"));
     const tool = createMSymbolTool("start: TEST");
     const result = await tool.execute(["def", "scope.go", "6", "localVar"], executionContext);
-    expect(result).toMatchObject({ stdout: `"scope.go":3 ${source.split("\n")[2]}\n`, exitCode: 0, terminationReason: "resolver_cleanup" });
+    expect(result).toMatchObject({
+      stdout: `"scope.go":3-3\n${source.split("\n")[2]}\n`,
+      exitCode: 0,
+      terminationReason: "resolver_cleanup",
+    });
   });
 
 

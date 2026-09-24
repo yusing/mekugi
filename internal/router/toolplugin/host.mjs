@@ -603,7 +603,7 @@ async function executeTool(request) {
   if (failureClass !== undefined) {
     if (current.exitCode === 0 || ![
       "invalid_arguments", "not_found", "permission_denied", "not_regular", "invalid_source",
-      "reader_error", "search_error", "resolver_error", "dependency_unavailable", "no_editable_location", "output_limit",
+      "reader_error", "search_error", "resolver_error", "resolver_timeout", "dependency_unavailable", "no_editable_location", "output_limit",
     ].includes(failureClass)) {
       throw new Error("executor failureClass must be allowlisted with a nonzero exitCode");
     }

@@ -1,11 +1,17 @@
 import type {ChildProcess} from "node:child_process";
 
+export class ResolverTimeout extends Error {
+  constructor() {
+    super("resolver exceeded the 30 s limit; retry with a narrower --workspace ROOT");
+  }
+}
+
 export async function withResolverDeadline<T>(
   query: (deadline: Promise<never>) => Promise<T>,
 ): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("deadline exceeded")), 30_000);
+    timer = setTimeout(() => reject(new ResolverTimeout()), 30_000);
   });
   // Observe expiry even if startup fails before the query begins racing it.
   void deadline.catch(() => {});

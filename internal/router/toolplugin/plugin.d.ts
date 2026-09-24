@@ -7,7 +7,7 @@ export type ExecutionOutput = {
 };
 
 export type ReaderFailureClass = "invalid_arguments" | "not_found" | "permission_denied" |
-  "not_regular" | "invalid_source" | "reader_error" | "search_error" | "resolver_error" |
+  "not_regular" | "invalid_source" | "reader_error" | "search_error" | "resolver_error" | "resolver_timeout" |
   "dependency_unavailable" | "no_editable_location" | "output_limit";
 
 export type ExecutionResult = ExecutionOutput & {

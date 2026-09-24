@@ -447,8 +447,8 @@ func TestMSymbolFrontendRecoveryAfterSourceRemoval(t *testing.T) {
 		"PATH="+resolverDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
 	full, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil,
 		"msymbol --max-tokens 15500 refs sample.go 2 Target", nil, invocation)
-	if status != 0 || !strings.Contains(diagnostic, "(current snapshot)") ||
-		!strings.Contains(full, `"sample.go":3 func Use0() { Target() }`) {
+	if status != 0 || diagnostic != "" ||
+		!strings.HasPrefix(full, "\"sample.go\":\n3 func Use0() { Target() }\n") {
 		t.Fatalf("full symbol read: %d %q %q", status, full, diagnostic)
 	}
 	first, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil,

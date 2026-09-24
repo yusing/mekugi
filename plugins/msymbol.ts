@@ -1,5 +1,5 @@
-import {RetainedRows} from "./retained_output.ts";
-import {resolverProcess, withResolverDeadline} from "./resolver.ts";
+import {MAX_RETAINED_BYTES, RetainedRows} from "./retained_output.ts";
+import {resolverProcess, ResolverTimeout, withResolverDeadline} from "./resolver.ts";
 import {spawn} from "node:child_process";
 import {readFile, realpath, stat} from "node:fs/promises";
 import path from "node:path";
@@ -22,7 +22,6 @@ import {
   decodeUTF8,
   errorText,
   isOutsideWorkspace,
-  stripOptionalFinalNewline,
   BoundedTextOutput,
 } from "./common.ts";
 import {
@@ -33,7 +32,8 @@ import {
   symbolOffsets,
 } from "./inspect_file.ts";
 import type {SourceFormat} from "./inspect_file.ts";
-import {runLSPQuery} from "./lsp.ts";
+import {runLSPQueries} from "./lsp.ts";
+import {codeOutline, symbolLines} from "./inspect_file_code.ts";
 import type {LSPLocation} from "./lsp.ts";
 
 type QueryMode = "def" | "refs";
@@ -44,7 +44,7 @@ type Query = {
   workspace?: string;
   mode: QueryMode;
   path: string;
-  line: number;
+  line: number | null;
   identifier: string;
   occurrence: number | null;
 };
@@ -98,6 +98,7 @@ type GoplsResult = {
 };
 
 class MSymbolFailure extends Error {}
+class MSymbolOutputLimit extends MSymbolFailure {}
 
 class SourceFailure extends Error {
   constructor(readonly reason: SourceFailureReason, message: string) {
@@ -126,10 +127,9 @@ function validGoIdentifier(value: string): boolean {
   return isGoIdentifier(value);
 }
 
-/**
- * parseQuery validates and parses the msymbol argv into a structured query object.
- */
-function parseQuery(argv: string[]): Query {
+const symbolUsage = "msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH [LINE] SYMBOL [N] [(def|refs) PATH [LINE] SYMBOL [N] ...]";
+
+function parseQueries(argv: string[]): Query[] {
   let workspace: string | undefined;
   const terminator = argv.indexOf("--");
   const workspaceIndex = argv.findIndex((arg, i) => arg === "--workspace" && (terminator < 0 || i < terminator));
@@ -141,28 +141,39 @@ function parseQuery(argv: string[]): Query {
     argv = [...argv.slice(0, workspaceIndex), ...argv.slice(workspaceIndex + 2)];
   }
   const parsed = readerOptions(argv);
-  if (parsed.options.previewBytes !== undefined) throw new MSymbolFailure("use a byte-window reader for source previews");
-  argv = parsed.rest;
-  if (argv.length !== 4 && argv.length !== 5) {
-    throw new MSymbolFailure("usage: msymbol [--workspace ROOT] (def|refs) PATH LINE SYMBOL [N]");
+  if (parsed.options.previewBytes !== undefined) throw new MSymbolFailure("use mrun with a byte-oriented command for source previews");
+  const rest = parsed.rest;
+  const queries: Query[] = [];
+  let index = 0;
+  while (index < rest.length) {
+    const mode = rest[index++];
+    if (mode !== "def" && mode !== "refs") throw new MSymbolFailure("mode must be def or refs");
+    let inputPath = rest[index++];
+    if (!inputPath || inputPath.includes("\0")) throw new MSymbolFailure("path must be usable");
+    let line: number | null = null;
+    const combined = /^(.*):([1-9][0-9]*)$/u.exec(inputPath);
+    if (combined !== null) {
+      inputPath = combined[1];
+      if (inputPath.startsWith('"')) {
+        try { inputPath = JSON.parse(inputPath); } catch { throw new MSymbolFailure("invalid quoted PATH:LINE"); }
+      }
+      if (typeof inputPath !== "string" || !inputPath || inputPath.includes("\0")) throw new MSymbolFailure("path must be usable");
+      line = parsePositiveInteger(combined[2], "line");
+    } else if (/^[0-9]+$/u.test(rest[index] ?? "")) {
+      line = parsePositiveInteger(rest[index++], "line");
+    }
+    const selector = rest[index++];
+    if (!selector) throw new MSymbolFailure(`usage: ${symbolUsage}`);
+    if (mode === "refs" && line === null) throw new MSymbolFailure("refs requires LINE; use PATH LINE SYMBOL or PATH:LINE SYMBOL");
+    const identifier = selector.split(".").at(-1)!;
+    if (!identifier) throw new MSymbolFailure("SYMBOL must end with a usable name");
+    const occurrence = /^[0-9]+$/u.test(rest[index] ?? "") ? parsePositiveInteger(rest[index++], "N") : null;
+    if (line === null && occurrence !== null) throw new MSymbolFailure("N requires an explicit LINE");
+    queries.push({maxTokens: parsed.options.maxTokens ?? READ_DEFAULT_TOKENS, workspace,
+      mode, path: inputPath, line, identifier, occurrence});
   }
-  const [mode, inputPath, row, identifier, occurrenceText] = argv;
-  if (mode !== "def" && mode !== "refs") {
-    throw new MSymbolFailure("mode must be def or refs");
-  }
-  if (inputPath === "" || inputPath.includes("\0")) {
-    throw new MSymbolFailure("path must be usable");
-  }
-  const line = parsePositiveInteger(row, "line");
-  return {
-    maxTokens: parsed.options.maxTokens ?? READ_DEFAULT_TOKENS,
-    mode,
-    workspace,
-    path: inputPath,
-    line,
-    identifier,
-    occurrence: occurrenceText === undefined ? null : parsePositiveInteger(occurrenceText, "N"),
-  };
+  if (queries.length === 0) throw new MSymbolFailure(`usage: ${symbolUsage}`);
+  return queries;
 }
 
 function resolverFor(format: SourceFormat): Resolver | null {
@@ -254,6 +265,18 @@ async function loadSource(
 }
 
 function selectSymbol(file: SourceFile, query: Query): number {
+  if (query.line === null) {
+    const matches = codeOutline(file.source, file.lines, file.format).filter(item =>
+      item.entry.kind !== "parse_error" && "name" in item.entry && item.entry.name === query.identifier
+      && item.nameFrom !== undefined);
+    if (matches.length !== 1) {
+      throw new MSymbolFailure(`${query.identifier} has ${matches.length} outline matches; supply LINE`);
+    }
+    if (matches[0].complete === false) throw new MSymbolFailure(`${query.identifier} has an incomplete outline declaration; supply LINE`);
+    const offset = matches[0].nameFrom!;
+    query.line = file.lines.lineAt(offset);
+    return offset;
+  }
   const logicalLine = file.lines.logicalLine(query.line);
   if (logicalLine === null) {
     throw new MSymbolFailure(`line ${query.line} is past EOF`);
@@ -263,11 +286,13 @@ function selectSymbol(file: SourceFile, query: Query): number {
   }
   const offsets = symbolOffsets(file.source, file.lines, file.format, query.line, query.identifier);
   if (offsets.length === 0) {
-    throw new MSymbolFailure(`${query.identifier} is not a symbol token on the selected line`);
+    const nearby = symbolLines(file.source, file.lines, file.format, query.identifier)
+      .sort((a, b) => Math.abs(a - query.line!) - Math.abs(b - query.line!)).slice(0, 5).sort((a, b) => a - b);
+    throw new MSymbolFailure(`${query.identifier} is not a symbol token on the selected line; ${nearby.length ? `nearby lines: ${nearby.join(", ")}` : "no matching token in this file"}`);
   }
   if (query.occurrence === null) {
     if (offsets.length !== 1) {
-      throw new MSymbolFailure(`${query.identifier} is ambiguous on the selected line; supply N`);
+      throw new MSymbolFailure(`${query.identifier} is ambiguous on the selected line (${offsets.length} occurrences); supply N`);
     }
     return offsets[0];
   }
@@ -312,6 +337,7 @@ async function runGopls(workspace: string, mode: QueryMode, position: string): P
     } catch (error) {
       child.kill("SIGKILL");
       await lifecycle.finish();
+      if (error instanceof ResolverTimeout) throw error;
       if (error instanceof MSymbolFailure) {
         throw error;
       }
@@ -398,47 +424,33 @@ function lspLanguageID(format: SourceFormat): string {
   return format.jsx === true ? "javascriptreact" : "javascript";
 }
 
-async function queryBackend(
-  workspace: string,
-  file: SourceFile,
-  query: Query,
-  selectedOffset: number,
-  onResolverStart: () => void,
-): Promise<BackendResult> {
-  const resolver = resolverFor(file.format);
-  if (resolver === null) {
-    throw new MSymbolFailure("path has an unsupported msymbol source format");
+type PreparedQuery = {query: Query; file: SourceFile; offset: number};
+
+async function queryBackends(workspace: string, prepared: PreparedQuery[], onResolverStart: () => void): Promise<BackendResult[]> {
+  const results: BackendResult[] = new Array(prepared.length);
+  for (const resolver of ["gopls", "typescript", "python"] as const) {
+    const group = prepared.map((item, index) => ({...item, index})).filter(item => resolverFor(item.file.format) === resolver);
+    if (group.length === 0) continue;
+    onResolverStart();
+    if (resolver === "gopls" && group.length === 1) {
+      const {file, query, offset, index} = group[0];
+      const result = await runGopls(workspace, query.mode, `${file.path}:#${byteLength(file.source.slice(0, offset))}`);
+      results[index] = {resolver, locations: query.mode === "def" ? [parseDefinition(result.stdout)] : parseReferences(result.stdout), stderr: result.stderr};
+      continue;
+    }
+    const result = await runLSPQueries({
+      command: resolver === "gopls" ? "gopls" : resolver === "typescript" ? "tsc" : "pyright-langserver",
+      args: resolver === "gopls" ? ["serve"] : resolver === "typescript" ? ["--lsp", "--stdio"] : ["--stdio"],
+      workspace,
+    }, group.map(({file, query, offset}) => ({
+      path: file.path, languageID: resolver === "gopls" ? "go" : lspLanguageID(file.format), source: file.source,
+      position: {line: query.line! - 1, character: offset - file.lines.logicalLine(query.line!)!.from}, mode: query.mode,
+    })));
+    group.forEach(({index}, i) => {
+      results[index] = {resolver, locations: result.locations[i].map(location => ({kind: "lsp", location})), stderr: i === 0 ? result.stderr : ""};
+    });
   }
-  onResolverStart();
-  if (resolver === "gopls") {
-    const position = `${file.path}:#${byteLength(file.source.slice(0, selectedOffset))}`;
-    const result = await runGopls(workspace, query.mode, position);
-    return {
-      resolver,
-      locations: query.mode === "def" ? [parseDefinition(result.stdout)] : parseReferences(result.stdout),
-      stderr: result.stderr,
-    };
-  }
-  const logicalLine = file.lines.logicalLine(query.line);
-  if (logicalLine === null) {
-    throw new MSymbolFailure(`line ${query.line} is past EOF`);
-  }
-  const command = resolver === "typescript" ? "tsc" : "pyright-langserver";
-  const result = await runLSPQuery({
-    command,
-    args: resolver === "typescript" ? ["--lsp", "--stdio"] : ["--stdio"],
-    workspace,
-    path: file.path,
-    languageID: lspLanguageID(file.format),
-    source: file.source,
-    position: {line: query.line - 1, character: selectedOffset - logicalLine.from},
-    mode: query.mode,
-  });
-  return {
-    resolver,
-    locations: result.locations.map((location) => ({kind: "lsp", location})),
-    stderr: result.stderr,
-  };
+  return results;
 }
 
 function lspOffset(file: SourceFile, line: number, character: number): number | null {
@@ -490,124 +502,126 @@ async function materializeLocation(
   };
 }
 
-/**
- * sourceRow formats one complete result row, absolute when workspace is null.
- */
-function sourceRow(workspace: string | null, file: SourceFile, line: number): string | null {
-  const logicalLine = file.lines.logicalLine(line);
-  return logicalLine === null
-    ? null
-    : `${JSON.stringify(workspace === null ? file.path : path.relative(workspace, file.path))}:${line} ${logicalLine.text}\n`;
-}
-
 function skippedDiagnostic(skipped: Map<SourceFailureReason, number>): string {
   const parts = [...skipped].map(([reason, count]) => `${count} ${count === 1 ? "location" : "locations"} ${reason}`);
   return parts.length === 0 ? "" : `msymbol: skipped ${parts.join(", ")}\n`;
 }
 
-async function executeQuery(query: Query, onResolverStart: () => void): Promise<ExecutionResult> {
+async function executeQueries(queries: Query[], onResolverStart: () => void): Promise<ExecutionResult> {
+  const first = queries[0];
   let workspace: string;
   try {
-    workspace = await realpath(query.workspace ?? process.cwd());
-    if (!(await stat(workspace)).isDirectory()) {
-      throw new Error("workspace is not a directory");
-    }
+    workspace = await realpath(first.workspace ?? process.cwd());
+    if (!(await stat(workspace)).isDirectory()) throw new Error("workspace is not a directory");
   } catch (error) {
     throw new MSymbolFailure(`cannot resolve workspace: ${errorText(error)}`);
   }
   const cache = new Map<string, SourceFile>();
-  let inputFile: SourceFile;
-  try {
-    inputFile = await loadSource(workspace, query.path, cache);
-  } catch (error) {
-    throw sourceFailure(error);
+  const prepared: PreparedQuery[] = [];
+  for (const query of queries) {
+    const file = await loadSource(workspace, query.path, cache);
+    prepared.push({query, file, offset: selectSymbol(file, query)});
   }
-  const selectedOffset = selectSymbol(inputFile, query);
-  const backend = await queryBackend(workspace, inputFile, query, selectedOffset, onResolverStart);
+  const backends = await queryBackends(workspace, prepared, onResolverStart);
   cache.clear();
-  let currentInput: SourceFile;
-  try {
-    currentInput = await loadSource(workspace, inputFile.path, cache);
-  } catch {
-    throw new MSymbolFailure("input changed during query");
+  for (const {file} of prepared) {
+    try {
+      const current = await loadSource(workspace, file.path, cache);
+      if (current.source !== file.source) throw new Error("changed");
+    } catch { throw new MSymbolFailure("input changed during query"); }
   }
-  if (currentInput.source !== inputFile.source) {
-    throw new MSymbolFailure("input changed during query");
-  }
-  const output = new BoundedTextOutput(query.maxTokens);
+  const output = new BoundedTextOutput(first.maxTokens);
   const retainedRows = new RetainedRows();
   const skipped = new Map<SourceFailureReason, number>();
   const skip = (reason: SourceFailureReason): void => {
     skipped.set(reason, (skipped.get(reason) ?? 0) + 1);
   };
-  const seen = new Set<string>();
-
-  for (const location of backend.locations) {
-    try {
-      const materialized = await materializeLocation(workspace, cache, backend.resolver, location);
-      let startLine = materialized.line;
-      let endLine = materialized.line;
-      if (query.mode === "def") {
-        const expanded = materialized.goDefinition === undefined
-          ? materialized.definitionFrom === undefined || materialized.definitionTo === undefined
-            ? null
-            : declarationRange(
+  const append = (row: string): void => {
+    if (!retainedRows.append(row)) throw new MSymbolOutputLimit("complete reference output exceeds the 16 MiB retention bound");
+    if (!output.incomplete) output.append(row);
+  };
+  let stderr = "";
+  for (let index = 0; index < queries.length; index++) {
+    const query = queries[index], backend = backends[index];
+    const seen = new Set<string>();
+    const references = new Map<string, string[]>();
+    let emitted = false;
+    let referenceBytes = 0;
+    stderr += backend.stderr;
+    if (stderr !== "" && !stderr.endsWith("\n")) stderr += "\n";
+    for (const location of backend.locations) {
+      try {
+        const materialized = await materializeLocation(workspace, cache, backend.resolver, location);
+        let startLine = materialized.line;
+        let endLine = materialized.line;
+        if (query.mode === "def") {
+          const expanded = materialized.goDefinition === undefined
+            ? materialized.definitionFrom === undefined || materialized.definitionTo === undefined
+              ? null
+              : declarationRange(
+                materialized.file.source,
+                materialized.file.lines,
+                materialized.file.format,
+                materialized.definitionFrom,
+                materialized.definitionTo,
+              )
+            : goDeclarationRange(
               materialized.file.source,
-              materialized.file.lines,
-              materialized.file.format,
-              materialized.definitionFrom,
-              materialized.definitionTo,
-            )
-          : goDeclarationRange(
-            materialized.file.source,
-            materialized.goDefinition.startOffset,
-            materialized.goDefinition.endOffset,
-          );
-        startLine = expanded?.line ?? materialized.line;
-        endLine = expanded?.line_end ?? materialized.line;
+              materialized.goDefinition.startOffset,
+              materialized.goDefinition.endOffset,
+            );
+          startLine = expanded?.line ?? materialized.line;
+          endLine = expanded?.line_end ?? materialized.line;
+        }
+        let headerEnd = startLine - 1;
+        for (let line = startLine; line <= endLine; line += 1) {
+          const logicalLine = materialized.file.lines.logicalLine(line);
+          if (logicalLine === null) {
+            skip("unavailable");
+            break;
+          }
+          const key = `${materialized.file.path}\0${line}`;
+          if (seen.has(key)) {
+            continue;
+          }
+          seen.add(key);
+          const label = JSON.stringify(query.workspace === undefined ? path.relative(workspace, materialized.file.path) : materialized.file.path);
+          if (query.mode === "def") {
+            if (line > headerEnd) {
+              headerEnd = line;
+              while (headerEnd < endLine && !seen.has(`${materialized.file.path}\0${headerEnd + 1}`)) headerEnd++;
+              append(`${label}:${line}-${headerEnd}\n`);
+            }
+            append(`${logicalLine.text}\n`);
+          } else {
+            const rows = references.get(label) ?? [];
+            const row = `${line} ${logicalLine.text}\n`;
+            referenceBytes += byteLength(row);
+            if (referenceBytes > MAX_RETAINED_BYTES) throw new MSymbolOutputLimit("complete reference output exceeds the 16 MiB retention bound");
+            rows.push(row);
+            references.set(label, rows);
+          }
+          emitted = true;
+        }
+      } catch (error) {
+        if (!(error instanceof SourceFailure)) {
+          throw error;
+        }
+        skip(error.reason);
       }
-      for (let line = startLine; line <= endLine; line += 1) {
-        const row = sourceRow(query.workspace === undefined ? workspace : null, materialized.file, line);
-        if (row === null) {
-          skip("unavailable");
-          break;
-        }
-        const key = `${materialized.file.path}\0${line}`;
-        if (seen.has(key)) {
-          continue;
-        }
-        seen.add(key);
-        if (!retainedRows.append(row)) {
-          return {stderr: "msymbol: complete reference output exceeds the 16 MiB retention bound\n", exitCode: 1, failureClass: "output_limit"};
-        }
-        if (!output.incomplete) {
-          output.append(row);
-        }
-      }
-    } catch (error) {
-      if (!(error instanceof SourceFailure)) {
-        throw error;
-      }
-      skip(error.reason);
+    }
+
+    for (const [label, rows] of references) {
+      append(`${label}:\n`);
+      for (const row of rows) append(row);
+    }
+    if (query.mode === "def" && !emitted) {
+      return {stderr: `${stderr}${skippedDiagnostic(skipped)}msymbol: definition has no editable workspace location\n`, exitCode: 1, failureClass: "no_editable_location"};
     }
   }
-
-  let stderr = backend.stderr;
-  if (stderr !== "" && !stderr.endsWith("\n")) {
-    stderr += "\n";
-  }
-  stderr += `msymbol: input ${JSON.stringify(query.workspace === undefined ? path.relative(workspace, inputFile.path) : inputFile.path)}:${query.line} (current snapshot)\n`;
   stderr += skippedDiagnostic(skipped);
-  if (query.mode === "def" && output.current === "" && !output.incomplete) {
-    stderr += "msymbol: definition has no editable workspace location\n";
-    return {
-      ...(stderr === "" ? {} : {stderr}),
-      exitCode: 1,
-      failureClass: "no_editable_location",
-    };
-  }
   if (output.incomplete) {
-    stderr += `msymbol: output incomplete: ${query.maxTokens}-token limit reached\n`;
+    stderr += `msymbol: output incomplete: ${first.maxTokens}-token limit reached\n`;
   }
   return {
     stdout: output.current,
@@ -621,22 +635,23 @@ async function executeQuery(query: Query, onResolverStart: () => void): Promise<
 export function createMSymbolTool(grammar: string): Tool<string[]> {
   return createExecutorTool({
     name: "msymbol",
-    description: "Resolve one current Go, JavaScript, TypeScript, JSON, or Python symbol and emit complete rows as `\"PATH\":LINE TEXT`. Before removing a field or changing a signature, use refs to acquire semantic references across affected packages and tests. Read all returned reference rows before dependent edits, continuing incomplete output; report skipped or unavailable coverage rather than treating text matches as complete caller coverage. Usage: `msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH LINE SYMBOL [N]`. LINE selects the current snapshot. ROOT sets resolver scope and relative paths without changing shell state. N selects an exact language-token occurrence. Ambiguous selectors, unavailable language servers, input changes during the query, and definitions without an editable workspace location fail without stdout rows. An incomplete token-limited result retains complete rows, writes stderr, and exits nonzero.",
+    description: "Resolve current Go, JavaScript, TypeScript, JSON, or Python symbol with compact definition bodies and references grouped by file. Before removing a field or changing a signature, use refs to acquire semantic references across affected packages and tests. Read all returned reference rows before dependent edits, continuing incomplete output; report skipped or unavailable coverage rather than treating text matches as complete caller coverage. Usage: `msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH [LINE] SYMBOL [N] [(def|refs) PATH [LINE] SYMBOL [N] ...]`. PATH:LINE is also accepted; def without LINE selects a unique outline declaration. Batched tuples share a server per language and one output budget. LINE selects the current snapshot. ROOT sets resolver scope and relative paths without changing shell state. N selects an exact language-token occurrence. Ambiguous selectors, unavailable language servers, input changes during the query, and definitions without an editable workspace location fail without stdout rows. An incomplete token-limited result retains complete rows, writes stderr, and exits nonzero.",
     grammar,
     argv(input) {
-      return readerArguments(input);
+      return readerArguments(input.replace(/("(?:\\.|[^"\\])*"):([1-9][0-9]*)(?=\s|$)/gu,
+        (_, quoted: string, line: string) => JSON.stringify(`${JSON.parse(quoted)}:${line}`)));
     },
     async execute(argv) {
-      let query: ReturnType<typeof parseQuery>;
+      let queries: Query[];
       try {
-        query = parseQuery(argv);
+        queries = parseQueries(argv);
       } catch (error) {
         return {stderr: `msymbol: ${errorText(error)}\n`, exitCode: 1, failureClass: "invalid_arguments"};
       }
       let resolverStarted = false;
       let result: ExecutionResult;
       try {
-        result = await executeQuery(query, () => { resolverStarted = true; });
+        result = await executeQueries(queries, () => { resolverStarted = true; });
       } catch (error) {
         let message = error instanceof MSymbolFailure ? error.message : errorText(error);
         const prerequisites: Record<string, string> = {
@@ -644,7 +659,7 @@ export function createMSymbolTool(grammar: string): Tool<string[]> {
           "tsc is unavailable": "expose TypeScript 7 tsc with --lsp support on the executor PATH",
           "pyright-langserver is unavailable": "expose pyright-langserver on the executor PATH",
         };
-        const failureClass = prerequisites[message] !== undefined ? "dependency_unavailable"
+        const failureClass = error instanceof MSymbolOutputLimit ? "output_limit" : error instanceof ResolverTimeout ? "resolver_timeout" : prerequisites[message] !== undefined ? "dependency_unavailable"
           : error instanceof SourceFailure ? "invalid_source" : readerFailureClass(error, "resolver_error");
         if (prerequisites[message] !== undefined) {
           message += `; ${prerequisites[message]}`;

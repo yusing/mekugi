@@ -493,10 +493,18 @@ export function symbolOffsets(
   if (logicalLine === null) {
     return [];
   }
+  return matchingSymbolOffsets(source, format, symbol, logicalLine.from, logicalLine.to);
+}
+
+export function symbolLines(source: string, lines: LineMap, format: SourceFormat, symbol: string): number[] {
+  return [...new Set(matchingSymbolOffsets(source, format, symbol, 0, source.length).map(offset => lines.lineAt(offset)))];
+}
+
+function matchingSymbolOffsets(source: string, format: SourceFormat, symbol: string, from: number, to: number): number[] {
   const tree = format.kind === "json" ? parseSource(jsonParser(), source) : codeTree(source, format);
   const offsets: number[] = [];
   const visit = (node: SyntaxNode): void => {
-    if (node.to <= logicalLine.from || node.from >= logicalLine.to) {
+    if (node.to <= from || node.from >= to) {
       return;
     }
     if (node.firstChild !== null) {
@@ -505,7 +513,7 @@ export function symbolOffsets(
       }
       return;
     }
-    if (node.type.isError || node.from < logicalLine.from || node.to > logicalLine.to) {
+    if (node.type.isError || node.from < from || node.to > to) {
       return;
     }
     const text = source.slice(node.from, node.to);

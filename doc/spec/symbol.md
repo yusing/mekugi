@@ -6,13 +6,13 @@ The wrapped session supplies an authenticated `msymbol` executable on Codex's
 session-private `PATH`:
 
 ```text
-msymbol [--max-tokens N] [--workspace ROOT] def PATH LINE SYMBOL [N]
+msymbol [--max-tokens N] [--workspace ROOT] def PATH [LINE] SYMBOL [N]
 msymbol [--max-tokens N] [--workspace ROOT] refs PATH LINE SYMBOL [N]
 ```
 
 Stock `tools.exec_command` launches the frontend under Codex's cwd, environment,
 sandbox, signals, and process lifecycle. The frontend validates the pinned registry,
-then delegates one query to the generated symbol implementation. It is not a
+then delegates the queries to the generated symbol implementation. It is not a
 model-visible custom tool or a private shell command. Output uses the shared
 [reader token ceiling and read continuation](read.md). Reader options and
 `--workspace ROOT` may surround the query operands.
@@ -28,9 +28,12 @@ and `.cjs`.
 
 `LINE` is a positive current logical line. It needs no additional source token. Msymbol selects an exact language token on that line, rejects
 missing or ambiguous occurrences before resolver startup, and rejects an input
-change during the semantic query before emitting result rows. Successful queries
-report the selected current input on stderr as
-`msymbol: input "PATH":LINE (current snapshot)`.
+change during the semantic query before emitting result rows. Successful queries do not echo the input location on stderr. Missing-token errors
+list up to five nearest matching token lines; ambiguity errors give the occurrence count.
+`PATH:LINE` and a JSON-quoted `"PATH":LINE` operand are also accepted.
+A selector such as `store.readChanges` selects its final segment.
+For `def PATH SYMBOL`, a unique complete outline declaration supplies the selection;
+zero or multiple matches require an explicit line.
 
 `SYMBOL` selects an exact language token on the selected line. Go accepts
 non-keyword identifiers; JavaScript and TypeScript accept their identifier,
@@ -45,8 +48,13 @@ including TypeScript 7's `tsc --lsp` capability. Msymbol never installs
 dependencies, searches for a different workspace, weakens result confinement, or
 substitutes text search. Go and LSP processes both run in the selected workspace.
 
-Each invocation performs one semantic query with the required resolver for the
-selected language and workspace. The query deadline is 30 seconds. Final pipe
+Several `(def|refs) PATH [LINE] SYMBOL [N]` tuples may follow each other in one
+invocation. All inputs are validated before resolver startup. Tuples share one
+language-server session per language in the selected workspace, and one combined
+output budget. Results follow tuple order. A single Go query uses gopls CLI; a
+Go batch uses one invocation-owned gopls LSP server. No detached cross-invocation
+daemon is started. The session deadline is 30 seconds, shared by its queries;
+timeouts use `resolver_timeout` and suggest a narrower `--workspace ROOT`. Final pipe
 drain and protocol shutdown are bounded to one second; protocol replies receive a
 separate one-second dispatch grace after process exit. A reply completed within
 those bounds remains valid, and forced cleanup does not change completed stdout or
@@ -54,15 +62,23 @@ exit status. Reference queries include declarations. Missing dependencies, inval
 input, changed source, malformed protocol results, timeouts, and failed queries
 return concise stderr and nonzero status without useful stdout.
 
-Successful stdout contains first-seen complete rows:
+Successful definitions have one header and raw body rows:
 
 ```text
-"PATH":LINE TEXT
+"PATH":START-END
+SOURCE TEXT
+```
+
+References group first-seen rows by canonical file, in first-seen file order:
+
+```text
+"PATH":
+LINE SOURCE TEXT
 ```
 
 `PATH` is the JSON-quoted path from the default canonical workspace root to the
 canonical result file, without a leading `./`. With an explicit `--workspace`,
-output and selected-input paths are canonical absolute paths so a different
+output paths are canonical absolute paths so a different
 resolver root cannot make references point at same-named files in the caller's
 directory. Each result file is canonical, in-workspace, regular, UTF-8, and owned
 by the selected resolver; other returned locations are omitted and counted by
@@ -98,14 +114,14 @@ generated `refs` activity is labeled `Search`.
 Acceptance:
 
 1. A current use-site token resolves through one language-appropriate semantic
-   query and emits complete `"PATH":LINE TEXT` rows.
+   query and emits compact, complete source rows.
 2. Every listed source format is accepted. Omitting `N` selects one unique exact
    language token and rejects an ambiguous line before the resolver starts;
    comments, unrelated literal text, and larger identifiers do not affect the count.
 3. `def` expands only supported exact outline declarations; every other valid
    definition emits its one current logical line. Multiple definitions retain
    resolver order and deduplicate rows.
-4. `refs` includes declarations, preserves first-seen order, deduplicates one
+4. `refs` includes declarations, groups by first-seen file and row order, deduplicates one
    canonical path and line, reports skipped locations, and accepts an empty result.
 5. Relative and absolute in-workspace paths work. Lexical escapes, escaping
    symlinks, missing resolvers, source changes, malformed protocol results, and
@@ -117,3 +133,8 @@ Acceptance:
    without changing shell state. Results remain confined to that root and use
    unambiguous absolute paths. Missing prerequisites are actionable without
    automatic installation.
+
+8. Combined path/line operands, qualified selectors, and unique no-line definition
+   queries are accepted. Ambiguous and missing-token errors are actionable without
+   starting the resolver. A batch starts one server per language, shares its budget,
+   preserves tuple order, and rejects changed inputs before emitting rows.

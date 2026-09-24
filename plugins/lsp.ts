@@ -1,4 +1,4 @@
-import {resolverProcess, withResolverDeadline} from "./resolver.ts";
+import {resolverProcess, ResolverTimeout, withResolverDeadline} from "./resolver.ts";
 import {spawn} from "node:child_process";
 import {pathToFileURL} from "node:url";
 
@@ -110,6 +110,14 @@ function processFailure(command: string, error: Error): Error {
 }
 
 export async function runLSPQuery(options: LSPQueryOptions): Promise<LSPQueryResult> {
+  const result = await runLSPQueries(options, [options]);
+  return {locations: result.locations[0], stderr: result.stderr};
+}
+
+export async function runLSPQueries(
+  options: Pick<LSPQueryOptions, "command" | "args" | "workspace">,
+  queries: Omit<LSPQueryOptions, "command" | "args" | "workspace">[],
+): Promise<{locations: LSPLocation[][]; stderr: string}> {
   return withResolverDeadline(async (deadline) => {
     const child = spawn(options.command, options.args, {
       cwd: options.workspace,
@@ -191,35 +199,43 @@ export async function runLSPQuery(options: LSPQueryOptions): Promise<LSPQueryRes
       }
       phase = "open document";
       await Promise.race([connection.sendNotification("initialized", {}), deadline, processEnded]);
-      const uri = pathToFileURL(options.path).href;
-      await Promise.race([connection.sendNotification("textDocument/didOpen", {
-        textDocument: {
-          uri,
-          languageId: options.languageID,
-          version: 1,
-          text: options.source,
-        },
-      }), deadline, processEnded]);
-      phase = options.mode === "def" ? "definition" : "references";
-      const response = options.mode === "def"
-        ? await Promise.race([
-          connection.sendRequest("textDocument/definition", {
-            textDocument: {uri},
-            position: options.position,
-          }),
-          deadline,
-          processEnded,
-        ])
-        : await Promise.race([
-          connection.sendRequest("textDocument/references", {
-            textDocument: {uri},
-            position: options.position,
-            context: {includeDeclaration: true},
-          }),
-          deadline,
-          processEnded,
-        ]);
-      const parsedLocations = locations(response, options.mode);
+      const parsedLocations: LSPLocation[][] = [];
+      const opened = new Set<string>();
+      for (const query of queries) {
+        const uri = pathToFileURL(query.path).href;
+        if (!opened.has(uri)) {
+          phase = "open document";
+          opened.add(uri);
+          await Promise.race([connection.sendNotification("textDocument/didOpen", {
+            textDocument: {
+              uri,
+              languageId: query.languageID,
+              version: 1,
+              text: query.source,
+            },
+          }), deadline, processEnded]);
+        }
+        phase = query.mode === "def" ? "definition" : "references";
+        const response = query.mode === "def"
+          ? await Promise.race([
+            connection.sendRequest("textDocument/definition", {
+              textDocument: {uri},
+              position: query.position,
+            }),
+            deadline,
+            processEnded,
+          ])
+          : await Promise.race([
+            connection.sendRequest("textDocument/references", {
+              textDocument: {uri},
+              position: query.position,
+              context: {includeDeclaration: true},
+            }),
+            deadline,
+            processEnded,
+          ]);
+        parsedLocations.push(locations(response, query.mode));
+      }
       phase = "shutdown";
       // Cleanup is auxiliary once the semantic response is complete. Bound the
       // child lifetime even when a server ignores shutdown or exit.
@@ -248,6 +264,7 @@ export async function runLSPQuery(options: LSPQueryOptions): Promise<LSPQueryRes
       if (completionError !== null && "code" in completionError && completionError.code === "ENOENT") {
         throw processFailure(options.command, completionError);
       }
+      if (error instanceof ResolverTimeout) throw error;
       const message = error instanceof Error ? error.message : errorText(error);
       throw new Error(`${phase} failed: ${message}`);
     } finally {

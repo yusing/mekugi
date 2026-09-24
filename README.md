@@ -271,7 +271,7 @@ snapshot-owned descriptions to the agent in the execution tool guidance.
 | `mrun` | Bound a foreground command's output and optionally keep its ending | The wrapped command |
 | `mchanges` | List the current agent thread's change IDs, read observed patches and command effects by ID or range, or revert and reapply them | Access to the router's replay directory |
 | `mcat` | Read raw UTF-8 rows, with multi-file batching, ranges, and tail selection | None |
-| `msymbol` | Look up definitions and references as `"PATH":LINE TEXT` rows | `gopls` for Go; TypeScript 7 as `tsc` for JS, TS, and JSON; `pyright-langserver` for Python |
+| `msymbol` | Look up compact definitions and file-grouped references; batch queries in one call | `gopls` for Go; TypeScript 7 as `tsc` for JS, TS, and JSON; `pyright-langserver` for Python |
 | `inspect_file` | Inspect a structural outline | None |
 
 Agent-facing change and output references use short word handles. The root and

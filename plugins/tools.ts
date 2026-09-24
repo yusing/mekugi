@@ -11,7 +11,9 @@ const readSpec = `${readerPath}(?: (?:0|[1-9][0-9]*)[:-][1-9][0-9]*)*`;
 const mcatRegex = `\\A(?:(?:-n |--max-tokens[ =])[1-9][0-9]* |--tail )*${readSpec}(?: ${readSpec})*(?: (?:-n |--max-tokens[ =])[1-9][0-9]*| --tail)*\\z`;
 const inspectFileRegex = `\\A(?:(?:--max-tokens[ =][1-9][0-9]*|--json) )*${readerPath}(?: (?:${readerPath}|--max-tokens[ =][1-9][0-9]*|--json))*\\z`;
 
-const msymbolRegex = `\\A(?:(?:--workspace ${readerPath}|--max-tokens[ =][1-9][0-9]*) )*(?:def|refs) ${readerPath} [1-9][0-9]* [^\\x00-\\x20]+(?: [1-9][0-9]*)?(?: (?:--workspace ${readerPath}|--max-tokens[ =][1-9][0-9]*))*\\z`;
+const symbolTuple = `(?:def|refs) ${readerPath}(?::[1-9][0-9]*)?(?: [1-9][0-9]*)? [^\\x00-\\x20]+(?: [1-9][0-9]*)?`;
+const symbolOption = `(?:--workspace ${readerPath}|--max-tokens[ =][1-9][0-9]*)`;
+const msymbolRegex = `\\A(?:${symbolOption} )*${symbolTuple}(?: (?:${symbolTuple}|${symbolOption}))*\\z`;
 
 const plugin: Plugin = {
   apiVersion: "mekugi-tool-plugin/v1",

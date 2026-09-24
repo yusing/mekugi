@@ -93,16 +93,15 @@ func TestResolverCleanupRetiresInheritedPipeDescendants(t *testing.T) {
 					t.Fatal("resolver exceeded its cleanup bound")
 				}
 				if outcome == "success" || outcome == "ignore_shutdown" || outcome == "queued_success" {
-					expected := strconv.Quote(name) + ":" + row + " " + line + "\n"
-					diagnostic := "msymbol: input " + strconv.Quote(name) + ":" + row + " (current snapshot)\n"
-					if result.ExitCode != 0 || result.Stdout != expected || result.Stderr != diagnostic {
+					expected := strconv.Quote(name) + ":\n" + row + " " + line + "\n"
+					if result.ExitCode != 0 || result.Stdout != expected || result.Stderr != "" {
 						t.Fatalf("semantic result changed during cleanup: %+v", result)
 					}
 				} else {
 					if result.ExitCode != 1 || result.Stdout != "" || result.Stderr == "" {
 						t.Fatalf("resolver failure = %+v", result)
 					}
-					if outcome == "timeout" && !strings.Contains(result.Stderr, "deadline exceeded") {
+					if outcome == "timeout" && (result.FailureClass != "resolver_timeout" || result.Stderr != "msymbol: resolver exceeded the 30 s limit; retry with a narrower --workspace ROOT\n") {
 						t.Fatalf("timeout result = %+v", result)
 					}
 				}
