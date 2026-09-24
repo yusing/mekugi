@@ -357,8 +357,8 @@ the underlying projection, and can be switched off in the stream view. The
 first usable frame and completion redraw immediately; intermediate deltas may
 be coalesced. Card
 positions stay stable: a
-new call takes over a finished card's slot, preferring its own caller's, and a
-finished card leaves after a brief idle hold, even when no other call starts.
+new call takes over a finished card's slot, preferring its own caller's. The
+last displayed input stays visible while waiting for another call.
 The line-number column of a card never narrows while its call streams.
 
 The saved diff view uses completed observed patch and command outcomes. It includes

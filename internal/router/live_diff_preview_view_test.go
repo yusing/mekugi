@@ -54,24 +54,25 @@ func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 	}
 }
 
-func TestLiveDiffPreviewPaneFinishedCardExpiresWithoutAnotherCall(t *testing.T) {
+func TestLiveDiffPreviewPaneFinishedCardPersistsUntilReplaced(t *testing.T) {
 	var pane liveDiffPreviewPane
 	pane.update(previewViewFixture("done", 2))
 	pane.update(previewViewFixture("live", 2))
 	pane.update(liveDiffPreview{ID: "done"})
-	if _, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 70, 12); err != nil {
+	lines, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 70, 12)
+	if err != nil {
 		t.Fatal(err)
 	}
-	now := pane.views["done"].completed.Add(liveDiffPreviewStaleAfter)
-	if !pane.expire(now) || !slices.Equal(pane.order, []string{"live"}) || pane.live() != 1 {
-		t.Fatalf("finished card did not expire independently: %v", pane.order)
+	if !slices.Equal(pane.order, []string{"done", "live"}) || pane.live() != 1 || !strings.Contains(strings.Join(lines, "\n"), "STREAMING COMPLETE") {
+		t.Fatalf("finished card did not remain visible: %v %q", pane.order, lines)
 	}
-	if pane.nextExpiry(now) != 0 {
-		t.Fatal("live card scheduled an expiry")
+	pane.update(previewViewFixture("next", 2))
+	if !slices.Equal(pane.order, []string{"next", "live"}) {
+		t.Fatalf("new call did not replace finished card: %v", pane.order)
 	}
 }
 
-func TestLiveDiffPreviewUpdatePreemptsDistantExpiry(t *testing.T) {
+func TestLiveDiffPreviewUpdatePreemptsDistantFrame(t *testing.T) {
 	c := newLiveDiffTerminalController(nil, "/workspace", os.Stdout)
 	defer c.close()
 	c.scope.Workspaces = map[string]map[string]bool{"/workspace": {"thread": true}}
@@ -105,7 +106,7 @@ func TestLiveDiffFirstAndCompletedInputRedrawImmediately(t *testing.T) {
 	}
 }
 
-func TestLiveDiffFinishedInputClearsOnTerminalWithoutAnotherEvent(t *testing.T) {
+func TestLiveDiffFinishedInputRemainsOnTerminalWhileWaiting(t *testing.T) {
 	master, slave, err := pty.Open()
 	if err != nil {
 		t.Fatal(err)
@@ -120,9 +121,9 @@ func TestLiveDiffFinishedInputClearsOnTerminalWithoutAnotherEvent(t *testing.T) 
 	c.coverage = ""
 	c.previewPane.update(previewViewFixture("done", 2))
 	c.previewPane.update(liveDiffPreview{ID: "done"})
-	c.previewPane.views["done"].completed = time.Now().Add(-liveDiffPreviewStaleAfter)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
+	resizes := make(chan os.Signal, 1)
 	frames := make(chan string, 2)
 	go func() {
 		var pending []byte
@@ -145,18 +146,18 @@ func TestLiveDiffFinishedInputClearsOnTerminalWithoutAnotherEvent(t *testing.T) 
 		}
 	}()
 	done := make(chan error, 1)
-	go func() { done <- c.run(ctx, nil, nil, nil) }()
+	go func() { done <- c.run(ctx, nil, nil, resizes) }()
 	for index := range 2 {
 		select {
 		case frame := <-frames:
-			if index == 0 && !strings.Contains(frame, "STREAMING COMPLETE") {
-				t.Fatalf("first frame did not show completion: %q", frame)
+			if !strings.Contains(frame, "STREAMING COMPLETE") || !strings.Contains(frame, "+stream_0002") || strings.Contains(frame, "Waiting for live input") {
+				t.Fatalf("waiting frame lost completed input: %q", frame)
 			}
-			if index == 1 && (strings.Contains(frame, "Live input") || strings.Contains(frame, "STREAMING COMPLETE")) {
-				t.Fatalf("finished stream persisted after expiry: %q", frame)
+			if index == 0 {
+				resizes <- os.Interrupt
 			}
 		case <-time.After(2 * time.Second):
-			t.Fatal("terminal did not redraw after finished input expired")
+			t.Fatal("terminal did not redraw after resize")
 		}
 	}
 	cancel()
@@ -511,15 +512,14 @@ func TestLiveDiffPreviewCardsKeepSlotsAndGutter(t *testing.T) {
 	if !slices.Equal(pane.order, []string{"d1", "b2", "c1"}) {
 		t.Fatalf("new caller did not reuse a finished slot: %v", pane.order)
 	}
-	// A stale finished card leaves when another call starts.
+	// Finished cards remain until a new call takes their slot.
 	pane.update(liveDiffPreview{ID: "c1"})
-	pane.views["c1"].completed = time.Now().Add(-liveDiffPreviewStaleAfter)
 	render()
 	pane.update(liveDiffPreview{ID: "d1"})
 	render()
 	pane.update(previewViewFixture("e1", 5))
-	if !slices.Equal(pane.order, []string{"e1", "b2"}) {
-		t.Fatalf("stale card was not dropped: %v", pane.order)
+	if !slices.Equal(pane.order, []string{"e1", "b2", "c1"}) {
+		t.Fatalf("new call did not reuse the oldest finished slot: %v", pane.order)
 	}
 
 	// Line numbers keep their width when the source shrinks back.

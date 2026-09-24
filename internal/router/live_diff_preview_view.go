@@ -16,8 +16,6 @@ import (
 
 const (
 	liveDiffPreviewFrameDelay = 33 * time.Millisecond
-	// A finished card idle this long yields its slot when another call needs room.
-	liveDiffPreviewStaleAfter = 10 * time.Second
 	// Revealed rows fade in; rows revealed together cascade within a bound.
 	// A fade starts partly visible, so a coarsely sampled frame, as over mosh
 	// or a slow link, still shows readable text rather than a blank row.
@@ -47,7 +45,6 @@ type liveDiffPreviewMotion struct {
 type liveDiffPreviewView struct {
 	current   liveDiffPreview
 	complete  bool
-	completed time.Time
 	displayed bool
 	digits    int // Line-number width only grows, so the source never shifts sideways.
 	rendered  liveDiffPreview
@@ -75,7 +72,7 @@ func (p *liveDiffPreviewPane) update(preview liveDiffPreview) {
 	}
 	if preview.Workspace == "" {
 		if view != nil && !view.complete {
-			view.complete, view.completed = true, time.Now()
+			view.complete = true
 		}
 		return
 	}
@@ -87,7 +84,7 @@ func (p *liveDiffPreviewPane) update(preview liveDiffPreview) {
 		}
 		// A new call takes over a finished card's slot, preferring its caller's,
 		// so the other cards keep their positions and heights. Cards resize only
-		// when concurrency grows or a stale finished card is dropped.
+		// when concurrency grows.
 		slot := slices.IndexFunc(p.order, func(id string) bool {
 			return replaceable(id) && p.views[id].current.Caller == preview.Caller
 		})
@@ -112,17 +109,6 @@ func (p *liveDiffPreviewPane) update(preview liveDiffPreview) {
 			p.order = append(p.order, preview.ID)
 		}
 		p.views[preview.ID] = view
-		now := time.Now()
-		p.order = slices.DeleteFunc(p.order, func(id string) bool {
-			if id == preview.ID || !replaceable(id) || now.Sub(p.views[id].completed) < liveDiffPreviewStaleAfter {
-				return false
-			}
-			delete(p.views, id)
-			return true
-		})
-	}
-	if preview.Complete && !view.complete {
-		view.completed = time.Now()
 	}
 	view.current, view.complete = preview, preview.Complete
 }
@@ -136,36 +122,6 @@ func (p *liveDiffPreviewPane) live() int {
 		}
 	}
 	return count
-}
-
-// Finished cards leave after a brief hold without waiting for another tool
-// call. Active cards are never aged out.
-func (p *liveDiffPreviewPane) expire(now time.Time) bool {
-	old := len(p.order)
-	p.order = slices.DeleteFunc(p.order, func(id string) bool {
-		view := p.views[id]
-		if !view.complete || now.Sub(view.completed) < liveDiffPreviewStaleAfter {
-			return false
-		}
-		delete(p.views, id)
-		return true
-	})
-	return len(p.order) != old
-}
-
-func (p *liveDiffPreviewPane) nextExpiry(now time.Time) time.Duration {
-	var next time.Duration
-	for _, id := range p.order {
-		view := p.views[id]
-		if !view.complete {
-			continue
-		}
-		remaining := max(time.Millisecond, liveDiffPreviewStaleAfter-now.Sub(view.completed))
-		if next == 0 || remaining < next {
-			next = remaining
-		}
-	}
-	return next
 }
 
 // animating reports whether a displayed row is still fading in.

@@ -100,7 +100,6 @@ func (c *liveDiffTerminalController) run(
 		case <-c.previewFrameC:
 			c.previewFrameC, c.dirty = nil, true
 			c.previewFrameDue = time.Time{}
-			c.previewPane.expire(time.Now())
 		case event, open := <-events:
 			if !open {
 				return nil
@@ -237,10 +236,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		header = "Changes"
 	}
 	if !c.diffMode {
-		header = "Waiting for live input..."
-		if len(c.previewPane.order) > 0 {
-			header = "Live input"
-		}
+		header = "Live input"
 	}
 	if c.coverage != "" {
 		header = c.coverage
@@ -314,17 +310,13 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 			writeRow(row+2, text)
 		}
 	}
-	// A fade keeps frames coming; otherwise wake only for the next expiry.
+	// A fade keeps frames coming until its rows reach their final colors.
 	now := time.Now()
-	delay := c.previewPane.nextExpiry(now)
-	if !c.diffMode && c.previewPane.animating(now) && (delay == 0 || delay > liveDiffPreviewFrameDelay) {
-		delay = liveDiffPreviewFrameDelay
-	}
-	if due := now.Add(delay); delay > 0 && (c.previewFrameC == nil || c.previewFrameDue.After(due)) {
+	if !c.diffMode && c.previewPane.animating(now) && (c.previewFrameC == nil || c.previewFrameDue.After(now.Add(liveDiffPreviewFrameDelay))) {
 		c.previewFrame.Stop()
-		c.previewFrame.Reset(delay)
+		c.previewFrame.Reset(liveDiffPreviewFrameDelay)
 		c.previewFrameC = c.previewFrame.C
-		c.previewFrameDue = due
+		c.previewFrameDue = now.Add(liveDiffPreviewFrameDelay)
 	}
 	mode := "FOLLOW"
 	if !c.view.Following {
@@ -405,8 +397,7 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 				c.previewFrameDue = time.Time{}
 				c.dirty = true
 			} else {
-				// A hold-expiry wake may be seconds away. A fresh input snapshot
-				// must not wait for it (nor for some unrelated redraw).
+				// Fresh input must not wait for an unrelated redraw.
 				if due := time.Now().Add(liveDiffPreviewFrameDelay); c.previewFrameC == nil || c.previewFrameDue.After(due) {
 					c.previewFrame.Stop()
 					c.previewFrame.Reset(liveDiffPreviewFrameDelay)
