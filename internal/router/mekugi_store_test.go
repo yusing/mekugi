@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestMekugiReplayStoreRestartAndConflict(t *testing.T) {
@@ -40,6 +41,79 @@ func TestMekugiReplayStoreRestartAndConflict(t *testing.T) {
 	h.CarrierPayload = "changed"
 	if err := s.put(t.Context(), "/workspace", map[string]mekugiHistory{"call": h}); err == nil {
 		t.Fatal("accepted conflicting carrier")
+	}
+}
+
+func TestMekugiReplayStoreIgnoresLivePreviewStampOnRetry(t *testing.T) {
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := mekugiHistory{
+		ToolName: "exec", Script: "write file", CarrierPayload: "write file",
+		ExecObservation: &execObservation{Files: []execFileSnapshot{{
+			Path: "/workspace/file", Kind: execFileText, Content: "old", watchStamp: "live-only-stamp",
+		}}},
+	}
+	put := func() error {
+		return store.put(t.Context(), "/workspace", map[string]mekugiHistory{"call": history})
+	}
+	if err := put(); err != nil {
+		t.Fatal(err)
+	}
+	if err := put(); err != nil {
+		t.Fatalf("unchanged completed call conflicted after serialization: %v", err)
+	}
+	if history.ExecObservation.Files[0].watchStamp != "live-only-stamp" {
+		t.Fatal("durable projection changed the active live-preview baseline")
+	}
+	history.ExecObservation.Files[0].Content = "changed"
+	if err := put(); err == nil {
+		t.Fatal("accepted changed captured content")
+	}
+}
+
+func TestMekugiReplayStoreNormalizesDurableObservationOnRetry(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		observation execObservation
+	}{
+		{name: "empty directory entries", observation: execObservation{
+			Listings: []execListing{{Root: "/workspace/empty", Entries: map[string]string{}}},
+		}},
+		{name: "file-clock location", observation: execObservation{
+			WindowStart: time.Unix(1_700_000_000, 0).In(time.FixedZone("zero-offset-local", 0)),
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store, err := openMekugiReplayStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			history := mekugiHistory{Script: "unchanged", ExecObservation: &test.observation}
+			for range 2 {
+				if err := store.put(t.Context(), "/workspace", map[string]mekugiHistory{"call": history}); err != nil {
+					t.Fatalf("unchanged observation conflicted after serialization: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestMekugiReplayStoreAcceptsRetainedOffsetTimestamp(t *testing.T) {
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Unix(1_700_000_000, 0).In(time.FixedZone("captured-offset", 8*60*60))
+	history := mekugiHistory{Script: "same", ExecObservation: &execObservation{WindowStart: started}}
+	if err := store.locked(t.Context(), func() error {
+		return store.write(replayRecord{Version: 1, Workspace: "/workspace", CallID: "call", History: history})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.put(t.Context(), "/workspace", map[string]mekugiHistory{"call": history}); err != nil {
+		t.Fatalf("retained equivalent timestamp conflicted: %v", err)
 	}
 }
 

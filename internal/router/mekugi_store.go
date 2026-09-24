@@ -44,6 +44,26 @@ type replayRecord struct {
 // Keep request-local state out of immutable replay comparisons as well as JSON.
 func durableHistory(h mekugiHistory) mekugiHistory {
 	h.bytes, h.confirmed, h.sequence = 0, false, 0
+	if len(h.NativePatches) == 0 {
+		h.NativePatches = nil // Empty omitted slices read back as nil.
+	}
+	if h.ExecObservation != nil {
+		observation := *h.ExecObservation
+		observation.WindowStart = observation.WindowStart.UTC()
+		observation.Files = slices.Clone(observation.Files)
+		for i := range observation.Files {
+			// The live-preview stamp is intentionally not serialized. Keep the
+			// request's copy while comparing against the persisted capture.
+			observation.Files[i].watchStamp = ""
+		}
+		observation.Listings = slices.Clone(observation.Listings)
+		for i := range observation.Listings {
+			if len(observation.Listings[i].Entries) == 0 {
+				observation.Listings[i].Entries = nil // Omitted empty maps read back as nil.
+			}
+		}
+		h.ExecObservation = &observation
+	}
 	return h
 }
 
@@ -235,6 +255,9 @@ func (s *mekugiReplayStore) put(ctx context.Context, workspace string, histories
 // already durable, including opaque provider passthrough metadata. It cannot
 // alter the original model payload or translation.
 func mergeReplayHistory(old, next mekugiHistory) (mekugiHistory, error) {
+	// Older retained timestamps can carry an offset even when the current
+	// file-clock capture is UTC. Compare their durable instants, not locations.
+	old, next = durableHistory(old), durableHistory(next)
 	oldItem, nextItem := old.UpstreamItem, next.UpstreamItem
 	oldIDs, nextIDs := old.CommentaryMessageIDs, next.CommentaryMessageIDs
 	old.UpstreamItem = nil

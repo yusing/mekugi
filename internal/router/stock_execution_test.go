@@ -3,9 +3,100 @@ package router
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestStreamedCodeModeObservedCallCommitsAtInputAndItemCompletion(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
+	transform.sessionShell = "bash"
+	target := filepath.Join(workspace, "file.txt")
+	if err := os.WriteFile(target, []byte("old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := `text(await tools.exec_command({cmd: "touch file.txt"}));`
+	call := map[string]any{
+		"type": "custom_tool_call", "id": "item", "call_id": "call", "name": "exec",
+		"input": source, "status": "completed",
+	}
+	for _, event := range []map[string]any{
+		{"type": "response.output_item.added", "item": map[string]any{
+			"type": "custom_tool_call", "id": "item", "call_id": "call", "name": "exec", "status": "in_progress",
+		}},
+		{"type": "response.custom_tool_call_input.done", "item_id": "item", "call_id": "call", "input": source},
+	} {
+		if _, err := transform.TransformSSE(mustTestJSON(t, event)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	history, exists := transform.local["call"]
+	if !exists || history.ExecObservation == nil || len(history.ExecObservation.Files) == 0 ||
+		history.ExecObservation.Files[0].watchStamp == "" {
+		if history.ExecObservation == nil {
+			t.Fatal("expected an observed baseline")
+		}
+		var paths, stamps []string
+		for _, file := range history.ExecObservation.Files {
+			paths = append(paths, file.Path)
+			stamps = append(stamps, file.watchStamp)
+		}
+		t.Fatalf("expected a live observed file: exists=%v class=%q paths=%v stamps=%v omitted=%d", exists, history.ExecObservation.Class, paths, stamps, len(history.ExecObservation.Omitted))
+	}
+	if _, found, err := proxy.replayStore.lookup(t.Context(), workspace, "call"); err != nil || !found {
+		t.Fatalf("input completion was not durable: found=%v err=%v", found, err)
+	}
+	visible, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
+		"type": "response.output_item.done", "item": call,
+	}))
+	if err != nil || len(visible) != 1 {
+		t.Fatalf("item completion conflicted with retained input: events=%d err=%v", len(visible), err)
+	}
+	retained, found, err := proxy.replayStore.lookup(t.Context(), workspace, "call")
+	if err != nil || !found || jsonString(retained.UpstreamItem, "input") != source ||
+		retained.ExecObservation == nil || len(retained.ExecObservation.Files) == 0 ||
+		retained.ExecObservation.Files[0].watchStamp != "" {
+		t.Fatalf("completed call lost its durable input or captured baseline: found=%v err=%v", found, err)
+	}
+}
+
+func TestStreamedCodeModeEmptyDirectoryListingCommits(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
+	transform.sessionShell = "bash"
+	if err := os.Mkdir(filepath.Join(workspace, "emptydir"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	source := `text(await tools.exec_command({cmd: "rm -rf emptydir"}));`
+	call := map[string]any{
+		"type": "custom_tool_call", "id": "item", "call_id": "call", "name": "exec",
+		"input": source, "status": "completed",
+	}
+	for _, event := range []map[string]any{
+		{"type": "response.output_item.added", "item": map[string]any{
+			"type": "custom_tool_call", "id": "item", "call_id": "call", "name": "exec", "status": "in_progress",
+		}},
+		{"type": "response.custom_tool_call_input.done", "item_id": "item", "call_id": "call", "input": source},
+	} {
+		if _, err := transform.TransformSSE(mustTestJSON(t, event)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	history := transform.local["call"]
+	if history.ExecObservation == nil || len(history.ExecObservation.Listings) == 0 ||
+		history.ExecObservation.Listings[0].Entries == nil {
+		t.Fatal("fixture did not capture the empty directory listing")
+	}
+	if _, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
+		"type": "response.output_item.done", "item": call,
+	})); err != nil {
+		t.Fatalf("completion conflicted with retained empty listing: %v", err)
+	}
+}
 
 func TestCompletedCodeModeCallInputChangeHasSafeDiagnostic(t *testing.T) {
 	transform, _, _, _ := newMekugiTestTransform(t)
