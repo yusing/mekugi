@@ -39,11 +39,11 @@ func journalMutationsSchema() json.RawMessage {
 		"items": map[string]any{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]any{
-				"op":         map[string]any{"type": "string", "enum": []string{"add", "edit", "delete"}},
+				"op":         map[string]any{"type": "string", "enum": []string{"add", "edit", "delete"}, "description": "Add a milestone, edit its current result, or delete a superseded item."},
 				"id":         map[string]any{"type": "string"},
-				"answer":     map[string]any{"type": "boolean", "description": embeddedInstruction("journal_answer_mutation")},
+				"answer":     map[string]any{"type": "boolean", "description": embeddedInstruction("journal_answer")},
 				"text":       map[string]any{"type": "string"},
-				"report_now": map[string]any{"type": "boolean"},
+				"report_now": map[string]any{"type": "boolean", "description": "Show this milestone to the user immediately rather than waiting for finish."},
 			}, "required": []string{"op"},
 		},
 	})
@@ -90,13 +90,13 @@ func exposeJournalTool(fields map[string]json.RawMessage, catalog *responsesTool
 		"parameters": mustMarshalJSON(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"op":         map[string]any{"type": "string", "enum": []string{"list", "add", "edit", "delete", "finish"}},
+				"op":         map[string]any{"type": "string", "enum": []string{"list", "add", "edit", "delete", "finish"}, "description": "List or mutate milestones, or finish completed work without another model request."},
 				"id":         map[string]any{"type": "string", "description": embeddedInstruction("journal_id")},
 				"text":       map[string]any{"type": "string", "description": embeddedInstruction("journal_text")},
 				"answer":     map[string]any{"type": "boolean", "description": embeddedInstruction("journal_answer")},
 				"journal":    journalMutationsSchema(),
 				"agent":      map[string]any{"type": "string", "description": embeddedInstruction("journal_agent")},
-				"report_now": map[string]any{"type": "boolean"},
+				"report_now": map[string]any{"type": "boolean", "description": "Show this milestone to the user immediately rather than waiting for finish."},
 			},
 			"required": []string{"op"},
 		}),
@@ -175,6 +175,8 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 		} else if args.Op == "finish" {
 			if !t.journalAvailable {
 				err = errors.New("journal terminal delivery unavailable")
+			} else if t.journalClientCalls {
+				err = errors.New(journalFinishHostCallsError)
 			} else {
 				result = map[string]any{"ok": true, "finish_requested": true}
 			}
@@ -391,6 +393,9 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 			t.journalPending[id] = true
 			return nil, true, nil
 		}
+		if blocksTokenUsage(event.Item) {
+			t.journalClientCalls = true
+		}
 	case event.Type.FunctionArguments():
 		if t.journalPending[event.ItemID] {
 			return [][]byte{[]byte(`{"type":"response.in_progress"}`)}, true, nil
@@ -406,6 +411,9 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 			if err != nil {
 				return nil, true, err
 			}
+			if t.deferJournalFinishResult(result) {
+				return nil, true, nil
+			}
 			return [][]byte{journalResultEvent(result, jsonString(event.Item, "name"))}, true, nil
 		}
 		if blocksTokenUsage(event.Item) {
@@ -417,6 +425,11 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 		var results [][]byte
 		if json.Unmarshal(event.Response["output"], &output) == nil && len(output) != 0 {
 			t.journalProviderOutput = output
+			for _, item := range output {
+				if !isRouterLocalCall(item) && blocksTokenUsage(item) {
+					t.journalClientCalls = true
+				}
+			}
 			for _, item := range output {
 				// Some providers complete calls only in the terminal snapshot.
 				// Apply those calls before deciding whether to continue or flush,
@@ -431,15 +444,13 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 					if err != nil {
 						return nil, true, err
 					}
-					if !seen {
+					if !seen && !t.deferJournalFinishResult(result) {
 						results = append(results, journalResultEvent(result, jsonString(item, "name")))
 					}
 				}
-				if !isRouterLocalCall(item) && blocksTokenUsage(item) {
-					t.journalClientCalls = true
-				}
 			}
 		}
+		results = append(results, t.finishDeferredJournalResults()...)
 		t.journalTerminal = t.journalTerminalReady()
 		if len(t.journalResults) != 0 && !t.journalClientCalls && !t.journalTerminal {
 			if len(t.journalPending) != 0 {
@@ -472,6 +483,16 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 			return append(t.finalAnswer.flush(), results...), true, nil
 		}
 		return results, false, nil
+	case event.Type == responseevents.Failed || event.Type == responseevents.Incomplete:
+		var output []map[string]json.RawMessage
+		if json.Unmarshal(event.Response["output"], &output) == nil {
+			for _, item := range output {
+				if !isRouterLocalCall(item) && blocksTokenUsage(item) {
+					t.journalClientCalls = true
+				}
+			}
+		}
+		return t.finishDeferredJournalResults(), false, nil
 	}
 	return nil, false, nil
 }

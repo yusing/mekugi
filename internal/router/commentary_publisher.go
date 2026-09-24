@@ -68,7 +68,7 @@ func newCommentaryBroker() *commentaryBroker {
 
 func (b *commentaryBroker) capacityNotice() {
 	if b.notice != nil {
-		b.notice("journal_publisher_capacity", "Mekugi could not allocate a journal publisher: all 256 concurrent publisher routes are occupied. Existing work is unchanged. Finish outstanding calls, then retry; direct functions.journal remains available.")
+		b.notice("journal_publisher_capacity", "Mekugi could not allocate a journal publisher: all 256 concurrent publisher routes are occupied. Existing work is unchanged.")
 	}
 }
 
@@ -269,7 +269,7 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	ids := []string{}
 	if len(mutations) != 0 {
 		if b.journalPublisher == nil {
-			http.Error(writer, "journal publisher unavailable", http.StatusBadRequest)
+			http.Error(writer, journalPublisherUnavailable, http.StatusBadRequest)
 			return
 		}
 		ids, err = b.journalPublisher(request.Context(), session, thread, publication.ReceiptID, bindJournalAnswers(mutations, question))

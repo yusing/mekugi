@@ -298,7 +298,7 @@ func TestFeatureUsageSuppressionAndWriteFailure(t *testing.T) {
 		t.Fatalf("suppression evidence = %v", got)
 	}
 	proxy.commentary.close()
-	if _, changed, err := transform.lowerCodeModeCommentary("call-unavailable", `await journal({op: "add", text: "progress"})`); err == nil || changed {
+	if _, changed, err := transform.lowerCodeModeCommentary("call-unavailable", `await journal({op: "add", text: "progress"})`); err != nil || !changed {
 		t.Fatalf("unavailable publisher changed lowering: %v", err)
 	}
 	got = readFeatureUsage(t, d)

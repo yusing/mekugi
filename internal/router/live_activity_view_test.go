@@ -15,8 +15,8 @@ func TestParseLiveActivityBlocks(t *testing.T) {
 	if len(message) != 1 || message[0].kind != "message" || message[0].from != "/root/a" || message[0].to != "/root" || message[0].body != "Done.\n- `x.go`" {
 		t.Fatalf("message = %+v", message)
 	}
-	start := parseLiveActivity(activityPaneEntry{Kind: "start", Text: "Started.\nModel: `m`\nReasoning effort: not specified\nService tier: `fast`\n\n**Spawn prompt:**\n\nDo it."})
-	if len(start) != 1 || start[0].kind != "start" || start[0].label != "m · fast" || start[0].body != "Do it." {
+	start := parseLiveActivity(activityPaneEntry{Kind: "start", Text: "Started · `m` high · tier `fast`"})
+	if len(start) != 1 || start[0].kind != "start" || start[0].label != "`m` high · tier `fast`" || start[0].body != "" {
 		t.Fatalf("start = %+v", start)
 	}
 	// Blank lines inside a fence do not split the operation.
@@ -71,7 +71,7 @@ func TestLiveActivityViewResponsiveLayouts(t *testing.T) {
 	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
 		{Name: "/root/inventory", Final: true}, {Name: "/root/review", Responding: true}, {Name: "/root/review/probe"},
 	}, Entries: []activityPaneEntry{
-		{Seq: 1, Agent: "/root/inventory", Kind: "start", Text: "Started.\nModel: `m`\n\n**Spawn prompt:**\n\nInventory the harness.", Observed: now},
+		{Seq: 1, Agent: "/root/inventory", Kind: "start", Text: "Started · `m` high", Observed: now},
 		{Seq: 2, Agent: "/root/review", Kind: "tool", Text: "Run\n```bash\ngo test ./internal/router -run TestActivity -count=1 -v\n```", Observed: now},
 		{Seq: 3, Agent: "/root/inventory", Kind: "reply", Text: "[`/root/inventory` -> `/root`] Message received:\n" + strings.Repeat("Inventory complete with a long result line. ", 12), Observed: now},
 		{Seq: 4, Agent: "/root/review/probe", Kind: "tool", Text: "Read `b.go`", Observed: now},

@@ -7,14 +7,16 @@ import (
 	"testing"
 )
 
-func TestReceivedReplyIsFullInChildAndRootCommentary(t *testing.T) {
+func TestReceivedReplyExcerptInCommentaryPreservesInputAndFinalAnswer(t *testing.T) {
 	for _, messageType := range []string{"MESSAGE", "FINAL_ANSWER"} {
 		t.Run(messageType, func(t *testing.T) {
 			for _, stream := range []bool{false, true} {
 				t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
 					proxy := newManagedMekugiProxy(t)
 					root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
-					body := strings.Repeat("完整 evidence ", 100) + "FINAL DETAIL"
+					body := strings.Repeat("完整🙂", 200) + "FINAL DETAIL"
+					bodyRunes := []rune(body)
+					wantExcerpt := string(bodyRunes[:511]) + "…"
 					envelope := map[string]any{
 						"type": "agent_message", "id": "reply", "author": "/root/a", "recipient": "/root/b",
 						"content": []any{map[string]any{"type": "input_text", "text": "Message Type: " + messageType + "\nTask name: /root/b\nSender: /root/a\nPayload:\n" + body}},
@@ -44,8 +46,8 @@ func TestReceivedReplyIsFullInChildAndRootCommentary(t *testing.T) {
 							notice = []byte("[`/root/a` -> `/root/b`] Completed.")
 						}
 						if bytes.Contains(output, notice) != (messageType == "MESSAGE") ||
-							bytes.Contains(output, []byte(body)) != (messageType == "MESSAGE") ||
-							bytes.Contains(output, []byte("[excerpt]")) {
+							bytes.Contains(output, []byte(wantExcerpt)) != (messageType == "MESSAGE") ||
+							bytes.Contains(output, []byte(body)) || bytes.Contains(output, []byte("[excerpt]")) {
 							t.Fatal("receipt did not preserve the message/completion display contract")
 						}
 						if bytes.LastIndex(output, []byte("Substantive answer.")) < bytes.LastIndex(output, notice) {
@@ -58,8 +60,10 @@ func TestReceivedReplyIsFullInChildAndRootCommentary(t *testing.T) {
 	}
 }
 
-func TestReceivedReplyOverBudgetIsOmittedWithoutChangingInput(t *testing.T) {
-	body := strings.Repeat("x", maxCommentaryPublicationBytes)
+func TestReceivedReplyExcerptIsCappedWithoutChangingInputOrBudgetingOutNextMessage(t *testing.T) {
+	body := strings.Repeat("界🙂", 400)
+	bodyRunes := []rune(body)
+	wantExcerpt := string(bodyRunes[:511]) + "…"
 	envelope := func(id, payload string) map[string]any {
 		return map[string]any{
 			"type": "agent_message", "id": id, "author": "/root/a", "recipient": "/root/b",
@@ -72,8 +76,22 @@ func TestReceivedReplyOverBudgetIsOmittedWithoutChangingInput(t *testing.T) {
 	if !bytes.Equal(fields["input"], original) {
 		t.Fatal("oversized reply changed model-visible input")
 	}
-	if len(messages) != 1 || commentaryText(t, messages[0]) != "[`/root/a` -> `/root/b`] Message received:\nComplete small reply." {
-		t.Fatal("oversized reply was excerpted or consumed the next reply's budget")
+	if len(messages) != 2 || commentaryText(t, messages[0]) != "[`/root/a` -> `/root/b`] Message received:\n"+wantExcerpt {
+		t.Fatalf("large reply excerpt = %q", commentaryText(t, messages[0]))
+	}
+	if got := []rune(strings.TrimPrefix(commentaryText(t, messages[0]), "[`/root/a` -> `/root/b`] Message received:\n")); len(got) != 512 || got[len(got)-1] != '…' {
+		t.Fatalf("excerpt rune count/ellipsis = %d, %q", len(got), string(got))
+	}
+	if got := commentaryText(t, messages[1]); got != "[`/root/a` -> `/root/b`] Message received:\nComplete small reply." {
+		t.Fatalf("large excerpt consumed the next reply's budget: %q", got)
+	}
+	final := envelope("final", body)
+	final["content"] = []any{map[string]any{"type": "input_text", "text": "Message Type: FINAL_ANSWER\nTask name: /root/b\nSender: /root/a\nPayload:\n" + body}}
+	finalOriginal := mustMarshalJSON([]any{final})
+	finalFields := map[string]json.RawMessage{"input": finalOriginal}
+	finals := prepareSubagentInputEnvelopes(finalFields, "/root/b")
+	if !bytes.Equal(finalFields["input"], finalOriginal) || len(finals.commentary) != 0 || len(finals.finals) != 1 || finals.finals[0].text != body {
+		t.Fatal("final answer was excerpted or changed in model input")
 	}
 }
 

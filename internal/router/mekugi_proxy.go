@@ -275,6 +275,7 @@ type mekugiJournalState struct {
 	journalClientOutput     []map[string]json.RawMessage
 	journalProviderOutput   []map[string]json.RawMessage
 	journalClientCalls      bool
+	journalDeferredFinish   map[string]bool
 	journalTerminal         bool
 	journalContinue         bool
 	journalFinishRequested  bool

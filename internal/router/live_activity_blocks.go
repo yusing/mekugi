@@ -119,19 +119,8 @@ func parseLiveActivityEnvelope(text string) (from, to, headline, body string, ok
 }
 
 func parseLiveActivityStart(text string) liveActivityBlock {
-	head, prompt, _ := strings.Cut(text, "\n\n**Spawn prompt:**\n\n")
-	var details []string
-	for i, line := range strings.Split(head, "\n") {
-		_, value, ok := strings.Cut(line, ": ")
-		if i == 0 || !ok || value == "not specified" {
-			continue
-		}
-		if code, end, ok := liveActivityCodeSpan(value, 0); ok && end == len(value) {
-			value = code
-		}
-		details = append(details, value)
-	}
-	return liveActivityBlock{kind: "start", label: strings.Join(details, " · "), body: prompt}
+	_, details, _ := strings.Cut(text, "Started · ")
+	return liveActivityBlock{kind: "start", label: details}
 }
 
 // liveActivityParagraphs splits operations at blank lines outside fences.

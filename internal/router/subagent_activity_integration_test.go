@@ -219,7 +219,8 @@ func TestSiblingReceiptAndOpaqueCallsKeepExactEnvelope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(output, []byte("Follow-up requested.")) || !bytes.Contains(output, []byte("opaque-secret")) || !bytes.Contains(output, []byte(body)) || bytes.Contains(output, []byte("[excerpt]")) {
+	excerpt := body[:511] + "…"
+	if bytes.Contains(output, []byte("Follow-up requested.")) || !bytes.Contains(output, []byte("opaque-secret")) || !bytes.Contains(output, []byte(excerpt)) || bytes.Contains(output, []byte(body)) {
 		t.Fatal(string(output))
 	}
 	output, err = root.TransformJSON([]byte(`{"status":"completed","output":[]}`))

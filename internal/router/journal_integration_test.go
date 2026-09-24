@@ -616,6 +616,24 @@ func TestJournalToolSchemaIncludesBatchedMutations(t *testing.T) {
 	if !bytes.Equal(schema.Properties["journal"], journalMutationsSchema()) {
 		t.Fatalf("missing or incorrect journal schema: %s", schema.Properties["journal"])
 	}
+	var nested struct {
+		Items struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(schema.Properties["journal"], &nested); err != nil {
+		t.Fatal(err)
+	}
+	for _, properties := range []map[string]json.RawMessage{schema.Properties, nested.Items.Properties} {
+		for _, name := range []string{"op", "report_now", "answer"} {
+			var property struct {
+				Description string `json:"description"`
+			}
+			if err := json.Unmarshal(properties[name], &property); err != nil || strings.TrimSpace(property.Description) == "" {
+				t.Fatalf("missing %s schema guidance: %s, %v", name, properties[name], err)
+			}
+		}
+	}
 	description := catalog.top.tools[0].Description
 	for _, required := range []string{"durable milestone journal", "await journal", "no host-dispatched calls in the same response", "final mutations in journal", "without another model request", "without", "separate final answer"} {
 		if !strings.Contains(description, required) {

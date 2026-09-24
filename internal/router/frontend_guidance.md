@@ -62,13 +62,13 @@ Review, revert, or reapply completed observed evidence from stock apply_patch an
 <!-- mekugi-frontends:end -->
 
 <instruction id="journal_tool">
-Manage the calling thread's durable milestone journal.
+Successful finish ends the turn without another model request or a separate final answer. Milestones in this durable milestone journal survive compaction.
 
 Record milestones when established, not only at completion: distinct current findings, validation results, decisions, or blockers. Use journal mutations instead of commentary for milestone updates; set report_now when the user needs the update immediately. Do not duplicate the update in commentary. Plans, ongoing narration, superseded progress, and summaries of other agents are not milestones. Questions and direct conversational replies remain separate from milestone reporting.
 
 Prefer the optional journal field on a useful ordinary tool call. In Code Mode, await journal({op: "add", text: "..."}) or pass an atomic mutation array; for example, after inspecting a test result, record the validated outcome alongside the next useful call. Mutations return router-assigned IDs; edit an existing item when its result is superseded. Use this dedicated tool for list.
 
-Once the assigned work is complete and all required tool results have been inspected, request finish, optionally with final mutations in journal. Finish can complete only with no host-dispatched calls in the same response. Successful finish ends the turn without another model request or a separate final answer; main flushes its unflushed items and a child returns its current journal to its native completion audience. Child completion automatically includes owned change ranges and aggregated numstat; do not collect them just to finish.
+Once the assigned work is complete and all required tool results have been inspected, request finish, optionally with final mutations in journal. Finish can complete only with no host-dispatched calls in the same response; otherwise inspect those results, then retry finish without host calls. Main flushes its unflushed items and a child returns its current journal to its native completion audience. Child completion automatically includes owned change ranges and aggregated numstat; do not collect them just to finish.
 </instruction>
 
 <instruction id="journal_code_mode">
@@ -81,9 +81,6 @@ Follow the `functions.journal` tool description for milestone, mutation, and com
 
 <instruction id="journal_mutations">
 Optional atomic journal mutations applied before this operation. report_now shows progress immediately.
-</instruction>
-<instruction id="journal_answer_mutation">
-Mark text as an answer to the latest user message or native assignment to this child; edit preserves the association when omitted and clears it when false.
 </instruction>
 <instruction id="journal_id">
 Router-assigned item ID; required for edit and delete.

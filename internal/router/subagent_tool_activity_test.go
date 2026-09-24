@@ -116,7 +116,7 @@ func TestSubagentTranslatedEditActivityJSONAndSSE(t *testing.T) {
 			if err := json.Unmarshal(visible, &response); err != nil {
 				t.Fatal(err)
 			}
-			if len(response.Output) != 2 || !strings.Contains(commentaryText(t, response.Output[0]), "Started.") ||
+			if len(response.Output) != 2 || !strings.Contains(commentaryText(t, response.Output[0]), "Started · ") ||
 				!strings.Contains(commentaryText(t, response.Output[1]), "Edit") ||
 				bytes.Contains(visible, []byte("apply_patch")) || bytes.Contains(visible, []byte("new result.txt")) {
 				t.Fatalf("stock apply_patch leaked into activity: %s", visible)
@@ -157,7 +157,7 @@ func TestSubagentPatchLabelJSONAndSSE(t *testing.T) {
 				}
 				var response struct{ Output []map[string]json.RawMessage }
 				if err := json.Unmarshal(visible, &response); err != nil || len(response.Output) != 2 ||
-					!strings.Contains(commentaryText(t, response.Output[0]), "Started.") ||
+					!strings.Contains(commentaryText(t, response.Output[0]), "Started · ") ||
 					!strings.Contains(commentaryText(t, response.Output[1]), "Edit") || bytes.Contains(visible, []byte("Begin Patch")) {
 					t.Fatalf("edit generated commentary: %s, %v", visible, err)
 				}
@@ -174,7 +174,7 @@ func TestSubagentToolActivityRejectsPartialCalls(t *testing.T) {
 		call := map[string]json.RawMessage{"type": mustTestJSON(t, "function_call"), "id": mustTestJSON(t, status), "status": mustTestJSON(t, status)}
 		child.collectSubagentToolCall(call)
 	}
-	if got := proxy.activity.drain("r", root.activityStarted, maxCommentaryPublicationBytes); len(got) != 1 || !strings.Contains(commentaryText(t, got[0]), "Started.") {
+	if got := proxy.activity.drain("r", root.activityStarted, maxCommentaryPublicationBytes); len(got) != 1 || !strings.Contains(commentaryText(t, got[0]), "Started · ") {
 		t.Fatal("partial calls projected")
 	}
 }

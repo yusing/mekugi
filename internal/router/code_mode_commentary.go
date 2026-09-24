@@ -14,6 +14,8 @@ type codeModeCommentaryCall struct {
 	argumentEnd   int
 }
 
+const journalPublisherUnavailable = "journal publisher unavailable; finish outstanding calls, then retry, or use direct functions.journal"
+
 func (t *mekugiResponseTransform) lowerCodeModeCommentary(callID, input string) (string, bool, error) {
 	if t.proxy.commentaryEndpoint == "" {
 		return input, false, nil
@@ -59,9 +61,9 @@ func (t *mekugiResponseTransform) lowerCodeModeCommentary(callID, input string) 
 	outcome := "prepared"
 	if token == "" {
 		t.featureTrace.record("journal", "code_mode", "lowering", "unavailable", callID, "")
-		return "", false, errors.New("journal publisher unavailable")
+	} else {
+		t.featureTrace.record("journal", "code_mode", "lowering", outcome, callID, "")
 	}
-	t.featureTrace.record("journal", "code_mode", "lowering", outcome, callID, "")
 	replacements := make([]string, len(calls))
 	for index := len(calls) - 1; index >= 0; index-- {
 		call := calls[index]
@@ -74,6 +76,12 @@ func (t *mekugiResponseTransform) lowerCodeModeCommentary(callID, input string) 
 			start := childCall.start - call.argumentStart
 			end := childCall.end - call.argumentStart
 			argument = argument[:start] + replacements[child] + argument[end:]
+		}
+		if token == "" {
+			// Let the host execute the normal carrier. The failed journal helper
+			// becomes a model-visible tool error, not a router translation fault.
+			replacements[index] = `(await (async mutation => { throw new Error(` + strconv.Quote(journalPublisherUnavailable) + `); })(` + argument + `))`
+			continue
 		}
 		command := workerCommand("mjournal", []string{
 			commentaryOnceArgument,

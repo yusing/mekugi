@@ -179,7 +179,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 	if !provider.childResultSeen || !provider.journalResultSeen {
 		t.Fatalf("native consumer lost journal result or child summary: child=%v journal=%v\nstdout: %.8000s\nstderr: %.8000s", provider.childResultSeen, provider.journalResultSeen, stdout.String(), stderr.String())
 	}
-	spawnPrompt, childLiveUpdate := false, false
+	childStart, childLiveUpdate := false, false
 	tokenTables, rootFlushes := 0, 0
 	lastMessage := ""
 	for line := range strings.SplitSeq(stdout.String(), "\n") {
@@ -221,7 +221,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 		if strings.Contains(text, "Journal flush `/root/journal_child`") {
 			t.Fatalf("main repeated the native child result: %s", text)
 		}
-		spawnPrompt = spawnPrompt || strings.Contains(text, "**Spawn prompt:**") && strings.Contains(text, "Record your milestone and finish.")
+		childStart = childStart || strings.Contains(text, "[`/root/journal_child`] Started · ")
 	}
 	if tokenTables != 1 {
 		t.Fatalf("native consumer received %d token tables, want one at main completion", tokenTables)
@@ -229,8 +229,8 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 	if rootFlushes != 1 || !strings.HasPrefix(lastMessage, "Journal flush `/root`") {
 		t.Fatalf("native consumer must receive one journal flush as its last message; flushes=%d last=%s", rootFlushes, lastMessage)
 	}
-	if !spawnPrompt {
-		t.Fatalf("native consumer did not display the spawn prompt: %.8000s", stdout.String())
+	if !childStart {
+		t.Fatalf("native consumer did not display the compact child start: %.8000s", stdout.String())
 	}
 	if provider.childRequests != 2 {
 		t.Fatalf("child provider requests = %d, want live update then finish without an extra request", provider.childRequests)

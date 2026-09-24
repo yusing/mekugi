@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -51,8 +52,39 @@ func TestCapacityNoticesAreVisibleAndDoNotConsumeTools(t *testing.T) {
 	}
 	body, err := visible.TransformJSON([]byte(`{"status":"completed","output":[{"type":"message","content":[]}]}`))
 	if err != nil || !strings.Contains(string(body), "256 concurrent publisher routes") ||
-		!strings.Contains(string(body), "direct functions.journal remains available") {
+		strings.Contains(string(body), "functions.journal") {
 		t.Fatalf("capacity diagnostic: %s %v", body, err)
+	}
+}
+
+func TestJournalCapacityReturnsActionableHostToolError(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node is required to execute the lowered Code Mode fixture")
+	}
+	transform, proxy := newRuntimeCommentaryTransform(t)
+	for range maxCommentaryRoutes {
+		if proxy.commentary.subscribe("other-session", "call", "") == "" {
+			t.Fatal("publisher capacity exhausted early")
+		}
+	}
+	source := `await tools.exec_command({cmd:"before"});
+try { await journal((events.push("argument"), {op:"add",text:"milestone"})); }
+catch (error) { events.push(error.message); }
+await tools.exec_command({cmd:"after"});`
+	lowered, changed, err := transform.lowerCodeModeCommentary("capacity-call", source)
+	if err != nil || !changed {
+		t.Fatalf("capacity became a translation fault: %v, changed=%v", err, changed)
+	}
+	script := `const events=[]; const tools={exec_command:async args=>{events.push(args.cmd);return {exit_code:0,output:""};}};
+(async()=>{` + lowered + `;process.stdout.write(JSON.stringify(events));})().catch(error=>{console.error(error);process.exitCode=1;});`
+	output, err := exec.CommandContext(t.Context(), node, "-e", script).CombinedOutput()
+	want := `["before","argument","journal publisher unavailable; finish outstanding calls, then retry, or use direct functions.journal","after"]`
+	if err != nil || string(output) != want {
+		t.Fatalf("lowered host execution: %s, %v; want %s", output, err, want)
+	}
+	if len(transform.commentarySubscriptions) != 0 {
+		t.Fatal("capacity failure retained a publisher subscription")
 	}
 }
 

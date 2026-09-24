@@ -371,12 +371,7 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 		bar := liveAgentGutter(block.from, p.theme) + "┃" + liveActivityReset + " "
 		return append(lines, liveActivityIndent(p.markdown(block.body, width-2), bar)...)
 	case "start":
-		lines := liveActivityHang(liveActivityGreen+"\x1b[1m▶ Started"+liveActivityReset+"  ", liveActivityDim+block.label+liveActivityUndim, width)
-		if block.body != "" {
-			lines = append(lines, liveActivityDim+"  prompt"+liveActivityUndim)
-			lines = append(lines, liveActivityIndent(p.markdown(block.body, width-2), liveActivityDim+"┃"+liveActivityUndim+" ")...)
-		}
-		return lines
+		return liveActivityHang(liveActivityGreen+"\x1b[1m▶ Started"+liveActivityReset+"  ", p.inline(block.label), width)
 	case "error":
 		return liveActivityIndent(liveActivityWrap(liveActivityRed+block.body+liveActivityReset, width-2, false), liveActivityRed+"✗"+liveActivityReset+" ")
 	}
@@ -543,7 +538,7 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 		}
 		return liveActivityDim + "✉ → " + liveActivityUndim + p.agent(block.to) + " " + text
 	case "start":
-		return liveActivityGreen + "▶ Started" + liveActivityReset + " " + liveActivityDim + block.label + liveActivityUndim
+		return liveActivityGreen + "▶ Started" + liveActivityReset + " " + p.inline(block.label)
 	case "error":
 		return liveActivityRed + "✗ " + firstLine(block.body) + liveActivityReset
 	}

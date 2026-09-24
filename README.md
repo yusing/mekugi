@@ -17,8 +17,8 @@ sessions, and patch review. No fork, no config edits, no daemon.
 
 - **Keep the familiar Codex workflow.** No persistent service or configuration
   edits. Codex keeps control of permissions, execution, and patch review.
-- **See subagent activity as it happens.** Start notices include the spawn prompt.
-  Progress, messages, and replies appear in the main conversation, with each agent
+- **See subagent activity as it happens.** One-line start notices show the model and effort.
+  Progress and short message excerpts appear in the main conversation, with each agent
   identified. Some updates wait for the next main-agent response; encrypted messages
   stay private. In Herdr, the [agents pane](#agents-pane) takes over this activity
   and shows it live, beside a roster of every agent.

@@ -16,8 +16,9 @@ func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
 				t.Helper()
 				request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
 					"model": model, "reasoning": map[string]any{"effort": effort},
-					"input": []any{testCodeModeAdditionalTools(testCodeModeDescription), journalTestAssignment("/root/explorer", "NEW_TASK", "Inspect the parser.\n\n- Preserve behavior.")},
-					"tools": []any{},
+					"service_tier": "priority",
+					"input":        []any{testCodeModeAdditionalTools(testCodeModeDescription), journalTestAssignment("/root/explorer", "NEW_TASK", "Inspect the parser.\n\n- Preserve behavior.")},
+					"tools":        []any{},
 				}))
 				if err != nil {
 					t.Fatal(err)
@@ -56,17 +57,51 @@ func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
 				}
 				return result
 			}
-			if result := emit(child); bytes.Contains(result, []byte("Started.")) || bytes.Contains(result, []byte("Journal result")) || !bytes.Contains(result, []byte("Substantive answer.")) {
+			if result := emit(child); bytes.Contains(result, []byte("Started ·")) || bytes.Contains(result, []byte("Journal result")) || !bytes.Contains(result, []byte("Substantive answer.")) {
 				t.Fatalf("start notice changed the child's result: %s", result)
 			}
 			result := emit(root)
-			for _, want := range []string{"[`/root/explorer`] Started.", "Model: `gpt-effective`", "Reasoning effort: `high`", "**Spawn prompt:**", "Inspect the parser.", "- Preserve behavior."} {
+			for _, want := range []string{"[`/root/explorer`] Started · `gpt-effective` `high` · tier `fast`"} {
 				if !bytes.Contains(result, []byte(want)) {
 					t.Fatalf("missing %q in %s", want, result)
 				}
 			}
+			var commentaryItems []map[string]json.RawMessage
+			if stream {
+				decoder := json.NewDecoder(bytes.NewReader(result))
+				for decoder.More() {
+					var event struct {
+						Item map[string]json.RawMessage `json:"item"`
+					}
+					if err := decoder.Decode(&event); err != nil {
+						t.Fatal(err)
+					}
+					if event.Item != nil && bytes.Contains(mustTestJSON(t, event.Item), []byte("Started ·")) {
+						commentaryItems = append(commentaryItems, event.Item)
+					}
+				}
+			} else {
+				var decoded struct{ Output []map[string]json.RawMessage }
+				if err := json.Unmarshal(result, &decoded); err != nil {
+					t.Fatal(err)
+				}
+				for _, item := range decoded.Output {
+					if bytes.Contains(mustTestJSON(t, item), []byte("Started ·")) {
+						commentaryItems = append(commentaryItems, item)
+					}
+				}
+			}
+			if len(commentaryItems) != 1 {
+				t.Fatalf("child start commentary count = %d", len(commentaryItems))
+			}
+			for _, item := range commentaryItems {
+				text := commentaryText(t, item)
+				if strings.Contains(text, "\n") || strings.Contains(text, "Spawn prompt") || strings.Contains(text, "Inspect the parser") {
+					t.Fatalf("child start is not one line or contains task text: %q", text)
+				}
+			}
 			// SSE repeats the same item in the completed event and terminal snapshot.
-			if bytes.Count(result, []byte("Started.")) != map[bool]int{false: 1, true: 2}[stream] {
+			if bytes.Count(result, []byte("Started ·")) != map[bool]int{false: 1, true: 2}[stream] {
 				t.Fatalf("duplicate start: %s", result)
 			}
 			// A remapped session or a later model change must not announce another start.
@@ -74,7 +109,7 @@ func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
 			prepareChild("remapped-child-session", "gpt-later", "low")
 			root.Close()
 			next, _ := prepareActivityTest(t, proxy, "remapped-root-session", "root", "", "/root", nil)
-			if result := emit(next); bytes.Contains(result, []byte("Started.")) {
+			if result := emit(next); bytes.Contains(result, []byte("Started ·")) {
 				t.Fatalf("start repeated on a later request: %s", result)
 			}
 			// Generated root notices remain user-only even in inherited child history.
@@ -102,24 +137,23 @@ func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
 			}
 			fields := map[string]json.RawMessage{"input": mustMarshalJSON(append(notices, answer))}
 			proxy.activity.stripInput(fields)
-			if strings.Contains(string(fields["input"]), "Started.") || !bytes.Contains(fields["input"], []byte("Substantive answer.")) {
+			if strings.Contains(string(fields["input"]), "Started ·") || !bytes.Contains(fields["input"], []byte("Substantive answer.")) {
 				t.Fatalf("incorrect replay filtering: %s", fields["input"])
 			}
 		})
 	}
 }
 
-func TestSubagentStartPromptUsesOnlyFirstAddressedAssignment(t *testing.T) {
+func TestSubagentStartOmitsSpawnPrompt(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		input []any
-		want  string
 	}{
-		{"plaintext", []any{journalTestAssignment("/root/child", "NEW_TASK", "Original\n\n- task"), journalTestAssignment("/root/child", "NEW_TASK", "Followup")}, "Original\n\n- task"},
-		{"wrong recipient", []any{journalTestAssignment("/root/other", "NEW_TASK", "Private task")}, ""},
-		{"inherited user", []any{map[string]any{"role": "user", "content": "Inherited request"}}, ""},
-		{"message", []any{journalTestAssignment("/root/child", "MESSAGE", "Not a task")}, ""},
-		{"empty first", []any{journalTestAssignment("/root/child", "NEW_TASK", ""), journalTestAssignment("/root/child", "NEW_TASK", "Followup")}, ""},
+		{"plaintext assignment", []any{journalTestAssignment("/root/child", "NEW_TASK", "Original\n\n- task")}},
+		{"wrong recipient", []any{journalTestAssignment("/root/other", "NEW_TASK", "Private task")}},
+		{"inherited user", []any{map[string]any{"role": "user", "content": "Inherited request"}}},
+		{"message", []any{journalTestAssignment("/root/child", "MESSAGE", "Not a task")}},
+		{"empty assignment", []any{journalTestAssignment("/root/child", "NEW_TASK", "")}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"model": "gpt-6-astra", "input": tc.input}))
@@ -127,12 +161,13 @@ func TestSubagentStartPromptUsesOnlyFirstAddressedAssignment(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := subagentStartCommentary(&request, "/root/child")
-			if tc.want == "" {
-				if strings.Contains(got, "**Spawn prompt:**") {
-					t.Fatalf("unexpected prompt: %s", got)
+			for _, secret := range []string{"Spawn prompt", "Original", "Private task", "Inherited request", "Not a task"} {
+				if strings.Contains(got, secret) {
+					t.Fatalf("start includes task input %q: %s", secret, got)
 				}
-			} else if !strings.HasSuffix(got, "**Spawn prompt:**\n\n"+tc.want) {
-				t.Fatalf("prompt changed: %s", got)
+			}
+			if strings.Contains(got, "\n") {
+				t.Fatalf("start is not a single line: %s", got)
 			}
 		})
 	}
@@ -148,7 +183,7 @@ func TestSubagentStartOpaquePromptIsNotReplacedByFollowup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := subagentStartCommentary(&request, "/root/child"); strings.Contains(got, "**Spawn prompt:**") || strings.Contains(got, "opaque") || strings.Contains(got, "Later task") {
+	if got := subagentStartCommentary(&request, "/root/child"); strings.Contains(got, "\n") || strings.Contains(got, "Spawn prompt") || strings.Contains(got, "opaque") || strings.Contains(got, "Later task") {
 		t.Fatalf("opaque spawn task leaked or was replaced: %s", got)
 	}
 }

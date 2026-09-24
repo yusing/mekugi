@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/yusing/mekugi/internal/commentaryid"
 )
@@ -40,30 +41,13 @@ func subagentStartCommentary(request *parsedResponsesRequest, recipient string) 
 	if model == "" || len(model)+len(effort)+len(tier) > maxCommentaryPublicationBytes || strings.ContainsAny(model+effort+tier, "\r\n\x00") {
 		return ""
 	}
-	renderedEffort := "not specified"
-	if effort != "" {
-		renderedEffort = commentaryCode(effort)
-	}
-	renderedTier := "not specified"
-	if tier != "" {
-		renderedTier = commentaryCode(tier)
-	}
 	var text strings.Builder
-	text.WriteString("Started.\nModel: " + commentaryCode(model) + "\nReasoning effort: " + renderedEffort + "\nService tier: " + renderedTier)
-	input, err := decodeResponsesInput(request.fields["input"])
-	if err == nil {
-		for _, v := range input.items {
-			item, ok := decodeResponsesItem(v)
-			if !ok {
-				continue
-			}
-			if prompt, assignment := journalAssignmentText(item.fields, recipient); assignment {
-				if prompt != "" {
-					text.WriteString("\n\n**Spawn prompt:**\n\n" + prompt)
-				}
-				break
-			}
-		}
+	text.WriteString("Started · " + commentaryCode(model))
+	if effort != "" {
+		text.WriteString(" " + commentaryCode(effort))
+	}
+	if tier != "" {
+		text.WriteString(" · tier " + commentaryCode(tier))
 	}
 	return text.String()
 }
@@ -130,7 +114,7 @@ func prepareSubagentInputEnvelopes(fields map[string]json.RawMessage, recipient 
 		direction := "[" + commentaryCode(sender) + " -> " + commentaryCode(recipient) + "] "
 		label := direction + "Message received."
 		if text != "" {
-			label = direction + "Message received:\n" + text
+			label = direction + "Message received:\n" + subagentMessageExcerpt(text)
 		}
 		if len(label) <= budget && len(envelopes.commentary) < maxCommentaryEventsPerRoute {
 			budget -= len(label)
@@ -139,6 +123,23 @@ func prepareSubagentInputEnvelopes(fields map[string]json.RawMessage, recipient 
 		}
 	}
 	return envelopes
+}
+
+// Bound user-only excerpts without altering the model's original envelope.
+func subagentMessageExcerpt(text string) string {
+	const limit = 512
+	count := 0
+	for offset := range text {
+		if count == limit-1 {
+			// A final code point fits without a truncation marker.
+			if _, width := utf8.DecodeRuneInString(text[offset:]); width == len(text)-offset {
+				return text
+			}
+			return text[:offset] + "…"
+		}
+		count++
+	}
+	return text
 }
 
 func subagentResponse(item map[string]json.RawMessage) (text, sender string, final, ok bool) {

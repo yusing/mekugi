@@ -5,9 +5,94 @@ import (
 	"encoding/json"
 	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 )
+
+const journalFinishHostCallError = "journal finish cannot complete with host-dispatched calls; inspect their results, then retry finish in a response without host calls"
+
+func assertJournalFinishRejected(t *testing.T, stream bool, wire []byte, callID, hostCallID string, wantIDs []string) {
+	t.Helper()
+	var resultCount int
+	for _, item := range journalFinishClientOutput(t, stream, wire) {
+		if journalResultCallID(item) != callID {
+			continue
+		}
+		resultCount++
+		var outcome struct {
+			OK         bool     `json:"ok"`
+			Error      string   `json:"error"`
+			JournalIDs []string `json:"journal_ids"`
+		}
+		if err := json.Unmarshal([]byte(jsonString(item, "output")), &outcome); err != nil {
+			t.Fatalf("decode rejected finish result %s: %v", mustMarshalJSON(item), err)
+		}
+		if outcome.OK || outcome.Error != journalFinishHostCallError || !slices.Equal(outcome.JournalIDs, wantIDs) {
+			t.Fatalf("finish result = %+v, want ok=false, retry guidance and IDs %v", outcome, wantIDs)
+		}
+	}
+	if resultCount != 1 {
+		t.Fatalf("finish results = %d, want exactly 1: %s", resultCount, wire)
+	}
+	if !stream {
+		return
+	}
+	finishEvents, hostEvents, finishIndex, terminalIndex := 0, 0, -1, -1
+	for index, payload := range finalAnswerTestPayloads(string(wire)) {
+		var event struct {
+			Type string                     `json:"type"`
+			Item map[string]json.RawMessage `json:"item"`
+		}
+		if err := json.Unmarshal(payload, &event); err != nil {
+			t.Fatal(err)
+		}
+		switch event.Type {
+		case "response.output_item.done":
+			if journalResultCallID(event.Item) == callID {
+				finishEvents++
+				finishIndex = index
+				var outcome struct {
+					OK    bool   `json:"ok"`
+					Error string `json:"error"`
+				}
+				if err := json.Unmarshal([]byte(jsonString(event.Item, "output")), &outcome); err != nil || outcome.OK || outcome.Error != journalFinishHostCallError {
+					t.Fatalf("SSE finish event result = %+v, err=%v", outcome, err)
+				}
+			}
+			if jsonString(event.Item, "type") == "function_call" && jsonString(event.Item, "call_id") == hostCallID {
+				hostEvents = index + 1 // Zero is a valid event index.
+			}
+		case "response.completed":
+			if terminalIndex >= 0 {
+				t.Fatal("duplicate terminal event")
+			}
+			terminalIndex = index
+		}
+	}
+	if finishEvents != 1 || terminalIndex < 0 {
+		t.Fatalf("SSE finish item-done events=%d terminal=%d; want one result before one terminal", finishEvents, terminalIndex)
+	}
+	if hostEvents != 0 && hostEvents-1 >= terminalIndex {
+		t.Fatal("host call appeared after terminal event")
+	}
+	if hostEvents != 0 && finishIndex <= hostEvents-1 {
+		t.Fatal("finish result was emitted before the host call was classified")
+	}
+}
+
+func assertHostCallUnchanged(t *testing.T, stream bool, wire []byte, callID string, want map[string]any) {
+	t.Helper()
+	var found []map[string]json.RawMessage
+	for _, item := range journalFinishClientOutput(t, stream, wire) {
+		if jsonString(item, "type") == "function_call" && jsonString(item, "call_id") == callID {
+			found = append(found, item)
+		}
+	}
+	if len(found) != 1 || !bytes.Equal(mustMarshalJSON(found[0]), mustTestJSON(t, want)) {
+		t.Fatalf("host call changed or duplicated: got %s, want %s", mustMarshalJSON(found), mustTestJSON(t, want))
+	}
+}
 
 func journalFinishResponse(t *testing.T, stream bool, status, snapshot string, calls ...any) *http.Response {
 	t.Helper()
@@ -209,8 +294,142 @@ func TestJournalFinishDoesNotHidePendingCallsOrFlushFailures(t *testing.T) {
 						t.Fatalf("pending client call lost: %s", output.Bytes())
 					}
 				}
+				if scenario == "mixed" {
+					assertJournalFinishRejected(t, stream, output.Bytes(), "finish-call", "lookup-call", nil)
+					assertHostCallUnchanged(t, stream, output.Bytes(), "lookup-call", pending)
+				}
 			})
 		}
+	}
+}
+
+func TestJournalFinishWithHostCallReturnsOneCorrectableResult(t *testing.T) {
+	for _, scenario := range []struct {
+		name, snapshot string
+		stream         bool
+		finishFirst    bool
+	}{
+		{name: "json-full-finish-before-host", snapshot: "full", finishFirst: true},
+		{name: "sse-full-finish-after-host", snapshot: "full", stream: true},
+		{name: "sse-snapshot-only-host", snapshot: "snapshot-only", stream: true, finishFirst: true},
+		{name: "sse-empty-terminal-after-calls", snapshot: "empty", stream: true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			proxy := newManagedMekugiProxy(t)
+			proxy.journals = newJournalStore()
+			store, err := openMekugiReplayStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			proxy.replayStore = store
+			workspace := t.TempDir()
+			finish := journalFinishCall(`{"op":"finish","journal":[{"op":"add","text":"Milestone survives retry"}]}`)
+			hostCall := map[string]any{
+				"type": "function_call", "id": "host-item", "call_id": "host-call", "name": "lookup",
+				"arguments": `{"path":"README.md","max":1}`, "status": "completed",
+			}
+			calls := []any{hostCall, finish}
+			if scenario.finishFirst {
+				calls = []any{finish, hostCall}
+			}
+			provider := &serverFakeProvider{results: []serverForwardResult{{response: journalFinishResponse(t, scenario.stream, "completed", scenario.snapshot, calls...)}}}
+			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = scenario.stream })
+			var output bytes.Buffer
+			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "mixed-host-turn", provider, &output, NewCriticalErrors(), proxy, nil); err != nil {
+				t.Fatal(err)
+			}
+			if len(provider.forwarded) != 1 || strings.Contains(output.String(), "Journal flush") {
+				t.Fatalf("mixed finish completed or retried before host work: requests=%d output=%s", len(provider.forwarded), output.Bytes())
+			}
+			assertJournalFinishRejected(t, scenario.stream, output.Bytes(), "finish-call", "host-call", []string{"amber"})
+			assertHostCallUnchanged(t, scenario.stream, output.Bytes(), "host-call", hostCall)
+			items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
+			if err != nil || len(items) != 1 || items[0].ID != "amber" || items[0].Text != "Milestone survives retry" || items[0].Reported || items[0].Flushed {
+				t.Fatalf("batched mutation did not survive rejected finish: %+v, err=%v", items, err)
+			}
+		})
+	}
+}
+
+func TestJournalFinishHostRetrySucceedsOnNextTurn(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	proxy.journals = newJournalStore()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy.replayStore = store
+	workspace := t.TempDir()
+	headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})
+	hostCall := map[string]any{
+		"type": "function_call", "id": "host-item", "call_id": "host-call", "name": "lookup",
+		"arguments": `{"path":"README.md","max":1}`, "status": "completed",
+	}
+	firstResponse := journalFinishResponse(t, false, "completed", "full",
+		journalFinishCall(`{"op":"finish","journal":[{"op":"add","text":"Milestone survives retry"}]}`), hostCall)
+	firstProvider := &serverFakeProvider{results: []serverForwardResult{{response: firstResponse}}}
+	var firstOutput bytes.Buffer
+	if err := executeRequest(t.Context(), t.Context(), serverRequest(t, nil), headers, "first-turn", firstProvider, &firstOutput, NewCriticalErrors(), proxy, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(firstProvider.forwarded) != 1 {
+		t.Fatalf("host result handling required an automatic continuation: %d", len(firstProvider.forwarded))
+	}
+	assertJournalFinishRejected(t, false, firstOutput.Bytes(), "finish-call", "host-call", []string{"amber"})
+	assertHostCallUnchanged(t, false, firstOutput.Bytes(), "host-call", hostCall)
+
+	input := serverRequest(t, nil)
+	var priorInput []any
+	if err := json.Unmarshal(input.fields["input"], &priorInput); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range journalFinishClientOutput(t, false, firstOutput.Bytes()) {
+		priorInput = append(priorInput, item)
+	}
+	priorInput = append(priorInput, map[string]any{
+		"type": "function_call_output", "call_id": "host-call", "output": "Host lookup result inspected: README.md contains the expected guidance.",
+	})
+	input.setInput(mustTestJSON(t, priorInput))
+	retryFinish := map[string]any{
+		"type": "function_call", "id": "retry-finish-item", "call_id": "retry-finish-call",
+		"name": "journal", "namespace": "functions", "arguments": `{"op":"finish"}`, "status": "completed",
+	}
+	secondProvider := &serverFakeProvider{results: []serverForwardResult{{response: journalFinishResponse(t, false, "completed", "full", retryFinish)}}}
+	var secondOutput bytes.Buffer
+	if err := executeRequest(t.Context(), t.Context(), input, headers, "retry-turn", secondProvider, &secondOutput, NewCriticalErrors(), proxy, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(secondProvider.forwarded) != 1 {
+		t.Fatalf("finish retry issued %d provider requests, want one", len(secondProvider.forwarded))
+	}
+	for _, inspected := range []string{journalFinishHostCallError, "Host lookup result inspected: README.md contains the expected guidance."} {
+		if !bytes.Contains(secondProvider.forwarded[0], []byte(inspected)) {
+			t.Fatalf("retry omitted inspected result %q from provider input: %s", inspected, secondProvider.forwarded[0])
+		}
+	}
+	if !strings.Contains(secondOutput.String(), "Journal flush") || strings.Contains(secondOutput.String(), journalFinishHostCallError) {
+		t.Fatalf("host-free retry did not finish the retained milestone: %s", secondOutput.Bytes())
+	}
+	foundRetryResult := false
+	for _, item := range journalFinishClientOutput(t, false, secondOutput.Bytes()) {
+		if journalResultCallID(item) != "retry-finish-call" {
+			continue
+		}
+		foundRetryResult = true
+		var outcome struct {
+			OK              bool `json:"ok"`
+			FinishRequested bool `json:"finish_requested"`
+		}
+		if err := json.Unmarshal([]byte(jsonString(item, "output")), &outcome); err != nil || !outcome.OK || !outcome.FinishRequested {
+			t.Fatalf("successful retry result = %+v, err=%v", outcome, err)
+		}
+	}
+	if !foundRetryResult {
+		t.Fatal("retry response omitted its successful finish result")
+	}
+	items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
+	if err != nil || len(items) != 1 || items[0].ID != "amber" || !items[0].Reported || !items[0].Flushed {
+		t.Fatalf("host-free retry did not durably flush original mutation: %+v, err=%v", items, err)
 	}
 }
 

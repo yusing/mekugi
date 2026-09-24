@@ -165,8 +165,13 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 			if got := jsonString(forwarded.fields, "service_tier"); got != want {
 				t.Fatalf("tier=%s want=%s", got, want)
 			}
-			if got := subagentStartCommentary(&forwarded, ""); !strings.Contains(got, "Service tier: `"+strings.ReplaceAll(want, "priority", "fast")+"`") {
-				t.Fatalf("commentary=%s", got)
+			wantModel := "gpt-5.6-luna"
+			if mentorEnabled {
+				wantModel = "gpt-6-astra"
+			}
+			start := subagentStartCommentary(&forwarded, "/root/child")
+			if strings.Contains(start, "\n") || !strings.Contains(start, "`"+wantModel+"`") || !strings.Contains(start, "tier `"+strings.ReplaceAll(want, "priority", "fast")+"`") {
+				t.Fatalf("commentary=%s", start)
 			}
 		})
 	}
@@ -174,7 +179,7 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 
 func TestSubagentStartServiceTier(t *testing.T) {
 	for _, tc := range []struct{ tier, want string }{
-		{"priority", "`fast`"}, {"fast", "`fast`"}, {"default", "`default`"}, {"", "not specified"},
+		{"priority", "tier `fast`"}, {"fast", "tier `fast`"}, {"default", "tier `default`"}, {"", ""},
 	} {
 		request := serverRequest(t, func(fields map[string]any) {
 			fields["model"] = "gpt-6-astra"
@@ -182,7 +187,8 @@ func TestSubagentStartServiceTier(t *testing.T) {
 				fields["service_tier"] = tc.tier
 			}
 		})
-		if got := subagentStartCommentary(&request, ""); !strings.Contains(got, "Service tier: "+tc.want) {
+		got := subagentStartCommentary(&request, "/root/child")
+		if strings.Contains(got, "\n") || !strings.Contains(got, "`gpt-6-astra`") || tc.want != "" && !strings.Contains(got, tc.want) || tc.want == "" && strings.Contains(got, "tier") {
 			t.Fatalf("tier=%s commentary=%s", tc.tier, got)
 		}
 	}
@@ -268,7 +274,7 @@ func TestServiceTierJournalHandoffAndRootNotice(t *testing.T) {
 	notices := proxy.activity.drain("root", root.activityStarted, maxCommentaryPublicationBytes)
 	for _, notice := range notices {
 		text := commentaryText(t, notice)
-		if strings.Contains(text, "Started.") && strings.Contains(text, "Service tier: `fast`") {
+		if strings.Contains(text, "Started ·") && !strings.Contains(text, "\n") && strings.Contains(text, "tier `fast`") {
 			return
 		}
 	}

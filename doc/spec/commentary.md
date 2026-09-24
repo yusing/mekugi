@@ -24,12 +24,11 @@ follow-up, messaging, waiting, and interruption display; schemas, executed argum
 streamed call framing remain unchanged. The router never reads encrypted message arguments.
 
 The first accepted `thread_spawn` child request adds one start notice to the root activity
-collector. It shows the child's canonical path, observed model, reasoning effort, and effective
-requested service tier as inline code, followed by the plaintext spawn prompt from the first
-native assignment addressed to that child. Inherited user requests, follow-up tasks, and other agents'
-assignments are not spawn prompts. Opaque assignments remain opaque; no prompt is inferred.
-The whole notice remains subject to the auxiliary rendering budget. Omitted effort or tier is labelled "not specified", not
-inferred from the parent or role. Service tier reflects the configured per-model override;
+collector. One line shows the child's canonical path, `Started`, observed model and supplied
+reasoning effort, plus the requested service tier when present. Metadata uses inline code;
+spawn prompts are not repeated. The whole notice remains subject to the auxiliary rendering
+budget. Omitted effort or tier is omitted, not inferred from the parent or role.
+Service tier reflects the configured per-model override;
 `fast` is forwarded as `priority`; both aliases display as `fast`, without claiming the provider served that tier.
 The notice describes the child request, not successful provider inference. Stable child-thread
 identity deduplicates retries, later turns, and routing-session changes. Unknown or conflicting
@@ -126,7 +125,8 @@ When a request receives an actual Codex inter-agent envelope addressed to its
 canonical agent name, commentary shows `[sender -> recipient]`, with each name wrapped in inline code.
 The recipient is `/root` for non-child turns and the canonical child name for child turns.
 An absent or malformed child identity never matches an unaddressed envelope. Valid
-plaintext `MESSAGE` payloads are shown in full under `Message received`, never as excerpts.
+plaintext `MESSAGE` payloads appear under `Message received` as excerpts of at most 512 Unicode
+code points, including a final ellipsis when truncated. Excerpting never changes the original input.
 A plaintext `FINAL_ANSWER` produces no router commentary: Codex already displays completion.
 It sets the sender's final-answer marker and shows the answer in the agents pane when available.
 Native completion remains available to the parent;

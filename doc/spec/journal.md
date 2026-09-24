@@ -63,7 +63,11 @@ result or to generate another final-answer turn. On a successful
 response with successful journal results and no client-dispatched calls, it completes and
 returns the terminal response without another provider request. Other successful router-owned
 journal calls may share that response. Mixed client calls remain
-host-dispatched and prevent completion; journal operation error results continue for correction.
+host-dispatched and prevent completion. Their finish result is `ok:false`, names the pending
+host work, and asks the caller to inspect those results before retrying finish without host calls.
+Already-applied batched mutations and their `journal_ids` remain valid. Streaming finish results
+are held until terminal classification, so a later host call cannot contradict an earlier success.
+Journal operation error results continue for correction.
 Invalid or rejected mutations in a dedicated journal call return an `ok: false` tool result
 for correction and prevent its primary operation. Batched fields on host-dispatched tools
 still fail translation under the atomic field contract.
@@ -159,7 +163,9 @@ frontend invoked through stock `tools.exec_command`. The frontend publishes
 only the requested mutation through a call-scoped broker capability; it does
 not run the surrounding program or replace the stock result. Programmatic
 calls can await the returned item ID, including an add followed by an edit.
-Failed publication throws. The capability expires with its owning call and
+Failed publication throws. If publisher capacity is unavailable, the host-executed helper throws
+a model-visible retry/direct-journal hint; the user-only capacity notice contains no agent instructions.
+The capability expires with its owning call and
 cannot be borrowed by another thread. Agent-authored source and private
 publisher credentials are not added to sanitized metrics.
 
