@@ -112,7 +112,7 @@ func (h *liveDiffTerminalHarness) write(t *testing.T, input string) {
 
 func (h *liveDiffTerminalHarness) quit(t *testing.T) {
 	t.Helper()
-	h.write(t, "q")
+	h.write(t, "\x03")
 	select {
 	case <-h.done:
 		if h.waitErr != nil {

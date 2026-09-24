@@ -207,9 +207,27 @@ func (v *liveActivityView) handleKey(escape string, key byte) (string, bool) {
 			return "", false
 		}
 	}
+	if v.rosterPane {
+		// The roster pane picks the agent the feed shows; it has nothing to scroll.
+		switch key {
+		case 'j', 'n', '\t':
+			v.showAgent(1)
+		case 'k', 'p':
+			v.showAgent(-1)
+		case 'o':
+			v.only, v.hovered = !v.only, ""
+			v.follow()
+		}
+		return "", false
+	}
+	// With a roster pane connected, agent selection belongs to it.
+	if v.rosterAway {
+		switch key {
+		case 'n', '\t', 'p', 'o':
+			return "", false
+		}
+	}
 	switch key {
-	case 'q':
-		return "", true
 	case 'n', '\t':
 		v.selectAgent(1)
 	case 'p':

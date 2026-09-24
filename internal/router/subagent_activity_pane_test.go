@@ -857,8 +857,81 @@ func TestLiveActivityRosterProcess(t *testing.T) {
 	if event := feed.next(t, "select"); event.Selected != "/root/explorer/probe" || !event.Only {
 		t.Fatalf("roster click = %+v", event)
 	}
-	h.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 1), "only /root/explorer/probe") })
+	h.frame(t, func(frame string) bool {
+		return strings.Contains(liveDiffFrameRow(frame, 1), "only /root/explorer/probe")
+	})
+	// Arrow keys move the shown agent, and the feed follows.
+	h.write(t, "\x1b[A")
+	if event := feed.next(t, "select"); event.Selected != "/root/explorer" || !event.Only {
+		t.Fatalf("roster up arrow = %+v", event)
+	}
+	h.write(t, "\x1b[A")
+	if event := feed.next(t, "select"); event.Only {
+		t.Fatalf("up from the first agent did not show all agents: %+v", event)
+	}
 	h.quit(t)
 	for event := feed.next(t, "agents"); event.Roster; event = feed.next(t, "agents") {
+	}
+}
+
+func TestLiveActivityRosterPaneArrowKeys(t *testing.T) {
+	view := liveActivityTestView("/root/a", "/root/b")
+	view.rosterPane = true
+	keys := func(input string) {
+		escape := ""
+		for i := range len(input) {
+			escape, _ = view.handleKey(escape, input[i])
+		}
+	}
+	lines := plainLines(view.render(120, 5, time.Now()))
+	if !strings.HasSuffix(strings.TrimRight(lines[0], " "), "↓ show agent") || strings.Contains(strings.Join(lines, "\n"), "▸") {
+		t.Fatalf("all-agents roster = %q", lines)
+	}
+	// "All agents" sits above the first agent, and moves stop at either end.
+	for _, step := range []struct {
+		input string
+		want  activityPaneSelection
+	}{
+		{"\x1b[B", activityPaneSelection{Selected: "/root/a", Only: true}},
+		{"\x1bOB", activityPaneSelection{Selected: "/root/b", Only: true}},
+		{"j", activityPaneSelection{Selected: "/root/b", Only: true}},
+		{"\x1b[A", activityPaneSelection{Selected: "/root/a", Only: true}},
+		{"k", activityPaneSelection{Selected: "/root/a"}},
+		{"\x1b[A", activityPaneSelection{Selected: "/root/a"}},
+		{"o", activityPaneSelection{Selected: "/root/a", Only: true}},
+	} {
+		keys(step.input)
+		if got := view.selection(); got != step.want {
+			t.Fatalf("after %q: selection = %+v, want %+v", step.input, got, step.want)
+		}
+	}
+	lines = plainLines(view.render(120, 5, time.Now()))
+	if !strings.HasPrefix(lines[1], "▸") || !strings.HasSuffix(strings.TrimRight(lines[0], " "), "↑/↓ agent · o all") {
+		t.Fatalf("shown-agent roster = %q", lines)
+	}
+
+	// The feed pane leaves selection to a connected roster pane but still scrolls.
+	feed := liveActivityTestView("/root/a", "/root/b")
+	feed.apply(activityPaneEvent{Kind: "agents", Agents: feed.agents, Roster: true})
+	before := feed.selection()
+	for _, key := range []byte("np\to") {
+		feed.handleKey("", key)
+	}
+	if feed.selection() != before {
+		t.Fatalf("feed pane changed selection: %+v", feed.selection())
+	}
+	lines = plainLines(feed.render(120, 20, time.Now()))
+	if footer := lines[len(lines)-1]; !strings.HasSuffix(footer, "j/k scroll · r follow") || strings.Contains(footer, "n/p") {
+		t.Fatalf("feed footer = %q", footer)
+	}
+	feed.handleKey("", 'k')
+	if feed.following {
+		t.Fatal("feed pane no longer scrolls")
+	}
+	// Without a roster pane, the feed keeps its own selection keys.
+	feed.apply(activityPaneEvent{Kind: "agents", Agents: feed.agents})
+	feed.handleKey("", 'n')
+	if feed.selection() == before {
+		t.Fatal("combined feed lost its selection keys")
 	}
 }

@@ -279,7 +279,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 				text = left + strings.Repeat(" ", max(0, navWidth-ansi.StringWidth(left))) + "\x1b[2m│\x1b[0m" + text
 			}
 			if c.help {
-				help := []string{"", "  Diff navigation", "", "  s       show / hide files", "  /       search and filter paths · Ctrl-U clear", "  t       tree / flat list", "  ↑↓ j/k  move or scroll", "  ←→ h/l  collapse / expand folder", "  Enter   open file or toggle folder", "  n/p     next / previous matching file", "  [ / ]   previous / next hunk", "  PgUp/Dn page · Home/End first / last", "  r       resume following changes", "  f / F   flush current / all files", "  v       stream / diff", "  Esc     close picker or help", "  ?       close help · q quit"}
+				help := []string{"", "  Diff navigation", "", "  s       show / hide files", "  /       search and filter paths · Ctrl-U clear", "  t       tree / flat list", "  ↑↓ j/k  move or scroll", "  ←→ h/l  collapse / expand folder", "  Enter   open file or toggle folder", "  n/p     next / previous matching file", "  [ / ]   previous / next hunk", "  PgUp/Dn page · Home/End first / last", "  r       resume following changes", "  f / F   flush current / all files", "  v       stream / diff", "  Esc     close picker or help", "  ?       close help", "  Ctrl-C  quit"}
 				text = ""
 				if row < len(help) {
 					text = livediff.Safe(help[row], false)
@@ -334,7 +334,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		if live := c.previewPane.live(); live > 0 {
 			stream += fmt.Sprintf(" (%d live)", live)
 		}
-		writeRow(height, "DIFF · "+stream+" · "+mode+" · s files · ? help · q quit")
+		writeRow(height, "DIFF · "+stream+" · "+mode+" · s files · ? help")
 	} else {
 		diff := "v diff"
 		if pending := c.unreviewedFiles(); pending > 0 {
@@ -344,7 +344,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		if c.motionOff {
 			motion += " off"
 		}
-		writeRow(height, "STREAM · "+diff+" · "+motion+" · q quit")
+		writeRow(height, "STREAM · "+diff+" · "+motion)
 	}
 	screen.WriteString("\x1b[?2026l")
 	if _, err := io.WriteString(c.stdout, screen.String()); err != nil {
@@ -551,7 +551,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 		c.dirty = true
 		return false
 	}
-	if key != 'q' && key != 'v' && !c.diffMode {
+	if key != 'v' && !c.diffMode {
 		c.dirty = true
 		return false
 	}
@@ -561,7 +561,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 			c.help = !c.help
 			return false
 		}
-		if c.help && key != 'q' {
+		if c.help {
 			return false
 		}
 		if c.navigationKey(key) {
@@ -572,8 +572,6 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 		c.view.Following = false
 	}
 	switch key {
-	case 'q':
-		return true
 	case 'v':
 		c.diffMode = !c.diffMode
 		c.followDirty = c.diffMode && c.view.Following

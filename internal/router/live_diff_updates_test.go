@@ -81,7 +81,7 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 		t.Helper()
 		for {
 			for {
-				const endMarker = "q quit\x1b[0m"
+				const endMarker = "\x1b[?2026l"
 				end := strings.Index(pending, endMarker)
 				if end < 0 {
 					break
@@ -195,7 +195,7 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 	if strings.Contains(ansi.Strip(frame), "changes observed") {
 		t.Fatalf("receipt did not transition changes observed to applied: %q", frame)
 	}
-	if _, err := terminal.Write([]byte("q")); err != nil {
+	if _, err := terminal.Write([]byte{3}); err != nil {
 		t.Fatal(err)
 	}
 	select {

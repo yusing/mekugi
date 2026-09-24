@@ -200,11 +200,11 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 				}
 				pending += chunk
 				for {
-					end := strings.Index(pending, "q quit\x1b[0m")
+					end := strings.Index(pending, "\x1b[?2026l")
 					if end < 0 {
 						break
 					}
-					end += len("q quit\x1b[0m")
+					end += len("\x1b[?2026l")
 					frame := pending[:end]
 					pending = pending[end:]
 					if start := strings.LastIndex(frame, "\x1b[1;1H"); start >= 0 {
@@ -263,7 +263,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		frame := waitFrame(func(frame string) bool { return strings.Contains(frame, "q quit") })
+		frame := waitFrame(func(frame string) bool { return strings.Contains(frame, "DIFF · ") || strings.Contains(frame, "STREAM · ") })
 		if !strings.Contains(frame, "FOLLOW") || !strings.Contains(frame, "Temporary file one.") {
 			t.Fatalf("horizontal input %q changed the view: %q", report, frame)
 		}
@@ -363,7 +363,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	waitFrame(func(frame string) bool {
 		return strings.Contains(frame, "No unreviewed changes") && !strings.Contains(frame, "Temporary file")
 	})
-	if _, err := terminal.Write([]byte("q")); err != nil {
+	if _, err := terminal.Write([]byte{3}); err != nil {
 		t.Fatal(err)
 	}
 	select {

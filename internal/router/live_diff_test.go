@@ -359,7 +359,7 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	if output := waitFor("FOLLOW", "▎ M  third.go"); !strings.Contains(ansi.Strip(output), "▎ M  third.go") {
 		t.Fatalf("resume did not select latest edit: %s", output)
 	}
-	if _, err := terminal.Write([]byte("q")); err != nil {
+	if _, err := terminal.Write([]byte{3}); err != nil {
 		t.Fatal(err)
 	}
 	exit := make(chan error, 1)
@@ -695,7 +695,7 @@ func TestLiveDiffFlushTerminal(t *testing.T) {
 	waitFor("+fixed edit")
 	liveDiffFlushCapture(t, store, workspace, "revert", "fixed edit\n", "old\n", true)
 	waitFor("No unreviewed changes")
-	if _, err := terminal.Write([]byte("q")); err != nil {
+	if _, err := terminal.Write([]byte{3}); err != nil {
 		t.Fatal(err)
 	}
 	if err := cmd.Wait(); err != nil {

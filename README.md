@@ -219,7 +219,7 @@ and subagent calls get labeled cards that stream input as it arrives. When a
 turn finishes, the viewer switches to the saved diff. A failed or unfinished
 call never becomes a saved change.
 
-- `v` switches views; `?` lists all shortcuts; `q` quits without ending Codex.
+- `v` switches views; `?` lists all shortcuts; `Ctrl-C` quits without ending Codex.
 - `s` shows or hides the file tree, `t` toggles tree/flat paths, `/` filters files.
 - `n`/`p` change files, `[`/`]` jump between hunks, and `j`/`k`, `Space`/`b`,
   and `g`/`G` scroll.
@@ -233,15 +233,16 @@ See [live view details](doc/spec/changes.md#live-terminal-view).
 In the same Herdr setup, the first subagent event opens a **Mekugi agents** pane.
 It streams child progress, messages, and replies as they happen, including
 during a native wait. A roster under Codex lists agents with activity, age, and
-`↑`/`↓` tokens. Markers show what was observed: `◐` open response, `!` latest error, `✓` final answer sent. Usage
-tables and critical notices stay in the main conversation.
+`↑`/`↓` tokens. Markers show what was observed: `◐` open response, `!` latest
+error, `✓` final answer sent. Usage tables and critical notices stay in the main
+conversation.
 
 If the pane doesn't attach within 15 seconds, or it is closed or disconnected
 for more than 5 seconds, activity goes back to the main conversation.
 
-- `n`/`Tab` and `p` select agents; `o` shows only the selected one.
+- In the roster, `↑`/`↓` pick the agent the feed shows; `o` toggles all agents.
 - `j`/`k`, `Space`/`b`, and `g` scroll; `r` or `G` resumes following.
-- `q` closes the pane without ending Codex.
+- `Ctrl-C` closes the pane without ending Codex.
 
 See the [agents pane contract](doc/spec/commentary.md).
 

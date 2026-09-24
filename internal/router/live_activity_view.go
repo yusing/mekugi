@@ -253,6 +253,28 @@ func (v *liveActivityView) selectAgent(step int) {
 	}
 }
 
+// showAgent moves through the roster pane's list, where "all agents" sits
+// above the first agent, and shows only the chosen agent in the feed. It
+// stops at either end instead of wrapping.
+func (v *liveActivityView) showAgent(step int) {
+	rows := v.roster()
+	if len(rows) == 0 {
+		return
+	}
+	index := -1
+	if v.only {
+		index = slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
+	}
+	index = max(-1, min(index+step, len(rows)-1))
+	v.hovered = ""
+	if index < 0 {
+		v.only = false
+	} else {
+		v.selected, v.only = rows[index].agent.Name, true
+	}
+	v.follow()
+}
+
 func (v *liveActivityView) handleMouse(action byte, row, column int) bool {
 	if action != 'h' && action != '\r' {
 		return false
@@ -371,8 +393,11 @@ func (v *liveActivityView) header(rows []liveActivityRosterRow, width int) strin
 	default:
 		left += fmt.Sprintf(" · %d · %d responding", len(rows), responding)
 	}
-	// Follow state belongs to the feed; the roster pane has none.
-	right := ""
+	// Follow state belongs to the feed; the roster pane shows its keys instead.
+	right := liveActivityDim + "↓ show agent" + liveActivityUndim
+	if v.only {
+		right = liveActivityDim + "↑/↓ agent · o all" + liveActivityUndim
+	}
 	if !v.rosterPane {
 		right = "FOLLOW"
 		if !v.following {
@@ -508,7 +533,8 @@ func (v *liveActivityView) renderRoster(rows []liveActivityRosterRow, width, lim
 		summaryWidth := max(0, width-3-nameWidth-2-ansi.StringWidth(age)-1)
 		summary = ansi.Truncate(summary, summaryWidth, "…")
 		pad := max(1, width-3-nameWidth-2-ansi.StringWidth(summary)-ansi.StringWidth(age))
-		line := v.marker(i == selected, row.agent.Name == v.hovered) + v.glyph(row.agent) + " " + name + "  " + summary + strings.Repeat(" ", pad) + liveActivityDim + age + liveActivityUndim
+		// The roster pane marks an agent only while the feed shows just it.
+		line := v.marker(i == selected && (v.only || !v.rosterPane), row.agent.Name == v.hovered) + v.glyph(row.agent) + " " + name + "  " + summary + strings.Repeat(" ", pad) + liveActivityDim + age + liveActivityUndim
 		lines = append(lines, ansi.Truncate(line, width, "…"))
 	}
 	if hidden := len(rows) - (end - start); hidden > 0 {
@@ -643,12 +669,13 @@ func (v *liveActivityView) footer(width int) string {
 	if v.only {
 		mode, toggle = "ONLY", "o all"
 	}
-	keys := "click agent · n/p agent · " + toggle + " · j/k scroll · r follow · q quit"
+	keys := "click agent · n/p agent · " + toggle + " · j/k scroll · r follow"
 	if v.rosterAway {
-		keys = strings.TrimPrefix(keys, "click agent · ")
+		// The roster pane selects agents; this pane only scrolls.
+		keys = "j/k scroll · r follow"
 	}
 	if width < 60 {
-		keys = "n/p · o · j/k · r · q"
+		keys = "n/p · o · j/k · r"
 	}
 	return ansi.Truncate("\x1b[1m"+mode+liveActivityUndim+liveActivityDim+" · "+keys+liveActivityUndim, width, "…")
 }
