@@ -153,6 +153,16 @@ manager scopes include their local manifests and lockfiles. These are tool-manag
 effects. Direct paths take capture priority; a path also in a managed scope stays
 direct with shared-origin attribution.
 
+Go tests and generators snapshot bounded existing contents of explicitly named
+local package directories before execution, including subdirectories but excluding
+built-in dependency and VCS directories. Root files take priority over descendants.
+Snapshots share the existing file, byte, enumeration, and capture-time limits; they
+are baseline hints, not a claim that the program cannot write elsewhere. Unknown
+flags stop package operand extraction, and test arguments after `-args` are not
+packages. Import paths are not resolved by executing Go. The normal sweep still
+reports new or outside-scope paths without inventing a baseline. Binary snapshots
+retain size/hash evidence rather than text line counts.
+
 Completed observations may supply a process-local last-seen content cache, bounded
 to 64 MiB and 4,096 entries. Sweep diffs from that cache say `since last observed
 (change ID)` and remain partial with unknown counts. They are not call baselines.
