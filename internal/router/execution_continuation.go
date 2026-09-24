@@ -150,11 +150,6 @@ func (t executionContinuationTools) forSession(id int64) executionContinuation {
 			args["yield_time_ms"] = t.nestedSessionWaitMS
 		}
 		source := "text(await tools.write_stdin(" + string(mustMarshalJSON(args)) + "));"
-		if t.nestedSessionWaitMS > 0 {
-			// Keep the enclosing cell from yielding at its shorter default while
-			// the native wait is still pending. The host clamps its own limit.
-			source = "// @exec: {\"yield_time_ms\":300000}\n" + source
-		}
 		result.NextCall = &executionNextCall{Tool: t.exec, Input: source}
 	} else {
 		result.Reason = "The host session continuation tool is not exposed in this request. Do not restart the running call."

@@ -339,8 +339,30 @@ func TestExecutionContinuationNestedLongWait(t *testing.T) {
 		}),
 	})
 	result := executionTools(catalog, "exec").forSession(42)
-	want := "// @exec: {\"yield_time_ms\":300000}\n" + `text(await tools.write_stdin({"chars":"","session_id":42,"yield_time_ms":300000}));`
+	want := `text(await tools.write_stdin({"chars":"","session_id":42,"yield_time_ms":300000}));`
 	if result.NextCall == nil || result.NextCall.Input != want {
 		t.Fatalf("nested continuation = %+v, want %s", result, want)
+	}
+}
+
+func TestExecutionContinuationRecognizesSessionJavaScriptFromHistory(t *testing.T) {
+	// Sanitized Code Mode inputs observed in September 2026 sessions. Session
+	// IDs are normalized; the old pragma remains readable in history but must
+	// not be emitted in a new continuation.
+	for _, test := range []struct {
+		name   string
+		source string
+	}{
+		{"plain timed wait", `text(await tools.write_stdin({session_id: 42,chars:"",yield_time_ms:1000,max_output_tokens:1200}));`},
+		{"plain default wait", `text(await tools.write_stdin({chars:"",session_id: 42}));`},
+		{"historical pragma", "// @exec: {\"yield_time_ms\": 300000}\n" +
+			`text(await tools.write_stdin({session_id: 42,chars:"",yield_time_ms:300000,max_output_tokens:2500}));`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			call := continuationTestCall("exec", "resume", test.source)
+			if got := executionResumeHandle(call, mekugiHistory{}, false, "exec"); got != "session:42" {
+				t.Fatalf("resume handle = %q, want session:42", got)
+			}
+		})
 	}
 }
