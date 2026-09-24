@@ -57,6 +57,7 @@ type liveDiffTerminalController struct {
 	// A reported background replaces the theme's assumed fade canvas.
 	background   livediff.RGB
 	backgrounded bool
+	motionOff    bool // Fades off, e.g. over a link that samples frames coarsely.
 	mouse        liveDiffMouse
 	osc          liveDiffOSC
 	escape       string
@@ -296,7 +297,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		}
 	}
 	if !c.diffMode {
-		c.previewPane.motion.enabled = true
+		c.previewPane.motion.enabled = !c.motionOff
 		c.previewPane.motion.canvas = c.theme.Canvas()
 		if c.backgrounded {
 			c.previewPane.motion.canvas.Background = c.background
@@ -347,7 +348,11 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		if pending := c.unreviewedFiles(); pending > 0 {
 			diff += fmt.Sprintf(" (%d unreviewed)", pending)
 		}
-		writeRow(height, "STREAM · "+diff+" · q quit")
+		motion := "m motion"
+		if c.motionOff {
+			motion += " off"
+		}
+		writeRow(height, "STREAM · "+diff+" · "+motion+" · q quit")
 	}
 	screen.WriteString("\x1b[?2026l")
 	if _, err := io.WriteString(c.stdout, screen.String()); err != nil {
@@ -549,6 +554,11 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 		}
 		c.escape = ""
 		c.navigation.filtering = false
+	}
+	if key == 'm' && !c.diffMode {
+		c.motionOff = !c.motionOff
+		c.dirty = true
+		return false
 	}
 	if key != 'q' && key != 'v' && !c.diffMode {
 		c.dirty = true

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -353,5 +354,36 @@ func assertCodeModeBashPreview(t *testing.T, preview liveDiffPreview, ordered []
 		if strings.Contains(preview.Input, unexpected) {
 			t.Errorf("Bash preview leaked %q: %q", unexpected, preview.Input)
 		}
+	}
+}
+
+func TestLiveDiffCodeModeRevealsWholeShellUnits(t *testing.T) {
+	workspace := t.TempDir()
+	broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
+	source := `tools.exec_command({cmd:"cat f | head; echo \"a | b\" && python3 -c 'import os\nprint(1); f()\n'"})`
+	go func() {
+		for at := 0; at < len(source); at += 4 {
+			worker.appendDelta(source[at:min(at+4, len(source))])
+			time.Sleep(3 * time.Millisecond)
+		}
+		worker.finish(source)
+	}()
+	seen := 0
+	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+		if preview.Complete {
+			return true
+		}
+		if preview.Input != "" {
+			seen++
+			// Streaming frames end on a list operator, line, or statement end.
+			if end := liveDiffScriptBoundary(preview.Input, preview.Syntax); end != len(preview.Input) ||
+				strings.HasSuffix(preview.Input, "|") || strings.HasSuffix(preview.Input, `"a |`) {
+				t.Errorf("streaming frame ended mid-unit: %q", preview.Input)
+			}
+		}
+		return false
+	})
+	if seen == 0 || !strings.HasSuffix(complete.Input, "f()\n'") {
+		t.Fatalf("stream frames %d, final %q", seen, complete.Input)
 	}
 }

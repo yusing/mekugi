@@ -19,9 +19,12 @@ const (
 	// A finished card idle this long yields its slot when another call needs room.
 	liveDiffPreviewStaleAfter = 10 * time.Second
 	// Revealed rows fade in; rows revealed together cascade within a bound.
-	liveDiffPreviewFade       = 180 * time.Millisecond
-	liveDiffPreviewStagger    = 24 * time.Millisecond
-	liveDiffPreviewMaxStagger = 160 * time.Millisecond
+	// A fade starts partly visible, so a coarsely sampled frame, as over mosh
+	// or a slow link, still shows readable text rather than a blank row.
+	liveDiffPreviewFade       = 160 * time.Millisecond
+	liveDiffPreviewFadeFloor  = .4
+	liveDiffPreviewStagger    = 16 * time.Millisecond
+	liveDiffPreviewMaxStagger = 96 * time.Millisecond
 )
 
 // Streaming has its own viewport and lifecycle. It never changes the captured
@@ -552,7 +555,8 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 					p.fading = until
 				}
 				progress := float64(motion.now.Sub(p.born[i])) / float64(liveDiffPreviewFade)
-				line = livediff.Fade(line, liveDiffPreviewEase(progress), motion.canvas)
+				progress = liveDiffPreviewFadeFloor + (1-liveDiffPreviewFadeFloor)*liveDiffPreviewEase(progress)
+				line = livediff.Fade(line, progress, motion.canvas)
 			}
 			lines = append(lines, line)
 		}

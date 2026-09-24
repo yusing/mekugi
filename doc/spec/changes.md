@@ -344,11 +344,16 @@ Provider input arrives in bursts. The stream view reveals each call's received
 input at its recent arrival rate, so the preview grows steadily rather than
 jumping per burst; the reveal trails received input by at most a bounded
 window and completes on the call's final input. The reveal advances by whole
-units: edit previews by line, and command and script text by shell segment
-(`&&`, `||`, `|`, `;`, or a line break). An unfinished unit stays buffered
-until it completes, or is shown as it streams after about half a second.
-Newly revealed rows fade in, and rows revealed together cascade in order;
-the fade is display-only and never delays the underlying projection. The
+units: edit previews by line, and displayed command text by shell list
+element (`;`, `&`, `&&`, `||`, or a line break), so a pipeline appears whole.
+Operators inside quotes, substitutions, and comments do not end a unit.
+Literal interpreter source, whether a painted interpreter program, a source
+flag's quoted argument such as `python -c` or `node -e`, or an interpreter
+heredoc body, is revealed by line or statement `;`. An unfinished unit stays
+buffered until it completes, or is shown as it streams after about half a
+second. Newly revealed rows fade in from partial visibility, and rows
+revealed together cascade in order; the fade is display-only, never delays
+the underlying projection, and can be switched off in the stream view. The
 first usable frame and completion redraw immediately; intermediate deltas may
 be coalesced. Card
 positions stay stable: a

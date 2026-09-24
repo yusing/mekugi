@@ -537,7 +537,7 @@ func TestLiveDiffPreviewCardsKeepSlotsAndGutter(t *testing.T) {
 
 func TestLiveDiffPreviewPacerIsSteadyAndBounded(t *testing.T) {
 	var pacer liveDiffPreviewPacer
-	lines := liveDiffRevealUnits{}
+	lines := liveDiffRevealUnits{lines: true}
 	input := ""
 	shown := 0
 	// Bursts every fourth frame reveal whole lines on most frames, never all at once.
@@ -590,20 +590,14 @@ func TestLiveDiffPreviewPacerBuffersUnits(t *testing.T) {
 			}
 		}
 	}
-	command := "cd a && make test || true; go vet | tee x\nls"
-	got := reveal(command, liveDiffRevealUnits{segments: true}, 1)
-	want := []string{"cd a &&", "cd a && make test ||", "cd a && make test || true;", "cd a && make test || true; go vet |", "cd a && make test || true; go vet | tee x\n"}
-	if !slices.Equal(got, want) {
-		t.Fatalf("segments:\n got %q\nwant %q", got, want)
-	}
 	// An edit payload reveals by line, even when its source contains operators.
 	body := "for (i = 0; i < n; i++) {\n\tx();\n"
-	if got := reveal(body, liveDiffRevealUnits{}, 3); !slices.Equal(got, []string{"for (i = 0; i < n; i++) {\n", body}) {
+	if got := reveal(body, liveDiffRevealUnits{lines: true}, 3); !slices.Equal(got, []string{"for (i = 0; i < n; i++) {\n", body}) {
 		t.Fatalf("lines: %q", got)
 	}
 	// Encoded input breaks at escaped line breaks, not at an escaped backslash.
 	encoded := `{"cmd":"cat > f <<'EOF'\nsay \\n here\nnext`
-	if got := reveal(encoded, liveDiffRevealUnits{encoded: true}, 3); !slices.Equal(got, []string{
+	if got := reveal(encoded, liveDiffRevealUnits{lines: true, encoded: true}, 3); !slices.Equal(got, []string{
 		`{"cmd":"cat > f <<'EOF'\n`, `{"cmd":"cat > f <<'EOF'\nsay \\n here\n`,
 	}) {
 		t.Fatalf("encoded: %q", got)
@@ -613,7 +607,7 @@ func TestLiveDiffPreviewPacerBuffersUnits(t *testing.T) {
 	long := strings.Repeat("z", 64)
 	shown := 0
 	for range liveDiffPreviewMaxHold + 2 {
-		shown = pacer.advance(long, false, liveDiffRevealUnits{})
+		shown = pacer.advance(long, false, liveDiffRevealUnits{lines: true})
 	}
 	if shown != len(long) {
 		t.Fatalf("held unit was not released: %d of %d", shown, len(long))
@@ -647,5 +641,89 @@ func TestLiveDiffPreviewBirthsCarryAcrossSnapshots(t *testing.T) {
 	shifted := liveDiffPreviewBirths(after, slid, next, later.Add(time.Second))
 	if !slices.Equal(shifted[:3], next[1:]) || !shifted[3].Equal(later.Add(time.Second)) {
 		t.Fatalf("sliding tail: %v from %v", shifted, next)
+	}
+}
+
+func TestLiveDiffScriptBoundaryFollowsShellAndInterpreterUnits(t *testing.T) {
+	// Every prefix reveals only through its last complete unit.
+	units := func(source string, spans []liveDiffSourceSpan) []string {
+		var shown []string
+		for i := 1; i <= len(source); i++ {
+			if end := liveDiffScriptBoundary(source[:i], spans); end > 0 && (len(shown) == 0 || shown[len(shown)-1] != source[:end]) {
+				shown = append(shown, source[:end])
+			}
+		}
+		return shown
+	}
+	for _, test := range []struct {
+		name, source string
+		spans        []liveDiffSourceSpan
+		want         []string
+	}{{
+		name:   "quoted operators and pipelines",
+		source: `echo "a | b; c && d" 'e;f' | grep -c x; ls $(a; b) # g; h` + "\n",
+		want:   []string{`echo "a | b; c && d" 'e;f' | grep -c x;`, `echo "a | b; c && d" 'e;f' | grep -c x; ls $(a; b) # g; h` + "\n"},
+	}, {
+		name:   "pipeline ends at its list operator",
+		source: "cat f | head; git status && go test ./... || true\n",
+		want:   []string{"cat f | head;", "cat f | head; git status &&", "cat f | head; git status && go test ./... ||", "cat f | head; git status && go test ./... || true\n"},
+	}, {
+		name:   "inline source flag",
+		source: "cd a && python3 -c 'import os\nprint(\"x;y\"); f()\n'",
+		want:   []string{"cd a &&", "cd a && python3 -c 'import os\n", "cd a && python3 -c 'import os\nprint(\"x;y\");", "cd a && python3 -c 'import os\nprint(\"x;y\"); f()\n"},
+	}, {
+		name:   "node eval in double quotes",
+		source: `node -e "const a = 1; console.log('p;q')"`,
+		want:   []string{`node -e "const a = 1;`},
+	}, {
+		name:   "interpreter heredoc",
+		source: "uv run python - <<'PY'\nx = 1; y = 2\nprint(x | y)\nPY\necho done\n",
+		want: []string{"uv run python - <<'PY'\n", "uv run python - <<'PY'\nx = 1;", "uv run python - <<'PY'\nx = 1; y = 2\n",
+			"uv run python - <<'PY'\nx = 1; y = 2\nprint(x | y)\n", "uv run python - <<'PY'\nx = 1; y = 2\nprint(x | y)\nPY\n",
+			"uv run python - <<'PY'\nx = 1; y = 2\nprint(x | y)\nPY\necho done\n"},
+	}, {
+		name:   "data heredoc by line",
+		source: "cat <<EOF | kubectl apply -f -\na: b; c\nEOF\n",
+		want:   []string{"cat <<EOF | kubectl apply -f -\n", "cat <<EOF | kubectl apply -f -\na: b; c\n", "cat <<EOF | kubectl apply -f -\na: b; c\nEOF\n"},
+	}, {
+		name:   "painted interpreter span",
+		source: "# tools.exec_command 1\nimport os; os.sync()\n",
+		spans:  []liveDiffSourceSpan{{Path: "stream.sh"}, {Offset: len("# tools.exec_command 1\n"), Path: "stream.py"}},
+		want:   []string{"# tools.exec_command 1\n", "# tools.exec_command 1\nimport os;", "# tools.exec_command 1\nimport os; os.sync()\n"},
+	}, {
+		name:   "redirections are not list operators",
+		source: "make 2>&1 &> log & wait\n",
+		want:   []string{"make 2>&1 &> log &", "make 2>&1 &> log & wait\n"},
+	}} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := units(test.source, test.spans); !slices.Equal(got, test.want) {
+				t.Fatalf("\n got %q\nwant %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestLiveDiffRevealGateHoldsWithoutRetracting(t *testing.T) {
+	var gate liveDiffRevealGate
+	if n := gate.reveal("cd a && make", nil, false); n != len("cd a &&") || !gate.pending {
+		t.Fatalf("unfinished command shown: %d %v", n, gate.pending)
+	}
+	// A held unit is released after the hold and keeps streaming.
+	source := "cd a && make"
+	for range liveDiffPreviewMaxHold {
+		gate.reveal(source, nil, false)
+	}
+	if n := gate.reveal(source, nil, false); n != len(source) {
+		t.Fatalf("held unit was not released: %d", n)
+	}
+	if n := gate.reveal(source+" te", nil, false); n != len(source)+3 {
+		t.Fatalf("released unit stopped streaming: %d", n)
+	}
+	// The next boundary resumes gating without hiding shown text.
+	if n := gate.reveal(source+" test; ec", nil, false); n != len(source+" test;") {
+		t.Fatalf("gating did not resume: %d", n)
+	}
+	if n := gate.reveal(source+" test; ec", nil, true); n != len(source+" test; ec") || gate.pending {
+		t.Fatalf("final text withheld: %d", n)
 	}
 }

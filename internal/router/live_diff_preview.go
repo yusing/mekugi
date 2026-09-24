@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
-	"math"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -228,10 +227,29 @@ func (w *liveDiffPreviewWorker) run() {
 	scriptVisible := false
 	final := false
 	var pacer liveDiffPreviewPacer
-	// Edit payloads reveal by line, commands and scripts by shell segment.
+	// Edit payloads reveal by received line; command and script text follows
+	// the pace and is gated on its displayed units instead.
 	units := liveDiffRevealUnits{
-		segments: w.kind != applyPatchToolName,
-		encoded:  w.kind == "exec" || w.kind == nativeExecCommandToolName,
+		lines:   w.kind == applyPatchToolName,
+		encoded: w.kind == "exec" || w.kind == nativeExecCommandToolName,
+	}
+	var gate liveDiffRevealGate
+	var gated liveDiffPreview // The last ungated script, for hold frames without new input.
+	gateScript := func(preview liveDiffPreview, final bool) (liveDiffPreview, bool) {
+		if len(preview.Syntax) == 0 {
+			preview.Syntax = liveDiffScriptSyntax(preview.Input)
+		}
+		gated = preview
+		n := gate.reveal(preview.Input, preview.Syntax, final)
+		preview.Input = preview.Input[:n]
+		for len(preview.Syntax) > 1 && preview.Syntax[len(preview.Syntax)-1].Offset >= n {
+			preview.Syntax = preview.Syntax[:len(preview.Syntax)-1]
+		}
+		return preview, n > 0 || final
+	}
+	lineMode := func() {
+		units.lines = true
+		gate, gated = liveDiffRevealGate{}, liveDiffPreview{}
 	}
 	revealed := -1
 	backlog := false
@@ -239,7 +257,7 @@ func (w *liveDiffPreviewWorker) run() {
 		if final {
 			return
 		}
-		if !backlog {
+		if !backlog && !gate.pending {
 			select {
 			case <-w.ctx.Done():
 			case <-w.wake:
@@ -278,7 +296,18 @@ func (w *liveDiffPreviewWorker) run() {
 			input, final, preview.Complete = input[:shown], false, false
 		}
 		if !final && shown == revealed {
-			continue // A buffered unit changes nothing on screen.
+			// Unchanged input only advances a held script unit's release.
+			if gate.pending && gated.ID != "" {
+				before := gate.shown
+				if next, ok := gateScript(gated, false); ok && gate.shown != before {
+					w.mu.Lock()
+					if !w.closed && w.ctx.Err() == nil {
+						w.broker.publishPreview(next, false)
+					}
+					w.mu.Unlock()
+				}
+			}
+			continue
 		}
 		revealed = shown
 		if final && input == "" {
@@ -320,7 +349,7 @@ func (w *liveDiffPreviewWorker) run() {
 				}
 				if len(patches) != 0 {
 					if projected, valid := w.projectStockPreview(patches[len(patches)-1], preview.Workspace, final); valid {
-						units.segments = false
+						lineMode()
 						projected.Complete = final
 						projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
 						w.mu.Lock()
@@ -334,6 +363,7 @@ func (w *liveDiffPreviewWorker) run() {
 				if strings.Contains(input, "*** Begin Patch") || stockPatchLiteralPresent(input) {
 					if !codePatchHidden {
 						w.broker.publishPreview(liveDiffPreview{ID: preview.ID}, true)
+						gate, gated = liveDiffRevealGate{}, liveDiffPreview{}
 						codePatchHidden = true
 					}
 					continue
@@ -349,13 +379,15 @@ func (w *liveDiffPreviewWorker) run() {
 						// literal command rather than flashing its unfinished wrapper.
 						if scriptVisible {
 							w.broker.publishPreview(liveDiffPreview{ID: preview.ID}, true)
+							gate, gated = liveDiffRevealGate{}, liveDiffPreview{}
 							scriptVisible = false
 						}
 						continue
 					}
 					preview.Input, preview.Syntax, preview.Status = input, []liveDiffSourceSpan{{Path: "preview.js"}}, "STREAMING SCRIPT"
+					preview, visible := gateScript(preview, final)
 					w.mu.Lock()
-					if !w.closed && (w.ctx.Err() == nil || final) && input != "" {
+					if !w.closed && (w.ctx.Err() == nil || final) && input != "" && visible {
 						w.broker.publishPreview(preview, false)
 						scriptVisible = true
 					}
@@ -380,7 +412,7 @@ func (w *liveDiffPreviewWorker) run() {
 				switch jsonString(call, "name") {
 				case applyPatchToolName:
 					if projected, ok := w.projectStockPreview(jsonString(call, "input"), preview.Workspace, final); ok {
-						units.segments = false
+						lineMode()
 						projected.Complete = final
 						projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
 						w.mu.Lock()
@@ -408,8 +440,9 @@ func (w *liveDiffPreviewWorker) run() {
 			}
 			if projectionInput == input && !shellProvisional {
 				preview.Input, preview.Syntax, preview.Status = input, []liveDiffSourceSpan{{Path: "preview.js"}}, "STREAMING SCRIPT"
+				preview, visible := gateScript(preview, final)
 				w.mu.Lock()
-				if !w.closed && (w.ctx.Err() == nil || final) && input != "" {
+				if !w.closed && (w.ctx.Err() == nil || final) && input != "" && visible {
 					w.broker.publishPreview(preview, false)
 				}
 				w.mu.Unlock()
@@ -424,8 +457,9 @@ func (w *liveDiffPreviewWorker) run() {
 		}
 		if shellProvisional {
 			preview.Input, preview.Syntax, preview.Status = shellDisplay, shellSyntax, "STREAMING SCRIPT"
+			preview, visible := gateScript(preview, final)
 			w.mu.Lock()
-			if !w.closed && (w.ctx.Err() == nil || final) {
+			if !w.closed && (w.ctx.Err() == nil || final) && visible {
 				w.broker.publishPreview(preview, false)
 				scriptVisible = true
 			}
@@ -492,7 +526,7 @@ func (w *liveDiffPreviewWorker) run() {
 		cancel()
 		editRecognized = editRecognized || ok
 		if editRecognized {
-			units.segments = false
+			lineMode()
 			scriptVisible = false
 			preview.Input, preview.Syntax, preview.Files = "", nil, nil
 			preview.Status = "STREAMING PREVIEW"
@@ -507,6 +541,10 @@ func (w *liveDiffPreviewWorker) run() {
 			}
 			preview.Status = "STREAMING SCRIPT"
 		}
+		visible := true
+		if !editRecognized {
+			preview, visible = gateScript(preview, final)
+		}
 		if ok && err == nil {
 			preview.Files = files
 			preview.Status = "STREAMING PREVIEW"
@@ -515,105 +553,11 @@ func (w *liveDiffPreviewWorker) run() {
 		// One preview is in flight, with only the latest input sampled next.
 		// Final content and completion share one replaceable snapshot, so a slow
 		// viewer cannot receive only removal after losing the last content frame.
-		if !w.closed && (w.ctx.Err() == nil || final) && input != "" {
+		if !w.closed && (w.ctx.Err() == nil || final) && input != "" && visible {
 			w.broker.publishPreview(preview, false)
 		}
 		w.mu.Unlock()
 	}
-}
-
-// liveDiffPreviewPacer reveals bursty provider input at its recent average
-// arrival rate, so a preview grows at a steady speed between bursts. A
-// catch-up share bounds the lag, and a large backlog skips to its last
-// window because the preview follows the tip.
-//
-// The reveal advances by whole units: edit payload lines, or shell segments
-// for command and script text. An unfinished unit stays buffered until it
-// completes, so a card redraws once per line or command rather than per
-// character. A unit that outlives the hold is revealed as it streams.
-type liveDiffPreviewPacer struct {
-	shown, cursor, received int
-	rate                    float64 // Bytes per frame, averaged over about eight frames.
-	held                    int     // Frames the cursor has waited inside an unfinished unit.
-}
-
-// liveDiffRevealUnits selects the boundaries a reveal may stop at.
-type liveDiffRevealUnits struct {
-	segments bool // Shell operators end a unit, not only line breaks.
-	encoded  bool // Input is JSON or JavaScript source, where \n escapes a line break.
-}
-
-const (
-	liveDiffPreviewMaxLag = 2 << 10
-	// About half a second at the preview frame rate.
-	liveDiffPreviewMaxHold = 15
-)
-
-func (p *liveDiffPreviewPacer) advance(input string, finishing bool, units liveDiffRevealUnits) int {
-	p.rate += (float64(max(0, len(input)-p.received)) - p.rate) / 8
-	p.received = len(input)
-	p.shown = min(p.shown, len(input))
-	p.cursor = max(min(p.cursor, len(input)), len(input)-liveDiffPreviewMaxLag)
-	backlog := len(input) - p.cursor
-	share := 8
-	if finishing {
-		share = 3 // The call is complete; converge on its final input promptly.
-	}
-	p.cursor += max(int(math.Ceil(p.rate)), (backlog+share-1)/share, 4)
-	if p.cursor >= len(input) {
-		p.cursor = len(input)
-	}
-	for p.cursor < len(input) && !utf8.RuneStart(input[p.cursor]) {
-		p.cursor++
-	}
-	if finishing && p.cursor == len(input) {
-		p.shown, p.held = len(input), 0
-		return p.shown
-	}
-	if boundary := liveDiffRevealBoundary(input, p.shown, p.cursor, units); boundary > p.shown {
-		p.shown, p.held = boundary, 0
-	} else if p.cursor > p.shown {
-		if p.held++; p.held > liveDiffPreviewMaxHold {
-			p.shown = p.cursor
-		}
-	}
-	return p.shown
-}
-
-// liveDiffRevealBoundary returns the last unit end in (from, to], or from.
-// Boundaries are display cadence only; a quoted operator merely splits a
-// reveal step and never changes what is projected from the input.
-func liveDiffRevealBoundary(input string, from, to int, units liveDiffRevealUnits) int {
-	for end := to; end > from; end-- {
-		switch input[end-1] {
-		case '\n':
-			return end
-		case 'n':
-			if units.encoded && end >= 2 && input[end-2] == '\\' {
-				slashes := 0
-				for i := end - 2; i >= 0 && input[i] == '\\'; i-- {
-					slashes++
-				}
-				if slashes%2 == 1 {
-					return end
-				}
-			}
-		case ';':
-			if units.segments {
-				return end
-			}
-		case '&':
-			if units.segments && end >= 2 && input[end-2] == '&' {
-				return end
-			}
-		case '|':
-			// A trailing pipe may still become ||.
-			if units.segments && end < len(input) && input[end] != '|' {
-				return end
-			}
-		}
-	}
-	return from
 }
 
 // Cleanup only live state. An unconditional removal would overwrite an atomic
