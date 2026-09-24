@@ -189,7 +189,7 @@ func executeMCatBundle(
 	reserve := 0
 	for _, spec := range specs {
 		// UTF-8/JSON escaped byte lengths conservatively bound framing tokens.
-		// Keep the manifest ahead of bodies so every file has a visible receipt.
+		// Each path may appear in both its manifest row and its body header.
 		reserve += len(mustMarshalJSON(spec.path))*2 + 512
 	}
 	if budget-reserve < len(specs) {
@@ -201,6 +201,7 @@ func executeMCatBundle(
 		return toolplugin.ExecutionOutput{}, err
 	}
 	entries := make([]readBundleEntry, 0, len(specs))
+	var diagnostics strings.Builder
 	incomplete := false
 	failureClass := ""
 	for _, spec := range specs {
@@ -224,11 +225,12 @@ func executeMCatBundle(
 				state, omitted = "incomplete", "unavailable"
 			}
 		}
-		remainder := toolplugin.OmittedOutput{Stderr: execution.Stderr}
+		// Source diagnostics are short and path-free, so they stay visible with
+		// a path prefix; only omitted output needs a retained continuation.
+		diagnostics.WriteString(prefixReadBundleDiagnostic(spec.path, execution.Stderr))
+		var remainder toolplugin.OmittedOutput
 		if execution.OmittedOutput != nil {
-			remainder.Stdout = execution.OmittedOutput.Stdout
-			remainder.StdoutKind = execution.OmittedOutput.StdoutKind
-			remainder.Stderr += execution.OmittedOutput.Stderr
+			remainder = *execution.OmittedOutput
 			omitted = bundleRowSpan(start+bundleRowCount(execution.Stdout), remainder.Stdout)
 		}
 		handles, err := store.allocateHandles(ctx, 1)
@@ -255,6 +257,7 @@ func executeMCatBundle(
 	}
 	return toolplugin.ExecutionOutput{
 		Stdout:       renderReadBundle(entries),
+		Stderr:       diagnostics.String(),
 		ExitCode:     status,
 		FailureClass: failureClass,
 	}, nil
@@ -266,20 +269,47 @@ type readBundleEntry struct {
 	record                      shellOutputRecord
 }
 
+// renderReadBundle lists a manifest row only for files whose body alone does
+// not prove a complete read: failed, incomplete, empty, or continued files.
+// Every body header names its path and shown range.
 func renderReadBundle(entries []readBundleEntry) string {
 	var manifest, bodies strings.Builder
 	for i, entry := range entries {
-		fmt.Fprintf(&manifest, "%d path=%s shown=%s omitted=%s status=%s", i+1,
-			mustMarshalJSON(entry.path), bundleRowSpan(entry.start, entry.shown), entry.omitted, entry.state)
-		if entry.record.Stdout != "" || entry.record.Stderr != "" {
-			fmt.Fprintf(&manifest, " next_call=%q", "mread "+entry.record.ID)
+		path, shown := mustMarshalJSON(entry.path), bundleRowSpan(entry.start, entry.shown)
+		continued := entry.record.Stdout != "" || entry.record.Stderr != ""
+		if entry.state != "complete" || entry.shown == "" || entry.omitted != "none" || continued {
+			fmt.Fprintf(&manifest, "%d path=%s shown=%s omitted=%s status=%s", i+1, path, shown, entry.omitted, entry.state)
+			if continued {
+				fmt.Fprintf(&manifest, " next_call=%q", "mread "+entry.record.ID)
+			}
+			manifest.WriteByte('\n')
 		}
-		manifest.WriteByte('\n')
 		if entry.shown != "" {
-			fmt.Fprintf(&bodies, "\n--- file %d ---\n%s", i+1, entry.shown)
+			fmt.Fprintf(&bodies, "\n--- file %d path=%s shown=%s ---\n%s", i+1, path, shown, entry.shown)
 		}
 	}
+	if manifest.Len() == 0 {
+		return strings.TrimPrefix(bodies.String(), "\n")
+	}
 	return manifest.String() + bodies.String()
+}
+
+// prefixReadBundleDiagnostic names the source path on each diagnostic line,
+// replacing the generated reader's own "mcat: " prefix when present.
+func prefixReadBundleDiagnostic(path string, stderr string) string {
+	if stderr == "" {
+		return ""
+	}
+	prefix := "mcat: " + string(mustMarshalJSON(path)) + ": "
+	var out strings.Builder
+	for line := range strings.Lines(stderr) {
+		out.WriteString(prefix)
+		out.WriteString(strings.TrimPrefix(line, "mcat: "))
+	}
+	if !strings.HasSuffix(stderr, "\n") {
+		out.WriteByte('\n')
+	}
+	return out.String()
 }
 
 func bundleRowCount(text string) uint64 {

@@ -63,7 +63,8 @@ func TestReadBundleRetainsPerFileOmissions(t *testing.T) {
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
 		"#!params={\"max_output_tokens\":10000}\nmcat --max-tokens 2000 first second", nil,
 		newShellWorkerTestInvocation(directory))
-	if status != 1 || stderr != "" || !strings.Contains(stdout, `path="first" shown=1:`) || !strings.Contains(stdout, `path="second" shown=1:`) {
+	if status != 1 || !strings.Contains(stderr, `mcat: "first": output incomplete`) || !strings.Contains(stderr, `mcat: "second": output incomplete`) ||
+		!strings.Contains(stdout, `path="first" shown=1:`) || !strings.Contains(stdout, `path="second" shown=1:`) {
 		t.Fatalf("status=%d out=%s err=%s", status, stdout, stderr)
 	}
 	refs := regexp.MustCompile(`next_call="(mread [a-z]+[0-9]*)"`).FindAllStringSubmatch(stdout, -1)
@@ -114,7 +115,8 @@ func TestReadBundleBudgetAndMissingFileFailure(t *testing.T) {
 	}
 	out, diagnostic, status = runShellWorkerTest(t, registry, "bash", nil,
 		"#!params={\"max_output_tokens\":15000}\nmcat --max-tokens 2500 a missing a", nil, newShellWorkerTestInvocation(directory))
-	if status != 1 || diagnostic != "" || !strings.Contains(out, `path="missing" shown=none omitted=none status=failed`) ||
+	if status != 1 || !strings.Contains(diagnostic, `mcat: "missing": `) || strings.Count(diagnostic, `mcat: "missing": `) != 1 ||
+		!strings.Contains(out, "2 path=\"missing\" shown=none omitted=none status=failed\n") ||
 		!strings.Contains(out, "3 path=\"a\" shown=1:") {
 		t.Fatalf("%d %q %q", status, out, diagnostic)
 	}
@@ -126,6 +128,32 @@ func TestReadBundleBudgetAndMissingFileFailure(t *testing.T) {
 		filepath.Join(registry.SnapshotDir, manifest.RuntimeRoot), []string{"2500", "head", out, ""})
 	if err != nil || selected.ExitCode != 0 || selected.Stdout != out {
 		t.Fatalf("bundle exceeds budget: %v", err)
+	}
+}
+
+func TestReadBundleOmitsCompleteRowsAndShowsDiagnostics(t *testing.T) {
+	t.Parallel()
+	registry := sharedProxyTestRegistry(t)
+	directory := t.TempDir()
+	for _, name := range []string{"first", "second"} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(name+" one\n"+name+" two\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
+		"mcat first second 2:2", nil, newShellWorkerTestInvocation(directory))
+	want := "--- file 1 path=\"first\" shown=1:2 ---\nfirst one\nfirst two\n\n--- file 2 path=\"second\" shown=2:2 ---\nsecond two\n"
+	if status != 0 || diagnostic != "" || out != want {
+		t.Fatalf("complete bundle: %d %q %q", status, out, diagnostic)
+	}
+	out, diagnostic, status = runShellWorkerTest(t, registry, "bash", nil,
+		"mcat first missing second 2:3", nil, newShellWorkerTestInvocation(directory))
+	want = "2 path=\"missing\" shown=none omitted=none status=failed\n" +
+		"\n--- file 1 path=\"first\" shown=1:2 ---\nfirst one\nfirst two\n\n--- file 3 path=\"second\" shown=2:2 ---\nsecond two\n"
+	if status != 1 || out != want || strings.Contains(out, "next_call") ||
+		!regexp.MustCompile(`(?m)^mcat: "missing": ENOENT`).MatchString(diagnostic) ||
+		!strings.Contains(diagnostic, "mcat: \"second\": 3-3: [out of range]\n") {
+		t.Fatalf("failed bundle: %d %q %q", status, out, diagnostic)
 	}
 }
 

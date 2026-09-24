@@ -138,19 +138,22 @@ while inherited fork and side-thread ownership survives restart and cleanup.
 
 For 2–16 files, the same executable frontend composes one coordinated result.
 No `--batch` flag or extra basename exists. Multi-file reads support only
-`--max-tokens`. The total budget defaults to 4,000 and retains the usual
+`--max-tokens`. The total budget defaults to 6,000 and retains the usual
 1–15,500 bounds. The compositor reserves conservative manifest space, divides
 the remaining budget among source reads, and rejects before reading when the
 manifest cannot fit. The generated `mcat` implementation remains the sole owner
 of source parsing, UTF-8 validation, logical rows, selection, and token admission.
 
-A manifest precedes the bodies and reports each input path, displayed and
+A manifest precedes the bodies and has a row for each failed, incomplete,
+empty, or continued input, reporting its input index, path, displayed and
 retained omitted inclusive line ranges or `none`, completion state, and an
-optional per-file `mread` call. Bodies are labeled by manifest index.
-Diagnostics and omitted rows are persisted before the manifest is exposed.
-Unrecoverable omissions say `unavailable`. Any failed or incomplete source makes
-the invocation nonzero, but other sources are still read. Cancellation or
-storage failure stops delivery.
+`mread` call only when output was omitted. A complete nonempty read has no row.
+Each body header names its input index, path, and displayed range. Source
+diagnostics appear on stderr with each line prefixed by the source path.
+Omitted rows are persisted before the manifest is exposed. Unrecoverable
+omissions say `unavailable`. Any failed or incomplete source makes the
+invocation nonzero, but other sources are still read. Cancellation or storage
+failure stops delivery.
 
 The requested `mcat` budget bounds the complete manifest and bodies. Stock host
 budgets are independent safeguards and may retain outer command output without
