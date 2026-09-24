@@ -19,7 +19,7 @@ func TestJournalPublisherPreservesUnderlyingError(t *testing.T) {
 	}
 	server := httptest.NewServer(http.HandlerFunc(broker.serveHTTP))
 	defer server.Close()
-	token := broker.subscribeThread("/w\x00thread", "thread", "")
+	token := broker.subscribe("/w\x00thread", "call", "")
 	sink := &httpCommentarySink{endpoint: server.URL, token: token, client: server.Client()}
 	for _, publication := range []map[string]any{
 		{"id": "fixture-add", "journal": []journalMutation{{Op: "add", Text: new("milestone")}}},

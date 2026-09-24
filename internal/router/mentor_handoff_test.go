@@ -718,16 +718,31 @@ func TestExecuteRequestMentorCommentaryDeliveredOnceAndStrippedOnReplay(t *testi
 			headers.Set(threadIDHeader, "main")
 			var replay []any
 			for index := range 4 {
+				outputItems := []any{}
+				if index == 1 {
+					outputItems = append(outputItems, map[string]any{
+						"id": "switched-answer", "type": "message", "role": "assistant", "phase": "final_answer",
+						"status": "completed", "content": []any{map[string]any{"type": "output_text", "text": "Answer after Mentor switched back."}},
+					})
+				}
 				responseBody := mustTestJSON(t, map[string]any{
+					"id":     fmt.Sprintf("mentor-response-%d", index),
 					"status": "completed",
-					"output": []any{},
+					"output": outputItems,
 					"usage":  map[string]any{"input_tokens": mentorInputTokenLimit},
 				})
 				response := serverHTTPResponse(string(responseBody))
 				if stream {
-					response = serverHTTPResponse("data: " + string(mustTestJSON(t, map[string]any{
+					events := [][]byte{}
+					if index == 1 {
+						events = append(events, mustTestJSON(t, map[string]any{
+							"type": "response.output_item.done", "output_index": 0, "item": outputItems[0],
+						}))
+					}
+					events = append(events, mustTestJSON(t, map[string]any{
 						"type": "response.completed", "response": json.RawMessage(responseBody),
-					})) + "\n\n")
+					}))
+					response = serverHTTPResponse(finalAnswerTestWire(events))
 					response.Header.Set("Content-Type", "text/event-stream")
 				}
 				provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
@@ -742,20 +757,32 @@ func TestExecuteRequestMentorCommentaryDeliveredOnceAndStrippedOnReplay(t *testi
 					provider, &output, nil, proxy, mentor); err != nil {
 					t.Fatal(err)
 				}
-				const notice = "Mentor handoff complete."
-				if got := bytes.Contains(output.Bytes(), []byte(notice)); got != (index == 1) {
-					t.Fatalf("response %d notice=%t: %s", index, got, output.Bytes())
+				if bytes.Contains(output.Bytes(), []byte("Mentor handoff complete.")) {
+					t.Fatalf("response %d emitted a standalone handoff notice: %s", index, output.Bytes())
 				}
-				if bytes.Contains(provider.forwarded[0], []byte(notice)) {
-					t.Fatal("handoff commentary leaked into provider history")
+				forwarded, err := parseResponsesRequest(provider.forwarded[0])
+				if err != nil {
+					t.Fatal(err)
+				}
+				if index == 0 {
+					if forwarded.model() != "gpt-6-astra" || bytes.Contains(output.Bytes(), []byte("Router session usage")) {
+						t.Fatalf("pre-switch completion made an early usage claim: model=%q output=%s", forwarded.model(), output.Bytes())
+					}
 				}
 				if index == 1 {
+					if forwarded.model() != "gpt-5.6-luna" || !bytes.Contains(output.Bytes(), []byte("Router session usage · Main turn:")) ||
+						!bytes.Contains(output.Bytes(), []byte("Mentor gpt-6-astra → gpt-5.6-luna")) {
+						t.Fatalf("first post-switch report lacks the actual transition: model=%q output=%s", forwarded.model(), output.Bytes())
+					}
 					for id := range proxy.commentaryMessageIDs(workspace + "\x00main") {
-						replay = append(replay, assistantCommentaryMessage(id, notice))
+						replay = append(replay, assistantCommentaryMessage(id, "Router session usage · Main turn: ... · Mentor gpt-6-astra → gpt-5.6-luna"))
 					}
 					if len(replay) != 1 {
-						t.Fatalf("handoff provenance = %d messages", len(replay))
+						t.Fatalf("usage-report provenance = %d messages", len(replay))
 					}
+				}
+				if index == 2 && bytes.Contains(provider.forwarded[0], []byte("Router session usage")) {
+					t.Fatal("generated usage report leaked into provider history")
 				}
 			}
 		})

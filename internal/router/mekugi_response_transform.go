@@ -405,15 +405,6 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 				}
 			}
 		}
-		for _, publication := range t.proxy.drainThreadCommentarySession(t.historySessionID, t.shellThreadID) {
-			if message := t.runtimeCommentaryMessage(publication); message != nil {
-				if t.subagentTurn {
-					threadMessages = append(threadMessages, message)
-				} else {
-					visible = append(visible, assistantCommentaryDoneEvent(message))
-				}
-			}
-		}
 		if len(threadMessages) != 0 {
 			var response map[string]json.RawMessage
 			var output []map[string]json.RawMessage
@@ -487,6 +478,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 			Status string `json:"status"`
 		}
 		if substantive && json.Unmarshal(payload, &identity) == nil && cmp.Or(terminalStatus, identity.Status) == "completed" {
+			t.liveDiffCompletionReady = true
 			counts, observed = t.completionUsageReport()
 		}
 	}

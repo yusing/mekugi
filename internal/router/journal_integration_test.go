@@ -76,7 +76,7 @@ func TestJournalRouterToolContinuesWithoutClientDispatch(t *testing.T) {
 				if !strings.Contains(output.String(), "Verified the journal path") {
 					t.Fatalf("missing terminal record: %s", output.String())
 				}
-				if !strings.Contains(output.String(), "Tokens for this session") {
+				if !strings.Contains(output.String(), "Router session usage") {
 					t.Fatalf("missing token report: %s", output.String())
 				}
 				if strings.Contains(output.String(), "Usage incomplete") != (usage.name != "complete") {

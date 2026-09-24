@@ -27,8 +27,9 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Watch commands and file changes live.** Herdr's [live diff pane](#live-diff-pane)
   streams main-agent and subagent stock tool calls before completion, then
   switches to observed edits, with pause and flush controls.
-- **See usage and cost.** Main completion shows one table of provider-reported tokens,
-  input cache-hit rates, and estimated API costs per agent, plus a total. Child completion
+- **See usage and cost.** Main completion shows a compact main-turn and router-session
+  usage/cost line, or a per-agent table when multiple agents ran. Choose
+  `--usage-report=off|compact|table` to override it. Totals cover this router run. Child completion
   does not repeat the table. Costs are API estimates, not subscription charges;
   missing evidence is not presented as a complete total.
 - **Inspect sessions in your browser.** A per-launch dashboard shows request
@@ -172,6 +173,7 @@ request or accepted steering. Grok and OpenCode provider requests remain on HTTP
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
+| `--usage-report` | Compact; table for multiple agents | Select `off`, `compact`, or `table` |
 | `--mode` | `mekugi` | Use `passthrough` to forward traffic without mekugi tools, plugins, or Mentor Handoff |
 | `--main-mentor-handoff` | `true` | Enable mentor handoff for eligible main sessions and ordinary forks |
 | `--mentor-handoff` | `true` | Use `false` to keep subagents on their configured models |

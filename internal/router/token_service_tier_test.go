@@ -76,6 +76,7 @@ func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
 			} {
 				t.Run(fmt.Sprintf("writes=%d/stream=%t/%s/%s", cacheWrites, stream, tc.requested, tc.served), func(t *testing.T) {
 					proxy := newManagedMekugiProxy(t)
+					proxy.usageReport = "table"
 					request := serverRequest(t, func(fields map[string]any) {
 						fields["model"], fields["stream"] = "gpt-5.6-sol", stream
 						if tc.requested != "" {

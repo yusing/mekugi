@@ -168,6 +168,34 @@ func runtimeCommentaryToken(t *testing.T, transform *mekugiResponseTransform) st
 	return transform.commentarySubscriptions[0].token
 }
 
+// testRuntimeCommentaryCall creates the retained Code Mode call and hands its
+// authenticated progress subscription to the host before returning the token.
+func testRuntimeCommentaryCall(t *testing.T, transform *mekugiResponseTransform, callID string) string {
+	t.Helper()
+	item := shellCommentaryTestItem()
+	item["id"] = "item-" + callID
+	item["call_id"] = callID
+	events, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
+		"type": "response.output_item.done", "item": item,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		transform.Delivered(event)
+	}
+	if _, found := transform.proxy.history(transform.historySessionID, callID); !found {
+		t.Fatalf("Code Mode call %q was not retained", callID)
+	}
+	for _, subscription := range transform.commentarySubscriptions {
+		if subscription.callID == callID && subscription.token != "" {
+			return subscription.token
+		}
+	}
+	t.Fatalf("Code Mode call %q has no handed-off commentary subscription", callID)
+	return ""
+}
+
 func titleRequestFields() map[string]any {
 	return map[string]any{
 		"model": "gpt-test", "instructions": "Generate a short title.",

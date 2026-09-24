@@ -59,8 +59,10 @@ schedule. Translation and completion-cost accounting use that retained contract,
 switch that was never sent. Successor usage and completed output still contribute to an active
 Mentor schedule. The eventual explicit request applies the completed schedule normally.
 
-When a schedule completes, the router queues user-only commentary announcing the handoff.
-The next eligible response for that thread delivers it through the existing bounded runtime
-commentary path, with child attribution where applicable. It is emitted once and removed
-from later provider-bound history using retained provenance. An absent response or exhausted
-auxiliary capacity cannot block the handoff or create another model turn.
+When a schedule completes, no standalone handoff notice is queued. The next delivered
+usage report after an actual model change includes `Mentor FROM → TO`; a main report
+also includes pending switches for its proven descendants. Automatic steering successors
+that retain the mentor model do not prematurely claim a switch. The note is acknowledged
+only with successful report delivery and is stripped from later provider input by that
+report's retained provenance. With usage reporting off, no handoff notice is displayed.
+Missing responses or auxiliary capacity cannot block the schedule or add a model turn.

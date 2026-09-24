@@ -13,15 +13,23 @@ import (
 type threadUsage struct {
 	mu      sync.Mutex
 	threads map[string]*threadUsageTotal
+	turns   map[usageTurnKey]*threadUsageTotal
 	closed  bool
 }
 
+type usageTurnKey struct{ thread, turn string }
+
+const maxTrackedUsageTurns = 4096
+
 type threadUsageTotal struct {
-	cost         tokenCost
-	counts       tokenCounts
-	complete     bool
-	missingUsage uint64
-	models       []string
+	mentorFrom     string
+	lastModel      string
+	mentorRevision uint64
+	cost           tokenCost
+	counts         tokenCounts
+	complete       bool
+	missingUsage   uint64
+	models         []string
 }
 
 type threadUsageObservation struct {
@@ -32,6 +40,7 @@ type threadUsageObservation struct {
 	openCodePrice *openCodePrice
 	serviceTier   string
 	thread        string
+	turnID        string
 }
 
 func newThreadUsage() *threadUsage {
@@ -49,7 +58,9 @@ func (o *threadUsageObservation) observe(counts tokenCounts) {
 		return
 	}
 	o.once.Do(func() {
-		o.totals.add(o.thread, o.model, cmp.Or(counts.ServiceTier, o.serviceTier), counts, o.conflicted, o.openCodePrice)
+		tier := cmp.Or(counts.ServiceTier, o.serviceTier)
+		o.totals.add(o.thread, o.model, tier, counts, o.conflicted, o.openCodePrice)
+		o.totals.addTurn(o.thread, o.turnID, o.model, tier, counts, o.conflicted, o.openCodePrice)
 	})
 }
 
@@ -73,6 +84,11 @@ func (u *threadUsage) add(thread, model, serviceTier string, counts tokenCounts,
 		total = &threadUsageTotal{complete: true, cost: tokenCost{known: true}}
 		u.threads[thread] = total
 	}
+	addThreadUsageTotal(total, model, serviceTier, counts, conflicted, price)
+}
+
+func addThreadUsageTotal(total *threadUsageTotal, model, serviceTier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
+	total.lastModel = model
 	displayModel := model
 	if model != "" && (serviceTier == "fast" || serviceTier == "priority") {
 		displayModel += " fast"
@@ -123,14 +139,106 @@ func (u *threadUsage) add(thread, model, serviceTier string, counts tokenCounts,
 	total.counts = sum
 }
 
+func (u *threadUsage) observationForTurn(thread, metadataThread, turnID, model, tier string) *threadUsageObservation {
+	observation := u.observation(thread, metadataThread, model, tier)
+	observation.turnID = turnID
+	return observation
+}
+
+func (u *threadUsage) addTurn(thread, turn, model, tier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
+	if u == nil || thread == "" || turn == "" || len(thread) > maxCommentaryPublicationBytes || len(turn) > maxCommentaryPublicationBytes {
+		return
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.closed {
+		return
+	}
+	if u.turns == nil {
+		u.turns = make(map[usageTurnKey]*threadUsageTotal)
+	}
+	key := usageTurnKey{thread, turn}
+	total := u.turns[key]
+	if total == nil {
+		// Never evict a tracked turn and later revive it with a partial total.
+		if len(u.turns) >= maxTrackedUsageTurns {
+			return
+		}
+		total = &threadUsageTotal{complete: true, cost: tokenCost{known: true}}
+		u.turns[key] = total
+	}
+	addThreadUsageTotal(total, model, tier, counts, conflicted, price)
+}
+
+func usageTotalReport(total *threadUsageTotal) (tokenUsageReport, bool) {
+	if total == nil || !total.complete {
+		return tokenUsageReport{}, false
+	}
+	return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, model: strings.Join(total.models, ", "), missingUsage: total.missingUsage}, true
+}
+
+func (u *threadUsage) turnSnapshot(thread, turn string) (tokenUsageReport, bool) {
+	if u == nil || turn == "" {
+		return tokenUsageReport{}, false
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.closed {
+		return tokenUsageReport{}, false
+	}
+	return usageTotalReport(u.turns[usageTurnKey{thread, turn}])
+}
+
+func (u *threadUsage) mentorTransition(thread, from string) {
+	if u == nil {
+		return
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.closed {
+		return
+	}
+	if total := u.threads[thread]; total != nil {
+		total.mentorFrom = from
+		total.mentorRevision++
+	}
+}
+
+func (u *threadUsage) mentorNote(thread, model string) (string, uint64) {
+	if u == nil {
+		return "", 0
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	total := u.threads[thread]
+	if model == "" && total != nil {
+		model = total.lastModel
+	}
+	if u.closed || total == nil || total.mentorFrom == "" || total.mentorFrom == model {
+		return "", 0
+	}
+	return "Mentor " + total.mentorFrom + " → " + model, total.mentorRevision
+}
+
+func (u *threadUsage) acknowledgeMentor(thread string, revision uint64) {
+	if u == nil || revision == 0 {
+		return
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if total := u.threads[thread]; total != nil && total.mentorRevision == revision {
+		total.mentorFrom = ""
+	}
+}
+
 func (u *threadUsage) snapshot(thread string) (tokenUsageReport, bool) {
 	if u == nil {
 		return tokenUsageReport{}, false
 	}
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	if total := u.threads[thread]; !u.closed && total != nil && total.complete {
-		return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, model: strings.Join(total.models, ", "), missingUsage: total.missingUsage}, true
+	if !u.closed {
+		return usageTotalReport(u.threads[thread])
 	}
 	return tokenUsageReport{}, false
 }
@@ -143,6 +251,7 @@ func (u *threadUsage) close() {
 	defer u.mu.Unlock()
 	u.closed = true
 	clear(u.threads)
+	clear(u.turns)
 }
 
 func (t *mekugiResponseTransform) threadUsageCounts() (tokenUsageReport, bool) {
@@ -155,7 +264,7 @@ func (t *mekugiResponseTransform) threadUsageCounts() (tokenUsageReport, bool) {
 // completionUsageReport consolidates only proven descendants. Usage itself stays
 // keyed by transport thread, independent of presentation names and routing sessions.
 func (t *mekugiResponseTransform) completionUsageReport() (tokenUsageReport, bool) {
-	if t.subagentTurn || t.usageTracker == nil {
+	if t.subagentTurn || t.usageTracker == nil || t.proxy != nil && t.proxy.usageReport == "off" {
 		return tokenUsageReport{}, false
 	}
 	report, observed := t.threadUsageCounts()
@@ -165,6 +274,24 @@ func (t *mekugiResponseTransform) completionUsageReport() (tokenUsageReport, boo
 	rows := []agentTokenUsage{{agent: "/root", role: "main", report: report}}
 	report.rows = &rows
 	report.model = ""
+
+	turn, ok := t.usageTracker.totals.turnSnapshot(t.usageTracker.thread, t.usageTracker.turnID)
+	if !ok {
+		turn.Incomplete = true
+	}
+	report.turn = &turn
+	if t.proxy != nil {
+		report.layout = t.proxy.usageReport
+	}
+	if report.layout == "" {
+		report.layout = "compact"
+	}
+	var revision uint64
+	report.mentor, revision = t.usageTracker.totals.mentorNote(t.usageTracker.thread, t.usageTracker.model)
+	t.usageMentorRevisions = make(map[string]uint64)
+	if revision != 0 {
+		t.usageMentorRevisions[t.usageTracker.thread] = revision
+	}
 
 	if t.proxy != nil && t.journalAvailable {
 		journals := t.proxy.journals
@@ -192,6 +319,13 @@ func (t *mekugiResponseTransform) completionUsageReport() (tokenUsageReport, boo
 			return report, true
 		}
 		for _, child := range children {
+			if note, revision := t.usageTracker.totals.mentorNote(child.Thread, ""); revision != 0 {
+				if report.mentor != "" {
+					report.mentor += " · "
+				}
+				report.mentor += child.Author + " " + note
+				t.usageMentorRevisions[child.Thread] = revision
+			}
 			counts, ok := t.usageTracker.totals.snapshot(child.Thread)
 			if !ok {
 				counts.Incomplete = true
@@ -212,6 +346,9 @@ func (t *mekugiResponseTransform) completionUsageReport() (tokenUsageReport, boo
 				report.cost.known = false
 			}
 		}
+	}
+	if len(rows) > 1 && (t.proxy == nil || t.proxy.usageReport == "") {
+		report.layout = "table"
 	}
 	return report, true
 }

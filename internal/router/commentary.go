@@ -260,22 +260,11 @@ func (p *mekugiProxy) drainCommentarySession(sessionID, threadID string) []publi
 	if p.commentary == nil {
 		return nil
 	}
-	// Call-scoped deferred progress still needs a non-concurrent session.
-	// Shell progress already has exact thread identity and is drained atomically.
+	// Call-scoped deferred progress needs a non-concurrent session.
 	if p.activeSessions[sessionID] > 1 {
-		return p.commentary.drainThreadSession(sessionID, threadID)
-	}
-	return p.commentary.drainSession(sessionID, threadID)
-}
-
-// Only thread routes lack a carrier subscription. Keep call-scoped live delivery separate.
-func (p *mekugiProxy) drainThreadCommentarySession(sessionID, threadID string) []publishedCommentary {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	if p.commentary == nil {
 		return nil
 	}
-	return p.commentary.drainThreadSession(sessionID, threadID)
+	return p.commentary.drainSession(sessionID, threadID)
 }
 
 type commentarySubscription struct {
@@ -312,9 +301,6 @@ func (p *mekugiProxy) commentaryMessageIDs(sessionID string) map[string]struct{}
 	defer p.mu.RUnlock()
 	result := make(map[string]struct{})
 	maps.Copy(result, p.memoryCommentary[sessionID])
-	if p.commentary != nil {
-		maps.Copy(result, p.commentary.threadMessageIDs(sessionID))
-	}
 	if session := p.sessions[sessionID]; session != nil {
 		for _, history := range session.calls {
 			for _, messageID := range history.CommentaryMessageIDs {
@@ -327,7 +313,7 @@ func (p *mekugiProxy) commentaryMessageIDs(sessionID string) map[string]struct{}
 
 func (p *mekugiProxy) addCommentaryMessageID(sessionID, threadID, callID, messageID string) bool {
 	if callID == "" {
-		return p.commentary.hasThreadMessageID(threadID, messageID)
+		return false
 	}
 	history, exists := p.history(sessionID, callID)
 	if !exists {

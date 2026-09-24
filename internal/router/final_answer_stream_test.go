@@ -90,7 +90,7 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 					t.Fatalf("events = %s", output.String())
 				}
 				if !child {
-					if text := commentaryEventText(t, events[0]); !strings.HasPrefix(text, testTokenUsageTable) {
+					if text := commentaryEventText(t, events[0]); !strings.HasPrefix(text, "Router session usage · Main turn: ") || strings.Contains(text, "| Agent |") {
 						t.Fatalf("usage = %q", text)
 					}
 				}
@@ -162,7 +162,7 @@ func TestFinalAnswerStreamKeepsProgressAndToolsLive(t *testing.T) {
 	terminal := finalAnswerTestTerminal(t, "completed", true)
 	observeTestResponseUsage(t, transform, terminal, true)
 	visible, err := transform.TransformSSE(terminal)
-	if err != nil || len(visible) != len(answer)+1 || bytes.Contains(bytes.Join(visible, nil), []byte("Tokens for this session")) {
+	if err != nil || len(visible) != len(answer)+1 || bytes.Contains(bytes.Join(visible, nil), []byte("Router session usage")) {
 		t.Fatalf("client dispatch produced usage or lost answer: %q, %v", visible, err)
 	}
 }
@@ -200,7 +200,7 @@ func TestFinalAnswerStreamFlushesWithoutUsage(t *testing.T) {
 				t.Fatal(err)
 			}
 			events := finalAnswerTestPayloads(output.String())
-			if len(events) < len(answer) || bytes.Contains(output.Bytes(), []byte("Tokens for this session")) {
+			if len(events) < len(answer) || bytes.Contains(output.Bytes(), []byte("Router session usage")) {
 				t.Fatalf("lost answer or emitted usage: %s", output.String())
 			}
 			for i, original := range answer {
@@ -285,7 +285,7 @@ func TestTokenCommentaryAnswerCompatibility(t *testing.T) {
 							t.Fatalf("unsupported provider output changed: %s", output)
 						}
 					}
-					if bytes.Contains(output, []byte("Tokens for this session")) != tc.want {
+					if bytes.Contains(output, []byte("Router session usage")) != tc.want {
 						t.Fatalf("usage eligibility: %s", output)
 					}
 				})
@@ -344,7 +344,7 @@ func TestFinalAnswerStreamExecuteRequest(t *testing.T) {
 			if child {
 				wantEvents--
 			}
-			if len(events) != wantEvents || (!child && !strings.HasPrefix(commentaryEventText(t, events[0]), "Tokens for this session")) {
+			if len(events) != wantEvents || (!child && !strings.HasPrefix(commentaryEventText(t, events[0]), "Router session usage · Main turn: ")) {
 				t.Fatalf("completion output = %s", output.String())
 			}
 			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) || bytes.Contains(output.Bytes(), []byte("Journal result")) {

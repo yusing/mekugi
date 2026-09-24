@@ -649,23 +649,24 @@ func TestStorageStaleTerminalPreservesNewerHandoff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := &mekugiProxy{replayStore: store, activeSessions: make(map[string]int), commentary: newCommentaryBroker()}
-	key := "/w\x00thread"
-	start := func() *mekugiResponseTransform {
+	p := newManagedMekugiProxy(t)
+	p.replayStore = store
+	p.commentaryEndpoint = "http://127.0.0.1" + commentaryPublisherPath
+	workspace := t.TempDir()
+	start := func(callID string) (*mekugiResponseTransform, string) {
 		t.Helper()
-		if err := p.activateSession(key); err != nil {
-			t.Fatal(err)
-		}
-		ctx, err := p.beginStorageSession(t.Context(), "thread", "routing")
+		request := activityAdmissionRequest(t, nil)
+		transform, err := p.prepareRequest(t.Context(), &request, "routing", "thread", codexTurnMetadata{
+			RequestKind: "turn", ThreadID: "thread", Directories: map[string]json.RawMessage{workspace: nil},
+		}, true)
 		if err != nil {
 			t.Fatal(err)
 		}
-		return &mekugiResponseTransform{ctx: ctx, proxy: p, sessionActive: true, historySessionID: key, shellThreadID: "thread"}
+		return transform, testRuntimeCommentaryCall(t, transform, callID)
 	}
-	older := start()
+	older, _ := start("older-call")
 	older.storageIdle = true
-	newer := start()
-	token := p.commentary.subscribeThread(key, "thread", "")
+	newer, token := start("newer-call")
 	newer.Close() // The host has a tool to dispatch; no terminal was delivered.
 	older.Close() // Its terminal must not retire the newer request's lease or route.
 	lease := flock.New(filepath.Join(store.directory, strings.TrimSuffix(storageSessionName("thread"), ".json")+".lock"))

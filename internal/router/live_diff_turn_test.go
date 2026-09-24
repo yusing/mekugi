@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"testing"
 	"time"
@@ -219,6 +220,112 @@ func TestLiveDiffJournalTerminalCompletesAfterTransformedDelivery(t *testing.T) 
 					for _, payload := range delivered {
 						transform.Delivered(payload)
 					}
+					requireNoLiveDiffTurnEvent(t, sub)
+				}
+			})
+		}
+	}
+}
+
+func TestLiveDiffUsageReportOffCompletesOnlyDeliveredSuccessfulFinal(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		for _, scenario := range []string{"final", "tool-only", "failed"} {
+			t.Run(map[bool]string{false: "json", true: "sse"}[stream]+"/"+scenario, func(t *testing.T) {
+				transform, proxy, _, workspace := newMekugiTestTransform(t)
+				proxy.usageReport = "off"
+				turnID := "usage-off-" + map[bool]string{false: "json", true: "sse"}[stream] + "-" + scenario
+				transform.shellTurnID = turnID
+				transform.usageTracker = proxy.usage.observationForTurn(transform.shellThreadID, transform.shellThreadID, turnID, "gpt-6-sol", "")
+				transform.observeResponseUsage(tokenCounts{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5})
+				auto, sub := newLiveDiffTurnTest(t, workspace, transform.shellThreadID)
+				proxy.autoLiveDiff = auto
+				auto.beginTurn(workspace, transform.shellThreadID, codexTurnMetadata{
+					RequestKind: "turn", ThreadID: transform.shellThreadID, TurnID: turnID,
+				})
+				requireLiveDiffTurnEvent(t, sub, "active")
+
+				ordinaryAnswer := map[string]any{
+					"type": "message", "id": "final-answer", "role": "assistant", "phase": "final_answer", "status": "completed",
+					"content": []any{map[string]any{"type": "output_text", "text": "Finished the task."}},
+				}
+				toolCall := map[string]any{
+					"type": "function_call", "id": "tool-call-item", "call_id": "tool-call", "name": "ordinary_tool",
+					"arguments": "{}", "status": "completed",
+				}
+				status := "completed"
+				var output []any
+				switch scenario {
+				case "final":
+					output = []any{ordinaryAnswer}
+				case "tool-only":
+					output = []any{toolCall}
+				case "failed":
+					status, output = "failed", []any{ordinaryAnswer}
+				}
+
+				if !stream {
+					wire := mustTestJSON(t, map[string]any{"id": "usage-off-json-response", "status": status, "output": output})
+					transformed, err := transform.TransformJSON(wire)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if bytes.Contains(transformed, []byte("Router session usage")) {
+						t.Fatalf("off mode emitted a usage report: %s", transformed)
+					}
+					requireNoLiveDiffTurnEvent(t, sub) // Transformation is not downstream delivery.
+					transform.Delivered(transformed)
+				} else {
+					var events [][]byte
+					if scenario == "tool-only" {
+						added := maps.Clone(toolCall)
+						added["status"] = "in_progress"
+						events = append(events,
+							mustTestJSON(t, map[string]any{"type": "response.output_item.added", "output_index": 0, "item": added}),
+							mustTestJSON(t, map[string]any{"type": "response.output_item.done", "output_index": 0, "item": toolCall}),
+						)
+					} else {
+						events = append(events, finalAnswerTestEvents(t, "final_answer")...)
+					}
+					events = append(events, finalAnswerTestTerminal(t, status, false))
+					var terminal [][]byte
+					for i, event := range events {
+						visible, err := transform.TransformSSE(event)
+						if err != nil {
+							t.Fatalf("transform event %d: %v", i, err)
+						}
+						requireNoLiveDiffTurnEvent(t, sub)
+						if i == len(events)-1 {
+							terminal = visible
+							continue
+						}
+						for _, payload := range visible {
+							transform.Delivered(payload)
+						}
+						requireNoLiveDiffTurnEvent(t, sub)
+					}
+					if len(terminal) == 0 {
+						t.Fatal("terminal event was not transformed")
+					}
+					for i, payload := range terminal {
+						transform.Delivered(payload)
+						var envelope struct {
+							Type string `json:"type"`
+						}
+						if err := json.Unmarshal(payload, &envelope); err != nil {
+							t.Fatal(err)
+						}
+						if envelope.Type != "response.completed" && envelope.Type != "response.failed" {
+							requireNoLiveDiffTurnEvent(t, sub)
+						}
+						if i < len(terminal)-1 && envelope.Type == "response.completed" {
+							t.Fatal("terminal event unexpectedly preceded trailing transformed output")
+						}
+					}
+				}
+
+				if scenario == "final" {
+					requireLiveDiffTurnEvent(t, sub, "completed")
+				} else {
 					requireNoLiveDiffTurnEvent(t, sub)
 				}
 			})

@@ -151,14 +151,6 @@ func TestCodeModeJournalPinsQuestionAtLowering(t *testing.T) {
 	if writer.Code != http.StatusOK {
 		t.Fatalf("publish: %d %s", writer.Code, writer.Body.String())
 	}
-	token := proxy.commentary.subscribeThread("session", "thread", "/root")
-	proxy.commentary.bindJournalQuestion(token, "Must not attach")
-	proxy.commentary.mu.Lock()
-	question := proxy.commentary.routes[token].journalQuestion
-	proxy.commentary.mu.Unlock()
-	if question != "" {
-		t.Fatal("thread-lifetime shell route accepted a request question")
-	}
 }
 
 func TestStructuredJournalAnswerBindsQuestion(t *testing.T) {

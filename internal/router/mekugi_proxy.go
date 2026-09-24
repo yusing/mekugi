@@ -120,6 +120,7 @@ type mekugiProxy struct {
 	commentaryEndpoint string
 	journals           *journalStore
 	usage              *threadUsage
+	usageReport        string
 	autoLiveDiff       *autoLiveDiff
 	activity           *subagentActivity
 	skillsManager      bool
@@ -255,33 +256,35 @@ type mekugiCommentaryState struct {
 }
 
 type mekugiJournalState struct {
-	journalDeliveries      map[string]journalDelivery
-	liveDiffUsageID        string
-	journalUsageID         string
-	journalQuietFile       os.FileInfo
-	journalLiveBytes       int
-	journalNewCount        int
-	journalChildResult     string
-	journalFlushedCount    int
-	journalDeliveryRelease func()
-	journalQuestion        string // Request-local user text for answer-marked journal mutations.
-	journalAvailable       bool
-	journalActive          bool
-	journalPending         map[string]bool
-	journalCalls           map[string]map[string]json.RawMessage
-	journalResults         []map[string]json.RawMessage
-	journalClientOutput    []map[string]json.RawMessage
-	journalProviderOutput  []map[string]json.RawMessage
-	journalClientCalls     bool
-	journalTerminal        bool
-	journalContinue        bool
-	journalFinishRequested bool
+	journalDeliveries       map[string]journalDelivery
+	liveDiffCompletionReady bool
+	liveDiffUsageID         string
+	journalUsageID          string
+	journalQuietFile        os.FileInfo
+	journalLiveBytes        int
+	journalNewCount         int
+	journalChildResult      string
+	journalFlushedCount     int
+	journalDeliveryRelease  func()
+	journalQuestion         string // Request-local user text for answer-marked journal mutations.
+	journalAvailable        bool
+	journalActive           bool
+	journalPending          map[string]bool
+	journalCalls            map[string]map[string]json.RawMessage
+	journalResults          []map[string]json.RawMessage
+	journalClientOutput     []map[string]json.RawMessage
+	journalProviderOutput   []map[string]json.RawMessage
+	journalClientCalls      bool
+	journalTerminal         bool
+	journalContinue         bool
+	journalFinishRequested  bool
 }
 
 type mekugiDeliveryState struct {
-	usageTracker  *threadUsageObservation
-	finalAnswer   finalAnswerStream
-	usageObserved bool
+	usageTracker         *threadUsageObservation
+	usageMentorRevisions map[string]uint64
+	finalAnswer          finalAnswerStream
+	usageObserved        bool
 }
 
 type mekugiResponseTransform struct {
@@ -596,7 +599,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		activityResponding:        metadata.SubagentKind != "" && activityThreadID != "",
 		deferredCommentary:        deferredCommentary,
 		commentaryEmitted:         make(map[string]struct{}),
-		usageTracker:              p.usage.observation(threadID, metadata.ThreadID, request.model(), usageServiceTier(request.fields["service_tier"])),
+		usageTracker:              p.usage.observationForTurn(threadID, metadata.ThreadID, metadata.TurnID, request.model(), usageServiceTier(request.fields["service_tier"])),
 		codeModeToolName:          codeModeToolName,
 		nativeTools:               execution.native,
 		sessionShell:              requestSessionShell(request.fields["input"]),

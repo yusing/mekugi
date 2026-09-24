@@ -189,7 +189,7 @@ func TestToolOnlyResponseDoesNotDiscoverUsageDescendants(t *testing.T) {
 	proxy.journals = nil
 	defer func() { proxy.journals = journals }()
 	output, err := root.TransformJSON([]byte(`{"id":"tools","status":"completed","output":[{"id":"call","type":"function_call","call_id":"call","name":"ordinary_tool","arguments":"{}"}]}`))
-	if err != nil || bytes.Contains(output, []byte("Tokens for this session")) {
+	if err != nil || bytes.Contains(output, []byte("Router session usage")) {
 		t.Fatalf("tool round trip emitted report: %s %v", output, err)
 	}
 }

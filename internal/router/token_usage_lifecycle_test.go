@@ -21,6 +21,7 @@ func TestTokenUsageMentorAndManualSwitch(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprint(stream), func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
+			proxy.usageReport = "table"
 			mentor := newMentorHandoff(true, true)
 			headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 			// First request exhausts Mentor input budget; second uses configured Sol;
@@ -237,7 +238,7 @@ func TestTokenUsageGapRetainsObservedTotals(t *testing.T) {
 					}
 					if step == 2 {
 						wantReport := gap == "http-rejection" || gap == "failed-with-usage" || gap == "incomplete-with-usage"
-						if !strings.Contains(out.String(), "Tokens for this session") || strings.Contains(out.String(), "Usage incomplete") == wantReport {
+						if !strings.Contains(out.String(), "Router session usage") || strings.Contains(out.String(), "Usage incomplete") == wantReport {
 							t.Fatalf("unexpected final report: %s", out.String())
 						}
 						got, valid := proxy.usage.snapshot("thread-1")

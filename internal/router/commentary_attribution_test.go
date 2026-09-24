@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestChildCommentaryAttributionJSONAndSSE(t *testing.T) {
@@ -98,8 +99,8 @@ func TestChildCommentaryAttributionJSONAndSSE(t *testing.T) {
 				t.Fatalf("Code Mode attribution: %s", mustTestJSON(t, message))
 			}
 			// A capability's author survives its creator and a later request with absent metadata.
+			token := testRuntimeCommentaryCall(t, first, "deferred-code-call")
 			first.Close()
-			token := proxy.commentary.subscribeThread(first.historySessionID, "a", "/root/alpha")
 			proxy.commentary.publish(token, "Deferred work.", false)
 			next := prepare("a-next", "a", "", "thread_spawn")
 			answer := map[string]any{"type": "message", "id": "answer", "role": "assistant", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": "Actual child answer."}}}
@@ -139,10 +140,10 @@ func TestRuntimeCommentaryRenderedByteBudget(t *testing.T) {
 	prefix := "[" + commentaryCode(author) + "] "
 	b := newCommentaryBroker()
 	oversized := "/root/" + strings.Repeat("a", maxCommentaryPublicationBytes)
-	if b.subscribe("session", "call", oversized) != "" || b.subscribeThread("session", "thread", oversized) != "" {
+	if b.subscribe("session", "call", oversized) != "" {
 		t.Fatal("oversized author admitted")
 	}
-	if len(b.routes) != 0 || len(b.threads) != 0 {
+	if len(b.routes) != 0 {
 		t.Fatal("oversized author retained state")
 	}
 
@@ -163,17 +164,78 @@ func TestRuntimeCommentaryRenderedByteBudget(t *testing.T) {
 		t.Fatal("rendered boundary or completion changed")
 	}
 
-	token = b.subscribeThread("session", "thread", author)
-	b.publish(token, prefix+fits, true) // Already attributed text fits exactly.
-	b.publish(token, fits+"x", true)
-	events = b.drain(token)
-	if len(events) != 1 || events[0].text != prefix+fits {
-		t.Fatal("prefix or provenance budget changed")
+}
+
+func TestCommentaryCallRouteCapacityAndExpiry(t *testing.T) {
+	broker := newCommentaryBroker()
+	token := broker.subscribe("session", "call", "")
+	if token == "" {
+		t.Fatal("publisher route was not allocated")
 	}
-	if !b.hasThreadMessageID("thread", events[0].messageID) {
-		t.Fatal("accepted message lost replay provenance")
+	for range maxCommentaryEventsPerRoute {
+		if !broker.publish(token, "progress", false) {
+			t.Fatal("active call route was retired")
+		}
 	}
-	if !b.publish(token, "Still active.", false) || len(b.drain(token)) != 1 {
-		t.Fatal("shared thread completion retired publisher")
+	if events := broker.drain(token); len(events) != maxCommentaryEventsPerRoute {
+		t.Fatalf("per-call pending cap = %d", len(events))
+	}
+	if !broker.publish(token, "over capacity", false) || len(broker.drain(token)) != 0 {
+		t.Fatal("per-call lifetime capacity was not enforced")
+	}
+	broker.mu.Lock()
+	broker.routes[token].expires = time.Now().Add(-time.Second)
+	broker.mu.Unlock()
+	if broker.publish(token, "expired", false) || len(broker.routes) != 0 || broker.eventCount != 0 {
+		t.Fatal("expired call route retained capacity")
+	}
+	if replacement := broker.subscribe("session", "next-call", ""); replacement == "" || replacement == token {
+		t.Fatal("expired route did not release capacity")
+	}
+}
+
+func TestCallCommentaryDoesNotReclaimToolHistoryCapacity(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	proxy.commentaryEndpoint = "http://127.0.0.1" + commentaryPublisherPath
+	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
+	token := testRuntimeCommentaryCall(t, transform, "live-progress-call")
+
+	// Fill four history sessions to their independent budget limits while
+	// retaining the authenticated call that owns this publisher.
+	sessions := []string{transform.historySessionID, "filler-one", "filler-two", "filler-three"}
+	for _, sessionID := range sessions {
+		used := 0
+		if session := proxy.sessions[sessionID]; session != nil {
+			used = session.bytes
+		}
+		script := strings.Repeat("x", maxMekugiHistorySessionBytes-used-256)
+		if err := proxy.rememberBatch(sessionID, map[string]mekugiHistory{
+			"essential": {Script: script},
+		}); err != nil {
+			t.Fatalf("fill history session %q: %v", sessionID, err)
+		}
+	}
+	before := proxy.historyBytes
+	for range maxCommentaryEventsPerRoute {
+		proxy.commentary.publish(token, "auxiliary", false)
+		publication := proxy.commentary.drain(token)
+		if len(publication) != 1 || transform.runtimeCommentaryMessage(publication[0]) == nil {
+			t.Fatal("call-scoped commentary unavailable while tool history is full")
+		}
+	}
+	if proxy.historyBytes != before {
+		t.Fatal("commentary consumed essential history budget")
+	}
+	for _, sessionID := range sessions {
+		if _, exists := proxy.history(sessionID, "essential"); !exists {
+			t.Fatalf("commentary evicted essential history in %q", sessionID)
+		}
+	}
+	if err := proxy.rememberBatch(transform.historySessionID, map[string]mekugiHistory{"later": {Script: "ok"}}); err != nil {
+		t.Fatalf("later tool admission blocked: %v", err)
+	}
+	if _, exists := proxy.history(transform.historySessionID, "essential"); !exists {
+		t.Fatal("commentary impaired later tool admission")
 	}
 }

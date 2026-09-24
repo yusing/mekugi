@@ -282,7 +282,10 @@ func formatTokenUsageCommentary(response []byte, counts tokenUsageReport, observ
 		return nil
 	}
 
-	text := formatTokenUsageReport(counts)
+	text := formatUsageReport(counts)
+	if text == "" {
+		return nil
+	}
 	id := subagentCommentaryMessageID("usage\x00" + identity.ID)
 	return assistantCommentaryMessage(id, text)
 }

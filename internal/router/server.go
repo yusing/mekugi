@@ -231,6 +231,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
 		mekugiCalls = newMekugiProxy(registry, titles)
+		mekugiCalls.usageReport = *flags.usageReport
 		mekugiCalls.noticeSink = issues.addNotice
 		replayStore.storageNotice = func(session, message string) { issues.addNotice(session, "storage_cleanup", message) }
 		mekugiCalls.commentary.debug = debug

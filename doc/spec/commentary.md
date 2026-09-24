@@ -13,7 +13,7 @@ capacity failures suppress auxiliary notices with a user-visible explanation, wi
 execution or provider answers. Durable storage follows the session-retention policy in
 [REQ-ROUTER-001](router.md); bounded live queues do not evict replay or recovery records. Required journal terminal delivery follows the stricter journal failure contract.
 
-The authenticated broker, canonical ancestry collector, and thread-bound publisher discovery
+The authenticated call-scoped broker and canonical ancestry collector
 remain shared infrastructure. Journal authoring reuses them; other interpreters and passthrough
 do not gain a journal surface. Native collaboration schemas and provider-owned tool schemas
 remain outside generic journal projection, except for the separately owned opt-in
@@ -149,9 +149,26 @@ commentary is not projected again.
 
 A successful explicit main finish includes one token notice before its journal flush and
 before the terminal event, including when the journal is empty. Unavailable usage is reported as `n/a`
-with an incomplete-usage explanation rather than silently omitting the notice. Child completion never emits a token table.
-The `Tokens for this session` notice contains one wide Markdown table with one row per agent
-and a `Total` row. Columns are `Agent`, `Role`, `Model`, `Input (cache hit)`, `Cache write`,
+with an incomplete-usage explanation rather than silently omitting the notice, unless
+reporting is disabled. Child completion never emits its own usage report.
+
+`--usage-report=off|compact|table` controls the presentation. The omitted flag selects
+one compact line, switching to the table only when the report contains more than one
+proven agent. Explicit compact and table selections override that default. Off suppresses
+usage presentation, not provider-authoritative accounting. Reports remain before the
+final answer or journal flush, and retain their durable IDs for later history stripping.
+
+The compact `Router session usage` line shows the main thread's current Codex `turn_id`
+usage and the aggregate router-session total. Provider requests and journal continuations
+sharing that host turn ID accumulate once per request; child turn IDs are never borrowed
+for main-turn counts. Absent turn identity or exhausted turn tracking is `n/a`. At most
+4096 thread/turn pairs are tracked for a router lifetime without eviction or later partial
+revival. This bound does not cap cumulative thread accounting. Router session means since
+router startup, not the entire persisted Codex conversation; restart does not reconstruct
+prior provider usage. Partial observations and unavailable pricing stay explicit on the line.
+
+The table has one row per proven agent
+and a `Total` row under the same `Router session usage` heading. Columns are `Agent`, `Role`, `Model`, `Input (cache hit)`, `Cache write`,
 `Output`, `Reasoning`, `Input cost (cached + uncached)`, `Output cost`, `Total cost`, and
 `Missing usage`. Missing usage counts forwarded responses without usable terminal usage, not
 missing tokens. Affected agent rows and the total are labeled `partial`; their numbers and
@@ -235,8 +252,8 @@ Usage is never a child terminal's substantive result.
 Child operation and runtime commentary carries a ``[`/root/worker`] `` prefix from the request’s
 canonical `agent_name` when `subagent_kind` identifies a child. Root and older unnamed clients
 retain unprefixed commentary. An identical existing prefix is not duplicated. Runtime capabilities
-bind their author at creation; thread provenance retains that author across route expiry and
-session remapping, and deferred publications never borrow the draining request’s identity.
+bind their author and originating thread at creation; deferred publications never borrow the
+draining request’s identity. Retained call provenance owns later history stripping after expiry.
 Runtime author admission and rendered publications share the 16 KiB auxiliary byte budget.
 An oversized author suppresses capability creation; oversized rendered text is not retained,
 while completion handling and substantive tool execution remain unchanged. This local budget
@@ -247,7 +264,7 @@ routing-session ID. Missing ancestry, cycles, conflicting identity, or exhausted
 auxiliary capacity suppress projection, not child output or tool execution.
 Identity observation and start/reply collection begin only after request preparation succeeds.
 A prepared request with malformed auxiliary identity or a contradictory thread ID disables
-root projection for that stable thread until shutdown. Runtime publications use thread-bound capabilities, so later valid metadata
+root projection for that stable thread until shutdown. Runtime publications retain their originating thread, so later valid metadata
 cannot distinguish delayed work from the ambiguous request. Local runtime
 delivery, immutable authors, and replay provenance remain intact. Invalid turn headers and requests
 rejected during preparation do not register or invalidate collector identities.
@@ -343,8 +360,9 @@ Acceptance:
    items and terminal output do not duplicate root copies.
 5. Router-authored messages are removed from every later provider request and are not repeated when
    the matching message is already present in Codex history.
-6. Eligible main completion reports one row per proven agent plus a total, with compact
-   counts, cache-hit percentages, and split input cost. Child completion emits no token table.
+6. Eligible main completion defaults to a compact main-turn/router-session line, or a
+   per-agent table when multiple agents are present. Explicit compact/table/off choices
+   are honored. Tables retain cache-hit percentages and split input cost. Child completion emits no token table.
    Costs use per-response models and context tiers, do not double-charge cached input or reasoning,
    remain cumulative across compaction, and show `n/a` for unavailable evidence.
    Intermediate client calls, failures, and incomplete responses do not emit token notices.

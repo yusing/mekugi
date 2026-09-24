@@ -158,15 +158,10 @@ func TestFeatureUsageRuntimePublicationAndRendering(t *testing.T) {
 				transform, proxy := newRuntimeCommentaryTransform(t)
 				transform.featureTrace = featureUsageTrace{debug: d, requestID: "request-1", threadID: transform.shellThreadID}
 				proxy.commentary.debug = d
-				var token string
-				if source == "code_mode" {
-					if _, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": shellCommentaryTestItem()})); err != nil {
-						t.Fatal(err)
-					}
-					token = runtimeCommentaryToken(t, transform)
-				} else {
-					token = proxy.commentary.subscribeThread(transform.historySessionID, transform.shellThreadID, "")
+				if _, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": shellCommentaryTestItem()})); err != nil {
+					t.Fatal(err)
 				}
+				token := runtimeCommentaryToken(t, transform)
 				server := httptest.NewServer(http.HandlerFunc(proxy.commentary.serveHTTP))
 				t.Cleanup(server.Close)
 				sink := &httpCommentarySink{endpoint: server.URL, token: token, client: server.Client()}
@@ -224,7 +219,7 @@ func TestFeatureUsageConcurrentPublications(t *testing.T) {
 	broker := newCommentaryBroker()
 	broker.debug = d
 	t.Cleanup(broker.close)
-	token := broker.subscribeThread("session", "thread", "")
+	token := broker.subscribe("session", "call", "")
 	var workers sync.WaitGroup
 	for range 16 {
 		workers.Go(func() {
@@ -282,9 +277,9 @@ func TestFeatureUsageDoesNotInferRuntimeExecution(t *testing.T) {
 func TestFeatureUsageSuppressionAndWriteFailure(t *testing.T) {
 	d := featureDebugOutput(t)
 	transform, proxy := newRuntimeCommentaryTransform(t)
+	token := testRuntimeCommentaryCall(t, transform, "feature-suppression")
 	transform.featureTrace = featureUsageTrace{debug: d}
 	proxy.commentary.debug = d
-	token := proxy.commentary.subscribeThread(transform.historySessionID, transform.shellThreadID, "")
 	if !proxy.commentary.publish(token, strings.Repeat("x", maxCommentaryPublicationBytes+1), false) {
 		t.Fatal("oversized publication changed authentication")
 	}

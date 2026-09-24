@@ -199,7 +199,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 			continue
 		}
 		text := event.Item.Text
-		if strings.Contains(text, "Tokens for this session") {
+		if strings.Contains(text, "Router session usage") {
 			tokenTables++
 			if !strings.Contains(text, "| /root/journal_child |") || !strings.Contains(text, "| Total |") {
 				t.Fatalf("main table omitted child usage or total: %s", text)

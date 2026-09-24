@@ -55,7 +55,7 @@ func TestRejectedIdentityCannotReuseShellActivityAncestry(t *testing.T) {
 			proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
 			root, _ := prepareActivityTest(t, proxy, "root-session", "r", "", "/root", nil)
 			child, _ := prepareActivityTest(t, proxy, "child-session", "c", "r", "/root/child", nil)
-			token := proxy.commentary.subscribeThread(child.historySessionID, "c", "/root/child")
+			token := testRuntimeCommentaryCall(t, child, "child-live-call")
 			root.drainActivity()
 			metadata, valid := decodeCodexTurnMetadata(http.Header{codexTurnMetadataHeader: []string{
 				`{"request_kind":"turn","subagent_kind":"thread_spawn",` + identity + `}`,
@@ -124,41 +124,6 @@ func TestReplyRecipientRequiresCurrentValidIdentity(t *testing.T) {
 			}
 			if !bytes.Contains(request.fields["input"], mustTestJSON(t, envelope)) {
 				t.Fatal("original envelope changed")
-			}
-		})
-	}
-}
-
-func TestInitiallyAmbiguousShellActivityCannotAcquireAncestry(t *testing.T) {
-	for _, tc := range []struct {
-		name, author string
-		invalid      bool
-	}{
-		{name: "malformed wire identity", author: "/root/child", invalid: true},
-		{name: "noncanonical string identity", author: "not-canonical"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t)
-			proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
-			root, _ := prepareActivityTest(t, proxy, "root-session", "r", "", "/root", nil)
-			request := activityAdmissionRequest(t, nil)
-			child, err := proxy.prepareRequest(t.Context(), &request, "child-session", "c", codexTurnMetadata{
-				RequestKind: "turn", ParentThreadID: "r", AgentName: tc.author, SubagentKind: "thread_spawn", activityIdentityInvalid: tc.invalid,
-			}, true)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if child == nil {
-				return // Invalid auxiliary identity cannot acquire a runtime capability.
-			}
-			t.Cleanup(child.Close)
-			token := proxy.commentary.subscribeThread(child.historySessionID, "c", "/root/child")
-			_, _ = prepareActivityTest(t, proxy, "later-session", "c", "r", "/root/child", nil)
-			if !proxy.commentary.publish(token, "Delayed ambiguous work.", false) {
-				t.Fatal("local shell route was retired")
-			}
-			if got := root.drainActivity(); len(got) != 0 {
-				t.Fatal("ambiguous capability acquired later ancestry", got)
 			}
 		})
 	}

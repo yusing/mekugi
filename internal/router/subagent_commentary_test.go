@@ -186,7 +186,7 @@ func TestSubagentTokenUsageSilentOnFailedAndIncompleteStops(t *testing.T) {
 				t.Fatalf("terminal events = %q, error %v", events, err)
 			}
 			if !bytes.Contains(events[0], []byte(`"type":"response.`+status+`"`)) ||
-				bytes.Contains(events[0], []byte("Tokens for this session")) {
+				bytes.Contains(events[0], []byte("Router session usage")) {
 				t.Fatalf("terminal event = %s", events[0])
 			}
 		})

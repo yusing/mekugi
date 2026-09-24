@@ -298,7 +298,7 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 	if json.Unmarshal(payload, &envelope) != nil {
 		return
 	}
-	if t.journalTerminalReady() && (envelope.Type == "response.completed" || envelope.Status == "completed") {
+	if (t.journalTerminalReady() || t.liveDiffCompletionReady) && (envelope.Type == "response.completed" || envelope.Status == "completed") {
 		t.storageIdle = true
 		t.finishLiveDiffTurn()
 	}
@@ -312,6 +312,11 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 	for _, item := range items {
 		id := jsonString(item, "id")
 		if id != "" && (id == t.journalUsageID || id == t.liveDiffUsageID) {
+			if t.usageTracker != nil {
+				for thread, revision := range t.usageMentorRevisions {
+					t.usageTracker.totals.acknowledgeMentor(thread, revision)
+				}
+			}
 			t.finishLiveDiffTurn()
 			t.liveDiffUsageID = ""
 		}

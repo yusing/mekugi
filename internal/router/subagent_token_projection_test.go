@@ -42,7 +42,7 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				if bytes.Contains(output, []byte("Tokens for this session")) || !bytes.Contains(output, []byte("Child result.")) {
+				if bytes.Contains(output, []byte("Router session usage")) || !bytes.Contains(output, []byte("Child result.")) {
 					t.Fatalf("child emitted usage or lost answer: %s", output)
 				}
 				child.Close()
@@ -54,7 +54,7 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					if bytes.Contains(bytes.Join(events, nil), []byte("Tokens for this session")) {
+					if bytes.Contains(bytes.Join(events, nil), []byte("Router session usage")) {
 						t.Fatal("usage appeared before root completion")
 					}
 				}
@@ -90,7 +90,7 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				if bytes.Count(output, []byte("Tokens for this session")) != 1 || !bytes.Contains(output, []byte("/root/worker")) || !bytes.Contains(output, []byte("Root answer.")) {
+				if bytes.Count(output, []byte("Router session usage")) != 1 || !bytes.Contains(output, []byte("/root/worker")) || !bytes.Contains(output, []byte("Root answer.")) {
 					t.Fatalf("main completion did not deliver one consolidated report: %s", output)
 				}
 				other.observeResponseUsage(tokenCounts{InputTokens: 1})

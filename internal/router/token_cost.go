@@ -15,6 +15,9 @@ type tokenCost struct {
 }
 
 type tokenUsageReport struct {
+	layout string
+	turn   *tokenUsageReport
+	mentor string
 	tokenCounts
 	cost         tokenCost
 	model        string
@@ -137,9 +140,46 @@ func (cost *tokenCost) add(next tokenCost) {
 	cost.known = cost.known && next.known
 }
 
+func formatUsageReport(report tokenUsageReport) string {
+	if report.layout == "off" {
+		return ""
+	}
+	if report.layout != "compact" {
+		text := formatTokenUsageReport(report)
+		if report.mentor != "" {
+			text += "\n" + report.mentor
+		}
+		return text
+	}
+	turn := tokenUsageReport{Incomplete: true}
+	if report.turn != nil {
+		turn = *report.turn
+	}
+	text := "Router session usage · Main turn: " + compactUsage(turn) + " · Total: " + compactUsage(report)
+	if report.mentor != "" {
+		text += " · " + report.mentor
+	}
+	return text
+}
+
+func compactUsage(report tokenUsageReport) string {
+	if report.Incomplete {
+		return "n/a (usage incomplete)"
+	}
+	cost := "cost n/a"
+	if report.cost.known {
+		cost = fmt.Sprintf("$%.4f", report.cost.cachedInput+report.cost.uncachedInput+report.cost.output)
+	}
+	text := fmt.Sprintf("%s in / %s out, %s", formatUsageTokens(report.InputTokens), formatUsageTokens(report.OutputTokens), cost)
+	if report.missingUsage != 0 {
+		text += fmt.Sprintf(" (Usage incomplete: %d missing)", report.missingUsage)
+	}
+	return text
+}
+
 func formatTokenUsageReport(report tokenUsageReport) string {
 	var text strings.Builder
-	text.WriteString("Tokens for this session\n\n| Agent | Role | Model | Input (cache hit) | Cache write | Output | Reasoning | Input cost (cached + uncached) | Output cost | Total cost | Missing usage |\n| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
+	text.WriteString("Router session usage\n\n| Agent | Role | Model | Input (cache hit) | Cache write | Output | Reasoning | Input cost (cached + uncached) | Output cost | Total cost | Missing usage |\n| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
 	rows := []agentTokenUsage{{agent: "/root", role: "main", report: report}}
 	if report.rows != nil {
 		rows = *report.rows
@@ -150,7 +190,7 @@ func formatTokenUsageReport(report tokenUsageReport) string {
 	total := report
 	total.model = "—"
 	writeTokenUsageRow(&text, "Total", "—", total)
-	text.WriteString("\nRouter-lifetime API estimates; reasoning is included in output, and cache writes are included in input.")
+	text.WriteString("\nRouter session API estimates since router startup; reasoning is included in output, and cache writes are included in input.")
 	if report.missingUsage != 0 {
 		fmt.Fprintf(&text, "\nUsage incomplete: observed totals exclude %d response(s) without usable terminal usage. Missing usage counts responses, not tokens; later observed usage is included.", report.missingUsage)
 	}

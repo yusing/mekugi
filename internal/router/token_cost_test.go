@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const testTokenUsageTable = "Tokens for this session\n\n| Agent | Role | Model | Input (cache hit) | Cache write | Output | Reasoning | Input cost (cached + uncached) | Output cost | Total cost | Missing usage |\n"
+const testTokenUsageTable = "Router session usage\n\n| Agent | Role | Model | Input (cache hit) | Cache write | Output | Reasoning | Input cost (cached + uncached) | Output cost | Total cost | Missing usage |\n"
 
 func TestTokenCostDisjointCategories(t *testing.T) {
 	counts := tokenCounts{InputTokens: 100_000, UncachedInputTokens: 40_000, OutputTokens: 30_000, ReasoningTokens: 20_000}
@@ -120,7 +120,7 @@ func TestTokenUsageReportTables(t *testing.T) {
 	report := tokenUsageReport{tokenCounts: counts, cost: estimateTokenCost("gpt-6-astra", "", counts)}
 	got := formatTokenUsageReport(report)
 	want := "| /root | main | n/a | 100K (60.0%) | 0 | 30K | 20K | $0.0600+$0.4000=$0.4600 | $1.5000 | $1.9600 |"
-	if !strings.Contains(got, want) {
+	if !strings.Contains(got, want) || !strings.Contains(got, "Router session API estimates since router startup") {
 		t.Fatalf("report:\n%s", got)
 	}
 	report.cost.known = false
@@ -157,6 +157,7 @@ func TestTokenCostReportIncludesCompactionAcrossTransports(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
+			proxy.usageReport = "table"
 			for step, model := range []string{"gpt-6-astra", "gpt-5.6-sol"} {
 				requestStream := tc.stream || step == 0 // Compaction requires streaming.
 				request := serverRequest(t, func(fields map[string]any) {

@@ -108,12 +108,14 @@ func TestActualChildActivityProjectsWithoutChangingChildResult(t *testing.T) {
 			if err != nil || bytes.Contains(untouched, []byte("Checking cancellation")) {
 				t.Fatal(string(untouched), err)
 			}
-			// A publication after both child and root response lifetimes keeps ancestry,
-			// regardless of the routing session used by the next root request.
-			token := p.commentary.subscribeThread(child.historySessionID, "nested-thread", "/root/alpha/nested")
+			// The publisher belongs to a retained Code Mode call. Its authenticated
+			// progress can outlive the request that handed the call to the host.
+			lateChild, _ := prepareActivityTest(t, p, "late-session", "nested-thread", "child-thread", "/root/alpha/nested", nil)
+			token := testRuntimeCommentaryCall(t, lateChild, "late-runtime-call")
 			root.Close()
 			child.Close()
 			parent.Close()
+			lateChild.Close()
 			p.commentary.publish(token, "Late runtime progress.", false)
 			next, request := prepareActivityTest(t, p, "remapped-session", "root-thread", "", "/root", nil)
 			output, err := next.TransformJSON(rootResponse)

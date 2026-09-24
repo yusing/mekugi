@@ -453,6 +453,7 @@ func TestJournalEmptyFinishReportsUsage(t *testing.T) {
 
 				// A previous accepted request with missing usage permanently invalidates totals.
 				proxy := newManagedMekugiProxy(t)
+				proxy.usageReport = "table"
 				if scenario == "prior-gap" {
 					proxy.usage.observation("thread-1", "", "gpt-6-astra", "").finish()
 				}
@@ -490,7 +491,7 @@ func TestJournalEmptyFinishReportsUsage(t *testing.T) {
 				}
 				notices := 0
 				for _, item := range journalFinishClientOutput(t, stream, output.Bytes()) {
-					if strings.Contains(commentaryMessageText(item), "Tokens for this session") {
+					if strings.Contains(commentaryMessageText(item), "Router session usage") {
 						notices++
 						if scenario == "complete" && !strings.Contains(commentaryMessageText(item), "20 (60.0%)") {
 							t.Fatalf("incorrect usage: %s", commentaryMessageText(item))
@@ -513,7 +514,7 @@ func TestJournalEmptyFinishReportsUsage(t *testing.T) {
 						if err := json.Unmarshal(payload, &event); err != nil {
 							t.Fatal(err)
 						}
-						if event.Type == "response.output_item.done" && strings.Contains(commentaryMessageText(event.Item), "Tokens for this session") {
+						if event.Type == "response.output_item.done" && strings.Contains(commentaryMessageText(event.Item), "Router session usage") {
 							delivered++
 						}
 						if event.Type == "response.completed" && delivered != 1 {
@@ -533,7 +534,7 @@ func assertJournalFinishOrder(t *testing.T, stream bool, wire []byte) {
 		usage, flush := -1, -1
 		for i, item := range items {
 			text := commentaryMessageText(item)
-			if strings.HasPrefix(text, "Tokens for this session") {
+			if strings.HasPrefix(text, "Router session usage") {
 				if usage >= 0 {
 					t.Fatal("duplicate token metrics")
 				}

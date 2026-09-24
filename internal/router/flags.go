@@ -12,6 +12,7 @@ type routerFlags struct {
 	timeout                  *time.Duration
 	streamIdleTimeout        *time.Duration
 	mode                     *string
+	usageReport              *string
 	mainMentorHandoffEnabled *bool
 	mentorHandoffEnabled     *bool
 	grokEnabled              *bool
@@ -29,7 +30,17 @@ func newRouterFlags(stderr io.Writer) routerFlags {
 		fmt.Fprintln(stderr, "       mekugi inspect-session --session PATH [options]")
 		flags.PrintDefaults()
 	}
+	usageReport := new(string)
+	flags.Func("usage-report", "usage report: off, compact, or table (default compact; table for multiple agents)", func(value string) error {
+		switch value {
+		case "off", "compact", "table":
+			*usageReport = value
+			return nil
+		}
+		return fmt.Errorf("--usage-report must be off, compact, or table")
+	})
 	return routerFlags{
+		usageReport:              usageReport,
 		FlagSet:                  flags,
 		timeout:                  flags.Duration("timeout", defaultRequestTimeout, "upstream response-start timeout"),
 		streamIdleTimeout:        flags.Duration("stream-idle-timeout", defaultStreamIdleTimeout, "maximum upstream inactivity between WebSocket messages or HTTP response bytes"),

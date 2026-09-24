@@ -228,9 +228,7 @@ func (a *requestAttempt) prepare() error {
 		}
 		progress := a.handoff.record(result)
 		if progress.transitioned && a.mekugiTransform != nil {
-			broker := a.executor.mekugiCalls.commentary
-			token := broker.subscribeThread(a.mekugiTransform.historySessionID, a.threadID, a.mekugiTransform.commentaryAuthor)
-			broker.publish(token, "Mentor handoff complete.", false)
+			a.executor.mekugiCalls.usage.mentorTransition(a.threadID, a.request.model())
 		}
 	}
 
@@ -365,9 +363,10 @@ func (a *requestAttempt) forward() error {
 		if a.mekugiTransform != nil {
 			a.usageTracker = a.mekugiTransform.usageTracker
 		} else if a.executor.mekugiCalls != nil && a.metadataValid {
-			a.usageTracker = a.executor.mekugiCalls.usage.observation(
+			a.usageTracker = a.executor.mekugiCalls.usage.observationForTurn(
 				a.threadID,
 				a.metadata.ThreadID,
+				a.metadata.TurnID,
 				a.request.model(),
 				usageServiceTier(a.request.fields["service_tier"]),
 			)
