@@ -470,13 +470,14 @@ describe("mcat built-in plugin", () => {
   test("keeps the private description call-local", () => {
     const description = plugin.tools[0].specification.description.replace(/\s+/g, " ");
     expect(description).toContain("Read one or more UTF-8 files or inclusive logical-line ranges");
-    expect(description).toContain("raw rows without line or hash prefixes");
-    expect(description).toContain("Usage: mcat [-n N] [--max-tokens N] [--tail] PATH [START:END ...] [PATH [START:END ...] ...]");
+    expect(description).toContain("--number prefixes source line numbers like nl -ba");
+    expect(description).toContain("Usage: mcat [-n N] [--max-tokens N] [--tail] [--number] PATH [START:END ...] [PATH [START:END ...] ...]");
     expect(description).toContain("START:END or START-END is a separate operand after its path, inclusive of both endpoints.");
     expect(description).toContain("mcat src/main.go 100:150");
     expect(description).toContain("rows 100–150 (51 rows)");
     expect(description).toContain("mcat -n 20 src/main.go");
     expect(description).toContain("first 20 rows");
+    expect(description).toContain("mcat --number src/main.go 100:150");
     expect(description).not.toContain("mcat -n 20 src/main.go 100:150");
     expect(description).toContain("Limited output contains complete rows and exits nonzero; retained omissions provide per-file mread recovery.");
   });
@@ -491,6 +492,8 @@ describe("mcat built-in plugin", () => {
       "plain.txt",
       "plain.txt 2:9",
       "plain.txt 0:9",
+      "--number plain.txt 2:9",
+      "plain.txt 2:9 --number",
       "\"second file.txt\" 2:3",
       "first.txt 1:2 second.txt 3:4",
       `"quoted\\"file.txt"`,

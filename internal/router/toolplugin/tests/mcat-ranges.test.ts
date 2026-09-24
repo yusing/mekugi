@@ -31,6 +31,24 @@ test("accepts colon and dash spans with the same inclusive rows", async () => {
   expect(dash).toEqual(colon);
 });
 
+test("--number uses absolute source lines and numbers blank rows like nl -ba", async () => {
+  const directory = await temporaryDirectory();
+  const file = path.join(directory, "rows.txt");
+  await writeFile(file, "first\r\n\r\nthird", "utf8");
+  const tool = createMCatTool("");
+  expect((await tool.execute(["--number", file], executionContext)).stdout).toBe(
+    "     1\tfirst\n     2\t\n     3\tthird\n");
+  expect((await tool.execute([file, "2:3", "--number"], executionContext)).stdout).toBe(
+    "     2\t\n     3\tthird\n");
+  const limited = await tool.execute(["--number", "-n", "1", file, "2:3"], executionContext);
+  expect(limited.stdout).toBe("     2\t\n");
+  expect(limited.omittedOutput?.stdout).toBe("     3\tthird\n");
+  const tail = await tool.execute(["--number", "--tail", "-n", "1", file], executionContext);
+  expect(tail.stdout).toBe("     3\tthird\n");
+  expect(tail.omittedOutput?.stdout).toBe("     1\tfirst\n     2\t\n");
+  expect((await tool.execute(["--number", "--number", file], executionContext)).failureClass).toBe("invalid_arguments");
+});
+
 test("reports the exact omitted EOF span and preserves start-past-EOF failure status", async () => {
   const directory = await temporaryDirectory();
   const file = path.join(directory, "rows.txt");

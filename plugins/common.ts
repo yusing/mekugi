@@ -39,7 +39,7 @@ export function readerArguments(input: string): string[] {
   return result;
 }
 
-export type ReaderOptions = {maxTokens?: number; previewBytes?: number; tail?: boolean; maxLines?: number};
+export type ReaderOptions = {maxTokens?: number; previewBytes?: number; tail?: boolean; maxLines?: number; number?: boolean};
 
 export function readerOptions(argv: string[], allowTail = false, takesValue: (arg: string) => boolean = () => false, preserveTerminator = false, allowPreview = true, defaultMaxTokens = READ_DEFAULT_TOKENS): {options: ReaderOptions; rest: string[]; indices: number[]} {
   const options: ReaderOptions = {};
@@ -57,7 +57,7 @@ export function readerOptions(argv: string[], allowTail = false, takesValue: (ar
       break;
     }
     if (name !== "--max-tokens" && !(allowPreview && name === "--preview-bytes")
-        && !(allowTail && (name === "--tail" || name === "-n"))) {
+        && !(allowTail && (name === "--tail" || name === "-n" || name === "--number"))) {
       rest.push(name);
       indices.push(offset++);
       if (takesValue(name) && offset < argv.length) {
@@ -71,6 +71,12 @@ export function readerOptions(argv: string[], allowTail = false, takesValue: (ar
         throw new Error("--tail cannot repeat");
       }
       options.tail = true;
+      offset += 1;
+      continue;
+    }
+    if (name === "--number") {
+      if (options.number) throw new Error("--number cannot repeat");
+      options.number = true;
       offset += 1;
       continue;
     }

@@ -291,6 +291,7 @@ mchanges apply amber2
 mread REF
 mread REF_A REF_B
 mcat source.ts 10-20 40:60
+mcat --number source.ts 10-20
 mcat --tail -n 20 source.ts
 inspect_file source.ts other.go
 inspect_file --json source.ts
@@ -304,6 +305,7 @@ are folded into one count line; unavailable counts are reported separately.
 Use `--history` or an explicit path filter to inspect managed paths and diffs.
 Bounded output includes an exact `mread` continuation when needed. Multiple handles
 share one budget. `mcat` accepts colon or dash ranges and several ranges per path;
+`--number` prefixes absolute source lines like `nl -ba`, including blank rows;
 `-n` retains its default 6000-token ceiling, with omitted rows recoverable through `mread`.
 All helpers accept `--max-tokens=N` as well as `--max-tokens N`. `mrun` accepts
 the command directly or after `--`, shares its budget between stdout and stderr,

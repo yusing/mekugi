@@ -17,7 +17,7 @@ model-visible custom tool or intercept it as a private shell command. The
 `mcat` accepts one or more files:
 
 ```text
-mcat [-n N] [--max-tokens N] [--tail] PATH [START:END ...] [PATH [START:END ...] ...]
+mcat [-n N] [--max-tokens N] [--tail] [--number] PATH [START:END ...] [PATH [START:END ...] ...]
 ```
 
 The process host owns quoting and argument separation. A path containing
@@ -39,8 +39,12 @@ and never mutates them.
 
 ### Raw logical rows
 
-Single-file output contains only the selected source text, without line numbers,
-JSON records, or other prefixes. CR, LF, and CRLF are recognized as
+By default, single-file output contains only the selected source text, without line numbers,
+JSON records, or other prefixes. `--number` prefixes every selected row, including blank rows,
+with its absolute one-based source line number in a six-column right-aligned field followed by a tab,
+matching `nl -ba`. Numbering is applied before token and line limits and retained in omitted
+rows for `mread` continuation. Multi-file bodies use the same numbering for each source.
+CR, LF, and CRLF are recognized as
 logical terminators. Every selected logical row is emitted with one LF,
 including an unterminated final row. A trailing source terminator does not create
 an extra empty row. Empty files succeed with empty stdout. The UTF-8 BOM, when

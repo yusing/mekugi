@@ -217,7 +217,7 @@ async function readLines(spec: ReadSpec, options: ReaderOptions): Promise<Compar
         selectedLines += 1;
         // Preserve the previous reader's logical-row framing: every selected source row is
         // normalized to one trailing LF, including an unterminated final row.
-        const row = content + "\n";
+        const row = (options.number ? `${String(lineNumber).padStart(6, " ")}\t` : "") + content + "\n";
         if (!retentionUnavailable && !retained.append(row)) {
           retentionUnavailable = true;
           limitReason = "result exceeds the 16 MiB recovery bound; narrow the source range\n";
@@ -351,13 +351,14 @@ function mcatInput(argv: string[]): string {
 export function createMCatTool(grammar: string): Tool<string[]> {
   return createExecutorTool({
     name: "mcat",
-    description: `Read one or more UTF-8 files or inclusive logical-line ranges as raw rows without line or hash prefixes.
-Usage: mcat [-n N] [--max-tokens N] [--tail] PATH [START:END ...] [PATH [START:END ...] ...]
+    description: `Read one or more UTF-8 files or inclusive logical-line ranges as raw rows; --number prefixes source line numbers like nl -ba.
+Usage: mcat [-n N] [--max-tokens N] [--tail] [--number] PATH [START:END ...] [PATH [START:END ...] ...]
 
 START:END or START-END is a separate operand after its path, inclusive of both endpoints. Several ranges may follow one path; at most 16 reads are allowed. -n counts rows within a single range and retains the default token ceiling.
 Examples:
   mcat src/main.go 100:150                # rows 100–150 (51 rows)
   mcat -n 20 src/main.go                  # first 20 rows
+  mcat --number src/main.go 100:150       # source line prefixes
   mcat src/main.go 10:40 src/config.go 1:30
 
 Limited output contains complete rows and exits nonzero; retained omissions provide per-file mread recovery.`,

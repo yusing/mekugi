@@ -120,3 +120,70 @@ func TestMCatDashFilenameAndEOFRangeMessages(t *testing.T) {
 		t.Fatalf("range starting past EOF: status=%d stdout=%q stderr=%q", status, out, diagnostic)
 	}
 }
+
+func TestMCatNumberedSingleAndBundleReads(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	for name, content := range map[string]string{"first": "one\n\nthree\n", "second": "alpha\nbeta\n"} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	registry := sharedProxyTestRegistry(t)
+	invocation := newShellWorkerTestInvocation(directory)
+	out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
+		"mcat --number first 2:3", nil, invocation)
+	if status != 0 || diagnostic != "" || out != "     2\t\n     3\tthree\n" {
+		t.Fatalf("single numbered read: status=%d stdout=%q stderr=%q", status, out, diagnostic)
+	}
+	out, diagnostic, status = runShellWorkerTest(t, registry, "bash", nil,
+		"mcat --number first 2:3 second 1:1", nil, invocation)
+	if status != 0 || diagnostic != "" || !strings.Contains(out, "     2\t\n     3\tthree\n") || !strings.Contains(out, "     1\talpha\n") {
+		t.Fatalf("bundle numbered read: status=%d stdout=%q stderr=%q", status, out, diagnostic)
+	}
+}
+
+func TestMCatNumberedContinuationKeepsSourcePrefixes(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	var source strings.Builder
+	for line := 1; line <= 30; line++ {
+		fmt.Fprintf(&source, "line %d\n", line)
+	}
+	path := filepath.Join(directory, "rows")
+	if err := os.WriteFile(path, []byte(source.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	registry := sharedProxyTestRegistry(t)
+	invocation := newShellWorkerTestInvocation(directory)
+	first, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
+		"mcat --number --max-tokens 40 rows", nil, invocation)
+	if status != 1 || first == "" || !strings.Contains(diagnostic, "next_call: mread ") {
+		t.Fatalf("numbered read did not retain complete limited rows: status=%d stdout=%q stderr=%q", status, first, diagnostic)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	_, reference, ok := strings.Cut(diagnostic, "next_call: mread ")
+	if !ok {
+		t.Fatal("missing continuation reference")
+	}
+	reference, _, _ = strings.Cut(reference, "\n")
+	reference = strings.Fields(reference)[0]
+	rest, readDiagnostic, readStatus := runShellWorkerTest(t, registry, "bash", nil,
+		"mread "+reference+" --max-tokens 15500", nil, invocation)
+	if readStatus != 0 || readDiagnostic != "" {
+		t.Fatalf("numbered continuation: status=%d stderr=%q", readStatus, readDiagnostic)
+	}
+	_, rows, found := strings.Cut(rest, "\n")
+	if !found {
+		t.Fatalf("missing mread row header: %q", rest)
+	}
+	var want strings.Builder
+	for line := 1; line <= 30; line++ {
+		fmt.Fprintf(&want, "%6d\tline %d\n", line, line)
+	}
+	if first+rows != want.String() {
+		t.Fatalf("numbered continuation differs after source removal: got %q, want %q", first+rows, want.String())
+	}
+}

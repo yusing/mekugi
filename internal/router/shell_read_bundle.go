@@ -14,7 +14,7 @@ import (
 	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
-const readBundleUsage = "mcat [-n N] [--max-tokens N] [--tail] PATH [START:END ...] [PATH [START:END ...] ...]"
+const readBundleUsage = "mcat [-n N] [--max-tokens N] [--tail] [--number] PATH [START:END ...] [PATH [START:END ...] ...]"
 
 type readBundleSpec struct {
 	path string
@@ -24,7 +24,7 @@ type readBundleSpec struct {
 func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 	budget := 6000
 	var operands []string
-	optionsEnded, tokenOption, lineOption, tailOption := false, false, false, false
+	optionsEnded, tokenOption, lineOption, tailOption, numberOption := false, false, false, false, false
 	for i := 0; i < len(args); i++ {
 		if !optionsEnded && strings.HasPrefix(args[i], "--max-tokens=") {
 			args = append(append([]string(nil), args[:i]...), expandMaxTokensOption(args[i:])...)
@@ -65,6 +65,11 @@ func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 				return nil, 0, errors.New("--tail cannot repeat")
 			}
 			tailOption = true
+		case "--number":
+			if numberOption {
+				return nil, 0, errors.New("--number cannot repeat")
+			}
+			numberOption = true
 		default:
 			return nil, 0, fmt.Errorf("unknown option %q", arg)
 		}
@@ -244,7 +249,17 @@ func executeMCat(
 		}
 		return execution, err
 	}
-	return executeMCatBundle(ctx, manifest, runtime, specs, budget, mcat)
+	numbered := false
+	for _, arg := range args {
+		if arg == "--" {
+			break
+		}
+		if arg == "--number" {
+			numbered = true
+			break
+		}
+	}
+	return executeMCatBundle(ctx, manifest, runtime, specs, budget, numbered, mcat)
 }
 
 func executeMCatBundle(
@@ -253,6 +268,7 @@ func executeMCatBundle(
 	runtime string,
 	specs []readBundleSpec,
 	budget int,
+	numbered bool,
 	mcat toolContribution,
 ) (toolplugin.ExecutionOutput, error) {
 	fail := func(message string, class string) (toolplugin.ExecutionOutput, error) {
@@ -281,7 +297,7 @@ func executeMCatBundle(
 	executions := make([]toolplugin.ExecutionOutput, len(specs))
 	unused, pending := budget-reserve-share*len(specs), 0
 	for i, spec := range specs {
-		execution, err := readMCatBundleFile(ctx, manifest, runtime, spec, share, mcat)
+		execution, err := readMCatBundleFile(ctx, manifest, runtime, spec, share, numbered, mcat)
 		if err != nil {
 			return toolplugin.ExecutionOutput{}, err
 		}
@@ -301,7 +317,7 @@ func executeMCatBundle(
 			if execution.OmittedOutput == nil {
 				continue
 			}
-			execution, err := readMCatBundleFile(ctx, manifest, runtime, specs[i], share+unused/pending, mcat)
+			execution, err := readMCatBundleFile(ctx, manifest, runtime, specs[i], share+unused/pending, numbered, mcat)
 			if err != nil {
 				return toolplugin.ExecutionOutput{}, err
 			}
@@ -495,9 +511,13 @@ func readMCatBundleFile(
 	runtime string,
 	spec readBundleSpec,
 	tokens int,
+	numbered bool,
 	mcat toolContribution,
 ) (toolplugin.ExecutionOutput, error) {
 	args := []string{"--max-tokens", strconv.Itoa(tokens), "--", spec.path}
+	if numbered {
+		args = []string{"--number", "--max-tokens", strconv.Itoa(tokens), "--", spec.path}
+	}
 	if spec.span != "" {
 		args = append(args, spec.span)
 	}
