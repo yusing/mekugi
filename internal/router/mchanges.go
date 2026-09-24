@@ -262,6 +262,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 	}
 	stats := make(map[string]counts)
 	var paths []string
+	managedKnown, managedUnknown, managedAdded, managedRemoved := 0, 0, 0, 0
 	matched := false
 	for _, id := range options.ids {
 		if output.Len() > maxChangeReadBytes {
@@ -365,10 +366,21 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 					if action == mekugi.ReviewDelete {
 						path = file.BeforePath
 					}
-					path = displayPath(path)
+					path = displayPath(pathdisplay.ForWorkspace(options.workspace, path))
 					if action == mekugi.ReviewMove {
-						before := displayPath(file.BeforePath)
+						before := displayPath(pathdisplay.ForWorkspace(options.workspace, file.BeforePath))
 						path = before + " => " + path
+					}
+					if file.Origin != "" && len(options.paths) == 0 {
+						if file.Incomplete != "" || file.Binary {
+							managedUnknown++
+						} else {
+							managedKnown++
+							a, r := file.LineCounts()
+							managedAdded += a
+							managedRemoved += r
+						}
+						continue
 					}
 					if file.Origin != "" {
 						path = "tool-managed\t" + path
@@ -416,6 +428,13 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		if output.Len() > maxChangeReadBytes {
 			return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or paths after --")
 		}
+	}
+	if managedKnown != 0 || managedUnknown != 0 {
+		fmt.Fprintf(&output, "tool-managed: %d changed +%d -%d", managedKnown, managedAdded, managedRemoved)
+		if managedUnknown != 0 {
+			fmt.Fprintf(&output, "; %d counts unavailable", managedUnknown)
+		}
+		output.WriteByte('\n')
 	}
 	if len(options.paths) > 0 && !matched {
 		output.WriteString("no files match paths after --:")

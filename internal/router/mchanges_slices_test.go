@@ -165,8 +165,8 @@ func TestMChangesUnconfirmedHistorySeparatesObservationAndResult(t *testing.T) {
 	}
 
 	list, listErr, listStatus := f.run(t, "mchanges --list")
-	if listStatus != 0 || listErr != "" || !strings.Contains(list, patchID+" changes observed ") ||
-		!strings.Contains(list, execID+" changes observed ") || strings.Contains(list, "confirmation:") || strings.Contains(list, "tool result:") {
+	if listStatus != 0 || listErr != "" || !strings.Contains(list, patchID+" observed ") ||
+		!strings.Contains(list, execID+" observed ") || strings.Contains(list, "confirmation:") || strings.Contains(list, "tool result:") {
 		t.Fatalf("mchanges list leaked history-only details or lost observed statuses: %q, %q, %d", list, listErr, listStatus)
 	}
 }
@@ -400,7 +400,7 @@ func TestMChangesSlicesMineListForkAndResume(t *testing.T) {
 		t.Fatalf("mine summary: %q, %q, %d", stdout, stderr, status)
 	}
 	stdout, stderr, status = f.run(t, "mchanges --list")
-	if status != 0 || stderr != "" || strings.TrimSpace(stdout) != "amber1..amber3 applied +3 -3\namber4 pending - -\namber5 retired - -" ||
+	if status != 0 || stderr != "" || strings.TrimSpace(stdout) != "amber1..amber3 applied +3 -3\namber4 pending\namber5 retired" ||
 		strings.Contains(stdout, "apple1") {
 		t.Fatalf("compressed own-thread list: %q, %q, %d", stdout, stderr, status)
 	}
@@ -415,7 +415,7 @@ func TestMChangesSlicesMineListForkAndResume(t *testing.T) {
 	stdout, stderr, status = runShellWorkerTest(t, f.registry, "bash", nil,
 		"mchanges --mine --list", nil, childInvocation)
 	if status != 0 || stderr != "" || !strings.Contains(stdout, "amber1..amber3 applied +3 -3") ||
-		!strings.Contains(stdout, "amber5 retired - -") ||
+		!strings.Contains(stdout, "amber5 retired") ||
 		strings.Contains(stdout, "apple1") {
 		t.Fatalf("forked thread lost own review lineage: %q, %q, %d", stdout, stderr, status)
 	}
@@ -436,7 +436,7 @@ func TestMChangesSlicesMineListForkAndResume(t *testing.T) {
 	stdout, stderr, status = runShellWorkerTest(t, f.registry, "bash", nil,
 		"mchanges --mine --list", nil, resumeInvocation)
 	if status != 0 || stderr != "" || !strings.Contains(stdout, "amber1..amber3 applied +3 -3") ||
-		!strings.Contains(stdout, "amber5 retired - -") ||
+		!strings.Contains(stdout, "amber5 retired") ||
 		strings.Contains(stdout, "apple1") {
 		t.Fatalf("resumed thread lost own review lineage: %q, %q, %d", stdout, stderr, status)
 	}

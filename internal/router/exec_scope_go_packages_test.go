@@ -1,6 +1,7 @@
 package router
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -152,4 +153,89 @@ func reviewPath(review mekugi.ReviewFile) string {
 		return review.AfterPath
 	}
 	return review.BeforePath
+}
+
+// Unread managed package files are hints, not observed edits. If they later
+// change, the sweep must still find them without claiming a fabricated diff.
+func TestManagedPackageCaptureCapLeavesSweepUnclaimed(t *testing.T) {
+	workspace := t.TempDir()
+	pkg := filepath.Join(workspace, "pkg")
+	paths := make([]string, maxExecCaptureFiles+8)
+	for i := range paths {
+		paths[i] = filepath.Join(pkg, fmt.Sprintf("source-%03d.go", i))
+		writeTestFile(t, paths[i], "package pkg\n")
+	}
+	// A broad sweep ignores this path; the deferred hint must still detect it.
+	writeTestFile(t, filepath.Join(workspace, ".gitignore"), "pkg/source-263.go\n")
+	start := execWindowStart(os.TempDir())
+	capture := newExecCapture(time.Now().Add(5 * time.Second))
+	capture.sweepRoots = []string{workspace}
+	entry := execProviderFiles(paths, false)
+	entry.Origin = "go test"
+	capture.entry(entry)
+	observation := execObservation{Files: capture.files, Omitted: capture.omitted, Roots: []string{workspace}, Sweep: true, WindowStart: start, Class: execScoped.String()}
+	if len(observation.Files) != maxExecCaptureFiles || len(observation.Omitted) != 8 || !observation.Omitted[0].Deferred {
+		t.Fatalf("bounded package hints: captured=%d omitted=%+v", len(observation.Files), observation.Omitted)
+	}
+	unchanged, complete, coverage, _ := reconcileExecObservation(observation, execReconcileEnv{})
+	if !complete || coverage != execCoverageExact || len(unchanged) != 0 {
+		t.Fatalf("unchanged package produced evidence: %+v %v %s", unchanged, complete, coverage)
+	}
+	outside := paths[len(paths)-1]
+	writeTestFile(t, outside, "package pkg\n// changed\n")
+	reviews, complete, coverage, _ := reconcileExecObservation(observation, execReconcileEnv{})
+	if !complete || coverage != execCoveragePartial || len(reviews) != 1 || reviewPath(reviews[0]) != outside || reviews[0].Incomplete == "" || reviews[0].Origin != "go test" {
+		t.Fatalf("unbaselined package write was not checked honestly: %+v %v %s", reviews, complete, coverage)
+	}
+}
+
+func TestGoFixPackageScopeCapturesOnlyGoSources(t *testing.T) {
+	workspace := t.TempDir()
+	goFile := filepath.Join(workspace, "pkg", "source.go")
+	textFile := filepath.Join(workspace, "pkg", "notes.txt")
+	writeTestFile(t, goFile, "package pkg\n")
+	writeTestFile(t, textFile, "notes\n")
+	observation := captureGoPackageTestObservation(t, workspace, "go fix ./pkg")
+	if len(observation.Files) != 1 || observation.Files[0].Path != goFile || observation.Files[0].Origin != "go fix" {
+		t.Fatalf("go fix baselines: %+v", observation.Files)
+	}
+	writeTestFile(t, goFile, "package pkg\n// fixed\n")
+	reviews, complete, coverage, _ := reconcileExecObservation(*observation, execReconcileEnv{})
+	if !complete || coverage != execCoverageExact || len(reviews) != 1 || reviews[0].Origin != "go fix" || !strings.Contains(reviews[0].Diff, "+// fixed") {
+		t.Fatalf("go fix review: %+v complete=%v coverage=%s", reviews, complete, coverage)
+	}
+}
+
+func TestManagedFormatterDeferredHintsStayInsideSweepRoot(t *testing.T) {
+	workspace := t.TempDir()
+	elsewhere := t.TempDir()
+	inside := filepath.Join(workspace, "format.go")
+	outside := filepath.Join(elsewhere, "format.go")
+	writeTestFile(t, inside, "package p\n")
+	writeTestFile(t, outside, "package p\n")
+	capture := newExecCapture(time.Now().Add(time.Second))
+	capture.sweepRoots = []string{workspace}
+	capture.origin = "gofmt"
+	capture.files = make([]execFileSnapshot, maxExecCaptureFiles)
+	capture.add(inside)
+	capture.add(outside)
+	if len(capture.omitted) != 2 || !capture.omitted[0].Deferred || capture.omitted[1].Deferred {
+		t.Fatalf("formatter hints claimed paths outside sweep: %+v", capture.omitted)
+	}
+}
+
+func TestManagedDeferredHintWithUnavailableClockStaysIncomplete(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "pkg", "source.go")
+	writeTestFile(t, path, "package pkg\n")
+	observation := execObservation{
+		Class: execScoped.String(), Roots: []string{workspace}, Sweep: true,
+		Omitted: []execOmission{{Path: path, Origin: "go test", Reason: "capture limit", Deferred: true}},
+		// No comparable window start models an unavailable filesystem clock.
+	}
+	reviews, complete, coverage, unswept := reconcileExecObservation(observation, execReconcileEnv{})
+	if complete || coverage != execCoverageUnswept || unswept == "" || len(reviews) != 1 || reviews[0].Origin != "go test" ||
+		!strings.Contains(reviews[0].Incomplete, "clock incomparable") || strings.Contains(reviews[0].Diff, "+package pkg") {
+		t.Fatalf("incomparable clock hid or invented managed evidence: %+v complete=%v coverage=%s unswept=%q", reviews, complete, coverage, unswept)
+	}
 }

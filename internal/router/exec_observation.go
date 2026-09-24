@@ -89,6 +89,9 @@ type execOmission struct {
 	Origin string `json:",omitempty"`
 	Path   string
 	Reason string
+	// Existing managed package or formatter paths were not baselined. Their
+	// after-state is checked against the observation clock before reporting.
+	Deferred bool `json:",omitzero"`
 }
 
 // execObservation is the durable pre-call capture of one observed call: a
@@ -371,6 +374,7 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 	}
 	observation.Excluded = env.excluded
 	capture := newExecCapture(started.Add(execCaptureHold))
+	capture.sweepRoots = observation.Roots
 	for _, managed := range []bool{false, true} {
 		for _, entry := range scope {
 			if (entry.Origin != "") == managed {
@@ -415,7 +419,9 @@ func (o execObservation) scopePaths() []string {
 		paths = append(paths, listing.Root)
 	}
 	for _, omission := range o.Omitted {
-		paths = append(paths, omission.Path)
+		if !omission.Deferred {
+			paths = append(paths, omission.Path)
+		}
 	}
 	return paths
 }
@@ -454,13 +460,14 @@ type execListing struct {
 }
 
 type execCapture struct {
-	origin   string
-	deadline time.Time
-	seen     map[string]bool
-	files    []execFileSnapshot
-	omitted  []execOmission
-	listings []execListing
-	listed   int
+	origin     string
+	deadline   time.Time
+	seen       map[string]bool
+	files      []execFileSnapshot
+	omitted    []execOmission
+	listings   []execListing
+	sweepRoots []string
+	listed     int
 	// removals are trees an earlier statement deletes or moves away.
 	removals []string
 	budget   int
@@ -511,6 +518,14 @@ func (c *execCapture) addCopy(path, source string) {
 	}
 	c.seen[path] = true
 	if reason := c.exhausted(); reason != "" {
+		// Managed package and formatter paths were enumerated but not baselined.
+		// Check their after-state against the window clock instead of
+		// fabricating a changed-file review for every unread path.
+		if slices.Contains([]string{"go test", "go generate", "go fix", "gofmt", "goimports", "prettier", "eslint", "ruff format", "ruff check", "black", "rustfmt", "cargo fmt"}, c.origin) &&
+			slices.ContainsFunc(c.sweepRoots, func(root string) bool { return execPathWithin(path, root) }) {
+			c.omitted = append(c.omitted, execOmission{Path: path, Reason: reason, Origin: c.origin, Deferred: true})
+			return
+		}
 		c.omit(path, reason)
 		return
 	}
@@ -1060,8 +1075,46 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 		}
 		reviews = append(reviews, review)
 	}
+	deferredChanged := false
 	for _, omission := range observation.Omitted {
-		if slices.Contains(observation.Excluded, omission.Path) {
+		if slices.Contains(observation.Excluded, omission.Path) || slices.Contains(env.excluded, omission.Path) {
+			continue
+		}
+		if omission.Deferred {
+			// A remote mount or missing clock cannot prove an unchanged path.
+			// Keep the named gap instead of comparing timestamps from another host.
+			if observation.WindowStart.IsZero() || execRemoteFilesystem(filepath.Dir(omission.Path)) {
+				review := mekugi.RenderIncompleteReviewFile(omission.Path, omission.Path, "managed baseline unavailable; filesystem clock incomparable")
+				review.Origin = omission.Origin
+				reviews = append(reviews, review)
+				complete = false
+				deferredChanged = true
+				continue
+			}
+			changed, _, _, ok := execFileTimes(omission.Path)
+			if ok && changed.Before(observation.WindowStart) {
+				continue
+			}
+			// These paths existed during provider enumeration. A missing
+			// after-state is therefore a possible deletion, not a no-op.
+			current := snapshotExecFile(omission.Path, &budget)
+			if env.remember != nil {
+				env.remember(current)
+			}
+			var review mekugi.ReviewFile
+			switch {
+			case current.Error != "":
+				review = mekugi.RenderIncompleteReviewFile(omission.Path, omission.Path, "managed baseline unavailable; "+current.Error)
+			case current.Kind == execFileAbsent:
+				review = mekugi.RenderIncompleteReviewFile(omission.Path, "", "deleted; before content unavailable")
+			case current.Kind == execFileText || current.Kind == execFileSymlink:
+				review = mekugi.RenderUnbasedReviewFile(omission.Path, execReviewText(current), "managed baseline unavailable")
+			default:
+				review = mekugi.RenderIncompleteReviewFile(omission.Path, omission.Path, "managed baseline unavailable")
+			}
+			review.Origin = omission.Origin
+			reviews = append(reviews, review)
+			deferredChanged = true
 			continue
 		}
 		reviews = append(reviews, mekugi.RenderIncompleteReviewFile(omission.Path, omission.Path, omission.Reason))
@@ -1069,6 +1122,11 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 	}
 	if observation.Sweep {
 		claims := append(observation.scopePaths(), env.excluded...)
+		for _, omission := range observation.Omitted {
+			if omission.Deferred {
+				claims = append(claims, omission.Path)
+			}
+		}
 		claims = append(claims, observation.Excluded...)
 		claimed := func(path string) bool {
 			if _, captured := after[path]; captured {
@@ -1109,7 +1167,7 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 			}
 		}
 	}
-	if !complete && coverage == execCoverageExact {
+	if (!complete || deferredChanged) && coverage == execCoverageExact {
 		coverage = execCoveragePartial
 	}
 	return reviews, complete, coverage, unswept

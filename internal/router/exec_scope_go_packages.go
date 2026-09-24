@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Tests and generators can write arbitrary artifacts. Literal package operands
+// Tests, generators, and fixers can write arbitrary artifacts. Literal package operands
 // provide bounded baseline hints, not a closed declaration of their effects.
 func execGoPackageScope(input execProviderInput) execProviderResult {
 	var roots []string
@@ -86,7 +86,7 @@ func execGoPackageScope(input execProviderInput) execProviderResult {
 				if !execBuiltinPruned(path, child.Name()) {
 					queue = append(queue, path)
 				}
-			} else {
+			} else if input.args[0] != "fix" || filepath.Ext(path) == ".go" {
 				paths = append(paths, path)
 			}
 		}

@@ -153,11 +153,17 @@ manager scopes include their local manifests and lockfiles. These are tool-manag
 effects. Direct paths take capture priority; a path also in a managed scope stays
 direct with shared-origin attribution.
 
-Go tests and generators snapshot bounded existing contents of explicitly named
+Go tests, generators, and fixers snapshot bounded existing contents of explicitly named
 local package directories before execution, including subdirectories but excluding
 built-in dependency and VCS directories. Root files take priority over descendants.
 Snapshots share the existing file, byte, enumeration, and capture-time limits; they
-are baseline hints, not a claim that the program cannot write elsewhere. Unknown
+are baseline hints, not a claim that the program cannot write elsewhere. An
+existing managed package or formatter path enumerated but not baselined after a capture bound is checked
+against the observation clock after the call, including when broad sweep ignore
+rules hide it. An unchanged hint does not create a review file or incomplete
+count. A changed or deleted hint has unknown before-content and partial
+coverage, not an invented diff. If the file clock is incomparable, the
+named scope remains incomplete instead of claiming it was unchanged. Unknown
 flags stop package operand extraction, and test arguments after `-args` are not
 packages. Import paths are not resolved by executing Go. The normal sweep still
 reports new or outside-scope paths without inventing a baseline. Binary snapshots
@@ -182,12 +188,18 @@ mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH .
 A bare `mchanges` or `--mine` selects every allocated ID owned by the calling
 thread, including explicit markers for retired evidence. Forked threads inherit
 their visible stream under the fork's identity; resume uses the durable identity.
-`--list` compresses consecutive same-status IDs and shows accumulated `+N -N`
-counts, or `- -` for unknown counts. It includes pending and retired status and
-does not expose sibling threads' IDs. Explicit IDs can still be read across
+`--list` uses short agent-facing status and coverage labels instead of the
+command transcript. It compresses consecutive comparable complete IDs and
+shows known direct `+N -N` counts. Partial or unswept IDs remain separate;
+`?` marks unknown direct counts; `shared` retains overlapping-writer
+attribution, while `managed:N` counts tool-managed review
+files excluded from the default diff. Pending and retired IDs remain visible;
+sibling threads' IDs are not exposed. Explicit IDs can still be read across
 agents in the shared namespace. The default view shows each status and unified
 file diff. `--summary` gives added and removed line counts by path across
-selected records. Pending, retired and never-allocated selections get per-ID
+selected records, shortening paths inside the selected workspace. By default,
+managed files become one count row with a separate unavailable-count tally;
+explicit path filters expand individual managed paths. Pending, retired and never-allocated selections get per-ID
 status rows without hiding the remaining summary. It is not a net workspace diff;
 binary or incomplete files have unknown counts. Numeric range ends such as
 `amber1..3` are equivalent to `amber1..amber3`. A path operand belongs after `--`;

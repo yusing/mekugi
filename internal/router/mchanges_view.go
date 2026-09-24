@@ -11,41 +11,49 @@ import (
 )
 
 func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options changeReadOptions, index changeIndex) (string, error) {
-	var output strings.Builder
-	type group struct {
-		first, last, status string
-		added, removed      int
-		unknown             bool
+	type row struct {
+		first, last, status, coverage string
+		added, removed, managed       int
+		unknown                       bool
 	}
-	var current *group
+	var output strings.Builder
+	var previous *row
 	flush := func() {
-		if current == nil {
+		if previous == nil {
 			return
 		}
-		label := current.first
-		if current.last != label {
-			label += ".." + current.last
+		id := previous.first
+		if previous.last != id {
+			id += ".." + previous.last
 		}
-		if current.unknown {
-			fmt.Fprintf(&output, "%s %s - -\n", label, current.status)
-		} else {
-			fmt.Fprintf(&output, "%s %s +%d -%d\n", label, current.status, current.added, current.removed)
+		fmt.Fprintf(&output, "%s %s", id, previous.status)
+		if previous.coverage != "" {
+			fmt.Fprintf(&output, " %s", previous.coverage)
 		}
+		if previous.status != "pending" && previous.status != "retired" && (previous.added != 0 || previous.removed != 0 || previous.managed == 0) {
+			fmt.Fprintf(&output, " +%d -%d", previous.added, previous.removed)
+		}
+		if previous.unknown {
+			output.WriteString(" ?")
+		}
+		if previous.managed != 0 {
+			fmt.Fprintf(&output, " managed:%d", previous.managed)
+		}
+		output.WriteByte('\n')
 	}
 	for _, id := range options.ids {
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		next := group{first: id, last: id}
+		next := row{first: id, last: id}
 		change, found := index.Changes[id]
 		switch {
 		case !found:
 			next.status, _ = missingChangeState(index, id)
-			next.unknown = true
 		case len(change.Calls) == 0:
-			next.status, next.unknown = "pending", true
+			next.status = "pending"
 		default:
-			managed := true
+			var outcome *execOutcome
 			for _, call := range change.Calls {
 				record, found, err := s.read(options.workspace, call.ID, false)
 				if err != nil {
@@ -54,33 +62,61 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 				if !found || record.History.ChangeID != id || record.History.CorrelationID != change.Correlation {
 					return "", fmt.Errorf("change %s has a missing or inconsistent attempt", id)
 				}
-				next.status = trackedStatus(record.History, call.Confirmed)
-				managed = managed && call.Managed
-				for _, file := range record.History.ReviewFiles {
+				history := record.History
+				next.status = trackedStatus(history, call.Confirmed)
+				if history.ExecOutcome != nil {
+					outcome = history.ExecOutcome
+					next.coverage = outcome.Coverage
+				}
+				for _, file := range history.ReviewFiles {
+					if file.Origin != "" {
+						next.managed++
+						continue
+					}
 					added, removed := file.LineCounts()
 					if added < 0 || file.Binary || file.Incomplete != "" {
 						next.unknown = true
-					} else {
-						next.added += added
-						next.removed += removed
+						continue
 					}
+					next.added += added
+					next.removed += removed
 				}
 			}
-			if managed {
-				next.status += " managed only"
+			switch next.status {
+			case "changes observed":
+				next.status = "observed"
+			case "no changes observed":
+				next.status = "no changes"
 			}
-			if change.RetiredCalls > 0 {
-				next.status += " (partial history)"
+			if outcome != nil {
+				switch outcome.Status {
+				case execStatusCompleted:
+					next.status = "completed"
+					if len(outcome.Overlaps) != 0 {
+						next.status += " shared"
+					}
+				case execStatusFailed:
+					next.status = "failed"
+				default:
+					next.status = "observed"
+				}
+			}
+			if change.RetiredCalls != 0 {
+				next.status += " history:partial"
 				next.unknown = true
 			}
 		}
-		if current != nil && current.status == next.status && current.unknown == next.unknown {
-			current.last = id
-			current.added += next.added
-			current.removed += next.removed
+		// Compress only complete, comparable rows. Partial IDs retain their
+		// individual known counts so an agent can select the useful capture.
+		if previous != nil && previous.status == next.status && previous.coverage == next.coverage &&
+			!previous.unknown && !next.unknown && previous.managed == 0 && next.managed == 0 &&
+			next.coverage != execCoveragePartial && next.coverage != execCoverageUnswept {
+			previous.last = id
+			previous.added += next.added
+			previous.removed += next.removed
 		} else {
 			flush()
-			current = &next
+			previous = &next
 		}
 		if output.Len() > maxChangeReadBytes {
 			return "", errors.New("change list exceeds 64 MiB")

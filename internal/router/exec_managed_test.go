@@ -56,7 +56,7 @@ func TestManagedExecMChangesSurface(t *testing.T) {
 	}
 	mixedID := saveManagedExecChange(t, store, ctx, workspace, thread, "mixed", mixedFiles)
 	stdout, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, view: "list"})
-	wantList := managedID + " completed · exec formatter · generator, exact coverage managed only +21 -0\n" + mixedID + " completed · exec formatter · generator, exact coverage +2 -0\n"
+	wantList := managedID + " completed exact managed:21\n" + mixedID + " completed exact +1 -0 managed:1\n"
 
 	if err != nil || stdout != wantList {
 		t.Fatalf("managed list = %q, %v; want %q", stdout, err, wantList)
@@ -85,7 +85,7 @@ func TestManagedExecMChangesSurface(t *testing.T) {
 
 	stdout, err = store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{mixedID}, view: "summary"})
 	if err != nil ||
-		!strings.Contains(stdout, "1\t0\ttool-managed\tmanaged-summary.txt\n") ||
+		!strings.Contains(stdout, "tool-managed: 1 changed +1 -0\n") ||
 		!strings.Contains(stdout, "1\t0\tdirect-summary.txt\n") {
 		t.Fatalf("managed summary labels = %q, %v", stdout, err)
 	}

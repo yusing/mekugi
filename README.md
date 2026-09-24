@@ -297,10 +297,11 @@ inspect_file --json source.ts
 mrun --tail -n 20 go test ./internal/router
 ```
 
-`mchanges --summary` gives tab-separated added/deleted line counts per path.
-These counts are summed across selected observed records, not a current Git
-diff. Tool-managed files have a separate group; unknown counts stay unknown.
-Use `--history` or an explicit path filter to expand managed diffs.
+`mchanges --summary` gives tab-separated added/deleted line counts per path,
+relative to the selected workspace where possible. These are known captured
+counts across selected records, not a current Git diff. Tool-managed effects
+are folded into one count line; unavailable counts are reported separately.
+Use `--history` or an explicit path filter to inspect managed paths and diffs.
 Bounded output includes an exact `mread` continuation when needed. Multiple handles
 share one budget. `mcat` accepts colon or dash ranges and several ranges per path;
 `-n` retains its default 6000-token ceiling, with omitted rows recoverable through `mread`.
@@ -312,7 +313,10 @@ oversized rows and unterminated command streams use byte continuation.
 use `--json` for metadata and structured outlines. Syntax-error rows identify
 incomplete parsing without hiding valid declaration ranges elsewhere.
 A bare `mchanges` reviews your current thread’s recorded edits. `--list` shows
-compressed ID ranges, statuses and counts; `--net` composes repeated edits into
+compressed ID ranges, short statuses, and known direct counts. Partial records
+keep their own IDs and mark unknown direct counts with `?`; `shared` flags
+overlapping writers, and tool-managed file
+counts are separate. `--net` composes repeated edits into
 captured net diffs, not a live Git diff. Unconfirmed, incomplete, and binary
 evidence requires ordinary review without `--net`. `amber1..3` is a supported range shorthand.
 Paged reviews remain stable when another edit completes. A

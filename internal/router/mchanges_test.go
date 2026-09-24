@@ -87,7 +87,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	if stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		"mchanges --list", nil, invocation); status != 0 || stderr != "" || stdout != ownID+" pending - -\n" {
+		"mchanges --list", nil, invocation); status != 0 || stderr != "" || stdout != ownID+" pending\n" {
 		t.Fatalf("own pending change not discoverable: %q, %q, %d", stdout, stderr, status)
 	}
 	frontend, ok := registry.frontends["mchanges"]
