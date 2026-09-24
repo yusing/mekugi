@@ -122,6 +122,13 @@ provider HTTP errors; different details remain distinct notices.
 Forwarding failures classify known wrapped transport errors without exporting addresses, URLs, WebSocket close reasons, or arbitrary error text. Debug files remain
 separate from sanitized metrics/capture. Initialization failure prevents launch; subsequent
 debug write failures are surfaced on exit without changing request execution.
+Model-catalog failures are identified as catalog refresh failures, not failed inference turns.
+Their notices report a safe transport class or upstream HTTP status, and a debug event carries
+the same diagnostic reference, safe code, and upstream/downstream status without response bodies
+or raw errors. The catalog HTTP response remains available to Codex.
+Streaming tool-call projection and replay-persistence failures report their safe operation or
+conflict class instead of collapsing into a generic translation error. Tool input, provider
+field values, and raw storage errors remain absent from notices and sanitized diagnostics.
 
 Stream-end diagnostics identify the actual upstream transport separately from a synthetic
 HTTP status used by a WebSocket bridge. They retain bounded provider request/response IDs,
@@ -332,6 +339,10 @@ count, and reconciliation duration. Instruction dumps include `projected_input_b
 and `wire_input_bytes`. These measure serialized input, not provider cache hits or billed
 tokens; provider-reported usage and existing request timing remain the evidence for
 cache effectiveness and latency. HTTP, Grok and OpenCode remain stateless full-history paths.
+Continuation guidance attached to a yielded tool result remains historical after a later
+wait or `write_stdin` result; ordinary completion does not rewrite the provider-confirmed
+prefix merely to retire that guidance. Later results determine whether a handle is still active.
+An actual tool-catalog change may replace obsolete guidance and rebase history.
 Automatic successors inherit the parent
 request's translation context; explicit continuations use their own settings.
 Neither a dropped connection nor a failed send silently replays requests or

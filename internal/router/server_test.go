@@ -5,12 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"testing/iotest"
 	"testing/synctest"
@@ -1000,7 +1003,8 @@ func TestModelsHandlerRejectsMissingAuthentication(t *testing.T) {
 	})}
 	recorder := httptest.NewRecorder()
 
-	modelsHandler(newProviderClient(testProviderBaseURL, httpClient), nil)(
+	issues := NewCriticalErrors()
+	modelsHandler(newProviderClient(testProviderBaseURL, httpClient), issues)(
 		recorder,
 		httptest.NewRequest(http.MethodGet, "/v1/models", nil),
 	)
@@ -1010,6 +1014,114 @@ func TestModelsHandlerRejectsMissingAuthentication(t *testing.T) {
 	}
 	if forwarded {
 		t.Fatal("unauthenticated models request reached upstream")
+	}
+	if notice := strings.Join(issues.Pending(), "\n"); !strings.Contains(notice, "missing valid Codex Authorization or account headers") || strings.Contains(notice, "unrecognized error type") {
+		t.Fatalf("missing authentication diagnostic: %s", notice)
+	}
+}
+
+func TestModelsHandlerReportsSafeForwardFailure(t *testing.T) {
+	secret := "Bearer should-not-appear"
+	httpClient := &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("%s: %w", secret, syscall.ECONNRESET)
+	})}
+	issues := NewCriticalErrors()
+	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	request.Header = codexAuthHeaders()
+	request.Header.Set(sessionIDHeader, "models-session")
+	debugLog, err := os.CreateTemp(t.TempDir(), "router-*.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer debugLog.Close()
+	request = request.WithContext(context.WithValue(request.Context(), debugContextKey{}, &debugOutput{log: debugLog}))
+	recorder := httptest.NewRecorder()
+
+	modelsHandler(newProviderClient(testProviderBaseURL, httpClient), issues)(recorder, request)
+
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d", recorder.Code)
+	}
+	notices := strings.Join(issues.Pending(), "\n")
+	if !strings.Contains(notices, "could not refresh the model catalog") ||
+		!strings.Contains(notices, "model catalog could not be fetched") ||
+		!strings.Contains(notices, "connection was reset") ||
+		strings.Contains(notices, secret) || strings.Contains(notices, "not safe for display") ||
+		strings.Contains(recorder.Body.String(), secret) {
+		t.Fatalf("unsafe or missing models diagnostic: %s", notices)
+	}
+	raw, err := os.ReadFile(debugLog.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var event struct {
+		Event               string `json:"event"`
+		DiagnosticCode      string `json:"diagnostic_code"`
+		DiagnosticReference string `json:"diagnostic_reference"`
+		SessionID           string `json:"session_id"`
+	}
+	if err := json.Unmarshal(raw, &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.Event != "models_request_failure" || event.DiagnosticCode != "models_upstream_connection_reset" ||
+		event.DiagnosticReference == "" || event.SessionID != "models-session" ||
+		!strings.Contains(notices, event.DiagnosticReference) || strings.Contains(string(raw), secret) {
+		t.Fatalf("uncorrelated or unsafe models debug event: %s", raw)
+	}
+}
+
+func TestModelsHandlerReportsUpstreamStatusWithoutBody(t *testing.T) {
+	secret := "private upstream body"
+	httpClient := &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusServiceUnavailable,
+			Body: io.NopCloser(strings.NewReader(secret))}, nil
+	})}
+	issues := NewCriticalErrors()
+	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	request.Header = codexAuthHeaders()
+	recorder := httptest.NewRecorder()
+
+	modelsHandler(newProviderClient(testProviderBaseURL, httpClient), issues)(recorder, request)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d", recorder.Code)
+	}
+	notices := strings.Join(issues.Pending(), "\n")
+	if !strings.Contains(notices, "model catalog returned HTTP 503") || strings.Contains(notices, secret) {
+		t.Fatalf("unsafe or missing models status: %s", notices)
+	}
+}
+
+func TestModelsHandlerReportsCatalogFailureBeforeInferenceFailure(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		status  int
+		failure error
+		cause   string
+	}{
+		{name: "unauthorized", status: http.StatusUnauthorized, cause: "HTTP 401"},
+		{name: "forbidden", status: http.StatusForbidden, cause: "HTTP 403"},
+		{name: "rate limited", status: http.StatusTooManyRequests, cause: "HTTP 429"},
+		{name: "deadline", failure: context.DeadlineExceeded, cause: "exceeded its deadline"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+				if test.failure != nil {
+					return nil, test.failure
+				}
+				return &http.Response{StatusCode: test.status, Body: io.NopCloser(strings.NewReader("private body"))}, nil
+			})}
+			issues := NewCriticalErrors()
+			request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+			request.Header = codexAuthHeaders()
+			modelsHandler(newProviderClient(testProviderBaseURL, client), issues)(httptest.NewRecorder(), request)
+			notice := strings.Join(issues.Pending(), "\n")
+			if !strings.Contains(notice, "could not refresh the model catalog") ||
+				!strings.Contains(notice, test.cause) || !strings.Contains(notice, "Diagnostic reference:") ||
+				strings.Contains(notice, "rate-limited this turn") || strings.Contains(notice, "private body") {
+				t.Fatalf("incorrect catalog diagnostic: %s", notice)
+			}
+		})
 	}
 }
 

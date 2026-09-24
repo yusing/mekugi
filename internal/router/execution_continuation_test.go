@@ -64,7 +64,7 @@ func TestNativeExecutionMetadataBoundary(t *testing.T) {
 	}
 }
 
-func TestExecutionContinuationRetiresSuggestions(t *testing.T) {
+func TestExecutionContinuationPreservesHistoricalSuggestions(t *testing.T) {
 	for _, kind := range []string{"cell", "session", "nested session"} {
 		states := []string{"pending", "yielded", "completed"}
 		if kind == "cell" {
@@ -107,6 +107,7 @@ func TestExecutionContinuationRetiresSuggestions(t *testing.T) {
 				if err := json.Unmarshal(request.fields["input"], &items); err != nil {
 					t.Fatal(err)
 				}
+				projectedOutput := string(items[1]["output"])
 				items = append(items, resume)
 				if state != "pending" {
 					output := terminal
@@ -123,12 +124,12 @@ func TestExecutionContinuationRetiresSuggestions(t *testing.T) {
 				if err := json.Unmarshal(request.fields["input"], &items); err != nil {
 					t.Fatal(err)
 				}
-				if !sameJSONValue(items[1]["output"], original["output"]) {
-					t.Fatalf("old suggestion or changed host output: %s", items[1]["output"])
+				if string(items[1]["output"]) != projectedOutput {
+					t.Fatalf("already-sent output changed: %s", items[1]["output"])
 				}
-				want := 0
+				want := 1
 				if state == "yielded" {
-					want = 1
+					want = 2
 				}
 				if got := strings.Count(string(request.fields["input"]), `\"continuation\"`); got != want {
 					t.Fatalf("got %d suggestions, want %d: %s", got, want, request.fields["input"])
@@ -140,6 +141,67 @@ func TestExecutionContinuationRetiresSuggestions(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestExecutionContinuationCompletionKeepsProviderPrefix(t *testing.T) {
+	for _, test := range []struct {
+		name, startOutput, finishOutput string
+		startCall, finishCall           map[string]json.RawMessage
+	}{
+		{"native", "Wall time: 0.1 seconds\nProcess running with session ID 42\nOutput:\n",
+			"Wall time: 0.1 seconds\nProcess exited with code 0\nOutput:\n",
+			continuationTestCall("exec_command", "start", `{"cmd":"sleep 100"}`),
+			continuationTestCall("write_stdin", "finish", `{"session_id":42,"chars":""}`)},
+		{"code mode", "Script completed\nWall time 0.1 seconds\nOutput:\n{\"session_id\":42,\"output\":\"\"}",
+			"Script completed\nWall time 0.1 seconds\nOutput:\n{\"exit_code\":0,\"output\":\"done\"}",
+			continuationTestCall("exec", "start", `text(await tools.exec_command({cmd:"sleep 100",yield_time_ms:1000}));`),
+			continuationTestCall("exec", "finish", `text(await tools.write_stdin({session_id:42,chars:""}));`)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+				"input": mustMarshalJSON([]any{test.startCall, continuationTestOutput("start", test.startOutput)}),
+			}}
+			// WebSocket history retains the host's raw input, not this projection.
+			var nativeHistory []map[string]json.RawMessage
+			if err := json.Unmarshal(request.fields["input"], &nativeHistory); err != nil {
+				t.Fatal(err)
+			}
+			projectExecutionContinuations(&request, continuationTestCatalog(), "exec", nil)
+			var prefix []json.RawMessage
+			if err := json.Unmarshal(request.fields["input"], &prefix); err != nil {
+				t.Fatal(err)
+			}
+			confirmed, err := (providerHistory{}).append(prefix)
+			if err != nil {
+				t.Fatal(err)
+			}
+			confirmed.confirmed = true
+
+			request.setInput(mustMarshalJSON(append(nativeHistory, test.finishCall, continuationTestOutput("finish", test.finishOutput))))
+			request.fields["previous_response_id"] = mustMarshalJSON("parent")
+			projectExecutionContinuations(&request, continuationTestCatalog(), "exec", nil)
+			exchange := &webSocketExchange{parentID: "parent", history: &webSocketHistory{parent: &webSocketHistory{providerHistory: confirmed}}}
+			if err := exchange.reconcileProviderHistory(&request, mustMarshalJSON(request.fields)); err != nil {
+				t.Fatal(err)
+			}
+			if request.rebaseInput || request.cachedInput != len(prefix) {
+				t.Fatalf("completed continuation rewrote provider history: reason=%s cached=%d rebase=%v",
+					exchange.reconciliationReason, request.cachedInput, request.rebaseInput)
+			}
+			wire, err := request.incrementalBody(mustMarshalJSON(request.fields))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var sent map[string]json.RawMessage
+			if err := json.Unmarshal(wire, &sent); err != nil {
+				t.Fatal(err)
+			}
+			var suffix []json.RawMessage
+			if err := json.Unmarshal(sent["input"], &suffix); err != nil || len(suffix) != 2 || jsonString(sent, "previous_response_id") != "parent" {
+				t.Fatalf("continuation was resent instead of incremental: %s, %v", wire, err)
+			}
+		})
 	}
 }
 

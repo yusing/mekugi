@@ -2,9 +2,42 @@ package router
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
+
+func TestCompletedCodeModeCallInputChangeHasSafeDiagnostic(t *testing.T) {
+	transform, _, _, _ := newMekugiTestTransform(t)
+	transform.local["call"] = mekugiHistory{ToolName: "exec", Script: "original input"}
+	_, err := transform.TransformSSE(mustMarshalJSON(map[string]any{
+		"type": "response.output_item.done",
+		"item": map[string]any{"type": "custom_tool_call", "id": "item", "call_id": "call",
+			"name": "exec", "input": "changed private input", "status": "completed"},
+	}))
+	diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
+	if !ok || diagnostic.code != "code_mode_call_input_changed" ||
+		strings.Contains(diagnostic.summary, "private input") {
+		t.Fatalf("completed call diagnostic = %#v, error = %v", diagnostic, err)
+	}
+}
+
+func TestCompletedOutputItemCommentaryFailureHasSafeDiagnostic(t *testing.T) {
+	transform, _, _, _ := newMekugiTestTransform(t)
+	transform.commentaryTools = commentaryToolCatalog{
+		functionToolKey("functions", "exec_command"): {qualifiedName: "functions.exec_command"},
+	}
+	_, err := transform.TransformSSE(mustMarshalJSON(map[string]any{
+		"type": "response.output_item.done",
+		"item": map[string]any{"type": "function_call", "id": "item", "call_id": "call",
+			"namespace": "functions", "name": "exec_command", "arguments": "private malformed arguments", "status": "completed"},
+	}))
+	diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
+	if !ok || diagnostic.code != "output_item_commentary" ||
+		strings.Contains(diagnostic.summary, "private malformed") {
+		t.Fatalf("completed commentary diagnostic = %#v, error = %v", diagnostic, err)
+	}
+}
 
 func TestPrepareStockExecutionPreservesCodeModeAndNativeTools(t *testing.T) {
 	guide := newManagedMekugiProxy(t).registry.frontendGuidance

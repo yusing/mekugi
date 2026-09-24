@@ -278,7 +278,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			}
 			message, err := t.transformStructuredCommentary(item.fields)
 			if err != nil {
-				return nil, err
+				return nil, criticalDiagnostic(err, "commentary_call_completion", "Mekugi could not complete a buffered commentary call", true)
 			}
 			var addedEnvelope struct {
 				Item json.RawMessage `json:"item"`
@@ -290,23 +290,23 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			addedItem["arguments"] = item.fields["arguments"]
 			addedPayload, err := marshalProtocolJSON(addedItem)
 			if err != nil {
-				return nil, err
+				return nil, criticalDiagnostic(err, "commentary_added_encode", "Mekugi could not encode a buffered commentary call", true)
 			}
 			addedEvent, err := replaceRawField(pending.added, "item", addedPayload)
 			if err != nil {
-				return nil, err
+				return nil, criticalDiagnostic(err, "commentary_added_projection", "Mekugi could not project a buffered commentary call", true)
 			}
 			argumentsDone, err := replaceRawField(pending.argumentsDone, "arguments", item.fields["arguments"])
 			if err != nil {
-				return nil, err
+				return nil, criticalDiagnostic(err, "commentary_arguments_projection", "Mekugi could not project completed commentary arguments", true)
 			}
 			itemPayload, err := marshalProtocolJSON(item)
 			if err != nil {
-				return nil, err
+				return nil, criticalDiagnostic(err, "commentary_item_encode", "Mekugi could not encode a completed commentary item", true)
 			}
 			itemDone, err := replaceRawField(payload, "item", itemPayload)
 			if err != nil {
-				return nil, err
+				return nil, criticalDiagnostic(err, "commentary_item_projection", "Mekugi could not project a completed commentary item", true)
 			}
 			delete(t.pending, itemID)
 			if err := t.commitLocalCall(callID); err != nil {
@@ -321,12 +321,12 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		originalArguments := string(item.fields["arguments"])
 		message, err := t.transformStructuredCommentary(item.fields)
 		if err != nil {
-			return nil, err
+			return nil, criticalDiagnostic(err, "output_item_commentary", "Mekugi could not process completed output-item commentary", true)
 		}
 		item = newResponsesItem(item.fields)
 		changed, err := t.transformOutputItem(&item)
 		if err != nil {
-			return nil, err
+			return nil, criticalDiagnostic(err, "output_item_projection", "Mekugi could not project a completed upstream output item", true)
 		}
 		if err := t.commitLocalCall(callID); err != nil {
 			return nil, err
@@ -338,11 +338,11 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		delete(t.pending, itemID)
 		transformed, err := marshalProtocolJSON(item)
 		if err != nil {
-			return nil, err
+			return nil, criticalDiagnostic(err, "output_item_encode", "Mekugi could not encode a completed output item", true)
 		}
 		event, err := replaceRawField(payload, "item", transformed)
 		if err != nil {
-			return nil, err
+			return nil, criticalDiagnostic(err, "output_item_event_projection", "Mekugi could not project a completed output-item event", true)
 		}
 		if message != nil {
 			return [][]byte{assistantCommentaryDoneEvent(message), event}, nil
@@ -649,7 +649,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		item.Type == "custom_tool_call" {
 		callID := item.CallID
 		if callID == "" {
-			return false, errors.New("code Mode call has no call ID")
+			return false, staticCriticalDiagnostic("code_mode_call_missing_id", "the upstream Code Mode call had no call ID")
 		}
 		var originalInput string
 		if item.Input != nil {
@@ -657,7 +657,8 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		}
 		if retained, exists := t.local[callID]; exists && retained.ToolName == name {
 			if retained.Script != originalInput {
-				return false, fmt.Errorf("code Mode call %q changed input", callID)
+				return false, criticalDiagnostic(fmt.Errorf("code Mode call %q changed input", callID),
+					"code_mode_call_input_changed", "the completed Code Mode call changed its earlier input", true)
 			}
 			retained.UpstreamItem = item.cloneFields()
 			t.local[callID] = retained
@@ -666,7 +667,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		}
 		input, changed, err := t.lowerCodeModeCommentary(callID, originalInput)
 		if err != nil {
-			return false, err
+			return false, criticalDiagnostic(err, "code_mode_call_lowering", "Mekugi could not lower a Code Mode call", true)
 		}
 		patches := nativePatchesInCall(name, originalInput, t.directory)
 		execs, dynamic := stockLiteralExecCommands(originalInput, t.directory, t.sessionShell)
@@ -696,19 +697,21 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		return changed, nil
 	}
 	if t.nativeTools && name == nativeExecCommandToolName && item.Type == "function_call" {
-		return false, t.observeStockExecCommand(item)
+		return false, criticalDiagnostic(t.observeStockExecCommand(item), "stock_exec_observation",
+			"Mekugi could not observe a stock exec_command call", true)
 	}
 	if !t.nativeTools || name != applyPatchToolName || item.Type != "custom_tool_call" {
 		return false, nil
 	}
 	callID := item.CallID
 	if callID == "" || item.Input == nil {
-		return false, errors.New("upstream emitted malformed stock apply_patch call")
+		return false, staticCriticalDiagnostic("stock_patch_call_malformed", "the upstream stock apply_patch call was malformed")
 	}
 	input := *item.Input
 	if retained, exists := t.local[callID]; exists {
 		if retained.ToolName != name || retained.Script != input {
-			return false, fmt.Errorf("stock apply_patch call %q changed input", callID)
+			return false, criticalDiagnostic(fmt.Errorf("stock apply_patch call %q changed input", callID),
+				"stock_patch_call_input_changed", "the completed stock apply_patch call changed its earlier input", true)
 		}
 		retained.UpstreamItem = item.cloneFields()
 		t.local[callID] = retained

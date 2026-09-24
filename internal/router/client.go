@@ -166,7 +166,8 @@ func requiredCodexAuthHeaders(headers http.Header) (string, string, error) {
 func (c *providerClient) forwardModels(ctx context.Context, headers http.Header, rawQuery string) (*http.Response, error) {
 	authorization, accountID, err := requiredCodexAuthHeaders(headers)
 	if err != nil {
-		return nil, err
+		return nil, criticalDiagnostic(err, "models_auth_headers",
+			"the model catalog request is missing valid Codex Authorization or account headers", true)
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.baseURL, "/")+"/models", nil)
 	if err != nil {

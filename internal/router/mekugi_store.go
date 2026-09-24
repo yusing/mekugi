@@ -242,7 +242,8 @@ func mergeReplayHistory(old, next mekugiHistory) (mekugiHistory, error) {
 	old.CommentaryMessageIDs = nil
 	next.CommentaryMessageIDs = nil
 	if !reflect.DeepEqual(old, next) {
-		return next, errors.New("conflicting durable replay translation")
+		return next, criticalDiagnostic(errors.New("conflicting durable replay translation"),
+			"replay_translation_conflict", "a completed tool call conflicted with its retained replay translation", true)
 	}
 	merged := make(map[string]json.RawMessage, len(oldItem)+len(nextItem))
 	maps.Copy(merged, oldItem)
@@ -268,7 +269,8 @@ func mergeReplayHistory(old, next mekugiHistory) (mekugiHistory, error) {
 			finalized := k == "status" && string(previous) == `"in_progress"` &&
 				(string(v) == `"completed"` || string(v) == `"incomplete"`)
 			if !bytes.Equal(previous, v) && !metadata && !finalized {
-				return next, fmt.Errorf("conflicting durable replay item field %q", k)
+				return next, criticalDiagnostic(fmt.Errorf("conflicting durable replay item field %q", k),
+					"replay_item_conflict", "a completed tool call changed a retained replay item field", true)
 			}
 		}
 		merged[k] = v

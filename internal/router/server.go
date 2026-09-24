@@ -338,25 +338,46 @@ func modelsHandler(provider *providerClient, issues *CriticalErrors) http.Handle
 	return func(writer http.ResponseWriter, request *http.Request) {
 		tracked := &trackedResponseWriter{ResponseWriter: writer}
 		writer = tracked
+		debug, requestID := debugRequest(request.Context())
+		var upstreamStatus int
+		var failure error
 		defer func() {
 			if tracked.statusCode >= 400 && request.Context().Err() == nil {
-				issues.record(&requestFinalization{sessionID: request.Header.Get(sessionIDHeader), failurePhase: requestFailureForward,
-					upstreamStatusCode: tracked.statusCode, observation: requestObservation{outcome: requestOutcomeFailed}}, nil)
+				if failure == nil {
+					failure = staticCriticalDiagnostic(fmt.Sprintf("models_http_%d", upstreamStatus),
+						fmt.Sprintf("the upstream model catalog returned HTTP %d", upstreamStatus))
+				}
+				finalization := &requestFinalization{sessionID: request.Header.Get(sessionIDHeader),
+					failurePhase: requestFailureModels, upstreamStatusCode: upstreamStatus,
+					observation: requestObservation{outcome: requestOutcomeFailed}}
+				issues.record(finalization, failure)
+				debug.event(map[string]any{
+					"event": "models_request_failure", "request_id": requestID,
+					"session_id": finalization.sessionID, "thread_id": codexThreadID(request.Header),
+					"upstream_status": upstreamStatus, "downstream_status": tracked.statusCode,
+					"diagnostic_code":      finalization.diagnosticCode,
+					"diagnostic_reference": finalization.diagnosticReference,
+				})
 			}
 		}()
 
 		response, err := provider.forwardModels(request.Context(), request.Header, request.URL.RawQuery)
 		if err != nil {
-			http.Error(writer, err.Error(), http.StatusBadGateway)
+			failure = modelsForwardDiagnostic(err)
+			diagnostic, _ := errors.AsType[*criticalDiagnosticError](failure)
+			http.Error(writer, diagnostic.summary, http.StatusBadGateway)
 			return
 		}
 		defer response.Body.Close()
+		upstreamStatus = response.StatusCode
 		body, err := io.ReadAll(io.LimitReader(response.Body, modelsResponseBufferBytes+1))
 		if err != nil {
+			failure = criticalDiagnostic(err, "models_body_read", "the upstream model catalog response could not be read", true)
 			http.Error(writer, fmt.Sprintf("read upstream models response: %v", err), http.StatusBadGateway)
 			return
 		}
 		if len(body) > modelsResponseBufferBytes {
+			failure = staticCriticalDiagnostic("models_body_limit", "the upstream model catalog response exceeded the router buffer budget")
 			http.Error(writer, "upstream models response exceeds the router buffer budget", http.StatusBadGateway)
 			return
 		}
@@ -368,6 +389,19 @@ func modelsHandler(provider *providerClient, issues *CriticalErrors) http.Handle
 		writer.WriteHeader(response.StatusCode)
 		_, _ = writer.Write(body)
 	}
+}
+
+func modelsForwardDiagnostic(err error) error {
+	if _, classified := errors.AsType[*criticalDiagnosticError](err); classified {
+		return err
+	}
+	diagnostic, _ := errors.AsType[*criticalDiagnosticError](forwardCriticalDiagnostic(err))
+	code := diagnostic.code
+	if !strings.HasPrefix(code, "models_") {
+		code = "models_" + code
+	}
+	return &criticalDiagnosticError{err: err, code: code,
+		summary: "the model catalog could not be fetched: " + diagnostic.summary, distinct: true}
 }
 
 func responsesHandler(
@@ -476,6 +510,7 @@ type requestFailurePhase string
 const (
 	requestFailurePrepare            requestFailurePhase = "prepare"
 	requestFailureForward            requestFailurePhase = "forward"
+	requestFailureModels             requestFailurePhase = "models"
 	requestFailureInspectResponse    requestFailurePhase = "inspect_response"
 	requestFailureStreamIdleTimeout  requestFailurePhase = "stream_idle_timeout"
 	requestFailureTransform          requestFailurePhase = "transform"

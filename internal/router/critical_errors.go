@@ -155,6 +155,8 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 		category, message = "provider_http_error:"+f.diagnosticReference, rejection.Error()
 	} else {
 		switch {
+		case f.failurePhase == requestFailureModels:
+			message = "Mekugi could not refresh the model catalog. Existing model turns may still work."
 		case f.upstreamStatusCode == 401 || f.upstreamStatusCode == 403:
 			category, message = "authentication", "Mekugi upstream authentication was rejected. Check your Codex or Grok credentials before retrying."
 		case f.upstreamStatusCode == 429:
@@ -257,6 +259,8 @@ func requestFailureDescription(phase requestFailurePhase) string {
 		return "request preparation"
 	case requestFailureForward:
 		return "upstream request forwarding"
+	case requestFailureModels:
+		return "model catalog refresh"
 	case requestFailureInspectResponse:
 		return "upstream response inspection"
 	case requestFailureStreamIdleTimeout:

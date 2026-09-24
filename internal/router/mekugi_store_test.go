@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -87,6 +88,28 @@ func TestMekugiReplayStoreQuotaAndCommentary(t *testing.T) {
 	}
 	if _, ok, err := s.lookup(t.Context(), "/w", "c"); err != nil || ok {
 		t.Fatalf("partial record %v %v", ok, err)
+	}
+}
+
+func TestTerminalResponseReplayPersistenceFailureIsClassified(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
+	transform.local["completed-call"] = mekugiHistory{Script: "completed"}
+	if err := os.Symlink(filepath.Join(t.TempDir(), "absent"),
+		filepath.Join(proxy.replayStore.directory, replayRecordName(transform.directory, "completed-call", false))); err != nil {
+		t.Fatal(err)
+	}
+	_, err := transform.TransformSSE([]byte(`{"type":"response.completed","response":{"status":"completed","output":[]}}`))
+	if err == nil {
+		t.Fatal("terminal response claimed successful persistence")
+	}
+	diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
+	if !ok || diagnostic.code != "replay_history_commit" || diagnostic.summary != "Mekugi could not persist completed response history" {
+		t.Fatalf("terminal persistence diagnostic = %#v, wrapped = %v", diagnostic, err)
+	}
+	if transform.historyCommitted {
+		t.Fatal("failed history was marked committed")
 	}
 }
 
@@ -292,6 +315,25 @@ func TestMekugiReplayStoreStructuredFieldWhitespaceRetry(t *testing.T) {
 	h.UpstreamItem["extension"] = json.RawMessage(`{"x":1,"values":["<>&","<",2]}`)
 	if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"c": h}); err == nil {
 		t.Fatal("accepted changed escape spelling")
+	}
+}
+
+func TestReplayItemConflictReportsSafeCause(t *testing.T) {
+	old := mekugiHistory{UpstreamItem: map[string]json.RawMessage{"input": mustMarshalJSON("private old script")}}
+	next := mekugiHistory{UpstreamItem: map[string]json.RawMessage{"input": mustMarshalJSON("private new script")}}
+	_, err := mergeReplayHistory(old, next)
+	if err == nil {
+		t.Fatal("accepted changed tool input")
+	}
+	issues := NewCriticalErrors()
+	finalization := &requestFinalization{failurePhase: requestFailureTransform,
+		observation: requestObservation{outcome: requestOutcomeFailed}}
+	issues.record(finalization, err)
+	notice := strings.Join(issues.Pending(), "\n")
+	if finalization.diagnosticCode != "replay_item_conflict" ||
+		!strings.Contains(notice, "changed a retained replay item field") ||
+		strings.Contains(notice, "private") || strings.Contains(notice, "not safe for display") {
+		t.Fatalf("unsafe or missing replay conflict diagnostic: %s", notice)
 	}
 }
 

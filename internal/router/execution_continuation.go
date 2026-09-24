@@ -455,8 +455,11 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 			pending[executionHandleKey(*notice)] = index
 		}
 	}
-	// A continuation call consumes the earlier suggestion, even while its result
-	// is pending. Only a later yield can advertise that handle again.
+	// Reconstruct available yielded suggestions, including historical ones. Native
+	// WebSocket history does not retain projections, but the provider does. A
+	// later wait result makes earlier advice historical without removing it from
+	// the confirmed prefix. Unavailable advice is kept only while outstanding;
+	// a tool-catalog change may replace obsolete advice.
 	for index, notice := range notices {
 		item := items[index]
 		latest, outstanding := pending[executionHandleKey(notice)]
@@ -464,12 +467,13 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 		text := string(mustMarshalJSON(map[string]any{"continuation": notice}))
 		annotation := mustMarshalJSON(map[string]string{"type": "input_text", "text": text})
 		// Re-prepared requests can contain annotations from an older catalog.
-		// Retire those too, while preserving host output and unrelated warnings.
+		// Replace only obsolete advice, preserving host output and already-sent
+		// annotations whose tool contract has not changed.
 		var parts []json.RawMessage
 		if json.Unmarshal(item["output"], &parts) == nil {
 			kept := parts[:0:0]
 			for _, part := range parts {
-				if executionAnnotationMatches(part, notice) && (!outstanding || !sameJSONValue(part, annotation)) {
+				if executionAnnotationMatches(part, notice) && !sameJSONValue(part, annotation) {
 					changed = true
 					continue
 				}
@@ -479,7 +483,7 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 				item["output"] = mustMarshalJSON(kept)
 			}
 		}
-		if outstanding {
+		if outstanding || notice.NextCall != nil {
 			output, added, err := appendToolOutputWarning(item["output"], text)
 			if err == nil && added {
 				item["output"] = output
