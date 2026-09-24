@@ -151,7 +151,6 @@ func (t *mekugiResponseTransform) endPreview(itemID string) {
 func (t *mekugiResponseTransform) finishPreview(itemID, input string) {
 	if worker := t.previews[itemID]; worker != nil {
 		worker.finish(input)
-		delete(t.previews, itemID)
 	}
 }
 

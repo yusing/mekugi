@@ -130,6 +130,48 @@ func TestStockPatchPreviewKeepsSourceFromBeforeTheCall(t *testing.T) {
 	}
 }
 
+func TestCodeModePatchFinalPreviewUsesPreExecutionSource(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
+	path := filepath.Join(workspace, "sample.go")
+	if err := os.WriteFile(path, []byte("old()\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	broker := newLiveDiffBroker(t.Context())
+	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true}}})
+	sub := broker.subscribe()
+	<-sub.events
+	proxy.autoLiveDiff = &autoLiveDiff{events: broker, requested: true,
+		scope: liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true}}}}
+	proxy.autoLiveDiff.enabled.Store(true)
+	patch := "*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n+new()\n*** End Patch\n"
+	script := "const patch = " + string(mustMarshalJSON(patch)) + "; text(await tools.apply_patch(patch));"
+	for _, event := range []map[string]any{
+		{"type": "response.output_item.added", "output_index": 0, "item": map[string]any{
+			"type": "custom_tool_call", "id": "code-item", "call_id": "code-call", "name": transform.codeModeToolName,
+			"input": "", "status": "in_progress"}},
+		{"type": "response.custom_tool_call_input.delta", "item_id": "code-item", "delta": script},
+		{"type": "response.custom_tool_call_input.done", "item_id": "code-item", "call_id": "code-call", "input": script},
+	} {
+		if _, err := transform.TransformSSE(mustTestJSON(t, event)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The host runs after input.done, while the preview worker can still be
+	// revealing the call. Its final frame must use the captured old source.
+	if err := os.WriteFile(path, []byte("new()\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+		return preview.Complete
+	})
+	if len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "-old()") ||
+		!strings.Contains(preview.Files[0].Diff, "+new()") || strings.HasPrefix(preview.Status, "PREVIEW UNAVAILABLE:") {
+		t.Fatalf("final preview did not use pre-execution source: %+v", preview)
+	}
+}
+
 func TestStockPatchPreviewBlankContextAndInsertion(t *testing.T) {
 	for _, tc := range []struct{ before, patch, removed, added string }{
 		{"a()\n\na()\n", "@@\n\n-a()\n+b()", "-a()", "+b()"},

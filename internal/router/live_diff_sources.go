@@ -31,6 +31,47 @@ func withLiveDiffSources(ctx context.Context) context.Context {
 	return context.WithValue(ctx, liveDiffSourcesContext{}, &liveDiffSources{})
 }
 
+// Prime the final preview with the bounded baseline captured before the host
+// receives a completed call. The preview worker may still be pacing its input
+// when Codex applies the patch, so its first filesystem read can be too late.
+func (t *mekugiResponseTransform) primePreviewSources(itemID string, patches []nativePatchObservation) {
+	worker := t.previews[itemID]
+	if worker == nil || len(patches) == 0 {
+		return
+	}
+	sources, _ := worker.ctx.Value(liveDiffSourcesContext{}).(*liveDiffSources)
+	if sources == nil {
+		return
+	}
+	sources.mu.Lock()
+	defer sources.mu.Unlock()
+	if sources.files == nil {
+		sources.files = make(map[liveDiffSourceKey]liveDiffSource)
+	}
+	reader := reflect.ValueOf(readNativePatchFile).Pointer()
+	prime := func(path, content string, exists bool, failure string) {
+		if path == "" || failure != "" {
+			return
+		}
+		key := liveDiffSourceKey{reader, path}
+		if _, cached := sources.files[key]; !cached {
+			sources.files[key] = liveDiffSource{content, exists}
+		}
+	}
+	for _, patch := range patches {
+		for _, file := range patch.Files {
+			prime(file.BeforePath, file.Before, file.Exists, file.Error)
+			if file.AfterPath != file.BeforePath {
+				if file.BeforePath == "" {
+					prime(file.AfterPath, file.Before, file.Exists, file.Error)
+				} else {
+					prime(file.AfterPath, file.TargetBefore, file.TargetExists, file.TargetError)
+				}
+			}
+		}
+	}
+}
+
 func liveDiffSourceRead(ctx context.Context, path string, read func(string) (string, bool, error)) (string, bool, error) {
 	sources, _ := ctx.Value(liveDiffSourcesContext{}).(*liveDiffSources)
 	if sources == nil {

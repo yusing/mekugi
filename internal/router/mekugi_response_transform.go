@@ -226,6 +226,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 				}
 				callID := cmp.Or(addedCallID, envelope.CallID)
 				t.finishPreview(envelope.ItemID, envelope.Input)
+				defer delete(t.previews, envelope.ItemID)
 				addedFields["call_id"] = mustMarshalJSON(callID)
 				original := maps.Clone(addedFields)
 				original["input"] = mustMarshalJSON(envelope.Input)
@@ -252,6 +253,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 	case envelope.Type == responseevents.FunctionArgumentsDone:
 		if fields := t.nativeExecCalls[envelope.ItemID]; fields != nil && jsonString(fields, "name") == nativeExecCommandToolName {
 			t.finishPreview(envelope.ItemID, envelope.Arguments)
+			delete(t.previews, envelope.ItemID)
 			return [][]byte{payload}, nil
 		}
 		pending, ok := t.pending[envelope.ItemID]
@@ -295,6 +297,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		} else {
 			t.endPreview(item.ID)
 		}
+		defer delete(t.previews, item.ID)
 		delete(t.nativeExecCalls, itemID)
 		if pending, buffered := t.pending[itemID]; buffered && pending.structured {
 			if pending.callID != callID || len(pending.argumentsDone) == 0 {
@@ -686,6 +689,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 			return false, criticalDiagnostic(err, "code_mode_call_lowering", "Mekugi could not lower a Code Mode call", true)
 		}
 		patches := nativePatchesInCall(name, originalInput, t.directory)
+		t.primePreviewSources(item.ID, patches)
 		execs, dynamic := stockLiteralExecCommands(originalInput, t.directory, t.sessionShell)
 		observation, observed := captureExecObservation(execs, dynamic, true, t.execCaptureEnvironment(patches))
 		t.openExecWindow(callID, observation, patches)
@@ -734,6 +738,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		return false, nil
 	}
 	patches := nativePatchesInCall(name, input, t.directory)
+	t.primePreviewSources(item.ID, patches)
 	if len(patches) == 0 {
 		return false, nil
 	}
