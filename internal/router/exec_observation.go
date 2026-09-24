@@ -1587,6 +1587,9 @@ func stockLiteralExecCommands(source, directory, sessionShell string) (commands 
 				return nil, true
 			}
 		}
+		if args, ok := toolActivityCallArguments(node, bytes, "tools", "write_stdin"); ok && execPollOnly(args, bytes) {
+			handled[node.ChildByFieldName("function").Id()] = true
+		}
 		switch node.Kind() {
 		case "member_expression":
 			if !handled[node.Id()] && (toolActivityMemberPath(node, bytes, "tools", nativeExecCommandToolName) ||
@@ -1625,6 +1628,41 @@ func stockLiteralExecCommands(source, directory, sessionShell string) (commands 
 		}
 	}
 	return commands, dynamic
+}
+
+// Poll metadata may depend on a prior result; only input bytes determine whether
+// this call can drive a writer. Spreads, prototypes and computed keys stay open.
+func execPollOnly(args []*sitter.Node, source []byte) bool {
+	if len(args) != 1 || args[0].Kind() != "object" {
+		return false
+	}
+	seen := make(map[string]bool)
+	for i := range args[0].NamedChildCount() {
+		pair := args[0].NamedChild(uint(i))
+		key := ""
+		if pair.Kind() == "shorthand_property_identifier" {
+			key = pair.Utf8Text(source)
+		} else if pair.Kind() == "pair" {
+			node := pair.ChildByFieldName("key")
+			switch node.Kind() {
+			case "property_identifier":
+				key = node.Utf8Text(source)
+			case "string":
+				key, _ = toolActivityJavaScriptString(node.Utf8Text(source))
+			}
+		}
+		if key == "" || key == "__proto__" || strings.ContainsRune(key, '\\') || seen[key] {
+			return false
+		}
+		seen[key] = true
+		if key == "chars" {
+			value, ok := toolActivityStaticJavaScriptValue(pair.ChildByFieldName("value"), source)
+			if !ok || value != "" {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func execLiteralCommand(args []*sitter.Node, source []byte, directory, sessionShell string) (execCommandInput, bool) {

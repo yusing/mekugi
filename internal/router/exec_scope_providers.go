@@ -106,7 +106,7 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 	}
 	w.plan.Scope = append(w.plan.Scope, result.scope...)
 	w.plan.Programs = append(w.plan.Programs, result.programs...)
-	w.plan.label(identity)
+	w.plan.label(w.program.Label)
 	w.plan.raise(execScoped, result.reason)
 	if !slices.Contains(w.plan.Programs, w.program) {
 		w.plan.Programs = append(w.plan.Programs, w.program)

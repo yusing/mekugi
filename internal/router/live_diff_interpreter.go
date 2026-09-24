@@ -64,8 +64,16 @@ func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory 
 	if tree.RootNode().HasError() {
 		return nil, false, nil
 	}
-	scan := execSourceScope{input: input, source: data, script: script, python: python, vars: make(map[string][]string), assigned: make(map[string]int), aliases: make(map[string]string)}
+	scan := execSourceScope{input: input, source: data, script: script, python: python, vars: make(map[string][]string), texts: make(map[string]bool), assigned: make(map[string]int), aliases: make(map[string]string)}
 	scan.walk(tree.RootNode())
+	// Capture walks assignments in execution order, but preview resolves all
+	// writes after scanning. A final reassigned value must not retarget an
+	// earlier write in the provisional diff.
+	for name, count := range scan.assigned {
+		if count > 1 {
+			delete(scan.vars, name)
+		}
+	}
 	var files []mekugi.ReviewFile
 	seen := make(map[string]bool)
 	var failure error

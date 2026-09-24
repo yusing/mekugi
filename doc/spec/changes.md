@@ -36,6 +36,12 @@ background job, change to command lookup, or unknown or path-qualified program
 makes the command undeclared, as does a relative operand after a `cd` that may
 have failed and a call for another environment. Non-neutral undeclared commands
 and Code Mode cells with dynamic command calls are observed with an open scope.
+Literal `rtk proxy` commands and recognized named RTK wrappers are classified and
+attributed to the underlying command, not the output filter. Literal `rtk run -c`
+and `--command` strings are inspected as nested shell source. Unsupported wrapper
+forms remain open. `env -u`/`--unset` preserves underlying scope unless it removes
+`PATH` or cannot be parsed. Code Mode `write_stdin` calls with literal empty or
+omitted input are polling, not an additional writer.
 
 For a declared command, Mekugi captures the derived paths before the call is
 forwarded, within bounds on file count, file size, total and encoded size, and
@@ -107,6 +113,8 @@ one line; the saved DIFF view groups them into one display-only card per record.
 Interpreter scope providers parse Python and JavaScript/TypeScript source without
 evaluation. Literal eval arguments, stdin heredocs, and bounded script files are
 supported. They derive literal filesystem writes, single-assignment path values,
+and sequential top-level Python path reassignments. Known Python string
+replacement is not treated as a filesystem rename. They also derive
 path joins, and iteration scopes, including Python `Path.glob/rglob` and JavaScript
 directory enumeration. Literal subprocess arguments are classified recursively
 with a depth bound. Unresolved targets, dynamic evaluation/loading, and unknown

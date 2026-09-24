@@ -39,6 +39,12 @@ func TestLiveDiffInterpreterWriteLiteralWrites(t *testing.T) {
 			after:   "new content\n",
 		},
 		{
+			name:    "JavaScript fs.writeFileSync assigned path",
+			command: "node - <<'JS'\nconst fs = require(\"node:fs\");\nconst target = \"new.txt\";\nfs.writeFileSync(target, \"new content\\n\");\nJS\n",
+			path:    "new.txt",
+			after:   "new content\n",
+		},
+		{
 			name:    "JavaScript promises writeFile",
 			command: "node - <<'JS'\nconst fs = require(\"node:fs/promises\");\nawait fs.writeFile(\"existing.txt\", \"replacement\\n\");\nJS\n",
 			path:    "existing.txt",

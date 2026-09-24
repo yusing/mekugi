@@ -617,6 +617,68 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 	args := call.Args[1:]
 	for {
 		switch shellsyntax.InterpreterIdentity(name) {
+		case "rtk":
+			// Only unwrap the known CLI, not a path-qualified replacement or a
+			// shell function. RTK itself must never become a file's author.
+			if name != "rtk" || slices.Contains(w.functions, name) {
+				break
+			}
+			for len(args) > 0 {
+				option, ok := shellCatLiteral(args[0])
+				if !ok || option != "--ultra-compact" && option != "--skip-env" {
+					break
+				}
+				args = args[1:]
+			}
+			if len(args) == 0 {
+				break
+			}
+			next, ok := shellCatLiteral(args[0])
+			if !ok {
+				break
+			}
+			if next == "proxy" {
+				if len(args) < 2 {
+					break
+				}
+				args = args[1:]
+				for len(args) > 1 {
+					option, literal := shellCatLiteral(args[0])
+					if !literal || option != "--ultra-compact" && option != "--skip-env" && option != "--" {
+						break
+					}
+					args = args[1:]
+					if option == "--" {
+						break
+					}
+				}
+				// Proxy takes a literal executable and its original arguments.
+				name, ok = shellCatLiteral(args[0])
+				if !ok || strings.HasPrefix(name, "-") {
+					w.opaque("rtk proxy executable is not literal")
+					return
+				}
+				args = args[1:]
+				continue
+			}
+			if next == "run" && len(args) == 3 && w.depth < 3 {
+				option, _ := shellCatLiteral(args[1])
+				source, literal := shellCatLiteral(args[2])
+				if literal && (option == "-c" || option == "--command") {
+					plan := classifyExecShellWithin(source, w.cwd, "sh", w.deadline, w.depth+1, w.changes)
+					w.plan.Scope = append(w.plan.Scope, plan.Scope...)
+					w.plan.Programs = append(w.plan.Programs, plan.Programs...)
+					for _, label := range plan.Labels {
+						w.plan.label(label)
+					}
+					w.plan.raise(plan.Class, plan.Reason)
+					return
+				}
+			}
+			if slices.Contains([]string{"go", "git", "cargo", "npm", "pnpm", "yarn", "bun", "deno", "uv", "ruff", "pytest", "tsc", "eslint", "prettier", "docker", "kubectl", "rg", "ls", "tree", "find", "diff", "wc", "gh"}, next) {
+				name, args = next, args[1:]
+				continue
+			}
 		case "command", "builtin", "exec":
 			if len(args) == 0 {
 				return
@@ -631,6 +693,22 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 		case "env":
 			for len(args) != 0 {
 				next, ok := shellCatLiteral(args[0])
+				if ok && (next == "-u" || next == "--unset" || strings.HasPrefix(next, "--unset=")) {
+					variable, inline := strings.CutPrefix(next, "--unset=")
+					count := 1
+					if !inline && len(args) > 1 {
+						variable, ok = shellCatLiteral(args[1])
+						count = 2
+					} else if !inline {
+						ok = false
+					}
+					if !ok || variable == "" || variable == "PATH" {
+						w.opaque("env unset changes command resolution or is not literal")
+						return
+					}
+					args = args[count:]
+					continue
+				}
 				if !ok || strings.HasPrefix(next, "-") {
 					w.opaque("env options are not parsed")
 					return

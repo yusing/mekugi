@@ -18,3 +18,14 @@ func TestLiteralPreviewRejectsEarlierUnpredictedEffects(t *testing.T) {
 		})
 	}
 }
+
+func TestLiteralPreviewDoesNotRetargetWriteAfterPathReassignment(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFile(t, filepath.Join(directory, "a"), "before a\n")
+	writeTestFile(t, filepath.Join(directory, "b"), "before b\n")
+	command := "python3 - <<'PY'\nfrom pathlib import Path\np = Path('a'); p.write_text('after a\\n'); p = Path('b')\nPY\n"
+	files, recognized, err := liveDiffInterpreterWrite(t.Context(), mustShellStatement(t, command), directory)
+	if err != nil || recognized || len(files) != 0 {
+		t.Fatalf("write before trailing Path reassignment was retargeted: files=%+v recognized=%v err=%v", files, recognized, err)
+	}
+}

@@ -133,3 +133,56 @@ func TestClassifyExecShellNeutralAndOpaque(t *testing.T) {
 		}
 	}
 }
+
+func TestClassifyRTKWrappersAndEnvUnset(t *testing.T) {
+	const workdir = "/work"
+	for _, command := range []string{
+		"env -u BASH_ENV rm a",
+		"env --unset BASH_ENV rm a",
+		"env --unset=BASH_ENV rm a",
+		"env -u BASH_ENV rtk proxy rm a",
+	} {
+		plan := classifyExecShell(command, workdir, "bash")
+		if plan.Class != execDeclared || !slices.Equal(execPlanScope(plan, workdir), []string{"file:a"}) {
+			t.Errorf("literal scope lost through %q: class=%v scope=%q reason=%q", command, plan.Class, execPlanScope(plan, workdir), plan.Reason)
+		}
+	}
+	for _, command := range []string{
+		"env -u PATH rm a",
+		"env --unset=PATH rm a",
+		"env -u \"$VARIABLE\" rm a",
+	} {
+		if plan := classifyExecShell(command, workdir, "bash"); plan.Class != execOpaque {
+			t.Errorf("unsafe env wrapper %q class=%v, want opaque", command, plan.Class)
+		}
+	}
+
+	for _, command := range []string{
+		"rtk run -c 'rm target'",
+		"rtk run --command 'rm target'",
+		"rtk run -c 'env -u BASH_ENV rm target'",
+	} {
+		plan := classifyExecShell(command, workdir, "bash")
+		if plan.Class != execDeclared || !slices.Equal(execPlanScope(plan, workdir), []string{"file:target"}) {
+			t.Errorf("literal nested rtk command %q: class=%v scope=%q reason=%q", command, plan.Class, execPlanScope(plan, workdir), plan.Reason)
+		}
+	}
+	for _, command := range []string{
+		`rtk run -c "$COMMAND"`,
+		`rtk proxy "$EXECUTABLE" rm a`,
+		"rtk proxy ./rm a",
+		"/tmp/rtk proxy rm a",
+		`RTK_BIN=rtk; "$RTK_BIN" proxy rm a`,
+		"rtk() { command rm \"$@\"; }; rtk proxy rm a",
+	} {
+		if plan := classifyExecShell(command, workdir, "bash"); plan.Class != execOpaque {
+			t.Errorf("ambiguous rtk impostor %q class=%v, want opaque", command, plan.Class)
+		}
+	}
+
+	plan := classifyExecShell("rtk go test ./...", workdir, "bash")
+	if !slices.ContainsFunc(plan.Programs, func(program execProgram) bool { return program.Label == "go test" }) ||
+		slices.ContainsFunc(plan.Programs, func(program execProgram) bool { return strings.HasPrefix(program.Label, "rtk") }) {
+		t.Fatalf("wrapped go test program labels = %+v; want go test, not rtk", plan.Programs)
+	}
+}

@@ -326,6 +326,60 @@ func TestStockLiteralExecCommands(t *testing.T) {
 			t.Errorf("%s was treated as literal", source)
 		}
 	}
+	for _, source := range []string{
+		`await tools.write_stdin({session_id: 1});`,
+		`await tools.write_stdin({session_id: 1, chars: ""});`,
+		`const session_id = 1; await tools.write_stdin({session_id, chars: ""});`,
+	} {
+		if commands, dynamic := stockLiteralExecCommands(source, directory, "bash"); dynamic || len(commands) != 0 {
+			t.Errorf("poll-only write_stdin call %s = %+v dynamic=%v; want no command and static", source, commands, dynamic)
+		}
+	}
+	for _, source := range []string{
+		`await tools.write_stdin({session_id: 1, chars: "x"});`,
+		`await tools.write_stdin({session_id: 1, chars: input});`,
+		`await tools.write_stdin({session_id: 1, ...options, chars: ""});`,
+		`await tools.write_stdin({session_id: 1, ["chars"]: ""});`,
+		`await tools.write_stdin({session_id: 1, chars: "", __proto__: {}});`,
+		`await tools.write_stdin({session_id: 1, chars: "", chars: ""});`,
+	} {
+		if _, dynamic := stockLiteralExecCommands(source, directory, "bash"); !dynamic {
+			t.Errorf("ambiguous write_stdin call %s was treated as a poll", source)
+		}
+	}
+}
+
+func TestCodeModeExecLiteralCommandAndResultDependentPollStayDirect(t *testing.T) {
+	workspace := t.TempDir()
+	target := filepath.Join(workspace, "target.txt")
+	writeTestFile(t, target, "before\n")
+	writeTestFile(t, filepath.Join(workspace, "edit.py"), "from pathlib import Path\nPath('target.txt').write_text('after\\n')\n")
+	source := `const r = await tools.exec_command({cmd: "python3 edit.py"}); await tools.write_stdin({session_id: r.session_id, chars: ""});`
+	commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
+	if dynamic || len(commands) != 1 || commands[0].Command != "python3 edit.py" {
+		t.Fatalf("same-cell command and polling = %+v dynamic=%v", commands, dynamic)
+	}
+	observation, observed := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
+	if !observed || observation == nil || observation.Class == execOpaque.String() || !observation.CodeMode {
+		t.Fatalf("Code Mode observation = %+v observed=%v; polling must not make the literal command opaque", observation, observed)
+	}
+	var baseline *execFileSnapshot
+	for i := range observation.Files {
+		if observation.Files[i].Path == target {
+			baseline = &observation.Files[i]
+			break
+		}
+	}
+	if baseline == nil || baseline.Content != "before\n" || baseline.Origin != "" ||
+		!slices.ContainsFunc(observation.Programs, func(program execProgram) bool { return program.Label == "python3" && program.Direct }) {
+		t.Fatalf("same-cell direct baseline/program = %+v / %+v", baseline, observation.Programs)
+	}
+	writeTestFile(t, target, "after\n")
+	reviews, complete, coverage, _ := reconcileExecObservation(*observation, execReconcileEnv{})
+	if !complete || coverage != execCoverageExact || len(reviews) != 1 || reviews[0].Origin != "" ||
+		!strings.Contains(reviews[0].Diff, "-before\n+after\n") {
+		t.Fatalf("same-cell direct review = %+v complete=%v coverage=%q", reviews, complete, coverage)
+	}
 }
 
 func TestExecResultState(t *testing.T) {

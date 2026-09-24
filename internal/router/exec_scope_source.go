@@ -19,6 +19,7 @@ type execSourceScope struct {
 	script                      string
 	python                      bool
 	vars                        map[string][]string
+	texts                       map[string]bool
 	assigned                    map[string]int
 	aliases                     map[string]string
 	result                      execProviderResult
@@ -58,7 +59,7 @@ func inspectExecSource(input execProviderInput, source, script string, language 
 	if tree.RootNode().HasError() {
 		return execProviderResult{open: true, reason: "interpreter source could not be parsed"}
 	}
-	scan := execSourceScope{input: input, source: data, script: script, python: python, vars: make(map[string][]string), assigned: make(map[string]int), aliases: make(map[string]string)}
+	scan := execSourceScope{input: input, source: data, script: script, python: python, vars: make(map[string][]string), texts: make(map[string]bool), assigned: make(map[string]int), aliases: make(map[string]string)}
 	scan.walk(tree.RootNode())
 	// The command names its script. Retaining that bounded baseline also
 	// distinguishes an unchanged source at the filesystem clock boundary.
@@ -352,10 +353,19 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 		if left != nil && left.Kind() == "identifier" {
 			name := s.text(left)
 			s.assigned[name]++
-			if s.assigned[name] == 1 {
+			// A top-level Python assignment replaces the value before the next
+			// statement. Keep each write's scope as we walk; reassignment need
+			// not discard literal paths in ordinary sequential rewrite scripts.
+			statement := node.Parent()
+			straightLine := s.python && statement != nil && statement.Kind() == "expression_statement" &&
+				statement.Parent() != nil && statement.Parent().Kind() == "module"
+			if s.assigned[name] == 1 || straightLine {
+				text := s.python && s.pythonText(right, 0)
 				s.vars[name] = s.paths(right)
+				s.texts[name] = text
 			} else {
 				delete(s.vars, name)
+				delete(s.texts, name)
 			}
 		}
 	}
@@ -363,6 +373,7 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 		left, right := node.ChildByFieldName("left"), node.ChildByFieldName("right")
 		if left != nil && left.Kind() == "identifier" {
 			s.vars[s.text(left)] = s.paths(right)
+			delete(s.texts, s.text(left))
 		}
 	}
 	if function, args := sourceCall(node); function != nil {

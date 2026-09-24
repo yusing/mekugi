@@ -9,6 +9,28 @@ import (
 
 var execPythonLanguage = sitter.NewLanguage(python.Language())
 
+// Distinguish string replacement from Path.replace without evaluating content.
+func (s *execSourceScope) pythonText(node *sitter.Node, depth int) bool {
+	if node == nil || depth >= 32 {
+		return false
+	}
+	if node.Kind() == "string" {
+		return true
+	}
+	if node.Kind() == "identifier" {
+		return s.texts[s.text(node)]
+	}
+	function, _ := sourceCall(node)
+	if function == nil {
+		return false
+	}
+	name := s.text(function.ChildByFieldName("attribute"))
+	if name == "read_text" {
+		return true
+	}
+	return name == "replace" && s.pythonText(function.ChildByFieldName("object"), depth+1)
+}
+
 func execPythonScope(input execProviderInput) execProviderResult {
 	source, script, reason := execProgramSource(input)
 	if reason != "" {
@@ -59,6 +81,9 @@ func (s *execSourceScope) pythonCall(function *sitter.Node, base string, args []
 	case "remove", "makedirs", "rmtree":
 		s.add(arg(0), true)
 	case "rename", "replace", "move":
+		if base == "replace" && s.pythonText(object, 0) {
+			return
+		}
 		if module {
 			s.add(arg(0), true)
 			s.add(arg(1), true)
