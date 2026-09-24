@@ -109,6 +109,73 @@ func TestLiveActivityViewResponsiveLayouts(t *testing.T) {
 	}
 }
 
+func TestLiveActivityRosterPointerSelection(t *testing.T) {
+	now := time.Now()
+	for _, size := range [][2]int{{110, 16}, {70, 16}, {40, 6}} {
+		view := liveActivityTestView("/root/a", "/root/b")
+		view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+			{Seq: 1, Agent: "/root/a", Kind: "commentary", Text: "alpha", Observed: now},
+			{Seq: 2, Agent: "/root/b", Kind: "commentary", Text: "bravo", Observed: now},
+		}})
+		view.render(size[0], size[1], now)
+		var hit liveActivityHit
+		for _, candidate := range view.hits {
+			if candidate.agent == "/root/b" {
+				hit = candidate
+				break
+			}
+		}
+		if hit.agent == "" {
+			t.Fatalf("%v: agent b has no clickable row", size)
+		}
+		view.handleMouse('h', hit.row, hit.first)
+		if view.hovered != "/root/b" || view.only {
+			t.Fatalf("%v: hover changed filter: %+v", size, view)
+		}
+		view.handleMouse('\r', hit.row, hit.first)
+		if !view.only || view.selected != "/root/b" || view.visible(activityPaneEntry{Agent: "/root/a"}) {
+			t.Fatalf("%v: click did not filter b", size)
+		}
+		view.render(size[0], size[1], now)
+		view.handleMouse('\r', hit.row, hit.first)
+		if view.only || !view.visible(activityPaneEntry{Agent: "/root/a"}) {
+			t.Fatalf("%v: second click did not restore all", size)
+		}
+		view.render(size[0], size[1], now)
+		view.handleMouse('\r', 1, 1)
+		if view.only || view.hovered != "" {
+			t.Fatalf("%v: header click changed filter", size)
+		}
+	}
+}
+
+func TestLiveActivityHoverClearsWhenRosterMoves(t *testing.T) {
+	view := liveActivityTestView("/root/a", "/root/b", "/root/c", "/root/d", "/root/e", "/root/f", "/root/g", "/root/h", "/root/i", "/root/j")
+	now := time.Now()
+	view.render(110, 10, now)
+	var first liveActivityHit
+	for _, hit := range view.hits {
+		if hit.agent == "/root/f" {
+			first = hit
+			break
+		}
+	}
+	if first.agent == "" {
+		t.Fatal("f is not visible in the initial roster")
+	}
+	view.handleMouse('h', first.row, first.first)
+	view.handleMouse('\r', first.row, first.first)
+	if view.hovered != "" {
+		t.Fatalf("click left stale hover on %q", view.hovered)
+	}
+	view.render(110, 10, now)
+	view.handleMouse('h', first.row, first.first)
+	view.render(100, 10, now)
+	if view.hovered != "" {
+		t.Fatalf("resize left stale hover on %q", view.hovered)
+	}
+}
+
 func TestLiveActivityPainterColors(t *testing.T) {
 	var painter liveActivityPainter
 	run := strings.Join(painter.block(liveActivityBlock{kind: "op", verb: "Run", label: "`go test`"}, 60), "\n")

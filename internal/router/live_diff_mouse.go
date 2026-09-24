@@ -47,6 +47,8 @@ func (m *liveDiffMouse) consume(key byte) (action byte, row, column int) {
 	switch values[0] &^ 28 {
 	case 0:
 		return '\r', values[2], values[1]
+	case 35:
+		return 'h', values[2], values[1] // Unpressed pointer motion.
 	case 64:
 		return 'k', values[2], values[1]
 	case 65:

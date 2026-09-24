@@ -51,7 +51,7 @@ func RunLiveActivity(ctx context.Context, args []string, stdin, stdout, stderr *
 	if err != nil {
 		return fail(err)
 	}
-	err = withRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
+	err = withRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006h\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1006l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
 		streamCtx, cancelStream := context.WithCancel(ctx)
 		events := make(chan activityPaneEvent, 32)
 		streamDone := make(chan struct{})
@@ -73,20 +73,28 @@ func runLiveActivityTerminal(ctx context.Context, stdout *os.File, events <-chan
 	ages := time.NewTicker(time.Second)
 	defer ages.Stop()
 	escape := ""
+	mouse := liveDiffMouse{}
+	redraw := true
 	for {
-		width, height, err := term.GetSize(int(stdout.Fd()))
-		if err != nil {
-			return err
-		}
-		if err := writeLiveActivityFrame(stdout, view.render(width, height, time.Now()), width); err != nil {
-			return err
+		if redraw {
+			width, height, err := term.GetSize(int(stdout.Fd()))
+			if err != nil {
+				return err
+			}
+			if err := writeLiveActivityFrame(stdout, view.render(width, height, time.Now()), width); err != nil {
+				return err
+			}
+			redraw = false
 		}
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ages.C:
+			redraw = true
 		case <-resizes:
+			redraw = true
 		case event, open := <-events:
+			redraw = true
 			if !open {
 				return nil
 			}
@@ -113,7 +121,17 @@ func runLiveActivityTerminal(ctx context.Context, stdout *os.File, events <-chan
 				return nil
 			}
 			var quit bool
+			if key == 27 {
+				mouse = liveDiffMouse{}
+			}
+			if mouse.active || escape == "\x1b[" && key == '<' {
+				escape = ""
+				action, row, column := mouse.consume(key)
+				redraw = view.handleMouse(action, row, column)
+				continue
+			}
 			escape, quit = view.handleKey(escape, key)
+			redraw = escape == ""
 			if quit {
 				return nil
 			}

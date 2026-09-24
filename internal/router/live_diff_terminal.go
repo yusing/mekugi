@@ -484,7 +484,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 	if c.mouse.active || c.escape == "\x1b[" && key == '<' {
 		c.escape = ""
 		action, row, column := c.mouse.consume(key)
-		if action == 0 || !c.diffMode || c.help {
+		if action == 0 || action == 'h' || !c.diffMode || c.help {
 			return false
 		}
 		navWidth := c.navigation.width(c.lastWidth)

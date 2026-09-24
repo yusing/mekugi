@@ -332,7 +332,10 @@ operation and the count of the others. The layout follows the pane size. At 100
 columns or wider, agent cards sit beside the feed. Narrower panes stack one row per
 agent above the feed, and panes with few rows show a one-line strip. The feed groups
 consecutive entries by agent under a colored heading. In the shared view it clips
-long entries, and its only mode shows one agent in full. Roster markers are
+long entries, and its only mode shows one agent in full. Roster rows are
+clickable: hovering highlights an agent; clicking it shows only that agent,
+and clicking it again restores the shared feed. Keyboard selection and the
+`o` filter toggle remain available. Roster status symbols are
 observed facts only:
 `◐` an open provider response, `!` a latest error event, `✓` a plaintext
 `FINAL_ANSWER` sent, and `·` otherwise. No marker claims that an agent finished.

@@ -488,7 +488,15 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 	h.frame(t, func(frame string) bool {
 		return strings.Contains(text(frame), "See live.go") && !strings.Contains(text(frame), "(/tmp/live.go:4)")
 	})
-	h.write(t, "no")
+	h.write(t, "\x1b[<35;5;3M")
+	h.frame(t, func(frame string) bool { return strings.Contains(frame, "\x1b[4m") })
+	h.write(t, "\x1b[<0;5;3M")
+	h.frame(t, func(frame string) bool {
+		return strings.Contains(liveDiffFrameRow(frame, 1), "only /root/explorer/probe") && !strings.Contains(text(frame), "● /root/explorer ─")
+	})
+	h.write(t, "\x1b[<0;5;3M")
+	h.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 1), "AGENTS · 2") })
+	h.write(t, "o")
 	h.frame(t, func(frame string) bool {
 		return strings.Contains(liveDiffFrameRow(frame, 1), "only /root/explorer/probe") && strings.HasPrefix(liveDiffFrameRow(frame, height), "ONLY") &&
 			!strings.Contains(text(frame), "● /root/explorer ─")
