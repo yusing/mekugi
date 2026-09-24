@@ -56,16 +56,49 @@ func (p *liveDiffPreviewPacer) advance(input string, finishing bool, units liveD
 	}
 	if !units.lines || finishing && p.cursor == len(input) {
 		p.shown, p.held = p.cursor, 0
-		return p.shown
-	}
-	if boundary := liveDiffLineBoundary(input, p.shown, p.cursor, units.encoded); boundary > p.shown {
+	} else if boundary := liveDiffLineBoundary(input, p.shown, p.cursor, units.encoded); boundary > p.shown {
 		p.shown, p.held = boundary, 0
 	} else if p.cursor > p.shown {
 		if p.held++; p.held > liveDiffPreviewMaxHold {
 			p.shown = p.cursor
 		}
 	}
+	if units.encoded && !(finishing && p.shown == len(input)) {
+		p.shown = liveDiffEscapeEnd(input, p.shown)
+	}
 	return p.shown
+}
+
+// liveDiffEscapeEnd backs a cut in encoded source off an unfinished escape.
+// A decoder reading the prefix would otherwise see a stray backslash, which
+// can end a string early and make a shell call vanish for a frame.
+func liveDiffEscapeEnd(input string, n int) int {
+	for at := n - 1; at >= max(0, n-6); at-- {
+		if input[at] != '\\' {
+			continue
+		}
+		run := 0
+		for i := at; i >= 0 && input[i] == '\\'; i-- {
+			run++
+		}
+		if run%2 == 0 {
+			return n // The backslash nearest the cut is itself escaped.
+		}
+		digits := 0
+		if at+1 < n {
+			switch input[at+1] {
+			case 'u':
+				digits = 4
+			case 'x':
+				digits = 2
+			}
+		}
+		if at+1 == n || n-(at+2) < digits {
+			return at
+		}
+		return n
+	}
+	return n
 }
 
 // liveDiffLineBoundary returns the last line end in (from, to], or from.

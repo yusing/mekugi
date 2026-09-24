@@ -89,6 +89,47 @@ func TestStockPatchStreamingPartialLinesStayProjectable(t *testing.T) {
 	}
 }
 
+func TestStockPatchStreamingFramesEndAtTheirTip(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "sample.go"), []byte("a()\nb()\nc()\nd()\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	worker := &liveDiffPreviewWorker{ctx: t.Context()}
+	// Source past the streamed tip is not context yet: the next line may
+	// remove it, and trailing context would renumber under each added row.
+	preview, ok := worker.projectStockPreview("*** Begin Patch\n*** Update File: sample.go\n@@\n a()\n+new()\n", workspace, false)
+	if !ok || len(preview.Files) != 1 {
+		t.Fatalf("partial patch was not projected: %+v", preview)
+	}
+	if diff := preview.Files[0].Diff; !strings.Contains(diff, "+new()") || strings.Contains(diff, "b()") {
+		t.Fatalf("partial frame showed source past its tip: %q", diff)
+	}
+	preview, ok = worker.projectStockPreview("*** Begin Patch\n*** Update File: sample.go\n@@\n a()\n+new()\n-b()\n*** End Patch\n", workspace, true)
+	if diff := preview.Files[0].Diff; !ok || !strings.Contains(diff, "-b()") || !strings.Contains(diff, " c()") {
+		t.Fatalf("complete patch lost its trailing context: %q", diff)
+	}
+}
+
+func TestStockPatchPreviewKeepsSourceFromBeforeTheCall(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "sample.go")
+	if err := os.WriteFile(path, []byte("old()\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	worker := &liveDiffPreviewWorker{ctx: withLiveDiffSources(t.Context())}
+	if _, ok := worker.projectStockPreview("*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n", workspace, false); !ok {
+		t.Fatal("partial patch was not projected")
+	}
+	// The host applies the call while its final frame is still pacing.
+	if err := os.WriteFile(path, []byte("new()\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	preview, ok := worker.projectStockPreview("*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n+new()\n*** End Patch\n", workspace, true)
+	if !ok || len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "-old()") {
+		t.Fatalf("final projection re-read the applied file: %+v", preview)
+	}
+}
+
 func TestStockPatchPreviewBlankContextAndInsertion(t *testing.T) {
 	for _, tc := range []struct{ before, patch, removed, added string }{
 		{"a()\n\na()\n", "@@\n\n-a()\n+b()", "-a()", "+b()"},

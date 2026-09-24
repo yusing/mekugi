@@ -266,13 +266,15 @@ func liveDiffPreviewRows(review mekugi.ReviewFile, workspace string) ([]liveDiff
 }
 
 // liveDiffPreviewChanged returns the replaced rows: after[start:end] took the
-// place of before[start:oldEnd].
+// place of before[start:oldEnd]. Rows match by content, so context that only
+// renumbered under an added row is unchanged.
 func liveDiffPreviewChanged(before, after []liveDiffPreviewRow) (start, end, oldEnd int) {
-	for start < len(before) && start < len(after) && before[start] == after[start] {
+	same := func(a, b liveDiffPreviewRow) bool { return a.kind == b.kind && a.text == b.text }
+	for start < len(before) && start < len(after) && same(before[start], after[start]) {
 		start++
 	}
 	end, oldEnd = len(after), len(before)
-	for end > start && oldEnd > start && after[end-1] == before[oldEnd-1] {
+	for end > start && oldEnd > start && same(after[end-1], before[oldEnd-1]) {
 		end--
 		oldEnd--
 	}

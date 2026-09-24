@@ -642,6 +642,55 @@ func TestLiveDiffPreviewBirthsCarryAcrossSnapshots(t *testing.T) {
 	if !slices.Equal(shifted[:3], next[1:]) || !shifted[3].Equal(later.Add(time.Second)) {
 		t.Fatalf("sliding tail: %v from %v", shifted, next)
 	}
+	// Context renumbered under an inserted row keeps its time.
+	renumbered := slices.Insert(slices.Clone(after), 1, liveDiffPreviewRow{2, '+', "new\n"})
+	for i := 2; i < len(renumbered); i++ {
+		renumbered[i].number++
+	}
+	inserted := liveDiffPreviewBirths(after, renumbered, next, later.Add(2*time.Second))
+	if !inserted[0].Equal(next[0]) || !inserted[1].Equal(later.Add(2*time.Second)) || !slices.Equal(inserted[2:], next[1:]) {
+		t.Fatalf("renumbered context: %v from %v", inserted, next)
+	}
+}
+
+func TestLiveDiffPreviewPacerKeepsEscapesWhole(t *testing.T) {
+	for _, test := range []struct {
+		input string
+		want  int
+	}{
+		{`"a\`, 2}, {`"a\\`, 4}, {`"a\u00`, 2}, {`"a\u003e`, 8}, {`"a\x4`, 2}, {`"a\n`, 4},
+	} {
+		if got := liveDiffEscapeEnd(test.input, len(test.input)); got != test.want {
+			t.Errorf("%q: cut at %d, want %d", test.input, got, test.want)
+		}
+	}
+	var pacer liveDiffPreviewPacer
+	input := `"a\`
+	if shown := pacer.advance(input, false, liveDiffRevealUnits{encoded: true}); shown != 2 {
+		t.Fatalf("streaming reveal split an escape at %d", shown)
+	}
+	// Finished input is shown whole even when it ends in a backslash.
+	for range 3 {
+		pacer.advance(input, true, liveDiffRevealUnits{encoded: true})
+	}
+	if pacer.shown != len(input) {
+		t.Fatalf("finished input stalled at %d of %d", pacer.shown, len(input))
+	}
+}
+
+func TestCodeModeShellHeaderWaitsForItsCommand(t *testing.T) {
+	for _, test := range []struct {
+		display string
+		want    int
+	}{
+		{"# tools.exec_command 1\n", 0},
+		{"# tools.exec_command 1\nls\n", 26},
+		{"# tools.exec_command 1\nls\n\n# tools.exec_command 2\n", 25},
+	} {
+		if got := codeModeShellHeaderCut(test.display); got != test.want {
+			t.Errorf("%q: cut at %d, want %d", test.display, got, test.want)
+		}
+	}
 }
 
 func TestLiveDiffScriptBoundaryFollowsShellAndInterpreterUnits(t *testing.T) {

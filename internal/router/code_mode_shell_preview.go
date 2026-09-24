@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -64,8 +65,8 @@ func codeModeShellFragments(source string) (scripts []string, shellProgram bool)
 			at++
 			continue
 		}
-		script, end := codeModeShellObject(source, next)
-		if end > next && source[end-1] == '}' {
+		script, end, closed := codeModeShellObject(source, next)
+		if closed {
 			// Once the argument object is closed, trust its parsed static value,
 			// not a lexical prefix that a computed key or spread may override.
 			literal, found := staticObjects[next]
@@ -188,10 +189,12 @@ func codeModePreviewSyntax(source string) ([]codeModeSourceRange, map[int]codeMo
 	return ranges, objects, callees
 }
 
-func codeModeShellObject(source string, start int) (string, int) {
+// codeModeShellObject scans an argument object from its brace. Closed
+// reports that the object ended; otherwise end is len(source), which may
+// itself follow a brace inside the unfinished command text.
+func codeModeShellObject(source string, start int) (script string, end int, closed bool) {
 	depth, brackets, parens := 1, 0, 0
 	expectKey := true
-	var script string
 	for at := start + 1; at < len(source); {
 		if next := codeModeSkipComment(source, at); next > at {
 			at = next
@@ -205,7 +208,11 @@ func codeModeShellObject(source string, start int) (string, int) {
 				}
 			} else if key != "cmd" {
 				follow := codeModeTrivia(source, end)
-				if follow >= len(source) || source[follow] != ':' {
+				if follow >= len(source) && codeModeIdentifierByte(source[at]) &&
+					!slices.ContainsFunc([]string{"cmd", "get", "set", "async"}, func(name string) bool { return strings.HasPrefix(name, key) }) {
+					// A name still arriving that cannot become cmd or an
+					// accessor prefix cannot replace cmd, whatever follows it.
+				} else if follow >= len(source) || source[follow] != ':' {
 					script = "" // A method/getter or unfinished property is not proven safe.
 				} else {
 					expectKey = false
@@ -250,7 +257,7 @@ func codeModeShellObject(source string, start int) (string, int) {
 		case '}':
 			depth--
 			if depth == 0 {
-				return script, at + 1
+				return script, at + 1, true
 			}
 		case '[':
 			brackets++
@@ -271,7 +278,7 @@ func codeModeShellObject(source string, start int) (string, int) {
 		}
 		at++
 	}
-	return script, len(source)
+	return script, len(source), false
 }
 
 func codeModePropertyKey(source string, at int) (string, int) {
@@ -422,6 +429,21 @@ func codeModeSkipString(source string, at int) int {
 
 // Preserve the call boundaries while painting literal interpreter bodies in
 // their own language. The projected source is display-only, never executed.
+// codeModeShellHeaderCut returns where a revealed display ends once a
+// trailing call header is held back with its separator. A header appears
+// with its call's first command, never as a card or row of its own.
+func codeModeShellHeaderCut(display string) int {
+	line := strings.TrimSuffix(display, "\n")
+	start := strings.LastIndexByte(line, '\n') + 1
+	if !strings.HasPrefix(line[start:], "# tools.exec_command ") {
+		return len(display)
+	}
+	if strings.HasSuffix(display[:start], "\n\n") {
+		return start - 2
+	}
+	return start
+}
+
 func codeModeShellDisplay(scripts []string) (string, []liveDiffSourceSpan) {
 	var source strings.Builder
 	var spans []liveDiffSourceSpan

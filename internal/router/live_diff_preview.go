@@ -82,7 +82,7 @@ func boundLiveDiffPreview(preview liveDiffPreview) liveDiffPreview {
 }
 
 func startLiveDiffPreview(ctx context.Context, broker *liveDiffBroker, workspace, thread string, kind ...string) *liveDiffPreviewWorker {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(withLiveDiffSources(ctx))
 	worker := &liveDiffPreviewWorker{
 		ctx: ctx, cancel: cancel, broker: broker,
 		preview: liveDiffPreview{ID: rand.Text(), Workspace: workspace, Thread: thread},
@@ -241,6 +241,9 @@ func (w *liveDiffPreviewWorker) run() {
 		}
 		gated = preview
 		n := gate.reveal(preview.Input, preview.Syntax, final)
+		if !final && preview.Syntax[0].Path == "stream.sh" {
+			n = codeModeShellHeaderCut(preview.Input[:n])
+		}
 		preview.Input = preview.Input[:n]
 		for len(preview.Syntax) > 1 && preview.Syntax[len(preview.Syntax)-1].Offset >= n {
 			preview.Syntax = preview.Syntax[:len(preview.Syntax)-1]
@@ -303,6 +306,7 @@ func (w *liveDiffPreviewWorker) run() {
 					w.mu.Lock()
 					if !w.closed && w.ctx.Err() == nil {
 						w.broker.publishPreview(next, false)
+						scriptVisible = true
 					}
 					w.mu.Unlock()
 				}
@@ -360,7 +364,10 @@ func (w *liveDiffPreviewWorker) run() {
 						continue
 					}
 				}
-				if strings.Contains(input, "*** Begin Patch") || stockPatchLiteralPresent(input) {
+				scripts, shellProgram := codeModeShellFragments(input)
+				// A patch inside a literal shell command streams as that command.
+				shellPatch := slices.ContainsFunc(scripts, func(script string) bool { return strings.Contains(script, "*** Begin Patch") })
+				if !shellPatch && (strings.Contains(input, "*** Begin Patch") || stockPatchLiteralPresent(input)) {
 					if !codePatchHidden {
 						w.broker.publishPreview(liveDiffPreview{ID: preview.ID}, true)
 						gate, gated = liveDiffRevealGate{}, liveDiffPreview{}
@@ -368,7 +375,6 @@ func (w *liveDiffPreviewWorker) run() {
 					}
 					continue
 				}
-				scripts, shellProgram := codeModeShellFragments(input)
 				if len(scripts) != 0 {
 					projectionInput = scripts[len(scripts)-1]
 					shellDisplay, shellSyntax = codeModeShellDisplay(scripts)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi"
@@ -100,13 +101,13 @@ func stockPatchReviewPreview(ctx context.Context, workspace, input string) ([]me
 			if op != 'a' {
 				edit.beforePath = resolved
 				var exists bool
-				edit.before, exists, err = readNativePatchFile(resolved)
+				edit.before, exists, err = liveDiffSourceRead(ctx, resolved, readNativePatchFile)
 				if err != nil || !exists || len(edit.before) > 256<<10 {
 					return nil, errors.New("source unavailable for bounded preview")
 				}
 				edit.after = edit.before
 			} else {
-				_, exists, readErr := readNativePatchFile(resolved)
+				_, exists, readErr := liveDiffSourceRead(ctx, resolved, readNativePatchFile)
 				if readErr != nil || exists {
 					return nil, errors.New("add target unavailable for preview")
 				}
@@ -137,7 +138,7 @@ func stockPatchReviewPreview(ctx context.Context, workspace, input string) ([]me
 			if seenPaths[edit.afterPath] {
 				return nil, errors.New("dependent patch operations cannot be projected")
 			}
-			_, exists, readErr := readNativePatchFile(edit.afterPath)
+			_, exists, readErr := liveDiffSourceRead(ctx, edit.afterPath, readNativePatchFile)
 			if readErr != nil || exists {
 				return nil, errors.New("move target unavailable for preview")
 			}
@@ -171,14 +172,21 @@ func stockPatchReviewPreview(ctx context.Context, workspace, input string) ([]me
 			return nil, errors.New("unsupported patch line")
 		}
 	}
+	// The file still arriving ends at its streamed tip. Later source is not
+	// yet context: the next patch line may remove it, and trailing context
+	// would renumber under every added row.
+	partial := !slices.ContainsFunc(lines, func(line string) bool { return strings.TrimSuffix(line, "\r") == "*** End Patch" })
 	var reviews []mekugi.ReviewFile
-	for _, edit := range edits {
+	for index, edit := range edits {
 		if edit.operation == 'u' {
-			after, err := projectStockUpdate(ctx, edit.before, edit.chunks)
+			after, beforeTip, afterTip, err := projectStockUpdate(ctx, edit.before, edit.chunks)
 			if err != nil {
 				return nil, err
 			}
 			edit.after = after
+			if partial && index == len(edits)-1 && len(edit.chunks) != 0 {
+				edit.before, edit.after = liveDiffLinePrefix(edit.before, beforeTip), liveDiffLinePrefix(after, afterTip)
+			}
 		}
 		if edit.operation == 'd' {
 			edit.after = ""
@@ -195,9 +203,10 @@ func stockPatchReviewPreview(ctx context.Context, workspace, input string) ([]me
 
 // Only exact, ordered source matches are projected. Codex may accept more
 // flexible context, but a miss must not be displayed as a fabricated diff.
-func projectStockUpdate(ctx context.Context, before string, chunks []stockPreviewChunk) (string, error) {
+// The tips count the lines through the last chunk on each side.
+func projectStockUpdate(ctx context.Context, before string, chunks []stockPreviewChunk) (after string, beforeTip, afterTip int, err error) {
 	if len(chunks) == 0 {
-		return before, nil
+		return before, 0, 0, nil
 	}
 	lines := strings.Split(strings.TrimSuffix(before, "\n"), "\n")
 	if before == "" {
@@ -207,14 +216,14 @@ func projectStockUpdate(ctx context.Context, before string, chunks []stockPrevie
 	position := 0
 	for _, chunk := range chunks {
 		if err := ctx.Err(); err != nil {
-			return "", err
+			return "", 0, 0, err
 		}
 		if chunk.context != "" {
 			found := -1
 			for i := position; i < len(lines); i++ {
 				if i%256 == 0 {
 					if err := ctx.Err(); err != nil {
-						return "", err
+						return "", 0, 0, err
 					}
 				}
 				if lines[i] == chunk.context {
@@ -223,7 +232,7 @@ func projectStockUpdate(ctx context.Context, before string, chunks []stockPrevie
 				}
 			}
 			if found < 0 {
-				return "", errors.New("context not found")
+				return "", 0, 0, errors.New("context not found")
 			}
 			result = append(result, lines[position:found]...)
 			position = found
@@ -234,7 +243,7 @@ func projectStockUpdate(ctx context.Context, before string, chunks []stockPrevie
 				insertion-- // Codex's LF-normalizing insertion keeps the final blank line.
 			}
 			if insertion < position {
-				return "", errors.New("insertion conflicts with preceding chunk")
+				return "", 0, 0, errors.New("insertion conflicts with preceding chunk")
 			}
 			result = append(result, lines[position:insertion]...)
 			result = append(result, chunk.new...)
@@ -245,7 +254,7 @@ func projectStockUpdate(ctx context.Context, before string, chunks []stockPrevie
 		for i := position; i+len(chunk.old) <= len(lines); i++ {
 			if i%256 == 0 {
 				if err := ctx.Err(); err != nil {
-					return "", err
+					return "", 0, 0, err
 				}
 			}
 			match := true
@@ -261,18 +270,32 @@ func projectStockUpdate(ctx context.Context, before string, chunks []stockPrevie
 			}
 		}
 		if found < 0 {
-			return "", errors.New("patch context not found")
+			return "", 0, 0, errors.New("patch context not found")
 		}
 		result = append(result, lines[position:found]...)
 		result = append(result, chunk.new...)
 		position = found + len(chunk.old)
 	}
+	beforeTip, afterTip = position, len(result)
 	result = append(result, lines[position:]...)
 	if len(result) == 0 {
-		return "", nil
+		return "", beforeTip, afterTip, nil
 	}
 	if result[len(result)-1] == "" {
-		return strings.Join(result, "\n"), nil
+		return strings.Join(result, "\n"), beforeTip, afterTip, nil
 	}
-	return strings.Join(result, "\n") + "\n", nil
+	return strings.Join(result, "\n") + "\n", beforeTip, afterTip, nil
+}
+
+// liveDiffLinePrefix keeps the first n lines of text.
+func liveDiffLinePrefix(text string, n int) string {
+	end := 0
+	for range n {
+		next := strings.IndexByte(text[end:], '\n')
+		if next < 0 {
+			return text
+		}
+		end += next + 1
+	}
+	return text[:end]
 }

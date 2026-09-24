@@ -103,7 +103,7 @@ func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory 
 					failure = errors.New("literal preview has dependent or unsupported writes")
 					return
 				}
-				before, exists, err := liveDiffPreviewFile(path)
+				before, exists, err := liveDiffSourceRead(ctx, path, liveDiffPreviewFile)
 				if err != nil {
 					failure = err
 					return

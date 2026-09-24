@@ -66,7 +66,7 @@ func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directo
 	if len(content) > limit || !utf8.ValidString(content) {
 		return nil, true, errors.New("streaming file write requires bounded UTF-8 content")
 	}
-	before, exists, err := liveDiffPreviewFile(path)
+	before, exists, err := liveDiffSourceRead(ctx, path, liveDiffPreviewFile)
 	if err != nil {
 		return nil, true, err
 	}
@@ -189,7 +189,7 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 	case "rm":
 		files := make([]mekugi.ReviewFile, 0, len(operands))
 		for _, path := range operands {
-			before, exists, err := liveDiffPreviewFile(path)
+			before, exists, err := liveDiffSourceRead(ctx, path, liveDiffPreviewFile)
 			if err != nil {
 				return nil, true, err
 			}
@@ -205,7 +205,7 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 		}
 		files := make([]mekugi.ReviewFile, 0, len(operands))
 		for _, path := range operands {
-			before, exists, err := liveDiffPreviewFile(path)
+			before, exists, err := liveDiffSourceRead(ctx, path, liveDiffPreviewFile)
 			if err != nil {
 				return nil, true, err
 			}
@@ -224,14 +224,14 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 	if info, err := os.Stat(target); err == nil && info.IsDir() {
 		target = filepath.Join(target, filepath.Base(source))
 	}
-	content, exists, err := liveDiffPreviewFile(source)
+	content, exists, err := liveDiffSourceRead(ctx, source, liveDiffPreviewFile)
 	if err != nil {
 		return nil, true, err
 	}
 	if !exists {
 		return nil, true, errors.New("streaming file preview source does not exist")
 	}
-	before, targetExists, err := liveDiffPreviewFile(target)
+	before, targetExists, err := liveDiffSourceRead(ctx, target, liveDiffPreviewFile)
 	if err != nil {
 		return nil, true, err
 	}
