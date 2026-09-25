@@ -677,6 +677,19 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 			return nil, err
 		}
 	}
+	// The downstream upgrade precedes the provider connection, so its headers
+	// cannot carry the provider's sticky routing state. Deliver it through the
+	// metadata event Codex consumes, leaving subsequent replay and reset to Codex.
+	// Source: codex-rs/codex-api/src/sse/responses.rs:222:230 (turn_state).
+	if state := responseHeaders.Get("x-codex-turn-state"); state != "" {
+		metadata := mustMarshalJSON(map[string]any{
+			"type": "response.metadata", "headers": map[string]string{"x-codex-turn-state": state},
+		})
+		if err := s.downstream.Write(responseCtx, websocket.MessageText, metadata); err != nil {
+			return nil, err
+		}
+		e.clientObservation.Message(metadata)
+	}
 	// Wait for actual response admission, not just the successful handshake.
 	// Meanwhile the downstream reader stays live and can deliver steering.
 	for len(e.first) == 0 {
