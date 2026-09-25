@@ -66,10 +66,13 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	mainMentorSet := false
 	mentorSet := false
 	postCompactSet := false
+	exploreFilterSet := false
 	flags.Visit(func(item *flag.Flag) {
 		switch item.Name {
 		case "post-compact-recovery":
 			postCompactSet = true
+		case "explore-filter":
+			exploreFilterSet = true
 		case "main-mentor-handoff":
 			mainMentorSet = true
 		case "mentor-handoff":
@@ -96,6 +99,16 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if !*flags.grokEnabled && *flags.grokAuthFile != "" {
 		return errors.New("--grok-auth-file requires --grok")
 	}
+	// The filter defaults on but needs a credential; only an explicit request
+	// for it makes a missing key or passthrough mode a startup error.
+	typesafeKey := strings.TrimSpace(os.Getenv("TYPESAFE_API_KEY"))
+	if exploreFilterSet && *flags.exploreFilter && *flags.mode != "mekugi" {
+		return errors.New("--explore-filter requires --mode mekugi")
+	}
+	if exploreFilterSet && *flags.exploreFilter && typesafeKey == "" {
+		return errors.New("--explore-filter requires TYPESAFE_API_KEY")
+	}
+	*flags.exploreFilter = *flags.exploreFilter && typesafeKey != "" && *flags.mode == "mekugi"
 	config, err := loadMekugiConfig()
 	if err != nil {
 		return err
@@ -248,6 +261,9 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			issues.addNotice("", "native_trace", "Nested tool confirmation unavailable: "+traceErr.Error())
 		}
 		mekugiCalls.usageReport = *flags.usageReport
+		if *flags.exploreFilter {
+			mekugiCalls.exploreFilter = newExploreFilter(newTypesafeClient(typesafeKey))
+		}
 		mekugiCalls.noticeSink = issues.addNotice
 		replayStore.storageNotice = func(session, message string) { issues.addNotice(session, "storage_cleanup", message) }
 		mekugiCalls.commentary.debug = debug

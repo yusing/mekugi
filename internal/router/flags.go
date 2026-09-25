@@ -18,6 +18,7 @@ type routerFlags struct {
 	postCompactRecovery      *bool
 	grokEnabled              *bool
 	grokAuthFile             *string
+	exploreFilter            *bool
 	captureOutput            *string
 	metricsOutput            *string
 	debug                    *bool
@@ -51,6 +52,7 @@ func newRouterFlags(stderr io.Writer) routerFlags {
 		postCompactRecovery:      flags.Bool("post-compact-recovery", true, "restore journal and change context after compaction through a pre-trusted Codex hook"),
 		grokEnabled:              flags.Bool("grok", false, "enable Grok models and plaintext collaboration projection"),
 		grokAuthFile:             flags.String("grok-auth-file", "", "Grok OAuth credential file (default ~/.grok/auth.json)"),
+		exploreFilter:            flags.Bool("explore-filter", true, "omit search results that TypeSafe Jev judges unrelated to the task when TYPESAFE_API_KEY is set"),
 		metricsOutput:            flags.String("metrics-output", "", "optional final metrics JSON path"),
 		captureOutput:            flags.String("capture-output", "", "optional sanitized capture JSONL path"),
 		debug:                    flags.Bool("debug", false, "record diagnostics, capture, metrics, instructions, runtime reads, and AX report; print artifact paths on exit"),

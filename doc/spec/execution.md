@@ -40,6 +40,11 @@ owns permissions, sandboxing, command processes, yielded sessions, and
 `write_stdin` continuation. Mekugi never reruns a stock call while observing,
 replaying, or displaying it.
 
+The credential-gated [explore output filter](explore_filter.md) is the sole
+exception to unchanged model-visible result text. It projects eligible completed
+native and transparent single-command Code Mode results, retains their original
+output before exposing recovery, and never alters execution or continuation.
+
 The wrapped Codex `PATH` includes only this session's authenticated executable
 frontends. `mcat`, `mrun`, `mread`, `mchanges`, `msymbol`, `inspect_file`, and
 configured plugin tools are invoked through stock `exec_command`. The pinned
@@ -109,7 +114,8 @@ requires the terminal host result and post-result reconciliation.
 Acceptance:
 
 1. Direct native `apply_patch` and `exec_command` pass through with their
-   original arguments and results. The same holds for Code Mode calls.
+   original arguments and results, except for the eligible model-visible output
+   projection above. The same holds for Code Mode calls.
 2. A Code Mode cell can batch or parallelize stock tools, including a patch
    alongside an independent command, without router-side serial execution.
 3. Streaming patch input produces an early provisional preview; incomplete

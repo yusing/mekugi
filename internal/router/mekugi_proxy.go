@@ -127,6 +127,7 @@ type mekugiProxy struct {
 	execWindows        *execWindowRegistry
 	execLastSeen       *execLastSeen
 	nativeTrace        *nativeToolTrace
+	exploreFilter      *exploreFilter
 
 	mu              sync.RWMutex
 	replayStore     *mekugiReplayStore
@@ -641,6 +642,8 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	transform.journalActive = true
 	transform.journalPending = make(map[string]bool)
 	transform.journalCalls = make(map[string]map[string]json.RawMessage)
+	// Continuation advice is appended to the output the model will see.
+	p.exploreFilter.project(ctx, request, visible, directory, transform.sessionShell, recipient, p.replayStore)
 	projectExecutionContinuations(request, tools, codeModeToolName, visible)
 	if transform.subagentTurn {
 		transform.prepareShellActivity(request.fields["input"])

@@ -7,6 +7,9 @@ sandboxing, processes, and yielded-session continuation. Mekugi's request
 projection only adds journal guidance to the Code Mode tool description. It
 does not replace the execution catalog or create a carrier for an unchanged
 stock call.
+The credential-gated explore filter (`REQ-EXPLORE-FILTER-001`) is the only projection that
+rewrites a completed stock result's model-visible text, and it retains the
+complete original through a managed read reference.
 
 The response observer reads completed stock arguments once, captures bounded
 pre-edit source for named paths, and later reconciles the result with the

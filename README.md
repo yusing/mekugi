@@ -32,6 +32,13 @@ sessions, and patch review. No fork, no config edits, no daemon.
   be reverted and reapplied by ID.
 - **Fewer tokens and round trips.** Bounded and batched reads, semantic symbol
   lookup, structural outlines, scoped change IDs, and child change handoffs.
+- **Search output filtering.** With `TYPESAFE_API_KEY` set, large search results
+  (`rg`, `grep`, `find`, `fd`, `git grep`), linter and compiler diagnostics,
+  `git log`, `git diff`, `git show`, and `--help` pages drop the files, commits,
+  or entries that TypeSafe's Jev model judges unrelated to the task. The agent sees what was omitted and can `mread` the full output. Your
+  latest request, the agent's preceding message, the command, and sampled result
+  rows are sent to TypeSafe. If TypeSafe fails, the output passes through unchanged.
+  Opt out with `--explore-filter=false`.
 - **Leaner instructions.** Blocks marked with `<!-- mekugi:omit -->` are
   [stripped](#configuration-and-troubleshooting) before forwarding. With
   `skills-mgr`, selected skills are sent as compact references.
@@ -124,6 +131,7 @@ These overrides last only for the invocation; no configuration files change.
 | `--post-compact-recovery` | `true` | Use `false` to skip the post-compaction context hook |
 | `--grok` | `false` | Enable Grok models in mekugi mode |
 | `--grok-auth-file` | `~/.grok/auth.json` | Select a Grok OAuth credential store |
+| `--explore-filter` | `true` with `TYPESAFE_API_KEY` | Use `false` to keep search output unfiltered. See [search output filtering](#features) |
 | `--timeout` | `10m` | Wait for the upstream response to start |
 | `--stream-idle-timeout` | `4m` | Limit gaps between provider messages during an active response, or HTTP response bytes |
 | `--capture-output PATH` | Disabled | Append sanitized JSONL metrics |
