@@ -190,7 +190,7 @@ func TestLiveDiffChangesRowFormat(t *testing.T) {
 	l.expanded = map[string]bool{"apple1": true}
 	l.rebuild(&c.view, c.workspace)
 	rows := l.render(false, false, "", 40, 4, livediff.DarkTheme)
-	file := liveDiffFileLabel("/w/broker.go", "/w/broker.go", "broker.go", livediff.DarkTheme)
+	file := liveDiffFileLabel(liveDiffStatus{before: "/w/broker.go", after: "/w/broker.go", edited: true}, "broker.go", "/w", livediff.DarkTheme)
 	if !strings.Contains(rows[3], file) || !strings.Contains(ansi.Strip(rows[3]), "└ M broker.go +1 -1") {
 		t.Fatalf("file row = %q, want shared label %q", rows[3], file)
 	}
@@ -199,6 +199,58 @@ func TestLiveDiffChangesRowFormat(t *testing.T) {
 	}
 	if row := ansi.Strip(l.render(false, false, "", 24, 4, livediff.DarkTheme)[2]); strings.Contains(row, "apply") || !strings.Contains(row, "apple1 1f +1 -1") {
 		t.Fatalf("narrow change row = %q, want the source omitted", row)
+	}
+}
+
+// File status follows git's short status, from the net diff across captures.
+func TestLiveDiffFileStatus(t *testing.T) {
+	conflicted := mekugi.RenderReviewFile("/w/a.go", "/w/a.go", "a\n", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n")
+	for _, tc := range []struct {
+		name    string
+		regions []mekugi.ReviewFile
+		want    string
+	}{
+		{"added", []mekugi.ReviewFile{mekugi.RenderReviewFile("", "/w/a.go", "", "a\n")}, "A a.go"},
+		{"deleted", []mekugi.ReviewFile{mekugi.RenderReviewFile("/w/a.go", "", "a\n", "")}, "D a.go"},
+		{"modified", []mekugi.ReviewFile{mekugi.RenderReviewFile("/w/a.go", "/w/a.go", "a\n", "b\n")}, "M a.go"},
+		{"rename only", []mekugi.ReviewFile{mekugi.RenderReviewFile("/w/old.go", "/w/a.go", "", "")}, "R old.go → a.go"},
+		{"rename across folders", []mekugi.ReviewFile{mekugi.RenderReviewFile("/w/x/old.go", "/w/a.go", "", "")}, "R x/old.go → a.go"},
+		{"rename then edit", []mekugi.ReviewFile{
+			mekugi.RenderReviewFile("/w/old.go", "/w/a.go", "", ""),
+			mekugi.RenderReviewFile("/w/a.go", "/w/a.go", "a\n", "b\n"),
+		}, "RM old.go → a.go"},
+		{"rename with unknown content", []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("/w/old.go", "/w/a.go", "unreadable")}, "RM old.go → a.go"},
+		{"binary move", []mekugi.ReviewFile{mekugi.RenderBinaryReviewFile("/w/old.bin", "/w/a.go", 3, 3, "abc", "abc")}, "R old.bin → a.go"},
+		{"binary rename with edit", []mekugi.ReviewFile{mekugi.RenderBinaryReviewFile("/w/old.bin", "/w/a.go", 3, 4, "abc", "abd")}, "RM old.bin → a.go"},
+		{"mchanges conflict", []mekugi.ReviewFile{conflicted}, "UU a.go"},
+	} {
+		if got := ansi.Strip(liveDiffFileLabel(liveDiffStatusOf(tc.regions...), "a.go", "/w", livediff.DarkTheme)); got != tc.want {
+			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// The tree codes the composed net diff: resolving an mchanges conflict clears UU.
+func TestLiveDiffTreeConflictClearsWhenResolved(t *testing.T) {
+	base := "a\n"
+	markers := "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n"
+	origin := livediff.Origin{Change: "amber2", Caller: "/root", Source: "mchanges"}
+	captures := []liveDiffChunk{liveDiffCapture("k1", "a.go", 1, base, markers, origin)}
+	row := func() string {
+		c := liveDiffChangesController(t, 130, 20, captures)
+		for _, line := range c.navigation.render(c.files, c.rendering.Counts, c.view.Selected, 34, 6, livediff.DarkTheme) {
+			if line := ansi.Strip(line); strings.Contains(line, "a.go") {
+				return line
+			}
+		}
+		return ""
+	}
+	if got := row(); !strings.Contains(got, "UU a.go") {
+		t.Fatalf("conflicted row = %q", got)
+	}
+	captures = append(captures, liveDiffCapture("k2", "a.go", 2, markers, "b\n", livediff.Origin{Change: "amber3", Caller: "/root", Source: "apply_patch"}))
+	if got := row(); !strings.Contains(got, "M a.go") {
+		t.Fatalf("resolved row = %q", got)
 	}
 }
 

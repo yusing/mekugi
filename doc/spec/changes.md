@@ -362,8 +362,7 @@ that the command ran.
 A card header names the caller, then states the call with a roster glyph
 rather than a word: `◐` while the call is arriving or running, `✓` once it
 completes, and `!` with the reason when the edit cannot be projected. The
-current file follows, styled like file navigation: its `M`, `A`, `D`, or `R`
-status and live `+N -N` line counts, with `N/M files` when the call edits
+current file follows, styled like file navigation: its status and live `+N -N` line counts, with `N/M files` when the call edits
 several.
 
 The integrated live-input pane opens on its first displayable preview, not on
@@ -429,8 +428,11 @@ counts the changes folded into it. Flushing under a filter reviews only the
 shown caller's captures. Agents appear by display name: `main` for the root,
 otherwise the path below it. Records from before attribution show an unknown
 caller, which filters like any other. File rows in the tree, flat list, Changes
-tab, and streaming title share one format: a colored status letter, one space,
-then the name.
+tab, and streaming title share one format: a colored git-style status, one
+space, then the name. The status is `A`, `D`, `M`, `R` for a rename with no
+content change, or `RM` for a rename with edits or uncaptured content; a rename
+names its source as `old → new`. `UU` marks a net diff that still adds
+`mchanges` revert or apply conflict markers, and clears once they are resolved.
 Incoming updates retain the paused file, navigator cursor, and top-row identity
 where those entries still exist. Resize keeps the logical diff anchor and the
 focused navigator entry visible. File status, known line counts, folder file

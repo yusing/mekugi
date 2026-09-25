@@ -246,7 +246,7 @@ func TestLiveDiffNavigationColoredInlineStatusAndStats(t *testing.T) {
 	files[1].Chunks[0].Review.BeforePath = ""
 	files[1].Highlighted = true
 	files[2].Chunks[0].Review.AfterPath = ""
-	files[3].Chunks[0].Review.AfterPath = "was.go"
+	files[3].Chunks[0].Review = mekugi.RenderReviewFile("was.go", "renamed.go", "a\n", "b\n")
 	var nav liveDiffNavigation
 	nav.flat = true
 	nav.rebuild(files, "")
@@ -255,7 +255,7 @@ func TestLiveDiffNavigationColoredInlineStatusAndStats(t *testing.T) {
 	if heading := ansi.Strip(rows[0]); heading != " Files  4/4 · flat" {
 		t.Errorf("navigator repeats the Files title or loses its counts: %q", heading)
 	}
-	for i, want := range []string{"A added.go +3 -0", "D deleted.go +0 -7", "M modified.go +5 -2", "R renamed.go +1 -1"} {
+	for i, want := range []string{"A added.go +3 -0", "D deleted.go +0 -7", "M modified.go +5 -2", "RM was.go → renamed.go +1 -1"} {
 		row := rows[i+2]
 		if plain := ansi.Strip(row); !strings.Contains(plain, want) {
 			t.Errorf("row %d lacks inline status/stats: %q", i, plain)

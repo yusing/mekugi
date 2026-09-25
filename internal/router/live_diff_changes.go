@@ -14,14 +14,16 @@ import (
 // liveDiffChanges is the Changes tab: unreviewed changes in capture order, one
 // graph lane per caller. Lanes branch from main at the caller's first change.
 type liveDiffChanges struct {
-	query    string
-	nodes    []liveDiffChangeNode
-	lanes    []string
-	rows     []liveDiffChangeRow
-	paths    []string // File names by view index.
-	expanded map[string]bool
-	cursor   int
-	top      int
+	query string
+	nodes []liveDiffChangeNode
+	lanes []string
+	rows  []liveDiffChangeRow
+	paths []string // File names by view index.
+	// workspace displays rename sources.
+	workspace string
+	expanded  map[string]bool
+	cursor    int
+	top       int
 	// target is the change and file that { } last opened.
 	target liveDiffChangeTarget
 }
@@ -39,9 +41,7 @@ type liveDiffChangeFile struct {
 	file           int
 	added, removed int
 	unknown        bool
-	// before and after span the change's captures of the file, for its status.
-	before, after string
-	seen          bool
+	status         liveDiffStatus
 }
 
 type liveDiffChangeRow struct {
@@ -76,7 +76,7 @@ func (l *liveDiffChanges) rebuild(view *liveDiffView, workspace string) {
 	if l.cursor < len(l.rows) {
 		cursor = l.rowTarget(l.rows[l.cursor])
 	}
-	l.nodes, l.rows, l.lanes, l.paths = nil, nil, []string{"/root"}, nil
+	l.nodes, l.rows, l.lanes, l.paths, l.workspace = nil, nil, []string{"/root"}, nil, workspace
 	for _, file := range view.Files {
 		path := pathdisplay.ForWorkspace(workspace, file.Path)
 		if _, name, found := strings.CutLast(path, "/"); found {
@@ -133,14 +133,11 @@ func (l *liveDiffChanges) rebuild(view *liveDiffView, workspace string) {
 		at := slices.IndexFunc(node.files, func(file liveDiffChangeFile) bool { return file.file == capture.file })
 		if at < 0 {
 			at = len(node.files)
-			node.files = append(node.files, liveDiffChangeFile{file: capture.file})
+			node.files = append(node.files, liveDiffChangeFile{file: capture.file, status: liveDiffStatus{before: chunk.Review.BeforePath}})
 		}
 		file := &node.files[at]
 		file.added, file.removed, file.unknown = file.added+added, file.removed+removed, file.unknown || incomplete
-		if !file.seen {
-			file.before, file.seen = chunk.Review.BeforePath, true
-		}
-		file.after = chunk.Review.AfterPath
+		file.status.add(chunk.Review)
 	}
 	for n, node := range l.nodes {
 		lane := slices.Index(l.lanes, node.Caller)
@@ -323,7 +320,7 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 			if entry.file == len(node.files)-1 {
 				branch = "└"
 			}
-			label = "\x1b[2m" + branch + "\x1b[22m " + liveDiffFileLabel(file.before, file.after, livediff.Safe(l.path(file.file), false), theme)
+			label = "\x1b[2m" + branch + "\x1b[22m " + liveDiffFileLabel(file.status, l.path(file.file), l.workspace, theme)
 			stats = liveDiffCountStats(livediff.Counts{Added: file.added, Removed: file.removed}, theme)
 			if file.unknown {
 				stats = liveDiffCountStats(livediff.Counts{Added: -1, Removed: -1}, theme)

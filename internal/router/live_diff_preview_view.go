@@ -496,7 +496,7 @@ func (p *liveDiffPreviewView) title(workspace string, theme liveDiffTheme, width
 			path = file.BeforePath
 		}
 		added, removed := file.LineCounts()
-		label = liveDiffFileLabel(file.BeforePath, file.AfterPath, livediff.Safe(pathdisplay.ForWorkspace(workspace, path), false), theme) +
+		label = liveDiffFileLabel(liveDiffStatusOf(file), pathdisplay.ForWorkspace(workspace, path), workspace, theme) +
 			liveDiffCountStats(livediff.Counts{Added: added, Removed: removed}, theme)
 		if len(p.current.Files) > 1 {
 			label += fmt.Sprintf(" \x1b[2m%d/%d files\x1b[22m", p.file+1, len(p.current.Files))

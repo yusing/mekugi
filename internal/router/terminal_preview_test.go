@@ -457,6 +457,23 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 		func(source string) string { return strings.ReplaceAll(source, `"hello"`, `"greeting"`) }) {
 		return
 	}
+	// main renames pane_trace's edited file (RM in the tree, R in its change),
+	// then an mchanges revert leaves a conflict for resolution (UU).
+	activity.collect("root", "tool-call\x00"+call(), "tool", "Run\n```bash\ngit mv internal/pane/launch.go internal/pane/launcher.go\n```")
+	from, to := filepath.Join(workspace, "internal/pane/launch.go"), filepath.Join(workspace, "internal/pane/launcher.go")
+	if content, err := os.ReadFile(from); err == nil && os.Rename(from, to) == nil {
+		record("root", "/root", nativeExecCommandToolName, "git", from, to, string(content), string(content))
+	}
+	if !pause(0.8) {
+		return
+	}
+	if !script("root", "/root", "mchanges", "internal/broker/broker.go", "mchanges revert apple2",
+		func(source string) string {
+			return strings.Replace(source, "func (b *Broker) Publish(topic, message string) {\n",
+				"<<<<<<< workspace\nfunc (b *Broker) Publish(topic, message string) {\n=======\nfunc (b *Broker) Publish(topic, message string) error {\n>>>>>>> mchanges revert apple2\n", 1)
+		}) {
+		return
+	}
 	settle("root", "gpt-6-astra", 380_000, 4_200)
 	auto.finishTurn(workspace, "root", turn.TurnID)
 	activity.beginResponse("tests")

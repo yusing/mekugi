@@ -3,12 +3,14 @@ package router
 import (
 	"cmp"
 	"fmt"
+	"path"
 	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/pathdisplay"
 )
@@ -32,6 +34,8 @@ type liveDiffNavigation struct {
 	dots []string
 	// caller is the view's caller filter, for the heading.
 	caller string
+	// workspace displays rename sources.
+	workspace string
 }
 
 type liveDiffNavEntry struct {
@@ -68,7 +72,7 @@ func (n *liveDiffNavigation) rebuild(files []liveDiffFile, workspace string) {
 	if n.top < len(n.entries) {
 		topID = n.entries[n.top].id
 	}
-	n.entries, n.matches, n.total = nil, nil, 0
+	n.entries, n.matches, n.total, n.workspace = nil, nil, 0, workspace
 	paths := make(map[int]string)
 	for i, file := range files {
 		if len(file.Chunks) == 0 {
@@ -570,11 +574,13 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 			label = indent + theme.Accent() + arrow + "\x1b[39m " + livediff.Safe(entry.label, false)
 			stats = fmt.Sprintf(" \x1b[2m(%d)\x1b[22m", entry.count)
 		} else {
-			file := files[entry.file]
+			var regions []mekugi.ReviewFile
+			for _, chunk := range files[entry.file].Chunks {
+				regions = append(regions, chunk.Review)
+			}
 			label = indent + livediff.Safe(entry.label, false)
-			if len(file.Chunks) > 0 {
-				first, last := file.Chunks[0].Review, file.Chunks[len(file.Chunks)-1].Review
-				label = indent + liveDiffFileLabel(first.BeforePath, last.AfterPath, livediff.Safe(entry.label, false), theme)
+			if len(regions) > 0 {
+				label = indent + liveDiffFileLabel(liveDiffStatusOf(regions...), entry.label, n.workspace, theme)
 			}
 			if entry.file < len(counts) {
 				stats = liveDiffCountStats(counts[entry.file], theme)
@@ -606,19 +612,74 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 	return out
 }
 
-// liveDiffFileLabel prefixes a file label with its colored change status. Every
-// file row (tree, flat list, Changes tab, streaming title) uses this format.
-func liveDiffFileLabel(beforePath, afterPath, label string, theme livediff.Theme) string {
-	status, color := "M", theme.Foreground(chroma.LiteralNumberInteger)
-	switch {
-	case beforePath == "":
-		status, color = "A", theme.Foreground(chroma.GenericInserted)
-	case afterPath == "":
-		status, color = "D", theme.Foreground(chroma.GenericDeleted)
-	case beforePath != afterPath:
-		status, color = "R", theme.Accent()
+// liveDiffStatus is a file row's net change, coded like git's short status:
+// A, D, M, R (rename only), RM (rename with edits), or UU (the net diff still
+// adds conflict markers that mchanges revert or apply left for resolution).
+type liveDiffStatus struct {
+	before, after string
+	// edited reports content changes, or content that could not be captured.
+	edited, conflict bool
+}
+
+// liveDiffStatusOf classifies a file's diff regions, in capture order.
+func liveDiffStatusOf(regions ...mekugi.ReviewFile) liveDiffStatus {
+	var status liveDiffStatus
+	if len(regions) > 0 {
+		status.before = regions[0].BeforePath
 	}
-	return color + status + "\x1b[39m " + label
+	for _, region := range regions {
+		status.add(region)
+	}
+	return status
+}
+
+// add folds a later capture of the file into its status; before stays the
+// first capture's.
+func (s *liveDiffStatus) add(region mekugi.ReviewFile) {
+	s.after = region.AfterPath
+	added, removed := region.LineCounts()
+	// Unknown content is not evidence of a pure rename.
+	s.edited = s.edited || added != 0 || removed != 0
+	if region.Binary {
+		if _, sides, found := strings.Cut(region.Diff, " differ ("); found {
+			before, after, _ := strings.Cut(strings.TrimSuffix(strings.TrimSpace(sides), ")"), " -> ")
+			s.edited = s.edited || before != after
+		}
+	}
+	s.conflict = s.conflict || strings.Contains(region.Diff, "\n+>>>>>>> mchanges ")
+}
+
+func (s liveDiffStatus) code(theme livediff.Theme) (string, string) {
+	switch {
+	case s.conflict:
+		return "UU", theme.Foreground(chroma.GenericDeleted)
+	case s.before == "":
+		return "A", theme.Foreground(chroma.GenericInserted)
+	case s.after == "":
+		return "D", theme.Foreground(chroma.GenericDeleted)
+	case s.before != s.after && s.edited:
+		return "RM", theme.Accent()
+	case s.before != s.after:
+		return "R", theme.Accent()
+	}
+	return "M", theme.Foreground(chroma.LiteralNumberInteger)
+}
+
+// liveDiffFileLabel prefixes a file label with its colored status; a rename
+// also names its source. Every file row (tree, flat list, Changes tab,
+// streaming title) uses this format.
+func liveDiffFileLabel(status liveDiffStatus, label, workspace string, theme livediff.Theme) string {
+	code, color := status.code(theme)
+	label = livediff.Safe(label, false)
+	if status.before != "" && status.after != "" && status.before != status.after {
+		// The source's base name when it stayed in the same folder.
+		from := pathdisplay.ForWorkspace(workspace, status.before)
+		if path.Dir(status.before) == path.Dir(status.after) {
+			from = path.Base(status.before)
+		}
+		label = livediff.Safe(from, false) + " → " + label
+	}
+	return color + code + "\x1b[39m " + label
 }
 
 // liveDiffCountStats shows known line counts; unknown counts are not zero.
