@@ -133,8 +133,8 @@ func TestTerminalUIPreviewFrames(t *testing.T) {
 				agentDisplayName(agent.Name), agent.Turns, observed, report.InputTokens, report.OutputTokens,
 				report.cost.cachedInput+report.cost.uncachedInput+report.cost.output, report.cost.known, report.missingUsage)
 		}
-		// Show the real feed renderer too: grouping, reasoning replacement,
-		// waiting, and MCP events cannot be reviewed from roster rows alone.
+		// Show the real feed renderer too: grouping, waiting, and MCP events
+		// cannot be reviewed from roster rows alone.
 		fmt.Println("activity:")
 		for _, line := range feed.lines[max(0, len(feed.lines)-12):] {
 			if styled {
@@ -147,17 +147,10 @@ func TestTerminalUIPreviewFrames(t *testing.T) {
 		}
 		fmt.Println("status:", status)
 	}
-	var reasoning int
 	for _, entry := range view.entries {
-		if entry.Kind == "reasoning" && entry.CallID == "reasoning-preview" {
-			reasoning++
-			if strings.Contains(entry.Text, "response…") {
-				t.Fatal("preview retained the superseded reasoning snapshot")
-			}
+		if entry.Kind == "reasoning" {
+			t.Fatal("preview rendered reasoning in activity history")
 		}
-	}
-	if reasoning != 1 {
-		t.Fatalf("preview reasoning entries = %d, want one updating entry", reasoning)
 	}
 	var metrics *activityPaneAgent
 	for i := range view.agents {

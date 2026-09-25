@@ -304,6 +304,15 @@ func (w *liveDiffPreviewWorker) run() {
 		projected.Complete = final
 		projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
 		w.mu.Lock()
+		if final && projected.Status == liveDiffPreviewUnavailable+"patch cannot be projected" {
+			// A speculative patch projection cannot establish failure or success.
+			// Clear any earlier preview and leave the result to the host tool.
+			w.broker.publishPreview(liveDiffPreview{
+				ID: preview.ID, Workspace: preview.Workspace, Thread: preview.Thread, Complete: true,
+			}, false)
+			w.mu.Unlock()
+			continue
+		}
 		// One preview is in flight, with only the latest input sampled next.
 		// Final content and completion share one replaceable snapshot, so a slow
 		// viewer cannot receive only removal after losing the last content frame.

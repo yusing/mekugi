@@ -318,7 +318,9 @@ outside this delivery. Model-visible command-change notices are also deferred;
 stock result bytes remain unchanged.
 Patch previews show projected source changes with the affected file's language
 highlighting, not the `apply_patch` instruction envelope. If source matching
-cannot establish that projection, the viewer must not fabricate a diff.
+cannot establish that projection, the viewer must not fabricate a diff. A
+completed unprojectable patch clears any earlier provisional card and leaves
+failure reporting to the host tool result.
 This provisional display never changes Codex's original tool input or asserts
 that the command ran.
 

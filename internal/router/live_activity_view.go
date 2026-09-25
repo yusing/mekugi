@@ -120,20 +120,8 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			continue
 		}
 		v.lastSeq = entry.Seq
-		if entry.Kind == "reasoning" && entry.CallID != "" {
-			updated := false
-			for i, previous := range slices.Backward(v.entries) {
-				if previous.Kind == "reasoning" && previous.Agent == entry.Agent && previous.CallID == entry.CallID {
-					v.entries[i].Text = entry.Text
-					v.blocks[i] = parseLiveActivity(entry)
-					v.runs = nil
-					updated = true
-					break
-				}
-			}
-			if updated {
-				continue
-			}
+		if entry.Kind == "reasoning" {
+			continue
 		}
 		if entry.Kind == "output_filter" && entry.CallID != "" {
 			matched := false
@@ -811,12 +799,12 @@ func liveActivityLast(last, now time.Time) string {
 func (v *liveActivityView) metricTable(rows []liveActivityRosterRow, now time.Time) []string {
 	const columns = 4
 	cells := make([][columns]string, len(rows))
-	widths := [columns]int{14, 15, 7, 5}
+	widths := [columns]int{14, 17, 7, 5}
 	for i, row := range rows {
 		_, timer := v.current(row.agent, now)
 		tokens := liveActivityTokens(row.agent)
 		if tokens != "" {
-			tokens = liveActivityDim + "↑" + liveActivityUndim + liveActivityPad(formatUsageTokens(row.agent.InputTokens), 6) + liveActivityDim + " ↓" + liveActivityUndim + liveActivityPad(formatUsageTokens(row.agent.OutputTokens), 6)
+			tokens = liveActivityDim + "↑ " + liveActivityUndim + liveActivityPad(formatUsageTokens(row.agent.InputTokens), 6) + liveActivityDim + " ↓ " + liveActivityUndim + liveActivityPad(formatUsageTokens(row.agent.OutputTokens), 6)
 		}
 		timerCell := ""
 		if timer != "" {
@@ -875,7 +863,7 @@ func liveActivityCardMetrics(agent activityPaneAgent) string {
 	if cost := liveActivityCost(agent); cost != "" {
 		parts = append(parts, cost)
 	} else if agent.InputTokens > 0 {
-		parts = append(parts, liveActivityDim+"↑"+liveActivityUndim+formatUsageTokens(agent.InputTokens))
+		parts = append(parts, liveActivityDim+"↑ "+liveActivityUndim+formatUsageTokens(agent.InputTokens))
 	}
 	if turns := liveActivityTurns(agent); turns != "" {
 		parts = append(parts, turns)

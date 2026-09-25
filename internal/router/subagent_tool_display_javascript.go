@@ -612,7 +612,13 @@ func toolActivityStaticToolCall(call *sitter.Node, bytes []byte) (map[string]jso
 	switch name {
 	case "exec_command", "view_image", "write_stdin", "apply_patch", journalToolName:
 	default:
-		if _, _, ok := toolActivityMCPName(name); !ok && toolActivityBuiltinLabel(name) == "" {
+		_, _, mcp := toolActivityMCPName(name)
+		plugin := false
+		if !strings.HasPrefix(name, "mcp__") {
+			group, tool, qualified := strings.Cut(name, "__")
+			plugin = qualified && group != "" && tool != ""
+		}
+		if !mcp && !plugin && toolActivityBuiltinLabel(name) == "" {
 			return nil, false
 		}
 	}

@@ -255,7 +255,7 @@ See [live view details](doc/spec/changes.md#live-terminal-view).
 ### Agents pane
 
 The first provider response opens a **Mekugi agents** pane in the same terminal.
-It streams main and child activity, visible reasoning summaries, messages, and replies, including
+It streams main and child activity, messages, and replies, including
 during a native wait. The separate roster spans the full width below Codex and the
 diff, with a draggable divider. It gives `main` and each child one row: activity, then
 age, `↑`/`↓` tokens, estimated cost to two decimal places, and turns in stable columns.

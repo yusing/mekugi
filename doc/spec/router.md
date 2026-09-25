@@ -337,6 +337,12 @@ so the first turn can reuse that prefix. An execution-free or catalog-free hands
 remains native. Prewarm does not initialize replay, journal, or agent lifecycle state. Generating requests cannot use prewarm
 metadata to bypass ordinary turn validation.
 
+The provider upgrade's nonempty `x-codex-turn-state` header reaches Codex as a
+`response.metadata` event before the first response event, because the downstream
+WebSocket is already upgraded. Only that routing header is bridged. Codex owns its
+subsequent replay and reset; the router does not inject stale handshake state into
+later requests or fabricate provider usage for the metadata event.
+
 Execution-free turns pass through without Mekugi instruction or tool rewriting, regardless of their output schema. They require valid turn metadata and session
 and thread IDs. Catalogs may be empty or contain native helper tools and Codex's JavaScript
 Code Mode `exec` with optional `wait`, flat or namespaced. Nested clock and lookup declarations

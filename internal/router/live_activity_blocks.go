@@ -74,8 +74,6 @@ func parseLiveActivity(entry activityPaneEntry) []liveActivityBlock {
 		}
 	case "error":
 		return []liveActivityBlock{{kind: "error", body: text}}
-	case "reasoning":
-		return []liveActivityBlock{{kind: "reasoning", body: text}}
 	case "compaction":
 		return []liveActivityBlock{{kind: "compaction", body: text}}
 	case "output_filter":
@@ -205,7 +203,10 @@ func parseLiveActivityOperation(paragraph string) liveActivityBlock {
 		if reads, ok := parseLiveActivityReads(block.label); ok {
 			if block.verb != "Read" {
 				for i := range reads {
-					if len(reads[i].ranges) > 0 { reads[i].path += " " + strings.Join(reads[i].ranges, " "); reads[i].ranges = nil }
+					if len(reads[i].ranges) > 0 {
+						reads[i].path += " " + strings.Join(reads[i].ranges, " ")
+						reads[i].ranges = nil
+					}
 				}
 			}
 			block.kind, block.reads, block.label = "reads", reads, ""

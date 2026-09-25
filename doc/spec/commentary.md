@@ -122,8 +122,11 @@ unfinished patches produce no successful edit summary, and repeated receipts
 are deduplicated. The live pane separately owns full provisional and completed
 diff display under [REQ-CHANGES-001](changes.md).
 
-MCP calls display their `server.tool` identity and arguments. Other native web,
-image, clock, context, goal, and execution helpers use descriptive labels.
+MCP calls display their `server.tool` identity and arguments. Standalone web
+commands label single search, image-search, open, and find actions; hosted web
+search labels its completed action. Tool discovery shows its arguments, and
+other plugin calls preserve their identity and arguments. Other native image,
+clock, context, goal, and execution helpers use descriptive labels.
 Consecutive matching actions from one child may group under one canonical
 agent heading while preserving every detail. A different child, notice, or
 root delivery boundary ends that group. Grouping is user-only, bounded, and
@@ -368,8 +371,8 @@ current activity and an elapsed-time timer (`elapsed · age ago`, or `just now`;
 its first response completes). The root summary shows its latest observed activity or a newer message addressed
 to `/root`, or a dim `—` when neither is retained. Main activity is pane-only
 and never copied back into its conversation. Visible provider reasoning summaries
-stream into an updating Thinking block, with bounded per-response storage; raw
-and encrypted reasoning are not exposed. Agent wait, start, resume, interrupt,
+are collected with bounded per-response storage but not rendered in the agents pane;
+raw and encrypted reasoning are not exposed. Agent wait, start, resume, interrupt,
 user-input waits, and MCP calls have explicit action labels. These describe
 observed requests, not unobserved native execution or completion. Sibling and ancestor continuation guides
 form a tree; rows whose parent is off-screen show their relative path instead. The roster stays in a separate region spanning the full width below Codex

@@ -81,6 +81,9 @@ func subagentToolPreview(item map[string]json.RawMessage, qualifiedName string, 
 	_ = json.Unmarshal([]byte(input), &arguments)
 	// Cell waits use the operation-aware display below, not the generic helper label.
 	if label := toolActivityBuiltinLabel(shortName); label != "" && (shortName != "wait" || arguments["cell_id"] == nil) {
+		if shortName == "web.run" || shortName == "web__run" {
+			label = toolActivityWebRunLabel(arguments)
+		}
 		return toolActivityDetail(label, input)
 	}
 	if kind := jsonString(item, "type"); kind == "local_shell_call" || kind == "shell_call" {
@@ -146,10 +149,23 @@ func subagentToolPreview(item map[string]json.RawMessage, qualifiedName string, 
 			return toolActivityDetail("Search web", query)
 		case "open_page":
 			return toolActivityDetail("Open page", jsonString(action, "url"))
-		case "find":
-			return toolActivityDetail("Find in page", jsonString(action, "pattern"))
+		case "find", "find_in_page":
+			pattern := jsonString(action, "pattern")
+			url := jsonString(action, "url")
+			if pattern != "" && url != "" {
+				return toolActivityDetail("Find in page", pattern+" in "+url)
+			}
+			return toolActivityDetail("Find in page", pattern+url)
 		}
 		return "Search web"
+	case "tool_search_call":
+		// Hosted and client-side tool discovery use an object, not a JSON
+		// string like function_call.arguments. Show the query without dropping
+		// any other discovery constraints.
+		if len(item["arguments"]) > 0 {
+			return toolActivityDetail("Search tools", string(item["arguments"]))
+		}
+		return "Search tools"
 	case "file_search_call":
 		var queries []string
 		_ = json.Unmarshal(item["queries"], &queries)
@@ -160,6 +176,30 @@ func subagentToolPreview(item map[string]json.RawMessage, qualifiedName string, 
 		return toolActivityDetail("Run code", jsonString(item, "code"))
 	}
 	return toolActivityDetail("Tool call: "+commentaryCode(qualifiedName), input)
+}
+
+func toolActivityWebRunLabel(arguments map[string]json.RawMessage) string {
+	labels := map[string]string{
+		"search_query": "Search web",
+		"image_query":  "Search images",
+		"open":         "Open page",
+		"find":         "Find in page",
+	}
+	label := ""
+	for key, raw := range arguments {
+		if key == "response_length" || len(raw) == 0 || string(raw) == "null" || string(raw) == "[]" {
+			continue
+		}
+		next := labels[key]
+		if next == "" || label != "" {
+			return "Browse web"
+		}
+		label = next
+	}
+	if label == "" {
+		return "Browse web"
+	}
+	return label
 }
 
 // Use one label table for native calls and normalized Code Mode identifiers.

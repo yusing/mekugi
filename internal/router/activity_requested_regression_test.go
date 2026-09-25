@@ -108,7 +108,7 @@ func TestRequestedRosterMetricSlotsStableAcrossAvailabilityAndFormat(t *testing.
 	if ansi.StringWidth(full) != ansi.StringWidth(changed) || ansi.StringWidth(full) != ansi.StringWidth(empty) {
 		t.Fatalf("metric slots changed width with unavailable values: %q / %q / %q", full, changed, empty)
 	}
-	if ansi.StringWidth(full) > 44 || !strings.Contains(full, "$0.52") || !strings.Contains(full, "T+7") {
+	if ansi.StringWidth(full) > 46 || !strings.Contains(full, "$0.52") || !strings.Contains(full, "T+7") {
 		t.Fatalf("metrics waste space or lost compact cost/turn formatting: %q", full)
 	}
 }

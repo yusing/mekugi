@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func TestActivityVisibleReasoningStreamsWithoutChangingProviderEvents(t *testing.T) {
+func TestActivityCollectsReasoningWithoutRenderingOrChangingProviderEvents(t *testing.T) {
 	p := newManagedMekugiProxy(t)
 	p.activity.attachPane(newActivityPane(t.Context(), func() bool { return true }))
 	root, _ := prepareActivityTest(t, p, "root", "r", "", "/root", nil)
@@ -29,11 +29,11 @@ func TestActivityVisibleReasoningStreamsWithoutChangingProviderEvents(t *testing
 		p.activity.mu.Unlock()
 		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: uint64(i + 1), Agent: "/root", Kind: event.kind, CallID: event.callID, Text: event.raw, Observed: time.Now()}}})
 	}
-	if len(v.entries) != 1 || v.entries[0].Text != "Checking the event path." {
-		t.Fatalf("live reasoning not updated in place: %+v", v.entries)
+	if len(v.entries) != 0 {
+		t.Fatalf("reasoning entered activity history: %+v", v.entries)
 	}
 	frame := strings.Join(plainLines(v.renderFeed(80, 15).lines), "\n")
-	if !strings.Contains(frame, "Thinking") || !strings.Contains(frame, "Checking the event path.") {
+	if strings.Contains(frame, "Thinking") || strings.Contains(frame, "Checking the event path.") {
 		t.Fatal(frame)
 	}
 	root.collectReasoningDelta("reasoning-1", strings.Repeat("x", maxCommentaryPublicationBytes))

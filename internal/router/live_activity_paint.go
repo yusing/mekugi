@@ -347,13 +347,13 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 			return p.journal(block.journal, width, block.compact)
 		}
 		return append([]string{liveActivityGreen + "✓ Final answer" + liveActivityReset}, liveActivityIndent(p.markdown(block.body, width-2), "  ")...)
-	case "reasoning":
-		return append([]string{liveActivityDim + "Thinking" + liveActivityUndim}, p.markdown(block.body, width)...)
 	case "reads":
 		var items []string
 		for _, read := range block.reads {
 			item := liveActivityPath(read.path)
-			if block.verb == "Search" { item = p.code(block.verb, read.path) }
+			if block.verb == "Search" {
+				item = p.code(block.verb, read.path)
+			}
 			if len(read.ranges) > 0 {
 				item += " " + liveActivityDim + strings.Join(read.ranges, ", ") + liveActivityUndim
 			}
@@ -589,13 +589,13 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 		}
 		// The roster's status glyph already marks a sent final answer.
 		return text
-	case "reasoning":
-		return liveActivitySummaryVerb("Thinking") + firstLine(block.body)
 	case "reads":
 		var names []string
 		for _, read := range block.reads {
 			name := read.path
-			if block.verb != "Search" { name = name[strings.LastIndex(name, "/")+1:] }
+			if block.verb != "Search" {
+				name = name[strings.LastIndex(name, "/")+1:]
+			}
 			names = append(names, name)
 		}
 		return liveActivitySummaryVerb(block.verb) + strings.Join(names, ", ") + more

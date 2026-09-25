@@ -89,6 +89,43 @@ func TestSubagentMCPToolDisplay(t *testing.T) {
 	}
 }
 
+func TestWebRunActivityPreview(t *testing.T) {
+	for _, tc := range []struct {
+		arguments, want string
+	}{
+		{`{"search_query":[{"q":"release notes"}],"response_length":"short"}`, "Search web"},
+		{`{"open":[{"ref_id":"turn123search0"}]}`, "Open page"},
+		{`{"find":[{"ref_id":"turn123search0","pattern":"install"}]}`, "Find in page"},
+		{`{"search_query":[{"q":"release notes"}],"open":[{"ref_id":"turn123search0"}]}`, "Browse web"},
+	} {
+		for _, name := range []string{"web.run", "web__run"} {
+			item := map[string]json.RawMessage{"name": mustMarshalJSON(name), "arguments": mustMarshalJSON(tc.arguments)}
+			if got := subagentToolPreview(item, name, nil); got != toolActivityDetail(tc.want, tc.arguments) {
+				t.Fatalf("native %s: %q", name, got)
+			}
+		}
+	}
+	source := `text(await tools.web__run({search_query:[{q:"release notes"}]}));`
+	item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
+	if got := subagentToolPreview(item, "functions.exec", nil); !strings.HasPrefix(got, "Search web\n") || !strings.Contains(got, "release notes") {
+		t.Fatalf("Code Mode web.run = %q", got)
+	}
+}
+
+func TestGenericPluginActivityPreview(t *testing.T) {
+	arguments := `{"query":"docs"}`
+	item := map[string]json.RawMessage{"name": mustMarshalJSON("plugin__lookup"), "arguments": mustMarshalJSON(arguments)}
+	want := toolActivityDetail("Tool call: "+commentaryCode("plugin__lookup"), arguments)
+	if got := subagentToolPreview(item, "plugin__lookup", nil); got != want {
+		t.Fatalf("native plugin preview = %q", got)
+	}
+	source := `text(await tools.plugin__lookup({query:"docs"}));`
+	item = map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
+	if got := subagentToolPreview(item, "functions.exec", nil); got != want {
+		t.Fatalf("Code Mode plugin preview = %q", got)
+	}
+}
+
 func TestSubagentToolDisplayInvalidReaderOptions(t *testing.T) {
 	for _, input := range []string{
 		"mcat -n 0 a.go", "mcat -n 1 -n 2 a.go", "mcat -n 9007199254740992 a.go",
@@ -355,6 +392,9 @@ func TestSubagentBuiltinToolDisplay(t *testing.T) {
 		{`{"type":"shell_call","action":{"commands":["echo a","echo b"]}}`, "Run\n```bash\necho a\necho b\n```"},
 		{`{"type":"local_shell_call","action":{"command":["bash","-lc","cat a"]}}`, "Read `a`"},
 		{`{"type":"web_search_call","action":{"type":"open_page","url":"https://example.com"}}`, "Open page\n`https://example.com`"},
+		{`{"type":"web_search_call","action":{"type":"find","pattern":"install"}}`, "Find in page\n`install`"},
+		{`{"type":"web_search_call","action":{"type":"find_in_page","url":"https://example.com","pattern":"install"}}`, "Find in page\n`install in https://example.com`"},
+		{`{"type":"tool_search_call","arguments":{"query":"OpenAI docs","limit":3}}`, "Search tools\n`{\"query\":\"OpenAI docs\",\"limit\":3}`"},
 		{`{"type":"file_search_call","queries":["alpha","beta"]}`, "Search files\n```\nalpha\nbeta\n```"},
 		{`{"type":"image_generation_call"}`, "Generate image"},
 		{`{"type":"code_interpreter_call","code":"print(1)\nprint(2)"}`, "Run code\n```\nprint(1)\nprint(2)\n```"},

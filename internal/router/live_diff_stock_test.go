@@ -65,6 +65,37 @@ func TestStockPatchPreviewRefusesUnmatchedSource(t *testing.T) {
 	}
 }
 
+func TestUnprojectableFinalPatchClearsPreviewWithoutClaimingFailure(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "sample.go"), []byte("old()\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	broker := newLiveDiffBroker(t.Context())
+	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
+	sub := broker.subscribe()
+	<-sub.events
+	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", applyPatchToolName)
+	t.Cleanup(worker.stop)
+	partial := "*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n+new()\n"
+	worker.appendDelta(partial)
+	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+		return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+new()")
+	})
+	worker.finish(partial + "*** Update File: missing.go\n@@\n-old\n+new\n*** End Patch\n")
+	clear := waitLiveDiffWorkerPreview(t, broker, sub, func(next liveDiffPreview) bool {
+		return next.ID == preview.ID && next.Complete
+	})
+	if clear.Status != "" || len(clear.Files) != 0 || clear.Workspace != workspace {
+		t.Fatalf("unprojectable patch claimed a result: %+v", clear)
+	}
+	var pane liveDiffPreviewPane
+	pane.update(preview)
+	pane.update(clear)
+	if len(pane.views) != 0 {
+		t.Fatal("unprojectable patch left a stale card")
+	}
+}
+
 func TestStockPatchStreamingPartialLinesStayProjectable(t *testing.T) {
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "sample.go"), []byte("old()\n"), 0o600); err != nil {

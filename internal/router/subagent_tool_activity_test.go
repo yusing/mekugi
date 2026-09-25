@@ -27,6 +27,8 @@ func TestSubagentToolActivityJSONAndSSE(t *testing.T) {
 				{"type": "local_shell_call", "id": "exec", "status": "completed", "action": map[string]any{"command": []string{"bash", "-lc", "cat a"}}},
 				{"type": "local_shell_call", "id": "python-wrapper", "status": "completed", "action": map[string]any{"command": []string{"bash", "-lc", "python3 - <<'PY'\nprint('projected')\nPY\n"}}},
 				{"type": "web_search_call", "id": "web", "status": "completed", "action": map[string]any{"type": "search", "query": "Go parser"}},
+				{"type": "web_search_call", "id": "web-find", "status": "completed", "action": map[string]any{"type": "find_in_page", "url": "https://example.com/docs", "pattern": "install"}},
+				{"type": "tool_search_call", "id": "tool-discovery", "status": "completed", "execution": "server", "arguments": map[string]any{"query": "OpenAI docs", "limit": 3}},
 				{"type": "custom_tool_call", "id": "mcp", "call_id": "mcp", "name": "exec", "input": `const r = await tools.mcp__openaiDeveloperDocs__fetch_openai_doc({url:"https://learn.chatgpt.com/docs/developer-commands",anchor:"#built-in-slash-commands"}); text(r);`},
 				{"type": "function_call", "id": "namespaced-mcp", "call_id": "namespaced-mcp", "namespace": "mcp__docs", "name": "lookup", "arguments": "{}"},
 				{"type": "custom_tool_call", "id": "batch", "call_id": "batch", "name": "exec", "input": `text(await tools.list_mcp_resources({})); text(await tools.clock__curr_time({}));`},
@@ -64,6 +66,8 @@ func TestSubagentToolActivityJSONAndSSE(t *testing.T) {
 				"\n\n- Tool call: `external`\n  ```\n  first line\n  " + strings.Repeat("界", 300) + "\n  ```" +
 				"\n\n- Run\n  ```bash\n  echo a\n    echo b\n  ```" +
 				"\n\n- Read `a`\n\n- Run\n  ```python\n  print('projected')\n  ```\n\n- Search web\n  `Go parser`" +
+				"\n\n- Find in page\n  `install in https://example.com/docs`" +
+				"\n\n- Search tools\n  `{\"limit\":3,\"query\":\"OpenAI docs\"}`" +
 				"\n\n- MCP `openaiDeveloperDocs.fetch_openai_doc`\n  `{\"anchor\":\"#built-in-slash-commands\",\"url\":\"https://learn.chatgpt.com/docs/developer-commands\"}`" +
 				"\n\n- MCP `docs.lookup`\n  `{}`" +
 				"\n\n- List MCP resources\n  `{}`\n\n- Read current time\n  `{}`"

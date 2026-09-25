@@ -497,7 +497,7 @@ func TestLiveActivityRosterShowsUsageByLayout(t *testing.T) {
 		status, _, _ := strings.Cut(lines[max(0, row)], " │ ")
 		want := "↑ 146.8K ↓ 3.2K"
 		if width >= 100 {
-			want = "↑146.8K"
+			want = "↑ 146.8K"
 		}
 		if row < 0 || !strings.HasSuffix(strings.TrimRight(status, " "), want) {
 			t.Fatalf("width %d: usage missing: %q", width, lines)
@@ -526,9 +526,9 @@ func TestLiveActivityCombinedRosterShowsTimerCostAndUsage(t *testing.T) {
 	first := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "$1.20") })
 	second := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "7m · ") })
 	// Unknown cost is omitted rather than shown as n/a or zero.
-	if first < 0 || second < 0 || first != second-1 || !strings.Contains(lines[first], "8m · 3s ago ↑1K ↓0") ||
+	if first < 0 || second < 0 || first != second-1 || !strings.Contains(lines[first], "8m · 3s ago ↑ 1K ↓ 0") ||
 		!strings.Contains(lines[first], "$1.20 T+2") || !strings.Contains(lines[second], "7m · 2m ago") ||
-		!strings.Contains(lines[second], "↑500 ↓0 T+1") || strings.Contains(lines[second], "$") || strings.Contains(lines[second], "n/a") {
+		!strings.Contains(lines[second], "↑ 500 ↓ 0 T+1") || strings.Contains(lines[second], "$") || strings.Contains(lines[second], "n/a") {
 		t.Fatalf("combined roster metrics = %q", lines)
 	}
 }
