@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -99,6 +100,87 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 		if event := socketRead(t, ctx, conn); jsonString(event, "type") != "response.completed" {
 			t.Fatalf("%s failed: %s", id, mustMarshalJSON(event))
 		}
+	}
+}
+
+// The provider can reuse a prewarm only when the first turn repeats its
+// projected instructions, tools, and leading items. Turn-only preparation after
+// the prewarm return must not rewrite that prefix.
+func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
+	const conflictingProgress = "As you work, you send messages to the `commentary` channel."
+	for _, native := range []bool{false, true} {
+		t.Run(map[bool]string{false: "Code Mode", true: "native"}[native], func(t *testing.T) {
+			proxy := newToolPluginTestProxy(t)
+			leading := []any{
+				map[string]any{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd},
+				map[string]any{"type": "message", "role": "user", "content": "<environment_context>cwd</environment_context>"},
+			}
+			tools := []any{map[string]any{"type": "function", "name": "lookup", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}}
+			if native {
+				tools = append(testNativeResponsesTools(), tools...)
+			} else {
+				leading = append([]any{testCodeModeAdditionalTools(testCodeModeDescription)}, leading...)
+			}
+			fields := func(input []any) map[string]any {
+				return map[string]any{
+					"model": "gpt-test", "instructions": testBaseInstructions, "tools": tools, "tool_choice": "auto",
+					"parallel_tool_calls": true, "reasoning": map[string]any{"effort": "high"}, "input": input,
+				}
+			}
+			warmFields := fields(leading)
+			warmFields["generate"] = false
+			warm, err := parseResponsesRequest(mustTestJSON(t, warmFields))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if transform, err := proxy.prepareModelRequest(t.Context(), &warm, "", "", codexTurnMetadata{RequestKind: "prewarm"}, true, true); err != nil || transform != nil {
+				t.Fatalf("prewarm projection: %v, %v", transform, err)
+			}
+			turn, err := parseResponsesRequest(mustTestJSON(t, fields(append(slices.Clone(leading), map[string]any{"type": "message", "role": "user", "content": "task"}))))
+			if err != nil {
+				t.Fatal(err)
+			}
+			transform, err := proxy.prepareRequest(t.Context(), &turn, "prefix-session", "prefix-thread", codexTurnMetadata{
+				RequestKind: "turn", Directories: map[string]json.RawMessage{t.TempDir(): nil},
+			}, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(transform.Close)
+
+			for name, value := range warm.fields {
+				if name == "input" || name == "generate" {
+					continue
+				}
+				if !sameJSONValue(value, turn.fields[name]) {
+					t.Errorf("first turn changed prewarmed %s:\nprewarm: %s\nturn:    %s", name, value, turn.fields[name])
+				}
+			}
+			for name := range turn.fields {
+				if _, present := warm.fields[name]; !present && name != "input" {
+					t.Errorf("first turn added %s absent from the prewarm", name)
+				}
+			}
+			var warmInput, turnInput []json.RawMessage
+			if err := json.Unmarshal(warm.fields["input"], &warmInput); err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(turn.fields["input"], &turnInput); err != nil {
+				t.Fatal(err)
+			}
+			if len(turnInput) != len(warmInput)+1 {
+				t.Fatalf("first turn input items = %d, want prewarm %d plus the user message", len(turnInput), len(warmInput))
+			}
+			for index := range warmInput {
+				if !sameJSONValue(warmInput[index], turnInput[index]) {
+					t.Errorf("first turn changed prewarmed input item %d:\nprewarm: %s\nturn:    %s", index, warmInput[index], turnInput[index])
+				}
+			}
+			// The comparison is meaningful only if the prewarm was projected.
+			if bytes.Contains(warm.fields["input"], []byte(conflictingProgress)) || !bytes.Contains(warm.fields["tools"], []byte(`"journal"`)) {
+				t.Fatalf("prewarm skipped Mekugi projection: %s", mustMarshalJSON(warm.fields))
+			}
+		})
 	}
 }
 

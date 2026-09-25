@@ -501,7 +501,11 @@ func TestJournalTerminalRetentionFailureDoesNotSucceedSilently(t *testing.T) {
 func TestJournalToolReturnsBatchedIDs(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	workspace := t.TempDir()
-	request := serverRequest(t, nil)
+	// Dedicated mutations are the non-Code-Mode contract.
+	request := serverRequest(t, func(fields map[string]any) {
+		fields["input"] = []any{map[string]any{"role": "user", "content": "task"}}
+		fields["tools"] = testNativeResponsesTools()
+	})
 	transform, err := proxy.prepareRequest(t.Context(), &request, "batch-ids", "thread-1", codexTurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil}}, true)
 	if err != nil {
 		t.Fatal(err)
@@ -601,7 +605,7 @@ func TestJournalCatalogRejectsCollisions(t *testing.T) {
 					fields = map[string]json.RawMessage{"input": mustTestJSON(t, []any{map[string]any{"type": "additional_tools", "tools": json.RawMessage(tools)}})}
 				}
 				before := mustTestJSON(t, fields)
-				if err := exposeJournalTool(fields, decodeResponsesToolCatalog(fields)); err == nil {
+				if err := exposeJournalTool(fields, decodeResponsesToolCatalog(fields), false); err == nil {
 					t.Fatal("accepted journal collision")
 				}
 				if !bytes.Equal(before, mustTestJSON(t, fields)) {
@@ -615,7 +619,7 @@ func TestJournalCatalogRejectsCollisions(t *testing.T) {
 func TestJournalToolSchemaIncludesBatchedMutations(t *testing.T) {
 	fields := map[string]json.RawMessage{}
 	catalog := decodeResponsesToolCatalog(fields)
-	if err := exposeJournalTool(fields, catalog); err != nil {
+	if err := exposeJournalTool(fields, catalog, false); err != nil {
 		t.Fatal(err)
 	}
 	var schema struct {

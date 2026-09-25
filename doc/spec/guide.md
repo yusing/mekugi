@@ -89,7 +89,9 @@ Acceptance:
    sibling tools, and stock execution contracts remain unchanged.
 3. The dedicated journal tool and optional mutation field expose enough guidance to record concise
    milestones, request immediate reporting, list retained items, and finish naturally with a final
-   answer rendered as a journal flush without another provider request.
+   answer rendered as a journal flush without another provider request. Guidance directs mutations
+   onto useful calls rather than standalone journal calls; in Code Mode the dedicated tool offers
+   only `list`, and mutations use the exec-local helper.
 4. Ordinary, fork, side-thread, subagent, model-switch, compaction, and resume consumers derive
    guidance from their current tool catalog and authenticated registry rather than invisible ancestry
    or live router state. Each helper has one description owner; the built-in section of the

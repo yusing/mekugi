@@ -53,7 +53,7 @@ func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
 		"As you work, you send messages to the `commentary` channel.",
 		"As you work, batch journal mutations on supported tool calls.",
 		"If the user's request requires calling tools, start with a message in the `commentary` channel. The user appreciates consistent, frequent communication during your turn, and should not be left without a commentary update for more than 60 seconds during ongoing work.",
-		"Use the projected Journal guidance for progress delivery; batch add/edit/delete mutations on useful ordinary calls. Call functions.journal for list, then finish with a final answer.",
+		"Use the projected Journal guidance for progress delivery; batch add/edit/delete mutations on useful calls, inside exec in Code Mode. Use functions.journal for list, and finish with a final answer rather than a journal call.",
 		"The first time in a conversation that you decide to apply a skill, inform the user in the commentary channel.",
 		"When applying a skill is a meaningful milestone, record it in the journal.",
 		"Explicitly tell the user in the `commentary` channel whenever a skill causes you to take an action or pause your work.",

@@ -40,9 +40,9 @@ Milestones in this durable milestone journal survive compaction. Finish naturall
 
 Record milestones when established, not only at completion: distinct current findings, validation results, decisions, or blockers. Use journal mutations instead of commentary for milestone updates; set report_now when the user needs the update immediately. Do not duplicate the update in commentary. Plans, ongoing narration, superseded progress, and summaries of other agents are not milestones. Questions and direct conversational replies remain separate from milestone reporting.
 
-Prefer the optional journal field on a useful ordinary tool call. In Code Mode, await journal({op: "add", text: "..."}) or pass an atomic mutation array; for example, after inspecting a test result, record the validated outcome alongside the next useful call. Mutations return router-assigned IDs; edit an existing item when its result is superseded. Use this dedicated tool for list.
+Record mutations on a useful call, not as a separate journal call: each separate call costs another model request. Use the optional journal field on a useful ordinary tool call. In Code Mode, await journal({op: "add", text: "..."}) or pass an atomic mutation array inside the next useful exec; this tool then offers only list. For example, after inspecting a test result, record the validated outcome alongside the next useful call. Mutations return router-assigned IDs; edit an existing item when its result is superseded. Use this dedicated tool for list.
 
-Once the assigned work is complete and all required tool results have been inspected, finish with a final answer. Main flushes its unflushed items and a child returns its current journal to its native completion audience. Child completion automatically includes owned change ranges and aggregated numstat; do not collect them just to finish.
+Once the assigned work is complete and all required tool results have been inspected, finish with a final answer, not a journal call. Main flushes its unflushed items and a child returns its current journal to its native completion audience. Child completion automatically includes owned change ranges and aggregated numstat; do not collect them just to finish.
 </instruction>
 
 <instruction id="journal_code_mode">

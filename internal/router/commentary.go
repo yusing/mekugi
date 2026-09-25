@@ -36,6 +36,11 @@ func prepareCommentaryTools(fields map[string]json.RawMessage, tools *responsesT
 		if name == "" || commentaryExcluded(namespace, name) {
 			return nil
 		}
+		// The dedicated journal tool owns its schema; the Code Mode list-only
+		// form deliberately omits batched mutations.
+		if namespace == "" && name == journalToolName && addParameter {
+			return nil
+		}
 		key := functionToolKey(namespace, name)
 		qualifiedName := qualifiedToolName(namespace, name)
 		if _, exists := seen[key]; exists {

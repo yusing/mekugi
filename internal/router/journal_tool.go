@@ -20,6 +20,8 @@ const journalHistoryTool = "__mekugi_journal"
 const codeModeJournalStart = "<!-- mekugi-journal:start -->"
 const codeModeJournalEnd = "<!-- mekugi-journal:end -->"
 
+const codeModeJournalHint = "In Code Mode, functions.journal is only for list: record mutations with await journal(...) inside your next useful exec call, and finish with a final answer instead of a journal call."
+
 var journalToolDescription = embeddedInstruction("journal_tool")
 var codeModeJournalGuidance = embeddedInstruction("journal_code_mode")
 
@@ -52,7 +54,9 @@ func injectCodeModeJournalGuidance(description string) (string, error) {
 	return refreshMarkedToolGuidance(description, codeModeJournalStart, codeModeJournalEnd, codeModeJournalGuidance)
 }
 
-func exposeJournalTool(fields map[string]json.RawMessage, catalog *responsesToolCatalog) error {
+// Code Mode records mutations inside the next useful exec call. A standalone
+// dedicated mutation costs a provider round trip, so only list is offered there.
+func exposeJournalTool(fields map[string]json.RawMessage, catalog *responsesToolCatalog, codeMode bool) error {
 	var check func(*responsesToolSection) error
 	check = func(section *responsesToolSection) error {
 		if section.err != nil {
@@ -81,22 +85,26 @@ func exposeJournalTool(fields map[string]json.RawMessage, catalog *responsesTool
 			return err
 		}
 	}
+	properties := map[string]any{
+		"op":    map[string]any{"type": "string", "enum": []string{"list"}, "description": "List milestones."},
+		"agent": map[string]any{"type": "string", "description": embeddedInstruction("journal_agent")},
+	}
+	if !codeMode {
+		properties["op"] = map[string]any{"type": "string", "enum": []string{"list", "add", "edit", "delete"}, "description": "List or mutate milestones."}
+		properties["id"] = map[string]any{"type": "string", "description": embeddedInstruction("journal_id")}
+		properties["text"] = map[string]any{"type": "string", "description": embeddedInstruction("journal_text")}
+		properties["journal"] = journalMutationsSchema()
+		properties["report_now"] = map[string]any{"type": "boolean", "description": "Show this milestone to the user immediately rather than waiting for completion."}
+	}
 	catalog.appendTop([]*responsesToolDefinition{newResponsesToolDefinition(map[string]json.RawMessage{
 		"type":        mustMarshalJSON("function"),
 		"name":        mustMarshalJSON(journalToolName),
 		"description": mustMarshalJSON(journalToolDescription),
 		"strict":      mustMarshalJSON(false),
 		"parameters": mustMarshalJSON(map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"op":         map[string]any{"type": "string", "enum": []string{"list", "add", "edit", "delete"}, "description": "List or mutate milestones."},
-				"id":         map[string]any{"type": "string", "description": embeddedInstruction("journal_id")},
-				"text":       map[string]any{"type": "string", "description": embeddedInstruction("journal_text")},
-				"journal":    journalMutationsSchema(),
-				"agent":      map[string]any{"type": "string", "description": embeddedInstruction("journal_agent")},
-				"report_now": map[string]any{"type": "boolean", "description": "Show this milestone to the user immediately rather than waiting for completion."},
-			},
-			"required": []string{"op"},
+			"type":       "object",
+			"properties": properties,
+			"required":   []string{"op"},
 		}),
 	})})
 	return catalog.encodeTop(fields)
@@ -212,6 +220,11 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 	if len(batchedIDs) != 0 {
 		t.featureTrace.record("journal", "tool_field", "mutation", "accepted", callID, "")
 		result.(map[string]any)["journal_ids"] = batchedIDs
+	}
+	if t.codeModeToolName != "" && (args.Op != "list" || len(args.Journal) != 0) {
+		// Off-schema mutations still apply: rejecting them would add a correction
+		// request, even when the same response already carries the final answer.
+		result.(map[string]any)["hint"] = codeModeJournalHint
 	}
 	output := map[string]json.RawMessage{
 		"type":    mustMarshalJSON("function_call_output"),

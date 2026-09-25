@@ -50,13 +50,18 @@ expose an answer flag, and ordinary milestone edits preserve any attached questi
 retained answer-marked and finish calls remain replayable but are not offered to new model turns.
 
 Mekugi mode also exposes `functions.journal` with `list`, `add`, `edit`, or
-`delete`. List is read-only and may address only a proven ancestor or descendant journal. Unknown
+`delete`. When the request exposes Code Mode, the dedicated schema offers only `list` with its
+`agent` selector: mutations belong in `await journal(...)` inside the next useful `exec`, so a
+milestone does not need a standalone provider round trip. An off-schema Code Mode mutation or
+retained-form finish still applies under the rules below, and its result adds a `hint` pointing
+to the `exec` form; rejecting it would add a correction request even when the same response
+already carries the final answer. List is read-only and may address only a proven ancestor or descendant journal. Unknown
 or conflicted ancestry fails closed. Durable workspace identities, not the live activity
 collector, authorize relative access after a router restart with only the requesting
 thread observed. Authorization and returned items use the same locked snapshot.
 Mutations return router-assigned IDs. The dedicated tool includes `journal_ids` for any batched field mutations, independently of its main operation result. Journal calls are
-router state operations and do not invoke an executor. The dedicated schema exposes the optional
-batched `journal` field. Existing journal declarations anywhere in the tool catalog, including
+router state operations and do not invoke an executor. Outside Code Mode, the dedicated schema
+exposes the optional batched `journal` field. Existing journal declarations anywhere in the tool catalog, including
 nested additional-tool namespaces, reject built-in tool exposure.
 
 The agent finishes naturally with a final answer after inspecting required tool results.
@@ -162,7 +167,8 @@ The capability expires with its owning call and
 cannot be borrowed by another thread. Agent-authored source and private
 publisher credentials are not added to sanitized metrics.
 
-`functions.journal` owns `list`, `add`, `edit`, and `delete`. A successful natural
+`functions.journal` owns `list`, `add`, `edit`, and `delete`; in Code Mode it offers only `list`,
+and guidance directs mutations to the exec-local helper. A successful natural
 final answer with no pending Codex-dispatched work delivers the terminal journal
 without another provider request. Replay may restore journal calls and results,
 but cannot finish another turn or branch.
@@ -210,3 +216,8 @@ failure or overflow.
    keep their relative order and full Markdown. Filtering flushed revisions, retry, child
    completion, and restart group only items included in that message. Question edits, clearing,
    list, replay, restart, and forks preserve the specified state semantics.
+10. Code Mode requests expose a list-only dedicated journal schema without batched mutations;
+    non-Code-Mode requests keep list and mutations. Exec-local mutations remain host work, a
+    natural final answer completes in one provider request, and an off-schema dedicated
+    mutation or finish applies with the Code Mode hint without adding a provider request when
+    the response otherwise completes. A journal-only list continues so its result is inspectable.

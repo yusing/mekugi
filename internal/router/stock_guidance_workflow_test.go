@@ -159,7 +159,7 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 			for _, rule := range []string{
 				"Record milestones when established, not only at completion",
 				"Use journal mutations instead of commentary for milestone updates",
-				"Prefer the optional journal field",
+				"Use the optional journal field",
 				"Once the assigned work is complete",
 				"Finish naturally with a concise final answer",
 			} {
