@@ -136,7 +136,7 @@ func TestNativeApplyPatchStreamsBeforeCompletionAndPersistsMChangesEvidence(t *t
 		t.Fatal(err)
 	}
 	history := reconcileNativePatchResult(t, proxy, workspace, patch, "Success. Updated the following files:\nM file.txt\n")
-	if !history.Applied || history.ChangeID == "" || len(history.ReviewFiles) != 1 {
+	if history.ChangeID == "" || len(history.ReviewFiles) != 1 {
 		t.Fatalf("completed evidence = %+v", history)
 	}
 	changes, err := proxy.replayStore.readChanges(transform.ctx, changeReadOptions{
@@ -170,7 +170,7 @@ func TestNativeApplyPatchFailureNeverPublishesSuccessAndRetainsPartialOutcome(t 
 				t.Fatal(err)
 			}
 			history := reconcileNativePatchResult(t, proxy, workspace, patch, "Error: patch failed")
-			if history.Applied || history.TranslationError == "" || (len(history.ReviewFiles) != 0) != test.wantReview {
+			if history.TranslationError == "" || (len(history.ReviewFiles) != 0) != test.wantReview {
 				t.Fatalf("failed evidence = %+v", history)
 			}
 			if len(history.CommentaryMessageIDs) != 0 {
@@ -306,14 +306,14 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 			if err != nil || !found {
 				t.Fatalf("completed patch missing: found=%v err=%v", found, err)
 			}
-			if history.Applied || history.AlreadySatisfied || history.TranslationError != "" ||
+			if history.AlreadySatisfied || history.TranslationError != "" ||
 				(len(history.ReviewFiles) != 0) != test.change {
 				t.Fatalf("completed patch = %+v", history)
 			}
 			listed, err := proxy.replayStore.readChanges(transform.ctx, changeReadOptions{workspace: workspace, view: "list"})
 			want := ""
 			if test.change {
-				want = history.ChangeID + " observed +1 -1\n"
+				want = history.ChangeID + " +1 -1\n"
 			} else if history.ChangeID != "" {
 				t.Fatalf("unchanged attempt allocated a change ID: %s", history.ChangeID)
 			}
@@ -338,7 +338,7 @@ func TestNativePatchReviewChecksActualDeletionAndMove(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if reviews, complete := nativePatchReview(observation.Files, nil); !complete || len(reviews) != 0 {
+		if reviews, complete := nativePatchReview(observation.Files); !complete || len(reviews) != 0 {
 			t.Fatalf("unchanged deletion or move fabricated a diff: %+v, complete=%t", reviews, complete)
 		}
 		if strings.Contains(patch, "Move to") {
@@ -346,7 +346,7 @@ func TestNativePatchReviewChecksActualDeletionAndMove(t *testing.T) {
 			if err := os.WriteFile(destination, []byte("copied\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			reviews, complete := nativePatchReview(observation.Files, nil)
+			reviews, complete := nativePatchReview(observation.Files)
 			if !complete || len(reviews) != 1 || reviews[0].Action() != mekugi.ReviewAdd {
 				t.Fatalf("partial move was not reported as destination creation: %+v, complete=%t", reviews, complete)
 			}
@@ -374,7 +374,7 @@ func TestNativePatchReviewShowsOnlyObservedPartialCodeModeEffect(t *testing.T) {
 	if err := os.WriteFile(first, []byte("new\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	reviews, complete := nativePatchReview(observation.Files, nil)
+	reviews, complete := nativePatchReview(observation.Files)
 	if !complete || len(reviews) != 1 || reviews[0].AfterPath != first {
 		t.Fatalf("partial effect = %+v, complete=%t", reviews, complete)
 	}

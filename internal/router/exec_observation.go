@@ -89,7 +89,7 @@ type execOmission struct {
 	Origin string `json:",omitempty"`
 	Path   string
 	Reason string
-	// Existing managed package or formatter paths were not baselined. Their
+	// Existing explicitly scoped fixer or formatter paths were not baselined. Their
 	// after-state is checked against the observation clock before reporting.
 	Deferred bool `json:",omitzero"`
 }
@@ -97,20 +97,17 @@ type execOmission struct {
 // execObservation is the durable pre-call capture of one observed call: a
 // native exec_command, or all literal commands of one Code Mode cell.
 type execObservation struct {
-	Commands []execCommandInput
-	Class    string
-	Labels   []string `json:",omitempty"`
-	Reason   string   `json:",omitempty"`
-	Files    []execFileSnapshot
-	Omitted  []execOmission `json:",omitempty"`
-	Listings []execListing  `json:",omitempty"`
-	CodeMode bool           `json:",omitzero"`
-	// Sweep marks commands whose effects are not all derived. Their roots are
-	// swept for changes at or after WindowStart, a time on the file clock.
-	Sweep       bool          `json:",omitzero"`
-	Roots       []string      `json:",omitempty"`
-	WindowStart time.Time     `json:",omitzero"`
-	Programs    []execProgram `json:",omitempty"`
+	Commands    []execCommandInput
+	Class       string
+	Labels      []string `json:",omitempty"`
+	Reason      string   `json:",omitempty"`
+	Files       []execFileSnapshot
+	Omitted     []execOmission `json:",omitempty"`
+	Listings    []execListing  `json:",omitempty"`
+	CodeMode    bool           `json:",omitzero"`
+	Roots       []string       `json:",omitempty"`
+	WindowStart time.Time      `json:",omitzero"`
+	Programs    []execProgram  `json:",omitempty"`
 	// Group identifies the response that emitted the call, so parallel
 	// siblings finalized together share one record.
 	Group string `json:",omitempty"`
@@ -130,11 +127,11 @@ type execOutcome struct {
 	// exactly.
 	Scope       []string `json:",omitempty"`
 	ScopeReason string   `json:",omitempty"`
-	// Unswept explains why paths outside the scope may have changed unseen.
+	// Unswept retains diagnostics from older workspace-sweep records.
 	Unswept string `json:",omitempty"`
 	// Overlaps are calls whose windows overlapped this one on the same root.
 	Overlaps []string `json:",omitempty"`
-	// Background names still-running sessions whose writes the sweep may see.
+	// Background names still-running sessions for command-history diagnostics.
 	Background []string `json:",omitempty"`
 	// SharedWith names the record of a parallel sibling that holds this
 	// call's effects.
@@ -142,9 +139,8 @@ type execOutcome struct {
 }
 
 const (
-	execStatusCompleted   = "completed"
-	execStatusFailed      = "failed"
-	execStatusUnconfirmed = "unconfirmed"
+	execStatusCompleted = "completed"
+	execStatusFailed    = "failed"
 
 	execCoverageExact   = "exact"
 	execCoveragePartial = "partial"
@@ -152,24 +148,14 @@ const (
 )
 
 func (o execOutcome) text() string {
-	var status string
-	switch {
-	case o.Status == execStatusCompleted && len(o.Overlaps) != 0:
-		status = "completed; attribution shared"
-	case o.Status == execStatusCompleted && o.Coverage != execCoverageExact:
-		status = "completed; partial coverage"
-	case o.Status == execStatusCompleted:
-		status = "completed"
-	case o.Status == execStatusFailed:
-		status = "failed; observed effects"
-	default:
-		status = "changes observed"
-	}
 	label := "exec"
 	if len(o.Labels) != 0 {
 		label += " " + strings.Join(o.Labels, ", ")
 	}
-	parts := []string{status, label}
+	parts := []string{label}
+	if o.Status == execStatusCompleted || o.Status == execStatusFailed {
+		parts = append(parts, "command "+o.Status)
+	}
 	if o.Exit != nil {
 		parts = append(parts, "exit "+strconv.Itoa(*o.Exit))
 	}
@@ -310,17 +296,7 @@ func captureExecObservation(commands []execCommandInput, dynamic, codeMode bool,
 var execCaptureSlots = make(chan struct{}, 16)
 
 func incompleteExecCapture(commands []execCommandInput, codeMode bool, env execCaptureEnv) *execObservation {
-	observation := &execObservation{Commands: commands, CodeMode: codeMode, Class: execOpaque.String(), Reason: "capture deadline", Sweep: true}
-	for _, command := range commands {
-		observation.Roots = execAddRoot(observation.Roots, execSweepRoot(command.Workdir, env.directory))
-	}
-	if len(observation.Roots) == 0 && filepath.IsAbs(env.directory) {
-		observation.Roots = []string{env.directory}
-	}
-	for _, root := range observation.Roots {
-		observation.Omitted = append(observation.Omitted, execOmission{Path: root, Reason: "capture deadline"})
-	}
-	return observation
+	return &execObservation{Commands: commands, CodeMode: codeMode, Class: execOpaque.String(), Reason: "capture deadline"}
 }
 
 func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode bool, env execCaptureEnv) (*execObservation, bool) {
@@ -353,7 +329,7 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 			}
 		}
 		scope = append(scope, plan.Scope...)
-		observation.Roots = execAddRoot(observation.Roots, execSweepRoot(command.Workdir, env.directory))
+		observation.Roots = execAddRoot(observation.Roots, execCaptureRoot(command.Workdir, env.directory))
 	}
 	if dynamic {
 		class, observation.Reason = execOpaque, "Code Mode cell has a non-literal command"
@@ -369,12 +345,11 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 	if class != execDeclared {
 		// The window starts before any capture read, so a write that races
 		// the capture is still inside it.
-		observation.Sweep = true
 		observation.WindowStart = execWindowStart(cmp.Or(env.clock, os.TempDir()))
 	}
 	observation.Excluded = env.excluded
 	capture := newExecCapture(started.Add(execCaptureHold))
-	capture.sweepRoots = observation.Roots
+	capture.scopeRoots = observation.Roots
 	for _, managed := range []bool{false, true} {
 		for _, entry := range scope {
 			if (entry.Origin != "") == managed {
@@ -387,9 +362,9 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 	return observation, true
 }
 
-// execSweepRoot is the workspace when the command runs inside it, and the
-// command's own directory otherwise.
-func execSweepRoot(workdir, directory string) string {
+// execCaptureRoot bounds deferred formatter checks to the selected workspace
+// or the command directory when no workspace is available.
+func execCaptureRoot(workdir, directory string) string {
 	if filepath.IsAbs(directory) {
 		return filepath.Clean(directory)
 	}
@@ -466,7 +441,7 @@ type execCapture struct {
 	files      []execFileSnapshot
 	omitted    []execOmission
 	listings   []execListing
-	sweepRoots []string
+	scopeRoots []string
 	listed     int
 	// removals are trees an earlier statement deletes or moves away.
 	removals []string
@@ -518,11 +493,11 @@ func (c *execCapture) addCopy(path, source string) {
 	}
 	c.seen[path] = true
 	if reason := c.exhausted(); reason != "" {
-		// Managed package and formatter paths were enumerated but not baselined.
+		// Explicit fixer and formatter paths were enumerated but not baselined.
 		// Check their after-state against the window clock instead of
 		// fabricating a changed-file review for every unread path.
-		if slices.Contains([]string{"go test", "go generate", "go fix", "gofmt", "goimports", "prettier", "eslint", "ruff format", "ruff check", "black", "rustfmt", "cargo fmt"}, c.origin) &&
-			slices.ContainsFunc(c.sweepRoots, func(root string) bool { return execPathWithin(path, root) }) {
+		if slices.Contains([]string{"go fix", "gofmt", "goimports", "prettier", "eslint", "ruff format", "ruff check", "black", "rustfmt", "cargo fmt"}, c.origin) &&
+			slices.ContainsFunc(c.scopeRoots, func(root string) bool { return execPathWithin(path, root) }) {
 			c.omitted = append(c.omitted, execOmission{Path: path, Reason: reason, Origin: c.origin, Deferred: true})
 			return
 		}
@@ -893,22 +868,13 @@ func renderExecReview(beforePath, afterPath string, before, after execFileSnapsh
 	return review
 }
 
-// reconcileExecObservation compares the pre-call capture with the files now on
-// disk. Captured paths and listed destinations are compared exactly. A swept
-// observation also reports what changed elsewhere under its roots, except
-// excluded paths, which other records hold, and skipped Mekugi directories.
-// execReconcileEnv is the router state a reconciliation consults.
+// execReconcileEnv identifies paths claimed by overlapping calls.
 type execReconcileEnv struct {
-	seen           *execLastSeen
-	cacheNamespace string
-	remember       func(execFileSnapshot)
-	// excluded paths belong to overlapping calls.
 	excluded []string
-	// skip names Mekugi's own directories.
-	skip []string
-	// background names sessions still running from earlier turns.
-	background []string
 }
+
+// reconcileExecObservation compares only the command's captured write scope.
+// Changes elsewhere cannot be attributed to this call.
 
 func reconcileExecObservation(observation execObservation, env execReconcileEnv) (reviews []mekugi.ReviewFile, complete bool, coverage, unswept string) {
 	type change struct {
@@ -934,9 +900,6 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 			}
 		}
 		current := snapshotExecFile(before.Path, &budget)
-		if env.remember != nil {
-			env.remember(current)
-		}
 		after[before.Path] = current
 		if before.Error != "" || current.Error != "" {
 			beforePath, afterPath := before.Path, before.Path
@@ -1098,9 +1061,6 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 			// These paths existed during provider enumeration. A missing
 			// after-state is therefore a possible deletion, not a no-op.
 			current := snapshotExecFile(omission.Path, &budget)
-			if env.remember != nil {
-				env.remember(current)
-			}
 			var review mekugi.ReviewFile
 			switch {
 			case current.Error != "":
@@ -1119,29 +1079,6 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 		}
 		reviews = append(reviews, mekugi.RenderIncompleteReviewFile(omission.Path, omission.Path, omission.Reason))
 		complete = false
-	}
-	if observation.Sweep {
-		claims := append(observation.scopePaths(), env.excluded...)
-		for _, omission := range observation.Omitted {
-			if omission.Deferred {
-				claims = append(claims, omission.Path)
-			}
-		}
-		claims = append(claims, observation.Excluded...)
-		claimed := func(path string) bool {
-			if _, captured := after[path]; captured {
-				return true
-			}
-			return slices.ContainsFunc(claims, func(claim string) bool { return execPathWithin(path, claim) })
-		}
-		found, reason := sweepExecReviews(observation, claimed, reviews, env, &budget)
-		switch {
-		case reason != "":
-			coverage, unswept = execCoverageUnswept, reason
-		case len(found) != 0:
-			coverage = execCoveragePartial
-		}
-		reviews = append(reviews, found...)
 	}
 	reviews, complete = boundExecReviews(reviews, complete)
 	for i := range reviews {
@@ -1173,112 +1110,6 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 	return reviews, complete, coverage, unswept
 }
 
-// sweepExecReviews reports changes the sweep finds outside the claimed scope.
-// No prior content exists for them, so none is invented: a new inode shows
-// its content as unbased, a modified file its size and hash, and a directory
-// whose change no found entry explains says that entries left it.
-func sweepExecReviews(observation execObservation, claimed func(string) bool, scoped []mekugi.ReviewFile, env execReconcileEnv, budget *int) ([]mekugi.ReviewFile, string) {
-	origin := observation.managedOrigin()
-	var reviews []mekugi.ReviewFile
-	var reasons []string
-	if len(observation.Roots) == 0 {
-		return nil, "the observation root is unavailable"
-	}
-	explained := make(map[string]bool)
-	for _, review := range scoped {
-		for _, path := range []string{review.BeforePath, review.AfterPath} {
-			if path != "" {
-				for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
-					explained[dir] = true
-					if _, err := os.Lstat(dir); err == nil || filepath.Dir(dir) == dir {
-						break
-					}
-				}
-			}
-		}
-	}
-	var findings []execSweepFinding
-	for _, root := range observation.Roots {
-		result := sweepExecRoot(root, observation.WindowStart, env.skip)
-		if result.Unswept != "" {
-			reasons = append(reasons, root+": "+result.Unswept)
-		}
-		for dir := range result.Quiet {
-			explained[dir] = true
-		}
-		for _, finding := range result.Findings {
-			explained[filepath.Dir(finding.Path)] = true
-			if finding.Dir && finding.New {
-				explained[finding.Path] = true
-			}
-		}
-		findings = append(findings, result.Findings...)
-	}
-	read := 0
-	for _, finding := range findings {
-		if claimed(finding.Path) {
-			continue
-		}
-		if finding.Dir {
-			if !explained[finding.Path] {
-				dir := strings.TrimSuffix(finding.Path, string(filepath.Separator)) + string(filepath.Separator)
-				review := mekugi.RenderIncompleteReviewFile(dir, dir, "entries removed or renamed; names unavailable")
-				review.Origin = origin
-				reviews = append(reviews, review)
-			}
-			continue
-		}
-		if read++; read > maxExecCaptureFiles {
-			root := observation.Roots[0]
-			review := mekugi.RenderIncompleteReviewFile(root, root, "more changed files were not read")
-			review.Origin = origin
-			reviews = append(reviews, review)
-			break
-		}
-		snapshot := snapshotExecFile(finding.Path, budget)
-		if env.remember != nil {
-			env.remember(snapshot)
-		}
-		var review mekugi.ReviewFile
-		reason := "new or modified; before content unavailable"
-		prior, known := env.seen.get(env.cacheNamespace, finding.Path)
-		switch {
-		case finding.New:
-			reason = "new file or replacement; before content unavailable"
-		case finding.Born:
-			reason = "modified; before content unavailable"
-		}
-		if len(env.background) != 0 {
-			// A still-running session may have written it instead.
-			reason += "; observed while " + strings.Join(env.background, ", ") + " was running"
-		}
-		switch {
-		case snapshot.Kind == execFileAbsent || snapshot.Kind == execFileDir || snapshot.Kind == execFileOther:
-			// The entry left again, or is not a file to review; its
-			// directory's change stays explained.
-			continue
-		case snapshot.Error != "":
-			review = mekugi.RenderIncompleteReviewFile(finding.Path, finding.Path, reason+"; "+snapshot.Error)
-		case known && (snapshot.Kind == execFileText || snapshot.Kind == execFileSymlink):
-			review = renderExecReview(finding.Path, finding.Path, prior.file, snapshot)
-			review.Incomplete = "since last observed (change " + prior.change + ")"
-			if len(env.background) != 0 {
-				review.Incomplete += "; observed while " + strings.Join(env.background, ", ") + " was running"
-			}
-			header, _, _ := strings.Cut(review.Diff, "\n")
-			review.Diff = header + "\n" + review.Incomplete + "\n" + review.UnifiedDiff()
-		case snapshot.Kind == execFileBinary || finding.Born && !finding.New:
-			size, hash := execSnapshotHash(snapshot)
-			review = mekugi.RenderIncompleteReviewFile(finding.Path, finding.Path, fmt.Sprintf("%s; now %d bytes, sha256 %.12s", reason, size, hash))
-		default:
-			review = mekugi.RenderUnbasedReviewFile(finding.Path, execReviewText(snapshot), reason)
-		}
-		review.Origin = origin
-		reviews = append(reviews, review)
-	}
-	return reviews, strings.Join(reasons, "; ")
-}
-
 // sourceLabel names the programs that made an exec record's edits, such as
 // sed or python, so a review can tell them from stock patches.
 func (o execObservation) sourceLabel() string {
@@ -1303,21 +1134,6 @@ func (o execObservation) sourceLabel() string {
 		labels = append(labels[:2], "…")
 	}
 	return strings.Join(labels, "+")
-}
-
-// managedOrigin labels sweep findings. A finding cannot be tied to one
-// statement, so it is direct only when every undeclared statement is.
-func (o execObservation) managedOrigin() string {
-	if len(o.Programs) == 0 && o.Class == execOpaque.String() {
-		return "opaque command"
-	}
-	var labels []string
-	for _, program := range o.Programs {
-		if !program.Direct && !slices.Contains(labels, program.Label) {
-			labels = append(labels, program.Label)
-		}
-	}
-	return strings.Join(labels, ", ")
 }
 
 // boundExecReviews keeps the encoded reviews within the derived record's
@@ -1406,10 +1222,10 @@ type execCompletion struct {
 	output  json.RawMessage
 }
 
-// execSiblingKey groups swept calls of one response. Siblings finalized in
+// execSiblingKey groups calls of one response. Siblings finalized in
 // the same request share one record, since their windows are the same.
 func execSiblingKey(history mekugiHistory) string {
-	if observation := history.ExecObservation; observation != nil && observation.Sweep && observation.Group != "" {
+	if observation := history.ExecObservation; observation != nil && observation.Group != "" {
 		return observation.Group
 	}
 	return ""
@@ -1497,10 +1313,26 @@ func execDerivedUpstreamItem(derivedCallID, arguments string) map[string]json.Ra
 // without a change ID, so replay neither reads the workspace again nor
 // allocates an ID for read-only work.
 func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace string, members []execCompletion) error {
-	members = slices.DeleteFunc(slices.Clone(members), func(member execCompletion) bool {
+	var pending []execCompletion
+	for _, member := range members {
 		terminal, _, _, _, _ := execResultState(member.history.ToolName, member.output)
-		return member.history.ExecObservation == nil || !terminal
-	})
+		if member.history.ExecObservation == nil || !terminal {
+			continue
+		}
+		derived := execDerivedCallID(member.callID, member.history.ExecObservation.CodeMode)
+		retained, found, err := p.replayStore.lookup(ctx, workspace, derived)
+		if err != nil {
+			return err
+		}
+		if found {
+			if retained.CorrelationID != member.callID+"\x00exec" {
+				return errors.New("retained stock exec_command observation is inconsistent")
+			}
+			continue
+		}
+		pending = append(pending, member)
+	}
+	members = pending
 	if len(members) == 0 {
 		return nil
 	}
@@ -1510,32 +1342,13 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	derivedCallID := execDerivedCallID(first.callID, first.history.ExecObservation.CodeMode)
 	correlation := first.callID + "\x00exec"
 	script := execObservationScript(observation)
-	if retained, found, err := p.replayStore.lookup(ctx, workspace, derivedCallID); err != nil {
-		return err
-	} else if found {
-		// The incoming visible history already validates each original call.
-		// A replayed branch may retain only part of a previously merged group.
-		if retained.CorrelationID != correlation {
-			return errors.New("retained stock exec_command observation is inconsistent")
-		}
-		return nil
-	}
 	refs := make([]string, 0, len(members))
 	for _, member := range members {
 		refs = append(refs, member.callID)
 	}
 	view := p.execWindows.close(refs...)
-	var skip []string
-	if p.replayStore != nil && p.replayStore.directory != "" {
-		skip = append(skip, filepath.Clean(p.replayStore.directory))
-	}
 	background := slices.Compact(slices.Sorted(slices.Values(view.background)))
-	cacheNamespace := workspace
-	if p.replayStore != nil {
-		cacheNamespace += "\x00" + p.replayStore.scoped(ctx).handleNamespace()
-	}
-	after := make(map[string]execFileSnapshot)
-	reviews, complete, coverage, unswept := reconcileExecObservation(observation, execReconcileEnv{excluded: view.excluded, skip: skip, background: background, seen: p.execLastSeen, cacheNamespace: cacheNamespace, remember: func(file execFileSnapshot) { after[file.Path] = file }})
+	reviews, complete, coverage, unswept := reconcileExecObservation(observation, execReconcileEnv{excluded: view.excluded})
 	outcome := &execOutcome{
 		Class: observation.Class, Labels: observation.Labels, Coverage: coverage, Unswept: unswept,
 		ScopeReason: observation.Reason,
@@ -1551,7 +1364,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		case member.history.ExecObservation.CodeMode && completed:
 			// Outer script completion does not prove each nested command
 			// succeeded; nested exit codes are not visible to the router.
-			status = execStatusUnconfirmed
+			status = ""
 		case !completed:
 			status = execStatusFailed
 		}
@@ -1573,11 +1386,10 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		} else {
 			reports = append(reports, fmt.Sprintf("# call %d\n%s", index+1, execTruncateReport(resultText, maxExecReportBytes/len(members))))
 		}
-		if outcome.Status == "" || status == execStatusFailed || status == execStatusUnconfirmed && outcome.Status == execStatusCompleted {
+		if index == 0 || status == execStatusFailed || status == "" && outcome.Status != execStatusFailed {
 			outcome.Status = status
 		}
 	}
-	success := outcome.Status == execStatusCompleted && complete && outcome.Coverage == execCoverageExact && len(outcome.Overlaps) == 0
 	arguments := first.history.CarrierPayload
 	if len(members) != 1 || observation.CodeMode || arguments == "" {
 		arguments = string(mustMarshalJSON(map[string]string{"cmd": script}))
@@ -1591,7 +1403,6 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		Source:          observation.sourceLabel(),
 		CorrelationID:   correlation,
 		Attempt:         1,
-		Applied:         success,
 		ReviewFiles:     reviews,
 		Report:          strings.Join(reports, "\n"),
 		ExecOutcome:     outcome,
@@ -1634,16 +1445,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		return err
 	}
 	if record.ChangeID != "" {
-		for _, review := range reviews {
-			for _, path := range []string{review.BeforePath, review.AfterPath} {
-				if file, ok := after[path]; ok {
-					p.execLastSeen.put(cacheNamespace, record.ChangeID, file)
-				}
-			}
-		}
-	}
-	if success && record.ChangeID != "" {
-		_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, false, p.activity)
+		_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, p.activity)
 	}
 	return nil
 }

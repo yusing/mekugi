@@ -39,7 +39,6 @@ type mekugiHistory struct {
 	ExecObservation *execObservation         `json:",omitempty"`
 	ExecOutcome     *execOutcome             `json:",omitempty"`
 	HostResults     []nativeToolResult       `json:",omitempty"`
-	Applied         bool
 	CarrierName     string
 	CarrierKind     codeModeCarrierKind
 	CarrierPayload  string
@@ -527,7 +526,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 			delete(execGroups, key)
 		}
 	}
-	if err := p.replayStore.confirmChanges(ctx, workspace, visible); err != nil {
+	if err := p.replayStore.repairVisibleChangeCalls(ctx, workspace, visible); err != nil {
 		return nil, err
 	}
 	request.cachedInput -= removedCached

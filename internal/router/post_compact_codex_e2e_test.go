@@ -72,8 +72,7 @@ func (p *compactCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 			return nil, err
 		}
 		if err := store.put(ctx, p.workspace, map[string]mekugiHistory{"fixture-edit": {
-			ChangeID: id, CorrelationID: "fixture-edit", ExecutingThread: thread, Applied: true,
-			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("recovered.txt", "recovered.txt", "old\n", "new\n")},
+			ChangeID: id, CorrelationID: "fixture-edit", ExecutingThread: thread, ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("recovered.txt", "recovered.txt", "old\n", "new\n")},
 		}}); err != nil {
 			return nil, err
 		}
@@ -105,7 +104,7 @@ func (p *compactCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 				if part.Text == "existing compact hook" {
 					p.existingHook = true
 				}
-				if strings.Contains(part.Text, "Durable native recovery milestone") && strings.Contains(part.Text, "1\t1\trecovered.txt") {
+				if strings.Contains(part.Text, "Durable native recovery milestone") && strings.Contains(part.Text, "M\t1\t1\trecovered.txt") {
 					p.restored = true
 				}
 			}

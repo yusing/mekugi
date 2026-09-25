@@ -44,10 +44,9 @@ type trackedChange struct {
 }
 
 type trackedCall struct {
-	Thread    string `json:",omitempty"` // Empty uses the originating change stream.
-	ID        string
-	Confirmed bool
-	Managed   bool `json:",omitzero"`
+	Thread  string `json:",omitempty"` // Empty uses the originating change stream.
+	ID      string
+	Managed bool `json:",omitzero"`
 }
 
 func changeNotice(id string) string {
@@ -226,7 +225,7 @@ func (s *mekugiReplayStore) publishChanges(workspace string, histories map[strin
 			for _, file := range history.ReviewFiles {
 				managed = managed && file.Origin != ""
 			}
-			call := trackedCall{ID: callID, Thread: history.ExecutingThread, Confirmed: history.Applied, Managed: managed}
+			call := trackedCall{ID: callID, Thread: history.ExecutingThread, Managed: managed}
 			change.Calls = append(change.Calls, call)
 			updates[history.ChangeID] = append(updates[history.ChangeID], call)
 			index.Changes[history.ChangeID] = change
@@ -243,9 +242,9 @@ func (s *mekugiReplayStore) publishChanges(workspace string, histories map[strin
 	return nil
 }
 
-// Confirmation is published only after the entire incoming history validates.
-// It is evidence for review, not an alternate source of recovery/alias ancestry.
-func (s *mekugiReplayStore) confirmChanges(ctx context.Context, workspace string, histories map[string]mekugiHistory) error {
+// Repair durable change membership only after the incoming history validates.
+// A matching tool report does not change a saved filesystem diff.
+func (s *mekugiReplayStore) repairVisibleChangeCalls(ctx context.Context, workspace string, histories map[string]mekugiHistory) error {
 	if s == nil {
 		return nil
 	}
@@ -253,7 +252,7 @@ func (s *mekugiReplayStore) confirmChanges(ctx context.Context, workspace string
 	var confirmed []string
 	for callID, history := range histories {
 		// Old replay facts remain visible, but unsupported IDs have no entry
-		// in the current review index. Do not revive them during confirmation.
+		// in the current review index. Do not revive them during index repair.
 		if _, _, err := parseChangeID(history.ChangeID); err == nil && history.confirmed {
 			confirmed = append(confirmed, callID)
 		}
@@ -275,21 +274,15 @@ func (s *mekugiReplayStore) confirmChanges(ctx context.Context, workspace string
 			history := histories[callID]
 			change, exists := index.Changes[history.ChangeID]
 			if !exists || change.Correlation != history.CorrelationID {
-				return errors.New("confirmed change identity is missing or inconsistent")
+				return errors.New("visible change identity is missing or inconsistent")
 			}
 			if !slices.ContainsFunc(change.Calls, func(call trackedCall) bool { return call.ID == callID }) {
 				change, err = s.repairChangeCall(workspace, history.ChangeID, callID, change)
 				if err != nil {
 					return err
 				}
+				updates[history.ChangeID] = change.Calls
 				changed = true
-			}
-			for i := range change.Calls {
-				if change.Calls[i].ID == callID && !change.Calls[i].Confirmed {
-					updates[history.ChangeID] = append(updates[history.ChangeID], trackedCall{ID: callID, Thread: history.ExecutingThread, Confirmed: true})
-					change.Calls[i].Confirmed = true
-					changed = true
-				}
 			}
 			index.Changes[history.ChangeID] = change
 		}

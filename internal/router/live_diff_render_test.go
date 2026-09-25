@@ -17,7 +17,7 @@ import (
 
 func TestLiveDiffNativeRows(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "file.txt",
-		"@@ -9,3 +9,3 @@\n context\n-old\n+new\n \n", true)
+		"@@ -9,3 +9,3 @@\n context\n-old\n+new\n \n")
 	chunk.Status = ""
 	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{chunk}}}, "", 80, 0, chunk)
 	if err != nil {
@@ -72,10 +72,9 @@ func TestLiveDiffCompactCoordinates(t *testing.T) {
 }
 
 func TestLiveDiffFollowInsideCombinedHunk(t *testing.T) {
-	initial := liveDiffChunk{Key: "create", Applied: true,
-		Review: mekugi.ReviewFile{AfterPath: "file.txt",
-			Diff: "--- /dev/null\n+++ file.txt\n@@ -0,0 +1,100 @@\n" + strings.Repeat("+content\n", 100)}}
-	recent := liveDiffHighlightChunk("edit", "file.txt", "@@ -90 +90 @@\n-content\n+LATEST90\n", true)
+	initial := liveDiffChunk{Key: "create", Review: mekugi.ReviewFile{AfterPath: "file.txt",
+		Diff: "--- /dev/null\n+++ file.txt\n@@ -0,0 +1,100 @@\n" + strings.Repeat("+content\n", 100)}}
+	recent := liveDiffHighlightChunk("edit", "file.txt", "@@ -90 +90 @@\n-content\n+LATEST90\n")
 	// Initial/resumed history has no recency split. The latest edit is deep
 	// inside one composed creation hunk, not at its beginning.
 	view := liveDiffView{Following: true}
@@ -95,10 +94,9 @@ func TestLiveDiffFollowInsideCombinedHunk(t *testing.T) {
 }
 
 func TestLiveDiffFollowCentersLatestRow(t *testing.T) {
-	initial := liveDiffChunk{Key: "create", Applied: true,
-		Review: mekugi.ReviewFile{AfterPath: "file.txt",
-			Diff: "--- /dev/null\n+++ file.txt\n@@ -0,0 +1,100 @@\n" + strings.Repeat("+content\n", 100)}}
-	recent := liveDiffHighlightChunk("edit", "file.txt", "@@ -50 +50 @@\n-content\n+LATEST50\n", true)
+	initial := liveDiffChunk{Key: "create", Review: mekugi.ReviewFile{AfterPath: "file.txt",
+		Diff: "--- /dev/null\n+++ file.txt\n@@ -0,0 +1,100 @@\n" + strings.Repeat("+content\n", 100)}}
+	recent := liveDiffHighlightChunk("edit", "file.txt", "@@ -50 +50 @@\n-content\n+LATEST50\n")
 	view := liveDiffView{Following: true}
 	view.Merge([]liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{initial}}})
 	view.Merge([]liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{initial, recent}}})
@@ -126,7 +124,7 @@ func TestLiveDiffFollowCentersLatestRow(t *testing.T) {
 
 func TestLiveDiffFollowShortViewStartsAtAvailableContext(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "file.txt",
-		"@@ -1,3 +1,3 @@\n before\n-old\n+LATEST\n after\n", true)
+		"@@ -1,3 +1,3 @@\n before\n-old\n+LATEST\n after\n")
 	chunk.Highlighted = true
 	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme,
 		[]liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk)
@@ -143,13 +141,13 @@ func TestLiveDiffFollowShortViewStartsAtAvailableContext(t *testing.T) {
 
 func TestLiveDiffFollowPrefersLatestHighlightedRegion(t *testing.T) {
 	path := "file.txt"
-	older := liveDiffHighlightChunk("", path, "@@ -90 +90 @@\n-old\n+OLDER90\n", true)
+	older := liveDiffHighlightChunk("", path, "@@ -90 +90 @@\n-old\n+OLDER90\n")
 	older.Highlighted = false
-	latest := liveDiffHighlightChunk("", path, "@@ -20 +20 @@\n-old\n+LATEST20\n", true)
+	latest := liveDiffHighlightChunk("", path, "@@ -20 +20 @@\n-old\n+LATEST20\n")
 	latest.Highlighted = true
 	// The raw capture coordinate can become ambiguous after composition. The
 	// recency mark remains authoritative for which visible region to follow.
-	focus := liveDiffHighlightChunk("latest", path, "@@ -90 +90 @@\n-old\n+raw latest\n", true)
+	focus := liveDiffHighlightChunk("latest", path, "@@ -90 +90 @@\n-old\n+raw latest\n")
 	focus.Highlighted = true
 	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{{Path: path, Chunks: []liveDiffChunk{older, latest}}}, "", 90, 0, focus)
 
@@ -165,7 +163,7 @@ func TestLiveDiffFollowPrefersLatestHighlightedRegion(t *testing.T) {
 func TestLiveDiffNativeFollowCentersPreparedTip(t *testing.T) {
 	diff := "--- /dev/null\n+++ file.txt\n@@ -0,0 +1,40 @@\n" + strings.Repeat("+content\n", 40)
 	chunk := liveDiffChunk{
-		Key: "latest", Status: "amber1 changes observed",
+		Key:    "latest",
 		Review: mekugi.ReviewFile{AfterPath: "file.txt", Diff: diff},
 	}
 	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{chunk}}}, "", 90, 0, chunk)
@@ -187,7 +185,7 @@ func TestLiveDiffNativeFollowCentersPreparedTip(t *testing.T) {
 
 func TestLiveDiffNativeNoNewlineAndControls(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "unknown.extension",
-		"@@ -1 +1 @@\n-before\n\\ No newline at end of file\n+after\x1b]52;c;secret\a\x1b[2J\x1b[31m\t界 é 👩‍💻\n\\ No newline at end of file\n", true)
+		"@@ -1 +1 @@\n-before\n\\ No newline at end of file\n+after\x1b]52;c;secret\a\x1b[2J\x1b[31m\t界 é 👩‍💻\n\\ No newline at end of file\n")
 	for _, width := range []int{1, 2, 3, 12, 36, 90} {
 		render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{{Path: "unknown.extension", Chunks: []liveDiffChunk{chunk}}}, "", width, 0, chunk)
 		if err != nil {
@@ -276,7 +274,7 @@ func TestLiveDiffNativeErrors(t *testing.T) {
 	if _, err := new(livediff.Renderer).ColorSource(ctx, livediff.TerminalTheme, "file.go", "var x = 1\n"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("syntax cancellation: %v", err)
 	}
-	chunk := liveDiffHighlightChunk("edit", "file.go", "@@ -1 +1 @@\n+missing removal\n", true)
+	chunk := liveDiffHighlightChunk("edit", "file.go", "@@ -1 +1 @@\n+missing removal\n")
 	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{{Path: "file.go", Chunks: []liveDiffChunk{chunk}}}, "", 80, 0, liveDiffChunk{})
 	if err == nil || len(render.Lines) != 0 {
 		t.Fatalf("malformed capture returned a partial successful view: %+v %v", render, err)
@@ -288,7 +286,7 @@ func TestLiveDiffNativeErrors(t *testing.T) {
 }
 
 func TestLiveDiffHiddenFilesKeepNavigationAndHistory(t *testing.T) {
-	chunk := liveDiffHighlightChunk("edit", "visible.txt", "@@ -1 +1 @@\n-old\n+new\n", true)
+	chunk := liveDiffHighlightChunk("edit", "visible.txt", "@@ -1 +1 @@\n-old\n+new\n")
 	chunk.Status = ""
 	files := []liveDiffFile{
 		{Path: "reverted-first"},
@@ -331,7 +329,7 @@ func TestLiveDiffFollowFinalChangedRowAndFragment(t *testing.T) {
 		"@@ -1,2 +1,40 @@\n-old\n" + strings.Repeat("+earlier\n", 38) + "+FINAL_TIP\n context\n",
 		"@@ -1,40 +1 @@\n" + strings.Repeat("-earlier\n", 38) + "-FINAL_TIP\n context\n",
 	} {
-		chunk := liveDiffHighlightChunk("latest", "file.txt", diff, true)
+		chunk := liveDiffHighlightChunk("latest", "file.txt", diff)
 		for _, width := range []int{40, 90} {
 			render, err := new(liveDiffRenderer).Render(t.Context(), livediff.DarkTheme,
 				[]liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{chunk}}}, "", width, 0, chunk)
@@ -351,8 +349,7 @@ func TestLiveDiffFollowFinalChangedRowAndFragment(t *testing.T) {
 }
 
 func TestLiveDiffIncompleteHistory(t *testing.T) {
-	chunk := liveDiffChunk{Key: "unreadable", Applied: true,
-		Review: mekugi.RenderIncompleteReviewFile("file", "file", "permission denied")}
+	chunk := liveDiffChunk{Key: "unreadable", Review: mekugi.RenderIncompleteReviewFile("file", "file", "permission denied")}
 	view := liveDiffView{}
 	view.Merge([]liveDiffFile{{Path: "file", Chunks: []liveDiffChunk{chunk}}})
 	view.RefreshVisible()
@@ -369,9 +366,9 @@ func TestLiveDiffIncompleteHistory(t *testing.T) {
 
 func TestLiveDiffCompleteCaptureAfterIncompleteHistory(t *testing.T) {
 	for _, acknowledged := range []bool{false, true} {
-		incomplete := liveDiffChunk{Key: "unreadable", Applied: true, CaptureOrder: 1,
+		incomplete := liveDiffChunk{Key: "unreadable", CaptureOrder: 1,
 			Review: mekugi.RenderIncompleteReviewFile("file", "file", "permission denied")}
-		complete := liveDiffChunk{Key: "readable", Applied: true, CaptureOrder: 2,
+		complete := liveDiffChunk{Key: "readable", CaptureOrder: 2,
 			Review: mekugi.RenderReviewFile("file", "file", "before\n", "NEW KNOWN CONTENT\n")}
 		view := liveDiffView{Reviewed: map[string]bool{"unreadable": acknowledged}}
 		view.Merge([]liveDiffFile{{Path: "file", Chunks: []liveDiffChunk{incomplete, complete}}})

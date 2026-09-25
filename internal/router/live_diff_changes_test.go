@@ -46,7 +46,7 @@ func liveDiffLinesFile(path string, lines int) string {
 
 func liveDiffCapture(key, path string, order uint64, before, after string, origin livediff.Origin) liveDiffChunk {
 	return liveDiffChunk{
-		Key: key, CaptureOrder: order, Applied: true, Origin: origin, Status: origin.Change + " applied",
+		Key: key, CaptureOrder: order, Origin: origin,
 		Review: mekugi.RenderReviewFile("/w/"+path, "/w/"+path, before, after),
 	}
 }

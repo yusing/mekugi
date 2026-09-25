@@ -14,22 +14,15 @@ import (
 	"github.com/yusing/mekugi/internal/livediff"
 )
 
-func liveDiffHighlightChunk(key, path, hunk string, applied bool) liveDiffChunk {
+func liveDiffHighlightChunk(key, path, hunk string) liveDiffChunk {
 	diff := "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n" + hunk
-	status := key + " changes observed"
-	if applied {
-		status = key + " applied"
-	}
-	return liveDiffChunk{
-		Key: key, Status: status, Applied: applied,
-		Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: diff},
-	}
+	return liveDiffChunk{Key: key, Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: diff}}
 }
 
-func TestLiveDiffHighlightBatchAndReceipts(t *testing.T) {
-	first := liveDiffHighlightChunk("first", "a", "@@ -1 +1 @@\n-a\n+A\n", true)
-	second := liveDiffHighlightChunk("second", "a", "@@ -20 +20 @@\n-b\n+B\n", false)
-	other := liveDiffHighlightChunk("other", "b", "@@ -1 +1 @@\n-c\n+C\n", true)
+func TestLiveDiffHighlightBatchAndRepeatedSnapshot(t *testing.T) {
+	first := liveDiffHighlightChunk("first", "a", "@@ -1 +1 @@\n-a\n+A\n")
+	second := liveDiffHighlightChunk("second", "a", "@@ -20 +20 @@\n-b\n+B\n")
+	other := liveDiffHighlightChunk("other", "b", "@@ -1 +1 @@\n-c\n+C\n")
 	v := liveDiffView{Following: true, Scroll: make(map[string]int)}
 	snapshot := []liveDiffFile{{Path: "a", Chunks: []liveDiffChunk{first}}}
 	v.Merge(snapshot)
@@ -51,24 +44,21 @@ func TestLiveDiffHighlightBatchAndReceipts(t *testing.T) {
 		t.Fatal("paused update lost its notice or stole selection")
 	}
 	visible := v.Visible[v.Files[0].Key()]
-	if len(visible.Chunks) != 2 || visible.Chunks[0].Highlighted || !visible.Chunks[1].Highlighted ||
-		!strings.Contains(visible.Chunks[1].Status, "changes observed") {
+	if len(visible.Chunks) != 2 || visible.Chunks[0].Highlighted || !visible.Chunks[1].Highlighted {
 		t.Fatalf("changes-observed capture highlight = %#v", visible)
 	}
-	snapshot[0].Chunks[1].Applied = true
-	snapshot[0].Chunks[1].Status = "second applied"
 	v.Merge(snapshot)
 	v.RefreshVisible()
 	for _, file := range v.Files {
 		if !v.Visible[file.Key()].Highlighted {
-			t.Fatal("receipt-only update cleared the previous batch")
+			t.Fatal("repeated snapshot cleared the previous batch")
 		}
 	}
 	visible = v.Visible[v.Files[0].Key()]
 	if len(visible.Chunks) != 2 || visible.Chunks[0].Highlighted || !visible.Chunks[1].Highlighted {
-		t.Fatalf("receipt changed the highlighted capture: %#v", visible)
+		t.Fatalf("repeated snapshot changed the highlighted capture: %#v", visible)
 	}
-	third := liveDiffHighlightChunk("third", "c", "@@ -1 +1 @@\n-d\n+D\n", true)
+	third := liveDiffHighlightChunk("third", "c", "@@ -1 +1 @@\n-d\n+D\n")
 	snapshot = append(snapshot, liveDiffFile{Path: "c", Chunks: []liveDiffChunk{third}})
 	v.Merge(snapshot)
 	v.RefreshVisible()
@@ -104,14 +94,14 @@ func TestLiveDiffHighlightBatchAndReceipts(t *testing.T) {
 func TestLiveDiffHighlightEmptyStartAndRevert(t *testing.T) {
 	v := liveDiffView{Following: true}
 	v.Merge(nil)
-	first := liveDiffHighlightChunk("first", "a", "@@ -1 +1 @@\n-a\n+A\n", true)
+	first := liveDiffHighlightChunk("first", "a", "@@ -1 +1 @@\n-a\n+A\n")
 	snapshot := []liveDiffFile{{Path: "a", Chunks: []liveDiffChunk{first}}}
 	v.Merge(snapshot)
 	v.RefreshVisible()
 	if !v.Visible[v.Files[0].Key()].Highlighted {
 		t.Fatal("first edit after an empty baseline was not highlighted")
 	}
-	revert := liveDiffHighlightChunk("revert", "a", "@@ -1 +1 @@\n-A\n+a\n", true)
+	revert := liveDiffHighlightChunk("revert", "a", "@@ -1 +1 @@\n-A\n+a\n")
 	snapshot[0].Chunks = append(snapshot[0].Chunks, revert)
 	v.Following = false
 	v.Merge(snapshot)
@@ -127,20 +117,19 @@ func TestLiveDiffHighlightEmptyStartAndRevert(t *testing.T) {
 }
 
 func TestLiveDiffHighlightCapturesAndFlushedReceipt(t *testing.T) {
-	first := liveDiffHighlightChunk("first", "a", "@@ -1 +1 @@\n-a\n+A\n", false)
+	first := liveDiffHighlightChunk("first", "a", "@@ -1 +1 @@\n-a\n+A\n")
 	v := liveDiffView{}
 	v.Merge(nil)
 	snapshot := []liveDiffFile{{Path: "a", Chunks: []liveDiffChunk{first}}}
 	v.Merge(snapshot)
 	v.RefreshVisible()
 	v.Flush(true)
-	snapshot[0].Chunks[0].Applied = true
 	v.Merge(snapshot)
 	v.RefreshVisible()
 	if len(v.Visible[v.Files[0].Key()].Chunks) != 0 || v.UnseenUpdate {
-		t.Fatal("late confirmation revived a flushed capture")
+		t.Fatal("repeated snapshot revived a flushed capture")
 	}
-	other := liveDiffHighlightChunk("other", "a", "@@ -20 +20 @@\n-b\n+B\n", true)
+	other := liveDiffHighlightChunk("other", "a", "@@ -20 +20 @@\n-b\n+B\n")
 	snapshot[0].Chunks = append(snapshot[0].Chunks, other)
 	v.Merge(snapshot)
 	v.RefreshVisible()
@@ -153,8 +142,8 @@ func TestLiveDiffHighlightCapturesAndFlushedReceipt(t *testing.T) {
 func TestLiveDiffRenderHighlights(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.txt")
-	old := liveDiffHighlightChunk("old", path, "@@ -1 +1 @@\n-old marker\n+OLDER\n", true)
-	recent := liveDiffHighlightChunk("recent", path, "@@ -20 +20 @@\n-before\n+NEW 界 é 👩‍💻\n", true)
+	old := liveDiffHighlightChunk("old", path, "@@ -1 +1 @@\n-old marker\n+OLDER\n")
+	recent := liveDiffHighlightChunk("recent", path, "@@ -20 +20 @@\n-before\n+NEW 界 é 👩‍💻\n")
 	recent.Highlighted = true
 	file := liveDiffFile{Path: path, Highlighted: true, Chunks: []liveDiffChunk{old, recent}}
 	for _, width := range []int{36, 90} {
@@ -203,7 +192,7 @@ func TestLiveDiffSafePreservesZeroWidthText(t *testing.T) {
 func TestLiveDiffHighlightPreservesSyntaxColors(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.go")
-	chunk := liveDiffHighlightChunk("recent", path, "@@ -1 +1 @@\n-return \"before\"\n+return \"after\"\n", true)
+	chunk := liveDiffHighlightChunk("recent", path, "@@ -1 +1 @@\n-return \"before\"\n+return \"after\"\n")
 	codeLine := func(highlighted bool) string {
 		t.Helper()
 		chunk.Highlighted = highlighted
@@ -239,7 +228,7 @@ func TestLiveDiffHeaders(t *testing.T) {
 		{"edit", path, path, "@@ -1 +1 @@\n-before\n+after\n", "", 1, 1},
 		{"new", "", path, "@@ -0,0 +1 @@\n+after\n", "New file", 1, 0},
 		{"deleted", path, "", "@@ -1 +0,0 @@\n-before\n", "Deleted file", 0, 1},
-		{"renamed", filepath.Join(workspace, "old.go"), path, "@@ -1 +1 @@\n-before\n+after\n", "Rename: old.go → file.go", 1, 1},
+		{"renamed", filepath.Join(workspace, "old.go"), path, "@@ -1 +1 @@\n-before\n+after\n", "old.go → file.go", 1, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			before, after := strconv.Quote(tc.before), strconv.Quote(tc.after)
@@ -260,15 +249,16 @@ func TestLiveDiffHeaders(t *testing.T) {
 			}
 			text := ansi.Strip(strings.Join(render.Lines, "\n"))
 			pathCount := 1
-			if tc.name == "renamed" {
-				pathCount++ // The action also names the destination.
-			}
 			if strings.Count(text, "file.go") != pathCount || strings.Contains(text, "/dev/null") ||
 				strings.Contains(text, "Applied") || strings.Contains(text, "┐") ||
 				strings.Contains(text, "└") || strings.Contains(text, "⟶") {
 				t.Fatalf("duplicate or decorative header remains:\n%s", text)
 			}
-			if !strings.Contains(render.Lines[0], "\x1b[1m1/1  file.go") ||
+			headingPath := "file.go"
+			if tc.name == "renamed" {
+				headingPath = "old.go → file.go"
+			}
+			if !strings.Contains(render.Lines[0], "\x1b[1m1/1  "+headingPath) ||
 				!strings.Contains(render.Lines[0], "─") || ansi.StringWidth(render.Lines[0]) != 89 {
 				t.Fatalf("file heading lacks bounded emphasis: %q", render.Lines[0])
 			}
@@ -296,8 +286,8 @@ func TestLiveDiffHeaderWidthAndControls(t *testing.T) {
 func TestLiveDiffHeaderCountsUseVisibleComposition(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.txt")
-	first := liveDiffHighlightChunk("first", path, "@@ -1 +1 @@\n-a\n+A\n", true)
-	second := liveDiffHighlightChunk("second", path, "@@ -1 +1,2 @@\n-A\n+B\n+C\n", true)
+	first := liveDiffHighlightChunk("first", path, "@@ -1 +1 @@\n-a\n+A\n")
+	second := liveDiffHighlightChunk("second", path, "@@ -1 +1,2 @@\n-A\n+B\n+C\n")
 	v := liveDiffView{}
 	snapshot := []liveDiffFile{{Path: path, Chunks: []liveDiffChunk{first}}}
 	v.Merge(snapshot)
@@ -323,7 +313,7 @@ func TestLiveDiffPreparedRenameKeepsDestination(t *testing.T) {
 	diff := "--- " + strconv.Quote(oldPath) + "\n+++ " + strconv.Quote(newPath) +
 		"\n@@ -1 +1 @@\n-before\n+after\n@@ -20 +20 @@\n-older\n+newer\n"
 	chunk := liveDiffChunk{
-		Key: "rename", Status: "amber1 changes observed",
+		Key:    "rename",
 		Review: mekugi.ReviewFile{BeforePath: oldPath, AfterPath: newPath, Diff: diff},
 	}
 	v := liveDiffView{}
@@ -334,12 +324,15 @@ func TestLiveDiffPreparedRenameKeepsDestination(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := ansi.Strip(strings.Join(render.Lines, "\n"))
-	for _, want := range []string{"1/1  old.go", "Rename: old.go → new.go", "changes observed", "after"} {
+	if strings.Count(text, "old.go") != 1 || strings.Count(text, "new.go") != 1 || strings.Contains(text, "Rename:") {
+		t.Fatalf("rename header repeats its paths: %s", text)
+	}
+	for _, want := range []string{"1/1  old.go", "old.go → new.go", "after"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("prepared rename lost %q:\n%s", want, text)
 		}
 	}
-	for _, label := range []string{"Rename: old.go → new.go", "amber1 changes observed"} {
+	for _, label := range []string{"old.go → new.go"} {
 		if strings.Count(text, label) != 1 {
 			t.Fatalf("capture label repeated between hunks: %q\n%s", label, text)
 		}
@@ -358,8 +351,7 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 	// Retained creation captures still render, although stock apply_patch also edits existing files.
 	path := filepath.Join(workspace, "review_highlight_test.txt")
 	initial := liveDiffChunk{
-		Key: "create", Applied: true,
-		Review: mekugi.ReviewFile{
+		Key: "create", Review: mekugi.ReviewFile{
 			AfterPath: path,
 			Diff: "--- /dev/null\n+++ " + strconv.Quote(path) +
 				"\n@@ -0,0 +1,311 @@\n+" + strings.Join(rows[:311], "\n+") + "\n",
@@ -367,7 +359,7 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 	}
 
 	recent := liveDiffHighlightChunk("edit", path,
-		"@@ -312 +312 @@\n-line312\n+LATEST312\n@@ -337 +337 @@\n-line337\n+LATEST337\n", true)
+		"@@ -312 +312 @@\n-line312\n+LATEST312\n@@ -337 +337 @@\n-line337\n+LATEST337\n")
 	v := liveDiffView{}
 	snapshot := []liveDiffFile{{Path: path, Chunks: []liveDiffChunk{initial}}}
 	// Appends preserve the original /dev/null identity while growing the file.
@@ -375,7 +367,7 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 	for _, end := range []int{312, 336, 337, 340} {
 		hunk := fmt.Sprintf("@@ -%d,0 +%d,%d @@\n+%s\n", start, start+1, end-start, strings.Join(rows[start:end], "\n+"))
 		snapshot[0].Chunks = append(snapshot[0].Chunks,
-			liveDiffHighlightChunk("append-"+strconv.Itoa(end), path, hunk, true))
+			liveDiffHighlightChunk("append-"+strconv.Itoa(end), path, hunk))
 		start = end
 	}
 	v.Merge(snapshot)
@@ -422,9 +414,9 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 func TestLiveDiffFollowLatestCombinedResult(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.txt")
-	old := liveDiffHighlightChunk("amber1", path, "@@ -20 +20 @@\n-before\n+FIRST20\n", true)
+	old := liveDiffHighlightChunk("amber1", path, "@@ -20 +20 @@\n-before\n+FIRST20\n")
 	recent := liveDiffHighlightChunk("apple1", path,
-		"@@ -20 +20 @@\n-FIRST20\n+LATEST20\n@@ -337 +337 @@\n-before\n+LATEST337\n", true)
+		"@@ -20 +20 @@\n-FIRST20\n+LATEST20\n@@ -337 +337 @@\n-before\n+LATEST337\n")
 	v := liveDiffView{Following: true}
 	v.Merge([]liveDiffFile{{Path: path, Chunks: []liveDiffChunk{old}}})
 	v.Merge([]liveDiffFile{{Path: path, Chunks: []liveDiffChunk{old, recent}}})
@@ -457,55 +449,67 @@ func TestLiveDiffFollowLatestCombinedResult(t *testing.T) {
 	}
 }
 
-func TestLiveDiffCaptureLabelsOnce(t *testing.T) {
+func TestLiveDiffOnlyShowsFinalComposition(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.txt")
-	for _, applied := range []bool{false, true} {
-		t.Run(strconv.FormatBool(applied), func(t *testing.T) {
-			first := liveDiffHighlightChunk("amber1", path,
-				"@@ -1 +1 @@\n-old1\n+first1\n@@ -20 +20 @@\n-old20\n+first20\n", applied)
-			second := liveDiffHighlightChunk("amber2", path,
-				"@@ -1 +1 @@\n-first1\n+second1\n@@ -20 +20 @@\n-first20\n+second20\n", applied)
-			v := liveDiffView{}
-			v.Merge(nil)
-			v.Merge([]liveDiffFile{{Path: path, Chunks: []liveDiffChunk{first, second}}})
-			v.RefreshVisible()
-			file := v.Visible[v.Files[0].Key()]
-			render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{file}, workspace, 90, 0, second)
-			if err != nil {
-				t.Fatal(err)
-			}
-			text := ansi.Strip(strings.Join(render.Lines, "\n"))
-			var labels []string
-			if !applied {
-				labels = append(labels, first.Status, second.Status)
-			}
-			for _, label := range labels {
-				if strings.Count(text, label) != 1 {
-					t.Fatalf("capture identity or recency label missing or repeated: %q\n%s", label, text)
-				}
-			}
-			if strings.Contains(text, "Unable to combine") ||
-				applied && (strings.Contains(text, first.Status) || strings.Contains(text, "first1")) {
-				t.Fatalf("combined result exposed intermediate patches:\n%s", text)
-			}
-			contents := []string{"second1", "second20"}
-			if !applied {
-				contents = append(contents, "first1", "first20")
-			}
-			for _, content := range contents {
-				if !strings.Contains(text, content) {
-					t.Fatalf("capture content missing: %q\n%s", content, text)
-				}
-			}
-		})
+	first := liveDiffHighlightChunk("amber1", path,
+		"@@ -1 +1 @@\n-old1\n+first1\n@@ -20 +20 @@\n-old20\n+first20\n")
+	second := liveDiffHighlightChunk("amber2", path,
+		"@@ -1 +1 @@\n-first1\n+second1\n@@ -20 +20 @@\n-first20\n+second20\n")
+	v := liveDiffView{}
+	v.Merge([]liveDiffFile{{Path: path, Chunks: []liveDiffChunk{first, second}}})
+	v.RefreshVisible()
+	file := v.Visible[v.Files[0].Key()]
+	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{file}, workspace, 90, 0, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := ansi.Strip(strings.Join(render.Lines, "\n"))
+	for _, want := range []string{"second1", "second20"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("final edit missing %q: %s", want, text)
+		}
+	}
+	for _, stale := range []string{"first1", "first20", "Unable to combine", "changes observed"} {
+		if strings.Contains(text, stale) {
+			t.Fatalf("intermediate content %q visible: %s", stale, text)
+		}
+	}
+}
+
+func TestLiveDiffConflictingSavedEditsRemainReadable(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "file.txt")
+	first := liveDiffHighlightChunk("amber1", path, "@@ -1 +1 @@\n-old\n+first\n")
+	second := liveDiffHighlightChunk("amber2", path, "@@ -1 +1 @@\n-different\n+second\n")
+	v := liveDiffView{}
+	v.Merge([]liveDiffFile{{Path: path, Chunks: []liveDiffChunk{first, second}}})
+	v.RefreshVisible()
+	file := v.Visible[v.Files[0].Key()]
+	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{file}, workspace, 90, 0, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	visible := ansi.Strip(strings.Join(render.Lines, "\n"))
+	for _, want := range []string{"first", "second", "Separate edit"} {
+		if !strings.Contains(visible, want) {
+			t.Fatalf("conflicting capture lost %q: %s", want, visible)
+		}
+	}
+	if strings.Contains(visible, "Unable to combine") || strings.Contains(visible, "changes observed") {
+		t.Fatalf("conflicting capture exposed obsolete state: %s", visible)
+	}
+	v.Flush(true)
+	v.RefreshVisible()
+	if len(v.Visible[v.Files[0].Key()].Chunks) != 0 {
+		t.Fatalf("reviewed conflicting edits remain visible: %+v", v.Visible)
 	}
 }
 
 func TestLiveDiffBlankSourceRows(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.txt")
-	chunk := liveDiffHighlightChunk("edit", path, "@@ -1,4 +1,4 @@\n \n-old\n+new\n-\n+\n tail\n", true)
+	chunk := liveDiffHighlightChunk("edit", path, "@@ -1,4 +1,4 @@\n \n-old\n+new\n-\n+\n tail\n")
 	chunk.Status = ""
 	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{{Path: path, Chunks: []liveDiffChunk{chunk}}}, workspace, 90, 0, chunk)
 
@@ -532,12 +536,12 @@ func TestLiveDiffPathOnlyChangesStayCompact(t *testing.T) {
 	}{
 		{"new", "", path, "New file"},
 		{"deleted", path, "", "Deleted file"},
-		{"renamed", filepath.Join(workspace, "old.txt"), path, "Rename: old.txt → file.txt"},
+		{"renamed", filepath.Join(workspace, "old.txt"), path, "old.txt → file.txt"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			review := mekugi.ReviewFile{BeforePath: tc.before, AfterPath: tc.after,
 				Diff: tc.name + " " + strconv.Quote(tc.before) + " -> " + strconv.Quote(tc.after) + "\n"}
-			for _, status := range []string{"", "amber1 changes observed"} {
+			for _, status := range []string{"", ""} {
 				chunk := liveDiffChunk{Key: "change", Status: status, Review: review}
 				render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{{Path: path, Chunks: []liveDiffChunk{chunk}}}, workspace, 100, 0, chunk)
 
@@ -570,7 +574,7 @@ func TestLiveDiffNarrowFileActions(t *testing.T) {
 	}{
 		{"add", "", path, "New file"},
 		{"delete", path, "", "Deleted file"},
-		{"move", oldPath, path, "Rename:"},
+		{"move", oldPath, path, "→"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			review := mekugi.ReviewFile{BeforePath: tc.before, AfterPath: tc.after,

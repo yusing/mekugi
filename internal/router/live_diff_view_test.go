@@ -24,7 +24,7 @@ func TestLiveDiffRenderAllFiles(t *testing.T) {
 		path := filepath.Join(workspace, name+".txt")
 		diff := "--- /dev/null\n+++ " + strconv.Quote(path) + "\n@@ -0,0 +1 @@\n+" + name + " content\n"
 		files = append(files, liveDiffFile{Path: path, Chunks: []liveDiffChunk{{
-			Status: "Applied",
+
 			Review: mekugi.ReviewFile{AfterPath: path, Diff: diff},
 		}}})
 	}
@@ -58,7 +58,7 @@ func TestLiveDiffFollowEmptyLatestFile(t *testing.T) {
 	second := filepath.Join(workspace, "second.txt")
 	diff := "--- /dev/null\n+++ " + strconv.Quote(first) + "\n@@ -0,0 +1,40 @@\n" + strings.Repeat("+first content\n", 40)
 	files := []liveDiffFile{
-		{Path: first, Chunks: []liveDiffChunk{{Status: "Applied",
+		{Path: first, Chunks: []liveDiffChunk{{
 			Review: mekugi.ReviewFile{AfterPath: first, Diff: diff}}}},
 		{Path: second}, // The latest file was flushed or fully reverted.
 	}
@@ -130,7 +130,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		history := mekugiHistory{ToolName: applyPatchToolName, ChangeID: id, CorrelationID: call, Applied: true, ReviewFiles: files}
+		history := mekugiHistory{ToolName: applyPatchToolName, ChangeID: id, CorrelationID: call, ReviewFiles: files}
 		if err := store.put(t.Context(), workspace, map[string]mekugiHistory{call: history}); err != nil {
 			t.Fatal(err)
 		}

@@ -255,9 +255,9 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 			t.Errorf("--list omitted nested change ID %s: %q", id, rootList.stdout)
 		}
 	}
-	if !strings.Contains(rootList.stdout, "applied") || !strings.Contains(rootList.stdout, "completed exact") ||
+	if !strings.Contains(rootList.stdout, "+1 -0") || strings.Contains(rootList.stdout, "completed") ||
 		strings.Contains(rootList.stdout, "pending") || strings.Contains(rootList.stdout, "unconfirmed") {
-		t.Fatalf("nested host outcomes were not confirmed in --list: %q", rootList.stdout)
+		t.Fatalf("nested change IDs and counts missing from --list: %q", rootList.stdout)
 	}
 
 	net := runMChangesNestedShell(t, registry, workspace, successThread, "mchanges --mine --net")
@@ -279,7 +279,7 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 	for _, id := range successIDs {
 		for _, call := range index.Changes[id].Calls {
 			record, found, err := rootStore.read(workspace, call.ID, false)
-			if err != nil || !found || !record.History.Applied || len(record.History.HostResults) != 1 {
+			if err != nil || !found || len(record.History.HostResults) != 1 {
 				t.Fatalf("nested success lacks durable native receipt: %s found=%t err=%v history=%+v", id, found, err, record.History)
 			}
 		}
@@ -348,7 +348,7 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 	}
 	var sawPatch, sawNonzeroExec bool
 	failedPatch, found, err := failedStore.lookup(failedContext, failureWorkspace, nativePatchDerivedCallID(failureProvider.callID, 0))
-	if err != nil || !found || failedPatch.ChangeID != "" || failedPatch.Applied || len(failedPatch.HostResults) != 1 || failedPatch.HostResults[0].Status != "failed" {
+	if err != nil || !found || failedPatch.ChangeID != "" || len(failedPatch.HostResults) != 1 || failedPatch.HostResults[0].Status != "failed" {
 		t.Fatalf("unchanged failed attempt was lost or allocated a change ID: %+v found=%t err=%v", failedPatch, found, err)
 	}
 	sawPatch = true
@@ -363,8 +363,8 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 				t.Fatalf("read nested failure %s: found=%t err=%v", call.ID, found, err)
 			}
 			history := record.History
-			if history.Applied || call.Confirmed {
-				t.Errorf("caught nested failure was marked applied: id=%s call=%s history=%+v confirmed=%t", id, call.ID, history, call.Confirmed)
+			if history.ChangeID == "" || len(history.ReviewFiles) == 0 {
+				t.Errorf("caught nested edit lacks saved effect: id=%s call=%s history=%+v", id, call.ID, history)
 			}
 			if history.ToolName == applyPatchToolName && strings.Contains(history.Script, "absent-before-line") {
 				sawPatch = true
@@ -379,8 +379,8 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 		t.Fatalf("nested failure receipts were not distinguished: patch=%t nonzero_exec=%t; list=%q", sawPatch, sawNonzeroExec, failureList.stdout)
 	}
 	failureNet := runMChangesNestedShell(t, registry, failureWorkspace, failureThread, "mchanges --mine --net")
-	if failureNet.status != 0 || failureNet.stderr != "" || !strings.Contains(failureNet.stdout, "failed") || !strings.Contains(failureNet.stdout, "composing observed effects, not a success receipt") || !strings.Contains(failureNet.stdout, "+partial-result") {
-		t.Fatalf("failed effects lost their diff or failure label: stdout=%q stderr=%q status=%d", failureNet.stdout, failureNet.stderr, failureNet.status)
+	if failureNet.status != 0 || failureNet.stderr != "" || strings.Contains(failureNet.stdout, "composing observed effects") || !strings.Contains(failureNet.stdout, "+partial-result") {
+		t.Fatalf("failed effects lost their diff or leaked outcome notice: stdout=%q stderr=%q status=%d", failureNet.stdout, failureNet.stderr, failureNet.status)
 	}
 
 	yieldWorkspace := t.TempDir()

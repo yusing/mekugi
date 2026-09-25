@@ -23,8 +23,6 @@ type changeCapture struct {
 	id       string
 	order    uint64
 	files    []mekugi.ReviewFile
-	applied  bool
-	status   string
 	coverage string
 	// links are captured symlink paths; their review text is a link target.
 	links map[string]bool
@@ -96,8 +94,7 @@ func (s *mekugiReplayStore) loadChangeCaptures(ctx context.Context, workspace st
 			if err != nil {
 				return nil, err
 			}
-			capture := changeCapture{id: id, order: record.CaptureOrder, links: make(map[string]bool), applied: record.History.Applied || call.Confirmed}
-			capture.status = trackedStatus(record.History, call.Confirmed)
+			capture := changeCapture{id: id, order: record.CaptureOrder, links: make(map[string]bool)}
 			if record.History.ExecOutcome != nil {
 				capture.coverage = record.History.ExecOutcome.Coverage
 			}

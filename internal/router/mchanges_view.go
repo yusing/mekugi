@@ -26,9 +26,11 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 		if previous.last != id {
 			id += ".." + previous.last
 		}
-		fmt.Fprintf(&output, "%s %s", id, previous.status)
-		if previous.coverage != "" {
-			fmt.Fprintf(&output, " %s", previous.coverage)
+		output.WriteString(id)
+		if previous.status == "pending" || previous.status == "retired" || previous.status == "unknown" {
+			fmt.Fprintf(&output, " %s", previous.status)
+		} else if strings.Contains(previous.status, "history:partial") {
+			output.WriteString(" history:partial")
 		}
 		if previous.status != "pending" && previous.status != "retired" && (previous.added != 0 || previous.removed != 0 || previous.managed == 0) {
 			fmt.Fprintf(&output, " +%d -%d", previous.added, previous.removed)
@@ -53,7 +55,6 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 		case len(change.Calls) == 0:
 			next.status = "pending"
 		default:
-			var outcome *execOutcome
 			hasFiles := false
 			for _, call := range change.Calls {
 				record, found, err := s.read(options.workspace, call.ID, false)
@@ -65,10 +66,8 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 				}
 				history := record.History
 				hasFiles = hasFiles || len(history.ReviewFiles) != 0
-				next.status = trackedStatus(history, call.Confirmed)
 				if history.ExecOutcome != nil {
-					outcome = history.ExecOutcome
-					next.coverage = outcome.Coverage
+					next.coverage = history.ExecOutcome.Coverage
 				}
 				for _, file := range history.ReviewFiles {
 					if file.Origin != "" {
@@ -90,25 +89,6 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 				flush()
 				previous = nil
 				continue
-			}
-			switch next.status {
-			case "changes observed":
-				next.status = "observed"
-			case "no changes observed":
-				next.status = "no changes"
-			}
-			if outcome != nil {
-				switch outcome.Status {
-				case execStatusCompleted:
-					next.status = "completed"
-					if len(outcome.Overlaps) != 0 {
-						next.status += " shared"
-					}
-				case execStatusFailed:
-					next.status = "failed"
-				default:
-					next.status = "observed"
-				}
 			}
 			if change.RetiredCalls != 0 {
 				next.status += " history:partial"
@@ -161,13 +141,9 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 	}
 	chains := make(map[string]*mekugi.ReviewComposition)
 	var ordered []*mekugi.ReviewComposition
-	var notices strings.Builder
 	for _, capture := range captures {
 		if len(capture.files) != 0 && capture.coverage != "" && capture.coverage != execCoverageExact {
 			return "", fmt.Errorf("change %s has partial captured effects; read without --net to inspect them", capture.id)
-		}
-		if !capture.applied && len(capture.files) != 0 {
-			fmt.Fprintf(&notices, "%s %s; composing observed effects, not a success receipt\n", capture.id, capture.status)
 		}
 		for _, file := range capture.files {
 			if file.Binary {
@@ -207,5 +183,5 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 	if output.Len() == 0 {
 		output.WriteString("no net changes in selected captured history\n")
 	}
-	return notices.String() + output.String(), nil
+	return output.String(), nil
 }

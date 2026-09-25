@@ -32,7 +32,6 @@ type Chunk struct {
 	CaptureOrder  uint64
 	SnapshotOrder int
 	Review        mekugi.ReviewFile
-	Applied       bool
 	Highlighted   bool
 	Origin
 }
@@ -179,9 +178,7 @@ func (v *View) RefreshVisible() {
 		}
 		visible := File{id: file.id, Path: file.Path}
 		var composition mekugi.ReviewComposition
-		var pending []Chunk
 		var failure error
-		unreviewed := false
 		chunks := slices.Clone(file.Chunks)
 		slices.SortStableFunc(chunks, func(a, b Chunk) int {
 			return cmp.Compare(a.CaptureOrder, b.CaptureOrder)
@@ -201,13 +198,6 @@ func (v *View) RefreshVisible() {
 				visible.Origins = append(visible.Origins, chunk.Origin)
 			}
 			visible.Highlighted = visible.Highlighted || chunk.Highlighted && !reviewed
-			unreviewed = unreviewed || !reviewed
-			if !chunk.Applied {
-				if !reviewed {
-					pending = append(pending, chunk)
-				}
-				continue
-			}
 			if chunk.Review.Incomplete != "" && failure == nil {
 				// Unknown bytes end this composition epoch. Keep known captures
 				// on either side separate rather than hiding all later edits.
@@ -234,8 +224,18 @@ func (v *View) RefreshVisible() {
 			}
 		}
 		if failure != nil {
-			if unreviewed {
-				visible.Chunks = append(visible.Chunks, Chunk{Status: "Unable to combine changes: " + failure.Error(), Review: mekugi.ReviewFile{Incomplete: failure.Error()}})
+			// A gap in retained history must not hide valid edits or invent a
+			// combined diff. Show each captured edit independently instead.
+			visible.Chunks = nil
+			for _, chunk := range chunks {
+				if v.Reviewed[chunk.Key] || !v.Shows(chunk) {
+					continue
+				}
+				chunk.Status = "Separate edit"
+				if chunk.Change != "" {
+					chunk.Status = chunk.Change + " · separate edit"
+				}
+				visible.Chunks = append(visible.Chunks, chunk)
 			}
 		} else {
 			for _, region := range composition.FilesWithHighlights() {
@@ -244,7 +244,6 @@ func (v *View) RefreshVisible() {
 				})
 			}
 		}
-		visible.Chunks = append(visible.Chunks, pending...)
 		v.Visible[file.Key()] = visible
 	}
 }
@@ -329,7 +328,7 @@ func GroupCaptures(captures []Chunk) []File {
 			files = append(files, File{Path: path})
 			current[path] = i
 		}
-		if chunk.Applied && file.BeforePath != file.AfterPath {
+		if file.BeforePath != file.AfterPath {
 			delete(current, file.BeforePath)
 			if file.AfterPath == "" {
 				deleted[file.BeforePath] = i
@@ -380,7 +379,7 @@ func fileAction(file mekugi.ReviewFile, workspace string) string {
 	case file.AfterPath == "" && file.BeforePath != "":
 		return "Deleted file"
 	case file.BeforePath != file.AfterPath:
-		return "Rename: " + pathdisplay.ForWorkspace(workspace, file.BeforePath) + " → " + pathdisplay.ForWorkspace(workspace, file.AfterPath)
+		return pathdisplay.ForWorkspace(workspace, file.BeforePath) + " → " + pathdisplay.ForWorkspace(workspace, file.AfterPath)
 	default:
 		return ""
 	}

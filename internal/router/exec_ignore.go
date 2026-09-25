@@ -1,8 +1,6 @@
 package router
 
 import (
-	"bufio"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -17,43 +15,6 @@ type execIgnoreRule struct {
 	dirOnly bool
 	// basename rules have no inner slash and match an entry at any depth.
 	basename bool
-}
-
-// execIgnoreFrame holds the rules of one directory's ignore files.
-type execIgnoreFrame struct {
-	dir   string
-	rules []execIgnoreRule
-}
-
-var execIgnoreFileNames = []string{".gitignore", ".ignore", ".rgignore"}
-
-const maxExecIgnoreFileBytes = 256 << 10
-
-// readExecIgnoreFrame reads the plain ignore files of one directory. The
-// files are read as pattern lists even outside a repository; no VCS runs.
-func readExecIgnoreFrame(dir string) (execIgnoreFrame, bool) {
-	frame := execIgnoreFrame{dir: dir}
-	found := false
-	for _, name := range execIgnoreFileNames {
-		file, err := openNativePatchFile(filepath.Join(dir, name))
-		if err != nil {
-			continue
-		}
-		info, err := file.Stat()
-		if err != nil || !info.Mode().IsRegular() {
-			file.Close()
-			continue
-		}
-		found = true
-		scanner := bufio.NewScanner(io.LimitReader(file, maxExecIgnoreFileBytes))
-		for scanner.Scan() {
-			if rule, ok := parseExecIgnoreLine(scanner.Text()); ok {
-				frame.rules = append(frame.rules, rule)
-			}
-		}
-		file.Close()
-	}
-	return frame, found
 }
 
 func parseExecIgnoreLine(line string) (execIgnoreRule, bool) {
@@ -138,36 +99,8 @@ func execIgnoreExpression(pattern string) (string, bool) {
 	return expression.String(), true
 }
 
-// execIgnored reports whether path is ignored by the frames from the walk
-// root down to its parent. The last matching rule wins, as in git.
-func execIgnored(frames []execIgnoreFrame, path string, dir bool) bool {
-	ignored := false
-	for _, frame := range frames {
-		relative, err := filepath.Rel(frame.dir, path)
-		if err != nil || relative == "." || strings.HasPrefix(relative, "..") {
-			continue
-		}
-		relative = filepath.ToSlash(relative)
-		base := relative[strings.LastIndexByte(relative, '/')+1:]
-		for _, rule := range frame.rules {
-			if rule.dirOnly && !dir {
-				continue
-			}
-			subject := relative
-			if rule.basename {
-				subject = base
-			}
-			if rule.pattern.MatchString(subject) {
-				ignored = !rule.negate
-			}
-		}
-	}
-	return ignored
-}
-
-// execBuiltinPruned names directories the sweep skips when no ignore file
-// governs them: dependency trees, bytecode caches, tagged caches, and virtual
-// environments.
+// execBuiltinPruned keeps formatter and fixer scopes out of dependency trees,
+// bytecode caches, tagged caches, and virtual environments.
 func execBuiltinPruned(path, name string) bool {
 	if name == "node_modules" || name == "__pycache__" {
 		return true

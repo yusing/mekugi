@@ -56,13 +56,13 @@ func TestManagedExecMChangesSurface(t *testing.T) {
 	}
 	mixedID := saveManagedExecChange(t, store, ctx, workspace, thread, "mixed", mixedFiles)
 	stdout, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, view: "list"})
-	wantList := managedID + " completed exact managed:21\n" + mixedID + " completed exact +1 -0 managed:1\n"
+	wantList := managedID + " managed:21\n" + mixedID + " +1 -0 managed:1\n"
 
 	if err != nil || stdout != wantList {
 		t.Fatalf("managed list = %q, %v; want %q", stdout, err, wantList)
 	}
 
-	header := managedID + " completed · exec formatter · generator, exact coverage\n"
+	header := managedID + " applied\nexec formatter · command completed · generator, exact coverage\n"
 	var rows, diffs strings.Builder
 	for i := range 21 {
 		if i < 20 {
@@ -77,13 +77,13 @@ func TestManagedExecMChangesSurface(t *testing.T) {
 		want    string
 	}{
 		{"default managed read", changeReadOptions{ids: []string{managedID}},
-			header + rows.String() + "+1 more tool-managed files\n"},
+			managedID + "\n" + rows.String() + "+1 more tool-managed files\n"},
 		{"explicit managed path", changeReadOptions{ids: []string{managedID}, paths: []string{"managed-21.txt"}},
-			header + lastDiff},
+			managedID + "\n" + lastDiff},
 		{"managed history", changeReadOptions{ids: []string{managedID}, view: "history"},
 			header + "exec_command input:\npython generate.py\n" + diffs.String()},
 		{"managed summary labels", changeReadOptions{ids: []string{mixedID}, view: "summary"},
-			"1\t0\tdirect-summary.txt\ntool-managed: 1 changed +1 -0\n"},
+			"A\t1\t0\tdirect-summary.txt\ntool-managed: 1 changed +1 -0\n"},
 	} {
 		read.options.workspace = workspace
 		if stdout, err := store.readChanges(ctx, read.options); err != nil || stdout != read.want {
@@ -148,8 +148,7 @@ func saveManagedExecChange(
 	}
 	if err := store.put(ctx, workspace, map[string]mekugiHistory{correlation: {
 		ToolName: nativeExecCommandToolName, Script: "python generate.py", Root: workspace,
-		ExecutingThread: thread, CorrelationID: correlation, ChangeID: id, Applied: true,
-		ReviewFiles: files, ExecOutcome: &execOutcome{
+		ExecutingThread: thread, CorrelationID: correlation, ChangeID: id, ReviewFiles: files, ExecOutcome: &execOutcome{
 			Status: execStatusCompleted, Class: "generator", Labels: []string{"formatter"}, Coverage: execCoverageExact,
 		},
 	}}); err != nil {

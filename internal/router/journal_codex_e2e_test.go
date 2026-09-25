@@ -79,8 +79,7 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 				return nil, err
 			}
 			err = p.store.put(context.Background(), workspace, map[string]mekugiHistory{"native-child-edit": {
-				ChangeID: id, CorrelationID: "native-child-edit", ExecutingThread: thread, Applied: true,
-				ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("native-child.txt", "native-child.txt", "before\n", "after\n")},
+				ChangeID: id, CorrelationID: "native-child-edit", ExecutingThread: thread, ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("native-child.txt", "native-child.txt", "before\n", "after\n")},
 			}})
 			if err != nil {
 				return nil, err
@@ -100,7 +99,7 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 		case turn == 2:
 			item = call("spawn_agent", map[string]any{"message": "Record your milestone, then report your findings.", "task_name": "journal_child", "fork_turns": "none"})
 		case strings.Contains(input, "Journal result") && strings.Contains(input, "Native child milestone") && strings.Contains(input, "Native child second finding") && strings.Contains(input, "**Question:**") && strings.Contains(input, "**Answer:**") && strings.Contains(input, "Record your milestone, then report your findings."):
-			if !strings.Contains(input, "**Changes:**") || !strings.Contains(input, "amber1") || !strings.Contains(input, `1\t1\tnative-child.txt`) {
+			if !strings.Contains(input, "**Changes:**") || !strings.Contains(input, "amber1") || !strings.Contains(input, `M\t1\t1\tnative-child.txt`) {
 				start := strings.LastIndex(input, "**Changes:**")
 				if start < 0 {
 					start = 0

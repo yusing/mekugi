@@ -507,30 +507,20 @@ func inspectSessionCall(call sessionInspectionCall, record replayRecord, found b
 		values["script"] = history.Script
 		values["report"], values["diagnostic"] = history.Report, history.TranslationError
 		switch {
-		case history.TranslationError != "":
-			result.Outcome = "rejected"
-		case history.Applied:
+		case len(history.ReviewFiles) != 0:
 			result.Outcome = "applied"
 		case history.AlreadySatisfied:
 			result.Outcome = "already_satisfied"
+		case history.TranslationError != "":
+			result.Outcome = "rejected"
 		default:
-			result.Outcome = "unconfirmed"
-		}
-		// Use the same exact report confirmation as request-visible replay.
-		// A translated patch alone is not evidence that the host applied it.
-		if history.TranslationError == "" && !history.Applied && !history.AlreadySatisfied && history.Report != "" {
-			for _, output := range call.outputs {
-				if output.Type == carrierOutputItemType(history.effectiveCarrierKind()) && history.confirmsReport(output.Output) {
-					result.Outcome = "confirmed"
-					break
-				}
-			}
+			result.Outcome = "no_changes"
 		}
 		if len(observed) != 0 {
-			applied, noOp, failed := true, true, false
+			applied, noOp, failed := false, true, false
 			var reports, diagnostics []string
 			for _, patch := range observed {
-				applied = applied && patch.ToolName != "" && patch.Applied
+				applied = applied || len(patch.ReviewFiles) != 0
 				noOp = noOp && patch.ToolName != "" && patch.AlreadySatisfied
 				failed = failed || patch.TranslationError != ""
 				if patch.Report != "" {
@@ -543,14 +533,14 @@ func inspectSessionCall(call sessionInspectionCall, record replayRecord, found b
 			values["report"] = strings.Join(reports, "\n")
 			values["diagnostic"] = strings.Join(diagnostics, "\n")
 			switch {
+			case applied:
+				result.Outcome = "applied"
 			case failed:
 				result.Outcome = "rejected"
 			case noOp:
 				result.Outcome = "already_satisfied"
-			case applied:
-				result.Outcome = "applied"
 			default:
-				result.Outcome = "unconfirmed"
+				result.Outcome = "no_changes"
 			}
 		}
 	}

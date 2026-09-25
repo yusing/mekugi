@@ -221,7 +221,7 @@ func TestNativeExecResultFinalizesAfterReplayProxyReconstruction(t *testing.T) {
 	}
 	transform = reconcileExecItems(t, freshProxy, workspace, items)
 	history, found, err := freshStore.lookup(transform.ctx, workspace, "exec-call:exec:1")
-	if err != nil || !found || history.ChangeID == "" || history.ExecOutcome == nil || !history.Applied ||
+	if err != nil || !found || history.ChangeID == "" || history.ExecOutcome == nil ||
 		history.ExecOutcome.Status != execStatusCompleted || history.ExecOutcome.Coverage != execCoverageExact {
 		t.Fatalf("fresh proxy did not finalize exact captured effects: history=%+v found=%v err=%v", history, found, err)
 	}

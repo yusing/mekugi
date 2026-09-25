@@ -322,7 +322,7 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 	s.nodes++
 	s.walkDepth++
 	defer func() { s.walkDepth-- }()
-	if s.walkDepth > 256 || s.nodes > maxExecSweepEntries {
+	if s.walkDepth > 256 || s.nodes > 50_000 {
 		s.result.open = true
 		return
 	}

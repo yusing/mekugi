@@ -135,7 +135,7 @@ func (f *mchangesSliceFixture) retire(t *testing.T, id string) {
 	}
 }
 
-func TestMChangesUnconfirmedHistorySeparatesObservationAndResult(t *testing.T) {
+func TestMChangesHistoryReportsSavedEffectsWithoutCommandResult(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "unconfirmed-status-detail")
 
@@ -146,9 +146,9 @@ func TestMChangesUnconfirmedHistorySeparatesObservationAndResult(t *testing.T) {
 		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", "before\n", "after\n")},
 	})
 	patchHistory, patchErr, patchStatus := f.run(t, "mchanges --history "+patchID)
-	if patchStatus != 0 || patchErr != "" || !strings.HasPrefix(patchHistory, patchID+" changes observed\n") ||
-		!strings.Contains(patchHistory, "application confirmation: unavailable; observed changes do not establish tool success") {
-		t.Fatalf("unconfirmed patch history = %q, %q, %d", patchHistory, patchErr, patchStatus)
+	if patchStatus != 0 || patchErr != "" || !strings.HasPrefix(patchHistory, patchID+" applied\n") ||
+		strings.Contains(patchHistory, "confirmation") {
+		t.Fatalf("saved patch history = %q, %q, %d", patchHistory, patchErr, patchStatus)
 	}
 
 	execID := f.reserve(t, f.thread, "exec-observed")
@@ -156,20 +156,20 @@ func TestMChangesUnconfirmedHistorySeparatesObservationAndResult(t *testing.T) {
 		ToolName: nativeExecCommandToolName,
 		Script:   "text(await tools.exec_command({cmd: 'touch file.txt'}));\n",
 		ExecOutcome: &execOutcome{
-			Status: execStatusUnconfirmed, Class: "Code Mode", Coverage: execCoverageExact,
+			Status: "", Class: "Code Mode", Coverage: execCoverageExact,
 		},
 		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", "before\n", "after\n")},
 	})
 	execHistory, execErr, execStatus := f.run(t, "mchanges --history "+execID)
-	if execStatus != 0 || execErr != "" || !strings.HasPrefix(execHistory, execID+" changes observed") ||
-		!strings.Contains(execHistory, "tool result: nested tool result unavailable") {
-		t.Fatalf("unconfirmed exec history = %q, %q, %d", execHistory, execErr, execStatus)
+	if execStatus != 0 || execErr != "" || !strings.HasPrefix(execHistory, execID+" applied") ||
+		strings.Contains(execHistory, "nested tool result unavailable") {
+		t.Fatalf("saved exec history = %q, %q, %d", execHistory, execErr, execStatus)
 	}
 
 	list, listErr, listStatus := f.run(t, "mchanges --list")
-	if listStatus != 0 || listErr != "" || !strings.Contains(list, patchID+" observed ") ||
-		!strings.Contains(list, execID+" observed ") || strings.Contains(list, "confirmation:") || strings.Contains(list, "tool result:") {
-		t.Fatalf("mchanges list leaked history-only details or lost observed statuses: %q, %q, %d", list, listErr, listStatus)
+	if listStatus != 0 || listErr != "" || !strings.Contains(list, patchID+" +1 -1\n") ||
+		!strings.Contains(list, execID+" +1 -1\n") || strings.Contains(list, "observed") || strings.Contains(list, "coverage") {
+		t.Fatalf("mchanges list leaked history-only details or lost change IDs: %q, %q, %d", list, listErr, listStatus)
 	}
 }
 
@@ -194,7 +194,8 @@ func TestMChangesSlicesUsageArgumentsAndWorkspaceErrors(t *testing.T) {
 		description = definition.Description
 		break
 	}
-	if !strings.Contains(description, "Usage: `"+changesReadUsage+"`") {
+	agentUsage := strings.Replace(changesReadUsage, "--summary|--history|--net", "--summary|--net", 1)
+	if !strings.Contains(description, "Usage: `"+agentUsage+"`") {
 		t.Fatalf("agent-facing mchanges usage does not match parser usage: %q", description)
 	}
 
@@ -205,7 +206,6 @@ func TestMChangesSlicesUsageArgumentsAndWorkspaceErrors(t *testing.T) {
 		ids = append(ids, id)
 		before, after := fmt.Sprintf("before-%d\n", i+1), fmt.Sprintf("after-%d\n", i+1)
 		f.publish(t, id, correlation, correlation+"-call", mekugiHistory{
-			Applied:     true,
 			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", before, after)},
 		})
 	}
@@ -213,11 +213,11 @@ func TestMChangesSlicesUsageArgumentsAndWorkspaceErrors(t *testing.T) {
 		t.Fatalf("fixture IDs = %v", ids)
 	}
 	stdout, stderr, status := f.run(t, "mchanges amber1..2 --summary")
-	if status != 0 || stderr != "" || stdout != "2\t2\tfile.txt\n" {
+	if status != 0 || stderr != "" || stdout != "M\t2\t2\tfile.txt\n" {
 		t.Fatalf("numeric range end: %q, %q, %d", stdout, stderr, status)
 	}
 	stdout, stderr, status = f.run(t, "mchanges "+ids[0]+" --summary")
-	if status != 0 || stderr != "" || stdout != "1\t1\tfile.txt\n" {
+	if status != 0 || stderr != "" || stdout != "M\t1\t1\tfile.txt\n" {
 		t.Fatalf("explicit ID read: %q, %q, %d", stdout, stderr, status)
 	}
 	for _, test := range []struct {
@@ -267,7 +267,6 @@ func TestMChangesSlicesSummaryKeepsMixedStates(t *testing.T) {
 	f := newMChangesSliceFixture(t, "slice-mixed-summary")
 	completed := f.reserve(t, f.thread, "summary-completed")
 	f.publish(t, completed, "summary-completed", "summary-completed-call", mekugiHistory{
-		Applied:     true,
 		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("kept.txt", "kept.txt", "old\n", "new\n")},
 	})
 	pending := f.reserve(t, f.thread, "summary-pending")
@@ -276,7 +275,7 @@ func TestMChangesSlicesSummaryKeepsMixedStates(t *testing.T) {
 	unknown := "amber4"
 	stdout, stderr, status := f.run(t,
 		"mchanges --summary "+strings.Join([]string{completed, pending, retired, unknown}, " "))
-	if status != 0 || stderr != "" || !strings.Contains(stdout, "1\t1\tkept.txt\n") ||
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "M\t1\t1\tkept.txt\n") ||
 		!strings.Contains(stdout, pending+" pending") || !strings.Contains(stdout, retired+" retired") ||
 		!strings.Contains(stdout, unknown+" unknown") {
 		t.Fatalf("mixed summary: %q, %q, %d", stdout, stderr, status)
@@ -293,8 +292,7 @@ func TestMChangesSlicesPageKeepsOriginalPendingAndAttemptSnapshot(t *testing.T) 
 		fmt.Fprintf(&input, "original-row-%03d\n", row)
 	}
 	f.publish(t, completed, correlation, "large-completed-call", mekugiHistory{
-		Applied: true,
-		Script:  input.String(),
+		Script: input.String(),
 	})
 	pendingCorrelation := "pending-finalizes"
 	pending := f.reserve(t, f.thread, pendingCorrelation)
@@ -317,13 +315,11 @@ func TestMChangesSlicesPageKeepsOriginalPendingAndAttemptSnapshot(t *testing.T) 
 	// Finalize a previously pending selected change and append another attempt
 	// to the selected completed change while the original read is being paged.
 	f.publish(t, completed, correlation, "completed-appended-attempt", mekugiHistory{
-		Applied: true,
 		Attempt: 2,
 		Script:  "appended-after-page\n",
 	})
 	f.publish(t, pending, pendingCorrelation, "pending-finalized-call", mekugiHistory{
-		Applied: true,
-		Script:  "finalized-after-page\n",
+		Script: "finalized-after-page\n",
 	})
 	updated, err := f.store.readChanges(f.ctx, options)
 	if err != nil {
@@ -369,7 +365,6 @@ func TestMChangesSlicesMineListForkAndResume(t *testing.T) {
 		correlation := fmt.Sprintf("mine-%d", row+1)
 		id := f.reserve(t, f.thread, correlation)
 		f.publish(t, id, correlation, correlation+"-call", mekugiHistory{
-			Applied:     true,
 			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("own.txt", "own.txt", fmt.Sprintf("old-%d\n", row), fmt.Sprintf("new-%d\n", row))},
 		})
 	}
@@ -378,7 +373,6 @@ func TestMChangesSlicesMineListForkAndResume(t *testing.T) {
 	f.retire(t, retired)
 	foreign := f.reserve(t, "slice-outsider", "outsider-edit")
 	f.publish(t, foreign, "outsider-edit", "outsider-call", mekugiHistory{
-		Applied:     true,
 		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("outsider.txt", "outsider.txt", "old\n", "new\n")},
 	})
 	if foreign != "apple1" || pending != "amber4" || retired != "amber5" {
@@ -401,13 +395,13 @@ func TestMChangesSlicesMineListForkAndResume(t *testing.T) {
 		t.Fatalf("bare mchanges differs from --mine: %q vs %q", bareOutput, mineOutput)
 	}
 	stdout, stderr, status := f.run(t, "mchanges --mine --summary")
-	if status != 0 || stderr != "" || !strings.Contains(stdout, "3\t3\town.txt\n") ||
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "M\t3\t3\town.txt\n") ||
 		!strings.Contains(stdout, pending+" pending") || !strings.Contains(stdout, retired+" retired") ||
 		strings.Contains(stdout, "outsider.txt") {
 		t.Fatalf("mine summary: %q, %q, %d", stdout, stderr, status)
 	}
 	stdout, stderr, status = f.run(t, "mchanges --list")
-	if status != 0 || stderr != "" || strings.TrimSpace(stdout) != "amber1..amber3 applied +3 -3\namber4 pending\namber5 retired" ||
+	if status != 0 || stderr != "" || strings.TrimSpace(stdout) != "amber1..amber3 +3 -3\namber4 pending\namber5 retired" ||
 		strings.Contains(stdout, "apple1") {
 		t.Fatalf("compressed own-thread list: %q, %q, %d", stdout, stderr, status)
 	}
@@ -422,7 +416,7 @@ func TestMChangesSlicesMineListForkAndResume(t *testing.T) {
 	childInvocation := f.invocationFor(f.workspace, fork)
 	stdout, stderr, status = runShellWorkerTest(t, f.registry, "bash", nil,
 		"mchanges --mine --list", nil, childInvocation)
-	if status != 0 || stderr != "" || !strings.Contains(stdout, "amber1..amber3 applied +3 -3") ||
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "amber1..amber3 +3 -3") ||
 		!strings.Contains(stdout, "amber5 retired") ||
 		strings.Contains(stdout, "apple1") {
 		t.Fatalf("forked thread lost own review lineage: %q, %q, %d", stdout, stderr, status)
@@ -443,7 +437,7 @@ func TestMChangesSlicesMineListForkAndResume(t *testing.T) {
 	resumeInvocation := f.invocationFor(f.workspace, f.thread)
 	stdout, stderr, status = runShellWorkerTest(t, f.registry, "bash", nil,
 		"mchanges --mine --list", nil, resumeInvocation)
-	if status != 0 || stderr != "" || !strings.Contains(stdout, "amber1..amber3 applied +3 -3") ||
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "amber1..amber3 +3 -3") ||
 		!strings.Contains(stdout, "amber5 retired") ||
 		strings.Contains(stdout, "apple1") {
 		t.Fatalf("resumed thread lost own review lineage: %q, %q, %d", stdout, stderr, status)
@@ -458,8 +452,8 @@ func TestMChangesSlicesNetComposesRepeatedEditsAndRejectsIncompleteEvidence(t *t
 	path := filepath.Join(f.workspace, "target.txt")
 	first := mekugi.RenderReviewFile(path, path, "old value\n", "intermediate value\n")
 	second := mekugi.RenderReviewFile(path, path, "intermediate value\n", "final value\n")
-	f.publish(t, id, correlation, "net-first-call", mekugiHistory{Applied: true, ReviewFiles: []mekugi.ReviewFile{first}})
-	f.publish(t, id, correlation, "net-second-call", mekugiHistory{Applied: true, Attempt: 2, ReviewFiles: []mekugi.ReviewFile{second}})
+	f.publish(t, id, correlation, "net-first-call", mekugiHistory{ReviewFiles: []mekugi.ReviewFile{first}})
+	f.publish(t, id, correlation, "net-second-call", mekugiHistory{Attempt: 2, ReviewFiles: []mekugi.ReviewFile{second}})
 	want := "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1,1 +1,1 @@\n-old value\n+final value\n"
 	stdout, stderr, status := f.run(t, "mchanges --net "+id)
 	if status != 0 || stderr != "" || stdout != want {
@@ -478,7 +472,6 @@ func TestMChangesSlicesNetComposesRepeatedEditsAndRejectsIncompleteEvidence(t *t
 	incompleteCorrelation := "net-incomplete"
 	incomplete := f.reserve(t, f.thread, incompleteCorrelation)
 	f.publish(t, incomplete, incompleteCorrelation, "net-incomplete-call", mekugiHistory{
-		Applied:     true,
 		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("unknown.txt", "unknown.txt", "capture unavailable")},
 	})
 	stdout, stderr, status = f.run(t, "mchanges --net "+incomplete)
@@ -491,7 +484,7 @@ func TestMChangesFrozenOverlapLabelSurvivesUnselectedRetirement(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "frozen-overlap")
 	other := f.reserve(t, f.thread, "overlapping")
-	f.publish(t, other, "overlapping", "overlap-call:attempt", mekugiHistory{Applied: true})
+	f.publish(t, other, "overlapping", "overlap-call:attempt", mekugiHistory{})
 	selected := f.reserve(t, f.thread, "selected")
 	f.publish(t, selected, "selected", "selected-call", mekugiHistory{
 		Script: "captured input\n", ExecOutcome: &execOutcome{Status: execStatusCompleted, Coverage: execCoverageExact, Overlaps: []string{"overlap-call"}},
@@ -531,7 +524,6 @@ func TestMChangesNetWithoutOwnStreamExcludesSiblingChanges(t *testing.T) {
 	correlation := "sibling-only-change"
 	sibling := f.reserve(t, "sibling-thread", correlation)
 	f.publish(t, sibling, correlation, "sibling-only-call", mekugiHistory{
-		Applied:     true,
 		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("sibling.txt", "sibling.txt", "old\n", "new\n")},
 	})
 	stdout, stderr, status := f.run(t, "mchanges --mine --net")
@@ -559,12 +551,11 @@ func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 		ToolName:        nativeExecCommandToolName,
 		Script:          "text(await tools.exec_command({cmd: 'touch code-mode.txt'}));\n",
 		ExecObservation: &execObservation{CodeMode: true},
-		ExecOutcome:     &execOutcome{Status: execStatusUnconfirmed, Coverage: execCoverageExact},
-		Applied:         false,
+		ExecOutcome:     &execOutcome{Status: "", Coverage: execCoverageExact},
 		ReviewFiles:     []mekugi.ReviewFile{mekugi.RenderReviewFile("code-mode.txt", "code-mode.txt", "before\n", "after\n")},
 	})
 	stdout, stderr, status := f.run(t, "mchanges --net "+codeMode)
-	if status != 0 || stderr != "" || !strings.Contains(stdout, "composing observed effects, not a success receipt") || !strings.Contains(stdout, "-before\n+after\n") {
+	if status != 0 || stderr != "" || strings.Contains(stdout, "composing observed effects") || !strings.Contains(stdout, "-before\n+after\n") {
 		t.Fatalf("unconfirmed capture lost its diff or outcome: %q, %q, %d", stdout, stderr, status)
 	}
 
@@ -573,8 +564,7 @@ func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 	f.publish(t, move, moveCorrelation, "unconfirmed-move-call", mekugiHistory{
 		ToolName:    nativeExecCommandToolName,
 		Script:      "mv before.txt after.txt\n",
-		ExecOutcome: &execOutcome{Status: execStatusUnconfirmed, Coverage: execCoverageExact},
-		Applied:     false,
+		ExecOutcome: &execOutcome{Status: "", Coverage: execCoverageExact},
 		ReviewFiles: []mekugi.ReviewFile{
 			mekugi.RenderReviewFile("before.txt", "after.txt", "same content\n", "same content\n"),
 		},
@@ -583,13 +573,12 @@ func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 		ToolName: applyPatchToolName,
 		Script:   "update after.txt",
 		Attempt:  2,
-		Applied:  true,
 		ReviewFiles: []mekugi.ReviewFile{
 			mekugi.RenderReviewFile("after.txt", "after.txt", "same content\n", "confirmed edit\n"),
 		},
 	})
 	stdout, stderr, status = f.run(t, "mchanges --net "+move)
-	if status != 0 || stderr != "" || !strings.Contains(stdout, "composing observed effects, not a success receipt") || !strings.Contains(stdout, "+confirmed edit\n") {
+	if status != 0 || stderr != "" || strings.Contains(stdout, "composing observed effects") || !strings.Contains(stdout, "+confirmed edit\n") {
 		t.Fatalf("unconfirmed move lost its diff or outcome: %q, %q, %d", stdout, stderr, status)
 	}
 
@@ -599,7 +588,6 @@ func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 		ToolName:    nativeExecCommandToolName,
 		Script:      "printf changed > partial.txt\n",
 		ExecOutcome: &execOutcome{Status: execStatusCompleted, Coverage: execCoveragePartial},
-		Applied:     true,
 		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("partial.txt", "partial.txt", "before\n", "after\n")},
 	})
 	assertRejected(partial, "partial captured effects")
@@ -620,7 +608,6 @@ func TestMChangesNetRejectsBinaryOnlyAndMixedEvidence(t *testing.T) {
 	binaryCorrelation := "binary-only"
 	binary := f.reserve(t, f.thread, binaryCorrelation)
 	f.publish(t, binary, binaryCorrelation, "binary-only-call", mekugiHistory{
-		Applied: true,
 		ReviewFiles: []mekugi.ReviewFile{
 			mekugi.RenderBinaryReviewFile("binary.dat", "binary.dat", 5, 7, "before-hash", "after-hash"),
 		},
@@ -630,7 +617,6 @@ func TestMChangesNetRejectsBinaryOnlyAndMixedEvidence(t *testing.T) {
 	mixedCorrelation := "mixed-binary-text"
 	mixed := f.reserve(t, f.thread, mixedCorrelation)
 	f.publish(t, mixed, mixedCorrelation, "mixed-binary-text-call", mekugiHistory{
-		Applied: true,
 		ReviewFiles: []mekugi.ReviewFile{
 			mekugi.RenderBinaryReviewFile("mixed.dat", "mixed.dat", 2, 3, "old-hash", "new-hash"),
 			mekugi.RenderReviewFile("text.txt", "text.txt", "before\n", "after\n"),

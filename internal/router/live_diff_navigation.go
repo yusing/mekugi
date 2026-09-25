@@ -664,20 +664,33 @@ func (s *liveDiffStatus) add(region mekugi.ReviewFile) {
 	s.conflict = s.conflict || strings.Contains(region.Diff, "\n+>>>>>>> mchanges ")
 }
 
-func (s liveDiffStatus) code(theme livediff.Theme) (string, string) {
+func (s liveDiffStatus) shortCode() string {
 	switch {
 	case s.conflict:
-		return "UU", theme.Foreground(chroma.GenericDeleted)
+		return "UU"
 	case s.before == "":
-		return "A", theme.Foreground(chroma.GenericInserted)
+		return "A"
 	case s.after == "":
-		return "D", theme.Foreground(chroma.GenericDeleted)
+		return "D"
 	case s.before != s.after && s.edited:
-		return "RM", theme.Accent()
+		return "RM"
 	case s.before != s.after:
-		return "R", theme.Accent()
+		return "R"
 	}
-	return "M", theme.Foreground(chroma.LiteralNumberInteger)
+	return "M"
+}
+
+func (s liveDiffStatus) code(theme livediff.Theme) (string, string) {
+	code := s.shortCode()
+	switch code {
+	case "UU", "D":
+		return code, theme.Foreground(chroma.GenericDeleted)
+	case "A":
+		return code, theme.Foreground(chroma.GenericInserted)
+	case "RM", "R":
+		return code, theme.Accent()
+	}
+	return code, theme.Foreground(chroma.LiteralNumberInteger)
 }
 
 // liveDiffFileLabel prefixes a file label with its colored status; a rename

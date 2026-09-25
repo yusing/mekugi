@@ -62,8 +62,7 @@ func TestPostCompactHookRestoresDurableMainThreadStateAfterRestart(t *testing.T)
 		t.Fatal(err)
 	}
 	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"edit-call": {
-		ChangeID: changeID, CorrelationID: "edit-call", ExecutingThread: thread, Applied: true,
-		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("durable.txt", "durable.txt", "before\n", "after\n")},
+		ChangeID: changeID, CorrelationID: "edit-call", ExecutingThread: thread, ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("durable.txt", "durable.txt", "before\n", "after\n")},
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -72,8 +71,7 @@ func TestPostCompactHookRestoresDurableMainThreadStateAfterRestart(t *testing.T)
 		t.Fatal(err)
 	}
 	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"foreign-edit-call": {
-		ChangeID: foreignChangeID, CorrelationID: "foreign-edit-call", ExecutingThread: "sibling-thread", Applied: true,
-		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("sibling-private.txt", "sibling-private.txt", "", "private\n")},
+		ChangeID: foreignChangeID, CorrelationID: "foreign-edit-call", ExecutingThread: "sibling-thread", ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("sibling-private.txt", "sibling-private.txt", "", "private\n")},
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +106,7 @@ func TestPostCompactHookRestoresDurableMainThreadStateAfterRestart(t *testing.T)
 	for _, want := range []string{
 		"SessionStart", "Mekugi post-compaction recovery", answerIDs[0], flushedIDs[0], "Which contract should guide the change?",
 		"Use the retained API contract.", "flushed=true", "Already delivered, still durable.",
-		"**Changes:**", changeID, "1\t1\tdurable.txt",
+		"**Changes:**", changeID, "M\t1\t1\tdurable.txt",
 	} {
 		if want == "SessionStart" {
 			if response.Output.Event != want {

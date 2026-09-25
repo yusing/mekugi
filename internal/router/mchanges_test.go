@@ -13,33 +13,6 @@ import (
 	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
-func TestTrackedStatusSeparatesObservedChangesFromApplication(t *testing.T) {
-	change := mekugi.RenderReviewFile("file.txt", "file.txt", "before\n", "after\n")
-	incomplete := mekugi.RenderIncompleteReviewFile("file.txt", "file.txt", "workspace unreadable")
-	for _, test := range []struct {
-		name      string
-		history   mekugiHistory
-		confirmed bool
-		want      string
-	}{
-		{name: "unconfirmed patch with observed changes", history: mekugiHistory{ReviewFiles: []mekugi.ReviewFile{change}}, want: "changes observed"},
-		{name: "unconfirmed patch without observed changes", history: mekugiHistory{}, want: "no changes observed"},
-		{name: "incomplete observation is not absence", history: mekugiHistory{ReviewFiles: []mekugi.ReviewFile{incomplete}}, want: "observation incomplete"},
-		{name: "rejected", history: mekugiHistory{TranslationError: "invalid patch", ReviewFiles: []mekugi.ReviewFile{change}}, want: "rejected"},
-		{name: "no-op", history: mekugiHistory{AlreadySatisfied: true}, want: "no-op"},
-		{name: "applied", history: mekugiHistory{Applied: true, ReviewFiles: []mekugi.ReviewFile{change}}, want: "applied"},
-		{name: "receipt confirms application", history: mekugiHistory{ReviewFiles: []mekugi.ReviewFile{change}}, confirmed: true, want: "applied"},
-		{name: "failed execution", history: mekugiHistory{ExecOutcome: &execOutcome{Status: execStatusFailed}}, want: "failed; observed effects"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			got := trackedStatus(test.history, test.confirmed)
-			if !strings.HasPrefix(got, test.want) {
-				t.Fatalf("tracked status = %q, want prefix %q", got, test.want)
-			}
-		})
-	}
-}
-
 func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
@@ -66,8 +39,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	history := mekugiHistory{
-		ChangeID: id, CorrelationID: "edited", Applied: true,
-		ReviewFiles: []mekugi.ReviewFile{
+		ChangeID: id, CorrelationID: "edited", ReviewFiles: []mekugi.ReviewFile{
 			{AfterPath: "file.txt", Diff: "add \"\" -> \"file.txt\"\n--- /dev/null\n+++ \"file.txt\"\n@@ -0,0 +1,12 @@\n" + strings.Repeat("+line π changed\n", 12)},
 			{BeforePath: "old name.txt", AfterPath: "new name.txt", Diff: "move \"old name.txt\" -> \"new name.txt\"\n"},
 			{AfterPath: "--summary", Diff: "add \"\" -> \"--summary\"\n"},
@@ -99,7 +71,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	command.Env = append(os.Environ(), "XDG_STATE_HOME="+t.TempDir(), "MEKUGI_RUNTIME_DIR="+t.TempDir(), "CODEX_THREAD_ID=reviewer-thread", routerTestWorkerEnvironment+"=1")
 	var directOut, directErr bytes.Buffer
 	command.Stdout, command.Stderr = &directOut, &directErr
-	if err := command.Run(); err != nil || directOut.String() != "12\t0\tfile.txt\n" || directErr.Len() != 0 {
+	if err := command.Run(); err != nil || directOut.String() != "A\t12\t0\tfile.txt\n" || directErr.Len() != 0 {
 		t.Fatalf("stock frontend: output %q, stderr %q, error %v", directOut.String(), directErr.String(), err)
 	}
 	want, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}, paths: []string{"file.txt", "new name.txt"}})
@@ -148,7 +120,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	}
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
 		"cd child\nmchanges --workspace .. --summary "+id, nil, invocation)
-	if status != 0 || stderr != "" || !strings.Contains(stdout, "12\t0\tfile.txt\n") || strings.Contains(stdout, "+line") {
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "A\t12\t0\tfile.txt\n") || strings.Contains(stdout, "+line") {
 		t.Fatalf("summary from subdirectory: %q, %q, %d", stdout, stderr, status)
 	}
 	for _, command := range []string{
@@ -157,7 +129,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 		"mchanges " + id + " --summary " + id + " -- ./file.txt",
 	} {
 		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, command, nil, invocation)
-		if status != 0 || stderr != "" || stdout != "12\t0\tfile.txt\n" {
+		if status != 0 || stderr != "" || stdout != "A\t12\t0\tfile.txt\n" {
 			t.Fatalf("mixed flags: %q: %q, %q, %d", command, stdout, stderr, status)
 		}
 	}
@@ -204,7 +176,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	}
 	stdout, stderr, status = runShellWorkerTest(t, registry, "bash", nil,
 		"mchanges "+id+" -- --summary apple2", nil, invocation)
-	if status != 0 || stderr != "" || stdout != id+" applied\nadd \"\" -> \"--summary\"\nadd \"\" -> \"apple2\"\n" {
+	if status != 0 || stderr != "" || stdout != id+"\nadd \"\" -> \"--summary\"\nadd \"\" -> \"apple2\"\n" {
 		t.Fatalf("literal flag and ID paths: %q, %q, %d", stdout, stderr, status)
 	}
 	for _, arguments := range []string{"read " + id, id + " --path file.txt", "amber99", "amber1..apple2", "--max-tokens 0 amber1", "--history --summary amber1"} {
@@ -302,18 +274,18 @@ func TestChangesSummaryAggregatesEvaluations(t *testing.T) {
 		}
 		ids = append(ids, id)
 		if err := store.put(t.Context(), workspace, map[string]mekugiHistory{call: {
-			ChangeID: id, CorrelationID: call, Applied: true, ReviewFiles: files,
+			ChangeID: id, CorrelationID: call, ReviewFiles: files,
 		}}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	options := changeReadOptions{workspace: workspace, ids: ids, view: "summary"}
 	got, err := store.readChanges(t.Context(), options)
-	if want := "3\t2\tfile\n0\t0\tempty\n-\t-\tunknown\n"; err != nil || got != want {
+	if want := "M\t3\t2\tfile\nA\t0\t0\tempty\nM\t-\t-\tunknown\n"; err != nil || got != want {
 		t.Fatalf("summary = %q, %v; want %q", got, err, want)
 	}
 	options.paths = []string{"file"}
-	if got, err := store.readChanges(t.Context(), options); err != nil || got != "3\t2\tfile\n" {
+	if got, err := store.readChanges(t.Context(), options); err != nil || got != "M\t3\t2\tfile\n" {
 		t.Fatalf("filtered summary = %q, %v", got, err)
 	}
 	pending, err := store.reserveChange(t.Context(), workspace, "author", "pending")
@@ -321,7 +293,7 @@ func TestChangesSummaryAggregatesEvaluations(t *testing.T) {
 		t.Fatal(err)
 	}
 	options.ids = append(ids, pending)
-	if got, err := store.readChanges(t.Context(), options); err != nil || got != pending+" pending (no completed result)\n3\t2\tfile\n" {
+	if got, err := store.readChanges(t.Context(), options); err != nil || got != pending+" pending (no completed result)\nM\t3\t2\tfile\n" {
 		t.Fatalf("pending summary = %q, %v", got, err)
 	}
 }
@@ -338,8 +310,8 @@ func TestChangesSummaryRecoveryAndRetiredHistory(t *testing.T) {
 	}
 	for i, history := range []mekugiHistory{
 		{TranslationError: "rejected"},
-		{Applied: true, ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "b\n")}},
-		{Applied: true, ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "b\n", "c\nd\n")}},
+		{ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "b\n")}},
+		{ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "b\n", "c\nd\n")}},
 	} {
 		history.ChangeID, history.CorrelationID = id, "original"
 		if err := store.put(t.Context(), workspace, map[string]mekugiHistory{strconv.Itoa(i): history}); err != nil {
@@ -347,7 +319,7 @@ func TestChangesSummaryRecoveryAndRetiredHistory(t *testing.T) {
 		}
 	}
 	options := changeReadOptions{workspace: workspace, ids: []string{id}, view: "summary"}
-	if got, err := store.readChanges(t.Context(), options); err != nil || got != "3\t2\tfile\n" {
+	if got, err := store.readChanges(t.Context(), options); err != nil || got != "M\t3\t2\tfile\n" {
 		t.Fatalf("recovery summary = %q, %v", got, err)
 	}
 	index, err := store.readChangeIndex(workspace)
@@ -357,7 +329,7 @@ func TestChangesSummaryRecoveryAndRetiredHistory(t *testing.T) {
 	change := index.Changes[id]
 	change.RetiredCalls = 1
 	index.Changes[id] = change
-	if got, err := store.renderChanges(t.Context(), options, index); err != nil || got != id+" retired (partial history)\n3\t2\tfile\n" {
+	if got, err := store.renderChanges(t.Context(), options, index); err != nil || got != id+" retired (partial history)\nM\t3\t2\tfile\n" {
 		t.Fatalf("retired summary = %q, %v", got, err)
 	}
 }

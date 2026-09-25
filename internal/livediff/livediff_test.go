@@ -11,8 +11,7 @@ import (
 
 func testChunk(key, path, diff string) Chunk {
 	return Chunk{
-		Key: key, Applied: true,
-		Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: diff},
+		Key: key, Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: diff},
 	}
 }
 

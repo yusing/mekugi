@@ -14,11 +14,10 @@ const (
 	maxEditReceiptFileLines = 80
 )
 
-// publishEditReceipt reads committed stock-edit evidence. It never accepts a
-// caller-supplied diff and never participates in edit execution. observed
-// admits a Code Mode cell whose terminal result cannot confirm the nested
-// patch; the receipt then reports only the captured workspace differences.
-func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, thread, callID string, observed bool, activity *subagentActivity) error {
+// publishEditReceipt reads committed filesystem changes. It never accepts a
+// caller-supplied diff or participates in edit execution. Command exit status
+// does not change the filesystem effects that this receipt describes.
+func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, thread, callID string, activity *subagentActivity) error {
 	s = s.scoped(ctx)
 	return s.locked(ctx, func() error {
 		if scope, found, err := s.readHandleScope(thread); err != nil {
@@ -43,13 +42,10 @@ func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, t
 			if call.ID != callID || call.Thread != thread {
 				continue
 			}
-			if (record.History.Applied || observed) && record.History.TranslationError == "" {
+			if len(record.History.ReviewFiles) != 0 {
 				if receipt := editReceiptText(workspace, record.History); receipt != "" {
 					activity.collect(thread, "edit-receipt\x00"+workspace+"\x00"+callID, "tool", receipt)
 				}
-			}
-			if record.History.Applied {
-				s.notifyLiveDiff(index, map[string][]trackedCall{id: {call}})
 			}
 			return nil
 		}

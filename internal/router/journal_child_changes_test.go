@@ -28,8 +28,7 @@ func TestJournalChildCompletionIncludesOwnChanges(t *testing.T) {
 			t.Fatal(err)
 		}
 		history := mekugiHistory{
-			ChangeID: id, CorrelationID: call, ExecutingThread: executing, Applied: true,
-			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(path, path, before, after)},
+			ChangeID: id, CorrelationID: call, ExecutingThread: executing, ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(path, path, before, after)},
 		}
 		if err := store.put(t.Context(), child.directory, map[string]mekugiHistory{call: history}); err != nil {
 			t.Fatal(err)
@@ -50,8 +49,7 @@ func TestJournalChildCompletionIncludesOwnChanges(t *testing.T) {
 	// A later attempt for an owned change was executed by another thread. Its
 	// content must not be attributed to the child.
 	if err := store.put(t.Context(), child.directory, map[string]mekugiHistory{"foreign-recovery": {
-		ChangeID: first, CorrelationID: "first", ExecutingThread: "other", Attempt: 2, Applied: true,
-		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("leak.txt", "leak.txt", "", "leak\n")},
+		ChangeID: first, CorrelationID: "first", ExecutingThread: "other", Attempt: 2, ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("leak.txt", "leak.txt", "", "leak\n")},
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -59,8 +57,8 @@ func TestJournalChildCompletionIncludesOwnChanges(t *testing.T) {
 	result := finishChildJournalForChanges(t, child)
 	for _, want := range []string{
 		"Journal result", "**Changes:**", first, third + ".." + fifth, recovery,
-		"1\t1\tfirst.txt", "2\t0\tthird.txt", "1\t1\tfourth.txt",
-		"0\t1\tfifth.txt", "2\t1\trecovery.txt",
+		"M\t1\t1\tfirst.txt", "M\t2\t0\tthird.txt", "M\t1\t1\tfourth.txt",
+		"M\t0\t1\tfifth.txt", "M\t2\t1\trecovery.txt",
 	} {
 		if !strings.Contains(result, want) {
 			t.Fatalf("completion missing %q:\n%s", want, result)
@@ -101,8 +99,7 @@ func TestJournalChildCompletionPartiallyRetiredForeignChangeUnavailable(t *testi
 				t.Fatal(err)
 			}
 			if err := store.put(t.Context(), child.directory, map[string]mekugiHistory{"foreign-survivor": {
-				ChangeID: partial, CorrelationID: "partial", ExecutingThread: "other", Applied: true,
-				ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("foreign.txt", "foreign.txt", "", "foreign\n")},
+				ChangeID: partial, CorrelationID: "partial", ExecutingThread: "other", ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("foreign.txt", "foreign.txt", "", "foreign\n")},
 			}}); err != nil {
 				t.Fatal(err)
 			}
@@ -112,8 +109,7 @@ func TestJournalChildCompletionPartiallyRetiredForeignChangeUnavailable(t *testi
 					t.Fatal(err)
 				}
 				if err := store.put(t.Context(), child.directory, map[string]mekugiHistory{"owned": {
-					ChangeID: id, CorrelationID: "owned", ExecutingThread: child.shellThreadID, Applied: true,
-					ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("owned.txt", "owned.txt", "", "owned\n")},
+					ChangeID: id, CorrelationID: "owned", ExecutingThread: child.shellThreadID, ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("owned.txt", "owned.txt", "", "owned\n")},
 				}}); err != nil {
 					t.Fatal(err)
 				}
@@ -206,8 +202,7 @@ func TestJournalChildCompletionChangesEmptyUnavailableAndRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"edit": {
-			ChangeID: id, CorrelationID: "edit", ExecutingThread: child.shellThreadID, Applied: true,
-			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("durable.txt", "durable.txt", "", "kept\n")},
+			ChangeID: id, CorrelationID: "edit", ExecutingThread: child.shellThreadID, ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("durable.txt", "durable.txt", "", "kept\n")},
 		}}); err != nil {
 			t.Fatal(err)
 		}
@@ -222,7 +217,7 @@ func TestJournalChildCompletionChangesEmptyUnavailableAndRestart(t *testing.T) {
 		child, _ = prepareActivityTest(t, proxy, "resumed", "child", "root", "", nil)
 		defer child.Close()
 		result := finishChildJournalForChanges(t, child)
-		if !strings.Contains(result, id) || !strings.Contains(result, "1\t0\tdurable.txt") {
+		if !strings.Contains(result, id) || !strings.Contains(result, "M\t1\t0\tdurable.txt") {
 			t.Fatalf("restart lost durable changes:\n%s", result)
 		}
 	})

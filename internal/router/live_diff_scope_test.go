@@ -29,9 +29,8 @@ func liveDiffScopeCapture(t *testing.T, store *mekugiReplayStore, workspace, thr
 	if err != nil {
 		t.Fatal(err)
 	}
-	history := mekugiHistory{ChangeID: id, CorrelationID: call, Applied: true,
-		ReviewFiles: []mekugi.ReviewFile{{BeforePath: path, AfterPath: path,
-			Diff: "--- \"" + path + "\"\n+++ \"" + path + "\"\n@@ -1 +1 @@\n-" + before + "\n+" + after + "\n"}}}
+	history := mekugiHistory{ChangeID: id, CorrelationID: call, ReviewFiles: []mekugi.ReviewFile{{BeforePath: path, AfterPath: path,
+		Diff: "--- \"" + path + "\"\n+++ \"" + path + "\"\n@@ -1 +1 @@\n-" + before + "\n+" + after + "\n"}}}
 	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{call: history}); err != nil {
 		t.Fatal(err)
 	}
@@ -134,8 +133,7 @@ func TestLiveDiffFreshSnapshotComposesCrossStreamCaptures(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		history := mekugiHistory{ChangeID: id, CorrelationID: capture.call, Applied: true,
-			ReviewFiles: []mekugi.ReviewFile{{BeforePath: path, AfterPath: path, Diff: capture.diff}}}
+		history := mekugiHistory{ChangeID: id, CorrelationID: capture.call, ReviewFiles: []mekugi.ReviewFile{{BeforePath: path, AfterPath: path, Diff: capture.diff}}}
 		if err := store.put(t.Context(), workspace, map[string]mekugiHistory{capture.call: history}); err != nil {
 			t.Fatal(err)
 		}

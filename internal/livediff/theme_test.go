@@ -12,9 +12,9 @@ import (
 	"github.com/yusing/mekugi"
 )
 
-func testThemeChunk(key, path, diff string, applied bool) Chunk {
+func testThemeChunk(key, path, diff string) Chunk {
 	return Chunk{
-		Key: key, Applied: applied,
+		Key:    key,
 		Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: diff},
 	}
 }
@@ -88,7 +88,7 @@ func TestLiveDiffThemeLanguageCoverage(t *testing.T) {
 }
 
 func TestLiveDiffThemeGeometryAndFallback(t *testing.T) {
-	chunk := testThemeChunk("edit", "file.go", "@@ -1 +1 @@\n-return \"界\"\n+return len(\"界\")\n", true)
+	chunk := testThemeChunk("edit", "file.go", "@@ -1 +1 @@\n-return \"界\"\n+return len(\"界\")\n")
 	chunk.Highlighted = true
 	file := File{Path: "file.go", Highlighted: true, Chunks: []Chunk{chunk}}
 	for _, width := range []int{1, 13, 90} {
@@ -246,7 +246,7 @@ func TestLiveDiffThemeContrast(t *testing.T) {
 
 func TestLiveDiffRowFills(t *testing.T) {
 	chunk := testThemeChunk("edit", "file.go",
-		"@@ -9,3 +19,3 @@\n context\n-return \"old\"\n+return \"界\"\n tail\n", true)
+		"@@ -9,3 +19,3 @@\n context\n-return \"old\"\n+return \"界\"\n tail\n")
 	chunk.Status = ""
 	for _, theme := range []Theme{TerminalTheme, LightTheme, DarkTheme} {
 		for _, width := range []int{1, 2, 3, 8, 80} {

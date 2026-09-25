@@ -22,13 +22,13 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 	workspace := t.TempDir()
 	directory := filepath.Join(t.TempDir(), "not-yet", "replay")
 	store := &mekugiReplayStore{directory: directory}
-	publish := func(call string, reviews []mekugi.ReviewFile, applied bool) mekugiHistory {
+	publish := func(call string, reviews []mekugi.ReviewFile, outcome *execOutcome) mekugiHistory {
 		t.Helper()
 		id, err := store.reserveChange(t.Context(), workspace, "thread", call)
 		if err != nil {
 			t.Fatal(err)
 		}
-		history := mekugiHistory{ChangeID: id, CorrelationID: call, Applied: applied, ReviewFiles: reviews}
+		history := mekugiHistory{ChangeID: id, CorrelationID: call, ExecOutcome: outcome, ReviewFiles: reviews}
 		if err := store.put(t.Context(), workspace, map[string]mekugiHistory{call: history}); err != nil {
 			t.Fatal(err)
 		}
@@ -127,14 +127,14 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.liveDiff = livePublisher
-	publish("initial", initial, true)
+	publish("initial", initial, nil)
 	waitFrame("+original")
 	start := time.Now()
 	for i, edit := range []struct{ file, line int }{{0, 18}, {3, 1}, {2, 20}, {1, 10}, {4, 2}, {0, 3}} {
 		marker := fmt.Sprintf("LATEST%d", i)
 		chunk := liveDiffHighlightChunk("", paths[edit.file],
-			fmt.Sprintf("@@ -%d +%d @@\n-original\n+%s\n", edit.line, edit.line, marker), true)
-		publish(fmt.Sprintf("update%d", i), []mekugi.ReviewFile{chunk.Review}, true)
+			fmt.Sprintf("@@ -%d +%d @@\n-original\n+%s\n", edit.line, edit.line, marker))
+		publish(fmt.Sprintf("update%d", i), []mekugi.ReviewFile{chunk.Review}, nil)
 		frame := waitFrame("+" + marker)
 		if middle := rowText(frame, 4) + rowText(frame, 5); !strings.Contains(middle, "+"+marker) {
 			t.Fatalf("latest change is not centered: rows 4-5: %q", middle)
@@ -171,29 +171,24 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 		strings.Contains(heading, "| row") || !strings.Contains(heading, "▎ 1/5  file1.tmp") {
 		t.Fatalf("navigator and first diff heading are shifted: heading=%q", heading)
 	}
-	chunk := liveDiffHighlightChunk("", paths[4], "@@ -19 +19 @@\n-original\n+PREPARED19\n", false)
-	history := publish("pending", []mekugi.ReviewFile{chunk.Review}, false)
+	chunk := liveDiffHighlightChunk("", paths[4], "@@ -19 +19 @@\n-original\n+PREPARED19\n")
+	publish("failed-command-edit", []mekugi.ReviewFile{chunk.Review}, &execOutcome{Status: execStatusFailed, Exit: new(1)})
 	waitFrame("PAUSED · new changes available")
 	if _, err := terminal.Write([]byte("r")); err != nil {
 		t.Fatal(err)
 	}
 	frame = waitFrame("+PREPARED19")
-	if !strings.Contains(ansi.Strip(frame), "changes observed") || strings.Contains(ansi.Strip(frame), "application unconfirmed") {
-		t.Fatalf("following hid the changes-observed status: %q", frame)
+	if strings.Contains(ansi.Strip(frame), "changes observed") || strings.Contains(ansi.Strip(frame), "application unconfirmed") {
+		t.Fatalf("following rendered obsolete change state: %q", frame)
 	}
-	if got := rowText(frame, 8); !strings.Contains(got, "+PREPARED19") {
-		t.Fatalf("observed change did not fill the bottom row: %q", got)
-	}
-	history.confirmed = true
-	if err := store.confirmChanges(t.Context(), workspace, map[string]mekugiHistory{"pending": history}); err != nil {
-		t.Fatal(err)
-	}
-	frame = waitMatchingFrame(func(frame string) bool {
-		text := ansi.Strip(frame)
-		return strings.Contains(text, "+PREPARED19") && !strings.Contains(text, "changes observed")
-	})
-	if strings.Contains(ansi.Strip(frame), "changes observed") {
-		t.Fatalf("receipt did not transition changes observed to applied: %q", frame)
+	fix := liveDiffHighlightChunk("", paths[4], "@@ -19 +19 @@\n-PREPARED19\n+FINAL19\n")
+	publish("followup-edit", []mekugi.ReviewFile{fix.Review}, nil)
+	frame = waitFrame("+FINAL19")
+	plain := ansi.Strip(frame)
+	for _, stale := range []string{"+PREPARED19", "command failed", "exit 1", "changes observed", "Unable to combine"} {
+		if strings.Contains(plain, stale) {
+			t.Fatalf("failed command contaminated composed diff with %q: %q", stale, plain)
+		}
 	}
 	if _, err := terminal.Write([]byte{3}); err != nil {
 		t.Fatal(err)

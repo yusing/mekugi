@@ -139,7 +139,7 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
 		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
 	})
-	liveDiffTestChange(t, store, workspace, "one", "captured.go", true)
+	liveDiffTestChange(t, store, workspace, "one", "captured.go")
 	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
 	initial := ui.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 1), "Live input") })
 	if strings.Contains(initial, "Waiting for live input") {
@@ -257,8 +257,7 @@ func TestLiveDiffTerminalComposedContextIsNotDuplicated(t *testing.T) {
 	diff := "@@ -1,5 +1,5 @@\n-old first\n+new first\n See the editing guide\n and prerequisites.\n-old second\n+new second\n tail\n"
 	path := filepath.Join(workspace, "readme.md")
 	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"nearby": {
-		ChangeID: id, CorrelationID: "nearby", Applied: true,
-		ReviewFiles: []mekugi.ReviewFile{{BeforePath: path, AfterPath: path, Diff: diff}},
+		ChangeID: id, CorrelationID: "nearby", ReviewFiles: []mekugi.ReviewFile{{BeforePath: path, AfterPath: path, Diff: diff}},
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +309,7 @@ func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
 	if !strings.Contains(liveDiffFrameRow(frame, 2), "◐ A big.py") {
 		t.Fatal("resize restored an empty split")
 	}
-	liveDiffTestChange(t, store, workspace, "thread", "captured.go", true)
+	liveDiffTestChange(t, store, workspace, "thread", "captured.go")
 	frame = ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), tip) })
 	if !strings.Contains(liveDiffFrameRow(frame, 2), "◐ A big.py") {
 		t.Fatal("capture displaced the full-pane stream")
@@ -330,7 +329,7 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
 		Workspaces: map[string]map[string]bool{workspace: {"thread": true, "child": true}},
 	})
-	liveDiffTestChange(t, store, workspace, "capture", "captured.go", true)
+	liveDiffTestChange(t, store, workspace, "capture", "captured.go")
 	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
 	ui.write(t, "v")

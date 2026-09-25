@@ -149,7 +149,7 @@ func TestRTKProxyGofmtCaptureScopesManagedGoFiles(t *testing.T) {
 	}
 }
 
-func TestPythonInterpreterComputedTargetIsPartial(t *testing.T) {
+func TestPythonInterpreterComputedTargetDoesNotClaimWorkspaceWrite(t *testing.T) {
 	workspace := t.TempDir()
 	pythonName, _ := interpreterForTest("python3", "python")
 	command := pythonName + " -c 'import os; from pathlib import Path; target = os.environ.get(" +
@@ -157,14 +157,9 @@ func TestPythonInterpreterComputedTargetIsPartial(t *testing.T) {
 	observation := captureInterpreterTestObservationAnyClass(t, workspace, command)
 	writeTestFile(t, filepath.Join(workspace, "computed-result.txt"), "computed content\n")
 
-	reviews, _, coverage, _ := reconcileExecObservation(*observation, execReconcileEnv{})
-	if coverage != execCoveragePartial || len(reviews) != 1 {
-		t.Fatalf("computed target evidence = %+v coverage=%q; want one partial finding", reviews, coverage)
-	}
-	review := reviews[0]
-	if review.Origin != "" || review.Incomplete == "" || !strings.Contains(review.Incomplete, "new file or replacement") ||
-		strings.Contains(review.Diff, "Create") || !strings.Contains(review.Diff, "+computed content") {
-		t.Fatalf("computed target finding = %+v; want direct unbased content, not a guessed create", review)
+	reviews, _, _, _ := reconcileExecObservation(*observation, execReconcileEnv{})
+	if len(reviews) != 0 {
+		t.Fatalf("computed target claimed an undeclared write: %+v", reviews)
 	}
 }
 

@@ -131,7 +131,6 @@ type mekugiProxy struct {
 	activity           *subagentActivity
 	skillsManager      bool
 	execWindows        *execWindowRegistry
-	execLastSeen       *execLastSeen
 	nativeTrace        *nativeToolTrace
 	exploreFilter      *exploreFilter
 
@@ -210,7 +209,6 @@ func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *
 		usage:          newThreadUsage(),
 		activity:       activity,
 		execWindows:    &execWindowRegistry{},
-		execLastSeen:   &execLastSeen{},
 		sessions:       make(map[string]*mekugiHistorySession),
 		activeSessions: make(map[string]int),
 	}

@@ -205,7 +205,7 @@ func TestGitProviderSkipsWorktreeQueryWhenCleanFilterConfigured(t *testing.T) {
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatalf("provider query ran configured clean filter: stat error = %v", err)
 	}
-	if !observation.Sweep || len(observation.Files) != 1 || filepath.Clean(observation.Files[0].Path) != filepath.Join(repo, "tracked.txt") {
+	if len(observation.Files) != 1 || filepath.Clean(observation.Files[0].Path) != filepath.Join(repo, "tracked.txt") {
 		t.Fatalf("clean-filter fallback is not open and operand-only: %+v", observation)
 	}
 }

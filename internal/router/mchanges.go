@@ -1,6 +1,7 @@
 package router
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -130,29 +131,6 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 	return options, nil
 }
 
-func trackedStatus(history mekugiHistory, confirmed bool) string {
-	switch {
-	case history.ExecOutcome != nil:
-		return history.ExecOutcome.text()
-	case history.TranslationError != "":
-		return "rejected"
-	case history.AlreadySatisfied:
-		return "no-op"
-	case history.Applied || confirmed:
-		return "applied"
-	default:
-		for _, file := range history.ReviewFiles {
-			if file.Incomplete != "" {
-				return "observation incomplete"
-			}
-		}
-		if len(history.ReviewFiles) == 0 {
-			return "no changes observed"
-		}
-		return "changes observed"
-	}
-}
-
 func (s *mekugiReplayStore) readChanges(ctx context.Context, options changeReadOptions) (string, error) {
 	text, _, err := s.readChangeView(ctx, options)
 	return text, err
@@ -253,6 +231,10 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 	type counts struct {
 		added, removed int
 		incomplete     bool
+		status         liveDiffStatus
+		managed        bool
+		composition    mekugi.ReviewComposition
+		uncomposable   bool
 	}
 	displayPath := func(path string) string {
 		if strings.IndexFunc(path, unicode.IsControl) >= 0 || strings.ContainsAny(path, "\"\\") || strings.Contains(path, " => ") {
@@ -260,10 +242,12 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		}
 		return path
 	}
-	stats := make(map[string]counts)
-	var paths []string
+	stats := make(map[string]*counts)
+	var entries []*counts
 	managedKnown, managedUnknown, managedAdded, managedRemoved := 0, 0, 0, 0
 	matched := false
+	var summary []changeCapture
+	summaryBytes := 0
 	for _, id := range options.ids {
 		if output.Len() > maxChangeReadBytes {
 			return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or paths after --")
@@ -286,8 +270,11 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		if change.RetiredCalls != 0 && options.view != "summary" {
 			fmt.Fprintf(&output, "%s history incomplete: %d older attempts were removed by session cleanup\n", id, change.RetiredCalls)
 		}
-		if options.view != "summary" && len(change.Calls) > 1 {
+		if options.view == "history" && len(change.Calls) > 1 {
 			fmt.Fprintf(&output, "%s attempts=%d\n", id, len(change.Calls))
+		}
+		if options.view != "summary" && options.view != "history" && len(change.Calls) != 0 {
+			fmt.Fprintln(&output, id)
 		}
 		if len(change.Calls) == 0 {
 			fmt.Fprintf(&output, "%s pending (no completed result)\n", id)
@@ -301,7 +288,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				return "", fmt.Errorf("change %s has a missing or inconsistent attempt", id)
 			}
 			history := record.History
-			if options.view != "summary" && history.ExecOutcome != nil && len(history.ExecOutcome.Overlaps) != 0 {
+			if options.view == "history" && history.ExecOutcome != nil && len(history.ExecOutcome.Overlaps) != 0 {
 				var alongside []string
 				for _, ref := range history.ExecOutcome.Overlaps {
 					label, frozen := options.overlapLabels[ref]
@@ -321,21 +308,21 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				}
 				fmt.Fprintf(&output, "observed alongside %s\n", strings.Join(alongside, ", "))
 			}
-			if options.view != "summary" && len(change.Calls) == 1 {
-				fmt.Fprintf(&output, "%s %s\n", id, trackedStatus(history, call.Confirmed))
-			} else if options.view != "summary" {
-				fmt.Fprintf(&output, "attempt %d %s\n", position+1, trackedStatus(history, call.Confirmed))
+			status := "no changes"
+			if len(history.ReviewFiles) != 0 {
+				status = "applied"
+			}
+			if options.view == "history" && len(change.Calls) == 1 {
+				fmt.Fprintf(&output, "%s %s\n", id, status)
+			} else if options.view == "history" {
+				fmt.Fprintf(&output, "attempt %d %s\n", position+1, status)
 			}
 			if options.view == "history" {
 				for _, result := range history.HostResults {
 					fmt.Fprintln(&output, result.text())
 				}
 				if history.ExecOutcome != nil {
-					if history.ExecOutcome.Status == execStatusUnconfirmed {
-						output.WriteString("tool result: nested tool result unavailable\n")
-					}
-				} else if !history.Applied && !call.Confirmed && !history.AlreadySatisfied && history.TranslationError == "" {
-					output.WriteString("application confirmation: unavailable; observed changes do not establish tool success\n")
+					fmt.Fprintln(&output, history.ExecOutcome.text())
 				}
 				fmt.Fprintf(&output, "%s input:\n%s\n", history.ToolName, history.Script)
 				if history.ExecOutcome != nil && history.ExecOutcome.ScopeReason != "" {
@@ -359,48 +346,16 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			}
 			managedRows := 0
 			for _, file := range history.ReviewFiles {
-				action := file.Action()
 				if len(options.paths) > 0 && !changePathMatches(options, file.BeforePath) && !changePathMatches(options, file.AfterPath) {
 					continue
 				}
 				matched = true
 				if options.view == "summary" {
-					path := file.AfterPath
-					if action == mekugi.ReviewDelete {
-						path = file.BeforePath
+					summaryBytes += len(file.Diff)
+					if summaryBytes > maxChangeReadBytes {
+						return "", errors.New("change summary exceeds 64 MiB; narrow the range or paths after --")
 					}
-					path = displayPath(pathdisplay.ForWorkspace(options.workspace, path))
-					if action == mekugi.ReviewMove {
-						before := displayPath(pathdisplay.ForWorkspace(options.workspace, file.BeforePath))
-						path = before + " => " + path
-					}
-					if file.Origin != "" && len(options.paths) == 0 {
-						if file.Incomplete != "" || file.Binary {
-							managedUnknown++
-						} else {
-							managedKnown++
-							a, r := file.LineCounts()
-							managedAdded += a
-							managedRemoved += r
-						}
-						continue
-					}
-					if file.Origin != "" {
-						path = "tool-managed\t" + path
-					}
-					entry, exists := stats[path]
-					if !exists {
-						paths = append(paths, path)
-					}
-					added, removed := file.LineCounts()
-					if added < 0 || file.Binary {
-						// Binary content has no row counts, as in git --numstat.
-						entry.incomplete = true
-					} else {
-						entry.added += added
-						entry.removed += removed
-					}
-					stats[path] = entry
+					summary = append(summary, changeCapture{order: record.CaptureOrder, files: []mekugi.ReviewFile{file}})
 				} else if file.Origin != "" && options.view != "history" && len(options.paths) == 0 {
 					managedRows++
 					if managedRows <= 20 {
@@ -421,12 +376,81 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			}
 		}
 	}
-	for _, path := range paths {
-		entry := stats[path]
-		if entry.incomplete {
-			fmt.Fprintf(&output, "-\t-\t%s\n", path)
+	slices.SortStableFunc(summary, func(a, b changeCapture) int { return cmp.Compare(a.order, b.order) })
+	for _, capture := range summary {
+		file := capture.files[0]
+		if file.Origin != "" && len(options.paths) == 0 {
+			if file.Incomplete != "" || file.Binary {
+				managedUnknown++
+			} else {
+				managedKnown++
+				a, r := file.LineCounts()
+				managedAdded += a
+				managedRemoved += r
+			}
+			continue
+		}
+		key := func(path string) string {
+			path = pathdisplay.ForWorkspace(options.workspace, path)
+			if file.Origin != "" {
+				path = "tool-managed\t" + path
+			}
+			return path
+		}
+		before, after := file.BeforePath, file.AfterPath
+		if before == "" {
+			before = after
+		}
+		entry := stats[key(before)]
+		if entry == nil {
+			entry = &counts{status: liveDiffStatus{before: file.BeforePath}, managed: file.Origin != ""}
+			entries = append(entries, entry)
+		}
+		delete(stats, key(before))
+		if after == "" {
+			after = before
+		}
+		stats[key(after)] = entry
+		entry.status.add(file)
+		if !entry.uncomposable {
+			entry.uncomposable = entry.composition.ApplyWithHighlight(file, false, false) != nil
+		}
+		added, removed := file.LineCounts()
+		if added < 0 || file.Binary {
+			// Binary content has no row counts, as in git --numstat.
+			entry.incomplete = true
 		} else {
-			fmt.Fprintf(&output, "%d\t%d\t%s\n", entry.added, entry.removed, path)
+			entry.added += added
+			entry.removed += removed
+		}
+	}
+	for _, entry := range entries {
+		if !entry.uncomposable && entry.status.before == "" && entry.status.after == "" {
+			continue // A creation followed by deletion leaves no file in the diff pane.
+		}
+		if !entry.uncomposable {
+			var regions []mekugi.ReviewFile
+			for _, region := range entry.composition.FilesWithHighlights() {
+				regions = append(regions, region.ReviewFile)
+			}
+			composed := liveDiffStatusOf(regions...)
+			entry.status.edited, entry.status.conflict = composed.edited, composed.conflict
+		}
+		path := entry.status.after
+		if path == "" {
+			path = entry.status.before
+		}
+		path = displayPath(pathdisplay.ForWorkspace(options.workspace, path))
+		if entry.status.before != "" && entry.status.after != "" && entry.status.before != entry.status.after {
+			path = displayPath(pathdisplay.ForWorkspace(options.workspace, entry.status.before)) + " => " + path
+		}
+		if entry.managed {
+			path = "tool-managed\t" + path
+		}
+		if entry.incomplete {
+			fmt.Fprintf(&output, "%s\t-\t-\t%s\n", entry.status.shortCode(), path)
+		} else {
+			fmt.Fprintf(&output, "%s\t%d\t%d\t%s\n", entry.status.shortCode(), entry.added, entry.removed, path)
 		}
 		if output.Len() > maxChangeReadBytes {
 			return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or paths after --")

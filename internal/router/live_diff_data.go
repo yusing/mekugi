@@ -20,12 +20,11 @@ import (
 type liveDiffAttempt struct {
 	change, correlation string
 	stream              int
-	confirmed           bool
 	chunks              []liveDiffChunk
 }
 
 // Only review projections are retained, not whole replay records or scripts.
-// A live event loads its exact new attempt once; receipts never reread it.
+// A live event loads its exact new attempt once; repeated events reuse it.
 type liveDiffData struct {
 	attempts map[string]liveDiffAttempt
 	order    []string
@@ -46,17 +45,6 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			if old.change != event.ID || old.correlation != event.Change.Correlation || old.stream != event.Stream {
 				return errors.New("live diff attempt identity changed")
 			}
-			if call.Confirmed && !old.confirmed {
-				old.confirmed = true
-				for i := range old.chunks {
-					chunk := &old.chunks[i]
-					switch chunk.Status {
-					case event.ID + " changes observed", event.ID + " no changes observed", event.ID + " observation incomplete":
-						chunk.Status, chunk.Applied = event.ID+" applied", true
-					}
-				}
-				d.attempts[key] = old
-			}
 			continue
 		}
 		if len(d.attempts) >= 65536 {
@@ -70,8 +58,7 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			return fmt.Errorf("change %s has a missing or inconsistent attempt", event.ID)
 		}
 		history := record.History
-		status := trackedStatus(history, call.Confirmed)
-		attempt := liveDiffAttempt{change: event.ID, correlation: event.Change.Correlation, stream: event.Stream, confirmed: call.Confirmed}
+		attempt := liveDiffAttempt{change: event.ID, correlation: event.Change.Correlation, stream: event.Stream}
 		origin := livediff.Origin{Change: event.ID, Caller: history.Caller, Source: cmp.Or(history.Source, history.ToolName)}
 		var managed []string
 		for n, file := range history.ReviewFiles {
@@ -95,21 +82,21 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			}
 			attempt.chunks = append(attempt.chunks, liveDiffChunk{
 				Key: key + "/" + strconv.Itoa(n), Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),
-				CaptureOrder: record.CaptureOrder, Status: event.ID + " " + status,
-				Review: file, Applied: status == "applied" || history.ExecOutcome != nil && history.Applied, Origin: origin,
+				CaptureOrder: record.CaptureOrder,
+				Review:       file, Origin: origin,
 			})
 		}
 		if len(managed) != 0 {
 			label := fmt.Sprintf("%s: %d tool-managed files", event.ID, len(managed))
-			reason := status + "\n" + strings.Join(managed, "\n")
+			reason := strings.Join(managed, "\n")
 			d.bytes += len(reason) + len(label)*2 + len(key)
 			if d.bytes > maxChangeReadBytes {
 				return errors.New("live diff exceeds 64 MiB; use mchanges with a narrower range")
 			}
 			attempt.chunks = append(attempt.chunks, liveDiffChunk{
 				Key: key + "/managed", Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),
-				CaptureOrder: record.CaptureOrder, Status: event.ID + " " + status, Applied: true,
-				Review: mekugi.ReviewFile{BeforePath: label, AfterPath: label, Origin: "tool-managed", Incomplete: reason}, Origin: origin,
+				CaptureOrder: record.CaptureOrder,
+				Review:       mekugi.ReviewFile{BeforePath: label, AfterPath: label, Origin: "tool-managed", Incomplete: reason}, Origin: origin,
 			})
 		}
 		d.attempts[key] = attempt

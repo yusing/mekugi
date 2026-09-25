@@ -10,8 +10,7 @@ import (
 	"time"
 )
 
-// Tests, generators, and fixers can write arbitrary artifacts. Literal package operands
-// provide bounded baseline hints, not a closed declaration of their effects.
+// Explicit go fix package operands scope the Go sources the agent asks to edit.
 func execGoPackageScope(input execProviderInput) execProviderResult {
 	var roots []string
 	for i := 1; i < len(input.args); i++ {
@@ -79,14 +78,14 @@ func execGoPackageScope(input execProviderInput) execProviderResult {
 				break
 			}
 			path := filepath.Join(root, child.Name())
-			if slices.Contains(execSweepVCSDirectories, child.Name()) {
+			if slices.Contains([]string{".git", ".hg", ".svn", ".jj"}, child.Name()) {
 				continue
 			}
 			if child.IsDir() {
 				if !execBuiltinPruned(path, child.Name()) {
 					queue = append(queue, path)
 				}
-			} else if input.args[0] != "fix" || filepath.Ext(path) == ".go" {
+			} else if filepath.Ext(path) == ".go" {
 				paths = append(paths, path)
 			}
 		}

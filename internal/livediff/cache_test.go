@@ -18,7 +18,7 @@ func TestLiveDiffSyntaxCacheMatchesColdRender(t *testing.T) {
 		for _, path := range []string{"file.go", "file.txt"} {
 			for _, value := range []string{"old", "changed"} {
 				chunk := testThemeChunk("edit", path,
-					"@@ -1,3 +1,3 @@\n // "+strings.Repeat("界 é ", 30)+"\n-old := \"old\"\n+next := \""+value+"\"\n tail\n\\ No newline at end of file\n", true)
+					"@@ -1,3 +1,3 @@\n // "+strings.Repeat("界 é ", 30)+"\n-old := \"old\"\n+next := \""+value+"\"\n tail\n\\ No newline at end of file\n")
 				chunk.Highlighted = true
 				files := []File{{Path: path, Highlighted: true, Chunks: []Chunk{chunk}}}
 				for _, width := range []int{90, 22, 1, 7, 90} {

@@ -12,7 +12,7 @@ import (
 func TestLiveDiffWrapAndResize(t *testing.T) {
 	source := strings.Repeat("ab 界é  ", 12)
 	chunk := liveDiffHighlightChunk("edit", "file.txt",
-		"@@ -1,2 +1,2 @@\n "+source+"\n-old\n+new\n", true)
+		"@@ -1,2 +1,2 @@\n "+source+"\n-old\n+new\n")
 	chunk.Status = ""
 	files := []liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{chunk}}}
 	wrapped, err := new(liveDiffRenderer).Render(t.Context(), livediff.DarkTheme, files, "", 22, 0, chunk)
@@ -51,7 +51,7 @@ func TestLiveDiffWrapAndResize(t *testing.T) {
 
 func TestLiveDiffWrappedSyntaxAndFocus(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "file.go",
-		"@@ -0,0 +1 @@\n+\""+strings.Repeat("abcdefgh", 15)+"\"\n", true)
+		"@@ -0,0 +1 @@\n+\""+strings.Repeat("abcdefgh", 15)+"\"\n")
 	chunk.Status = ""
 	chunk.Highlighted = true
 	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.DarkTheme,
@@ -76,7 +76,7 @@ func TestLiveDiffResizeReflowsSavedFiles(t *testing.T) {
 	for _, name := range []string{"first", "second"} {
 		path := strings.Repeat(name+"/", 8) + "file.txt"
 		chunk := liveDiffHighlightChunk("edit", path,
-			"@@ -1,2 +1,2 @@\n "+strings.Repeat("long source ", 20)+"\n-old\n+new\n", true)
+			"@@ -1,2 +1,2 @@\n "+strings.Repeat("long source ", 20)+"\n-old\n+new\n")
 		chunk.Status = strings.Repeat("prepared status ", 8)
 		files = append(files, liveDiffFile{Path: path, Chunks: []liveDiffChunk{chunk}})
 	}

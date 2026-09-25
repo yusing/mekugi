@@ -47,21 +47,15 @@ func liveDiffTestSession(t *testing.T, store *mekugiReplayStore, workspace strin
 	return path
 }
 
-func waitLiveDiffChange(t *testing.T, sub *liveDiffSubscriber, confirmed bool) liveDiffChange {
+func waitLiveDiffChange(t *testing.T, sub *liveDiffSubscriber) liveDiffChange {
 	t.Helper()
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 	for {
 		select {
 		case event := <-sub.events:
-			if event.Kind == "change" {
-				for _, change := range event.Changes {
-					for _, call := range change.Change.Calls {
-						if call.Confirmed == confirmed {
-							return change
-						}
-					}
-				}
+			if event.Kind == "change" && len(event.Changes) != 0 {
+				return event.Changes[0]
 			}
 		case <-sub.gap:
 			t.Fatal("subscriber overflowed")
@@ -71,7 +65,7 @@ func waitLiveDiffChange(t *testing.T, sub *liveDiffSubscriber, confirmed bool) l
 	}
 }
 
-func TestLiveDiffDirectPublicationAndCachedReceipt(t *testing.T) {
+func TestLiveDiffDirectPublicationAndDurableReload(t *testing.T) {
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -79,33 +73,19 @@ func TestLiveDiffDirectPublicationAndCachedReceipt(t *testing.T) {
 	workspace := t.TempDir()
 	_, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"identity-thread": true}}})
 	sub := broker.subscribe()
-	liveDiffIdentityCapture(t, store, workspace, "one", "", "file.txt", "", "original\n", false)
-	event := waitLiveDiffChange(t, sub, false)
+	liveDiffIdentityCapture(t, store, workspace, "one", "", "file.txt", "", "original\n")
+	event := waitLiveDiffChange(t, sub)
 	data := newLiveDiffData()
 	if err := data.apply(t.Context(), store, event); err != nil {
 		t.Fatal(err)
 	}
-	prepared := data.files()
-	// Receipts operate on the cached projection, not another disk read.
+	files := data.files()
+	if len(files) != 1 || len(files[0].Chunks) != 1 || !strings.Contains(files[0].Chunks[0].Review.Diff, "+original") {
+		t.Fatalf("publication lost saved edit: %+v", files)
+	}
 	callID := event.Change.Calls[0].ID
 	if err := os.Remove(filepath.Join(store.directory, replayRecordName(workspace, callID, false))); err != nil {
 		t.Fatal(err)
-	}
-	event.Change.Calls[0].Confirmed = true
-	if err := data.apply(t.Context(), store, event); err != nil {
-		t.Fatal(err)
-	}
-	if prepared[0].Chunks[0].Applied || !strings.Contains(prepared[0].Chunks[0].Status, "changes observed") {
-		t.Fatal("receipt mutated the previous changes-observed snapshot")
-	}
-	// An older queued preparation cannot undo a receipt from the snapshot.
-	event.Change.Calls[0].Confirmed = false
-	if err := data.apply(t.Context(), store, event); err != nil {
-		t.Fatal(err)
-	}
-	files := data.files()
-	if len(files) != 1 || !files[0].Chunks[0].Applied || !strings.HasSuffix(files[0].Chunks[0].Status, " applied") {
-		t.Fatalf("cached receipt regressed: %+v", files)
 	}
 	if _, err := store.liveDiffSnapshot(t.Context(), broker.scope); err == nil {
 		t.Fatal("reconnection hid missing durable evidence")
@@ -230,7 +210,7 @@ func TestLiveDiffScopeReconciliationUsesCachedAttempts(t *testing.T) {
 	}
 	workspace := t.TempDir()
 	scope := liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"identity-thread": true}}}
-	liveDiffIdentityCapture(t, store, workspace, "one", "", "file.txt", "", "original\n", false)
+	liveDiffIdentityCapture(t, store, workspace, "one", "", "file.txt", "", "original\n")
 	data, err := store.liveDiffSnapshot(t.Context(), scope)
 	if err != nil {
 		t.Fatal(err)
@@ -325,8 +305,7 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 		if err := os.WriteFile(path, []byte("content\n"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		histories[name] = mekugiHistory{ToolName: applyPatchToolName, ChangeID: id, CorrelationID: name, Applied: true,
-			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(path, path, "", "content\n")}}
+		histories[name] = mekugiHistory{ToolName: applyPatchToolName, ChangeID: id, CorrelationID: name, ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(path, path, "", "content\n")}}
 	}
 	if err := store.put(t.Context(), workspace, histories); err != nil {
 		t.Fatal(err)
@@ -364,9 +343,9 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 
 func TestLiveDiffDelayedCaptureDoesNotFollowBackwards(t *testing.T) {
 	path := "same.txt"
-	older := liveDiffHighlightChunk("older", path, "@@ -20 +20 @@\n-old\n+OLDER20\n", true)
+	older := liveDiffHighlightChunk("older", path, "@@ -20 +20 @@\n-old\n+OLDER20\n")
 	older.CaptureOrder, older.SnapshotOrder = 1, 1
-	newer := liveDiffHighlightChunk("newer", path, "@@ -90 +90 @@\n-old\n+NEWER90\n", true)
+	newer := liveDiffHighlightChunk("newer", path, "@@ -90 +90 @@\n-old\n+NEWER90\n")
 	newer.CaptureOrder, newer.SnapshotOrder = 2, 2
 	view := liveDiffView{Following: true}
 	view.Merge([]liveDiffFile{{Path: path, Chunks: []liveDiffChunk{newer}}})

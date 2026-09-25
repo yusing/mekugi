@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi"
 )
 
 func writeStockRollout(t *testing.T, path string, records ...map[string]any) {
@@ -48,7 +50,8 @@ func TestSessionInspectionReadsObservedStockPatchOutcome(t *testing.T) {
 	derived := mekugiHistory{
 		ToolName: applyPatchToolName, Script: patch, CarrierName: applyPatchToolName,
 		CarrierKind: codeModeCarrierCustom, CarrierPayload: patch,
-		CorrelationID: "patch-call\x000", Applied: true, Report: "Success. Added observed.txt.",
+		CorrelationID: "patch-call\x000", Report: "Success. Added observed.txt.",
+		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("", filepath.Join(root, "observed.txt"), "", "ready\n")},
 	}
 	if err := store.put(t.Context(), root, map[string]mekugiHistory{
 		"patch-call": parent, nativePatchDerivedCallID("patch-call", 0): derived,

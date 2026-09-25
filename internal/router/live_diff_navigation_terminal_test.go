@@ -29,7 +29,7 @@ func TestLiveDiffTerminalFileNavigator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"many": {ChangeID: id, CorrelationID: "many", Applied: true, ReviewFiles: files}}); err != nil {
+	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"many": {ChangeID: id, CorrelationID: "many", ReviewFiles: files}}); err != nil {
 		t.Fatal(err)
 	}
 	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)

@@ -317,9 +317,8 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 		id := call()
 		if change, err := store.reserveChange(ctx, workspace, thread, id); err == nil {
 			_ = store.put(ctx, workspace, map[string]mekugiHistory{id: {
-				ToolName: tool, Source: source, Caller: caller, ChangeID: change, CorrelationID: id, Applied: true,
-				ExecutingThread: thread,
-				ReviewFiles:     []mekugi.ReviewFile{mekugi.RenderReviewFile(beforePath, afterPath, before, after)},
+				ToolName: tool, Source: source, Caller: caller, ChangeID: change, CorrelationID: id, ExecutingThread: thread,
+				ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(beforePath, afterPath, before, after)},
 			}})
 		}
 	}

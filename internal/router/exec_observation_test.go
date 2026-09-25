@@ -452,12 +452,11 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 		name, status string
 		yielded      bool
 		exit         string
-		wantStatus   string
-		wantApplied  bool
+		wantOutcome  string
 	}{
-		{name: "completed", exit: "0", wantStatus: "completed · exec rm · exit 0 · declared, exact coverage", wantApplied: true},
-		{name: "failed", exit: "1", wantStatus: "failed; observed effects · exec rm · exit 1 · declared, exact coverage"},
-		{name: "yielded", yielded: true, exit: "0", wantStatus: "completed · exec rm · exit 0 · declared, exact coverage", wantApplied: true},
+		{name: "completed", exit: "0", wantOutcome: "command completed · exit 0"},
+		{name: "failed", exit: "1", wantOutcome: "command failed · exit 1"},
+		{name: "yielded", yielded: true, exit: "0", wantOutcome: "command completed · exit 0"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
@@ -491,11 +490,11 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 			}
 			next := reconcileExecItems(t, proxy, workspace, items)
 			history, found, err := proxy.replayStore.lookup(t.Context(), workspace, "exec-call:exec:1")
-			if err != nil || !found || history.ChangeID == "" || history.Applied != test.wantApplied {
+			if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 {
 				t.Fatalf("derived record = %+v found=%v err=%v", history, found, err)
 			}
-			if got := trackedStatus(history, false); got != test.wantStatus {
-				t.Fatalf("status = %q, want %q", got, test.wantStatus)
+			if history.ExecOutcome == nil || !strings.Contains(history.ExecOutcome.text(), test.wantOutcome) {
+				t.Fatalf("host outcome = %+v, want %q", history.ExecOutcome, test.wantOutcome)
 			}
 			changes, err := proxy.replayStore.readChanges(next.ctx, changeReadOptions{
 				workspace: workspace, ids: []string{history.ChangeID}, view: "history", maxTokens: 4000,
@@ -557,11 +556,11 @@ func TestCodeModeExecCommandRecordsUnconfirmedEffects(t *testing.T) {
 		t.Fatal(err)
 	}
 	history, found, err := proxy.replayStore.lookup(t.Context(), workspace, "code-call:effects")
-	if err != nil || !found || history.Applied || history.ChangeID == "" || len(history.ReviewFiles) != 1 {
+	if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 {
 		t.Fatalf("Code Mode record = %+v found=%v err=%v", history, found, err)
 	}
-	if got := trackedStatus(history, false); !strings.HasPrefix(got, "changes observed · exec printf") {
-		t.Fatalf("status = %q", got)
+	if history.ExecOutcome == nil || history.ExecOutcome.Status != "" {
+		t.Fatalf("missing host exit must not claim a command result: %+v", history.ExecOutcome)
 	}
 }
 

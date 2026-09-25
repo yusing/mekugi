@@ -31,7 +31,6 @@ type liveDiffChanges struct {
 type liveDiffChangeNode struct {
 	livediff.Origin
 	files   []liveDiffChangeFile
-	state   byte // 'a' applied, 'o' observed, 'x' incomplete
 	added   int
 	removed int
 	unknown bool
@@ -114,7 +113,7 @@ func (l *liveDiffChanges) rebuild(view *liveDiffView, workspace string) {
 		if !found {
 			n = len(l.nodes)
 			index[id] = n
-			l.nodes = append(l.nodes, liveDiffChangeNode{Origin: chunk.Origin, state: 'a'})
+			l.nodes = append(l.nodes, liveDiffChangeNode{Origin: chunk.Origin})
 			if l.nodes[n].Change == "" {
 				l.nodes[n].Change = "change"
 			}
@@ -122,12 +121,6 @@ func (l *liveDiffChanges) rebuild(view *liveDiffView, workspace string) {
 		node := &l.nodes[n]
 		added, removed := chunk.Review.LineCounts()
 		incomplete := chunk.Review.Incomplete != ""
-		switch {
-		case incomplete:
-			node.state = 'x'
-		case !chunk.Applied && node.state == 'a':
-			node.state = 'o'
-		}
 		node.unknown = node.unknown || incomplete
 		node.added, node.removed = node.added+added, node.removed+removed
 		at := slices.IndexFunc(node.files, func(file liveDiffChangeFile) bool { return file.file == capture.file })
@@ -315,7 +308,7 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 			if node.unknown {
 				stats = liveDiffCountStats(livediff.Counts{Added: -1, Removed: -1}, theme)
 			}
-			stats = fmt.Sprintf(" \x1b[2m%df\x1b[22m", len(node.files)) + stats + " " + liveDiffChangeGlyph(node.state)
+			stats = fmt.Sprintf(" \x1b[2m%df\x1b[22m", len(node.files)) + stats
 		case 'f':
 			file := node.files[entry.file]
 			branch := "├"
@@ -338,16 +331,6 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 		out[row] = ansi.Truncate(prefix+ansi.Truncate(label, available, "…")+stats, contentWidth, "")
 	}
 	return out
-}
-
-func liveDiffChangeGlyph(state byte) string {
-	switch state {
-	case 'a':
-		return liveActivityGreen + "✓" + liveActivityReset
-	case 'x':
-		return "\x1b[31m✗\x1b[39m"
-	}
-	return "\x1b[2m◌\x1b[22m"
 }
 
 // path is a file's base name, by view index.

@@ -215,6 +215,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 		}
 		fileNumber++
 		action := ""
+		pathLabel := pathdisplay.ForWorkspace(workspace, file.Path)
 		incomplete := false
 		for _, chunk := range file.Chunks {
 			incomplete = incomplete || chunk.Review.Incomplete != ""
@@ -223,12 +224,15 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 			render.Counts[i].Removed += removed
 			if action == "" && chunk.Status == "" {
 				action = fileAction(chunk.Review, workspace)
+				if chunk.Review.BeforePath != "" && chunk.Review.AfterPath != "" && chunk.Review.BeforePath != chunk.Review.AfterPath {
+					pathLabel, action = action, ""
+				}
 			}
 		}
 		if incomplete {
 			render.Counts[i] = Counts{-1, -1}
 		}
-		label := fmt.Sprintf("%d/%d  %s", fileNumber, fileCount, pathdisplay.ForWorkspace(workspace, file.Path))
+		label := fmt.Sprintf("%d/%d  %s", fileNumber, fileCount, pathLabel)
 		if action != "" {
 			label += " · " + action
 		}

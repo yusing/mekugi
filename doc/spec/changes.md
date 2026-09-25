@@ -1,4 +1,4 @@
-# Observed changes and live view
+# Applied changes and live view
 
 ## REQ-CHANGES-001 — Durable review of stock edits and command effects
 
@@ -6,20 +6,20 @@ Mekugi observes stock Codex `apply_patch` calls. Codex executes each call once;
 Mekugi does not replace the tool, run a hook, apply a second patch, or alter the
 argument or result. A complete argument may be projected as a provisional live
 diff while streaming. Only the actual host result and resulting workspace
-state determine a completed change record. For a Code Mode cell, outer script
-completion alone does not prove a nested patch succeeded. Matching native Codex
-tool-result evidence can confirm it independently of printed JavaScript output.
-Without that evidence, nested application remains unconfirmed. A cell that yields
-remains unfinished until its host wait result is terminal.
+state determine a completed change record. A yielded call remains unfinished
+until its host continuation is terminal. Saved file differences are applied
+changes: a later command or test failure does not undo bytes already written.
+Command exit codes and native tool results remain separate diagnostic facts.
+They never gate whether a saved file difference participates in review,
+composition, or rename tracking. There is no receipt-driven change-state
+transition, including when reading older retained records.
 
 The observer captures bounded pre-edit UTF-8 contents for paths named by a
-complete patch. It later compares those snapshots with the resulting files.
-If source cannot be captured completely, the affected review entry is marked
-incomplete instead of inventing a diff. A successful host result may produce an
-applied or no-op record. A failed result is never reported as applied, even if
-some files changed; the visible partial difference remains reviewable and the
-failure is retained in history. An unfinished call has no completed record.
-Storage failure must not expose dependent review evidence as durable.
+complete patch and compares them with the resulting files. Missing source is
+retained as incomplete file evidence rather than an invented diff. Calls with
+no file differences remain in command history without a new change ID.
+An unfinished call has no completed record. Storage failure must not expose
+dependent review evidence as durable.
 
 ### Command effects
 
@@ -54,63 +54,45 @@ target, and a dangling link is omitted. Capture never follows a final symlink
 or blocks on a special file. Content that is not UTF-8 or contains NUL is kept
 as size and hash, and a symlink as its target.
 
-After the terminal host result, Mekugi compares captured paths and listed
-destinations. Every non-declared command also receives a stateless change-time
-sweep of the selected metadata directory, or its absolute workdir when no
-metadata directory exists. Outside-root paths require a named scope. The
-record states the outcome, the command labels, the host exit code when
-visible, the command class, and its coverage:
+After the terminal host result, Mekugi compares only captured write paths and
+explicitly listed destinations. It does not sweep the workspace or infer authorship
+from timestamps. Unknown dynamic writers, tests, and generators without derived
+output paths do not acquire unrelated filesystem changes. Capture timeout retains
+a diagnostic, not a fabricated workspace-wide change.
 
-| Host result | Status |
-| --- | --- |
-| Native exit 0, exact coverage, no overlap | `completed` |
-| Native exit 0, overlap or incomplete coverage | `completed; attribution shared` or `completed; partial coverage` |
-| Native nonzero exit, or an aborted or unrecognized result | `failed; observed effects` |
-| Code Mode terminal result with matched native tool results | Per-tool success/failure and shell exit codes determine the outcome; `--history` retains these receipts |
-| Code Mode `Script completed` without native results | `changes observed`; nested exit codes remain unavailable in `--history` |
-| Code Mode `Script failed` or `Script terminated` | `failed; observed effects` |
-| Yielded session or running cell | pending until a `write_stdin` result shows the exit or an unknown session, or a terminal `wait` result |
+The record keeps command labels, actual host exit codes when available, and capture
+diagnostics for `--history`. A nonzero exit is a command failure, not a failed
+file change. Native receipts retain per-tool results for Code Mode; absent receipts
+do not invent exit codes or delay captured file changes. Yielded calls wait for
+their terminal `write_stdin` or `wait` result before capture completes.
 
-Coverage is `exact` only when all changed paths have captured baselines and the
-required sweep completes without outside-scope findings. Unbased findings or
-incomplete baselines make coverage `partial`; an unavailable or truncated sweep
-makes it `unswept`. A deletion and an addition with
-identical, nonempty content form one move. A created copy names its source when the
-content matches. Binary content is shown as sizes and hashes rather than
-rows, and a symlink change as its link target. A path that could not be
-compared is incomplete. A command with no observed effect is retained without
-a change ID. A successful edit receipt requires `completed`, `exact` coverage,
-complete evidence, and no overlapping writer window.
+Coverage describes only the captured scope: complete comparisons are `exact`;
+incomplete baselines are `partial`. A deletion and an addition with identical,
+nonempty content form one move. A created copy names its source when the content
+matches. Binary content is shown as sizes and hashes rather than rows, and a
+symlink change as its link target. A path that could not be compared is incomplete.
+A command with no observed effect is retained without a change ID. Edit summaries
+describe saved file differences independently of the command exit status.
 
-The sweep compares inode change times with a marker's filesystem time, not the
-router's wall clock. It is bounded to 100 ms and 50,000 entries. Network and FUSE
-roots are unswept. It prunes VCS metadata and plain `.gitignore`, `.ignore`, and
-`.rgignore` patterns even without a repository. Without governing ignore files,
-dependency directories, Python bytecode caches, and directories containing
-`CACHEDIR.TAG` or `pyvenv.cfg` are also pruned. Named ignored paths remain captured.
-New inodes show unbased content labeled `new file or replacement`, never a guessed
-Create action. Other unknown baselines show size/hash or unbased content when birth
-time is unavailable. A changed directory with no explaining entry reports removed
-or renamed entries without inventing names.
+Sibling calls emitted in one response and completed in one request share
+one record. Overlapping writer windows retain call references or change IDs for
+diagnostics; same-cell patch paths belong to their patch records. No record is
+finalized without a terminal result. The overlap registry is process-local;
+restart preserves captured scope but does not revive running windows.
 
-Swept sibling calls emitted in one response and completed in one request share
-one record. Other overlapping writer windows are identified as `observed alongside`
-call references or retained change IDs; their scoped paths and same-cell patch
-paths are excluded from sweep evidence. Records describe changes observed during
-a window, not proof of causation. Yielded windows remaining across turns become
-background windows: they stop producing overlap tags, and later sweep findings
-name the background session or cell. No record is finalized without a terminal
-result. The overlap registry is process-local; restart preserves captured scope
-but does not restore overlap or background tags.
+Capture is read-only and installs no hooks or configuration. Changes outside the
+agent's derived write scope are excluded, including automatic hook edits to other
+files. If a hook or external writer changes the same scoped file before the host
+returns, before/after evidence cannot separate that writer's content from the
+agent's edit. The recorder must not claim otherwise.
 
-Review origin is direct by default. Tools that choose content or paths, including
-formatters, package managers, generators, and opaque commands, produce tool-managed
-effects. Interpreter edits and declared file operations remain direct. An ambiguous
-sweep finding is direct only when every undeclared statement is direct. Default
-`mchanges` shows managed effects as rows, collapsing more than 20; explicit paths
-and `--history` show their evidence. Summary counts distinguish tool-managed files,
-and managed-only records are labeled in `--list`. Receipts group managed files into
-one line; the saved DIFF view groups them into one display-only card per record.
+Review origin is direct by default. Explicit formatter and dependency-manager
+commands produce tool-managed effects. Interpreter edits and declared file
+operations remain direct. Default `mchanges` shows managed effects as rows,
+collapsing more than 20; explicit paths and `--history` show their evidence.
+Summary counts distinguish tool-managed files, and managed-only records are
+labeled in `--list`. Receipts group managed files into one line; the saved DIFF
+view groups them into one display-only card per record.
 
 Interpreter scope providers parse Python and JavaScript/TypeScript source without
 evaluation. Literal eval arguments, stdin heredocs, and bounded script files are
@@ -123,7 +105,7 @@ with a depth bound. Unresolved targets, dynamic evaluation/loading, and unknown
 working-directory changes leave the scope open. Node and Deno write permissions
 provide bounded scope hints; subprocess/native-code permissions reopen them.
 Deno named permission sets are read from bounded local configuration, never by
-launching Deno. Every provider-scoped command still receives the change sweep.
+launching Deno. Only the derived scope is compared after execution.
 
 Literal `find` tests feeding a supported writer through `-exec` or `xargs` derive
 scopes without executing the writer. Known read-only `rg -l`, `grep -rl`, `fd`,
@@ -158,26 +140,14 @@ manager scopes include their local manifests and lockfiles. These are tool-manag
 effects. Direct paths take capture priority; a path also in a managed scope stays
 direct with shared-origin attribution.
 
-Go tests, generators, and fixers snapshot bounded existing contents of explicitly named
-local package directories before execution, including subdirectories but excluding
-built-in dependency and VCS directories. Root files take priority over descendants.
-Snapshots share the existing file, byte, enumeration, and capture-time limits; they
-are baseline hints, not a claim that the program cannot write elsewhere. An
-existing managed package or formatter path enumerated but not baselined after a capture bound is checked
-against the observation clock after the call, including when broad sweep ignore
-rules hide it. An unchanged hint does not create a review file or incomplete
-count. A changed or deleted hint has unknown before-content and partial
-coverage, not an invented diff. If the file clock is incomparable, the
-named scope remains incomplete instead of claiming it was unchanged. Unknown
-flags stop package operand extraction, and test arguments after `-args` are not
-packages. Import paths are not resolved by executing Go. The normal sweep still
-reports new or outside-scope paths without inventing a baseline. Binary snapshots
-retain size/hash evidence rather than text line counts.
-
-Completed observations may supply a process-local last-seen content cache, bounded
-to 64 MiB and 4,096 entries. Sweep diffs from that cache say `since last observed
-(change ID)` and remain partial with unknown counts. They are not call baselines.
-Deletion evicts content; restart loses the cache without losing durable records.
+Explicit `go fix` package operands scope existing Go source files, within the
+shared file, byte, enumeration, and capture-time limits. Tests and generators do
+not imply ownership of their package directories. Import paths are not resolved
+by executing Go. An existing formatter/fixer path enumerated but not baselined
+after a capture bound is checked against a filesystem-clock marker after the call.
+An unchanged path creates no review. A changed or deleted path has unknown
+before-content and partial coverage, not an invented diff. An incomparable clock
+leaves the named scope incomplete. No last-seen cache supplies substitute baselines.
 
 ### Bounded read command
 
@@ -193,16 +163,18 @@ mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH .
 A bare `mchanges` or `--mine` selects every allocated ID owned by the calling
 thread, including explicit markers for retired evidence. Forked threads inherit
 their visible stream under the fork's identity; resume uses the durable identity.
-`--list` uses short agent-facing status and coverage labels instead of the
-command transcript. It compresses consecutive comparable complete IDs and
+`--list` shows IDs and counts, without execution outcomes or capture diagnostics.
+It compresses consecutive comparable complete IDs and
 shows known direct `+N -N` counts. Partial or unswept IDs remain separate;
-`?` marks unknown direct counts; `shared` retains overlapping-writer
-attribution, while `managed:N` counts tool-managed review
+`?` marks unknown direct counts, while `managed:N` counts tool-managed review
 files excluded from the default diff. Pending and retired IDs remain visible;
 sibling threads' IDs are not exposed. Explicit IDs can still be read across
-agents in the shared namespace. The default view shows each status and unified
-file diff. `--summary` gives added and removed line counts by path across
-selected records, shortening paths inside the selected workspace. By default,
+agents in the shared namespace. The default view shows each ID and unified
+file diff. `--summary` prefixes each path's added and removed line counts with the same
+file status as the diff pane (`A`, `M`, `D`, `R`, `RM`, or `UU`), aggregating across
+selected records in durable capture order, regardless of argument or author order.
+A created-then-deleted file has no summary row, matching the empty saved diff.
+Paths inside the selected workspace are shortened. By default,
 managed files become one count row with a separate unavailable-count tally;
 explicit path filters expand individual managed paths. Pending, retired and never-allocated selections get per-ID
 status rows without hiding the remaining summary. It is not a net workspace diff;
@@ -217,9 +189,10 @@ same review composition as the live view. It follows moves and emits canonical
 absolute paths; it never reads the live workspace. Pending or retired history and
 inconsistent, incomplete, partial-coverage, or binary capture chains
 fail rather than claim a complete net diff; ordinary reads preserve that evidence.
-Complete observed diffs remain composable when tool success is unconfirmed or
-failed, including historical records predating native confirmation. Their outcome
-labels remain above the composed diff and explicitly do not claim a success receipt.
+Complete captured diffs remain composable regardless of command exit status,
+including older retained records. Normal views
+describe captured file differences, not command outcomes; execution and capture
+diagnostics are available in `--history` only.
 Path filters apply to the composed files. An empty composition is explicit.
 Mutations still require explicit IDs; `--mine` never selects writes. `--history` includes the original observed patch or command input, the
 host result, and for a command the observed scope. Paths after `--` filter review files without re-reading the
@@ -233,26 +206,16 @@ attempts or a pending change completing cannot change an existing continuation;
 its original pending/retired markers remain visible. Older receipts without a
 frozen selection retain their digest-check behavior. Pending, expired, or incomplete
 history is explicit; no missing evidence becomes an empty successful diff.
-Completed patch observations without application confirmation display `changes
-observed`, or `no changes observed` when no differences were captured. Incomplete
-file evidence displays `observation incomplete`; its per-file reason remains
-visible. Confirmed success, no-op, and rejection retain their outcome labels.
-These are observation labels,
-not success claims. Only unfinished work is `pending`. The live diff uses the same
-labels. Confirmation limitations belong in `--history`, not a pending-looking
-headline. For a Code Mode cell, an observed workspace effect without a matched
-native receipt remains application unconfirmed. Outer JavaScript completion does
-not prove the nested `apply_patch` result. Direct stock patch success requires both its successful
-host result and a complete workspace observation.
+In `--history`, a record with file changes is `applied`; a no-effect attempt
+is `no changes`. The original command's results and errors are separate debug
+information. Only unfinished work is `pending`.
 
-A confirmed successful edit can publish a generated `Create` or `Edit`
-commentary summary. A completed Code Mode cell with a complete observed
-workspace effect publishes the same summary for that observed effect; it
-remains application unconfirmed unless a native receipt confirms it. Classification uses the same
-observed review files as `mchanges`, including whether a path existed before
-the edit. Each summary carries a bounded copy of the observed hunks. Failed,
-unchanged, and unfinished calls do not publish a summary. These messages are
-user-only presentation, not a tool result or application receipt.
+Completed file changes can publish a generated `Create` or `Edit` commentary
+summary, including changes left by a command that exits nonzero. Classification
+uses the same captured review files as `mchanges`, including whether a path
+existed before the edit. Each summary carries a bounded copy of the captured
+hunks. Unchanged and unfinished calls publish no edit summary. These messages
+are user-only presentation, not substituted tool results.
 
 ### Revert and apply
 
@@ -423,8 +386,12 @@ the tool or program that wrote it (`apply_patch`, or the observed program such
 as `sed` or `python3`). The navigator's Changes tab lists unreviewed changes in
 capture order as a graph with one lane per caller, branching from `main` at the
 caller's first change; each row shows the change ID, source, file count, known
-line counts, and whether it was applied, only observed, or incomplete. A file's
-section heading lists the changes it composes. Next/previous change navigation
+line counts. Missing line counts use `?`, not a command-failure glyph. A file's
+section heading lists the changes it composes. Every saved capture participates
+in composition regardless of command exit status. If retained contents cannot
+form one coherent diff, the pane shows the individual captured edits with their
+IDs instead of hiding them behind a composition error or inventing a net diff.
+Next/previous change navigation
 opens each file of each change in that order. A caller filter shows one
 caller's changes: other callers' captures compose as reviewed baseline, so the
 shown diff remains the exact net effect of that caller's edits, and the heading
@@ -495,8 +462,8 @@ Acceptance:
 6. Live `cat`, file-operation, and interpreter projections are presentation
    only and preserve stock PTY, yield, result, and `write_stdin` behavior.
 7. A declared native or literal Code Mode command produces a record with the
-   status from the outcome table, reviewable effects, and exact coverage. A
-   nonzero exit never shows `completed` or publishes a receipt.
+   actual command outcome and reviewable scoped effects. A nonzero exit is retained
+   in debug history; saved edits still publish their change receipt.
 8. A yielded command is finalized only by its terminal continuation result.
    Replaying the same input neither re-reads the workspace nor allocates a
    second change ID.

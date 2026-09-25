@@ -61,7 +61,7 @@ func execFixerScope(input execProviderInput) execProviderResult {
 		}
 		label += " " + first
 	case "go":
-		if first == "test" || first == "generate" || first == "fix" {
+		if first == "fix" {
 			return execGoPackageScope(input)
 		}
 		if first != "get" && !(first == "mod" && len(args) > 1 && args[1] == "tidy") {

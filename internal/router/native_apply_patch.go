@@ -409,7 +409,7 @@ func stockPatchResultState(toolName string, raw json.RawMessage) (terminal, repo
 	}
 }
 
-func nativePatchReview(files []nativePatchFileSnapshot, remember func(string, string, bool)) ([]mekugi.ReviewFile, bool) {
+func nativePatchReview(files []nativePatchFileSnapshot) ([]mekugi.ReviewFile, bool) {
 	reviews := make([]mekugi.ReviewFile, 0, len(files))
 	complete := true
 	appendDifference := func(pathBefore, pathAfter, before, after string, existedBefore, existsAfter bool) {
@@ -452,12 +452,6 @@ func nativePatchReview(files []nativePatchFileSnapshot, remember func(string, st
 			complete = false
 			continue
 		}
-		if remember != nil {
-			remember(readPath, after, afterExists)
-			if move {
-				remember(file.BeforePath, sourceAfter, sourceExists)
-			}
-		}
 		if !move {
 			appendDifference(file.BeforePath, readPath, file.Before, after, file.Exists, afterExists)
 			continue
@@ -495,18 +489,7 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			continue
 		}
 		correlation := callID + "\x00" + strconv.Itoa(index)
-		var after []execFileSnapshot
-		reviews, complete := nativePatchReview(observation.Files, func(path, content string, exists bool) {
-			file := execFileSnapshot{Path: path}
-			if exists {
-				info, err := os.Lstat(path)
-				if err != nil || !info.Mode().IsRegular() {
-					return
-				}
-				file.Kind, file.Content = execFileText, content
-			}
-			after = append(after, file)
-		})
+		reviews, complete := nativePatchReview(observation.Files)
 		// Attempts remain durable, but IDs select actual or incomplete file
 		// evidence, not successful no-ops or rejected patches with no effects.
 		changeID := ""
@@ -531,7 +514,6 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			ChangeID:         changeID,
 			CorrelationID:    correlation,
 			Attempt:          1,
-			Applied:          success,
 			AlreadySatisfied: success && len(reviews) == 0,
 			ReviewFiles:      reviews,
 			Report:           resultText,
@@ -565,20 +547,8 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 		if err := p.replayStore.put(context.WithoutCancel(ctx), workspace, map[string]mekugiHistory{derivedCallID: attempt}); err != nil {
 			return err
 		}
-		namespace := workspace
-		if p.replayStore != nil {
-			namespace += "\x00" + p.replayStore.scoped(ctx).handleNamespace()
-		}
-		for _, file := range after {
-			if changeID != "" {
-				p.execLastSeen.put(namespace, changeID, file)
-			}
-		}
-		// A completed Code Mode cell reports its captured workspace differences,
-		// still unconfirmed as nested patch success.
-		observed := !confirmed && history.ToolName != applyPatchToolName && reportedSuccess && complete && len(reviews) != 0
-		if success || observed {
-			_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, observed, p.activity)
+		if len(reviews) != 0 {
+			_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, p.activity)
 		}
 	}
 	return nil

@@ -189,10 +189,27 @@ func (s *mekugiReplayStore) read(workspace, callID string, commentary bool) (rep
 		return replayRecord{}, false, errors.New("replay record exceeds size limit")
 	}
 	var r replayRecord
+	// Older records contain a tool-success flag in History. Accept it only
+	// at the wire boundary; it is not part of the saved filesystem changes.
+	wire := struct {
+		*replayRecord
+		History struct {
+			*mekugiHistory
+			LegacyToolSuccess bool `json:"Applied"`
+			ExecObservation   *struct {
+				execObservation
+				LegacySweep bool `json:"Sweep"`
+			}
+		}
+	}{replayRecord: &r}
+	wire.History.mekugiHistory = &r.History
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&r); err != nil {
+	if err := dec.Decode(&wire); err != nil {
 		return r, false, fmt.Errorf("decode replay record: %w", err)
+	}
+	if wire.History.ExecObservation != nil {
+		r.History.ExecObservation = &wire.History.ExecObservation.execObservation
 	}
 	if err := dec.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return r, false, errors.New("trailing replay record data")

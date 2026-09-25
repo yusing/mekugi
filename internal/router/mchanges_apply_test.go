@@ -19,7 +19,7 @@ func putTestChange(t *testing.T, ctx context.Context, store *mekugiReplayStore, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	history := mekugiHistory{ChangeID: id, CorrelationID: correlation, Applied: true, ReviewFiles: files}
+	history := mekugiHistory{ChangeID: id, CorrelationID: correlation, ReviewFiles: files}
 	if err := store.put(ctx, workspace, map[string]mekugiHistory{correlation: history}); err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestMChangesRevertIsRecordedAndRevertable(t *testing.T) {
 			map[string]any{"type": "function_call_output", "call_id": callID, "output": nativeExecOutput("Process exited with code 0")},
 		})
 		history, found, err := proxy.replayStore.lookup(t.Context(), workspace, callID+":exec:1")
-		if err != nil || !found || history.ChangeID == "" || !history.Applied {
+		if err != nil || !found || history.ChangeID == "" {
 			t.Fatalf("%q record = %+v found=%v err=%v", command, history, found, err)
 		}
 		return history
@@ -367,7 +367,7 @@ func TestMChangesFrontendRevertsWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	history := mekugiHistory{ChangeID: id, CorrelationID: "frontend-edit", Applied: true, ReviewFiles: []mekugi.ReviewFile{
+	history := mekugiHistory{ChangeID: id, CorrelationID: "frontend-edit", ReviewFiles: []mekugi.ReviewFile{
 		mekugi.RenderReviewFile("a.txt", "a.txt", "one\ntwo\n", "one\nTWO\n"),
 	}}
 	if err := store.put(ctx, workspace, map[string]mekugiHistory{"frontend-edit": history}); err != nil {
@@ -460,7 +460,7 @@ func TestMChangesSkipsRecordedSymlinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacy := mekugiHistory{ChangeID: legacyID, CorrelationID: "legacy", Applied: true, ExecObservation: &execObservation{},
+	legacy := mekugiHistory{ChangeID: legacyID, CorrelationID: "legacy", ExecObservation: &execObservation{},
 		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("", "old-link", "", "-> target\n")}}
 	if err := store.put(ctx, workspace, map[string]mekugiHistory{"legacy": legacy}); err != nil {
 		t.Fatal(err)
