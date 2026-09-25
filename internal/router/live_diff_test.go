@@ -364,8 +364,17 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	}
 	// Following fills the viewport through the final row of this replacement.
 	// New files must not move the paused selection or its visible source row.
-	before := waitFor("▎M second.go", "PAUSED")
-	if !strings.Contains(ansi.Strip(before), "▎M second.go") {
+	selectedFileHighlighted := func(output, name string, height int) bool {
+		for row := 1; row <= height; row++ {
+			raw := liveDiffFrameRawRow(output, row)
+			if strings.Contains(ansi.Strip(raw), name) && strings.Contains(raw, livediff.DarkTheme.SelectionBackground()) {
+				return true
+			}
+		}
+		return false
+	}
+	before := waitFor("M second.go", "PAUSED", livediff.DarkTheme.SelectionBackground())
+	if !selectedFileHighlighted(before, "M second.go", 20) {
 		t.Fatalf("navigation did not select second.go: %q", liveDiffFrameRow(before, 5))
 	}
 	lastRow := func(output string, row int) string {
@@ -378,8 +387,8 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	_, beforeSource, _ := strings.Cut(lastRow(before, 2), "│")
 	liveDiffTestChange(t, store, workspace, "three", "first.go")
 	liveDiffTestChange(t, store, workspace, "four", "third.go")
-	after := waitFor("▎M second.go", "3/3 · tree", "PAUSED")
-	if !strings.Contains(ansi.Strip(after), "▎M second.go") {
+	after := waitFor("M second.go", "3/3 · tree", "PAUSED", livediff.DarkTheme.SelectionBackground())
+	if !selectedFileHighlighted(after, "M second.go", 20) {
 		t.Fatalf("new files moved paused selection: %q", liveDiffFrameRow(after, 5))
 	}
 	_, source, _ := strings.Cut(lastRow(after, 2), "│")
@@ -389,11 +398,14 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	if err := pty.Setsize(terminal, &pty.Winsize{Rows: 25, Cols: 100}); err != nil {
 		t.Fatal(err)
 	}
-	waitFor("▎M second.go")
+	resized := waitFor("M second.go", livediff.DarkTheme.SelectionBackground())
+	if !selectedFileHighlighted(resized, "M second.go", 25) {
+		t.Fatal("resize lost selected file highlight")
+	}
 	if _, err := terminal.Write([]byte("r")); err != nil {
 		t.Fatal(err)
 	}
-	if output := waitFor("FOLLOW", "▎M third.go"); !strings.Contains(ansi.Strip(output), "▎M third.go") {
+	if output := waitFor("FOLLOW", "M third.go", livediff.DarkTheme.SelectionBackground()); !selectedFileHighlighted(output, "M third.go", 25) {
 		t.Fatalf("resume did not select latest edit: %s", output)
 	}
 	if _, err := terminal.Write([]byte{3}); err != nil {

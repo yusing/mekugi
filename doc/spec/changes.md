@@ -375,7 +375,9 @@ path ordering, with folders first in tree mode. Next/previous file navigation
 uses the matching set, revealing destinations inside collapsed folders.
 
 The navigator and diff have independent viewports. Keyboard focus is visible;
-mouse scrolling targets the region under the pointer. Opening a file from the
+the active list row is shaded in place rather than marked by a separate arrow
+column, leaving that cell available for file names and graph rows.
+Mouse scrolling targets the region under the pointer. Opening a file from the
 navigator or a change starts at its section heading. Next/previous file
 navigation restores a position only where the reader stopped before jumping
 away; scrolling past a file keeps none. Without a title row, the open file's

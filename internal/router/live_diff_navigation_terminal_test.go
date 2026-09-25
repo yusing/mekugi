@@ -75,7 +75,7 @@ func TestLiveDiffTerminalFileNavigator(t *testing.T) {
 	paged := ui.frame(t, func(frame string) bool {
 		for row := 2; row <= 22; row++ {
 			line := liveDiffFrameRow(frame, row)
-			if strings.Contains(line, ">") && strings.Contains(line, "file020.go") {
+			if strings.Contains(line, "file020.go") && strings.Contains(liveDiffFrameRawRow(frame, row), livediff.DarkTheme.SelectionBackground()) {
 				return true
 			}
 		}
@@ -86,7 +86,8 @@ func TestLiveDiffTerminalFileNavigator(t *testing.T) {
 	}
 	ui.write(t, "g")
 	ui.frame(t, func(frame string) bool {
-		return strings.Contains(liveDiffFrameRow(frame, 3), "internal/router") && strings.Contains(liveDiffFrameRow(frame, 3), ">")
+		return strings.Contains(liveDiffFrameRow(frame, 3), "internal/router") &&
+			strings.Contains(liveDiffFrameRawRow(frame, 3), livediff.DarkTheme.SelectionBackground())
 	})
 	// Filtering narrows the persistent dock; Enter opens that file.
 	ui.write(t, "/file023.go")

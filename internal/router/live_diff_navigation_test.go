@@ -318,6 +318,37 @@ func TestLiveDiffNavigationFolderArrow(t *testing.T) {
 	}
 }
 
+func TestLiveDiffNavigationSelectionUsesRowFill(t *testing.T) {
+	files := []liveDiffFile{navigationFile("a.go"), navigationFile("b.go")}
+	var nav liveDiffNavigation
+	nav.flat = true
+	nav.rebuild(files, "")
+	nav.focused = true
+	nav.cursor = 1
+	rows := nav.render(files, nil, 0, 16, 4, livediff.DarkTheme)
+	for i, row := range rows[2:] {
+		if i == 0 {
+			if strings.Contains(row, livediff.DarkTheme.SelectionBackground()) {
+				t.Fatalf("open file should not compete with focused cursor: %q", row)
+			}
+			continue
+		}
+		if !strings.HasPrefix(row, livediff.DarkTheme.SelectionBackground()) ||
+			!strings.HasSuffix(row, "\x1b[49m") || ansi.StringWidth(row) != 15 {
+			t.Fatalf("selected and focused rows should fill the available width: %q", row)
+		}
+		if strings.HasPrefix(ansi.Strip(row), ">") || strings.HasPrefix(ansi.Strip(row), "▎") {
+			t.Fatalf("row retained a marker column: %q", row)
+		}
+	}
+	nav.focused = false
+	rows = nav.render(files, nil, 0, 16, 4, livediff.DarkTheme)
+	if !strings.HasPrefix(rows[2], livediff.DarkTheme.SelectionBackground()) ||
+		strings.Contains(rows[3], livediff.DarkTheme.SelectionBackground()) {
+		t.Fatalf("unfocused file selection = %q", rows)
+	}
+}
+
 // A compacted folder chain that splits keeps its new ancestor in view, and
 // rows are never scrolled off while space remains below.
 func TestLiveDiffNavigationChainSplitKeepsAncestor(t *testing.T) {

@@ -571,14 +571,6 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 			break
 		}
 		entry := n.entries[index]
-		// One marker cell, as in the Changes tab, so rows align with the heading.
-		marker := " "
-		if entry.file == selected && entry.file >= 0 {
-			marker = "▎"
-		}
-		if n.focused && index == n.cursor {
-			marker = ">"
-		}
 		indent := strings.Repeat("  ", min(entry.depth, 4))
 		label, stats := "", ""
 		if entry.file < 0 {
@@ -604,13 +596,13 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 				stats = n.dots[entry.file] + stats
 			}
 		}
-		available := max(0, contentWidth-1-ansi.StringWidth(stats))
+		available := max(0, contentWidth-ansi.StringWidth(stats))
 		label = ansi.Truncate(label, available, "…")
-		line := marker + label + stats
-		if marker != " " {
-			line = theme.Accent() + marker + "\x1b[39m" + label + stats
+		line := ansi.Truncate(label+stats, contentWidth, "")
+		if (n.focused && index == n.cursor) || (!n.focused && entry.file == selected && entry.file >= 0) {
+			line = liveDiffSelectRow(line, contentWidth, theme)
 		}
-		out[row] = ansi.Truncate(line, contentWidth, "")
+		out[row] = line
 	}
 	if scrollbar {
 		track := rows - 2
@@ -625,6 +617,14 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 		}
 	}
 	return out
+}
+
+// liveDiffSelectRow marks the active row without reserving a marker column.
+// Inline style resets restore the fill, and the row fills its available width.
+func liveDiffSelectRow(line string, width int, theme livediff.Theme) string {
+	fill := theme.SelectionBackground()
+	line = strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m"+fill)
+	return fill + line + strings.Repeat(" ", max(0, width-ansi.StringWidth(line))) + "\x1b[49m"
 }
 
 // liveDiffStatus is a file row's net change, coded like git's short status:

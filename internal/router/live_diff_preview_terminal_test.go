@@ -124,9 +124,17 @@ func (h *liveDiffTerminalHarness) quit(t *testing.T) {
 }
 
 func liveDiffFrameRow(frame string, row int) string {
-	_, text, _ := strings.Cut(frame, fmt.Sprintf("\x1b[%d;1H\x1b[0m\x1b[2K", row))
+	return ansi.Strip(liveDiffFrameRawRow(frame, row))
+}
+
+func liveDiffFrameRawRow(frame string, row int) string {
+	start := strings.LastIndex(frame, fmt.Sprintf("\x1b[%d;1H\x1b[0m\x1b[2K", row))
+	if start < 0 {
+		return ""
+	}
+	text := frame[start:]
 	text, _, _ = strings.Cut(text, fmt.Sprintf("\x1b[%d;1H", row+1))
-	return ansi.Strip(text)
+	return text
 }
 
 func TestLiveDiffTerminalStreamingRegion(t *testing.T) {

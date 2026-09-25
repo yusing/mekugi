@@ -142,12 +142,12 @@ func TestLiveDiffChangesGraphLanesAndJumps(t *testing.T) {
 	joined := strings.Join(plain, "\n")
 	for _, want := range []string{
 		"Changes  4 · @all",
-		" ● amber1 apply_patch",
-		" ├─╮ script_tests",
-		" │ ● apple1 apply_patch",
-		" ├─┼─╮ pane_trace",
-		" │ │ ● arch1 python",
-		" ● │ │ amber2 sed",
+		"● amber1 apply_patch",
+		"├─╮ script_tests",
+		"│ ● apple1 apply_patch",
+		"├─┼─╮ pane_trace",
+		"│ │ ● arch1 python",
+		"● │ │ amber2 sed",
 		"2f",
 	} {
 		if !strings.Contains(joined, want) {
@@ -199,6 +199,12 @@ func TestLiveDiffChangesRowFormat(t *testing.T) {
 	}
 	if row := ansi.Strip(l.render(false, false, "", 24, 4, livediff.DarkTheme)[2]); strings.Contains(row, "apply") || !strings.Contains(row, "apple1 1f +1 -1") {
 		t.Fatalf("narrow change row = %q, want the source omitted", row)
+	}
+	focused := l.render(true, false, "", 24, 4, livediff.DarkTheme)[2]
+	if !strings.HasPrefix(focused, livediff.DarkTheme.SelectionBackground()) ||
+		!strings.HasSuffix(focused, "\x1b[49m") || ansi.StringWidth(focused) != 23 ||
+		strings.HasPrefix(ansi.Strip(focused), ">") {
+		t.Fatalf("focused change row should fill in place without an arrow: %q", focused)
 	}
 }
 

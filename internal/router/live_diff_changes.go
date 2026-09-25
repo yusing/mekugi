@@ -286,10 +286,6 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 			}
 			graph.WriteString(color + glyph + pad + "\x1b[0m")
 		}
-		marker := " "
-		if focused && index == l.cursor {
-			marker = theme.Accent() + ">" + "\x1b[0m"
-		}
 		name, color := style(node.Caller)
 		// A change row is label, optional source, then callerTag when its lane is shared.
 		label, source, callerTag, stats := "", "", "", ""
@@ -321,14 +317,18 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 				stats = liveDiffCountStats(livediff.Counts{Added: -1, Removed: -1}, theme)
 			}
 		}
-		prefix := marker + graph.String()
+		prefix := graph.String()
 		available := max(0, contentWidth-ansi.StringWidth(prefix)-ansi.StringWidth(stats))
 		// The source is optional detail: omit it rather than truncate the row.
 		if ansi.StringWidth(label+source+callerTag) > available {
 			source = ""
 		}
 		label += source + callerTag
-		out[row] = ansi.Truncate(prefix+ansi.Truncate(label, available, "…")+stats, contentWidth, "")
+		line := ansi.Truncate(prefix+ansi.Truncate(label, available, "…")+stats, contentWidth, "")
+		if focused && index == l.cursor {
+			line = liveDiffSelectRow(line, contentWidth, theme)
+		}
+		out[row] = line
 	}
 	return out
 }
