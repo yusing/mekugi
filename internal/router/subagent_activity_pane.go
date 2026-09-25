@@ -62,6 +62,7 @@ type activityPaneAgent struct {
 	Turns        uint64    `json:",omitzero"`
 	Cost         float64   `json:",omitzero"`
 	CostKnown    bool      `json:",omitzero"`
+	CostPartial  bool      `json:",omitzero"`
 	// Cumulative provider-reported tokens for the agent's responses.
 	InputTokens  uint64 `json:",omitzero"`
 	OutputTokens uint64 `json:",omitzero"`
@@ -159,20 +160,26 @@ func (a *subagentActivity) paneNoticesLocked(root string) []map[string]json.RawM
 
 // paneAgentsLocked lists the pane root and its observed children in observation order.
 func (a *subagentActivity) paneAgentsLocked() []activityPaneAgent {
-	var nodes []*activityThread
+	var threads []string
 	for thread, node := range a.threads {
 		if !node.conflicted && a.rootLocked(thread) == a.pane.root {
-			nodes = append(nodes, node)
+			threads = append(threads, thread)
 		}
 	}
-	slices.SortFunc(nodes, func(x, y *activityThread) int { return x.order - y.order })
-	agents := make([]activityPaneAgent, 0, len(nodes))
-	for _, node := range nodes {
+	slices.SortFunc(threads, func(x, y string) int { return a.threads[x].order - a.threads[y].order })
+	agents := make([]activityPaneAgent, 0, len(threads))
+	for _, thread := range threads {
+		node := a.threads[thread]
+		// Usage and cost come from the canonical per-thread report, the same
+		// totals as the Markdown usage report; only streaming is estimated here.
+		report, observed := a.usage.snapshot(thread)
 		agents = append(agents, activityPaneAgent{
 			Name: node.name, Role: node.role, Responding: node.responding > 0, Final: node.final,
 			Started: node.started, LastResponse: node.lastResponse, Turns: node.turns,
-			Cost: node.cost.cachedInput + node.cost.uncachedInput + node.cost.output, CostKnown: node.cost.known && node.usageObserved,
-			InputTokens: node.inputTokens, OutputTokens: node.outputTokens + node.streamed/activityBytesPerToken,
+			Cost:        report.cost.cachedInput + report.cost.uncachedInput + report.cost.output,
+			CostKnown:   observed && report.cost.known && !report.Incomplete,
+			CostPartial: report.missingUsage != 0,
+			InputTokens: report.InputTokens, OutputTokens: report.OutputTokens + node.streamed/activityBytesPerToken,
 		})
 	}
 	return agents
@@ -284,42 +291,16 @@ func (a *subagentActivity) endResponse(thread string) {
 	}
 }
 
-// syncUsage mirrors the canonical thread-usage calculator rather than pricing
-// the same provider response independently for the roster.
-func (a *subagentActivity) syncUsage(thread string, counts tokenCounts, report tokenUsageReport, complete bool, fallback tokenCost) {
+// syncUsage drops the streamed estimate once the canonical usage report
+// includes the response.
+func (a *subagentActivity) syncUsage(thread string) {
 	if a == nil {
 		return
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if node := a.threads[thread]; node != nil && !node.conflicted && !a.closed {
-		node.usageObserved = true
-		canonical := complete && !counts.Incomplete && report.missingUsage == 0
-		if canonical {
-			node.inputTokens = report.InputTokens
-			node.outputTokens = report.OutputTokens
-		} else {
-			node.inputTokens += counts.InputTokens
-			node.outputTokens += counts.OutputTokens
-		}
-		if canonical && report.cost.known {
-			node.cost = report.cost
-		} else {
-			node.cost.add(fallback)
-		}
 		node.streamed = 0
-		a.wakePaneLocked()
-	}
-}
-
-func (a *subagentActivity) markUsageGap(thread string) {
-	if a == nil {
-		return
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if node := a.threads[thread]; node != nil && !node.conflicted && !a.closed {
-		node.cost.known = false
 		a.wakePaneLocked()
 	}
 }

@@ -12,32 +12,33 @@ import (
 	"github.com/charmbracelet/x/vt"
 )
 
-func TestTerminalGeometrySeparatesRosterFromCodexAndFeed(t *testing.T) {
+func TestTerminalGeometryRosterSpansBottomWidth(t *testing.T) {
 	const width, height, split, feedSplit, rosterHeight = 160, 44, 68, 26, 10
 	l := terminalGeometry(width, height, split, feedSplit, rosterHeight, 0, true, true)
-	if l.codex.x != 0 || l.codex.y != 0 || l.codex.w != split || l.codex.h <= 0 {
-		t.Fatalf("Codex rect = %+v", l.codex)
-	}
-	if l.roster.x != 0 || l.roster.w != split || l.roster.h != rosterHeight || l.roster.y != l.rosterHorizontal+1 {
+	if l.roster.x != 0 || l.roster.w != width || l.roster.h != rosterHeight || l.roster.y != l.rosterHorizontal+1 ||
+		l.roster.y+l.roster.h != height-1 {
 		t.Fatalf("roster rect = %+v, divider row = %d", l.roster, l.rosterHorizontal)
 	}
-	if l.codex.y+l.codex.h != l.rosterHorizontal || l.roster.y+l.roster.h != height-1 {
-		t.Fatalf("Codex and roster do not fill the left column: Codex=%+v roster=%+v divider=%d", l.codex, l.roster, l.rosterHorizontal)
+	// Both columns end at the roster divider.
+	if l.codex.x != 0 || l.codex.y != 0 || l.codex.w != split || l.codex.h != l.rosterHorizontal {
+		t.Fatalf("Codex rect = %+v", l.codex)
 	}
 	if l.diff.x != split+1 || l.diff.y != 0 || l.diff.h != feedSplit ||
-		l.agents.x != split+1 || l.agents.y != feedSplit+1 || l.agents.h != height-feedSplit-2 {
-		t.Fatalf("right feed geometry changed: diff=%+v agents=%+v", l.diff, l.agents)
+		l.agents.x != split+1 || l.agents.y != feedSplit+1 || l.agents.y+l.agents.h != l.rosterHorizontal {
+		t.Fatalf("right column geometry: diff=%+v agents=%+v divider=%d", l.diff, l.agents, l.rosterHorizontal)
 	}
 	if l.vertical != split || l.horizontal != feedSplit {
-		t.Fatalf("right-side split handles = (%d,%d), want (%d,%d)", l.vertical, l.horizontal, split, feedSplit)
+		t.Fatalf("split handles = (%d,%d), want (%d,%d)", l.vertical, l.horizontal, split, feedSplit)
 	}
 	if rectsOverlap(l.codex, l.roster) || rectsOverlap(l.roster, l.diff) || rectsOverlap(l.roster, l.agents) {
 		t.Fatalf("terminal regions overlap: %+v", l)
 	}
 
-	shorter := terminalGeometry(width, height, split, feedSplit, rosterHeight-3, 0, true, true)
-	if shorter.diff != l.diff || shorter.agents != l.agents {
-		t.Fatalf("resizing the left roster changed the right feed: before=%+v after=%+v", l, shorter)
+	// A taller roster shortens both columns but keeps room for a diff and feed.
+	tall := terminalGeometry(width, height, split, feedSplit, height, 0, true, true)
+	if tall.roster.w != width || tall.codex.h < 9 || tall.diff.h < 4 || tall.agents.h < 4 ||
+		tall.agents.y+tall.agents.h != tall.rosterHorizontal || tall.codex.h != tall.rosterHorizontal {
+		t.Fatalf("tall roster squeezed the columns: %+v", tall)
 	}
 
 	narrow := terminalGeometry(80, height, split, feedSplit, rosterHeight, 3, true, true)
@@ -91,6 +92,22 @@ func TestTerminalRosterFocusAndDragResize(t *testing.T) {
 	}
 	if ui.drag != 0 {
 		t.Fatalf("roster divider drag did not end: mode=%d", ui.drag)
+	}
+	// The full-width divider drags from either column, including the junction.
+	for _, x := range []int{ui.layout.vertical, 120} {
+		if err := ui.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x+1, y+1)); err != nil {
+			t.Fatal(err)
+		}
+		if ui.drag != 4 {
+			t.Fatalf("x=%d: roster divider drag mode = %d, want 4", x, ui.drag)
+		}
+		ui.drag = 0
+	}
+	if err := ui.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", ui.layout.vertical+1, ui.layout.roster.y+2)); err != nil {
+		t.Fatal(err)
+	}
+	if ui.drag == 1 {
+		t.Fatal("column border drag started inside the roster")
 	}
 }
 
@@ -195,7 +212,7 @@ func TestLiveActivitySeparateRosterSharesSelectionAndFeedState(t *testing.T) {
 	}
 }
 
-func TestTerminalPaintPlacesRosterLeftAndAgentsFeedRight(t *testing.T) {
+func TestTerminalPaintPlacesRosterBelowAndAgentsFeedRight(t *testing.T) {
 	const width, height, split, feedSplit, rosterHeight = 160, 44, 68, 26, 10
 	l := terminalGeometry(width, height, split, feedSplit, rosterHeight, 0, true, true)
 	ui := &terminalUI{
@@ -233,9 +250,16 @@ func TestTerminalPaintPlacesRosterLeftAndAgentsFeedRight(t *testing.T) {
 		}
 		return strings.Join(rows, "\n")
 	}
-	left, right := regionText(ui.layout.roster), regionText(ui.layout.agents)
-	if !strings.Contains(left, "alpha") || !strings.Contains(left, "beta") {
-		t.Fatalf("left roster region does not contain both agents: %q", left)
+	bottom, right := regionText(ui.layout.roster), regionText(ui.layout.agents)
+	if !strings.Contains(bottom, "alpha") || !strings.Contains(bottom, "beta") {
+		t.Fatalf("bottom roster region does not contain both agents: %q", bottom)
+	}
+	// The divider spans the width and meets the column border.
+	if divider := lines[ui.layout.rosterHorizontal]; ansi.StringWidth(divider) != width || ansi.Cut(divider, split, split+1) != "┴" {
+		t.Fatalf("roster divider = %q", divider)
+	}
+	if border := lines[ui.layout.roster.y]; ansi.Cut(border, split, split+1) == "│" {
+		t.Fatalf("column border crossed into the roster: %q", border)
 	}
 	if !strings.Contains(right, "Read") {
 		t.Fatalf("right activity region does not contain feed entries: %q", right)

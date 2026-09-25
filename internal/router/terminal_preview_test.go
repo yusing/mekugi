@@ -6,10 +6,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
 	"golang.org/x/term"
 )
@@ -36,16 +38,139 @@ func TestTerminalUIPreview(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
+	auto, store, activity, workspace := newPreviewSession(t, ctx, false)
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestTerminalUIPreviewCodex$")
+	cmd.Env = append(os.Environ(), "MEKUGI_UI_PREVIEW_CODEX=1")
+	wait, err := startTerminalUI(ctx, cmd, tty, tty, auto, store, activity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go replayPreviewSession(ctx, auto, store, activity, workspace, step, nil)
+	if err := wait(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestTerminalUIPreviewFrames replays the preview session headless and prints
+// each changed roster frame with the canonical usage report behind every agent.
+// It is opt-in: run `make preview-roster`.
+func TestTerminalUIPreviewFrames(t *testing.T) {
+	if os.Getenv("MEKUGI_UI_PREVIEW_FRAMES") != "1" {
+		t.Skip("debug replay; run make preview-roster")
+	}
+	width, rows := previewEnvInt(t, "MEKUGI_UI_PREVIEW_WIDTH", 160), previewEnvInt(t, "MEKUGI_UI_PREVIEW_ROWS", 8)
+	step := 20 * time.Millisecond
+	if value := os.Getenv("MEKUGI_UI_PREVIEW_STEP"); value != "" {
+		var err error
+		if step, err = time.ParseDuration(value); err != nil {
+			t.Fatalf("MEKUGI_UI_PREVIEW_STEP: %v", err)
+		}
+	}
+	styled := os.Getenv("MEKUGI_UI_PREVIEW_ANSI") == "1"
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	auto, store, activity, workspace := newPreviewSession(t, ctx, true)
+	scripted := make(chan struct{})
+	go replayPreviewSession(ctx, auto, store, activity, workspace, step, func() { close(scripted) })
+
+	view := newLiveActivityView()
+	var generation uint64
+	var last string
+	started := time.Now()
+	// After the script ends, keep a few frames of the final streaming response.
+	remaining := -1
+	for remaining != 0 {
+		select {
+		case <-scripted:
+			scripted, remaining = nil, 5
+		case <-time.After(step):
+		}
+		if remaining > 0 {
+			remaining--
+		}
+		if generation == 0 {
+			var snapshot activityPaneEvent
+			var ok bool
+			if generation, snapshot, ok = activity.subscribePane(); !ok {
+				continue
+			}
+			view.apply(snapshot)
+		}
+		if entries, agents, ok := activity.takePane(generation); ok {
+			view.apply(activityPaneEvent{Kind: "entries", Entries: entries, Agents: agents})
+		}
+		lines := view.renderRosterPane(width, rows, time.Now())
+		if !styled {
+			lines = plainLines(lines)
+		}
+		frame := strings.Join(lines, "\n")
+		if frame == last {
+			continue
+		}
+		last = frame
+		fmt.Printf("── %s ", time.Since(started).Round(time.Millisecond))
+		fmt.Println(strings.Repeat("─", max(0, width-12)))
+		for len(lines) > 0 && ansi.Strip(lines[len(lines)-1]) == "" {
+			lines = lines[:len(lines)-1]
+		}
+		for _, line := range lines {
+			if styled {
+				line += "\x1b[0m"
+			}
+			fmt.Println(line)
+		}
+		fmt.Println("usage owner:")
+		for _, agent := range view.agents {
+			report, observed := activity.usage.snapshot(previewThread(activity, agent.Name))
+			fmt.Printf("  %-20s turns=%d observed=%v in=%d out=%d cost=%.4f known=%v missing=%d\n",
+				agentDisplayName(agent.Name), agent.Turns, observed, report.InputTokens, report.OutputTokens,
+				report.cost.cachedInput+report.cost.uncachedInput+report.cost.output, report.cost.known, report.missingUsage)
+		}
+	}
+}
+
+func previewThread(activity *subagentActivity, name string) string {
+	activity.mu.Lock()
+	defer activity.mu.Unlock()
+	for thread, node := range activity.threads {
+		if node.name == name {
+			return thread
+		}
+	}
+	return ""
+}
+
+func previewEnvInt(t *testing.T, name string, fallback int) int {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 1 {
+		t.Fatalf("%s: want a positive integer, got %q", name, value)
+	}
+	return n
+}
+
+// newPreviewSession prepares the stores and workspace the scripted session edits.
+// A headless session has no terminal UI to launch, so its pane always attaches.
+func newPreviewSession(t *testing.T, ctx context.Context, headless bool) (*autoLiveDiff, *mekugiReplayStore, *subagentActivity, string) {
+	t.Helper()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	auto, stop := newAutoLiveDiff(ctx, store.directory)
-	defer stop()
+	t.Cleanup(stop)
 	// As in server startup, committed changes reach the diff pane.
 	store.liveDiff = auto.events.publish
 	activity := newSubagentActivity()
-	activity.attachPane(newActivityPane(ctx, auto.requestActivity))
+	activity.usage = newThreadUsage()
+	launch := auto.requestActivity
+	if headless {
+		launch = func() bool { return true }
+	}
+	activity.attachPane(newActivityPane(ctx, launch))
 	workspace := t.TempDir()
 	for _, dir := range []string{"internal/broker", "internal/pane"} {
 		if err := os.MkdirAll(filepath.Join(workspace, dir), 0o755); err != nil {
@@ -57,16 +182,7 @@ func TestTerminalUIPreview(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestTerminalUIPreviewCodex$")
-	cmd.Env = append(os.Environ(), "MEKUGI_UI_PREVIEW_CODEX=1")
-	wait, err := startTerminalUI(ctx, cmd, tty, tty, auto, store, activity)
-	if err != nil {
-		t.Fatal(err)
-	}
-	go replayPreviewSession(ctx, auto, store, activity, workspace, step)
-	if err := wait(); err != nil {
-		t.Fatal(err)
-	}
+	return auto, store, activity, workspace
 }
 
 // TestTerminalUIPreviewCodex stands in for Codex inside the preview's PTY.
@@ -275,8 +391,9 @@ func applyPreviewPatch(patch, before string) (path, after string, added, removed
 
 // replayPreviewSession feeds the collector and live diff the same events a
 // real session produces, paced so the panes can be watched as they change.
-func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugiReplayStore, activity *subagentActivity, workspace string, step time.Duration) {
-	usage := newThreadUsage()
+// scripted, when set, runs once the script ends and only streaming continues.
+func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugiReplayStore, activity *subagentActivity, workspace string, step time.Duration, scripted func()) {
+	usage := activity.usage
 	pause := func(n float64) bool {
 		select {
 		case <-ctx.Done():
@@ -288,8 +405,7 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 	settle := func(thread, model string, input, output uint64) {
 		counts := tokenCounts{InputTokens: input, UncachedInputTokens: input, OutputTokens: output}
 		usage.observation(thread, thread, model, "").observe(counts)
-		report, complete := usage.snapshot(thread)
-		activity.syncUsage(thread, counts, report, complete, tokenCost{})
+		activity.syncUsage(thread)
 		activity.endResponse(thread)
 	}
 	respond := func(thread, model string, input, output uint64) {
@@ -448,7 +564,11 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 	activity.collect("tests", "tool-exit\x00"+run, "exit", "1")
 	activity.markFinal("root", subagentFinal{sender: "/root/pane_trace", source: "final-pane",
 		text: "The side pane opens before preview content arrives: `requestLaunch` sets `auto.requested`, then the first frame waits for data."})
-	// A later error outranks the final answer in the roster status.
+	// A later error outranks the final answer in the roster status. The dropped
+	// stream reported no usage, so pane_trace's cost becomes a lower bound.
+	activity.beginResponse("pane")
+	usage.observation("pane", "pane", "gpt-6-luna", "").finish()
+	activity.endResponse("pane")
 	activity.collect("pane", "error-1", "error", "Provider stream closed: 502 Bad Gateway")
 	// main renames a test string with sed, then its turn ends and the diff
 	// pane switches from the live stream to review.
@@ -476,6 +596,9 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 	settle("root", "gpt-6-astra", 380_000, 4_200)
 	auto.finishTurn(workspace, "root", turn.TurnID)
 	activity.beginResponse("tests")
+	if scripted != nil {
+		scripted()
+	}
 	for ctx.Err() == nil {
 		activity.streamOutput("tests", 200)
 		pause(0.5)

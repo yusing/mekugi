@@ -36,19 +36,21 @@ func TestRosterSummaryFormatting(t *testing.T) {
 	}
 }
 
-func TestRosterMetricsSecondLineAndHitTargets(t *testing.T) {
+func TestRosterMetricsInlineAndHitTargets(t *testing.T) {
 	v := liveActivityTestView("/root/a", "/root/b", "/root/c")
 	v.agents[0].Role = "explorer"
 	v.agents[0].InputTokens, v.agents[0].OutputTokens = 1000, 20
 	v.agents[0].Turns, v.agents[0].CostKnown, v.agents[0].Cost = 1, true, .25
 	lines := plainLines(v.renderRosterPane(120, 8, time.Now()))
-	if !strings.Contains(lines[1], "Read a.go") || !strings.Contains(lines[2], "explorer") || !strings.Contains(lines[2], "↑ 1K ↓ 20 · $0.2500 · T+1") {
+	// Metrics share the agent's row, in columns aligned across rows.
+	if !strings.Contains(lines[1], "Read a.go") || !strings.Contains(lines[1], "explorer") || !strings.Contains(lines[1], "↑ 1K ↓ 20  $0.2500  T+1") ||
+		!strings.Contains(lines[2], "Read b.go") || strings.Index(lines[1], "now") != strings.Index(lines[2], "now") {
 		t.Fatalf("roster = %q", lines)
 	}
-	for _, row := range []int{2, 3} {
+	for row, want := range map[int]string{2: "/root/a", 3: "/root/b"} {
 		v.pointAgent('h', row, 5)
-		if hit := v.hovered; hit != "/root/a" {
-			t.Fatalf("row %d hit = %q", row, hit)
+		if hit := v.hovered; hit != want {
+			t.Fatalf("row %d hit = %q, want %q", row, hit, want)
 		}
 	}
 	v.selected = "/root/c"
@@ -71,6 +73,7 @@ func TestRosterSharesTokenReportCost(t *testing.T) {
 	a.attachPane(newActivityPane(t.Context(), func() bool { return true }))
 	a.pane.root = "root"
 	usage := newThreadUsage()
+	a.usage = usage
 	for _, tier := range []string{"priority", "default"} {
 		request, err := parseResponsesRequest([]byte(`{"model":"gpt-6-sol","reasoning":{"effort":"high"},"service_tier":"priority","input":[]}`))
 		if err != nil {
@@ -80,8 +83,8 @@ func TestRosterSharesTokenReportCost(t *testing.T) {
 		observation.reasoning = request.reasoningEffort()
 		counts := tokenCounts{InputTokens: 100, UncachedInputTokens: 100, OutputTokens: 10, ServiceTier: tier}
 		observation.observe(counts)
-		report, ok := usage.snapshot("root")
-		a.syncUsage("root", counts, report, ok, tokenCost{})
+		report, _ := usage.snapshot("root")
+		a.syncUsage("root")
 		agent := a.paneAgentsLocked()[0]
 		want := "gpt-6-sol high"
 		if tier == "priority" {

@@ -133,19 +133,6 @@ func estimateTokenCost(model, serviceTier string, counts tokenCounts) tokenCost 
 	}
 }
 
-// rosterTokenCost is a display-only estimate when a provider sent totals but
-// omitted billing details needed by the authoritative usage report.
-func rosterTokenCost(model, serviceTier string, counts tokenCounts, price *openCodePrice) tokenCost {
-	if !counts.TotalsKnown && (counts.InputTokens == 0 || counts.OutputTokens == 0) || counts.Inconsistent {
-		return tokenCost{}
-	}
-	if serviceTier == "auto" {
-		serviceTier = "default"
-	}
-	counts.Incomplete = false
-	return usageTokenCost(model, serviceTier, counts, price)
-}
-
 func (cost *tokenCost) add(next tokenCost) {
 	cost.uncachedInput += next.uncachedInput
 	cost.cachedInput += next.cachedInput

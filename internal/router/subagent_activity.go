@@ -20,6 +20,8 @@ type subagentActivity struct {
 	closed  bool
 	order   int
 	pane    *activityPane
+	// usage is the canonical per-thread accounting the roster displays.
+	usage *threadUsage
 }
 
 type activityThread struct {
@@ -31,11 +33,8 @@ type activityThread struct {
 	final                 bool
 	started, lastResponse time.Time
 	turns                 uint64
-	cost                  tokenCost
-	// Provider-reported usage summed over this thread's responses, and the
-	// visible delta bytes streamed since the last report.
-	inputTokens, outputTokens, streamed uint64
-	usageObserved                       bool
+	// Visible delta bytes streamed since the thread's last usage report.
+	streamed uint64
 }
 
 type activityEvent struct {
@@ -72,7 +71,7 @@ func (a *subagentActivity) observe(thread, parent, name string, child bool) bool
 		return !old.conflicted
 	}
 	a.order++
-	a.threads[thread] = &activityThread{parent: parent, name: name, child: child, seen: make(map[string]struct{}), order: a.order, started: time.Now(), cost: tokenCost{known: true}}
+	a.threads[thread] = &activityThread{parent: parent, name: name, child: child, seen: make(map[string]struct{}), order: a.order, started: time.Now()}
 	return true
 }
 

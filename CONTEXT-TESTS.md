@@ -17,7 +17,7 @@ isolated frontend PATH, sending fixture reads to the wrong retained-output store
 | Root review rendering | `.` |
 | Router behavior | `./internal/router` |
 | Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
-| Agents pane, roster, or wrapped terminal layout | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI'`; `make preview-ui` replays a scripted session in the real UI for interactive visual review (needs a terminal) |
+| Agents pane, roster, or wrapped terminal layout | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI'`; `make preview-ui` replays a scripted session in the real UI for interactive visual review (needs a terminal); `make preview-roster` replays it headless and prints each roster frame with the usage totals behind it |
 | Shared Go tokenizer | `./internal/tokenizer`, `./capturer`, `./internal/router/toolplugin` |
 | Capture metrics and AX evidence | `./capturer` |
 | Portable core or `mekugi:core/v1` adapter | `./internal/router/toolplugin`, then `./...` and `bun test ./internal/router/toolplugin/tests/core.test.ts` |

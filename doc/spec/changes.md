@@ -414,7 +414,8 @@ occupying code rows. These controls change no execution or durable evidence.
 Mekugi owns the Codex PTY and terminal composition. Codex remains the execution
 and approval authority. The diff occupies the right side; the agents view,
 specified in [REQ-COMMENTARY-001](commentary.md), shares that side vertically.
-The separate roster remains below Codex on the left, with a draggable divider.
+The separate roster spans the full terminal width below both columns, with a draggable
+divider; the column border ends at that divider.
 Mouse dragging resizes the main split, the diff/agents split, and the file dock.
 `Ctrl-B` followed by arrows resizes the main splits, and `[`/`]` resizes the
 file dock. `Ctrl-B` followed by `1`, `2`, `3`, or `4` focuses Codex, diff, agents, or roster;

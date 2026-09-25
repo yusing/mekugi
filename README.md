@@ -256,11 +256,12 @@ See [live view details](doc/spec/changes.md#live-terminal-view).
 
 The first subagent event opens a **Mekugi agents** pane in the same terminal.
 It streams child progress, messages, and replies as they happen, including
-during a native wait. The separate roster stays below Codex on the left, with
-a draggable divider. It includes `main` and its children, with activity, age, and
-`↑`/`↓` tokens. Markers show what was observed: `◐` open response, `!` latest
-error, `✓` final answer sent. Usage tables and critical notices stay in the main
-conversation.
+during a native wait. The separate roster spans the full width below Codex and the
+diff, with a draggable divider. It gives `main` and each child one row: activity, then
+role, age, `↑`/`↓` tokens, estimated cost, and turns. Costs come from the same totals
+as the usage table; `≥$N` means some response ended without usage. Markers show what
+was observed: `◐` open response, `!` latest error, `✓` final answer sent. The selected
+agent's row is shaded. Usage tables and critical notices stay in the main conversation.
 
 - In the roster, `↑`/`↓` or `k`/`j` select all agents or an individual agent;
   `o` toggles the selected-agent filter. Roster rows are clickable. The mouse wheel

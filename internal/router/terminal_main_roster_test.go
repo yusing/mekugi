@@ -8,6 +8,7 @@ import (
 
 func TestRosterIncludesMainWithoutFilterEvent(t *testing.T) {
 	a := newSubagentActivity()
+	a.usage = newThreadUsage()
 	a.observe("root", "", "/root", false)
 	a.observe("child", "root", "/root/child", true)
 	a.observe("other", "", "/root", false)
@@ -25,10 +26,8 @@ func TestRosterIncludesMainWithoutFilterEvent(t *testing.T) {
 		t.Fatalf("main response status missing: %+v", main)
 	}
 	counts := tokenCounts{InputTokens: 100, UncachedInputTokens: 100, OutputTokens: 20}
-	totals := newThreadUsage()
-	totals.observation("root", "", "gpt-6-sol", "").observe(counts)
-	report, complete := totals.snapshot("root")
-	a.syncUsage("root", counts, report, complete, tokenCost{})
+	a.usage.observation("root", "", "gpt-6-sol", "").observe(counts)
+	a.syncUsage("root")
 	a.endResponse("root")
 	agents = a.paneAgentsLocked()
 	main = agents[0]
@@ -49,9 +48,9 @@ func TestRosterIncludesMainWithoutFilterEvent(t *testing.T) {
 	if !strings.Contains(frame, "main") || !strings.Contains(frame, "child") {
 		t.Fatalf("main missing from rendered roster: %s", frame)
 	}
-	a.markUsageGap("root")
-	if a.paneAgentsLocked()[0].CostKnown {
-		t.Fatal("main claimed known cost after usage gap")
+	a.usage.observation("root", "", "gpt-6-sol", "").finish()
+	if main := a.paneAgentsLocked()[0]; !main.CostKnown || !main.CostPartial {
+		t.Fatalf("main usage gap not shown as a lower bound: %+v", main)
 	}
 }
 
@@ -65,8 +64,11 @@ func TestMainRosterResponseLifecycleAtRequestBoundary(t *testing.T) {
 	root.observeResponseUsage(counts)
 	root.Close()
 	node := p.activity.threads["thread"]
-	if node.responding != 0 || node.turns != 1 || node.lastResponse.IsZero() || node.inputTokens != 100 || node.outputTokens != 20 {
-		t.Fatalf("main request lifecycle/usage not reflected in roster: %+v", node)
+	if node.responding != 0 || node.turns != 1 || node.lastResponse.IsZero() {
+		t.Fatalf("main request lifecycle not reflected in roster: %+v", node)
+	}
+	if report, ok := p.activity.usage.snapshot("thread"); !ok || report.InputTokens != 100 || report.OutputTokens != 20 {
+		t.Fatalf("main usage not reflected in the roster's usage owner: %+v", report)
 	}
 	root.Close()
 	if node.responding != 0 || node.turns != 1 {

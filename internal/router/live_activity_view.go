@@ -532,10 +532,14 @@ func liveActivityTokens(agent activityPaneAgent) string {
 	return "↑ " + formatUsageTokens(agent.InputTokens) + " ↓ " + formatUsageTokens(agent.OutputTokens)
 }
 
-// liveActivityCost omits unknown cost rather than claiming zero.
+// liveActivityCost omits unknown cost rather than claiming zero; a response
+// that ended without usage makes the observed cost a lower bound.
 func liveActivityCost(agent activityPaneAgent) string {
 	if agent.Turns == 0 || !agent.CostKnown {
 		return ""
+	}
+	if agent.CostPartial {
+		return fmt.Sprintf("≥$%.4f", agent.Cost)
 	}
 	return fmt.Sprintf("$%.4f", agent.Cost)
 }
@@ -548,12 +552,12 @@ func liveActivityTurns(agent activityPaneAgent) string {
 	return liveActivityDim + "T+" + liveActivityUndim + fmt.Sprint(agent.Turns)
 }
 
-func (v *liveActivityView) marker(selected bool) string {
-	if selected {
-		return v.painter.theme.Accent() + "▸" + liveActivityReset
-	}
-
-	return " "
+// selectRow fills the selected agent's rows, so selection takes no column of
+// its own. Resets inside the row restore the fill.
+func (v *liveActivityView) selectRow(line string, width int) string {
+	fill := v.painter.theme.SelectionBackground()
+	line = strings.ReplaceAll(line, liveActivityReset, liveActivityReset+fill)
+	return fill + line + strings.Repeat(" ", max(0, width-ansi.StringWidth(line))) + "\x1b[49m"
 }
 
 func (v *liveActivityView) hoverName(name, agent string) string {
@@ -659,7 +663,7 @@ func rosterTree(rows []liveActivityRosterRow, index, start int) (name, indent st
 
 func (v *liveActivityView) hiddenRoster(rows []liveActivityRosterRow, direction string) string {
 	responding, errors := v.statusCounts(rows)
-	line := fmt.Sprintf("  %s %d more", direction, len(rows))
+	line := fmt.Sprintf("%s %d more", direction, len(rows))
 	if responding > 0 {
 		line += fmt.Sprintf(" · %d ◐", responding)
 	}
@@ -669,12 +673,14 @@ func (v *liveActivityView) hiddenRoster(rows []liveActivityRosterRow, direction 
 	return liveActivityDim + line + liveActivityUndim
 }
 
+// renderAgentRows gives each roster agent one row with its metrics inline;
+// cards give the name, activity, and short metrics separate rows.
 func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, limit int, now time.Time, cards bool) []string {
 	if limit <= 0 || len(rows) == 0 {
 		return nil
 	}
 	selected := max(0, slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected }))
-	stride := 2
+	stride := 1
 	if cards {
 		stride = 3
 	}
@@ -708,6 +714,10 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 		nameWidth = max(nameWidth, ansi.StringWidth(name))
 	}
 	nameWidth = min(nameWidth, max(1, width/3))
+	var table []string
+	if !cards {
+		table = v.metricTable(rows[start:end], now)
+	}
 	var lines []string
 	add := func(line string) { lines = append(lines, ansi.Truncate(line, width, "…")) }
 	if start > 0 && limit >= 3 {
@@ -716,34 +726,45 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 	for i := start; i < end; i++ {
 		row := rows[i]
 		first := len(lines) + 2
-		summary, timer := v.current(row.agent, now)
+		summary, _ := v.current(row.agent, now)
 		name := names[i-start]
 		available := nameWidth
 		if cards && !compact {
-			available = max(1, width-5)
+			available = max(1, width-3)
 		}
 		name = strings.TrimRight(liveActivityMiddle(name, available), " ")
 		split := strings.LastIndexAny(name, " /") + 1
 		styled := liveActivityDim + name[:split] + liveActivityUndim + liveAgentColor(row.agent.Name) + v.hoverName(name[split:], row.agent.Name) + liveActivityReset
-		prefix := v.marker(i == selected) + " " + v.glyph(row.agent) + "  "
-		if cards && !compact {
+		prefix := v.glyph(row.agent) + "  "
+		switch {
+		case cards && !compact:
 			last := liveActivityLast(row.agent.LastResponse, now)
-			gap := width - 5 - ansi.StringWidth(name) - ansi.StringWidth(last)
+			gap := width - 3 - ansi.StringWidth(name) - ansi.StringWidth(last)
 			line := prefix + styled
 			if gap >= 2 {
 				line += strings.Repeat(" ", gap) + liveActivityDim + last + liveActivityUndim
 			}
 			add(line)
-			add("     " + liveActivityDim + indents[i-start] + liveActivityUndim + summary)
-		} else {
+			add("   " + liveActivityDim + indents[i-start] + liveActivityUndim + summary)
+		case cards:
 			add(prefix + styled + strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(name))) + "  " + summary)
-		}
-		if !compact || (metrics && i == selected) {
-			metric := liveActivityMetrics(row.agent, timer)
-			if cards {
-				metric = liveActivityCardMetrics(row.agent)
+		default:
+			line := prefix + styled + strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(name))) + "  "
+			metric := table[i-start]
+			room := width - ansi.StringWidth(line) - 2 - ansi.StringWidth(metric)
+			if metric == "" || room < 12 {
+				add(line + summary)
+			} else {
+				add(line + liveActivityPad(summary, room) + "  " + metric)
 			}
-			add("     " + liveActivityDim + indents[i-start] + liveActivityUndim + metric)
+		}
+		if cards && (!compact || (metrics && i == selected)) {
+			add("   " + liveActivityDim + indents[i-start] + liveActivityUndim + liveActivityCardMetrics(row.agent))
+		}
+		if i == selected {
+			for j := first - 2; j < len(lines); j++ {
+				lines[j] = v.selectRow(lines[j], width)
+			}
 		}
 		for hit := first; hit < len(lines)+2; hit++ {
 			v.hits = append(v.hits, liveActivityHit{hit, 1, width, row.agent.Name})
@@ -766,31 +787,52 @@ func liveActivityLast(last, now time.Time) string {
 	return liveActivityAge(age) + " ago"
 }
 
-func liveActivityMetrics(agent activityPaneAgent, timer string) string {
-	dim := func(s string) string { return liveActivityDim + s + liveActivityUndim }
-	var identity, usage []string
-	if role := liveActivityRole(agent); role != "" {
-		identity = append(identity, dim(role))
+// metricTable aligns inline metrics in columns across the visible rows:
+// role and timer left-aligned, then usage right-aligned.
+func (v *liveActivityView) metricTable(rows []liveActivityRosterRow, now time.Time) []string {
+	dim := func(s string) string {
+		if s == "" {
+			return ""
+		}
+		return liveActivityDim + s + liveActivityUndim
 	}
-	if timer != "" {
-		identity = append(identity, liveActivityMetricValues(timer))
-	}
-	if tokens := liveActivityTokens(agent); tokens != "" {
-		usage = append(usage, liveActivityMetricValues(tokens))
-	}
-	for _, part := range []string{liveActivityCost(agent), liveActivityTurns(agent)} {
-		if part != "" {
-			usage = append(usage, part)
+	const columns = 5
+	cells := make([][columns]string, len(rows))
+	var widths [columns]int
+	for i, row := range rows {
+		_, timer := v.current(row.agent, now)
+		tokens := liveActivityTokens(row.agent)
+		if tokens != "" {
+			tokens = liveActivityMetricValues(tokens)
+		}
+		timerCell := ""
+		if timer != "" {
+			timerCell = liveActivityMetricValues(timer)
+		}
+		cells[i] = [columns]string{dim(liveActivityRole(row.agent)), timerCell, tokens, liveActivityCost(row.agent), liveActivityTurns(row.agent)}
+		for c, cell := range cells[i] {
+			widths[c] = max(widths[c], ansi.StringWidth(cell))
 		}
 	}
-	separator := dim(" · ")
-	var groups []string
-	for _, group := range [][]string{identity, usage} {
-		if len(group) > 0 {
-			groups = append(groups, strings.Join(group, separator))
+	table := make([]string, len(rows))
+	for i := range rows {
+		var parts []string
+		for c, cell := range cells[i] {
+			if widths[c] == 0 {
+				continue
+			}
+			pad := strings.Repeat(" ", widths[c]-ansi.StringWidth(cell))
+			if c < 2 {
+				parts = append(parts, cell+pad)
+			} else {
+				parts = append(parts, pad+cell)
+			}
+		}
+		if line := strings.Join(parts, "  "); strings.TrimSpace(ansi.Strip(line)) != "" {
+			table[i] = line
 		}
 	}
-	return strings.Join(groups, "    ")
+	return table
 }
 
 // liveActivityRole omits the root's redundant role.

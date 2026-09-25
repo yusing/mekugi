@@ -100,11 +100,11 @@ func TestRosterDesignSeparateHeaderTreeAndMetrics(t *testing.T) {
 	if hovered := v.renderStrip(rows, 90); !strings.Contains(hovered, "\x1b[4ma\x1b[24m") {
 		t.Errorf("strip hover styling = %q", hovered)
 	}
-	metric := liveActivityMetrics(v.agents[1], "")
-	if !strings.Contains(metric, liveActivityDim+"explorer") || !strings.Contains(metric, liveActivityDim+"T+"+liveActivityUndim+"1") || strings.Contains(metric, "n/a") {
+	table := v.metricTable(rows[:2], now)
+	if metric := table[1]; !strings.Contains(metric, liveActivityDim+"explorer") || !strings.Contains(metric, liveActivityDim+"T+"+liveActivityUndim+"1") || strings.Contains(metric, "n/a") {
 		t.Errorf("metric style = %q", metric)
 	}
-	if strings.Contains(liveActivityMetrics(v.agents[0], ""), "root-role") {
+	if strings.Contains(table[0], "root-role") {
 		t.Error("root role leaked into metrics")
 	}
 }
@@ -232,7 +232,7 @@ func TestRosterDesignScrolledTreeCardsAndSelection(t *testing.T) {
 	summaryColumn := func(lines []string, agent string) int {
 		for _, line := range plainLines(lines) {
 			if i := strings.Index(line, "Read "+agent+".go"); i >= 0 && strings.Contains(line, " "+agent+" ") {
-				return i
+				return ansi.StringWidth(line[:i])
 			}
 		}
 		return -1
@@ -246,7 +246,7 @@ func TestRosterDesignScrolledTreeCardsAndSelection(t *testing.T) {
 	}
 	cards := plainLines(v.renderCards(rows[:3], 40, 9, now))
 	// Card activity and metrics rows share the name column and tree guide.
-	if !strings.HasPrefix(cards[3], "  ·  ├ a") || !strings.HasPrefix(cards[4], "     │ Read") || !strings.HasPrefix(cards[5], "     │ ") {
+	if !strings.HasPrefix(cards[3], "·  ├ a") || !strings.HasPrefix(cards[4], "   │ Read") || !strings.HasPrefix(cards[5], "   │ ") {
 		t.Errorf("card alignment = %q", cards)
 	}
 	v.only = false

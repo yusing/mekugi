@@ -2,7 +2,6 @@ package router
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -199,6 +198,7 @@ func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *
 		titles = titleCaches[0]
 	}
 	activity := newSubagentActivity()
+	activity.usage = newThreadUsage()
 	broker := newCommentaryBroker()
 	broker.activity = activity
 	proxy := &mekugiProxy{
@@ -206,7 +206,7 @@ func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *
 		titles:         titles,
 		commentary:     broker,
 		journals:       newJournalStore(),
-		usage:          newThreadUsage(),
+		usage:          activity.usage,
 		activity:       activity,
 		execWindows:    &execWindowRegistry{},
 		sessions:       make(map[string]*mekugiHistorySession),
@@ -382,9 +382,6 @@ func (t *mekugiResponseTransform) Close() {
 	}
 	if t.activityResponding {
 		t.activityResponding = false
-		if !t.usageObserved {
-			t.proxy.activity.markUsageGap(t.threadID)
-		}
 		t.proxy.activity.endResponse(t.threadID)
 	}
 	t.ReleaseDelivery()
@@ -406,10 +403,7 @@ func (t *mekugiResponseTransform) observeResponseUsage(counts tokenCounts) {
 	t.usageTracker.observe(counts)
 	t.usageObserved = true
 	if t.proxy != nil && t.threadID != "" {
-		report, ok := t.proxy.usage.snapshot(t.threadID)
-		tier := cmp.Or(counts.ServiceTier, t.usageTracker.serviceTier)
-		fallback := rosterTokenCost(t.usageTracker.model, tier, counts, t.usageTracker.openCodePrice)
-		t.proxy.activity.syncUsage(t.threadID, counts, report, ok, fallback)
+		t.proxy.activity.syncUsage(t.threadID)
 	}
 }
 

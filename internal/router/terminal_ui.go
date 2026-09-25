@@ -88,20 +88,23 @@ func terminalGeometry(width, height, split, horizontal, rosterHeight, focus int,
 	l.codex = terminalRect{0, 0, split, h}
 	l.diff = terminalRect{split + 1, 0, w - split - 1, h}
 	if agents {
+		// The roster spans the full width below both columns, leaving the
+		// columns room for a diff and a feed of at least four rows each.
 		if rosterHeight == 0 {
 			rosterHeight = max(3, h/5)
 		}
-		rosterHeight = min(max(3, rosterHeight), h-5)
+		rosterHeight = max(1, min(max(3, rosterHeight), h-10))
 		l.rosterHorizontal = h - rosterHeight - 1
-		l.codex.h = l.rosterHorizontal
-		l.roster = terminalRect{0, l.rosterHorizontal + 1, split, rosterHeight}
+		top := l.rosterHorizontal
+		l.codex.h = top
+		l.roster = terminalRect{0, top + 1, w, rosterHeight}
 		if horizontal == 0 {
-			horizontal = h * 3 / 5
+			horizontal = top * 3 / 5
 		}
-		horizontal = min(max(4, horizontal), h-5)
+		horizontal = min(max(4, horizontal), top-5)
 		l.horizontal = horizontal
 		l.diff.h = horizontal
-		l.agents = terminalRect{split + 1, horizontal + 1, w - split - 1, h - horizontal - 1}
+		l.agents = terminalRect{split + 1, horizontal + 1, w - split - 1, top - horizontal - 1}
 	}
 	return l
 }
@@ -383,13 +386,21 @@ func (u *terminalUI) paint(ctx context.Context, out io.Writer) error {
 	if l.roster.w > 0 {
 		draw(l.roster, u.agents.renderRosterPane(l.roster.w, l.roster.h, time.Now()))
 	}
-	if l.rosterHorizontal >= 0 {
-		fmt.Fprintf(&b, "\x1b[%d;1H\x1b[2m%s\x1b[0m", l.rosterHorizontal+1, strings.Repeat("─", l.roster.w))
-	}
 	if l.vertical >= 0 {
-		for row := 0; row < u.height-1; row++ {
+		bottom := u.height - 1
+		if l.rosterHorizontal >= 0 {
+			bottom = l.rosterHorizontal
+		}
+		for row := 0; row < bottom; row++ {
 			fmt.Fprintf(&b, "\x1b[%d;%dH\x1b[2m│\x1b[0m", row+1, l.vertical+1)
 		}
+	}
+	if l.rosterHorizontal >= 0 {
+		rule := strings.Repeat("─", l.roster.w)
+		if l.vertical >= 0 && l.vertical < l.roster.w {
+			rule = strings.Repeat("─", l.vertical) + "┴" + strings.Repeat("─", l.roster.w-l.vertical-1)
+		}
+		fmt.Fprintf(&b, "\x1b[%d;1H\x1b[2m%s\x1b[0m", l.rosterHorizontal+1, rule)
 	}
 	if l.horizontal >= 0 {
 		fmt.Fprintf(&b, "\x1b[%d;%dH\x1b[2m%s\x1b[0m", l.horizontal+1, l.diff.x+1, strings.Repeat("─", l.diff.w))
@@ -553,6 +564,14 @@ func (u *terminalUI) resize(key string) {
 	}
 	if u.horizontal == 0 {
 		u.horizontal = max(4, (u.height-1)*3/5)
+		if u.layout.horizontal > 0 {
+			u.horizontal = u.layout.horizontal
+		}
+	}
+	// The bottom roster leaves the columns above it at least nine rows.
+	columns := u.height - 1
+	if u.layout.rosterHorizontal >= 0 {
+		columns = u.layout.rosterHorizontal
 	}
 	if u.focus == 3 && (key == "\x1b[A" || key == "k" || key == "\x1b[B" || key == "j") {
 		if u.rosterHeight == 0 {
@@ -563,7 +582,7 @@ func (u *terminalUI) resize(key string) {
 		} else {
 			u.rosterHeight--
 		}
-		u.rosterHeight = min(max(3, u.rosterHeight), max(3, u.height-6))
+		u.rosterHeight = min(max(3, u.rosterHeight), max(3, u.height-11))
 		return
 	}
 	switch key {
@@ -589,7 +608,7 @@ func (u *terminalUI) resize(key string) {
 		u.diff.dirty = true
 	}
 	u.split = min(max(30, u.split), max(30, u.width-41))
-	u.horizontal = min(max(4, u.horizontal), max(4, u.height-6))
+	u.horizontal = min(max(4, u.horizontal), max(4, columns-5))
 }
 
 func (u *terminalUI) send(s string) error {
@@ -644,7 +663,7 @@ func (u *terminalUI) mouse(s string) error {
 		case 2:
 			u.horizontal = y
 		case 4:
-			u.rosterHeight = min(max(3, u.height-y-2), max(3, u.height-6))
+			u.rosterHeight = min(max(3, u.height-y-2), max(3, u.height-11))
 		case 3:
 			u.diff.navigation.columns = max(16, x-u.layout.diff.x)
 			u.diff.dirty = true
@@ -653,10 +672,10 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	if button&^28 == 0 && !release {
 		switch {
-		case x == u.layout.vertical && u.layout.vertical >= 0:
+		case x == u.layout.vertical && u.layout.vertical >= 0 && (u.layout.rosterHorizontal < 0 || y < u.layout.rosterHorizontal):
 			u.drag = 1
 			return nil
-		case y == u.layout.rosterHorizontal && x < u.layout.vertical && u.layout.rosterHorizontal >= 0:
+		case y == u.layout.rosterHorizontal && u.layout.rosterHorizontal >= 0:
 			u.drag = 4
 			return nil
 		case y == u.layout.horizontal && x > u.layout.vertical && u.layout.horizontal >= 0:

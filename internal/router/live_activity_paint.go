@@ -629,5 +629,6 @@ func (p liveActivityPainter) messageDirection(block liveActivityBlock) string {
 	if block.owner == block.to {
 		direction, peer = "from ", block.from
 	}
-	return liveActivityDim + "✉ " + direction + liveActivityUndim + p.recipient(peer)
+	// Many fonts draw ✉ wider than its one cell; the extra space keeps it off the label.
+	return liveActivityDim + "✉  " + direction + liveActivityUndim + p.recipient(peer)
 }
