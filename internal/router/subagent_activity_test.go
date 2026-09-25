@@ -9,6 +9,19 @@ import (
 	"time"
 )
 
+func TestEditReceiptsKeepDistinctSourcesForOneInvocation(t *testing.T) {
+	a := newSubagentActivity()
+	a.observe("root", "", "/root", false)
+	a.observe("child", "root", "/root/worker", true)
+	for _, derived := range []string{"patch-1", "patch-2"} {
+		a.collectEvent(activityEvent{thread: "child", source: "edit-receipt\x00/workspace\x00" + derived,
+			kind: "tool", text: "Edit `file.go` +1 -1", callID: "cell-item"})
+	}
+	if len(a.events) != 2 || a.events[0].callID != "cell-item" || a.events[1].callID != "cell-item" {
+		t.Fatalf("receipts from one cell were deduplicated or lost display identity: %+v", a.events)
+	}
+}
+
 func TestSubagentActivityAncestryReplayAndOrder(t *testing.T) {
 	a := newSubagentActivity()
 	a.observe("root-a", "", "/root", false)

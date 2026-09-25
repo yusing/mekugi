@@ -60,7 +60,7 @@ func TestLiveDiffFollowEmptyLatestFile(t *testing.T) {
 	files := []liveDiffFile{
 		{Path: first, Chunks: []liveDiffChunk{{
 			Review: mekugi.ReviewFile{AfterPath: first, Diff: diff}}}},
-		{Path: second}, // The latest file was flushed or fully reverted.
+		{Path: second}, // The latest file was fully reverted.
 	}
 	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, files, workspace, 90, 1, liveDiffChunk{})
 	if err != nil {
@@ -75,7 +75,7 @@ func TestLiveDiffFollowEmptyLatestFile(t *testing.T) {
 	}
 	offset := min(render.FocusOffset, len(render.Lines)-rows)
 	viewport := ansi.Strip(strings.Join(render.Lines[offset:offset+rows], "\n"))
-	if strings.Contains(viewport, "second.txt") || strings.Contains(viewport, "No unreviewed changes") {
+	if strings.Contains(viewport, "second.txt") || strings.Contains(viewport, "No visible changes") {
 		t.Fatalf("reverted file remained Visible: %q", viewport)
 	}
 }
@@ -350,20 +350,6 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	waitFrame(func(frame string) bool {
 		return strings.Contains(frame, "PAUSED") && strings.Contains(frame, "Temporary file two.") &&
 			!strings.Contains(frame, "new changes available")
-	})
-	if _, err := terminal.Write([]byte("f")); err != nil {
-		t.Fatal(err)
-	}
-	waitFrame(func(frame string) bool {
-		return strings.Contains(frame, "PAUSED") && strings.Contains(frame, "adjusted 界 é") &&
-			!strings.Contains(frame, "Temporary file two.") &&
-			!strings.Contains(frame, "LATEST UPDATE") && !strings.Contains(frame, "new changes available")
-	})
-	if _, err := terminal.Write([]byte("F")); err != nil {
-		t.Fatal(err)
-	}
-	waitFrame(func(frame string) bool {
-		return strings.Contains(frame, "No unreviewed changes") && !strings.Contains(frame, "Temporary file")
 	})
 	if _, err := terminal.Write([]byte{3}); err != nil {
 		t.Fatal(err)

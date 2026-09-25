@@ -9,29 +9,28 @@ import (
 
 func TestReviewCompositionHighlights(t *testing.T) {
 	type step struct {
-		text                  string
-		highlighted, reviewed bool
+		text        string
+		highlighted bool
 	}
 	for _, tc := range []struct {
 		name, base string
 		steps      []step
 		want       []bool
 	}{
-		{"adjacent", "a\nb\n", []step{{"A\nb\n", false, false}, {"A\nB\n", true, false}}, []bool{false, true}},
-		{"overlap", "a\nb\n", []step{{"A\nb\n", false, false}, {"AA\nb\n", true, false}}, []bool{true}},
-		{"insert shifts old edit", "a\nb\n", []step{{"a\nB\n", false, false}, {"new\na\nB\n", true, false}}, []bool{true, false}},
-		{"delete shifts old edit", "a\nb\nc\n", []step{{"a\nb\nC\n", false, false}, {"b\nC\n", true, false}}, []bool{true, false}},
-		{"multiple captures", "a\nb\n", []step{{"A\nb\n", true, false}, {"A\nB\n", true, false}}, []bool{true, true}},
-		{"full revert", "a\nb\n", []step{{"A\nb\n", false, false}, {"a\nb\n", true, false}}, nil},
-		{"repeated line revert", "a\na\n", []step{{"a\nb\n", false, false}, {"a\na\n", true, false}}, nil},
-		{"reviewed receipt", "a\nb\n", []step{{"A\nb\n", false, false}, {"A\nB\n", true, true}}, []bool{false}},
-		{"line endings", "a\r\nb\r\n", []step{{"A\r\nb\r\n", false, false}, {"A\r\nB", true, false}}, []bool{false, true}},
+		{"adjacent", "a\nb\n", []step{{"A\nb\n", false}, {"A\nB\n", true}}, []bool{false, true}},
+		{"overlap", "a\nb\n", []step{{"A\nb\n", false}, {"AA\nb\n", true}}, []bool{true}},
+		{"insert shifts old edit", "a\nb\n", []step{{"a\nB\n", false}, {"new\na\nB\n", true}}, []bool{true, false}},
+		{"delete shifts old edit", "a\nb\nc\n", []step{{"a\nb\nC\n", false}, {"b\nC\n", true}}, []bool{true, false}},
+		{"multiple captures", "a\nb\n", []step{{"A\nb\n", true}, {"A\nB\n", true}}, []bool{true, true}},
+		{"full revert", "a\nb\n", []step{{"A\nb\n", false}, {"a\nb\n", true}}, nil},
+		{"repeated line revert", "a\na\n", []step{{"a\nb\n", false}, {"a\na\n", true}}, nil},
+		{"line endings", "a\r\nb\r\n", []step{{"A\r\nb\r\n", false}, {"A\r\nB", true}}, []bool{false, true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var c ReviewComposition
 			before := tc.base
 			for _, step := range tc.steps {
-				if err := c.ApplyWithHighlight(composeCapture(before, step.text), step.reviewed, step.highlighted); err != nil {
+				if err := c.ApplyWithHighlight(composeCapture(before, step.text), false, step.highlighted); err != nil {
 					t.Fatal(err)
 				}
 				before = step.text

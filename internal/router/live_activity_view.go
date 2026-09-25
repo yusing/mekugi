@@ -144,7 +144,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			for i, v0 := range slices.Backward(v.entries) {
 				if v0.Agent == entry.Agent && v0.CallID == entry.CallID && entry.CallID != "" {
 					for j := range v.blocks[i] {
-						if v.blocks[i][j].verb == "Run" {
+						if v.blocks[i][j].verb == "Run" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, v.blocks[i][j].verb) {
 							v.blocks[i][j].exitCode, _ = strconv.Atoi(entry.Text)
 						}
 					}
@@ -154,8 +154,35 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			}
 			continue
 		}
+		blocks := parseLiveActivity(entry)
+		if entry.Kind == "tool" && entry.CallID != "" && len(blocks) > 0 &&
+			slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, blocks[0].verb) {
+			// A confirmed edit receipt replaces the provisional Run row for
+			// this call. The capturer owns the action and counts; display does
+			// not classify the shell command a second time.
+			for i := len(v.entries) - 1; i >= 0; i-- {
+				prior := v.entries[i]
+				if prior.Kind != "tool" || prior.Agent != entry.Agent || prior.CallID != entry.CallID ||
+					len(v.blocks[i]) == 0 || v.blocks[i][0].verb != "Run" {
+					continue
+				}
+				entry.Seq = prior.Seq
+				blocks[0].exitCode = v.blocks[i][0].exitCode
+				for _, annotation := range v.blocks[i][1:] {
+					if annotation.kind == "filter" {
+						blocks = append(blocks, annotation)
+					}
+				}
+				v.entries[i], v.blocks[i], v.runs = entry, blocks, nil
+				blocks = nil
+				break
+			}
+			if blocks == nil {
+				continue
+			}
+		}
 		v.entries = append(v.entries, entry)
-		v.blocks = append(v.blocks, parseLiveActivity(entry))
+		v.blocks = append(v.blocks, blocks)
 		if !v.following && v.visible(entry) {
 			v.unseen++
 		}

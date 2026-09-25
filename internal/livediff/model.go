@@ -21,7 +21,7 @@ type File struct {
 	Path        string
 	Chunks      []Chunk
 	Highlighted bool
-	// Origins are the unreviewed changes a visible file composes, in capture
+	// Origins are the shown changes a visible file composes, in capture
 	// order. Baseline counts changes a caller filter folded into its base.
 	Origins  []Origin
 	Baseline int
@@ -46,14 +46,13 @@ type View struct {
 	Files        []File
 	Selected     int
 	Scroll       map[string]int
-	Reviewed     map[string]bool
 	Visible      map[string]File
 	Following    bool
 	Latest       string
 	Initialized  bool
 	UnseenUpdate bool
 	// Caller, when set, shows only captures whose CallerKey matches. Other
-	// callers' captures compose as reviewed baseline, so the net diff stays exact.
+	// callers' captures compose as baseline, so the net diff stays exact.
 	Caller string
 }
 
@@ -166,8 +165,7 @@ func (v *View) LatestChunk() Chunk {
 	return Chunk{}
 }
 
-// Rebuild the combined result from captures and acknowledgement IDs. A late
-// receipt cannot revive flushed changes; a later overlapping edit can.
+// Rebuild the combined result from captures.
 func (v *View) RefreshVisible() {
 	if v.Visible == nil {
 		v.Visible = make(map[string]File, len(v.Files))
@@ -185,19 +183,18 @@ func (v *View) RefreshVisible() {
 		})
 		baseline := make(map[string]bool)
 		for _, chunk := range chunks {
-			reviewed := v.Reviewed[chunk.Key]
-			if !reviewed && !v.Shows(chunk) {
+			baselineChunk := !v.Shows(chunk)
+			if baselineChunk {
 				// One change may hold several captures of this file.
 				if id := cmp.Or(chunk.Change, chunk.Key); !baseline[id] {
 					baseline[id] = true
 					visible.Baseline++
 				}
-				reviewed = true
 			}
-			if !reviewed && chunk.Change != "" && !slices.ContainsFunc(visible.Origins, func(origin Origin) bool { return origin.Change == chunk.Change }) {
+			if !baselineChunk && chunk.Change != "" && !slices.ContainsFunc(visible.Origins, func(origin Origin) bool { return origin.Change == chunk.Change }) {
 				visible.Origins = append(visible.Origins, chunk.Origin)
 			}
-			visible.Highlighted = visible.Highlighted || chunk.Highlighted && !reviewed
+			visible.Highlighted = visible.Highlighted || chunk.Highlighted && !baselineChunk
 			if chunk.Review.Incomplete != "" && failure == nil {
 				// Unknown bytes end this composition epoch. Keep known captures
 				// on either side separate rather than hiding all later edits.
@@ -207,7 +204,7 @@ func (v *View) RefreshVisible() {
 					})
 				}
 				composition = mekugi.ReviewComposition{}
-				if !reviewed {
+				if !baselineChunk {
 					status := "incomplete history: " + chunk.Review.Incomplete
 					if chunk.Review.Origin != "" {
 						status = chunk.Review.Incomplete
@@ -220,7 +217,7 @@ func (v *View) RefreshVisible() {
 				continue
 			}
 			if failure == nil {
-				failure = composition.ApplyWithHighlight(chunk.Review, reviewed, chunk.Highlighted)
+				failure = composition.ApplyWithHighlight(chunk.Review, baselineChunk, chunk.Highlighted)
 			}
 		}
 		if failure != nil {
@@ -228,7 +225,7 @@ func (v *View) RefreshVisible() {
 			// combined diff. Show each captured edit independently instead.
 			visible.Chunks = nil
 			for _, chunk := range chunks {
-				if v.Reviewed[chunk.Key] || !v.Shows(chunk) {
+				if !v.Shows(chunk) {
 					continue
 				}
 				chunk.Status = "Separate edit"
@@ -272,34 +269,6 @@ func (v *View) FilterCaller(caller string) {
 	}
 	v.Caller, v.Visible = caller, nil
 	v.RefreshVisible()
-}
-
-// Flush marks the shown captures reviewed; a caller filter leaves others' pending.
-func (v *View) Flush(all bool) {
-	if v.Reviewed == nil {
-		v.Reviewed = make(map[string]bool)
-	}
-	for i, file := range v.Files {
-		if !all && i != v.Selected {
-			continue
-		}
-		delete(v.Visible, file.Key())
-		for _, chunk := range file.Chunks {
-			if v.Shows(chunk) {
-				v.Reviewed[chunk.Key] = true
-			}
-		}
-	}
-	v.RefreshVisible()
-	// Read captures, not Visible: a caller filter composes other callers'
-	// unreviewed captures as baseline, but they are still unseen.
-	if v.UnseenUpdate {
-		v.UnseenUpdate = slices.ContainsFunc(v.Files, func(file File) bool {
-			return slices.ContainsFunc(file.Chunks, func(chunk Chunk) bool {
-				return chunk.Highlighted && !v.Reviewed[chunk.Key]
-			})
-		})
-	}
 }
 
 func GroupCaptures(captures []Chunk) []File {

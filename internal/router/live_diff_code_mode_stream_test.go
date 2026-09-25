@@ -65,6 +65,59 @@ func TestLiveDiffCodeModeStreamsInterpreterWrite(t *testing.T) {
 	}
 }
 
+func TestLiveDiffNativeExecPythonStreamsTargetDiff(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	target := filepath.Join(workspace, "target.txt")
+	if err := os.WriteFile(target, []byte("old old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
+	})
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
+	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", nativeExecCommandToolName)
+	t.Cleanup(worker.stop)
+	command := "python3 - <<'PY'\nfrom pathlib import Path\np = Path('target.txt')\ns = p.read_text()\ns = s.replace('old', 'new', 1)\np.write_text(s)\nPY\n"
+	encoded, err := json.Marshal(map[string]string{"cmd": command, "workdir": workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := string(encoded)
+	point := strings.Index(input, `p.write_text`)
+	if point < 0 {
+		t.Fatal("missing Python write")
+	}
+	worker.appendDelta(input[:point])
+	preview := waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
+		return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+new old")
+	})
+	if preview.Complete || preview.Input != "" || preview.Files[0].AfterPath != target {
+		t.Fatalf("native Python input did not stream a target diff: %+v", preview)
+	}
+	frame := ansi.Strip(ui.frame(t, func(frame string) bool {
+		plain := ansi.Strip(frame)
+		return strings.Contains(plain, "target.txt") && strings.Contains(plain, "+new old")
+	}))
+	if strings.Contains(frame, "from pathlib import Path") || strings.Contains(frame, "p.write_text") {
+		t.Fatalf("native Python pane showed source rather than diff: %s", frame)
+	}
+	worker.appendDelta(input[point:])
+	worker.finish(input)
+	ui.frame(t, func(frame string) bool {
+		plain := ansi.Strip(frame)
+		return strings.Contains(plain, "✓ M") && strings.Contains(plain, "+new old")
+	})
+	if got, err := os.ReadFile(target); err != nil || string(got) != "old old\n" {
+		t.Fatalf("preview executed Python: %q, %v", got, err)
+	}
+}
+
 func TestLiveDiffCodeModeSSEStreamsEditWithoutChangingEvents(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()

@@ -11,7 +11,7 @@ import (
 	"github.com/yusing/mekugi/internal/pathdisplay"
 )
 
-// liveDiffChanges is the Changes tab: unreviewed changes in capture order, one
+// liveDiffChanges is the Changes tab: captured changes in capture order, one
 // graph lane per caller. Lanes branch from main at the caller's first change.
 type liveDiffChanges struct {
 	query string
@@ -54,12 +54,12 @@ type liveDiffChangeRow struct {
 
 type liveDiffChangeTarget struct{ change, file string }
 
-// liveDiffCallers lists the caller filter keys with unreviewed captures, main first.
+// liveDiffCallers lists the caller filter keys with captures, main first.
 func liveDiffCallers(view *liveDiffView) []string {
 	var callers []string
 	for _, file := range view.Files {
 		for _, chunk := range file.Chunks {
-			if key := livediff.CallerKey(chunk.Caller); !view.Reviewed[chunk.Key] && !slices.Contains(callers, key) {
+			if key := livediff.CallerKey(chunk.Caller); !slices.Contains(callers, key) {
 				callers = append(callers, key)
 			}
 		}
@@ -91,7 +91,7 @@ func (l *liveDiffChanges) rebuild(view *liveDiffView, workspace string) {
 	var captures []capture
 	for i, file := range view.Files {
 		for _, chunk := range file.Chunks {
-			if !view.Reviewed[chunk.Key] && view.Shows(chunk) {
+			if view.Shows(chunk) {
 				captures = append(captures, capture{chunk, i})
 			}
 		}
@@ -259,7 +259,7 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 		index := l.top + row - 2
 		if index >= len(l.rows) {
 			if row == 2 && len(l.rows) == 0 {
-				out[row] = " No unreviewed changes"
+				out[row] = " No captured changes"
 			}
 			break
 		}

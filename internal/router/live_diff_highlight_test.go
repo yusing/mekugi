@@ -77,10 +77,6 @@ func TestLiveDiffHighlightBatchAndRepeatedSnapshot(t *testing.T) {
 	if v.UnseenUpdate {
 		t.Fatal("resume retained the unseen-update notice")
 	}
-	v.Flush(false)
-	if v.Visible[v.Files[v.Selected].Key()].Highlighted {
-		t.Fatal("flush retained the latest file marker")
-	}
 	restarted := liveDiffView{}
 	restarted.Merge(snapshot)
 	restarted.RefreshVisible()
@@ -109,33 +105,6 @@ func TestLiveDiffHighlightEmptyStartAndRevert(t *testing.T) {
 	visible := v.Visible[v.Files[0].Key()]
 	if !visible.Highlighted || len(visible.Chunks) != 0 {
 		t.Fatalf("full revert should mark the file without inventing a hunk: %#v", visible)
-	}
-	v.Flush(false)
-	if v.UnseenUpdate || v.Visible[v.Files[0].Key()].Highlighted {
-		t.Fatal("flushing the last marked file retained the update notice")
-	}
-}
-
-func TestLiveDiffHighlightCapturesAndFlushedReceipt(t *testing.T) {
-	first := liveDiffHighlightChunk("first", "a", "@@ -1 +1 @@\n-a\n+A\n")
-	v := liveDiffView{}
-	v.Merge(nil)
-	snapshot := []liveDiffFile{{Path: "a", Chunks: []liveDiffChunk{first}}}
-	v.Merge(snapshot)
-	v.RefreshVisible()
-	v.Flush(true)
-	v.Merge(snapshot)
-	v.RefreshVisible()
-	if len(v.Visible[v.Files[0].Key()].Chunks) != 0 || v.UnseenUpdate {
-		t.Fatal("repeated snapshot revived a flushed capture")
-	}
-	other := liveDiffHighlightChunk("other", "a", "@@ -20 +20 @@\n-b\n+B\n")
-	snapshot[0].Chunks = append(snapshot[0].Chunks, other)
-	v.Merge(snapshot)
-	v.RefreshVisible()
-	visible := v.Visible[v.Files[0].Key()]
-	if len(visible.Chunks) != 1 || !strings.Contains(visible.Chunks[0].Review.Diff, "-b\n+B\n") || !visible.Chunks[0].Highlighted {
-		t.Fatalf("new capture lost its highlight or revived unrelated flushed history: %#v", visible)
 	}
 }
 
@@ -294,7 +263,7 @@ func TestLiveDiffHeaderCountsUseVisibleComposition(t *testing.T) {
 	snapshot[0].Chunks = append(snapshot[0].Chunks, second)
 	v.Merge(snapshot)
 	v.RefreshVisible()
-	for _, want := range []livediff.Counts{{Added: 2, Removed: 1}, {Added: 0, Removed: 0}} {
+	for _, want := range []livediff.Counts{{Added: 2, Removed: 1}} {
 		file := v.Visible[v.Files[0].Key()]
 		render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{file}, workspace, 90, 0, second)
 		if err != nil {
@@ -303,7 +272,6 @@ func TestLiveDiffHeaderCountsUseVisibleComposition(t *testing.T) {
 		if len(render.Counts) != 1 || render.Counts[0] != want {
 			t.Fatalf("counts = %v, want visible net counts %v", render.Counts, want)
 		}
-		v.Flush(true)
 	}
 }
 
@@ -498,11 +466,6 @@ func TestLiveDiffConflictingSavedEditsRemainReadable(t *testing.T) {
 	}
 	if strings.Contains(visible, "Unable to combine") || strings.Contains(visible, "changes observed") {
 		t.Fatalf("conflicting capture exposed obsolete state: %s", visible)
-	}
-	v.Flush(true)
-	v.RefreshVisible()
-	if len(v.Visible[v.Files[0].Key()].Chunks) != 0 {
-		t.Fatalf("reviewed conflicting edits remain visible: %+v", v.Visible)
 	}
 }
 

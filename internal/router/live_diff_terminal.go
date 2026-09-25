@@ -152,7 +152,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		offset = c.rendering.FollowOffset(viewport)
 	}
 	c.followDirty = false
-	// A flushed/reverted last file has an empty span at EOF. Normalize the
+	// A reverted last file has an empty span at EOF. Normalize the
 	// actual viewport offset too, not only scrollTo's selection argument.
 	offset = max(0, min(offset, len(lines)-1))
 	c.view.ScrollTo(c.rendering, offset)
@@ -184,7 +184,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	}
 	header := "Waiting for captured workspace edits..."
 	if len(c.view.Files) > 0 {
-		header = "No unreviewed changes"
+		header = "No visible changes"
 	}
 	if len(lines) > 0 {
 		header = "Changes"
@@ -252,7 +252,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 				text = left + strings.Repeat(" ", max(0, navWidth-ansi.StringWidth(left))) + "\x1b[2m│\x1b[0m" + text
 			}
 			if c.help {
-				help := []string{"", "  Diff navigation", "", "  s       show / hide files", "  Tab     files / changes by caller", "          Changes: Enter caller filters · Enter h/l expand / collapse change", "  /       filter paths, or changes by id, @caller, source · Ctrl-U clear", "  t       tree / flat list", "  ↑↓ j/k  move or scroll", "  ←→ h/l  collapse / expand folder", "  Enter   open file or toggle folder", "  n/p     next / previous matching file", "  [ / ]   previous / next hunk", "  { / }   previous / next change", "  a / 0   next caller / all callers", "  PgUp/Dn page · Home/End first / last", "  r       resume following changes", "  f / F   flush current / all files", "  v       stream / diff", "  Esc     close picker or help", "  ?       close help", "  Ctrl-C  quit"}
+				help := []string{"", "  Diff navigation", "", "  s       show / hide files", "  Tab     files / changes by caller", "          Changes: Enter caller filters · Enter h/l expand / collapse change", "  /       filter paths, or changes by id, @caller, source · Ctrl-U clear", "  t       tree / flat list", "  ↑↓ j/k  move or scroll", "  ←→ h/l  collapse / expand folder", "  Enter   open file or toggle folder", "  n/p     next / previous matching file", "  [ / ]   previous / next hunk", "  { / }   previous / next change", "  a / 0   next caller / all callers", "  PgUp/Dn page · Home/End first / last", "  r       resume following changes", "  v       stream / diff", "  Esc     close picker or help", "  ?       close help", "  Ctrl-C  quit"}
 				text = ""
 				if row < len(help) {
 					text = livediff.Safe(help[row], false)
@@ -315,8 +315,8 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		writeRow(height, "DIFF · "+stream+" · "+mode+scope+" · s files · Tab changes · ? help")
 	} else {
 		diff := "v diff"
-		if pending := c.unreviewedFiles(); pending > 0 {
-			diff += fmt.Sprintf(" (%d unreviewed)", pending)
+		if count := len(c.files); count > 0 {
+			diff += fmt.Sprintf(" (%d files)", count)
 		}
 		writeRow(height, "STREAM · "+diff)
 	}
@@ -326,16 +326,6 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	}
 	c.dirty = false
 	return nil
-}
-
-func (c *liveDiffTerminalController) unreviewedFiles() int {
-	count := 0
-	for _, file := range c.files {
-		if len(file.Chunks) > 0 {
-			count++
-		}
-	}
-	return count
 }
 
 func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveDiffEvent) (bool, error) {
@@ -570,10 +560,6 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 	case 'v':
 		c.diffMode = !c.diffMode
 		c.followDirty = c.diffMode && c.view.Following
-	case 'f', 'F':
-		c.view.Flush(key == 'F')
-		// Keys in the same read must not step into flushed changes.
-		c.refreshChanges()
 	case '{', '}':
 		if c.diffMode {
 			c.stepChange(map[byte]int{'{': -1, '}': 1}[key])
@@ -613,7 +599,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 }
 
 // callerDots marks each file with the callers of its shown captures, once
-// more than one caller has changes to review.
+// more than one caller has changes.
 func (c *liveDiffTerminalController) callerDots() []string {
 	if len(liveDiffCallers(&c.view)) < 2 {
 		return nil
@@ -623,7 +609,7 @@ func (c *liveDiffTerminalController) callerDots() []string {
 	for i, file := range c.view.Files {
 		var seen []string
 		for _, chunk := range file.Chunks {
-			if c.view.Reviewed[chunk.Key] || !c.view.Shows(chunk) || slices.Contains(seen, chunk.Caller) {
+			if !c.view.Shows(chunk) || slices.Contains(seen, chunk.Caller) {
 				continue
 			}
 			seen = append(seen, chunk.Caller)

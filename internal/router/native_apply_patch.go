@@ -548,7 +548,7 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			return err
 		}
 		if len(reviews) != 0 {
-			_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, p.activity)
+			_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, p.activity, jsonString(history.UpstreamItem, "id"))
 		}
 	}
 	return nil

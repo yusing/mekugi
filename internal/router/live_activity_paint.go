@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -364,7 +365,7 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 		label := p.label(block.verb, block.label)
 		code, body := block.code, block.body
 		exit := ""
-		if block.verb == "Run" && block.exitCode != 0 {
+		if block.exitCode != 0 && (block.verb == "Run" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.verb)) {
 			exit = liveActivityRed + fmt.Sprintf("(exit %d)", block.exitCode) + liveActivityReset
 		}
 		if block.verb == "Run" && block.fenced && label == "" && strings.Contains(code, "\n") && width-ansi.StringWidth(liveActivityVerb(block.verb)) >= 4 {
@@ -610,7 +611,7 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 			}
 			detail = strings.TrimSpace(code + " " + detail)
 		}
-		if block.verb == "Run" && block.exitCode != 0 {
+		if block.exitCode != 0 && (block.verb == "Run" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.verb)) {
 			detail += " " + liveActivityRed + fmt.Sprintf("(exit %d)", block.exitCode) + liveActivityReset
 		}
 		return liveActivitySummaryVerb(block.verb) + detail + more

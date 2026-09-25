@@ -15,17 +15,13 @@ func testChunk(key, path, diff string) Chunk {
 	}
 }
 
-func TestViewMergeRefreshAndFlush(t *testing.T) {
+func TestViewMergeRefresh(t *testing.T) {
 	first := testChunk("first", "file.txt", "@@ -1 +1 @@\n-old\n+new\n")
 	view := View{Following: true, Scroll: make(map[string]int)}
 	view.Merge(GroupCaptures([]Chunk{first}))
 	view.RefreshVisible()
 	if len(view.Files) != 1 || len(view.Visible[view.Files[0].Key()].Chunks) != 1 {
 		t.Fatalf("visible view = %#v", view.Visible)
-	}
-	view.Flush(true)
-	if got := view.Visible[view.Files[0].Key()].Chunks; len(got) != 0 {
-		t.Fatalf("flush retained chunks: %#v", got)
 	}
 }
 

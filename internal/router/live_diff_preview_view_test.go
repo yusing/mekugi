@@ -26,6 +26,17 @@ func previewViewFixture(id string, rows int) liveDiffPreview {
 		Input: diff.String()}
 }
 
+func TestLiveDiffPreviewFooterStaysAtBottom(t *testing.T) {
+	var pane liveDiffPreviewPane
+	pane.update(liveDiffPreview{ID: "pending", Workspace: "/workspace", Thread: "thread",
+		Status: liveDiffPreviewPending, Input: "will edit\nfile.go", Footer: "may write · 1 scoped path"})
+	lines, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 80, 14)
+	if err != nil || len(lines) != 14 || !strings.Contains(ansi.Strip(lines[13]), "may write") ||
+		!strings.Contains(ansi.Strip(lines[2]), "file.go") || lines[7] != "" {
+		t.Fatalf("pending scope footer was not bottom anchored: %q, %v", lines, err)
+	}
+}
+
 func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 	var pane liveDiffPreviewPane
 	for _, size := range []int{2, 30, 300, 2000} {

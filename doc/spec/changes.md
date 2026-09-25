@@ -302,8 +302,7 @@ displayed edit. A literal `workdir` resolves relative targets; when an edit's
 `workdir` is computed, the card reports that its target cannot be resolved.
 Scope cards list pending VCS restore, deletion, or switch targets when their
 targets are known. Ordinary command watches remain hidden until a captured
-file changes. A `may write` footer distinguishes scoped paths from unresolved
-targets on visible cards.
+file changes. A `may write` footer distinguishes scoped paths from unresolved targets on visible cards and stays anchored to the bottom of its card.
 
 While a writer window is open, display-only polling runs about every 500 ms over
 captured paths, reading content only after a stat change. Polling is bounded by
@@ -320,7 +319,9 @@ Patch previews show projected source changes with the affected file's language
 highlighting, not the `apply_patch` instruction envelope. If source matching
 cannot establish that projection, the viewer must not fabricate a diff. A
 completed unprojectable patch clears any earlier provisional card and leaves
-failure reporting to the host tool result.
+failure reporting to the host tool result. While a later patch has no complete
+change yet, its pending marker keeps the preceding projected diff visible
+instead of blanking the stream; the next established projection replaces it.
 This provisional display never changes Codex's original tool input or asserts
 that the command ran.
 
@@ -358,13 +359,12 @@ The line-number column of a card never narrows while its call streams.
 The saved diff view uses completed observed patch and command outcomes. It includes
 changes from children that are visible to the parent. The viewer switches
 to it after the root's usage and journal flush, and back to stream for the
-next prompt. The user can switch, scroll, pause following, resume, or flush
-visible cards without changing execution or durable evidence. Each mode's
+next prompt. The user can switch, scroll, pause following, or resume without changing execution or durable evidence. Each mode's
 footer reports what the other holds: live calls from the diff view, and
-unreviewed files from the stream view. A child caller's card label uses the
+captured files from the stream view. A child caller's card label uses the
 same color as that agent in the agents pane.
 
-The saved diff navigator is a presentation index over unreviewed files, not a
+The saved diff navigator is a presentation index over captured files, not a
 reordering of capture history. Wide panes show a persistent, collapsible left
 dock with colored status and inline added/removed counts; `s` hides it. Narrow
 panes use `s` to toggle a full-width picker so code retains its reading width.
@@ -387,7 +387,7 @@ heading stays pinned while its content scrolls. Hunk navigation uses rendered
 hunk boundaries and, like a file jump, keeps the position of a file it leaves.
 Each change record keeps the canonical path of the agent that issued it and
 the tool or program that wrote it (`apply_patch`, or the observed program such
-as `sed` or `python3`). The navigator's Changes tab lists unreviewed changes in
+as `sed` or `python3`). The navigator's Changes tab lists captured changes in
 capture order as a graph with one lane per caller, branching from `main` at the
 caller's first change; each row shows the change ID, source, file count, known
 line counts. Missing line counts use `?`, not a command-failure glyph. A file's
@@ -397,10 +397,9 @@ form one coherent diff, the pane shows the individual captured edits with their
 IDs instead of hiding them behind a composition error or inventing a net diff.
 Next/previous change navigation
 opens each file of each change in that order. A caller filter shows one
-caller's changes: other callers' captures compose as reviewed baseline, so the
+caller's changes: other callers' captures compose as baseline, so the
 shown diff remains the exact net effect of that caller's edits, and the heading
-counts the changes folded into it. Flushing under a filter reviews only the
-shown caller's captures. Agents appear by display name: `main` for the root,
+counts the changes folded into it. Agents appear by display name: `main` for the root,
 otherwise the path below it. Records from before attribution show an unknown
 caller, which filters like any other. File rows in the tree, flat list, Changes
 tab, and streaming title share one format: a colored git-style status, one

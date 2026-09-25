@@ -503,9 +503,10 @@ func (b *liveDiffBroker) publishPreview(preview liveDiffPreview, remove bool) {
 		return
 	}
 	preview = boundLiveDiffPreview(preview)
-	if preview.Status == liveDiffPreviewEdit && len(preview.Files) == 0 && preview.Input == "" {
+	if preview.Status == liveDiffPreviewEdit && len(preview.Files) == 0 && (preview.Input == "" || preview.Input == "\n") {
 		// Incomplete fragments retain the latest displayed projection, including
-		// a bounded raw-diff window, never the preceding shell source.
+		// a bounded raw-diff window, never the preceding shell source. A lone
+		// newline is the pending stock-patch marker, not a new blank edit.
 		if previous := b.previews[preview.ID]; len(previous.Files) != 0 || previous.DiffText {
 			preview.Files, preview.Input = previous.Files, previous.Input
 			preview.DiffText, preview.Truncated = previous.DiffText, previous.Truncated

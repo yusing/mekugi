@@ -79,6 +79,15 @@ func (p *liveDiffPreviewPane) update(preview liveDiffPreview) {
 		return
 	}
 	if view == nil {
+		if preview.Status == liveDiffPreviewEdit && len(preview.Files) == 0 && preview.Input == "\n" &&
+			slices.ContainsFunc(p.order, func(id string) bool {
+				old := p.views[id]
+				return old.complete && (len(old.current.Files) != 0 || old.current.DiffText)
+			}) {
+			// A new call's empty patch header is only a placeholder. Keep the
+			// last useful card until this call has a projected change.
+			return
+		}
 		// An evaluated completion must get a render opportunity before the next
 		// fast call replaces it.
 		replaceable := func(id string) bool {
@@ -372,8 +381,16 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 		footer = []string{ansi.Truncate(livediff.Safe(p.current.Footer, false), max(0, width-1), "…")}
 		rows--
 	}
+	finish := func(lines []string) []string {
+		if len(footer) > 0 {
+			for len(lines) < height-len(footer) {
+				lines = append(lines, "")
+			}
+		}
+		return append(lines, footer...)
+	}
 	if rows == 0 || len(p.source) == 0 {
-		return append(lines, footer...), nil
+		return finish(lines), nil
 	}
 	digits, sourceWidth := p.columns(width)
 	fragmentsAt := func(i int) int {
@@ -477,7 +494,7 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 			lines = append(lines, line)
 		}
 	}
-	return append(lines, footer...), nil
+	return finish(lines), nil
 }
 
 // title follows the agents roster: a state glyph, then what the card shows.

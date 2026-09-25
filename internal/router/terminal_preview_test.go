@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -521,11 +522,50 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 			return true
 		}
 		after := edit(string(before))
+		invocation := call()
+		activity.collect(thread, "tool-call\x00"+invocation, "tool", "Run\n```bash\n"+command+"\n```")
+		if source == "python3" {
+			// Exercise the native exec_command input path before the host edit,
+			// rather than merely labeling a recorded result as Python.
+			arguments, err := json.Marshal(map[string]string{"cmd": command, "workdir": workspace})
+			if err != nil {
+				return false
+			}
+			worker := startLiveDiffPreview(ctx, auto.events, workspace, thread, nativeExecCommandToolName)
+			worker.mu.Lock()
+			worker.preview.Caller = caller
+			worker.mu.Unlock()
+			input := string(arguments)
+			for {
+				end := strings.Index(input, `\n`)
+				if end < 0 {
+					break
+				}
+				end += 2
+				worker.appendDelta(input[:end])
+				input = input[end:]
+				if !pause(0.16) {
+					worker.stop()
+					return false
+				}
+			}
+			worker.appendDelta(input)
+			worker.finish(string(arguments))
+			select {
+			case <-worker.done:
+			case <-ctx.Done():
+				return false
+			}
+		}
 		if os.WriteFile(absolute, []byte(after), 0o644) != nil {
 			return true
 		}
-		activity.collect(thread, "tool-call\x00"+call(), "tool", "Run\n```bash\n"+command+"\n```")
 		record(thread, caller, nativeExecCommandToolName, source, absolute, absolute, string(before), after)
+		receipt := editReceiptText(workspace, mekugiHistory{
+			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(absolute, absolute, string(before), after)},
+			ExecOutcome: &execOutcome{Labels: []string{source}},
+		})
+		activity.collect(thread, "edit-receipt\x00"+workspace+"\x00"+invocation, "tool", receipt)
 		return pause(0.8)
 	}
 	spawn := func(thread, name, assignment string) {
@@ -624,10 +664,11 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 	}
 	respond("pane", "gpt-6-luna", 64_000, 1_100)
 	// pane_trace edits with a Python script, a third lane with another source.
-	if !script("pane", "/root/pane_trace", "python3", "internal/pane/launch.go", "python3 - <<'EOF'\n# wait for the first frame before opening\nEOF",
-		func(source string) string {
-			return strings.Replace(source, "\tif requested {\n\t\treturn \"open\"\n\t}\n\treturn <-frames", "\tframe := <-frames\n\tif requested {\n\t\treturn \"open: \" + frame\n\t}\n\treturn frame", 1)
-		}) {
+	oldFlow := "\tif requested {\n\t\treturn \"open\"\n\t}\n\treturn <-frames"
+	newFlow := "\tframe := <-frames\n\tif requested {\n\t\treturn \"open: \" + frame\n\t}\n\treturn frame"
+	pythonCommand := "python3 - <<'PY'\nfrom pathlib import Path\np = Path('internal/pane/launch.go')\ns = p.read_text()\ns = s.replace(" + strconv.Quote(oldFlow) + ", " + strconv.Quote(newFlow) + ", 1)\np.write_text(s)\nPY\n"
+	if !script("pane", "/root/pane_trace", "python3", "internal/pane/launch.go", pythonCommand,
+		func(source string) string { return strings.Replace(source, oldFlow, newFlow, 1) }) {
 		return
 	}
 	activity.collect("tests", "reply-1", "reply", "[`/root/script_tests` -> `/root`] Message received:\nDraft tests are in broker_test.go; please review before I extend them.")

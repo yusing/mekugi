@@ -96,7 +96,6 @@ func TestLiveDiffSessionCrossWorkspaceOverlap(t *testing.T) {
 	refresh()
 	key := view.Files[0].Key()
 	view.Scroll[key] = 2
-	view.Flush(true)
 	liveDiffScopeCapture(t, store, second, "child", "same-call-id", path, "first", "fixed")
 	refresh()
 	if len(view.Files) != 1 || len(view.Files[0].Chunks) != 2 || view.Files[0].Key() != key || view.Scroll[key] != 2 {
@@ -110,10 +109,7 @@ func TestLiveDiffSessionCrossWorkspaceOverlap(t *testing.T) {
 	if chunks := view.Visible[key].Chunks; len(chunks) != 0 {
 		t.Fatal("cross-workspace full revert retained a net diff")
 	}
-	view.Flush(true)
-	if len(view.Visible[key].Chunks) != 0 {
-		t.Fatal("flush retained reviewed captures")
-	}
+
 }
 
 func TestLiveDiffFreshSnapshotComposesCrossStreamCaptures(t *testing.T) {
@@ -225,14 +221,10 @@ func TestLiveDiffSessionTerminalEmptyEditsAndExit(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "notes.txt")
 	liveDiffScopeCapture(t, store, workspace, "current", "edit", path, "original", "created")
 	wait("+created")
-	if _, err := terminal.Write([]byte("f")); err != nil {
-		t.Fatal(err)
-	}
-	wait("No unreviewed changes")
 	liveDiffScopeCapture(t, store, workspace, "current", "fix", path, "created", "updated")
 	text := wait("+updated")
 	if !strings.Contains(text, "-original") {
-		t.Fatalf("flush lost original-to-latest integrity: %s", text)
+		t.Fatalf("update lost original-to-latest integrity: %s", text)
 	}
 	// A scope update subscribes a second workspace without restarting the
 	// viewer, including captures published before that membership arrived.

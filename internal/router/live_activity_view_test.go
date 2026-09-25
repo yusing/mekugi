@@ -61,6 +61,39 @@ func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
 	}
 }
 
+func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
+	v := newLiveActivityView()
+	caller := "/root/worker"
+	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+		Seq: 1, Agent: caller, Kind: "tool", CallID: "call", Text: "Run\n```bash\npython3 edit.py\n```",
+	}}})
+	if len(v.entries) != 1 || v.blocks[0][0].verb != "Run" {
+		t.Fatalf("pending command = %+v", v.blocks)
+	}
+	filter := exploreFilterEvent{Command: "python3 edit.py", LinesBefore: 20, LinesRemoved: 10}
+	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+		Seq: 2, Agent: caller, Kind: "output_filter", CallID: "call", Text: filter.text(), Filter: &filter,
+	}, {
+		Seq: 3, Agent: caller, Kind: "exit", CallID: "call", Text: "1",
+	}}})
+	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+		Seq: 4, Agent: caller, Kind: "tool", CallID: "call", Text: "Edit `edit.py` +1 -1",
+	}}})
+	if len(v.entries) != 1 || v.blocks[0][0].verb != "Edit" || v.entries[0].Seq != 1 || v.lastSeq != 4 {
+		t.Fatalf("confirmed edit did not replace Run: entries=%+v blocks=%+v", v.entries, v.blocks)
+	}
+	if len(v.blocks[0]) != 2 || v.blocks[0][1].kind != "filter" || v.blocks[0][0].exitCode != 1 ||
+		!strings.Contains(ansi.Strip(strings.Join(v.painter.block(v.blocks[0][0], 80), "\n")), "exit 1") {
+		t.Fatalf("replacement lost failure or filter: %+v", v.blocks[0])
+	}
+	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+		Seq: 5, Agent: caller, Kind: "tool", CallID: "other", Text: "Edit `other.py` +1 -0",
+	}}})
+	if len(v.entries) != 2 || v.blocks[1][0].verb != "Edit" {
+		t.Fatalf("unmatched receipt lost: %+v", v.blocks)
+	}
+}
+
 func TestLiveActivityViewCollapsesReadsAcrossRun(t *testing.T) {
 	view := newLiveActivityView()
 	now := time.Now()

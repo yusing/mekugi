@@ -247,8 +247,7 @@ call never becomes a saved change.
   one caller's changes at a time, and `0` shows all callers. In the tab, `Enter`
   on a caller filters to it, and `Enter` or `h`/`l` on a change expands or
   collapses its files.
-- Browsing pauses following; `r` resumes. `f`/`F` flush the current file or all
-  files.
+- Browsing pauses following; `r` resumes.
 
 See [live view details](doc/spec/changes.md#live-terminal-view).
 

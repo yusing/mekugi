@@ -15,11 +15,11 @@ const maxReviewComposeRows = 1 << 20
 
 // ReviewComposition composes one file's ordered, applied review captures. It
 // retains only captured lines, not source files. Its zero value is ready to use.
-// Reviewed captures hide their regions without discarding the original baseline.
+// Hidden captures hide their regions without discarding the original baseline.
 type ReviewComposition struct {
 	started               bool
 	beforePath, afterPath string
-	pathReviewed          bool
+	pathHidden            bool
 	pathHighlighted       bool
 	regions               []reviewRegion
 	original, current     map[int]string
@@ -28,7 +28,7 @@ type ReviewComposition struct {
 type reviewRegion struct {
 	beforeStart, afterStart int
 	before, after           []string
-	reviewed                bool
+	hidden                  bool
 	highlighted             bool
 }
 
@@ -62,14 +62,14 @@ type reviewEdit struct {
 
 // ApplyWithHighlight also marks touched net regions for auxiliary display.
 // It validates the captured chain before publishing any new composition. The
-// reviewed flag prevents a late receipt from reviving already reviewed content.
+// hidden flag prevents a late receipt from reviving already hidden content.
 // Highlights follow source regions through composition, not rendered line numbers.
-// Reviewed captures cannot introduce highlights; a full revert removes them.
-func (c *ReviewComposition) ApplyWithHighlight(file ReviewFile, reviewed, highlighted bool) error {
+// Hidden captures cannot introduce highlights; a full revert removes them.
+func (c *ReviewComposition) ApplyWithHighlight(file ReviewFile, hidden, highlighted bool) error {
 	if file.Incomplete != "" {
 		return fmt.Errorf("incomplete history: %s", file.Incomplete)
 	}
-	highlighted = highlighted && !reviewed
+	highlighted = highlighted && !hidden
 	hunks, err := parseReviewHunks(file, true)
 	if err != nil {
 		return err
@@ -123,7 +123,7 @@ func (c *ReviewComposition) ApplyWithHighlight(file ReviewFile, reviewed, highli
 	}
 	// Descending source order keeps all input coordinates on one baseline.
 	for _, edit := range slices.Backward(edits) {
-		if err := next.applyEdit(edit, reviewed, highlighted); err != nil {
+		if err := next.applyEdit(edit, hidden, highlighted); err != nil {
 			return err
 		}
 	}
@@ -132,7 +132,7 @@ func (c *ReviewComposition) ApplyWithHighlight(file ReviewFile, reviewed, highli
 		return errors.New("review composition exceeds captured-line capacity")
 	}
 	if file.BeforePath != file.AfterPath {
-		next.pathReviewed = reviewed
+		next.pathHidden = hidden
 		next.pathHighlighted = highlighted
 	}
 	next.afterPath = file.AfterPath
@@ -168,7 +168,7 @@ func reviewOverlaps(start, end int, region reviewRegion) bool {
 	return start < b && a < end
 }
 
-func (c *ReviewComposition) applyEdit(edit reviewEdit, reviewed, highlighted bool) error {
+func (c *ReviewComposition) applyEdit(edit reviewEdit, hidden, highlighted bool) error {
 	start, end := edit.start, edit.start+len(edit.before)
 	first, last := -1, -1
 	for i, region := range c.regions {
@@ -251,14 +251,14 @@ func (c *ReviewComposition) applyEdit(edit reviewEdit, reviewed, highlighted boo
 		regions = append(regions, region)
 	}
 	if !slices.Equal(original, after) {
-		visible := !reviewed
+		visible := !hidden
 		if first >= 0 {
 			for _, region := range c.regions[first : last+1] {
-				visible = visible || !region.reviewed
+				visible = visible || !region.hidden
 				highlighted = highlighted || region.highlighted
 			}
 		}
-		regions = append(regions, reviewRegion{beforeStart: originalStart, afterStart: left, before: original, after: after, reviewed: !visible, highlighted: highlighted})
+		regions = append(regions, reviewRegion{beforeStart: originalStart, afterStart: left, before: original, after: after, hidden: !visible, highlighted: highlighted})
 	}
 	slices.SortFunc(regions, func(a, b reviewRegion) int {
 		if a.afterStart != b.afterStart {
@@ -272,7 +272,7 @@ func (c *ReviewComposition) applyEdit(edit reviewEdit, reviewed, highlighted boo
 
 // Repeated source lines can align a revert as an insertion beside a deletion.
 // Normalize connected, fully captured regions together so equivalent net text
-// cancels without merging the acknowledgement of unrelated changed runs.
+// cancels without merging the caller-filter baseline of unrelated changed runs.
 func (c *ReviewComposition) normalize() {
 	var normalized []reviewRegion
 	for first := 0; first < len(c.regions); {
@@ -308,7 +308,7 @@ func (c *ReviewComposition) normalize() {
 			}
 			// Re-diff the whole connected group to cancel repeated-line reverts,
 			// then preserve original region boundaries inside replacement opcodes.
-			// A single opcode can otherwise revive an adjacent reviewed edit.
+			// A single opcode can otherwise revive an adjacent hidden edit.
 			oldStart, newStart := op.I1, op.J1
 			emit := func(oldEnd, newEnd int) {
 				if oldEnd < oldStart || newEnd < newStart ||
@@ -320,7 +320,7 @@ func (c *ReviewComposition) normalize() {
 				}
 				region := reviewRegion{
 					beforeStart: initial.beforeStart + oldStart, afterStart: initial.afterStart + newStart,
-					before: slices.Clone(a[oldStart:oldEnd]), after: slices.Clone(b[newStart:newEnd]), reviewed: true,
+					before: slices.Clone(a[oldStart:oldEnd]), after: slices.Clone(b[newStart:newEnd]), hidden: true,
 				}
 				oldStart, newStart = oldEnd, newEnd
 				if slices.Equal(region.before, region.after) {
@@ -328,11 +328,11 @@ func (c *ReviewComposition) normalize() {
 				}
 				for _, prior := range c.regions[first:last] {
 					oldSpan := reviewRegion{afterStart: prior.beforeStart, after: prior.before}
-					if !prior.reviewed && (len(region.after) > 0 && len(prior.after) > 0 &&
+					if !prior.hidden && (len(region.after) > 0 && len(prior.after) > 0 &&
 						reviewOverlaps(region.afterStart, region.afterStart+len(region.after), prior) ||
 						len(region.before) > 0 && len(prior.before) > 0 &&
 							reviewOverlaps(region.beforeStart, region.beforeStart+len(region.before), oldSpan)) {
-						region.reviewed = false
+						region.hidden = false
 						region.highlighted = region.highlighted || prior.highlighted
 					}
 				}
@@ -356,7 +356,7 @@ type ReviewHighlightedFile struct {
 	Highlighted bool
 }
 
-// FilesWithHighlights returns visible unreviewed original-to-latest regions,
+// FilesWithHighlights returns visible unhidden original-to-latest regions,
 // with highlights introduced by ApplyWithHighlight. Matching captured context
 // is included when available; unknown source is never synthesized. Path-only
 // changes mark their header projection.
@@ -364,7 +364,7 @@ func (c *ReviewComposition) FilesWithHighlights() []ReviewHighlightedFile {
 	var files []ReviewHighlightedFile
 	oldEnd, newEnd := 0, 0
 	for i, region := range c.regions {
-		if region.reviewed {
+		if region.hidden {
 			continue
 		}
 		a, b := slices.Clone(region.before), slices.Clone(region.after)
@@ -381,7 +381,7 @@ func (c *ReviewComposition) FilesWithHighlights() []ReviewHighlightedFile {
 		}
 		for range 3 {
 			// Context belongs to one displayed region only and must not cross
-			// a neighboring change, including one hidden by acknowledgement.
+			// a neighboring change, including one hidden by caller-filter baseline.
 			if i+1 < len(c.regions) && (oldStart+len(a) >= c.regions[i+1].beforeStart ||
 				newStart+len(b) >= c.regions[i+1].afterStart) {
 				break
@@ -399,7 +399,7 @@ func (c *ReviewComposition) FilesWithHighlights() []ReviewHighlightedFile {
 			Highlighted: region.highlighted,
 		})
 	}
-	if len(files) == 0 && c.started && c.beforePath != c.afterPath && !c.pathReviewed {
+	if len(files) == 0 && c.started && c.beforePath != c.afterPath && !c.pathHidden {
 		files = append(files, ReviewHighlightedFile{
 			ReviewFile:  renderReviewFile(ReviewFile{BeforePath: c.beforePath, AfterPath: c.afterPath}, nil, nil, 0, 0),
 			Highlighted: c.pathHighlighted,

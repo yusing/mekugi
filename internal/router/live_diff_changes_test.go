@@ -285,10 +285,13 @@ func TestLiveDiffCallerFilterComposesOthersAsBaseline(t *testing.T) {
 	if !strings.Contains(text, "1 change by other callers as baseline") {
 		t.Fatalf("filtered diff hides its baseline:\n%s", text)
 	}
-	// Flushing under a filter reviews only the shown caller's captures.
-	c.handleKey('F')
-	if c.view.Reviewed["k2"] != true || c.view.Reviewed["k1"] || c.view.Reviewed["k3"] {
-		t.Fatalf("filtered flush reviewed %v", c.view.Reviewed)
+	// Former flush keys must not hide captured history or change the filter.
+	for _, key := range []byte{'f', 'F'} {
+		c.handleKey(key)
+		c.frame(t)
+		if c.view.Caller != "/root/script_tests" || len(c.navigation.changes.nodes) != 1 {
+			t.Fatalf("%q changed captured history or caller filter", key)
+		}
 	}
 	c.handleKey('0')
 	c.frame(t)
@@ -422,26 +425,6 @@ func TestLiveDiffUnknownCallerFilters(t *testing.T) {
 	}
 }
 
-// Keys in one read reach handleKey before a repaint: } after F must not open
-// a flushed change, and accepting a Changes query keeps its expansion.
-func TestLiveDiffChangesKeysAfterFlushAndQuery(t *testing.T) {
-	origin := livediff.Origin{Change: "amber1", Caller: "/root", Source: "sed"}
-	c := liveDiffChangesController(t, 130, 20, []liveDiffChunk{liveDiffCapture("k1", "a.go", 1, "a\n", "A\n", origin)})
-	c.navigation.changes.expanded = map[string]bool{"amber1": true}
-	for _, key := range []byte("\t/amber\r") {
-		c.handleKey(key)
-	}
-	if !c.navigation.changes.expanded["amber1"] {
-		t.Fatal("accepting the query collapsed the matched change")
-	}
-	c.handleKey('F')
-	c.handleKey('}')
-	if target := c.navigation.changes.target; target.change != "amber1" || len(c.navigation.changes.nodes) != 0 {
-		t.Fatalf("} after F: target %+v, nodes %d", target, len(c.navigation.changes.nodes))
-	}
-}
-
-// A hunk jump into another file is a jump: the file it leaves keeps its position.
 func TestLiveDiffHunkJumpKeepsLeftPosition(t *testing.T) {
 	var captures []liveDiffChunk
 	for i, path := range []string{"a.go", "b.go"} {
@@ -465,30 +448,5 @@ func TestLiveDiffHunkJumpKeepsLeftPosition(t *testing.T) {
 	c.frame(t)
 	if c.offset != parked {
 		t.Fatalf("p after ] reopened offset %d, want parked %d", c.offset, parked)
-	}
-}
-
-// Flushing one caller's changes must not clear the unseen-update mark while
-// another caller's highlighted captures remain unreviewed.
-func TestLiveDiffFilteredFlushKeepsOthersUnseen(t *testing.T) {
-	main := liveDiffCapture("k1", "a.go", 1, "a\n", "A\n", livediff.Origin{Change: "amber1", Caller: "/root"})
-	worker := liveDiffCapture("k2", "b.go", 2, "b\n", "B\n", livediff.Origin{Change: "apple1", Caller: "/root/worker"})
-	// The first merge is a baseline; captures arriving while paused are unseen.
-	var view liveDiffView
-	view.Merge(nil)
-	view.Following = false
-	view.Merge(livediff.GroupCaptures([]liveDiffChunk{main, worker}))
-	if !view.UnseenUpdate {
-		t.Fatal("paused update was not marked unseen")
-	}
-	view.FilterCaller("/root/worker")
-	view.Flush(true)
-	if !view.Reviewed["k2"] || view.Reviewed["k1"] || !view.UnseenUpdate {
-		t.Fatalf("filtered flush: reviewed %v, unseen %v", view.Reviewed, view.UnseenUpdate)
-	}
-	view.FilterCaller("")
-	view.Flush(true)
-	if view.UnseenUpdate {
-		t.Fatal("flushing everything left the unseen-update mark")
 	}
 }

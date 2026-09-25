@@ -96,6 +96,97 @@ func TestUnprojectableFinalPatchClearsPreviewWithoutClaimingFailure(t *testing.T
 	}
 }
 
+func TestPendingPatchBetweenEditsKeepsLastProjectedDiff(t *testing.T) {
+	workspace := t.TempDir()
+	for name, content := range map[string]string{"first.go": "old()\n", "second.go": "before()\n"} {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	broker := newLiveDiffBroker(t.Context())
+	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
+	sub := broker.subscribe()
+	<-sub.events
+	first := projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{
+		ID: "sequence", Workspace: workspace, Thread: "thread", Status: liveDiffPreviewEdit,
+		Input: "*** Begin Patch\n*** Update File: first.go\n@@\n-old()\n+new()\n*** End Patch\n",
+	})
+	broker.publishPreview(first, false)
+	broker.takePreviews(sub)
+	pending := projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{
+		ID: first.ID, Workspace: workspace, Thread: "thread", Status: liveDiffPreviewEdit,
+		Input: "*** Begin Patch\n*** Update File: second.go\n",
+	})
+	if pending.Input != "\n" || len(pending.Files) != 0 {
+		t.Fatalf("partial patch did not produce the pending marker: %+v", pending)
+	}
+	broker.publishPreview(pending, false)
+	batch := broker.takePreviews(sub)
+	if len(batch) != 1 || batch[0].Preview == nil {
+		t.Fatalf("pending edit lost preview event: %+v", batch)
+	}
+	between := *batch[0].Preview
+	if between.Input != "" || len(between.Files) != 1 || !strings.Contains(between.Files[0].Diff, "+new()") {
+		t.Fatalf("pending edit blanked the previous diff: %+v", between)
+	}
+	var pane liveDiffPreviewPane
+	pane.update(first)
+	pane.update(between)
+	lines, err := pane.render(t.Context(), workspace, livediff.DarkTheme, 100, 10)
+	if err != nil || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "+new()") {
+		t.Fatalf("stream turned blank between edits: %q, %v", lines, err)
+	}
+	second := projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{
+		ID: first.ID, Workspace: workspace, Thread: "thread", Status: liveDiffPreviewEdit,
+		Input: "*** Begin Patch\n*** Update File: second.go\n@@\n-before()\n+after()\n*** End Patch\n",
+	})
+	broker.publishPreview(second, false)
+	batch = broker.takePreviews(sub)
+	if len(batch) != 1 || batch[0].Preview == nil || len(batch[0].Preview.Files) != 1 ||
+		!strings.Contains(batch[0].Preview.Files[0].Diff, "+after()") || strings.Contains(batch[0].Preview.Files[0].Diff, "+new()") {
+		t.Fatalf("next edit did not replace the retained diff: %+v", batch)
+	}
+}
+
+func TestNextCallPendingPatchKeepsCompletedDiffUntilItHasContent(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "first.go")
+	if err := os.WriteFile(path, []byte("old()\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first := projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{
+		ID: "first", Workspace: workspace, Thread: "thread", Caller: "/root", Status: liveDiffPreviewEdit,
+		Input: "*** Begin Patch\n*** Update File: first.go\n@@\n-old()\n+new()\n*** End Patch\n",
+	})
+	first.Complete = true
+	var pane liveDiffPreviewPane
+	pane.update(first)
+	pending := projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{
+		ID: "next", Workspace: workspace, Thread: "thread", Caller: "/root", Status: liveDiffPreviewEdit,
+		Input: "*** Begin Patch\n*** Update File: first.go\n",
+	})
+	pane.update(pending)
+	if len(pane.order) != 1 || pane.order[0] != first.ID {
+		t.Fatalf("empty next call replaced completed edit: %v", pane.order)
+	}
+	lines, err := pane.render(t.Context(), workspace, livediff.DarkTheme, 100, 10)
+	if err != nil || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "+new()") {
+		t.Fatalf("next call blanked previous diff: %q, %v", lines, err)
+	}
+	next := projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{
+		ID: pending.ID, Workspace: workspace, Thread: "thread", Caller: "/root", Status: liveDiffPreviewEdit,
+		Input: "*** Begin Patch\n*** Update File: first.go\n@@\n-old()\n+later()\n*** End Patch\n",
+	})
+	pane.update(next)
+	if len(pane.order) != 1 || pane.order[0] != next.ID || len(pane.views[next.ID].current.Files) != 1 {
+		t.Fatalf("next projected edit did not take over: %v", pane.order)
+	}
+	lines, err = pane.render(t.Context(), workspace, livediff.DarkTheme, 100, 10)
+	if err != nil || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "+later()") {
+		t.Fatalf("next projected edit not displayed: %q, %v", lines, err)
+	}
+}
+
 func TestStockPatchStreamingPartialLinesStayProjectable(t *testing.T) {
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "sample.go"), []byte("old()\n"), 0o600); err != nil {

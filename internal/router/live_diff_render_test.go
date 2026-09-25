@@ -365,12 +365,12 @@ func TestLiveDiffIncompleteHistory(t *testing.T) {
 }
 
 func TestLiveDiffCompleteCaptureAfterIncompleteHistory(t *testing.T) {
-	for _, acknowledged := range []bool{false, true} {
+	{
 		incomplete := liveDiffChunk{Key: "unreadable", CaptureOrder: 1,
 			Review: mekugi.RenderIncompleteReviewFile("file", "file", "permission denied")}
 		complete := liveDiffChunk{Key: "readable", CaptureOrder: 2,
 			Review: mekugi.RenderReviewFile("file", "file", "before\n", "NEW KNOWN CONTENT\n")}
-		view := liveDiffView{Reviewed: map[string]bool{"unreadable": acknowledged}}
+		view := liveDiffView{}
 		view.Merge([]liveDiffFile{{Path: "file", Chunks: []liveDiffChunk{incomplete, complete}}})
 		view.RefreshVisible()
 		render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme,
@@ -379,8 +379,8 @@ func TestLiveDiffCompleteCaptureAfterIncompleteHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 		text := ansi.Strip(strings.Join(render.Lines, "\n"))
-		if !strings.Contains(text, "NEW KNOWN CONTENT") || strings.Contains(text, "incomplete history") == acknowledged {
-			t.Fatalf("acknowledged=%t: %s", acknowledged, text)
+		if !strings.Contains(text, "NEW KNOWN CONTENT") || !strings.Contains(text, "incomplete history") {
+			t.Fatalf("incomplete history missing: %s", text)
 		}
 	}
 }

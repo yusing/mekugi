@@ -77,53 +77,6 @@ func TestReviewHunkValidation(t *testing.T) {
 	}
 }
 
-func TestReviewCompositionReviewedAdjacentInsertionsAndDeletions(t *testing.T) {
-	for _, tc := range []struct{ base, first, next, hidden, visible string }{
-		{"a\nb\nc\n", "a\nc\n", "c\n", "-b\n", "-a\n"},
-		{"a\nb\nc\n", "a\nc\n", "a\n", "-b\n", "-c\n"},
-		{"a\nc\n", "a\nb\nc\n", "a\nb\nnew\nc\n", "+b\n", "+new\n"},
-		{"a\nc\n", "a\nb\nc\n", "a\nnew\nb\nc\n", "+b\n", "+new\n"},
-	} {
-		var c ReviewComposition
-		if err := c.ApplyWithHighlight(composeCapture(tc.base, tc.first), true, false); err != nil {
-			t.Fatal(err)
-		}
-		if err := c.ApplyWithHighlight(composeCapture(tc.first, tc.next), false, false); err != nil {
-			t.Fatal(err)
-		}
-		if text := composedText(&c); strings.Contains(text, tc.hidden) || !strings.Contains(text, tc.visible) {
-			t.Fatalf("adjacent change revived reviewed content: %q", text)
-		}
-		checkComposition(t, &c, reviewLines(tc.base), reviewLines(tc.next))
-		if err := c.ApplyWithHighlight(composeCapture(tc.next, tc.base), false, false); err != nil {
-			t.Fatal(err)
-		}
-		if text := composedText(&c); text != "" {
-			t.Fatalf("revert retained changes: %q", text)
-		}
-	}
-}
-
-func TestReviewCompositionReviewedPartialRevertAndLineShifts(t *testing.T) {
-	base := "a\nb\nc\nd\ne\nf\ng\n"
-	a := "a\nB\nC\nd\ne\nf\ng\n"
-	var c ReviewComposition
-	for i, pair := range [][2]string{{base, a}, {a, "prefix\n" + a}, {"prefix\n" + a, "prefix\na\nb\nC\nd\ne\nf\ng\n"}} {
-		if err := c.ApplyWithHighlight(composeCapture(pair[0], pair[1]), true, false); err != nil {
-			t.Fatalf("%d: %v", i, err)
-		}
-	}
-	next := "prefix\na\nb\nFixed C\nd\ne\nf\ng\n"
-	if err := c.ApplyWithHighlight(composeCapture("prefix\na\nb\nC\nd\ne\nf\ng\n", next), false, false); err != nil {
-		t.Fatal(err)
-	}
-	text := composedText(&c)
-	if !strings.Contains(text, "-c\n+Fixed C\n") || strings.Contains(text, "+prefix\n") || strings.Contains(text, "+B\n") {
-		t.Fatalf("partial revert or shifted overlap lost: %q", text)
-	}
-	checkComposition(t, &c, reviewLines(base), reviewLines(next))
-}
-
 func TestReviewCompositionNewlineAndPathChanges(t *testing.T) {
 	var c ReviewComposition
 	add := RenderReviewFile("", "a.txt", "", "a\r\nb")

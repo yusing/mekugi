@@ -530,208 +530,6 @@ func testLiveDiffTerminalCancel(t *testing.T, keys string) {
 	}
 }
 
-func liveDiffFlushCapture(t *testing.T, store *mekugiReplayStore, workspace, call, before, after string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(workspace, "file.txt"), []byte(before), 0600); err != nil {
-		t.Fatal(err)
-	}
-	id, err := store.reserveChange(t.Context(), workspace, "flush-thread", call)
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(workspace, "file.txt")
-	history := mekugiHistory{ToolName: applyPatchToolName, ChangeID: id, CorrelationID: call,
-		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(path, path, before, after)}}
-	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{call: history}); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestLiveDiffFlushComposesAndPreservesSelection(t *testing.T) {
-	workspace := t.TempDir()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(workspace, "file.txt")
-	view := liveDiffView{Scroll: map[string]int{workspace + "\x00A/0": 4}}
-	refresh := func() string {
-		t.Helper()
-		files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		view.Merge(files)
-		view.RefreshVisible()
-		var text strings.Builder
-		for _, chunk := range view.Visible[workspace+"\x00A/0"].Chunks {
-			text.WriteString(chunk.Review.UnifiedDiff())
-		}
-		return text.String()
-	}
-	base, a, b := "first\nold\nlast\n", "first\nA\nlast\n", "first\nB\nlast\n"
-	liveDiffFlushCapture(t, store, workspace, "A", base, a)
-	refresh()
-	view.Flush(false)
-	if len(view.Visible[workspace+"\x00A/0"].Chunks) != 0 || view.Files[view.Selected].Path != path || view.Scroll[workspace+"\x00A/0"] != 4 {
-		t.Fatal("flush changed file selection/scroll or left content visible")
-	}
-	liveDiffFlushCapture(t, store, workspace, "B", a, b)
-	text := refresh()
-	if !strings.Contains(text, "-old\n+B\n") || strings.Contains(text, "-A\n") {
-		t.Fatalf("not original-to-Latest: %q", text)
-	}
-	liveDiffFlushCapture(t, store, workspace, "revert", b, base)
-	if text := refresh(); text != "" {
-		t.Fatalf("reverted hunk remains: %q", text)
-	}
-}
-
-func TestLiveDiffFlushAdjacentEditStaysHidden(t *testing.T) {
-	workspace := t.TempDir()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	var view liveDiffView
-	refresh := func() {
-		t.Helper()
-		files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		view.Merge(files)
-		view.RefreshVisible()
-	}
-	liveDiffFlushCapture(t, store, workspace, "first", "a\nb\n", "a\nB\n")
-	refresh()
-	view.Flush(true)
-	liveDiffFlushCapture(t, store, workspace, "adjacent", "a\nB\n", "A\nB\n")
-	refresh()
-	var text strings.Builder
-	for _, chunk := range view.Visible[view.Files[0].Key()].Chunks {
-		text.WriteString(chunk.Review.UnifiedDiff())
-	}
-	if got := text.String(); strings.Contains(got, "+B\n") || !strings.Contains(got, "+A\n") {
-		t.Fatalf("reviewed adjacent change revived: %q", got)
-	}
-}
-
-func TestLiveDiffFlushPendingReceiptAndAllFiles(t *testing.T) {
-	workspace := t.TempDir()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	view := liveDiffView{Scroll: make(map[string]int)}
-	refresh := func() {
-		t.Helper()
-		files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		view.Merge(files)
-		view.RefreshVisible()
-	}
-	liveDiffFlushCapture(t, store, workspace, "A", "old\n", "new\n")
-	liveDiffTestChange(t, store, workspace, "other", "other.txt")
-	refresh()
-	view.Flush(false)
-	if len(view.Visible[workspace+"\x00A/0"].Chunks) != 0 || len(view.Visible[workspace+"\x00other/0"].Chunks) == 0 {
-		t.Fatal("file flush scope is wrong")
-	}
-	view.Flush(true)
-	for _, file := range view.Visible {
-		if len(file.Chunks) != 0 {
-			t.Fatal("flush all left content")
-		}
-	}
-	refresh()
-	if len(view.Visible[workspace+"\x00A/0"].Chunks) != 0 {
-		t.Fatal("late receipt revived reviewed changes")
-	}
-	liveDiffFlushCapture(t, store, workspace, "B", "new\n", "fixed\n")
-	refresh()
-	if len(view.Visible[workspace+"\x00A/0"].Chunks) == 0 || !strings.Contains(view.Visible[workspace+"\x00A/0"].Chunks[0].Review.Diff, "-old\n+fixed\n") {
-		t.Fatalf("fix did not revive flushed pending baseline: %#v", view.Visible[workspace+"\x00A/0"])
-	}
-}
-
-func TestLiveDiffFlushTerminal(t *testing.T) {
-	t.Setenv("PATH", t.TempDir())
-	workspace := t.TempDir()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	liveDiffFlushCapture(t, store, workspace, "A", "old\n", "first edit\n")
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestLiveDiffTerminalProcess$")
-	cmd.Env = append(os.Environ(), "MEKUGI_LIVE_DIFF_TEST_CHILD=1",
-		"MEKUGI_LIVE_DIFF_WORKSPACE="+workspace, "MEKUGI_LIVE_DIFF_REPLAY="+store.directory, "MEKUGI_LIVE_DIFF_SESSION="+liveDiffTestSession(t, store, workspace))
-	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 20, Cols: 100})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer terminal.Close()
-	chunks := make(chan string, 128)
-	go func() {
-		defer close(chunks)
-		var buf [8192]byte
-		for {
-			n, err := terminal.Read(buf[:])
-			if n > 0 {
-				select {
-				case chunks <- string(buf[:n]):
-				case <-ctx.Done():
-					return
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
-	waitFor := func(want string) {
-		t.Helper()
-		var out strings.Builder
-		for {
-			select {
-			case text, ok := <-chunks:
-				out.WriteString(text)
-				if strings.Contains(ansi.Strip(out.String()), want) {
-					return
-				}
-				if !ok {
-					t.Fatalf("viewer exited before %q: %q", want, out.String())
-				}
-			case <-ctx.Done():
-				t.Fatalf("waiting for %q: %q", want, out.String())
-			}
-		}
-	}
-	waitFor("STREAM · v diff")
-	if _, err := terminal.Write([]byte("v")); err != nil {
-		t.Fatal(err)
-	}
-	waitFor("+first edit")
-	if _, err := terminal.Write([]byte("f")); err != nil {
-		t.Fatal(err)
-	}
-	waitFor("No unreviewed changes")
-	liveDiffFlushCapture(t, store, workspace, "B", "first edit\n", "fixed edit\n")
-	waitFor("+fixed edit")
-	liveDiffFlushCapture(t, store, workspace, "revert", "fixed edit\n", "old\n")
-	waitFor("No unreviewed changes")
-	if _, err := terminal.Write([]byte{3}); err != nil {
-		t.Fatal(err)
-	}
-	if err := cmd.Wait(); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func liveDiffIdentityCapture(t *testing.T, store *mekugiReplayStore, workspace, call, from, to, before, after string) {
 	t.Helper()
 	id, err := store.reserveChange(t.Context(), workspace, "identity-thread", call)
@@ -794,7 +592,6 @@ func TestLiveDiffSavedMoveCarriesBaselineToDestination(t *testing.T) {
 	v := liveDiffView{Scroll: make(map[string]int)}
 	liveDiffIdentityCapture(t, store, workspace, "A", "a.txt", "a.txt", "old\n", "first\n")
 	liveDiffRefreshTest(t, store, workspace, &v)
-	v.Flush(true)
 	liveDiffIdentityCapture(t, store, workspace, "move", "a.txt", "b.txt", "first\n", "first\n")
 	liveDiffIdentityCapture(t, store, workspace, "fix", "b.txt", "b.txt", "first\n", "fixed\n")
 	liveDiffRefreshTest(t, store, workspace, &v)
@@ -827,7 +624,6 @@ func TestLiveDiffMoveIntoDeletedPathKeepsChainsSeparate(t *testing.T) {
 			}
 			liveDiffRefreshTest(t, store, workspace, &v)
 			v.Selected = slices.IndexFunc(v.Files, func(f liveDiffFile) bool { return f.Key() == workspace+"\x00A/0" })
-			v.Flush(true)
 			liveDiffIdentityCapture(t, store, workspace, "deleteB", "b.txt", "", "B\n", "")
 			liveDiffRefreshTest(t, store, workspace, &v)
 			liveDiffIdentityCapture(t, store, workspace, "moveA", "a.txt", "b.txt", "A\n", "A\n")
@@ -839,10 +635,6 @@ func TestLiveDiffMoveIntoDeletedPathKeepsChainsSeparate(t *testing.T) {
 				!strings.Contains(a, "-oldA\n+fixed\n") || !strings.Contains(b, "-oldB\n") || strings.Contains(b, "+fixed\n") ||
 				strings.Contains(a+b, "Uncomposed") {
 				t.Fatalf("path reuse conflated chains: %#v a=%q b=%q", v.Files, a, b)
-			}
-			v.Flush(false)
-			if len(v.Visible[workspace+"\x00A/0"].Chunks) != 0 || len(v.Visible[workspace+"\x00B/0"].Chunks) == 0 {
-				t.Fatal("flush crossed file identities")
 			}
 		})
 	}

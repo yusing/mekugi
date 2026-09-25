@@ -1445,7 +1445,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		return err
 	}
 	if record.ChangeID != "" {
-		_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, p.activity)
+		_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, p.activity, jsonString(first.history.UpstreamItem, "id"))
 	}
 	return nil
 }

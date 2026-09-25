@@ -17,7 +17,7 @@ const (
 // publishEditReceipt reads committed filesystem changes. It never accepts a
 // caller-supplied diff or participates in edit execution. Command exit status
 // does not change the filesystem effects that this receipt describes.
-func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, thread, callID string, activity *subagentActivity) error {
+func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, thread, callID string, activity *subagentActivity, displayID string) error {
 	s = s.scoped(ctx)
 	return s.locked(ctx, func() error {
 		if scope, found, err := s.readHandleScope(thread); err != nil {
@@ -44,7 +44,13 @@ func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, t
 			}
 			if len(record.History.ReviewFiles) != 0 {
 				if receipt := editReceiptText(workspace, record.History); receipt != "" {
-					activity.collect(thread, "edit-receipt\x00"+workspace+"\x00"+callID, "tool", receipt)
+					// The observed receipt and the invocation share one display identity.
+					// An opaque command stays Run until its actual effects are known.
+					identity := displayID
+					if identity == "" {
+						identity = callID
+					}
+					activity.collectEvent(activityEvent{thread: thread, source: "edit-receipt\x00" + workspace + "\x00" + callID, kind: "tool", text: receipt, callID: identity})
 				}
 			}
 			return nil

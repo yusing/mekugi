@@ -131,7 +131,11 @@ func (a *subagentActivity) collectEvent(event activityEvent) {
 	}
 	callID := event.callID
 	if kind == "tool" {
-		callID, _ = strings.CutPrefix(source, "tool-call\x00")
+		if id, found := strings.CutPrefix(source, "tool-call\x00"); found {
+			callID = id
+		} else if callID == "" && strings.HasPrefix(source, "edit-receipt\x00") {
+			_, callID, _ = strings.CutLast(source, "\x00")
+		}
 	} else if kind == "exit" {
 		callID, _ = strings.CutPrefix(source, "tool-exit\x00")
 	}
