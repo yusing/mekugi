@@ -110,6 +110,8 @@ Each invocation:
   provider endpoints, and `--oss` are not supported.
 - forces `include_collaboration_mode_instructions=false`, and routes the
   legacy `gpt-5.6-terra` to `gpt-6-sol`.
+- explicitly selects standard cybersecurity safeguards for ChatGPT requests,
+  disabling automatic Daybreak selection and overriding client Daybreak choices.
 - connects to ChatGPT over WebSockets, so a supporting client and model can use
   [mid-turn steering](https://developers.openai.com/api/docs/guides/steering).
   Your network must allow secure WebSockets. Mekugi falls back to HTTP only when

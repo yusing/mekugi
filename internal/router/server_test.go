@@ -234,7 +234,8 @@ func TestExecuteRequestSupportsNativeToolsOnTheSameResponsesPath(t *testing.T) {
 func TestExecuteRequestForwardsCompactionWithoutRouterRewrite(t *testing.T) {
 	repeated := strings.Repeat("exact compaction text with a reserved !V prefix and repeated content; ", 20)
 	parsed, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
-		"model": "gpt-test",
+		"model":           "gpt-test",
+		"access_programs": map[string]string{"cyber": "standard"},
 		"input": []any{
 			map[string]any{"type": "additional_tools", "role": "developer", "tools": []any{}},
 			map[string]any{"type": "message", "role": "developer", "content": "instructions"},
@@ -309,6 +310,7 @@ func TestExecuteRequestForwardsCompactionWithoutRouterRewrite(t *testing.T) {
 func TestExecuteRequestPassesThroughOriginalRequestAndRecordsUsage(t *testing.T) {
 	parsed := serverRequest(t, func(request map[string]any) {
 		request["prompt_cache_key"] = "control-cache"
+		request["access_programs"] = map[string]string{"cyber": "standard"}
 	})
 	originalBody, err := json.Marshal(parsed.fields)
 	if err != nil {
@@ -1447,7 +1449,10 @@ func TestCopyJSONTransformedRejectsBodyBeyondRouterBufferBudget(t *testing.T) {
 
 func TestExecuteRequestUnsafeCacheKeyRetainsSessionAffinity(t *testing.T) {
 	for _, key := range []string{" padded ", "line\nbreak"} {
-		parsed := serverRequest(t, func(request map[string]any) { request["prompt_cache_key"] = key })
+		parsed := serverRequest(t, func(request map[string]any) {
+			request["prompt_cache_key"] = key
+			request["access_programs"] = map[string]string{"cyber": "standard"}
+		})
 		original := bytes.Clone(parsed.originalBody)
 		provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
 		if err := executeRequest(t.Context(), t.Context(), parsed, http.Header{}, "stable-session", provider, io.Discard, nil, nil, nil); err != nil {

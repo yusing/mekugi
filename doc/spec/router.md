@@ -16,6 +16,12 @@ The wrapper also enforces `include_collaboration_mode_instructions=false` in the
 final command's invocation-only config layer, after user overrides and before `--`.
 This disables Codex's collaboration-mode instruction injection without editing config files.
 
+ChatGPT requests explicitly select `access_programs.cyber="standard"`, including
+prewarming and continuations over either transport. This overrides client Daybreak
+choices without changing the model or other access programs. Grok and OpenCode
+requests are unchanged. This request-body selection cannot prevent an upstream
+eligibility-service failure during a WebSocket upgrade before the body is sent.
+
 With `--grok` or configured OpenCode providers, the wrapper pins the selected model catalog through Codex's
 `model_catalog_json` setting before launching the interactive or execution command.
 The session catalog and its cleanup follow [REQ-THIRD-PARTY-001](third_party.md).

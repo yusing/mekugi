@@ -101,7 +101,8 @@ func TestCompactionCriticalNoticeRetainsReplayProvenanceWithoutChangingRequest(t
 	queueCritical(issues, "compaction-session")
 	noticeID := issues.entries[0].id
 	parsed, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
-		"model": "gpt-test",
+		"model":           "gpt-test",
+		"access_programs": map[string]string{"cyber": "standard"},
 		"input": []any{
 			map[string]any{"type": "additional_tools", "role": "developer", "tools": []any{}},
 			map[string]any{"type": "message", "role": "user", "content": "compact exactly"},

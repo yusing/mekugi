@@ -296,6 +296,13 @@ func (a *requestAttempt) prepare() error {
 
 func (a *requestAttempt) prepareWire() error {
 	var err error
+	if !isGrokModel(a.request.model()) && !isOpenCodeModel(a.request.model()) {
+		programs, err := standardCyberAccess(a.request.fields["access_programs"])
+		if err != nil {
+			return err
+		}
+		a.request.fields["access_programs"] = programs
+	}
 	bridgeProvider := a.executor.provider
 	if exchange, ok := a.executor.provider.(*webSocketExchange); ok {
 		bridgeProvider = exchange.session.provider

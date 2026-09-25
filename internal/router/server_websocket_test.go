@@ -95,6 +95,9 @@ func TestResponsesWebSocketSteeringAndAutomaticSuccessor(t *testing.T) {
 		if jsonString(create, "type") != "response.create" {
 			t.Errorf("create = %s", mustMarshalJSON(create))
 		}
+		if string(create["access_programs"]) != `{"cyber":"standard"}` {
+			t.Errorf("access programs = %s", create["access_programs"])
+		}
 		if err := providerSocketWrite(ctx, upstream, socketEvent("response.created", "parent")); err != nil {
 			t.Error(err)
 			return
