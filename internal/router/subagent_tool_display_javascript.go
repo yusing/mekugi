@@ -116,6 +116,76 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 	return calls, true
 }
 
+// toolActivityUnwrapExecOutput proves that a program prints exactly the stdout of
+// one awaited literal tool call, as `text((await tools.exec_command({...})).output)`
+// or `const r = await tools.exec_command({...}); text(r.output)`.
+func toolActivityUnwrapExecOutput(source string) (map[string]json.RawMessage, bool) {
+	parser := sitter.NewParser()
+	defer parser.Close()
+	if parser.SetLanguage(codeModeJavaScriptLanguage) != nil {
+		return nil, false
+	}
+	bytes := []byte(source)
+	tree := parser.Parse(bytes, nil)
+	if tree == nil {
+		return nil, false
+	}
+	defer tree.Close()
+	root := tree.RootNode()
+	if root.HasError() {
+		return nil, false
+	}
+	var statements []*sitter.Node
+	for i := range root.NamedChildCount() {
+		if node := root.NamedChild(uint(i)); node.Kind() != "comment" {
+			statements = append(statements, node)
+		}
+	}
+	printed := func(statement *sitter.Node) *sitter.Node {
+		if statement.Kind() != "expression_statement" || statement.NamedChildCount() != 1 {
+			return nil
+		}
+		args, ok := toolActivityCallArguments(statement.NamedChild(0), bytes, "text")
+		if !ok || len(args) != 1 {
+			return nil
+		}
+		return args[0]
+	}
+	var call *sitter.Node
+	switch len(statements) {
+	case 1:
+		value := printed(statements[0])
+		if value == nil || value.Kind() != "member_expression" || value.ChildByFieldName("optional_chain") != nil {
+			return nil, false
+		}
+		property, object := value.ChildByFieldName("property"), value.ChildByFieldName("object")
+		if property == nil || property.Kind() != "property_identifier" || property.Utf8Text(bytes) != "output" ||
+			object == nil || object.Kind() != "parenthesized_expression" || object.NamedChildCount() != 1 {
+			return nil, false
+		}
+		call = object.NamedChild(0)
+	case 2:
+		declaration := statements[0]
+		if declaration.Kind() != "lexical_declaration" || declaration.NamedChildCount() != 1 {
+			return nil, false
+		}
+		name, value := declaration.NamedChild(0).ChildByFieldName("name"), declaration.NamedChild(0).ChildByFieldName("value")
+		if name == nil || name.Kind() != "identifier" ||
+			slices.Contains([]string{"tools", "text", "JSON", "Object", "Promise", "generatedImage", "journal"}, name.Utf8Text(bytes)) ||
+			!toolActivityMemberPath(printed(statements[1]), bytes, name.Utf8Text(bytes), "output") {
+			return nil, false
+		}
+		call = value
+	default:
+		return nil, false
+	}
+	calls, ok := toolActivityAwaitedCalls(call, bytes, true)
+	if !ok || len(calls) != 1 {
+		return nil, false
+	}
+	return calls[0], true
+}
+
 // A top-level literal Promise batch schedules its calls before any result
 // presentation runs. When the presentation syntax is unknown, retain those
 // proven calls for activity and label the remainder instead of discarding the

@@ -25,19 +25,31 @@ Printing the result via a local binding or `JSON.stringify` is also transparent.
 The existing metadata-copy form `Object.assign({}, result, {retained:false})`
 is accepted: it changes neither stdout nor completion metadata, and its
 `retained` value is preserved rather than treated as a recovery guarantee.
-Dynamic arguments, output-only printing, other transformed results, multiple calls,
-batches, mixed media, malformed or outer-truncated JSON, and continuation calls
-stay unchanged. JavaScript is inspected, never evaluated or rewritten.
+Printing only the stdout of that call, as `text(r.output)` after one binding or
+`text((await tools.exec_command({...})).output)`, is also eligible; the printed
+text is the output body, and it carries no exit code or session state.
+Dynamic arguments, other transformed results, multiple calls, batches, mixed
+media, malformed or outer-truncated JSON, and continuation calls stay unchanged.
+JavaScript is inspected, never evaluated or rewritten.
 
-The command's `cmd` is exactly one literal invocation, with no pipeline, list,
-redirection, assignment, expansion, glob, or leading `~`. An `npx`, `bunx`, or
-`uvx` prefix is looked through. Each family defines its units:
+The command's `cmd` is parsed as Bash. A statement is one literal invocation,
+optionally piped into row filters that keep rows intact: `head`/`tail` with
+only a line count, `sort` with `-u`, `-r`, `-n`, `-V`, or `-f`, bare `uniq`,
+or `rg`/`grep` with one pattern and only `-v`, `-i`, `-F`, `-E`, `-P`, `-w`,
+`-S`, or `-x`. Its only redirections are `2>&1` and `2>/dev/null`, and it has
+no assignment or command substitution. Unquoted globs, a leading `~`, and
+`$HOME` expand to paths and are accepted; other expansions are not. An `npx`,
+`bunx`, or `uvx` prefix is looked through. A cut file diff, log entry, or help
+paragraph loses the rows that bound it, so those families accept only a trailing
+`head` and only when the statement is the whole command. Each family defines
+its units:
 
 | Family | Commands | Unit | Accepted exits |
 | --- | --- | --- | --- |
-| Paths | `rg`, `grep`, `egrep`, `fgrep`, `find`, `fd`, `fdfind`, `git grep`, `git ls-files` | rows sharing an existing leading path | 0 |
+| Paths | `rg`, `grep`, `egrep`, `fgrep`, `git grep` | rows sharing an existing leading path | 0 |
+| Listings | `find`, `fd`, `fdfind`, `git ls-files`, and searches with `--files`, `-l`, or `--files-with(out)-match(es)` | rows sharing an existing leading path | 0 |
 | Diagnostics | `go vet`, `go build`, `staticcheck`, `golangci-lint run`, `gopls check`, `tsc`, `ruff check`, `mypy`, `flake8`, `pylint` | rows sharing an existing leading path, `path:` or `path(line,col):` | 0, 1, 2 |
-| Commits | `git log`, `git reflog` | one full entry from its `commit` row, or one `--oneline` row | 0 |
+| Commits | `git log`, `git reflog` | one full entry from its `commit` row, or one `--oneline` row outside a list | 0 |
 | Diffs | `git diff`, `git show` | one file diff from its `diff --git` row | 0 |
 | Help | any `--help`, `<tool> help …`, `man <page>` | one indented option paragraph | 0 |
 
@@ -47,6 +59,29 @@ Path units resolve against the call's working directory; indented rows and `--`
 separators continue the preceding path unit. More than 128 path units group by
 parent directory. Rows in no unit, such as diagnostics headers, section
 headings, a `git show` commit header, or truncation markers, are always kept.
+
+Statements joined by `;`, `&&`, `||`, or newlines form a list, such as
+`rg -n x internal | head -60; mcat a.go 1:40; git status --short`. Any command
+is ineligible when a statement changes directory or loads code (`cd`, `pushd`,
+`popd`, `eval`, `source`, `.`, including through `builtin`, `command`, or
+`exec`), names its program dynamically, runs in the background, or is a
+subshell or other compound command. Every other statement in a list must be a
+known reader whose rows stay in no unit: `cat`, `mcat`, `sed`, `head`, `tail`,
+`nl`, `printf`, `echo`, `pwd`, `wc`, `date`, `true`, Mekugi's read tools and
+`skills-mgr`, the path printers `ls`, `tree`, `which`, `command`, `realpath`,
+and `readlink`, `git status`, `branch`, `rev-parse`, `worktree`, or `remote`,
+and `git diff` or `git show` with `--check`, `--stat`, `--name-only`,
+`--name-status`, `--numstat`, or `--shortstat`. Any other program, such as a
+test run whose compiler errors look like path rows, makes the list ineligible.
+Nothing marks where one statement's output ends, so a list's units come only
+from rows that prove their family: a row led by an existing path followed by
+`:` or a context marker, or a bare existing path when some statement is a
+listing and none is a path printer; a file diff whose extended headers and
+hunks match its hunk line counts; or a full commit entry through its header
+fields, indented message, stat rows, and diffs. One-line commits are
+indistinguishable from `git blame` or checksum rows and stay in no unit.
+Indented rows never continue a path unit in a list. A list's exit code is its last
+statement's, so no exit code restricts it; printed stdout has none either.
 
 A result is judged only when it follows the latest model output, has at least
 1 KiB of output, and splits into 4 to 384 units.
@@ -60,7 +95,7 @@ asks whether the agent needs to see that result to make progress on its intent.
 
 A unit is kept when its probability is at least 0.25 or it ranks in the top 3.
 The filtered result replaces the stock one only when it saves, net of the
-omission line, at least 512 bytes and a quarter of the output. Any judgment
+omission line, at least 512 bytes and a quarter of the bytes in judged units. Any judgment
 failure, a missing answer, or the 10-second budget leaves the result unchanged.
 
 A filtered result keeps the stock header and the kept rows in their original
@@ -76,7 +111,7 @@ same output forwards the same bytes without another judgment. After a router
 restart, historical results are forwarded unchanged.
 
 With `--debug`, each judged result records an `explore_filter` event with its
-family, outcome, row, byte, and unit counts, omitted and saved counts, input
+families, whether it is a list, outcome, row, byte, unit, and judged-unit byte counts, omitted and saved counts, input
 tokens, and elapsed time, without content.
 
 Each newly filtered result also emits a pane-only `output_filter` activity event
@@ -111,17 +146,24 @@ Acceptance:
 2. An eligible result whose units are judged unrelated loses only those units'
    rows; its header, kept rows, and rows in no unit are unchanged, and
    `mread REF` returns the complete original output.
-3. Pipelines, unaccepted exits, running sessions, short outputs, other
-   programs, and judgment failures leave the result byte-identical.
+3. Pipelines other than row filters, unaccepted exits, running sessions whose
+   state is reported, short outputs, other programs, lists with statements that
+   are not known readers, directory changes, and judgment failures leave the
+   result byte-identical. Printed stdout reports no state, so a
+   running session's partial stdout is split as printed.
 4. A filtered result is always smaller than the stock one, including path lists
    whose units are single rows.
 5. Replaying the same output does not judge again and forwards identical bytes.
 6. Outputs before the latest model output are never judged.
-7. Transparent single-command Code Mode results use the same judgments and
-   durable recovery as native results. Their metadata and header survive;
-   unsupported or ambiguous Code Mode output remains byte-identical.
+7. Transparent single-command Code Mode results, including printed stdout,
+   use the same judgments and durable recovery as native results. Their
+   metadata and header survive; unsupported or ambiguous Code Mode output
+   remains byte-identical.
 8. Pane events retain origin and metrics through delivery retries and reconnect;
    they never fall back into model context. A filtered command is shown once with
    a muted metrics line after it, not a second verbose event.
 9. TypeSafe totals retain known consumption across retries, answer failures, and
    unchanged outputs, without double-counting decision replay or other threads.
+10. In a list, rows that do not prove a unit family, including indented file
+    content and status rows after a file diff, are never omitted, and savings
+    count only the judged rows.

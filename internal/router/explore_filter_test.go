@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -39,41 +40,80 @@ func TestExploreCommand(t *testing.T) {
 	for _, test := range []struct {
 		command string
 		family  exploreFamily
+		list    bool
 	}{
-		{`rg -n snapshot internal`, explorePaths},
-		{`rg -n "func .*Token" --type go`, explorePaths},
-		{`/usr/bin/grep -rn 'needle' .`, explorePaths},
-		{`find . -name '*.json' -not -path './.git/*'`, explorePaths},
-		{`fd -e go router`, explorePaths},
-		{`git -C repo --no-pager grep -n snapshot`, explorePaths},
-		{`git ls-files internal`, explorePaths},
-		{`git log --stat -n 80`, exploreCommits},
-		{`git log --oneline -n 300`, exploreCommits},
-		{`git diff HEAD~8 HEAD`, exploreDiffs},
-		{`git show b57a998`, exploreDiffs},
-		{`go vet ./...`, exploreDiagnostics},
-		{`golangci-lint run ./internal/...`, exploreDiagnostics},
-		{`npx tsc --noEmit`, exploreDiagnostics},
-		{`rg --help`, exploreHelp},
-		{`git help log`, exploreHelp},
-		{`man find`, exploreHelp},
-		{`rg -n snapshot | head`, exploreNone},
-		{`cd internal && rg snapshot`, exploreNone},
-		{`rg snapshot > out.txt`, exploreNone},
-		{`rg "$PATTERN" .`, exploreNone},
-		{`rg snapshot internal/*.go`, exploreNone},
-		{`rg --json snapshot`, exploreNone},
-		{`find . -name x -exec cat {} +`, exploreNone},
-		{`git log --graph --oneline`, exploreNone},
-		{`git status`, exploreNone},
-		{`go test ./...`, exploreNone},
-		{`golangci-lint fmt`, exploreNone},
-		{`sed -n 1,20p file.go`, exploreNone},
-		{`FOO=1 rg snapshot`, exploreNone},
-		{`find ~/src -name x`, exploreNone},
+		{`rg -n snapshot internal`, explorePaths, false},
+		{`rg -n "func .*Token" --type go`, explorePaths, false},
+		{`/usr/bin/grep -rn 'needle' .`, explorePaths, false},
+		{`find . -name '*.json' -not -path './.git/*'`, exploreListing, false},
+		{`fd -e go router`, exploreListing, false},
+		{`git -C repo --no-pager grep -n snapshot`, explorePaths, false},
+		{`git ls-files internal`, exploreListing, false},
+		{`rg -l snapshot`, exploreListing, false},
+		{`grep -rl snapshot .`, exploreListing, false},
+		{`rg -n -g*.lock snapshot`, explorePaths, false},
+		{`git log --stat -n 80`, exploreCommits, false},
+		{`git log --oneline -n 300`, exploreCommits, false},
+		{`git diff HEAD~8 HEAD`, exploreDiffs, false},
+		{`git show b57a998`, exploreDiffs, false},
+		{`go vet ./...`, exploreDiagnostics, false},
+		{`golangci-lint run ./internal/...`, exploreDiagnostics, false},
+		{`npx tsc --noEmit`, exploreDiagnostics, false},
+		{`rg --help`, exploreHelp, false},
+		{`git help log`, exploreHelp, false},
+		{`man find`, exploreHelp, false},
+		// Globs, a leading tilde, and $HOME expand to paths.
+		{`rg snapshot internal/*.go`, explorePaths, false},
+		{`find ~/src -name x`, exploreListing, false},
+		{`rg -n x "$HOME/.codex"`, explorePaths, false},
+		// Filters that keep rows intact, and stderr redirections.
+		{`rg -n snapshot | head`, explorePaths, false},
+		{`rg -n snapshot | head -n 40`, explorePaths, false},
+		{`rg -n snapshot | sort -u | head -80`, explorePaths, false},
+		{`rg --files internal | rg -v '_test'`, exploreListing, false},
+		{`rg -n snapshot 2>&1`, explorePaths, false},
+		{`go vet ./... 2>/dev/null`, exploreDiagnostics, false},
+		// Lists combine the families of their statements.
+		{`rg -n a internal | head -65; mcat internal/a.go 1:40`, explorePaths, true},
+		{"git diff --check; git diff -- a.go\ngit status --short", exploreDiffs, true},
+		{`git log --oneline -5 && rg -n a`, exploreCommits | explorePaths, true},
+		{`mcat a.go 1:20; cat b.md`, exploreNone, true},
+		{`ls internal; rg --files internal`, explorePaths, true},
+		{`rg -n -thtml snapshot`, explorePaths, false},
+		{`git show HEAD | head -40`, exploreDiffs, false},
+		// A cut file diff or log entry cannot bound its rows before the next statement.
+		{`git diff | head -20; cat config.yaml`, exploreNone, true},
+		{`git log --stat | grep fix`, exploreNone, false},
+		// Rows of unknown shape, dynamic programs, and directory changes.
+		{`rg -n foo; go test ./...`, exploreNone, true},
+		{`rg -n foo; ./script.sh`, exploreNone, true},
+		{`cd "$(git rev-parse --show-toplevel)" && rg -n foo`, exploreNone, false},
+		{`builtin cd /tmp; rg -n foo`, exploreNone, false},
+		{`cd $DIR; rg -n foo`, exploreNone, false},
+		{`source env.sh; rg -n foo`, exploreNone, false},
+		{`$TOOL -n foo`, exploreNone, false},
+		{`rg -n snapshot | wc -l`, exploreNone, false},
+		{`rg -n snapshot | head notes.txt`, exploreNone, false},
+		{`rg -n snapshot | rg -n render`, exploreNone, false},
+		{`rg -n snapshot | grep render other.txt`, exploreNone, false},
+		{`cd internal && rg snapshot`, exploreNone, false},
+		{`(cd internal && rg snapshot); rg x`, exploreNone, false},
+		{`rg snapshot & rg x`, exploreNone, false},
+		{`rg snapshot > out.txt`, exploreNone, false},
+		{`rg snapshot 2>errors.txt`, exploreNone, false},
+		{`rg "$PATTERN" .`, exploreNone, false},
+		{`rg "$(cat p)" .`, exploreNone, false},
+		{`rg --json snapshot`, exploreNone, false},
+		{`find . -name x -exec cat {} +`, exploreNone, false},
+		{`git log --graph --oneline`, exploreNone, false},
+		{`git status`, exploreNone, false},
+		{`go test ./...`, exploreNone, false},
+		{`golangci-lint fmt`, exploreNone, false},
+		{`sed -n 1,20p file.go`, exploreNone, false},
+		{`FOO=1 rg snapshot`, exploreNone, false},
 	} {
-		if got := exploreCommand(test.command); got != test.family {
-			t.Errorf("exploreCommand(%q) = %v, want %v", test.command, got, test.family)
+		if family, list := exploreCommand(test.command); family != test.family || family != exploreNone && list != test.list {
+			t.Errorf("exploreCommand(%q) = %v, %v; want %v, %v", test.command, family, list, test.family, test.list)
 		}
 	}
 }
@@ -194,7 +234,7 @@ func TestExploreFilterKeepsStockOutput(t *testing.T) {
 	}{
 		"all relevant":   {relevant, "rg -n snapshot", header + body},
 		"judge failure":  {failing, "rg -n snapshot", header + body},
-		"pipeline":       {relevant, "rg -n snapshot | head -100", header + body},
+		"counting":       {relevant, "rg -n snapshot | wc -l", header + body},
 		"nonzero exit":   {relevant, "rg -n snapshot", strings.Replace(header, "code 0", "code 2", 1) + body},
 		"short output":   {relevant, "rg -n snapshot", header + body[:200]},
 		"running":        {relevant, "rg -n snapshot", "Wall time: 0.1 seconds\nProcess running with session ID 4\nOutput:\n" + body},
@@ -247,11 +287,11 @@ func TestExploreUnitsGroupsDirectories(t *testing.T) {
 			rows = append(rows, "./"+path+"\n")
 		}
 	}
-	units, byDirectory := explorePathUnits(rows, dir)
-	if !byDirectory || len(units) != 3 || units[0].key != "g0" || len(units[0].rows) != 50 {
-		t.Fatalf("units = %d byDirectory=%v first=%+v", len(units), byDirectory, units[0].key)
+	units := explorePathUnits(rows, dir)
+	if len(units) != 3 || units[0].kind != exploreDirectoryUnit || units[0].key != "g0" || len(units[0].rows) != 50 {
+		t.Fatalf("units = %d first=%+v", len(units), units[0].key)
 	}
-	state := units[0].state(exploreDirectoryUnit)
+	state := units[0].state()
 	if state.Directory != "g0" || state.Entries != 50 || len(state.Sample) != exploreSampleLines || state.Sample[0] != "f00.json" {
 		t.Fatalf("state = %+v", state)
 	}
@@ -261,30 +301,30 @@ func TestExploreSplitFamilies(t *testing.T) {
 	rows := func(text string) []string { return strings.SplitAfter(strings.TrimSuffix(text, "\n")+"\n", "\n") }
 
 	log := rows("commit 1111111111111111111111111111111111111111\nAuthor: a\nDate: d\n\n    fix(router): first\n\n a.go | 2 +-\n\ncommit 2222222222222222222222222222222222222222\nAuthor: b\n\n    feat: second\n")
-	units, kind := exploreSplit(exploreCommits, log, "")
-	if kind != exploreCommitUnit || len(units) != 2 || len(units[0].rows) != 8 || units[1].label(kind, log) != "222222222222 feat: second" {
+	units := exploreSplit(exploreCommits, log, "")
+	if len(units) != 2 || units[0].kind != exploreCommitUnit || len(units[0].rows) != 8 || units[1].label() != "222222222222 feat: second" {
 		t.Fatalf("commit units = %+v", units)
 	}
-	if state := units[0].state(kind); state.Label == "" || state.Sample[0] != "Author: a" || state.LineCount != 8 {
+	if state := units[0].state(); state.Label == "" || state.Sample[0] != "Author: a" || state.LineCount != 8 {
 		t.Fatalf("commit state = %+v", state)
 	}
 	oneline := rows("abc1234 first\ndef5678 second\n")
-	if units, _ := exploreSplit(exploreCommits, oneline, ""); len(units) != 2 || units[1].label(exploreCommitUnit, oneline) != "def5678 second" {
+	if units := exploreSplit(exploreCommits, oneline, ""); len(units) != 2 || units[1].label() != "def5678 second" {
 		t.Fatalf("oneline units = %+v", units)
 	}
 
 	show := rows("commit 1111111111111111111111111111111111111111\n    subject\ndiff --git a/x.go b/x.go\nindex 1..2\n--- a/x.go\n+++ b/x.go\n@@ -1 +1 @@\n-old\n+new\ndiff --git a/y.md b/y.md\n+doc\n")
-	units, kind = exploreSplit(exploreDiffs, show, "")
-	if kind != exploreDiffUnit || len(units) != 2 || units[0].rows[0] != 2 || units[0].label(kind, show) != "x.go" {
+	units = exploreSplit(exploreDiffs, show, "")
+	if len(units) != 2 || units[0].kind != exploreDiffUnit || units[0].rows[0] != 2 || units[0].label() != "x.go" {
 		t.Fatalf("diff units = %+v", units)
 	}
-	if state := units[0].state(kind); strings.Join(state.Sample, "|") != "@@ -1 +1 @@|-old|+new" {
+	if state := units[0].state(); strings.Join(state.Sample, "|") != "@@ -1 +1 @@|-old|+new" {
 		t.Fatalf("diff sample = %q", state.Sample)
 	}
 
 	help := rows("Usage: rg [OPTIONS]\n\nOPTIONS:\n    -., --hidden\n        Search hidden files.\n\n    --no-ignore\n        Ignore nothing.\nFOOTER\n")
-	units, kind = exploreSplit(exploreHelp, help, "")
-	if kind != exploreHelpUnit || len(units) != 2 || units[0].label(kind, help) != "-., --hidden" || len(units[1].rows) != 2 {
+	units = exploreSplit(exploreHelp, help, "")
+	if len(units) != 2 || units[0].kind != exploreHelpUnit || units[0].label() != "-., --hidden" || len(units[1].rows) != 2 {
 		t.Fatalf("help units = %+v", units)
 	}
 
@@ -296,16 +336,21 @@ func TestExploreSplitFamilies(t *testing.T) {
 		t.Fatal(err)
 	}
 	diagnostics := rows("# example.com/pkg\na.go:3:2: unused value\n\tx := 1\n\t^\nb.ts(4,5): error TS2322: bad\n2 issues.\n")
-	units, _ = exploreSplit(exploreDiagnostics, diagnostics, dir)
+	units = exploreSplit(exploreDiagnostics, diagnostics, dir)
 	if len(units) != 2 || len(units[0].rows) != 3 || units[1].key != "b.ts" {
 		t.Fatalf("diagnostic units = %+v", units)
 	}
 }
 
 func TestExploreExitAccepted(t *testing.T) {
-	if !exploreExitAccepted(exploreDiagnostics, "Process exited with code 1") || exploreExitAccepted(explorePaths, "Process exited with code 1") ||
-		exploreExitAccepted(exploreDiagnostics, "Process exited with code 3") || !exploreExitAccepted(exploreCommits, "Process exited with code 0") {
+	code := func(n int) *int { return &n }
+	if !exploreExitAccepted(exploreDiagnostics, false, code(1)) || exploreExitAccepted(explorePaths, false, code(1)) ||
+		exploreExitAccepted(exploreDiagnostics, false, code(3)) || !exploreExitAccepted(exploreCommits, false, code(0)) {
 		t.Fatal("unexpected exit acceptance")
+	}
+	// A list's status is its last statement's, and printed stdout has none.
+	if !exploreExitAccepted(explorePaths, true, code(1)) || !exploreExitAccepted(explorePaths, false, nil) {
+		t.Fatal("list or unprinted status rejected")
 	}
 }
 
@@ -336,5 +381,86 @@ func TestExploreFilterShrinksPathLists(t *testing.T) {
 	}
 	if !strings.Contains(got, "+") || !strings.Contains(got, "more. Full output: mread ") {
 		t.Fatalf("omission list is not summarized:\n%s", got)
+	}
+}
+
+func TestExploreFilterListKeepsOtherStatements(t *testing.T) {
+	dir, search := exploreFixture(t)
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A large read makes the search rows a small share of the output; its
+	// indented rows and path-like rows must not join a search unit.
+	var read strings.Builder
+	read.WriteString("--- file 1 path=\"notes.go\" shown=1:80 ---\n")
+	for i := range 80 {
+		fmt.Fprintf(&read, "\tfield%02d := render(frame) // keep this read intact\n", i)
+	}
+	read.WriteString("tokenizer/a.go\n")
+	body := search + read.String() + " M tokenizer/b.go\n"
+	header := "Wall time: 0.1 seconds\nProcess exited with code 1\nOutput:\n"
+	judge := &fakeExploreJudge{score: func(unit exploreUnitState) float64 {
+		if strings.HasPrefix(unit.Path, "live/") {
+			return 0.9
+		}
+		if unit.Path == "catalog/c.go" {
+			return 0.2 // within the kept top three
+		}
+		return 0.01
+	}}
+	request := exploreRequest(t, dir, "rg -n snapshot | head -60; mcat notes.go 1:80; git status --short", header+body)
+	newExploreFilter(judge).project(t.Context(), request, nil, dir, "", "/root", store)
+	got := exploreOutput(t, request)
+	if !strings.HasPrefix(got, header) || !strings.Contains(got, "[mekugi explore filter: omitted 3 of 6 files") {
+		t.Fatalf("list search rows were not filtered:\n%s", got)
+	}
+	if !strings.Contains(got, read.String()+" M tokenizer/b.go\n") {
+		t.Fatalf("other statements' rows changed:\n%s", got)
+	}
+	if strings.Contains(got, "tokenizer/a.go:1:") || !strings.Contains(got, "live/diff.go:1:") {
+		t.Fatalf("unexpected search rows kept or dropped:\n%s", got)
+	}
+}
+
+func TestExploreListUnits(t *testing.T) {
+	rows := func(text string) []string { return strings.SplitAfter(strings.TrimSuffix(text, "\n")+"\n", "\n") }
+	dir := t.TempDir()
+	for _, name := range []string{"a.go", "b.go"} {
+		if err := os.WriteFile(filepath.Join(dir, name), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Hunk line counts end a file diff, so rows of later statements stay out.
+	diff := rows("diff --git a/a.go b/a.go\nindex 1..2 100644\n--- a/a.go\n+++ b/a.go\n@@ -1,2 +1,2 @@\n context\n-old\n+new\n\\ No newline at end of file\n" +
+		"diff --git a/b.go b/b.go\nnew file mode 100644\n--- /dev/null\n+++ b/b.go\n@@ -0,0 +1 @@\n+package b\n M a.go\n?? b.go\n")
+	units := exploreListUnits(exploreDiffs, diff, dir)
+	if len(units) != 2 || len(units[0].rows) != 9 || len(units[1].rows) != 6 || units[1].label() != "b.go" {
+		t.Fatalf("diff units = %+v", units)
+	}
+
+	// Commit entries end at the first row outside an entry.
+	log := rows("commit 1111111111111111111111111111111111111111\nAuthor: a\nDate: d\n\n    fix: first\n\n a.go | 2 +-\n 1 file changed, 1 insertion(+)\n\n--- file 1 path=\"a.go\" ---\npackage a\n")
+	units = exploreListUnits(exploreCommits, log, dir)
+	if len(units) != 1 || len(units[0].rows) != 9 {
+		t.Fatalf("commit units = %+v", units)
+	}
+
+	// One-line commits look like blame or checksum rows, so lists keep them whole.
+	oneline := rows("1111111 fix: first\n2222222 (a 2026-09-25 1) package a\n")
+	if units = exploreListUnits(exploreCommits, oneline, dir); len(units) != 0 {
+		t.Fatalf("oneline units = %+v", units)
+	}
+
+	// Bare paths are units only when a statement lists paths.
+	listing := rows("a.go\nb.go\na.go:3:\tneedle\n--\nb.go-4-\tcontext\n\tindented\n")
+	units = exploreListUnits(explorePaths, listing, dir)
+	if len(units) != 2 || !slices.Equal(units[0].rows, []int{2, 3}) || !slices.Equal(units[1].rows, []int{4}) {
+		t.Fatalf("search units = %+v", units)
+	}
+	units = exploreListUnits(exploreListing, listing, dir)
+	if len(units) != 2 || !slices.Equal(units[0].rows, []int{0, 2, 3}) || !slices.Equal(units[1].rows, []int{1, 4}) {
+		t.Fatalf("listing units = %+v", units)
 	}
 }

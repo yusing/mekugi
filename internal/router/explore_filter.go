@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -46,16 +47,18 @@ const (
 )
 
 // exploreFamily names how a command's rows split into independently
-// judgeable units.
-type exploreFamily int
+// judgeable units. A list of statements may combine several families.
+type exploreFamily uint8
 
 const (
-	exploreNone exploreFamily = iota
-	explorePaths
+	explorePaths   exploreFamily = 1 << iota
+	exploreListing               // bare paths, such as `rg --files` or `find`
 	exploreDiagnostics
 	exploreCommits
 	exploreDiffs
 	exploreHelp
+
+	exploreNone exploreFamily = 0
 )
 
 var explorePathPrograms = map[string]bool{"rg": true, "grep": true, "egrep": true, "fgrep": true, "find": true, "fd": true, "fdfind": true}
@@ -74,7 +77,17 @@ var (
 	exploreCommitRow  = regexp.MustCompile(`^commit [0-9a-f]{7,64}\b`)
 	exploreOnelineRow = regexp.MustCompile(`^[0-9a-f]{7,64} `)
 	exploreOptionRow  = regexp.MustCompile(`^\s{2,}-`)
+	exploreHunkRow    = regexp.MustCompile(`^@@ -[0-9]+(?:,([0-9]+))? \+[0-9]+(?:,([0-9]+))? @@`)
+	exploreEntryRow   = regexp.MustCompile(`^(?:(?:Author|AuthorDate|Commit|CommitDate|Merge|Date):|    | \S.* \| | [0-9]+ files? changed)`)
+	exploreLineCount  = regexp.MustCompile(`^(?:-n|--lines=|-)\+?[0-9]+$`)
+	exploreRowFlags   = regexp.MustCompile(`^-[viFEPwSx]+$`)
+	// A cluster of boolean rg/grep short flags including -l; attached values
+	// such as -thtml or -g*.lock are not clusters.
+	exploreListingShort = regexp.MustCompile(`^-[inwxvuFSsHNaPULrRhE]*l[inwxvuFSsHNaPULrRhE]*$`)
 )
+
+// Extended header rows between `diff --git` and the first hunk.
+var exploreDiffHeaders = []string{"index ", "--- ", "+++ ", "new file mode ", "deleted file mode ", "old mode ", "new mode ", "similarity index ", "dissimilarity index ", "rename from ", "rename to ", "copy from ", "copy to ", "Binary files "}
 
 type exploreJudge interface {
 	nouls(ctx context.Context, state any, questions map[string]typesafeNoul) (map[string]float64, typesafeUsage, error)
@@ -117,6 +130,7 @@ const (
 
 type exploreUnit struct {
 	key   string
+	kind  exploreUnitKind
 	rows  []int
 	lines []string // sample source: row text after a path key, or whole rows
 }
@@ -182,12 +196,17 @@ func (f *exploreFilter) project(ctx context.Context, request *parsedResponsesReq
 		name := strings.TrimPrefix(jsonString(call, "name"), "functions.")
 		codeMode := name == "exec" && jsonString(call, "type") == "custom_tool_call" && jsonString(item, "type") == "custom_tool_call_output"
 		arguments := jsonString(call, "arguments")
+		outputOnly := false
 		if codeMode {
 			source := jsonString(call, "input")
 			if len(source) > maxMekugiScriptBytes {
 				continue
 			}
 			nested, ok := toolActivityUnwrapExec(source, true)
+			if !ok {
+				nested, ok = toolActivityUnwrapExecOutput(source)
+				outputOnly = ok
+			}
 			if !ok || jsonString(nested, "name") != nativeExecCommandToolName {
 				continue
 			}
@@ -215,16 +234,21 @@ func (f *exploreFilter) project(ctx context.Context, request *parsedResponsesReq
 		wg.Go(func() {
 			defer close(decision.done)
 			if codeMode {
-				decision.output = f.filterCodeMode(ctx, task, output, store)
+				decision.output = f.filterCodeMode(ctx, task, output, outputOnly, store)
 				return
 			}
 			text, ok := decodeJSONString(output)
 			if !ok {
 				return
 			}
-			filtered, ok := f.filter(ctx, task, text, store)
+			state, body := nativeExecutionHeader(text)
+			exit, err := strconv.Atoi(strings.TrimPrefix(state, "Process exited with code "))
+			if !strings.HasPrefix(state, "Process exited with code ") || err != nil {
+				return
+			}
+			filtered, ok := f.filter(ctx, task, body, &exit, store)
 			if ok {
-				decision.output = mustMarshalJSON(filtered)
+				decision.output = mustMarshalJSON(text[:len(text)-len(body)] + filtered)
 			}
 		})
 	}
@@ -315,27 +339,216 @@ func truncateExploreText(text string, limit int) string {
 	return strings.ToValidUTF8(text[:limit], "")
 }
 
-// exploreCommand accepts one literal invocation of a program whose output
-// splits into units. Pipes, lists, substitutions, and redirections change what
-// the output means.
-func exploreCommand(command string) exploreFamily {
+// exploreCommand accepts literal invocations of programs whose output splits
+// into units. A pipeline may end in filters that keep rows intact, such as
+// `| head -80`. Statements joined by `;`, `&&`, `||`, or newlines form a list:
+// their outputs are concatenated without boundaries, so a list's units come
+// only from rows that prove their own family. A list's other statements must
+// be known readers, whose rows stay in no unit; any other program could print
+// rows that look like units, such as build errors. Directory changes and
+// compound commands change what later paths mean and make the whole command
+// ineligible.
+func exploreCommand(command string) (family exploreFamily, list bool) {
 	file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(command), "")
-	if err != nil || len(file.Stmts) != 1 {
-		return exploreNone
+	if err != nil {
+		return exploreNone, false
 	}
-	statement := file.Stmts[0]
-	call, ok := statement.Cmd.(*syntax.CallExpr)
-	if !ok || statement.Negated || statement.Background || statement.Coprocess || len(statement.Redirs) != 0 || len(call.Assigns) != 0 || len(call.Args) == 0 {
-		return exploreNone
-	}
-	args := make([]string, 0, len(call.Args))
-	for _, word := range call.Args {
-		value, ok := exploreLiteral(word)
-		if !ok {
-			return exploreNone
+	var statements []*syntax.Stmt
+	var collect func(*syntax.Stmt)
+	collect = func(statement *syntax.Stmt) {
+		if binary, ok := statement.Cmd.(*syntax.BinaryCmd); ok && (binary.Op == syntax.AndStmt || binary.Op == syntax.OrStmt) &&
+			!statement.Negated && !statement.Background && len(statement.Redirs) == 0 {
+			collect(binary.X)
+			collect(binary.Y)
+			return
 		}
-		args = append(args, value)
+		statements = append(statements, statement)
 	}
+	for _, statement := range file.Stmts {
+		collect(statement)
+	}
+	list = len(statements) > 1
+	barePaths := false
+	for _, statement := range statements {
+		statementFamily, role := exploreStatement(statement, list)
+		switch role {
+		case exploreUnsafe:
+			return exploreNone, false
+		case exploreOther:
+			if list {
+				return exploreNone, false
+			}
+		case explorePathReader:
+			barePaths = true
+		}
+		family |= statementFamily
+	}
+	if barePaths && family&exploreListing != 0 {
+		// A bare path may be `ls` output, so only `path:` rows prove a unit.
+		family = family&^exploreListing | explorePaths
+	}
+	return family, list
+}
+
+// exploreRole says what a statement's rows mean for its command.
+type exploreRole int
+
+const (
+	exploreUnsafe     exploreRole = iota // later paths or all output become unattributable
+	exploreOther                         // rows of unknown shape, such as build errors
+	exploreReader                        // content the agent asked to read
+	explorePathReader                    // a reader that prints bare paths, such as `ls`
+	exploreProducer                      // rows of the returned family
+)
+
+// Readers print requested content, never search or diagnostic rows.
+var (
+	exploreReaders       = map[string]bool{"cat": true, "mcat": true, "sed": true, "head": true, "tail": true, "nl": true, "printf": true, "echo": true, "pwd": true, "wc": true, "date": true, "true": true, "inspect_file": true, "msymbol": true, "mread": true, "mchanges": true, "skills-mgr": true}
+	explorePathReaders   = map[string]bool{"ls": true, "tree": true, "which": true, "command": true, "realpath": true, "readlink": true}
+	exploreGitReaders    = map[string]bool{"status": true, "branch": true, "rev-parse": true, "worktree": true, "remote": true}
+	exploreDiffSummaries = map[string]bool{"--check": true, "--stat": true, "--name-only": true, "--name-status": true, "--numstat": true, "--shortstat": true}
+)
+
+// exploreStatement returns the family of one statement's rows and its role.
+func exploreStatement(statement *syntax.Stmt, list bool) (exploreFamily, exploreRole) {
+	if statement.Background || statement.Coprocess {
+		return exploreNone, exploreUnsafe
+	}
+	var stages []*syntax.Stmt
+	var flatten func(*syntax.Stmt)
+	flatten = func(current *syntax.Stmt) {
+		if binary, ok := current.Cmd.(*syntax.BinaryCmd); ok && (binary.Op == syntax.Pipe || binary.Op == syntax.PipeAll) && len(current.Redirs) == 0 {
+			flatten(binary.X)
+			flatten(binary.Y)
+			return
+		}
+		stages = append(stages, current)
+	}
+	flatten(statement)
+	pipelines := make([][]string, 0, len(stages))
+	for _, stage := range stages {
+		call, ok := stage.Cmd.(*syntax.CallExpr)
+		if !ok {
+			return exploreNone, exploreUnsafe
+		}
+		if len(call.Args) == 0 {
+			return exploreNone, exploreOther
+		}
+		// A dynamic program or a directory change, even through `builtin`,
+		// changes what every later path means.
+		program, ok := exploreLiteral(call.Args[0])
+		if ok && slices.Contains([]string{"builtin", "command", "exec"}, program) && len(call.Args) > 1 {
+			program, ok = exploreLiteral(call.Args[1])
+		}
+		if !ok || slices.Contains([]string{"cd", "pushd", "popd", "eval", "source", "."}, program) {
+			return exploreNone, exploreUnsafe
+		}
+		args := make([]string, 0, len(call.Args))
+		for _, word := range call.Args {
+			value, ok := exploreLiteral(word)
+			if !ok {
+				return exploreNone, exploreOther
+			}
+			args = append(args, value)
+		}
+		if stage.Negated || len(call.Assigns) != 0 || !exploreStderrRedirects(stage.Redirs) {
+			return exploreNone, exploreOther
+		}
+		pipelines = append(pipelines, args)
+	}
+	first := pipelines[0]
+	program := path.Base(first[0])
+	if exploreReaders[program] || explorePathReaders[program] ||
+		program == "git" && (exploreGitReaders[exploreGitSubcommand(first[1:])] ||
+			slices.Contains([]string{"diff", "show"}, exploreGitSubcommand(first[1:])) && slices.ContainsFunc(first[1:], func(arg string) bool { return exploreDiffSummaries[arg] })) {
+		for _, stage := range pipelines[1:] {
+			if !exploreReaders[path.Base(stage[0])] && !exploreRowFilter(stage) {
+				return exploreNone, exploreOther
+			}
+		}
+		if explorePathReaders[program] {
+			return exploreNone, explorePathReader
+		}
+		return exploreNone, exploreReader
+	}
+	family := exploreInvocation(first)
+	for _, filter := range pipelines[1:] {
+		// A filtered file diff, log entry, or help paragraph loses the rows
+		// that bound it; only a single command's trailing cut is harmless.
+		multiRow := family&(exploreDiffs|exploreCommits|exploreHelp) != 0
+		if !exploreRowFilter(filter) || multiRow && (list || path.Base(filter[0]) != "head") {
+			return exploreNone, exploreOther
+		}
+	}
+	if family == exploreNone {
+		return exploreNone, exploreOther
+	}
+	return family, exploreProducer
+}
+
+// exploreStderrRedirects accepts only redirections that leave stdout rows in
+// place: `2>&1` and `2>/dev/null`.
+func exploreStderrRedirects(redirects []*syntax.Redirect) bool {
+	for _, redirect := range redirects {
+		if redirect.N == nil || redirect.N.Value != "2" || redirect.Word == nil {
+			return false
+		}
+		target := redirect.Word.Lit()
+		if !(redirect.Op == syntax.DplOut && target == "1" || redirect.Op == syntax.RdrOut && target == "/dev/null") {
+			return false
+		}
+	}
+	return true
+}
+
+// exploreRowFilter accepts a pipeline stage that only selects or reorders
+// whole rows of its input.
+func exploreRowFilter(args []string) bool {
+	switch path.Base(args[0]) {
+	case "head", "tail":
+		for i := 1; i < len(args); i++ {
+			if args[i] == "-n" && i+1 < len(args) {
+				i++
+				if !exploreLineCount.MatchString("-n" + args[i]) {
+					return false
+				}
+			} else if !exploreLineCount.MatchString(args[i]) {
+				return false
+			}
+		}
+		return true
+	case "sort":
+		for _, arg := range args[1:] {
+			if strings.Trim(arg, "-urnVf") != "" || !strings.HasPrefix(arg, "-") {
+				return false
+			}
+		}
+		return true
+	case "uniq":
+		return len(args) == 1
+	case "rg", "grep":
+		patterns := 0
+		for i := 1; i < len(args); i++ {
+			switch arg := args[i]; {
+			case arg == "-e" && i+1 < len(args):
+				i++
+				patterns++
+			case strings.HasPrefix(arg, "-"):
+				if !exploreRowFlags.MatchString(arg) {
+					return false
+				}
+			default:
+				patterns++
+			}
+		}
+		// A second operand would be a file, not the piped rows.
+		return patterns == 1
+	}
+	return false
+}
+
+// exploreInvocation classifies one program invocation.
+func exploreInvocation(args []string) exploreFamily {
 	for _, arg := range args[1:] {
 		name, _, _ := strings.Cut(arg, "=")
 		if exploreUnsupportedFlags[name] {
@@ -351,6 +564,9 @@ func exploreCommand(command string) exploreFamily {
 		return exploreHelp
 	}
 	if explorePathPrograms[program] {
+		if program != "rg" && program != "grep" && program != "egrep" && program != "fgrep" || slices.ContainsFunc(args[1:], exploreListingFlag) {
+			return exploreListing
+		}
 		return explorePaths
 	}
 	if subcommand, ok := exploreDiagnosticPrograms[program]; ok {
@@ -366,8 +582,13 @@ func exploreCommand(command string) exploreFamily {
 		}
 	case "git":
 		switch exploreGitSubcommand(args[1:]) {
-		case "grep", "ls-files":
+		case "grep":
+			if slices.ContainsFunc(args[1:], exploreListingFlag) {
+				return exploreListing
+			}
 			return explorePaths
+		case "ls-files":
+			return exploreListing
 		case "log", "reflog":
 			return exploreCommits
 		case "diff", "show":
@@ -375,6 +596,16 @@ func exploreCommand(command string) exploreFamily {
 		}
 	}
 	return exploreNone
+}
+
+// exploreListingFlag reports a search flag that prints matching file names
+// instead of matching rows.
+func exploreListingFlag(arg string) bool {
+	switch arg {
+	case "--files", "--files-with-matches", "--files-without-match", "--name-only":
+		return true
+	}
+	return exploreListingShort.MatchString(arg)
 }
 
 // exploreGitSubcommand skips global options, which never change the format.
@@ -393,15 +624,18 @@ func exploreGitSubcommand(args []string) string {
 	return ""
 }
 
+// exploreLiteral returns a word's text when its expansion cannot change which
+// program runs or which flags it sees. Globs, a leading tilde, and `$HOME`
+// expand to paths and are kept as written.
 func exploreLiteral(word *syntax.Word) (string, bool) {
 	var value strings.Builder
-	for i, part := range word.Parts {
+	home := func(part *syntax.ParamExp) bool {
+		var printed strings.Builder
+		return syntax.NewPrinter().Print(&printed, part) == nil && (printed.String() == "$HOME" || printed.String() == "${HOME}")
+	}
+	for _, part := range word.Parts {
 		switch part := part.(type) {
 		case *syntax.Lit:
-			// Only a leading tilde expands, so `HEAD~8` stays literal.
-			if strings.ContainsAny(part.Value, "*?[") || i == 0 && strings.HasPrefix(part.Value, "~") {
-				return "", false
-			}
 			value.WriteString(part.Value)
 		case *syntax.SglQuoted:
 			if part.Dollar {
@@ -410,12 +644,23 @@ func exploreLiteral(word *syntax.Word) (string, bool) {
 			value.WriteString(part.Value)
 		case *syntax.DblQuoted:
 			for _, inner := range part.Parts {
-				lit, ok := inner.(*syntax.Lit)
-				if !ok {
+				switch inner := inner.(type) {
+				case *syntax.Lit:
+					value.WriteString(inner.Value)
+				case *syntax.ParamExp:
+					if !home(inner) {
+						return "", false
+					}
+					value.WriteString("$HOME")
+				default:
 					return "", false
 				}
-				value.WriteString(lit.Value)
 			}
+		case *syntax.ParamExp:
+			if !home(part) {
+				return "", false
+			}
+			value.WriteString("$HOME")
 		default:
 			return "", false
 		}
@@ -423,20 +668,26 @@ func exploreLiteral(word *syntax.Word) (string, bool) {
 	return value.String(), true
 }
 
-// exploreExitAccepted reports whether a result state carries complete output
-// for the family. Diagnostic tools report findings with a failing status.
-func exploreExitAccepted(family exploreFamily, state string) bool {
-	switch state {
-	case "Process exited with code 0":
+// exploreExitAccepted reports whether an exit status carries complete output
+// for the family. Diagnostic tools report findings with a failing status. A
+// list reports only its last statement's status and printed stdout carries
+// none, so neither limits what its rows prove.
+func exploreExitAccepted(family exploreFamily, list bool, exit *int) bool {
+	if exit == nil || list {
 		return true
-	case "Process exited with code 1", "Process exited with code 2":
+	}
+	switch *exit {
+	case 0:
+		return true
+	case 1, 2:
 		return family == exploreDiagnostics
 	}
 	return false
 }
 
-// filter returns the replacement output text, or false to keep the stock one.
-func (f *exploreFilter) filter(ctx context.Context, task exploreTask, text string, store *mekugiReplayStore) (string, bool) {
+// filter returns the replacement for a command's output body, or false to
+// keep the stock one. A nil exit means the status was not printed.
+func (f *exploreFilter) filter(ctx context.Context, task exploreTask, body string, exit *int, store *mekugiReplayStore) (string, bool) {
 	started := time.Now()
 	debug, _ := ctx.Value(debugContextKey{}).(*debugOutput)
 	outcome := func(reason string, fields map[string]any) {
@@ -446,26 +697,32 @@ func (f *exploreFilter) filter(ctx context.Context, task exploreTask, text strin
 		fields["event"], fields["outcome"], fields["elapsed_ms"] = "explore_filter", reason, time.Since(started).Milliseconds()
 		debug.event(fields)
 	}
-	family := exploreCommand(task.Command)
-	if family == exploreNone {
+	family, list := exploreCommand(task.Command)
+	if family == exploreNone || !exploreExitAccepted(family, list, exit) || len(body) < exploreMinBytes {
 		return "", false
 	}
-	state, body := nativeExecutionHeader(text)
-	if !exploreExitAccepted(family, state) || len(body) < exploreMinBytes {
-		return "", false
-	}
-	header := text[:len(text)-len(body)]
 	rows := strings.SplitAfter(body, "\n")
 	if rows[len(rows)-1] == "" {
 		rows = rows[:len(rows)-1]
 	}
-	units, kind := exploreSplit(family, rows, task.Workdir)
-	fields := map[string]any{"family": exploreFamilyNames[family], "rows": len(rows), "bytes": len(body), "units": len(units)}
+	var units []exploreUnit
+	if list {
+		units = exploreListUnits(family, rows, task.Workdir)
+	} else {
+		units = exploreSplit(family, rows, task.Workdir)
+	}
+	unitBytes := 0
+	for _, unit := range units {
+		for _, row := range unit.rows {
+			unitBytes += len(rows[row])
+		}
+	}
+	fields := map[string]any{"family": family.String(), "list": list, "rows": len(rows), "bytes": len(body), "units": len(units), "unit_bytes": unitBytes}
 	if len(units) < exploreMinUnits || len(units) > exploreMaxUnits {
 		outcome("ineligible", fields)
 		return "", false
 	}
-	probabilities, usage, err := f.judgeUnits(ctx, task, units, kind)
+	probabilities, usage, err := f.judgeUnits(ctx, task, units)
 	fields["input_tokens"] = usage.InputTokens
 	if err != nil {
 		fields["error"] = err.Error()
@@ -493,7 +750,14 @@ func (f *exploreFilter) filter(ctx context.Context, task exploreTask, text strin
 			omittedBytes += len(rows[row])
 		}
 		omittedRows += len(unit.rows)
-		omitted = append(omitted, fmt.Sprintf("%s (%d)", unit.label(kind, rows), len(unit.rows)))
+		omitted = append(omitted, fmt.Sprintf("%s (%d)", unit.label(), len(unit.rows)))
+	}
+	noun := exploreUnitNouns[units[0].kind]
+	for _, unit := range units {
+		if exploreUnitNouns[unit.kind] != noun {
+			noun = "results"
+			break
+		}
 	}
 	// The omission list is bounded by what it replaces: listing one-row units
 	// in full would cost as much as the rows themselves.
@@ -509,13 +773,15 @@ func (f *exploreFilter) filter(ctx context.Context, task exploreTask, text strin
 	if extra := len(omitted) - listed; extra > 0 && listed > 0 {
 		summary += fmt.Sprintf(", +%d more", extra)
 	} else if extra > 0 {
-		summary = fmt.Sprintf("%d %s", extra, exploreUnitNouns[kind])
+		summary = fmt.Sprintf("%d %s", extra, noun)
 	}
 	footer := fmt.Sprintf("[mekugi explore filter: omitted %d of %d %s (%d of %d lines) judged unrelated to the task: %s. Full output: mread ",
-		len(omitted), len(units), exploreUnitNouns[kind], omittedRows, len(rows), summary)
+		len(omitted), len(units), noun, omittedRows, len(rows), summary)
 	saved := omittedBytes - len(footer) - 16
 	fields["omitted_units"], fields["omitted_rows"], fields["omitted_bytes"], fields["saved_bytes"] = len(omitted), omittedRows, omittedBytes, saved
-	if saved < exploreMinSavedBytes || float64(saved) < exploreMinSavedShare*float64(len(body)) {
+	// The share counts judged rows only, so a list's other statements do not
+	// hide savings in its search results.
+	if saved < exploreMinSavedBytes || float64(saved) < exploreMinSavedShare*float64(unitBytes) {
 		outcome("kept", fields)
 		return "", false
 	}
@@ -529,19 +795,18 @@ func (f *exploreFilter) filter(ctx context.Context, task exploreTask, text strin
 		return "", false
 	}
 	var filtered strings.Builder
-	filtered.WriteString(header)
 	for i, row := range rows {
 		if !dropRow[i] {
 			filtered.WriteString(row)
 		}
 	}
-	if !strings.HasSuffix(filtered.String(), "\n") {
+	if filtered.Len() > 0 && !strings.HasSuffix(filtered.String(), "\n") {
 		filtered.WriteByte('\n')
 	}
 	filtered.WriteString(footer + reference + "]\n")
 	if observer, ok := ctx.Value(exploreObserverKey{}).(exploreObserver); ok && observer.filtered != nil {
-		observer.filtered(task, body, filtered.String()[len(header):], exploreFilterEvent{
-			Family: exploreFamilyNames[family], LinesBefore: len(rows), LinesRemoved: omittedRows,
+		observer.filtered(task, body, filtered.String(), exploreFilterEvent{
+			Family: family.String(), LinesBefore: len(rows), LinesRemoved: omittedRows,
 			UnitsBefore: len(units), UnitsRemoved: len(omitted), JudgeUsage: usage,
 			ElapsedMS: time.Since(started).Milliseconds(),
 		})
@@ -550,32 +815,45 @@ func (f *exploreFilter) filter(ctx context.Context, task exploreTask, text strin
 	return filtered.String(), true
 }
 
-var exploreFamilyNames = map[exploreFamily]string{explorePaths: "paths", exploreDiagnostics: "diagnostics", exploreCommits: "commits", exploreDiffs: "diffs", exploreHelp: "help"}
+var exploreFamilyNames = []string{"paths", "listing", "diagnostics", "commits", "diffs", "help"}
+
+// String names the families joined by "+", such as "paths+diffs".
+func (f exploreFamily) String() string {
+	var names []string
+	for i, name := range exploreFamilyNames {
+		if f&(1<<i) != 0 {
+			names = append(names, name)
+		}
+	}
+	return strings.Join(names, "+")
+}
 
 var exploreUnitNouns = map[exploreUnitKind]string{exploreFileUnit: "files", exploreDirectoryUnit: "directories", exploreCommitUnit: "commits", exploreDiffUnit: "file diffs", exploreHelpUnit: "help entries"}
 
 // exploreSplit groups rows into units. Rows outside every unit, such as
 // diagnostics, headings, or truncation markers, are always kept.
-func exploreSplit(family exploreFamily, rows []string, workdir string) ([]exploreUnit, exploreUnitKind) {
+func exploreSplit(family exploreFamily, rows []string, workdir string) []exploreUnit {
+	var units []exploreUnit
+	var kind exploreUnitKind
 	switch family {
 	case exploreCommits:
-		return exploreCommitUnits(rows), exploreCommitUnit
+		units, kind = exploreCommitUnits(rows), exploreCommitUnit
 	case exploreDiffs:
-		return exploreDiffUnits(rows), exploreDiffUnit
+		units, kind = exploreDiffUnits(rows), exploreDiffUnit
 	case exploreHelp:
-		return exploreHelpUnits(rows), exploreHelpUnit
+		units, kind = exploreHelpUnits(rows), exploreHelpUnit
+	default:
+		return explorePathUnits(rows, workdir)
 	}
-	units, byDirectory := explorePathUnits(rows, workdir)
-	if byDirectory {
-		return units, exploreDirectoryUnit
+	for i := range units {
+		units[i].kind = kind
 	}
-	return units, exploreFileUnit
+	return units
 }
 
-// explorePathUnits groups rows by the existing path each starts with. Indented
-// rows continue the previous finding, as diagnostic code excerpts do. Large
-// path sets group by parent directory.
-func explorePathUnits(rows []string, workdir string) ([]exploreUnit, bool) {
+// explorePathKeys resolves the existing path a row starts with, caching
+// lookups relative to the working directory.
+func explorePathKeys(workdir string) func(line string) (key, rest string) {
 	exists := make(map[string]bool)
 	pathExists := func(candidate string) bool {
 		if candidate == "" {
@@ -592,56 +870,89 @@ func explorePathUnits(rows []string, workdir string) ([]exploreUnit, bool) {
 		exists[candidate] = err == nil
 		return err == nil
 	}
+	return func(line string) (string, string) {
+		if pathExists(line) {
+			return line, ""
+		}
+		if candidate, after, ok := strings.Cut(line, ":"); ok && pathExists(candidate) {
+			return candidate, after
+		}
+		if match := exploreParenRow.FindStringSubmatch(line); match != nil && pathExists(match[1]) {
+			return match[1], line[len(match[1]):]
+		}
+		if match := exploreContextRow.FindStringSubmatch(line); match != nil && pathExists(match[1]) {
+			return match[1], line[len(match[1])+1:]
+		}
+		return "", ""
+	}
+}
+
+// explorePathUnits groups rows by the existing path each starts with. Indented
+// rows continue the previous finding, as diagnostic code excerpts do. Large
+// path sets group by parent directory.
+func explorePathUnits(rows []string, workdir string) []exploreUnit {
+	pathKey := explorePathKeys(workdir)
 	var units []exploreUnit
 	index := make(map[string]int)
 	last := -1
 	for row, text := range rows {
 		line := strings.TrimSuffix(text, "\n")
-		key, rest := "", ""
-		switch {
-		case last >= 0 && (line == "--" || strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")):
+		if last >= 0 && (line == "--" || strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")) {
 			// Context separators and excerpts belong to the group they follow.
 			units[last].rows = append(units[last].rows, row)
 			continue
-		case pathExists(line):
-			key = line
-		default:
-			if candidate, after, ok := strings.Cut(line, ":"); ok && pathExists(candidate) {
-				key, rest = candidate, after
-			} else if match := exploreParenRow.FindStringSubmatch(line); match != nil && pathExists(match[1]) {
-				key, rest = match[1], line[len(match[1]):]
-			} else if match := exploreContextRow.FindStringSubmatch(line); match != nil && pathExists(match[1]) {
-				key, rest = match[1], line[len(match[1])+1:]
-			}
 		}
+		key, rest := pathKey(line)
 		if key == "" {
 			last = -1
 			continue
 		}
-		at, ok := index[key]
-		if !ok {
-			at = len(units)
-			index[key] = at
-			units = append(units, exploreUnit{key: key})
-		}
-		units[at].rows = append(units[at].rows, row)
-		units[at].lines = append(units[at].lines, rest)
-		last = at
+		last = explorePathRow(&units, index, key, rest, row)
 	}
-	if len(units) <= exploreMaxFileUnits {
-		return units, false
+	return exploreGroupDirectories(units)
+}
+
+// explorePathRow adds a row to the file unit for key and returns its index.
+func explorePathRow(units *[]exploreUnit, index map[string]int, key, rest string, row int) int {
+	at, ok := index[key]
+	if !ok {
+		at = len(*units)
+		index[key] = at
+		*units = append(*units, exploreUnit{key: key, kind: exploreFileUnit})
 	}
-	var directories []exploreUnit
-	index = make(map[string]int)
+	unit := &(*units)[at]
+	unit.rows = append(unit.rows, row)
+	unit.lines = append(unit.lines, rest)
+	return at
+}
+
+// exploreGroupDirectories replaces more than exploreMaxFileUnits file units
+// with one unit per parent directory, keeping other units in place.
+func exploreGroupDirectories(units []exploreUnit) []exploreUnit {
+	files := 0
 	for _, unit := range units {
+		if unit.kind == exploreFileUnit {
+			files++
+		}
+	}
+	if files <= exploreMaxFileUnits {
+		return units
+	}
+	var grouped []exploreUnit
+	index := make(map[string]int)
+	for _, unit := range units {
+		if unit.kind != exploreFileUnit {
+			grouped = append(grouped, unit)
+			continue
+		}
 		directory := filepath.Dir(unit.key)
 		at, ok := index[directory]
 		if !ok {
-			at = len(directories)
+			at = len(grouped)
 			index[directory] = at
-			directories = append(directories, exploreUnit{key: directory})
+			grouped = append(grouped, exploreUnit{key: directory, kind: exploreDirectoryUnit})
 		}
-		group := &directories[at]
+		group := &grouped[at]
 		group.rows = append(group.rows, unit.rows...)
 		for _, line := range unit.lines {
 			entry := filepath.Base(unit.key)
@@ -651,7 +962,112 @@ func explorePathUnits(rows []string, workdir string) ([]exploreUnit, bool) {
 			group.lines = append(group.lines, entry)
 		}
 	}
-	return directories, true
+	for i := range grouped {
+		slices.Sort(grouped[i].rows)
+	}
+	return grouped
+}
+
+// exploreListUnits splits the concatenated output of a list's statements.
+// Nothing marks where one statement's output ends, so only rows that prove
+// their family form units: rows led by an existing path, file diffs bounded
+// by their hunk line counts, and full commit entries. One-line commits are
+// indistinguishable from `git blame` rows. A bare path forms a unit only
+// when a statement lists paths, and indented rows never continue a path unit:
+// either may be another statement's output, such as `ls` or file content.
+func exploreListUnits(family exploreFamily, rows []string, workdir string) []exploreUnit {
+	pathKey := explorePathKeys(workdir)
+	var units []exploreUnit
+	index := make(map[string]int)
+	last := -1
+	for row := 0; row < len(rows); {
+		line := strings.TrimSuffix(rows[row], "\n")
+		end, kind := row, exploreFileUnit
+		switch {
+		case family&exploreDiffs != 0 && strings.HasPrefix(line, "diff --git "):
+			end, kind = exploreDiffEnd(rows, row), exploreDiffUnit
+		case family&exploreCommits != 0 && exploreCommitRow.MatchString(line):
+			end, kind = exploreCommitEnd(rows, row), exploreCommitUnit
+		case family&(explorePaths|exploreListing|exploreDiagnostics) != 0:
+			if last >= 0 && line == "--" {
+				units[last].rows = append(units[last].rows, row)
+				row++
+				continue
+			}
+			if key, rest := pathKey(line); key != "" && (rest != "" || family&exploreListing != 0) {
+				last = explorePathRow(&units, index, key, rest, row)
+				row++
+				continue
+			}
+		}
+		last = -1
+		if end == row {
+			row++
+			continue
+		}
+		unit := exploreUnit{key: line, kind: kind}
+		for ; row < end; row++ {
+			unit.rows = append(unit.rows, row)
+			unit.lines = append(unit.lines, strings.TrimSuffix(rows[row], "\n"))
+		}
+		units = append(units, unit)
+	}
+	return exploreGroupDirectories(units)
+}
+
+// exploreDiffEnd returns the row after the file diff starting at start: its
+// extended headers, then hunks whose rows match their header's line counts.
+func exploreDiffEnd(rows []string, start int) int {
+	end := start + 1
+	for end < len(rows) && slices.ContainsFunc(exploreDiffHeaders, func(prefix string) bool { return strings.HasPrefix(rows[end], prefix) }) {
+		end++
+	}
+	for end < len(rows) {
+		match := exploreHunkRow.FindStringSubmatch(rows[end])
+		if match == nil {
+			return end
+		}
+		count := func(value string) int {
+			if value == "" {
+				return 1
+			}
+			n, _ := strconv.Atoi(value)
+			return n
+		}
+		removed, added := count(match[1]), count(match[2])
+		for end++; end < len(rows) && (removed > 0 || added > 0 || strings.HasPrefix(rows[end], "\\")); end++ {
+			switch rows[end][0] {
+			case ' ':
+				removed, added = removed-1, added-1
+			case '-':
+				removed--
+			case '+':
+				added--
+			case '\\': // No newline at end of file.
+			default:
+				return end
+			}
+		}
+	}
+	return end
+}
+
+// exploreCommitEnd returns the row after the full log entry starting at start:
+// its header fields, indented message, stat rows, and any file diffs.
+func exploreCommitEnd(rows []string, start int) int {
+	end := start + 1
+	for end < len(rows) {
+		line := strings.TrimSuffix(rows[end], "\n")
+		switch {
+		case line == "" || exploreEntryRow.MatchString(line):
+			end++
+		case strings.HasPrefix(line, "diff --git "):
+			end = exploreDiffEnd(rows, end)
+		default:
+			return end
+		}
+	}
+	return end
 }
 
 // exploreRowUnits starts a unit at every row matching start. Rows before the
@@ -716,8 +1132,8 @@ func clipExploreText(text string, limit int) string {
 	return strings.ToValidUTF8(text[:limit], "") + "…"
 }
 
-func (u exploreUnit) label(kind exploreUnitKind, rows []string) string {
-	switch kind {
+func (u exploreUnit) label() string {
+	switch u.kind {
 	case exploreDirectoryUnit:
 		return u.key + "/"
 	case exploreCommitUnit:
@@ -741,11 +1157,11 @@ func (u exploreUnit) label(kind exploreUnitKind, rows []string) string {
 	return clipExploreText(strings.TrimSpace(u.key), exploreLabelChars)
 }
 
-func (u exploreUnit) state(kind exploreUnitKind) exploreUnitState {
+func (u exploreUnit) state() exploreUnitState {
 	var state exploreUnitState
 	sample := u.lines
 	limit := exploreSampleLines
-	switch kind {
+	switch u.kind {
 	case exploreFileUnit:
 		state.Path = u.key
 		if len(u.lines) > 1 || len(u.lines) == 1 && u.lines[0] != "" {
@@ -757,7 +1173,7 @@ func (u exploreUnit) state(kind exploreUnitKind) exploreUnitState {
 		state.Directory, state.Entries = u.key, len(u.lines)
 	case exploreDiffUnit:
 		// Hunk headers and changed rows say what a file diff is about.
-		state.Label, state.LineCount = u.label(kind, nil), len(u.rows)
+		state.Label, state.LineCount = u.label(), len(u.rows)
 		sample, limit = nil, exploreDiffSample
 		for _, line := range u.lines[1:] {
 			if strings.HasPrefix(line, "@@") || (strings.HasPrefix(line, "+") || strings.HasPrefix(line, "-")) && !strings.HasPrefix(line, "+++") && !strings.HasPrefix(line, "---") {
@@ -794,20 +1210,16 @@ var (
 
 // judgeUnits asks one Noul per unit. Small batches keep each state focused;
 // every answer must arrive or the whole judgment fails.
-func (f *exploreFilter) judgeUnits(ctx context.Context, task exploreTask, units []exploreUnit, kind exploreUnitKind) ([]float64, typesafeUsage, error) {
+func (f *exploreFilter) judgeUnits(ctx context.Context, task exploreTask, units []exploreUnit) ([]float64, typesafeUsage, error) {
 	ctx, cancel := context.WithTimeout(ctx, exploreJudgeTimeout)
 	defer cancel()
 	goal := "`task.agent_intent`, given `task.user_request`"
 	if task.AgentIntent == "" {
 		goal = "`task.user_request`"
 	}
-	criteria := exploreGeneralCriteria
-	if kind == exploreFileUnit || kind == exploreDirectoryUnit {
-		criteria = exploreFileCriteria
-	}
 	states := make([]exploreUnitState, len(units))
 	for i, unit := range units {
-		states[i] = unit.state(kind)
+		states[i] = unit.state()
 	}
 	probabilities := make([]float64, len(units))
 	var mu sync.Mutex
@@ -842,6 +1254,10 @@ func (f *exploreFilter) judgeUnits(ctx context.Context, task exploreTask, units 
 			}
 			questions := make(map[string]typesafeNoul, len(batch))
 			for i := range batch {
+				criteria := exploreGeneralCriteria
+				if kind := units[offset+i].kind; kind == exploreFileUnit || kind == exploreDirectoryUnit {
+					criteria = exploreFileCriteria
+				}
 				questions[fmt.Sprintf("r%d", i)] = typesafeNoul{
 					Type:         "noul",
 					Instructions: map[string]string{"question": fmt.Sprintf("Does the agent need to see `results[%d]` to make progress on %s?", i, goal)},

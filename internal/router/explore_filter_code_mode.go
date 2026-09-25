@@ -4,15 +4,15 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
-	"fmt"
 )
 
 // filterCodeMode accepts the complete result of one literal exec_command,
 // proven by toolActivityUnwrapExec(..., true), including its metadata-only
-// retained:false copy form. Arbitrary printed
-// JavaScript, batches, partial cells, and continuation results are not mapped
-// back to commands. This projects text only; Codex remains the executor.
-func (f *exploreFilter) filterCodeMode(ctx context.Context, task exploreTask, raw []byte, store *mekugiReplayStore) []byte {
+// retained:false copy form, or the printed stdout of one, proven by
+// toolActivityUnwrapExecOutput. Arbitrary printed JavaScript, batches, partial
+// cells, and continuation results are not mapped back to commands. This
+// projects text only; Codex remains the executor.
+func (f *exploreFilter) filterCodeMode(ctx context.Context, task exploreTask, raw []byte, outputOnly bool, store *mekugiReplayStore) []byte {
 	var text string
 	var parts []map[string]jsontext.Value
 	stringOutput := json.Unmarshal(raw, &text) == nil
@@ -40,36 +40,46 @@ func (f *exploreFilter) filterCodeMode(ctx context.Context, task exploreTask, ra
 			return nil
 		}
 	}
-	var result map[string]jsontext.Value
-	if json.Unmarshal([]byte(body), &result) != nil {
-		return nil
-	}
-	var exit *int
-	var session *int64
-	var stdout string
-	if json.Unmarshal(result["exit_code"], &exit) != nil || exit == nil ||
-		json.Unmarshal(result["output"], &stdout) != nil {
-		return nil
-	}
-	if value, exists := result["session_id"]; exists && (json.Unmarshal(value, &session) != nil || session != nil) {
-		return nil
-	}
-	// Adapt only the result body to the shared filter. The synthetic header is
-	// never exposed and the original host metadata remains in the envelope.
-	nativeHeader := fmt.Sprintf("Wall time: 0 seconds\nProcess exited with code %d\nOutput:\n", *exit)
-	filtered, ok := f.filter(ctx, task, nativeHeader+stdout, store)
-	if !ok {
-		return nil
-	}
-	result["output"], _ = json.Marshal(filtered[len(nativeHeader):])
-	encoded, err := json.Marshal(result)
-	if err != nil {
-		return nil
-	}
-	if stringOutput {
-		encoded, _ = json.Marshal(header + string(encoded))
+	var replacement string
+	if outputOnly {
+		// Printed stdout carries no exit status or session metadata.
+		filtered, ok := f.filter(ctx, task, body, nil, store)
+		if !ok {
+			return nil
+		}
+		replacement = filtered
 	} else {
-		parts[1]["text"], _ = json.Marshal(string(encoded))
+		var result map[string]jsontext.Value
+		if json.Unmarshal([]byte(body), &result) != nil {
+			return nil
+		}
+		var exit *int
+		var session *int64
+		var stdout string
+		if json.Unmarshal(result["exit_code"], &exit) != nil || exit == nil ||
+			json.Unmarshal(result["output"], &stdout) != nil {
+			return nil
+		}
+		if value, exists := result["session_id"]; exists && (json.Unmarshal(value, &session) != nil || session != nil) {
+			return nil
+		}
+		// Only the output string changes; the host metadata remains in the envelope.
+		filtered, ok := f.filter(ctx, task, stdout, exit, store)
+		if !ok {
+			return nil
+		}
+		result["output"], _ = json.Marshal(filtered)
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			return nil
+		}
+		replacement = string(encoded)
+	}
+	var encoded []byte
+	if stringOutput {
+		encoded, _ = json.Marshal(header + replacement)
+	} else {
+		parts[1]["text"], _ = json.Marshal(replacement)
 		encoded, _ = json.Marshal(parts)
 	}
 	return encoded

@@ -281,3 +281,63 @@ func TestExploreFilterCodeModeAllowsDiagnosticExitOne(t *testing.T) {
 		t.Fatalf("diagnostics exit 1 was not filtered: calls=%d stdout=%q", judge.calls.Load(), stdout)
 	}
 }
+
+func TestExploreFilterCodeModePrintedStdout(t *testing.T) {
+	dir, body := exploreFixture(t)
+	args := string(mustTestJSON(t, map[string]string{"cmd": "rg -n snapshot", "workdir": dir}))
+	for name, source := range map[string]string{
+		"binding":   "const r=await tools.exec_command(" + args + "); text(r.output);",
+		"awaited":   "text((await tools.exec_command(" + args + ")).output)",
+		"commented": "// search\nlet result = await tools.exec_command(" + args + ");\ntext(result.output)",
+	} {
+		for _, encoding := range []string{"string", "blocks"} {
+			t.Run(name+"/"+encoding, func(t *testing.T) {
+				store, err := openMekugiReplayStore(t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				var output any = exploreCodeModeHeader + body
+				if encoding == "blocks" {
+					output = exploreCodeModeBlocks(exploreCodeModeHeader, body)
+				}
+				request := exploreCodeModeRequest(t, source, "", output)
+				judge := &fakeExploreJudge{score: func(unit exploreUnitState) float64 {
+					if strings.HasPrefix(unit.Path, "live/") {
+						return 0.9
+					}
+					return 0.01
+				}}
+				newExploreFilter(judge).project(t.Context(), request, nil, dir, "", "/root", store)
+				header, stdout := exploreCodeModeParts(t, request)
+				if header != exploreCodeModeHeader {
+					t.Fatalf("outer Code Mode header changed: %q", header)
+				}
+				ref := regexp.MustCompile(`\[mekugi explore filter: omitted 3 of 6 files .*Full output: mread ([a-z0-9_]+)\]\n$`).FindStringSubmatch(stdout)
+				if ref == nil || !strings.HasPrefix(stdout, "live/diff.go:1:") || strings.Contains(stdout, "catalog/d.go:") {
+					t.Fatalf("printed stdout was not filtered: %q", stdout)
+				}
+				recovered, err := store.readShellOutput(t.Context(), ref[1])
+				if err != nil || recovered.Stdout != body {
+					t.Fatalf("recovered stdout differs: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestToolActivityUnwrapExecOutputRejectsOtherPrints(t *testing.T) {
+	for _, source := range []string{
+		`text(await tools.exec_command({cmd:"rg x"}))`,
+		`const r=await tools.exec_command({cmd:"rg x"}); text(r.output + "!");`,
+		`const r=await tools.exec_command({cmd:"rg x"}); text(r.stderr);`,
+		`const r=await tools.exec_command({cmd:"rg x"}); text(r.output); text(r.output);`,
+		`const text=await tools.exec_command({cmd:"rg x"}); text(text.output);`,
+		`const r=await tools.exec_command({cmd:command}); text(r.output);`,
+		`const r=await Promise.all([tools.exec_command({cmd:"rg x"})]); text(r.output);`,
+		`text((await tools.exec_command({cmd:"rg x"}))?.output)`,
+	} {
+		if _, ok := toolActivityUnwrapExecOutput(source); ok {
+			t.Errorf("accepted %q", source)
+		}
+	}
+}

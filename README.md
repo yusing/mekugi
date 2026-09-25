@@ -35,7 +35,9 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Search output filtering.** With a TypeSafe API key configured, large search results
   (`rg`, `grep`, `find`, `fd`, `git grep`), linter and compiler diagnostics,
   `git log`, `git diff`, `git show`, and `--help` pages drop the files, commits,
-  or entries that TypeSafe's Jev model judges unrelated to the task. The agent sees what was omitted and can `mread` the full output. Your
+  or entries that TypeSafe's Jev model judges unrelated to the task, including
+  inside combined commands such as `rg … | head; mcat …`. The agent sees what
+  was omitted and can `mread` the full output. Your
   latest request, the agent's preceding message, the command, and sampled result
   rows are sent to TypeSafe. If TypeSafe fails, the output passes through unchanged.
   Opt out with `--explore-filter=false`.

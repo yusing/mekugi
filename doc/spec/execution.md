@@ -42,8 +42,9 @@ replaying, or displaying it.
 
 The credential-gated [explore output filter](explore_filter.md) is the sole
 exception to unchanged model-visible result text. It projects eligible completed
-native and transparent single-command Code Mode results, retains their original
-output before exposing recovery, and never alters execution or continuation.
+native and transparent single-call Code Mode results, including command lists,
+retains their original output before exposing recovery, and never alters
+execution or continuation.
 
 The wrapped Codex `PATH` includes only this session's authenticated executable
 frontends. `mcat`, `mrun`, `mread`, `mchanges`, `msymbol`, `inspect_file`, and
