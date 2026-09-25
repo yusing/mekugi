@@ -348,7 +348,9 @@ hyperlink rather than exposing the raw destination syntax. A completed child
 compaction appears as an event in the feed and as the agent's latest roster
 activity; an attempted or failed compaction does not claim completion.
 Fenced `Run` previews put the first source row beside the verb when space
-allows. A confirmed nonzero command exit displays a red `(exit N)` beside a
+allows. `Run JavaScript` Code Mode previews always place source beneath the
+heading with the same code gutter, whether the source has one line or many.
+A confirmed nonzero command exit displays a red `(exit N)` beside a
 single-line `Run` or beneath a multiline one. Unknown and zero exits add no
 failure label. Python, JavaScript (Node and Bun), and Perl interpreter previews use
 their own syntax colors. `Search` patterns are styled as literal patterns,

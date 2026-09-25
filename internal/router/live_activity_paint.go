@@ -387,8 +387,9 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 			}
 			return lines
 		}
-		// A single-line program or argument reads best on the operation row.
-		if code != "" && !strings.Contains(code, "\n") && (label == "" || !block.fenced) {
+		// Keep Code Mode source below its long heading, regardless of source line count.
+		// Other single-line programs or arguments read best on the operation row.
+		if code != "" && !strings.Contains(code, "\n") && (label == "" || !block.fenced) && !(block.fenced && block.verb == "Run JavaScript") {
 			inline := p.code(block.verb, code)
 			if block.fenced {
 				inline = strings.Join(p.highlight(block.lang, code), " ")

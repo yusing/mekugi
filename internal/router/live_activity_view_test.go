@@ -10,6 +10,33 @@ import (
 	"github.com/yusing/mekugi/internal/livediff"
 )
 
+func TestLiveActivityJavaScriptStableIndent(t *testing.T) {
+	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+		painter := liveActivityPainter{theme: theme}
+		for _, width := range []int{24, 80} {
+			for _, source := range []string{
+				"text(1);",
+				"text(1);\ntext(2);",
+				`const tool = ALL_TOOLS.find(x => /search_openai_docs$/.test(x.name)); text(tool);`,
+			} {
+				blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityJavaScript(source)})
+				if len(blocks) != 1 {
+					t.Fatalf("blocks = %+v", blocks)
+				}
+				rows := plainLines(painter.block(blocks[0], width))
+				if len(rows) < 2 || strings.TrimSpace(rows[0]) != "Run JavaScript" {
+					t.Fatalf("heading shares source: %q", rows)
+				}
+				for _, row := range rows[1:] {
+					if !strings.HasPrefix(row, "  │ ") || ansi.StringWidth(row) > width {
+						t.Fatalf("width %d: inconsistent code gutter or overflow: %q", width, row)
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestParseLiveActivityBlocks(t *testing.T) {
 	message := parseLiveActivity(activityPaneEntry{Kind: "reply", Text: "[`/root/a` -> `/root`] Message received:\nDone.\n- `x.go`"})
 	if len(message) != 1 || message[0].kind != "message" || message[0].from != "/root/a" || message[0].to != "/root" || message[0].body != "Done.\n- `x.go`" {
