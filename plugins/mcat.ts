@@ -156,7 +156,6 @@ type ComparedOutput = {
   current: string;
   incomplete: boolean;
   limitReason?: string;
-  warning?: string;
   omitted?: string;
 };
 
@@ -298,15 +297,12 @@ async function readLines(spec: ReadSpec, options: ReaderOptions): Promise<Compar
     if (spec.startLine > lineCount) {
       throw new Error(`rows ${spec.startLine}:${spec.endLine} past EOF (${lineCount} rows)`);
     }
-    const missingStartLine = Math.max(spec.startLine, lineCount + 1);
-    const warning = !wholeFile && missingStartLine <= spec.endLine
-      ? `mcat: rows ${missingStartLine}:${spec.endLine} past EOF (${lineCount} rows)\n`
-      : undefined;
+    // An end past EOF is an ordinary clamp: the shown rows already end at EOF.
     const result = tail?.finish() ?? {current: output.current, incomplete: output.incomplete};
     const omitted = result.incomplete && !retentionUnavailable
       ? tail ? retained.prefixBefore(result.current) : retained.remainder(result.current)
       : undefined;
-    return {...result, incomplete: result.incomplete, warning, limitReason, omitted};
+    return {...result, incomplete: result.incomplete, limitReason, omitted};
   } finally {
     await handle.close();
   }
@@ -384,10 +380,9 @@ Limited output contains complete rows and exits nonzero; retained omissions prov
       }
       try {
         const result = await readLines(spec, options);
-        const limitDiagnostic = result.incomplete
+        const stderr = result.incomplete
           ? `mcat: ${result.limitReason ?? readerLimitDiagnostic(options)}`
           : "";
-        const stderr = `${result.warning ?? ""}${limitDiagnostic}`;
         return {
           stdout: result.current,
           ...(stderr === "" ? {} : {stderr}),

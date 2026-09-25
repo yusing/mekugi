@@ -111,7 +111,7 @@ func TestMCatDashFilenameAndEOFRangeMessages(t *testing.T) {
 
 	out, diagnostic, status = runShellWorkerTest(t, registry, "bash", nil,
 		"mcat rows 1:9", nil, newShellWorkerTestInvocation(directory))
-	if status != 0 || out != "one\ntwo\nthree\n" || diagnostic != "mcat: rows 4:9 past EOF (3 rows)\n" {
+	if status != 0 || out != "one\ntwo\nthree\n" || diagnostic != "" {
 		t.Fatalf("partial EOF range: status=%d stdout=%q stderr=%q", status, out, diagnostic)
 	}
 	out, diagnostic, status = runShellWorkerTest(t, registry, "bash", nil,

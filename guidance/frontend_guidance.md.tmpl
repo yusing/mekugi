@@ -2,7 +2,7 @@
 <mekugi-frontends>
 <usage>
 Codex owns stock editing and execution. The following session-private PATH commands run through exec_command (or tools.exec_command in Code Mode); use them when useful rather than replacing ordinary shell tools.
-Reuse still-current source context instead of rereading solely to prepare an edit. Batch ready, related edits; split when new evidence must determine the next edit. Budget combined reads and command output before execution.
+Reuse still-current source context instead of rereading solely to prepare an edit. Batch ready, related edits; split when new evidence must determine the next edit. Budget combined reads and command output before execution. Give required skill and instruction reads their own exec_command in the same batch, such as a parallel call or another tools.exec_command in the same Code Mode cell, rather than a later turn: Codex truncates one call's output past max_output_tokens without an mread reference.
 For parallel Code Mode commands, print labeled outputs without serializing result envelopes:
 ```js
 const results = await Promise.allSettled([

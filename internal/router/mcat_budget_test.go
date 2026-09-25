@@ -213,10 +213,8 @@ func checkMCatLimitedRange(t *testing.T, stdout, stderr string, budget, rowCount
 	if budget == 6000 && match[4] != "" || budget != 6000 && match[5] != strconv.Itoa(budget) {
 		t.Fatalf("next_call has the wrong token-budget spelling: %q", lines[0])
 	}
-	for _, warning := range lines[1:] {
-		if !regexp.MustCompile(`^mcat: rows [0-9]+:[0-9]+ past EOF \([0-9]+ rows\)$`).MatchString(warning) {
-			t.Fatalf("unexpected line after single-file continuation notice: %q", warning)
-		}
+	if len(lines) != 1 {
+		t.Fatalf("unexpected line after single-file continuation notice: %q", lines[1:])
 	}
 	shownStart, startErr := strconv.Atoi(match[1])
 	shownEnd, endErr := strconv.Atoi(match[2])

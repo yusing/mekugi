@@ -24,13 +24,13 @@ The process host owns quoting and argument separation. A path containing
 whitespace is one quoted argument. `START:END` is an inclusive logical-line
 range; `START-END` is equivalent. Bounds use a canonical nonnegative start and positive base-ten end. `0:END` is
 accepted as `1:END`. The start line must exist; an end past EOF returns through the final
-line. Each range applies to the preceding path. A numeric range after a path is
+line without a diagnostic. Each range applies to the preceding path. A numeric range after a path is
 therefore an operand, so prefix a range-like filename with `./`. `--` ends
 option parsing. Several ranges may follow one path, each counting toward the maximum of
 16 reads. Before reading sources, `A:+N`, `A,B`, and bare numeric operands reject with a
 corrected command. A nonexistent `PATH:N` operand suggests `mcat PATH N:N`; an existing
 literal file retains its ordinary meaning. `-n A:B` suggests `mcat PATH A:B`.
-EOF messages use colon ranges and the observed row count.
+Start-past-EOF messages use colon ranges and the observed row count.
 
 The executable inherits the stock executor's working directory and environment.
 Relative and absolute paths retain their ordinary process meaning. Codex owns
@@ -54,7 +54,8 @@ present in the first logical row, remains source content.
 
 Missing, inaccessible, non-regular, non-UTF-8, reversed-range, and
 start-past-EOF reads return concise stderr and nonzero status. An end past EOF
-returns the available rows and a warning without changing successful status.
+is an ordinary clamp: it returns the available rows with successful status and no stderr,
+so only an invalid start reports an EOF error.
 Whole-file UTF-8 validation continues after stdout admission stops.
 
 ### Bounds, head, and tail

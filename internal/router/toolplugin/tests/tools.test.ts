@@ -312,7 +312,7 @@ describe("mcat omitted rows", () => {
       const head = await tool.execute(["-n", "2", file, "2:9"], executionContext);
       expect(head.stdout).toBe(formatMCatRow(2, "") + formatMCatRow(3, "three"));
       expect(head.omittedOutput?.stdout).toBe(formatMCatRow(4, "four") + formatMCatRow(5, "five"));
-      expect(head.stderr).toContain("mcat: rows 6:9 past EOF (5 rows)");
+      expect(head.stderr).not.toContain("past EOF");
       const rest = await tool.execute([file, "4:5"], executionContext);
       expect(rest).toEqual({
         stdout: formatMCatRow(4, "four") + formatMCatRow(5, "five"),
@@ -588,7 +588,6 @@ describe("mcat built-in plugin", () => {
         formatMCatRow(2, "beta"),
         formatMCatRow(3, "gamma"),
       ].join(""),
-      stderr: "mcat: rows 4:5 past EOF (3 rows)\n",
       exitCode: 0,
     });
 

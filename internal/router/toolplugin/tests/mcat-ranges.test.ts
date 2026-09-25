@@ -57,7 +57,6 @@ test("reports the exact omitted EOF span and preserves start-past-EOF failure st
 
   expect(await tool.execute([file, "1:9"], executionContext)).toEqual({
     stdout: "one\ntwo\nthree\n",
-    stderr: "mcat: rows 4:9 past EOF (3 rows)\n",
     exitCode: 0,
   });
   expect(await tool.execute([file, "4:9"], executionContext)).toEqual({

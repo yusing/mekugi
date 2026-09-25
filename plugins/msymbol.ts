@@ -164,7 +164,6 @@ function parseQueries(argv: string[]): Query[] {
     }
     const selector = rest[index++];
     if (!selector) throw new MSymbolFailure(`usage: ${symbolUsage}`);
-    if (mode === "refs" && line === null) throw new MSymbolFailure("refs requires LINE; use PATH LINE SYMBOL or PATH:LINE SYMBOL");
     const identifier = selector.split(".").at(-1)!;
     if (!identifier) throw new MSymbolFailure("SYMBOL must end with a usable name");
     const occurrence = /^[0-9]+$/u.test(rest[index] ?? "") ? parsePositiveInteger(rest[index++], "N") : null;
@@ -269,8 +268,13 @@ function selectSymbol(file: SourceFile, query: Query): number {
     const matches = codeOutline(file.source, file.lines, file.format).filter(item =>
       item.entry.kind !== "parse_error" && "name" in item.entry && item.entry.name === query.identifier
       && item.nameFrom !== undefined);
-    if (matches.length !== 1) {
-      throw new MSymbolFailure(`${query.identifier} has ${matches.length} outline matches; supply LINE`);
+    if (matches.length > 1) {
+      const lines = matches.map(item => file.lines.lineAt(item.nameFrom!)).join(", ");
+      throw new MSymbolFailure(`${query.identifier} has ${matches.length} outline matches (lines ${lines}); supply LINE`);
+    }
+    if (matches.length === 0) {
+      const tokens = symbolLines(file.source, file.lines, file.format, query.identifier).sort((a, b) => a - b).slice(0, 5);
+      throw new MSymbolFailure(`${query.identifier} has no outline declaration; ${tokens.length ? `supply LINE, such as a token line: ${tokens.join(", ")}` : "no matching token in this file"}`);
     }
     if (matches[0].complete === false) throw new MSymbolFailure(`${query.identifier} has an incomplete outline declaration; supply LINE`);
     const offset = matches[0].nameFrom!;
@@ -635,7 +639,7 @@ async function executeQueries(queries: Query[], onResolverStart: () => void): Pr
 export function createMSymbolTool(grammar: string): Tool<string[]> {
   return createExecutorTool({
     name: "msymbol",
-    description: "Resolve current Go, JavaScript, TypeScript, JSON, or Python symbol with compact definition bodies and references grouped by file. Before removing a field or changing a signature, use refs to acquire semantic references across affected packages and tests. Read all returned reference rows before dependent edits, continuing incomplete output; report skipped or unavailable coverage rather than treating text matches as complete caller coverage. Usage: `msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH [LINE] SYMBOL [N] [(def|refs) PATH [LINE] SYMBOL [N] ...]`. PATH:LINE is also accepted; def without LINE selects a unique outline declaration. Batched tuples share a server per language and one output budget. LINE selects the current snapshot. ROOT sets resolver scope and relative paths without changing shell state. N selects an exact language-token occurrence. Ambiguous selectors, unavailable language servers, input changes during the query, and definitions without an editable workspace location fail without stdout rows. An incomplete token-limited result retains complete rows, writes stderr, and exits nonzero.",
+    description: "Resolve current Go, JavaScript, TypeScript, JSON, or Python symbol with compact definition bodies and references grouped by file. Before removing a field or changing a signature, use refs to acquire semantic references across affected packages and tests. Read all returned reference rows before dependent edits, continuing incomplete output; report skipped or unavailable coverage rather than treating text matches as complete caller coverage. Usage: `msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH [LINE] SYMBOL [N] [(def|refs) PATH [LINE] SYMBOL [N] ...]`. PATH:LINE is also accepted. Without LINE, def and refs select the unique outline declaration named SYMBOL; locals and repeated names need LINE. Batched tuples share a server per language and one output budget. LINE selects the current snapshot. ROOT sets resolver scope and relative paths without changing shell state. N selects an exact language-token occurrence. Ambiguous selectors, unavailable language servers, input changes during the query, and definitions without an editable workspace location fail without stdout rows. An incomplete token-limited result retains complete rows, writes stderr, and exits nonzero.",
     grammar,
     argv(input) {
       return readerArguments(input.replace(/("(?:\\.|[^"\\])*"):([1-9][0-9]*)(?=\s|$)/gu,

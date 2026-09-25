@@ -200,19 +200,48 @@ describe("msymbol batched queries", () => {
     expect(log.filter((entry) => entry.message?.method === "initialize")).toHaveLength(0);
   });
 
+  test("resolves unique Go outline references without a line number", async () => {
+    const directory = await temporaryDirectory("msymbol-go-outline-refs-");
+    process.chdir(directory);
+    const file = "sample.go";
+    const source = "package p\nfunc Pick() {}\nfunc Use() { Pick() }\n";
+    await writeFile(file, source, "utf8");
+    const absolute = path.join(directory, file);
+    const fixture = await installLSPFixture("gopls", {
+      definition: [],
+      references: [],
+      cliOutput: `${absolute}:2:6-10\n${absolute}:3:14-18\n`,
+    });
+
+    const result = await createMSymbolTool("start: TEST").execute(["refs", file, "Pick"], executionContext);
+    expect(result).toEqual({
+      stdout: `"${file}":\n2 func Pick() {}\n3 func Use() { Pick() }\n`,
+      exitCode: 0,
+      terminationReason: "resolver_cleanup",
+    });
+    const log = protocolLog(await readFile(fixture.log, "utf8"));
+    expect(log.filter((entry) => entry.event === "start")).toEqual([{
+      event: "start",
+      args: ["references", "-d", `${absolute}:#${Buffer.byteLength(source.slice(0, source.indexOf("Pick")))}`],
+    }]);
+  });
+
   test("reports absent and ambiguous no-line outline selections", async () => {
     const directory = await temporaryDirectory("msymbol-outline-errors-");
     process.chdir(directory);
     await Promise.all([
       writeFile("duplicate.ts", "interface Pick {}\nfunction Pick() {}\n", "utf8"),
       writeFile("absent.go", "package p\nfunc Other() {}\n", "utf8"),
+      writeFile("local.go", "package p\nfunc Other() {\n  value := 1\n  println(value)\n}\n", "utf8"),
     ]);
     const tool = createMSymbolTool("start: TEST");
 
     const ambiguous = await tool.execute(["def", "duplicate.ts", "Pick"], executionContext);
-    expect(ambiguous).toEqual({stderr: "msymbol: Pick has 2 outline matches; supply LINE\n", exitCode: 1, failureClass: "resolver_error"});
+    expect(ambiguous).toEqual({stderr: "msymbol: Pick has 2 outline matches (lines 1, 2); supply LINE\n", exitCode: 1, failureClass: "resolver_error"});
     const absent = await tool.execute(["def", "absent.go", "Missing"], executionContext);
-    expect(absent).toEqual({stderr: "msymbol: Missing has 0 outline matches; supply LINE\n", exitCode: 1, failureClass: "resolver_error"});
+    expect(absent).toEqual({stderr: "msymbol: Missing has no outline declaration; no matching token in this file\n", exitCode: 1, failureClass: "resolver_error"});
+    const local = await tool.execute(["refs", "local.go", "value"], executionContext);
+    expect(local).toEqual({stderr: "msymbol: value has no outline declaration; supply LINE, such as a token line: 3, 4\n", exitCode: 1, failureClass: "resolver_error"});
   });
 
   test("batches Go definition and references in one gopls LSP session with exact grouped output", async () => {

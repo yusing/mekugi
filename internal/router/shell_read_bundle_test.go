@@ -149,12 +149,17 @@ func TestReadBundleOmitsCompleteRowsAndShowsDiagnostics(t *testing.T) {
 		t.Fatalf("complete bundle: %d %q %q", status, out, diagnostic)
 	}
 	out, diagnostic, status = runShellWorkerTest(t, registry, "bash", nil,
+		"mcat first 1:9 second 2:9", nil, newShellWorkerTestInvocation(directory))
+	if status != 0 || diagnostic != "" || out != want {
+		t.Fatalf("clamped-end bundle: %d %q %q", status, out, diagnostic)
+	}
+	out, diagnostic, status = runShellWorkerTest(t, registry, "bash", nil,
 		"mcat first missing second 2:3", nil, newShellWorkerTestInvocation(directory))
 	want = "2 path=\"missing\" shown=none omitted=none status=failed\n" +
 		"\n--- file 1 path=\"first\" shown=1:2 ---\nfirst one\nfirst two\n\n--- file 3 path=\"second\" shown=2:2 ---\nsecond two\n"
 	if status != 1 || out != want || strings.Contains(out, "next_call") ||
 		!regexp.MustCompile(`(?m)^mcat: "missing": ENOENT`).MatchString(diagnostic) ||
-		!strings.Contains(diagnostic, "mcat: \"second\": rows 3:3 past EOF (2 rows)\n") {
+		strings.Contains(diagnostic, "past EOF") {
 		t.Fatalf("failed bundle: %d %q %q", status, out, diagnostic)
 	}
 }

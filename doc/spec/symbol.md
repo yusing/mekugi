@@ -6,8 +6,7 @@ The wrapped session supplies an authenticated `msymbol` executable on Codex's
 session-private `PATH`:
 
 ```text
-msymbol [--max-tokens N] [--workspace ROOT] def PATH [LINE] SYMBOL [N]
-msymbol [--max-tokens N] [--workspace ROOT] refs PATH LINE SYMBOL [N]
+msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH [LINE] SYMBOL [N]
 ```
 
 Stock `tools.exec_command` launches the frontend under Codex's cwd, environment,
@@ -32,8 +31,9 @@ change during the semantic query before emitting result rows. Successful queries
 list up to five nearest matching token lines; ambiguity errors give the occurrence count.
 `PATH:LINE` and a JSON-quoted `"PATH":LINE` operand are also accepted.
 A selector such as `store.readChanges` selects its final segment.
-For `def PATH SYMBOL`, a unique complete outline declaration supplies the selection;
-zero or multiple matches require an explicit line.
+For `def PATH SYMBOL` and `refs PATH SYMBOL`, a unique complete outline declaration
+supplies the selection; zero or multiple matches require an explicit line. Multiple-match
+errors list the declaration lines; zero-match errors list up to five matching token lines.
 
 `SYMBOL` selects an exact language token on the selected line. Go accepts
 non-keyword identifiers; JavaScript and TypeScript accept their identifier,
@@ -135,6 +135,6 @@ Acceptance:
    automatic installation.
 
 8. Combined path/line operands, qualified selectors, and unique no-line definition
-   queries are accepted. Ambiguous and missing-token errors are actionable without
+   and reference queries are accepted. Ambiguous and missing-token errors are actionable without
    starting the resolver. A batch starts one server per language, shares its budget,
    preserves tuple order, and rejects changed inputs before emitting rows.
