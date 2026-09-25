@@ -360,17 +360,16 @@ func TestLiveActivityViewRosterTreeOverflowAndSelection(t *testing.T) {
 	if !strings.HasPrefix(lines[0], "AGENTS · 7 · 1 responding") || !strings.HasSuffix(lines[0], "FOLLOW") {
 		t.Fatalf("header = %q", lines[0])
 	}
-	// body=18 → roster limit 6: five agents plus the overflow line. Each row
-	// carries the agent's current operation.
-	if !strings.HasPrefix(lines[1], "▸◐ a    Read a.go") || !strings.HasPrefix(lines[2], " · └ x  Read x.go") ||
-		!strings.HasPrefix(lines[4], " ✓ b") || !strings.HasPrefix(lines[5], " ! c    ✗ failed") || lines[6] != "  +2 more · n/p" {
+	// Six available rows hold two complete agents plus an overflow indicator.
+	if !strings.HasPrefix(lines[1], "▸◐ a    Read a.go") || !strings.HasPrefix(lines[3], " · └ x  Read x.go") ||
+		lines[5] != "  +5 more · n/p" {
 		t.Fatalf("roster = %q", lines[1:7])
 	}
 	for range 6 {
 		view.selectAgent(1)
 	}
 	lines = plainLines(view.render(60, 20, time.Now()))
-	if view.selected != "/root/e" || !strings.HasPrefix(lines[5], "▸· e") {
+	if view.selected != "/root/e" || !strings.HasPrefix(lines[3], "▸· e") {
 		t.Fatalf("selection scroll: selected=%s roster=%q", view.selected, lines[1:7])
 	}
 	view.selectAgent(1)
@@ -532,8 +531,8 @@ func TestLiveActivityRosterUsesAvailableWidth(t *testing.T) {
 	}
 	view = liveActivityTestView("/root/very/long/agent/name/that/could/eat/the/whole/roster", "/root/b")
 	lines = plainLines(view.render(60, 20, time.Now()))
-	if !strings.Contains(lines[2], "Read b.go") {
-		t.Fatalf("long name obscured short agent's summary: %q", lines[2])
+	if !strings.Contains(lines[3], "Read b.go") {
+		t.Fatalf("long name obscured short agent's summary: %q", lines[3])
 	}
 }
 
@@ -645,15 +644,15 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 	if visible := text(frame); strings.Contains(visible, "pane-old-secret") || strings.Contains(visible, "pane-new-secret") {
 		t.Fatalf("pane retained omitted tool details: %s", visible)
 	}
-	h.write(t, "\x1b[<35;5;4M")
+	h.write(t, "\x1b[<35;5;6M")
 	h.frame(t, func(frame string) bool {
 		return strings.Contains(frame, "\x1b[4m  └ probe")
 	})
-	h.write(t, "\x1b[<0;5;4M")
+	h.write(t, "\x1b[<0;5;6M")
 	h.frame(t, func(frame string) bool {
 		return strings.Contains(liveDiffFrameRow(frame, 1), "only /root/explorer/probe") && !strings.Contains(text(frame), "● /root/explorer ─")
 	})
-	h.write(t, "\x1b[<0;5;4M")
+	h.write(t, "\x1b[<0;5;6M")
 	h.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 1), "AGENTS · 3") })
 	h.write(t, "o")
 	h.frame(t, func(frame string) bool {

@@ -24,6 +24,7 @@ type subagentActivity struct {
 
 type activityThread struct {
 	parent, name          string
+	configuration, role   string
 	child, conflicted     bool
 	seen                  map[string]struct{}
 	order, responding     int
@@ -34,6 +35,7 @@ type activityThread struct {
 	// Provider-reported usage summed over this thread's responses, and the
 	// visible delta bytes streamed since the last report.
 	inputTokens, outputTokens, streamed uint64
+	usageObserved                       bool
 }
 
 type activityEvent struct {

@@ -31,6 +31,7 @@ type threadUsageTotal struct {
 	complete       bool
 	missingUsage   uint64
 	models         []string
+	configuration  string
 }
 
 type threadUsageObservation struct {
@@ -38,6 +39,7 @@ type threadUsageObservation struct {
 	totals        *threadUsage
 	conflicted    bool
 	model         string
+	reasoning     string
 	openCodePrice *openCodePrice
 	serviceTier   string
 	thread        string
@@ -60,8 +62,8 @@ func (o *threadUsageObservation) observe(counts tokenCounts) {
 	}
 	o.once.Do(func() {
 		tier := cmp.Or(counts.ServiceTier, o.serviceTier)
-		o.totals.add(o.thread, o.model, tier, counts, o.conflicted, o.openCodePrice)
-		o.totals.addTurn(o.thread, o.turnID, o.model, tier, counts, o.conflicted, o.openCodePrice)
+		o.totals.add(o.thread, o.model, o.reasoning, tier, counts, o.conflicted, o.openCodePrice)
+		o.totals.addTurn(o.thread, o.turnID, o.model, o.reasoning, tier, counts, o.conflicted, o.openCodePrice)
 	})
 }
 
@@ -71,7 +73,7 @@ func (o *threadUsageObservation) finish() {
 	o.observe(tokenCounts{Incomplete: true})
 }
 
-func (u *threadUsage) add(thread, model, serviceTier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
+func (u *threadUsage) add(thread, model, reasoning, serviceTier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
 	if u == nil || thread == "" || len(thread) > maxCommentaryPublicationBytes {
 		return
 	}
@@ -85,15 +87,13 @@ func (u *threadUsage) add(thread, model, serviceTier string, counts tokenCounts,
 		total = &threadUsageTotal{complete: true, cost: tokenCost{known: true}}
 		u.threads[thread] = total
 	}
-	addThreadUsageTotal(total, model, serviceTier, counts, conflicted, price)
+	addThreadUsageTotal(total, model, reasoning, serviceTier, counts, conflicted, price)
 }
 
-func addThreadUsageTotal(total *threadUsageTotal, model, serviceTier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
+func addThreadUsageTotal(total *threadUsageTotal, model, reasoning, serviceTier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
 	total.lastModel = model
-	displayModel := model
-	if model != "" && (serviceTier == "fast" || serviceTier == "priority") {
-		displayModel += " fast"
-	}
+	displayModel := usageModelLabel(model, reasoning, serviceTier)
+	total.configuration = displayModel
 	if displayModel != "" && !slices.Contains(total.models, displayModel) {
 		total.models = append(total.models, displayModel)
 	}
@@ -149,7 +149,7 @@ func (u *threadUsage) observationForTurn(thread, metadataThread, turnID, model, 
 	return observation
 }
 
-func (u *threadUsage) addTurn(thread, turn, model, tier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
+func (u *threadUsage) addTurn(thread, turn, model, reasoning, tier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
 	if u == nil || thread == "" || turn == "" || len(thread) > maxCommentaryPublicationBytes || len(turn) > maxCommentaryPublicationBytes {
 		return
 	}
@@ -171,14 +171,14 @@ func (u *threadUsage) addTurn(thread, turn, model, tier string, counts tokenCoun
 		total = &threadUsageTotal{complete: true, cost: tokenCost{known: true}}
 		u.turns[key] = total
 	}
-	addThreadUsageTotal(total, model, tier, counts, conflicted, price)
+	addThreadUsageTotal(total, model, reasoning, tier, counts, conflicted, price)
 }
 
 func usageTotalReport(total *threadUsageTotal) (tokenUsageReport, bool) {
 	if total == nil || !total.complete {
 		return tokenUsageReport{}, false
 	}
-	return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, model: strings.Join(total.models, ", "), missingUsage: total.missingUsage}, true
+	return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, configuration: total.configuration, model: strings.Join(total.models, ", "), missingUsage: total.missingUsage}, true
 }
 
 func (u *threadUsage) turnSnapshot(thread, turn string) (tokenUsageReport, bool) {
@@ -359,4 +359,13 @@ func addTokenUsageCounts(sum *tokenCounts, next tokenCounts) bool {
 	}
 	sum.Inconsistent = sum.Inconsistent || next.Inconsistent
 	return true
+}
+
+// Shared by the token report and live roster; pricing always uses the bare model.
+func usageModelLabel(model, reasoning, tier string) string {
+	label := strings.TrimSpace(model + " " + reasoning)
+	if label != "" && (tier == "fast" || tier == "priority") {
+		label += " [fast]"
+	}
+	return label
 }

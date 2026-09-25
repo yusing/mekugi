@@ -78,7 +78,7 @@ func TestUsageCacheWrites(t *testing.T) {
 			"output_tokens": 4, "output_tokens_details": map[string]any{"reasoning_tokens": 3},
 		}})
 		got, ok := usageFromResponsePayload(payload, false)
-		want := tokenCounts{InputTokens: 10, UncachedInputTokens: 4, CacheWriteTokens: writes, OutputTokens: 4, ReasoningTokens: 3, Inconsistent: writes > 4}
+		want := tokenCounts{TotalsKnown: true, InputTokens: 10, UncachedInputTokens: 4, CacheWriteTokens: writes, OutputTokens: 4, ReasoningTokens: 3, Inconsistent: writes > 4}
 		if !ok || got != want {
 			t.Fatalf("counts=%+v valid=%t want=%+v", got, ok, want)
 		}

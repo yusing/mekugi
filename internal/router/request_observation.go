@@ -10,6 +10,8 @@ import (
 // Mentor Handoff, user-only commentary, and the capturer. Aggregate reporting
 // for provider metrics belongs to capture; lifetime commentary totals are separate.
 type tokenCounts struct {
+	// TotalsKnown distinguishes reported zero totals from absent totals.
+	TotalsKnown         bool
 	InputTokens         uint64
 	UncachedInputTokens uint64
 	CacheWriteTokens    uint64
@@ -103,7 +105,7 @@ func usageFromResponsePayload(body []byte, streamEvent bool) (tokenCounts, bool)
 	if len(raw) == 0 || json.Unmarshal(raw, &usage) != nil || usage == nil {
 		return tokenCounts{}, false
 	}
-	var counts tokenCounts
+	counts := tokenCounts{TotalsKnown: usage.InputTokens != nil && usage.OutputTokens != nil}
 	var cached uint64
 	for _, field := range []struct {
 		src *uint64

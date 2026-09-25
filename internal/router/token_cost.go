@@ -18,11 +18,12 @@ type tokenUsageReport struct {
 	turn   *tokenUsageReport
 	mentor string
 	tokenCounts
-	cost         tokenCost
-	model        string
-	rows         *[]agentTokenUsage
-	missingUsage uint64
-	typesafe     typesafeUsage
+	cost          tokenCost
+	model         string
+	configuration string
+	rows          *[]agentTokenUsage
+	missingUsage  uint64
+	typesafe      typesafeUsage
 }
 
 type agentTokenUsage struct {
@@ -136,7 +137,7 @@ func estimateTokenCost(model, serviceTier string, counts tokenCounts) tokenCost 
 // rosterTokenCost is a display-only estimate when a provider sent totals but
 // omitted billing details needed by the authoritative usage report.
 func rosterTokenCost(model, serviceTier string, counts tokenCounts, price *openCodePrice) tokenCost {
-	if counts.InputTokens == 0 || counts.OutputTokens == 0 || counts.Inconsistent {
+	if !counts.TotalsKnown && (counts.InputTokens == 0 || counts.OutputTokens == 0) || counts.Inconsistent {
 		return tokenCost{}
 	}
 	if serviceTier == "auto" {

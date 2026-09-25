@@ -105,9 +105,9 @@ func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
 					if err := executeRequest(t.Context(), t.Context(), request, headers, "tier-session", provider, &output, nil, proxy, nil); err != nil {
 						t.Fatal(err)
 					}
-					modelLabel := "gpt-5.6-sol"
+					modelLabel := "gpt-5.6-sol high"
 					if tc.served == `"fast"` || tc.served == `"priority"` || tc.served == "" && (tc.requested == "fast" || tc.requested == "priority") {
-						modelLabel += " fast"
+						modelLabel += " [fast]"
 					}
 					if strings.Contains(output.String(), "Router session usage") {
 						t.Fatalf("completion emitted usage commentary: %s", output.String())

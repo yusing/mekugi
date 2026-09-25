@@ -31,3 +31,24 @@ func TestRosterKeepsIncompleteProviderTokensAndEstimatedCost(t *testing.T) {
 		t.Fatalf("incomplete roster usage = %+v", node)
 	}
 }
+
+func TestRosterCostReportedZeroVersusMissingTotals(t *testing.T) {
+	for _, tc := range []struct {
+		usage string
+		known bool
+	}{
+		{`{"input_tokens":1000,"output_tokens":0}`, true},
+		{`{"input_tokens":0,"output_tokens":0}`, true},
+		{`{"input_tokens":1000}`, false},
+		{`{"output_tokens":0}`, false},
+	} {
+		counts, ok := usageFromResponsePayload([]byte(`{"usage":`+tc.usage+`}`), false)
+		if !ok {
+			t.Fatal("usage not parsed")
+		}
+		cost := rosterTokenCost("gpt-6-sol", "auto", counts, nil)
+		if cost.known != tc.known {
+			t.Fatalf("%s: cost=%+v", tc.usage, cost)
+		}
+	}
+}

@@ -61,6 +61,10 @@ func (p *liveActivityPainter) agent(name string) string {
 	return color + name + liveActivityReset
 }
 
+func (p *liveActivityPainter) recipient(name string) string {
+	return liveAgentGutter(name, p.theme) + liveActivityDisplayName(name) + liveActivityReset
+}
+
 func liveActivityLanguagePath(lang string) string {
 	switch strings.ToLower(lang) {
 	case "":
@@ -409,7 +413,7 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 		return lines
 	case "message":
 		// The envelope glyph already says a message arrived; other headlines stay.
-		head := liveActivityDim + "✉" + liveActivityUndim + " " + p.agent(block.from) + liveActivityDim + " → " + liveActivityUndim + p.agent(block.to)
+		head := liveActivityDim + "✉" + liveActivityUndim + " " + liveActivityDim + "→ " + liveActivityUndim + p.recipient(block.to)
 		if headline := strings.TrimSuffix(block.verb, ":"); headline != "Message received" && headline != "Message received." {
 			head += "  " + liveActivityDim + headline + liveActivityUndim
 		}
@@ -563,7 +567,7 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 	firstLine := func(text string) string {
 		for _, line := range p.markdown(text, 1<<16) {
 			if plain := strings.TrimSpace(strings.TrimPrefix(ansi.Strip(line), "│")); plain != "" {
-				return plain
+				return strings.TrimSpace(strings.TrimPrefix(plain, "• "))
 			}
 		}
 		return ""
@@ -589,9 +593,15 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 		}
 		return liveActivitySummaryVerb("Read") + strings.Join(names, ", ") + more
 	case "op":
-		detail := strings.TrimSpace(ansi.Strip(p.label(block.verb, block.label)))
-		if detail == "" || strings.HasPrefix(detail, "·") {
-			detail = strings.TrimSpace(firstLine(block.code) + " " + detail)
+		detail := strings.TrimSpace(p.label(block.verb, block.label))
+		if detail == "" || strings.HasPrefix(ansi.Strip(detail), "·") {
+			code, _, _ := strings.Cut(block.code, "\n")
+			if block.fenced {
+				code = strings.Join(p.highlight(block.lang, code), " ")
+			} else {
+				code = p.code(block.verb, code)
+			}
+			detail = strings.TrimSpace(code + " " + detail)
 		}
 		if block.verb == "Run" && block.exitCode != 0 {
 			detail += " " + liveActivityRed + fmt.Sprintf("(exit %d)", block.exitCode) + liveActivityReset
@@ -602,7 +612,7 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 		if text == "" {
 			text = strings.TrimSuffix(block.verb, ":")
 		}
-		return liveActivityDim + "✉ → " + liveActivityUndim + p.agent(block.to) + " " + text
+		return liveActivityDim + "✉ → " + liveActivityUndim + p.recipient(block.to) + " " + text
 	case "start":
 		return liveActivityGreen + "▶ Started" + liveActivityReset + " " + p.inline(block.label)
 	case "compaction":

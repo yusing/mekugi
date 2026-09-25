@@ -199,14 +199,17 @@ func (r parsedResponsesRequest) model() string {
 
 // modelDescription returns the model name and reasoning effort as a description string.
 func (r parsedResponsesRequest) modelDescription() string {
-	model := r.model()
+	return strings.TrimSpace(r.model() + " " + r.reasoningEffort())
+}
+
+func (r parsedResponsesRequest) reasoningEffort() string {
 	var reasoning struct {
 		Effort string `json:"effort"`
 	}
 	if raw, ok := r.fields["reasoning"]; ok {
 		_ = json.Unmarshal(raw, &reasoning)
 	}
-	return strings.TrimSpace(model + " " + strings.TrimSpace(reasoning.Effort))
+	return strings.TrimSpace(reasoning.Effort)
 }
 
 // setModelAndReasoningEffort updates the model and reasoning effort fields in the request.

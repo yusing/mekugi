@@ -354,28 +354,33 @@ answer count and recorded change totals, each question with its answers, then
 this agent's recorded changes by path. The agent heading already names the
 author, and an ordinary read-only result omits its empty change report. The
 shared view keeps each question to one row so clipping reaches the answers;
-the roster summary shows the first answer line. Other final answers remain
+the roster summary shows the first answer line without a leading list bullet.
+Roster operation summaries retain syntax highlighting. Message recipients use
+`main` or the child display name, and reply rows omit the redundant sender name. Other final answers remain
 authored Markdown.
 
 The main agent and its children appear as a canonical-path tree in observation order, with each agent's
 current activity and an elapsed-time timer (`elapsed · last response ago`; `—` until
 its first response completes). The roster stays in a separate region below Codex on the left, with its own
 resizable divider. It shares local selection with the activity feed on the right;
-no extra process, broker, or transport is needed. Right-aligned after the timer, an agent
+no extra process, broker, or transport is needed. Each agent has an activity row and a second
+row for metrics: `model reasoning [fast]`, role, and the timer. The optional `[fast]`
+marker denotes priority service. Model labels and costs reuse token-report logic. An agent
 with observed provider usage shows its cumulative input and output tokens as
 `↑ in ↓ out`; its estimated USD cost and provider-response turn count follow as
 `$N · N turns`. The estimate reuses the shared token-pricing calculation; when
 provider totals are present but billing details are incomplete, the roster uses
 the reported/requested tier or standard pricing for `auto` where supported. When usage or pricing is unavailable,
 cost shows `n/a` rather than
-claiming zero. Metric columns align across agents. While a response streams, output grows by an estimate of about four
+claiming zero. Explicitly reported zero input or output totals remain valid for
+estimates; absent totals do not become known zero. Missing role evidence shows `n/a`. While a response streams, output grows by an estimate of about four
 bytes of visible delta per token, refreshed every second; the provider's reported
 usage replaces the estimate when the response ends. Hidden reasoning is not
 estimated, and input changes only when usage is reported. A Code Mode batch shows its latest
 operation and the count of the others. When the separate roster is visible,
 the activity pane gives its whole body to the feed. On narrow terminals where
 only the focused pane fits, the agents view includes its roster: at 100
-columns or wider, agent cards sit beside the feed. Narrower panes stack one row per
+columns or wider, agent cards sit beside the feed. Narrower panes stack two rows per
 agent above the feed, and panes with few rows show a one-line strip. The feed groups
 consecutive entries by agent under a colored heading. In the shared view it clips
 long entries, and its only mode shows one agent in full. Hovering a clipped

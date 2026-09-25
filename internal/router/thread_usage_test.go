@@ -198,9 +198,9 @@ func TestThreadUsageFastModelLabel(t *testing.T) {
 	for _, tc := range []struct {
 		name, requested, served, want string
 	}{
-		{"fast", "fast", "", "gpt-5.6-sol fast"},
-		{"priority", "priority", "", "gpt-5.6-sol fast"},
-		{"served priority", "", "priority", "gpt-5.6-sol fast"},
+		{"fast", "fast", "", "gpt-5.6-sol [fast]"},
+		{"priority", "priority", "", "gpt-5.6-sol [fast]"},
+		{"served priority", "", "priority", "gpt-5.6-sol [fast]"},
 		{"downgraded", "fast", "default", "gpt-5.6-sol"},
 		{"standard", "", "", "gpt-5.6-sol"},
 	} {
@@ -220,7 +220,7 @@ func TestThreadUsageFastModelLabel(t *testing.T) {
 		usage.observation("root", "", "gpt-5.6-sol", tier).observe(counts)
 	}
 	report, ok := usage.snapshot("root")
-	if !ok || report.model != "gpt-5.6-sol fast, gpt-5.6-sol" {
+	if !ok || report.model != "gpt-5.6-sol [fast], gpt-5.6-sol" {
 		t.Fatalf("mixed-tier labels = %q, ok=%v", report.model, ok)
 	}
 }

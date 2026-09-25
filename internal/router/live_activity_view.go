@@ -434,6 +434,17 @@ func (v *liveActivityView) header(rows []liveActivityRosterRow, width int) strin
 	return left + strings.Repeat(" ", gap) + right
 }
 
+func liveActivityDisplayName(name string) string {
+	if name == "/root" {
+		return "main"
+	}
+	_, leaf, found := strings.CutLast(name, "/")
+	if found {
+		return leaf
+	}
+	return name
+}
+
 // liveActivityRosterName drops the shared /root/ prefix; nested agents show
 // their leaf under the parent. Feed headings always carry the full path.
 func liveActivityRosterName(row liveActivityRosterRow) string {
@@ -518,117 +529,58 @@ func (v *liveActivityView) hoverName(name, agent string) string {
 	return name
 }
 
-// renderCards shows each agent as a name row and a current-activity row. A
-// short pane keeps one row per agent, and the selected agent keeps its detail.
+// renderCards uses the same two-line agent layout beside the feed.
 func (v *liveActivityView) renderCards(rows []liveActivityRosterRow, width, height int, now time.Time) []string {
-	selected := max(0, slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected }))
-	detailed := len(rows)*2 <= height
-	limit := height / 2
-	if !detailed {
-		// Reserve the selected agent's detail row and, if needed, the overflow line.
-		limit = height - 1
-		if len(rows) > limit {
-			limit--
-		}
-	}
-	start, end := liveActivityWindow(len(rows), selected, max(1, limit))
-	var lines []string
-	for i := start; i < end; i++ {
-		row := rows[i]
-		firstRow := len(lines) + 2
-		summary, age := v.current(row.agent, now)
-		if tokens := liveActivityTokens(row.agent); tokens != "" {
-			age += " · " + tokens
-		}
-		if cost := liveActivityCost(row.agent); cost != "" {
-			age += " · " + cost + " · " + liveActivityTurns(row.agent)
-		}
-		name := ansi.Truncate(liveAgentColor(row.agent.Name)+v.hoverName(liveActivityRosterName(row), row.agent.Name)+liveActivityReset, max(1, width-4-ansi.StringWidth(age)), "…")
-		gap := max(1, width-3-ansi.StringWidth(name)-ansi.StringWidth(age))
-		lines = append(lines, v.marker(i == selected, row.agent.Name == v.hovered)+v.glyph(row.agent)+" "+name+strings.Repeat(" ", gap)+liveActivityDim+age+liveActivityUndim)
-		if detailed || i == selected {
-			lines = append(lines, "   "+ansi.Truncate(summary, width-3, "…"))
-		}
-		for hitRow := firstRow; hitRow < len(lines)+2; hitRow++ {
-			v.hits = append(v.hits, liveActivityHit{hitRow, 1, width, row.agent.Name})
-		}
-	}
-	if hidden := len(rows) - (end - start); hidden > 0 {
-		lines = append(lines, liveActivityDim+fmt.Sprintf("   +%d more · n/p", hidden)+liveActivityUndim)
-	}
+	lines := v.renderRoster(rows, width, height, now)
 	for len(lines) < height {
 		lines = append(lines, "")
 	}
-	return lines[:height]
+	return lines
 }
 
-// renderRoster shows one row per agent: glyph, name, current activity, age.
+// renderRoster keeps activity separate from secondary metadata and usage.
 func (v *liveActivityView) renderRoster(rows []liveActivityRosterRow, width, limit int, now time.Time) []string {
 	selected := max(0, slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected }))
-	if len(rows) > limit {
-		limit--
+	capacity := max(1, limit/2)
+	if len(rows) > capacity && limit > 2 {
+		capacity = max(1, (limit-1)/2)
 	}
-	start, end := liveActivityWindow(len(rows), selected, max(1, limit))
-	nameWidth, timerWidth, inputWidth, outputWidth, costWidth, turnsWidth := 0, 0, 0, 0, 0, 0
-	hasTokens := false
+	start, end := liveActivityWindow(len(rows), selected, capacity)
+	nameWidth := 0
 	for _, row := range rows {
 		nameWidth = max(nameWidth, ansi.StringWidth(liveActivityRosterName(row)))
-		_, timer := v.current(row.agent, now)
-		timerWidth = max(timerWidth, ansi.StringWidth(timer))
-		if liveActivityTokens(row.agent) != "" {
-			hasTokens = true
-			inputWidth = max(inputWidth, ansi.StringWidth(formatUsageTokens(row.agent.InputTokens)))
-			outputWidth = max(outputWidth, ansi.StringWidth(formatUsageTokens(row.agent.OutputTokens)))
-		}
-		costWidth = max(costWidth, ansi.StringWidth(liveActivityCost(row.agent)))
-		turnsWidth = max(turnsWidth, ansi.StringWidth(liveActivityTurns(row.agent)))
 	}
-	metricWidth := timerWidth
-	tokensWidth := 5 + inputWidth + outputWidth
-	if hasTokens {
-		metricWidth += 3 + tokensWidth
-	}
-	if costWidth > 0 {
-		metricWidth += 6 + costWidth + turnsWidth
-	}
-	summaryReserve := max(8, width/4)
-	if width-7-metricWidth < 8+summaryReserve {
-		summaryReserve = 0
-	}
-	nameWidth = max(1, min(nameWidth, width-7-metricWidth-summaryReserve))
+	nameWidth = max(1, min(nameWidth, width/3))
 	var lines []string
 	for i := start; i < end; i++ {
 		row := rows[i]
-		v.hits = append(v.hits, liveActivityHit{len(lines) + 2, 1, width, row.agent.Name})
+		first := len(lines) + 2
 		summary, timer := v.current(row.agent, now)
 		name := liveAgentColor(row.agent.Name) + v.hoverName(liveActivityMiddle(liveActivityRosterName(row), nameWidth), row.agent.Name) + liveActivityReset
-		metric := strings.Repeat(" ", timerWidth-ansi.StringWidth(timer)) + timer
-		if hasTokens {
-			tokens := strings.Repeat(" ", tokensWidth)
-			if liveActivityTokens(row.agent) != "" {
-				input, output := formatUsageTokens(row.agent.InputTokens), formatUsageTokens(row.agent.OutputTokens)
-				tokens = "↑ " + strings.Repeat(" ", inputWidth-ansi.StringWidth(input)) + input +
-					" ↓ " + strings.Repeat(" ", outputWidth-ansi.StringWidth(output)) + output
-			}
-			metric += " · " + tokens
-		}
-		if costWidth > 0 {
-			cost := liveActivityCost(row.agent)
-			turns := liveActivityTurns(row.agent)
-			metric += " · " + cost + strings.Repeat(" ", costWidth-ansi.StringWidth(cost)) +
-				" · " + turns + strings.Repeat(" ", turnsWidth-ansi.StringWidth(turns))
-		}
-		summaryWidth := max(0, width-3-nameWidth-2-metricWidth-1)
-		summary = ansi.Truncate(summary, summaryWidth, "…")
-		pad := max(1, width-3-nameWidth-2-ansi.StringWidth(summary)-metricWidth)
-		// The roster pane marks an agent only while the feed shows just it.
-		line := v.marker(i == selected, row.agent.Name == v.hovered) + v.glyph(row.agent) + " " + name + "  " + summary + strings.Repeat(" ", pad) + liveActivityDim + metric + liveActivityUndim
+		line := v.marker(i == selected, row.agent.Name == v.hovered) + v.glyph(row.agent) + " " + name + "  " + summary
 		lines = append(lines, ansi.Truncate(line, width, "…"))
+		if len(lines) < limit {
+			metric := liveActivityMetrics(row.agent, timer)
+			lines = append(lines, ansi.Truncate("   "+liveActivityDim+metric+liveActivityUndim, width, "…"))
+		}
+		for hit := first; hit < len(lines)+2; hit++ {
+			v.hits = append(v.hits, liveActivityHit{hit, 1, width, row.agent.Name})
+		}
 	}
-	if hidden := len(rows) - (end - start); hidden > 0 {
+	if hidden := len(rows) - (end - start); hidden > 0 && len(lines) < limit {
 		lines = append(lines, ansi.Truncate(liveActivityDim+fmt.Sprintf("  +%d more · n/p", hidden)+liveActivityUndim, width, "…"))
 	}
 	return lines
+}
+
+func liveActivityMetrics(agent activityPaneAgent, timer string) string {
+	var parts []string
+	for _, part := range []string{agent.Configuration, agent.Role, timer, liveActivityTokens(agent), liveActivityCost(agent), liveActivityTurns(agent)} {
+		if part != "" {
+			parts = append(parts, strings.Join(strings.Fields(livediff.Safe(part, false)), " "))
+		}
+	}
+	return strings.Join(parts, " · ")
 }
 
 // renderStrip is the one-line roster for short panes.

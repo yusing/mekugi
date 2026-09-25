@@ -53,14 +53,16 @@ type activityPaneEntry struct {
 }
 
 type activityPaneAgent struct {
-	Name         string
-	Responding   bool      `json:",omitzero"`
-	Final        bool      `json:",omitzero"`
-	Started      time.Time `json:",omitzero"`
-	LastResponse time.Time `json:",omitzero"`
-	Turns        uint64    `json:",omitzero"`
-	Cost         float64   `json:",omitzero"`
-	CostKnown    bool      `json:",omitzero"`
+	Name          string
+	Configuration string    `json:",omitzero"`
+	Role          string    `json:",omitzero"`
+	Responding    bool      `json:",omitzero"`
+	Final         bool      `json:",omitzero"`
+	Started       time.Time `json:",omitzero"`
+	LastResponse  time.Time `json:",omitzero"`
+	Turns         uint64    `json:",omitzero"`
+	Cost          float64   `json:",omitzero"`
+	CostKnown     bool      `json:",omitzero"`
 	// Cumulative provider-reported tokens for the agent's responses.
 	InputTokens  uint64 `json:",omitzero"`
 	OutputTokens uint64 `json:",omitzero"`
@@ -168,9 +170,10 @@ func (a *subagentActivity) paneAgentsLocked() []activityPaneAgent {
 	agents := make([]activityPaneAgent, 0, len(nodes))
 	for _, node := range nodes {
 		agents = append(agents, activityPaneAgent{
+			Configuration: node.configuration, Role: node.role,
 			Name: node.name, Responding: node.responding > 0, Final: node.final,
 			Started: node.started, LastResponse: node.lastResponse, Turns: node.turns,
-			Cost: node.cost.cachedInput + node.cost.uncachedInput + node.cost.output, CostKnown: node.cost.known && node.inputTokens+node.outputTokens > 0,
+			Cost: node.cost.cachedInput + node.cost.uncachedInput + node.cost.output, CostKnown: node.cost.known && node.usageObserved,
 			InputTokens: node.inputTokens, OutputTokens: node.outputTokens + node.streamed/activityBytesPerToken,
 		})
 	}
@@ -292,6 +295,10 @@ func (a *subagentActivity) syncUsage(thread string, counts tokenCounts, report t
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if node := a.threads[thread]; node != nil && !node.conflicted && !a.closed {
+		if report.configuration != "" {
+			node.configuration = report.configuration
+		}
+		node.usageObserved = true
 		canonical := complete && !counts.Incomplete && report.missingUsage == 0
 		if canonical {
 			node.inputTokens = report.InputTokens
@@ -425,4 +432,40 @@ func activityPaneText(name, text string) string {
 		return strings.TrimPrefix(text, "["+commentaryCode(name)+"] ")
 	}
 	return text
+}
+
+// Request configuration is refreshed on every accepted turn, including model switches.
+func (a *subagentActivity) syncPaneConfiguration(thread string, request *parsedResponsesRequest) {
+	if a == nil || thread == "" {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if node := a.threads[thread]; node != nil && !node.conflicted {
+		node.configuration = usageModelLabel(request.model(), request.reasoningEffort(), usageServiceTier(request.fields["service_tier"]))
+		if !node.child {
+			node.role = "main"
+		} else if node.role == "" {
+			node.role = "n/a"
+		}
+		a.wakePaneLocked()
+	}
+}
+
+func (a *subagentActivity) syncPaneRoles(parent string, roles map[string]journalSpawnRole) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, node := range a.threads {
+		if node.parent != parent || node.conflicted {
+			continue
+		}
+		node.role = "n/a"
+		if evidence, ok := roles[node.name]; ok && !evidence.Conflicted {
+			node.role = evidence.Role
+		}
+	}
+	a.wakePaneLocked()
 }

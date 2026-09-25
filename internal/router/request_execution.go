@@ -377,6 +377,9 @@ func (a *requestAttempt) forward() error {
 			)
 		}
 	}
+	if a.usageTracker != nil {
+		a.usageTracker.reasoning = a.request.reasoningEffort()
+	}
 	a.response, err = a.executor.provider.forwardExecution(
 		a.startCtx,
 		a.executionCtx,

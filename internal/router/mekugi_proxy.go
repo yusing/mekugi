@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -608,6 +609,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		}
 		if p.activity.observe(threadID, metadata.ParentThreadID, name, metadata.SubagentKind != "") {
 			activityThreadID = threadID
+			p.activity.syncPaneConfiguration(threadID, request)
 		}
 	}
 	for _, message := range subagentDeferred {
@@ -692,6 +694,23 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		transform.Close()
 		return nil, err
 	}
+	if activityThreadID != "" {
+		for _, owner := range []string{threadID, metadata.ParentThreadID} {
+			if owner == "" {
+				continue
+			}
+			// Read durable role evidence so resumed children do not depend on a live parent.
+			if err := p.journals.transaction(ctx, p.replayStore, directory, owner, func(j *threadJournal, exists bool) error {
+				if exists {
+					p.activity.syncPaneRoles(owner, j.SpawnRoles)
+				}
+				return errJournalUnchanged
+			}); err != nil {
+				log.Printf("read roster roles: %v", err)
+			}
+		}
+	}
+	transform.usageTracker.reasoning = request.reasoningEffort()
 	transform.journalAvailable = true
 	transform.journalQuestion = journalQuestionFromInput(request.fields["input"], metadata.commentaryAuthor())
 	transform.journalActive = true

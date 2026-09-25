@@ -111,13 +111,13 @@ func TestLiveActivityViewResponsiveLayouts(t *testing.T) {
 	}
 	// A laptop-height pane at least 100 columns wide keeps cards beside the feed.
 	side := plainLines(view.render(105, 16, now))
-	if !strings.HasPrefix(side[1], "▸✓ inventory") || !strings.Contains(side[1], " │ ") || !strings.Contains(side[2], "✉ → /root Inventory") ||
-		!strings.Contains(side[4], "Checking the prepare.ts") || !strings.HasPrefix(side[5], " · └ probe") {
+	if !strings.HasPrefix(side[1], "▸✓ inventory") || !strings.Contains(side[1], " │ ") || !strings.Contains(side[1], "✉ → main Invento") ||
+		!strings.Contains(side[3], "Checking the pre") || !strings.HasPrefix(side[5], " · └ probe") {
 		t.Fatalf("side layout = %q", side)
 	}
-	// Narrower panes stack one roster row per agent above the feed.
+	// Narrower panes keep complete two-line rows and an overflow indicator.
 	stacked := plainLines(view.render(70, 16, now))
-	if !strings.HasPrefix(stacked[3], " · └ probe") || !strings.Contains(stacked[3], "Read b.go") || !strings.HasPrefix(stacked[4], "───") {
+	if !strings.Contains(stacked[3], "+2 more") || !strings.HasPrefix(stacked[4], "───") {
 		t.Fatalf("stacked layout = %q", stacked)
 	}
 	if strip := plainLines(view.render(80, 6, now)); !strings.HasPrefix(strip[1], "✓ inventory  ◐ review  · review/probe") {
@@ -176,13 +176,13 @@ func TestLiveActivityHoverClearsWhenRosterMoves(t *testing.T) {
 	view.render(110, 10, now)
 	var first liveActivityHit
 	for _, hit := range view.hits {
-		if hit.agent == "/root/f" {
+		if hit.agent == "/root/c" {
 			first = hit
 			break
 		}
 	}
 	if first.agent == "" {
-		t.Fatal("f is not visible in the initial roster")
+		t.Fatal("c is not visible in the initial roster")
 	}
 	view.handleMouse('h', first.row, first.first)
 	view.handleMouse('\r', first.row, first.first)
