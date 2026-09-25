@@ -85,7 +85,14 @@ func parseLiveActivity(entry activityPaneEntry) []liveActivityBlock {
 	case "tool":
 		var blocks []liveActivityBlock
 		for _, paragraph := range liveActivityParagraphs(text) {
-			blocks = append(blocks, parseLiveActivityOperation(paragraph))
+			block := parseLiveActivityOperation(paragraph)
+			switch block.verb {
+			case "Create", "Edit", "Delete", "Move":
+				if block.fenced && block.lang == "diff" {
+					block.code, block.lang, block.fenced = "", "", false
+				}
+			}
+			blocks = append(blocks, block)
 		}
 		return mergeLiveActivityReads(blocks)
 	}

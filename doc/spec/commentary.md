@@ -58,7 +58,15 @@ Recognition uses the JavaScript parse tree and never evaluates expressions. Dyna
 arguments, control flow, and name shadowing fall back to the original JavaScript
 source. A top-level static Promise batch remains visible even when later result
 presentation is unrecognized; that remainder is marked `Run JavaScript · other
-code` rather than silently dropped or mistaken for a batch command.
+code` rather than silently dropped or mistaken for a batch command. Result-only
+formatting, including indexed or `for…of` loops, local result aliases, template
+strings, and conditional output, does not add that marker. Unknown bindings,
+mutations, and calls other than output formatting retain it.
+An immediately consumed constant array of literal commands mapped through a single
+`tools.exec_command` arrow callback in `Promise.all` or `Promise.allSettled` also
+shows its individual operations. The callback's command parameter and literal
+options are recognized statically; dynamic values and callback effects fall back
+to JavaScript. This recognition never establishes result or session evidence.
 Direct `text((await tools.exec_command({...})).output)` presentation is
 transparent for activity, but does not establish result metadata for waits.
 Completed transparent Code Mode result projections retain a session-to-command
@@ -66,10 +74,15 @@ link from host-wrapped `exec_command` metadata, including after a yielded cell
 finishes through `wait`, not from program output.
 These presentation rules do not change tool input, result, or replay payload.
 
-A simple literal `cat`, valid `mcat` read, bounded `sed -n` print, or literal
-`nl -ba FILE | sed -n RANGES` selection is labeled `Read`; literal `rg` is `Search`; simple listings are `List`; and
-`inspect_file` is `Inspect`. Invalid or compound commands retain a `Run`
-preview instead of claiming a simpler operation. Mixed command scripts keep
+A simple `cat`, valid `mcat` read, bounded `sed -n` print, `nl -ba FILE`, or
+`nl -ba FILE | sed -n RANGES` selection is labeled `Read`; literal `rg` is `Search`;
+simple listings are `List`; and `inspect_file`, including its options and multiple
+paths, is `Inspect`. Read path globs are preserved without expansion; executable
+substitutions remain `Run`. A `cat` read piped to a bounded `head` retains its read
+label. `skills-mgr get` is `Skill Read` (or `Skill Reference Read` for a reference).
+`&&` chains show classified operations and unclassified `Run` neighbors in source
+order, without claiming execution or success. Other unsupported compound commands
+retain a `Run` preview instead of claiming a simpler operation. Mixed command scripts keep
 every classified operation and show unclassified neighbors as `Run` in order.
 `rg` and `grep` search previews show the query and target, omitting execution
 flags and recognized output-only pipeline helpers such as `head`. Unknown or
@@ -320,6 +333,10 @@ The pane renders child activity natively rather than as commentary Markdown. It
 parses the router's own commentary grammar into operations, messages, start
 notices, and errors, and shows each with verb colors, path emphasis, and syntax
 highlighting in the terminal's theme. Text it does not recognize stays plain.
+Confirmed edit events retain paths and line counts but omit diff bodies in the
+pane; durable change evidence and inline receipts are unchanged. This omission
+applies only to generated tool activity, not authored text. Output-reduction
+summaries align with command text and use muted, dimmed styling in either theme.
 Consecutive reads by one agent collapse into one row that joins ranges of the
 same file. Child text is sanitized before layout, so it cannot emit terminal
 controls. Local absolute-path Markdown links show their label as a terminal

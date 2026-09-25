@@ -2,6 +2,7 @@ package router
 
 import (
 	"encoding/json"
+	"maps"
 	"math"
 	"slices"
 	"strconv"
@@ -220,6 +221,14 @@ func toolActivityBatchProducerCalls(source string) ([]map[string]json.RawMessage
 		return nil, false, false
 	}
 	first := statements[0]
+	var mappedCalls []map[string]json.RawMessage
+	if len(statements) >= 2 {
+		if calls, ok := toolActivityMappedCommands(first, statements[1], bytes); ok {
+			mappedCalls = calls
+			statements = statements[1:]
+			first = statements[0]
+		}
+	}
 	if first.Kind() != "lexical_declaration" || first.NamedChildCount() != 1 {
 		return nil, false, false
 	}
@@ -229,7 +238,7 @@ func toolActivityBatchProducerCalls(source string) ([]map[string]json.RawMessage
 	if name == nil || name.Kind() != "identifier" ||
 		strings.ContainsRune(name.Utf8Text(bytes), '\\') ||
 		slices.Contains([]string{"tools", "Promise", "journal"}, name.Utf8Text(bytes)) ||
-		!toolActivityPromiseBatch(value, bytes) {
+		(mappedCalls == nil && !toolActivityPromiseBatch(value, bytes)) {
 		return nil, false, false
 	}
 	for _, statement := range statements[1:] {
@@ -255,8 +264,114 @@ func toolActivityBatchProducerCalls(source string) ([]map[string]json.RawMessage
 			return nil, false, false
 		}
 	}
+	otherCode := !toolActivityBatchPresentation(statements[1:], bytes, name.Utf8Text(bytes))
+	if mappedCalls != nil {
+		return mappedCalls, otherCode, true
+	}
 	calls, ok := toolActivityAwaitedCalls(value, bytes, false)
-	return calls, len(statements) > 1, ok
+	return calls, otherCode, ok
+}
+
+// Recognize a literal command array immediately consumed by a Promise map.
+// Only the callback parameter may supply cmd; all other options stay literal.
+// This is display evidence only, not a session/result projection.
+func toolActivityMappedCommands(array, batch *sitter.Node, source []byte) ([]map[string]json.RawMessage, bool) {
+	if array.Kind() != "lexical_declaration" || array.Child(0).Kind() != "const" || array.NamedChildCount() != 1 ||
+		batch.Kind() != "lexical_declaration" || batch.NamedChildCount() != 1 {
+		return nil, false
+	}
+	binding := array.NamedChild(0).ChildByFieldName("name")
+	if binding == nil || binding.Kind() != "identifier" || toolActivityProtectedBindingName(binding, source) ||
+		slices.Contains([]string{"text", "JSON"}, binding.Utf8Text(source)) {
+		return nil, false
+	}
+	literal, ok := toolActivityStaticJavaScriptValue(array.NamedChild(0).ChildByFieldName("value"), source)
+	commands, okArray := literal.([]any)
+	if !ok || !okArray || len(commands) == 0 {
+		return nil, false
+	}
+	expression := batch.NamedChild(0).ChildByFieldName("value")
+	if expression == nil || expression.Kind() != "await_expression" {
+		return nil, false
+	}
+	var mapped *sitter.Node
+	for _, method := range []string{"all", "allSettled"} {
+		if args, ok := toolActivityCallArguments(expression.NamedChild(0), source, "Promise", method); ok && len(args) == 1 {
+			mapped = args[0]
+		}
+	}
+	args, ok := toolActivityCallArguments(mapped, source, binding.Utf8Text(source), "map")
+	if !ok || len(args) != 1 || args[0].Kind() != "arrow_function" {
+		return nil, false
+	}
+	callback := args[0]
+	// An async callback or block body has additional execution semantics.
+	if callback.Child(0).Kind() == "async" {
+		return nil, false
+	}
+	parameter := callback.ChildByFieldName("parameter")
+	if parameter == nil {
+		parameters := callback.ChildByFieldName("parameters")
+		if parameters == nil || parameters.NamedChildCount() != 1 {
+			return nil, false
+		}
+		parameter = parameters.NamedChild(0)
+	}
+	if parameter.Kind() != "identifier" || toolActivityProtectedBindingName(parameter, source) {
+		return nil, false
+	}
+	name := parameter.Utf8Text(source)
+	args, ok = toolActivityCallArguments(callback.ChildByFieldName("body"), source, "tools", "exec_command")
+	if !ok || len(args) != 1 || args[0].Kind() != "object" {
+		return nil, false
+	}
+	seenOptions := make(map[string]bool)
+	seenCommand := false
+	for i := range args[0].NamedChildCount() {
+		field := args[0].NamedChild(uint(i))
+		var key string
+		var value *sitter.Node
+		if field.Kind() == "shorthand_property_identifier" {
+			key, value = field.Utf8Text(source), field
+		} else if field.Kind() == "pair" {
+			keyNode := field.ChildByFieldName("key")
+			if keyNode == nil || keyNode.Kind() != "property_identifier" {
+				return nil, false
+			}
+			key, value = keyNode.Utf8Text(source), field.ChildByFieldName("value")
+		} else {
+			return nil, false
+		}
+		if seenOptions[key] || strings.ContainsRune(key, '\\') {
+			return nil, false
+		}
+		if key == "cmd" && value != nil && (value.Kind() == "identifier" || value.Kind() == "shorthand_property_identifier") && value.Utf8Text(source) == name {
+			seenCommand = true
+			seenOptions[key] = true
+			continue
+		}
+		if _, ok := toolActivityStaticJavaScriptValue(value, source); !ok {
+			return nil, false
+		}
+		seenOptions[key] = true
+	}
+	if !seenCommand {
+		return nil, false
+	}
+	calls := make([]map[string]json.RawMessage, 0, len(commands))
+	for _, command := range commands {
+		text, ok := command.(string)
+		if !ok {
+			return nil, false
+		}
+		// Shell activity consumes only cmd. Do not duplicate shared options
+		// for every command in this display-only expansion.
+		calls = append(calls, map[string]json.RawMessage{
+			"name":      mustMarshalJSON("exec_command"),
+			"arguments": mustMarshalJSON(string(mustMarshalJSON(map[string]string{"cmd": text}))),
+		})
+	}
+	return calls, true
 }
 
 // A protected var or function binding in a later statement can hoist into
@@ -358,12 +473,16 @@ func toolActivityBatchForEachProjection(statement *sitter.Node, source []byte, b
 	if len(allowed) == 0 {
 		return false
 	}
-	return toolActivityBatchPrintedObject(body, source, allowed, "", "")
+	return toolActivityBatchPrintedObject(body, source, allowed)
 }
 
 // The indexed form consumes the same completed batch, once per result. Its
 // loop header is checked structurally so unrelated work cannot be hidden.
 func toolActivityBatchIndexedProjection(statement *sitter.Node, source []byte, binding string) bool {
+	return toolActivityBatchIndexedPresentation(statement, source, binding, map[string]bool{binding: true})
+}
+
+func toolActivityBatchIndexedPresentation(statement *sitter.Node, source []byte, binding string, allowed map[string]bool) bool {
 	if statement.Kind() != "for_statement" {
 		return false
 	}
@@ -374,7 +493,7 @@ func toolActivityBatchIndexedProjection(statement *sitter.Node, source []byte, b
 	if initializer == nil || initializer.Kind() != "lexical_declaration" || initializer.NamedChildCount() != 1 ||
 		initializer.ChildByFieldName("kind").Kind() != "let" || condition == nil ||
 		condition.Kind() != "binary_expression" || increment == nil || increment.Kind() != "update_expression" ||
-		body == nil || body.Kind() != "expression_statement" || body.NamedChildCount() != 1 {
+		body == nil {
 		return false
 	}
 	declaration := initializer.NamedChild(0)
@@ -394,12 +513,14 @@ func toolActivityBatchIndexedProjection(statement *sitter.Node, source []byte, b
 		increment.ChildByFieldName("operator").Kind() != "++" {
 		return false
 	}
-	return toolActivityBatchPrintedObject(body.NamedChild(0), source, map[string]bool{indexName: true}, binding, indexName)
+	locals := maps.Clone(allowed)
+	locals[indexName] = true
+	return toolActivityPresentationStatement(body, source, locals)
 }
 
-// Both callback and indexed loops print an object built only from their local
-// result and index references. This inspects output shape, not JS execution.
-func toolActivityBatchPrintedObject(body *sitter.Node, source []byte, allowed map[string]bool, binding, index string) bool {
+// A forEach callback prints an object built only from its local result and
+// index references. This inspects output shape, not JS execution.
+func toolActivityBatchPrintedObject(body *sitter.Node, source []byte, allowed map[string]bool) bool {
 	textArgs, ok := toolActivityCallArguments(body, source, "text")
 	if !ok || len(textArgs) != 1 {
 		return false
@@ -433,24 +554,11 @@ func toolActivityBatchPrintedObject(body *sitter.Node, source []byte, allowed ma
 		default:
 			return false
 		}
-		if !toolActivityBatchReference(value, source, allowed, binding, index) {
+		if value == nil || (value.Kind() != "identifier" && value.Kind() != "shorthand_property_identifier") || !allowed[value.Utf8Text(source)] {
 			return false
 		}
 	}
 	return true
-}
-
-func toolActivityBatchReference(node *sitter.Node, source []byte, allowed map[string]bool, binding, index string) bool {
-	if node == nil {
-		return false
-	}
-	if node.Kind() == "identifier" || node.Kind() == "shorthand_property_identifier" {
-		return allowed[node.Utf8Text(source)]
-	}
-	return binding != "" && node.Kind() == "subscript_expression" &&
-		node.ChildByFieldName("optional_chain") == nil &&
-		toolActivityMemberPath(node.ChildByFieldName("object"), source, binding) &&
-		toolActivityMemberPath(node.ChildByFieldName("index"), source, index)
 }
 
 func toolActivityAwaitedCalls(expression *sitter.Node, bytes []byte, requireResultMetadata bool) ([]map[string]json.RawMessage, bool) {
@@ -754,4 +862,144 @@ func toolActivityJavaScriptString(source string) (string, bool) {
 		rest = tail
 	}
 	return value.String(), true
+}
+
+// Presentation may format completed results, but may not invoke arbitrary
+// helpers, mutate state, or read unrelated bindings. This recognizes syntax;
+// it never evaluates JavaScript or establishes result metadata.
+func toolActivityBatchPresentation(statements []*sitter.Node, source []byte, binding string) bool {
+	if binding == "text" || binding == "JSON" {
+		return len(statements) == 0
+	}
+	allowed := map[string]bool{binding: true}
+	for _, statement := range statements {
+		if toolActivityBatchIndexedPresentation(statement, source, binding, allowed) ||
+			toolActivityBatchForEachProjection(statement, source, binding) {
+			continue
+		}
+		if !toolActivityPresentationStatement(statement, source, allowed) {
+			return false
+		}
+	}
+	return true
+}
+
+func toolActivityPresentationStatement(node *sitter.Node, source []byte, allowed map[string]bool) bool {
+	if node == nil {
+		return false
+	}
+	switch node.Kind() {
+	case "comment", "empty_statement":
+		return true
+	case "statement_block":
+		locals := maps.Clone(allowed)
+		for i := range node.NamedChildCount() {
+			if !toolActivityPresentationStatement(node.NamedChild(uint(i)), source, locals) {
+				return false
+			}
+		}
+		return true
+	case "lexical_declaration":
+		if node.Child(0).Kind() != "const" || node.NamedChildCount() != 1 {
+			return false
+		}
+		declaration := node.NamedChild(0)
+		name := declaration.ChildByFieldName("name")
+		if name == nil || name.Kind() != "identifier" || toolActivityProtectedBindingName(name, source) {
+			return false
+		}
+		key := name.Utf8Text(source)
+		if allowed[key] || key == "text" || key == "JSON" || !toolActivityPresentationValue(declaration.ChildByFieldName("value"), source, allowed) {
+			return false
+		}
+		allowed[key] = true
+		return true
+	case "expression_statement":
+		args, ok := toolActivityCallArguments(node.NamedChild(0), source, "text")
+		return ok && len(args) == 1 && toolActivityPresentationValue(args[0], source, allowed)
+	case "if_statement":
+		if !toolActivityPresentationValue(node.ChildByFieldName("condition"), source, allowed) ||
+			!toolActivityPresentationStatement(node.ChildByFieldName("consequence"), source, maps.Clone(allowed)) {
+			return false
+		}
+		alternative := node.ChildByFieldName("alternative")
+		return alternative == nil || toolActivityPresentationStatement(alternative, source, maps.Clone(allowed))
+	case "else_clause":
+		return node.NamedChildCount() == 1 && toolActivityPresentationStatement(node.NamedChild(0), source, allowed)
+	case "continue_statement":
+		return node.NamedChildCount() == 0
+	case "for_in_statement":
+		kind, operator := node.ChildByFieldName("kind"), node.ChildByFieldName("operator")
+		left, right := node.ChildByFieldName("left"), node.ChildByFieldName("right")
+		if kind == nil || kind.Kind() != "const" || operator == nil || operator.Kind() != "of" ||
+			left == nil || left.Kind() != "identifier" || toolActivityProtectedBindingName(left, source) ||
+			right == nil || right.Kind() != "identifier" || !allowed[right.Utf8Text(source)] {
+			return false
+		}
+		name := left.Utf8Text(source)
+		if allowed[name] || name == "text" || name == "JSON" {
+			return false
+		}
+		locals := maps.Clone(allowed)
+		locals[name] = true
+		return toolActivityPresentationStatement(node.ChildByFieldName("body"), source, locals)
+	}
+	return false
+}
+
+func toolActivityPresentationValue(node *sitter.Node, source []byte, allowed map[string]bool) bool {
+	if node == nil {
+		return false
+	}
+	if _, ok := toolActivityStaticJavaScriptValue(node, source); ok {
+		return true
+	}
+	switch node.Kind() {
+	case "identifier", "shorthand_property_identifier":
+		return allowed[node.Utf8Text(source)]
+	case "member_expression":
+		property := node.ChildByFieldName("property")
+		return node.ChildByFieldName("optional_chain") == nil && property != nil && property.Kind() == "property_identifier" &&
+			toolActivityPresentationValue(node.ChildByFieldName("object"), source, allowed)
+	case "subscript_expression":
+		index := node.ChildByFieldName("index")
+		return node.ChildByFieldName("optional_chain") == nil && index != nil && (index.Kind() == "identifier" || index.Kind() == "number") &&
+			toolActivityPresentationValue(index, source, allowed) && toolActivityPresentationValue(node.ChildByFieldName("object"), source, allowed)
+	case "call_expression":
+		args, ok := toolActivityCallArguments(node, source, "JSON", "stringify")
+		return ok && len(args) == 1 && toolActivityPresentationValue(args[0], source, allowed)
+	case "binary_expression":
+		operator := node.ChildByFieldName("operator")
+		if operator == nil || !slices.Contains([]string{"+", "===", "!==", "==", "!=", "&&", "||", "??"}, operator.Kind()) {
+			return false
+		}
+	case "object":
+		for i := range node.NamedChildCount() {
+			field := node.NamedChild(uint(i))
+			if field.Kind() == "pair" {
+				key := field.ChildByFieldName("key")
+				if key == nil || key.Kind() != "property_identifier" && key.Kind() != "string" || !toolActivityPresentationValue(field.ChildByFieldName("value"), source, allowed) {
+					return false
+				}
+			} else if field.Kind() == "shorthand_property_identifier" || field.Kind() == "spread_element" {
+				if !toolActivityPresentationValue(field, source, allowed) {
+					return false
+				}
+			} else {
+				return false
+			}
+		}
+		return true
+	case "parenthesized_expression", "ternary_expression", "template_string", "template_substitution", "spread_element":
+	case "string_fragment", "escape_sequence":
+		return true
+	default:
+		return false
+	}
+	for i := range node.NamedChildCount() {
+		if !toolActivityPresentationValue(node.NamedChild(uint(i)), source, allowed) {
+			return false
+		}
+	}
+	return true
 }

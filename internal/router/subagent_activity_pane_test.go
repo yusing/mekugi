@@ -612,16 +612,39 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 	filtered := exploreFilterEvent{Command: "rg needle", LinesBefore: 49, LinesRemoved: 24, ElapsedMS: 627,
 		Tokens: &exploreTokenReduction{Before: 1200, After: 700, Saved: 500, Percent: 41.7, Basis: "o200k_base"}}
 	f.activity.collectEvent(activityEvent{thread: "probe", source: "filtered-run", kind: "output_filter", callID: "filtered-run", text: filtered.text(), filter: &filtered})
-	h.frame(t, func(frame string) bool {
+	frame = h.frame(t, func(frame string) bool {
 		visible := text(frame)
 		return strings.Contains(visible, "rg needle") && strings.Contains(visible, "~tokens 1.2K→700 (-41.7%)") && strings.Contains(visible, "−24/49 lines")
 	})
+	commandColumn, summaryColumn := -1, -1
+	for row := 1; row <= height; row++ {
+		line := liveDiffFrameRow(frame, row)
+		if strings.Contains(line, "Run    rg needle") {
+			commandColumn = strings.Index(line, "rg needle")
+		}
+		if strings.Contains(line, "~tokens") {
+			summaryColumn = strings.Index(line, "~tokens")
+		}
+	}
+	if commandColumn < 0 || commandColumn != summaryColumn {
+		t.Fatalf("summary not aligned: command=%d summary=%d\n%s", commandColumn, summaryColumn, text(frame))
+	}
+
 	f.activity.collect("probe", "compact-1", "compaction", "Context compacted")
 	h.frame(t, func(frame string) bool { return strings.Count(text(frame), "Context compacted") >= 2 })
 	f.activity.collect("probe", "link-1", "commentary", "See [live.go](/tmp/live.go:4)")
 	h.frame(t, func(frame string) bool {
 		return strings.Contains(text(frame), "See live.go") && !strings.Contains(text(frame), "(/tmp/live.go:4)")
 	})
+	f.activity.collect("probe", "pane-cleanup", "tool", toolActivityShell("inspect_file --json --max-tokens 500 pane.go")+
+		"\n\nEdit `pane.go` +1 -1\n```diff\n-pane-old-secret\n+pane-new-secret\n```")
+	frame = h.frame(t, func(frame string) bool {
+		visible := text(frame)
+		return strings.Contains(visible, "Inspect pane.go") && strings.Contains(visible, "Edit pane.go")
+	})
+	if visible := text(frame); strings.Contains(visible, "pane-old-secret") || strings.Contains(visible, "pane-new-secret") {
+		t.Fatalf("pane retained omitted tool details: %s", visible)
+	}
 	h.write(t, "\x1b[<35;5;4M")
 	h.frame(t, func(frame string) bool {
 		return strings.Contains(frame, "\x1b[4m  └ probe")

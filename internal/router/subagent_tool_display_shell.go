@@ -216,6 +216,19 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool)
 		return "", false
 	}
 	if binary, ok := statement.Cmd.(*syntax.BinaryCmd); ok {
+		if binary.Op == syntax.AndStmt && len(statement.Redirs) == 0 {
+			left, leftOK := toolActivityStatement(script, binary.X)
+			right, rightOK := toolActivityStatement(script, binary.Y)
+			if leftOK || rightOK {
+				if !leftOK {
+					left = toolActivityUnclassifiedShell(script[int(binary.X.Pos().Offset()):toolActivityStatementDisplayEnd(script, binary.X)])
+				}
+				if !rightOK {
+					right = toolActivityUnclassifiedShell(script[int(binary.Y.Pos().Offset()):toolActivityStatementDisplayEnd(script, binary.Y)])
+				}
+				return strings.Trim(strings.Join([]string{left, right}, "\n\n"), "\n"), true
+			}
+		}
 		if display, ok := toolActivityNumberedRead(script, statement, binary); ok {
 			return display, true
 		}
@@ -250,7 +263,7 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool)
 			}
 		}
 		if binary.Op == syntax.Pipe && len(statement.Redirs) == 0 && len(argv) > 0 && argv[0] == "head" && toolActivitySearchFilter(argv) {
-			if source, valid := toolActivityLiteralCall(binary.X); valid && source[0] == "cat" &&
+			if source, valid := toolActivityPatternCall(script, binary.X); valid && source[0] == "cat" &&
 				(strings.HasPrefix(left, "Read ") || strings.HasPrefix(left, "Skill Read ")) {
 				return left, true
 			}
@@ -305,7 +318,7 @@ func toolActivityNumberedRead(script string, statement *syntax.Stmt, binary *syn
 	if binary.Op != syntax.Pipe || len(statement.Redirs) != 0 {
 		return "", false
 	}
-	left, leftOK := toolActivityLiteralCall(binary.X)
+	left, leftOK := toolActivityPatternCall(script, binary.X)
 	right, rightOK := toolActivityLiteralCall(binary.Y)
 	if !leftOK || !rightOK || len(left) != 3 || left[0] != "nl" || left[1] != "-ba" ||
 		left[2] == "" || strings.HasPrefix(left[2], "-") || len(right) != 3 ||
@@ -320,6 +333,11 @@ func toolActivityNumberedRead(script string, statement *syntax.Stmt, binary *syn
 }
 
 func toolActivityLiteralCall(statement *syntax.Stmt) ([]string, bool) {
+	return toolActivityPatternCall("", statement)
+}
+
+// Preserve patterns as source, without expansion or executable substitutions.
+func toolActivityPatternCall(script string, statement *syntax.Stmt) ([]string, bool) {
 	if statement == nil || len(statement.Redirs) != 0 || statement.Background || statement.Negated ||
 		statement.Coprocess || statement.Disown {
 		return nil, false
@@ -332,7 +350,10 @@ func toolActivityLiteralCall(statement *syntax.Stmt) ([]string, bool) {
 	for _, arg := range call.Args {
 		value, literal := shellCatLiteral(arg)
 		if !literal {
-			return nil, false
+			if script == "" || !toolActivityPatternWord(arg) {
+				return nil, false
+			}
+			value = script[int(arg.Pos().Offset()):int(arg.End().Offset())]
 		}
 		argv = append(argv, value)
 	}
@@ -418,7 +439,8 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 	if !literal {
 		return "", false
 	}
-	patterns := command == "rg" || command == "grep" || command == "ls"
+	patterns := command == "rg" || command == "grep" || command == "ls" ||
+		command == "cat" || command == "mcat" || command == "sed" || command == "nl" || command == "inspect_file"
 	var argv []string
 	for _, arg := range call.Args {
 		value, literal := shellCatLiteral(arg)
@@ -462,6 +484,11 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 			}
 			add(label, value)
 		}
+	case "nl":
+		if len(argv) != 3 || argv[1] != "-ba" || argv[2] == "" || strings.HasPrefix(argv[2], "-") {
+			return "", false
+		}
+		add("Read", argv[2])
 	case "sed":
 		// Only a literal, bounded print is a read preview, not arbitrary
 		// sed programs, in-place edits, or input from stdin.
@@ -474,10 +501,46 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 		}
 		add("Read", argv[3]+" "+strings.Join(spans, " "))
 	case "inspect_file":
-		if len(argv) != 2 || argv[1] == "" || strings.ContainsRune(argv[1], '\x00') {
+		options := true
+		seen := make(map[string]bool)
+		for i := 1; i < len(argv); i++ {
+			arg := argv[i]
+			if options && arg == "--" {
+				options = false
+				continue
+			}
+			if options && strings.HasPrefix(arg, "-") {
+				name, value, inline := strings.Cut(arg, "=")
+				if seen[name] {
+					return "", false
+				}
+				seen[name] = true
+				if name == "--json" && !inline {
+					continue
+				}
+				if name != "--max-tokens" {
+					return "", false
+				}
+				if !inline {
+					i++
+					if i >= len(argv) {
+						return "", false
+					}
+					value = argv[i]
+				}
+				if _, valid := toolActivityPositiveDecimal(value, maxOutputTokens); !valid {
+					return "", false
+				}
+				continue
+			}
+			if arg == "" || strings.ContainsRune(arg, '\x00') {
+				return "", false
+			}
+			add("Inspect", arg)
+		}
+		if len(operations) == 0 {
 			return "", false
 		}
-		add("Inspect", argv[1])
 	case "msymbol":
 		var operands []string
 		seenOptions := make(map[string]bool)
@@ -606,4 +669,11 @@ func toolActivityPositiveDecimal(value string, maximum uint64) (uint64, bool) {
 	}
 	number, err := strconv.ParseUint(value, 10, 64)
 	return number, err == nil && number <= maximum
+}
+
+func toolActivityUnclassifiedShell(source string) string {
+	if strings.ContainsAny(source, "\r\n") {
+		return toolActivityShell(source)
+	}
+	return "Run " + toolActivityCode(source)
 }

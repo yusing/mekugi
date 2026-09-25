@@ -428,3 +428,22 @@ func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
 		t.Fatalf("plain final = %+v", blocks[0])
 	}
 }
+
+func TestLiveActivityFilterAlignmentAndDimStyle(t *testing.T) {
+	const summary = "~tokens 3.5K→2.4K (-29.4%) · -42/104 lines · 0.6s"
+	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+		painter := liveActivityPainter{theme: theme}
+		for _, width := range []int{8, 18, 40, 100} {
+			rows := painter.block(liveActivityBlock{kind: "filter", body: summary}, width)
+			indent := min(ansi.StringWidth(liveActivityVerb("Run")), width/2)
+			for _, row := range rows {
+				if !strings.HasPrefix(ansi.Strip(row), strings.Repeat(" ", indent)) || ansi.StringWidth(row) > width {
+					t.Fatalf("filter alignment width %d: %q", width, row)
+				}
+				if !strings.Contains(row, liveActivityDim) || !strings.Contains(row, "\x1b[38;2;") || !strings.HasSuffix(row, liveActivityReset) {
+					t.Fatalf("filter is not muted and isolated: %q", row)
+				}
+			}
+		}
+	}
+}

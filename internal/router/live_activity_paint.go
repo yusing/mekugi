@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 )
@@ -424,7 +425,12 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 	case "compaction":
 		return []string{liveActivityAmber + "◉ Context compacted" + liveActivityReset}
 	case "filter":
-		return liveActivityWrap(liveActivityDim+block.body+liveActivityUndim, width, false)
+		indent := min(ansi.StringWidth(liveActivityVerb("Run")), width/2)
+		rows := liveActivityWrap(block.body, width-indent, true)
+		for i := range rows {
+			rows[i] = strings.Repeat(" ", indent) + p.theme.Foreground(chroma.Comment) + liveActivityDim + rows[i] + liveActivityReset
+		}
+		return rows
 	case "error":
 		return liveActivityIndent(liveActivityWrap(liveActivityRed+block.body+liveActivityReset, width-2, false), liveActivityRed+"✗"+liveActivityReset+" ")
 	}

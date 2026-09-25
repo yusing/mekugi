@@ -374,6 +374,7 @@ func TestSubagentBuiltinToolDisplay(t *testing.T) {
 func TestSubagentSedReadDisplay(t *testing.T) {
 	for _, tc := range []struct{ source, want string }{
 		{"sed -n '1,260p' source.go", "Read `source.go 1:260`"},
+		{"sed -n '1,260p' source.go && echo done", "Read `source.go 1:260`\n\nRun `echo done`"},
 		{"sed -n '261,520p' 'source file.go'", "Read `source file.go 261:520`"},
 	} {
 		if got := toolActivityShell(tc.source); got != tc.want {
@@ -393,7 +394,6 @@ func TestSubagentSedReadDisplay(t *testing.T) {
 		"sed -n '1,260p' a.go b.go",
 		"sed -n '1,260p' \"$file\"",
 		"sed -n '1,260p' source.go > copy.go",
-		"sed -n '1,260p' source.go && echo done",
 	} {
 		want := "Run\n" + toolActivityFenced("bash", source)
 		if got := toolActivityShell(source); got != want {
@@ -472,6 +472,7 @@ func TestSubagentSearchReadRunGrouping(t *testing.T) {
 func TestSubagentMixedReadRunFallbacks(t *testing.T) {
 	for _, tc := range []struct{ source, want string }{
 		{"cat a; git diff --check; git diff --stat;", "Read `a`\n\nRun `git diff --check`\n\nRun `git diff --stat`"},
+		{"cat a\ncat b && echo done", "Read `a`\n\nRead `b`\n\nRun `echo done`"},
 		{"cat a; printf '%s;' value;", "Read `a`\n\nRun `printf '%s;' value`"},
 		{"cat a; sleep 1 &", "Read `a`\n\nRun `sleep 1 &`"},
 		{"git status --short\ncat a", "Run `git status --short`\n\nRead `a`"},
@@ -489,7 +490,6 @@ func TestSubagentMixedReadRunFallbacks(t *testing.T) {
 	}
 	for _, source := range []string{
 		"cat a\ncat b > c",
-		"cat a\ncat b && echo done",
 		"cat a\nfor f in *.go; do cat \"$f\"; done",
 		"cat a\ncat b &",
 	} {
@@ -694,7 +694,7 @@ for(let j=0;j<next.length;j++)text(JSON.stringify({j,...next[j]}));`
 	}
 	source = `const r=await Promise.allSettled([tools.exec_command({cmd:"cat a.go"}),tools.exec_command({cmd:"cat b.go"})]); for(const row of r){text(row)}`
 	item["input"] = mustMarshalJSON(source)
-	want = "Read `a.go`\n\nRead `b.go`\n\nRun JavaScript · other code"
+	want = "Read `a.go`\n\nRead `b.go`"
 	if got := subagentToolActivityText(item, "exec"); got != want {
 		t.Fatalf("unknown result formatter hid proven calls: %q", got)
 	}
@@ -718,7 +718,7 @@ for(let j=0;j<next.length;j++)text(JSON.stringify({j,...next[j]}));`
 	source = `// @exec: {"max_output_tokens":1000}
 const r=await Promise.allSettled([tools.exec_command({cmd:"cat a.go"})]);for(const row of r){text(row)}`
 	item["input"] = mustMarshalJSON(source)
-	want = "Read `a.go`\n\nRun JavaScript · other code"
+	want = "Read `a.go`"
 	if got := subagentToolActivityText(item, "exec"); got != want {
 		t.Fatalf("leading pragma hid proven batch: %q", got)
 	}
@@ -729,7 +729,11 @@ const r=await Promise.allSettled([tools.exec_command({cmd:"cat a.go"})]);for(con
 	} {
 		source = `const r=await Promise.allSettled([tools.exec_command({cmd:"cat a.go"})]);` + suffix
 		item["input"] = mustMarshalJSON(source)
-		if got := subagentToolActivityText(item, "exec"); got != want {
+		expected := want
+		if !strings.HasPrefix(suffix, "if(") {
+			expected += "\n\nRun JavaScript · other code"
+		}
+		if got := subagentToolActivityText(item, "exec"); got != expected {
 			t.Fatalf("result formatter %q hid proven batch: %q", suffix, got)
 		}
 	}
@@ -815,6 +819,86 @@ func TestJournalToolActivityIsNotRepeated(t *testing.T) {
 		item["input"] = mustMarshalJSON(source)
 		if got := subagentToolActivityText(item, "exec"); !strings.HasPrefix(got, "Run JavaScript") {
 			t.Errorf("opaque code was suppressed: %q", got)
+		}
+	}
+}
+
+func TestSubagentMappedCommandArray(t *testing.T) {
+	prefix := `const cmds=["curl -fsSL https://example.test/a | nl -ba | sed -n '360,540p'", "cat a.go"];`
+	batch := `const r=await Promise.allSettled(cmds.map(cmd=>tools.exec_command({cmd,max_output_tokens:4500})));`
+	format := "for(let i=0;i<r.length;i++){const v=r[i];text(`${i}:\\n${v.status===\"fulfilled\"?v.value.output:v.reason}`)}"
+	for _, call := range []string{batch, strings.Replace(batch, "cmd=>", "(cmd)=>", 1), strings.Replace(batch, "{cmd,", "{cmd:cmd,", 1)} {
+		source := prefix + call + format
+		item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
+		blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: subagentToolActivityText(item, "exec")})
+		if len(blocks) != 2 || blocks[0].verb != "Run" || !strings.Contains(blocks[0].code, "curl -fsSL") || blocks[1].kind != "reads" || blocks[1].reads[0].path != "a.go" {
+			t.Fatalf("mapped commands not displayed: %+v", blocks)
+		}
+		if jsonString(item, "input") != source {
+			t.Fatal("source changed")
+		}
+		if _, ok := toolActivityUnwrapExec(source, true); ok {
+			t.Fatal("map became result evidence")
+		}
+	}
+	for _, source := range []string{
+		strings.Replace(prefix, "const cmds", "let cmds", 1) + batch,
+		strings.Replace(prefix, `"cat a.go"`, "dynamic", 1) + batch,
+		prefix + strings.Replace(batch, "cmd=>", "tools=>", 1),
+		prefix + strings.Replace(batch, "{cmd,", "{cmd: transform(cmd),", 1),
+		prefix + strings.Replace(batch, "{cmd,", "{cmd,workdir:dynamic,", 1),
+		prefix + strings.Replace(batch, "cmd=>", "async cmd=>", 1),
+		prefix + "cmds.push('echo hidden');" + batch,
+		prefix + batch + "var tools;",
+		prefix + batch + "const Promise = other;",
+		prefix + strings.Replace(batch, "{cmd,", "{cmd,...extra,", 1),
+		`const text=["cat a.go"]; const r=await Promise.all(text.map(cmd=>tools.exec_command({cmd})));text(r);`,
+		`const JSON=["cat a.go"]; const r=await Promise.all(JSON.map(cmd=>tools.exec_command({cmd})));text(JSON.stringify(r));`,
+	} {
+		item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
+		if got := subagentToolActivityText(item, "exec"); got != toolActivityJavaScript(source) {
+			t.Fatalf("unsafe map classified: %s: %s", source, got)
+		}
+	}
+}
+
+func TestSubagentBatchFormattingIsNotOtherCode(t *testing.T) {
+	prefix := `const results = await Promise.allSettled([tools.exec_command({cmd:"cat a.go"}),tools.exec_command({cmd:"cat b.go"})]);`
+	for _, format := range []string{
+		"for(let i=0;i<results.length;i++){const v=results[i];text(`${i}:\\n${v.status===\"fulfilled\"?v.value.output:v.reason}`)}",
+		`for (const row of results) { text(row) }`,
+		`if(results[0].status === "fulfilled") text(results[0].value)`,
+		"const labels=[\"source\",\"tests\"]; for(let i=0;i<results.length;i++){const result=results[i];if(result.status===\"rejected\"){text(`${labels[i]}: ${result.reason}`);continue;}const value=result.value;text(`${labels[i]}: ${value.session_id ? `running session_id=${value.session_id}` : `exit_code=${value.exit_code}`}\\n${value.output}`);}",
+	} {
+		source := prefix + format
+		item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
+		if got := subagentToolActivityText(item, "exec"); got != "Read `a.go`\n\nRead `b.go`" {
+			t.Fatalf("formatter misclassified: %s: %s", format, got)
+		}
+	}
+	for _, format := range []string{
+		`for(let i=0;i<results.length;i++){tools.exec_command({cmd:"echo hidden"});text(results[i])}`,
+		`for(let i=0;i<results.length;i++){text(external);}`,
+		`for(let i=0;i<results.length;i++){results[i] = changed;text(results[i]);}`,
+		`for(let i=0;i<results.length;i++){const text=results[i];text(text);}`,
+		`for(let i=0;i<results.length;i++){text(JSON.stringify({[tools.exec_command({cmd:"hidden"})]:results[i]}));}`,
+	} {
+		item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(prefix + format)}
+		if got := subagentToolActivityText(item, "exec"); !strings.HasSuffix(got, "Run JavaScript · other code") {
+			t.Fatalf("unrecognized work hidden: %s: %s", format, got)
+		}
+	}
+}
+
+func TestSubagentMappedPreviewDoesNotAmplifySharedOptions(t *testing.T) {
+	source := `const cmds=["cat a.go","cat b.go"];const results=await Promise.all(cmds.map(cmd=>tools.exec_command({cmd,justification:"` + strings.Repeat("x", 10000) + `"})));`
+	calls, other, ok := toolActivityBatchProducerCalls(source)
+	if !ok || other || len(calls) != 2 {
+		t.Fatalf("mapped calls unavailable: %v %v %d", ok, other, len(calls))
+	}
+	for _, call := range calls {
+		if len(call["arguments"]) > 100 {
+			t.Fatal("shared options amplified in preview")
 		}
 	}
 }
