@@ -11,10 +11,11 @@ import (
 // Existing identities are never evicted: an untracked thread must not later show a
 // partial lifetime total as though it were complete.
 type threadUsage struct {
-	mu      sync.Mutex
-	threads map[string]*threadUsageTotal
-	turns   map[usageTurnKey]*threadUsageTotal
-	closed  bool
+	mu       sync.Mutex
+	threads  map[string]*threadUsageTotal
+	typesafe map[string]typesafeUsage
+	turns    map[usageTurnKey]*threadUsageTotal
+	closed   bool
 }
 
 type usageTurnKey struct{ thread, turn string }
@@ -238,7 +239,9 @@ func (u *threadUsage) snapshot(thread string) (tokenUsageReport, bool) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if !u.closed {
-		return usageTotalReport(u.threads[thread])
+		report, observed := usageTotalReport(u.threads[thread])
+		report.typesafe = u.typesafe[thread]
+		return report, observed
 	}
 	return tokenUsageReport{}, false
 }
@@ -251,6 +254,7 @@ func (u *threadUsage) close() {
 	defer u.mu.Unlock()
 	u.closed = true
 	clear(u.threads)
+	clear(u.typesafe)
 	clear(u.turns)
 }
 
@@ -335,6 +339,7 @@ func (t *mekugiResponseTransform) completionUsageReport() (tokenUsageReport, boo
 				role = "n/a"
 			}
 			rows = append(rows, agentTokenUsage{agent: child.Author, role: role, report: counts})
+			report.typesafe.add(counts.typesafe)
 			if ^uint64(0)-report.missingUsage < counts.missingUsage {
 				report.Incomplete = true
 			} else {

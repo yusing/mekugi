@@ -69,8 +69,11 @@ func TestExploreFilterLiveCodeMode(t *testing.T) {
 	request.setInput(original)
 	judge := &liveExploreJudge{client: newTypesafeClient(key)}
 	filter := newExploreFilter(judge)
+	proxy := &mekugiProxy{activity: newSubagentActivity(), usage: newThreadUsage()}
+	proxy.activity.observe("live-root", "", "/root", false)
+	ctx := proxy.exploreContext(t.Context(), "live-root", "live-root")
 	started := time.Now()
-	filter.project(t.Context(), request, nil, dir, "", "/root", store)
+	filter.project(ctx, request, nil, dir, "", "/root", store)
 	elapsed := time.Since(started)
 	if err := json.Unmarshal(request.fields["input"], &items); err != nil {
 		t.Fatal(err)
@@ -105,9 +108,17 @@ func TestExploreFilterLiveCodeMode(t *testing.T) {
 	filtered := string(request.fields["input"])
 	calls := judge.calls
 	request.setInput(original)
-	filter.project(t.Context(), request, nil, dir, "", "/root", store)
+	filter.project(ctx, request, nil, dir, "", "/root", store)
 	if string(request.fields["input"]) != filtered || judge.calls != calls {
 		t.Fatal("replay changed output or rejudged")
 	}
+	report, _ := proxy.usage.snapshot("live-root")
+	if report.typesafe.InputTokens != judge.usage.InputTokens || report.typesafe.OutputTokens != judge.usage.OutputTokens || report.typesafe.Requests != uint64(calls) || report.typesafe.MissingResponses != 0 {
+		t.Fatal("provider consumption was not recorded exactly once")
+	}
+	if len(proxy.activity.events) != 1 || proxy.activity.events[0].filter == nil || proxy.activity.events[0].filter.Tokens == nil {
+		t.Fatal("live filtering did not emit one measured pane event")
+	}
+	t.Logf("pane annotation: %s", proxy.activity.events[0].text)
 	t.Logf("live Code Mode fixture: stdout %d -> %d bytes, saved %.1f%%; latency=%s; requests=%d; provider tokens input=%d output=%d; required rows, durable recovery and replay verified", len(body), len(projected.Output), 100*float64(len(body)-len(projected.Output))/float64(len(body)), elapsed.Round(time.Millisecond), calls, judge.usage.InputTokens, judge.usage.OutputTokens)
 }

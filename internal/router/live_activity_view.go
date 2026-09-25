@@ -138,6 +138,23 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			continue
 		}
 		v.lastSeq = entry.Seq
+		if entry.Kind == "output_filter" && entry.CallID != "" {
+			matched := false
+			for i, previous := range slices.Backward(v.entries) {
+				if previous.Kind == "tool" && previous.Agent == entry.Agent && previous.CallID == entry.CallID {
+					blocks := parseLiveActivity(entry)
+					if len(blocks) == 2 && blocks[1].kind == "filter" {
+						v.blocks[i] = append(v.blocks[i], blocks[1])
+						v.runs = nil
+						matched = true
+					}
+					break
+				}
+			}
+			if matched {
+				continue
+			}
+		}
 		if entry.Kind == "exit" {
 			for i, v0 := range slices.Backward(v.entries) {
 				if v0.Agent == entry.Agent && v0.CallID == entry.CallID && entry.CallID != "" {

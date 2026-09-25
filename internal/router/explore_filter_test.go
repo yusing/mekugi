@@ -32,7 +32,7 @@ func (j *fakeExploreJudge) nouls(_ context.Context, state any, questions map[str
 		fmt.Sscanf(id, "r%d", &index)
 		answers[id] = j.score(results[index])
 	}
-	return answers, typesafeUsage{InputTokens: 10}, nil
+	return answers, typesafeUsage{InputTokens: 10, Requests: 1}, nil
 }
 
 func TestExploreCommand(t *testing.T) {

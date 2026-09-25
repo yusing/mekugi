@@ -23,6 +23,7 @@ type tokenUsageReport struct {
 	model        string
 	rows         *[]agentTokenUsage
 	missingUsage uint64
+	typesafe     typesafeUsage
 }
 
 type agentTokenUsage struct {
@@ -156,6 +157,9 @@ func formatUsageReport(report tokenUsageReport) string {
 		turn = *report.turn
 	}
 	text := "Router session usage · Main turn: " + compactUsage(turn) + " · Total: " + compactUsage(report)
+	if report.typesafe.Requests != 0 || report.typesafe.Incomplete {
+		text += " · TypeSafe: " + compactTypesafeUsage(report.typesafe)
+	}
 	if report.mentor != "" {
 		text += " · " + report.mentor
 	}
@@ -199,6 +203,7 @@ func formatTokenUsageReport(report tokenUsageReport) string {
 	} else if !report.cost.known {
 		text.WriteString("\nCost unavailable: unknown model/service-tier pricing or inconsistent usage.")
 	}
+	writeTypesafeUsageReport(&text, report, rows)
 	return text.String()
 }
 

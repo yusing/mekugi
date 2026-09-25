@@ -423,6 +423,8 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 		return lines
 	case "compaction":
 		return []string{liveActivityAmber + "◉ Context compacted" + liveActivityReset}
+	case "filter":
+		return liveActivityWrap(liveActivityDim+block.body+liveActivityUndim, width, false)
 	case "error":
 		return liveActivityIndent(liveActivityWrap(liveActivityRed+block.body+liveActivityReset, width-2, false), liveActivityRed+"✗"+liveActivityReset+" ")
 	}
@@ -541,6 +543,9 @@ func liveActivitySummaryVerb(verb string) string {
 
 // summary is the roster's one-line view of an agent's current activity.
 func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
+	for len(blocks) > 0 && blocks[len(blocks)-1].kind == "filter" {
+		blocks = blocks[:len(blocks)-1]
+	}
 	if len(blocks) == 0 {
 		return ""
 	}

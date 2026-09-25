@@ -28,6 +28,7 @@ type activityThread struct {
 	seen              map[string]struct{}
 	order, responding int
 	final             bool
+	paneVisible       bool // Root joins the roster after its first pane-only filter event.
 	// Provider-reported usage summed over this thread's responses, and the
 	// visible delta bytes streamed since the last report.
 	inputTokens, outputTokens, streamed uint64
@@ -38,6 +39,7 @@ type activityEvent struct {
 	callID                     string
 	raw                        string // Unattributed text for the agents pane.
 	observed                   time.Time
+	filter                     *exploreFilterEvent
 }
 
 func newSubagentActivity() *subagentActivity {
@@ -106,16 +108,21 @@ func (a *subagentActivity) invalidate(thread string) {
 }
 
 func (a *subagentActivity) collect(thread, source, kind, text string) {
+	a.collectEvent(activityEvent{thread: thread, source: source, kind: kind, text: text})
+}
+
+func (a *subagentActivity) collectEvent(event activityEvent) {
+	thread, source, kind, text := event.thread, event.source, event.kind, event.text
 	if a == nil || source == "" || len(source) > maxCommentaryPublicationBytes || strings.TrimSpace(text) == "" {
 		return
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	node := a.threads[thread]
-	if a.closed || node == nil || !node.child || node.conflicted {
+	if a.closed || node == nil || !node.child && kind != "output_filter" || node.conflicted {
 		return
 	}
-	callID := ""
+	callID := event.callID
 	if kind == "tool" {
 		callID, _ = strings.CutPrefix(source, "tool-call\x00")
 	} else if kind == "exit" {
@@ -156,7 +163,9 @@ func (a *subagentActivity) collect(thread, source, kind, text string) {
 		return
 	}
 	node.seen[source] = struct{}{}
-	a.events = append(a.events, activityEvent{thread: thread, source: source, kind: kind, callID: callID, text: text, raw: raw, observed: now})
+	node.paneVisible = true
+	event.source, event.callID, event.text, event.raw, event.observed = source, callID, text, raw, now
+	a.events = append(a.events, event)
 	a.claimPaneLocked(thread, now)
 	if a.paneOwnsLocked(a.rootLocked(thread), now) {
 		a.wakePaneLocked()
@@ -197,8 +206,8 @@ func (a *subagentActivity) drain(root string, started time.Time, budget int) []m
 			kept = append(kept, event)
 			continue
 		}
-		if event.kind == "final" || event.kind == "exit" {
-			continue // Final is native; exit is pane-only decoration for a Run.
+		if event.kind == "final" || event.kind == "exit" || event.kind == "output_filter" {
+			continue // Final is native; exit and filter metrics are pane-only.
 		}
 		text := event.text
 		author := "[" + commentaryCode(a.threads[event.thread].name) + "] "

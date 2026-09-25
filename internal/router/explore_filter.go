@@ -96,6 +96,7 @@ type exploreDecision struct {
 }
 
 type exploreTask struct {
+	callID      string
 	UserRequest string `json:"user_request,omitempty"`
 	AgentIntent string `json:"agent_intent,omitempty"`
 	Command     string `json:"command"`
@@ -210,7 +211,7 @@ func (f *exploreFilter) project(ctx context.Context, request *parsedResponsesReq
 			close(decision.done)
 			continue
 		}
-		task := exploreTask{UserRequest: userRequest, AgentIntent: exploreIntent(items, calls[callID]), Command: input.Command, Workdir: input.Workdir}
+		task := exploreTask{callID: callID, UserRequest: userRequest, AgentIntent: exploreIntent(items, calls[callID]), Command: input.Command, Workdir: input.Workdir}
 		wg.Go(func() {
 			defer close(decision.done)
 			if codeMode {
@@ -538,6 +539,13 @@ func (f *exploreFilter) filter(ctx context.Context, task exploreTask, text strin
 		filtered.WriteByte('\n')
 	}
 	filtered.WriteString(footer + reference + "]\n")
+	if observer, ok := ctx.Value(exploreObserverKey{}).(exploreObserver); ok && observer.filtered != nil {
+		observer.filtered(task, body, filtered.String()[len(header):], exploreFilterEvent{
+			Family: exploreFamilyNames[family], LinesBefore: len(rows), LinesRemoved: omittedRows,
+			UnitsBefore: len(units), UnitsRemoved: len(omitted), JudgeUsage: usage,
+			ElapsedMS: time.Since(started).Milliseconds(),
+		})
+	}
 	outcome("filtered", fields)
 	return filtered.String(), true
 }
@@ -841,15 +849,17 @@ func (f *exploreFilter) judgeUnits(ctx context.Context, task exploreTask, units 
 				}
 			}
 			answers, used, err := f.judge.nouls(ctx, map[string]any{"task": task, "results": batch}, questions)
+			if observer, ok := ctx.Value(exploreObserverKey{}).(exploreObserver); ok && observer.usage != nil {
+				observer.usage(used)
+			}
 			mu.Lock()
 			defer mu.Unlock()
+			usage.add(used)
 			if err != nil {
 				failure = cmpError(failure, err)
 				cancel()
 				return
 			}
-			usage.InputTokens += used.InputTokens
-			usage.OutputTokens += used.OutputTokens
 			for i := range batch {
 				probabilities[offset+i] = answers[fmt.Sprintf("r%d", i)]
 			}

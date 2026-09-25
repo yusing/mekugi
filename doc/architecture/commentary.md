@@ -24,6 +24,13 @@ acknowledgement after flush, the reconnect grace period and inline fallback all 
 the collector. The viewer only presents what it is given. Codex retains scheduling, recipients,
 interrupts, waits, and assignment lifecycle.
 
+Completed explore-filter observations use the same collector and authenticated
+pane stream, with originating call identity and a typed measurement payload.
+They can originate at the root as well as a child and never fall back inline.
+The filter owns local stdout reduction measurements; the pane only renders them.
+TypeSafe usage belongs to a separate bucket in the existing per-thread usage
+owner, not the activity collector or the agent-model cost and mentor counters.
+
 Provider-authoritative usage is accumulated per stable thread for the router lifetime.
 Unknown prices preserve token totals but suppress cost claims. Missing responses preserve
 known observed totals with explicit gap counts; identity conflicts and arithmetic overflow

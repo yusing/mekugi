@@ -680,6 +680,14 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 	f.activity.collect("probe", "tool-call\x00run-1", "tool", "Run `false`")
 	f.activity.collect("probe", "tool-exit\x00run-1", "exit", "1")
 	h.frame(t, func(frame string) bool { return strings.Contains(text(frame), "false (exit 1)") })
+	f.activity.collect("probe", "tool-call\x00filtered-run", "tool", "Run `rg needle`")
+	filtered := exploreFilterEvent{Command: "rg needle", LinesBefore: 49, LinesRemoved: 24, ElapsedMS: 627,
+		Tokens: &exploreTokenReduction{Before: 1200, After: 700, Saved: 500, Percent: 41.7, Basis: "o200k_base"}}
+	f.activity.collectEvent(activityEvent{thread: "probe", source: "filtered-run", kind: "output_filter", callID: "filtered-run", text: filtered.text(), filter: &filtered})
+	h.frame(t, func(frame string) bool {
+		visible := text(frame)
+		return strings.Contains(visible, "rg needle") && strings.Contains(visible, "~tokens 1.2K→700 (-41.7%)") && strings.Contains(visible, "−24/49 lines")
+	})
 	f.activity.collect("probe", "compact-1", "compaction", "Context compacted")
 	h.frame(t, func(frame string) bool { return strings.Count(text(frame), "Context compacted") >= 2 })
 	f.activity.collect("probe", "link-1", "commentary", "See [live.go](/tmp/live.go:4)")

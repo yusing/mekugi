@@ -68,7 +68,8 @@ type activityPaneEntry struct {
 	Agent    string
 	Kind     string
 	Text     string
-	CallID   string `json:",omitempty"`
+	CallID   string              `json:",omitempty"`
+	Filter   *exploreFilterEvent `json:",omitempty"`
 	Observed time.Time
 
 	event activityEvent // Original queue entry, requeued if the write fails.
@@ -143,7 +144,7 @@ func (a *subagentActivity) paneOwnsLocked(root string, now time.Time) bool {
 	return pane.state == activityPaneClaimed || pane.state == activityPaneAttached
 }
 
-// claimPaneLocked requests one launch for the first child activity under a root.
+// claimPaneLocked requests one launch for the first eligible activity under a root.
 // A released pane is not relaunched in the same router session.
 func (a *subagentActivity) claimPaneLocked(thread string, now time.Time) {
 	pane := a.pane
@@ -151,7 +152,7 @@ func (a *subagentActivity) claimPaneLocked(thread string, now time.Time) {
 		return
 	}
 	root := a.rootLocked(thread)
-	if root == "" || root == thread {
+	if root == "" {
 		return
 	}
 	if !pane.launch() {
@@ -189,7 +190,7 @@ func (a *subagentActivity) paneNoticesLocked(root string) []map[string]json.RawM
 	switch {
 	case pane.state == activityPaneAttached && !pane.announced:
 		pane.announced = true
-		text, key = "Subagent activity is shown in the Mekugi agents pane beside this session.", "announce"
+		text, key = "Agent activity is shown in the Mekugi agents pane beside this session.", "announce"
 	case pane.state == activityPaneReleased && pane.announced && !pane.farewell:
 		pane.farewell = true
 		text, key = "The Mekugi agents pane closed; subagent activity resumes here.", "farewell"
@@ -205,7 +206,7 @@ func (a *subagentActivity) paneNoticesLocked(root string) []map[string]json.RawM
 func (a *subagentActivity) paneAgentsLocked() []activityPaneAgent {
 	var nodes []*activityThread
 	for thread, node := range a.threads {
-		if node.child && !node.conflicted && a.rootLocked(thread) == a.pane.root {
+		if (node.child || node.paneVisible) && !node.conflicted && a.rootLocked(thread) == a.pane.root {
 			nodes = append(nodes, node)
 		}
 	}
@@ -242,6 +243,7 @@ func (a *subagentActivity) takePane(generation uint64) ([]activityPaneEntry, []a
 			Text: event.raw, Observed: event.observed, event: event,
 		}
 		entry.CallID = event.callID
+		entry.Filter = event.filter
 		// Escaping can expand text up to sixfold, so budget the encoded form.
 		data, _ := json.Marshal(entry)
 		entry.size = len(data) + 1

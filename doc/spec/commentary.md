@@ -157,6 +157,17 @@ before the terminal event, including when the journal is empty. Unavailable usag
 with an incomplete-usage explanation rather than silently omitting the notice, unless
 reporting is disabled. Child completion never emits its own usage report.
 
+When used, TypeSafe AI has a separate provider-reported usage section in the
+Markdown report, with per-agent and total rows for model, HTTP attempts, input,
+output, missing usage, and cost. The compact report includes a separate TypeSafe
+summary. Agent-model totals, cache accounting, and mentor state exclude these
+auxiliary calls. Only proven descendants join the root's TypeSafe total, and
+restart resets consumption just as it does agent-model usage. Retries and
+unusable answers retain any known consumption; absent, null, invalid, or partial
+usage fields count as missing rather than zero. Overflow makes the affected total
+unavailable. No TypeSafe price is configured, so its cost is `n/a`; the report
+does not claim net savings from local output-reduction estimates.
+
 The commentary selects one compact line, switching to the table when the report
 contains more than one proven agent. The same eligible completion updates a
 Markdown table in the system temporary directory, using the Codex thread ID as
@@ -294,7 +305,8 @@ update heading. No production response is held open, and no polling or model
 turn is created. During an idle stream there may be no event boundary to deliver
 through; once a response closes, inline updates wait for the next eligible root response.
 
-When an interactive Herdr pane is available, the first child event under a root opens
+When an interactive Herdr pane is available, the first child event or completed
+explore-filter event under a root opens
 one Mekugi agents pane for that root and moves that root's child activity there,
 including replies addressed to `/root`. The pane receives events as they are observed,
 independent of root responses, so updates continue during a native wait. While the pane
@@ -307,6 +319,14 @@ returns its pending events and later activity to inline delivery, and is not
 relaunched for the router session. Without Herdr, inline delivery is unchanged. Only
 the first root with child activity uses the pane; other roots stay inline. Critical
 session notices and main-completion usage stay in the root conversation.
+
+Explore-filter events are pane-only, including when the pane is unavailable or
+closes. They retain the originating call ID and structured efficiency counts,
+and render as a muted token/line reduction annotation after the matching command.
+The root joins the roster when its own first filter event is observed. These
+events do not claim agent completion or feed local token estimates into the
+roster's provider-usage counters. The filter contract owns their measurement
+basis and eligibility.
 
 The pane renders child activity natively rather than as commentary Markdown. It
 parses the router's own commentary grammar into operations, messages, start

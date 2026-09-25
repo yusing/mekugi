@@ -77,6 +77,31 @@ With `--debug`, each judged result records an `explore_filter` event with its
 family, outcome, row, byte, and unit counts, omitted and saved counts, input
 tokens, and elapsed time, without content.
 
+Each newly filtered result also emits a pane-only `output_filter` activity event
+for its validated originating agent, including `/root`. The event carries the
+call ID, a command preview bounded to 512 bytes, family, before/after stdout byte
+and local token counts, removed/total lines and units, elapsed milliseconds, and
+TypeSafe usage. Token counts use `o200k_base` on decoded stdout, including the
+omission/recovery footer in the after count. They are not billed provider tokens;
+unavailable counts are absent, not zero. Recovery is durable before emission.
+
+The pane attaches a muted compact line after the matching command event, such as
+`~tokens 1.2K→700 (-41.7%) · −24/49 lines · 0.6s`. Token displays use the shared
+K/M/B usage formatter; structured counts remain exact. If the original command is no
+longer in the feed, its bounded preview precedes that line. The displayed line
+does not repeat byte counts, unit counts, or TypeSafe usage. Full structured
+counts remain in the authenticated pane event. Kept results, failed judgments,
+and cached replays emit no compaction event. Pane unavailability never adds these
+metrics to model-visible commentary or changes filtering.
+
+TypeSafe consumption is accumulated separately per originating transport thread
+for the router lifetime and included in the [token usage report](commentary.md).
+Every HTTP attempt counts, including retries and judgments whose results are
+kept or whose answers are unusable. Missing or invalid provider usage creates an
+explicit gap; local token estimates never replace it. Cached decisions make no
+request and add no usage. Costs and net monetary savings remain unavailable
+without configured TypeSafe pricing.
+
 Acceptance:
 
 1. Without the key, in passthrough mode, or with `--explore-filter=false`, no
@@ -93,3 +118,8 @@ Acceptance:
 7. Transparent single-command Code Mode results use the same judgments and
    durable recovery as native results. Their metadata and header survive;
    unsupported or ambiguous Code Mode output remains byte-identical.
+8. Pane events retain origin and metrics through delivery retries and reconnect;
+   they never fall back into model context. A filtered command is shown once with
+   a muted metrics line after it, not a second verbose event.
+9. TypeSafe totals retain known consumption across retries, answer failures, and
+   unchanged outputs, without double-counting decision replay or other threads.

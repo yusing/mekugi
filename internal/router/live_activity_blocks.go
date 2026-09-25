@@ -75,6 +75,13 @@ func parseLiveActivity(entry activityPaneEntry) []liveActivityBlock {
 		return []liveActivityBlock{{kind: "error", body: text}}
 	case "compaction":
 		return []liveActivityBlock{{kind: "compaction", body: text}}
+	case "output_filter":
+		if entry.Filter != nil {
+			return []liveActivityBlock{
+				{kind: "op", verb: "Run", code: livediff.Safe(entry.Filter.Command, false), lang: "bash", fenced: true},
+				{kind: "filter", body: text},
+			}
+		}
 	case "tool":
 		var blocks []liveActivityBlock
 		for _, paragraph := range liveActivityParagraphs(text) {
