@@ -27,7 +27,20 @@ func (c OpenCodeConfig) Enabled() bool {
 
 type mekugiConfig struct {
 	Providers    OpenCodeConfig    `toml:"providers"`
+	TypeSafe     typeSafeConfig    `toml:"typesafe"`
 	ServiceTiers map[string]string `toml:"service_tiers"`
+}
+
+type typeSafeConfig struct {
+	// A pointer distinguishes an omitted key from an explicit empty override.
+	APIKey *string `toml:"api_key"`
+}
+
+func (c mekugiConfig) typeSafeAPIKey() string {
+	if c.TypeSafe.APIKey != nil {
+		return strings.TrimSpace(*c.TypeSafe.APIKey)
+	}
+	return strings.TrimSpace(os.Getenv("TYPESAFE_API_KEY"))
 }
 
 func loadMekugiConfig() (mekugiConfig, error) {

@@ -32,7 +32,7 @@ sessions, and patch review. No fork, no config edits, no daemon.
   be reverted and reapplied by ID.
 - **Fewer tokens and round trips.** Bounded and batched reads, semantic symbol
   lookup, structural outlines, scoped change IDs, and child change handoffs.
-- **Search output filtering.** With `TYPESAFE_API_KEY` set, large search results
+- **Search output filtering.** With a TypeSafe API key configured, large search results
   (`rg`, `grep`, `find`, `fd`, `git grep`), linter and compiler diagnostics,
   `git log`, `git diff`, `git show`, and `--help` pages drop the files, commits,
   or entries that TypeSafe's Jev model judges unrelated to the task. The agent sees what was omitted and can `mread` the full output. Your
@@ -130,7 +130,7 @@ These overrides last only for the invocation; no configuration files change.
 | `--post-compact-recovery` | `true` | Use `false` to skip the post-compaction context hook |
 | `--grok` | `false` | Enable Grok models in mekugi mode |
 | `--grok-auth-file` | `~/.grok/auth.json` | Select a Grok OAuth credential store |
-| `--explore-filter` | `true` with `TYPESAFE_API_KEY` | Use `false` to keep search output unfiltered. See [search output filtering](#features) |
+| `--explore-filter` | `true` with a TypeSafe API key | Use `false` to keep search output unfiltered. See [search output filtering](#features) |
 | `--timeout` | `10m` | Wait for the upstream response to start |
 | `--stream-idle-timeout` | `4m` | Limit gaps between provider messages during an active response, or HTTP response bytes |
 | `--capture-output PATH` | Disabled | Append sanitized JSONL metrics |
@@ -292,6 +292,9 @@ api_key = "your-go-key"
 
 [providers.opencode_zen]
 api_key = "your-zen-key"
+
+[typesafe]
+api_key = "your-typesafe-key"
 ```
 
 Every section is optional. Settings are read at startup and never rewritten.
@@ -302,7 +305,8 @@ Every section is optional. Settings are read at startup and never rewritten.
   choose.
 - **API keys:** `OPENCODE_API_KEY` overrides both file keys. The per-service
   variables override their own service. Setting one to an empty string turns
-  that service off.
+  that service off. `[typesafe].api_key` takes precedence over
+  `TYPESAFE_API_KEY`; an explicitly empty file value disables filtering.
 
 ## Configuration and troubleshooting
 

@@ -2,7 +2,9 @@
 
 ## REQ-EXPLORE-FILTER-001 — Decision-model filtering of search output
 
-Mekugi mode enables the filter by default when `TYPESAFE_API_KEY` is non-empty.
+Mekugi mode enables the filter by default when the TypeSafe API key is non-empty.
+`[typesafe].api_key` in `mekugi/config.toml` takes precedence over
+`TYPESAFE_API_KEY`, including an explicitly empty file value.
 Without the key, in passthrough mode, or with `--explore-filter=false`, stock
 results are unchanged and nothing is sent to TypeSafe. An explicit
 `--explore-filter` or `--explore-filter=true` without the key, or in passthrough

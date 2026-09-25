@@ -99,20 +99,20 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if !*flags.grokEnabled && *flags.grokAuthFile != "" {
 		return errors.New("--grok-auth-file requires --grok")
 	}
-	// The filter defaults on but needs a credential; only an explicit request
-	// for it makes a missing key or passthrough mode a startup error.
-	typesafeKey := strings.TrimSpace(os.Getenv("TYPESAFE_API_KEY"))
-	if exploreFilterSet && *flags.exploreFilter && *flags.mode != "mekugi" {
-		return errors.New("--explore-filter requires --mode mekugi")
-	}
-	if exploreFilterSet && *flags.exploreFilter && typesafeKey == "" {
-		return errors.New("--explore-filter requires TYPESAFE_API_KEY")
-	}
-	*flags.exploreFilter = *flags.exploreFilter && typesafeKey != "" && *flags.mode == "mekugi"
 	config, err := loadMekugiConfig()
 	if err != nil {
 		return err
 	}
+	// The filter defaults on but needs a credential; only an explicit request
+	// for it makes a missing key or passthrough mode a startup error.
+	typesafeKey := config.typeSafeAPIKey()
+	if exploreFilterSet && *flags.exploreFilter && *flags.mode != "mekugi" {
+		return errors.New("--explore-filter requires --mode mekugi")
+	}
+	if exploreFilterSet && *flags.exploreFilter && typesafeKey == "" {
+		return errors.New("--explore-filter requires a TypeSafe API key")
+	}
+	*flags.exploreFilter = *flags.exploreFilter && typesafeKey != "" && *flags.mode == "mekugi"
 	openCode := config.Providers
 	if openCode.Enabled() && *flags.mode != "mekugi" {
 		return errors.New("OpenCode providers require --mode mekugi")
