@@ -6,6 +6,7 @@ import (
 	jsonv1 "encoding/json"
 	"encoding/json/v2"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -22,30 +23,16 @@ func marshalUsageReportFixture(t *testing.T, value any) []byte {
 
 func TestUsageReportFlagParsing(t *testing.T) {
 	flags := newRouterFlags(io.Discard)
-	if *flags.usageReport != "" {
-		t.Fatalf("default usage-report = %q, want automatic selection", *flags.usageReport)
+	if err := flags.Parse(nil); err != nil {
+		t.Fatal(err)
 	}
-	if err := flags.Parse(nil); err != nil || *flags.usageReport != "" {
-		t.Fatalf("default parse: value=%q err=%v", *flags.usageReport, err)
-	}
-	for _, value := range []string{"off", "compact", "table"} {
+	for _, value := range []string{"--usage-report=table", "--metrics-output=metrics.json"} {
 		t.Run(value, func(t *testing.T) {
 			flags := newRouterFlags(io.Discard)
-			if err := flags.Parse([]string{"--usage-report=" + value}); err != nil {
-				t.Fatal(err)
-			}
-			if *flags.usageReport != value {
-				t.Fatalf("usage-report = %q, want %q", *flags.usageReport, value)
+			if err := flags.Parse([]string{value}); err == nil {
+				t.Fatalf("removed flag %q was accepted", value)
 			}
 		})
-	}
-	flags = newRouterFlags(io.Discard)
-	if err := flags.Parse([]string{"--usage-report", "table"}); err != nil || *flags.usageReport != "table" {
-		t.Fatalf("separate flag operand: value=%q err=%v", *flags.usageReport, err)
-	}
-	flags = newRouterFlags(io.Discard)
-	if err := flags.Parse([]string{"--usage-report=verbose"}); err == nil || err.Error() != `invalid value "verbose" for flag -usage-report: --usage-report must be off, compact, or table` {
-		t.Fatalf("invalid usage-report error = %v", err)
 	}
 }
 
@@ -244,6 +231,7 @@ func TestUsageTurnAggregationUsesCanonicalMetadataAcrossJournalContinuation(t *t
 }
 
 func TestUsageReportMentorSwitchWaitsForActualModelAndDelivery(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
 	proxy := newManagedMekugiProxy(t)
 	first := &mekugiResponseTransform{
 		ctx: t.Context(), proxy: proxy, threadID: "root", shellThreadID: "root",
@@ -267,6 +255,14 @@ func TestUsageReportMentorSwitchWaitsForActualModelAndDelivery(t *testing.T) {
 	messages, err := second.journalTerminalMessages(response)
 	if err != nil || len(messages) != 1 {
 		t.Fatalf("terminal usage messages = %v, err=%v", messages, err)
+	}
+	paths := proxy.tokenMetricPaths()
+	if len(paths) != 1 {
+		t.Fatalf("completion did not write token metrics: %q", paths)
+	}
+	markdown, err := os.ReadFile(paths[0])
+	if err != nil || !bytes.Contains(markdown, []byte("| Total |")) {
+		t.Fatalf("completion metrics = %q, %v", markdown, err)
 	}
 	text := commentaryMessageText(messages[0])
 	if text != "Router session usage · Main turn: 50 in / 5 out, $0.0003 · Total: 150 in / 15 out, $0.0018 · Mentor gpt-6-astra → gpt-5.6-sol" {

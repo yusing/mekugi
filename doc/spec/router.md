@@ -92,15 +92,16 @@ failed cleanup reports an error and does not claim complete reclamation.
 Change-index retirement preserves stream high-water counters so old IDs are never reused.
 Partially retired change histories explicitly identify removed attempts. Missing recovery references
 explain session expiry or storage pressure and never replay an operation.
-`--capture-output PATH` appends records; `--metrics-output PATH` overwrites a final
-snapshot from the same capturer. The destinations must be distinct.
+`--capture-output PATH` appends sanitized capture records. Token-usage Markdown
+snapshots use a stable Codex-session-keyed file in the system temporary directory;
+the wrapper prints each written path on exit.
 
 `--debug` is a boolean flag requiring no argument. It creates a private, unique
 `mekugi-debug-*` directory in the system temporary directory, with router diagnostics,
 sanitized capture, final metrics, an instruction dump, runtime read journal, and AX report.
 Debug implies AX instrumentation: the wrapper supplies the journal path to the executor
 and the authenticated worker manifest retains it across child environment changes.
-Explicit capture, metrics, and `MEKUGI_AX_OUTPUT` destinations retain precedence.
+Explicit capture and `MEKUGI_AX_OUTPUT` destinations retain precedence.
 The wrapper prints all six absolute artifact paths to
 stderr only on exit, after the child and router have stopped; it never prints debug paths
 over the active Codex UI. Startup failures after debug initialization also report the paths.

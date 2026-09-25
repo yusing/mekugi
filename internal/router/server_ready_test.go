@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/capturer"
 )
 
 func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
@@ -71,11 +74,10 @@ func TestRunSessionDoesNotNotifyOnStartupFailure(t *testing.T) {
 	}
 }
 
-func TestRunSessionExportsFinalMetricsWithoutLogging(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "metrics.json")
+func TestRunSessionServesMetricsWithoutLogging(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	err := RunSession(ctx, []string{"--mode", "passthrough", "--mentor-handoff=false", "--metrics-output", path}, NewCriticalErrors(), func(session Session) {
+	err := RunSession(ctx, []string{"--mode", "passthrough", "--mentor-handoff=false"}, NewCriticalErrors(), func(session Session) {
 		if session.FrontendDirectory != "" {
 			t.Error("passthrough installed frontends")
 		}
@@ -83,30 +85,27 @@ func TestRunSessionExportsFinalMetricsWithoutLogging(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		} else {
+			body, readErr := io.ReadAll(response.Body)
 			response.Body.Close()
+			if readErr != nil || !bytes.Contains(body, []byte(`"schema":"mekugi.capture.metrics.v6"`)) {
+				t.Errorf("metrics = %s, %v", body, readErr)
+			}
 		}
 		cancel()
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, err := os.ReadFile(path)
-	if err != nil || !bytes.Contains(body, []byte(`"schema":"mekugi.capture.metrics.v6"`)) {
-		t.Fatalf("metrics = %s, %v", body, err)
-	}
 }
 
-func TestRunSessionRejectsAliasedExportDestinations(t *testing.T) {
+func TestRunSessionRejectsAXCaptureAlias(t *testing.T) {
 	directory := t.TempDir()
 	capture := filepath.Join(directory, "capture.jsonl")
-	metrics := filepath.Join(directory, "metrics.json")
 	if err := os.WriteFile(capture, []byte("retained\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(capture, metrics); err != nil {
-		t.Fatal(err)
-	}
-	err := RunSession(t.Context(), []string{"--mode", "passthrough", "--capture-output", capture, "--metrics-output", metrics}, nil, func(Session) { t.Error("aliased exports reached readiness") }, nil)
+	t.Setenv(capturer.AXReadOutputEnvironment, capture)
+	err := RunSession(t.Context(), []string{"--mode", "passthrough", "--capture-output", capture}, nil, func(Session) { t.Error("aliased exports reached readiness") }, nil)
 	if err == nil {
 		t.Fatal("aliased outputs accepted")
 	}

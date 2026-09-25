@@ -123,7 +123,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if *flags.streamIdleTimeout <= 0 {
 		return errors.New("--stream-idle-timeout must be positive")
 	}
-	if err := validateAXOutputAliases(os.Getenv(capturer.AXReadOutputEnvironment), *flags.captureOutput, *flags.metricsOutput); err != nil {
+	if err := validateAXOutputAliases(os.Getenv(capturer.AXReadOutputEnvironment), *flags.captureOutput); err != nil {
 		return err
 	}
 	debug, err := openDebugOutput(flags)
@@ -133,12 +133,22 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if debug != nil {
 		ctx = context.WithValue(ctx, debugContextKey{}, debug)
 	}
+	var mekugiCalls *mekugiProxy
 	defer func() {
 		if debug != nil {
 			debug.event(map[string]any{"event": "router_stop", "failed": runErr != nil})
 			runErr = errors.Join(runErr, debug.close())
-			if artifacts != nil {
-				artifacts(debug.paths)
+		}
+		if artifacts != nil {
+			var paths []string
+			if debug != nil {
+				paths = append(paths, debug.paths...)
+			}
+			if mekugiCalls != nil {
+				paths = append(paths, mekugiCalls.tokenMetricPaths()...)
+			}
+			if len(paths) != 0 {
+				artifacts(paths)
 			}
 		}
 	}()
@@ -147,23 +157,8 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		return fmt.Errorf("initialize capture: %w", err)
 	}
 	var metricsFile *os.File
-	if *flags.metricsOutput != "" {
-		metricsPath, err := filepath.Abs(*flags.metricsOutput)
-		if err != nil {
-			return errors.Join(err, capture.Close())
-		}
-		capturePath, _ := filepath.Abs(*flags.captureOutput)
-		if *flags.captureOutput != "" && metricsPath == capturePath {
-			return errors.Join(errors.New("capture-output and metrics-output must use different files"), capture.Close())
-		}
-		if *flags.captureOutput != "" {
-			captureInfo, captureErr := os.Stat(capturePath)
-			metricsInfo, metricsErr := os.Stat(metricsPath)
-			if captureErr == nil && metricsErr == nil && os.SameFile(captureInfo, metricsInfo) {
-				return errors.Join(errors.New("capture-output and metrics-output must use different files"), capture.Close())
-			}
-		}
-		metricsFile, err = os.OpenFile(metricsPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if debug != nil {
+		metricsFile, err = os.OpenFile(debug.metricsPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 		if err != nil {
 			return errors.Join(fmt.Errorf("open metrics output: %w", err), capture.Close())
 		}
@@ -213,7 +208,6 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}
 	var frontendDirectory string
 	var dataDirectory string
-	var mekugiCalls *mekugiProxy
 	var mentor *mentorHandoff
 	if *flags.mode == "mekugi" {
 		var err error
@@ -260,7 +254,6 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		} else {
 			issues.addNotice("", "native_trace", "Nested tool confirmation unavailable: "+traceErr.Error())
 		}
-		mekugiCalls.usageReport = *flags.usageReport
 		if *flags.exploreFilter {
 			mekugiCalls.exploreFilter = newExploreFilter(newTypesafeClient(typesafeKey))
 		}

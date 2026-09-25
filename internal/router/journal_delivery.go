@@ -387,6 +387,7 @@ func (t *mekugiResponseTransform) journalTerminalMessages(response []byte) ([]ma
 		counts, observed = t.completionUsageReport()
 	}
 	if usage := formatTokenUsageCommentary(response, counts, observed, "completed", true); usage != nil {
+		t.proxy.writeTokenMetrics(t.shellThreadID, counts)
 
 		retained := t.retainCommentary(usage)
 		if len(retained) != 0 {

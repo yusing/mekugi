@@ -124,7 +124,6 @@ These overrides last only for the invocation; no configuration files change.
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
-| `--usage-report` | Compact; table for multiple agents | Select `off`, `compact`, or `table` |
 | `--mode` | `mekugi` | Use `passthrough` to forward traffic without mekugi tools, plugins, or Mentor Handoff |
 | `--main-mentor-handoff` | `true` | Enable mentor handoff for eligible main sessions and ordinary forks |
 | `--mentor-handoff` | `true` | Use `false` to keep subagents on their configured models |
@@ -135,7 +134,6 @@ These overrides last only for the invocation; no configuration files change.
 | `--timeout` | `10m` | Wait for the upstream response to start |
 | `--stream-idle-timeout` | `4m` | Limit gaps between provider messages during an active response, or HTTP response bytes |
 | `--capture-output PATH` | Disabled | Append sanitized JSONL metrics |
-| `--metrics-output PATH` | Disabled | Write the final metrics snapshot on shutdown, overwriting the destination |
 | `--debug` | Disabled | Record diagnostics, capture, metrics, forwarded instruction/tool snapshots, runtime reads, and an AX report; print all artifact paths on exit |
 
 `mekugi --mode passthrough codex` forwards traffic only. It doesn't need Node.js,
@@ -262,10 +260,13 @@ SSH, forward its port first.
 
 ```sh
 curl -sS "${MEKUGI_BASE_URL%/v1}/api/metrics"
-mekugi --capture-output capture.jsonl --metrics-output metrics.json codex
+mekugi --capture-output capture.jsonl codex
 ```
 
-Metrics stay in memory unless you export them. Exports hold sanitized
+The router writes a Markdown token-usage snapshot to the system temporary
+directory after each eligible main completion, reusing the same file for the
+same Codex session, and prints its path when Codex exits. Dashboard metrics
+stay in memory unless captured with `--capture-output`; captures hold sanitized
 measurements only, with no prompts, patches, or credentials. Provider-reported
 usage is authoritative; local token estimates are not billing figures. See the
 [metrics reference](doc/spec/metrics.md).

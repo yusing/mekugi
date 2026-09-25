@@ -3,12 +3,15 @@ package router
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -121,6 +124,8 @@ type mekugiProxy struct {
 	journals           *journalStore
 	usage              *threadUsage
 	usageReport        string
+	metricMu           sync.Mutex
+	metricPaths        map[string]string
 	autoLiveDiff       *autoLiveDiff
 	activity           *subagentActivity
 	skillsManager      bool
@@ -140,6 +145,49 @@ type mekugiProxy struct {
 	historyBytes    int
 	sessionSequence uint64
 	closed          bool
+}
+
+// Token metrics are a best-effort local artifact, never a response dependency.
+// The transport thread is the stable Codex session identity across router restarts.
+func (p *mekugiProxy) writeTokenMetrics(thread string, report tokenUsageReport) {
+	if p == nil || thread == "" {
+		return
+	}
+	digest := sha256.Sum256([]byte(thread))
+	path := filepath.Join(os.TempDir(), "mekugi-token-metrics-"+hex.EncodeToString(digest[:])+".md")
+	p.metricMu.Lock()
+	defer p.metricMu.Unlock()
+	file, err := os.CreateTemp(os.TempDir(), ".mekugi-token-metrics-*.md")
+	if err != nil {
+		p.notice(thread, "token_metrics", "Token metrics could not be saved: "+err.Error())
+		return
+	}
+	defer os.Remove(file.Name())
+	content := formatTokenUsageReport(report) + "\n"
+	_, writeErr := file.WriteString(content)
+	err = errors.Join(writeErr, file.Chmod(0o600), file.Close())
+	if err == nil {
+		err = os.Rename(file.Name(), path)
+	}
+	if err != nil {
+		p.notice(thread, "token_metrics", "Token metrics could not be saved: "+err.Error())
+		return
+	}
+	if p.metricPaths == nil {
+		p.metricPaths = make(map[string]string)
+	}
+	p.metricPaths[thread] = path
+}
+
+func (p *mekugiProxy) tokenMetricPaths() []string {
+	p.metricMu.Lock()
+	defer p.metricMu.Unlock()
+	paths := make([]string, 0, len(p.metricPaths))
+	for _, path := range p.metricPaths {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths
 }
 
 func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *mekugiProxy {

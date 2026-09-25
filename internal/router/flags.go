@@ -12,7 +12,6 @@ type routerFlags struct {
 	timeout                  *time.Duration
 	streamIdleTimeout        *time.Duration
 	mode                     *string
-	usageReport              *string
 	mainMentorHandoffEnabled *bool
 	mentorHandoffEnabled     *bool
 	postCompactRecovery      *bool
@@ -20,7 +19,6 @@ type routerFlags struct {
 	grokAuthFile             *string
 	exploreFilter            *bool
 	captureOutput            *string
-	metricsOutput            *string
 	debug                    *bool
 }
 
@@ -32,17 +30,7 @@ func newRouterFlags(stderr io.Writer) routerFlags {
 		fmt.Fprintln(stderr, "       mekugi inspect-session --session PATH [options]")
 		flags.PrintDefaults()
 	}
-	usageReport := new(string)
-	flags.Func("usage-report", "usage report: off, compact, or table (default compact; table for multiple agents)", func(value string) error {
-		switch value {
-		case "off", "compact", "table":
-			*usageReport = value
-			return nil
-		}
-		return fmt.Errorf("--usage-report must be off, compact, or table")
-	})
 	return routerFlags{
-		usageReport:              usageReport,
 		FlagSet:                  flags,
 		timeout:                  flags.Duration("timeout", defaultRequestTimeout, "upstream response-start timeout"),
 		streamIdleTimeout:        flags.Duration("stream-idle-timeout", defaultStreamIdleTimeout, "maximum upstream inactivity between WebSocket messages or HTTP response bytes"),
@@ -53,7 +41,6 @@ func newRouterFlags(stderr io.Writer) routerFlags {
 		grokEnabled:              flags.Bool("grok", false, "enable Grok models and plaintext collaboration projection"),
 		grokAuthFile:             flags.String("grok-auth-file", "", "Grok OAuth credential file (default ~/.grok/auth.json)"),
 		exploreFilter:            flags.Bool("explore-filter", true, "omit search results that TypeSafe Jev judges unrelated to the task when TYPESAFE_API_KEY is set"),
-		metricsOutput:            flags.String("metrics-output", "", "optional final metrics JSON path"),
 		captureOutput:            flags.String("capture-output", "", "optional sanitized capture JSONL path"),
 		debug:                    flags.Bool("debug", false, "record diagnostics, capture, metrics, instructions, runtime reads, and AX report; print artifact paths on exit"),
 	}

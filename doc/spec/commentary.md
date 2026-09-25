@@ -157,11 +157,12 @@ before the terminal event, including when the journal is empty. Unavailable usag
 with an incomplete-usage explanation rather than silently omitting the notice, unless
 reporting is disabled. Child completion never emits its own usage report.
 
-`--usage-report=off|compact|table` controls the presentation. The omitted flag selects
-one compact line, switching to the table only when the report contains more than one
-proven agent. Explicit compact and table selections override that default. Off suppresses
-usage presentation, not provider-authoritative accounting. Reports remain before the
-final answer or journal flush, and retain their durable IDs for later history stripping.
+The commentary selects one compact line, switching to the table when the report
+contains more than one proven agent. The same eligible completion updates a
+Markdown table in the system temporary directory, using the Codex thread ID as
+the stable file identity across router restarts. The wrapper reports written file
+paths on exit. Reports remain before the final answer or journal flush, and
+retain their durable IDs for later history stripping.
 
 The compact `Router session usage` line shows the main thread's current Codex `turn_id`
 usage and the aggregate router-session total. Provider requests and journal continuations

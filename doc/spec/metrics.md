@@ -217,8 +217,8 @@ change existing normalized metric calculations. Offline corpus inspection exclud
 false/unknown completeness from observed totals rather than presenting missing fields
 as zero consumption.
 
-Explicit `--metrics-output PATH` writes the capturer's final metrics snapshot during
-session shutdown. It is independent of operational logging.
+The capturer's snapshot remains available from the dashboard API while the router
+runs. Explicit `--capture-output PATH` appends sanitized capture records.
 
 ### WebSocket capture
 

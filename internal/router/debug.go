@@ -22,6 +22,7 @@ type debugOutput struct {
 	log              *os.File
 	dump             *os.File
 	paths            []string
+	metricsPath      string
 	axThreads        map[string]bool
 	axDroppedThreads bool
 	err              error
@@ -44,17 +45,11 @@ func openDebugOutput(flags routerFlags) (*debugOutput, error) {
 	if *flags.captureOutput == "" {
 		*flags.captureOutput = filepath.Join(directory, "capture.jsonl")
 	}
-	if *flags.metricsOutput == "" {
-		*flags.metricsOutput = filepath.Join(directory, "metrics.json")
-	}
 	capture, err := filepath.Abs(*flags.captureOutput)
 	if err != nil {
 		return nil, err
 	}
-	metrics, err := filepath.Abs(*flags.metricsOutput)
-	if err != nil {
-		return nil, err
-	}
+	metrics := filepath.Join(directory, "metrics.json")
 	readLog := os.Getenv(capturer.AXReadOutputEnvironment)
 	if readLog == "" {
 		readLog = filepath.Join(directory, "reads.jsonl")
@@ -68,7 +63,8 @@ func openDebugOutput(flags routerFlags) (*debugOutput, error) {
 	d := &debugOutput{
 		paths: []string{filepath.Join(directory, "router.jsonl"), capture, metrics,
 			filepath.Join(directory, "instructions.jsonl"), readLog, filepath.Join(directory, "ax.json")},
-		axThreads: make(map[string]bool),
+		metricsPath: metrics,
+		axThreads:   make(map[string]bool),
 	}
 	d.log, err = os.OpenFile(d.paths[0], os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err == nil {
@@ -111,7 +107,7 @@ func validateAXOutputAliases(readLog string, outputs ...string) error {
 		}
 		info, err := os.Stat(outputPath)
 		if outputPath == journalPath || err == nil && journalInfo != nil && os.SameFile(journalInfo, info) {
-			return errors.New("AX journal, capture-output, and metrics-output must use different files")
+			return errors.New("AX journal and output files must use different files")
 		}
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err

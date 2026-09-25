@@ -530,6 +530,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		usageMessage = nil
 	}
 	if usageMessage != nil {
+		t.proxy.writeTokenMetrics(t.shellThreadID, counts)
 		t.liveDiffUsageID = jsonString(usageMessage, "id")
 	}
 	t.subagentResponses = t.retainCommentary(t.subagentResponses...)
