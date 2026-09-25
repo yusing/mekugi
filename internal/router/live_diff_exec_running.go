@@ -135,7 +135,7 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 	pending := execPendingScope(observation)
 	preview.Footer = execScopePreviewFooter(observation)
 	if pending != "" {
-		preview.Status, preview.Input = "PENDING · scoped effects", pending
+		preview.Status, preview.Input = liveDiffPreviewPending, pending
 		broker.publishPreview(preview, false)
 	}
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -211,14 +211,14 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 				preview.Files = append(preview.Files, file)
 			}
 		}
-		status, input := "RUNNING · observed so far", ""
+		status, input := liveDiffPreviewRunning, ""
 		if len(preview.Files) == 0 {
 			if pending == "" {
 				broker.discardRunningPreview(preview)
 				preview.Status, preview.Input = "", ""
 				continue
 			}
-			status, input = "PENDING · scoped effects", pending
+			status, input = liveDiffPreviewPending, pending
 		}
 		updated = updated || preview.Status != status || preview.Input != input
 		preview.Status, preview.Input = status, input
@@ -240,7 +240,7 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 }
 
 // A running card vanishes when it has no observed effect. Unlike completed
-// input streams, it must not leave a STREAMING COMPLETE placeholder behind.
+// input streams, it must not leave a completed placeholder behind.
 func (b *liveDiffBroker) discardRunningPreview(preview liveDiffPreview) {
 	b.mu.Lock()
 	defer b.mu.Unlock()

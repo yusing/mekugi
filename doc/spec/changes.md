@@ -310,18 +310,23 @@ neutral.
 
 When an interactive Herdr pane is available, Mekugi opens the viewer on the
 first observed editing or execution call. The stream view shows concurrent
-main-agent and child calls, and can display provisional `apply_patch` and
-stock `cat` heredoc diffs before completion. Literal `cp`, `mv`, `rm`, and
-`tee` heredoc commands are predicted from current file contents. Interpreter programs can be
-shown in their own language rather than as a shell wrapper. A preview does
-not claim that Codex ran or accepted an edit. A Code Mode patch held in an
-immutable top-level literal binding is rendered as the patch preview; its
-escaped JavaScript source is not exposed as a streaming script while the
-patch is incomplete.
+main-agent and child calls. It streams edits only: provisional `apply_patch`
+diffs and the file effects of shell commands, before completion. Stock `cat`
+heredoc redirections are always streamed, including from a native
+`exec_command` or Code Mode `tools.exec_command` call whose arguments are
+still arriving. Literal `cp`, `mv`, `rm`, and `tee` heredoc commands are
+predicted from current file contents. A preview does not claim that Codex ran
+or accepted an edit. A Code Mode patch held in an immutable top-level literal
+binding is rendered as the patch preview.
 Literal Python `Path.write_text` and `open(..., "w").write` bodies and literal
 JavaScript `writeFileSync`/`writeFile` bodies can be predicted without evaluation.
 Python same-path `read_text().replace(A, B[, count])` supports literal replacements;
-regex replacement is excluded. Unsupported expressions remain source previews.
+regex replacement is excluded. An interpreter heredoc still arriving is
+predicted on a best-effort basis by closing its unfinished content literal.
+Command and script text is never displayed. A command that is not a
+recognized edit has no card, and a later non-edit call keeps the last
+displayed edit. A literal `workdir` resolves relative targets; when an edit's
+`workdir` is computed, the card reports that its target cannot be resolved.
 Scope cards list pending VCS restore, deletion, or switch targets when their
 targets are known. Ordinary command watches remain hidden until a captured
 file changes. A `may write` footer distinguishes scoped paths from unresolved
@@ -330,7 +335,7 @@ targets on visible cards.
 While a writer window is open, display-only polling runs about every 500 ms over
 captured paths, reading content only after a stat change. Polling is bounded by
 path, time, and content budgets; it never runs a workspace sweep or provider query.
-Changed-file cards say `RUNNING · observed so far` and disappear if the files
+Changed-file cards say `observed so far` and disappear if the files
 return to their captured state. Terminal results, background transition, or
 viewer shutdown remove their live preview. Running previews and predictions
 never become durable evidence, and replay does not restart polling.
@@ -341,26 +346,22 @@ stock result bytes remain unchanged.
 Patch previews show projected source changes with the affected file's language
 highlighting, not the `apply_patch` instruction envelope. If source matching
 cannot establish that projection, the viewer must not fabricate a diff.
-In the live input stream, literal `tools.exec_command` command strings inside
-Code Mode are displayed while the JavaScript wrapper is still arriving.
-Numbered `# tools.exec_command N` headers separate distinct tool calls; line
-breaks within one command remain inside its header. Shell commands use Bash
-colors, while literal interpreter `-c`, `-e`, and heredoc bodies use their own
-language colors. This provisional display
-never changes Codex's original tool input or asserts that the command ran.
+This provisional display never changes Codex's original tool input or asserts
+that the command ran.
+
+A card header names the caller, then states the call with a roster glyph
+rather than a word: `◐` while the call is arriving or running, `✓` once it
+completes, and `!` with the reason when the edit cannot be projected. The
+current file follows, styled like file navigation: its `M`, `A`, `D`, or `R`
+status and live `+N -N` line counts, with `N/M files` when the call edits
+several.
 
 Provider input arrives in bursts. The stream view reveals each call's received
 input at its recent arrival rate, so the preview grows steadily rather than
 jumping per burst; the reveal trails received input by at most a bounded
 window and completes on the call's final input. The reveal advances by whole
-units: edit previews by line, and displayed command text by shell list
-element (`;`, `&`, `&&`, `||`, or a line break), so a pipeline appears whole.
-Operators inside quotes, substitutions, and comments do not end a unit.
-Literal interpreter source, whether a painted interpreter program, a source
-flag's quoted argument such as `python -c` or `node -e`, or an interpreter
-heredoc body, is revealed by line or statement `;`. An unfinished unit stays
-buffered until it completes, or is shown as it streams after about half a
-second. Newly revealed rows fade in from partial visibility, and rows
+lines. An unfinished line stays buffered until it completes, or is shown as it
+streams after about half a second. Newly revealed rows fade in from partial visibility, and rows
 revealed together cascade in order; the fade is display-only and never delays
 the underlying projection. A completed snapshot displays at its final colors
 without re-fading retained rows. The first usable frame and completion redraw

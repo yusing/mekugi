@@ -404,26 +404,13 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 			stats = fmt.Sprintf(" \x1b[2m(%d)\x1b[22m", entry.count)
 		} else {
 			file := files[entry.file]
-			status, color := "M", theme.Foreground(chroma.LiteralNumberInteger)
+			label = indent + livediff.Safe(entry.label, false)
 			if len(file.Chunks) > 0 {
 				first, last := file.Chunks[0].Review, file.Chunks[len(file.Chunks)-1].Review
-				switch {
-				case first.BeforePath == "":
-					status, color = "A", theme.Foreground(chroma.GenericInserted)
-				case last.AfterPath == "":
-					status, color = "D", theme.Foreground(chroma.GenericDeleted)
-				case first.BeforePath != last.AfterPath:
-					status, color = "R", theme.Accent()
-				}
+				label = indent + liveDiffFileLabel(first.BeforePath, last.AfterPath, livediff.Safe(entry.label, false), theme)
 			}
-			label = indent + color + status + "\x1b[39m  " + livediff.Safe(entry.label, false)
 			if entry.file < len(counts) {
-				count := counts[entry.file]
-				if count.Added < 0 || count.Removed < 0 {
-					stats = " \x1b[2m?\x1b[22m"
-				} else {
-					stats = fmt.Sprintf(" %s+%d\x1b[39m %s-%d\x1b[39m", theme.Foreground(chroma.GenericInserted), count.Added, theme.Foreground(chroma.GenericDeleted), count.Removed)
-				}
+				stats = liveDiffCountStats(counts[entry.file], theme)
 			}
 		}
 		available := max(0, contentWidth-2-ansi.StringWidth(stats))
@@ -447,4 +434,26 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 		}
 	}
 	return out
+}
+
+// liveDiffFileLabel prefixes a file label with its colored change status.
+func liveDiffFileLabel(beforePath, afterPath, label string, theme livediff.Theme) string {
+	status, color := "M", theme.Foreground(chroma.LiteralNumberInteger)
+	switch {
+	case beforePath == "":
+		status, color = "A", theme.Foreground(chroma.GenericInserted)
+	case afterPath == "":
+		status, color = "D", theme.Foreground(chroma.GenericDeleted)
+	case beforePath != afterPath:
+		status, color = "R", theme.Accent()
+	}
+	return color + status + "\x1b[39m  " + label
+}
+
+// liveDiffCountStats shows known line counts; unknown counts are not zero.
+func liveDiffCountStats(count livediff.Counts, theme livediff.Theme) string {
+	if count.Added < 0 || count.Removed < 0 {
+		return " \x1b[2m?\x1b[22m"
+	}
+	return fmt.Sprintf(" %s+%d\x1b[39m %s-%d\x1b[39m", theme.Foreground(chroma.GenericInserted), count.Added, theme.Foreground(chroma.GenericDeleted), count.Removed)
 }

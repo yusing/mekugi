@@ -121,7 +121,7 @@ func TestExecScopePreviewPublishesOnlyReviewChanges(t *testing.T) {
 		}
 		advanceExecCleanupPreviewTicker(t)
 		events := broker.takePreviews(sub)
-		changed := assertExecCleanupPreview(t, events, previewID, "RUNNING · observed so far")
+		changed := assertExecCleanupPreview(t, events, previewID, liveDiffPreviewRunning)
 		if len(changed.Files) != 1 || changed.Files[0].BeforePath != path || changed.Files[0].AfterPath != path {
 			t.Fatalf("changed review files = %+v", changed.Files)
 		}
@@ -199,7 +199,7 @@ func TestExecScopePreviewRetriesAfterBrokerAdmissionRejection(t *testing.T) {
 		broker.publishPreview(liveDiffPreview{ID: "occupied/a"}, true)
 		assertExecCleanupPreview(t, broker.takePreviews(sub), "occupied/a", "")
 		advanceExecCleanupPreviewTicker(t) // The file is unchanged since the rejected preview; retry it.
-		preview := assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, "RUNNING · observed so far")
+		preview := assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, liveDiffPreviewRunning)
 		if len(preview.Files) != 1 {
 			t.Fatalf("retried preview lost its changed-file projection: %+v", preview)
 		}
@@ -207,7 +207,7 @@ func TestExecScopePreviewRetriesAfterBrokerAdmissionRejection(t *testing.T) {
 		active, found := broker.previews[previewID]
 		count := len(broker.previews)
 		broker.mu.Unlock()
-		if !found || active.Status != "RUNNING · observed so far" || count != 16 {
+		if !found || active.Status != liveDiffPreviewRunning || count != 16 {
 			t.Fatalf("retried preview not admitted to full broker: found=%v active=%+v count=%d", found, active, count)
 		}
 
@@ -260,7 +260,7 @@ func TestExecScopePreviewDoesNotTreatReadBudgetAsChange(t *testing.T) {
 			t.Fatal(err)
 		}
 		advanceExecCleanupPreviewTicker(t)
-		changed := assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, "RUNNING · observed so far")
+		changed := assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, liveDiffPreviewRunning)
 		if len(changed.Files) != 1 || !strings.Contains(changed.Files[0].Incomplete, "content bound") {
 			t.Fatalf("changed large file lost its bounded observation: %+v", changed)
 		}

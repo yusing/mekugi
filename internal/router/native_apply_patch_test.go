@@ -60,7 +60,7 @@ func streamNativePatch(t *testing.T, transform *mekugiResponseTransform, patch s
 	}
 	if subscriber != nil {
 		preview := waitLiveDiffWorkerPreview(t, broker, subscriber, func(preview liveDiffPreview) bool {
-			return len(preview.Files) == 1 && preview.Status == "STREAMING PREVIEW" && strings.Contains(preview.Files[0].Diff, "+new")
+			return len(preview.Files) == 1 && preview.Status == liveDiffPreviewEdit && strings.Contains(preview.Files[0].Diff, "+new")
 		})
 		if preview.Input != "" || !strings.Contains(preview.Files[0].Diff, "+new") {
 			t.Fatalf("preview = %+v", preview)

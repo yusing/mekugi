@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/yusing/mekugi/internal/livediff"
 	"os"
 	"slices"
 	"strings"
@@ -14,6 +13,8 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func previewViewFixture(id string, rows int) liveDiffPreview {
@@ -39,7 +40,7 @@ func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 	}
 	pane.update(liveDiffPreview{ID: "one"})
 	lines, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 70, 12)
-	if err != nil || !strings.Contains(lines[0], "STREAMING COMPLETE") {
+	if err != nil || !strings.Contains(ansi.Strip(lines[0]), "✓ edit") {
 		t.Fatalf("missing completion hold: %v %q", err, lines)
 	}
 	// Completed input stays visible until a new call replaces it.
@@ -49,7 +50,7 @@ func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 	}
 	pane.update(liveDiffPreview{ID: "two"})
 	lines, err = pane.render(t.Context(), "/workspace", livediff.DarkTheme, 70, 12)
-	if err != nil || !strings.Contains(lines[0], "STREAMING COMPLETE") || !strings.Contains(strings.Join(lines, "\n"), "stream_0010") {
+	if err != nil || !strings.Contains(ansi.Strip(lines[0]), "✓ edit") || !strings.Contains(strings.Join(lines, "\n"), "stream_0010") {
 		t.Fatalf("completed stream did not persist: %v %q", err, lines)
 	}
 }
@@ -63,7 +64,7 @@ func TestLiveDiffPreviewPaneFinishedCardPersistsUntilReplaced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(pane.order, []string{"done", "live"}) || pane.live() != 1 || !strings.Contains(strings.Join(lines, "\n"), "STREAMING COMPLETE") {
+	if !slices.Equal(pane.order, []string{"done", "live"}) || pane.live() != 1 || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "✓ edit") {
 		t.Fatalf("finished card did not remain visible: %v %q", pane.order, lines)
 	}
 	pane.update(previewViewFixture("next", 2))
@@ -150,7 +151,7 @@ func TestLiveDiffFinishedInputRemainsOnTerminalWhileWaiting(t *testing.T) {
 	for index := range 2 {
 		select {
 		case frame := <-frames:
-			if !strings.Contains(frame, "STREAMING COMPLETE") || !strings.Contains(frame, "+stream_0002") || strings.Contains(frame, "Waiting for live input") {
+			if !strings.Contains(ansi.Strip(frame), "✓ edit") || !strings.Contains(frame, "+stream_0002") || strings.Contains(frame, "Waiting for live input") {
 				t.Fatalf("waiting frame lost completed input: %q", frame)
 			}
 			if index == 0 {
@@ -242,98 +243,6 @@ func BenchmarkLiveDiffPreviewPaneFrame(b *testing.B) {
 	}
 }
 
-func TestLiveDiffPreviewSyntaxAndVisibleTip(t *testing.T) {
-	preview := previewViewFixture("colored", 50)
-	preview.Input = "#!python3\n" + strings.Repeat("# context\n", 49) + "return \"STREAM_TIP\"\n"
-	var pane liveDiffPreviewPane
-	pane.update(preview)
-	for _, theme := range []liveDiffTheme{livediff.DarkTheme, livediff.LightTheme} {
-		lines, err := pane.render(t.Context(), "/workspace", theme, 70, 12)
-		if err != nil {
-			t.Fatal(err)
-		}
-		center := lines[len(lines)-1]
-		if !strings.Contains(ansi.Strip(center), "STREAM_TIP") ||
-			!strings.Contains(center, theme.Foreground(chroma.Keyword)+"return") ||
-			!strings.Contains(center, theme.Foreground(chroma.LiteralString)) {
-			t.Fatalf("tip not visible and colored: %q", center)
-		}
-		if strings.Contains(lines[0], "validated") || strings.Contains(lines[0], "applied") {
-			t.Fatal("preview title contains redundant disclaimer")
-		}
-	}
-}
-
-func TestLiveDiffPreviewRawScript(t *testing.T) {
-	var pane liveDiffPreviewPane
-	preview := liveDiffPreview{ID: "mixed", Workspace: "/workspace", Thread: "thread",
-		Input: "shell printf 'before'\nnew after.go\ntype <<PATCH\npackage main\n"}
-	pane.update(preview)
-	lines, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 70, 12)
-	text := ansi.Strip(strings.Join(lines, "\n"))
-	if err != nil || !strings.Contains(text, "STREAMING SCRIPT") || !strings.Contains(text, "package main") {
-		t.Fatalf("missing mixed-script tail: %q, %v", text, err)
-	}
-	if strings.Contains(text, "stream.sh") || strings.Contains(text, "PREVIEW UNAVAILABLE") {
-		t.Fatalf("raw script pretends to be a projected file: %q", text)
-	}
-}
-
-func TestLiveDiffPreviewScriptSyntax(t *testing.T) {
-	for _, theme := range []liveDiffTheme{livediff.DarkTheme, livediff.LightTheme} {
-		for _, tc := range []struct {
-			name, input, token string
-			kind               chroma.TokenType
-		}{
-			{"bash", "if true; then\n  printf 'hello'\nfi\n", "if", chroma.Keyword},
-			{"python", "#!python3\n" + strings.Repeat("# context\n", 100) + "return 'PYTHON_TIP'\n", "return", chroma.Keyword},
-			{"uv_python", "#!uv run python\nreturn 'PYTHON_TIP'\n", "return", chroma.Keyword},
-			{"javascript", "#!node\nconst tip = 'JS_TIP';\n", "const", chroma.KeywordDeclaration},
-			{"batch", "echo first\n#!python3\nreturn 'BATCH_TIP'\n", "return", chroma.Keyword},
-		} {
-			t.Run(fmt.Sprintf("%d/%s", theme, tc.name), func(t *testing.T) {
-				var pane liveDiffPreviewPane
-				pane.update(liveDiffPreview{ID: tc.name, Workspace: "/workspace", Input: tc.input})
-				lines, err := pane.render(t.Context(), "/workspace", theme, 100, 20)
-				frame := strings.Join(lines, "\n")
-				if err != nil || !strings.Contains(frame, theme.Foreground(tc.kind)+tc.token) {
-					t.Fatalf("missing %s syntax: %v %q", tc.name, err, frame)
-				}
-			})
-		}
-	}
-}
-
-func TestLiveDiffScriptLanguageBoundaries(t *testing.T) {
-	input := "cat <<EOF\n#!python3\nreturn not_python\nEOF\n#!python3\nreturn True\n"
-	paths := liveDiffSourceRows(input, liveDiffScriptSyntax(input))
-	if len(paths) != 6 || paths[2].Path != "stream.sh" || paths[5].Path != "stream.py" {
-		t.Fatalf("heredoc content changed language: %v", paths)
-	}
-}
-
-func BenchmarkLiveDiffScriptPreviewFrame(b *testing.B) {
-	for _, sourceName := range []string{"python", "shell"} {
-		b.Run(sourceName, func(b *testing.B) {
-			base := "#!python3\n" + strings.Repeat("# context\n", 2000)
-			if sourceName == "shell" {
-				base = strings.Repeat("echo context\n", 2000)
-			}
-			var pane liveDiffPreviewPane
-			sequence := 0
-			b.ReportAllocs()
-			for b.Loop() {
-				sequence++
-				input := base + fmt.Sprintf("return \"tip_%d\"\n", sequence)
-				pane.update(liveDiffPreview{ID: "stream", Workspace: "/workspace", Input: input})
-				if _, err := pane.render(b.Context(), "/workspace", livediff.DarkTheme, 120, 28); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
-	}
-}
-
 func TestLiveDiffConcurrentPreviewCards(t *testing.T) {
 	var pane liveDiffPreviewPane
 	first := previewViewFixture("first", 100)
@@ -352,7 +261,7 @@ func TestLiveDiffConcurrentPreviewCards(t *testing.T) {
 		return ansi.Strip(strings.Join(lines, "\n"))
 	}
 	frame := check(12)
-	for _, want := range []string{"/root/editor · STREAMING SCRIPT", "/root/reviewer · STREAMING SCRIPT", "stream_0100", "stream_0200"} {
+	for _, want := range []string{"/root/editor · ◐ edit", "/root/reviewer · ◐ edit", "stream_0100", "stream_0200"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing concurrent caller/source %q: %s", want, frame)
 		}
@@ -378,7 +287,7 @@ func TestLiveDiffConcurrentPreviewCards(t *testing.T) {
 	pane.update(second)
 	pane.update(liveDiffPreview{ID: "first"})
 	frame = check(12)
-	if !strings.Contains(frame, "/root/editor · STREAMING COMPLETE") || !strings.Contains(frame, "/root/editor · STREAMING SCRIPT") {
+	if !strings.Contains(frame, "/root/editor · ✓ edit") || !strings.Contains(frame, "/root/editor · ◐ edit") {
 		t.Fatalf("completion replaced another call: %s", frame)
 	}
 	if len(pane.order) != 2 || !pane.views["first"].complete || pane.views["second"].complete {
@@ -422,10 +331,10 @@ func TestLiveDiffPreviewCallerUsesAvailableWidth(t *testing.T) {
 		t.Fatal(err)
 	}
 	header := ansi.Strip(lines[0])
-	if !strings.HasPrefix(header, "  "+preview.Caller+" · STREAMING") || strings.Contains(header, "…") {
+	if !strings.HasPrefix(header, "  "+preview.Caller+" · ◐") || strings.Contains(header, "…") {
 		t.Fatalf("caller truncated despite available width: %q", header)
 	}
-	preview.Status = "PREVIEW UNAVAILABLE: " + strings.Repeat("reason ", 20)
+	preview.Status = liveDiffPreviewUnavailable + strings.Repeat("reason ", 20)
 	pane.update(preview)
 	lines, err = pane.render(t.Context(), "/workspace", livediff.DarkTheme, 60, 5)
 	if err != nil {
@@ -449,33 +358,71 @@ func BenchmarkLiveDiffConcurrentPreviewFrame(b *testing.B) {
 	}
 }
 
-func TestLiveDiffCompletedPreviewKeepsProvisionalStatus(t *testing.T) {
+func TestLiveDiffCompletedPreviewShowsDoneGlyph(t *testing.T) {
 	var pane liveDiffPreviewPane
 	pane.update(liveDiffPreview{
 		ID: "one", Workspace: "/workspace", Thread: "thread",
-		Status: "STREAMING PREVIEW",
+		Status: liveDiffPreviewEdit,
 	})
 	pane.update(liveDiffPreview{ID: "one"})
 	lines, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 160, 12)
 	if err != nil {
 		t.Fatal(err)
 	}
-	header := ansi.Strip(lines[0])
-	for _, want := range []string{"STREAMING COMPLETE"} {
-		if !strings.Contains(header, want) {
-			t.Fatalf("completed preview lost %q: %s", want, header)
-		}
+	if header := ansi.Strip(lines[0]); !strings.Contains(header, "· ✓ edit") || strings.Contains(header, "STREAMING") || strings.Contains(header, "COMPLETE") {
+		t.Fatalf("completed preview header = %s", header)
 	}
 }
 
-func TestLiveDiffPendingEditHidesEarlierScript(t *testing.T) {
+func TestLiveDiffPreviewTitleShowsFileStatusAndCounts(t *testing.T) {
+	modified := mekugi.RenderReviewFile("/workspace/a.go", "/workspace/a.go", "one\ntwo\n", "one\nTWO\nthree\n")
+	added := mekugi.RenderReviewFile("", "/workspace/new.txt", "", "x\n")
+	deleted := mekugi.RenderReviewFile("/workspace/old.txt", "", "a\nb\n", "")
+	for _, tc := range []struct {
+		name    string
+		preview liveDiffPreview
+		want    string
+	}{
+		{"modified", liveDiffPreview{Status: liveDiffPreviewEdit, Files: []mekugi.ReviewFile{modified}}, "◐ M  a.go +2 -1"},
+		{"added", liveDiffPreview{Status: liveDiffPreviewEdit, Files: []mekugi.ReviewFile{added}}, "◐ A  new.txt +1 -0"},
+		{"deleted", liveDiffPreview{Status: liveDiffPreviewEdit, Files: []mekugi.ReviewFile{deleted}}, "◐ D  old.txt +0 -2"},
+		{"several files", liveDiffPreview{Status: liveDiffPreviewEdit, Files: []mekugi.ReviewFile{modified, added}}, "◐ A  new.txt +1 -0 2/2 files"},
+		{"running", liveDiffPreview{Status: liveDiffPreviewRunning, Files: []mekugi.ReviewFile{modified}}, "◐ M  a.go +2 -1 · observed so far"},
+		{"pending", liveDiffPreview{Status: liveDiffPreviewPending, Input: "will restore (pending)\n/workspace/a.go"}, "◐ scoped effects"},
+		{"unavailable", liveDiffPreview{Status: liveDiffPreviewUnavailable + "patch cannot be projected", Input: "\n"}, "! patch cannot be projected"},
+		{"diff tail", liveDiffPreview{Status: liveDiffPreviewEdit, Input: "+x\n", DiffText: true, Truncated: true}, "◐ edit · tail"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var pane liveDiffPreviewPane
+			tc.preview.ID, tc.preview.Workspace, tc.preview.Thread = "one", "/workspace", "thread"
+			pane.update(tc.preview)
+			lines, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 120, 8)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if header := ansi.Strip(lines[0]); !strings.HasSuffix(header, "thread · "+tc.want) {
+				t.Fatalf("header = %q, want suffix %q", header, tc.want)
+			}
+		})
+	}
 	var pane liveDiffPreviewPane
-	pane.update(liveDiffPreview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: "STREAMING SCRIPT", Input: "apply_patch "})
+	pane.update(liveDiffPreview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: liveDiffPreviewEdit, Files: []mekugi.ReviewFile{modified}})
+	pane.update(liveDiffPreview{ID: "one"})
+	lines, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 120, 8)
+	if err != nil || !strings.Contains(lines[0], liveActivityGreen+"✓") ||
+		!strings.Contains(lines[0], livediff.DarkTheme.Foreground(chroma.GenericInserted)+"+2") {
+		t.Fatalf("completed header lost its glyph or count colors: %v %q", err, lines[0])
+	}
+}
+
+func TestLiveDiffPendingEditRemovesEmptyCard(t *testing.T) {
+	var pane liveDiffPreviewPane
+	pane.update(liveDiffPreview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: liveDiffPreviewEdit, Input: "\n"})
 	pane.update(liveDiffPreview{ID: "one", Workspace: "/workspace", Thread: "thread"})
 	if len(pane.views) != 0 || len(pane.order) != 0 {
-		t.Fatal("pending edit left a script or empty status card")
+		t.Fatal("pending edit left an empty status card")
 	}
-	pane.update(liveDiffPreview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: "STREAMING PREVIEW"})
+	pane.update(liveDiffPreview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: liveDiffPreviewEdit})
 	if len(pane.views) != 1 {
 		t.Fatal("later projection did not restore the preview")
 	}
@@ -537,7 +484,6 @@ func TestLiveDiffPreviewCardsKeepSlotsAndGutter(t *testing.T) {
 
 func TestLiveDiffPreviewPacerIsSteadyAndBounded(t *testing.T) {
 	var pacer liveDiffPreviewPacer
-	lines := liveDiffRevealUnits{lines: true}
 	input := ""
 	shown := 0
 	// Bursts every fourth frame reveal whole lines on most frames, never all at once.
@@ -546,7 +492,7 @@ func TestLiveDiffPreviewPacerIsSteadyAndBounded(t *testing.T) {
 		if frame%4 == 0 {
 			input += strings.Repeat("界x", 6) + "\n" + strings.Repeat("y", 10) + "\n"
 		}
-		next := pacer.advance(input, false, lines)
+		next := pacer.advance(input, false, false)
 		if next < shown || next > len(input) || next > 0 && input[next-1] != '\n' {
 			t.Fatalf("frame %d revealed %d of %d after %d", frame, next, len(input), shown)
 		}
@@ -563,13 +509,13 @@ func TestLiveDiffPreviewPacerIsSteadyAndBounded(t *testing.T) {
 	}
 	// A large backlog skips to the window at the tip.
 	input += strings.Repeat("y", 64<<10) + "\n"
-	if next := pacer.advance(input, false, lines); next < len(input)-liveDiffPreviewMaxLag {
+	if next := pacer.advance(input, false, false); next < len(input)-liveDiffPreviewMaxLag {
 		t.Fatalf("lag exceeded its window: %d of %d", next, len(input))
 	}
 	// A finished call converges promptly, including an unterminated line.
 	input += "tail"
 	for range 20 {
-		shown = pacer.advance(input, true, lines)
+		shown = pacer.advance(input, true, false)
 	}
 	if shown != len(input) {
 		t.Fatalf("final input not reached: %d of %d", shown, len(input))
@@ -578,11 +524,11 @@ func TestLiveDiffPreviewPacerIsSteadyAndBounded(t *testing.T) {
 
 func TestLiveDiffPreviewPacerBuffersUnits(t *testing.T) {
 	// Arrival steps stay within the hold, so only unit ends are revealed.
-	reveal := func(input string, units liveDiffRevealUnits, step int) []string {
+	reveal := func(input string, encoded bool, step int) []string {
 		var pacer liveDiffPreviewPacer
 		var shown []string
 		for i := min(step, len(input)); ; i = min(i+step, len(input)) {
-			if next := pacer.advance(input[:i], false, units); len(shown) == 0 && next > 0 || len(shown) > 0 && input[:next] != shown[len(shown)-1] {
+			if next := pacer.advance(input[:i], false, encoded); len(shown) == 0 && next > 0 || len(shown) > 0 && input[:next] != shown[len(shown)-1] {
 				shown = append(shown, input[:next])
 			}
 			if i == len(input) {
@@ -592,12 +538,12 @@ func TestLiveDiffPreviewPacerBuffersUnits(t *testing.T) {
 	}
 	// An edit payload reveals by line, even when its source contains operators.
 	body := "for (i = 0; i < n; i++) {\n\tx();\n"
-	if got := reveal(body, liveDiffRevealUnits{lines: true}, 3); !slices.Equal(got, []string{"for (i = 0; i < n; i++) {\n", body}) {
+	if got := reveal(body, false, 3); !slices.Equal(got, []string{"for (i = 0; i < n; i++) {\n", body}) {
 		t.Fatalf("lines: %q", got)
 	}
 	// Encoded input breaks at escaped line breaks, not at an escaped backslash.
 	encoded := `{"cmd":"cat > f <<'EOF'\nsay \\n here\nnext`
-	if got := reveal(encoded, liveDiffRevealUnits{lines: true, encoded: true}, 3); !slices.Equal(got, []string{
+	if got := reveal(encoded, true, 3); !slices.Equal(got, []string{
 		`{"cmd":"cat > f <<'EOF'\n`, `{"cmd":"cat > f <<'EOF'\nsay \\n here\n`,
 	}) {
 		t.Fatalf("encoded: %q", got)
@@ -607,7 +553,7 @@ func TestLiveDiffPreviewPacerBuffersUnits(t *testing.T) {
 	long := strings.Repeat("z", 64)
 	shown := 0
 	for range liveDiffPreviewMaxHold + 2 {
-		shown = pacer.advance(long, false, liveDiffRevealUnits{lines: true})
+		shown = pacer.advance(long, false, false)
 	}
 	if shown != len(long) {
 		t.Fatalf("held unit was not released: %d of %d", shown, len(long))
@@ -696,113 +642,19 @@ func TestLiveDiffPreviewPacerKeepsEscapesWhole(t *testing.T) {
 	}
 	var pacer liveDiffPreviewPacer
 	input := `"a\`
-	if shown := pacer.advance(input, false, liveDiffRevealUnits{encoded: true}); shown != 2 {
+	// A held line is released without splitting its trailing escape.
+	shown := 0
+	for range liveDiffPreviewMaxHold + 1 {
+		shown = pacer.advance(input, false, true)
+	}
+	if shown != 2 {
 		t.Fatalf("streaming reveal split an escape at %d", shown)
 	}
 	// Finished input is shown whole even when it ends in a backslash.
 	for range 3 {
-		pacer.advance(input, true, liveDiffRevealUnits{encoded: true})
+		pacer.advance(input, true, true)
 	}
 	if pacer.shown != len(input) {
 		t.Fatalf("finished input stalled at %d of %d", pacer.shown, len(input))
-	}
-}
-
-func TestCodeModeShellHeaderWaitsForItsCommand(t *testing.T) {
-	for _, test := range []struct {
-		display string
-		want    int
-	}{
-		{"# tools.exec_command 1\n", 0},
-		{"# tools.exec_command 1\nls\n", 26},
-		{"# tools.exec_command 1\nls\n\n# tools.exec_command 2\n", 25},
-	} {
-		if got := codeModeShellHeaderCut(test.display); got != test.want {
-			t.Errorf("%q: cut at %d, want %d", test.display, got, test.want)
-		}
-	}
-}
-
-func TestLiveDiffScriptBoundaryFollowsShellAndInterpreterUnits(t *testing.T) {
-	// Every prefix reveals only through its last complete unit.
-	units := func(source string, spans []liveDiffSourceSpan) []string {
-		var shown []string
-		for i := 1; i <= len(source); i++ {
-			if end := liveDiffScriptBoundary(source[:i], spans); end > 0 && (len(shown) == 0 || shown[len(shown)-1] != source[:end]) {
-				shown = append(shown, source[:end])
-			}
-		}
-		return shown
-	}
-	for _, test := range []struct {
-		name, source string
-		spans        []liveDiffSourceSpan
-		want         []string
-	}{{
-		name:   "quoted operators and pipelines",
-		source: `echo "a | b; c && d" 'e;f' | grep -c x; ls $(a; b) # g; h` + "\n",
-		want:   []string{`echo "a | b; c && d" 'e;f' | grep -c x;`, `echo "a | b; c && d" 'e;f' | grep -c x; ls $(a; b) # g; h` + "\n"},
-	}, {
-		name:   "pipeline ends at its list operator",
-		source: "cat f | head; git status && go test ./... || true\n",
-		want:   []string{"cat f | head;", "cat f | head; git status &&", "cat f | head; git status && go test ./... ||", "cat f | head; git status && go test ./... || true\n"},
-	}, {
-		name:   "inline source flag",
-		source: "cd a && python3 -c 'import os\nprint(\"x;y\"); f()\n'",
-		want:   []string{"cd a &&", "cd a && python3 -c 'import os\n", "cd a && python3 -c 'import os\nprint(\"x;y\");", "cd a && python3 -c 'import os\nprint(\"x;y\"); f()\n"},
-	}, {
-		name:   "node eval in double quotes",
-		source: `node -e "const a = 1; console.log('p;q')"`,
-		want:   []string{`node -e "const a = 1;`},
-	}, {
-		name:   "interpreter heredoc",
-		source: "uv run python - <<'PY'\nx = 1; y = 2\nprint(x | y)\nPY\necho done\n",
-		want: []string{"uv run python - <<'PY'\n", "uv run python - <<'PY'\nx = 1;", "uv run python - <<'PY'\nx = 1; y = 2\n",
-			"uv run python - <<'PY'\nx = 1; y = 2\nprint(x | y)\n", "uv run python - <<'PY'\nx = 1; y = 2\nprint(x | y)\nPY\n",
-			"uv run python - <<'PY'\nx = 1; y = 2\nprint(x | y)\nPY\necho done\n"},
-	}, {
-		name:   "data heredoc by line",
-		source: "cat <<EOF | kubectl apply -f -\na: b; c\nEOF\n",
-		want:   []string{"cat <<EOF | kubectl apply -f -\n", "cat <<EOF | kubectl apply -f -\na: b; c\n", "cat <<EOF | kubectl apply -f -\na: b; c\nEOF\n"},
-	}, {
-		name:   "painted interpreter span",
-		source: "# tools.exec_command 1\nimport os; os.sync()\n",
-		spans:  []liveDiffSourceSpan{{Path: "stream.sh"}, {Offset: len("# tools.exec_command 1\n"), Path: "stream.py"}},
-		want:   []string{"# tools.exec_command 1\n", "# tools.exec_command 1\nimport os;", "# tools.exec_command 1\nimport os; os.sync()\n"},
-	}, {
-		name:   "redirections are not list operators",
-		source: "make 2>&1 &> log & wait\n",
-		want:   []string{"make 2>&1 &> log &", "make 2>&1 &> log & wait\n"},
-	}} {
-		t.Run(test.name, func(t *testing.T) {
-			if got := units(test.source, test.spans); !slices.Equal(got, test.want) {
-				t.Fatalf("\n got %q\nwant %q", got, test.want)
-			}
-		})
-	}
-}
-
-func TestLiveDiffRevealGateHoldsWithoutRetracting(t *testing.T) {
-	var gate liveDiffRevealGate
-	if n := gate.reveal("cd a && make", nil, false); n != len("cd a &&") || !gate.pending {
-		t.Fatalf("unfinished command shown: %d %v", n, gate.pending)
-	}
-	// A held unit is released after the hold and keeps streaming.
-	source := "cd a && make"
-	for range liveDiffPreviewMaxHold {
-		gate.reveal(source, nil, false)
-	}
-	if n := gate.reveal(source, nil, false); n != len(source) {
-		t.Fatalf("held unit was not released: %d", n)
-	}
-	if n := gate.reveal(source+" te", nil, false); n != len(source)+3 {
-		t.Fatalf("released unit stopped streaming: %d", n)
-	}
-	// The next boundary resumes gating without hiding shown text.
-	if n := gate.reveal(source+" test; ec", nil, false); n != len(source+" test;") {
-		t.Fatalf("gating did not resume: %d", n)
-	}
-	if n := gate.reveal(source+" test; ec", nil, true); n != len(source+" test; ec") || gate.pending {
-		t.Fatalf("final text withheld: %d", n)
 	}
 }

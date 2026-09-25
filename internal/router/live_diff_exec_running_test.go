@@ -88,7 +88,7 @@ func TestExecWatchWithoutCapturedPathsDoesNotCrowdStreamingInput(t *testing.T) {
 		registry.preview(ref, execObservation{Class: execOpaque.String(), Reason: "unresolved command"}, broker, workspace, "thread", "same-caller")
 	}
 	broker.publishPreview(liveDiffPreview{ID: "script", Workspace: workspace, Thread: "thread", Caller: "same-caller",
-		Status: "STREAMING SCRIPT", Input: "cat /tmp/example\n"}, false)
+		Status: liveDiffPreviewEdit, Input: "cat /tmp/example\n"}, false)
 	frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "cat /tmp/example") })
 	plain := ansi.Strip(frame)
 	if strings.Count(plain, "same-caller ·") != 1 || strings.Contains(plain, "No scoped changes") ||
@@ -172,7 +172,7 @@ func TestExecRunningPreviewShowsScopedVCSAndCancelsWithoutEvidence(t *testing.T)
 
 	pending := ui.frame(t, func(frame string) bool {
 		plain := ansi.Strip(frame)
-		return strings.Contains(plain, "PENDING · scoped effects") &&
+		return strings.Contains(plain, "◐ scoped effects") &&
 			strings.Contains(plain, "will restore (pending)") && strings.Contains(plain, tracked)
 	})
 	if !strings.Contains(ansi.Strip(pending), "may write") ||
@@ -181,7 +181,7 @@ func TestExecRunningPreviewShowsScopedVCSAndCancelsWithoutEvidence(t *testing.T)
 		t.Fatalf("pending VCS card omitted bounded/unresolved scope qualification: %s", ansi.Strip(pending))
 	}
 	preview := waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
-		return preview.ID == "running:call-1" && preview.Status == "PENDING · scoped effects"
+		return preview.ID == "running:call-1" && preview.Status == liveDiffPreviewPending
 	})
 	if preview.Workspace != repo || preview.Thread != "thread" || !strings.Contains(preview.Input, tracked) {
 		t.Fatalf("pending preview lost its authorized caller scope: %+v", preview)
@@ -195,7 +195,7 @@ func TestExecRunningPreviewShowsScopedVCSAndCancelsWithoutEvidence(t *testing.T)
 	}
 	running := ui.frame(t, func(frame string) bool {
 		plain := ansi.Strip(frame)
-		return strings.Contains(plain, "RUNNING · observed so far") && strings.Contains(plain, "+restored bytes")
+		return strings.Contains(plain, "observed so far") && strings.Contains(plain, "+restored bytes")
 	})
 	plainRunning := ansi.Strip(running)
 	if !strings.Contains(plainRunning, "bounded scope") || !strings.Contains(plainRunning, "unresolved targets") ||
@@ -203,7 +203,7 @@ func TestExecRunningPreviewShowsScopedVCSAndCancelsWithoutEvidence(t *testing.T)
 		t.Fatalf("running preview escaped its captured scope or lost its qualification: %s", plainRunning)
 	}
 	preview = waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
-		return preview.ID == "running:call-1" && preview.Status == "RUNNING · observed so far" && len(preview.Files) == 1
+		return preview.ID == "running:call-1" && preview.Status == liveDiffPreviewRunning && len(preview.Files) == 1
 	})
 	if path := preview.Files[0].AfterPath; path != tracked {
 		t.Fatalf("running preview reported path %q outside captured target %q", path, tracked)
@@ -213,7 +213,7 @@ func TestExecRunningPreviewShowsScopedVCSAndCancelsWithoutEvidence(t *testing.T)
 	waitExecScopePreviewGone(t, broker, "running:call-1")
 	removed := ui.frame(t, func(frame string) bool {
 		plain := ansi.Strip(frame)
-		return !strings.Contains(plain, "exec-test-caller") && !strings.Contains(plain, "RUNNING · observed so far")
+		return !strings.Contains(plain, "exec-test-caller") && !strings.Contains(plain, "observed so far")
 	})
 	if strings.Contains(ansi.Strip(removed), "restored bytes") {
 		t.Fatalf("closed running preview remained rendered: %s", ansi.Strip(removed))
@@ -282,7 +282,7 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 			registry.open(&execWindow{ref: "lifecycle", roots: []string{repo}, thread: "thread", turn: "old-turn", session: "session:42"})
 			registry.preview("lifecycle", *observation, broker, repo, "thread", "lifecycle-test")
 			waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
-				return preview.ID == "running:lifecycle" && preview.Status == "PENDING · scoped effects"
+				return preview.ID == "running:lifecycle" && preview.Status == liveDiffPreviewPending
 			})
 
 			if lifecycle == "background" {

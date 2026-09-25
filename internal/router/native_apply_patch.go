@@ -284,28 +284,6 @@ func stockLiteralPatchInputs(source string) []string {
 	return patches
 }
 
-// Detect a JavaScript string fragment containing a patch envelope even while
-// the string or surrounding streamed program is incomplete. This is
-// display-only suppression: evidence capture still requires a complete, valid
-// program.
-func stockPatchLiteralPresent(source string) bool {
-	if len(source) > maxMekugiScriptBytes {
-		return false
-	}
-	for offset := 0; offset < len(source); {
-		if source[offset] != '\'' && source[offset] != '"' {
-			offset++
-			continue
-		}
-		value, consumed := toolActivityJavaScriptStringFragment(source[offset:])
-		if strings.Contains(value, "*** Begin Patch") {
-			return true
-		}
-		offset += max(1, consumed)
-	}
-	return false
-}
-
 // Decode arriving patch text without requiring the closing quote, call, or
 // envelope. This is display-only and must never feed capture or execution.
 func stockPatchFragment(source string) string {
@@ -610,5 +588,5 @@ func nativePatchPreview(input string) (liveDiffPreview, bool) {
 	if input != "*** Begin Patch" && !strings.HasPrefix(input, "*** Begin Patch\n") && !strings.HasPrefix(input, "*** Begin Patch\r\n") {
 		return liveDiffPreview{}, false
 	}
-	return liveDiffPreview{Input: input, DiffText: true, Status: "STREAMING PREVIEW"}, true
+	return liveDiffPreview{Input: input, DiffText: true, Status: liveDiffPreviewEdit}, true
 }

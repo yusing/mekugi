@@ -1,7 +1,6 @@
 package router
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 	"unicode"
@@ -10,16 +9,24 @@ import (
 	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
+// codeModeShellCall is a literal exec_command argument object read from an
+// unfinished Code Mode stream. DynamicWorkdir marks a workdir that is present
+// but not yet a complete literal, so relative targets are not resolvable.
+type codeModeShellCall struct {
+	cmd, workdir   string
+	dynamicWorkdir bool
+}
+
 // Read literal cmd strings from an unfinished Code Mode stream for display
 // only. This scanner does not validate or execute JS; completed calls still
 // use the syntax-tree recognizer for operation evidence.
-func codeModeShellFragments(source string) (scripts []string, shellProgram bool) {
+func codeModeShellFragments(source string) []codeModeShellCall {
 	if len(source) > maxMekugiScriptBytes {
-		return nil, false
+		return nil
 	}
 	regexRanges, staticObjects, callees := codeModePreviewSyntax(source)
 	regexIndex := 0
-	openBatch := false
+	var calls []codeModeShellCall
 	for at := 0; at < len(source); {
 		for regexIndex < len(regexRanges) && at >= regexRanges[regexIndex].end {
 			regexIndex++
@@ -32,9 +39,6 @@ func codeModeShellFragments(source string) (scripts []string, shellProgram bool)
 			at = next
 			continue
 		}
-		if codeModeIdentifierAt(source, at, "Promise") && codeModeOpenPromiseArray(source, at, regexRanges) {
-			openBatch = true
-		}
 		if !callees[at] &&
 			(!codeModeIdentifierAt(source, at, "tools") || !codeModeBareToolsCandidate(source, at)) {
 			at++
@@ -46,15 +50,10 @@ func codeModeShellFragments(source string) (scripts []string, shellProgram bool)
 			continue
 		}
 		next = codeModeSpace(source, next+1)
-		if len(source)-next >= 4 && len(source)-next < len(nativeExecCommandToolName) &&
-			strings.HasPrefix(nativeExecCommandToolName, source[next:]) {
-			shellProgram = true // The callee is still arriving.
-		}
 		if !codeModeIdentifierAt(source, next, nativeExecCommandToolName) {
 			at++
 			continue
 		}
-		shellProgram = true
 		next = codeModeSpace(source, next+len(nativeExecCommandToolName))
 		if next >= len(source) || source[next] != '(' {
 			at++
@@ -65,80 +64,34 @@ func codeModeShellFragments(source string) (scripts []string, shellProgram bool)
 			at++
 			continue
 		}
-		script, end, closed := codeModeShellObject(source, next)
+		call, end, closed := codeModeShellObject(source, next)
 		if closed {
 			// Once the argument object is closed, trust its parsed static value,
 			// not a lexical prefix that a computed key or spread may override.
 			literal, found := staticObjects[next]
-			if !found || literal.end != end {
-				script = ""
-			} else {
-				script = literal.cmd
+			switch {
+			case !found || literal.end != end:
+				call = codeModeShellCall{}
+			case literal.call.cmd == "" && call.dynamicWorkdir:
+				// A computed workdir keeps the call recognizable as an edit
+				// whose targets cannot be resolved.
+				call.workdir = ""
+			default:
+				call = literal.call
 			}
 		}
-		if script != "" {
-			scripts = append(scripts, script)
+		if call.cmd != "" {
+			calls = append(calls, call)
 		}
 		at = max(at+1, end)
 	}
-	return scripts, shellProgram || openBatch
-}
-
-// An open literal Promise array may become a shell batch. Hold back its JS
-// wrapper until the array closes or a literal shell call arrives. Completed
-// non-shell batches still use the ordinary JavaScript preview.
-func codeModeOpenPromiseArray(source string, at int, regexRanges []codeModeSourceRange) bool {
-	next := codeModeTrivia(source, at+len("Promise"))
-	if next >= len(source) || source[next] != '.' {
-		return false
-	}
-	next = codeModeTrivia(source, next+1)
-	method := ""
-	for _, candidate := range []string{"allSettled", "all"} {
-		if codeModeIdentifierAt(source, next, candidate) {
-			method = candidate
-			break
-		}
-	}
-	if method == "" {
-		return false
-	}
-	next = codeModeTrivia(source, next+len(method))
-	if next >= len(source) || source[next] != '(' {
-		return false
-	}
-	next = codeModeTrivia(source, next+1)
-	if next >= len(source) || source[next] != '[' {
-		return false
-	}
-	depth := 1
-	for next++; next < len(source); next++ {
-		if skip := codeModeSkipLiteral(source, next); skip > next {
-			next = skip - 1
-			continue
-		}
-		for _, span := range regexRanges {
-			if next >= span.start && next < span.end {
-				next = span.end - 1
-				break
-			}
-		}
-		if source[next] == '[' {
-			depth++
-		} else if source[next] == ']' {
-			depth--
-			if depth == 0 {
-				return false
-			}
-		}
-	}
-	return true
+	return calls
 }
 
 type codeModeSourceRange struct{ start, end int }
 type codeModeStaticObject struct {
-	end int
-	cmd string
+	end  int
+	call codeModeShellCall
 }
 
 // JavaScript regex literals can contain text resembling a tool invocation.
@@ -172,13 +125,17 @@ func codeModePreviewSyntax(source string) ([]codeModeSourceRange, map[int]codeMo
 		if node.Kind() == "object" {
 			end := int(node.EndByte())
 			if end > int(node.StartByte()) && end <= len(source) && source[end-1] == '}' {
-				var cmd string
+				var call codeModeShellCall
 				if value, ok := toolActivityStaticJavaScriptValue(node, bytes); ok {
 					if properties, ok := value.(map[string]any); ok {
-						cmd, _ = properties["cmd"].(string)
+						call.cmd, _ = properties["cmd"].(string)
+						if workdir, exists := properties["workdir"]; exists {
+							call.workdir, ok = workdir.(string)
+							call.dynamicWorkdir = !ok
+						}
 					}
 				}
-				objects[int(node.StartByte())] = codeModeStaticObject{end: end, cmd: cmd}
+				objects[int(node.StartByte())] = codeModeStaticObject{end: end, call: call}
 			}
 		}
 		for i := range node.NamedChildCount() {
@@ -191,8 +148,10 @@ func codeModePreviewSyntax(source string) ([]codeModeSourceRange, map[int]codeMo
 
 // codeModeShellObject scans an argument object from its brace. Closed
 // reports that the object ended; otherwise end is len(source), which may
-// itself follow a brace inside the unfinished command text.
-func codeModeShellObject(source string, start int) (script string, end int, closed bool) {
+// itself follow a brace inside the unfinished command text. JSON arguments
+// are a subset of this object syntax.
+func codeModeShellObject(source string, start int) (call codeModeShellCall, end int, closed bool) {
+	script := ""
 	depth, brackets, parens := 1, 0, 0
 	expectKey := true
 	for at := start + 1; at < len(source); {
@@ -205,6 +164,21 @@ func codeModeShellObject(source string, start int) (script string, end int, clos
 			if key == "" {
 				if source[at] != ' ' && source[at] != '\t' && source[at] != '\r' && source[at] != '\n' && source[at] != ',' {
 					script = "" // An unparsed property could override cmd.
+				}
+			} else if colon := codeModeTrivia(source, end); key == "workdir" && colon < len(source) && source[colon] == ':' {
+				expectKey = false
+				call.workdir, call.dynamicWorkdir = "", true
+				valueStart := codeModeTrivia(source, colon+1)
+				if valueStart < len(source) && (source[valueStart] == '"' || source[valueStart] == '\'') {
+					value, consumed := toolActivityJavaScriptStringFragment(source[valueStart:])
+					at = valueStart + max(1, consumed)
+					if consumed > 1 && source[at-1] == source[valueStart] {
+						// Only a finished literal can resolve relative targets.
+						if follow := codeModeTrivia(source, at); follow >= len(source) || source[follow] == ',' || source[follow] == '}' {
+							call.workdir, call.dynamicWorkdir = value, false
+						}
+					}
+					continue
 				}
 			} else if key != "cmd" {
 				follow := codeModeTrivia(source, end)
@@ -257,7 +231,8 @@ func codeModeShellObject(source string, start int) (script string, end int, clos
 		case '}':
 			depth--
 			if depth == 0 {
-				return script, at + 1, true
+				call.cmd = script
+				return call, at + 1, true
 			}
 		case '[':
 			brackets++
@@ -278,7 +253,8 @@ func codeModeShellObject(source string, start int) (script string, end int, clos
 		}
 		at++
 	}
-	return script, len(source), false
+	call.cmd = script
+	return call, len(source), false
 }
 
 func codeModePropertyKey(source string, at int) (string, int) {
@@ -425,45 +401,4 @@ func codeModeSkipString(source string, at int) int {
 		}
 	}
 	return len(source)
-}
-
-// Preserve the call boundaries while painting literal interpreter bodies in
-// their own language. The projected source is display-only, never executed.
-// codeModeShellHeaderCut returns where a revealed display ends once a
-// trailing call header is held back with its separator. A header appears
-// with its call's first command, never as a card or row of its own.
-func codeModeShellHeaderCut(display string) int {
-	line := strings.TrimSuffix(display, "\n")
-	start := strings.LastIndexByte(line, '\n') + 1
-	if !strings.HasPrefix(line[start:], "# tools.exec_command ") {
-		return len(display)
-	}
-	if strings.HasSuffix(display[:start], "\n\n") {
-		return start - 2
-	}
-	return start
-}
-
-func codeModeShellDisplay(scripts []string) (string, []liveDiffSourceSpan) {
-	var source strings.Builder
-	var spans []liveDiffSourceSpan
-	for index, script := range scripts {
-		if index > 0 {
-			source.WriteString("\n\n")
-		}
-		spans = append(spans, liveDiffSourceSpan{Offset: source.Len(), Path: "stream.sh"})
-		fmt.Fprintf(&source, "# tools.exec_command %d\n", index+1)
-		if projection, ok := shellInterpreterScriptProjection(script); ok {
-			spans = append(spans, liveDiffSourceSpan{Offset: source.Len(), Path: liveDiffLanguagePath(projection.Language)})
-			source.WriteString(projection.Source)
-		} else {
-			start := source.Len()
-			source.WriteString(script)
-			for _, span := range liveDiffInlineHeredocSyntax(script) {
-				span.Offset += start
-				spans = append(spans, span)
-			}
-		}
-	}
-	return source.String(), spans
 }

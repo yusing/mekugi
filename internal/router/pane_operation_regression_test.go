@@ -172,7 +172,7 @@ func TestPaneOperationRegressionNativePatchStreamsProvisionalDiff(t *testing.T) 
 		}
 		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
 			if step.want == "" {
-				return preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 0
+				return preview.Status == liveDiffPreviewEdit && len(preview.Files) == 0
 			}
 			return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, step.want)
 		})
@@ -207,10 +207,10 @@ func TestPaneOperationRegressionCodeModePatchStreamsThroughPTY(t *testing.T) {
 			}
 			worker.appendDelta(opening + "*** Begin Patch")
 			assertProvisionalPatchPreview(t, waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-				return preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 0
+				return preview.Status == liveDiffPreviewEdit && len(preview.Files) == 0
 			}))
 			assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
-				return strings.Contains(ansi.Strip(frame), "STREAMING PREVIEW")
+				return strings.Contains(ansi.Strip(frame), "· ◐ edit")
 			}))
 
 			worker.appendDelta(lineBreak + "*** Add File: new.txt" + lineBreak + "+first line")
@@ -245,7 +245,7 @@ func TestPaneOperationRegressionCodeModePatchStreamsThroughPTY(t *testing.T) {
 
 func assertProvisionalPatchPreview(t *testing.T, preview liveDiffPreview) {
 	t.Helper()
-	if preview.Status != "STREAMING PREVIEW" || preview.Complete || len(preview.Files) == 0 && !preview.DiffText {
+	if preview.Status != liveDiffPreviewEdit || preview.Complete || len(preview.Files) == 0 && !preview.DiffText {
 		t.Fatalf("patch fragment was not displayed as a provisional diff: %+v", preview)
 	}
 }
@@ -253,7 +253,7 @@ func assertProvisionalPatchPreview(t *testing.T, preview liveDiffPreview) {
 func assertCodeModePatchFrame(t *testing.T, frame string, ordered ...string) {
 	t.Helper()
 	plain := ansi.Strip(frame)
-	if !strings.Contains(plain, "STREAMING PREVIEW") {
+	if !strings.Contains(plain, "· ◐ ") {
 		t.Fatalf("progressive patch frame is not a provisional diff preview: %q", plain)
 	}
 	last := -1

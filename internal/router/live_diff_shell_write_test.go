@@ -151,16 +151,16 @@ func TestLiveDiffPreviewWorkerCatFragmentsRetainLastDiff(t *testing.T) {
 		// Paced frames may show a prefix of the delta first.
 		line := strings.TrimPrefix(delta, "cat >file.txt <<'END'")
 		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-			return preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 1 &&
+			return preview.Status == liveDiffPreviewEdit && len(preview.Files) == 1 &&
 				(line == "\nEND\n" || strings.Contains(preview.Files[0].Diff, "+"+strings.TrimPrefix(line, "\n")))
 		})
-		if preview.Input != "" || len(preview.Syntax) != 0 || !strings.Contains(preview.Files[0].Diff, "+first") {
+		if preview.Input != "" || !strings.Contains(preview.Files[0].Diff, "+first") {
 			t.Fatalf("cat source shown instead of diff: %+v", preview)
 		}
 	}
 	worker.appendDelta("echo after\n")
 	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 1
+		return preview.Status == liveDiffPreviewEdit && len(preview.Files) == 1
 	})
 	if len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "+second") || preview.Input != "" {
 		t.Fatalf("unsupported suffix lost last diff: %+v", preview)

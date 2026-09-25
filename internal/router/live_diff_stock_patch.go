@@ -18,13 +18,13 @@ func projectStockPatchPreview(ctx context.Context, workspace string, preview liv
 	const limit = 256 << 10
 	if len(preview.Input) > limit {
 		preview.Input = ""
-		preview.Status = "PREVIEW UNAVAILABLE: patch exceeds projection capacity"
+		preview.Status = liveDiffPreviewUnavailable + "patch exceeds projection capacity"
 		return preview
 	}
 	files, err := stockPatchReviewPreview(ctx, workspace, preview.Input)
 	preview.Input = ""
 	if err != nil {
-		preview.Status = "PREVIEW UNAVAILABLE: patch cannot be projected"
+		preview.Status = liveDiffPreviewUnavailable + "patch cannot be projected"
 	} else {
 		preview.Files = files
 		if len(files) == 0 {

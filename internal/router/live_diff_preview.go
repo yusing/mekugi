@@ -10,10 +10,19 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/shellsyntax"
+)
+
+// Preview status names what a card shows; the viewer renders the state.
+const (
+	liveDiffPreviewEdit        = "edit"
+	liveDiffPreviewRunning     = "running"
+	liveDiffPreviewPending     = "pending"
+	liveDiffPreviewUnavailable = "unavailable: "
 )
 
 // Preview state is router-lifetime only and never enters the replay store.
@@ -23,8 +32,7 @@ type liveDiffPreview struct {
 	Caller    string
 	Thread    string
 	Files     []mekugi.ReviewFile
-	Input     string               // Display-only source, never executed.
-	Syntax    []liveDiffSourceSpan `json:",omitempty"`
+	Input     string // Display-only text, never executed.
 	Truncated bool
 	Evaluated bool `json:",omitzero"`
 	Complete  bool `json:",omitzero"`
@@ -63,7 +71,7 @@ func boundLiveDiffPreview(preview liveDiffPreview) liveDiffPreview {
 			tail = diff + tail
 		}
 		preview.Input = tail
-		preview.Files, preview.Syntax = nil, nil
+		preview.Files = nil
 		preview.DiffText, preview.Truncated = true, true
 	}
 	for preview.Input != "" && len(mustMarshalJSON(preview)) > limit {
@@ -72,7 +80,6 @@ func boundLiveDiffPreview(preview liveDiffPreview) liveDiffPreview {
 			cut++
 		}
 		preview.Input = preview.Input[cut:]
-		preview.Syntax = liveDiffClipSyntax(preview.Syntax, cut)
 		preview.Truncated = true
 	}
 	for preview.Input != "" && !utf8.RuneStart(preview.Input[0]) {
@@ -128,7 +135,7 @@ func (worker *liveDiffPreviewWorker) appendDelta(delta string) {
 			worker.closed = true
 			worker.cancel()
 			worker.preview.Files = nil
-			worker.preview.Status = "STREAMING PREVIEW"
+			worker.preview.Status = liveDiffPreviewEdit
 			worker.broker.publishPreview(worker.preview, false)
 		} else {
 			worker.input.WriteString(delta)
@@ -200,7 +207,7 @@ func (w *liveDiffPreviewWorker) projectStockPreview(input, workspace string, fin
 	ctx, cancel := context.WithTimeout(projectionContext, time.Second)
 	defer cancel()
 	projected := projectStockPatchPreview(ctx, workspace, preview)
-	if !final && strings.HasPrefix(projected.Status, "PREVIEW UNAVAILABLE:") && !strings.HasSuffix(input, "\n") {
+	if !final && strings.HasPrefix(projected.Status, liveDiffPreviewUnavailable) && !strings.HasSuffix(input, "\n") {
 		// Try the completed prefix only after the live suffix fails. Valid
 		// partial additions remain visible as they stream, while unfinished
 		// context or control lines cannot invalidate the last usable preview.
@@ -221,45 +228,19 @@ func (w *liveDiffPreviewWorker) run() {
 		w.broker.discardPreview(w.preview.ID)
 		w.mu.Unlock()
 	}()
-	editRecognized := false
-	codePatchHidden := false
-	scriptVisible := false
-	final := false
+	// Only edits are displayed, revealed by received line. JSON and JavaScript
+	// input encode that line break as an escape.
+	encoded := w.kind == "exec" || w.kind == nativeExecCommandToolName
 	var pacer liveDiffPreviewPacer
-	// Edit payloads reveal by received line; command and script text follows
-	// the pace and is gated on its displayed units instead.
-	units := liveDiffRevealUnits{
-		lines:   w.kind == applyPatchToolName,
-		encoded: w.kind == "exec" || w.kind == nativeExecCommandToolName,
-	}
-	var gate liveDiffRevealGate
-	var gated liveDiffPreview // The last ungated script, for hold frames without new input.
-	gateScript := func(preview liveDiffPreview, final bool) (liveDiffPreview, bool) {
-		if len(preview.Syntax) == 0 {
-			preview.Syntax = liveDiffScriptSyntax(preview.Input)
-		}
-		gated = preview
-		n := gate.reveal(preview.Input, preview.Syntax, final)
-		if !final && preview.Syntax[0].Path == "stream.sh" {
-			n = codeModeShellHeaderCut(preview.Input[:n])
-		}
-		preview.Input = preview.Input[:n]
-		for len(preview.Syntax) > 1 && preview.Syntax[len(preview.Syntax)-1].Offset >= n {
-			preview.Syntax = preview.Syntax[:len(preview.Syntax)-1]
-		}
-		return preview, n > 0 || final
-	}
-	lineMode := func() {
-		units.lines = true
-		gate, gated = liveDiffRevealGate{}, liveDiffPreview{}
-	}
+	edited := false // A later unprojectable frame keeps the last displayed edit.
+	final := false
 	revealed := -1
 	backlog := false
 	for {
 		if final {
 			return
 		}
-		if !backlog && !gate.pending {
+		if !backlog {
 			select {
 			case <-w.ctx.Done():
 			case <-w.wake:
@@ -291,25 +272,13 @@ func (w *liveDiffPreviewWorker) run() {
 		// reveal to catch up; a cancelled transport shows its final input at once.
 		shown := len(input)
 		if w.ctx.Err() == nil {
-			shown = pacer.advance(input, final, units)
+			shown = pacer.advance(input, final, encoded)
 		}
 		backlog = shown < len(input)
 		if backlog {
 			input, final, preview.Complete = input[:shown], false, false
 		}
 		if !final && shown == revealed {
-			// Unchanged input only advances a held script unit's release.
-			if gate.pending && gated.ID != "" {
-				before := gate.shown
-				if next, ok := gateScript(gated, false); ok && gate.shown != before {
-					w.mu.Lock()
-					if !w.closed && w.ctx.Err() == nil {
-						w.broker.publishPreview(next, false)
-						scriptVisible = true
-					}
-					w.mu.Unlock()
-				}
-			}
 			continue
 		}
 		revealed = shown
@@ -317,252 +286,177 @@ func (w *liveDiffPreviewWorker) run() {
 			w.broker.publishPreview(preview, false)
 			continue
 		}
-		projectionInput := input
-		shellDisplay := ""
-		var shellSyntax []liveDiffSourceSpan
-		shellProvisional := false
-		if w.kind == applyPatchToolName {
-			if projected, ok := w.projectStockPreview(input, preview.Workspace, final); ok {
-				projected.Complete = final
-				projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
-				w.mu.Lock()
-				if !w.closed && (w.ctx.Err() == nil || final) && (final || !strings.HasPrefix(projected.Status, "PREVIEW UNAVAILABLE:")) {
-					w.broker.publishPreview(projected, false)
-				}
-				w.mu.Unlock()
-			}
+		projected, recognized := w.project(input, preview.Workspace, final)
+		edited = edited || recognized
+		if !edited {
 			continue
 		}
-		if w.kind == nativeExecCommandToolName {
-			var arguments map[string]json.RawMessage
-			if json.Unmarshal([]byte(input), &arguments) != nil {
-				continue
-			}
-			projectionInput = jsonString(arguments, "cmd")
-			if directory := jsonString(arguments, "workdir"); filepath.IsAbs(directory) {
-				preview.Workspace = directory
-			}
+		if !recognized {
+			// A retained projection stays until a later frame replaces it.
+			projected = liveDiffPreview{Status: liveDiffPreviewEdit}
 		}
-		if w.kind == "exec" {
-			calls, ok := toolActivityUnwrapExecCalls(input, false)
-			if !ok {
-				patches := stockLiteralPatchInputs(input)
-				if fragment := stockPatchFragment(input); fragment != "" {
-					patches = append(patches, fragment)
-				}
-				if len(patches) != 0 {
-					if projected, valid := w.projectStockPreview(patches[len(patches)-1], preview.Workspace, final); valid {
-						lineMode()
-						projected.Complete = final
-						projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
-						w.mu.Lock()
-						if !w.closed && (w.ctx.Err() == nil || final) && (final || !strings.HasPrefix(projected.Status, "PREVIEW UNAVAILABLE:")) {
-							w.broker.publishPreview(projected, false)
-						}
-						w.mu.Unlock()
-						continue
-					}
-				}
-				scripts, shellProgram := codeModeShellFragments(input)
-				// A patch inside a literal shell command streams as that command.
-				shellPatch := slices.ContainsFunc(scripts, func(script string) bool { return strings.Contains(script, "*** Begin Patch") })
-				if !shellPatch && (strings.Contains(input, "*** Begin Patch") || stockPatchLiteralPresent(input)) {
-					if !codePatchHidden {
-						w.broker.publishPreview(liveDiffPreview{ID: preview.ID}, true)
-						gate, gated = liveDiffRevealGate{}, liveDiffPreview{}
-						codePatchHidden = true
-					}
-					continue
-				}
-				if len(scripts) != 0 {
-					projectionInput = scripts[len(scripts)-1]
-					shellDisplay, shellSyntax = codeModeShellDisplay(scripts)
-					shellProvisional = true
-				} else {
-					if shellProgram {
-						// A batch prefix is not a JavaScript preview. Wait for a
-						// literal command rather than flashing its unfinished wrapper.
-						if scriptVisible {
-							w.broker.publishPreview(liveDiffPreview{ID: preview.ID}, true)
-							gate, gated = liveDiffRevealGate{}, liveDiffPreview{}
-							scriptVisible = false
-						}
-						continue
-					}
-					preview.Input, preview.Syntax, preview.Status = input, []liveDiffSourceSpan{{Path: "preview.js"}}, "STREAMING SCRIPT"
-					preview, visible := gateScript(preview, final)
-					w.mu.Lock()
-					if !w.closed && (w.ctx.Err() == nil || final) && input != "" && visible {
-						w.broker.publishPreview(preview, false)
-						scriptVisible = true
-					}
-					w.mu.Unlock()
-					continue
-				}
-			}
-			var scripts []string
-			for _, call := range calls {
-				if jsonString(call, "name") != nativeExecCommandToolName {
-					continue
-				}
-				var arguments map[string]json.RawMessage
-				if json.Unmarshal([]byte(jsonString(call, "arguments")), &arguments) == nil {
-					scripts = append(scripts, jsonString(arguments, "cmd"))
-				}
-			}
-			if len(scripts) != 0 && shellDisplay == "" {
-				shellDisplay, shellSyntax = codeModeShellDisplay(scripts)
-			}
-			for _, call := range slices.Backward(calls) {
-				switch jsonString(call, "name") {
-				case applyPatchToolName:
-					if projected, ok := w.projectStockPreview(jsonString(call, "input"), preview.Workspace, final); ok {
-						lineMode()
-						projected.Complete = final
-						projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
-						w.mu.Lock()
-						if !w.closed && (w.ctx.Err() == nil || final) && (final || !strings.HasPrefix(projected.Status, "PREVIEW UNAVAILABLE:")) {
-							w.broker.publishPreview(projected, false)
-						}
-						w.mu.Unlock()
-						projectionInput = ""
-					}
-				case nativeExecCommandToolName:
-					var arguments map[string]json.RawMessage
-					if json.Unmarshal([]byte(jsonString(call, "arguments")), &arguments) == nil {
-						projectionInput = jsonString(arguments, "cmd")
-						if directory := jsonString(arguments, "workdir"); filepath.IsAbs(directory) {
-							preview.Workspace = directory
-						}
-					}
-				}
-				if projectionInput != input {
-					break
-				}
-			}
-			if projectionInput == "" {
-				continue
-			}
-			if projectionInput == input && !shellProvisional {
-				preview.Input, preview.Syntax, preview.Status = input, []liveDiffSourceSpan{{Path: "preview.js"}}, "STREAMING SCRIPT"
-				preview, visible := gateScript(preview, final)
-				w.mu.Lock()
-				if !w.closed && (w.ctx.Err() == nil || final) && input != "" && visible {
-					w.broker.publishPreview(preview, false)
-				}
-				w.mu.Unlock()
-				continue
-			}
-		}
-		if programs, err := shellsyntax.Split(projectionInput); err == nil {
-			// Preview the current program, not earlier shell framing or edit payloads.
-			if w.kind == "" {
-				projectionInput = programs[len(programs)-1]
-			}
-		}
-		if shellProvisional {
-			preview.Input, preview.Syntax, preview.Status = shellDisplay, shellSyntax, "STREAMING SCRIPT"
-			preview, visible := gateScript(preview, final)
-			w.mu.Lock()
-			if !w.closed && (w.ctx.Err() == nil || final) && visible {
-				w.broker.publishPreview(preview, false)
-				scriptVisible = true
-			}
-			w.mu.Unlock()
-			continue
-		}
-		statements, directory, partialLine, parsed := liveDiffShellStatements(projectionInput, preview.Workspace)
-		ok := false
-		projectionContext := w.ctx
-		if final {
-			// Accepted final input outlives transport teardown, but projection
-			// remains independently bounded and never executes the command.
-			projectionContext = context.WithoutCancel(projectionContext)
-		}
-		ctx, cancel := context.WithTimeout(projectionContext, time.Second)
-		var files []mekugi.ReviewFile
-		var err error
-		if parsed {
-			seenPaths := make(map[string]struct{})
-			tainted := false
-			for index, stmt := range statements {
-				statementPartial := partialLine && index == len(statements)-1
-				var projected []mekugi.ReviewFile
-				var recognized bool
-				projected, recognized, err = liveDiffShellWriteStatement(ctx, stmt, directory, statementPartial)
-				if !recognized {
-					if !liveDiffShellPreviewNeutral(stmt) {
-						tainted = true
-					}
-					continue
-				}
-				ok = true
-				if tainted {
-					err = errors.New("streaming edit follows unsupported shell state")
-					break
-				}
-				if err != nil {
-					break
-				}
-				operationPaths := make(map[string]struct{})
-				for _, file := range projected {
-					if file.BeforePath != "" {
-						operationPaths[file.BeforePath] = struct{}{}
-					}
-					if file.AfterPath != "" {
-						operationPaths[file.AfterPath] = struct{}{}
-					}
-				}
-				for path := range operationPaths {
-					if _, exists := seenPaths[path]; exists {
-						err = errors.New("streaming edits depend on an earlier operation")
-						break
-					}
-				}
-				if err != nil {
-					break
-				}
-				for path := range operationPaths {
-					seenPaths[path] = struct{}{}
-				}
-				files = append(files, projected...)
-			}
-		}
-		cancel()
-		editRecognized = editRecognized || ok
-		if editRecognized {
-			lineMode()
-			scriptVisible = false
-			preview.Input, preview.Syntax, preview.Files = "", nil, nil
-			preview.Status = "STREAMING PREVIEW"
-		} else {
-			scriptVisible = true
-			preview.Input, preview.Syntax = projectionInput, liveDiffScriptSyntax(projectionInput)
-			if shellDisplay != "" {
-				preview.Input, preview.Syntax = shellDisplay, shellSyntax
-			} else if projection, projected := shellInterpreterScriptProjection(projectionInput); projected {
-				preview.Input = projection.Source
-				preview.Syntax = []liveDiffSourceSpan{{Path: liveDiffLanguagePath(projection.Language)}}
-			}
-			preview.Status = "STREAMING SCRIPT"
-		}
-		visible := true
-		if !editRecognized {
-			preview, visible = gateScript(preview, final)
-		}
-		if ok && err == nil {
-			preview.Files = files
-			preview.Status = "STREAMING PREVIEW"
-		}
+		projected.Complete = final
+		projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
 		w.mu.Lock()
 		// One preview is in flight, with only the latest input sampled next.
 		// Final content and completion share one replaceable snapshot, so a slow
 		// viewer cannot receive only removal after losing the last content frame.
-		if !w.closed && (w.ctx.Err() == nil || final) && input != "" && visible {
-			w.broker.publishPreview(preview, false)
+		if !w.closed && (w.ctx.Err() == nil || final) && (final || !strings.HasPrefix(projected.Status, liveDiffPreviewUnavailable)) {
+			w.broker.publishPreview(projected, false)
 		}
 		w.mu.Unlock()
 	}
+}
+
+// project recognizes the edit in a call's received input. Command and script
+// text that is not an edit has no preview.
+func (w *liveDiffPreviewWorker) project(input, workspace string, final bool) (liveDiffPreview, bool) {
+	shell := func(call codeModeShellCall) (liveDiffPreview, bool) {
+		files, recognized, err := w.projectShell(call.cmd, liveDiffWorkdir(workspace, call.workdir), final)
+		switch {
+		case recognized && call.dynamicWorkdir:
+			return liveDiffPreview{Status: liveDiffPreviewUnavailable + "edit target depends on a computed workdir"}, true
+		case !recognized || err != nil:
+			return liveDiffPreview{}, recognized
+		}
+		return liveDiffPreview{Files: files, Status: liveDiffPreviewEdit}, true
+	}
+	switch w.kind {
+	case applyPatchToolName:
+		return w.projectStockPreview(input, workspace, final)
+	case nativeExecCommandToolName:
+		call, ok := liveDiffExecArguments(input)
+		if !ok {
+			return liveDiffPreview{}, false
+		}
+		return shell(call)
+	case "exec":
+		if calls, ok := toolActivityUnwrapExecCalls(input, false); ok {
+			for _, call := range slices.Backward(calls) {
+				switch jsonString(call, "name") {
+				case applyPatchToolName:
+					return w.projectStockPreview(jsonString(call, "input"), workspace, final)
+				case nativeExecCommandToolName:
+					var arguments map[string]json.RawMessage
+					if json.Unmarshal([]byte(jsonString(call, "arguments")), &arguments) != nil {
+						return liveDiffPreview{}, false
+					}
+					return shell(codeModeShellCall{cmd: jsonString(arguments, "cmd"), workdir: jsonString(arguments, "workdir")})
+				}
+			}
+			return liveDiffPreview{}, false
+		}
+		patches := stockLiteralPatchInputs(input)
+		if fragment := stockPatchFragment(input); fragment != "" {
+			patches = append(patches, fragment)
+		}
+		if len(patches) != 0 {
+			if projected, ok := w.projectStockPreview(patches[len(patches)-1], workspace, final); ok {
+				return projected, true
+			}
+		}
+		calls := codeModeShellFragments(input)
+		if len(calls) == 0 {
+			return liveDiffPreview{}, false
+		}
+		return shell(calls[len(calls)-1])
+	default:
+		program := input
+		if programs, err := shellsyntax.Split(input); err == nil {
+			// Preview the current program, not earlier shell framing.
+			program = programs[len(programs)-1]
+		}
+		return shell(codeModeShellCall{cmd: program})
+	}
+}
+
+// liveDiffExecArguments reads exec_command arguments, including an unfinished
+// JSON object whose cmd string is still arriving.
+func liveDiffExecArguments(input string) (codeModeShellCall, bool) {
+	var arguments map[string]json.RawMessage
+	if json.Unmarshal([]byte(input), &arguments) == nil {
+		call := codeModeShellCall{cmd: jsonString(arguments, "cmd"), workdir: jsonString(arguments, "workdir")}
+		if raw, exists := arguments["workdir"]; exists && json.Unmarshal(raw, new(string)) != nil {
+			call.dynamicWorkdir = true
+		}
+		return call, call.cmd != ""
+	}
+	start := strings.IndexFunc(input, func(char rune) bool { return !unicode.IsSpace(char) })
+	if start < 0 || input[start] != '{' {
+		return codeModeShellCall{}, false
+	}
+	call, _, _ := codeModeShellObject(input, start)
+	return call, call.cmd != ""
+}
+
+// Codex resolves a relative workdir against the turn directory.
+func liveDiffWorkdir(workspace, workdir string) string {
+	switch {
+	case workdir == "":
+		return workspace
+	case filepath.IsAbs(workdir):
+		return workdir
+	case filepath.IsAbs(workspace):
+		return filepath.Join(workspace, workdir)
+	}
+	return workspace
+}
+
+// projectShell predicts literal shell and interpreter writes without running
+// the command. Recognized reports an edit even when its projection failed.
+func (w *liveDiffPreviewWorker) projectShell(program, directory string, final bool) ([]mekugi.ReviewFile, bool, error) {
+	statements, directory, partialLine, parsed := liveDiffShellStatements(program, directory)
+	if !parsed {
+		return nil, false, nil
+	}
+	projectionContext := w.ctx
+	if final {
+		// Accepted final input outlives transport teardown, but projection
+		// remains independently bounded and never executes the command.
+		projectionContext = context.WithoutCancel(projectionContext)
+	}
+	ctx, cancel := context.WithTimeout(projectionContext, time.Second)
+	defer cancel()
+	var files []mekugi.ReviewFile
+	recognized := false
+	seenPaths := make(map[string]struct{})
+	tainted := false
+	for index, stmt := range statements {
+		statementPartial := partialLine && index == len(statements)-1
+		projected, ok, err := liveDiffShellWriteStatement(ctx, stmt, directory, statementPartial)
+		if !ok {
+			if !liveDiffShellPreviewNeutral(stmt) {
+				tainted = true
+			}
+			continue
+		}
+		recognized = true
+		if tainted {
+			return nil, true, errors.New("edit follows unsupported shell state")
+		}
+		if err != nil {
+			return nil, true, err
+		}
+		operationPaths := make(map[string]struct{})
+		for _, file := range projected {
+			if file.BeforePath != "" {
+				operationPaths[file.BeforePath] = struct{}{}
+			}
+			if file.AfterPath != "" {
+				operationPaths[file.AfterPath] = struct{}{}
+			}
+		}
+		for path := range operationPaths {
+			if _, exists := seenPaths[path]; exists {
+				return nil, true, errors.New("edits depend on an earlier operation")
+			}
+		}
+		for path := range operationPaths {
+			seenPaths[path] = struct{}{}
+		}
+		files = append(files, projected...)
+	}
+	return files, recognized, nil
 }
 
 // Cleanup only live state. An unconditional removal would overwrite an atomic
@@ -593,11 +487,8 @@ func (b *liveDiffBroker) publishPreview(preview liveDiffPreview, remove bool) {
 	if _, exists := b.previews[preview.ID]; !exists && !preview.Complete && len(b.previews) >= 16 {
 		return
 	}
-	if preview.Input != "" && !preview.DiffText && len(preview.Syntax) == 0 {
-		preview.Syntax = liveDiffScriptSyntax(preview.Input)
-	}
 	preview = boundLiveDiffPreview(preview)
-	if preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 0 && preview.Input == "" {
+	if preview.Status == liveDiffPreviewEdit && len(preview.Files) == 0 && preview.Input == "" {
 		// Incomplete fragments retain the latest displayed projection, including
 		// a bounded raw-diff window, never the preceding shell source.
 		if previous := b.previews[preview.ID]; len(previous.Files) != 0 || previous.DiffText {
@@ -605,7 +496,7 @@ func (b *liveDiffBroker) publishPreview(preview liveDiffPreview, remove bool) {
 			preview.DiffText, preview.Truncated = previous.DiffText, previous.Truncated
 		}
 	}
-	if preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 0 && preview.Input == "" {
+	if preview.Status == liveDiffPreviewEdit && len(preview.Files) == 0 && preview.Input == "" {
 		// An unfinished edit is not an error panel or a raw-script preview.
 		// Wait for a real projection while leaving captured history untouched.
 		delete(b.previews, preview.ID)

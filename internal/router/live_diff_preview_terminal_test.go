@@ -153,7 +153,7 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	preview.Workspace = workspace
 	broker.publishPreview(preview, false)
 	stream := ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "+stream_0100")
+		return strings.Contains(ansi.Strip(frame), "◐ edit") && strings.Contains(ansi.Strip(frame), "+stream_0100")
 	})
 	if strings.Contains(stream, "80│+new") {
 		t.Fatal("default stream mode shared the pane with captured diff")
@@ -176,7 +176,7 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	final.Workspace, final.Complete = workspace, true
 	broker.publishPreview(final, false)
 	completed := ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "STREAMING COMPLETE") && strings.Contains(ansi.Strip(frame), "+stream_0101")
+		return strings.Contains(ansi.Strip(frame), "✓ edit") && strings.Contains(ansi.Strip(frame), "+stream_0101")
 	})
 	if strings.Contains(completed, "80│+new") {
 		t.Fatal("completed stream stopped owning the full pane")
@@ -199,7 +199,7 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	broker.emitLocked(liveDiffEvent{Kind: "coverage", Status: "RECONNECTING: test interruption"})
 	broker.mu.Unlock()
 	ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "RECONNECTING") && !strings.Contains(frame, "STREAMING")
+		return strings.Contains(frame, "RECONNECTING") && !strings.Contains(ansi.Strip(frame), "✓ edit")
 	})
 	ui.quit(t)
 }
@@ -276,14 +276,14 @@ func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
 	t.Cleanup(worker.stop)
-	input := "#!python3\n" + strings.Repeat("# context\n", 30) + "return 42\n"
+	input := "cat > big.py <<'EOF'\n" + strings.Repeat("# context\n", 30) + "return 42\n"
 	tip, colored := "return 42", livediff.DarkTheme.Foreground(chroma.Keyword)+"return"
 	worker.appendDelta(input)
 	// Revealed rows fade in, so wait for the tip to settle on its syntax color.
 	frame := ui.frame(t, func(frame string) bool {
 		return strings.Contains(frame, colored) && strings.Contains(ansi.Strip(frame), tip)
 	})
-	if !strings.Contains(liveDiffFrameRow(frame, 2), "STREAMING") ||
+	if !strings.Contains(liveDiffFrameRow(frame, 2), "◐ A  big.py") ||
 		strings.Contains(frame, "Waiting for captured") {
 		t.Fatalf("empty shell preview wasted space or lost syntax: %q", frame)
 	}
@@ -296,16 +296,16 @@ func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
 	frame = ui.frame(t, func(frame string) bool {
 		return strings.Contains(frame, "\x1b[12;1H") && strings.Contains(ansi.Strip(frame), tip)
 	})
-	if !strings.Contains(liveDiffFrameRow(frame, 2), "STREAMING") {
+	if !strings.Contains(liveDiffFrameRow(frame, 2), "◐ A  big.py") {
 		t.Fatal("resize restored an empty split")
 	}
 	liveDiffTestChange(t, store, workspace, "thread", "captured.go", true)
 	frame = ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), tip) })
-	if !strings.Contains(liveDiffFrameRow(frame, 2), "STREAMING") {
+	if !strings.Contains(liveDiffFrameRow(frame, 2), "◐ A  big.py") {
 		t.Fatal("capture displaced the full-pane stream")
 	}
 	worker.stop()
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAMING COMPLETE") })
+	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "✓ A  big.py") })
 	ui.quit(t)
 }
 
@@ -336,7 +336,7 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 		text := ansi.Strip(frame)
 		return strings.Contains(text, "stream_0100") && strings.Contains(text, "stream_0200")
 	})
-	if text := ansi.Strip(frame); !strings.Contains(text, "/root · STREAMING SCRIPT") || !strings.Contains(text, "/root/editor · STREAMING SCRIPT") {
+	if text := ansi.Strip(frame); !strings.Contains(text, "/root · ◐ edit") || !strings.Contains(text, "/root/editor · ◐ edit") {
 		t.Fatalf("concurrent frame lost attribution: %q", frame)
 	}
 	// Child callers keep the agents pane's color for the same canonical path.
@@ -352,12 +352,12 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 		text := ansi.Strip(frame)
 		return strings.Contains(text, "stream_0150") && strings.Contains(text, "stream_0200")
 	})
-	if text := ansi.Strip(frame); strings.Index(text, "/root · STREAMING SCRIPT") > strings.Index(text, "/root/editor · STREAMING SCRIPT") {
+	if text := ansi.Strip(frame); strings.Index(text, "/root · ◐ edit") > strings.Index(text, "/root/editor · ◐ edit") {
 		t.Fatal("concurrent delta reordered the cards")
 	}
 	broker.publishPreview(first, true)
 	ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "/root · STREAMING COMPLETE") && strings.Contains(ansi.Strip(frame), "stream_0200")
+		return strings.Contains(ansi.Strip(frame), "/root · ✓ edit") && strings.Contains(ansi.Strip(frame), "stream_0200")
 	})
 	ui.height = 12
 	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 12, Cols: 70}); err != nil {
@@ -367,7 +367,7 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 		return strings.Contains(frame, "\x1b[12;1H") && strings.Contains(ansi.Strip(frame), "stream_0200")
 	})
 	broker.publishPreview(second, true)
-	ui.frame(t, func(frame string) bool { return strings.Count(frame, "STREAMING COMPLETE") == 2 })
+	ui.frame(t, func(frame string) bool { return strings.Count(ansi.Strip(frame), "✓ edit") == 2 })
 	ui.write(t, "v")
 	diff := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
 	if !strings.Contains(diff, "v stream") {

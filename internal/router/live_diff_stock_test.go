@@ -22,7 +22,7 @@ func TestStockPatchPreviewUsesObservedSourceAndLanguageRenderer(t *testing.T) {
 		t.Fatal(err)
 	}
 	patch := "*** Begin Patch\n*** Update File: sample.go\n@@\n-func before() {}\n+func after() {}\n*** End Patch\n"
-	preview := projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{ID: "patch", Workspace: workspace, Thread: "thread", Input: patch, Status: "STREAMING PREVIEW", DiffText: true})
+	preview := projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{ID: "patch", Workspace: workspace, Thread: "thread", Input: patch, Status: liveDiffPreviewEdit, DiffText: true})
 	if preview.Input != "" || len(preview.Files) != 1 || preview.Files[0].BeforePath != path || preview.Files[0].AfterPath != path {
 		t.Fatalf("stock patch did not produce a file review: %+v", preview)
 	}
@@ -58,9 +58,9 @@ func TestStockPatchPreviewRefusesUnmatchedSource(t *testing.T) {
 	}
 	preview := projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{
 		Input:  "*** Begin Patch\n*** Update File: sample.go\n@@\n-not-present()\n+new()\n*** End Patch\n",
-		Status: "STREAMING PREVIEW",
+		Status: liveDiffPreviewEdit,
 	})
-	if len(preview.Files) != 0 || !strings.HasPrefix(preview.Status, "PREVIEW UNAVAILABLE:") || preview.Input != "" {
+	if len(preview.Files) != 0 || !strings.HasPrefix(preview.Status, liveDiffPreviewUnavailable) || preview.Input != "" {
 		t.Fatalf("unmatched patch was presented as a diff: %+v", preview)
 	}
 }
@@ -78,7 +78,7 @@ func TestStockPatchStreamingPartialLinesStayProjectable(t *testing.T) {
 		"*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n+new()\n*** End Pat",
 	} {
 		preview, ok := worker.projectStockPreview(fragment, workspace, false)
-		if !ok || strings.HasPrefix(preview.Status, "PREVIEW UNAVAILABLE:") {
+		if !ok || strings.HasPrefix(preview.Status, liveDiffPreviewUnavailable) {
 			t.Fatalf("partial patch became unavailable: %+v, recognized=%t", preview, ok)
 		}
 	}
@@ -167,7 +167,7 @@ func TestCodeModePatchFinalPreviewUsesPreExecutionSource(t *testing.T) {
 		return preview.Complete
 	})
 	if len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "-old()") ||
-		!strings.Contains(preview.Files[0].Diff, "+new()") || strings.HasPrefix(preview.Status, "PREVIEW UNAVAILABLE:") {
+		!strings.Contains(preview.Files[0].Diff, "+new()") || strings.HasPrefix(preview.Status, liveDiffPreviewUnavailable) {
 		t.Fatalf("final preview did not use pre-execution source: %+v", preview)
 	}
 }
@@ -184,7 +184,7 @@ func TestStockPatchPreviewBlankContextAndInsertion(t *testing.T) {
 		}
 		preview := projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{
 			Input:  "*** Begin Patch\n*** Update File: file.txt\n" + tc.patch + "\n*** End Patch\n",
-			Status: "STREAMING PREVIEW",
+			Status: liveDiffPreviewEdit,
 		})
 		if len(preview.Files) != 1 {
 			t.Fatalf("stock patch context failed projection: %+v", preview)
@@ -206,7 +206,7 @@ func TestStockPatchPreviewAcceptsCRLFEnvelope(t *testing.T) {
 	workspace := t.TempDir()
 	preview := projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{
 		Input:  "*** Begin Patch\r\n*** Add File: crlf.go\r\n+package crlf\r\n*** End Patch\r\n",
-		Status: "STREAMING PREVIEW",
+		Status: liveDiffPreviewEdit,
 	})
 	if len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "+package crlf") {
 		t.Fatalf("CRLF stock patch lost its diff projection: %+v", preview)
@@ -230,7 +230,7 @@ func TestStockPatchFinalPreviewSurvivesTransportCancellation(t *testing.T) {
 	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
 		return preview.Complete && len(preview.Files) == 1
 	})
-	if !strings.Contains(preview.Files[0].Diff, "+package new") || preview.Status != "STREAMING PREVIEW" {
+	if !strings.Contains(preview.Files[0].Diff, "+package new") || preview.Status != liveDiffPreviewEdit {
 		t.Fatalf("final stock preview lost after cancellation: %+v", preview)
 	}
 }
@@ -284,7 +284,7 @@ func TestLiveDiffCodeModeConstPatchDoesNotLeakScript(t *testing.T) {
 
 	worker.appendDelta(source[marker+len("*** Begin Patch"):])
 	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+content")
+		return preview.Status == liveDiffPreviewEdit && len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+content")
 	})
 	if preview.Input != "" || preview.Files[0].BeforePath != "" || strings.Contains(preview.Files[0].Diff, "const patch") {
 		t.Fatalf("Code Mode patch preview leaked script encoding: %+v", preview)
@@ -315,7 +315,7 @@ func TestLiveDiffCodeModeEscapedPatchMarkerDoesNotLeakScript(t *testing.T) {
 				if event.Preview == nil {
 					continue
 				}
-				if revealed && event.Preview.Status == "STREAMING SCRIPT" {
+				if strings.Contains(event.Preview.Input, "const") {
 					t.Fatalf("escaped Code Mode patch leaked as script: %+v", event.Preview)
 				}
 				revealed = revealed || event.Preview.Workspace == "" || len(event.Preview.Files) != 0
@@ -326,7 +326,7 @@ func TestLiveDiffCodeModeEscapedPatchMarkerDoesNotLeakScript(t *testing.T) {
 	}
 	worker.appendDelta(source[closingQuote:])
 	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return preview.Status == "STREAMING PREVIEW" && len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+content")
+		return preview.Status == liveDiffPreviewEdit && len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+content")
 	})
 	if preview.Input != "" || !strings.Contains(preview.Files[0].Diff, "+content") {
 		t.Fatalf("escaped Code Mode patch was not decoded as a patch preview: %+v", preview)

@@ -15,9 +15,14 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
+// A partial heredoc program usually ends inside its write's content literal.
+// Closing that literal lets the same recognizer predict the write so far.
+var liveDiffInterpreterClosers = []string{`""")`, `''')`, "`)", `")`, `')`, `"""))`, `'''))`, "`))", `"))`, `'))`}
+
 // Literal predictions are display-only. Never evaluate an expression or use
-// these bytes as the observed outcome of a host command.
-func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory string) ([]mekugi.ReviewFile, bool, error) {
+// these bytes as the observed outcome of a host command. A partial statement
+// is a heredoc program still arriving; its prediction is best effort.
+func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory string, partial bool) ([]mekugi.ReviewFile, bool, error) {
 	call, ok := stmt.Cmd.(*syntax.CallExpr)
 	if !ok || stmt.Background || stmt.Negated || len(call.Assigns) != 0 {
 		return nil, false, nil
@@ -36,7 +41,7 @@ func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory 
 		if redirect.Op != syntax.Hdoc && redirect.Op != syntax.DashHdoc {
 			return nil, false, nil
 		}
-		body, literal := liveDiffShellHeredoc(redirect, false)
+		body, literal := liveDiffShellHeredoc(redirect, partial)
 		if !literal {
 			return nil, false, nil
 		}
@@ -52,10 +57,21 @@ func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory 
 	} else if strings.HasSuffix(script, ".ts") || identity == "deno" {
 		language = execTypeScriptLanguage
 	}
+	canceled := func() bool { return ctx.Err() != nil || time.Now().After(input.deadline) }
 	data := []byte(source)
-	tree, err := parseExecSource(data, language, func() bool { return ctx.Err() != nil || time.Now().After(input.deadline) })
+	tree, err := parseExecSource(data, language, canceled)
 	if err != nil {
 		return nil, false, err
+	}
+	for _, closer := range liveDiffInterpreterClosers {
+		if tree == nil || !partial || !tree.RootNode().HasError() {
+			break
+		}
+		tree.Close()
+		data = []byte(source + closer)
+		if tree, err = parseExecSource(data, language, canceled); err != nil {
+			return nil, false, err
+		}
 	}
 	if tree == nil {
 		return nil, false, nil

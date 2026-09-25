@@ -62,7 +62,7 @@ func TestLiveDiffInterpreterWriteLiteralWrites(t *testing.T) {
 				}
 			}
 
-			files, recognized, err := liveDiffInterpreterWrite(t.Context(), mustShellStatement(t, tc.command), directory)
+			files, recognized, err := liveDiffInterpreterWrite(t.Context(), mustShellStatement(t, tc.command), directory, false)
 			if err != nil || !recognized || len(files) != 1 {
 				t.Fatalf("prediction = %+v, %t, %v; want one literal-write diff", files, recognized, err)
 			}
@@ -126,7 +126,7 @@ func TestLiveDiffInterpreterWriteDynamicBodiesFallBack(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			files, recognized, err := liveDiffInterpreterWrite(t.Context(), mustShellStatement(t, tc.command), directory)
+			files, recognized, err := liveDiffInterpreterWrite(t.Context(), mustShellStatement(t, tc.command), directory, false)
 			if err != nil || recognized || len(files) != 0 {
 				t.Fatalf("dynamic body prediction = %+v, %t, %v; want fallback without a guessed diff", files, recognized, err)
 			}
@@ -155,7 +155,7 @@ func TestLiveDiffInterpreterWriteSkipsConditionalAndFunctionBodies(t *testing.T)
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			directory := t.TempDir()
-			files, recognized, err := liveDiffInterpreterWrite(t.Context(), mustShellStatement(t, tc.command), directory)
+			files, recognized, err := liveDiffInterpreterWrite(t.Context(), mustShellStatement(t, tc.command), directory, false)
 			if err != nil || recognized || len(files) != 0 {
 				t.Fatalf("conditional/function prediction = %+v, %t, %v; want no predicted files", files, recognized, err)
 			}

@@ -41,15 +41,29 @@ func requireLiveDiffSSEUnchanged(t *testing.T, transform *mekugiResponseTransfor
 	}
 }
 
-func TestLiveDiffFinalFrameCustomInputDoneFlushesAuthoritativeJavaScript(t *testing.T) {
+// liveDiffCodeModeCat is Code Mode input whose literal cat writes lines.
+func liveDiffCodeModeCat(t *testing.T, path string, lines ...string) string {
+	t.Helper()
+	encoded, err := json.Marshal("cat > " + path + " <<'EOF'\n" + strings.Join(lines, "\n") + "\nEOF\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return "const result = await tools.exec_command({cmd:" + string(encoded) + "}); text(JSON.stringify(result));"
+}
+
+func liveDiffPreviewAdds(preview liveDiffPreview, line string) bool {
+	return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+"+line)
+}
+
+func TestLiveDiffFinalFrameCustomInputDoneFlushesAuthoritativeEdit(t *testing.T) {
 	t.Parallel()
 	transform, broker, sub := newLiveDiffFinalFrameTransform(t, false)
 	workerCtx, cancel := context.WithCancel(transform.ctx)
 	transform.ctx = workerCtx
 	defer cancel()
-	delta := `text(await tools.write_stdin({session_id:24751,chars:"",yield_time_ms:1000,max_output_tokens:1000}));` + "\n" +
-		`const result = await tools.write_stdin({session_id:48,chars:"",yield_time_ms:1000,max_output_tokens:`
-	fullInput := delta + `100}); text(JSON.stringify(result));`
+	fullInput := liveDiffCodeModeCat(t, "final.txt", "first", "second", "FINAL_DONE_ONLY")
+	second := strings.Index(fullInput, "second")
+	delta := fullInput[:second]
 	for _, event := range [][]byte{
 		mustTestJSON(t, map[string]any{"type": "response.output_item.added", "output_index": 0,
 			"item": map[string]any{"type": "custom_tool_call", "id": "exec-item", "call_id": "exec-call", "name": "exec", "input": "", "status": "in_progress"}}),
@@ -57,12 +71,9 @@ func TestLiveDiffFinalFrameCustomInputDoneFlushesAuthoritativeJavaScript(t *test
 	} {
 		requireLiveDiffSSEUnchanged(t, transform, event)
 	}
-	partial := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return strings.HasSuffix(preview.Input, "max_output_tokens:") && !preview.Complete
+	waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+		return liveDiffPreviewAdds(preview, "first") && !preview.Complete
 	})
-	if partial.Input != delta {
-		t.Fatalf("partial JavaScript preview = %q, want delta %q", partial.Input, delta)
-	}
 	worker := transform.previews["exec-item"]
 	if worker == nil {
 		t.Fatal("Code Mode stream has no preview worker")
@@ -71,7 +82,7 @@ func TestLiveDiffFinalFrameCustomInputDoneFlushesAuthoritativeJavaScript(t *test
 	// Queue one more partial delta immediately before done, without waiting for
 	// its debounce window. Done still contains bytes absent from all deltas.
 	requireLiveDiffSSEUnchanged(t, transform, mustTestJSON(t, map[string]any{
-		"type": "response.custom_tool_call_input.delta", "item_id": "exec-item", "delta": "100}); text(JSON",
+		"type": "response.custom_tool_call_input.delta", "item_id": "exec-item", "delta": fullInput[second:strings.Index(fullInput, "FINAL")],
 	}))
 	finalEvent := mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "exec-item", "call_id": "exec-call", "input": fullInput})
 	requireLiveDiffSSEUnchanged(t, transform, finalEvent)
@@ -81,10 +92,10 @@ func TestLiveDiffFinalFrameCustomInputDoneFlushesAuthoritativeJavaScript(t *test
 	transform.Close()
 
 	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return preview.Complete && preview.Input == fullInput
+		return preview.Complete && liveDiffPreviewAdds(preview, "FINAL_DONE_ONLY")
 	})
-	if complete.Status != "STREAMING SCRIPT" || len(complete.Syntax) != 1 || complete.Syntax[0].Path != "preview.js" {
-		t.Fatalf("final JavaScript preview = %+v", complete)
+	if complete.Status != liveDiffPreviewEdit || complete.Input != "" {
+		t.Fatalf("final edit preview = %+v", complete)
 	}
 	select {
 	case <-worker.done:
@@ -115,8 +126,8 @@ func TestLiveDiffFinalFrameCustomInputDoneFlushesAuthoritativeJavaScript(t *test
 func TestLiveDiffFinalFrameOutputItemDoneFallback(t *testing.T) {
 	t.Parallel()
 	transform, broker, sub := newLiveDiffFinalFrameTransform(t, false)
-	delta := `const result = await tools.write_stdin({session_id:48,chars:"",yield_time_ms:1000,`
-	fullInput := delta + `max_output_tokens:100}); text(JSON.stringify(result));`
+	fullInput := liveDiffCodeModeCat(t, "fallback.txt", "first", "FALLBACK_FINAL")
+	delta := fullInput[:strings.Index(fullInput, "FALLBACK_FINAL")]
 	for _, event := range [][]byte{
 		mustTestJSON(t, map[string]any{"type": "response.output_item.added", "output_index": 0,
 			"item": map[string]any{"type": "custom_tool_call", "id": "fallback-item", "call_id": "fallback-call", "name": "exec", "input": "", "status": "in_progress"}}),
@@ -125,24 +136,21 @@ func TestLiveDiffFinalFrameOutputItemDoneFallback(t *testing.T) {
 		requireLiveDiffSSEUnchanged(t, transform, event)
 	}
 	waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return strings.Contains(preview.Input, "session_id:48") && !preview.Complete
+		return liveDiffPreviewAdds(preview, "first") && !preview.Complete
 	})
 	completedItem := map[string]any{"type": "custom_tool_call", "id": "fallback-item", "call_id": "fallback-call", "name": "exec", "input": fullInput, "status": "completed"}
 	event := mustTestJSON(t, map[string]any{"type": "response.output_item.done", "output_index": 0, "item": completedItem})
 	requireLiveDiffSSEUnchanged(t, transform, event)
-	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return preview.Complete && preview.Input == fullInput
+	waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+		return preview.Complete && liveDiffPreviewAdds(preview, "FALLBACK_FINAL")
 	})
-	if len(complete.Syntax) != 1 || complete.Syntax[0].Path != "preview.js" {
-		t.Fatalf("fallback completion was not rendered as JavaScript: %+v", complete)
-	}
 }
 
 func TestLiveDiffFinalFrameNativeExecArgumentsDoneUsesFullCommand(t *testing.T) {
 	t.Parallel()
 	transform, broker, sub := newLiveDiffFinalFrameTransform(t, true)
-	delta := `{"cmd":"printf 'first `
-	arguments := `{"cmd":"printf 'first FINAL_NATIVE'"}`
+	arguments := string(mustTestJSON(t, map[string]string{"cmd": "cat > native.txt <<'EOF'\nfirst\nFINAL_NATIVE\nEOF\n"}))
+	delta := arguments[:strings.Index(arguments, "FINAL_NATIVE")]
 	for _, event := range [][]byte{
 		mustTestJSON(t, map[string]any{"type": "response.output_item.added", "output_index": 0,
 			"item": map[string]any{"type": "function_call", "id": "native-item", "call_id": "native-call", "name": "exec_command", "arguments": "", "status": "in_progress"}}),
@@ -150,13 +158,17 @@ func TestLiveDiffFinalFrameNativeExecArgumentsDoneUsesFullCommand(t *testing.T) 
 	} {
 		requireLiveDiffSSEUnchanged(t, transform, event)
 	}
+	// Unfinished JSON arguments stream their literal cat write.
+	waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+		return liveDiffPreviewAdds(preview, "first") && !preview.Complete
+	})
 	event := mustTestJSON(t, map[string]any{"type": "response.function_call_arguments.done", "item_id": "native-item", "arguments": arguments})
 	requireLiveDiffSSEUnchanged(t, transform, event)
 	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return preview.Complete && strings.Contains(preview.Input, "FINAL_NATIVE")
+		return preview.Complete && liveDiffPreviewAdds(preview, "FINAL_NATIVE")
 	})
-	if strings.Contains(complete.Input, `"cmd"`) || len(complete.Syntax) != 1 || complete.Syntax[0].Path != "stream.sh" {
-		t.Fatalf("native exec completion did not project the full command: %+v", complete)
+	if complete.Input != "" {
+		t.Fatalf("native exec completion exposed command text: %+v", complete)
 	}
 }
 
@@ -165,7 +177,8 @@ func TestLiveDiffCancellationBeforeDoneDiscardsActivePreview(t *testing.T) {
 	transform, broker, sub := newLiveDiffFinalFrameTransform(t, false)
 	requestCtx, cancel := context.WithCancel(transform.ctx)
 	transform.ctx = requestCtx
-	delta := `const activeStream = true;`
+	input := liveDiffCodeModeCat(t, "cancel.txt", "active", "later")
+	delta := input[:strings.Index(input, "later")]
 	for _, event := range [][]byte{
 		mustTestJSON(t, map[string]any{"type": "response.output_item.added", "output_index": 0,
 			"item": map[string]any{"type": "custom_tool_call", "id": "cancel-item", "call_id": "cancel-call", "name": "exec", "input": "", "status": "in_progress"}}),
@@ -174,7 +187,7 @@ func TestLiveDiffCancellationBeforeDoneDiscardsActivePreview(t *testing.T) {
 		requireLiveDiffSSEUnchanged(t, transform, event)
 	}
 	partial := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return preview.Input == delta && !preview.Complete
+		return liveDiffPreviewAdds(preview, "active") && !preview.Complete
 	})
 	if !liveDiffBrokerHasActivePreview(broker, partial.ID) {
 		t.Fatal("streaming preview was not active before cancellation")
@@ -197,7 +210,8 @@ func TestLiveDiffCancellationBeforeDoneDiscardsActivePreview(t *testing.T) {
 func TestLiveDiffInputOverflowAfterPartialPreviewDiscardsActiveState(t *testing.T) {
 	t.Parallel()
 	transform, broker, sub := newLiveDiffFinalFrameTransform(t, false)
-	delta := `const activeStream = true;`
+	input := liveDiffCodeModeCat(t, "overflow.txt", "active", "later")
+	delta := input[:strings.Index(input, "later")]
 	for _, event := range [][]byte{
 		mustTestJSON(t, map[string]any{"type": "response.output_item.added", "output_index": 0,
 			"item": map[string]any{"type": "custom_tool_call", "id": "overflow-item", "call_id": "overflow-call", "name": "exec", "input": "", "status": "in_progress"}}),
@@ -206,7 +220,7 @@ func TestLiveDiffInputOverflowAfterPartialPreviewDiscardsActiveState(t *testing.
 		requireLiveDiffSSEUnchanged(t, transform, event)
 	}
 	partial := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return preview.Input == delta && !preview.Complete
+		return liveDiffPreviewAdds(preview, "active") && !preview.Complete
 	})
 	if !liveDiffBrokerHasActivePreview(broker, partial.ID) {
 		t.Fatal("streaming preview was not active before input overflow")
@@ -317,7 +331,7 @@ func waitLiveDiffWorkerDone(t *testing.T, worker *liveDiffPreviewWorker) {
 	}
 }
 
-func TestLiveDiffFinalFramePTYShowsCompleteJavaScriptAfterTruncatedPreview(t *testing.T) {
+func TestLiveDiffFinalFramePTYShowsCompleteEditAfterTruncatedPreview(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
@@ -334,11 +348,11 @@ func TestLiveDiffFinalFramePTYShowsCompleteJavaScriptAfterTruncatedPreview(t *te
 
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", "exec")
 	t.Cleanup(worker.stop)
-	partial := `const output = await tools.write_stdin({session_id:48,chars:"",yield_time_ms:1000` + "\n"
-	fullInput := partial + `,max_output_tokens:100}); text(JSON.stringify(output)); // FINAL_FRAME_MARKER`
-	worker.appendDelta(partial)
+	fullInput := liveDiffCodeModeCat(t, "pty.txt", "session_line", "FINAL_FRAME_MARKER")
+	worker.appendDelta(fullInput[:strings.Index(fullInput, "FINAL_FRAME_MARKER")])
 	firstFrame := ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "STREAMING SCRIPT") && strings.Contains(ansi.Strip(frame), "session_id:48")
+		plain := ansi.Strip(frame)
+		return strings.Contains(plain, "◐ A  pty.txt") && strings.Contains(plain, "session_line")
 	})
 	if strings.Contains(ansi.Strip(firstFrame), "FINAL_FRAME_MARKER") {
 		t.Fatal("truncated streaming frame unexpectedly contained the final marker")
@@ -346,13 +360,10 @@ func TestLiveDiffFinalFramePTYShowsCompleteJavaScriptAfterTruncatedPreview(t *te
 	worker.finish(fullInput)
 	finalFrame := ui.frame(t, func(frame string) bool {
 		plain := ansi.Strip(frame)
-		return strings.Contains(frame, "STREAMING COMPLETE") && strings.Contains(plain, "FINAL_FRAME_MARKER")
+		return strings.Contains(plain, "✓ A  pty.txt +2 -0") && strings.Contains(plain, "FINAL_FRAME_MARKER")
 	})
-	plain := ansi.Strip(finalFrame)
-	for _, want := range []string{"STREAMING COMPLETE", "session_id:48", "FINAL_FRAME_MARKER"} {
-		if !strings.Contains(plain, want) {
-			t.Fatalf("final PTY frame missing %q: %q", want, plain)
-		}
+	if plain := ansi.Strip(finalFrame); !strings.Contains(plain, "session_line") {
+		t.Fatalf("final PTY frame lost earlier content: %q", plain)
 	}
 	select {
 	case <-worker.done:
@@ -371,8 +382,8 @@ func TestLiveDiffFinalFramePTYShowsCompleteJavaScriptAfterTruncatedPreview(t *te
 func TestLiveDiffFinalFrameTransformCloseDoesNotDiscardFinalUpdate(t *testing.T) {
 	t.Parallel()
 	transform, broker, sub := newLiveDiffFinalFrameTransform(t, false)
-	delta := `text(await tools.write_stdin({session_id:48,chars:""`
-	fullInput := delta + `,yield_time_ms:1000,max_output_tokens:100}));`
+	fullInput := liveDiffCodeModeCat(t, "close.txt", "first", "CLOSE_FINAL")
+	delta := fullInput[:strings.Index(fullInput, "CLOSE_FINAL")]
 	for _, event := range [][]byte{
 		mustTestJSON(t, map[string]any{"type": "response.output_item.added", "output_index": 0,
 			"item": map[string]any{"type": "custom_tool_call", "id": "close-item", "call_id": "close-call", "name": "exec", "input": "", "status": "in_progress"}}),
@@ -381,7 +392,7 @@ func TestLiveDiffFinalFrameTransformCloseDoesNotDiscardFinalUpdate(t *testing.T)
 		requireLiveDiffSSEUnchanged(t, transform, event)
 	}
 	waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return strings.Contains(preview.Input, "session_id:48") && !preview.Complete
+		return liveDiffPreviewAdds(preview, "first") && !preview.Complete
 	})
 	worker := transform.previews["close-item"]
 	if worker == nil {
@@ -391,9 +402,9 @@ func TestLiveDiffFinalFrameTransformCloseDoesNotDiscardFinalUpdate(t *testing.T)
 	requireLiveDiffSSEUnchanged(t, transform, event)
 	transform.Close()
 	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return preview.Complete && preview.Input == fullInput
+		return preview.Complete && liveDiffPreviewAdds(preview, "CLOSE_FINAL")
 	})
-	if complete.Status != "STREAMING SCRIPT" {
-		t.Fatalf("completion status = %q, want STREAMING SCRIPT with Complete=true", complete.Status)
+	if complete.Status != liveDiffPreviewEdit {
+		t.Fatalf("completion status = %q, want an edit with Complete=true", complete.Status)
 	}
 }

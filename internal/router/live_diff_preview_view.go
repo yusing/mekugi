@@ -25,7 +25,7 @@ const (
 	liveDiffPreviewMaxStagger = 96 * time.Millisecond
 )
 
-// Streaming has its own viewport and lifecycle. It never changes the captured
+// Previews have their own viewport and lifecycle. They never change the captured
 // diff's selection, scroll, acknowledgements, or follow mode.
 // Updates replace snapshots; only a displayed frame parses and lays out rows.
 type liveDiffPreviewPane struct {
@@ -54,7 +54,6 @@ type liveDiffPreviewView struct {
 	source    []liveDiffPreviewRow
 	born      []time.Time // When each source row was revealed, for its fade.
 	fading    time.Time   // Until a displayed row finishes fading in.
-	paths     []liveDiffSourceSpan
 }
 
 type liveDiffPreviewRow struct {
@@ -171,7 +170,7 @@ func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, them
 		}
 	}
 	if summary > 0 {
-		label := fmt.Sprintf("STREAMING · +%d more calls · enlarge pane", count-shown)
+		label := fmt.Sprintf("+%d more calls · enlarge pane", count-shown)
 		lines = append(lines, ansi.Truncate(theme.Accent()+label+"\x1b[0m", max(0, width-1), ""))
 	}
 	return lines, nil
@@ -251,7 +250,7 @@ func liveDiffPreviewFocus(before, after []liveDiffPreviewRow) int {
 
 func (p *liveDiffPreviewView) prepare(now time.Time) error {
 	current := p.current
-	if p.rendered.ID == current.ID && p.rendered.Input == current.Input && slices.Equal(p.rendered.Syntax, current.Syntax) && slices.Equal(p.rendered.Files, current.Files) {
+	if p.rendered.ID == current.ID && p.rendered.Input == current.Input && slices.Equal(p.rendered.Files, current.Files) {
 		return nil
 	}
 	file := min(p.file, max(0, len(current.Files)-1))
@@ -287,14 +286,6 @@ func (p *liveDiffPreviewView) prepare(now time.Time) error {
 		p.focus = max(0, len(source)-1)
 	}
 	p.file, p.source, p.rendered = file, source, current
-	p.paths = nil
-	if current.Input != "" && !current.DiffText {
-		syntax := current.Syntax
-		if len(syntax) == 0 {
-			syntax = liveDiffScriptSyntax(current.Input)
-		}
-		p.paths = liveDiffSourceRows(current.Input, syntax)
-	}
 	return nil
 }
 
@@ -370,48 +361,7 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 		return nil, err
 	}
 	p.fading = time.Time{}
-	title := p.current.Status
-	if title == "" {
-		title = "STREAMING PREVIEW"
-	}
-	if p.current.Input != "" && !p.current.DiffText && !strings.HasPrefix(title, "RUNNING") && !strings.HasPrefix(title, "PENDING") {
-		title = "STREAMING SCRIPT"
-	}
-	if p.complete && !p.current.Evaluated {
-		title = "STREAMING COMPLETE"
-		if qualification, ok := strings.CutPrefix(p.current.Status, "STREAMING PREVIEW: "); ok {
-			title += " · " + qualification
-		}
-	}
-	if p.current.Input != "" && p.current.Truncated {
-		title += " · tail"
-	}
-	if strings.HasPrefix(p.current.Status, "PREVIEW UNAVAILABLE:") {
-		title = p.current.Status
-	}
-	if len(p.current.Files) > 0 {
-		file := p.current.Files[p.file]
-		path := file.AfterPath
-		if path == "" {
-			path = file.BeforePath
-		}
-		title += " · " + pathdisplay.ForWorkspace(workspace, path)
-	}
-	caller := p.current.Caller
-	if caller == "" {
-		caller = p.current.Thread
-	}
-	if caller == "" {
-		caller = "unknown caller"
-	}
-	// Put attribution first so narrow panes do not silently lose the caller.
-	// The caller keeps the agents pane's color for the same canonical path.
-	safeTitle := livediff.Safe(title, false)
-	caller = ansi.Truncate(livediff.Safe(caller, false), max(1, width/3, width-6-ansi.StringWidth(safeTitle)), "…")
-	if color := liveAgentColor(p.current.Caller); color != "" {
-		caller = color + caller + "\x1b[0m" + theme.Accent()
-	}
-	header := ansi.Truncate(livediff.Gutter(false, theme)+theme.Accent()+caller+" · "+safeTitle+"\x1b[0m", max(0, width-1), "")
+	header := ansi.Truncate(livediff.Gutter(false, theme)+p.title(workspace, theme, width), max(0, width-1), "")
 	lines := []string{header}
 	rows := height - 1
 	var footer []string
@@ -454,13 +404,11 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	}
 	var before, after []string
 	var err error
-	if p.current.DiffText {
+	if p.current.Input != "" {
+		// Raw diff tails and pending scope lists are plain text.
 		for _, row := range p.source[colorStart:end] {
 			after = append(after, livediff.Safe(strings.TrimSuffix(row.text, "\n"), false))
 		}
-		before = after
-	} else if p.current.Input != "" {
-		after, err = p.colorScript(ctx, theme, colorStart, end)
 		before = after
 	} else {
 		before, after, err = p.renderer.ColorHunk(ctx, theme, review, source)
@@ -522,4 +470,56 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 		}
 	}
 	return append(lines, footer...), nil
+}
+
+// title follows the agents roster: a state glyph, then what the card shows.
+// Edits use the file navigator's status letter and live line counts.
+func (p *liveDiffPreviewView) title(workspace string, theme liveDiffTheme, width int) string {
+	glyph := liveActivityAmber + "◐" + liveActivityReset
+	var label string
+	reason, unavailable := strings.CutPrefix(p.current.Status, liveDiffPreviewUnavailable)
+	switch {
+	case unavailable:
+		glyph, label = liveActivityRed+"!"+liveActivityReset, livediff.Safe(reason, false)
+	case len(p.current.Files) > 0:
+		file := p.current.Files[p.file]
+		path := file.AfterPath
+		if path == "" {
+			path = file.BeforePath
+		}
+		added, removed := file.LineCounts()
+		label = liveDiffFileLabel(file.BeforePath, file.AfterPath, livediff.Safe(pathdisplay.ForWorkspace(workspace, path), false), theme) +
+			liveDiffCountStats(livediff.Counts{Added: added, Removed: removed}, theme)
+		if len(p.current.Files) > 1 {
+			label += fmt.Sprintf(" \x1b[2m%d/%d files\x1b[22m", p.file+1, len(p.current.Files))
+		}
+	case p.current.Status == liveDiffPreviewPending:
+		label = "scoped effects"
+	default:
+		label = "edit"
+	}
+	if p.current.Status == liveDiffPreviewRunning {
+		label += " \x1b[2m· observed so far\x1b[22m"
+	}
+	if p.current.Input != "" && p.current.Truncated {
+		label += " \x1b[2m· tail\x1b[22m"
+	}
+	if p.complete && !unavailable {
+		glyph = liveActivityGreen + "✓" + liveActivityReset
+	}
+	label = glyph + " " + label
+	caller := p.current.Caller
+	if caller == "" {
+		caller = p.current.Thread
+	}
+	if caller == "" {
+		caller = "unknown caller"
+	}
+	// Put attribution first so narrow panes do not silently lose the caller.
+	// The caller keeps the agents pane's color for the same canonical path.
+	caller = ansi.Truncate(livediff.Safe(caller, false), max(1, width/3, width-6-ansi.StringWidth(label)), "…")
+	if color := liveAgentColor(p.current.Caller); color != "" {
+		caller = color + caller + "\x1b[0m"
+	}
+	return theme.Accent() + caller + "\x1b[0m" + theme.Accent() + " · \x1b[0m" + label + "\x1b[0m"
 }

@@ -59,7 +59,7 @@ func TestExecRunningPreviewRetriesBudgetedFiles(t *testing.T) {
 		ID: previewID, Workspace: root, Thread: "thread", Caller: "budget-test",
 	})
 	preview := waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
-		return preview.ID == previewID && preview.Status == "RUNNING · observed so far" && len(preview.Files) == 2
+		return preview.ID == previewID && preview.Status == liveDiffPreviewRunning && len(preview.Files) == 2
 	})
 	byPath := make(map[string]string, len(preview.Files))
 	for _, file := range preview.Files {
