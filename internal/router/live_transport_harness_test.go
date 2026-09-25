@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+const maxLiveDiffEventBytes = 1 << 20
+
 const liveDiffEventsPath = "/internal/live-diff"
 const liveActivityEventsPath = "/internal/live-activity"
 
@@ -47,11 +49,7 @@ func (b *liveDiffBroker) serveEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sub := b.subscribe()
-	defer func() {
-		b.mu.Lock()
-		delete(b.subs, sub)
-		b.mu.Unlock()
-	}()
+	defer b.unsubscribe(sub)
 	controller := http.NewResponseController(w)
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("Cache-Control", "no-store")

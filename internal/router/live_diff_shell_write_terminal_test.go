@@ -19,15 +19,13 @@ func TestLiveDiffTerminalCatWriteStreamsDiff(t *testing.T) {
 	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
 		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
 	})
-	sub := broker.subscribe()
-	<-sub.events
 	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
 	t.Cleanup(worker.stop)
 	for i, delta := range []string{"mkdir -p generated\ncat >'visible file.txt' <<'END'\nfirst", "\nsecond", "\nEND\n"} {
 		worker.appendDelta(delta)
-		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+		preview := waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
 			return preview.Status == liveDiffPreviewEdit && len(preview.Files) == 1
 		})
 		want := "+first"

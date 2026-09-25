@@ -149,6 +149,62 @@ func TestLiveDiffSubscriberOverflowAndIsolation(t *testing.T) {
 	}
 }
 
+func TestLiveDiffSingleSubscriberLifecycle(t *testing.T) {
+	broker := newLiveDiffBroker(t.Context())
+	old := broker.subscribe()
+	<-old.events
+	current := broker.subscribe()
+	<-current.events
+	broker.unsubscribe(old)
+	broker.publishTurn(true)
+	if len(old.events) != 0 || len(current.events) != 1 {
+		t.Fatal("publication must reach only the replacement mailbox")
+	}
+	if event := <-current.events; event.Kind != "turn" || event.Status != "active" {
+		t.Fatalf("replacement event = %+v", event)
+	}
+	broker.unsubscribe(current)
+	broker.publishTurn(false)
+	if len(current.events) != 0 {
+		t.Fatal("detached mailbox received publication")
+	}
+	next := broker.subscribe()
+	if event := <-next.events; event.Kind != "scope" || !event.Resync {
+		t.Fatalf("snapshot barrier = %+v", event)
+	}
+	if event := <-next.events; event.Status != "completed" || event.TurnRevision != 2 {
+		t.Fatalf("retained state = %+v", event)
+	}
+}
+
+func TestLiveDiffPreviewMailboxOverflowResync(t *testing.T) {
+	broker := newLiveDiffBroker(t.Context())
+	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{"/workspace": {"thread": true}}})
+	sub := broker.subscribe()
+	<-sub.events
+	// Distinct removals cannot coalesce, so a stalled UI must resynchronize.
+	for i := range 33 {
+		broker.publishPreview(liveDiffPreview{ID: fmt.Sprint(i)}, true)
+	}
+	select {
+	case <-sub.gap:
+	default:
+		t.Fatal("preview overflow did not request resynchronization")
+	}
+	broker.publishPreview(previewViewFixture("retained", 1), false)
+	next := broker.subscribe()
+	broker.unsubscribe(sub)
+	batch := broker.takePreviews(next)
+	if len(batch) != 2 || !batch[0].Resync || batch[1].Preview == nil || batch[1].Preview.ID != "retained" {
+		t.Fatalf("resynchronization lost current display state: %+v", batch)
+	}
+	broker.publishPreview(liveDiffPreview{ID: "retained"}, true)
+	batch = broker.takePreviews(next)
+	if len(batch) != 1 || batch[0].Preview == nil || batch[0].Preview.Workspace != "" {
+		t.Fatalf("resynchronized mailbox missed preview removal: %+v", batch)
+	}
+}
+
 func waitLiveDiffEvent(t *testing.T, sub *liveDiffSubscriber, match func(liveDiffEvent) bool) liveDiffEvent {
 	t.Helper()
 	timer := time.NewTimer(5 * time.Second)

@@ -8,8 +8,6 @@ import (
 	"sync"
 )
 
-const maxLiveDiffEventBytes = 1 << 20
-
 type liveDiffChange struct {
 	Workspace string
 	Namespace string `json:",omitzero"`
@@ -36,13 +34,13 @@ type liveDiffSubscriber struct {
 	previews     []liveDiffPreview // Latest per ID, guarded by the broker mutex.
 }
 
-// The router owns this hub. Enqueueing never waits for a renderer or performs
-// network I/O, including when called at the durable publication boundary.
+// The router owns this mailbox for the single in-process UI. Enqueueing never
+// waits for the renderer, including at the durable publication boundary.
 type liveDiffBroker struct {
 	ctx               context.Context
 	mu                sync.Mutex
 	scope             liveDiffScope
-	subs              map[*liveDiffSubscriber]bool
+	subscriber        *liveDiffSubscriber
 	turnRevision      uint64
 	turnStatus        string
 	completedPreviews []liveDiffPreview // Last 16 evaluated snapshots in this turn, oldest first.
@@ -53,7 +51,6 @@ func newLiveDiffBroker(ctx context.Context) *liveDiffBroker {
 	return &liveDiffBroker{
 		ctx:   ctx,
 		scope: liveDiffScope{Workspaces: make(map[string]map[string]bool)},
-		subs:  make(map[*liveDiffSubscriber]bool),
 	}
 }
 
@@ -71,33 +68,37 @@ func (b *liveDiffBroker) scopeEventLocked() liveDiffEvent {
 }
 
 func (b *liveDiffBroker) emitLocked(event liveDiffEvent) {
-	for sub := range b.subs {
-		select {
-		case sub.events <- event:
-		default:
-			close(sub.gap)
-			delete(b.subs, sub)
-		}
+	sub := b.subscriber
+	if sub == nil {
+		return
+	}
+	select {
+	case sub.events <- event:
+	default:
+		close(sub.gap)
+		b.subscriber = nil
 	}
 }
 
 // Preview snapshots are replaceable display state, not durable publications.
 // Keep slow viewers from accumulating obsolete frames or starving edit receipts.
 func (b *liveDiffBroker) emitPreviewLocked(preview liveDiffPreview) {
-	for sub := range b.subs {
-		if i := slices.IndexFunc(sub.previews, func(old liveDiffPreview) bool { return old.ID == preview.ID }); i >= 0 {
-			sub.previews = slices.Delete(sub.previews, i, i+1)
-		}
-		if len(sub.previews) >= 32 {
-			close(sub.gap)
-			delete(b.subs, sub)
-			continue
-		}
-		sub.previews = append(sub.previews, preview)
-		select {
-		case sub.previewReady <- struct{}{}:
-		default:
-		}
+	sub := b.subscriber
+	if sub == nil {
+		return
+	}
+	if i := slices.IndexFunc(sub.previews, func(old liveDiffPreview) bool { return old.ID == preview.ID }); i >= 0 {
+		sub.previews = slices.Delete(sub.previews, i, i+1)
+	}
+	if len(sub.previews) >= 32 {
+		close(sub.gap)
+		b.subscriber = nil
+		return
+	}
+	sub.previews = append(sub.previews, preview)
+	select {
+	case sub.previewReady <- struct{}{}:
+	default:
 	}
 }
 
@@ -159,13 +160,24 @@ func (b *liveDiffBroker) publishTurn(active bool) {
 	b.emitLocked(liveDiffEvent{Kind: "turn", Status: status, TurnRevision: b.turnRevision})
 }
 
+// unsubscribe only detaches the current UI mailbox; delayed cleanup from an
+// earlier subscription must not detach its replacement after resynchronization.
+func (b *liveDiffBroker) unsubscribe(sub *liveDiffSubscriber) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.subscriber == sub {
+		b.subscriber = nil
+	}
+}
+
+// subscribe replaces the UI mailbox and restores the current display state.
 func (b *liveDiffBroker) subscribe() *liveDiffSubscriber {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	sub := &liveDiffSubscriber{events: make(chan liveDiffEvent, 32), gap: make(chan struct{}), previewReady: make(chan struct{}, 1)}
 	// Register before exposing the initial scope. The client may take its
 	// durable snapshot while subsequent events accumulate in this queue.
-	b.subs[sub] = true
+	b.subscriber = sub
 	event := b.scopeEventLocked()
 	event.Resync = true
 	sub.events <- event

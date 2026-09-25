@@ -192,8 +192,6 @@ func TestPaneOperationRegressionCodeModePatchStreamsThroughPTY(t *testing.T) {
 			connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
 				Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
 			})
-			sub := broker.subscribe()
-			<-sub.events
 			ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 18)
 			ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
 			worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", "exec")
@@ -206,34 +204,22 @@ func TestPaneOperationRegressionCodeModePatchStreamsThroughPTY(t *testing.T) {
 				opening, lineBreak = "const patch = `", "\n"
 			}
 			worker.appendDelta(opening + "*** Begin Patch")
-			assertProvisionalPatchPreview(t, waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-				return preview.Status == liveDiffPreviewEdit && len(preview.Files) == 0
-			}))
 			assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
 				return strings.Contains(ansi.Strip(frame), "· ◐ edit")
 			}))
 
 			worker.appendDelta(lineBreak + "*** Add File: new.txt" + lineBreak + "+first line")
-			assertProvisionalPatchPreview(t, waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-				return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+first line")
-			}))
 			assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
 				plain := ansi.Strip(frame)
 				return strings.Contains(plain, "new.txt") && strings.Contains(plain, "+first line")
 			}), "new.txt", "+first line")
 
 			worker.appendDelta(lineBreak + "+second line")
-			assertProvisionalPatchPreview(t, waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-				return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+second line")
-			}))
 			assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
 				return strings.Contains(ansi.Strip(frame), "+second line")
 			}), "new.txt", "+first line", "+second line")
 			if quote == "template" {
 				worker.appendDelta("\n+Use \\`mcat\\` and \\${literal}\n+after escapes")
-				assertProvisionalPatchPreview(t, waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-					return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+after escapes")
-				}))
 				assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
 					return strings.Contains(ansi.Strip(frame), "+after escapes")
 				}), "+Use `mcat` and ${literal}", "+after escapes")

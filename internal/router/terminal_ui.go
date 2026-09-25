@@ -206,7 +206,7 @@ func (u *terminalUI) run(ctx context.Context, stdout *os.File, keys <-chan byte,
 	frames := time.NewTicker(33 * time.Millisecond)
 	defer frames.Stop()
 	sub := u.auto.events.subscribe()
-	defer func() { u.auto.events.mu.Lock(); delete(u.auto.events.subs, sub); u.auto.events.mu.Unlock() }()
+	defer func() { u.auto.events.unsubscribe(sub) }()
 	dirty := true
 	agePaint := time.Now()
 	for {

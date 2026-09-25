@@ -136,8 +136,6 @@ func TestLiveDiffTerminalCatPythonScriptStreamsTargetDiff(t *testing.T) {
 	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
 		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
 	})
-	sub := broker.subscribe()
-	<-sub.events
 	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
@@ -150,7 +148,7 @@ func TestLiveDiffTerminalCatPythonScriptStreamsTargetDiff(t *testing.T) {
 		"s = s.replace('old', 'new', 1)\n" +
 		"p.write_text(s)\n"
 	worker.appendDelta(streamed)
-	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+	preview := waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
 		return preview.Status == liveDiffPreviewEdit && len(preview.Files) == 1 &&
 			strings.Contains(preview.Files[0].Diff, "+new old")
 	})
@@ -158,7 +156,7 @@ func TestLiveDiffTerminalCatPythonScriptStreamsTargetDiff(t *testing.T) {
 		t.Fatalf("streamed Python body was not projected as a target diff: %+v", preview)
 	}
 	worker.appendDelta("s = s.replace('new',")
-	retained := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+	retained := waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
 		return !preview.Complete && preview.Status == liveDiffPreviewEdit && len(preview.Files) == 1 &&
 			strings.Contains(preview.Files[0].Diff, "+new old")
 	})
@@ -181,15 +179,9 @@ func TestLiveDiffTerminalCatPythonScriptStreamsTargetDiff(t *testing.T) {
 		t.Fatalf("stream preview created its script: %v", err)
 	}
 	worker.finish(streamed + "s = s.replace('new',\nPY\n")
-	completed := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return preview.Complete && len(preview.Files) == 1 && preview.Files[0].AfterPath == target
-	})
-	if !strings.Contains(completed.Files[0].Diff, "+new old") {
-		t.Fatalf("malformed final script displaced the last valid target diff: %+v", completed)
-	}
 	finalFrame := ansi.Strip(ui.frame(t, func(frame string) bool {
 		plain := ansi.Strip(frame)
-		return strings.Contains(plain, "✓ M") && strings.Contains(plain, "target.txt")
+		return strings.Contains(plain, "✓ M") && strings.Contains(plain, "target.txt") && strings.Contains(plain, "+new old")
 	}))
 	if strings.Contains(finalFrame, "cat >edit.py") || strings.Contains(finalFrame, "from pathlib import Path") ||
 		strings.Contains(finalFrame, "s = s.replace") {

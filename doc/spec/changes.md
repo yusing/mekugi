@@ -370,6 +370,10 @@ an execution or launch request with no stream content. Agent activity can open
 independently without reserving an empty live-input area. Explicitly focusing
 the diff pane still opens it on demand.
 
+The router publishes to one in-process UI mailbox without waiting for rendering.
+Replaceable previews retain only the latest frame per call; a mailbox that falls
+behind resynchronizes from durable changes and retained display state.
+
 Provider input arrives in bursts. The stream view reveals each call's received
 input at its recent arrival rate, so the preview grows steadily rather than
 jumping per burst; the reveal trails received input by at most a bounded
