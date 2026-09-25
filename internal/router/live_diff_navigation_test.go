@@ -317,3 +317,23 @@ func TestLiveDiffNavigationFolderArrow(t *testing.T) {
 		t.Fatalf("collapsed folder arrow missing: %q", row)
 	}
 }
+
+// A compacted folder chain that splits keeps its new ancestor in view, and
+// rows are never scrolled off while space remains below.
+func TestLiveDiffNavigationChainSplitKeepsAncestor(t *testing.T) {
+	var nav liveDiffNavigation
+	files := []liveDiffFile{navigationFile("/w/internal/broker/a.go"), navigationFile("/w/internal/broker/b.go")}
+	nav.rebuild(files, "/w")
+	if got := nav.entries[0].label; got != "internal/broker" {
+		t.Fatalf("compacted chain = %q", got)
+	}
+	files = append(files, navigationFile("/w/internal/pane/c.go"))
+	nav.rebuild(files, "/w")
+	if nav.top != 0 || nav.entries[0].label != "internal" {
+		t.Fatalf("after split top = %d (%q)", nav.top, nav.entries[nav.top].label)
+	}
+	nav.top = 3
+	if row := ansi.Strip(nav.render(files, nil, 0, 34, 10, livediff.DarkTheme)[2]); nav.top != 0 || !strings.Contains(row, "internal") {
+		t.Fatalf("fitting tree scrolled to %d, first row %q", nav.top, row)
+	}
+}

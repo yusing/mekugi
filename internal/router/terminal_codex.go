@@ -3,12 +3,12 @@ package router
 import (
 	"fmt"
 	"io"
- "os"
- "golang.org/x/sys/unix"
+	"os"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"golang.org/x/sys/unix"
 )
 
 func (u *terminalUI) configureCodex(host io.Writer) {
@@ -78,9 +78,16 @@ func (u *terminalUI) codexFrame() string {
 
 // Preserve the master's nonblocking flag; pty.Setsize calls File.Fd, which
 // switches a Go-managed descriptor back to blocking I/O.
-func resizeTerminalPTY(file *os.File,width,height int) error {
- raw,err:=file.SyscallConn();if err!=nil{return err}
- var resizeErr error
- if err=raw.Control(func(fd uintptr){resizeErr=unix.IoctlSetWinsize(int(fd),unix.TIOCSWINSZ,&unix.Winsize{Col:uint16(width),Row:uint16(height)})});err!=nil{return err}
- return resizeErr
+func resizeTerminalPTY(file *os.File, width, height int) error {
+	raw, err := file.SyscallConn()
+	if err != nil {
+		return err
+	}
+	var resizeErr error
+	if err = raw.Control(func(fd uintptr) {
+		resizeErr = unix.IoctlSetWinsize(int(fd), unix.TIOCSWINSZ, &unix.Winsize{Col: uint16(width), Row: uint16(height)})
+	}); err != nil {
+		return err
+	}
+	return resizeErr
 }

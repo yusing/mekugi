@@ -72,6 +72,10 @@ func (n *liveDiffNavigation) rebuild(files []liveDiffFile, workspace string) {
 	if n.top < len(n.entries) {
 		topID = n.entries[n.top].id
 	}
+	known := make(map[string]bool, len(n.entries))
+	for _, entry := range n.entries {
+		known[entry.id] = true
+	}
 	n.entries, n.matches, n.total, n.workspace = nil, nil, 0, workspace
 	paths := make(map[int]string)
 	for i, file := range files {
@@ -170,6 +174,15 @@ func (n *liveDiffNavigation) rebuild(files []liveDiffFile, workspace string) {
 		if entry.id == topID {
 			n.top = i
 		}
+	}
+	// A compacted chain keeps its deepest folder's identity, so when it splits
+	// the top row names that folder; show the new ancestors above it too.
+	for n.top > 0 && n.top < len(n.entries) {
+		above, top := n.entries[n.top-1], n.entries[n.top]
+		if above.file >= 0 || above.depth >= top.depth || known[above.id] {
+			break
+		}
+		n.top--
 	}
 }
 
@@ -542,6 +555,8 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 		}
 	}
 	out[1] = ansi.Truncate("\x1b[2m"+filter+"\x1b[0m", max(0, width-1), "…")
+	// Rows never stay scrolled off the top while space remains below.
+	n.top = min(n.top, max(0, len(n.entries)-(rows-2)))
 	scrollbar := len(n.entries) > rows-2 && rows > 2
 	contentWidth := max(0, width-1)
 	if scrollbar {

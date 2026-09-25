@@ -292,9 +292,13 @@ func (v *View) Flush(all bool) {
 		}
 	}
 	v.RefreshVisible()
+	// Read captures, not Visible: a caller filter composes other callers'
+	// unreviewed captures as baseline, but they are still unseen.
 	if v.UnseenUpdate {
 		v.UnseenUpdate = slices.ContainsFunc(v.Files, func(file File) bool {
-			return v.Visible[file.Key()].Highlighted
+			return slices.ContainsFunc(file.Chunks, func(chunk Chunk) bool {
+				return chunk.Highlighted && !v.Reviewed[chunk.Key]
+			})
 		})
 	}
 }

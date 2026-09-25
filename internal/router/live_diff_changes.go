@@ -251,6 +251,8 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 		}
 	}
 	out[1] = ansi.Truncate("\x1b[2m"+filter+"\x1b[0m", max(0, width-1), "…")
+	// Rows never stay scrolled off the top while space remains below.
+	l.top = min(l.top, max(0, len(l.rows)-(rows-2)))
 	contentWidth := max(0, width-1)
 	// Lanes are two cells wide. Beyond the cap, later callers share the last
 	// lane and their rows name the caller instead.

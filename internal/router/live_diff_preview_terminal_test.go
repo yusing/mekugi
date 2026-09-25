@@ -161,6 +161,11 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 
 	// Stream scrolling pauses its cards without changing captured-diff following.
 	ui.write(t, "g\x1b[<65;2;18M")
+	// Keys reach the viewer asynchronously; ending the turn first would switch
+	// to diff mode and scroll the diff instead of the stream.
+	ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "STREAM · ") && !strings.Contains(ansi.Strip(frame), "stream_0100")
+	})
 	broker.publishTurn(false)
 	ui.frame(t, func(frame string) bool {
 		return strings.Contains(frame, "v stream") && strings.Contains(ansi.Strip(frame), "80│+new")

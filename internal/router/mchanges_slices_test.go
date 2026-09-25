@@ -25,6 +25,7 @@ type mchangesSliceFixture struct {
 func newMChangesSliceFixture(t *testing.T, thread string) *mchangesSliceFixture {
 	t.Helper()
 	registry := sharedProxyTestRegistry(t)
+	thread = uniqueTestThread(thread)
 	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
 	if err != nil {
 		t.Fatal(err)
@@ -411,13 +412,14 @@ func TestMChangesSlicesMineListForkAndResume(t *testing.T) {
 		t.Fatalf("compressed own-thread list: %q, %q, %d", stdout, stderr, status)
 	}
 
-	child, releaseChild, err := f.store.beginSession(f.ctx, "slice-fork", "fork-routing")
+	fork := uniqueTestThread("slice-fork")
+	child, releaseChild, err := f.store.beginSession(f.ctx, fork, "fork-routing")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer releaseChild()
 	bindTestHandleScope(t, f.store, child, "", f.thread)
-	childInvocation := f.invocationFor(f.workspace, "slice-fork")
+	childInvocation := f.invocationFor(f.workspace, fork)
 	stdout, stderr, status = runShellWorkerTest(t, f.registry, "bash", nil,
 		"mchanges --mine --list", nil, childInvocation)
 	if status != 0 || stderr != "" || !strings.Contains(stdout, "amber1..amber3 applied +3 -3") ||

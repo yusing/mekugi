@@ -48,7 +48,7 @@ func mreadQualityInvocation(t *testing.T, thread string) shellWorkerTestInvocati
 func TestMReadMultipleHandlesShareBudgetAndReturnOneCombinedContinuation(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
-	thread := "mread-quality-" + filepath.Base(t.TempDir())
+	thread := uniqueTestThread("mread-quality")
 	store, ctx := mreadQualitySession(t, registry, thread)
 	first := strings.Repeat("alpha ", 70) + "\n" + strings.Repeat("oversized ", 100) + "\n"
 	second := strings.Repeat("beta row\n", 100)
@@ -85,7 +85,7 @@ func TestMReadMultipleHandlesShareBudgetAndReturnOneCombinedContinuation(t *test
 func TestMReadSourcePagesReportTheirAbsoluteRows(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
-	thread := "mread-quality-" + filepath.Base(t.TempDir())
+	thread := uniqueTestThread("mread-quality")
 	store, ctx := mreadQualitySession(t, registry, thread)
 	var source strings.Builder
 	for row := 42; row < 342; row++ {
@@ -121,7 +121,7 @@ func TestMReadSourcePagesReportTheirAbsoluteRows(t *testing.T) {
 func TestMReadPreservesCommandStderrThatResemblesALimitNotice(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
-	thread := "mread-quality-" + filepath.Base(t.TempDir())
+	thread := uniqueTestThread("mread-quality")
 	store, ctx := mreadQualitySession(t, registry, thread)
 	const diagnostic = "mcat: output incomplete: compiler emitted this diagnostic verbatim\n"
 	id, err := store.putTypedOutput(ctx, toolplugin.OmittedOutput{
@@ -141,7 +141,7 @@ func TestMReadPreservesCommandStderrThatResemblesALimitNotice(t *testing.T) {
 func TestMReadTinyBudgetAndMalformedOperandsHaveExactMessages(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
-	thread := "mread-quality-" + filepath.Base(t.TempDir())
+	thread := uniqueTestThread("mread-quality")
 	store, ctx := mreadQualitySession(t, registry, thread)
 	const row = "one complete row\n"
 	id, err := store.putTypedOutput(ctx, toolplugin.OmittedOutput{Stdout: row, StdoutKind: "rows"}, 0)
@@ -176,7 +176,7 @@ func TestMReadTinyBudgetAndMalformedOperandsHaveExactMessages(t *testing.T) {
 func TestMReadFreshStoreForkAndSideContinuityStayInTheirHandleScopes(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
-	root := "mread-root-" + filepath.Base(t.TempDir())
+	root := uniqueTestThread("mread-root")
 	store, rootCtx := mreadQualitySession(t, registry, root)
 	makeRows := func(prefix string, mediumWords int) string {
 		medium := "alpha"
@@ -232,7 +232,7 @@ func TestMReadFreshStoreForkAndSideContinuityStayInTheirHandleScopes(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	fork := "mread-fork-" + filepath.Base(t.TempDir())
+	fork := uniqueTestThread("mread-fork")
 	forkCtx := mreadQualityBranch(t, freshStore, fork, "", root)
 	assertPairRead(fork, firstCursor, secondCursor)
 	forkID, err := freshStore.putTypedOutput(forkCtx, toolplugin.OmittedOutput{
@@ -242,7 +242,7 @@ func TestMReadFreshStoreForkAndSideContinuityStayInTheirHandleScopes(t *testing.
 		t.Fatal(err)
 	}
 
-	side := "mread-side-" + filepath.Base(t.TempDir())
+	side := uniqueTestThread("mread-side")
 	_ = mreadQualityBranch(t, freshStore, side, root, "")
 	assertPairRead(side, firstCursor, secondCursor)
 	borrowed, borrowErr, borrowStatus := runShellWorkerTest(t, registry, "bash", nil,

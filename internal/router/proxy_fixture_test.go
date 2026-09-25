@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +26,15 @@ var proxyTestFixture, pluginProxyTestFixture proxyRegistryFixture
 
 const routerTestWorkerEnvironment = "MEKUGI_ROUTER_TEST_WORKER"
 const routerTestWorkerUnscopedEnvironment = "MEKUGI_ROUTER_TEST_WORKER_UNSCOPED"
+
+var testThreadSequence atomic.Uint64
+
+// uniqueTestThread names a thread no other run in this process uses. The shared
+// registry keeps one replay store per process, so a fixed thread ID would see an
+// earlier -count run's handles and fork points.
+func uniqueTestThread(prefix string) string {
+	return fmt.Sprintf("%s-%d", prefix, testThreadSequence.Add(1))
+}
 
 // Ordinary proxy tests borrow the real, immutable built-in frontend catalog.
 func sharedProxyTestRegistry(t *testing.T) *toolRegistry {

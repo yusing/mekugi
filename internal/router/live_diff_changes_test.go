@@ -461,3 +461,28 @@ func TestLiveDiffHunkJumpKeepsLeftPosition(t *testing.T) {
 		t.Fatalf("p after ] reopened offset %d, want parked %d", c.offset, parked)
 	}
 }
+
+// Flushing one caller's changes must not clear the unseen-update mark while
+// another caller's highlighted captures remain unreviewed.
+func TestLiveDiffFilteredFlushKeepsOthersUnseen(t *testing.T) {
+	main := liveDiffCapture("k1", "a.go", 1, "a\n", "A\n", livediff.Origin{Change: "amber1", Caller: "/root"})
+	worker := liveDiffCapture("k2", "b.go", 2, "b\n", "B\n", livediff.Origin{Change: "apple1", Caller: "/root/worker"})
+	// The first merge is a baseline; captures arriving while paused are unseen.
+	var view liveDiffView
+	view.Merge(nil)
+	view.Following = false
+	view.Merge(livediff.GroupCaptures([]liveDiffChunk{main, worker}))
+	if !view.UnseenUpdate {
+		t.Fatal("paused update was not marked unseen")
+	}
+	view.FilterCaller("/root/worker")
+	view.Flush(true)
+	if !view.Reviewed["k2"] || view.Reviewed["k1"] || !view.UnseenUpdate {
+		t.Fatalf("filtered flush: reviewed %v, unseen %v", view.Reviewed, view.UnseenUpdate)
+	}
+	view.FilterCaller("")
+	view.Flush(true)
+	if view.UnseenUpdate {
+		t.Fatal("flushing everything left the unseen-update mark")
+	}
+}
