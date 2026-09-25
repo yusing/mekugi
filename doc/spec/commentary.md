@@ -355,33 +355,48 @@ this agent's recorded changes by path. The agent heading already names the
 author, and an ordinary read-only result omits its empty change report. The
 shared view keeps each question to one row so clipping reaches the answers;
 the roster summary shows the first answer line without a leading list bullet.
-Roster operation summaries retain syntax highlighting. Message recipients use
-`main` or the child display name, and reply rows omit the redundant sender name. Other final answers remain
+Roster operation summaries retain syntax highlighting. Messages show `to <recipient>` for outgoing and `from <sender>` for incoming delivery,
+relative to the entry's agent. Peers use `main` or the child display name; the owning
+agent is not repeated. The message body gutter retains the sender's color. Start
+blocks indent the assignment beneath `Started` without a `Spawn assignment:` label. Other final answers remain
 authored Markdown.
 
 The main agent and its children appear as a canonical-path tree in observation order, with each agent's
-current activity and an elapsed-time timer (`elapsed · last response ago`; `—` until
-its first response completes). The roster stays in a separate region below Codex on the left, with its own
+current activity and an elapsed-time timer (`elapsed · age ago`, or `just now`; `—` until
+its first response completes). The root summary shows the latest observed message addressed
+to `/root`, or a dim `—` when none is retained. Sibling and ancestor continuation guides
+form a tree; rows whose parent is off-screen show their relative path instead. The roster stays in a separate region below Codex on the left, with its own
 resizable divider. It shares local selection with the activity feed on the right;
 no extra process, broker, or transport is needed. Each agent has an activity row and a second
-row for metrics: `model reasoning [fast]`, role, and the timer. The optional `[fast]`
-marker denotes priority service. Model labels and costs reuse token-report logic. An agent
+row for metrics: role and the timer; the roster shows no model label. Roles, units, and
+separators are dim; metric values use normal brightness. Identity/timing and usage form
+separate groups; the root omits its redundant role, and missing or conflicting role
+evidence omits the role. Costs reuse token-report logic. An agent
 with observed provider usage shows its cumulative input and output tokens as
 `↑ in ↓ out`; its estimated USD cost and provider-response turn count follow as
-`$N · N turns`. The estimate reuses the shared token-pricing calculation; when
+`$N · T+N`. The estimate reuses the shared token-pricing calculation; when
 provider totals are present but billing details are incomplete, the roster uses
 the reported/requested tier or standard pricing for `auto` where supported. When usage or pricing is unavailable,
-cost shows `n/a` rather than
-claiming zero. Explicitly reported zero input or output totals remain valid for
-estimates; absent totals do not become known zero. Missing role evidence shows `n/a`. While a response streams, output grows by an estimate of about four
+the cost is omitted rather than
+claimed as zero. Explicitly reported zero input or output totals remain valid for
+estimates; absent totals do not become known zero. While a response streams, output grows by an estimate of about four
 bytes of visible delta per token, refreshed every second; the provider's reported
 usage replaces the estimate when the response ends. Hidden reasoning is not
 estimated, and input changes only when usage is reported. A Code Mode batch shows its latest
 operation and the count of the others. When the separate roster is visible,
 the activity pane gives its whole body to the feed. On narrow terminals where
 only the focused pane fits, the agents view includes its roster: at 100
-columns or wider, agent cards sit beside the feed. Narrower panes stack two rows per
-agent above the feed, and panes with few rows show a one-line strip. The feed groups
+columns or wider, three-line cards show name and last-response age, activity, and short metrics
+beside the feed. Narrower panes stack activity and metrics above the feed, and panes
+with few rows show a one-line strip using `main` for the root. Before hiding agents,
+the roster compacts to one row per agent with a name column sized for the whole tree, retaining selected-agent metrics when space
+permits. Hidden rows have directional counts and responding/error counts on the
+corresponding edge where space permits; the header always includes overall counts.
+Counts follow each agent's status symbol, so a responding agent is never also
+counted as an error.
+The viewport moves only when selection leaves it, not to recenter each selection.
+The separate roster header omits feed follow state; the feed header is `ACTIVITY`
+with its filter and follow state. Feed-only controls do not offer clicking agents. The feed groups
 consecutive entries by agent under a colored heading. In the shared view it clips
 long entries, and its only mode shows one agent in full. Hovering a clipped
 snippet underlines its hidden-line count; clicking it expands it in place and
@@ -389,7 +404,9 @@ pauses following so it stays put, and clicking it again clips it. Roster rows ar
 clickable: hovering highlights an agent; clicking it shows only that agent,
 and clicking it again restores the shared feed. In the roster, `↑`/`↓` or
 `k`/`j` move through all agents followed by each individual agent, stopping at
-either end. `o` toggles the filter. `n`/`Tab` and `p` also select agents. Scrolling follows the same
+either end. `o` toggles the filter. `n`/`Tab` and `p` also select agents. The roster mouse wheel
+scrolls its viewport without changing selection, filtering, or feed follow state.
+Hover underlines only the name; selection has its own marker column. Feed scrolling follows the same
 line/page/home/end/follow contract as the [live diff](changes.md#live-terminal-view).
 Roster status symbols are
 observed facts only:

@@ -19,6 +19,7 @@ type liveActivityBlock struct {
 	lang     string
 	fenced   bool
 	from, to string
+	owner    string
 	body     string
 	reads    []liveActivityRead
 	journal  *liveActivityJournal // A final answer in journal-result form.
@@ -60,7 +61,7 @@ func parseLiveActivity(entry activityPaneEntry) []liveActivityBlock {
 	// like one stays plain, so it cannot pose as another agent's message.
 	if entry.Kind == "reply" {
 		if from, to, headline, body, ok := parseLiveActivityEnvelope(text); ok {
-			return []liveActivityBlock{{kind: "message", from: from, to: to, verb: headline, body: body}}
+			return []liveActivityBlock{{kind: "message", from: from, to: to, owner: entry.Agent, verb: headline, body: body}}
 		}
 	}
 	switch entry.Kind {
@@ -138,6 +139,7 @@ func parseLiveActivityEnvelope(text string) (from, to, headline, body string, ok
 func parseLiveActivityStart(text string) liveActivityBlock {
 	heading, body, _ := strings.Cut(text, "\n")
 	_, details, _ := strings.Cut(heading, "Started · ")
+	body = strings.TrimPrefix(strings.TrimLeft(body, "\n"), "Spawn assignment:\n")
 	return liveActivityBlock{kind: "start", label: details, body: body}
 }
 

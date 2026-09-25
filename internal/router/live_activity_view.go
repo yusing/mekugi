@@ -21,22 +21,26 @@ const (
 // The agents view is presentation state only. Entries carry router sequence
 // numbers, so a reconnect snapshot merges without duplicating retained rows.
 type liveActivityView struct {
-	agents    []activityPaneAgent
-	entries   []activityPaneEntry
-	blocks    [][]liveActivityBlock // Parsed entries, aligned with entries.
-	lastSeq   uint64
-	selected  string
-	hovered   string
-	only      bool
-	hits      []liveActivityHit
-	following bool
-	offset    int
-	unseen    int
-	status    string
-	feedOnly  bool
-	painter   liveActivityPainter
-	osc       livediff.OSC
-	runs      map[liveActivityRunKey]liveActivityRun
+	agents         []activityPaneAgent
+	entries        []activityPaneEntry
+	blocks         [][]liveActivityBlock // Parsed entries, aligned with entries.
+	lastSeq        uint64
+	selected       string
+	hovered        string
+	only           bool
+	hits           []liveActivityHit
+	following      bool
+	offset         int
+	rosterOffset   int
+	rosterManual   bool
+	rosterSelected string
+	rosterEnd      int
+	unseen         int
+	status         string
+	feedOnly       bool
+	painter        liveActivityPainter
+	osc            livediff.OSC
+	runs           map[liveActivityRunKey]liveActivityRun
 
 	// expanded snippets show in full in the shared feed; snippet is the
 	// hovered collapsed one.
@@ -46,10 +50,11 @@ type liveActivityView struct {
 	// Geometry of the last frame, used by scrolling keys and the pointer.
 	// feedSnippets holds each feed row's snippet, from screen row feedTop
 	// between columns feedLeft and feedRight.
-	feedLines, feedRows          int
-	feedSnippets                 []liveActivitySnippet
-	feedTop, feedLeft, feedRight int
-	width, height                int
+	feedLines, feedRows                  int
+	feedSnippets                         []liveActivitySnippet
+	feedTop, feedLeft, feedRight         int
+	rosterTop, rosterBottom, rosterRight int
+	width, height                        int
 }
 
 // liveActivitySnippet names a clippable block in the shared feed: the
@@ -216,16 +221,42 @@ func (v *liveActivityView) latest(name string) int {
 // glyph shows only observed facts: an open provider response, a latest error
 // event, or a sent plaintext final answer. None of them claims completion.
 func (v *liveActivityView) glyph(agent activityPaneAgent) string {
-	latest := v.latest(agent.Name)
-	switch {
-	case agent.Responding:
+	switch v.agentStatus(agent) {
+	case '◐':
 		return liveActivityAmber + "◐" + liveActivityReset
-	case latest >= 0 && v.entries[latest].Kind == "error":
+	case '!':
 		return liveActivityRed + "!" + liveActivityReset
-	case agent.Final:
+	case '✓':
 		return liveActivityGreen + "✓" + liveActivityReset
 	}
 	return liveActivityDim + "·" + liveActivityUndim
+}
+
+// agentStatus is the glyph's fact; counts use it so they agree with visible rows.
+func (v *liveActivityView) agentStatus(agent activityPaneAgent) rune {
+	latest := v.latest(agent.Name)
+	switch {
+	case agent.Responding:
+		return '◐'
+	case latest >= 0 && v.entries[latest].Kind == "error":
+		return '!'
+	case agent.Final:
+		return '✓'
+	}
+	return '·'
+}
+
+// statusCounts counts responding and error glyphs among rows.
+func (v *liveActivityView) statusCounts(rows []liveActivityRosterRow) (responding, errors int) {
+	for _, row := range rows {
+		switch v.agentStatus(row.agent) {
+		case '◐':
+			responding++
+		case '!':
+			errors++
+		}
+	}
+	return responding, errors
 }
 
 func (v *liveActivityView) selectAgent(step int) {
@@ -236,6 +267,7 @@ func (v *liveActivityView) selectAgent(step int) {
 	index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
 	index = (max(0, index) + step + len(rows)) % len(rows)
 	v.selected = rows[index].agent.Name
+	v.rosterManual = false
 	v.hovered = ""
 	if v.only {
 		v.follow()
@@ -244,6 +276,17 @@ func (v *liveActivityView) selectAgent(step int) {
 
 func (v *liveActivityView) handleMouse(action byte, row, column int) bool {
 	if action == 'j' || action == 'k' {
+		if !v.feedOnly && row >= v.rosterTop && row <= v.rosterBottom && column >= 1 && column <= v.rosterRight {
+			if v.rosterTop == v.rosterBottom {
+				return true
+			}
+			step := 1
+			if action == 'k' {
+				step = -1
+			}
+			v.scrollRoster(step)
+			return true
+		}
 		return v.scrollKey(paneWheelKey(action))
 	}
 
@@ -303,6 +346,7 @@ func (v *liveActivityView) pointAgent(action byte, row, column int) bool {
 			if action == '\r' {
 				v.only = !v.only || v.selected != hit.agent
 				v.selected = hit.agent
+				v.rosterManual = false
 				v.hovered = ""
 				v.follow()
 			}
@@ -351,6 +395,7 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 	}
 	v.hits = v.hits[:0]
 	v.feedSnippets = nil
+	v.rosterTop, v.rosterBottom, v.rosterRight = 0, 0, 0
 	text := max(1, width-1)
 	rows := v.roster()
 	footer := height >= 10
@@ -367,6 +412,7 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 		cardWidth := min(44, max(28, text*3/10))
 		feedWidth := text - cardWidth - 3
 		cards := v.renderCards(rows, cardWidth, body, now)
+		v.rosterTop, v.rosterBottom, v.rosterRight = 2, body+1, cardWidth
 		feed := v.viewport(v.renderFeed(feedWidth, body), body)
 		v.feedLeft = cardWidth + 4
 		for i := range body {
@@ -374,12 +420,14 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 		}
 	case len(rows) > 0 && body >= 8:
 		roster := v.renderRoster(rows, text, max(2, body/3), now)
+		v.rosterTop, v.rosterBottom, v.rosterRight = 2, len(roster)+1, text
 		feedRows := body - len(roster) - 1
 		lines = append(lines, roster...)
 		lines = append(lines, liveActivityDim+strings.Repeat("─", text)+liveActivityUndim)
 		v.feedTop = len(lines) + 1
 		lines = append(lines, v.viewport(v.renderFeed(text, feedRows), feedRows)...)
 	case len(rows) > 0:
+		v.rosterTop, v.rosterBottom, v.rosterRight = 2, 2, text
 		lines = append(lines, v.renderStrip(rows, text))
 		v.feedTop = 3
 		lines = append(lines, v.viewport(v.renderFeed(text, body-1), body-1)...)
@@ -398,23 +446,33 @@ func liveActivityPad(line string, width int) string {
 }
 
 func (v *liveActivityView) header(rows []liveActivityRosterRow, width int) string {
+	return v.renderHeader(rows, width, false)
+}
+
+func (v *liveActivityView) renderHeader(rows []liveActivityRosterRow, width int, rosterOnly bool) string {
 	title := "AGENTS"
+	if v.feedOnly && !rosterOnly {
+		title = "ACTIVITY"
+	}
 
 	left := "\x1b[1m" + v.painter.theme.Accent() + title + liveActivityReset
-	responding := 0
-	for _, row := range rows {
-		if row.agent.Responding {
-			responding++
-		}
-	}
+	responding, errors := v.statusCounts(rows)
 	switch {
+	case v.feedOnly && !rosterOnly && !v.only:
+		left += " · all"
 	case len(rows) == 0:
 		left += liveActivityDim + " · waiting for subagent activity" + liveActivityUndim
-	case v.only:
+	case v.only && !rosterOnly:
 		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
 		left += fmt.Sprintf(" · only %s %s(%d/%d)%s", v.painter.agent(v.selected), liveActivityDim, index+1, len(rows), liveActivityUndim)
 	default:
-		left += fmt.Sprintf(" · %d · %d responding", len(rows), responding)
+		left += fmt.Sprintf("  %d agents · %d responding", len(rows), responding)
+		if errors > 0 {
+			left += fmt.Sprintf(" · %d error", errors)
+		}
+	}
+	if rosterOnly {
+		return ansi.Truncate(left, width, "…")
 	}
 	right := "FOLLOW"
 	if !v.following {
@@ -426,6 +484,9 @@ func (v *liveActivityView) header(rows []liveActivityRosterRow, width int) strin
 
 	if v.status != "" {
 		right = v.status
+	}
+	if right == "" {
+		return ansi.Truncate(left, width, "…")
 	}
 	gap := width - ansi.StringWidth(left) - ansi.StringWidth(right)
 	if gap < 2 {
@@ -445,23 +506,20 @@ func liveActivityDisplayName(name string) string {
 	return name
 }
 
-// liveActivityRosterName drops the shared /root/ prefix; nested agents show
-// their leaf under the parent. Feed headings always carry the full path.
-func liveActivityRosterName(row liveActivityRosterRow) string {
-	if row.agent.Name == "/root" {
-		return "main"
-	}
-	name := strings.TrimPrefix(row.agent.Name, "/root/")
-	if row.depth > 0 {
-		name = strings.Repeat("  ", row.depth-1) + "└ " + name[strings.LastIndex(name, "/")+1:]
-	}
-	return name
-}
-
 // current is an agent's latest activity summary and its elapsed/response timer.
 func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (string, string) {
-	summary := liveActivityDim + "no activity yet" + liveActivityUndim
-	if latest := v.latest(agent.Name); latest >= 0 {
+	summary := liveActivityDim + "—" + liveActivityUndim
+	if agent.Name == "/root" {
+		for _, blocks := range slices.Backward(v.blocks) {
+			if len(blocks) == 1 && blocks[0].kind == "message" && blocks[0].to == "/root" {
+				block := blocks[0]
+				block.owner = "/root"
+				summary = v.painter.summary([]liveActivityBlock{block})
+				break
+			}
+		}
+	}
+	if latest := v.latest(agent.Name); latest >= 0 && agent.Name != "/root" {
 		summary = v.painter.summary(v.blocks[latest])
 	}
 	if agent.Started.IsZero() {
@@ -472,7 +530,7 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (stri
 	}
 	last := "—"
 	if !agent.LastResponse.IsZero() {
-		last = liveActivityAge(max(0, now.Sub(agent.LastResponse))) + " ago"
+		last = liveActivityLast(agent.LastResponse, now)
 	}
 	return summary, liveActivityAge(max(0, now.Sub(agent.Started))) + " · " + last
 }
@@ -485,40 +543,27 @@ func liveActivityTokens(agent activityPaneAgent) string {
 	return "↑ " + formatUsageTokens(agent.InputTokens) + " ↓ " + formatUsageTokens(agent.OutputTokens)
 }
 
+// liveActivityCost omits unknown cost rather than claiming zero.
 func liveActivityCost(agent activityPaneAgent) string {
-	if agent.Turns == 0 {
+	if agent.Turns == 0 || !agent.CostKnown {
 		return ""
 	}
-	cost := "n/a"
-	if agent.CostKnown {
-		cost = fmt.Sprintf("$%.4f", agent.Cost)
-	}
-	return cost
+	return fmt.Sprintf("$%.4f", agent.Cost)
 }
 
+// liveActivityTurns counts provider responses as T+N.
 func liveActivityTurns(agent activityPaneAgent) string {
 	if agent.Turns == 0 {
 		return ""
 	}
-	return fmt.Sprint(agent.Turns) + " turns"
+	return liveActivityDim + "T+" + liveActivityUndim + fmt.Sprint(agent.Turns)
 }
 
-// liveActivityWindow keeps the selected item visible among at most limit items.
-func liveActivityWindow(count, selected, limit int) (start, end int) {
-	if count <= limit {
-		return 0, count
-	}
-	start = max(0, min(selected-limit/2, count-limit))
-	return start, start + limit
-}
-
-func (v *liveActivityView) marker(selected bool, hovered bool) string {
+func (v *liveActivityView) marker(selected bool) string {
 	if selected {
 		return v.painter.theme.Accent() + "▸" + liveActivityReset
 	}
-	if hovered {
-		return v.painter.theme.Accent() + "▹" + liveActivityReset
-	}
+
 	return " "
 }
 
@@ -529,58 +574,273 @@ func (v *liveActivityView) hoverName(name, agent string) string {
 	return name
 }
 
-// renderCards uses the same two-line agent layout beside the feed.
+// renderCards gives the name, full-width activity, and short metrics separate rows.
 func (v *liveActivityView) renderCards(rows []liveActivityRosterRow, width, height int, now time.Time) []string {
-	lines := v.renderRoster(rows, width, height, now)
+	lines := v.renderAgentRows(rows, width, height, now, true)
 	for len(lines) < height {
 		lines = append(lines, "")
 	}
 	return lines
 }
 
-// renderRoster keeps activity separate from secondary metadata and usage.
 func (v *liveActivityView) renderRoster(rows []liveActivityRosterRow, width, limit int, now time.Time) []string {
+	return v.renderAgentRows(rows, width, limit, now, false)
+}
+
+func (v *liveActivityView) scrollRoster(step int) {
+	if step > 0 && v.rosterEnd >= len(v.agents) {
+		return
+	}
+	v.rosterOffset = max(0, min(v.rosterOffset+step, len(v.agents)-1))
+	v.rosterManual, v.hovered = true, ""
+}
+
+// rosterRange gives compact agent rows priority over secondary metrics.
+// Overflow indicators consume space only when there are hidden agents.
+func rosterRange(count, start, selected, limit int) (end int, metrics bool) {
+	remaining := limit
+	if start > 0 && limit >= 3 {
+		remaining--
+	}
+	end = start
+	for end < count {
+		bottom := 0
+		if end+1 < count && limit >= 3 {
+			bottom = 1
+		}
+		if remaining < 1+bottom {
+			break
+		}
+		remaining--
+		end++
+	}
+	if end < count && limit >= 3 {
+		remaining--
+	}
+	return end, remaining > 0 && selected >= start && selected < end
+}
+
+// rosterTree draws guides only from ancestors that are drawn as branches, so
+// a row whose parent is off-screen shows its relative path without guides.
+func rosterTree(rows []liveActivityRosterRow, index, start int) (name, indent string) {
+	parentAt := func(i int) int {
+		parent, _, _ := strings.CutLast(rows[i].agent.Name, "/")
+		for j := i - 1; j >= start; j-- {
+			if rows[j].agent.Name == parent {
+				return j
+			}
+		}
+		return -1
+	}
+	continuation := func(i int) bool {
+		for j := i + 1; j < len(rows); j++ {
+			if rows[j].depth < rows[i].depth {
+				break
+			}
+			if rows[j].depth == rows[i].depth {
+				return true
+			}
+		}
+		return false
+	}
+	parent := parentAt(index)
+	if rows[index].depth == 0 || parent < 0 {
+		if rows[index].agent.Name == "/root" {
+			return "main", ""
+		}
+		return strings.TrimPrefix(rows[index].agent.Name, "/root/"), ""
+	}
+	var guides []string
+	for i := parent; i >= 0; i = parentAt(i) {
+		if rows[i].depth == 0 || parentAt(i) < 0 {
+			break
+		}
+		guide := "  "
+		if continuation(i) {
+			guide = "│ "
+		}
+		guides = append(guides, guide)
+	}
+	slices.Reverse(guides)
+	prefix := strings.Join(guides, "")
+	branch, guide := "└ ", "  "
+	if continuation(index) {
+		branch, guide = "├ ", "│ "
+	}
+	return prefix + branch + liveActivityDisplayName(rows[index].agent.Name), prefix + guide
+}
+
+func (v *liveActivityView) hiddenRoster(rows []liveActivityRosterRow, direction string) string {
+	responding, errors := v.statusCounts(rows)
+	line := fmt.Sprintf("  %s %d more", direction, len(rows))
+	if responding > 0 {
+		line += fmt.Sprintf(" · %d ◐", responding)
+	}
+	if errors > 0 {
+		line += fmt.Sprintf(" · %d !", errors)
+	}
+	return liveActivityDim + line + liveActivityUndim
+}
+
+func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, limit int, now time.Time, cards bool) []string {
+	if limit <= 0 || len(rows) == 0 {
+		return nil
+	}
 	selected := max(0, slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected }))
-	capacity := max(1, limit/2)
-	if len(rows) > capacity && limit > 2 {
-		capacity = max(1, (limit-1)/2)
+	stride := 2
+	if cards {
+		stride = 3
 	}
-	start, end := liveActivityWindow(len(rows), selected, capacity)
-	nameWidth := 0
-	for _, row := range rows {
-		nameWidth = max(nameWidth, ansi.StringWidth(liveActivityRosterName(row)))
+	compact := len(rows)*stride > limit
+	start, end, metrics := 0, len(rows), false
+	if compact {
+		start = min(v.rosterOffset, len(rows)-1)
+		if v.rosterSelected != v.selected {
+			v.rosterManual = false
+		}
+		if !v.rosterManual {
+			start = min(start, selected)
+		}
+		end, metrics = rosterRange(len(rows), start, selected, limit)
+		for !v.rosterManual && selected >= end && start < selected {
+			start++
+			end, metrics = rosterRange(len(rows), start, selected, limit)
+		}
 	}
-	nameWidth = max(1, min(nameWidth, width/3))
+	v.rosterOffset, v.rosterEnd, v.rosterSelected = start, end, v.selected
+	names, indents := make([]string, end-start), make([]string, end-start)
+	nameWidth := 1
+	for i := range rows {
+		// Full-tree widths keep the summary column still while the window scrolls.
+		name, _ := rosterTree(rows, i, 0)
+		nameWidth = max(nameWidth, ansi.StringWidth(name))
+	}
+	for i := start; i < end; i++ {
+		name, indent := rosterTree(rows, i, start)
+		names[i-start], indents[i-start] = name, indent
+		nameWidth = max(nameWidth, ansi.StringWidth(name))
+	}
+	nameWidth = min(nameWidth, max(1, width/3))
 	var lines []string
+	add := func(line string) { lines = append(lines, ansi.Truncate(line, width, "…")) }
+	if start > 0 && limit >= 3 {
+		add(v.hiddenRoster(rows[:start], "↑"))
+	}
 	for i := start; i < end; i++ {
 		row := rows[i]
 		first := len(lines) + 2
 		summary, timer := v.current(row.agent, now)
-		name := liveAgentColor(row.agent.Name) + v.hoverName(liveActivityMiddle(liveActivityRosterName(row), nameWidth), row.agent.Name) + liveActivityReset
-		line := v.marker(i == selected, row.agent.Name == v.hovered) + v.glyph(row.agent) + " " + name + "  " + summary
-		lines = append(lines, ansi.Truncate(line, width, "…"))
-		if len(lines) < limit {
+		name := names[i-start]
+		available := nameWidth
+		if cards && !compact {
+			available = max(1, width-5)
+		}
+		name = strings.TrimRight(liveActivityMiddle(name, available), " ")
+		split := strings.LastIndexAny(name, " /") + 1
+		styled := liveActivityDim + name[:split] + liveActivityUndim + liveAgentColor(row.agent.Name) + v.hoverName(name[split:], row.agent.Name) + liveActivityReset
+		prefix := v.marker(i == selected) + " " + v.glyph(row.agent) + "  "
+		if cards && !compact {
+			last := liveActivityLast(row.agent.LastResponse, now)
+			gap := width - 5 - ansi.StringWidth(name) - ansi.StringWidth(last)
+			line := prefix + styled
+			if gap >= 2 {
+				line += strings.Repeat(" ", gap) + liveActivityDim + last + liveActivityUndim
+			}
+			add(line)
+			add("     " + liveActivityDim + indents[i-start] + liveActivityUndim + summary)
+		} else {
+			add(prefix + styled + strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(name))) + "  " + summary)
+		}
+		if !compact || (metrics && i == selected) {
 			metric := liveActivityMetrics(row.agent, timer)
-			lines = append(lines, ansi.Truncate("   "+liveActivityDim+metric+liveActivityUndim, width, "…"))
+			if cards {
+				metric = liveActivityCardMetrics(row.agent)
+			}
+			add("     " + liveActivityDim + indents[i-start] + liveActivityUndim + metric)
 		}
 		for hit := first; hit < len(lines)+2; hit++ {
 			v.hits = append(v.hits, liveActivityHit{hit, 1, width, row.agent.Name})
 		}
 	}
-	if hidden := len(rows) - (end - start); hidden > 0 && len(lines) < limit {
-		lines = append(lines, ansi.Truncate(liveActivityDim+fmt.Sprintf("  +%d more · n/p", hidden)+liveActivityUndim, width, "…"))
+	if end < len(rows) && len(lines) < limit {
+		add(v.hiddenRoster(rows[end:], "↓"))
 	}
 	return lines
 }
 
+func liveActivityLast(last, now time.Time) string {
+	if last.IsZero() {
+		return "—"
+	}
+	age := max(0, now.Sub(last))
+	if age < 2*time.Second {
+		return "just now"
+	}
+	return liveActivityAge(age) + " ago"
+}
+
 func liveActivityMetrics(agent activityPaneAgent, timer string) string {
-	var parts []string
-	for _, part := range []string{agent.Configuration, agent.Role, timer, liveActivityTokens(agent), liveActivityCost(agent), liveActivityTurns(agent)} {
+	dim := func(s string) string { return liveActivityDim + s + liveActivityUndim }
+	var identity, usage []string
+	if role := liveActivityRole(agent); role != "" {
+		identity = append(identity, dim(role))
+	}
+	if timer != "" {
+		identity = append(identity, liveActivityMetricValues(timer))
+	}
+	if tokens := liveActivityTokens(agent); tokens != "" {
+		usage = append(usage, liveActivityMetricValues(tokens))
+	}
+	for _, part := range []string{liveActivityCost(agent), liveActivityTurns(agent)} {
 		if part != "" {
-			parts = append(parts, strings.Join(strings.Fields(livediff.Safe(part, false)), " "))
+			usage = append(usage, part)
 		}
 	}
-	return strings.Join(parts, " · ")
+	separator := dim(" · ")
+	var groups []string
+	for _, group := range [][]string{identity, usage} {
+		if len(group) > 0 {
+			groups = append(groups, strings.Join(group, separator))
+		}
+	}
+	return strings.Join(groups, "    ")
+}
+
+// liveActivityRole omits the root's redundant role.
+func liveActivityRole(agent activityPaneAgent) string {
+	if agent.Name == "/root" {
+		return ""
+	}
+	return strings.Join(strings.Fields(livediff.Safe(agent.Role, false)), " ")
+}
+
+// Keep numerical values bright while labels and units recede.
+func liveActivityMetricValues(text string) string {
+	fields := strings.Fields(text)
+	for i, field := range fields {
+		n := 0
+		for n < len(field) && (field[n] >= '0' && field[n] <= '9' || field[n] == '.') {
+			n++
+		}
+		fields[i] = field[:n] + liveActivityDim + field[n:] + liveActivityUndim
+	}
+	return strings.Join(fields, " ")
+}
+
+func liveActivityCardMetrics(agent activityPaneAgent) string {
+	var parts []string
+	if role := liveActivityRole(agent); role != "" {
+		parts = append(parts, liveActivityDim+role+liveActivityUndim)
+	}
+	if cost := liveActivityCost(agent); cost != "" {
+		parts = append(parts, cost)
+	} else if agent.InputTokens > 0 {
+		parts = append(parts, liveActivityDim+"↑"+liveActivityUndim+formatUsageTokens(agent.InputTokens))
+	}
+	if turns := liveActivityTurns(agent); turns != "" {
+		parts = append(parts, turns)
+	}
+	return strings.Join(parts, liveActivityDim+" · "+liveActivityUndim)
 }
 
 // renderStrip is the one-line roster for short panes.
@@ -589,6 +849,9 @@ func (v *liveActivityView) renderStrip(rows []liveActivityRosterRow, width int) 
 	column := 1
 	for _, row := range rows {
 		name := strings.TrimPrefix(row.agent.Name, "/root/")
+		if row.agent.Name == "/root" {
+			name = "main"
+		}
 		if row.agent.Name == v.selected || row.agent.Name == v.hovered {
 			name = "\x1b[4m" + name + "\x1b[24m"
 		}
@@ -727,7 +990,10 @@ func (v *liveActivityView) footer(width int) string {
 	if v.only {
 		mode, toggle = "ONLY", "o all"
 	}
-	keys := "click agent · n/p agent · " + toggle + " · j/k scroll · r follow"
+	keys := "n/p agent · " + toggle + " · j/k scroll · r follow"
+	if !v.feedOnly {
+		keys = "click agent · " + keys
+	}
 
 	if width < 60 {
 		keys = "n/p · o · j/k · r"
@@ -765,7 +1031,8 @@ func (v *liveActivityView) renderRosterPane(width, height int, now time.Time) []
 	width, height = max(1, width-1), max(1, height)
 	v.hits = v.hits[:0]
 	rows := v.roster()
-	lines := []string{v.header(rows, width)}
+	v.rosterTop, v.rosterBottom, v.rosterRight = 2, height, width
+	lines := []string{v.renderHeader(rows, width, true)}
 	if height > 1 && len(rows) > 0 {
 		lines = append(lines, v.renderRoster(rows, width, height-1, now)...)
 	}
@@ -787,6 +1054,7 @@ func (v *liveActivityView) showAgent(step int) {
 	}
 	index = max(-1, min(index+step, len(rows)-1))
 	v.hovered = ""
+	v.rosterManual = false
 	if index < 0 {
 		v.only = false
 	} else {

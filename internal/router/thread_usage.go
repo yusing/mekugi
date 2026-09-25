@@ -31,7 +31,6 @@ type threadUsageTotal struct {
 	complete       bool
 	missingUsage   uint64
 	models         []string
-	configuration  string
 }
 
 type threadUsageObservation struct {
@@ -93,7 +92,6 @@ func (u *threadUsage) add(thread, model, reasoning, serviceTier string, counts t
 func addThreadUsageTotal(total *threadUsageTotal, model, reasoning, serviceTier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
 	total.lastModel = model
 	displayModel := usageModelLabel(model, reasoning, serviceTier)
-	total.configuration = displayModel
 	if displayModel != "" && !slices.Contains(total.models, displayModel) {
 		total.models = append(total.models, displayModel)
 	}
@@ -178,7 +176,7 @@ func usageTotalReport(total *threadUsageTotal) (tokenUsageReport, bool) {
 	if total == nil || !total.complete {
 		return tokenUsageReport{}, false
 	}
-	return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, configuration: total.configuration, model: strings.Join(total.models, ", "), missingUsage: total.missingUsage}, true
+	return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, model: strings.Join(total.models, ", "), missingUsage: total.missingUsage}, true
 }
 
 func (u *threadUsage) turnSnapshot(thread, turn string) (tokenUsageReport, bool) {

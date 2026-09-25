@@ -18,12 +18,11 @@ type tokenUsageReport struct {
 	turn   *tokenUsageReport
 	mentor string
 	tokenCounts
-	cost          tokenCost
-	model         string
-	configuration string
-	rows          *[]agentTokenUsage
-	missingUsage  uint64
-	typesafe      typesafeUsage
+	cost         tokenCost
+	model        string
+	rows         *[]agentTokenUsage
+	missingUsage uint64
+	typesafe     typesafeUsage
 }
 
 type agentTokenUsage struct {

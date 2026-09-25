@@ -413,7 +413,7 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 		return lines
 	case "message":
 		// The envelope glyph already says a message arrived; other headlines stay.
-		head := liveActivityDim + "✉" + liveActivityUndim + " " + liveActivityDim + "→ " + liveActivityUndim + p.recipient(block.to)
+		head := p.messageDirection(block)
 		if headline := strings.TrimSuffix(block.verb, ":"); headline != "Message received" && headline != "Message received." {
 			head += "  " + liveActivityDim + headline + liveActivityUndim
 		}
@@ -612,7 +612,7 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 		if text == "" {
 			text = strings.TrimSuffix(block.verb, ":")
 		}
-		return liveActivityDim + "✉ → " + liveActivityUndim + p.recipient(block.to) + " " + text
+		return p.messageDirection(block) + " " + text
 	case "start":
 		return liveActivityGreen + "▶ Started" + liveActivityReset + " " + p.inline(block.label)
 	case "compaction":
@@ -621,4 +621,13 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 		return liveActivityRed + "✗ " + firstLine(block.body) + liveActivityReset
 	}
 	return firstLine(block.body)
+}
+
+// messageDirection is relative to the row's owner, not the transport recipient.
+func (p liveActivityPainter) messageDirection(block liveActivityBlock) string {
+	direction, peer := "to ", block.to
+	if block.owner == block.to {
+		direction, peer = "from ", block.from
+	}
+	return liveActivityDim + "✉ " + direction + liveActivityUndim + p.recipient(peer)
 }

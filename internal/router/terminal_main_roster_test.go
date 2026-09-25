@@ -41,7 +41,8 @@ func TestRosterIncludesMainWithoutFilterEvent(t *testing.T) {
 	v := newLiveActivityView()
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: agents})
 	rows := v.roster()
-	if len(rows) != 2 || liveActivityRosterName(rows[0]) != "main" || rows[1].depth != 1 {
+	name, _ := rosterTree(rows, 0, 0)
+	if len(rows) != 2 || name != "main" || rows[1].depth != 1 {
 		t.Fatalf("main tree label/parent incorrect: %+v", rows)
 	}
 	frame := strings.Join(plainLines(v.renderRosterPane(80, 8, time.Now())), "\n")

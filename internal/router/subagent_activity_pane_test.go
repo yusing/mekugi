@@ -357,19 +357,19 @@ func TestLiveActivityViewRosterTreeOverflowAndSelection(t *testing.T) {
 		t.Fatalf("roster order = %s", got)
 	}
 	lines := plainLines(view.render(60, 20, time.Now()))
-	if !strings.HasPrefix(lines[0], "AGENTS · 7 · 1 responding") || !strings.HasSuffix(lines[0], "FOLLOW") {
+	if !strings.HasPrefix(lines[0], "AGENTS  7 agents · 1 responding · 1 error") || !strings.HasSuffix(lines[0], "FOLLOW") {
 		t.Fatalf("header = %q", lines[0])
 	}
-	// Six available rows hold two complete agents plus an overflow indicator.
-	if !strings.HasPrefix(lines[1], "▸◐ a    Read a.go") || !strings.HasPrefix(lines[3], " · └ x  Read x.go") ||
-		lines[5] != "  +5 more · n/p" {
+	// Six rows compact to five agents and directional overflow.
+	if !strings.HasPrefix(lines[1], "▸ ◐  a") || !strings.Contains(lines[2], "├ x") ||
+		lines[6] != "  ↓ 2 more" {
 		t.Fatalf("roster = %q", lines[1:7])
 	}
 	for range 6 {
 		view.selectAgent(1)
 	}
 	lines = plainLines(view.render(60, 20, time.Now()))
-	if view.selected != "/root/e" || !strings.HasPrefix(lines[3], "▸· e") {
+	if view.selected != "/root/e" || !slices.ContainsFunc(lines[1:7], func(line string) bool { return strings.HasPrefix(line, "▸ ·  e") }) {
 		t.Fatalf("selection scroll: selected=%s roster=%q", view.selected, lines[1:7])
 	}
 	view.selectAgent(1)
@@ -482,7 +482,7 @@ func TestLiveActivityViewTinyAndNarrowPanes(t *testing.T) {
 	}
 }
 
-func TestLiveActivityRosterShowsTokensAtRightEdge(t *testing.T) {
+func TestLiveActivityRosterShowsUsageByLayout(t *testing.T) {
 	view := liveActivityTestView("/root/a", "/root/b")
 	view.agents[0].InputTokens, view.agents[0].OutputTokens = 146_800, 3_200
 	for _, width := range []int{80, 140} {
@@ -490,8 +490,12 @@ func TestLiveActivityRosterShowsTokensAtRightEdge(t *testing.T) {
 		row := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "↑") })
 		// The roster status ends the row; cards end it at the column divider.
 		status, _, _ := strings.Cut(lines[max(0, row)], " │ ")
-		if row < 0 || !strings.HasSuffix(strings.TrimRight(status, " "), "now · — · ↑ 146.8K ↓ 3.2K") {
-			t.Fatalf("width %d: tokens not right-aligned: %q", width, lines)
+		want := "↑ 146.8K ↓ 3.2K"
+		if width >= 100 {
+			want = "↑146.8K"
+		}
+		if row < 0 || !strings.HasSuffix(strings.TrimRight(status, " "), want) {
+			t.Fatalf("width %d: usage missing: %q", width, lines)
 		}
 		if slices.ContainsFunc(lines, func(line string) bool { return strings.Count(line, "↑") > 1 }) {
 			t.Fatalf("width %d: agent without usage shows tokens: %q", width, lines)
@@ -515,10 +519,11 @@ func TestLiveActivityCombinedRosterShowsTimerCostAndUsage(t *testing.T) {
 		lines[i] = strings.Join(strings.Fields(lines[i]), " ")
 	}
 	first := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "$1.2000") })
-	second := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "n/a") })
-	if first < 0 || second < 0 || !strings.Contains(lines[first], "8m · 3s ago · ↑ 1K ↓ 0") ||
-		!strings.Contains(lines[first], "$1.2000 · 2 turns") || !strings.Contains(lines[second], "7m · 2m ago") ||
-		!strings.Contains(lines[second], "↑ 500 ↓ 0") || !strings.Contains(lines[second], "n/a · 1 turns") {
+	second := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "7m · ") })
+	// Unknown cost is omitted rather than shown as n/a or zero.
+	if first < 0 || second < 0 || !strings.Contains(lines[first], "8m · 3s ago ↑ 1K ↓ 0") ||
+		!strings.Contains(lines[first], "$1.2000 · T+2") || !strings.Contains(lines[second], "7m · 2m ago") ||
+		!strings.Contains(lines[second], "↑ 500 ↓ 0 · T+1") || strings.Contains(lines[second], "$") || strings.Contains(lines[second], "n/a") {
 		t.Fatalf("combined roster metrics = %q", lines)
 	}
 }
@@ -595,13 +600,13 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 
 	h.frame(t, func(frame string) bool {
 		visible := text(frame)
-		return strings.Contains(visible, "▶ Started") && strings.Contains(visible, "Spawn assignment:") &&
+		return strings.Contains(visible, "▶ Started") && !strings.Contains(visible, "Spawn assignment:") &&
 			strings.Contains(visible, "Inspect parser.") && strings.Contains(visible, "Preserve behavior.")
 	})
 	// The parent is in a native wait: no root response is open, yet the pane updates.
 	f.activity.collect("probe", "tool-1", "tool", "Read `live.go`")
 	frame := h.frame(t, func(frame string) bool { return strings.Contains(text(frame), "Read live.go") })
-	if row := liveDiffFrameRow(frame, 1); !strings.Contains(row, "AGENTS · 3") {
+	if row := liveDiffFrameRow(frame, 1); !strings.Contains(row, "AGENTS  3 agents") {
 		t.Fatalf("header = %q", row)
 	}
 	f.activity.collect("probe", "tool-call\x00run-1", "tool", "Run `false`")
@@ -644,16 +649,24 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 	if visible := text(frame); strings.Contains(visible, "pane-old-secret") || strings.Contains(visible, "pane-new-secret") {
 		t.Fatalf("pane retained omitted tool details: %s", visible)
 	}
+	f.activity.collect("probe", "reply-in", "reply", "[`/root` -> `/root/explorer/probe`] Message received:\nCheck delivery.")
+	h.frame(t, func(frame string) bool {
+		return strings.Contains(text(frame), "✉ from main") && strings.Contains(text(frame), "Check delivery.")
+	})
+	f.activity.collect("probe", "reply-out", "reply", "[`/root/explorer/probe` -> `/root`] Message received:\nDelivery checked.")
+	h.frame(t, func(frame string) bool {
+		return strings.Contains(text(frame), "✉ to main") && strings.Contains(text(frame), "Delivery checked.")
+	})
 	h.write(t, "\x1b[<35;5;6M")
 	h.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "\x1b[4m  └ probe")
+		return strings.Contains(frame, "\x1b[4mprobe\x1b[24m")
 	})
 	h.write(t, "\x1b[<0;5;6M")
 	h.frame(t, func(frame string) bool {
 		return strings.Contains(liveDiffFrameRow(frame, 1), "only /root/explorer/probe") && !strings.Contains(text(frame), "● /root/explorer ─")
 	})
 	h.write(t, "\x1b[<0;5;6M")
-	h.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 1), "AGENTS · 3") })
+	h.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 1), "AGENTS  3 agents") })
 	h.write(t, "o")
 	h.frame(t, func(frame string) bool {
 		return strings.Contains(liveDiffFrameRow(frame, 1), "only /root/explorer/probe") && strings.HasPrefix(liveDiffFrameRow(frame, height), "ONLY") &&

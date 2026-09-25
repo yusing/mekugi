@@ -54,7 +54,7 @@ func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
 	}}})
 	view.only, view.selected = true, "/root/explorer"
 	frame := strings.Join(plainLines(view.render(100, 20, now)), "\n")
-	for _, want := range []string{"Started", "gpt-effective", "Spawn assignment:", "Inspect parser.", "Preserve behavior."} {
+	for _, want := range []string{"Started", "gpt-effective", "Inspect parser.", "Preserve behavior."} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("pane does not render %q:\n%s", want, frame)
 		}
@@ -111,13 +111,13 @@ func TestLiveActivityViewResponsiveLayouts(t *testing.T) {
 	}
 	// A laptop-height pane at least 100 columns wide keeps cards beside the feed.
 	side := plainLines(view.render(105, 16, now))
-	if !strings.HasPrefix(side[1], "▸✓ inventory") || !strings.Contains(side[1], " │ ") || !strings.Contains(side[1], "✉ → main Invento") ||
-		!strings.Contains(side[3], "Checking the pre") || !strings.HasPrefix(side[5], " · └ probe") {
+	if !strings.HasPrefix(side[1], "▸ ✓  inventory") || !strings.Contains(side[1], " │ ") || !strings.Contains(side[2], "✉ to main") ||
+		!strings.Contains(side[5], "Checking the") || !strings.Contains(side[7], "└ probe") {
 		t.Fatalf("side layout = %q", side)
 	}
-	// Narrower panes keep complete two-line rows and an overflow indicator.
+	// Narrower panes compact before hiding agents.
 	stacked := plainLines(view.render(70, 16, now))
-	if !strings.Contains(stacked[3], "+2 more") || !strings.HasPrefix(stacked[4], "───") {
+	if !strings.Contains(stacked[4], "probe") || !strings.HasPrefix(stacked[5], "───") {
 		t.Fatalf("stacked layout = %q", stacked)
 	}
 	if strip := plainLines(view.render(80, 6, now)); !strings.HasPrefix(strip[1], "✓ inventory  ◐ review  · review/probe") {

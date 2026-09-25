@@ -255,7 +255,9 @@ error, `✓` final answer sent. Usage tables and critical notices stay in the ma
 conversation.
 
 - In the roster, `↑`/`↓` or `k`/`j` select all agents or an individual agent;
-  `o` toggles the selected-agent filter. Roster rows are clickable.
+  `o` toggles the selected-agent filter. Roster rows are clickable. The mouse wheel
+  scrolls the roster without changing the feed filter. Crowded rosters compact, with
+  counts of hidden responding agents and errors above or below the visible rows.
 - Scrolling matches the diff pane: `↑`/`↓` or `k`/`j` move one line,
   `PageUp`/`PageDown` or `b`/`Space` move one page, and `Home`/`End` or `g`/`G`
   go to the top/bottom. Scrolling pauses following; `r` resumes it.

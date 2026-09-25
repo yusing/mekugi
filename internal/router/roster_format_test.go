@@ -28,7 +28,7 @@ func TestRosterSummaryFormatting(t *testing.T) {
 			rows := strings.Join(p.block(blocks[0], 80), "\n")
 			summary := p.summary(blocks)
 			for _, text := range []string{ansi.Strip(rows), ansi.Strip(summary)} {
-				if strings.Contains(text, "/root") || strings.Contains(text, "replier") || !strings.Contains(text, "→ "+liveActivityDisplayName(recipient)) {
+				if strings.Contains(text, "/root") || strings.Contains(text, "replier") || !strings.Contains(text, "to "+liveActivityDisplayName(recipient)) {
 					t.Fatalf("reply = %q", text)
 				}
 			}
@@ -38,12 +38,11 @@ func TestRosterSummaryFormatting(t *testing.T) {
 
 func TestRosterMetricsSecondLineAndHitTargets(t *testing.T) {
 	v := liveActivityTestView("/root/a", "/root/b", "/root/c")
-	v.agents[0].Configuration = "gpt-6-sol high [fast]"
 	v.agents[0].Role = "explorer"
 	v.agents[0].InputTokens, v.agents[0].OutputTokens = 1000, 20
 	v.agents[0].Turns, v.agents[0].CostKnown, v.agents[0].Cost = 1, true, .25
 	lines := plainLines(v.renderRosterPane(120, 8, time.Now()))
-	if strings.Contains(lines[1], "gpt-") || !strings.Contains(lines[1], "Read a.go") || !strings.Contains(lines[2], "gpt-6-sol high [fast] · explorer") || !strings.Contains(lines[2], "↑ 1K ↓ 20 · $0.2500 · 1 turns") {
+	if !strings.Contains(lines[1], "Read a.go") || !strings.Contains(lines[2], "explorer") || !strings.Contains(lines[2], "↑ 1K ↓ 20 · $0.2500 · T+1") {
 		t.Fatalf("roster = %q", lines)
 	}
 	for _, row := range []int{2, 3} {
@@ -66,7 +65,7 @@ func TestRosterMetricsSecondLineAndHitTargets(t *testing.T) {
 	}
 }
 
-func TestRosterSharesTokenReportMetadataAndCost(t *testing.T) {
+func TestRosterSharesTokenReportCost(t *testing.T) {
 	a := newSubagentActivity()
 	a.observe("root", "", "/root", false)
 	a.attachPane(newActivityPane(t.Context(), func() bool { return true }))
@@ -76,10 +75,6 @@ func TestRosterSharesTokenReportMetadataAndCost(t *testing.T) {
 		request, err := parseResponsesRequest([]byte(`{"model":"gpt-6-sol","reasoning":{"effort":"high"},"service_tier":"priority","input":[]}`))
 		if err != nil {
 			t.Fatal(err)
-		}
-		a.syncPaneConfiguration("root", &request)
-		if got := a.paneAgentsLocked()[0].Configuration; got != "gpt-6-sol high [fast]" {
-			t.Fatal(got)
 		}
 		observation := usage.observation("root", "root", request.model(), "priority")
 		observation.reasoning = request.reasoningEffort()
@@ -92,7 +87,7 @@ func TestRosterSharesTokenReportMetadataAndCost(t *testing.T) {
 		if tier == "priority" {
 			want += " [fast]"
 		}
-		if agent.Configuration != want || !strings.Contains(report.model, want) || agent.Cost != report.cost.cachedInput+report.cost.uncachedInput+report.cost.output || agent.Role != "main" {
+		if !strings.Contains(report.model, want) || agent.Cost != report.cost.cachedInput+report.cost.uncachedInput+report.cost.output {
 			t.Fatalf("agent=%+v report=%+v", agent, report)
 		}
 	}
@@ -106,7 +101,7 @@ func TestRosterRoleUsesDurableSpawnEvidence(t *testing.T) {
 	}
 	child, _ := prepareActivityTest(t, p, "child-session", "child", "root", "/root/worker", nil)
 	node := p.activity.threads["child"]
-	if node.role != "explorer" || node.configuration != "gpt-test" {
+	if node.role != "explorer" {
 		t.Fatalf("node = %+v", node)
 	}
 	child.Close()
@@ -115,16 +110,18 @@ func TestRosterRoleUsesDurableSpawnEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	prepareActivityTest(t, p, "child-session-2", "child", "root", "/root/worker", nil)
-	if node.role != "n/a" {
+	if node.role != "" {
 		t.Fatalf("conflicted role = %q", node.role)
 	}
 }
 
 func TestRosterStripPreservesSelectionStyling(t *testing.T) {
- v := liveActivityTestView("/root/a", "/root/b")
- v.selected, v.hovered = "/root/a", "/root/b"
- line := v.renderStrip(v.roster(), 80)
- for _, name := range []string{"a", "b"} {
-  if !strings.Contains(line, "\x1b[4m"+name+"\x1b[24m") || !strings.Contains(line,liveAgentColor("/root/"+name)) { t.Fatalf("strip lost selection or color: %q",line) }
- }
+	v := liveActivityTestView("/root/a", "/root/b")
+	v.selected, v.hovered = "/root/a", "/root/b"
+	line := v.renderStrip(v.roster(), 80)
+	for _, name := range []string{"a", "b"} {
+		if !strings.Contains(line, "\x1b[4m"+name+"\x1b[24m") || !strings.Contains(line, liveAgentColor("/root/"+name)) {
+			t.Fatalf("strip lost selection or color: %q", line)
+		}
+	}
 }

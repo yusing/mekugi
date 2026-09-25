@@ -755,9 +755,9 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	if pane == 3 {
 		if action == 'j' {
-			u.agents.showAgent(1)
+			u.agents.scrollRoster(1)
 		} else if action == 'k' {
-			u.agents.showAgent(-1)
+			u.agents.scrollRoster(-1)
 		} else {
 			u.agents.pointAgent(action, y-r.y+1, x-r.x+1)
 		}

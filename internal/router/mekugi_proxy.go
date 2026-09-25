@@ -609,7 +609,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		}
 		if p.activity.observe(threadID, metadata.ParentThreadID, name, metadata.SubagentKind != "") {
 			activityThreadID = threadID
-			p.activity.syncPaneConfiguration(threadID, request)
 		}
 	}
 	for _, message := range subagentDeferred {
