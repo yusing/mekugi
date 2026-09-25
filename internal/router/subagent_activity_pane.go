@@ -77,9 +77,14 @@ type activityPaneEntry struct {
 }
 
 type activityPaneAgent struct {
-	Name       string
-	Responding bool `json:",omitzero"`
-	Final      bool `json:",omitzero"`
+	Name         string
+	Responding   bool      `json:",omitzero"`
+	Final        bool      `json:",omitzero"`
+	Started      time.Time `json:",omitzero"`
+	LastResponse time.Time `json:",omitzero"`
+	Turns        uint64    `json:",omitzero"`
+	Cost         float64   `json:",omitzero"`
+	CostKnown    bool      `json:",omitzero"`
 	// Cumulative provider-reported tokens for the agent's responses.
 	InputTokens  uint64 `json:",omitzero"`
 	OutputTokens uint64 `json:",omitzero"`
@@ -215,6 +220,8 @@ func (a *subagentActivity) paneAgentsLocked() []activityPaneAgent {
 	for _, node := range nodes {
 		agents = append(agents, activityPaneAgent{
 			Name: node.name, Responding: node.responding > 0, Final: node.final,
+			Started: node.started, LastResponse: node.lastResponse, Turns: node.turns,
+			Cost: node.cost.cachedInput + node.cost.uncachedInput + node.cost.output, CostKnown: node.cost.known && node.inputTokens+node.outputTokens > 0,
 			InputTokens: node.inputTokens, OutputTokens: node.outputTokens + node.streamed/activityBytesPerToken,
 		})
 	}
@@ -428,6 +435,7 @@ func (a *subagentActivity) beginResponse(thread string) {
 	defer a.mu.Unlock()
 	if node := a.threads[thread]; node != nil && node.child && !a.closed {
 		node.responding++
+		node.turns++
 		node.final = false
 		a.wakePaneLocked()
 	}
@@ -441,6 +449,7 @@ func (a *subagentActivity) endResponse(thread string) {
 	defer a.mu.Unlock()
 	if node := a.threads[thread]; node != nil && node.responding > 0 && !a.closed {
 		node.responding--
+		node.lastResponse = time.Now()
 		// A response that ended without usage leaves no estimate behind.
 		if node.responding == 0 {
 			node.streamed = 0
@@ -450,7 +459,7 @@ func (a *subagentActivity) endResponse(thread string) {
 }
 
 // addUsage adds one response's provider-reported usage to a child's totals.
-func (a *subagentActivity) addUsage(thread string, counts tokenCounts) {
+func (a *subagentActivity) addUsage(thread string, counts tokenCounts, cost ...tokenCost) {
 	if a == nil || counts.InputTokens == 0 && counts.OutputTokens == 0 {
 		return
 	}
@@ -459,7 +468,22 @@ func (a *subagentActivity) addUsage(thread string, counts tokenCounts) {
 	if node := a.threads[thread]; node != nil && node.child && !a.closed {
 		node.inputTokens += counts.InputTokens
 		node.outputTokens += counts.OutputTokens
+		if len(cost) > 0 {
+			node.cost.add(cost[0])
+		}
 		node.streamed = 0
+		a.wakePaneLocked()
+	}
+}
+
+func (a *subagentActivity) markUsageGap(thread string) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if node := a.threads[thread]; node != nil && node.child && !a.closed {
+		node.cost.known = false
 		a.wakePaneLocked()
 	}
 }

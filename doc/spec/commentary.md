@@ -353,15 +353,18 @@ the roster summary shows the first answer line. Other final answers remain
 authored Markdown.
 
 The agents appear as a canonical-path tree in observation order, with each agent's
-current activity and age. A separate Mekugi roster pane opens under the caller and
+current activity and an elapsed-time timer (`elapsed · last response ago`; `—` until
+its first response completes). A separate Mekugi roster pane opens under the caller and
 shows only this tree. It observes the agents pane's stream and never owns activity:
 it cannot hold events, extend the reconnect window, or keep the pane attached, and
 it ends when activity returns inline. While a roster pane is connected, the agents
 pane gives its whole body to the feed; otherwise it shows the tree itself as
 described below. Agent selection and the only filter are shared between the two
-panes through the router, so a roster click filters the feed. Right-aligned after the age, an agent
+panes through the router, so a roster click filters the feed. Right-aligned after the timer, an agent
 with observed provider usage shows its cumulative input and output tokens as
-`↑ in ↓ out`. While a response streams, output grows by an estimate of about four
+`↑ in ↓ out`; its estimated USD cost and provider-response turn count follow as
+`$N · N turns`. When usage or pricing is unavailable, cost shows `n/a` rather than
+claiming zero. Metric columns align across agents. While a response streams, output grows by an estimate of about four
 bytes of visible delta per token, refreshed every second; the provider's reported
 usage replaces the estimate when the response ends. Hidden reasoning is not
 estimated, and input changes only when usage is reported. A Code Mode batch shows its latest

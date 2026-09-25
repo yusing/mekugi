@@ -23,12 +23,15 @@ type subagentActivity struct {
 }
 
 type activityThread struct {
-	parent, name      string
-	child, conflicted bool
-	seen              map[string]struct{}
-	order, responding int
-	final             bool
-	paneVisible       bool // Root joins the roster after its first pane-only filter event.
+	parent, name          string
+	child, conflicted     bool
+	seen                  map[string]struct{}
+	order, responding     int
+	final                 bool
+	started, lastResponse time.Time
+	turns                 uint64
+	cost                  tokenCost
+	paneVisible           bool // Root joins the roster after its first pane-only filter event.
 	// Provider-reported usage summed over this thread's responses, and the
 	// visible delta bytes streamed since the last report.
 	inputTokens, outputTokens, streamed uint64
@@ -68,7 +71,7 @@ func (a *subagentActivity) observe(thread, parent, name string, child bool) bool
 		return !old.conflicted
 	}
 	a.order++
-	a.threads[thread] = &activityThread{parent: parent, name: name, child: child, seen: make(map[string]struct{}), order: a.order}
+	a.threads[thread] = &activityThread{parent: parent, name: name, child: child, seen: make(map[string]struct{}), order: a.order, started: time.Now(), cost: tokenCost{known: true}}
 	return true
 }
 

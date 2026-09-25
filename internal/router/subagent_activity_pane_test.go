@@ -166,6 +166,9 @@ func TestActivityPaneOwnsChildActivityAndDeliversWithoutRootBoundary(t *testing.
 	if !state.Agents[1].Responding {
 		t.Fatalf("responding not reported: %+v", state.Agents)
 	}
+	if state.Agents[1].Turns != 1 || state.Agents[1].Started.IsZero() {
+		t.Fatalf("turn timer not reported: %+v", state.Agents[1])
+	}
 	// Streamed deltas show an estimate on the next tick, without a wake.
 	f.activity.streamOutput("probe", 400)
 	estimate := client.next(t, "agents")
@@ -174,7 +177,7 @@ func TestActivityPaneOwnsChildActivityAndDeliversWithoutRootBoundary(t *testing.
 	}
 	// Usage replaces the estimate, accumulates per child, and reaches the
 	// roster without new entries.
-	f.activity.addUsage("probe", tokenCounts{InputTokens: 1200, OutputTokens: 30})
+	f.activity.addUsage("probe", tokenCounts{InputTokens: 1200, OutputTokens: 30}, tokenCost{output: .012, known: true})
 	f.activity.addUsage("probe", tokenCounts{InputTokens: 800, OutputTokens: 20})
 	usage := client.next(t, "agents")
 	for usage.Agents[1].InputTokens != 2000 {
@@ -183,11 +186,17 @@ func TestActivityPaneOwnsChildActivityAndDeliversWithoutRootBoundary(t *testing.
 	if usage.Agents[1].OutputTokens != 50 || usage.Agents[0].InputTokens != 0 {
 		t.Fatalf("usage roster = %+v", usage.Agents)
 	}
+	if usage.Agents[1].Cost != .012 || !usage.Agents[1].CostKnown {
+		t.Fatalf("cost roster = %+v", usage.Agents[1])
+	}
 	f.activity.endResponse("probe")
 	f.activity.markFinal("explorer", subagentFinal{sender: "/root/explorer/probe"})
 	final := client.next(t, "agents")
 	for final.Agents[1].Responding || !final.Agents[1].Final {
 		final = client.next(t, "agents")
+	}
+	if final.Agents[1].LastResponse.IsZero() {
+		t.Fatalf("last response not reported: %+v", final.Agents[1])
 	}
 
 	// Disconnect: within the grace window events wait for a reconnect.
@@ -587,11 +596,41 @@ func TestLiveActivityRosterShowsTokensAtRightEdge(t *testing.T) {
 		row := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "↑") })
 		// The roster status ends the row; cards end it at the column divider.
 		status, _, _ := strings.Cut(lines[max(0, row)], " │ ")
-		if row < 0 || !strings.HasSuffix(strings.TrimRight(status, " "), "now · ↑ 146.8K ↓ 3.2K") {
+		if row < 0 || !strings.HasSuffix(strings.TrimRight(status, " "), "now · — · ↑ 146.8K ↓ 3.2K") {
 			t.Fatalf("width %d: tokens not right-aligned: %q", width, lines)
 		}
 		if slices.ContainsFunc(lines, func(line string) bool { return strings.Count(line, "↑") > 1 }) {
 			t.Fatalf("width %d: agent without usage shows tokens: %q", width, lines)
+		}
+	}
+}
+
+func TestLiveActivityRosterTimerCostAndAlignedColumns(t *testing.T) {
+	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	view := liveActivityTestView("/root/a", "/root/b")
+	view.rosterPane = true
+	view.agents[0].Started = now.Add(-48 * time.Minute)
+	view.agents[0].LastResponse = now.Add(-14 * time.Second)
+	view.agents[0].InputTokens, view.agents[0].OutputTokens = 595_600, 37_300
+	view.agents[0].Turns, view.agents[0].Cost, view.agents[0].CostKnown = 8, 1.2345, true
+	view.agents[1].Started = now.Add(-7 * time.Minute)
+	view.agents[1].LastResponse = now.Add(-2 * time.Minute)
+	view.agents[1].InputTokens, view.agents[1].OutputTokens = 491_600, 5_500
+	view.agents[1].Turns, view.agents[1].Cost, view.agents[1].CostKnown = 2, 0, false
+	lines := plainLines(view.render(100, 4, now))
+	if !strings.Contains(lines[1], "48m · 14s ago · ↑ 595.6K ↓ 37.3K · $1.2345 · 8 turns") ||
+		!strings.Contains(lines[2], "7m · 2m ago") || !strings.Contains(lines[2], "n/a") || !strings.Contains(lines[2], "2 turns") {
+		t.Fatalf("roster metrics = %q", lines)
+	}
+	if strings.Index(lines[1], "↑") != strings.Index(lines[2], "↑") ||
+		strings.Index(lines[1], "↓") != strings.Index(lines[2], "↓") ||
+		strings.Index(lines[1], "$") != strings.Index(lines[2], "n/a") ||
+		strings.Index(lines[1], "turns") != strings.Index(lines[2], "turns") {
+		t.Fatalf("metric columns not aligned = %q", lines)
+	}
+	for _, line := range lines {
+		if ansi.StringWidth(line) > 99 {
+			t.Fatalf("row exceeds width: %q", line)
 		}
 	}
 }

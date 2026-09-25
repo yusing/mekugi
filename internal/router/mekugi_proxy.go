@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -385,6 +386,9 @@ func (t *mekugiResponseTransform) Close() {
 	}
 	if t.activityResponding {
 		t.activityResponding = false
+		if !t.usageObserved {
+			t.proxy.activity.markUsageGap(t.threadID)
+		}
 		t.proxy.activity.endResponse(t.threadID)
 	}
 	t.ReleaseDelivery()
@@ -403,7 +407,11 @@ func (t *mekugiResponseTransform) observeResponseUsage(counts tokenCounts) {
 	t.usageTracker.observe(counts)
 	t.usageObserved = true
 	if t.proxy != nil && t.threadID != "" {
-		t.proxy.activity.addUsage(t.threadID, counts)
+		cost := estimateTokenCost(t.usageTracker.model, cmp.Or(counts.ServiceTier, t.usageTracker.serviceTier), counts)
+		if t.usageTracker.openCodePrice != nil {
+			cost = t.usageTracker.openCodePrice.estimate(cmp.Or(counts.ServiceTier, t.usageTracker.serviceTier), counts)
+		}
+		t.proxy.activity.addUsage(t.threadID, counts, cost)
 	}
 }
 

@@ -519,17 +519,23 @@ func liveActivityRosterName(row liveActivityRosterRow) string {
 	return name
 }
 
-// current is an agent's latest activity summary and its right-aligned status:
-// the activity's age and the agent's token totals.
+// current is an agent's latest activity summary and its elapsed/response timer.
 func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (string, string) {
-	summary, status := liveActivityDim+"no activity yet"+liveActivityUndim, ""
+	summary := liveActivityDim + "no activity yet" + liveActivityUndim
 	if latest := v.latest(agent.Name); latest >= 0 {
-		summary, status = v.painter.summary(v.blocks[latest]), liveActivityAge(now.Sub(v.entries[latest].Observed))
+		summary = v.painter.summary(v.blocks[latest])
 	}
-	if tokens := liveActivityTokens(agent); tokens != "" {
-		status = strings.TrimPrefix(status+" · "+tokens, " · ")
+	if agent.Started.IsZero() {
+		if latest := v.latest(agent.Name); latest >= 0 {
+			return summary, liveActivityAge(max(0, now.Sub(v.entries[latest].Observed))) + " · —"
+		}
+		return summary, ""
 	}
-	return summary, status
+	last := "—"
+	if !agent.LastResponse.IsZero() {
+		last = liveActivityAge(max(0, now.Sub(agent.LastResponse))) + " ago"
+	}
+	return summary, liveActivityAge(max(0, now.Sub(agent.Started))) + " · " + last
 }
 
 // liveActivityTokens shows cumulative input (sent) and output (received) tokens.
@@ -538,6 +544,24 @@ func liveActivityTokens(agent activityPaneAgent) string {
 		return ""
 	}
 	return "↑ " + formatUsageTokens(agent.InputTokens) + " ↓ " + formatUsageTokens(agent.OutputTokens)
+}
+
+func liveActivityCost(agent activityPaneAgent) string {
+	if agent.Turns == 0 {
+		return ""
+	}
+	cost := "n/a"
+	if agent.CostKnown {
+		cost = fmt.Sprintf("$%.4f", agent.Cost)
+	}
+	return cost
+}
+
+func liveActivityTurns(agent activityPaneAgent) string {
+	if agent.Turns == 0 {
+		return ""
+	}
+	return fmt.Sprint(agent.Turns) + " turns"
 }
 
 // liveActivityWindow keeps the selected item visible among at most limit items.
@@ -585,6 +609,12 @@ func (v *liveActivityView) renderCards(rows []liveActivityRosterRow, width, heig
 		row := rows[i]
 		firstRow := len(lines) + 2
 		summary, age := v.current(row.agent, now)
+		if tokens := liveActivityTokens(row.agent); tokens != "" {
+			age += " · " + tokens
+		}
+		if cost := liveActivityCost(row.agent); cost != "" {
+			age += " · " + cost + " · " + liveActivityTurns(row.agent)
+		}
 		name := ansi.Truncate(liveAgentColor(row.agent.Name)+v.hoverName(liveActivityRosterName(row), row.agent.Name)+liveActivityReset, max(1, width-4-ansi.StringWidth(age)), "…")
 		gap := max(1, width-3-ansi.StringWidth(name)-ansi.StringWidth(age))
 		lines = append(lines, v.marker(i == selected, row.agent.Name == v.hovered)+v.glyph(row.agent)+" "+name+strings.Repeat(" ", gap)+liveActivityDim+age+liveActivityUndim)
@@ -611,22 +641,60 @@ func (v *liveActivityView) renderRoster(rows []liveActivityRosterRow, width, lim
 		limit--
 	}
 	start, end := liveActivityWindow(len(rows), selected, max(1, limit))
-	nameWidth := 0
+	nameWidth, timerWidth, inputWidth, outputWidth, costWidth, turnsWidth := 0, 0, 0, 0, 0, 0
+	hasTokens := false
 	for _, row := range rows {
 		nameWidth = max(nameWidth, ansi.StringWidth(liveActivityRosterName(row)))
+		_, timer := v.current(row.agent, now)
+		timerWidth = max(timerWidth, ansi.StringWidth(timer))
+		if liveActivityTokens(row.agent) != "" {
+			hasTokens = true
+			inputWidth = max(inputWidth, ansi.StringWidth(formatUsageTokens(row.agent.InputTokens)))
+			outputWidth = max(outputWidth, ansi.StringWidth(formatUsageTokens(row.agent.OutputTokens)))
+		}
+		costWidth = max(costWidth, ansi.StringWidth(liveActivityCost(row.agent)))
+		turnsWidth = max(turnsWidth, ansi.StringWidth(liveActivityTurns(row.agent)))
 	}
-	nameWidth = max(1, min(nameWidth, width-10-max(8, width/4)))
+	metricWidth := timerWidth
+	tokensWidth := 5 + inputWidth + outputWidth
+	if hasTokens {
+		metricWidth += 3 + tokensWidth
+	}
+	if costWidth > 0 {
+		metricWidth += 6 + costWidth + turnsWidth
+	}
+	summaryReserve := max(8, width/4)
+	if width-7-metricWidth < 8+summaryReserve {
+		summaryReserve = 0
+	}
+	nameWidth = max(1, min(nameWidth, width-7-metricWidth-summaryReserve))
 	var lines []string
 	for i := start; i < end; i++ {
 		row := rows[i]
 		v.hits = append(v.hits, liveActivityHit{len(lines) + 2, 1, width, row.agent.Name})
-		summary, age := v.current(row.agent, now)
+		summary, timer := v.current(row.agent, now)
 		name := liveAgentColor(row.agent.Name) + v.hoverName(liveActivityMiddle(liveActivityRosterName(row), nameWidth), row.agent.Name) + liveActivityReset
-		summaryWidth := max(0, width-3-nameWidth-2-ansi.StringWidth(age)-1)
+		metric := strings.Repeat(" ", timerWidth-ansi.StringWidth(timer)) + timer
+		if hasTokens {
+			tokens := strings.Repeat(" ", tokensWidth)
+			if liveActivityTokens(row.agent) != "" {
+				input, output := formatUsageTokens(row.agent.InputTokens), formatUsageTokens(row.agent.OutputTokens)
+				tokens = "↑ " + strings.Repeat(" ", inputWidth-ansi.StringWidth(input)) + input +
+					" ↓ " + strings.Repeat(" ", outputWidth-ansi.StringWidth(output)) + output
+			}
+			metric += " · " + tokens
+		}
+		if costWidth > 0 {
+			cost := liveActivityCost(row.agent)
+			turns := liveActivityTurns(row.agent)
+			metric += " · " + cost + strings.Repeat(" ", costWidth-ansi.StringWidth(cost)) +
+				" · " + turns + strings.Repeat(" ", turnsWidth-ansi.StringWidth(turns))
+		}
+		summaryWidth := max(0, width-3-nameWidth-2-metricWidth-1)
 		summary = ansi.Truncate(summary, summaryWidth, "…")
-		pad := max(1, width-3-nameWidth-2-ansi.StringWidth(summary)-ansi.StringWidth(age))
+		pad := max(1, width-3-nameWidth-2-ansi.StringWidth(summary)-metricWidth)
 		// The roster pane marks an agent only while the feed shows just it.
-		line := v.marker(i == selected && (v.only || !v.rosterPane), row.agent.Name == v.hovered) + v.glyph(row.agent) + " " + name + "  " + summary + strings.Repeat(" ", pad) + liveActivityDim + age + liveActivityUndim
+		line := v.marker(i == selected && (v.only || !v.rosterPane), row.agent.Name == v.hovered) + v.glyph(row.agent) + " " + name + "  " + summary + strings.Repeat(" ", pad) + liveActivityDim + metric + liveActivityUndim
 		lines = append(lines, ansi.Truncate(line, width, "…"))
 	}
 	if hidden := len(rows) - (end - start); hidden > 0 {
