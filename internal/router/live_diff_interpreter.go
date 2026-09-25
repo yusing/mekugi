@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -51,10 +52,18 @@ func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory 
 	if reason != "" || len(source) > maxExecProgramBytes {
 		return nil, false, nil
 	}
+	files, _, err := liveDiffInterpreterSource(ctx, input, source, script, python, partial)
+	return files, len(files) != 0, err
+}
+
+func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, source, script string, python, partial bool) ([]mekugi.ReviewFile, bool, error) {
+	if len(source) > maxExecProgramBytes {
+		return nil, false, nil
+	}
 	language := codeModeJavaScriptLanguage
 	if python {
 		language = execPythonLanguage
-	} else if strings.HasSuffix(script, ".ts") || identity == "deno" {
+	} else if strings.HasSuffix(script, ".ts") || input.identity == "deno" {
 		language = execTypeScriptLanguage
 	}
 	canceled := func() bool { return ctx.Err() != nil || time.Now().After(input.deadline) }
@@ -77,8 +86,9 @@ func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory 
 		return nil, false, nil
 	}
 	defer tree.Close()
+	editScript := python && liveDiffPythonEditIntent(tree.RootNode(), data, 0)
 	if tree.RootNode().HasError() {
-		return nil, false, nil
+		return nil, editScript, nil
 	}
 	scan := execSourceScope{input: input, source: data, script: script, python: python, vars: make(map[string][]string), texts: make(map[string]bool), assigned: make(map[string]int), aliases: make(map[string]string)}
 	scan.walk(tree.RootNode())
@@ -91,6 +101,8 @@ func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory 
 		}
 	}
 	var files []mekugi.ReviewFile
+	texts := make(map[string]liveDiffPythonText)
+	var textOrder []string
 	seen := make(map[string]bool)
 	var failure error
 	var visit func(*sitter.Node, int)
@@ -107,13 +119,30 @@ func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory 
 			failure = errors.New("literal preview includes unsupported control flow")
 			return
 		}
+		if python && node.Kind() == "assignment" {
+			left, right := node.ChildByFieldName("left"), node.ChildByFieldName("right")
+			if left == nil || left.Kind() != "identifier" {
+				failure = errors.New("literal preview includes an unsupported assignment")
+				return
+			}
+			if value, ok := scan.previewPythonText(ctx, right, texts, 0); ok {
+				texts[scan.text(left)] = value
+				textOrder = append(textOrder, scan.text(left))
+				return
+			}
+			delete(texts, scan.text(left))
+		}
+		if python && (node.Kind() == "augmented_assignment" || node.Kind() == "delete_statement" || node.Kind() == "named_expression") {
+			failure = errors.New("literal preview includes an unsupported buffer mutation")
+			return
+		}
 		function, args := sourceCall(node)
 		if function != nil {
 			if strings.HasSuffix(scan.text(function), ".chdir") {
 				failure = errors.New("literal preview does not predict working-directory changes")
 				return
 			}
-			path, content, recognized := scan.literalWrite(function, args)
+			path, content, recognized := scan.literalWrite(ctx, function, args, texts)
 			if recognized {
 				if seen[path] || !filepath.IsAbs(path) || len(content) > liveDiffPreviewFileLimit || !utf8.ValidString(content) {
 					failure = errors.New("literal preview has dependent or unsupported writes")
@@ -162,12 +191,53 @@ func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory 
 	}
 	visit(tree.RootNode(), 0)
 	if failure != nil {
-		return nil, false, nil
+		return nil, editScript, nil
 	}
-	return files, len(files) != 0, failure
+	// While source arrives, show the current replacement buffer even before
+	// its final write statement. This is a prediction, never execution evidence.
+	if partial {
+		for _, name := range slices.Backward(textOrder) {
+			value := texts[name]
+			if value.path == "" || seen[value.path] {
+				continue
+			}
+			if len(files) >= 32 {
+				return nil, false, nil
+			}
+			before, exists, err := liveDiffSourceRead(ctx, value.path, liveDiffPreviewFile)
+			if err != nil || !exists || before == value.content {
+				continue
+			}
+			files = append(files, mekugi.RenderReviewFile(value.path, value.path, before, value.content))
+			seen[value.path] = true
+		}
+	}
+	return files, len(files) != 0 || editScript, failure
 }
 
-func (s *execSourceScope) literalWrite(function *sitter.Node, args []*sitter.Node) (string, string, bool) {
+// Keep an unfinished or unsupported edit script from replacing its target diff
+// with the script's own source. Inspect syntax, not text inside comments/strings.
+func liveDiffPythonEditIntent(node *sitter.Node, source []byte, depth int) bool {
+	if node == nil || depth > 128 {
+		return false
+	}
+	if function, _ := sourceCall(node); function != nil {
+		if attribute := function.ChildByFieldName("attribute"); attribute != nil {
+			switch string(source[attribute.StartByte():attribute.EndByte()]) {
+			case "read_text", "write_text":
+				return true
+			}
+		}
+	}
+	for i := range node.NamedChildCount() {
+		if liveDiffPythonEditIntent(node.NamedChild(uint(i)), source, depth+1) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *execSourceScope) literalWrite(ctx context.Context, function *sitter.Node, args []*sitter.Node, texts map[string]liveDiffPythonText) (string, string, bool) {
 	name := s.text(function)
 	base := name[strings.LastIndexByte(name, '.')+1:]
 	if alias := s.aliases[base]; alias != "" {
@@ -207,42 +277,68 @@ func (s *execSourceScope) literalWrite(function *sitter.Node, args []*sitter.Nod
 	if !s.python {
 		return "", "", false
 	}
-	replace, values := sourceCall(body)
+	value, ok := s.previewPythonText(ctx, body, texts, 0)
+	if !ok || (value.path != "" && value.path != paths[0]) {
+		return "", "", false
+	}
+	return paths[0], value.content, true
+}
+
+type liveDiffPythonText struct {
+	path, content string
+}
+
+// Interpret only literal strings, same-file reads, and replacement chains.
+// This does not run Python or resolve arbitrary expressions.
+func (s *execSourceScope) previewPythonText(ctx context.Context, node *sitter.Node, texts map[string]liveDiffPythonText, depth int) (liveDiffPythonText, bool) {
+	if node == nil || depth > 64 || ctx.Err() != nil || time.Now().After(s.input.deadline) {
+		return liveDiffPythonText{}, false
+	}
+	if node.Kind() == "identifier" {
+		value, ok := texts[s.text(node)]
+		return value, ok
+	}
+	if content, ok := s.literal(node); ok {
+		return liveDiffPythonText{content: content}, len(content) <= liveDiffPreviewFileLimit
+	}
+	replace, values := sourceCall(node)
+	if replace != nil && s.text(replace.ChildByFieldName("attribute")) == "read_text" && len(values) == 0 {
+		paths := s.paths(replace.ChildByFieldName("object"))
+		if len(paths) != 1 || !filepath.IsAbs(paths[0]) {
+			return liveDiffPythonText{}, false
+		}
+		content, exists, err := liveDiffSourceRead(ctx, paths[0], liveDiffPreviewFile)
+		return liveDiffPythonText{paths[0], content}, exists && err == nil
+	}
 	if replace == nil || s.text(replace.ChildByFieldName("attribute")) != "replace" || len(values) < 2 || len(values) > 3 {
-		return "", "", false
+		return liveDiffPythonText{}, false
 	}
-	read, readArgs := sourceCall(replace.ChildByFieldName("object"))
-	if read == nil || s.text(read.ChildByFieldName("attribute")) != "read_text" || len(readArgs) != 0 {
-		return "", "", false
-	}
-	readPaths := s.paths(read.ChildByFieldName("object"))
-	if len(readPaths) != 1 || readPaths[0] != paths[0] {
-		return "", "", false
+	value, ok := s.previewPythonText(ctx, replace.ChildByFieldName("object"), texts, depth+1)
+	if !ok {
+		return liveDiffPythonText{}, false
 	}
 	old, okOld := s.literal(values[0])
 	next, okNext := s.literal(values[1])
 	if !okOld || !okNext {
-		return "", "", false
+		return liveDiffPythonText{}, false
 	}
 	count := -1
 	if len(values) == 3 {
 		var err error
 		count, err = strconv.Atoi(s.text(values[2]))
 		if err != nil {
-			return "", "", false
+			return liveDiffPythonText{}, false
 		}
 	}
-	before, exists, err := liveDiffPreviewFile(paths[0])
-	if err != nil || !exists {
-		return "", "", false
-	}
+	before := value.content
 	// Bound expansion before allocating the replacement result.
 	matches := strings.Count(before, old)
 	if count >= 0 {
 		matches = min(matches, count)
 	}
 	if growth := len(next) - len(old); growth > 0 && matches > (liveDiffPreviewFileLimit-len(before))/growth {
-		return "", "", false
+		return liveDiffPythonText{}, false
 	}
-	return paths[0], strings.Replace(before, old, next, count), true
+	value.content = strings.Replace(before, old, next, count)
+	return value, true
 }

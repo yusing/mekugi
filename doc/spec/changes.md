@@ -321,7 +321,17 @@ binding is rendered as the patch preview.
 Literal Python `Path.write_text` and `open(..., "w").write` bodies and literal
 JavaScript `writeFileSync`/`writeFile` bodies can be predicted without evaluation.
 Python same-path `read_text().replace(A, B[, count])` supports literal replacements;
-regex replacement is excluded. An interpreter heredoc still arriving is
+straight-line text-buffer assignments and chained literal replacements are also
+supported. A Python edit script composed through a `cat` heredoc previews these
+target-file changes rather than the script file. While it arrives, a changed
+read buffer can be shown before its final write statement. This is a provisional
+prediction only: script creation does not claim that its edits ran, and neither
+the script nor the host tool call is rewritten or executed by the preview.
+Before edit intent arrives, an unfinished Python heredoc has no source-file
+preview; ordinary Python file creation is displayed when the heredoc closes.
+Unsupported buffer mutations, including augmented assignment and tuple rebinding,
+are not predicted.
+Regex replacement is excluded. An interpreter heredoc still arriving is
 predicted on a best-effort basis by closing its unfinished content literal.
 Command and script text is never displayed. A command that is not a
 recognized edit has no card, and a later non-edit call keeps the last
@@ -355,6 +365,11 @@ completes, and `!` with the reason when the edit cannot be projected. The
 current file follows, styled like file navigation: its `M`, `A`, `D`, or `R`
 status and live `+N -N` line counts, with `N/M files` when the call edits
 several.
+
+The integrated live-input pane opens on its first displayable preview, not on
+an execution or launch request with no stream content. Agent activity can open
+independently without reserving an empty live-input area. Explicitly focusing
+the diff pane still opens it on demand.
 
 Provider input arrives in bursts. The stream view reveals each call's received
 input at its recent arrival rate, so the preview grows steadily rather than

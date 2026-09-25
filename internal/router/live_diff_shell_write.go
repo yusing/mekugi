@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi"
@@ -77,6 +78,20 @@ func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directo
 	}
 	if len(content) > limit {
 		return nil, true, errors.New("streaming file write result exceeds capacity")
+	}
+	// An edit script being composed is transport for the intended changes,
+	// not the useful diff. Project its supported effects through the same
+	// paced preview pipeline; never execute or rewrite the host command.
+	if strings.HasSuffix(path, ".py") && output.Op != syntax.AppOut {
+		input := execProviderInput{identity: "python", cwd: directory, deadline: time.Now().Add(execProviderBudget)}
+		if files, recognized, err := liveDiffInterpreterSource(ctx, input, content, path, true, true); recognized || err != nil {
+			return files, recognized, err
+		}
+		if partialLine {
+			// Imports and path setup cannot yet distinguish an edit script
+			// from ordinary Python source. Do not flash that transport source.
+			return nil, true, nil
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, true, err

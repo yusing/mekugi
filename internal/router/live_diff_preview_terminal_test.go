@@ -171,10 +171,12 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	pausedHeader := liveDiffFrameRow(paused, 1)
 
 	ui.write(t, "v")
- ui.frame(t,func(frame string)bool{return strings.Contains(frame,"STREAM · v diff") && strings.Contains(ansi.Strip(frame),"stream_0001")})
- ui.write(t,"r")
- ui.frame(t,func(frame string)bool{return strings.Contains(ansi.Strip(frame),"stream_0100")})
- final := previewViewFixture("one", 101)
+	ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "STREAM · v diff") && strings.Contains(ansi.Strip(frame), "stream_0001")
+	})
+	ui.write(t, "r")
+	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "stream_0100") })
+	final := previewViewFixture("one", 101)
 	final.Workspace, final.Complete = workspace, true
 	broker.publishPreview(final, false)
 	completed := ui.frame(t, func(frame string) bool {
@@ -278,7 +280,9 @@ func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
 	t.Cleanup(worker.stop)
-	input := "cat > big.py <<'EOF'\n" + strings.Repeat("# context\n", 30) + "return 42\n"
+	// Python source stays buffered until the heredoc closes, so setup lines
+	// cannot flash as a script diff before an edit target becomes recognizable.
+	input := "cat > big.py <<'EOF'\n" + strings.Repeat("# context\n", 30) + "return 42\nEOF\n"
 	tip, colored := "return 42", livediff.DarkTheme.Foreground(chroma.Keyword)+"return"
 	worker.appendDelta(input)
 	// Revealed rows fade in, so wait for the tip to settle on its syntax color.

@@ -40,6 +40,7 @@ type terminalUI struct {
 	width, height, split, horizontal, rosterHeight int
 	focus, drag                                    int // 0 Codex, 1 diff, 2 agents, 3 roster; drag 1 main, 2 auxiliary, 3 files, 4 roster
 	side, activityOpen, cursorVisible              bool
+	diffOpen                                       bool
 	prefix                                         bool
 	sequenceAt                                     time.Time
 	sequence, agentEscape                          string
@@ -258,7 +259,6 @@ func (u *terminalUI) run(ctx context.Context, stdout *os.File, keys <-chan byte,
 			dirty = true
 		case <-u.auto.changed:
 			u.auto.mu.Lock()
-			u.side = u.side || u.auto.requested
 			u.activityOpen = u.activityOpen || u.auto.activityRequested
 			u.diff.workspace = u.auto.workspace
 			u.auto.mu.Unlock()
@@ -329,6 +329,15 @@ func (u *terminalUI) run(ctx context.Context, stdout *os.File, keys <-chan byte,
 
 func (u *terminalUI) paint(ctx context.Context, out io.Writer) error {
 	l := terminalGeometry(u.width, u.height, u.split, u.horizontal, u.rosterHeight, u.focus, u.side, u.activityOpen)
+	if !u.diffOpen && l.diff.w > 0 {
+		// Activity can open independently, without reserving an empty stream.
+		if l.agents.w > 0 {
+			l.agents.y = l.diff.y
+			l.agents.h += l.diff.h + 1
+			l.horizontal = -1
+		}
+		l.diff = terminalRect{}
+	}
 	if l.codex.w > 0 && (l.codex.w != u.codex.Width() || l.codex.h != u.codex.Height()) {
 		u.codex.Resize(l.codex.w, l.codex.h)
 		if err := resizeTerminalPTY(u.master, l.codex.w, l.codex.h); err != nil {
@@ -513,6 +522,7 @@ func (u *terminalUI) key(key byte) error {
 		case '2':
 			u.focus = 1
 			u.side = true
+			u.diffOpen = true
 		case '3', '4':
 			u.focus = int(key - '1')
 			u.side = true
@@ -763,5 +773,8 @@ func (u *terminalUI) applyDiff(ctx context.Context, event liveDiffEvent) {
 	}
 	if _, err := u.diff.applyEvent(ctx, event); err != nil {
 		u.diffFailure = err.Error()
+	}
+	if len(u.diff.previewPane.order) > 0 {
+		u.diffOpen, u.side = true, true
 	}
 }

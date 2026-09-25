@@ -251,11 +251,15 @@ func TestTerminalUIRenderedPTYAndLifecycle(t *testing.T) {
 	workspace := t.TempDir()
 	auto.observe(workspace, "root", codexTurnMetadata{RequestKind: "turn"})
 	auto.requestLaunch(workspace, "root")
-	await("Live input")
 	io.WriteString(outer, "s")
-	await("PTY size 110 x 39")
+	await("PTY size 220 x 39")
+	if strings.Contains(screen.String(), "Live input") {
+		t.Fatal("empty live input pane opened before the first stream")
+	}
 	auto.events.publishPreview(liveDiffPreview{ID: "preview", Workspace: workspace, Thread: "root", Input: "first line\nsecond line", Status: "running"}, false)
 	await("second line")
+	io.WriteString(outer, "s")
+	await("PTY size 110 x 39")
 	io.WriteString(outer, "\x02\x1b[D\x02"+"1")
 	for screen.CellAt(107, 0) == nil || screen.CellAt(107, 0).Content != "│" {
 		select {
