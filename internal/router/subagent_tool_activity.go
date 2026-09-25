@@ -9,11 +9,11 @@ import (
 // Observe complete calls, not argument deltas. This is a user-only description
 // of a request, never a second executable call or a claim of tool success.
 func (t *mekugiResponseTransform) collectSubagentToolCall(item map[string]json.RawMessage) {
-	if !t.subagentTurn {
+	if t.threadID == "" {
 		return
 	}
 	kind := jsonString(item, "type")
-	if !strings.HasSuffix(kind, "_call") {
+	if !strings.HasSuffix(kind, "_call") && kind != "mcp_list_tools" && kind != "mcp_approval_request" {
 		return
 	}
 	if status := jsonString(item, "status"); status != "" && status != "completed" && status != "failed" {

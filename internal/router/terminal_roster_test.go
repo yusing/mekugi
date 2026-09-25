@@ -12,6 +12,28 @@ import (
 	"github.com/charmbracelet/x/vt"
 )
 
+func TestTerminalPaintNarrowRoleLegendReservesRow(t *testing.T) {
+	const width, height = 80, 20
+	u := &terminalUI{agents: liveActivityTestView("/root/a", "/root/b"), width: width, height: height, side: true, activityOpen: true, focus: 2}
+	u.agents.agents[0].Role, u.agents.agents[1].Role = "explorer", "worker"
+	var frame bytes.Buffer
+	if err := u.paint(t.Context(), &frame); err != nil {
+		t.Fatal(err)
+	}
+	screen := vt.NewEmulator(width, height)
+	defer screen.Close()
+	if _, err := screen.Write(frame.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	lines := plainLines(strings.Split(screen.Render(), "\n"))
+	if !strings.Contains(lines[height-2], "● explorer") || !strings.Contains(lines[height-2], "● worker") || !strings.Contains(lines[height-1], "AGENTS ·") {
+		t.Fatalf("legend/footer placement: %q", lines[height-2:])
+	}
+	if u.layout.agents.y+u.layout.agents.h != height-2 {
+		t.Fatalf("legend overlaps activity: %+v", u.layout)
+	}
+}
+
 func TestTerminalGeometryRosterSpansBottomWidth(t *testing.T) {
 	const width, height, split, feedSplit, rosterHeight = 160, 44, 68, 26, 10
 	l := terminalGeometry(width, height, split, feedSplit, rosterHeight, 0, true, true)

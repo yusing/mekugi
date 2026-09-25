@@ -37,6 +37,7 @@ type liveActivityView struct {
 	rosterEnd      int
 	unseen         int
 	status         string
+	roleColors     map[string]string
 	feedOnly       bool
 	painter        liveActivityPainter
 	osc            livediff.OSC
@@ -119,6 +120,21 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			continue
 		}
 		v.lastSeq = entry.Seq
+		if entry.Kind == "reasoning" && entry.CallID != "" {
+			updated := false
+			for i, previous := range slices.Backward(v.entries) {
+				if previous.Kind == "reasoning" && previous.Agent == entry.Agent && previous.CallID == entry.CallID {
+					v.entries[i].Text = entry.Text
+					v.blocks[i] = parseLiveActivity(entry)
+					v.runs = nil
+					updated = true
+					break
+				}
+			}
+			if updated {
+				continue
+			}
+		}
 		if entry.Kind == "output_filter" && entry.CallID != "" {
 			matched := false
 			for i, previous := range slices.Backward(v.entries) {
@@ -221,6 +237,9 @@ func (v *liveActivityView) latest(name string) int {
 // glyph shows only observed facts: an open provider response, a latest error
 // event, or a sent plaintext final answer. None of them claims completion.
 func (v *liveActivityView) glyph(agent activityPaneAgent) string {
+	if role := liveActivityRole(agent); role != "" {
+		return v.roleColor(role) + string(v.agentStatus(agent)) + liveActivityReset
+	}
 	switch v.agentStatus(agent) {
 	case '◐':
 		return liveActivityAmber + "◐" + liveActivityReset
@@ -498,18 +517,18 @@ func (v *liveActivityView) renderHeader(rows []liveActivityRosterRow, width int,
 // current is an agent's latest activity summary and its elapsed/response timer.
 func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (string, string) {
 	summary := liveActivityDim + "—" + liveActivityUndim
-	if agent.Name == "/root" {
-		for _, blocks := range slices.Backward(v.blocks) {
-			if len(blocks) == 1 && blocks[0].kind == "message" && blocks[0].to == "/root" {
-				block := blocks[0]
-				block.owner = "/root"
-				summary = v.painter.summary([]liveActivityBlock{block})
-				break
-			}
+	for i, v0 := range slices.Backward(v.entries) {
+		blocks := v.blocks[i]
+		if v0.Agent == agent.Name {
+			summary = v.painter.summary(blocks)
+			break
 		}
-	}
-	if latest := v.latest(agent.Name); latest >= 0 && agent.Name != "/root" {
-		summary = v.painter.summary(v.blocks[latest])
+		if agent.Name == "/root" && len(blocks) == 1 && blocks[0].kind == "message" && blocks[0].to == "/root" {
+			block := blocks[0]
+			block.owner = "/root"
+			summary = v.painter.summary([]liveActivityBlock{block})
+			break
+		}
 	}
 	if agent.Started.IsZero() {
 		if latest := v.latest(agent.Name); latest >= 0 {
@@ -539,9 +558,9 @@ func liveActivityCost(agent activityPaneAgent) string {
 		return ""
 	}
 	if agent.CostPartial {
-		return fmt.Sprintf("≥$%.4f", agent.Cost)
+		return fmt.Sprintf("≥$%.2f", agent.Cost)
 	}
-	return fmt.Sprintf("$%.4f", agent.Cost)
+	return fmt.Sprintf("$%.2f", agent.Cost)
 }
 
 // liveActivityTurns counts provider responses as T+N.
@@ -735,7 +754,7 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 		name = strings.TrimRight(liveActivityMiddle(name, available), " ")
 		split := strings.LastIndexAny(name, " /") + 1
 		styled := liveActivityDim + name[:split] + liveActivityUndim + liveAgentColor(row.agent.Name) + v.hoverName(name[split:], row.agent.Name) + liveActivityReset
-		prefix := v.glyph(row.agent) + "  "
+		prefix := " " + v.glyph(row.agent) + " "
 		switch {
 		case cards && !compact:
 			last := liveActivityLast(row.agent.LastResponse, now)
@@ -752,7 +771,7 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 			line := prefix + styled + strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(name))) + "  "
 			metric := table[i-start]
 			room := width - ansi.StringWidth(line) - 2 - ansi.StringWidth(metric)
-			if metric == "" || room < 12 {
+			if metric == "" || room < 20 {
 				add(line + summary)
 			} else {
 				add(line + liveActivityPad(summary, room) + "  " + metric)
@@ -787,50 +806,45 @@ func liveActivityLast(last, now time.Time) string {
 	return liveActivityAge(age) + " ago"
 }
 
-// metricTable aligns inline metrics in columns across the visible rows:
-// role and timer left-aligned, then usage right-aligned.
+// metricTable reserves stable timer, input/output, cost, and turn slots even
+// before values arrive. Large values clip rather than shifting adjacent columns.
 func (v *liveActivityView) metricTable(rows []liveActivityRosterRow, now time.Time) []string {
-	dim := func(s string) string {
-		if s == "" {
-			return ""
-		}
-		return liveActivityDim + s + liveActivityUndim
-	}
-	const columns = 5
+	const columns = 4
 	cells := make([][columns]string, len(rows))
-	var widths [columns]int
+	widths := [columns]int{14, 15, 7, 5}
 	for i, row := range rows {
 		_, timer := v.current(row.agent, now)
 		tokens := liveActivityTokens(row.agent)
 		if tokens != "" {
-			tokens = liveActivityMetricValues(tokens)
+			tokens = liveActivityDim + "↑" + liveActivityUndim + liveActivityPad(formatUsageTokens(row.agent.InputTokens), 6) + liveActivityDim + " ↓" + liveActivityUndim + liveActivityPad(formatUsageTokens(row.agent.OutputTokens), 6)
 		}
 		timerCell := ""
 		if timer != "" {
-			timerCell = liveActivityMetricValues(timer)
+			elapsed, age, _ := strings.Cut(timer, " · ")
+			timerCell = strings.Repeat(" ", max(0, 3-len(elapsed))) + liveActivityMetricValues(elapsed) + liveActivityDim + " · " + liveActivityUndim + liveActivityMetricValues(age)
 		}
-		cells[i] = [columns]string{dim(liveActivityRole(row.agent)), timerCell, tokens, liveActivityCost(row.agent), liveActivityTurns(row.agent)}
-		for c, cell := range cells[i] {
-			widths[c] = max(widths[c], ansi.StringWidth(cell))
+		cost, turns := "", ""
+		if row.agent.Turns > 0 && row.agent.CostKnown {
+			prefix := " "
+			if row.agent.CostPartial {
+				prefix = "≥"
+			}
+			cost = prefix + "$" + fmt.Sprintf("%.2f", row.agent.Cost)
 		}
+		if row.agent.Turns > 0 {
+			turns = liveActivityDim + "T+" + liveActivityUndim + fmt.Sprint(row.agent.Turns)
+		}
+		cells[i] = [columns]string{timerCell, tokens, cost, turns}
 	}
 	table := make([]string, len(rows))
 	for i := range rows {
 		var parts []string
 		for c, cell := range cells[i] {
-			if widths[c] == 0 {
-				continue
-			}
+			cell = ansi.Truncate(cell, widths[c], "…")
 			pad := strings.Repeat(" ", widths[c]-ansi.StringWidth(cell))
-			if c < 2 {
-				parts = append(parts, cell+pad)
-			} else {
-				parts = append(parts, pad+cell)
-			}
+			parts = append(parts, cell+pad)
 		}
-		if line := strings.Join(parts, "  "); strings.TrimSpace(ansi.Strip(line)) != "" {
-			table[i] = line
-		}
+		table[i] = strings.Join(parts, " ")
 	}
 	return table
 }
@@ -858,9 +872,6 @@ func liveActivityMetricValues(text string) string {
 
 func liveActivityCardMetrics(agent activityPaneAgent) string {
 	var parts []string
-	if role := liveActivityRole(agent); role != "" {
-		parts = append(parts, liveActivityDim+role+liveActivityUndim)
-	}
 	if cost := liveActivityCost(agent); cost != "" {
 		parts = append(parts, cost)
 	} else if agent.InputTokens > 0 {

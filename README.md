@@ -254,11 +254,13 @@ See [live view details](doc/spec/changes.md#live-terminal-view).
 
 ### Agents pane
 
-The first subagent event opens a **Mekugi agents** pane in the same terminal.
-It streams child progress, messages, and replies as they happen, including
+The first provider response opens a **Mekugi agents** pane in the same terminal.
+It streams main and child activity, visible reasoning summaries, messages, and replies, including
 during a native wait. The separate roster spans the full width below Codex and the
 diff, with a draggable divider. It gives `main` and each child one row: activity, then
-role, age, `↑`/`↓` tokens, estimated cost, and turns. Costs come from the same totals
+age, `↑`/`↓` tokens, estimated cost to two decimal places, and turns in stable columns.
+Roles color the existing status glyph; a legend sits beside the bottom status line
+or on the row above when space is limited. Costs come from the same totals
 as the usage table; `≥$N` means some response ended without usage. Markers show what
 was observed: `◐` open response, `!` latest error, `✓` final answer sent. The selected
 agent's row is shaded. Usage tables and critical notices stay in the main conversation.

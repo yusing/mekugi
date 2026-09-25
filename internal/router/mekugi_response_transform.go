@@ -140,10 +140,17 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 	if envelope.Delta != "" && t.threadID != "" && strings.HasSuffix(string(envelope.Type), ".delta") {
 		t.proxy.activity.streamOutput(t.threadID, len(envelope.Delta))
 	}
+	if envelope.Type == "response.reasoning_summary_part.added" && t.activityReasoning[envelope.ItemID] != "" {
+		t.collectReasoningDelta(envelope.ItemID, "\n\n")
+	}
+	if envelope.Type == "response.reasoning_summary_text.delta" {
+		t.collectReasoningDelta(envelope.ItemID, envelope.Delta)
+	}
 	if envelope.Type == responseevents.OutputItemDone {
 		var item map[string]json.RawMessage
 		if json.Unmarshal(envelope.Item, &item) == nil {
 			t.collectProviderCommentary(item)
+			t.collectProviderReasoning(item)
 		}
 	}
 	if visible, buffered := t.finalAnswer.observe(payload); buffered {
@@ -581,6 +588,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 				continue
 			}
 			t.collectProviderCommentary(item.fields)
+			t.collectProviderReasoning(item.fields)
 			activityFields := maps.Clone(item.fields)
 			message, err := t.transformStructuredCommentary(item.fields)
 			if err != nil {

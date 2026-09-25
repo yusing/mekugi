@@ -52,7 +52,8 @@ func TestTerminalUIPreview(t *testing.T) {
 }
 
 // TestTerminalUIPreviewFrames replays the preview session headless and prints
-// each changed roster frame with the canonical usage report behind every agent.
+// changed roster/activity frames, the responsive role legend, and the canonical
+// usage report behind every agent.
 // It is opt-in: run `make preview-roster`.
 func TestTerminalUIPreviewFrames(t *testing.T) {
 	if os.Getenv("MEKUGI_UI_PREVIEW_FRAMES") != "1" {
@@ -100,10 +101,16 @@ func TestTerminalUIPreviewFrames(t *testing.T) {
 			view.apply(activityPaneEvent{Kind: "entries", Entries: entries, Agents: agents})
 		}
 		lines := view.renderRosterPane(width, rows, time.Now())
+		feed := view.renderFeed(max(20, width-1), 20)
+		status, legend := (&terminalUI{width: width, activityOpen: true, agents: view}).statusLines()
 		if !styled {
 			lines = plainLines(lines)
+			for i := range feed.lines {
+				feed.lines[i] = ansi.Strip(feed.lines[i])
+			}
+			status, legend = ansi.Strip(status), ansi.Strip(legend)
 		}
-		frame := strings.Join(lines, "\n")
+		frame := strings.Join(lines, "\n") + "\n" + strings.Join(feed.lines, "\n") + "\n" + status + "\n" + legend
 		if frame == last {
 			continue
 		}
@@ -126,6 +133,40 @@ func TestTerminalUIPreviewFrames(t *testing.T) {
 				agentDisplayName(agent.Name), agent.Turns, observed, report.InputTokens, report.OutputTokens,
 				report.cost.cachedInput+report.cost.uncachedInput+report.cost.output, report.cost.known, report.missingUsage)
 		}
+		// Show the real feed renderer too: grouping, reasoning replacement,
+		// waiting, and MCP events cannot be reviewed from roster rows alone.
+		fmt.Println("activity:")
+		for _, line := range feed.lines[max(0, len(feed.lines)-12):] {
+			if styled {
+				line += "\x1b[0m"
+			}
+			fmt.Println(line)
+		}
+		if legend != "" {
+			fmt.Println("legend:", legend)
+		}
+		fmt.Println("status:", status)
+	}
+	var reasoning int
+	for _, entry := range view.entries {
+		if entry.Kind == "reasoning" && entry.CallID == "reasoning-preview" {
+			reasoning++
+			if strings.Contains(entry.Text, "response…") {
+				t.Fatal("preview retained the superseded reasoning snapshot")
+			}
+		}
+	}
+	if reasoning != 1 {
+		t.Fatalf("preview reasoning entries = %d, want one updating entry", reasoning)
+	}
+	var metrics *activityPaneAgent
+	for i := range view.agents {
+		if view.agents[i].Name == "/root/usage_review" {
+			metrics = &view.agents[i]
+		}
+	}
+	if metrics == nil || metrics.Turns != 10 || metrics.InputTokens != 140_600 || metrics.OutputTokens != 844 {
+		t.Fatalf("preview did not complete metric boundary transitions: %+v", metrics)
 	}
 }
 
@@ -506,6 +547,22 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 	}
 	auto.beginTurn(workspace, "root", turn)
 	activity.beginResponse("root")
+	// The very first response must request and populate the panes before any
+	// shell activity. Consecutive Inspect calls exercise the Read-like group.
+	tool("root", "Inspect `internal/broker/broker.go`\n\nInspect `internal/pane/launch.go`")
+	if !pause(0.5) {
+		return
+	}
+	tool("root", "Inspect `internal/broker/broker_test.go`")
+	activity.collectEvent(activityEvent{thread: "root", source: "reasoning-preview", callID: "reasoning-preview", kind: "reasoning", text: "Checking which pane owns the first response…"})
+	if !pause(0.5) {
+		return
+	}
+	activity.collectEvent(activityEvent{thread: "root", source: "reasoning-preview", callID: "reasoning-preview", kind: "reasoning", text: "Checking which pane owns the first response and how grouped reads render."})
+	tool("root", "MCP `docs.lookup`\n`{\"query\":\"pane launch\"}`")
+	if !pause(0.5) {
+		return
+	}
 	// main edits first, so the change graph's agent lanes branch from it.
 	if !patch("root", "/root", previewMainPatch) {
 		return
@@ -513,20 +570,51 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 	spawn("trace", "/root/trace", "Trace how the live diff preview worker paces streamed input.")
 	spawn("pane", "/root/pane_trace", "Make the side pane wait for its first preview frame before opening.")
 	spawn("tests", "/root/script_tests", "Write broker subscription tests; cover the unsubscribe race.")
+	spawn("metrics", "/root/usage_review", "Review the compact roster while metrics cross width boundaries.")
 	activity.syncPaneRoles("root", map[string]journalSpawnRole{
 		"/root/trace": {Role: "explorer"}, "/root/pane_trace": {Role: "worker"}, "/root/script_tests": {Role: "worker"},
+		"/root/usage_review": {Role: "review-correctness"},
 	})
+	// Backdate only display ages, so the preview includes both an established
+	// agent and a recent response without making the interactive replay wait.
+	activity.mu.Lock()
+	activity.threads["metrics"].started = time.Now().Add(-52 * time.Second)
+	activity.threads["trace"].started = time.Now().Add(-33 * time.Second)
+	activity.mu.Unlock()
+	tool("root", "Waiting for agent")
+	// Nine to ten turns, 73.7K to 140.6K input, and 789 to 844 output
+	// intentionally cross the widths shown in the reported shifting example.
+	// All totals come from the same usage owner as the normal roster.
+	for range 8 {
+		activity.beginResponse("metrics")
+		settle("metrics", "gpt-6-luna", 0, 0)
+	}
+	activity.beginResponse("metrics")
+	settle("metrics", "gpt-6-luna", 73_700, 789)
+	activity.mu.Lock()
+	activity.threads["metrics"].lastResponse = time.Now().Add(-4 * time.Second)
+	activity.mu.Unlock()
+	if !pause(1) {
+		return
+	}
+	activity.beginResponse("metrics")
+	settle("metrics", "gpt-6-luna", 66_900, 55)
 	if !pause(1) {
 		return
 	}
 	tool("trace", "Read `internal/router/live_diff_preview.go` 1:120 200:260")
 	tool("pane", "Search `requestLaunch` in `internal/router`")
 	respond("tests", "gpt-6-luna", 42_000, 900)
+	tool("tests", "Inspect `internal/broker/broker.go`\n\nInspect `internal/broker/broker_test.go`")
+	tool("tests", "Inspect `internal/pane/launch.go`")
 	tool("tests", "Read `internal/broker/broker.go` 1:80")
 	if !pause(1) {
 		return
 	}
 	respond("trace", "gpt-6-luna", 120_000, 2_400)
+	activity.mu.Lock()
+	activity.threads["trace"].lastResponse = time.Now().Add(-4 * time.Second)
+	activity.mu.Unlock()
 	tool("pane", "Run\n```bash\nrg -n 'auto.requested' internal/router | head -20\n```")
 	tool("tests", "Read `internal/broker/broker_test.go`")
 	if !pause(1) {

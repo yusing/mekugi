@@ -43,7 +43,7 @@ func TestRosterMetricsInlineAndHitTargets(t *testing.T) {
 	v.agents[0].Turns, v.agents[0].CostKnown, v.agents[0].Cost = 1, true, .25
 	lines := plainLines(v.renderRosterPane(120, 8, time.Now()))
 	// Metrics share the agent's row, in columns aligned across rows.
-	if !strings.Contains(lines[1], "Read a.go") || !strings.Contains(lines[1], "explorer") || !strings.Contains(lines[1], "↑ 1K ↓ 20  $0.2500  T+1") ||
+	if !strings.Contains(lines[1], "Read a.go") || strings.Contains(lines[1], "explorer") || !strings.Contains(strings.Join(strings.Fields(lines[1]), " "), "↑1K ↓20 $0.25 T+1") ||
 		!strings.Contains(lines[2], "Read b.go") || strings.Index(lines[1], "now") != strings.Index(lines[2], "now") {
 		t.Fatalf("roster = %q", lines)
 	}

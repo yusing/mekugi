@@ -278,6 +278,8 @@ type mekugiActivityState struct {
 	activityMessages       []map[string]json.RawMessage
 	activityShellSessions  map[string]string
 	activityCellOperations map[string]string
+	activityReasoning      map[string]string
+	activityReasoningBytes int
 }
 
 type mekugiTranslationState struct {

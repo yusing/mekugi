@@ -21,7 +21,9 @@ the next boundary rather than being extended. When the agents pane owns a root, 
 collector delivers that root's events directly to the integrated terminal view
 instead, and drains yield only the pane's one-time notices. Pane ownership,
 acknowledgement after flush and inline fallback belong to
-the collector. The viewer only presents what it is given. Codex retains scheduling, recipients,
+the collector. Main activity and visible reasoning snapshots are pane-only and cannot fall back
+into model-visible commentary. Response admission requests the pane before tool
+execution. The viewer only presents what it is given. Codex retains scheduling, recipients,
 interrupts, waits, and assignment lifecycle.
 
 Completed explore-filter observations use the same collector and integrated

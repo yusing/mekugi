@@ -122,7 +122,11 @@ func (a *subagentActivity) collectEvent(event activityEvent) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	node := a.threads[thread]
-	if a.closed || node == nil || !node.child && kind != "output_filter" || node.conflicted {
+	if a.closed || node == nil || node.conflicted {
+		return
+	}
+	// Main activity and visible reasoning belong only to the terminal pane.
+	if (!node.child && kind != "output_filter" || kind == "reasoning") && (a.pane == nil || a.pane.state == activityPaneReleased) {
 		return
 	}
 	callID := event.callID
@@ -132,7 +136,7 @@ func (a *subagentActivity) collectEvent(event activityEvent) {
 		callID, _ = strings.CutPrefix(source, "tool-exit\x00")
 	}
 	source = commentaryMessageID(source)
-	if _, exists := node.seen[source]; exists {
+	if _, exists := node.seen[source]; exists && kind != "reasoning" {
 		return
 	}
 	header, _, directed := strings.Cut(text, "] ")
@@ -150,8 +154,10 @@ func (a *subagentActivity) collectEvent(event activityEvent) {
 	a.expireLocked(now)
 	// Keep the latest ordinary operation, but preserve distinct notices. Appending
 	// the replacement after notices preserves each child's observation order.
-	if kind == "operation" {
-		a.events = slices.DeleteFunc(a.events, func(e activityEvent) bool { return e.thread == thread && e.kind == kind })
+	if kind == "operation" || kind == "reasoning" {
+		a.events = slices.DeleteFunc(a.events, func(e activityEvent) bool {
+			return e.thread == thread && e.kind == kind && (kind != "reasoning" || e.source == source)
+		})
 	}
 	count := 0
 	for _, event := range a.events {
@@ -208,7 +214,7 @@ func (a *subagentActivity) drain(root string, started time.Time, budget int) []m
 			kept = append(kept, event)
 			continue
 		}
-		if event.kind == "final" || event.kind == "exit" || event.kind == "output_filter" {
+		if !a.threads[event.thread].child || event.kind == "reasoning" || event.kind == "final" || event.kind == "exit" || event.kind == "output_filter" {
 			continue // Final is native; exit and filter metrics are pane-only.
 		}
 		text := event.text

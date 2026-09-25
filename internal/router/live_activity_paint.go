@@ -31,7 +31,7 @@ type liveActivityPainter struct {
 func liveActivityVerbColor(verb string) string {
 	first, _, _ := strings.Cut(verb, " ")
 	switch first {
-	case "Read", "View", "Open", "List", "Check":
+	case "Read", "Inspect", "View", "Open", "List", "Check":
 		return "\x1b[38;5;75m"
 	case "Search", "Find":
 		return "\x1b[38;5;141m"
@@ -347,16 +347,19 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 			return p.journal(block.journal, width, block.compact)
 		}
 		return append([]string{liveActivityGreen + "✓ Final answer" + liveActivityReset}, liveActivityIndent(p.markdown(block.body, width-2), "  ")...)
+	case "reasoning":
+		return append([]string{liveActivityDim + "Thinking" + liveActivityUndim}, p.markdown(block.body, width)...)
 	case "reads":
 		var items []string
 		for _, read := range block.reads {
 			item := liveActivityPath(read.path)
+			if block.verb == "Search" { item = p.code(block.verb, read.path) }
 			if len(read.ranges) > 0 {
 				item += " " + liveActivityDim + strings.Join(read.ranges, ", ") + liveActivityUndim
 			}
 			items = append(items, item)
 		}
-		return liveActivityHang(liveActivityVerb("Read"), strings.Join(items, liveActivityDim+" · "+liveActivityUndim), width)
+		return liveActivityHang(liveActivityVerb(block.verb), strings.Join(items, liveActivityDim+" · "+liveActivityUndim), width)
 	case "op":
 		label := p.label(block.verb, block.label)
 		code, body := block.code, block.body
@@ -586,12 +589,16 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 		}
 		// The roster's status glyph already marks a sent final answer.
 		return text
+	case "reasoning":
+		return liveActivitySummaryVerb("Thinking") + firstLine(block.body)
 	case "reads":
 		var names []string
 		for _, read := range block.reads {
-			names = append(names, read.path[strings.LastIndex(read.path, "/")+1:])
+			name := read.path
+			if block.verb != "Search" { name = name[strings.LastIndex(name, "/")+1:] }
+			names = append(names, name)
 		}
-		return liveActivitySummaryVerb("Read") + strings.Join(names, ", ") + more
+		return liveActivitySummaryVerb(block.verb) + strings.Join(names, ", ") + more
 	case "op":
 		detail := strings.TrimSpace(p.label(block.verb, block.label))
 		if detail == "" || strings.HasPrefix(ansi.Strip(detail), "·") {

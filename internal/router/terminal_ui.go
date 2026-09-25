@@ -331,7 +331,12 @@ func (u *terminalUI) run(ctx context.Context, stdout *os.File, keys <-chan byte,
 }
 
 func (u *terminalUI) paint(ctx context.Context, out io.Writer) error {
-	l := terminalGeometry(u.width, u.height, u.split, u.horizontal, u.rosterHeight, u.focus, u.side, u.activityOpen)
+	status, legend := u.statusLines()
+	height := u.height
+	if legend != "" && height > 2 {
+		height--
+	}
+	l := terminalGeometry(u.width, height, u.split, u.horizontal, u.rosterHeight, u.focus, u.side, u.activityOpen)
 	if !u.diffOpen && l.diff.w > 0 {
 		// Activity can open independently, without reserving an empty stream.
 		if l.agents.w > 0 {
@@ -387,7 +392,7 @@ func (u *terminalUI) paint(ctx context.Context, out io.Writer) error {
 		draw(l.roster, u.agents.renderRosterPane(l.roster.w, l.roster.h, time.Now()))
 	}
 	if l.vertical >= 0 {
-		bottom := u.height - 1
+		bottom := height - 1
 		if l.rosterHorizontal >= 0 {
 			bottom = l.rosterHorizontal
 		}
@@ -405,12 +410,10 @@ func (u *terminalUI) paint(ctx context.Context, out io.Writer) error {
 	if l.horizontal >= 0 {
 		fmt.Fprintf(&b, "\x1b[%d;%dH\x1b[2m%s\x1b[0m", l.horizontal+1, l.diff.x+1, strings.Repeat("─", l.diff.w))
 	}
-	title := []string{"CODEX", "DIFF", "AGENTS", "ROSTER"}[u.focus]
-	status := " " + title + " · Ctrl-B 1/2/3/4 focus · ←/→ width · ↑/↓ height · [/] files"
-	if u.prefix {
-		status = " Layout: 1/2/3/4 focus · arrows resize · [/] files · PgUp/PgDn Codex history · Ctrl-B sends prefix"
+	if legend != "" && u.height > 2 {
+		fmt.Fprintf(&b, "\x1b[%d;1H%s\x1b[0m", u.height-1, ansi.Truncate(legend, max(1, u.width), "…"))
 	}
-	fmt.Fprintf(&b, "\x1b[%d;1H\x1b[2m%s\x1b[0m", max(1, u.height), ansi.Truncate(status, max(1, u.width), ""))
+	fmt.Fprintf(&b, "\x1b[%d;1H%s\x1b[0m", max(1, u.height), ansi.Truncate(status, max(1, u.width), ""))
 	if u.focus == 0 && l.codex.w > 0 && u.cursorVisible && u.codexScroll == 0 {
 		p := u.codex.CursorPosition()
 		fmt.Fprintf(&b, "\x1b[%d;%dH\x1b[?25h", l.codex.y+p.Y+1, l.codex.x+p.X+1)

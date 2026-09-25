@@ -45,7 +45,7 @@ func TestRosterUsageMatchesCanonicalReport(t *testing.T) {
 	if root := rosterCostTestAgent(t, activity, "/root"); root.CostKnown || root.InputTokens != 0 {
 		t.Fatalf("child usage leaked into main: %+v", root)
 	}
-	if got := liveActivityCost(agent); got != "$0.3000" {
+	if got := liveActivityCost(agent); got != "$0.30" {
 		t.Fatalf("cost = %q", got)
 	}
 }
@@ -69,7 +69,7 @@ func TestRosterUsageGapShowsLowerBoundCost(t *testing.T) {
 	if !agent.CostKnown || !agent.CostPartial || math.Abs(agent.Cost-.6) > 1e-10 || agent.InputTokens != 200_000 {
 		t.Fatalf("gap hid or reset roster usage: %+v", agent)
 	}
-	if got := liveActivityCost(agent); got != "≥$0.6000" {
+	if got := liveActivityCost(agent); got != "≥$0.60" {
 		t.Fatalf("cost = %q", got)
 	}
 }

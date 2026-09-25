@@ -35,7 +35,7 @@ func TestRosterDesignMessageOwnerAndAssignment(t *testing.T) {
 	}
 	now := time.Now()
 	v := liveActivityTestView("/root", "/root/a")
-	if empty, _ := v.current(v.agents[0], now); ansi.Strip(empty) != "—" {
+	if empty, _ := v.current(v.agents[0], now); ansi.Strip(empty) != "Read root.go" {
 		t.Errorf("main without inbound = %q", empty)
 	}
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
@@ -101,7 +101,7 @@ func TestRosterDesignSeparateHeaderTreeAndMetrics(t *testing.T) {
 		t.Errorf("strip hover styling = %q", hovered)
 	}
 	table := v.metricTable(rows[:2], now)
-	if metric := table[1]; !strings.Contains(metric, liveActivityDim+"explorer") || !strings.Contains(metric, liveActivityDim+"T+"+liveActivityUndim+"1") || strings.Contains(metric, "n/a") {
+	if metric := table[1]; strings.Contains(metric, "explorer") || !strings.Contains(metric, liveActivityDim+"T+"+liveActivityUndim+"1") || strings.Contains(metric, "n/a") {
 		t.Errorf("metric style = %q", metric)
 	}
 	if strings.Contains(table[0], "root-role") {
@@ -246,7 +246,7 @@ func TestRosterDesignScrolledTreeCardsAndSelection(t *testing.T) {
 	}
 	cards := plainLines(v.renderCards(rows[:3], 40, 9, now))
 	// Card activity and metrics rows share the name column and tree guide.
-	if !strings.HasPrefix(cards[3], "·  ├ a") || !strings.HasPrefix(cards[4], "   │ Read") || !strings.HasPrefix(cards[5], "   │ ") {
+	if !strings.HasPrefix(cards[3], " · ├ a") || !strings.HasPrefix(cards[4], "   │ Read") || !strings.HasPrefix(cards[5], "   │ ") {
 		t.Errorf("card alignment = %q", cards)
 	}
 	v.only = false

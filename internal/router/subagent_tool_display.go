@@ -9,19 +9,6 @@ import (
 // Presentation only: never evaluate code, expand paths, or alter the observed call.
 func subagentToolPreview(item map[string]json.RawMessage, qualifiedName string, shellDisplay func(map[string]json.RawMessage, string) (string, bool)) string {
 	name := jsonString(item, "name")
-	// Agent messages already have a dedicated commentary render.
-	if strings.TrimPrefix(qualifiedName, "functions.") == journalToolName ||
-		name == "send_message" && commentaryExcluded(jsonString(item, "namespace"), name) {
-		return ""
-	}
-	if commentaryExcluded(jsonString(item, "namespace"), name) {
-		return "Tool call: " + commentaryCode(qualifiedName)
-	}
-	if shellDisplay != nil {
-		if display, ok := shellDisplay(item, qualifiedName); ok {
-			return display
-		}
-	}
 	input := jsonString(item, "arguments")
 	if input == "" {
 		input = jsonString(item, "input")
@@ -34,6 +21,42 @@ func subagentToolPreview(item map[string]json.RawMessage, qualifiedName string, 
 		// Source: codex-rs/tui/src/history_cell/mcp.rs:727:748 format_mcp_invocation.
 		// Keep Codex's server.tool identity and arguments, without claiming success.
 		return toolActivityDetail("MCP "+commentaryCode(server+"."+tool), input)
+	}
+	switch jsonString(item, "type") {
+	case "mcp_call":
+		return toolActivityDetail("MCP "+commentaryCode(jsonString(item, "server_label")+"."+name), input)
+	case "mcp_list_tools":
+		return toolActivityDetail("List MCP tools", jsonString(item, "server_label"))
+	case "mcp_approval_request":
+		return toolActivityDetail("MCP approval "+commentaryCode(jsonString(item, "server_label")+"."+name), input)
+	}
+	// Agent messages already have a dedicated commentary render.
+	if strings.TrimPrefix(qualifiedName, "functions.") == journalToolName ||
+		name == "send_message" && commentaryExcluded(jsonString(item, "namespace"), name) {
+		return ""
+	}
+	namespace := jsonString(item, "namespace")
+	if jsonString(item, "type") == "function_call" && (namespace == "" || namespace == "functions" || namespace == "collaboration" || namespace == "mekugi_collaboration") {
+		switch strings.TrimPrefix(name, "functions.") {
+		case "wait_agent", "thread_wait":
+			return "Waiting for agent"
+		case "spawn_agent", "thread_spawn":
+			return "Starting agent"
+		case "followup_task", "thread_send_input", "thread_resume":
+			return "Resuming agent"
+		case "interrupt_agent", "thread_interrupt":
+			return "Interrupting agent"
+		case "request_user_input", "request_user_input_async":
+			return "Waiting for user input"
+		}
+	}
+	if commentaryExcluded(namespace, name) {
+		return "Tool call: " + commentaryCode(qualifiedName)
+	}
+	if shellDisplay != nil {
+		if display, ok := shellDisplay(item, qualifiedName); ok {
+			return display
+		}
 	}
 	if shortName == "exec" {
 		calls, ok := toolActivityUnwrapExecCalls(input, false)

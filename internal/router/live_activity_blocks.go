@@ -74,6 +74,8 @@ func parseLiveActivity(entry activityPaneEntry) []liveActivityBlock {
 		}
 	case "error":
 		return []liveActivityBlock{{kind: "error", body: text}}
+	case "reasoning":
+		return []liveActivityBlock{{kind: "reasoning", body: text}}
 	case "compaction":
 		return []liveActivityBlock{{kind: "compaction", body: text}}
 	case "output_filter":
@@ -199,8 +201,13 @@ func parseLiveActivityOperation(paragraph string) liveActivityBlock {
 			block.body = joined
 		}
 	}
-	if block.verb == "Read" && len(lines) == 1 {
+	if slices.Contains([]string{"Read", "Inspect", "List", "Search", "Skill Read", "Skill Reference Read", "Create", "Edit", "Delete", "Move", "Write"}, block.verb) && len(lines) == 1 {
 		if reads, ok := parseLiveActivityReads(block.label); ok {
+			if block.verb != "Read" {
+				for i := range reads {
+					if len(reads[i].ranges) > 0 { reads[i].path += " " + strings.Join(reads[i].ranges, " "); reads[i].ranges = nil }
+				}
+			}
 			block.kind, block.reads, block.label = "reads", reads, ""
 		}
 	}
@@ -230,13 +237,13 @@ func parseLiveActivityReads(label string) ([]liveActivityRead, bool) {
 	return reads, len(reads) > 0
 }
 
-// mergeLiveActivityReads collapses adjacent reads into one row, joining ranges
+// mergeLiveActivityReads collapses adjacent targets of the same action, joining ranges
 // of the same path. Merged blocks own their slices; parsed entries are shared.
 func mergeLiveActivityReads(blocks []liveActivityBlock) []liveActivityBlock {
 	var merged []liveActivityBlock
 	for _, block := range blocks {
 		n := len(merged)
-		if block.kind != "reads" || n == 0 || merged[n-1].kind != "reads" {
+		if block.kind != "reads" || n == 0 || merged[n-1].kind != "reads" || merged[n-1].verb != block.verb {
 			if block.kind == "reads" {
 				block.reads = slices.Clone(block.reads)
 				for i := range block.reads {

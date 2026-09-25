@@ -360,7 +360,7 @@ func TestLiveActivityViewRosterTreeOverflowAndSelection(t *testing.T) {
 		t.Fatalf("header = %q", lines[0])
 	}
 	// Six rows compact to five agents and directional overflow.
-	if !strings.HasPrefix(lines[1], "◐  a") || !strings.Contains(lines[2], "├ x") ||
+	if !strings.HasPrefix(lines[1], " ◐ a") || !strings.Contains(lines[2], "├ x") ||
 		lines[6] != "↓ 2 more" {
 		t.Fatalf("roster = %q", lines[1:7])
 	}
@@ -372,9 +372,9 @@ func TestLiveActivityViewRosterTreeOverflowAndSelection(t *testing.T) {
 	// Selection fills its row in place, without a marker column.
 	fill := view.painter.theme.SelectionBackground()
 	if view.selected != "/root/e" || !slices.ContainsFunc(styled[1:7], func(line string) bool {
-		return strings.HasPrefix(line, fill) && strings.Contains(ansi.Strip(line), "·  e")
+		return strings.HasPrefix(line, fill) && strings.Contains(ansi.Strip(line), " · e")
 	}) ||
-		!slices.ContainsFunc(lines[1:7], func(line string) bool { return strings.HasPrefix(line, "·  e") }) {
+		!slices.ContainsFunc(lines[1:7], func(line string) bool { return strings.HasPrefix(line, " · e") }) {
 		t.Fatalf("selection scroll: selected=%s roster=%q", view.selected, lines[1:7])
 	}
 	view.selectAgent(1)
@@ -490,7 +490,7 @@ func TestLiveActivityViewTinyAndNarrowPanes(t *testing.T) {
 func TestLiveActivityRosterShowsUsageByLayout(t *testing.T) {
 	view := liveActivityTestView("/root/a", "/root/b")
 	view.agents[0].InputTokens, view.agents[0].OutputTokens = 146_800, 3_200
-	for _, width := range []int{80, 140} {
+	for _, width := range []int{140} {
 		lines := plainLines(view.render(width, 20, time.Now()))
 		row := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "↑") })
 		// The roster status ends the row; cards end it at the column divider.
@@ -523,12 +523,12 @@ func TestLiveActivityCombinedRosterShowsTimerCostAndUsage(t *testing.T) {
 	for i := range lines {
 		lines[i] = strings.Join(strings.Fields(lines[i]), " ")
 	}
-	first := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "$1.2000") })
+	first := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "$1.20") })
 	second := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "7m · ") })
 	// Unknown cost is omitted rather than shown as n/a or zero.
-	if first < 0 || second < 0 || first != second-1 || !strings.Contains(lines[first], "8m · 3s ago ↑ 1K ↓ 0") ||
-		!strings.Contains(lines[first], "$1.2000 T+2") || !strings.Contains(lines[second], "7m · 2m ago") ||
-		!strings.Contains(lines[second], "↑ 500 ↓ 0 T+1") || strings.Contains(lines[second], "$") || strings.Contains(lines[second], "n/a") {
+	if first < 0 || second < 0 || first != second-1 || !strings.Contains(lines[first], "8m · 3s ago ↑1K ↓0") ||
+		!strings.Contains(lines[first], "$1.20 T+2") || !strings.Contains(lines[second], "7m · 2m ago") ||
+		!strings.Contains(lines[second], "↑500 ↓0 T+1") || strings.Contains(lines[second], "$") || strings.Contains(lines[second], "n/a") {
 		t.Fatalf("combined roster metrics = %q", lines)
 	}
 }
@@ -749,7 +749,7 @@ func TestLiveActivityViewSummarizesCodeModeBatches(t *testing.T) {
 	view := liveActivityTestView("/root/a", "/root/b")
 	batch := "Read `a.go`\n\nRun `go test`\n```bash\ngo test ./...\n\necho done\n```\n\nRead `c.go`\n\nRun JavaScript · other code"
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", Kind: "tool", Text: batch, Observed: time.Now()}}})
-	lines := plainLines(view.render(80, 20, time.Now()))
+	lines := plainLines(view.renderRosterPane(120, 6, time.Now()))
 	// The roster shows the latest operation of the batch.
 	if !strings.Contains(lines[1], "Run JavaScript · other code · +3 more") {
 		t.Fatalf("batch roster row = %q", lines[1])

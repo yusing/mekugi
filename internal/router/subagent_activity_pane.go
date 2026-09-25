@@ -231,8 +231,8 @@ func (a *subagentActivity) restorePane(entries []activityPaneEntry) {
 	for _, entry := range entries {
 		event := entry.event
 		// A newer queued operation already replaced this one.
-		if event.kind == "operation" && slices.ContainsFunc(a.events, func(e activityEvent) bool {
-			return e.thread == event.thread && e.kind == event.kind
+		if (event.kind == "operation" || event.kind == "reasoning") && slices.ContainsFunc(a.events, func(e activityEvent) bool {
+			return e.thread == event.thread && e.kind == event.kind && (event.kind != "reasoning" || event.source == e.source)
 		}) {
 			continue
 		}
@@ -270,6 +270,7 @@ func (a *subagentActivity) beginResponse(thread string) {
 		node.responding++
 		node.turns++
 		node.final = false
+		a.claimPaneLocked(thread, time.Now())
 		a.wakePaneLocked()
 	}
 }

@@ -412,7 +412,7 @@ func (t *mekugiResponseTransform) collectProviderCommentary(message map[string]j
 	}
 	id := jsonString(message, "id")
 	t.featureTrace.record("commentary", "provider_message", "authored", "observed", "", id)
-	if !t.subagentTurn {
+	if t.threadID == "" {
 		return
 	}
 	if id == "" || len(id) > maxCommentaryPublicationBytes-len("provider-message\x00") || commentaryid.Generated(id) {
@@ -473,4 +473,26 @@ func (t *mekugiResponseTransform) retainCommentary(messages ...map[string]json.R
 		}
 	}
 	return messages
+}
+
+// Completed/JSON reasoning uses the same visible-summary channel as streaming.
+func (t *mekugiResponseTransform) collectProviderReasoning(item map[string]json.RawMessage) {
+	if jsonString(item, "type") != "reasoning" {
+		return
+	}
+	id := jsonString(item, "id")
+	if t.activityReasoning[id] != "" {
+		return
+	}
+	var summary []map[string]json.RawMessage
+	if json.Unmarshal(item["summary"], &summary) != nil {
+		return
+	}
+	var parts []string
+	for _, part := range summary {
+		if jsonString(part, "type") == "summary_text" {
+			parts = append(parts, jsonString(part, "text"))
+		}
+	}
+	t.collectReasoningDelta(id, strings.Join(parts, "\n\n"))
 }

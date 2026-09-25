@@ -31,7 +31,7 @@ func TestParseLiveActivityBlocks(t *testing.T) {
 	if ops[1].kind != "reads" || !slices.EqualFunc(ops[1].reads, want, func(a, b liveActivityRead) bool { return a.path == b.path && slices.Equal(a.ranges, b.ranges) }) {
 		t.Fatalf("reads = %+v", ops[1].reads)
 	}
-	if ops[2].verb != "Search" || ops[2].label != "`rg x`" {
+	if ops[2].verb != "Search" || len(ops[2].reads) != 1 || ops[2].reads[0].path != "rg x" {
 		t.Fatalf("search = %+v", ops[2])
 	}
 	// Unrecognized text stays text.
@@ -111,7 +111,7 @@ func TestLiveActivityViewResponsiveLayouts(t *testing.T) {
 	}
 	// A laptop-height pane at least 100 columns wide keeps cards beside the feed.
 	side := plainLines(view.render(105, 16, now))
-	if !strings.HasPrefix(side[1], "✓  inventory") || !strings.Contains(side[1], " │ ") || !strings.Contains(side[2], "✉  to main") ||
+	if !strings.HasPrefix(side[1], " ✓ inventory") || !strings.Contains(side[1], " │ ") || !strings.Contains(side[2], "✉  to main") ||
 		!strings.Contains(side[5], "Checking the") || !strings.Contains(side[7], "└ probe") {
 		t.Fatalf("side layout = %q", side)
 	}

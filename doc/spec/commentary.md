@@ -308,8 +308,7 @@ update heading. No production response is held open, and no polling or model
 turn is created. During an idle stream there may be no event boundary to deliver
 through; once a response closes, inline updates wait for the next eligible root response.
 
-When Mekugi owns an interactive terminal, the first child event or completed
-explore-filter event under a root opens
+When Mekugi owns an interactive terminal, the first admitted provider response under a root opens
 one Mekugi agents pane for that root and moves that root's child activity there,
 including replies addressed to `/root`. The pane receives events as they are observed,
 independent of root responses, so updates continue during a native wait. While the pane
@@ -337,8 +336,10 @@ Confirmed edit events retain paths and line counts but omit diff bodies in the
 pane; durable change evidence and inline receipts are unchanged. This omission
 applies only to generated tool activity, not authored text. Output-reduction
 summaries align with command text and use muted, dimmed styling in either theme.
-Consecutive reads by one agent collapse into one row that joins ranges of the
-same file. Child text is sanitized before layout, so it cannot emit terminal
+Consecutive same-action target events by one agent collapse into one row, both
+within a call and across calls. Reads join ranges of the same file; Inspect,
+List, Search, and other target-only actions use the same grouping. Different
+actions and detail-bearing operations remain distinct. Child text is sanitized before layout, so it cannot emit terminal
 controls. Local absolute-path Markdown links show their label as a terminal
 hyperlink rather than exposing the raw destination syntax. A completed child
 compaction appears as an event in the feed and as the agent's latest roster
@@ -364,17 +365,25 @@ authored Markdown.
 
 The main agent and its children appear as a canonical-path tree in observation order, with each agent's
 current activity and an elapsed-time timer (`elapsed · age ago`, or `just now`; `—` until
-its first response completes). The root summary shows the latest observed message addressed
-to `/root`, or a dim `—` when none is retained. Sibling and ancestor continuation guides
+its first response completes). The root summary shows its latest observed activity or a newer message addressed
+to `/root`, or a dim `—` when neither is retained. Main activity is pane-only
+and never copied back into its conversation. Visible provider reasoning summaries
+stream into an updating Thinking block, with bounded per-response storage; raw
+and encrypted reasoning are not exposed. Agent wait, start, resume, interrupt,
+user-input waits, and MCP calls have explicit action labels. These describe
+observed requests, not unobserved native execution or completion. Sibling and ancestor continuation guides
 form a tree; rows whose parent is off-screen show their relative path instead. The roster stays in a separate region spanning the full width below Codex
 and the right column, with its own resizable divider. It shares local selection with the activity feed on the right;
 no extra process, broker, or transport is needed. Each agent has one row: status, name,
-and activity, then its metrics inline in columns aligned across the visible rows: role,
-the timer, `↑ in ↓ out` tokens, estimated USD cost, and provider-response turns as `T+N`.
+and activity, then its metrics inline in fixed-width columns: the timer, `↑ in ↓ out` tokens, estimated USD cost to two decimal places, and provider-response turns as `T+N`.
 The roster shows no model label. When the row is too narrow for metrics beside a usable
-activity summary, the metrics are omitted. Roles, units, and separators are dim; metric
-values use normal brightness. The root omits its redundant role, and missing or
-conflicting role evidence omits the role. Selection shades the selected agent's rows in
+activity summary, the metrics are omitted. Units and separators are dim; metric
+values use normal brightness. Each observed role colors the existing centered status glyph without adding a
+column; its shape still identifies status. Missing or conflicting role evidence
+uses ordinary status colors. A one-row role legend appears beside the terminal
+status line when it fits, or on a reserved row immediately above it. Timer, input,
+output, cost, and turn slots are reserved before data arrives and do not resize
+with changing digits or numeric formats. Selection shades the selected agent's rows in
 place rather than reserving a marker column.
 Tokens and cost are read from the canonical per-thread usage totals that also produce the
 usage report, not accumulated separately by the roster. The roster therefore follows the
