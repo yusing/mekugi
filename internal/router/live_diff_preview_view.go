@@ -508,7 +508,9 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 			}
 			line := livediff.Gutter(i == p.focus, theme) + livediff.SourceLine(theme, width, prefix, fragment, row.kind)
 			line = ansi.Truncate(line, max(0, width-1), "")
-			if until := p.born[i].Add(liveDiffPreviewFade); motion.enabled && until.After(motion.now) {
+			// Completion can replace the streaming source with its final diff.
+			// That is a settled snapshot, not a pane full of newly arriving rows.
+			if until := p.born[i].Add(liveDiffPreviewFade); motion.enabled && !p.complete && until.After(motion.now) {
 				if until.After(p.fading) {
 					p.fading = until
 				}

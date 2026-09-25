@@ -339,7 +339,7 @@ func TestActivityPaneShowsFinalAnswerWithoutRootCopy(t *testing.T) {
 		t.Fatalf("final content absent from pane: %s", frame)
 	}
 	// The status glyph marks the final answer; the summary does not repeat it.
-	for _, line := range strings.Split(frame, "\n") {
+	for line := range strings.SplitSeq(frame, "\n") {
 		if strings.Contains(line, "The final result is ready") && strings.Count(line, "✓") > 1 {
 			t.Fatalf("roster repeats the final marker: %q", line)
 		}

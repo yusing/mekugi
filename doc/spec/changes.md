@@ -361,9 +361,10 @@ flag's quoted argument such as `python -c` or `node -e`, or an interpreter
 heredoc body, is revealed by line or statement `;`. An unfinished unit stays
 buffered until it completes, or is shown as it streams after about half a
 second. Newly revealed rows fade in from partial visibility, and rows
-revealed together cascade in order; the fade is display-only, never delays
-the underlying projection, and can be switched off in the stream view. The
-first usable frame and completion redraw immediately; intermediate deltas may
+revealed together cascade in order; the fade is display-only and never delays
+the underlying projection. A completed snapshot displays at its final colors
+without re-fading retained rows. The first usable frame and completion redraw
+immediately; intermediate deltas may
 be coalesced. Card
 positions stay stable: a
 new call takes over a finished card's slot, preferring its own caller's. The

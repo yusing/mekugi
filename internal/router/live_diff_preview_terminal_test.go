@@ -145,6 +145,9 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	if strings.Contains(initial, "Waiting for live input") {
 		t.Fatalf("initial stream header: %q", initial)
 	}
+	if strings.Contains(initial, "m motion") {
+		t.Fatalf("removed motion toggle remains in the stream footer: %q", initial)
+	}
 
 	preview := previewViewFixture("one", 100)
 	preview.Workspace = workspace
@@ -169,12 +172,17 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 
 	ui.write(t, "v")
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
-	broker.publishPreview(liveDiffPreview{ID: "one"}, true)
+	final := previewViewFixture("one", 101)
+	final.Workspace, final.Complete = workspace, true
+	broker.publishPreview(final, false)
 	completed := ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "STREAMING COMPLETE") && strings.Contains(ansi.Strip(frame), "+stream_0100")
+		return strings.Contains(frame, "STREAMING COMPLETE") && strings.Contains(ansi.Strip(frame), "+stream_0101")
 	})
 	if strings.Contains(completed, "80│+new") {
 		t.Fatal("completed stream stopped owning the full pane")
+	}
+	if strings.Contains(completed, "\x1b[3;1H\x1b[0m\x1b[2K\x1b[38;2;") {
+		t.Fatal("completed stream dimmed its existing rows")
 	}
 
 	// Toggling modes preserves captured-diff paused position.

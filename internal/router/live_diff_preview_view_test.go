@@ -653,6 +653,36 @@ func TestLiveDiffPreviewBirthsCarryAcrossSnapshots(t *testing.T) {
 	}
 }
 
+func TestLiveDiffPreviewCompletionDoesNotFadeFinalSnapshot(t *testing.T) {
+	start := time.Unix(100, 0)
+	view := liveDiffPreviewView{current: previewViewFixture("done", 2)}
+	motion := liveDiffPreviewMotion{enabled: true, canvas: livediff.DarkTheme.Canvas(), now: start}
+	streaming, err := view.render(t.Context(), "/workspace", livediff.DarkTheme, 70, 8, motion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	motion.enabled = false
+	settled, err := view.render(t.Context(), "/workspace", livediff.DarkTheme, 70, 8, motion)
+	if err != nil || slices.Equal(streaming, settled) {
+		t.Fatalf("active input did not fade: %v %q", err, streaming)
+	}
+
+	view.current = previewViewFixture("done", 3)
+	view.current.Complete = true
+	view.complete = true
+	motion.enabled = true
+	motion.now = start.Add(10 * time.Millisecond)
+	completed, err := view.render(t.Context(), "/workspace", livediff.DarkTheme, 70, 8, motion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	motion.enabled = false
+	plain, err := view.render(t.Context(), "/workspace", livediff.DarkTheme, 70, 8, motion)
+	if err != nil || !slices.Equal(completed, plain) || !view.fading.IsZero() {
+		t.Fatalf("completed preview remained dimmed: %v %q vs %q", err, completed, plain)
+	}
+}
+
 func TestLiveDiffPreviewPacerKeepsEscapesWhole(t *testing.T) {
 	for _, test := range []struct {
 		input string
