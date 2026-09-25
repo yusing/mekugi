@@ -167,6 +167,7 @@ func TestTerminalUIChild(t *testing.T) {
 			fmt.Print("\x1b]52;c;Y29w")
 			time.Sleep(time.Millisecond)
 			fmt.Print("eQ==\x1b\\")
+			fmt.Print("\x1b]2;⠋ Codex working\a\x1b]9;4;3\x1b\\")
 		case 's':
 			w, h, _ := term.GetSize(int(os.Stdout.Fd()))
 			fmt.Printf("\x1b[2;1HPTY size %d x %d", w, h)

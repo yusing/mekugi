@@ -23,14 +23,18 @@ func (u *terminalUI) configureCodex(host io.Writer) {
 		},
 		DisableMode: func(mode ansi.Mode) { delete(u.mouseModes, mode) },
 	})
-	// VT consumes screen-control sequences, but clipboard writes belong to the
-	// actual terminal. Its parser assembles fragmented OSC before forwarding.
-	u.codex.RegisterOscHandler(52, func(data []byte) bool {
-		if u.hostError == nil {
-			_, u.hostError = fmt.Fprintf(host, "\x1b]%s\x1b\\", data)
-		}
-		return true
-	})
+	// These requests target the host terminal, not just the embedded screen.
+	// In particular, outer terminal managers use Codex titles/progress for status.
+	// The VT parser assembles fragmented sequences before forwarding them once.
+	for _, command := range []int{0, 2, 9, 52} {
+		u.codex.RegisterOscHandler(command, func(data []byte) bool {
+			if u.hostError == nil {
+				_, u.hostError = fmt.Fprintf(host, "\x1b]%s\x1b\\", data)
+			}
+			// Keep the emulator's own title handling too.
+			return command != 0 && command != 2
+		})
+	}
 }
 
 func codexMouseMode(mode ansi.Mode) bool {

@@ -24,6 +24,11 @@ func runWrap(routerArgs, args []string) int {
 		fmt.Fprintln(os.Stderr, "usage: mekugi [flags] codex [Codex arguments...]")
 		return 2
 	}
+	if interactiveCodexArgs(args[1:]) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
+		if err := exposeHerdrCodex(); err != nil {
+			fmt.Fprintln(os.Stderr, "mekugi: Herdr agent hint:", err)
+		}
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()
 	code, err := wrapCodex(ctx, routerArgs, args[1:])

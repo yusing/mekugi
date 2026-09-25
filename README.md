@@ -264,6 +264,9 @@ conversation.
 - `Ctrl-C` returns focus to Codex without ending it.
 
 Redirected sessions keep ordinary Codex input/output and inline agent activity.
+Inside Herdr, Mekugi advertises its wrapped Codex process through Herdr’s agent
+hint and passes through Codex title/status signals, so agent detection still works.
+Herdr is optional and does not control Mekugi’s internal panes.
 
 See the [agents pane contract](doc/spec/commentary.md).
 

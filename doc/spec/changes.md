@@ -422,7 +422,11 @@ their source windows during manual scrolling and resume their live tips with `r`
 `Ctrl-C` in an auxiliary pane returns focus to Codex, rather than terminating it.
 Bracketed paste is routed intact to Codex and cannot activate layout shortcuts.
 Codex clipboard OSC 52 writes pass through to the host terminal once, including
-fragmented sequences. Main-screen history remains accessible through prefix
+fragmented sequences. Codex title (OSC 0/2) and progress (OSC 9) signals also
+reach the host terminal once, preserving outer terminal-manager status detection.
+Interactive launches inside Herdr expose the invocation-local `HERDR_AGENT=codex`
+wrapper hint before router startup, without Herdr commands or pane-management APIs.
+Main-screen history remains accessible through prefix
 PageUp/PageDown and, when Codex has not captured mouse events, the wheel. Ordinary
 Codex input returns to live output. The bounded 10,000-row history and final
 screen are restored outside the wrapper's alternate screen on exit.
