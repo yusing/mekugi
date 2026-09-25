@@ -295,18 +295,16 @@ update heading. No production response is held open, and no polling or model
 turn is created. During an idle stream there may be no event boundary to deliver
 through; once a response closes, inline updates wait for the next eligible root response.
 
-When an interactive Herdr pane is available, the first child event or completed
+When Mekugi owns an interactive terminal, the first child event or completed
 explore-filter event under a root opens
 one Mekugi agents pane for that root and moves that root's child activity there,
 including replies addressed to `/root`. The pane receives events as they are observed,
 independent of root responses, so updates continue during a native wait. While the pane
 owns a root, its root responses carry no child activity copies, only one notice that
 activity moved and, once delivery returns inline, one notice that the pane closed. An
-event leaves the queue only after the pane's write is flushed. A viewer that
-disconnects keeps ownership for 5 seconds and reconnects without duplicates. A pane
-that does not attach within 15 seconds, closes, or stays disconnected past that grace
-returns its pending events and later activity to inline delivery, and is not
-relaunched for the router session. Without Herdr, inline delivery is unchanged. Only
+event leaves the queue only after the pane's write is flushed. The integrated viewer consumes the collector directly, without a pane subprocess
+or loopback transport. If the UI cannot own delivery, activity stays inline.
+Only
 the first root with child activity uses the pane; other roots stay inline. Critical
 session notices stay in the root conversation; main-completion usage is saved to a file.
 
@@ -344,13 +342,8 @@ authored Markdown.
 
 The agents appear as a canonical-path tree in observation order, with each agent's
 current activity and an elapsed-time timer (`elapsed · last response ago`; `—` until
-its first response completes). A separate Mekugi roster pane opens under the caller and
-shows only this tree. It observes the agents pane's stream and never owns activity:
-it cannot hold events, extend the reconnect window, or keep the pane attached, and
-it ends when activity returns inline. While a roster pane is connected, the agents
-pane gives its whole body to the feed; otherwise it shows the tree itself as
-described below. Agent selection and the only filter are shared between the two
-panes through the router, so a roster click filters the feed. Right-aligned after the timer, an agent
+its first response completes). The roster lives inside the agents view and shares its local selection with the
+feed. Right-aligned after the timer, an agent
 with observed provider usage shows its cumulative input and output tokens as
 `↑ in ↓ out`; its estimated USD cost and provider-response turn count follow as
 `$N · N turns`. The estimate reuses the shared token-pricing calculation; when
@@ -369,12 +362,9 @@ long entries, and its only mode shows one agent in full. Hovering a clipped
 snippet underlines its hidden-line count; clicking it expands it in place and
 pauses following so it stays put, and clicking it again clips it. Roster rows are
 clickable: hovering highlights an agent; clicking it shows only that agent,
-and clicking it again restores the shared feed. In the roster pane, `↑`/`↓`
-(or `j`/`k`) move through a list whose top entry is all agents, followed by each
-agent; choosing an agent shows only it in the feed, moves stop at either end, and
-`o` toggles between all agents and the last shown agent. While a roster pane is
-connected, the agents pane has no selection keys and only scrolls; without one,
-`n`/`Tab`, `p`, and `o` select and filter there. Roster status symbols are
+and clicking it again restores the shared feed. `n`/`Tab`, `p`, and `o` select and filter agents. Scrolling follows the same
+line/page/home/end/follow contract as the [live diff](changes.md#live-terminal-view).
+Roster status symbols are
 observed facts only:
 `◐` an open provider response, `!` a latest error event, `✓` a plaintext
 `FINAL_ANSWER` sent, and `·` otherwise. A final-answer summary does not repeat

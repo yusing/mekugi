@@ -42,14 +42,6 @@ type liveActivityView struct {
 	expanded map[liveActivitySnippet]bool
 	snippet  liveActivitySnippet
 
-	// rosterPane renders only the roster, for the pane under Codex. rosterAway
-	// reports that such a pane is connected, so this feed omits its own roster.
-	rosterPane, rosterAway bool
-	// publish shares a local selection change with the other viewers. Pending
-	// changes are not yet echoed back; an echo must not undo a later change.
-	publish func(activityPaneSelection)
-	pending []activityPaneSelection
-
 	// Geometry of the last frame, used by scrolling keys and the pointer.
 	// feedSnippets holds each feed row's snippet, from screen row feedTop
 	// between columns feedLeft and feedRight.
@@ -104,28 +96,11 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 	case "coverage":
 		v.status = "RECONNECTING"
 		return false
-	case "select":
-		selection := activityPaneSelection{Selected: event.Selected, Only: event.Only}
-		if i := slices.Index(v.pending, selection); i >= 0 {
-			v.pending = v.pending[i+1:]
-			return false
-		}
-		v.pending = nil
-		v.share(event.Selected, event.Only)
-		v.keepSelection()
-		return false
 	case "snapshot":
 		v.status = ""
-		// A snapshot taken before a pending change arrived would undo it.
-		if len(v.pending) == 0 {
-			v.share(event.Selected, event.Only)
-		}
 	case "entries", "agents", "heartbeat":
 	default:
 		return false
-	}
-	if event.Kind != "heartbeat" {
-		v.rosterAway = event.Roster
 	}
 	if event.Agents != nil || event.Kind == "snapshot" {
 		if !slices.EqualFunc(v.agents, event.Agents, func(a, b activityPaneAgent) bool { return a.Name == b.Name }) {
@@ -197,38 +172,6 @@ func (v *liveActivityView) keepSelection() {
 	}
 }
 
-// share applies a selection made in another viewer.
-func (v *liveActivityView) share(selected string, only bool) {
-	if selected != "" && selected != v.selected {
-		v.selected, v.hovered = selected, ""
-		if v.only || only {
-			v.follow()
-		}
-	}
-	if only != v.only {
-		v.only = only
-		v.follow()
-	}
-}
-
-func (v *liveActivityView) selection() activityPaneSelection {
-	return activityPaneSelection{Selected: v.selected, Only: v.only}
-}
-
-// publishSelection shares a local change made since before.
-func (v *liveActivityView) publishSelection(before activityPaneSelection) {
-	after := v.selection()
-	if after == before || v.publish == nil {
-		return
-	}
-	// A lost post never echoes; the bound keeps its entry from lingering.
-	v.pending = append(v.pending, after)
-	if len(v.pending) > 16 {
-		v.pending = v.pending[1:]
-	}
-	v.publish(after)
-}
-
 func (v *liveActivityView) visible(entry activityPaneEntry) bool {
 	return !v.only || entry.Agent == v.selected
 }
@@ -298,29 +241,11 @@ func (v *liveActivityView) selectAgent(step int) {
 	}
 }
 
-// showAgent moves through the roster pane's list, where "all agents" sits
-// above the first agent, and shows only the chosen agent in the feed. It
-// stops at either end instead of wrapping.
-func (v *liveActivityView) showAgent(step int) {
-	rows := v.roster()
-	if len(rows) == 0 {
-		return
-	}
-	index := -1
-	if v.only {
-		index = slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
-	}
-	index = max(-1, min(index+step, len(rows)-1))
-	v.hovered = ""
-	if index < 0 {
-		v.only = false
-	} else {
-		v.selected, v.only = rows[index].agent.Name, true
-	}
-	v.follow()
-}
-
 func (v *liveActivityView) handleMouse(action byte, row, column int) bool {
+	if action == 'j' || action == 'k' {
+		return v.scrollKey(action)
+	}
+
 	if action != 'h' && action != '\r' {
 		return false
 	}
@@ -387,12 +312,28 @@ func (v *liveActivityView) follow() {
 	v.following, v.unseen = true, 0
 }
 
+func (v *liveActivityView) scrollKey(key byte) bool {
+	offset := v.offset
+	if v.following {
+		offset = max(0, v.feedLines-v.feedRows)
+	}
+	next, follow, ok := paneScroll(key, offset, v.feedRows, v.feedLines)
+	if ok {
+		v.offset = next
+		v.following = follow
+		if follow {
+			v.unseen = 0
+		}
+	}
+	return ok
+}
+
 func (v *liveActivityView) scroll(delta int) {
 	if v.following {
 		v.offset = max(0, v.feedLines-v.feedRows)
 	}
 	v.following = false
-	v.offset = max(0, min(v.offset+delta, v.feedLines-v.feedRows))
+	v.offset = max(0, min(v.offset+delta, v.feedLines-1))
 }
 
 // render lays the pane out for its size: agent cards beside the feed on wide
@@ -416,18 +357,6 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 	lines := []string{v.header(rows, text)}
 	v.feedTop, v.feedLeft, v.feedRight = 2, 1, text
 	switch {
-	case v.rosterPane:
-		// The roster pane under Codex: one row per agent, no feed or footer.
-		if len(rows) > 0 {
-			lines = append(lines, v.renderRoster(rows, text, height-1, now)...)
-		}
-		for len(lines) < height {
-			lines = append(lines, "")
-		}
-		return lines[:height]
-	case v.rosterAway:
-		// A roster pane shows the agents, so the feed takes the whole body.
-		lines = append(lines, v.viewport(v.renderFeed(text, body), body)...)
 	case len(rows) > 0 && text >= liveActivitySideColumns && body >= 6:
 		cardWidth := min(44, max(28, text*3/10))
 		feedWidth := text - cardWidth - 3
@@ -464,9 +393,7 @@ func liveActivityPad(line string, width int) string {
 
 func (v *liveActivityView) header(rows []liveActivityRosterRow, width int) string {
 	title := "AGENTS"
-	if v.rosterAway && !v.rosterPane {
-		title = "ACTIVITY"
-	}
+
 	left := "\x1b[1m" + v.painter.theme.Accent() + title + liveActivityReset
 	responding := 0
 	for _, row := range rows {
@@ -480,25 +407,17 @@ func (v *liveActivityView) header(rows []liveActivityRosterRow, width int) strin
 	case v.only:
 		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
 		left += fmt.Sprintf(" · only %s %s(%d/%d)%s", v.painter.agent(v.selected), liveActivityDim, index+1, len(rows), liveActivityUndim)
-	case title == "ACTIVITY":
-		left += liveActivityDim + " · all agents" + liveActivityUndim
 	default:
 		left += fmt.Sprintf(" · %d · %d responding", len(rows), responding)
 	}
-	// Follow state belongs to the feed; the roster pane shows its keys instead.
-	right := liveActivityDim + "↓ show agent" + liveActivityUndim
-	if v.only {
-		right = liveActivityDim + "↑/↓ agent · o all" + liveActivityUndim
-	}
-	if !v.rosterPane {
-		right = "FOLLOW"
-		if !v.following {
-			right = liveActivityAmber + "PAUSED" + liveActivityReset
-			if v.unseen > 0 {
-				right += fmt.Sprintf(" · %d new", v.unseen)
-			}
+	right := "FOLLOW"
+	if !v.following {
+		right = liveActivityAmber + "PAUSED" + liveActivityReset
+		if v.unseen > 0 {
+			right += fmt.Sprintf(" · %d new", v.unseen)
 		}
 	}
+
 	if v.status != "" {
 		right = v.status
 	}
@@ -694,7 +613,7 @@ func (v *liveActivityView) renderRoster(rows []liveActivityRosterRow, width, lim
 		summary = ansi.Truncate(summary, summaryWidth, "…")
 		pad := max(1, width-3-nameWidth-2-ansi.StringWidth(summary)-metricWidth)
 		// The roster pane marks an agent only while the feed shows just it.
-		line := v.marker(i == selected && (v.only || !v.rosterPane), row.agent.Name == v.hovered) + v.glyph(row.agent) + " " + name + "  " + summary + strings.Repeat(" ", pad) + liveActivityDim + metric + liveActivityUndim
+		line := v.marker(i == selected, row.agent.Name == v.hovered) + v.glyph(row.agent) + " " + name + "  " + summary + strings.Repeat(" ", pad) + liveActivityDim + metric + liveActivityUndim
 		lines = append(lines, ansi.Truncate(line, width, "…"))
 	}
 	if hidden := len(rows) - (end - start); hidden > 0 {
@@ -827,7 +746,7 @@ func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 		v.offset = max(0, len(feed.lines)-rows)
 		v.unseen = 0
 	}
-	v.offset = max(0, min(v.offset, len(feed.lines)-rows))
+	v.offset = max(0, min(v.offset, len(feed.lines)-1))
 	lines := make([]string, rows)
 	v.feedSnippets = make([]liveActivitySnippet, rows)
 	for row := range rows {
@@ -848,10 +767,7 @@ func (v *liveActivityView) footer(width int) string {
 		mode, toggle = "ONLY", "o all"
 	}
 	keys := "click agent · n/p agent · " + toggle + " · j/k scroll · r follow"
-	if v.rosterAway {
-		// The roster pane selects agents; this pane only scrolls.
-		keys = "j/k scroll · r follow"
-	}
+
 	if width < 60 {
 		keys = "n/p · o · j/k · r"
 	}

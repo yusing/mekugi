@@ -18,14 +18,14 @@ agent identity, never session IDs or message text. The collector coalesces eligi
 operations, starts, replies, completed commentary, usage, and critical errors for deferred
 root delivery. It drains atomically at response-event boundaries; idle streams wait for
 the next boundary rather than being extended. When the agents pane owns a root, the
-collector delivers that root's events to the pane's private authenticated stream
+collector delivers that root's events directly to the integrated terminal view
 instead, and drains yield only the pane's one-time notices. Pane ownership,
-acknowledgement after flush, the reconnect grace period and inline fallback all belong to
+acknowledgement after flush and inline fallback belong to
 the collector. The viewer only presents what it is given. Codex retains scheduling, recipients,
 interrupts, waits, and assignment lifecycle.
 
-Completed explore-filter observations use the same collector and authenticated
-pane stream, with originating call identity and a typed measurement payload.
+Completed explore-filter observations use the same collector and integrated
+pane view, with originating call identity and a typed measurement payload.
 They can originate at the root as well as a child and never fall back inline.
 The filter owns local stdout reduction measurements; the pane only renders them.
 TypeSafe usage belongs to a separate bucket in the existing per-thread usage

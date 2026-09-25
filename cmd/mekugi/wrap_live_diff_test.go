@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -52,32 +51,36 @@ func TestAutoWrapProcess(t *testing.T) {
 	if !bytes.Contains(data, []byte("Authorization")) {
 		t.Fatalf("request did not reach forwarding: %s", data)
 	}
+	// Keep the fake child alive long enough for the integrated terminal's first
+	// frame to be rendered before the wrapper joins its lifetime.
+	time.Sleep(300 * time.Millisecond)
 }
 
-func TestWrapLiveDiffWaitsForStockActivityAndTerminal(t *testing.T) {
+func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 	for _, terminal := range []bool{true, false} {
-		t.Run(strconv.FormatBool(terminal), func(t *testing.T) {
+		name := "redirected"
+		if terminal {
+			name = "terminal"
+		}
+		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			workspace := t.TempDir()
-			marker := filepath.Join(dir, "launched")
+			herdrMarker := filepath.Join(dir, "herdr-invoked")
 			t.Setenv("MEKUGI_AUTO_WRAP_PROCESS", "1")
 			t.Setenv("MEKUGI_AUTO_WRAP_WORKSPACE", workspace)
-			t.Setenv("MEKUGI_AUTO_WRAP_MARKER", marker)
+			t.Setenv("MEKUGI_TEST_HERDR_MARKER", herdrMarker)
+			t.Setenv("HERDR_ENV", "")
 			t.Setenv("CODEX_HOME", t.TempDir())
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
-			t.Setenv("HERDR_ENV", "1")
+			// Keep installed runtime tools such as Node.js available while placing
+			// a failing Herdr sentinel first, so the wrapper can prove it never
+			// invokes the pane manager.
 			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 			for name, script := range map[string]string{
 				"codex": "#!/bin/sh\nexec '" + strings.ReplaceAll(os.Args[0], "'", "'\\''") + "' -test.run=^TestAutoWrapProcess$ -- codex \"$@\"\n",
-				"herdr": `#!/bin/sh
-case "$2" in
-split) printf '%s\n' '{"result":{"pane":{"pane_id":"new"}}}' ;;
-close) printf '%s\n' "$3" > "$MEKUGI_AUTO_WRAP_MARKER.closed" ;;
-run) printf '%s\n' "$@" > "$MEKUGI_AUTO_WRAP_MARKER" ;;
-esac
-`,
+				"herdr": "#!/bin/sh\nprintf 'invoked\\n' > \"$MEKUGI_TEST_HERDR_MARKER\"\nexit 97\n",
 			} {
 				if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0700); err != nil {
 					t.Fatal(err)
@@ -89,7 +92,7 @@ esac
 			var output []byte
 			var err error
 			if terminal {
-				tty, startErr := pty.Start(cmd)
+				tty, startErr := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 100})
 				if startErr != nil {
 					t.Fatal(startErr)
 				}
@@ -104,15 +107,31 @@ esac
 			if err != nil {
 				t.Fatalf("wrapper: %v\n%s", err, output)
 			}
-			if _, err := os.Stat(marker); !os.IsNotExist(err) {
-				t.Fatal("wrapper launched live diff without a stock edit or command call")
+			if _, err := os.Stat(herdrMarker); !os.IsNotExist(err) {
+				t.Fatalf("wrapper invoked Herdr: %v", err)
 			}
-			if _, err := os.Stat(marker + ".closed"); !os.IsNotExist(err) {
-				t.Fatal("wrapper closed a pane it never needed")
-			}
-			if bytes.Contains(output, []byte("Live diff started")) {
-				t.Fatal("automatic launch wrote into Codex's terminal")
+			if terminal {
+				if !bytes.Contains(output, []byte("\x1b[?1049h")) || !bytes.Contains(output, []byte("CODEX")) {
+					t.Fatalf("terminal wrapper did not render its integrated UI: %q", output)
+				}
+			} else if bytes.Contains(output, []byte("\x1b[?1049h")) || bytes.Contains(output, []byte("CODEX")) {
+				t.Fatalf("redirected wrapper unexpectedly rendered the integrated UI: %q", output)
 			}
 		})
+	}
+}
+
+func TestInteractiveCodexArgs(t *testing.T) {
+	for _, test := range []struct {
+		args []string
+		want bool
+	}{
+		{nil, true}, {[]string{"resume", "--last"}, true}, {[]string{"--model", "exec", "hello"}, true},
+		{[]string{"exec", "hello"}, false}, {[]string{"--model", "gpt-6", "exec", "hello"}, false},
+		{[]string{"--help"}, false}, {[]string{"--version"}, false}, {[]string{"-c", "help", "prompt"}, true},
+	} {
+		if got := interactiveCodexArgs(test.args); got != test.want {
+			t.Errorf("%v: %v, want %v", test.args, got, test.want)
+		}
 	}
 }

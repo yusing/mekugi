@@ -19,7 +19,8 @@ import (
 type liveDiffTerminalController struct {
 	store     *mekugiReplayStore
 	workspace string
-	stdout    *os.File
+	stdout    io.Writer
+	size      func() (int, int, error)
 
 	data        *liveDiffData
 	scope       liveDiffScope
@@ -68,6 +69,7 @@ func newLiveDiffTerminalController(store *mekugiReplayStore, workspace string, s
 	theme := livediff.EnvironmentTheme(os.Getenv("COLORFGBG"))
 	return &liveDiffTerminalController{
 		store: store, workspace: workspace, stdout: stdout,
+		size: func() (int, int, error) { return term.GetSize(int(stdout.Fd())) },
 		data: newLiveDiffData(), coverage: "CONNECTING",
 		view:              liveDiffView{Scroll: make(map[string]int), Following: true},
 		previewFrame:      previewFrame,
@@ -83,65 +85,8 @@ func (c *liveDiffTerminalController) close() {
 	}
 }
 
-func (c *liveDiffTerminalController) run(
-	ctx context.Context,
-	events <-chan liveDiffEvent,
-	keys <-chan byte,
-	resizes <-chan os.Signal,
-) error {
-	for {
-		if err := c.renderFrame(ctx); err != nil {
-			return err
-		}
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-c.previewFrameC:
-			c.previewFrameC, c.dirty = nil, true
-			c.previewFrameDue = time.Time{}
-		case event, open := <-events:
-			if !open {
-				return nil
-			}
-		drainEvents:
-			for drained := 0; ; drained++ {
-				done, err := c.applyEvent(ctx, event)
-				if err != nil || done {
-					return err
-				}
-				// Consume already queued snapshots before painting. Preview updates
-				// replace each other; durable events retain their original order.
-				if drained >= cap(events) {
-					break drainEvents
-				}
-				select {
-				case event, open = <-events:
-					if !open {
-						return nil
-					}
-				default:
-					break drainEvents
-				}
-			}
-		case <-c.escapeC:
-			c.escapeC = nil
-			if c.escape == "\x1b" {
-				c.escape = ""
-				c.navigation.filtering, c.navigation.focused, c.help = false, false, false
-				c.dirty = true
-			}
-		case <-resizes:
-			c.dirty = true
-		case key, open := <-keys:
-			if !open || c.handleKey(key) {
-				return nil
-			}
-		}
-	}
-}
-
 func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
-	width, height, err := term.GetSize(int(c.stdout.Fd()))
+	width, height, err := c.size()
 	if err != nil {
 		return err
 	}
@@ -470,7 +415,12 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 	if c.mouse.active || c.escape == "\x1b[" && key == '<' {
 		c.escape = ""
 		action, row, column := c.mouse.consume(key)
-		if action == 0 || action == 'h' || !c.diffMode || c.help {
+		if action == 0 || action == 'h' || c.help {
+			return false
+		}
+		if !c.diffMode {
+			c.scroll(action)
+			c.dirty = true
 			return false
 		}
 		navWidth := c.navigation.width(c.lastWidth)
@@ -507,12 +457,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 			return false
 		}
 		if action != '\r' {
-			delta := 1
-			if action == 'k' {
-				delta = -1
-			}
-			c.view.Following = false
-			c.view.ScrollTo(c.rendering, c.offset+delta)
+			c.scroll(action)
 		}
 		return false
 	}
@@ -542,6 +487,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 		c.navigation.filtering = false
 	}
 	if key != 'v' && !c.diffMode {
+		c.scroll(key)
 		c.dirty = true
 		return false
 	}
@@ -558,6 +504,9 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 			return false
 		}
 	}
+	if c.scroll(key) {
+		return false
+	}
 	if strings.ContainsRune("npjk bgG[]", rune(key)) {
 		c.view.Following = false
 	}
@@ -565,10 +514,6 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 	case 'v':
 		c.diffMode = !c.diffMode
 		c.followDirty = c.diffMode && c.view.Following
-	case 'r':
-		c.navigation.focused, c.navigation.filtering = false, false
-		c.view.FollowLatest()
-		c.followDirty = true
 	case 'f', 'F':
 		c.view.Flush(key == 'F')
 	case 'n':
@@ -591,18 +536,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 				}
 			}
 		}
-	case 'j':
-		c.view.ScrollTo(c.rendering, c.offset+1)
-	case 'k':
-		c.view.ScrollTo(c.rendering, c.offset-1)
-	case ' ':
-		c.view.ScrollTo(c.rendering, c.offset+c.rows)
-	case 'b':
-		c.view.ScrollTo(c.rendering, c.offset-c.rows)
-	case 'g':
-		c.view.ScrollTo(c.rendering, 0)
-	case 'G':
-		c.view.ScrollTo(c.rendering, max(0, len(c.lines)-c.rows))
+
 	}
 	c.dirty = true
 	return false

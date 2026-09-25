@@ -308,7 +308,7 @@ neutral.
 
 ### Live terminal view
 
-When an interactive Herdr pane is available, Mekugi opens the viewer on the
+In an interactive terminal, Mekugi opens its integrated viewer on the
 first observed editing or execution call. The stream view shows concurrent
 main-agent and child calls. It streams edits only: provisional `apply_patch`
 diffs and the file effects of shell commands, before completion. Stock `cat`
@@ -403,14 +403,33 @@ counts, and recent-update marks remain distinct from capture confirmation;
 unknown counts are not presented as zero. Help is available without permanently
 occupying code rows. These controls change no execution or durable evidence.
 
-Subagent activity uses a separate Mekugi agents pane, specified in
-[REQ-COMMENTARY-001](commentary.md). Whichever pane opens first goes beside the
-caller. The second joins it: in a tab at least 240 columns wide it gets its own
-full-height column, and in a narrower tab it is stacked below the first. Either
-way, the diff pane keeps 55% of the shared space. If the tab width is unavailable,
-the panes stack. A failed or closed pane leaves the other one open. The agents
-roster then opens in its own pane under the caller, which keeps 80% of its height;
-see [REQ-COMMENTARY-001](commentary.md).
+Mekugi owns the Codex PTY and terminal composition. Codex remains the execution
+and approval authority. The diff occupies the right side; the agents view,
+specified in [REQ-COMMENTARY-001](commentary.md), shares that side vertically.
+Mouse dragging resizes the main split, the diff/agents split, and the file dock.
+`Ctrl-B` followed by arrows resizes the main splits, and `[`/`]` resizes the
+file dock. `Ctrl-B` followed by `1`, `2`, or `3` focuses Codex, diff, or agents;
+a click focuses the clicked pane. Small terminals show only the focused pane.
+Pane sizes are bounded to keep content usable; resizing never changes evidence.
+
+Diff and agents scrolling use one contract: arrows or `j`/`k` move one line,
+PageUp/PageDown or `b`/Space move one page, Home/End or `g`/`G` go to the
+beginning/end. These actions pause following; `r` resumes it. The wheel scrolls
+the region under the pointer without changing keyboard focus. Stream cards retain
+their source windows during manual scrolling and resume their live tips with `r`.
+`Ctrl-C` in an auxiliary pane returns focus to Codex, rather than terminating it.
+Bracketed paste is routed intact to Codex and cannot activate layout shortcuts.
+Codex clipboard OSC 52 writes pass through to the host terminal once, including
+fragmented sequences. Main-screen history remains accessible through prefix
+PageUp/PageDown and, when Codex has not captured mouse events, the wheel. Ordinary
+Codex input returns to live output. The bounded 10,000-row history and final
+screen are restored outside the wrapper's alternate screen on exit.
+
+The wrapper starts no pane processes and requires no external pane manager.
+The UI consumes the bounded event hub directly; there are no live-view HTTP
+endpoints or connection files in the running application. Terminal mode is
+restored after child exit, cancellation, or rendering failure; all owned I/O is
+joined. Redirected sessions retain stock input/output and inline activity.
 
 Acceptance:
 

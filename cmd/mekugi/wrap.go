@@ -97,9 +97,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		}
 		args = slices.Insert(slices.Clone(args), index, "-c", fmt.Sprintf("model_catalog_json=%q", catalogPath))
 	}
-	if session.EnableLiveDiff != nil && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
-		session.EnableLiveDiff()
-	}
+
 	// Announce once before Codex takes over the terminal, never during its UI.
 	fmt.Fprintf(os.Stderr, "mekugi dashboard: %s/\n", strings.TrimSuffix(session.BaseURL, "/v1"))
 	if session.PostCompactRecovery {
@@ -138,16 +136,22 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		cancel()
 	default:
 	}
+	var waitCodex func() error
 	err = ctx.Err()
 	if err == nil {
-		err = cmd.Start()
+		if session.StartUI != nil && interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
+			waitCodex, err = session.StartUI(ctx, cmd, os.Stdin, os.Stdout)
+		} else {
+			err = cmd.Start()
+			waitCodex = cmd.Wait
+		}
 	}
 	if err != nil {
 		cancel()
 		return 1, errors.Join(fmt.Errorf("launch codex: %w", err), <-routerDone)
 	}
 	codexDone := make(chan error, 1)
-	go func() { codexDone <- cmd.Wait() }()
+	go func() { codexDone <- waitCodex() }()
 	var codexErr, routerErr error
 	select {
 	case codexErr = <-codexDone:
@@ -271,4 +275,30 @@ func validateCodexArgs(args []string) error {
 		}
 	}
 	return nil
+}
+
+// Noninteractive Codex subcommands retain their ordinary terminal output too.
+func interactiveCodexArgs(args []string) bool {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "--":
+			return true
+		case "-h", "--help", "-V", "--version":
+			return false
+		case "-c", "--config", "--enable", "--disable", "-i", "--image", "-m", "--model", "-p", "--profile", "-s", "--sandbox", "-a", "--ask-for-approval", "-C", "--cd", "--add-dir":
+			i++
+			continue
+		}
+		if strings.HasPrefix(arg, "-") {
+			continue
+		}
+		switch arg {
+		case "exec", "e", "review", "login", "logout", "mcp", "mcp-server", "app-server", "app", "completion", "sandbox", "debug", "apply", "a", "cloud", "features", "help":
+			return false
+		default:
+			return true // resume, fork, or the initial interactive prompt.
+		}
+	}
+	return true
 }

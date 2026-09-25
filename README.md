@@ -22,9 +22,9 @@ sessions, and patch review. No fork, no config edits, no daemon.
   and answers are grouped at completion. A final answer goes into the journal
   without an extra model request.
 - **Live subagent activity.** Start notices show model and effort. Progress and
-  message excerpts appear in the main conversation, or live in Herdr's
+  message excerpts appear in the main conversation, or live in Mekugi’s
   [agents pane](#agents-pane). Encrypted messages stay private.
-- **Live diffs.** Herdr's [live diff pane](#live-diff-pane) streams tool calls
+- **Live diffs.** Mekugi’s [live diff pane](#live-diff-pane) streams tool calls
   and provisional diffs as they arrive, then shows the saved edits.
 - **Recoverable output and change review.** [Session helpers](#wrapped-session-helpers)
   continue truncated output without rerunning, and track edits from
@@ -219,13 +219,21 @@ and [execution contract](doc/spec/execution.md).
 
 ### Live diff pane
 
-In an interactive Herdr pane with `herdr` on `PATH`, `mekugi codex` opens a live
-diff viewer at the first edit or command. Read-only turns don't open it. Main-agent
+In an interactive terminal, `mekugi codex` owns its layout without an external
+pane manager. It opens a live diff viewer at the first edit or command. Read-only turns don't open it. Main-agent
 and subagent calls get labeled cards that stream input as it arrives. When a
 turn finishes, the viewer switches to the saved diff. A failed or unfinished
 call never becomes a saved change.
 
-- `v` switches views; `?` lists all shortcuts; `Ctrl-C` quits without ending Codex.
+- `Ctrl-B`, then `1`/`2`/`3`, focuses Codex, diffs, or agents. Click a pane to focus it.
+- Drag the dividers to resize panes or the file navigator. `Ctrl-B`, then arrow
+  keys, resizes the main splits; `Ctrl-B`, then `[`/`]`, resizes the file navigator.
+  Narrow terminals show the focused pane full-width.
+- `Ctrl-B`, then `PageUp`/`PageDown`, browses inline Codex history. The wheel
+  does the same when Codex is not handling mouse events. Typing returns to live
+  output. Up to 10,000 retained history rows are restored on exit.
+- `v` switches views; `?` lists diff shortcuts. `Ctrl-C` in an auxiliary pane
+  returns focus to Codex; in Codex it retains Codex’s normal behavior.
 - `s` shows or hides the file tree, `t` toggles tree/flat paths, `/` filters files.
 - `n`/`p` change files, `[`/`]` jump between hunks, and `j`/`k`, `Space`/`b`,
   and `g`/`G` scroll.
@@ -236,20 +244,22 @@ See [live view details](doc/spec/changes.md#live-terminal-view).
 
 ### Agents pane
 
-In the same Herdr setup, the first subagent event opens a **Mekugi agents** pane.
+The first subagent event opens a **Mekugi agents** pane in the same terminal.
 It streams child progress, messages, and replies as they happen, including
-during a native wait. A roster under Codex lists agents with activity, age, and
+during a native wait. Its roster lists agents with activity, age, and
 `↑`/`↓` tokens. Markers show what was observed: `◐` open response, `!` latest
 error, `✓` final answer sent. Usage tables and critical notices stay in the main
 conversation.
 
-If the pane doesn't attach within 15 seconds, or it is closed or disconnected
-for more than 5 seconds, activity goes back to the main conversation.
-
-- In the roster, `↑`/`↓` pick the agent the feed shows; `o` toggles all agents.
-- `j`/`k`, `Space`/`b`, and `g` scroll; `r` or `G` resumes following.
+- `n`/`p` select agents; `o` toggles the selected-agent filter. Roster rows are clickable.
+- Scrolling matches the diff pane: `↑`/`↓` or `k`/`j` move one line,
+  `PageUp`/`PageDown` or `b`/`Space` move one page, and `Home`/`End` or `g`/`G`
+  go to the top/bottom. Scrolling pauses following; `r` resumes it.
+- The mouse wheel scrolls the pane under the pointer, without moving keyboard focus.
 - Click a clipped snippet in the feed to expand it; click again to collapse it.
-- `Ctrl-C` closes the pane without ending Codex.
+- `Ctrl-C` returns focus to Codex without ending it.
+
+Redirected sessions keep ordinary Codex input/output and inline agent activity.
 
 See the [agents pane contract](doc/spec/commentary.md).
 

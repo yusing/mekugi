@@ -159,7 +159,7 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 		t.Fatal("default stream mode shared the pane with captured diff")
 	}
 
-	// Diff navigation and mouse input are ignored while stream mode is active.
+	// Stream scrolling pauses its cards without changing captured-diff following.
 	ui.write(t, "g\x1b[<65;2;18M")
 	broker.publishTurn(false)
 	ui.frame(t, func(frame string) bool {
@@ -171,8 +171,10 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	pausedHeader := liveDiffFrameRow(paused, 1)
 
 	ui.write(t, "v")
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
-	final := previewViewFixture("one", 101)
+ ui.frame(t,func(frame string)bool{return strings.Contains(frame,"STREAM · v diff") && strings.Contains(ansi.Strip(frame),"stream_0001")})
+ ui.write(t,"r")
+ ui.frame(t,func(frame string)bool{return strings.Contains(ansi.Strip(frame),"stream_0100")})
+ final := previewViewFixture("one", 101)
 	final.Workspace, final.Complete = workspace, true
 	broker.publishPreview(final, false)
 	completed := ui.frame(t, func(frame string) bool {

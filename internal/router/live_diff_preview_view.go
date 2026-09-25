@@ -49,6 +49,9 @@ type liveDiffPreviewView struct {
 	digits    int // Line-number width only grows, so the source never shifts sideways.
 	rendered  liveDiffPreview
 	focus     int
+	paused    bool
+	scrollRow int
+	rows      int
 	file      int
 	renderer  liveDiffRenderer
 	source    []liveDiffPreviewRow
@@ -379,14 +382,19 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	}
 	// Keep the tip's last wrapped fragment visible before admitting trailing
 	// context. Fill the region with source rather than empty centering padding.
-	start, skip, count := p.focus, 0, 0
-	for i := p.focus; i >= 0 && count < rows; i-- {
+	focus := p.focus
+	if p.paused {
+		focus = min(max(0, p.scrollRow), len(p.source)-1)
+	}
+	p.rows = rows
+	start, skip, count := focus, 0, 0
+	for i := focus; i >= 0 && count < rows; i-- {
 		n := fragmentsAt(i)
 		start = i
 		skip = max(0, n-(rows-count))
 		count += n - skip
 	}
-	end := p.focus + 1
+	end := focus + 1
 	for end < len(p.source) && count < rows {
 		count += fragmentsAt(end)
 		end++
@@ -522,4 +530,29 @@ func (p *liveDiffPreviewView) title(workspace string, theme liveDiffTheme, width
 		caller = color + caller + "\x1b[0m"
 	}
 	return theme.Accent() + caller + "\x1b[0m" + theme.Accent() + " · \x1b[0m" + label + "\x1b[0m"
+}
+
+// A manual stream scroll pauses each visible card; new input still replaces its
+// snapshot, without moving its source window. r restores each card's live tip.
+func (p *liveDiffPreviewPane) scroll(key byte) bool {
+	_, _, ok := paneScroll(key, 0, 1, 1)
+	if !ok {
+		return false
+	}
+	for _, v := range p.views {
+		at := v.scrollRow
+		if !v.paused {
+			at = v.focus
+		}
+		next, follow, _ := paneScroll(key, at, 1, len(v.source))
+		if key == ' ' {
+			next = min(len(v.source)-1, at+max(1, v.rows))
+		}
+		if key == 'b' {
+			next = max(0, at-max(1, v.rows))
+		}
+		v.paused = !follow
+		v.scrollRow = next
+	}
+	return true
 }

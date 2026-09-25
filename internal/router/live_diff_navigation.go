@@ -21,6 +21,7 @@ type liveDiffNavigation struct {
 	entries                          []liveDiffNavEntry
 	matches                          []int
 	cursor, top                      int
+	columns                          int
 	savedCursor                      string
 	savedTop                         string
 	total                            int
@@ -41,6 +42,9 @@ type liveDiffNavNode struct {
 func (n *liveDiffNavigation) width(width int) int {
 	if n.hidden || width < 100 {
 		return 0
+	}
+	if n.columns > 0 {
+		return min(max(16, n.columns), width-40)
 	}
 	return min(34, max(25, width/4))
 }
@@ -181,6 +185,16 @@ func (c *liveDiffTerminalController) revealFile() {
 		if entry.id == "f:"+file.Key() {
 			n.cursor = i
 			n.ensureVisible(c.rows)
+			// Keep nearby folder context when revealing a file after following a
+			// distant update. Selection must not leave its parent just off-screen.
+			for parent := i - 1; parent >= 0; parent-- {
+				if n.entries[parent].depth < entry.depth {
+					if i-parent < max(1, c.rows-2) {
+						n.top = min(n.top, parent)
+					}
+					break
+				}
+			}
 			break
 		}
 	}

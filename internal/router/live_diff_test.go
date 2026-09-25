@@ -408,20 +408,6 @@ func TestLiveDiffDoesNotInferPrivateScopeFromScriptText(t *testing.T) {
 	}
 }
 
-func TestLiveDiffHerdrMissingDirectPaneIdentity(t *testing.T) {
-	log := autoLiveDiffFixture(t)
-	t.Setenv("MEKUGI_AUTO_DIFF_API_MODE", "missing_identity")
-	dir := t.TempDir()
-	err := splitLiveDiff(t.Context(), dir, dir, "", &liveDiffPane{sessionFile: filepath.Join(dir, "connection.json")})
-	if err == nil || !strings.Contains(err.Error(), "no pane identity") {
-		t.Fatalf("missing identity accepted: %v", err)
-	}
-	data := waitAutoLiveDiff(t, log, `"method":"layout.apply"`)
-	if strings.Contains(data, `"method":"pane.move"`) {
-		t.Fatal("viewer without an identity was moved into the caller's tab")
-	}
-}
-
 func TestLiveDiffTerminalCancel(t *testing.T) {
 	testLiveDiffTerminalCancel(t, "")
 }

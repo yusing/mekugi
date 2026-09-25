@@ -36,7 +36,6 @@ func newActivityPaneFixture(t *testing.T, available bool) *activityPaneFixture {
 	f.activity.attachPane(f.pane)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+liveActivityEventsPath, f.activity.serveActivityPane)
-	mux.HandleFunc("POST "+liveActivityEventsPath, f.activity.serveActivitySelection)
 	f.server = httptest.NewServer(mux)
 	t.Cleanup(f.server.Close)
 	f.activity.setPaneEndpoint(f.server.URL + liveActivityEventsPath)
@@ -53,15 +52,8 @@ type activityPaneClient struct {
 
 func (f *activityPaneFixture) connect(t *testing.T) *activityPaneClient {
 	t.Helper()
-	return f.connectView(t, "")
-}
-
-// connectView opens a stream with an endpoint query, such as "?view=roster".
-func (f *activityPaneFixture) connectView(t *testing.T, query string) *activityPaneClient {
-	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	connection := f.activity.paneDescriptor()
-	connection.Endpoint += query
 	req, err := liveDiffRequest(ctx, connection, http.MethodGet, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -203,32 +195,14 @@ func TestActivityPaneOwnsChildActivityAndDeliversWithoutRootBoundary(t *testing.
 		t.Fatalf("last response not reported: %+v", final.Agents[1])
 	}
 
-	// Disconnect: within the grace window events wait for a reconnect.
+	// Closing the sole view releases ownership; subsequent activity returns inline.
 	client.cancel()
-	waitActivityPaneState(t, f, activityPaneClaimed)
+	waitActivityPaneState(t, f, activityPaneReleased)
 	f.activity.collect("explorer", "tool-2", "tool", "Search `needle`")
-	if got := f.activity.drain("root", time.Now(), maxCommentaryPublicationBytes); len(got) != 0 {
-		t.Fatalf("grace window leaked root copies: %s", drainText(got))
-	}
-	reconnect := f.connect(t)
-	restored := reconnect.next(t, "snapshot")
-	if len(restored.Entries) != 2 || restored.Entries[0].Text != start {
-		t.Fatalf("reconnect history = %+v", restored.Entries)
-	}
-	pending := reconnect.next(t, "entries")
-	if len(pending.Entries) != 1 || pending.Entries[0].Text != "Search `needle`" || pending.Entries[0].Seq <= restored.Entries[1].Seq {
-		t.Fatalf("pending after reconnect = %+v", pending.Entries)
-	}
-
-	// After the grace window expires, delivery returns inline with one notice.
-	reconnect.cancel()
-	waitActivityPaneState(t, f, activityPaneClaimed)
 	f.activity.collect("probe", "tool-3", "tool", "Read `b.go`")
-	f.activity.mu.Lock()
-	f.pane.deadline = time.Now().Add(-time.Second)
-	f.activity.mu.Unlock()
 	inline := drainText(f.activity.drain("root", time.Now(), maxCommentaryPublicationBytes))
-	if !strings.Contains(inline, "pane closed") || !strings.Contains(inline, "/root/explorer/probe") || !strings.Contains(inline, "b.go") {
+	if !strings.Contains(inline, "pane closed") || !strings.Contains(inline, "Search `needle`") ||
+		!strings.Contains(inline, "/root/explorer/probe") || !strings.Contains(inline, "b.go") {
 		t.Fatalf("fallback drain = %q", inline)
 	}
 	f.activity.collect("explorer", "tool-4", "tool", "Read `c.go`")
@@ -243,90 +217,6 @@ func TestActivityPaneOwnsChildActivityAndDeliversWithoutRootBoundary(t *testing.
 	response.Body.Close()
 	if response.StatusCode != http.StatusGone {
 		t.Fatalf("released pane accepted a viewer: %d", response.StatusCode)
-	}
-}
-
-func TestActivityPaneRosterObservesAndSharesSelection(t *testing.T) {
-	f := newActivityPaneFixture(t, true)
-	f.activity.collect("explorer", "start", "start", "Started")
-	feed := f.connect(t)
-	if snapshot := feed.next(t, "snapshot"); snapshot.Roster {
-		t.Fatalf("feed saw a roster before one connected: %+v", snapshot)
-	}
-	roster := f.connectView(t, "?view=roster")
-	if snapshot := roster.next(t, "snapshot"); len(snapshot.Agents) != 2 {
-		t.Fatalf("roster snapshot = %+v", snapshot)
-	}
-	// The feed learns that a roster pane shows the agents.
-	for event := feed.next(t, "agents", "entries"); !event.Roster; event = feed.next(t, "agents", "entries") {
-	}
-
-	// Delivered entries reach the roster too, without a second owner.
-	f.activity.collect("probe", "tool-1", "tool", "Read `a.go`")
-	delivered := feed.next(t, "entries")
-	mirrored := roster.next(t, "entries")
-	for !slices.ContainsFunc(mirrored.Entries, func(e activityPaneEntry) bool { return e.Text == "Read `a.go`" }) {
-		mirrored = roster.next(t, "entries")
-	}
-	if last := delivered.Entries[len(delivered.Entries)-1]; last.Text != "Read `a.go`" || mirrored.Entries[len(mirrored.Entries)-1].Seq != last.Seq {
-		t.Fatalf("roster entries = %+v, feed = %+v", mirrored.Entries, delivered.Entries)
-	}
-	f.activity.mu.Lock()
-	state := f.pane.state
-	f.activity.mu.Unlock()
-	if state != activityPaneAttached {
-		t.Fatalf("roster changed ownership: %v", state)
-	}
-
-	// A roster click filters the feed, and every viewer hears the selection.
-	post := func(selection activityPaneSelection) int {
-		body, _ := json.Marshal(selection)
-		req, err := liveDiffRequest(t.Context(), f.activity.paneDescriptor(), http.MethodPost, strings.NewReader(string(body)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		response, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		response.Body.Close()
-		return response.StatusCode
-	}
-	if status := post(activityPaneSelection{Selected: "/root/explorer/probe", Only: true}); status != http.StatusNoContent {
-		t.Fatalf("selection status = %d", status)
-	}
-	for _, client := range []*activityPaneClient{feed, roster} {
-		if event := client.next(t, "select"); event.Selected != "/root/explorer/probe" || !event.Only {
-			t.Fatalf("select event = %+v", event)
-		}
-	}
-	// A reconnecting roster restores the shared selection.
-	roster.cancel()
-	for event := feed.next(t, "agents"); event.Roster; event = feed.next(t, "agents") {
-	}
-	again := f.connectView(t, "?view=roster")
-	if snapshot := again.next(t, "snapshot"); snapshot.Selected != "/root/explorer/probe" || !snapshot.Only {
-		t.Fatalf("roster snapshot selection = %+v", snapshot)
-	}
-
-	// Once activity returns inline, the roster ends and cannot reconnect.
-	feed.cancel()
-	waitActivityPaneState(t, f, activityPaneClaimed)
-	f.activity.mu.Lock()
-	f.pane.deadline = time.Now().Add(-time.Second)
-	f.activity.mu.Unlock()
-	again.next(t, "end")
-	if status := post(activityPaneSelection{Selected: "/root/explorer"}); status != http.StatusGone {
-		t.Fatalf("released selection status = %d", status)
-	}
-	req, _ := liveDiffRequest(t.Context(), liveDiffConnection{Endpoint: f.activity.paneDescriptor().Endpoint + "?view=roster", Token: f.activity.paneDescriptor().Token}, http.MethodGet, nil)
-	response, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response.Body.Close()
-	if response.StatusCode != http.StatusGone {
-		t.Fatalf("released pane accepted a roster: %d", response.StatusCode)
 	}
 }
 
@@ -420,9 +310,10 @@ func TestActivityPaneDivertsRootReplies(t *testing.T) {
 	}
 	client := f.connect(t)
 	client.next(t, "snapshot")
-	entries := client.next(t, "entries")
-	if len(entries.Entries) != 2 || !strings.HasPrefix(entries.Entries[1].Text, "[`/root/explorer` -> `/root`]") {
-		t.Fatalf("diverted reply = %+v", entries.Entries)
+	client.next(t, "entries") // The start event is delivered separately.
+	entries := client.next(t, "entries").Entries
+	if len(entries) != 1 || !strings.HasPrefix(entries[0].Text, "[`/root/explorer` -> `/root`]") {
+		t.Fatalf("diverted reply = %+v", entries)
 	}
 
 	// Unowned roots keep the reply in the root response.
@@ -609,33 +500,27 @@ func TestLiveActivityRosterShowsTokensAtRightEdge(t *testing.T) {
 	}
 }
 
-func TestLiveActivityRosterTimerCostAndAlignedColumns(t *testing.T) {
+func TestLiveActivityCombinedRosterShowsTimerCostAndUsage(t *testing.T) {
 	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 	view := liveActivityTestView("/root/a", "/root/b")
-	view.rosterPane = true
-	view.agents[0].Started = now.Add(-48 * time.Minute)
-	view.agents[0].LastResponse = now.Add(-14 * time.Second)
-	view.agents[0].InputTokens, view.agents[0].OutputTokens = 595_600, 37_300
-	view.agents[0].Turns, view.agents[0].Cost, view.agents[0].CostKnown = 8, 1.2345, true
+	view.agents[0].Started = now.Add(-8 * time.Minute)
+	view.agents[0].LastResponse = now.Add(-3 * time.Second)
+	view.agents[0].InputTokens, view.agents[0].OutputTokens = 1_000, 0
+	view.agents[0].Turns, view.agents[0].Cost, view.agents[0].CostKnown = 2, 1.2, true
 	view.agents[1].Started = now.Add(-7 * time.Minute)
 	view.agents[1].LastResponse = now.Add(-2 * time.Minute)
-	view.agents[1].InputTokens, view.agents[1].OutputTokens = 491_600, 5_500
-	view.agents[1].Turns, view.agents[1].Cost, view.agents[1].CostKnown = 2, 0, false
-	lines := plainLines(view.render(100, 4, now))
-	if !strings.Contains(lines[1], "48m · 14s ago · ↑ 595.6K ↓ 37.3K · $1.2345 · 8 turns") ||
-		!strings.Contains(lines[2], "7m · 2m ago") || !strings.Contains(lines[2], "n/a") || !strings.Contains(lines[2], "2 turns") {
-		t.Fatalf("roster metrics = %q", lines)
+	view.agents[1].InputTokens, view.agents[1].OutputTokens = 500, 0
+	view.agents[1].Turns, view.agents[1].Cost, view.agents[1].CostKnown = 1, 0, false
+	lines := plainLines(view.render(90, 20, now))
+	for i := range lines {
+		lines[i] = strings.Join(strings.Fields(lines[i]), " ")
 	}
-	if strings.Index(lines[1], "↑") != strings.Index(lines[2], "↑") ||
-		strings.Index(lines[1], "↓") != strings.Index(lines[2], "↓") ||
-		strings.Index(lines[1], "$") != strings.Index(lines[2], "n/a") ||
-		strings.Index(lines[1], "turns") != strings.Index(lines[2], "turns") {
-		t.Fatalf("metric columns not aligned = %q", lines)
-	}
-	for _, line := range lines {
-		if ansi.StringWidth(line) > 99 {
-			t.Fatalf("row exceeds width: %q", line)
-		}
+	first := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "$1.2000") })
+	second := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "n/a") })
+	if first < 0 || second < 0 || !strings.Contains(lines[first], "8m · 3s ago · ↑ 1K ↓ 0") ||
+		!strings.Contains(lines[first], "$1.2000 · 2 turns") || !strings.Contains(lines[second], "7m · 2m ago") ||
+		!strings.Contains(lines[second], "↑ 500 ↓ 0") || !strings.Contains(lines[second], "n/a · 1 turns") {
+		t.Fatalf("combined roster metrics = %q", lines)
 	}
 }
 
@@ -738,7 +623,9 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 		return strings.Contains(text(frame), "See live.go") && !strings.Contains(text(frame), "(/tmp/live.go:4)")
 	})
 	h.write(t, "\x1b[<35;5;3M")
-	h.frame(t, func(frame string) bool { return strings.Contains(frame, "\x1b[4m") })
+	h.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "\x1b[4m└ probe")
+	})
 	h.write(t, "\x1b[<0;5;3M")
 	h.frame(t, func(frame string) bool {
 		return strings.Contains(liveDiffFrameRow(frame, 1), "only /root/explorer/probe") && !strings.Contains(text(frame), "● /root/explorer ─")
@@ -752,10 +639,7 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 	})
 	h.quit(t)
 	// A closed pane stays closed; the next root drain carries the backlog inline.
-	waitActivityPaneState(t, f, activityPaneClaimed)
-	f.activity.mu.Lock()
-	f.pane.deadline = time.Now().Add(-time.Second)
-	f.activity.mu.Unlock()
+	waitActivityPaneState(t, f, activityPaneReleased)
 	f.activity.collect("probe", "tool-2", "tool", "Read `after.go`")
 	if got := drainText(f.activity.drain("root", time.Now(), maxCommentaryPublicationBytes)); !strings.Contains(got, "after.go") {
 		t.Fatalf("drain after close = %q", got)
@@ -774,7 +658,6 @@ func TestActivityPaneRestoreKeepsOriginalEvents(t *testing.T) {
 	entries, _, _ := f.activity.takePane(generation)
 	f.activity.collect("explorer", "op-2", "operation", "Reading new")
 	f.activity.restorePane(entries)
-	f.activity.detachPane(generation)
 	f.activity.releasePane()
 	got := drainText(f.activity.drain("root", time.Now(), maxCommentaryPublicationBytes))
 	if strings.Count(got, directed) != 1 || strings.Contains(got, "[`/root/explorer`] [`/root/explorer` ->") {
@@ -785,7 +668,7 @@ func TestActivityPaneRestoreKeepsOriginalEvents(t *testing.T) {
 	}
 }
 
-func TestActivityPaneBatchesEscapedTextWithinLineLimit(t *testing.T) {
+func TestActivityPaneStreamsEscapedEntriesWithinLineLimit(t *testing.T) {
 	f := newActivityPaneFixture(t, true)
 	// JSON escapes each of these bytes as <, so the raw length undercounts.
 	text := strings.Repeat("<", maxCommentaryPublicationBytes-64)
@@ -797,17 +680,14 @@ func TestActivityPaneBatchesEscapedTextWithinLineLimit(t *testing.T) {
 	client.next(t, "snapshot")
 	received := 0
 	for received < 40 {
-		received += len(client.next(t, "entries").Entries)
+		entries := client.next(t, "entries").Entries
+		if len(entries) != 1 {
+			t.Fatalf("event carried %d entries, want one bounded entry", len(entries))
+		}
+		received += len(entries)
 	}
 	if received != 40 {
 		t.Fatalf("received %d entries", received)
-	}
-	client.cancel()
-	waitActivityPaneState(t, f, activityPaneClaimed)
-	reconnect := f.connect(t)
-	reconnect.scanner.Buffer(make([]byte, 4096), maxLiveDiffEventBytes+1)
-	if history := reconnect.next(t, "snapshot").Entries; len(history) == 0 || history[len(history)-1].Text[:3] != "39 " {
-		t.Fatalf("bounded snapshot lost the latest history: %d entries", len(history))
 	}
 }
 
@@ -836,206 +716,5 @@ func TestLiveActivityViewSummarizesCodeModeBatches(t *testing.T) {
 	}
 	if strings.Contains(lines[2], "more") {
 		t.Fatalf("single operation marked as a batch: %q", lines[2])
-	}
-}
-
-func TestLiveActivitySplitRosterAndFeedLayouts(t *testing.T) {
-	// The roster pane under Codex shows the header and one row per agent.
-	roster := liveActivityTestView("/root/a", "/root/b")
-	roster.rosterPane = true
-	lines := plainLines(roster.render(140, 6, time.Now()))
-	if len(lines) != 6 || !strings.HasPrefix(lines[0], "AGENTS · 2 · 0 responding") || strings.Contains(lines[0], "FOLLOW") {
-		t.Fatalf("roster header = %q", lines)
-	}
-	if !strings.Contains(lines[1], "a  Read a.go") || !strings.Contains(lines[2], "b  Read b.go") || strings.Contains(strings.Join(lines, "\n"), "●") {
-		t.Fatalf("roster pane rows = %q", lines)
-	}
-	// A click on a row selects that agent and shows only it.
-	if !roster.handleMouse('\r', 3, 5) || roster.selection() != (activityPaneSelection{Selected: "/root/b", Only: true}) {
-		t.Fatalf("roster click selection = %+v", roster.selection())
-	}
-
-	// With a roster pane connected, the feed fills its pane under one header.
-	feed := liveActivityTestView("/root/a", "/root/b")
-	feed.apply(activityPaneEvent{Kind: "agents", Agents: feed.agents, Roster: true})
-	lines = plainLines(feed.render(140, 20, time.Now()))
-	if !strings.HasPrefix(lines[0], "ACTIVITY · all agents") || !strings.HasSuffix(strings.TrimRight(lines[0], " "), "FOLLOW") ||
-		!strings.Contains(lines[1], "● /root/a") || strings.Contains(lines[1], "│") ||
-		strings.Contains(lines[len(lines)-1], "click agent") {
-		t.Fatalf("feed-only layout = %q", lines)
-	}
-	// The shared selection filters the feed; a heartbeat keeps the layout.
-	feed.apply(activityPaneEvent{Kind: "select", Selected: "/root/b", Only: true})
-	feed.apply(activityPaneEvent{Kind: "heartbeat"})
-	lines = plainLines(feed.render(140, 20, time.Now()))
-	if !strings.HasPrefix(lines[0], "ACTIVITY · only /root/b (2/2)") || strings.Contains(strings.Join(lines, "\n"), "/root/a") {
-		t.Fatalf("shared selection = %q", lines)
-	}
-	// Without the roster pane, the feed brings its own roster back.
-	feed.apply(activityPaneEvent{Kind: "agents", Agents: feed.agents})
-	if lines = plainLines(feed.render(140, 20, time.Now())); !strings.HasPrefix(lines[0], "AGENTS") || !strings.Contains(lines[1], "│") {
-		t.Fatalf("combined layout = %q", lines)
-	}
-}
-
-func TestLiveActivityIgnoresOwnSelectionEchoes(t *testing.T) {
-	view := liveActivityTestView("/root/a", "/root/b")
-	var sent []activityPaneSelection
-	view.publish = func(selection activityPaneSelection) { sent = append(sent, selection) }
-	// Two quick local changes: the first echo must not undo the second.
-	before := view.selection()
-	view.handleKey("", 'o')
-	view.publishSelection(before)
-	before = view.selection()
-	view.handleKey("", 'n')
-	view.publishSelection(before)
-	if len(sent) != 2 || view.selection() != (activityPaneSelection{Selected: "/root/b", Only: true}) {
-		t.Fatalf("sent = %+v, selection = %+v", sent, view.selection())
-	}
-	view.apply(activityPaneEvent{Kind: "select", Selected: sent[0].Selected, Only: sent[0].Only})
-	if view.selection() != sent[1] {
-		t.Fatalf("own echo undid a later change: %+v", view.selection())
-	}
-	view.apply(activityPaneEvent{Kind: "select", Selected: sent[1].Selected, Only: sent[1].Only})
-	// Another viewer's change still applies.
-	view.apply(activityPaneEvent{Kind: "select", Selected: "/root/a"})
-	if view.selection() != (activityPaneSelection{Selected: "/root/a"}) || len(view.pending) != 0 {
-		t.Fatalf("foreign selection = %+v, pending = %+v", view.selection(), view.pending)
-	}
-}
-
-func TestLiveActivityRosterProcess(t *testing.T) {
-	if os.Getenv("MEKUGI_LIVE_ROSTER_TEST_CHILD") == "1" {
-		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
-		defer stop()
-		os.Exit(RunLiveActivity(ctx, []string{"--view", "roster", "--session-file", os.Getenv("MEKUGI_LIVE_ACTIVITY_SESSION")}, os.Stdin, os.Stdout, os.Stderr))
-	}
-	f := newActivityPaneFixture(t, true)
-	f.activity.collect("explorer", "start", "start", "Started")
-	f.activity.collect("probe", "tool-1", "tool", "Read `live.go`")
-	feed := f.connect(t)
-	feed.next(t, "snapshot")
-	session := filepath.Join(t.TempDir(), "activity.json")
-	data, err := json.Marshal(f.activity.paneDescriptor())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(session, data, 0600); err != nil {
-		t.Fatal(err)
-	}
-	const height = 6
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestLiveActivityRosterProcess$")
-	cmd.Env = append(os.Environ(), "MEKUGI_LIVE_ROSTER_TEST_CHILD=1", "MEKUGI_LIVE_ACTIVITY_SESSION="+session)
-	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: height, Cols: 120})
-	if err != nil {
-		cancel()
-		t.Fatal(err)
-	}
-	done := make(chan struct{})
-	t.Cleanup(func() { cancel(); terminal.Close(); <-done })
-	chunks := make(chan string, 64)
-	go func() {
-		defer close(chunks)
-		var buffer [8192]byte
-		for {
-			n, err := terminal.Read(buffer[:])
-			if n > 0 {
-				chunks <- string(buffer[:n])
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
-	h := &liveDiffTerminalHarness{ctx: ctx, pty: terminal, chunks: chunks, height: height, done: done}
-	go func() { h.waitErr = cmd.Wait(); close(done) }()
-	h.frame(t, func(frame string) bool {
-		return strings.Contains(liveDiffFrameRow(frame, 1), "AGENTS · 2") && !strings.Contains(liveDiffFrameRow(frame, 1), "FOLLOW") &&
-			strings.Contains(liveDiffFrameRow(frame, 3), "Read live.go")
-	})
-	// The feed hears the roster, then its click on the probe row.
-	for event := feed.next(t, "agents", "entries"); !event.Roster; event = feed.next(t, "agents", "entries") {
-	}
-	h.write(t, "\x1b[<0;5;3M")
-	if event := feed.next(t, "select"); event.Selected != "/root/explorer/probe" || !event.Only {
-		t.Fatalf("roster click = %+v", event)
-	}
-	h.frame(t, func(frame string) bool {
-		return strings.Contains(liveDiffFrameRow(frame, 1), "only /root/explorer/probe")
-	})
-	// Arrow keys move the shown agent, and the feed follows.
-	h.write(t, "\x1b[A")
-	if event := feed.next(t, "select"); event.Selected != "/root/explorer" || !event.Only {
-		t.Fatalf("roster up arrow = %+v", event)
-	}
-	h.write(t, "\x1b[A")
-	if event := feed.next(t, "select"); event.Only {
-		t.Fatalf("up from the first agent did not show all agents: %+v", event)
-	}
-	h.quit(t)
-	for event := feed.next(t, "agents"); event.Roster; event = feed.next(t, "agents") {
-	}
-}
-
-func TestLiveActivityRosterPaneArrowKeys(t *testing.T) {
-	view := liveActivityTestView("/root/a", "/root/b")
-	view.rosterPane = true
-	keys := func(input string) {
-		escape := ""
-		for i := range len(input) {
-			escape, _ = view.handleKey(escape, input[i])
-		}
-	}
-	lines := plainLines(view.render(120, 5, time.Now()))
-	if !strings.HasSuffix(strings.TrimRight(lines[0], " "), "↓ show agent") || strings.Contains(strings.Join(lines, "\n"), "▸") {
-		t.Fatalf("all-agents roster = %q", lines)
-	}
-	// "All agents" sits above the first agent, and moves stop at either end.
-	for _, step := range []struct {
-		input string
-		want  activityPaneSelection
-	}{
-		{"\x1b[B", activityPaneSelection{Selected: "/root/a", Only: true}},
-		{"\x1bOB", activityPaneSelection{Selected: "/root/b", Only: true}},
-		{"j", activityPaneSelection{Selected: "/root/b", Only: true}},
-		{"\x1b[A", activityPaneSelection{Selected: "/root/a", Only: true}},
-		{"k", activityPaneSelection{Selected: "/root/a"}},
-		{"\x1b[A", activityPaneSelection{Selected: "/root/a"}},
-		{"o", activityPaneSelection{Selected: "/root/a", Only: true}},
-	} {
-		keys(step.input)
-		if got := view.selection(); got != step.want {
-			t.Fatalf("after %q: selection = %+v, want %+v", step.input, got, step.want)
-		}
-	}
-	lines = plainLines(view.render(120, 5, time.Now()))
-	if !strings.HasPrefix(lines[1], "▸") || !strings.HasSuffix(strings.TrimRight(lines[0], " "), "↑/↓ agent · o all") {
-		t.Fatalf("shown-agent roster = %q", lines)
-	}
-
-	// The feed pane leaves selection to a connected roster pane but still scrolls.
-	feed := liveActivityTestView("/root/a", "/root/b")
-	feed.apply(activityPaneEvent{Kind: "agents", Agents: feed.agents, Roster: true})
-	before := feed.selection()
-	for _, key := range []byte("np\to") {
-		feed.handleKey("", key)
-	}
-	if feed.selection() != before {
-		t.Fatalf("feed pane changed selection: %+v", feed.selection())
-	}
-	lines = plainLines(feed.render(120, 20, time.Now()))
-	if footer := lines[len(lines)-1]; !strings.HasSuffix(footer, "j/k scroll · r follow") || strings.Contains(footer, "n/p") {
-		t.Fatalf("feed footer = %q", footer)
-	}
-	feed.handleKey("", 'k')
-	if feed.following {
-		t.Fatal("feed pane no longer scrolls")
-	}
-	// Without a roster pane, the feed keeps its own selection keys.
-	feed.apply(activityPaneEvent{Kind: "agents", Agents: feed.agents})
-	feed.handleKey("", 'n')
-	if feed.selection() == before {
-		t.Fatal("combined feed lost its selection keys")
 	}
 }

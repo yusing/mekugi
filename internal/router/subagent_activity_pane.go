@@ -2,30 +2,17 @@ package router
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json"
-	"errors"
-	"io"
-	"net/http"
 	"slices"
 	"strings"
 	"time"
 )
 
-const liveActivityEventsPath = "/internal/live-activity"
-
 // Streamed output is estimated at this ratio until the provider reports usage.
 const activityBytesPerToken = 4
 
-const (
-	// A launch that never connects, or a viewer that stays disconnected past the
-	// reconnect window, returns ownership to inline root delivery.
-	activityPaneLaunchWindow = 15 * time.Second
-	activityPaneGraceWindow  = 5 * time.Second
-	activityPaneHistory      = 256
-	// Batches and the reconnect snapshot stay well inside one event line.
-	activityPaneLineBudget = maxLiveDiffEventBytes / 2
-)
+// An initial view attachment that never completes returns activity inline.
+const activityPaneLaunchWindow = 15 * time.Second
 
 type activityPaneState int
 
@@ -40,27 +27,17 @@ const (
 // attached. Events stay in the collector queue until a viewer write flushes,
 // so a failed launch or closed viewer falls back to ordinary root drains.
 type activityPane struct {
-	ctx        context.Context
-	launch     func() bool
-	connection liveDiffConnection
+	ctx    context.Context
+	launch func() bool
 
 	state      activityPaneState
 	root       string
 	deadline   time.Time
 	generation uint64
 	sequence   uint64
-	history    []activityPaneEntry
-	historyLen int // Encoded bytes of history.
 	wake       chan struct{}
 	announced  bool
 	farewell   bool
-
-	// Roster panes observe what the feed viewer delivers and never own events.
-	// Selection is shared so a roster click filters the feed.
-	observers map[chan activityPaneEvent]struct{}
-	selected  string
-	only      bool
-	selection uint64 // Bumped on each shared selection change.
 }
 
 type activityPaneEntry struct {
@@ -73,7 +50,6 @@ type activityPaneEntry struct {
 	Observed time.Time
 
 	event activityEvent // Original queue entry, requeued if the write fails.
-	size  int           // Encoded bytes.
 }
 
 type activityPaneAgent struct {
@@ -94,22 +70,12 @@ type activityPaneEvent struct {
 	Kind    string
 	Agents  []activityPaneAgent `json:",omitempty"`
 	Entries []activityPaneEntry `json:",omitempty"`
-	// Shared selection, carried by snapshot and select events.
-	Selected string `json:",omitempty"`
-	Only     bool   `json:",omitzero"`
-	// A separate roster pane is connected, so the feed omits its own roster.
-	Roster bool `json:",omitzero"`
-}
-
-type activityPaneSelection struct {
-	Selected string
-	Only     bool
 }
 
 func newActivityPane(ctx context.Context, launch func() bool) *activityPane {
 	return &activityPane{
-		ctx: ctx, launch: launch, connection: liveDiffConnection{Token: rand.Text()},
-		wake: make(chan struct{}, 1), observers: make(map[chan activityPaneEvent]struct{}),
+		ctx: ctx, launch: launch,
+		wake: make(chan struct{}, 1),
 	}
 }
 
@@ -119,25 +85,8 @@ func (a *subagentActivity) attachPane(pane *activityPane) {
 	a.pane = pane
 }
 
-func (a *subagentActivity) setPaneEndpoint(endpoint string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.pane != nil {
-		a.pane.connection.Endpoint = endpoint
-	}
-}
-
-func (a *subagentActivity) paneDescriptor() liveDiffConnection {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.pane == nil {
-		return liveDiffConnection{}
-	}
-	return a.pane.connection
-}
-
 // paneOwnsLocked reports whether the pane currently holds this root's child
-// activity. Expired launch and reconnect windows release ownership lazily.
+// activity. An expired initial attachment window releases ownership lazily.
 func (a *subagentActivity) paneOwnsLocked(root string, now time.Time) bool {
 	pane := a.pane
 	if pane == nil || root == "" || pane.root != root {
@@ -251,9 +200,7 @@ func (a *subagentActivity) takePane(generation uint64) ([]activityPaneEntry, []a
 		}
 		entry.CallID = event.callID
 		entry.Filter = event.filter
-		// Escaping can expand text up to sixfold, so budget the encoded form.
-		data, _ := json.Marshal(entry)
-		entry.size = len(data) + 1
+
 		entries = append(entries, entry)
 	}
 	clear(a.events[len(kept):])
@@ -287,30 +234,6 @@ func (a *subagentActivity) restorePane(entries []activityPaneEntry) {
 	a.wakePaneLocked()
 }
 
-// recordPaneHistory keeps a delivered batch for reconnects and passes it to
-// roster observers under the same lock, so a new observer sees it once.
-func (a *subagentActivity) recordPaneHistory(event activityPaneEvent) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.pane == nil {
-		return
-	}
-	pane := a.pane
-	a.broadcastPaneLocked(event)
-	for _, entry := range event.Entries {
-		entry.event = activityEvent{}
-		pane.history = append(pane.history, entry)
-		pane.historyLen += entry.size
-	}
-	drop := 0
-	for drop < len(pane.history) && (len(pane.history)-drop > activityPaneHistory || pane.historyLen > activityPaneLineBudget) {
-		pane.historyLen -= pane.history[drop].size
-		drop++
-	}
-	pane.history = slices.Delete(pane.history, 0, drop)
-}
-
-// subscribePane attaches a viewer and returns its generation and snapshot.
 func (a *subagentActivity) subscribePane() (uint64, activityPaneEvent, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -324,105 +247,7 @@ func (a *subagentActivity) subscribePane() (uint64, activityPaneEvent, bool) {
 }
 
 func (a *subagentActivity) paneSnapshotLocked() activityPaneEvent {
-	pane := a.pane
-	return activityPaneEvent{
-		Kind: "snapshot", Agents: a.paneAgentsLocked(), Entries: slices.Clone(pane.history),
-		Selected: pane.selected, Only: pane.only, Roster: len(pane.observers) > 0,
-	}
-}
-
-// paneShared reports the state the feed viewer mirrors from roster panes.
-func (a *subagentActivity) paneShared() (roster bool, selection activityPaneSelection, version uint64) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.pane == nil {
-		return false, activityPaneSelection{}, 0
-	}
-	pane := a.pane
-	return len(pane.observers) > 0, activityPaneSelection{pane.selected, pane.only}, pane.selection
-}
-
-// observePane registers a roster observer while the pane owns the root. The
-// channel closes if the observer falls behind; it then reconnects for a new
-// snapshot.
-func (a *subagentActivity) observePane() (chan activityPaneEvent, activityPaneEvent, bool) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	pane := a.pane
-	if a.closed || pane == nil || !a.paneOwnsLocked(pane.root, time.Now()) {
-		return nil, activityPaneEvent{}, false
-	}
-	events := make(chan activityPaneEvent, 64)
-	pane.observers[events] = struct{}{}
-	a.wakePaneLocked()
-	return events, a.paneSnapshotLocked(), true
-}
-
-func (a *subagentActivity) unobservePane(events chan activityPaneEvent) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.pane == nil {
-		return
-	}
-	if _, ok := a.pane.observers[events]; ok {
-		delete(a.pane.observers, events)
-		a.wakePaneLocked()
-	}
-}
-
-func (a *subagentActivity) broadcastPaneLocked(event activityPaneEvent) {
-	for events := range a.pane.observers {
-		select {
-		case events <- event:
-		default:
-			delete(a.pane.observers, events)
-			close(events)
-			a.wakePaneLocked()
-		}
-	}
-}
-
-func (a *subagentActivity) broadcastPane(event activityPaneEvent) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.pane != nil {
-		a.broadcastPaneLocked(event)
-	}
-}
-
-// selectPane records a viewer's selection and shares it with every viewer.
-func (a *subagentActivity) selectPane(selection activityPaneSelection) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	pane := a.pane
-	if a.closed || pane == nil || !a.paneOwnsLocked(pane.root, time.Now()) {
-		return false
-	}
-	// Every accepted change is echoed, so viewers can match their own.
-	pane.selected, pane.only = selection.Selected, selection.Only
-	pane.selection++
-	a.broadcastPaneLocked(activityPaneEvent{Kind: "select", Selected: selection.Selected, Only: selection.Only})
-	a.wakePaneLocked()
-	return true
-}
-
-func (a *subagentActivity) paneActive() bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return !a.closed && a.pane != nil && a.paneOwnsLocked(a.pane.root, time.Now())
-}
-
-// detachPane starts the reconnect window for the current viewer only.
-func (a *subagentActivity) detachPane(generation uint64) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	pane := a.pane
-	if pane == nil || pane.generation != generation || pane.state != activityPaneAttached {
-		return
-	}
-	pane.state, pane.deadline = activityPaneClaimed, time.Now().Add(activityPaneGraceWindow)
-	// A reconnected viewer may be waiting on the shared wake signal.
-	a.wakePaneLocked()
+	return activityPaneEvent{Kind: "snapshot", Agents: a.paneAgentsLocked()}
 }
 
 // beginResponse and endResponse track open provider responses for the roster.
@@ -591,188 +416,6 @@ func (a *subagentActivity) childThread(root, name string) string {
 		}
 	}
 	return ""
-}
-
-func (a *subagentActivity) authorizePane(w http.ResponseWriter, r *http.Request) bool {
-	connection := a.paneDescriptor()
-	if connection.Token == "" || r.Header.Get("Authorization") != "Bearer "+connection.Token {
-		http.Error(w, "invalid live activity capability", http.StatusUnauthorized)
-		return false
-	}
-	return true
-}
-
-func activityPaneWriter(w http.ResponseWriter) func(activityPaneEvent) error {
-	controller := http.NewResponseController(w)
-	w.Header().Set("Content-Type", "application/x-ndjson")
-	w.Header().Set("Cache-Control", "no-store")
-	return func(event activityPaneEvent) error {
-		data, err := json.Marshal(event)
-		if err != nil || len(data) > maxLiveDiffEventBytes {
-			return errors.New("live activity event exceeds capacity")
-		}
-		if err := controller.SetWriteDeadline(time.Now().Add(2 * time.Second)); err != nil {
-			return err
-		}
-		if _, err := w.Write(append(data, '\n')); err != nil {
-			return err
-		}
-		return controller.Flush()
-	}
-}
-
-func (a *subagentActivity) serveActivityPane(w http.ResponseWriter, r *http.Request) {
-	if !a.authorizePane(w, r) {
-		return
-	}
-	if r.URL.Query().Get("view") == "roster" {
-		a.serveRosterPane(w, r)
-		return
-	}
-	generation, snapshot, ok := a.subscribePane()
-	if !ok {
-		http.Error(w, "live activity pane is not active", http.StatusGone)
-		return
-	}
-	defer a.detachPane(generation)
-	a.mu.Lock()
-	pane := a.pane
-	a.mu.Unlock()
-	write := activityPaneWriter(w)
-	if write(snapshot) != nil {
-		return
-	}
-	heartbeat := time.NewTicker(10 * time.Second)
-	defer heartbeat.Stop()
-	// Streamed token estimates change without waking the pane.
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
-	last, lastRoster := snapshot.Agents, snapshot.Roster
-	// Starting from zero resends any selection made since the snapshot.
-	var lastSelection uint64
-	deliver := func() bool {
-		entries, agents, current := a.takePane(generation)
-		if !current {
-			return false
-		}
-		roster, selection, version := a.paneShared()
-		for len(entries) > 0 {
-			// Keep each line within the event limit without splitting an entry.
-			batch, size := 0, 0
-			for batch < len(entries) && (batch == 0 || size+entries[batch].size < activityPaneLineBudget) {
-				size += entries[batch].size
-				batch++
-			}
-			event := activityPaneEvent{Kind: "entries", Agents: agents, Entries: entries[:batch], Roster: roster}
-			if write(event) != nil {
-				a.restorePane(entries)
-				return false
-			}
-			a.recordPaneHistory(event)
-			entries, last, lastRoster = entries[batch:], agents, roster
-		}
-		if !slices.Equal(last, agents) || roster != lastRoster {
-			event := activityPaneEvent{Kind: "agents", Agents: agents, Roster: roster}
-			if write(event) != nil {
-				return false
-			}
-			a.broadcastPane(event)
-			last, lastRoster = agents, roster
-		}
-		if version != lastSelection {
-			if write(activityPaneEvent{Kind: "select", Selected: selection.Selected, Only: selection.Only}) != nil {
-				return false
-			}
-			lastSelection = version
-		}
-		return true
-	}
-	if !deliver() {
-		return
-	}
-	for {
-		select {
-		case <-pane.ctx.Done():
-			_ = write(activityPaneEvent{Kind: "end"})
-			return
-		case <-r.Context().Done():
-			return
-		case <-pane.wake:
-			if !deliver() {
-				return
-			}
-		case <-tick.C:
-			if !deliver() {
-				return
-			}
-		case <-heartbeat.C:
-			if !deliver() || write(activityPaneEvent{Kind: "heartbeat"}) != nil {
-				return
-			}
-		}
-	}
-}
-
-// serveRosterPane streams what the feed viewer delivers, without taking
-// ownership of events or of the reconnect window.
-func (a *subagentActivity) serveRosterPane(w http.ResponseWriter, r *http.Request) {
-	events, snapshot, ok := a.observePane()
-	if !ok {
-		http.Error(w, "live activity pane is not active", http.StatusGone)
-		return
-	}
-	defer a.unobservePane(events)
-	a.mu.Lock()
-	pane := a.pane
-	a.mu.Unlock()
-	write := activityPaneWriter(w)
-	if write(snapshot) != nil {
-		return
-	}
-	heartbeat := time.NewTicker(10 * time.Second)
-	defer heartbeat.Stop()
-	// Ownership can lapse without an event, as when the feed pane closes.
-	check := time.NewTicker(time.Second)
-	defer check.Stop()
-	for {
-		select {
-		case <-pane.ctx.Done():
-			_ = write(activityPaneEvent{Kind: "end"})
-			return
-		case <-r.Context().Done():
-			return
-		case event, open := <-events:
-			if !open || write(event) != nil {
-				return
-			}
-		case <-check.C:
-			if !a.paneActive() {
-				_ = write(activityPaneEvent{Kind: "end"})
-				return
-			}
-		case <-heartbeat.C:
-			if write(activityPaneEvent{Kind: "heartbeat"}) != nil {
-				return
-			}
-		}
-	}
-}
-
-// serveActivitySelection shares a viewer's agent selection with the others.
-func (a *subagentActivity) serveActivitySelection(w http.ResponseWriter, r *http.Request) {
-	if !a.authorizePane(w, r) {
-		return
-	}
-	var selection activityPaneSelection
-	if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&selection) != nil {
-		http.Error(w, "invalid live activity selection", http.StatusBadRequest)
-		return
-	}
-	if !a.selectPane(selection) {
-		http.Error(w, "live activity pane is not active", http.StatusGone)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // activityPaneText removes the collector's author prefix; the pane shows the

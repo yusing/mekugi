@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -41,8 +42,8 @@ type Session struct {
 	OpenCode               OpenCodeConfig
 	AXReadOutput           string
 	SkillsManagerAvailable bool
-	// EnableLiveDiff arms a best-effort pane on the first selected turn workspace.
-	EnableLiveDiff       func()
+	// StartUI starts Codex in the integrated terminal and returns its joined lifetime.
+	StartUI              func(context.Context, *exec.Cmd, *os.File, *os.File) (func() error, error)
 	FrontendDirectory    string
 	NativeTraceDirectory string
 }
@@ -265,8 +266,6 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		mekugiCalls.autoLiveDiff.notice = func(category, message string) { issues.addNotice("", category, message) }
 		replayStore.liveDiff = mekugiCalls.autoLiveDiff.events.publish
 		mekugiCalls.activity.attachPane(newActivityPane(ctx, mekugiCalls.autoLiveDiff.requestActivity))
-		mekugiCalls.autoLiveDiff.activityConnection = mekugiCalls.activity.paneDescriptor
-		mekugiCalls.autoLiveDiff.activityFailed = mekugiCalls.activity.releasePane
 		defer stopLiveDiff()
 		mekugiCalls.replayStore = replayStore
 		if issues != nil {
@@ -288,8 +287,6 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	defer listener.Close()
 	address := listener.Addr().String()
 	if mekugiCalls != nil {
-		mekugiCalls.autoLiveDiff.events.setEndpoint("http://" + address + liveDiffEventsPath)
-		mekugiCalls.activity.setPaneEndpoint("http://" + address + liveActivityEventsPath)
 		mekugiCalls.commentaryEndpoint, err = commentaryPublisherURL(address)
 		if err != nil {
 			return fmt.Errorf("initialize commentary publisher: %w", err)
@@ -313,9 +310,6 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))
 	if mekugiCalls != nil {
-		mux.HandleFunc("GET "+liveDiffEventsPath, mekugiCalls.autoLiveDiff.events.serveEvents)
-		mux.HandleFunc("GET "+liveActivityEventsPath, mekugiCalls.activity.serveActivityPane)
-		mux.HandleFunc("POST "+liveActivityEventsPath, mekugiCalls.activity.serveActivitySelection)
 		mux.HandleFunc("POST "+commentaryPublisherPath, mekugiCalls.commentary.serveHTTP)
 	}
 	webSocketEndpoint := responsesWebSocketHandler(ctx, *flags.timeout, provider, issues, mekugiCalls, mentor)
@@ -339,7 +333,9 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if ready != nil && ctx.Err() == nil {
 		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: *flags.grokEnabled, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", PostCompactRecovery: *flags.postCompactRecovery, SkillsManagerAvailable: skillsManagerAvailable}
 		if mekugiCalls != nil {
-			session.EnableLiveDiff = mekugiCalls.autoLiveDiff.enable
+			session.StartUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File) (func() error, error) {
+				return startTerminalUI(ctx, cmd, stdin, stdout, mekugiCalls.autoLiveDiff, mekugiCalls.replayStore, mekugiCalls.activity)
+			}
 			if mekugiCalls.nativeTrace != nil {
 				session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory
 			}

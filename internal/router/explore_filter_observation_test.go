@@ -197,11 +197,6 @@ func TestExploreFilterPanePayloadRestoreAndIsolation(t *testing.T) {
 	if len(restored) != 1 || restored[0].Filter.Command != "rg needle" {
 		t.Fatal("failed write lost payload")
 	}
-	f.activity.recordPaneHistory(activityPaneEvent{Kind: "entries", Entries: restored})
-	_, snapshot, ok := f.activity.subscribePane()
-	if !ok || len(snapshot.Entries) != 1 || snapshot.Entries[0].Filter.Command != "rg needle" {
-		t.Fatal("reconnect lost payload")
-	}
 	if len(f.activity.drain("other", time.Time{}, maxCommentaryPublicationBytes)) != 0 {
 		t.Fatal("other root fallback leaked metrics")
 	}

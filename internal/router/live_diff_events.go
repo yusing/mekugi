@@ -3,27 +3,12 @@ package router
 import (
 	"cmp"
 	"context"
-	"crypto/rand"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
 	"maps"
-	"net/http"
 	"slices"
-	"strings"
 	"sync"
-	"time"
 )
 
-const liveDiffEventsPath = "/internal/live-diff"
 const maxLiveDiffEventBytes = 1 << 20
-
-// The bootstrap file is a private connection capability, not changing view data.
-type liveDiffConnection struct {
-	Endpoint string
-	Token    string
-}
 
 type liveDiffChange struct {
 	Workspace string
@@ -56,7 +41,6 @@ type liveDiffSubscriber struct {
 type liveDiffBroker struct {
 	ctx               context.Context
 	mu                sync.Mutex
-	connection        liveDiffConnection
 	scope             liveDiffScope
 	subs              map[*liveDiffSubscriber]bool
 	turnRevision      uint64
@@ -67,22 +51,10 @@ type liveDiffBroker struct {
 
 func newLiveDiffBroker(ctx context.Context) *liveDiffBroker {
 	return &liveDiffBroker{
-		ctx: ctx, connection: liveDiffConnection{Token: rand.Text()},
+		ctx:   ctx,
 		scope: liveDiffScope{Workspaces: make(map[string]map[string]bool)},
 		subs:  make(map[*liveDiffSubscriber]bool),
 	}
-}
-
-func (b *liveDiffBroker) setEndpoint(endpoint string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.connection.Endpoint = endpoint
-}
-
-func (b *liveDiffBroker) descriptor() liveDiffConnection {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.connection
 }
 
 func cloneLiveDiffScope(scope liveDiffScope) liveDiffScope {
@@ -210,75 +182,6 @@ func (b *liveDiffBroker) subscribe() *liveDiffSubscriber {
 	return sub
 }
 
-func (b *liveDiffBroker) serveEvents(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Authorization") != "Bearer "+b.descriptor().Token {
-		http.Error(w, "invalid live diff capability", http.StatusUnauthorized)
-		return
-	}
-	sub := b.subscribe()
-	defer func() {
-		b.mu.Lock()
-		delete(b.subs, sub)
-		b.mu.Unlock()
-	}()
-	controller := http.NewResponseController(w)
-	w.Header().Set("Content-Type", "application/x-ndjson")
-	w.Header().Set("Cache-Control", "no-store")
-	write := func(event liveDiffEvent) error {
-		data, err := json.Marshal(event)
-		if err != nil || len(data) > maxLiveDiffEventBytes {
-			return errors.New("live diff event exceeds capacity")
-		}
-		if err := controller.SetWriteDeadline(time.Now().Add(2 * time.Second)); err != nil {
-			return err
-		}
-		if _, err := w.Write(append(data, '\n')); err != nil {
-			return err
-		}
-		return controller.Flush()
-	}
-	// The snapshot barrier must precede the separate preview mailbox.
-	if write(<-sub.events) != nil {
-		return
-	}
-	// Restore retained turn state before replaceable preview snapshots.
-	select {
-	case event := <-sub.events:
-		if write(event) != nil {
-			return
-		}
-	default:
-	}
-	heartbeat := time.NewTicker(10 * time.Second)
-	defer heartbeat.Stop()
-	for {
-		select {
-		case <-b.ctx.Done():
-			_ = write(liveDiffEvent{Kind: "end"})
-			return
-		case <-r.Context().Done():
-			return
-		case <-sub.gap:
-			_ = write(liveDiffEvent{Kind: "reset"})
-			return
-		case <-sub.previewReady:
-			for _, event := range b.takePreviews(sub) {
-				if write(event) != nil {
-					return
-				}
-			}
-		case event := <-sub.events:
-			if write(event) != nil {
-				return
-			}
-		case <-heartbeat.C:
-			if write(liveDiffEvent{Kind: "heartbeat"}) != nil {
-				return
-			}
-		}
-	}
-}
-
 // notifyLiveDiff runs only after a successful atomic index publication. Events
 // carry one committed batch, not an instruction to rescan the whole store.
 func (s *mekugiReplayStore) notifyLiveDiff(index changeIndex, updates map[string][]trackedCall) {
@@ -309,15 +212,4 @@ func (s *mekugiReplayStore) notifyLiveDiff(index changeIndex, updates map[string
 		}
 	}
 	s.liveDiff(changes)
-}
-
-func liveDiffRequest(ctx context.Context, connection liveDiffConnection, method string, body io.Reader) (*http.Request, error) {
-	if !strings.HasPrefix(connection.Endpoint, "http://127.0.0.1:") {
-		return nil, fmt.Errorf("invalid local live diff endpoint")
-	}
-	req, err := http.NewRequestWithContext(ctx, method, connection.Endpoint, body)
-	if err == nil {
-		req.Header.Set("Authorization", "Bearer "+connection.Token)
-	}
-	return req, err
 }
