@@ -1,10 +1,31 @@
 package router
 
+const (
+	paneWheelUp    byte = 0x80
+	paneWheelDown  byte = 0x81
+	paneWheelLines      = 3
+)
+
+func paneWheelKey(action byte) byte {
+	switch action {
+	case 'j':
+		return paneWheelDown
+	case 'k':
+		return paneWheelUp
+	default:
+		return action
+	}
+}
+
 // All scrollable panes use the same line/page/home/end/follow semantics.
 // End goes to the bottom but stays paused; only r resumes automatic following.
 func paneScroll(key byte, offset, rows, total int) (next int, follow, handled bool) {
 	next = offset
 	switch key {
+	case paneWheelDown:
+		next += paneWheelLines
+	case paneWheelUp:
+		next -= paneWheelLines
 	case 'j':
 		next++
 	case 'k':
@@ -40,6 +61,7 @@ func (c *liveDiffTerminalController) scroll(key byte) bool {
 	} else {
 		c.view.Following = false
 		c.view.ScrollTo(c.rendering, next)
+		c.offset = next
 	}
 	c.dirty = true
 	return true

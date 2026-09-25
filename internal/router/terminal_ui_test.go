@@ -20,7 +20,7 @@ func TestTerminalGeometry(t *testing.T) {
 	for _, width := range []int{1, 60, 99, 100, 180, 300} {
 		for _, height := range []int{2, 10, 24, 60} {
 			for focus := range 3 {
-				l := terminalGeometry(width, height, 999, -10, focus, true, true)
+				l := terminalGeometry(width, height, 999, -10, 0, focus, true, true)
 				for _, r := range []terminalRect{l.codex, l.diff, l.agents} {
 					if r.w < 0 || r.h < 0 || r.x+r.w > width || r.y+r.h > height-1 {
 						t.Fatalf("%dx%d: %+v", width, height, l)
@@ -56,7 +56,7 @@ func TestPaneScrollUnified(t *testing.T) {
 	v.feedRows = 10
 	v.feedLines = 100
 	v.handleMouse('k', 2, 2)
-	if v.offset != 89 || v.following {
+	if v.offset != 87 || v.following {
 		t.Fatalf("wheel did not pause/scroll: %+v", v)
 	}
 	for _, seq := range []string{"\x1b[H", "\x1b[1~", "\x1bOH"} {
@@ -87,7 +87,7 @@ func TestTerminalUIRoutingAndResize(t *testing.T) {
 	diff := newLiveDiffTerminalController(nil, "", file)
 	defer diff.close()
 	u := &terminalUI{master: file, diff: diff, agents: newLiveActivityView(), width: 240, height: 40, side: true, activityOpen: true}
-	u.layout = terminalGeometry(240, 40, 100, 20, 0, true, true)
+	u.layout = terminalGeometry(240, 40, 100, 20, 0, 0, true, true)
 	send := func(s string) {
 		t.Helper()
 		for _, b := range []byte(s) {
@@ -116,7 +116,7 @@ func TestTerminalUIRoutingAndResize(t *testing.T) {
 	u.agents.feedRows = 5
 	u.agents.feedLines = 20
 	send("\x1b[<64;150;25M")
-	if u.agents.offset != 14 || u.agents.following {
+	if u.agents.offset != 12 || u.agents.following {
 		t.Fatal("wheel not routed to hovered agents")
 	}
 	send("\x02" + "1\x1b[200~paste\x02" + "3\x1b[201~")

@@ -629,7 +629,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	if recipient == "/root" && activityThreadID != "" {
 		subagentDeferred = p.activity.divertRootReplies(activityThreadID, subagentDeferred, envelopes.senders)
 	}
-	if metadata.SubagentKind != "" && activityThreadID != "" {
+	if activityThreadID != "" {
 		p.activity.beginResponse(activityThreadID)
 	}
 	deferredCommentary := p.drainCommentarySession(historySessionID, threadID)
@@ -659,7 +659,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		subagentDeferred:          subagentDeferred,
 		subagentResponses:         subagentDeferred,
 		subagentTurn:              metadata.SubagentKind != "",
-		activityResponding:        metadata.SubagentKind != "" && activityThreadID != "",
+		activityResponding:        activityThreadID != "",
 		deferredCommentary:        deferredCommentary,
 		commentaryEmitted:         make(map[string]struct{}),
 		usageTracker:              p.usage.observationForTurn(threadID, metadata.ThreadID, metadata.TurnID, request.model(), usageServiceTier(request.fields["service_tier"])),

@@ -83,9 +83,9 @@ func TestScrollablePaneWheelAgreesAtConsumers(t *testing.T) {
 		diffWant     int
 		activityWant int
 	}{
-		{name: "up", seq: "\x1b[<64;1;2M", action: 'k', starting: 50, diffWant: 49, activityWant: 49},
-		{name: "down", seq: "\x1b[<65;1;2M", action: 'j', starting: 50, diffWant: 51, activityWant: 51},
-		{name: "up pauses following", seq: "\x1b[<64;1;2M", action: 'k', starting: 50, following: true, diffWant: 49, activityWant: 89},
+		{name: "up", seq: "\x1b[<64;1;2M", action: 'k', starting: 50, diffWant: 47, activityWant: 47},
+		{name: "down", seq: "\x1b[<65;1;2M", action: 'j', starting: 50, diffWant: 53, activityWant: 53},
+		{name: "up pauses following", seq: "\x1b[<64;1;2M", action: 'k', starting: 50, following: true, diffWant: 47, activityWant: 87},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			controller := newTerminalScrollTestController(test.starting, test.following)
@@ -123,7 +123,7 @@ func TestLiveDiffStreamWheelPauseSurvivesUpdates(t *testing.T) {
 		controller.handleKey(key)
 	}
 	stream := controller.previewPane.views["scroll-stream"]
-	if !stream.paused || stream.scrollRow != 28 {
+	if !stream.paused || stream.scrollRow != 26 {
 		t.Fatalf("wheel did not pause the stream at its previous row: paused=%v row=%d", stream.paused, stream.scrollRow)
 	}
 
@@ -136,7 +136,7 @@ func TestLiveDiffStreamWheelPauseSurvivesUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 	visible := strings.Join(lines, "\n")
-	if !stream.paused || stream.scrollRow != 28 || !strings.Contains(visible, "stream_0029") || strings.Contains(visible, "stream_0040") {
+	if !stream.paused || stream.scrollRow != 26 || !strings.Contains(visible, "stream_0027") || strings.Contains(visible, "stream_0040") {
 		t.Fatalf("stream update moved its paused viewport: row=%d paused=%v lines=%q", stream.scrollRow, stream.paused, visible)
 	}
 
@@ -171,5 +171,22 @@ func terminalScrollStreamPreview(rows int) liveDiffPreview {
 	}
 	return liveDiffPreview{
 		ID: "scroll-stream", Workspace: "/workspace", Thread: "thread", Input: input.String(),
+	}
+}
+
+func TestScrollablePaneWheelBurstAccumulates(t *testing.T) {
+	c := newTerminalScrollTestController(50, false)
+	defer c.close()
+	v := newLiveActivityView()
+	v.following = false
+	v.feedLines, v.feedRows, v.offset = 100, 10, 50
+	for range 4 {
+		for _, key := range []byte("\x1b[<64;1;2M") {
+			c.handleKey(key)
+		}
+		v.handleMouse('k', 2, 1)
+	}
+	if c.offset != 38 || c.view.Scroll["scroll.txt"] != 38 || v.offset != 38 {
+		t.Fatalf("wheel burst lost events before paint: diff=%d saved=%d agents=%d", c.offset, c.view.Scroll["scroll.txt"], v.offset)
 	}
 }

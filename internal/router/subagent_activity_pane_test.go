@@ -129,7 +129,7 @@ func TestActivityPaneOwnsChildActivityAndDeliversWithoutRootBoundary(t *testing.
 
 	client := f.connect(t)
 	snapshot := client.next(t, "snapshot")
-	if len(snapshot.Agents) != 2 || snapshot.Agents[0].Name != "/root/explorer" || snapshot.Agents[1].Name != "/root/explorer/probe" {
+	if len(snapshot.Agents) != 3 || snapshot.Agents[0].Name != "/root" || snapshot.Agents[1].Name != "/root/explorer" || snapshot.Agents[2].Name != "/root/explorer/probe" {
 		t.Fatalf("snapshot roster = %+v", snapshot.Agents)
 	}
 	first := client.next(t, "entries")
@@ -155,16 +155,16 @@ func TestActivityPaneOwnsChildActivityAndDeliversWithoutRootBoundary(t *testing.
 	// Roster state is observation only.
 	f.activity.beginResponse("probe")
 	state := client.next(t, "agents", "entries")
-	if !state.Agents[1].Responding {
+	if !state.Agents[2].Responding {
 		t.Fatalf("responding not reported: %+v", state.Agents)
 	}
-	if state.Agents[1].Turns != 1 || state.Agents[1].Started.IsZero() {
-		t.Fatalf("turn timer not reported: %+v", state.Agents[1])
+	if state.Agents[2].Turns != 1 || state.Agents[2].Started.IsZero() {
+		t.Fatalf("turn timer not reported: %+v", state.Agents[2])
 	}
 	// Streamed deltas show an estimate on the next tick, without a wake.
 	f.activity.streamOutput("probe", 400)
 	estimate := client.next(t, "agents")
-	for estimate.Agents[1].OutputTokens != 400/activityBytesPerToken {
+	for estimate.Agents[2].OutputTokens != 400/activityBytesPerToken {
 		estimate = client.next(t, "agents")
 	}
 	// Usage replaces the estimate, accumulates per child, and reaches the
@@ -176,23 +176,23 @@ func TestActivityPaneOwnsChildActivityAndDeliversWithoutRootBoundary(t *testing.
 		f.activity.syncUsage("probe", counts, report, ok, tokenCost{})
 	}
 	usage := client.next(t, "agents")
-	for usage.Agents[1].InputTokens != 2000 {
+	for usage.Agents[2].InputTokens != 2000 {
 		usage = client.next(t, "agents")
 	}
-	if usage.Agents[1].OutputTokens != 50 || usage.Agents[0].InputTokens != 0 {
+	if usage.Agents[2].OutputTokens != 50 || usage.Agents[0].InputTokens != 0 {
 		t.Fatalf("usage roster = %+v", usage.Agents)
 	}
-	if usage.Agents[1].Cost <= 0 || !usage.Agents[1].CostKnown {
-		t.Fatalf("cost roster = %+v", usage.Agents[1])
+	if usage.Agents[2].Cost <= 0 || !usage.Agents[2].CostKnown {
+		t.Fatalf("cost roster = %+v", usage.Agents[2])
 	}
 	f.activity.endResponse("probe")
 	f.activity.markFinal("explorer", subagentFinal{sender: "/root/explorer/probe"})
 	final := client.next(t, "agents")
-	for final.Agents[1].Responding || !final.Agents[1].Final {
+	for final.Agents[2].Responding || !final.Agents[2].Final {
 		final = client.next(t, "agents")
 	}
-	if final.Agents[1].LastResponse.IsZero() {
-		t.Fatalf("last response not reported: %+v", final.Agents[1])
+	if final.Agents[2].LastResponse.IsZero() {
+		t.Fatalf("last response not reported: %+v", final.Agents[2])
 	}
 
 	// Closing the sole view releases ownership; subsequent activity returns inline.
@@ -227,7 +227,7 @@ func TestActivityPaneShowsFinalAnswerWithoutRootCopy(t *testing.T) {
 	f.activity.markFinal("explorer", final) // Replayed input must not duplicate the pane event.
 	client := f.connect(t)
 	snapshot := client.next(t, "snapshot")
-	if !snapshot.Agents[1].Final {
+	if !snapshot.Agents[2].Final {
 		t.Fatalf("final marker missing: %+v", snapshot.Agents)
 	}
 	entries := client.next(t, "entries")
@@ -602,7 +602,7 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 	// The parent is in a native wait: no root response is open, yet the pane updates.
 	f.activity.collect("probe", "tool-1", "tool", "Read `live.go`")
 	frame := h.frame(t, func(frame string) bool { return strings.Contains(text(frame), "Read live.go") })
-	if row := liveDiffFrameRow(frame, 1); !strings.Contains(row, "AGENTS · 2") {
+	if row := liveDiffFrameRow(frame, 1); !strings.Contains(row, "AGENTS · 3") {
 		t.Fatalf("header = %q", row)
 	}
 	f.activity.collect("probe", "tool-call\x00run-1", "tool", "Run `false`")
@@ -622,16 +622,16 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 	h.frame(t, func(frame string) bool {
 		return strings.Contains(text(frame), "See live.go") && !strings.Contains(text(frame), "(/tmp/live.go:4)")
 	})
-	h.write(t, "\x1b[<35;5;3M")
+	h.write(t, "\x1b[<35;5;4M")
 	h.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "\x1b[4m└ probe")
+		return strings.Contains(frame, "\x1b[4m  └ probe")
 	})
-	h.write(t, "\x1b[<0;5;3M")
+	h.write(t, "\x1b[<0;5;4M")
 	h.frame(t, func(frame string) bool {
 		return strings.Contains(liveDiffFrameRow(frame, 1), "only /root/explorer/probe") && !strings.Contains(text(frame), "● /root/explorer ─")
 	})
-	h.write(t, "\x1b[<0;5;3M")
-	h.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 1), "AGENTS · 2") })
+	h.write(t, "\x1b[<0;5;4M")
+	h.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 1), "AGENTS · 3") })
 	h.write(t, "o")
 	h.frame(t, func(frame string) bool {
 		return strings.Contains(liveDiffFrameRow(frame, 1), "only /root/explorer/probe") && strings.HasPrefix(liveDiffFrameRow(frame, height), "ONLY") &&

@@ -31,7 +31,6 @@ type activityThread struct {
 	started, lastResponse time.Time
 	turns                 uint64
 	cost                  tokenCost
-	paneVisible           bool // Root joins the roster after its first pane-only filter event.
 	// Provider-reported usage summed over this thread's responses, and the
 	// visible delta bytes streamed since the last report.
 	inputTokens, outputTokens, streamed uint64
@@ -166,7 +165,6 @@ func (a *subagentActivity) collectEvent(event activityEvent) {
 		return
 	}
 	node.seen[source] = struct{}{}
-	node.paneVisible = true
 	event.source, event.callID, event.text, event.raw, event.observed = source, callID, text, raw, now
 	a.events = append(a.events, event)
 	a.claimPaneLocked(thread, now)

@@ -156,11 +156,11 @@ func (a *subagentActivity) paneNoticesLocked(root string) []map[string]json.RawM
 	return []map[string]json.RawMessage{assistantCommentaryMessage(id, text)}
 }
 
-// paneAgentsLocked lists the pane root's observed children in observation order.
+// paneAgentsLocked lists the pane root and its observed children in observation order.
 func (a *subagentActivity) paneAgentsLocked() []activityPaneAgent {
 	var nodes []*activityThread
 	for thread, node := range a.threads {
-		if (node.child || node.paneVisible) && !node.conflicted && a.rootLocked(thread) == a.pane.root {
+		if !node.conflicted && a.rootLocked(thread) == a.pane.root {
 			nodes = append(nodes, node)
 		}
 	}
@@ -258,7 +258,7 @@ func (a *subagentActivity) beginResponse(thread string) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if node := a.threads[thread]; node != nil && node.child && !a.closed {
+	if node := a.threads[thread]; node != nil && !node.conflicted && !a.closed {
 		node.responding++
 		node.turns++
 		node.final = false
@@ -291,7 +291,7 @@ func (a *subagentActivity) syncUsage(thread string, counts tokenCounts, report t
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if node := a.threads[thread]; node != nil && node.child && !a.closed {
+	if node := a.threads[thread]; node != nil && !node.conflicted && !a.closed {
 		canonical := complete && !counts.Incomplete && report.missingUsage == 0
 		if canonical {
 			node.inputTokens = report.InputTokens
@@ -316,13 +316,13 @@ func (a *subagentActivity) markUsageGap(thread string) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if node := a.threads[thread]; node != nil && node.child && !a.closed {
+	if node := a.threads[thread]; node != nil && !node.conflicted && !a.closed {
 		node.cost.known = false
 		a.wakePaneLocked()
 	}
 }
 
-// streamOutput adds visible streamed delta bytes to a child's output estimate.
+// streamOutput adds visible streamed delta bytes to an agent's output estimate.
 // The pane picks it up on its next tick rather than waking per delta.
 func (a *subagentActivity) streamOutput(thread string, bytes int) {
 	if a == nil || bytes == 0 {
@@ -330,7 +330,7 @@ func (a *subagentActivity) streamOutput(thread string, bytes int) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if node := a.threads[thread]; node != nil && node.child && !a.closed {
+	if node := a.threads[thread]; node != nil && !node.conflicted && !a.closed {
 		node.streamed += uint64(bytes)
 	}
 }

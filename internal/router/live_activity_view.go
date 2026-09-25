@@ -33,6 +33,7 @@ type liveActivityView struct {
 	offset    int
 	unseen    int
 	status    string
+	feedOnly  bool
 	painter   liveActivityPainter
 	osc       livediff.OSC
 	runs      map[liveActivityRunKey]liveActivityRun
@@ -243,14 +244,17 @@ func (v *liveActivityView) selectAgent(step int) {
 
 func (v *liveActivityView) handleMouse(action byte, row, column int) bool {
 	if action == 'j' || action == 'k' {
-		return v.scrollKey(action)
+		return v.scrollKey(paneWheelKey(action))
 	}
 
 	if action != 'h' && action != '\r' {
 		return false
 	}
 	snippet := v.pointSnippet(action, row, column)
-	agent := v.pointAgent(action, row, column)
+	agent := false
+	if !v.feedOnly {
+		agent = v.pointAgent(action, row, column)
+	}
 	return snippet || agent
 }
 
@@ -357,6 +361,8 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 	lines := []string{v.header(rows, text)}
 	v.feedTop, v.feedLeft, v.feedRight = 2, 1, text
 	switch {
+	case v.feedOnly:
+		lines = append(lines, v.viewport(v.renderFeed(text, body), body)...)
 	case len(rows) > 0 && text >= liveActivitySideColumns && body >= 6:
 		cardWidth := min(44, max(28, text*3/10))
 		feedWidth := text - cardWidth - 3
@@ -431,6 +437,9 @@ func (v *liveActivityView) header(rows []liveActivityRosterRow, width int) strin
 // liveActivityRosterName drops the shared /root/ prefix; nested agents show
 // their leaf under the parent. Feed headings always carry the full path.
 func liveActivityRosterName(row liveActivityRosterRow) string {
+	if row.agent.Name == "/root" {
+		return "main"
+	}
 	name := strings.TrimPrefix(row.agent.Name, "/root/")
 	if row.depth > 0 {
 		name = strings.Repeat("  ", row.depth-1) + "└ " + name[strings.LastIndex(name, "/")+1:]
@@ -797,4 +806,71 @@ func liveActivityMiddle(name string, width int) string {
 	}
 	head := ansi.Truncate(name, width-ansi.StringWidth(leaf)-1, "")
 	return head + "…" + leaf
+}
+
+// renderRosterPane shares selection with the feed without duplicating its state.
+func (v *liveActivityView) renderRosterPane(width, height int, now time.Time) []string {
+	width, height = max(1, width-1), max(1, height)
+	v.hits = v.hits[:0]
+	rows := v.roster()
+	lines := []string{v.header(rows, width)}
+	if height > 1 && len(rows) > 0 {
+		lines = append(lines, v.renderRoster(rows, width, height-1, now)...)
+	}
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+	return lines[:height]
+}
+
+// showAgent keeps the original roster navigation: all agents precedes the list.
+func (v *liveActivityView) showAgent(step int) {
+	rows := v.roster()
+	if len(rows) == 0 {
+		return
+	}
+	index := -1
+	if v.only {
+		index = slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
+	}
+	index = max(-1, min(index+step, len(rows)-1))
+	v.hovered = ""
+	if index < 0 {
+		v.only = false
+	} else {
+		v.selected, v.only = rows[index].agent.Name, true
+	}
+	v.follow()
+}
+
+func (v *liveActivityView) handleRosterKey(escape string, key byte) (string, bool) {
+	if key == 27 {
+		return "\x1b", false
+	}
+	if escape != "" {
+		escape += string(key)
+		if escape == "\x1b[" || escape == "\x1bO" {
+			return escape, false
+		}
+		switch escape {
+		case "\x1b[A", "\x1bOA":
+			key = 'k'
+		case "\x1b[B", "\x1bOB":
+			key = 'j'
+		default:
+			return "", false
+		}
+	}
+	switch key {
+	case 3, 'q':
+		return "", true
+	case 'j', 'n', '\t':
+		v.showAgent(1)
+	case 'k', 'p':
+		v.showAgent(-1)
+	case 'o':
+		v.only = !v.only
+		v.follow()
+	}
+	return "", false
 }

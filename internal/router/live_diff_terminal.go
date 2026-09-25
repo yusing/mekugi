@@ -419,7 +419,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 			return false
 		}
 		if !c.diffMode {
-			c.scroll(action)
+			c.scroll(paneWheelKey(action))
 			c.dirty = true
 			return false
 		}
@@ -457,7 +457,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 			return false
 		}
 		if action != '\r' {
-			c.scroll(action)
+			c.scroll(paneWheelKey(action))
 		}
 		return false
 	}

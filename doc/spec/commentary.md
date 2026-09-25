@@ -311,7 +311,7 @@ session notices stay in the root conversation; main-completion usage is saved to
 Explore-filter events are pane-only, including when the pane is unavailable or
 closes. They retain the originating call ID and structured efficiency counts,
 and render as a muted token/line reduction annotation after the matching command.
-The root joins the roster when its own first filter event is observed. These
+The roster includes the owning root as `main` without waiting for a filter event. These
 events do not claim agent completion or feed local token estimates into the
 roster's provider-usage counters. The filter contract owns their measurement
 basis and eligibility.
@@ -340,10 +340,11 @@ shared view keeps each question to one row so clipping reaches the answers;
 the roster summary shows the first answer line. Other final answers remain
 authored Markdown.
 
-The agents appear as a canonical-path tree in observation order, with each agent's
+The main agent and its children appear as a canonical-path tree in observation order, with each agent's
 current activity and an elapsed-time timer (`elapsed · last response ago`; `—` until
-its first response completes). The roster lives inside the agents view and shares its local selection with the
-feed. Right-aligned after the timer, an agent
+its first response completes). The roster stays in a separate region below Codex on the left, with its own
+resizable divider. It shares local selection with the activity feed on the right;
+no extra process, broker, or transport is needed. Right-aligned after the timer, an agent
 with observed provider usage shows its cumulative input and output tokens as
 `↑ in ↓ out`; its estimated USD cost and provider-response turn count follow as
 `$N · N turns`. The estimate reuses the shared token-pricing calculation; when
@@ -354,7 +355,9 @@ claiming zero. Metric columns align across agents. While a response streams, out
 bytes of visible delta per token, refreshed every second; the provider's reported
 usage replaces the estimate when the response ends. Hidden reasoning is not
 estimated, and input changes only when usage is reported. A Code Mode batch shows its latest
-operation and the count of the others. The layout follows the pane size. At 100
+operation and the count of the others. When the separate roster is visible,
+the activity pane gives its whole body to the feed. On narrow terminals where
+only the focused pane fits, the agents view includes its roster: at 100
 columns or wider, agent cards sit beside the feed. Narrower panes stack one row per
 agent above the feed, and panes with few rows show a one-line strip. The feed groups
 consecutive entries by agent under a colored heading. In the shared view it clips
@@ -362,7 +365,9 @@ long entries, and its only mode shows one agent in full. Hovering a clipped
 snippet underlines its hidden-line count; clicking it expands it in place and
 pauses following so it stays put, and clicking it again clips it. Roster rows are
 clickable: hovering highlights an agent; clicking it shows only that agent,
-and clicking it again restores the shared feed. `n`/`Tab`, `p`, and `o` select and filter agents. Scrolling follows the same
+and clicking it again restores the shared feed. In the roster, `↑`/`↓` or
+`k`/`j` move through all agents followed by each individual agent, stopping at
+either end. `o` toggles the filter. `n`/`Tab` and `p` also select agents. Scrolling follows the same
 line/page/home/end/follow contract as the [live diff](changes.md#live-terminal-view).
 Roster status symbols are
 observed facts only:

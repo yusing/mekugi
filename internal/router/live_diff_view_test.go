@@ -263,7 +263,9 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		frame := waitFrame(func(frame string) bool { return strings.Contains(frame, "DIFF · ") || strings.Contains(frame, "STREAM · ") })
+		frame := waitFrame(func(frame string) bool {
+			return strings.Contains(frame, "DIFF · ") || strings.Contains(frame, "STREAM · ")
+		})
 		if !strings.Contains(frame, "FOLLOW") || !strings.Contains(frame, "Temporary file one.") {
 			t.Fatalf("horizontal input %q changed the view: %q", report, frame)
 		}
@@ -271,7 +273,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 
 	// Pause below the wrapped source row, then narrow it enough to add a
 	// continuation. The anchored status row must remain at the viewport top.
-	if _, err := terminal.Write([]byte("g" + strings.Repeat("\x1b[<65;50;10M", 6) + "z")); err != nil {
+	if _, err := terminal.Write([]byte("g" + strings.Repeat("\x1b[<65;50;10M", 2) + "z")); err != nil {
 		t.Fatal(err)
 	}
 	atStatus := func(frame string) bool {

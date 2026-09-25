@@ -406,16 +406,18 @@ occupying code rows. These controls change no execution or durable evidence.
 Mekugi owns the Codex PTY and terminal composition. Codex remains the execution
 and approval authority. The diff occupies the right side; the agents view,
 specified in [REQ-COMMENTARY-001](commentary.md), shares that side vertically.
+The separate roster remains below Codex on the left, with a draggable divider.
 Mouse dragging resizes the main split, the diff/agents split, and the file dock.
 `Ctrl-B` followed by arrows resizes the main splits, and `[`/`]` resizes the
-file dock. `Ctrl-B` followed by `1`, `2`, or `3` focuses Codex, diff, or agents;
-a click focuses the clicked pane. Small terminals show only the focused pane.
+file dock. `Ctrl-B` followed by `1`, `2`, `3`, or `4` focuses Codex, diff, agents, or roster;
+up/down in roster focus resizes its height. A click focuses the clicked pane. Small terminals show only the focused pane.
 Pane sizes are bounded to keep content usable; resizing never changes evidence.
 
 Diff and agents scrolling use one contract: arrows or `j`/`k` move one line,
 PageUp/PageDown or `b`/Space move one page, Home/End or `g`/`G` go to the
 beginning/end. These actions pause following; `r` resumes it. The wheel scrolls
-the region under the pointer without changing keyboard focus. Stream cards retain
+diff and activity by three lines per event without changing keyboard focus.
+Consecutive wheel events accumulate even before the next rendered frame. Stream cards retain
 their source windows during manual scrolling and resume their live tips with `r`.
 `Ctrl-C` in an auxiliary pane returns focus to Codex, rather than terminating it.
 Bracketed paste is routed intact to Codex and cannot activate layout shortcuts.

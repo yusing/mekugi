@@ -227,9 +227,9 @@ and subagent calls get labeled cards that stream input as it arrives. When a
 turn finishes, the viewer switches to the saved diff. A failed or unfinished
 call never becomes a saved change.
 
-- `Ctrl-B`, then `1`/`2`/`3`, focuses Codex, diffs, or agents. Click a pane to focus it.
+- `Ctrl-B`, then `1`/`2`/`3`/`4`, focuses Codex, diffs, agents, or the roster. Click a pane to focus it.
 - Drag the dividers to resize panes or the file navigator. `Ctrl-B`, then arrow
-  keys, resizes the main splits; `Ctrl-B`, then `[`/`]`, resizes the file navigator.
+  keys, resizes the main splits (up/down in the roster adjusts its height); `Ctrl-B`, then `[`/`]`, resizes the file navigator.
   Narrow terminals show the focused pane full-width.
 - `Ctrl-B`, then `PageUp`/`PageDown`, browses inline Codex history. The wheel
   does the same when Codex is not handling mouse events. Typing returns to live
@@ -248,16 +248,18 @@ See [live view details](doc/spec/changes.md#live-terminal-view).
 
 The first subagent event opens a **Mekugi agents** pane in the same terminal.
 It streams child progress, messages, and replies as they happen, including
-during a native wait. Its roster lists agents with activity, age, and
+during a native wait. The separate roster stays below Codex on the left, with
+a draggable divider. It includes `main` and its children, with activity, age, and
 `↑`/`↓` tokens. Markers show what was observed: `◐` open response, `!` latest
 error, `✓` final answer sent. Usage tables and critical notices stay in the main
 conversation.
 
-- `n`/`p` select agents; `o` toggles the selected-agent filter. Roster rows are clickable.
+- In the roster, `↑`/`↓` or `k`/`j` select all agents or an individual agent;
+  `o` toggles the selected-agent filter. Roster rows are clickable.
 - Scrolling matches the diff pane: `↑`/`↓` or `k`/`j` move one line,
   `PageUp`/`PageDown` or `b`/`Space` move one page, and `Home`/`End` or `g`/`G`
   go to the top/bottom. Scrolling pauses following; `r` resumes it.
-- The mouse wheel scrolls the pane under the pointer, without moving keyboard focus.
+- The mouse wheel scrolls diff and activity by three lines per event, without moving keyboard focus.
 - Click a clipped snippet in the feed to expand it; click again to collapse it.
 - `Ctrl-C` returns focus to Codex without ending it.
 

@@ -24,43 +24,43 @@ import (
 // The wrapper owns only terminal presentation. Codex still owns every tool,
 // approval, child process and native agent inside its PTY.
 type terminalUI struct {
-	pasteEnd                          int
-	hostReply                         []byte
-	hostReplyDiscard, hostReplyEscape bool
-	codexScroll                       int
-	mouseModes                        map[ansi.Mode]bool
-	hostError                         error
-	diffFailure                       string
-	master                            *os.File
-	codex, diffScreen                 *vt.Emulator
-	diff                              *liveDiffTerminalController
-	agents                            *liveActivityView
-	auto                              *autoLiveDiff
-	activity                          *subagentActivity
-	width, height, split, horizontal  int
-	focus, drag                       int // 0 Codex, 1 diff, 2 agents; drag 1 main, 2 auxiliary, 3 files
-	side, activityOpen, cursorVisible bool
-	prefix                            bool
-	sequenceAt                        time.Time
-	sequence, agentEscape             string
-	paste                             bool
-	generation                        uint64
-	layout                            terminalLayout
+	pasteEnd                                       int
+	hostReply                                      []byte
+	hostReplyDiscard, hostReplyEscape              bool
+	codexScroll                                    int
+	mouseModes                                     map[ansi.Mode]bool
+	hostError                                      error
+	diffFailure                                    string
+	master                                         *os.File
+	codex, diffScreen                              *vt.Emulator
+	diff                                           *liveDiffTerminalController
+	agents                                         *liveActivityView
+	auto                                           *autoLiveDiff
+	activity                                       *subagentActivity
+	width, height, split, horizontal, rosterHeight int
+	focus, drag                                    int // 0 Codex, 1 diff, 2 agents, 3 roster; drag 1 main, 2 auxiliary, 3 files, 4 roster
+	side, activityOpen, cursorVisible              bool
+	prefix                                         bool
+	sequenceAt                                     time.Time
+	sequence, agentEscape                          string
+	paste                                          bool
+	generation                                     uint64
+	layout                                         terminalLayout
 }
 
 type terminalRect struct{ x, y, w, h int }
 type terminalLayout struct {
-	codex, diff, agents  terminalRect
-	vertical, horizontal int
+	codex, diff, agents, roster            terminalRect
+	vertical, horizontal, rosterHorizontal int
 }
 
 func (r terminalRect) contains(x, y int) bool {
 	return r.w > 0 && r.h > 0 && x >= r.x && x < r.x+r.w && y >= r.y && y < r.y+r.h
 }
 
-func terminalGeometry(width, height, split, horizontal, focus int, side, agents bool) terminalLayout {
+func terminalGeometry(width, height, split, horizontal, rosterHeight, focus int, side, agents bool) terminalLayout {
 	w, h := max(1, width), max(1, height-1)
-	l := terminalLayout{vertical: -1, horizontal: -1}
+	l := terminalLayout{vertical: -1, horizontal: -1, rosterHorizontal: -1}
 	if !side {
 		l.codex = terminalRect{0, 0, w, h}
 		return l
@@ -72,6 +72,8 @@ func terminalGeometry(width, height, split, horizontal, focus int, side, agents 
 			l.diff = r
 		case 2:
 			l.agents = r
+		case 3:
+			l.roster = r
 		default:
 			l.codex = r
 		}
@@ -85,6 +87,13 @@ func terminalGeometry(width, height, split, horizontal, focus int, side, agents 
 	l.codex = terminalRect{0, 0, split, h}
 	l.diff = terminalRect{split + 1, 0, w - split - 1, h}
 	if agents {
+		if rosterHeight == 0 {
+			rosterHeight = max(3, h/5)
+		}
+		rosterHeight = min(max(3, rosterHeight), h-5)
+		l.rosterHorizontal = h - rosterHeight - 1
+		l.codex.h = l.rosterHorizontal
+		l.roster = terminalRect{0, l.rosterHorizontal + 1, split, rosterHeight}
 		if horizontal == 0 {
 			horizontal = h * 3 / 5
 		}
@@ -319,7 +328,7 @@ func (u *terminalUI) run(ctx context.Context, stdout *os.File, keys <-chan byte,
 }
 
 func (u *terminalUI) paint(ctx context.Context, out io.Writer) error {
-	l := terminalGeometry(u.width, u.height, u.split, u.horizontal, u.focus, u.side, u.activityOpen)
+	l := terminalGeometry(u.width, u.height, u.split, u.horizontal, u.rosterHeight, u.focus, u.side, u.activityOpen)
 	if l.codex.w > 0 && (l.codex.w != u.codex.Width() || l.codex.h != u.codex.Height()) {
 		u.codex.Resize(l.codex.w, l.codex.h)
 		if err := resizeTerminalPTY(u.master, l.codex.w, l.codex.h); err != nil {
@@ -358,8 +367,15 @@ func (u *terminalUI) paint(ctx context.Context, out io.Writer) error {
 			draw(l.diff, strings.Split(u.diffScreen.Render(), "\n"))
 		}
 	}
+	u.agents.feedOnly = l.roster.w > 0
 	if l.agents.w > 0 {
 		draw(l.agents, u.agents.render(l.agents.w, l.agents.h, time.Now()))
+	}
+	if l.roster.w > 0 {
+		draw(l.roster, u.agents.renderRosterPane(l.roster.w, l.roster.h, time.Now()))
+	}
+	if l.rosterHorizontal >= 0 {
+		fmt.Fprintf(&b, "\x1b[%d;1H\x1b[2m%s\x1b[0m", l.rosterHorizontal+1, strings.Repeat("─", l.roster.w))
 	}
 	if l.vertical >= 0 {
 		for row := 0; row < u.height-1; row++ {
@@ -369,12 +385,12 @@ func (u *terminalUI) paint(ctx context.Context, out io.Writer) error {
 	if l.horizontal >= 0 {
 		fmt.Fprintf(&b, "\x1b[%d;%dH\x1b[2m%s\x1b[0m", l.horizontal+1, l.diff.x+1, strings.Repeat("─", l.diff.w))
 	}
-	title := []string{"CODEX", "DIFF", "AGENTS"}[u.focus]
-	status := " " + title + " · Ctrl-B 1/2/3 focus · ←/→ width · ↑/↓ height · [/] files · drag borders"
+	title := []string{"CODEX", "DIFF", "AGENTS", "ROSTER"}[u.focus]
+	status := " " + title + " · Ctrl-B 1/2/3/4 focus · ←/→ width · ↑/↓ height · [/] files"
 	if u.prefix {
-		status = " Layout: 1/2/3 focus · arrows resize · [/] files · PgUp/PgDn Codex history · Ctrl-B sends prefix"
+		status = " Layout: 1/2/3/4 focus · arrows resize · [/] files · PgUp/PgDn Codex history · Ctrl-B sends prefix"
 	}
-	fmt.Fprintf(&b, "\x1b[%d;1H\x1b[7m%s\x1b[0m", max(1, u.height), ansi.Truncate(status, max(1, u.width), ""))
+	fmt.Fprintf(&b, "\x1b[%d;1H\x1b[2m%s\x1b[0m", max(1, u.height), ansi.Truncate(status, max(1, u.width), ""))
 	if u.focus == 0 && l.codex.w > 0 && u.cursorVisible && u.codexScroll == 0 {
 		p := u.codex.CursorPosition()
 		fmt.Fprintf(&b, "\x1b[%d;%dH\x1b[?25h", l.codex.y+p.Y+1, l.codex.x+p.X+1)
@@ -497,8 +513,8 @@ func (u *terminalUI) key(key byte) error {
 		case '2':
 			u.focus = 1
 			u.side = true
-		case '3':
-			u.focus = 2
+		case '3', '4':
+			u.focus = int(key - '1')
 			u.side = true
 			u.activityOpen = true
 		default:
@@ -527,6 +543,18 @@ func (u *terminalUI) resize(key string) {
 	}
 	if u.horizontal == 0 {
 		u.horizontal = max(4, (u.height-1)*3/5)
+	}
+	if u.focus == 3 && (key == "\x1b[A" || key == "k" || key == "\x1b[B" || key == "j") {
+		if u.rosterHeight == 0 {
+			u.rosterHeight = max(3, (u.height-1)/5)
+		}
+		if key == "\x1b[A" || key == "k" {
+			u.rosterHeight++
+		} else {
+			u.rosterHeight--
+		}
+		u.rosterHeight = min(max(3, u.rosterHeight), max(3, u.height-6))
+		return
 	}
 	switch key {
 	case "\x1b[D", "h":
@@ -567,7 +595,11 @@ func (u *terminalUI) send(s string) error {
 			}
 		} else {
 			var quit bool
-			u.agentEscape, quit = u.agents.handleKey(u.agentEscape, key)
+			if u.focus == 3 {
+				u.agentEscape, quit = u.agents.handleRosterKey(u.agentEscape, key)
+			} else {
+				u.agentEscape, quit = u.agents.handleKey(u.agentEscape, key)
+			}
 			if quit {
 				u.focus = 0
 			}
@@ -601,6 +633,8 @@ func (u *terminalUI) mouse(s string) error {
 			u.split = x
 		case 2:
 			u.horizontal = y
+		case 4:
+			u.rosterHeight = min(max(3, u.height-y-2), max(3, u.height-6))
 		case 3:
 			u.diff.navigation.columns = max(16, x-u.layout.diff.x)
 			u.diff.dirty = true
@@ -611,6 +645,9 @@ func (u *terminalUI) mouse(s string) error {
 		switch {
 		case x == u.layout.vertical && u.layout.vertical >= 0:
 			u.drag = 1
+			return nil
+		case y == u.layout.rosterHorizontal && x < u.layout.vertical && u.layout.rosterHorizontal >= 0:
+			u.drag = 4
 			return nil
 		case y == u.layout.horizontal && x > u.layout.vertical && u.layout.horizontal >= 0:
 			u.drag = 2
@@ -629,6 +666,9 @@ func (u *terminalUI) mouse(s string) error {
 	case u.layout.diff.contains(x, y):
 		pane = 1
 		r = u.layout.diff
+	case u.layout.roster.contains(x, y):
+		pane = 3
+		r = u.layout.roster
 	case u.layout.agents.contains(x, y):
 		pane = 2
 		r = u.layout.agents
@@ -703,7 +743,17 @@ func (u *terminalUI) mouse(s string) error {
 	case 65:
 		action = 'j'
 	}
-	u.agents.handleMouse(action, y-r.y+1, x-r.x+1)
+	if pane == 3 {
+		if action == 'j' {
+			u.agents.showAgent(1)
+		} else if action == 'k' {
+			u.agents.showAgent(-1)
+		} else {
+			u.agents.pointAgent(action, y-r.y+1, x-r.x+1)
+		}
+	} else {
+		u.agents.handleMouse(action, y-r.y+1, x-r.x+1)
+	}
 	return nil
 }
 
