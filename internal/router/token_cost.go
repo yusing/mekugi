@@ -15,7 +15,6 @@ type tokenCost struct {
 }
 
 type tokenUsageReport struct {
-	layout string
 	turn   *tokenUsageReport
 	mentor string
 	tokenCounts
@@ -134,51 +133,24 @@ func estimateTokenCost(model, serviceTier string, counts tokenCounts) tokenCost 
 	}
 }
 
+// rosterTokenCost is a display-only estimate when a provider sent totals but
+// omitted billing details needed by the authoritative usage report.
+func rosterTokenCost(model, serviceTier string, counts tokenCounts, price *openCodePrice) tokenCost {
+	if counts.InputTokens == 0 || counts.OutputTokens == 0 || counts.Inconsistent {
+		return tokenCost{}
+	}
+	if serviceTier == "auto" {
+		serviceTier = "default"
+	}
+	counts.Incomplete = false
+	return usageTokenCost(model, serviceTier, counts, price)
+}
+
 func (cost *tokenCost) add(next tokenCost) {
 	cost.uncachedInput += next.uncachedInput
 	cost.cachedInput += next.cachedInput
 	cost.output += next.output
 	cost.known = cost.known && next.known
-}
-
-func formatUsageReport(report tokenUsageReport) string {
-	if report.layout == "off" {
-		return ""
-	}
-	if report.layout != "compact" {
-		text := formatTokenUsageReport(report)
-		if report.mentor != "" {
-			text += "\n" + report.mentor
-		}
-		return text
-	}
-	turn := tokenUsageReport{Incomplete: true}
-	if report.turn != nil {
-		turn = *report.turn
-	}
-	text := "Router session usage · Main turn: " + compactUsage(turn) + " · Total: " + compactUsage(report)
-	if report.typesafe.Requests != 0 || report.typesafe.Incomplete {
-		text += " · TypeSafe: " + compactTypesafeUsage(report.typesafe)
-	}
-	if report.mentor != "" {
-		text += " · " + report.mentor
-	}
-	return text
-}
-
-func compactUsage(report tokenUsageReport) string {
-	if report.Incomplete {
-		return "n/a (usage incomplete)"
-	}
-	cost := "cost n/a"
-	if report.cost.known {
-		cost = fmt.Sprintf("$%.4f", report.cost.cachedInput+report.cost.uncachedInput+report.cost.output)
-	}
-	text := fmt.Sprintf("%s in / %s out, %s", formatUsageTokens(report.InputTokens), formatUsageTokens(report.OutputTokens), cost)
-	if report.missingUsage != 0 {
-		text += fmt.Sprintf(" (Usage incomplete: %d missing)", report.missingUsage)
-	}
-	return text
 }
 
 func formatTokenUsageReport(report tokenUsageReport) string {

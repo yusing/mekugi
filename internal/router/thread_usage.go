@@ -129,15 +129,18 @@ func addThreadUsageTotal(total *threadUsageTotal, model, serviceTier string, cou
 		*pair.dst += pair.add
 	}
 	sum.Inconsistent = sum.Inconsistent || counts.Inconsistent
-	cost := estimateTokenCost(model, serviceTier, counts)
-	if isOpenCodeModel(model) {
-		cost = tokenCost{}
-		if price != nil {
-			cost = price.estimate(serviceTier, counts)
-		}
-	}
-	total.cost.add(cost)
+	total.cost.add(usageTokenCost(model, serviceTier, counts, price))
 	total.counts = sum
+}
+
+func usageTokenCost(model, serviceTier string, counts tokenCounts, price *openCodePrice) tokenCost {
+	if isOpenCodeModel(model) {
+		if price != nil {
+			return price.estimate(serviceTier, counts)
+		}
+		return tokenCost{}
+	}
+	return estimateTokenCost(model, serviceTier, counts)
 }
 
 func (u *threadUsage) observationForTurn(thread, metadataThread, turnID, model, tier string) *threadUsageObservation {
@@ -221,17 +224,6 @@ func (u *threadUsage) mentorNote(thread, model string) (string, uint64) {
 	return "Mentor " + total.mentorFrom + " → " + model, total.mentorRevision
 }
 
-func (u *threadUsage) acknowledgeMentor(thread string, revision uint64) {
-	if u == nil || revision == 0 {
-		return
-	}
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	if total := u.threads[thread]; total != nil && total.mentorRevision == revision {
-		total.mentorFrom = ""
-	}
-}
-
 func (u *threadUsage) snapshot(thread string) (tokenUsageReport, bool) {
 	if u == nil {
 		return tokenUsageReport{}, false
@@ -268,7 +260,7 @@ func (t *mekugiResponseTransform) threadUsageCounts() (tokenUsageReport, bool) {
 // completionUsageReport consolidates only proven descendants. Usage itself stays
 // keyed by transport thread, independent of presentation names and routing sessions.
 func (t *mekugiResponseTransform) completionUsageReport() (tokenUsageReport, bool) {
-	if t.subagentTurn || t.usageTracker == nil || t.proxy != nil && t.proxy.usageReport == "off" {
+	if t.subagentTurn || t.usageTracker == nil {
 		return tokenUsageReport{}, false
 	}
 	report, observed := t.threadUsageCounts()
@@ -284,12 +276,6 @@ func (t *mekugiResponseTransform) completionUsageReport() (tokenUsageReport, boo
 		turn.Incomplete = true
 	}
 	report.turn = &turn
-	if t.proxy != nil {
-		report.layout = t.proxy.usageReport
-	}
-	if report.layout == "" {
-		report.layout = "compact"
-	}
 	var revision uint64
 	report.mentor, revision = t.usageTracker.totals.mentorNote(t.usageTracker.thread, t.usageTracker.model)
 	t.usageMentorRevisions = make(map[string]uint64)
@@ -351,9 +337,6 @@ func (t *mekugiResponseTransform) completionUsageReport() (tokenUsageReport, boo
 				report.cost.known = false
 			}
 		}
-	}
-	if len(rows) > 1 && (t.proxy == nil || t.proxy.usageReport == "") {
-		report.layout = "table"
 	}
 	return report, true
 }

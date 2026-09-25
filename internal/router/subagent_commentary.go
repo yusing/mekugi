@@ -6,7 +6,6 @@ package router
 import (
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -208,11 +207,6 @@ func subagentResponse(item map[string]json.RawMessage) (text, sender string, fin
 	return payload, sender, strings.HasPrefix(header, "Message Type: FINAL_ANSWER\n"), true
 }
 
-// tokenUsageCommentary reports usage only alongside a completed substantive answer.
-func tokenUsageCommentary(response []byte, counts tokenUsageReport, observed bool, terminalStatus string) map[string]json.RawMessage {
-	return formatTokenUsageCommentary(response, counts, observed, terminalStatus, tokenUsageSubstantive(response))
-}
-
 func tokenUsageSubstantive(response []byte) bool {
 	var body struct {
 		Output []map[string]json.RawMessage `json:"output"`
@@ -288,64 +282,4 @@ func blocksTokenUsage(item map[string]json.RawMessage) bool {
 		return status != "completed" && status != "failed"
 	}
 	return false
-}
-
-func formatTokenUsageCommentary(response []byte, counts tokenUsageReport, observed bool, terminalStatus string, substantive bool) map[string]json.RawMessage {
-
-	if !observed {
-		return nil
-	}
-	var identity struct {
-		ID     string `json:"id"`
-		Status string `json:"status"`
-	}
-
-	if json.Unmarshal(response, &identity) != nil || identity.ID == "" {
-		return nil
-	}
-	status := identity.Status
-	if terminalStatus != "" {
-		status = terminalStatus
-	}
-	if status != "completed" {
-		return nil
-	}
-	if !substantive {
-		return nil
-	}
-
-	text := formatUsageReport(counts)
-	if text == "" {
-		return nil
-	}
-	id := subagentCommentaryMessageID("usage\x00" + identity.ID)
-	return assistantCommentaryMessage(id, text)
-}
-
-// responseWithTokenUsageCommentary extracts a response object and token usage commentary.
-func responseWithTokenUsageCommentary(response []byte, counts tokenUsageReport, usageObserved bool, terminalStatus string) (
-	map[string]json.RawMessage,
-	map[string]json.RawMessage,
-	error,
-) {
-	var object map[string]json.RawMessage
-	if err := json.Unmarshal(response, &object); err != nil || object == nil {
-		return nil, nil, errors.New("decode mekugi-enabled response")
-	}
-	message := tokenUsageCommentary(response, counts, usageObserved, terminalStatus)
-	rawOutput, present := object["output"]
-	if message == nil || !present {
-		return object, message, nil
-	}
-	var output []map[string]json.RawMessage
-	if err := json.Unmarshal(rawOutput, &output); err != nil {
-		return nil, nil, errors.New("decode mekugi-enabled response output")
-	}
-	output = append([]map[string]json.RawMessage{message}, output...)
-	encoded, err := marshalProtocolJSON(output)
-	if err != nil {
-		return nil, nil, err
-	}
-	object["output"] = encoded
-	return object, message, nil
 }

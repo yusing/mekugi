@@ -6,20 +6,8 @@ import (
 	"testing"
 )
 
-func TestTypesafeDisplayUsesSharedTokenUnits(t *testing.T) {
-	usage := typesafeUsage{InputTokens: 1_200_000, OutputTokens: 2_000_000_000, Requests: 2}
-	if got := compactTypesafeUsage(usage); !strings.HasPrefix(got, "1.2M in / 2B out,") {
-		t.Fatalf("compact token units = %q", got)
-	}
-	text := formatTokenUsageReport(tokenUsageReport{typesafe: usage})
-	if !strings.Contains(text, "| /root | jev-1.13.0 | 2 | 1.2M | 2B | 0 | n/a |") {
-		t.Fatalf("table token units = %q", text)
-	}
-}
-
 func TestThreadUsageKeepsTypesafeSeparateAndProjectsDescendants(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
-	proxy.usageReport = "table"
 	root, _ := prepareActivityTest(t, proxy, "shared-session", "root", "", "/root", nil)
 	child, _ := prepareActivityTest(t, proxy, "shared-session", "child", "root", "/root/worker", nil)
 	other, _ := prepareActivityTest(t, proxy, "other-session", "other", "", "/root/other", nil)
@@ -77,10 +65,6 @@ func TestThreadUsageKeepsTypesafeSeparateAndProjectsDescendants(t *testing.T) {
 		t.Fatalf("unrelated thread appeared in root TypeSafe report:\n%s", text)
 	}
 
-	compact := formatUsageReport(tokenUsageReport{layout: "compact", typesafe: report.typesafe})
-	if !strings.Contains(compact, "TypeSafe: 18 in / 7 out, 3 requests, 1 missing usage, cost n/a") {
-		t.Fatalf("compact notice omitted TypeSafe usage: %s", compact)
-	}
 }
 
 func TestTokenMetricsFilePersistsTypesafeSection(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -691,9 +692,10 @@ func TestMentorHandoffLunaMainMappingKeepsSubagentsUnchanged(t *testing.T) {
 	}
 }
 
-func TestExecuteRequestMentorCommentaryDeliveredOnceAndStrippedOnReplay(t *testing.T) {
+func TestExecuteRequestMentorMetricsPersistAndJournalFlushStripsOnReplay(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+			t.Setenv("TMPDIR", t.TempDir())
 			proxy := newManagedMekugiProxy(t)
 			mentor := newMentorHandoff(true, true)
 			workspace := t.TempDir()
@@ -743,28 +745,41 @@ func TestExecuteRequestMentorCommentaryDeliveredOnceAndStrippedOnReplay(t *testi
 				if bytes.Contains(output.Bytes(), []byte("Mentor handoff complete.")) {
 					t.Fatalf("response %d emitted a standalone handoff notice: %s", index, output.Bytes())
 				}
+				if bytes.Contains(output.Bytes(), []byte("Router session usage")) {
+					t.Fatalf("response %d exposed token metrics as commentary: %s", index, output.Bytes())
+				}
 				forwarded, err := parseResponsesRequest(provider.forwarded[0])
 				if err != nil {
 					t.Fatal(err)
 				}
 				if index == 0 {
-					if forwarded.model() != "gpt-6-astra" || bytes.Contains(output.Bytes(), []byte("Router session usage")) {
-						t.Fatalf("pre-switch completion made an early usage claim: model=%q output=%s", forwarded.model(), output.Bytes())
+					if forwarded.model() != "gpt-6-astra" {
+						t.Fatalf("pre-switch request used unexpected model: model=%q output=%s", forwarded.model(), output.Bytes())
 					}
 				}
 				if index == 1 {
-					if forwarded.model() != "gpt-5.6-luna" || !bytes.Contains(output.Bytes(), []byte("Router session usage · Main turn:")) ||
-						!bytes.Contains(output.Bytes(), []byte("Mentor gpt-6-astra → gpt-5.6-luna")) {
-						t.Fatalf("first post-switch report lacks the actual transition: model=%q output=%s", forwarded.model(), output.Bytes())
+					if forwarded.model() != "gpt-5.6-luna" || !bytes.Contains(output.Bytes(), []byte("Journal flush")) {
+						t.Fatalf("first post-switch completion lost the journal flush: model=%q output=%s", forwarded.model(), output.Bytes())
 					}
 					for _, item := range journalFinishClientOutput(t, stream, output.Bytes()) {
 						text := commentaryMessageText(item)
-						if strings.Contains(text, "Router session usage") || strings.Contains(text, "Journal flush") {
+						if strings.Contains(text, "Router session usage") {
+							t.Fatalf("usage metrics were replayed as commentary: %s", text)
+						}
+						if strings.Contains(text, "Journal flush") {
 							replay = append(replay, assistantCommentaryMessage(jsonString(item, "id"), text))
 						}
 					}
-					if len(replay) != 2 {
-						t.Fatalf("generated-message provenance = %d messages, want usage and journal flush", len(replay))
+					if len(replay) != 1 {
+						t.Fatalf("generated-message provenance = %d messages, want only journal flush", len(replay))
+					}
+					paths := proxy.tokenMetricPaths()
+					if len(paths) != 1 {
+						t.Fatalf("post-switch main metrics paths = %q", paths)
+					}
+					markdown, err := os.ReadFile(paths[0])
+					if err != nil || !bytes.Contains(markdown, []byte("| Total")) {
+						t.Fatalf("saved metrics omitted usage table: %q, %v", markdown, err)
 					}
 				}
 				if index == 2 && (bytes.Contains(provider.forwarded[0], []byte("Router session usage")) || bytes.Contains(provider.forwarded[0], []byte("Journal flush"))) {

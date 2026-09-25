@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -141,6 +142,7 @@ func TestJournalNativeCodexSpawnE2E(t *testing.T) {
 }
 
 func runJournalNativeCodexSpawnE2E(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
 	codex, err := exec.LookPath("codex")
 	if err != nil {
 		t.Fatal("native Codex is required for the journal acceptance gate")
@@ -181,7 +183,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 		t.Fatalf("native consumer lost journal result or child summary: child=%v journal=%v\nstdout: %.8000s\nstderr: %.8000s", provider.childResultSeen, provider.journalResultSeen, stdout.String(), stderr.String())
 	}
 	childStart, childLiveUpdate := false, false
-	tokenTables, rootFlushes := 0, 0
+	rootFlushes := 0
 	lastMessage := ""
 	for line := range strings.SplitSeq(stdout.String(), "\n") {
 		if strings.TrimSpace(line) == "" {
@@ -201,19 +203,13 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 		}
 		text := event.Item.Text
 		if strings.Contains(text, "Router session usage") {
-			tokenTables++
-			if !strings.Contains(text, "| /root/journal_child |") || !strings.Contains(text, "| Total |") {
-				t.Fatalf("main table omitted child usage or total: %s", text)
-			}
+			t.Fatalf("native completion exposed token metrics as commentary: %s", text)
 		}
 		if text != "" {
 			lastMessage = text
 		}
 		if strings.HasPrefix(text, "Journal flush `/root`") {
 			rootFlushes++
-			if tokenTables != 1 {
-				t.Fatal("native consumer received the final journal before token metrics")
-			}
 		}
 		childLiveUpdate = childLiveUpdate || strings.Contains(text, "Journal update `/root/journal_child`") && strings.Contains(text, "Native child live milestone")
 		if strings.Contains(text, " -> ") && (strings.Contains(text, "Completed.") || strings.Contains(text, "Journal update")) {
@@ -224,9 +220,6 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 		}
 		childStart = childStart || strings.Contains(text, "[`/root/journal_child`] Started · ")
 	}
-	if tokenTables != 1 {
-		t.Fatalf("native consumer received %d token tables, want one at main completion", tokenTables)
-	}
 	if rootFlushes != 1 || !strings.HasPrefix(lastMessage, "Journal flush `/root`") {
 		t.Fatalf("native consumer must receive one journal flush as its last message; flushes=%d last=%s", rootFlushes, lastMessage)
 	}
@@ -235,6 +228,14 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 	}
 	if provider.childRequests != 2 {
 		t.Fatalf("child provider requests = %d, want live update then a natural final answer without another request", provider.childRequests)
+	}
+	paths := proxy.tokenMetricPaths()
+	if len(paths) != 1 {
+		t.Fatalf("main completion metric paths = %q", paths)
+	}
+	markdown, err := os.ReadFile(paths[0])
+	if err != nil || !strings.Contains(string(markdown), "| /root/journal_child |") || !strings.Contains(string(markdown), "| Total |") {
+		t.Fatalf("main metrics omitted native child usage: %q, %v", markdown, err)
 	}
 	if !childLiveUpdate || !strings.Contains(stdout.String(), "Journal flush ") {
 		t.Fatal("native consumer did not display distinct live updates and terminal flushes")

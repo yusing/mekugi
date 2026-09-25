@@ -20,7 +20,7 @@ func (t *mekugiResponseTransform) TransformJSON(payload []byte) ([]byte, error) 
 			return nil, translationDiagnostic(err, "mekugi_json", "Mekugi final answer capture failed")
 		}
 	}
-	transformed, _, err := t.transformResponse(payload, "")
+	transformed, err := t.transformResponse(payload, "")
 	if err == nil && t.journalActive {
 		if len(t.journalNaturalAnswerIDs) == 0 {
 			err = t.captureNaturalJournalAnswer(payload)
@@ -389,7 +389,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		} else {
 			clear(t.pending)
 		}
-		transformed, usageMessage, err := t.transformResponse(envelope.Response, envelope.Type.Status())
+		transformed, err := t.transformResponse(envelope.Response, envelope.Type.Status())
 		if err != nil {
 			return nil, err
 		}
@@ -443,9 +443,6 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			}
 		}
 		t.releaseCommentarySubscriptions()
-		if usageMessage != nil {
-			visible = append(visible, assistantCommentaryDoneEvent(usageMessage))
-		}
 		visible = append(visible, t.filterNaturalAnswerEvents(t.finalAnswer.flush())...)
 		visible = append(visible, event)
 		return visible, nil
@@ -484,11 +481,11 @@ func (t *mekugiResponseTransform) pendingCallKnown(callID string) bool {
 	return false
 }
 
-func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStatus string) ([]byte, map[string]json.RawMessage, error) {
+func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStatus string) ([]byte, error) {
 	var counts tokenUsageReport
 	observed := false
-	// Discovery reads durable ancestry, so defer it until a report can actually
-	// be emitted. Journal finish has its own terminal reporting path.
+	// Discovery reads durable ancestry, so defer it until a report can be saved.
+	// Journal finish has its own terminal reporting path.
 	if !t.subagentTurn && t.usageObserved && !t.journalTerminalReady() {
 		substantive := t.finalAnswer.substantive && !t.finalAnswer.blocked && !t.finalAnswer.disabled
 		if terminalStatus == "" {
@@ -503,35 +500,17 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		}
 	}
 	var object map[string]json.RawMessage
-	var usageMessage map[string]json.RawMessage
 	var err error
-	if terminalStatus == "" {
-		object, usageMessage, err = responseWithTokenUsageCommentary(payload, counts, observed && t.usageObserved, "")
-	} else {
-		err = json.Unmarshal(payload, &object)
-		if err == nil && object == nil {
-			err = errors.New("decode mekugi-enabled response")
-		}
-		// Codex consumes completed items, not the terminal output snapshot.
-		usageMessage = formatTokenUsageCommentary(payload, counts, observed && t.usageObserved,
-			terminalStatus, t.finalAnswer.substantive && !t.finalAnswer.blocked && !t.finalAnswer.disabled)
+	err = json.Unmarshal(payload, &object)
+	if err == nil && object == nil {
+		err = errors.New("decode mekugi-enabled response")
 	}
 
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	if usageMessage != nil && len(t.retainCommentary(usageMessage)) == 0 {
-		var output []map[string]json.RawMessage
-		if terminalStatus == "" && json.Unmarshal(object["output"], &output) == nil {
-			id := jsonString(usageMessage, "id")
-			output = slices.DeleteFunc(output, func(item map[string]json.RawMessage) bool { return jsonString(item, "id") == id })
-			object["output"] = mustMarshalJSON(output)
-		}
-		usageMessage = nil
-	}
-	if usageMessage != nil {
+	if observed && t.usageObserved {
 		t.proxy.writeTokenMetrics(t.shellThreadID, counts)
-		t.liveDiffUsageID = jsonString(usageMessage, "id")
 	}
 	t.subagentResponses = t.retainCommentary(t.subagentResponses...)
 	// SSE terminal events own completion even when the embedded status is absent.
@@ -545,7 +524,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 	if t.journalActive && terminalStatus != "" && (!interrupted || len(t.journalResults) != 0 || len(journalPrefix.clientOutput) != 0) {
 		var output []map[string]json.RawMessage
 		if err := decodeJournalOutput(object["output"], &output); err != nil {
-			return nil, nil, errors.New("decode mekugi-enabled response output")
+			return nil, errors.New("decode mekugi-enabled response output")
 		}
 		if len(output) == 0 {
 			// A provider may leave the terminal snapshot empty after streaming
@@ -559,7 +538,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 	if rawOutput, ok := object["output"]; ok {
 		var output []map[string]json.RawMessage
 		if err := json.Unmarshal(rawOutput, &output); err != nil {
-			return nil, nil, errors.New("decode mekugi-enabled response output")
+			return nil, errors.New("decode mekugi-enabled response output")
 		}
 		if t.journalActive && terminalStatus == "" {
 			t.journalProviderOutput = output
@@ -587,7 +566,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 				if !interrupted || jsonString(fields, "status") == "completed" || t.journalCalls[jsonString(fields, "call_id")] != nil {
 					result, err := t.executeRouterLocalCall(fields)
 					if err != nil {
-						return nil, nil, err
+						return nil, err
 					}
 					transformedOutput = append(transformedOutput, journalClientResult(result, jsonString(fields, "name")))
 				}
@@ -605,21 +584,21 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 			activityFields := maps.Clone(item.fields)
 			message, err := t.transformStructuredCommentary(item.fields)
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			if message != nil {
 				transformedOutput = append(transformedOutput, message)
 			}
 			item = newResponsesItem(item.fields)
 			if _, err := t.transformOutputItem(&item); err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			t.collectSubagentToolCall(activityFields)
 			transformedOutput = append(transformedOutput, item.fields)
 		}
 		encoded, err := marshalProtocolJSON(transformedOutput)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if t.journalActive {
 			t.journalClientOutput = transformedOutput
@@ -631,7 +610,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		if len(journalPrefix.clientOutput) != 0 {
 			var output []map[string]json.RawMessage
 			if err := json.Unmarshal(object["output"], &output); err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			object["output"] = mustMarshalJSON(append(slices.Clone(journalPrefix.clientOutput), output...))
 		}
@@ -640,14 +619,10 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 	// Every translated carrier in a JSON body is about to become visible,
 	// regardless of whether the provider supplied a terminal response status.
 	if err := t.commitHistory(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	transformed, err := marshalProtocolJSON(object)
-	if err == nil && usageMessage != nil && !t.journalActive {
-		// Codex forwards only the child's final answer, not its preceding usage.
-		t.proxy.activity.collect(t.threadID, jsonString(usageMessage, "id"), "usage", formatTokenUsageReport(counts))
-	}
-	return transformed, usageMessage, err
+	return transformed, err
 }
 
 func (t *mekugiResponseTransform) restoreResponseContract(object map[string]json.RawMessage) {

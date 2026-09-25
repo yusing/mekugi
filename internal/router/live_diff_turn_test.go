@@ -97,34 +97,6 @@ func TestAutoLiveDiffTurnRejectsInvalidRequests(t *testing.T) {
 	requireNoLiveDiffTurnEvent(t, sub)
 }
 
-func TestLiveDiffTurnCompletesOnlyWhenRetainedUsageIsDelivered(t *testing.T) {
-	const workspace, thread, turnID = "/work", "root", "turn"
-	auto, sub := newLiveDiffTurnTest(t, workspace, thread)
-	auto.beginTurn(workspace, thread, codexTurnMetadata{RequestKind: "turn", ThreadID: thread, TurnID: turnID})
-	requireLiveDiffTurnEvent(t, sub, "active")
-
-	transform := &mekugiResponseTransform{
-		proxy:           &mekugiProxy{autoLiveDiff: auto},
-		directory:       workspace,
-		threadID:        thread,
-		shellTurnID:     turnID,
-		liveDiffUsageID: "usage",
-	}
-	transform.Delivered([]byte(`{"type":"response.output_item.done","item":{"id":"tool","type":"function_call"}}`))
-	requireNoLiveDiffTurnEvent(t, sub)
-	if transform.liveDiffUsageID != "usage" {
-		t.Fatal("unrelated delivery consumed retained usage identity")
-	}
-
-	transform.Delivered([]byte(`{"type":"response.output_item.done","item":{"id":"usage","type":"message"}}`))
-	requireLiveDiffTurnEvent(t, sub, "completed")
-	if transform.liveDiffUsageID != "" {
-		t.Fatal("delivered usage identity was not consumed")
-	}
-	transform.Delivered([]byte(`{"type":"response.output_item.done","item":{"id":"usage","type":"message"}}`))
-	requireNoLiveDiffTurnEvent(t, sub)
-}
-
 func TestRequestPreparationBeginsOnlyNewRootTurn(t *testing.T) {
 	const thread = "thread-1"
 	workspace := t.TempDir()
@@ -227,12 +199,12 @@ func TestLiveDiffJournalTerminalCompletesAfterTransformedDelivery(t *testing.T) 
 	}
 }
 
-func TestLiveDiffUsageReportOffCompletesOnlyDeliveredSuccessfulFinal(t *testing.T) {
+func TestLiveDiffCompletionMetricsOnlyPersistForSuccessfulFinal(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		for _, scenario := range []string{"final", "tool-only", "failed"} {
 			t.Run(map[bool]string{false: "json", true: "sse"}[stream]+"/"+scenario, func(t *testing.T) {
+				t.Setenv("TMPDIR", t.TempDir())
 				transform, proxy, _, workspace := newMekugiTestTransform(t)
-				proxy.usageReport = "off"
 				turnID := "usage-off-" + map[bool]string{false: "json", true: "sse"}[stream] + "-" + scenario
 				transform.shellTurnID = turnID
 				transform.usageTracker = proxy.usage.observationForTurn(transform.shellThreadID, transform.shellThreadID, turnID, "gpt-6-sol", "")
@@ -327,6 +299,9 @@ func TestLiveDiffUsageReportOffCompletesOnlyDeliveredSuccessfulFinal(t *testing.
 					requireLiveDiffTurnEvent(t, sub, "completed")
 				} else {
 					requireNoLiveDiffTurnEvent(t, sub)
+				}
+				if len(proxy.tokenMetricPaths()) != map[bool]int{true: 1, false: 0}[scenario == "final"] {
+					t.Fatalf("scenario %s persisted unexpected token metrics: %q", scenario, proxy.tokenMetricPaths())
 				}
 			})
 		}

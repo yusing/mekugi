@@ -4,11 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"math"
+	"os"
 	"strings"
 	"testing"
 )
-
-const testTokenUsageTable = "Router session usage\n\n| Agent | Role | Model | Input (cache hit) | Cache write | Output | Reasoning | Input cost (cached + uncached) | Output cost | Total cost | Missing usage |\n"
 
 func TestTokenCostDisjointCategories(t *testing.T) {
 	counts := tokenCounts{InputTokens: 100_000, UncachedInputTokens: 40_000, OutputTokens: 30_000, ReasoningTokens: 20_000}
@@ -156,8 +155,8 @@ func TestTokenCostReportIncludesCompactionAcrossTransports(t *testing.T) {
 		{"sse-excess-reasoning", true, "reasoning", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TMPDIR", t.TempDir())
 			proxy := newManagedMekugiProxy(t)
-			proxy.usageReport = "table"
 			for step, model := range []string{"gpt-6-astra", "gpt-5.6-sol"} {
 				requestStream := tc.stream || step == 0 // Compaction requires streaming.
 				request := serverRequest(t, func(fields map[string]any) {
@@ -223,20 +222,18 @@ func TestTokenCostReportIncludesCompactionAcrossTransports(t *testing.T) {
 					}
 					continue
 				}
-				rendered := output.String()
-				if requestStream {
-					var notices []string
-					for _, payload := range finalAnswerTestPayloads(rendered) {
-						var event map[string]json.RawMessage
-						if err := json.Unmarshal(payload, &event); err != nil {
-							t.Fatal(err)
-						}
-						if jsonString(event, "type") == "response.output_item.done" {
-							notices = append(notices, string(payload))
-						}
-					}
-					rendered = strings.Join(notices, "\n")
+				if strings.Contains(output.String(), "Router session usage") {
+					t.Fatalf("completion emitted usage commentary: %s", output.String())
 				}
+				paths := proxy.tokenMetricPaths()
+				if len(paths) != 1 {
+					t.Fatalf("completion metric paths = %q", paths)
+				}
+				markdown, err := os.ReadFile(paths[0])
+				if err != nil {
+					t.Fatal(err)
+				}
+				rendered := string(markdown)
 				wantCost := "$2.2400"
 				if tc.serviceTier != "" {
 					wantCost = "$4.4800"
@@ -254,9 +251,6 @@ func TestTokenCostReportIncludesCompactionAcrossTransports(t *testing.T) {
 				}
 				if !strings.Contains(output.String(), "No files were changed.") {
 					t.Fatal("provider final text was filtered")
-				}
-				if strings.Count(rendered, "| Agent | Role | Model |") != 1 {
-					t.Fatal("cost report duplicated", rendered)
 				}
 			}
 		})

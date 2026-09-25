@@ -68,11 +68,13 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 	for _, child := range []bool{false, true} {
 		for _, phase := range []string{"final_answer", ""} {
 			t.Run(map[bool]string{false: "root", true: "child"}[child]+"/"+phase, func(t *testing.T) {
+				t.Setenv("TMPDIR", t.TempDir())
 				metadata := codexTurnMetadata{}
 				if child {
 					metadata.SubagentKind = threadSpawnSubagentKind
 				}
 				transform, _, _ := newSubagentCommentaryTestTransformWithMetadata(t, nil, metadata)
+				transform.journalActive = false
 				answer := finalAnswerTestEvents(t, phase)
 				terminal := finalAnswerTestTerminal(t, "completed", true)
 				var output bytes.Buffer
@@ -82,28 +84,21 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 					t.Fatalf("state=%v, error=%v", state, err)
 				}
 				events := finalAnswerTestPayloads(output.String())
-				// A successful final answer is rendered as the journal result. The
-				// buffered provider message is suppressed; only usage (for main),
-				// the journal terminal, and the response terminal remain.
-				wantEvents := 3
-				if child {
-					wantEvents = 2
-				}
+				// Without an active journal, the answer lifecycle is streamed
+				// unchanged; completion metrics remain outside the conversation.
+				wantEvents := len(answer) + 1
 				if len(events) != wantEvents {
 					t.Fatalf("events = %s", output.String())
 				}
-				if !child {
-					if text := commentaryEventText(t, events[0]); !strings.HasPrefix(text, "Router session usage · Main turn: ") || strings.Contains(text, "| Agent |") {
-						t.Fatalf("usage = %q", text)
-					}
+				if bytes.Contains(output.Bytes(), []byte("Router session usage")) {
+					t.Fatalf("completion exposed usage commentary: %s", output.String())
 				}
 				if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) {
 					t.Fatal("provider answer was filtered")
 				}
 
-				// Model Codex's event handling: every done assistant item updates
-				// last_agent_message, including the final journal renderer. Only
-				// completed stops it.
+				// Model Codex's event handling: the provider final answer is the
+				// last completed assistant item before the response terminal.
 				var lastAgentMessage string
 				completed := false
 				var rendered []string
@@ -130,15 +125,7 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 						rendered = append(rendered, lastAgentMessage)
 					}
 				}
-				wantMessages := 2
-				wantHeading := "Journal flush `/root`"
-				if child {
-					wantMessages = 1
-					wantHeading = "Journal result"
-				}
-				if !completed || len(rendered) != wantMessages || !strings.HasPrefix(lastAgentMessage, wantHeading) ||
-					!strings.Contains(lastAgentMessage, "**Question:**") || !strings.Contains(lastAgentMessage, "**Answer:**") ||
-					!strings.Contains(lastAgentMessage, "No files were changed.") || bytes.Contains(output.Bytes(), []byte(`"id":"answer"`)) {
+				if !completed || len(rendered) != 1 || lastAgentMessage != "No files were changed." {
 					t.Fatalf("Codex result = %q, rendered=%q, completed=%v", lastAgentMessage, rendered, completed)
 				}
 			})
@@ -146,14 +133,23 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 	}
 }
 
-func TestFinalAnswerStreamKeepsProgressAndToolsLive(t *testing.T) {
+func TestFinalAnswerStreamBuffersAnswersButStreamsProgressAndTools(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
 	transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
+	transform.journalActive = false
 	answer := finalAnswerTestEvents(t, "final_answer")
+	var observation finalAnswerStream
 	for _, event := range answer {
+		if visible, buffered := observation.observe(event); !buffered || len(visible) != 0 {
+			t.Fatalf("answer was not buffered: %q", visible)
+		}
 		visible, err := transform.TransformSSE(event)
 		if err != nil || len(visible) != 0 {
-			t.Fatalf("answer was not buffered: %q, %v", visible, err)
+			t.Fatalf("answer escaped before terminal: %q, %v", visible, err)
 		}
+	}
+	if !observation.substantive || !transform.finalAnswer.substantive {
+		t.Fatal("answer lifecycle did not retain substantive-completion evidence")
 	}
 	for _, event := range [][]byte{
 		assistantCommentaryDoneEvent(assistantCommentaryMessage("progress", "Still working")),
@@ -174,11 +170,32 @@ func TestFinalAnswerStreamKeepsProgressAndToolsLive(t *testing.T) {
 	}
 }
 
+func TestFinalAnswerStreamJournalBufferFlushesUnchanged(t *testing.T) {
+	var stream finalAnswerStream
+	expected := finalAnswerTestEvents(t, "final_answer")
+	for index, event := range expected {
+		visible, buffered := stream.observe(event)
+		if !buffered || len(visible) != 0 {
+			t.Fatalf("journal answer event %d escaped before terminal delivery: %q", index, visible)
+		}
+	}
+	if got := stream.flush(); len(got) != len(expected) {
+		t.Fatalf("flushed %d answer events, want %d", len(got), len(expected))
+	} else {
+		for i := range expected {
+			if !bytes.Equal(got[i], expected[i]) {
+				t.Fatalf("flushed event %d changed: %s", i, got[i])
+			}
+		}
+	}
+}
+
 func TestFinalAnswerStreamFlushesWithoutUsage(t *testing.T) {
 	failure := errors.New("upstream disconnected")
 	for _, stop := range []string{"missing_usage", "failed", "incomplete", "eof", "read_error", "error_event", "done_sentinel"} {
 		t.Run(stop, func(t *testing.T) {
 			transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
+			transform.journalActive = false
 			answer := finalAnswerTestEvents(t, "final_answer")
 			input := slices.Clone(answer)
 			switch stop {
@@ -207,14 +224,6 @@ func TestFinalAnswerStreamFlushesWithoutUsage(t *testing.T) {
 				t.Fatal(err)
 			}
 			events := finalAnswerTestPayloads(output.String())
-			if stop == "missing_usage" {
-				if len(events) != 3 || !bytes.Contains(output.Bytes(), []byte("Router session usage")) ||
-					!bytes.Contains(output.Bytes(), []byte("Journal flush")) || !bytes.Contains(output.Bytes(), []byte("**Answer:**")) ||
-					bytes.Contains(output.Bytes(), []byte(`"id":"answer"`)) {
-					t.Fatalf("successful completion did not journal-flush the answer: %s", output.String())
-				}
-				return
-			}
 			if len(events) < len(answer) || bytes.Contains(output.Bytes(), []byte("Router session usage")) {
 				t.Fatalf("lost answer or emitted usage: %s", output.String())
 			}
@@ -227,89 +236,6 @@ func TestFinalAnswerStreamFlushesWithoutUsage(t *testing.T) {
 	}
 }
 
-func TestTokenCommentaryAnswerCompatibility(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		item map[string]any
-		want bool
-	}{
-		{"text", map[string]any{"type": "message", "role": "assistant", "phase": "final_answer",
-			"content": []any{map[string]any{"type": "output_text", "text": "Answer"}}}, true},
-		{"legacy", map[string]any{"type": "message", "role": "assistant",
-			"content": []any{map[string]any{"type": "output_text", "text": "Answer"}}}, true},
-		{"null_phase", map[string]any{"type": "message", "role": "assistant", "phase": nil,
-			"content": []any{map[string]any{"type": "output_text", "text": "Answer"}}}, true},
-		{"empty_phase", map[string]any{"type": "message", "role": "assistant", "phase": "",
-			"content": []any{map[string]any{"type": "output_text", "text": "Answer"}}}, false},
-		{"refusal", map[string]any{"type": "message", "role": "assistant", "phase": "final_answer",
-			"content": []any{map[string]any{"type": "refusal", "refusal": "Cannot do that."}}}, false},
-		{"mixed_refusal", map[string]any{"type": "message", "role": "assistant", "phase": "final_answer",
-			"content": []any{map[string]any{"type": "output_text", "text": "Answer"},
-				map[string]any{"type": "refusal", "refusal": "Cannot do that."}}}, false},
-		{"invalid_text", map[string]any{"type": "message", "role": "assistant", "phase": "final_answer",
-			"content": []any{map[string]any{"type": "output_text", "text": "Answer"},
-				map[string]any{"type": "output_text", "text": 42}}}, false},
-		{"empty", map[string]any{"type": "message", "role": "assistant", "phase": "final_answer",
-			"content": []any{map[string]any{"type": "output_text", "text": " "}}}, false},
-		{"commentary", map[string]any{"type": "message", "role": "assistant", "phase": "commentary",
-			"content": []any{map[string]any{"type": "output_text", "text": "Still working"}}}, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			for _, stream := range []bool{false, true} {
-				t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-					transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
-					terminal := finalAnswerTestTerminal(t, "completed", true)
-					var output []byte
-					if stream {
-						item := mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": tc.item})
-						initial, err := transform.TransformSSE(item)
-						if err != nil {
-							t.Fatal(err)
-						}
-						observeTestResponseUsage(t, transform, terminal, true)
-						events, err := transform.TransformSSE(terminal)
-						if err != nil {
-							t.Fatal(err)
-						}
-						output = bytes.Join(append(initial, events...), nil)
-						if !bytes.Contains(output, mustTestJSON(t, tc.item)) {
-							t.Fatal("streamed provider output was filtered")
-						}
-					} else {
-						var envelope struct {
-							Response map[string]json.RawMessage `json:"response"`
-						}
-						if err := json.Unmarshal(terminal, &envelope); err != nil {
-							t.Fatal(err)
-						}
-						envelope.Response["output"] = mustTestJSON(t, []any{tc.item})
-						response := mustTestJSON(t, envelope.Response)
-						observeTestResponseUsage(t, transform, response, false)
-						var err error
-						output, err = transform.TransformJSON(response)
-						if err != nil {
-							t.Fatal(err)
-						}
-						var visible struct {
-							Output []json.RawMessage `json:"output"`
-						}
-						if err := json.Unmarshal(output, &visible); err != nil {
-							t.Fatal(err)
-						}
-						if len(visible.Output) == 0 || !bytes.Equal(visible.Output[len(visible.Output)-1], mustTestJSON(t, tc.item)) {
-							t.Fatalf("unsupported provider output changed: %s", output)
-						}
-					}
-					if bytes.Contains(output, []byte("Router session usage")) != tc.want {
-						t.Fatalf("usage eligibility: %s", output)
-					}
-				})
-			}
-
-		})
-	}
-}
-
 type finalAnswerErrorReader struct{ err error }
 
 func (r finalAnswerErrorReader) Read([]byte) (int, error) { return 0, r.err }
@@ -317,7 +243,7 @@ func (r finalAnswerErrorReader) Read([]byte) (int, error) { return 0, r.err }
 func TestFinalAnswerStreamBudgetPreservesOutput(t *testing.T) {
 	var stream finalAnswerStream
 	events := finalAnswerTestEvents(t, "final_answer")
-	if _, buffered := stream.observe(events[0]); !buffered {
+	if visible, buffered := stream.observe(events[0]); !buffered || len(visible) != 0 {
 		t.Fatal("answer not buffered")
 	}
 	stream.bytes = upstreamJSONBufferBytes
@@ -331,9 +257,10 @@ func TestFinalAnswerStreamBudgetPreservesOutput(t *testing.T) {
 	}
 }
 
-func TestFinalAnswerStreamExecuteRequest(t *testing.T) {
+func TestNonJournalAnswerStreamsWithoutUsageCommentary(t *testing.T) {
 	for _, child := range []bool{false, true} {
 		t.Run(map[bool]string{false: "root", true: "child"}[child], func(t *testing.T) {
+			t.Setenv("TMPDIR", t.TempDir())
 			proxy := newManagedMekugiProxy(t)
 			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = true })
 			headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
@@ -355,22 +282,18 @@ func TestFinalAnswerStreamExecuteRequest(t *testing.T) {
 				t.Fatal(err)
 			}
 			events := finalAnswerTestPayloads(output.String())
-			wantEvents := 3
-			if child {
-				wantEvents = 2
-			}
-			if len(events) != wantEvents || (!child && !strings.HasPrefix(commentaryEventText(t, events[0]), "Router session usage · Main turn: ")) {
+			if len(events) != 2 || bytes.Contains(output.Bytes(), []byte("Router session usage")) {
 				t.Fatalf("completion output = %s", output.String())
 			}
-			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) ||
-				!bytes.Contains(output.Bytes(), []byte("**Answer:**")) || bytes.Contains(output.Bytes(), []byte(`"id":"answer"`)) ||
-				(child && !bytes.Contains(output.Bytes(), []byte("Journal result"))) ||
-				(!child && !bytes.Contains(output.Bytes(), []byte("Journal flush"))) {
-				t.Fatal("natural completion did not render the answer through the journal")
+			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) || bytes.Contains(output.Bytes(), []byte(`"id":"answer"`)) {
+				t.Fatal("journal completion did not capture the provider answer")
 			}
 			counts, available := proxy.usage.snapshot("thread-1")
 			if !available || counts.tokenCounts != (tokenCounts{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3}) {
 				t.Fatalf("provider usage changed: %+v, available=%v", counts, available)
+			}
+			if paths := proxy.tokenMetricPaths(); len(paths) != map[bool]int{false: 1, true: 0}[child] {
+				t.Fatalf("child=%t token metric paths = %q", child, paths)
 			}
 		})
 	}

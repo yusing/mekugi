@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -20,8 +21,8 @@ import (
 func TestTokenUsageMentorAndManualSwitch(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprint(stream), func(t *testing.T) {
+			t.Setenv("TMPDIR", t.TempDir())
 			proxy := newManagedMekugiProxy(t)
-			proxy.usageReport = "table"
 			mentor := newMentorHandoff(true, true)
 			headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 			// First request exhausts Mentor input budget; second uses configured Sol;
@@ -60,13 +61,16 @@ func TestTokenUsageMentorAndManualSwitch(t *testing.T) {
 			if !ok || !got.cost.known || got.InputTokens != 300000 || got.UncachedInputTokens != 180000 || got.OutputTokens != 30000 || got.ReasoningTokens != 15000 || math.Abs(total-1.6208) > 1e-10 {
 				t.Fatalf("report=%+v total=%v valid=%v", got, total, ok)
 			}
-			for _, model := range wants {
-				if !strings.Contains(out.String(), model) {
-					t.Fatalf("model switch lost %q: %s", model, out.String())
-				}
+			if strings.Contains(out.String(), "Router session usage") {
+				t.Fatalf("completion exposed token metrics as commentary: %s", out.String())
 			}
-			if !strings.Contains(out.String(), "$1.6208 |") {
-				t.Fatalf("missing correct notice: %s", out.String())
+			paths := proxy.tokenMetricPaths()
+			if len(paths) != 1 {
+				t.Fatalf("main completion metric paths = %q", paths)
+			}
+			markdown, err := os.ReadFile(paths[0])
+			if err != nil || !strings.Contains(string(markdown), "$1.6208 |") || !strings.Contains(string(markdown), "300K (") {
+				t.Fatalf("saved metrics lost aggregate usage: %s, %v", markdown, err)
 			}
 		})
 	}
@@ -163,10 +167,10 @@ func TestTokenUsageRejectsIncompletePricing(t *testing.T) {
 }
 
 func TestTokenUsageGapRetainsObservedTotals(t *testing.T) {
-	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		for _, gap := range []string{"missing", "null", "partial", "invalid", "interrupted", "transport-error", "http-rejection", "failed-with-usage", "incomplete-with-usage", "compaction"} {
 			t.Run(fmt.Sprintf("stream=%t/%s", stream, gap), func(t *testing.T) {
+				t.Setenv("TMPDIR", t.TempDir())
 				proxy := newManagedMekugiProxy(t)
 				headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 				for step := range 3 {
@@ -238,8 +242,19 @@ func TestTokenUsageGapRetainsObservedTotals(t *testing.T) {
 					}
 					if step == 2 {
 						wantReport := gap == "http-rejection" || gap == "failed-with-usage" || gap == "incomplete-with-usage"
-						if !strings.Contains(out.String(), "Router session usage") || strings.Contains(out.String(), "Usage incomplete") == wantReport {
-							t.Fatalf("unexpected final report: %s", out.String())
+						if strings.Contains(out.String(), "Router session usage") {
+							t.Fatalf("completion emitted usage commentary: %s", out.String())
+						}
+						paths := proxy.tokenMetricPaths()
+						if len(paths) != 1 {
+							t.Fatalf("completion metric paths = %q", paths)
+						}
+						markdown, err := os.ReadFile(paths[0])
+						if err != nil {
+							t.Fatal(err)
+						}
+						if strings.Contains(string(markdown), "Usage incomplete") == wantReport {
+							t.Fatalf("unexpected final metrics: %s", markdown)
 						}
 						got, valid := proxy.usage.snapshot("thread-1")
 						wantInput, wantMissing := uint64(200), uint64(1)

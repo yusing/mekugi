@@ -49,7 +49,7 @@ sessions, and patch review. No fork, no config edits, no daemon.
   `--post-compact-recovery=false`.
 - **Custom tools.** Add your own [plugins](doc/spec/plugin.md) as JavaScript
   modules.
-- **Usage and cost.** Each completion reports usage and cost. A per-launch
+- **Usage and cost.** Eligible main completions update a Markdown usage snapshot. A per-launch
   browser dashboard shows request metrics and cache diagnostics. Costs are API
   estimates, not subscription charges.
 - **Diagnostics.** [Inspect past sessions](#inspect-a-session) offline, record

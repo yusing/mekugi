@@ -4,90 +4,14 @@ import (
 	"bytes"
 	"context"
 	jsonv1 "encoding/json"
-	"encoding/json/v2"
-	"io"
 	"os"
 	"strconv"
-	"strings"
 	"testing"
 )
 
-func marshalUsageReportFixture(t *testing.T, value any) []byte {
-	t.Helper()
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return encoded
-}
-
-func TestUsageReportFlagParsing(t *testing.T) {
-	flags := newRouterFlags(io.Discard)
-	if err := flags.Parse(nil); err != nil {
-		t.Fatal(err)
-	}
-	for _, value := range []string{"--usage-report=table", "--metrics-output=metrics.json"} {
-		t.Run(value, func(t *testing.T) {
-			flags := newRouterFlags(io.Discard)
-			if err := flags.Parse([]string{value}); err == nil {
-				t.Fatalf("removed flag %q was accepted", value)
-			}
-		})
-	}
-}
-
-func TestUsageReportFormatsExactOutput(t *testing.T) {
-	totalCounts := tokenCounts{InputTokens: 100_000, UncachedInputTokens: 40_000, OutputTokens: 30_000, ReasoningTokens: 20_000}
-	total := tokenUsageReport{
-		tokenCounts: totalCounts,
-		cost:        estimateTokenCost("gpt-6-astra", "", totalCounts),
-		model:       "gpt-6-astra",
-	}
-	turnCounts := tokenCounts{InputTokens: 100, UncachedInputTokens: 100, OutputTokens: 25}
-	turn := tokenUsageReport{
-		tokenCounts: turnCounts,
-		cost:        tokenCost{uncachedInput: 0.0001, output: 0.0002, known: true},
-	}
-	total.layout = "compact"
-	total.turn = &turn
-	if got, want := formatUsageReport(total), "Router session usage · Main turn: 100 in / 25 out, $0.0003 · Total: 100K in / 30K out, $1.9600"; got != want {
-		t.Fatalf("compact report = %q, want %q", got, want)
-	}
-
-	total.layout = "table"
-	const wantTable = "Router session usage\n\n" +
-		"| Agent | Role | Model | Input (cache hit) | Cache write | Output | Reasoning | Input cost (cached + uncached) | Output cost | Total cost | Missing usage |\n" +
-		"| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n" +
-		"| /root | main | gpt-6-astra | 100K (60.0%) | 0 | 30K | 20K | $0.0600+$0.4000=$0.4600 | $1.5000 | $1.9600 | 0 |\n" +
-		"| Total | — | — | 100K (60.0%) | 0 | 30K | 20K | $0.0600+$0.4000=$0.4600 | $1.5000 | $1.9600 | 0 |\n" +
-		"\nRouter session API estimates since router startup; reasoning is included in output, and cache writes are included in input."
-	if got := formatUsageReport(total); got != wantTable {
-		t.Fatalf("table report:\n%s\nwant:\n%s", got, wantTable)
-	}
-
-	total.layout = "off"
-	if got := formatUsageReport(total); got != "" {
-		t.Fatalf("off report = %q, want empty", got)
-	}
-}
-
-func TestUsageReportDefaultLayoutAndTurnAggregation(t *testing.T) {
-	t.Run("single agent defaults to compact", func(t *testing.T) {
-		proxy := newManagedMekugiProxy(t)
-		root, _ := prepareActivityTest(t, proxy, "session", "root", "", "/root", nil)
-		root.usageTracker = proxy.usage.observationForTurn("root", "root", "turn-a", "gpt-6-sol", "")
-		root.observeResponseUsage(tokenCounts{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 2})
-		report, ok := root.completionUsageReport()
-		if !ok || report.layout != "compact" || report.turn == nil || report.turn.InputTokens != 10 {
-			t.Fatalf("single-agent report = %+v, ok=%v", report, ok)
-		}
-		if got, want := formatUsageReport(report), "Router session usage · Main turn: 10 in / 2 out, $0.0000 · Total: 10 in / 2 out, $0.0000"; got != want {
-			t.Fatalf("default report = %q, want %q", got, want)
-		}
-	})
-
-	t.Run("main turn excludes child and interleaved turns", func(t *testing.T) {
-		proxy := newManagedMekugiProxy(t)
+func TestCompletionUsageAggregation(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	t.Run("main turn excludes children and interleaved turns", func(t *testing.T) {
 		root, _ := prepareActivityTest(t, proxy, "root-session", "root", "", "/root", nil)
 		child, _ := prepareActivityTest(t, proxy, "child-session", "child", "root", "/root/worker", nil)
 
@@ -101,11 +25,11 @@ func TestUsageReportDefaultLayoutAndTurnAggregation(t *testing.T) {
 
 		root.usageTracker = proxy.usage.observationForTurn("root", "root", "turn-a", "gpt-6-sol", "")
 		report, ok := root.completionUsageReport()
-		if !ok || report.layout != "table" || report.turn == nil || report.turn.InputTokens != 300 {
+		if !ok || report.turn == nil || report.turn.InputTokens != 300 {
 			t.Fatalf("multi-agent report = %+v, ok=%v", report, ok)
 		}
 		if report.InputTokens != 1_330 || report.rows == nil || len(*report.rows) != 2 || (*report.rows)[0].report.InputTokens != 330 || (*report.rows)[1].report.InputTokens != 1_000 {
-			t.Fatalf("router-session total did not include the complete root and child totals: %+v", report)
+			t.Fatalf("router total did not include root and child totals: %+v", report)
 		}
 
 		laterRoot, _ := prepareActivityTest(t, proxy, "remapped-session", "root", "", "/root", nil)
@@ -116,35 +40,6 @@ func TestUsageReportDefaultLayoutAndTurnAggregation(t *testing.T) {
 			t.Fatalf("router-lifetime/session-remapped aggregate = %+v, ok=%v", later, ok)
 		}
 	})
-}
-
-func TestUsageReportExplicitLayoutsOverrideAutomaticSelection(t *testing.T) {
-	for _, layout := range []string{"compact", "table", "off"} {
-		t.Run(layout, func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t)
-			proxy.usageReport = layout
-			root, _ := prepareActivityTest(t, proxy, "session", "root", "", "/root", nil)
-			root.usageTracker = proxy.usage.observationForTurn("root", "root", "turn-explicit", "gpt-6-sol", "")
-			root.observeResponseUsage(tokenCounts{InputTokens: 100, UncachedInputTokens: 100, OutputTokens: 10})
-			report, ok := root.completionUsageReport()
-			if layout == "off" {
-				if ok {
-					t.Fatalf("off mode produced a report: %+v", report)
-				}
-				return
-			}
-			if !ok || report.layout != layout {
-				t.Fatalf("explicit layout %q yielded %+v, ok=%v", layout, report, ok)
-			}
-			text := formatUsageReport(report)
-			if layout == "compact" && !strings.HasPrefix(text, "Router session usage · Main turn: ") {
-				t.Fatalf("explicit compact selection rendered as %q", text)
-			}
-			if layout == "table" && !strings.HasPrefix(text, "Router session usage\n\n| Agent | Role | Model | ") {
-				t.Fatalf("explicit table selection rendered as %q", text)
-			}
-		})
-	}
 }
 
 func TestUsageReportMissingTurnMetadataAndCapacityDoNotRevive(t *testing.T) {
@@ -160,7 +55,7 @@ func TestUsageReportMissingTurnMetadataAndCapacityDoNotRevive(t *testing.T) {
 		usageTracker: totals.observation("root", "root", "gpt-6-sol", ""),
 	}
 	report, ok := transform.completionUsageReport()
-	if !ok || report.turn == nil || !report.turn.Incomplete || !strings.Contains(formatUsageReport(report), "Main turn: n/a (usage incomplete)") {
+	if !ok || report.turn == nil || !report.turn.Incomplete {
 		t.Fatalf("missing TurnID was guessed from lifetime usage: %+v, ok=%v", report, ok)
 	}
 
@@ -230,122 +125,53 @@ func TestUsageTurnAggregationUsesCanonicalMetadataAcrossJournalContinuation(t *t
 	}
 }
 
-func TestUsageReportMentorSwitchWaitsForActualModelAndDelivery(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+func TestMainCompletionPersistsTokenMetricsWithoutCommentary(t *testing.T) {
+	directory := t.TempDir()
+	t.Setenv("TMPDIR", directory)
 	proxy := newManagedMekugiProxy(t)
 	first := &mekugiResponseTransform{
 		ctx: t.Context(), proxy: proxy, threadID: "root", shellThreadID: "root",
 		usageTracker: proxy.usage.observationForTurn("root", "root", "turn-mentor", "gpt-6-astra", ""),
 	}
 	first.observeResponseUsage(tokenCounts{InputTokens: 100, UncachedInputTokens: 100, OutputTokens: 10})
-	if report, ok := first.completionUsageReport(); !ok || report.mentor != "" {
-		t.Fatalf("report before Mentor transition claimed a switch: %+v, ok=%v", report, ok)
-	}
 	proxy.usage.mentorTransition("root", "gpt-6-astra")
-	if report, ok := first.completionUsageReport(); !ok || report.mentor != "" {
-		t.Fatalf("report still on Mentor model advanced the switch: %+v, ok=%v", report, ok)
-	}
 
-	second := &mekugiResponseTransform{
+	main := &mekugiResponseTransform{
 		ctx: t.Context(), proxy: proxy, threadID: "root", shellThreadID: "root",
 		usageTracker: proxy.usage.observationForTurn("root", "root", "turn-configured", "gpt-5.6-sol", ""),
 	}
-	second.observeResponseUsage(tokenCounts{InputTokens: 50, UncachedInputTokens: 50, OutputTokens: 5})
-	response := []byte(`{"id":"mentor-switch-report","status":"completed"}`)
-	messages, err := second.journalTerminalMessages(response)
-	if err != nil || len(messages) != 1 {
-		t.Fatalf("terminal usage messages = %v, err=%v", messages, err)
+	main.observeResponseUsage(tokenCounts{InputTokens: 50, UncachedInputTokens: 50, OutputTokens: 5})
+	response := []byte(`{"id":"mentor-switch-response","status":"completed","output":[{"type":"message","id":"answer","role":"assistant","phase":"final_answer","status":"completed","content":[{"type":"output_text","text":"The task is complete."}]}]}`)
+	transformed, err := main.TransformJSON(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(transformed, []byte("Router session usage")) || !bytes.Contains(transformed, []byte("The task is complete.")) {
+		t.Fatalf("completion replaced the answer or emitted usage commentary: %s", transformed)
 	}
 	paths := proxy.tokenMetricPaths()
 	if len(paths) != 1 {
-		t.Fatalf("completion did not write token metrics: %q", paths)
+		t.Fatalf("main completion metric paths = %q", paths)
 	}
 	markdown, err := os.ReadFile(paths[0])
-	if err != nil || !bytes.Contains(markdown, []byte("| Total |")) {
+	if err != nil || !bytes.Contains(markdown, []byte("| Total |")) || !bytes.Contains(markdown, []byte("| 150 (0.0%) | 0 | 15 |")) {
 		t.Fatalf("completion metrics = %q, %v", markdown, err)
 	}
-	text := commentaryMessageText(messages[0])
-	if text != "Router session usage · Main turn: 50 in / 5 out, $0.0003 · Total: 150 in / 15 out, $0.0018 · Mentor gpt-6-astra → gpt-5.6-sol" {
-		t.Fatalf("actual model-switch report = %q", text)
-	}
-	if got, _ := proxy.usage.mentorNote("root", ""); got == "" {
-		t.Fatal("report construction acknowledged the Mentor note before delivery")
-	}
-	second.Delivered(marshalUsageReportFixture(t, map[string]any{"type": "response.output_item.done", "item": map[string]any{"id": "not-the-usage-report"}}))
-	if got, _ := proxy.usage.mentorNote("root", ""); got == "" {
-		t.Fatal("an unrelated delivered item acknowledged the Mentor note")
-	}
-	second.Delivered(marshalUsageReportFixture(t, map[string]any{"type": "response.output_item.done", "item": map[string]any{"id": second.journalUsageID}}))
-	if got, _ := proxy.usage.mentorNote("root", ""); got != "" {
-		t.Fatalf("delivered usage report did not acknowledge the Mentor note: %q", got)
-	}
-
-	t.Run("child transition is carried by the main report", func(t *testing.T) {
-		proxy := newManagedMekugiProxy(t)
-		root, _ := prepareActivityTest(t, proxy, "root-session", "root", "", "/root", nil)
-		child, _ := prepareActivityTest(t, proxy, "child-session", "child", "root", "/root/worker", nil)
-		child.usageTracker = proxy.usage.observationForTurn("child", "child", "child-mentor-turn", "gpt-6-astra", "")
-		child.observeResponseUsage(tokenCounts{InputTokens: 100, UncachedInputTokens: 100, OutputTokens: 10})
-		proxy.usage.mentorTransition("child", "gpt-6-astra")
-		root.usageTracker = proxy.usage.observationForTurn("root", "root", "root-turn-before-child-switch", "gpt-6-sol", "")
-		root.observeResponseUsage(tokenCounts{InputTokens: 10, UncachedInputTokens: 10})
-		if report, ok := root.completionUsageReport(); !ok || report.mentor != "" {
-			t.Fatalf("main report advanced before the child used its selected model: %+v, ok=%v", report, ok)
-		}
-
-		proxy.usage.observationForTurn("child", "child", "child-configured-turn", "gpt-5.6-sol", "").observe(tokenCounts{InputTokens: 50, UncachedInputTokens: 50, OutputTokens: 5})
-		messages, err := root.journalTerminalMessages([]byte(`{"id":"child-mentor-report","status":"completed"}`))
-		if err != nil || len(messages) != 1 {
-			t.Fatalf("main report messages = %v, err=%v", messages, err)
-		}
-		text := commentaryMessageText(messages[0])
-		if !strings.Contains(text, "/root/worker Mentor gpt-6-astra → gpt-5.6-sol") {
-			t.Fatalf("main report omitted the child's actual model switch: %q", text)
-		}
-		if got, _ := proxy.usage.mentorNote("child", ""); got == "" {
-			t.Fatal("child Mentor note was acknowledged before main report delivery")
-		}
-		root.Delivered(marshalUsageReportFixture(t, map[string]any{"type": "response.output_item.done", "item": map[string]any{"id": root.journalUsageID}}))
-		if got, _ := proxy.usage.mentorNote("child", ""); got != "" {
-			t.Fatalf("delivered main report did not acknowledge child Mentor note: %q", got)
-		}
-	})
 }
 
-func TestCompactUsageReportDurableIDIsStrippedFromLaterInput(t *testing.T) {
+func TestChildCompletionDoesNotPersistTokenMetrics(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
 	proxy := newManagedMekugiProxy(t)
-	store, err := openMekugiReplayStore(t.TempDir())
+	child, _ := prepareActivityTest(t, proxy, "child-session", "child", "root", "/root/worker", nil)
+	child.subagentTurn = true
+	child.usageTracker = proxy.usage.observationForTurn("child", "child", "turn-child", "gpt-5.6-sol", "")
+	child.observeResponseUsage(tokenCounts{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5})
+	response := []byte(`{"id":"child-response","status":"completed","output":[{"type":"message","id":"answer","role":"assistant","phase":"final_answer","status":"completed","content":[{"type":"output_text","text":"Child result."}]}]}`)
+	transformed, err := child.TransformJSON(response)
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxy.replayStore = store
-	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
-	transform.usageTracker = proxy.usage.observationForTurn(transform.shellThreadID, transform.shellThreadID, "turn-with-usage", "gpt-6-sol", "")
-	transform.observeResponseUsage(tokenCounts{InputTokens: 100, UncachedInputTokens: 100, OutputTokens: 20})
-	response := []byte(`{"id":"compact-usage-response","status":"completed"}`)
-	messages, err := transform.journalTerminalMessages(response)
-	if err != nil || len(messages) != 1 {
-		t.Fatalf("terminal report messages = %v, err=%v", messages, err)
-	}
-	usageText := commentaryMessageText(messages[0])
-	if !strings.HasPrefix(usageText, "Router session usage · Main turn: ") {
-		t.Fatalf("generated report was not compact: %q", usageText)
-	}
-	unknown := assistantCommentaryMessage(subagentCommentaryMessageID("unretained-usage-lookalike"), "keep this model-authored message")
-	input, err := json.Marshal([]any{messages[0], unknown})
-	if err != nil {
-		t.Fatal(err)
-	}
-	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{
-		"input": jsonv1.RawMessage(input),
-	}}
-	if _, err := proxy.reconcileVisibleInput(t.Context(), request, workspace, transform.historySessionID); err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(request.fields["input"], []byte(usageText)) || bytes.Contains(request.fields["input"], []byte(jsonString(messages[0], "id"))) {
-		t.Fatalf("durable compact usage report survived replay: %s", request.fields["input"])
-	}
-	if !bytes.Contains(request.fields["input"], []byte("keep this model-authored message")) {
-		t.Fatalf("replay removed an unretained lookalike: %s", request.fields["input"])
+	if bytes.Contains(transformed, []byte("Router session usage")) || len(proxy.tokenMetricPaths()) != 0 {
+		t.Fatalf("child completion emitted commentary or persisted root metrics: %s paths=%q", transformed, proxy.tokenMetricPaths())
 	}
 }

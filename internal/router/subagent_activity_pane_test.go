@@ -177,8 +177,12 @@ func TestActivityPaneOwnsChildActivityAndDeliversWithoutRootBoundary(t *testing.
 	}
 	// Usage replaces the estimate, accumulates per child, and reaches the
 	// roster without new entries.
-	f.activity.addUsage("probe", tokenCounts{InputTokens: 1200, OutputTokens: 30}, tokenCost{output: .012, known: true})
-	f.activity.addUsage("probe", tokenCounts{InputTokens: 800, OutputTokens: 20})
+	totals := newThreadUsage()
+	for _, counts := range []tokenCounts{{InputTokens: 1200, UncachedInputTokens: 1200, OutputTokens: 30}, {InputTokens: 800, UncachedInputTokens: 800, OutputTokens: 20}} {
+		totals.observation("probe", "", "gpt-6-sol", "").observe(counts)
+		report, ok := totals.snapshot("probe")
+		f.activity.syncUsage("probe", counts, report, ok, tokenCost{})
+	}
 	usage := client.next(t, "agents")
 	for usage.Agents[1].InputTokens != 2000 {
 		usage = client.next(t, "agents")
@@ -186,7 +190,7 @@ func TestActivityPaneOwnsChildActivityAndDeliversWithoutRootBoundary(t *testing.
 	if usage.Agents[1].OutputTokens != 50 || usage.Agents[0].InputTokens != 0 {
 		t.Fatalf("usage roster = %+v", usage.Agents)
 	}
-	if usage.Agents[1].Cost != .012 || !usage.Agents[1].CostKnown {
+	if usage.Agents[1].Cost <= 0 || !usage.Agents[1].CostKnown {
 		t.Fatalf("cost roster = %+v", usage.Agents[1])
 	}
 	f.activity.endResponse("probe")

@@ -10,11 +10,12 @@ import (
 	"testing"
 )
 
-func TestBufferedAnswerSSEFraming(t *testing.T) {
+func TestAnswerSSEFraming(t *testing.T) {
 	for _, ending := range []string{"\n", "\r\n"} {
 		for _, stop := range []string{"completed", "failed", "eof", "read_error", "transform_error"} {
 			t.Run(stop+"/"+map[string]string{"\n": "lf", "\r\n": "crlf"}[ending], func(t *testing.T) {
 				transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
+				transform.journalActive = false
 				answer := finalAnswerTestEvents(t, "final_answer")
 				var wire strings.Builder
 				for i, payload := range answer {
@@ -82,8 +83,8 @@ func TestBufferedAnswerSSEFraming(t *testing.T) {
 				// listening for named events must receive every complete payload.
 				frames := strings.Split(strings.TrimSuffix(strings.ReplaceAll(output.String(), "\r\n", "\n"), "\n\n"), "\n\n")
 				if stop == "completed" {
-					if len(frames) != 3 {
-						t.Fatalf("completed final answer produced %d frames, want usage, journal flush, terminal: %s", len(frames), output.String())
+					if len(frames) != len(expected) {
+						t.Fatalf("completed final answer produced %d frames, want %d: %s", len(frames), len(expected), output.String())
 					}
 					for index, frame := range frames {
 						lines := strings.Split(frame, "\n")
@@ -106,21 +107,13 @@ func TestBufferedAnswerSSEFraming(t *testing.T) {
 								t.Fatalf("unframed payload line: %q", line)
 							}
 						}
-						if index < 2 {
-							if event.Type != "response.output_item.done" {
-								t.Fatalf("frame %d type=%s, want output_item.done", index, event.Type)
+						if index < len(answer) {
+							if !bytes.Equal(payload, answer[index]) {
+								t.Fatalf("answer frame %d changed: %s", index, payload)
 							}
-							text := commentaryMessageText(event.Item)
-							if index == 0 && !strings.Contains(text, "Router session usage") {
-								t.Fatalf("first terminal message is not usage: %s", text)
-							}
-							if index == 1 && (!strings.Contains(text, "Journal flush") || !strings.Contains(text, "**Question:**") ||
-								!strings.Contains(text, "**Answer:**") || !strings.Contains(text, "No files were changed.")) {
-								t.Fatalf("final answer was not rendered as a Question/Answer flush: %s", text)
-							}
-						} else if event.Type != "response.completed" || len(event.Response.Output) != 2 ||
-							jsonString(event.Response.Output[0], "id") == "answer" || jsonString(event.Response.Output[1], "id") == "answer" {
-							t.Fatalf("terminal snapshot did not retain only usage and journal messages: %s", payload)
+						} else if event.Type != "response.completed" || len(event.Response.Output) != 1 ||
+							jsonString(event.Response.Output[0], "id") != "answer" {
+							t.Fatalf("terminal snapshot lost the provider answer: %s", payload)
 						}
 					}
 				} else {

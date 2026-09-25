@@ -484,7 +484,7 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 				}
 				results = append(results, visible...)
 			}
-			if _, _, err := t.transformResponse(mustMarshalJSON(event.Response), "completed"); err != nil {
+			if _, err := t.transformResponse(mustMarshalJSON(event.Response), "completed"); err != nil {
 				return nil, true, err
 			}
 			t.journalContinue = true

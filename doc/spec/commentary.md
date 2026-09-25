@@ -4,8 +4,8 @@
 
 Agent-authored progress, runtime authoring, journal CRUD, and terminal response content
 are owned by [REQ-JOURNAL-001](journal.md). This requirement owns the remaining router
-notices: observed subagent activity, start notices, received envelopes, critical errors,
-and token metrics. `phase: "commentary"` is a router delivery mechanism, not an authoring API.
+notices: observed subagent activity, start notices, received envelopes, and critical errors.
+Token metrics are saved to a file, not delivered as commentary. `phase: "commentary"` is a router delivery mechanism, not an authoring API.
 
 Router-owned messages have exact retained IDs and are stripped from later provider input.
 Generated-looking prefixes, phase, and text alone never prove provenance. Persistence and
@@ -152,15 +152,13 @@ those messages from later provider-bound input while preserving the original col
 tool outputs, and inter-agent messages. A response already accompanied by its deterministic
 commentary is not projected again.
 
-A successful natural main completion includes one token notice before its journal flush and
-before the terminal event, including when the journal is empty. Unavailable usage is reported as `n/a`
-with an incomplete-usage explanation rather than silently omitting the notice, unless
-reporting is disabled. Child completion never emits its own usage report.
+An eligible main completion updates a Markdown token-usage file without adding a
+conversation message. Unavailable usage is reported as `n/a` in that file with an
+incomplete-usage explanation. Child completion does not update the main report.
 
 When used, TypeSafe AI has a separate provider-reported usage section in the
 Markdown report, with per-agent and total rows for model, HTTP attempts, input,
-output, missing usage, and cost. The compact report includes a separate TypeSafe
-summary. Agent-model totals, cache accounting, and mentor state exclude these
+output, missing usage, and cost. Agent-model totals, cache accounting, and mentor state exclude these
 auxiliary calls. Only proven descendants join the root's TypeSafe total, and
 restart resets consumption just as it does agent-model usage. Retries and
 unusable answers retain any known consumption; absent, null, invalid, or partial
@@ -168,21 +166,13 @@ usage fields count as missing rather than zero. Overflow makes the affected tota
 unavailable. No TypeSafe price is configured, so its cost is `n/a`; the report
 does not claim net savings from local output-reduction estimates.
 
-The commentary selects one compact line, switching to the table when the report
-contains more than one proven agent. The same eligible completion updates a
-Markdown table in the system temporary directory, using the Codex thread ID as
-the stable file identity across router restarts. The wrapper reports written file
-paths on exit. Reports remain before the final answer or journal flush, and
-retain their durable IDs for later history stripping.
+The report is a Markdown table in the system temporary directory, using the Codex
+thread ID as the stable file identity across router restarts. The wrapper reports
+written file paths on exit. No usage line or table is added to the conversation.
 
-The compact `Router session usage` line shows the main thread's current Codex `turn_id`
-usage and the aggregate router-session total. Provider requests and journal continuations
-sharing that host turn ID accumulate once per request; child turn IDs are never borrowed
-for main-turn counts. Absent turn identity or exhausted turn tracking is `n/a`. At most
-4096 thread/turn pairs are tracked for a router lifetime without eviction or later partial
-revival. This bound does not cap cumulative thread accounting. Router session means since
-router startup, not the entire persisted Codex conversation; restart does not reconstruct
-prior provider usage. Partial observations and unavailable pricing stay explicit on the line.
+The file reports aggregate router-session usage since router startup, not the entire
+persisted Codex conversation; restart does not reconstruct prior provider usage.
+Partial observations and unavailable pricing stay explicit in the file.
 
 The table has one row per proven agent
 and a `Total` row under the same `Router session usage` heading. Columns are `Agent`, `Role`, `Model`, `Input (cache hit)`, `Cache write`,
@@ -201,7 +191,7 @@ must not reuse inherited spawn evidence to assign roles to their own children.
 Model labels append `fast` for effective `fast` or `priority` usage, such as
 `gpt-5.6-sol fast`; a provider-reported downgrade to `default` has no suffix.
 Model or tier switches retain the distinct observed labels and original per-response pricing.
-Intermediate client-tool responses and failed or incomplete responses do not report tokens.
+Intermediate client-tool responses and failed or incomplete responses do not update the file.
 Eligibility and the child summary are defined by [REQ-JOURNAL-001](journal.md).
 
 JSON and streaming responses use the same cumulative provider-authoritative per-thread
@@ -209,7 +199,7 @@ counts. Main combines only proven descendants in its selected workspace with its
 unrelated threads and ordinary forks' source trees are excluded. Missing child usage or
 unavailable tree evidence must not produce an apparently complete aggregate. A missing main
 usage total likewise leaves its row and the aggregate unavailable while retaining known child rows.
-Intermediate responses contribute without notices. Thread accounting remains separate;
+Intermediate responses contribute without file updates. Thread accounting remains separate;
 compaction and routing-session changes do not reset totals. Repeated terminal observations
 within one request count once. Totals remain in memory until router shutdown without a
 lifetime thread-count ceiling. Arithmetic overflow makes the affected total unavailable.
@@ -251,19 +241,19 @@ or inconsistent usage makes the affected row's cost cells `n/a` and its aggregat
 unavailable, without hiding known token counts or presenting a partial cost as complete.
 The report explains overlapping token categories, reference pricing, the router-lifetime
 boundary, and unavailable estimates. Root accounting is not mutated when rendering the
-tree total. This is auxiliary commentary accounting, not a change to capture-owned metrics
-exports. Generated tables retain the existing exact replay filtering and auxiliary budget.
+tree total. This is file-based accounting, not a change to capture-owned metrics exports.
 
-A successful natural main completion emits usage, then its own unflushed journal revisions (including
-live-reported updates), and the terminal event. The final journal message is emitted once, after token
-metrics, and remains last in both streamed messages and the terminal snapshot.
-Child completion emits its native journal result without a token table.
+A successful natural main completion saves usage, then emits its own unflushed journal
+revisions (including live-reported updates) and the terminal event. The final journal
+message is emitted once and remains last in both streamed messages and the terminal snapshot.
+Child completion emits its native journal result without updating the main report.
 The completed provider final answer is captured in the journal rather than rendered separately.
 Failed or incomplete responses release buffered
-output without terminal journal flush or usage notices.
+output without terminal journal flush or usage-file updates.
 The streaming transport preserves named SSE framing and one data field per payload line.
-Ordinary token-usage buffering remains bounded at 64 MiB and releases provider output unchanged
-when that bound is exceeded. Token arithmetic and provider usage objects remain unchanged.
+Answer buffering remains bounded at 64 MiB and releases provider output unchanged
+when that bound is exceeded.
+Token arithmetic and provider usage objects remain unchanged.
 Usage is never a child terminal's substantive result.
 
 Child operation and runtime commentary carries a ``[`/root/worker`] `` prefix from the request’s
@@ -318,7 +308,7 @@ that does not attach within 15 seconds, closes, or stays disconnected past that 
 returns its pending events and later activity to inline delivery, and is not
 relaunched for the router session. Without Herdr, inline delivery is unchanged. Only
 the first root with child activity uses the pane; other roots stay inline. Critical
-session notices and main-completion usage stay in the root conversation.
+session notices stay in the root conversation; main-completion usage is saved to a file.
 
 Explore-filter events are pane-only, including when the pane is unavailable or
 closes. They retain the originating call ID and structured efficiency counts,
@@ -363,7 +353,10 @@ described below. Agent selection and the only filter are shared between the two
 panes through the router, so a roster click filters the feed. Right-aligned after the timer, an agent
 with observed provider usage shows its cumulative input and output tokens as
 `↑ in ↓ out`; its estimated USD cost and provider-response turn count follow as
-`$N · N turns`. When usage or pricing is unavailable, cost shows `n/a` rather than
+`$N · N turns`. The estimate reuses the shared token-pricing calculation; when
+provider totals are present but billing details are incomplete, the roster uses
+the reported/requested tier or standard pricing for `auto` where supported. When usage or pricing is unavailable,
+cost shows `n/a` rather than
 claiming zero. Metric columns align across agents. While a response streams, output grows by an estimate of about four
 bytes of visible delta per token, refreshed every second; the provider's reported
 usage replaces the estimate when the response ends. Hidden reasoning is not
@@ -415,12 +408,12 @@ Acceptance:
    items and terminal output do not duplicate root copies.
 5. Router-authored messages are removed from every later provider request and are not repeated when
    the matching message is already present in Codex history.
-6. Eligible main completion defaults to a compact main-turn/router-session line, or a
-   per-agent table when multiple agents are present. Explicit compact/table/off choices
-   are honored. Tables retain cache-hit percentages and split input cost. Child completion emits no token table.
+6. Eligible main completion updates a Markdown per-agent usage table without emitting
+   conversation commentary. Tables retain cache-hit percentages and split input cost.
+   Child completion does not update the main report.
    Costs use per-response models and context tiers, do not double-charge cached input or reasoning,
    remain cumulative across compaction, and show `n/a` for unavailable evidence.
-   Intermediate client calls, failures, and incomplete responses do not emit token notices.
+   Intermediate client calls, failures, and incomplete responses do not update the file.
    Child results are delivered natively and are not flushed again at main completion.
 7. Journal authoring, admission, replay, runtime publishing, and terminal acceptance belong to
    [REQ-JOURNAL-001](journal.md). Automatic notices remain distinguishable from authored journal

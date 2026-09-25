@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 	"strings"
 	"testing"
 )
@@ -55,7 +56,6 @@ func TestTokenCostServiceTiers(t *testing.T) {
 }
 
 func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
-	t.Parallel()
 	for _, cacheWrites := range []uint64{0, 20_000} {
 		for _, stream := range []bool{false, true} {
 			for _, tc := range []struct{ requested, served, want string }{
@@ -75,8 +75,8 @@ func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
 				{"priority", `"unpriced"`, "n/a"},
 			} {
 				t.Run(fmt.Sprintf("writes=%d/stream=%t/%s/%s", cacheWrites, stream, tc.requested, tc.served), func(t *testing.T) {
+					t.Setenv("TMPDIR", t.TempDir())
 					proxy := newManagedMekugiProxy(t)
-					proxy.usageReport = "table"
 					request := serverRequest(t, func(fields map[string]any) {
 						fields["model"], fields["stream"] = "gpt-5.6-sol", stream
 						if tc.requested != "" {
@@ -109,8 +109,20 @@ func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
 					if tc.served == `"fast"` || tc.served == `"priority"` || tc.served == "" && (tc.requested == "fast" || tc.requested == "priority") {
 						modelLabel += " fast"
 					}
-					if !strings.Contains(output.String(), "| "+modelLabel+" |") {
-						t.Fatalf("missing tier-aware model label %q: %s", modelLabel, output.String())
+					if strings.Contains(output.String(), "Router session usage") {
+						t.Fatalf("completion emitted usage commentary: %s", output.String())
+					}
+					paths := proxy.tokenMetricPaths()
+					if len(paths) != 1 {
+						t.Fatalf("completion metric paths = %q", paths)
+					}
+					markdown, err := os.ReadFile(paths[0])
+					if err != nil {
+						t.Fatal(err)
+					}
+					metrics := string(markdown)
+					if !strings.Contains(metrics, "| "+modelLabel+" |") {
+						t.Fatalf("missing tier-aware model label %q: %s", modelLabel, metrics)
 					}
 					want := tc.want
 					if cacheWrites != 0 {
@@ -120,12 +132,12 @@ func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
 						case "$0.4560":
 							want = "$0.4760"
 						}
-						if !strings.Contains(output.String(), "| 20K |") {
-							t.Fatalf("lost cache writes: %s", output.String())
+						if !strings.Contains(metrics, "| 20K |") {
+							t.Fatalf("lost cache writes: %s", metrics)
 						}
 					}
-					if !strings.Contains(output.String(), want+" |") || !strings.Contains(output.String(), "100K (") {
-						t.Fatalf("report=%s", output.String())
+					if !strings.Contains(metrics, want+" |") || !strings.Contains(metrics, "100K (") {
+						t.Fatalf("metrics=%s", metrics)
 					}
 					requested := tc.requested
 					if requested == "fast" {

@@ -37,8 +37,8 @@ func (a *autoLiveDiff) finishTurn(workspace, thread, turnID string) {
 	a.events.publishTurn(false)
 }
 
-// Delivered calls this only for an actual token notice or the successful journal
-// terminal envelope, after the downstream transport has written and flushed it.
+// Delivered calls this after a successful terminal envelope has been written
+// and flushed by the downstream transport.
 func (t *mekugiResponseTransform) finishLiveDiffTurn() {
 	if !t.subagentTurn {
 		t.proxy.autoLiveDiff.finishTurn(t.directory, t.threadID, t.shellTurnID)

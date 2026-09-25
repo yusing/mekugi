@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 )
@@ -10,6 +11,7 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		for _, missing := range []bool{false, true} {
 			t.Run(map[bool]string{false: "json", true: "sse"}[stream]+map[bool]string{false: "/complete", true: "/missing"}[missing], func(t *testing.T) {
+				t.Setenv("TMPDIR", t.TempDir())
 				proxy := newManagedMekugiProxy(t)
 				root, _ := prepareActivityTest(t, proxy, "shared-session", "root", "", "/root", nil)
 				other, _ := prepareActivityTest(t, proxy, "other-session", "other", "", "/root", nil)
@@ -90,16 +92,18 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				wantUsageOccurrences := 1
-				if stream {
-					// SSE carries each completed assistant item and repeats it in
-					// the response.completed snapshot.
-					wantUsageOccurrences = 2
-				}
-				if bytes.Count(output, []byte("Router session usage")) != wantUsageOccurrences || !bytes.Contains(output, []byte("/root/worker")) ||
+				if bytes.Contains(output, []byte("Router session usage")) ||
 					!bytes.Contains(output, []byte("Journal flush")) || !bytes.Contains(output, []byte("Root answer.")) ||
 					bytes.Contains(output, []byte(`"id":"root-answer"`)) {
-					t.Fatalf("main completion did not deliver one consolidated report: %s", output)
+					t.Fatalf("main completion emitted usage commentary or lost the journal answer: %s", output)
+				}
+				paths := proxy.tokenMetricPaths()
+				if len(paths) != 1 {
+					t.Fatalf("main completion metric paths = %q", paths)
+				}
+				markdown, err := os.ReadFile(paths[0])
+				if err != nil || !bytes.Contains(markdown, []byte("| /root/worker")) || !bytes.Contains(markdown, []byte("| Total (partial) |")) && !bytes.Contains(markdown, []byte("| Total |")) {
+					t.Fatalf("main metrics omitted projected child usage: %q, %v", markdown, err)
 				}
 				other.observeResponseUsage(tokenCounts{InputTokens: 1})
 				otherReport, _ := other.completionUsageReport()

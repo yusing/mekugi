@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -21,6 +22,7 @@ func TestJournalRouterToolContinuesWithoutClientDispatch(t *testing.T) {
 	} {
 		for _, stream := range []bool{false, true} {
 			t.Run(usage.name+"/"+map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
+				t.Setenv("TMPDIR", t.TempDir())
 				proxy := newManagedMekugiProxy(t)
 				workspace := t.TempDir()
 				headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})
@@ -77,11 +79,19 @@ func TestJournalRouterToolContinuesWithoutClientDispatch(t *testing.T) {
 				if !strings.Contains(output.String(), "Verified the journal path") {
 					t.Fatalf("missing terminal record: %s", output.String())
 				}
-				if !strings.Contains(output.String(), "Router session usage") {
-					t.Fatalf("missing token report: %s", output.String())
+				if strings.Contains(output.String(), "Router session usage") || strings.Contains(output.String(), "Usage incomplete") {
+					t.Fatalf("completion exposed metrics as commentary: %s", output.String())
 				}
-				if strings.Contains(output.String(), "Usage incomplete") != (usage.name != "complete") {
-					t.Fatalf("incorrect usage availability: %s", output.String())
+				paths := proxy.tokenMetricPaths()
+				if len(paths) != 1 {
+					t.Fatalf("journal completion metric paths = %q", paths)
+				}
+				markdown, err := os.ReadFile(paths[0])
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(string(markdown), "Usage incomplete") != (usage.name != "complete") {
+					t.Fatalf("incorrect saved usage availability: %s", markdown)
 				}
 
 				assertJournalFinishOrder(t, stream, output.Bytes())

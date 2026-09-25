@@ -7,7 +7,7 @@ import (
 	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
-// Hold provider answer events until token-usage ordering is known. Every buffered
+// Hold provider answer events until terminal handling. Every buffered
 // provider event is released unchanged, including on failure or buffer exhaustion.
 type finalAnswerStream struct {
 	events      [][]byte
@@ -93,7 +93,7 @@ func (s *finalAnswerStream) flush() [][]byte {
 }
 
 // FlushSSE releases provider events unchanged on EOF or transport/transform
-// failure. Usage requires a successful terminal and is never synthesized here.
+// failure. No usage commentary is synthesized here.
 func (t *mekugiResponseTransform) FlushSSE() ([][]byte, error) {
 	t.finalAnswer.disabled = true
 	return t.finalAnswer.flush(), nil

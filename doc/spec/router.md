@@ -279,7 +279,7 @@ and MUST NOT be exported. Rendering uses the consuming request's identity, inclu
 its public routing session, and joins accepted publications through message ID. Consumers
 MUST select a stage rather than summing stages as independent feature uses. Rendering
 can be reconsidered during response reconstruction, so consumers MUST deduplicate it
-by message ID. Automatic usage reports, subagent activity copies, critical notices, and
+by message ID. Subagent activity copies, critical notices, and
 standalone provider commentary MUST NOT be classified as explicit in-tool usage.
 
 Evidence is opt-in through `--debug`, remains in the existing operational log, and

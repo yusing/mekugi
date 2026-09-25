@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"maps"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -685,14 +686,14 @@ func TestJournalListContinuationCapturesNaturalAnswer(t *testing.T) {
 	}
 }
 
-func TestJournalEmptyFinishReportsUsage(t *testing.T) {
+func TestJournalEmptyFinishPersistsTokenMetricsSilently(t *testing.T) {
 	for _, scenario := range []string{"complete", "prior-gap", "missing-current"} {
 		for _, stream := range []bool{false, true} {
 			t.Run(scenario+"/"+map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
+				t.Setenv("TMPDIR", t.TempDir())
 
 				// A previous accepted request with missing usage permanently invalidates totals.
 				proxy := newManagedMekugiProxy(t)
-				proxy.usageReport = "table"
 				if scenario == "prior-gap" {
 					proxy.usage.observation("thread-1", "", "gpt-6-astra", "").finish()
 				}
@@ -728,38 +729,23 @@ func TestJournalEmptyFinishReportsUsage(t *testing.T) {
 				if strings.Contains(output.String(), "Journal flush") {
 					t.Fatal("empty journal emitted a flush")
 				}
-				notices := 0
-				for _, item := range journalFinishClientOutput(t, stream, output.Bytes()) {
-					if strings.Contains(commentaryMessageText(item), "Router session usage") {
-						notices++
-						if scenario == "complete" && !strings.Contains(commentaryMessageText(item), "20 (60.0%)") {
-							t.Fatalf("incorrect usage: %s", commentaryMessageText(item))
-						}
+				if strings.Contains(output.String(), "Router session usage") || strings.Contains(output.String(), "Usage incomplete") {
+					t.Fatalf("empty finish exposed metrics in completion commentary: %s", output.Bytes())
+				}
+				paths := proxy.tokenMetricPaths()
+				if len(paths) != 1 {
+					t.Fatalf("empty finish metric paths = %q", paths)
+				}
+				markdown, err := os.ReadFile(paths[0])
+				if err != nil {
+					t.Fatal(err)
+				}
+				if scenario == "complete" {
+					if !strings.Contains(string(markdown), "20 (60.0%)") {
+						t.Fatalf("incorrect saved metrics: %s", markdown)
 					}
-				}
-				if scenario != "complete" && !strings.Contains(output.String(), "Usage incomplete") {
-					t.Fatalf("usage gap was not disclosed: %s", output.Bytes())
-				}
-				if notices != 1 {
-					t.Fatalf("usage notices = %d, want 1: %s", notices, output.Bytes())
-				}
-				if stream {
-					delivered := 0
-					for _, payload := range finalAnswerTestPayloads(output.String()) {
-						var event struct {
-							Type string                     `json:"type"`
-							Item map[string]json.RawMessage `json:"item"`
-						}
-						if err := json.Unmarshal(payload, &event); err != nil {
-							t.Fatal(err)
-						}
-						if event.Type == "response.output_item.done" && strings.Contains(commentaryMessageText(event.Item), "Router session usage") {
-							delivered++
-						}
-						if event.Type == "response.completed" && delivered != 1 {
-							t.Fatalf("streamed usage notices before completion = %d, want 1", delivered)
-						}
-					}
+				} else if !strings.Contains(string(markdown), "Usage incomplete") {
+					t.Fatalf("usage gap missing from saved metrics: %s", markdown)
 				}
 			})
 		}
@@ -770,14 +756,11 @@ func assertJournalFinishOrder(t *testing.T, stream bool, wire []byte) {
 	t.Helper()
 	check := func(items []map[string]json.RawMessage) {
 		t.Helper()
-		usage, flush := -1, -1
+		flush := -1
 		for i, item := range items {
 			text := commentaryMessageText(item)
-			if strings.HasPrefix(text, "Router session usage") {
-				if usage >= 0 {
-					t.Fatal("duplicate token metrics")
-				}
-				usage = i
+			if strings.Contains(text, "Router session usage") {
+				t.Fatalf("completion exposed token metrics as commentary: %s", text)
 			}
 			if strings.HasPrefix(text, "Journal flush ") {
 				if flush >= 0 {
@@ -789,11 +772,8 @@ func assertJournalFinishOrder(t *testing.T, stream bool, wire []byte) {
 				flush = i
 			}
 		}
-		// Codex remembers the last completed assistant message, including
-		// commentary. If metrics follow the flush, turn completion renders the
-		// final-answer journal again because it is no longer that last message.
-		if usage < 0 || flush <= usage || flush != len(items)-1 {
-			t.Fatalf("want token metrics then one final journal flush last; usage=%d flush=%d items=%s", usage, flush, mustMarshalJSON(items))
+		if flush < 0 || flush != len(items)-1 {
+			t.Fatalf("want one final journal flush last; flush=%d items=%s", flush, mustMarshalJSON(items))
 		}
 	}
 	output := journalFinishClientOutput(t, stream, wire)

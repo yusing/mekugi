@@ -124,7 +124,6 @@ type mekugiProxy struct {
 	commentaryEndpoint string
 	journals           *journalStore
 	usage              *threadUsage
-	usageReport        string
 	metricMu           sync.Mutex
 	metricPaths        map[string]string
 	autoLiveDiff       *autoLiveDiff
@@ -309,8 +308,6 @@ type mekugiCommentaryState struct {
 type mekugiJournalState struct {
 	journalDeliveries       map[string]journalDelivery
 	liveDiffCompletionReady bool
-	liveDiffUsageID         string
-	journalUsageID          string
 	journalQuietFile        os.FileInfo
 	journalLiveBytes        int
 	journalNewCount         int
@@ -404,14 +401,16 @@ func (t *mekugiResponseTransform) Close() {
 
 // observeResponseUsage records provider-authoritative token usage for this response.
 func (t *mekugiResponseTransform) observeResponseUsage(counts tokenCounts) {
+	if t.usageObserved {
+		return
+	}
 	t.usageTracker.observe(counts)
 	t.usageObserved = true
 	if t.proxy != nil && t.threadID != "" {
-		cost := estimateTokenCost(t.usageTracker.model, cmp.Or(counts.ServiceTier, t.usageTracker.serviceTier), counts)
-		if t.usageTracker.openCodePrice != nil {
-			cost = t.usageTracker.openCodePrice.estimate(cmp.Or(counts.ServiceTier, t.usageTracker.serviceTier), counts)
-		}
-		t.proxy.activity.addUsage(t.threadID, counts, cost)
+		report, ok := t.proxy.usage.snapshot(t.threadID)
+		tier := cmp.Or(counts.ServiceTier, t.usageTracker.serviceTier)
+		fallback := rosterTokenCost(t.usageTracker.model, tier, counts, t.usageTracker.openCodePrice)
+		t.proxy.activity.syncUsage(t.threadID, counts, report, ok, fallback)
 	}
 }
 

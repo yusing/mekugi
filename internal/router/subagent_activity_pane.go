@@ -458,18 +458,27 @@ func (a *subagentActivity) endResponse(thread string) {
 	}
 }
 
-// addUsage adds one response's provider-reported usage to a child's totals.
-func (a *subagentActivity) addUsage(thread string, counts tokenCounts, cost ...tokenCost) {
-	if a == nil || counts.InputTokens == 0 && counts.OutputTokens == 0 {
+// syncUsage mirrors the canonical thread-usage calculator rather than pricing
+// the same provider response independently for the roster.
+func (a *subagentActivity) syncUsage(thread string, counts tokenCounts, report tokenUsageReport, complete bool, fallback tokenCost) {
+	if a == nil {
 		return
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if node := a.threads[thread]; node != nil && node.child && !a.closed {
-		node.inputTokens += counts.InputTokens
-		node.outputTokens += counts.OutputTokens
-		if len(cost) > 0 {
-			node.cost.add(cost[0])
+		canonical := complete && !counts.Incomplete && report.missingUsage == 0
+		if canonical {
+			node.inputTokens = report.InputTokens
+			node.outputTokens = report.OutputTokens
+		} else {
+			node.inputTokens += counts.InputTokens
+			node.outputTokens += counts.OutputTokens
+		}
+		if canonical && report.cost.known {
+			node.cost = report.cost
+		} else {
+			node.cost.add(fallback)
 		}
 		node.streamed = 0
 		a.wakePaneLocked()

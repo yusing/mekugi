@@ -5,13 +5,6 @@ import (
 	"strings"
 )
 
-func compactTypesafeUsage(usage typesafeUsage) string {
-	if usage.Incomplete {
-		return "n/a (usage overflow)"
-	}
-	return fmt.Sprintf("%s in / %s out, %d requests, %d missing usage, cost n/a", formatUsageTokens(usage.InputTokens), formatUsageTokens(usage.OutputTokens), usage.Requests, usage.MissingResponses)
-}
-
 // TypeSafe consumption has its own provider bucket. It must not change an
 // agent's active model, mentor schedule, cache counters, or estimated API cost.
 func (u *threadUsage) addTypesafe(thread string, usage typesafeUsage) {

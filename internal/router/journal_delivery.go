@@ -302,7 +302,7 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 		t.storageIdle = true
 		t.finishLiveDiffTurn()
 	}
-	if len(t.journalDeliveries) == 0 && t.journalUsageID == "" && t.liveDiffUsageID == "" {
+	if len(t.journalDeliveries) == 0 {
 		return
 	}
 	items := append(envelope.Output, envelope.Response.Output...)
@@ -311,19 +311,6 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 	}
 	for _, item := range items {
 		id := jsonString(item, "id")
-		if id != "" && (id == t.journalUsageID || id == t.liveDiffUsageID) {
-			if t.usageTracker != nil {
-				for thread, revision := range t.usageMentorRevisions {
-					t.usageTracker.totals.acknowledgeMentor(thread, revision)
-				}
-			}
-			t.finishLiveDiffTurn()
-			t.liveDiffUsageID = ""
-		}
-		if id == t.journalUsageID {
-			t.proxy.activity.collect(t.threadID, id, "usage", commentaryMessageText(item))
-			t.journalUsageID = ""
-		}
 		delivery, ok := t.journalDeliveries[id]
 		if !ok {
 			continue
@@ -386,14 +373,8 @@ func (t *mekugiResponseTransform) journalTerminalMessages(response []byte) ([]ma
 		}
 		counts, observed = t.completionUsageReport()
 	}
-	if usage := formatTokenUsageCommentary(response, counts, observed, "completed", true); usage != nil {
+	if observed {
 		t.proxy.writeTokenMetrics(t.shellThreadID, counts)
-
-		retained := t.retainCommentary(usage)
-		if len(retained) != 0 {
-			t.journalUsageID = jsonString(usage, "id")
-			messages = append(messages, retained...)
-		}
 	}
 	if t.subagentTurn {
 		id := commentaryMessageID("journal-summary\x00" + jsonResponseID(response))
@@ -416,18 +397,6 @@ func jsonResponseID(response []byte) string {
 	return identity.ID
 }
 
-func withoutJournalUsage(output []map[string]json.RawMessage, responseID string) []map[string]json.RawMessage {
-	usageID := subagentCommentaryMessageID("usage\x00" + responseID)
-	result := make([]map[string]json.RawMessage, 0, len(output))
-	for _, item := range output {
-		if jsonString(item, "id") == usageID {
-			continue
-		}
-		result = append(result, item)
-	}
-	return result
-}
-
 func (t *mekugiResponseTransform) decorateJournalJSON(payload []byte) ([]byte, error) {
 	var response map[string]json.RawMessage
 	if err := json.Unmarshal(payload, &response); err != nil {
@@ -444,7 +413,7 @@ func (t *mekugiResponseTransform) decorateJournalJSON(payload []byte) ([]byte, e
 		return nil, err
 	}
 	if terminal {
-		output = t.withoutNaturalAnswer(withoutJournalUsage(output, jsonString(response, "id")))
+		output = t.withoutNaturalAnswer(output)
 		terminalMessages, err := t.journalTerminalMessages(payload)
 		if err != nil {
 			t.ReleaseDelivery()
@@ -509,8 +478,8 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 		t.ReleaseDelivery()
 		return nil, err
 	}
-	// Stream the same ordering as the terminal snapshot: usage first, then
-	// the final-answer journal, with no commentary after it.
+	// Stream the same ordering as the terminal snapshot, leaving the final-answer
+	// journal last with no commentary after it.
 	if t.subagentTurn {
 		messages = append(messages, terminalMessages...)
 	} else {
@@ -530,16 +499,12 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 		if err := json.Unmarshal(payload, &event); err != nil {
 			return nil, err
 		}
-		if event.Type == responseevents.OutputItemDone &&
-			jsonString(event.Item, "id") == subagentCommentaryMessageID("usage\x00"+jsonResponseID(provider.Response)) {
-			continue
-		}
 		if event.Type == responseevents.Completed {
 			var output []map[string]json.RawMessage
 			if err := decodeJournalOutput(event.Response["output"], &output); err != nil {
 				return nil, err
 			}
-			output = t.withoutNaturalAnswer(withoutJournalUsage(output, jsonString(event.Response, "id")))
+			output = t.withoutNaturalAnswer(output)
 			output = append(output, messages...)
 			event.Response["output"] = mustMarshalJSON(output)
 			payload, err = replaceRawField(payload, "response", mustMarshalJSON(event.Response))

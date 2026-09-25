@@ -111,36 +111,6 @@ func TestSubagentReceiptDirectionAndCompletionSummary(t *testing.T) {
 	}
 }
 
-func TestTokenUsageCommentaryUsesSharedObservationWithoutReplacingTerminalMessage(t *testing.T) {
-	terminal := map[string]any{
-		"type": "message", "id": "msg-final", "role": "assistant", "status": "completed",
-		"content": []any{map[string]any{"type": "output_text", "text": "substantive result"}},
-	}
-	payload := mustTestJSON(t, map[string]any{
-		"id": "resp-terminal", "status": "completed", "output": []any{terminal},
-		"usage": map[string]any{
-			"input_tokens": 20, "output_tokens": 5,
-			"input_tokens_details":  map[string]any{"cached_tokens": 12},
-			"output_tokens_details": map[string]any{"reasoning_tokens": 3},
-		},
-	})
-	response, _, err := responseWithTokenUsageCommentary(payload, tokenUsageReport{
-		InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3}, true, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var output []map[string]json.RawMessage
-	if err := json.Unmarshal(response["output"], &output); err != nil || len(output) != 2 {
-		t.Fatalf("output = %s, error = %v", response["output"], err)
-	}
-	if text := commentaryText(t, output[0]); !strings.HasPrefix(text, testTokenUsageTable) {
-		t.Fatalf("usage commentary = %q", text)
-	}
-	if jsonString(output[1], "id") != "msg-final" {
-		t.Fatalf("terminal message = %s", response["output"])
-	}
-}
-
 func TestSubagentResponseCommentaryDoesNotRepeat(t *testing.T) {
 	responseText := "result"
 	agentMessage := map[string]any{
@@ -164,7 +134,8 @@ func TestSubagentResponseCommentaryDoesNotRepeat(t *testing.T) {
 	}
 }
 
-func TestSubagentTokenUsageSilentOnFailedAndIncompleteStops(t *testing.T) {
+func TestChildCompletionsDoNotPersistTokenMetrics(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
 	for _, status := range []string{"failed", "incomplete"} {
 		t.Run(status, func(t *testing.T) {
 			metadata := codexTurnMetadata{SubagentKind: "thread_spawn"}
@@ -188,6 +159,9 @@ func TestSubagentTokenUsageSilentOnFailedAndIncompleteStops(t *testing.T) {
 			if !bytes.Contains(events[0], []byte(`"type":"response.`+status+`"`)) ||
 				bytes.Contains(events[0], []byte("Router session usage")) {
 				t.Fatalf("terminal event = %s", events[0])
+			}
+			if paths := transform.proxy.tokenMetricPaths(); len(paths) != 0 {
+				t.Fatalf("child completion persisted token metrics: %q", paths)
 			}
 		})
 	}
@@ -259,17 +233,6 @@ func commentaryText(t *testing.T, item map[string]json.RawMessage) string {
 		t.Fatalf("commentary content = %s, error %v", item["content"], err)
 	}
 	return jsonString(content[0], "text")
-}
-
-func commentaryEventText(t *testing.T, event []byte) string {
-	t.Helper()
-	var envelope struct {
-		Item map[string]json.RawMessage `json:"item"`
-	}
-	if err := json.Unmarshal(event, &envelope); err != nil {
-		t.Fatal(err)
-	}
-	return commentaryText(t, envelope.Item)
 }
 
 func containsAgentMessage(items []map[string]json.RawMessage, id string) bool {
