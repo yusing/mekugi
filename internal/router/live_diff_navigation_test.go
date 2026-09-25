@@ -255,7 +255,7 @@ func TestLiveDiffNavigationColoredInlineStatusAndStats(t *testing.T) {
 	if heading := ansi.Strip(rows[0]); heading != " Files  4/4 · flat" {
 		t.Errorf("navigator repeats the Files title or loses its counts: %q", heading)
 	}
-	for i, want := range []string{"A  added.go +3 -0", "D  deleted.go +0 -7", "M  modified.go +5 -2", "R  renamed.go +1 -1"} {
+	for i, want := range []string{"A added.go +3 -0", "D deleted.go +0 -7", "M modified.go +5 -2", "R renamed.go +1 -1"} {
 		row := rows[i+2]
 		if plain := ansi.Strip(row); !strings.Contains(plain, want) {
 			t.Errorf("row %d lacks inline status/stats: %q", i, plain)
@@ -308,12 +308,12 @@ func TestLiveDiffNavigationFolderArrow(t *testing.T) {
 	var nav liveDiffNavigation
 	nav.rebuild(files, "")
 	row := nav.render(files, nil, 0, 25, 4, livediff.DarkTheme)[2]
-	if !strings.Contains(ansi.Strip(row), "▼  pkg (1)") || !strings.Contains(row, "\x1b[38;2;") {
+	if !strings.Contains(ansi.Strip(row), "▼ pkg (1)") || !strings.Contains(row, "\x1b[38;2;") {
 		t.Fatalf("expanded folder is not prominent: %q", row)
 	}
 	nav.collapsed = map[string]bool{"pkg": true}
 	nav.rebuild(files, "")
-	if row = ansi.Strip(nav.render(files, nil, 0, 25, 4, livediff.DarkTheme)[2]); !strings.Contains(row, "▶  pkg (1)") {
+	if row = ansi.Strip(nav.render(files, nil, 0, 25, 4, livediff.DarkTheme)[2]); !strings.Contains(row, "▶ pkg (1)") {
 		t.Fatalf("collapsed folder arrow missing: %q", row)
 	}
 }

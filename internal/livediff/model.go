@@ -21,6 +21,10 @@ type File struct {
 	Path        string
 	Chunks      []Chunk
 	Highlighted bool
+	// Origins are the unreviewed changes a visible file composes, in capture
+	// order. Baseline counts changes a caller filter folded into its base.
+	Origins  []Origin
+	Baseline int
 }
 type Chunk struct {
 	Key, Status   string
@@ -30,7 +34,15 @@ type Chunk struct {
 	Review        mekugi.ReviewFile
 	Applied       bool
 	Highlighted   bool
+	Origin
 }
+
+// Origin attributes a capture: its change ID, the canonical agent path that
+// made it, and the tool or program that wrote it.
+type Origin struct {
+	Change, Caller, Source string
+}
+
 type View struct {
 	Files        []File
 	Selected     int
@@ -41,6 +53,9 @@ type View struct {
 	Latest       string
 	Initialized  bool
 	UnseenUpdate bool
+	// Caller, when set, shows only captures whose CallerKey matches. Other
+	// callers' captures compose as reviewed baseline, so the net diff stays exact.
+	Caller string
 }
 
 func (file File) Key() string {
@@ -171,8 +186,20 @@ func (v *View) RefreshVisible() {
 		slices.SortStableFunc(chunks, func(a, b Chunk) int {
 			return cmp.Compare(a.CaptureOrder, b.CaptureOrder)
 		})
+		baseline := make(map[string]bool)
 		for _, chunk := range chunks {
 			reviewed := v.Reviewed[chunk.Key]
+			if !reviewed && !v.Shows(chunk) {
+				// One change may hold several captures of this file.
+				if id := cmp.Or(chunk.Change, chunk.Key); !baseline[id] {
+					baseline[id] = true
+					visible.Baseline++
+				}
+				reviewed = true
+			}
+			if !reviewed && chunk.Change != "" && !slices.ContainsFunc(visible.Origins, func(origin Origin) bool { return origin.Change == chunk.Change }) {
+				visible.Origins = append(visible.Origins, chunk.Origin)
+			}
 			visible.Highlighted = visible.Highlighted || chunk.Highlighted && !reviewed
 			unreviewed = unreviewed || !reviewed
 			if !chunk.Applied {
@@ -197,7 +224,7 @@ func (v *View) RefreshVisible() {
 					}
 					visible.Chunks = append(visible.Chunks, Chunk{
 						Status: status,
-						Review: chunk.Review, Highlighted: chunk.Highlighted,
+						Review: chunk.Review, Highlighted: chunk.Highlighted, Origin: chunk.Origin,
 					})
 				}
 				continue
@@ -222,6 +249,33 @@ func (v *View) RefreshVisible() {
 	}
 }
 
+// UnknownCaller is the filter key for captures recorded without a caller, so
+// filtering to them stays distinct from showing all.
+const UnknownCaller = "?"
+
+// CallerKey is the caller filter value that selects a caller's captures.
+func CallerKey(caller string) string {
+	if caller == "" {
+		return UnknownCaller
+	}
+	return caller
+}
+
+// Shows reports whether the caller filter admits a capture.
+func (v *View) Shows(chunk Chunk) bool {
+	return v.Caller == "" || CallerKey(chunk.Caller) == v.Caller
+}
+
+// FilterCaller shows only one CallerKey's captures; an empty key shows all.
+func (v *View) FilterCaller(caller string) {
+	if caller == v.Caller {
+		return
+	}
+	v.Caller, v.Visible = caller, nil
+	v.RefreshVisible()
+}
+
+// Flush marks the shown captures reviewed; a caller filter leaves others' pending.
 func (v *View) Flush(all bool) {
 	if v.Reviewed == nil {
 		v.Reviewed = make(map[string]bool)
@@ -232,7 +286,9 @@ func (v *View) Flush(all bool) {
 		}
 		delete(v.Visible, file.Key())
 		for _, chunk := range file.Chunks {
-			v.Reviewed[chunk.Key] = true
+			if v.Shows(chunk) {
+				v.Reviewed[chunk.Key] = true
+			}
 		}
 	}
 	v.RefreshVisible()
@@ -373,11 +429,23 @@ func (r Render) FollowOffset(rows int) int {
 }
 
 // Keep the viewport anchored to a file and its local row when preceding files grow.
+// Scrolling out of a file forgets its position: only a file the viewport left by
+// a jump (n/p, Enter, JumpTo) reopens where it was, never where a scroll passed through.
 func (v *View) ScrollTo(render Render, offset int) {
+	v.moveTo(render, offset, true)
+}
+
+// JumpTo moves the viewport like ScrollTo, but a file it leaves keeps its position.
+func (v *View) JumpTo(render Render, offset int) {
+	v.moveTo(render, offset, false)
+}
+
+func (v *View) moveTo(render Render, offset int, forget bool) {
 	if len(v.Files) == 0 {
 		return
 	}
 	offset = max(0, min(offset, len(render.Lines)-1))
+	previous := v.Selected
 	v.Selected = 0
 	for i, start := range render.Starts {
 		if start > offset {
@@ -391,7 +459,21 @@ func (v *View) ScrollTo(render Render, offset int) {
 			v.Selected = i
 		}
 	}
+	if forget && previous != v.Selected && previous < len(v.Files) {
+		delete(v.Scroll, v.Files[previous].Key())
+	}
 	v.Scroll[v.Files[v.Selected].Key()] = max(0, offset-render.Starts[v.Selected])
+}
+
+// Open selects a file at its header, as an explicit navigation target.
+func (v *View) Open(file int) {
+	if file < 0 || file >= len(v.Files) {
+		return
+	}
+	v.Selected, v.Following = file, false
+	if v.Scroll != nil {
+		delete(v.Scroll, v.Files[file].Key())
+	}
 }
 
 // Reflow saved positions when wrapping changes, keeping the same logical row.

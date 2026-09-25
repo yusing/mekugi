@@ -58,11 +58,11 @@ func (p *liveActivityPainter) agent(name string) string {
 	if color == "" {
 		color = "\x1b[1m" + p.theme.Accent()
 	}
-	return color + name + liveActivityReset
+	return color + agentDisplayName(name) + liveActivityReset
 }
 
 func (p *liveActivityPainter) recipient(name string) string {
-	return liveAgentGutter(name, p.theme) + liveActivityDisplayName(name) + liveActivityReset
+	return liveAgentGutter(name, p.theme) + agentDisplayName(name) + liveActivityReset
 }
 
 func liveActivityLanguagePath(lang string) string {

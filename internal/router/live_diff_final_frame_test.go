@@ -352,7 +352,7 @@ func TestLiveDiffFinalFramePTYShowsCompleteEditAfterTruncatedPreview(t *testing.
 	worker.appendDelta(fullInput[:strings.Index(fullInput, "FINAL_FRAME_MARKER")])
 	firstFrame := ui.frame(t, func(frame string) bool {
 		plain := ansi.Strip(frame)
-		return strings.Contains(plain, "◐ A  pty.txt") && strings.Contains(plain, "session_line")
+		return strings.Contains(plain, "◐ A pty.txt") && strings.Contains(plain, "session_line")
 	})
 	if strings.Contains(ansi.Strip(firstFrame), "FINAL_FRAME_MARKER") {
 		t.Fatal("truncated streaming frame unexpectedly contained the final marker")
@@ -360,7 +360,7 @@ func TestLiveDiffFinalFramePTYShowsCompleteEditAfterTruncatedPreview(t *testing.
 	worker.finish(fullInput)
 	finalFrame := ui.frame(t, func(frame string) bool {
 		plain := ansi.Strip(frame)
-		return strings.Contains(plain, "✓ A  pty.txt +2 -0") && strings.Contains(plain, "FINAL_FRAME_MARKER")
+		return strings.Contains(plain, "✓ A pty.txt +2 -0") && strings.Contains(plain, "FINAL_FRAME_MARKER")
 	})
 	if plain := ansi.Strip(finalFrame); !strings.Contains(plain, "session_line") {
 		t.Fatalf("final PTY frame lost earlier content: %q", plain)

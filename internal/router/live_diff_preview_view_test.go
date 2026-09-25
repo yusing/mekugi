@@ -261,7 +261,7 @@ func TestLiveDiffConcurrentPreviewCards(t *testing.T) {
 		return ansi.Strip(strings.Join(lines, "\n"))
 	}
 	frame := check(12)
-	for _, want := range []string{"/root/editor · ◐ edit", "/root/reviewer · ◐ edit", "stream_0100", "stream_0200"} {
+	for _, want := range []string{"editor · ◐ edit", "reviewer · ◐ edit", "stream_0100", "stream_0200"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing concurrent caller/source %q: %s", want, frame)
 		}
@@ -277,7 +277,7 @@ func TestLiveDiffConcurrentPreviewCards(t *testing.T) {
 		pane.update(first)
 	}
 	frame = check(12)
-	if strings.Index(frame, "/root/editor") > strings.Index(frame, "/root/reviewer") ||
+	if strings.Index(frame, "editor · ") > strings.Index(frame, "reviewer · ") ||
 		!strings.Contains(frame, "stream_0150") || !strings.Contains(frame, "stream_0200") ||
 		&otherSource[0] != &pane.views["second"].source[0] {
 		t.Fatalf("delta reordered or replaced a concurrent view: %s", frame)
@@ -287,7 +287,7 @@ func TestLiveDiffConcurrentPreviewCards(t *testing.T) {
 	pane.update(second)
 	pane.update(liveDiffPreview{ID: "first"})
 	frame = check(12)
-	if !strings.Contains(frame, "/root/editor · ✓ edit") || !strings.Contains(frame, "/root/editor · ◐ edit") {
+	if !strings.Contains(frame, "editor · ✓ edit") || !strings.Contains(frame, "editor · ◐ edit") {
 		t.Fatalf("completion replaced another call: %s", frame)
 	}
 	if len(pane.order) != 2 || !pane.views["first"].complete || pane.views["second"].complete {
@@ -331,7 +331,7 @@ func TestLiveDiffPreviewCallerUsesAvailableWidth(t *testing.T) {
 		t.Fatal(err)
 	}
 	header := ansi.Strip(lines[0])
-	if !strings.HasPrefix(header, "  "+preview.Caller+" · ◐") || strings.Contains(header, "…") {
+	if !strings.HasPrefix(header, "  review_stock_preview · ◐") || strings.Contains(header, "…") {
 		t.Fatalf("caller truncated despite available width: %q", header)
 	}
 	preview.Status = liveDiffPreviewUnavailable + strings.Repeat("reason ", 20)
@@ -340,7 +340,7 @@ func TestLiveDiffPreviewCallerUsesAvailableWidth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if header = ansi.Strip(lines[0]); !strings.HasPrefix(header, "  /root/review_stock") {
+	if header = ansi.Strip(lines[0]); !strings.HasPrefix(header, "  review_stock") {
 		t.Fatalf("long status obscured caller: %q", header)
 	}
 }
@@ -383,11 +383,11 @@ func TestLiveDiffPreviewTitleShowsFileStatusAndCounts(t *testing.T) {
 		preview liveDiffPreview
 		want    string
 	}{
-		{"modified", liveDiffPreview{Status: liveDiffPreviewEdit, Files: []mekugi.ReviewFile{modified}}, "◐ M  a.go +2 -1"},
-		{"added", liveDiffPreview{Status: liveDiffPreviewEdit, Files: []mekugi.ReviewFile{added}}, "◐ A  new.txt +1 -0"},
-		{"deleted", liveDiffPreview{Status: liveDiffPreviewEdit, Files: []mekugi.ReviewFile{deleted}}, "◐ D  old.txt +0 -2"},
-		{"several files", liveDiffPreview{Status: liveDiffPreviewEdit, Files: []mekugi.ReviewFile{modified, added}}, "◐ A  new.txt +1 -0 2/2 files"},
-		{"running", liveDiffPreview{Status: liveDiffPreviewRunning, Files: []mekugi.ReviewFile{modified}}, "◐ M  a.go +2 -1 · observed so far"},
+		{"modified", liveDiffPreview{Status: liveDiffPreviewEdit, Files: []mekugi.ReviewFile{modified}}, "◐ M a.go +2 -1"},
+		{"added", liveDiffPreview{Status: liveDiffPreviewEdit, Files: []mekugi.ReviewFile{added}}, "◐ A new.txt +1 -0"},
+		{"deleted", liveDiffPreview{Status: liveDiffPreviewEdit, Files: []mekugi.ReviewFile{deleted}}, "◐ D old.txt +0 -2"},
+		{"several files", liveDiffPreview{Status: liveDiffPreviewEdit, Files: []mekugi.ReviewFile{modified, added}}, "◐ A new.txt +1 -0 2/2 files"},
+		{"running", liveDiffPreview{Status: liveDiffPreviewRunning, Files: []mekugi.ReviewFile{modified}}, "◐ M a.go +2 -1 · observed so far"},
 		{"pending", liveDiffPreview{Status: liveDiffPreviewPending, Input: "will restore (pending)\n/workspace/a.go"}, "◐ scoped effects"},
 		{"unavailable", liveDiffPreview{Status: liveDiffPreviewUnavailable + "patch cannot be projected", Input: "\n"}, "! patch cannot be projected"},
 		{"diff tail", liveDiffPreview{Status: liveDiffPreviewEdit, Input: "+x\n", DiffText: true, Truncated: true}, "◐ edit · tail"},

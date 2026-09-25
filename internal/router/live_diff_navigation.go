@@ -25,6 +25,13 @@ type liveDiffNavigation struct {
 	savedCursor                      string
 	savedTop                         string
 	total                            int
+	// changes is the Changes tab, shown instead of files when set.
+	changes    liveDiffChanges
+	changesTab bool
+	// dots marks each file row with its callers, by view index.
+	dots []string
+	// caller is the view's caller filter, for the heading.
+	caller string
 }
 
 type liveDiffNavEntry struct {
@@ -45,6 +52,10 @@ func (n *liveDiffNavigation) width(width int) int {
 	}
 	if n.columns > 0 {
 		return min(max(16, n.columns), width-40)
+	}
+	if n.changesTab {
+		// The graph and its attribution need more room than file names.
+		return min(46, max(30, width/3))
 	}
 	return min(34, max(25, width/4))
 }
@@ -233,29 +244,148 @@ func (c *liveDiffTerminalController) openNavEntry() {
 		n.ensureVisible(c.rows)
 		return
 	}
-	c.view.Selected, c.view.Following = entry.file, false
+	c.view.Open(entry.file)
 	n.focused = false
 	n.filtering = false
 }
 
+// openChangeRow toggles a change and opens its first file, opens a file row,
+// or filters to the caller of a branch row.
+func (c *liveDiffTerminalController) openChangeRow() {
+	l := &c.navigation.changes
+	if l.cursor >= len(l.rows) {
+		return
+	}
+	row := l.rows[l.cursor]
+	node := l.nodes[row.node]
+	switch row.kind {
+	case 'b':
+		caller := livediff.CallerKey(node.Caller)
+		if c.view.Caller == caller {
+			caller = ""
+		}
+		c.filterCaller(caller)
+	case 'c':
+		if l.expanded == nil {
+			l.expanded = make(map[string]bool)
+		}
+		l.expanded[node.Change] = !l.expanded[node.Change]
+		if len(node.files) > 0 {
+			c.openChange(node.Change, node.files[0].file)
+		}
+		l.rebuild(&c.view, c.workspace)
+		l.focusChange(node.Change, c.rows)
+	case 'f':
+		c.openChange(node.Change, node.files[row.file].file)
+		c.navigation.focused, c.navigation.filtering = false, false
+	}
+}
+
+// openChange opens one file of a change at its header.
+func (c *liveDiffTerminalController) openChange(change string, file int) {
+	if file < 0 || file >= len(c.view.Files) {
+		return
+	}
+	c.view.Open(file)
+	c.navigation.changes.target = liveDiffChangeTarget{change, c.view.Files[file].Key()}
+	c.revealFile()
+}
+
+// stepChange opens the next or previous file of a change, in capture order.
+func (c *liveDiffTerminalController) stepChange(direction int) {
+	l := &c.navigation.changes
+	var targets []liveDiffChangeTarget
+	var files []int
+	for _, node := range l.nodes {
+		for _, file := range node.files {
+			if file.file >= len(c.view.Files) {
+				continue
+			}
+			targets = append(targets, liveDiffChangeTarget{node.Change, c.view.Files[file.file].Key()})
+			files = append(files, file.file)
+		}
+	}
+	if len(targets) == 0 {
+		return
+	}
+	index := slices.Index(targets, l.target)
+	if index < 0 {
+		// Start from the open file's first change, before or after it.
+		index = slices.IndexFunc(files, func(file int) bool { return file == c.view.Selected })
+		if index < 0 && direction > 0 {
+			index = -1
+		} else if index < 0 {
+			index = 0
+		} else if direction > 0 {
+			index--
+		} else {
+			index++
+		}
+	}
+	index = (index + direction + len(targets)) % len(targets)
+	c.openChange(targets[index].change, files[index])
+	l.focusChange(targets[index].change, c.rows)
+}
+
+// filterCaller shows only one caller's changes; an empty caller shows all.
+func (c *liveDiffTerminalController) filterCaller(caller string) {
+	c.view.FilterCaller(caller)
+	c.navigation.changes.target = liveDiffChangeTarget{}
+	c.refreshChanges()
+}
+
+// refreshChanges rebuilds what the navigator derives from captures: the
+// Changes tab, caller marks, and the filter shown in the Files heading.
+func (c *liveDiffTerminalController) refreshChanges() {
+	c.navigation.changes.rebuild(&c.view, c.workspace)
+	c.navigation.dots = c.callerDots()
+	c.navigation.caller = c.view.Caller
+}
+
+// cycleCaller steps the caller filter through all, then each caller.
+func (c *liveDiffTerminalController) cycleCaller() {
+	callers := append([]string{""}, liveDiffCallers(&c.view)...)
+	next := (slices.Index(callers, c.view.Caller) + 1) % len(callers)
+	c.filterCaller(callers[next])
+}
+
 func (c *liveDiffTerminalController) editFilter(key byte) {
 	n := &c.navigation
+	query := &n.query
+	if n.changesTab {
+		query = &n.changes.query
+	}
 	switch key {
 	case 21:
-		n.query = ""
+		*query = ""
 	case 13, 10:
 		n.filtering = false
-		if n.query != "" {
-			c.openNavEntry()
+		if *query != "" {
+			if n.changesTab {
+				// Accepting opens the first match's first file without toggling it.
+				if first := slices.IndexFunc(n.changes.rows, func(row liveDiffChangeRow) bool { return row.kind == 'c' }); first >= 0 {
+					if node := n.changes.nodes[n.changes.rows[first].node]; len(node.files) > 0 {
+						c.openChange(node.Change, node.files[0].file)
+						n.changes.focusChange(node.Change, c.rows)
+					}
+				}
+			} else {
+				c.openNavEntry()
+			}
 		}
 		return
 	case 127, 8:
-		_, size := utf8.DecodeLastRuneInString(n.query)
-		n.query = n.query[:len(n.query)-size]
+		_, size := utf8.DecodeLastRuneInString(*query)
+		*query = (*query)[:len(*query)-size]
 	default:
-		if key >= 32 && len(n.query) < 4096 {
-			n.query += string([]byte{key})
+		if key >= 32 && len(*query) < 4096 {
+			*query += string([]byte{key})
 		}
+	}
+	if n.changesTab {
+		n.changes.rebuild(&c.view, c.workspace)
+		n.changes.cursor, n.changes.top = 0, 0
+		return
 	}
 	n.rebuild(c.files, c.workspace)
 	n.cursor, n.top = 0, 0
@@ -273,7 +403,7 @@ func (c *liveDiffTerminalController) editFilter(key byte) {
 
 func (c *liveDiffTerminalController) navigationKey(key byte) bool {
 	n := &c.navigation
-	if key == 21 && n.query != "" {
+	if key == 21 && (n.query != "" && !n.changesTab || n.changes.query != "" && n.changesTab) {
 		c.editFilter(key)
 		return true
 	}
@@ -282,8 +412,23 @@ func (c *liveDiffTerminalController) navigationKey(key byte) bool {
 		return true
 	}
 	switch key {
+	case '\t':
+		n.changesTab = !n.changesTab
+		n.hidden, n.filtering = false, false
+		if c.lastWidth < 100 && !n.focused {
+			n.focused, c.view.Following = true, false
+		}
+		if n.changesTab {
+			n.changes.rebuild(&c.view, c.workspace)
+			if target := n.changes.target; target.change != "" {
+				n.changes.focusChange(target.change, c.rows)
+			}
+		} else if n.focused {
+			c.revealFile()
+		}
+		return true
 	case '/':
-		if n.query == "" {
+		if n.query == "" && !n.changesTab {
 			if len(n.entries) > 0 {
 				n.savedCursor = n.entries[n.cursor].id
 				n.savedTop = n.entries[n.top].id
@@ -315,6 +460,9 @@ func (c *liveDiffTerminalController) navigationKey(key byte) bool {
 	}
 	if !n.focused {
 		return false
+	}
+	if n.changesTab {
+		return c.changesKey(key)
 	}
 	switch key {
 	case 'j':
@@ -371,6 +519,10 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 		mode = "flat"
 	}
 	heading := fmt.Sprintf(" Files  %d/%d · %s", len(n.matches), n.total, mode)
+	if n.caller != "" {
+		name, _ := liveDiffCallerStyle(theme)(n.caller)
+		heading += " · @" + livediff.Safe(name, false)
+	}
 	if n.focused {
 		heading = theme.Accent() + "▎" + strings.TrimPrefix(heading, " ") + "\x1b[0m"
 	}
@@ -400,12 +552,13 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 			break
 		}
 		entry := n.entries[index]
-		marker := "  "
+		// One marker cell, as in the Changes tab, so rows align with the heading.
+		marker := " "
 		if entry.file == selected && entry.file >= 0 {
-			marker = "▎ "
+			marker = "▎"
 		}
 		if n.focused && index == n.cursor {
-			marker = "> "
+			marker = ">"
 		}
 		indent := strings.Repeat("  ", min(entry.depth, 4))
 		label, stats := "", ""
@@ -414,7 +567,7 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 			if n.collapsed[entry.folder] {
 				arrow = "▶"
 			}
-			label = indent + theme.Accent() + arrow + "\x1b[39m  " + livediff.Safe(entry.label, false)
+			label = indent + theme.Accent() + arrow + "\x1b[39m " + livediff.Safe(entry.label, false)
 			stats = fmt.Sprintf(" \x1b[2m(%d)\x1b[22m", entry.count)
 		} else {
 			file := files[entry.file]
@@ -426,11 +579,14 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 			if entry.file < len(counts) {
 				stats = liveDiffCountStats(counts[entry.file], theme)
 			}
+			if entry.file < len(n.dots) {
+				stats = n.dots[entry.file] + stats
+			}
 		}
-		available := max(0, contentWidth-2-ansi.StringWidth(stats))
+		available := max(0, contentWidth-1-ansi.StringWidth(stats))
 		label = ansi.Truncate(label, available, "…")
 		line := marker + label + stats
-		if marker != "  " {
+		if marker != " " {
 			line = theme.Accent() + marker + "\x1b[39m" + label + stats
 		}
 		out[row] = ansi.Truncate(line, contentWidth, "")
@@ -450,7 +606,8 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 	return out
 }
 
-// liveDiffFileLabel prefixes a file label with its colored change status.
+// liveDiffFileLabel prefixes a file label with its colored change status. Every
+// file row (tree, flat list, Changes tab, streaming title) uses this format.
 func liveDiffFileLabel(beforePath, afterPath, label string, theme livediff.Theme) string {
 	status, color := "M", theme.Foreground(chroma.LiteralNumberInteger)
 	switch {
@@ -461,7 +618,7 @@ func liveDiffFileLabel(beforePath, afterPath, label string, theme livediff.Theme
 	case beforePath != afterPath:
 		status, color = "R", theme.Accent()
 	}
-	return color + status + "\x1b[39m  " + label
+	return color + status + "\x1b[39m " + label
 }
 
 // liveDiffCountStats shows known line counts; unknown counts are not zero.
@@ -470,4 +627,52 @@ func liveDiffCountStats(count livediff.Counts, theme livediff.Theme) string {
 		return " \x1b[2m?\x1b[22m"
 	}
 	return fmt.Sprintf(" %s+%d\x1b[39m %s-%d\x1b[39m", theme.Foreground(chroma.GenericInserted), count.Added, theme.Foreground(chroma.GenericDeleted), count.Removed)
+}
+
+// changesKey moves through the Changes tab while it has focus.
+func (c *liveDiffTerminalController) changesKey(key byte) bool {
+	l := &c.navigation.changes
+	last := max(0, len(l.rows)-1)
+	switch key {
+	case 'j':
+		l.cursor = min(l.cursor+1, last)
+	case 'k':
+		l.cursor = max(0, l.cursor-1)
+	case ' ':
+		l.cursor = min(l.cursor+max(1, c.rows-2), last)
+	case 'b':
+		l.cursor = max(0, l.cursor-max(1, c.rows-2))
+	case 'g':
+		l.cursor = 0
+	case 'G':
+		l.cursor = last
+	case 13, 10:
+		c.openChangeRow()
+	case 'h', 'l':
+		// l expands a change, h collapses it; from a file row, h returns to its change.
+		if l.cursor >= len(l.rows) || l.rows[l.cursor].kind == 'b' {
+			break
+		}
+		row := l.rows[l.cursor]
+		change := l.nodes[row.node].Change
+		switch {
+		case key == 'h' && row.kind == 'f':
+			l.focusChange(change, c.rows)
+		case row.kind == 'f' || l.expanded[change] == (key == 'l'):
+			if key == 'l' {
+				l.cursor = min(l.cursor+1, last)
+			}
+		default:
+			if l.expanded == nil {
+				l.expanded = make(map[string]bool)
+			}
+			l.expanded[change] = key == 'l'
+			l.rebuild(&c.view, c.workspace)
+			l.focusChange(change, c.rows)
+		}
+	default:
+		return false
+	}
+	l.ensureVisible(c.rows)
+	return true
 }

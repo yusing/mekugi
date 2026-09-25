@@ -41,7 +41,7 @@ func TestLiveDiffTerminalFileNavigator(t *testing.T) {
 	tree := ui.frame(t, func(frame string) bool {
 		return strings.Contains(liveDiffFrameRow(frame, 1), "Files  40/40 · tree") &&
 			!strings.Contains(liveDiffFrameRow(frame, 1), "Changes") &&
-			strings.Contains(liveDiffFrameRow(frame, 3), "▼  internal/router")
+			strings.Contains(liveDiffFrameRow(frame, 3), "▼ internal/router")
 	})
 	var snapshot []string
 	for row := 1; row <= 22; row++ {
@@ -57,7 +57,7 @@ func TestLiveDiffTerminalFileNavigator(t *testing.T) {
 		t.Fatal("redundant file/row position header is still displayed")
 	}
 	fileRow := liveDiffFrameRow(tree, 4)
-	if !strings.Contains(fileRow, "A  file000.go") || !strings.Contains(fileRow, "+30 -0") {
+	if !strings.Contains(fileRow, "A file000.go") || !strings.Contains(fileRow, "+30 -0") {
 		t.Fatalf("file status and inline added/removed stats are missing: %q", fileRow)
 	}
 	rawFileRow, _, _ := strings.Cut(strings.Split(tree, "\x1b[4;1H")[1], "\x1b[5;1H")
@@ -98,7 +98,7 @@ func TestLiveDiffTerminalFileNavigator(t *testing.T) {
 	}
 	ui.write(t, "\x15")
 	ui.frame(t, func(frame string) bool {
-		return strings.Contains(liveDiffFrameRow(frame, 1), "40/40 · tree") && strings.Contains(liveDiffFrameRow(frame, 3), "▼  internal/router")
+		return strings.Contains(liveDiffFrameRow(frame, 1), "40/40 · tree") && strings.Contains(liveDiffFrameRow(frame, 3), "▼ internal/router")
 	})
 	// Pointer scrolling targets the list, not the selected file's viewport.
 	ui.write(t, "\x1b[<65;5;10M")

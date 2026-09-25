@@ -161,7 +161,7 @@ func formatTokenUsageReport(report tokenUsageReport) string {
 		rows = *report.rows
 	}
 	for _, row := range rows {
-		writeTokenUsageRow(&text, row.agent, row.role, row.report)
+		writeTokenUsageRow(&text, agentDisplayName(row.agent), row.role, row.report)
 	}
 	total := report
 	total.model = "—"

@@ -686,6 +686,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 			NativePatches:   patches,
 			ExecObservation: observation,
 			ExecutingThread: t.shellThreadID,
+			Caller:          t.operationCaller(),
 		}
 		if !changed {
 			history.CommentaryMessageIDs = []string{commentaryMessageID(callID)}
@@ -727,7 +728,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		ToolName: name, Script: input,
 		CarrierKind: codeModeCarrierCustom, CarrierName: name, CarrierPayload: input,
 		ReplayCarrier: true, UpstreamItem: item.cloneFields(), NativePatches: patches,
-		ExecutingThread: t.shellThreadID,
+		ExecutingThread: t.shellThreadID, Caller: t.operationCaller(),
 	}
 	t.recordLocal(callID, &history)
 	return false, nil
@@ -764,6 +765,7 @@ func (t *mekugiResponseTransform) observeStockExecCommand(item *responsesItem) e
 		// arguments; the observation joins that record.
 		retained.ExecObservation = observation
 		retained.ExecutingThread = cmp.Or(retained.ExecutingThread, t.shellThreadID)
+		retained.Caller = cmp.Or(retained.Caller, t.operationCaller())
 		t.local[callID] = retained
 		return nil
 	}
@@ -771,7 +773,7 @@ func (t *mekugiResponseTransform) observeStockExecCommand(item *responsesItem) e
 		ToolName: nativeExecCommandToolName, Script: arguments,
 		CarrierKind: codeModeCarrierFunction, CarrierName: nativeExecCommandToolName, CarrierPayload: arguments,
 		ReplayCarrier: true, UpstreamItem: item.cloneFields(), ExecObservation: observation,
-		ExecutingThread: t.shellThreadID,
+		ExecutingThread: t.shellThreadID, Caller: t.operationCaller(),
 	})
 	return nil
 }
@@ -813,7 +815,7 @@ func (t *mekugiResponseTransform) openExecWindow(callID string, observation *exe
 	}
 	t.proxy.execWindows.open(window)
 	if observation != nil && t.proxy.autoLiveDiff != nil && t.proxy.autoLiveDiff.enabled.Load() {
-		t.proxy.execWindows.preview(callID, *observation, t.proxy.autoLiveDiff.events, t.directory, t.threadID, t.commentaryAuthor)
+		t.proxy.execWindows.preview(callID, *observation, t.proxy.autoLiveDiff.events, t.directory, t.threadID, t.operationCaller())
 	}
 }
 

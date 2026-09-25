@@ -394,10 +394,10 @@ func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 	view.handleKey("", 'o')
 	only := plainLines(view.render(80, 40, time.Now()))
 	joined := strings.Join(only, "\n")
-	if strings.Contains(joined, "+11 lines") || strings.Count(joined, "│ line") != 20 || strings.Contains(joined, "● /root/b") {
+	if strings.Contains(joined, "+11 lines") || strings.Count(joined, "│ line") != 20 || strings.Contains(joined, "● b") {
 		t.Fatalf("only feed = %s", joined)
 	}
-	if !strings.HasPrefix(only[len(only)-1], "ONLY ·") || !strings.Contains(only[0], "only /root/a (1/2)") {
+	if !strings.HasPrefix(only[len(only)-1], "ONLY ·") || !strings.Contains(only[0], "only a (1/2)") {
 		t.Fatalf("only chrome = %q / %q", only[0], only[len(only)-1])
 	}
 	view.handleKey("", 'k')
@@ -663,14 +663,14 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 	})
 	h.write(t, "\x1b[<0;5;6M")
 	h.frame(t, func(frame string) bool {
-		return strings.Contains(liveDiffFrameRow(frame, 1), "only /root/explorer/probe") && !strings.Contains(text(frame), "● /root/explorer ─")
+		return strings.Contains(liveDiffFrameRow(frame, 1), "only explorer/probe") && !strings.Contains(text(frame), "● explorer ─")
 	})
 	h.write(t, "\x1b[<0;5;6M")
 	h.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 1), "AGENTS  3 agents") })
 	h.write(t, "o")
 	h.frame(t, func(frame string) bool {
-		return strings.Contains(liveDiffFrameRow(frame, 1), "only /root/explorer/probe") && strings.HasPrefix(liveDiffFrameRow(frame, height), "ONLY") &&
-			!strings.Contains(text(frame), "● /root/explorer ─")
+		return strings.Contains(liveDiffFrameRow(frame, 1), "only explorer/probe") && strings.HasPrefix(liveDiffFrameRow(frame, height), "ONLY") &&
+			!strings.Contains(text(frame), "● explorer ─")
 	})
 	h.quit(t)
 	// A closed pane stays closed; the next root drain carries the backlog inline.

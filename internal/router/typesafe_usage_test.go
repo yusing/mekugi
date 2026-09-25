@@ -52,8 +52,8 @@ func TestThreadUsageKeepsTypesafeSeparateAndProjectsDescendants(t *testing.T) {
 	text := formatTokenUsageReport(report)
 	for _, want := range []string{
 		"## TypeSafe AI usage",
-		"| /root | jev-1.13.0 | 2 | 11 | 4 | 0 | n/a |",
-		"| /root/worker | jev-1.13.0 | 1 | 7 | 3 | 1 | n/a |",
+		"| main | jev-1.13.0 | 2 | 11 | 4 | 0 | n/a |",
+		"| worker | jev-1.13.0 | 1 | 7 | 3 | 1 | n/a |",
 		"| Total TypeSafe | jev-1.13.0 | 3 | 18 | 7 | 1 | n/a |",
 		"Missing usage counts attempts",
 	} {
@@ -61,7 +61,7 @@ func TestThreadUsageKeepsTypesafeSeparateAndProjectsDescendants(t *testing.T) {
 			t.Fatalf("report missing %q:\n%s", want, text)
 		}
 	}
-	if strings.Contains(text, "| /root/other | jev-1.13.0 |") {
+	if strings.Contains(text, "| other | jev-1.13.0 |") {
 		t.Fatalf("unrelated thread appeared in root TypeSafe report:\n%s", text)
 	}
 
@@ -88,7 +88,7 @@ func TestTokenMetricsFilePersistsTypesafeSection(t *testing.T) {
 	text := string(content)
 	for _, want := range []string{
 		"| Agent | Role | Model |",
-		"| /root | main | n/a | 20 (40.0%) |",
+		"| main | main | n/a | 20 (40.0%) |",
 		"## TypeSafe AI usage",
 		"| Total TypeSafe | jev-1.13.0 | 4 | 13 | 5 | 1 | n/a |",
 		"No TypeSafe price is configured",
@@ -113,7 +113,7 @@ func TestThreadTypesafeOverflowStaysIncomplete(t *testing.T) {
 		t.Fatalf("overflowed accounting resumed: before=%+v after=%+v", report.typesafe, continued.typesafe)
 	}
 	text := formatTokenUsageReport(report)
-	if !strings.Contains(text, "## TypeSafe AI usage") || !strings.Contains(text, "| /root | jev-1.13.0 | n/a | n/a | n/a | n/a | n/a |") ||
+	if !strings.Contains(text, "## TypeSafe AI usage") || !strings.Contains(text, "| main | jev-1.13.0 | n/a | n/a | n/a | n/a | n/a |") ||
 		!strings.Contains(text, "Usage totals unavailable due to accounting overflow") || strings.Contains(text, "18446744073709551615") {
 		t.Fatalf("overflowed TypeSafe totals were exposed:\n%s", text)
 	}

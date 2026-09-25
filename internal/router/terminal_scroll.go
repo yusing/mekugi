@@ -50,7 +50,11 @@ func (c *liveDiffTerminalController) scroll(key byte) bool {
 	if !c.diffMode {
 		return c.previewPane.scroll(key)
 	}
-	next, follow, ok := paneScroll(key, c.offset, c.rows, len(c.lines))
+	total := len(c.lines)
+	if c.pinned {
+		total++
+	}
+	next, follow, ok := paneScroll(key, c.offset, c.rows, total)
 	if !ok {
 		return false
 	}

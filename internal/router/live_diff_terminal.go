@@ -49,6 +49,9 @@ type liveDiffTerminalController struct {
 	escapeC           <-chan time.Time
 	dirty             bool
 	followDirty       bool
+	// pinned reports a frame without a title row, where a mid-file viewport
+	// pins its file heading and scrolling reaches one row further.
+	pinned bool
 
 	files  []liveDiffFile
 	lines  []string
@@ -110,6 +113,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	sameFiles := reflect.DeepEqual(c.rendered, files)
 	if !sameFiles || c.renderedFocus != focus || c.renderedFocusFile != focusFile || diffWidth != c.diffWidth || c.theme != c.renderedTheme {
 		previous := c.rendering
+		c.renderer.Caller = liveDiffCallerStyle(c.theme)
 		c.rendering, err = c.renderer.Render(ctx, c.theme, files, c.workspace, diffWidth, focusFile, focus)
 		if err != nil {
 			return err
@@ -141,7 +145,11 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		offset = start + min(c.view.Scroll[c.view.Files[c.view.Selected].Key()], max(0, end-start-1))
 	}
 	if c.view.Following && c.followDirty {
-		offset = c.rendering.FollowOffset(rows)
+		viewport := rows
+		if navigatorVisible {
+			viewport-- // A mid-file offset shares the viewport with the pinned heading.
+		}
+		offset = c.rendering.FollowOffset(viewport)
 	}
 	c.followDirty = false
 	// A flushed/reverted last file has an empty span at EOF. Normalize the
@@ -155,8 +163,10 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	selectionChanged := c.navigationFile != activeKey
 	c.navigationFile = activeKey
 	c.files, c.lines, c.offset, c.rows = files, lines, offset, rows
+	c.pinned = navigatorVisible
 	if !sameFiles {
 		c.navigation.rebuild(files, c.workspace)
+		c.refreshChanges()
 	}
 	if resized && c.navigation.focused {
 		c.navigation.ensureVisible(rows)
@@ -202,16 +212,35 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	}
 	if c.diffMode {
 		var nav []string
+		renderNav := func(width int) []string {
+			n := &c.navigation
+			if n.changesTab {
+				return n.changes.render(n.focused, n.filtering, c.view.Caller, width, rows, c.theme)
+			}
+			return n.render(files, c.rendering.Counts, c.view.Selected, width, rows, c.theme)
+		}
 		if navWidth > 0 {
-			nav = c.navigation.render(files, c.rendering.Counts, c.view.Selected, navWidth, rows, c.theme)
+			nav = renderNav(navWidth)
 		}
 		overlay := c.navigation.focused && navWidth == 0
 		if overlay {
-			nav = c.navigation.render(files, c.rendering.Counts, c.view.Selected, width-1, rows, c.theme)
+			nav = renderNav(width - 1)
+		}
+		// Without a title row, pin the open file's header while its content
+		// scrolls, so a mid-file viewport still names its file.
+		sticky := -1
+		if navigatorVisible && len(c.view.Files) > 0 && offset > c.rendering.Starts[c.view.Selected] {
+			sticky = c.rendering.Starts[c.view.Selected]
 		}
 		for row := range rows {
 			text := ""
-			if index := offset + row; index < len(lines) {
+			index := offset + row
+			if sticky >= 0 {
+				index-- // The pinned heading takes row 0; lines[offset] stays visible below it.
+			}
+			if row == 0 && sticky >= 0 {
+				text = lines[sticky]
+			} else if index < len(lines) {
 				text = lines[index]
 			} else if row == 0 && len(lines) == 0 && navWidth > 0 {
 				text = header
@@ -223,7 +252,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 				text = left + strings.Repeat(" ", max(0, navWidth-ansi.StringWidth(left))) + "\x1b[2m│\x1b[0m" + text
 			}
 			if c.help {
-				help := []string{"", "  Diff navigation", "", "  s       show / hide files", "  /       search and filter paths · Ctrl-U clear", "  t       tree / flat list", "  ↑↓ j/k  move or scroll", "  ←→ h/l  collapse / expand folder", "  Enter   open file or toggle folder", "  n/p     next / previous matching file", "  [ / ]   previous / next hunk", "  PgUp/Dn page · Home/End first / last", "  r       resume following changes", "  f / F   flush current / all files", "  v       stream / diff", "  Esc     close picker or help", "  ?       close help", "  Ctrl-C  quit"}
+				help := []string{"", "  Diff navigation", "", "  s       show / hide files", "  Tab     files / changes by caller", "          Changes: Enter caller filters · Enter h/l expand / collapse change", "  /       filter paths, or changes by id, @caller, source · Ctrl-U clear", "  t       tree / flat list", "  ↑↓ j/k  move or scroll", "  ←→ h/l  collapse / expand folder", "  Enter   open file or toggle folder", "  n/p     next / previous matching file", "  [ / ]   previous / next hunk", "  { / }   previous / next change", "  a / 0   next caller / all callers", "  PgUp/Dn page · Home/End first / last", "  r       resume following changes", "  f / F   flush current / all files", "  v       stream / diff", "  Esc     close picker or help", "  ?       close help", "  Ctrl-C  quit"}
 				text = ""
 				if row < len(help) {
 					text = livediff.Safe(help[row], false)
@@ -278,7 +307,12 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		if live := c.previewPane.live(); live > 0 {
 			stream += fmt.Sprintf(" (%d live)", live)
 		}
-		writeRow(height, "DIFF · "+stream+" · "+mode+" · s files · ? help")
+		scope := ""
+		if c.view.Caller != "" {
+			name, _ := liveDiffCallerStyle(c.theme)(c.view.Caller)
+			scope = " · @" + livediff.Safe(name, false) + " (0 all)"
+		}
+		writeRow(height, "DIFF · "+stream+" · "+mode+scope+" · s files · Tab changes · ? help")
 	} else {
 		diff := "v diff"
 		if pending := c.unreviewedFiles(); pending > 0 {
@@ -375,6 +409,8 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 	if event.Kind == "scope" || event.Kind == "change" {
 		c.view.Merge(c.data.files())
 		c.view.RefreshVisible()
+		// The Changes tab holds view indexes; keys may arrive before a repaint.
+		c.refreshChanges()
 		c.dirty = true
 	}
 	return false, nil
@@ -434,6 +470,26 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 			return false
 		}
 		c.dirty = true
+		if inNav && c.navigation.changesTab {
+			l := &c.navigation.changes
+			if action == '\r' {
+				if row == firstRow+1 {
+					c.navigationKey('/')
+					return false
+				}
+				if index := l.top + row - firstRow - 2; row >= firstRow+2 && index < len(l.rows) {
+					l.cursor, c.navigation.focused, c.view.Following = index, true, false
+					c.openChangeRow()
+				}
+			} else {
+				delta := 1
+				if action == 'k' {
+					delta = -1
+				}
+				l.top = max(0, min(l.top+delta, max(0, len(l.rows)-max(1, c.rows-2))))
+			}
+			return false
+		}
 		if inNav {
 			n := &c.navigation
 			if action == '\r' {
@@ -507,7 +563,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 	if c.scroll(key) {
 		return false
 	}
-	if strings.ContainsRune("npjk bgG[]", rune(key)) {
+	if strings.ContainsRune("npjk bgG[]{}", rune(key)) {
 		c.view.Following = false
 	}
 	switch key {
@@ -516,6 +572,20 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 		c.followDirty = c.diffMode && c.view.Following
 	case 'f', 'F':
 		c.view.Flush(key == 'F')
+		// Keys in the same read must not step into flushed changes.
+		c.refreshChanges()
+	case '{', '}':
+		if c.diffMode {
+			c.stepChange(map[byte]int{'{': -1, '}': 1}[key])
+		}
+	case 'a':
+		if c.diffMode {
+			c.cycleCaller()
+		}
+	case '0':
+		if c.diffMode {
+			c.filterCaller("")
+		}
 	case 'n':
 		c.stepFile(1)
 	case 'p':
@@ -524,14 +594,14 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 		if key == ']' {
 			for _, at := range c.rendering.Hunks {
 				if at > c.offset {
-					c.view.ScrollTo(c.rendering, at)
+					c.view.JumpTo(c.rendering, at)
 					break
 				}
 			}
 		} else {
 			for _, at := range slices.Backward(c.rendering.Hunks) {
 				if at < c.offset {
-					c.view.ScrollTo(c.rendering, at)
+					c.view.JumpTo(c.rendering, at)
 					break
 				}
 			}
@@ -540,4 +610,29 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 	}
 	c.dirty = true
 	return false
+}
+
+// callerDots marks each file with the callers of its shown captures, once
+// more than one caller has changes to review.
+func (c *liveDiffTerminalController) callerDots() []string {
+	if len(liveDiffCallers(&c.view)) < 2 {
+		return nil
+	}
+	style := liveDiffCallerStyle(c.theme)
+	dots := make([]string, len(c.view.Files))
+	for i, file := range c.view.Files {
+		var seen []string
+		for _, chunk := range file.Chunks {
+			if c.view.Reviewed[chunk.Key] || !c.view.Shows(chunk) || slices.Contains(seen, chunk.Caller) {
+				continue
+			}
+			seen = append(seen, chunk.Caller)
+			_, color := style(chunk.Caller)
+			dots[i] += color + "●\x1b[0m"
+		}
+		if dots[i] != "" {
+			dots[i] = " " + dots[i]
+		}
+	}
+	return dots
 }

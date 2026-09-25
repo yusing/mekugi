@@ -527,6 +527,7 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			Script:           observation.Input,
 			Root:             workspace,
 			ExecutingThread:  thread,
+			Caller:           history.Caller,
 			ChangeID:         changeID,
 			CorrelationID:    correlation,
 			Attempt:          1,

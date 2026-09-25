@@ -36,7 +36,7 @@ func TestLiveDiffTerminalCatWriteStreamsDiff(t *testing.T) {
 		}
 		frame := ui.frame(t, func(frame string) bool {
 			text := ansi.Strip(frame)
-			return strings.Contains(text, "◐ A  visible file.txt") && strings.Contains(text, want)
+			return strings.Contains(text, "◐ A visible file.txt") && strings.Contains(text, want)
 		})
 		text := ansi.Strip(frame)
 		if !strings.Contains(text, "visible file.txt") || strings.Contains(text, "cat >") || strings.Contains(text, "mkdir -p") {
@@ -47,7 +47,7 @@ func TestLiveDiffTerminalCatWriteStreamsDiff(t *testing.T) {
 		}
 	}
 	worker.stop()
-	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "✓ A  visible file.txt") })
+	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "✓ A visible file.txt") })
 	if _, err := os.Stat(filepath.Join(workspace, "visible file.txt")); !os.IsNotExist(err) {
 		t.Fatalf("terminal preview changed workspace: %v", err)
 	}

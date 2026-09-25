@@ -238,7 +238,13 @@ call never becomes a saved change.
   returns focus to Codex; in Codex it retains Codex’s normal behavior.
 - `s` shows or hides the file tree, `t` toggles tree/flat paths, `/` filters files.
 - `n`/`p` change files, `[`/`]` jump between hunks, and `j`/`k`, `Space`/`b`,
-  and `g`/`G` scroll.
+  and `g`/`G` scroll. Opening a file starts at its header.
+- `Tab` switches the navigator to **Changes**: a graph of changes by caller
+  (`main` or the agent's name) with each change's source, such as
+  `apply_patch`, `sed`, or `python3`. `{`/`}` step through changes, `a` shows
+  one caller's changes at a time, and `0` shows all callers. In the tab, `Enter`
+  on a caller filters to it, and `Enter` or `h`/`l` on a change expands or
+  collapses its files.
 - Browsing pauses following; `r` resumes. `f`/`F` flush the current file or all
   files.
 

@@ -1279,6 +1279,32 @@ func sweepExecReviews(observation execObservation, claimed func(string) bool, sc
 	return reviews, strings.Join(reasons, "; ")
 }
 
+// sourceLabel names the programs that made an exec record's edits, such as
+// sed or python, so a review can tell them from stock patches.
+func (o execObservation) sourceLabel() string {
+	var labels []string
+	add := func(label string) {
+		if label != "" && !slices.Contains(labels, label) {
+			labels = append(labels, label)
+		}
+	}
+	for _, label := range o.Labels {
+		add(label)
+	}
+	for _, program := range o.Programs {
+		if program.Direct {
+			add(program.Label)
+		}
+	}
+	if len(labels) == 0 {
+		return nativeExecCommandToolName
+	}
+	if len(labels) > 2 {
+		labels = append(labels[:2], "…")
+	}
+	return strings.Join(labels, "+")
+}
+
 // managedOrigin labels sweep findings. A finding cannot be tied to one
 // statement, so it is direct only when every undeclared statement is.
 func (o execObservation) managedOrigin() string {
@@ -1561,6 +1587,8 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		Script:          script,
 		Root:            workspace,
 		ExecutingThread: thread,
+		Caller:          first.history.Caller,
+		Source:          observation.sourceLabel(),
 		CorrelationID:   correlation,
 		Attempt:         1,
 		Applied:         success,
@@ -1592,7 +1620,8 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		memberArguments := string(mustMarshalJSON(map[string]string{"cmd": memberScript}))
 		records[memberCallID] = mekugiHistory{
 			ToolName: nativeExecCommandToolName, Script: memberScript, Root: workspace,
-			ExecutingThread: cmp.Or(member.history.ExecutingThread, thread), CorrelationID: member.callID + "\x00exec", Attempt: 1,
+			ExecutingThread: cmp.Or(member.history.ExecutingThread, thread), Caller: member.history.Caller,
+			CorrelationID: member.callID + "\x00exec", Attempt: 1,
 			ExecOutcome: &execOutcome{
 				Status: outcome.Status, Class: memberObservation.Class, Labels: memberObservation.Labels,
 				Coverage: outcome.Coverage, CodeMode: memberObservation.CodeMode, SharedWith: derivedCallID,

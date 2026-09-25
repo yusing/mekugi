@@ -495,17 +495,6 @@ func (v *liveActivityView) renderHeader(rows []liveActivityRosterRow, width int,
 	return left + strings.Repeat(" ", gap) + right
 }
 
-func liveActivityDisplayName(name string) string {
-	if name == "/root" {
-		return "main"
-	}
-	_, leaf, found := strings.CutLast(name, "/")
-	if found {
-		return leaf
-	}
-	return name
-}
-
 // current is an agent's latest activity summary and its elapsed/response timer.
 func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (string, string) {
 	summary := liveActivityDim + "—" + liveActivityUndim
@@ -645,10 +634,7 @@ func rosterTree(rows []liveActivityRosterRow, index, start int) (name, indent st
 	}
 	parent := parentAt(index)
 	if rows[index].depth == 0 || parent < 0 {
-		if rows[index].agent.Name == "/root" {
-			return "main", ""
-		}
-		return strings.TrimPrefix(rows[index].agent.Name, "/root/"), ""
+		return agentDisplayName(rows[index].agent.Name), ""
 	}
 	var guides []string
 	for i := parent; i >= 0; i = parentAt(i) {
@@ -667,7 +653,8 @@ func rosterTree(rows []liveActivityRosterRow, index, start int) (name, indent st
 	if continuation(index) {
 		branch, guide = "├ ", "│ "
 	}
-	return prefix + branch + liveActivityDisplayName(rows[index].agent.Name), prefix + guide
+	_, leaf, _ := strings.CutLast(rows[index].agent.Name, "/")
+	return prefix + branch + leaf, prefix + guide
 }
 
 func (v *liveActivityView) hiddenRoster(rows []liveActivityRosterRow, direction string) string {
@@ -848,10 +835,7 @@ func (v *liveActivityView) renderStrip(rows []liveActivityRosterRow, width int) 
 	var parts []string
 	column := 1
 	for _, row := range rows {
-		name := strings.TrimPrefix(row.agent.Name, "/root/")
-		if row.agent.Name == "/root" {
-			name = "main"
-		}
+		name := agentDisplayName(row.agent.Name)
 		if row.agent.Name == v.selected || row.agent.Name == v.hovered {
 			name = "\x1b[4m" + name + "\x1b[24m"
 		}

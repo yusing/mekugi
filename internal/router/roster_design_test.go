@@ -17,7 +17,7 @@ func TestRosterDesignMessageOwnerAndAssignment(t *testing.T) {
 		{"/root/a", "/root/a", "/root/b", "to b"},
 		{"/root/b", "/root/a", "/root/b", "from a"},
 		{"/root/a/x", "/root/a/x", "/root/a", "to a"},
-		{"/root/a", "/root/a/x", "/root/a", "from x"},
+		{"/root/a", "/root/a/x", "/root/a", "from a/x"},
 	} {
 		blocks := parseLiveActivity(activityPaneEntry{Agent: tc.owner, Kind: "reply", Text: "[`" + tc.from + "` -> `" + tc.to + "`] Message received:\nMessage body"})
 		if len(blocks) != 1 || blocks[0].kind != "message" {

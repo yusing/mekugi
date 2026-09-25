@@ -22,6 +22,61 @@ type Renderer struct {
 	syntax      map[syntaxKey][]string
 	lexers      map[string]chroma.Lexer
 	syntaxBytes int
+	// Caller presents a canonical agent path as a display name and an SGR
+	// color prefix. Without it, paths appear as recorded, uncolored.
+	Caller func(path string) (name, color string)
+}
+
+func (r *Renderer) caller(path string) (string, string) {
+	if r.Caller == nil {
+		return path, ""
+	}
+	return r.Caller(path)
+}
+
+// originLabel is the plain attribution of a capture: ID · caller · source.
+func (r *Renderer) originLabel(origin Origin) string {
+	var parts []string
+	for _, part := range []string{origin.Change, origin.Caller, origin.Source} {
+		if part == origin.Caller && part != "" {
+			part, _ = r.caller(part)
+		}
+		if part != "" {
+			parts = append(parts, part)
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+// provenance lists the changes a composed file combines, colored by caller.
+func (r *Renderer) provenance(file File) string {
+	if len(file.Origins) == 0 && file.Baseline == 0 {
+		return ""
+	}
+	var parts []string
+	for i, origin := range file.Origins {
+		if i == 4 {
+			parts = append(parts, fmt.Sprintf("\x1b[2m+%d more\x1b[22m", len(file.Origins)-i))
+			break
+		}
+		name, color := r.caller(origin.Caller)
+		part := Safe(origin.Change, false)
+		if name != "" {
+			part += " " + color + Safe(name, false) + "\x1b[0m"
+		}
+		if origin.Source != "" {
+			part += "\x1b[2m·" + Safe(origin.Source, false) + "\x1b[22m"
+		}
+		parts = append(parts, part)
+	}
+	if file.Baseline > 0 {
+		noun := "change"
+		if file.Baseline > 1 {
+			noun += "s"
+		}
+		parts = append(parts, fmt.Sprintf("\x1b[2m%d %s by other callers as baseline\x1b[22m", file.Baseline, noun))
+	}
+	return "\x1b[2m┄\x1b[22m " + strings.Join(parts, "  ")
 }
 
 type syntaxKey struct {
@@ -193,6 +248,11 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 				return Render{}, err
 			}
 		}
+		if line := r.provenance(file); line != "" {
+			if err := appendLine(line, file.Highlighted, false); err != nil {
+				return Render{}, err
+			}
+		}
 		// Keep one coordinate column aligned across the file. Deletions use
 		// old line numbers; additions and context use new line numbers.
 		digits := 0
@@ -234,6 +294,9 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 			chunkStart := len(render.Lines)
 			if chunk.Status != "" {
 				label := chunk.Status
+				if origin := r.originLabel(Origin{Caller: chunk.Caller, Source: chunk.Source}); origin != "" && chunk.Change != "" {
+					label += " · " + origin
+				}
 				if action := fileAction(review, workspace); action != "" {
 					label += " · " + action
 				}

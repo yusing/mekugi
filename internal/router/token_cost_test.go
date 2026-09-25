@@ -118,7 +118,7 @@ func TestTokenUsageReportTables(t *testing.T) {
 	counts := tokenCounts{InputTokens: 100_000, UncachedInputTokens: 40_000, OutputTokens: 30_000, ReasoningTokens: 20_000}
 	report := tokenUsageReport{tokenCounts: counts, cost: estimateTokenCost("gpt-6-astra", "", counts)}
 	got := formatTokenUsageReport(report)
-	want := "| /root | main | n/a | 100K (60.0%) | 0 | 30K | 20K | $0.0600+$0.4000=$0.4600 | $1.5000 | $1.9600 |"
+	want := "| main | main | n/a | 100K (60.0%) | 0 | 30K | 20K | $0.0600+$0.4000=$0.4600 | $1.5000 | $1.9600 |"
 	if !strings.Contains(got, want) || !strings.Contains(got, "Router session API estimates since router startup") {
 		t.Fatalf("report:\n%s", got)
 	}

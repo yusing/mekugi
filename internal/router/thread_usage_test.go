@@ -240,8 +240,8 @@ func TestCompletionUsageMainGapRetainsObservedChildRows(t *testing.T) {
 		t.Fatalf("incorrect per-agent availability: %+v", rows)
 	}
 	text := formatTokenUsageReport(report)
-	if !strings.Contains(text, "| /root (partial) | main | gpt-test | 0 (0.0%) |") ||
-		!strings.Contains(text, "| /root/child | n/a | gpt-test | 20 (50.0%) |") ||
+	if !strings.Contains(text, "| main (partial) | main | gpt-test | 0 (0.0%) |") ||
+		!strings.Contains(text, "| child | n/a | gpt-test | 20 (50.0%) |") ||
 		!strings.Contains(text, "Usage incomplete") {
 		t.Fatalf("incorrect report: %s", text)
 	}

@@ -29,6 +29,10 @@ type mekugiHistory struct {
 	Script          string
 	Root            string
 	ExecutingThread string `json:",omitempty"`
+	// Caller is the canonical agent path that issued the call; Source names
+	// the edit's program when the tool name alone does not (exec_command).
+	Caller          string `json:",omitempty"`
+	Source          string `json:",omitempty"`
 	ChangeID        string
 	ReviewFiles     []mekugi.ReviewFile
 	NativePatches   []nativePatchObservation `json:",omitempty"`
@@ -143,7 +147,7 @@ func (p *mekugiProxy) rememberBatch(sessionID string, histories map[string]mekug
 				history.bytes += len(file.BeforePath) + len(file.AfterPath) + len(file.Before) + len(file.Error)
 			}
 		}
-		history.bytes += len(history.ChangeID) + len(history.ExecutingThread)
+		history.bytes += len(history.ChangeID) + len(history.ExecutingThread) + len(history.Caller) + len(history.Source)
 		for _, file := range history.ReviewFiles {
 			history.bytes += len(file.BeforePath) + len(file.AfterPath) + len(file.Diff)
 		}

@@ -409,8 +409,28 @@ path ordering, with folders first in tree mode. Next/previous file navigation
 uses the matching set, revealing destinations inside collapsed folders.
 
 The navigator and diff have independent viewports. Keyboard focus is visible;
-mouse scrolling targets the region under the pointer. File selection restores
-its saved diff position, and hunk navigation uses rendered hunk boundaries.
+mouse scrolling targets the region under the pointer. Opening a file from the
+navigator or a change starts at its section heading. Next/previous file
+navigation restores a position only where the reader stopped before jumping
+away; scrolling past a file keeps none. Without a title row, the open file's
+heading stays pinned while its content scrolls. Hunk navigation uses rendered
+hunk boundaries and, like a file jump, keeps the position of a file it leaves.
+Each change record keeps the canonical path of the agent that issued it and
+the tool or program that wrote it (`apply_patch`, or the observed program such
+as `sed` or `python3`). The navigator's Changes tab lists unreviewed changes in
+capture order as a graph with one lane per caller, branching from `main` at the
+caller's first change; each row shows the change ID, source, file count, known
+line counts, and whether it was applied, only observed, or incomplete. A file's
+section heading lists the changes it composes. Next/previous change navigation
+opens each file of each change in that order. A caller filter shows one
+caller's changes: other callers' captures compose as reviewed baseline, so the
+shown diff remains the exact net effect of that caller's edits, and the heading
+counts the changes folded into it. Flushing under a filter reviews only the
+shown caller's captures. Agents appear by display name: `main` for the root,
+otherwise the path below it. Records from before attribution show an unknown
+caller, which filters like any other. File rows in the tree, flat list, Changes
+tab, and streaming title share one format: a colored status letter, one space,
+then the name.
 Incoming updates retain the paused file, navigator cursor, and top-row identity
 where those entries still exist. Resize keeps the logical diff anchor and the
 focused navigator entry visible. File status, known line counts, folder file

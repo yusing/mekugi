@@ -516,7 +516,7 @@ func (p *liveDiffPreviewView) title(workspace string, theme liveDiffTheme, width
 		glyph = liveActivityGreen + "✓" + liveActivityReset
 	}
 	label = glyph + " " + label
-	caller := p.current.Caller
+	caller := agentDisplayName(p.current.Caller)
 	if caller == "" {
 		caller = p.current.Thread
 	}

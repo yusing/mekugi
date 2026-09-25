@@ -102,6 +102,15 @@ func startLiveDiffPreview(ctx context.Context, broker *liveDiffBroker, workspace
 	return worker
 }
 
+// operationCaller is the canonical agent path of this request's tool calls.
+// Older clients may omit a child's name, leaving it unknown rather than main.
+func (t *mekugiResponseTransform) operationCaller() string {
+	if !t.subagentTurn {
+		return "/root"
+	}
+	return t.commentaryAuthor
+}
+
 func (t *mekugiResponseTransform) previewStockDelta(itemID, kind, delta string) {
 	if delta == "" {
 		return
@@ -118,10 +127,7 @@ func (t *mekugiResponseTransform) previewStockDelta(itemID, kind, delta string) 
 		auto.requestLaunch(t.directory, t.threadID)
 		worker = startLiveDiffPreview(t.ctx, auto.events, t.directory, t.threadID, kind)
 		worker.mu.Lock()
-		worker.preview.Caller = t.commentaryAuthor
-		if !t.subagentTurn {
-			worker.preview.Caller = "/root"
-		}
+		worker.preview.Caller = t.operationCaller()
 		worker.mu.Unlock()
 		t.previews[itemID] = worker
 	}

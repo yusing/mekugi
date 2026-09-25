@@ -62,16 +62,16 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 				}
 				report, ok := root.completionUsageReport()
 				text := formatTokenUsageReport(report)
-				if !ok || strings.Count(text, "| Agent |") != 1 || !strings.Contains(text, "| /root/worker") {
+				if !ok || strings.Count(text, "| Agent |") != 1 || !strings.Contains(text, "| worker") {
 					t.Fatalf("missing consolidated table: %s", text)
 				}
 				if missing {
 					if report.Incomplete || report.missingUsage != 1 || report.InputTokens != 100 || report.OutputTokens != 10 || !report.cost.known ||
-						!strings.Contains(text, "| /root/worker (partial) | n/a | gpt-5.6-sol | 0 (0.0%) |") ||
+						!strings.Contains(text, "| worker (partial) | n/a | gpt-5.6-sol | 0 (0.0%) |") ||
 						!strings.Contains(text, "| Total (partial) | — | — | 100 (50.0%) |") {
 						t.Fatal(text)
 					}
-				} else if report.InputTokens != 220 || report.OutputTokens != 40 || !strings.Contains(text, "| /root/worker | n/a | gpt-5.6-sol | 120 (66.7%) |") {
+				} else if report.InputTokens != 220 || report.OutputTokens != 40 || !strings.Contains(text, "| worker | n/a | gpt-5.6-sol | 120 (66.7%) |") {
 					t.Fatal(text)
 				}
 				rootResponse := []byte(`{"id":"root-final","status":"completed","output":[{"id":"root-answer","type":"message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Root answer."}]}]}`)
@@ -102,7 +102,7 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 					t.Fatalf("main completion metric paths = %q", paths)
 				}
 				markdown, err := os.ReadFile(paths[0])
-				if err != nil || !bytes.Contains(markdown, []byte("| /root/worker")) || !bytes.Contains(markdown, []byte("| Total (partial) |")) && !bytes.Contains(markdown, []byte("| Total |")) {
+				if err != nil || !bytes.Contains(markdown, []byte("| worker")) || !bytes.Contains(markdown, []byte("| Total (partial) |")) && !bytes.Contains(markdown, []byte("| Total |")) {
 					t.Fatalf("main metrics omitted projected child usage: %q, %v", markdown, err)
 				}
 				other.observeResponseUsage(tokenCounts{InputTokens: 1})

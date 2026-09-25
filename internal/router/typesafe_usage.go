@@ -39,7 +39,7 @@ func writeTypesafeUsageReport(text *strings.Builder, report tokenUsageReport, ro
 	}
 	for _, agent := range rows {
 		if agent.report.typesafe.Requests != 0 || agent.report.typesafe.Incomplete {
-			row(agent.agent, agent.report.typesafe)
+			row(agentDisplayName(agent.agent), agent.report.typesafe)
 		}
 	}
 	row("Total TypeSafe", report.typesafe)

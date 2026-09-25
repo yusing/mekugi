@@ -34,7 +34,7 @@ func TestThreadUsageGapsPreserveObservedCountsModelsAndCosts(t *testing.T) {
 		t.Fatalf("cost repriced or included missing responses: %+v want %+v", got.cost, cost)
 	}
 	text := formatTokenUsageReport(got)
-	for _, want := range []string{"| /root (partial) |", "| Total (partial) |", "300 (70.0%)", "| Missing usage |", "| 7 |", "exclude 7 response(s)"} {
+	for _, want := range []string{"| main (partial) |", "| Total (partial) |", "300 (70.0%)", "| Missing usage |", "| 7 |", "exclude 7 response(s)"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("report lacks %q:\n%s", want, text)
 		}
@@ -100,7 +100,7 @@ func TestCompletionUsageRolesAndGapsFromProjectedRequest(t *testing.T) {
 			report, ok := root.completionUsageReport()
 			text := formatTokenUsageReport(report)
 			if !ok || report.Incomplete || report.missingUsage != 1 || report.InputTokens != 200 ||
-				!strings.Contains(text, "| /root/child (partial) | implementer | gpt-6-astra | 100 (80.0%) |") ||
+				!strings.Contains(text, "| child (partial) | implementer | gpt-6-astra | 100 (80.0%) |") ||
 				!strings.Contains(text, "| Total (partial) | — | — | 200 (80.0%) |") {
 				t.Fatalf("native role and usage did not reach report: %+v, ok=%t\n%s", report, ok, text)
 			}

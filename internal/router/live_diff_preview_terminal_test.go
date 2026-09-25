@@ -289,7 +289,7 @@ func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
 	frame := ui.frame(t, func(frame string) bool {
 		return strings.Contains(frame, colored) && strings.Contains(ansi.Strip(frame), tip)
 	})
-	if !strings.Contains(liveDiffFrameRow(frame, 2), "◐ A  big.py") ||
+	if !strings.Contains(liveDiffFrameRow(frame, 2), "◐ A big.py") ||
 		strings.Contains(frame, "Waiting for captured") {
 		t.Fatalf("empty shell preview wasted space or lost syntax: %q", frame)
 	}
@@ -302,16 +302,16 @@ func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
 	frame = ui.frame(t, func(frame string) bool {
 		return strings.Contains(frame, "\x1b[12;1H") && strings.Contains(ansi.Strip(frame), tip)
 	})
-	if !strings.Contains(liveDiffFrameRow(frame, 2), "◐ A  big.py") {
+	if !strings.Contains(liveDiffFrameRow(frame, 2), "◐ A big.py") {
 		t.Fatal("resize restored an empty split")
 	}
 	liveDiffTestChange(t, store, workspace, "thread", "captured.go", true)
 	frame = ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), tip) })
-	if !strings.Contains(liveDiffFrameRow(frame, 2), "◐ A  big.py") {
+	if !strings.Contains(liveDiffFrameRow(frame, 2), "◐ A big.py") {
 		t.Fatal("capture displaced the full-pane stream")
 	}
 	worker.stop()
-	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "✓ A  big.py") })
+	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "✓ A big.py") })
 	ui.quit(t)
 }
 
@@ -342,11 +342,11 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 		text := ansi.Strip(frame)
 		return strings.Contains(text, "stream_0100") && strings.Contains(text, "stream_0200")
 	})
-	if text := ansi.Strip(frame); !strings.Contains(text, "/root · ◐ edit") || !strings.Contains(text, "/root/editor · ◐ edit") {
+	if text := ansi.Strip(frame); !strings.Contains(text, "main · ◐ edit") || !strings.Contains(text, "editor · ◐ edit") {
 		t.Fatalf("concurrent frame lost attribution: %q", frame)
 	}
 	// Child callers keep the agents pane's color for the same canonical path.
-	if !strings.Contains(frame, liveAgentColor("/root/editor")+"/root/editor") || !strings.Contains(frame, "STREAM · v diff") {
+	if !strings.Contains(frame, liveAgentColor("/root/editor")+"editor") || !strings.Contains(frame, "STREAM · v diff") {
 		t.Fatalf("concurrent frame lost attribution: %q", frame)
 	}
 	for i := 101; i <= 150; i++ {
@@ -358,12 +358,12 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 		text := ansi.Strip(frame)
 		return strings.Contains(text, "stream_0150") && strings.Contains(text, "stream_0200")
 	})
-	if text := ansi.Strip(frame); strings.Index(text, "/root · ◐ edit") > strings.Index(text, "/root/editor · ◐ edit") {
+	if text := ansi.Strip(frame); strings.Index(text, "main · ◐ edit") > strings.Index(text, "editor · ◐ edit") {
 		t.Fatal("concurrent delta reordered the cards")
 	}
 	broker.publishPreview(first, true)
 	ui.frame(t, func(frame string) bool {
-		return strings.Contains(ansi.Strip(frame), "/root · ✓ edit") && strings.Contains(ansi.Strip(frame), "stream_0200")
+		return strings.Contains(ansi.Strip(frame), "main · ✓ edit") && strings.Contains(ansi.Strip(frame), "stream_0200")
 	})
 	ui.height = 12
 	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 12, Cols: 70}); err != nil {

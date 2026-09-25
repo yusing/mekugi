@@ -47,8 +47,10 @@ func TestTerminalUIPreview(t *testing.T) {
 	activity := newSubagentActivity()
 	activity.attachPane(newActivityPane(ctx, auto.requestActivity))
 	workspace := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(workspace, "internal/broker"), 0o755); err != nil {
-		t.Fatal(err)
+	for _, dir := range []string{"internal/broker", "internal/pane"} {
+		if err := os.MkdirAll(filepath.Join(workspace, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for path, content := range previewFiles {
 		if err := os.WriteFile(filepath.Join(workspace, path), []byte(content), 0o644); err != nil {
@@ -89,6 +91,8 @@ func TestTerminalUIPreviewCodex(t *testing.T) {
 • Waiting for agents…
 
   Ctrl-B 1–4 focus panes · Ctrl-B arrows resize · Ctrl-B 1 then Ctrl-D quits
+  Diff pane, once the turn ends: Tab changes by caller · { } step changes
+  · a / 0 filter by caller / all · n p files · Enter opens at the file header
 
 › `, "\n", "\r\n"))
 	var b [1]byte
@@ -134,6 +138,16 @@ func (b *Broker) Publish(topic, message string) {
 	}
 }
 `,
+	"internal/pane/launch.go": `package pane
+
+// Launch opens the side pane for a requested preview.
+func Launch(requested bool, frames <-chan string) string {
+	if requested {
+		return "open"
+	}
+	return <-frames
+}
+`,
 	"internal/broker/broker_test.go": `package broker
 
 import "testing"
@@ -144,6 +158,17 @@ func TestPublish(t *testing.T) {
 }
 `,
 }
+
+// previewMainPatch is main's own stock patch, before the agents edit.
+const previewMainPatch = `*** Begin Patch
+*** Update File: internal/broker/broker.go
+@@
+ import "sync"
+ 
++// Broker fans published messages out to each topic's subscribers.
+ type Broker struct {
+*** End Patch
+`
 
 // previewPatches are streamed in order, as a worker's apply_patch calls.
 var previewPatches = []string{
@@ -278,11 +303,25 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 		settle(thread, model, input, output)
 	}
 	calls := 0
-	tool := func(thread, text string) string {
+	call := func() string {
 		calls++
-		id := fmt.Sprintf("call-%d", calls)
+		return fmt.Sprintf("call-%d", calls)
+	}
+	tool := func(thread, text string) string {
+		id := call()
 		activity.collect(thread, "tool-call\x00"+id, "tool", text)
 		return id
+	}
+	// record commits one applied change, as a confirmed call's history does.
+	record := func(thread, caller, tool, source, beforePath, afterPath, before, after string) {
+		id := call()
+		if change, err := store.reserveChange(ctx, workspace, thread, id); err == nil {
+			_ = store.put(ctx, workspace, map[string]mekugiHistory{id: {
+				ToolName: tool, Source: source, Caller: caller, ChangeID: change, CorrelationID: id, Applied: true,
+				ExecutingThread: thread,
+				ReviewFiles:     []mekugi.ReviewFile{mekugi.RenderReviewFile(beforePath, afterPath, before, after)},
+			}})
+		}
 	}
 	// patch streams one apply_patch preview, then records its applied result
 	// the way a confirmed stock call does, so diff review and file nav fill in.
@@ -316,20 +355,29 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 		if !ok || os.WriteFile(absolute, []byte(after), 0o644) != nil {
 			return true
 		}
-		calls++
-		call := fmt.Sprintf("patch-%d", calls)
-		if id, err := store.reserveChange(ctx, workspace, thread, call); err == nil {
-			_ = store.put(ctx, workspace, map[string]mekugiHistory{call: {
-				ToolName: applyPatchToolName, ChangeID: id, CorrelationID: call, Applied: true, ExecutingThread: thread,
-				ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(beforePath, absolute, string(before), after)},
-			}})
-		}
+		record(thread, caller, applyPatchToolName, "", beforePath, absolute, string(before), after)
 		verb := "Edit"
 		if beforePath == "" {
 			verb = "Create"
 		}
-		activity.collect(thread, "tool-call\x00"+call, "tool", fmt.Sprintf("%s `%s` +%d -%d", verb, path, added, removed))
+		activity.collect(thread, "tool-call\x00"+call(), "tool", fmt.Sprintf("%s `%s` +%d -%d", verb, path, added, removed))
 		return pause(0.5)
+	}
+	// script records an interpreter's edit the way an observed exec_command
+	// does: attributed to its caller and to the program that wrote it.
+	script := func(thread, caller, source, path, command string, edit func(string) string) bool {
+		absolute := filepath.Join(workspace, path)
+		before, err := os.ReadFile(absolute)
+		if err != nil {
+			return true
+		}
+		after := edit(string(before))
+		if os.WriteFile(absolute, []byte(after), 0o644) != nil {
+			return true
+		}
+		activity.collect(thread, "tool-call\x00"+call(), "tool", "Run\n```bash\n"+command+"\n```")
+		record(thread, caller, nativeExecCommandToolName, source, absolute, absolute, string(before), after)
+		return pause(0.8)
 	}
 	spawn := func(thread, name, assignment string) {
 		activity.observe(thread, "root", name, true)
@@ -337,14 +385,21 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 	}
 
 	activity.observe("root", "", "/root", false)
-	auto.observe(workspace, "root", codexTurnMetadata{RequestKind: "turn"})
-	auto.observe(workspace, "tests", codexTurnMetadata{RequestKind: "turn"})
+	turn := codexTurnMetadata{RequestKind: "turn", TurnID: "preview-turn"}
+	for _, thread := range []string{"root", "tests", "pane"} {
+		auto.observe(workspace, thread, turn)
+	}
+	auto.beginTurn(workspace, "root", turn)
 	activity.beginResponse("root")
+	// main edits first, so the change graph's agent lanes branch from it.
+	if !patch("root", "/root", previewMainPatch) {
+		return
+	}
 	spawn("trace", "/root/trace", "Trace how the live diff preview worker paces streamed input.")
-	spawn("pane", "/root/pane_trace", "Find why the side pane opens before preview content arrives.")
+	spawn("pane", "/root/pane_trace", "Make the side pane wait for its first preview frame before opening.")
 	spawn("tests", "/root/script_tests", "Write broker subscription tests; cover the unsubscribe race.")
 	activity.syncPaneRoles("root", map[string]journalSpawnRole{
-		"/root/trace": {Role: "explorer"}, "/root/pane_trace": {Role: "explorer"}, "/root/script_tests": {Role: "worker"},
+		"/root/trace": {Role: "explorer"}, "/root/pane_trace": {Role: "worker"}, "/root/script_tests": {Role: "worker"},
 	})
 	if !pause(1) {
 		return
@@ -372,7 +427,11 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 		}
 	}
 	respond("pane", "gpt-6-luna", 64_000, 1_100)
-	if !pause(1) {
+	// pane_trace edits with a Python script, a third lane with another source.
+	if !script("pane", "/root/pane_trace", "python3", "internal/pane/launch.go", "python3 - <<'EOF'\n# wait for the first frame before opening\nEOF",
+		func(source string) string {
+			return strings.Replace(source, "\tif requested {\n\t\treturn \"open\"\n\t}\n\treturn <-frames", "\tframe := <-frames\n\tif requested {\n\t\treturn \"open: \" + frame\n\t}\n\treturn frame", 1)
+		}) {
 		return
 	}
 	activity.collect("tests", "reply-1", "reply", "[`/root/script_tests` -> `/root`] Message received:\nDraft tests are in broker_test.go; please review before I extend them.")
@@ -392,7 +451,14 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 		text: "The side pane opens before preview content arrives: `requestLaunch` sets `auto.requested`, then the first frame waits for data."})
 	// A later error outranks the final answer in the roster status.
 	activity.collect("pane", "error-1", "error", "Provider stream closed: 502 Bad Gateway")
+	// main renames a test string with sed, then its turn ends and the diff
+	// pane switches from the live stream to review.
+	if !script("root", "/root", "sed", "internal/broker/broker_test.go", "sed -i 's/\"hello\"/\"greeting\"/' internal/broker/broker_test.go",
+		func(source string) string { return strings.ReplaceAll(source, `"hello"`, `"greeting"`) }) {
+		return
+	}
 	settle("root", "gpt-6-astra", 380_000, 4_200)
+	auto.finishTurn(workspace, "root", turn.TurnID)
 	activity.beginResponse("tests")
 	for ctx.Err() == nil {
 		activity.streamOutput("tests", 200)

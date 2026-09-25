@@ -234,7 +234,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 		t.Fatalf("main completion metric paths = %q", paths)
 	}
 	markdown, err := os.ReadFile(paths[0])
-	if err != nil || !strings.Contains(string(markdown), "| /root/journal_child |") || !strings.Contains(string(markdown), "| Total |") {
+	if err != nil || !strings.Contains(string(markdown), "| journal_child |") || !strings.Contains(string(markdown), "| Total |") {
 		t.Fatalf("main metrics omitted native child usage: %q, %v", markdown, err)
 	}
 	if !childLiveUpdate || !strings.Contains(stdout.String(), "Journal flush ") {

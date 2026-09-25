@@ -72,6 +72,7 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 		history := record.History
 		status := trackedStatus(history, call.Confirmed)
 		attempt := liveDiffAttempt{change: event.ID, correlation: event.Change.Correlation, stream: event.Stream, confirmed: call.Confirmed}
+		origin := livediff.Origin{Change: event.ID, Caller: history.Caller, Source: cmp.Or(history.Source, history.ToolName)}
 		var managed []string
 		for n, file := range history.ReviewFiles {
 			if file.Origin != "" {
@@ -88,14 +89,14 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 				return filepath.Clean(path)
 			}
 			file.BeforePath, file.AfterPath = canonical(file.BeforePath), canonical(file.AfterPath)
-			d.bytes += len(file.Diff) + len(file.BeforePath) + len(file.AfterPath) + len(key)
+			d.bytes += len(file.Diff) + len(file.BeforePath) + len(file.AfterPath) + len(key) + len(origin.Caller) + len(origin.Source)
 			if d.bytes > maxChangeReadBytes {
 				return errors.New("live diff exceeds 64 MiB; use mchanges with a narrower range")
 			}
 			attempt.chunks = append(attempt.chunks, liveDiffChunk{
 				Key: key + "/" + strconv.Itoa(n), Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),
 				CaptureOrder: record.CaptureOrder, Status: event.ID + " " + status,
-				Review: file, Applied: status == "applied" || history.ExecOutcome != nil && history.Applied,
+				Review: file, Applied: status == "applied" || history.ExecOutcome != nil && history.Applied, Origin: origin,
 			})
 		}
 		if len(managed) != 0 {
@@ -108,7 +109,7 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			attempt.chunks = append(attempt.chunks, liveDiffChunk{
 				Key: key + "/managed", Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),
 				CaptureOrder: record.CaptureOrder, Status: event.ID + " " + status, Applied: true,
-				Review: mekugi.ReviewFile{BeforePath: label, AfterPath: label, Origin: "tool-managed", Incomplete: reason},
+				Review: mekugi.ReviewFile{BeforePath: label, AfterPath: label, Origin: "tool-managed", Incomplete: reason}, Origin: origin,
 			})
 		}
 		d.attempts[key] = attempt

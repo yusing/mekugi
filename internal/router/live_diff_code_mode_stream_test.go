@@ -193,7 +193,7 @@ func TestLiveDiffTerminalCodeModeCatStreamsDiff(t *testing.T) {
 	worker.appendDelta(input[:split])
 	frame := ansi.Strip(ui.frame(t, func(frame string) bool {
 		plain := ansi.Strip(frame)
-		return strings.Contains(plain, "◐ A  notes.md +1 -0") && strings.Contains(plain, "+alpha")
+		return strings.Contains(plain, "◐ A notes.md +1 -0") && strings.Contains(plain, "+alpha")
 	}))
 	if strings.Contains(frame, "tools.exec_command") || strings.Contains(frame, "cat >") || strings.Contains(frame, "STREAMING") {
 		t.Fatalf("terminal showed script text or streaming wording: %q", frame)
@@ -201,7 +201,7 @@ func TestLiveDiffTerminalCodeModeCatStreamsDiff(t *testing.T) {
 	worker.appendDelta(input[split:])
 	worker.finish(input)
 	ui.frame(t, func(frame string) bool {
-		return strings.Contains(ansi.Strip(frame), "✓ A  notes.md +2 -0")
+		return strings.Contains(ansi.Strip(frame), "✓ A notes.md +2 -0")
 	})
 	ui.quit(t)
 }
