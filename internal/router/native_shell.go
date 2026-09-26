@@ -252,6 +252,9 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			iw, ih = left.w, left.h
 		}
 		dockRows := nativeDockRows(&u.mainDock, ih-3)
+		if u.main.keybindings && u.focus == 0 {
+			dockRows = 0
+		}
 		body, dockAt := u.main.mainFrame(iw, ih, dockRows)
 		rules := map[int]string{}
 		if dockRows > 0 && dockAt+dockRows <= len(body) {

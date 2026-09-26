@@ -129,6 +129,10 @@ func (u *terminalUI) key(key byte) error {
 			return nil
 		}
 		if strings.HasPrefix(s, "\x1b[<") {
+			if u.main != nil && u.main.keybindings {
+				u.main.keybindings = false
+				return nil
+			}
 			return u.mouse(s)
 		}
 		if u.prefix {
@@ -168,6 +172,9 @@ func (u *terminalUI) key(key byte) error {
 		return nil
 	}
 	if key == 2 {
+		if u.main != nil {
+			u.main.keybindings = false
+		}
 		u.prefix = true
 		return nil
 	}

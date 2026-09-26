@@ -72,6 +72,7 @@ type appServerUI struct {
 	paste                     bool
 	pasted                    []byte // Bracketed paste text, inserted when the paste ends.
 	dirty                     bool
+	keybindings               bool
 	resumeThread              string
 	resumeConfig              map[string]any
 	resumePending             []appServerMessage
@@ -437,10 +438,17 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.deleteWord(true)
 		return false, nil
 	}
-	// A bare Escape dismisses nothing in this preview. Do not eat the next
+	// A bare Escape dismisses keybindings. Do not eat the next
 	// ordinary key while waiting for a CSI sequence that never arrives.
 	if u.escape == "\x1b" && key != '[' && key != 'O' {
 		u.escape = ""
+	}
+	if !u.paste && u.escape == "" {
+		if key == '?' && u.draft == "" && (u.shell == nil || u.shell.focus == 0) {
+			u.keybindings = !u.keybindings
+			return false, nil
+		}
+		u.keybindings = false
 	}
 	if u.escape != "" || key == 27 {
 		u.escape += string(key)
@@ -682,6 +690,10 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, int) {
 	var frame []string
 	if room > 0 {
 		frame = u.view.render(width, room, time.Now())
+		if u.keybindings && (u.shell == nil || u.shell.focus == 0) {
+			u.mainContentPainted = false
+			frame = renderNativeKeybindings(width, room)
+		}
 	}
 	dockAt := len(frame)
 	frame = append(frame, make([]string, dock)...)

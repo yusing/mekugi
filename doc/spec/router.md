@@ -371,7 +371,14 @@ app-server items update entries in place. Main renders them as an unclipped tran
 band, assistant text under one `main` heading, tool runs drawn as a tree, agent
 start/message/finish events labelled `sender → recipient`, final answers as
 cards, and journal blocks. Its composer supports a new thread, submission, steering and
-interruption. Arrow keys move the insertion caret across graphemes and displayed
+interruption. Typing `?` in the empty, focused composer opens keyboard shortcuts.
+The view docks directly above the composer, temporarily hiding Main's live-edit
+dock. It uses bold group headings and blue key labels, with Compose, Session,
+and Transcript columns that stack when the pane is too narrow.
+`?` or Escape closes them, and other keyboard input dismisses them while retaining
+its normal behavior. A mouse event dismisses help without acting on the hidden
+transcript. Question marks in non-empty drafts and bracketed paste remain
+literal input. Arrow keys move the insertion caret across graphemes and displayed
 rows; Ctrl+Left/Right move by word and Ctrl+Up/Down move to logical line boundaries.
 Alt+Backspace/Delete remove the previous/next whitespace-delimited word without
 splitting image attachments. Editing and the visible composer window follow the
