@@ -1,12 +1,44 @@
 package router
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 )
+
+func TestAppServerFrontendCommandClassification(t *testing.T) {
+	for _, tc := range []struct{ command, want string }{
+		{"inspect_file app.go; mcat app.go 1:20; rg -n needle src | head -30", "Inspect `app.go`\n\nRead `app.go 1:20`\n\nSearch `needle` in `src`"},
+		{"skills-mgr get js-ts-best-practices; skills-mgr get user-experience", "Skill Read `js-ts-best-practices`\n\nSkill Read `user-experience`"},
+		{"mcat app.go 1:20; go test ./...", "Read `app.go 1:20`\n\nRun `go test ./...`"},
+	} {
+		for _, wrapped := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/wrapped=%t", tc.command, wrapped), func(t *testing.T) {
+				command := tc.command
+				if wrapped {
+					command = "/usr/bin/bash -lc '" + command + "'"
+				}
+				u := newAppServerSessionTestUI(t, t.TempDir())
+				item := appServerItem{ID: "cmd", Type: "commandExecution", Command: command,
+					CommandActions: []appServerCommandAction{{Type: "unknown", Command: command}}}
+				for _, method := range []string{"item/started", "item/completed"} {
+					appServerTestNotify(t, u, method, map[string]any{"threadId": "main", "turnId": "t", "item": item})
+				}
+				if len(u.view.entries) != 1 || u.view.entries[0].Text != tc.want {
+					t.Fatalf("classified live entries: %+v; want %q", u.view.entries, tc.want)
+				}
+				restored := newAppServerSessionTestUI(t, t.TempDir())
+				restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+				if len(restored.view.entries) != 1 || restored.view.entries[0].Text != tc.want {
+					t.Fatalf("classified restored entries: %+v", restored.view.entries)
+				}
+			})
+		}
+	}
+}
 
 func TestAppServerShellDisplay(t *testing.T) {
 	for _, tt := range []struct{ input, want string }{

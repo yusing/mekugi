@@ -342,6 +342,9 @@ Run cards omit literal Bash, Zsh, or Sh `-c`/`-lc` launch wrappers and PowerShel
 `-Command`/`-c` wrappers (optionally preceded by `-NoLogo`/`-NoProfile`), matching
 Codex's shell recognition. The inner source uses the existing shell highlighting. Commands with outer redirects, assignments, additional arguments,
 or dynamic wrapper words remain intact. This is display-only, including resumed items.
+When Codex cannot classify a command, the shared shell display classifier identifies
+frontend reads, inspections, searches and skill reads after removing a literal
+launch wrapper. Mixed batches retain their unclassified operations as Run entries.
 
 The shell frames Main on the left and one right pane: the saved diff (2) or
 Activity (3), toggled and each filling the pane. A roster (4) above them fits its
@@ -426,7 +429,10 @@ similar text. Hovering a loaded link underlines it; clicking it scrolls to and
 briefly shades the linked message. A child turn that completes without a final answer promotes its
 last message to the answer.
 
-Native child reasoning follows Codex's summary presentation: the current summary
+Native public reasoning summaries appear for Main and children, from summary
+deltas or completed/history items. Main retains dim italic summary bodies in its
+transcript; child detail retains the same bodies. Native child reasoning follows
+Codex's summary presentation: the current summary
 updates the agent's status and a transient status row with a left-to-right
 brightness sweep that stops when superseded or finished. The sweep blends between
 the terminal's reported (OSC 10/11) foreground and background; without both

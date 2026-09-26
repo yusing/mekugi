@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -20,15 +21,15 @@ import (
 )
 
 type appServerItem struct {
-	ID      string `json:"id"`
-	Type    string `json:"type"`
-	Text    string `json:"text"`
-	Command string `json:"command"`
-	Status  string `json:"status"`
-	Content []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	} `json:"content"`
+	ID      string   `json:"id"`
+	Type    string   `json:"type"`
+	Text    string   `json:"text"`
+	Summary []string `json:"summary"`
+	Command string   `json:"command"`
+	Status  string   `json:"status"`
+	// Content is variant-specific: user input blocks or raw reasoning strings.
+	// Decode only userMessage content; reasoning presentation uses Summary.
+	Content           jsontext.Value           `json:"content"`
 	Phase             string                   `json:"phase"`
 	ExitCode          *int                     `json:"exitCode"`
 	CommandActions    []appServerCommandAction `json:"commandActions"`
@@ -625,7 +626,7 @@ func (u *appServerUI) restoreSubmission() {
 func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activityPaneAgent) {
 	paneEntries := slices.Clone(entries)
 	for i, entry := range entries {
-		main := entry.Agent == "/root" && (entry.Kind == "tool" || entry.Kind == "exit" || entry.Kind == "output_filter")
+		main := entry.Agent == "/root" && (entry.Kind == "tool" || entry.Kind == "exit" || entry.Kind == "output_filter" || entry.Kind == "reasoning")
 		if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil {
 			main = true
 			entry.Agent = entry.assignment.from
@@ -824,6 +825,7 @@ func scrollLabel(v *liveActivityView) string {
 }
 
 func (u *appServerUI) ensureShell() {
+	u.view.conversation = true
 	if u.shell != nil {
 		return
 	}

@@ -25,7 +25,7 @@ type appServerSession struct {
 	seq       uint64
 	paths     map[string]string // Thread → canonical agent path.
 	agents    []activityPaneAgent
-	reasoning map[string]string          // Summary text so far, by item.
+	reasoning map[[3]string]string       // Summary text by thread, turn, item.
 	patches   map[string]liveDiffPreview // Live edit card, by fileChange item.
 	messages  map[string]activityPaneEntry
 	finals    map[string]bool // The thread's current turn already sent its answer.
@@ -86,7 +86,7 @@ type appServerEvent struct {
 func (s *appServerSession) start(thread, cwd string) {
 	s.paths = map[string]string{thread: "/root"}
 	s.agents = []activityPaneAgent{{Name: "/root", Role: "main", Started: time.Now()}}
-	s.reasoning = make(map[string]string)
+	s.reasoning = make(map[[3]string]string)
 	s.patches = make(map[string]liveDiffPreview)
 	s.messages = make(map[string]activityPaneEntry)
 	s.finals = make(map[string]bool)
@@ -200,25 +200,29 @@ func (u *appServerUI) sessionEvent(m appServerMessage) (bool, error) {
 	case "item/fileChange/patchUpdated":
 		u.patch(p.ThreadID, p.ItemID, p.Changes, false)
 	case "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded":
-		if main {
-			break // Main's reasoning is never shown.
-		}
-		text := s.reasoning[p.ItemID]
+		key := [3]string{p.ThreadID, p.TurnID, p.ItemID}
+		text := s.reasoning[key]
 		if m.Method == "item/reasoning/summaryPartAdded" {
 			if text != "" {
-				s.reasoning[p.ItemID] = text + "\n\n"
+				s.reasoning[key] = text + "\n\n"
 			}
 			break
 		}
 		text += p.Delta
-		s.reasoning[p.ItemID] = text
-		entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(p.ThreadID), Kind: "reasoning", Text: text, CallID: p.ItemID, Observed: now})
+		s.reasoning[key] = text
+		entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(p.ThreadID), Kind: "reasoning", Text: text, CallID: p.ItemID, Observed: now,
+			native: &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: p.ItemID, phase: "summary"}})
 	case "item/started", "item/completed", "item/agentMessage/delta":
 		item := p.Item
 		id := cmp.Or(p.ItemID, item.ID)
 		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: m.Method}
 		agent := s.path(p.ThreadID)
 		switch item.Type {
+		case "reasoning":
+			if text := strings.Join(item.Summary, "\n\n"); strings.TrimSpace(text) != "" {
+				s.reasoning[[3]string{p.ThreadID, p.TurnID, id}] = text
+				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "reasoning", Text: text, CallID: id, Observed: now, native: native})
+			}
 		case "commandExecution":
 			entry := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerCommandText(item, s.cwd), CallID: id, Observed: now, native: native}
 			entries = append(entries, entry)
@@ -317,8 +321,9 @@ func (u *appServerUI) observeCost(thread string, agent *activityPaneAgent) {
 	agent.CostPartial = report.missingUsage != 0
 }
 
-// appServerCommandText uses Codex's typed command classification. Anything
-// it cannot classify stays the literal command.
+// appServerCommandText uses Codex's typed classification, then the shared
+// display classifier for frontends that Codex does not recognize. Neither
+// classification changes the executed command or retained host item.
 func appServerCommandText(item appServerItem, cwd string) string {
 	var parts []string
 	for _, action := range item.CommandActions {
@@ -342,6 +347,9 @@ func appServerCommandText(item appServerItem, cwd string) string {
 	}
 	if len(parts) == 0 {
 		command := appServerDisplayCommand(item.Command)
+		if display, ok := toolActivityReads(command); ok {
+			return display
+		}
 		fence := "```"
 		for strings.Contains(command, fence) {
 			fence += "`"

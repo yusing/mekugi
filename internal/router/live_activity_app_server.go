@@ -1,6 +1,7 @@
 package router
 
 import (
+	json "encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
@@ -134,15 +135,27 @@ func (v *liveActivityView) applyAppServerItem(main, thread, turn, id, method, de
 		entry.Text = delta
 	} else {
 		switch item.Type {
+		case "reasoning":
+			entry.Kind, entry.CallID, entry.Text = "reasoning", id, strings.Join(item.Summary, "\n\n")
+			if strings.TrimSpace(entry.Text) == "" {
+				return
+			}
 		case "agentMessage":
 		case "userMessage":
+			var contents []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}
+			if len(item.Content) > 0 && json.Unmarshal(item.Content, &contents) != nil {
+				return
+			}
 			if thread == main {
 				entry.Agent = "You"
 			} else {
 				entry.Agent += " · user"
 			}
 			imageNumber := 0
-			for _, content := range item.Content {
+			for _, content := range contents {
 				if content.Type == "text" {
 					entry.Text += content.Text
 				} else if content.Type == "image" || content.Type == "localImage" {

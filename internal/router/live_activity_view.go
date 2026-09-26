@@ -137,19 +137,20 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			continue
 		}
 		v.lastSeq = entry.Seq
-		if v.mergeNative(entry) {
+		if entry.Kind != "reasoning" && v.mergeNative(entry) {
 			continue
 		}
 		if entry.Kind == "reasoning" {
 			// These are provider-visible summaries from the collector, never
-			// raw reasoning. Keep the legacy pane and Main policy unchanged.
-			if !v.childrenOnly || entry.Agent == "/root" {
+			// raw reasoning. Keep legacy panes and the other audience excluded.
+			if !(v.childrenOnly && entry.Agent != "/root" || v.conversation && entry.Agent == "Main") {
 				continue
 			}
 			updated := false
 			if entry.CallID != "" {
 				for i, previous := range v.entries {
-					if previous.Kind == "reasoning" && previous.Agent == entry.Agent && previous.CallID == entry.CallID {
+					if previous.Kind == "reasoning" && previous.Agent == entry.Agent && previous.CallID == entry.CallID &&
+						(previous.native == nil && entry.native == nil || previous.native != nil && entry.native != nil && previous.native.sameItem(entry.native)) {
 						entry.Seq = previous.Seq
 						if reasoningSummaryHeader(previous.Text) == reasoningSummaryHeader(entry.Text) {
 							entry.Observed = previous.Observed
@@ -253,6 +254,9 @@ func (v *liveActivityView) keepSelection() {
 
 func (v *liveActivityView) visible(entry activityPaneEntry) bool {
 	if entry.Kind == "reasoning" {
+		if v.conversation {
+			return entry.Agent == "Main"
+		}
 		if !v.childrenOnly {
 			return false
 		}

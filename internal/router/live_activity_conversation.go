@@ -121,6 +121,10 @@ func (v *liveActivityView) conversationItem(first, last, width int) liveActivity
 	var out conversationLines
 	p := &v.painter
 	switch {
+	case entry.Agent == "Main" && entry.Kind == "reasoning":
+		for _, block := range blocks {
+			out.add(0, p.block(block, width)...)
+		}
 	case entry.Agent == "You":
 		v.userItem(&out, entry, width)
 	case conversationTool(entry):

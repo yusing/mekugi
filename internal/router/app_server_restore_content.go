@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -243,6 +244,11 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 			entry := activityPaneEntry{Seq: s.next(), Agent: name, Observed: observed, CallID: item.ID,
 				native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed"}}
 			switch item.Type {
+			case "reasoning":
+				entry.Kind, entry.Text = "reasoning", strings.Join(item.Summary, "\n\n")
+				if strings.TrimSpace(entry.Text) != "" {
+					entries = append(entries, entry)
+				}
 			case "commandExecution", "fileChange":
 				entry.Kind, entry.Text = "tool", appServerCommandText(item, info.Cwd)
 				if item.Type == "fileChange" {
