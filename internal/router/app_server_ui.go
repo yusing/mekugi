@@ -195,7 +195,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						if u.view.expireFlash(time.Now()) {
 							u.dirty = true
 						}
-						if u.shell.activityOpen && u.agents.hasLiveReasoning() {
+						if u.turn != "" || u.shell.activityOpen && u.agents.hasLiveReasoning() {
 							u.dirty = true
 						}
 						if u.shell.activityOpen && time.Since(agePaint) >= time.Second {
@@ -423,6 +423,9 @@ func (u *appServerUI) message(m appServerMessage) error {
 		if p.ThreadID == u.thread && p.Turn.ID == u.turn {
 			u.turn, u.starting = "", false
 			u.status, u.alert = strings.ToUpper(p.Turn.Status[:min(1, len(p.Turn.Status))])+p.Turn.Status[min(1, len(p.Turn.Status)):], p.Turn.Status == "failed"
+			if p.Turn.Status == "completed" && !u.turnStarted.IsZero() {
+				u.status += fmt.Sprintf(" in %ds", max(0, int(time.Since(u.turnStarted).Seconds())))
+			}
 			if p.Turn.Error != nil {
 				u.status, u.alert = u.status+": "+p.Turn.Error.Message, true
 			}
@@ -667,8 +670,8 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 
 // mainFrame is the transcript above a boxed composer. The top border carries
 // the session state; the bottom border the model. dock rows are left blank
-// between the two, starting at the returned row, for the live edit dock.
-func (u *appServerUI) mainFrame(width, height, dock int) ([]string, int) {
+// between the two, in the returned rectangle, for the live edit dock.
+func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect) {
 	width, height = max(1, width), max(1, height)
 	boxed := width >= 12 && height >= 3
 	borderRows, inset := 0, min(2, width-1)
@@ -755,7 +758,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, int) {
 		}
 		frame = append(frame, composerBorder("╰", "╯", "", model, width, border))
 	}
-	return frame, dockAt
+	return frame, terminalRect{0, dockAt, width, dock}
 }
 
 // composerBorder embeds optional left and right labels in a box edge. The
@@ -780,6 +783,22 @@ func composerBorder(open, close, left, right string, width int, color string) st
 	}
 	fill := max(0, inner-ansi.StringWidth(l)-ansi.StringWidth(r)-2)
 	return color + open + "─" + l + strings.Repeat("─", fill) + r + "─" + close + liveActivityReset
+}
+
+// activeReasoning returns only the current Main item's public summary heading.
+func (u *appServerUI) activeReasoning() string {
+	if u.turn == "" {
+		return ""
+	}
+	i := u.view.latest("Main")
+	if i < 0 {
+		return ""
+	}
+	entry := u.view.entries[i]
+	if entry.Kind != "reasoning" || entry.native == nil || entry.native.thread != u.thread || entry.native.turn != u.turn || entry.native.phase == "item/completed" {
+		return ""
+	}
+	return reasoningSummaryHeader(livediff.Safe(entry.Text, false))
 }
 
 // stateLabel is the session state followed by any composer notice.
@@ -809,6 +828,12 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 		return liveActivityRed + "✗ " + status + liveActivityReset
 	case u.turn != "":
 		label := liveActivityAmber + "◐ " + status + liveActivityReset
+		if status == "Working" {
+			if summary := u.activeReasoning(); summary != "" {
+				status = summary
+			}
+			label = "\x1b[39m◐ " + reasoningShimmer(status, now.Sub(u.turnStarted), u.view.painter.colors) + liveActivityReset
+		}
 		if !u.turnStarted.IsZero() {
 			label += liveActivityDim + " " + liveActivityAge(now.Sub(u.turnStarted)) + liveActivityUndim
 		}

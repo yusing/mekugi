@@ -260,15 +260,6 @@ func (v *liveActivityView) visible(entry activityPaneEntry) bool {
 		if !v.childrenOnly {
 			return false
 		}
-		if v.only {
-			return entry.Agent == v.selected
-		}
-		// Like Codex's live status, this row disappears when later activity
-		// supersedes it. The summary body remains in the detailed view.
-		latest := v.latest(entry.Agent)
-		return latest >= 0 && v.entries[latest].Seq == entry.Seq && slices.ContainsFunc(v.agents, func(agent activityPaneAgent) bool {
-			return agent.Name == entry.Agent && agent.Responding
-		})
 	}
 	if v.childrenOnly && entry.Agent == "/root" {
 		return false
@@ -1117,15 +1108,6 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 			key.hover = v.snippet.block
 		}
 		run, ok := v.runs[key]
-		// Only live compact reasoning runs animate; ordinary history stays cached.
-		if clip > 0 {
-			for k := i; k <= last; k++ {
-				if v.entries[k].Kind == "reasoning" && v.visible(v.entries[k]) {
-					ok = false
-					break
-				}
-			}
-		}
 		if !ok {
 			var blocks []liveActivityBlock
 			for k := i; k <= last; k++ {
@@ -1187,7 +1169,6 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 	operation := func(block liveActivityBlock) bool { return block.kind == "op" || block.kind == "reads" }
 	rail := ""
 	for index, block := range blocks {
-		block.compact = clip > 0
 		// Native Activity joins consecutive operations into one tree.
 		tree := v.childrenOnly && operation(block)
 		part := v.painter.block(block, width-2)

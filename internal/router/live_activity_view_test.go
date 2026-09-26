@@ -477,12 +477,7 @@ func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
 		t.Fatalf("journal = %+v", journal)
 	}
 	painter := liveActivityPainter{theme: livediff.DarkTheme}
-	render := func(compact bool) string {
-		block := blocks[0]
-		block.compact = compact
-		return ansi.Strip(strings.Join(painter.block(block, 80), "\n"))
-	}
-	full := render(false)
+	full := ansi.Strip(strings.Join(painter.block(blocks[0], 80), "\n"))
 	for _, want := range []string{
 		"✓ Final answer · 3 answers · 2 files +12 -4",
 		"  ↩ Does the preview color interpreter bodies?",
@@ -495,9 +490,6 @@ func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
 	}
 	if strings.Contains(full, "Journal result") || strings.Contains(full, "**") || strings.Contains(full, "Answer") {
 		t.Fatalf("legacy journal grammar leaked into the pane:\n%s", full)
-	}
-	if compact := render(true); !strings.Contains(compact, "  ↩ Does the preview color interpreter bodies?\n  • verdict") {
-		t.Fatalf("shared view kept a multi-row question:\n%s", compact)
 	}
 	if summary := ansi.Strip(painter.summary(blocks)); summary != "Yes." {
 		t.Fatalf("roster summary = %q", summary)

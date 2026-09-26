@@ -234,7 +234,7 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 		}
 	}
 	keys("hello\r")
-	if p.ui.status != "Completed" || !slices.ContainsFunc(p.ui.view.entries, func(e activityPaneEntry) bool { return strings.Contains(e.Text, "I heard: hello") }) {
+	if !strings.HasPrefix(p.ui.status, "Completed in ") || !slices.ContainsFunc(p.ui.view.entries, func(e activityPaneEntry) bool { return strings.Contains(e.Text, "I heard: hello") }) {
 		t.Fatalf("new turn not answered: %q", p.ui.status)
 	}
 	keys("\x03")

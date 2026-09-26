@@ -94,11 +94,10 @@ func TestAppServerReasoningAnimationLifecycle(t *testing.T) {
 	u.ensureShell()
 	v := u.agents
 	v.apply(activityPaneEvent{Kind: "entries", Agents: []activityPaneAgent{{Name: "/root/reviewer", Responding: true}}, Entries: []activityPaneEntry{{Seq: 1, Agent: "/root/reviewer", Kind: "reasoning", CallID: "r", Text: "Checking the answer target", Observed: time.Now().Add(-500 * time.Millisecond)}}})
-	first := strings.Join(v.renderFeed(80, 20).lines, "\n")
-	v.blocks[0][0].observed = time.Now().Add(-1500 * time.Millisecond)
-	second := strings.Join(v.renderFeed(80, 20).lines, "\n")
+	first, _ := v.current(v.agents[0], v.entries[0].Observed)
+	second, _ := v.current(v.agents[0], v.entries[0].Observed.Add(500*time.Millisecond))
 	if !v.hasLiveReasoning() || first == second || ansi.Strip(first) != ansi.Strip(second) {
-		t.Fatal("live summary animation froze in cached feed or changed text")
+		t.Fatal("live summary animation froze in roster or changed text")
 	}
 	before := v.entries[0].Observed
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 2, Agent: "/root/reviewer", Kind: "reasoning", CallID: "r", Text: "Checking the answer target", Observed: time.Now()}}})
@@ -106,7 +105,7 @@ func TestAppServerReasoningAnimationLifecycle(t *testing.T) {
 		t.Fatal("unchanged header restarted animation")
 	}
 	v.agents[0].Responding = false
-	if v.hasLiveReasoning() || strings.Contains(ansi.Strip(strings.Join(v.renderFeed(80, 20).lines, "\n")), "Checking the answer target") {
-		t.Fatal("completed reasoning kept animating")
+	if v.hasLiveReasoning() || !strings.Contains(ansi.Strip(strings.Join(v.renderFeed(80, 20).lines, "\n")), "Checking the answer target") {
+		t.Fatal("completed reasoning animation or transcript retention is wrong")
 	}
 }

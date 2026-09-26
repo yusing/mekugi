@@ -447,10 +447,14 @@ last message to the answer.
 
 Native public reasoning summaries appear for Main and children, from summary
 deltas or completed/history items. Main retains dim italic summary bodies in its
-transcript; child detail retains the same bodies. Native child reasoning follows
-Codex's summary presentation: the current summary
-updates the agent's status and a transient status row with a left-to-right
-brightness sweep that stops when superseded or finished. The sweep blends between
+transcript; its active summary heading replaces `Working` in the composer status
+until the item finishes or later Main activity supersedes it, without a separate
+pinned row. The status shimmers while the turn runs. Successful completion shows
+the frozen elapsed turn time, for example `Completed in 12s`. Activity retains the
+same bodies for children in both the combined transcript
+and selected-agent detail, including after completion or later activity. The current
+summary updates the agent's roster status with a left-to-right brightness sweep
+that stops when superseded or finished. The sweep blends between
 the terminal's reported (OSC 10/11) foreground and background; without both
 reports it steps through dim, normal and bold. Raw and encrypted
 reasoning stay excluded; the legacy pane keeps its reasoning policy.

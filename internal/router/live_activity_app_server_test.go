@@ -60,7 +60,9 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 			if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
 				t.Fatal(err)
 			}
-			if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dm", x, y)); err != nil { t.Fatal(err) }
+			if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dm", x, y)); err != nil {
+				t.Fatal(err)
+			}
 			clicked = true
 			break
 		}
@@ -135,17 +137,25 @@ func TestAppServerActivityReasoningSummaries(t *testing.T) {
 	}
 	feed := ansi.Strip(strings.Join(u.agents.renderFeed(80, 20).lines, "\n"))
 	status, _ := u.agents.current(activityPaneAgent{Name: "/root/reviewer"}, time.Now())
-	if strings.Contains(feed, "public summary") || !strings.Contains(status, "Updated public summary") || len(u.agents.entries) != 1 {
-		t.Fatal("live summary must update status, not compact history")
+	if !strings.Contains(feed, "Updated public summary") || !strings.Contains(status, "Updated public summary") || len(u.agents.entries) != 1 {
+		t.Fatal("summary must remain in Activity and update status")
 	}
 	u.agents.agents = []activityPaneAgent{{Name: "/root/reviewer", Responding: true}}
-	live := ansi.Strip(strings.Join(u.agents.renderFeed(80, 20).lines, "\n"))
-	if !strings.Contains(live, "◐ Updated public summary") {
-		t.Fatal("active reasoning status is missing from Activity")
+	live := strings.Join(u.agents.renderFeed(80, 20).lines, "\n")
+	if !strings.Contains(ansi.Strip(live), "Updated public summary") || !strings.Contains(live, "\x1b[2;3m") {
+		t.Fatal("dim italic reasoning body is missing from Activity")
 	}
 	u.agents.agents[0].Responding = false
-	if idle := strings.Join(u.agents.renderFeed(80, 20).lines, "\n"); strings.Contains(idle, "Updated public summary") {
-		t.Fatal("transient reasoning status remained after completion")
+	if idle := strings.Join(u.agents.renderFeed(80, 20).lines, "\n"); !strings.Contains(idle, "Updated public summary") {
+		t.Fatal("reasoning transcript disappeared after completion")
+	}
+	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+		{Seq: 3, Agent: "/root/reviewer", Kind: "reasoning", CallID: "summary-2", Text: "Later public summary"},
+		{Seq: 4, Agent: "/root", Kind: "reasoning", CallID: "main-summary", Text: "Main only summary"},
+	}})
+	retained := ansi.Strip(strings.Join(u.agents.renderFeed(80, 30).lines, "\n"))
+	if !strings.Contains(retained, "Updated public summary") || !strings.Contains(retained, "Later public summary") || strings.Contains(retained, "Main only summary") {
+		t.Fatalf("Activity lost earlier reasoning or included Main: %q", retained)
 	}
 	u.agents.only, u.agents.selected = true, "/root/reviewer"
 	detail := strings.Join(u.agents.renderFeed(80, 20).lines, "\n")

@@ -1,9 +1,13 @@
 package router
 
 import (
+	"bytes"
 	json "encoding/json/v2"
+	"fmt"
+	"github.com/charmbracelet/x/vt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -29,7 +33,7 @@ func TestAppServerPublicSummaryNotifications(t *testing.T) {
 			"id": "same-id", "type": "reasoning", "summary": []string{"**Complete**\n\nFinal public " + thread + "."}, "content": []string{"PRIVATE"}}})
 		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "completed"}})
 	}
-	u.agents.only, u.agents.selected = true, "/root/worker"
+	u.agents.only, u.agents.selected = false, "/root/worker"
 	main = ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
 	child = ansi.Strip(strings.Join(u.agents.renderFeed(90, 40).lines, "\n"))
 	if strings.Count(main, "Final public main.") != 1 || strings.Count(child, "Final public child.") != 1 || strings.Contains(main+child, "PRIVATE") || strings.Contains(main+child, "Public main summary") {
@@ -52,7 +56,7 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 	u.restoreHistory(turns)
 	u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
 	u.restoreActivityThread(appServerThreadInfo{ID: "child", Turns: turns})
-	u.agents.only, u.agents.selected = true, "/root/worker"
+	u.agents.only, u.agents.selected = false, "/root/worker"
 	for _, view := range []*liveActivityView{u.view, u.agents} {
 		got := ansi.Strip(strings.Join(view.renderFeed(90, 40).lines, "\n"))
 		if strings.Count(got, "Public restored summary.") != 1 || strings.Contains(got, "PRIVATE") {
@@ -64,4 +68,112 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 	if len(u.view.entries) != 1 {
 		t.Fatalf("raw reasoning reached transcript: %+v", u.view.entries)
 	}
+}
+
+func TestAppServerActiveReasoningInComposer(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
+	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Checking layout**"})
+	for _, dock := range []int{0, 3} {
+		frame, dockRect := u.mainFrame(70, 12, dock)
+		border := u.composerRect.y - 1
+		if len(frame) != 12 || !strings.Contains(ansi.Strip(frame[border]), "◐ Checking layout") || strings.Contains(ansi.Strip(frame[border]), "Working") || dockRect.y+dockRect.h != border {
+			t.Fatalf("reasoning not in composer: dock=%d frame=%q", dock, frame)
+		}
+	}
+	for _, size := range [][2]int{{1, 1}, {7, 3}, {12, 4}} {
+		frame, _ := u.mainFrame(size[0], size[1], 0)
+		if len(frame) != size[1] {
+			t.Fatalf("height overflow: %q", frame)
+		}
+		for _, row := range frame[u.composerRect.y:] {
+			if ansi.StringWidth(row) > size[0] {
+				t.Fatalf("width overflow: %q", row)
+			}
+		}
+	}
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{"Checking layout"}}})
+	if u.activeReasoning() != "" {
+		t.Fatal("completed reasoning still active")
+	}
+	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "completed"}})
+	if u.activeReasoning() != "" {
+		t.Fatal("completed turn still active")
+	}
+}
+
+func TestAppServerReasoningStatusSuperseded(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
+	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Checking layout**"})
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "tool", "type": "commandExecution", "command": "pwd"}})
+	if got := ansi.Strip(u.sessionLabel(u.turnStarted)); strings.Contains(got, "Checking layout") || !strings.Contains(got, "Working") {
+		t.Fatalf("superseded summary remains in status: %q", got)
+	}
+}
+
+func TestAppServerWorkingShimmers(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
+	a, b := u.sessionLabel(u.turnStarted), u.sessionLabel(u.turnStarted.Add(500*time.Millisecond))
+	if a == b || ansi.Strip(a) != ansi.Strip(b) || !strings.Contains(ansi.Strip(a), "Working") {
+		t.Fatalf("no text-preserving shimmer: %q %q", a, b)
+	}
+	u.turn = ""
+	if u.sessionLabel(u.turnStarted) != u.sessionLabel(u.turnStarted.Add(500*time.Millisecond)) {
+		t.Fatal("idle label animates")
+	}
+}
+
+func TestAppServerActiveReasoningShimmers(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
+	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Checking layout**"})
+	a := u.sessionLabel(u.turnStarted)
+	b := u.sessionLabel(u.turnStarted.Add(500 * time.Millisecond))
+	if a == b || !strings.Contains(ansi.Strip(a), "◐ Checking layout") || ansi.Strip(a) != ansi.Strip(b) {
+		t.Fatalf("no text-preserving reasoning shimmer: %q %q", a, b)
+	}
+}
+
+func TestAppServerCompletedElapsedTime(t *testing.T) {
+	for _, seconds := range []int{0, 12, 75} {
+		u := newAppServerSessionTestUI(t, t.TempDir())
+		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
+		u.turnStarted = time.Now().Add(-time.Duration(seconds) * time.Second)
+		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "completed"}})
+		want := fmt.Sprintf("Completed in %ds", seconds)
+		for _, now := range []time.Time{time.Now(), time.Now().Add(time.Minute)} {
+			if got := ansi.Strip(u.sessionLabel(now)); got != want {
+				t.Fatalf("completion label = %q, want %q", got, want)
+			}
+		}
+	}
+}
+
+func TestAppServerReasoningSurvivesDockComposition(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.draft = "one\ntwo\nthree\nfour"
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
+	appServerTestNotify(t, u, "item/fileChange/patchUpdated", map[string]any{"threadId": "main", "turnId": "t", "itemId": "p", "changes": []any{map[string]any{"path": "a.go", "kind": map[string]any{"type": "add"}, "diff": "package a\n"}}})
+	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Active summary**"})
+	var out bytes.Buffer
+	if err := u.paint(&out, 80, 14); err != nil {
+		t.Fatal(err)
+	}
+	screen := vt.NewEmulator(80, 14)
+	defer screen.Close()
+	if _, err := screen.Write(out.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	rows := strings.Split(screen.String(), "\n")
+	for i, row := range rows {
+		if strings.Contains(row, "╭─") && strings.Contains(row, "Active summary") {
+			if i == 0 || strings.Contains(rows[i-1], "Active summary") || strings.Contains(row, "Working") {
+				t.Fatalf("dock hid reasoning:\n%s", screen.String())
+			}
+			return
+		}
+	}
+	t.Fatalf("composer missing:\n%s", screen.String())
 }

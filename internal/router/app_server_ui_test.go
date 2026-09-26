@@ -331,7 +331,7 @@ func TestAppServerUINotificationBeforeResponseAndItems(t *testing.T) {
 		t.Fatalf("unexpected visible content: %q", frame.String())
 	}
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"t","status":"completed"}}}`)
-	if u.turn != "" || u.status != "Completed" {
+	if u.turn != "" || !strings.HasPrefix(u.status, "Completed in ") {
 		t.Fatal("main completion not applied")
 	}
 }

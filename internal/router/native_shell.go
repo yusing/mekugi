@@ -255,7 +255,8 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		if u.main.keybindings && u.focus == 0 {
 			dockRows = 0
 		}
-		body, dockAt := u.main.mainFrame(iw, ih, dockRows)
+		body, dockRect := u.main.mainFrame(iw, ih, dockRows)
+		dockAt, dockRows := dockRect.y, dockRect.h
 		rules := map[int]string{}
 		if dockRows > 0 && dockAt+dockRows <= len(body) {
 			dock, err := u.renderDock(ctx, &u.mainDock, left.w, dockRows, u.focus == 0)

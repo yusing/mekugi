@@ -4,7 +4,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/yusing/mekugi/internal/livediff"
 )
@@ -24,9 +23,7 @@ type liveActivityBlock struct {
 	body     string
 	reads    []liveActivityRead
 	journal  *liveActivityJournal // A final answer in journal-result form.
-	compact  bool                 // Rendered in the clipped shared feed.
 	exitCode int                  // Nonzero command exit; zero means no failure label.
-	observed time.Time            // Live reasoning's header-change time.
 }
 
 // liveActivityJournal is a child's journal result laid out by the router's
@@ -73,7 +70,7 @@ func parseLiveActivity(entry activityPaneEntry) []liveActivityBlock {
 			return []liveActivityBlock{{kind: "message", from: entry.assignment.from, to: entry.assignment.to, owner: entry.Agent, body: livediff.Safe(entry.assignment.text, false)}}
 		}
 	case "reasoning":
-		return []liveActivityBlock{{kind: "summary", body: text, observed: entry.Observed}}
+		return []liveActivityBlock{{kind: "summary", body: text}}
 	case "native_journal":
 		if entry.journal != nil {
 			journal := &liveActivityJournal{}

@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -350,9 +349,6 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 	width = max(8, width)
 	switch block.kind {
 	case "summary":
-		if block.compact {
-			return []string{liveActivityDim + "◐ " + liveActivityUndim + reasoningShimmer(reasoningSummaryHeader(block.body), time.Since(block.observed), p.colors)}
-		}
 		// Codex keeps summary bodies in detailed transcript, dim and italic,
 		// with a bullet rather than a separate "Reasoning summary" card.
 		body := reasoningSummaryBody(block.body)
