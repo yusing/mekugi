@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/pathdisplay"
+	"mvdan.cc/sh/v3/expand"
+	"mvdan.cc/sh/v3/syntax"
 )
 
 // appServerSession adapts app-server notifications for every thread of the
@@ -339,13 +341,66 @@ func appServerCommandText(item appServerItem, cwd string) string {
 		}
 	}
 	if len(parts) == 0 {
+		command := appServerDisplayCommand(item.Command)
 		fence := "```"
-		for strings.Contains(item.Command, fence) {
+		for strings.Contains(command, fence) {
 			fence += "`"
 		}
-		return "Run\n" + fence + "bash\n" + item.Command + "\n" + fence
+		return "Run\n" + fence + "bash\n" + command + "\n" + fence
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// Hide only the host's literal shell command wrapper, never evaluate its words
+// or discard surrounding operations. Execution and retained items stay intact.
+// Source: codex-rs/shell-command/src/bash.rs:106:121@86be5320 extract_bash_command
+// Source: codex-rs/shell-command/src/powershell.rs:43:73@86be5320 extract_powershell_command
+// Unlike Codex's argv helper, preserve PowerShell's extra script arguments.
+func appServerDisplayCommand(command string) string {
+	program, err := syntax.NewParser().Parse(strings.NewReader(command), "")
+	if err != nil || len(program.Stmts) != 1 {
+		return command
+	}
+	stmt := program.Stmts[0]
+	call, ok := stmt.Cmd.(*syntax.CallExpr)
+	if !ok || stmt.Background || stmt.Negated || stmt.Coprocess || stmt.Disown || len(stmt.Redirs) != 0 || len(call.Assigns) != 0 || len(call.Args) < 3 {
+		return command
+	}
+	args := make([]string, 0, len(call.Args))
+	for _, word := range call.Args {
+		if !shellCatLiteralParts(word.Parts, false) {
+			return command
+		}
+		// Fields removes shell quoting without consulting the environment or
+		// executing substitutions. Reject words that expand to multiple args.
+		fields, err := expand.Fields(&expand.Config{}, word)
+		if err != nil || len(fields) != 1 {
+			return command
+		}
+		args = append(args, fields[0])
+	}
+	name := filepath.Base(args[0])
+	name = strings.TrimSuffix(name, filepath.Ext(name))
+	switch name {
+	case "bash", "zsh", "sh":
+		if len(args) == 3 && (args[1] == "-lc" || args[1] == "-c") {
+			return args[2]
+		}
+	case "pwsh", "powershell":
+		for i := 1; i+1 < len(args); i++ {
+			switch strings.ToLower(args[i]) {
+			case "-nologo", "-noprofile":
+			case "-command", "-c":
+				if i+2 == len(args) {
+					return args[i+1]
+				}
+				return command
+			default:
+				return command
+			}
+		}
+	}
+	return command
 }
 
 // appServerEditText is one Activity operation per changed file, with its

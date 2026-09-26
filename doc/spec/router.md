@@ -335,6 +335,11 @@ usage accounting. The client claims Main's thread in the router's activity
 collector only so child activity is never injected into Main's provider
 responses; the collector does not queue that activity.
 
+Run cards omit literal Bash, Zsh, or Sh `-c`/`-lc` launch wrappers and PowerShell
+`-Command`/`-c` wrappers (optionally preceded by `-NoLogo`/`-NoProfile`), matching
+Codex's shell recognition. The inner source uses the existing shell highlighting. Commands with outer redirects, assignments, additional arguments,
+or dynamic wrapper words remain intact. This is display-only, including resumed items.
+
 The shell frames Main on the left and one right pane: the saved diff (2) or
 Activity (3), toggled and each filling the pane. A roster (4) above them fits its
 content, four rows unfocused and up to 40% of the screen when focused; finished
