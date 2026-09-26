@@ -40,11 +40,13 @@ owns permissions, sandboxing, command processes, yielded sessions, and
 `write_stdin` continuation. Mekugi never reruns a stock call while observing,
 replaying, or displaying it.
 
-The credential-gated [explore output filter](explore_filter.md) is the sole
+The credential-gated [explore output filter](explore_filter.md) is an
 exception to unchanged model-visible result text. It projects eligible completed
 native and transparent single-call Code Mode results, including command lists,
 retains their original output before exposing recovery, and never alters
-execution or continuation.
+execution or continuation. Completed edit observations may append a separate
+agent-visible change-ID and summary text part as specified in
+[applied changes](changes.md), preserving the original result content.
 
 The wrapped Codex `PATH` includes only this session's authenticated executable
 frontends. `mcat`, `mrun`, `mread`, `mchanges`, `msymbol`, `inspect_file`, and
@@ -72,8 +74,8 @@ stays byte-identical, and its pre-call capture is time-bounded so that an
 unreadable scope becomes incomplete evidence rather than delaying Codex.
 Post-result change sweeps are bounded auxiliary observation, not execution hooks.
 They do not wrap commands, inject environments, or alter yielded-session handling.
-Command change notices in model-visible stock output remain deferred; results stay
-unchanged.
+Agent-visible change notices are appended only after the observed evidence is
+durable; they do not replace original stock output.
 
 Wrapped Mekugi launches enable Codex's native rollout trace in a private,
 session-scoped temporary directory. Observation joins the executing thread,

@@ -457,7 +457,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		}
 	}
 	if managedKnown != 0 || managedUnknown != 0 {
-		fmt.Fprintf(&output, "tool-managed: %d changed +%d -%d", managedKnown, managedAdded, managedRemoved)
+		fmt.Fprintf(&output, "M +%d -%d", managedAdded, managedRemoved)
 		if managedUnknown != 0 {
 			fmt.Fprintf(&output, "; %d counts unavailable", managedUnknown)
 		}

@@ -139,3 +139,54 @@ func editReceiptHunks(diff string, budget *int) string {
 	*budget -= kept.Len()
 	return kept.String()
 }
+
+// agentEditNotice is projected only after observation records are durable. The
+// original host result remains a separate content part and is retained verbatim.
+func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, callID string, history mekugiHistory) (string, error) {
+	var calls []string
+	for index := range history.NativePatches {
+		calls = append(calls, nativePatchDerivedCallID(callID, index))
+	}
+	if history.ExecObservation != nil {
+		calls = append(calls, execDerivedCallID(callID, history.ExecObservation.CodeMode))
+	}
+	var ids []string
+	seen := make(map[string]bool)
+	for _, derived := range calls {
+		record, found, err := s.lookup(ctx, workspace, derived)
+		if err != nil {
+			return "", err
+		}
+		if !found {
+			continue
+		}
+		if record.ExecOutcome != nil && record.ExecOutcome.SharedWith != "" {
+			record, found, err = s.lookup(ctx, workspace, record.ExecOutcome.SharedWith)
+			if err != nil {
+				return "", err
+			}
+		}
+		id := record.ChangeID
+		if !found || id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return "", nil
+	}
+	// Put every ID before the bounded statistics, including multi-patch cells.
+	header := "mchanges " + strings.Join(ids, " ") + " --summary\n"
+	summary, err := s.readChanges(ctx, changeReadOptions{workspace: workspace, ids: ids, view: "summary"})
+	if err != nil {
+		return "", err
+	}
+	const truncated = "[summary truncated; run the mchanges command above for full statistics]"
+	budget := maxEditReceiptDiffBytes - len(header) - len(truncated)
+	if len(summary) > budget {
+		end := strings.LastIndexByte(summary[:max(0, budget)], '\n')
+		summary = summary[:end+1] + truncated
+	}
+	return header + summary, nil
+}

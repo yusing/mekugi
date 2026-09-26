@@ -83,7 +83,7 @@ func TestManagedExecMChangesSurface(t *testing.T) {
 		{"managed history", changeReadOptions{ids: []string{managedID}, view: "history"},
 			header + "exec_command input:\npython generate.py\n" + diffs.String()},
 		{"managed summary labels", changeReadOptions{ids: []string{mixedID}, view: "summary"},
-			"A\t1\t0\tdirect-summary.txt\ntool-managed: 1 changed +1 -0\n"},
+			"A\t1\t0\tdirect-summary.txt\nM +1 -0\n"},
 	} {
 		read.options.workspace = workspace
 		if stdout, err := store.readChanges(ctx, read.options); err != nil || stdout != read.want {

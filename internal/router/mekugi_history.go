@@ -339,6 +339,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 	}
 	var completedPatches []completedNativePatch
 	pendingCalls := make(map[string]completedNativePatch)
+	editOutputs := make(map[string]map[string]json.RawMessage)
 	continuations := make(map[string]string)
 	for index, item := range items {
 		itemType := jsonString(item, "type")
@@ -373,6 +374,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 					}
 					if terminal, _, _, _, _ := execResultState(resultTool, item["output"]); terminal {
 						pending.output = bytes.Clone(item["output"])
+						editOutputs[pending.callID] = item
 						completedPatches = append(completedPatches, pending)
 						delete(pendingCalls, key)
 					}
@@ -409,6 +411,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 				patch := completedNativePatch{callID: callID, history: history, output: bytes.Clone(item["output"])}
 				if terminal, _, _, _, pending := execResultState(history.ToolName, item["output"]); terminal {
 					completedPatches = append(completedPatches, patch)
+					editOutputs[callID] = item
 				} else if pending != "" {
 					pendingCalls[pending] = patch
 					p.execWindows.setSession(callID, pending)
@@ -470,14 +473,6 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 		}
 		changed = true
 	}
-	var encoded json.RawMessage
-	if changed {
-		var err error
-		encoded, err = marshalProtocolJSON(items)
-		if err != nil {
-			return nil, fmt.Errorf("encode replayed Responses input: %w", err)
-		}
-	}
 	if err := p.replayStore.retainInput(ctx, workspace, raw, visible, releaseSnapshot); err != nil {
 		return nil, err
 	}
@@ -529,8 +524,27 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 	if err := p.replayStore.repairVisibleChangeCalls(ctx, workspace, visible); err != nil {
 		return nil, err
 	}
+	for _, completed := range completedPatches {
+		item := editOutputs[completed.callID]
+		if item == nil {
+			continue
+		}
+		notice, err := p.replayStore.agentEditNotice(ctx, workspace, completed.callID, completed.history)
+		if err != nil || notice == "" {
+			continue // Auxiliary evidence must not interfere with stock results.
+		}
+		output, projected, err := appendToolOutputWarning(item["output"], notice)
+		if err == nil && projected {
+			item["output"] = output
+			changed = true
+		}
+	}
 	request.cachedInput -= removedCached
 	if changed {
+		encoded, err := marshalProtocolJSON(items)
+		if err != nil {
+			return nil, fmt.Errorf("encode replayed Responses input: %w", err)
+		}
 		request.setInput(encoded)
 	}
 	return visible, nil

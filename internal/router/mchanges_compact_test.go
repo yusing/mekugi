@@ -37,7 +37,7 @@ func TestMChangesCompactViewsKeepKnownStatsWithoutManagedNoise(t *testing.T) {
 		t.Fatalf("compact list: %q %v", list, err)
 	}
 	summary, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}, view: "summary"})
-	if err != nil || summary != "M\t1\t1\tdirect.go\ntool-managed: 1 changed +1 -0; 1 counts unavailable\n" {
+	if err != nil || summary != "M\t1\t1\tdirect.go\nM +1 -0; 1 counts unavailable\n" {
 		t.Fatalf("compact summary: %q %v", summary, err)
 	}
 	review, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}})

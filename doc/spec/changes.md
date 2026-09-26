@@ -175,7 +175,7 @@ file status as the diff pane (`A`, `M`, `D`, `R`, `RM`, or `UU`), aggregating ac
 selected records in durable capture order, regardless of argument or author order.
 A created-then-deleted file has no summary row, matching the empty saved diff.
 Paths inside the selected workspace are shortened. By default,
-managed files become one count row with a separate unavailable-count tally;
+managed files become one compact `M +added -removed` row with a separate unavailable-count tally;
 explicit path filters expand individual managed paths. Pending, retired and never-allocated selections get per-ID
 status rows without hiding the remaining summary. It is not a net workspace diff;
 binary or incomplete files have unknown counts. Numeric range ends such as
@@ -215,7 +215,12 @@ summary, including changes left by a command that exits nonzero. Classification
 uses the same captured review files as `mchanges`, including whether a path
 existed before the edit. Each summary carries a bounded copy of the captured
 hunks. Unchanged and unfinished calls publish no edit summary. These messages
-are user-only presentation, not substituted tool results.
+are user-only presentation, not substituted tool results. After persistence, the
+agent-visible completed tool response also receives a separate text part with
+the change ID and `mchanges ID --summary` statistics. This bounded notice does
+not replace the original host result or alter the user-facing edit display.
+No-effect and unfinished calls receive no notice; partial edits report only
+retained evidence. Continuations receive the notice when they finish the edit.
 
 ### Revert and apply
 
@@ -325,8 +330,8 @@ viewer shutdown remove their live preview. Running previews and predictions
 never become durable evidence, and replay does not restart polling.
 
 Query-based Mercurial scoping and literal `sed`/`perl` substitution prediction are
-outside this delivery. Model-visible command-change notices are also deferred;
-stock result bytes remain unchanged.
+outside this delivery. Original stock result content remains unchanged alongside
+the agent-visible change notice.
 Patch previews show projected source changes with the affected file's language
 highlighting, not the `apply_patch` instruction envelope. If source matching
 cannot establish that projection, the viewer must not fabricate a diff. A
