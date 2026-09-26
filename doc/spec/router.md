@@ -435,7 +435,10 @@ namespace; the app-server cwd never grants it filesystem authority.
 
 `make preview-native-ui` replays a scripted session of fake app-server
 notifications through this frontend: delegation, concurrent child edits in both
-docks, a failing test and follow-up, answers and a saved diff.
+docks, a failing test and follow-up, answers and a saved diff. Input takes the
+real composer path, and the preview answers its turn start, steer and interrupt
+requests as app-server would; an interrupt ends every running turn and the
+remaining playback.
 
 The native client replaces the wrapped Codex terminal. The dashboard remains
 available at the invocation URL. Redirected and noninteractive commands do not

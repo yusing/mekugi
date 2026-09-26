@@ -5,10 +5,10 @@ import (
 	json "encoding/json/v2"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -88,17 +88,14 @@ func TestNativeUIPreview(t *testing.T) {
 				if !ok {
 					return io.EOF
 				}
-				if key == 3 || key == 4 {
-					return nil
-				}
-				if p.step < len(p.steps) && p.ui.shell.focus == 0 && key == '\r' && !p.ui.paste {
-					continue // Keep typed input as a draft until playback completes.
-				}
+				// Keys take the real UI path; the preview answers the resulting
+				// requests the way app-server would.
 				if err := p.ui.shell.key(key); err != nil {
 					return err
 				}
-				if p.ui.submitted != "" {
-					p.completeMessage()
+				p.serve()
+				if p.ui.quitRequested {
+					return nil
 				}
 				if err := paint(); err != nil {
 					return err
@@ -202,6 +199,50 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	}
 }
 
+// The preview answers keys through the real composer and app-server
+// requests: steering, clearing, interrupting and quitting all work mid-playback.
+func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
+	p := newNativePreview(t)
+	defer p.close()
+	keys := func(s string) {
+		t.Helper()
+		for _, key := range []byte(s) {
+			if err := p.ui.shell.key(key); err != nil {
+				t.Fatal(err)
+			}
+			p.serve()
+		}
+	}
+	p.until("main streams its patch")
+	keys("also check Unsubscribe\r")
+	if p.ui.submitted != "" || p.ui.turn == "" || !slices.ContainsFunc(p.ui.view.entries, func(e activityPaneEntry) bool {
+		return e.Agent == "You" && e.Text == "also check Unsubscribe"
+	}) {
+		t.Fatalf("steer not accepted: submitted=%q turn=%q", p.ui.submitted, p.ui.turn)
+	}
+	keys("scratch\x03")
+	if p.ui.draft != "" || p.ui.turn == "" || p.ui.quitRequested {
+		t.Fatal("first Ctrl-C did not only clear the draft")
+	}
+	keys("\x03")
+	if p.ui.turn != "" || p.ui.status != "Interrupted" || p.advance() || len(p.active) != 0 {
+		t.Fatalf("interrupt left playback running: turn=%q status=%q active=%v", p.ui.turn, p.ui.status, p.active)
+	}
+	for _, agent := range p.ui.agents.agents {
+		if agent.Responding {
+			t.Fatalf("%s still responding after interrupt", agent.Name)
+		}
+	}
+	keys("hello\r")
+	if p.ui.status != "Completed" || !slices.ContainsFunc(p.ui.view.entries, func(e activityPaneEntry) bool { return strings.Contains(e.Text, "I heard: hello") }) {
+		t.Fatalf("new turn not answered: %q", p.ui.status)
+	}
+	keys("\x03")
+	if !p.ui.quitRequested {
+		t.Fatal("idle Ctrl-C did not quit")
+	}
+}
+
 type nativePreviewStep struct {
 	name string
 	run  func()
@@ -218,6 +259,7 @@ type nativePreview struct {
 	calls     int
 	steps     []nativePreviewStep
 	step      int
+	active    map[string]string // Running turn by thread.
 }
 
 func newNativePreview(t *testing.T) *nativePreview {
@@ -248,7 +290,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 		return max(1, u.shell.layout.diff.w), max(3, u.shell.layout.diff.h), nil
 	}
 	u.session.start("main", workspace)
-	p := &nativePreview{t: t, ui: u, input: input, store: store, usage: usage, workspace: workspace}
+	p := &nativePreview{t: t, ui: u, input: input, store: store, usage: usage, workspace: workspace, active: make(map[string]string)}
 	store.liveDiff = func(changes []liveDiffChange) {
 		u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "change", Changes: changes})
 	}
@@ -563,38 +605,105 @@ func (p *nativePreview) notify(method string, params any) {
 	if err != nil {
 		p.t.Fatal(err)
 	}
+	var turn struct {
+		ThreadID string `json:"threadId"`
+		Turn     struct {
+			ID string `json:"id"`
+		} `json:"turn"`
+	}
+	if err := json.Unmarshal(wire, &turn); err == nil {
+		switch method {
+		case "turn/started":
+			p.active[turn.ThreadID] = turn.Turn.ID
+		case "turn/completed":
+			if p.active[turn.ThreadID] == turn.Turn.ID {
+				delete(p.active, turn.ThreadID)
+			}
+		}
+	}
 	if err := p.ui.message(appServerMessage{Method: method, Params: jsontext.Value(wire)}); err != nil {
 		p.t.Fatal(err)
 	}
 }
 
-func (p *nativePreview) completeMessage() {
-	body := p.ui.submitted
-	turn := p.beginMessage(body)
-	p.notify("item/completed", map[string]any{"threadId": "main", "turnId": turn, "item": map[string]any{
-		"id": fmt.Sprintf("preview-answer-%d", p.message), "type": "agentMessage", "text": "I heard: " + body,
-	}})
-	p.notify("turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": turn, "status": "completed"}})
+// serve answers the UI's pending requests as app-server would: a new turn
+// echoes the prompt, a steer joins the running turn, and an interrupt ends
+// every running turn and the scripted playback with it.
+func (p *nativePreview) serve() {
+	for {
+		line, err := p.input.ReadBytes('\n')
+		if err != nil {
+			return
+		}
+		var request struct {
+			ID     jsontext.Value `json:"id"`
+			Method string         `json:"method"`
+			Params struct {
+				Input []map[string]any `json:"input"`
+			} `json:"params"`
+		}
+		if err := json.Unmarshal(line, &request); err != nil || len(request.ID) == 0 {
+			continue
+		}
+		result := map[string]any{}
+		turn := ""
+		switch request.Method {
+		case "turn/start":
+			p.message++
+			turn = fmt.Sprintf("preview-turn-%d", p.message)
+			result["turn"] = map[string]any{"id": turn}
+		case "turn/steer":
+			turn = p.active["main"]
+			result["turnId"] = turn
+		}
+		p.reply(request.ID, result)
+		switch request.Method {
+		case "turn/start":
+			p.notify("turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": turn}})
+			p.userMessage(turn, request.Params.Input)
+			var text []string
+			for _, input := range request.Params.Input {
+				if s, ok := input["text"].(string); ok {
+					text = append(text, s)
+				}
+			}
+			p.notify("item/completed", map[string]any{"threadId": "main", "turnId": turn, "item": map[string]any{
+				"id": fmt.Sprintf("preview-answer-%d", p.message), "type": "agentMessage", "text": "I heard: " + strings.Join(text, ""),
+			}})
+			p.notify("turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": turn, "status": "completed"}})
+		case "turn/steer":
+			p.userMessage(turn, request.Params.Input)
+		case "turn/interrupt":
+			p.step = len(p.steps)
+			for _, thread := range slices.Sorted(maps.Keys(p.active)) {
+				p.notify("turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": p.active[thread], "status": "interrupted"}})
+			}
+		}
+	}
 }
 
-func (p *nativePreview) beginMessage(body string) string {
-	p.message++
-	turn := fmt.Sprintf("preview-turn-%d", p.message)
-	p.notify("turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": turn}})
-	p.notify("item/completed", map[string]any{"threadId": "main", "turnId": turn, "item": map[string]any{
-		"id": fmt.Sprintf("preview-user-%d", p.message), "type": "userMessage",
-		"content": []map[string]string{{"type": "text", "text": body}},
-	}})
-	id := strconv.Itoa(p.ui.client.next)
-	result, err := json.Marshal(map[string]any{"turn": map[string]any{"id": turn}})
+func (p *nativePreview) reply(id jsontext.Value, result any) {
+	wire, err := json.Marshal(result)
 	if err != nil {
 		p.t.Fatal(err)
 	}
-	if err := p.ui.message(appServerMessage{ID: jsontext.Value(id), Result: jsontext.Value(result)}); err != nil {
+	if err := p.ui.message(appServerMessage{ID: id, Result: jsontext.Value(wire)}); err != nil {
 		p.t.Fatal(err)
 	}
-	p.input.Reset()
-	return turn
+}
+
+func (p *nativePreview) userMessage(turn string, content any) {
+	p.notify("item/completed", map[string]any{"threadId": "main", "turnId": turn, "item": map[string]any{
+		"id": fmt.Sprintf("preview-user-%d-%d", p.message, len(p.ui.view.entries)), "type": "userMessage", "content": content,
+	}})
+}
+
+// beginMessage plays the scripted opening prompt as if it had been submitted.
+func (p *nativePreview) beginMessage(body string) {
+	p.message++
+	turn := fmt.Sprintf("preview-turn-%d", p.message)
+	p.notify("turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": turn}})
+	p.userMessage(turn, []map[string]string{{"type": "text", "text": body}})
 }
 
 func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {

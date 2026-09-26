@@ -441,7 +441,9 @@ To review the native app-server UI without Codex or model requests, run
 `make preview-native-ui` in a terminal. It plays a synthetic session through the
 real panes and renderer: streaming and long messages, journal edits, retraction
 and flush, agent summaries, and Main/agent communication. Scroll, resize, and
-click reply links to inspect them. Ctrl-C or Ctrl-D exits.
+click reply links to inspect them. Keys behave as in the real UI: Enter steers the playing
+turn or, once idle, starts a new one that echoes your prompt; Ctrl-C clears the draft, then
+interrupts playback, then exits, as does `/quit`.
 
 Bun is required to regenerate and test plugin assets:
 
