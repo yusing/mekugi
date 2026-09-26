@@ -42,6 +42,9 @@ type terminalUI struct {
 	focus, drag                                    int // 0 Codex, 1 diff, 2 agents, 3 roster; drag 1 main, 2 auxiliary, 3 files, 4 roster
 	side, activityOpen, cursorVisible              bool
 	diffOpen                                       bool
+	diffUnseen                                     bool // Saved changes arrived while Activity held the right column.
+	mainDock, agentDock                            liveDiffPreviewPane
+	dockSeen                                       [2]time.Time // Last card update in each dock.
 	prefix                                         bool
 	sequenceAt                                     time.Time
 	sequence, agentEscape                          string
@@ -334,6 +337,9 @@ func (u *terminalUI) run(ctx context.Context, stdout *os.File, keys <-chan byte,
 }
 
 func (u *terminalUI) paint(ctx context.Context, out io.Writer) error {
+	if u.main != nil {
+		return u.paintNative(ctx, out)
+	}
 	status, legend := u.statusLines()
 	height := u.height
 	if legend != "" && height > 2 {
@@ -379,11 +385,7 @@ func (u *terminalUI) paint(ctx context.Context, out io.Writer) error {
 		}
 	}
 	if l.codex.w > 0 {
-		if u.main != nil {
-			draw(l.codex, u.main.mainFrame(l.codex.w, l.codex.h))
-		} else {
-			draw(l.codex, strings.Split(u.codexFrame(), "\n"))
-		}
+		draw(l.codex, strings.Split(u.codexFrame(), "\n"))
 	}
 	if l.diff.w > 0 {
 		if u.diffFailure != "" {
@@ -577,6 +579,14 @@ func (u *terminalUI) key(key byte) error {
 			u.focus = int(key - '1')
 			u.side = true
 			u.activityOpen = true
+			// Native Diff and Activity share the right column.
+			u.diffOpen = u.diffOpen && (u.main == nil || key == '4')
+		case 'e':
+			if u.main != nil {
+				u.nextLive()
+				return nil
+			}
+			u.resize(string(key))
 		default:
 			u.resize(string(key))
 		}
@@ -682,7 +692,9 @@ func (u *terminalUI) send(s string) error {
 		} else {
 			var quit bool
 			if u.focus == 3 {
+				only, selected := u.agents.only, u.agents.selected
 				u.agentEscape, quit = u.agents.handleRosterKey(u.agentEscape, key)
+				u.showRosterPick(only, selected)
 			} else {
 				u.agentEscape, quit = u.agents.handleKey(u.agentEscape, key)
 			}
@@ -852,7 +864,9 @@ func (u *terminalUI) mouse(s string) error {
 		} else if action == 'k' {
 			u.agents.scrollRoster(-1)
 		} else {
+			only, selected := u.agents.only, u.agents.selected
 			u.agents.pointAgent(action, y-r.y+1, x-r.x+1)
+			u.showRosterPick(only, selected)
 		}
 	} else {
 		u.agents.handleMouse(action, y-r.y+1, x-r.x+1)
@@ -861,6 +875,10 @@ func (u *terminalUI) mouse(s string) error {
 }
 
 func (u *terminalUI) applyDiff(ctx context.Context, event liveDiffEvent) {
+	if u.main != nil {
+		u.applyNativeDiff(ctx, event)
+		return
+	}
 	if u.diffFailure != "" {
 		return
 	}

@@ -164,8 +164,9 @@ func (a *subagentActivity) paneNoticesLocked(root string) []map[string]json.RawM
 }
 
 // Main already knows its app-server thread before the first provider request.
-// One native frontend owns this collector; opening another view never drains it.
-func (a *subagentActivity) attachNativePane(root string) (uint64, activityPaneEvent) {
+// The native frontend claims the root so its child activity is never injected
+// inline; app-server notifications supply what the frontend displays.
+func (a *subagentActivity) attachNativePane(root string) {
 	a.observe(root, "", "/root", false)
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -174,7 +175,6 @@ func (a *subagentActivity) attachNativePane(root string) (uint64, activityPaneEv
 	}
 	a.pane.root, a.pane.state, a.pane.native = root, activityPaneAttached, true
 	a.pane.generation++
-	return a.pane.generation, a.paneSnapshotLocked()
 }
 
 // paneAgentsLocked lists the pane root and its observed children in observation order.

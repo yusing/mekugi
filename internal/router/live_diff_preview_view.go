@@ -38,7 +38,22 @@ type liveDiffPreviewPane struct {
 	views  map[string]*liveDiffPreviewView
 	order  []string
 	motion liveDiffPreviewMotion
+	// A dock too short for every call keeps one card open and folds the rest
+	// to their headings. prefer names the caller whose card opens first;
+	// pinned holds a card chosen with next() until that call completes.
+	prefer       string
+	open, pinned string
+	openedAt     time.Time
+	accordion    bool // The last frame folded cards.
 }
+
+// liveDiffDockRows is the least a card needs to be worth an even split: its
+// heading and four source rows.
+const liveDiffDockRows = 5
+
+// liveDiffDockHold keeps an automatically opened card from yielding to
+// another writer on every burst.
+const liveDiffDockHold = 1500 * time.Millisecond
 
 // Motion is display-only. Without it, rows appear at their final colors.
 type liveDiffPreviewMotion struct {
@@ -62,6 +77,7 @@ type liveDiffPreviewView struct {
 	renderer  liveDiffRenderer
 	source    []liveDiffPreviewRow
 	born      []time.Time // When each source row was revealed, for its fade.
+	updated   time.Time   // The latest snapshot's arrival, for choosing the open card.
 	fading    time.Time   // Until a displayed row finishes fading in.
 }
 
@@ -127,7 +143,7 @@ func (p *liveDiffPreviewPane) update(preview liveDiffPreview) {
 		}
 		p.views[preview.ID] = view
 	}
-	view.current, view.complete = preview, preview.Complete
+	view.current, view.complete, view.updated = preview, preview.Complete, time.Now()
 }
 
 // live counts calls whose input is still streaming.
@@ -161,19 +177,14 @@ func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, them
 	if p.motion.enabled {
 		p.motion.now = time.Now()
 	}
-	// Give every visible call a heading and at least one source row. Reserve a
-	// summary when a tiny terminal cannot show all calls, rather than cycling
-	// callers on every delta. Expanding the terminal reveals the remaining calls.
 	count := len(p.order)
-	shown := count
-	summary := 0
-	if height < count*2 && count > 1 {
-		shown = max(0, (height-1)/2)
-		summary = 1
+	p.accordion = count > 1 && height < count*liveDiffDockRows
+	if p.accordion {
+		return p.renderAccordion(ctx, workspace, theme, width, height)
 	}
 	var lines []string
-	for i, id := range p.order[:shown] {
-		rows := (height - summary - len(lines)) / (shown - i)
+	for i, id := range p.order {
+		rows := (height - len(lines)) / (count - i)
 		part, err := p.views[id].render(ctx, workspace, theme, width, rows, p.motion)
 		if err != nil {
 			return nil, err
@@ -181,17 +192,134 @@ func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, them
 		p.views[id].displayed = len(part) > 1 || len(part) > 0 && len(p.views[id].source) == 0
 		lines = append(lines, part...)
 		// Stable card positions even when a call has little source so far.
-		if i+1 < shown || summary > 0 {
+		if i+1 < count {
 			for range rows - len(part) {
 				lines = append(lines, "")
 			}
 		}
 	}
-	if summary > 0 {
-		label := fmt.Sprintf("+%d more calls · enlarge pane", count-shown)
+	return lines, nil
+}
+
+// renderAccordion keeps card order, so positions stay stable while one card
+// holds the source rows and the others fold to their heading. When even the
+// headings do not fit, the remainder is counted rather than cycled.
+func (p *liveDiffPreviewPane) renderAccordion(ctx context.Context, workspace string, theme liveDiffTheme, width, height int) ([]string, error) {
+	open := p.chooseOpen(p.motion.now)
+	openAt := slices.Index(p.order, open)
+	shown := min(len(p.order), max(1, height-(liveDiffDockRows-1)))
+	start := 0
+	if openAt >= shown {
+		start = openAt - shown + 1
+	}
+	hidden := len(p.order) - shown
+	if hidden > 0 {
+		shown = max(1, min(shown, height-liveDiffDockRows))
+		start = min(start, openAt)
+		if openAt >= start+shown {
+			start = openAt - shown + 1
+		}
+		hidden = len(p.order) - shown
+	}
+	var lines []string
+	for _, id := range p.order[start : start+shown] {
+		view := p.views[id]
+		if id != open {
+			lines = append(lines, ansi.Truncate(livediff.Gutter(false, theme)+"\x1b[2m▸\x1b[22m "+view.title(workspace, theme, width-2), max(0, width-1), ""))
+			continue
+		}
+		rows := height - shown + 1
+		if hidden > 0 {
+			rows--
+		}
+		part, err := view.render(ctx, workspace, theme, width, rows, p.motion)
+		if err != nil {
+			return nil, err
+		}
+		view.displayed = len(part) > 1 || len(part) > 0 && len(view.source) == 0
+		lines = append(lines, part...)
+		for range rows - len(part) {
+			lines = append(lines, "")
+		}
+	}
+	if hidden > 0 {
+		label := fmt.Sprintf("+%d more calls · next shows another", hidden)
 		lines = append(lines, ansi.Truncate(theme.Accent()+label+"\x1b[0m", max(0, width-1), ""))
 	}
+	for _, id := range p.order {
+		if id != open {
+			p.views[id].displayed = true // A folded heading has been shown.
+		}
+	}
 	return lines, nil
+}
+
+// chooseOpen picks the card that keeps its source rows: a pinned live card,
+// then the preferred caller's, then the current one while it is still
+// arriving, then the card that changed most recently.
+func (p *liveDiffPreviewPane) chooseOpen(now time.Time) string {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	exists := func(id string) bool { return id != "" && p.views[id] != nil }
+	if exists(p.pinned) && !p.views[p.pinned].complete {
+		return p.setOpen(p.pinned, now)
+	}
+	p.pinned = ""
+	if p.prefer != "" {
+		best := ""
+		for _, id := range p.order {
+			if p.views[id].current.Caller == p.prefer && (best == "" || p.views[best].complete && !p.views[id].complete) {
+				best = id
+			}
+		}
+		if best != "" {
+			return p.setOpen(best, now)
+		}
+	}
+	// The open card keeps its rows while it is still arriving, briefly after
+	// opening and while its input keeps changing.
+	if exists(p.open) && !p.views[p.open].complete &&
+		(now.Sub(p.openedAt) < liveDiffDockHold || now.Sub(p.views[p.open].updated) < liveDiffDockHold) {
+		return p.open
+	}
+	latest := p.order[len(p.order)-1]
+	for _, id := range p.order {
+		view, best := p.views[id], p.views[latest]
+		if view.complete == best.complete && view.updated.After(best.updated) || best.complete && !view.complete {
+			latest = id
+		}
+	}
+	return p.setOpen(latest, now)
+}
+
+func (p *liveDiffPreviewPane) setOpen(id string, now time.Time) string {
+	if p.open != id {
+		p.open, p.openedAt = id, now
+	}
+	return id
+}
+
+// next opens the following card and holds it open until its call completes.
+func (p *liveDiffPreviewPane) next() bool {
+	if len(p.order) < 2 {
+		return false
+	}
+	at := slices.Index(p.order, p.open)
+	p.pinned = p.order[(at+1)%len(p.order)]
+	p.setOpen(p.pinned, time.Now())
+	return true
+}
+
+// callers counts distinct callers with a card, for the dock heading.
+func (p *liveDiffPreviewPane) callers() []string {
+	var names []string
+	for _, id := range p.order {
+		if caller := p.views[id].current.Caller; !slices.Contains(names, caller) {
+			names = append(names, caller)
+		}
+	}
+	return names
 }
 
 func (p *liveDiffPreviewView) columns(width int) (digits, sourceWidth int) {

@@ -370,7 +370,8 @@ authored Markdown.
 
 The main agent and its children appear as a canonical-path tree in observation order, with each agent's
 current activity and an elapsed-time timer (`elapsed · age ago`, or `just now`; `—` until
-its first response completes). The root summary shows its latest observed activity or a newer message addressed
+its first response completes). Elapsed time stops at the last response while the agent
+is not responding; the age keeps counting. The root summary shows its latest observed activity or a newer message addressed
 to `/root`, or a dim `—` when neither is retained. Main activity is pane-only
 and never copied back into its conversation. Visible provider reasoning summaries
 are collected with bounded per-response storage but not rendered in the agents pane;

@@ -3,53 +3,54 @@ package router
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 )
 
 func TestNativeActivityFollowupAssignments(t *testing.T) {
+	// The native claim keeps child activity out of Main's provider responses
+	// without queueing it; app-server supplies the displayed activity.
 	a := newSubagentActivity()
-	generation, _ := a.attachNativePane("main")
+	a.attachNativePane("main")
 	a.observe("child", "main", "/root/reviewer", true)
-	u, _ := newAppServerTestUI()
-	u.ensureShell()
 	first := journalTestAssignment("/root/reviewer", "NEW_TASK", "Check the original answer.")
 	first["id"] = "task-1"
-	followup := journalTestAssignment("/root/reviewer", "NEW_TASK", "Check the edited answer.")
-	followup["id"] = "task-2"
-	collect := func(items ...any) []activityPaneEntry {
-		t.Helper()
-		request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"model": "gpt-6-astra", "input": items}))
-		if err != nil {
-			t.Fatal(err)
-		}
-		a.collectSubagentStart("child", &request, "/root/reviewer")
-		entries, agents, ok := a.takePane(generation)
-		if !ok {
-			t.Fatal("native collector detached")
-		}
-		u.applyActivity(entries, agents)
-		return entries
+	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"model": "gpt-6-astra", "input": []any{first}}))
+	if err != nil {
+		t.Fatal(err)
 	}
-	initial := collect(first)
-	if len(initial) != 1 || initial[0].Kind != "start" || initial[0].assignment.text != "Check the original answer." {
-		t.Fatalf("missing initial native assignment: %+v", initial)
+	a.collectSubagentStart("child", &request, "/root/reviewer")
+	if len(a.events) != 0 || len(a.drain("main", time.Time{}, maxCommentaryPublicationBytes)) != 0 {
+		t.Fatal("native-claimed activity was queued for inline delivery")
 	}
-	next := collect(first, followup)
-	if len(next) != 1 || next[0].Kind != "assignment" || next[0].assignment.text != "Check the edited answer." || next[0].assignment.id == initial[0].assignment.id {
+
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentRole": "review",
+		"source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"agent_path": "/root/reviewer"}}}}})
+	collab := func(id, tool, prompt string) {
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": id, "type": "collabAgentToolCall",
+			"tool": tool, "senderThreadId": "main", "receiverThreadIds": []string{"child"}, "prompt": prompt}})
+	}
+	collab("task-1", "spawnAgent", "Check the original answer.")
+	collab("task-2", "followupTask", "Check the edited answer.")
+	var next []activityPaneEntry
+	for _, entry := range u.view.entries {
+		if entry.Kind == "assignment" {
+			next = append(next, entry)
+		}
+	}
+	if len(next) != 1 || next[0].assignment.text != "Check the edited answer." {
 		t.Fatalf("follow-up was omitted or conflated with spawn: %+v", next)
-	}
-	if replay := collect(first, followup); len(replay) != 0 {
-		t.Fatal("full-history replay duplicated assignments")
 	}
 	var child strings.Builder
 	child.WriteString("Journal result `/root/reviewer`")
 	writeJournalItems(&child, []journalItem{{ID: "amber", Question: "Check the edited answer.", Text: "The edited answer is correct."}})
-	u.applyActivity([]activityPaneEntry{{Seq: next[0].Seq + 1, Agent: "/root/reviewer", Kind: "final", Text: child.String()}}, nil)
+	u.applyActivity([]activityPaneEntry{{Seq: u.session.next(), Agent: "/root/reviewer", Kind: "final", Text: child.String()}}, nil)
 	u.view.conversation = true
 	feed := u.view.renderFeed(100, 40)
 	main := ansi.Strip(strings.Join(feed.lines, "\n"))
-	if !strings.Contains(main, "▶ reviewer started") || !strings.Contains(main, "↩ reply to assignment") || strings.Contains(main, "not loaded") {
+	if !strings.Contains(main, "▶ reviewer started") || !strings.Contains(main, "↩ re: assignment") || strings.Contains(main, "not loaded") {
 		t.Fatalf("follow-up answer target missing:\n%s", main)
 	}
 	var target uint64

@@ -37,7 +37,7 @@ func TestLiveActivityNativeItemsShareStateAndRendering(t *testing.T) {
 		t.Fatal(err)
 	}
 	plain := ansi.Strip(frame.String())
-	if !strings.Contains(plain, "• complete") || !strings.Contains(plain, "printf ok") || !strings.Contains(plain, "complete") {
+	if !strings.Contains(plain, "┃ complete") || !strings.Contains(plain, "printf ok") || !strings.Contains(plain, "complete") {
 		t.Fatalf("Main did not render activity state: %s", plain)
 	}
 }
@@ -173,7 +173,7 @@ func TestAppServerCommunicationBothAudiences(t *testing.T) {
 			t.Fatalf("communication missing from one audience: %q", body)
 		}
 	}
-	if !strings.Contains(main, "→ reviewer") || !strings.Contains(main, "← reviewer") || strings.Contains(main, "Message sent") || strings.Contains(main, "not loaded") || !strings.Contains(agents, "← main") || !strings.Contains(agents, "→ main") {
+	if !strings.Contains(main, "→ reviewer") || !strings.Contains(main, "← reviewer") || strings.Contains(main, "Message sent") || strings.Contains(main, "not loaded") || !strings.Contains(agents, "main → reviewer") || !strings.Contains(agents, "reviewer → main") {
 		t.Fatalf("wrong message direction or assignment link:\n%s\n%s", main, agents)
 	}
 }
@@ -211,9 +211,9 @@ func TestAppServerActivityGroupsAgentRun(t *testing.T) {
 	for _, line := range u.agents.renderFeed(90, 40).lines {
 		plain = append(plain, strings.TrimRight(ansi.Strip(line), " "))
 	}
-	// One stable heading per agent run; each event labels its direction on its
+	// One stable heading per agent run; each event names sender and recipient on its
 	// own row, with its body below and a spacer before the next event.
-	want := []string{"reviewer", "│ ← main", "│ Check the link.", "│", "│ → main", "│ Link checked.", "│", "│ Checking the next item."}
+	want := []string{"reviewer", "│ main → reviewer", "│ Check the link.", "│", "│ reviewer → main", "│ Link checked.", "│", "│ Checking the next item."}
 	if len(plain) != len(want) || !strings.HasSuffix(plain[0], "12:30:10") || !strings.HasPrefix(plain[0], want[0]+" ") {
 		t.Fatalf("Activity run = %q", plain)
 	}
@@ -256,7 +256,7 @@ func TestAppServerNativeAssignmentQuestionLink(t *testing.T) {
 	u.view.conversation = true
 	main := ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
 	agents := ansi.Strip(strings.Join(u.agents.renderFeed(90, 40).lines, "\n"))
-	if !strings.Contains(main, assignment) || !strings.Contains(agents, assignment) || !strings.Contains(main, "↩ reply to assignment") || strings.Contains(main, "not loaded") {
+	if !strings.Contains(main, assignment) || !strings.Contains(agents, assignment) || !strings.Contains(main, "↩ re: assignment") || strings.Contains(main, "not loaded") {
 		t.Fatalf("native NEW_TASK assignment was not linked:\n%s\n%s", main, agents)
 	}
 }
@@ -348,8 +348,8 @@ func TestAppServerReusesTerminalShellAndJournalRenderer(t *testing.T) {
 	if err := u.paint(&bytes.Buffer{}, 120, 30); err != nil {
 		t.Fatal(err)
 	}
-	if u.shell.layout.codex.w != 60 || u.shell.layout.roster.w != 120 || u.shell.layout.agents.x != 61 {
-		t.Fatal("native UI changed the existing pane positions")
+	if u.shell.layout.codex.w != 58 || u.shell.layout.agents.x != 61 || u.shell.layout.vertical != 60 {
+		t.Fatalf("native UI changed the existing pane positions: %+v", u.shell.layout)
 	}
 	if err := u.paint(&bytes.Buffer{}, 100, 4); err != nil {
 		t.Fatal(err)
@@ -392,7 +392,7 @@ func TestAppServerJournalRetractionKeepsSiblingLinks(t *testing.T) {
 	}
 	v.applyJournal("t", nativeJournalPublication{item: journalItem{ID: "b", Question: "Question?"}, terminal: true, retracted: true, batch: 1})
 	frame := ansi.Strip(strings.Join(v.render(60, 12, time.Now()), "\n"))
-	if !strings.Contains(frame, "↩ reply to your message") || strings.Contains(frame, "not loaded") || strings.Contains(frame, "answer b") {
+	if !strings.Contains(frame, "↩ re: your message") || strings.Contains(frame, "not loaded") || strings.Contains(frame, "answer b") {
 		t.Fatalf("retraction lost the surviving answer's link:\n%s", frame)
 	}
 }

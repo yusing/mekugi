@@ -1,6 +1,7 @@
 package router
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -52,12 +53,21 @@ type liveDiffTerminalController struct {
 	// pinned reports a frame without a title row, where a mid-file viewport
 	// pins its file heading and scrolling reaches one row further.
 	pinned bool
+	// native panes hold only the saved diff. The shell docks the live stream
+	// beside its caller and draws this pane's title bar and key hints, so the
+	// frame has neither a heading nor a footer row, and a completed turn never
+	// switches what the pane shows.
+	native bool
 
 	files  []liveDiffFile
 	lines  []string
 	offset int
 	rows   int
-	theme  liveDiffTheme
+	// navRows is the file navigator's viewport: the diff rows, or the stacked
+	// list's rows in a narrow native pane.
+	navRows int
+	stack   int
+	theme   liveDiffTheme
 	// A reported background replaces the theme's assumed fade canvas.
 	background   livediff.RGB
 	backgrounded bool
@@ -135,6 +145,28 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	if navigatorVisible {
 		rows++ // The file navigator owns the first row; no separate title row.
 	}
+	titled := !navigatorVisible && !c.native
+	// A native pane too narrow for the side navigator stacks the file or
+	// change list above the diff instead of covering it; focus gives the list
+	// more room.
+	stack := 0
+	if c.native {
+		rows = height
+		n := &c.navigation
+		if c.diffMode && navWidth == 0 && !n.hidden && height >= 12 && (len(files) > 1 || n.focused || n.changesTab) {
+			// Entries rebuild later in the frame; a tree adds about one folder per file.
+			entries := max(len(n.entries), 2*len(files))
+			if n.changesTab {
+				entries = len(n.changes.rows)
+			}
+			limit := min(12, height/3)
+			if n.focused {
+				limit = height / 2
+			}
+			stack = min(max(entries, 1)+2, limit)
+			rows = height - stack - 1
+		}
+	}
 	offset := 0
 	if len(c.view.Files) > 0 {
 		start := c.rendering.Starts[c.view.Selected]
@@ -146,7 +178,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	}
 	if c.view.Following && c.followDirty {
 		viewport := rows
-		if navigatorVisible {
+		if !titled {
 			viewport-- // A mid-file offset shares the viewport with the pinned heading.
 		}
 		offset = c.rendering.FollowOffset(viewport)
@@ -162,14 +194,15 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	}
 	selectionChanged := c.navigationFile != activeKey
 	c.navigationFile = activeKey
-	c.files, c.lines, c.offset, c.rows = files, lines, offset, rows
-	c.pinned = navigatorVisible
+	c.files, c.lines, c.offset, c.rows, c.stack = files, lines, offset, rows, stack
+	c.navRows = cmp.Or(stack, rows)
+	c.pinned = !titled
 	if !sameFiles {
 		c.navigation.rebuild(files, c.workspace)
 		c.refreshChanges()
 	}
 	if resized && c.navigation.focused {
-		c.navigation.ensureVisible(rows)
+		c.navigation.ensureVisible(c.navRows)
 	}
 	if selectionChanged && !c.navigation.focused {
 		c.revealFile()
@@ -207,12 +240,12 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	} else {
 		header = livediff.Gutter(false, c.theme) + livediff.Safe(header, false)
 	}
-	if !navigatorVisible {
+	if titled {
 		writeRow(1, header)
 	}
 	if c.diffMode {
 		var nav []string
-		renderNav := func(width int) []string {
+		renderNav := func(width, rows int) []string {
 			n := &c.navigation
 			if n.changesTab {
 				return n.changes.render(n.focused, n.filtering, c.view.Caller, width, rows, c.theme)
@@ -220,16 +253,28 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 			return n.render(files, c.rendering.Counts, c.view.Selected, width, rows, c.theme)
 		}
 		if navWidth > 0 {
-			nav = renderNav(navWidth)
+			nav = renderNav(navWidth, rows)
 		}
-		overlay := c.navigation.focused && navWidth == 0
+		overlay := c.navigation.focused && navWidth == 0 && stack == 0
 		if overlay {
-			nav = renderNav(width - 1)
+			nav = renderNav(width-1, rows)
+		}
+		if stack > 0 {
+			if c.navigation.changesTab {
+				c.navigation.changes.ensureVisible(stack)
+			} else {
+				c.navigation.ensureVisible(stack)
+			}
+			stacked := renderNav(width-1, stack)
+			for row := range stack {
+				writeRow(row+1, stacked[row])
+			}
+			writeRow(stack+1, "\x1b[2m"+strings.Repeat("─", max(0, width-1))+"\x1b[0m")
 		}
 		// Without a title row, pin the open file's header while its content
 		// scrolls, so a mid-file viewport still names its file.
 		sticky := -1
-		if navigatorVisible && len(c.view.Files) > 0 && offset > c.rendering.Starts[c.view.Selected] {
+		if !titled && len(c.view.Files) > 0 && offset > c.rendering.Starts[c.view.Selected] {
 			sticky = c.rendering.Starts[c.view.Selected]
 		}
 		for row := range rows {
@@ -242,7 +287,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 				text = lines[sticky]
 			} else if index < len(lines) {
 				text = lines[index]
-			} else if row == 0 && len(lines) == 0 && navWidth > 0 {
+			} else if row == 0 && len(lines) == 0 && (navWidth > 0 || c.native) {
 				text = header
 			}
 			if overlay {
@@ -252,16 +297,21 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 				text = left + strings.Repeat(" ", max(0, navWidth-ansi.StringWidth(left))) + "\x1b[2m│\x1b[0m" + text
 			}
 			if c.help {
-				help := []string{"", "  Diff navigation", "", "  s       show / hide files", "  Tab     files / changes by caller", "          Changes: Enter caller filters · Enter h/l expand / collapse change", "  /       filter paths, or changes by id, @caller, source · Ctrl-U clear", "  t       tree / flat list", "  ↑↓ j/k  move or scroll", "  ←→ h/l  collapse / expand folder", "  Enter   open file or toggle folder", "  n/p     next / previous matching file", "  [ / ]   previous / next hunk", "  { / }   previous / next change", "  a / 0   next caller / all callers", "  PgUp/Dn page · Home/End first / last", "  r       resume following changes", "  v       stream / diff", "  Esc     close picker or help", "  ?       close help", "  Ctrl-C  quit"}
+				help := slices.DeleteFunc([]string{"", "  Diff navigation", "", "  s       show / hide files", "  Tab     files / changes by caller", "          Changes: Enter caller filters · Enter h/l expand / collapse change", "  /       filter paths, or changes by id, @caller, source · Ctrl-U clear", "  t       tree / flat list", "  ↑↓ j/k  move or scroll", "  ←→ h/l  collapse / expand folder", "  Enter   open file or toggle folder", "  n/p     next / previous matching file", "  [ / ]   previous / next hunk", "  { / }   previous / next change", "  a / 0   next caller / all callers", "  PgUp/Dn page · Home/End first / last", "  r       resume following changes", "  v       stream / diff", "  Esc     close picker or help", "  ?       close help", "  Ctrl-C  quit"}, func(line string) bool {
+					return c.native && strings.HasPrefix(line, "  v ")
+				})
 				text = ""
 				if row < len(help) {
 					text = livediff.Safe(help[row], false)
 				}
 			}
-			if navigatorVisible {
-				writeRow(row+1, text)
-			} else {
+			switch {
+			case titled:
 				writeRow(row+2, text)
+			case stack > 0:
+				writeRow(row+stack+2, text)
+			default:
+				writeRow(row+1, text)
 			}
 		}
 	}
@@ -302,7 +352,9 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		mode, _, _ = strings.Cut(c.coverage, ":")
 	}
 	// Each mode reports what is waiting in the other one.
-	if c.diffMode {
+	switch {
+	case c.native:
+	case c.diffMode:
 		stream := "v stream"
 		if live := c.previewPane.live(); live > 0 {
 			stream += fmt.Sprintf(" (%d live)", live)
@@ -313,7 +365,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 			scope = " · @" + livediff.Safe(name, false) + " (0 all)"
 		}
 		writeRow(height, "DIFF · "+stream+" · "+mode+scope+" · s files · Tab changes · ? help")
-	} else {
+	default:
 		diff := "v diff"
 		if count := len(c.files); count > 0 {
 			diff += fmt.Sprintf(" (%d files)", count)
@@ -337,7 +389,9 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 		return true, nil
 	case "heartbeat":
 	case "turn":
-		if event.TurnRevision > c.turnRevision {
+		if event.TurnRevision > c.turnRevision && c.native {
+			c.turnRevision = event.TurnRevision
+		} else if event.TurnRevision > c.turnRevision {
 			c.turnRevision = event.TurnRevision
 			c.diffMode = event.Status == "completed"
 			c.dirty = true
@@ -439,13 +493,16 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 			return false
 		}
 		navWidth := c.navigation.width(c.lastWidth)
-		inNav := navWidth > 0 && column <= navWidth || navWidth == 0 && c.navigation.focused
+		inNav := navWidth > 0 && column <= navWidth || navWidth == 0 && (c.stack > 0 && row <= c.stack || c.stack == 0 && c.navigation.focused)
 		navigatorVisible := navWidth > 0 || c.navigation.focused && !c.navigation.hidden
-		firstRow := 2
-		if navigatorVisible {
+		firstRow, lastRow := 2, c.lastHeight-1
+		if navigatorVisible || c.native {
 			firstRow = 1
 		}
-		if row < firstRow || row >= c.lastHeight {
+		if c.native {
+			lastRow = c.lastHeight
+		}
+		if row < firstRow || row > lastRow {
 			return false
 		}
 		c.dirty = true
@@ -465,7 +522,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 				if action == 'k' {
 					delta = -1
 				}
-				l.top = max(0, min(l.top+delta, max(0, len(l.rows)-max(1, c.rows-2))))
+				l.top = max(0, min(l.top+delta, max(0, len(l.rows)-max(1, c.navRows-2))))
 			}
 			return false
 		}
@@ -487,7 +544,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 				if action == 'k' {
 					delta = -1
 				}
-				n.top = max(0, min(n.top+delta, max(0, len(n.entries)-max(1, c.rows-2))))
+				n.top = max(0, min(n.top+delta, max(0, len(n.entries)-max(1, c.navRows-2))))
 			}
 			return false
 		}
@@ -547,6 +604,9 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 	}
 	switch key {
 	case 'v':
+		if c.native {
+			break
+		}
 		c.diffMode = !c.diffMode
 		c.followDirty = c.diffMode && c.view.Following
 	case '{', '}':
@@ -610,4 +670,45 @@ func (c *liveDiffTerminalController) callerDots() []string {
 		}
 	}
 	return dots
+}
+
+// nativeTitle summarizes the saved diff for the shell's title bar: file and
+// line totals on the left; coverage, caller filter, follow state and the open
+// file's position on the right.
+func (c *liveDiffTerminalController) nativeTitle() (string, string) {
+	left := "no captured edits yet"
+	if len(c.files) > 0 {
+		var total livediff.Counts
+		for _, count := range c.rendering.Counts {
+			total.Added += max(0, count.Added)
+			total.Removed += max(0, count.Removed)
+		}
+		left = fmt.Sprintf("%d files", len(c.files))
+		if len(c.files) == 1 {
+			left = "1 file"
+		}
+		left += liveDiffCountStats(total, c.theme)
+	}
+	var right []string
+	if c.coverage != "" {
+		status, _, _ := strings.Cut(c.coverage, ":")
+		right = append(right, livediff.Safe(status, false))
+	}
+	if c.view.Caller != "" {
+		name, _ := liveDiffCallerStyle(c.theme)(c.view.Caller)
+		right = append(right, "@"+livediff.Safe(name, false))
+	}
+	switch {
+	case len(c.files) == 0:
+	case c.view.Following:
+		right = append(right, "FOLLOW")
+	case c.view.UnseenUpdate:
+		right = append(right, liveActivityAmber+"PAUSED · new changes"+liveActivityReset)
+	default:
+		right = append(right, liveActivityAmber+"PAUSED"+liveActivityReset)
+	}
+	if len(c.files) > 1 {
+		right = append(right, fmt.Sprintf("%d/%d", c.view.Selected+1, len(c.files)))
+	}
+	return left, strings.Join(right, liveActivityDim+" · "+liveActivityUndim)
 }

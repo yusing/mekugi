@@ -212,12 +212,12 @@ func (c *liveDiffTerminalController) revealFile() {
 	for i, entry := range n.entries {
 		if entry.id == "f:"+file.Key() {
 			n.cursor = i
-			n.ensureVisible(c.rows)
+			n.ensureVisible(c.navRows)
 			// Keep nearby folder context when revealing a file after following a
 			// distant update. Selection must not leave its parent just off-screen.
 			for parent := i - 1; parent >= 0; parent-- {
 				if n.entries[parent].depth < entry.depth {
-					if i-parent < max(1, c.rows-2) {
+					if i-parent < max(1, c.navRows-2) {
 						n.top = min(n.top, parent)
 					}
 					break
@@ -258,7 +258,7 @@ func (c *liveDiffTerminalController) openNavEntry() {
 		}
 		n.collapsed[entry.folder] = !n.collapsed[entry.folder]
 		n.rebuild(c.files, c.workspace)
-		n.ensureVisible(c.rows)
+		n.ensureVisible(c.navRows)
 		return
 	}
 	c.view.Open(entry.file)
@@ -291,7 +291,7 @@ func (c *liveDiffTerminalController) openChangeRow() {
 			c.openChange(node.Change, node.files[0].file)
 		}
 		l.rebuild(&c.view, c.workspace)
-		l.focusChange(node.Change, c.rows)
+		l.focusChange(node.Change, c.navRows)
 	case 'f':
 		c.openChange(node.Change, node.files[row.file].file)
 		c.navigation.focused, c.navigation.filtering = false, false
@@ -341,7 +341,7 @@ func (c *liveDiffTerminalController) stepChange(direction int) {
 	}
 	index = (index + direction + len(targets)) % len(targets)
 	c.openChange(targets[index].change, files[index])
-	l.focusChange(targets[index].change, c.rows)
+	l.focusChange(targets[index].change, c.navRows)
 }
 
 // filterCaller shows only one caller's changes; an empty caller shows all.
@@ -383,7 +383,7 @@ func (c *liveDiffTerminalController) editFilter(key byte) {
 				if first := slices.IndexFunc(n.changes.rows, func(row liveDiffChangeRow) bool { return row.kind == 'c' }); first >= 0 {
 					if node := n.changes.nodes[n.changes.rows[first].node]; len(node.files) > 0 {
 						c.openChange(node.Change, node.files[0].file)
-						n.changes.focusChange(node.Change, c.rows)
+						n.changes.focusChange(node.Change, c.navRows)
 					}
 				}
 			} else {
@@ -438,7 +438,7 @@ func (c *liveDiffTerminalController) navigationKey(key byte) bool {
 		if n.changesTab {
 			n.changes.rebuild(&c.view, c.workspace)
 			if target := n.changes.target; target.change != "" {
-				n.changes.focusChange(target.change, c.rows)
+				n.changes.focusChange(target.change, c.navRows)
 			}
 		} else if n.focused {
 			c.revealFile()
@@ -457,10 +457,17 @@ func (c *liveDiffTerminalController) navigationKey(key byte) bool {
 	case 't':
 		n.flat = !n.flat
 		n.rebuild(c.files, c.workspace)
-		n.ensureVisible(c.rows)
+		n.ensureVisible(c.navRows)
 		return true
 	case 's':
-		if c.lastWidth < 100 {
+		if c.native && c.lastWidth < 100 {
+			// The stacked list stays above the diff: s focuses it, and again hides it.
+			n.hidden, n.focused = n.focused, !n.focused
+			if n.focused {
+				c.view.Following = false
+				c.revealFile()
+			}
+		} else if c.lastWidth < 100 {
 			// A narrow viewport has no dock; the same key toggles its picker.
 			n.hidden = false
 			n.focused = !n.focused
@@ -487,9 +494,9 @@ func (c *liveDiffTerminalController) navigationKey(key byte) bool {
 	case 'k':
 		n.cursor = max(0, n.cursor-1)
 	case ' ':
-		n.cursor = min(n.cursor+max(1, c.rows-2), max(0, len(n.entries)-1))
+		n.cursor = min(n.cursor+max(1, c.navRows-2), max(0, len(n.entries)-1))
 	case 'b':
-		n.cursor = max(0, n.cursor-max(1, c.rows-2))
+		n.cursor = max(0, n.cursor-max(1, c.navRows-2))
 	case 'g':
 		n.cursor = 0
 	case 'G':
@@ -522,7 +529,7 @@ func (c *liveDiffTerminalController) navigationKey(key byte) bool {
 	default:
 		return false
 	}
-	n.ensureVisible(c.rows)
+	n.ensureVisible(c.navRows)
 	return true
 }
 
@@ -728,9 +735,9 @@ func (c *liveDiffTerminalController) changesKey(key byte) bool {
 	case 'k':
 		l.cursor = max(0, l.cursor-1)
 	case ' ':
-		l.cursor = min(l.cursor+max(1, c.rows-2), last)
+		l.cursor = min(l.cursor+max(1, c.navRows-2), last)
 	case 'b':
-		l.cursor = max(0, l.cursor-max(1, c.rows-2))
+		l.cursor = max(0, l.cursor-max(1, c.navRows-2))
 	case 'g':
 		l.cursor = 0
 	case 'G':
@@ -746,7 +753,7 @@ func (c *liveDiffTerminalController) changesKey(key byte) bool {
 		change := l.nodes[row.node].Change
 		switch {
 		case key == 'h' && row.kind == 'f':
-			l.focusChange(change, c.rows)
+			l.focusChange(change, c.navRows)
 		case row.kind == 'f' || l.expanded[change] == (key == 'l'):
 			if key == 'l' {
 				l.cursor = min(l.cursor+1, last)
@@ -757,11 +764,11 @@ func (c *liveDiffTerminalController) changesKey(key byte) bool {
 			}
 			l.expanded[change] = key == 'l'
 			l.rebuild(&c.view, c.workspace)
-			l.focusChange(change, c.rows)
+			l.focusChange(change, c.navRows)
 		}
 	default:
 		return false
 	}
-	l.ensureVisible(c.rows)
+	l.ensureVisible(c.navRows)
 	return true
 }

@@ -6,17 +6,21 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi"
 	"golang.org/x/term"
 )
 
-// TestNativeUIPreview uses the actual terminal shell and Activity painters.
-// It is local and makes no model, network, or workspace requests.
+// TestNativeUIPreview plays a session through the actual shell and painters,
+// driven by the notifications Codex app-server sends. It is local and makes
+// no model or network requests; edits land in a temporary workspace.
 func TestNativeUIPreview(t *testing.T) {
 	if os.Getenv("MEKUGI_NATIVE_UI_PREVIEW") != "1" {
 		t.Skip("interactive native UI preview")
@@ -27,8 +31,7 @@ func TestNativeUIPreview(t *testing.T) {
 	}
 	defer tty.Close()
 	p := newNativePreview(t)
-	defer p.ui.shell.diff.close()
-	defer p.ui.shell.diffScreen.Close()
+	defer p.close()
 	err = withRawPane(t.Context(), tty, tty, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006;2004h", "\x1b[?2026l\x1b[?1003;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
 		tick := time.NewTicker(33 * time.Millisecond)
 		defer tick.Stop()
@@ -54,9 +57,10 @@ func TestNativeUIPreview(t *testing.T) {
 			case <-t.Context().Done():
 				return t.Context().Err()
 			case <-tick.C:
-				flashExpired := p.ui.view.expireFlash(time.Now())
-				if time.Since(lastStep) >= 650*time.Millisecond && p.advance() {
-					lastStep = time.Now()
+				now := time.Now()
+				flashExpired := p.ui.view.expireFlash(now)
+				if now.Sub(lastStep) >= p.pace() && p.advance() {
+					lastStep = now
 					if err := paint(); err != nil {
 						return err
 					}
@@ -66,7 +70,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || time.Since(lastPaint) >= time.Second || p.ui.agents.hasLiveReasoning() || flashExpired {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.agents.hasLiveReasoning() || flashExpired || p.ui.shell.animating(now) {
 					if err := paint(); err != nil {
 						return err
 					}
@@ -100,201 +104,449 @@ func TestNativeUIPreview(t *testing.T) {
 
 func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	p := newNativePreview(t)
-	defer p.ui.shell.diff.close()
-	defer p.ui.shell.diffScreen.Close()
+	defer p.close()
 	p.ui.draft = "Keep my draft"
+	render := func(name string, want ...string) string {
+		t.Helper()
+		screen := vt.NewEmulator(160, 48)
+		defer screen.Close()
+		p.ui.shell.paintedRows = nil // A new screen needs every row.
+		if err := p.ui.paint(screen, 160, 48); err != nil {
+			t.Fatal(err)
+		}
+		frame := screen.String()
+		for _, content := range want {
+			if !strings.Contains(frame, content) {
+				t.Fatalf("%s does not show %q:\n%s", name, content, frame)
+			}
+		}
+		t.Logf("%s:\n%s", name, frame)
+		return frame
+	}
+	p.until("main streams its patch")
+	render("main dock", "LIVE · main", "M internal/broker/broker.go", "1 Main", "3 Activity", "4 Agents", "├ Read")
+	p.until("three agents edit at once")
+	frame := render("agent dock accordion", "LIVE · 3 agents", "^B e next", "▸", "reviewer → main", "2 Diff●")
+	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {
+		t.Fatal("the saved diff replaced Activity without being opened")
+	}
 	for p.advance() {
 	}
 	if p.ui.draft != "Keep my draft" {
 		t.Fatal("playback overwrote typed input")
 	}
-	screen := vt.NewEmulator(160, 48)
-	defer screen.Close()
-	if err := p.ui.paint(screen, 160, 48); err != nil {
-		t.Fatal(err)
-	}
-	frame := screen.String()
-	for _, content := range []string{"↩ reply to your message", "↩ reply to assignment", "✓ reviewer finished", "◆ journal", "✓ answer", "The edited answer still links", "AGENTS", "1 Main"} {
-		if !strings.Contains(frame, content) {
-			t.Fatalf("preview does not show %q:\n%s", content, frame)
+	render("finished session", "● main", "↩ re: your message", "↩ re: assignment", "✓ answer", "╭─ ✓ answer", "finished", "$")
+	for _, key := range []byte{2, '2'} {
+		if err := p.ui.shell.key(key); err != nil {
+			t.Fatal(err)
 		}
 	}
-	if strings.Contains(frame, "Temporary milestone to delete") || strings.Contains(frame, "/journal") {
-		t.Fatal("preview retained a deleted milestone or command menu")
+	render("saved diff", "2 Diff · saved · 5 files", "broker.go", "launch.go", "broker_race_test.go", "Unsubscribe")
+	if !p.ui.shell.diffOpen || p.ui.shell.diffUnseen {
+		t.Fatal("opening the saved diff did not clear its badge")
 	}
-	t.Logf("Native preview:\n%s", frame)
+	// The narrow pane's stacked list switches to changes and takes focus
+	// without covering the diff.
+	if err := p.ui.shell.key('\t'); err != nil {
+		t.Fatal(err)
+	}
+	if !p.ui.shell.diff.navigation.focused || !p.ui.shell.diff.navigation.changesTab {
+		t.Fatal("Tab did not focus the change list")
+	}
+	render("saved diff changes", "Unsubscribe", "─────")
+	if p.ui.shell.diff.stack == 0 {
+		t.Fatal("Tab replaced the stacked list with a full-pane picker")
+	}
+	for _, key := range []byte{'\t', 's'} {
+		if err := p.ui.shell.key(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	render("saved diff hidden list", "Unsubscribe")
+	if p.ui.shell.diff.stack != 0 || !p.ui.shell.diff.navigation.hidden {
+		t.Fatal("s did not hide the focused stacked list")
+	}
+	// Picking an agent in the roster shows its Activity instead of the diff.
+	for _, key := range []byte{2, '4'} {
+		if err := p.ui.shell.key(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	render("focused roster", "4 Agents")
+	if !p.ui.shell.diffOpen {
+		t.Fatal("focusing the roster closed the saved diff")
+	}
+	shell := p.ui.shell
+	index := slices.IndexFunc(shell.agents.hits, func(hit liveActivityHit) bool { return hit.agent == "/root/tester" })
+	if index < 0 {
+		t.Fatal("the focused roster has no tester row")
+	}
+	hit, roster := shell.agents.hits[index], shell.layout.roster
+	for _, key := range []byte(fmt.Sprintf("\x1b[<0;%d;%dM", roster.x+hit.first, roster.y+hit.row)) {
+		if err := shell.key(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	render("roster pick", "3 Activity", "tester")
+	if shell.diffOpen || !shell.agents.only || shell.agents.selected != "/root/tester" {
+		t.Fatal("clicking a roster agent did not show its Activity")
+	}
+}
+
+type nativePreviewStep struct {
+	name string
+	run  func()
 }
 
 type nativePreview struct {
-	t        *testing.T
-	ui       *appServerUI
-	input    *appServerTestInput
-	message  int
-	sequence uint64
-	steps    []func()
-	step     int
+	t         *testing.T
+	ui        *appServerUI
+	input     *appServerTestInput
+	store     *mekugiReplayStore
+	usage     *threadUsage
+	workspace string
+	message   int
+	calls     int
+	steps     []nativePreviewStep
+	step      int
 }
 
 func newNativePreview(t *testing.T) *nativePreview {
 	u, input := newAppServerTestUI()
 	u.ctx = t.Context()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	for path, content := range nativePreviewFiles {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(workspace, path)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(workspace, path), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	usage := newThreadUsage()
+	u.proxy = &mekugiProxy{usage: usage}
+	u.model, u.reasoningEffort = "gpt-6-luna", "medium"
 	u.ensureShell()
-	p := &nativePreview{t: t, ui: u, input: input}
+	u.shell.diff.close()
+	u.shell.diff = newLiveDiffTerminalController(store, workspace, os.Stdout)
+	u.shell.diff.native, u.shell.diff.diffMode = true, true
+	u.shell.diff.stdout = u.shell.diffScreen
+	u.shell.diff.size = func() (int, int, error) {
+		return max(1, u.shell.layout.diff.w), max(3, u.shell.layout.diff.h), nil
+	}
+	u.session.start("main", workspace)
+	p := &nativePreview{t: t, ui: u, input: input, store: store, usage: usage, workspace: workspace}
+	store.liveDiff = func(changes []liveDiffChange) {
+		u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "change", Changes: changes})
+	}
+	scope := liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {}}}
+	for _, thread := range []string{"main", "t-reviewer", "t-explorer", "t-tester"} {
+		scope.Workspaces[workspace][thread] = true
+	}
+	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "scope", Scope: &scope})
+	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.agents})
+	u.status = "Ready"
 	p.populate()
 	return p
+}
+
+func (p *nativePreview) close() {
+	p.ui.shell.diff.close()
+	p.ui.shell.diffScreen.Close()
+}
+
+// pace slows playback while patches stream, so each dock frame is readable.
+func (p *nativePreview) pace() time.Duration {
+	if p.step < len(p.steps) && strings.HasPrefix(p.steps[p.step].name, "stream") {
+		return 260 * time.Millisecond
+	}
+	return 650 * time.Millisecond
 }
 
 func (p *nativePreview) advance() bool {
 	if p.step >= len(p.steps) {
 		return false
 	}
-	p.steps[p.step]()
+	p.steps[p.step].run()
 	p.step++
 	return true
 }
 
+// until plays through the named step.
+func (p *nativePreview) until(name string) {
+	p.t.Helper()
+	for p.step < len(p.steps) {
+		current := p.steps[p.step].name
+		p.advance()
+		if current == name {
+			return
+		}
+	}
+	p.t.Fatalf("no preview step %q", name)
+}
+
+func (p *nativePreview) add(name string, run func()) {
+	p.steps = append(p.steps, nativePreviewStep{name, run})
+}
+
+// Each preview edit is one apply_patch call. Codex streams its file changes
+// while the model writes, then applies it and reports the item.
+type nativePreviewEdit struct {
+	thread, item, patch string
+}
+
+func (e nativePreviewEdit) change(lines int) map[string]any {
+	var path, kind string
+	var body []string
+	for line := range strings.Lines(e.patch) {
+		switch {
+		case strings.HasPrefix(line, "*** Update File: "):
+			path, kind = strings.TrimSpace(strings.TrimPrefix(line, "*** Update File: ")), "update"
+		case strings.HasPrefix(line, "*** Add File: "):
+			path, kind = strings.TrimSpace(strings.TrimPrefix(line, "*** Add File: ")), "add"
+		case strings.HasPrefix(line, "***"):
+		case kind == "add":
+			body = append(body, strings.TrimPrefix(line, "+"))
+		default:
+			body = append(body, line)
+		}
+	}
+	if lines >= 0 {
+		body = body[:min(lines, len(body))]
+	}
+	return map[string]any{"path": path, "kind": map[string]any{"type": kind}, "diff": strings.Join(body, "")}
+}
+
+// stream adds the edits' patch updates as steps, a few lines at a time,
+// interleaving concurrent writers.
+func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
+	for lines := 3; ; lines += 3 {
+		more := false
+		for _, edit := range edits {
+			if lines-3 >= strings.Count(edit.change(-1)["diff"].(string), "\n") {
+				continue
+			}
+			more = true
+			change := edit.change(lines)
+			p.add("stream "+name, func() {
+				p.notify("item/fileChange/patchUpdated", map[string]any{"threadId": edit.thread, "turnId": "turn-" + edit.thread, "itemId": edit.item, "changes": []any{change}})
+			})
+		}
+		if !more {
+			return
+		}
+	}
+}
+
+// apply reports the call applied, writes the file, and records it the way
+// the router's capturer does, so the saved diff gains the change.
+func (p *nativePreview) apply(edit nativePreviewEdit) {
+	change := edit.change(-1)
+	item := map[string]any{"id": edit.item, "type": "fileChange", "status": "inProgress", "changes": []any{change}}
+	p.notify("item/started", map[string]any{"threadId": edit.thread, "turnId": "turn-" + edit.thread, "item": item})
+	path := change["path"].(string)
+	absolute := filepath.Join(p.workspace, path)
+	before, err := os.ReadFile(absolute)
+	beforePath := absolute
+	if os.IsNotExist(err) {
+		beforePath = ""
+	}
+	_, after, _, _, ok := applyPreviewPatch(edit.patch, string(before))
+	if !ok {
+		p.t.Fatalf("preview patch does not apply to %s", path)
+	}
+	if err := os.WriteFile(absolute, []byte(after), 0o644); err != nil {
+		p.t.Fatal(err)
+	}
+	p.calls++
+	id := fmt.Sprintf("call-%d", p.calls)
+	caller := p.ui.session.path(edit.thread)
+	if change, err := p.store.reserveChange(p.ui.ctx, p.workspace, edit.thread, id); err == nil {
+		_ = p.store.put(p.ui.ctx, p.workspace, map[string]mekugiHistory{id: {
+			ToolName: applyPatchToolName, Caller: caller, ChangeID: change, CorrelationID: id, ExecutingThread: edit.thread,
+			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(beforePath, absolute, string(before), after)},
+		}})
+	}
+	item["status"] = "completed"
+	p.notify("item/completed", map[string]any{"threadId": edit.thread, "turnId": "turn-" + edit.thread, "item": item})
+}
+
+func (p *nativePreview) command(thread, id, command string, actions []map[string]any, exit int) {
+	item := map[string]any{"id": id, "type": "commandExecution", "command": command, "cwd": p.workspace, "status": "inProgress", "commandActions": actions}
+	p.notify("item/started", map[string]any{"threadId": thread, "turnId": "turn-" + thread, "item": item})
+	item["status"], item["exitCode"] = "completed", exit
+	p.notify("item/completed", map[string]any{"threadId": thread, "turnId": "turn-" + thread, "item": item})
+}
+
+func (p *nativePreview) spawn(id, thread, path, role, prompt string) {
+	p.notify("thread/started", map[string]any{"thread": map[string]any{"id": thread, "parentThreadId": "main", "agentRole": role, "cwd": p.workspace,
+		"source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"parent_thread_id": "main", "depth": 1, "agent_path": path, "agent_role": role}}}}})
+	p.notify("item/completed", map[string]any{"threadId": "main", "turnId": "turn-main", "item": map[string]any{"id": id, "type": "collabAgentToolCall", "tool": "spawnAgent", "status": "completed",
+		"senderThreadId": "main", "receiverThreadIds": []string{thread}, "prompt": prompt, "model": "gpt-6-luna", "reasoningEffort": "medium"}})
+	p.notify("turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "turn-" + thread}})
+}
+
+func (p *nativePreview) collab(id, tool, from, to, prompt string) {
+	p.notify("item/completed", map[string]any{"threadId": from, "turnId": "turn-" + from, "item": map[string]any{"id": id, "type": "collabAgentToolCall", "tool": tool, "status": "completed",
+		"senderThreadId": from, "receiverThreadIds": []string{to}, "prompt": prompt}})
+}
+
+func (p *nativePreview) say(thread, id, phase, text string) {
+	item := map[string]any{"id": id, "type": "agentMessage", "text": text}
+	if phase != "" {
+		item["phase"] = phase
+	}
+	p.notify("item/completed", map[string]any{"threadId": thread, "turnId": "turn-" + thread, "item": item})
+}
+
+func (p *nativePreview) think(thread, id, text string) {
+	for _, delta := range strings.SplitAfter(text, " ") {
+		p.notify("item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "turn-" + thread, "itemId": id, "delta": delta, "summaryIndex": 0})
+	}
+}
+
+// usage reports a thread's cumulative tokens to app-server and to the
+// router's accounting, which prices them.
+func (p *nativePreview) tokens(thread string, input, output uint64) {
+	p.usage.observation(thread, thread, "gpt-6-luna", "").observe(tokenCounts{InputTokens: input, UncachedInputTokens: input, OutputTokens: output})
+	p.notify("thread/tokenUsage/updated", map[string]any{"threadId": thread, "turnId": "turn-" + thread, "tokenUsage": map[string]any{
+		"total": map[string]any{"inputTokens": input, "outputTokens": output, "totalTokens": input + output}}})
+}
+
+func (p *nativePreview) finish(thread string) {
+	p.notify("turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "turn-" + thread, "status": "completed"}})
+}
+
+var nativePreviewFiles = map[string]string{
+	"internal/broker/broker.go":      previewFiles["internal/broker/broker.go"],
+	"internal/broker/broker_test.go": previewFiles["internal/broker/broker_test.go"],
+	"internal/pane/launch.go":        previewFiles["internal/pane/launch.go"],
+}
+
+const nativePreviewLaunchPatch = `*** Begin Patch
+*** Update File: internal/pane/launch.go
+@@
+ // Launch opens the side pane for a requested preview.
+ func Launch(requested bool, frames <-chan string) string {
+ 	if requested {
+ 		return "open"
+ 	}
+-	return <-frames
++	select {
++	case frame := <-frames:
++		return frame
++	default:
++		return "pending"
++	}
+ }
+*** End Patch
+`
+
+const nativePreviewRacePatch = `*** Begin Patch
+*** Add File: internal/broker/broker_race_test.go
++package broker
++
++import (
++	"sync"
++	"testing"
++)
++
++func TestConcurrentPublish(t *testing.T) {
++	b := New()
++	messages := b.Subscribe("topic")
++	var wg sync.WaitGroup
++	for range 8 {
++		wg.Go(func() { b.Publish("topic", "hello") })
++		<-messages
++	}
++	wg.Wait()
++}
+*** End Patch
+`
+
 func (p *nativePreview) populate() {
-	u := p.ui
-	now := time.Now()
-	agents := []activityPaneAgent{{Name: "/root", Role: "main", Started: now}}
-	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: agents})
-	u.agents.status = ""
-	u.status = "Preview"
-	task := "Please review the journal answer link and report any presentation issue.\n\n" +
-		"Context: after a journal edit, the answer shown in Main should still point back to the question it answers, " +
-		"even when I steered the turn with another prompt in between. Check both the live milestone and the flushed answer, " +
-		"and tell me if anything reads as duplicated, clipped, or attributed to the wrong author."
-	assignment := "Does the journal answer visibly link to the original question? Inspect `journal_native_ui.go` and " +
-		"`live_activity_conversation.go`, then report whether the link survives a journal edit, a retraction, and a " +
-		"terminal flush. Keep the report short; I only need the verdict and any concrete failure."
-	followup := "Check the answer link again after the journal edit."
-	collector := newSubagentActivity()
-	generation, _ := collector.attachNativePane("main")
-	initialTask := journalTestAssignment("/root/reviewer", "NEW_TASK", assignment)
-	initialTask["id"] = "task-1"
-	followupTask := journalTestAssignment("/root/reviewer", "NEW_TASK", followup)
-	followupTask["id"] = "task-2"
-	assign := func(items ...any) {
-		request, err := parseResponsesRequest(mustTestJSON(p.t, map[string]any{"model": "gpt-6-astra", "input": items}))
-		if err != nil {
-			p.t.Fatal(err)
-		}
-		collector.collectSubagentStart("child", &request, "/root/reviewer")
-		entries, _, _ := collector.takePane(generation)
-		for i := range entries {
-			p.sequence++
-			entries[i].Seq = p.sequence
-		}
-		u.applyActivity(entries, agents)
-	}
-	activity := func(agent, kind, body, callID string) {
-		p.sequence++
-		u.applyActivity([]activityPaneEntry{{Seq: p.sequence, Agent: agent, Kind: kind, Text: body, CallID: callID, Observed: time.Now()}}, agents)
-	}
-	p.steps = []func(){
-		func() {
-			agents[0].Responding = true
-			u.applyActivity(nil, agents)
-			p.beginMessage(task)
-		},
-		func() {
-			p.notify("item/agentMessage/delta", map[string]any{"threadId": "main", "turnId": "preview-turn-1", "itemId": "main-note", "delta": "I will inspect the journal link, then hand the edit-and-flush check to a reviewer so both paths are covered:\n\n"})
-		},
-		func() {
-			p.notify("item/agentMessage/delta", map[string]any{"threadId": "main", "turnId": "preview-turn-1", "itemId": "main-note", "delta": "- the live milestone while the turn runs\n- the flushed answer and its `↩` link after an edit\n- a retracted milestone, which should disappear rather than leave a placeholder"})
-		},
-		func() {
-			p.notify("item/completed", map[string]any{"threadId": "main", "turnId": "preview-turn-1", "item": map[string]any{"id": "main-note", "type": "agentMessage", "text": "I will inspect the journal link, then hand the edit-and-flush check to a reviewer so both paths are covered:\n\n- the live milestone while the turn runs\n- the flushed answer and its `↩` link after an edit\n- a retracted milestone, which should disappear rather than leave a placeholder"}})
-		},
-		func() {
-			agents = append(agents, activityPaneAgent{Name: "/root/reviewer", Role: "review", Started: time.Now(), Responding: true})
-			collector.observe("child", "main", "/root/reviewer", true)
-			assign(initialTask)
-			activity("/root", "reply", "[`/root` -> `/root/reviewer`] Message sent:\nPlease also check the target after a journal edit.", "")
-		},
-		func() {
-			activity("/root/reviewer", "text", "I am checking the answer against the original question.", "")
-		},
-		func() {
-			activity("/root/reviewer", "tool", "Read `journal_native_ui.go 1:160`", "read-1")
-		},
-		func() {
-			activity("/root/reviewer", "tool", "Read `live_activity_conversation.go 200:330`", "read-2")
-		},
-		func() {
-			activity("/root/reviewer", "tool", "Search `questionLink|questionTarget` in `internal/router`", "search-1")
-		},
-		func() {
-			activity("/root/reviewer", "tool", "Run\n```bash\ngo test ./internal/router -run 'TestLiveActivity(QuestionLinks|MainJournal)' -count=1\n```", "run-1")
-		},
-		func() {
-			u.view.applyJournal("main", nativeJournalPublication{item: journalItem{ID: "amber", Text: "Reviewer is checking the question link.", Author: "/root", Created: 1}})
-		},
-		func() {
-			activity("/root/reviewer", "reasoning", "**Checking the question target**", "reasoning-1")
-		},
-		func() {
-			activity("/root/reviewer", "reasoning", "**Checking the question target**\n\nComparing the original target with the edited journal revision.", "reasoning-1")
-		},
-		func() {
-			u.view.applyJournal("main", nativeJournalPublication{item: journalItem{ID: "amber", Text: "Reviewer checked the link after a journal edit.", Author: "/root", Created: 1, Updated: 2}})
-		},
-		func() {
-			u.view.applyJournal("main", nativeJournalPublication{item: journalItem{ID: "apple", Text: "Temporary milestone to delete.", Author: "/root", Created: 3}})
-		},
-		func() {
-			u.view.applyJournal("main", nativeJournalPublication{item: journalItem{ID: "apple", Text: "Temporary milestone to delete.", Author: "/root", Created: 3}, retracted: true})
-		},
-		func() {
-			activity("/root/reviewer", "reply", "[`/root/reviewer` -> `/root`] Message received:\nThe answer link returns to the original question. "+
-				"I followed it from the flushed answer and from an edited revision; both land on the prompt that asked it, "+
-				"not on the later steering prompt with similar wording. The retracted milestone no longer appears anywhere.", "")
-		},
-		func() {
-			var child strings.Builder
-			agents[1].Responding, agents[1].Final, agents[1].LastResponse = false, true, time.Now()
-			child.WriteString("Journal result `/root/reviewer`")
-			writeJournalItems(&child, []journalItem{{ID: "child1", Question: assignment, Text: "Yes. The answer links to the original question.\n\n" +
-				"- **Edit:** the revised answer keeps its original target.\n" +
-				"- **Retraction:** the milestone is removed; nothing is left in its place.\n" +
-				"- **Flush:** the terminal batch replaces the live milestone once, without a duplicate.", Author: "/root/reviewer"}})
-			activity("/root/reviewer", "final", child.String(), "")
-		},
-		func() {
-			agents[1].Responding, agents[1].Final = true, false
-			assign(initialTask, followupTask)
-		},
-		func() {
-			activity("/root/reviewer", "reasoning", "**Checking the edited answer**", "reasoning-2")
-		},
-		func() {
-			agents[1].Responding, agents[1].Final, agents[1].LastResponse = false, true, time.Now()
-			var child strings.Builder
-			child.WriteString("Journal result `/root/reviewer`")
-			writeJournalItems(&child, []journalItem{{ID: "child2", Question: followup, Text: "The edited answer still links to the original question.", Author: "/root/reviewer"}})
-			activity("/root/reviewer", "final", child.String(), "")
-		},
-		func() {
-			u.view.applyJournal("main", nativeJournalPublication{item: journalItem{ID: "amber", Text: "Reviewer checked the link after a journal edit.", Author: "/root", Created: 1, Updated: 2}, terminal: true, batch: 1})
-		},
-		func() {
-			u.view.applyJournal("main", nativeJournalPublication{item: journalItem{ID: "arch", Question: task, Text: "The journal answer links back to your original question, and the reviewer confirmed it remains stable after editing.\n\n" +
-				"What I checked:\n\n" +
-				"1. A live milestone appears under **journal** while the turn runs.\n" +
-				"2. An edit replaces that milestone in place instead of adding a second copy.\n" +
-				"3. A retraction removes the milestone entirely.\n" +
-				"4. The flushed answer shows a `↩ reply to your message` link that jumps to this prompt.\n\n" +
-				"The link target is resolved from the retained entry sequence, not from matching text:\n\n" +
-				"```go\nif question, ok := v.questionLink(group, index); ok {\n\ttarget = question.Seq\n}\n```\n\n" +
-				"No presentation issue remains in this flow.", Author: "/root", Created: 4}, terminal: true, batch: 1})
-		},
-		func() {
-			agents[0].Responding, agents[0].LastResponse = false, time.Now()
-			u.applyActivity(nil, agents)
-			p.notify("turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "preview-turn-1", "status": "completed"}})
-			u.status = "Completed"
-		},
-	}
+	task := "Make the broker safe for concurrent publishers, add a regression test, and stop the pane from blocking on its first frame. Split the work so it goes quickly."
+	mainEdit := nativePreviewEdit{"main", "patch-main", previewPatches[1]}
+	testEdit := nativePreviewEdit{"t-tester", "patch-tester", nativePreviewRacePatch}
+	paneEdit := nativePreviewEdit{"t-explorer", "patch-explorer", nativePreviewLaunchPatch}
+	docEdit := nativePreviewEdit{"t-reviewer", "patch-reviewer", previewPatches[2]}
+	followEdit := nativePreviewEdit{"t-tester", "patch-tester-2", previewPatches[0]}
+
+	p.add("prompt", func() { p.beginMessage(task) })
+	p.add("plan", func() {
+		p.say("main", "main-plan", "commentary", "I'll lock the broker myself and split the rest:\n\n- **tester** writes a race test\n- **explorer** unblocks the pane\n- **reviewer** checks the lock and documents the package")
+	})
+	p.add("read", func() {
+		p.command("main", "cmd-1", "sed -n 1,80p internal/broker/broker.go", []map[string]any{{"type": "read", "command": "sed", "name": "broker.go", "path": filepath.Join(p.workspace, "internal/broker/broker.go")}}, 0)
+		p.command("main", "cmd-2", "rg -n 'subs\\[' internal", []map[string]any{{"type": "search", "command": "rg", "query": "subs\\[", "path": "internal"}}, 0)
+	})
+	p.add("spawn", func() {
+		p.spawn("spawn-1", "t-tester", "/root/tester", "test", "Add a race test for concurrent Publish calls in internal/broker. Run it with -race and report whether it fails before the lock lands.")
+		p.spawn("spawn-2", "t-explorer", "/root/explorer", "explore", "Find why the pane blocks on its first frame in internal/pane and fix it without changing Launch's signature.")
+		p.spawn("spawn-3", "t-reviewer", "/root/reviewer", "review", "Review main's broker locking once it lands. Add package documentation if it is missing.")
+		p.tokens("main", 182_000, 2_100)
+	})
+	p.stream("main", mainEdit)
+	p.add("main streams its patch", func() {})
+	p.add("children start", func() {
+		p.think("t-tester", "think-1", "**Planning the race test**\n\nEight publishers against one subscriber is enough to trip -race.")
+		p.command("t-explorer", "cmd-3", "cat internal/pane/launch.go", []map[string]any{{"type": "read", "command": "cat", "name": "launch.go", "path": filepath.Join(p.workspace, "internal/pane/launch.go")}}, 0)
+		p.command("t-reviewer", "cmd-4", "sed -n 1,40p internal/broker/broker.go", []map[string]any{{"type": "read", "command": "sed", "name": "broker.go", "path": filepath.Join(p.workspace, "internal/broker/broker.go")}}, 0)
+	})
+	p.add("main applies", func() {
+		p.apply(mainEdit)
+		p.tokens("main", 241_000, 4_800)
+	})
+	p.add("reviewer reports", func() {
+		p.collab("msg-1", "sendMessage", "t-reviewer", "main", "The lock covers Subscribe and Publish, and Publish now sends outside it, so a slow subscriber no longer blocks other publishers.")
+	})
+	p.stream("agents", testEdit, paneEdit, docEdit)
+	p.add("three agents edit at once", func() {})
+	p.add("agents apply", func() {
+		p.apply(testEdit)
+		p.apply(paneEdit)
+		p.apply(docEdit)
+		p.tokens("t-tester", 64_000, 1_900)
+		p.tokens("t-explorer", 41_000, 900)
+		p.tokens("t-reviewer", 38_000, 700)
+	})
+	p.add("test fails", func() {
+		p.command("t-tester", "cmd-5", "go test -race ./internal/broker", nil, 1)
+	})
+	p.add("follow-up", func() {
+		p.collab("follow-1", "followupTask", "main", "t-tester", "Also cover Unsubscribe racing a publish; the reviewer's note suggests it is the next hole.")
+	})
+	p.stream("tester follow-up", followEdit)
+	p.add("tester applies", func() {
+		p.apply(followEdit)
+		p.command("t-tester", "cmd-6", "go test -race ./internal/broker", nil, 0)
+		p.tokens("t-tester", 97_000, 3_400)
+	})
+	p.add("explorer answers", func() {
+		p.say("t-explorer", "answer-explorer", "final_answer", "Launch now returns `pending` instead of waiting on the first frame. The signature is unchanged.")
+		p.finish("t-explorer")
+	})
+	p.add("reviewer answers", func() {
+		p.say("t-reviewer", "answer-reviewer", "", "The locking is correct. I added `doc.go` with package documentation.")
+		p.finish("t-reviewer")
+	})
+	p.add("tester answers", func() {
+		p.say("t-tester", "answer-tester", "final_answer", "Both race tests pass with -race:\n\n- `TestConcurrentPublish`\n- `TestUnsubscribeRace`")
+		p.finish("t-tester")
+	})
+	p.add("journal", func() {
+		p.ui.view.applyJournal("main", nativeJournalPublication{item: journalItem{ID: "done", Question: task, Author: "/root", Created: 1,
+			Text: "The broker is safe for concurrent publishers.\n\n1. `Publish` copies subscribers under the lock and sends outside it.\n2. Race tests cover publish and unsubscribe.\n3. The pane no longer blocks on its first frame."}, terminal: true, batch: 1})
+	})
+	p.add("done", func() {
+		p.tokens("main", 305_000, 7_200)
+		p.finish("main")
+		p.notify("turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "preview-turn-1", "status": "completed"}})
+	})
 }
 
 func (p *nativePreview) notify(method string, params any) {
@@ -314,7 +566,6 @@ func (p *nativePreview) completeMessage() {
 		"id": fmt.Sprintf("preview-answer-%d", p.message), "type": "agentMessage", "text": "I heard: " + body,
 	}})
 	p.notify("turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": turn, "status": "completed"}})
-	p.ui.status = "Completed"
 }
 
 func (p *nativePreview) beginMessage(body string) string {

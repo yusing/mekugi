@@ -187,6 +187,11 @@ func (a *subagentActivity) collectEventLocked(event activityEvent) {
 	if kind == "start" && event.assignment != nil && event.assignment.id != "" {
 		node.seen[commentaryMessageID(event.assignment.id)] = struct{}{}
 	}
+	// The native frontend reads this root's activity from app-server; its claim
+	// only keeps the activity out of Main's provider responses.
+	if a.pane != nil && a.pane.native && a.pane.root == a.rootLocked(thread) {
+		return
+	}
 	event.source, event.callID, event.text, event.raw, event.observed = source, callID, text, raw, now
 	a.events = append(a.events, event)
 	a.claimPaneLocked(thread, now)

@@ -41,6 +41,7 @@ type liveActivityView struct {
 	feedOnly       bool
 	conversation   bool              // Main uses the same feed/state with full, unclipped messages.
 	childrenOnly   bool              // Native Main already owns root activity; keep it out of the auxiliary feed.
+	bare           bool              // The shell's pane title replaces the heading and footer rows.
 	focused        bool              // Native Activity shows its key hints only while it has keyboard focus.
 	mainView       *liveActivityView // Roster reads Main's state without duplicating its feed entries.
 	painter        liveActivityPainter
@@ -512,9 +513,10 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 	}
 	lines := []string{v.header(rows, text)}
 	v.feedTop, v.feedLeft, v.feedRight = 2, 1, text
-	if v.conversation {
-		// Main's composer border carries its state; the feed takes every row.
-		body, lines, v.feedTop = height, nil, 1
+	if v.conversation || v.bare {
+		// Main's composer border or the pane title carries the state; the
+		// feed takes every row.
+		body, lines, v.feedTop, footer = height, nil, 1, false
 	}
 	switch {
 	case v.feedOnly:
@@ -671,7 +673,13 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (stri
 	if !agent.LastResponse.IsZero() {
 		last = liveActivityLast(agent.LastResponse, now)
 	}
-	return summary, liveActivityAge(max(0, now.Sub(agent.Started))) + " · " + last
+	// Elapsed time stops when the agent stops responding; the last-response
+	// age keeps counting.
+	end := now
+	if !agent.Responding && !agent.LastResponse.IsZero() {
+		end = agent.LastResponse
+	}
+	return summary, liveActivityAge(max(0, end.Sub(agent.Started))) + " · " + last
 }
 
 // liveActivityTokens shows cumulative input (sent) and output (received) tokens.
@@ -1143,10 +1151,17 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		gutter = liveAgentGutter(agent, v.painter.theme) + "│" + liveActivityReset + " "
 	}
 	previousMessage := false
+	operation := func(block liveActivityBlock) bool { return block.kind == "op" || block.kind == "reads" }
+	rail := ""
 	for index, block := range blocks {
 		block.compact = clip > 0
+		// Native Activity joins consecutive operations into one tree.
+		tree := v.childrenOnly && operation(block)
 		part := v.painter.block(block, width-2)
-		if v.childrenOnly {
+		switch {
+		case tree:
+			part = v.painter.event(block, width-4)
+		case v.childrenOnly:
 			part = v.painter.event(block, width-2)
 		}
 		if len(part) == 0 {
@@ -1174,6 +1189,30 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 				}
 				part = append(part[:limit-1:limit-1], liveActivityDim+hint+liveActivityUndim)
 			}
+		}
+		switch {
+		case tree:
+			last := true
+			for _, next := range blocks[index+1:] {
+				if next.kind != "filter" {
+					last = !operation(next)
+					break
+				}
+			}
+			tail := liveActivityTree([][]string{part, {""}})
+			if last {
+				tail = liveActivityTree([][]string{part})
+			}
+			part, rail = tail[:len(part)], "│ "
+			if last {
+				rail = "  "
+			}
+		case v.childrenOnly && block.kind == "filter" && rail != "":
+			for k := range part {
+				part[k] = liveActivityDim + rail + liveActivityUndim + part[k]
+			}
+		default:
+			rail = ""
 		}
 		for _, line := range part {
 			run.lines = append(run.lines, gutter+ansi.Truncate(line, width-2, "…"))

@@ -478,7 +478,7 @@ func (p *liveActivityPainter) event(block liveActivityBlock, width int) []string
 	done := liveActivityGreen + "✓" + liveActivityReset + liveActivityDim + " answer" + liveActivityUndim
 	switch block.kind {
 	case "message":
-		return label(p.messageDirection(block), p.markdown(block.body, width))
+		return label(p.route(block), p.markdown(block.body, width))
 	case "start":
 		head := liveActivityGreen + "▶" + liveActivityReset + liveActivityDim + " started"
 		if model := strings.TrimSpace(ansi.Strip(p.inline(block.label))); model != "" {
@@ -486,28 +486,36 @@ func (p *liveActivityPainter) event(block liveActivityBlock, width int) []string
 		}
 		return label(head+liveActivityUndim, p.markdown(block.body, width))
 	case "final":
-		if block.journal == nil {
+		// The answer is a card, so it stands apart from the work before it.
+		inner := width - 4
+		if inner < 8 {
 			return label(done, p.markdown(block.body, width))
 		}
-		var answers []liveActivityAnswer
-		for _, group := range block.journal.groups {
-			answers = append(answers, group.answers...)
-		}
+		title := done
 		var rows []string
-		switch len(answers) {
-		case 0:
-			rows = label(done, []string{liveActivityDim + "No journal entries" + liveActivityUndim})
-		case 1:
-			rows = label(done, p.markdown(answers[0].text, width))
-		default:
-			rows = []string{done + liveActivityDim + fmt.Sprintf(" · %d", len(answers)) + liveActivityUndim}
-			for _, answer := range answers {
-				rows = append(rows, liveActivityHang(liveActivityDim+"•"+liveActivityUndim+" ", strings.Join(p.markdown(answer.text, width-2), "\n"), width)...)
+		if block.journal == nil {
+			rows = p.markdown(block.body, inner)
+		} else {
+			var answers []liveActivityAnswer
+			for _, group := range block.journal.groups {
+				answers = append(answers, group.answers...)
 			}
+			switch len(answers) {
+			case 0:
+				rows = []string{liveActivityDim + "No journal entries" + liveActivityUndim}
+			case 1:
+				rows = p.markdown(answers[0].text, inner)
+			default:
+				title += liveActivityDim + fmt.Sprintf(" · %d", len(answers)) + liveActivityUndim
+				for _, answer := range answers {
+					rows = append(rows, liveActivityHang(liveActivityDim+"•"+liveActivityUndim+" ", strings.Join(p.markdown(answer.text, inner-2), "\n"), inner)...)
+				}
+			}
+			tail := *block.journal
+			tail.groups, tail.empty = nil, false
+			rows = append(rows, p.journal(&tail, inner, false)...)
 		}
-		tail := *block.journal
-		tail.groups, tail.empty = nil, false
-		return append(rows, p.journal(&tail, width, false)...)
+		return liveActivityCard(title, rows, width)
 	case "text":
 		return p.markdown(block.body, width)
 	}
@@ -696,6 +704,44 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 		return liveActivityRed + "✗ " + firstLine(block.body) + liveActivityReset
 	}
 	return firstLine(block.body)
+}
+
+// route names both ends of a message, sender first.
+func (p liveActivityPainter) route(block liveActivityBlock) string {
+	return p.recipient(block.from) + liveActivityDim + " → " + liveActivityUndim + p.recipient(block.to)
+}
+
+// liveActivityCard frames rows under a titled top edge.
+func liveActivityCard(title string, rows []string, width int) []string {
+	const edge = "\x1b[38;2;80;120;90m"
+	inner := width - 4
+	top := edge + "╭─ " + liveActivityReset + title + edge + " " + strings.Repeat("─", max(0, width-5-ansi.StringWidth(title))) + "╮" + liveActivityReset
+	lines := []string{ansi.Truncate(top, width, "")}
+	for _, row := range rows {
+		row = ansi.Truncate(row, inner, "…")
+		lines = append(lines, edge+"│"+liveActivityReset+" "+row+strings.Repeat(" ", max(0, inner-ansi.StringWidth(row)))+" "+edge+"│"+liveActivityReset)
+	}
+	return append(lines, edge+"╰"+strings.Repeat("─", max(0, width-2))+"╯"+liveActivityReset)
+}
+
+// liveActivityTree joins operation rows into one tree: ├ before each but the
+// last, └ before the last, and a rail beside continuation rows.
+func liveActivityTree(parts [][]string) []string {
+	var lines []string
+	for i, part := range parts {
+		lead, rail := "├ ", "│ "
+		if i == len(parts)-1 {
+			lead, rail = "└ ", "  "
+		}
+		for k, line := range part {
+			if k == 0 {
+				lines = append(lines, liveActivityDim+lead+liveActivityUndim+line)
+			} else {
+				lines = append(lines, liveActivityDim+rail+liveActivityUndim+line)
+			}
+		}
+	}
+	return lines
 }
 
 // messageDirection is relative to the row's owner, not the transport recipient.

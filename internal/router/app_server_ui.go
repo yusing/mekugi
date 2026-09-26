@@ -29,6 +29,16 @@ type appServerItem struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	} `json:"content"`
+	Phase             string                   `json:"phase"`
+	ExitCode          *int                     `json:"exitCode"`
+	CommandActions    []appServerCommandAction `json:"commandActions"`
+	Changes           []appServerFileChange    `json:"changes"`
+	Tool              string                   `json:"tool"`
+	SenderThreadID    string                   `json:"senderThreadId"`
+	ReceiverThreadIDs []string                 `json:"receiverThreadIds"`
+	Prompt            string                   `json:"prompt"`
+	Model             string                   `json:"model"`
+	ReasoningEffort   string                   `json:"reasoningEffort"`
 }
 
 type appServerUI struct {
@@ -36,10 +46,10 @@ type appServerUI struct {
 	view                   *liveActivityView
 	agents                 *liveActivityView
 	proxy                  *mekugiProxy
-	generation             uint64
 	journal                *nativeJournalSink
 	unscopedJournal        *nativeJournalSink
 	shell                  *terminalUI
+	session                appServerSession
 	ctx                    context.Context
 	quitRequested          bool
 	mainContentPainted     bool
@@ -79,8 +89,8 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 		defer u.shell.diff.close()
 		defer u.shell.diffScreen.Close()
 		if proxy != nil {
-			defer proxy.activity.releasePane()
 			defer func() { proxy.journals.detachNative(u.journal); proxy.journals.detachNative(u.unscopedJournal) }()
+			defer proxy.activity.releasePane()
 		}
 		defer c.input.Close()
 		defer c.output.Close()
@@ -111,7 +121,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 					u.shell.auto.mu.Unlock()
 					u.dirty = true
 				case <-diffGap:
-					u.shell.diff.previewPane = liveDiffPreviewPane{}
+					u.shell.mainDock, u.shell.agentDock = liveDiffPreviewPane{}, liveDiffPreviewPane{}
 					sub = u.shell.auto.events.subscribe()
 					diffEvents, diffGap, diffReady = sub.events, sub.gap, sub.previewReady
 					u.dirty = true
@@ -168,7 +178,6 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 							return err
 						}
 					}
-					var pending []activityPaneEntry
 					journalPending := make(map[*nativeJournalSink][]nativeJournalPublication)
 					for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {
 						if sink == nil {
@@ -181,27 +190,16 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						u.dirty = u.dirty || len(items) > 0
 					}
-					if proxy != nil && u.generation != 0 {
-						entries, agents, ok := proxy.activity.takePane(u.generation)
-						if ok {
-							pending = entries
-							u.dirty = u.dirty || len(entries) > 0 || !slices.Equal(agents, u.agents.agents)
-							u.applyActivity(entries, agents)
-						}
+					if u.shell.animating(time.Now()) {
+						u.dirty = true
 					}
 					w, h, err := term.GetSize(int(stdout.Fd()))
 					if err != nil {
-						if proxy != nil {
-							proxy.activity.restorePane(pending)
-						}
 						return err
 					}
 					if u.dirty || w != width || h != height {
 						width, height = w, h
 						if err := u.paint(stdout, w, h); err != nil {
-							if proxy != nil {
-								proxy.activity.restorePane(pending)
-							}
 							return err
 						}
 						for sink, items := range journalPending {
@@ -298,6 +296,10 @@ func (u *appServerUI) message(m appServerMessage) error {
 			}
 			u.thread, u.status = result.Thread.ID, "Ready"
 			u.model, u.reasoningEffort = result.Model, result.ReasoningEffort
+			u.session.start(u.thread, result.Thread.Cwd)
+			if u.agents != nil {
+				u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})
+			}
 			if u.proxy != nil {
 				if result.Thread.Cwd == "" {
 					return errors.New("thread/start returned no workspace for native journal delivery")
@@ -306,9 +308,7 @@ func (u *appServerUI) message(m appServerMessage) error {
 				// Real app-server requests can omit workspace metadata. Keep that
 				// journal namespace distinct; never infer filesystem authority from cwd.
 				u.unscopedJournal = u.proxy.journals.attachNative("", u.thread)
-				var snapshot activityPaneEvent
-				u.generation, snapshot = u.proxy.activity.attachNativePane(u.thread)
-				u.agents.apply(snapshot)
+				u.proxy.activity.attachNativePane(u.thread)
 			}
 		case "turn/start", "turn/steer":
 			u.submitted = ""
@@ -324,6 +324,9 @@ func (u *appServerUI) message(m appServerMessage) error {
 		u.status, u.alert = "Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Session", Kind: "text", Text: u.status, Observed: time.Now()}}})
 		return nil
+	}
+	if handled, err := u.sessionEvent(m); handled || err != nil {
+		return err
 	}
 	switch m.Method {
 	case "turn/started", "turn/completed", "item/started", "item/completed", "item/agentMessage/delta":
@@ -361,9 +364,6 @@ func (u *appServerUI) message(m appServerMessage) error {
 			}
 		}
 	case "item/started", "item/completed", "item/agentMessage/delta":
-		if u.proxy != nil && p.Item.Type == "commandExecution" {
-			return nil
-		} // Operation-level Activity is authoritative in the integrated frontend.
 		if p.ItemID == "" {
 			p.ItemID = p.Item.ID
 		}
@@ -524,8 +524,9 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 }
 
 // mainFrame is the transcript above a boxed composer. The top border carries
-// the session state and scroll position; the bottom border the model.
-func (u *appServerUI) mainFrame(width, height int) []string {
+// the session state; the bottom border the model. dock rows are left blank
+// between the two, starting at the returned row, for the live edit dock.
+func (u *appServerUI) mainFrame(width, height, dock int) ([]string, int) {
 	width, height = max(1, width), max(1, height)
 	boxed := width >= 12 && height >= 3
 	borderRows, inset := 0, min(2, width-1)
@@ -544,12 +545,16 @@ func (u *appServerUI) mainFrame(width, height int) []string {
 		draft = draft[len(draft)-visible:]
 	}
 	room := max(0, height-len(draft)-borderRows)
+	dock = min(dock, max(0, room-1))
+	room -= dock
 	u.mainContentPainted = room > 1
 	u.view.conversation, u.view.feedOnly, u.view.status = true, true, livediff.Safe(u.status, false)
 	var frame []string
 	if room > 0 {
 		frame = u.view.render(width, room, time.Now())
 	}
+	dockAt := len(frame)
+	frame = append(frame, make([]string, dock)...)
 	// Visual reference: Grok CLI PromptStyle / PromptWidget::draw, source
 	// crates/codegen/xai-grok-pager/src/views/prompt_widget/mod.rs:217:240,3007:3078
 	// @be7ce6e8cffe46d20bef9834b211616082ee866b. Keep continuation rows aligned.
@@ -558,7 +563,7 @@ func (u *appServerUI) mainFrame(width, height int) []string {
 	const inputColor = "\x1b[39m"
 	focused := u.shell == nil || u.shell.focus == 0
 	if boxed {
-		frame = append(frame, composerBorder("╭", "╮", u.stateLabel(time.Now()), u.scrollLabel(), width, border))
+		frame = append(frame, composerBorder("╭", "╮", u.stateLabel(time.Now()), "", width, border))
 	}
 	for i, line := range draft {
 		prefix := strings.Repeat(" ", min(2, inset))
@@ -586,7 +591,7 @@ func (u *appServerUI) mainFrame(width, height int) []string {
 		}
 		frame = append(frame, composerBorder("╰", "╯", "", model, width, border))
 	}
-	return frame
+	return frame, dockAt
 }
 
 // composerBorder embeds optional left and right labels in a box edge. The
@@ -632,12 +637,21 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 	return liveActivityDim + status + liveActivityUndim
 }
 
-// scrollLabel tells a reader who scrolled back that new entries arrived below.
-func (u *appServerUI) scrollLabel() string {
-	if u.view.following || u.view.unseen == 0 {
-		return ""
+// scrollLabel shows how much of the feed lies above the viewport and, once
+// the reader scrolls back, how much lies below and what arrived since.
+func scrollLabel(v *liveActivityView) string {
+	below := v.feedLines - v.offset - v.feedRows
+	switch {
+	case !v.following && below > 0:
+		label := fmt.Sprintf("▼ %d", below)
+		if v.unseen > 0 {
+			label += fmt.Sprintf(" · %d new", v.unseen)
+		}
+		return liveActivityAmber + label + liveActivityReset
+	case v.offset > 0:
+		return liveActivityDim + fmt.Sprintf("▲ %d", v.offset) + liveActivityUndim
 	}
-	return liveActivityAmber + fmt.Sprintf("↓ %d new", u.view.unseen) + liveActivityReset
+	return ""
 }
 
 func (u *appServerUI) ensureShell() {
@@ -648,6 +662,7 @@ func (u *appServerUI) ensureShell() {
 		u.agents = newLiveActivityView()
 	}
 	u.agents.childrenOnly = true
+	u.agents.status = "" // Fed by app-server directly, never by a collector connection.
 	u.agents.mainView = u.view
 	var store *mekugiReplayStore
 	var auto *autoLiveDiff
@@ -655,8 +670,10 @@ func (u *appServerUI) ensureShell() {
 		store = u.proxy.replayStore
 		auto = u.proxy.autoLiveDiff
 	}
+	u.agents.bare = true
 	shell := &terminalUI{main: u, agents: u.agents, side: true, activityOpen: true, auto: auto, diffScreen: vt.NewEmulator(1, 3)}
 	shell.diff = newLiveDiffTerminalController(store, "", os.Stdout)
+	shell.diff.native, shell.diff.diffMode = true, true
 	shell.diff.stdout = shell.diffScreen
 	shell.diff.size = func() (int, int, error) { return max(1, shell.layout.diff.w), max(3, shell.layout.diff.h), nil }
 	u.shell = shell
@@ -672,5 +689,5 @@ func (u *appServerUI) paint(out io.Writer, width, height int) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return u.shell.paint(ctx, out)
+	return u.shell.paintNative(ctx, out)
 }

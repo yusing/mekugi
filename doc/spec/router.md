@@ -246,18 +246,49 @@ Router readiness, provider catalogs, invocation overrides, native recovery hooks
 and frontend environment keep their owners; redirected and noninteractive
 commands keep their original path. The client speaks newline-delimited stdio RPC.
 
-The existing terminal shell keeps pane positions, split sizing, the roster, the
-diff pane, mouse handling and bindings; only the Codex content is replaced. Panes
-are numbered tabs in the status bar and Ctrl-B + number focuses one.
+The client launches app-server with `features.apply_patch_streaming_events`
+enabled; the user's own `-c` values follow and can disable it. Real-time
+activity comes from app-server notifications, not from intercepted provider
+responses: `thread/started` names child agents from their spawn path and role,
+typed items supply commands, edits, collaboration calls, messages and reasoning
+summaries, turn events drive each agent's state, and
+`thread/tokenUsage/updated` supplies token counts. Cost stays with the router's
+usage accounting. The client claims Main's thread in the router's activity
+collector only so child activity is never injected into Main's provider
+responses; the collector does not queue that activity.
+
+The shell frames Main on the left and one right pane: the saved diff (2) or
+Activity (3), toggled and each filling the pane. A roster (4) above them fits its
+content, four rows unfocused and up to 40% of the screen when focused; finished
+agents fold into one row, and each row shows role, state, timer, tokens, cost
+and turns, dropping from the right when narrow. Every pane has a title bar with
+its tab number, focus and scroll state, and the status bar shows the tabs with
+contextual key hints. Ctrl-B + number focuses a pane.
+
+Streaming `apply_patch` edits dock at the bottom of the pane that owns them:
+Main's in Main above the composer, subagents' at the bottom of the right pane.
+A dock takes 30% of its pane, within 5 to 14 rows, and lingers briefly after
+the last card completes. Concurrent edits share the dock as an accordion: cards
+split evenly when each gets five rows, otherwise one stays open, chosen as the
+roster-selected agent's card, then the current card, then the newest; Ctrl-B e
+cycles and pins it. Router previews of exec and Code Mode edits dock the same
+way; its predictions of `apply_patch` calls are dropped as duplicates. A new
+saved diff never replaces Activity; the Diff tab shows an unseen badge instead,
+and the saved diff lists its files or changes above the content when the pane is
+narrow; focusing that list (Tab, s) enlarges it without covering the diff, and s
+again hides it. A roster pick that changes Activity's agent filter shows
+Activity in place of the saved diff.
 
 Main and Activity share the activity view's block parsing, operation grouping
 and viewport logic; each keeps its own entries and follow/unseen state. Typed
 app-server items update entries in place. Main renders them as an unclipped transcript: user messages on a tinted
-band, assistant text, grouped tool runs, agent start/message/finish events and
-journal blocks. Its composer supports a new thread, submission, steering and
+band, assistant text under one `main` heading, tool runs drawn as a tree, agent
+start/message/finish events labelled `sender → recipient`, final answers as
+cards, and journal blocks. Its composer supports a new thread, submission, steering and
 interruption. Submitted text appears immediately and is reconciled with the
 server's user message without a duplicate; rejection restores the draft. The
-composer border carries turn state, unseen-message count and the model. History
+composer border carries turn state and the model; Main's title bar carries the
+scroll position and unseen-message count. History
 beyond the retained window is not hydrated. Unexpected server requests stay
 visibly pending, never auto-approved.
 
@@ -268,8 +299,9 @@ or answer, then the body at full width, separated by blank rows so narrow panes
 stay readable. Directed Main/agent messages appear at both ends. Native
 assignments, including follow-ups, keep their own identities; spawn and its first
 prompt form one event, and full-history requests do not replay them. In Main,
-child answers link to their retained assignment, not to a message with similar
-text.
+child answers link (`↩ re:`) to their retained assignment, not to a message with
+similar text. A child turn that completes without a final answer promotes its
+last message to the answer.
 
 Native child reasoning follows Codex's summary presentation: the current summary
 updates the agent's status and a transient status row with a left-to-right
@@ -282,6 +314,10 @@ without blanking the terminal. Journal records arrive typed from the journal
 owner and follow the [native journal presentation](journal.md#native-main-presentation)
 contract. A request without workspace metadata keeps its unscoped journal
 namespace; the app-server cwd never grants it filesystem authority.
+
+`make preview-native-ui` replays a scripted session of fake app-server
+notifications through this frontend: delegation, concurrent child edits in both
+docks, a failing test and follow-up, answers and a saved diff.
 
 This is not the replacement gate: questions, resume/fork, pickers, queueing,
 remaining native notices and Metrics are unimplemented. The existing terminal

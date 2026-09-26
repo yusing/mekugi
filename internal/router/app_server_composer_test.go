@@ -19,11 +19,15 @@ func appServerComposerScreenText(t *testing.T, frame []byte, width, height int) 
 	}
 	var text strings.Builder
 	for row := range strings.SplitSeq(screen.String(), "\n") {
+		inner := width
+		if strings.HasPrefix(row, "││") {
+			row, inner = ansi.Cut(row, 1, width-1), width-2 // Inside the Main pane frame.
+		}
 		if !strings.HasPrefix(row, "│ ") {
 			continue
 		}
 		// Exclude the border and prompt columns, preserving whitespace across wraps.
-		text.WriteString(ansi.Cut(row, 4, width-1))
+		text.WriteString(ansi.Cut(row, 4, inner-1))
 	}
 	return strings.TrimRight(text.String(), " ")
 }
@@ -31,7 +35,7 @@ func appServerComposerScreenText(t *testing.T, frame []byte, width, height int) 
 func TestAppServerComposerFrame(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	appServerTestKeys(t, u, "first\n你好")
-	frame := u.mainFrame(16, 8)
+	frame, _ := u.mainFrame(16, 8, 0)
 	for i := range frame {
 		frame[i] = ansi.Strip(frame[i])
 	}
@@ -55,7 +59,7 @@ func TestAppServerComposerResizeKeepsDraftTail(t *testing.T) {
 	}{{20, 8, 6}, {7, 6, 6}, {7, 3, 3}, {6, 2, 2}, {2, 1, 1}, {1, 1, 1}} {
 		u, _ := newAppServerTestUI()
 		u.draft = "old\nlines\nmore\n你好\nlast\nZ"
-		frame := u.mainFrame(size.width, size.height)
+		frame, _ := u.mainFrame(size.width, size.height, 0)
 		if len(frame) != size.height {
 			t.Fatalf("size %v: got %d rows", size, len(frame))
 		}
@@ -74,14 +78,14 @@ func TestAppServerComposerObservedModelCaption(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.requests["1"] = "thread/start"
 	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"main"},"model":"actual-model","reasoningEffort":"high"}}`)
-	frame := u.mainFrame(70, 8)
+	frame, _ := u.mainFrame(70, 8, 0)
 	bottom := ansi.Strip(frame[len(frame)-1])
 	if !strings.HasPrefix(bottom, "╰───") || !strings.HasSuffix(bottom, " actual-model (high) ─╯") || ansi.StringWidth(bottom) != 70 {
 		t.Fatalf("observed model caption: %q", bottom)
 	}
 	u.requests["2"] = "thread/start"
 	appServerTestMessage(t, u, `{"id":2,"result":{"thread":{"id":"new"},"reasoningEffort":null}}`)
-	frame = u.mainFrame(70, 8)
+	frame, _ = u.mainFrame(70, 8, 0)
 	bottom = ansi.Strip(frame[len(frame)-1])
 	if bottom != "╰"+strings.Repeat("─", 68)+"╯" {
 		t.Fatalf("unknown model retained stale caption: %q", bottom)
@@ -95,7 +99,7 @@ func TestAppServerComposerCaretFollowsFocusAndWrap(t *testing.T) {
 		u.draft = "12345678901" // Fills the 11-column input, placing its caret on the next row.
 		screen := vt.NewEmulator(16, 8)
 		t.Cleanup(func() { screen.Close() })
-		if _, err := screen.Write([]byte(strings.Join(u.mainFrame(16, 8), "\r\n"))); err != nil {
+		if _, err := screen.Write([]byte(strings.Join(first(u.mainFrame(16, 8, 0)), "\r\n"))); err != nil {
 			t.Fatal(err)
 		}
 		for y := 4; y < 8; y++ {
@@ -115,3 +119,5 @@ func TestAppServerComposerCaretFollowsFocusAndWrap(t *testing.T) {
 		}
 	}
 }
+
+func first[T, U any](value T, _ U) T { return value }

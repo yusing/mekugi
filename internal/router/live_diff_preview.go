@@ -39,6 +39,7 @@ type liveDiffPreview struct {
 	DiffText  bool `json:",omitzero"`
 	Status    string
 	Footer    string `json:",omitempty"`
+	Tool      string `json:",omitempty"` // The host tool whose input is predicted.
 }
 
 type liveDiffPreviewWorker struct {
@@ -96,7 +97,7 @@ func startLiveDiffPreview(ctx context.Context, broker *liveDiffBroker, workspace
 		wake:    make(chan struct{}, 1), done: make(chan struct{}),
 	}
 	if len(kind) != 0 {
-		worker.kind = kind[0]
+		worker.kind, worker.preview.Tool = kind[0], kind[0]
 	}
 	go worker.run()
 	return worker
@@ -320,6 +321,7 @@ func (w *liveDiffPreviewWorker) run() {
 		}
 		projected.Complete = final
 		projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
+		projected.Tool = preview.Tool
 		changed := len(projected.Files) != 0 && !slices.Equal(projected.Files, lastFiles)
 		if changed && !release && !lastReveal.IsZero() && w.ctx.Err() == nil {
 			// Transport candidates may arrive every animation frame. Reveal a

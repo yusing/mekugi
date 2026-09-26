@@ -130,9 +130,15 @@ func (v *liveActivityView) conversationItem(first, last, width int) liveActivity
 				group = append(group, v.blocks[k]...)
 			}
 		}
+		var parts [][]string
 		for _, block := range mergeLiveActivityReads(group) {
-			out.hang("  ", "  ", p.block(block, width-2))
+			if block.kind == "filter" && len(parts) > 0 {
+				parts[len(parts)-1] = append(parts[len(parts)-1], p.block(block, width-4)...)
+				continue
+			}
+			parts = append(parts, p.block(block, width-4))
 		}
+		out.hang("  ", "  ", liveActivityTree(parts))
 	case entry.Agent == "Main" && entry.journal != nil && len(blocks) == 1 && blocks[0].journal != nil:
 		v.flushItem(&out, entry, blocks[0].journal, first, width)
 	case conversationMilestone(entry):
@@ -144,7 +150,9 @@ func (v *liveActivityView) conversationItem(first, last, width int) liveActivity
 		}
 		v.milestoneItem(&out, entry, milestones, width)
 	case entry.Agent == "Main" && entry.Kind == "text":
-		out.hang("• ", "  ", p.markdown(livediff.Safe(entry.Text, false), width-2))
+		out.add(0, mainHeading(p, entry, width))
+		gutter := mainGutter(p)
+		out.hang(gutter, gutter, p.markdown(livediff.Safe(entry.Text, false), width-2))
 	default:
 		v.agentItem(&out, entry, blocks, first, width)
 	}
@@ -164,6 +172,16 @@ func conversationHeading(glyph, name, detail string, entry activityPaneEntry, wi
 		head += strings.Repeat(" ", gap) + stamp
 	}
 	return head
+}
+
+// mainHeading and mainGutter mark Main's own replies the way agent traffic
+// is marked, so every transcript item starts with who spoke and when.
+func mainHeading(p *liveActivityPainter, entry activityPaneEntry, width int) string {
+	return conversationHeading(p.theme.Accent()+"●"+liveActivityReset, "\x1b[1m"+p.theme.Accent()+"main"+liveActivityReset, "", entry, width)
+}
+
+func mainGutter(p *liveActivityPainter) string {
+	return p.theme.Accent() + "┃" + liveActivityReset + " "
 }
 
 // milestoneItem labels journal milestones as such, under the accent gutter,
@@ -204,7 +222,11 @@ func (v *liveActivityView) flushItem(out *conversationLines, entry activityPaneE
 			out.add(0, "")
 		}
 	}
-	v.journalItem(out, &answers, index, width, "", "")
+	if len(answers.groups) > 0 || len(milestones) == 0 {
+		out.add(0, mainHeading(&v.painter, entry, width))
+		gutter := mainGutter(&v.painter)
+		v.journalItem(out, &answers, index, width, gutter, gutter)
+	}
 }
 
 func (v *liveActivityView) userItem(out *conversationLines, entry activityPaneEntry, width int) {
@@ -274,6 +296,13 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 				continue
 			}
 			if block.kind == "final" {
+				// A plain answer links to the latest task it could answer.
+				for _, question := range slices.Backward(v.entries[:index]) {
+					if (question.Kind == "start" || question.Kind == "assignment") && question.assignment != nil && question.assignment.to == agent {
+						out.add(question.Seq, gutter+v.linkLabel(question, body))
+						break
+					}
+				}
 				out.hang(gutter, gutter, p.markdown(block.body, body))
 				continue
 			}
@@ -358,12 +387,17 @@ func (v *liveActivityView) questionLink(group liveActivityAnswerGroup, before in
 func (v *liveActivityView) questionLinkLabel(group liveActivityAnswerGroup, before, width int) string {
 	question, ok := v.questionLink(group, before)
 	if !ok {
-		return ansi.Truncate(liveActivityDim+"↩ reply to an earlier message · not loaded"+liveActivityUndim, width, "…")
+		return ansi.Truncate(liveActivityDim+"↩ re: an earlier message · not loaded"+liveActivityUndim, width, "…")
 	}
+	return v.linkLabel(question, width)
+}
+
+// linkLabel names a linked prompt by kind and time.
+func (v *liveActivityView) linkLabel(question activityPaneEntry, width int) string {
 	target := "your message"
 	if question.Kind == "start" || question.Kind == "assignment" {
 		target = "assignment"
 	}
-	label := v.painter.theme.Accent() + "↩ reply to " + target + liveActivityReset + liveActivityDim + " · " + question.Observed.Local().Format("15:04:05") + liveActivityUndim
+	label := v.painter.theme.Accent() + "↩ re: " + target + liveActivityReset + liveActivityDim + " " + question.Observed.Local().Format("15:04:05") + liveActivityUndim
 	return ansi.Truncate(label, width, "…")
 }
