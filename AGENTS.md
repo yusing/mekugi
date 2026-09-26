@@ -16,10 +16,9 @@ against these goals, in order:
 Compression, tools, routing, observability, and model scheduling are means toward these goals, not
 ends in themselves. Preserve Codex as the execution authority as required below.
 
-## Feedback from active sessions
+## Feedback
 
-In an active Mekugi session, you may proactively record and
-improvement feedback encountered while using it, in FIXME.md,
+You may proactively record and improvement feedback encountered while using it, in FIXME.md,
 even when unrelated to the current task.
 
 Report types:
@@ -28,14 +27,7 @@ Report types:
 - Wasted roundtrips
 - Wasted tokens
 - Output/report noise
-
-Keep feedback brief and grounded in observed behavior: describe the operation, expected versus actual
-behavior, workflow impact, and available evidence. Distinguish observations from suspected causes and
-suggestions; omit secrets and unrelated session content.
-
-Report blockers promptly; group non-blocking feedback with the final response without derailing
-the assigned task. This permits reporting, not unrelated investigation, fixes, or external issue
-filing without authorization.
+- Mekugi bugs/workflow frictions
 
 ## Common requirements
 
