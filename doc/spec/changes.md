@@ -403,7 +403,13 @@ uses the matching set, revealing destinations inside collapsed folders.
 
 The navigator and diff have independent viewports. Keyboard focus is visible;
 the active list row is shaded in place rather than marked by a separate arrow
-column, leaving that cell available for file names and graph rows.
+column, leaving that cell available for file names and graph rows. Moving the
+cursor onto a file, or onto a change (its first file), shows that file while
+the list keeps focus; Enter opens it and leaves the list. The row under the
+pointer is underlined, apart from its tree or graph lanes, and a click acts like Enter on that row. After Enter
+opens a file, Esc returns to the list; after Enter on a branch sets its caller
+filter, Esc restores the previous filter. Otherwise Esc closes help or the
+filter, then leaves the list.
 Mouse scrolling targets the region under the pointer. Opening a file from the
 navigator or a change starts at its section heading. Next/previous file
 navigation restores a position only where the reader stopped before jumping
@@ -415,7 +421,9 @@ the tool or program that wrote it (`apply_patch`, or the observed program such
 as `sed` or `python3`). The navigator's Changes tab lists captured changes in
 capture order as a graph with one lane per caller, branching from `main` at the
 caller's first change; each row shows the change ID, source, file count, known
-line counts. Missing line counts use `?`, not a command-failure glyph. A file's
+line counts. A single-file change always shows its file: nested below it
+beside the diff, or in place of the count when the list is stacked with the
+diff or covers it, where it has no file rows to expand. Missing line counts use `?`, not a command-failure glyph. A file's
 section heading lists the changes it composes. Every saved capture participates
 in composition regardless of command exit status. If retained contents cannot
 form one coherent diff, the pane shows the individual captured edits with their

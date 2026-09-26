@@ -67,7 +67,9 @@ type liveDiffTerminalController struct {
 	// list's rows in a narrow native pane.
 	navRows int
 	stack   int
-	theme   liveDiffTheme
+	// back undoes the last list action on Esc.
+	back  liveDiffBack
+	theme liveDiffTheme
 	// A reported background replaces the theme's assumed fade canvas.
 	background   livediff.RGB
 	backgrounded bool
@@ -115,6 +117,10 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	focus := c.view.LatestChunk()
 	focus.SnapshotOrder = 0 // Snapshot numbering does not change a capture's geometry.
 	navWidth := c.navigation.width(width)
+	if inline := width < 100; inline != c.navigation.changes.inline {
+		c.navigation.changes.inline = inline
+		c.navigation.changes.rebuild(&c.view, c.workspace)
+	}
 	navigatorVisible := c.diffMode && (navWidth > 0 || c.navigation.focused && !c.navigation.hidden)
 	diffWidth := width
 	if navWidth > 0 {
@@ -449,6 +455,63 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 	return false, nil
 }
 
+// liveDiffBack is what Esc returns to after Enter in the navigator: the list
+// after opening a file ('f'), or the previous caller filter after picking a
+// branch ('b').
+type liveDiffBack struct {
+	kind   byte
+	caller string
+}
+
+// escapeKey handles a lone Esc: it closes help or the filter, then undoes the
+// last list action, then leaves the list.
+func (c *liveDiffTerminalController) escapeKey() {
+	c.escape = ""
+	n := &c.navigation
+	back := c.back
+	c.back = liveDiffBack{}
+	switch {
+	case c.help || n.filtering:
+		c.back = back
+		n.filtering, n.focused, c.help = false, false, false
+	case back.kind == 'b' && n.focused:
+		c.filterCaller(back.caller)
+	case back.kind == 'f' && !n.focused:
+		n.hidden, n.focused, c.view.Following = false, true, false
+	default:
+		n.focused = false
+	}
+	c.dirty = true
+}
+
+// pointNav tracks the navigator row under the pointer.
+func (c *liveDiffTerminalController) pointNav(row int, inNav bool, firstRow int) {
+	n := &c.navigation
+	count, top := len(n.entries), n.top
+	if n.changesTab {
+		count, top = len(n.changes.rows), n.changes.top
+	}
+	hover := 0
+	if index := top + row - firstRow - 2; inNav && row >= firstRow+2 && index < count {
+		hover = index + 1
+	}
+	before := [2]int{n.hover, n.changes.hover}
+	n.hover, n.changes.hover = 0, 0
+	if n.changesTab {
+		n.changes.hover = hover
+	} else {
+		n.hover = hover
+	}
+	c.dirty = c.dirty || before != [2]int{n.hover, n.changes.hover}
+}
+
+// clearHover forgets the pointed row, reporting whether one was shown.
+func (c *liveDiffTerminalController) clearHover() bool {
+	shown := c.navigation.hover != 0 || c.navigation.changes.hover != 0
+	c.navigation.hover, c.navigation.changes.hover = 0, 0
+	return shown
+}
+
 func (c *liveDiffTerminalController) handleKey(key byte) bool {
 	// Raw mode must leave cancellation usable even during a malformed
 	// terminal reply. All other OSC bytes stay separate from commands.
@@ -484,7 +547,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 	if c.mouse.active || c.escape == "\x1b[" && key == '<' {
 		c.escape = ""
 		action, row, column := c.mouse.consume(key)
-		if action == 0 || action == 'h' || c.help {
+		if action == 0 || action == 'h' && !c.diffMode || c.help {
 			return false
 		}
 		if !c.diffMode {
@@ -501,6 +564,10 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 		}
 		if c.native {
 			lastRow = c.lastHeight
+		}
+		if action == 'h' {
+			c.pointNav(row, inNav && row >= firstRow && row <= lastRow, firstRow)
+			return false
 		}
 		if row < firstRow || row > lastRow {
 			return false

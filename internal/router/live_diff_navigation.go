@@ -23,10 +23,12 @@ type liveDiffNavigation struct {
 	entries                          []liveDiffNavEntry
 	matches                          []int
 	cursor, top                      int
-	columns                          int
-	savedCursor                      string
-	savedTop                         string
-	total                            int
+	// hover is the pointed entry plus one; zero points at none.
+	hover       int
+	columns     int
+	savedCursor string
+	savedTop    string
+	total       int
 	// changes is the Changes tab, shown instead of files when set.
 	changes    liveDiffChanges
 	changesTab bool
@@ -264,6 +266,7 @@ func (c *liveDiffTerminalController) openNavEntry() {
 	c.view.Open(entry.file)
 	n.focused = false
 	n.filtering = false
+	c.back = liveDiffBack{kind: 'f'}
 }
 
 // openChangeRow toggles a change and opens its first file, opens a file row,
@@ -275,14 +278,19 @@ func (c *liveDiffTerminalController) openChangeRow() {
 	}
 	row := l.rows[l.cursor]
 	node := l.nodes[row.node]
-	switch row.kind {
-	case 'b':
-		caller := livediff.CallerKey(node.Caller)
-		if c.view.Caller == caller {
+	switch {
+	case row.kind == 'b':
+		previous, caller := c.view.Caller, livediff.CallerKey(node.Caller)
+		if previous == caller {
 			caller = ""
 		}
 		c.filterCaller(caller)
-	case 'c':
+		c.back = liveDiffBack{kind: 'b', caller: previous}
+	case row.kind == 'c' && len(node.files) == 1, row.kind == 'f':
+		c.openChange(node.Change, node.files[row.file].file)
+		c.navigation.focused, c.navigation.filtering = false, false
+		c.back = liveDiffBack{kind: 'f'}
+	case row.kind == 'c':
 		if l.expanded == nil {
 			l.expanded = make(map[string]bool)
 		}
@@ -292,9 +300,23 @@ func (c *liveDiffTerminalController) openChangeRow() {
 		}
 		l.rebuild(&c.view, c.workspace)
 		l.focusChange(node.Change, c.navRows)
-	case 'f':
+	}
+}
+
+// previewChangeRow shows the file under the Changes cursor while the list
+// keeps focus; a change shows its first file.
+func (c *liveDiffTerminalController) previewChangeRow() {
+	l := &c.navigation.changes
+	if l.cursor >= len(l.rows) {
+		return
+	}
+	row := l.rows[l.cursor]
+	node := l.nodes[row.node]
+	switch {
+	case row.kind == 'f':
 		c.openChange(node.Change, node.files[row.file].file)
-		c.navigation.focused, c.navigation.filtering = false, false
+	case row.kind == 'c' && len(node.files) > 0:
+		c.openChange(node.Change, node.files[0].file)
 	}
 }
 
@@ -488,6 +510,13 @@ func (c *liveDiffTerminalController) navigationKey(key byte) bool {
 	if n.changesTab {
 		return c.changesKey(key)
 	}
+	cursor := n.cursor
+	defer func() {
+		// Moving onto a file shows it while the list keeps focus.
+		if n.cursor != cursor && n.cursor < len(n.entries) && n.entries[n.cursor].file >= 0 {
+			c.view.Open(n.entries[n.cursor].file)
+		}
+	}()
 	switch key {
 	case 'j':
 		n.cursor = min(n.cursor+1, max(0, len(n.entries)-1))
@@ -608,6 +637,8 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 		line := ansi.Truncate(label+stats, contentWidth, "")
 		if (n.focused && index == n.cursor) || (!n.focused && entry.file == selected && entry.file >= 0) {
 			line = liveDiffSelectRow(line, contentWidth, theme)
+		} else if index == n.hover-1 {
+			line = indent + liveDiffHoverRow(strings.TrimPrefix(line, indent))
 		}
 		out[row] = line
 	}
@@ -632,6 +663,11 @@ func liveDiffSelectRow(line string, width int, theme livediff.Theme) string {
 	fill := theme.SelectionBackground()
 	line = strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m"+fill)
 	return fill + line + strings.Repeat(" ", max(0, width-ansi.StringWidth(line))) + "\x1b[49m"
+}
+
+// liveDiffHoverRow underlines the row under the pointer.
+func liveDiffHoverRow(line string) string {
+	return "\x1b[4m" + strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m\x1b[4m") + "\x1b[24m"
 }
 
 // liveDiffStatus is a file row's net change, coded like git's short status:
@@ -729,6 +765,12 @@ func liveDiffCountStats(count livediff.Counts, theme livediff.Theme) string {
 func (c *liveDiffTerminalController) changesKey(key byte) bool {
 	l := &c.navigation.changes
 	last := max(0, len(l.rows)-1)
+	cursor := l.cursor
+	defer func() {
+		if l.cursor != cursor {
+			c.previewChangeRow()
+		}
+	}()
 	switch key {
 	case 'j':
 		l.cursor = min(l.cursor+1, last)
@@ -745,16 +787,18 @@ func (c *liveDiffTerminalController) changesKey(key byte) bool {
 	case 13, 10:
 		c.openChangeRow()
 	case 'h', 'l':
-		// l expands a change, h collapses it; from a file row, h returns to its change.
+		// l expands a change, h collapses it; from a file row, h returns to its
+		// change. A single-file change stays as it is, nested or inline.
 		if l.cursor >= len(l.rows) || l.rows[l.cursor].kind == 'b' {
 			break
 		}
 		row := l.rows[l.cursor]
-		change := l.nodes[row.node].Change
+		change, single := l.nodes[row.node].Change, len(l.nodes[row.node].files) == 1
 		switch {
+		case single && l.inline:
 		case key == 'h' && row.kind == 'f':
 			l.focusChange(change, c.navRows)
-		case row.kind == 'f' || l.expanded[change] == (key == 'l'):
+		case row.kind == 'f' || single || l.expanded[change] == (key == 'l'):
 			if key == 'l' {
 				l.cursor = min(l.cursor+1, last)
 			}

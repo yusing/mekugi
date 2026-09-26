@@ -246,6 +246,29 @@ Router readiness, provider catalogs, invocation overrides, native recovery hooks
 and frontend environment keep their owners; redirected and noninteractive
 commands keep their original path. The client speaks newline-delimited stdio RPC.
 
+The client replaces presentation, not projection policy. Codex remains the agent
+runtime and execution authority, and Mekugi's router stays in the model-request
+path; UI plumbing adds no model calls. The client connects to app-server, never
+to the Code Mode host, and submits intent rather than executing tools.
+
+| Concern | Owner |
+| --- | --- |
+| Tools, permissions, sandbox, native agents, Code Mode | Codex; the client submits intent and answers server requests. |
+| Thread, turn and item lifecycle and history | Codex app-server; never reconstructed from rendered text. |
+| Routing, projection, frontend PATH | The router and launcher, with invocation configuration carried into app-server. |
+| Changes and recovery references | The capturer and replay store; app-server patches are display input only. |
+| Journals and delivery receipts | The [journal owner](journal.md); native events carry its records without new receipts or model-context insertion. |
+| Tokens, prices, missing usage | Router accounting; app-server usage is never added to cost totals. |
+| Tool classification | App-server's typed command actions and Mekugi classifiers; renderers never parse shell text. |
+| Skills and guidance | The [guidance contract](guide.md) and router projection. |
+
+Approval controls and `/side` are deferred; pending server requests stay
+visible and are never auto-approved. Not in scope: Codex's TUI, PTY emulation
+or screen scraping for Main; a second execution, permission or Code Mode control
+path; settings clones, onboarding, cloud tasks, voice; Git write actions or edit
+rollback; browser frontends or remote hosting; new auth flows; a second
+transcript store or cost calculator; model-visible UI commentary.
+
 The client launches app-server with `features.apply_patch_streaming_events`
 enabled; the user's own `-c` values follow and can disable it. Real-time
 activity comes from app-server notifications, not from intercepted provider
@@ -286,7 +309,9 @@ band, assistant text under one `main` heading, tool runs drawn as a tree, agent
 start/message/finish events labelled `sender → recipient`, final answers as
 cards, and journal blocks. Its composer supports a new thread, submission, steering and
 interruption. Submitted text appears immediately and is reconciled with the
-server's user message without a duplicate; rejection restores the draft. The
+server's user message without a duplicate; rejection restores the draft; a
+steer never becomes a new turn. Only `/quit` is a command, and only while idle;
+unknown commands are reported, never sent as prompts. The
 composer border carries turn state and the model; Main's title bar carries the
 scroll position and unseen-message count. History
 beyond the retained window is not hydrated. Unexpected server requests stay
@@ -300,7 +325,8 @@ stay readable. Directed Main/agent messages appear at both ends. Native
 assignments, including follow-ups, keep their own identities; spawn and its first
 prompt form one event, and full-history requests do not replay them. In Main,
 child answers link (`↩ re:`) to their retained assignment, not to a message with
-similar text. A child turn that completes without a final answer promotes its
+similar text. Hovering a loaded link underlines it; clicking it scrolls to and
+briefly shades the linked message. A child turn that completes without a final answer promotes its
 last message to the answer.
 
 Native child reasoning follows Codex's summary presentation: the current summary
@@ -319,10 +345,9 @@ namespace; the app-server cwd never grants it filesystem authority.
 notifications through this frontend: delegation, concurrent child edits in both
 docks, a failing test and follow-up, answers and a saved diff.
 
-This is not the replacement gate: questions, resume/fork, pickers, queueing,
-remaining native notices and Metrics are unimplemented. The existing terminal
-and dashboard remain the default until the
-[app-server proposal](../proposals/app-server-ui.md) replacement checks pass.
+The wrapped Codex terminal and dashboard remain the default and are no longer
+extended. The remaining work before this client replaces them is tracked in the
+[app-server proposal](../proposals/app-server-ui.md).
 
 ### Feature-usage debug evidence
 

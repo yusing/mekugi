@@ -292,8 +292,7 @@ func (u *terminalUI) run(ctx context.Context, stdout *os.File, keys <-chan byte,
 			dirty = true
 		case <-u.diff.escapeC:
 			u.diff.escapeC = nil
-			u.diff.escape = ""
-			u.diff.navigation.filtering, u.diff.navigation.focused, u.diff.help = false, false, false
+			u.diff.escapeKey()
 			dirty = true
 		case <-frames.C:
 			if u.sequence == "\x1b" && time.Since(u.sequenceAt) >= 40*time.Millisecond {
@@ -773,6 +772,9 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	if pane < 0 {
 		return nil
+	}
+	if pane != 1 && u.diff != nil && u.diff.clearHover() {
+		u.diff.dirty = true
 	}
 	if button&^28 == 0 && !release {
 		u.focus = pane

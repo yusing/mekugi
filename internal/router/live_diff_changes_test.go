@@ -182,22 +182,44 @@ func TestLiveDiffChangesGraphLanesAndJumps(t *testing.T) {
 }
 
 // Change file rows share the navigator's colored status label, and a narrow
-// row drops its source instead of truncating it.
+// row drops its source instead of truncating it. A single-file change nests
+// its file beside the diff and names it on its own row in a stacked list.
 func TestLiveDiffChangesRowFormat(t *testing.T) {
 	origin := livediff.Origin{Change: "apple1", Caller: "/root", Source: "apply_patch"}
-	c := liveDiffChangesController(t, 130, 20, []liveDiffChunk{liveDiffCapture("k1", "broker.go", 1, "one\n", "ONE\n", origin)})
+	single := liveDiffChangesController(t, 130, 20, []liveDiffChunk{liveDiffCapture("k1", "broker.go", 1, "one\n", "ONE\n", origin)})
+	s := &single.navigation.changes
+	if rows := s.render(false, false, "", 60, 4, livediff.DarkTheme); len(s.rows) != 2 || !strings.Contains(ansi.Strip(rows[2]), "apple1 apply_patch 1f") || !strings.Contains(ansi.Strip(rows[3]), "└ M broker.go +1 -1") {
+		t.Fatalf("a side navigator did not nest the single file: %q", rows)
+	}
+	s.inline = true
+	s.rebuild(&single.view, single.workspace)
+	if len(s.rows) != 1 {
+		t.Fatalf("an inline single-file change expanded into %d rows", len(s.rows))
+	}
+	if row := ansi.Strip(s.render(false, false, "", 60, 3, livediff.DarkTheme)[2]); !strings.Contains(row, "apple1 apply_patch M broker.go +1 -1") || strings.Contains(row, "1f") {
+		t.Fatalf("single-file change row = %q", row)
+	}
+	// Hover underlines the row's text but not its graph lane.
+	s.hover = 1
+	if row := s.render(false, false, "", 60, 3, livediff.DarkTheme)[2]; !strings.Contains(row, "\x1b[4m") || strings.Index(row, "\x1b[4m") < strings.Index(row, "●") {
+		t.Fatalf("hover underlined the graph: %q", row)
+	}
+	c := liveDiffChangesController(t, 130, 20, []liveDiffChunk{
+		liveDiffCapture("k1", "broker.go", 1, "one\n", "ONE\n", origin),
+		liveDiffCapture("k2", "queue.go", 2, "two\n", "TWO\n", origin),
+	})
 	l := &c.navigation.changes
 	l.expanded = map[string]bool{"apple1": true}
 	l.rebuild(&c.view, c.workspace)
-	rows := l.render(false, false, "", 40, 4, livediff.DarkTheme)
+	rows := l.render(false, false, "", 40, 5, livediff.DarkTheme)
 	file := liveDiffFileLabel(liveDiffStatus{before: "/w/broker.go", after: "/w/broker.go", edited: true}, "broker.go", "/w", livediff.DarkTheme)
-	if !strings.Contains(rows[3], file) || !strings.Contains(ansi.Strip(rows[3]), "└ M broker.go +1 -1") {
+	if !strings.Contains(rows[3], file) || !strings.Contains(ansi.Strip(rows[3]), "├ M broker.go +1 -1") {
 		t.Fatalf("file row = %q, want shared label %q", rows[3], file)
 	}
-	if row := ansi.Strip(rows[2]); !strings.Contains(row, "apple1 apply_patch 1f") {
+	if row := ansi.Strip(rows[2]); !strings.Contains(row, "apple1 apply_patch 2f") {
 		t.Fatalf("wide change row = %q", row)
 	}
-	if row := ansi.Strip(l.render(false, false, "", 24, 4, livediff.DarkTheme)[2]); strings.Contains(row, "apply") || !strings.Contains(row, "apple1 1f +1 -1") {
+	if row := ansi.Strip(l.render(false, false, "", 24, 4, livediff.DarkTheme)[2]); strings.Contains(row, "apply") || !strings.Contains(row, "apple1 2f +2 -2") {
 		t.Fatalf("narrow change row = %q, want the source omitted", row)
 	}
 	focused := l.render(true, false, "", 24, 4, livediff.DarkTheme)[2]

@@ -81,8 +81,9 @@ func TestLiveDiffTerminalFileNavigator(t *testing.T) {
 		}
 		return false
 	})
-	if !strings.Contains(ansi.Strip(paged), "file_001_content") {
-		t.Fatal("file-list paging moved the diff viewport")
+	// The cursor's file shows while the list keeps focus.
+	if !strings.Contains(ansi.Strip(paged), "file_020_content") {
+		t.Fatal("file-list paging did not show the file under the cursor")
 	}
 	ui.write(t, "g")
 	ui.frame(t, func(frame string) bool {

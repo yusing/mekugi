@@ -277,6 +277,10 @@ func TestLiveActivityQuestionLinksKeepIndividualPrompts(t *testing.T) {
 	}
 	for row, target := range v.feedQuestions {
 		if target == 2 {
+			// The pointer underlines the link row it rests on.
+			if !v.handleMouse('h', v.feedTop+row, v.feedLeft+2) || !strings.Contains(v.render(80, 12, time.Now())[v.feedTop-1+row], "\x1b[4m↩ re:") {
+				t.Fatal("hovered question link was not underlined")
+			}
 			v.handleMouse('\r', v.feedTop+row, v.feedLeft+2)
 			frame := strings.Join(v.render(80, 12, time.Now()), "\n")
 			if !strings.Contains(frame, "Steering prompt") || v.questionRows[2] < v.offset || v.questionRows[2] >= v.offset+v.feedRows || v.offset > max(0, v.feedLines-v.feedRows) {

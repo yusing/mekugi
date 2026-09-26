@@ -56,10 +56,12 @@ type liveActivityView struct {
 	// Geometry of the last frame, used by scrolling keys and the pointer.
 	// feedSnippets holds each feed row's snippet, from screen row feedTop
 	// between columns feedLeft and feedRight.
-	feedLines, feedRows                  int
-	feedSnippets                         []liveActivitySnippet
-	feedQuestions                        []uint64
-	questionRows                         map[uint64]int
+	feedLines, feedRows int
+	feedSnippets        []liveActivitySnippet
+	feedQuestions       []uint64
+	questionRows        map[uint64]int
+	// questionHover is the pointed feed line plus one; zero points at none.
+	questionHover                        int
 	flashQuestion                        uint64
 	flashUntil                           time.Time
 	feedTop, feedLeft, feedRight         int
@@ -367,6 +369,7 @@ func (v *liveActivityView) selectAgent(step int) {
 
 func (v *liveActivityView) handleMouse(action byte, row, column int) bool {
 	if action == 'j' || action == 'k' {
+		v.questionHover = 0 // Scrolling moves the link from under the pointer.
 		if !v.feedOnly && row >= v.rosterTop && row <= v.rosterBottom && column >= 1 && column <= v.rosterRight {
 			if v.rosterTop == v.rosterBottom {
 				return true
@@ -395,12 +398,34 @@ func (v *liveActivityView) handleMouse(action byte, row, column int) bool {
 			}
 		}
 	}
+	link := v.pointQuestion(row, column)
 	snippet := v.pointSnippet(action, row, column)
 	agent := false
 	if !v.feedOnly {
 		agent = v.pointAgent(action, row, column)
 	}
-	return snippet || agent
+	return link || snippet || agent
+}
+
+// pointQuestion underlines the question link under the pointer.
+func (v *liveActivityView) pointQuestion(row, column int) bool {
+	hover := 0
+	if index := row - v.feedTop; index >= 0 && index < len(v.feedQuestions) && v.feedQuestions[index] != 0 && column >= v.feedLeft && column <= v.feedRight {
+		hover = v.offset + index + 1
+	}
+	previous := v.questionHover
+	v.questionHover = hover
+	return hover != previous
+}
+
+// underlineLink underlines a question link from its arrow on, leaving the
+// gutter plain.
+func underlineLink(line string) string {
+	lead, link, ok := strings.Cut(line, "↩")
+	if !ok {
+		return line
+	}
+	return lead + "\x1b[4m" + strings.ReplaceAll("↩"+link, liveActivityReset, liveActivityReset+"\x1b[4m") + "\x1b[24m"
 }
 
 // pointSnippet underlines a hovered collapsed snippet. A click expands a
@@ -497,7 +522,7 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 		height = max(3, height)
 	}
 	if width != v.width || height != v.height {
-		v.hovered, v.snippet = "", liveActivitySnippet{}
+		v.hovered, v.snippet, v.questionHover = "", liveActivitySnippet{}, 0
 		v.width, v.height = width, height
 	}
 	v.hits = v.hits[:0]
@@ -1240,6 +1265,9 @@ func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 		if index := v.offset + row; index < len(feed.lines) {
 			lines[row], v.feedSnippets[row] = feed.lines[index], feed.snippets[index]
 			v.feedQuestions[row] = feed.questions[index]
+			if index == v.questionHover-1 && feed.questions[index] != 0 {
+				lines[row] = underlineLink(lines[row])
+			}
 		}
 	}
 	// Pin only when the run keeps a visible line under its heading. Main's

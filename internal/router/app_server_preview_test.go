@@ -56,8 +56,17 @@ func TestNativeUIPreview(t *testing.T) {
 			select {
 			case <-t.Context().Done():
 				return t.Context().Err()
+			case <-p.ui.shell.diff.escapeC:
+				p.ui.shell.diff.escapeC = nil
+				p.ui.shell.diff.escapeKey()
+				if err := paint(); err != nil {
+					return err
+				}
 			case <-tick.C:
 				now := time.Now()
+				if err := p.ui.shell.flushEscape(); err != nil {
+					return err
+				}
 				flashExpired := p.ui.view.expireFlash(now)
 				if now.Sub(lastStep) >= p.pace() && p.advance() {
 					lastStep = now
@@ -586,4 +595,93 @@ func (p *nativePreview) beginMessage(body string) string {
 	}
 	p.input.Reset()
 	return turn
+}
+
+func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
+	p := newNativePreview(t)
+	defer p.close()
+	for p.advance() {
+	}
+	shell, d := p.ui.shell, p.ui.shell.diff
+	keys := func(s string) {
+		t.Helper()
+		for _, key := range []byte(s) {
+			if err := shell.key(key); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	render := func() string {
+		t.Helper()
+		screen := vt.NewEmulator(160, 48)
+		defer screen.Close()
+		shell.paintedRows = nil
+		if err := p.ui.paint(screen, 160, 48); err != nil {
+			t.Fatal(err)
+		}
+		return screen.String()
+	}
+	keys("\x02" + "2\t")
+	frame := render()
+	l := &d.navigation.changes
+	single := slices.IndexFunc(l.rows, func(row liveDiffChangeRow) bool { return row.kind == 'c' && len(l.nodes[row.node].files) == 1 })
+	if single < 0 || strings.Contains(frame, " 1f ") || !strings.Contains(frame, "broker_race_test.go") {
+		t.Fatalf("a single-file change does not name its file:\n%s", frame)
+	}
+	// The pointer underlines the row it rests on.
+	r := shell.layout.diff
+	keys(fmt.Sprintf("\x1b[<35;%d;%dM", r.x+3, r.y+3+single-l.top))
+	if l.hover != single+1 {
+		t.Fatalf("hover = %d, want row %d", l.hover, single)
+	}
+	keys(fmt.Sprintf("\x1b[<35;%d;%dM", 2, 2))
+	if l.hover != 0 {
+		t.Fatal("leaving the diff pane kept its hover")
+	}
+	// Moving the cursor shows its file while the list keeps focus.
+	keys("G")
+	for l.cursor != single {
+		keys("k")
+	}
+	if want := l.nodes[l.rows[single].node].files[0].file; d.view.Selected != want || !d.navigation.focused {
+		t.Fatalf("moving to a change showed file %d, want %d", d.view.Selected, want)
+	}
+	// Enter opens the file; Esc returns to the list.
+	keys("\r")
+	if d.navigation.focused || d.back.kind != 'f' {
+		t.Fatal("Enter on a single-file change did not open its file")
+	}
+	d.escapeKey()
+	if !d.navigation.focused || l.cursor != single {
+		t.Fatal("Esc did not return to the list")
+	}
+	// Enter on a branch filters its caller; Esc restores the previous filter.
+	branch := slices.IndexFunc(l.rows, func(row liveDiffChangeRow) bool { return row.kind == 'b' })
+	if branch < 0 {
+		t.Fatal("no branch row")
+	}
+	for l.cursor < branch {
+		keys("j")
+	}
+	keys("\r")
+	if d.view.Caller == "" {
+		t.Fatal("Enter on a branch did not filter its caller")
+	}
+	d.escapeKey()
+	if d.view.Caller != "" || !d.navigation.focused {
+		t.Fatal("Esc did not restore the caller filter")
+	}
+	// The file tree previews files the same way.
+	keys("\t")
+	n := &d.navigation
+	selected := d.view.Selected
+	for range len(n.entries) {
+		keys("j")
+		if d.view.Selected != selected {
+			break
+		}
+	}
+	if d.view.Selected == selected || n.entries[n.cursor].file != d.view.Selected {
+		t.Fatal("moving through the tree did not show the file under the cursor")
+	}
 }

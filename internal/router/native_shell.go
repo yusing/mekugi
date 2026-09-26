@@ -389,6 +389,9 @@ func (u *terminalUI) nativeStatus() string {
 		return tabs + "  " + liveActivityAmber + "Ctrl-B" + liveActivityReset + " 1-4 focus · 2/3 diff or activity · e next live · ←→ resize · PgUp/PgDn history"
 	case u.focus == 1:
 		hints = "s files · Tab changes · [ ] hunks · a caller · r follow · ? help"
+		if u.diff.back.kind != 0 {
+			hints = "Esc back · " + hints
+		}
 	case u.focus == 2:
 		hints = "j/k scroll · n/p agent · o only · r follow · Enter open"
 	case u.focus == 3:
@@ -417,4 +420,13 @@ func (u *terminalUI) showRosterPick(only bool, selected string) {
 	if u.main != nil && (u.agents.only != only || u.agents.selected != selected) {
 		u.diffOpen = false
 	}
+}
+
+// flushEscape sends a lone Esc once no sequence followed it.
+func (u *terminalUI) flushEscape() error {
+	if u.sequence != "\x1b" || time.Since(u.sequenceAt) < 40*time.Millisecond {
+		return nil
+	}
+	u.sequence = ""
+	return u.send("\x1b")
 }

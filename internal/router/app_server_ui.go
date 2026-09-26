@@ -140,8 +140,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 					u.dirty = true
 				case <-u.shell.diff.escapeC:
 					u.shell.diff.escapeC = nil
-					u.shell.diff.escape = ""
-					u.shell.diff.navigation.filtering, u.shell.diff.navigation.focused, u.shell.diff.help = false, false, false
+					u.shell.diff.escapeKey()
 					u.dirty = true
 				case message, ok := <-c.messages:
 					if !ok {
@@ -172,11 +171,8 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						u.dirty = true
 						agePaint = time.Now()
 					}
-					if u.shell.sequence == "\x1b" && time.Since(u.shell.sequenceAt) >= 40*time.Millisecond {
-						u.shell.sequence = ""
-						if err := u.shell.send("\x1b"); err != nil {
-							return err
-						}
+					if err := u.shell.flushEscape(); err != nil {
+						return err
 					}
 					journalPending := make(map[*nativeJournalSink][]nativeJournalPublication)
 					for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {

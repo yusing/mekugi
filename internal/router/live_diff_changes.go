@@ -24,6 +24,11 @@ type liveDiffChanges struct {
 	expanded  map[string]bool
 	cursor    int
 	top       int
+	// hover is the pointed row plus one; zero points at none.
+	hover int
+	// inline names a single-file change's file on the change row, for a
+	// navigator too narrow to nest it; otherwise the file is always nested.
+	inline bool
 	// target is the change and file that { } last opened.
 	target liveDiffChangeTarget
 }
@@ -140,7 +145,7 @@ func (l *liveDiffChanges) rebuild(view *liveDiffView, workspace string) {
 			l.rows = append(l.rows, liveDiffChangeRow{kind: 'b', node: n, lane: lane, active: len(l.lanes)})
 		}
 		l.rows = append(l.rows, liveDiffChangeRow{kind: 'c', node: n, lane: lane, active: len(l.lanes)})
-		if l.expanded[node.Change] {
+		if len(node.files) > 1 && l.expanded[node.Change] || len(node.files) == 1 && !l.inline {
 			for f := range node.files {
 				l.rows = append(l.rows, liveDiffChangeRow{kind: 'f', node: n, file: f, lane: lane, active: len(l.lanes)})
 			}
@@ -304,14 +309,21 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 			if node.unknown {
 				stats = liveDiffCountStats(livediff.Counts{Added: -1, Removed: -1}, theme)
 			}
-			stats = fmt.Sprintf(" \x1b[2m%df\x1b[22m", len(node.files)) + stats
+			if len(node.files) == 1 && l.inline {
+				file := node.files[0]
+				stats = " " + liveDiffFileLabel(file.status, l.path(file.file), l.workspace, theme) + stats
+			} else {
+				stats = fmt.Sprintf(" \x1b[2m%df\x1b[22m", len(node.files)) + stats
+			}
 		case 'f':
 			file := node.files[entry.file]
 			branch := "├"
 			if entry.file == len(node.files)-1 {
 				branch = "└"
 			}
-			label = "\x1b[2m" + branch + "\x1b[22m " + liveDiffFileLabel(file.status, l.path(file.file), l.workspace, theme)
+			// The tree glyph extends the graph.
+			graph.WriteString("\x1b[2m" + branch + "\x1b[22m ")
+			label = liveDiffFileLabel(file.status, l.path(file.file), l.workspace, theme)
 			stats = liveDiffCountStats(livediff.Counts{Added: file.added, Removed: file.removed}, theme)
 			if file.unknown {
 				stats = liveDiffCountStats(livediff.Counts{Added: -1, Removed: -1}, theme)
@@ -324,9 +336,13 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 			source = ""
 		}
 		label += source + callerTag
-		line := ansi.Truncate(prefix+ansi.Truncate(label, available, "…")+stats, contentWidth, "")
+		body := ansi.Truncate(label, available, "…") + stats
+		line := ansi.Truncate(prefix+body, contentWidth, "")
 		if focused && index == l.cursor {
 			line = liveDiffSelectRow(line, contentWidth, theme)
+		} else if index == l.hover-1 {
+			// An underlined lane would read as a graph edge.
+			line = ansi.Truncate(prefix+liveDiffHoverRow(body), contentWidth, "")
 		}
 		out[row] = line
 	}
