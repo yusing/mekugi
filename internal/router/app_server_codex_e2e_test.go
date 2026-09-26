@@ -80,7 +80,7 @@ func runAppServerPreviewWithProxy(t *testing.T, provider responseProvider, proxy
 	if err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(ctx, cmd, terminal, terminal, proxy)
+	wait, err := startAppServerUI(ctx, cmd, terminal, terminal, proxy, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func runAppServerPreviewWithProxy(t *testing.T, provider responseProvider, proxy
 		visible := func() bool {
 			content := screen.String()
 			if needle == "completed" {
-				content = strings.SplitN(content, "\n", 2)[0]
+				return strings.Contains(content, "╭─ Completed")
 			}
 			return strings.Contains(content, needle)
 		}
@@ -130,7 +130,7 @@ func runAppServerPreviewWithProxy(t *testing.T, provider responseProvider, proxy
 		}
 	}
 	await("Ready")
-	await("AGENTS")
+	await("4 Agents")
 	var native *nativeJournalSink
 	if proxy != nil {
 		proxy.journals.nativeMu.Lock()

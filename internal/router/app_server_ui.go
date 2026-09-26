@@ -63,22 +63,26 @@ type appServerUI struct {
 	escape                 string
 	paste                  bool
 	dirty                  bool
+	resumeThread           string
+	resumeConfig           map[string]any
+	resumePending          []appServerMessage
 	starting               bool
 }
 
 // StartAppServerUI is an opt-in feasibility frontend. It shares the activity
 // view and state, not a second transcript or the PTY/VT main screen. The launcher
 // still owns routing, environment, invocation-local configuration and cancellation.
-func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File) (func() error, error) {
-	return startAppServerUI(ctx, cmd, stdin, stdout, nil)
+func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string) (func() error, error) {
+	return startAppServerUI(ctx, cmd, stdin, stdout, nil, resumeThread)
 }
 
-func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy) (func() error, error) {
+func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, resumeThread string) (func() error, error) {
 	c, err := startAppServer(cmd)
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx}
+	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread}
+	u.resumeConfig = appServerResumeConfig(cmd.Args)
 	if err := u.request("initialize", nil); err != nil {
 		c.close()
 		<-c.done
@@ -251,12 +255,19 @@ func (u *appServerUI) request(method string, params any) error {
 }
 
 func (u *appServerUI) message(m appServerMessage) error {
+	if u.resumeThread != "" && u.thread == "" && m.Method != "" {
+		if len(u.resumePending) == 256 {
+			return errors.New("resume event capacity exceeded; session state is incomplete")
+		}
+		u.resumePending = append(u.resumePending, m)
+		return nil
+	}
 	if m.Method == "" {
 		method := u.requests[string(m.ID)]
 		delete(u.requests, string(m.ID))
 		if m.Error != nil {
 			u.status, u.alert = method+": "+m.Error.Message, true
-			if method == "initialize" || method == "thread/start" {
+			if method == "initialize" || method == "thread/start" || method == "thread/resume" {
 				return errors.New(u.status)
 			}
 			if method == "turn/start" || method == "turn/steer" {
@@ -273,22 +284,30 @@ func (u *appServerUI) message(m appServerMessage) error {
 			if _, err := u.client.send("initialized", map[string]any{}, false); err != nil {
 				return err
 			}
+			if u.resumeThread != "" {
+				u.status = "Resuming thread…"
+				return u.request("thread/resume", map[string]any{"threadId": u.resumeThread, "approvalPolicy": "never", "sandbox": "danger-full-access", "config": u.resumeConfig, "modelProvider": u.resumeConfig["model_provider"]})
+			}
 			u.status = "Starting thread…"
 			return u.request("thread/start", map[string]any{"approvalPolicy": "never", "sandbox": "danger-full-access"})
-		case "thread/start":
+		case "thread/start", "thread/resume":
 			var result struct {
 				Model           string `json:"model"`
 				ReasoningEffort string `json:"reasoningEffort"`
 				Thread          struct {
-					ID  string `json:"id"`
-					Cwd string `json:"cwd"`
+					ID    string                 `json:"id"`
+					Cwd   string                 `json:"cwd"`
+					Turns []appServerHistoryTurn `json:"turns"`
 				} `json:"thread"`
 			}
 			if err := json.Unmarshal(m.Result, &result); err != nil {
 				return err
 			}
 			if result.Thread.ID == "" {
-				return errors.New("thread/start returned no thread identity")
+				return fmt.Errorf("%s returned no thread identity", method)
+			}
+			if method == "thread/resume" && result.Thread.ID != u.resumeThread {
+				return errors.New("thread/resume returned a different thread identity")
 			}
 			u.thread, u.status = result.Thread.ID, "Ready"
 			u.model, u.reasoningEffort = result.Model, result.ReasoningEffort
@@ -298,13 +317,23 @@ func (u *appServerUI) message(m appServerMessage) error {
 			}
 			if u.proxy != nil {
 				if result.Thread.Cwd == "" {
-					return errors.New("thread/start returned no workspace for native journal delivery")
+					return fmt.Errorf("%s returned no workspace for native journal delivery", method)
 				}
 				u.journal = u.proxy.journals.attachNative(result.Thread.Cwd, u.thread)
 				// Real app-server requests can omit workspace metadata. Keep that
 				// journal namespace distinct; never infer filesystem authority from cwd.
 				u.unscopedJournal = u.proxy.journals.attachNative("", u.thread)
 				u.proxy.activity.attachNativePane(u.thread)
+			}
+			if method == "thread/resume" {
+				u.restoreHistory(result.Thread.Turns)
+				pending := u.resumePending
+				u.resumePending = nil
+				for _, event := range pending {
+					if err := u.message(event); err != nil {
+						return err
+					}
+				}
 			}
 		case "turn/start", "turn/steer":
 			u.submitted = ""

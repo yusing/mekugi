@@ -241,7 +241,8 @@ not change translation, execution, cancellation, or retry behavior.
 
 `MEKUGI_APP_SERVER_UI=1` selects an opt-in client of `codex app-server` for
 interactive terminal launches only. It maps explicit `--yolo`, model and config
-arguments and rejects other interactive arguments rather than ignoring them.
+arguments plus `resume THREAD_ID`, and rejects other interactive arguments rather
+than ignoring them.
 Router readiness, provider catalogs, invocation overrides, native recovery hooks
 and frontend environment keep their owners; redirected and noninteractive
 commands keep their original path. The client speaks newline-delimited stdio RPC.
@@ -261,6 +262,22 @@ to the Code Mode host, and submits intent rather than executing tools.
 | Tokens, prices, missing usage | Router accounting; app-server usage is never added to cost totals. |
 | Tool classification | App-server's typed command actions and Mekugi classifiers; renderers never parse shell text. |
 | Skills and guidance | The [guidance contract](guide.md) and router projection. |
+
+Startup `resume THREAD_ID` uses `thread/resume`, not a new thread or a replayed
+prompt. The returned thread identity must match the requested ID; failure exits
+without falling back to a new conversation. Main hydrates text messages and
+command/edit items from the returned turns before accepting input, using the
+existing retained transcript window. Buffered notifications then reconcile by
+item identity. Historical tools are display-only: they do not recreate live
+edit previews, processes, child rosters or delivery receipts. Subsequent input
+starts a turn on the same thread; an active snapshot retains its steer/interrupt
+target. Resume keeps the returned workspace and effective model metadata, with
+journal sinks scoped to that thread. Explicit invocation model/effort settings
+and the routed provider are forwarded as resume overrides; Codex owns their
+precedence and reports the effective configuration. Picker, `--last`, in-session switching and
+restoring historical child activity remain outside this increment. Full-history
+resume is limited by the 16 MiB RPC frame cap; oversized histories fail rather
+than bypassing the transport bound. Paginated hydration remains unfinished.
 
 Approval controls and `/side` are deferred; pending server requests stay
 visible and are never auto-approved. Not in scope: Codex's TUI, PTY emulation

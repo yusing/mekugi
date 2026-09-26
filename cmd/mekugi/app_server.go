@@ -8,16 +8,23 @@ import (
 
 // The feasibility client deliberately rejects unmapped TUI flags. Passing them
 // through to a different subcommand would silently change their meaning.
-func appServerArgs(args []string) ([]string, error) {
+func appServerArgs(args []string) ([]string, string, error) {
 	out := []string{"app-server"}
 	yolo := false
+	resume := ""
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; arg {
+		case "resume":
+			if resume != "" || i+1 == len(args) || strings.HasPrefix(args[i+1], "-") || strings.TrimSpace(args[i+1]) == "" {
+				return nil, "", fmt.Errorf("app-server preview resume requires one explicit thread ID; picker and --last are not supported yet")
+			}
+			i++
+			resume = args[i]
 		case "--yolo", "--dangerously-bypass-approvals-and-sandbox":
 			yolo = true
 		case "-c", "--config", "-m", "--model":
 			if i+1 == len(args) {
-				return nil, fmt.Errorf("%s requires a value", arg)
+				return nil, "", fmt.Errorf("%s requires a value", arg)
 			}
 			i++
 			value := args[i]
@@ -30,16 +37,16 @@ func appServerArgs(args []string) ([]string, error) {
 				out = append(out, "-c", after)
 			} else if flag, model, ok := strings.Cut(arg, "="); ok && (flag == "-m" || flag == "--model") {
 				if model == "" {
-					return nil, fmt.Errorf("%s requires a value", flag)
+					return nil, "", fmt.Errorf("%s requires a value", flag)
 				}
 				out = append(out, "-c", "model="+strconv.Quote(model))
 			} else {
-				return nil, fmt.Errorf("app-server preview does not yet support %q; use --yolo, -m, and -c only, and enter prompts in Main", arg)
+				return nil, "", fmt.Errorf("app-server preview does not yet support %q; use --yolo, -m, -c, and resume THREAD_ID, and enter prompts in Main", arg)
 			}
 		}
 	}
 	if !yolo {
-		return nil, fmt.Errorf("app-server preview currently requires explicit --yolo")
+		return nil, "", fmt.Errorf("app-server preview currently requires explicit --yolo")
 	}
-	return append(out, "-c", `approval_policy="never"`, "-c", `sandbox_mode="danger-full-access"`), nil
+	return append(out, "-c", `approval_policy="never"`, "-c", `sandbox_mode="danger-full-access"`), resume, nil
 }

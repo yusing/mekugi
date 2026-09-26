@@ -421,6 +421,18 @@ change evidence.
 
 ## Development
 
+The opt-in native UI can resume a known Codex thread:
+
+```sh
+MEKUGI_APP_SERVER_UI=1 mekugi codex --yolo resume THREAD_ID
+```
+
+This preview requires explicit `--yolo` (no approvals or sandbox), restores Main's
+message and tool history, and continues the same thread. The resume picker,
+`--last`, switching threads inside the UI, and historical child activity are not
+yet supported. Resume currently loads history in one response, so threads whose
+history exceeds the 16 MiB transport limit cannot resume in this preview.
+
 To review the native app-server UI without Codex or model requests, run
 `make preview-native-ui` in a terminal. It plays a synthetic session through the
 real panes and renderer: streaming and long messages, journal edits, retraction

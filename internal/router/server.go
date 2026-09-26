@@ -45,7 +45,7 @@ type Session struct {
 	SkillsManagerAvailable bool
 	// StartUI starts Codex in the integrated terminal and returns its joined lifetime.
 	StartUI              func(context.Context, *exec.Cmd, *os.File, *os.File) (func() error, error)
-	StartAppUI           func(context.Context, *exec.Cmd, *os.File, *os.File) (func() error, error)
+	StartAppUI           func(context.Context, *exec.Cmd, *os.File, *os.File, string) (func() error, error)
 	FrontendDirectory    string
 	NativeTraceDirectory string
 }
@@ -335,8 +335,8 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if ready != nil && ctx.Err() == nil {
 		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: *flags.grokEnabled, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", PostCompactRecovery: *flags.postCompactRecovery, SkillsManagerAvailable: skillsManagerAvailable}
 		if mekugiCalls != nil {
-			session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File) (func() error, error) {
-				return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls)
+			session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string) (func() error, error) {
+				return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, resumeThread)
 			}
 			session.StartUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File) (func() error, error) {
 				return startTerminalUI(ctx, cmd, stdin, stdout, mekugiCalls.autoLiveDiff, mekugiCalls.replayStore, mekugiCalls.activity)

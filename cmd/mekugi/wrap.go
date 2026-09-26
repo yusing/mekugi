@@ -43,9 +43,10 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		return 2, err
 	}
 	appUI := os.Getenv("MEKUGI_APP_SERVER_UI") == "1" && interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+	var resumeThread string
 	if appUI {
 		var err error
-		args, err = appServerArgs(args)
+		args, resumeThread, err = appServerArgs(args)
 		if err != nil {
 			return 2, err
 		}
@@ -154,9 +155,9 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	if err == nil {
 		if appUI {
 			if session.StartAppUI != nil {
-				waitCodex, err = session.StartAppUI(ctx, cmd, os.Stdin, os.Stdout)
+				waitCodex, err = session.StartAppUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread)
 			} else {
-				waitCodex, err = router.StartAppServerUI(ctx, cmd, os.Stdin, os.Stdout)
+				waitCodex, err = router.StartAppServerUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread)
 			}
 		} else if session.StartUI != nil && interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
 			waitCodex, err = session.StartUI(ctx, cmd, os.Stdin, os.Stdout)
