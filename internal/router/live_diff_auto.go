@@ -101,6 +101,15 @@ func (a *autoLiveDiff) observe(workspace, thread string, metadata codexTurnMetad
 		metadata.activityIdentityInvalid || metadata.RequestKind != "turn" {
 		return
 	}
+	a.includeThread(workspace, thread, metadata.SubagentKind == "")
+}
+
+// includeThread also accepts identities established by observational resume
+// history. It changes presentation scope, not turn or execution state.
+func (a *autoLiveDiff) includeThread(workspace, thread string, root bool) {
+	if a == nil || !a.enabled.Load() || workspace == "" || thread == "" {
+		return
+	}
 	workspaceJSON, _ := json.Marshal(workspace)
 	threadJSON, _ := json.Marshal(thread)
 	a.mu.Lock()
@@ -108,7 +117,7 @@ func (a *autoLiveDiff) observe(workspace, thread string, metadata codexTurnMetad
 		a.mu.Unlock()
 		return
 	}
-	rootSelected := a.workspace == "" && metadata.SubagentKind == ""
+	rootSelected := a.workspace == "" && root
 	threads := a.scope.Workspaces[workspace]
 	if !threads[thread] {
 		added := len(threadJSON) + len(":true")

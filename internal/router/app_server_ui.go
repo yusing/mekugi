@@ -66,6 +66,8 @@ type appServerUI struct {
 	resumeThread           string
 	resumeConfig           map[string]any
 	resumePending          []appServerMessage
+	panes                  *nativePanePersistence
+	restoring              *appServerActivityRestore
 	starting               bool
 }
 
@@ -83,6 +85,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	}
 	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread}
 	u.resumeConfig = appServerResumeConfig(cmd.Args)
+	u.panes = new(nativePanePersistence)
 	if err := u.request("initialize", nil); err != nil {
 		c.close()
 		<-c.done
@@ -133,9 +136,15 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 					for _, event := range u.shell.auto.events.takePreviews(sub) {
 						u.shell.applyDiff(ctx, event)
 					}
+					if err := u.finishRestoredContent(); err != nil {
+						return err
+					}
 					u.dirty = true
 				case event := <-diffEvents:
 					u.shell.applyDiff(ctx, event)
+					if err := u.finishRestoredContent(); err != nil {
+						return err
+					}
 					u.dirty = true
 				case <-u.shell.diff.previewFrameC:
 					u.shell.diff.previewFrameC = nil
@@ -165,6 +174,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 					}
 					u.dirty = true
 				case <-tick.C:
+					u.paneError(u.panes.save(u.shell, time.Now(), false))
 					if u.view.expireFlash(time.Now()) {
 						u.dirty = true
 					}
@@ -215,6 +225,9 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 				}
 			}
 		})
+		if saveErr := u.panes.save(u.shell, time.Now(), true); saveErr != nil {
+			fmt.Fprintln(stdout, "Pane layout could not be saved:", livediff.Safe(saveErr.Error(), false))
+		}
 		if !exited {
 			if err == nil {
 				err = c.shutdown()
@@ -255,7 +268,7 @@ func (u *appServerUI) request(method string, params any) error {
 }
 
 func (u *appServerUI) message(m appServerMessage) error {
-	if u.resumeThread != "" && u.thread == "" && m.Method != "" {
+	if u.resumeThread != "" && (u.thread == "" || u.restoring != nil) && m.Method != "" {
 		if len(u.resumePending) == 256 {
 			return errors.New("resume event capacity exceeded; session state is incomplete")
 		}
@@ -265,6 +278,9 @@ func (u *appServerUI) message(m appServerMessage) error {
 	if m.Method == "" {
 		method := u.requests[string(m.ID)]
 		delete(u.requests, string(m.ID))
+		if method == "thread/list" || method == "thread/read" {
+			return u.restoreActivityResponse(method, m)
+		}
 		if m.Error != nil {
 			u.status, u.alert = method+": "+m.Error.Message, true
 			if method == "initialize" || method == "thread/start" || method == "thread/resume" {
@@ -292,13 +308,9 @@ func (u *appServerUI) message(m appServerMessage) error {
 			return u.request("thread/start", map[string]any{"approvalPolicy": "never", "sandbox": "danger-full-access"})
 		case "thread/start", "thread/resume":
 			var result struct {
-				Model           string `json:"model"`
-				ReasoningEffort string `json:"reasoningEffort"`
-				Thread          struct {
-					ID    string                 `json:"id"`
-					Cwd   string                 `json:"cwd"`
-					Turns []appServerHistoryTurn `json:"turns"`
-				} `json:"thread"`
+				Model           string              `json:"model"`
+				ReasoningEffort string              `json:"reasoningEffort"`
+				Thread          appServerThreadInfo `json:"thread"`
 			}
 			if err := json.Unmarshal(m.Result, &result); err != nil {
 				return err
@@ -327,13 +339,13 @@ func (u *appServerUI) message(m appServerMessage) error {
 			}
 			if method == "thread/resume" {
 				u.restoreHistory(result.Thread.Turns)
-				pending := u.resumePending
-				u.resumePending = nil
-				for _, event := range pending {
-					if err := u.message(event); err != nil {
-						return err
-					}
-				}
+			}
+			if u.panes != nil {
+				u.ensureShell()
+				u.paneError(u.panes.open(u.shell, result.Thread.Cwd, u.thread, method == "thread/resume"))
+			}
+			if method == "thread/resume" {
+				return u.restorePaneContent(result.Thread)
 			}
 		case "turn/start", "turn/steer":
 			u.submitted = ""
@@ -465,7 +477,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			u.status, u.alert = "Unknown command "+strings.Fields(text)[0]+" · only /quit is available", true
 			return false, nil
 		}
-		if text == "" || u.thread == "" || u.starting || u.submitted != "" {
+		if text == "" || u.thread == "" || u.restoring != nil || u.starting || u.submitted != "" {
 			return false, nil
 		}
 		method := "turn/start"

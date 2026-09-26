@@ -35,9 +35,14 @@ func appServerResumeConfig(args []string) map[string]any {
 }
 
 type appServerHistoryTurn struct {
-	ID     string          `json:"id"`
-	Status string          `json:"status"`
-	Items  []appServerItem `json:"items"`
+	ID          string          `json:"id"`
+	Status      string          `json:"status"`
+	Items       []appServerItem `json:"items"`
+	StartedAt   int64           `json:"startedAt"`
+	CompletedAt int64           `json:"completedAt"`
+	Error       *struct {
+		Message string `json:"message"`
+	} `json:"error"`
 }
 
 // History is presentation evidence, not a stream of live lifecycle events.

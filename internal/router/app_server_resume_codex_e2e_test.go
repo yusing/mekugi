@@ -5,6 +5,7 @@ package router
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -45,7 +46,7 @@ func (p *appResumeProvider) snapshot() []string {
 	return append([]string(nil), p.threads...)
 }
 
-// Runs two distinct installed Codex processes against one isolated Codex home.
+// Runs fresh installed Codex processes against one isolated Codex home.
 // The provider is local and deterministic; no account or live model is used.
 func TestAppServerResumeNativeCodex(t *testing.T) {
 	codex, err := exec.LookPath("codex")
@@ -55,6 +56,7 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 	provider := &appResumeProvider{}
 	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil))
 	defer server.Close()
+	t.Setenv("XDG_STATE_HOME", t.TempDir()) // State belongs to the parent UI, not just its Codex child.
 	environment := routerFaultCodexEnvironment(t)
 	workspace := t.TempDir()
 	model := "gpt-6-astra"
@@ -77,7 +79,14 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 	first.send("First resume question\r")
 	first.await("Recovered after a retry.")
 	first.await("completed")
-	first.quit()
+	first.send("\x022") // Focus Diff, then widen Main before persisting this UI state.
+	first.await("s files")
+	first.send("\x02l")
+	first.awaitMatch("resized split", func(screen string) bool {
+		return appResumeSplit(screen) > 50 && strings.Contains(screen, "s files")
+	})
+	savedSplit := appResumeSplit(first.screen.String())
+	first.stopCanceled()
 	threads := provider.snapshot()
 	if len(threads) != 1 || threads[0] == "" {
 		t.Fatalf("first turn identities: %q", threads)
@@ -89,9 +98,14 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 	second.await("Ready")
 	second.await("First resume question")
 	second.await("Recovered after a retry.")
+	second.awaitMatch("restored Diff focus and split", func(screen string) bool {
+		return strings.Contains(screen, "2 Diff") && strings.Contains(screen, "s files") && appResumeSplit(screen) == savedSplit
+	})
 	if got := provider.snapshot(); len(got) != 1 {
 		t.Fatalf("resume resent a turn before new input: %q", got)
 	}
+	second.send("\x021")
+	second.await("⏎ send")
 	second.send("Second resume question\r")
 	second.await("Second resume question")
 	second.await("completed")
@@ -110,6 +124,17 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 	}
 }
 
+// The second top-border corner is the right pane's origin in a 100-column PTY.
+func appResumeSplit(screen string) int {
+	row, _, _ := strings.Cut(screen, "\n")
+	for i, r := range []rune(row) {
+		if r == '┌' && i > 0 {
+			return i
+		}
+	}
+	return -1
+}
+
 type appResumeTerminal struct {
 	t      *testing.T
 	ctx    context.Context
@@ -123,6 +148,10 @@ type appResumeTerminal struct {
 }
 
 func startAppResumeTerminal(t *testing.T, newCommand func(context.Context) *exec.Cmd, resumeThread string) *appResumeTerminal {
+	return startAppResumeTerminalWithProxy(t, newCommand, resumeThread, nil)
+}
+
+func startAppResumeTerminalWithProxy(t *testing.T, newCommand func(context.Context) *exec.Cmd, resumeThread string, proxy *mekugiProxy) *appResumeTerminal {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	outer, inner, err := pty.Open()
@@ -138,7 +167,7 @@ func startAppResumeTerminal(t *testing.T, newCommand func(context.Context) *exec
 	if err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(ctx, newCommand(ctx), inner, inner, nil, resumeThread)
+	wait, err := startAppServerUI(ctx, newCommand(ctx), inner, inner, proxy, resumeThread)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,26 +197,43 @@ func startAppResumeTerminal(t *testing.T, newCommand func(context.Context) *exec
 
 func (s *appResumeTerminal) await(needle string) {
 	s.t.Helper()
-	visible := func() bool {
-		content := s.screen.String()
+	s.awaitMatch(needle, func(content string) bool {
 		if needle == "completed" {
 			return strings.Contains(content, "╭─ Completed")
 		}
 		return strings.Contains(content, needle)
-	}
-	for !visible() {
+	})
+}
+
+func (s *appResumeTerminal) awaitMatch(label string, visible func(string) bool) {
+	s.t.Helper()
+	for !visible(s.screen.String()) {
 		select {
 		case frame, ok := <-s.frames:
 			if !ok {
-				s.t.Fatalf("terminal closed before %q\n%s", needle, s.screen.String())
+				s.t.Fatalf("terminal closed before %q\n%s", label, s.screen.String())
 			}
 			s.screen.Write(frame)
 		case err := <-s.done:
-			s.t.Fatalf("UI exited before %q: %v\n%s", needle, err, s.screen.String())
+			s.t.Fatalf("UI exited before %q: %v\n%s", label, err, s.screen.String())
 		case <-s.ctx.Done():
-			s.t.Fatalf("missing %q: %v\n%s", needle, s.ctx.Err(), s.screen.String())
+			s.t.Fatalf("missing %q: %v\n%s", label, s.ctx.Err(), s.screen.String())
 		}
 	}
+}
+
+func (s *appResumeTerminal) stopCanceled() {
+	s.t.Helper()
+	s.cancel()
+	select {
+	case err := <-s.done:
+		if !errors.Is(err, context.Canceled) {
+			s.t.Fatalf("canceled UI returned %v, want context.Canceled", err)
+		}
+	case <-time.After(10 * time.Second):
+		s.t.Fatal("canceled UI did not shut down")
+	}
+	s.checkRestored()
 }
 
 func (s *appResumeTerminal) send(input string) {
@@ -208,6 +254,11 @@ func (s *appResumeTerminal) quit() {
 	case <-s.ctx.Done():
 		s.t.Fatal(s.ctx.Err())
 	}
+	s.checkRestored()
+}
+
+func (s *appResumeTerminal) checkRestored() {
+	s.t.Helper()
 	after, err := term.GetState(int(s.inner.Fd()))
 	if err != nil {
 		s.t.Fatal(err)

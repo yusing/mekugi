@@ -48,12 +48,15 @@ type appServerCommandAction struct {
 }
 
 type appServerThreadInfo struct {
-	ID             string         `json:"id"`
-	ParentThreadID string         `json:"parentThreadId"`
-	AgentNickname  string         `json:"agentNickname"`
-	AgentRole      string         `json:"agentRole"`
-	Cwd            string         `json:"cwd"`
-	Source         jsontext.Value `json:"source"`
+	ID             string                 `json:"id"`
+	ParentThreadID string                 `json:"parentThreadId"`
+	AgentNickname  string                 `json:"agentNickname"`
+	AgentRole      string                 `json:"agentRole"`
+	Cwd            string                 `json:"cwd"`
+	Source         jsontext.Value         `json:"source"`
+	CreatedAt      int64                  `json:"createdAt"`
+	UpdatedAt      int64                  `json:"updatedAt"`
+	Turns          []appServerHistoryTurn `json:"turns"`
 }
 
 type appServerTokenUsage struct {
@@ -86,6 +89,31 @@ func (s *appServerSession) start(thread, cwd string) {
 	s.messages = make(map[string]activityPaneEntry)
 	s.finals = make(map[string]bool)
 	s.cwd = cwd
+}
+
+func (s *appServerSession) registerThread(info appServerThreadInfo) {
+	var source struct {
+		SubAgent struct {
+			ThreadSpawn struct {
+				AgentPath string `json:"agent_path"`
+				AgentRole string `json:"agent_role"`
+			} `json:"thread_spawn"`
+		} `json:"subAgent"`
+	}
+	_ = json.Unmarshal(info.Source, &source)
+	spawn := source.SubAgent.ThreadSpawn
+	path := spawn.AgentPath
+	if path == "" && info.AgentNickname != "" {
+		path = "/root/" + info.AgentNickname
+	}
+	path = cmp.Or(path, appServerPlaceholder(info.ID))
+	if old := s.paths[info.ID]; old != "" {
+		s.agent(old).Name = path
+	} else {
+		s.agents = append(s.agents, activityPaneAgent{Name: path, Started: time.Now()})
+	}
+	s.paths[info.ID] = path
+	s.agent(path).Role = cmp.Or(info.AgentRole, spawn.AgentRole)
 }
 
 func (s *appServerSession) agent(path string) *activityPaneAgent {
@@ -143,28 +171,8 @@ func (u *appServerUI) sessionEvent(m appServerMessage) (bool, error) {
 		if old := s.paths[info.ID]; info.ID == "" || old != "" && old != appServerPlaceholder(info.ID) {
 			return true, nil
 		}
-		var source struct {
-			SubAgent struct {
-				ThreadSpawn struct {
-					AgentPath string `json:"agent_path"`
-					AgentRole string `json:"agent_role"`
-				} `json:"thread_spawn"`
-			} `json:"subAgent"`
-		}
-		_ = json.Unmarshal(info.Source, &source) // Other sources are plain strings.
-		spawn := source.SubAgent.ThreadSpawn
-		path := spawn.AgentPath
-		if path == "" && info.AgentNickname != "" {
-			path = "/root/" + info.AgentNickname
-		}
-		path = cmp.Or(path, appServerPlaceholder(info.ID))
-		if old := s.paths[info.ID]; old != "" {
-			s.agent(old).Name = path // Rename a placeholder in place.
-		} else {
-			s.agents = append(s.agents, activityPaneAgent{Name: path, Started: now})
-		}
-		s.paths[info.ID] = path
-		s.agent(path).Role = cmp.Or(info.AgentRole, spawn.AgentRole)
+		s.registerThread(info)
+
 	case "thread/tokenUsage/updated":
 		agent := s.agent(s.path(p.ThreadID))
 		agent.InputTokens, agent.OutputTokens = p.TokenUsage.Total.InputTokens, p.TokenUsage.Total.OutputTokens
@@ -261,6 +269,7 @@ func (s *appServerSession) collab(item appServerItem, id string, now time.Time) 
 	from := s.path(item.SenderThreadID)
 	var entries []activityPaneEntry
 	for _, receiver := range item.ReceiverThreadIDs {
+		first := len(entries)
 		to := s.path(receiver)
 		switch item.Tool {
 		case "spawnAgent":
@@ -286,6 +295,9 @@ func (s *appServerSession) collab(item appServerItem, id string, now time.Time) 
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: from, Kind: "reply", Observed: now,
 					Text: "[" + commentaryCode(from) + " -> " + commentaryCode(to) + "] Message sent:\n" + item.Prompt})
 			}
+		}
+		for i := first; i < len(entries); i++ {
+			entries[i].native = &liveActivityNativeItem{thread: item.SenderThreadID, turn: "collaboration", item: id + "\x00" + receiver, phase: "item/completed"}
 		}
 	}
 	return entries

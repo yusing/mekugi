@@ -428,9 +428,12 @@ MEKUGI_APP_SERVER_UI=1 mekugi codex --yolo resume THREAD_ID
 ```
 
 This preview requires explicit `--yolo` (no approvals or sandbox), restores Main's
-message and tool history, and continues the same thread. The resume picker,
-`--last`, switching threads inside the UI, and historical child activity are not
-yet supported. Resume currently loads history in one response, so threads whose
+message and tool history, and continues the same thread. It also restores pane
+layout and keyboard focus, adapting the saved sizes to the current terminal.
+The child roster and Activity history return too, and Diff reloads retained
+changes for the resumed session without restarting child work. Scroll positions,
+filters, selections and drafts are not restored. The resume picker,
+`--last` and switching threads inside the UI are not yet supported. Resume currently loads history in one response, so threads whose
 history exceeds the 16 MiB transport limit cannot resume in this preview.
 
 To review the native app-server UI without Codex or model requests, run

@@ -22,11 +22,11 @@ func TestAppServerResumeStartup(t *testing.T) {
 	var request struct {
 		Method string `json:"method"`
 		Params struct {
-			ThreadID string         `json:"threadId"`
-			Approval string         `json:"approvalPolicy"`
-			Sandbox  string         `json:"sandbox"`
-			Config   map[string]any `json:"config"`
-			ModelProvider string `json:"modelProvider"`
+			ThreadID      string         `json:"threadId"`
+			Approval      string         `json:"approvalPolicy"`
+			Sandbox       string         `json:"sandbox"`
+			Config        map[string]any `json:"config"`
+			ModelProvider string         `json:"modelProvider"`
 		} `json:"params"`
 	}
 	if err := json.Unmarshal(lines[1], &request); err != nil {
@@ -42,12 +42,15 @@ func TestAppServerResumeStartup(t *testing.T) {
 	}
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"saved","turnId":"old","item":{"type":"agentMessage","id":"answer","text":"Saved answer"}}}`)
 	appServerTestMessage(t, u, `{"id":1,"result":{"model":"model","reasoningEffort":"high","thread":{"id":"saved","cwd":"/workspace","turns":[{"id":"old","status":"completed","items":[{"type":"userMessage","id":"question","content":[{"type":"text","text":"Saved question"}]},{"type":"agentMessage","id":"answer","text":"Saved answer"}]}]}}}`)
+	appServerTestMessage(t, u, `{"id":2,"result":{"data":[],"nextCursor":null}}`)
+	appServerTestMessage(t, u, `{"id":3,"result":{"data":[],"nextCursor":null}}`)
 	if u.thread != "saved" || u.status != "Ready" || u.model != "model" || u.reasoningEffort != "high" || len(u.view.entries) != 2 || u.view.entries[0].Text != "Saved question" || u.view.entries[1].Text != "Saved answer" {
 		t.Fatalf("resume state: %+v, entries=%+v", u, u.view.entries)
 	}
-	if w.Len() != 0 {
-		t.Fatal("history replay issued requests")
+	if bytes.Contains(w.Bytes(), []byte("turn/start")) || bytes.Contains(w.Bytes(), []byte("thread/resume")) {
+		t.Fatal("history replay issued execution requests")
 	}
+	w.Reset()
 	appServerTestKeys(t, u, "\r")
 	if err := json.Unmarshal(bytes.TrimSpace(w.Bytes()), &request); err != nil {
 		t.Fatal(err)

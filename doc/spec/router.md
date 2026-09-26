@@ -269,15 +269,53 @@ without falling back to a new conversation. Main hydrates text messages and
 command/edit items from the returned turns before accepting input, using the
 existing retained transcript window. Buffered notifications then reconcile by
 item identity. Historical tools are display-only: they do not recreate live
-edit previews, processes, child rosters or delivery receipts. Subsequent input
+edit previews, processes or delivery receipts. Subsequent input
 starts a turn on the same thread; an active snapshot retains its steer/interrupt
 target. Resume keeps the returned workspace and effective model metadata, with
 journal sinks scoped to that thread. Explicit invocation model/effort settings
 and the routed provider are forwarded as resume overrides; Codex owns their
-precedence and reports the effective configuration. Picker, `--last`, in-session switching and
-restoring historical child activity remain outside this increment. Full-history
+precedence and reports the effective configuration. Picker, `--last` and in-session switching remain outside this increment. Full-history
 resume is limited by the 16 MiB RPC frame cap; oversized histories fail rather
 than bypassing the transport bound. Paginated hydration remains unfinished.
+
+Resume also restores the Agents roster and Activity from Codex's observational
+history APIs, including archived descendants. Names/roles, retained assignments,
+messages, commands, edit descriptions and answers are presentation history;
+children are not resumed and historical unfinished turns never imply live work.
+Only completed collaboration items imply delivered assignments or messages;
+other attempts retain their recorded status without claiming delivery.
+Usage is shown only when available from its existing owner, never reconstructed
+from transcript text. Missing child history is marked incomplete without
+preventing the parent conversation from continuing.
+
+The saved Diff pane reloads the existing durable change projections for the root
+and discovered child workspace/thread identities before any new model turn.
+It does not derive edit evidence from app-server history or include unrelated
+workspace threads. Subsequent requests retain that scope through the existing
+automatic-diff owner. Retention gaps remain gaps, not successful recapture.
+
+Activity hydration reports progress, buffers live notifications, and keeps typed
+input as an unsent draft until reconciliation; `/quit` can exit while loading.
+Discovery is bounded to 128 descendants and eight list pages, with an explicit
+partial-history notice at the limit. Child histories share the current 16 MiB
+RPC frame limit; paginated turn/item hydration remains unfinished. No additional
+model requests or execution occur merely to restore pane content.
+
+Native pane preferences persist separately from replay/correctness records under
+`$XDG_STATE_HOME/mekugi/ui` (or `~/.local/state/mekugi/ui`), keyed by workspace
+and Codex thread identity. Successful resume restores the Main/right-column
+split, active Diff/Activity pane, keyboard focus, and diff navigator width.
+Geometry is clamped by the current terminal layout; new threads and other
+workspaces never borrow these preferences. Roster height remains automatically
+fitted. Scroll positions, filters, selections, drafts and transient live docks
+are not persisted in this increment.
+
+Preference writes coalesce interaction bursts and flush pending changes on
+orderly exit or cancellation. Files are private, atomically replaced, versioned
+and bounded to 4 KiB on read. Missing state uses defaults. Invalid/unavailable
+state reports a presentation notice but cannot fail resume, submit a prompt or
+change execution. Simultaneous clients for the same workspace/thread use the
+last completed preference write; no process resources are restored.
 
 Approval controls and `/side` are deferred; pending server requests stay
 visible and are never auto-approved. Not in scope: Codex's TUI, PTY emulation
