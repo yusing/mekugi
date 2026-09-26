@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 // The native shell owns terminal presentation; Codex app-server owns execution.
@@ -71,7 +72,7 @@ func (u *terminalUI) key(key byte) error {
 		return nil
 	}
 
-	// Ignore terminal OSC replies; their payload is never pane input.
+	// Terminal OSC replies are never pane input; color reports style the panes.
 	if u.hostReply != nil {
 		done := key == 7 || u.hostReplyEscape && key == '\\'
 		u.hostReplyEscape = key == 27
@@ -82,6 +83,9 @@ func (u *terminalUI) key(key byte) error {
 		}
 		if !done {
 			return nil
+		}
+		if !u.hostReplyDiscard {
+			u.terminalColor(string(u.hostReply))
 		}
 		u.hostReply = nil
 		u.hostReplyDiscard = false
@@ -229,6 +233,37 @@ func (u *terminalUI) resize(key string) {
 	}
 	u.split = min(max(30, u.split), max(30, u.width-41))
 	u.horizontal = min(max(4, u.horizontal), max(4, columns-5))
+}
+
+// terminalColor applies OSC 10/11 default-color reports to every pane, as the
+// standalone Activity and diff views did for their own queries.
+func (u *terminalUI) terminalColor(reply string) {
+	views := []*liveActivityView{u.agents}
+	if u.main != nil {
+		views = append(views, u.main.view)
+	}
+	if fg, ok := livediff.ForegroundColor(reply); ok {
+		for _, view := range views {
+			if view != nil {
+				view.painter.colors.foreground, view.painter.colors.hasForeground = fg, true
+			}
+		}
+	}
+	theme, ok := livediff.BackgroundTheme(reply)
+	if !ok {
+		return
+	}
+	bg, _ := livediff.BackgroundColor(reply)
+	for _, view := range views {
+		if view != nil {
+			view.painter.theme = theme
+			view.painter.colors.background, view.painter.colors.hasBackground = bg, true
+		}
+	}
+	if u.diff != nil {
+		u.diff.theme, u.diff.background, u.diff.backgrounded = theme, bg, true
+		u.diff.dirty = true
+	}
 }
 
 func (u *terminalUI) send(s string) error {

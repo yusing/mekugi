@@ -114,7 +114,7 @@ func EnvironmentTheme(value string) Theme {
 // OSC 11 uses X11 rgb: components of one to four hex digits. Do not treat
 // malformed replies as evidence of a dark background.
 func BackgroundTheme(reply string) (Theme, bool) {
-	rgb, ok := backgroundComponents(reply)
+	rgb, ok := colorComponents(reply, "11")
 	if !ok {
 		return TerminalTheme, false
 	}
@@ -127,13 +127,22 @@ func BackgroundTheme(reply string) (Theme, bool) {
 
 // BackgroundColor is the reported background, for blending toward it.
 func BackgroundColor(reply string) (RGB, bool) {
-	rgb, ok := backgroundComponents(reply)
+	return reportedColor(reply, "11")
+}
+
+// ForegroundColor is the reported default text color (an OSC 10 reply).
+func ForegroundColor(reply string) (RGB, bool) {
+	return reportedColor(reply, "10")
+}
+
+func reportedColor(reply, code string) (RGB, bool) {
+	rgb, ok := colorComponents(reply, code)
 	channel := func(value float64) uint8 { return uint8(value*255 + .5) }
 	return RGB{channel(rgb[0]), channel(rgb[1]), channel(rgb[2])}, ok
 }
 
-func backgroundComponents(reply string) (rgb [3]float64, ok bool) {
-	value, ok := strings.CutPrefix(reply, "\x1b]11;rgb:")
+func colorComponents(reply, code string) (rgb [3]float64, ok bool) {
+	value, ok := strings.CutPrefix(reply, "\x1b]"+code+";rgb:")
 	if !ok {
 		return rgb, false
 	}

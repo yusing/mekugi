@@ -21,7 +21,8 @@ func (u *appServerUI) recordDraft() {
 		u.undoDrafts = slices.Clone(u.undoDrafts[len(u.undoDrafts)-100:])
 	}
 	u.redoDrafts = nil
-	u.typing = false
+	u.run = runNone
+	u.notice, u.noticeAlert = "", false
 	u.pruneDraftImages()
 }
 
@@ -30,8 +31,9 @@ func (u *appServerUI) undoDraft(redo bool) {
 	if redo {
 		from, to = to, from
 	}
-	u.typing = false
+	u.run = runNone
 	u.cursorColumn = nil
+	u.notice, u.noticeAlert = "", false
 	if len(*from) == 0 {
 		return
 	}

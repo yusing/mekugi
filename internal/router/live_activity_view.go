@@ -677,7 +677,7 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (stri
 		if v0.Agent == agent.Name || agent.Name == "/root" && source != v && v0.Agent == "Main" {
 			summary = v.painter.summary(blocks)
 			if v0.Kind == "reasoning" && agent.Responding {
-				summary = reasoningShimmer(reasoningSummaryHeader(v0.Text), now.Sub(v0.Observed), v.painter.theme)
+				summary = reasoningShimmer(reasoningSummaryHeader(v0.Text), now.Sub(v0.Observed), v.painter.colors)
 			}
 			break
 		}

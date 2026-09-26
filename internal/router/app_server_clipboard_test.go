@@ -43,7 +43,7 @@ func TestAppServerClipboardImage(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			appServerTestKeys(t, u, "before \x16 after")
 			if u.draft != "before [Image 1] after" || len(u.images) != 1 {
-				t.Fatalf("paste = %q, images=%v, status=%s", u.draft, u.images, u.status)
+				t.Fatalf("paste = %q, images=%v, notice=%s", u.draft, u.images, u.notice)
 			}
 			path := u.images[0].path
 			t.Cleanup(func() { _ = os.Remove(path) })
@@ -68,9 +68,59 @@ func TestAppServerClipboardImage(t *testing.T) {
 				t.Fatal(err)
 			}
 			appServerTestKeys(t, u, "\x16")
-			if !u.alert || !strings.Contains(u.status, "PNG image") || len(u.images) != 0 {
-				t.Fatalf("bad clipboard not reported: %q", u.status)
+			if !u.noticeAlert || !strings.Contains(u.notice, "PNG image") || len(u.images) != 0 {
+				t.Fatalf("bad clipboard not reported: %q", u.notice)
 			}
 		})
+	}
+}
+
+func TestAppServerPastedImagePathAttaches(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "My Shots")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	var pngData bytes.Buffer
+	if err := png.Encode(&pngData, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "shot it's.png")
+	if err := os.WriteFile(path, pngData.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	text := filepath.Join(dir, "notes.txt")
+	if err := os.WriteFile(text, []byte("not an image"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	escaped := strings.NewReplacer(" ", `\ `, "'", `\'`).Replace(path)
+	for _, pasted := range []string{
+		path,
+		escaped + "\r",
+		`"` + path + `"`,
+		"'" + strings.ReplaceAll(path, "'", `'\''`) + "'",
+		"file://" + strings.NewReplacer(" ", "%20", "'", "%27").Replace(path),
+	} {
+		u, _ := newAppServerTestUI()
+		appServerTestKeys(t, u, "see \x1b[200~"+pasted+"\x1b[201~now")
+		if u.draft != "see [Image 1] now" || len(u.images) != 1 || u.images[0].path != path {
+			t.Fatalf("paste %q = %q, images=%v", pasted, u.draft, u.images)
+		}
+		appServerTestKeys(t, u, "\x1a\x1a")
+		if u.draft != "see " {
+			t.Fatalf("attachment and its space are not one undo: %q", u.draft)
+		}
+		u.undoDrafts, u.redoDrafts = nil, nil
+		u.pruneDraftImages()
+		u.discardDraftImages()
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("pasted user file removed: %v", err)
+		}
+	}
+	for _, pasted := range []string{text, path + " " + path, "relative.png", filepath.Join(dir, "missing.png"), dir, "file://host" + path} {
+		u, _ := newAppServerTestUI()
+		appServerTestKeys(t, u, "\x1b[200~"+pasted+"\x1b[201~")
+		if u.draft != pasted || len(u.images) != 0 {
+			t.Fatalf("non-image paste %q = %q, images=%v", pasted, u.draft, u.images)
+		}
 	}
 }

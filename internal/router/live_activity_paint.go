@@ -27,6 +27,7 @@ const (
 // come from the same renderer and theme as the live diff pane.
 type liveActivityPainter struct {
 	theme  livediff.Theme
+	colors terminalColors
 	syntax livediff.Renderer
 }
 
@@ -346,7 +347,7 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 	switch block.kind {
 	case "summary":
 		if block.compact {
-			return []string{liveActivityDim + "◐ " + liveActivityUndim + reasoningShimmer(reasoningSummaryHeader(block.body), time.Since(block.observed), p.theme)}
+			return []string{liveActivityDim + "◐ " + liveActivityUndim + reasoningShimmer(reasoningSummaryHeader(block.body), time.Since(block.observed), p.colors)}
 		}
 		// Codex keeps summary bodies in detailed transcript, dim and italic,
 		// with a bullet rather than a separate "Reasoning summary" card.

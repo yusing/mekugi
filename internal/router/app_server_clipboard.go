@@ -6,9 +6,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
 	"image/png"
+	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -40,20 +45,118 @@ func (u *appServerUI) renumberImages() {
 	u.cursorBack = len(u.draft) - at
 }
 
+// attachImage takes ownership of a clipboard file for cleanup.
 func (u *appServerUI) attachImage(path string) {
-	u.recordDraft()
-	u.typing = true
+	u.insertImage(path)
 	if u.ownedImages == nil {
 		u.ownedImages = make(map[string]bool)
 	}
 	u.ownedImages[path] = true
+}
+
+// insertImage is its own undoable edit.
+func (u *appServerUI) insertImage(path string) {
+	u.run = runNone
 	at := u.cursor()
 	label := fmt.Sprintf("[Image %d]", len(u.images)+1)
 	u.insertDraft(label)
 	u.images = append(u.images, composerImage{start: at, end: at + len(label), path: path})
 	u.renumberImages()
-	u.typing = false
+	u.run = runNone
 	u.pruneDraftImages()
+}
+
+// finishPaste inserts a bracketed paste as one edit. A lone path to an image
+// file, as terminals paste for copied or dropped files, attaches that file
+// instead, followed by a space as in Codex. The user's file is never removed.
+func (u *appServerUI) finishPaste() {
+	text := string(u.pasted)
+	u.pasted = nil
+	path, ok := pastedImagePath(text)
+	if !ok {
+		if text != "" {
+			u.insertDraft(text)
+			u.run = runNone
+		}
+		return
+	}
+	u.insertImage(path)
+	u.run = runInsert // The separating space belongs to the attachment's edit.
+	u.insertDraft(" ")
+	u.run = runNone
+}
+
+// Source: codex-rs/tui/src/clipboard_paste.rs:251:287 and
+// bottom_pane/chat_composer.rs:1187:1208@86be5320b068ef67b56348b02aa8c33706955da6.
+// Accept a file:// URL, a literal path, or one shell word naming an absolute
+// path to a decodable image; anything else is pasted as text.
+func pastedImagePath(text string) (string, bool) {
+	text = strings.TrimSpace(text)
+	if text == "" || len(text) > 4096 {
+		return "", false
+	}
+	if location, err := url.Parse(text); err == nil && location.Scheme == "file" {
+		if location.Host != "" && location.Host != "localhost" {
+			return "", false
+		}
+		return location.Path, imageFile(location.Path)
+	}
+	if imageFile(text) {
+		return text, true
+	}
+	path, ok := shellWord(text)
+	return path, ok && imageFile(path)
+}
+
+func imageFile(path string) bool {
+	if !filepath.IsAbs(path) {
+		return false
+	}
+	// Check the type before opening, so a pasted FIFO or device cannot block.
+	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	_, _, err = image.DecodeConfig(file)
+	return err == nil
+}
+
+// shellWord unquotes text that is exactly one POSIX shell word, as terminals
+// escape pasted file paths.
+func shellWord(text string) (string, bool) {
+	var word strings.Builder
+	quote := byte(0)
+	for i := 0; i < len(text); i++ {
+		c := text[i]
+		switch {
+		case quote == '\'':
+			if c == '\'' {
+				quote = 0
+			} else {
+				word.WriteByte(c)
+			}
+		case c == '\\' && i+1 < len(text) && (quote == 0 || strings.IndexByte("$`\"\\\n", text[i+1]) >= 0):
+			i++
+			word.WriteByte(text[i])
+		case quote == '"':
+			if c == '"' {
+				quote = 0
+			} else {
+				word.WriteByte(c)
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		case c == ' ' || c == '\t' || c == '\n':
+			return "", false
+		default:
+			word.WriteByte(c)
+		}
+	}
+	return word.String(), quote == 0 && word.Len() > 0
 }
 
 func (u *appServerUI) composerInput() []map[string]any {
@@ -81,11 +184,11 @@ func (u *appServerUI) pasteImage() {
 	defer cancel()
 	path, err := clipboardImage(ctx)
 	if err != nil {
-		u.status, u.alert = "Paste image: "+err.Error(), true
+		u.notice, u.noticeAlert = "Paste image: "+err.Error(), true
 		return
 	}
+	// The highlighted placeholder is the feedback; it also clears any earlier notice.
 	u.attachImage(path)
-	u.status, u.alert = "Image attached", false
 }
 
 // The retained local file lets Codex own image processing and XML framing, and

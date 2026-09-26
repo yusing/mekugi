@@ -90,8 +90,8 @@ func TestAppServerComposerEditorTerminalHandoff(t *testing.T) {
 			return
 		}
 		u.openComposerEditor(slave, slave)
-		if u.alert {
-			done <- errors.New(u.status)
+		if u.noticeAlert {
+			done <- errors.New(u.notice)
 			return
 		}
 		done <- withRawPane(ctx, slave, slave, "RESUME!", "DONE!", func(keys <-chan byte) error {
@@ -164,12 +164,12 @@ func TestAppServerComposerEditorFailurePreservesRecovery(t *testing.T) {
 	}
 	defer output.Close()
 	u.openComposerEditor(output, output)
-	if u.draft != "original" || !u.alert {
-		t.Fatalf("editor failure: draft=%q status=%q", u.draft, u.status)
+	if u.draft != "original" || !u.noticeAlert {
+		t.Fatalf("editor failure: draft=%q notice=%q", u.draft, u.notice)
 	}
-	_, path, ok := strings.Cut(u.status, "draft preserved at ")
+	_, path, ok := strings.Cut(u.notice, "draft preserved at ")
 	if !ok {
-		t.Fatalf("missing recovery path: %q", u.status)
+		t.Fatalf("missing recovery path: %q", u.notice)
 	}
 	defer os.Remove(path)
 	data, err := os.ReadFile(path)

@@ -36,4 +36,10 @@ func TestBackgroundColor(t *testing.T) {
 	if _, ok := BackgroundColor("\x1b]11;rgb:zz/00/00\a"); ok {
 		t.Fatal("malformed reply accepted")
 	}
+	if got, ok := ForegroundColor("\x1b]10;rgb:e6/ed/f3\a"); !ok || got != (RGB{230, 237, 243}) {
+		t.Fatalf("foreground: %v %v", got, ok)
+	}
+	if _, ok := ForegroundColor("\x1b]11;rgb:e6/ed/f3\a"); ok {
+		t.Fatal("background reply read as foreground")
+	}
 }

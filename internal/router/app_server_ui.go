@@ -54,7 +54,9 @@ type appServerUI struct {
 	quitRequested             bool
 	mainContentPainted        bool
 	thread, turn, status      string
-	alert                     bool      // The status reports a failure or blocked request.
+	alert                     bool   // The status reports a failure or blocked request.
+	notice                    string // Composer feedback; cleared by the next draft edit.
+	noticeAlert               bool
 	turnStarted               time.Time // Shown as elapsed time while a turn runs.
 	model, reasoningEffort    string
 	requests                  map[string]string
@@ -63,11 +65,12 @@ type appServerUI struct {
 	cursorColumn              *int
 	images, submittedImages   []composerImage
 	undoDrafts, redoDrafts    []composerDraft
-	typing                    bool
+	run                       composerRun // The edit that the next like keystroke extends.
 	ownedImages               map[string]bool
 	submissionSeq             uint64
 	escape                    string
 	paste                     bool
+	pasted                    []byte // Bracketed paste text, inserted when the paste ends.
 	dirty                     bool
 	resumeThread              string
 	resumeConfig              map[string]any
@@ -111,7 +114,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 		exited := false
 		var err error
 		for {
-			err = withRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006;2004h", "\x1b[?2026l\x1b[?1003;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
+			err = withRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
 				var sub *liveDiffSubscriber
 				var diffEvents <-chan liveDiffEvent
 				var diffGap, diffReady, autoChanged <-chan struct{}
@@ -464,9 +467,10 @@ func (u *appServerUI) key(key byte) (bool, error) {
 				}
 			case "\x1b[200~":
 				u.paste = true
-				u.typing = false
+				u.run = runNone
 			case "\x1b[201~":
 				u.paste = false
+				u.finishPaste()
 			case "\x1b[5~":
 				if !u.paste {
 					u.view.scrollKey('b')
@@ -475,9 +479,11 @@ func (u *appServerUI) key(key byte) (bool, error) {
 				if !u.paste {
 					u.view.scrollKey(' ')
 				}
-			}
-			if !u.paste {
-				u.moveDraft(u.escape)
+			default:
+				// Only caret movement ends an edit run; forward deletes still group.
+				if !u.paste {
+					u.moveDraft(u.escape)
+				}
 			}
 			u.escape = ""
 		}
@@ -488,7 +494,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			key = '\n'
 		}
 		if key >= 32 || key == '\n' || key == '\t' {
-			u.insertDraft(string([]byte{key}))
+			u.pasted = append(u.pasted, key)
 		}
 		return false, nil
 	}
@@ -502,11 +508,24 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	case 22:
 		u.pasteImage()
 	case 3:
+		// As in Codex, Ctrl-C first clears the draft (undoable with Ctrl+Z),
+		// then interrupts the active turn, and otherwise quits like /quit.
+		if u.draft != "" {
+			u.deleteDraftRange(0, len(u.draft))
+			u.notice = "Draft cleared · Ctrl+Z restores · Ctrl-C again quits"
+			if u.turn != "" || u.starting || u.submitted != "" {
+				u.notice = "Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts"
+			}
+			return false, nil
+		}
 		if u.turn != "" {
 			u.status = "Interrupting…"
 			return false, u.request("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
 		}
-		u.status, u.alert = "Nothing to interrupt · /quit exits", false
+		if !u.starting && u.submitted == "" {
+			return true, nil
+		}
+		u.notice = "Turn is starting · nothing to interrupt yet"
 	case 127, 8:
 		u.deleteDraft(true)
 	case '\n':
@@ -518,11 +537,11 @@ func (u *appServerUI) key(key byte) (bool, error) {
 				u.draft = ""
 				return true, nil
 			}
-			u.status = "Interrupt the active turn before quitting"
+			u.notice = "Interrupt the active turn before quitting"
 			return false, nil
 		}
 		if strings.HasPrefix(text, "/") {
-			u.status, u.alert = "Unknown command "+strings.Fields(text)[0]+" · only /quit is available", true
+			u.notice, u.noticeAlert = "Unknown command "+strings.Fields(text)[0]+" · only /quit is available", true
 			return false, nil
 		}
 		if text == "" || u.thread == "" || u.restoring != nil || u.starting || u.submitted != "" {
@@ -537,6 +556,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			u.starting = true
 		}
 		u.submitted, u.status, u.alert = u.draft, "Sending…", false
+		u.notice, u.noticeAlert = "", false
 		u.view.follow()
 		u.submissionSeq = u.view.lastSeq + 1
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.submissionSeq, Agent: "You", Kind: "text", Text: u.draft, Observed: time.Now(),
@@ -546,7 +566,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		}
 		u.submittedImages, u.images = u.images, nil
 		u.undoDrafts, u.redoDrafts = nil, nil
-		u.typing = false
+		u.run = runNone
 		u.pruneDraftImages()
 		u.draft = ""
 		u.cursorBack = 0
@@ -569,7 +589,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 
 func (u *appServerUI) restoreSubmission() {
 	u.undoDrafts, u.redoDrafts = nil, nil
-	u.typing = false
+	u.run = runNone
 	u.cursorBack = 0
 	if u.submitted == "" {
 		return
@@ -736,7 +756,25 @@ func composerBorder(open, close, left, right string, width int, color string) st
 	return color + open + "─" + l + strings.Repeat("─", fill) + r + "─" + close + liveActivityReset
 }
 
+// stateLabel is the session state followed by any composer notice.
 func (u *appServerUI) stateLabel(now time.Time) string {
+	label := u.sessionLabel(now)
+	notice := strings.ReplaceAll(livediff.Safe(u.notice, false), "\n", " ")
+	switch {
+	case notice == "":
+		return label
+	case u.noticeAlert:
+		notice = liveActivityRed + "✗ " + notice + liveActivityReset
+	default:
+		notice = "\x1b[39m" + notice + liveActivityReset
+	}
+	if label == "" {
+		return notice
+	}
+	return label + liveActivityDim + " · " + liveActivityUndim + notice
+}
+
+func (u *appServerUI) sessionLabel(now time.Time) string {
 	status := strings.ReplaceAll(livediff.Safe(u.status, false), "\n", " ")
 	switch {
 	case status == "":
@@ -752,7 +790,8 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 	case u.starting || u.submitted != "" || u.thread == "":
 		return liveActivityAmber + status + liveActivityReset
 	}
-	return liveActivityDim + status + liveActivityUndim
+	// Idle states use default text; the border color would otherwise carry over.
+	return "\x1b[39m" + status + liveActivityReset
 }
 
 // scrollLabel shows how much of the feed lies above the viewport and, once

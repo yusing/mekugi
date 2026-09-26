@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 type appServerTestInput struct{ bytes.Buffer }
@@ -107,6 +109,58 @@ func TestAppServerShutdown(t *testing.T) {
 				t.Fatal("did not let backend drain on EOF")
 			}
 		})
+	}
+}
+
+func TestAppServerCtrlCClearsDraftThenInterruptsOrQuits(t *testing.T) {
+	u, w := newAppServerTestUI()
+	appServerTestKeys(t, u, "draft\x03")
+	if u.draft != "" || w.Len() != 0 || !strings.Contains(u.notice, "Ctrl-C again quits") {
+		t.Fatalf("first Ctrl-C draft=%q notice=%q", u.draft, u.notice)
+	}
+	appServerTestKeys(t, u, "\x1a")
+	if u.draft != "draft" || u.notice != "" {
+		t.Fatalf("cleared draft not restorable: %q notice=%q", u.draft, u.notice)
+	}
+	u.draft = ""
+	if quit, err := u.key(3); !quit || err != nil {
+		t.Fatalf("idle Ctrl-C quit=%v err=%v", quit, err)
+	}
+	u, w = newAppServerTestUI()
+	u.turn = "turn"
+	appServerTestKeys(t, u, "steer\x03")
+	if u.draft != "" || w.Len() != 0 || !strings.Contains(u.notice, "Ctrl-C again interrupts") {
+		t.Fatalf("draft not cleared before interrupt: %q sent=%q", u.draft, w.String())
+	}
+	if quit, err := u.key(3); quit || err != nil || !strings.Contains(w.String(), "turn/interrupt") {
+		t.Fatalf("active Ctrl-C quit=%v err=%v sent=%q", quit, err, w.String())
+	}
+	u, w = newAppServerTestUI()
+	u.starting = true
+	if quit, err := u.key(3); quit || err != nil || w.Len() != 0 {
+		t.Fatalf("starting Ctrl-C quit=%v err=%v", quit, err)
+	}
+}
+
+func TestAppServerComposerNoticeKeepsTurnStateAndClearsOnEdit(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.turn, u.status = "turn", "Working"
+	appServerTestKeys(t, u, "/nope\r")
+	label := ansi.Strip(u.stateLabel(time.Now()))
+	if !strings.Contains(label, "Working") || !strings.Contains(label, "Unknown command /nope") {
+		t.Fatalf("notice replaced turn state: %q", label)
+	}
+	appServerTestKeys(t, u, "\x7f")
+	if u.notice != "" || u.status != "Working" {
+		t.Fatalf("edit kept stale notice %q or lost status %q", u.notice, u.status)
+	}
+}
+
+func TestAppServerIdleStateUsesDefaultText(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.status = "Ready"
+	if label := u.stateLabel(time.Now()); label != "\x1b[39mReady"+liveActivityReset {
+		t.Fatalf("idle label = %q", label)
 	}
 }
 

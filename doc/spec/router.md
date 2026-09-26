@@ -298,7 +298,7 @@ workspace threads. Subsequent requests retain that scope through the existing
 automatic-diff owner. Retention gaps remain gaps, not successful recapture.
 
 Activity hydration reports progress, buffers live notifications, and keeps typed
-input as an unsent draft until reconciliation; `/quit` can exit while loading.
+input as an unsent draft until reconciliation; `/quit` or Ctrl-C on an empty draft can exit while loading.
 Discovery is bounded to 128 descendants and eight list pages, with an explicit
 partial-history notice at the limit. Child histories share the current 16 MiB
 RPC frame limit; paginated turn/item hydration remains unfinished. No additional
@@ -377,10 +377,13 @@ Alt+Backspace/Delete remove the previous/next whitespace-delimited word without
 splitting image attachments. Editing and the visible composer window follow the
 caret. Ctrl+V reads a PNG
 image from the desktop clipboard and inserts a highlighted, atomic `[Image N]`
-attachment. Images are individual units for character and word navigation and
+attachment. A bracketed paste that is exactly one absolute path to a PNG, JPEG
+or GIF file (plain, shell-quoted or escaped, or a local `file://` URL) attaches
+that file the same way, followed by a space; the file stays user-owned and is
+never removed. Other pastes insert as text. Images are individual units for character and word navigation and
 deletion, including when immediately adjacent to text. Ctrl+Z undoes and Ctrl+Y
-redoes draft edits; typing runs, bracketed pastes, attachments, and editor saves
-are undoable units. History is bounded to 100 edits and resets on submission.
+redoes draft edits; each typed word, run of Backspace or Delete presses,
+bracketed paste, attachment, draft clear, and editor save is an undoable unit. History is bounded to 100 edits and resets on submission.
 Ctrl+G opens `$EDITOR` (then `$VISUAL`, then `vi`) with a temporary draft file,
 after releasing the terminal and input reader. Returning restores the UI without
 submitting. Exact image placeholders retain their attachments when moved or
@@ -392,7 +395,12 @@ Unsubmitted image files remain while referenced by the draft or undo/redo histor
 then are removed, including on exit; submitted files
 remain in temporary storage for Codex history/resume. Submitted text appears immediately and is reconciled with the
 server's user message without a duplicate; rejection restores the draft; a
-steer never becomes a new turn. Only `/quit` is a command, and only while idle;
+steer never becomes a new turn. Ctrl-C first clears a non-empty draft (Ctrl+Z
+restores it), then interrupts the active turn, and with no turn active or
+starting exits like `/quit`. Composer notices (command, paste, editor and
+Ctrl-C feedback) follow the turn state on the composer border without replacing
+it, and clear on the next draft edit. Only
+`/quit` is a command, and only while idle;
 unknown commands are reported, never sent as prompts. The
 composer border carries turn state and the model; Main's title bar carries the
 scroll position and unseen-message count. History
@@ -413,7 +421,9 @@ last message to the answer.
 
 Native child reasoning follows Codex's summary presentation: the current summary
 updates the agent's status and a transient status row with a left-to-right
-brightness sweep that stops when superseded or finished. Raw and encrypted
+brightness sweep that stops when superseded or finished. The sweep blends between
+the terminal's reported (OSC 10/11) foreground and background; without both
+reports it steps through dim, normal and bold. Raw and encrypted
 reasoning stay excluded; the legacy pane keeps its reasoning policy.
 
 Scrolling stops at the last full viewport, including after resizing or following

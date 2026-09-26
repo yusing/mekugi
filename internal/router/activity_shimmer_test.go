@@ -13,22 +13,30 @@ import (
 
 func TestCodexReasoningShimmerSweep(t *testing.T) {
 	const text = "Checking the answer target"
-	colors := regexp.MustCompile(`\x1b\[38;2;(\d+);\d+;\d+m`)
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	colors := regexp.MustCompile(`\x1b\[38;2;(\d+);(\d+);(\d+)m`)
+	palettes := []terminalColors{
+		{foreground: livediff.RGB{R: 220, G: 214, B: 200}, background: livediff.RGB{R: 24, G: 22, B: 30}, hasForeground: true, hasBackground: true},
+		{foreground: livediff.RGB{R: 30, G: 40, B: 50}, background: livediff.RGB{R: 250, G: 248, B: 240}, hasForeground: true, hasBackground: true},
+	}
+	for _, palette := range palettes {
+		fg, bg := palette.foreground, palette.background
 		peaks := []int{}
 		for _, elapsed := range []time.Duration{500 * time.Millisecond, 1500 * time.Millisecond} {
-			frame := reasoningShimmer(text, elapsed, theme)
+			frame := reasoningShimmer(text, elapsed, palette)
 			if ansi.Strip(frame) != text {
 				t.Fatal("shimmer changed summary text")
 			}
-			peak, strongest := -1, -1
+			peak, strongest := -1, -256
 			for i, match := range colors.FindAllStringSubmatch(frame, -1) {
-				value, _ := strconv.Atoi(match[1])
-				if theme == livediff.LightTheme {
-					value = 255 - value
+				red, _ := strconv.Atoi(match[1])
+				// Every glyph stays between the halfway blend and the terminal foreground.
+				low, high := min(int(fg.R), (int(fg.R)+int(bg.R))/2), max(int(fg.R), (int(fg.R)+int(bg.R)+1)/2)
+				if red < low || red > high {
+					t.Fatalf("glyph color %v leaves the terminal palette %v/%v", match[1:], fg, bg)
 				}
-				if value > strongest {
-					peak, strongest = i, value
+				// Closeness to the foreground is the highlight.
+				if strength := -max(red-int(fg.R), int(fg.R)-red); strength > strongest {
+					peak, strongest = i, strength
 				}
 			}
 			peaks = append(peaks, peak)
@@ -36,14 +44,48 @@ func TestCodexReasoningShimmerSweep(t *testing.T) {
 		if peaks[0] < 0 || peaks[0] >= len(text)/2 || peaks[1] <= len(text)/2 {
 			t.Fatalf("highlight did not sweep left to right: %v", peaks)
 		}
-		if reasoningShimmer(text, 0, theme) != reasoningShimmer(text, 2*time.Second, theme) {
+		if reasoningShimmer(text, 0, palette) != reasoningShimmer(text, 2*time.Second, palette) {
 			t.Fatal("sweep did not repeat after two seconds")
 		}
 	}
 	const unicode = "e\u0301 👩‍💻 你好"
-	frame := reasoningShimmer(unicode, time.Second, livediff.DarkTheme)
+	frame := reasoningShimmer(unicode, time.Second, palettes[0])
 	if ansi.Strip(frame) != unicode || !strings.Contains(frame, "e\u0301") || !strings.Contains(frame, "👩‍💻") {
 		t.Fatal("shimmer split a grapheme cluster")
+	}
+}
+
+func TestReasoningShimmerWithoutReportedPalette(t *testing.T) {
+	const text = "Checking the answer target"
+	frame := reasoningShimmer(text, 500*time.Millisecond, terminalColors{})
+	if ansi.Strip(frame) != text || strings.Contains(frame, "38;2;") {
+		t.Fatalf("unknown palette used invented colors: %q", frame)
+	}
+	bold, dim := strings.Index(frame, "\x1b[22;1m"), strings.LastIndex(frame, "\x1b[22;2m")
+	if bold < 0 || dim < bold || !strings.HasSuffix(frame, "\x1b[22m") {
+		t.Fatalf("stepped sweep lacks a bright band ahead of dim text: %q", frame)
+	}
+}
+
+func TestNativeUITerminalColorReports(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.ensureShell()
+	for _, key := range []byte("\x1b]10;rgb:dcdc/d6d6/c8c8\x1b\\\x1b]11;rgb:18/16/1e\a") {
+		if err := u.shell.key(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := terminalColors{foreground: livediff.RGB{R: 220, G: 214, B: 200}, background: livediff.RGB{R: 24, G: 22, B: 30}, hasForeground: true, hasBackground: true}
+	for _, view := range []*liveActivityView{u.view, u.agents} {
+		if view.painter.colors != want || view.painter.theme != livediff.DarkTheme {
+			t.Fatalf("pane palette = %+v theme %v", view.painter.colors, view.painter.theme)
+		}
+	}
+	if !u.shell.diff.backgrounded || u.shell.diff.background != want.background || u.shell.diff.theme != livediff.DarkTheme {
+		t.Fatal("diff pane did not take the reported background")
+	}
+	if u.draft != "" {
+		t.Fatalf("color reports leaked into the draft: %q", u.draft)
 	}
 }
 

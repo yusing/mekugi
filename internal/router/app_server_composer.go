@@ -14,13 +14,31 @@ import (
 // cursorBack counts bytes after the caret, so an untouched draft starts at its end.
 func (u *appServerUI) cursor() int { return len(u.draft) - min(u.cursorBack, len(u.draft)) }
 
+// composerRun groups consecutive keystrokes into one undoable edit.
+type composerRun uint8
+
+const (
+	runNone composerRun = iota
+	runInsert
+	runBackspace
+	runDelete
+)
+
 func (u *appServerUI) insertDraft(text string) {
 	u.cursorColumn = nil
-	if !u.typing {
-		u.recordDraft()
-		u.typing = true
-	}
+	u.notice, u.noticeAlert = "", false
 	at := u.cursor()
+	// Typing undoes a word at a time: a word typed after whitespace starts a new edit.
+	wordStart := false
+	if at > 0 && text != "" {
+		before, _ := utf8.DecodeLastRuneInString(u.draft[:at])
+		first, _ := utf8.DecodeRuneInString(text)
+		wordStart = unicode.IsSpace(before) && !unicode.IsSpace(first)
+	}
+	if u.run != runInsert || wordStart {
+		u.recordDraft()
+		u.run = runInsert
+	}
 	u.draft = u.draft[:at] + text + u.draft[at:]
 	for i := range u.images {
 		if u.images[i].start >= at {
@@ -56,11 +74,11 @@ func (u *appServerUI) draftBoundary(at, direction int) int {
 func (u *appServerUI) deleteDraft(backward bool) {
 	u.cursorColumn = nil
 	at := u.cursor()
-	start, end := at, u.draftBoundary(at, 1)
+	start, end, run := at, u.draftBoundary(at, 1), runDelete
 	if backward {
-		start, end = u.draftBoundary(at, -1), at
+		start, end, run = u.draftBoundary(at, -1), at, runBackspace
 	}
-	u.deleteDraftRange(start, end)
+	u.removeDraft(start, end, run)
 }
 
 func (u *appServerUI) deleteWord(backward bool) {
@@ -75,12 +93,20 @@ func (u *appServerUI) deleteWord(backward bool) {
 	u.deleteDraftRange(min(at, other), max(at, other))
 }
 
-func (u *appServerUI) deleteDraftRange(start, end int) {
-	u.typing = false
+func (u *appServerUI) deleteDraftRange(start, end int) { u.removeDraft(start, end, runNone) }
+
+// removeDraft deletes a range; consecutive deletions of the same run kind
+// undo together, and any other range is its own edit.
+func (u *appServerUI) removeDraft(start, end int, run composerRun) {
 	if start == end {
+		u.run = runNone
 		return
 	}
-	u.recordDraft()
+	if run == runNone || u.run != run {
+		u.recordDraft()
+	}
+	u.run = run
+	u.notice, u.noticeAlert = "", false
 	u.cursorColumn = nil
 	kept := u.images[:0]
 	for _, attachment := range u.images {
@@ -168,7 +194,7 @@ func (u *appServerUI) draftLayout() ([]string, []composerPoint) {
 }
 
 func (u *appServerUI) moveDraft(sequence string) {
-	u.typing = false
+	u.run = runNone
 	at := u.cursor()
 	vertical := sequence == "\x1b[A" || sequence == "\x1bOA" || sequence == "\x1b[B" || sequence == "\x1bOB"
 	if !vertical {

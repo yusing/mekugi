@@ -32,7 +32,7 @@ func TestNativeUIPreview(t *testing.T) {
 	defer tty.Close()
 	p := newNativePreview(t)
 	defer p.close()
-	err = withRawPane(t.Context(), tty, tty, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006;2004h", "\x1b[?2026l\x1b[?1003;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
+	err = withRawPane(t.Context(), tty, tty, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
 		tick := time.NewTicker(33 * time.Millisecond)
 		defer tick.Stop()
 		lastWidth, lastHeight := 0, 0

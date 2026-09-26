@@ -129,3 +129,31 @@ func TestAppServerComposerImageTokenStyledAndCaretVisible(t *testing.T) {
 		t.Fatal("caret next to image is not visible")
 	}
 }
+
+func TestAppServerComposerUndoGroupsWordsAndDeletions(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	appServerTestKeys(t, u, "hello big world")
+	for _, want := range []string{"hello big ", "hello ", ""} {
+		appServerTestKeys(t, u, "\x1a")
+		if u.draft != want {
+			t.Fatalf("word undo = %q, want %q", u.draft, want)
+		}
+	}
+	appServerTestKeys(t, u, "\x19\x19\x19\x7f\x7f\x7f\x7f\x7f")
+	if u.draft != "hello big " {
+		t.Fatalf("backspaces = %q", u.draft)
+	}
+	appServerTestKeys(t, u, "\x1a")
+	if u.draft != "hello big world" || u.cursor() != len(u.draft) {
+		t.Fatalf("backspace run undo = %q at %d", u.draft, u.cursor())
+	}
+	appServerTestKeys(t, u, "\x1b[H\x1b[3~\x1b[3~\x1b[3~\x1a")
+	if u.draft != "hello big world" {
+		t.Fatalf("forward-delete run undo = %q", u.draft)
+	}
+	// A different kind of edit ends the run.
+	appServerTestKeys(t, u, "\x1b[F\x7f\x7fX\x7f\x1a")
+	if u.draft != "hello big worX" {
+		t.Fatalf("mixed edits undo = %q", u.draft)
+	}
+}

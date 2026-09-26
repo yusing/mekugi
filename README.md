@@ -421,7 +421,9 @@ In the native composer, arrow keys move the caret, Ctrl+Left/Right jump words,
 and Ctrl+Up/Down move to the start/end of a line. Alt+Backspace/Delete delete
 the previous/next word. Ctrl+V attaches a clipboard PNG
 as a highlighted, atomic `[Image N]` (Linux needs `wl-paste` on Wayland or `xclip` on X11; macOS uses
-`osascript`). Ctrl+Z/Ctrl+Y undo/redo; Ctrl+G edits the draft in `$EDITOR`
+`osascript`). Pasting the path of a PNG, JPEG or GIF file, such as a dropped
+or copied file, attaches it the same way. Ctrl-C clears the draft first (Ctrl+Z
+brings it back), then interrupts a running turn, or exits when nothing is running. Ctrl+Z/Ctrl+Y undo/redo; Ctrl+G edits the draft in `$EDITOR`
 (falling back to `$VISUAL`, then `vi`). Saving and closing returns to the composer
 without sending. Keep image placeholders unchanged to retain their attachments.
 Submitted images remain in temporary storage for Codex history.
