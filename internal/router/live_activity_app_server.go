@@ -141,9 +141,13 @@ func (v *liveActivityView) applyAppServerItem(main, thread, turn, id, method, de
 			} else {
 				entry.Agent += " · user"
 			}
+			imageNumber := 0
 			for _, content := range item.Content {
 				if content.Type == "text" {
 					entry.Text += content.Text
+				} else if content.Type == "image" || content.Type == "localImage" {
+					imageNumber++
+					entry.Text += fmt.Sprintf("[Image %d]", imageNumber)
 				}
 			}
 		case "commandExecution":

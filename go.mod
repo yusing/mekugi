@@ -12,6 +12,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/dlclark/regexp2/v2 v2.8.0
 	github.com/gofrs/flock v0.13.1
+	github.com/rivo/uniseg v0.4.7
 	github.com/pmezard/go-difflib v1.0.0
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/tree-sitter/tree-sitter-javascript v0.25.0
@@ -34,7 +35,6 @@ require (
 	github.com/mattn/go-pointer v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.30 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
-	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/xo/terminfo v1.2.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 )

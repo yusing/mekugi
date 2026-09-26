@@ -11,10 +11,10 @@ import (
 	"slices"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/internal/livediff"
 	"golang.org/x/term"
 )
@@ -42,33 +42,39 @@ type appServerItem struct {
 }
 
 type appServerUI struct {
-	client                 *appServerClient
-	view                   *liveActivityView
-	agents                 *liveActivityView
-	proxy                  *mekugiProxy
-	journal                *nativeJournalSink
-	unscopedJournal        *nativeJournalSink
-	shell                  *terminalUI
-	session                appServerSession
-	ctx                    context.Context
-	quitRequested          bool
-	mainContentPainted     bool
-	thread, turn, status   string
-	alert                  bool      // The status reports a failure or blocked request.
-	turnStarted            time.Time // Shown as elapsed time while a turn runs.
-	model, reasoningEffort string
-	requests               map[string]string
-	draft, submitted       string
-	submissionSeq          uint64
-	escape                 string
-	paste                  bool
-	dirty                  bool
-	resumeThread           string
-	resumeConfig           map[string]any
-	resumePending          []appServerMessage
-	panes                  *nativePanePersistence
-	restoring              *appServerActivityRestore
-	starting               bool
+	client                    *appServerClient
+	view                      *liveActivityView
+	agents                    *liveActivityView
+	proxy                     *mekugiProxy
+	journal                   *nativeJournalSink
+	unscopedJournal           *nativeJournalSink
+	shell                     *terminalUI
+	session                   appServerSession
+	ctx                       context.Context
+	quitRequested             bool
+	mainContentPainted        bool
+	thread, turn, status      string
+	alert                     bool      // The status reports a failure or blocked request.
+	turnStarted               time.Time // Shown as elapsed time while a turn runs.
+	model, reasoningEffort    string
+	requests                  map[string]string
+	draft, submitted          string
+	cursorBack, composerWidth int
+	cursorColumn              *int
+	images, submittedImages   []composerImage
+	undoDrafts, redoDrafts    []composerDraft
+	typing                    bool
+	ownedImages               map[string]bool
+	submissionSeq             uint64
+	escape                    string
+	paste                     bool
+	dirty                     bool
+	resumeThread              string
+	resumeConfig              map[string]any
+	resumePending             []appServerMessage
+	panes                     *nativePanePersistence
+	restoring                 *appServerActivityRestore
+	starting                  bool
 }
 
 // StartAppServerUI is an opt-in feasibility frontend. It shares the activity
@@ -100,131 +106,140 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 			defer proxy.activity.releasePane()
 		}
 		defer c.input.Close()
+		defer u.discardDraftImages()
 		defer c.output.Close()
 		exited := false
-		err := withRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006;2004h", "\x1b[?2026l\x1b[?1003;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
-			var sub *liveDiffSubscriber
-			var diffEvents <-chan liveDiffEvent
-			var diffGap, diffReady, autoChanged <-chan struct{}
-			if u.shell.auto != nil {
-				auto := u.shell.auto
-				auto.enable()
-				defer auto.enabled.Store(false)
-				sub = auto.events.subscribe()
-				defer func() { auto.events.unsubscribe(sub) }()
-				diffEvents, diffGap, diffReady, autoChanged = sub.events, sub.gap, sub.previewReady, auto.changed
-			}
-			tick := time.NewTicker(33 * time.Millisecond)
-			defer tick.Stop()
-			width, height := 0, 0
-			agePaint := time.Now()
-			for {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-autoChanged:
-					u.shell.auto.mu.Lock()
-					u.shell.diff.workspace = u.shell.auto.workspace
-					u.shell.auto.mu.Unlock()
-					u.dirty = true
-				case <-diffGap:
-					u.shell.mainDock, u.shell.agentDock = liveDiffPreviewPane{}, liveDiffPreviewPane{}
-					sub = u.shell.auto.events.subscribe()
-					diffEvents, diffGap, diffReady = sub.events, sub.gap, sub.previewReady
-					u.dirty = true
-				case <-diffReady:
-					for _, event := range u.shell.auto.events.takePreviews(sub) {
-						u.shell.applyDiff(ctx, event)
-					}
-					if err := u.finishRestoredContent(); err != nil {
-						return err
-					}
-					u.dirty = true
-				case event := <-diffEvents:
-					u.shell.applyDiff(ctx, event)
-					if err := u.finishRestoredContent(); err != nil {
-						return err
-					}
-					u.dirty = true
-				case <-u.shell.diff.previewFrameC:
-					u.shell.diff.previewFrameC = nil
-					u.shell.diff.previewFrameDue = time.Time{}
-					u.shell.diff.dirty = true
-					u.dirty = true
-				case <-u.shell.diff.escapeC:
-					u.shell.diff.escapeC = nil
-					u.shell.diff.escapeKey()
-					u.dirty = true
-				case message, ok := <-c.messages:
-					if !ok {
-						exited = true
-						return errors.Join(errors.New("app-server disconnected; active work may be incomplete"), <-c.done)
-					}
-					if err := u.message(message); err != nil {
-						return err
-					}
-					u.dirty = true
-				case key, ok := <-keys:
-					if !ok {
-						return io.EOF
-					}
-					err := u.shell.key(key)
-					if err != nil || u.quitRequested {
-						return err
-					}
-					u.dirty = true
-				case <-tick.C:
-					u.paneError(u.panes.save(u.shell, time.Now(), false))
-					if u.view.expireFlash(time.Now()) {
+		var err error
+		for {
+			err = withRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006;2004h", "\x1b[?2026l\x1b[?1003;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
+				var sub *liveDiffSubscriber
+				var diffEvents <-chan liveDiffEvent
+				var diffGap, diffReady, autoChanged <-chan struct{}
+				if u.shell.auto != nil {
+					auto := u.shell.auto
+					auto.enable()
+					defer auto.enabled.Store(false)
+					sub = auto.events.subscribe()
+					defer func() { auto.events.unsubscribe(sub) }()
+					diffEvents, diffGap, diffReady, autoChanged = sub.events, sub.gap, sub.previewReady, auto.changed
+				}
+				tick := time.NewTicker(33 * time.Millisecond)
+				defer tick.Stop()
+				width, height := 0, 0
+				agePaint := time.Now()
+				for {
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-autoChanged:
+						u.shell.auto.mu.Lock()
+						u.shell.diff.workspace = u.shell.auto.workspace
+						u.shell.auto.mu.Unlock()
 						u.dirty = true
-					}
-					if u.shell.activityOpen && u.agents.hasLiveReasoning() {
+					case <-diffGap:
+						u.shell.mainDock, u.shell.agentDock = liveDiffPreviewPane{}, liveDiffPreviewPane{}
+						sub = u.shell.auto.events.subscribe()
+						diffEvents, diffGap, diffReady = sub.events, sub.gap, sub.previewReady
 						u.dirty = true
-					}
-					if u.shell.activityOpen && time.Since(agePaint) >= time.Second {
-						u.dirty = true
-						agePaint = time.Now()
-					}
-					if err := u.shell.flushEscape(); err != nil {
-						return err
-					}
-					journalPending := make(map[*nativeJournalSink][]nativeJournalPublication)
-					for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {
-						if sink == nil {
-							continue
+					case <-diffReady:
+						for _, event := range u.shell.auto.events.takePreviews(sub) {
+							u.shell.applyDiff(ctx, event)
 						}
-						items := sink.snapshot()
-						journalPending[sink] = items
-						for _, publication := range items {
-							u.view.applyJournal(journalKey(sink.workspace, sink.thread), publication)
-						}
-						u.dirty = u.dirty || len(items) > 0
-					}
-					if u.shell.animating(time.Now()) {
-						u.dirty = true
-					}
-					w, h, err := term.GetSize(int(stdout.Fd()))
-					if err != nil {
-						return err
-					}
-					if u.dirty || w != width || h != height {
-						width, height = w, h
-						if err := u.paint(stdout, w, h); err != nil {
+						if err := u.finishRestoredContent(); err != nil {
 							return err
 						}
-						for sink, items := range journalPending {
-							if !u.mainContentPainted {
+						u.dirty = true
+					case event := <-diffEvents:
+						u.shell.applyDiff(ctx, event)
+						if err := u.finishRestoredContent(); err != nil {
+							return err
+						}
+						u.dirty = true
+					case <-u.shell.diff.previewFrameC:
+						u.shell.diff.previewFrameC = nil
+						u.shell.diff.previewFrameDue = time.Time{}
+						u.shell.diff.dirty = true
+						u.dirty = true
+					case <-u.shell.diff.escapeC:
+						u.shell.diff.escapeC = nil
+						u.shell.diff.escapeKey()
+						u.dirty = true
+					case message, ok := <-c.messages:
+						if !ok {
+							exited = true
+							return errors.Join(errors.New("app-server disconnected; active work may be incomplete"), <-c.done)
+						}
+						if err := u.message(message); err != nil {
+							return err
+						}
+						u.dirty = true
+					case key, ok := <-keys:
+						if !ok {
+							return io.EOF
+						}
+						err := u.shell.key(key)
+						if err != nil || u.quitRequested {
+							return err
+						}
+						u.dirty = true
+					case <-tick.C:
+						u.paneError(u.panes.save(u.shell, time.Now(), false))
+						if u.view.expireFlash(time.Now()) {
+							u.dirty = true
+						}
+						if u.shell.activityOpen && u.agents.hasLiveReasoning() {
+							u.dirty = true
+						}
+						if u.shell.activityOpen && time.Since(agePaint) >= time.Second {
+							u.dirty = true
+							agePaint = time.Now()
+						}
+						if err := u.shell.flushEscape(); err != nil {
+							return err
+						}
+						journalPending := make(map[*nativeJournalSink][]nativeJournalPublication)
+						for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {
+							if sink == nil {
 								continue
 							}
-							if err := sink.acknowledge(ctx, proxy, items); err != nil {
-								return fmt.Errorf("journal presentation receipt: %w", err)
+							items := sink.snapshot()
+							journalPending[sink] = items
+							for _, publication := range items {
+								u.view.applyJournal(journalKey(sink.workspace, sink.thread), publication)
 							}
+							u.dirty = u.dirty || len(items) > 0
 						}
-						u.dirty = false
+						if u.shell.animating(time.Now()) {
+							u.dirty = true
+						}
+						w, h, err := term.GetSize(int(stdout.Fd()))
+						if err != nil {
+							return err
+						}
+						if u.dirty || w != width || h != height {
+							width, height = w, h
+							if err := u.paint(stdout, w, h); err != nil {
+								return err
+							}
+							for sink, items := range journalPending {
+								if !u.mainContentPainted {
+									continue
+								}
+								if err := sink.acknowledge(ctx, proxy, items); err != nil {
+									return fmt.Errorf("journal presentation receipt: %w", err)
+								}
+							}
+							u.dirty = false
+						}
 					}
 				}
+			})
+			if !errors.Is(err, errOpenComposerEditor) {
+				break
 			}
-		})
+			u.openComposerEditor(stdin, stdout)
+			u.dirty = true
+		}
 		if saveErr := u.panes.save(u.shell, time.Now(), true); saveErr != nil {
 			fmt.Fprintln(stdout, "Pane layout could not be saved:", livediff.Safe(saveErr.Error(), false))
 		}
@@ -348,6 +363,7 @@ func (u *appServerUI) message(m appServerMessage) error {
 				return u.restorePaneContent(result.Thread)
 			}
 		case "turn/start", "turn/steer":
+			u.submittedImages = nil
 			u.submitted = ""
 			u.submissionSeq = 0
 			// turn/started may precede or follow the response. Do not clear the
@@ -413,20 +429,42 @@ func (u *appServerUI) message(m appServerMessage) error {
 }
 
 func (u *appServerUI) key(key byte) (bool, error) {
+	if u.escape == "\x1b" && (key == 127 || key == 8) && !u.paste {
+		u.escape = ""
+		u.deleteWord(true)
+		return false, nil
+	}
 	// A bare Escape dismisses nothing in this preview. Do not eat the next
 	// ordinary key while waiting for a CSI sequence that never arrives.
-	if u.escape == "\x1b" && key != '[' {
+	if u.escape == "\x1b" && key != '[' && key != 'O' {
 		u.escape = ""
 	}
 	if u.escape != "" || key == 27 {
 		u.escape += string(key)
-		if u.escape == "\x1b" || u.escape == "\x1b[" {
+		if u.escape == "\x1b" || u.escape == "\x1b[" || u.escape == "\x1bO" {
 			return false, nil
 		}
 		if key >= 0x40 && key <= 0x7e || len(u.escape) > 32 {
 			switch u.escape {
+			case "\x1b[122;6u":
+				if !u.paste {
+					u.undoDraft(true)
+				}
+			case "\x1b[3;3~":
+				if !u.paste {
+					u.deleteWord(false)
+				}
+			case "\x1b[127;3u", "\x1b[8;3u":
+				if !u.paste {
+					u.deleteWord(true)
+				}
+			case "\x1b[3~":
+				if !u.paste {
+					u.deleteDraft(false)
+				}
 			case "\x1b[200~":
 				u.paste = true
+				u.typing = false
 			case "\x1b[201~":
 				u.paste = false
 			case "\x1b[5~":
@@ -438,6 +476,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 					u.view.scrollKey(' ')
 				}
 			}
+			if !u.paste {
+				u.moveDraft(u.escape)
+			}
 			u.escape = ""
 		}
 		return false, nil
@@ -447,11 +488,19 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			key = '\n'
 		}
 		if key >= 32 || key == '\n' || key == '\t' {
-			u.draft += string([]byte{key})
+			u.insertDraft(string([]byte{key}))
 		}
 		return false, nil
 	}
 	switch key {
+	case 26:
+		u.undoDraft(false)
+	case 25:
+		u.undoDraft(true)
+	case 7:
+		return false, errOpenComposerEditor
+	case 22:
+		u.pasteImage()
 	case 3:
 		if u.turn != "" {
 			u.status = "Interrupting…"
@@ -459,10 +508,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		}
 		u.status, u.alert = "Nothing to interrupt · /quit exits", false
 	case 127, 8:
-		_, size := utf8.DecodeLastRuneInString(u.draft)
-		u.draft = u.draft[:len(u.draft)-size]
+		u.deleteDraft(true)
 	case '\n':
-		u.draft += "\n"
+		u.insertDraft("\n")
 	case '\r':
 		text := strings.TrimSpace(u.draft)
 		if text == "/quit" {
@@ -481,7 +529,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, nil
 		}
 		method := "turn/start"
-		params := map[string]any{"threadId": u.thread, "input": appServerInput(u.draft)}
+		params := map[string]any{"threadId": u.thread, "input": u.composerInput()}
 		if u.turn != "" {
 			method = "turn/steer"
 			params["expectedTurnId"] = u.turn
@@ -493,7 +541,15 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.submissionSeq = u.view.lastSeq + 1
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.submissionSeq, Agent: "You", Kind: "text", Text: u.draft, Observed: time.Now(),
 			native: &liveActivityNativeItem{thread: u.thread, item: fmt.Sprintf("input/%d", u.submissionSeq), phase: "input/pending"}}}})
+		for i := range u.images {
+			delete(u.ownedImages, u.images[i].path)
+		}
+		u.submittedImages, u.images = u.images, nil
+		u.undoDrafts, u.redoDrafts = nil, nil
+		u.typing = false
+		u.pruneDraftImages()
 		u.draft = ""
+		u.cursorBack = 0
 		err := u.request(method, params)
 		if err != nil {
 			u.view.removePendingInput(u.submissionSeq)
@@ -505,21 +561,35 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		return false, err
 	default:
 		if key >= 32 {
-			u.draft += string([]byte{key})
+			u.insertDraft(string([]byte{key}))
 		}
 	}
 	return false, nil
 }
 
 func (u *appServerUI) restoreSubmission() {
+	u.undoDrafts, u.redoDrafts = nil, nil
+	u.typing = false
+	u.cursorBack = 0
 	if u.submitted == "" {
 		return
 	}
+	shift := len(u.submitted) + 1
+	if u.draft == "" {
+		shift = len(u.submitted)
+	}
+	for i := range u.images {
+		u.images[i].start += shift
+		u.images[i].end += shift
+	}
+	u.images = append(u.submittedImages, u.images...)
+	u.submittedImages = nil
 	if u.draft == "" {
 		u.draft = u.submitted
 	} else {
 		u.draft = u.submitted + "\n" + u.draft
 	}
+	u.renumberImages()
 }
 
 // applyActivity projects the collector once into the two audiences. Ordinary
@@ -571,16 +641,19 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, int) {
 		borderRows, inset = 2, 5
 	}
 	textWidth := width - inset
-	// Reserve the insertion cell before wrapping, including when the last line is full.
-	text := livediff.Safe(u.draft, false)
-	if textWidth > 1 {
-		text += " "
+	u.composerWidth = textWidth
+	draft, points := u.draftLayout()
+	caret := points[len(points)-1]
+	for _, point := range points {
+		if point.offset == u.cursor() {
+			caret = point
+			break
+		}
 	}
-	draft := strings.Split(ansi.Hardwrap(text, textWidth, true), "\n")
 	visible := min(6, height-borderRows)
-	if len(draft) > visible {
-		draft = draft[len(draft)-visible:]
-	}
+	firstRow := max(0, caret.row-visible+1)
+	draft = draft[firstRow:min(len(draft), firstRow+visible)]
+
 	room := max(0, height-len(draft)-borderRows)
 	dock = min(dock, max(0, room-1))
 	room -= dock
@@ -608,8 +681,16 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, int) {
 			prefix = liveActivityPrompt + "❯ " + inputColor
 		}
 		line = ansi.Truncate(line, textWidth, "")
-		if focused && textWidth > 1 && i == len(draft)-1 && strings.HasSuffix(line, " ") {
-			line = strings.TrimSuffix(line, " ") + "\x1b[7m \x1b[27m"
+		if focused && textWidth > 1 && i+firstRow == caret.row {
+			before := ansi.Cut(line, 0, caret.column)
+			cluster, _, _, _ := uniseg.FirstGraphemeClusterInString(u.draft[u.cursor():], -1)
+			cellWidth := max(1, ansi.StringWidth(livediff.Safe(cluster, false)))
+			cell := ansi.Cut(line, caret.column, caret.column+cellWidth)
+			if ansi.StringWidth(cell) == 0 {
+				cell = " "
+			}
+			rest := ansi.Cut(line, caret.column+cellWidth, textWidth)
+			line = before + "\x1b[7m" + cell + "\x1b[27m" + rest
 		}
 		if boxed {
 			frame = append(frame, border+"│"+inputColor+" "+prefix+line+strings.Repeat(" ", textWidth-ansi.StringWidth(line))+border+"│"+liveActivityReset)

@@ -427,6 +427,15 @@ The opt-in native UI can resume a known Codex thread:
 MEKUGI_APP_SERVER_UI=1 mekugi codex --yolo resume THREAD_ID
 ```
 
+In the native composer, arrow keys move the caret, Ctrl+Left/Right jump words,
+and Ctrl+Up/Down move to the start/end of a line. Alt+Backspace/Delete delete
+the previous/next word. Ctrl+V attaches a clipboard PNG
+as a highlighted, atomic `[Image N]` (Linux needs `wl-paste` on Wayland or `xclip` on X11; macOS uses
+`osascript`). Ctrl+Z/Ctrl+Y undo/redo; Ctrl+G edits the draft in `$EDITOR`
+(falling back to `$VISUAL`, then `vi`). Saving and closing returns to the composer
+without sending. Keep image placeholders unchanged to retain their attachments.
+Submitted images remain in temporary storage for Codex history.
+
 This preview requires explicit `--yolo` (no approvals or sandbox), restores Main's
 message and tool history, and continues the same thread. It also restores pane
 layout and keyboard focus, adapting the saved sizes to the current terminal.

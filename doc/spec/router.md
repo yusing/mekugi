@@ -368,7 +368,26 @@ app-server items update entries in place. Main renders them as an unclipped tran
 band, assistant text under one `main` heading, tool runs drawn as a tree, agent
 start/message/finish events labelled `sender → recipient`, final answers as
 cards, and journal blocks. Its composer supports a new thread, submission, steering and
-interruption. Submitted text appears immediately and is reconciled with the
+interruption. Arrow keys move the insertion caret across graphemes and displayed
+rows; Ctrl+Left/Right move by word and Ctrl+Up/Down move to logical line boundaries.
+Alt+Backspace/Delete remove the previous/next whitespace-delimited word without
+splitting image attachments. Editing and the visible composer window follow the
+caret. Ctrl+V reads a PNG
+image from the desktop clipboard and inserts a highlighted, atomic `[Image N]`
+attachment. Images are individual units for character and word navigation and
+deletion, including when immediately adjacent to text. Ctrl+Z undoes and Ctrl+Y
+redoes draft edits; typing runs, bracketed pastes, attachments, and editor saves
+are undoable units. History is bounded to 100 edits and resets on submission.
+Ctrl+G opens `$EDITOR` (then `$VISUAL`, then `vi`) with a temporary draft file,
+after releasing the terminal and input reader. Returning restores the UI without
+submitting. Exact image placeholders retain their attachments when moved or
+removed in the editor; duplicate placeholders reject the edit. Editor failure
+keeps the original draft and reports the recovery file.
+Images are numbered in draft order and sent as `localImage` inputs, leaving image
+XML framing to Codex. Failed submissions restore attachments with the text.
+Unsubmitted image files remain while referenced by the draft or undo/redo history,
+then are removed, including on exit; submitted files
+remain in temporary storage for Codex history/resume. Submitted text appears immediately and is reconciled with the
 server's user message without a duplicate; rejection restores the draft; a
 steer never becomes a new turn. Only `/quit` is a command, and only while idle;
 unknown commands are reported, never sent as prompts. The
