@@ -232,8 +232,12 @@ func (p *liveActivityPainter) inline(line string) string {
 	for i := 0; i < len(line); {
 		if line[i] == '[' {
 			if label, target, end, ok := liveActivityLink(line[i:]); ok {
-				link := url.URL{Scheme: "file", Path: target}
-				out.WriteString("\x1b]8;;" + link.String() + "\x1b\\" + p.theme.Accent() + "\x1b[4m" + label + "\x1b[24;39m\x1b]8;;\x1b\\")
+				link := target
+				if strings.HasPrefix(target, "/") {
+					path := url.URL{Scheme: "file", Path: target}
+					link = path.String()
+				}
+				out.WriteString("\x1b]8;;" + link + "\x1b\\" + p.theme.Accent() + "\x1b[4m" + label + "\x1b[24;39m\x1b]8;;\x1b\\")
 				i += end
 				continue
 			}
@@ -262,7 +266,7 @@ func (p *liveActivityPainter) inline(line string) string {
 	return out.String()
 }
 
-// Only local absolute paths become terminal links. Relative or malformed
+// Absolute local paths and HTTP(S) URLs become terminal links. Relative or malformed
 // Markdown remains visible verbatim rather than guessing a filesystem target.
 func liveActivityLink(s string) (label, target string, end int, ok bool) {
 	close := strings.Index(s, "](")
@@ -277,7 +281,7 @@ func liveActivityLink(s string) (label, target string, end int, ok bool) {
 	} else if i := strings.IndexByte(rest, ')'); i >= 0 {
 		target, end = rest[:i], close+2+i+1
 	}
-	if end == 0 || !strings.HasPrefix(target, "/") || strings.ContainsAny(target, "\x00\x1b\r\n") {
+	if end == 0 || !(strings.HasPrefix(target, "/") || strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "http://")) || strings.ContainsAny(target, "\x00\x1b\r\n") {
 		return "", "", 0, false
 	}
 	return s[1:close], target, end, true

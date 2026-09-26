@@ -335,7 +335,9 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	}
 	rows[height-1] += "\x1b[1G\x1b[0m" + ansi.Truncate(u.nativeStatus(), width, "")
 	u.layout = l
+	u.paintSelection(rows)
 	var b strings.Builder
+	b.WriteString(u.clipboard)
 	b.WriteString("\x1b[?2026h\x1b[?25l\x1b[0m")
 	for row, line := range rows {
 		if u.paintedWidth == u.width && len(u.paintedRows) == len(rows) && line == u.paintedRows[row] {
@@ -346,6 +348,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	b.WriteString("\x1b[?2026l")
 	_, err := io.WriteString(out, b.String())
 	if err == nil {
+		u.clipboard = ""
 		u.paintedRows, u.paintedWidth = rows, u.width
 	}
 	return err
@@ -386,26 +389,28 @@ func (u *terminalUI) nativeStatus() string {
 	pair := liveActivityDim + "[" + liveActivityUndim + tab(2, "Diff", diffBadge, u.diffOpen) + liveActivityDim + "│" + liveActivityUndim +
 		tab(3, "Activity", "", !u.diffOpen) + liveActivityDim + "]" + liveActivityUndim
 	tabs := tab(1, "Main", "", true) + " " + pair + " " + tab(4, "Agents", agentsBadge, true)
-	var hints string
+	var hints terminalHints
 	switch {
 	case u.prefix:
-		return tabs + "  " + liveActivityAmber + "Ctrl-B" + liveActivityReset + " 1-4 focus · 2/3 diff or activity · e next live · ←→ resize · PgUp/PgDn history"
+		hints = terminalHints{{"ctrl+b 1-4", "focus", 0}, {"2/3", "diff or activity", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
+		return tabs + "  " + hints.render()
 	case u.focus == 1:
-		hints = "s files · Tab changes · [ ] hunks · a caller · r follow · ? help"
+		hints = terminalHints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"r", "follow", 0}, {"?", "help", 0}}
 		if u.diff.back.kind != 0 {
-			hints = "Esc back · " + hints
+			hints = append(terminalHints{{"esc", "back", 0}}, hints...)
 		}
 	case u.focus == 2:
-		hints = "j/k scroll · n/p agent · o only · r follow · Enter open"
+		hints = terminalHints{{"j/k", "scroll", 0}, {"n/p", "agent", 0}, {"o", "only", 0}, {"r", "follow", 0}, {"enter", "open", 0}}
 	case u.focus == 3:
-		hints = "j/k agent · o only · Esc back"
+		hints = terminalHints{{"j/k", "agent", 0}, {"o", "only", 0}, {"esc", "back", 0}}
 	default:
-		hints = "⏎ send · PgUp/PgDn scroll · /quit exits"
+		hints = terminalHints{{"PgUp/PgDn", "scroll", 0}, {"/quit", "exits", 0}}
 	}
 	if u.mainDock.live()+u.agentDock.live() > 1 {
-		hints += " · ^B e next live"
+		hints = append(hints, terminalHint{"^B e", "next live", 0})
 	}
-	return tabs + "  " + liveActivityDim + hints + " · ^B 1-4 panes" + liveActivityUndim
+	hints = append(hints, terminalHint{"^B 1-4", "panes", 0})
+	return tabs + "  " + hints.render()
 }
 
 func superscript(n int) string {

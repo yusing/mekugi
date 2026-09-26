@@ -60,6 +60,7 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 			if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
 				t.Fatal(err)
 			}
+			if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dm", x, y)); err != nil { t.Fatal(err) }
 			clicked = true
 			break
 		}

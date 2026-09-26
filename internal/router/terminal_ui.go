@@ -13,6 +13,8 @@ import (
 
 // The native shell owns terminal presentation; Codex app-server owns execution.
 type terminalUI struct {
+	selection                                      *terminalSelection
+	clipboard                                      string
 	pasteEnd                                       int
 	hostReply                                      []byte
 	hostReplyDiscard, hostReplyEscape              bool
@@ -141,6 +143,22 @@ func (u *terminalUI) key(key byte) error {
 			return nil
 		}
 		return u.send(s)
+	}
+	if u.selection != nil && !u.selection.dragging {
+		switch key {
+		case 'r', 'R', 'c', 'C', 3:
+			if key == 3 {
+				key = 'c'
+			}
+			if key == 'R' {
+				key = 'r'
+			}
+			if key == 'C' {
+				key = 'c'
+			}
+			u.selectionAction(key)
+			return nil
+		}
 	}
 	if key == 27 {
 		u.sequence = "\x1b"
@@ -274,6 +292,15 @@ func (u *terminalUI) terminalColor(reply string) {
 }
 
 func (u *terminalUI) send(s string) error {
+	if u.selection != nil && !u.selection.dragging {
+		if s == "\x1b" {
+			u.selection = nil
+			return nil
+		}
+		// Editing or navigating dismisses the contextual actions.
+		u.selection = nil
+	}
+
 	if u.focus == 0 {
 		for _, key := range []byte(s) {
 			quit, err := u.main.key(key)
@@ -321,6 +348,9 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	button, x, y := v[0], v[1]-1, v[2]-1
 	release := s[len(s)-1] == 'm'
+	if u.selectionMouse(button, x, y, release) {
+		return nil
+	}
 	if release && u.drag != 0 {
 		u.drag = 0
 		return nil

@@ -309,7 +309,7 @@ func TestLiveActivityLinksAndCommandExit(t *testing.T) {
 		!strings.Contains(link, "\x1b]8;;\x1b\\") {
 		t.Fatalf("local link = %q", link)
 	}
-	if got := painter.inline("[remote](https://example.com)"); got != "[remote](https://example.com)" {
+	if got := painter.inline("[remote](https://example.com)"); ansi.Strip(got) != "remote" || !strings.Contains(got, "\x1b]8;;https://example.com\x1b\\") {
 		t.Fatalf("unhandled link changed: %q", got)
 	}
 	for _, tc := range []struct {

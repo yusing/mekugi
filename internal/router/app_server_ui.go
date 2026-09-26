@@ -64,6 +64,7 @@ type appServerUI struct {
 	model, reasoningEffort    string
 	requests                  map[string]string
 	draft, submitted          string
+	composerRect              terminalRect // Visible draft text, relative to Main.
 	cursorBack, composerWidth int
 	cursorColumn              *int
 	images, submittedImages   []composerImage
@@ -694,6 +695,8 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, int) {
 	u.mainContentPainted = room > 1
 	u.view.conversation, u.view.feedOnly, u.view.status = true, true, livediff.Safe(u.status, false)
 	var frame []string
+	u.view.feedRows = 0
+	u.view.feedQuestions, u.view.feedSnippets = nil, nil
 	if room > 0 {
 		frame = u.view.render(width, room, time.Now())
 		if u.keybindings && (u.shell == nil || u.shell.focus == 0) {
@@ -713,6 +716,11 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, int) {
 	if boxed {
 		frame = append(frame, composerBorder("╭", "╮", u.stateLabel(time.Now()), "", width, border))
 	}
+	textX := min(2, inset)
+	if boxed {
+		textX += 2
+	}
+	u.composerRect = terminalRect{textX, len(frame), textWidth, len(draft)}
 	for i, line := range draft {
 		prefix := strings.Repeat(" ", min(2, inset))
 		if i == 0 && inset >= 2 {

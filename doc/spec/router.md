@@ -381,7 +381,18 @@ and Transcript columns that stack when the pane is too narrow.
 `?` or Escape closes them, and other keyboard input dismisses them while retaining
 its normal behavior. A mouse event dismisses help without acting on the hidden
 transcript. Question marks in non-empty drafts and bracketed paste remain
-literal input. Arrow keys move the insertion caret across graphemes and displayed
+literal input. Dragging across text in Main, the composer, or Activity selects the visible text
+and offers Reference (R), Copy (Ctrl+C, also C), and Clear (Escape) in the status bar.
+Selection actions and the existing pane shortcut bar share bold key labels and
+bullet separators. Composer selection excludes its prompt and borders.
+Reference inserts `> SELECTED_MESSAGE\n\n` at the composer caret without submitting;
+Copy requests the terminal clipboard via OSC 52, and Clear leaves the draft intact.
+The selected viewport stays stable while the selection is active; resizing,
+scrolling, or resuming editing dismisses it. Clicking a Markdown absolute local
+path or HTTP(S) link copies its destination (a local path retains literal spaces
+and its line suffix), rather than opening it. Clipboard availability is controlled
+by the user's terminal.
+Arrow keys move the insertion caret across graphemes and displayed
 rows; Ctrl+Left/Right move by word and Ctrl+Up/Down move to logical line boundaries.
 Alt+Backspace/Delete remove the previous/next whitespace-delimited word without
 splitting image attachments. Editing and the visible composer window follow the

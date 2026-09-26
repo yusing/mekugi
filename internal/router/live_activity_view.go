@@ -441,21 +441,7 @@ func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
 	}
 	redraw := false
 	if action == '\r' && snippet != (liveActivitySnippet{}) {
-		if v.expanded[snippet] {
-			delete(v.expanded, snippet)
-		} else {
-			if v.expanded == nil {
-				v.expanded = make(map[liveActivitySnippet]bool)
-			}
-			v.expanded[snippet] = true
-			// Hold the feed still so the expanded lines open below the pointer.
-			v.scroll(0)
-		}
-		for key := range v.runs {
-			if key.first == snippet.run {
-				delete(v.runs, key)
-			}
-		}
+		v.toggleSnippet(snippet)
 		redraw = true
 	}
 	if v.expanded[snippet] {
@@ -465,6 +451,24 @@ func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
 		v.snippet, redraw = snippet, true
 	}
 	return redraw
+}
+
+func (v *liveActivityView) toggleSnippet(snippet liveActivitySnippet) {
+	if v.expanded[snippet] {
+		delete(v.expanded, snippet)
+	} else {
+		if v.expanded == nil {
+			v.expanded = make(map[liveActivitySnippet]bool)
+		}
+		v.expanded[snippet] = true
+		// Hold the feed still so the expanded lines open below the pointer.
+		v.scroll(0)
+	}
+	for key := range v.runs {
+		if key.first == snippet.run {
+			delete(v.runs, key)
+		}
+	}
 }
 
 // pointAgent highlights a hovered roster agent; a click filters the feed.
