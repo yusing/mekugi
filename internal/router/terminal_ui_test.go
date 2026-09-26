@@ -11,10 +11,59 @@ import (
 	"testing"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	"golang.org/x/term"
 )
+
+func TestTerminalUIIncrementalPaint(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.draft = "old draft text"
+	screen := vt.NewEmulator(120, 30)
+	defer screen.Close()
+	var wire bytes.Buffer
+	out := io.MultiWriter(screen, &wire)
+	if err := u.paint(out, 120, 30); err != nil {
+		t.Fatal(err)
+	}
+	wire.Reset()
+	if err := u.paint(out, 120, 30); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(wire.String(), "\x1b[2K") {
+		t.Fatal("unchanged frame erased terminal rows")
+	}
+	u.draft = "new"
+	wire.Reset()
+	if err := u.paint(out, 120, 30); err != nil {
+		t.Fatal(err)
+	}
+	if cleared := strings.Count(wire.String(), "\x1b[2K"); cleared != 1 {
+		t.Fatalf("single-line input edit repainted %d rows", cleared)
+	}
+	if strings.Contains(screen.String(), "old draft text") || !strings.Contains(screen.String(), "new") {
+		t.Fatal("incremental input update retained stale text")
+	}
+	// Resize and close the auxiliary panes; removed content must be cleared.
+	u.shell.side = false
+	screen.Resize(80, 20)
+	if err := u.paint(screen, 80, 20); err != nil {
+		t.Fatal(err)
+	}
+	fresh, _ := newAppServerTestUI()
+	fresh.ensureShell()
+	fresh.shell.side, fresh.draft = false, "new"
+	want := vt.NewEmulator(80, 20)
+	defer want.Close()
+	if err := fresh.paint(want, 80, 20); err != nil {
+		t.Fatal(err)
+	}
+	if screen.String() != want.String() {
+		t.Fatal("incremental resize differs from a fresh terminal frame")
+	}
+}
 
 func TestTerminalGeometry(t *testing.T) {
 	for _, width := range []int{1, 60, 99, 100, 180, 300} {
@@ -280,11 +329,31 @@ func TestTerminalUIRenderedPTYAndLifecycle(t *testing.T) {
 	activity.collect("worker", "notice", "reply", "Agent delivery independent of root turns")
 	await("Agent delivery independent of root turns")
 	await("[/] files  ● worker")
-	if line := strings.Split(screen.String(), "\n")[39]; !strings.Contains(line, "CODEX") || !strings.Contains(line, "● worker") {
+	if line := strings.Split(screen.String(), "\n")[39]; !strings.Contains(line, "1 Codex") || !strings.Contains(line, "● worker") {
 		t.Fatalf("legend not on status line: %q", line)
 	}
-	io.WriteString(outer, "\x02"+"3\x03")
-	await("CODEX ·")
+	// The focused tab is the one drawn in reverse video.
+	awaitFocus := func(tab string) {
+		t.Helper()
+		for {
+			line := strings.Split(screen.String(), "\n")[39]
+			if before, _, ok := strings.Cut(line, tab); ok {
+				if cell := screen.CellAt(ansi.StringWidth(before), 39); cell != nil && cell.Style.Attrs&uv.AttrReverse != 0 {
+					return
+				}
+			}
+			select {
+			case data := <-frames:
+				screen.Write(data)
+			case <-ctx.Done():
+				t.Fatalf("tab %q never took focus", tab)
+			}
+		}
+	}
+	io.WriteString(outer, "\x02"+"3")
+	awaitFocus("3 Agents")
+	io.WriteString(outer, "\x03")
+	awaitFocus("1 Codex")
 	io.WriteString(outer, "x")
 	select {
 	case err := <-done:

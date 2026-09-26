@@ -59,7 +59,8 @@ func TestScrollablePaneKeysAgreeAtConsumers(t *testing.T) {
 			for _, key := range []byte(test.keys) {
 				escape, _ = activity.handleKey(escape, key)
 			}
-			agentsOffset := test.offset
+			// Activity stops at its last full viewport.
+			agentsOffset := min(test.offset, 90)
 			if test.follow {
 				agentsOffset = 90
 			}

@@ -307,6 +307,8 @@ type mekugiCommentaryState struct {
 }
 
 type mekugiJournalState struct {
+	journalNativeSink       *nativeJournalSink
+	journalNativeTerminal   *threadJournal
 	journalDeliveries       map[string]journalDelivery
 	liveDiffCompletionReady bool
 	journalQuietFile        os.FileInfo
@@ -616,7 +618,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	if metadata.SubagentKind == "thread_spawn" {
 		// The collector deduplicates this source by stable child thread, including
 		// across routing-session changes, and forwards it only to the observed root.
-		p.activity.collect(activityThreadID, "subagent-start\x00"+activityThreadID, "start", subagentStartCommentary(request, metadata.AgentName))
+		p.activity.collectSubagentStart(activityThreadID, request, metadata.AgentName)
 	}
 	for _, final := range envelopes.finals {
 		p.activity.markFinal(activityThreadID, final)

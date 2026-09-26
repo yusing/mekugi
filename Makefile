@@ -1,6 +1,6 @@
 GO ?= go
 
-.PHONY: install install-binaries uninstall uninstall-binaries preview-assets preview-ui preview-roster
+.PHONY: install install-binaries uninstall uninstall-binaries preview-assets preview-ui preview-roster preview-native-ui
 
 install: install-binaries
 
@@ -22,6 +22,11 @@ preview-assets:
 # s skips the story; Ctrl-B 1 then Ctrl-D quits. MEKUGI_UI_PREVIEW_STEP sets story pace only.
 preview-ui: preview-assets
 	env -u BASH_ENV MEKUGI_UI_PREVIEW=1 $(GO) test ./internal/router -run '^TestTerminalUIPreview$$' -count=1 -timeout 0
+
+# Interactive native Main fixtures. No Codex process or model requests.
+# Plays a fake session automatically; Ctrl-C or Ctrl-D exits.
+preview-native-ui:
+	env -u BASH_ENV MEKUGI_NATIVE_UI_PREVIEW=1 $(GO) test ./internal/router -run '^TestNativeUIPreview$$' -count=1 -timeout 0
 
 # Headless: replays the roster session and prints each changed roster frame with
 # the canonical usage report behind every agent. Optional: PREVIEW_WIDTH (160),

@@ -12,12 +12,12 @@ import (
 func TestRosterDesignMessageOwnerAndAssignment(t *testing.T) {
 	p := liveActivityPainter{}
 	for _, tc := range []struct{ owner, from, to, want string }{
-		{"/root/a", "/root/a", "/root", "to main"},
-		{"/root", "/root/a", "/root", "from a"},
-		{"/root/a", "/root/a", "/root/b", "to b"},
-		{"/root/b", "/root/a", "/root/b", "from a"},
-		{"/root/a/x", "/root/a/x", "/root/a", "to a"},
-		{"/root/a", "/root/a/x", "/root/a", "from a/x"},
+		{"/root/a", "/root/a", "/root", "→ main"},
+		{"/root", "/root/a", "/root", "← a"},
+		{"/root/a", "/root/a", "/root/b", "→ b"},
+		{"/root/b", "/root/a", "/root/b", "← a"},
+		{"/root/a/x", "/root/a/x", "/root/a", "→ a"},
+		{"/root/a", "/root/a/x", "/root/a", "← a/x"},
 	} {
 		blocks := parseLiveActivity(activityPaneEntry{Agent: tc.owner, Kind: "reply", Text: "[`" + tc.from + "` -> `" + tc.to + "`] Message received:\nMessage body"})
 		if len(blocks) != 1 || blocks[0].kind != "message" {
@@ -43,7 +43,7 @@ func TestRosterDesignMessageOwnerAndAssignment(t *testing.T) {
 		{Seq: 4, Agent: "/root/a", Kind: "reply", Text: "[`/root/a` -> `/root`] Message received:\nLatest inbound", Observed: now},
 	}})
 	summary, _ := v.current(v.agents[0], now)
-	if !strings.Contains(ansi.Strip(summary), "Latest inbound") || strings.Contains(ansi.Strip(summary), "Older inbound") || !strings.Contains(ansi.Strip(summary), "from a") {
+	if !strings.Contains(ansi.Strip(summary), "Latest inbound") || strings.Contains(ansi.Strip(summary), "Older inbound") || !strings.Contains(ansi.Strip(summary), "← a") {
 		t.Fatalf("main inbound summary = %q", summary)
 	}
 }

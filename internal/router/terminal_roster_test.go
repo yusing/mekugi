@@ -26,7 +26,7 @@ func TestTerminalPaintNarrowRoleLegendReservesRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := plainLines(strings.Split(screen.Render(), "\n"))
-	if !strings.Contains(lines[height-2], "● explorer") || !strings.Contains(lines[height-2], "● worker") || !strings.Contains(lines[height-1], "AGENTS ·") {
+	if !strings.Contains(lines[height-2], "● explorer") || !strings.Contains(lines[height-2], "● worker") || !strings.Contains(lines[height-1], "3 Agents") {
 		t.Fatalf("legend/footer placement: %q", lines[height-2:])
 	}
 	if u.layout.agents.y+u.layout.agents.h != height-2 {

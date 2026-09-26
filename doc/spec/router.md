@@ -237,6 +237,57 @@ close reasons, error text, and headers are not exported. An EOF does not establi
 successful completion. These observations are request-local and debug-only and do
 not change translation, execution, cancellation, or retry behavior.
 
+### Native app-server preview
+
+`MEKUGI_APP_SERVER_UI=1` selects an opt-in client of `codex app-server` for
+interactive terminal launches only. It maps explicit `--yolo`, model and config
+arguments and rejects other interactive arguments rather than ignoring them.
+Router readiness, provider catalogs, invocation overrides, native recovery hooks
+and frontend environment keep their owners; redirected and noninteractive
+commands keep their original path. The client speaks newline-delimited stdio RPC.
+
+The existing terminal shell keeps pane positions, split sizing, the roster, the
+diff pane, mouse handling and bindings; only the Codex content is replaced. Panes
+are numbered tabs in the status bar and Ctrl-B + number focuses one.
+
+Main and Activity share the activity view's block parsing, operation grouping
+and viewport logic; each keeps its own entries and follow/unseen state. Typed
+app-server items update entries in place. Main renders them as an unclipped transcript: user messages on a tinted
+band, assistant text, grouped tool runs, agent start/message/finish events and
+journal blocks. Its composer supports a new thread, submission, steering and
+interruption. Submitted text appears immediately and is reconciled with the
+server's user message without a duplicate; rejection restores the draft. The
+composer border carries turn state, unseen-message count and the model. History
+beyond the retained window is not hydrated. Unexpected server requests stay
+visibly pending, never auto-approved.
+
+Activity shows only child agents; Main stays in the roster for status and usage.
+Each agent run has one heading with the agent's role and start time. Its events
+put a short label on its own row, such as the started model, message direction
+or answer, then the body at full width, separated by blank rows so narrow panes
+stay readable. Directed Main/agent messages appear at both ends. Native
+assignments, including follow-ups, keep their own identities; spawn and its first
+prompt form one event, and full-history requests do not replay them. In Main,
+child answers link to their retained assignment, not to a message with similar
+text.
+
+Native child reasoning follows Codex's summary presentation: the current summary
+updates the agent's status and a transient status row with a left-to-right
+brightness sweep that stops when superseded or finished. Raw and encrypted
+reasoning stay excluded; the legacy pane keeps its reasoning policy.
+
+Scrolling stops at the last full viewport, including after resizing or following
+a link, and the link target briefly highlights. Frames replace changed rows
+without blanking the terminal. Journal records arrive typed from the journal
+owner and follow the [native journal presentation](journal.md#native-main-presentation)
+contract. A request without workspace metadata keeps its unscoped journal
+namespace; the app-server cwd never grants it filesystem authority.
+
+This is not the replacement gate: questions, resume/fork, pickers, queueing,
+remaining native notices and Metrics are unimplemented. The existing terminal
+and dashboard remain the default until the
+[app-server proposal](../proposals/app-server-ui.md) replacement checks pass.
+
 ### Feature-usage debug evidence
 
 `router.jsonl` MUST support `event: "feature_usage"` with `schema_version: 1`, fixed

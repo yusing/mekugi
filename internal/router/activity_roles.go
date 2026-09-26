@@ -45,15 +45,32 @@ func (v *liveActivityView) roleLegend() string {
 }
 
 func (u *terminalUI) statusLines() (status, legend string) {
-	title := []string{"CODEX", "DIFF", "AGENTS", "ROSTER"}[u.focus]
-	status = " " + title + " · Ctrl-B 1/2/3/4 focus · ←/→ width · ↑/↓ height · [/] files"
+	// Numbered tabs name each pane by its Ctrl-B digit and mark the focused one.
+	titles := []string{"Codex", "Diff", "Agents", "Roster"}
+	if u.main != nil {
+		titles = []string{"Main", "Diff", "Activity", "Agents"}
+	}
+	var tabs []string
+	for i, title := range titles {
+		tab := fmt.Sprintf(" %d %s ", i+1, title)
+		if i == u.focus {
+			tab = "\x1b[7;1m" + tab + liveActivityReset
+		} else {
+			tab = liveActivityDim + tab + liveActivityUndim
+		}
+		tabs = append(tabs, tab)
+	}
+	hints := "Ctrl-B + 1-4 focus · ←↑↓→ resize · [/] files"
 	if u.prefix {
-		status = " Layout: 1/2/3/4 focus · arrows resize · [/] files · PgUp/PgDn Codex history · Ctrl-B sends prefix"
+		hints = "1-4 focus · ←↑↓→ resize · [/] files · PgUp/PgDn history · Ctrl-B sends prefix"
+	}
+	status = strings.Join(tabs, "") + "  " + liveActivityDim + hints + liveActivityUndim
+	if u.prefix {
+		status = strings.Join(tabs, "") + "  " + liveActivityAmber + "Ctrl-B" + liveActivityReset + " " + hints
 	}
 	if u.activityOpen {
 		legend = u.agents.roleLegend()
 	}
-	status = liveActivityDim + status + liveActivityUndim
 	if legend != "" && ansi.StringWidth(status)+2+ansi.StringWidth(legend) <= u.width {
 		status += "  " + legend
 		legend = ""

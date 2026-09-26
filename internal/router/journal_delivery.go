@@ -143,6 +143,16 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 		t.ReleaseDelivery()
 		return nil, err
 	}
+	if sink := t.nativeJournal(); sink != nil {
+		if terminal {
+			snapshot := journal.clone()
+			t.journalNativeTerminal = &snapshot
+		} else {
+			sink.publish(journal, false)
+		}
+		t.ReleaseDelivery()
+		return nil, nil
+	}
 	if childTerminal {
 		t.journalNewCount, t.journalFlushedCount = 0, 0
 		for _, item := range journal.Items {
@@ -301,6 +311,10 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 	if (t.journalTerminalReady() || t.liveDiffCompletionReady) && (envelope.Type == "response.completed" || envelope.Status == "completed") {
 		t.storageIdle = true
 		t.finishLiveDiffTurn()
+		if t.journalNativeTerminal != nil && t.journalNativeSink != nil {
+			t.journalNativeSink.publish(*t.journalNativeTerminal, true)
+			t.journalNativeTerminal = nil
+		}
 	}
 	if len(t.journalDeliveries) == 0 {
 		return

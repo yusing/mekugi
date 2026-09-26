@@ -75,11 +75,18 @@ func (t *mekugiResponseTransform) captureNaturalJournalAnswer(payload []byte) er
 		if receipt == "" {
 			receipt = ids[0]
 		}
-		if _, err := t.proxy.journals.apply(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, "final:"+receipt, []journalMutation{mutation}); err != nil {
+		journalIDs, err := t.proxy.journals.apply(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, "final:"+receipt, []journalMutation{mutation})
+		if err != nil {
 			if errors.Is(err, errJournalItemLimit) {
 				return nil // Preserve the original answer and its provider history.
 			}
 			return err
+		}
+		// Source: codex-rs/core/src/event_mapping.rs parse_turn_item and
+		// app-server-protocol/src/protocol/v2/item.rs@86be5320 copy the provider
+		// message ID unchanged into AgentMessage and its delta itemId.
+		if sink := t.nativeJournal(); sink != nil && len(journalIDs) > 0 {
+			sink.bindAnswer(ids, journalIDs[0])
 		}
 		t.journalNaturalAnswerIDs = make(map[string]bool, len(ids))
 		for _, id := range ids {
@@ -93,7 +100,7 @@ func (t *mekugiResponseTransform) captureNaturalJournalAnswer(payload []byte) er
 }
 
 func (t *mekugiResponseTransform) filterNaturalAnswerEvents(events [][]byte) [][]byte {
-	if len(t.journalNaturalAnswerIDs) == 0 {
+	if t.journalNativeSink != nil || len(t.journalNaturalAnswerIDs) == 0 {
 		return events
 	}
 	type event struct {
@@ -124,7 +131,7 @@ func (t *mekugiResponseTransform) filterNaturalAnswerEvents(events [][]byte) [][
 }
 
 func (t *mekugiResponseTransform) withoutNaturalAnswer(output []map[string]json.RawMessage) []map[string]json.RawMessage {
-	if len(t.journalNaturalAnswerIDs) == 0 {
+	if t.journalNativeSink != nil || len(t.journalNaturalAnswerIDs) == 0 {
 		return output
 	}
 	kept := make([]map[string]json.RawMessage, 0, len(output))

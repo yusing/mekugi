@@ -43,6 +43,7 @@ type activityEvent struct {
 	raw                        string // Unattributed text for the agents pane.
 	observed                   time.Time
 	filter                     *exploreFilterEvent
+	assignment                 *activityAssignment
 }
 
 func newSubagentActivity() *subagentActivity {
@@ -115,12 +116,19 @@ func (a *subagentActivity) collect(thread, source, kind, text string) {
 }
 
 func (a *subagentActivity) collectEvent(event activityEvent) {
-	thread, source, kind, text := event.thread, event.source, event.kind, event.text
-	if a == nil || source == "" || len(source) > maxCommentaryPublicationBytes || strings.TrimSpace(text) == "" {
+	if a == nil {
 		return
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.collectEventLocked(event)
+}
+
+func (a *subagentActivity) collectEventLocked(event activityEvent) {
+	thread, source, kind, text := event.thread, event.source, event.kind, event.text
+	if source == "" || len(source) > maxCommentaryPublicationBytes || strings.TrimSpace(text) == "" {
+		return
+	}
 	node := a.threads[thread]
 	if a.closed || node == nil || node.conflicted {
 		return
@@ -176,6 +184,9 @@ func (a *subagentActivity) collectEvent(event activityEvent) {
 		return
 	}
 	node.seen[source] = struct{}{}
+	if kind == "start" && event.assignment != nil && event.assignment.id != "" {
+		node.seen[commentaryMessageID(event.assignment.id)] = struct{}{}
+	}
 	event.source, event.callID, event.text, event.raw, event.observed = source, callID, text, raw, now
 	a.events = append(a.events, event)
 	a.claimPaneLocked(thread, now)

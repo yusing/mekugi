@@ -10,6 +10,35 @@ import (
 	"github.com/yusing/mekugi/internal/livediff"
 )
 
+func TestLiveActivityScrollStopsAtLastFullViewport(t *testing.T) {
+	v := newLiveActivityView()
+	v.conversation = true
+	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: strings.Repeat("Content row\n", 30) + "Last row"}}})
+	feed := v.renderFeed(80, 8)
+	bottom := v.viewport(feed, 8)
+	for _, key := range []byte{'j', paneWheelDown, ' ', 'G'} {
+		v.scrollKey(key)
+		if got := v.viewport(feed, 8); !slices.Equal(got, bottom) {
+			t.Fatalf("key %d scrolled past the bottom: %q", key, got)
+		}
+	}
+	v.scroll(1000)
+	if got := v.viewport(feed, 8); !slices.Equal(got, bottom) {
+		t.Fatal("scroll delta passed the last full viewport")
+	}
+	v.offset = len(feed.lines) - 1 // A question jump near the end must also clamp.
+	if got := v.viewport(feed, 8); !slices.Equal(got, bottom) {
+		t.Fatal("near-end jump left blank space below the last row")
+	}
+	if got := v.viewport(feed, 16); got[15] != feed.lines[len(feed.lines)-1] {
+		t.Fatal("resizing left blank space below the last row")
+	}
+	v.viewport(feed, len(feed.lines)+5)
+	if v.offset != 0 {
+		t.Fatal("content shorter than the viewport remained scrolled")
+	}
+}
+
 func TestLiveActivityJavaScriptStableIndent(t *testing.T) {
 	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
 		painter := liveActivityPainter{theme: theme}
@@ -171,7 +200,7 @@ func TestLiveActivityViewResponsiveLayouts(t *testing.T) {
 	}
 	// A laptop-height pane at least 100 columns wide keeps cards beside the feed.
 	side := plainLines(view.render(105, 16, now))
-	if !strings.HasPrefix(side[1], " ✓ inventory") || !strings.Contains(side[1], " │ ") || !strings.Contains(side[2], "✉  to main") ||
+	if !strings.HasPrefix(side[1], " ✓ inventory") || !strings.Contains(side[1], " │ ") || !strings.Contains(side[2], "→ main") ||
 		!strings.Contains(side[5], "Checking the") || !strings.Contains(side[7], "└ probe") {
 		t.Fatalf("side layout = %q", side)
 	}
@@ -456,8 +485,8 @@ func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
 	full := render(false)
 	for _, want := range []string{
 		"✓ Final answer · 3 answers · 2 files +12 -4",
-		"  Q Does the preview color\n    interpreter bodies?",
-		"  A verdict\n    Yes.", "  A risk\n    Nested templates stay plain.", "  • misc\n    Nothing else.",
+		"  ↩ Does the preview color interpreter bodies?",
+		"  • verdict\n    Yes.", "  • risk\n    Nested templates stay plain.", "  • misc\n    Nothing else.",
 		"  Changes amber3..amber4\n    +10 -2 internal/a.go\n     +2 -2 b.go",
 	} {
 		if !strings.Contains(full, want) {
@@ -467,7 +496,7 @@ func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
 	if strings.Contains(full, "Journal result") || strings.Contains(full, "**") || strings.Contains(full, "Answer") {
 		t.Fatalf("legacy journal grammar leaked into the pane:\n%s", full)
 	}
-	if compact := render(true); !strings.Contains(compact, "  Q Does the preview color interpreter bodies?\n  A verdict") {
+	if compact := render(true); !strings.Contains(compact, "  ↩ Does the preview color interpreter bodies?\n  • verdict") {
 		t.Fatalf("shared view kept a multi-row question:\n%s", compact)
 	}
 	if summary := ansi.Strip(painter.summary(blocks)); summary != "Yes." {
@@ -480,7 +509,7 @@ func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
 	writeJournalItems(&readOnly, []journalItem{{ID: "only", Text: "Found it."}})
 	readOnly.WriteString("\n\n**Changes:**\nNo recorded changes.\n")
 	blocks = parseLiveActivity(activityPaneEntry{Kind: "final", Text: readOnly.String()})
-	if got := ansi.Strip(strings.Join(painter.block(blocks[0], 80), "\n")); got != "✓ Final answer · 1 answer\n  • Found it." {
+	if got := ansi.Strip(strings.Join(painter.block(blocks[0], 80), "\n")); got != "✓ Final answer\n  • Found it." {
 		t.Fatalf("read-only layout = %q", got)
 	}
 	blocks = parseLiveActivity(activityPaneEntry{Kind: "final", Text: "Plain **answer**."})

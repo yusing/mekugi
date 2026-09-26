@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/yusing/mekugi/internal/livediff"
 )
@@ -25,6 +26,7 @@ type liveActivityBlock struct {
 	journal  *liveActivityJournal // A final answer in journal-result form.
 	compact  bool                 // Rendered in the clipped shared feed.
 	exitCode int                  // Nonzero command exit; zero means no failure label.
+	observed time.Time            // Live reasoning's header-change time.
 }
 
 // liveActivityJournal is a child's journal result laid out by the router's
@@ -41,6 +43,7 @@ type liveActivityJournal struct {
 type liveActivityAnswerGroup struct {
 	question string
 	answers  []liveActivityAnswer
+	target   uint64
 }
 
 type liveActivityAnswer struct{ id, text string }
@@ -65,12 +68,46 @@ func parseLiveActivity(entry activityPaneEntry) []liveActivityBlock {
 		}
 	}
 	switch entry.Kind {
+	case "assignment":
+		if entry.assignment != nil {
+			return []liveActivityBlock{{kind: "message", from: entry.assignment.from, to: entry.assignment.to, owner: entry.Agent, body: livediff.Safe(entry.assignment.text, false)}}
+		}
+	case "reasoning":
+		return []liveActivityBlock{{kind: "summary", body: text, observed: entry.Observed}}
+	case "native_journal":
+		if entry.journal != nil {
+			journal := &liveActivityJournal{}
+			items := entry.journalItems
+			if len(items) == 0 {
+				items = []journalItem{*entry.journal}
+			}
+			questions := make(map[string]int)
+			for _, item := range items {
+				index, found := questions[item.Question]
+				if item.Question == "" || !found {
+					index = len(journal.groups)
+					journal.groups = append(journal.groups, liveActivityAnswerGroup{question: livediff.Safe(item.Question, false)})
+					questions[item.Question] = index
+				}
+				journal.groups[index].answers = append(journal.groups[index].answers, liveActivityAnswer{id: item.ID, text: livediff.Safe(item.Text, false)})
+			}
+			return []liveActivityBlock{{kind: "final", body: text, journal: journal}}
+		}
+	case "command":
+		if entry.native != nil {
+			return []liveActivityBlock{{kind: "op", verb: "Run", label: livediff.Safe(entry.native.status, false), code: livediff.Safe(entry.native.command, false), lang: "bash", fenced: true}}
+		}
 	case "final":
 		journal, _ := parseLiveActivityJournal(text)
-		return []liveActivityBlock{{kind: "final", body: text, journal: journal}}
+		return []liveActivityBlock{{kind: "final", body: text, journal: journal, owner: entry.Agent}}
 	case "start":
 		if strings.HasPrefix(text, "Started") {
-			return []liveActivityBlock{parseLiveActivityStart(text)}
+			block := parseLiveActivityStart(text)
+			if entry.assignment != nil {
+				block.from, block.to = entry.assignment.from, entry.assignment.to
+				block.body = livediff.Safe(entry.assignment.text, false)
+			}
+			return []liveActivityBlock{block}
 		}
 	case "error":
 		return []liveActivityBlock{{kind: "error", body: text}}

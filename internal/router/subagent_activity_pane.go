@@ -38,6 +38,7 @@ type activityPane struct {
 	wake       chan struct{}
 	announced  bool
 	farewell   bool
+	native     bool // The owning frontend renders its own pane state, not inline notices.
 }
 
 type activityPaneEntry struct {
@@ -49,7 +50,11 @@ type activityPaneEntry struct {
 	Filter   *exploreFilterEvent `json:",omitempty"`
 	Observed time.Time
 
-	event activityEvent // Original queue entry, requeued if the write fails.
+	event        activityEvent           // Original queue entry, requeued if the write fails.
+	native       *liveActivityNativeItem // In-process app-server lifecycle input, not a provider observation.
+	journal      *journalItem            // Native presentation keeps IDs/questions separate from rendered text.
+	journalItems []journalItem           // One terminal delivery uses Activity's existing grouped result renderer.
+	assignment   *activityAssignment     // Validated native NEW_TASK, not an ordinary message.
 }
 
 type activityPaneAgent struct {
@@ -139,7 +144,7 @@ func (a *subagentActivity) wakePaneLocked() {
 // paneNoticesLocked returns the one-time root notices for pane ownership changes.
 func (a *subagentActivity) paneNoticesLocked(root string) []map[string]json.RawMessage {
 	pane := a.pane
-	if pane == nil || pane.root != root {
+	if pane == nil || pane.root != root || pane.native {
 		return nil
 	}
 	var text, key string
@@ -156,6 +161,20 @@ func (a *subagentActivity) paneNoticesLocked(root string) []map[string]json.RawM
 	id := commentaryMessageID("activity-pane\x00" + root + "\x00" + key)
 	a.copies[id] = struct{}{}
 	return []map[string]json.RawMessage{assistantCommentaryMessage(id, text)}
+}
+
+// Main already knows its app-server thread before the first provider request.
+// One native frontend owns this collector; opening another view never drains it.
+func (a *subagentActivity) attachNativePane(root string) (uint64, activityPaneEvent) {
+	a.observe(root, "", "/root", false)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.pane == nil {
+		a.pane = newActivityPane(context.Background(), nil)
+	}
+	a.pane.root, a.pane.state, a.pane.native = root, activityPaneAttached, true
+	a.pane.generation++
+	return a.pane.generation, a.paneSnapshotLocked()
 }
 
 // paneAgentsLocked lists the pane root and its observed children in observation order.
@@ -208,6 +227,7 @@ func (a *subagentActivity) takePane(generation uint64) ([]activityPaneEntry, []a
 		}
 		entry.CallID = event.callID
 		entry.Filter = event.filter
+		entry.assignment = event.assignment
 
 		entries = append(entries, entry)
 	}

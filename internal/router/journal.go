@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -108,6 +109,8 @@ type journalStore struct {
 	deliveryGate chan struct{}
 	stateGate    chan struct{}
 	memory       map[string]threadJournal
+	nativeMu     sync.Mutex
+	native       map[string]*nativeJournalSink
 }
 
 func newJournalStore() *journalStore {
@@ -270,6 +273,9 @@ func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore
 		}
 		if store == nil {
 			s.memory[key] = next
+		}
+		if sink := s.nativeSink(workspace, thread); sink != nil {
+			sink.publish(next, false)
 		}
 		return nil
 	}

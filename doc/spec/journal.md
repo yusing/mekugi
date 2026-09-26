@@ -1,5 +1,31 @@
 # Journal
 
+## Native Main presentation
+
+An attached app-server frontend receives typed Main journal revisions from the
+journal owner instead of the inline `Journal update`/`Journal flush` Markdown
+envelopes described below. IDs, author, original questions and revisions remain
+structured data. Main shows each milestone or answer set as a labeled journal
+block without repeated questions, Q/A labels or item IDs. An answer's reply link
+names what it answers (your message or an assignment) and its time, and jumps to
+that retained original. When the original is outside the loaded history, the link
+says so instead of jumping to another prompt. Revisions keep their question
+association, and a retraction removes the milestone. Activity shows a child's
+answers under its run.
+
+The authenticated mutation path publishes live records after persistence, even
+without an open provider response. Enqueueing is not acknowledgement: successful
+UI output acknowledges exact revisions through the journal owner. Terminal
+records become eligible only after successful downstream response completion.
+Failed presentation leaves unacknowledged records durable and pending.
+
+The substantive provider final remains in Codex's response. The frontend hides
+only the exact captured provider item IDs associated with native journal answers,
+so each answer displays once. Capture-capacity fallback stays raw. Child native
+completion payloads, nonattached inline delivery and legacy exact-ID replay
+provenance are unchanged. Native sinks are scoped by workspace and stable Main
+thread; missing-workspace records are never rebased to the app-server cwd.
+
 ## REQ-JOURNAL-001 — Per-thread milestone journals
 
 Mekugi mode owns one durable milestone journal per stable thread. Passthrough is unchanged.

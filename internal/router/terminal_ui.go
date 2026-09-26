@@ -35,6 +35,7 @@ type terminalUI struct {
 	codex, diffScreen                              *vt.Emulator
 	diff                                           *liveDiffTerminalController
 	agents                                         *liveActivityView
+	main                                           *appServerUI // Native Main replaces only the Codex content, not the terminal shell.
 	auto                                           *autoLiveDiff
 	activity                                       *subagentActivity
 	width, height, split, horizontal, rosterHeight int
@@ -47,6 +48,8 @@ type terminalUI struct {
 	paste                                          bool
 	generation                                     uint64
 	layout                                         terminalLayout
+	paintedRows                                    []string
+	paintedWidth                                   int
 }
 
 type terminalRect struct{ x, y, w, h int }
@@ -346,7 +349,7 @@ func (u *terminalUI) paint(ctx context.Context, out io.Writer) error {
 		}
 		l.diff = terminalRect{}
 	}
-	if l.codex.w > 0 && (l.codex.w != u.codex.Width() || l.codex.h != u.codex.Height()) {
+	if u.main == nil && l.codex.w > 0 && (l.codex.w != u.codex.Width() || l.codex.h != u.codex.Height()) {
 		u.codex.Resize(l.codex.w, l.codex.h)
 		if err := resizeTerminalPTY(u.master, l.codex.w, l.codex.h); err != nil {
 			return err
@@ -364,18 +367,23 @@ func (u *terminalUI) paint(ctx context.Context, out io.Writer) error {
 			}
 		}
 	}
-	var b strings.Builder
-	b.WriteString("\x1b[?2026h\x1b[?25l\x1b[0m")
-	for row := 0; row < max(1, u.height); row++ {
-		fmt.Fprintf(&b, "\x1b[%d;1H\x1b[2K", row+1)
+	rows := make([]strings.Builder, max(1, u.height))
+	put := func(row, column int, content string) {
+		if row >= 0 && row < len(rows) {
+			fmt.Fprintf(&rows[row], "\x1b[%dG\x1b[0m%s\x1b[0m", column+1, content)
+		}
 	}
 	draw := func(r terminalRect, lines []string) {
 		for row := 0; row < r.h && row < len(lines); row++ {
-			fmt.Fprintf(&b, "\x1b[%d;%dH\x1b[0m%s\x1b[0m", r.y+row+1, r.x+1, ansi.Truncate(lines[row], r.w, ""))
+			put(r.y+row, r.x, ansi.Truncate(lines[row], r.w, ""))
 		}
 	}
 	if l.codex.w > 0 {
-		draw(l.codex, strings.Split(u.codexFrame(), "\n"))
+		if u.main != nil {
+			draw(l.codex, u.main.mainFrame(l.codex.w, l.codex.h))
+		} else {
+			draw(l.codex, strings.Split(u.codexFrame(), "\n"))
+		}
 	}
 	if l.diff.w > 0 {
 		if u.diffFailure != "" {
@@ -385,6 +393,7 @@ func (u *terminalUI) paint(ctx context.Context, out io.Writer) error {
 		}
 	}
 	u.agents.feedOnly = l.roster.w > 0
+	u.agents.focused = u.focus == 2
 	if l.agents.w > 0 {
 		draw(l.agents, u.agents.render(l.agents.w, l.agents.h, time.Now()))
 	}
@@ -397,7 +406,7 @@ func (u *terminalUI) paint(ctx context.Context, out io.Writer) error {
 			bottom = l.rosterHorizontal
 		}
 		for row := 0; row < bottom; row++ {
-			fmt.Fprintf(&b, "\x1b[%d;%dH\x1b[2m│\x1b[0m", row+1, l.vertical+1)
+			put(row, l.vertical, "\x1b[2m│")
 		}
 	}
 	if l.rosterHorizontal >= 0 {
@@ -405,21 +414,36 @@ func (u *terminalUI) paint(ctx context.Context, out io.Writer) error {
 		if l.vertical >= 0 && l.vertical < l.roster.w {
 			rule = strings.Repeat("─", l.vertical) + "┴" + strings.Repeat("─", l.roster.w-l.vertical-1)
 		}
-		fmt.Fprintf(&b, "\x1b[%d;1H\x1b[2m%s\x1b[0m", l.rosterHorizontal+1, rule)
+		put(l.rosterHorizontal, 0, "\x1b[2m"+rule)
 	}
 	if l.horizontal >= 0 {
-		fmt.Fprintf(&b, "\x1b[%d;%dH\x1b[2m%s\x1b[0m", l.horizontal+1, l.diff.x+1, strings.Repeat("─", l.diff.w))
+		put(l.horizontal, l.diff.x, "\x1b[2m"+strings.Repeat("─", l.diff.w))
 	}
 	if legend != "" && u.height > 2 {
-		fmt.Fprintf(&b, "\x1b[%d;1H%s\x1b[0m", u.height-1, ansi.Truncate(legend, max(1, u.width), "…"))
+		put(u.height-2, 0, ansi.Truncate(legend, max(1, u.width), "…"))
 	}
-	fmt.Fprintf(&b, "\x1b[%d;1H%s\x1b[0m", max(1, u.height), ansi.Truncate(status, max(1, u.width), ""))
-	if u.focus == 0 && l.codex.w > 0 && u.cursorVisible && u.codexScroll == 0 {
+	put(max(0, u.height-1), 0, ansi.Truncate(status, max(1, u.width), ""))
+	var b strings.Builder
+	b.WriteString("\x1b[?2026h\x1b[?25l\x1b[0m")
+	frame := make([]string, len(rows))
+	for row := range rows {
+		frame[row] = rows[row].String()
+		if u.paintedWidth == u.width && len(u.paintedRows) == len(frame) && frame[row] == u.paintedRows[row] {
+			continue
+		}
+		// Clear and replace only changed rows, never blank the whole screen
+		// before drawing. This also works without synchronized-output support.
+		fmt.Fprintf(&b, "\x1b[%d;1H\x1b[2K%s", row+1, frame[row])
+	}
+	if u.main == nil && u.focus == 0 && l.codex.w > 0 && u.cursorVisible && u.codexScroll == 0 {
 		p := u.codex.CursorPosition()
 		fmt.Fprintf(&b, "\x1b[%d;%dH\x1b[?25h", l.codex.y+p.Y+1, l.codex.x+p.X+1)
 	}
 	b.WriteString("\x1b[?2026l")
 	_, err := io.WriteString(out, b.String())
+	if err == nil {
+		u.paintedRows, u.paintedWidth = frame, u.width
+	}
 	return err
 }
 
@@ -442,6 +466,9 @@ func (u *terminalUI) key(key byte) error {
 			u.pasteEnd = 0
 		}
 		if u.focus == 0 {
+			if u.main != nil {
+				return u.send(string([]byte{key}))
+			}
 			_, err := u.master.Write([]byte{key})
 			return err
 		}
@@ -465,7 +492,7 @@ func (u *terminalUI) key(key byte) error {
 		u.hostReply = nil
 		u.hostReplyDiscard = false
 		u.hostReplyEscape = false
-		if !discard {
+		if !discard && u.main == nil {
 			_, err := u.master.Write(reply)
 			return err
 		}
@@ -497,6 +524,9 @@ func (u *terminalUI) key(key byte) error {
 			u.prefix = false
 			if u.focus == 0 {
 				u.codexScroll = 0
+				if u.main != nil {
+					return u.send(s)
+				}
 				_, err := io.WriteString(u.master, s)
 				return err
 			}
@@ -505,6 +535,9 @@ func (u *terminalUI) key(key byte) error {
 		if s == "\x1b[201~" {
 			u.paste = false
 			if u.focus == 0 {
+				if u.main != nil {
+					return u.send(s)
+				}
 				_, err := io.WriteString(u.master, s)
 				return err
 			}
@@ -529,6 +562,9 @@ func (u *terminalUI) key(key byte) error {
 		u.prefix = false
 		switch key {
 		case 2:
+			if u.main != nil {
+				return u.send(string([]byte{2}))
+			}
 			_, err := u.master.Write([]byte{2})
 			return err
 		case '1':
@@ -550,11 +586,19 @@ func (u *terminalUI) key(key byte) error {
 		u.prefix = true
 		return nil
 	}
-	return u.send(string(key))
+	return u.send(string([]byte{key}))
 }
 
 func (u *terminalUI) resize(key string) {
 	if key == "\x1b[5~" || key == "\x1b[6~" {
+		if u.main != nil {
+			if key == "\x1b[5~" {
+				u.main.view.scrollKey('b')
+			} else {
+				u.main.view.scrollKey(' ')
+			}
+			return
+		}
 		delta := u.codex.Height()
 		if key == "\x1b[6~" {
 			delta = -delta
@@ -616,6 +660,16 @@ func (u *terminalUI) resize(key string) {
 
 func (u *terminalUI) send(s string) error {
 	if u.focus == 0 {
+		if u.main != nil {
+			for _, key := range []byte(s) {
+				quit, err := u.main.key(key)
+				if err != nil {
+					return err
+				}
+				u.main.quitRequested = u.main.quitRequested || quit
+			}
+			return nil
+		}
 		u.codexScroll = 0
 		_, err := io.WriteString(u.master, s)
 		return err
@@ -713,6 +767,23 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	translated := fmt.Sprintf("\x1b[<%d;%d;%dM", button, x-r.x+1, y-r.y+1)
 	if pane == 0 {
+		if u.main != nil {
+			if !release {
+				action := byte(0)
+				switch button &^ 28 {
+				case 0:
+					action = '\r'
+				case 35:
+					action = 'h'
+				case 64:
+					action = 'k'
+				case 65:
+					action = 'j'
+				}
+				u.main.view.handleMouse(action, y-r.y+1, x-r.x+1)
+			}
+			return nil
+		}
 		if !release && button&64 != 0 && len(u.mouseModes) == 0 && !u.codex.IsAltScreen() {
 			delta := 1
 			if button&1 != 0 {

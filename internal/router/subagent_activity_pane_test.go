@@ -656,11 +656,11 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 	}
 	f.activity.collect("probe", "reply-in", "reply", "[`/root` -> `/root/explorer/probe`] Message received:\nCheck delivery.")
 	h.frame(t, func(frame string) bool {
-		return strings.Contains(text(frame), "✉  from main") && strings.Contains(text(frame), "Check delivery.")
+		return strings.Contains(text(frame), "← main") && strings.Contains(text(frame), "Check delivery.")
 	})
 	f.activity.collect("probe", "reply-out", "reply", "[`/root/explorer/probe` -> `/root`] Message received:\nDelivery checked.")
 	h.frame(t, func(frame string) bool {
-		return strings.Contains(text(frame), "✉  to main") && strings.Contains(text(frame), "Delivery checked.")
+		return strings.Contains(text(frame), "→ main") && strings.Contains(text(frame), "Delivery checked.")
 	})
 	h.write(t, "\x1b[<35;5;4M")
 	h.frame(t, func(frame string) bool {

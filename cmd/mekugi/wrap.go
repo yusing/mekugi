@@ -42,6 +42,14 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	if err := validateCodexArgs(args); err != nil {
 		return 2, err
 	}
+	appUI := os.Getenv("MEKUGI_APP_SERVER_UI") == "1" && interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+	if appUI {
+		var err error
+		args, err = appServerArgs(args)
+		if err != nil {
+			return 2, err
+		}
+	}
 	executable, err := exec.LookPath("codex")
 	if err != nil {
 		return 1, fmt.Errorf("locate codex: %w", err)
@@ -144,7 +152,13 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	var waitCodex func() error
 	err = ctx.Err()
 	if err == nil {
-		if session.StartUI != nil && interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
+		if appUI {
+			if session.StartAppUI != nil {
+				waitCodex, err = session.StartAppUI(ctx, cmd, os.Stdin, os.Stdout)
+			} else {
+				waitCodex, err = router.StartAppServerUI(ctx, cmd, os.Stdin, os.Stdout)
+			}
+		} else if session.StartUI != nil && interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
 			waitCodex, err = session.StartUI(ctx, cmd, os.Stdin, os.Stdout)
 		} else {
 			err = cmd.Start()

@@ -111,10 +111,10 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 				t.Fatalf("wrapper invoked Herdr: %v", err)
 			}
 			if terminal {
-				if !bytes.Contains(output, []byte("\x1b[?1049h")) || !bytes.Contains(output, []byte("CODEX")) {
+				if !bytes.Contains(output, []byte("\x1b[?1049h")) || !bytes.Contains(output, []byte(" 1 Codex ")) {
 					t.Fatalf("terminal wrapper did not render its integrated UI: %q", output)
 				}
-			} else if bytes.Contains(output, []byte("\x1b[?1049h")) || bytes.Contains(output, []byte("CODEX")) {
+			} else if bytes.Contains(output, []byte("\x1b[?1049h")) || bytes.Contains(output, []byte(" 1 Codex ")) {
 				t.Fatalf("redirected wrapper unexpectedly rendered the integrated UI: %q", output)
 			}
 		})

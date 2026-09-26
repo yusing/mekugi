@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -343,9 +344,30 @@ func liveActivityIndent(lines []string, prefix string) []string {
 func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string {
 	width = max(8, width)
 	switch block.kind {
+	case "summary":
+		if block.compact {
+			return []string{liveActivityDim + "◐ " + liveActivityUndim + reasoningShimmer(reasoningSummaryHeader(block.body), time.Since(block.observed), p.theme)}
+		}
+		// Codex keeps summary bodies in detailed transcript, dim and italic,
+		// with a bullet rather than a separate "Reasoning summary" card.
+		body := reasoningSummaryBody(block.body)
+		if body == "" {
+			return nil
+		}
+		style := "\x1b[2;3m"
+		rows := p.markdown(body, width-2)
+		for i, row := range rows {
+			row = strings.NewReplacer(liveActivityReset, liveActivityReset+style, "\x1b[22m", "\x1b[22m"+style, "\x1b[23m", style).Replace(row)
+			prefix := "  "
+			if i == 0 {
+				prefix = "• "
+			}
+			rows[i] = style + prefix + row + liveActivityReset
+		}
+		return rows
 	case "final":
 		if block.journal != nil {
-			return p.journal(block.journal, width, block.compact)
+			return p.journal(block.journal, width, true)
 		}
 		return append([]string{liveActivityGreen + "✓ Final answer" + liveActivityReset}, liveActivityIndent(p.markdown(block.body, width-2), "  ")...)
 	case "reads":
@@ -417,18 +439,17 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 		}
 		return lines
 	case "message":
-		// The envelope glyph already says a message arrived; other headlines stay.
 		head := p.messageDirection(block)
-		if headline := strings.TrimSuffix(block.verb, ":"); headline != "Message received" && headline != "Message received." {
+		if headline := strings.TrimSuffix(block.verb, ":"); headline != "" && headline != "Message received" && headline != "Message received." && headline != "Message sent" && headline != "Message sent." {
 			head += "  " + liveActivityDim + headline + liveActivityUndim
 		}
 		lines := []string{ansi.Truncate(head, width, "…")}
-		bar := liveAgentGutter(block.from, p.theme) + "┃" + liveActivityReset + " "
-		return append(lines, liveActivityIndent(p.markdown(block.body, width-2), bar)...)
+		return append(lines, p.markdown(block.body, width)...)
 	case "start":
-		lines := liveActivityHang(liveActivityGreen+"\x1b[1m▶ Started"+liveActivityReset+"  ", p.inline(block.label), width)
+		head := liveActivityGreen + "\x1b[1m▶ Started" + liveActivityReset
+		lines := liveActivityHang(head+" · ", p.inline(block.label), width)
 		if block.body != "" {
-			lines = append(lines, liveActivityIndent(p.markdown(block.body, width-2), "  ")...)
+			lines = append(lines, p.markdown(block.body, width)...)
 		}
 		return lines
 	case "compaction":
@@ -446,21 +467,65 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 	return p.markdown(block.body, width)
 }
 
+// event renders a block for the native Activity log: a short label row, then
+// the body flush with the gutter so narrow panes keep their full width.
+// Operations keep their ordinary one-row-per-operation layout.
+func (p *liveActivityPainter) event(block liveActivityBlock, width int) []string {
+	width = max(8, width)
+	label := func(head string, body []string) []string {
+		return append([]string{ansi.Truncate(head, width, "…")}, body...)
+	}
+	done := liveActivityGreen + "✓" + liveActivityReset + liveActivityDim + " answer" + liveActivityUndim
+	switch block.kind {
+	case "message":
+		return label(p.messageDirection(block), p.markdown(block.body, width))
+	case "start":
+		head := liveActivityGreen + "▶" + liveActivityReset + liveActivityDim + " started"
+		if model := strings.TrimSpace(ansi.Strip(p.inline(block.label))); model != "" {
+			head += " · " + model
+		}
+		return label(head+liveActivityUndim, p.markdown(block.body, width))
+	case "final":
+		if block.journal == nil {
+			return label(done, p.markdown(block.body, width))
+		}
+		var answers []liveActivityAnswer
+		for _, group := range block.journal.groups {
+			answers = append(answers, group.answers...)
+		}
+		var rows []string
+		switch len(answers) {
+		case 0:
+			rows = label(done, []string{liveActivityDim + "No journal entries" + liveActivityUndim})
+		case 1:
+			rows = label(done, p.markdown(answers[0].text, width))
+		default:
+			rows = []string{done + liveActivityDim + fmt.Sprintf(" · %d", len(answers)) + liveActivityUndim}
+			for _, answer := range answers {
+				rows = append(rows, liveActivityHang(liveActivityDim+"•"+liveActivityUndim+" ", strings.Join(p.markdown(answer.text, width-2), "\n"), width)...)
+			}
+		}
+		tail := *block.journal
+		tail.groups, tail.empty = nil, false
+		return append(rows, p.journal(&tail, width, false)...)
+	case "text":
+		return p.markdown(block.body, width)
+	}
+	return p.block(block, width)
+}
+
 // journal lays out a final journal result: a heading with its answer and
 // change totals, each question with its answers, then recorded changes. The
 // agent heading already names the author. The shared feed keeps questions to
 // one row so clipping reaches the answers.
-func (p *liveActivityPainter) journal(journal *liveActivityJournal, width int, compact bool) []string {
+func (p *liveActivityPainter) journal(journal *liveActivityJournal, width int, heading bool) []string {
 	answers := 0
 	for _, group := range journal.groups {
 		answers += len(group.answers)
 	}
 	head := liveActivityGreen + "✓ Final answer" + liveActivityReset
 	var facts []string
-	switch {
-	case answers == 1:
-		facts = append(facts, "1 answer")
-	case answers > 1:
+	if answers > 1 {
 		facts = append(facts, fmt.Sprintf("%d answers", answers))
 	}
 	if len(journal.stats) > 0 {
@@ -481,7 +546,10 @@ func (p *liveActivityPainter) journal(journal *liveActivityJournal, width int, c
 	if len(facts) > 0 {
 		head += liveActivityDim + " · " + strings.Join(facts, " · ") + liveActivityUndim
 	}
-	lines := []string{ansi.Truncate(head, width, "…")}
+	var lines []string
+	if heading {
+		lines = append(lines, ansi.Truncate(head, width, "…"))
+	}
 	if journal.empty {
 		lines = append(lines, "  "+liveActivityDim+"No journal entries"+liveActivityUndim)
 	}
@@ -497,19 +565,15 @@ func (p *liveActivityPainter) journal(journal *liveActivityJournal, width int, c
 			lines = append(lines, "  "+strings.TrimRight(lead, " "))
 		}
 	}
-	accent := "\x1b[1m" + p.theme.Accent()
 	for _, group := range journal.groups {
 		if group.question != "" {
-			question := p.markdown(group.question, width-4)
-			if compact && len(question) > 1 {
-				flat := strings.Join(strings.Fields(ansi.Strip(strings.Join(question, " "))), " ")
-				question = []string{ansi.Truncate(flat, width-4, "…")}
-			}
-			hang(accent+"Q"+liveActivityReset+" ", liveActivityIndent(question, "\x1b[1m"))
+			// The assignment usually sits just above, so one dim line suffices.
+			flat := strings.Join(strings.Fields(group.question), " ")
+			lines = append(lines, "  "+liveActivityDim+"↩ "+ansi.Truncate(ansi.Strip(p.inline(flat)), width-4, "…")+liveActivityUndim)
 		}
 		for _, answer := range group.answers {
-			lead := liveActivityGreen + "\x1b[1mA" + liveActivityReset + " "
-			if group.question == "" {
+			lead := "  "
+			if group.question == "" || answers > 1 {
 				lead = liveActivityDim + "•" + liveActivityUndim + " "
 			}
 			body := p.markdown(answer.text, width-4)
@@ -578,6 +642,8 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 		return ""
 	}
 	switch block.kind {
+	case "summary":
+		return liveActivityDim + reasoningSummaryHeader(block.body) + liveActivityUndim
 	case "final":
 		text := firstLine(block.body)
 		if block.journal != nil {
@@ -634,10 +700,9 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 
 // messageDirection is relative to the row's owner, not the transport recipient.
 func (p liveActivityPainter) messageDirection(block liveActivityBlock) string {
-	direction, peer := "to ", block.to
+	direction, peer := "→ ", block.to
 	if block.owner == block.to {
-		direction, peer = "from ", block.from
+		direction, peer = "← ", block.from
 	}
-	// Many fonts draw ✉ wider than its one cell; the extra space keeps it off the label.
-	return liveActivityDim + "✉  " + direction + liveActivityUndim + p.recipient(peer)
+	return liveActivityDim + direction + liveActivityUndim + p.recipient(peer)
 }
