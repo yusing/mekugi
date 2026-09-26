@@ -1042,8 +1042,8 @@ func TestModelsHandlerRejectsMissingAuthentication(t *testing.T) {
 	if forwarded {
 		t.Fatal("unauthenticated models request reached upstream")
 	}
-	if notice := strings.Join(issues.Pending(), "\n"); !strings.Contains(notice, "missing valid Codex Authorization or account headers") || strings.Contains(notice, "unrecognized error type") {
-		t.Fatalf("missing authentication diagnostic: %s", notice)
+	if notices := issues.Pending(); len(notices) != 0 {
+		t.Fatalf("catalog failure produced terminal notices: %v", notices)
 	}
 }
 
@@ -1069,12 +1069,11 @@ func TestModelsHandlerReportsCompleteForwardFailure(t *testing.T) {
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d", recorder.Code)
 	}
-	notices := strings.Join(issues.Pending(), "\n")
-	if !strings.Contains(notices, "could not refresh the model catalog") ||
-		!strings.Contains(notices, "model catalog could not be fetched") ||
-		!strings.Contains(notices, "connection was reset") ||
-		!strings.Contains(notices, secret) || !strings.Contains(recorder.Body.String(), secret) {
-		t.Fatalf("incomplete models diagnostic: %s", notices)
+	if notices := issues.Pending(); len(notices) != 0 {
+		t.Fatalf("catalog failure produced terminal notices: %v", notices)
+	}
+	if !strings.Contains(recorder.Body.String(), secret) {
+		t.Fatalf("incomplete HTTP diagnostic: %s", recorder.Body.String())
 	}
 	raw, err := os.ReadFile(debugLog.Name())
 	if err != nil {
@@ -1092,7 +1091,7 @@ func TestModelsHandlerReportsCompleteForwardFailure(t *testing.T) {
 	}
 	if event.Event != "models_request_failure" || event.DiagnosticCode != "models_upstream_connection_reset" ||
 		event.DiagnosticReference == "" || event.SessionID != "models-session" ||
-		!strings.Contains(notices, event.DiagnosticReference) || !strings.Contains(event.Error, secret) {
+		!strings.Contains(event.Error, secret) {
 		t.Fatalf("uncorrelated or incomplete models debug event: %s", raw)
 	}
 }
@@ -1113,10 +1112,11 @@ func TestModelsHandlerReportsUpstreamStatusAndBody(t *testing.T) {
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d", recorder.Code)
 	}
-	notices := strings.Join(issues.Pending(), "\n")
-	if !strings.Contains(notices, "model catalog returned HTTP 503") || !strings.Contains(notices, secret) ||
-		recorder.Body.String() != secret {
-		t.Fatalf("incomplete models status or changed response: %s", notices)
+	if notices := issues.Pending(); len(notices) != 0 {
+		t.Fatalf("catalog failure produced terminal notices: %v", notices)
+	}
+	if recorder.Body.String() != secret {
+		t.Fatalf("changed upstream response: %q", recorder.Body.String())
 	}
 }
 
@@ -1189,17 +1189,16 @@ func TestInferenceHTTPRejectionRetainsCompleteError(t *testing.T) {
 	}
 }
 
-func TestModelsHandlerReportsCatalogFailureBeforeInferenceFailure(t *testing.T) {
+func TestModelsHandlerCatalogFailuresDoNotProduceTerminalNotices(t *testing.T) {
 	for _, test := range []struct {
 		name    string
 		status  int
 		failure error
-		cause   string
 	}{
-		{name: "unauthorized", status: http.StatusUnauthorized, cause: "HTTP 401"},
-		{name: "forbidden", status: http.StatusForbidden, cause: "HTTP 403"},
-		{name: "rate limited", status: http.StatusTooManyRequests, cause: "HTTP 429"},
-		{name: "deadline", failure: context.DeadlineExceeded, cause: "exceeded its deadline"},
+		{name: "unauthorized", status: http.StatusUnauthorized},
+		{name: "forbidden", status: http.StatusForbidden},
+		{name: "rate limited", status: http.StatusTooManyRequests},
+		{name: "deadline", failure: context.DeadlineExceeded},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			client := &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
@@ -1212,12 +1211,15 @@ func TestModelsHandlerReportsCatalogFailureBeforeInferenceFailure(t *testing.T) 
 			request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 			request.Header = codexAuthHeaders()
 			modelsHandler(newProviderClient(testProviderBaseURL, client), issues)(httptest.NewRecorder(), request)
-			notice := strings.Join(issues.Pending(), "\n")
-			if !strings.Contains(notice, "could not refresh the model catalog") ||
-				!strings.Contains(notice, test.cause) || !strings.Contains(notice, "Diagnostic reference:") ||
-				strings.Contains(notice, "rate-limited this turn") ||
-				(test.status != 0 && !strings.Contains(notice, "private body")) {
-				t.Fatalf("incorrect catalog diagnostic: %s", notice)
+			if notices := issues.Pending(); len(notices) != 0 {
+				t.Fatalf("catalog failure produced terminal notices: %v", notices)
+			}
+			issues.record(&requestFinalization{
+				failurePhase: requestFailureForward,
+				observation:  requestObservation{outcome: requestOutcomeFailed},
+			}, errors.New("inference forward failed"))
+			if notices := issues.Pending(); len(notices) != 1 {
+				t.Fatalf("inference failure lost its terminal notice: %v", notices)
 			}
 		})
 	}

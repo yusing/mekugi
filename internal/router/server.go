@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yusing/mekugi/capturer"
@@ -367,6 +368,10 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 }
 
 func modelsHandler(provider *providerClient, issues *CriticalErrors) http.HandlerFunc {
+	// Session-local, single-entry cache. The gate coalesces concurrent refreshes
+	// without keeping canceled callers waiting for an upstream operation.
+	gate := make(chan struct{}, 1)
+	var cached *modelsCacheEntry
 	return func(writer http.ResponseWriter, request *http.Request) {
 		tracked := &trackedResponseWriter{ResponseWriter: writer}
 		writer = tracked
@@ -396,9 +401,31 @@ func modelsHandler(provider *providerClient, issues *CriticalErrors) http.Handle
 			}
 		}()
 
+		release := func() {}
+		key, cacheable := modelsRequestCacheKey(request)
+		if cacheable {
+			select {
+			case gate <- struct{}{}:
+				release = sync.OnceFunc(func() { <-gate })
+				defer release()
+			case <-request.Context().Done():
+				return
+			}
+			if request.Context().Err() != nil {
+				return
+			}
+			if cached != nil && cached.key == key {
+				entry := cached
+				release()
+				writeModelsResponse(writer, http.StatusOK, entry.headers, entry.body)
+				return
+			}
+		}
+
 		response, err := provider.forwardModels(request.Context(), request.Header, request.URL.RawQuery)
 		if err != nil {
 			failure = modelsForwardDiagnostic(err)
+			release()
 			http.Error(writer, failure.Error(), http.StatusBadGateway)
 			return
 		}
@@ -407,11 +434,13 @@ func modelsHandler(provider *providerClient, issues *CriticalErrors) http.Handle
 		body, err := io.ReadAll(io.LimitReader(response.Body, modelsResponseBufferBytes+1))
 		if err != nil {
 			failure = criticalDiagnostic(err, "models_body_read", "the upstream model catalog response could not be read", true)
+			release()
 			http.Error(writer, fmt.Sprintf("read upstream models response: %v", err), http.StatusBadGateway)
 			return
 		}
 		if len(body) > modelsResponseBufferBytes {
 			failure = staticCriticalDiagnostic("models_body_limit", "the upstream model catalog response exceeded the router buffer budget")
+			release()
 			http.Error(writer, "upstream models response exceeds the router buffer budget", http.StatusBadGateway)
 			return
 		}
@@ -423,13 +452,17 @@ func modelsHandler(provider *providerClient, issues *CriticalErrors) http.Handle
 			failure = criticalDiagnostic(errors.New(cause), fmt.Sprintf("models_http_%d", response.StatusCode),
 				fmt.Sprintf("the upstream model catalog returned HTTP %d", response.StatusCode), true)
 		}
-		for _, name := range []string{"Content-Type", "Cache-Control", "ETag"} {
-			for _, value := range response.Header.Values(name) {
-				writer.Header().Add(name, value)
+		if cacheable && response.StatusCode == http.StatusOK {
+			headers := make(http.Header)
+			for _, name := range []string{"Content-Type", "Cache-Control", "ETag"} {
+				for _, value := range response.Header.Values(name) {
+					headers.Add(name, value)
+				}
 			}
+			cached = &modelsCacheEntry{key: key, headers: headers, body: body}
 		}
-		writer.WriteHeader(response.StatusCode)
-		_, _ = writer.Write(body)
+		release()
+		writeModelsResponse(writer, response.StatusCode, response.Header, body)
 	}
 }
 

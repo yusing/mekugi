@@ -212,6 +212,11 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 		message += " Error: " + f.diagnosticError
 	}
 	f.diagnosticMessage = message
+	// Catalog discovery is auxiliary. Preserve diagnostics and the HTTP error
+	// for Codex, but do not interrupt model turns with a terminal notice.
+	if f.failurePhase == requestFailureModels {
+		return
+	}
 	if f.turnID != "" {
 		category += ":" + f.threadID + ":" + f.turnID
 	}

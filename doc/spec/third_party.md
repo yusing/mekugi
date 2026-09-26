@@ -26,8 +26,8 @@ its result. Cancellation and deadline errors take precedence over generic subpro
 configuration advice, and private bootstrap stderr is not exposed. The private directory is mode
 0700, its file is mode 0600, and both are removed on exit or launch failure. User configuration and
 the shared cache are not rewritten by Mekugi; Codex retains its normal catalog-command behavior.
-`/v1/models` forwards the upstream catalog unchanged, without third-party injection or a synthetic
-ETag.
+`/v1/models` returns the upstream catalog unchanged, without third-party injection or a synthetic
+ETag, using the memory-only session cache described in [router diagnostics and lifecycle](router.md).
 
 In ordinary Mekugi turns, the provider-visible collaboration namespace is
 `mekugi_collaboration`, independently of which third-party provider is enabled. Its message schema

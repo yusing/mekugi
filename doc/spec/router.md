@@ -140,9 +140,18 @@ WebSocket close reasons, and arbitrary error text. Debug files remain
 separate from sanitized metrics/capture. Initialization failure prevents launch; subsequent
 debug write failures are surfaced on exit without changing request execution.
 Model-catalog failures are identified as catalog refresh failures, not failed inference turns.
-Their notices report the complete error and transport class or upstream HTTP status;
-the debug event carries the same error, diagnostic reference, code, and upstream/downstream
-status. The catalog HTTP response remains available to Codex.
+They do not queue terminal notices. Diagnostics retain the complete error, transport class or
+upstream HTTP status, reference, and upstream/downstream status. The catalog HTTP error
+response remains available to Codex, and failures are not cached.
+
+Within a running router session, `/v1/models` retains the latest complete successful HTTP 200
+catalog in memory only, with no disk storage or expiry timer. Matching authenticated requests
+reuse its exact body and forwarded headers without contacting upstream; simultaneous matching
+requests share the successful fetch. Reuse requires matching credentials, account, session header,
+and query (including client version). Missing session headers use the router lifetime as the scope.
+Invalid authentication never reads the cache. A successful different key replaces the single
+entry, bounding retained body size to 8 MiB. Restarting the router clears it, including on resume;
+forks and model switches can reuse it only when their request key matches.
 Existing transport body budgets remain: provider HTTP errors and WebSocket upgrade
 rejections can be limited to 8 KiB, and catalog responses to 8 MiB. A body-limit
 failure reports the limit instead of claiming the omitted body is complete.
