@@ -330,7 +330,7 @@ transcript store or cost calculator; model-visible UI commentary.
 The client launches app-server with `features.apply_patch_streaming_events`
 enabled; the user's own `-c` values follow and can disable it. Real-time
 activity comes from app-server notifications, not from intercepted provider
-responses: `thread/started` names child agents from their spawn path and role,
+responses: subagent activity and thread metadata name children by spawn path and role,
 typed items supply commands, edits, collaboration calls, messages and reasoning
 summaries, turn events drive each agent's state, and
 `thread/tokenUsage/updated` supplies token counts. Cost stays with the router's
@@ -418,6 +418,11 @@ beyond the retained window is not hydrated. Unexpected server requests stay
 visibly pending, never auto-approved.
 
 Activity shows only child agents; Main stays in the roster for status and usage.
+Working roster rows show the latest operation or public summary, including its
+target, rather than a generic running/working label. Child names use their canonical
+spawn paths and roles use Codex metadata even when no `thread/started` notification
+arrives. Late metadata preserves already observed activity and selection; fetching
+it must neither resume the child nor load/replay its history.
 Each agent run has one heading with the agent's role and start time. Its events
 put a short label on its own row, such as the started model, message direction
 or answer, then the body at full width, separated by blank rows so narrow panes

@@ -2,7 +2,6 @@ package router
 
 import (
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -206,8 +205,8 @@ func (v *liveActivityView) nativeGlyph(agent activityPaneAgent) string {
 	return color + "●" + liveActivityReset
 }
 
-// agentState names what the agent is doing from its latest observed entry,
-// rather than repeating its last message.
+// agentState preserves lifecycle states when idle, and shares the detailed
+// activity summary while an agent is working.
 func (v *liveActivityView) agentState(agent activityPaneAgent) string {
 	source, owner := v, agent.Name
 	if agent.Name == "/root" && v.mainView != nil {
@@ -231,37 +230,6 @@ func (v *liveActivityView) agentState(agent activityPaneAgent) string {
 	case len(blocks) == 0:
 		return "working"
 	}
-	block := blocks[len(blocks)-1]
-	target := func() string {
-		if len(block.reads) > 0 {
-			return " " + liveActivityDim + filepath.Base(strings.Fields(block.reads[0].path + " ")[0]) + liveActivityUndim
-		}
-		if i := strings.IndexByte(block.label, '`'); i >= 0 {
-			if code, _, ok := liveActivityCodeSpan(block.label, i); ok {
-				return " " + liveActivityDim + filepath.Base(code) + liveActivityUndim
-			}
-		}
-		return ""
-	}
-	switch {
-	case block.kind == "summary":
-		return "thinking"
-	case block.kind == "start" && agent.Name == "/root":
-		return "delegating"
-	case block.kind == "start":
-		return "starting"
-	case block.kind == "message":
-		return "messaging " + agentDisplayName(block.to)
-	case block.kind == "final":
-		return "answering"
-	case slices.Contains([]string{"Create", "Edit", "Delete", "Move", "Write"}, block.verb):
-		return "editing" + target()
-	case slices.Contains([]string{"Read", "Inspect", "List"}, block.verb):
-		return "reading" + target()
-	case block.verb == "Search":
-		return "searching"
-	case block.verb == "Run":
-		return "running"
-	}
-	return "writing"
+	summary, _ := v.current(agent, time.Now())
+	return summary
 }

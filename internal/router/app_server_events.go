@@ -28,7 +28,8 @@ type appServerSession struct {
 	reasoning map[[3]string]string       // Summary text by thread, turn, item.
 	patches   map[string]liveDiffPreview // Live edit card, by fileChange item.
 	messages  map[string]activityPaneEntry
-	finals    map[string]bool // The thread's current turn already sent its answer.
+	finals    map[string]bool   // The thread's current turn already sent its answer.
+	metadata  map[string]string // Child thread → pending metadata request ID; empty when settled.
 	cwd       string
 }
 
@@ -90,6 +91,7 @@ func (s *appServerSession) start(thread, cwd string) {
 	s.patches = make(map[string]liveDiffPreview)
 	s.messages = make(map[string]activityPaneEntry)
 	s.finals = make(map[string]bool)
+	s.metadata = make(map[string]string)
 	s.cwd = cwd
 }
 
@@ -105,6 +107,10 @@ func (s *appServerSession) registerThread(info appServerThreadInfo) {
 	_ = json.Unmarshal(info.Source, &source)
 	spawn := source.SubAgent.ThreadSpawn
 	path := spawn.AgentPath
+	old := s.paths[info.ID]
+	if path == "" && old != appServerPlaceholder(info.ID) {
+		path = old
+	}
 	if path == "" && info.AgentNickname != "" {
 		path = "/root/" + info.AgentNickname
 	}
@@ -115,7 +121,7 @@ func (s *appServerSession) registerThread(info appServerThreadInfo) {
 		s.agents = append(s.agents, activityPaneAgent{Name: path, Started: time.Now()})
 	}
 	s.paths[info.ID] = path
-	s.agent(path).Role = cmp.Or(info.AgentRole, spawn.AgentRole)
+	s.agent(path).Role = cmp.Or(info.AgentRole, spawn.AgentRole, s.agent(path).Role)
 }
 
 func (s *appServerSession) agent(path string) *activityPaneAgent {
@@ -165,15 +171,22 @@ func (u *appServerUI) sessionEvent(m appServerMessage) (bool, error) {
 		return true, fmt.Errorf("%s: %w", m.Method, err)
 	}
 	main := p.ThreadID == u.thread
+	if p.ThreadID != "" && !main {
+		if err := u.requestThreadMetadata(p.ThreadID); err != nil {
+			return true, err
+		}
+	}
 	var entries []activityPaneEntry
 	now := time.Now()
 	switch m.Method {
 	case "thread/started":
 		info := p.Thread
-		if old := s.paths[info.ID]; info.ID == "" || old != "" && old != appServerPlaceholder(info.ID) {
+		if info.ID == "" || info.ID == u.thread {
 			return true, nil
 		}
+		old := s.path(info.ID)
 		s.registerThread(info)
+		u.renameThreadActivity(old, s.paths[info.ID])
 
 	case "thread/tokenUsage/updated":
 		agent := s.agent(s.path(p.ThreadID))
@@ -218,6 +231,18 @@ func (u *appServerUI) sessionEvent(m appServerMessage) (bool, error) {
 		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: m.Method}
 		agent := s.path(p.ThreadID)
 		switch item.Type {
+		case "subAgentActivity":
+			if item.AgentThreadID != "" && item.AgentThreadID != u.thread {
+				old := s.path(item.AgentThreadID)
+				if item.AgentPath != "" {
+					s.agent(old).Name = item.AgentPath
+					s.paths[item.AgentThreadID] = item.AgentPath
+					u.renameThreadActivity(old, item.AgentPath)
+				}
+				if err := u.requestThreadMetadata(item.AgentThreadID); err != nil {
+					return true, err
+				}
+			}
 		case "reasoning":
 			if text := strings.Join(item.Summary, "\n\n"); strings.TrimSpace(text) != "" {
 				s.reasoning[[3]string{p.ThreadID, p.TurnID, id}] = text

@@ -21,12 +21,14 @@ import (
 )
 
 type appServerItem struct {
-	ID      string   `json:"id"`
-	Type    string   `json:"type"`
-	Text    string   `json:"text"`
-	Summary []string `json:"summary"`
-	Command string   `json:"command"`
-	Status  string   `json:"status"`
+	ID            string   `json:"id"`
+	Type          string   `json:"type"`
+	Text          string   `json:"text"`
+	Summary       []string `json:"summary"`
+	AgentThreadID string   `json:"agentThreadId"`
+	AgentPath     string   `json:"agentPath"`
+	Command       string   `json:"command"`
+	Status        string   `json:"status"`
 	// Content is variant-specific: user input blocks or raw reasoning strings.
 	// Decode only userMessage content; reasoning presentation uses Summary.
 	Content           jsontext.Value           `json:"content"`
@@ -298,6 +300,9 @@ func (u *appServerUI) message(m appServerMessage) error {
 	if m.Method == "" {
 		method := u.requests[string(m.ID)]
 		delete(u.requests, string(m.ID))
+		if method == "thread/read" && u.applyThreadMetadata(m) {
+			return nil
+		}
 		if method == "thread/list" || method == "thread/read" {
 			return u.restoreActivityResponse(method, m)
 		}
