@@ -1,179 +1,11 @@
 package router
 
 import (
-	"bytes"
-	"fmt"
 	"slices"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/charmbracelet/x/ansi"
-	"github.com/charmbracelet/x/vt"
 )
-
-func TestTerminalPaintNarrowRoleLegendReservesRow(t *testing.T) {
-	const width, height = 80, 20
-	u := &terminalUI{agents: liveActivityTestView("/root/a", "/root/b"), width: width, height: height, side: true, activityOpen: true, focus: 2}
-	u.agents.agents[0].Role, u.agents.agents[1].Role = "explorer", "worker"
-	var frame bytes.Buffer
-	if err := u.paint(t.Context(), &frame); err != nil {
-		t.Fatal(err)
-	}
-	screen := vt.NewEmulator(width, height)
-	defer screen.Close()
-	if _, err := screen.Write(frame.Bytes()); err != nil {
-		t.Fatal(err)
-	}
-	lines := plainLines(strings.Split(screen.Render(), "\n"))
-	if !strings.Contains(lines[height-2], "● explorer") || !strings.Contains(lines[height-2], "● worker") || !strings.Contains(lines[height-1], "3 Agents") {
-		t.Fatalf("legend/footer placement: %q", lines[height-2:])
-	}
-	if u.layout.agents.y+u.layout.agents.h != height-2 {
-		t.Fatalf("legend overlaps activity: %+v", u.layout)
-	}
-}
-
-func TestTerminalGeometryRosterSpansBottomWidth(t *testing.T) {
-	const width, height, split, feedSplit, rosterHeight = 160, 44, 68, 26, 10
-	l := terminalGeometry(width, height, split, feedSplit, rosterHeight, 0, true, true)
-	if l.roster.x != 0 || l.roster.w != width || l.roster.h != rosterHeight || l.roster.y != l.rosterHorizontal+1 ||
-		l.roster.y+l.roster.h != height-1 {
-		t.Fatalf("roster rect = %+v, divider row = %d", l.roster, l.rosterHorizontal)
-	}
-	// Both columns end at the roster divider.
-	if l.codex.x != 0 || l.codex.y != 0 || l.codex.w != split || l.codex.h != l.rosterHorizontal {
-		t.Fatalf("Codex rect = %+v", l.codex)
-	}
-	if l.diff.x != split+1 || l.diff.y != 0 || l.diff.h != feedSplit ||
-		l.agents.x != split+1 || l.agents.y != feedSplit+1 || l.agents.y+l.agents.h != l.rosterHorizontal {
-		t.Fatalf("right column geometry: diff=%+v agents=%+v divider=%d", l.diff, l.agents, l.rosterHorizontal)
-	}
-	if l.vertical != split || l.horizontal != feedSplit {
-		t.Fatalf("split handles = (%d,%d), want (%d,%d)", l.vertical, l.horizontal, split, feedSplit)
-	}
-	if rectsOverlap(l.codex, l.roster) || rectsOverlap(l.roster, l.diff) || rectsOverlap(l.roster, l.agents) {
-		t.Fatalf("terminal regions overlap: %+v", l)
-	}
-
-	// A taller roster shortens both columns but keeps room for a diff and feed.
-	tall := terminalGeometry(width, height, split, feedSplit, height, 0, true, true)
-	if tall.roster.w != width || tall.codex.h < 9 || tall.diff.h < 4 || tall.agents.h < 4 ||
-		tall.agents.y+tall.agents.h != tall.rosterHorizontal || tall.codex.h != tall.rosterHorizontal {
-		t.Fatalf("tall roster squeezed the columns: %+v", tall)
-	}
-
-	narrow := terminalGeometry(80, height, split, feedSplit, rosterHeight, 3, true, true)
-	if narrow.roster != (terminalRect{w: 80, h: height - 1}) || narrow.codex.w != 0 || narrow.diff.w != 0 || narrow.agents.w != 0 {
-		t.Fatalf("narrow roster focus did not occupy the terminal: %+v", narrow)
-	}
-}
-
-func rectsOverlap(a, b terminalRect) bool {
-	return a.w > 0 && a.h > 0 && b.w > 0 && b.h > 0 &&
-		a.x < b.x+b.w && b.x < a.x+a.w && a.y < b.y+b.h && b.y < a.y+a.h
-}
-
-func TestTerminalRosterFocusAndDragResize(t *testing.T) {
-	ui := &terminalUI{
-		agents:       liveActivityTestView("/root/alpha", "/root/beta"),
-		width:        160,
-		height:       44,
-		split:        68,
-		horizontal:   26,
-		rosterHeight: 10,
-		side:         true,
-		activityOpen: true,
-	}
-	if err := ui.key(2); err != nil {
-		t.Fatal(err)
-	}
-	if err := ui.key('4'); err != nil {
-		t.Fatal(err)
-	}
-	if ui.focus != 3 || !ui.side || !ui.activityOpen {
-		t.Fatalf("Ctrl-B 4 did not focus/open the roster: focus=%d side=%v activity=%v", ui.focus, ui.side, ui.activityOpen)
-	}
-	ui.layout = terminalGeometry(ui.width, ui.height, ui.split, ui.horizontal, ui.rosterHeight, 3, ui.side, ui.activityOpen)
-	startHeight := ui.rosterHeight
-	x, y := 10, ui.layout.rosterHorizontal
-	if err := ui.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x+1, y+1)); err != nil {
-		t.Fatal(err)
-	}
-	if ui.drag != 4 {
-		t.Fatalf("roster divider drag mode = %d, want 4", ui.drag)
-	}
-	if err := ui.mouse(fmt.Sprintf("\x1b[<32;%d;%dM", x+1, y+4)); err != nil {
-		t.Fatal(err)
-	}
-	if ui.rosterHeight == startHeight {
-		t.Fatalf("dragging the roster divider did not resize it: %d", ui.rosterHeight)
-	}
-	if err := ui.mouse(fmt.Sprintf("\x1b[<0;%d;%dm", x+1, y+4)); err != nil {
-		t.Fatal(err)
-	}
-	if ui.drag != 0 {
-		t.Fatalf("roster divider drag did not end: mode=%d", ui.drag)
-	}
-	// The full-width divider drags from either column, including the junction.
-	for _, x := range []int{ui.layout.vertical, 120} {
-		if err := ui.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x+1, y+1)); err != nil {
-			t.Fatal(err)
-		}
-		if ui.drag != 4 {
-			t.Fatalf("x=%d: roster divider drag mode = %d, want 4", x, ui.drag)
-		}
-		ui.drag = 0
-	}
-	if err := ui.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", ui.layout.vertical+1, ui.layout.roster.y+2)); err != nil {
-		t.Fatal(err)
-	}
-	if ui.drag == 1 {
-		t.Fatal("column border drag started inside the roster")
-	}
-}
-
-func TestTerminalRosterKeyboardNavigationAndPrefixResize(t *testing.T) {
-	view := liveActivityTestView("/root/alpha", "/root/beta")
-	ui := &terminalUI{
-		agents:       view,
-		width:        160,
-		height:       44,
-		split:        68,
-		horizontal:   26,
-		rosterHeight: 10,
-		focus:        3,
-		side:         true,
-		activityOpen: true,
-	}
-	for _, key := range []string{"j", "j", "k"} {
-		if err := ui.send(key); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if !view.only || view.selected != "/root/alpha" {
-		t.Fatalf("roster j/k navigation = only:%v selected:%q", view.only, view.selected)
-	}
-	if err := ui.send("k"); err != nil {
-		t.Fatal(err)
-	}
-	if view.only || !view.visible(activityPaneEntry{Agent: "/root/beta"}) {
-		t.Fatalf("k from first agent did not restore all-agents endpoint: only=%v selected=%q", view.only, view.selected)
-	}
-
-	startHeight, feedSplit, mainSplit := ui.rosterHeight, ui.horizontal, ui.split
-	if err := ui.key(2); err != nil {
-		t.Fatal(err)
-	}
-	for _, key := range []byte("\x1b[A") {
-		if err := ui.key(key); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if ui.rosterHeight != startHeight+1 || ui.horizontal != feedSplit || ui.split != mainSplit {
-		t.Fatalf("Ctrl-B ↑ resized the wrong region: roster=%d feed=%d main=%d", ui.rosterHeight, ui.horizontal, ui.split)
-	}
-}
 
 func TestLiveActivitySeparateRosterSharesSelectionAndFeedState(t *testing.T) {
 	view := liveActivityTestView("/root/alpha", "/root/beta")
@@ -211,82 +43,21 @@ func TestLiveActivitySeparateRosterSharesSelectionAndFeedState(t *testing.T) {
 	if betaHit.agent == "" {
 		t.Fatalf("separate roster did not publish its own agent hit regions: %+v", view.hits)
 	}
-	ui := &terminalUI{
-		agents:       view,
-		width:        160,
-		height:       44,
-		split:        68,
-		horizontal:   26,
-		rosterHeight: 10,
-		side:         true,
-		activityOpen: true,
-	}
-	ui.layout = terminalGeometry(ui.width, ui.height, ui.split, ui.horizontal, ui.rosterHeight, 0, ui.side, ui.activityOpen)
-	// The UI routes pane-3 clicks straight to the separate roster's hit regions;
-	// feedOnly deliberately disables roster hit testing in the right-side feed.
-	x := ui.layout.roster.x + betaHit.first
-	y := ui.layout.roster.y + betaHit.row
-	if err := ui.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
-		t.Fatal(err)
-	}
-	if ui.focus != 3 || !view.only || view.selected != "/root/beta" || view.visible(activityPaneEntry{Agent: "/root/alpha"}) || !view.visible(activityPaneEntry{Agent: "/root/beta"}) {
-		t.Fatalf("roster click did not filter its shared feed state: selected=%q only=%v", view.selected, view.only)
-	}
 }
 
-func TestTerminalPaintPlacesRosterBelowAndAgentsFeedRight(t *testing.T) {
-	const width, height, split, feedSplit, rosterHeight = 160, 44, 68, 26, 10
-	l := terminalGeometry(width, height, split, feedSplit, rosterHeight, 0, true, true)
-	ui := &terminalUI{
-		codex:        vt.NewEmulator(l.codex.w, l.codex.h),
-		diffScreen:   vt.NewEmulator(l.diff.w, l.diff.h),
-		diffFailure:  "fixture skips live diff rendering",
-		agents:       liveActivityTestView("/root/alpha", "/root/beta"),
-		width:        width,
-		height:       height,
-		split:        split,
-		horizontal:   feedSplit,
-		rosterHeight: rosterHeight,
-		side:         true,
-		activityOpen: true,
+// Exercise the shared roster renderer in isolation, without a native terminal shell.
+// renderRosterPane shares selection with the feed without duplicating its state.
+func (v *liveActivityView) renderRosterPane(width, height int, now time.Time) []string {
+	width, height = max(1, width-1), max(1, height)
+	v.hits = v.hits[:0]
+	rows := v.roster()
+	v.rosterTop, v.rosterBottom, v.rosterRight = 2, height, width
+	lines := []string{v.renderHeader(rows, width, true)}
+	if height > 1 && len(rows) > 0 {
+		lines = append(lines, v.renderRoster(rows, width, height-1, now)...)
 	}
-	defer ui.codex.Close()
-	defer ui.diffScreen.Close()
-	var frame bytes.Buffer
-	if err := ui.paint(t.Context(), &frame); err != nil {
-		t.Fatal(err)
+	for len(lines) < height {
+		lines = append(lines, "")
 	}
-	if bytes.Contains(frame.Bytes(), []byte("\x1b[7m")) || bytes.Contains(bytes.ToLower(frame.Bytes()), []byte("drag borders")) {
-		t.Fatalf("terminal status used inverse styling or exposed a drag-borders hint: %q", frame.Bytes())
-	}
-	screen := vt.NewEmulator(width, height)
-	defer screen.Close()
-	if _, err := screen.Write(frame.Bytes()); err != nil {
-		t.Fatal(err)
-	}
-	lines := plainLines(strings.Split(screen.Render(), "\n"))
-	regionText := func(r terminalRect) string {
-		var rows []string
-		for y := r.y; y < r.y+r.h && y < len(lines); y++ {
-			rows = append(rows, ansi.Cut(lines[y], r.x, r.x+r.w))
-		}
-		return strings.Join(rows, "\n")
-	}
-	bottom, right := regionText(ui.layout.roster), regionText(ui.layout.agents)
-	if !strings.Contains(bottom, "alpha") || !strings.Contains(bottom, "beta") {
-		t.Fatalf("bottom roster region does not contain both agents: %q", bottom)
-	}
-	// The divider spans the width and meets the column border.
-	if divider := lines[ui.layout.rosterHorizontal]; ansi.StringWidth(divider) != width || ansi.Cut(divider, split, split+1) != "┴" {
-		t.Fatalf("roster divider = %q", divider)
-	}
-	if border := lines[ui.layout.roster.y]; ansi.Cut(border, split, split+1) == "│" {
-		t.Fatalf("column border crossed into the roster: %q", border)
-	}
-	if !strings.Contains(right, "Read") {
-		t.Fatalf("right activity region does not contain feed entries: %q", right)
-	}
-	if ansi.StringWidth(lines[ui.layout.roster.y]) > width {
-		t.Fatalf("roster paint exceeded terminal width: %q", lines[ui.layout.roster.y])
-	}
+	return lines[:height]
 }

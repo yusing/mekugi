@@ -452,16 +452,12 @@ counts, and recent-update marks remain distinct from capture confirmation;
 unknown counts are not presented as zero. Help is available without permanently
 occupying code rows. These controls change no execution or durable evidence.
 
-Mekugi owns the Codex PTY and terminal composition. Codex remains the execution
-and approval authority. The diff occupies the right side; the agents view,
-specified in [REQ-COMMENTARY-001](commentary.md), shares that side vertically.
-The separate roster spans the full terminal width below both columns, with a draggable
-divider; the column border ends at that divider.
-Mouse dragging resizes the main split, the diff/agents split, and the file dock.
-`Ctrl-B` followed by arrows resizes the main splits, and `[`/`]` resizes the
-file dock. `Ctrl-B` followed by `1`, `2`, `3`, or `4` focuses Codex, diff, agents, or roster;
-up/down in roster focus resizes its height. A click focuses the clicked pane. Small terminals show only the focused pane.
-Pane sizes are bounded to keep content usable; resizing never changes evidence.
+Mekugi owns the native terminal composition, while Codex app-server remains the
+execution authority. The [native UI contract](router.md#native-app-server-ui)
+owns pane layout and input: Main on the left, Diff or Activity on the right,
+and the child Agents roster below. `Ctrl-B` followed by `1`, `2`, `3`, or `4`
+focuses those panes. Mouse dragging and prefix shortcuts resize panes and the
+file navigator without changing evidence.
 
 Diff and agents scrolling use one contract: arrows or `j`/`k` move one line,
 PageUp/PageDown or `b`/Space move one page, Home/End or `g`/`G` go to the
@@ -469,17 +465,12 @@ beginning/end. These actions pause following; `r` resumes it. The wheel scrolls
 diff and activity by three lines per event without changing keyboard focus.
 Consecutive wheel events accumulate even before the next rendered frame. Stream cards retain
 their source windows during manual scrolling and resume their live tips with `r`.
-`Ctrl-C` in an auxiliary pane returns focus to Codex, rather than terminating it.
-Bracketed paste is routed intact to Codex and cannot activate layout shortcuts.
-Codex clipboard OSC 52 writes pass through to the host terminal once, including
-fragmented sequences. Codex title (OSC 0/2) and progress (OSC 9) signals also
-reach the host terminal once, preserving outer terminal-manager status detection.
-Interactive launches inside Herdr expose the invocation-local `HERDR_AGENT=codex`
-wrapper hint before router startup, without Herdr commands or pane-management APIs.
-Main-screen history remains accessible through prefix
-PageUp/PageDown and, when Codex has not captured mouse events, the wheel. Ordinary
-Codex input returns to live output. The bounded 10,000-row history and final
-screen are restored outside the wrapper's alternate screen on exit.
+`Ctrl-C` in an auxiliary pane returns focus to Main. Bracketed paste enters the
+native composer and cannot activate layout shortcuts. Main history remains
+accessible through prefix PageUp/PageDown and the mouse wheel. Interactive
+launches inside Herdr expose the invocation-local `HERDR_AGENT=codex` hint before
+router startup, without Herdr commands or pane-management APIs.
+
 
 The wrapper starts no pane processes and requires no external pane manager.
 The UI consumes the bounded event hub directly; there are no live-view HTTP

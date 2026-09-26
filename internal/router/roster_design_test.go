@@ -169,22 +169,6 @@ func TestRosterDesignPaneGeometryAndHits(t *testing.T) {
 	}
 }
 
-func TestRosterDesignTerminalWheelRoutesOnlyToRoster(t *testing.T) {
-	v := liveActivityTestView("/root/a", "/root/b", "/root/c", "/root/d", "/root/e", "/root/f", "/root/g", "/root/h")
-	v.feedOnly, v.only, v.selected = true, true, "/root/a"
-	v.following, v.unseen = false, 3
-	u := &terminalUI{agents: v, width: 160, height: 44, split: 68, horizontal: 26, rosterHeight: 6, side: true, activityOpen: true}
-	u.layout = terminalGeometry(u.width, u.height, u.split, u.horizontal, u.rosterHeight, 0, u.side, u.activityOpen)
-	v.renderRosterPane(u.layout.roster.w, u.layout.roster.h, time.Now())
-	x, y := u.layout.roster.x+3, u.layout.roster.y+3
-	if err := u.mouse(fmt.Sprintf("\x1b[<65;%d;%dM", x, y)); err != nil {
-		t.Fatal(err)
-	}
-	if v.rosterOffset != 1 || !v.only || v.selected != "/root/a" || v.following || v.unseen != 3 {
-		t.Fatalf("roster wheel leaked to feed/filter: offset=%d only=%v selected=%q following=%v unseen=%d", v.rosterOffset, v.only, v.selected, v.following, v.unseen)
-	}
-}
-
 func TestRosterCompactPrioritizesVisibilityAndStableSelection(t *testing.T) {
 	end, metrics := rosterRange(4, 0, 0, 4)
 	if end != 4 || metrics {

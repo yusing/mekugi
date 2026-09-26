@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -22,11 +23,43 @@ func TestAutoWrapProcess(t *testing.T) {
 		return
 	}
 	if os.Args[3] == "router" {
-		code, err := wrapCodex(t.Context(), []string{"--mentor-handoff=false"}, nil)
+		var args []string
+		if os.Getenv("MEKUGI_AUTO_WRAP_TERMINAL") == "1" {
+			args = []string{"--yolo"}
+		}
+		code, err := wrapCodex(t.Context(), []string{"--mentor-handoff=false"}, args)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 		}
 		os.Exit(code)
+	}
+	if len(os.Args) > 4 && os.Args[4] == "app-server" {
+		marker, err := os.OpenFile(os.Getenv("MEKUGI_AUTO_WRAP_RPC_MARKER"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer marker.Close()
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			var request struct {
+				ID     json.RawMessage `json:"id"`
+				Method string          `json:"method"`
+			}
+			if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
+				t.Fatal(err)
+			}
+			fmt.Fprintln(marker, request.Method)
+			switch request.Method {
+			case "initialize":
+				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{}}`+"\n", request.ID)
+			case "thread/start":
+				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"thread":{"id":"auto-wrap","cwd":%q},"model":"test-model"}}`+"\n", request.ID, os.Getenv("MEKUGI_AUTO_WRAP_WORKSPACE"))
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			t.Fatal(err)
+		}
+		os.Exit(0) // Keep the test runner's PASS line out of the RPC stream.
 	}
 	workspace := os.Getenv("MEKUGI_AUTO_WRAP_WORKSPACE")
 	body := `{"model":"gpt-test","input":[{"role":"user","content":"test"}],"tools":[{"type":"function","name":"exec_command","description":"run a command"},{"type":"custom","name":"apply_patch","description":"apply a patch"}],"tool_choice":"auto"}`
@@ -57,16 +90,28 @@ func TestAutoWrapProcess(t *testing.T) {
 }
 
 func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
-	for _, terminal := range []bool{true, false} {
-		name := "redirected"
-		if terminal {
-			name = "terminal"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		terminal bool
+		optOut   bool
+	}{{"terminal", true, false}, {"terminal-env-zero", true, true}, {"redirected", false, false}} {
+		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
 			workspace := t.TempDir()
 			herdrMarker := filepath.Join(dir, "herdr-invoked")
+			rpcMarker := filepath.Join(dir, "app-server-rpc")
 			t.Setenv("MEKUGI_AUTO_WRAP_PROCESS", "1")
+			t.Setenv("MEKUGI_AUTO_WRAP_TERMINAL", "0")
+			if test.terminal {
+				t.Setenv("MEKUGI_AUTO_WRAP_TERMINAL", "1")
+			}
+			t.Setenv("MEKUGI_AUTO_WRAP_RPC_MARKER", rpcMarker)
+			t.Setenv("MEKUGI_APP_SERVER_UI", "")
+			if test.optOut {
+				t.Setenv("MEKUGI_APP_SERVER_UI", "0")
+			} else if err := os.Unsetenv("MEKUGI_APP_SERVER_UI"); err != nil {
+				t.Fatal(err)
+			}
 			t.Setenv("MEKUGI_AUTO_WRAP_WORKSPACE", workspace)
 			t.Setenv("MEKUGI_TEST_HERDR_MARKER", herdrMarker)
 			t.Setenv("HERDR_ENV", "")
@@ -91,14 +136,30 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestAutoWrapProcess$", "--", "router")
 			var output []byte
 			var err error
-			if terminal {
+			if test.terminal {
 				tty, startErr := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 100})
 				if startErr != nil {
 					t.Fatal(startErr)
 				}
 				defer tty.Close()
 				read := make(chan []byte, 1)
-				go func() { data, _ := io.ReadAll(tty); read <- data }()
+				go func() {
+					var data bytes.Buffer
+					buf := make([]byte, 8192)
+					quit := false
+					for {
+						n, readErr := tty.Read(buf)
+						data.Write(buf[:n])
+						if !quit && bytes.Contains(data.Bytes(), []byte("Ready")) {
+							_, _ = tty.Write([]byte("/quit\r"))
+							quit = true
+						}
+						if readErr != nil {
+							break
+						}
+					}
+					read <- data.Bytes()
+				}()
 				err = cmd.Wait()
 				output = <-read
 			} else {
@@ -110,12 +171,18 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			if _, err := os.Stat(herdrMarker); !os.IsNotExist(err) {
 				t.Fatalf("wrapper invoked Herdr: %v", err)
 			}
-			if terminal {
-				if !bytes.Contains(output, []byte("\x1b[?1049h")) || !bytes.Contains(output, []byte(" 1 Codex ")) {
-					t.Fatalf("terminal wrapper did not render its integrated UI: %q", output)
+			if test.terminal {
+				if !bytes.Contains(output, []byte("\x1b[?1049h")) || !bytes.Contains(output, []byte("1 Main")) {
+					t.Fatalf("terminal wrapper did not render native Main: %q", output)
 				}
-			} else if bytes.Contains(output, []byte("\x1b[?1049h")) || bytes.Contains(output, []byte(" 1 Codex ")) {
+				calls, readErr := os.ReadFile(rpcMarker)
+				if readErr != nil || !bytes.Contains(calls, []byte("initialize\ninitialized\nthread/start\n")) {
+					t.Fatalf("native app-server handshake: %q, %v", calls, readErr)
+				}
+			} else if bytes.Contains(output, []byte("\x1b[?1049h")) || bytes.Contains(output, []byte("1 Main")) {
 				t.Fatalf("redirected wrapper unexpectedly rendered the integrated UI: %q", output)
+			} else if _, statErr := os.Stat(rpcMarker); !os.IsNotExist(statErr) {
+				t.Fatalf("redirected wrapper unexpectedly started app-server: %v", statErr)
 			}
 		})
 	}

@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"encoding/json"
-	"slices"
 	"strings"
 	"time"
 )
@@ -175,107 +174,6 @@ func (a *subagentActivity) attachNativePane(root string) {
 	}
 	a.pane.root, a.pane.state, a.pane.native = root, activityPaneAttached, true
 	a.pane.generation++
-}
-
-// paneAgentsLocked lists the pane root and its observed children in observation order.
-func (a *subagentActivity) paneAgentsLocked() []activityPaneAgent {
-	var threads []string
-	for thread, node := range a.threads {
-		if !node.conflicted && a.rootLocked(thread) == a.pane.root {
-			threads = append(threads, thread)
-		}
-	}
-	slices.SortFunc(threads, func(x, y string) int { return a.threads[x].order - a.threads[y].order })
-	agents := make([]activityPaneAgent, 0, len(threads))
-	for _, thread := range threads {
-		node := a.threads[thread]
-		// Usage and cost come from the canonical per-thread report, the same
-		// totals as the Markdown usage report; only streaming is estimated here.
-		report, observed := a.usage.snapshot(thread)
-		agents = append(agents, activityPaneAgent{
-			Name: node.name, Role: node.role, Responding: node.responding > 0, Final: node.final,
-			Started: node.started, LastResponse: node.lastResponse, Turns: node.turns,
-			Cost:        report.cost.cachedInput + report.cost.uncachedInput + report.cost.output,
-			CostKnown:   observed && report.cost.known && !report.Incomplete,
-			CostPartial: report.missingUsage != 0,
-			InputTokens: report.InputTokens, OutputTokens: report.OutputTokens + node.streamed/activityBytesPerToken,
-		})
-	}
-	return agents
-}
-
-// takePane removes ready pane-owned events for the current viewer generation.
-func (a *subagentActivity) takePane(generation uint64) ([]activityPaneEntry, []activityPaneAgent, bool) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	pane := a.pane
-	if a.closed || pane == nil || pane.generation != generation || pane.state != activityPaneAttached {
-		return nil, nil, false
-	}
-	a.expireLocked(time.Now())
-	var entries []activityPaneEntry
-	kept := a.events[:0]
-	for _, event := range a.events {
-		if a.rootLocked(event.thread) != pane.root {
-			kept = append(kept, event)
-			continue
-		}
-		pane.sequence++
-		entry := activityPaneEntry{
-			Seq: pane.sequence, Agent: a.threads[event.thread].name, Kind: event.kind,
-			Text: event.raw, Observed: event.observed, event: event,
-		}
-		entry.CallID = event.callID
-		entry.Filter = event.filter
-		entry.assignment = event.assignment
-
-		entries = append(entries, entry)
-	}
-	clear(a.events[len(kept):])
-	a.events = kept
-	agents := a.paneAgentsLocked()
-	return entries, agents, true
-}
-
-// restorePane requeues entries whose viewer write failed, ahead of later events.
-func (a *subagentActivity) restorePane(entries []activityPaneEntry) {
-	if len(entries) == 0 {
-		return
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.closed {
-		return
-	}
-	restored := make([]activityEvent, 0, len(entries)+len(a.events))
-	for _, entry := range entries {
-		event := entry.event
-		// A newer queued operation already replaced this one.
-		if (event.kind == "operation" || event.kind == "reasoning") && slices.ContainsFunc(a.events, func(e activityEvent) bool {
-			return e.thread == event.thread && e.kind == event.kind && (event.kind != "reasoning" || event.source == e.source)
-		}) {
-			continue
-		}
-		restored = append(restored, event)
-	}
-	a.events = append(restored, a.events...)
-	a.wakePaneLocked()
-}
-
-func (a *subagentActivity) subscribePane() (uint64, activityPaneEvent, bool) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	pane := a.pane
-	if a.closed || pane == nil || !a.paneOwnsLocked(pane.root, time.Now()) {
-		return 0, activityPaneEvent{}, false
-	}
-	pane.generation++
-	pane.state = activityPaneAttached
-	return pane.generation, a.paneSnapshotLocked(), true
-}
-
-func (a *subagentActivity) paneSnapshotLocked() activityPaneEvent {
-	return activityPaneEvent{Kind: "snapshot", Agents: a.paneAgentsLocked()}
 }
 
 // beginResponse and endResponse track open provider responses for the roster.

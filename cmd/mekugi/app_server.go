@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// The feasibility client deliberately rejects unmapped TUI flags. Passing them
+// The native client deliberately rejects unmapped TUI flags. Passing them
 // through to a different subcommand would silently change their meaning.
 func appServerArgs(args []string) ([]string, string, error) {
 	out := []string{"app-server"}
@@ -16,7 +16,7 @@ func appServerArgs(args []string) ([]string, string, error) {
 		switch arg := args[i]; arg {
 		case "resume":
 			if resume != "" || i+1 == len(args) || strings.HasPrefix(args[i+1], "-") || strings.TrimSpace(args[i+1]) == "" {
-				return nil, "", fmt.Errorf("app-server preview resume requires one explicit thread ID; picker and --last are not supported yet")
+				return nil, "", fmt.Errorf("native UI resume requires one explicit thread ID; picker and --last are not supported yet")
 			}
 			i++
 			resume = args[i]
@@ -41,12 +41,12 @@ func appServerArgs(args []string) ([]string, string, error) {
 				}
 				out = append(out, "-c", "model="+strconv.Quote(model))
 			} else {
-				return nil, "", fmt.Errorf("app-server preview does not yet support %q; use --yolo, -m, -c, and resume THREAD_ID, and enter prompts in Main", arg)
+				return nil, "", fmt.Errorf("native UI does not yet support %q; use --yolo, -m, -c, and resume THREAD_ID, and enter prompts in Main", arg)
 			}
 		}
 	}
 	if !yolo {
-		return nil, "", fmt.Errorf("app-server preview currently requires explicit --yolo")
+		return nil, "", fmt.Errorf("native UI currently requires explicit --yolo")
 	}
 	return append(out, "-c", `approval_policy="never"`, "-c", `sandbox_mode="danger-full-access"`), resume, nil
 }

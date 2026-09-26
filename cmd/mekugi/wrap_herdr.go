@@ -5,7 +5,7 @@ import (
 	"syscall"
 )
 
-// Herdr sees the wrapper's foreground job, not Codex on the nested PTY.
+// Herdr sees the wrapper's foreground job, not the app-server child.
 // Its documented wrapper hint is read from the process's initial environment;
 // Setenv alone is not visible in Linux /proc/PID/environ. Re-exec before any
 // router or Codex startup, preserving PID, process group, arguments and stdio.

@@ -11,7 +11,8 @@ Invocation-only provider overrides select the listener, Responses transport,
 and Codex-managed authentication against the fixed ChatGPT upstream. Provider
 selection in config and profiles is overridden without modifying configuration.
 Provider-selection arguments are rejected. Mekugi flags precede `codex`; subsequent
-arguments remain intact, including subcommands and `--` delimiters.
+noninteractive arguments remain intact, including subcommands and `--` delimiters.
+Interactive terminal arguments follow the native client mapping below.
 The wrapper also enforces `include_collaboration_mode_instructions=false` in the
 final command's invocation-only config layer, after user overrides and before `--`.
 This disables Codex's collaboration-mode instruction injection without editing config files.
@@ -27,7 +28,8 @@ With `--grok` or configured OpenCode providers, the wrapper pins the selected mo
 The session catalog and its cleanup follow [REQ-THIRD-PARTY-001](third_party.md).
 Other invocations do not run the catalog command or pin model metadata.
 
-Codex inherits cwd, stdin, stdout, stderr, and the environment, augmented only
+Noninteractive and redirected Codex commands inherit cwd, stdin, stdout, stderr,
+and the environment, augmented only
 with `MEKUGI_BASE_URL` and the private configured-plugin frontend directory at
 the front of PATH. Before child launch, terminal Ctrl-C cancels startup and prevents
 launch, including signals already consumed by the startup receiver. After handoff,
@@ -237,10 +239,11 @@ close reasons, error text, and headers are not exported. An EOF does not establi
 successful completion. These observations are request-local and debug-only and do
 not change translation, execution, cancellation, or retry behavior.
 
-### Native app-server preview
+### Native app-server UI
 
-`MEKUGI_APP_SERVER_UI=1` selects an opt-in client of `codex app-server` for
-interactive terminal launches only. It maps explicit `--yolo`, model and config
+`mekugi codex` uses the native client of `codex app-server` for interactive
+terminal launches. Explicit `--yolo` remains required; without it startup rejects
+before launching Codex. There is no legacy UI selection or fallback. It maps explicit `--yolo`, model and config
 arguments plus `resume THREAD_ID`, and rejects other interactive arguments rather
 than ignoring them.
 Router readiness, provider catalogs, invocation overrides, native recovery hooks
@@ -424,9 +427,9 @@ namespace; the app-server cwd never grants it filesystem authority.
 notifications through this frontend: delegation, concurrent child edits in both
 docks, a failing test and follow-up, answers and a saved diff.
 
-The wrapped Codex terminal and dashboard remain the default and are no longer
-extended. The remaining work before this client replaces them is tracked in the
-[app-server proposal](../proposals/app-server-ui.md).
+The native client replaces the wrapped Codex terminal. The dashboard remains
+available at the invocation URL. Redirected and noninteractive commands do not
+start the native UI.
 
 ### Feature-usage debug evidence
 

@@ -78,11 +78,13 @@ Requirements:
 ```sh
 go install github.com/yusing/mekugi/cmd/mekugi@latest
 codex login
-mekugi codex
+mekugi codex --yolo
 ```
 
 Add `$GOBIN`, or `$(go env GOPATH)/bin` if that is unset, to your `PATH`. Mekugi
-prints a dashboard URL, then opens Codex. Use Codex as usual.
+prints a dashboard URL, then opens its native Main, Diff, Activity, and Agents UI.
+Interactive launches currently require explicit `--yolo` (no approvals or sandbox).
+Codex remains the agent runtime and tool executor.
 
 From a checkout with **Bun** and **Make**, run `make install`. It regenerates the
 embedded plugins and installs the binary. `make uninstall` removes only that
@@ -91,20 +93,22 @@ to pick up an update.
 
 ## Usage
 
-Mekugi flags go **before** `codex`; everything after `codex` goes to Codex:
+Mekugi flags go **before** `codex`. Interactive launches accept `--yolo`, model
+and config options, and `resume THREAD_ID`; enter prompts in Main. Noninteractive
+commands keep their ordinary Codex arguments and output:
 
 ```sh
-mekugi codex --model gpt-6-sol
+mekugi codex --yolo --model gpt-6-sol
 mekugi codex exec "Explain this repository"
-mekugi codex resume 'CONVERSATION_ID'
-mekugi --mentor-handoff=false codex
+mekugi codex --yolo resume 'CONVERSATION_ID'
+mekugi --mentor-handoff=false codex --yolo
 ```
 
 Each invocation:
 
 - starts a private router on a random loopback port and stops it when Codex
-  exits. Independent sessions can run side by side. Codex handles Ctrl-C after
-  launch and keeps its exit status. During startup, Ctrl-C cancels without
+  exits. Independent sessions can run side by side. The native UI sends turn
+  interrupts to Codex; noninteractive commands keep their exit status. During startup, Ctrl-C cancels without
   launching Codex.
 - uses the fixed ChatGPT upstream. Standalone serving, fixed ports, custom
   provider endpoints, and `--oss` are not supported.
@@ -140,7 +144,7 @@ These overrides last only for the invocation; no configuration files change.
 | `--capture-output PATH` | Disabled | Append sanitized JSONL metrics |
 | `--debug` | Disabled | Record diagnostics, capture, metrics, forwarded instruction/tool snapshots, runtime reads, and an AX report; print all artifact paths on exit |
 
-`mekugi --mode passthrough codex` forwards traffic only. It doesn't need Node.js,
+`mekugi --mode passthrough codex --yolo` forwards traffic only. It doesn't need Node.js,
 and capture still works.
 
 ### Grok models
@@ -150,7 +154,7 @@ environment; an API key takes precedence. Codex credentials are never sent to
 Grok.
 
 ```sh
-mekugi --grok codex -m grok:grok-4.7
+mekugi --grok codex --yolo -m grok:grok-4.7
 ```
 
 Subagents can use `grok:grok-4.5`, `grok:grok-4.6`, `grok:grok-4.7`, or
@@ -163,8 +167,8 @@ conversation to Grok isn't supported. See the [Grok requirements](doc/spec/grok.
 Set an API key here or in [Mekugi settings](#mekugi-settings):
 
 ```sh
-OPENCODE_GO_API_KEY='your-key' mekugi codex -m opencode-go:glm-5.3
-OPENCODE_ZEN_API_KEY='your-key' mekugi codex -m opencode-zen:kimi-k3
+OPENCODE_GO_API_KEY='your-key' mekugi codex --yolo -m opencode-go:glm-5.3
+OPENCODE_ZEN_API_KEY='your-key' mekugi codex --yolo -m opencode-zen:kimi-k3
 ```
 
 Models, reasoning controls, and prices refresh from an hourly cache. The model
@@ -223,21 +227,19 @@ and [execution contract](doc/spec/execution.md).
 
 ### Live diff pane
 
-In an interactive terminal, `mekugi codex` owns its layout without an external
+In an interactive terminal, `mekugi codex --yolo` owns its layout without an external
 pane manager. It opens a live diff viewer at the first edit or command. Read-only turns don't open it. Main-agent
 and subagent calls get labeled cards that stream input as it arrives. When a
 turn finishes, the viewer switches to the saved diff. A failed or unfinished
 call never becomes a saved change.
 
-- `Ctrl-B`, then `1`/`2`/`3`/`4`, focuses Codex, diffs, agents, or the roster. Click a pane to focus it.
+- `Ctrl-B`, then `1`/`2`/`3`/`4`, focuses Main, Diff, Activity, or Agents. Diff and Activity share the right column. Click a pane to focus it.
 - Drag the dividers to resize panes or the file navigator. `Ctrl-B`, then arrow
   keys, resizes the main splits (up/down in the roster adjusts its height); `Ctrl-B`, then `[`/`]`, resizes the file navigator.
   Narrow terminals show the focused pane full-width.
-- `Ctrl-B`, then `PageUp`/`PageDown`, browses inline Codex history. The wheel
-  does the same when Codex is not handling mouse events. Typing returns to live
-  output. Up to 10,000 retained history rows are restored on exit.
+- `Ctrl-B`, then `PageUp`/`PageDown`, browses Main history. The wheel scrolls the pane under the pointer.
 - `v` switches views; `?` lists diff shortcuts. `Ctrl-C` in an auxiliary pane
-  returns focus to Codex; in Codex it retains Codex’s normal behavior.
+  returns focus to Main; in Main it interrupts the active turn.
 - `s` shows or hides the file tree, `t` toggles tree/flat paths, `/` filters files.
 - `n`/`p` change files, `[`/`]` jump between hunks, and `j`/`k`, `Space`/`b`,
   and `g`/`G` scroll. Opening a file starts at its header.
@@ -253,34 +255,22 @@ See [live view details](doc/spec/changes.md#live-terminal-view).
 
 ### Agents pane
 
-The first provider response opens a **Mekugi agents** pane in the same terminal.
-It streams main and child activity, messages, and replies, including
-during a native wait. The separate roster spans the full width below Codex and the
-diff, with a draggable divider. It gives `main` and each child one row: activity, then
-age, `↑`/`↓` tokens, estimated cost to two decimal places, and turns in stable columns.
-Roles color the existing status glyph; a legend sits beside the bottom status line
-or on the row above when space is limited. Costs come from the same totals
-as the usage table; `≥$N` means some response ended without usage. Markers show what
-was observed: `◐` open response, `!` latest error, `✓` final answer sent. The selected
-agent's row is shaded. Usage tables and critical notices stay in the main conversation.
+The **Activity** pane streams child activity, messages, and replies, including
+while Main waits. The **Agents** roster below the main columns shows children;
+Main's conversation and progress stay in Main. Token and cost figures come from
+the router's usage accounting, not an additional app-server total.
 
-- In the roster, `↑`/`↓` or `k`/`j` select all agents or an individual agent;
-  `o` toggles the selected-agent filter. Roster rows are clickable. The mouse wheel
-  scrolls the roster without changing the feed filter. Crowded rosters compact, with
-  counts of hidden responding agents and errors above or below the visible rows.
-- Scrolling matches the diff pane: `↑`/`↓` or `k`/`j` move one line,
-  `PageUp`/`PageDown` or `b`/`Space` move one page, and `Home`/`End` or `g`/`G`
-  go to the top/bottom. Scrolling pauses following; `r` resumes it.
-- The mouse wheel scrolls diff and activity by three lines per event, without moving keyboard focus.
-- Click a clipped snippet in the feed to expand it; click again to collapse it.
-- `Ctrl-C` returns focus to Codex without ending it.
+- `Ctrl-B`, then `3`/`4`, focuses Activity or Agents.
+- Click an agent to inspect its activity; reply links address that agent.
+- Scrolling pauses following; `r` resumes it. The mouse wheel scrolls without
+  changing keyboard focus.
+- `Ctrl-C` in an auxiliary pane returns focus to Main.
 
 Redirected sessions keep ordinary Codex input/output and inline agent activity.
-Inside Herdr, Mekugi advertises its wrapped Codex process through Herdr’s agent
-hint and passes through Codex title/status signals, so agent detection still works.
-Herdr is optional and does not control Mekugi’s internal panes.
+Inside Herdr, Mekugi advertises the invocation through Herdr's agent hint.
+Herdr is optional and does not control Mekugi's internal panes.
 
-See the [agents pane contract](doc/spec/commentary.md).
+See the [native UI contract](doc/spec/router.md#native-app-server-ui).
 
 ## Metrics
 
@@ -421,10 +411,10 @@ change evidence.
 
 ## Development
 
-The opt-in native UI can resume a known Codex thread:
+The native UI can resume a known Codex thread:
 
 ```sh
-MEKUGI_APP_SERVER_UI=1 mekugi codex --yolo resume THREAD_ID
+mekugi codex --yolo resume THREAD_ID
 ```
 
 In the native composer, arrow keys move the caret, Ctrl+Left/Right jump words,
@@ -436,14 +426,14 @@ as a highlighted, atomic `[Image N]` (Linux needs `wl-paste` on Wayland or `xcli
 without sending. Keep image placeholders unchanged to retain their attachments.
 Submitted images remain in temporary storage for Codex history.
 
-This preview requires explicit `--yolo` (no approvals or sandbox), restores Main's
+The native UI requires explicit `--yolo` (no approvals or sandbox), restores Main's
 message and tool history, and continues the same thread. It also restores pane
 layout and keyboard focus, adapting the saved sizes to the current terminal.
 The child roster and Activity history return too, and Diff reloads retained
 changes for the resumed session without restarting child work. Scroll positions,
 filters, selections and drafts are not restored. The resume picker,
 `--last` and switching threads inside the UI are not yet supported. Resume currently loads history in one response, so threads whose
-history exceeds the 16 MiB transport limit cannot resume in this preview.
+history exceeds the 16 MiB transport limit cannot resume in the native UI.
 
 To review the native app-server UI without Codex or model requests, run
 `make preview-native-ui` in a terminal. It plays a synthetic session through the

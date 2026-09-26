@@ -1335,22 +1335,6 @@ func liveActivityMiddle(name string, width int) string {
 	return head + "…" + leaf
 }
 
-// renderRosterPane shares selection with the feed without duplicating its state.
-func (v *liveActivityView) renderRosterPane(width, height int, now time.Time) []string {
-	width, height = max(1, width-1), max(1, height)
-	v.hits = v.hits[:0]
-	rows := v.roster()
-	v.rosterTop, v.rosterBottom, v.rosterRight = 2, height, width
-	lines := []string{v.renderHeader(rows, width, true)}
-	if height > 1 && len(rows) > 0 {
-		lines = append(lines, v.renderRoster(rows, width, height-1, now)...)
-	}
-	for len(lines) < height {
-		lines = append(lines, "")
-	}
-	return lines[:height]
-}
-
 // showAgent keeps the original roster navigation: all agents precedes the list.
 func (v *liveActivityView) showAgent(step int) {
 	rows := v.roster()

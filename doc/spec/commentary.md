@@ -311,22 +311,18 @@ update heading. No production response is held open, and no polling or model
 turn is created. During an idle stream there may be no event boundary to deliver
 through; once a response closes, inline updates wait for the next eligible root response.
 
-When Mekugi owns an interactive terminal, the first admitted provider response under a root opens
-one Mekugi agents pane for that root and moves that root's child activity there,
-including replies addressed to `/root`. The pane receives events as they are observed,
-independent of root responses, so updates continue during a native wait. While the pane
-owns a root, its root responses carry no child activity copies, only one notice that
-activity moved and, once delivery returns inline, one notice that the pane closed. An
-event leaves the queue only after the pane's write is flushed. The integrated viewer consumes the collector directly, without a pane subprocess
-or loopback transport. If the UI cannot own delivery, activity stays inline.
-Only
-the first root with child activity uses the pane; other roots stay inline. Critical
-session notices stay in the root conversation; main-completion usage is saved to a file.
+Interactive terminal launches use the [native UI](router.md#native-app-server-ui),
+whose app-server event stream owns Main, child Activity, and the child-only Agents
+roster. Child activity continues independently of root responses, including during
+native waits. The native client consumes router observations directly without a
+pane subprocess or loopback transport. If the UI cannot own delivery, activity
+stays inline. Critical session notices stay in the root conversation;
+main-completion usage is saved to a file.
 
 Explore-filter events are pane-only, including when the pane is unavailable or
 closes. They retain the originating call ID and structured efficiency counts,
 and render as a muted token/line reduction annotation after the matching command.
-The roster includes the owning root as `main` without waiting for a filter event. These
+The native roster keeps the root in Main rather than adding a child row for it. These
 events do not claim agent completion or feed local token estimates into the
 roster's provider-usage counters. The filter contract owns their measurement
 basis and eligibility.
@@ -378,7 +374,7 @@ are collected with bounded per-response storage but not rendered in the agents p
 raw and encrypted reasoning are not exposed. Agent wait, start, resume, interrupt,
 user-input waits, and MCP calls have explicit action labels. These describe
 observed requests, not unobserved native execution or completion. Sibling and ancestor continuation guides
-form a tree; rows whose parent is off-screen show their relative path instead. The roster stays in a separate region spanning the full width below Codex
+form a tree; rows whose parent is off-screen show their relative path instead. The roster stays in a separate region spanning the full width below Main
 and the right column, with its own resizable divider. It shares local selection with the activity feed on the right;
 no extra process, broker, or transport is needed. Each agent has one row: status, name,
 and activity, then its metrics inline in fixed-width columns: the timer, `↑ in ↓ out` tokens, estimated USD cost to two decimal places, and provider-response turns as `T+N`.
@@ -386,8 +382,7 @@ The roster shows no model label. When the row is too narrow for metrics beside a
 activity summary, the metrics are omitted. Units and separators are dim; metric
 values use normal brightness. Each observed role colors the existing centered status glyph without adding a
 column; its shape still identifies status. Missing or conflicting role evidence
-uses ordinary status colors. A one-row role legend appears beside the terminal
-status line when it fits, or on a reserved row immediately above it. Timer, input,
+uses ordinary status colors. Timer, input,
 output, cost, and turn slots are reserved before data arrives and do not resize
 with changing digits or numeric formats. Selection shades the selected agent's rows in
 place rather than reserving a marker column.
@@ -403,11 +398,8 @@ bytes of visible delta per token, refreshed every second; the provider's reporte
 usage replaces the estimate when the response ends. Hidden reasoning is not
 estimated, and input changes only when usage is reported. A Code Mode batch shows its latest
 operation and the count of the others. When the separate roster is visible,
-the activity pane gives its whole body to the feed. On narrow terminals where
-only the focused pane fits, the agents view includes its roster: at 100
-columns or wider, three-line cards show name and last-response age, activity, and short metrics
-beside the feed. Narrower panes stack the one-row roster above the feed, and panes
-with few rows show a one-line strip using `main` for the root. The name column is sized
+the activity pane gives its whole body to the feed. The native layout contract owns narrow-terminal and compact-roster placement.
+The name column is sized
 for the whole tree. Before hiding agents, cards compact to one row per agent, retaining
 selected-agent metrics when space permits. Hidden rows have directional counts and responding/error counts on the
 corresponding edge where space permits; the header always includes overall counts.
