@@ -1,12 +1,6 @@
 # Code tests
 
-Never use bare `make`, `make install`, `make install-binaries`, or an installation
-build for validation. Build and test directly in the affected package.
-
 ## Focused checks
-
-Go package rows use `go test <packages>`. Add `-count=1` when an uncached run
-matters; measure its runtime separately from build/cache overhead.
 
 Inside an active Mekugi shell, run tests with invocation-local `env -u BASH_ENV`.
 The session's Bash startup hook can otherwise prepend live frontends ahead of a test's
@@ -70,9 +64,3 @@ Choose acceptance cases at the changed consumer:
 The [interface specifications](doc/spec/index.md),
 [ownership contracts](doc/architecture/index.md), and
 [dated Codex observations](doc/codex-router-e2e.md) own the behavior and evidence.
-
-## Temporary builds
-
-On a non-main branch, after implementation and validation, prepare a runnable
-temporary build outside the repository with `mktemp -d`. Include a launcher and
-provide the exact command to test it. Do not install binaries for this step.

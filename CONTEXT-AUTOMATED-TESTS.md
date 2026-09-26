@@ -33,8 +33,7 @@ this isolated fixture bypasses hook trust; production registration requires the
 normal Codex hook review. The fixture does not exercise the interactive `/hooks`
 trust UI or manual `/compact` command.
 
-The fixtures are under `internal/router/tool_frontend_codex_e2e_test.go` and
-`internal/router/journal_codex_e2e_test.go`. A tagged compile-only check is
+The fixtures are the `internal/router/*_codex_e2e_test.go` files. A tagged compile-only check is
 `go test -tags journal_e2e ./internal/router -run '^$'`.
 
 These deterministic tests do not prove live-model behavior or decrypt prior

@@ -1,6 +1,7 @@
 # Agent navigation
 
-DO NOT write report markdown when I did not ask for.
+Don't create report or summary markdown files unless asked. Feedback in `FIXME.md` (below) is the
+exception.
 
 ## Project goal
 
@@ -18,8 +19,8 @@ ends in themselves. Preserve Codex as the execution authority as required below.
 
 ## Feedback
 
-You may proactively record and improvement feedback encountered while using it, in FIXME.md,
-even when unrelated to the current task.
+You may proactively record friction and improvement feedback about Mekugi in `FIXME.md`, even when
+unrelated to the current task.
 
 Report types:
 
@@ -107,15 +108,16 @@ The model guidance owner is [guide](doc/spec/guide.md).
 
 ## Build and installation constraints
 
-Never run `make install`, `make install-binaries`, bare `make` or other commands that build the binary
-into installation path.
+Never run `make install`, `make install-binaries`, bare `make`, or other commands that build the
+binary into the installation path: bare `make` defaults to `install`, which replaces the installed
+`mekugi`.
 
-For tests, asset generation, or temporary builds, read `CONTEXT-TESTS.md`.
+For tests or asset generation, read `CONTEXT-TESTS.md`.
 For automated live Codex tests, read `CONTEXT-AUTOMATED-TESTS.md`.
 
 ## Where to look
 
-- `README.md`: user facing documentation. DO NOT ADD AGENT FACING DETAILS.
+- `README.md`: user-facing documentation; keep agent-facing details out of it.
 - `doc/spec/index.md`: interface requirements and acceptance criteria.
 - `doc/architecture/index.md`: boundary ownership contracts.
 - `internal/router/journal_tool.go`: additive journal and finish guidance projected through the
