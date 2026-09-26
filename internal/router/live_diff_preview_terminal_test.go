@@ -149,7 +149,7 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	})
 	liveDiffTestChange(t, store, workspace, "one", "captured.go")
 	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
-	initial := ui.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 1), "Live input") })
+	initial := ui.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 1), "Diff preview") })
 	if strings.Contains(initial, "Waiting for live input") {
 		t.Fatalf("initial stream header: %q", initial)
 	}

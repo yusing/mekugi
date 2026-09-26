@@ -294,8 +294,20 @@ Before edit intent arrives, an unfinished Python heredoc has no source-file
 preview; ordinary Python file creation is displayed when the heredoc closes.
 Unsupported buffer mutations, including augmented assignment and tuple rebinding,
 are not predicted.
-Regex replacement is excluded. An interpreter heredoc still arriving is
-predicted on a best-effort basis by closing its unfinished content literal.
+Regex replacement is excluded. Literal target content can appear before the
+transporting interpreter statement or string closes. Only complete decoded
+target lines and supported-language statement boundaries are revealed, including
+separate statements sharing a source line and nested escaped target newlines;
+delimiters inside target strings do not release unfinished statements. Only the
+write still arriving is gated, at the arriving text's position in its projected
+file, so replacement text that closes an enclosing block is judged in context.
+Consecutive target units remain visibly distinct: a later unit does not start
+its reveal while the preceding unit is still fading in.
+While replacement text arrives, an interpreter replacement preview keeps removed
+rows before arriving added rows in one source-ordered region, rather than
+realigning matching lines on each frame. Once that text closes, the preview uses
+normal minimal review hunks, as do arriving whole-file writes and completed
+change evidence.
 Command and script text is never displayed. A command that is not a
 recognized edit has no card, and a later non-edit call keeps the last
 displayed edit. A literal `workdir` resolves relative targets; when an edit's
@@ -331,7 +343,7 @@ completes, and `!` with the reason when the edit cannot be projected. The
 current file follows, styled like file navigation: its status and live `+N -N` line counts, with `N/M files` when the call edits
 several.
 
-The integrated live-input pane opens on its first displayable preview, not on
+The integrated `Diff preview` pane opens on its first displayable preview, not on
 an execution or launch request with no stream content. Agent activity can open
 independently without reserving an empty live-input area. Explicitly focusing
 the diff pane still opens it on demand.
@@ -343,9 +355,22 @@ behind resynchronizes from durable changes and retained display state.
 Provider input arrives in bursts. The stream view reveals each call's received
 input at its recent arrival rate, so the preview grows steadily rather than
 jumping per burst; the reveal trails received input by at most a bounded
-window and completes on the call's final input. The reveal advances by whole
-lines. An unfinished line stays buffered until it completes, or is shown as it
-streams after about half a second. Newly revealed rows fade in from partial visibility, and rows
+window where a complete line is available and completes on the call's final
+input. Ordinary streaming frames advance one complete line at a time rather
+than draining all line boundaries in a provider burst. Bounded lag catch-up may
+skip ahead. After the call finishes, queued units keep distinct reveals for about
+one second; the remaining final input then appears at once. The reveal advances by whole decoded lines. An unfinished line stays
+buffered, regardless of elapsed time; final input releases an unterminated tail.
+Code-source previews also buffer unfinished syntax for Go, JavaScript, TypeScript,
+Python, and Bash/sh. Complete statements inside open Go, JavaScript/TypeScript, Python, and shell
+blocks can appear without waiting for the enclosing block to close; complete
+JavaScript/TypeScript class and interface members count as statements. Open
+object, array, and call literals remain one unfinished statement. A frame
+with an unfinished statement retains the previous projection;
+unknown formats use complete lines. Completed input bypasses this display gate,
+including malformed source, without claiming execution success. Empty add-file
+and heredoc headers retain the preceding diff until source arrives or empty-file
+creation completes. Newly revealed rows fade in from partial visibility, and rows
 revealed together cascade in order; the fade is display-only and never delays
 the underlying projection. A completed snapshot displays at its final colors
 without re-fading retained rows. The first usable frame and completion redraw

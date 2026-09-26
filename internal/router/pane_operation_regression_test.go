@@ -161,8 +161,8 @@ func TestPaneOperationRegressionNativePatchStreamsProvisionalDiff(t *testing.T) 
 
 	for _, step := range []struct{ fragment, want string }{
 		{"*** Begin Patch", ""},
-		{"\n*** Add File: new.txt\n+first line", "+first line"},
-		{"\n+second line", "+second line"},
+		{"\n*** Add File: new.txt\n+first line\n", "+first line"},
+		{"+second line\n", "+second line"},
 	} {
 		delta := mustTestJSON(t, map[string]any{
 			"type": "response.custom_tool_call_input.delta", "item_id": "patch-item", "delta": step.fragment,
@@ -208,18 +208,18 @@ func TestPaneOperationRegressionCodeModePatchStreamsThroughPTY(t *testing.T) {
 				return strings.Contains(ansi.Strip(frame), "· ◐ edit")
 			}))
 
-			worker.appendDelta(lineBreak + "*** Add File: new.txt" + lineBreak + "+first line")
+			worker.appendDelta(lineBreak + "*** Add File: new.txt" + lineBreak + "+first line" + lineBreak)
 			assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
 				plain := ansi.Strip(frame)
 				return strings.Contains(plain, "new.txt") && strings.Contains(plain, "+first line")
 			}), "new.txt", "+first line")
 
-			worker.appendDelta(lineBreak + "+second line")
+			worker.appendDelta("+second line" + lineBreak)
 			assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
 				return strings.Contains(ansi.Strip(frame), "+second line")
 			}), "new.txt", "+first line", "+second line")
 			if quote == "template" {
-				worker.appendDelta("\n+Use \\`mcat\\` and \\${literal}\n+after escapes")
+				worker.appendDelta("+Use \\`mcat\\` and \\${literal}\n+after escapes\n")
 				assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
 					return strings.Contains(ansi.Strip(frame), "+after escapes")
 				}), "+Use `mcat` and ${literal}", "+after escapes")

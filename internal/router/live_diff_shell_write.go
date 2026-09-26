@@ -16,11 +16,11 @@ import (
 
 // Project only literal heredoc writes; shell execution remains the sole owner
 // of actual file effects and durable change evidence.
-func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directory string, partialLine bool) ([]mekugi.ReviewFile, bool, error) {
+func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directory string, partialLine, final bool) ([]mekugi.ReviewFile, bool, error) {
 	if files, recognized, err := liveDiffInterpreterWrite(ctx, stmt, directory, partialLine); recognized || err != nil {
 		return files, recognized, err
 	}
-	if files, recognized, err := liveDiffShellFileOperation(ctx, stmt, directory, partialLine); recognized {
+	if files, recognized, err := liveDiffShellFileOperation(ctx, stmt, directory, partialLine, final); recognized {
 		return files, true, err
 	}
 	call, ok := stmt.Cmd.(*syntax.CallExpr)
@@ -87,7 +87,7 @@ func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directo
 		if files, recognized, err := liveDiffInterpreterSource(ctx, input, content, path, true, true); recognized || err != nil {
 			return files, recognized, err
 		}
-		if partialLine {
+		if partialLine && !final {
 			// Imports and path setup cannot yet distinguish an edit script
 			// from ordinary Python source. Do not flash that transport source.
 			return nil, true, nil
@@ -95,6 +95,9 @@ func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directo
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, true, err
+	}
+	if partialLine && !final && !liveDiffSourceReady(ctx, path, content) {
+		return nil, true, nil
 	}
 	return []mekugi.ReviewFile{mekugi.RenderReviewFile(beforePath, path, before, content)}, true, nil
 }
@@ -130,7 +133,7 @@ func liveDiffPreviewFile(path string) (string, bool, error) {
 // liveDiffShellFileOperation predicts literal cp, mv, rm, and tee heredoc
 // effects from current files. The prediction is display only; the command's
 // observed record is the evidence.
-func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, directory string, partialLine bool) ([]mekugi.ReviewFile, bool, error) {
+func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, directory string, partialLine, final bool) ([]mekugi.ReviewFile, bool, error) {
 	call, ok := stmt.Cmd.(*syntax.CallExpr)
 	if !ok || stmt.Background || stmt.Coprocess || stmt.Disown || stmt.Negated ||
 		len(call.Assigns) != 0 || len(call.Args) < 2 {
@@ -228,6 +231,9 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 			}
 			if !exists {
 				beforePath = ""
+			}
+			if partialLine && !final && (!liveDiffSourceTerminated(ctx, path, content) || !liveDiffSourceComplete(ctx, path, after)) {
+				return nil, true, nil
 			}
 			files = append(files, mekugi.RenderReviewFile(beforePath, path, before, after))
 		}

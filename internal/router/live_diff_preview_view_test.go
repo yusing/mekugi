@@ -98,8 +98,8 @@ func TestLiveDiffPreviewUpdatePreemptsDistantFrame(t *testing.T) {
 	if done, err := c.applyEvent(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview}); done || err != nil {
 		t.Fatalf("preview event: done=%v err=%v", done, err)
 	}
-	if delay := time.Until(c.previewFrameDue); delay <= 0 || delay > time.Second {
-		t.Fatalf("fresh input waited for old expiry: %v", delay)
+	if !c.dirty || c.previewFrameC != nil {
+		t.Fatalf("already-paced input was delayed again: dirty=%v timer=%v", c.dirty, c.previewFrameC != nil)
 	}
 }
 
@@ -519,7 +519,7 @@ func TestLiveDiffPreviewPacerIsSteadyAndBounded(t *testing.T) {
 		t.Fatalf("bursts were not revealed line by line: %d steps", steps)
 	}
 	// A large backlog skips to the window at the tip.
-	input += strings.Repeat("y", 64<<10) + "\n"
+	input += strings.Repeat("y\n", 32<<10)
 	if next := pacer.advance(input, false, false); next < len(input)-liveDiffPreviewMaxLag {
 		t.Fatalf("lag exceeded its window: %d of %d", next, len(input))
 	}
@@ -534,7 +534,8 @@ func TestLiveDiffPreviewPacerIsSteadyAndBounded(t *testing.T) {
 }
 
 func TestLiveDiffPreviewPacerBuffersUnits(t *testing.T) {
-	// Arrival steps stay within the hold, so only unit ends are revealed.
+	// The pacer offers candidate boundaries; decoded target syntax decides
+	// which candidates may actually be displayed.
 	reveal := func(input string, encoded bool, step int) []string {
 		var pacer liveDiffPreviewPacer
 		var shown []string
@@ -547,27 +548,28 @@ func TestLiveDiffPreviewPacerBuffersUnits(t *testing.T) {
 			}
 		}
 	}
-	// An edit payload reveals by line, even when its source contains operators.
+	// Semicolons are candidates even inside a for header. The source gate
+	// must reject these, rather than making transport pacing language-aware.
 	body := "for (i = 0; i < n; i++) {\n\tx();\n"
-	if got := reveal(body, false, 3); !slices.Equal(got, []string{"for (i = 0; i < n; i++) {\n", body}) {
+	if got := reveal(body, false, 3); !slices.Equal(got, []string{"for (i = 0;", "for (i = 0; i < n;", "for (i = 0; i < n; i++) {\n", strings.TrimSuffix(body, "\n")}) {
 		t.Fatalf("lines: %q", got)
 	}
-	// Encoded input breaks at escaped line breaks, not at an escaped backslash.
+	// Nested escapes are also candidates; projection decodes their meaning.
 	encoded := `{"cmd":"cat > f <<'EOF'\nsay \\n here\nnext`
 	if got := reveal(encoded, true, 3); !slices.Equal(got, []string{
-		`{"cmd":"cat > f <<'EOF'\n`, `{"cmd":"cat > f <<'EOF'\nsay \\n here\n`,
+		`{"cmd":"cat > f <<'EOF'\n`, `{"cmd":"cat > f <<'EOF'\nsay \\n`, `{"cmd":"cat > f <<'EOF'\nsay \\n here\n`,
 	}) {
 		t.Fatalf("encoded: %q", got)
 	}
-	// A unit that outlives the hold streams rather than stalling the card.
+	// A stalled line stays buffered regardless of elapsed frames.
 	var pacer liveDiffPreviewPacer
 	long := strings.Repeat("z", 64)
 	shown := 0
-	for range liveDiffPreviewMaxHold + 2 {
+	for range 100 {
 		shown = pacer.advance(long, false, false)
 	}
-	if shown != len(long) {
-		t.Fatalf("held unit was not released: %d of %d", shown, len(long))
+	if shown != 0 {
+		t.Fatalf("unfinished line was released: %d of %d", shown, len(long))
 	}
 }
 
@@ -653,12 +655,12 @@ func TestLiveDiffPreviewPacerKeepsEscapesWhole(t *testing.T) {
 	}
 	var pacer liveDiffPreviewPacer
 	input := `"a\`
-	// A held line is released without splitting its trailing escape.
+	// An unfinished encoded line stays buffered.
 	shown := 0
-	for range liveDiffPreviewMaxHold + 1 {
+	for range 100 {
 		shown = pacer.advance(input, false, true)
 	}
-	if shown != 2 {
+	if shown != 0 {
 		t.Fatalf("streaming reveal split an escape at %d", shown)
 	}
 	// Finished input is shown whole even when it ends in a backslash.

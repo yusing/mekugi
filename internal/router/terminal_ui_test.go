@@ -253,7 +253,7 @@ func TestTerminalUIRenderedPTYAndLifecycle(t *testing.T) {
 	auto.requestLaunch(workspace, "root")
 	io.WriteString(outer, "s")
 	await("PTY size 220 x 39")
-	if strings.Contains(screen.String(), "Live input") {
+	if strings.Contains(screen.String(), "Diff preview") {
 		t.Fatal("empty live input pane opened before the first stream")
 	}
 	auto.events.publishPreview(liveDiffPreview{ID: "preview", Workspace: workspace, Thread: "root", Input: "first line\nsecond line", Status: "running"}, false)
@@ -280,7 +280,9 @@ func TestTerminalUIRenderedPTYAndLifecycle(t *testing.T) {
 	activity.collect("worker", "notice", "reply", "Agent delivery independent of root turns")
 	await("Agent delivery independent of root turns")
 	await("[/] files  ● worker")
-	if line := strings.Split(screen.String(), "\n")[39]; !strings.Contains(line, "CODEX") || !strings.Contains(line, "● worker") { t.Fatalf("legend not on status line: %q", line) }
+	if line := strings.Split(screen.String(), "\n")[39]; !strings.Contains(line, "CODEX") || !strings.Contains(line, "● worker") {
+		t.Fatalf("legend not on status line: %q", line)
+	}
 	io.WriteString(outer, "\x02"+"3\x03")
 	await("CODEX ·")
 	io.WriteString(outer, "x")

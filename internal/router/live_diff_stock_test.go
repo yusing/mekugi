@@ -165,6 +165,18 @@ func TestNextCallPendingPatchKeepsCompletedDiffUntilItHasContent(t *testing.T) {
 		ID: "next", Workspace: workspace, Thread: "thread", Caller: "/root", Status: liveDiffPreviewEdit,
 		Input: "*** Begin Patch\n*** Update File: first.go\n",
 	})
+	for _, input := range []string{
+		"*** Begin Patch\n*** Add File: next.go\n",
+		"*** Begin Patch\n*** Add File: next.go\n+",
+	} {
+		worker := liveDiffPreviewWorker{ctx: t.Context()}
+		adding, _ := worker.projectStockPreview(input, workspace, false)
+		adding.ID, adding.Workspace, adding.Caller = pending.ID, workspace, "/root"
+		pane.update(adding)
+		if len(pane.order) != 1 || pane.order[0] != first.ID {
+			t.Fatalf("add header replaced completed edit: %v", pane.order)
+		}
+	}
 	pane.update(pending)
 	if len(pane.order) != 1 || pane.order[0] != first.ID {
 		t.Fatalf("empty next call replaced completed edit: %v", pane.order)

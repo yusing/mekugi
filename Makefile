@@ -18,12 +18,12 @@ preview-assets:
 	bun install --cwd plugins --frozen-lockfile
 	go generate ./internal/router/toolplugin
 
-# Interactive: replays a scripted session in the real wrapped UI. Ctrl-B 1, then Ctrl-D, quits.
-# MEKUGI_UI_PREVIEW_STEP sets the replay pace (default 1.2s).
+# Interactive: full multi-pane session, then selectable diff checks (1-8, n/b/r, Enter).
+# s skips the story; Ctrl-B 1 then Ctrl-D quits. MEKUGI_UI_PREVIEW_STEP sets story pace only.
 preview-ui: preview-assets
 	env -u BASH_ENV MEKUGI_UI_PREVIEW=1 $(GO) test ./internal/router -run '^TestTerminalUIPreview$$' -count=1 -timeout 0
 
-# Headless: replays the same session and prints each changed roster frame with
+# Headless: replays the roster session and prints each changed roster frame with
 # the canonical usage report behind every agent. Optional: PREVIEW_WIDTH (160),
 # PREVIEW_ROWS (8), PREVIEW_STEP (20ms), PREVIEW_ANSI=1 to keep colors.
 preview-roster: preview-assets

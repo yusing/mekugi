@@ -9,28 +9,28 @@ import (
 // than per character. The gate runs on received input, because the
 // projection runs on that prefix.
 
-// liveDiffPreviewPacer reveals bursty provider input at its recent average
-// arrival rate, so a preview grows at a steady speed between bursts. A
-// catch-up share bounds the lag, and a large backlog skips to its last
-// window because the preview follows the tip.
+// liveDiffPreviewPacer's cursor follows bursty provider input at its recent
+// average arrival rate. The shown prefix trails the cursor by one complete
+// source unit per frame, so a burst's statements stay distinct. A large backlog
+// skips to its last window because the preview follows the tip.
 type liveDiffPreviewPacer struct {
 	shown, cursor, received int
 	rate                    float64 // Bytes per frame, averaged over about eight frames.
-	held                    int     // Frames the cursor has waited inside an unfinished line.
 }
 
-const (
-	liveDiffPreviewMaxLag = 2 << 10
-	// A unit that outlives about half a second is revealed as it streams, so
-	// a long line or stalled stream still makes progress.
-	liveDiffPreviewMaxHold = 15
-)
+const liveDiffPreviewMaxLag = 2 << 10
 
 // Encoded input is JSON or JavaScript source, where \n escapes a line break.
 func (p *liveDiffPreviewPacer) advance(input string, finishing, encoded bool) int {
 	p.rate += (float64(max(0, len(input)-p.received)) - p.rate) / 8
 	p.received = len(input)
 	p.shown = min(p.shown, len(input))
+	if len(input)-p.shown > liveDiffPreviewMaxLag {
+		from := len(input) - liveDiffPreviewMaxLag
+		if boundary := liveDiffLineBoundary(input, from, len(input), encoded); boundary > from {
+			p.shown = boundary
+		}
+	}
 	p.cursor = max(min(p.cursor, len(input)), len(input)-liveDiffPreviewMaxLag)
 	backlog := len(input) - p.cursor
 	share := 8
@@ -44,15 +44,16 @@ func (p *liveDiffPreviewPacer) advance(input string, finishing, encoded bool) in
 	for p.cursor < len(input) && !utf8.RuneStart(input[p.cursor]) {
 		p.cursor++
 	}
-	if finishing && p.cursor == len(input) {
-		p.shown, p.held = p.cursor, 0
+	if finishing && p.cursor == len(input) && len(input) > liveDiffPreviewMaxLag {
+		// Retain the bounded catch-up policy for oversized input. Ordinary
+		// bursts still reveal every queued statement even after completion.
+		p.shown = p.cursor
 	} else if boundary := liveDiffLineBoundary(input, p.shown, p.cursor, encoded); boundary > p.shown {
-		p.shown, p.held = boundary, 0
-	} else if p.cursor > p.shown {
-		if p.held++; p.held > liveDiffPreviewMaxHold {
-			p.shown = p.cursor
-		}
+		p.shown = boundary
+	} else if finishing && p.cursor == len(input) {
+		p.shown = p.cursor
 	}
+
 	if encoded && !(finishing && p.shown == len(input)) {
 		p.shown = liveDiffEscapeEnd(input, p.shown)
 	}
@@ -91,20 +92,18 @@ func liveDiffEscapeEnd(input string, n int) int {
 	return n
 }
 
-// liveDiffLineBoundary returns the last line end in (from, to], or from.
+// liveDiffLineBoundary returns the next candidate source-unit end. Semicolons
+// are only candidates: decoded target syntax rejects strings and comments.
 func liveDiffLineBoundary(input string, from, to int, encoded bool) int {
-	for end := to; end > from; end-- {
-		if input[end-1] == '\n' {
+	for end := from + 1; end <= to; end++ {
+		if input[end-1] == '\n' || input[end-1] == ';' {
 			return end
 		}
 		if encoded && input[end-1] == 'n' && end >= 2 && input[end-2] == '\\' {
-			slashes := 0
-			for i := end - 2; i >= 0 && input[i] == '\\'; i-- {
-				slashes++
-			}
-			if slashes%2 == 1 {
-				return end
-			}
+			// Nested interpreter literals have another escape layer. Decode
+			// and validate in projection; raw slash parity cannot tell whether
+			// this is a target newline or merely quoted transport text.
+			return end
 		}
 	}
 	return from

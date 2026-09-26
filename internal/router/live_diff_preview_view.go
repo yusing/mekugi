@@ -23,6 +23,12 @@ const (
 	liveDiffPreviewFadeFloor  = .4
 	liveDiffPreviewStagger    = 16 * time.Millisecond
 	liveDiffPreviewMaxStagger = 96 * time.Millisecond
+	// Keep consecutive target units visually distinct: the next unit starts
+	// after the preceding unit's last row has finished fading in.
+	liveDiffPreviewUnitDelay = liveDiffPreviewFade + liveDiffPreviewMaxStagger
+	// A finished call keeps distinct unit reveals only this long before its
+	// remaining input is shown at once.
+	liveDiffPreviewFinishDrain = time.Second
 )
 
 // Previews have their own viewport and lifecycle. They never change the captured
@@ -79,7 +85,7 @@ func (p *liveDiffPreviewPane) update(preview liveDiffPreview) {
 		return
 	}
 	if view == nil {
-		if preview.Status == liveDiffPreviewEdit && len(preview.Files) == 0 && preview.Input == "\n" &&
+		if preview.Status == liveDiffPreviewEdit && len(preview.Files) == 0 && strings.TrimSpace(preview.Input) == "" &&
 			slices.ContainsFunc(p.order, func(id string) bool {
 				old := p.views[id]
 				return old.complete && (len(old.current.Files) != 0 || old.current.DiffText)

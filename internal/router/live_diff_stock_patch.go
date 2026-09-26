@@ -21,7 +21,7 @@ func projectStockPatchPreview(ctx context.Context, workspace string, preview liv
 		preview.Status = liveDiffPreviewUnavailable + "patch exceeds projection capacity"
 		return preview
 	}
-	files, err := stockPatchReviewPreview(ctx, workspace, preview.Input)
+	files, err := stockPatchReviewPreview(ctx, workspace, preview.Input, preview.Complete)
 	preview.Input = ""
 	if err != nil {
 		preview.Status = liveDiffPreviewUnavailable + "patch cannot be projected"
@@ -50,7 +50,7 @@ type stockPreviewChunk struct {
 	endOfFile bool
 }
 
-func stockPatchReviewPreview(ctx context.Context, workspace, input string) ([]mekugi.ReviewFile, error) {
+func stockPatchReviewPreview(ctx context.Context, workspace, input string, final bool) ([]mekugi.ReviewFile, error) {
 	lines := strings.Split(strings.TrimSuffix(input, "\n"), "\n")
 	if len(lines) == 0 || strings.TrimSuffix(lines[0], "\r") != "*** Begin Patch" {
 		return nil, errors.New("missing patch start")
@@ -178,6 +178,11 @@ func stockPatchReviewPreview(ctx context.Context, workspace, input string) ([]me
 	partial := !slices.ContainsFunc(lines, func(line string) bool { return strings.TrimSuffix(line, "\r") == "*** End Patch" })
 	var reviews []mekugi.ReviewFile
 	for index, edit := range edits {
+		if partial && index == len(edits)-1 && edit.operation == 'a' && edit.after == "" {
+			// An add-file header is not yet displayable source. Preserve the
+			// preceding card until content or an explicit patch end arrives.
+			continue
+		}
 		if edit.operation == 'u' {
 			after, beforeTip, afterTip, err := projectStockUpdate(ctx, edit.before, edit.chunks)
 			if err != nil {
@@ -186,6 +191,16 @@ func stockPatchReviewPreview(ctx context.Context, workspace, input string) ([]me
 			edit.after = after
 			if partial && index == len(edits)-1 && len(edit.chunks) != 0 {
 				edit.before, edit.after = liveDiffLinePrefix(edit.before, beforeTip), liveDiffLinePrefix(after, afterTip)
+			}
+		}
+		if !final && partial && index == len(edits)-1 && edit.operation != 'd' {
+			if !strings.HasSuffix(input, "\n") && !liveDiffSourceTerminated(ctx, edit.afterPath, strings.TrimSuffix(edit.after, "\n")) {
+				return nil, nil
+			}
+			if !liveDiffSourceComplete(ctx, edit.afterPath, edit.after) {
+				// Retain the whole preceding snapshot. Returning only siblings
+				// would erase this file's previously displayed statements.
+				return nil, nil
 			}
 		}
 		if edit.operation == 'd' {

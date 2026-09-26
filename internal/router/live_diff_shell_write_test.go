@@ -15,7 +15,7 @@ func testLiveDiffShellWrite(ctx context.Context, input, directory string) ([]mek
 	if !ok || len(statements) != 1 {
 		return nil, false, nil
 	}
-	return liveDiffShellWriteStatement(ctx, statements[0], directory, partial)
+	return liveDiffShellWriteStatement(ctx, statements[0], directory, partial, true)
 }
 
 func TestLiveDiffShellWriteLiteralInputs(t *testing.T) {
@@ -146,13 +146,13 @@ func TestLiveDiffPreviewWorkerCatFragmentsRetainLastDiff(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()
 	broker, sub, worker := newLiveDiffWorkerTest(t, workspace)
-	for _, delta := range []string{"cat >file.txt <<'END'\nfirst", "\nsecond", "\nEND\n"} {
+	for _, delta := range []string{"cat >file.txt <<'END'\nfirst\n", "second\n", "END\n"} {
 		worker.appendDelta(delta)
 		// Paced frames may show a prefix of the delta first.
 		line := strings.TrimPrefix(delta, "cat >file.txt <<'END'")
 		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
 			return preview.Status == liveDiffPreviewEdit && len(preview.Files) == 1 &&
-				(line == "\nEND\n" || strings.Contains(preview.Files[0].Diff, "+"+strings.TrimPrefix(line, "\n")))
+				(line == "END\n" || strings.Contains(preview.Files[0].Diff, "+"+strings.TrimSpace(line)))
 		})
 		if preview.Input != "" || !strings.Contains(preview.Files[0].Diff, "+first") {
 			t.Fatalf("cat source shown instead of diff: %+v", preview)

@@ -3,7 +3,9 @@ package router
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,17 +39,104 @@ func TestTerminalUIPreview(t *testing.T) {
 			t.Fatalf("MEKUGI_UI_PREVIEW_STEP: %v", err)
 		}
 	}
-	ctx, cancel := context.WithCancel(t.Context())
+	runPreviewBoundaryUI(t, t.Context(), tty, step)
+}
+
+func runPreviewBoundaryUI(t *testing.T, parent context.Context, tty *os.File, step time.Duration) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	auto, store, activity, workspace := newPreviewSession(t, ctx, false)
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestTerminalUIPreviewCodex$")
+	messages, send, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer messages.Close()
+	defer send.Close()
+	next, advance, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer next.Close()
+	defer advance.Close()
+	cmd.ExtraFiles = []*os.File{messages, advance}
 	cmd.Env = append(os.Environ(), "MEKUGI_UI_PREVIEW_CODEX=1")
 	wait, err := startTerminalUI(ctx, cmd, tty, tty, auto, store, activity)
 	if err != nil {
 		t.Fatal(err)
 	}
-	go replayPreviewSession(ctx, auto, store, activity, workspace, step, nil)
-	if err := wait(); err != nil {
+	messages.Close()
+	advance.Close()
+	steps := make(chan byte, 64)
+	quitRequested := make(chan struct{})
+	go func() {
+		defer close(steps)
+		var b [1]byte
+		for {
+			if _, err := next.Read(b[:]); err != nil {
+				cancel() // Unblock child cleanup, but do not classify EOF as a user quit.
+				return
+			}
+			if b[0] == 4 {
+				// Only an explicit user quit is a successful cancellation.
+				// Pipe EOF after a child failure leaves quitRequested open.
+				close(quitRequested)
+				cancel()
+				return
+			}
+			select {
+			case steps <- b[0]:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	finished := make(chan error, 1)
+	go func() {
+		// Preserve the original multi-pane session, including roster, activity,
+		// captured changes, and file navigation. Boundary checks follow it.
+		_, err := fmt.Fprint(send, strings.ReplaceAll("CODEX PREVIEW · full multi-pane session\n\nWrite broker subscription tests and trace the early-opening diff pane.\n\nThe original agents, activity feed, and diff demo run first.\nGuided streaming checks follow, without removing these panes.\nPress s to skip the story, or 1–8 to select a check now.\n\nCtrl-B 1–4 focuses panes; Ctrl-B arrows resizes.\nCtrl-B 1 then Ctrl-D quits.\n", "\n", "\r\n"))
+		scripted, storyDone := make(chan struct{}), make(chan struct{})
+		storyCtx, stopStory := context.WithCancel(ctx)
+		defer stopStory()
+		go func() {
+			defer close(storyDone)
+			replayPreviewSession(storyCtx, auto, store, activity, workspace, step, func() { close(scripted) })
+		}()
+		if err == nil {
+			var initial byte
+			select {
+			case <-scripted:
+			case initial = <-steps:
+				if initial == 's' {
+					initial = 0
+				}
+			case <-ctx.Done():
+				err = ctx.Err()
+			}
+			stopStory()
+			<-storyDone
+			if err == nil {
+				err = replayPreviewBoundaries(ctx, auto, workspace, send, steps, initial)
+			}
+		}
+		send.Close()
+		<-ctx.Done()
+		<-storyDone
+		finished <- err
+	}()
+	waitErr := wait()
+	select {
+	case <-quitRequested:
+	default:
+		if waitErr != nil && parent.Err() == nil {
+			t.Fatal(waitErr)
+		}
+	}
+	cancel()
+	next.Close()
+	if err := <-finished; err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) {
 		t.Fatal(err)
 	}
 }
@@ -230,38 +319,7 @@ func TestTerminalUIPreviewCodex(t *testing.T) {
 		os.Exit(2)
 	}
 	defer term.Restore(int(os.Stdin.Fd()), old)
-	fmt.Print(strings.ReplaceAll(`╭────────────────────────────────────────────────────────╮
-│ >_ Codex (preview stand-in)                            │
-│ model: gpt-6-astra medium   /workspace                 │
-╰────────────────────────────────────────────────────────╯
-
-› Write broker subscription tests, and trace why the live diff pane opens early.
-
-• Spawned trace, pane_trace, and script_tests.
-
-• Waiting for agents…
-
-  Ctrl-B 1–4 focus panes · Ctrl-B arrows resize · Ctrl-B 1 then Ctrl-D quits
-  Diff pane, once the turn ends: Tab changes by caller · { } step changes
-  · a / 0 filter by caller / all · n p files · Enter opens at the file header
-
-› `, "\n", "\r\n"))
-	var b [1]byte
-	for {
-		if _, err := os.Stdin.Read(b[:]); err != nil {
-			return
-		}
-		switch {
-		case b[0] == 4:
-			return
-		case b[0] == '\r':
-			fmt.Print("\r\n› ")
-		case b[0] == 127:
-			fmt.Print("\b \b")
-		case b[0] >= ' ':
-			os.Stdout.Write(b[:])
-		}
-	}
+	previewBoundaryConsole()
 }
 
 // previewFiles seed the workspace that the replayed patches edit.
@@ -525,6 +583,7 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 		invocation := call()
 		activity.collect(thread, "tool-call\x00"+invocation, "tool", "Run\n```bash\n"+command+"\n```")
 		if source == "python3" {
+			activity.collect(thread, "python-stream-check", "reply", "Python streaming check: the target diff should grow before p.write_text arrives. Complete target statements appear; partial target strings stay hidden.")
 			// Exercise the native exec_command input path before the host edit,
 			// rather than merely labeling a recorded result as Python.
 			arguments, err := json.Marshal(map[string]string{"cmd": command, "workdir": workspace})
@@ -544,7 +603,7 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 				end += 2
 				worker.appendDelta(input[:end])
 				input = input[end:]
-				if !pause(0.16) {
+				if !pause(0.6) {
 					worker.stop()
 					return false
 				}
@@ -664,9 +723,7 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 	}
 	respond("pane", "gpt-6-luna", 64_000, 1_100)
 	// pane_trace edits with a Python script, a third lane with another source.
-	oldFlow := "\tif requested {\n\t\treturn \"open\"\n\t}\n\treturn <-frames"
-	newFlow := "\tframe := <-frames\n\tif requested {\n\t\treturn \"open: \" + frame\n\t}\n\treturn frame"
-	pythonCommand := "python3 - <<'PY'\nfrom pathlib import Path\np = Path('internal/pane/launch.go')\ns = p.read_text()\ns = s.replace(" + strconv.Quote(oldFlow) + ", " + strconv.Quote(newFlow) + ", 1)\np.write_text(s)\nPY\n"
+	oldFlow, newFlow, pythonCommand := previewPythonEditCommand()
 	if !script("pane", "/root/pane_trace", "python3", "internal/pane/launch.go", pythonCommand,
 		func(source string) string { return strings.Replace(source, oldFlow, newFlow, 1) }) {
 		return
@@ -725,4 +782,11 @@ func replayPreviewSession(ctx context.Context, auto *autoLiveDiff, store *mekugi
 		activity.streamOutput("tests", 200)
 		pause(0.5)
 	}
+}
+
+func previewPythonEditCommand() (oldFlow, newFlow, pythonCommand string) {
+	oldFlow = "\tif requested {\n\t\treturn \"open\"\n\t}\n\treturn <-frames"
+	newFlow = "\tframe := <-frames\n\tif requested {\n\t\treturn \"open: \" + frame\n\t}\n\treturn frame"
+	pythonCommand = "python3 - <<'PY'\nfrom pathlib import Path\np = Path('internal/pane/launch.go')\ns = p.read_text()\ns = s.replace(" + strconv.Quote(oldFlow) + ", " + strconv.Quote(newFlow) + ", 1)\np.write_text(s)\nPY\n"
+	return
 }

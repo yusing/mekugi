@@ -598,7 +598,7 @@ func TestLiveDiffShellFileOperationPreviews(t *testing.T) {
 		if !parsed || len(statements) != 1 {
 			t.Fatalf("%q did not parse", test.command)
 		}
-		files, recognized, err := liveDiffShellWriteStatement(t.Context(), statements[0], directory, partial)
+		files, recognized, err := liveDiffShellWriteStatement(t.Context(), statements[0], directory, partial, true)
 		if !recognized || err != nil {
 			t.Fatalf("%q recognized=%v err=%v", test.command, recognized, err)
 		}
@@ -606,7 +606,7 @@ func TestLiveDiffShellFileOperationPreviews(t *testing.T) {
 			t.Errorf("%q preview = %q, want %q", test.command, got, test.want)
 		}
 	}
-	if _, recognized, _ := liveDiffShellWriteStatement(t.Context(), mustShellStatement(t, "cp -r a b"), workspace, false); recognized {
+	if _, recognized, _ := liveDiffShellWriteStatement(t.Context(), mustShellStatement(t, "cp -r a b"), workspace, false, true); recognized {
 		t.Error("an unsupported cp option was previewed")
 	}
 }

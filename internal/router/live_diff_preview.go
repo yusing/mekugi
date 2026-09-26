@@ -212,16 +212,22 @@ func (w *liveDiffPreviewWorker) projectStockPreview(input, workspace string, fin
 	}
 	ctx, cancel := context.WithTimeout(projectionContext, time.Second)
 	defer cancel()
-	projected := projectStockPatchPreview(ctx, workspace, preview)
-	if !final && strings.HasPrefix(projected.Status, liveDiffPreviewUnavailable) && !strings.HasSuffix(input, "\n") {
-		// Try the completed prefix only after the live suffix fails. Valid
-		// partial additions remain visible as they stream, while unfinished
-		// context or control lines cannot invalidate the last usable preview.
-		if end := strings.LastIndexByte(input, '\n'); end >= 0 {
-			preview.Input = input[:end+1]
-			projected = projectStockPatchPreview(ctx, workspace, preview)
+	if !final {
+		// Decode first: an outer JavaScript newline need not terminate a
+		// patch line inside a string literal.
+		tip := strings.LastIndexByte(input, '\n') + 1
+		if strings.HasSuffix(input, ";") && strings.HasPrefix(input[tip:], "+") {
+			preview.Input = input
+		} else {
+			preview.Input = input[:tip]
+		}
+		if preview.Input == "" {
+			preview.Input = "\n"
+			return preview, true
 		}
 	}
+	preview.Complete = final
+	projected := projectStockPatchPreview(ctx, workspace, preview)
 	return projected, true
 }
 
@@ -242,6 +248,8 @@ func (w *liveDiffPreviewWorker) run() {
 	final := false
 	revealed := -1
 	backlog := false
+	var lastFiles []mekugi.ReviewFile
+	var lastReveal, finishedAt time.Time
 	for {
 		if final {
 			return
@@ -273,15 +281,24 @@ func (w *liveDiffPreviewWorker) run() {
 		preview := w.preview
 		final, preview.Complete = w.finishing, w.finishing
 		w.mu.Unlock()
+		if final && finishedAt.IsZero() {
+			finishedAt = time.Now()
+		}
+		release := final && time.Since(finishedAt) >= liveDiffPreviewFinishDrain
 		// Provider deltas arrive in bursts. Reveal the received input at a steady
 		// pace instead of jumping per burst. A completed call waits briefly for the
 		// reveal to catch up; a cancelled transport shows its final input at once.
 		shown := len(input)
-		if w.ctx.Err() == nil {
+		if w.ctx.Err() == nil && !release {
 			shown = pacer.advance(input, final, encoded)
+			if pacer.cursor == len(input) && liveDiffLineBoundary(input, shown, len(input), encoded) == shown {
+				// Envelope fields (such as workdir) may follow the last source
+				// newline. Decode them too; projection gates decoded source lines.
+				shown = len(input)
+			}
 		}
-		backlog = shown < len(input)
-		if backlog {
+		backlog = pacer.cursor < len(input) || liveDiffLineBoundary(input, shown, len(input), encoded) > shown
+		if shown < len(input) {
 			input, final, preview.Complete = input[:shown], false, false
 		}
 		if !final && shown == revealed {
@@ -303,6 +320,19 @@ func (w *liveDiffPreviewWorker) run() {
 		}
 		projected.Complete = final
 		projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
+		changed := len(projected.Files) != 0 && !slices.Equal(projected.Files, lastFiles)
+		if changed && !release && !lastReveal.IsZero() && w.ctx.Err() == nil {
+			// Transport candidates may arrive every animation frame. Reveal a
+			// new target unit only after the preceding one has settled visibly.
+			if delay := time.Until(lastReveal.Add(liveDiffPreviewUnitDelay)); delay > 0 {
+				timer := time.NewTimer(delay)
+				select {
+				case <-timer.C:
+				case <-w.ctx.Done():
+					timer.Stop()
+				}
+			}
+		}
 		w.mu.Lock()
 		if final && projected.Status == liveDiffPreviewUnavailable+"patch cannot be projected" {
 			// A speculative patch projection cannot establish failure or success.
@@ -318,6 +348,9 @@ func (w *liveDiffPreviewWorker) run() {
 		// viewer cannot receive only removal after losing the last content frame.
 		if !w.closed && (w.ctx.Err() == nil || final) && (final || !strings.HasPrefix(projected.Status, liveDiffPreviewUnavailable)) {
 			w.broker.publishPreview(projected, false)
+			if changed {
+				lastFiles, lastReveal = projected.Files, time.Now()
+			}
 		}
 		w.mu.Unlock()
 	}
@@ -421,6 +454,12 @@ func liveDiffWorkdir(workspace, workdir string) string {
 // the command. Recognized reports an edit even when its projection failed.
 func (w *liveDiffPreviewWorker) projectShell(program, directory string, final bool) ([]mekugi.ReviewFile, bool, error) {
 	statements, directory, partialLine, parsed := liveDiffShellStatements(program, directory)
+	if !final && !partialLine {
+		// A normal command's final operand may still be arriving. An open
+		// heredoc instead gates its decoded target content inside projection.
+		program = program[:strings.LastIndexByte(program, '\n')+1]
+		statements, directory, partialLine, parsed = liveDiffShellStatements(program, directory)
+	}
 	if !parsed {
 		return nil, false, nil
 	}
@@ -438,7 +477,7 @@ func (w *liveDiffPreviewWorker) projectShell(program, directory string, final bo
 	tainted := false
 	for index, stmt := range statements {
 		statementPartial := partialLine && index == len(statements)-1
-		projected, ok, err := liveDiffShellWriteStatement(ctx, stmt, directory, statementPartial)
+		projected, ok, err := liveDiffShellWriteStatement(ctx, stmt, directory, statementPartial, final)
 		if !ok {
 			if !liveDiffShellPreviewNeutral(stmt) {
 				tainted = true
@@ -451,6 +490,11 @@ func (w *liveDiffPreviewWorker) projectShell(program, directory string, final bo
 		}
 		if err != nil {
 			return nil, true, err
+		}
+		if statementPartial && !final && len(projected) == 0 {
+			// Keep all previously displayed files while this statement waits
+			// for source, rather than publishing only its completed siblings.
+			return nil, true, nil
 		}
 		operationPaths := make(map[string]struct{})
 		for _, file := range projected {

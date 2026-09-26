@@ -23,7 +23,7 @@ func TestLiveDiffTerminalCatWriteStreamsDiff(t *testing.T) {
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread")
 	t.Cleanup(worker.stop)
-	for i, delta := range []string{"mkdir -p generated\ncat >'visible file.txt' <<'END'\nfirst", "\nsecond", "\nEND\n"} {
+	for i, delta := range []string{"mkdir -p generated\ncat >'visible file.txt' <<'END'\nfirst\n", "second\n", "END\n"} {
 		worker.appendDelta(delta)
 		preview := waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
 			return preview.Status == liveDiffPreviewEdit && len(preview.Files) == 1

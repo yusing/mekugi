@@ -83,13 +83,18 @@ func completeStreamingHeredoc(input string) (string, bool) {
 			return "", false
 		}
 	}
-	return strings.TrimSuffix(input, "\n") + "\n" + delimiter + "\n", true
+	// Always add a synthetic newline. The heredoc reader removes exactly
+	// this newline, preserving a real received newline at the source tip.
+	return input + "\n" + delimiter + "\n", true
 }
 
 func liveDiffShellHeredoc(redirect *syntax.Redirect, partial bool) (string, bool) {
 	if (redirect.Op != syntax.Hdoc && redirect.Op != syntax.DashHdoc) ||
-		(redirect.N != nil && redirect.N.Value != "0") || redirect.Hdoc == nil {
+		(redirect.N != nil && redirect.N.Value != "0") {
 		return "", false
+	}
+	if redirect.Hdoc == nil {
+		return "", true
 	}
 	var source strings.Builder
 	for _, part := range redirect.Hdoc.Parts {

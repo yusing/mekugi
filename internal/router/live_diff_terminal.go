@@ -190,7 +190,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		header = "Changes"
 	}
 	if !c.diffMode {
-		header = "Live input"
+		header = "Diff preview"
 	}
 	if c.coverage != "" {
 		header = c.coverage
@@ -350,25 +350,14 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 		}
 	case "preview":
 		if event.Preview.Workspace == "" || c.scope.Workspaces[event.Preview.Workspace][event.Preview.Thread] {
-			prior := c.previewPane.views[event.Preview.ID]
 			c.previewPane.update(*event.Preview)
-			// Show the first usable frame and terminal state immediately. The
-			// pacing timer is only for intermediate input deltas.
-			if prior == nil || event.Preview.Complete || event.Preview.Workspace == "" ||
-				event.Preview.Status == "" && event.Preview.Input == "" && len(event.Preview.Files) == 0 {
-				c.previewFrame.Stop()
-				c.previewFrameC = nil
-				c.previewFrameDue = time.Time{}
-				c.dirty = true
-			} else {
-				// Fresh input must not wait for an unrelated redraw.
-				if due := time.Now().Add(liveDiffPreviewFrameDelay); c.previewFrameC == nil || c.previewFrameDue.After(due) {
-					c.previewFrame.Stop()
-					c.previewFrame.Reset(liveDiffPreviewFrameDelay)
-					c.previewFrameC = c.previewFrame.C
-					c.previewFrameDue = due
-				}
-			}
+			// The producer already paces complete target units. A second
+			// debounce here merges adjacent statements back into one frame.
+			// Keep the timer only for animation after the new snapshot renders.
+			c.previewFrame.Stop()
+			c.previewFrameC = nil
+			c.previewFrameDue = time.Time{}
+			c.dirty = true
 		}
 	case "scope":
 		if event.Resync {

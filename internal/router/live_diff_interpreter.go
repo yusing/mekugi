@@ -16,13 +16,9 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// A partial heredoc program usually ends inside its write's content literal.
-// Closing that literal lets the same recognizer predict the write so far.
-var liveDiffInterpreterClosers = []string{`""")`, `''')`, "`)", `")`, `')`, `"""))`, `'''))`, "`))", `"))`, `'))`}
-
 // Literal predictions are display-only. Never evaluate an expression or use
-// these bytes as the observed outcome of a host command. A partial statement
-// is a heredoc program still arriving; its prediction is best effort.
+// these bytes as the observed outcome of a host command. A still-arriving
+// content literal can expose complete target units without executing its script.
 func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory string, partial bool) ([]mekugi.ReviewFile, bool, error) {
 	call, ok := stmt.Cmd.(*syntax.CallExpr)
 	if !ok || stmt.Background || stmt.Negated || len(call.Assigns) != 0 {
@@ -72,16 +68,24 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 	if err != nil {
 		return nil, false, err
 	}
-	for _, closer := range liveDiffInterpreterClosers {
+	// A literal spanning the received end is still arriving. Zero means the
+	// program is complete; no node starts before offset zero.
+	arriving := uint(0)
+	// Try single delimiters first: triple quotes can parse a short string as
+	// adjacent literals, obscuring the still-arriving content literal.
+	for _, closer := range []string{`")`, `')`, "`)", `""")`, `''')`, `"))`, `'))`, "`))", `"""))`, `'''))`} {
 		if tree == nil || !partial || !tree.RootNode().HasError() {
 			break
 		}
 		tree.Close()
 		data = []byte(source + closer)
-		if tree, err = parseExecSource(data, language, canceled); err != nil {
+		tree, err = parseExecSource(data, language, canceled)
+		if err != nil {
 			return nil, false, err
 		}
+		arriving = uint(len(source))
 	}
+
 	if tree == nil {
 		return nil, false, nil
 	}
@@ -125,7 +129,7 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 				failure = errors.New("literal preview includes an unsupported assignment")
 				return
 			}
-			if value, ok := scan.previewPythonText(ctx, right, texts, 0); ok {
+			if value, ok := scan.previewPythonText(ctx, right, texts, arriving, 0); ok {
 				texts[scan.text(left)] = value
 				textOrder = append(textOrder, scan.text(left))
 				return
@@ -142,8 +146,22 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 				failure = errors.New("literal preview does not predict working-directory changes")
 				return
 			}
-			path, content, recognized := scan.literalWrite(ctx, function, args, texts)
+			target, recognized := scan.literalWrite(ctx, function, args, texts, arriving)
 			if recognized {
+				path, content := target.path, target.content
+				render := mekugi.RenderReviewFile
+				if liveDiffArriving(node, arriving) {
+					// Gate only the write still arriving, at its projected tip.
+					// Earlier completed writes need no target-unit gate.
+					tip := len(content)
+					if target.tip > 0 {
+						tip, render = target.tip, mekugi.RenderStreamingReviewFile
+					}
+					if !liveDiffSourceReady(ctx, path, content[:tip]) {
+						failure = errors.New("target statement is still arriving")
+						return
+					}
+				}
 				if seen[path] || !filepath.IsAbs(path) || len(content) > liveDiffPreviewFileLimit || !utf8.ValidString(content) {
 					failure = errors.New("literal preview has dependent or unsupported writes")
 					return
@@ -157,7 +175,7 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 				if !exists {
 					beforePath = ""
 				}
-				files = append(files, mekugi.RenderReviewFile(beforePath, path, before, content))
+				files = append(files, render(beforePath, path, before, content))
 				seen[path] = true
 				return
 			}
@@ -201,6 +219,13 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 			if value.path == "" || seen[value.path] {
 				continue
 			}
+			render := mekugi.RenderReviewFile
+			if value.tip > 0 {
+				if !liveDiffSourceReady(ctx, value.path, value.content[:value.tip]) {
+					return nil, editScript, nil
+				}
+				render = mekugi.RenderStreamingReviewFile
+			}
 			if len(files) >= 32 {
 				return nil, false, nil
 			}
@@ -208,7 +233,7 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 			if err != nil || !exists || before == value.content {
 				continue
 			}
-			files = append(files, mekugi.RenderReviewFile(value.path, value.path, before, value.content))
+			files = append(files, render(value.path, value.path, before, value.content))
 			seen[value.path] = true
 		}
 	}
@@ -237,7 +262,7 @@ func liveDiffPythonEditIntent(node *sitter.Node, source []byte, depth int) bool 
 	return false
 }
 
-func (s *execSourceScope) literalWrite(ctx context.Context, function *sitter.Node, args []*sitter.Node, texts map[string]liveDiffPythonText) (string, string, bool) {
+func (s *execSourceScope) literalWrite(ctx context.Context, function *sitter.Node, args []*sitter.Node, texts map[string]liveDiffPythonText, arriving uint) (liveDiffPythonText, bool) {
 	name := s.text(function)
 	base := name[strings.LastIndexByte(name, '.')+1:]
 	if alias := s.aliases[base]; alias != "" {
@@ -247,7 +272,7 @@ func (s *execSourceScope) literalWrite(ctx context.Context, function *sitter.Nod
 	var body *sitter.Node
 	if !s.python {
 		if (base != "writeFileSync" && base != "writeFile") || len(args) != 2 {
-			return "", "", false
+			return liveDiffPythonText{}, false
 		}
 		paths, body = s.paths(args[0]), args[1]
 	} else {
@@ -257,40 +282,48 @@ func (s *execSourceScope) literalWrite(ctx context.Context, function *sitter.Nod
 		} else if base == "write" && len(args) == 1 {
 			open, values := sourceCall(object)
 			if s.text(open) != "open" || len(values) != 2 {
-				return "", "", false
+				return liveDiffPythonText{}, false
 			}
 			mode, _ := s.literal(values[1])
 			if mode != "w" {
-				return "", "", false
+				return liveDiffPythonText{}, false
 			}
 			paths, body = s.paths(values[0]), args[0]
 		} else {
-			return "", "", false
+			return liveDiffPythonText{}, false
 		}
 	}
 	if len(paths) != 1 {
-		return "", "", false
+		return liveDiffPythonText{}, false
 	}
 	if content, ok := s.literal(body); ok {
-		return paths[0], content, true
+		return liveDiffPythonText{path: paths[0], content: content}, true
 	}
 	if !s.python {
-		return "", "", false
+		return liveDiffPythonText{}, false
 	}
-	value, ok := s.previewPythonText(ctx, body, texts, 0)
+	value, ok := s.previewPythonText(ctx, body, texts, arriving, 0)
 	if !ok || (value.path != "" && value.path != paths[0]) {
-		return "", "", false
+		return liveDiffPythonText{}, false
 	}
-	return paths[0], value.content, true
+	value.path = paths[0]
+	return value, true
 }
 
 type liveDiffPythonText struct {
 	path, content string
+	// tip ends the still-arriving replacement text in content; zero when the
+	// arriving literal is not a replacement in this value.
+	tip int
+}
+
+func liveDiffArriving(node *sitter.Node, arriving uint) bool {
+	return node.StartByte() < arriving && node.EndByte() > arriving
 }
 
 // Interpret only literal strings, same-file reads, and replacement chains.
 // This does not run Python or resolve arbitrary expressions.
-func (s *execSourceScope) previewPythonText(ctx context.Context, node *sitter.Node, texts map[string]liveDiffPythonText, depth int) (liveDiffPythonText, bool) {
+func (s *execSourceScope) previewPythonText(ctx context.Context, node *sitter.Node, texts map[string]liveDiffPythonText, arriving uint, depth int) (liveDiffPythonText, bool) {
 	if node == nil || depth > 64 || ctx.Err() != nil || time.Now().After(s.input.deadline) {
 		return liveDiffPythonText{}, false
 	}
@@ -308,12 +341,12 @@ func (s *execSourceScope) previewPythonText(ctx context.Context, node *sitter.No
 			return liveDiffPythonText{}, false
 		}
 		content, exists, err := liveDiffSourceRead(ctx, paths[0], liveDiffPreviewFile)
-		return liveDiffPythonText{paths[0], content}, exists && err == nil
+		return liveDiffPythonText{path: paths[0], content: content}, exists && err == nil
 	}
 	if replace == nil || s.text(replace.ChildByFieldName("attribute")) != "replace" || len(values) < 2 || len(values) > 3 {
 		return liveDiffPythonText{}, false
 	}
-	value, ok := s.previewPythonText(ctx, replace.ChildByFieldName("object"), texts, depth+1)
+	value, ok := s.previewPythonText(ctx, replace.ChildByFieldName("object"), texts, arriving, depth+1)
 	if !ok {
 		return liveDiffPythonText{}, false
 	}
@@ -340,5 +373,8 @@ func (s *execSourceScope) previewPythonText(ctx context.Context, node *sitter.No
 		return liveDiffPythonText{}, false
 	}
 	value.content = strings.Replace(before, old, next, count)
+	if at := strings.Index(before, old); at >= 0 && liveDiffArriving(values[1], arriving) {
+		value.tip = at + len(next)
+	}
 	return value, true
 }
