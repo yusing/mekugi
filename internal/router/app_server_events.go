@@ -258,6 +258,9 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "reasoning", Text: text, CallID: id, Observed: now, native: native})
 			}
 		case "commandExecution", "webSearch":
+			if u.internalJournalCommand(p.ThreadID, item) {
+				break
+			}
 			native.searchResults = appServerSearchResults(item)
 			entry := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerToolText(item, s.cwd), CallID: id, Observed: now, native: native}
 			entries = append(entries, entry)

@@ -90,6 +90,9 @@ func (u *appServerUI) restoreHistory(turns []appServerHistoryTurn) {
 					native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, searchResults: appServerSearchResults(item)}}
 				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 			case "commandExecution", "fileChange", "webSearch":
+				if u.internalJournalCommand(u.thread, item) {
+					continue
+				}
 				text := appServerToolText(item, u.session.cwd)
 				if item.Type == "fileChange" {
 					text = appServerEditText(item, u.session.cwd)

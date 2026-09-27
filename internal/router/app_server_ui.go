@@ -319,6 +319,7 @@ func (u *appServerUI) message(m appserver.Message) error {
 	// Input observations precede the output items that answer them. Drain
 	// before a completion, not just on the next paint tick, so links bind once.
 	u.applyObservedActivity()
+	u.applyPendingJournal()
 	if u.resumeThread != "" && (u.thread == "" || u.restoring != nil) && m.Method != "" {
 		if len(u.resumePending) == 256 {
 			return errors.New("resume event capacity exceeded; session state is incomplete")

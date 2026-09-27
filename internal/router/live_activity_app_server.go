@@ -33,6 +33,16 @@ func (v *liveActivityView) applyJournal(thread string, publication nativeJournal
 		}
 	}
 	item := publication.item
+	// A terminal flush acknowledges milestones without moving their existing
+	// live transcript position past the work they preceded.
+	if publication.terminal && !item.TerminalOnly && item.Question == "" {
+		for _, previous := range v.entries {
+			if previous.native != nil && previous.native.thread == thread && previous.native.turn == "journal" && previous.journal != nil && previous.journal.ID == item.ID {
+				publication.terminal = false
+				break
+			}
+		}
+	}
 	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "native_journal", Text: item.Text, Observed: time.Now(), journal: &item,
 		native: &liveActivityNativeItem{thread: thread, turn: "journal", item: item.ID, phase: "journal"}}
 	if targets[item.ID] == 0 && item.Question != "" {

@@ -93,7 +93,7 @@ func (b *commentaryBroker) subscribe(sessionID, callID, author string) string {
 	if _, err := rand.Read(random); err != nil {
 		return ""
 	}
-	token := base64.RawURLEncoding.EncodeToString(random)
+	token := base64.RawURLEncoding.EncodeToString([]byte(callID)) + "." + base64.RawURLEncoding.EncodeToString(random)
 	b.routes[token] = &commentaryRoute{
 		author:    author,
 		sessionID: sessionID,

@@ -89,7 +89,7 @@ func (s *nativeJournalSink) publish(journal threadJournal, terminal bool) {
 		if s.current[item.ID] != item.Updated {
 			continue
 		}
-		if terminal && item.Flushed || !terminal && (!item.ReportNow || item.Reported) {
+		if terminal && item.Flushed || !terminal && (item.TerminalOnly || item.Question != "" || item.Reported) {
 			continue
 		}
 		previous, exists := s.pending[item.ID]
@@ -157,4 +157,21 @@ func (s *nativeJournalSink) acknowledge(ctx context.Context, p *mekugiProxy, ite
 		s.mu.Unlock()
 	}
 	return nil
+}
+
+// Apply persisted milestones before later host events, not only at the next
+// paint tick. Delivery receipts still belong to the successful paint path.
+func (u *appServerUI) applyPendingJournal() {
+	for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {
+		if sink == nil {
+			continue
+		}
+		items := sink.snapshot()
+		for _, publication := range items {
+			u.view.applyJournal(journalKey(sink.workspace, sink.thread), publication)
+		}
+		u.dirty = u.dirty || len(items) > 0
+	}
+	// Journal entries and app-server entries share the transcript ordering.
+	u.session.seq = max(u.session.seq, u.view.lastSeq)
 }

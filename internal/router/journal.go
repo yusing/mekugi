@@ -47,15 +47,16 @@ type journalMutation struct {
 }
 
 type journalItem struct {
-	ID        string `json:"id"`
-	Text      string `json:"text"`
-	Question  string `json:"question,omitempty"`
-	Author    string `json:"author"`
-	Created   uint64 `json:"created"`
-	Updated   uint64 `json:"updated"`
-	ReportNow bool   `json:"report_now"`
-	Reported  bool   `json:"reported"`
-	Flushed   bool   `json:"flushed"`
+	TerminalOnly bool   `json:"terminal_only,omitzero"`
+	ID           string `json:"id"`
+	Text         string `json:"text"`
+	Question     string `json:"question,omitempty"`
+	Author       string `json:"author"`
+	Created      uint64 `json:"created"`
+	Updated      uint64 `json:"updated"`
+	ReportNow    bool   `json:"report_now"`
+	Reported     bool   `json:"reported"`
+	Flushed      bool   `json:"flushed"`
 	// A later silent edit does not erase the fact that the user saw this ID.
 	EverReported bool `json:"ever_reported,omitzero"`
 }
@@ -558,10 +559,13 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 			switch mutation.Op {
 			case "add":
 				j.NextID++
-				item := journalItem{ID: shortHandle(j.NextID - 1), Text: *mutation.Text, Question: question, Author: j.Author, Created: j.Sequence, Updated: j.Sequence, ReportNow: mutation.ReportNow}
+				item := journalItem{TerminalOnly: mutation.Answer != nil && *mutation.Answer, ID: shortHandle(j.NextID - 1), Text: *mutation.Text, Question: question, Author: j.Author, Created: j.Sequence, Updated: j.Sequence, ReportNow: mutation.ReportNow}
 				j.Items = append(j.Items, item)
 				ids = append(ids, item.ID)
 			case "edit":
+				if mutation.Answer != nil {
+					j.Items[index].TerminalOnly = *mutation.Answer
+				}
 				j.Items[index].Question = question
 				j.Items[index].Text = *mutation.Text
 				j.Items[index].Updated = j.Sequence
@@ -570,7 +574,7 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 				j.Items[index].Flushed = false
 				ids = append(ids, mutation.ID)
 			case "delete":
-				if mutation.ReportNow && j.Items[index].EverReported {
+				if s.nativeSink(workspace, thread) != nil || mutation.ReportNow && j.Items[index].EverReported {
 					if len(j.Retractions) >= maxJournalItems {
 						return fmt.Errorf("journal retraction queue limit is %d; deliver pending journal updates before requesting more visible deletions", maxJournalItems)
 					}

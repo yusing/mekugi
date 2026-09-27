@@ -16,8 +16,14 @@ says so instead of jumping to another prompt. Revisions keep their question
 association, and a retraction removes the milestone. Activity shows a child's
 answers under its run.
 
-The authenticated mutation path publishes live records after persistence, even
-without an open provider response. Enqueueing is not acknowledgement: successful
+The authenticated mutation path publishes native Main milestones after persistence,
+including those without `report_now`, even without an open provider response.
+The frontend applies pending milestones before later host events and preserves
+their transcript position at terminal flush. Captured answers remain terminal-only, including answers without a linked question.
+Native deletion retracts an already applied milestone even without `report_now`.
+Internal journal transport commands are hidden only when their exact generated
+prefix matches the same thread’s durable translated call, including on resume.
+Ordinary commands mentioning `mjournal` remain visible. Enqueueing is not acknowledgement: successful
 UI output acknowledges exact revisions through the journal owner. Terminal
 records become eligible only after successful downstream response completion.
 Failed presentation leaves unacknowledged records durable and pending.
