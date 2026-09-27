@@ -94,7 +94,7 @@ to pick up an update.
 ## Usage
 
 Mekugi flags go **before** `codex`. Interactive launches accept `--yolo`, model
-and config options, and `resume THREAD_ID`; enter prompts in Main. Noninteractive
+and config options, and `resume THREAD_ID` or `resume --last`; enter prompts in Main. Noninteractive
 commands keep their ordinary Codex arguments and output:
 
 ```sh
@@ -411,11 +411,16 @@ change evidence.
 
 ## Development
 
-The native UI can resume a known Codex thread:
+The native UI can resume a known Codex thread or the latest conversation in the current directory:
 
 ```sh
 mekugi codex --yolo resume THREAD_ID
+mekugi codex --yolo resume --last
 ```
+
+`--last` selects the most recently updated non-archived CLI, VS Code or native
+app-server conversation in the current directory, across model providers. If none
+exists, it reports an error without starting a new conversation.
 
 In the native composer, arrow keys move the caret, Ctrl+Left/Right jump words,
 and Ctrl+Up/Down move to the start/end of a line. Alt+Backspace/Delete delete
@@ -433,8 +438,7 @@ message and tool history, and continues the same thread. It also restores pane
 layout and keyboard focus, adapting the saved sizes to the current terminal.
 The child roster and Activity history return too, and Diff reloads retained
 changes for the resumed session without restarting child work. Scroll positions,
-filters, selections and drafts are not restored. The resume picker,
-`--last` and switching threads inside the UI are not yet supported. Resume currently loads history in one response, so threads whose
+filters, selections and drafts are not restored. The resume picker and switching threads inside the UI are not yet supported. Resume currently loads history in one response, so threads whose
 history exceeds the 16 MiB transport limit cannot resume in the native UI.
 
 To review the native app-server UI without Codex or model requests, run

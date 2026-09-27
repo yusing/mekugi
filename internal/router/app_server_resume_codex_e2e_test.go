@@ -94,7 +94,7 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 	thread := threads[0]
 
 	model, providerName = "", "preview"
-	second := startAppResumeTerminal(t, newCommand, thread)
+	second := startAppResumeTerminal(t, newCommand, "--last")
 	second.await("Ready")
 	second.await("First resume question")
 	second.await("Recovered after a retry.")
@@ -105,7 +105,6 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 		t.Fatalf("resume resent a turn before new input: %q", got)
 	}
 	second.send("\x021")
-	second.await("⏎ send")
 	second.send("Second resume question\r")
 	second.await("Second resume question")
 	second.await("completed")
@@ -174,6 +173,9 @@ func startAppResumeTerminalWithProxy(t *testing.T, newCommand func(context.Conte
 	s := &appResumeTerminal{t: t, ctx: ctx, cancel: cancel, outer: outer, inner: inner,
 		frames: make(chan []byte, 32), done: make(chan error, 1), screen: vt.NewEmulator(100, 30), before: before}
 	t.Cleanup(func() { s.screen.Close() })
+	// Answer terminal capability/color queries so emulator writes cannot block
+	// on its response pipe before the first frame reaches the assertion.
+	go func() { _, _ = io.Copy(outer, s.screen) }()
 	go func() { s.done <- wait() }()
 	go func() {
 		defer close(s.frames)

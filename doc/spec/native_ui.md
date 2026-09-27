@@ -7,7 +7,7 @@
 `mekugi codex` uses the native client of `codex app-server` for interactive
 terminal launches. Explicit `--yolo` remains required; without it startup rejects
 before launching Codex. There is no legacy UI selection or fallback. It maps explicit `--yolo`, model and config
-arguments plus `resume THREAD_ID`, and rejects other interactive arguments rather
+arguments plus `resume THREAD_ID` or `resume --last`, and rejects other interactive arguments rather
 than ignoring them.
 Router readiness, provider catalogs, invocation overrides, native recovery hooks
 and frontend environment keep their owners; redirected and noninteractive
@@ -29,6 +29,11 @@ to the Code Mode host, and submits intent rather than executing tools.
 | Tool classification | App-server's typed command actions and Mekugi classifiers; renderers never parse shell text. |
 | Skills and guidance | The [guidance contract](guide.md) and router projection. |
 
+`resume --last` resolves the most recently updated non-archived thread in the
+launch directory through `thread/list`, including CLI, VS Code and app-server
+sources across providers, excluding exec and child-agent sessions. Lookup failure
+or an empty result exits without creating a thread.
+
 Startup `resume THREAD_ID` uses `thread/resume`, not a new thread or a replayed
 prompt. The returned thread identity must match the requested ID; failure exits
 without falling back to a new conversation. Main hydrates text messages and
@@ -40,7 +45,7 @@ starts a turn on the same thread; an active snapshot retains its steer/interrupt
 target. Resume keeps the returned workspace and effective model metadata, with
 journal sinks scoped to that thread. Explicit invocation model/effort settings
 and the routed provider are forwarded as resume overrides; Codex owns their
-precedence and reports the effective configuration. Picker, `--last` and in-session switching remain outside this increment. Full-history
+precedence and reports the effective configuration. Picker and in-session switching remain outside this increment. Full-history
 resume is limited by the 16 MiB RPC frame cap; oversized histories fail rather
 than bypassing the transport bound. Paginated hydration remains unfinished.
 

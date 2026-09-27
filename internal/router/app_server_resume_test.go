@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -119,5 +120,61 @@ func TestAppServerResumeConfig(t *testing.T) {
 	config := appServerResumeConfig([]string{"codex", "app-server", "-c", `model="old"`, "-c", `model = 'new'`, "-c", "model_provider=preview", "-c", `model_reasoning_effort="high"`, "-c", "other=true"})
 	if len(config) != 3 || config["model"] != "new" || config["model_provider"] != "preview" || config["model_reasoning_effort"] != "high" {
 		t.Fatalf("explicit resume settings: %+v", config)
+	}
+}
+
+func TestAppServerResumeLastStartup(t *testing.T) {
+	u, w := newAppServerTestUI()
+	u.thread, u.resumeThread, u.resumeCwd = "", "--last", "/workspace"
+	u.resumeConfig = map[string]any{"model": "override", "model_provider": "routed"}
+	u.requests["0"] = "initialize"
+	appServerTestMessage(t, u, `{"id":0,"result":{}}`)
+	lines := bytes.Split(bytes.TrimSpace(w.Bytes()), []byte("\n"))
+	if len(lines) != 2 {
+		t.Fatalf("startup requests: %s", w.Bytes())
+	}
+	var request struct {
+		Method string         `json:"method"`
+		Params map[string]any `json:"params"`
+	}
+	if err := json.Unmarshal(lines[1], &request); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"cwd": "/workspace", "limit": float64(1), "sortKey": "updated_at", "archived": false, "modelProviders": []any{}, "sourceKinds": []any{"cli", "vscode", "appServer"}}
+	if request.Method != "thread/list" || !reflect.DeepEqual(request.Params, want) {
+		t.Fatalf("latest lookup: %+v", request)
+	}
+	w.Reset()
+	appServerTestKeys(t, u, "next prompt\r")
+	if w.Len() != 0 || u.draft != "next prompt" {
+		t.Fatal("submitted input during lookup")
+	}
+	appServerTestMessage(t, u, `{"id":1,"result":{"data":[{"id":"latest","cwd":"/workspace"}],"nextCursor":null}}`)
+	request.Params = nil
+	if err := json.Unmarshal(bytes.TrimSpace(w.Bytes()), &request); err != nil {
+		t.Fatal(err)
+	}
+	if request.Method != "thread/resume" || request.Params["threadId"] != "latest" || request.Params["modelProvider"] != "routed" || request.Params["config"].(map[string]any)["model"] != "override" || u.resumeThread != "latest" || u.thread != "" {
+		t.Fatalf("resolved resume request: %+v", request)
+	}
+}
+
+func TestAppServerResumeLastFailure(t *testing.T) {
+	for _, wire := range []string{
+		`{"id":1,"error":{"code":-1,"message":"lookup failed"}}`,
+		`{"id":1,"result":{"data":[]}}`,
+		`{"id":1,"result":{"data":[{}]}}`,
+		`{"id":1,"result":{"data":"invalid"}}`,
+	} {
+		u, w := newAppServerTestUI()
+		u.thread, u.resumeThread, u.resumeCwd = "", "--last", "/workspace"
+		u.requests["1"] = "thread/list"
+		var m appserver.Message
+		if err := json.Unmarshal([]byte(wire), &m); err != nil {
+			t.Fatal(err)
+		}
+		if err := u.message(m); err == nil || w.Len() != 0 || u.thread != "" {
+			t.Fatalf("lookup failure started a conversation: %v, %s", err, w.Bytes())
+		}
 	}
 }

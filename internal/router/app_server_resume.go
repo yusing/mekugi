@@ -1,13 +1,41 @@
 package router
 
 import (
+	json "encoding/json/v2"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/pathdisplay"
 )
+
+func (u *appServerUI) requestResume() error {
+	u.status = "Resuming thread…"
+	return u.request("thread/resume", map[string]any{"threadId": u.resumeThread, "approvalPolicy": "never", "sandbox": "danger-full-access", "config": u.resumeConfig, "modelProvider": u.resumeConfig["model_provider"]})
+}
+
+func (u *appServerUI) resumeLastResponse(m appserver.Message) error {
+	if m.Error != nil {
+		return fmt.Errorf("find latest thread: %s", m.Error.Message)
+	}
+	var result struct {
+		Data []appServerThreadInfo `json:"data"`
+	}
+	if err := json.Unmarshal(m.Result, &result); err != nil {
+		return fmt.Errorf("find latest thread: %w", err)
+	}
+	if len(result.Data) == 0 {
+		return fmt.Errorf("no resumable thread found for %s", u.resumeCwd)
+	}
+	if result.Data[0].ID == "" {
+		return fmt.Errorf("thread/list returned no thread identity")
+	}
+	u.resumeThread = result.Data[0].ID
+	return u.requestResume()
+}
 
 // Codex merges saved model metadata after loading process CLI configuration.
 // Forward explicit model settings on resume as well so that invocation-local

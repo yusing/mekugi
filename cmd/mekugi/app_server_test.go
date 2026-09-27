@@ -39,9 +39,18 @@ func TestAppServerResumeArgs(t *testing.T) {
 			t.Fatalf("resume launch: %q %q %v", got, thread, err)
 		}
 	}
-	for _, args := range [][]string{{"--yolo", "resume", "--last"}, {"--yolo", "resume", ""}, {"--yolo", "resume", "id", "resume", "other"}, {"--yolo", "resume", "id", "prompt"}, {"resume", "id"}} {
+	for _, args := range [][]string{{"--yolo", "--last"}, {"--yolo", "resume", "id", "--last"}, {"--yolo", "resume", "--last", "id"}, {"--yolo", "resume", "--last", "--last"}, {"resume", "--last"}, {"--yolo", "resume", ""}, {"--yolo", "resume", "id", "resume", "other"}, {"--yolo", "resume", "id", "prompt"}, {"resume", "id"}} {
 		if _, _, err := appServerArgs(args); err == nil {
 			t.Fatalf("accepted unsupported resume: %q", args)
+		}
+	}
+}
+
+func TestAppServerResumeLastArgs(t *testing.T) {
+	for _, args := range [][]string{{"--yolo", "resume", "--last"}, {"resume", "--last", "--yolo", "-m", "gpt-6-sol"}, {"resume", "--yolo", "--last"}} {
+		got, thread, err := appServerArgs(args)
+		if err != nil || thread != "--last" || got[0] != "app-server" || slices.Contains(got, "resume") || slices.Contains(got, "--last") {
+			t.Fatalf("resume last launch: %q %q %v", got, thread, err)
 		}
 	}
 }

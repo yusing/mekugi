@@ -12,14 +12,19 @@ func appServerArgs(args []string) ([]string, string, error) {
 	out := []string{"app-server"}
 	yolo := false
 	resume := ""
+	resumeCommand := false
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; arg {
 		case "resume":
-			if resume != "" || i+1 == len(args) || strings.HasPrefix(args[i+1], "-") || strings.TrimSpace(args[i+1]) == "" {
-				return nil, "", fmt.Errorf("native UI resume requires one explicit thread ID; picker and --last are not supported yet")
+			if resumeCommand {
+				return nil, "", fmt.Errorf("native UI accepts only one resume command")
 			}
-			i++
-			resume = args[i]
+			resumeCommand = true
+		case "--last":
+			if !resumeCommand || resume != "" {
+				return nil, "", fmt.Errorf("use resume --last without a thread ID")
+			}
+			resume = "--last"
 		case "--yolo", "--dangerously-bypass-approvals-and-sandbox":
 			yolo = true
 		case "-c", "--config", "-m", "--model":
@@ -40,10 +45,15 @@ func appServerArgs(args []string) ([]string, string, error) {
 					return nil, "", fmt.Errorf("%s requires a value", flag)
 				}
 				out = append(out, "-c", "model="+strconv.Quote(model))
+			} else if resumeCommand && resume == "" && !strings.HasPrefix(arg, "-") && strings.TrimSpace(arg) != "" {
+				resume = arg
 			} else {
-				return nil, "", fmt.Errorf("native UI does not yet support %q; use --yolo, -m, -c, and resume THREAD_ID, and enter prompts in Main", arg)
+				return nil, "", fmt.Errorf("native UI does not yet support %q; use --yolo, -m, -c, and resume THREAD_ID or resume --last, and enter prompts in Main", arg)
 			}
 		}
+	}
+	if resumeCommand && resume == "" {
+		return nil, "", fmt.Errorf("native UI resume requires a thread ID or --last; picker is not supported yet")
 	}
 	if !yolo {
 		return nil, "", fmt.Errorf("native UI currently requires explicit --yolo")

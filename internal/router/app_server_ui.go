@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -88,6 +89,7 @@ type appServerUI struct {
 	dirty                     bool
 	keybindings               bool
 	resumeThread              string
+	resumeCwd                 string
 	resumeConfig              map[string]any
 	resumePending             []appserver.Message
 	panes                     *nativePanePersistence
@@ -103,12 +105,21 @@ func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 }
 
 func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, resumeThread string) (func() error, error) {
+	var resumeCwd string
+	if resumeThread == "--last" {
+		var err error
+		resumeCwd, err = filepath.Abs(cmd.Dir)
+		if err != nil {
+			return nil, fmt.Errorf("resolve resume workspace: %w", err)
+		}
+	}
 	c, err := appserver.Start(cmd)
 	if err != nil {
 		return nil, err
 	}
 	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread}
 	u.resumeConfig = appServerResumeConfig(cmd.Args)
+	u.resumeCwd = resumeCwd
 	u.panes = new(nativePanePersistence)
 	if err := u.request("initialize", nil); err != nil {
 		c.Close()
@@ -318,6 +329,9 @@ func (u *appServerUI) message(m appserver.Message) error {
 	if m.Method == "" {
 		method := u.requests[string(m.ID)]
 		delete(u.requests, string(m.ID))
+		if method == "thread/list" && u.resumeThread == "--last" {
+			return u.resumeLastResponse(m)
+		}
 		if method == "thread/read" && u.applyThreadMetadata(m) {
 			return nil
 		}
@@ -344,8 +358,14 @@ func (u *appServerUI) message(m appserver.Message) error {
 				return err
 			}
 			if u.resumeThread != "" {
-				u.status = "Resuming thread…"
-				return u.request("thread/resume", map[string]any{"threadId": u.resumeThread, "approvalPolicy": "never", "sandbox": "danger-full-access", "config": u.resumeConfig, "modelProvider": u.resumeConfig["model_provider"]})
+				if u.resumeThread == "--last" {
+					u.status = "Finding latest thread…"
+					return u.request("thread/list", map[string]any{
+						"cwd": u.resumeCwd, "limit": 1, "sortKey": "updated_at", "archived": false,
+						"modelProviders": []string{}, "sourceKinds": []string{"cli", "vscode", "appServer"},
+					})
+				}
+				return u.requestResume()
 			}
 			u.status = "Starting thread…"
 			return u.request("thread/start", map[string]any{"approvalPolicy": "never", "sandbox": "danger-full-access"})
