@@ -225,7 +225,7 @@ func (p *liveDiffPreviewPane) renderAccordion(ctx context.Context, workspace str
 	for _, id := range p.order[start : start+shown] {
 		view := p.views[id]
 		if id != open {
-			lines = append(lines, ansi.Truncate(livediff.Gutter(false, theme)+"\x1b[2m▸\x1b[22m "+view.title(workspace, theme, width-2), max(0, width-1), ""))
+			lines = append(lines, ansi.Truncate(livediff.Gutter(false, theme)+livediff.Subtle+"▸"+livediff.SubtleReset+" "+view.title(workspace, theme, width-2), max(0, width-1), ""))
 			continue
 		}
 		rows := height - shown + 1
@@ -593,7 +593,7 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 		}
 		numbers := ""
 		if digits > 0 && width-3 >= digits+4 {
-			numbers = fmt.Sprintf("\x1b[2m%*d│\x1b[22m", digits, row.number)
+			numbers = fmt.Sprintf(livediff.Subtle+"%*d│"+livediff.SubtleReset, digits, row.number)
 		}
 		carry := ""
 		for n, fragment := range strings.Split(ansi.Hardwrap(text, sourceWidth, true), "\n") {
@@ -611,7 +611,7 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 			}
 			prefix := numbers
 			if n > 0 && numbers != "" {
-				prefix = "\x1b[2m" + strings.Repeat(" ", digits) + "│\x1b[22m"
+				prefix = livediff.Subtle + strings.Repeat(" ", digits) + "│" + livediff.SubtleReset
 			}
 			line := livediff.Gutter(i == p.focus, theme) + livediff.SourceLine(theme, width, prefix, fragment, row.kind)
 			line = ansi.Truncate(line, max(0, width-1), "")
@@ -650,7 +650,7 @@ func (p *liveDiffPreviewView) title(workspace string, theme liveDiffTheme, width
 		label = liveDiffFileLabel(liveDiffStatusOf(file), pathdisplay.ForWorkspace(workspace, path), workspace, theme) +
 			liveDiffCountStats(livediff.Counts{Added: added, Removed: removed}, theme)
 		if len(p.current.Files) > 1 {
-			label += fmt.Sprintf(" \x1b[2m%d/%d files\x1b[22m", p.file+1, len(p.current.Files))
+			label += fmt.Sprintf(" "+livediff.Subtle+"%d/%d files"+livediff.SubtleReset, p.file+1, len(p.current.Files))
 		}
 	case p.current.Status == liveDiffPreviewPending:
 		label = "scoped effects"
@@ -658,16 +658,16 @@ func (p *liveDiffPreviewView) title(workspace string, theme liveDiffTheme, width
 		label = "edit"
 	}
 	if p.current.Status == liveDiffPreviewRunning {
-		label += " \x1b[2m· observed so far\x1b[22m"
+		label += " " + livediff.Subtle + "· observed so far" + livediff.SubtleReset
 	}
 	if p.current.Input != "" && p.current.Truncated {
-		label += " \x1b[2m· tail\x1b[22m"
+		label += " " + livediff.Subtle + "· tail" + livediff.SubtleReset
 	}
 	if p.complete && !unavailable {
 		// Complete means the input stream ended, not that the host applied it.
 		// Keep predicted edits visibly provisional even after a host rejection.
 		glyph = liveActivityDim + "○" + liveActivityReset
-		label += " \x1b[2m· preview\x1b[22m"
+		label += " " + livediff.Subtle + "· preview" + livediff.SubtleReset
 	}
 	label = glyph + " " + label
 	caller := agentDisplayName(p.current.Caller)

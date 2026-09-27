@@ -791,7 +791,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 		}
 		model = strings.ReplaceAll(livediff.Safe(model, false), "\n", " ")
 		if model != "" {
-			model = "\x1b[38;2;115;115;116m" + model + liveActivityReset
+			model = liveActivityDim + model + liveActivityReset
 		}
 		frame = append(frame, composerBorder("╰", "╯", "", model, width, border))
 	}

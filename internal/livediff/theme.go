@@ -9,6 +9,12 @@ import (
 	"github.com/alecthomas/chroma/v2/styles"
 )
 
+// Subtle is the native UI secondary foreground, shared with the composer model.
+const Subtle = "\x1b[38;2;115;115;116m"
+
+// SubtleReset restores the terminal foreground without changing emphasis.
+const SubtleReset = "\x1b[39m"
+
 type Theme uint8
 
 const (

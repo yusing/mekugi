@@ -371,7 +371,7 @@ func Header(text string, width int, counts Counts, theme Theme) string {
 	text = ansi.Truncate(Safe(text, false), max(0, width-ansi.StringWidth(stats)), "")
 	header := ansi.Truncate("\x1b[1m"+text+"\x1b[22m"+stats, width, "")
 	if remaining := width - ansi.StringWidth(header); remaining > 0 {
-		header += "\x1b[2m " + strings.Repeat("─", remaining-1) + "\x1b[22m"
+		header += Subtle + " " + strings.Repeat("─", remaining-1) + SubtleReset
 	}
 	return header
 }

@@ -590,7 +590,7 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 			filter += "▏"
 		}
 	}
-	out[1] = ansi.Truncate("\x1b[2m"+filter+"\x1b[0m", max(0, width-1), "…")
+	out[1] = ansi.Truncate(livediff.Subtle+filter+"\x1b[0m", max(0, width-1), "…")
 	// Rows never stay scrolled off the top while space remains below.
 	n.top = min(n.top, max(0, len(n.entries)-(rows-2)))
 	scrollbar := len(n.entries) > rows-2 && rows > 2
@@ -615,7 +615,7 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 				arrow = "▶"
 			}
 			label = indent + theme.Accent() + arrow + "\x1b[39m " + livediff.Safe(entry.label, false)
-			stats = fmt.Sprintf(" \x1b[2m(%d)\x1b[22m", entry.count)
+			stats = fmt.Sprintf(" " + livediff.Subtle + "(%d)" + livediff.SubtleReset, entry.count)
 		} else {
 			var regions []mekugi.ReviewFile
 			for _, chunk := range files[entry.file].Chunks {
@@ -651,7 +651,7 @@ func (n *liveDiffNavigation) render(files []liveDiffFile, counts []livediff.Coun
 			if row-2 == thumb {
 				bar = "┃"
 			}
-			out[row] = line + strings.Repeat(" ", max(0, width-2-ansi.StringWidth(line))) + "\x1b[2m" + bar + "\x1b[0m"
+			out[row] = line + strings.Repeat(" ", max(0, width-2-ansi.StringWidth(line))) + livediff.Subtle + bar + "\x1b[0m"
 		}
 	}
 	return out
@@ -756,7 +756,7 @@ func liveDiffFileLabel(status liveDiffStatus, label, workspace string, theme liv
 // liveDiffCountStats shows known line counts; unknown counts are not zero.
 func liveDiffCountStats(count livediff.Counts, theme livediff.Theme) string {
 	if count.Added < 0 || count.Removed < 0 {
-		return " \x1b[2m?\x1b[22m"
+		return " " + livediff.Subtle + "?" + livediff.SubtleReset
 	}
 	return fmt.Sprintf(" %s+%d\x1b[39m %s-%d\x1b[39m", theme.Foreground(chroma.GenericInserted), count.Added, theme.Foreground(chroma.GenericDeleted), count.Removed)
 }

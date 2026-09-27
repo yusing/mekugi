@@ -8,15 +8,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/alecthomas/chroma/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 )
 
 const (
-	liveActivityDim   = "\x1b[2m"
-	liveActivityUndim = "\x1b[22m"
+	liveActivityDim   = livediff.Subtle
+	liveActivityUndim = "\x1b[22m" + livediff.SubtleReset
 	liveActivityReset = "\x1b[0m"
 	liveActivityGreen = "\x1b[38;5;114m"
 	liveActivityRed   = "\x1b[38;5;203m"
@@ -210,9 +209,8 @@ func (p *liveActivityPainter) code(verb, code string) string {
 func (p *liveActivityPainter) label(verb, label string) string {
 	if slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, verb) {
 		if head, source, ok := strings.CutLast(label, " · "); ok && !strings.ContainsRune(source, '`') {
-			// Terminal faint support varies. Give source metadata its own muted
-			// foreground as well, rather than leaving it in the default text color.
-			return p.label(verb, head) + p.theme.Foreground(chroma.Comment) + liveActivityDim + " · " + source + liveActivityUndim + "\x1b[39m"
+			// Source metadata uses the same secondary foreground as UI chrome.
+			return p.label(verb, head) + liveActivityDim + " · " + source + liveActivityUndim + "\x1b[39m"
 		}
 	}
 	var out strings.Builder
@@ -410,10 +408,10 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 		if body == "" {
 			return nil
 		}
-		style := "\x1b[2;3m"
+		style := liveActivityDim + "\x1b[3m"
 		rows := p.markdown(body, width-2)
 		for i, row := range rows {
-			row = strings.NewReplacer(liveActivityReset, liveActivityReset+style, "\x1b[22m", "\x1b[22m"+style, "\x1b[23m", style).Replace(row)
+			row = strings.NewReplacer(liveActivityReset, liveActivityReset+style, "\x1b[22m", "\x1b[22m"+style, "\x1b[24;39m", "\x1b[24m"+liveActivityDim, "\x1b[39m", liveActivityDim, "\x1b[23m", style).Replace(row)
 			prefix := "  "
 			if i == 0 {
 				prefix = "• "
@@ -514,7 +512,7 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 		indent := min(ansi.StringWidth(liveActivityVerb("Run")), width/2)
 		rows := liveActivityWrap(block.body, width-indent, true)
 		for i := range rows {
-			rows[i] = strings.Repeat(" ", indent) + p.theme.Foreground(chroma.Comment) + liveActivityDim + rows[i] + liveActivityReset
+			rows[i] = strings.Repeat(" ", indent) + liveActivityDim + rows[i] + liveActivityReset
 		}
 		return rows
 	case "error":

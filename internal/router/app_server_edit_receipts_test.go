@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -103,7 +102,7 @@ func TestAppServerCapturedEditReceipts(t *testing.T) {
 			}
 			for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
 				painted := strings.Join((&liveActivityPainter{theme: theme}).block(tc.view.blocks[i][0], 120), "\n")
-				muted := theme.Foreground(chroma.Comment) + liveActivityDim + " · " + tc.program + liveActivityUndim + "\x1b[39m"
+				muted := liveActivityDim + " · " + tc.program + liveActivityUndim + "\x1b[39m"
 				if !strings.Contains(painted, muted) || strings.Contains(painted, "with") {
 					t.Fatalf("source suffix lacks a muted foreground: %q", painted)
 				}

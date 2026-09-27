@@ -213,7 +213,7 @@ func (l *liveDiffChanges) focusChange(change string, rows int) {
 func liveDiffCallerStyle(theme livediff.Theme) func(string) (string, string) {
 	return func(caller string) (string, string) {
 		if caller == "" || caller == livediff.UnknownCaller {
-			return "unknown", "\x1b[2m"
+			return "unknown", livediff.Subtle
 		}
 		if color := liveAgentColor(caller); color != "" {
 			return agentDisplayName(caller), color
@@ -248,7 +248,7 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 			filter += "▏"
 		}
 	}
-	out[1] = ansi.Truncate("\x1b[2m"+filter+"\x1b[0m", max(0, width-1), "…")
+	out[1] = ansi.Truncate(livediff.Subtle+filter+"\x1b[0m", max(0, width-1), "…")
 	// Rows never stay scrolled off the top while space remains below.
 	l.top = min(l.top, max(0, len(l.rows)-(rows-2)))
 	contentWidth := max(0, width-1)
@@ -300,7 +300,7 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 		case 'c':
 			label = livediff.Safe(node.Change, false)
 			if node.Source != "" {
-				source = " \x1b[2m" + livediff.Safe(node.Source, false) + "\x1b[22m"
+				source = " " + livediff.Subtle + livediff.Safe(node.Source, false) + livediff.SubtleReset
 			}
 			if entry.lane != lane {
 				callerTag = " " + color + livediff.Safe(name, false) + "\x1b[0m"
@@ -313,7 +313,7 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 				file := node.files[0]
 				stats = " " + liveDiffFileLabel(file.status, l.path(file.file), l.workspace, theme) + stats
 			} else {
-				stats = fmt.Sprintf(" \x1b[2m%df\x1b[22m", len(node.files)) + stats
+				stats = fmt.Sprintf(" "+livediff.Subtle+"%df"+livediff.SubtleReset, len(node.files)) + stats
 			}
 		case 'f':
 			file := node.files[entry.file]
@@ -322,7 +322,7 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 				branch = "└"
 			}
 			// The tree glyph extends the graph.
-			graph.WriteString("\x1b[2m" + branch + "\x1b[22m ")
+			graph.WriteString(livediff.Subtle + branch + livediff.SubtleReset + " ")
 			label = liveDiffFileLabel(file.status, l.path(file.file), l.workspace, theme)
 			stats = liveDiffCountStats(livediff.Counts{Added: file.added, Removed: file.removed}, theme)
 			if file.unknown {

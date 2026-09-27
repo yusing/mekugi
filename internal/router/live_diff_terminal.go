@@ -275,7 +275,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 			for row := range stack {
 				writeRow(row+1, stacked[row])
 			}
-			writeRow(stack+1, "\x1b[2m"+strings.Repeat("─", max(0, width-1))+"\x1b[0m")
+			writeRow(stack+1, livediff.Subtle+strings.Repeat("─", max(0, width-1))+"\x1b[0m")
 		}
 		// Without a title row, pin the open file's header while its content
 		// scrolls, so a mid-file viewport still names its file.
@@ -300,7 +300,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 				text = nav[row]
 			} else if navWidth > 0 {
 				left := nav[row]
-				text = left + strings.Repeat(" ", max(0, navWidth-ansi.StringWidth(left))) + "\x1b[2m│\x1b[0m" + text
+				text = left + strings.Repeat(" ", max(0, navWidth-ansi.StringWidth(left))) + livediff.Subtle + "│\x1b[0m" + text
 			}
 			if c.help {
 				help := slices.DeleteFunc([]string{"", "  Diff navigation", "", "  s       show / hide files", "  Tab     files / changes by caller", "          Changes: Enter caller filters · Enter h/l expand / collapse change", "  /       filter paths, or changes by id, @caller, source · Ctrl-U clear", "  t       tree / flat list", "  ↑↓ j/k  move or scroll", "  ←→ h/l  collapse / expand folder", "  Enter   open file or toggle folder", "  n/p     next / previous matching file", "  [ / ]   previous / next hunk", "  { / }   previous / next change", "  a / 0   next caller / all callers", "  PgUp/Dn page · Home/End first / last", "  r       resume following changes", "  v       stream / diff", "  Esc     close picker or help", "  ?       close help", "  Ctrl-C  quit"}, func(line string) bool {

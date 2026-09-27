@@ -56,7 +56,7 @@ func (r *Renderer) provenance(file File) string {
 	var parts []string
 	for i, origin := range file.Origins {
 		if i == 4 {
-			parts = append(parts, fmt.Sprintf("\x1b[2m+%d more\x1b[22m", len(file.Origins)-i))
+			parts = append(parts, fmt.Sprintf(Subtle+"+%d more"+SubtleReset, len(file.Origins)-i))
 			break
 		}
 		name, color := r.caller(origin.Caller)
@@ -65,7 +65,7 @@ func (r *Renderer) provenance(file File) string {
 			part += " " + color + Safe(name, false) + "\x1b[0m"
 		}
 		if origin.Source != "" {
-			part += "\x1b[2m·" + Safe(origin.Source, false) + "\x1b[22m"
+			part += Subtle + "·" + Safe(origin.Source, false) + SubtleReset
 		}
 		parts = append(parts, part)
 	}
@@ -74,9 +74,9 @@ func (r *Renderer) provenance(file File) string {
 		if file.Baseline > 1 {
 			noun += "s"
 		}
-		parts = append(parts, fmt.Sprintf("\x1b[2m%d %s by other callers as baseline\x1b[22m", file.Baseline, noun))
+		parts = append(parts, fmt.Sprintf(Subtle+"%d %s by other callers as baseline"+SubtleReset, file.Baseline, noun))
 	}
-	return "\x1b[2m┄\x1b[22m " + strings.Join(parts, "  ")
+	return Subtle + "┄" + SubtleReset + " " + strings.Join(parts, "  ")
 }
 
 type syntaxKey struct {
@@ -288,7 +288,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 		sourceWidth := max(1, width-4-numberWidth)
 		continuationNumbers := ""
 		if numberWidth > 0 {
-			continuationNumbers = "\x1b[2m" + strings.Repeat(" ", digits) + "│\x1b[22m"
+			continuationNumbers = Subtle + strings.Repeat(" ", digits) + "│" + SubtleReset
 		}
 		preferFocusKey := focus.Key != "" && slices.ContainsFunc(file.Chunks, func(chunk Chunk) bool { return chunk.Key == focus.Key })
 		preferHighlighted := i == focusFile && focus.Highlighted
@@ -354,7 +354,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 					}
 					numbers := ""
 					if numberWidth > 0 {
-						numbers = "\x1b[2m" + strings.Repeat(" ", max(0, digits-len(number))) + number + "│\x1b[22m"
+						numbers = Subtle + strings.Repeat(" ", max(0, digits-len(number))) + number + "│" + SubtleReset
 					}
 					// Wrap source independently of the fixed coordinate column.
 					fragments := ansi.Hardwrap(text, sourceWidth, true)
@@ -384,7 +384,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 						render.FocusOffset = max(hunkStart, render.FocusRow-3)
 					}
 					if !strings.HasSuffix(row.Text, "\n") {
-						if err := appendLine("\x1b[2m\\ No newline at end of file\x1b[22m", chunk.Highlighted, false); err != nil {
+						if err := appendLine(Subtle+"\\ No newline at end of file"+SubtleReset, chunk.Highlighted, false); err != nil {
 							return Render{}, err
 						}
 					}

@@ -518,6 +518,11 @@ clipping marker above it, rather than the inline commentary excerpt limit.
 App-server still owns tool execution and agent lifecycle. Legacy
 received envelopes are not injected into either parent's or child's provider output.
 
+Native UI subtle and dimmed text share the composer model-name foreground
+(RGB 115, 115, 116), rather than terminal-dependent faint intensity. This includes
+metadata, secondary labels, separators, and diff coordinates; semantic status
+colors, syntax highlighting, and animated status ramps remain distinct.
+
 Native public reasoning summaries appear for Main and children, from summary
 deltas or completed/history items. Main retains dim italic summary bodies in its
 transcript; its active summary heading replaces `Working` in the composer status
