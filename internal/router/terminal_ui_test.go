@@ -5,9 +5,31 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/vt"
 )
+
+func TestTerminalUIDockLingersAfterLastAnimation(t *testing.T) {
+	u := &terminalUI{}
+	now := time.Now()
+	u.mainDock = liveDiffPreviewPane{
+		order: []string{"edit"}, motion: liveDiffPreviewMotion{enabled: true},
+		views: map[string]*liveDiffPreviewView{"edit": {complete: true, fading: now.Add(time.Second)}},
+	}
+	u.dockSeen[0] = now.Add(-nativeDockLinger)
+	if !u.animating(now) || len(u.mainDock.order) == 0 {
+		t.Fatal("animated completed preview disappeared")
+	}
+	u.animating(now.Add(time.Second))
+	if len(u.mainDock.order) == 0 {
+		t.Fatal("preview closed immediately after animation")
+	}
+	u.animating(now.Add(nativeDockLinger))
+	if len(u.mainDock.order) != 0 {
+		t.Fatal("finished preview did not expire")
+	}
+}
 
 func TestTerminalUIIncrementalPaint(t *testing.T) {
 	u, _ := newAppServerTestUI()

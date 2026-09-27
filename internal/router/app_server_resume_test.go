@@ -82,7 +82,7 @@ func TestAppServerResumeHistoryDoesNotReviveEffects(t *testing.T) {
 		{ID: "edit", Type: "fileChange", Changes: []appServerFileChange{{Path: "a.go", Diff: "+changed"}}},
 		{ID: "spawn", Type: "collabAgentToolCall", Tool: "spawnAgent", ReceiverThreadIDs: []string{"child"}},
 	}}})
-	if u.turn != "" || len(u.session.patches) != 0 || len(u.session.agents) != 1 || u.session.agents[0].Responding || len(u.view.entries) != 2 || u.view.blocks[0][0].exitCode != 2 {
+	if u.turn != "" || len(u.session.agents) != 1 || u.session.agents[0].Responding || len(u.view.entries) != 2 || u.view.blocks[0][0].exitCode != 2 {
 		t.Fatalf("history revived lifecycle or lost tools: %+v", u.session)
 	}
 	u.restoreHistory([]appServerHistoryTurn{{ID: "active", Status: "inProgress", Items: []appServerItem{{ID: "partial", Type: "agentMessage", Text: "Partial"}}}})

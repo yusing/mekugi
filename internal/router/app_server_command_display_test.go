@@ -68,9 +68,8 @@ func TestAppServerShellDisplay(t *testing.T) {
 	} {
 		t.Run(tt.input, func(t *testing.T) {
 			item := appServerItem{Command: tt.input}
-			blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: appServerCommandText(item, "")})
-			if len(blocks) != 1 || blocks[0].code != tt.want || blocks[0].lang != "bash" {
-				t.Fatalf("blocks = %+v", blocks)
+			if got := appServerDisplayCommand(item.Command); got != tt.want {
+				t.Fatalf("display = %q, want %q", got, tt.want)
 			}
 			if item.Command != tt.input {
 				t.Fatal("changed original command")
@@ -84,10 +83,20 @@ func TestAppServerShellDisplayHighlight(t *testing.T) {
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: appServerCommandText(appServerItem{Command: `/bin/bash -lc 'printf '\''%s'\'' "$HOME"; go test ./...'`}, "")})
 	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
 		p := liveActivityPainter{theme: theme}
-		got := strings.Join(p.block(blocks[0], 120), "\n")
+		var rows []string
+		for _, block := range blocks {
+			rows = append(rows, p.block(block, 120)...)
+		}
+		got := strings.Join(rows, "\n")
 		highlighted := strings.Join(p.highlight("bash", source), " ")
-		if ansi.Strip(highlighted) != source || highlighted == source || !strings.Contains(got, highlighted) || strings.Contains(ansi.Strip(got), "/bin/bash") {
+		if ansi.Strip(highlighted) != source || highlighted == source || !strings.Contains(ansi.Strip(got), "printf") || !strings.Contains(ansi.Strip(got), "go test ./...") || strings.Contains(ansi.Strip(got), "/bin/bash") {
 			t.Fatalf("inner source not highlighted: %q", got)
+		}
+		for _, block := range blocks {
+			highlighted := strings.Join(p.highlight(block.lang, block.code), " ")
+			if !strings.Contains(got, highlighted) {
+				t.Fatalf("command lost shared highlighting: %q", got)
+			}
 		}
 	}
 }

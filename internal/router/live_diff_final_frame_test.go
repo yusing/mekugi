@@ -360,7 +360,7 @@ func TestLiveDiffFinalFramePTYShowsCompleteEditAfterTruncatedPreview(t *testing.
 	worker.finish(fullInput)
 	finalFrame := ui.frame(t, func(frame string) bool {
 		plain := ansi.Strip(frame)
-		return strings.Contains(plain, "✓ A pty.txt +2 -0") && strings.Contains(plain, "FINAL_FRAME_MARKER")
+		return strings.Contains(plain, "○ A pty.txt +2 -0") && strings.Contains(plain, "FINAL_FRAME_MARKER")
 	})
 	if plain := ansi.Strip(finalFrame); !strings.Contains(plain, "session_line") {
 		t.Fatalf("final PTY frame lost earlier content: %q", plain)

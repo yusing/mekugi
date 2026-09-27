@@ -335,13 +335,31 @@ func (s *execSourceScope) previewPythonText(ctx context.Context, node *sitter.No
 		return liveDiffPythonText{content: content}, len(content) <= liveDiffPreviewFileLimit
 	}
 	replace, values := sourceCall(node)
-	if replace != nil && s.text(replace.ChildByFieldName("attribute")) == "read_text" && len(values) == 0 {
-		paths := s.paths(replace.ChildByFieldName("object"))
-		if len(paths) != 1 || !filepath.IsAbs(paths[0]) {
-			return liveDiffPythonText{}, false
+	if replace != nil && len(values) == 0 {
+		object := replace.ChildByFieldName("object")
+		var paths []string
+		switch s.text(replace.ChildByFieldName("attribute")) {
+		case "read_text":
+			paths = s.paths(object)
+		case "read":
+			open, args := sourceCall(object)
+			if s.text(open) == "open" && (len(args) == 1 || len(args) == 2) {
+				mode := "r"
+				if len(args) == 2 {
+					mode, _ = s.literal(args[1])
+				}
+				if mode == "r" || mode == "rt" {
+					paths = s.paths(args[0])
+				}
+			}
 		}
-		content, exists, err := liveDiffSourceRead(ctx, paths[0], liveDiffPreviewFile)
-		return liveDiffPythonText{path: paths[0], content: content}, exists && err == nil
+		if len(paths) != 0 {
+			if len(paths) != 1 || !filepath.IsAbs(paths[0]) {
+				return liveDiffPythonText{}, false
+			}
+			content, exists, err := liveDiffSourceRead(ctx, paths[0], liveDiffPreviewFile)
+			return liveDiffPythonText{path: paths[0], content: content}, exists && err == nil
+		}
 	}
 	if replace == nil || s.text(replace.ChildByFieldName("attribute")) != "replace" || len(values) < 2 || len(values) > 3 {
 		return liveDiffPythonText{}, false

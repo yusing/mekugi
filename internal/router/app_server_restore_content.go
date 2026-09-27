@@ -225,6 +225,7 @@ func (u *appServerUI) applyRestoredActivity(entries []activityPaneEntry) {
 		}
 	}
 	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: entries, Agents: slices.Clone(u.session.agents)})
+	u.applyCapturedEdits()
 }
 
 // Observational history never opens previews, resumes children, or fabricates

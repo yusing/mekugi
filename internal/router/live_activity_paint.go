@@ -185,6 +185,13 @@ func (p *liveActivityPainter) code(verb, code string) string {
 }
 
 func (p *liveActivityPainter) label(verb, label string) string {
+	if slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, verb) {
+		if head, source, ok := strings.CutLast(label, " · "); ok && !strings.ContainsRune(source, '`') {
+			// Terminal faint support varies. Give source metadata its own muted
+			// foreground as well, rather than leaving it in the default text color.
+			return p.label(verb, head) + p.theme.Foreground(chroma.Comment) + liveActivityDim + " · " + source + liveActivityUndim + "\x1b[39m"
+		}
+	}
 	var out strings.Builder
 	searchTargets := false
 	for i := 0; i < len(label); {

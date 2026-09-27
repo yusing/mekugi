@@ -21,6 +21,7 @@ type liveDiffAttempt struct {
 	change, correlation string
 	stream              int
 	chunks              []liveDiffChunk
+	receipt             *capturedActivityEdit
 }
 
 // Only review projections are retained, not whole replay records or scripts.
@@ -59,6 +60,12 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 		}
 		history := record.History
 		attempt := liveDiffAttempt{change: event.ID, correlation: event.Change.Correlation, stream: event.Stream}
+		if history.ExecOutcome != nil && history.ExecutingThread != "" {
+			attempt.receipt = capturedEditActivity(event.Workspace, history)
+			if attempt.receipt != nil {
+				d.bytes += len(attempt.receipt.text)
+			}
+		}
 		origin := livediff.Origin{Change: event.ID, Caller: history.Caller, Source: cmp.Or(history.Source, history.ToolName)}
 		var managed []string
 		for n, file := range history.ReviewFiles {

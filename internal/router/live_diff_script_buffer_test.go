@@ -181,7 +181,7 @@ func TestLiveDiffTerminalCatPythonScriptStreamsTargetDiff(t *testing.T) {
 	worker.finish(streamed + "s = s.replace('new',\nPY\n")
 	finalFrame := ansi.Strip(ui.frame(t, func(frame string) bool {
 		plain := ansi.Strip(frame)
-		return strings.Contains(plain, "✓ M") && strings.Contains(plain, "target.txt") && strings.Contains(plain, "+new old")
+		return strings.Contains(plain, "○ M") && strings.Contains(plain, "target.txt") && strings.Contains(plain, "+new old")
 	}))
 	if strings.Contains(finalFrame, "cat >edit.py") || strings.Contains(finalFrame, "from pathlib import Path") ||
 		strings.Contains(finalFrame, "s = s.replace") {

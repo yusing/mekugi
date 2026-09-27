@@ -260,7 +260,7 @@ to the Code Mode host, and submits intent rather than executing tools.
 | Tools, permissions, sandbox, native agents, Code Mode | Codex; the client submits intent and answers server requests. |
 | Thread, turn and item lifecycle and history | Codex app-server; never reconstructed from rendered text. |
 | Routing, projection, frontend PATH | The router and launcher, with invocation configuration carried into app-server. |
-| Changes and recovery references | The capturer and replay store; app-server patches are display input only. |
+| Changes and recovery references | The capturer and replay store; native displays reuse their scoped receipts and previews. |
 | Journals and delivery receipts | The [journal owner](journal.md); native events carry its records without new receipts or model-context insertion. |
 | Tokens, prices, missing usage | Router accounting; app-server usage is never added to cost totals. |
 | Tool classification | App-server's typed command actions and Mekugi classifiers; renderers never parse shell text. |
@@ -327,9 +327,7 @@ path; settings clones, onboarding, cloud tasks, voice; Git write actions or edit
 rollback; browser frontends or remote hosting; new auth flows; a second
 transcript store or cost calculator; model-visible UI commentary.
 
-The client launches app-server with `features.apply_patch_streaming_events`
-enabled; the user's own `-c` values follow and can disable it. Real-time
-activity comes from app-server notifications, not from intercepted provider
+Real-time activity comes from app-server notifications, not from intercepted provider
 responses: subagent activity and thread metadata name children by spawn path and role,
 typed items supply commands, edits, collaboration calls, messages and reasoning
 summaries, turn events drive each agent's state, and
@@ -345,6 +343,13 @@ or dynamic wrapper words remain intact. This is display-only, including resumed 
 When Codex cannot classify a command, the shared shell display classifier identifies
 frontend reads, inspections, searches and skill reads after removing a literal
 launch wrapper. Mixed batches retain their unclassified operations as Run entries.
+Captured shell effects replace the matching command row in Main and Activity
+using durable thread and host-call identities, including after resume. Both use
+the shared edit receipt formatter. Non-`apply_patch` receipts include a subdued
+`cat`, `python3`, or other captured source label, separated by a middle dot; commands without
+captured effects remain Run. A grouped capture is displayed once rather than
+claiming per-command attribution; its other host calls keep compact status rows
+instead of repeating interpreter source.
 
 The shell frames Main on the left and one right pane: the saved diff (2) or
 Activity (3), toggled and each filling the pane. A roster (4) above them fits its
@@ -357,11 +362,17 @@ contextual key hints. Ctrl-B + number focuses a pane.
 Streaming `apply_patch` edits dock at the bottom of the pane that owns them:
 Main's in Main above the composer, subagents' at the bottom of the right pane.
 A dock takes 30% of its pane, within 5 to 14 rows, and lingers briefly after
-the last card completes. Concurrent edits share the dock as an accordion: cards
+the last card's animation settles. Shell or Code Mode projections first received
+at completion do not open a transient dock; captured effects remain in their
+receipt and saved diff. Concurrent edits share the dock as an accordion: cards
 split evenly when each gets five rows, otherwise one stays open, chosen as the
 roster-selected agent's card, then the current card, then the newest; Ctrl-B e
 cycles and pins it. Router previews of exec and Code Mode edits dock the same
-way; its predictions of `apply_patch` calls are dropped as duplicates. A new
+way. All docks use the shared router preview owner, including its pre-execution
+source snapshots; app-server file-change notifications never reconstruct patches
+or re-read already edited files. A completed input stream remains explicitly
+labelled as a preview, never a green success check; host item status and captured
+effects establish the outcome. A new
 saved diff never replaces Activity; the Diff tab shows an unseen badge instead,
 and the saved diff lists its files or changes above the content when the pane is
 narrow; focusing that list (Tab, s) enlarges it without covering the diff, and s

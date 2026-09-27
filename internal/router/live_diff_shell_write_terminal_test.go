@@ -45,7 +45,7 @@ func TestLiveDiffTerminalCatWriteStreamsDiff(t *testing.T) {
 		}
 	}
 	worker.stop()
-	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "✓ A visible file.txt") })
+	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "○ A visible file.txt") })
 	if _, err := os.Stat(filepath.Join(workspace, "visible file.txt")); !os.IsNotExist(err) {
 		t.Fatalf("terminal preview changed workspace: %v", err)
 	}

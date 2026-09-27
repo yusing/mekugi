@@ -193,7 +193,7 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	final.Workspace, final.Complete = workspace, true
 	broker.publishPreview(final, false)
 	completed := ui.frame(t, func(frame string) bool {
-		return strings.Contains(ansi.Strip(frame), "✓ edit") && strings.Contains(ansi.Strip(frame), "+stream_0101")
+		return strings.Contains(ansi.Strip(frame), "○ edit") && strings.Contains(ansi.Strip(frame), "+stream_0101")
 	})
 	if strings.Contains(completed, "80│+new") {
 		t.Fatal("completed stream stopped owning the full pane")
@@ -216,7 +216,7 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	broker.emitLocked(liveDiffEvent{Kind: "coverage", Status: "RECONNECTING: test interruption"})
 	broker.mu.Unlock()
 	ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "RECONNECTING") && !strings.Contains(ansi.Strip(frame), "✓ edit")
+		return strings.Contains(frame, "RECONNECTING") && !strings.Contains(ansi.Strip(frame), "○ edit")
 	})
 	ui.quit(t)
 }
@@ -323,7 +323,7 @@ func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
 		t.Fatal("capture displaced the full-pane stream")
 	}
 	worker.stop()
-	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "✓ A big.py") })
+	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "○ A big.py") })
 	ui.quit(t)
 }
 
@@ -375,7 +375,7 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 	}
 	broker.publishPreview(first, true)
 	ui.frame(t, func(frame string) bool {
-		return strings.Contains(ansi.Strip(frame), "main · ✓ edit") && strings.Contains(ansi.Strip(frame), "stream_0200")
+		return strings.Contains(ansi.Strip(frame), "main · ○ edit") && strings.Contains(ansi.Strip(frame), "stream_0200")
 	})
 	ui.height = 12
 	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 12, Cols: 70}); err != nil {
@@ -385,7 +385,7 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 		return strings.Contains(frame, "\x1b[12;1H") && strings.Contains(ansi.Strip(frame), "stream_0200")
 	})
 	broker.publishPreview(second, true)
-	ui.frame(t, func(frame string) bool { return strings.Count(ansi.Strip(frame), "✓ edit") == 2 })
+	ui.frame(t, func(frame string) bool { return strings.Count(ansi.Strip(frame), "○ edit") == 2 })
 	ui.write(t, "v")
 	diff := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
 	if !strings.Contains(diff, "v stream") {

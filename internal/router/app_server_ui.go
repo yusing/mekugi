@@ -666,6 +666,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 		}
 	}
 	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: paneEntries, Agents: agents})
+	u.applyCapturedEdits()
 }
 
 // mainFrame is the transcript above a boxed composer. The top border carries

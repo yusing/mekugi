@@ -664,7 +664,10 @@ func (p *liveDiffPreviewView) title(workspace string, theme liveDiffTheme, width
 		label += " \x1b[2m· tail\x1b[22m"
 	}
 	if p.complete && !unavailable {
-		glyph = liveActivityGreen + "✓" + liveActivityReset
+		// Complete means the input stream ended, not that the host applied it.
+		// Keep predicted edits visibly provisional even after a host rejection.
+		glyph = liveActivityDim + "○" + liveActivityReset
+		label += " \x1b[2m· preview\x1b[22m"
 	}
 	label = glyph + " " + label
 	caller := agentDisplayName(p.current.Caller)

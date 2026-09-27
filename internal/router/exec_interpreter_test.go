@@ -91,6 +91,67 @@ s = p.read_text(); s = s.replace('old', 'new'); p.write_text(s)
 	})
 }
 
+func TestPythonInterpreterOpenReadTextTransformsDoNotCaptureSourceAsPaths(t *testing.T) {
+	workspace := t.TempDir()
+	for _, file := range []string{"assigned.txt", "chained.txt", "sliced.txt"} {
+		writeTestFile(t, filepath.Join(workspace, file), "old content\n")
+	}
+	script := `p = 'assigned.txt'; s = open(p).read(); s = s.replace('old', 'new'); open(p, 'w').write(s)
+p = 'chained.txt'; s = open(p).read().replace('old', 'new'); open(p, 'w').write(s)
+p = 'sliced.txt'; s = open(p).read(); a = s.index('old'); b = a + 3; s = s[:a] + s[b:]; s = ('new' + s).replace('content', 'body'); open(p, 'w').write(s)
+`
+	writeTestFile(t, filepath.Join(workspace, "edit.py"), script)
+	pythonName, pythonBinary := interpreterForTest("python3", "python")
+	observation := captureInterpreterTestObservation(t, workspace, pythonName+" edit.py")
+	assertInterpreterBaselinePaths(t, workspace, observation, []string{"assigned.txt", "chained.txt", "sliced.txt", "edit.py"})
+
+	runOrSimulateInterpreter(t, pythonBinary, workspace, "edit.py", func() {
+		writeTestFile(t, filepath.Join(workspace, "assigned.txt"), "new content\n")
+		writeTestFile(t, filepath.Join(workspace, "chained.txt"), "new content\n")
+		writeTestFile(t, filepath.Join(workspace, "sliced.txt"), "new body\n")
+	})
+	assertExactInterpreterReviews(t, workspace, observation, map[string][]string{
+		"assigned.txt": {"-old content", "+new content"},
+		"chained.txt":  {"-old content", "+new content"},
+		"sliced.txt":   {"-old content", "+new body"},
+	})
+}
+
+func TestPythonInterpreterPathRenameAndReplaceCaptureRealPaths(t *testing.T) {
+	workspace := t.TempDir()
+	writeTestFile(t, filepath.Join(workspace, "rename-source.txt"), "rename content\n")
+	writeTestFile(t, filepath.Join(workspace, "replace-source.txt"), "replace content\n")
+	writeTestFile(t, filepath.Join(workspace, "replace-target.txt"), "previous content\n")
+	script := `from pathlib import Path
+source = Path('rename-source.txt')
+source.rename('rename-target.txt')
+Path('replace-source.txt').replace('replace-target.txt')
+`
+	writeTestFile(t, filepath.Join(workspace, "edit.py"), script)
+	pythonName, _ := interpreterForTest("python3", "python")
+	observation := captureInterpreterTestObservation(t, workspace, pythonName+" edit.py")
+	assertInterpreterBaselinePaths(t, workspace, observation, []string{
+		"rename-source.txt", "rename-target.txt", "replace-source.txt", "replace-target.txt", "edit.py",
+	})
+}
+
+func assertInterpreterBaselinePaths(t *testing.T, workspace string, observation *execObservation, want []string) {
+	t.Helper()
+	var got []string
+	for _, baseline := range observation.Files {
+		relative, err := filepath.Rel(workspace, baseline.Path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, relative)
+	}
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("interpreter baselines = %q, want only actual paths %q", got, want)
+	}
+}
+
 func TestRTKProxyPythonCaptureKeepsBaselineAndDirectOrigin(t *testing.T) {
 	workspace := t.TempDir()
 	target := filepath.Join(workspace, "target.txt")

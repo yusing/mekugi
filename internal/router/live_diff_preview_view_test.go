@@ -51,7 +51,7 @@ func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 	}
 	pane.update(liveDiffPreview{ID: "one"})
 	lines, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 70, 12)
-	if err != nil || !strings.Contains(ansi.Strip(lines[0]), "✓ edit") {
+	if err != nil || !strings.Contains(ansi.Strip(lines[0]), "○ edit") {
 		t.Fatalf("missing completion hold: %v %q", err, lines)
 	}
 	// Completed input stays visible until a new call replaces it.
@@ -61,7 +61,7 @@ func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 	}
 	pane.update(liveDiffPreview{ID: "two"})
 	lines, err = pane.render(t.Context(), "/workspace", livediff.DarkTheme, 70, 12)
-	if err != nil || !strings.Contains(ansi.Strip(lines[0]), "✓ edit") || !strings.Contains(strings.Join(lines, "\n"), "stream_0010") {
+	if err != nil || !strings.Contains(ansi.Strip(lines[0]), "○ edit") || !strings.Contains(strings.Join(lines, "\n"), "stream_0010") {
 		t.Fatalf("completed stream did not persist: %v %q", err, lines)
 	}
 }
@@ -75,7 +75,7 @@ func TestLiveDiffPreviewPaneFinishedCardPersistsUntilReplaced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(pane.order, []string{"done", "live"}) || pane.live() != 1 || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "✓ edit") {
+	if !slices.Equal(pane.order, []string{"done", "live"}) || pane.live() != 1 || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "○ edit") {
 		t.Fatalf("finished card did not remain visible: %v %q", pane.order, lines)
 	}
 	pane.update(previewViewFixture("next", 2))
@@ -162,7 +162,7 @@ func TestLiveDiffFinishedInputRemainsOnTerminalWhileWaiting(t *testing.T) {
 	for index := range 2 {
 		select {
 		case frame := <-frames:
-			if !strings.Contains(ansi.Strip(frame), "✓ edit") || !strings.Contains(frame, "+stream_0002") || strings.Contains(frame, "Waiting for live input") {
+			if !strings.Contains(ansi.Strip(frame), "○ edit") || !strings.Contains(frame, "+stream_0002") || strings.Contains(frame, "Waiting for live input") {
 				t.Fatalf("waiting frame lost completed input: %q", frame)
 			}
 			if index == 0 {
@@ -298,7 +298,7 @@ func TestLiveDiffConcurrentPreviewCards(t *testing.T) {
 	pane.update(second)
 	pane.update(liveDiffPreview{ID: "first"})
 	frame = check(12)
-	if !strings.Contains(frame, "editor · ✓ edit") || !strings.Contains(frame, "editor · ◐ edit") {
+	if !strings.Contains(frame, "editor · ○ edit") || !strings.Contains(frame, "editor · ◐ edit") {
 		t.Fatalf("completion replaced another call: %s", frame)
 	}
 	if len(pane.order) != 2 || !pane.views["first"].complete || pane.views["second"].complete {
@@ -380,7 +380,7 @@ func TestLiveDiffCompletedPreviewShowsDoneGlyph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if header := ansi.Strip(lines[0]); !strings.Contains(header, "· ✓ edit") || strings.Contains(header, "STREAMING") || strings.Contains(header, "COMPLETE") {
+	if header := ansi.Strip(lines[0]); !strings.Contains(header, "· ○ edit") || strings.Contains(header, "STREAMING") || strings.Contains(header, "COMPLETE") {
 		t.Fatalf("completed preview header = %s", header)
 	}
 }
@@ -420,7 +420,7 @@ func TestLiveDiffPreviewTitleShowsFileStatusAndCounts(t *testing.T) {
 	pane.update(liveDiffPreview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: liveDiffPreviewEdit, Files: []mekugi.ReviewFile{modified}})
 	pane.update(liveDiffPreview{ID: "one"})
 	lines, err := pane.render(t.Context(), "/workspace", livediff.DarkTheme, 120, 8)
-	if err != nil || !strings.Contains(lines[0], liveActivityGreen+"✓") ||
+	if err != nil || !strings.Contains(lines[0], liveActivityDim+"○") ||
 		!strings.Contains(lines[0], livediff.DarkTheme.Foreground(chroma.GenericInserted)+"+2") {
 		t.Fatalf("completed header lost its glyph or count colors: %v %q", err, lines[0])
 	}

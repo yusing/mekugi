@@ -77,56 +77,67 @@ func TestAppServerSessionProjectsChildThreads(t *testing.T) {
 	}
 }
 
-func TestAppServerSessionDocksEditsByCaller(t *testing.T) {
+// Native patch events must not race the router's pre-execution source snapshot.
+func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 	workspace := t.TempDir()
-	if err := os.WriteFile(filepath.Join(workspace, "a.go"), []byte("package a\n\nfunc A() {}\n"), 0o644); err != nil {
+	path := filepath.Join(workspace, "a.go")
+	if err := os.WriteFile(path, []byte("package a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	u := newAppServerSessionTestUI(t, workspace)
-	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-	update := map[string]any{"path": filepath.Join(workspace, "a.go"), "kind": map[string]any{"type": "update"}, "diff": "@@\n func A() {}\n+\n+func B() {}\n"}
-	appServerTestNotify(t, u, "item/fileChange/patchUpdated", map[string]any{"threadId": "main", "turnId": "t", "itemId": "p1", "changes": []any{update}})
-	appServerTestNotify(t, u, "item/fileChange/patchUpdated", map[string]any{"threadId": "child", "turnId": "c", "itemId": "p2",
-		"changes": []any{map[string]any{"path": "b.go", "kind": map[string]any{"type": "add"}, "diff": "package a\n"}}})
+	u.shell.diff.scope = liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
+	// The router captures the source before host execution. App-server may
+	// deliver its notifications only after the workspace has already changed.
+	preview := projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{
+		ID: "patch", Workspace: workspace, Thread: "main", Caller: "/root", Tool: applyPatchToolName,
+		Status: liveDiffPreviewEdit, Input: "*** Begin Patch\n*** Update File: a.go\n@@\n-package a\n+package b\n*** End Patch\n",
+	})
+	if err := os.WriteFile(path, []byte("package b\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	change := map[string]any{"path": path, "kind": map[string]any{"type": "update"}, "diff": "@@ -1 +1 @@\n-package a\n+package b\n"}
+	appServerTestNotify(t, u, "item/fileChange/patchUpdated", map[string]any{"threadId": "main", "turnId": "t", "itemId": "patch", "changes": []any{change}})
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "patch", "type": "fileChange", "changes": []any{change}}})
+	if len(u.shell.mainDock.order) != 0 {
+		t.Fatal("app-server reconstructed a duplicate projection")
+	}
+	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
+	card := u.shell.mainDock.views["patch"].current
+	if len(card.Files) != 1 || !strings.Contains(card.Files[0].Diff, "+package b") || strings.Contains(card.Status, "cannot be projected") {
+		t.Fatalf("shared preview lost: %+v", card)
+	}
+	preview.Complete = true
+	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
+	if !u.shell.mainDock.views["patch"].complete {
+		t.Fatal("shared completion lost")
+	}
+	for _, status := range []string{"failed", "declined"} {
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "patch", "type": "fileChange", "status": status, "changes": []any{change}}})
+		title := ansi.Strip(u.shell.mainDock.views["patch"].title(workspace, u.shell.diff.theme, 120))
+		if strings.Contains(title, "✓") || !strings.Contains(title, "· preview") {
+			t.Fatalf("%s patch presented as applied: %s", status, title)
+		}
+	}
+	preview.ID, preview.Thread, preview.Caller, preview.Tool = "exec", "child", "/root/worker", nativeExecCommandToolName
+	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
+	if len(u.shell.agentDock.order) != 0 {
+		t.Fatal("completion-only shell preview flashed a dock")
+	}
+	preview.Complete = false
+	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
 	if len(u.shell.mainDock.order) != 1 || len(u.shell.agentDock.order) != 1 {
-		t.Fatalf("edits were not docked by caller: main %d, agents %d", len(u.shell.mainDock.order), len(u.shell.agentDock.order))
+		t.Fatal("shared previews not docked by caller")
 	}
-	card := u.shell.mainDock.views[u.shell.mainDock.order[0]].current
-	if len(card.Files) != 1 || !strings.Contains(card.Files[0].Diff, "+func B() {}") || card.Complete {
-		t.Fatalf("streamed patch was not projected: %+v", card)
-	}
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "p1", "type": "fileChange", "status": "completed", "changes": []any{update}}})
-	if !u.shell.mainDock.views[u.shell.mainDock.order[0]].complete {
-		t.Fatal("applied patch left its card streaming")
-	}
-	// The router's prediction of the same apply_patch call is a duplicate;
-	// an exec edit is not.
-	u.shell.diff.scope = liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}}
-	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &liveDiffPreview{ID: "router", Workspace: workspace, Thread: "main", Caller: "/root", Tool: applyPatchToolName, Status: liveDiffPreviewEdit, Input: "x"}})
-	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &liveDiffPreview{ID: "exec", Workspace: workspace, Thread: "main", Caller: "/root", Tool: nativeExecCommandToolName, Status: liveDiffPreviewEdit, Input: "x"}})
-	if u.shell.mainDock.views["router"] != nil || u.shell.mainDock.views["exec"] == nil {
-		t.Fatal("router previews were not filtered to non-app-server tools")
-	}
-	// A completed turn never swaps Activity for the saved diff.
 	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "turn", TurnRevision: 1, Status: "completed"})
 	if u.shell.diffOpen {
-		t.Fatal("a completed turn opened the saved diff")
+		t.Fatal("completed turn opened saved diff")
 	}
 }
 
-func TestAppServerPatchText(t *testing.T) {
-	changes := []appServerFileChange{
-		{Path: "/w/new.go", Diff: "package a\n"},
-		{Path: "old.go", Diff: "gone\n"},
-		{Path: "/w/a.go", Diff: "@@\n-x\n+y\n"},
-	}
-	changes[0].Kind.Type, changes[1].Kind.Type, changes[2].Kind.Type = "add", "delete", "update"
-	changes[2].Kind.MovePath = "/w/b.go"
-	want := "*** Begin Patch\n*** Add File: new.go\n+package a\n*** Delete File: old.go\n*** Update File: a.go\n*** Move to: b.go\n@@\n-x\n+y\n*** End Patch\n"
-	if got := appServerPatchText(changes, "/w", true); got != want {
-		t.Fatalf("patch text:\n%s\nwant:\n%s", got, want)
-	}
-	if added, removed := appServerChangeCounts(changes[2]); added != 1 || removed != 1 {
+func TestAppServerChangeCounts(t *testing.T) {
+	change := appServerFileChange{Diff: "@@\n-x\n+y\n"}
+	change.Kind.Type = "update"
+	if added, removed := appServerChangeCounts(change); added != 1 || removed != 1 {
 		t.Fatalf("counts %d %d", added, removed)
 	}
 }

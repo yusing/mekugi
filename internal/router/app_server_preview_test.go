@@ -344,8 +344,8 @@ func (p *nativePreview) add(name string, run func()) {
 	p.steps = append(p.steps, nativePreviewStep{name, run})
 }
 
-// Each preview edit is one apply_patch call. Codex streams its file changes
-// while the model writes, then applies it and reports the item.
+// Each preview edit is one apply_patch call. The shared router preview streams
+// while the model writes; Codex applies it and reports the item.
 type nativePreviewEdit struct {
 	thread, item, patch string
 }
@@ -372,7 +372,7 @@ func (e nativePreviewEdit) change(lines int) map[string]any {
 	return map[string]any{"path": path, "kind": map[string]any{"type": kind}, "diff": strings.Join(body, "")}
 }
 
-// stream adds the edits' patch updates as steps, a few lines at a time,
+// stream adds the shared preview updates as steps, a few lines at a time,
 // interleaving concurrent writers.
 func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 	for lines := 3; ; lines += 3 {
@@ -382,9 +382,11 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 				continue
 			}
 			more = true
-			change := edit.change(lines)
+			patchLines := strings.SplitAfter(edit.patch, "\n")
+			input := strings.Join(patchLines[:min(lines+2, len(patchLines))], "")
 			p.add("stream "+name, func() {
-				p.notify("item/fileChange/patchUpdated", map[string]any{"threadId": edit.thread, "turnId": "turn-" + edit.thread, "itemId": edit.item, "changes": []any{change}})
+				preview := projectStockPatchPreview(p.ui.ctx, p.workspace, liveDiffPreview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.session.path(edit.thread), Tool: applyPatchToolName, Status: liveDiffPreviewEdit, Input: input})
+				p.ui.shell.applyDiff(p.ui.ctx, liveDiffEvent{Kind: "preview", Preview: &preview})
 			})
 		}
 		if !more {
@@ -396,6 +398,8 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 // apply reports the call applied, writes the file, and records it the way
 // the router's capturer does, so the saved diff gains the change.
 func (p *nativePreview) apply(edit nativePreviewEdit) {
+	preview := projectStockPatchPreview(p.ui.ctx, p.workspace, liveDiffPreview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.session.path(edit.thread), Tool: applyPatchToolName, Status: liveDiffPreviewEdit, Input: edit.patch, Complete: true})
+	p.ui.shell.applyDiff(p.ui.ctx, liveDiffEvent{Kind: "preview", Preview: &preview})
 	change := edit.change(-1)
 	item := map[string]any{"id": edit.item, "type": "fileChange", "status": "inProgress", "changes": []any{change}}
 	p.notify("item/started", map[string]any{"threadId": edit.thread, "turnId": "turn-" + edit.thread, "item": item})

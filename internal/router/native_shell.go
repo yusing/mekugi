@@ -30,18 +30,22 @@ func (u *terminalUI) preview(preview liveDiffPreview) {
 	if preview.Caller == "/root" || preview.Caller == "" {
 		dock, seen = &u.mainDock, &u.dockSeen[0]
 	}
+	// A shell projection first discovered at completion is no longer a live
+	// stream. Keep its captured receipt and saved diff, without flashing a dock.
+	if preview.Complete && (preview.Tool == nativeExecCommandToolName || preview.Tool == "exec") && dock.views[preview.ID] == nil {
+		return
+	}
 	dock.update(preview)
 	*seen = time.Now()
 }
 
 // applyNativeDiff sends saved changes to the diff pane and live edit cards to
-// the docks. App-server streams apply_patch itself, so the router's
-// prediction of the same call is dropped; exec and Code Mode edits remain.
+// the docks. All edits use the shared router preview and capture owners.
 func (u *terminalUI) applyNativeDiff(ctx context.Context, event liveDiffEvent) {
 	switch event.Kind {
 	case "preview":
 		preview := event.Preview
-		if preview == nil || preview.Tool == applyPatchToolName ||
+		if preview == nil ||
 			preview.Workspace != "" && !u.diff.scope.Workspaces[preview.Workspace][preview.Thread] {
 			return
 		}
@@ -60,6 +64,9 @@ func (u *terminalUI) applyNativeDiff(ctx context.Context, event liveDiffEvent) {
 	if _, err := u.diff.applyEvent(ctx, event); err != nil {
 		u.diffFailure = err.Error()
 	}
+	if u.main != nil && (event.Kind == "scope" || event.Kind == "change") {
+		u.main.applyCapturedEdits()
+	}
 }
 
 // animating reports whether a dock needs another frame: a call is still
@@ -70,6 +77,7 @@ func (u *terminalUI) animating(now time.Time) bool {
 			continue
 		}
 		if dock.live() > 0 || dock.animating(now) {
+			u.dockSeen[i] = now
 			return true
 		}
 		if now.Sub(u.dockSeen[i]) >= nativeDockLinger {

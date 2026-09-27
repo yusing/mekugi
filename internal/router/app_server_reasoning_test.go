@@ -155,7 +155,7 @@ func TestAppServerReasoningSurvivesDockComposition(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.draft = "one\ntwo\nthree\nfour"
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
-	appServerTestNotify(t, u, "item/fileChange/patchUpdated", map[string]any{"threadId": "main", "turnId": "t", "itemId": "p", "changes": []any{map[string]any{"path": "a.go", "kind": map[string]any{"type": "add"}, "diff": "package a\n"}}})
+	u.shell.preview(liveDiffPreview{ID: "p", Caller: "/root", Status: liveDiffPreviewEdit, Input: "package a\n"})
 	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Active summary**"})
 	var out bytes.Buffer
 	if err := u.paint(&out, 80, 14); err != nil {

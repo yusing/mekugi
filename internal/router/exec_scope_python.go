@@ -20,6 +20,15 @@ func (s *execSourceScope) pythonText(node *sitter.Node, depth int) bool {
 	if node.Kind() == "identifier" {
 		return s.texts[s.text(node)]
 	}
+	if node.Kind() == "parenthesized_expression" && node.NamedChildCount() == 1 {
+		return s.pythonText(node.NamedChild(0), depth+1)
+	}
+	if node.Kind() == "subscript" {
+		return s.pythonText(node.ChildByFieldName("value"), depth+1)
+	}
+	if node.Kind() == "binary_operator" && s.text(node.ChildByFieldName("operator")) == "+" {
+		return s.pythonText(node.ChildByFieldName("left"), depth+1) && s.pythonText(node.ChildByFieldName("right"), depth+1)
+	}
 	function, _ := sourceCall(node)
 	if function == nil {
 		return false
@@ -27,6 +36,10 @@ func (s *execSourceScope) pythonText(node *sitter.Node, depth int) bool {
 	name := s.text(function.ChildByFieldName("attribute"))
 	if name == "read_text" {
 		return true
+	}
+	if name == "read" {
+		open, _ := sourceCall(function.ChildByFieldName("object"))
+		return s.text(open) == "open"
 	}
 	return name == "replace" && s.pythonText(function.ChildByFieldName("object"), depth+1)
 }

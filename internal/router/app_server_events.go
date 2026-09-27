@@ -2,7 +2,6 @@ package router
 
 import (
 	"cmp"
-	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
@@ -18,15 +17,13 @@ import (
 )
 
 // appServerSession adapts app-server notifications for every thread of the
-// session into the roster, Activity entries, and live edit cards. Router
-// response interception is no longer the source of any of them; the router
-// still owns captured changes, journals and cost.
+// session into the roster and Activity entries. Captured edits and previews
+// retain the shared router owners, as do journals and cost.
 type appServerSession struct {
 	seq       uint64
 	paths     map[string]string // Thread → canonical agent path.
 	agents    []activityPaneAgent
-	reasoning map[[3]string]string       // Summary text by thread, turn, item.
-	patches   map[string]liveDiffPreview // Live edit card, by fileChange item.
+	reasoning map[[3]string]string // Summary text by thread, turn, item.
 	messages  map[string]activityPaneEntry
 	finals    map[string]bool   // The thread's current turn already sent its answer.
 	metadata  map[string]string // Child thread → pending metadata request ID; empty when settled.
@@ -68,13 +65,12 @@ type appServerTokenUsage struct {
 }
 
 type appServerEvent struct {
-	ThreadID   string                `json:"threadId"`
-	TurnID     string                `json:"turnId"`
-	ItemID     string                `json:"itemId"`
-	Delta      string                `json:"delta"`
-	Item       appServerItem         `json:"item"`
-	Changes    []appServerFileChange `json:"changes"`
-	Thread     appServerThreadInfo   `json:"thread"`
+	ThreadID   string              `json:"threadId"`
+	TurnID     string              `json:"turnId"`
+	ItemID     string              `json:"itemId"`
+	Delta      string              `json:"delta"`
+	Item       appServerItem       `json:"item"`
+	Thread     appServerThreadInfo `json:"thread"`
 	TokenUsage struct {
 		Total appServerTokenUsage `json:"total"`
 	} `json:"tokenUsage"`
@@ -88,7 +84,6 @@ func (s *appServerSession) start(thread, cwd string) {
 	s.paths = map[string]string{thread: "/root"}
 	s.agents = []activityPaneAgent{{Name: "/root", Role: "main", Started: time.Now()}}
 	s.reasoning = make(map[[3]string]string)
-	s.patches = make(map[string]liveDiffPreview)
 	s.messages = make(map[string]activityPaneEntry)
 	s.finals = make(map[string]bool)
 	s.metadata = make(map[string]string)
@@ -161,7 +156,7 @@ func (u *appServerUI) sessionEvent(m appServerMessage) (bool, error) {
 		return false, nil
 	}
 	switch m.Method {
-	case "thread/started", "thread/tokenUsage/updated", "item/fileChange/patchUpdated", "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded",
+	case "thread/started", "thread/tokenUsage/updated", "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded",
 		"turn/started", "turn/completed", "item/started", "item/completed", "item/agentMessage/delta":
 	default:
 		return false, nil
@@ -210,8 +205,6 @@ func (u *appServerUI) sessionEvent(m appServerMessage) (bool, error) {
 			entries = append(entries, last)
 		}
 		delete(s.messages, p.ThreadID)
-	case "item/fileChange/patchUpdated":
-		u.patch(p.ThreadID, p.ItemID, p.Changes, false)
 	case "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded":
 		key := [3]string{p.ThreadID, p.TurnID, p.ItemID}
 		text := s.reasoning[key]
@@ -257,11 +250,6 @@ func (u *appServerUI) sessionEvent(m appServerMessage) (bool, error) {
 		case "fileChange":
 			if len(item.Changes) > 0 {
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerEditText(item, s.cwd), CallID: id, Observed: now, native: native})
-			}
-			if m.Method == "item/started" && len(item.Changes) > 0 {
-				u.patch(p.ThreadID, id, item.Changes, true)
-			} else if m.Method == "item/completed" {
-				u.finishPatch(id, item.Status)
 			}
 		case "collabAgentToolCall":
 			if m.Method == "item/completed" {
@@ -371,15 +359,7 @@ func appServerCommandText(item appServerItem, cwd string) string {
 		}
 	}
 	if len(parts) == 0 {
-		command := appServerDisplayCommand(item.Command)
-		if display, ok := toolActivityReads(command); ok {
-			return display
-		}
-		fence := "```"
-		for strings.Contains(command, fence) {
-			fence += "`"
-		}
-		return "Run\n" + fence + "bash\n" + command + "\n" + fence
+		return toolActivityShell(appServerDisplayCommand(item.Command))
 	}
 	return strings.Join(parts, "\n\n")
 }
@@ -479,82 +459,4 @@ func appServerChangeCounts(change appServerFileChange) (added, removed int) {
 		}
 	}
 	return added, removed
-}
-
-// appServerPatchText rebuilds apply_patch input from streamed file changes so
-// the existing patch projection lays them out against the workspace.
-func appServerPatchText(changes []appServerFileChange, cwd string, final bool) string {
-	var b strings.Builder
-	b.WriteString("*** Begin Patch\n")
-	for _, change := range changes {
-		path := change.Path
-		if filepath.IsAbs(path) {
-			path = pathdisplay.ForWorkspace(cwd, path)
-		}
-		switch change.Kind.Type {
-		case "add":
-			b.WriteString("*** Add File: " + path + "\n")
-			if change.Diff != "" {
-				for line := range strings.SplitSeq(strings.TrimSuffix(change.Diff, "\n"), "\n") {
-					b.WriteString("+" + line + "\n")
-				}
-			}
-		case "delete":
-			b.WriteString("*** Delete File: " + path + "\n")
-		default:
-			b.WriteString("*** Update File: " + path + "\n")
-			if move := cmp.Or(change.Kind.MovePath, change.Kind.MovePath2); move != "" {
-				b.WriteString("*** Move to: " + pathdisplay.ForWorkspace(cwd, move) + "\n")
-			}
-			if change.Diff != "" {
-				b.WriteString(strings.TrimSuffix(change.Diff, "\n") + "\n")
-			}
-		}
-	}
-	if final {
-		b.WriteString("*** End Patch\n")
-	}
-	return b.String()
-}
-
-// patch projects a streamed patch into its caller's live card. Projection
-// reads the files before Codex applies the patch; afterwards the card keeps
-// its last projection.
-func (u *appServerUI) patch(thread, item string, changes []appServerFileChange, final bool) {
-	s := &u.session
-	previous, known := s.patches[item]
-	if known && previous.Complete {
-		return
-	}
-	preview := liveDiffPreview{ID: "app-server:" + item, Workspace: s.cwd, Caller: s.path(thread), Thread: thread, Status: liveDiffPreviewEdit, Complete: final,
-		Input: appServerPatchText(changes, s.cwd, final)}
-	if s.cwd == "" {
-		return
-	}
-	ctx := u.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	preview = projectStockPatchPreview(ctx, s.cwd, preview)
-	if strings.HasPrefix(preview.Status, liveDiffPreviewUnavailable) && known && len(previous.Files) > 0 {
-		preview.Files, preview.Status = previous.Files, liveDiffPreviewEdit // A partial hunk keeps the last good frame.
-	}
-	s.patches[item] = preview
-	u.ensureShell()
-	u.shell.preview(preview)
-}
-
-func (u *appServerUI) finishPatch(item, status string) {
-	s := &u.session
-	preview, known := s.patches[item]
-	if !known {
-		return
-	}
-	preview.Complete = true
-	if status == "failed" || status == "declined" {
-		preview.Files, preview.Status = nil, liveDiffPreviewUnavailable+"patch "+status
-	}
-	s.patches[item] = preview
-	u.ensureShell()
-	u.shell.preview(preview)
 }

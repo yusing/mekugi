@@ -285,7 +285,10 @@ func (w *liveDiffPreviewWorker) run() {
 		if final && finishedAt.IsZero() {
 			finishedAt = time.Now()
 		}
-		release := final && time.Since(finishedAt) >= liveDiffPreviewFinishDrain
+		// Do not manufacture a live shell stream after completion if no target
+		// diff was shown while input was arriving. The terminal can keep such a
+		// completion out of its live dock while retaining the final projection.
+		release := final && (encoded && len(lastFiles) == 0 || time.Since(finishedAt) >= liveDiffPreviewFinishDrain)
 		// Provider deltas arrive in bursts. Reveal the received input at a steady
 		// pace instead of jumping per burst. A completed call waits briefly for the
 		// reveal to catch up; a cancelled transport shows its final input at once.

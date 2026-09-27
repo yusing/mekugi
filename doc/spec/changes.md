@@ -288,7 +288,8 @@ or accepted an edit. A Code Mode patch held in an immutable top-level literal
 binding is rendered as the patch preview.
 Literal Python `Path.write_text` and `open(..., "w").write` bodies and literal
 JavaScript `writeFileSync`/`writeFile` bodies can be predicted without evaluation.
-Python same-path `read_text().replace(A, B[, count])` supports literal replacements;
+Python same-path `read_text().replace(A, B[, count])` and
+`open(path).read().replace(A, B[, count])` support literal replacements;
 straight-line text-buffer assignments and chained literal replacements are also
 supported. A Python edit script composed through a `cat` heredoc previews these
 target-file changes rather than the script file. While it arrives, a changed
@@ -364,7 +365,10 @@ window where a complete line is available and completes on the call's final
 input. Ordinary streaming frames advance one complete line at a time rather
 than draining all line boundaries in a provider burst. Bounded lag catch-up may
 skip ahead. After the call finishes, queued units keep distinct reveals for about
-one second; the remaining final input then appears at once. The reveal advances by whole decoded lines. An unfinished line stays
+one second; the remaining final input then appears at once. Shell/Code Mode input
+that finishes before any target diff was published skips this catch-up and
+publishes its final projection without manufacturing an active stream.
+The reveal advances by whole decoded lines. An unfinished line stays
 buffered, regardless of elapsed time; final input releases an unterminated tail.
 Code-source previews also buffer unfinished syntax for Go, JavaScript, TypeScript,
 Python, and Bash/sh. Complete statements inside open Go, JavaScript/TypeScript, Python, and shell
