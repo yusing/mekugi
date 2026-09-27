@@ -59,7 +59,14 @@ func TestScrollablePaneKeysAgreeAtConsumers(t *testing.T) {
 			for _, key := range []byte(test.keys) {
 				escape, _ = activity.handleKey(escape, key)
 			}
-			// Activity stops at its last full viewport.
+			// Activity stops at its last full viewport and has no r binding.
+			if test.keys == "r" {
+				if activity.offset != test.starting || activity.following != test.initialFollow {
+					t.Fatal("Activity retained r follow binding")
+				}
+				return
+			}
+			// Reaching the bottom resumes transcript following.
 			agentsOffset := min(test.offset, 90)
 			if test.follow {
 				agentsOffset = 90
@@ -67,8 +74,8 @@ func TestScrollablePaneKeysAgreeAtConsumers(t *testing.T) {
 			if activity.offset != agentsOffset {
 				t.Fatalf("agents offset = %d, want %d", activity.offset, agentsOffset)
 			}
-			if activity.following != test.follow {
-				t.Fatalf("agents following = %v, want %v", activity.following, test.follow)
+			if wantFollow := test.follow || agentsOffset == 90; activity.following != wantFollow {
+				t.Fatalf("agents following = %v, want %v", activity.following, wantFollow)
 			}
 		})
 	}

@@ -17,8 +17,8 @@ func paneWheelKey(action byte) byte {
 	}
 }
 
-// All scrollable panes use the same line/page/home/end/follow semantics.
-// End goes to the bottom but stays paused; only r resumes automatic following.
+// Shared scroll offsets and default diff follow policy. Transcript consumers
+// resume at the last full viewport and own their follow-key bindings.
 func paneScroll(key byte, offset, rows, total int) (next int, follow, handled bool) {
 	next = offset
 	switch key {

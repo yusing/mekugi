@@ -292,6 +292,16 @@ func (u *terminalUI) terminalColor(reply string) {
 }
 
 func (u *terminalUI) send(s string) error {
+ if s == "\x1b" && u.main != nil && !u.main.keybindings {
+  var transcript *liveActivityView
+  if u.focus == 0 { transcript = u.main.view } else if u.focus == 2 { transcript = u.agents }
+  if transcript != nil && !transcript.following {
+   transcript.follow()
+   u.selection = nil
+   u.agentEscape = ""
+   return nil
+  }
+ }
 	if u.selection != nil && !u.selection.dragging {
 		if s == "\x1b" {
 			u.selection = nil

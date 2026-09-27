@@ -498,7 +498,7 @@ func (u *terminalUI) nativeStatus() string {
 	case u.focus == 2 && activityName == "Live":
 		hints = terminalHints{{"^B 2", "diff", 0}, {"^B e", "next live", 0}}
 	case u.focus == 2:
-		hints = terminalHints{{"j/k", "scroll", 0}, {"n/p", "agent", 0}, {"o", "only", 0}, {"r", "follow", 0}, {"enter", "open", 0}}
+		hints = terminalHints{{"j/k", "scroll", 0}, {"n/p", "agent", 0}, {"o", "only", 0}, {"esc", "bottom", 0}, {"enter", "open", 0}}
 	case u.focus == 3:
 		hints = terminalHints{{"j/k", "agent", 0}, {"o", "only", 0}, {"esc", "back", 0}}
 	default:

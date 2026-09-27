@@ -405,6 +405,7 @@ func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 	if !strings.HasPrefix(only[len(only)-1], "ONLY ·") || !strings.Contains(only[0], "only a (1/2)") {
 		t.Fatalf("only chrome = %q / %q", only[0], only[len(only)-1])
 	}
+	view.render(80, 20, time.Now()) // Make scrollback possible before pausing.
 	view.handleKey("", 'k')
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 		{Seq: 4, Agent: "/root/a", Text: "more", Observed: time.Now()},
@@ -414,7 +415,7 @@ func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 	if header := plainLines(view.render(80, 40, time.Now()))[0]; !strings.HasSuffix(header, "PAUSED · 1 new") {
 		t.Fatalf("paused header = %q", header)
 	}
-	view.handleKey("", 'r')
+	view.handleKey("", 'G')
 	if header := plainLines(view.render(80, 40, time.Now()))[0]; !strings.HasSuffix(header, "FOLLOW") {
 		t.Fatalf("follow header = %q", header)
 	}

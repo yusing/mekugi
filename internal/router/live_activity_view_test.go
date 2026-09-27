@@ -22,10 +22,6 @@ func TestLiveActivityScrollStopsAtLastFullViewport(t *testing.T) {
 			t.Fatalf("key %d scrolled past the bottom: %q", key, got)
 		}
 	}
-	v.scroll(1000)
-	if got := v.viewport(feed, 8); !slices.Equal(got, bottom) {
-		t.Fatal("scroll delta passed the last full viewport")
-	}
 	v.offset = len(feed.lines) - 1 // A question jump near the end must also clamp.
 	if got := v.viewport(feed, 8); !slices.Equal(got, bottom) {
 		t.Fatal("near-end jump left blank space below the last row")

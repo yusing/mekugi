@@ -32,6 +32,7 @@ func renderNativeKeybindings(width, height int) []string {
 		}},
 		{"Transcript", [][2]string{
 			{"pgup / pgdn", "Scroll"},
+			{"esc", "Back to bottom"},
 		}},
 	}
 	lines := []string{"", "  " + bold + "Keyboard shortcuts" + liveActivityReset, ""}

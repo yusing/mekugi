@@ -520,8 +520,14 @@ the terminal's reported (OSC 10/11) foreground and background; without both
 reports it steps through dim, normal and bold. Raw and encrypted
 reasoning stay excluded; the legacy pane keeps its reasoning policy.
 
-Scrolling stops at the last full viewport, including after resizing or following
-a link, and the link target briefly highlights. Frames replace changed rows
+Main and Activity follow new transcript content until manual scrollback or an
+explicit jump to earlier content. Opening or closing Live/Diff, resizing, and
+expanding a snippet do not disable following. Scrolling to the last full viewport
+(including End), or pressing Esc in a paused transcript, resumes following and
+clears its unseen count. Activity has no `r` follow binding. A paused transcript shows “↓ Back to bottom · esc”
+above Main's composer or at the bottom of Activity. Scrolling stops at the last
+full viewport, including after resizing or following a link, and the link target
+briefly highlights. Frames replace changed rows
 without blanking the terminal. Journal records arrive typed from the journal
 owner and follow the [native journal presentation](journal.md#native-main-presentation)
 contract. A request without workspace metadata keeps its unscoped journal

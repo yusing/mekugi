@@ -79,7 +79,7 @@ func TestTerminalUIIncrementalPaint(t *testing.T) {
 }
 
 func TestPaneScrollUnified(t *testing.T) {
-	for _, key := range []byte{'j', 'k', ' ', 'b', 'g', 'G', 'r'} {
+	for _, key := range []byte{'j', 'k', ' ', 'b', 'g', 'G'} {
 		next, follow, ok := paneScroll(key, 50, 10, 100)
 		if !ok {
 			t.Fatal("missing scroll binding")
@@ -90,7 +90,7 @@ func TestPaneScrollUnified(t *testing.T) {
 		v.feedRows = 10
 		v.feedLines = 100
 		v.handleKey("", key)
-		if v.offset != next || v.following != follow {
+		if v.offset != next || v.following != (follow || next >= 90) {
 			t.Fatalf("agents %c: %d %v, expected %d %v", key, v.offset, v.following, next, follow)
 		}
 	}
@@ -114,8 +114,8 @@ func TestPaneScrollUnified(t *testing.T) {
 	for _, b := range []byte("\x1b[F") {
 		escape, _ = v.handleKey(escape, b)
 	}
-	if v.offset != 90 || v.following {
-		t.Fatal("End must scroll to bottom and stay paused")
+	if v.offset != 90 || !v.following {
+		t.Fatal("End must scroll to bottom and resume following")
 	}
 
 }
@@ -184,5 +184,97 @@ func TestTerminalUIIdleLiveLayout(t *testing.T) {
 	}
 	if frame = paint(); u.shell.layout.agents.h != 0 || !strings.Contains(frame, "3 Live") || !strings.Contains(frame, "unique-live-line") {
 		t.Fatalf("Live did not return:\n%s", frame)
+	}
+}
+
+func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
+	for _, activity := range []bool{false, true} {
+		t.Run(map[bool]string{false: "main", true: "activity"}[activity], func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			u.ensureShell()
+			defer u.shell.diffScreen.Close()
+			u.agents.agents = []activityPaneAgent{{Name: "/root/worker", Responding: true}}
+			view, caller := u.view, "/root"
+			if activity {
+				view, caller = u.agents, "/root/worker"
+				view.only, view.selected = true, caller
+				u.shell.focus = 2
+			}
+			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: caller, Kind: "text", Text: strings.Repeat("transcript row\n\n", 80) + "LATEST_TRANSCRIPT"}}})
+			screen := vt.NewEmulator(120, 40)
+			defer screen.Close()
+			paint := func(width, height int) string {
+				t.Helper()
+				screen.Resize(width, height)
+				if err := u.paint(screen, width, height); err != nil {
+					t.Fatal(err)
+				}
+				return screen.String()
+			}
+			assertFollow := func(frame string) {
+				t.Helper()
+				if !view.following || view.offset != max(0, view.feedLines-view.feedRows) || !strings.Contains(frame, "LATEST_TRANSCRIPT") || strings.Contains(frame, "Back to bottom") {
+					t.Fatalf("lost following:\n%s", frame)
+				}
+			}
+			assertFollow(paint(120, 40))
+			workspace := t.TempDir()
+			u.shell.preview(projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{ID: "edit", Workspace: workspace, Caller: caller, Tool: applyPatchToolName, Status: liveDiffPreviewEdit, Input: "*** Begin Patch\n*** Add File: follow.txt\n+live content\n*** End Patch"}))
+			assertFollow(paint(120, 40))
+			u.agents.agents[0].Responding = false
+			assertFollow(paint(120, 40))
+			u.shell.diffOpen = true
+			paint(120, 40)
+			if !view.following {
+				t.Fatal("opening Diff paused transcript")
+			}
+			u.shell.diffOpen = false
+			assertFollow(paint(140, 32))
+			view.scrollKey(paneWheelDown)
+			assertFollow(paint(140, 32))
+			view.scrollKey(paneWheelUp)
+			frame := paint(140, 32)
+			if view.following || !strings.Contains(frame, "↓ Back to bottom · esc") {
+				t.Fatalf("missing manual scrollback hint:\n%s", frame)
+			}
+			offset := view.offset
+			if activity {
+				if err := u.shell.key('r'); err != nil {
+					t.Fatal(err)
+				}
+				if view.following || view.offset != offset {
+					t.Fatal("r resumed Activity follow")
+				}
+				if strings.Contains(frame, "r follow") {
+					t.Fatal("Activity still advertises r follow")
+				}
+			}
+			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 2, Agent: caller, Kind: "text", Text: "LATEST_TRANSCRIPT new"}}})
+			paint(140, 32)
+			if view.following || view.offset != offset {
+				t.Fatal("new output moved manual scrollback")
+			}
+			if err := u.shell.key(27); err != nil {
+				t.Fatal(err)
+			}
+			u.shell.sequenceAt = time.Now().Add(-time.Second)
+			if err := u.shell.flushEscape(); err != nil {
+				t.Fatal(err)
+			}
+			assertFollow(paint(140, 32))
+			if view.unseen != 0 {
+				t.Fatal("Escape retained unseen count")
+			}
+			view.scrollKey('b')
+			paint(140, 32)
+			for !view.following {
+				view.scrollKey(paneWheelDown)
+			}
+			assertFollow(paint(140, 32))
+			view.toggleSnippet(liveActivitySnippet{1, 0})
+			if !view.following {
+				t.Fatal("expanding a snippet paused follow")
+			}
+		})
 	}
 }

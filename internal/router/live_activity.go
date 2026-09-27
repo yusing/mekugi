@@ -46,7 +46,7 @@ func (v *liveActivityView) handleKey(escape string, key byte) (string, bool) {
 			return "", false
 		}
 	}
-	if v.scrollKey(key) {
+	if key != 'r' && v.scrollKey(key) {
 		return "", false
 	}
 	switch key {

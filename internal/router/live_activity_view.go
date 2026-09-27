@@ -482,8 +482,6 @@ func (v *liveActivityView) toggleSnippet(snippet liveActivitySnippet) {
 			v.expanded = make(map[liveActivitySnippet]bool)
 		}
 		v.expanded[snippet] = true
-		// Hold the feed still so the expanded lines open below the pointer.
-		v.scroll(0)
 	}
 	for key := range v.runs {
 		if key.first == snippet.run {
@@ -524,20 +522,12 @@ func (v *liveActivityView) scrollKey(key byte) bool {
 	next, follow, ok := paneScroll(key, offset, v.feedRows, v.feedLines)
 	if ok {
 		v.offset = max(0, min(next, v.feedLines-v.feedRows))
-		v.following = follow
-		if follow {
+		v.following = follow || v.offset == max(0, v.feedLines-v.feedRows)
+		if v.following {
 			v.unseen = 0
 		}
 	}
 	return ok
-}
-
-func (v *liveActivityView) scroll(delta int) {
-	if v.following {
-		v.offset = max(0, v.feedLines-v.feedRows)
-	}
-	v.following = false
-	v.offset = max(0, min(v.offset+delta, v.feedLines-v.feedRows))
 }
 
 // render lays the pane out for its size: agent cards beside the feed on wide
@@ -574,7 +564,16 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 	}
 	switch {
 	case v.feedOnly:
-		lines = append(lines, v.viewport(v.renderFeed(text, body), body)...)
+		hint := !v.following && body > 1
+		feedRows := body
+		if hint {
+			feedRows--
+		}
+		lines = append(lines, v.viewport(v.renderFeed(text, feedRows), feedRows)...)
+		if hint {
+			label := ansi.Truncate("↓ Back to bottom · esc", text, "")
+			lines = append(lines, strings.Repeat(" ", max(0, (text-ansi.StringWidth(label))/2))+v.painter.theme.Accent()+label+liveActivityReset)
+		}
 	case len(rows) > 0 && text >= liveActivitySideColumns && body >= 6:
 		cardWidth := min(44, max(28, text*3/10))
 		feedWidth := text - cardWidth - 3
@@ -682,7 +681,7 @@ func (v *liveActivityView) activityHeader(rows []liveActivityRosterRow, width in
 		if v.unseen > 0 {
 			right += liveActivityAmber + fmt.Sprintf(" · %d new", v.unseen) + liveActivityReset
 		}
-		right += liveActivityDim + " · r follows" + liveActivityUndim
+		right += liveActivityDim + " · End follows" + liveActivityUndim
 	}
 	gap := width - ansi.StringWidth(left) - ansi.StringWidth(right)
 	if right == "" || gap < 2 {
@@ -1340,13 +1339,13 @@ func (v *liveActivityView) footer(width int) string {
 	if v.only {
 		mode, toggle = "ONLY", "o all"
 	}
-	keys := "n/p agent · " + toggle + " · j/k scroll · r follow"
+	keys := "n/p agent · " + toggle + " · j/k scroll · End bottom"
 	if !v.feedOnly {
 		keys = "click agent · " + keys
 	}
 
 	if width < 60 {
-		keys = "n/p · o · j/k · r"
+		keys = "n/p · o · j/k · End"
 	}
 	return ansi.Truncate("\x1b[1m"+mode+liveActivityUndim+liveActivityDim+" · "+keys+liveActivityUndim, width, "…")
 }
