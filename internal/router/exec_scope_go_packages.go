@@ -73,7 +73,7 @@ func execGoPackageScope(input execProviderInput) execProviderResult {
 		slices.SortFunc(children, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
 		for _, child := range children {
 			entries++
-			if entries > maxExecListingEntries || len(paths) >= maxExecCaptureFiles || time.Now().After(input.deadline) {
+			if entries > maxExecListingEntries || time.Now().After(input.deadline) {
 				truncated = true
 				break
 			}

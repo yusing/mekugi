@@ -70,6 +70,7 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 					next.coverage = history.ExecOutcome.Coverage
 				}
 				for _, file := range history.ReviewFiles {
+					next.unknown = next.unknown || file.Incomplete != ""
 					if file.Origin != "" {
 						next.managed++
 						continue

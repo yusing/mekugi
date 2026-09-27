@@ -62,10 +62,9 @@ func TestFormatterDeferredHintsStayInsideExplicitScope(t *testing.T) {
 	outside := filepath.Join(elsewhere, "format.go")
 	writeTestFile(t, inside, "package p\n")
 	writeTestFile(t, outside, "package p\n")
-	capture := newExecCapture(time.Now().Add(time.Second))
+	capture := newExecCapture(time.Now().Add(-time.Second))
 	capture.scopeRoots = []string{workspace}
 	capture.origin = "gofmt"
-	capture.files = make([]execFileSnapshot, maxExecCaptureFiles)
 	capture.add(inside)
 	capture.add(outside)
 	if len(capture.omitted) != 2 || !capture.omitted[0].Deferred || capture.omitted[1].Deferred {
@@ -79,7 +78,7 @@ func TestDeferredFormatterHintWithoutClockDoesNotInventDiff(t *testing.T) {
 	writeTestFile(t, path, "package pkg\n")
 	observation := execObservation{
 		Class: execScoped.String(), Roots: []string{workspace},
-		Omitted: []execOmission{{Path: path, Origin: "gofmt", Reason: "capture limit", Deferred: true}},
+		Omitted: []execOmission{{Path: path, Origin: "gofmt", Reason: "capture deadline", Deferred: true}},
 	}
 	reviews, complete, _, unswept := reconcileExecObservation(observation, execReconcileEnv{})
 	if complete || unswept != "" || len(reviews) != 1 || reviews[0].Incomplete == "" || strings.Contains(reviews[0].Diff, "+package pkg") {
@@ -87,14 +86,14 @@ func TestDeferredFormatterHintWithoutClockDoesNotInventDiff(t *testing.T) {
 	}
 }
 
-func TestGoFixPackageScopeCapIsBounded(t *testing.T) {
+func TestGoFixPackageScopeAcceptsManySources(t *testing.T) {
 	workspace := t.TempDir()
 	pkg := filepath.Join(workspace, "pkg")
-	for i := range maxExecCaptureFiles + 1 {
+	for i := range 512 {
 		writeTestFile(t, filepath.Join(pkg, fmt.Sprintf("source-%03d.go", i)), "package pkg\n")
 	}
 	result := execGoPackageScope(execProviderInput{identity: "go", args: []string{"fix", "./pkg"}, cwd: workspace, deadline: time.Now().Add(5 * time.Second)})
-	if len(result.scope) != 1 || len(result.scope[0].Operands) != maxExecCaptureFiles || !result.open || result.reason == "" {
-		t.Fatalf("capped go fix package source scope = %+v", result)
+	if len(result.scope) != 1 || len(result.scope[0].Operands) != 512 || !result.open || result.reason != "" {
+		t.Fatalf("go fix package source scope: groups=%d open=%v reason=%q", len(result.scope), result.open, result.reason)
 	}
 }

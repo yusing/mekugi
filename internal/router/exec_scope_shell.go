@@ -1651,8 +1651,8 @@ func (w *execShellWalker) addBackups(operands []execOperand, suffix string) {
 	for _, operand := range operands {
 		if operand.Glob {
 			matches, err := filepath.Glob(operand.Path)
-			if err != nil || len(matches) > maxExecGlobMatches {
-				w.opaque("backup glob exceeds capture bounds")
+			if err != nil {
+				w.opaque("invalid backup glob pattern")
 				continue
 			}
 			for _, path := range matches {

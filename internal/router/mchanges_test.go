@@ -281,7 +281,7 @@ func TestChangesSummaryAggregatesEvaluations(t *testing.T) {
 	}
 	options := changeReadOptions{workspace: workspace, ids: ids, view: "summary"}
 	got, err := store.readChanges(t.Context(), options)
-	if want := "M\t3\t2\tfile\nA\t0\t0\tempty\nM\t-\t-\tunknown\n"; err != nil || got != want {
+	if want := "M\t3\t2\tfile\nA\t0\t0\tempty\n?\t-\t-\tunknown\t\"missing capture\"\n"; err != nil || got != want {
 		t.Fatalf("summary = %q, %v; want %q", got, err, want)
 	}
 	options.paths = []string{"file"}

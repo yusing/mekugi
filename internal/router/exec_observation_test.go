@@ -267,23 +267,11 @@ func TestExecObservationSymlinkReviewsLinkTarget(t *testing.T) {
 	}
 }
 
-func TestExecObservationBoundsCapture(t *testing.T) {
+func TestExecObservationBoundsFileBytes(t *testing.T) {
 	workspace := t.TempDir()
-	for index := range maxExecCaptureFiles + 4 {
-		writeTestFile(t, filepath.Join(workspace, "many", strings.Repeat("f", 1+index/26)+string(rune('a'+index%26))), "x")
-	}
-	observation := observeTestCommand(t, workspace, "rm -rf many")
-	if len(observation.Files) != maxExecCaptureFiles || len(observation.Omitted) == 0 {
-		t.Fatalf("captured %d files, omitted %+v", len(observation.Files), observation.Omitted)
-	}
-	reviews, complete, _, _ := reconcileExecObservation(*observation, execReconcileEnv{})
-	if complete || !slices.ContainsFunc(reviews, func(file mekugi.ReviewFile) bool { return file.Incomplete != "" }) {
-		t.Fatal("an overflowing capture was reported as complete")
-	}
-
 	large := filepath.Join(workspace, "large")
 	writeTestFile(t, large, strings.Repeat("x", maxNativePatchFileBytes+1))
-	observation = observeTestCommand(t, workspace, "touch large")
+	observation := observeTestCommand(t, workspace, "touch large")
 	if reviews, complete, _, _ := reconcileExecObservation(*observation, execReconcileEnv{}); !complete || len(reviews) != 0 {
 		t.Fatalf("an unchanged oversized file was reported: %+v", reviews)
 	}

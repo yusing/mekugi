@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/internal/pathdisplay"
@@ -66,7 +67,8 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 	exec := history.ExecOutcome
 	var summaries []string
 	var managed []string
-	incomplete := 0
+	reasons := make(map[string]int)
+	managedGaps := false
 	budget := maxEditReceiptDiffBytes
 	for _, file := range history.ReviewFiles {
 		action := file.Action().Title()
@@ -76,7 +78,8 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 		}
 		path = pathdisplay.ForWorkspace(workspace, path)
 		if file.Incomplete != "" {
-			incomplete++
+			reasons[file.Incomplete]++
+			managedGaps = managedGaps || file.Origin != ""
 			continue
 		}
 		if file.Origin != "" {
@@ -114,16 +117,53 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 		}
 		summaries = append(summaries, fmt.Sprintf("+ %d tool-managed files (%s)", len(managed), label))
 	}
-	if incomplete != 0 {
+	if len(reasons) != 0 {
 		// Capture omissions are evidence gaps, not confirmed edits. Keep the
 		// full path/reason records in mchanges without flooding Activity.
-		summary := fmt.Sprintf("Capture · incomplete: evidence unavailable for %d paths", incomplete)
+		summary := "Capture · " + captureGapSummary(reasons)
 		if history.ChangeID != "" {
-			summary += " · " + commentaryCode("mchanges "+history.ChangeID+" --summary")
+			view := "--summary"
+			if managedGaps {
+				view = "--history"
+			}
+			summary += " · " + commentaryCode("mchanges "+history.ChangeID+" "+view)
 		}
 		summaries = append(summaries, summary)
 	}
 	return strings.Join(summaries, "\n\n")
+}
+
+// Keep Activity and compact managed summaries useful without flooding them with
+// per-path errors. Full reasons remain on the retained per-path review records.
+func captureGapSummary(reasons map[string]int) string {
+	keys := make([]string, 0, len(reasons))
+	total := 0
+	for reason, count := range reasons {
+		keys = append(keys, reason)
+		total += count
+	}
+	slices.SortFunc(keys, func(a, b string) int {
+		if reasons[a] != reasons[b] {
+			return reasons[b] - reasons[a]
+		}
+		return strings.Compare(a, b)
+	})
+	var parts []string
+	for _, reason := range keys[:min(3, len(keys))] {
+		text := []rune(reason)
+		if len(text) > 120 {
+			text = append(text[:120], '…')
+		}
+		parts = append(parts, fmt.Sprintf("%d × %q", reasons[reason], string(text)))
+	}
+	if len(keys) > 3 {
+		parts = append(parts, fmt.Sprintf("other reasons: %d", len(keys)-3))
+	}
+	noun := "paths"
+	if total == 1 {
+		noun = "path"
+	}
+	return fmt.Sprintf("incomplete evidence for %d %s (not confirmed edits): %s", total, noun, strings.Join(parts, "; "))
 }
 
 // editReceiptHunks keeps hunk rows only; file headers repeat the summary.

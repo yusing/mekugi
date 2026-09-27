@@ -304,12 +304,13 @@ func liveDiffHoverRow(line string) string {
 }
 
 // Status is a file row's net change, coded like git's short status:
-// A, D, M, R (rename only), RM (rename with edits), or UU (the net diff still
+// ? (incomplete evidence), A, D, M, R (rename only), RM (rename with edits), or UU (the net diff still
 // adds conflict markers that mchanges revert or apply left for resolution).
 type Status struct {
 	Before, After string
-	// edited reports content changes, or content that could not be captured.
+	// Edited reports captured content changes, not missing evidence.
 	Edited, Conflict bool
+	Incomplete       bool
 }
 
 // StatusOf classifies a file's diff regions, in capture order.
@@ -328,9 +329,9 @@ func StatusOf(regions ...mekugi.ReviewFile) Status {
 // first capture's.
 func (s *Status) Add(region mekugi.ReviewFile) {
 	s.After = region.AfterPath
+	s.Incomplete = s.Incomplete || region.Incomplete != ""
 	added, removed := region.LineCounts()
-	// Unknown content is not evidence of a pure rename.
-	s.Edited = s.Edited || added != 0 || removed != 0
+	s.Edited = s.Edited || added > 0 || removed > 0
 	if region.Binary {
 		if _, sides, found := strings.Cut(region.Diff, " differ ("); found {
 			before, after, _ := strings.Cut(strings.TrimSuffix(strings.TrimSpace(sides), ")"), " -> ")
@@ -342,6 +343,8 @@ func (s *Status) Add(region mekugi.ReviewFile) {
 
 func (s Status) ShortCode() string {
 	switch {
+	case s.Incomplete:
+		return "?"
 	case s.Conflict:
 		return "UU"
 	case s.Before == "":

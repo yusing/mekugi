@@ -32,7 +32,7 @@ func TestEditReceiptGroupsCaptureGapsWithoutClaimingEdits(t *testing.T) {
 				}
 			}
 			if len(blocks) != wantBlocks || blocks[len(blocks)-1].Verb != "Capture" ||
-				!strings.Contains(text, "evidence unavailable for 100 paths") || !strings.Contains(text, "mchanges amber1 --summary") ||
+				!strings.Contains(text, "incomplete evidence for 100 paths (not confirmed edits): 100 × \"capture limit\"") || !strings.Contains(text, "mchanges amber1 --history") ||
 				strings.Contains(text, "unknown-") || strings.Contains(text, "tool-managed files") {
 				t.Fatalf("capture gaps became edit claims or flooded the receipt: %q", text)
 			}
@@ -40,5 +40,27 @@ func TestEditReceiptGroupsCaptureGapsWithoutClaimingEdits(t *testing.T) {
 				t.Fatal("display discarded retained evidence")
 			}
 		})
+	}
+}
+
+func TestEditReceiptCaptureReasonsAreBoundedAndRetained(t *testing.T) {
+	history := mekugiHistory{ChangeID: "amber1"}
+	reasons := []string{"capture deadline", "capture deadline", "capture budget exhausted", "a read error\n\x1b[31m", strings.Repeat("b long error ", 100)}
+	for i, reason := range reasons {
+		path := fmt.Sprintf("candidate-%d.go", i)
+		history.ReviewFiles = append(history.ReviewFiles, mekugi.RenderIncompleteReviewFile(path, path, reason))
+	}
+	text := editReceiptText("", history)
+	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: text})
+	if len(blocks) != 1 || blocks[0].Verb != "Capture" || !strings.Contains(text, `2 × "capture deadline"`) || !strings.Contains(text, "other reasons: 1") || len(text) > 650 || strings.ContainsAny(text, "\n\x1b") {
+		t.Fatalf("unbounded or ambiguous capture receipt: %q", text)
+	}
+	for i, reason := range reasons {
+		if history.ReviewFiles[i].Incomplete != reason {
+			t.Fatal("receipt mutated retained reason")
+		}
+	}
+	if !strings.Contains(text, "mchanges amber1 --summary") {
+		t.Fatal("missing per-path detail command")
 	}
 }

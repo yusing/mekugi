@@ -233,6 +233,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 	type counts struct {
 		added, removed int
 		incomplete     bool
+		reasons        []string
 		status         diffview.Status
 		managed        bool
 		composition    mekugi.ReviewComposition
@@ -247,6 +248,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 	stats := make(map[string]*counts)
 	var entries []*counts
 	managedKnown, managedUnknown, managedAdded, managedRemoved := 0, 0, 0, 0
+	managedReasons := make(map[string]int)
 	matched := false
 	var summary []changeCapture
 	summaryBytes := 0
@@ -382,7 +384,9 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 	for _, capture := range summary {
 		file := capture.files[0]
 		if file.Origin != "" && len(options.paths) == 0 {
-			if file.Incomplete != "" || file.Binary {
+			if file.Incomplete != "" {
+				managedReasons[file.Incomplete]++
+			} else if file.Binary {
 				managedUnknown++
 			} else {
 				managedKnown++
@@ -414,6 +418,9 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		}
 		stats[key(after)] = entry
 		entry.status.Add(file)
+		if file.Incomplete != "" && !slices.Contains(entry.reasons, file.Incomplete) {
+			entry.reasons = append(entry.reasons, file.Incomplete)
+		}
 		if !entry.uncomposable {
 			entry.uncomposable = entry.composition.ApplyWithHighlight(file, false, false) != nil
 		}
@@ -450,7 +457,11 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			path = "tool-managed\t" + path
 		}
 		if entry.incomplete {
-			fmt.Fprintf(&output, "%s\t-\t-\t%s\n", entry.status.ShortCode(), path)
+			fmt.Fprintf(&output, "%s\t-\t-\t%s", entry.status.ShortCode(), path)
+			if len(entry.reasons) != 0 {
+				fmt.Fprintf(&output, "\t%q", strings.Join(entry.reasons, "; "))
+			}
+			output.WriteByte('\n')
 		} else {
 			fmt.Fprintf(&output, "%s\t%d\t%d\t%s\n", entry.status.ShortCode(), entry.added, entry.removed, path)
 		}
@@ -464,6 +475,9 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			fmt.Fprintf(&output, "; %d counts unavailable", managedUnknown)
 		}
 		output.WriteByte('\n')
+	}
+	if len(managedReasons) != 0 {
+		fmt.Fprintf(&output, "? tool-managed: %s; use --history for paths and full reasons\n", captureGapSummary(managedReasons))
 	}
 	if len(options.paths) > 0 && !matched {
 		output.WriteString("no files match paths after --:")
@@ -479,6 +493,9 @@ func managedReviewRow(file mekugi.ReviewFile) string {
 	path := file.AfterPath
 	if path == "" {
 		path = file.BeforePath
+	}
+	if file.Incomplete != "" {
+		return fmt.Sprintf("Capture %q evidence unavailable: %q · %s", path, file.Incomplete, file.Origin)
 	}
 	added, removed := file.LineCounts()
 	counts := "counts unavailable"

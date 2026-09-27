@@ -13,39 +13,28 @@ import (
 
 func TestExecReconcileDoesNotClaimUnvisitedListedEntriesDeleted(t *testing.T) {
 	t.Parallel()
-	cp := execProducerCommand(t, "cp")
-	bash := execProducerCommand(t, "bash")
 	root := t.TempDir()
-	for index := range 600 {
-		path := filepath.Join(root, "src", fmt.Sprintf("file-%03d.txt", index))
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(fmt.Sprintf("source %03d\n", index)), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	zPath := filepath.Join(root, "dst", "src", "z")
+	zPath := filepath.Join(root, "z")
 	writeTestFile(t, zPath, "survives\n")
-
-	command := cp + " -r src dst"
-	observation := execProducerCapture(t, root, command)
-	execProducerRun(t, bash, root, command)
-	if got, err := os.ReadFile(zPath); err != nil || string(got) != "survives\n" {
-		t.Fatalf("cp did not preserve dst/src/z: got %q, %v", got, err)
+	info, err := os.Lstat(zPath)
+	if err != nil { t.Fatal(err) }
+	observation := execObservation{Class: execScoped.String(), Roots: []string{root}, Listings: []execListing{{Root: root, Entries: map[string]string{"z": execFileStamp(info)}}}}
+	for index := range maxExecListingEntries + 1 {
+		writeTestFile(t, filepath.Join(root, fmt.Sprintf("file-%04d.txt", index)), "new\n")
 	}
-
-	reviews, _, _, _ := reconcileExecObservation(*observation, execReconcileEnv{})
-	walkTruncated := false
+	reviews, complete, _, _ := reconcileExecObservation(observation, execReconcileEnv{})
+	walkTruncated, added := false, 0
 	for _, review := range reviews {
-		walkTruncated = walkTruncated || review.Incomplete == "more new files were not read"
+		walkTruncated = walkTruncated || review.Incomplete == "destination listing exceeds its bound"
 		if review.BeforePath == zPath && review.AfterPath == "" {
-			t.Fatalf("reconciliation falsely claims surviving dst/src/z was deleted: %+v", review)
+			t.Fatalf("reconciliation falsely claims surviving z was deleted: %+v", review)
 		}
+		if review.Incomplete == "" && review.BeforePath == "" { added++ }
 	}
-	if !walkTruncated {
-		t.Fatalf("reconciliation did not exercise the truncated destination walk: %+v", reviews)
+	if complete || !walkTruncated || added != maxExecListingEntries {
+		t.Fatalf("destination enumeration: complete=%v truncated=%v added=%d", complete, walkTruncated, added)
 	}
+
 }
 
 func TestExecBackupStarRetainsOperandDirectories(t *testing.T) {

@@ -249,7 +249,7 @@ func TestLiveDiffFileStatus(t *testing.T) {
 			mekugi.RenderReviewFile("/w/old.go", "/w/a.go", "", ""),
 			mekugi.RenderReviewFile("/w/a.go", "/w/a.go", "a\n", "b\n"),
 		}, "RM old.go → a.go"},
-		{"rename with unknown content", []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("/w/old.go", "/w/a.go", "unreadable")}, "RM old.go → a.go"},
+		{"rename with unknown content", []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("/w/old.go", "/w/a.go", "unreadable")}, "? old.go → a.go"},
 		{"binary move", []mekugi.ReviewFile{mekugi.RenderBinaryReviewFile("/w/old.bin", "/w/a.go", 3, 3, "abc", "abc")}, "R old.bin → a.go"},
 		{"binary rename with edit", []mekugi.ReviewFile{mekugi.RenderBinaryReviewFile("/w/old.bin", "/w/a.go", 3, 4, "abc", "abd")}, "RM old.bin → a.go"},
 		{"mchanges conflict", []mekugi.ReviewFile{conflicted}, "UU a.go"},

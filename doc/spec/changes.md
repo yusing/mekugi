@@ -49,8 +49,8 @@ forms remain open. `env -u`/`--unset` preserves underlying scope unless it remov
 omitted input are polling, not an additional writer.
 
 For a declared command, Mekugi captures the derived paths before the call is
-forwarded, within bounds on file count, file size, total and encoded size, and
-time. A path past a bound is recorded as omitted. When an earlier statement can
+forwarded, within bounds on file size, total and encoded size, enumeration, and
+time. There is no separate file-count or glob-match-count cap. A path past a bound is recorded as omitted. When an earlier statement can
 change what a destination names, such as a directory it creates or removes,
 every reading is captured. A recursive destination is listed so that files it
 gains are found afterward. A write through a symlink captures the link's
@@ -145,7 +145,7 @@ effects. Direct paths take capture priority; a path also in a managed scope stay
 direct with shared-origin attribution.
 
 Explicit `go fix` package operands scope existing Go source files, within the
-shared file, byte, enumeration, and capture-time limits. Tests and generators do
+shared byte, enumeration, and capture-time limits. Tests and generators do
 not imply ownership of their package directories. Import paths are not resolved
 by executing Go. An existing formatter/fixer path enumerated but not baselined
 after a capture bound is checked against a filesystem-clock marker after the call.
@@ -175,14 +175,23 @@ files excluded from the default diff. Pending and retired IDs remain visible;
 sibling threads' IDs are not exposed. Explicit IDs can still be read across
 agents in the shared namespace. The default view shows each ID and unified
 file diff. `--summary` prefixes each path's added and removed line counts with the same
-file status as the diff pane (`A`, `M`, `D`, `R`, `RM`, or `UU`), aggregating across
+file status as the diff pane (`A`, `M`, `D`, `R`, `RM`, `UU`, or `?` for incomplete evidence), aggregating across
 selected records in durable capture order, regardless of argument or author order.
 A created-then-deleted file has no summary row, matching the empty saved diff.
 Paths inside the selected workspace are shortened. By default,
-managed files become one compact `M +added -removed` row with a separate unavailable-count tally;
+confirmed managed files become one compact `M +added -removed` row with a separate binary unavailable-count tally;
+incomplete managed records form a separate `?` row with bounded reason counts, not claimed edits;
 explicit path filters expand individual managed paths. Pending, retired and never-allocated selections get per-ID
 status rows without hiding the remaining summary. It is not a net workspace diff;
-binary or incomplete files have unknown counts. Numeric range ends such as
+binary or incomplete files have unknown counts. Incomplete path rows append quoted retained
+reasons after the path column. Missing evidence cannot establish a modification, even when
+the record contains both path names. A sequence containing an incomplete capture stays `?`.
+Native edit receipts group incomplete paths separately from confirmed edits, show bounded
+reason counts, and link to `mchanges --summary` for direct per-path details or
+`mchanges --history` when managed omissions require expanded records. Compact managed
+summary rows also point to `--history` so their paths and full reasons remain discoverable. Historical omission
+records retain their original reasons; changing capture limits does not recover their baselines.
+Numeric range ends such as
 `amber1..3` are equivalent to `amber1..amber3`. A path operand belongs after `--`;
 unknown options are diagnosed as options. Missing-ID errors distinguish retired
 from never allocated, give the latest allocation for the stream, and identify
@@ -450,7 +459,8 @@ otherwise the path below it. Records from before attribution show an unknown
 caller, which filters like any other. File rows in the tree, flat list, Changes
 tab, and streaming title share one format: a colored git-style status, one
 space, then the name. The status is `A`, `D`, `M`, `R` for a rename with no
-content change, or `RM` for a rename with edits or uncaptured content; a rename
+content change, or `RM` for a rename with captured edits. `?` marks incomplete
+evidence without claiming a confirmed modification; a rename
 names its source as `old → new`. `UU` marks a net diff that still adds
 `mchanges` revert or apply conflict markers, and clears once they are resolved.
 Incoming updates retain the paused file, navigator cursor, and top-row identity

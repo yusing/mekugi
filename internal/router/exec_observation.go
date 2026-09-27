@@ -25,7 +25,6 @@ import (
 )
 
 const (
-	maxExecCaptureFiles = 256
 	// execCaptureHold bounds how long a call item waits for its pre-call
 	// capture. Unread paths become incomplete instead of delaying the host.
 	execCaptureHold = 500 * time.Millisecond
@@ -40,7 +39,6 @@ const (
 	// maxExecRecordBytes keeps the encoded reviews of a derived record below
 	// the store's record limit.
 	maxExecRecordBytes    = 24 << 20
-	maxExecGlobMatches    = 256
 	maxExecListingEntries = 4096
 )
 
@@ -435,44 +433,41 @@ type execListing struct {
 }
 
 type execCapture struct {
-	origin     string
-	deadline   time.Time
-	seen       map[string]bool
-	files      []execFileSnapshot
-	omitted    []execOmission
-	listings   []execListing
-	scopeRoots []string
-	listed     int
+	origin       string
+	deadline     time.Time
+	seen         map[string]bool
+	files        []execFileSnapshot
+	omitted      []execOmission
+	omittedPaths map[string]bool
+	listings     []execListing
+	scopeRoots   []string
+	listed       int
 	// removals are trees an earlier statement deletes or moves away.
 	removals []string
 	budget   int
 }
 
 func newExecCapture(deadline time.Time) *execCapture {
-	return &execCapture{deadline: deadline, seen: make(map[string]bool), budget: maxExecContentBytes}
+	return &execCapture{deadline: deadline, seen: make(map[string]bool), omittedPaths: make(map[string]bool), budget: maxExecContentBytes}
 }
 
 func (c *execCapture) omit(path, reason string) {
-	for _, omission := range c.omitted {
-		if omission.Path == path {
-			return
-		}
+	if c.omittedPaths[path] {
+		return
 	}
+	c.omittedPaths[path] = true
 	c.omitted = append(c.omitted, execOmission{Path: path, Reason: reason, Origin: c.origin})
 }
 
 // exhausted names the bound that stops further capture.
 func (c *execCapture) exhausted() string {
-	switch {
-	case len(c.files) >= maxExecCaptureFiles:
-		return "capture limit of " + strconv.Itoa(maxExecCaptureFiles) + " files"
-	case time.Now().After(c.deadline):
+	if time.Now().After(c.deadline) {
 		return "capture deadline"
 	}
 	return ""
 }
 
-// add snapshots one path once. Past the file cap or deadline the path is
+// add snapshots one path once. Past the capture deadline the path is
 // recorded as omitted, never silently dropped.
 func (c *execCapture) add(path string) {
 	c.addCopy(path, "")
@@ -498,7 +493,10 @@ func (c *execCapture) addCopy(path, source string) {
 		// fabricating a changed-file review for every unread path.
 		if slices.Contains([]string{"go fix", "gofmt", "goimports", "prettier", "eslint", "ruff format", "ruff check", "black", "rustfmt", "cargo fmt"}, c.origin) &&
 			slices.ContainsFunc(c.scopeRoots, func(root string) bool { return execPathWithin(path, root) }) {
-			c.omitted = append(c.omitted, execOmission{Path: path, Reason: reason, Origin: c.origin, Deferred: true})
+			if !c.omittedPaths[path] {
+				c.omittedPaths[path] = true
+				c.omitted = append(c.omitted, execOmission{Path: path, Reason: reason, Origin: c.origin, Deferred: true})
+			}
 			return
 		}
 		c.omit(path, reason)
@@ -604,11 +602,15 @@ func (c *execCapture) expand(operand execOperand) ([]string, bool) {
 		return []string{operand.Path}, true
 	}
 	matches, err := filepath.Glob(operand.Path)
-	if err != nil || len(matches) > maxExecGlobMatches {
+	if err != nil {
 		return nil, false
 	}
+	matchedPaths := make(map[string]bool, len(matches))
+	for _, path := range matches {
+		matchedPaths[path] = true
+	}
 	for path := range c.seen {
-		if matched, _ := filepath.Match(operand.Path, path); matched && !slices.Contains(matches, path) {
+		if matched, _ := filepath.Match(operand.Path, path); matched && !matchedPaths[path] {
 			matches = append(matches, path)
 		}
 	}
@@ -625,7 +627,7 @@ func (c *execCapture) entry(entry execScopeEntry) {
 	for _, operand := range entry.Operands {
 		matches, ok := c.expand(operand)
 		if !ok {
-			c.omit(operand.Path, "glob matches more than "+strconv.Itoa(maxExecGlobMatches)+" paths")
+			c.omit(operand.Path, "invalid glob pattern")
 			continue
 		}
 		sources = append(sources, matches...)
@@ -937,7 +939,7 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 		}
 		return false
 	}
-	found, walked := 0, 0
+	walked := 0
 	for _, listing := range observation.Listings {
 		// A cut listing cannot prove which files are new; its omission
 		// already marks the record incomplete.
@@ -949,7 +951,7 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 			if err != nil || entry.IsDir() || path == listing.Root {
 				return nil
 			}
-			if walked++; walked > maxExecListingEntries+maxExecCaptureFiles {
+			if walked++; walked > maxExecListingEntries {
 				reviews = append(reviews, mekugi.RenderIncompleteReviewFile(listing.Root, listing.Root, "destination listing exceeds its bound"))
 				complete = false
 				return filepath.SkipAll
@@ -962,11 +964,6 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 			if _, captured := after[path]; captured {
 				return nil
 			}
-			if found >= maxExecCaptureFiles {
-				reviews = append(reviews, mekugi.RenderIncompleteReviewFile(listing.Root, listing.Root, "more new files were not read"))
-				complete = false
-				return filepath.SkipAll
-			}
 			if stamp, listed := listing.Entries[relative]; listed {
 				if info, err := entry.Info(); err != nil || execFileStamp(info) != stamp {
 					reviews = append(reviews, mekugi.RenderIncompleteReviewFile(path, path, "modified; before content unavailable"))
@@ -974,7 +971,6 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 				}
 				return nil
 			}
-			found++
 			compare(execFileSnapshot{Path: path, Origin: listing.Origin})
 			return nil
 		})

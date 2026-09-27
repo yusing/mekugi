@@ -33,12 +33,16 @@ func TestMChangesCompactViewsKeepKnownStatsWithoutManagedNoise(t *testing.T) {
 		t.Fatal(err)
 	}
 	list, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, view: "list"})
-	if err != nil || list != id+" +1 -1 managed:2\n" {
+	if err != nil || list != id+" +1 -1 ? managed:2\n" {
 		t.Fatalf("compact list: %q %v", list, err)
 	}
 	summary, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}, view: "summary"})
-	if err != nil || summary != "M\t1\t1\tdirect.go\nM +1 -0; 1 counts unavailable\n" {
+	if err != nil || summary != "M\t1\t1\tdirect.go\nM +1 -0\n? tool-managed: incomplete evidence for 1 path (not confirmed edits): 1 × \"capture deadline\"; use --history for paths and full reasons\n" {
 		t.Fatalf("compact summary: %q %v", summary, err)
+	}
+	details, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}, view: "history"})
+	if err != nil || !strings.Contains(details, "unread.go") || !strings.Contains(details, "capture deadline") {
+		t.Fatalf("suggested history view lost managed gap details: %q %v", details, err)
 	}
 	review, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}})
 	if err != nil || !strings.Contains(review, "+new\n") || strings.Contains(review, "+package p\n") {
@@ -118,11 +122,14 @@ func TestMChangesSummaryFileStatusesMatchDiffPane(t *testing.T) {
 		{name: "added then edited", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("", "file", "", "a\n"), mekugi.RenderReviewFile("file", "file", "a\n", "b\n")}, want: "A\t2\t1\tfile\n"},
 		{name: "created then deleted", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("", "file", "", "a\n")}, later: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "", "a\n", "")}, want: ""},
 		{name: "deleted", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "", "a\n", "")}, want: "D\t0\t1\tfile\n"},
+		{name: "unknown candidate", files: []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("file", "file", "capture deadline")}, want: "?\t-\t-\tfile\t\"capture deadline\"\n"},
+		{name: "unknown then known edit", files: []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("file", "file", "capture deadline")}, later: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "b\n")}, want: "?\t-\t-\tfile\t\"capture deadline\"\n"},
+		{name: "known edit then unknown", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "b\n")}, later: []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("file", "file", "capture budget exhausted")}, want: "?\t-\t-\tfile\t\"capture budget exhausted\"\n"},
 		{name: "modified", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "b\n")}, want: "M\t1\t1\tfile\n"},
 		{name: "renamed", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("old", "new", "a\n", "a\n")}, want: "R\t0\t0\told => new\n"},
 		{name: "renamed and modified", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("old", "new", "a\n", "b\n")}, want: "RM\t1\t1\told => new\n"},
 		{name: "rename then edit in later change", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("old", "new", "a\n", "a\n")}, later: []mekugi.ReviewFile{mekugi.RenderReviewFile("new", "new", "a\n", "b\n")}, want: "RM\t1\t1\told => new\n"},
-		{name: "rename incomplete", files: []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("old", "new", "capture unavailable")}, want: "RM\t-\t-\told => new\n"},
+		{name: "rename incomplete", files: []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("old", "new", "capture unavailable")}, want: "?\t-\t-\told => new\t\"capture unavailable\"\n"},
 		{name: "binary rename", files: []mekugi.ReviewFile{mekugi.RenderBinaryReviewFile("old", "new", 3, 3, "abc", "abc")}, want: "R\t-\t-\told => new\n"},
 		{name: "conflict", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n")}, want: "UU\t4\t0\tfile\n"},
 		{name: "resolved conflict in later change", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n")}, later: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n", "c\n")}, want: "M\t5\t5\tfile\n"},

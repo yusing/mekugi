@@ -17,7 +17,7 @@ func TestManagedReviewRowDistinguishesBinaryFromMissingEvidence(t *testing.T) {
 		want string
 	}{
 		{mekugi.RenderBinaryReviewFile("asset", "asset", 2, 3, "before", "after"), `Edit "asset" binary (size/hash evidence) · go generate`},
-		{mekugi.RenderIncompleteReviewFile("asset", "asset", "baseline unavailable"), `Edit "asset" counts unavailable · go generate`},
+		{mekugi.RenderIncompleteReviewFile("asset", "asset", "baseline unavailable"), `Capture "asset" evidence unavailable: "baseline unavailable" · go generate`},
 	} {
 		test.file.Origin = "go generate"
 		if got := managedReviewRow(test.file); got != test.want {
