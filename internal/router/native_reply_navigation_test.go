@@ -122,7 +122,7 @@ func TestNativeUnretainedQuestionUsesActualText(t *testing.T) {
 	v := newLiveActivityView()
 	var out conversationLines
 	v.journalReplyContext(&out, activityui.AnswerGroup{Question: "Which exact assignment?", Target: 99}, 0, "", 100)
-	if len(out.lines) != 2 || !strings.Contains(ansi.Strip(out.lines[0]), "not loaded") || ansi.Strip(out.lines[1]) != "│ Which exact assignment?" {
+	if len(out.lines) != 2 || !strings.Contains(ansi.Strip(out.lines[0]), "not loaded") || ansi.Strip(out.lines[1]) != "▎ Which exact assignment?" {
 		t.Fatalf("missing original lost its quoted excerpt: %q", out.lines)
 	}
 	for _, target := range out.questions {
@@ -137,10 +137,10 @@ func TestNativeAssignmentExcerptWrapsAndRetainsTarget(t *testing.T) {
 	var out conversationLines
 	v.replyContext(&out, activityPaneEntry{Seq: 42, Kind: "assignment", assignment: &activityAssignment{text: "Review the response and verify the assignment excerpt wraps without losing its navigation target."}}, "│ ", 36)
 	v.replyExcerpt(&out, activityPaneEntry{Seq: 43}, "The response excerpt remains visible.", "│ ", "│ ", 36, conversationLatestRows)
-	if len(out.lines) < 5 || !strings.HasPrefix(ansi.Strip(out.lines[1]), "│ │ Review") || !strings.HasPrefix(ansi.Strip(out.lines[2]), "│ │ ") {
+	if len(out.lines) < 5 || !strings.HasPrefix(ansi.Strip(out.lines[1]), "│ ▎ Review") || !strings.HasPrefix(ansi.Strip(out.lines[2]), "│ ▎ ") {
 		t.Fatalf("assignment was not separately quoted and wrapped: %q", out.lines)
 	}
-	if !strings.HasSuffix(ansi.Strip(out.lines[2]), "…") || strings.TrimSpace(ansi.Strip(out.lines[2])) == "│ │ …" {
+	if !strings.HasSuffix(ansi.Strip(out.lines[2]), "…") || strings.TrimSpace(ansi.Strip(out.lines[2])) == "│ ▎ …" {
 		t.Fatalf("assignment ellipsis must end the last excerpt line: %q", out.lines)
 	}
 	for i, line := range out.lines {
@@ -200,8 +200,8 @@ func TestNativeExcerptEllipsisSkipsParagraphGaps(t *testing.T) {
 	}
 	want := []string{
 		got[0],
-		"│ Fix the finding.",
-		"│ Then rerun the tests.…",
+		"▎ Fix the finding.",
+		"▎ Then rerun the tests.…",
 		"APPROVE. No remaining actionable findings.",
 		"Verified with make test.…",
 		"↩ Open reply in Activity · +1 line",
@@ -246,7 +246,7 @@ func TestNativeRepliesShareHeaderQuoteAnswerLayout(t *testing.T) {
 						t.Fatalf("context row %d lost navigation", i)
 					}
 				}
-				if !strings.Contains(ansi.Strip(run.lines[1]), "↩ re:") || strings.Contains(ansi.Strip(run.lines[1]), "Original") || !strings.HasSuffix(ansi.Strip(run.lines[2]), "│ Original request.") || !strings.HasSuffix(ansi.Strip(run.lines[3]), "│ Second detail.…") || !strings.HasSuffix(ansi.Strip(run.lines[4]), "Answer body.") {
+				if !strings.Contains(ansi.Strip(run.lines[1]), "↩ re:") || strings.Contains(ansi.Strip(run.lines[1]), "Original") || !strings.HasSuffix(ansi.Strip(run.lines[2]), "▎ Original request.") || !strings.HasSuffix(ansi.Strip(run.lines[3]), "▎ Second detail.…") || !strings.HasSuffix(ansi.Strip(run.lines[4]), "Answer body.") {
 					t.Fatalf("expected header, quoted excerpt, answer: %q", run.lines)
 				}
 			})

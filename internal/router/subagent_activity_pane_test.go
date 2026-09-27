@@ -393,13 +393,13 @@ func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 	long := "Plan\n```go\n" + strings.Repeat("line\n", 20) + "```"
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", Text: long, Observed: time.Now()}}})
 	all := strings.Join(plainLines(view.render(80, 40, time.Now())), "\n")
-	if !strings.Contains(all, "… +11 lines") || !strings.Contains(all, "│ line") {
+	if !strings.Contains(all, "… +11 lines") || !strings.Contains(all, "  line") {
 		t.Fatalf("clamped feed = %s", all)
 	}
 	view.handleKey("", 'o')
 	only := plainLines(view.render(80, 40, time.Now()))
 	joined := strings.Join(only, "\n")
-	if strings.Contains(joined, "+11 lines") || strings.Count(joined, "│ line") != 20 || strings.Contains(joined, "● b") {
+	if strings.Contains(joined, "+11 lines") || strings.Count(joined, "  line") != 20 || strings.Contains(joined, "● b") {
 		t.Fatalf("only feed = %s", joined)
 	}
 	if !strings.HasPrefix(only[len(only)-1], "ONLY ·") || !strings.Contains(only[0], "only a (1/2)") {
@@ -452,7 +452,7 @@ func TestLiveActivitySnippetClick(t *testing.T) {
 			t.Fatalf("%v: click did not redraw", size)
 		}
 		expanded := view.render(size[0], size[1], now)
-		if clipped(expanded) || strings.Count(strings.Join(plainLines(expanded), "\n"), "│ line") != 20 {
+		if clipped(expanded) || strings.Count(strings.Join(plainLines(expanded), "\n"), "  line") != 20 {
 			t.Fatalf("%v: click did not expand: %q", size, plainLines(expanded))
 		}
 		// Hovering an expanded snippet underlines nothing; another click collapses it.

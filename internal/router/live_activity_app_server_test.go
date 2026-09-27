@@ -390,7 +390,7 @@ func TestLiveActivityMainJournalContentOnly(t *testing.T) {
 	if !strings.Contains(agents, "✓ Final answer") || strings.Contains(main, "Final answer") {
 		t.Fatal("Main heading change affected Agents or reused stale cache")
 	}
-	if !strings.Contains(main, "↩ re: original message (not loaded)") || !strings.Contains(main, "│ Original question") {
+	if !strings.Contains(main, "↩ re: original message (not loaded)") || !strings.Contains(main, "▎ Original question") {
 		t.Fatal("Main lost the actual question text")
 	}
 	for _, hidden := range []string{"amber", "apple"} {

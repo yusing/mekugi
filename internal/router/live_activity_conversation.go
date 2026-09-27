@@ -720,7 +720,7 @@ func liveActivityExcerpt(rows []string, width, limit int) ([]string, int) {
 	var kept []string
 	hidden := 0
 	for _, row := range rows {
-		if strings.Trim(ansi.Strip(row), " │") == "" {
+		if strings.Trim(ansi.Strip(row), " │▎") == "" {
 			continue
 		}
 		if len(kept) < limit {

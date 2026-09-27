@@ -314,8 +314,8 @@ func liveActivityLink(s string) (label, target string, end int, ok bool) {
 	return s[1:close], target, end, true
 }
 
-// markdown renders authored text: fenced programs are highlighted under a
-// gutter, list items hang, and tables keep their rows instead of wrapping.
+// markdown renders authored text: fenced programs are highlighted on a
+// fill, list items hang, and tables keep their rows instead of wrapping.
 func (p *Painter) Markdown(text string, width int) []string {
 	var lines, program, quote []string
 	flushQuote := func() {
@@ -331,7 +331,7 @@ func (p *Painter) Markdown(text string, width int) []string {
 				program = append(program, line)
 				continue
 			}
-			lines = append(lines, p.program(lang, strings.Join(program, "\n"), width)...)
+			lines = append(lines, p.fenced(lang, strings.Join(program, "\n"), width)...)
 			fence, program = "", nil
 			continue
 		}
@@ -359,7 +359,7 @@ func (p *Painter) Markdown(text string, width int) []string {
 	}
 	flushQuote()
 	if fence != "" {
-		lines = append(lines, p.program(lang, strings.Join(program, "\n"), width)...)
+		lines = append(lines, p.fenced(lang, strings.Join(program, "\n"), width)...)
 	}
 	for len(lines) > 0 && ansi.Strip(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
@@ -367,19 +367,21 @@ func (p *Painter) Markdown(text string, width int) []string {
 	return lines
 }
 
-// quote keeps a visible rail on every wrapped row and renders the quoted
-// Markdown normally, including lists, nested quotes, and fenced code.
+// quote keeps a visible bar on every wrapped row and renders the quoted
+// Markdown normally, including lists, nested quotes, and fenced code. The bar
+// is heavier than feed gutters so a quote reads as quoted, not as a thread.
 func (p *Painter) Quote(text string, width int) []string {
 	rows := p.Markdown(text, max(1, width-2))
 	if len(rows) == 0 {
 		rows = []string{""}
 	}
 	for i, row := range rows {
-		rows[i] = ansi.Truncate(Dim+"│"+Undim+" "+row, max(1, width), "")
+		rows[i] = ansi.Truncate(Dim+"▎"+Undim+" "+row, max(1, width), "")
 	}
 	return rows
 }
 
+// program keeps operation source under a gutter beside its verb.
 func (p *Painter) program(lang, source string, width int) []string {
 	var lines []string
 	for _, line := range p.Highlight(lang, source) {
@@ -388,6 +390,44 @@ func (p *Painter) program(lang, source string, width int) []string {
 		}
 	}
 	return lines
+}
+
+// fenced sets authored code on a padded fill so it cannot be mistaken for a
+// quote. Without a known background it is indented instead of guessing a fill.
+func (p *Painter) fenced(lang, source string, width int) []string {
+	fill := p.codeBackground()
+	var lines []string
+	for _, line := range p.Highlight(lang, source) {
+		for _, part := range Wrap(line, width-2, true) {
+			if fill == "" {
+				lines = append(lines, "  "+part)
+				continue
+			}
+			pad := strings.Repeat(" ", max(0, width-1-ansi.StringWidth(part)))
+			lines = append(lines, fill+" "+strings.ReplaceAll(part, Reset, Reset+fill)+pad+"\x1b[49m")
+		}
+	}
+	return lines
+}
+
+// codeBackground lifts the reported terminal background slightly toward its
+// foreground side, falling back to fixed fills for a theme known only by name.
+func (p *Painter) codeBackground() string {
+	if p.Colors.HasBackground {
+		bg, to := p.Colors.Background, uint8(255)
+		if p.Theme == livediff.LightTheme {
+			to = 0
+		}
+		channel := func(from uint8) int { return int(float64(from) + (float64(to)-float64(from))*.07 + .5) }
+		return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", channel(bg.R), channel(bg.G), channel(bg.B))
+	}
+	switch p.Theme {
+	case livediff.LightTheme:
+		return "\x1b[48;2;242;243;245m"
+	case livediff.DarkTheme:
+		return "\x1b[48;2;32;35;40m"
+	}
+	return ""
 }
 
 func liveActivityIndent(lines []string, prefix string) []string {
