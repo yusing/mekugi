@@ -10,7 +10,7 @@ import (
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
-func TestGroupOperationsExplorationAcrossEntries(t *testing.T) {
+func TestGroupOperationsGroupsOnlyEdits(t *testing.T) {
 	input := []activityui.Block{
 		{Source: 1, Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "a.go"}}},
 		{Source: 2, Kind: "op", Verb: "Search", Label: "needle", Results: new(3)},
@@ -24,59 +24,21 @@ func TestGroupOperationsExplorationAcrossEntries(t *testing.T) {
 	if !reflect.DeepEqual(input, original) {
 		t.Fatal("grouping mutated the input activity entries")
 	}
-	if len(got) != len(input) {
-		t.Fatalf("got %d blocks, want %d", len(got), len(input))
-	}
-	for i, block := range got {
-		heading := "Explored"
-		if i == 4 {
-			heading = ""
-		}
-		if block.GroupHeader != heading || block.GroupStart != (i == 0 || i == 5) {
-			t.Errorf("block %d group = %q, start=%t", i, block.GroupHeader, block.GroupStart)
-		}
-		block.GroupHeader, block.GroupStart = "", false
-		if !reflect.DeepEqual(block, input[i]) {
-			t.Errorf("grouping changed operation %d: %#v", i, block)
-		}
+	if !reflect.DeepEqual(got, input) {
+		t.Fatalf("operations other than edits were grouped: %#v", got)
 	}
 	p := activityui.Painter{}
 	var rows []string
 	for _, block := range got {
 		rows = append(rows, p.Block(block, 100)...)
 	}
-	if rendered := ansi.Strip(strings.Join(rows, "\n")); strings.Count(rendered, "• Explored") != 2 {
-		t.Fatalf("exploration headings did not respect Run boundary:\n%s", rendered)
-	} else if !strings.Contains(rendered, "needle (3 results)") {
-		t.Fatalf("grouping lost search result count:\n%s", rendered)
+	want := []string{"Read   a.go", "Search needle (3 results)", "List   internal", "Inspect a.go", "Ran    go test ./...", "Read   b.go"}
+	if got := plainLines(rows); !reflect.DeepEqual(got, want) {
+		t.Fatalf("operation rows = %q, want %q", got, want)
 	}
 }
 
-func TestExploredGroupUsesUniformIndentation(t *testing.T) {
-	p := activityui.Painter{}
-	blocks := activityui.GroupOperations([]activityui.Block{
-		{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "a.go"}}},
-		{Kind: "op", Verb: "Search", Label: "`needle`"},
-		{Kind: "op", Verb: "Inspect", Label: "`b.go`"},
-	})
-	for i, block := range blocks {
-		rows := p.Block(block, 80)
-		if i == 0 {
-			if rows[0] != "• Explored" {
-				t.Fatalf("unexpected exploration heading: %q", rows[0])
-			}
-			rows = rows[1:]
-		}
-		for _, row := range rows {
-			plain := ansi.Strip(row)
-			if !strings.HasPrefix(plain, "    "+block.Verb+" ") {
-				t.Errorf("exploration row is not uniformly indented: %q", plain)
-			}
-		}
-	}
-}
-
-func TestGroupOperationsEditInvocationHeaders(t *testing.T) {
+func TestGroupOperationsEditInvocationsShareVerbCell(t *testing.T) {
 	for _, source := range []string{"python3", "apply_patch", "perl"} {
 		t.Run(source, func(t *testing.T) {
 			input := []activityui.Block{
@@ -87,45 +49,156 @@ func TestGroupOperationsEditInvocationHeaders(t *testing.T) {
 			p := activityui.Painter{}
 			var rows []string
 			for i, block := range activityui.GroupOperations(input) {
-				if block.GroupHeader != source || block.GroupStart != (i != 1) {
-					t.Fatalf("block %d lost invocation boundary: %#v", i, block)
+				if block.GroupHeader != "Edited" || block.GroupStart != (i == 0) || block.Source != input[i].Source {
+					t.Fatalf("block %d group = %#v", i, block)
+				}
+				if i == 0 && block.GroupCount != 2 {
+					t.Fatalf("group counts %d invocations, want 2", block.GroupCount)
 				}
 				rows = append(rows, p.Block(block, 100)...)
 			}
-			for _, row := range rows {
-				plain := ansi.Strip(row)
-				if !strings.HasPrefix(plain, "• ") && !strings.HasPrefix(plain, "    Edit ") && !strings.HasPrefix(plain, "    Create ") && !strings.HasPrefix(plain, "    Delete ") {
-					t.Errorf("file row is not uniformly indented: %q", plain)
-				}
+			suffix := " via " + source + " ×2"
+			if source == "apply_patch" {
+				suffix = " ×2"
 			}
-			rendered := ansi.Strip(strings.Join(rows, "\n"))
-			if strings.Count(rendered, "• "+source) != 2 || strings.Count(rendered, source) != 2 {
-				t.Fatalf("source must appear only in each invocation header:\n%s", rendered)
+			// Rows share a verb cell as wide as the group's widest verb.
+			want := []string{
+				"Edited  a.go  +3 -1 ━━━━━━━━" + suffix,
+				"Created b.go  +2    ━━━━━━━━",
+				"Deleted c.go  -4    ━━━━━━━━ · exit 2",
 			}
-			for _, want := range []string{"a.go +3 -1", "b.go +2 -0", "c.go +0 -4", "(exit 2)"} {
-				if !strings.Contains(rendered, want) {
-					t.Errorf("missing %q in grouped edits:\n%s", want, rendered)
-				}
+			if got := plainLines(rows); !reflect.DeepEqual(got, want) {
+				t.Fatalf("rows = %q, want %q", got, want)
 			}
 		})
 	}
+	// Later Edit rows leave the shared verb cell blank.
+	p := activityui.Painter{}
+	var rows []string
+	for _, block := range activityui.GroupOperations([]activityui.Block{
+		{Kind: "op", Verb: "Edit", Label: "`a.go` +1 -0 · python3", EditSource: "python3", EditHeader: true},
+		{Kind: "op", Verb: "Edit", Label: "`b.go` +2 -0 · python3", EditSource: "python3"},
+	}) {
+		rows = append(rows, p.Block(block, 100)...)
+	}
+	if got := plainLines(rows); !strings.HasPrefix(got[0], "Edited a.go") || !strings.HasPrefix(got[1], "       b.go") {
+		t.Fatalf("rows = %q", got)
+	}
 }
 
-func TestEditGroupLongCommandHeaderWrapping(t *testing.T) {
+func TestEditGroupsSplitBySourceAndOutcome(t *testing.T) {
+	blocks := activityui.GroupOperations([]activityui.Block{
+		{Source: 1, Kind: "op", Verb: "Edit", Label: "`a.go` · +1 −0 · apply_patch", EditSource: "apply_patch", EditHeader: true},
+		{Source: 2, Kind: "op", Verb: "Edit", Label: "`a.go` +1 -0 · python3", EditSource: "python3", EditHeader: true},
+		{Source: 3, Kind: "op", Verb: "Edit", Label: "`a.go` · +1 −0 · failed · apply_patch", EditSource: "apply_patch", EditHeader: true},
+		{Source: 4, Kind: "op", Verb: "Edit", Label: "`a.go` · cat (requested)", EditSource: "cat (requested)", EditHeader: true},
+	})
+	want := []string{"Edited", "Edited", "Edit failed", "Edit requested"}
+	for i, block := range blocks {
+		if block.GroupHeader != want[i] || !block.GroupStart || block.GroupCount != 1 {
+			t.Errorf("block %d group = %q start=%t count=%d", i, block.GroupHeader, block.GroupStart, block.GroupCount)
+		}
+	}
+	if merged := activityui.MergeEdits(blocks); len(merged) != len(blocks) {
+		t.Fatalf("edits from different sources or outcomes merged: %d rows", len(merged))
+	}
+}
+
+func TestMergeEditsSumsRepeatedPaths(t *testing.T) {
+	blocks := activityui.GroupOperations([]activityui.Block{
+		{Source: 1, Kind: "op", Verb: "Edit", Label: "`a.go` · +2 −1 · apply_patch", EditSource: "apply_patch", EditHeader: true},
+		{Source: 1, Kind: "op", Verb: "Create", Label: "`b.go` · +4 −0 · apply_patch", EditSource: "apply_patch"},
+		{Kind: "filter", Body: "annotation"},
+		{Source: 2, Kind: "op", Verb: "Edit", Label: "`a.go` · +0 −0 · apply_patch", EditSource: "apply_patch", EditHeader: true},
+		{Source: 3, Kind: "op", Verb: "Edit", Label: "`b.go` · +5 −3 · apply_patch", EditSource: "apply_patch", EditHeader: true},
+		{Source: 4, Kind: "op", Verb: "Edit", Label: "`a.go` · +1 −1 · apply_patch", EditSource: "apply_patch", EditHeader: true, ExitCode: 1},
+	})
+	merged := activityui.MergeEdits(blocks)
+	var labels []string
+	for _, block := range merged {
+		labels = append(labels, block.Label)
+	}
+	want := []string{"`a.go` +2 -1 · apply_patch", "`b.go` +9 -3 · apply_patch", "annotation", "`a.go` · +1 −1 · apply_patch"}
+	labels[2] = merged[2].Body
+	if !reflect.DeepEqual(labels, want) {
+		t.Fatalf("merged labels = %q, want %q", labels, want)
+	}
+	if merged[0].GroupCount != 4 || merged[1].Verb != "Create" {
+		t.Fatalf("merge lost heading count or verb: %+v", merged[:2])
+	}
+	if again := activityui.MergeEdits(activityui.GroupOperations(merged)); !reflect.DeepEqual(again, activityui.GroupOperations(merged)) {
+		t.Fatal("merging is not idempotent")
+	}
+}
+
+func TestEditRowsAlignCounts(t *testing.T) {
+	p := activityui.Painter{}
+	blocks := activityui.GroupOperations([]activityui.Block{
+		{Kind: "op", Verb: "Edit", Label: "`doc/a.md` · +7 −0 · apply_patch", EditSource: "apply_patch", EditHeader: true},
+		{Kind: "op", Verb: "Edit", Label: "`internal/router/long_name.go` · +54 −2 · apply_patch", EditSource: "apply_patch"},
+	})
+	var columns []int
+	for _, block := range blocks {
+		rows := p.Block(block, 80)
+		plain := ansi.Strip(rows[0])
+		columns = append(columns, strings.Index(plain, "+"))
+	}
+	if columns[0] < 0 || columns[0] != columns[1] {
+		t.Fatalf("count columns = %v", columns)
+	}
+	narrow := p.Block(blocks[1], 40)
+	for _, row := range narrow {
+		if ansi.StringWidth(row) > 40 {
+			t.Fatalf("aligned row exceeds width: %q", ansi.Strip(row))
+		}
+	}
+}
+
+func TestEditRowsShareCountColumnWhenTight(t *testing.T) {
+	p := activityui.Painter{}
+	paths := []string{"README.md", "doc/spec/native_ui.md", "internal/router/app_server_resume_codex_e2e_test.go", "internal/router/app_server_ui.go"}
+	counts := []int{46, 337, 97, 919}
+	var input []activityui.Block
+	for i, path := range paths {
+		input = append(input, activityui.Block{Kind: "op", Verb: "Edit", Label: fmt.Sprintf("`%s` +%d -0 · python3", path, counts[i]), EditSource: "python3", EditHeader: i == 0})
+	}
+	blocks := activityui.GroupOperations(input)
+	// Widths where the shortest counts fit the widest path's column but the
+	// widest counts do not, and where the column must narrow.
+	for _, width := range []int{68, 69, 60} {
+		columns := map[int]bool{}
+		for _, block := range blocks {
+			rows := p.Block(block, width)
+			for _, row := range rows {
+				if ansi.StringWidth(row) > width {
+					t.Fatalf("row exceeds width %d: %q", width, ansi.Strip(row))
+				}
+			}
+			plain := ansi.Strip(rows[0])
+			columns[ansi.StringWidth(plain[:strings.Index(plain, "+")])] = true
+		}
+		if len(columns) != 1 {
+			t.Fatalf("count columns at width %d = %v", width, columns)
+		}
+	}
+}
+
+func TestEditGroupLongSourceWrapping(t *testing.T) {
 	p := activityui.Painter{}
 	source := "git stash push -m 'save pending changes before rebase'"
 	for _, width := range []int{24, 40} {
-		block := activityui.GroupOperations([]activityui.Block{
+		blocks := activityui.GroupOperations([]activityui.Block{
 			{Kind: "op", Verb: "Edit", Label: "`a.go` +2 -1 · " + source, EditSource: source, EditHeader: true},
-		})[0]
-		rows := p.Block(block, width)
+			{Kind: "op", Verb: "Edit", Label: "`b.go` +1 -1 · " + source, EditSource: source},
+		})
+		rows := p.Block(blocks[0], width)
 		for _, row := range rows {
 			if ansi.StringWidth(row) > width {
-				t.Fatalf("header or file row exceeds width %d: %q", width, row)
+				t.Fatalf("file row exceeds width %d: %q", width, row)
 			}
 		}
 		plain := strings.Join(strings.Fields(ansi.Strip(strings.Join(rows, " "))), " ")
-		if !strings.Contains(plain, "• "+source) || !strings.Contains(plain, "Edit a.go +2 -1") {
+		if !strings.Contains(plain, "Edited a.go +2 -1") || !strings.Contains(plain, "via "+source) {
 			t.Fatalf("wrapped group lost content at width %d: %q", width, plain)
 		}
 	}
@@ -134,72 +207,230 @@ func TestEditGroupLongCommandHeaderWrapping(t *testing.T) {
 func TestOperationGroupWrapping(t *testing.T) {
 	for _, width := range []int{24, 40} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			// Wide enough rows shorten the path's middle rather than wrap it.
+			wraps := width < 30
 			p := activityui.Painter{}
 			blocks := activityui.GroupOperations([]activityui.Block{
 				{Kind: "op", Verb: "Edit", Label: "`internal/router/long_activity_filename.go` +13 -11 · python3", EditSource: "python3", EditHeader: true},
+				{Kind: "op", Verb: "Edit", Label: "`a.go` +1 -1 · python3", EditSource: "python3"},
 				{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "internal/router/long_activity_filename.go", Ranges: []string{"1:100"}}}},
+				{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "a.go"}}},
 			})
-			for _, block := range blocks {
+			for _, block := range []activityui.Block{blocks[0], blocks[2]} {
 				rows := p.Block(block, width)
-				if len(rows) < 3 {
-					t.Fatalf("expected wrapped nested operation, got %q", rows)
+				// A source that does not fit follows on its own row.
+				if wraps && len(rows) < 2 || !wraps && (len(rows) > 2 || len(rows) == 2 && strings.TrimSpace(ansi.Strip(rows[1])) != "via python3") {
+					t.Fatalf("unexpected operation layout at width %d: %q", width, plainLines(rows))
 				}
 				for i, row := range rows {
 					if ansi.StringWidth(row) > width {
 						t.Errorf("row %d exceeds width %d: %q", i, width, ansi.Strip(row))
 					}
-					if i > 0 && !strings.HasPrefix(ansi.Strip(row), "  ") {
-						t.Errorf("row %d escaped group indentation: %q", i, ansi.Strip(row))
+					if i > 0 && !strings.HasPrefix(ansi.Strip(row), "       ") {
+						t.Errorf("row %d escaped its verb column: %q", i, ansi.Strip(row))
 					}
 				}
 				compact := strings.Join(strings.Fields(ansi.Strip(strings.Join(rows, ""))), "")
-				if !strings.Contains(compact, "internal/router/long_activity_filename.go") {
-					t.Errorf("wrapped operation lost its path: %q", compact)
+				if wraps && !strings.Contains(compact, "internal/router/long_activity_filename.go") ||
+					!wraps && (!strings.Contains(compact, "…/long_acti") || !strings.Contains(compact, "name.go")) {
+					t.Errorf("operation lost its path: %q", compact)
 				}
 			}
 		})
 	}
 }
 
-func TestEditGroupHeaderUsesShellHighlighting(t *testing.T) {
+func TestEditGroupSourceUsesShellHighlighting(t *testing.T) {
 	p := activityui.Painter{}
-	for _, source := range []string{"git stash push", "git stash push -m 'save edits'", "python3", "apply_patch", "echo `pwd` > out.txt"} {
+	for _, source := range []string{"git stash push", "git stash push -m 'save edits'", "python3", "echo `pwd` > out.txt", "cat, python3"} {
 		t.Run(source, func(t *testing.T) {
 			blocks := activityui.GroupOperations([]activityui.Block{
 				{Kind: "op", Verb: "Edit", Label: "`a.go` +2 -1 · " + source, EditSource: source, EditHeader: true},
+				{Kind: "op", Verb: "Edit", Label: "`b.go` +1 -1 · " + source, EditSource: source},
 			})
 			rows := p.Block(blocks[0], 100)
-			want := "• " + strings.Join(p.Highlight("bash", source), " ")
-			if len(rows) < 2 || rows[0] != want || ansi.Strip(rows[0]) != "• "+source {
-				t.Fatalf("header = %q, want Bash-highlighted %q", rows, want)
+			if len(rows) != 1 || !strings.HasSuffix(ansi.Strip(rows[0]), " via "+source) {
+				t.Fatalf("first row = %q", plainLines(rows))
 			}
-			if rows[0] == ansi.Strip(rows[0]) {
-				t.Fatalf("header has no syntax colors: %q", rows[0])
+			// Each source of a multi-source edit is its own command.
+			for part := range strings.SplitSeq(source, ", ") {
+				if highlighted := strings.Join(p.Highlight("bash", part), " "); !strings.Contains(rows[0], highlighted) || highlighted == part {
+					t.Fatalf("row %q lacks Bash-highlighted %q", rows[0], highlighted)
+				}
+			}
+			if later := plainLines(p.Block(blocks[1], 100)); strings.Contains(later[0], source) {
+				t.Fatalf("later row repeats the source: %q", later)
 			}
 		})
 	}
-	block := activityui.GroupOperations([]activityui.Block{{Kind: "op", Verb: "Read", Label: "`a.go`"}})[0]
-	if got := p.Block(block, 100)[0]; got != "• Explored" {
-		t.Fatalf("exploration heading was syntax highlighted: %q", got)
+	requested := activityui.GroupOperations([]activityui.Block{
+		{Kind: "op", Verb: "Edit", Label: "`a.go` · cat (requested)", EditSource: "cat (requested)", EditHeader: true},
+		{Kind: "op", Verb: "Edit", Label: "`b.go` · cat (requested)", EditSource: "cat (requested)"},
+	})[0]
+	rows := p.Block(requested, 100)
+	if ansi.Strip(rows[0]) != "Edit   a.go via cat · requested" || strings.Contains(strings.Join(rows, ""), "requested)") {
+		t.Fatalf("requested edit row = %q", rows)
 	}
 }
 
-func TestGroupReasoningOnlyMergesAdjacentShortSummary(t *testing.T) {
-	for _, body := range []string{"**Locating files**", "**Heading**\n\nFirst paragraph.\n\nSecond paragraph."} {
-		for _, adjacent := range []bool{true, false} {
-			input := []activityui.Block{{Source: 1, Kind: "summary", Body: body}}
-			if !adjacent {
-				input = append(input, activityui.Block{Kind: "op", Verb: "Run", Code: "pwd"})
-			}
-			input = append(input, activityui.Block{Source: 2, Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "a.go"}}})
-			got := activityui.GroupOperations(input)
-			want := adjacent && !strings.Contains(body, "\n")
-			if got[0].GroupSummary != want || (got[len(got)-1].GroupReasoning != "") != want || input[0].GroupSummary {
-				t.Fatalf("incorrect reasoning merge: %+v", got)
-			}
-			if again := activityui.GroupOperations(got); !reflect.DeepEqual(again, got) {
-				t.Fatal("reasoning grouping is not idempotent")
-			}
+func TestRanRowWrapsAtShellWords(t *testing.T) {
+	p := activityui.Painter{}
+	command := "go test ./internal/router -run 'Native Patch|CodeMode' -count=1"
+	block := activityui.Block{Kind: "op", Verb: "Run", Code: command, Lang: "bash", Fenced: true, ExitCode: 1,
+		Tail: []string{"--- FAIL: TestX", "FAIL"}, TailOmitted: 3}
+	rows := p.Block(block, 44)
+	plain := plainLines(rows)
+	for _, row := range rows {
+		if ansi.StringWidth(row) > 44 {
+			t.Fatalf("row exceeds width: %q", ansi.Strip(row))
 		}
+	}
+	if !strings.HasPrefix(plain[0], "Ran    go test") || !strings.Contains(rows[0], activityui.Red+"\x1b[1mRan") {
+		t.Fatalf("failed command row = %q", plain)
+	}
+	var joined []string
+	for _, row := range plain {
+		if strings.HasPrefix(row, "       ┆") || strings.HasPrefix(row, "       · exit") {
+			continue
+		}
+		row = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(row, "Ran"), " \\"))
+		joined = append(joined, row)
+	}
+	if got := strings.Join(joined, " "); got != command {
+		t.Fatalf("wrapped command = %q from %q", got, plain)
+	}
+	for _, row := range plain {
+		// The quoted pattern holds a blank, which is not a break point.
+		if strings.HasSuffix(row, "'Native \\") {
+			t.Fatalf("broke inside quotes: %q", plain)
+		}
+	}
+	tail := strings.Join(plain, "\n")
+	for _, want := range []string{"       · exit 1", "       ┆ … 3 earlier lines", "       ┆ --- FAIL: TestX", "       ┆ FAIL"} {
+		if !strings.Contains(tail, want) {
+			t.Fatalf("missing %q:\n%s", want, tail)
+		}
+	}
+}
+
+func TestRanRowPutsStatementsOnRows(t *testing.T) {
+	p := activityui.Painter{}
+	command := `git status --short; git show --format=fuller 20ba742c && cat "a b.md" || true; find . -exec rm {} \; ; echo $(a; b)`
+	want := []string{
+		"Ran    git status --short;",
+		"       git show --format=fuller 20ba742c &&",
+		`       cat "a b.md" ||`,
+		"       true;",
+		`       find . -exec rm {} \; ;`,
+		"       echo $(a; b)",
+	}
+	if plain := plainLines(p.Block(activityui.Block{Kind: "op", Verb: "Run", Code: command, Lang: "bash", Fenced: true}, 60)); !reflect.DeepEqual(plain, want) {
+		t.Fatalf("statement rows = %q", plain)
+	}
+	if short := plainLines(p.Block(activityui.Block{Kind: "op", Verb: "Run", Code: "git diff --cc", Lang: "bash", Fenced: true}, 60)); len(short) != 1 {
+		t.Fatalf("a command that fits was wrapped: %q", short)
+	}
+}
+
+func TestFitPathKeepsFileName(t *testing.T) {
+	p := activityui.Painter{}
+	long := "/tmp/codex-go-quality/37a43aab6e2751ad1c16ab071dfd2df9160db3e5ed0eedcf/reports/a7c95cd1cbde870158cbe777f6e8bf8db071e4291.diff"
+	for _, path := range []string{long, "/tmp/codex-go-quality/37a43aab6e2751ad1c16ab071dfd2df9160db3e5ed0eedcf/reports/r.diff"} {
+		block := activityui.Block{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: path, Ranges: []string{"1:9"}}}}
+		rows := p.Block(block, 60)
+		plain := ansi.Strip(rows[0])
+		if len(rows) != 1 || ansi.StringWidth(rows[0]) > 60 || !strings.Contains(plain, "…") || !strings.HasSuffix(plain, ".diff L1–9") {
+			t.Fatalf("fitted read = %q", plainLines(rows))
+		}
+	}
+}
+
+func TestMergeEditsRestartsAfterDelete(t *testing.T) {
+	blocks := activityui.GroupOperations([]activityui.Block{
+		{Source: 1, Kind: "op", Verb: "Create", Label: "`a.go` · +10 −0 · apply_patch", EditSource: "apply_patch", EditHeader: true},
+		{Source: 2, Kind: "op", Verb: "Delete", Label: "`a.go` · +0 −10 · apply_patch", EditSource: "apply_patch", EditHeader: true},
+		{Source: 3, Kind: "op", Verb: "Create", Label: "`a.go` · +3 −0 · apply_patch", EditSource: "apply_patch", EditHeader: true},
+	})
+	if merged := activityui.MergeEdits(blocks); len(merged) != 3 || merged[2].Verb != "Create" {
+		t.Fatalf("recreate merged across its delete: %+v", merged)
+	}
+}
+
+func TestOperationRowsNameTheirOutcome(t *testing.T) {
+	p := activityui.Painter{}
+	for _, tc := range []struct {
+		name   string
+		blocks []activityui.Block
+		want   []string
+	}{
+		{"ran", []activityui.Block{{Kind: "op", Verb: "Run", Code: "git diff --cc", Lang: "bash", Fenced: true},
+			{Kind: "filter", Body: "~tokens 1.2K→700"}}, []string{"Ran    git diff --cc", "       ~tokens 1.2K→700"}},
+		{"failed", []activityui.Block{{Kind: "op", Verb: "Run", Code: "false", Lang: "bash", Fenced: true, ExitCode: 1, Tail: []string{"boom"}}},
+			[]string{"Ran    false · exit 1", "       ┆ boom"}},
+		{"failed program", []activityui.Block{{Kind: "op", Verb: "Run", Code: "print(1)\nprint(2)", Lang: "python", Fenced: true, ExitCode: 3}},
+			[]string{"Ran    │ print(1)", "       │ print(2)", "       · exit 3"}},
+		{"search", []activityui.Block{{Kind: "op", Verb: "Search", Label: "`^test` in `Makefile`"}}, []string{"Search ^test in Makefile"}},
+		{"edited", []activityui.Block{{Kind: "op", Verb: "Edit", Label: "`a.go` +4 -2 · python3", EditSource: "python3", EditHeader: true}},
+			[]string{"Edited a.go +4 -2 via python3"}},
+		{"created", []activityui.Block{{Kind: "op", Verb: "Create", Label: "`b.go` +6 -0", EditSource: "apply_patch", EditHeader: true}},
+			[]string{"Created b.go +6"}},
+		{"failed edit", []activityui.Block{
+			{Kind: "op", Verb: "Edit", Label: "`c.go` +1 -1 · failed", EditSource: "apply_patch", EditHeader: true},
+			{Kind: "op", Verb: "Edit", Label: "`d.go` +1 -0 · failed", EditSource: "apply_patch"},
+		}, []string{"Edit   c.go  +1 -1 · failed", "       d.go  +1"}},
+		{"requested", []activityui.Block{{Kind: "op", Verb: "Edit", Label: "`a.go` · cat (requested)", EditSource: "cat (requested)", EditHeader: true}},
+			[]string{"Edit   a.go via cat · requested"}},
+		{"merged", []activityui.Block{
+			{Kind: "op", Verb: "Edit", Label: "`a.go` +1 -1 · python3", EditSource: "python3", EditHeader: true},
+			{Kind: "op", Verb: "Edit", Label: "`a.go` +2 -0 · python3", EditSource: "python3", EditHeader: true},
+		}, []string{"Edited a.go +3 -1 via python3 ×2"}},
+		// Reasoning stays its own row, which heads the operations after it.
+		{"reasoning", []activityui.Block{{Kind: "summary", Body: "**Checking**"}, {Kind: "op", Verb: "Read", Label: "`Makefile`"}},
+			[]string{"• Checking", "Read   Makefile"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var rows []string
+			for _, block := range activityui.MergeEdits(activityui.GroupOperations(tc.blocks)) {
+				rows = append(rows, p.Block(block, 80)...)
+			}
+			if got := plainLines(rows); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("rows = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFailedRanRowKeepsExitAfterWrappedCommand(t *testing.T) {
+	p := activityui.Painter{}
+	block := activityui.Block{Kind: "op", Verb: "Run", Code: "go test ./internal/router -count=1", Lang: "bash", Fenced: true, ExitCode: 2}
+	got := plainLines(p.Block(block, 30))
+	if got[len(got)-1] != "         -count=1 · exit 2" {
+		t.Fatalf("wrapped failure = %q", got)
+	}
+	for _, row := range p.Block(block, 30) {
+		if ansi.StringWidth(row) > 30 {
+			t.Fatalf("row exceeds width: %q", ansi.Strip(row))
+		}
+	}
+}
+
+func TestAlignVerbsPadsOnlyToAdjacentVerbs(t *testing.T) {
+	p := activityui.Painter{}
+	blocks := activityui.AlignVerbs([]activityui.Block{
+		{Kind: "op", Verb: "Run", Code: "git status", Lang: "bash", Fenced: true},
+		{Kind: "filter", Body: "~tokens 1.2K→700"},
+		{Kind: "op", Verb: "Run JavaScript", Label: "`x()`"},
+		{Kind: "summary", Body: "**Checking**"},
+		{Kind: "op", Verb: "Read", Label: "`a.go`"},
+		{Kind: "op", Verb: "Search", Label: "`needle`"},
+	})
+	var rows []string
+	for _, block := range blocks {
+		rows = append(rows, p.Block(block, 80)...)
+	}
+	// A verb wider than the default column does not widen its neighbors'.
+	want := []string{"Ran git status", "    ~tokens 1.2K→700", "Run JavaScript x()", "• Checking", "Read   a.go", "Search needle"}
+	if got := plainLines(rows); !reflect.DeepEqual(got, want) {
+		t.Fatalf("rows = %q, want %q", got, want)
 	}
 }

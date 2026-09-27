@@ -1,45 +1,56 @@
 package activity
 
 import (
+	"fmt"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // The agents pane parses the router's own commentary grammar back into parts
 // so it can lay them out natively. Unrecognized text stays a plain text block;
 // nothing is interpreted, expanded, or executed.
 type Block struct {
-	Source         uint64 // Activity entry identity for exact cross-pane navigation.
-	Kind           string // op, reads, message, start, error, text
-	Verb           string // Operation verb, or a message headline.
-	Label          string // Markdown remainder of the operation label.
-	Code           string // Inline code or fenced program under the label.
-	Lang           string
-	Fenced         bool
-	From, To       string
-	Owner          string
-	Body           string
-	Reads          []Read
-	Journal        *Journal // A final answer in journal-result form.
-	Results        *int
-	ExitCode       int    // Nonzero command exit; zero means no failure label.
-	EditSource     string // Editing source shared by this invocation's file rows.
-	EditHeader     bool   // First row of a contiguous source group.
-	GroupHeader    string // Presentation-only operation group.
-	GroupStart     bool
-	GroupReasoning string // Adjacent single-line reasoning carried by this heading.
-	GroupSummary   bool   // The original reasoning row is rendered in the next heading.
+	Source      uint64 // Activity entry identity for exact cross-pane navigation.
+	Kind        string // op, reads, message, start, error, text
+	Verb        string // Operation verb, or a message headline.
+	Label       string // Markdown remainder of the operation label.
+	Code        string // Inline code or fenced program under the label.
+	Lang        string
+	Fenced      bool
+	From, To    string
+	Owner       string
+	Body        string
+	Reads       []Read
+	Journal     *Journal // A final answer in journal-result form.
+	Results     *int
+	ExitCode    int    // Nonzero command exit; zero means no failure label.
+	EditSource  string // Editing source shared by this invocation's file rows.
+	EditHeader  bool   // First row of a contiguous source group.
+	GroupHeader string // Presentation-only edit outcome shared by a group's rows.
+	GroupStart  bool
+	GroupCount  int // Edit invocations in this group.
+	VerbAlign   int // Widest row verb in this row's group.
+	VerbColumn  int // Verb column shared with adjacent operations; 0 uses the default.
+	PathAlign   int // Widest aligned edit path in this row's group.
+	StatAlign   int // Widest line-count text in this row's group.
+	StatScale   int // Largest changed-line total in a multi-row group; 0 omits bars.
+	Tail        []string
+	TailOmitted int // Output lines before Tail.
 }
 
-// GroupOperations adds Codex-style headings without combining invocation identities.
-// EditHeader comes from the entry parser; exploration may span adjacent entries.
+// GroupOperations groups adjacent edits from one source and outcome, across
+// invocations, so their rows share one verb cell. Invocation identities stay
+// on their rows. Other operations stand alone.
 func GroupOperations(blocks []Block) []Block {
 	blocks = slices.Clone(blocks)
-	previous := ""
+	previous, previousSource, start := "", "", -1
 	for i := range blocks {
 		b := &blocks[i]
-		b.GroupReasoning, b.GroupSummary = "", false
+		b.GroupCount = 0
 		if b.Kind == "filter" {
 			// Attached output annotations belong to the preceding operation.
 			b.GroupHeader, b.GroupStart = previous, false
@@ -47,26 +58,233 @@ func GroupOperations(blocks []Block) []Block {
 		}
 		heading := ""
 		if b.EditSource != "" {
-			heading = b.EditSource
-		} else if slices.Contains([]string{"Read", "Search", "List", "Inspect"}, b.Verb) && (b.Kind == "op" || b.Kind == "reads") {
-			heading = "Explored"
+			heading = editHeading(*b)
 		}
 		b.GroupHeader = heading
-		b.GroupStart = heading != "" && (heading != previous || b.EditHeader)
-		previous = heading
+		b.GroupStart = heading != "" && (heading != previous || b.EditSource != previousSource)
+		previous, previousSource = heading, b.EditSource
+		if b.GroupStart {
+			start = i
+		}
+		if b.EditSource != "" && (b.EditHeader || b.GroupStart) {
+			blocks[start].GroupCount++
+		}
 	}
-	for i := 1; i < len(blocks); i++ {
-		previous, current := &blocks[i-1], &blocks[i]
-		if previous.Kind != "summary" || !current.GroupStart {
-			continue
+	measureGroups(blocks)
+	return blocks
+}
+
+const requestedEdit = " (requested)"
+
+// editHeading keeps intent and failures from reading as completed edits.
+func editHeading(b Block) string {
+	if strings.HasSuffix(b.EditSource, requestedEdit) {
+		return "Edit requested"
+	}
+	label := editLabel(b)
+	for _, status := range []string{"failed", "declined", "pending"} {
+		if strings.HasSuffix(label, " · "+status) {
+			return "Edit " + status
 		}
-		body := ReasoningSummaryBody(previous.Body)
-		if body != "" && !strings.ContainsAny(body, "\r\n") {
-			previous.GroupSummary = true
-			current.GroupReasoning = body
+	}
+	return "Edited"
+}
+
+// widestAlignedVerb is the widest verb that pads to a shared column; wider
+// verbs take their own width rather than widening their neighbors' column.
+const widestAlignedVerb = 7
+
+// AlignVerbs gives each run of adjacent operations one verb column, as wide as
+// the widest verb in that run, so rows pad only to the verbs beside them.
+func AlignVerbs(blocks []Block) []Block {
+	blocks = slices.Clone(blocks)
+	for start := 0; start < len(blocks); {
+		end, column := start, 0
+		for ; end < len(blocks) && slices.Contains([]string{"op", "reads", "filter"}, blocks[end].Kind); end++ {
+			if w := ansi.StringWidth(RowVerb(blocks[end])); blocks[end].Kind != "filter" && w <= widestAlignedVerb {
+				column = max(column, w+1)
+			}
 		}
+		for k := start; k < end; k++ {
+			blocks[k].VerbColumn = column
+		}
+		start = max(end, start+1)
 	}
 	return blocks
+}
+
+// RowVerb is the verb a row shows.
+func RowVerb(b Block) string {
+	switch {
+	case b.Kind == "op" && b.Verb == "Run":
+		return "Ran"
+	case b.GroupHeader != "":
+		return EditVerb(b)
+	}
+	return b.Verb
+}
+
+// EditVerb is a grouped row's verb: past tense once confirmed, and otherwise
+// the requested action, whose status the group's first row names.
+func EditVerb(b Block) string {
+	if b.GroupHeader != "Edited" {
+		return b.Verb
+	}
+	switch b.Verb {
+	case "Create":
+		return "Created"
+	case "Delete":
+		return "Deleted"
+	case "Move":
+		return "Moved"
+	}
+	return "Edited"
+}
+
+// EditStatus is the outcome a group's first row names after its source.
+func EditStatus(b Block) string {
+	_, status, _ := strings.Cut(b.GroupHeader, " ")
+	return status
+}
+
+// measureGroups sets each edit group's shared verb, path, and count columns
+// and its bar scale from the rows it currently holds.
+func measureGroups(blocks []Block) {
+	type group struct{ verb, path, stats, scale, rows int }
+	groups := make(map[int]*group)
+	starts := make([]int, len(blocks))
+	start := -1
+	for i, b := range blocks {
+		switch {
+		case b.GroupStart:
+			start = i
+		case b.GroupHeader == "":
+			start = -1
+		}
+		starts[i] = -1
+		blocks[i].VerbAlign, blocks[i].PathAlign, blocks[i].StatAlign, blocks[i].StatScale = 0, 0, 0, 0
+		if start < 0 || b.Kind != "op" {
+			continue
+		}
+		starts[i] = start
+		g := groups[start]
+		if g == nil {
+			g = &group{}
+			groups[start] = g
+		}
+		g.verb = max(g.verb, len(EditVerb(b)))
+		path, added, removed, _, ok := EditStat(editLabel(b))
+		if !ok {
+			continue
+		}
+		g.path = max(g.path, ansi.StringWidth(path))
+		g.stats = max(g.stats, len(editCounts(added, removed)))
+		g.scale = max(g.scale, added+removed)
+		g.rows++
+	}
+	for i := range blocks {
+		g := groups[starts[i]]
+		if starts[i] < 0 || g == nil {
+			continue
+		}
+		blocks[i].VerbAlign = g.verb
+		// A lone file row has no column to share.
+		if g.rows > 1 {
+			blocks[i].PathAlign, blocks[i].StatAlign = g.path, g.stats
+			// Bars compare confirmed changes only.
+			if blocks[i].GroupHeader == "Edited" {
+				blocks[i].StatScale = g.scale
+			}
+		}
+	}
+}
+
+// editCounts is a row's line counts with zero counts omitted.
+func editCounts(added, removed int) string {
+	var counts []string
+	if added > 0 {
+		counts = append(counts, fmt.Sprintf("+%d", added))
+	}
+	if removed > 0 {
+		counts = append(counts, fmt.Sprintf("-%d", removed))
+	}
+	return strings.Join(counts, " ")
+}
+
+// editLabel is a file row's label without the source its heading names.
+func editLabel(b Block) string {
+	if b.EditSource == "" {
+		return b.Label
+	}
+	return strings.TrimSuffix(b.Label, " · "+b.EditSource)
+}
+
+// Receipts write "`path` +A -R"; app-server rows write "`path` · +A −R".
+var editStatPattern = regexp.MustCompile(`^(?: ·)? \+(\d+) [-−](\d+)((?: · [^` + "`" + `]*)?)$`)
+
+// EditStat reads a file row label as a path, line counts, and a trailing status.
+func EditStat(label string) (path string, added, removed int, tail string, ok bool) {
+	path, end, ok := liveActivityCodeSpan(label, 0)
+	if !ok {
+		return "", 0, 0, "", false
+	}
+	match := editStatPattern.FindStringSubmatch(label[end:])
+	if match == nil {
+		return "", 0, 0, "", false
+	}
+	added, _ = strconv.Atoi(match[1])
+	removed, _ = strconv.Atoi(match[2])
+	return path, added, removed, match[3], true
+}
+
+// MergeEdits folds repeated edits of one path under one Edited heading into a
+// single row with summed counts. It drops rows, so only views that do not
+// navigate by row identity use it.
+func MergeEdits(blocks []Block) []Block {
+	var merged []Block
+	rows := make(map[string]int)
+	for _, block := range blocks {
+		if block.GroupStart || block.GroupHeader != "Edited" || block.Verb == "Delete" || block.Verb == "Move" {
+			// A later row after a delete or move describes a new file state.
+			clear(rows)
+		}
+		path, added, removed, tail, ok := EditStat(editLabel(block))
+		mergeable := ok && block.GroupHeader == "Edited" && block.Kind == "op" && block.ExitCode == 0 && tail == ""
+		if !mergeable {
+			merged = append(merged, block)
+			continue
+		}
+		if k, found := rows[path]; found && (block.Verb == "Edit" || block.Verb == merged[k].Verb) {
+			last := &merged[k]
+			_, a, r, _, _ := EditStat(editLabel(*last))
+			last.Label = fmt.Sprintf("%s +%d -%d · %s", codeSpan(path), a+added, r+removed, last.EditSource)
+			continue
+		}
+		if block.Verb == "Edit" || block.Verb == "Create" {
+			rows[path] = len(merged)
+		}
+		merged = append(merged, block)
+	}
+	measureGroups(merged)
+	return merged
+}
+
+// codeSpan encloses text in a Markdown code span that liveActivityCodeSpan reads back.
+func codeSpan(text string) string {
+	run, longest := 0, 0
+	for _, r := range text {
+		if r == '`' {
+			run++
+			longest = max(longest, run)
+		} else {
+			run = 0
+		}
+	}
+	fence := strings.Repeat("`", longest+1)
+	if longest > 0 || strings.HasPrefix(text, " ") && strings.HasSuffix(text, " ") && len(text) > 1 {
+		return fence + " " + text + " " + fence
+	}
+	return fence + text + fence
 }
 
 // Journal is a child's journal result laid out by the router's

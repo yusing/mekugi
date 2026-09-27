@@ -98,7 +98,9 @@ func (u *appServerUI) restoreHistory(turns []appServerHistoryTurn) {
 					native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, searchResults: appServerSearchResults(item)}}
 				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 				if item.ExitCode != nil && *item.ExitCode != 0 {
-					u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID}}})
+					exit := activityPaneEntry{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID}
+					exit.outputTail, exit.outputOmit = appServerOutputTail(item.AggregatedOutput)
+					u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{exit}})
 				}
 			default:
 				u.view.applyAppServerItem(u.thread, u.thread, turn.ID, item.ID, method, "", item)

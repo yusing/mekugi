@@ -271,7 +271,9 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 				}
 				entries = append(entries, entry)
 				if item.ExitCode != nil && *item.ExitCode != 0 {
-					entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: name, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID, Observed: observed})
+					exit := activityPaneEntry{Seq: s.next(), Agent: name, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID, Observed: observed}
+					exit.outputTail, exit.outputOmit = appServerOutputTail(item.AggregatedOutput)
+					entries = append(entries, exit)
 				}
 			case "agentMessage":
 				entry.Kind, entry.Text = "text", item.Text

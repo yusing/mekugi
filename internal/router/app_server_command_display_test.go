@@ -150,7 +150,7 @@ func TestLiveActivitySkillRendering(t *testing.T) {
 				t.Fatalf("skill blocks: %+v", blocks)
 			}
 			rows := strings.Join(p.Block(blocks[0], 120), "\n")
-			if !strings.HasPrefix(rows, activityui.VerbColor("Skill")) || activityui.VerbColor("Skill") == "" {
+			if !strings.Contains(rows, activityui.VerbColor("Skill")+"\x1b[1mSkill") || activityui.VerbColor("Skill") == "" {
 				t.Fatalf("uncolored skill: %q", rows)
 			}
 			if strings.Contains(command, " run ") && !strings.Contains(ansi.Strip(rows), "Skill  run use-modern-go/scripts/run-tool.sh list --go-version 1.27") {

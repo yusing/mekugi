@@ -103,7 +103,12 @@ func TestAppServerCapturedEditReceipts(t *testing.T) {
 			}
 			for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
 				painted := strings.Join((&activityui.Painter{Theme: theme}).Block(tc.view.blocks[i][0], 120), "\n")
-				if !strings.HasPrefix(ansi.Strip(painted), "• "+tc.program+"\n    Edit") || strings.Contains(ansi.Strip(painted), " · "+tc.program) {
+				// The file row names its outcome and source.
+				heading := "Edited " + tc.path + " +1 -1 via " + tc.program
+				if tc.program == "apply_patch" {
+					heading = "Edited " + tc.path + " +1 -1"
+				}
+				if !strings.HasPrefix(ansi.Strip(painted), heading) || strings.Contains(ansi.Strip(painted), " · "+tc.program) {
 					t.Fatalf("source was not a shared edit header: %q", painted)
 				}
 			}

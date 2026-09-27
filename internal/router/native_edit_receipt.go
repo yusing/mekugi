@@ -117,7 +117,11 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 		if len(managed) > len(names) {
 			label += ", …"
 		}
-		summaries = append(summaries, fmt.Sprintf("+ %d tool-managed files (%s)", len(managed), label))
+		summary := fmt.Sprintf("+ %d tool-managed files (%s)", len(managed), label)
+		if exec != nil && len(exec.Labels) != 0 {
+			summary += " · " + strings.Join(exec.Labels, ", ")
+		}
+		summaries = append(summaries, summary)
 	}
 	if len(reasons) != 0 {
 		// Capture omissions are evidence gaps, not confirmed edits. Keep the

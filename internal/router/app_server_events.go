@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/pathdisplay"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
@@ -261,7 +262,9 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			entry := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerToolText(item, s.cwd), CallID: id, Observed: now, native: native}
 			entries = append(entries, entry)
 			if m.Method == "item/completed" && item.ExitCode != nil && *item.ExitCode != 0 {
-				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: id, Observed: now})
+				exit := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: id, Observed: now}
+				exit.outputTail, exit.outputOmit = appServerOutputTail(item.AggregatedOutput)
+				entries = append(entries, exit)
 			}
 		case "imageView":
 			entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: "View " + commentaryCode(pathdisplay.ForWorkspace(s.cwd, item.Path)), CallID: id, Observed: now, native: native})
@@ -383,6 +386,45 @@ func appServerCommandText(item appServerItem, cwd string) string {
 	return strings.Join(parts, "\n\n")
 }
 
+const (
+	appServerTailLines = 5
+	appServerTailBytes = 512 // Per line, before sanitizing.
+)
+
+// appServerOutputTail keeps the last non-blank lines of a failed command's
+// host output for display. It never reads beyond the host's aggregate, and
+// counts the lines it leaves out.
+func appServerOutputTail(output *string) ([]string, int) {
+	if output == nil {
+		return nil, 0
+	}
+	text := strings.TrimRight(*output, " \t\r\n")
+	if text == "" {
+		return nil, 0
+	}
+	var tail []string
+	for len(tail) < appServerTailLines && text != "" {
+		line := text
+		if i := strings.LastIndexByte(text, '\n'); i >= 0 {
+			line, text = text[i+1:], text[:i]
+		} else {
+			text = ""
+		}
+		if len(line) > appServerTailBytes {
+			line = strings.ToValidUTF8(line[:appServerTailBytes], "") + "…"
+		}
+		if line = strings.TrimRight(livediff.Safe(line, false), " "); strings.TrimSpace(line) != "" {
+			tail = append(tail, line)
+		}
+	}
+	slices.Reverse(tail)
+	omitted := 0 // Lines before the tail's first line; blanks within it carry nothing.
+	if text != "" {
+		omitted = strings.Count(text, "\n") + 1
+	}
+	return tail, omitted
+}
+
 // Hide only the host's literal shell command wrapper, never evaluate its words
 // or discard surrounding operations. Execution and retained items stay intact.
 // Source: codex-rs/shell-command/src/bash.rs:106:121@86be5320 extract_bash_command
@@ -449,8 +491,12 @@ func appServerEditText(item appServerItem, cwd string) string {
 			verb = "Delete"
 		}
 		text := verb + " " + commentaryCode(pathdisplay.ForWorkspace(cwd, change.Path)) + fmt.Sprintf(" · +%d −%d", added, removed)
-		if item.Status == "failed" || item.Status == "declined" {
+		switch item.Status {
+		case "failed", "declined":
 			text += " · " + item.Status
+		case "inProgress":
+			// Started patches may still await approval; only completion confirms them.
+			text += " · pending"
 		}
 		parts = append(parts, text+" · apply_patch")
 	}

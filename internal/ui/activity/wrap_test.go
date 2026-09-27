@@ -71,7 +71,7 @@ func TestReadsTakeOneRowEachWhenWrapped(t *testing.T) {
 	}
 	for i, row := range rows {
 		plain := ansi.Strip(row)
-		if strings.Contains(plain, "·") || !strings.HasSuffix(plain, ".go") && !strings.HasSuffix(plain, "1:100") || ansi.StringWidth(row) > 60 {
+		if strings.Contains(plain, "·") || !strings.HasSuffix(plain, ".go") && !strings.HasSuffix(plain, "L1–100") || ansi.StringWidth(row) > 60 {
 			t.Fatalf("row %d = %q", i, plain)
 		}
 	}

@@ -332,22 +332,47 @@ The pane renders child activity natively rather than as commentary Markdown. It
 parses the router's own commentary grammar into operations, messages, start
 notices, and errors, and shows each with verb colors, path emphasis, and syntax
 highlighting in the terminal's theme. Text it does not recognize stays plain.
-Confirmed edit events group file rows beneath one editing-source header per
-invocation (including `python3` and `apply_patch`), without repeating the source
-as a trailing file label. Editing-source headers use Bash syntax highlighting,
-including shell commands such as `git stash push`, rather than Markdown styling.
-File rows share uniform indentation beneath the heading, without partial tree connectors.
-Unresolved edit targets remain an explicit `paths unavailable` row in the same group.
-Separate invocations are not merged by source name.
+Operations are flat rows, each led by a colored verb. Adjacent operations pad
+their verbs to one column as wide as the widest verb among them, not to verbs
+elsewhere in the feed; a verb wider than seven cells takes its own width rather
+than widening its neighbors' column. A reasoning summary is a `•` row that heads
+the operations after it: they branch from it as one tree with `├`, `└`, and a `│`
+rail beside continuation rows, with no blank row between the reasoning and its
+tree. The connectors sit beneath the reasoning bullet; in Main one blank row
+separates each reasoning and its tree from the next. Operations with no reasoning above them form the same tree.
+Tools that continue a reasoning after agent traffic name it on a continuation row.
+Confirmed edit events group file rows for adjacent invocations from the same
+editing source; the rows share one verb cell and one tree branch. The first row
+names the group's verb, and later rows leave the cell blank unless their verb
+differs from `Edit`. Confirmed rows use past tense (`Edited`, `Created`,
+`Deleted`, `Moved`). The first row names a source other than stock `apply_patch`
+after `via`, with `×N` when the group spans N invocations, without repeating it
+as a trailing file label; each comma-separated source uses its own Bash syntax
+highlighting, including shell commands such as `git stash push`, rather than
+Markdown styling. Requested edit intent keeps the requested verb, such as `Edit`,
+in amber and never reads `Edited`; the first row ends with `· requested`, and its
+`(requested)` marker is not shown as source text. A started patch that has not
+completed, including one awaiting approval, ends with `· pending`; a `failed` or
+`declined` patch uses a red verb and ends with `· failed` or `· declined`, named
+once for the group rather than on every row. A different source or outcome
+starts a new group. A source and outcome that do not fit after the first file
+take their own row in the verb column.
+File rows' line counts share one column within a group of more than one row when
+the row fits, and zero counts are omitted. In an `Edited` group of more than one
+row, an eight-cell bar after the counts scales each row's changed lines against
+the group's largest.
+A path too wide for its row keeps its file name and elides the middle of its
+directory, or of the name itself when that alone is too wide; below a readable
+width it wraps instead. A receipt's tool-managed files are one row in the
+receipt source's `Edited` group. Unresolved edit targets remain an explicit
+`paths unavailable` row in the same group. Main also folds repeated confirmed edits of one path within
+a group into one row with summed counts; Activity keeps each invocation's rows,
+since cross-pane navigation targets them.
 They retain paths and line counts but omit diff bodies in the
 pane; durable change evidence and inline receipts are unchanged. This omission
 applies only to generated tool activity, not authored text. Output-reduction
-summaries align with command text and use muted, dimmed styling in either theme.
-Consecutive reads, inspections, searches, and directory listings share a Codex-style
-`Explored` heading and nested rows, stopping at other operations or agent boundaries.
-An immediately preceding single-line reasoning summary shares the edit or `Explored`
-heading after a separator, rather than repeating as a standalone row. Multiline
-reasoning and reasoning separated by other activity remain standalone.
+summaries align with command text on their operation's branch and use muted,
+dimmed styling in either theme.
 Consecutive same-action target events by one agent collapse into one row, both
 within a call and across calls. Reads join ranges of the same file; Inspect,
 List, Search, and other target-only actions use the same grouping. A group that
@@ -358,12 +383,21 @@ controls. Local absolute-path Markdown links show their label as a terminal
 hyperlink rather than exposing the raw destination syntax. A completed child
 compaction appears as an event in the feed and as the agent's latest roster
 activity; an attempted or failed compaction does not claim completion.
-Fenced `Run` previews put the first source row beside the verb when space
-allows. `Run JavaScript` Code Mode previews always place source beneath the
-heading with the same code gutter, whether the source has one line or many.
-A confirmed nonzero command exit displays a red `(exit N)` beside a
-single-line `Run` or beneath a multiline one. Unknown and zero exits add no
-failure label. Python, JavaScript (Node and Bun), and Perl interpreter previews use
+Read line spans display as `L25–46`. Each `Run` operation is its own `Ran` row.
+A single-line command follows the verb. When it does not fit, each top-level
+statement after `;`, `&&`, or `||` starts a row aligned with the first, and a
+statement that is still too wide breaks at unquoted blanks with a muted ` \`
+shell continuation, or after a pipe, two columns deeper; a word wider than the
+row is cut without one. Fenced multiline `Run` previews sit beside the verb with
+the code gutter. `Run JavaScript` Code Mode previews always place source beneath
+the heading with the same code gutter, whether the source has one line or many.
+A confirmed nonzero command exit makes the verb red and adds `· exit N` after
+the command, or on its own row when it does not fit or follows a multiline
+program; the roster summary keeps a red `(exit N)`. When the host reports
+aggregated output for that failure, the last five non-blank lines follow the
+command under a muted dashed `┆` gutter, distinct from the code gutter, sanitized
+and bounded per line, with a count of earlier lines.
+Unknown and zero exits add no failure label and no output. Python, JavaScript (Node and Bun), and Perl interpreter previews use
 their own syntax colors. `Search` patterns are styled as literal patterns,
 not shell commands, while every target path uses the Search violet with path emphasis.
 A final answer in journal-result form is laid out natively: a heading with its

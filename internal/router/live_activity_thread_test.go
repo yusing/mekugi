@@ -179,7 +179,7 @@ func TestConversationMainToolsFollowTheirLead(t *testing.T) {
 	plain := render(reasoning, done, edit)
 	text := strings.Join(plain, "\n")
 	card, seed, tool := row(plain, "lookup"), row(plain, "Preparing regression seed"), row(plain, "Edit")
-	if card < 0 || seed < card || tool != seed+2 || strings.Contains(text, "continued") {
+	if card < 0 || seed < card || tool != seed+1 || strings.Contains(text, "continued") {
 		t.Fatalf("Main's tools are not under their reasoning:\n%s", text)
 	}
 
@@ -188,7 +188,8 @@ func TestConversationMainToolsFollowTheirLead(t *testing.T) {
 	text = strings.Join(plain, "\n")
 	card, seed, tool = row(plain, "lookup"), row(plain, "Preparing regression seed"), row(plain, "Edit")
 	resumed := row(plain, "continued")
-	if seed != 0 || row(plain, "Explored") != seed || row(plain, "Read") != seed+1 || resumed < card || !strings.Contains(plain[resumed], "Preparing regression seed") || tool != resumed+1 {
+	// The read branches from its reasoning row.
+	if seed != 0 || row(plain, "└ Read") != seed+1 || resumed < card || !strings.Contains(plain[resumed], "Preparing regression seed") || tool != resumed+1 {
 		t.Fatalf("Main's later tools do not continue their reasoning:\n%s", text)
 	}
 	for _, line := range plain {
@@ -197,8 +198,8 @@ func TestConversationMainToolsFollowTheirLead(t *testing.T) {
 		}
 	}
 
-	// Tools directly under their lead are unchanged.
-	if plain := render(reasoning, edit, done); row(plain, "Edit") != 2 || row(plain, "continued") >= 0 {
+	// Tools directly under their lead branch from it.
+	if plain := render(reasoning, edit, done); row(plain, "Edit") != 1 || row(plain, "continued") >= 0 {
 		t.Fatalf("uninterrupted tools moved:\n%s", strings.Join(plain, "\n"))
 	}
 }

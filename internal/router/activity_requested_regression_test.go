@@ -1,6 +1,7 @@
 package router
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -8,7 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func TestRequestedEditGroupsStayWithinInvocation(t *testing.T) {
+func TestRequestedEditGroupsMergeAdjacentInvocations(t *testing.T) {
 	for _, agent := range []string{"Main", "/root/worker"} {
 		v := newLiveActivityView()
 		v.childrenOnly = agent != "Main"
@@ -27,10 +28,21 @@ func TestRequestedEditGroupsStayWithinInvocation(t *testing.T) {
 			feed = v.renderConversation(100)
 		}
 		got := ansi.Strip(strings.Join(feed.lines, "\n"))
-		if strings.Count(got, "• python3") != 2 || strings.Count(got, "• apply_patch") != 1 || strings.Contains(got, " · python3") || strings.Contains(got, " · apply_patch") {
+		if strings.Count(got, "Edited  a.go") != 1 || strings.Count(got, "via python3 ×2") != 1 || strings.Count(got, "Edit    c.go") != 1 || strings.Count(got, "· failed") != 1 || strings.Contains(got, "apply_patch") || strings.Contains(got, " · python3") {
 			t.Fatalf("%s invocation grouping:\n%s", agent, got)
 		}
-		for _, want := range []string{"a.go +2 -1", "b.go +3 -0", "c.go", "d.go", "failed"} {
+		// Main folds repeated paths; Activity keeps each invocation's rows for navigation.
+		rows := []string{"a.go  +4 -2", "b.go  +6"}
+		if agent != "Main" {
+			rows = []string{"a.go  +2 -1", "b.go  +3"}
+		}
+		for _, row := range rows {
+			if count := strings.Count(got, row); agent == "Main" && count != 1 || agent != "Main" && count != 2 {
+				t.Fatalf("%s shows %q %d times:\n%s", agent, row, count, got)
+			}
+		}
+		// The failed group's first row names the outcome for both rows.
+		for _, want := range []string{"c.go  +1 -1 · failed", "        d.go  +1"} {
 			if !strings.Contains(got, want) {
 				t.Fatalf("%s lost %q:\n%s", agent, want, got)
 			}
@@ -51,7 +63,12 @@ func TestRequestedEditGroupKeepsUnresolvedPaths(t *testing.T) {
 				feed = v.renderConversation(100)
 			}
 			got := ansi.Strip(strings.Join(feed.lines, "\n"))
-			if strings.Count(got, "python3 (requested)") != 1 || !strings.Contains(got, "    Edit   paths unavailable") || !strings.Contains(got, "go test ./...") {
+			// The verb column is as wide as the widest verb beside it.
+			row := "Edit paths unavailable via python3 · requested"
+			if known != "" {
+				row = "     paths unavailable"
+			}
+			if strings.Count(got, "· requested") != 1 || strings.Contains(got, "(requested)") || !strings.Contains(got, row) || !strings.Contains(got, "go test ./...") {
 				t.Fatalf("%s lost or detached unresolved targets:\n%s", agent, got)
 			}
 			if known != "" && !strings.Contains(got, "a.go") {
@@ -61,11 +78,11 @@ func TestRequestedEditGroupKeepsUnresolvedPaths(t *testing.T) {
 	}
 }
 
-func TestRequestedReasoningMergedWithOperationGroup(t *testing.T) {
+func TestRequestedReasoningHeadsOperationTree(t *testing.T) {
 	for _, agent := range []string{"Main", "/root/worker"} {
-		for _, operation := range []struct{ text, header string }{
-			{"Read `a.go`\n\nSearch `needle`", "Explored"},
-			{"Edit `a.go` +2 -1 · git stash push\n\nEdit `b.go` +1 -0 · git stash push", "git stash push"},
+		for _, operation := range []struct{ text, first string }{
+			{"Read `a.go`\n\nSearch `needle`", "├ Read   a.go"},
+			{"Edit `a.go` +2 -1 · git stash push\n\nEdit `b.go` +1 -0 · git stash push", "└ Edited a.go"},
 		} {
 			v := newLiveActivityView()
 			v.childrenOnly = agent != "Main"
@@ -78,15 +95,17 @@ func TestRequestedReasoningMergedWithOperationGroup(t *testing.T) {
 			if agent == "Main" {
 				feed = v.renderConversation(100)
 			}
-			got := ansi.Strip(strings.Join(feed.lines, "\n"))
-			if !strings.Contains(got, "• "+operation.header+" · Locating targeted files") || strings.Count(got, "Locating targeted files") != 1 {
-				t.Fatalf("%s did not merge corresponding reasoning:\n%s", agent, got)
+			plain := plainLines(feed.lines)
+			row := slices.IndexFunc(plain, func(row string) bool { return strings.Contains(row, "• Locating targeted files") })
+			// The operations branch from the reasoning row with no gap between.
+			if row < 0 || row+1 >= len(plain) || !strings.Contains(plain[row+1], operation.first) || strings.Count(strings.Join(plain, "\n"), "Locating targeted files") != 1 {
+				t.Fatalf("%s reasoning does not head its operations:\n%s", agent, strings.Join(plain, "\n"))
 			}
 		}
 	}
 }
 
-func TestRequestedExploredKeepsAttachedFilter(t *testing.T) {
+func TestRequestedReadKeepsAttachedFilter(t *testing.T) {
 	for _, agent := range []string{"Main", "/root/worker"} {
 		v := newLiveActivityView()
 		v.childrenOnly = agent != "Main"
@@ -100,8 +119,8 @@ func TestRequestedExploredKeepsAttachedFilter(t *testing.T) {
 			feed = v.renderConversation(100)
 		}
 		got := ansi.Strip(strings.Join(feed.lines, "\n"))
-		if strings.Count(got, "• Explored") != 1 || !strings.Contains(got, "    filtered output") || strings.Contains(got, "└ filtered") || strings.Contains(got, "├ filtered") || !strings.Contains(got, "Search") {
-			t.Fatalf("%s detached filter from exploration:\n%s", agent, got)
+		if !strings.Contains(got, "├ Read   a.go\n") || !strings.Contains(got, "│        filtered output") || strings.Contains(got, "└ filtered") || strings.Contains(got, "├ filtered") || !strings.Contains(got, "└ Search needle") {
+			t.Fatalf("%s detached filter from its read:\n%s", agent, got)
 		}
 	}
 }

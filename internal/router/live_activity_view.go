@@ -204,6 +204,9 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 						if v.blocks[i][j].Verb == "Run" || v.blocks[i][j].Verb == "Skill" || v.blocks[i][j].Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, v.blocks[i][j].Verb) {
 							v.blocks[i][j].ExitCode, _ = strconv.Atoi(entry.Text)
 						}
+						if v.blocks[i][j].Verb == "Run" {
+							v.blocks[i][j].Tail, v.blocks[i][j].TailOmitted = entry.outputTail, entry.outputOmit
+						}
 					}
 					v.runs = nil
 					break
@@ -1230,13 +1233,17 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 	if v.childrenOnly {
 		gutter = activityui.Gutter(agent, v.painter.Theme) + "│" + activityui.Reset + " "
 	}
-	previousMessage := false
+	previousMessage, previousSummary := false, false
 	operation := func(block activityui.Block) bool { return block.Kind == "op" || block.Kind == "reads" }
+	// An edit group's later rows and output notes continue the branch above.
+	continued := func(block activityui.Block) bool {
+		return block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart
+	}
 	rail := ""
-	blocks = activityui.GroupOperations(blocks)
+	blocks = activityui.AlignVerbs(activityui.GroupOperations(blocks))
 	for index, block := range blocks {
 		// Native Activity joins consecutive operations into one tree.
-		tree := v.childrenOnly && operation(block) && block.GroupHeader == ""
+		tree := v.childrenOnly && operation(block) && !continued(block)
 		part := v.painter.Block(block, width-2)
 		switch {
 		case tree:
@@ -1248,15 +1255,14 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 			continue
 		}
 		message := slices.Contains([]string{"text", "message", "final", "summary", "start"}, block.Kind)
-		if len(run.lines) > 1 && (message || previousMessage) {
+		// Reasoning heads the operations after it, so no gap parts them.
+		headed := previousSummary && operation(block)
+		if len(run.lines) > 1 && (message || previousMessage) && !headed {
 			run.lines = append(run.lines, gutter)
 			run.snippets = append(run.snippets, liveActivitySnippet{})
 			run.questions = append(run.questions, 0)
 		}
-		previousMessage = message
-		if block.GroupReasoning != "" && index > 0 && blocks[index-1].Source != 0 {
-			run.entryRows[blocks[index-1].Source] = len(run.lines)
-		}
+		previousMessage, previousSummary = message, block.Kind == "summary"
 		if block.Source != 0 {
 			if _, exists := run.entryRows[block.Source]; !exists {
 				run.entryRows[block.Source] = len(run.lines)
@@ -1282,8 +1288,8 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		case tree:
 			last := true
 			for _, next := range blocks[index+1:] {
-				if next.Kind != "filter" {
-					last = !operation(next) || next.GroupHeader != ""
+				if !continued(next) {
+					last = !operation(next)
 					break
 				}
 			}
@@ -1295,7 +1301,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 			if last {
 				rail = "  "
 			}
-		case v.childrenOnly && block.Kind == "filter" && rail != "":
+		case v.childrenOnly && continued(block) && rail != "":
 			for k := range part {
 				part[k] = activityui.Dim + rail + activityui.Undim + part[k]
 			}

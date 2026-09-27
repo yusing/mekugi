@@ -52,6 +52,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		agent       string // Thread agent, or "" when the item cannot join one.
 		aside       bool   // Main reasoning, which neither starts nor ends a thread.
 		lead        int    // Entry index of the Main item a tool group continues, or -1.
+		attached    bool   // Tools branching from the reasoning directly above, with no gap.
 	}
 	var items []item
 	for i := 0; i < len(v.entries); {
@@ -129,22 +130,13 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			headed = true
 		}
 	}
-	// Keep a short, adjacent reasoning summary on the first operation-group
-	// heading. Other reasoning and intervening agent traffic stay independent.
-	merged := items[:0]
-	for k := 0; k < len(items); k++ {
-		it := items[k]
-		if it.aside && k+1 < len(items) && items[k+1].first == it.last+1 && conversationTool(v.entries[items[k+1].first]) {
-			pair := append(slices.Clone(v.blocks[it.first]), v.blocks[items[k+1].first]...)
-			grouped := activityui.GroupOperations(pair)
-			if len(grouped) > 0 && grouped[0].GroupSummary {
-				it.last, it.aside = items[k+1].last, false
-				k++
-			}
-		}
-		merged = append(merged, it)
+	// Reasoning heads the tools that directly follow it in display order.
+	// Tools that continue it after agent traffic name it instead.
+	for k := 1; k < len(items); k++ {
+		previous := items[k-1]
+		items[k].attached = items[k].lead < 0 && conversationTool(v.entries[items[k].first]) &&
+			previous.aside && v.entries[previous.first].Agent == "Main" && v.conversationLead(previous.first)
 	}
-	items = merged
 	start := 0 // Thread's first item.
 	for k, it := range items {
 		var thread conversationThread
@@ -171,7 +163,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			}
 		}
 		used[key] = run
-		if len(feed.lines) > 0 && !thread.joined {
+		if len(feed.lines) > 0 && !thread.joined && !it.attached {
 			feed.lines = append(feed.lines, "")
 			feed.heads = append(feed.heads, len(feed.lines)-1)
 			feed.snippets = append(feed.snippets, liveActivitySnippet{})
@@ -326,28 +318,25 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		}
 	case entry.Agent == "You":
 		v.userItem(&out, entry, width)
-	case conversationTool(entry) || entry.Agent == "Main" && entry.Kind == "reasoning" && first < last:
+	case conversationTool(entry):
 		var group []activityui.Block
 		for k := first; k <= last; k++ {
 			if v.visible(v.entries[k]) {
 				group = append(group, v.blocks[k]...)
 			}
 		}
+		// The operations form a tree under the reasoning above them. An edit
+		// group's later rows and output notes continue their operation's branch.
 		var parts [][]string
-		for _, block := range activityui.GroupOperations(activityui.MergeLiveActivityReads(group)) {
-			if block.Kind == "filter" && len(parts) > 0 {
-				parts[len(parts)-1] = append(parts[len(parts)-1], p.Block(block, width-4)...)
+		// Its connectors sit beneath the reasoning bullet.
+		for _, block := range activityui.AlignVerbs(activityui.MergeEdits(activityui.GroupOperations(activityui.MergeLiveActivityReads(group)))) {
+			if len(parts) > 0 && (block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart) {
+				parts[len(parts)-1] = append(parts[len(parts)-1], p.Block(block, width-2)...)
 				continue
 			}
-			if block.GroupHeader != "" {
-				out.hang("  ", "  ", activityui.Tree(parts))
-				parts = nil
-				out.hang("  ", "  ", p.Block(block, width-2))
-				continue
-			}
-			parts = append(parts, p.Block(block, width-4))
+			parts = append(parts, p.Block(block, width-2))
 		}
-		out.hang("  ", "  ", activityui.Tree(parts))
+		out.add(0, activityui.Tree(parts)...)
 	case entry.Agent == "Main" && entry.journal != nil && len(blocks) == 1 && blocks[0].Journal != nil:
 		v.flushItem(&out, entry, blocks[0].Journal, first, width)
 	case conversationMilestone(entry):

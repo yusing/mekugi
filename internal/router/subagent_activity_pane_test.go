@@ -630,11 +630,11 @@ func TestLiveActivityTerminalProcess(t *testing.T) {
 	commandColumn, summaryColumn := -1, -1
 	for row := 1; row <= height; row++ {
 		line := liveDiffFrameRow(frame, row)
-		if strings.Contains(line, "Run    rg needle") {
-			commandColumn = strings.Index(line, "rg needle")
+		if i := strings.Index(line, "Ran  rg needle"); i >= 0 {
+			commandColumn = ansi.StringWidth(line[:i+len("Ran  ")])
 		}
-		if strings.Contains(line, "~tokens") {
-			summaryColumn = strings.Index(line, "~tokens")
+		if before, _, ok := strings.Cut(line, "~tokens"); ok {
+			summaryColumn = ansi.StringWidth(before)
 		}
 	}
 	if commandColumn < 0 || commandColumn != summaryColumn {

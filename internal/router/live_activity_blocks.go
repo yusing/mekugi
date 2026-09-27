@@ -1,11 +1,16 @@
 package router
 
 import (
+	"cmp"
+	"regexp"
 	"strings"
 
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
+
+// Receipt summary of tool-managed files: count, sample paths, optional source.
+var liveActivityManagedFiles = regexp.MustCompile(`^\+ (\d+) tool-managed files \((.*)\)(?: · (.+))?$`)
 
 func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 	text := livediff.Safe(entry.Text, false)
@@ -71,6 +76,15 @@ func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 		previousSource := ""
 		for _, paragraph := range activityui.Paragraphs(text) {
 			block := activityui.ParseOperation(paragraph)
+			if match := liveActivityManagedFiles.FindStringSubmatch(paragraph); match != nil {
+				// A receipt's tool-managed files are confirmed edits of its source.
+				source := cmp.Or(match[3], previousSource)
+				block = activityui.Block{Kind: "op", Verb: "Edit", Label: match[1] + " tool-managed files (" + match[2] + ")"}
+				if source != "" {
+					block.Label += " · " + source
+					block.EditSource, block.EditHeader = source, source != previousSource
+				}
+			}
 			switch block.Verb {
 			case "Create", "Edit", "Delete", "Move":
 				if source, ok := strings.CutPrefix(block.Label, "· "); ok {

@@ -156,7 +156,7 @@ func TestLiveActivityViewCollapsesReadsAcrossRun(t *testing.T) {
 		{Seq: 2, Agent: "/root/a", Kind: "tool", Text: "Read `../ab/prepare.ts 580:609`", Observed: now},
 	}})
 	feed := strings.Join(plainLines(view.render(150, 20, now)), "\n")
-	if strings.Count(feed, "Read ") != 2 || !strings.Contains(feed, "Read   ../ab/README.md 186:241 · ../ab/prepare.ts 440:485, 580:609") {
+	if strings.Count(feed, "Read ") != 2 || !strings.Contains(feed, "Read ../ab/README.md L186–241 · ../ab/prepare.ts L440–485, L580–609") {
 		t.Fatalf("feed = %s", feed)
 	}
 }
@@ -287,7 +287,7 @@ func TestLiveActivityHoverClearsWhenRosterMoves(t *testing.T) {
 func TestLiveActivityPainterColors(t *testing.T) {
 	var painter activityui.Painter
 	run := strings.Join(painter.Block(activityui.Block{Kind: "op", Verb: "Run", Label: "`go test`"}, 60), "\n")
-	if !strings.HasPrefix(run, activityui.Amber) || !strings.Contains(run, "Run") {
+	if !strings.HasPrefix(run, activityui.Amber) || !strings.Contains(run, "Ran") {
 		t.Fatalf("run verb = %q", run)
 	}
 	read := strings.Join(painter.Block(activityui.Block{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "dir/a.go", Ranges: []string{"1:2"}}}}, 60), "\n")
@@ -314,8 +314,8 @@ func TestLiveActivityLinksAndCommandExit(t *testing.T) {
 		block activityui.Block
 		want  string
 	}{
-		{activityui.Block{Kind: "op", Verb: "Run", Code: "false", ExitCode: 1}, "Run    false (exit 1)"},
-		{activityui.Block{Kind: "op", Verb: "Run", Code: "false\necho done", Lang: "bash", Fenced: true, ExitCode: 2}, "       (exit 2)"},
+		{activityui.Block{Kind: "op", Verb: "Run", Code: "false", ExitCode: 1}, "Ran    false · exit 1"},
+		{activityui.Block{Kind: "op", Verb: "Run", Code: "false\necho done", Lang: "bash", Fenced: true, ExitCode: 2}, "       · exit 2"},
 	} {
 		rows := painter.Block(tc.block, 80)
 		if !strings.Contains(strings.Join(plainLines(rows), "\n"), tc.want) || !strings.Contains(strings.Join(rows, "\n"), activityui.Red) {
@@ -333,7 +333,7 @@ func TestLiveActivityViewAppliesExitToMatchingRun(t *testing.T) {
 	}})
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", CallID: "call-1", Kind: "exit", Text: "1", Observed: now}}})
 	got := strings.Join(plainLines(view.render(90, 15, now)), "\n")
-	if !strings.Contains(got, "false (exit 1)") || strings.Contains(got, "true (exit 1)") || strings.Count(got, "▎ Run") != 2 {
+	if !strings.Contains(got, "▎ Ran false · exit 1\n▎ Ran true") || !strings.Contains(strings.Join(view.render(90, 15, now), "\n"), activityui.Red+"\x1b[1mRan") {
 		t.Fatalf("exit rendering = %s", got)
 	}
 }
@@ -366,7 +366,7 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 			}
 			painter := activityui.Painter{Theme: livediff.DarkTheme}
 			rows := painter.Block(blocks[0], 80)
-			if len(rows) < 2 || !strings.HasPrefix(ansi.Strip(rows[0]), "Run    │ "+tc.first) || !strings.Contains(ansi.Strip(rows[1]), "│ "+tc.second) {
+			if len(rows) < 2 || ansi.Strip(rows[0]) != "Ran    │ "+tc.first || !strings.Contains(ansi.Strip(rows[1]), "       │ "+tc.second) {
 				t.Fatalf("preview rows = %q", plainLines(rows))
 			}
 			if !strings.Contains(rows[0], "\x1b[38;2;") {

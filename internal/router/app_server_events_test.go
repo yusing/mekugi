@@ -62,7 +62,7 @@ func TestAppServerSessionProjectsChildThreads(t *testing.T) {
 		t.Fatalf("elapsed time kept counting after the child finished: %q, then %q", done, later)
 	}
 	activity := ansi.Strip(strings.Join(u.agents.renderFeed(90, 60).lines, "\n"))
-	for _, want := range []string{"worker · explore", "▶ started · gpt-6-luna", "Inspect the pane.", "└ Run    go test ./... (exit 2)", "• Explored", "    Read", "✓ answer", "The pane waits on its first frame."} {
+	for _, want := range []string{"worker · explore", "▶ started · gpt-6-luna", "Inspect the pane.", "├ Ran  go test ./... · exit 2", "└ Read a.go", "✓ answer", "The pane waits on its first frame."} {
 		if !strings.Contains(activity, want) {
 			t.Fatalf("Activity lacks %q:\n%s", want, activity)
 		}

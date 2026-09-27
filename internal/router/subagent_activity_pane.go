@@ -55,6 +55,8 @@ type activityPaneEntry struct {
 	journalItems []journalItem           // One terminal delivery uses Activity's existing grouped result renderer.
 	assignment   *activityAssignment     // Validated native NEW_TASK, not an ordinary message.
 	activitySeq  uint64                  // Main excerpt's exact entry in Activity, never a question target.
+	outputTail   []string                // Failed command's sanitized final output lines, on an exit entry.
+	outputOmit   int                     // Output lines before outputTail.
 }
 
 // Native sessions present authenticated message observations outside provider

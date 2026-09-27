@@ -135,6 +135,11 @@ func Wrap(text string, width int, hard bool) []string {
 	}})
 	carry := ""
 	for line := range strings.SplitSeq(wrapped, "\n") {
+		plain := ansi.Strip(line)
+		if blanks := len(plain) - len(strings.TrimRight(plain, " ")); blanks > 0 && ansi.StringWidth(plain) > width {
+			// ansi.Wrap keeps the blank it breaks at; drop it, keeping escapes.
+			line = ansi.Truncate(line, ansi.StringWidth(plain)-blanks, "")
+		}
 		lines = append(lines, carry+line)
 		parser.Parse([]byte(line))
 		carry = style.String()
@@ -440,29 +445,8 @@ func liveActivityIndent(lines []string, prefix string) []string {
 // block renders one parsed block within width columns.
 func (p *Painter) Block(block Block, width int) []string {
 	width = max(8, width)
-	if block.GroupSummary {
-		return nil
-	}
-	if block.GroupHeader != "" {
-		source, header := block.GroupHeader, block.GroupStart
-		block.GroupHeader, block.GroupStart = "", false
-		if block.EditSource != "" {
-			block.Label = strings.TrimSuffix(block.Label, " · "+block.EditSource)
-		}
-		indent := min(4, width-8)
-		padding := strings.Repeat(" ", indent)
-		rows := liveActivityIndent(p.Block(block, width-indent), padding)
-		if header {
-			heading := p.Inline(source)
-			if block.EditSource != "" {
-				heading = strings.Join(p.Highlight("bash", source), " ")
-			}
-			if block.GroupReasoning != "" {
-				heading += Dim + " · " + "\x1b[3m" + p.Inline(block.GroupReasoning) + Reset
-			}
-			rows = append(Wrap("• "+heading, width, false), rows...)
-		}
-		return rows
+	if block.GroupHeader != "" && block.Kind == "op" {
+		return p.editGroupRow(block, width)
 	}
 	switch block.Kind {
 	case "summary":
@@ -489,25 +473,56 @@ func (p *Painter) Block(block Block, width int) []string {
 		}
 		return append([]string{Green + "✓ Final answer" + Reset}, liveActivityIndent(p.Markdown(block.Body, width-2), "  ")...)
 	case "reads":
-		var items []string
-		for _, read := range block.Reads {
-			item := Path(read.Path)
-			if block.Verb == "Search" || block.Verb == "Skill" {
-				item = p.code(block.Verb, read.Path)
+		lead, count := block.lead(VerbColor(block.Verb), block.Verb), ResultCount(block.Results)
+		indent := ansi.StringWidth(lead)
+		literal := block.Verb == "Search" || block.Verb == "Skill"
+		// fit shortens a path that cannot share its row with its ranges.
+		fit := func(read Read) string {
+			if literal {
+				return read.Path
+			}
+			room := width - indent
+			if len(read.Ranges) > 0 {
+				room -= ansi.StringWidth(lineRanges(read.Ranges)) + 1
+			}
+			return fitPath(read.Path, room)
+		}
+		item := func(path string, read Read) string {
+			item := Path(path)
+			if literal {
+				item = p.code(block.Verb, path)
 			}
 			if len(read.Ranges) > 0 {
-				item += " " + Dim + strings.Join(read.Ranges, ", ") + Undim
+				item += " " + Dim + lineRanges(read.Ranges) + Undim
 			}
-			items = append(items, item)
+			return item
 		}
-		lead, count := Verb(block.Verb), ResultCount(block.Results)
+		var items []string
+		for _, read := range block.Reads {
+			items = append(items, item(read.Path, read))
+		}
 		joined := strings.Join(items, Dim+" · "+Undim) + count
-		indent := ansi.StringWidth(lead)
-		if len(items) < 2 || indent+ansi.StringWidth(joined) <= width || indent > width/2 {
+		if indent+ansi.StringWidth(joined) <= width || indent > width/2 {
 			return liveActivityHang(lead, joined, width)
 		}
+		if len(items) < 2 {
+			return liveActivityHang(lead, item(fit(block.Reads[0]), block.Reads[0])+count, width)
+		}
 		// Items that do not fit on one row take one row each, rather than
-		// leaving separators dangling at wrapped row ends.
+		// leaving separators dangling at wrapped row ends. Their ranges share
+		// a column when it fits.
+		paths := make([]string, len(block.Reads))
+		column := 0
+		for i, read := range block.Reads {
+			paths[i] = fit(read)
+			items[i] = item(paths[i], read)
+			column = max(column, ansi.StringWidth(paths[i]))
+		}
+		for i, read := range block.Reads {
+			if len(read.Ranges) > 0 && !literal && indent+column+2+ansi.StringWidth(lineRanges(read.Ranges)) <= width {
+				items[i] = Path(paths[i]) + strings.Repeat(" ", column-ansi.StringWidth(paths[i])+2) + Dim + lineRanges(read.Ranges) + Undim
+			}
+		}
 		items[len(items)-1] += count
 		var lines []string
 		for i, item := range items {
@@ -518,30 +533,17 @@ func (p *Painter) Block(block Block, width int) []string {
 		}
 		return lines
 	case "op":
+		if block.Verb == "Run" {
+			return p.ranRow(block, width)
+		}
 		label := p.Label(block.Verb, block.Label) + ResultCount(block.Results)
+		if row, ok := p.editRow(block, width, block.cell(block.Verb)); ok {
+			label = row
+		}
 		code, body := block.Code, block.Body
 		exit := ""
 		if block.ExitCode != 0 && (block.Verb == "Run" || block.Verb == "Skill" || block.Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.Verb)) {
 			exit = Red + fmt.Sprintf("(exit %d)", block.ExitCode) + Reset
-		}
-		if block.Verb == "Run" && block.Fenced && label == "" && strings.Contains(code, "\n") && width-ansi.StringWidth(Verb(block.Verb)) >= 4 {
-			lead := Verb(block.Verb)
-			indent := ansi.StringWidth(lead)
-			lines := p.program(block.Lang, code, width-indent)
-			for i := range lines {
-				if i == 0 {
-					lines[i] = lead + lines[i]
-				} else {
-					lines[i] = strings.Repeat(" ", indent) + lines[i]
-				}
-			}
-			if exit != "" {
-				lines = append(lines, strings.Repeat(" ", indent)+exit)
-			}
-			if body != "" {
-				lines = append(lines, liveActivityIndent(p.Markdown(body, width-2), "  ")...)
-			}
-			return lines
 		}
 		// Keep Code Mode source below its long heading, regardless of source line count.
 		// Other single-line programs or arguments read best on the operation row.
@@ -552,7 +554,7 @@ func (p *Painter) Block(block Block, width int) []string {
 			}
 			label, code = strings.TrimSpace(label+" "+inline), ""
 		}
-		lines := liveActivityHang(Verb(block.Verb), label, width)
+		lines := liveActivityHang(block.lead(VerbColor(block.Verb), block.Verb), label, width)
 		if code != "" {
 			lang := block.Lang
 			if !block.Fenced && (block.Verb == "MCP" || strings.HasPrefix(block.Verb, "Tool")) {
@@ -568,7 +570,7 @@ func (p *Painter) Block(block Block, width int) []string {
 			if ansi.StringWidth(lines[last])+1+ansi.StringWidth(exit) <= width {
 				lines[last] += " " + exit
 			} else {
-				lines = append(lines, strings.Repeat(" ", ansi.StringWidth(Verb(block.Verb)))+exit)
+				lines = append(lines, strings.Repeat(" ", block.cell(block.Verb))+exit)
 			}
 		}
 		return lines
@@ -589,16 +591,394 @@ func (p *Painter) Block(block Block, width int) []string {
 	case "compaction":
 		return []string{Amber + "◉ Context compacted" + Reset}
 	case "filter":
-		indent := min(ansi.StringWidth(Verb("Run")), width/2)
-		rows := Wrap(block.Body, width-indent, true)
-		for i := range rows {
-			rows[i] = strings.Repeat(" ", indent) + Dim + rows[i] + Reset
-		}
-		return rows
+		return filterRows(block.Body, width, min(block.cell("Run"), width/2))
 	case "error":
 		return liveActivityIndent(Wrap(Red+block.Body+Reset, width-2, false), Red+"✗"+Reset+" ")
 	}
 	return p.Markdown(block.Body, width)
+}
+
+// filterRows aligns an output-reduction note with its command text.
+func filterRows(body string, width, indent int) []string {
+	rows := Wrap(body, width-indent, true)
+	for i := range rows {
+		rows[i] = strings.Repeat(" ", indent) + Dim + rows[i] + Reset
+	}
+	return rows
+}
+
+func exitText(code int) string {
+	return Red + fmt.Sprintf("exit %d", code) + Reset
+}
+
+// editGroupRow lays out one file row of an edit group. Rows share one verb
+// cell: the first row names the group's verb, source, and any unconfirmed
+// outcome, and later rows name only a verb that differs from Edit.
+func (p *Painter) editGroupRow(block Block, width int) []string {
+	verb, status, start := EditVerb(block), EditStatus(block), block.GroupStart
+	color := Green
+	switch status {
+	case "failed", "declined":
+		color = Red
+	case "requested", "pending":
+		color = Amber
+	}
+	cell := max(block.cell("Edit"), block.VerbAlign+1)
+	lead := strings.Repeat(" ", cell)
+	if start || block.Verb != "Edit" {
+		lead = color + "\x1b[1m" + verb + Reset + strings.Repeat(" ", cell-ansi.StringWidth(verb))
+	}
+	block.Label = editLabel(block)
+	if status != "" {
+		// The first row names the outcome that every row's tail repeats.
+		block.Label = strings.TrimSuffix(block.Label, " · "+status)
+	}
+	row, ok := p.editRow(block, width, cell)
+	if !ok {
+		row = p.Label(block.Verb, block.Label)
+	}
+	var trailer []string
+	if start {
+		trailer = p.groupSource(block)
+		if status != "" {
+			trailer = append(trailer, Dim+"· "+Undim+color+status+Reset)
+		}
+	}
+	if block.ExitCode != 0 {
+		trailer = append(trailer, Dim+"· "+Undim+exitText(block.ExitCode))
+	}
+	rows := liveActivityHang(lead, row, width)
+	// The trailer follows the file when it fits, and otherwise takes its own row.
+	if last, text := len(rows)-1, strings.Join(trailer, " "); text == "" || ansi.StringWidth(rows[last])+1+ansi.StringWidth(text) <= width {
+		rows[last] = strings.TrimSuffix(rows[last]+" "+text, " ")
+	} else {
+		rows = append(rows, liveActivityHang(strings.Repeat(" ", cell), text, width)...)
+	}
+	return rows
+}
+
+// groupSource names edit sources other than stock apply_patch, each
+// highlighted as its own command, and the invocations a group spans.
+func (p *Painter) groupSource(block Block) []string {
+	var parts []string
+	if source := strings.TrimSuffix(block.EditSource, requestedEdit); source != "" && source != "apply_patch" {
+		var sources []string
+		for part := range strings.SplitSeq(source, ", ") {
+			sources = append(sources, strings.Join(p.Highlight("bash", part), " ")+Reset)
+		}
+		parts = append(parts, Dim+"via "+Undim+strings.Join(sources, Dim+", "+Undim))
+	}
+	if block.GroupCount > 1 {
+		parts = append(parts, Dim+fmt.Sprintf("×%d", block.GroupCount)+Undim)
+	}
+	return parts
+}
+
+// editRow lays out a file row with its counts in the group's shared column.
+// Zero counts are omitted.
+func (p *Painter) editRow(block Block, width, lead int) (string, bool) {
+	if !slices.Contains([]string{"Create", "Edit", "Delete"}, block.Verb) {
+		return "", false
+	}
+	path, added, removed, tail, ok := EditStat(block.Label)
+	if !ok {
+		return "", false
+	}
+	plain := editCounts(added, removed)
+	stats := strings.NewReplacer("+", Green+"+", " -", "\x1b[39m "+Red+"-").Replace(plain)
+	if strings.HasPrefix(plain, "-") {
+		stats = Red + plain
+	}
+	if plain != "" {
+		stats += "\x1b[39m"
+	}
+	room := width - lead - ansi.StringWidth(tail)
+	if plain != "" {
+		room -= ansi.StringWidth(plain) + 1
+	}
+	// Every row of a group decides its count column alike: the widest path,
+	// narrowed so the group's widest counts still fit, eliding longer paths.
+	column := min(block.PathAlign, width-lead-2-block.StatAlign)
+	if plain == "" || column < min(16, block.PathAlign) {
+		column = 0
+	}
+	if column > 0 {
+		room = min(room, column)
+	}
+	path = fitPath(path, room)
+	row := Path(path)
+	if plain != "" {
+		pad := 1
+		if column > 0 && ansi.StringWidth(path) <= column {
+			pad = column - ansi.StringWidth(path) + 2
+		}
+		row += strings.Repeat(" ", pad) + stats
+		if bar := statBar(added, removed, block.StatScale); bar != "" {
+			if gap := max(1, block.StatAlign-ansi.StringWidth(plain)+1); lead+ansi.StringWidth(row)+gap+statBarCells <= width {
+				row += strings.Repeat(" ", gap) + bar
+			}
+		}
+	}
+	if tail != "" {
+		row += p.Label(block.Verb, tail)
+	}
+	return row, true
+}
+
+const statBarCells = 8
+
+// statBar scales a row's changed lines against the largest row in its group.
+func statBar(added, removed, scale int) string {
+	total := added + removed
+	if scale <= 0 || total <= 0 {
+		return ""
+	}
+	filled := min(statBarCells, max(1, (total*statBarCells+scale/2)/scale))
+	green := (added*filled + total/2) / total
+	if added > 0 {
+		green = max(1, green)
+	}
+	if removed > 0 && filled > 1 {
+		green = min(green, filled-1)
+	}
+	return Green + strings.Repeat("━", green) + Red + strings.Repeat("━", filled-green) + "\x1b[39m" +
+		Dim + strings.Repeat("━", statBarCells-filled) + Undim
+}
+
+// fitPath elides the middle of a path wider than width, keeping its file name.
+func fitPath(path string, width int) string {
+	// Below this, eliding leaves too little of the name; rows wrap instead.
+	if width < 16 || ansi.StringWidth(path) <= width {
+		return path
+	}
+	i := strings.LastIndex(strings.TrimSuffix(path, "/"), "/")
+	base := path[i+1:]
+	if room := width - ansi.StringWidth(base) - 2; i >= 0 && room >= 1 {
+		return ansi.Truncate(path[:i], room, "") + "…/" + base
+	}
+	// The name alone is too wide: keep its start and its extension.
+	if i >= 0 && width > 4 {
+		return "…/" + elideMiddle(base, width-2)
+	}
+	return elideMiddle(path, width)
+}
+
+func elideMiddle(text string, width int) string {
+	total := ansi.StringWidth(text)
+	if total <= width {
+		return text
+	}
+	tail := (width - 1) / 2
+	return ansi.Truncate(text, width-1-tail, "") + "…" + ansi.TruncateLeft(text, total-tail, "")
+}
+
+// lineRanges shows read spans as line numbers: 25:46 reads as L25–46.
+func lineRanges(ranges []string) string {
+	shown := make([]string, len(ranges))
+	for i, span := range ranges {
+		from, to, ok := strings.Cut(span, ":")
+		switch {
+		case !ok:
+			shown[i] = span
+		case from == to:
+			shown[i] = "L" + from
+		default:
+			shown[i] = "L" + from + "–" + to
+		}
+	}
+	return strings.Join(shown, ", ")
+}
+
+// ranRow lays out one command after Ran: a one-line command beside the verb,
+// or a program beside its gutter, then any failure's exit and output.
+func (p *Painter) ranRow(block Block, width int) []string {
+	code, label := block.Code, strings.TrimSpace(p.Label(block.Verb, block.Label)+ResultCount(block.Results))
+	if code == "" {
+		if span, end, ok := liveActivityCodeSpan(block.Label, 0); ok && end == len(block.Label) {
+			code, label = span, ""
+		}
+	}
+	color, exit := VerbColor("Run"), ""
+	if block.ExitCode != 0 {
+		color, exit = Red, Dim+"· "+Undim+exitText(block.ExitCode)
+	}
+	lead, indent := block.lead(color, "Ran"), block.cell("Ran")
+	padding := strings.Repeat(" ", indent)
+	// suffix follows the last row when it fits, and otherwise takes its own.
+	suffix := func(lines []string, text string) []string {
+		if last := len(lines) - 1; ansi.StringWidth(lines[last])+1+ansi.StringWidth(text) <= width {
+			lines[last] += " " + text
+			return lines
+		}
+		return append(lines, liveActivityHang(padding, text, width)...)
+	}
+	var lines []string
+	switch {
+	case code != "" && !strings.Contains(code, "\n"):
+		lang := "bash"
+		if block.Fenced && block.Lang != "" {
+			lang = block.Lang
+		}
+		lines = p.command(lead, lang, code, width)
+		if label != "" {
+			lines = suffix(lines, label)
+		}
+	case code != "":
+		program := liveActivityIndent(p.program(block.Lang, code, width-indent), padding)
+		if label != "" {
+			lines = liveActivityHang(lead, label, width)
+		} else {
+			program[0] = lead + strings.TrimPrefix(program[0], padding)
+		}
+		lines = append(lines, program...)
+	default:
+		lines = liveActivityHang(lead, label, width)
+	}
+	switch {
+	case exit != "" && strings.Contains(code, "\n"):
+		// Beside a program's last row, the exit would read as source.
+		lines = append(lines, padding+exit)
+	case exit != "":
+		lines = suffix(lines, exit)
+	}
+	if block.Body != "" {
+		lines = append(lines, liveActivityIndent(p.Markdown(block.Body, width-indent-2), padding+"  ")...)
+	}
+	// Output uses a dashed gutter, distinct from the program gutter above it.
+	if block.TailOmitted > 0 {
+		lines = append(lines, padding+ansi.Truncate(Dim+"┆ "+fmt.Sprintf("… %d earlier lines", block.TailOmitted)+Undim, width-indent, "…"))
+	}
+	for _, line := range block.Tail {
+		lines = append(lines, padding+ansi.Truncate(Dim+"┆"+Undim+" "+line, width-indent, "…"))
+	}
+	return lines
+}
+
+// command places a one-line command after lead. A statement after a
+// separator starts a row under the first; other continuations sit two
+// columns deeper.
+func (p *Painter) command(lead, lang, code string, width int) []string {
+	styled := strings.Join(p.Highlight(lang, code), " ")
+	indent := ansi.StringWidth(lead)
+	if indent > width/2 || ansi.Strip(styled) != code {
+		return liveActivityHang(lead, styled, width)
+	}
+	var lines []string
+	for i, row := range shellWrap(styled, code, width-indent, lang == "bash") {
+		switch {
+		case i == 0:
+			lines = append(lines, lead+row.text)
+		case row.deeper:
+			lines = append(lines, strings.Repeat(" ", indent+2)+row.text)
+		default:
+			lines = append(lines, strings.Repeat(" ", indent)+row.text)
+		}
+	}
+	return lines
+}
+
+type wrapRow struct {
+	text   string
+	deeper bool // Continues a statement rather than starting one.
+}
+
+// shellWrap breaks a styled one-line command at unquoted blanks of its plain
+// text. When the command does not fit, each top-level statement after ;, &&,
+// or || starts a row. Other breaks inside a statement end with a line
+// continuation, or follow a pipe, so each row reads as the same command; a
+// word wider than a row is cut without one.
+func shellWrap(styled, plain string, width int, shell bool) []wrapRow {
+	type blank struct {
+		from, to  int  // Cell offsets of a blank run.
+		statement bool // Follows a top-level statement separator.
+		pipe      bool
+	}
+	var blanks []blank
+	quote, escaped := rune(0), false
+	cells, depth := 0, 0
+	var previous [2]rune // The two runes before the current one.
+	for _, r := range plain {
+		switch {
+		case escaped:
+			escaped = false
+		case r == '\\' && quote != '\'':
+			escaped = true
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			}
+		case r == '\'' || r == '"':
+			quote = r
+		case r == '(':
+			depth++
+		case r == ')':
+			depth = max(0, depth-1)
+		case r == ' ' || r == '\t':
+			if n := len(blanks); n > 0 && blanks[n-1].to == cells {
+				blanks[n-1].to++
+				break
+			}
+			last, before := previous[1], previous[0]
+			top := depth == 0 && before != '\\'
+			blanks = append(blanks, blank{from: cells, to: cells + 1,
+				statement: top && (last == ';' || last == '&' && before == '&' || last == '|' && before == '|'),
+				pipe:      top && last == '|' && before != '|'})
+		}
+		previous[0], previous[1] = previous[1], r
+		cells += ansi.StringWidth(string(r))
+	}
+	continuation := 0
+	if shell {
+		continuation = 2
+	}
+	total := ansi.StringWidth(plain)
+	if total <= width {
+		return []wrapRow{{styled, false}}
+	}
+	var rows []wrapRow
+	start, deeper := 0, false
+	for {
+		avail := max(1, width)
+		if deeper {
+			avail = max(1, width-2)
+		}
+		chosen := -1
+		for i, b := range blanks {
+			if b.from > start && b.statement {
+				if b.from-start <= avail {
+					chosen = i
+				}
+				break
+			}
+		}
+		if chosen < 0 && total-start <= avail {
+			return append(rows, wrapRow{ansi.Cut(styled, start, total) + Reset, deeper})
+		}
+		if chosen < 0 {
+			for i, b := range blanks {
+				cost := continuation
+				if b.pipe || b.statement {
+					cost = 0
+				}
+				if b.from > start && b.from-start+cost <= avail {
+					chosen = i
+				}
+			}
+		}
+		if chosen < 0 {
+			end := start + avail
+			rows = append(rows, wrapRow{ansi.Cut(styled, start, end) + Reset, deeper})
+			start, deeper = end, true
+			continue
+		}
+		b := blanks[chosen]
+		text := ansi.Cut(styled, start, b.from) + Reset
+		if !b.pipe && !b.statement && shell {
+			text += Dim + " \\" + Undim
+		}
+		rows = append(rows, wrapRow{text, deeper})
+		start, deeper = b.to, !b.statement
+	}
 }
 
 // event renders a block for the native Activity log: a short label row, then
@@ -759,6 +1139,20 @@ func Verb(verb string) string {
 		return ""
 	}
 	return VerbColor(verb) + "\x1b[1m" + verb + Reset + strings.Repeat(" ", max(1, 7-ansi.StringWidth(verb)))
+}
+
+// cell is the width of a row's verb column: the column its adjacent
+// operations share, or Verb's default column.
+func (b Block) cell(verb string) int {
+	if b.VerbColumn > 0 {
+		return max(b.VerbColumn, ansi.StringWidth(verb)+1)
+	}
+	return ansi.StringWidth(Verb(verb))
+}
+
+// lead is a row's bold verb in color, padded to its column.
+func (b Block) lead(color, verb string) string {
+	return color + "\x1b[1m" + verb + Reset + strings.Repeat(" ", b.cell(verb)-ansi.StringWidth(verb))
 }
 
 func SummaryVerb(verb string) string {
