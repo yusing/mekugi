@@ -1233,9 +1233,10 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 	previousMessage := false
 	operation := func(block activityui.Block) bool { return block.Kind == "op" || block.Kind == "reads" }
 	rail := ""
+	blocks = activityui.GroupOperations(blocks)
 	for index, block := range blocks {
 		// Native Activity joins consecutive operations into one tree.
-		tree := v.childrenOnly && operation(block)
+		tree := v.childrenOnly && operation(block) && block.GroupHeader == ""
 		part := v.painter.Block(block, width-2)
 		switch {
 		case tree:
@@ -1253,6 +1254,9 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 			run.questions = append(run.questions, 0)
 		}
 		previousMessage = message
+		if block.GroupReasoning != "" && index > 0 && blocks[index-1].Source != 0 {
+			run.entryRows[blocks[index-1].Source] = len(run.lines)
+		}
 		if block.Source != 0 {
 			if _, exists := run.entryRows[block.Source]; !exists {
 				run.entryRows[block.Source] = len(run.lines)
@@ -1279,7 +1283,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 			last := true
 			for _, next := range blocks[index+1:] {
 				if next.Kind != "filter" {
-					last = !operation(next)
+					last = !operation(next) || next.GroupHeader != ""
 					break
 				}
 			}

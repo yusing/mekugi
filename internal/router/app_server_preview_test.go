@@ -135,7 +135,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		return frame
 	}
 	p.until("main streams its patch")
-	render("main dock", "LIVE · main", "M internal/broker/broker.go", "1 Main", "3 Activity", "4 Agents", "├ Read")
+	render("main dock", "LIVE · main", "M internal/broker/broker.go", "1 Main", "3 Activity", "4 Agents", "• Explored", "    Read")
 	p.until("three agents edit at once")
 	frame := render("agent dock accordion", "LIVE · 3 agents", "^B e next", "▸", "reviewer → main", "2 Diff●")
 	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {

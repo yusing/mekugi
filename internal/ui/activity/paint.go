@@ -400,6 +400,30 @@ func liveActivityIndent(lines []string, prefix string) []string {
 // block renders one parsed block within width columns.
 func (p *Painter) Block(block Block, width int) []string {
 	width = max(8, width)
+	if block.GroupSummary {
+		return nil
+	}
+	if block.GroupHeader != "" {
+		source, header := block.GroupHeader, block.GroupStart
+		block.GroupHeader, block.GroupStart = "", false
+		if block.EditSource != "" {
+			block.Label = strings.TrimSuffix(block.Label, " · "+block.EditSource)
+		}
+		indent := min(4, width-8)
+		padding := strings.Repeat(" ", indent)
+		rows := liveActivityIndent(p.Block(block, width-indent), padding)
+		if header {
+			heading := p.Inline(source)
+			if block.EditSource != "" {
+				heading = strings.Join(p.Highlight("bash", source), " ")
+			}
+			if block.GroupReasoning != "" {
+				heading += Dim + " · " + "\x1b[3m" + p.Inline(block.GroupReasoning) + Reset
+			}
+			rows = append(Wrap("• "+heading, width, false), rows...)
+		}
+		return rows
+	}
 	switch block.Kind {
 	case "summary":
 		// Codex keeps summary bodies in detailed transcript, dim and italic,

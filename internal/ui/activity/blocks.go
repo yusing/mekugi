@@ -10,20 +10,63 @@ import (
 // so it can lay them out natively. Unrecognized text stays a plain text block;
 // nothing is interpreted, expanded, or executed.
 type Block struct {
-	Source   uint64 // Activity entry identity for exact cross-pane navigation.
-	Kind     string // op, reads, message, start, error, text
-	Verb     string // Operation verb, or a message headline.
-	Label    string // Markdown remainder of the operation label.
-	Code     string // Inline code or fenced program under the label.
-	Lang     string
-	Fenced   bool
-	From, To string
-	Owner    string
-	Body     string
-	Reads    []Read
-	Journal  *Journal // A final answer in journal-result form.
-	Results  *int
-	ExitCode int // Nonzero command exit; zero means no failure label.
+	Source         uint64 // Activity entry identity for exact cross-pane navigation.
+	Kind           string // op, reads, message, start, error, text
+	Verb           string // Operation verb, or a message headline.
+	Label          string // Markdown remainder of the operation label.
+	Code           string // Inline code or fenced program under the label.
+	Lang           string
+	Fenced         bool
+	From, To       string
+	Owner          string
+	Body           string
+	Reads          []Read
+	Journal        *Journal // A final answer in journal-result form.
+	Results        *int
+	ExitCode       int    // Nonzero command exit; zero means no failure label.
+	EditSource     string // Editing source shared by this invocation's file rows.
+	EditHeader     bool   // First row of a contiguous source group.
+	GroupHeader    string // Presentation-only operation group.
+	GroupStart     bool
+	GroupReasoning string // Adjacent single-line reasoning carried by this heading.
+	GroupSummary   bool   // The original reasoning row is rendered in the next heading.
+}
+
+// GroupOperations adds Codex-style headings without combining invocation identities.
+// EditHeader comes from the entry parser; exploration may span adjacent entries.
+func GroupOperations(blocks []Block) []Block {
+	blocks = slices.Clone(blocks)
+	previous := ""
+	for i := range blocks {
+		b := &blocks[i]
+		b.GroupReasoning, b.GroupSummary = "", false
+		if b.Kind == "filter" {
+			// Attached output annotations belong to the preceding operation.
+			b.GroupHeader, b.GroupStart = previous, false
+			continue
+		}
+		heading := ""
+		if b.EditSource != "" {
+			heading = b.EditSource
+		} else if slices.Contains([]string{"Read", "Search", "List", "Inspect"}, b.Verb) && (b.Kind == "op" || b.Kind == "reads") {
+			heading = "Explored"
+		}
+		b.GroupHeader = heading
+		b.GroupStart = heading != "" && (heading != previous || b.EditHeader)
+		previous = heading
+	}
+	for i := 1; i < len(blocks); i++ {
+		previous, current := &blocks[i-1], &blocks[i]
+		if previous.Kind != "summary" || !current.GroupStart {
+			continue
+		}
+		body := ReasoningSummaryBody(previous.Body)
+		if body != "" && !strings.ContainsAny(body, "\r\n") {
+			previous.GroupSummary = true
+			current.GroupReasoning = body
+		}
+	}
+	return blocks
 }
 
 // Journal is a child's journal result laid out by the router's

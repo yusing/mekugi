@@ -68,21 +68,32 @@ func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 		}
 	case "tool":
 		var blocks []activityui.Block
+		previousSource := ""
 		for _, paragraph := range activityui.Paragraphs(text) {
 			block := activityui.ParseOperation(paragraph)
 			switch block.Verb {
 			case "Create", "Edit", "Delete", "Move":
+				if source, ok := strings.CutPrefix(block.Label, "· "); ok {
+					// A targetless edit still belongs to its invocation, but must
+					// retain the fact that its paths could not be resolved.
+					block.Label = "paths unavailable · " + source
+				}
+				if _, source, ok := strings.CutLast(block.Label, " · "); ok {
+					block.EditSource = source
+					block.EditHeader = source != previousSource
+				}
 				if block.Fenced && block.Lang == "diff" {
 					block.Code, block.Lang, block.Fenced = "", "", false
 				}
 			}
+			previousSource = block.EditSource
 			blocks = append(blocks, block)
 		}
 		blocks = activityui.MergeLiveActivityReads(blocks)
 		if len(blocks) == 1 && blocks[0].Verb == "Search" && entry.native != nil {
 			blocks[0].Results = entry.native.searchResults
 		}
-		return blocks
+		return activityui.GroupOperations(blocks)
 	}
 	return []activityui.Block{{Kind: "text", Body: text}}
 }

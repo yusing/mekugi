@@ -8,6 +8,104 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+func TestRequestedEditGroupsStayWithinInvocation(t *testing.T) {
+	for _, agent := range []string{"Main", "/root/worker"} {
+		v := newLiveActivityView()
+		v.childrenOnly = agent != "Main"
+		text := "Edit `a.go` +2 -1 · python3\n\nCreate `b.go` +3 -0 · python3"
+		patch := appServerEditText(appServerItem{Status: "failed", Changes: []appServerFileChange{
+			{Path: "c.go", Diff: "+new\n-old\n"},
+			{Path: "d.go", Diff: "+new\n"},
+		}}, "")
+		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+			{Seq: 1, Agent: agent, Kind: "tool", CallID: "one", Text: text},
+			{Seq: 2, Agent: agent, Kind: "tool", CallID: "two", Text: text},
+			{Seq: 3, Agent: agent, Kind: "tool", CallID: "patch", Text: patch},
+		}})
+		feed := v.renderFeed(100, 80)
+		if agent == "Main" {
+			feed = v.renderConversation(100)
+		}
+		got := ansi.Strip(strings.Join(feed.lines, "\n"))
+		if strings.Count(got, "• python3") != 2 || strings.Count(got, "• apply_patch") != 1 || strings.Contains(got, " · python3") || strings.Contains(got, " · apply_patch") {
+			t.Fatalf("%s invocation grouping:\n%s", agent, got)
+		}
+		for _, want := range []string{"a.go +2 -1", "b.go +3 -0", "c.go", "d.go", "failed"} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("%s lost %q:\n%s", agent, want, got)
+			}
+		}
+	}
+}
+
+func TestRequestedEditGroupKeepsUnresolvedPaths(t *testing.T) {
+	for _, agent := range []string{"Main", "/root/worker"} {
+		for _, known := range []string{"", "Edit `a.go` · python3 (requested)\n\n"} {
+			v := newLiveActivityView()
+			v.childrenOnly = agent != "Main"
+			v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+				{Seq: 1, Agent: agent, Kind: "tool", CallID: "edit", Text: known + "Edit · python3 (requested)\n\nRun `go test ./...`"},
+			}})
+			feed := v.renderFeed(100, 80)
+			if agent == "Main" {
+				feed = v.renderConversation(100)
+			}
+			got := ansi.Strip(strings.Join(feed.lines, "\n"))
+			if strings.Count(got, "python3 (requested)") != 1 || !strings.Contains(got, "    Edit   paths unavailable") || !strings.Contains(got, "go test ./...") {
+				t.Fatalf("%s lost or detached unresolved targets:\n%s", agent, got)
+			}
+			if known != "" && !strings.Contains(got, "a.go") {
+				t.Fatalf("%s lost the known target:\n%s", agent, got)
+			}
+		}
+	}
+}
+
+func TestRequestedReasoningMergedWithOperationGroup(t *testing.T) {
+	for _, agent := range []string{"Main", "/root/worker"} {
+		for _, operation := range []struct{ text, header string }{
+			{"Read `a.go`\n\nSearch `needle`", "Explored"},
+			{"Edit `a.go` +2 -1 · git stash push\n\nEdit `b.go` +1 -0 · git stash push", "git stash push"},
+		} {
+			v := newLiveActivityView()
+			v.childrenOnly = agent != "Main"
+			v.conversation = agent == "Main"
+			v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+				{Seq: 1, Agent: agent, Kind: "reasoning", Text: "**Locating targeted files**"},
+				{Seq: 2, Agent: agent, Kind: "tool", CallID: "op", Text: operation.text},
+			}})
+			feed := v.renderFeed(100, 80)
+			if agent == "Main" {
+				feed = v.renderConversation(100)
+			}
+			got := ansi.Strip(strings.Join(feed.lines, "\n"))
+			if !strings.Contains(got, "• "+operation.header+" · Locating targeted files") || strings.Count(got, "Locating targeted files") != 1 {
+				t.Fatalf("%s did not merge corresponding reasoning:\n%s", agent, got)
+			}
+		}
+	}
+}
+
+func TestRequestedExploredKeepsAttachedFilter(t *testing.T) {
+	for _, agent := range []string{"Main", "/root/worker"} {
+		v := newLiveActivityView()
+		v.childrenOnly = agent != "Main"
+		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+			{Seq: 1, Agent: agent, Kind: "tool", CallID: "read", Text: "Read `a.go`"},
+			{Seq: 2, Agent: agent, Kind: "output_filter", CallID: "read", Text: "filtered output", Filter: &exploreFilterEvent{}},
+			{Seq: 3, Agent: agent, Kind: "tool", CallID: "search", Text: "Search `needle`"},
+		}})
+		feed := v.renderFeed(100, 80)
+		if agent == "Main" {
+			feed = v.renderConversation(100)
+		}
+		got := ansi.Strip(strings.Join(feed.lines, "\n"))
+		if strings.Count(got, "• Explored") != 1 || !strings.Contains(got, "    filtered output") || strings.Contains(got, "└ filtered") || strings.Contains(got, "├ filtered") || !strings.Contains(got, "Search") {
+			t.Fatalf("%s detached filter from exploration:\n%s", agent, got)
+		}
+	}
+}
+
 func TestRequestedInspectOperandsGroupLikeReads(t *testing.T) {
 	got := toolActivityShell("inspect_file --json --max-tokens 500 a.go b.go")
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: got})

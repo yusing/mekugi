@@ -129,6 +129,22 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			headed = true
 		}
 	}
+	// Keep a short, adjacent reasoning summary on the first operation-group
+	// heading. Other reasoning and intervening agent traffic stay independent.
+	merged := items[:0]
+	for k := 0; k < len(items); k++ {
+		it := items[k]
+		if it.aside && k+1 < len(items) && items[k+1].first == it.last+1 && conversationTool(v.entries[items[k+1].first]) {
+			pair := append(slices.Clone(v.blocks[it.first]), v.blocks[items[k+1].first]...)
+			grouped := activityui.GroupOperations(pair)
+			if len(grouped) > 0 && grouped[0].GroupSummary {
+				it.last, it.aside = items[k+1].last, false
+				k++
+			}
+		}
+		merged = append(merged, it)
+	}
+	items = merged
 	start := 0 // Thread's first item.
 	for k, it := range items {
 		var thread conversationThread
@@ -304,13 +320,13 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	var out conversationLines
 	p := &v.painter
 	switch {
-	case entry.Agent == "Main" && entry.Kind == "reasoning":
+	case entry.Agent == "Main" && entry.Kind == "reasoning" && first == last:
 		for _, block := range blocks {
 			out.add(0, p.Block(block, width)...)
 		}
 	case entry.Agent == "You":
 		v.userItem(&out, entry, width)
-	case conversationTool(entry):
+	case conversationTool(entry) || entry.Agent == "Main" && entry.Kind == "reasoning" && first < last:
 		var group []activityui.Block
 		for k := first; k <= last; k++ {
 			if v.visible(v.entries[k]) {
@@ -318,9 +334,15 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			}
 		}
 		var parts [][]string
-		for _, block := range activityui.MergeLiveActivityReads(group) {
+		for _, block := range activityui.GroupOperations(activityui.MergeLiveActivityReads(group)) {
 			if block.Kind == "filter" && len(parts) > 0 {
 				parts[len(parts)-1] = append(parts[len(parts)-1], p.Block(block, width-4)...)
+				continue
+			}
+			if block.GroupHeader != "" {
+				out.hang("  ", "  ", activityui.Tree(parts))
+				parts = nil
+				out.hang("  ", "  ", p.Block(block, width-2))
 				continue
 			}
 			parts = append(parts, p.Block(block, width-4))

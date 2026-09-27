@@ -332,10 +332,22 @@ The pane renders child activity natively rather than as commentary Markdown. It
 parses the router's own commentary grammar into operations, messages, start
 notices, and errors, and shows each with verb colors, path emphasis, and syntax
 highlighting in the terminal's theme. Text it does not recognize stays plain.
-Confirmed edit events retain paths and line counts but omit diff bodies in the
+Confirmed edit events group file rows beneath one editing-source header per
+invocation (including `python3` and `apply_patch`), without repeating the source
+as a trailing file label. Editing-source headers use Bash syntax highlighting,
+including shell commands such as `git stash push`, rather than Markdown styling.
+File rows share uniform indentation beneath the heading, without partial tree connectors.
+Unresolved edit targets remain an explicit `paths unavailable` row in the same group.
+Separate invocations are not merged by source name.
+They retain paths and line counts but omit diff bodies in the
 pane; durable change evidence and inline receipts are unchanged. This omission
 applies only to generated tool activity, not authored text. Output-reduction
 summaries align with command text and use muted, dimmed styling in either theme.
+Consecutive reads, inspections, searches, and directory listings share a Codex-style
+`Explored` heading and nested rows, stopping at other operations or agent boundaries.
+An immediately preceding single-line reasoning summary shares the edit or `Explored`
+heading after a separator, rather than repeating as a standalone row. Multiline
+reasoning and reasoning separated by other activity remain standalone.
 Consecutive same-action target events by one agent collapse into one row, both
 within a call and across calls. Reads join ranges of the same file; Inspect,
 List, Search, and other target-only actions use the same grouping. A group that

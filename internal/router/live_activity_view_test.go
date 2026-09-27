@@ -387,7 +387,7 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 	colored := strings.Join(painter.Block(search, 110), "\n")
 	if !strings.Contains(colored, painter.Theme.Accent()+"create(MCat|MSymbol)|description:\x1b[39m") ||
 		!strings.Contains(colored, activityui.Path("plugins/mrun.ts")) ||
-		!strings.HasPrefix(colored, activityui.VerbColor("Search")) {
+		!strings.Contains(colored, activityui.VerbColor("Search")+"\x1b[1mSearch") {
 		t.Fatalf("search query/path colors = %q", colored)
 	}
 	search = parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(`rg needle src/a.go 'lib/with space.go'`)})[0]

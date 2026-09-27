@@ -452,7 +452,7 @@ func appServerEditText(item appServerItem, cwd string) string {
 		if item.Status == "failed" || item.Status == "declined" {
 			text += " · " + item.Status
 		}
-		parts = append(parts, text)
+		parts = append(parts, text+" · apply_patch")
 	}
 	return strings.Join(parts, "\n\n")
 }

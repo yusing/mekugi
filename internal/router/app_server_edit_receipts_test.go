@@ -103,9 +103,8 @@ func TestAppServerCapturedEditReceipts(t *testing.T) {
 			}
 			for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
 				painted := strings.Join((&activityui.Painter{Theme: theme}).Block(tc.view.blocks[i][0], 120), "\n")
-				muted := activityui.Dim + " · " + tc.program + activityui.Undim + "\x1b[39m"
-				if !strings.Contains(painted, muted) || strings.Contains(painted, "with") {
-					t.Fatalf("source suffix lacks a muted foreground: %q", painted)
+				if !strings.HasPrefix(ansi.Strip(painted), "• "+tc.program+"\n    Edit") || strings.Contains(ansi.Strip(painted), " · "+tc.program) {
+					t.Fatalf("source was not a shared edit header: %q", painted)
 				}
 			}
 		}

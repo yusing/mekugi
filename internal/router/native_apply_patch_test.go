@@ -297,7 +297,7 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 			reconcile(items)
 			receipts := proxy.activity.drain("root", time.Now(), maxCommentaryPublicationBytes)
 			if test.change {
-				if len(receipts) != 1 || commentaryText(t, receipts[0]) != "[`/root/editor`] Edit `file.txt` +1 -1\n```diff\n@@ -1,1 +1,1 @@\n-old\n+new\n```" {
+				if len(receipts) != 1 || commentaryText(t, receipts[0]) != "[`/root/editor`] Edit `file.txt` +1 -1 · apply_patch\n```diff\n@@ -1,1 +1,1 @@\n-old\n+new\n```" {
 					t.Fatalf("observed Code Mode edit receipt = %v", receipts)
 				}
 			} else if len(receipts) != 0 {

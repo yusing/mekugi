@@ -188,7 +188,7 @@ func TestConversationMainToolsFollowTheirLead(t *testing.T) {
 	text = strings.Join(plain, "\n")
 	card, seed, tool = row(plain, "lookup"), row(plain, "Preparing regression seed"), row(plain, "Edit")
 	resumed := row(plain, "continued")
-	if seed != 0 || row(plain, "Read") != 2 || resumed < card || !strings.Contains(plain[resumed], "Preparing regression seed") || tool != resumed+1 {
+	if seed != 0 || row(plain, "Explored") != seed || row(plain, "Read") != seed+1 || resumed < card || !strings.Contains(plain[resumed], "Preparing regression seed") || tool != resumed+1 {
 		t.Fatalf("Main's later tools do not continue their reasoning:\n%s", text)
 	}
 	for _, line := range plain {
