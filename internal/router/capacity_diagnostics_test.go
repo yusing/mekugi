@@ -80,7 +80,7 @@ await tools.exec_command({cmd:"after"});`
 	script := `const events=[]; const tools={exec_command:async args=>{events.push(args.cmd);return {exit_code:0,output:""};}};
 (async()=>{` + lowered + `;process.stdout.write(JSON.stringify(events));})().catch(error=>{console.error(error);process.exitCode=1;});`
 	output, err := exec.CommandContext(t.Context(), node, "-e", script).CombinedOutput()
-	want := `["before","argument","journal publisher unavailable; finish outstanding calls, then retry, or use direct functions.journal","after"]`
+	want := `["before","argument","journal publisher unavailable; finish outstanding calls, then retry await journal(...)","after"]`
 	if err != nil || string(output) != want {
 		t.Fatalf("lowered host execution: %s, %v; want %s", output, err, want)
 	}

@@ -20,10 +20,10 @@ const journalHistoryTool = "__mekugi_journal"
 const codeModeJournalStart = "<!-- mekugi-journal:start -->"
 const codeModeJournalEnd = "<!-- mekugi-journal:end -->"
 
-const codeModeJournalHint = "In Code Mode, functions.journal is only for list: record mutations with await journal(...) inside your next useful exec call, and finish with a final answer instead of a journal call."
+const codeModeJournalHint = "In Code Mode, use the exec-local journal helper for list and mutations: record mutations with await journal(...) inside your next useful exec call, and finish with a final answer instead of a journal call."
 
 var journalToolDescription = embeddedInstruction("journal_tool")
-var codeModeJournalGuidance = embeddedInstruction("journal_code_mode")
+var codeModeJournalGuidance = strings.Replace(embeddedInstruction("journal_code_mode"), "<journal-tool-description />", journalToolDescription, 1)
 
 type journalListItem struct {
 	ID       string `json:"id"`
@@ -52,62 +52,6 @@ func journalMutationsSchema() json.RawMessage {
 
 func injectCodeModeJournalGuidance(description string) (string, error) {
 	return refreshMarkedToolGuidance(description, codeModeJournalStart, codeModeJournalEnd, codeModeJournalGuidance)
-}
-
-// Code Mode records mutations inside the next useful exec call. A standalone
-// dedicated mutation costs a provider round trip, so only list is offered there.
-func exposeJournalTool(fields map[string]json.RawMessage, catalog *responsesToolCatalog, codeMode bool) error {
-	var check func(*responsesToolSection) error
-	check = func(section *responsesToolSection) error {
-		if section.err != nil {
-			return section.err
-		}
-		for _, tool := range section.tools {
-			if tool == nil || tool.fields == nil {
-				continue
-			}
-			if tool.Name == journalToolName || tool.Name == "functions.journal" {
-				return errors.New("request already defines journal")
-			}
-			if tool.nested != nil {
-				if err := check(tool.nested); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	}
-	if err := check(catalog.top); err != nil {
-		return err
-	}
-	for _, group := range catalog.additional {
-		if err := check(group.tools); err != nil {
-			return err
-		}
-	}
-	properties := map[string]any{
-		"op":    map[string]any{"type": "string", "enum": []string{"list"}, "description": "List milestones."},
-		"agent": map[string]any{"type": "string", "description": embeddedInstruction("journal_agent")},
-	}
-	if !codeMode {
-		properties["op"] = map[string]any{"type": "string", "enum": []string{"list", "add", "edit", "delete"}, "description": "List or mutate milestones."}
-		properties["id"] = map[string]any{"type": "string", "description": embeddedInstruction("journal_id")}
-		properties["text"] = map[string]any{"type": "string", "description": embeddedInstruction("journal_text")}
-		properties["journal"] = journalMutationsSchema()
-		properties["report_now"] = map[string]any{"type": "boolean", "description": "Show this milestone to the user immediately rather than waiting for completion."}
-	}
-	catalog.appendTop([]*responsesToolDefinition{newResponsesToolDefinition(map[string]json.RawMessage{
-		"type":        mustMarshalJSON("function"),
-		"name":        mustMarshalJSON(journalToolName),
-		"description": mustMarshalJSON(journalToolDescription),
-		"strict":      mustMarshalJSON(false),
-		"parameters": mustMarshalJSON(map[string]any{
-			"type":       "object",
-			"properties": properties,
-			"required":   []string{"op"},
-		}),
-	})})
-	return catalog.encodeTop(fields)
 }
 
 func isJournalCall(item map[string]json.RawMessage) bool {

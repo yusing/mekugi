@@ -2,65 +2,116 @@ package router
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
 
-func preparedJournalToolParameters(t *testing.T, request *parsedResponsesRequest) (ops []string, properties map[string]json.RawMessage) {
-	t.Helper()
-	var tools []struct {
-		Name       string `json:"name"`
-		Parameters struct {
-			Properties map[string]json.RawMessage `json:"properties"`
-		} `json:"parameters"`
-	}
-	if err := json.Unmarshal(request.fields["tools"], &tools); err != nil {
-		t.Fatal(err)
-	}
-	for _, tool := range tools {
-		if tool.Name != journalToolName {
-			continue
+func TestPublishCommentaryOnceListsThroughAuthenticatedRoute(t *testing.T) {
+	broker := newCommentaryBroker()
+	broker.journalLister = func(_ context.Context, session, thread, agent string) ([]journalItem, error) {
+		if session != "session" || thread != "thread" || agent != "/root/child" {
+			t.Fatalf("list identity = %q %q %q", session, thread, agent)
 		}
-		var op struct {
-			Enum []string `json:"enum"`
-		}
-		if err := json.Unmarshal(tool.Parameters.Properties["op"], &op); err != nil {
-			t.Fatal(err)
-		}
-		return op.Enum, tool.Parameters.Properties
+		return []journalItem{{ID: "item-1", Text: "Checked", Author: "/root/child"}}, nil
 	}
-	t.Fatalf("prepared request has no journal tool: %s", request.fields["tools"])
-	return nil, nil
+	server := httptest.NewServer(http.HandlerFunc(broker.serveHTTP))
+	defer server.Close()
+	token := broker.subscribe("session", "call", "")
+	broker.bindActivity(token, "thread")
+	for _, tc := range []struct {
+		name string
+		body string
+		ok   bool
+	}{
+		{"list", `{"op":"list","agent":"/root/child"}`, true},
+		{"mutation field", `{"op":"list","agent":"/root/child","text":"bad"}`, false},
+		{"unknown field", `{"op":"list","agent":"/root/child","extra":true}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			matched, err := publishCommentaryOnce(t.Context(), &output, []string{commentaryOnceArgument, server.URL, token, url.PathEscape(tc.body)})
+			if !matched {
+				t.Fatal("journal publisher command was not recognized")
+			}
+			if !tc.ok {
+				if err == nil {
+					t.Fatalf("invalid list accepted: %s", output.String())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			var result struct {
+				OK    bool              `json:"ok"`
+				Items []journalListItem `json:"items"`
+			}
+			if err := json.Unmarshal(output.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if !result.OK || len(result.Items) != 1 || result.Items[0].Text != "Checked" {
+				t.Fatalf("list output = %+v", result)
+			}
+		})
+	}
 }
 
-// A dedicated mutation in Code Mode is a standalone provider round trip; the
-// exec-local journal helper records the same mutation alongside useful work.
-func TestJournalToolOffersOnlyListInCodeMode(t *testing.T) {
-	_, _, codeMode, _ := newMekugiTestTransformWithProxy(t, newManagedMekugiProxy(t))
-	ops, properties := preparedJournalToolParameters(t, codeMode)
-	if !slices.Equal(ops, []string{"list"}) {
-		t.Fatalf("Code Mode journal ops = %v, want only list", ops)
+func TestLoweredCodeModeJournalListReturnsItems(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node is required to execute lowered Code Mode")
 	}
-	for _, name := range []string{"id", "text", "journal", "report_now"} {
-		if _, present := properties[name]; present {
-			t.Errorf("Code Mode journal schema exposes mutation property %q", name)
-		}
+	transform, _ := newRuntimeCommentaryTransform(t)
+	lowered, changed, err := transform.lowerCodeModeCommentary("list-call", `const items = await journal({op:"list",agent:"/root/child"}); process.stdout.write(JSON.stringify(items));`)
+	if err != nil || !changed {
+		t.Fatalf("lowering: changed=%t err=%v", changed, err)
 	}
-	if _, present := properties["agent"]; !present {
-		t.Error("Code Mode journal list lost its agent selector")
+	const result = `{"ok":true,"items":[{"id":"item-1","text":"Checked","author":"/root/child","reported":false,"flushed":false}]}`
+	script := `let calls=0; const result=JSON.parse(` + strconv.Quote(result) + `);
+const tools={exec_command:async ({cmd})=>{
+  calls++;
+  if(calls===1) return {exit_code:0,output:JSON.stringify({...result,next:1,revision:"a".repeat(64)})};
+  if(calls!==2 || !cmd.endsWith(" 1 "+"a".repeat(64))) throw new Error("invalid continuation command");
+  return {exit_code:0,output:JSON.stringify(result)};
+}}; (async()=>{` + lowered + `})().catch(error=>{console.error(error);process.exitCode=1;});`
+	output, err := exec.CommandContext(t.Context(), node, "-e", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("lowered execution: %s: %v", output, err)
 	}
+	var items []journalListItem
+	if err := json.Unmarshal(output, &items); err != nil {
+		t.Fatalf("list returned %s: %v", output, err)
+	}
+	if len(items) != 2 || items[0].ID != "item-1" || items[1].Text != "Checked" {
+		t.Fatalf("list returned %+v", items)
+	}
+}
 
+func TestJournalToolIsAbsentInBothModes(t *testing.T) {
+	_, _, codeMode, _ := newMekugiTestTransformWithProxy(t, newManagedMekugiProxy(t))
 	_, native := newNativeMekugiTestTransformWithProxy(t, newManagedMekugiProxy(t))
-	ops, properties = preparedJournalToolParameters(t, native)
-	if !slices.Equal(ops, []string{"list", "add", "edit", "delete"}) {
-		t.Fatalf("native journal ops = %v, want list and mutations", ops)
-	}
-	for _, name := range []string{"id", "text", "journal", "report_now", "agent"} {
-		if _, present := properties[name]; !present {
-			t.Errorf("native journal schema lost property %q", name)
-		}
+	for name, request := range map[string]*parsedResponsesRequest{"code mode": codeMode, "native": native} {
+		t.Run(name, func(t *testing.T) {
+			var tools []struct {
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(request.fields["tools"], &tools); err != nil {
+				t.Fatal(err)
+			}
+			for _, tool := range tools {
+				if tool.Name == journalToolName {
+					t.Fatal("dedicated journal tool exposed")
+				}
+			}
+		})
 	}
 }
 

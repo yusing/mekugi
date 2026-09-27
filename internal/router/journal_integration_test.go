@@ -591,52 +591,16 @@ func TestJournalLiveSnapshotCacheRefreshesOnMutationAndTerminal(t *testing.T) {
 	transform.ReleaseDelivery()
 }
 
-func TestJournalCatalogRejectsCollisions(t *testing.T) {
-	for _, tools := range []string{
-		`[{"type":"function","name":"journal"}]`,
-		`[{"type":"function","name":"functions.journal"}]`,
-		`[{"type":"namespace","name":"functions","tools":[{"type":"function","name":"journal"}]}]`,
-		`[{"type":"namespace","name":"outer","tools":[{"type":"namespace","name":"functions","tools":[{"type":"function","name":"journal"}]}]}]`,
-	} {
-		for _, additional := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/additional=%t", tools, additional), func(t *testing.T) {
-				fields := map[string]json.RawMessage{"tools": json.RawMessage(tools)}
-				if additional {
-					fields = map[string]json.RawMessage{"input": mustTestJSON(t, []any{map[string]any{"type": "additional_tools", "tools": json.RawMessage(tools)}})}
-				}
-				before := mustTestJSON(t, fields)
-				if err := exposeJournalTool(fields, decodeResponsesToolCatalog(fields), false); err == nil {
-					t.Fatal("accepted journal collision")
-				}
-				if !bytes.Equal(before, mustTestJSON(t, fields)) {
-					t.Fatal("rejected exposure changed catalog")
-				}
-			})
-		}
-	}
-}
-
-func TestJournalToolSchemaIncludesBatchedMutations(t *testing.T) {
-	fields := map[string]json.RawMessage{}
-	catalog := decodeResponsesToolCatalog(fields)
-	if err := exposeJournalTool(fields, catalog, false); err != nil {
-		t.Fatal(err)
-	}
-	var schema struct {
-		Properties map[string]json.RawMessage `json:"properties"`
-	}
-	if err := json.Unmarshal(catalog.top.tools[0].rawField("parameters"), &schema); err != nil {
-		t.Fatal(err)
-	}
+func TestJournalMutationSchemaAndSharedGuidance(t *testing.T) {
 	var nested struct {
 		Items struct {
 			Properties map[string]json.RawMessage `json:"properties"`
 		} `json:"items"`
 	}
-	if err := json.Unmarshal(schema.Properties["journal"], &nested); err != nil {
+	if err := json.Unmarshal(journalMutationsSchema(), &nested); err != nil {
 		t.Fatal(err)
 	}
-	for _, properties := range []map[string]json.RawMessage{schema.Properties, nested.Items.Properties} {
+	for _, properties := range []map[string]json.RawMessage{nested.Items.Properties} {
 		for _, name := range []string{"op", "report_now"} {
 			var property struct {
 				Description string `json:"description"`
@@ -658,7 +622,7 @@ func TestJournalToolSchemaIncludesBatchedMutations(t *testing.T) {
 			t.Fatalf("finish remains a model-visible journal operation: %s", properties["op"])
 		}
 	}
-	description := catalog.top.tools[0].Description
+	description := codeModeJournalGuidance
 	for _, required := range []string{"durable milestone journal", "await journal", "Finish naturally with a concise final answer", "Question and Answer flush"} {
 		if !strings.Contains(description, required) {
 			t.Fatalf("journal description lacks %q: %q", required, description)

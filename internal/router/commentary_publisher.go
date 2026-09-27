@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	jsonv1 "encoding/json"
+	json "encoding/json/v2"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +23,7 @@ const (
 	commentaryPublisherPath       = "/internal/commentary"
 	commentaryOnceArgument        = "--journal-once"
 	maxCommentaryRoutes           = 256
+	journalListPageItems          = 4 // Worst-case escaped items stay below stock exec's 1 MiB collection cap.
 	maxCommentaryEvents           = 1024
 	maxCommentaryEventsPerRoute   = 64
 	maxCommentaryPublicationBytes = 16 << 10
@@ -197,20 +201,22 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	}
 	request.Body = http.MaxBytesReader(writer, request.Body, maxJournalFlushBytes*6)
 	var publication struct {
-		Journal json.RawMessage `json:"journal"`
+		Journal jsonv1.RawMessage `json:"journal"`
 		// ID is a publication receipt, never a journal operation operand.
 		ReceiptID string `json:"id"`
 		Complete  bool   `json:"complete"`
 		Op        string `json:"op"`
 		Agent     string `json:"agent"`
+		Page      *int   `json:"page"`
+		Revision  string `json:"revision"`
 	}
-	decoder := json.NewDecoder(request.Body)
+	decoder := jsonv1.NewDecoder(request.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&publication); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
 		http.Error(writer, "invalid commentary publication", http.StatusBadRequest)
 		return
 	}
-	if len(publication.Journal) == 0 && publication.Complete && publication.Op == "" && publication.ReceiptID == "" && publication.Agent == "" {
+	if len(publication.Journal) == 0 && publication.Complete && publication.Op == "" && publication.ReceiptID == "" && publication.Agent == "" && publication.Page == nil && publication.Revision == "" {
 		if !b.publish(token, "", true) {
 			http.Error(writer, "unauthorized", http.StatusUnauthorized)
 			return
@@ -237,13 +243,17 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	raw := bytes.TrimSpace(publication.Journal)
 	switch publication.Op {
 	case "", "batch":
-		if publication.Complete || publication.Agent != "" || len(raw) == 0 || publication.ReceiptID == "" {
+		if publication.Complete || publication.Agent != "" || len(raw) == 0 || publication.ReceiptID == "" || publication.Page != nil || publication.Revision != "" {
 			http.Error(writer, "invalid journal publication", http.StatusBadRequest)
 			return
 		}
 	case "list":
 		if publication.Complete || publication.ReceiptID != "" || len(raw) != 0 {
 			http.Error(writer, "journal list accepts only agent", http.StatusBadRequest)
+			return
+		}
+		if publication.Page == nil && publication.Revision != "" || publication.Page != nil && (*publication.Page < 0 || *publication.Page > maxJournalItems || *publication.Page > 0 && publication.Revision == "") {
+			http.Error(writer, "invalid journal list continuation", http.StatusBadRequest)
 			return
 		}
 		if b.journalLister == nil {
@@ -296,14 +306,33 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 				Author: item.Author, Reported: item.Reported, Flushed: item.Flushed,
 			})
 		}
+		response := map[string]any{"ok": true, "items": listed}
+		if publication.Page != nil {
+			encoded, err := jsonv1.Marshal(listed)
+			if err != nil {
+				http.Error(writer, "encode journal list", http.StatusInternalServerError)
+				return
+			}
+			revision := fmt.Sprintf("%x", sha256.Sum256(encoded))
+			if publication.Revision != "" && publication.Revision != revision {
+				http.Error(writer, "journal changed during list; retry the read", http.StatusConflict)
+				return
+			}
+			start := min(*publication.Page, len(listed))
+			end := min(start+journalListPageItems, len(listed))
+			response["items"], response["revision"] = listed[start:end], revision
+			if end < len(listed) {
+				response["next"] = end
+			}
+		}
 		writer.Header().Set("Content-Type", "application/json")
-		encoder := json.NewEncoder(writer)
+		encoder := jsonv1.NewEncoder(writer)
 		encoder.SetEscapeHTML(false) // Match the journal store's protocol encoding.
-		_ = encoder.Encode(map[string]any{"ok": true, "items": listed})
+		_ = encoder.Encode(response)
 		return
 	}
 	writer.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(writer).Encode(map[string]any{"ok": true, "items": ids})
+	_ = jsonv1.NewEncoder(writer).Encode(map[string]any{"ok": true, "items": ids})
 }
 
 func commentaryPublisherURL(listenAddress string) (string, error) {
@@ -373,7 +402,7 @@ type httpCommentarySink struct {
 }
 
 func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []string) (bool, error) {
-	if len(arguments) != 4 || arguments[0] != commentaryOnceArgument {
+	if len(arguments) != 4 && len(arguments) != 6 || arguments[0] != commentaryOnceArgument {
 		return false, nil
 	}
 	text, err := url.PathUnescape(arguments[3])
@@ -381,7 +410,28 @@ func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []st
 		return true, err
 	}
 	sink := &httpCommentarySink{endpoint: arguments[1], token: arguments[2], client: commentaryHTTPClient}
-	result, err := sink.send(ctx, map[string]any{"journal": json.RawMessage(text), "id": rand.Text()})
+	publication := map[string]any{"journal": jsonv1.RawMessage(text), "id": rand.Text()}
+	var operation struct {
+		Op    string `json:"op"`
+		Agent string `json:"agent"`
+	}
+	if json.Unmarshal([]byte(text), &operation) == nil && operation.Op == "list" {
+		if err := json.Unmarshal([]byte(text), &operation, json.RejectUnknownMembers(true)); err != nil {
+			return true, fmt.Errorf("journal list accepts only op and agent: %w", err)
+		}
+		page, revision := 0, ""
+		if len(arguments) == 6 {
+			page, err = strconv.Atoi(arguments[4])
+			if err != nil || page <= 0 || arguments[5] == "" {
+				return true, fmt.Errorf("invalid journal list continuation")
+			}
+			revision = arguments[5]
+		}
+		publication = map[string]any{"op": "list", "agent": operation.Agent, "page": page, "revision": revision}
+	} else if len(arguments) != 4 {
+		return true, fmt.Errorf("journal continuation requires list")
+	}
+	result, err := sink.send(ctx, publication)
 	if err != nil {
 		return true, err
 	}
@@ -390,7 +440,7 @@ func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []st
 }
 
 func (s *httpCommentarySink) send(ctx context.Context, publication map[string]any) ([]byte, error) {
-	body, err := json.Marshal(publication)
+	body, err := jsonv1.Marshal(publication)
 	if err != nil {
 		return nil, err
 	}

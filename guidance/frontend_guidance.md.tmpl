@@ -40,7 +40,9 @@ Milestones in this durable milestone journal survive compaction. Finish naturall
 
 Record milestones when established, not only at completion: distinct current findings, validation results, decisions, or blockers. Use journal mutations instead of commentary for milestone updates; set report_now when the user needs the update immediately. Do not duplicate the update in commentary. Plans, ongoing narration, superseded progress, and summaries of other agents are not milestones. Questions and direct conversational replies remain separate from milestone reporting.
 
-Record mutations on a useful call, not as a separate journal call: each separate call costs another model request. Use the optional journal field on a useful ordinary tool call. In Code Mode, await journal({op: "add", text: "..."}) or pass an atomic mutation array inside the next useful exec; this tool then offers only list. For example, after inspecting a test result, record the validated outcome alongside the next useful call. Mutations return router-assigned IDs; edit an existing item when its result is superseded. Use this dedicated tool for list.
+Record mutations on a useful call, not as a separate journal call: each separate call costs another model request. Use the optional journal field on a useful ordinary tool call. In Code Mode, use the exec-local journal helper below inside the next useful exec. For example, after inspecting a test result, record the validated outcome alongside the next useful call. Mutations return router-assigned IDs; edit an existing item when its result is superseded.
+
+Code Mode journal API: `await journal(mutation)` returns an item ID; `await journal([mutation, ...])` applies an atomic batch and returns IDs in order. A mutation is `{op: "add" | "edit" | "delete", id?: string, text?: string, report_now?: boolean}`. Add requires nonblank text; edit requires id and nonblank text; delete requires id. For example: `const id = await journal({op: "add", text: "Tests passed"});` then `await journal({op: "edit", id, text: "Full suite passed"});`. Read with `await journal({op: "list"})` (optional `agent: string`), which returns an array of `{id, text, question?, author, reported, flushed}` items; omit agent for your own journal or select a proven ancestor or descendant by canonical path. List accepts only op and agent. Publication and read failures throw. Call `journal(...)` directly, not `tools.journal(...)`: it is a router-provided source helper, not a discoverable tool in ALL_TOOLS. The router converts it to an authenticated mjournal call through stock execution; do not construct or replay that internal call.
 
 Once the assigned work is complete and all required tool results have been inspected, finish with a final answer, not a journal call. Main flushes its unflushed items and a child returns its current journal to its native completion audience. Child completion automatically includes owned change ranges and aggregated numstat; do not collect them just to finish.
 </instruction>
@@ -48,7 +50,7 @@ Once the assigned work is complete and all required tool results have been inspe
 <instruction id="journal_code_mode">
 <!-- mekugi-journal:start -->
 <journal>
-Follow the `functions.journal` tool description for milestone, mutation, and completion rules.
+<journal-tool-description />
 </journal>
 <!-- mekugi-journal:end -->
 </instruction>
@@ -56,16 +58,6 @@ Follow the `functions.journal` tool description for milestone, mutation, and com
 <instruction id="journal_mutations">
 Optional atomic journal mutations applied before this operation. report_now shows progress immediately.
 </instruction>
-<instruction id="journal_id">
-Router-assigned item ID; required for edit and delete.
-</instruction>
-<instruction id="journal_text">
-Required nonblank milestone text for add and edit.
-</instruction>
-<instruction id="journal_agent">
-Canonical path of a proven ancestor or descendant, for list only. Defaults to the caller.
-</instruction>
-
 <instruction id="report_issue">
 Report an observed Mekugi interaction problem as Markdown to the configured diagnose hooks.
 </instruction>

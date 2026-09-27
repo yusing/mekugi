@@ -75,20 +75,17 @@ concurrent threads and branches do not share its source. Journal mutation schema
 expose an answer flag, and ordinary milestone edits preserve any attached question. Previously
 retained answer-marked and finish calls remain replayable but are not offered to new model turns.
 
-Mekugi mode also exposes `functions.journal` with `list`, `add`, `edit`, or
-`delete`. When the request exposes Code Mode, the dedicated schema offers only `list` with its
-`agent` selector: mutations belong in `await journal(...)` inside the next useful `exec`, so a
-milestone does not need a standalone provider round trip. An off-schema Code Mode mutation or
-retained-form finish still applies under the rules below, and its result adds a `hint` pointing
-to the `exec` form; rejecting it would add a correction request even when the same response
-already carries the final answer. List is read-only and may address only a proven ancestor or descendant journal. Unknown
+Mekugi does not expose a dedicated `functions.journal` tool. Code Mode exposes list and
+mutations through `await journal(...)` on `exec`. Mutations belong inside the next useful
+`exec`, so a milestone does not need a standalone provider round trip. Native ordinary
+function calls retain their optional batched `journal` field. Legacy dedicated calls remain
+replayable; retained-form mutations and finish calls still apply and receive an exec-local
+helper hint in Code Mode.
+List is read-only and may address only a proven ancestor or descendant journal. Unknown
 or conflicted ancestry fails closed. Durable workspace identities, not the live activity
 collector, authorize relative access after a router restart with only the requesting
 thread observed. Authorization and returned items use the same locked snapshot.
-Mutations return router-assigned IDs. The dedicated tool includes `journal_ids` for any batched field mutations, independently of its main operation result. Journal calls are
-router state operations and do not invoke an executor. Outside Code Mode, the dedicated schema
-exposes the optional batched `journal` field. Existing journal declarations anywhere in the tool catalog, including
-nested additional-tool namespaces, reject built-in tool exposure.
+Mutations return router-assigned IDs.
 
 The agent finishes naturally with a final answer after inspecting required tool results.
 On a successful completed response with no client-dispatched calls, the router captures the final
@@ -148,7 +145,7 @@ the missing result and new input; restoration alone does not establish cache val
 
 Mekugi mode forces `tools.update_plan.enabled=false` and removes `update_plan` declarations from
 the request catalog, including nested additional-tool namespaces. The caller's base instructions
-remain unchanged; the journal tool descriptions supply additive guidance. Passthrough retains the
+remain unchanged; the execution-tool Journal sections supply additive guidance. Passthrough retains the
 stock tool catalog and prompt.
 
 ### Runtime authoring
@@ -176,7 +173,10 @@ Each answer keeps its ID separate from its body and indents all body lines under
 including blank lines, nested lists, paragraphs, and fenced code blocks.
 
 Code Mode reserves `await journal({op, id?, text?, report_now?})`, also accepting
-a mutation array. The parser preserves strings, comments, properties, and unrelated
+a mutation array. `await journal({op: "list", agent?: string})` returns an array of journal
+items with `id`, `text`, optional `question`, `author`, `reported`, and `flushed`. List accepts
+only `op` and `agent`; omitted agent selects the caller, and explicit agents use the same
+durable ancestry authorization as other journal reads. Read failures throw. The parser preserves strings, comments, properties, and unrelated
 identifiers, and leaves unparseable source unchanged for the executor to diagnose.
 A single mutation returns its item ID; a mutation array returns the ordered item IDs.
 Nested calls can use an added item's returned ID in a subsequent edit. Publication failures
@@ -187,13 +187,17 @@ frontend invoked through stock `tools.exec_command`. The frontend publishes
 only the requested mutation through a call-scoped broker capability; it does
 not run the surrounding program or replace the stock result. Programmatic
 calls can await the returned item ID, including an add followed by an edit.
+List transport uses bounded internal pages below the stock output collection limit and
+assembles the complete item array inside the helper. Every page reauthorizes access and
+checks the full snapshot revision; concurrent changes fail the read rather than mixing
+snapshots. These transport cursors are not model-facing operation fields.
 Failed publication throws. If publisher capacity is unavailable, the host-executed helper throws
-a model-visible retry/direct-journal hint; the user-only capacity notice contains no agent instructions.
+a model-visible retry hint; the user-only capacity notice contains no agent instructions.
 The capability expires with its owning call and
 cannot be borrowed by another thread. Agent-authored source and private
 publisher credentials are not added to sanitized metrics.
 
-`functions.journal` owns `list`, `add`, `edit`, and `delete`; in Code Mode it offers only `list`,
+The exec-local journal helper owns `list`, `add`, `edit`, and `delete`;
 and guidance directs mutations to the exec-local helper. A successful natural
 final answer with no pending Codex-dispatched work delivers the terminal journal
 without another provider request. Replay may restore journal calls and results,
@@ -242,8 +246,9 @@ failure or overflow.
    keep their relative order and full Markdown. Filtering flushed revisions, retry, child
    completion, and restart group only items included in that message. Question edits, clearing,
    list, replay, restart, and forks preserve the specified state semantics.
-10. Code Mode requests expose a list-only dedicated journal schema without batched mutations;
-    non-Code-Mode requests keep list and mutations. Exec-local mutations remain host work, a
+10. All requests omit the dedicated journal tool and expose the full journal guidance
+    on exec. The exec-local helper supports read-only list with durable ancestry authorization
+    and rejects mixed list/mutation fields. Native function tools retain batched mutation fields. Exec-local mutations remain host work, a
     natural final answer completes in one provider request, and an off-schema dedicated
     mutation or finish applies with the Code Mode hint without adding a provider request when
     the response otherwise completes. A journal-only list continues so its result is inspectable.

@@ -52,7 +52,7 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 				if string(request["generate"]) != "false" || !bytes.Contains(request["input"], []byte("mekugi-journal:start")) ||
 					!bytes.Contains(request["input"], []byte("mekugi-frontends:start")) || !bytes.Contains(request["input"], []byte("batch journal mutations")) ||
 					!bytes.Contains(request["input"], []byte("tools.exec_command")) ||
-					bytes.Contains(request["tools"], []byte(`"shell"`)) || !bytes.Contains(request["tools"], []byte(`"journal"`)) {
+					bytes.Contains(request["tools"], []byte(`"shell"`)) || bytes.Contains(request["tools"], []byte(`"journal"`)) {
 					t.Errorf("prewarm projection: generate=%s journal=%t frontends=%t conflict=%t stock=%t shell=%t tool=%t",
 						request["generate"], bytes.Contains(request["input"], []byte("mekugi-journal:start")),
 						bytes.Contains(request["input"], []byte("mekugi-frontends:start")), bytes.Contains(request["input"], []byte("batch journal mutations")),

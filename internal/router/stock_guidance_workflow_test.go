@@ -103,7 +103,7 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 		if err := json.Unmarshal(fields["tools"], &after); err != nil {
 			t.Fatal(err)
 		}
-		if len(after) != 2 || jsonString(after[0], "description") != "run a command\n\n"+guide {
+		if len(after) != 2 || jsonString(after[0], "description") != "run a command\n\n"+guide+"\n\n"+codeModeJournalGuidance {
 			t.Fatalf("exec_command did not receive the registry guidance additively: %s", fields["tools"])
 		}
 		if jsonString(before[1], "description") != jsonString(after[1], "description") {
@@ -125,8 +125,8 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 			t.Fatal("Code Mode stock description was not preserved")
 		}
 		checkFrontendRequirements(t, got)
-		if !strings.Contains(got, "Follow the `functions.journal` tool description") {
-			t.Error("Code Mode guidance does not point to the journal owner")
+		if !strings.Contains(got, journalToolDescription) {
+			t.Error("Code Mode guidance does not include the journal owner")
 		}
 		if strings.Contains(codeModeJournalGuidance, "After every required tool result, finish") {
 			t.Error("Code Mode journal guidance still directs finishing after every individual tool result")
@@ -160,6 +160,12 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 				"Record milestones when established, not only at completion",
 				"Use journal mutations instead of commentary for milestone updates",
 				"Use the optional journal field",
+				"Code Mode journal API:",
+				"Add requires nonblank text; edit requires id and nonblank text; delete requires id.",
+				"applies an atomic batch and returns IDs in order",
+				"Publication and read failures throw.",
+				"not a discoverable tool in ALL_TOOLS",
+				"do not construct or replay that internal call",
 				"Once the assigned work is complete",
 				"Finish naturally with a concise final answer",
 			} {

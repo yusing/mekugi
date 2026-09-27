@@ -42,21 +42,23 @@ Review handoffs include the requested scope and explicit IDs or same-agent inclu
 the recipient's own change listing cannot discover another agent's IDs. Historical edit evidence
 does not assert the current workspace state or cover shell-generated changes.
 
-The journal owner supplies the additive durable-work guidance. The dedicated
-`functions.journal` description explains milestone scope, immediate reporting, Code Mode mutation,
-and natural completion semantics. Eligible structured tools receive the optional atomic `journal` mutation
-field. For Code Mode, Mekugi appends one marked Journal section to the authoritative `exec` tool
-description without removing the caller's stock execution contracts.
-The section points to the dedicated journal tool description rather than repeating its rules.
-That description owns Code Mode mutation syntax, batching, and completion conditions for both
-native and Code Mode consumers. A previously marked section is refreshed in place. Duplicate, incomplete, or reversed
-markers reject before forwarding instead of creating ambiguous guidance.
+The journal owner supplies the additive durable-work guidance once per request: on the
+Code Mode `exec` or native `exec_command` in one marked Journal section. No dedicated
+`functions.journal` tool is exposed. Eligible
+structured tools receive the optional atomic `journal` mutation field.
+The shared description owns milestone scope, immediate reporting, the complete Code Mode
+helper API (including list, required fields, return values, and failures), batching, and natural
+completion. It identifies `journal(...)` as a router-provided source helper outside `tools`
+and `ALL_TOOLS`, and the generated `mjournal` invocation as internal transport rather than an
+agent-authored command. Projection preserves the caller's stock execution contracts. A
+previously marked section is refreshed in place. Duplicate, incomplete, or reversed markers
+reject before forwarding instead of creating ambiguous guidance.
 
 Journal projection is rebuilt from the current request's authenticated tool catalog. It does not
 depend on a routing-session ID, a live parent, an earlier prompt rewrite, or a particular model.
 Ordinary turns, forks, side threads, subagents, model switches, compaction continuations, and resumed
 threads therefore receive the same current guidance when they expose the applicable tool owner.
-Native tool requests receive the dedicated journal description and session-helper guidance on
+Native tool requests receive the journal description and session-helper guidance on
 `exec_command`, without changing their other stock tools.
 Execution-free and prewarm requests retain their existing lifecycle rules.
 
@@ -87,11 +89,10 @@ Acceptance:
    Native `exec_command` receives the frontend
    section. Refresh is idempotent, malformed markers fail closed, and unrelated descriptions,
    sibling tools, and stock execution contracts remain unchanged.
-3. The dedicated journal tool and optional mutation field expose enough guidance to record concise
+3. The execution-tool journal section and optional mutation field expose enough guidance to record concise
    milestones, request immediate reporting, list retained items, and finish naturally with a final
    answer rendered as a journal flush without another provider request. Guidance directs mutations
-   onto useful calls rather than standalone journal calls; in Code Mode the dedicated tool offers
-   only `list`, and mutations use the exec-local helper.
+   onto useful calls rather than standalone journal calls; Code Mode exposes only the exec-local helper for both list and mutations.
 4. Ordinary, fork, side-thread, subagent, model-switch, compaction, and resume consumers derive
    guidance from their current tool catalog and authenticated registry rather than invisible ancestry
    or live router state. Each helper has one description owner; the built-in section of the

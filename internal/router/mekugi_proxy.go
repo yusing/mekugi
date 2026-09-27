@@ -551,9 +551,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	if execution.codeMode != nil {
 		codeModeToolName = execution.codeMode.name
 	}
-	if err := exposeJournalTool(request.fields, tools, codeModeToolName != ""); err != nil {
-		return nil, err
-	}
 	if p.registry.diagnoseEnabled {
 		if err := exposeReportIssueTool(request.fields, tools); err != nil {
 			return nil, err

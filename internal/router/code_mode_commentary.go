@@ -14,7 +14,7 @@ type codeModeCommentaryCall struct {
 	argumentEnd   int
 }
 
-const journalPublisherUnavailable = "journal publisher unavailable; finish outstanding calls, then retry, or use direct functions.journal"
+const journalPublisherUnavailable = "journal publisher unavailable; finish outstanding calls, then retry await journal(...)"
 
 func (t *mekugiResponseTransform) lowerCodeModeCommentary(callID, input string) (string, bool, error) {
 	if t.proxy.commentaryEndpoint == "" {
@@ -91,7 +91,11 @@ func (t *mekugiResponseTransform) lowerCodeModeCommentary(callID, input string) 
 		commandExpression := strconv.Quote(command+" '") +
 			" + encodeURIComponent(JSON.stringify(mutation)).replaceAll(\"'\", \"%27\") + \"'\""
 		replacements[index] = `(await (async mutation => {
-let execution = await tools.exec_command({cmd: ` + commandExpression + `, login: false});
+const command = ` + commandExpression + `;
+const items = [];
+let continuation = "";
+while (true) {
+let execution = await tools.exec_command({cmd: command + continuation, login: false});
 let output = execution.output || "";
 while (execution.session_id != null) {
   execution = await tools.write_stdin({session_id: execution.session_id, chars: "", yield_time_ms: 10000});
@@ -99,10 +103,19 @@ while (execution.session_id != null) {
 }
 if (execution.exit_code !== 0) throw new Error("journal publication failed" + (output.trim() ? ": " + output.trim().slice(0, 16384) : ""));
 const publication = JSON.parse(output);
-if (publication.ok !== true || !Array.isArray(publication.items) || publication.items.length !== (Array.isArray(mutation) ? mutation.length : 1) || publication.items.some(id => typeof id !== "string")) {
+if (publication.ok !== true || !Array.isArray(publication.items)) throw new Error("invalid journal publication result");
+if (!Array.isArray(mutation) && mutation.op === "list") {
+  items.push(...publication.items);
+  if (publication.next == null) return items;
+  if (!Number.isInteger(publication.next) || publication.next !== items.length || !/^[a-f0-9]{64}$/.test(publication.revision)) throw new Error("invalid journal list continuation");
+  continuation = " " + publication.next + " " + publication.revision;
+  continue;
+}
+if (publication.items.length !== (Array.isArray(mutation) ? mutation.length : 1) || publication.items.some(id => typeof id !== "string")) {
   throw new Error("invalid journal publication result");
 }
 return Array.isArray(mutation) ? publication.items : publication.items[0];
+}
 })(` + argument + `))`
 	}
 

@@ -151,6 +151,10 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *responses
 		if err != nil {
 			return stockExecutionCatalog{}, err
 		}
+		description, err = injectCodeModeJournalGuidance(description)
+		if err != nil {
+			return stockExecutionCatalog{}, err
+		}
 		tool.setDescription(description)
 		if err := catalog.encodeTop(fields); err != nil {
 			return stockExecutionCatalog{}, fmt.Errorf("encode Responses tools: %w", err)
