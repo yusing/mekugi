@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
@@ -9,6 +10,70 @@ import (
 
 	"github.com/yusing/mekugi"
 )
+
+func TestJournalChildCompletionChangesAfterRequestForward(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	var err error
+	proxy.replayStore, err = openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	headers := serverMetadataHeaders(t, "turn", nil)
+	headers.Set(threadIDHeader, "child")
+	headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, map[string]any{
+		"request_kind": "turn", "thread_id": "child", "parent_thread_id": "root",
+		"agent_name": "/root/child", "subagent_kind": "thread_spawn",
+		"workspaces": map[string]any{workspace: map[string]any{}},
+	})))
+	startCtx, cancelStart := context.WithCancel(t.Context())
+	defer cancelStart()
+	executionCtx, cancelExecution := context.WithCancel(t.Context())
+	defer cancelExecution()
+	attempt := newRequestAttempt(requestExecutor{
+		provider: &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}},
+		issues:   NewCriticalErrors(), mekugiCalls: proxy,
+	}, startCtx, executionCtx, serverRequest(t, nil), headers, "child-routing")
+	if err := attempt.prepare(); err != nil {
+		t.Fatal(err)
+	}
+	child := attempt.mekugiTransform
+	defer child.Close()
+	store := proxy.replayStore.scoped(child.ctx)
+	if store.handleNamespace() != "root" {
+		t.Fatalf("child namespace = %q", store.handleNamespace())
+	}
+	id, err := store.reserveChange(child.ctx, child.directory, "child", "edit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.put(child.ctx, child.directory, map[string]mekugiHistory{"edit": {
+		ChangeID: id, CorrelationID: "edit", ExecutingThread: "child",
+		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("created.txt", "created.txt", "", "kept\n")},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	turn := child.ctx.Value(storageTurnKey{})
+	if err := attempt.prepareWire(); err != nil {
+		t.Fatal(err)
+	}
+	if err := attempt.forward(); err != nil {
+		t.Fatal(err)
+	}
+	defer attempt.response.Body.Close()
+	cancelStart()
+	if child.ctx.Err() != nil || child.ctx.Value(storageTurnKey{}) != turn {
+		t.Fatal("response lost execution lifetime or turn lease")
+	}
+	result := finishChildJournalForChanges(t, child)
+	if !strings.Contains(result, id) || !strings.Contains(result, "M\t1\t0\tcreated.txt") {
+		t.Fatalf("forwarded completion lost captured changes:\n%s", result)
+	}
+	cancelExecution()
+	if child.ctx.Err() != context.Canceled {
+		t.Fatal("response no longer follows execution cancellation")
+	}
+}
 
 func TestJournalChildCompletionIncludesOwnChanges(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)

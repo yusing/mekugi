@@ -418,7 +418,15 @@ func (a *requestAttempt) forward() error {
 	a.finalization.upstreamStatusCode = a.response.StatusCode
 	a.finalization.failurePhase = requestFailureInspectResponse
 	if a.mekugiTransform != nil {
-		a.mekugiTransform.ctx = a.executionCtx
+		// Drop the response-start deadline, not the prepared storage identity
+		// and turn lease. Child changes share their parent's handle namespace.
+		ctx := a.executionCtx
+		for _, key := range []any{storageSessionKey{}, storageTurnKey{}} {
+			if value := a.mekugiTransform.ctx.Value(key); value != nil {
+				ctx = context.WithValue(ctx, key, value)
+			}
+		}
+		a.mekugiTransform.ctx = ctx
 	}
 	a.streamResponse, err = prepareUpstreamBody(a.response, a.request.streamResponse)
 	if err != nil {

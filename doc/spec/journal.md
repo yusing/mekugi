@@ -120,6 +120,8 @@ reported or flushed and does not include descendant journals. The parent receive
 text without a journal lookup or another child provider request.
 The child result appends its retained change ranges and one aggregated numstat using
 `mchanges --summary` count semantics. Journal and change selection share a locked snapshot.
+Response delivery preserves the prepared storage namespace and turn lease when switching
+from the response-start deadline to the execution lifetime.
 Selection uses durable executing-thread ownership, falling back to the originating stream
 for older records; it excludes other threads' attempts, even within a shared recovery ID.
 Ranges identify the retained changes, while counts cover only this child's evaluations.
