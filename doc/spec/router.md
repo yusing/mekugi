@@ -482,10 +482,22 @@ the owning agent, and scrolls to that exact reply. The full message stays in
 Activity. Assignment excerpts sit below their link on separate, wrapped quote
 rows. Excerpts skip paragraph gaps, and truncated excerpts end their last text
 row with an inline ellipsis, not a separate ellipsis row.
+Adjacent Main items of traffic with one agent form a thread under that agent's
+gutter, with no spacer rows. Main reasoning summaries between those items stay
+inside the thread on its rail. Later items replace the agent heading with a
+connector naming the event: replies, completions and failures show how long the
+agent took, while follow-ups keep their time. The thread's latest item keeps the
+longer excerpt; items the thread has moved past shrink to two rows. A reply's
+Activity link counts its omitted rows and closes the thread when nothing follows
+it. A shrunk assignment ends with a right-aligned count of its omitted rows;
+clicking it expands the assignment in place, and clicking again collapses it.
+An unanswered assignment stays in full.
 Transcript blockquotes use a vertical rail rather than literal `>` markers,
 including on wrapped continuation rows, and retain inline Markdown styling.
 Child answers link (`↩ re:`) to their retained assignment, not to a
-previous answer or similar text. Main's ordinary replies link to the user input
+previous answer or similar text. An answer to its thread's latest assignment
+omits the link, since that assignment is directly above; an answer to an earlier
+assignment in the same thread keeps it. Main's ordinary replies link to the user input
 in their own turn. The `re:` label includes the target text; if only the question
 text is retained, it remains text rather than a fabricated navigation target.
 Hovering a navigable link underlines it; clicking it scrolls to and briefly

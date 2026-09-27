@@ -267,8 +267,11 @@ func TestAppServerNativeAssignmentQuestionLink(t *testing.T) {
 	u.view.conversation = true
 	main := ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
 	agents := ansi.Strip(strings.Join(u.agents.renderFeed(90, 40).lines, "\n"))
-	if !strings.Contains(main, assignment) || !strings.Contains(agents, assignment) || !strings.Contains(main, "↩ re: assignment") || strings.Contains(main, "not loaded") {
-		t.Fatalf("native NEW_TASK assignment was not linked:\n%s\n%s", main, agents)
+	if !strings.Contains(main, assignment) || !strings.Contains(agents, assignment) || !strings.Contains(main, "├─✓ finished") || strings.Contains(main, "↩ re:") {
+		t.Fatalf("native NEW_TASK answer was not threaded under its assignment:\n%s\n%s", main, agents)
+	}
+	if groups := u.view.blocks[1][0].journal.groups; len(groups) != 1 || groups[0].target != u.view.entries[0].Seq {
+		t.Fatalf("native NEW_TASK assignment was not linked: %+v", groups)
 	}
 }
 

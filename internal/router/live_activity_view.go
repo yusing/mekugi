@@ -101,6 +101,7 @@ type liveActivityRunKey struct {
 	theme       livediff.Theme
 	hover       int // Hovered snippet block in this run, or -1.
 	main        bool
+	thread      conversationThread // Main transcript thread placement.
 }
 
 func newLiveActivityView() *liveActivityView {
@@ -1135,7 +1136,7 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 			}
 			last = j
 		}
-		key := liveActivityRunKey{v.entries[i].Seq, v.entries[last].Seq, width, clip, v.painter.theme, -1, false}
+		key := liveActivityRunKey{v.entries[i].Seq, v.entries[last].Seq, width, clip, v.painter.theme, -1, false, conversationThread{}}
 		if v.snippet.run == key.first {
 			key.hover = v.snippet.block
 		}

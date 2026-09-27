@@ -54,8 +54,8 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 	u.view.conversation = true
 	feed := u.view.renderFeed(100, 40)
 	main := ansi.Strip(strings.Join(feed.lines, "\n"))
-	if !strings.Contains(main, "▶ reviewer started") || !strings.Contains(main, "↩ re: assignment") || strings.Contains(main, "not loaded") {
-		t.Fatalf("follow-up answer target missing:\n%s", main)
+	if !strings.Contains(main, "▶ reviewer started") || !strings.Contains(main, "├─→ follow-up") || !strings.Contains(main, "├─✓ finished") || strings.Contains(main, "↩ re:") {
+		t.Fatalf("follow-up answer was not threaded under its assignment:\n%s", main)
 	}
 	var target uint64
 	for _, entry := range u.view.entries {
@@ -63,12 +63,8 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 			target = entry.Seq
 		}
 	}
-	linked := false
-	for _, link := range feed.questions {
-		linked = linked || link == target && target != 0
-	}
-	if !linked {
-		t.Fatal("answer did not link to its follow-up assignment")
+	if groups := u.view.blocks[len(u.view.blocks)-1][0].journal.groups; target == 0 || len(groups) == 0 || groups[len(groups)-1].target != target {
+		t.Fatalf("answer did not link to its follow-up assignment: %+v", groups)
 	}
 	for _, entry := range u.view.entries {
 		if entry.Kind == "start" && entry.Agent != "Main" {
@@ -104,17 +100,10 @@ func TestNativeActivityCumulativeAnswerTargets(t *testing.T) {
 	if strings.Count(ansi.Strip(strings.Join(feed.lines, "\n")), "First review.") != 1 {
 		t.Fatal("cumulative snapshot repeated the previous reply")
 	}
-	if strings.Contains(ansi.Strip(strings.Join(feed.lines, "\n")), "not loaded") {
-		t.Fatal("normalized question text did not resolve to the original assignment")
-	}
-	for _, target := range []uint64{1, 3} {
-		found := false
-		for _, link := range feed.questions {
-			found = found || link == target
-		}
-		if !found {
-			t.Fatalf("rendered answer has no clickable target %d", target)
-		}
+	// Each answer follows its own assignment in one thread, so neither is
+	// quoted again; the targets above keep them linked.
+	if main := ansi.Strip(strings.Join(feed.lines, "\n")); strings.Contains(main, "not loaded") || strings.Contains(main, "↩ re:") {
+		t.Fatalf("threaded answers quoted their assignments:\n%s", main)
 	}
 	// Narrow Activity must use the same parsed, deduplicated answers, not
 	// fall back to the original cumulative wire body.

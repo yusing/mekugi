@@ -67,10 +67,13 @@ func TestAppServerSessionProjectsChildThreads(t *testing.T) {
 	}
 	u.view.conversation = true
 	main := ansi.Strip(strings.Join(u.view.renderFeed(90, 60).lines, "\n"))
-	for _, want := range []string{"▶ worker started", "✓ worker finished", "↩ re: assignment", "The pane waits on its first frame."} {
+	for _, want := range []string{"▶ worker started", "├─✓ finished", "The pane waits on its first frame.", "╰─↩ Open reply in Activity"} {
 		if !strings.Contains(main, want) {
 			t.Fatalf("Main lacks %q:\n%s", want, main)
 		}
+	}
+	if strings.Contains(main, "↩ re:") {
+		t.Fatalf("an answer threaded under its assignment quoted it again:\n%s", main)
 	}
 	if strings.Contains(main, "go test") {
 		t.Fatal("a child's command reached Main")

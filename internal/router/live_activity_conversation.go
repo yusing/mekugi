@@ -1,6 +1,7 @@
 package router
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 
@@ -37,12 +38,16 @@ func conversationMilestone(entry activityPaneEntry) bool {
 
 // renderConversation lays Main out as a transcript rather than an activity
 // feed: prompts on a tinted band, Main's own messages and milestones without
-// author headings, and agent traffic under one-line headings. It reuses
-// Activity's block parsing, painter and viewport logic.
+// author headings, and agent traffic under one-line headings. Adjacent traffic
+// with one agent forms a thread, which Main's reasoning summaries continue
+// through. It reuses Activity's block parsing, painter and viewport logic.
 func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
-	var feed liveActivityFeed
-	v.questionRows = make(map[uint64]int)
-	used := make(map[liveActivityRunKey]liveActivityRun)
+	type item struct {
+		first, last int
+		agent       string // Thread agent, or "" when the item cannot join one.
+		aside       bool   // Main reasoning, which neither starts nor ends a thread.
+	}
+	var items []item
 	for i := 0; i < len(v.entries); {
 		if !v.visible(v.entries[i]) {
 			i++
@@ -60,47 +65,144 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			}
 			break
 		}
-		key := liveActivityRunKey{v.entries[i].Seq, v.entries[last].Seq, width, 0, v.painter.theme, -1, true}
+		if !v.conversationEmpty(i) {
+			entry := v.entries[i]
+			items = append(items, item{i, last, v.threadAgent(i), entry.Agent == "Main" && entry.Kind == "reasoning"})
+		}
+		i = j
+	}
+	var feed liveActivityFeed
+	v.questionRows = make(map[uint64]int)
+	used := make(map[liveActivityRunKey]liveActivityRun)
+	continues := func(a, b int) bool {
+		return a >= 0 && b < len(items) && items[a].agent != "" && items[a].agent == items[b].agent
+	}
+	start, previous := 0, -1 // Thread's first item, and the latest item that is not an aside.
+	for k, it := range items {
+		next := k + 1
+		for next < len(items) && items[next].aside {
+			next++
+		}
+		var thread conversationThread
+		switch {
+		case it.aside:
+			if continues(previous, next) {
+				thread = conversationThread{joined: true, first: items[start].first, previous: items[previous].first, followed: true}
+			}
+		case continues(previous, k):
+			thread = conversationThread{joined: true, first: items[start].first, previous: items[previous].first}
+		default:
+			start = k
+		}
+		if !it.aside {
+			thread.followed, previous = continues(k, next), k
+		}
+		key := liveActivityRunKey{v.entries[it.first].Seq, v.entries[it.last].Seq, width, 0, v.painter.theme, -1, true, thread}
+		if v.snippet.run == key.first {
+			key.hover = v.snippet.block
+		}
 		run, ok := v.runs[key]
 		if !ok {
-			run = v.conversationItem(i, last, width)
+			run = v.conversationItem(it.first, it.last, width, thread)
 		}
 		used[key] = run
-		if len(run.lines) == 0 {
-			i = j
-			continue
-		}
-		if len(feed.lines) > 0 {
+		if len(feed.lines) > 0 && !thread.joined {
 			feed.lines = append(feed.lines, "")
 			feed.heads = append(feed.heads, len(feed.lines)-1)
 			feed.snippets = append(feed.snippets, liveActivitySnippet{})
 			feed.questions = append(feed.questions, 0)
 		}
 		head := len(feed.lines)
-		if entry := v.entries[i]; entry.Agent == "You" || entry.Kind == "start" || entry.Kind == "assignment" {
+		if entry := v.entries[it.first]; entry.Agent == "You" || entry.Kind == "start" || entry.Kind == "assignment" {
 			v.questionRows[entry.Seq] = head
 		}
 		for range run.lines {
 			feed.heads = append(feed.heads, head)
-			feed.snippets = append(feed.snippets, liveActivitySnippet{})
 		}
 		feed.lines = append(feed.lines, run.lines...)
+		feed.snippets = append(feed.snippets, run.snippets...)
 		feed.questions = append(feed.questions, run.questions...)
-		i = j
 	}
 	v.runs = used
 	return feed
 }
 
+// conversationThread places an item in a thread: adjacent agent traffic with
+// one agent, which shares a gutter instead of repeating headings and quotes.
+type conversationThread struct {
+	joined          bool // Continues the thread item above, past any reasoning.
+	first, previous int  // Entry indexes of the thread's first item and the item above, when joined.
+	followed        bool // A later item continues the thread.
+}
+
+// Excerpt budgets: an item its thread has moved past keeps a short excerpt,
+// while the latest reply keeps more, since it is what the transcript awaits.
+const (
+	conversationEarlierRows = 2
+	conversationLatestRows  = 4
+)
+
+// threadAgent names the agent an item of agent traffic concerns, or "" when
+// the item cannot join a thread.
+func (v *liveActivityView) threadAgent(index int) string {
+	entry := v.entries[index]
+	if entry.Agent == "You" || entry.Agent == "Main" && entry.Kind != "start" && entry.Kind != "assignment" || len(v.blocks[index]) == 0 {
+		return ""
+	}
+	return trafficAgent(entry, v.blocks[index][0])
+}
+
+// trafficAgent is the recipient of Main's assignments and messages, and
+// otherwise the agent that sent or finished the traffic.
+func trafficAgent(entry activityPaneEntry, block liveActivityBlock) string {
+	agent := ""
+	switch {
+	case block.kind == "start" || block.kind == "message" && block.from == "/root":
+		agent = block.to
+	case block.kind == "message":
+		agent = block.from
+	case block.kind == "final" || block.kind == "error":
+	default:
+		return ""
+	}
+	if agent == "" {
+		agent = entry.Agent
+	}
+	return agent
+}
+
+// threadTask reports whether seq is the latest assignment in the thread above
+// index. A reply to it needs no quote, but a reply to an earlier assignment
+// keeps one so it does not read as answering the nearer task.
+func (v *liveActivityView) threadTask(thread conversationThread, index int, seq uint64) bool {
+	if !thread.joined || seq == 0 {
+		return false
+	}
+	for _, entry := range slices.Backward(v.entries[thread.first:index]) {
+		if entry.Kind == "start" || entry.Kind == "assignment" {
+			return entry.Seq == seq
+		}
+	}
+	return false
+}
+
+// conversationEmpty reports a completion whose Activity excerpt has no answer.
+func (v *liveActivityView) conversationEmpty(index int) bool {
+	entry, blocks := v.entries[index], v.blocks[index]
+	return entry.activitySeq != 0 && entry.Kind == "final" && len(blocks) == 1 && blocks[0].journal != nil && len(blocks[0].journal.groups) == 0
+}
+
 type conversationLines struct {
 	lines     []string
 	questions []uint64
+	snippets  []liveActivitySnippet
 }
 
 func (c *conversationLines) add(target uint64, lines ...string) {
 	for _, line := range lines {
 		c.lines = append(c.lines, line)
 		c.questions = append(c.questions, target)
+		c.snippets = append(c.snippets, liveActivitySnippet{})
 	}
 }
 
@@ -115,15 +217,23 @@ func (c *conversationLines) hang(lead, indent string, lines []string) {
 	}
 }
 
-func (v *liveActivityView) conversationItem(first, last, width int) liveActivityRun {
+func (v *liveActivityView) conversationItem(first, last, width int, thread conversationThread) liveActivityRun {
 	entry := v.entries[first]
 	blocks := v.blocks[first]
-	if entry.activitySeq != 0 && entry.Kind == "final" && len(blocks) == 1 && blocks[0].journal != nil && len(blocks[0].journal.groups) == 0 {
+	if v.conversationEmpty(first) {
 		return liveActivityRun{}
 	}
 	var out conversationLines
 	p := &v.painter
 	switch {
+	case entry.Agent == "Main" && entry.Kind == "reasoning" && thread.joined:
+		// A summary between a thread's items keeps the thread's rail.
+		rail := liveAgentGutter(v.threadAgent(thread.first), p.theme) + "│" + liveActivityReset
+		out.add(0, rail)
+		for _, block := range blocks {
+			out.hang(rail+" ", rail+" ", p.block(block, width-2))
+		}
+		out.add(0, rail)
 	case entry.Agent == "Main" && entry.Kind == "reasoning":
 		for _, block := range blocks {
 			out.add(0, p.block(block, width)...)
@@ -169,9 +279,9 @@ func (v *liveActivityView) conversationItem(first, last, width int) liveActivity
 		}
 		out.hang(gutter, gutter, p.markdown(livediff.Safe(entry.Text, false), width-2))
 	default:
-		v.agentItem(&out, entry, blocks, first, width)
+		v.agentItem(&out, entry, blocks, first, width, thread)
 	}
-	return liveActivityRun{lines: out.lines, snippets: make([]liveActivitySnippet, len(out.lines)), questions: out.questions}
+	return liveActivityRun{lines: out.lines, snippets: out.snippets, questions: out.questions}
 }
 
 // conversationHeading is one item heading: a glyph, a name, optional dim
@@ -269,41 +379,65 @@ func (v *liveActivityView) userItem(out *conversationLines, entry activityPaneEn
 }
 
 // agentItem gives agent traffic a one-line heading naming the agent and what
-// happened, with the body under that agent's colored gutter.
-func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneEntry, blocks []liveActivityBlock, index, width int) {
+// happened, with the body under that agent's colored gutter. An item joined to
+// a thread gets a connector heading instead, and skips quoting what the thread
+// already shows above it.
+func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneEntry, blocks []liveActivityBlock, index, width int, thread conversationThread) {
 	p := &v.painter
-	agent, glyph, detail := entry.Agent, liveActivityDim+"●"+liveActivityUndim, ""
+	glyph, detail := liveActivityDim+"●"+liveActivityUndim, ""
 	var block liveActivityBlock
 	if len(blocks) > 0 {
 		block = blocks[0]
 	}
+	agent := trafficAgent(entry, block)
+	if agent == "" {
+		agent = entry.Agent
+	}
+	reply := block.from != "/root" && block.kind != "start"
 	switch {
 	case block.kind == "start":
-		agent, glyph = block.to, liveActivityGreen+"▶"+liveActivityReset
-		detail = "started"
+		glyph, detail = liveActivityGreen+"▶"+liveActivityReset, "started"
 		if block.label != "" {
 			detail += " · " + ansi.Strip(p.inline(block.label))
 		}
 	case block.kind == "message" && block.from == "/root":
-		agent, glyph = block.to, liveActivityDim+"→"+liveActivityUndim
+		glyph = liveActivityDim + "→" + liveActivityUndim
+		if thread.joined {
+			detail = "follow-up"
+		}
 	case block.kind == "message":
-		agent, glyph = block.from, liveActivityDim+"←"+liveActivityUndim
+		glyph = liveActivityDim + "←" + liveActivityUndim
+		if thread.joined {
+			detail = "replied"
+		}
 	case block.kind == "final":
 		glyph, detail = liveActivityGreen+"✓"+liveActivityReset, "finished"
 	case block.kind == "error":
 		glyph = liveActivityRed + "✗" + liveActivityReset
+		if thread.joined {
+			detail = "failed"
+		}
 	}
-	if agent == "" {
-		agent = entry.Agent
+	color := liveAgentGutter(agent, p.theme)
+	if thread.joined {
+		out.add(0, threadHeading(color+"├─"+liveActivityReset+glyph, detail, entry, v.entries[thread.previous], reply, width))
+	} else {
+		out.add(0, conversationHeading(glyph, p.agent(agent), detail, entry, width))
 	}
-	out.add(0, conversationHeading(glyph, p.agent(agent), detail, entry, width))
-	gutter := liveAgentGutter(agent, p.theme) + "│" + liveActivityReset + " "
+	gutter := color + "│" + liveActivityReset + " "
+	tail, limit := color+"╰─"+liveActivityReset, conversationLatestRows
+	if thread.followed {
+		tail, limit = gutter, conversationEarlierRows
+	}
 	body := width - 2
 	switch {
 	case block.kind == "start" || block.kind == "message":
-		if entry.activitySeq != 0 && block.from != "/root" {
-			v.replyExcerpt(out, entry, block.body, gutter, body)
-		} else {
+		switch {
+		case entry.activitySeq != 0 && block.from != "/root":
+			v.replyExcerpt(out, entry, block.body, gutter, tail, body, limit)
+		case thread.followed:
+			v.collapsedItem(out, entry, p.markdown(block.body, body), gutter, body)
+		default:
 			out.hang(gutter, gutter, p.markdown(block.body, body))
 		}
 	case block.kind == "final" && block.journal != nil:
@@ -316,10 +450,10 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 				if len(group.answers) == 0 {
 					continue
 				}
-				if group.question != "" {
+				if group.question != "" && !v.threadTask(thread, index, group.target) {
 					v.journalReplyContext(out, group, index, gutter, body)
 				}
-				v.replyExcerpt(out, entry, group.answers[len(group.answers)-1].text, gutter, body)
+				v.replyExcerpt(out, entry, group.answers[len(group.answers)-1].text, gutter, tail, body, limit)
 				break
 			}
 		}
@@ -333,12 +467,14 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 				// A plain answer links to the latest task it could answer.
 				for _, question := range slices.Backward(v.entries[:index]) {
 					if (question.Kind == "start" || question.Kind == "assignment") && question.assignment != nil && question.assignment.to == agent {
-						v.replyContext(out, question, gutter, body)
+						if !v.threadTask(thread, index, question.Seq) {
+							v.replyContext(out, question, gutter, body)
+						}
 						break
 					}
 				}
 				if entry.activitySeq != 0 {
-					v.replyExcerpt(out, entry, block.body, gutter, body)
+					v.replyExcerpt(out, entry, block.body, gutter, tail, body, limit)
 				} else {
 					out.hang(gutter, gutter, p.markdown(block.body, body))
 				}
@@ -347,6 +483,26 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 			out.hang(gutter, gutter, p.block(block, body))
 		}
 	}
+}
+
+// threadHeading continues a thread from the item above. A reply shows how
+// long the agent took rather than a second clock time.
+func threadHeading(lead, detail string, entry, previous activityPaneEntry, reply bool, width int) string {
+	if reply && !entry.Observed.IsZero() && !previous.Observed.IsZero() {
+		detail = strings.TrimPrefix(detail+" · "+liveActivityAge(entry.Observed.Sub(previous.Observed)), " · ")
+	}
+	head := lead
+	if detail != "" {
+		head += " " + liveActivityDim + detail + liveActivityUndim
+	}
+	head = ansi.Truncate(head, width, "…")
+	if !reply {
+		stamp := liveActivityDim + entry.Observed.Local().Format("15:04:05") + liveActivityUndim
+		if gap := width - ansi.StringWidth(head) - ansi.StringWidth(stamp); gap >= 2 {
+			head += strings.Repeat(" ", gap) + stamp
+		}
+	}
+	return head
 }
 
 // replyContext gives every reply the same header and separately quoted prompt.
@@ -367,7 +523,8 @@ func (v *liveActivityView) replyContext(out *conversationLines, question activit
 		header += liveActivityDim + " " + question.Observed.Local().Format("15:04:05") + liveActivityUndim
 	}
 	out.add(question.Seq, gutter+ansi.Truncate(header, width, "…"))
-	for _, row := range liveActivityExcerpt(v.painter.quote(livediff.Safe(text, false), width), width) {
+	rows, _ := liveActivityExcerpt(v.painter.quote(livediff.Safe(text, false), width), width, 2)
+	for _, row := range rows {
 		out.add(question.Seq, gutter+row)
 	}
 }
@@ -380,27 +537,70 @@ func (v *liveActivityView) journalReplyContext(out *conversationLines, group liv
 	v.replyContext(out, question, gutter, width)
 }
 
-func (v *liveActivityView) replyExcerpt(out *conversationLines, entry activityPaneEntry, text, gutter string, width int) {
-	out.hang(gutter, gutter, liveActivityExcerpt(v.painter.markdown(text, width), width))
-	out.add(entry.Seq, gutter+ansi.Truncate(v.painter.theme.Accent()+"↩ Open reply in Activity"+liveActivityReset, width, "…"))
+// replyExcerpt keeps up to limit rows of a reply above a link to the whole
+// reply in Activity, which counts the rows left out. tail leads the link row.
+func (v *liveActivityView) replyExcerpt(out *conversationLines, entry activityPaneEntry, text, gutter, tail string, width, limit int) {
+	rows, hidden := liveActivityExcerpt(v.painter.markdown(text, width), width, limit)
+	out.hang(gutter, gutter, rows)
+	link := v.painter.theme.Accent() + "↩ Open reply in Activity" + liveActivityReset
+	if hidden > 0 {
+		link += liveActivityDim + " · " + moreLines(hidden) + liveActivityUndim
+	}
+	out.add(entry.Seq, tail+ansi.Truncate(link, width, "…"))
 }
 
-// liveActivityExcerpt keeps the first two rows with content. Paragraph gaps
-// and empty quote rows are skipped so a truncated excerpt always ends its last
-// visible text row with the ellipsis rather than leaving it on a row alone.
-func liveActivityExcerpt(rows []string, width int) []string {
+// collapsedItem shortens an item its thread has moved past. Assignments have
+// no Activity entry to open, so a click expands the item in place and another
+// collapses it, as Activity does with long blocks.
+func (v *liveActivityView) collapsedItem(out *conversationLines, entry activityPaneEntry, rows []string, gutter string, width int) {
+	snippet := liveActivitySnippet{entry.Seq, 0}
+	_, hidden := liveActivityExcerpt(rows, width, conversationEarlierRows)
+	if hidden > 0 && !v.expanded[snippet] {
+		hint := moreLines(hidden)
+		if v.snippet == snippet {
+			hint = "\x1b[4m" + hint + "\x1b[24m"
+		}
+		room := width - ansi.StringWidth(hint) - 1
+		rows, _ = liveActivityExcerpt(rows, room, conversationEarlierRows)
+		last := &rows[len(rows)-1]
+		*last += strings.Repeat(" ", max(1, width-ansi.StringWidth(*last)-ansi.StringWidth(hint))) + liveActivityDim + hint + liveActivityUndim
+	}
+	for _, row := range rows {
+		out.add(0, gutter+row)
+		if hidden > 0 {
+			out.snippets[len(out.snippets)-1] = snippet
+		}
+	}
+}
+
+func moreLines(n int) string {
+	if n == 1 {
+		return "+1 line"
+	}
+	return fmt.Sprintf("+%d lines", n)
+}
+
+// liveActivityExcerpt keeps the first limit rows with content and counts the
+// content rows left out. Paragraph gaps and empty quote rows are skipped so a
+// truncated excerpt always ends its last visible text row with the ellipsis
+// rather than leaving it on a row alone.
+func liveActivityExcerpt(rows []string, width, limit int) ([]string, int) {
 	var kept []string
+	hidden := 0
 	for _, row := range rows {
 		if strings.Trim(ansi.Strip(row), " │") == "" {
 			continue
 		}
-		if len(kept) == 2 {
-			kept[1] = ansi.Truncate(kept[1], max(0, width-1), "") + liveActivityDim + "…" + liveActivityUndim
-			break
+		if len(kept) < limit {
+			kept = append(kept, row)
+			continue
 		}
-		kept = append(kept, row)
+		if hidden == 0 {
+			kept[limit-1] = ansi.Truncate(kept[limit-1], max(0, width-1), "") + liveActivityDim + "…" + liveActivityUndim
+		}
+		hidden++
 	}
-	return kept
+	return kept, hidden
 }
 
 // journalItem renders milestones with a diamond and each answer below a link
