@@ -155,6 +155,15 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	rect.w = min(rect.w, pane.x+pane.w-rect.x)
 	rect.h = min(rect.h, pane.y+pane.h-rect.y)
 	questions, snippets := view.feedQuestions, view.feedSnippets
+	if view == u.main.view && view.conversation && view.pinMainReply && view.feedTop > 1 {
+		// Include the pinned copy in native text selection, without inventing
+		// transcript links for its rows. Feed pointer geometry stays unchanged.
+		pinned := view.feedTop - 1
+		rect.y -= pinned
+		rect.h += pinned
+		questions = append(make([]uint64, pinned), questions...)
+		snippets = append(make([]liveActivitySnippet, pinned), snippets...)
+	}
 	if view == u.main.view && !rect.contains(x, y) {
 		composer := u.main.composerRect
 		composer.x += pane.x

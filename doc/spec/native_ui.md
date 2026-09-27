@@ -281,7 +281,14 @@ Child answers link (`↩ re:`) to their retained assignment, not to a
 previous answer or similar text. An answer to its thread's latest assignment
 omits the link, since that assignment is directly above; an answer to an earlier
 assignment in the same thread keeps it. Main's ordinary replies link to the user input
-in their own turn. The `re:` label includes the target text; if only the question
+in their own turn. While Main is working, its latest ordinary reply is pinned
+at the top of Main only when the original is entirely outside the unpinned
+transcript viewport. Any visible part of the original suppresses the pin, avoiding
+duplicate messages on screen. The copy
+is bounded to leave activity visible; the full reply and its links remain in the
+transcript. Very short panes omit the copy. A newer reply replaces it, and ending
+the Main turn (completion, interruption, or failure) removes the pin.
+The `re:` label includes the target text; if only the question
 text is retained, it remains text rather than a fabricated navigation target.
 Hovering a navigable link underlines it; clicking it scrolls to and briefly
 shades the target. Cumulative child journals display each answer ID once,
@@ -345,4 +352,3 @@ remaining playback.
 The native client replaces the wrapped Codex terminal. The dashboard remains
 available at the invocation URL. Redirected and noninteractive commands do not
 start the native UI.
-

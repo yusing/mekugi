@@ -42,6 +42,7 @@ type liveActivityView struct {
 	roleColors     map[string]string
 	feedOnly       bool
 	conversation   bool              // Main uses the same feed/state with full, unclipped messages.
+	pinMainReply   bool              // Active Main turn may pin its latest off-screen reply.
 	childrenOnly   bool              // Native Main already owns root activity; keep it out of the auxiliary feed.
 	bare           bool              // The shell's pane title replaces the heading and footer rows.
 	focused        bool              // Native Activity shows its key hints only while it has keyboard focus.
@@ -572,7 +573,18 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 		if hint {
 			feedRows--
 		}
-		lines = append(lines, v.viewport(v.renderFeed(text, feedRows), feedRows)...)
+		feed := v.renderFeed(text, feedRows)
+		if v.conversation && v.pinMainReply {
+			// Decide against the unpinned viewport so the pin cannot hide its
+			// own original or oscillate as it changes the available height.
+			pinned := v.pinnedMainReply(text, body, feedRows, feed)
+			if len(pinned) > 0 {
+				lines = append(lines, pinned...)
+				v.feedTop += len(pinned)
+				feedRows -= len(pinned)
+			}
+		}
+		lines = append(lines, v.viewport(feed, feedRows)...)
 		if hint {
 			label := ansi.Truncate("↓ Back to bottom · esc", text, "")
 			lines = append(lines, strings.Repeat(" ", max(0, (text-ansi.StringWidth(label))/2))+v.painter.Theme.Accent()+label+activityui.Reset)
@@ -1109,10 +1121,12 @@ func (v *liveActivityView) renderStrip(rows []liveActivityRosterRow, width int) 
 }
 
 type liveActivityFeed struct {
-	lines     []string
-	heads     []int                 // Index of the heading that owns each line.
-	snippets  []liveActivitySnippet // Snippet that owns each line, if any.
-	questions []uint64
+	lines                        []string
+	heads                        []int                 // Index of the heading that owns each line.
+	snippets                     []liveActivitySnippet // Snippet that owns each line, if any.
+	questions                    []uint64
+	mainReply                    *activityPaneEntry
+	mainReplyStart, mainReplyEnd int // Half-open rendered range, excluding inter-item gaps.
 }
 
 // renderFeed groups consecutive entries of one agent under a heading with a
@@ -1292,23 +1306,34 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 	return run
 }
 
+// viewportPosition resolves the prospective viewport without committing its
+// geometry. Pin visibility uses it before the final viewport height is known.
+func (v *liveActivityView) viewportPosition(feed liveActivityFeed, rows int) (int, bool) {
+	offset, following := v.offset, v.following
+	if target, ok := v.questionRows[v.pendingTarget]; v.pendingTarget != 0 && ok {
+		offset, following = max(0, target-1), false
+	}
+	if following {
+		offset = len(feed.lines) - rows
+	}
+	return max(0, min(offset, len(feed.lines)-rows)), following
+}
+
 // viewport returns exactly rows lines. When scrolled into a run, that run's
 // heading stays pinned on the first row.
 func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
+	rows = max(0, rows)
+	v.offset, v.following = v.viewportPosition(feed, rows)
 	if v.pendingTarget != 0 {
-		if target, ok := v.questionRows[v.pendingTarget]; ok {
-			v.offset, v.following = max(0, target-1), false // Leave room for the pinned run heading.
+		if _, ok := v.questionRows[v.pendingTarget]; ok {
 			v.flashQuestion, v.flashUntil = v.pendingTarget, time.Now().Add(700*time.Millisecond)
 		}
 		v.pendingTarget = 0
 	}
-	rows = max(0, rows)
 	v.feedLines, v.feedRows = len(feed.lines), rows
 	if v.following {
-		v.offset = max(0, len(feed.lines)-rows)
 		v.unseen = 0
 	}
-	v.offset = max(0, min(v.offset, len(feed.lines)-rows))
 	lines := make([]string, rows)
 	v.feedSnippets = make([]liveActivitySnippet, rows)
 	v.feedQuestions = make([]uint64, rows)

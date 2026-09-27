@@ -16,6 +16,8 @@ import (
 
 func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.turn = "main-turn"
+	u.view.applyAppServerItem("main", "main", u.turn, "progress", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Checking the requested reply."})
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	message := "The requested reply.\n\n" + strings.Repeat("More detail about this reply.\n", 16) + "End of requested reply."
 	send := func(id, body string) {

@@ -739,6 +739,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 	room -= dock
 	u.mainContentPainted = room > 1
 	u.view.conversation, u.view.feedOnly, u.view.status = true, true, livediff.Safe(u.status, false)
+	u.view.pinMainReply = u.turn != ""
 	var frame []string
 	u.view.feedRows = 0
 	u.view.feedQuestions, u.view.feedSnippets = nil, nil
