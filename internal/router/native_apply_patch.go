@@ -471,6 +471,54 @@ func nativePatchDerivedCallID(callID string, index int) string {
 	return callID + ":apply:" + strconv.Itoa(index+1)
 }
 
+// Native patch baselines in a Code Mode cell share one observation window, not
+// intermediate per-tool states. Assign each path's window evidence once, to its
+// first observation. A move with shared endpoints is recorded as independent
+// source/target effects: the window cannot establish an intermediate rename.
+func nativePatchWindowFiles(observations []nativePatchObservation) [][]nativePatchFileSnapshot {
+	uses := make(map[string]int)
+	for _, observation := range observations {
+		for _, file := range observation.Files {
+			if file.BeforePath != "" {
+				uses[file.BeforePath]++
+			}
+			if file.AfterPath != "" && file.AfterPath != file.BeforePath {
+				uses[file.AfterPath]++
+			}
+		}
+	}
+	files := make([][]nativePatchFileSnapshot, len(observations))
+	seen := make(map[string]bool)
+	appendPath := func(index int, path, before string, exists bool, reason string) {
+		if path == "" || seen[path] {
+			return
+		}
+		seen[path] = true
+		files[index] = append(files[index], nativePatchFileSnapshot{
+			BeforePath: path, AfterPath: path, Before: before, Exists: exists, Error: reason,
+		})
+	}
+	for index, observation := range observations {
+		for _, file := range observation.Files {
+			move := file.BeforePath != "" && file.AfterPath != "" && file.BeforePath != file.AfterPath
+			if move && uses[file.BeforePath] == 1 && uses[file.AfterPath] == 1 {
+				files[index] = append(files[index], file)
+				seen[file.BeforePath], seen[file.AfterPath] = true, true
+				continue
+			}
+			path := file.BeforePath
+			if path == "" {
+				path = file.AfterPath
+			}
+			appendPath(index, path, file.Before, file.Exists, file.Error)
+			if move {
+				appendPath(index, file.AfterPath, file.TargetBefore, file.TargetExists, file.TargetError)
+			}
+		}
+	}
+	return files
+}
+
 func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thread, callID string, history mekugiHistory, output json.RawMessage) error {
 	if len(history.NativePatches) == 0 {
 		return nil
@@ -479,6 +527,7 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 	if !terminal {
 		return nil
 	}
+	windowFiles := nativePatchWindowFiles(history.NativePatches)
 	for index, observation := range history.NativePatches {
 		derivedCallID := nativePatchDerivedCallID(callID, index)
 		if retained, found, err := p.replayStore.lookup(ctx, workspace, derivedCallID); err != nil {
@@ -490,7 +539,7 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			continue
 		}
 		correlation := callID + "\x00" + strconv.Itoa(index)
-		reviews, complete := nativePatchReview(observation.Files)
+		reviews, complete := nativePatchReview(windowFiles[index])
 		// Attempts remain durable, but IDs select actual or incomplete file
 		// evidence, not successful no-ops or rejected patches with no effects.
 		changeID := ""
@@ -515,7 +564,7 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			ChangeID:         changeID,
 			CorrelationID:    correlation,
 			Attempt:          1,
-			AlreadySatisfied: success && len(reviews) == 0,
+			AlreadySatisfied: success && len(reviews) == 0 && len(history.NativePatches) == 1,
 			ReviewFiles:      reviews,
 			Report:           resultText,
 			CarrierKind:      codeModeCarrierCustom,
@@ -529,6 +578,9 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 				"input":   mustMarshalJSON(observation.Input),
 				"status":  mustMarshalJSON("completed"),
 			},
+		}
+		if len(history.NativePatches) > 1 {
+			attempt.Report += "\nFile evidence spans the Code Mode cell; shared paths are recorded once at their first patch observation, not as per-patch effects."
 		}
 		if confirmed {
 			attempt.HostResults = []nativeToolResult{nested}

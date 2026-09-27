@@ -20,6 +20,13 @@ retained as incomplete file evidence rather than an invented diff. Calls with
 no file differences remain in command history without a new change ID.
 An unfinished call has no completed record. Storage failure must not expose
 dependent review evidence as durable.
+
+Literal patches inside one Code Mode cell share a pre-cell/post-cell observation
+window. Each scoped path's resulting difference is recorded once, at its first
+patch observation, while all patch attempts and available host outcomes remain
+in history. These are cell-window effects, not independently observed per-patch
+effects. Moves whose endpoints overlap another patch are recorded as separate
+source/target differences rather than inferred intermediate renames.
 When a Code Mode cell has completed, its patch captures finalize independently
 of any sibling command processes that are still running. A yielded command must
 not delay an already completed patch's filesystem snapshot or edit receipt until

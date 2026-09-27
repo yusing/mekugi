@@ -325,6 +325,91 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 	}
 }
 
+func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
+	for _, test := range []struct {
+		name, first, second, finalPath string
+	}{
+		{"updates", "*** Update File: file.txt\n@@\n-old\n+middle", "*** Update File: file.txt\n@@\n-middle\n+final", "file.txt"},
+		{"move then update", "*** Update File: file.txt\n*** Move to: moved.txt\n@@\n-old\n+middle", "*** Update File: moved.txt\n@@\n-middle\n+final", "moved.txt"},
+		{"update then move", "*** Update File: file.txt\n@@\n-old\n+middle", "*** Update File: file.txt\n*** Move to: moved.txt\n@@\n-middle\n+final", "moved.txt"},
+		{"delete then recreate", "*** Delete File: file.txt", "*** Add File: file.txt\n+final", "file.txt"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			proxy := newManagedMekugiProxy(t)
+			attachTestReplayStore(t, proxy)
+			workspace := t.TempDir()
+			target := filepath.Join(workspace, "file.txt")
+			if err := os.WriteFile(target, []byte("old\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var source strings.Builder
+			for _, body := range []string{test.first, test.second} {
+				fmt.Fprintf(&source, "text(await tools.apply_patch(%s));\n", mustMarshalJSON("*** Begin Patch\n"+body+"\n*** End Patch\n"))
+			}
+			history := mekugiHistory{ToolName: "exec", NativePatches: nativePatchesInCall("exec", source.String(), workspace)}
+			if len(history.NativePatches) != 2 {
+				t.Fatalf("missing patch observations: %+v", history.NativePatches)
+			}
+			history.nativeCell = &nativeTraceCell{ended: true}
+			for index, observation := range history.NativePatches {
+				history.nativeCell.tools = append(history.nativeCell.tools, &nativeTraceTool{
+					CallID: fmt.Sprintf("patch-%d", index), Tool: applyPatchToolName, Status: "completed",
+					input: observation.Input, terminal: true,
+				})
+			}
+			if err := proxy.finalizeNativePatches(t.Context(), workspace, "thread", "cell", history, mustMarshalJSON("Script running with cell ID 7\nWall time 0.1 seconds\nOutput:\n")); err != nil {
+				t.Fatal(err)
+			}
+			if _, found, err := proxy.replayStore.lookup(t.Context(), workspace, nativePatchDerivedCallID("cell", 0)); err != nil || found {
+				t.Fatalf("yielded cell finalized: %v, %v", found, err)
+			}
+			// Model the actual terminal workspace, without evaluating patch inputs.
+			if test.finalPath != "file.txt" {
+				if err := os.Remove(target); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(workspace, test.finalPath), []byte("final\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			for range 2 { // Reconciliation replay must not allocate duplicate evidence.
+				if err := proxy.finalizeNativePatches(t.Context(), workspace, "thread", "cell", history, mustMarshalJSON("Script completed\nWall time 0.1 seconds\nOutput:\n")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var ids []string
+			seen := make(map[string]bool)
+			for index := range history.NativePatches {
+				attempt, found, err := proxy.replayStore.lookup(t.Context(), workspace, nativePatchDerivedCallID("cell", index))
+				if err != nil || !found || attempt.Script != history.NativePatches[index].Input || attempt.AlreadySatisfied {
+					t.Fatalf("lost or misreported attempt: %+v, %v", attempt, err)
+				}
+				if len(attempt.HostResults) != 1 || attempt.HostResults[0].Status != "completed" {
+					t.Fatalf("missing confirmed nested success: %+v", attempt.HostResults)
+				}
+				if attempt.ChangeID != "" {
+					ids = append(ids, attempt.ChangeID)
+				}
+				for _, file := range attempt.ReviewFiles {
+					for i, path := range []string{file.BeforePath, file.AfterPath} {
+						if path == "" || i == 1 && path == file.BeforePath {
+							continue
+						}
+						if seen[path] {
+							t.Fatalf("duplicate evidence for %s", path)
+						}
+						seen[path] = true
+					}
+				}
+			}
+			net, err := proxy.replayStore.readChanges(t.Context(), changeReadOptions{workspace: workspace, ids: ids, view: "net", maxTokens: 4000})
+			if err != nil || strings.Count(net, "-old\n") != 1 || strings.Count(net, "+final\n") != 1 || strings.Contains(net, "middle") {
+				t.Fatalf("cell-window net = %q, %v", net, err)
+			}
+		})
+	}
+}
+
 func TestNativePatchReviewChecksActualDeletionAndMove(t *testing.T) {
 	workspace := t.TempDir()
 	source := filepath.Join(workspace, "source.txt")
