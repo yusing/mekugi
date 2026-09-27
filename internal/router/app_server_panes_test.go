@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
- "github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestNativePaneStateResumeAndIsolation(t *testing.T) {

@@ -17,7 +17,9 @@ func TestExecReconcileDoesNotClaimUnvisitedListedEntriesDeleted(t *testing.T) {
 	zPath := filepath.Join(root, "z")
 	writeTestFile(t, zPath, "survives\n")
 	info, err := os.Lstat(zPath)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	observation := execObservation{Class: execScoped.String(), Roots: []string{root}, Listings: []execListing{{Root: root, Entries: map[string]string{"z": execFileStamp(info)}}}}
 	for index := range maxExecListingEntries + 1 {
 		writeTestFile(t, filepath.Join(root, fmt.Sprintf("file-%04d.txt", index)), "new\n")
@@ -29,7 +31,9 @@ func TestExecReconcileDoesNotClaimUnvisitedListedEntriesDeleted(t *testing.T) {
 		if review.BeforePath == zPath && review.AfterPath == "" {
 			t.Fatalf("reconciliation falsely claims surviving z was deleted: %+v", review)
 		}
-		if review.Incomplete == "" && review.BeforePath == "" { added++ }
+		if review.Incomplete == "" && review.BeforePath == "" {
+			added++
+		}
 	}
 	if complete || !walkTruncated || added != maxExecListingEntries {
 		t.Fatalf("destination enumeration: complete=%v truncated=%v added=%d", complete, walkTruncated, added)
